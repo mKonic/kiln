@@ -175,26 +175,21 @@ namespace kiln::anim {
         public:
             InfiniteSpec(SpecPtr s, RepeatMode m, std::int64_t off) : m_S(std::move(s)), m_M(m), m_Off(off) {}
             bool Infinite() const override { return true; }
-            // VectorizedInfiniteRepeatableSpec: play time folds into one iteration; Reverse swaps
-            // start and end on odd iterations.
-            std::int64_t Fold(std::int64_t n, const Vec& f, const Vec& to, const Vec& v0, int dims, bool& odd) const {
+            // VectorizedInfiniteRepeatableSpec: play time (plus the start offset, <= 0 clamps to 0)
+            // folds into one iteration; Reverse runs odd iterations backwards in time.
+            std::int64_t Fold(std::int64_t n, const Vec& f, const Vec& to, const Vec& v0, int dims) const {
                 const std::int64_t d = std::max<std::int64_t>(1, m_S->DurationNanos(f, to, v0, dims));
                 const std::int64_t t = n + m_Off;
-                const std::int64_t it = t / d;
-                odd = (it % 2) == 1;
-                return t - it * d;
+                if (t <= 0) return 0;
+                const std::int64_t repeats = t / d;
+                if (m_M == RepeatMode::Restart || repeats % 2 == 0) return t - repeats * d;
+                return (repeats + 1) * d - t;
             }
             Vec ValueAt(std::int64_t n, const Vec& f, const Vec& to, const Vec& v0, int dims) const override {
-                bool odd;
-                const std::int64_t t = Fold(n, f, to, v0, dims, odd);
-                if (m_M == RepeatMode::Reverse && odd) return m_S->ValueAt(t, to, f, v0, dims);
-                return m_S->ValueAt(t, f, to, v0, dims);
+                return m_S->ValueAt(Fold(n, f, to, v0, dims), f, to, v0, dims);
             }
             Vec VelocityAt(std::int64_t n, const Vec& f, const Vec& to, const Vec& v0, int dims) const override {
-                bool odd;
-                const std::int64_t t = Fold(n, f, to, v0, dims, odd);
-                if (m_M == RepeatMode::Reverse && odd) return m_S->VelocityAt(t, to, f, v0, dims);
-                return m_S->VelocityAt(t, f, to, v0, dims);
+                return m_S->VelocityAt(Fold(n, f, to, v0, dims), f, to, v0, dims);
             }
             std::int64_t DurationNanos(const Vec&, const Vec&, const Vec&, int) const override { return std::numeric_limits<std::int64_t>::max(); }
         private:

@@ -1,5 +1,7 @@
 #include "Check.h"
 
+#include "kiln/graphics/Path.h"
+
 #include "kiln/animation/Animatable.h"
 
 #include <cmath>
@@ -91,4 +93,35 @@ TEST(AnimateFloatAsStateFollowsTarget) {
     CHECK(std::abs(seen - 5) < 0.1f);
     d.RunFrame(120'000'000); c.Recompose();
     CHECK_EQ(seen, 10.0f);
+}
+
+TEST(CssEasingsAndBounce) {
+    using namespace kiln::anim::easing;
+    CHECK(std::abs(EaseInOut().Transform(0.5f) - 0.5f) < 1e-3f);           // symmetric
+    CHECK(EaseInBack().Transform(0.2f) < 0);                                // anticipates below 0
+    CHECK(EaseOutBack().Transform(0.6f) > 1);                               // overshoots
+    CHECK(std::abs(EaseOutBounce().Transform(1) - 1) < 1e-6f);
+    CHECK(std::abs(EaseOutBounce().Transform(1 / 2.75f) - 1) < 1e-4f);     // first bounce touches 1
+    CHECK_EQ(EaseInElastic().Transform(0), 0.0f);
+}
+
+TEST(PathEasingFollowsThePath) {
+    kiln::gfx::Path p;
+    p.MoveTo(0, 0);
+    p.LineTo(0.5f, 0.8f);
+    p.LineTo(1, 1);
+    const auto e = kiln::anim::PathEasing(p);
+    CHECK(std::abs(e.Transform(0.25f) - 0.4f) < 1e-3f);
+    CHECK(std::abs(e.Transform(0.75f) - 0.9f) < 1e-3f);
+}
+
+TEST(InfiniteReverseRunsTimeBackwards) {
+    // Reverse mirrors time (E(1 - x)), not the endpoints (1 - E(x)).
+    auto spec = kiln::anim::InfiniteRepeatable(kiln::anim::Tween(100, 0, kiln::anim::easing::EaseInQuad()), kiln::anim::RepeatMode::Reverse);
+    const float at125 = spec->ValueAt(125'000'000, {}, { 1, 0, 0, 0 }, {}, 1)[0];
+    CHECK(std::abs(at125 - kiln::anim::easing::EaseInQuad().Transform(0.75f)) < 1e-4f);
+    // A Delay start offset holds the first frame.
+    auto delayed = kiln::anim::InfiniteRepeatable(kiln::anim::Tween(100, 0, kiln::anim::Linear()), kiln::anim::RepeatMode::Restart,
+                                                  kiln::anim::StartOffset(50));
+    CHECK_EQ(delayed->ValueAt(30'000'000, {}, { 1, 0, 0, 0 }, {}, 1)[0], 0.0f);
 }

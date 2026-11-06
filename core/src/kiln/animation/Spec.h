@@ -53,6 +53,13 @@ namespace kiln::anim {
     // repeatable(iterations, animation, repeatMode, initialStartOffset) for duration-based specs.
     SpecPtr Repeatable(int iterations, SpecPtr duration, RepeatMode mode = RepeatMode::Restart, std::int64_t initialOffsetNanos = 0);
 
+    // StartOffset(offsetMillis, type): Delay holds the first iteration back, FastForward starts it
+    // part-way through; pass the result as initialOffsetNanos.
+    enum class StartOffsetType : std::uint8_t { Delay, FastForward };
+    constexpr std::int64_t StartOffset(int offsetMillis, StartOffsetType type = StartOffsetType::Delay) {
+        return std::int64_t(offsetMillis) * 1000000 * (type == StartOffsetType::Delay ? -1 : 1);
+    }
+
     struct SpringMotion { float value, velocity; };
     SpringMotion SpringStep(float dampingRatio, float stiffness, float from, float velocity, float target, double seconds);
     std::int64_t EstimateSpringDurationNanos(float stiffness, float dampingRatio, float initialVelocity,
