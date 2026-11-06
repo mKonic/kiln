@@ -89,6 +89,8 @@ namespace kiln::foundation {
         LazyGridState* gridState = nullptr;
         PaddingValues contentPadding;
         Dp mainSpacing{ 0 };
+        std::optional<Arrangement> mainArrangement;   // lists: placement of short content
+        bool reverse = false;
         AlignmentH horizontalAlignment = AlignmentH::Start();   // list cross alignment
         AlignmentV verticalAlignment = AlignmentV::Top();
         Arrangement crossArrangement = Arrangement::Start();    // grid slots
@@ -246,6 +248,14 @@ namespace kiln::foundation {
         if (m_Node) m_Node->RequestRemeasure();
     }
 
+    void LazyStateBase::RequestScrollToItem(int index, int offset) {
+        m_Index.Set(index);
+        m_Offset.Set(offset);
+        m_HasFirstKey = false;
+        m_PendingScroll = 0;
+        if (m_Node) m_Node->RequestRemeasure();
+    }
+
     void LazyStateBase::SnapToItem(int index, int offset) {
         m_Index.Set(index);
         m_Offset.Set(offset);
@@ -360,8 +370,11 @@ namespace kiln::foundation {
         rt::Dispatcher& d = rt::Dispatcher::Main();
         const int mainMax = vertical ? c.maxHeight : c.maxWidth;
         const int crossMax = vertical ? c.maxWidth : c.maxHeight;
-        const int before = s.RoundToPx(vertical ? contentPadding.top : contentPadding.start);
-        const int after = s.RoundToPx(vertical ? contentPadding.bottom : contentPadding.end);
+        // before / after: the padding at the scroll start / end (swapped by reverseLayout).
+        const int padStart = s.RoundToPx(vertical ? contentPadding.top : contentPadding.start);
+        const int padEnd = s.RoundToPx(vertical ? contentPadding.bottom : contentPadding.end);
+        const int before = reverse ? padEnd : padStart;
+        const int after = reverse ? padStart : padEnd;
         const int crossBefore = s.RoundToPx(vertical ? contentPadding.start : contentPadding.top);
         const int crossPad = crossBefore + s.RoundToPx(vertical ? contentPadding.end : contentPadding.bottom);
         const int spacing = s.RoundToPx(mainSpacing);
@@ -581,13 +594,33 @@ namespace kiln::foundation {
         const int w = vertical ? c.ConstrainWidth(cross) : c.ConstrainWidth(mainMax);
         const int h = vertical ? c.ConstrainHeight(mainMax) : c.ConstrainHeight(cross);
 
-        // Layout info.
+        // Main-axis screen positions: content offsets after the start padding, mirrored for
+        // reverseLayout; content shorter than the viewport follows the arrangement
+        // (calculateItemsOffsets).
+        std::vector<int> screen(lines.size());
+        const bool spare = mainArrangement && !sticking && !lines.empty() && lines.front().line == 0 &&
+                           lines.back().line == lineCount - 1 && pos == 0 && end < viewport;
+        if (spare) {
+            const std::size_t n = lines.size();
+            std::vector<int> sizes(n), arranged(n);
+            for (std::size_t i = 0; i < n; ++i) sizes[i] = lines[reverse ? n - 1 - i : i].size;
+            mainArrangement->Arrange(s, viewport, sizes, LayoutDirection::Ltr, arranged);
+            for (std::size_t i = 0; i < n; ++i) screen[reverse ? n - 1 - i : i] = padStart + arranged[i];
+        } else {
+            for (std::size_t i = 0; i < lines.size(); ++i)
+                screen[i] = reverse ? mainMax - (offsets[i] + before) - lines[i].size : offsets[i] + before;
+        }
+        const int stickingScreen = !sticking ? 0 : reverse ? mainMax - (stickingOffset + before) - sticking->size : stickingOffset + before;
+
+        // Layout info: offsets along the scroll direction from the content start (arranged
+        // and reverse-aware, like Compose's).
+        auto infoOffset = [&](int scr, int size) { return reverse ? mainMax - scr - size - before : scr - before; };
         if (listState) {
             LazyListLayoutInfo info;
             // The sticking header precedes the items it covers (its index is lower).
-            if (sticking) info.visibleItemsInfo.push_back({ sticking->first, UserKey(sticking->first), stickingOffset, sticking->size });
+            if (sticking) info.visibleItemsInfo.push_back({ sticking->first, UserKey(sticking->first), infoOffset(stickingScreen, sticking->size), sticking->size });
             for (std::size_t i = 0; i < lines.size(); ++i)
-                info.visibleItemsInfo.push_back({ lines[i].first, UserKey(lines[i].first), offsets[i], lines[i].size });
+                info.visibleItemsInfo.push_back({ lines[i].first, UserKey(lines[i].first), infoOffset(screen[i], lines[i].size), lines[i].size });
             info.viewportStartOffset = -before;
             info.viewportEndOffset = mainMax - before;
             info.totalItemsCount = count;
@@ -611,8 +644,8 @@ namespace kiln::foundation {
                     info.visibleItemsInfo.push_back(it);
                 }
             };
-            if (sticking) add(*sticking, stickingOffset);
-            for (std::size_t i = 0; i < lines.size(); ++i) add(lines[i], offsets[i]);
+            if (sticking) add(*sticking, infoOffset(stickingScreen, sticking->size));
+            for (std::size_t i = 0; i < lines.size(); ++i) add(lines[i], infoOffset(screen[i], lines[i].size));
             info.viewportStartOffset = -before;
             info.viewportEndOffset = mainMax - before;
             info.totalItemsCount = count;
@@ -628,15 +661,15 @@ namespace kiln::foundation {
         struct Placed { Placeable* p; int main; int cross; };   // cross -1: aligned (list)
         std::vector<Placed> placed;
         for (std::size_t i = 0; i < lines.size(); ++i)
-            for (const auto& cell : lines[i].cells) placed.push_back({ cell.p, offsets[i], cell.crossPos });
-        if (sticking) for (const auto& cell : sticking->cells) placed.push_back({ cell.p, stickingOffset, cell.crossPos });
+            for (const auto& cell : lines[i].cells) placed.push_back({ cell.p, screen[i], cell.crossPos });
+        if (sticking) for (const auto& cell : sticking->cells) placed.push_back({ cell.p, stickingScreen, cell.crossPos });
         const AlignmentH ha = horizontalAlignment;
         const AlignmentV va = verticalAlignment;
         const bool vert = vertical;
         const LayoutDirection dir = s.Direction();
-        return s.Layout(w, h, [placed, before, crossBefore, crossPad, w, h, ha, va, vert, dir](PlacementScope& place) {
+        return s.Layout(w, h, [placed, crossBefore, crossPad, w, h, ha, va, vert, dir](PlacementScope& place) {
             for (const auto& pl : placed) {
-                const int m = pl.main + before;
+                const int m = pl.main;
                 if (vert) {
                     if (pl.cross >= 0) place.PlaceRelative(*pl.p, crossBefore + pl.cross, m);
                     else place.Place(*pl.p, crossBefore + ha.Align(pl.p->Width(), w - crossPad, dir), m);
@@ -660,7 +693,7 @@ namespace kiln::foundation {
         // The composable part shared by lists and grids; `configure` fills the core.
         void LazyLayout(bool vertical, const Modifier& modifier, LazyStateBase& state, bool userScrollEnabled, rt::Key key,
                         const std::function<void(LazyCore&)>& configure, FlingBehavior fling = {},
-                        const std::function<Modifier(Modifier)>& extra = {}) {
+                        const std::function<Modifier(Modifier)>& extra = {}, bool reverseLayout = false) {
             auto& comp = *rt::Composition::Current();
             auto& core = comp.Remember<std::shared_ptr<LazyCore>>([] { return std::make_shared<LazyCore>(); }, {}, key);
             core->vertical = vertical;
@@ -673,7 +706,7 @@ namespace kiln::foundation {
             ++core->version;   // item lambdas may capture new values: recompose visible items
             ScrollableOptions so;
             so.enabled = userScrollEnabled;
-            so.reverseDirection = true;
+            so.reverseDirection = !reverseLayout;   // ScrollableDefaults.reverseDirection
             so.overscroll = RememberOverscrollEffect(key);
             so.flingBehavior = std::move(fling);
             // lazyLayoutSemantics: an estimated scroll range (index * 500 + offset, a little more
@@ -683,7 +716,7 @@ namespace kiln::foundation {
             Modifier sem = Semantics(ClipToBounds(modifier), [cp, sp, vertical, userScrollEnabled](SemanticsConfiguration& c) {
                 c.isTraversalGroup = true;
                 auto value = [sp] { return float(sp->FirstVisibleItemScrollOffset() + sp->FirstVisibleItemIndex() * 500); };
-                ui::ScrollAxisRange range{ value, [sp, value] { return value() + (sp->CanScrollForward() ? 100.0f : 0.0f); }, false };
+                ui::ScrollAxisRange range{ value, [sp, value] { return value() + (sp->CanScrollForward() ? 100.0f : 0.0f); }, cp->reverse };
                 if (vertical) c.verticalScrollAxisRange = range; else c.horizontalScrollAxisRange = range;
                 if (userScrollEnabled) c.scrollToIndex = [sp, cp](int index) {
                     if (index < 0 || index >= cp->count) return false;
@@ -722,11 +755,13 @@ namespace kiln::foundation {
                 core.listState = &state;
                 core.gridState = nullptr;
                 core.contentPadding = options.contentPadding;
-                core.mainSpacing = options.spacing;
+                core.mainSpacing = options.arrangement.Spacing();
+                core.mainArrangement = options.arrangement;
+                core.reverse = options.reverseLayout;
                 core.horizontalAlignment = options.horizontalAlignment;
                 core.verticalAlignment = options.verticalAlignment;
                 core.intervals = std::move(scope.intervals);
-            });
+            }, {}, {}, options.reverseLayout);
         }
 
         void LazyGrid(bool vertical, const Modifier& modifier, GridCells cells, LazyGridState& state,
@@ -739,10 +774,12 @@ namespace kiln::foundation {
                 core.listState = nullptr;
                 core.contentPadding = options.contentPadding;
                 core.mainSpacing = options.mainAxisArrangement.Spacing();
+                core.mainArrangement = options.mainAxisArrangement;
+                core.reverse = options.reverseLayout;
                 core.crossArrangement = options.crossAxisArrangement;
                 core.cells = cells;
                 core.intervals = std::move(scope.intervals);
-            });
+            }, {}, {}, options.reverseLayout);
         }
     }
 
@@ -756,6 +793,8 @@ namespace kiln::foundation {
             core.pageSize = config.pageSize;
             core.contentPadding = config.contentPadding;
             core.mainSpacing = config.pageSpacing;
+            core.mainArrangement.reset();
+            core.reverse = false;
             core.horizontalAlignment = config.horizontalAlignment;
             core.verticalAlignment = config.verticalAlignment;
             core.intervals.clear();

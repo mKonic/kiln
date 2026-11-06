@@ -72,6 +72,9 @@ namespace kiln::foundation {
         bool CanScrollBackward() const override { return m_Index.Peek() > 0 || m_Offset.Peek() > 0; }
         bool LaysOutOnScroll() const override { return true; }
         void ScrollToItem(int index, int offset = 0);
+        // requestScrollToItem: the next measure starts at index/offset (by index, not key) without
+        // stopping a scroll in progress.
+        void RequestScrollToItem(int index, int offset = 0);
         // Scrolls in animated steps of up to 2500 dp (jumping to 100 items before the target when
         // further), then seeks the target once it is composed (LazyLayoutScrollScope).
         rt::Task<> AnimateScrollToItem(int index, int scrollOffset = 0);
@@ -177,7 +180,11 @@ namespace kiln::foundation {
 
     struct LazyListOptions {
         PaddingValues contentPadding;
-        Dp spacing{ 0 };
+        // verticalArrangement (LazyColumn) / horizontalArrangement (LazyRow): its spacing goes
+        // between items; the whole arrangement applies when the items do not fill the viewport.
+        // Compose's default for reverseLayout is Bottom (End).
+        Arrangement arrangement = Arrangement::Top();
+        bool reverseLayout = false;   // item 0 at the bottom (end); scrolling reversed
         AlignmentH horizontalAlignment = AlignmentH::Start();   // LazyColumn
         AlignmentV verticalAlignment = AlignmentV::Top();       // LazyRow
         bool userScrollEnabled = true;
@@ -188,6 +195,7 @@ namespace kiln::foundation {
         // Between lines (its spacing) and across them (spacing and placement of the slots).
         Arrangement mainAxisArrangement = Arrangement::Top();
         Arrangement crossAxisArrangement = Arrangement::Start();
+        bool reverseLayout = false;
         bool userScrollEnabled = true;
     };
 

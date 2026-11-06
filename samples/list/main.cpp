@@ -29,7 +29,7 @@ namespace {
             });
             LazyListOptions opt;
             opt.contentPadding = { 16_dp, 0_dp, 16_dp, 16_dp };
-            opt.spacing = 8_dp;
+            opt.arrangement = Arrangement::SpacedBy(8_dp);
             LazyColumn(FillMax(Weight(Modifier{}, 1), Axis::Horizontal), state, [&](LazyListScope& s) {
                 for (int section = 0; section < 100; ++section) {
                     s.StickyHeader([section](int) {

@@ -293,3 +293,61 @@ TEST(LazyHorizontalGridAdaptiveRows) {
     CHECK_EQ(info.visibleItemsInfo[2].offset.x, 30);
     CHECK_EQ(int(info.visibleItemsInfo.size()), 8);       // 4 columns of 30 cover 100
 }
+
+TEST(LazyArrangementForShortContentAndReverseLayout) {
+    Harness h;
+    LazyListState centered, reversed, longReversed;
+    std::vector<LayoutNode*> nodes(3, nullptr);
+    h.Run([&] {
+        Row(FillMax(Modifier{}, Axis::Both), Arrangement::Start(), AlignmentV::Top(), [&] {
+            LazyListOptions c;
+            c.arrangement = Arrangement::Center();
+            LazyColumn(Width(FillMax(Modifier{}, Axis::Vertical), Dp(30)), centered, [](LazyListScope& s) {
+                s.Items(3, [](int) { Box(SizeMod(Modifier{}, Dp(30), Dp(20))); });
+            }, c);
+            LazyListOptions r;
+            r.reverseLayout = true;
+            r.arrangement = Arrangement::Bottom();
+            LazyColumn(Width(FillMax(Modifier{}, Axis::Vertical), Dp(30)), reversed, [](LazyListScope& s) {
+                s.Items(3, [](int) { Box(SizeMod(Modifier{}, Dp(30), Dp(20))); });
+            }, r);
+            LazyListOptions lr;
+            lr.reverseLayout = true;
+            LazyColumn(Width(FillMax(Modifier{}, Axis::Vertical), Dp(30)), longReversed, [](LazyListScope& s) {
+                s.Items(50, [](int) { Box(SizeMod(Modifier{}, Dp(30), Dp(20))); });
+            }, lr);
+        });
+    });
+    // Centered: 60 px of items in 100: 20, 40, 60.
+    CHECK_EQ(centered.LayoutInfo().visibleItemsInfo[0].offset, 20);
+    CHECK_EQ(centered.LayoutInfo().visibleItemsInfo[2].offset, 60);
+    // Reverse + Bottom: item 0 at the bottom, offsets along the reversed axis from 0.
+    CHECK_EQ(reversed.LayoutInfo().visibleItemsInfo[0].offset, 0);
+    CHECK_EQ(reversed.LayoutInfo().visibleItemsInfo[2].offset, 40);
+    // A long reversed list scrolls towards higher indices with a positive delta, as usual.
+    longReversed.ConsumeScrollDelta(30);
+    h.Pump();
+    CHECK_EQ(longReversed.FirstVisibleItemIndex(), 1);
+    CHECK_EQ(longReversed.FirstVisibleItemScrollOffset(), 10);
+}
+
+namespace { rt::Task<> ScrollBy2000(LazyListState* s) { co_await AnimateScrollBy(*s, 2000); } }
+
+TEST(RequestScrollToItemKeepsAFlingRunning) {
+    Harness h;
+    LazyListState state;
+    h.Run([&] {
+        LazyColumn(FillMax(Modifier{}, Axis::Both), state, [](LazyListScope& s) {
+            s.Items(500, [](int) { Box(SizeMod(Modifier{}, Dp(100), Dp(20))); });
+        });
+    });
+    rt::Job job = rt::Launch(rt::Dispatcher::Main(), ScrollBy2000(&state));
+    h.Frames(2);
+    CHECK(state.IsScrollInProgress());
+    state.RequestScrollToItem(200);
+    h.Pump();
+    CHECK(state.FirstVisibleItemIndex() >= 200);
+    CHECK(state.IsScrollInProgress());
+    state.ScrollToItem(10);   // scrollToItem stops it
+    CHECK(!state.IsScrollInProgress());
+}

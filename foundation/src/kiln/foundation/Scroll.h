@@ -26,7 +26,15 @@ namespace kiln::foundation {
         virtual bool LaysOutOnScroll() const { return false; }
 
         // Stops a running fling or programmatic scroll (stopScroll()).
-        void StopScroll() { if (m_Stop) { auto stop = std::move(m_Stop); m_Stop = nullptr; stop(); } }
+        // The stopped scroll ends at its next frame; to everyone else it has ended now.
+        void StopScroll() {
+            if (!m_Stop) return;
+            auto stop = std::move(m_Stop);
+            m_Stop = nullptr;
+            ++m_ScrollToken;   // its EndScroll no longer matches
+            stop();
+            SetScrollInProgress(false);
+        }
         bool HasRunningScroll() const { return bool(m_Stop); }
         void SetScrollInProgress(bool v) { if (m_InProgress.Peek() != v) m_InProgress.Set(v); }   // used by the gesture code
 
