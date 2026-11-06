@@ -5,6 +5,7 @@
 #include <cmath>
 #include <kiln/foundation/Compose.h>
 #include <kiln/graphics/PathEffect.h>
+#include <kiln/foundation/MeshGradient.h>
 #include <kiln/foundation/Gestures.h>
 #include <kiln/foundation/Animate.h>
 #include <kiln/foundation/Scroll.h>
@@ -358,6 +359,26 @@ namespace {
                     kiln::gfx::Stroke stroke{ d.ToPx(3_dp), 4, kiln::gfx::StrokeCap::Butt, kiln::gfx::StrokeJoin::Bevel };
                     d.DrawPath(tri, kVariant, &stroke);
                 });
+            });
+            // Mesh gradients: a 2x2 grid of Bezier patches, bilinear and Catmull-Rom colours.
+            Row(Padding(Modifier{}, 16_dp, 8_dp), Arrangement::SpacedBy(16_dp), AlignmentV::CenterVertically(), [&] {
+                for (const bool bicubic : { false, true }) {
+                    auto& c2 = *kiln::rt::Composition::Current();
+                    auto& mesh = c2.Remember<std::shared_ptr<Painter>>([bicubic] {
+                        return std::make_shared<MeshGradientPainter>(2, 2, bicubic, [](MeshGradientScope& m) {
+                            const Color colors[3][3] = { { Color(0xffffd8e4), Color(0xffeaddff), Color(0xffd0bcff) },
+                                                         { Color(0xff7d5260), Color(0xffb69df8), Color(0xff6750a4) },
+                                                         { Color(0xff21005d), Color(0xff4f378b), Color(0xffffb4ab) } };
+                            for (int r = 0; r <= 2; ++r)
+                                for (int c = 0; c <= 2; ++c) {
+                                    // The middle vertex pulled off-centre bends the patches.
+                                    const Offset p = r == 1 && c == 1 ? Offset{ 0.6f, 0.4f } : Offset{ c / 2.0f, r / 2.0f };
+                                    m.SetVertex(r, c, p, colors[r][c]);
+                                }
+                        });
+                    }, kiln::rt::Keys(int(bicubic)));
+                    Box(Paint(Clip(SizeMod(Modifier{}, 120_dp, 80_dp), CornerShape::Rounded(16_dp)), mesh, false, Alignment::Center(), ContentScale::FillBounds()));
+                }
             });
             // Stamped path effects: dots along a wave (Translate), arrows along an arc (Rotate).
             Row(Padding(Modifier{}, 16_dp, 8_dp), Arrangement::SpacedBy(16_dp), AlignmentV::CenterVertically(), [&] {

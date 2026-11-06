@@ -86,8 +86,28 @@ namespace kiln {
         desc.blendFactors = { BlendFactor::Zero, BlendFactor::SrcAlpha, BlendOp::Add, BlendFactor::Zero, BlendFactor::SrcAlpha, BlendOp::Add };
         desc.debugName = "kiln.quad.mask";
         m_MaskPipeline = device.CreatePipeline(desc);
+        {
+            PipelineDesc tri;
+            tri.vertex = device.CreateShader({ { std::begin(shaders::kTriVert), std::end(shaders::kTriVert) },
+                                               ShaderStage::Vertex, "main", "kiln.tri.vert" });
+            tri.fragment = device.CreateShader({ { std::begin(shaders::kTriFrag), std::end(shaders::kTriFrag) },
+                                                 ShaderStage::Fragment, "main", "kiln.tri.frag" });
+            VertexBufferLayout vl;
+            vl.stride = sizeof(Vertex);
+            vl.stepMode = VertexStepMode::Vertex;
+            vl.attributes.push_back({ 0, Format::RG32_SFLOAT, 0 });
+            vl.attributes.push_back({ 1, Format::RGBA32_SFLOAT, 8 });
+            tri.vertexBuffers.push_back(vl);
+            tri.pushConstantSize = 80;   // viewport, origin, clip (rect, radii, inverse, enabled)
+            tri.topology = PrimitiveTopology::TriangleList;
+            tri.blend = BlendMode::AlphaPremultiplied;
+            tri.colorFormats = { device.SwapchainFormat() };
+            tri.debugName = "kiln.tri";
+            m_TriPipeline = device.CreatePipeline(tri);
+        }
         m_White = device.CreateSolidTexture(0xffffffffu);
         m_Buffers.resize(device.Caps().framesInFlight);
+        m_TriBuffers.resize(device.Caps().framesInFlight);
         m_Pool.resize(device.Caps().framesInFlight);
     }
 
@@ -105,6 +125,7 @@ namespace kiln {
         for (auto& l : m_Pool[m_Device.FrameIndex() % m_Pool.size()]) l.used = false;
         m_Clip = {};
         m_BlendMode = 3;
+        m_TriVerts.clear();
         m_Transform = {};
     }
 
@@ -136,7 +157,7 @@ namespace kiln {
         Target& t2 = Current();
         const bool filtered = instance.params[2] >= 0;
         if (t2.runs.empty() || t2.runs.back().page != page || t2.runs.back().mask != mask || t2.runs.back().filtered != filtered ||
-            t2.runs.back().dst != dst || dst)
+            t2.runs.back().dst != dst || dst || t2.runs.back().triangles)
             t2.runs.push_back({ page, std::uint32_t(t2.instances.size()), 0, mask, filtered, dst });
         t2.instances.push_back(instance);
         ++t2.runs.back().count;
@@ -144,7 +165,7 @@ namespace kiln {
 
     void QuadRenderer::FillRect(const RectF& r, Rgba c, float radius, const Paint* paint, int filterRow) {
         // Solid quads ignore the atlas, so they join whatever run is open instead of splitting it.
-        const bool openMask = !Current().runs.empty() && (Current().runs.back().mask || Current().runs.back().dst ||
+        const bool openMask = !Current().runs.empty() && (Current().runs.back().mask || Current().runs.back().dst || Current().runs.back().triangles ||
                                                           Current().runs.back().filtered != (filterRow >= 0));
         const AtlasPage* page = Current().runs.empty() || openMask ? nullptr : Current().runs.back().page;
         Push({ { r.x, r.y, r.w, r.h }, { 0, 0, 0, 0 }, { c.r, c.g, c.b, c.a },
@@ -201,6 +222,17 @@ namespace kiln {
         Push(in, &page, nullptr);
         Instance& last = Current().instances.back();
         last.paint[0] = su; last.paint[1] = sv; last.paint[2] = sigma; last.paint[3] = decal ? 1.0f : 0.0f;
+    }
+
+    void QuadRenderer::DrawTriangles(const Vertex* v, std::size_t count) {
+        if (count < 3) return;
+        Target& t = Current();
+        const auto first = std::uint32_t(m_TriVerts.size());
+        m_TriVerts.insert(m_TriVerts.end(), v, v + count);
+        Run run{ nullptr, first, std::uint32_t(count) };
+        run.triangles = true;
+        run.clip = m_Clip;
+        t.runs.push_back(run);
     }
 
     QuadRenderer::PooledLayer& QuadRenderer::AcquireLayer(int w, int h) {
@@ -290,6 +322,19 @@ namespace kiln {
     void QuadRenderer::Upload() {
         if (m_Uploaded) return;
         m_Uploaded = true;
+        if (!m_TriVerts.empty()) {
+            auto& tb = m_TriBuffers[m_Device.FrameIndex() % m_TriBuffers.size()];
+            const u64 triBytes = m_TriVerts.size() * sizeof(Vertex);
+            if (!tb || tb->Size() < triBytes) {
+                BufferDesc desc;
+                desc.size = triBytes * 2;
+                desc.usage = BufferUsage::Vertex;
+                desc.memory = MemoryKind::HostVisible;
+                desc.debugName = "kiln.triangles";
+                tb = m_Device.CreateBuffer(desc);
+            }
+            tb->Upload(m_TriVerts.data(), triBytes);
+        }
         std::size_t total = 0;
         for (auto& t : m_Targets) { t.base = std::uint32_t(total); total += t.instances.size(); }
         if (total == 0) return;
@@ -318,6 +363,22 @@ namespace kiln {
         if (scissor.width == 0 || scissor.height == 0) return;
         const Pipeline* boundPipeline = nullptr;
         for (const Run& run : t.runs) {
+            if (run.triangles) {
+                const Clip& c = run.clip;
+                const float tp[20] = { t.size[0], t.size[1], t.origin[0], t.origin[1],
+                                       c.x0, c.y0, c.x1, c.y1,
+                                       c.radii[0], c.radii[1], c.radii[2], c.radii[3],
+                                       c.inverse.a, c.inverse.b, c.inverse.c, c.inverse.d,
+                                       c.inverse.e, c.inverse.f, c.enabled ? 1.0f : 0.0f, 0 };
+                cmd.BindPipeline(m_TriPipeline);
+                cmd.SetViewport({ 0, 0, t.size[0], t.size[1], 0, 1 });
+                cmd.SetScissor(scissor);
+                cmd.SetPushConstants(tp, sizeof(tp));
+                cmd.BindVertexBuffer(0, m_TriBuffers[m_Device.FrameIndex() % m_TriBuffers.size()]);
+                cmd.Draw(run.count, 1, run.first, 0);
+                boundPipeline = nullptr;   // the quad state is set again
+                continue;
+            }
             const Ref<Pipeline>& want = run.mask ? m_MaskPipeline : run.dst ? m_BlendPipeline : run.filtered ? m_FilteredPipeline : m_Pipeline;
             if (boundPipeline != want.get()) {
                 cmd.BindPipeline(want);

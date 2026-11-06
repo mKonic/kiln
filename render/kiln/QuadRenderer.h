@@ -96,6 +96,10 @@ namespace kiln {
         // One Gaussian pass over a layer: `step` is one texel along the pass axis in uv, `sigma` in
         // texels; outside the layer the edge repeats, or with `decal` is transparent.
         void DrawBlur(const RectF& rect, const RectF& uv, const AtlasPage& page, float alpha, float stepU, float stepV, float sigma, bool decal);
+        // Triangles (a list, three vertices each) with per-vertex colour: positions in device
+        // pixels, colours premultiplied. Clipped like quads; always SrcOver.
+        struct Vertex { float x, y; float r, g, b, a; };
+        void DrawTriangles(const Vertex* vertices, std::size_t count);
 
         // Offscreen layers: quads submitted between BeginLayer and EndLayer render into a target
         // covering the device-space rect `bounds` (whole pixels). EndLayer returns the texture and
@@ -112,7 +116,8 @@ namespace kiln {
     private:
         struct Instance { float rect[4]; float uv[4]; float color[4]; float params[4]; float clip[4]; float clipParams[4]; float paint[4]; float paint2[4];
                          float xform[4]; float xform2[4]; float clipInv[4]; float clipInv2[4]; };
-        struct Run { const AtlasPage* page; std::uint32_t first, count; bool mask = false; bool filtered = false; const AtlasPage* dst = nullptr; };
+        struct Run { const AtlasPage* page; std::uint32_t first, count; bool mask = false; bool filtered = false; const AtlasPage* dst = nullptr;
+                     bool triangles = false; Clip clip{}; };   // triangles: first/count into m_TriVerts
 
         void Push(const Instance& instance, const AtlasPage* page, const Paint* paint, bool mask = false);
         struct Target {
@@ -148,7 +153,10 @@ namespace kiln {
         hearth::Ref<hearth::Pipeline> m_Pipeline;
         hearth::Ref<hearth::Pipeline> m_MaskPipeline;
         hearth::Ref<hearth::Pipeline> m_FilteredPipeline;
-        hearth::Ref<hearth::Pipeline> m_BlendPipeline;   // filtered shader, no fixed-function blending
+        hearth::Ref<hearth::Pipeline> m_BlendPipeline;
+        hearth::Ref<hearth::Pipeline> m_TriPipeline;
+        std::vector<Vertex> m_TriVerts;
+        std::vector<hearth::Ref<hearth::Buffer>> m_TriBuffers;   // one per frame in flight   // filtered shader, no fixed-function blending
         int m_BlendMode = 3;
         float m_RootClear[4] = { 0, 0, 0, 1 };
         hearth::Ref<hearth::Texture> m_White;

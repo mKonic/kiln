@@ -8,6 +8,7 @@
 #include "kiln/graphics/ColorFilter.h"
 #include "kiln/graphics/Image.h"
 #include "kiln/graphics/Path.h"
+#include "kiln/graphics/Vertices.h"
 #include "kiln/ui/Geometry.h"
 
 #include <functional>
@@ -55,6 +56,10 @@ namespace kiln::ui {
         void DrawRoundRect(const gfx::Brush& brush, Offset topLeft, Size size, float cornerRadius, float alpha = 1);
         void DrawPath(const gfx::Path& path, const gfx::Brush& brush, const gfx::Stroke* stroke = nullptr, float alpha = 1,
                       const gfx::ColorFilter* colorFilter = nullptr);
+
+        // drawVertices: triangles with per-vertex colours (or `color` when the vertices have
+        // none), under the current transform and clip.
+        void DrawVertices(const gfx::Vertices& vertices, Color color = Color(0xff000000), float alpha = 1);
 
         // Transform (affine, local -> device). Each call composes onto the current one.
         void Translate(Offset o);

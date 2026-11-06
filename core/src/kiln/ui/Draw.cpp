@@ -361,6 +361,24 @@ namespace kiln::ui {
                                   { a, a, a, a }, QuadRenderer::Mode::Color, nullptr, FilterRow(filter), quality == gfx::FilterQuality::None);
     }
 
+    void DrawScope::DrawVertices(const gfx::Vertices& v, Color color, float alpha) {
+        if (!m_Target.quads) return;
+        const float a = alpha * m_State.alpha;
+        if (a <= 0) return;
+        const std::vector<std::uint32_t> list = v.TriangleList();
+        std::vector<QuadRenderer::Vertex> out;
+        out.reserve(list.size());
+        const gfx::Matrix& m = m_State.m;
+        for (std::uint32_t i : list) {
+            if (i >= v.positions.size()) return;
+            const Offset p = m.Map(v.positions[i]);
+            const Rgba c = Scaled(ToRgba(v.colors.empty() ? color : v.colors[std::min<std::size_t>(i, v.colors.size() - 1)]), a);
+            out.push_back({ p.x, p.y, c.r, c.g, c.b, c.a });
+        }
+        ApplyClip();
+        m_Target.quads->DrawTriangles(out.data(), out.size());
+    }
+
     void DrawScope::BeginLayer(Rect bounds, float alpha, const gfx::Path* clipPath, gfx::BlendMode blend, const gfx::ColorFilter* colorFilter) {
         BeginLayerImpl(bounds, alpha, clipPath, false, blend, colorFilter);
     }

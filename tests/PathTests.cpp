@@ -2,6 +2,7 @@
 
 #include "kiln/graphics/PathEffect.h"
 #include "kiln/graphics/PathIterator.h"
+#include "kiln/graphics/Vertices.h"
 #include "kiln/graphics/Rasterizer.h"
 
 #include <cmath>
@@ -224,4 +225,16 @@ TEST(PathOpCombinesAreas) {
     circle.AddOval({ 25, 25, 75, 75 });
     const float holed = CoveredArea(gfx::Path::Combine(Op::Difference, a, circle));
     CHECK(std::abs(holed - (10000 - 3.14159265f * 625)) < 20);
+}
+
+TEST(VerticesExpandToTriangleLists) {
+    gfx::Vertices v;
+    v.positions = { { 0, 0 }, { 1, 0 }, { 1, 1 }, { 0, 1 } };
+    v.mode = gfx::VertexMode::TriangleFan;
+    CHECK(v.TriangleList() == std::vector<std::uint32_t>({ 0, 1, 2, 0, 2, 3 }));
+    v.mode = gfx::VertexMode::TriangleStrip;
+    CHECK(v.TriangleList() == std::vector<std::uint32_t>({ 0, 1, 2, 1, 2, 3 }));
+    v.mode = gfx::VertexMode::Triangles;
+    v.indices = { 3, 2, 1 };
+    CHECK(v.TriangleList() == std::vector<std::uint32_t>({ 3, 2, 1 }));
 }
