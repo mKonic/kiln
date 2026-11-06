@@ -156,21 +156,24 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
                 }
             }
         }
-        // Trackpad swipes: the gesture scroll distance now and per batched sample (pointer 0).
-        // Intermediate events of a swipe do not repeat the classification, so send it for every
-        // touchpad / mouse event and let native track the gesture.
+        // Trackpad gestures: the swipe scroll distance and the pinch scale factor, now and per
+        // batched sample (pointer 0), as (x, y, scale) triples. Intermediate events of a swipe
+        // do not repeat the classification, so send them for every touchpad / mouse event and
+        // let native track the gesture.
         float[] pan = null;
         if (e.isFromSource(InputDevice.SOURCE_TOUCHPAD) || e.isFromSource(InputDevice.SOURCE_MOUSE)) {
-            pan = new float[2 + 2 * hs];
+            pan = new float[3 + 3 * hs];
             pan[0] = e.getAxisValue(MotionEvent.AXIS_GESTURE_SCROLL_X_DISTANCE, 0);
             pan[1] = e.getAxisValue(MotionEvent.AXIS_GESTURE_SCROLL_Y_DISTANCE, 0);
+            pan[2] = e.getAxisValue(MotionEvent.AXIS_GESTURE_PINCH_SCALE_FACTOR, 0);
             for (int h = 0; h < hs; h++) {
-                pan[2 + 2 * h] = e.getHistoricalAxisValue(MotionEvent.AXIS_GESTURE_SCROLL_X_DISTANCE, 0, h);
-                pan[3 + 2 * h] = e.getHistoricalAxisValue(MotionEvent.AXIS_GESTURE_SCROLL_Y_DISTANCE, 0, h);
+                pan[3 + 3 * h] = e.getHistoricalAxisValue(MotionEvent.AXIS_GESTURE_SCROLL_X_DISTANCE, 0, h);
+                pan[4 + 3 * h] = e.getHistoricalAxisValue(MotionEvent.AXIS_GESTURE_SCROLL_Y_DISTANCE, 0, h);
+                pan[5 + 3 * h] = e.getHistoricalAxisValue(MotionEvent.AXIS_GESTURE_PINCH_SCALE_FACTOR, 0, h);
             }
         }
         KilnNative.touchEvent(e.getActionMasked(), e.getActionIndex(), e.getEventTime(), idsN, xyN, toolsN,
-                e.getButtonState(), e.getClassification(),
+                e.getButtonState(), e.getMetaState(), e.getClassification(),
                 e.getAxisValue(MotionEvent.AXIS_HSCROLL), e.getAxisValue(MotionEvent.AXIS_VSCROLL),
                 historyTimes, historyXy, pan);
         return true;

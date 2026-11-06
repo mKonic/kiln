@@ -16,11 +16,29 @@ namespace kiln::ui {
     enum class PointerType : std::uint8_t { Unknown, Touch, Mouse, Stylus, Eraser };
     enum class PointerEventPass : std::uint8_t { Initial, Main, Final };
     // PanStart / PanMove / PanEnd: a trackpad two-finger swipe (CLASSIFICATION_TWO_FINGER_SWIPE),
-    // reported as one unpressed mouse pointer at the cursor carrying panOffset.
-    enum class PointerEventType : std::uint8_t { Unknown, Press, Release, Move, Enter, Exit, Scroll, PanStart, PanMove, PanEnd };
+    // reported as one unpressed mouse pointer at the cursor carrying panOffset. ScaleStart /
+    // ScaleChange / ScaleEnd: a trackpad pinch (CLASSIFICATION_PINCH), the same kind of pointer
+    // carrying scaleFactor.
+    enum class PointerEventType : std::uint8_t { Unknown, Press, Release, Move, Enter, Exit, Scroll, PanStart, PanMove, PanEnd,
+                                                 ScaleStart, ScaleChange, ScaleEnd };
 
     // A sample batched into an event before its current position (MotionEvent history).
-    struct HistoricalChange { std::int64_t uptimeMillis = 0; Offset position; Offset panOffset; };
+    struct HistoricalChange { std::int64_t uptimeMillis = 0; Offset position; Offset panOffset; float scaleFactor = 1; };
+
+    // PointerKeyboardModifiers: the MotionEvent's meta state (KeyEvent.META_* bits).
+    struct PointerKeyboardModifiers {
+        std::uint32_t packed = 0;
+        bool IsCtrlPressed() const { return (packed & 0x1000u) != 0; }
+        bool IsMetaPressed() const { return (packed & 0x10000u) != 0; }
+        bool IsAltPressed() const { return (packed & 0x02u) != 0; }
+        bool IsAltGraphPressed() const { return (packed & 0x20u) != 0; }   // META_ALT_RIGHT_ON
+        bool IsSymPressed() const { return (packed & 0x04u) != 0; }
+        bool IsShiftPressed() const { return (packed & 0x01u) != 0; }
+        bool IsFunctionPressed() const { return (packed & 0x08u) != 0; }
+        bool IsCapsLockOn() const { return (packed & 0x100000u) != 0; }
+        bool IsScrollLockOn() const { return (packed & 0x400000u) != 0; }
+        bool IsNumLockOn() const { return (packed & 0x200000u) != 0; }
+    };
 
     struct PointerInputChange {
         std::int64_t id = 0;
@@ -34,6 +52,7 @@ namespace kiln::ui {
         PointerType type = PointerType::Touch;
         Offset scrollDelta;
         Offset panOffset;                // trackpad pan: AXIS_GESTURE_SCROLL_X/Y_DISTANCE
+        float scaleFactor = 1;           // trackpad pinch: AXIS_GESTURE_PINCH_SCALE_FACTOR
         // Shared by every copy of this change in one dispatch (all nodes, all passes); owned, so
         // a copy kept past the dispatch (currentEvent) stays valid.
         std::shared_ptr<bool> consumed;
@@ -98,6 +117,7 @@ namespace kiln::ui {
         std::vector<PointerInputChange> changes;
         PointerEventType type = PointerEventType::Unknown;
         PointerButtons buttons;
+        PointerKeyboardModifiers keyboardModifiers;
         int classification = 0;          // MotionEvent classification (2 = deep press)
     };
 
@@ -109,6 +129,7 @@ namespace kiln::ui {
         PointerType type = PointerType::Touch;
         Offset scrollDelta;
         Offset panOffset;
+        float scaleFactor = 1;
         std::vector<HistoricalChange> historical;   // root coordinates
     };
     struct RawPointerEvent {
@@ -116,6 +137,7 @@ namespace kiln::ui {
         std::vector<RawPointer> pointers;    // all pointers currently known (down or hovering)
         PointerEventType type = PointerEventType::Unknown;
         std::uint32_t buttons = 0;
+        std::uint32_t metaState = 0;
         int classification = 0;
         bool cancel = false;                 // ACTION_CANCEL: every path is cancelled
     };

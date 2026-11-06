@@ -158,6 +158,7 @@ namespace kiln::ui {
             PointerEvent ev;
             ev.type = PointerEventType::Exit;
             ev.buttons = raw.buttons;
+            ev.keyboardModifiers = { raw.metaState };
             const Tracked& t = m_Pointers[id];
             IntSize size;
             const LocalMap toLocal = SpaceOf(*entry.node, entry.mod, size);
@@ -203,6 +204,7 @@ namespace kiln::ui {
             // A handler the hover just reached sees Enter.
             if (raw.type == PointerEventType::Move && entered.count(tn.entry.mod)) ev.type = PointerEventType::Enter;
             ev.buttons = raw.buttons;
+            ev.keyboardModifiers = { raw.metaState };
             ev.classification = raw.classification;
             const LocalMap toLocal = SpaceOf(*tn.entry.node, tn.entry.mod, size);
             for (std::int64_t id : tn.pointers) {
@@ -220,7 +222,8 @@ namespace kiln::ui {
                 c.type = rp->type;
                 c.scrollDelta = rp->scrollDelta;
                 c.panOffset = rp->panOffset;
-                for (const HistoricalChange& h : rp->historical) c.historical.push_back({ h.uptimeMillis, toLocal(h.position), h.panOffset });
+                c.scaleFactor = rp->scaleFactor;
+                for (const HistoricalChange& h : rp->historical) c.historical.push_back({ h.uptimeMillis, toLocal(h.position), h.panOffset, h.scaleFactor });
                 c.consumed = consumed[id];
                 ev.changes.push_back(c);
             }

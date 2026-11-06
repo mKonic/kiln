@@ -12,6 +12,7 @@ namespace kiln::android { void InstallImageDecoder(); void InstallAssetReader(JN
 #include <unordered_map>
 
 #include "kiln/App.h"
+#include "kiln/ui/Trackpad.h"
 
 #include <hearth/Log.h>
 #include <hearth/surface/AndroidSurface.h>
@@ -282,7 +283,7 @@ namespace {
     // MotionEvent -> RawPointerEvent (MotionEventAdapter, spec 02 req. 9). Positions arrive in
     // view pixels, which are surface pixels here (the SurfaceView fills the KilnView).
     void TouchEvent(JNIEnv* env, jclass, jint action, jint actionIndex, jlong eventTime, jintArray ids,
-                    jfloatArray xy, jintArray tools, jint buttons, jint classification, jfloat hscroll, jfloat vscroll,
+                    jfloatArray xy, jintArray tools, jint buttons, jint metaState, jint classification, jfloat hscroll, jfloat vscroll,
                     jlongArray historyTimes, jfloatArray historyXy, jfloatArray pan) {
         if (!g_Host) return;
         enum { DOWN = 0, UP = 1, MOVE = 2, CANCEL = 3, POINTER_DOWN = 5, POINTER_UP = 6, HOVER_MOVE = 7,
@@ -290,6 +291,7 @@ namespace {
         kiln::ui::RawPointerEvent ev;
         ev.uptimeMillis = eventTime;
         ev.buttons = std::uint32_t(buttons);
+        ev.metaState = std::uint32_t(metaState);
         ev.classification = classification;
         ev.cancel = action == CANCEL;
         const jsize n = env->GetArrayLength(ids);
@@ -326,49 +328,15 @@ namespace {
         env->ReleaseIntArrayElements(ids, id, JNI_ABORT);
         env->ReleaseFloatArrayElements(xy, p, JNI_ABORT);
         env->ReleaseIntArrayElements(tools, tool, JNI_ABORT);
-        using T = kiln::ui::PointerEventType;
-        // Trackpad two-finger swipe (MotionEventAdapter): CLASSIFICATION_TWO_FINGER_SWIPE (3)
-        // starts it and holds until the fingers lift; it is one unpressed mouse pointer at the
-        // cursor (where the swipe began) carrying the gesture scroll distance, as Pan events.
-        static bool panOngoing = false;
-        static kiln::ui::Offset panCursor;
-        if (classification == 3) panOngoing = true;
-        else if (classification == 5) panOngoing = false;   // PINCH
-        if (panOngoing && pan && !ev.pointers.empty()) {
-            if (action == DOWN) panCursor = ev.pointers[0].position;
-            kiln::ui::RawPointer rp = ev.pointers[0];
-            rp.position = panCursor;
-            rp.down = false;
-            rp.type = kiln::ui::PointerType::Mouse;
+        // Trackpad swipes and pinches (Android 14+) become one unpressed pointer at the cursor.
+        static kiln::ui::TrackpadGestureTracker trackpad;
+        if (pan) {
             const jsize pn = env->GetArrayLength(pan);
             jfloat* pv = env->GetFloatArrayElements(pan, nullptr);
-            rp.panOffset = { pv[0], pv[1] };
-            for (std::size_t h = 0; h < rp.historical.size() && jsize(3 + 2 * h) < pn; ++h) {
-                rp.historical[h].position = panCursor;
-                rp.historical[h].panOffset = { pv[2 + 2 * h], pv[3 + 2 * h] };
-            }
+            trackpad.Process(ev, action, classification, pv, int(pn));
             env->ReleaseFloatArrayElements(pan, pv, JNI_ABORT);
-            ev.pointers = { rp };
-            switch (action) {
-                case DOWN: case POINTER_DOWN: ev.type = T::PanStart; break;
-                case UP: case POINTER_UP: ev.type = T::PanEnd; break;
-                case MOVE: ev.type = T::PanMove; break;
-                default: ev.type = T::Move; break;
-            }
-            if (action == UP || action == CANCEL) panOngoing = false;
-            g_Host->app->ProcessPointer(ev);
-            ArmTimer();
-            return;
-        }
-        if (action == UP || action == CANCEL) panOngoing = false;
-        switch (action) {
-            case DOWN: case POINTER_DOWN: ev.type = T::Press; break;
-            case UP: case POINTER_UP: ev.type = T::Release; break;
-            case MOVE: case HOVER_MOVE: ev.type = T::Move; break;
-            case HOVER_ENTER: ev.type = T::Enter; break;
-            case HOVER_EXIT: ev.type = T::Exit; break;
-            case SCROLL: ev.type = T::Scroll; break;
-            default: break;
+        } else {
+            trackpad.Process(ev, action, classification, nullptr, 0);
         }
         g_Host->app->ProcessPointer(ev);
         ArmTimer();
@@ -912,7 +880,7 @@ extern "C" JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void*) {
         { "setDensity", "(FF)V", reinterpret_cast<void*>(&SetDensity) },
         { "setAnimationScale", "(F)V", reinterpret_cast<void*>(&SetAnimationScale) },
         { "setLayoutDirection", "(Z)V", reinterpret_cast<void*>(&SetLayoutDirection) },
-        { "touchEvent", "(IIJ[I[F[IIIFF[J[F[F)V", reinterpret_cast<void*>(&TouchEvent) },
+        { "touchEvent", "(IIJ[I[F[IIIIFF[J[F[F)V", reinterpret_cast<void*>(&TouchEvent) },
         { "keyEvent", "(IIIIIJ)Z", reinterpret_cast<void*>(&KeyEvent) },
         { "keyEventPreIme", "(IIIIIJ)Z", reinterpret_cast<void*>(&KeyEventPreIme) },
         { "rotary", "(FFJI)Z", reinterpret_cast<void*>(&Rotary) },
