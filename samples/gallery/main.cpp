@@ -151,6 +151,22 @@ namespace {
                     d.DrawPath(tri, kVariant, &stroke);
                 });
             });
+            // Gradients: linear background, radial circle, sweep ring stroke, repeated diagonal.
+            Row(Padding(Modifier{}, 16_dp, 0_dp), Arrangement::SpacedBy(16_dp), AlignmentV::CenterVertically(), [&] {
+                using kiln::gfx::Brush;
+                Box(Background(SizeMod(Modifier{}, 96_dp, 56_dp), Brush::HorizontalGradient({ kPrimary, kTertiary }), CornerShape::Pill()));
+                Box(Background(SizeMod(Modifier{}, 56_dp, 56_dp), Brush::RadialGradient({ kPrimaryContainer, kPrimary }), CornerShape::Pill()));
+                Canvas(SizeMod(Modifier{}, 56_dp, 56_dp), [](DrawScope& d) {
+                    kiln::gfx::Path ring;
+                    const float w = d.GetSize().width, inset = d.ToPx(6_dp);
+                    ring.AddOval({ inset, inset, w - inset, w - inset });
+                    kiln::gfx::Stroke stroke{ d.ToPx(6_dp) };
+                    d.DrawPath(ring, Brush::SweepGradient({ kPrimary, kTertiary, Color(0xFFFFB4ABu), kPrimary }), &stroke);
+                });
+                Box(Background(SizeMod(Modifier{}, 56_dp, 56_dp),
+                               Brush::LinearGradient({ kPrimaryContainer, kPrimary }, { 0, 0 }, { 24, 24 }, kiln::gfx::TileMode::Mirror),
+                               CornerShape::Rounded(12_dp)));
+            });
             Row(Padding(Modifier{}, 16_dp, 0_dp), Arrangement::SpacedBy(16_dp), AlignmentV::CenterVertically(), [&] {
                 // Rounded clip around a child that overflows it.
                 // Modifiers wrap what follows them: clip before the background so both are clipped.
