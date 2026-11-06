@@ -36,6 +36,7 @@ namespace {
     };
     Host* g_Host = nullptr;
     void ArmTimer();
+    void InstallTextInputHost(JNIEnv* env);
 
     void OnVsync(int64_t frameTimeNanos, void*) {
         if (!g_Host) return;
@@ -103,6 +104,7 @@ namespace {
         jclass viewClass = env->GetObjectClass(view);
         g_Host->requestFocus = env->GetMethodID(viewClass, "requestFocus", "()Z");
         env->DeleteLocalRef(viewClass);
+        InstallTextInputHost(env);
         // Keys and the IME reach a View only while it holds platform focus.
         g_Host->app->GetOwner().SetRequestHostFocus([] {
             JNIEnv* e = nullptr;
@@ -203,6 +205,123 @@ namespace {
         g_Host->app->GetOwner().OnHostFocusChanged(focused);
     }
 
+    // --- text input --------------------------------------------------------------------------
+
+    // EditorInfo.update(imeOptions) (TextInputServiceAndroid:528-682).
+    void MapEditorInfo(const kiln::ui::ImeOptions& o, int& inputType, int& imeOptions) {
+        using K = kiln::ui::KeyboardType;
+        constexpr int TEXT = 1, NUMBER = 2, PHONE = 3;
+        switch (o.keyboardType) {
+            case K::Text: inputType = TEXT; break;
+            case K::Ascii: inputType = TEXT; imeOptions |= int(0x80000000u); break;   // IME_FLAG_FORCE_ASCII
+            case K::Number: inputType = NUMBER; break;
+            case K::Phone: inputType = PHONE; break;
+            case K::Uri: inputType = TEXT | 0x10; break;
+            case K::Email: inputType = TEXT | 0x20; break;
+            case K::Password: inputType = TEXT | 0x80; break;
+            case K::NumberPassword: inputType = NUMBER | 0x10; break;
+            case K::Decimal: inputType = NUMBER | 0x2000; break;
+            case K::PasswordVisible: inputType = TEXT | 0x90; break;
+        }
+        using A = kiln::ui::ImeAction;
+        int action = 0;
+        switch (o.imeAction) {
+            case A::Default: action = o.singleLine ? 6 : 0; break;   // DONE / UNSPECIFIED
+            case A::None: action = 1; break;
+            case A::Go: action = 2; break;
+            case A::Search: action = 3; break;
+            case A::Send: action = 4; break;
+            case A::Next: action = 5; break;
+            case A::Done: action = 6; break;
+            case A::Previous: action = 7; break;
+        }
+        imeOptions |= action;
+        if ((inputType & 0xF) == TEXT) {
+            if (!o.singleLine) {
+                inputType |= 0x20000;                                   // TYPE_TEXT_FLAG_MULTI_LINE
+                if (o.imeAction == A::Default) imeOptions |= 0x40000000; // IME_FLAG_NO_ENTER_ACTION
+            }
+            using C = kiln::ui::Capitalization;
+            if (o.capitalization == C::Characters) inputType |= 0x1000;
+            else if (o.capitalization == C::Words) inputType |= 0x2000;
+            else if (o.capitalization == C::Sentences) inputType |= 0x4000;
+            if (o.autoCorrect) inputType |= 0x8000;
+        }
+        imeOptions |= 0x2000000;                                        // IME_FLAG_NO_FULLSCREEN
+    }
+
+    JNIEnv* MainEnv() {
+        JNIEnv* e = nullptr;
+        g_Host->vm->GetEnv(reinterpret_cast<void**>(&e), JNI_VERSION_1_6);
+        return e;
+    }
+
+    void InstallTextInputHost(JNIEnv* env) {
+        jclass cls = env->GetObjectClass(g_Host->view);
+        static jmethodID start = env->GetMethodID(cls, "startInput", "(IIZ)V");
+        static jmethodID stop = env->GetMethodID(cls, "stopInput", "()V");
+        static jmethodID update = env->GetMethodID(cls, "updateSelection", "(IIII)V");
+        static jmethodID restart = env->GetMethodID(cls, "restartInputFromNative", "()V");
+        env->DeleteLocalRef(cls);
+        kiln::ui::TextInputHost host;
+        host.start = [](const kiln::ui::ImeOptions& o, const kiln::ui::TextInputSnapshot&) {
+            int type = 0, opts = 0;
+            MapEditorInfo(o, type, opts);
+            MainEnv()->CallVoidMethod(g_Host->view, start, type, opts, jboolean(o.singleLine));
+        };
+        host.stop = [] { MainEnv()->CallVoidMethod(g_Host->view, stop); };
+        host.updateSelection = [](const kiln::ui::TextInputSnapshot& s) {
+            MainEnv()->CallVoidMethod(g_Host->view, update, s.selStart, s.selEnd, s.compStart, s.compEnd);
+        };
+        host.restartInput = [] { MainEnv()->CallVoidMethod(g_Host->view, restart); };
+        g_Host->app->GetOwner().SetTextInputHost(host);
+    }
+
+    kiln::ui::TextInputSession* Session() { return g_Host ? g_Host->app->GetOwner().ActiveTextInput() : nullptr; }
+
+    std::u16string FromJava(JNIEnv* env, jstring s) {
+        const jsize n = env->GetStringLength(s);
+        std::u16string out(std::size_t(n), u'\0');
+        env->GetStringRegion(s, 0, n, reinterpret_cast<jchar*>(out.data()));
+        return out;
+    }
+    // Every IME edit is followed by the frame that shows it.
+    void AfterIme() { g_Host->app->RequestFrame(); }
+
+    void ImeCommitText(JNIEnv* env, jclass, jstring t, jint c) { if (auto* s = Session()) { s->CommitText(FromJava(env, t), c); AfterIme(); } }
+    void ImeSetComposingText(JNIEnv* env, jclass, jstring t, jint c) { if (auto* s = Session()) { s->SetComposingText(FromJava(env, t), c); AfterIme(); } }
+    void ImeSetComposingRegion(JNIEnv*, jclass, jint a, jint b) { if (auto* s = Session()) { s->SetComposingRegion(a, b); AfterIme(); } }
+    void ImeFinishComposingText(JNIEnv*, jclass) { if (auto* s = Session()) { s->FinishComposingText(); AfterIme(); } }
+    void ImeDeleteSurroundingText(JNIEnv*, jclass, jint b, jint a, jboolean cp) {
+        if (auto* s = Session()) { if (cp) s->DeleteSurroundingTextInCodePoints(b, a); else s->DeleteSurroundingText(b, a); AfterIme(); }
+    }
+    void ImeSetSelection(JNIEnv*, jclass, jint a, jint b) { if (auto* s = Session()) { s->SetSelection(a, b); AfterIme(); } }
+    void ImePerformEditorAction(JNIEnv*, jclass, jint action) {
+        using A = kiln::ui::ImeAction;
+        const A map[] = { A::Default, A::None, A::Go, A::Search, A::Send, A::Next, A::Done, A::Previous };
+        if (auto* s = Session()) { s->PerformImeAction(action >= 0 && action < 8 ? map[action] : A::Default); AfterIme(); }
+    }
+    jstring ImeGetText(JNIEnv* env, jclass) {
+        auto* s = Session();
+        const std::u16string t = s ? s->Snapshot().text : std::u16string();
+        return env->NewString(reinterpret_cast<const jchar*>(t.data()), jsize(t.size()));
+    }
+    jfloatArray ImeGetCaret(JNIEnv* env, jclass) {
+        jfloat v[5] = { 0, 0, 0, 0, 0 };
+        if (auto* s = Session()) { auto c = s->CaretRect(); v[0] = c.x; v[1] = c.top; v[2] = c.baseline; v[3] = c.bottom; v[4] = c.valid ? 1.0f : 0.0f; }
+        jfloatArray a = env->NewFloatArray(5);
+        env->SetFloatArrayRegion(a, 0, 5, v);
+        return a;
+    }
+
+    jintArray ImeGetSelection(JNIEnv* env, jclass) {
+        jint v[4] = { 0, 0, -1, -1 };
+        if (auto* s = Session()) { auto snap = s->Snapshot(); v[0] = snap.selStart; v[1] = snap.selEnd; v[2] = snap.compStart; v[3] = snap.compEnd; }
+        jintArray a = env->NewIntArray(4);
+        env->SetIntArrayRegion(a, 0, 4, v);
+        return a;
+    }
+
     void SetViewConfiguration(JNIEnv*, jclass, jlong longPress, jlong doubleTap, jfloat touchSlop,
                               jfloat maxFling, jfloat minFling) {
         auto& c = g_Host->app->GetOwner().Config();
@@ -245,6 +364,16 @@ extern "C" JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void*) {
         { "touchEvent", "(IIJ[I[F[IIIFF)V", reinterpret_cast<void*>(&TouchEvent) },
         { "keyEvent", "(IIIIIJ)Z", reinterpret_cast<void*>(&KeyEvent) },
         { "hostFocusChanged", "(Z)V", reinterpret_cast<void*>(&HostFocusChanged) },
+        { "imeCommitText", "(Ljava/lang/String;I)V", reinterpret_cast<void*>(&ImeCommitText) },
+        { "imeSetComposingText", "(Ljava/lang/String;I)V", reinterpret_cast<void*>(&ImeSetComposingText) },
+        { "imeSetComposingRegion", "(II)V", reinterpret_cast<void*>(&ImeSetComposingRegion) },
+        { "imeFinishComposingText", "()V", reinterpret_cast<void*>(&ImeFinishComposingText) },
+        { "imeDeleteSurroundingText", "(IIZ)V", reinterpret_cast<void*>(&ImeDeleteSurroundingText) },
+        { "imeSetSelection", "(II)V", reinterpret_cast<void*>(&ImeSetSelection) },
+        { "imePerformEditorAction", "(I)V", reinterpret_cast<void*>(&ImePerformEditorAction) },
+        { "imeGetText", "()Ljava/lang/String;", reinterpret_cast<void*>(&ImeGetText) },
+        { "imeGetSelection", "()[I", reinterpret_cast<void*>(&ImeGetSelection) },
+        { "imeGetCaret", "()[F", reinterpret_cast<void*>(&ImeGetCaret) },
         { "setViewConfiguration", "(JJFFF)V", reinterpret_cast<void*>(&SetViewConfiguration) },
         { "surfaceCreated", "(Landroid/view/Surface;)V", reinterpret_cast<void*>(&SurfaceCreated) },
         { "surfaceChanged", "(II)V", reinterpret_cast<void*>(&SurfaceChanged) },

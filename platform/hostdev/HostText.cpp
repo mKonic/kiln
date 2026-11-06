@@ -78,6 +78,17 @@ namespace kiln::hostdev {
                     out.width = std::max(out.width, x);
                 }
                 out.lineCount = lines;
+                // Position data for cursor queries: one stop per glyph cluster plus the end.
+                Para para;
+                para.text = std::string(utf8);
+                for (size_t i = 0; i < glyphs.size(); ++i) {
+                    auto [idx, gx, gy] = pos[i];
+                    if (gx < -1e8f) continue;
+                    para.stops.push_back({ glyphs[i].cluster, gx - glyphs[i].xoff, gy - ascent, gy - ascent + lineHeight, glyphs[i].adv });
+                }
+                para.lineHeight = lineHeight;
+                out.handle = ++m_NextHandle;
+                m_Paras[out.handle] = std::move(para);
                 out.height = (lines - 1) * lineHeight + m_Main.ft->size->metrics.height / 64.0f;
                 for (size_t i = 0; i < glyphs.size(); ++i) {
                     auto [idx, gx, gy] = pos[i];
@@ -93,6 +104,33 @@ namespace kiln::hostdev {
                 }
                 return out;
             }
+
+            CursorRect GetCursorRect(std::int64_t handle, int offset16) override {
+                auto it = m_Paras.find(handle);
+                if (it == m_Paras.end()) return {};
+                const Para& p = it->second;
+                const std::size_t byte = Utf16ToByte(p.text, offset16);
+                for (const Stop& st : p.stops)
+                    if (st.cluster >= byte) return { st.x, st.top, st.bottom };
+                if (p.stops.empty()) return { 0, 0, p.lineHeight };
+                const Stop& last = p.stops.back();
+                return { last.x + last.advance, last.top, last.bottom };
+            }
+            int GetOffsetForPosition(std::int64_t handle, float x, float y) override {
+                auto it = m_Paras.find(handle);
+                if (it == m_Paras.end()) return 0;
+                const Para& p = it->second;
+                std::size_t best = p.text.size();
+                float bestLineTop = -1;
+                for (const Stop& st : p.stops) {
+                    if (y < st.top || y >= st.bottom) continue;
+                    bestLineTop = st.top;
+                    if (x < st.x + st.advance / 2) { best = st.cluster; break; }
+                }
+                if (bestLineTop < 0 && !p.stops.empty() && y < p.stops.front().top) best = 0;
+                return ByteToUtf16(p.text, best);
+            }
+            void Release(std::int64_t handle) override { m_Paras.erase(handle); }
 
             void SyncAtlas(AtlasSink& sink) override {
                 for (std::uint32_t i = 0; i < m_Pages.size(); ++i) {
@@ -204,6 +242,32 @@ namespace kiln::hostdev {
                 return m_Slots[key] = s;
             }
 
+            struct Stop { std::uint32_t cluster; float x, top, bottom, advance; };
+            struct Para { std::string text; std::vector<Stop> stops; float lineHeight = 0; };
+            static std::size_t Utf16ToByte(const std::string& s, int u16) {
+                std::size_t i = 0;
+                int count = 0;
+                while (i < s.size() && count < u16) {
+                    const unsigned char c = s[i];
+                    const int len = c < 0x80 ? 1 : c < 0xE0 ? 2 : c < 0xF0 ? 3 : 4;
+                    count += len == 4 ? 2 : 1;
+                    i += len;
+                }
+                return i;
+            }
+            static int ByteToUtf16(const std::string& s, std::size_t byte) {
+                std::size_t i = 0;
+                int count = 0;
+                while (i < s.size() && i < byte) {
+                    const unsigned char c = s[i];
+                    const int len = c < 0x80 ? 1 : c < 0xE0 ? 2 : c < 0xF0 ? 3 : 4;
+                    count += len == 4 ? 2 : 1;
+                    i += len;
+                }
+                return count;
+            }
+            std::map<std::int64_t, Para> m_Paras;
+            std::int64_t m_NextHandle = 0;
             FT_Library m_Lib = nullptr;
             Face m_Main, m_Emoji;
             float m_Density, m_FontScale;

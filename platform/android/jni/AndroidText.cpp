@@ -21,6 +21,9 @@ namespace kiln::android {
         m_Text = env->NewGlobalRef(kilnText);
         jclass cls = env->GetObjectClass(kilnText);
         m_Layout = env->GetMethodID(cls, "layout", "(Ljava/lang/String;FI)[F");
+        m_CursorRect = env->GetMethodID(cls, "cursorRect", "(II)[F");
+        m_OffsetFor = env->GetMethodID(cls, "offsetForPosition", "(IFF)I");
+        m_Release = env->GetMethodID(cls, "release", "(I)V");
         m_PageCount = env->GetMethodID(cls, "pageCount", "()I");
         m_PageBitmap = env->GetMethodID(cls, "pageBitmap", "(I)Landroid/graphics/Bitmap;");
         m_PageIsNew = env->GetMethodID(cls, "pageIsNew", "(I)Z");
@@ -52,7 +55,8 @@ namespace kiln::android {
         out.width = f[0];
         out.height = f[1];
         out.lineCount = int(f[2]);
-        for (jsize i = 3; i + 10 <= n; i += 10) {
+        out.handle = std::int64_t(f[3]);
+        for (jsize i = 4; i + 10 <= n; i += 10) {
             GlyphQuad q;
             q.page = std::uint32_t(f[i]);
             q.rect = { f[i + 1], f[i + 2], f[i + 3], f[i + 4] };
@@ -71,6 +75,23 @@ namespace kiln::android {
         __android_log_print(ANDROID_LOG_DEBUG, "kiln", "text layout: %zu bytes, %zu glyphs, %d lines in %lld us",
                             utf8.size(), out.glyphs.size(), out.lineCount, static_cast<long long>(us));
         return out;
+    }
+
+    CursorRect AndroidText::GetCursorRect(std::int64_t handle, int offset) {
+        JNIEnv* env = Env(m_Vm);
+        auto arr = static_cast<jfloatArray>(env->CallObjectMethod(m_Text, m_CursorRect, jint(handle), jint(offset)));
+        float v[3] = { 0, 0, 0 };
+        env->GetFloatArrayRegion(arr, 0, 3, v);
+        env->DeleteLocalRef(arr);
+        return { v[0], v[1], v[2] };
+    }
+
+    int AndroidText::GetOffsetForPosition(std::int64_t handle, float x, float y) {
+        return Env(m_Vm)->CallIntMethod(m_Text, m_OffsetFor, jint(handle), x, y);
+    }
+
+    void AndroidText::Release(std::int64_t handle) {
+        if (handle) Env(m_Vm)->CallVoidMethod(m_Text, m_Release, jint(handle));
     }
 
     void AndroidText::SyncAtlas(AtlasSink& sink) {

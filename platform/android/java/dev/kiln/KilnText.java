@@ -37,6 +37,8 @@ final class KilnText {
     private final HashMap<GlyphKey, float[]> slots = new HashMap<>();
     private final RectF bounds = new RectF();
     private final int[] oneGlyph = new int[1];
+    private final HashMap<Integer, Layout> layouts = new HashMap<>();
+    private int nextHandle = 1;
     private final float[] onePosition = new float[2];
 
     static final class Page {
@@ -70,6 +72,9 @@ final class KilnText {
     float[] layout(String text, float sizeSp, int widthPx) {
         final float px = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, sizeSp,
                 context.getResources().getDisplayMetrics());   // nonlinear font scale on 34+
+        // A StaticLayout keeps the paint it was built with and measures through it later, so each
+        // layout gets its own: reusing one TextPaint broke cursor queries after another layout.
+        final TextPaint paint = new TextPaint(this.paint);
         paint.setTextSize(px);
         glyphPaint.setTextSize(px);
         final int width = widthPx > 0 ? widthPx : Integer.MAX_VALUE / 4;
@@ -109,14 +114,37 @@ final class KilnText {
             }
         }
 
-        float[] out = new float[3 + glyphs.size() * GLYPH_FLOATS];
+        // The Layout stays alive for cursor/offset queries until native releases the handle.
+        final int handle = nextHandle++;
+        if (nextHandle >= (1 << 23)) nextHandle = 1;   // stays exact as a float
+        layouts.put(handle, layout);
+        float[] out = new float[4 + glyphs.size() * GLYPH_FLOATS];
         out[0] = widthPx > 0 ? Math.min(maxWidth, widthPx) : maxWidth;
         out[1] = layout.getHeight();
         out[2] = layout.getLineCount();
+        out[3] = handle;
         for (int i = 0; i < glyphs.size(); i++)
-            System.arraycopy(glyphs.get(i), 0, out, 3 + i * GLYPH_FLOATS, GLYPH_FLOATS);
+            System.arraycopy(glyphs.get(i), 0, out, 4 + i * GLYPH_FLOATS, GLYPH_FLOATS);
         return out;
     }
+
+    /** [x, top, bottom] of the caret before UTF-16 offset (getPrimaryHorizontal, line bounds). */
+    float[] cursorRect(int handle, int offset) {
+        Layout l = layouts.get(handle);
+        if (l == null) return new float[] { 0, 0, 0 };
+        offset = Math.max(0, Math.min(offset, l.getText().length()));
+        final int line = l.getLineForOffset(offset);
+        return new float[] { l.getPrimaryHorizontal(offset), l.getLineTop(line), l.getLineBottom(line) };
+    }
+
+    int offsetForPosition(int handle, float x, float y) {
+        Layout l = layouts.get(handle);
+        if (l == null) return 0;
+        final int line = l.getLineForVertical((int) y);
+        return l.getOffsetForHorizontal(line, x);
+    }
+
+    void release(int handle) { layouts.remove(handle); }
 
     private void addGlyph(ArrayList<float[]> out, Font font, int glyph, float gx, float gy, float px) {
         float[] slot = rasterize(font, glyph, px);

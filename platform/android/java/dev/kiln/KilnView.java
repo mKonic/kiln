@@ -11,6 +11,11 @@ import android.graphics.Rect;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.ViewConfiguration;
+import android.graphics.Matrix;
+import android.view.inputmethod.CursorAnchorInfo;
+import android.view.inputmethod.EditorInfo;
+import android.view.inputmethod.InputConnection;
+import android.view.inputmethod.InputMethodManager;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
 import android.widget.FrameLayout;
@@ -95,6 +100,98 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
 
     @Override
     public boolean onInterceptTouchEvent(MotionEvent e) { return true; }
+
+    // --- text input (called from native; spec 02 req. 12) -----------------------------------
+    private boolean inputActive;
+    private int inputType, imeOptions;
+    private boolean singleLine;
+    private KilnInputConnection connection;
+    private int batch;
+    private boolean selectionPending;
+    private int[] pendingSelection = new int[4];
+
+    private InputMethodManager imm() { return getContext().getSystemService(InputMethodManager.class); }
+
+    /** A field took focus: new EditorInfo, then show the keyboard (coalesced restart + show). */
+    void startInput(int type, int options, boolean singleLine) {
+        this.inputActive = true;
+        this.inputType = type;
+        this.imeOptions = options;
+        this.singleLine = singleLine;
+        if (!hasFocus()) requestFocus();
+        imm().restartInput(this);
+        imm().showSoftInput(this, 0);
+    }
+
+    void stopInput() {
+        if (!inputActive) return;
+        inputActive = false;
+        imm().hideSoftInputFromWindow(getWindowToken(), 0);
+        imm().restartInput(this);
+    }
+
+    void restartInputFromNative() { if (inputActive) imm().restartInput(this); }
+
+    /** InputMethodManager.updateSelection, held back until the IME's batch edit ends. */
+    void updateSelection(int selStart, int selEnd, int compStart, int compEnd) {
+        pendingSelection[0] = selStart; pendingSelection[1] = selEnd;
+        pendingSelection[2] = compStart; pendingSelection[3] = compEnd;
+        if (batch > 0) { selectionPending = true; return; }
+        imm().updateSelection(this, selStart, selEnd, compStart, compEnd);
+        if (cursorMonitoring) sendCursorAnchorInfo();
+    }
+
+    private boolean cursorMonitoring;
+    void setCursorMonitoring(boolean on) { cursorMonitoring = on; }
+
+    /** CursorAnchorInfo: selection, composing text and the caret, mapped to screen coordinates. */
+    void sendCursorAnchorInfo() {
+        if (!inputActive) return;
+        int[] sel = KilnNative.imeGetSelection();
+        float[] caret = KilnNative.imeGetCaret();
+        String text = KilnNative.imeGetText();
+        CursorAnchorInfo.Builder b = new CursorAnchorInfo.Builder();
+        b.setSelectionRange(sel[0], sel[1]);
+        if (sel[2] >= 0 && sel[3] <= text.length()) b.setComposingText(sel[2], text.substring(sel[2], sel[3]));
+        if (caret[4] != 0) b.setInsertionMarkerLocation(caret[0], caret[1], caret[2], caret[3], CursorAnchorInfo.FLAG_HAS_VISIBLE_REGION);
+        int[] loc = new int[2];
+        getLocationOnScreen(loc);
+        Matrix m = new Matrix();
+        m.setTranslate(loc[0], loc[1]);
+        b.setMatrix(m);
+        imm().updateCursorAnchorInfo(this, b.build());
+    }
+
+    void beginBatch() { batch++; }
+    void endBatch() {
+        if (batch > 0) batch--;
+        if (batch == 0 && selectionPending) {
+            selectionPending = false;
+            imm().updateSelection(this, pendingSelection[0], pendingSelection[1], pendingSelection[2], pendingSelection[3]);
+            if (cursorMonitoring) sendCursorAnchorInfo();
+        }
+    }
+
+    boolean isCurrentConnection(KilnInputConnection c) { return c == connection && inputActive; }
+    boolean isSingleLineInput() { return singleLine; }
+
+    @Override
+    public boolean onCheckIsTextEditor() { return inputActive; }
+
+    @Override
+    public InputConnection onCreateInputConnection(EditorInfo out) {
+        if (!inputActive) return null;
+        out.inputType = inputType;
+        out.imeOptions = imeOptions;
+        int[] sel = KilnNative.imeGetSelection();
+        out.initialSelStart = sel[0];
+        out.initialSelEnd = sel[1];
+        if (android.os.Build.VERSION.SDK_INT >= 30) out.setInitialSurroundingText(KilnNative.imeGetText());
+        if (connection != null) connection.closeConnection();
+        connection = new KilnInputConnection(this);
+        batch = 0;
+        return connection;
+    }
 
     @Override
     public boolean dispatchKeyEvent(KeyEvent e) {
