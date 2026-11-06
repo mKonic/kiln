@@ -8,13 +8,16 @@
 #include <functional>
 #include <vector>
 
-namespace kiln { class QuadRenderer; struct ParagraphData; class AtlasPage; }
+namespace kiln { class QuadRenderer; struct ParagraphData; class AtlasPage; class PathCache; }
+namespace kiln::gfx { class Path; struct Stroke; }
 
 namespace kiln::ui {
 
     struct DrawTarget {
         QuadRenderer* quads = nullptr;
         std::function<const AtlasPage*(std::uint32_t)> page;
+        PathCache* paths = nullptr;
+        float viewportWidth = 0, viewportHeight = 0;
     };
 
     class DrawScope : public Density {
@@ -27,6 +30,8 @@ namespace kiln::ui {
         void DrawRect(Color color, Offset topLeft, Size size);
         void DrawRoundRect(Color color, Offset topLeft, Size size, float cornerRadius);
         void DrawParagraph(const ParagraphData& paragraph, Offset topLeft, Color color);
+        // Fills the path, or strokes it when `stroke` is given (DrawScope.drawPath).
+        void DrawPath(const gfx::Path& path, Color color, const gfx::Stroke* stroke = nullptr);
 
         // Transform: device = origin + scale * local (axis-aligned; rotation needs the retained
         // layer renderer). Translate moves the local origin.

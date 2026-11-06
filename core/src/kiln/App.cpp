@@ -140,11 +140,14 @@ namespace kiln {
         m_Owner.MeasureAndLayout({ int(m_Width), int(m_Height) });
 
         m_Quads->Begin(m_Width, m_Height);
+        if (!m_Paths) m_Paths = std::make_unique<PathCache>(*m_Device);
+        m_Paths->BeginFrame();
         if (m_Services.text) m_Services.text->SyncAtlas(*this);
-        m_Owner.Draw({ m_Quads.get(), [this](std::uint32_t i) { return Page(i); } });
+        m_Owner.Draw({ m_Quads.get(), [this](std::uint32_t i) { return Page(i); }, m_Paths.get(), float(m_Width), float(m_Height) });
         kiln_frame frame{ this };
         if (m_Callbacks.on_frame) m_Callbacks.on_frame(m_Callbacks.user, &frame, timeSeconds);
         if (m_Services.text) m_Services.text->SyncAtlas(*this);
+        m_Paths->Sync();
 
         CommandList* cmd = m_Device->BeginFrame();
         if (!cmd) return;   // swapchain out of date; hearth rebuilds it, try next vsync
