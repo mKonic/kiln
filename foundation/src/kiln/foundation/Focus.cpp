@@ -171,6 +171,31 @@ namespace kiln::foundation {
         };
     }
 
+    namespace {
+        struct BarrierParams { bool operator==(const BarrierParams&) const { return true; } };
+        // InteractionBarrierNode: registers with the owner while attached; an empty pointer
+        // handler, like Compose's.
+        struct BarrierNode final : ModifierNode, PointerInputModifier {
+            BarrierParams params;
+            ui::Owner* owner = nullptr;
+            explicit BarrierNode(BarrierParams p) : params(p) {}
+            void OnParamsChanged() {}
+            PointerInputModifier* AsPointerInput() override { return this; }
+            void OnPointerEvent(PointerEvent&, PointerEventPass, IntSize) override {}
+            void OnCancelPointerInput() override {}
+            void OnAttach() override {
+                owner = Owner() ? Owner()->GetOwner() : nullptr;
+                if (owner) owner->RegisterInteractionBarrier(Owner());
+            }
+            void OnDetach() override {
+                if (owner) owner->UnregisterInteractionBarrier(Owner());
+                owner = nullptr;
+            }
+        };
+    }
+
+    Modifier InteractionBarrier(Modifier m) { return m.With<BarrierNode>(BarrierParams{}); }
+
     Modifier OnInterceptKeyBeforeSoftKeyboard(Modifier m, std::function<bool(const KeyEvent&)> onKey, std::function<bool(const KeyEvent&)> onPre) {
         return m.With<SoftKeyNode>(KeyParams{ Latest(std::move(onKey)), Latest(std::move(onPre)) });
     }

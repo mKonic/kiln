@@ -125,7 +125,60 @@ namespace kiln::ui {
 
     bool Owner::Eligible(const FocusTargetNode& t) const {
         LayoutNode* n = NodeOf(t);
-        return n && n->m_Owner == this && (n->IsPlaced() || n == m_Root.get());
+        return n && n->m_Owner == this && (n->IsPlaced() || n == m_Root.get()) && !IsOccludedByInteractionBarrier(t);
+    }
+
+    namespace {
+        // Bounds in root, cut by every ancestor that clips its children.
+        Rect ClippedBoundsInRoot(const LayoutNode& n) {
+            Rect r = n.BoundsInRoot();
+            for (const LayoutNode* p = n.Parent(); p; p = p->Parent()) {
+                bool clips = false;
+                for (const ModifierNode* m : p->ModifierNodes()) if (m->ClipsChildren()) { clips = true; break; }
+                if (!clips) continue;
+                const Rect c = p->BoundsInRoot();
+                r = { std::max(r.left, c.left), std::max(r.top, c.top), std::min(r.right, c.right), std::min(r.bottom, c.bottom) };
+            }
+            return r;
+        }
+        int Depth(const LayoutNode* n) { int d = 0; for (; n; n = n->Parent()) ++d; return d; }
+    }
+
+    bool Owner::IsOccludedByInteractionBarrier(const FocusTargetNode& t) const {
+        if (m_Barriers.empty()) return false;
+        const LayoutNode* mine = NodeOf(t);
+        if (!mine || mine->m_Owner != this) return false;
+        // Unclipped, so off-screen scroll items stay eligible.
+        const Rect target = mine->BoundsInRoot();
+        for (const LayoutNode* barrier : m_Barriers) {
+            if (barrier == mine || !barrier->IsPlaced() || barrier->m_Owner != this) continue;
+            // Clipped: a barrier blocks only where it is visible.
+            const Rect b = ClippedBoundsInRoot(*barrier);
+            if (b.right <= b.left || b.bottom <= b.top) continue;
+            if (!(b.left <= target.left && b.right >= target.right && b.top <= target.top && b.bottom >= target.bottom)) continue;
+            // Lowest common ancestor; an ancestor or descendant barrier does not occlude.
+            const LayoutNode* a = mine;
+            const LayoutNode* c = barrier;
+            int da = Depth(a), dc = Depth(c);
+            while (da > dc) { a = a->Parent(); --da; }
+            while (dc > da) { c = c->Parent(); --dc; }
+            while (a && c && a != c) { a = a->Parent(); c = c->Parent(); }
+            const LayoutNode* lca = a == c ? a : nullptr;
+            if (!lca || lca == barrier || lca == mine) continue;
+            auto childOf = [&](const LayoutNode* d) {
+                while (d->Parent() && d->Parent() != lca) d = d->Parent();
+                return d->Parent() == lca ? d : nullptr;
+            };
+            const LayoutNode* focusBranch = childOf(mine);
+            const LayoutNode* barrierBranch = childOf(barrier);
+            if (!focusBranch || !barrierBranch) continue;
+            // The barrier's branch draws later (zIndex, then placement order).
+            auto before = [](const LayoutNode* x, const LayoutNode* y) {
+                return x->m_ZIndex != y->m_ZIndex ? x->m_ZIndex < y->m_ZIndex : x->m_PlaceOrder < y->m_PlaceOrder;
+            };
+            if (before(focusBranch, barrierBranch)) return true;
+        }
+        return false;
     }
 
     Rect Owner::FocusRect(const FocusTargetNode& t) const {
@@ -252,6 +305,7 @@ namespace kiln::ui {
 
     bool Owner::RequestFocus(FocusTargetNode& t, FocusDirection dir) {
         if (!CanFocus(t)) return FindChildForEnter(t, dir, [&](FocusTargetNode& c) { return RequestFocus(c, dir); });
+        if (IsOccludedByInteractionBarrier(t)) return false;
         if (m_ActiveFocus == &t) { DispatchFocusEvents(); return true; }
         if (m_FocusCaptured) return false;      // Captured only yields to a forced clear
         // Groups on the way out of the old focus and into the new one may redirect or cancel.

@@ -16,6 +16,7 @@
 #include "kiln/ui/Insets.h"
 #include "kiln/ui/Semantics.h"
 
+#include <algorithm>
 #include <array>
 #include <map>
 #include <optional>
@@ -210,6 +211,13 @@ namespace kiln::ui {
         // Indirect pointer events go along the focused path in three passes; returns whether any
         // change was consumed. The cancel tells the path the stream ended.
         bool DispatchIndirectPointerEvent(IndirectPointerEvent& event);
+        // Interaction barriers (InteractionBarrierNode): a focus target that a barrier drawn
+        // above it fully covers cannot take focus, is skipped by search, and loses focus.
+        void RegisterInteractionBarrier(const LayoutNode* n) { m_Barriers.push_back(n); }
+        void UnregisterInteractionBarrier(const LayoutNode* n) {
+            m_Barriers.erase(std::remove(m_Barriers.begin(), m_Barriers.end(), n), m_Barriers.end());
+        }
+        bool IsOccludedByInteractionBarrier(const FocusTargetNode& t) const;
         void DispatchIndirectPointerCancel();
         // The modifiers of one kind on the focused path, root first (the key dispatch path).
         template <typename T> std::vector<T*> FocusedPath(T* (ModifierNode::*as)());
@@ -306,6 +314,7 @@ namespace kiln::ui {
         std::map<std::int64_t, Tracked> m_Pointers;
         FocusTargetNode m_RootFocus;
         FocusTargetNode* m_ActiveFocus = nullptr;
+        std::vector<const LayoutNode*> m_Barriers;
         bool m_FocusCaptured = false;
         rt::State<InputMode> m_InputMode{ InputMode::Touch };
         std::function<bool()> m_RequestHostFocus;

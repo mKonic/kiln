@@ -360,3 +360,40 @@ TEST(KeyFocusMovesPlayNavigationSounds) {
     h.Key(keys::DpadLeft);                              // nothing to the left of a: silent
     CHECK(sounds == std::vector<int>({ 4, 3, 5 }));
 }
+
+TEST(InteractionBarrierBlocksFocusUnderIt) {
+    Harness h;
+    FocusRequester under, beside, inside;
+    rt::State<bool> covered{ false };
+    std::string focused;
+    auto item = [&](const char* name, FocusRequester& r, Modifier m) {
+        Box(Focusable(FocusRequesterModifier(SizeMod(std::move(m), Dp(50), Dp(50)), r), Focusability::Always,
+                      [&focused, name](FocusState s) { if (IsFocused(s)) focused = name; }));
+    };
+    h.Run([&] {
+        Row(Modifier{}, [&] {
+            // A barrier drawn above `under` once `covered` is set.
+            Box(Modifier{}, Alignment::TopStart(), false, [&] {
+                item("under", under, {});
+                if (covered.Get()) Box(InteractionBarrier(SizeMod(Modifier{}, Dp(100), Dp(100))));
+            });
+            item("beside", beside, {});
+            // A barrier around its own content does not block it.
+            Box(InteractionBarrier(Modifier{}), Alignment::TopStart(), false, [&] { item("inside", inside, {}); });
+        });
+    });
+    CHECK(under.RequestFocus());
+    CHECK_EQ(focused, std::string("under"));
+    // The barrier arrives on top: the focused item loses focus and cannot get it back.
+    covered.Set(true);
+    h.composition.Recompose();
+    h.owner.MeasureAndLayout({ 300, 300 });
+    CHECK(h.owner.ActiveFocus() == nullptr);
+    CHECK(!under.RequestFocus());
+    CHECK(inside.RequestFocus());
+    CHECK_EQ(focused, std::string("inside"));
+    // Tab order skips the covered item.
+    h.owner.ClearFocus(true);
+    h.Key(keys::Tab);
+    CHECK_EQ(focused, std::string("beside"));
+}

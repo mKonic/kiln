@@ -696,6 +696,8 @@ namespace kiln::ui {
             m_LayoutDirty.erase(m_LayoutDirty.begin());
             if (n->m_Placed || n == m_Root.get()) n->LayoutIfNeeded();
         }
+        // onBarrierPositionChanged: a barrier that now covers the focused target takes focus away.
+        if (!m_Barriers.empty() && m_ActiveFocus && IsOccludedByInteractionBarrier(*m_ActiveFocus)) ClearFocus(true);
     }
 
     std::vector<PointerInputModifier*> LayoutNode::PointerModifiers() const {

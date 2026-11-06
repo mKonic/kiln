@@ -33,6 +33,10 @@ namespace kiln::foundation {
     // IME sees them, when focused. Return true to consume.
     Modifier OnInterceptKeyBeforeSoftKeyboard(Modifier m, std::function<bool(const KeyEvent&)> onKey,
                                               std::function<bool(const KeyEvent&)> onPreKey = {});
+    // interactionBarrier: focus targets that this node fully covers (drawn above them, within
+    // its visible bounds) cannot take focus and are skipped by focus search; one that is focused
+    // when the barrier comes to cover it loses focus. Ancestors and descendants are not covered.
+    Modifier InteractionBarrier(Modifier m);
     // onRotaryScrollEvent / onPreRotaryScrollEvent: rotary encoder turns, when focused.
     Modifier OnRotaryScrollEvent(Modifier m, std::function<bool(const RotaryScrollEvent&)> onEvent,
                                  std::function<bool(const RotaryScrollEvent&)> onPreEvent = {});
