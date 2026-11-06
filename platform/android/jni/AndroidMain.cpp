@@ -488,14 +488,22 @@ namespace {
             };
             axis(c.horizontalScrollAxisRange, 1, 4, 8, 256);
             axis(c.verticalScrollAxisRange, 2, 16, 32, 256);
-            if (c.collectionInfo) sf |= 512;
+            const auto collection = kiln::ui::ResolveCollectionInfo(*n);
+            const auto item = kiln::ui::ResolveCollectionItemInfo(*n, d[1] == -1 ? nullptr : SemFind(d[1]));
+            if (collection) sf |= 512;
             if (c.pageUp) sf |= 1024;
             if (c.pageDown) sf |= 2048;
             if (c.pageLeft) sf |= 4096;
             if (c.pageRight) sf |= 8192;
+            if (item) sf |= 16384;
             d.push_back(sf);
-            d.push_back(c.collectionInfo ? c.collectionInfo->first : 0);
-            d.push_back(c.collectionInfo ? c.collectionInfo->second : 0);
+            d.push_back(collection ? collection->first : 0);
+            d.push_back(collection ? collection->second : 0);
+            // Then the item's row index, row span, column index, column span.
+            d.push_back(item ? item->rowIndex : 0);
+            d.push_back(item ? item->rowSpan : 0);
+            d.push_back(item ? item->columnIndex : 0);
+            d.push_back(item ? item->columnSpan : 0);
         }
         jintArray a = env->NewIntArray(jsize(d.size()));
         env->SetIntArrayRegion(a, 0, jsize(d.size()), d.data());

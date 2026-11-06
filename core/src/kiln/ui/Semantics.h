@@ -24,6 +24,12 @@ namespace kiln::ui {
         bool reverseScrolling = false;
     };
 
+    // CollectionItemInfo: an item's place in its collection (row / column index and span).
+    struct CollectionItemInfo {
+        int rowIndex = 0, rowSpan = 1, columnIndex = 0, columnSpan = 1;
+        bool operator==(const CollectionItemInfo&) const = default;
+    };
+
     struct SemanticsConfiguration {
         bool mergeDescendants = false;
         bool clearAndSet = false;
@@ -54,14 +60,15 @@ namespace kiln::ui {
         std::function<bool(float x, float y)> scrollBy;        // positive: further into the content
         std::function<bool(int index)> scrollToIndex;
         std::function<float()> scrollViewportLength;          // GetScrollViewportLength (minus padding)
-        std::optional<std::pair<int, int>> collectionInfo;     // rows, columns
+        std::optional<std::pair<int, int>> collectionInfo;     // rows, columns; -1 = unknown (lazy)
+        std::optional<CollectionItemInfo> collectionItemInfo;
         // Paging (pagers): scroll actions on a node that pages use these instead of scrollBy.
         std::function<bool()> pageUp, pageDown, pageLeft, pageRight;
 
         bool HasContent() const {
             return !contentDescription.empty() || !text.empty() || editableText || stateDescription || onClick ||
                    focused || role != Role::None || heading || selected || toggleableState || paneTitle ||
-                   scrollBy || collectionInfo;
+                   scrollBy || collectionInfo || collectionItemInfo;
         }
         // Merge `child` into this (SemanticsConfiguration.mergeChild: lists concatenate, a
         // parent's own value wins for single values).
@@ -83,5 +90,12 @@ namespace kiln::ui {
         SemanticsConfiguration config; // merged when mergeDescendants
         std::vector<SemanticsNode> children;
     };
+
+    // What the host reports as collection (item) info (CollectionInfo.android.kt): the node's
+    // own, else from a selectableGroup of selectable children — the group is a collection of
+    // them, stacked horizontally or vertically by their centers, and each is an item at its
+    // place among them (not inside a lazy collection, which has its own).
+    std::optional<std::pair<int, int>> ResolveCollectionInfo(const SemanticsNode& node);
+    std::optional<CollectionItemInfo> ResolveCollectionItemInfo(const SemanticsNode& node, const SemanticsNode* parent);
 
 }

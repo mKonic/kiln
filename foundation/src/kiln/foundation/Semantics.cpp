@@ -21,6 +21,7 @@ namespace kiln::foundation {
                        a.onClickLabel == b.onClickLabel && a.selectableGroup == b.selectableGroup &&
                        a.onLongClickLabel == b.onLongClickLabel && bool(a.onLongClick) == bool(b.onLongClick) &&
                        bool(a.scrollBy) == bool(b.scrollBy) && a.collectionInfo == b.collectionInfo &&
+                       a.collectionItemInfo == b.collectionItemInfo &&
                        bool(a.horizontalScrollAxisRange) == bool(b.horizontalScrollAxisRange) &&
                        bool(a.verticalScrollAxisRange) == bool(b.verticalScrollAxisRange) &&
                        bool(a.scrollToIndex) == bool(b.scrollToIndex) && bool(a.pageUp) == bool(b.pageUp) &&
@@ -66,6 +67,7 @@ namespace kiln::foundation {
                 if (!c.scrollToIndex) c.scrollToIndex = mine.scrollToIndex;
                 if (!c.scrollViewportLength) c.scrollViewportLength = mine.scrollViewportLength;
                 if (!c.collectionInfo) c.collectionInfo = mine.collectionInfo;
+                if (!c.collectionItemInfo) c.collectionItemInfo = mine.collectionItemInfo;
                 if (!c.pageUp) c.pageUp = mine.pageUp;
                 if (!c.pageDown) c.pageDown = mine.pageDown;
                 if (!c.pageLeft) c.pageLeft = mine.pageLeft;

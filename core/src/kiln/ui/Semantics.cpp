@@ -13,6 +13,7 @@ namespace kiln::ui {
         if (!editableText) editableText = c.editableText;
         if (!stateDescription) stateDescription = c.stateDescription;
         if (!selected) selected = c.selected;
+        if (!collectionItemInfo) collectionItemInfo = c.collectionItemInfo;
         if (!toggleableState) toggleableState = c.toggleableState;
         if (role == Role::None) role = c.role;
         heading = heading || c.heading;
@@ -139,6 +140,48 @@ namespace kiln::ui {
         Region unaccounted{ { Round(root.boundsInRoot) } };
         KeepUncovered(root, unaccounted);
         return root;
+    }
+
+
+    namespace {
+        std::vector<const SemanticsNode*> SelectableChildren(const SemanticsNode& group) {
+            std::vector<const SemanticsNode*> out;
+            for (const auto& c : group.children) if (c.config.selected) out.push_back(&c);
+            return out;
+        }
+        // calculateIfHorizontallyStacked: summed center distances, x against y.
+        bool HorizontallyStacked(const std::vector<const SemanticsNode*>& items) {
+            if (items.size() < 2) return true;
+            float dx = 0, dy = 0;
+            for (std::size_t i = 1; i < items.size(); ++i) {
+                const Rect& a = items[i - 1]->boundsInRoot;
+                const Rect& b = items[i]->boundsInRoot;
+                dx += std::abs((a.left + a.right) / 2 - (b.left + b.right) / 2);
+                dy += std::abs((a.top + a.bottom) / 2 - (b.top + b.bottom) / 2);
+            }
+            return dy < dx;
+        }
+    }
+
+    std::optional<std::pair<int, int>> ResolveCollectionInfo(const SemanticsNode& node) {
+        if (node.config.collectionInfo) return node.config.collectionInfo;
+        if (!node.config.selectableGroup) return std::nullopt;
+        const auto items = SelectableChildren(node);
+        if (items.empty()) return std::nullopt;
+        const int n = int(items.size());
+        return HorizontallyStacked(items) ? std::pair{ 1, n } : std::pair{ n, 1 };
+    }
+
+    std::optional<CollectionItemInfo> ResolveCollectionItemInfo(const SemanticsNode& node, const SemanticsNode* parent) {
+        if (node.config.collectionItemInfo) return node.config.collectionItemInfo;
+        if (!parent || !parent->config.selectableGroup || !node.config.selected) return std::nullopt;
+        if (const auto& ci = parent->config.collectionInfo; ci && (ci->first < 0 || ci->second < 0)) return std::nullopt;
+        const auto items = SelectableChildren(*parent);
+        int index = 0;
+        for (const auto* c : items) { if (c == &node) break; ++index; }
+        CollectionItemInfo info;
+        if (HorizontallyStacked(items)) info.columnIndex = index; else info.rowIndex = index;
+        return info;
     }
 
 }

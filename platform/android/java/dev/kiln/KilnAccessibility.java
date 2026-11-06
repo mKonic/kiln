@@ -99,6 +99,9 @@ final class KilnAccessibility extends AccessibilityNodeProvider {
         if ((sf & 4096) != 0) info.addAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_PAGE_LEFT);
         if ((sf & 8192) != 0) info.addAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_PAGE_RIGHT);
         if (hasCollection) info.setCollectionInfo(AccessibilityNodeInfo.CollectionInfo.obtain(d[12 + d[10]], d[13 + d[10]], false));
+        if ((sf & 16384) != 0)
+            info.setCollectionItemInfo(AccessibilityNodeInfo.CollectionItemInfo.obtain(d[14 + d[10]], d[15 + d[10]], d[16 + d[10]], d[17 + d[10]],
+                    false, (f & F_SELECTED) != 0));
         info.setAccessibilityFocused(id == accessibilityFocused);
         info.addAction(id == accessibilityFocused ? AccessibilityNodeInfo.AccessibilityAction.ACTION_CLEAR_ACCESSIBILITY_FOCUS
                                                   : AccessibilityNodeInfo.AccessibilityAction.ACTION_ACCESSIBILITY_FOCUS);

@@ -201,3 +201,37 @@ TEST(LazyColumnExposesCollectionInfoAndScrollToIndex) {
     CHECK_EQ(state.FirstVisibleItemIndex(), 20);
     CHECK_EQ(n->config.verticalScrollAxisRange->value(), 10000.0f);
 }
+
+TEST(SelectableGroupReportsCollectionAndItemInfo) {
+    Harness h;
+    h.Run([&] { Column(Modifier{}, [&] {
+        Row(SelectableGroup(Modifier{}), [&] {
+            for (int i = 0; i < 3; ++i)
+                Box(Selectable(SizeMod({}, Dp(40), Dp(40)), i == 1, [] {}));
+        });
+        Column(Semantics(Modifier{}, [](SemanticsConfiguration& c) {
+            c.collectionInfo = std::pair{ 2, 1 };
+        }), [&] {
+            Box(Semantics(SizeMod({}, Dp(10), Dp(10)), [](SemanticsConfiguration& c) {
+                c.text.push_back("x");
+                c.collectionItemInfo = CollectionItemInfo{ 1, 1, 0, 1 };
+            }));
+        });
+    }); });
+    const SemanticsNode root = h.owner.BuildSemanticsTree();
+    CHECK_EQ(int(root.children.size()), 2);
+    if (root.children.size() != 2) return;
+    const SemanticsNode& group = root.children[0];
+    CHECK(ResolveCollectionInfo(group) == (std::pair<int, int>{ 1, 3 }));   // a row of three
+    CHECK_EQ(int(group.children.size()), 3);
+    if (group.children.size() == 3) {
+        const auto item = ResolveCollectionItemInfo(group.children[2], &group);
+        CHECK(item && item->columnIndex == 2 && item->rowIndex == 0);
+    }
+    const SemanticsNode& explicitList = root.children[1];
+    CHECK(ResolveCollectionInfo(explicitList) == (std::pair<int, int>{ 2, 1 }));
+    if (!explicitList.children.empty()) {
+        const auto item = ResolveCollectionItemInfo(explicitList.children[0], &explicitList);
+        CHECK(item && item->rowIndex == 1);
+    }
+}
