@@ -105,6 +105,9 @@ namespace kiln::ui {
 
     void VelocityTracker::AddPointerInputChange(const PointerInputChange& c, Offset offset) {
         if (c.ChangedToDownIgnoreConsumed()) Reset();
+        // Batched samples first (VelocityTracker.addPointerInputChange uses the history).
+        if (!c.ChangedToUpIgnoreConsumed())
+            for (const HistoricalChange& h : c.historical) AddPosition(h.uptimeMillis, h.position + offset);
         if (!c.ChangedToUpIgnoreConsumed()) AddPosition(c.uptimeMillis, c.position + offset);
         if (c.ChangedToUpIgnoreConsumed() && c.uptimeMillis - m_LastMove > 40) Reset();
         m_LastMove = c.uptimeMillis;

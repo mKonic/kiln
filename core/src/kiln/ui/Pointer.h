@@ -17,8 +17,12 @@ namespace kiln::ui {
     enum class PointerEventPass : std::uint8_t { Initial, Main, Final };
     enum class PointerEventType : std::uint8_t { Unknown, Press, Release, Move, Enter, Exit, Scroll };
 
+    // A sample batched into an event before its current position (MotionEvent history).
+    struct HistoricalChange { std::int64_t uptimeMillis = 0; Offset position; };
+
     struct PointerInputChange {
         std::int64_t id = 0;
+        std::vector<HistoricalChange> historical;   // oldest first, local coordinates
         std::int64_t uptimeMillis = 0;
         Offset position;                 // local to the receiving node
         bool pressed = false;
@@ -59,6 +63,7 @@ namespace kiln::ui {
         bool down = false;
         PointerType type = PointerType::Touch;
         Offset scrollDelta;
+        std::vector<HistoricalChange> historical;   // root coordinates
     };
     struct RawPointerEvent {
         std::int64_t uptimeMillis = 0;

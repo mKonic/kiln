@@ -170,7 +170,8 @@ namespace {
     // MotionEvent -> RawPointerEvent (MotionEventAdapter, spec 02 req. 9). Positions arrive in
     // view pixels, which are surface pixels here (the SurfaceView fills the KilnView).
     void TouchEvent(JNIEnv* env, jclass, jint action, jint actionIndex, jlong eventTime, jintArray ids,
-                    jfloatArray xy, jintArray tools, jint buttons, jint classification, jfloat hscroll, jfloat vscroll) {
+                    jfloatArray xy, jintArray tools, jint buttons, jint classification, jfloat hscroll, jfloat vscroll,
+                    jlongArray historyTimes, jfloatArray historyXy) {
         if (!g_Host) return;
         enum { DOWN = 0, UP = 1, MOVE = 2, CANCEL = 3, POINTER_DOWN = 5, POINTER_UP = 6, HOVER_MOVE = 7,
                SCROLL = 8, HOVER_ENTER = 9, HOVER_EXIT = 10 };
@@ -197,6 +198,17 @@ namespace {
             // Compose flips the scroll axes: positive AXIS_VSCROLL scrolls content up (-y).
             if (action == SCROLL) rp.scrollDelta = { -hscroll, -vscroll };
             ev.pointers.push_back(rp);
+        }
+        // History: times[h], xy[(h * n + i) * 2] for pointer i.
+        if (historyTimes) {
+            const jsize hn = env->GetArrayLength(historyTimes);
+            jlong* ht = env->GetLongArrayElements(historyTimes, nullptr);
+            jfloat* hx = env->GetFloatArrayElements(historyXy, nullptr);
+            for (jsize h = 0; h < hn; ++h)
+                for (jsize i = 0; i < n; ++i)
+                    ev.pointers[std::size_t(i)].historical.push_back({ std::int64_t(ht[h]), { hx[(h * n + i) * 2], hx[(h * n + i) * 2 + 1] } });
+            env->ReleaseLongArrayElements(historyTimes, ht, JNI_ABORT);
+            env->ReleaseFloatArrayElements(historyXy, hx, JNI_ABORT);
         }
         env->ReleaseIntArrayElements(ids, id, JNI_ABORT);
         env->ReleaseFloatArrayElements(xy, p, JNI_ABORT);
@@ -586,7 +598,7 @@ extern "C" JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void*) {
         { "setVisible", "(Z)V", reinterpret_cast<void*>(&SetVisible) },
         { "setDensity", "(FF)V", reinterpret_cast<void*>(&SetDensity) },
         { "setAnimationScale", "(F)V", reinterpret_cast<void*>(&SetAnimationScale) },
-        { "touchEvent", "(IIJ[I[F[IIIFF)V", reinterpret_cast<void*>(&TouchEvent) },
+        { "touchEvent", "(IIJ[I[F[IIIFF[J[F)V", reinterpret_cast<void*>(&TouchEvent) },
         { "keyEvent", "(IIIIIJ)Z", reinterpret_cast<void*>(&KeyEvent) },
         { "hostFocusChanged", "(Z)V", reinterpret_cast<void*>(&HostFocusChanged) },
         { "setInsets", "(IIIII)V", reinterpret_cast<void*>(&SetInsets) },

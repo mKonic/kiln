@@ -140,9 +140,25 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
         int[] idsN = java.util.Arrays.copyOf(ids, n);
         float[] xyN = java.util.Arrays.copyOf(xy, 2 * n);
         int[] toolsN = java.util.Arrays.copyOf(tools, n);
+        // Batched samples since the last event (velocity tracking uses them).
+        long[] historyTimes = null;
+        float[] historyXy = null;
+        final int hs = e.getHistorySize();
+        if (hs > 0) {
+            historyTimes = new long[hs];
+            historyXy = new float[hs * n * 2];
+            for (int h = 0; h < hs; h++) {
+                historyTimes[h] = e.getHistoricalEventTime(h);
+                for (int i = 0; i < n; i++) {
+                    historyXy[(h * n + i) * 2] = e.getHistoricalX(i, h);
+                    historyXy[(h * n + i) * 2 + 1] = e.getHistoricalY(i, h);
+                }
+            }
+        }
         KilnNative.touchEvent(e.getActionMasked(), e.getActionIndex(), e.getEventTime(), idsN, xyN, toolsN,
                 e.getButtonState(), e.getClassification(),
-                e.getAxisValue(MotionEvent.AXIS_HSCROLL), e.getAxisValue(MotionEvent.AXIS_VSCROLL));
+                e.getAxisValue(MotionEvent.AXIS_HSCROLL), e.getAxisValue(MotionEvent.AXIS_VSCROLL),
+                historyTimes, historyXy);
         return true;
     }
 
