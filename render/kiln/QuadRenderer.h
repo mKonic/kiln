@@ -65,8 +65,9 @@ namespace kiln {
         // With a paint, colour.a modulates the gradient.
         // filterRow: a row of the filter table (FilterTable), or -1 for none.
         void FillRect(const RectF& rect, Rgba color, float cornerRadius = 0.0f, const Paint* paint = nullptr, int filterRow = -1);
+        // nearest: Color mode samples the nearest texel instead of filtering (FilterQuality.None).
         void DrawAtlas(const RectF& rect, const RectF& uv, const AtlasPage& page, Rgba color, Mode mode,
-                       const Paint* paint = nullptr, int filterRow = -1);
+                       const Paint* paint = nullptr, int filterRow = -1, bool nearest = false);
         void SetFilterTexture(hearth::Ref<hearth::Texture> t) { m_Filters = std::move(t); m_Groups.clear(); }
         // The gradient ramp texture (bound next to every atlas page).
         // Drops the cached bind group of a page about to be destroyed.

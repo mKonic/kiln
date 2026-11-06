@@ -411,6 +411,21 @@ namespace {
                       kiln::gfx::ColorFilter::ColorMatrix({ 0.3f, 0.59f, 0.11f, 0, 0, 0.3f, 0.59f, 0.11f, 0, 0,
                                                             0.3f, 0.59f, 0.11f, 0, 0, 0, 0, 0, 1, 0 }));
             });
+            // FilterQuality: a 4x4 checkerboard scaled up, nearest (None) and bilinear (Low).
+            Row(Padding(Modifier{}, 16_dp, 8_dp), Arrangement::SpacedBy(16_dp), AlignmentV::CenterVertically(), [&] {
+                auto& c2 = *kiln::rt::Composition::Current();
+                const auto& checker = c2.Remember<kiln::gfx::ImageBitmap>([] {
+                    std::vector<std::uint8_t> px(4 * 4 * 4);
+                    for (int i = 0; i < 16; ++i) {
+                        const bool dark = ((i % 4) + (i / 4)) % 2 == 0;
+                        px[i * 4 + 0] = dark ? 0x67 : 0xff; px[i * 4 + 1] = dark ? 0x50 : 0xff; px[i * 4 + 2] = dark ? 0xa4 : 0xff; px[i * 4 + 3] = 0xff;
+                    }
+                    return kiln::gfx::ImageBitmap::FromPixels(4, 4, px);
+                });
+                for (const auto q : { kiln::gfx::FilterQuality::None, kiln::gfx::FilterQuality::Low })
+                    Image(checker, q == kiln::gfx::FilterQuality::None ? "Nearest" : "Bilinear", SizeMod(Modifier{}, 48_dp, 48_dp),
+                          Alignment::Center(), ContentScale::FillBounds(), 1, std::nullopt, q);
+            });
             Row(Padding(Modifier{}, 16_dp, 0_dp), Arrangement::SpacedBy(16_dp), AlignmentV::CenterVertically(), [&] {
                 // Rounded clip around a child that overflows it.
                 // Modifiers wrap what follows them: clip before the background so both are clipped.

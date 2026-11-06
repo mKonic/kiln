@@ -12,6 +12,10 @@
 
 namespace kiln::gfx {
 
+    // Sampling of a scaled image (FilterQuality.kt). Android filters bitmaps bilinearly or not at
+    // all: None is nearest-neighbour, the others bilinear (Paint.setNativeFilterQuality).
+    enum class FilterQuality : std::uint8_t { None, Low, Medium, High };
+
     class ImageBitmap {
     public:
         ImageBitmap() = default;

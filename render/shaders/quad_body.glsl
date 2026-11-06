@@ -241,7 +241,12 @@ void main() {
         src = applyFilter(paint());
         coverage = texture(uAtlas, vUv).a;
     } else {                    // atlas colour (emoji, images), premultiplied, alpha-modulated
-        src = applyFilter(texture(uAtlas, vUv) * vColor.a);
+        vec2 uv = vUv;
+        if (vParams.x > 0.5) {  // FilterQuality.None: the nearest texel
+            vec2 texels = vec2(textureSize(uAtlas, 0));
+            uv = (floor(uv * texels) + 0.5) / texels;
+        }
+        src = applyFilter(texture(uAtlas, uv) * vColor.a);
         coverage = 1.0;
     }
     coverage *= clipCoverage();

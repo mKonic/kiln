@@ -346,7 +346,8 @@ namespace kiln::ui {
         PathCoverage(path, stroke, { a, a, a, a }, &paint, FilterRow(filter));
     }
 
-    void DrawScope::DrawImage(const gfx::ImageBitmap& image, Rect src, Offset dst, Size size, float alpha, const gfx::ColorFilter* filter) {
+    void DrawScope::DrawImage(const gfx::ImageBitmap& image, Rect src, Offset dst, Size size, float alpha, const gfx::ColorFilter* filter,
+                              gfx::FilterQuality quality) {
         if (!m_Target.quads || !m_Target.images || !image) return;
         const float a = alpha * m_State.alpha;
         if (a <= 0) return;
@@ -356,7 +357,7 @@ namespace kiln::ui {
         ApplyTransform();
         m_Target.quads->DrawAtlas({ dst.x, dst.y, size.width, size.height },
                                   { src.left / iw, src.top / ih, src.Width() / iw, src.Height() / ih }, *page,
-                                  { a, a, a, a }, QuadRenderer::Mode::Color, nullptr, FilterRow(filter));
+                                  { a, a, a, a }, QuadRenderer::Mode::Color, nullptr, FilterRow(filter), quality == gfx::FilterQuality::None);
     }
 
     void DrawScope::BeginLayer(Rect bounds, float alpha, const gfx::Path* clipPath, gfx::BlendMode blend, const gfx::ColorFilter* colorFilter) {

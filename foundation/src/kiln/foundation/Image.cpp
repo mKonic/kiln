@@ -30,7 +30,7 @@ namespace kiln::foundation {
     void BitmapPainter::Draw(DrawScope& scope, Size size, float alpha, const gfx::ColorFilter* filter) {
         // BitmapPainter.onDraw: the whole bitmap into the size rounded to whole pixels.
         scope.DrawImage(m_Image, { 0, 0, float(m_Image.Width()), float(m_Image.Height()) }, {},
-                        { std::round(size.width), std::round(size.height) }, alpha, filter);
+                        { std::round(size.width), std::round(size.height) }, alpha, filter, m_Quality);
     }
 
     namespace {
@@ -149,10 +149,11 @@ namespace kiln::foundation {
     }
 
     void Image(const gfx::ImageBitmap& bitmap, const std::optional<std::string>& description, const Modifier& modifier,
-               Alignment alignment, ContentScale scale, float alpha, std::optional<gfx::ColorFilter> filter) {
-        // remember(bitmap) { BitmapPainter(bitmap) }
+               Alignment alignment, ContentScale scale, float alpha, std::optional<gfx::ColorFilter> filter, gfx::FilterQuality quality) {
+        // remember(bitmap) { BitmapPainter(bitmap, filterQuality = filterQuality) }
         auto& c = *rt::Composition::Current();
-        auto& painter = c.Remember<std::shared_ptr<Painter>>([&] { return std::make_shared<BitmapPainter>(bitmap); }, rt::Keys(bitmap.Id()));
+        auto& painter = c.Remember<std::shared_ptr<Painter>>([&] { return std::make_shared<BitmapPainter>(bitmap, quality); },
+                                                             rt::Keys(bitmap.Id(), int(quality)));
         Image(painter, description, modifier, alignment, scale, alpha, filter);
     }
 

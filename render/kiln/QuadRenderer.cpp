@@ -151,9 +151,10 @@ namespace kiln {
                { radius, float(Mode::Solid), float(filterRow), 0 }, {}, {}, {}, {}, {}, {}, {}, {} }, page, paint);
     }
 
-    void QuadRenderer::DrawAtlas(const RectF& r, const RectF& uv, const AtlasPage& page, Rgba c, Mode mode, const Paint* paint, int filterRow) {
+    void QuadRenderer::DrawAtlas(const RectF& r, const RectF& uv, const AtlasPage& page, Rgba c, Mode mode, const Paint* paint, int filterRow,
+                                 bool nearest) {
         Push({ { r.x, r.y, r.w, r.h }, { uv.x, uv.y, uv.x + uv.w, uv.y + uv.h }, { c.r, c.g, c.b, c.a },
-               { 0, float(mode), float(filterRow), 0 }, {}, {}, {}, {}, {}, {}, {}, {} }, &page, paint);
+               { nearest ? 1.0f : 0.0f, float(mode), float(filterRow), 0 }, {}, {}, {}, {}, {}, {}, {}, {} }, &page, paint);
     }
 
     Ref<BindGroup> QuadRenderer::GroupFor(const AtlasPage* page, const AtlasPage* dst) {

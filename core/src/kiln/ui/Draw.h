@@ -6,6 +6,7 @@
 // frame's QuadRenderer with an accumulated translation; retained layers come with GraphicsLayer.
 
 #include "kiln/graphics/ColorFilter.h"
+#include "kiln/graphics/Image.h"
 #include "kiln/graphics/Path.h"
 #include "kiln/ui/Geometry.h"
 
@@ -14,7 +15,7 @@
 #include <vector>
 
 namespace kiln { class QuadRenderer; struct ParagraphData; class AtlasPage; class PathCache; class GradientRamps; class ImageCache; class FilterTable; struct Rgba; struct RectF; }
-namespace kiln::gfx { class Path; struct Stroke; struct Brush; class ImageBitmap; }
+namespace kiln::gfx { class Path; struct Stroke; struct Brush; }
 
 namespace kiln::ui {
 
@@ -48,7 +49,7 @@ namespace kiln::ui {
         void DrawPath(const gfx::Path& path, Color color, const gfx::Stroke* stroke = nullptr);
         // drawImage(image, srcOffset, srcSize, dstOffset, dstSize, alpha): src in image pixels.
         void DrawImage(const gfx::ImageBitmap& image, Rect src, Offset dstOffset, Size dstSize, float alpha = 1,
-                       const gfx::ColorFilter* colorFilter = nullptr);
+                       const gfx::ColorFilter* colorFilter = nullptr, gfx::FilterQuality quality = gfx::FilterQuality::Low);
         // Brush overloads; `alpha` multiplies the brush (gradient geometry is in scope coordinates).
         void DrawRect(const gfx::Brush& brush, Offset topLeft, Size size, float alpha = 1);
         void DrawRoundRect(const gfx::Brush& brush, Offset topLeft, Size size, float cornerRadius, float alpha = 1);

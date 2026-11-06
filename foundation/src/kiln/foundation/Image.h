@@ -49,15 +49,17 @@ namespace kiln::foundation {
 
     class BitmapPainter final : public Painter {
     public:
-        explicit BitmapPainter(gfx::ImageBitmap image) : m_Image(std::move(image)) {}
+        explicit BitmapPainter(gfx::ImageBitmap image, gfx::FilterQuality quality = gfx::FilterQuality::Low)
+            : m_Image(std::move(image)), m_Quality(quality) {}
         std::optional<Size> IntrinsicSize() const override { return Size{ float(m_Image.Width()), float(m_Image.Height()) }; }
         void Draw(DrawScope& scope, Size size, float alpha, const gfx::ColorFilter* colorFilter) override;
         bool Equals(const Painter& o) const override {
             auto* b = dynamic_cast<const BitmapPainter*>(&o);
-            return b && b->m_Image == m_Image;
+            return b && b->m_Image == m_Image && b->m_Quality == m_Quality;
         }
     private:
         gfx::ImageBitmap m_Image;
+        gfx::FilterQuality m_Quality;
     };
 
     Modifier Paint(Modifier m, std::shared_ptr<Painter> painter, bool sizeToIntrinsics = true,
@@ -69,6 +71,6 @@ namespace kiln::foundation {
                std::optional<gfx::ColorFilter> colorFilter = std::nullopt);
     void Image(const gfx::ImageBitmap& bitmap, const std::optional<std::string>& contentDescription, const Modifier& modifier = {},
                Alignment alignment = Alignment::Center(), ContentScale contentScale = ContentScale::Fit(), float alpha = 1,
-               std::optional<gfx::ColorFilter> colorFilter = std::nullopt);
+               std::optional<gfx::ColorFilter> colorFilter = std::nullopt, gfx::FilterQuality filterQuality = gfx::FilterQuality::Low);
 
 }
