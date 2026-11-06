@@ -21,6 +21,7 @@ namespace kiln::ui {
     class MeasureScope;
     struct MeasureResult;
     class ContentDrawScope;
+    class PointerInputModifier;
 
     // Data a child hands its parent's measure policy (weights, alignments).
     struct ParentData {
@@ -66,6 +67,7 @@ namespace kiln::ui {
         virtual LayoutModifier* AsLayout() { return nullptr; }
         virtual DrawModifier* AsDraw() { return nullptr; }
         virtual ParentDataModifier* AsParentData() { return nullptr; }
+        virtual PointerInputModifier* AsPointerInput() { return nullptr; }
 
         LayoutNode* Owner() const { return m_Owner; }
         // Ask the owner to measure / place / draw again (call from Update when params change).

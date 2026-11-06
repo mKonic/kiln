@@ -9,6 +9,9 @@
 #include "kiln/runtime/State.h"
 #include "kiln/ui/Draw.h"
 #include "kiln/ui/Layout.h"
+#include "kiln/ui/Pointer.h"
+
+#include <map>
 
 #include <memory>
 #include <set>
@@ -64,6 +67,7 @@ namespace kiln::ui {
 
         void Attach(Owner& owner, int depth);
         void Detach();
+        std::vector<PointerInputModifier*> PointerModifiers() const;
         void RebuildChain();
         Placeable& MeasureNode(const Constraints& c);
         void LayoutChain();
@@ -114,6 +118,11 @@ namespace kiln::ui {
         // Measures dirty nodes (root with the window size) and places what moved.
         void MeasureAndLayout(IntSize window);
         void Draw(const DrawTarget& target);
+
+        // Pointer input: hit test on press, dispatch in three passes along the kept path.
+        void ProcessPointer(const RawPointerEvent& event);
+        ViewConfiguration& Config() { return m_Config; }
+        const ViewConfiguration& Config() const { return m_Config; }
         bool NeedsMeasureOrLayout() const { return !m_MeasureDirty.empty() || !m_LayoutDirty.empty(); }
 
     private:
@@ -123,7 +132,11 @@ namespace kiln::ui {
         void OnMeasureRequested(LayoutNode& n);
         void OnLayoutRequested(LayoutNode& n);
         void OnDrawRequested() { if (m_RequestFrame) m_RequestFrame(); }
-        void Forget(LayoutNode& n) { m_MeasureDirty.erase(&n); m_LayoutDirty.erase(&n); }
+        void Forget(LayoutNode& n);
+        void ForgetPointerModifier(PointerInputModifier* m);
+        struct HitEntry { LayoutNode* node; PointerInputModifier* mod; };
+        void HitTest(LayoutNode& n, Offset p, bool touch, std::vector<HitEntry>& path,
+                     std::vector<HitEntry>& near, float& nearDistance, std::vector<HitEntry>& ancestors);
         void RequestFullRemeasure();
 
         std::unique_ptr<LayoutNode> m_Root;
@@ -133,6 +146,9 @@ namespace kiln::ui {
         std::function<void()> m_RequestFrame;
         std::set<LayoutNode*, ByDepth> m_MeasureDirty, m_LayoutDirty;
         IntSize m_Window;
+        ViewConfiguration m_Config;
+        struct Tracked { std::vector<HitEntry> path; Offset position; bool pressed = false; std::int64_t uptime = 0; PointerType type{}; };
+        std::map<std::int64_t, Tracked> m_Pointers;
     };
 
 }

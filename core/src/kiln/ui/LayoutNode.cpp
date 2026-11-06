@@ -159,7 +159,13 @@ namespace kiln::ui {
             }
         }
         for (auto& old : m_Nodes)
-            if (old) { if (m_Owner) old->OnDetach(); old->m_Owner = nullptr; }
+            if (old) {
+                if (m_Owner) {
+                    if (auto* p = old->AsPointerInput()) m_Owner->ForgetPointerModifier(p);
+                    old->OnDetach();
+                }
+                old->m_Owner = nullptr;
+            }
         m_Nodes = std::move(nodes);
         m_Elements = next;
         if (structural) RebuildChain();
@@ -175,6 +181,7 @@ namespace kiln::ui {
     void LayoutNode::RebuildChain() {
         std::vector<std::unique_ptr<Coordinator>> chain;
         std::vector<DrawModifier*> pending;
+        (void)0;
         for (auto& n : m_Nodes) {
             if (auto* d = n->AsDraw()) pending.push_back(d);
             if (auto* l = n->AsLayout()) {
@@ -404,6 +411,24 @@ namespace kiln::ui {
             m_LayoutDirty.erase(m_LayoutDirty.begin());
             if (n->m_Placed || n == m_Root.get()) n->LayoutIfNeeded();
         }
+    }
+
+    std::vector<PointerInputModifier*> LayoutNode::PointerModifiers() const {
+        std::vector<PointerInputModifier*> out;
+        for (auto& n : m_Nodes) if (auto* p = n->AsPointerInput()) out.push_back(p);
+        return out;
+    }
+
+    void Owner::Forget(LayoutNode& n) {
+        m_MeasureDirty.erase(&n);
+        m_LayoutDirty.erase(&n);
+        for (auto& [id, t] : m_Pointers)
+            std::erase_if(t.path, [&](const HitEntry& e) { return e.node == &n; });
+    }
+
+    void Owner::ForgetPointerModifier(PointerInputModifier* m) {
+        for (auto& [id, t] : m_Pointers)
+            std::erase_if(t.path, [&](const HitEntry& e) { return e.mod == m; });
     }
 
     void Owner::Draw(const DrawTarget& target) {
