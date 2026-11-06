@@ -99,3 +99,49 @@ TEST(KeyframesHitTheirValuesAndEasings) {
     CHECK_EQ(rep->DurationNanos({}, { 1, 0, 0, 0 }, {}, 1), 300'000'000);
     CHECK(Near(rep->ValueAt(150'000'000, {}, { 1, 0, 0, 0 }, {}, 1)[0], 0.5f, 0.01f));   // second (reversed) pass
 }
+
+#include "kiln/foundation/AnimatedVisibility.h"
+#include "kiln/foundation/Compose.h"
+
+namespace {
+    struct LayoutHarness : Harness {
+        void Layout() { owner.MeasureAndLayout({ 400, 400 }); }
+        void Step(int n) { for (int i = 0; i < n; ++i) { Frames(1); Layout(); } }
+    };
+}
+
+TEST(AnimatedVisibilityExpandsFadesAndLeaves) {
+    LayoutHarness h;
+    rt::State<bool> visible(false);
+    bool composed = false;
+    h.Run([&] {
+        composed = false;
+        Box(Modifier{}, Alignment::TopStart(), false, [&] {
+            AnimatedVisibility(visible.Get(), Modifier{}, [&] {
+                composed = true;
+                Box(SizeMod(Modifier{}, Dp(100), Dp(80)));
+            }, ExpandVertically() + FadeIn(), ShrinkVertically() + FadeOut());
+        });
+    });
+    h.Layout();
+    CHECK(!composed);                                  // hidden: nothing composed
+    visible.Set(true);
+    h.Pump();
+    h.Layout();
+    auto wrapper = [&] { return h.owner.Root().Children()[0]->Children().empty() ? nullptr : h.owner.Root().Children()[0]->Children()[0]; };
+    CHECK(composed);
+    CHECK(wrapper() != nullptr);
+    CHECK_EQ(wrapper()->Size().height, 0);             // starts collapsed
+    h.Step(6);
+    const int mid = wrapper()->Size().height;
+    CHECK(mid > 0 && mid < 80);
+    h.Step(120);
+    CHECK_EQ(wrapper()->Size().height, 80);
+    visible.Set(false);
+    h.Pump();
+    h.Step(3);
+    CHECK(wrapper() != nullptr);                       // exiting: still composed
+    CHECK(wrapper()->Size().height < 80);
+    h.Step(150);
+    CHECK(wrapper() == nullptr);                       // exit finished: gone
+}
