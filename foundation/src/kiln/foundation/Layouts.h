@@ -1,6 +1,7 @@
 #pragma once
 
 #include "kiln/graphics/Brush.h"
+#include "kiln/graphics/Shape.h"
 
 // Foundation layouts and layout modifiers (spec 06 §13).
 
@@ -107,12 +108,14 @@ namespace kiln::foundation {
         float originX = 0.5f, originY = 0.5f; // transform origin (pivot) as a fraction of the size
         bool clip = false;
         CornerShape shape;
+        std::shared_ptr<const gfx::Shape> clipShape;   // overrides `shape` when set
         bool operator==(const GraphicsLayerParams&) const = default;
     };
     Modifier GraphicsLayer(Modifier m, GraphicsLayerParams p);
     inline Modifier Rotate(Modifier m, float degrees) { GraphicsLayerParams p; p.rotationZ = degrees; return GraphicsLayer(std::move(m), p); }
     inline Modifier Alpha(Modifier m, float a) { GraphicsLayerParams p; p.alpha = a; return GraphicsLayer(std::move(m), p); }
     inline Modifier ClipToBounds(Modifier m) { GraphicsLayerParams p; p.clip = true; return GraphicsLayer(std::move(m), p); }
+    inline Modifier Clip(Modifier m, std::shared_ptr<const gfx::Shape> shape) { GraphicsLayerParams p; p.clip = true; p.clipShape = std::move(shape); return GraphicsLayer(std::move(m), p); }
     inline Modifier Clip(Modifier m, CornerShape shape) { GraphicsLayerParams p; p.clip = true; p.shape = shape; return GraphicsLayer(std::move(m), p); }
 
 }

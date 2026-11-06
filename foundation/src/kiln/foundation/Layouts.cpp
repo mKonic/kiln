@@ -507,9 +507,27 @@ namespace kiln::foundation {
                 // CompositingStrategy.Auto: alpha < 1 renders offscreen and composites once, so
                 // overlapping content fades as one image (RenderNode with overlapping rendering).
                 if (params.alpha <= 0) { s.Restore(); return; }
-                const bool offscreen = params.alpha < 1;
-                if (offscreen) s.BeginLayer({ 0, 0, size.width, size.height }, params.alpha);
-                if (params.clip) s.ClipRect({ 0, 0, size.width, size.height }, CornerRadiusPx(params.shape, size, s));
+                // A clip shape whose outline is a path clips through a masked layer.
+                std::optional<gfx::Path> clipPath;
+                std::optional<gfx::Outline> outline;
+                if (params.clip && params.clipShape) {
+                    outline = params.clipShape->CreateOutline(size, s.Direction(), s);
+                    if (auto* p = std::get_if<gfx::Path>(&outline->value)) clipPath = *p;
+                    else if (auto* rr = std::get_if<gfx::RoundRect>(&outline->value);
+                             rr && !(rr->topLeft == rr->topRight && rr->topLeft == rr->bottomLeft && rr->topLeft == rr->bottomRight &&
+                                     rr->topLeft.x == rr->topLeft.y))
+                        clipPath = outline->ToPath();   // non-uniform corners: no SDF fast path
+                }
+                const bool offscreen = params.alpha < 1 || clipPath;
+                if (offscreen) s.BeginLayer({ 0, 0, size.width, size.height }, params.alpha, clipPath ? &*clipPath : nullptr);
+                if (params.clip && !clipPath) {
+                    if (outline) {
+                        if (auto* r = std::get_if<Rect>(&outline->value)) s.ClipRect(*r);
+                        else { const auto& rr = std::get<gfx::RoundRect>(outline->value); s.ClipRect(rr.rect, rr.topLeft.x); }
+                    } else {
+                        s.ClipRect({ 0, 0, size.width, size.height }, CornerRadiusPx(params.shape, size, s));
+                    }
+                }
                 s.DrawContent();
                 if (offscreen) s.EndLayer();
                 s.Restore();

@@ -8,6 +8,7 @@
 #include "kiln/graphics/Brush.h"
 #include "kiln/graphics/Path.h"
 #include "kiln/graphics/PathEffect.h"
+#include "kiln/graphics/Shape.h"
 
 #include <cmath>
 
@@ -124,8 +125,8 @@ namespace kiln::ui {
         PathCoverage(path, stroke, Scaled(ToRgba(color), m_State.alpha), nullptr);
     }
 
-    void DrawScope::PathCoverage(const gfx::Path& path, const gfx::Stroke* stroke, Rgba tint, const void* paint, int filterRow) {
-        if (!m_Target.quads || !m_Target.paths || path.IsEmpty()) return;
+    const void* DrawScope::PathMask(const gfx::Path& path, const gfx::Stroke* stroke, float& outX, float& outY) {
+        if (!m_Target.quads || !m_Target.paths || path.IsEmpty()) return nullptr;
         // Integer part of the translation is applied when drawing; the mask is built for the
         // scale and the quarter-pixel fraction so moving by whole pixels reuses it.
         const gfx::Matrix& cur = m_State.m;
@@ -137,7 +138,7 @@ namespace kiln::ui {
         ui::Rect visible{ -ox, -oy, m_Target.viewportWidth - ox, m_Target.viewportHeight - oy };
         if (m_State.clip && m_State.clipInverse.b == 0 && m_State.clipInverse.c == 0 && m_State.clipInverse.a == 1 && m_State.clipInverse.d == 1)
             visible = visible.Intersect(m_State.clipRect.Translate({ -ox, -oy }));
-        if (visible.Empty()) return;
+        if (visible.Empty()) return nullptr;
 
         std::uint64_t key = path.Hash();
         auto mix = [&key](const void* data, std::size_t n) {
@@ -173,10 +174,19 @@ namespace kiln::ui {
         if (!e) {
             const std::vector<gfx::Polyline> polys = stroke ? gfx::StrokeToPolygons(path, *stroke, m) : path.Flatten(m);
             const gfx::Mask mask = gfx::Rasterize(polys, stroke ? gfx::FillType::NonZero : path.fillType, visible);
-            if (mask.width <= 0) return;
+            if (mask.width <= 0) return nullptr;
             e = m_Target.paths->Insert(key, mask, 0, 0);
-            if (!e) return;
+            if (!e) return nullptr;
         }
+        outX = ox;
+        outY = oy;
+        return e;
+    }
+
+    void DrawScope::PathCoverage(const gfx::Path& path, const gfx::Stroke* stroke, Rgba tint, const void* paint, int filterRow) {
+        float ox = 0, oy = 0;
+        const auto* e = static_cast<const PathCache::Entry*>(PathMask(path, stroke, ox, oy));
+        if (!e) return;
         ApplyClip();
         m_Target.quads->SetTransform({});   // masks are in device pixels
         m_Target.quads->DrawAtlas({ ox + float(e->x), oy + float(e->y), float(e->w), float(e->h) }, e->uv, *e->page,
@@ -264,8 +274,12 @@ namespace kiln::ui {
                                   { a, a, a, a }, QuadRenderer::Mode::Color, nullptr, FilterRow(filter));
     }
 
-    void DrawScope::BeginLayer(Rect bounds, float alpha) {
-        Layer l{ m_State, alpha * m_State.alpha, {}, false };
+    void DrawScope::BeginLayer(Rect bounds, float alpha, const gfx::Path* clipPath) {
+        Layer l{ m_State, alpha * m_State.alpha, {}, false, nullptr, m_State.m };
+        if (clipPath) {
+            l.clip = std::make_shared<gfx::Path>(*clipPath);
+            bounds = bounds.Intersect(clipPath->Bounds());
+        }
         // Device bounding box of the local bounds, within the viewport (and a device-space clip).
         Rect d{ 1e30f, 1e30f, -1e30f, -1e30f };
         for (const Offset q : { Offset{ bounds.left, bounds.top }, Offset{ bounds.right, bounds.top },
@@ -290,6 +304,19 @@ namespace kiln::ui {
         if (m_Layers.empty()) return;
         Layer l = m_Layers.back();
         m_Layers.pop_back();
+        if (l.active && l.clip) {
+            // Mask the layer to the path: dst *= coverage, under the layer's own transform.
+            State inner = m_State;
+            m_State = l.saved;
+            m_State.clip = false;
+            ApplyClip();
+            float ox = 0, oy = 0;
+            if (const auto* e = static_cast<const PathCache::Entry*>(PathMask(*l.clip, nullptr, ox, oy))) {
+                m_Target.quads->SetTransform({});
+                m_Target.quads->DrawMask({ ox + float(e->x), oy + float(e->y), float(e->w), float(e->h) }, e->uv, *e->page);
+            }
+            m_State = inner;
+        }
         m_State = l.saved;
         ApplyClip();
         if (!l.active) return;

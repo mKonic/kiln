@@ -7,6 +7,7 @@
 #include "kiln/ui/Geometry.h"
 
 #include <functional>
+#include <memory>
 #include <vector>
 
 namespace kiln { class QuadRenderer; struct ParagraphData; class AtlasPage; class PathCache; class GradientRamps; class ImageCache; class FilterTable; struct Rgba; }
@@ -60,7 +61,8 @@ namespace kiln::ui {
         void ClipRect(Rect local, float radius = 0);
         // Offscreen layer (saveLayerAlpha): content drawn until EndLayer composites as one image
         // with `alpha`, clipped to `bounds` (local). Inherited alpha applies at compositing.
-        void BeginLayer(Rect bounds, float alpha);
+        // With `clipPath` (local), the layer is masked to it (anti-aliased clip by path).
+        void BeginLayer(Rect bounds, float alpha, const gfx::Path* clipPath = nullptr);
         void EndLayer();
         void Save() { m_Stack.push_back(m_State); }
         void Restore();
@@ -82,11 +84,13 @@ namespace kiln::ui {
         bool MakePaint(const gfx::Brush& brush, float alpha, void* paint, Color& solid, float& outAlpha);
         void PathCoverage(const gfx::Path& path, const gfx::Stroke* stroke, kiln::Rgba tint, const void* paint, int filterRow = -1);
         int FilterRow(const gfx::ColorFilter* f);
+        // The cached coverage mask of a path under the current transform; device origin in ox/oy.
+        const void* PathMask(const gfx::Path& path, const gfx::Stroke* stroke, float& ox, float& oy);
         LayoutDirection m_Dir;
         DrawTarget m_Target;
         State m_State;
         std::vector<State> m_Stack;
-        struct Layer { State saved; float alpha; Rect device; bool active; };
+        struct Layer { State saved; float alpha; Rect device; bool active; std::shared_ptr<gfx::Path> clip; gfx::Matrix clipMatrix; };
         std::vector<Layer> m_Layers;
         Size m_Size;
     };
