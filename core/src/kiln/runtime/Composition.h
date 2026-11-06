@@ -192,11 +192,24 @@ namespace kiln::rt {
 
         template<typename T>
         const T& Read(const Local<T>& local) {
-            for (Scope* s = m_Current; s; s = s->m_Parent)
-                if (const StateObject* p = s->FindLocal(&local))
-                    return static_cast<const State<T, NeverEqual>*>(p)->Get();
+            // Up this composition's scopes, then on through the parent context of measure-time
+            // compositions (subcompose inherits the CompositionLocals where it was composed).
+            for (Scope* start = m_Current; start;) {
+                Scope* last = nullptr;
+                for (Scope* s = start; s; s = s->m_Parent) {
+                    if (const StateObject* p = s->FindLocal(&local))
+                        return static_cast<const State<T, NeverEqual>*>(p)->Get();
+                    last = s;
+                }
+                start = last ? last->m_Composition.m_ParentContext : nullptr;
+            }
             return local.Default();
         }
+
+        // For compositions created during measure (SubcomposeLayout, lazy items): the scope whose
+        // Locals the content sees. It must outlive this composition.
+        void SetParentContext(Scope* scope) { m_ParentContext = scope; }
+        Scope* CurrentScope() const { return m_Current; }
 
         template<typename T>
         void Provide(const Local<T>& local, T value, std::function<void()> content, Key key = {}) {
@@ -232,6 +245,7 @@ namespace kiln::rt {
         };
         std::vector<Frame> m_Stack;
         Scope* m_Current = nullptr;
+        Scope* m_ParentContext = nullptr;
 
         std::vector<Scope*> m_Invalid;
         std::unordered_set<Scope*> m_Pending;
