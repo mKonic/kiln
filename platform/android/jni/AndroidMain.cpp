@@ -466,7 +466,7 @@ namespace {
 
     jobjectArray SemStrings(JNIEnv* env, jclass, jint id) {
         if (!g_Host) return {};
-        std::string v[5];
+        std::string v[6];
         if (const auto* n = SemFind(id)) {
             const auto& c = n->config;
             v[0] = Join(c.text);
@@ -474,10 +474,11 @@ namespace {
             v[2] = c.editableText.value_or("");
             v[3] = c.stateDescription.value_or("");
             v[4] = c.paneTitle.value_or("");
+            v[5] = c.onClickLabel.value_or("");
         }
         jclass str = env->FindClass("java/lang/String");
-        jobjectArray out = env->NewObjectArray(5, str, nullptr);
-        for (int i = 0; i < 5; ++i) {
+        jobjectArray out = env->NewObjectArray(6, str, nullptr);
+        for (int i = 0; i < 6; ++i) {
             const std::u16string u = kiln::foundation::ToUtf16(v[i]);
             jstring js = env->NewString(reinterpret_cast<const jchar*>(u.data()), jsize(u.size()));
             env->SetObjectArrayElement(out, i, js);

@@ -37,7 +37,7 @@ final class KilnAccessibility extends AccessibilityNodeProvider {
             return info;
         }
         if (d[0] == 0) return null;
-        String[] s = KilnNative.semStrings(id);   // text, contentDescription, editableText, stateDescription, paneTitle
+        String[] s = KilnNative.semStrings(id);   // text, contentDescription, editableText, stateDescription, paneTitle, onClickLabel
         AccessibilityNodeInfo info = AccessibilityNodeInfo.obtain(view, id);
         info.setPackageName(view.getContext().getPackageName());
         info.setSource(view, id);
@@ -60,7 +60,12 @@ final class KilnAccessibility extends AccessibilityNodeProvider {
         info.setImportantForAccessibility(true);
         info.setHeading((f & F_HEADING) != 0);
         info.setPassword((f & F_PASSWORD) != 0);
-        if ((f & F_CLICKABLE) != 0) { info.setClickable(true); info.addAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_CLICK); }
+        if ((f & F_CLICKABLE) != 0) {
+            info.setClickable(true);
+            // onClick(label): the label is what TalkBack says for "double-tap to ...".
+            info.addAction(TextUtils.isEmpty(s[5]) ? AccessibilityNodeInfo.AccessibilityAction.ACTION_CLICK
+                    : new AccessibilityNodeInfo.AccessibilityAction(AccessibilityNodeInfo.ACTION_CLICK, s[5]));
+        }
         if ((f & F_LONG_CLICK) != 0) { info.setLongClickable(true); info.addAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_LONG_CLICK); }
         if ((f & F_FOCUSABLE) != 0) {
             info.setFocusable(true);

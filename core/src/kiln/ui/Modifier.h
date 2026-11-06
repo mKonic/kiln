@@ -82,6 +82,8 @@ namespace kiln::ui {
         // True when the node clips what is drawn under it to its bounds (graphicsLayer clip):
         // semantics bounds of descendants are clipped the same way.
         virtual bool ClipsChildren() const { return false; }
+        // A scrollable container (ScrollableContainerNode): presses inside it are delayed.
+        virtual bool IsScrollableContainer() const { return false; }
         virtual ParentDataModifier* AsParentData() { return nullptr; }
         virtual PointerInputModifier* AsPointerInput() { return nullptr; }
         virtual FocusTargetNode* AsFocusTarget() { return nullptr; }

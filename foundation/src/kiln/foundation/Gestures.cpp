@@ -49,6 +49,12 @@ namespace kiln::foundation {
             Density GetDensity() const override {
                 return Owner() && Owner()->GetOwner() ? Owner()->GetOwner()->GetDensity() : Density{};
             }
+            bool InScrollableContainer() const override {
+                for (const LayoutNode* n = Owner(); n; n = n->Parent())
+                    for (const ModifierNode* m : n->ModifierNodes())
+                        if (m->IsScrollableContainer()) return true;
+                return false;
+            }
 
         protected:
             void Suspend(std::coroutine_handle<> h, PointerEventPass pass, std::int64_t timeout,
@@ -398,40 +404,130 @@ namespace kiln::foundation {
         }
     }
 
+    namespace {
+        // The shared clickable core: callbacks behind boxes refreshed every composition
+        // (rememberUpdatedState), interactions, indication, keys, focus, semantics, taps.
+        struct ClickState {
+            std::function<void()> onClick;
+            std::function<void(bool)> onPressed;
+            std::function<void(SemanticsConfiguration&)> extraSemantics;
+            std::shared_ptr<MutableInteractionSource> source;
+            std::uint64_t press = 0, keyPress = 0;
+            rt::Job delayJob;
+        };
+
+        rt::Task<> DelayedPress(std::shared_ptr<ClickState> st, Offset at, std::int64_t delayMs) {
+            co_await rt::Delay(delayMs);
+            if (st->source && !st->press) st->press = st->source->Start(Interaction::Kind::Press, at);
+        }
+
+        Modifier ClickableCore(Modifier m, std::function<void()> onClick, std::function<void(bool)> onPressed,
+                               std::function<void(SemanticsConfiguration&)> extra, ClickableOptions o) {
+            auto st = std::make_shared<ClickState>();
+            if (auto* c = rt::Composition::Current()) st = c->Remember<std::shared_ptr<ClickState>>([&] { return st; });
+            st->onClick = std::move(onClick);
+            st->onPressed = std::move(onPressed);
+            st->extraSemantics = std::move(extra);
+            // An indication needs a source; create one when the caller passed none.
+            IndicationPtr indication = o.indication;
+            if (!indication && o.useLocalIndication) {
+                if (auto* c = rt::Composition::Current()) indication = c->Read(LocalIndication);
+                if (!indication) indication = DefaultDebugIndication();
+            }
+            if (o.interactionSource) st->source = o.interactionSource;
+            else if (indication && !st->source) st->source = std::make_shared<MutableInteractionSource>();
+            const std::optional<Role> role = o.role;
+            const std::optional<std::string> label = o.onClickLabel;
+            const bool enabled = o.enabled;
+
+            // Semantics come first so they hold even when disabled (applySemantics: role, onClick
+            // with label, focusable or disabled).
+            m = Semantics(std::move(m), [st, role, label, enabled](SemanticsConfiguration& c) {
+                if (role) c.role = *role;
+                c.onClick = [st] { if (st->onClick) st->onClick(); return true; };
+                if (label) c.onClickLabel = *label;
+                if (!enabled) c.disabled = true;
+                if (st->extraSemantics) st->extraSemantics(c);
+            }, true);
+            if (indication && st->source) m = indication->Create(std::move(m), st->source);
+            if (!enabled) return m;
+
+            m = OnKeyEvent(std::move(m), [st](const KeyEvent& e) {
+                const bool activate = e.keyCode == keys::Enter || e.keyCode == keys::NumpadEnter ||
+                                      e.keyCode == keys::DpadCenter || e.keyCode == keys::Space;
+                if (!activate) return false;
+                if (e.type == KeyEventType::KeyDown) {
+                    if (e.repeatCount == 0) {
+                        if (st->onPressed) st->onPressed(true);
+                        if (st->source && !st->keyPress) st->keyPress = st->source->Start(Interaction::Kind::Press);
+                    }
+                    return true;
+                }
+                if (e.type == KeyEventType::KeyUp) {
+                    if (st->onPressed) st->onPressed(false);
+                    if (st->source && st->keyPress) { st->source->End(Interaction::Kind::Press, st->keyPress); st->keyPress = 0; }
+                    if (st->onClick) st->onClick();
+                    return true;
+                }
+                return false;
+            });
+            m = Focusable(std::move(m), Focusability::SystemDefined, {}, st->source);
+            return PointerInput(std::move(m), rt::Keys(0), [st](PointerInputScope& s) {
+                TapCallbacks cb;
+                const bool delayed = s.InScrollableContainer();
+                const std::int64_t delayMs = s.Config().tapTimeoutMillis;
+                auto* dispatcher = &rt::Dispatcher::Main();
+                cb.onPress = [st, delayed, delayMs, dispatcher](Offset at) {
+                    if (st->onPressed) st->onPressed(true);
+                    if (!st->source) return;
+                    if (delayed) st->delayJob = rt::Launch(*dispatcher, DelayedPress(st, at, delayMs));
+                    else st->press = st->source->Start(Interaction::Kind::Press, at);
+                };
+                cb.onPressEnd = [st](bool released) {
+                    if (st->onPressed) st->onPressed(false);
+                    // A tap released before the delay still shows a brief press (Clickable.kt).
+                    if (st->source && !st->press && st->delayJob.Active() && released) {
+                        st->delayJob.Cancel();
+                        st->press = st->source->Start(Interaction::Kind::Press);
+                    }
+                    st->delayJob.Cancel();
+                    if (st->source && st->press) {
+                        if (released) st->source->End(Interaction::Kind::Press, st->press);
+                        else st->source->Cancel(Interaction::Kind::Press, st->press);
+                    }
+                    st->press = 0;
+                };
+                cb.onTap = [st](Offset) { if (st->onClick) st->onClick(); };
+                return DetectTapGestures(s, cb);
+            });
+        }
+    }
+
+    Modifier Clickable(Modifier m, std::function<void()> onClick, ClickableOptions o) {
+        return ClickableCore(std::move(m), std::move(onClick), {}, {}, std::move(o));
+    }
+
     Modifier Clickable(Modifier m, std::function<void()> onClick, std::function<void(bool)> onPressedChange, bool enabled) {
-        if (!enabled) return m;
-        // rememberUpdatedState: the running gesture reads the latest callbacks through a box the
-        // composition keeps for this call site and refreshes on every recomposition.
-        struct Box { std::shared_ptr<std::function<void()>> click; std::shared_ptr<std::function<void(bool)>> pressed; };
-        Box box{ std::make_shared<std::function<void()>>(), std::make_shared<std::function<void(bool)>>() };
-        if (auto* c = rt::Composition::Current()) box = c->Remember<Box>([&] { return box; });
-        *box.click = std::move(onClick);
-        *box.pressed = std::move(onPressedChange);
-        auto click = box.click;
-        auto pressed = box.pressed;
-        // Keyboard activation (Clickable.kt CombinedClickable keys): Enter, NumpadEnter,
-        // DPAD center and Space press on key down and click on key up, when focused. Clickables
-        // are focusable only outside touch mode (Focusability::SystemDefined).
-        m = OnKeyEvent(std::move(m), [click, pressed](const KeyEvent& e) {
-            const bool activate = e.keyCode == keys::Enter || e.keyCode == keys::NumpadEnter ||
-                                  e.keyCode == keys::DpadCenter || e.keyCode == keys::Space;
-            if (!activate) return false;
-            if (e.type == KeyEventType::KeyDown) { if (e.repeatCount == 0 && *pressed) (*pressed)(true); return true; }
-            if (e.type == KeyEventType::KeyUp) { if (*pressed) (*pressed)(false); if (*click) (*click)(); return true; }
-            return false;
-        });
-        m = Focusable(std::move(m), Focusability::SystemDefined);
-        // ClickableSemanticsNode: merges descendants, exposes the click action.
-        m = Semantics(std::move(m), [click](SemanticsConfiguration& c) {
-            c.onClick = [click] { if (*click) (*click)(); return true; };
-        }, true);
-        return PointerInput(std::move(m), rt::Keys(0), [click, pressed](PointerInputScope& s) {
-            TapCallbacks cb;
-            cb.onPress = [pressed](Offset) { if (*pressed) (*pressed)(true); };
-            cb.onPressEnd = [pressed](bool) { if (*pressed) (*pressed)(false); };
-            cb.onTap = [click](Offset) { if (*click) (*click)(); };
-            return DetectTapGestures(s, cb);
-        });
+        ClickableOptions o;
+        o.enabled = enabled;
+        return ClickableCore(std::move(m), std::move(onClick), std::move(onPressedChange), {}, o);
+    }
+
+    Modifier Toggleable(Modifier m, bool value, std::function<void(bool)> onValueChange, ClickableOptions o) {
+        return ClickableCore(std::move(m), [value, onValueChange] { if (onValueChange) onValueChange(!value); }, {},
+                             [value](SemanticsConfiguration& c) { c.toggleableState = value ? 1 : 0; }, std::move(o));
+    }
+
+    Modifier TriStateToggleable(Modifier m, int state, std::function<void()> onClick, ClickableOptions o) {
+        return ClickableCore(std::move(m), std::move(onClick), {}, [state](SemanticsConfiguration& c) { c.toggleableState = state; }, std::move(o));
+    }
+
+    Modifier Selectable(Modifier m, bool selected, std::function<void()> onClick, ClickableOptions o) {
+        return ClickableCore(std::move(m), std::move(onClick), {}, [selected](SemanticsConfiguration& c) { c.selected = selected; }, std::move(o));
+    }
+
+    Modifier SelectableGroup(Modifier m) {
+        return Semantics(std::move(m), [](SemanticsConfiguration& c) { c.isTraversalGroup = true; c.selectableGroup = true; });
     }
 
 }

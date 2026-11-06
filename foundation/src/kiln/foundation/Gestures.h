@@ -1,5 +1,11 @@
 #pragma once
 
+#include "kiln/foundation/Interaction.h"
+#include "kiln/ui/Semantics.h"
+
+#include <optional>
+#include <string>
+
 // Coroutine pointer input (spec 05 req. 1, §Tap): Modifier.pointerInput with a handler that
 // awaits pointer events pass by pass, and the tap detector / clickable built on it.
 
@@ -40,6 +46,8 @@ namespace kiln::foundation {
         const PointerEvent& CurrentEvent() const { return m_Current; }
         virtual const ViewConfiguration& Config() const = 0;
         virtual Density GetDensity() const = 0;
+        // Inside a scrollable container (hasScrollableContainer): press feedback waits TapTimeout.
+        virtual bool InScrollableContainer() const { return false; }
 
     protected:
         virtual void Suspend(std::coroutine_handle<> h, PointerEventPass pass, std::int64_t timeout,
@@ -81,8 +89,31 @@ namespace kiln::foundation {
     // detectDragGestures(orientationLock): slop, then drag until up or consumed by someone else.
     rt::Task<> DetectDragGestures(PointerInputScope& scope, std::optional<Orientation> orientationLock, DragCallbacks callbacks);
 
-    // Clickable: tap + pressed state. Semantics, keys, focus and indication come with M3/M10.
+    struct ClickableOptions {
+        bool enabled = true;
+        std::optional<ui::Role> role;
+        std::optional<std::string> onClickLabel;
+        // Null: one is created when an indication needs it.
+        std::shared_ptr<MutableInteractionSource> interactionSource;
+        // Null with useLocalIndication: LocalIndication (DefaultDebugIndication when unset).
+        IndicationPtr indication;
+        bool useLocalIndication = true;
+    };
+    // clickable(interactionSource, indication, enabled, onClickLabel, role, onClick): tap and
+    // Enter/Space/DPAD-centre activation, press interactions (delayed TapTimeout inside scrollable
+    // containers), focusable outside touch mode, merged click semantics with role and label.
+    Modifier Clickable(Modifier m, std::function<void()> onClick, ClickableOptions options);
+    // Compatibility form: pressed-state callback, local indication.
     Modifier Clickable(Modifier m, std::function<void()> onClick, std::function<void(bool)> onPressedChange = {},
                        bool enabled = true);
+
+    // toggleable(value, onValueChange): a clickable with on/off state semantics.
+    Modifier Toggleable(Modifier m, bool value, std::function<void(bool)> onValueChange, ClickableOptions options = {});
+    // triStateToggleable(state, onClick): 0 off, 1 on, 2 indeterminate.
+    Modifier TriStateToggleable(Modifier m, int state, std::function<void()> onClick, ClickableOptions options = {});
+    // selectable(selected, onClick): a clickable with selected semantics (radio buttons, tabs).
+    Modifier Selectable(Modifier m, bool selected, std::function<void()> onClick, ClickableOptions options = {});
+    // selectableGroup(): a traversal group for selectable children.
+    Modifier SelectableGroup(Modifier m);
 
 }

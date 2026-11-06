@@ -17,7 +17,8 @@ namespace kiln::foundation {
 
         struct FocusParams {
             Focusability f; std::shared_ptr<std::function<void(FocusState)>> cb;
-            bool operator==(const FocusParams& o) const { return f == o.f && cb == o.cb; }
+            std::shared_ptr<MutableInteractionSource> source;
+            bool operator==(const FocusParams& o) const { return f == o.f && cb == o.cb && source == o.source; }
         };
         struct FocusNode final : FocusTargetNode, ui::SemanticsModifier {
             FocusParams params;
@@ -29,10 +30,22 @@ namespace kiln::foundation {
                 c.requestFocus = [this] { return RequestFocus(); };
             }
             void OnParamsChanged() { Apply(); }
+            std::uint64_t focusInteraction = 0;
             void Apply() {
                 focusability = params.f;
                 auto cb = params.cb;
-                onFocusChange = [cb](FocusState, FocusState now) { if (cb && *cb) (*cb)(now); };
+                onFocusChange = [this, cb](FocusState, FocusState now) {
+                    // FocusableNode: FocusInteraction.Focus / Unfocus on the source.
+                    if (params.source) {
+                        if (IsFocused(now) && !focusInteraction) focusInteraction = params.source->Start(Interaction::Kind::Focus);
+                        else if (!IsFocused(now) && focusInteraction) { params.source->End(Interaction::Kind::Focus, focusInteraction); focusInteraction = 0; }
+                    }
+                    if (cb && *cb) (*cb)(now);
+                };
+            }
+            void OnDetach() override {
+                if (params.source && focusInteraction) { params.source->End(Interaction::Kind::Focus, focusInteraction); focusInteraction = 0; }
+                FocusTargetNode::OnDetach();
             }
         };
 
@@ -78,8 +91,8 @@ namespace kiln::foundation {
         };
     }
 
-    Modifier Focusable(Modifier m, Focusability f, std::function<void(FocusState)> cb) {
-        return m.With<FocusNode>(FocusParams{ f, Latest(std::move(cb)) });
+    Modifier Focusable(Modifier m, Focusability f, std::function<void(FocusState)> cb, std::shared_ptr<MutableInteractionSource> source) {
+        return m.With<FocusNode>(FocusParams{ f, Latest(std::move(cb)), std::move(source) });
     }
     Modifier OnFocusChanged(Modifier m, std::function<void(FocusState)> cb) {
         return m.With<EventNode>(EventParams{ Latest(std::move(cb)) });

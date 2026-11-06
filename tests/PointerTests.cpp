@@ -180,3 +180,95 @@ TEST(HitTestFollowsLayerRotation) {
     Tap(h, 50, 25, 2000);          // inside the rotated bar
     CHECK_EQ(clicks, 1);
 }
+
+#include "kiln/foundation/Scroll.h"
+#include "kiln/foundation/Semantics.h"
+
+TEST(ClickableReportsPressInteractions) {
+    Harness h;
+    auto source = std::make_shared<MutableInteractionSource>();
+    std::vector<std::string> log;
+    source->Subscribe([&](const Interaction& i) {
+        if (i.kind == Interaction::Kind::Press) log.push_back(i.phase == Interaction::Phase::Start ? "press" : i.phase == Interaction::Phase::End ? "release" : "cancel");
+    });
+    int clicks = 0;
+    h.Run([&] {
+        Box(FillMax(Modifier{}, Axis::Both), Alignment::TopStart(), false, [&] {
+            ClickableOptions o;
+            o.interactionSource = source;
+            Box(Clickable(SizeMod(Modifier{}, Dp(50), Dp(50)), [&] { ++clicks; }, o));
+        });
+    });
+    h.Touch(PointerEventType::Press, 10, 10, true, 0);
+    CHECK(source->IsPressed());
+    h.Touch(PointerEventType::Release, 10, 10, false, 50);
+    CHECK(!source->IsPressed());
+    CHECK_EQ(clicks, 1);
+    CHECK_EQ(log.size(), std::size_t(2));
+    CHECK_EQ(log[1], std::string("release"));
+    // Dragged off: cancel, no click.
+    h.Touch(PointerEventType::Press, 10, 10, true, 1000);
+    h.Touch(PointerEventType::Move, 90, 90, true, 1050);
+    h.Touch(PointerEventType::Release, 90, 90, false, 1100);
+    CHECK_EQ(clicks, 1);
+    CHECK_EQ(log.back(), std::string("cancel"));
+}
+
+TEST(PressInScrollableContainerIsDelayed) {
+    Harness h;
+    auto source = std::make_shared<MutableInteractionSource>();
+    auto& state = *new ScrollState();   // outlives the composition in this test
+    h.Run([&] {
+        Column(VerticalScroll(FillMax(Modifier{}, Axis::Both), state), [&] {
+            ClickableOptions o;
+            o.interactionSource = source;
+            Box(Clickable(SizeMod(Modifier{}, Dp(50), Dp(50)), [] {}, o));
+            Box(SizeMod(Modifier{}, Dp(50), Dp(300)));
+        });
+    });
+    h.Touch(PointerEventType::Press, 10, 10, true, 0);
+    CHECK(!source->IsPressed());                       // TapTimeout not yet passed
+    h.Touch(PointerEventType::Release, 10, 10, false, 20);
+    CHECK(!source->IsPressed());                       // a quick tap shows a brief press, then releases
+}
+
+TEST(ToggleableExposesStateAndFlips) {
+    Harness h;
+    rt::State<bool> on(false);
+    h.Run([&] {
+        ClickableOptions o;
+        o.role = Role::Switch;
+        Box(Toggleable(SizeMod(Modifier{}, Dp(50), Dp(50)), on.Get(), [&](bool v) { on.Set(v); }, o));
+    });
+    auto tree = h.owner.BuildSemanticsTree();
+    CHECK_EQ(int(tree.children.size()), 1);
+    CHECK_EQ(*tree.children[0].config.toggleableState, 0);
+    CHECK(tree.children[0].config.role == Role::Switch);
+    h.Touch(PointerEventType::Press, 10, 10, true, 0);
+    h.Touch(PointerEventType::Release, 10, 10, false, 50);
+    h.composition.Recompose();
+    h.owner.MeasureAndLayout({ 100, 100 });
+    CHECK(on.Peek());
+    CHECK_EQ(*h.owner.BuildSemanticsTree().children[0].config.toggleableState, 1);
+}
+
+TEST(DisabledClickableKeepsSemanticsButIgnoresTaps) {
+    Harness h;
+    int clicks = 0;
+    h.Run([&] {
+        Box(FillMax(Modifier{}, Axis::Both), Alignment::TopStart(), false, [&] {
+            ClickableOptions o;
+            o.enabled = false;
+            o.onClickLabel = "Open";
+            Box(Clickable(SizeMod(Modifier{}, Dp(50), Dp(50)), [&] { ++clicks; }, o));
+        });
+    });
+    h.Touch(PointerEventType::Press, 10, 10, true, 0);
+    h.Touch(PointerEventType::Release, 10, 10, false, 50);
+    CHECK_EQ(clicks, 0);
+    const auto tree = h.owner.BuildSemanticsTree();
+    CHECK_EQ(int(tree.children.size()), 1);
+    CHECK(tree.children[0].config.disabled);
+    CHECK(tree.children[0].config.onClickLabel.has_value());
+    if (tree.children[0].config.onClickLabel) CHECK_EQ(*tree.children[0].config.onClickLabel, std::string("Open"));
+}

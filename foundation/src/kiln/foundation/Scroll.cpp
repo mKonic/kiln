@@ -119,6 +119,7 @@ namespace kiln::foundation {
             explicit NestedNode(NestedParams p) : params(std::move(p)) { Apply(); }
             void OnParamsChanged() { Apply(); }
             void Apply() { connection = params.logic.get(); params.logic->node = this; }
+            bool IsScrollableContainer() const override { return true; }
             void OnAttach() override { params.logic->node = this; }
             void OnDetach() override { if (params.logic->node == this) params.logic->node = nullptr; params.logic->StopFling(); }
         };

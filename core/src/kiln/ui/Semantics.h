@@ -35,6 +35,8 @@ namespace kiln::ui {
         std::optional<int> toggleableState;            // 0 off, 1 on, 2 indeterminate
         std::optional<bool> focused;                  // presence = focusable
         std::function<bool()> onClick;
+        std::optional<std::string> onClickLabel;
+        bool selectableGroup = false;
         std::function<bool()> onLongClick;
         std::function<bool(const std::string&)> setText;
         std::function<bool()> requestFocus;

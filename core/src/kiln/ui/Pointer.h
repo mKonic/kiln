@@ -83,6 +83,7 @@ namespace kiln::ui {
         std::int64_t longPressTimeoutMillis = 400;   // ViewConfiguration default 400 ms
         std::int64_t doubleTapTimeoutMillis = 300;
         std::int64_t doubleTapMinTimeMillis = 40;
+        std::int64_t tapTimeoutMillis = 100;         // ViewConfiguration.getTapTimeout (TapIndicationDelay)
         float touchSlop = 8;                         // px; the host sets the scaled value
         Dp minimumTouchTargetSize{ 48 };
         float maximumFlingVelocity = 8000;           // px/s
