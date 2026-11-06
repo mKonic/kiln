@@ -97,7 +97,7 @@ namespace {
         __android_log_print(prio, "kiln", "%.*s", int(message.size()), message.data());
     }
 
-    void Create(JNIEnv* env, jclass, jobject view, jobject text, jfloat density, jfloat fontScale) {
+    void Create(JNIEnv* env, jclass, jobject view, jobject text, jfloat density, jfloat fontScale, jbyteArray saved) {
         hearth::SetLogSink(&LogToLogcat);
         g_Host = new Host();
         g_Host->text = std::make_unique<kiln::android::AndroidText>(env, text);
@@ -135,6 +135,11 @@ namespace {
         ALooper_addFd(looper, g_Host->timerFd, ALOOPER_POLL_CALLBACK, ALOOPER_EVENT_INPUT, &OnLooperWake, nullptr);
         g_Host->app->Dispatcher().wake = [] { Wake(); };
 
+        if (saved) {
+            std::vector<std::uint8_t> bytes(std::size_t(env->GetArrayLength(saved)));
+            env->GetByteArrayRegion(saved, 0, jsize(bytes.size()), reinterpret_cast<jbyte*>(bytes.data()));
+            g_Host->app->RestoreState(bytes);
+        }
         kiln_main(&g_Host->handle);
     }
 
@@ -360,6 +365,14 @@ namespace {
         return a;
     }
 
+    jbyteArray SaveState(JNIEnv* env, jclass) {
+        if (!g_Host) return {};
+        const std::vector<std::uint8_t> bytes = g_Host->app->SaveState();
+        jbyteArray a = env->NewByteArray(jsize(bytes.size()));
+        env->SetByteArrayRegion(a, 0, jsize(bytes.size()), reinterpret_cast<const jbyte*>(bytes.data()));
+        return a;
+    }
+
     // --- back ------------------------------------------------------------------------------
 
     void AfterInput() {
@@ -564,7 +577,7 @@ extern "C" JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void*) {
     jclass cls = env->FindClass("dev/kiln/KilnNative");
     if (!cls) return JNI_ERR;
     static const JNINativeMethod methods[] = {
-        { "create", "(Ldev/kiln/KilnView;Ldev/kiln/KilnText;FF)V", reinterpret_cast<void*>(&Create) },
+        { "create", "(Ldev/kiln/KilnView;Ldev/kiln/KilnText;FF[B)V", reinterpret_cast<void*>(&Create) },
         { "setVisible", "(Z)V", reinterpret_cast<void*>(&SetVisible) },
         { "setDensity", "(FF)V", reinterpret_cast<void*>(&SetDensity) },
         { "setAnimationScale", "(F)V", reinterpret_cast<void*>(&SetAnimationScale) },
@@ -595,6 +608,7 @@ extern "C" JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void*) {
         { "surfaceChanged", "(II)V", reinterpret_cast<void*>(&SurfaceChanged) },
         { "surfaceDestroyed", "()V", reinterpret_cast<void*>(&SurfaceDestroyed) },
         { "destroy", "()V", reinterpret_cast<void*>(&Destroy) },
+        { "saveState", "()[B", reinterpret_cast<void*>(&SaveState) },
     };
     if (env->RegisterNatives(cls, methods, sizeof(methods) / sizeof(methods[0])) != JNI_OK) return JNI_ERR;
     return JNI_VERSION_1_6;

@@ -35,7 +35,10 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
     private final SurfaceView surfaceView;
     private final KilnText text;
 
-    public KilnView(Context context) {
+    public KilnView(Context context) { this(context, null); }
+
+    /** savedState: the bytes from {@link #saveState()} of the previous instance, or null. */
+    public KilnView(Context context, byte[] savedState) {
         super(context);
         setFocusable(true);
         setFocusableInTouchMode(true);
@@ -51,7 +54,7 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
 
         text = new KilnText(context);
         DisplayMetrics metrics = getResources().getDisplayMetrics();
-        KilnNative.create(this, text, metrics.density, getResources().getConfiguration().fontScale);
+        KilnNative.create(this, text, metrics.density, getResources().getConfiguration().fontScale, savedState);
 
         // ANIMATOR_DURATION_SCALE, observed for changes (WindowRecomposer:95-135).
         animationScaleObserver = new ContentObserver(new Handler(Looper.getMainLooper())) {
@@ -317,6 +320,9 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
         KilnNative.setAnimationScale(Settings.Global.getFloat(getContext().getContentResolver(),
                 Settings.Global.ANIMATOR_DURATION_SCALE, 1.0f));
     }
+
+    /** rememberSaveable values, serialised (DisposableSaveableStateRegistry's bundle entry). */
+    public byte[] saveState() { return KilnNative.saveState(); }
 
     void onHostStart() { KilnNative.setVisible(true); }
     void onHostStop() { KilnNative.setVisible(false); }

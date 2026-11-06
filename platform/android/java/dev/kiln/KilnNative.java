@@ -6,7 +6,8 @@ import android.view.Surface;
 final class KilnNative {
     private KilnNative() {}
 
-    static native void create(KilnView view, KilnText text, float density, float fontScale);
+    static native void create(KilnView view, KilnText text, float density, float fontScale, byte[] savedState);
+    static native byte[] saveState();
     static native void setVisible(boolean visible);
     static native void destroy();
     static native void setDensity(float density, float fontScale);

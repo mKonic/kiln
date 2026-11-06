@@ -14,7 +14,15 @@ import android.view.Window;
  * is created. Configuration changes listed in the manifest are handled in-process.
  */
 public class KilnActivity extends Activity {
+    // One registry per root ("SaveableStateRegistry:<id>", DisposableSaveableStateRegistry.android.kt).
+    private static final String SAVED_STATE_KEY = "SaveableStateRegistry:kiln";
     private KilnView view;
+
+    @Override
+    protected void onSaveInstanceState(Bundle outState) {
+        super.onSaveInstanceState(outState);
+        outState.putByteArray(SAVED_STATE_KEY, view.saveState());
+    }
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -28,7 +36,8 @@ public class KilnActivity extends Activity {
         window.setNavigationBarColor(Color.TRANSPARENT);
         window.setNavigationBarContrastEnforced(false);
 
-        view = new KilnView(this);
+        byte[] saved = savedInstanceState != null ? savedInstanceState.getByteArray(SAVED_STATE_KEY) : null;
+        view = new KilnView(this, saved);
         setContentView(view);
     }
 
