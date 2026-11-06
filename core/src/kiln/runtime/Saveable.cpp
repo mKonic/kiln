@@ -44,6 +44,80 @@ namespace kiln::rt {
         return out;
     }
 
+    // --- SaveableStateHolder -------------------------------------------------------------------
+
+    std::shared_ptr<SaveableStateRegistry> SaveableStateHolder::Open(const std::string& key) {
+        auto& live = m_Live[key];
+        if (!live) {
+            SaveableStateRegistry::Values restored;
+            if (auto it = m_Saved.find(key); it != m_Saved.end()) { restored = std::move(it->second); m_Saved.erase(it); }
+            live = std::make_shared<SaveableStateRegistry>(std::move(restored));
+        }
+        return live;
+    }
+
+    void SaveableStateHolder::Close(const std::string& key) {
+        auto it = m_Live.find(key);
+        if (it == m_Live.end()) return;
+        auto values = it->second->PerformSave();
+        if (!values.empty()) m_Saved[key] = std::move(values);
+        m_Live.erase(it);
+    }
+
+    // Encoded as [key, [name, [values...]]...] pairs.
+    SavedValue SaveableStateHolder::Save() const {
+        auto encode = [](const std::string& key, const SaveableStateRegistry::Values& values) {
+            SavedValue::List entries;
+            for (const auto& [name, list] : values) entries.push_back(SavedValue::List{ SavedValue(name), SavedValue(SavedValue::List(list)) });
+            return SavedValue(SavedValue::List{ SavedValue(key), SavedValue(std::move(entries)) });
+        };
+        SavedValue::List out;
+        for (const auto& [key, values] : m_Saved) out.push_back(encode(key, values));
+        for (const auto& [key, reg] : m_Live) {
+            auto values = reg->PerformSave();
+            if (!values.empty()) out.push_back(encode(key, values));
+        }
+        return SavedValue(std::move(out));
+    }
+
+    void SaveableStateHolder::Restore(const SavedValue& saved) {
+        const auto* list = std::get_if<SavedValue::List>(&saved.v);
+        if (!list) return;
+        for (const SavedValue& e : *list) {
+            const auto* pair = std::get_if<SavedValue::List>(&e.v);
+            if (!pair || pair->size() != 2) continue;
+            const auto* key = std::get_if<std::string>(&(*pair)[0].v);
+            const auto* entries = std::get_if<SavedValue::List>(&(*pair)[1].v);
+            if (!key || !entries) continue;
+            SaveableStateRegistry::Values values;
+            for (const SavedValue& en : *entries) {
+                const auto* p = std::get_if<SavedValue::List>(&en.v);
+                if (!p || p->size() != 2) continue;
+                const auto* name = std::get_if<std::string>(&(*p)[0].v);
+                const auto* vals = std::get_if<SavedValue::List>(&(*p)[1].v);
+                if (name && vals) values[*name] = *vals;
+            }
+            m_Saved[*key] = std::move(values);
+        }
+    }
+
+    SaveableStateHolder& RememberSaveableStateHolder(Key key) {
+        auto& c = *Composition::Current();
+        SaveableStateRegistry* registry = c.Read(LocalSaveableStateRegistry);
+        const std::string k = detail::SaveableKey(c.CompositeKey(key));
+        auto& holder = c.Remember<std::shared_ptr<SaveableStateHolder>>([&] {
+            auto h = std::make_shared<SaveableStateHolder>();
+            if (registry) if (auto s = registry->ConsumeRestored(k)) h->Restore(*s);
+            return h;
+        }, {}, key);
+        c.DisposableEffect(Keys(registry, k), [registry, k, keep = holder] {
+            if (!registry) return std::function<void()>([] {});
+            const std::uint64_t id = registry->RegisterProvider(k, [keep] { return keep->Save(); });
+            return std::function<void()>([registry, k, id] { registry->Unregister(k, id); });
+        }, key);
+        return *holder;
+    }
+
     // --- serialisation: a small tagged format (one blob in the Activity bundle) ----------------
 
     namespace {

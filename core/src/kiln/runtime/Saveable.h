@@ -92,6 +92,27 @@ namespace kiln::rt {
 
     inline Local<SaveableStateRegistry*> LocalSaveableStateRegistry{ nullptr };
 
+    // SaveableStateHolder (SaveableStateHolder.kt): a child registry per key for content that
+    // comes and goes (lazy items, pager pages, navigation entries). Closing a key keeps its
+    // values for when it is opened again; everything is saved into the parent registry too.
+    class SaveableStateHolder {
+    public:
+        // The registry to provide for `key`'s content, restored from what Close saved.
+        std::shared_ptr<SaveableStateRegistry> Open(const std::string& key);
+        // Call while the content is still composed (before disposing it).
+        void Close(const std::string& key);
+        void RemoveState(const std::string& key) { m_Saved.erase(key); m_Live.erase(key); }
+        SavedValue Save() const;
+        void Restore(const SavedValue& saved);
+
+    private:
+        std::map<std::string, SaveableStateRegistry::Values> m_Saved;
+        std::map<std::string, std::shared_ptr<SaveableStateRegistry>> m_Live;
+    };
+
+    // rememberSaveableStateHolder(): its values ride in the parent registry.
+    SaveableStateHolder& RememberSaveableStateHolder(Key key = {});
+
     namespace detail {
         std::string SaveableKey(std::uint64_t compositeKey);   // base-36 like Compose
 

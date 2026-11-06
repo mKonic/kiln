@@ -1,5 +1,6 @@
 #include "kiln/foundation/Lazy.h"
 #include "kiln/foundation/Overscroll.h"
+#include "kiln/runtime/Saveable.h"
 
 #include <cmath>
 
@@ -32,6 +33,7 @@ namespace kiln::foundation {
         struct Slot {
             std::unique_ptr<LayoutNode> holder;
             std::unique_ptr<rt::Composition> composition;
+            std::shared_ptr<rt::SaveableStateRegistry> registry;   // the item's rememberSaveable values
             int index = -1;
             std::uint64_t contentVersion = 0;
         };
@@ -45,7 +47,16 @@ namespace kiln::foundation {
         std::uint64_t version = 0;
         std::map<std::uint64_t, Slot> slots;     // by item key value
         rt::Scope* context = nullptr;            // Locals the items see
+        rt::SaveableStateHolder* holder = nullptr;   // keeps item state while items are off-screen
         int count = 0;
+
+        static std::string SaveKey(std::uint64_t keyValue) { return std::to_string(keyValue); }
+        // Saves the item's state (while it is still composed), then disposes it.
+        void DisposeSlot(std::uint64_t keyValue, Slot& slot) {
+            if (holder && slot.registry) holder->Close(SaveKey(keyValue));
+            slot.composition.reset();
+            slot.registry.reset();
+        }
 
         rt::Key UserKey(int index) const {
             int base = 0;
@@ -108,12 +119,17 @@ namespace kiln::foundation {
                 slot.holder = std::make_unique<LayoutNode>();
                 slot.holder->SetMeasurePolicy(std::make_shared<HolderPolicy>());
                 slot.composition = std::make_unique<rt::Composition>(*slot.holder, d);
+                if (holder) slot.registry = holder->Open(SaveKey(key.value));
             }
             slot.composition->SetParentContext(context);
             if (slot.index != index || slot.contentVersion != version) {
                 slot.index = index;
                 slot.contentVersion = version;
-                slot.composition->SetContent([this, index] { Content(index); });
+                rt::SaveableStateRegistry* reg = slot.registry.get();
+                slot.composition->SetContent([this, index, reg] {
+                    if (!reg) { Content(index); return; }
+                    rt::Composition::Current()->Provide(rt::LocalSaveableStateRegistry, reg, [this, index] { Content(index); });
+                });
             }
             slot.composition->Recompose();
             return slot;
@@ -273,7 +289,7 @@ namespace kiln::foundation {
             if (found >= 0) index = found;
         }
         if (count == 0) {
-            for (auto& [k, slot] : slots) slot.composition.reset();
+            for (auto& [k, slot] : slots) DisposeSlot(k, slot);
             slots.clear();
             self.SetChildrenDuringMeasure({});
             st.m_LastConsumed = st.m_PendingScroll = 0;
@@ -396,7 +412,7 @@ namespace kiln::foundation {
             bool used = false;
             for (auto& v : items) if (v.slot == &it->second) used = true;
             if (sticking && sticking->slot == &it->second) used = true;
-            if (!used) { it->second.composition.reset(); it = slots.erase(it); } else ++it;
+            if (!used) { DisposeSlot(it->first, it->second); it = slots.erase(it); } else ++it;
         }
 
         st.m_Index.Set(firstIndex);
@@ -465,6 +481,7 @@ namespace kiln::foundation {
             content(scope);
             core->vertical = vertical;
             core->context = comp.CurrentScope();
+            core->holder = &rt::RememberSaveableStateHolder(key);
             core->state = &state;
             core->options = options;
             core->intervals = std::move(scope.intervals);

@@ -1,6 +1,8 @@
 #include "Check.h"
 
 #include "kiln/foundation/Lazy.h"
+#include "kiln/runtime/Saveable.h"
+#include <map>
 
 using namespace kiln;
 using namespace kiln::foundation;
@@ -178,4 +180,46 @@ TEST(StickyHeadersPinAndArePushedByTheNext) {
     bool sawFive = false;
     for (int i : headerIndices) { CHECK(i % 5 == 0); if (i == 5) sawFive = true; }
     CHECK(sawFive);
+}
+
+TEST(ItemSaveableStateSurvivesScrollingAwayAndRecreation) {
+    std::vector<std::uint8_t> saved;
+    // One content function for both "activities" so the composite keys match.
+    auto run = [](Harness& h, rt::SaveableStateRegistry& registry, LazyListState& state, std::map<int, rt::State<int>*>& counters) {
+        h.Run([&] { rt::Composition::Current()->Provide(rt::LocalSaveableStateRegistry, &registry, [&] {
+        LazyColumn(FillMax(Modifier{}, Axis::Both), state, [&](LazyListScope& s) {
+            s.Items(100, [&](int i) {
+                counters[i] = &rt::RememberSaveableState(0);
+                Box(SizeMod(Modifier{}, Dp(100), Dp(20)));
+            }, [](int i) { return rt::Key(i + 1); });
+        });
+        }); });
+    };
+    {
+        rt::SaveableStateRegistry registry;   // outlives the composition, which unregisters from it
+        LazyListState state;
+        Harness h;
+        std::map<int, rt::State<int>*> counters;
+        run(h, registry, state, counters);
+        counters[1]->Set(11);
+        state.ScrollToItem(50);
+        h.Pump();
+        counters.erase(1);
+        state.ScrollToItem(0);
+        h.Pump();
+        CHECK(counters.count(1) == 1);
+        CHECK_EQ(counters[1]->Peek(), 11);      // came back with its value
+        counters[2]->Set(22);
+        state.ScrollToItem(50);                 // items 1 and 2 off-screen when saving
+        h.Pump();
+        saved = rt::SaveableStateRegistry::Serialize(registry.PerformSave());
+    }
+    rt::SaveableStateRegistry registry(rt::SaveableStateRegistry::Deserialize(saved));
+    LazyListState state;
+    Harness h;
+    std::map<int, rt::State<int>*> counters;
+    run(h, registry, state, counters);
+    CHECK_EQ(counters[1]->Peek(), 11);
+    CHECK_EQ(counters[2]->Peek(), 22);
+    CHECK_EQ(counters[3]->Peek(), 0);
 }
