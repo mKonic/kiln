@@ -35,8 +35,8 @@ final class KilnNative {
     static native boolean hostRequestFocus(int direction, boolean hasRect, float left, float top, float right,
                                            float bottom, boolean hostHasFocus);
     static native void hostFocusChanged(boolean focused);
-    static native void setInsets(int type, int left, int top, int right, int bottom);
-    static native void setImeState(boolean visible, boolean animating);
+    static native void setWindowInsets(int[] data);
+    static native void setInsetsAnimation(int type, boolean running, int[] sourceTarget, float fraction, float alpha, long durationMillis);
 
     // InputConnection -> the active native text input session.
     static native void imeCommitText(String text, int newCursorPosition);

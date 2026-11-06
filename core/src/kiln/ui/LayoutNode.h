@@ -161,6 +161,11 @@ namespace kiln::ui {
         std::vector<std::pair<const AlignmentLine*, int>> m_LinesReadByParent;
         bool m_LinesReadInMeasure = false, m_CheckingLines = false;
         void RecordLineRead(const AlignmentLine& line, int value);
+        // Rulers: each coordinator's provided values and who read them.
+        Mat3 CoordinatorToRoot(std::size_t index) const;
+        void CaptureRulers(std::size_t index);
+        float FindRulerValue(std::size_t index, const Ruler& ruler, float defaultValue);
+        void InvalidateRulerReaders(LayoutNode& definer, std::size_t index, const RulerData* ruler);
         void CheckLinesReadByParent();
         bool m_Placed = false;
         bool m_PlacedThisPass = false;   // set by the parent's current layout pass

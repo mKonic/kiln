@@ -157,8 +157,10 @@ namespace kiln {
             void PlayClickSound() override { owner->PlaySoundEffect(0); }
         };
         std::shared_ptr<ui::SoundEffect> sound = std::make_shared<HostSound>(&m_Owner);
-        m_Composition->SetContent([registry, dir, nested, tv, sound, content = std::move(content)] {
+        ui::WindowInsetsHolder* insets = &m_Owner.Insets();
+        m_Composition->SetContent([registry, dir, nested, tv, sound, insets, content = std::move(content)] {
             auto* c = rt::Composition::Current();
+            c->Provide(ui::LocalWindowInsets, insets, [c, registry, dir, nested, tv, sound, content] {
             c->Provide(ui::LocalLayoutDirection, dir->Get(), [c, registry, nested, tv, sound, content] {
                 c->Provide(ui::LocalHostNestedScrollParent, nested, [c, registry, tv, sound, content] {
                     c->Provide(ui::LocalIsTelevision, tv, [c, registry, sound, content] {
@@ -167,6 +169,7 @@ namespace kiln {
                         });
                     });
                 });
+            });
             });
         });
         RequestFrame();

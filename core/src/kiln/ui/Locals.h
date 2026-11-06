@@ -40,4 +40,9 @@ namespace kiln::ui {
     };
     inline rt::Local<std::shared_ptr<SoundEffect>> LocalSoundEffect{ nullptr };
 
+    // The window's insets (WindowInsetsHolder.current: the host view's), for composables that
+    // ask whether bars are visible or read insets directly.
+    class WindowInsetsHolder;
+    inline rt::Local<WindowInsetsHolder*> LocalWindowInsets{ nullptr };
+
 }

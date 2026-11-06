@@ -1,4 +1,5 @@
 #include "kiln/ui/LayoutNode.h"
+#include "kiln/ui/InsetsRulers.h"
 
 #include <cmath>
 #include "kiln/ui/NestedScroll.h"
@@ -44,6 +45,10 @@ namespace kiln::ui {
         LayoutModifier* mod;                 // null for the inner coordinator
         std::vector<DrawModifier*> draws;    // drawn within this coordinator's size
         MeasureResult result;
+        // Ruler values captured from the result, and the nodes that read each (or read the
+        // default here at the top, for rulers nothing provided).
+        std::vector<std::pair<const RulerData*, float>> rulerValues;
+        std::vector<std::pair<const RulerData*, std::vector<std::pair<LayoutNode*, std::weak_ptr<const char>>>>> rulerReaders;
         IntOffset position;                  // within the enclosing coordinator (0: in parent)
         float zIndex = 0;                    // as placed by the enclosing coordinator (or parent)
 
@@ -600,8 +605,12 @@ namespace kiln::ui {
         for (LayoutNode* c : m_Children) c->m_PlacedThisPass = false;
         m_InLayout = true;
         rt::Observation::Track(m_LayoutWatch, [&] {
-            for (auto& c : m_Coordinators) {
+            for (std::size_t i = 0; i < m_Coordinators.size(); ++i) {
+                auto& c = m_Coordinators[i];
+                CaptureRulers(i);
                 PlacementScope scope(dir, c->Width());
+                scope.SetRulerLookup([this, i](const Ruler& r, float d) { return FindRulerValue(i, r, d); });
+                if (m_Owner) scope.SetInsets(&m_Owner->Insets());
                 if (c->result.place) c->result.place(scope);
             }
         });
@@ -611,6 +620,109 @@ namespace kiln::ui {
             if (!c->m_PlacedThisPass && c->m_Placed) { c->m_Placed = false; InvalidateDraw(); }
         InvalidateDraw();
         CheckLinesReadByParent();
+    }
+
+    LayoutNode::Mat3 LayoutNode::CoordinatorToRoot(std::size_t k) const {
+        // The walk of HitSteps: coordinator k's space is reached at its layout modifier.
+        Mat3 m = Mul3(ParentInner(m_Parent), Translate3(float(m_Position.x), float(m_Position.y)));
+        std::size_t ci = 0;
+        for (const auto& node : m_Nodes) {
+            const auto& c = *m_Coordinators[ci];
+            const ui::Size size{ float(c.Width()), float(c.Height()) };
+            if (const DrawModifier* d = node->AsDraw()) {
+                Mat3 t;
+                if (LayerOf(d, size, t)) m = Mul3(m, t);
+            }
+            if (node->AsLayout() && ci + 1 < m_Coordinators.size()) {
+                if (ci == k) return m;
+                ++ci;
+                const auto& n = *m_Coordinators[ci];
+                m = Mul3(m, Translate3(float(n.position.x), float(n.position.y)));
+            }
+        }
+        return m;
+    }
+
+    void LayoutNode::CaptureRulers(std::size_t index) {
+        Coordinator& c = *m_Coordinators[index];
+        std::vector<std::pair<const RulerData*, float>> values;
+        if (c.result.rulers) {
+            const Density d = m_Owner ? m_Owner->GetDensity() : Density{};
+            RulerScope scope(d, m_Owner ? m_Owner->Direction() : LayoutDirection::Ltr, c.Width(),
+                             [this, index](Offset p) { return MapPoint(CoordinatorToRoot(index), p); });
+            c.result.rulers(scope);
+            values = scope.Values();
+        }
+        if (values == c.rulerValues) return;
+        // Readers of rulers that changed, appeared or went away place again.
+        std::vector<const RulerData*> changed;
+        for (const auto& [r, v] : values) {
+            auto it = std::find_if(c.rulerValues.begin(), c.rulerValues.end(), [&](const auto& p) { return p.first == r; });
+            if (it == c.rulerValues.end() || it->second != v) changed.push_back(r);
+        }
+        for (const auto& [r, v] : c.rulerValues)
+            if (std::none_of(values.begin(), values.end(), [&](const auto& p) { return p.first == r; })) changed.push_back(r);
+        c.rulerValues = std::move(values);
+        for (const RulerData* r : changed) InvalidateRulerReaders(*this, index, r);
+    }
+
+    void LayoutNode::InvalidateRulerReaders(LayoutNode& definer, std::size_t index, const RulerData* ruler) {
+        // invalidateChildrenOfDefiningRuler: readers registered here, and those that read it (or
+        // its default) from further up and sit inside this node.
+        auto relayout = [&](Coordinator& c, bool onlyInside) {
+            for (auto it = c.rulerReaders.begin(); it != c.rulerReaders.end(); ++it) {
+                if (it->first != ruler) continue;
+                auto& readers = it->second;
+                for (auto r = readers.begin(); r != readers.end();) {
+                    if (r->second.expired()) { r = readers.erase(r); continue; }
+                    bool inside = !onlyInside;
+                    for (const LayoutNode* n = r->first; n && !inside; n = n->m_Parent) inside = n == &definer;
+                    if (inside) { if (r->first != &definer) r->first->RequestRelayout(); r = readers.erase(r); }
+                    else ++r;
+                }
+            }
+        };
+        relayout(*definer.m_Coordinators[index], false);
+        for (LayoutNode* n = &definer; n; n = n->m_Parent) {
+            const std::size_t start = n == &definer ? index : n->m_Coordinators.size();
+            for (std::size_t i = start; i-- > 0;) relayout(*n->m_Coordinators[i], true);
+        }
+    }
+
+    float LayoutNode::FindRulerValue(std::size_t index, const Ruler& ruler, float defaultValue) {
+        const RulerData* id = ruler.Id();
+        auto addReader = [&](Coordinator& c) {
+            for (auto& [r, readers] : c.rulerReaders)
+                if (r == id) {
+                    for (auto& [n, alive] : readers) if (n == this) return;
+                    readers.emplace_back(this, m_Alive);
+                    return;
+                }
+            c.rulerReaders.push_back({ id, { { this, m_Alive } } });
+        };
+        LayoutNode* n = this;
+        std::size_t i = index + 1;
+        Coordinator* top = nullptr;
+        while (n) {
+            while (i-- > 0) {
+                Coordinator& c = *n->m_Coordinators[i];
+                top = &c;
+                for (const auto& [r, v] : c.rulerValues) {
+                    if (r != id) continue;
+                    addReader(c);
+                    // calculateCoordinate: through the middle of the definer, into this space.
+                    const Offset local = ruler.IsVertical() ? Offset{ v, float(c.Height()) / 2 } : Offset{ float(c.Width()) / 2, v };
+                    const Offset root = MapPoint(n->CoordinatorToRoot(i), local);
+                    const auto mine = UnmapPoint(CoordinatorToRoot(index), root);
+                    if (!mine) return defaultValue;
+                    return ruler.IsVertical() ? mine->x : mine->y;
+                }
+            }
+            n = n->m_Parent;
+            if (n) i = n->m_Coordinators.size();
+        }
+        if (top) addReader(*top);
+        return defaultValue;
     }
 
     void LayoutNode::RecordLineRead(const AlignmentLine& line, int value) {
@@ -684,7 +796,15 @@ namespace kiln::ui {
         // RootMeasurePolicy (ui/layout/RootMeasurePolicy.kt): children get the window's
         // constraints as they are and sit at the origin.
         struct RootMeasurePolicy final : MeasurePolicy {
+            const WindowInsetsHolder* insets = nullptr;
             MeasureResult Measure(MeasureScope& s, std::span<Measurable* const> ch, const Constraints& c) override {
+                MeasureResult r = Children(s, ch, c);
+                // The window insets as rulers for every layout (WindowInsetsRulersProvider).
+                if (insets)
+                    r.rulers = [h = insets, w = r.width, hh = r.height](RulerScope& scope) { ProvideWindowInsetsRulers(scope, *h, w, hh); };
+                return r;
+            }
+            MeasureResult Children(MeasureScope& s, std::span<Measurable* const> ch, const Constraints& c) {
                 if (ch.empty()) return s.Layout(c.minWidth, c.minHeight);
                 std::vector<Placeable*> ps;
                 int w = 0, h = 0;
@@ -704,7 +824,9 @@ namespace kiln::ui {
     Owner::Owner() : m_Root(std::make_unique<LayoutNode>()) {
         m_RootFocus.m_IsRoot = true;
         m_RootFocus.focusability = Focusability::Never;
-        m_Root->SetMeasurePolicy(std::make_shared<RootMeasurePolicy>());
+        auto root = std::make_shared<RootMeasurePolicy>();
+        root->insets = &m_Insets;
+        m_Root->SetMeasurePolicy(std::move(root));
         m_Root->Attach(*this, 0);
     }
 

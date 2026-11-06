@@ -7,6 +7,8 @@
 
 #include <array>
 #include <cstdint>
+#include <optional>
+#include <vector>
 
 namespace kiln::ui {
 
@@ -21,18 +23,57 @@ namespace kiln::ui {
         }
     };
 
+    // WindowInsetsAnimation of one type (WindowInsetsAnimationCompat): from source to target.
+    struct InsetsAnimation {
+        InsetsValue source, target;
+        float fraction = 0;          // interpolated
+        float alpha = 1;
+        std::int64_t durationMillis = 0;
+        bool operator==(const InsetsAnimation&) const = default;
+    };
+
+    struct InsetsRect {
+        int left = 0, top = 0, right = 0, bottom = 0;
+        bool operator==(const InsetsRect&) const = default;
+    };
+
     class WindowInsetsHolder {
     public:
-        const InsetsValue& Get(InsetsType t) const { return m_Values[std::size_t(t)].Get(); }
-        void Set(InsetsType t, InsetsValue v) { m_Values[std::size_t(t)].Set(v); }
-        bool ImeVisible() const { return m_ImeVisible.Get(); }
-        void SetImeVisible(bool v) { m_ImeVisible.Set(v); }
-        bool ImeAnimating() const { return m_ImeAnimating.Get(); }
-        void SetImeAnimating(bool v) { m_ImeAnimating.Set(v); }
+        // Current insets (zero while the type is hidden).
+        const InsetsValue& Get(InsetsType t) const { return At(t).current.Get(); }
+        void Set(InsetsType t, InsetsValue v) { At(t).current.Set(v); }
+        // getInsetsIgnoringVisibility: what the type takes when shown (the IME has none).
+        const InsetsValue& GetIgnoringVisibility(InsetsType t) const { return At(t).maximum.Get(); }
+        void SetIgnoringVisibility(InsetsType t, InsetsValue v) { At(t).maximum.Set(v); }
+        bool IsVisible(InsetsType t) const { return At(t).visible.Get(); }
+        void SetVisible(InsetsType t, bool v) { At(t).visible.Set(v); }
+        // The running animation of a type, if any.
+        const std::optional<InsetsAnimation>& Animation(InsetsType t) const { return At(t).animation.Get(); }
+        void SetAnimation(InsetsType t, std::optional<InsetsAnimation> a) { At(t).animation.Set(std::move(a)); }
+        bool IsAnimating(InsetsType t) const { return Animation(t).has_value(); }
+        // DisplayCutout.getBoundingRects, window pixels.
+        const std::vector<InsetsRect>& CutoutRects() const { return m_Cutouts.Get(); }
+        void SetCutoutRects(std::vector<InsetsRect> r) { m_Cutouts.Set(std::move(r)); }
+        // Whether the host has delivered insets at all (rulers are provided only then).
+        bool HasInsets() const { return m_Has.Get(); }
+        void SetHasInsets(bool v) { m_Has.Set(v); }
+
+        // Older names for the IME.
+        bool ImeVisible() const { return IsVisible(InsetsType::Ime); }
+        void SetImeVisible(bool v) { SetVisible(InsetsType::Ime, v); }
+        bool ImeAnimating() const { return IsAnimating(InsetsType::Ime); }
 
     private:
-        std::array<rt::State<InsetsValue>, std::size_t(InsetsType::Count)> m_Values;
-        rt::State<bool> m_ImeVisible{ false }, m_ImeAnimating{ false };
+        struct PerType {
+            rt::State<InsetsValue> current, maximum;
+            rt::State<bool> visible{ false };
+            rt::State<std::optional<InsetsAnimation>> animation;
+        };
+        PerType& At(InsetsType t) { return m_Types[std::size_t(t)]; }
+        const PerType& At(InsetsType t) const { return m_Types[std::size_t(t)]; }
+        std::array<PerType, std::size_t(InsetsType::Count)> m_Types;
+        rt::State<std::vector<InsetsRect>> m_Cutouts;
+        rt::State<bool> m_Has{ false };
     };
 
 }

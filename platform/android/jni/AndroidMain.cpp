@@ -555,16 +555,48 @@ namespace {
         ArmTimer();
     }
 
-    void SetInsets(JNIEnv*, jclass, jint type, jint l, jint t, jint r, jint b) {
+    void SetWindowInsets(JNIEnv* env, jclass, jintArray data) {
         if (!g_Host) return;
-        if (type < 0 || type >= jint(kiln::ui::InsetsType::Count)) return;
-        g_Host->app->GetOwner().Insets().Set(kiln::ui::InsetsType(type), { l, t, r, b });
-    }
-    void SetImeState(JNIEnv*, jclass, jboolean visible, jboolean animating) {
-        if (!g_Host) return;
+        const jsize n = env->GetArrayLength(data);
+        std::vector<jint> v(static_cast<std::size_t>(n));
+        env->GetIntArrayRegion(data, 0, n, v.data());
         auto& h = g_Host->app->GetOwner().Insets();
-        h.SetImeVisible(visible);
-        h.SetImeAnimating(animating);
+        constexpr std::size_t kTypes = std::size_t(kiln::ui::InsetsType::Count);
+        if (v.size() < kTypes * 9 + 1) return;
+        for (std::size_t i = 0; i < kTypes; ++i) {
+            const jint* p = v.data() + i * 9;
+            const auto type = kiln::ui::InsetsType(i);
+            h.Set(type, { p[0], p[1], p[2], p[3] });
+            h.SetIgnoringVisibility(type, { p[4], p[5], p[6], p[7] });
+            h.SetVisible(type, p[8] != 0);
+        }
+        std::vector<kiln::ui::InsetsRect> cutouts;
+        const std::size_t count = std::size_t(v[kTypes * 9]);
+        for (std::size_t i = 0; i < count && kTypes * 9 + 1 + i * 4 + 3 < v.size(); ++i) {
+            const jint* p = v.data() + kTypes * 9 + 1 + i * 4;
+            cutouts.push_back({ p[0], p[1], p[2], p[3] });
+        }
+        h.SetCutoutRects(std::move(cutouts));
+        h.SetHasInsets(true);
+        g_Host->app->RequestFrame();
+    }
+    void SetInsetsAnimation(JNIEnv* env, jclass, jint type, jboolean running, jintArray bounds, jfloat fraction, jfloat alpha, jlong duration) {
+        if (!g_Host || type < 0 || type >= jint(kiln::ui::InsetsType::Count)) return;
+        auto& h = g_Host->app->GetOwner().Insets();
+        const auto t = kiln::ui::InsetsType(type);
+        if (!running) { h.SetAnimation(t, std::nullopt); g_Host->app->RequestFrame(); return; }
+        kiln::ui::InsetsAnimation a = h.Animation(t).value_or(kiln::ui::InsetsAnimation{});
+        if (bounds && env->GetArrayLength(bounds) >= 8) {
+            jint b[8];
+            env->GetIntArrayRegion(bounds, 0, 8, b);
+            a.source = { b[0], b[1], b[2], b[3] };
+            a.target = { b[4], b[5], b[6], b[7] };
+        }
+        a.fraction = fraction;
+        a.alpha = alpha;
+        a.durationMillis = duration;
+        h.SetAnimation(t, a);
+        g_Host->app->RequestFrame();
     }
 
     void HostFocusChanged(JNIEnv*, jclass, jboolean focused) {
@@ -1056,8 +1088,8 @@ extern "C" JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void*) {
         { "isBetterFocusCandidate", "(I[F[F[F)Z", reinterpret_cast<void*>(&IsBetterFocusCandidate) },
         { "hostRequestFocus", "(IZFFFFZ)Z", reinterpret_cast<void*>(&HostRequestFocus) },
         { "hostFocusChanged", "(Z)V", reinterpret_cast<void*>(&HostFocusChanged) },
-        { "setInsets", "(IIIII)V", reinterpret_cast<void*>(&SetInsets) },
-        { "setImeState", "(ZZ)V", reinterpret_cast<void*>(&SetImeState) },
+        { "setWindowInsets", "([I)V", reinterpret_cast<void*>(&SetWindowInsets) },
+        { "setInsetsAnimation", "(IZ[IFFJ)V", reinterpret_cast<void*>(&SetInsetsAnimation) },
         { "imeCommitText", "(Ljava/lang/String;I)V", reinterpret_cast<void*>(&ImeCommitText) },
         { "imeSetComposingText", "(Ljava/lang/String;I)V", reinterpret_cast<void*>(&ImeSetComposingText) },
         { "imeSetComposingRegion", "(II)V", reinterpret_cast<void*>(&ImeSetComposingRegion) },

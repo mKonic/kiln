@@ -1,5 +1,7 @@
 #include "kiln/ui/Layout.h"
 
+#include <cmath>
+
 namespace kiln::ui {
 
     namespace intrinsics {
@@ -84,5 +86,44 @@ namespace kiln::ui {
     int LayoutModifier::MaxIntrinsicWidth(MeasureScope& s, Measurable& w, int h) { return ThroughModifier(*this, s, w, Kind::MaxWidth, h); }
     int LayoutModifier::MinIntrinsicHeight(MeasureScope& s, Measurable& w, int width) { return ThroughModifier(*this, s, w, Kind::MinHeight, width); }
     int LayoutModifier::MaxIntrinsicHeight(MeasureScope& s, Measurable& w, int width) { return ThroughModifier(*this, s, w, Kind::MaxHeight, width); }
+
+    namespace {
+        // mergeRulerValues: the largest (or smallest) value among the rulers that have one.
+        template<typename R>
+        float Merge(PlacementScope& s, const std::vector<R>& rulers, bool greater, float defaultValue) {
+            float value = NAN;
+            for (const R& r : rulers) {
+                const float next = s.Current(r, NAN);
+                if (std::isnan(value) || (greater == (next > value))) value = next;
+            }
+            return std::isnan(value) ? defaultValue : value;
+        }
+    }
+
+    VerticalRuler VerticalRuler::MaxOf(std::vector<VerticalRuler> r) {
+        return Derived([r](PlacementScope& s, float d) { return Merge(s, r, true, d); });
+    }
+    VerticalRuler VerticalRuler::MinOf(std::vector<VerticalRuler> r) {
+        return Derived([r](PlacementScope& s, float d) { return Merge(s, r, false, d); });
+    }
+    HorizontalRuler HorizontalRuler::MaxOf(std::vector<HorizontalRuler> r) {
+        return Derived([r](PlacementScope& s, float d) { return Merge(s, r, true, d); });
+    }
+    HorizontalRuler HorizontalRuler::MinOf(std::vector<HorizontalRuler> r) {
+        return Derived([r](PlacementScope& s, float d) { return Merge(s, r, false, d); });
+    }
+
+    RectRulers RectRulers::InnermostOf(const std::vector<RectRulers>& rulers) {
+        std::vector<VerticalRuler> l, r;
+        std::vector<HorizontalRuler> t, b;
+        for (const auto& x : rulers) { l.push_back(x.left); t.push_back(x.top); r.push_back(x.right); b.push_back(x.bottom); }
+        return { VerticalRuler::MaxOf(l), HorizontalRuler::MaxOf(t), VerticalRuler::MinOf(r), HorizontalRuler::MinOf(b) };
+    }
+    RectRulers RectRulers::OutermostOf(const std::vector<RectRulers>& rulers) {
+        std::vector<VerticalRuler> l, r;
+        std::vector<HorizontalRuler> t, b;
+        for (const auto& x : rulers) { l.push_back(x.left); t.push_back(x.top); r.push_back(x.right); b.push_back(x.bottom); }
+        return { VerticalRuler::MinOf(l), HorizontalRuler::MinOf(t), VerticalRuler::MaxOf(r), HorizontalRuler::MaxOf(b) };
+    }
 
 }

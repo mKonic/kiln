@@ -76,44 +76,115 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
         WindowInsets.Type.statusBars(), WindowInsets.Type.navigationBars(), WindowInsets.Type.captionBar(),
         WindowInsets.Type.ime(), WindowInsets.Type.displayCutout(), WindowInsets.Type.systemGestures(),
         WindowInsets.Type.mandatorySystemGestures(), WindowInsets.Type.tappableElement(), 0 /* waterfall below */ };
-    private boolean imeAnimating;
+    // WindowInsetsWatcher: insets that arrive while an animation is being prepared wait for
+    // onStart, which starts the animation of each type whose insets change; while types
+    // animate, onProgress delivers their insets frame by frame.
+    private boolean insetsPrepared;
+    private int runningAnimationMask;
+    private WindowInsets savedInsets, currentInsets;
 
-    private void pushInsets(WindowInsets insets, boolean skipIme) {
-        for (int i = 0; i < TYPES.length; i++) {
-            if (skipIme && i == 3) continue;
-            android.graphics.Insets v;
-            if (i == 8) {
-                android.view.DisplayCutout c = insets.getDisplayCutout();
-                v = c != null ? c.getWaterfallInsets() : android.graphics.Insets.NONE;
-            } else {
-                v = insets.getInsets(TYPES[i]);
+    /** current (4), maximum (4) and visible (1) per type, then the display cutout rects. */
+    private void pushInsets(WindowInsets insets) {
+        android.view.DisplayCutout cutout = insets.getDisplayCutout();
+        android.graphics.Insets waterfall = cutout != null ? cutout.getWaterfallInsets() : android.graphics.Insets.NONE;
+        java.util.List<Rect> rects = cutout != null ? cutout.getBoundingRects() : java.util.Collections.emptyList();
+        if (currentInsets == null) {
+            // Nothing to report yet: the rulers keep their defaults until there is.
+            boolean any = !waterfall.equals(android.graphics.Insets.NONE) || !rects.isEmpty();
+            for (int i = 0; i < TYPES.length - 1 && !any; i++) {
+                android.graphics.Insets v = i == 3 ? insets.getInsets(TYPES[i]) : insets.getInsetsIgnoringVisibility(TYPES[i]);
+                any = !v.equals(android.graphics.Insets.NONE);
             }
-            KilnNative.setInsets(i, v.left, v.top, v.right, v.bottom);
+            if (!any) return;
         }
-        KilnNative.setImeState(insets.isVisible(WindowInsets.Type.ime()), imeAnimating);
+        currentInsets = insets;
+        int[] data = new int[TYPES.length * 9 + 1 + rects.size() * 4];
+        for (int i = 0; i < TYPES.length; i++) {
+            android.graphics.Insets cur, max;
+            boolean visible;
+            if (i == 8) {
+                cur = max = waterfall;
+                visible = !waterfall.equals(android.graphics.Insets.NONE);
+            } else {
+                cur = insets.getInsets(TYPES[i]);
+                max = i == 3 ? android.graphics.Insets.NONE : insets.getInsetsIgnoringVisibility(TYPES[i]);
+                visible = insets.isVisible(TYPES[i]);
+            }
+            int o = i * 9;
+            data[o] = cur.left; data[o + 1] = cur.top; data[o + 2] = cur.right; data[o + 3] = cur.bottom;
+            data[o + 4] = max.left; data[o + 5] = max.top; data[o + 6] = max.right; data[o + 7] = max.bottom;
+            data[o + 8] = visible ? 1 : 0;
+        }
+        int o = TYPES.length * 9;
+        data[o++] = rects.size();
+        for (Rect r : rects) { data[o++] = r.left; data[o++] = r.top; data[o++] = r.right; data[o++] = r.bottom; }
+        KilnNative.setWindowInsets(data);
+    }
+
+    private void sendAnimation(int typeMask, WindowInsetsAnimation a, android.graphics.Insets[] positions) {
+        for (int i = 0; i < TYPES.length - 1; i++) {
+            if ((typeMask & TYPES[i]) == 0) continue;
+            int[] bounds = null;
+            if (positions != null) {
+                android.graphics.Insets s = positions[0], t = positions[1];
+                bounds = new int[] { s.left, s.top, s.right, s.bottom, t.left, t.top, t.right, t.bottom };
+            }
+            if (a == null) KilnNative.setInsetsAnimation(i, false, null, 0, 1, 0);
+            else KilnNative.setInsetsAnimation(i, true, bounds, a.getInterpolatedFraction(), a.getAlpha(), a.getDurationMillis());
+        }
     }
 
     private void installInsets() {
         setOnApplyWindowInsetsListener((v, insets) -> {
-            // While the IME animates, onProgress drives its insets frame by frame.
-            pushInsets(insets, imeAnimating);
+            if (insetsPrepared) {
+                savedInsets = insets;   // for onStart
+                if (android.os.Build.VERSION.SDK_INT == 30) post(() -> {
+                    // API 30 may not start the animation: apply what was saved.
+                    if (!insetsPrepared) return;
+                    runningAnimationMask = 0;
+                    insetsPrepared = false;
+                    if (savedInsets != null) { pushInsets(savedInsets); savedInsets = null; }
+                });
+            } else if (runningAnimationMask == 0) {
+                pushInsets(insets);
+            }
             return insets;
         });
         setWindowInsetsAnimationCallback(new WindowInsetsAnimation.Callback(
                 WindowInsetsAnimation.Callback.DISPATCH_MODE_STOP) {
-            @Override public void onPrepare(WindowInsetsAnimation animation) {
-                if ((animation.getTypeMask() & WindowInsets.Type.ime()) != 0) imeAnimating = true;
+            @Override public void onPrepare(WindowInsetsAnimation animation) { insetsPrepared = true; }
+            @Override public WindowInsetsAnimation.Bounds onStart(WindowInsetsAnimation animation, WindowInsetsAnimation.Bounds bounds) {
+                WindowInsets insets = savedInsets;
+                insetsPrepared = false;
+                savedInsets = null;
+                if (animation.getDurationMillis() != 0 && insets != null && currentInsets != null) {
+                    for (int i = 0; i < TYPES.length - 1; i++) {
+                        int type = TYPES[i];
+                        if ((animation.getTypeMask() & type) == 0) continue;
+                        android.graphics.Insets current = currentInsets.getInsets(type), target = insets.getInsets(type);
+                        if (target.equals(current)) continue;
+                        runningAnimationMask |= type;
+                        sendAnimation(type, animation, new android.graphics.Insets[] { current, target });
+                    }
+                }
+                return bounds;
             }
             @Override public WindowInsets onProgress(WindowInsets insets, List<WindowInsetsAnimation> running) {
-                android.graphics.Insets ime = insets.getInsets(WindowInsets.Type.ime());
-                KilnNative.setInsets(3, ime.left, ime.top, ime.right, ime.bottom);
+                for (WindowInsetsAnimation a : running) {
+                    int mask = a.getTypeMask() & runningAnimationMask;
+                    if (mask != 0) sendAnimation(mask, a, null);
+                }
+                pushInsets(insets);
                 return insets;
             }
             @Override public void onEnd(WindowInsetsAnimation animation) {
-                if ((animation.getTypeMask() & WindowInsets.Type.ime()) == 0) return;
-                imeAnimating = false;
+                insetsPrepared = false;
+                int mask = animation.getTypeMask() & runningAnimationMask;
+                if (mask != 0) sendAnimation(mask, null, null);
+                runningAnimationMask &= ~animation.getTypeMask();
+                savedInsets = null;
                 WindowInsets now = getRootWindowInsets();
-                if (now != null) pushInsets(now, false);
+                if (now != null && runningAnimationMask == 0) pushInsets(now);
             }
         });
         requestApplyInsets();
