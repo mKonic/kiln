@@ -12,6 +12,7 @@
 #include "kiln/ui/Geometry.h"
 
 #include <functional>
+#include <span>
 #include <memory>
 #include <vector>
 
@@ -46,6 +47,8 @@ namespace kiln::ui {
         void DrawRect(Color color, Offset topLeft, Size size);
         void DrawRoundRect(Color color, Offset topLeft, Size size, float cornerRadius);
         void DrawParagraph(const ParagraphData& paragraph, Offset topLeft, Color color);
+        // Per-run colours (GlyphQuad::run); a run without one, or unspecified, uses `color`.
+        void DrawParagraph(const ParagraphData& paragraph, Offset topLeft, Color color, std::span<const Color> runColors);
         // Fills the path, or strokes it when `stroke` is given (DrawScope.drawPath).
         void DrawPath(const gfx::Path& path, Color color, const gfx::Stroke* stroke = nullptr);
         // drawImage(image, srcOffset, srcSize, dstOffset, dstSize, alpha): src in image pixels.

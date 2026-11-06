@@ -123,7 +123,7 @@ namespace kiln::foundation {
                 if (paragraph.handle && params.core->text) params.core->text->Release(paragraph.handle);
                 paragraph = {};
             }
-            void Relayout(const std::u16string& text, int width) {
+            void Relayout(const std::u16string& text, int width, const ui::Density& density, ui::LayoutDirection dir) {
                 FieldCore& c = *params.core;
                 if (!c.text) return;
                 if (text == laidOut && width == laidOutWidth && paragraph.handle) return;
@@ -134,7 +134,9 @@ namespace kiln::foundation {
                 // An empty field still needs a line's height for the caret.
                 const std::string utf8 = text.empty() ? std::string(" ") : ToUtf8(text);
                 const float w = c.options.ime.singleLine || width == Constraints::Infinity ? 0.0f : float(width);
-                paragraph = c.text->Layout(utf8, c.options.style.fontSizeSp, w);
+                text::ParagraphConstraints pc;
+                pc.width = w > 0 ? w : INFINITY;
+                paragraph = c.text->Layout(text::BuildParagraphRequest(text::AnnotatedString(utf8), text::ResolveDefaults(c.options.style, dir), density, pc));
                 if (laidOutEmpty) paragraph.glyphs.clear();
                 c.handle = paragraph.handle;
             }
@@ -143,7 +145,7 @@ namespace kiln::foundation {
                 FieldCore& c = *params.core;
                 if (Owner() && Owner()->GetOwner()) { c.owner = Owner()->GetOwner(); c.text = c.owner->Text(); c.node = Owner(); }
                 const TextFieldValue& v = c.state->Value();   // subscribes measure to edits
-                Relayout(v.text, con.maxWidth);
+                Relayout(v.text, con.maxWidth, s, s.Direction());
                 // Sizing (spec 04 req. 14) is simplified: width = text (min 1 caret), height = text.
                 const int caret = s.RoundToPx(Dp(2));
                 const int w = con.ConstrainWidth(laidOutEmpty ? caret : int(std::ceil(paragraph.width)) + caret);
@@ -155,18 +157,17 @@ namespace kiln::foundation {
                 FieldCore& c = *params.core;
                 const TextFieldValue& v = c.state->Value();
                 if (!c.text || !paragraph.handle) { s.DrawContent(); return; }
-                // Selection highlight (single-line ranges for now).
-                if (c.focused && !v.selection.Collapsed()) {
-                    const auto a = c.text->GetCursorRect(paragraph.handle, v.selection.Min());
-                    const auto b = c.text->GetCursorRect(paragraph.handle, v.selection.Max());
-                    if (a.top == b.top) s.DrawRect(c.options.selectionColor, { a.x, a.top }, { b.x - a.x, a.bottom - a.top });
-                }
-                s.DrawParagraph(paragraph, {}, c.options.style.color);
+                // Selection highlight.
+                if (c.focused && !v.selection.Collapsed())
+                    for (const RectF& r : c.text->GetSelectionRects(paragraph.handle, v.selection.Min(), v.selection.Max()))
+                        s.DrawRect(c.options.selectionColor, { r.x, r.y }, { r.w, r.h });
+                const Color textColor = c.options.style.span.color.Specified() ? c.options.style.span.color : Color(0xFF000000u);
+                s.DrawParagraph(paragraph, {}, textColor);
                 // Composition underline.
                 if (v.composition) {
                     const auto a = c.text->GetCursorRect(paragraph.handle, v.composition->Min());
                     const auto b = c.text->GetCursorRect(paragraph.handle, v.composition->Max());
-                    if (a.top == b.top) s.DrawRect(c.options.style.color, { a.x, a.bottom - s.ToPx(Dp(1.5f)) }, { b.x - a.x, s.ToPx(Dp(1)) });
+                    if (a.top == b.top) s.DrawRect(textColor, { a.x, a.bottom - s.ToPx(Dp(1.5f)) }, { b.x - a.x, s.ToPx(Dp(1)) });
                 }
                 // Caret: solid for 500 ms after an edit or focus, then blinking 500/500 (TextFieldCursor).
                 if (!c.focused) m_Blink.Cancel();

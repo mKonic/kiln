@@ -42,7 +42,8 @@ KILN_API void kiln_frame_draw_paragraph(kiln_frame* frame, const kiln_paragraph*
 
 KILN_API kiln_paragraph* kiln_text_layout(kiln_app* app, const char* utf8, float sizeSp, float widthPx) {
     if (!app || !utf8 || !app->impl->Text()) return nullptr;
-    return new kiln_paragraph{ app->impl->Text()->Layout(utf8, sizeSp, widthPx) };
+    const ui::Density d{ app->impl->Density(), app->impl->FontScale() };
+    return new kiln_paragraph{ app->impl->Text()->LayoutPlain(utf8, d.SpToPx(sizeSp), widthPx) };
 }
 KILN_API float kiln_paragraph_width(const kiln_paragraph* p) { return p ? p->data.width : 0; }
 KILN_API float kiln_paragraph_height(const kiln_paragraph* p) { return p ? p->data.height : 0; }

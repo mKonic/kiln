@@ -5,6 +5,7 @@
 // the caller's source location, so conditionals around a call keep its identity.
 
 #include "kiln/foundation/Layouts.h"
+#include "kiln/foundation/text/BasicText.h"
 
 #include <string>
 
@@ -29,14 +30,6 @@ namespace kiln::foundation {
         Column(modifier, Arrangement::Top(), AlignmentH::Start(), std::move(content), key);
     }
     void Spacer(const Modifier& modifier, Key key = {});
-
-    struct TextStyle {
-        float fontSizeSp = 14;
-        Color color{ 0xFF000000u };
-        bool operator==(const TextStyle&) const = default;
-    };
-    // Plain text laid out by the platform text path (spec 07), wrapping to the max width.
-    void BasicText(const std::string& text, const Modifier& modifier = {}, TextStyle style = {}, Key key = {});
 
     // Shortcuts to the composition's remember/state helpers.
     template<typename T> rt::State<T>& RememberState(T initial, Key key = {}) {

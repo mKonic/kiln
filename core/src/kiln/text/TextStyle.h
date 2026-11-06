@@ -212,6 +212,12 @@ namespace kiln::text {
         SpanStyle span;
         ParagraphStyle paragraph;
 
+        TextStyle() = default;
+        TextStyle(SpanStyle s, ParagraphStyle p) : span(std::move(s)), paragraph(std::move(p)) {}
+        // TextStyle(fontSize = .., color = ..): the two most set fields.
+        TextStyle(TextUnit fontSize, Color color = Color::Unspecified()) { span.fontSize = fontSize; span.color = color; }
+        TextStyle(float fontSizeSp, Color color = Color::Unspecified()) : TextStyle(Sp(fontSizeSp), color) {}
+
         TextStyle Merge(const TextStyle& other) const { return { span.Merge(other.span), paragraph.Merge(other.paragraph) }; }
         TextStyle Merge(const SpanStyle& other) const { return { span.Merge(other), paragraph }; }
         TextStyle Merge(const ParagraphStyle& other) const { return { span, paragraph.Merge(other) }; }

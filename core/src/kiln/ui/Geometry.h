@@ -41,7 +41,16 @@ namespace kiln::ui {
             return RoundJava(px);
         }
         Dp ToDp(float px) const { return Dp(px / density); }
+        // sp -> px through the platform's nonlinear font scaling (FontScaleConverterFactory:
+        // above 1.03 large sizes grow less than small ones), and back.
+        float SpToPx(float sp) const;
+        float PxToSp(float px) const;
+        bool operator==(const Density&) const = default;
     };
+
+    // FontScaleConverter.convertSpToDp / convertDpToSp for a font scale (linear at <= 1.03).
+    float FontScaleSpToDp(float fontScale, float sp);
+    float FontScaleDpToSp(float fontScale, float dp);
 
     struct IntSize {
         int width = 0, height = 0;

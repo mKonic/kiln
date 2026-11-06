@@ -75,6 +75,48 @@ namespace {
         Column(VerticalScroll(SafeDrawingPadding(Background(FillMax(Modifier{}, Axis::Both), kSurface)), scroll), Arrangement::SpacedBy(16_dp), AlignmentH::Start(), [&] {
             Spacer(Height(Modifier{}, 8_dp));
             BasicText("kiln layout", Padding(Modifier{}, 16_dp, 0_dp), { 28, kOnSurface });
+            {
+                using namespace kiln::text;
+                const AnnotatedString styled = BuildAnnotatedString([&](AnnotatedStringBuilder& b) {
+                    b.Append("Styled ");
+                    SpanStyle bold; bold.fontWeight = FontWeight::Bold();
+                    b.WithStyle(bold, [&] { b.Append("bold"); });
+                    b.Append(", ");
+                    SpanStyle italic; italic.fontStyle = FontStyle::Italic; italic.color = kPrimary;
+                    b.WithStyle(italic, [&] { b.Append("italic"); });
+                    b.Append(", ");
+                    SpanStyle under; under.textDecoration = TextDecoration::Underline;
+                    b.WithStyle(under, [&] { b.Append("underlined"); });
+                    b.Append(", ");
+                    SpanStyle strike; strike.textDecoration = TextDecoration::LineThrough;
+                    b.WithStyle(strike, [&] { b.Append("struck"); });
+                    b.Append(", ");
+                    SpanStyle mark; mark.background = Color(0xFFFFD8E4u);
+                    b.WithStyle(mark, [&] { b.Append("marked"); });
+                    b.Append(" and E = mc");
+                    SpanStyle sup; sup.baselineShift = BaselineShift::Superscript(); sup.fontSize = Em(0.6f);
+                    b.WithStyle(sup, [&] { b.Append("2"); });
+                    b.Append(". ");
+                    SpanStyle big; big.fontSize = Sp(24); big.letterSpacing = Em(0.1f);
+                    b.WithStyle(big, [&] { b.Append("Spaced"); });
+                });
+                TextStyle body(16, kOnSurface);
+                body.paragraph.lineHeight = Sp(24);
+                BasicText(styled, Padding(Modifier{}, 16_dp, 8_dp), body);
+                TextStyle shadowed(22, kOnSurface);
+                shadowed.span.shadow = Shadow{ Color(0x806750A4u), { 4, 4 }, 6 };
+                shadowed.span.fontWeight = FontWeight::Medium();
+                BasicText("Soft shadow", Padding(Modifier{}, 16_dp, 4_dp), shadowed);
+                TextStyle gradient(28);
+                gradient.span.brush = kiln::gfx::Brush::LinearGradient({ kPrimary, Color(0xFFE8618Cu) }, { 0, 0 }, { 400, 0 });
+                gradient.span.fontWeight = FontWeight::Bold();
+                BasicText("Gradient brush", Padding(Modifier{}, 16_dp, 4_dp), gradient);
+                BasicTextOptions two;
+                two.maxLines = 2;
+                two.overflow = TextOverflow::Ellipsis;
+                BasicText("Two lines at most, then an ellipsis: this sentence keeps going well past the second line so "
+                          "the end of it is cut off and replaced.", Padding(Modifier{}, 16_dp, 4_dp), { 14, kVariant }, two);
+            }
             Column(Background(Padding(FillMax(Modifier{}, Axis::Horizontal), 16_dp, 0_dp), kContainer, CornerShape::Rounded(12_dp)),
                    Arrangement::SpacedBy(8_dp), AlignmentH::Start(), [&] {
                 BasicText("Row with weights 1 : 2 : 1", Padding(Modifier{}, PaddingValues{ 16_dp, 16_dp, 16_dp, 0_dp }), { 16, kVariant });

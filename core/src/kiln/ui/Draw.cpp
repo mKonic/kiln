@@ -192,12 +192,17 @@ namespace kiln::ui {
         m_Target.quads->FillRect({ p.x, p.y, s.width, s.height }, Scaled(ToRgba(color), m_State.alpha), r);
     }
 
-    void DrawScope::DrawParagraph(const ParagraphData& para, Offset p, Color color) {
-        const Rgba tint = Scaled(ToRgba(color), m_State.alpha);
+    void DrawScope::DrawParagraph(const ParagraphData& para, Offset p, Color color) { DrawParagraph(para, p, color, {}); }
+
+    void DrawScope::DrawParagraph(const ParagraphData& para, Offset p, Color color, std::span<const Color> runColors) {
         ApplyTransform();
         for (const GlyphQuad& g : para.glyphs) {
+            Color c = color;
+            if (g.run >= 0 && std::size_t(g.run) < runColors.size() && runColors[std::size_t(g.run)].Specified()) c = runColors[std::size_t(g.run)];
+            if (!c.Specified() || c.Alpha() * m_State.alpha <= 0) continue;
             const AtlasPage* page = m_Target.page ? m_Target.page(g.page) : nullptr;
             if (!page) continue;
+            const Rgba tint = Scaled(ToRgba(c), m_State.alpha);
             m_Target.quads->DrawAtlas({ p.x + g.rect.x, p.y + g.rect.y, g.rect.w, g.rect.h }, g.uv, *page,
                                       g.color ? Rgba{ tint.a, tint.a, tint.a, tint.a } : tint,
                                       g.color ? QuadRenderer::Mode::Color : QuadRenderer::Mode::TintedCoverage);
@@ -451,7 +456,6 @@ namespace kiln::ui {
         x.a = float(d[0]); x.c = float(d[1]); x.e = float(d[2]);
         x.b = float(d[3]); x.d = float(d[4]); x.f = float(d[5]);
         x.g = float(d[6]); x.h = float(d[7]);
-        const float a = l.alpha;
         const float u = l.device.Width() / float(r.page->Width()), v = l.device.Height() / float(r.page->Height());
         m_Target.quads->SetTransform(x);
         CompositeLayer(l, { l.device.left, l.device.top, l.device.Width(), l.device.Height() }, { 0, 0, u, v }, *r.page);

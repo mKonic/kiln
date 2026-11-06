@@ -1,10 +1,14 @@
 #include "HostText.h"
 
+#include "kiln/text/AnnotatedString.h"
+
 #include <ft2build.h>
 #include FT_FREETYPE_H
 #include <hb-ft.h>
 #include <hb.h>
 
+#include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <cstring>
 #include <map>
@@ -44,68 +48,174 @@ namespace kiln::hostdev {
                 Open(m_Emoji, { "/usr/share/fonts/noto/NotoColorEmoji.ttf" });
             }
 
-            ParagraphData Layout(std::string_view utf8, float sizeSp, float widthPx) override {
-                const float px = sizeSp * m_FontScale * m_Density;
+            // Approximate: each run shaped on its own at its size, greedy wrap at spaces, line
+            // height from the tallest run on the line (or the requested line height), no bidi.
+            ParagraphData Layout(const ParagraphRequest& req) override {
                 ParagraphData out;
                 if (!m_Main.ft) return out;
-                SetSize(m_Main, px);
-                const float ascent = m_Main.ft->size->metrics.ascender / 64.0f;
-                const float lineHeight = m_Main.ft->size->metrics.height / 64.0f;
-
-                // Shape the whole paragraph with the main face, then substitute missing glyphs
-                // (glyph 0) cluster by cluster from the emoji face.
-                auto glyphs = Shape(m_Main, utf8, px);
-                // Greedy wrap at spaces.
-                float x = 0, y = ascent;
-                int lines = 1;
-                size_t lastBreak = 0;
-                float lastBreakX = 0;
-                std::vector<std::tuple<size_t, float, float>> pos(glyphs.size());
-                for (size_t i = 0; i < glyphs.size(); ++i) {
-                    const char c = glyphs[i].cluster < utf8.size() ? utf8[glyphs[i].cluster] : 0;
-                    if (c == '\n') { x = 0; y += lineHeight; ++lines; pos[i] = std::make_tuple(i, -1e9f, 0.0f); continue; }
-                    if (c == ' ') { lastBreak = i; lastBreakX = x; }
-                    if (widthPx > 0 && x + glyphs[i].adv > widthPx && lastBreak > 0 && c != ' ') {
-                        // Move everything after the last space to the next line.
-                        y += lineHeight; ++lines;
-                        float shift = lastBreakX + glyphs[lastBreak].adv;
-                        for (size_t j = lastBreak + 1; j < i; ++j) std::get<1>(pos[j]) -= shift, std::get<2>(pos[j]) = y;
-                        x -= shift;
-                        lastBreak = 0;
+                const std::string& utf8 = req.text;
+                struct PG { G g; int run; float px; };
+                std::vector<PG> glyphs;
+                auto runFor = [&](std::uint32_t byte) {
+                    const int u16 = ByteToUtf16(utf8, byte);
+                    for (std::size_t r = 0; r < req.runs.size(); ++r)
+                        if (u16 >= req.runs[r].start && u16 < req.runs[r].end) return int(r);
+                    return req.runs.empty() ? -1 : int(req.runs.size()) - 1;
+                };
+                for (std::size_t r = 0; r < req.runs.size(); ++r) {
+                    const auto& run = req.runs[r];
+                    const std::size_t b0 = Utf16ToByte(utf8, run.start), b1 = Utf16ToByte(utf8, run.end);
+                    if (b1 <= b0) continue;
+                    SetSize(m_Main, run.sizePx);
+                    const float spacing = !std::isnan(run.letterSpacingPx) ? run.letterSpacingPx
+                                        : !std::isnan(run.letterSpacingEm) ? run.letterSpacingEm * run.sizePx : 0;
+                    for (G g : Shape(m_Main, std::string_view(utf8).substr(0, b1), run.sizePx, b0)) {
+                        g.adv = g.adv * run.scaleX + spacing;
+                        glyphs.push_back({ g, int(r), run.sizePx });
                     }
-                    pos[i] = std::make_tuple(i, x + glyphs[i].xoff, y - glyphs[i].yoff);
-                    x += glyphs[i].adv;
-                    out.width = std::max(out.width, x);
                 }
-                out.lineCount = lines;
-                out.firstBaseline = ascent;
-                out.lastBaseline = ascent + float(lines - 1) * lineHeight;
-                // Position data for cursor queries: one stop per glyph cluster plus the end.
+                const float basePx = req.base.sizePx;
+                auto metrics = [&](float px) {
+                    SetSize(m_Main, px);
+                    return std::pair{ m_Main.ft->size->metrics.ascender / 64.0f, -m_Main.ft->size->metrics.descender / 64.0f };
+                };
+                const float width = req.widthPx > 0 ? req.widthPx : INFINITY;
+                // Break into lines: [first glyph, end glyph).
+                struct L { std::size_t g0, g1; };
+                std::vector<L> lines;
+                {
+                    std::size_t lineStart = 0, lastSpace = std::size_t(-1);
+                    float x = req.indentFirstPx;
+                    for (std::size_t i = 0; i < glyphs.size(); ++i) {
+                        const char c = utf8[glyphs[i].g.cluster];
+                        if (c == '\n') { lines.push_back({ lineStart, i + 1 }); lineStart = i + 1; lastSpace = std::size_t(-1); x = req.indentRestPx; continue; }
+                        if (c == ' ') lastSpace = i;
+                        if (x + glyphs[i].g.adv > width && c != ' ' && lastSpace != std::size_t(-1) && lastSpace >= lineStart) {
+                            lines.push_back({ lineStart, lastSpace + 1 });
+                            lineStart = lastSpace + 1;
+                            lastSpace = std::size_t(-1);
+                            x = req.indentRestPx;
+                            for (std::size_t j = lineStart; j < i; ++j) x += glyphs[j].g.adv;
+                        }
+                        x += glyphs[i].g.adv;
+                    }
+                    lines.push_back({ lineStart, glyphs.size() });
+                }
+                const int textLength = text::Utf16Length(utf8);
+                const bool exceeded = int(lines.size()) > req.maxLines;
+                if (exceeded) lines.resize(std::size_t(req.maxLines));
+                out.didExceedMaxLines = exceeded;
                 Para para;
-                para.text = std::string(utf8);
-                for (size_t i = 0; i < glyphs.size(); ++i) {
-                    auto [idx, gx, gy] = pos[i];
-                    if (gx < -1e8f) continue;
-                    para.stops.push_back({ glyphs[i].cluster, gx - glyphs[i].xoff, gy - ascent, gy - ascent + lineHeight, glyphs[i].adv });
+                para.text = utf8;
+                float y = 0;
+                for (std::size_t li = 0; li < lines.size(); ++li) {
+                    const L& l = lines[li];
+                    auto [asc, desc] = metrics(basePx);
+                    for (std::size_t i = l.g0; i < l.g1; ++i) {
+                        auto [a, d] = metrics(glyphs[i].px);
+                        asc = std::max(asc, a);
+                        desc = std::max(desc, d);
+                    }
+                    if (!std::isnan(req.lineHeightPx)) {
+                        const float extra = req.lineHeightPx - (asc + desc);
+                        asc += extra / 2;
+                        desc += extra / 2;
+                    }
+                    LineData ld;
+                    ld.top = y;
+                    ld.baseline = y + asc;
+                    ld.bottom = y + asc + desc;
+                    ld.ascent = -asc;
+                    ld.descent = desc;
+                    ld.start = l.g0 < glyphs.size() ? ByteToUtf16(utf8, glyphs[l.g0].g.cluster) : textLength;
+                    ld.end = l.g1 < glyphs.size() ? ByteToUtf16(utf8, glyphs[l.g1].g.cluster) : textLength;
+                    if (li == 0) ld.start = 0;
+                    ld.visibleEnd = ld.end;
+                    float lineWidth = 0;
+                    for (std::size_t i = l.g0; i < l.g1; ++i) lineWidth += glyphs[i].g.adv;
+                    const float indent = li == 0 ? req.indentFirstPx : req.indentRestPx;
+                    float x = indent;
+                    const float avail = std::isinf(width) ? lineWidth + indent : width;
+                    if (req.textAlign == 3) x = (avail - lineWidth) / 2;
+                    else if (req.textAlign == 2 || req.textAlign == 6) x = avail - lineWidth;
+                    ld.left = x;
+                    ld.right = x + lineWidth;
+                    out.width = std::max(out.width, lineWidth + indent);
+                    int segRun = -1;
+                    for (std::size_t i = l.g0; i < l.g1; ++i) {
+                        const PG& pg = glyphs[i];
+                        const auto& run = req.runs[std::size_t(pg.run)];
+                        const float shift = run.baselineShift != 0 ? -metrics(pg.px).first * run.baselineShift : 0;
+                        if (pg.run != segRun) { out.segments.push_back({ pg.run, int(li), x, x, shift }); segRun = pg.run; }
+                        out.segments.back().right = x + pg.g.adv;
+                        para.stops.push_back({ pg.g.cluster, x, ld.top, ld.bottom, pg.g.adv });
+                        if (utf8[pg.g.cluster] != '\n') {
+                            const Slot sl = Rasterize(*pg.g.face, pg.g.id, pg.px);
+                            if (!sl.empty) {
+                                GlyphQuad q;
+                                q.page = sl.page;
+                                q.color = sl.color;
+                                q.run = pg.run;
+                                const float gx = x + pg.g.xoff, gy = ld.baseline - pg.g.yoff + shift;
+                                q.rect = { gx + sl.left * sl.scale, gy - sl.top * sl.scale, sl.w * sl.scale, sl.h * sl.scale };
+                                q.uv = { sl.x / kPageSize, sl.y / kPageSize, sl.w / kPageSize, sl.h / kPageSize };
+                                out.glyphs.push_back(q);
+                            }
+                        }
+                        x += pg.g.adv;
+                    }
+                    out.lines.push_back(ld);
+                    y = ld.bottom;
                 }
-                para.lineHeight = lineHeight;
+                out.lineCount = int(out.lines.size());
+                out.height = y;
+                out.firstBaseline = out.lines.empty() ? 0 : out.lines.front().baseline;
+                out.lastBaseline = out.lines.empty() ? 0 : out.lines.back().baseline;
+                for (const auto& run : req.runs) {
+                    SetSize(m_Main, run.sizePx);
+                    const float scale = run.sizePx / float(m_Main.ft->units_per_EM ? m_Main.ft->units_per_EM : 1);
+                    const float thick = std::max(1.0f, m_Main.ft->underline_thickness * scale);
+                    out.runMetrics.push_back({ -m_Main.ft->underline_position * scale, thick, -metrics(run.sizePx).first * 0.3f, thick });
+                }
+                para.lineHeight = out.lines.empty() ? basePx : out.lines.front().bottom - out.lines.front().top;
+                para.lines = out.lines;
                 out.handle = ++m_NextHandle;
                 m_Paras[out.handle] = std::move(para);
-                out.height = (lines - 1) * lineHeight + m_Main.ft->size->metrics.height / 64.0f;
-                for (size_t i = 0; i < glyphs.size(); ++i) {
-                    auto [idx, gx, gy] = pos[i];
-                    if (gx < -1e8f) continue;
-                    const Slot s = Rasterize(*glyphs[i].face, glyphs[i].id, px);
-                    if (s.empty) continue;
-                    GlyphQuad q;
-                    q.page = s.page;
-                    q.color = s.color;
-                    q.rect = { gx + s.left * s.scale, gy - s.top * s.scale, s.w * s.scale, s.h * s.scale };
-                    q.uv = { s.x / kPageSize, s.y / kPageSize, s.w / kPageSize, s.h / kPageSize };
-                    out.glyphs.push_back(q);
-                }
                 return out;
             }
+
+            ParagraphIntrinsicWidths Intrinsics(const ParagraphRequest& req) override {
+                ParagraphRequest unbounded = req;
+                unbounded.widthPx = 0;
+                unbounded.maxLines = 0x7fffffff;
+                ParagraphData d = Layout(unbounded);
+                Release(d.handle);
+                // Widest word: lay out each space-separated word.
+                float minWidth = 0;
+                std::size_t i = 0;
+                while (i < req.text.size()) {
+                    std::size_t j = req.text.find_first_of(" \n", i);
+                    if (j == std::string::npos) j = req.text.size();
+                    if (j > i) {
+                        ParagraphRequest w = unbounded;
+                        const int s16 = ByteToUtf16(req.text, i), e16 = ByteToUtf16(req.text, j);
+                        w.text = req.text.substr(i, j - i);
+                        w.runs.clear();
+                        for (auto run : req.runs) {
+                            run.start = std::clamp(run.start, s16, e16) - s16;
+                            run.end = std::clamp(run.end, s16, e16) - s16;
+                            if (run.end > run.start) w.runs.push_back(run);
+                        }
+                        ParagraphData wd = Layout(w);
+                        Release(wd.handle);
+                        minWidth = std::max(minWidth, wd.width);
+                    }
+                    i = j + 1;
+                }
+                return { minWidth, d.width };
+            }
+
+            float GetHorizontalPosition(std::int64_t handle, int offset16, bool) override { return GetCursorRect(handle, offset16).x; }
 
             CursorRect GetCursorRect(std::int64_t handle, int offset16) override {
                 auto it = m_Paras.find(handle);
@@ -116,6 +226,8 @@ namespace kiln::hostdev {
                     if (st.cluster >= byte) return { st.x, st.top, st.bottom };
                 if (p.stops.empty()) return { 0, 0, p.lineHeight };
                 const Stop& last = p.stops.back();
+                if (!p.text.empty() && p.text.back() == '\n' && !p.lines.empty())
+                    return { 0, p.lines.back().bottom, p.lines.back().bottom + p.lineHeight };
                 return { last.x + last.advance, last.top, last.bottom };
             }
             int GetOffsetForPosition(std::int64_t handle, float x, float y) override {
@@ -132,6 +244,41 @@ namespace kiln::hostdev {
                 if (bestLineTop < 0 && !p.stops.empty() && y < p.stops.front().top) best = 0;
                 return ByteToUtf16(p.text, best);
             }
+            RectF GetBoundingBox(std::int64_t handle, int offset16) override {
+                auto it = m_Paras.find(handle);
+                if (it == m_Paras.end()) return {};
+                const std::size_t byte = Utf16ToByte(it->second.text, offset16);
+                for (const Stop& st : it->second.stops)
+                    if (st.cluster >= byte) return { st.x, st.top, st.advance, st.bottom - st.top };
+                const CursorRect c = GetCursorRect(handle, offset16);
+                return { c.x, c.top, 0, c.bottom - c.top };
+            }
+            std::vector<RectF> GetSelectionRects(std::int64_t handle, int start, int end) override {
+                std::vector<RectF> out;
+                auto it = m_Paras.find(handle);
+                if (it == m_Paras.end()) return out;
+                const Para& p = it->second;
+                const std::size_t b0 = Utf16ToByte(p.text, start), b1 = Utf16ToByte(p.text, end);
+                for (const Stop& st : p.stops) {
+                    if (st.cluster < b0 || st.cluster >= b1) continue;
+                    if (!out.empty() && out.back().y == st.top && std::abs(out.back().x + out.back().w - st.x) < 0.5f) out.back().w += st.advance;
+                    else out.push_back({ st.x, st.top, st.advance, st.bottom - st.top });
+                }
+                return out;
+            }
+            std::pair<int, int> GetWordBoundary(std::int64_t handle, int offset16) override {
+                auto it = m_Paras.find(handle);
+                if (it == m_Paras.end()) return { offset16, offset16 };
+                const std::string& t = it->second.text;
+                auto word = [&](std::size_t i) { return i < t.size() && (std::isalnum(static_cast<unsigned char>(t[i])) || (static_cast<unsigned char>(t[i]) & 0x80)); };
+                std::size_t at = Utf16ToByte(t, offset16);
+                if (!word(at) && at > 0 && word(at - 1)) --at;
+                std::size_t s = at, e = at;
+                while (s > 0 && word(s - 1)) --s;
+                while (word(e)) ++e;
+                return { ByteToUtf16(t, s), std::max(ByteToUtf16(t, e), offset16) };
+            }
+            bool IsRtlCharAt(std::int64_t, int) override { return false; }
             void Release(std::int64_t handle) override { m_Paras.erase(handle); }
 
             void SyncAtlas(AtlasSink& sink) override {
@@ -167,10 +314,11 @@ namespace kiln::hostdev {
                 hb_ft_font_changed(f.hb);
             }
 
-            std::vector<G> Shape(Face& f, std::string_view text, float px) {
+            // Shapes text[from..]; clusters are byte offsets into text.
+            std::vector<G> Shape(Face& f, std::string_view text, float px, std::size_t from = 0) {
                 std::vector<G> out;
                 hb_buffer_t* buf = hb_buffer_create();
-                hb_buffer_add_utf8(buf, text.data(), int(text.size()), 0, int(text.size()));
+                hb_buffer_add_utf8(buf, text.data(), int(text.size()), unsigned(from), int(text.size() - from));
                 hb_buffer_guess_segment_properties(buf);
                 hb_shape(f.hb, buf, nullptr, 0);
                 unsigned n = 0;
@@ -245,8 +393,8 @@ namespace kiln::hostdev {
             }
 
             struct Stop { std::uint32_t cluster; float x, top, bottom, advance; };
-            struct Para { std::string text; std::vector<Stop> stops; float lineHeight = 0; };
-            static std::size_t Utf16ToByte(const std::string& s, int u16) {
+            struct Para { std::string text; std::vector<Stop> stops; float lineHeight = 0; std::vector<LineData> lines; };
+            static std::size_t Utf16ToByte(std::string_view s, int u16) {
                 std::size_t i = 0;
                 int count = 0;
                 while (i < s.size() && count < u16) {
@@ -257,7 +405,7 @@ namespace kiln::hostdev {
                 }
                 return i;
             }
-            static int ByteToUtf16(const std::string& s, std::size_t byte) {
+            static int ByteToUtf16(std::string_view s, std::size_t byte) {
                 std::size_t i = 0;
                 int count = 0;
                 while (i < s.size() && i < byte) {
