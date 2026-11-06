@@ -527,11 +527,11 @@ TEST(BringIntoViewKeepsItemsClearOfTheStickyHeader) {
 }
 
 TEST(FocusedItemStaysComposedWhenScrolledAway) {
-    Harness h;
+    std::map<int, int> composed, disposed;   // before the harness: its teardown disposes items
+    FocusRequester focus;
     LazyListState outer;
     LazyListState inner;
-    FocusRequester focus;
-    std::map<int, int> composed, disposed;
+    Harness h;
     h.Run([&] {
         LazyColumn(FillMax(Modifier{}, Axis::Both), outer, [&](LazyListScope& s) {
             s.Items(100, [&](int i) {
@@ -562,4 +562,38 @@ TEST(FocusedItemStaysComposedWhenScrolledAway) {
     h.owner.ClearFocus(true);
     h.Frames(2);
     CHECK_EQ(disposed[1], 1);                 // released: disposed on the next measure
+}
+
+TEST(FocusMovesIntoItemsBeyondTheViewport) {
+    int focused = -1;
+    FocusRequester first;
+    LazyListState state;
+    Harness h;
+    h.Run([&] {
+        LazyColumn(FillMax(Modifier{}, Axis::Both), state, [&](LazyListScope& s) {
+            s.Items(40, [&](int i) {
+                Modifier m = SizeMod(Modifier{}, Dp(100), Dp(30));
+                if (i == 0) m = FocusRequesterModifier(std::move(m), first);
+                Box(Focusable(std::move(m), Focusability::Always, [&, i](FocusState f) { if (IsFocused(f)) focused = i; }));
+            });
+        });
+    });
+    CHECK(first.RequestFocus());
+    h.Frames(2);
+    CHECK_EQ(focused, 0);
+    // Items 0..3 are composed; each move down past them lays out the next one to find it.
+    for (int k = 1; k <= 6; ++k) {
+        CHECK(h.owner.MoveFocus(FocusDirection::Down));
+        h.Frames(30);
+        CHECK_EQ(focused, k);
+    }
+    CHECK_EQ(state.FirstVisibleItemIndex(), 3);   // item 6 (180..210) brought in at the bottom edge
+    CHECK_EQ(state.FirstVisibleItemScrollOffset(), 20);
+    // And with Tab (1D), and back up.
+    CHECK(h.owner.MoveFocus(FocusDirection::Next));
+    h.Frames(30);
+    CHECK_EQ(focused, 7);
+    CHECK(h.owner.MoveFocus(FocusDirection::Up));
+    h.Frames(30);
+    CHECK_EQ(focused, 6);
 }

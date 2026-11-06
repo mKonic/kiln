@@ -334,6 +334,15 @@ namespace kiln::foundation {
             void OnDetach() override { if (params.logic->node == this) params.logic->node = nullptr; params.logic->StopFling(); }
         };
 
+        // ScrollableNode's FocusTargetModifierNode(Focusability.Never): a focus group around the
+        // content (focus searches inside it first; lazy layouts generate items beyond it).
+        struct FocusGroupParams { bool operator==(const FocusGroupParams&) const = default; };
+        struct ScrollFocusGroup final : ui::FocusTargetNode {
+            FocusGroupParams params;
+            explicit ScrollFocusGroup(FocusGroupParams) { focusability = ui::Focusability::Never; }
+            void OnParamsChanged() {}
+        };
+
         rt::Task<> ScrollGestures(PointerInputScope& s, std::shared_ptr<ScrollingLogic> logic) {
             VelocityTracker tracker;
             for (;;) {
@@ -680,6 +689,7 @@ namespace kiln::foundation {
         logic->flingBehavior = opt.flingBehavior;
         logic->bringIntoViewSpec = opt.bringIntoViewSpec ? opt.bringIntoViewSpec : CurrentBringIntoViewSpec();
         m = m.With<NestedNode>(NestedParams{ logic });
+        m = m.With<ScrollFocusGroup>(FocusGroupParams{});
         m = m.With<ContentInViewNode>(ContentInViewParams{ logic });
         if (!opt.enabled) return m;
         // PageUp / PageDown (ScrollableNode.onKeyEvent): a viewport at once, unless Ctrl is held.

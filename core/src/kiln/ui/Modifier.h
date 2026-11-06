@@ -25,6 +25,7 @@ namespace kiln::ui {
     class ContentDrawScope;
     class PointerInputModifier;
     class FocusTargetNode;
+    class BeyondBoundsLayout;
     class FocusEventModifier;
     class KeyInputModifier;
     class FocusPropertiesModifier;
@@ -96,6 +97,8 @@ namespace kiln::ui {
         virtual SemanticsModifier* AsSemantics() { return nullptr; }
         // A scroll container's bringIntoView responder (it must also be a layout modifier).
         virtual BringIntoViewResponder* AsBringIntoViewResponder() { return nullptr; }
+        // A lazy layout that can compose items past its bounds for a focus search.
+        virtual BeyondBoundsLayout* AsBeyondBoundsLayout() { return nullptr; }
         // Expires when the node is destroyed (for callbacks that may outlive it).
         std::weak_ptr<const char> AliveToken() const { return m_Alive; }
         // Semantics changed (call from Update when semantic params change).

@@ -195,6 +195,17 @@ namespace kiln::foundation {
         std::map<std::uint64_t, rt::Key> pinned;
         std::shared_ptr<ui::PinnableContainer> parentPin;   // the item around this layout, if any
         void RequestRemeasure() { if (state && state->m_Node) state->m_Node->RequestRemeasure(); }
+        void RemeasureNow() { if (state && state->m_Node) state->m_Node->ForceRemeasure(); }
+        bool HasVisible() const { return state && !state->m_Lines.empty(); }
+        int FirstPlaced() const { return state->m_Index.Peek(); }
+        int LastPlaced() const { return state->LastVisibleIndex(); }
+        int AverageLineSize() const {
+            int sum = 0;
+            for (const auto& l : state->m_Lines) sum += l.size;
+            return state->m_Lines.empty() ? 0 : sum / int(state->m_Lines.size());
+        }
+        // LazyLayoutBeyondBoundsInfo: items laid out past the edge for a focus search.
+        std::optional<std::pair<int, int>> beyondInterval;
         bool vertical = true;
         bool grid = false;
         LazyStateBase* state = nullptr;
@@ -933,6 +944,12 @@ namespace kiln::foundation {
             for (int l = firstL - 1; l >= startL; --l) extraBefore.push_back(measureLine(l));
             for (int l = lastL + 1; l <= endL; ++l) extraAfter.push_back(measureLine(l));
             std::set<int> before_, after_;
+            if (beyondInterval)
+                for (int idx = std::max(0, beyondInterval->first); idx <= std::min(count - 1, beyondInterval->second); ++idx) {
+                    const int l = LineOf(idx);
+                    if (l < startL) before_.insert(l);
+                    else if (l > endL) after_.insert(l);
+                }
             for (const auto& [kv, key] : pinned) {
                 auto sl = slots.find(kv);
                 const int idx = IndexOfKey(key, sl != slots.end() ? sl->second.index : -1);
@@ -1284,16 +1301,66 @@ namespace kiln::foundation {
         // StickyHeaderBringIntoViewSpec: the area under a sticking header does not count as visible.
         class StickyHeaderSpec final : public BringIntoViewSpec {
         public:
-            StickyHeaderSpec(std::shared_ptr<LazyCore> c, bool applyOffset, std::shared_ptr<const BringIntoViewSpec> inner)
+            StickyHeaderSpec(std::weak_ptr<LazyCore> c, bool applyOffset, std::shared_ptr<const BringIntoViewSpec> inner)
                 : core(std::move(c)), apply(applyOffset), inner(std::move(inner)) {}
             float CalculateScrollDistance(float offset, float size, float container) const override {
-                const float sticky = float(core->stickingSize);
+                auto c = core.lock();
+                const float sticky = c ? float(c->stickingSize) : 0.0f;
                 return inner->CalculateScrollDistance(apply ? offset - sticky : offset, size, container - sticky);
             }
         private:
-            std::shared_ptr<LazyCore> core;
+            std::weak_ptr<LazyCore> core;   // the layout owns the core; the spec must not keep it
             bool apply;
             std::shared_ptr<const BringIntoViewSpec> inner;
+        };
+
+        // LazyLayoutBeyondBoundsModifierLocal: one more item at a time past the edge in the search
+        // direction, up to two viewports' worth, until the block has an answer.
+        struct BeyondParams {
+            std::weak_ptr<LazyCore> core;
+            bool reverse;
+            bool operator==(const BeyondParams& o) const { return !core.owner_before(o.core) && !o.core.owner_before(core) && reverse == o.reverse; }
+        };
+        struct BeyondBoundsNode final : ModifierNode, ui::BeyondBoundsLayout {
+            BeyondParams params;
+            explicit BeyondBoundsNode(BeyondParams p) : params(std::move(p)) {}
+            void OnParamsChanged() {}
+            ui::BeyondBoundsLayout* AsBeyondBoundsLayout() override { return this; }
+            std::optional<bool> Layout(ui::FocusDirection d, const std::function<std::optional<bool>(bool)>& block) override {
+                auto core = params.core.lock();
+                if (!core || core->count <= 0 || !core->HasVisible() || !Owner()) return block(false);
+                using FD = ui::FocusDirection;
+                const bool vertical = core->vertical;
+                const bool rtl = Owner()->GetOwner() && Owner()->GetOwner()->Direction() == LayoutDirection::Rtl;
+                const bool reverse = params.reverse;
+                bool opposite = false, forward = true;
+                switch (d) {
+                    case FD::Previous: forward = false; break;
+                    case FD::Next: forward = true; break;
+                    case FD::Up: forward = reverse; opposite = !vertical; break;
+                    case FD::Down: forward = !reverse; opposite = !vertical; break;
+                    case FD::Left: forward = rtl ? !reverse : reverse; opposite = vertical; break;
+                    case FD::Right: forward = rtl ? reverse : !reverse; opposite = vertical; break;
+                    default: return std::nullopt;
+                }
+                const int start = forward ? core->LastPlaced() : core->FirstPlaced();
+                std::pair<int, int> interval{ start, start };
+                auto hasMore = [&] { return !opposite && (forward ? interval.second < core->count - 1 : interval.first > 0); };
+                // itemsPerViewport: the viewport over the average visible line.
+                const int average = core->AverageLineSize();
+                const int perViewport = average == 0 ? 1 : std::max(1, int(core->state->ViewportLength()) / average);
+                const int maxItems = std::min(2 * perViewport, core->count);
+                std::optional<bool> found;
+                for (int created = 0; !found && hasMore() && created < maxItems; ++created) {
+                    if (forward) ++interval.second; else --interval.first;
+                    core->beyondInterval = interval;
+                    core->RemeasureNow();
+                    found = block(hasMore());
+                }
+                core->beyondInterval.reset();
+                core->RemeasureNow();
+                return found;
+            }
         };
 
         void LazyLayout(bool vertical, const Modifier& modifier, LazyStateBase& state, bool userScrollEnabled, rt::Key key,
@@ -1340,6 +1407,7 @@ namespace kiln::foundation {
                 if (cp->grid || cp->staggered) c.collectionInfo = std::pair{ -1, -1 };
                 else c.collectionInfo = vertical ? std::pair{ cp->count, 1 } : std::pair{ 1, cp->count };
             });
+            sem = sem.With<BeyondBoundsNode>(BeyondParams{ core, reverseLayout });
             Modifier m = Scrollable(Overscroll(std::move(sem), so.overscroll), state,
                                     vertical ? Orientation::Vertical : Orientation::Horizontal, so);
             if (extra) m = extra(std::move(m));

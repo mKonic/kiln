@@ -229,6 +229,11 @@ namespace kiln::ui {
         bool Forward(FocusTargetNode& t, const std::function<bool(FocusTargetNode&)>& onFound);
         bool Backward(FocusTargetNode& t, const std::function<bool(FocusTargetNode&)>& onFound);
         bool SearchChildren1D(FocusTargetNode& t, FocusTargetNode& focused, FocusDirection dir, const std::function<bool(FocusTargetNode&)>& onFound);
+        // generateAndSearchChildren: the search, then again over items laid out beyond bounds.
+        bool Generate1D(FocusTargetNode& t, FocusTargetNode& focused, FocusDirection dir, const std::function<bool(FocusTargetNode&)>& onFound);
+        bool Generate2D(FocusTargetNode& t, Rect focused, FocusDirection dir, const std::function<bool(FocusTargetNode&)>& onFound);
+        BeyondBoundsLayout* BeyondBoundsParent(const FocusTargetNode& t) const;
+        bool SearchBeyondBounds(FocusTargetNode& t, FocusDirection dir, const std::function<bool()>& search);
         std::vector<FocusTargetNode*> SortedChildren(const FocusTargetNode& t) const;
         FocusTargetNode* ActiveChild(const FocusTargetNode& t) const;
         struct HitEntry { LayoutNode* node; PointerInputModifier* mod; };

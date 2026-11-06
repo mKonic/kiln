@@ -377,9 +377,9 @@ namespace kiln::ui {
                 if (!child) return false;
                 if (StateOf(*child) == FocusState::ActiveParent) {
                     if (Search2D(*child, d, previous, onFound)) return true;
-                    return SearchChildren2D(t, previous ? *previous : FocusRect(*m_ActiveFocus), d, onFound);
+                    return Generate2D(t, previous ? *previous : FocusRect(*m_ActiveFocus), d, onFound);
                 }
-                return SearchChildren2D(t, previous ? *previous : FocusRect(*child), d, onFound);
+                return Generate2D(t, previous ? *previous : FocusRect(*child), d, onFound);
             }
             default:
                 return FindChildForEnter(t, d, onFound);
@@ -412,7 +412,7 @@ namespace kiln::ui {
         switch (StateOf(t)) {
             case FocusState::ActiveParent: {
                 FocusTargetNode* child = ActiveChild(t);
-                return (child && Forward(*child, onFound)) || (child && SearchChildren1D(t, *child, FocusDirection::Next, onFound));
+                return (child && Forward(*child, onFound)) || (child && Generate1D(t, *child, FocusDirection::Next, onFound));
             }
             case FocusState::Active: case FocusState::Captured: return pick();
             case FocusState::Inactive: return CanFocus(t) ? onFound(t) : pick();
@@ -431,9 +431,9 @@ namespace kiln::ui {
                 FocusTargetNode* child = ActiveChild(t);
                 if (!child) return false;
                 if (StateOf(*child) == FocusState::ActiveParent)
-                    return Backward(*child, onFound) || SearchChildren1D(t, *child, FocusDirection::Previous, onFound) ||
+                    return Backward(*child, onFound) || Generate1D(t, *child, FocusDirection::Previous, onFound) ||
                            (CanFocus(*child) && onFound(*child));
-                return SearchChildren1D(t, *child, FocusDirection::Previous, onFound);
+                return Generate1D(t, *child, FocusDirection::Previous, onFound);
             }
             case FocusState::Active: case FocusState::Captured: return pick();
             case FocusState::Inactive: return pick() || (CanFocus(t) && onFound(t));
@@ -453,6 +453,53 @@ namespace kiln::ui {
         }
         if (d == FocusDirection::Next || !CanFocus(t) || t.m_IsRoot) return false;
         return onFound(t);
+    }
+
+    // --- beyond bounds (BeyondBoundsLayout.kt) --------------------------------------------------
+
+    BeyondBoundsLayout* Owner::BeyondBoundsParent(const FocusTargetNode& t) const {
+        // The nearest provider before the target in its chain, then up the ancestors.
+        LayoutNode* n = NodeOf(t);
+        if (!n) return nullptr;
+        bool before = false;
+        const auto mods = n->ModifierNodes();
+        for (auto it = mods.rbegin(); it != mods.rend(); ++it) {
+            if (*it == &t) { before = true; continue; }
+            if (before)
+                if (auto* b = const_cast<ModifierNode*>(*it)->AsBeyondBoundsLayout()) return b;
+        }
+        for (LayoutNode* a = n->m_Parent; a; a = a->m_Parent) {
+            const auto am = a->ModifierNodes();
+            for (auto it = am.rbegin(); it != am.rend(); ++it)
+                if (auto* b = const_cast<ModifierNode*>(*it)->AsBeyondBoundsLayout()) return b;
+        }
+        return nullptr;
+    }
+
+    bool Owner::SearchBeyondBounds(FocusTargetNode& t, FocusDirection d, const std::function<bool()>& search) {
+        if (d == FocusDirection::Enter || d == FocusDirection::Exit) return false;
+        BeyondBoundsLayout* layout = BeyondBoundsParent(t);
+        // Only the lazy layout's own target searches beyond bounds, not the targets in its items.
+        if (FocusTargetNode* p = FocusParent(t); p && !p->m_IsRoot && BeyondBoundsParent(*p) == layout) return false;
+        if (!layout) return false;
+        FocusTargetNode* activeBefore = m_ActiveFocus;
+        auto found = layout->Layout(d, [&](bool more) -> std::optional<bool> {
+            if (m_ActiveFocus != activeBefore) return true;   // focus moved meanwhile
+            const bool f = search();
+            if (f || !more) return f;
+            return std::nullopt;
+        });
+        return found.value_or(false);
+    }
+
+    bool Owner::Generate1D(FocusTargetNode& t, FocusTargetNode& focused, FocusDirection d, const OnFound& onFound) {
+        if (SearchChildren1D(t, focused, d, onFound)) return true;
+        return SearchBeyondBounds(t, d, [&] { return SearchChildren1D(t, focused, d, onFound); });
+    }
+
+    bool Owner::Generate2D(FocusTargetNode& t, Rect focused, FocusDirection d, const OnFound& onFound) {
+        if (SearchChildren2D(t, focused, d, onFound)) return true;
+        return SearchBeyondBounds(t, d, [&] { return SearchChildren2D(t, focused, d, onFound); });
     }
 
     bool Owner::MoveFocus(FocusDirection d) {

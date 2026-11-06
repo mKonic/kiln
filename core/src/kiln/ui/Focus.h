@@ -10,6 +10,8 @@
 
 #include <cstdint>
 #include <functional>
+#include <memory>
+#include <optional>
 #include <vector>
 
 namespace kiln::ui {
@@ -96,6 +98,16 @@ namespace kiln::ui {
         bool m_IsRoot = false;
     };
 
+    // BeyondBoundsLayout: a lazy layout composes items past its edge in `direction`, one at a
+    // time, calling `block` after each until it returns a value (nullopt: keep going) or there
+    // is no more content; the extra items go away afterwards. Focus search uses it to move into
+    // items not composed yet.
+    class BeyondBoundsLayout {
+    public:
+        virtual ~BeyondBoundsLayout() = default;
+        virtual std::optional<bool> Layout(FocusDirection direction, const std::function<std::optional<bool>(bool hasMoreContent)>& block) = 0;
+    };
+
     // onFocusChanged / onFocusEvent: observes the first focus target at or after it.
     class FocusEventModifier {
     public:
@@ -109,8 +121,11 @@ namespace kiln::ui {
         bool RequestFocus(FocusDirection direction = FocusDirection::Enter);
         void Add(FocusTargetNode* t) { m_Targets.push_back(t); }
         void Remove(FocusTargetNode* t) { std::erase(m_Targets, t); }
+        // Expires with the requester: nodes that outlive it skip Remove.
+        std::weak_ptr<const char> AliveToken() const { return m_Alive; }
     private:
         std::vector<FocusTargetNode*> m_Targets;
+        std::shared_ptr<const char> m_Alive = std::make_shared<const char>(0);
     };
 
 }
