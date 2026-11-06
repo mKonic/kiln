@@ -80,6 +80,10 @@ namespace kiln {
         // in the space `inverse` maps framebuffer pixels into (identity: framebuffer pixels).
         struct Clip { float x0 = 0, y0 = 0, x1 = 0, y1 = 0, radius = 0; bool enabled = false; Transform inverse; };
         void SetClip(const Clip& clip) { m_Clip = clip; }
+        // Multiplies what the current target holds by the coverage in `page` (DstIn): masks an
+        // offscreen layer to a path before it is composited.
+        void DrawMask(const RectF& rect, const RectF& uv, const AtlasPage& page);
+
         // Offscreen layers: quads submitted between BeginLayer and EndLayer render into a target
         // covering the device-space rect `bounds` (whole pixels). EndLayer returns the texture and
         // its uv extent; draw it back with DrawAtlas(Mode::Color). Layers nest.
@@ -95,9 +99,9 @@ namespace kiln {
     private:
         struct Instance { float rect[4]; float uv[4]; float color[4]; float params[4]; float clip[4]; float clipParams[4]; float paint[4]; float paint2[4];
                          float xform[4]; float xform2[4]; float clipInv[4]; float clipInv2[4]; };
-        struct Run { const AtlasPage* page; std::uint32_t first, count; };
+        struct Run { const AtlasPage* page; std::uint32_t first, count; bool mask = false; bool filtered = false; };
 
-        void Push(const Instance& instance, const AtlasPage* page, const Paint* paint);
+        void Push(const Instance& instance, const AtlasPage* page, const Paint* paint, bool mask = false);
         struct Target {
             std::vector<Instance> instances;
             std::vector<Run> runs;
@@ -118,6 +122,8 @@ namespace kiln {
 
         hearth::Device& m_Device;
         hearth::Ref<hearth::Pipeline> m_Pipeline;
+        hearth::Ref<hearth::Pipeline> m_MaskPipeline;
+        hearth::Ref<hearth::Pipeline> m_FilteredPipeline;
         hearth::Ref<hearth::Texture> m_White;
         hearth::Ref<hearth::Texture> m_Ramp;
         hearth::Ref<hearth::Texture> m_Filters;

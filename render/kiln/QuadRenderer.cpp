@@ -70,6 +70,16 @@ namespace kiln {
         desc.colorFormats = { device.SwapchainFormat() };
         desc.debugName = "kiln.quad";
         m_Pipeline = device.CreatePipeline(desc);
+        desc.fragment = device.CreateShader({ { std::begin(shaders::kQuadFilteredFrag), std::end(shaders::kQuadFilteredFrag) },
+                                              ShaderStage::Fragment, "main", "kiln.quad_filtered.frag" });
+        desc.debugName = "kiln.quad.filtered";
+        m_FilteredPipeline = device.CreatePipeline(desc);
+        desc.fragment = fs;
+        // DstIn: dst * src.alpha, for masking a layer to a path.
+        desc.blend = BlendMode::Custom;
+        desc.blendFactors = { BlendFactor::Zero, BlendFactor::SrcAlpha, BlendOp::Add, BlendFactor::Zero, BlendFactor::SrcAlpha, BlendOp::Add };
+        desc.debugName = "kiln.quad.mask";
+        m_MaskPipeline = device.CreatePipeline(desc);
         m_White = device.CreateSolidTexture(0xffffffffu);
         m_Buffers.resize(device.Caps().framesInFlight);
         m_Pool.resize(device.Caps().framesInFlight);
@@ -91,7 +101,7 @@ namespace kiln {
         m_Transform = {};
     }
 
-    void QuadRenderer::Push(const Instance& in, const AtlasPage* page, const Paint* paint) {
+    void QuadRenderer::Push(const Instance& in, const AtlasPage* page, const Paint* paint, bool mask) {
         Instance instance = in;
         if (paint && paint->kind != Paint::Kind::Color) {
             for (int i = 0; i < 4; ++i) instance.paint[i] = paint->geometry[i];
@@ -112,15 +122,17 @@ namespace kiln {
         instance.clipInv[0] = ci.a; instance.clipInv[1] = ci.b; instance.clipInv[2] = ci.c; instance.clipInv[3] = ci.d;
         instance.clipInv2[0] = ci.e; instance.clipInv2[1] = ci.f; instance.clipInv2[2] = instance.clipInv2[3] = 0;
         Target& t2 = Current();
-        if (t2.runs.empty() || t2.runs.back().page != page)
-            t2.runs.push_back({ page, std::uint32_t(t2.instances.size()), 0 });
+        const bool filtered = instance.params[2] >= 0;
+        if (t2.runs.empty() || t2.runs.back().page != page || t2.runs.back().mask != mask || t2.runs.back().filtered != filtered)
+            t2.runs.push_back({ page, std::uint32_t(t2.instances.size()), 0, mask, filtered });
         t2.instances.push_back(instance);
         ++t2.runs.back().count;
     }
 
     void QuadRenderer::FillRect(const RectF& r, Rgba c, float radius, const Paint* paint, int filterRow) {
         // Solid quads ignore the atlas, so they join whatever run is open instead of splitting it.
-        const AtlasPage* page = Current().runs.empty() ? nullptr : Current().runs.back().page;
+        const bool openMask = !Current().runs.empty() && (Current().runs.back().mask || Current().runs.back().filtered != (filterRow >= 0));
+        const AtlasPage* page = Current().runs.empty() || openMask ? nullptr : Current().runs.back().page;
         Push({ { r.x, r.y, r.w, r.h }, { 0, 0, 0, 0 }, { c.r, c.g, c.b, c.a },
                { radius, float(Mode::Solid), float(filterRow), 0 }, {}, {}, {}, {}, {}, {}, {}, {} }, page, paint);
     }
@@ -148,6 +160,11 @@ namespace kiln {
         auto group = m_Device.CreateBindGroup(m_Pipeline, { entry, ramp, filters });
         m_Groups.emplace_back(page, group);
         return group;
+    }
+
+    void QuadRenderer::DrawMask(const RectF& r, const RectF& uv, const AtlasPage& page) {
+        Push({ { r.x, r.y, r.w, r.h }, { uv.x, uv.y, uv.x + uv.w, uv.y + uv.h }, { 1, 1, 1, 1 },
+               { 0, float(Mode::TintedCoverage), -1, 0 }, {}, {}, {}, {}, {}, {}, {}, {} }, &page, nullptr, true);
     }
 
     void QuadRenderer::BeginLayer(int x, int y, int w, int h) {
@@ -216,12 +233,17 @@ namespace kiln {
         if (t.instances.empty()) return;
         auto& buffer = m_Buffers[m_Device.FrameIndex() % m_Buffers.size()];
         const float push[4] = { t.size[0], t.size[1], t.origin[0], t.origin[1] };
-        cmd.BindPipeline(m_Pipeline);
-        cmd.SetViewport({ 0, 0, t.size[0], t.size[1], 0, 1 });
-        cmd.SetScissor({ 0, 0, u32(t.size[0]), u32(t.size[1]) });
-        cmd.SetPushConstants(push, sizeof(push));
-        cmd.BindVertexBuffer(0, buffer);
+        const Pipeline* boundPipeline = nullptr;
         for (const Run& run : t.runs) {
+            const Ref<Pipeline>& want = run.mask ? m_MaskPipeline : run.filtered ? m_FilteredPipeline : m_Pipeline;
+            if (boundPipeline != want.get()) {
+                cmd.BindPipeline(want);
+                cmd.SetViewport({ 0, 0, t.size[0], t.size[1], 0, 1 });
+                cmd.SetScissor({ 0, 0, u32(t.size[0]), u32(t.size[1]) });
+                cmd.SetPushConstants(push, sizeof(push));
+                cmd.BindVertexBuffer(0, buffer);
+                boundPipeline = want.get();
+            }
             cmd.BindBindGroup(GroupFor(run.page));
             cmd.Draw(4, run.count, 0, t.base + run.first);
         }
