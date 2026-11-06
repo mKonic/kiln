@@ -49,10 +49,9 @@ float clipCoverage() {
     return aaCoverage(roundedRectSdf(q, half_, r), p);
 }
 
-// The fill colour: flat, or a gradient sampled from its ramp row (Skia tile modes).
-vec4 paint() {
+// A gradient's ramp texel at this fragment (Skia tile modes), premultiplied; kind 0 has none.
+vec4 paintRaw() {
     int kind = int(vPaint2.x + 0.5);
-    if (kind == 0) return vColor;
     vec2 p = fragDevice();
     float t;
     if (kind == 1) {
@@ -71,8 +70,13 @@ vec4 paint() {
     else if (tile == 2) t = 1.0 - abs(mod(t, 2.0) - 1.0);
     else if (tile == 3 && (t < 0.0 || t > 1.0)) return vec4(0.0);
     t = clamp(t, 0.0, 1.0);
-    vec4 c = texture(uRamp, vec2((t * 255.0 + 0.5) / 256.0, vPaint2.z));
-    return c * vColor.a;
+    return texture(uRamp, vec2((t * 255.0 + 0.5) / 256.0, vPaint2.z));
+}
+
+// The fill colour: flat, or the gradient.
+vec4 paint() {
+    if (int(vPaint2.x + 0.5) == 0) return vColor;
+    return paintRaw() * vColor.a;
 }
 
 #ifdef KILN_FILTERS
@@ -215,8 +219,52 @@ vec4 blurPass() {
     return sum / wsum;
 }
 
+// --- progressive blur (ui-graphics BlurShaders.kt blurCoreSkSl) -------------------------------
+// One pass whose radius varies per pixel: the gradient paint's alpha is the intensity, times the
+// maximum radius (vColor.z); sigma is radius / 2. Clamp renormalises over in-bounds taps, decal
+// keeps the full weight (edges fade).
+float gaussian(float x, float sigma) { return exp(-(x * x) / (2.0 * sigma * sigma)); }
+
+vec4 progressiveBlurPass() {
+    vec2 dir = vColor.xy;   // one texel along the pass axis, in uv
+    float radius = vColor.z * clamp(paintRaw().a, 0.0, 1.0);
+    float unbounded = vParams.x > 0.5 ? 1.0 : 0.0;
+    vec2 axis = abs(dir.x) > abs(dir.y) ? vec2(1.0, 0.0) : vec2(0.0, 1.0);
+    float lo = dot(vUvMin, axis), hi = dot(vUvMax, axis);
+    vec4 result = texture(uAtlas, vUv);
+    float r = floor(radius);
+    if (r < 1.0) return result;
+    float sigma = max(radius / 2.0, 1.0);
+    float weightSum = 1.0;
+    for (float i = 1.0; i < 150.0; i += 2.0) {
+        if (i >= r) break;
+        float wl = gaussian(i, sigma), wh = gaussian(i + 1.0, sigma), w = wl + wh;
+        vec2 off = dir * (i + wh / w);
+        for (int side = 0; side < 2; ++side) {
+            vec2 uv = side == 0 ? vUv - off : vUv + off;
+            float a = dot(uv, axis);
+            float m = step(lo, a) * (1.0 - step(hi, a));
+            weightSum += w * max(m, unbounded);
+            if (m > 0.0) result += w * texture(uAtlas, uv);
+        }
+    }
+    float ow = gaussian(r, sigma) * mod(r, 2.0) * (1.0 - step(150.0, r));
+    for (int side = 0; side < 2; ++side) {
+        vec2 uv = side == 0 ? vUv - dir * r : vUv + dir * r;
+        float a = dot(uv, axis);
+        float m = step(lo, a) * (1.0 - step(hi, a));
+        weightSum += ow * max(m, unbounded);
+        if (m > 0.0) result += ow * texture(uAtlas, uv);
+    }
+    return result / weightSum;
+}
+
 void main() {
     int mode = int(vParams.y + 0.5);
+    if (mode == 5) {
+        outColor = progressiveBlurPass() * clipCoverage();
+        return;
+    }
     if (mode == 4) {
         outColor = blurPass() * vColor.a * clipCoverage();
         return;

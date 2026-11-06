@@ -224,6 +224,13 @@ namespace kiln {
         last.paint[0] = su; last.paint[1] = sv; last.paint[2] = sigma; last.paint[3] = decal ? 1.0f : 0.0f;
     }
 
+    void QuadRenderer::DrawProgressiveBlur(const RectF& r, const RectF& uv, const AtlasPage& page, float su, float sv, float maxRadius,
+                                           bool decal, const Paint& intensity) {
+        // Pass parameters ride in the colour; the intensity gradient in the paint slots.
+        Push({ { r.x, r.y, r.w, r.h }, { uv.x, uv.y, uv.x + uv.w, uv.y + uv.h }, { su, sv, maxRadius, 1 },
+               { decal ? 1.0f : 0.0f, float(Mode::ProgressiveBlur), -1, 0 }, {}, {}, {}, {}, {}, {}, {}, {} }, &page, &intensity);
+    }
+
     void QuadRenderer::DrawTriangles(const Vertex* v, std::size_t count) {
         if (count < 3) return;
         Target& t = Current();

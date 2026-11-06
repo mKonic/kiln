@@ -360,6 +360,19 @@ namespace {
                     d.DrawPath(tri, kVariant, &stroke);
                 });
             });
+            // Progressive blur: sharp at the top fading to blurred (vertical), and around a centre.
+            Row(Padding(Modifier{}, 16_dp, 8_dp), Arrangement::SpacedBy(16_dp), AlignmentV::CenterVertically(), [&] {
+                for (int k = 0; k < 2; ++k) {
+                    const BlurRadiusSpec spec = k == 0 ? BlurRadiusSpec::VerticalGradient(0_dp, 12_dp)
+                                                       : BlurRadiusSpec::RadialGradient(0_dp, 12_dp);
+                    Column(Blur(Clip(SizeMod(Modifier{}, 120_dp, 80_dp), CornerShape::Rounded(12_dp)), spec), [&] {
+                        for (int i = 0; i < 4; ++i)
+                            Box(Background(SizeMod(Modifier{}, 120_dp, 20_dp), i % 2 ? kTertiary : kPrimary), Alignment::Center(), false, [&] {
+                                BasicText("progressive", {}, { 12, kOnPrimary });
+                            });
+                    });
+                }
+            });
             // Mesh gradients: a 2x2 grid of Bezier patches, bilinear and Catmull-Rom colours.
             Row(Padding(Modifier{}, 16_dp, 8_dp), Arrangement::SpacedBy(16_dp), AlignmentV::CenterVertically(), [&] {
                 for (const bool bicubic : { false, true }) {

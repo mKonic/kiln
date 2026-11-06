@@ -615,7 +615,11 @@ namespace kiln::foundation {
                                      rr->topLeft.x == rr->topLeft.y))
                         clipPath = outline->ToPath();   // non-uniform corners: no SDF fast path
                 }
-                if (params.renderEffect) { DrawBlurred(s, size, clipPath ? &*clipPath : nullptr, outline ? &*outline : nullptr); s.Restore(); return; }
+                if (params.renderEffect || params.progressiveBlur) {
+                    DrawBlurred(s, size, clipPath ? &*clipPath : nullptr, outline ? &*outline : nullptr);
+                    s.Restore();
+                    return;
+                }
                 const bool offscreen = clipPath || params.compositingStrategy == CompositingStrategy::Offscreen ||
                                        params.blendMode != gfx::BlendMode::SrcOver || params.colorFilter ||
                                        (params.compositingStrategy == CompositingStrategy::Auto && params.alpha < 1);
@@ -638,6 +642,10 @@ namespace kiln::foundation {
             // A render effect works on the layer's image; the clip shape then clips the result
             // (HWUI clips the layer draw to the outline), so it wraps the effect.
             void DrawBlurred(ContentDrawScope& s, Size size, const gfx::Path* clipPath, const gfx::Outline* outline) {
+                if (params.progressiveBlur && params.progressiveBlur->kind != BlurRadiusSpec::Kind::Uniform) {
+                    DrawProgressive(s, size, clipPath, outline);
+                    return;
+                }
                 // The chain, input first: blurs in order and the summed offset.
                 std::vector<const RenderEffect*> chain;
                 for (const RenderEffect* e = &*params.renderEffect; e; e = e->input.get()) chain.push_back(e);
@@ -664,6 +672,48 @@ namespace kiln::foundation {
                 else s.BeginLayer(layer, alpha, nullptr, params.blendMode, Filter());
                 s.DrawContent();
                 s.EndLayerEffects(blurs, offset);
+                if (clipPath) s.EndLayer();
+            }
+            // The intensity of a progressive blur as a gradient whose alpha is the stop's radius over
+            // the largest one (ProgressiveBlurEffectV33 fill: normalised intensities).
+            void DrawProgressive(ContentDrawScope& s, Size size, const gfx::Path* clipPath, const gfx::Outline* outline) {
+                const BlurRadiusSpec& spec = *params.progressiveBlur;
+                float maxPx = 0;
+                for (const BlurStop& st : spec.stops) maxPx = std::max(maxPx, s.ToPx(st.radius));
+                const Rect bounds{ 0, 0, size.width, size.height };
+                float alpha = params.alpha;
+                if (clipPath) { s.BeginLayer(bounds, alpha, clipPath, params.blendMode, Filter()); alpha = 1; }
+                else if (params.clip) ClipToShape(s, size, outline);
+                if (clipPath) s.BeginLayer(bounds, alpha);
+                else s.BeginLayer(bounds, alpha, nullptr, params.blendMode, Filter());
+                s.DrawContent();
+                if (maxPx <= 0) {
+                    s.EndLayer();
+                } else {
+                    std::vector<Color> colors;
+                    std::vector<float> stops;
+                    for (const BlurStop& st : spec.stops) {
+                        const float k = std::clamp(s.ToPx(st.radius) / maxPx, 0.0f, 1.0f);
+                        colors.push_back(Color(std::uint32_t(std::lround(k * 255)) << 24));
+                        stops.push_back(st.fraction);
+                    }
+                    auto px = [&](Offset dp) { return Offset{ s.ToPx(Dp(dp.x)), s.ToPx(Dp(dp.y)) }; };
+                    gfx::Brush intensity;
+                    switch (spec.kind) {
+                        case BlurRadiusSpec::Kind::Vertical: intensity = gfx::Brush::LinearGradient(colors, { 0, 0 }, { 0, size.height }, gfx::TileMode::Clamp, stops); break;
+                        case BlurRadiusSpec::Kind::Horizontal: intensity = gfx::Brush::LinearGradient(colors, { 0, 0 }, { size.width, 0 }, gfx::TileMode::Clamp, stops); break;
+                        case BlurRadiusSpec::Kind::Linear:
+                            intensity = gfx::Brush::LinearGradient(colors, px(spec.start.value_or(Offset{})), px(spec.end.value_or(Offset{})), gfx::TileMode::Clamp, stops);
+                            break;
+                        default: {
+                            const Offset c = spec.center ? px(*spec.center) : Offset{ size.width / 2, size.height / 2 };
+                            const float r = spec.fallOff && std::isfinite(spec.fallOff->value) ? s.ToPx(*spec.fallOff) : size.MinDimension() / 2;
+                            intensity = gfx::Brush::RadialGradient(colors, c, r, gfx::TileMode::Clamp, stops);
+                            break;
+                        }
+                    }
+                    s.EndLayerProgressiveBlur(std::min(maxPx, 150.0f), intensity, params.progressiveBlurDecal);
+                }
                 if (clipPath) s.EndLayer();
             }
             // rotationX / rotationY: the content renders flat (clipped as usual) into a layer that
@@ -735,6 +785,23 @@ namespace kiln::foundation {
     }
     Modifier AlignBy(Modifier m, std::function<int(Placeable&)> block) {
         return m.With<AlignBlockNode>(AlignBlockParams{ std::make_shared<const std::function<int(Placeable&)>>(std::move(block)) });
+    }
+
+    Modifier Blur(Modifier m, BlurRadiusSpec spec, BlurredEdgeTreatment e, float alpha) {
+        GraphicsLayerParams p;
+        p.alpha = alpha;
+        p.clip = e.clip;
+        p.clipShape = std::move(e.shape);
+        if (spec.kind == BlurRadiusSpec::Kind::Uniform) {
+            // BlurUniform: the platform blur (HWUI's radius-to-sigma).
+            const Dp r = spec.stops.empty() ? Dp(0) : spec.stops[0].radius;
+            if (r.value > 0)
+                p.renderEffect = RenderEffect{ RenderEffect::Kind::Blur, r.value, r.value, e.clip ? gfx::TileMode::Clamp : gfx::TileMode::Decal, true, nullptr };
+        } else {
+            p.progressiveBlur = std::move(spec);
+            p.progressiveBlurDecal = !e.clip;
+        }
+        return GraphicsLayer(std::move(m), p);
     }
 
     Modifier FillCrossAxisOfLine(Modifier m, float fraction) {

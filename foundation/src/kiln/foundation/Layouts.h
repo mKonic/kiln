@@ -1,6 +1,8 @@
 #pragma once
 
 #include <optional>
+#include <vector>
+#include <algorithm>
 
 #include "kiln/graphics/Brush.h"
 #include "kiln/graphics/ColorFilter.h"
@@ -149,6 +151,51 @@ namespace kiln::foundation {
         }
     };
 
+    // BlurRadiusSpec (ui-graphics ProgressiveBlur.kt): a blur radius that varies across the layer.
+    // Stops give the radius at fractions along a line (Linear: start to end, the whole height or
+    // width by default) or out from a centre (Radial: to fallOff, half the smaller side by
+    // default). Uniform is the ordinary blur.
+    struct BlurStop {
+        float fraction = 0;
+        Dp radius;
+        bool operator==(const BlurStop&) const = default;
+    };
+    struct BlurRadiusSpec {
+        enum class Kind : std::uint8_t { Uniform, Vertical, Horizontal, Linear, Radial };
+        Kind kind = Kind::Uniform;
+        std::vector<BlurStop> stops;                     // sorted; Uniform: one
+        std::optional<Offset> start, end;                // Linear, in dp
+        std::optional<Offset> center;                    // Radial, in dp; nullopt: the centre
+        std::optional<Dp> fallOff;                       // Radial; nullopt: half the smaller side
+        bool operator==(const BlurRadiusSpec&) const = default;
+
+        static BlurRadiusSpec Uniform(Dp radius) { return { Kind::Uniform, { { 0, radius } } }; }
+        static BlurRadiusSpec VerticalGradient(Dp startRadius, Dp endRadius) { return { Kind::Vertical, { { 0, startRadius }, { 1, endRadius } } }; }
+        static BlurRadiusSpec VerticalGradient(std::vector<BlurStop> stops) { return { Kind::Vertical, Sorted(std::move(stops)) }; }
+        static BlurRadiusSpec HorizontalGradient(Dp startRadius, Dp endRadius) { return { Kind::Horizontal, { { 0, startRadius }, { 1, endRadius } } }; }
+        static BlurRadiusSpec HorizontalGradient(std::vector<BlurStop> stops) { return { Kind::Horizontal, Sorted(std::move(stops)) }; }
+        static BlurRadiusSpec LinearGradient(Offset startDp, Offset endDp, Dp startRadius, Dp endRadius) {
+            return { Kind::Linear, { { 0, startRadius }, { 1, endRadius } }, startDp, endDp };
+        }
+        static BlurRadiusSpec LinearGradient(Offset startDp, Offset endDp, std::vector<BlurStop> stops) {
+            return { Kind::Linear, Sorted(std::move(stops)), startDp, endDp };
+        }
+        static BlurRadiusSpec RadialGradient(Dp startRadius, Dp endRadius, std::optional<Offset> centerDp = std::nullopt,
+                                             std::optional<Dp> fallOff = std::nullopt) {
+            return { Kind::Radial, { { 0, startRadius }, { 1, endRadius } }, std::nullopt, std::nullopt, centerDp, fallOff };
+        }
+        static BlurRadiusSpec RadialGradient(std::vector<BlurStop> stops, std::optional<Offset> centerDp = std::nullopt,
+                                             std::optional<Dp> fallOff = std::nullopt) {
+            return { Kind::Radial, Sorted(std::move(stops)), std::nullopt, std::nullopt, centerDp, fallOff };
+        }
+    private:
+        static std::vector<BlurStop> Sorted(std::vector<BlurStop> s) {
+            std::stable_sort(s.begin(), s.end(), [](const BlurStop& a, const BlurStop& b) { return a.fraction < b.fraction; });
+            if (s.size() > 16) s.resize(16);   // BlurStop.MaxStops
+            return s;
+        }
+    };
+
     struct GraphicsLayerParams {
         float alpha = 1, scaleX = 1, scaleY = 1, translationX = 0, translationY = 0;
         float rotationZ = 0;                  // degrees, clockwise
@@ -158,6 +205,10 @@ namespace kiln::foundation {
         float rotationX = 0, rotationY = 0, cameraDistance = 8;
         CompositingStrategy compositingStrategy = CompositingStrategy::Auto;
         std::optional<RenderEffect> renderEffect;   // renders offscreen and composites through it
+        // A progressive blur (Modifier.blur(BlurRadiusSpec)); with `progressiveBlurDecal` the
+        // edges fade (Unbounded) instead of clamping.
+        std::optional<BlurRadiusSpec> progressiveBlur;
+        bool progressiveBlurDecal = false;
         // How the layer composites onto what is below, and a colour filter on its image; either
         // other than the default makes the layer offscreen (GraphicsLayer requiresCompositingLayer).
         gfx::BlendMode blendMode = gfx::BlendMode::SrcOver;
@@ -183,6 +234,8 @@ namespace kiln::foundation {
         static BlurredEdgeTreatment Of(std::shared_ptr<const gfx::Shape> shape) { return { true, std::move(shape) }; }
     };
     Modifier Blur(Modifier m, Dp radiusX, Dp radiusY, BlurredEdgeTreatment edgeTreatment = BlurredEdgeTreatment::Rectangle());
+    // Modifier.blur(blurRadiusSpec, edgeTreatment, alpha).
+    Modifier Blur(Modifier m, BlurRadiusSpec spec, BlurredEdgeTreatment edgeTreatment = BlurredEdgeTreatment::Rectangle(), float alpha = 1);
     inline Modifier Blur(Modifier m, Dp radius, BlurredEdgeTreatment edgeTreatment = BlurredEdgeTreatment::Rectangle()) {
         return Blur(std::move(m), radius, radius, std::move(edgeTreatment));
     }

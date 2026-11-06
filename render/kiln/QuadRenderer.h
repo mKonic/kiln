@@ -47,7 +47,7 @@ namespace kiln {
     // glyphs/images. One draw per run of quads sharing an atlas page, in submission order.
     class QuadRenderer {
     public:
-        enum class Mode : std::uint8_t { Solid = 0, TintedCoverage = 1, Color = 2, Stretch = 3, Blur = 4 };
+        enum class Mode : std::uint8_t { Solid = 0, TintedCoverage = 1, Color = 2, Stretch = 3, Blur = 4, ProgressiveBlur = 5 };
 
         // A gradient paint instead of the flat colour: geometry in framebuffer pixels (linear
         // x0,y0,x1,y1; radial cx,cy,r; sweep cx,cy), the ramp row in the ramp texture.
@@ -98,6 +98,10 @@ namespace kiln {
         void DrawBlur(const RectF& rect, const RectF& uv, const AtlasPage& page, float alpha, float stepU, float stepV, float sigma, bool decal);
         // Triangles (a list, three vertices each) with per-vertex colour: positions in device
         // pixels, colours premultiplied. Clipped like quads; always SrcOver.
+        // A progressive blur pass: the radius at each pixel is maxRadius (texels) times the alpha
+        // of `intensity` (a gradient paint) there; Compose's sigma = radius / 2.
+        void DrawProgressiveBlur(const RectF& rect, const RectF& uv, const AtlasPage& page, float stepU, float stepV, float maxRadius,
+                                 bool decal, const Paint& intensity);
         struct Vertex { float x, y; float r, g, b, a; };
         void DrawTriangles(const Vertex* vertices, std::size_t count);
 

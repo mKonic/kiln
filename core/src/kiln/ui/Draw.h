@@ -94,6 +94,10 @@ namespace kiln::ui {
         // transparent), then composited moved by `offset` (createOffsetEffect, local units).
         struct LayerBlur { float sigmaX = 0, sigmaY = 0; bool decal = false; };
         void EndLayerEffects(const std::vector<LayerBlur>& blurs, Offset offset = {});
+        // Ends a layer through a progressive blur (Modifier.blur(BlurRadiusSpec)): the radius at
+        // each point is maxRadius (local px) times the alpha of `intensity` there (a linear or
+        // radial gradient in local coordinates).
+        void EndLayerProgressiveBlur(float maxRadius, const gfx::Brush& intensity, bool decal);
         void Save() { m_Stack.push_back(m_State); }
         void Restore();
         // Ends the layers that clips left open (the end of a frame).

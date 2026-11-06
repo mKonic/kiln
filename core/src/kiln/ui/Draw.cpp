@@ -513,6 +513,47 @@ namespace kiln::ui {
         q.SetTransform({});
     }
 
+    void DrawScope::EndLayerProgressiveBlur(float maxRadius, const gfx::Brush& intensity, bool decal) {
+        EndClipLayers();
+        if (m_Layers.empty()) return;
+        Layer l = m_Layers.back();
+        m_Layers.pop_back();
+        MaskLayer(l);
+        m_State = l.saved;
+        if (!l.active) { ApplyClip(); return; }
+        QuadRenderer& q = *m_Target.quads;
+        QuadRenderer::LayerResult r = q.EndLayer();
+        if (!r.page) { ApplyClip(); return; }
+        // The intensity gradient in device space (the layer's transform).
+        QuadRenderer::Paint paint;
+        Color solid;
+        float unused;
+        if (!MakePaint(intensity, 1, &paint, solid, unused)) {
+            paint.kind = QuadRenderer::Paint::Kind::Linear;   // constant intensity: a flat ramp
+            const gfx::Brush flat = gfx::Brush::LinearGradient({ solid, solid }, { 0, 0 }, { 1, 0 });
+            MakePaint(flat, 1, &paint, solid, unused);
+        }
+        const gfx::Matrix& m = l.saved.m;
+        const kiln::RectF rect{ l.device.left, l.device.top, l.device.Width(), l.device.Height() };
+        const int x = int(l.device.left), y = int(l.device.top), w = int(l.device.Width()), h = int(l.device.Height());
+        auto uvOf = [&](const QuadRenderer::LayerResult& lr) {
+            return kiln::RectF{ 0, 0, rect.w / float(lr.page->Width()), rect.h / float(lr.page->Height()) };
+        };
+        q.SetTransform({});
+        q.SetClip({});
+        // Horizontal then vertical, as Compose chains its two runtime-shader passes.
+        for (int pass = 0; pass < 2; ++pass) {
+            const float scale = pass == 0 ? std::hypot(m.a, m.b) : std::hypot(m.c, m.d);
+            q.BeginLayer(x, y, w, h);
+            const float su = pass == 0 ? 1.0f / float(r.page->Width()) : 0, sv = pass == 0 ? 0 : 1.0f / float(r.page->Height());
+            q.DrawProgressiveBlur(rect, uvOf(r), *r.page, su, sv, std::min(maxRadius * scale, 150.0f), decal, paint);
+            r = q.EndLayer();
+            if (!r.page) { ApplyClip(); return; }
+        }
+        ApplyClip();
+        CompositeLayer(l, rect, uvOf(r), *r.page);
+    }
+
     void DrawScope::EndLayer(float stretchX, float stretchY) {
         EndClipLayers();
         EndLayerPlain(stretchX, stretchY);
