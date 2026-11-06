@@ -159,6 +159,7 @@ namespace kiln {
 
         CommandList* cmd = m_Device->BeginFrame();
         if (!cmd) return;   // swapchain out of date; hearth rebuilds it, try next vsync
+        m_Quads->RenderLayers(*cmd);   // offscreen layers first, inner ones before outer
         RenderPassDesc pass;
         pass.clearColor = { m_Clear.r, m_Clear.g, m_Clear.b, m_Clear.a };
         cmd->BeginRenderPass(pass);

@@ -2,6 +2,7 @@
 
 #include <kiln/Shaders.h>
 
+#include <algorithm>
 #include <cstring>
 
 namespace kiln {
@@ -63,7 +64,7 @@ namespace kiln {
         desc.bindings.push_back({ 0, BindingType::SampledTexture, 1, StageBit(ShaderStage::Fragment) });
         desc.bindings.push_back({ 1, BindingType::SampledTexture, 1, StageBit(ShaderStage::Fragment) });
         desc.bindings.push_back({ 2, BindingType::SampledTexture, 1, StageBit(ShaderStage::Fragment) });
-        desc.pushConstantSize = 8;
+        desc.pushConstantSize = 16;   // viewport size, device origin of the target
         desc.topology = PrimitiveTopology::TriangleStrip;
         desc.blend = BlendMode::AlphaPremultiplied;
         desc.colorFormats = { device.SwapchainFormat() };
@@ -71,13 +72,21 @@ namespace kiln {
         m_Pipeline = device.CreatePipeline(desc);
         m_White = device.CreateSolidTexture(0xffffffffu);
         m_Buffers.resize(device.Caps().framesInFlight);
+        m_Pool.resize(device.Caps().framesInFlight);
     }
 
     void QuadRenderer::Begin(std::uint32_t w, std::uint32_t h) {
         m_Viewport[0] = float(w);
         m_Viewport[1] = float(h);
-        m_Instances.clear();
-        m_Runs.clear();
+        m_Targets.clear();
+        m_Targets.emplace_back();
+        m_Targets[0].size[0] = float(w);
+        m_Targets[0].size[1] = float(h);
+        m_Stack = { 0 };
+        m_LayerOrder.clear();
+        m_LayerPages.clear();
+        m_Uploaded = false;
+        for (auto& l : m_Pool[m_Device.FrameIndex() % m_Pool.size()]) l.used = false;
         m_Clip = {};
         m_Transform = {};
     }
@@ -102,15 +111,16 @@ namespace kiln {
         const Transform& ci = m_Clip.inverse;
         instance.clipInv[0] = ci.a; instance.clipInv[1] = ci.b; instance.clipInv[2] = ci.c; instance.clipInv[3] = ci.d;
         instance.clipInv2[0] = ci.e; instance.clipInv2[1] = ci.f; instance.clipInv2[2] = instance.clipInv2[3] = 0;
-        if (m_Runs.empty() || m_Runs.back().page != page)
-            m_Runs.push_back({ page, std::uint32_t(m_Instances.size()), 0 });
-        m_Instances.push_back(instance);
-        ++m_Runs.back().count;
+        Target& t2 = Current();
+        if (t2.runs.empty() || t2.runs.back().page != page)
+            t2.runs.push_back({ page, std::uint32_t(t2.instances.size()), 0 });
+        t2.instances.push_back(instance);
+        ++t2.runs.back().count;
     }
 
     void QuadRenderer::FillRect(const RectF& r, Rgba c, float radius, const Paint* paint, int filterRow) {
         // Solid quads ignore the atlas, so they join whatever run is open instead of splitting it.
-        const AtlasPage* page = m_Runs.empty() ? nullptr : m_Runs.back().page;
+        const AtlasPage* page = Current().runs.empty() ? nullptr : Current().runs.back().page;
         Push({ { r.x, r.y, r.w, r.h }, { 0, 0, 0, 0 }, { c.r, c.g, c.b, c.a },
                { radius, float(Mode::Solid), float(filterRow), 0 }, {}, {}, {}, {}, {}, {}, {}, {} }, page, paint);
     }
@@ -140,10 +150,55 @@ namespace kiln {
         return group;
     }
 
-    void QuadRenderer::Flush(CommandList& cmd) {
-        if (m_Instances.empty()) return;
+    void QuadRenderer::BeginLayer(int x, int y, int w, int h) {
+        // Pooled targets come in 64 px steps so animated sizes reuse them.
+        const std::uint32_t tw = std::uint32_t((std::max(w, 1) + 63) / 64 * 64), th = std::uint32_t((std::max(h, 1) + 63) / 64 * 64);
+        auto& pool = m_Pool[m_Device.FrameIndex() % m_Pool.size()];
+        PooledLayer* layer = nullptr;
+        for (auto& l : pool) if (!l.used && l.width == tw && l.height == th) { layer = &l; break; }
+        if (!layer) {
+            RenderTargetDesc d;
+            d.width = tw;
+            d.height = th;
+            d.colorFormats = { m_Device.SwapchainFormat() };
+            d.debugName = "kiln.layer";
+            PooledLayer l;
+            l.rt = m_Device.CreateRenderTarget(d);
+            l.page = std::make_unique<AtlasPage>(l.rt->ColorTexture(0), tw, th);
+            l.width = tw;
+            l.height = th;
+            pool.push_back(std::move(l));
+            layer = &pool.back();
+        }
+        layer->used = true;
+        Target t;
+        t.origin[0] = float(x);
+        t.origin[1] = float(y);
+        t.size[0] = float(tw);
+        t.size[1] = float(th);
+        t.rt = layer->rt.get();
+        m_Targets.push_back(std::move(t));
+        m_Stack.push_back(m_Targets.size() - 1);
+        m_LayerPages.push_back(layer->page.get());
+    }
+
+    QuadRenderer::LayerResult QuadRenderer::EndLayer() {
+        if (m_Stack.size() <= 1) return {};
+        const std::size_t index = m_Stack.back();
+        m_Stack.pop_back();
+        m_LayerOrder.push_back(index);
+        const AtlasPage* page = m_LayerPages[index - 1];
+        return { page, { 0, 0, 1, 1 } };
+    }
+
+    void QuadRenderer::Upload() {
+        if (m_Uploaded) return;
+        m_Uploaded = true;
+        std::size_t total = 0;
+        for (auto& t : m_Targets) { t.base = std::uint32_t(total); total += t.instances.size(); }
+        if (total == 0) return;
         auto& buffer = m_Buffers[m_Device.FrameIndex() % m_Buffers.size()];
-        const u64 bytes = m_Instances.size() * sizeof(Instance);
+        const u64 bytes = total * sizeof(Instance);
         if (!buffer || buffer->Size() < bytes) {
             BufferDesc desc;
             desc.size = bytes * 2;
@@ -152,16 +207,42 @@ namespace kiln {
             desc.debugName = "kiln.quads";
             buffer = m_Device.CreateBuffer(desc);
         }
-        buffer->Upload(m_Instances.data(), bytes);
+        m_Staging.resize(total);
+        for (auto& t : m_Targets) std::copy(t.instances.begin(), t.instances.end(), m_Staging.begin() + t.base);
+        buffer->Upload(m_Staging.data(), bytes);
+    }
+
+    void QuadRenderer::DrawTarget(CommandList& cmd, const Target& t) {
+        if (t.instances.empty()) return;
+        auto& buffer = m_Buffers[m_Device.FrameIndex() % m_Buffers.size()];
+        const float push[4] = { t.size[0], t.size[1], t.origin[0], t.origin[1] };
         cmd.BindPipeline(m_Pipeline);
-        cmd.SetViewport({ 0, 0, m_Viewport[0], m_Viewport[1], 0, 1 });
-        cmd.SetScissor({ 0, 0, u32(m_Viewport[0]), u32(m_Viewport[1]) });
-        cmd.SetPushConstants(m_Viewport, sizeof(m_Viewport));
+        cmd.SetViewport({ 0, 0, t.size[0], t.size[1], 0, 1 });
+        cmd.SetScissor({ 0, 0, u32(t.size[0]), u32(t.size[1]) });
+        cmd.SetPushConstants(push, sizeof(push));
         cmd.BindVertexBuffer(0, buffer);
-        for (const Run& run : m_Runs) {
+        for (const Run& run : t.runs) {
             cmd.BindBindGroup(GroupFor(run.page));
-            cmd.Draw(4, run.count, 0, run.first);
+            cmd.Draw(4, run.count, 0, t.base + run.first);
         }
+    }
+
+    void QuadRenderer::RenderLayers(CommandList& cmd) {
+        Upload();
+        for (std::size_t index : m_LayerOrder) {
+            const Target& t = m_Targets[index];
+            RenderPassDesc pass;
+            pass.target = t.rt;
+            pass.clearColor = { 0, 0, 0, 0 };
+            cmd.BeginRenderPass(pass);
+            DrawTarget(cmd, t);
+            cmd.EndRenderPass();
+        }
+    }
+
+    void QuadRenderer::Flush(CommandList& cmd) {
+        Upload();
+        DrawTarget(cmd, m_Targets[0]);
     }
 
 }

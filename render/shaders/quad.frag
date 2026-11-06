@@ -17,6 +17,10 @@ layout(set = 0, binding = 2) uniform sampler2D uFilters;
 
 layout(location = 0) out vec4 outColor;
 
+layout(push_constant) uniform Push { vec2 viewport; vec2 origin; } pc;
+// Device-space position of this fragment (layers render a window of device space).
+vec2 fragDevice() { return gl_FragCoord.xy + pc.origin; }
+
 const float kTwoPi = 6.28318530718;
 
 float roundedRectSdf(vec2 p, vec2 half_, float r) {
@@ -33,7 +37,7 @@ float aaCoverage(float d, vec2 p) {
 
 float clipCoverage() {
     if (vClipParams.y < 0.5) return 1.0;
-    vec2 p = mat2(vClipInv.x, vClipInv.y, vClipInv.z, vClipInv.w) * gl_FragCoord.xy + vClipInv2;
+    vec2 p = mat2(vClipInv.x, vClipInv.y, vClipInv.z, vClipInv.w) * fragDevice() + vClipInv2;
     vec2 centre = (vClip.xy + vClip.zw) * 0.5;
     vec2 half_ = max((vClip.zw - vClip.xy) * 0.5, vec2(0.0));
     return aaCoverage(roundedRectSdf(p - centre, half_, vClipParams.x), p);
@@ -43,7 +47,7 @@ float clipCoverage() {
 vec4 paint() {
     int kind = int(vPaint2.x + 0.5);
     if (kind == 0) return vColor;
-    vec2 p = gl_FragCoord.xy;
+    vec2 p = fragDevice();
     float t;
     if (kind == 1) {
         vec2 d = vPaint.zw - vPaint.xy;

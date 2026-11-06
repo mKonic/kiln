@@ -3,6 +3,7 @@
 #include <hearth/Device.h>
 
 #include <cstdint>
+#include <memory>
 #include <vector>
 
 namespace kiln {
@@ -27,6 +28,9 @@ namespace kiln {
         AtlasPage(hearth::Device& device, std::uint32_t width, std::uint32_t height);
         // A whole image uploaded once, with a mip chain for minified drawing.
         AtlasPage(hearth::Device& device, std::uint32_t width, std::uint32_t height, const void* rgba, bool mipmaps);
+        // Wraps an existing texture (an offscreen layer's colour attachment).
+        AtlasPage(hearth::Ref<hearth::Texture> texture, std::uint32_t width, std::uint32_t height)
+            : m_Texture(std::move(texture)), m_Width(width), m_Height(height) {}
         void Upload(const void* rgba, std::uint32_t strideBytes, std::uint32_t x, std::uint32_t y,
                     std::uint32_t w, std::uint32_t h);
         const hearth::Ref<hearth::Texture>& Texture() const { return m_Texture; }
@@ -76,6 +80,16 @@ namespace kiln {
         // in the space `inverse` maps framebuffer pixels into (identity: framebuffer pixels).
         struct Clip { float x0 = 0, y0 = 0, x1 = 0, y1 = 0, radius = 0; bool enabled = false; Transform inverse; };
         void SetClip(const Clip& clip) { m_Clip = clip; }
+        // Offscreen layers: quads submitted between BeginLayer and EndLayer render into a target
+        // covering the device-space rect `bounds` (whole pixels). EndLayer returns the texture and
+        // its uv extent; draw it back with DrawAtlas(Mode::Color). Layers nest.
+        void BeginLayer(int x, int y, int width, int height);
+        struct LayerResult { const AtlasPage* page = nullptr; RectF uv; };
+        LayerResult EndLayer();
+
+        // Records the offscreen layers' passes; call before the main render pass.
+        void RenderLayers(hearth::CommandList& cmd);
+        // Draws the main batch inside the open (swapchain) render pass.
         void Flush(hearth::CommandList& cmd);
 
     private:
@@ -84,6 +98,22 @@ namespace kiln {
         struct Run { const AtlasPage* page; std::uint32_t first, count; };
 
         void Push(const Instance& instance, const AtlasPage* page, const Paint* paint);
+        struct Target {
+            std::vector<Instance> instances;
+            std::vector<Run> runs;
+            float origin[2] = { 0, 0 }, size[2] = { 1, 1 };
+            hearth::RenderTarget* rt = nullptr;   // null: the swapchain
+            std::uint32_t base = 0;               // first instance in the shared buffer
+        };
+        struct PooledLayer {
+            hearth::Ref<hearth::RenderTarget> rt;
+            std::unique_ptr<AtlasPage> page;
+            std::uint32_t width = 0, height = 0;
+            bool used = false;
+        };
+        Target& Current() { return m_Targets[m_Stack.back()]; }
+        void Upload();
+        void DrawTarget(hearth::CommandList& cmd, const Target& t);
         hearth::Ref<hearth::BindGroup> GroupFor(const AtlasPage* page);
 
         hearth::Device& m_Device;
@@ -91,8 +121,13 @@ namespace kiln {
         hearth::Ref<hearth::Texture> m_White;
         hearth::Ref<hearth::Texture> m_Ramp;
         hearth::Ref<hearth::Texture> m_Filters;
-        std::vector<Instance> m_Instances;
-        std::vector<Run> m_Runs;
+        std::vector<Target> m_Targets;            // [0] is the main batch
+        std::vector<std::size_t> m_Stack;         // open targets
+        std::vector<std::size_t> m_LayerOrder;    // finished layers, inner ones first
+        std::vector<std::vector<PooledLayer>> m_Pool;   // per frame in flight
+        bool m_Uploaded = false;
+        std::vector<const AtlasPage*> m_LayerPages;   // per offscreen target (index - 1)
+        std::vector<Instance> m_Staging;
         std::vector<hearth::Ref<hearth::Buffer>> m_Buffers;   // one per frame in flight
         std::vector<std::pair<const AtlasPage*, hearth::Ref<hearth::BindGroup>>> m_Groups;
         float m_Viewport[2] = { 1, 1 };

@@ -264,4 +264,42 @@ namespace kiln::ui {
                                   { a, a, a, a }, QuadRenderer::Mode::Color, nullptr, FilterRow(filter));
     }
 
+    void DrawScope::BeginLayer(Rect bounds, float alpha) {
+        Layer l{ m_State, alpha * m_State.alpha, {}, false };
+        // Device bounding box of the local bounds, within the viewport (and a device-space clip).
+        Rect d{ 1e30f, 1e30f, -1e30f, -1e30f };
+        for (const Offset q : { Offset{ bounds.left, bounds.top }, Offset{ bounds.right, bounds.top },
+                                Offset{ bounds.left, bounds.bottom }, Offset{ bounds.right, bounds.bottom } }) {
+            const Offset p = m_State.m.Map(q);
+            d = { std::min(d.left, p.x), std::min(d.top, p.y), std::max(d.right, p.x), std::max(d.bottom, p.y) };
+        }
+        d = { std::floor(d.left), std::floor(d.top), std::ceil(d.right), std::ceil(d.bottom) };
+        d = d.Intersect({ 0, 0, m_Target.viewportWidth, m_Target.viewportHeight });
+        if (m_Target.quads && !d.Empty() && l.alpha > 0) {
+            l.device = d;
+            l.active = true;
+            m_Target.quads->BeginLayer(int(d.left), int(d.top), int(d.Width()), int(d.Height()));
+        }
+        m_Layers.push_back(l);
+        // Content draws opaque into the layer, clipped to its bounds.
+        m_State.alpha = l.active ? 1.0f : 0.0f;
+        ClipRect(bounds);
+    }
+
+    void DrawScope::EndLayer() {
+        if (m_Layers.empty()) return;
+        Layer l = m_Layers.back();
+        m_Layers.pop_back();
+        m_State = l.saved;
+        ApplyClip();
+        if (!l.active) return;
+        const QuadRenderer::LayerResult r = m_Target.quads->EndLayer();
+        if (!r.page) return;
+        const float a = l.alpha;
+        const float u = l.device.Width() / float(r.page->Width()), v = l.device.Height() / float(r.page->Height());
+        m_Target.quads->SetTransform({});
+        m_Target.quads->DrawAtlas({ l.device.left, l.device.top, l.device.Width(), l.device.Height() }, { 0, 0, u, v }, *r.page,
+                                  { a, a, a, a }, QuadRenderer::Mode::Color);
+    }
+
 }

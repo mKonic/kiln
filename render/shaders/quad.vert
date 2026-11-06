@@ -14,7 +14,7 @@ layout(location = 9) in vec4 iXform2;  // e, f
 layout(location = 10) in vec4 iClipInv;  // framebuffer -> clip space: a, b, c, d
 layout(location = 11) in vec4 iClipInv2; // e, f
 
-layout(push_constant) uniform Push { vec2 viewport; } pc;
+layout(push_constant) uniform Push { vec2 viewport; vec2 origin; } pc;   // target size, its device origin
 
 layout(location = 0) out vec2 vLocal;      // local units from the rect centre
 layout(location = 1) out vec2 vUv;
@@ -47,5 +47,5 @@ void main() {
     vClipInv = iClipInv;
     vClipInv2 = iClipInv2.xy;
     vec2 device = m * pos + iXform2.xy;
-    gl_Position = vec4(device / pc.viewport * 2.0 - 1.0, 0.0, 1.0);
+    gl_Position = vec4((device - pc.origin) / pc.viewport * 2.0 - 1.0, 0.0, 1.0);
 }

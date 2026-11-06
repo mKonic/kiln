@@ -58,6 +58,10 @@ namespace kiln::ui {
         // clips keep only the innermost rounding; under rotation the innermost clip replaces
         // the outer one.
         void ClipRect(Rect local, float radius = 0);
+        // Offscreen layer (saveLayerAlpha): content drawn until EndLayer composites as one image
+        // with `alpha`, clipped to `bounds` (local). Inherited alpha applies at compositing.
+        void BeginLayer(Rect bounds, float alpha);
+        void EndLayer();
         void Save() { m_Stack.push_back(m_State); }
         void Restore();
         void SetSize(Size s) { m_Size = s; }
@@ -82,6 +86,8 @@ namespace kiln::ui {
         DrawTarget m_Target;
         State m_State;
         std::vector<State> m_Stack;
+        struct Layer { State saved; float alpha; Rect device; bool active; };
+        std::vector<Layer> m_Layers;
         Size m_Size;
     };
 
