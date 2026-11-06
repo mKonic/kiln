@@ -1,0 +1,3 @@
+[submodule "vendor/hearth"]
+	path = vendor/hearth
+	url = https://github.com/mKonic/hearth.git
