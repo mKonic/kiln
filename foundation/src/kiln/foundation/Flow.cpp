@@ -1,6 +1,7 @@
 #include "kiln/foundation/Flow.h"
 
 #include <cmath>
+#include <optional>
 
 namespace kiln::foundation {
 
@@ -19,13 +20,13 @@ namespace kiln::foundation {
         const int spacing = int(std::ceil(s.ToPx(m_Main.Spacing())));
         const int crossSpacing = int(std::ceil(s.ToPx(m_Cross.Spacing())));
 
-        // Measure every item once (measureAndCache); weighted items count with their minimum
-        // intrinsic main size and are measured with their line.
+        // Measure every item once (measureAndCache); weighted and line-filling items count with
+        // their minimum intrinsic sizes and are measured with their line.
         const std::size_t n = children.size();
         std::vector<Placeable*> placeables(n, nullptr);
         std::vector<int> mains(n), crosses(n);
         for (std::size_t i = 0; i < n; ++i) {
-            if (children[i]->GetParentData().weight > 0) {
+            if (children[i]->GetParentData().weight > 0 || children[i]->GetParentData().fillCrossAxisFraction) {
                 mains[i] = row ? children[i]->MinIntrinsicWidth(Constraints::Infinity) : children[i]->MinIntrinsicHeight(Constraints::Infinity);
                 crosses[i] = row ? children[i]->MinIntrinsicHeight(mains[i]) : children[i]->MinIntrinsicWidth(mains[i]);
                 continue;
@@ -76,7 +77,37 @@ namespace kiln::foundation {
         struct LinePlacement { std::size_t start, end; int cross; std::vector<int> positions; };
         std::vector<LinePlacement> laid;
         std::vector<int> lineCrosses;
+        int crossSoFar = 0;
         for (const Line& l : lines) {
+            // A line with a filling item is as tall as its tallest item (crossAxisFillEnabledLines);
+            // the filling items take their fraction of that.
+            bool fills = false;
+            for (std::size_t i = l.start; i < l.end; ++i) fills = fills || children[i]->GetParentData().fillCrossAxisFraction.has_value();
+            const int lineCrossMax = fills ? l.cross : crossMax == Constraints::Infinity ? Constraints::Infinity : std::max(0, crossMax - crossSoFar);
+            auto desired = [&](const ParentData& pd) -> std::optional<int> {
+                if (lineCrossMax == Constraints::Infinity || !pd.fillCrossAxisFraction) return std::nullopt;
+                return RoundJava(*pd.fillCrossAxisFraction * float(lineCrossMax));
+            };
+            {
+                int fixedSpace = 0;
+                for (std::size_t i = l.start; i < l.end; ++i) {
+                    const ParentData& pd = children[i]->GetParentData();
+                    if (pd.weight > 0) continue;
+                    if (auto d = desired(pd)) {
+                        const int remaining = mainMax == Constraints::Infinity ? Constraints::Infinity : std::max(0, mainMax - fixedSpace);
+                        Placeable& p = children[i]->Measure(make(0, remaining, *d, *d));
+                        placeables[i] = &p;
+                        mains[i] = mainOf(p);
+                        crosses[i] = crossOf(p);
+                    } else if (!placeables[i]) {
+                        Placeable& p = children[i]->Measure(make(0, mainMax, 0, lineCrossMax));
+                        placeables[i] = &p;
+                        mains[i] = mainOf(p);
+                        crosses[i] = crossOf(p);
+                    }
+                    fixedSpace += mains[i] + (i > l.start ? spacing : 0);
+                }
+            }
             // Weighted items share what the fixed ones leave.
             float totalWeight = 0;
             int fixed = 0;
@@ -91,7 +122,8 @@ namespace kiln::foundation {
                     const ParentData& pd = children[i]->GetParentData();
                     if (pd.weight <= 0) continue;
                     const int size = RoundJava(float(remaining) * pd.weight / totalWeight);
-                    Placeable& p = children[i]->Measure(make(pd.fill ? size : 0, size, 0, crossMax));
+                    const auto d = desired(pd);
+                    Placeable& p = children[i]->Measure(make(pd.fill ? size : 0, size, d.value_or(0), d.value_or(lineCrossMax)));
                     placeables[i] = &p;
                     mains[i] = mainOf(p);
                     crosses[i] = crossOf(p);
@@ -104,6 +136,7 @@ namespace kiln::foundation {
             m_Main.Arrange(s, lineMainSize, sizes, row ? s.Direction() : LayoutDirection::Ltr, positions);
             laid.push_back({ l.start, l.end, cross, std::move(positions) });
             lineCrosses.push_back(cross);
+            crossSoFar += cross + crossSpacing;
         }
 
         // Arrange the lines along the cross axis (placeHelper).

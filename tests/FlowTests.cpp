@@ -74,3 +74,23 @@ TEST(FlowRowWeightsFillTheLine) {
     LayoutNode* flow = h.owner.Root().Children()[0]->Children()[0];
     CHECK_EQ(flow->Children()[1]->Size().width, 60);
 }
+
+TEST(FillMaxRowHeightTakesTheLinesHeight) {
+    Harness h;
+    h.Run([&] {
+        Box(Modifier{}, Alignment::TopStart(), false, [&] {
+            FlowRow(Width(Modifier{}, Dp(100)), Arrangement::Start(), Arrangement::Top(), AlignmentV::Top(), [&] {
+                Box(SizeMod(Modifier{}, Dp(30), Dp(40)));
+                Box(FillMaxRowHeight(Width(Modifier{}, Dp(20))));
+                Box(FillMaxRowHeight(Width(Modifier{}, Dp(20)), 0.5f));
+                Box(SizeMod(Modifier{}, Dp(60), Dp(10)));   // wraps to its own line
+            });
+        });
+    });
+    auto* flow = h.owner.Root().Children()[0]->Children()[0];
+    const auto& items = flow->Children();
+    CHECK_EQ(items[1]->Size().height, 40);
+    CHECK_EQ(items[2]->Size().height, 20);
+    CHECK_EQ(At(items[3]).y, 40);
+    CHECK_EQ(flow->Size().height, 50);
+}

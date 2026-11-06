@@ -79,6 +79,11 @@ namespace kiln::foundation {
 
     // Parent data
     Modifier Weight(Modifier m, float weight, bool fill = true);
+    // FlowRowScope.fillMaxRowHeight / FlowColumnScope.fillMaxColumnWidth: `fraction` of the
+    // line's cross size (its tallest item's).
+    Modifier FillCrossAxisOfLine(Modifier m, float fraction);
+    inline Modifier FillMaxRowHeight(Modifier m, float fraction = 1) { return FillCrossAxisOfLine(std::move(m), fraction); }
+    inline Modifier FillMaxColumnWidth(Modifier m, float fraction = 1) { return FillCrossAxisOfLine(std::move(m), fraction); }
     Modifier AlignInRow(Modifier m, AlignmentV a);
     Modifier AlignInColumn(Modifier m, AlignmentH a);
     Modifier AlignInBox(Modifier m, Alignment a);

@@ -476,6 +476,7 @@ namespace kiln::foundation {
                     case 3: d.boxAlign = Alignment{ params.bias, params.bias2 }; break;
                     case 4: d.matchParentSize = true; break;
                     case 5: d.alignBy = params.line; break;
+                    case 6: d.fillCrossAxisFraction = params.weight; break;
                 }
             }
         };
@@ -717,6 +718,9 @@ namespace kiln::foundation {
     Modifier AlignInBox(Modifier m, Alignment a) { return m.With<ParentDataNode>(ParentParams{ 3, 0, true, a.horizontal, a.vertical }); }
     Modifier MatchParentSize(Modifier m) { return m.With<ParentDataNode>(ParentParams{ 4, 0, true, 0, 0 }); }
     Modifier AlignBy(Modifier m, const AlignmentLine& line) { return m.With<ParentDataNode>(ParentParams{ 5, 0, true, 0, 0, &line }); }
+    Modifier FillCrossAxisOfLine(Modifier m, float fraction) {
+        return m.With<ParentDataNode>(ParentParams{ 6, std::clamp(fraction, 0.0f, 1.0f), true, 0, 0 });
+    }
 
     namespace {
         // AlignmentLineOffsetDpNode (AlignmentLine.kt:307-362).

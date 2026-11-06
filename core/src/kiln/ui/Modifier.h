@@ -44,6 +44,7 @@ namespace kiln::ui {
         std::optional<Alignment> boxAlign;// Box child
         bool matchParentSize = false;     // Box child
         const AlignmentLine* alignBy = nullptr;   // Row/Column child: align on this line
+        std::optional<float> fillCrossAxisFraction;   // FlowRow/FlowColumn child: of its line's cross size
         std::any extra;                   // other layouts' data
     };
 
