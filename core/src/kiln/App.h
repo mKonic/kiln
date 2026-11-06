@@ -59,7 +59,11 @@ namespace kiln {
         void SetDensity(float density, float fontScale) {
             m_Density = density;
             m_FontScale = fontScale;
-            m_Owner.SetDensity({ density, fontScale });
+            m_Owner.SetDensity({ density, fontScale, m_FontWeightAdjustment });
+        }
+        void SetFontWeightAdjustment(int adjustment) {
+            m_FontWeightAdjustment = adjustment;
+            m_Owner.SetDensity({ m_Density, m_FontScale, adjustment });
         }
         // The host view's layout direction (View.getLayoutDirection): layouts and LocalLayoutDirection.
         void SetLayoutDirection(ui::LayoutDirection d);
@@ -132,6 +136,7 @@ namespace kiln {
         std::unique_ptr<FilterTable> m_Filters;
         std::uint32_t m_Width = 0, m_Height = 0;
         float m_Density = 1, m_FontScale = 1;
+        int m_FontWeightAdjustment = 0;
         Rgba m_Clear{ 1, 1, 1, 1 };
         bool m_FramePending = false;
         rt::Dispatcher& m_Dispatcher = rt::Dispatcher::Main();

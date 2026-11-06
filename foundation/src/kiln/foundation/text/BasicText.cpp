@@ -324,11 +324,24 @@ namespace kiln::foundation {
     }
 
     void BasicText(const AnnotatedString& text, const Modifier& modifier, TextStyle style, BasicTextOptions options, rt::Key key) {
-        const std::string plain = text.Text();
-        Modifier m = Semantics(modifier, [plain](SemanticsConfiguration& c) { c.text.push_back(plain); });
         std::vector<Range<LinkAnnotation>> links;
         for (auto& l : text.GetLinkAnnotations(0, text.Length()))
             if (l.start != l.end) links.push_back(std::move(l));
+        // Text with its link and TTS spans for accessibility.
+        std::vector<ui::TextSpanSemantics> spans;
+        for (const auto& t : text.GetTtsAnnotations(0, text.Length()))
+            if (t.start < t.end) spans.push_back({ ui::TextSpanSemantics::Kind::Tts, 0, t.start, t.end, t.item.verbatim, {} });
+        Modifier m = Semantics(modifier, [plain = text.Text(), spans, links](SemanticsConfiguration& c) {
+            c.text.push_back(plain);
+            c.textSpans = spans;
+            for (const auto& l : links) {
+                if (l.item.kind == LinkAnnotation::Kind::Url && !(l.item.listener && *l.item.listener))
+                    c.textSpans.push_back({ ui::TextSpanSemantics::Kind::Url, 0, l.start, l.end, l.item.url, {} });
+                else
+                    c.textSpans.push_back({ ui::TextSpanSemantics::Kind::Clickable, 0, l.start, l.end, l.item.url,
+                                            [link = l.item] { if (link.listener && *link.listener) (*link.listener)(link); } });
+            }
+        });
         if (links.empty()) {
             Box(m.With<TextNode>(TextParams{ text, std::move(style), std::move(options), nullptr }), Alignment::TopStart(), false, {}, key);
             return;
@@ -376,7 +389,9 @@ namespace kiln::foundation {
                 ClickableOptions click;
                 click.interactionSource = sources[i];
                 click.useLocalIndication = false;
-                Modifier box = Clip(Modifier{}, std::make_shared<LinkShape>(link, shared));
+                const std::string linkText = text.SubSequence(link.start, link.end).Text();
+                Modifier box = Semantics(Clip(Modifier{}, std::make_shared<LinkShape>(link, shared)),
+                                         [linkText](SemanticsConfiguration& sc) { sc.text.push_back(linkText); });
                 box = PointerHoverIcon(Hoverable(std::move(box), sources[i]), PointerIcon::Hand);
                 box = Clickable(std::move(box), [link, shared] { HandleLink(link.item, shared->owner); }, click);
                 Box(box, Alignment::TopStart(), false, {}, rt::Key(int(i)));

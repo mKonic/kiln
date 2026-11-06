@@ -9,7 +9,12 @@ namespace kiln::ui {
 
     void SemanticsConfiguration::Merge(const SemanticsConfiguration& c) {
         contentDescription.insert(contentDescription.end(), c.contentDescription.begin(), c.contentDescription.end());
+        const int base = int(text.size());
         text.insert(text.end(), c.text.begin(), c.text.end());
+        for (TextSpanSemantics span : c.textSpans) {
+            span.textIndex += base;
+            textSpans.push_back(std::move(span));
+        }
         if (!editableText) editableText = c.editableText;
         if (!stateDescription) stateDescription = c.stateDescription;
         if (!selected) selected = c.selected;

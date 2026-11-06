@@ -4,6 +4,7 @@
 namespace kiln::android { void InstallImageDecoder(); void InstallAssetReader(JNIEnv* env, jobject assets); }
 
 #include "kiln/foundation/text/TextFieldState.h"
+#include "kiln/text/AnnotatedString.h"
 #include "kiln/ui/Back.h"
 
 #include <climits>
@@ -276,6 +277,11 @@ namespace {
             g_Host->callbackPosted = false;
             PostFrame(nullptr);
         }
+    }
+
+    void SetFontWeightAdjustment(JNIEnv*, jclass, jint adjustment) {
+        if (!g_Host) return;
+        g_Host->app->SetFontWeightAdjustment(adjustment);
     }
 
     void SetAnimationScale(JNIEnv*, jclass, jfloat scale) {
@@ -776,6 +782,42 @@ namespace {
         return a;
     }
 
+    // Text spans on the joined text: [kind, start, end] per span (UTF-16; entries joined by ' ').
+    jintArray SemSpans(JNIEnv* env, jclass, jint id) {
+        std::vector<jint> d;
+        if (g_Host)
+            if (const auto* n = SemFind(id)) {
+                const auto& c = n->config;
+                std::vector<int> base(c.text.size(), 0);
+                for (std::size_t i = 1; i < c.text.size(); ++i)
+                    base[i] = base[i - 1] + kiln::text::Utf16Length(c.text[i - 1]) + 1;
+                for (const auto& span : c.textSpans) {
+                    if (span.textIndex < 0 || std::size_t(span.textIndex) >= base.size()) { d.insert(d.end(), { -1, 0, 0 }); continue; }
+                    const int b = base[std::size_t(span.textIndex)];
+                    d.insert(d.end(), { jint(span.kind), b + span.start, b + span.end });
+                }
+            }
+        jintArray a = env->NewIntArray(jsize(d.size()));
+        env->SetIntArrayRegion(a, 0, jsize(d.size()), d.data());
+        return a;
+    }
+
+    jstring SemSpanValue(JNIEnv* env, jclass, jint id, jint index) {
+        std::string v;
+        if (g_Host)
+            if (const auto* n = SemFind(id); n && index >= 0 && std::size_t(index) < n->config.textSpans.size())
+                v = n->config.textSpans[std::size_t(index)].value;
+        const std::u16string u = kiln::foundation::ToUtf16(v);
+        return env->NewString(reinterpret_cast<const jchar*>(u.data()), jsize(u.size()));
+    }
+
+    void SemSpanClick(JNIEnv*, jclass, jint id, jint index) {
+        if (!g_Host) return;
+        if (const auto* n = SemFind(id); n && index >= 0 && std::size_t(index) < n->config.textSpans.size())
+            if (auto fn = n->config.textSpans[std::size_t(index)].onClick) fn();
+        g_Host->app->RequestFrame();
+    }
+
     jobjectArray SemStrings(JNIEnv* env, jclass, jint id) {
         if (!g_Host) return {};
         std::string v[6];
@@ -939,6 +981,7 @@ extern "C" JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void*) {
         { "create", "(Ldev/kiln/KilnView;Ldev/kiln/KilnText;Landroid/content/res/AssetManager;FF[B)V", reinterpret_cast<void*>(&Create) },
         { "setVisible", "(Z)V", reinterpret_cast<void*>(&SetVisible) },
         { "setDensity", "(FF)V", reinterpret_cast<void*>(&SetDensity) },
+        { "setFontWeightAdjustment", "(I)V", reinterpret_cast<void*>(&SetFontWeightAdjustment) },
         { "setAnimationScale", "(F)V", reinterpret_cast<void*>(&SetAnimationScale) },
         { "setLayoutDirection", "(Z)V", reinterpret_cast<void*>(&SetLayoutDirection) },
         { "touchEvent", "(IIJ[I[F[IIIIFF[J[F[F)V", reinterpret_cast<void*>(&TouchEvent) },
@@ -971,6 +1014,9 @@ extern "C" JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void*) {
         { "semNode", "(I)[I", reinterpret_cast<void*>(&SemNode) },
         { "semScrollEvents", "()[I", reinterpret_cast<void*>(&SemScrollEvents) },
         { "semStrings", "(I)[Ljava/lang/String;", reinterpret_cast<void*>(&SemStrings) },
+        { "semSpans", "(I)[I", reinterpret_cast<void*>(&SemSpans) },
+        { "semSpanValue", "(II)Ljava/lang/String;", reinterpret_cast<void*>(&SemSpanValue) },
+        { "semSpanClick", "(II)V", reinterpret_cast<void*>(&SemSpanClick) },
         { "semAction", "(IILjava/lang/String;)Z", reinterpret_cast<void*>(&SemAction) },
         { "semHitTest", "(FF)I", reinterpret_cast<void*>(&SemHitTest) },
         { "setViewConfiguration", "(JJFFF)V", reinterpret_cast<void*>(&SetViewConfiguration) },

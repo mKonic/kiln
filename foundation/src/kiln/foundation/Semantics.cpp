@@ -41,7 +41,12 @@ namespace kiln::foundation {
                 c.clearAndSet = c.clearAndSet || params.clear;
                 c.isTraversalGroup = c.isTraversalGroup || mine.isTraversalGroup;
                 c.contentDescription.insert(c.contentDescription.end(), mine.contentDescription.begin(), mine.contentDescription.end());
+                const int textBase = int(c.text.size());
                 c.text.insert(c.text.end(), mine.text.begin(), mine.text.end());
+                for (ui::TextSpanSemantics span : mine.textSpans) {
+                    span.textIndex += textBase;
+                    c.textSpans.push_back(std::move(span));
+                }
                 if (!c.editableText) c.editableText = mine.editableText;
                 if (!c.stateDescription) c.stateDescription = mine.stateDescription;
                 if (!c.paneTitle) c.paneTitle = mine.paneTitle;

@@ -56,6 +56,7 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
         text = new KilnText(context);
         DisplayMetrics metrics = getResources().getDisplayMetrics();
         KilnNative.create(this, text, context.getAssets(), metrics.density, getResources().getConfiguration().fontScale, savedState);
+        KilnNative.setFontWeightAdjustment(fontWeightAdjustment(getResources().getConfiguration()));
 
         // ANIMATOR_DURATION_SCALE, observed for changes (WindowRecomposer:95-135).
         animationScaleObserver = new ContentObserver(new Handler(Looper.getMainLooper())) {
@@ -411,6 +412,11 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
     }
 
     /** The root's bringIntoView: our parents (a ScrollView) scroll the rect into view. */
+    private static int fontWeightAdjustment(android.content.res.Configuration config) {
+        final int a = config.fontWeightAdjustment;
+        return a == android.content.res.Configuration.FONT_WEIGHT_ADJUSTMENT_UNDEFINED ? 0 : a;
+    }
+
     /** PointerIconService: the hovered content's icon (android.view.PointerIcon types). */
     void setPointerIconType(int type) {
         setPointerIcon(android.view.PointerIcon.getSystemIcon(getContext(), type));
@@ -627,6 +633,7 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
 
     void onHostConfigurationChanged(Configuration config) {
         KilnNative.setDensity(getResources().getDisplayMetrics().density, config.fontScale);
+        KilnNative.setFontWeightAdjustment(fontWeightAdjustment(config));
     }
 
     @Override

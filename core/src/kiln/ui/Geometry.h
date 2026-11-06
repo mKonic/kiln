@@ -33,6 +33,8 @@ namespace kiln::ui {
     struct Density {
         float density = 1;     // px per dp
         float fontScale = 1;
+        // Configuration.fontWeightAdjustment (the "bold text" setting): added to font weights.
+        int fontWeightAdjustment = 0;
         float ToPx(Dp d) const { return d.value * density; }
         // roundToPx: Compose rounds half away from zero, and a tiny positive dp never becomes 0.
         int RoundToPx(Dp d) const {

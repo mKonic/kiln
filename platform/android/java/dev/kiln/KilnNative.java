@@ -11,6 +11,8 @@ final class KilnNative {
     static native void setVisible(boolean visible);
     static native void destroy();
     static native void setDensity(float density, float fontScale);
+    /** Configuration.fontWeightAdjustment (the bold text setting). */
+    static native void setFontWeightAdjustment(int adjustment);
     static native void setAnimationScale(float scale);
     static native void setLayoutDirection(boolean rtl);
     static native void touchEvent(int action, int actionIndex, long eventTime, int[] ids, float[] xy,
@@ -53,6 +55,10 @@ final class KilnNative {
     static native int[] semNode(int id);
     static native int[] semScrollEvents();
     static native String[] semStrings(int id);
+    /** Text spans: [kind (0 URL, 1 clickable, 2 TTS), start, end]* on the node's text. */
+    static native int[] semSpans(int id);
+    static native String semSpanValue(int id, int index);
+    static native void semSpanClick(int id, int index);
     static native boolean semAction(int id, int action, String argument);
     static native int semHitTest(float x, float y);
     static native void setViewConfiguration(long longPressTimeout, long doubleTapTimeout, float touchSlop,

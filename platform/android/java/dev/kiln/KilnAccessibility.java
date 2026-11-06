@@ -27,6 +27,26 @@ final class KilnAccessibility extends AccessibilityNodeProvider {
 
     KilnAccessibility(KilnView view) { this.view = view; }
 
+    /** toAccessibilitySpannableString: URL, clickable and TTS spans on the text. */
+    private static CharSequence withSpans(final int id, String text) {
+        final int[] spans = KilnNative.semSpans(id);
+        if (spans.length == 0) return text;
+        android.text.SpannableString out = new android.text.SpannableString(text);
+        for (int i = 0; i + 2 < spans.length; i += 3) {
+            final int kind = spans[i], start = Math.max(0, spans[i + 1]), end = Math.min(text.length(), spans[i + 2]);
+            if (kind < 0 || start >= end) continue;
+            final int index = i / 3;
+            Object span;
+            if (kind == 0) span = new android.text.style.URLSpan(KilnNative.semSpanValue(id, index));
+            else if (kind == 1) span = new android.text.style.ClickableSpan() {
+                @Override public void onClick(View widget) { KilnNative.semSpanClick(id, index); }
+            };
+            else span = new android.text.style.TtsSpan.VerbatimBuilder(KilnNative.semSpanValue(id, index)).build();
+            out.setSpan(span, start, end, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        }
+        return out;
+    }
+
     @Override
     public AccessibilityNodeInfo createAccessibilityNodeInfo(int id) {
         int[] d = KilnNative.semNode(id == View.NO_ID ? -1 : id);
@@ -51,7 +71,7 @@ final class KilnAccessibility extends AccessibilityNodeProvider {
         String cls = editable ? "android.widget.EditText" : (d[5] > 0 && d[5] < ROLE_CLASS.length ? ROLE_CLASS[d[5]] : null);
         if (cls == null) cls = !TextUtils.isEmpty(s[0]) ? "android.widget.TextView" : "android.view.View";
         info.setClassName(cls);
-        info.setText(editable ? s[2] : (TextUtils.isEmpty(s[0]) ? null : s[0]));
+        info.setText(editable ? s[2] : (TextUtils.isEmpty(s[0]) ? null : withSpans(id, s[0])));
         if (!TextUtils.isEmpty(s[1])) info.setContentDescription(s[1]);
         if (!TextUtils.isEmpty(s[3])) info.setStateDescription(s[3]);
         if (!TextUtils.isEmpty(s[4])) info.setPaneTitle(s[4]);

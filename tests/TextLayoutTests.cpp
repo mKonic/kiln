@@ -2,6 +2,8 @@
 
 #include "kiln/foundation/Compose.h"
 #include "kiln/text/Paragraph.h"
+#include "kiln/ui/Focus.h"
+#include "kiln/ui/Semantics.h"
 #include "kiln/ui/Pointer.h"
 
 #include <algorithm>
@@ -216,6 +218,9 @@ TEST(ParagraphRequestsResolveSizesFontsAndLineHeight) {
     bold.span.fontWeight = FontWeight::SemiBold();
     f = BuildParagraphRequest(AnnotatedString("x"), bold, d, {}).base.font;
     CHECK(f.weight == 600 && !f.fakeBold);
+    // The bold-text setting shifts weights before matching.
+    const ui::Density boldText{ 1.0f, 1.0f, 300 };
+    CHECK(BuildParagraphRequest(AnnotatedString("x"), ResolveDefaults(TextStyle(Sp(14)), ui::LayoutDirection::Ltr), boldText, {}).base.font.weight == 700);
 }
 
 TEST(MultiParagraphStacksParagraphStyles) {
@@ -312,6 +317,9 @@ TEST(BasicTextLinksClickHoverAndOpenUris) {
     SpanStyle underline;
     underline.textDecoration = TextDecoration::Underline;
     styles.hoveredStyle = underline;
+    SpanStyle focusBg;
+    focusBg.background = ui::Color(0xFF00FF00u);
+    styles.focusedStyle = focusBg;
     b.WithLink(LinkAnnotation::Clickable("kiln", styles, [&](const LinkAnnotation& l) { if (l.tag == "kiln") ++clicks; }), [&] { b.Append("kiln"); });
     b.Append(" or ");
     b.WithLink(LinkAnnotation::Url("https://example.com"), [&] { b.Append("site"); });
@@ -354,4 +362,42 @@ TEST(BasicTextLinksClickHoverAndOpenUris) {
     send(ui::PointerEventType::Move, 20, false);
     CHECK(owner.CurrentPointerIcon() == 1000);
     CHECK(icons.size() >= 2 && icons.back() == 1000);
+
+    // Accessibility: the text node carries the link spans; each link is its own node.
+    const ui::SemanticsNode root = owner.BuildSemanticsTree();
+    CHECK(root.children.size() == 1);
+    if (root.children.size() == 1) {
+        const auto& textNode = root.children[0];
+        CHECK(textNode.config.text.size() == 1 && textNode.config.textSpans.size() == 2);
+        if (textNode.config.textSpans.size() == 2) {
+            const auto& site = textNode.config.textSpans[1];
+            CHECK(site.kind == ui::TextSpanSemantics::Kind::Url && site.value == "https://example.com" && site.start == 14 && site.end == 18);
+            const auto& kiln = textNode.config.textSpans[0];
+            CHECK(kiln.kind == ui::TextSpanSemantics::Kind::Clickable && kiln.start == 6);
+            kiln.onClick();
+        }
+        CHECK(textNode.children.size() == 2 && textNode.children[0].config.text[0] == "kiln");
+    }
+    CHECK_EQ(clicks, 2);
+    clicks = 1;
+
+    // Keys: Tab focuses the first link (with its focused style), Enter follows it.
+    auto key = [&](int code) {
+        owner.DispatchKeyEvent(ui::KeyEvent{ code, ui::KeyEventType::KeyDown, 0 });
+        owner.DispatchKeyEvent(ui::KeyEvent{ code, ui::KeyEventType::KeyUp, 0 });
+        rt::Dispatcher::Main().RunPending();
+        comp.Recompose();
+        owner.MeasureAndLayout({ 300, 100 });
+    };
+    key(ui::keys::Tab);
+    CHECK(owner.ActiveFocus() != nullptr);
+    bool focusStyled = false;
+    for (const auto& span : last->LayoutInput().text.SpanStyles())
+        if (span.start == 6 && span.end == 10 && span.item.background == focusBg.background) focusStyled = true;
+    CHECK(focusStyled);
+    key(ui::keys::Enter);
+    CHECK_EQ(clicks, 2);
+    key(ui::keys::Tab);
+    key(ui::keys::Enter);
+    CHECK(opened.size() == 2);
 }

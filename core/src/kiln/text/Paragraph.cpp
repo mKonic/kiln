@@ -130,9 +130,11 @@ namespace kiln::text {
             return 0;
         }
 
-        TextFontRequest ResolveFont(const SpanStyle& s) {
+        TextFontRequest ResolveFont(const SpanStyle& s, int weightAdjustment) {
             TextFontRequest f;
-            const FontWeight weight = s.fontWeight.value_or(FontWeight::Normal());
+            // AndroidFontResolveInterceptor: the bold-text setting shifts every weight.
+            FontWeight weight = s.fontWeight.value_or(FontWeight::Normal());
+            if (weightAdjustment != 0) weight.weight = std::clamp(weight.weight + weightAdjustment, 1, 1000);
             const FontStyle style = s.fontStyle.value_or(FontStyle::Normal);
             const FontSynthesis synthesis = s.fontSynthesis.value_or(FontSynthesis::All);
             f.weight = weight.weight;
@@ -181,7 +183,7 @@ namespace kiln::text {
             else if (s.fontSize.IsSp()) r.sizePx = float(ui::RoundJava(d.SpToPx(s.fontSize.value)));
             else if (s.fontSize.IsEm()) r.sizePx = basePx * s.fontSize.value;
             else r.sizePx = basePx;
-            r.font = ResolveFont(s);
+            r.font = ResolveFont(s, d.fontWeightAdjustment);
             r.fontFeatureSettings = s.fontFeatureSettings.value_or("");
             if (s.letterSpacing.IsSp()) r.letterSpacingPx = d.SpToPx(s.letterSpacing.value);
             else if (s.letterSpacing.IsEm()) r.letterSpacingEm = s.letterSpacing.value;

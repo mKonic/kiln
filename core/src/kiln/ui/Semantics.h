@@ -31,12 +31,24 @@ namespace kiln::ui {
         bool operator==(const CollectionItemInfo&) const = default;
     };
 
+    // A span on a text entry for accessibility (toAccessibilitySpannableString): a URL, a
+    // clickable link, or text to speak instead (TtsAnnotation). Offsets are UTF-16 in that entry.
+    struct TextSpanSemantics {
+        enum class Kind : std::uint8_t { Url, Clickable, Tts };
+        Kind kind = Kind::Url;
+        int textIndex = 0;
+        int start = 0, end = 0;
+        std::string value;               // the URL, the verbatim text
+        std::function<void()> onClick;   // Clickable
+    };
+
     struct SemanticsConfiguration {
         bool mergeDescendants = false;
         bool clearAndSet = false;
         bool isTraversalGroup = false;
         std::vector<std::string> contentDescription;   // merged by concatenation
         std::vector<std::string> text;
+        std::vector<TextSpanSemantics> textSpans;
         std::optional<std::string> editableText;
         std::optional<std::string> stateDescription;
         std::optional<std::string> paneTitle;
