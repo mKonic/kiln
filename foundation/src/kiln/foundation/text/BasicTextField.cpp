@@ -1,5 +1,7 @@
 #include "kiln/foundation/text/BasicTextField.h"
 
+#include <optional>
+
 #include "kiln/TextBackend.h"
 #include "kiln/foundation/Focus.h"
 #include "kiln/foundation/Gestures.h"
@@ -32,7 +34,30 @@ namespace kiln::foundation {
         };
 
         // Shared between the field's modifiers (remembered per call site).
+        // DeadKeyCombiner (Android): a dead key's accent waits for the next typed character and
+        // combines with it (KeyCharacterMap.getDeadChar), falling back to that character.
+        struct DeadKeyCombiner {
+            static constexpr std::uint32_t kCombiningAccent = 0x80000000u, kAccentMask = 0x7FFFFFFFu;
+            std::optional<int> deadKey;
+            std::optional<char32_t> Consume(std::uint32_t codePoint, const ui::Owner* owner) {
+                if (codePoint & kCombiningAccent) { deadKey = int(codePoint & kAccentMask); return std::nullopt; }
+                if (deadKey) {
+                    const int accent = *deadKey;
+                    deadKey.reset();
+                    const int combined = owner ? owner->DeadChar(accent, int(codePoint)) : 0;
+                    return combined != 0 ? char32_t(combined) : char32_t(codePoint);
+                }
+                return char32_t(codePoint);
+            }
+        };
+        // KeyEvent.isTypedEvent: a key down whose character is not an ISO control.
+        bool IsTyped(std::uint32_t u) {
+            if (u & DeadKeyCombiner::kCombiningAccent) return true;
+            return u != 0 && !(u <= 0x1F || (u >= 0x7F && u <= 0x9F));
+        }
+
         struct FieldCore {
+            DeadKeyCombiner deadKeys;
             TextFieldState* state = nullptr;
             TextFieldOptions options;
             ui::Owner* owner = nullptr;
@@ -219,9 +244,11 @@ namespace kiln::foundation {
                     st.InsertFromKeyboard(u"\n"); c->AfterLocalEdit(true); return true;
                 default: break;
             }
-            if (e.unicode >= 0x20 && !e.Ctrl()) {
+            if (IsTyped(e.unicode) && !e.Ctrl()) {
+                const std::optional<char32_t> typed = c->deadKeys.Consume(e.unicode, c->owner);
+                if (!typed) return true;   // a dead key: wait for the next character
                 std::u16string t;
-                char32_t cp = e.unicode;
+                char32_t cp = *typed;
                 if (cp >= 0x10000) { cp -= 0x10000; t.push_back(char16_t(0xD800 + (cp >> 10))); t.push_back(char16_t(0xDC00 + (cp & 0x3FF))); }
                 else t.push_back(char16_t(cp));
                 st.InsertFromKeyboard(t);

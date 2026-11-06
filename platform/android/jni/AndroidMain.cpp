@@ -211,6 +211,15 @@ namespace {
             env->DeleteLocalRef(vc);
             g_Host->app->GetOwner().SetPlaySoundEffect([](int constant) { MainEnv()->CallVoidMethod(g_Host->view, playSound, jint(constant)); });
         }
+        {
+            jclass kcm = env->FindClass("android/view/KeyCharacterMap");
+            static jclass kcmClass = reinterpret_cast<jclass>(env->NewGlobalRef(kcm));
+            static jmethodID getDeadChar = env->GetStaticMethodID(kcm, "getDeadChar", "(II)I");
+            env->DeleteLocalRef(kcm);
+            g_Host->app->GetOwner().SetDeadCharCombiner([](int accent, int c) {
+                return int(MainEnv()->CallStaticIntMethod(kcmClass, getDeadChar, jint(accent), jint(c)));
+            });
+        }
         // Keys and the IME reach a View only while it holds platform focus.
         g_Host->app->GetOwner().SetRequestHostFocus([] {
             JNIEnv* e = nullptr;

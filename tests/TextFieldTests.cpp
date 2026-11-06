@@ -75,3 +75,31 @@ TEST(FocusStartsAndStopsTheInputSession) {
     CHECK_EQ(stops, 1);
     CHECK(owner.ActiveTextInput() == nullptr);
 }
+
+TEST(HardwareKeysTypeAndCombineDeadKeys) {
+    ui::Owner owner;
+    owner.SetDensity({ 1, 1 });
+    owner.SetDeadCharCombiner([](int accent, int c) { return accent == 0xB4 && c == 'e' ? 0xE9 : 0; });   // ´ + e = é
+    rt::Composition comp(owner.Root(), rt::Dispatcher::Main());
+    TextFieldState state("");
+    comp.SetContent([&] { Column(Modifier{}, [&] { BasicTextField(state, {}, {}); }); });
+    comp.Recompose();
+    owner.MeasureAndLayout({ 200, 100 });
+    owner.MoveFocus(ui::FocusDirection::Next);
+    auto type = [&](std::uint32_t unicode) {
+        ui::KeyEvent d{ 0, ui::KeyEventType::KeyDown };
+        d.unicode = unicode;
+        owner.DispatchKeyEvent(d);
+        owner.DispatchKeyEvent(ui::KeyEvent{ 0, ui::KeyEventType::KeyUp });
+    };
+    type('a');
+    type(0x80000000u | 0xB4);   // dead acute accent: nothing yet
+    CHECK(state.Peek().text == U("a"));
+    type('e');
+    CHECK(state.Peek().text == U("a\xC3\xA9"));
+    type(0x80000000u | 0xB4);
+    type('x');                  // no ´x: the plain character
+    CHECK(state.Peek().text == U("a\xC3\xA9x"));
+    type(0x1B);                 // a control character is not typed
+    CHECK(state.Peek().text == U("a\xC3\xA9x"));
+}

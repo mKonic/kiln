@@ -217,6 +217,9 @@ namespace kiln::ui {
         // right, down, 5-8 their repeating variants).
         void SetPlaySoundEffect(std::function<void(int)> fn) { m_PlaySound = std::move(fn); }
         void PlaySoundEffect(int constant) { if (m_PlaySound) m_PlaySound(constant); }
+        // KeyCharacterMap.getDeadChar: the character a dead key's accent makes with `c`, or 0.
+        void SetDeadCharCombiner(std::function<int(int accent, int c)> fn) { m_DeadChar = std::move(fn); }
+        int DeadChar(int accent, int c) const { return m_DeadChar ? m_DeadChar(accent, c) : 0; }
         void RequestRectangleOnScreen(Rect r) { if (m_RequestRectangle) m_RequestRectangle(r); }
         // The platform took focus away from (or gave it back to) the host view.
         void OnHostFocusChanged(bool focused);
@@ -284,6 +287,7 @@ namespace kiln::ui {
         void RequestFullRemeasure();
 
         std::function<void(int)> m_PlaySound;
+        std::function<int(int, int)> m_DeadChar;
         std::unique_ptr<LayoutNode> m_Root;
         Density m_Density;
         LayoutDirection m_Direction = LayoutDirection::Ltr;
