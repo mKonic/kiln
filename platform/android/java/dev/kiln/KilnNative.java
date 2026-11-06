@@ -12,6 +12,8 @@ final class KilnNative {
     static native void setAnimationScale(float scale);
     static native void touchEvent(int action, int actionIndex, long eventTime, int[] ids, float[] xy,
                                   int[] toolTypes, int buttons, int classification, float hscroll, float vscroll);
+    static native boolean keyEvent(int action, int keyCode, int metaState, int unicode, int repeatCount, long eventTime);
+    static native void hostFocusChanged(boolean focused);
     static native void setViewConfiguration(long longPressTimeout, long doubleTapTimeout, float touchSlop,
                                             float maxFling, float minFling);
     static native void surfaceCreated(Surface surface);

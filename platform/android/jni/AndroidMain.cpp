@@ -30,6 +30,9 @@ namespace {
         bool visible = false;
         bool callbackPosted = false;
         int eventFd = -1, timerFd = -1;
+        JavaVM* vm = nullptr;
+        jobject view = nullptr;           // global ref to the KilnView
+        jmethodID requestFocus = nullptr;
     };
     Host* g_Host = nullptr;
     void ArmTimer();
@@ -84,7 +87,7 @@ namespace {
         __android_log_print(prio, "kiln", "%.*s", int(message.size()), message.data());
     }
 
-    void Create(JNIEnv* env, jclass, jobject /*view*/, jobject text, jfloat density, jfloat fontScale) {
+    void Create(JNIEnv* env, jclass, jobject view, jobject text, jfloat density, jfloat fontScale) {
         if (g_Host) {   // Activity recreated: keep the app, swap nothing for M0.
             g_Host->app->SetDensity(density, fontScale);
             return;
@@ -95,6 +98,17 @@ namespace {
         g_Host->app = std::make_unique<kiln::App>(kiln::HostServices{ g_Host->text.get(), &PostFrame, nullptr });
         g_Host->app->SetDensity(density, fontScale);
         g_Host->handle.impl = g_Host->app.get();
+        env->GetJavaVM(&g_Host->vm);
+        g_Host->view = env->NewGlobalRef(view);
+        jclass viewClass = env->GetObjectClass(view);
+        g_Host->requestFocus = env->GetMethodID(viewClass, "requestFocus", "()Z");
+        env->DeleteLocalRef(viewClass);
+        // Keys and the IME reach a View only while it holds platform focus.
+        g_Host->app->GetOwner().SetRequestHostFocus([] {
+            JNIEnv* e = nullptr;
+            g_Host->vm->GetEnv(reinterpret_cast<void**>(&e), JNI_VERSION_1_6);
+            return e && e->CallBooleanMethod(g_Host->view, g_Host->requestFocus);
+        });
 
         // Posted work and timers wake the main looper (AndroidUiDispatcher's Handler half).
         g_Host->eventFd = eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC);
@@ -171,6 +185,24 @@ namespace {
         ArmTimer();
     }
 
+    jboolean KeyEvent(JNIEnv*, jclass, jint action, jint keyCode, jint metaState, jint unicode, jint repeat, jlong time) {
+        kiln::ui::KeyEvent e;
+        e.keyCode = keyCode;
+        e.type = action == 0 ? kiln::ui::KeyEventType::KeyDown : action == 1 ? kiln::ui::KeyEventType::KeyUp
+                                                                           : kiln::ui::KeyEventType::Unknown;
+        e.metaState = std::uint32_t(metaState);
+        e.unicode = std::uint32_t(unicode);
+        e.repeatCount = repeat;
+        e.uptimeMillis = time;
+        const bool handled = g_Host->app->ProcessKey(e);
+        ArmTimer();
+        return handled;
+    }
+
+    void HostFocusChanged(JNIEnv*, jclass, jboolean focused) {
+        g_Host->app->GetOwner().OnHostFocusChanged(focused);
+    }
+
     void SetViewConfiguration(JNIEnv*, jclass, jlong longPress, jlong doubleTap, jfloat touchSlop,
                               jfloat maxFling, jfloat minFling) {
         auto& c = g_Host->app->GetOwner().Config();
@@ -211,6 +243,8 @@ extern "C" JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void*) {
         { "setDensity", "(FF)V", reinterpret_cast<void*>(&SetDensity) },
         { "setAnimationScale", "(F)V", reinterpret_cast<void*>(&SetAnimationScale) },
         { "touchEvent", "(IIJ[I[F[IIIFF)V", reinterpret_cast<void*>(&TouchEvent) },
+        { "keyEvent", "(IIIIIJ)Z", reinterpret_cast<void*>(&KeyEvent) },
+        { "hostFocusChanged", "(Z)V", reinterpret_cast<void*>(&HostFocusChanged) },
         { "setViewConfiguration", "(JJFFF)V", reinterpret_cast<void*>(&SetViewConfiguration) },
         { "surfaceCreated", "(Landroid/view/Surface;)V", reinterpret_cast<void*>(&SurfaceCreated) },
         { "surfaceChanged", "(II)V", reinterpret_cast<void*>(&SurfaceChanged) },

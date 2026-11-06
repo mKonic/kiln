@@ -70,6 +70,33 @@ int main() {
         SendMouse(kiln::ui::PointerEventType::Scroll, { float(-dx), float(-dy) });
     });
 
+    glfwSetKeyCallback(window, [](GLFWwindow*, int key, int, int action, int mods) {
+        namespace k = kiln::ui::keys;
+        int code = 0;
+        switch (key) {
+            case GLFW_KEY_TAB: code = k::Tab; break;
+            case GLFW_KEY_ENTER: code = k::Enter; break;
+            case GLFW_KEY_KP_ENTER: code = k::NumpadEnter; break;
+            case GLFW_KEY_SPACE: code = k::Space; break;
+            case GLFW_KEY_ESCAPE: code = k::Escape; break;
+            case GLFW_KEY_LEFT: code = k::DpadLeft; break;
+            case GLFW_KEY_RIGHT: code = k::DpadRight; break;
+            case GLFW_KEY_UP: code = k::DpadUp; break;
+            case GLFW_KEY_DOWN: code = k::DpadDown; break;
+            case GLFW_KEY_PAGE_UP: code = k::PageUp; break;
+            case GLFW_KEY_PAGE_DOWN: code = k::PageDown; break;
+            case GLFW_KEY_BACKSPACE: code = k::Del; break;
+            default: return;
+        }
+        kiln::ui::KeyEvent e;
+        e.keyCode = code;
+        e.type = action == GLFW_RELEASE ? kiln::ui::KeyEventType::KeyUp : kiln::ui::KeyEventType::KeyDown;
+        e.repeatCount = action == GLFW_REPEAT ? 1 : 0;
+        e.metaState = (mods & GLFW_MOD_SHIFT ? kiln::ui::kMetaShift : 0) | (mods & GLFW_MOD_CONTROL ? kiln::ui::kMetaCtrl : 0);
+        e.uptimeMillis = std::int64_t(glfwGetTime() * 1000);
+        g_App->ProcessKey(e);
+    });
+
     hearth::GlfwSurface surface(window);
     app.SurfaceCreated(surface);
     int lastW = 0, lastH = 0;

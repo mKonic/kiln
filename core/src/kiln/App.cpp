@@ -22,8 +22,19 @@ namespace kiln {
     void App::ProcessPointer(const ui::RawPointerEvent& event) {
         if (m_Composition) m_Composition->Recompose();
         if (m_Width && m_Height) m_Owner.MeasureAndLayout({ int(m_Width), int(m_Height) });
+        // Touch input switches to touch mode (focus rings and SystemDefined focusability off).
+        for (const auto& p : event.pointers)
+            if (p.type == ui::PointerType::Touch && p.down) { m_Owner.SetInputMode(ui::InputMode::Touch); break; }
         m_Owner.ProcessPointer(event);
         m_Dispatcher.RunPending();
+    }
+
+    bool App::ProcessKey(const ui::KeyEvent& event) {
+        if (m_Composition) m_Composition->Recompose();
+        if (m_Width && m_Height) m_Owner.MeasureAndLayout({ int(m_Width), int(m_Height) });
+        const bool handled = m_Owner.DispatchKeyEvent(event);
+        m_Dispatcher.RunPending();
+        return handled;
     }
 
     void App::SetContent(std::function<void()> content) {

@@ -7,6 +7,8 @@ import android.os.Handler;
 import android.os.Looper;
 import android.provider.Settings;
 import android.util.DisplayMetrics;
+import android.graphics.Rect;
+import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.ViewConfiguration;
 import android.view.SurfaceHolder;
@@ -92,7 +94,20 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
     }
 
     @Override
-    public boolean onInterceptTouchEvent(MotionEvent e) { return true; }   // the SurfaceView child never sees touches
+    public boolean onInterceptTouchEvent(MotionEvent e) { return true; }
+
+    @Override
+    public boolean dispatchKeyEvent(KeyEvent e) {
+        if (KilnNative.keyEvent(e.getAction(), e.getKeyCode(), e.getMetaState(), e.getUnicodeChar(),
+                e.getRepeatCount(), e.getEventTime())) return true;
+        return super.dispatchKeyEvent(e);
+    }
+
+    @Override
+    protected void onFocusChanged(boolean gainFocus, int direction, Rect previouslyFocusedRect) {
+        super.onFocusChanged(gainFocus, direction, previouslyFocusedRect);
+        KilnNative.hostFocusChanged(gainFocus);
+    }   // the SurfaceView child never sees touches
 
     private final ContentObserver animationScaleObserver;
 

@@ -60,6 +60,8 @@ namespace kiln {
         // Input from the host, positions in surface pixels. Layout is brought up to date first
         // so hit testing sees what is on screen (AndroidComposeView.handleMotionEvent).
         void ProcessPointer(const ui::RawPointerEvent& event);
+        // A key event from the host; false means the platform should handle it (e.g. Back).
+        bool ProcessKey(const ui::KeyEvent& event);
         float Density() const { return m_Density; }
         float FontScale() const { return m_FontScale; }
         TextBackend* Text() const { return m_Services.text; }
