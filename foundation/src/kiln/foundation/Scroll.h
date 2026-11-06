@@ -7,6 +7,7 @@
 // catches a running fling; mouse wheel), and verticalScroll/horizontalScroll.
 
 #include "kiln/animation/Animatable.h"
+#include "kiln/foundation/BringIntoView.h"
 #include "kiln/foundation/Gestures.h"
 #include "kiln/foundation/Layouts.h"
 #include "kiln/ui/NestedScroll.h"
@@ -109,6 +110,7 @@ namespace kiln::foundation {
         bool reverseDirection = false;   // already resolved (ScrollableDefaults.reverseDirection)
         std::shared_ptr<OverscrollEffect> overscroll;   // null: no overscroll
         FlingBehavior flingBehavior;                     // null: the platform spline decay
+        std::shared_ptr<const BringIntoViewSpec> bringIntoViewSpec;   // null: LocalBringIntoViewSpec
     };
     Modifier Scrollable(Modifier m, ScrollableState& state, Orientation orientation, ScrollableOptions options = {});
 

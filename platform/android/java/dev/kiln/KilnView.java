@@ -267,6 +267,11 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
     // --- accessibility (spec 01) --------------------------------------------------------------
     private final KilnAccessibility accessibility = new KilnAccessibility(this);
 
+    /** PackageManager.FEATURE_LEANBACK: focus scrolling pivots on TVs. */
+    boolean isTelevision() {
+        return getContext().getPackageManager().hasSystemFeature(android.content.pm.PackageManager.FEATURE_LEANBACK);
+    }
+
     /** The root's bringIntoView: our parents (a ScrollView) scroll the rect into view. */
     void requestRectangle(int left, int top, int right, int bottom) {
         requestRectangleOnScreen(new Rect(left, top, right, bottom), false);

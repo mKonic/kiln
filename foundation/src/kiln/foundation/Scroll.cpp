@@ -67,6 +67,7 @@ namespace kiln::foundation {
         FlingBehavior flingBehavior;
         rt::Job semanticsScroll;   // ScrollBy from accessibility (an animated scroll)
         IntSize viewport;          // ContentInViewNode's measured size (page keys)
+        std::shared_ptr<const BringIntoViewSpec> bringIntoViewSpec = DefaultBringIntoViewSpec();
 
         float Axis(Offset o) const { return orientation == Orientation::Vertical ? o.y : o.x; }
         Offset Single(float v) const { return orientation == Orientation::Vertical ? Offset{ 0, v } : Offset{ v, 0 }; }
@@ -158,14 +159,6 @@ namespace kiln::foundation {
     namespace {
         constexpr float kMinScrollThreshold = 0.5f;
 
-        // BringIntoViewSpec.defaultCalculateScrollDistance.
-        float ScrollDistance(float offset, float size, float container) {
-            const float leading = offset, trailing = offset + size;
-            if (leading >= 0 && trailing <= container) return 0;          // already visible
-            if (leading < 0 && trailing > container) return 0;            // larger and covering
-            return std::abs(leading) < std::abs(trailing - container) ? leading : trailing - container;
-        }
-
         struct ContentInViewParams {
             std::shared_ptr<ScrollingLogic> logic;
             bool operator==(const ContentInViewParams& o) const { return logic == o.logic; }
@@ -188,8 +181,9 @@ namespace kiln::foundation {
             float AxisOf(IntSize s) const { return float(Vertical() ? s.height : s.width); }
 
             float Relocation(const Rect& r, IntSize container, IntOffset adjust) const {
-                return Vertical() ? ScrollDistance(r.top - float(adjust.y), r.bottom - r.top, float(container.height))
-                                  : ScrollDistance(r.left - float(adjust.x), r.right - r.left, float(container.width));
+                const BringIntoViewSpec& spec = *params.logic->bringIntoViewSpec;
+                return Vertical() ? spec.CalculateScrollDistance(r.top - float(adjust.y), r.bottom - r.top, float(container.height))
+                                  : spec.CalculateScrollDistance(r.left - float(adjust.x), r.right - r.left, float(container.width));
             }
             bool MaxVisible(const Rect& r, IntSize container, IntOffset adjust = {}) const {
                 return std::abs(Relocation(r, container, adjust)) <= kMinScrollThreshold;
@@ -684,6 +678,7 @@ namespace kiln::foundation {
         logic->reverse = opt.reverseDirection;
         logic->overscroll = opt.overscroll;
         logic->flingBehavior = opt.flingBehavior;
+        logic->bringIntoViewSpec = opt.bringIntoViewSpec ? opt.bringIntoViewSpec : CurrentBringIntoViewSpec();
         m = m.With<NestedNode>(NestedParams{ logic });
         m = m.With<ContentInViewNode>(ContentInViewParams{ logic });
         if (!opt.enabled) return m;

@@ -1,6 +1,7 @@
 #include "Check.h"
 
 #include "kiln/foundation/Compose.h"
+#include "kiln/foundation/BringIntoView.h"
 #include "kiln/foundation/Pager.h"
 
 #include <cmath>
@@ -249,4 +250,27 @@ TEST(PageNestedScrollConnectionSettlesThePagerFirst) {
     CHECK_EQ(connection->OnPostScroll({}, { 20, 5 }, NestedScrollSource::SideEffect).x, 20.0f);
     CHECK_EQ(connection->OnPostFling({}, { 900, 40 }).x, 900.0f);
     CHECK_EQ(connection->OnPostFling({}, { 900, 40 }).y, 0.0f);
+}
+
+TEST(PagerBringIntoViewLandsOnWholePages) {
+    Harness h;
+    PagerState state(0, 0, [] { return 6; });
+    BringIntoViewRequester requester;
+    h.Run([&] {
+        PagerOptions o;
+        o.beyondViewportPageCount = 2;   // page 2 is composed while page 0 shows
+        HorizontalPager(FillMax(Modifier{}, Axis::Both), state, [&](int page) {
+            Box(FillMax(Modifier{}, Axis::Both), Alignment::TopStart(), false, [&, page] {
+                Modifier m = SizeMod(Modifier{}, Dp(30), Dp(30));
+                if (page == 2) m = BringIntoViewRequesterMod(OffsetMod(std::move(m), Dp(60), Dp(0)), requester);
+                Box(m);
+            });
+        }, o);
+    });
+    requester.BringIntoView();
+    h.Frames(60);
+    // The default spec would stop once the box shows; the pager's lands on its page.
+    CHECK_EQ(state.CurrentPage(), 2);
+    CHECK_EQ(state.CurrentPageOffsetFraction(), 0.0f);
+    CHECK(!state.IsScrollInProgress());
 }

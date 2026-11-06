@@ -199,6 +199,13 @@ namespace {
             env->GetByteArrayRegion(saved, 0, jsize(bytes.size()), reinterpret_cast<jbyte*>(bytes.data()));
             g_Host->app->RestoreState(bytes);
         }
+        {
+            // LocalBringIntoViewSpec's platform default: a TV (FEATURE_LEANBACK) pivots.
+            jclass vc = env->GetObjectClass(view);
+            jmethodID isTv = env->GetMethodID(vc, "isTelevision", "()Z");
+            env->DeleteLocalRef(vc);
+            g_Host->app->SetTelevision(isTv && env->CallBooleanMethod(view, isTv));
+        }
         kiln_main(&g_Host->handle);
     }
 

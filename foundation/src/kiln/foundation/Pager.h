@@ -39,6 +39,8 @@ namespace kiln::foundation {
         void SetGestureInProgress(bool b) { m_GestureInProgress = b; }
         bool GestureInProgress() const { return m_GestureInProgress; }
         int FirstVisiblePage() const { return m_Index.Peek(); }
+        int FirstVisiblePageOffset() const { return m_Offset.Peek(); }
+        bool LastScrolledForward() const { return m_LastForward; }
 
     private:
         void OnMeasured() override;

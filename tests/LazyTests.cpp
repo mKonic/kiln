@@ -1,5 +1,6 @@
 #include "Check.h"
 
+#include "kiln/foundation/BringIntoView.h"
 #include "kiln/foundation/Lazy.h"
 #include "kiln/runtime/Saveable.h"
 #include <map>
@@ -499,4 +500,27 @@ TEST(StaggeredGridPlacesItemsInTheShortestLane) {
     int bottom = 0;
     for (const auto& it : state.LayoutInfo().visibleItemsInfo) bottom = std::max(bottom, it.offset.y + it.size.height);
     CHECK_EQ(bottom, 100);
+}
+
+TEST(BringIntoViewKeepsItemsClearOfTheStickyHeader) {
+    Harness h;
+    LazyListState state;
+    BringIntoViewRequester requester;
+    h.Run([&] {
+        LazyColumn(FillMax(Modifier{}, Axis::Both), state, [&](LazyListScope& s) {
+            s.StickyHeader([](int) { Box(SizeMod(Modifier{}, Dp(100), Dp(20))); });
+            s.Items(30, [&](int i) {
+                Modifier m = SizeMod(Modifier{}, Dp(100), Dp(30));
+                if (i == 2) m = BringIntoViewRequesterMod(std::move(m), requester);
+                Box(m);
+            });
+        });
+    });
+    state.ScrollToItem(3, 15);   // item 2 (index 3) is under the sticking header, half hidden
+    h.Pump();
+    requester.BringIntoView();
+    h.Frames(60);
+    // It ends just below the header (at 20), not at the viewport's top.
+    CHECK_EQ(state.FirstVisibleItemIndex(), 2);
+    CHECK_EQ(state.FirstVisibleItemScrollOffset(), 10);
 }

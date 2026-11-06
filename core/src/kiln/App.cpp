@@ -56,11 +56,14 @@ namespace kiln {
         rt::SaveableStateRegistry* registry = m_Saveable.get();
         rt::State<ui::LayoutDirection>* dir = m_Direction.get();
         ui::HostNestedScrollParent* nested = m_Services.nestedScrollParent;
-        m_Composition->SetContent([registry, dir, nested, content = std::move(content)] {
+        const bool tv = m_Television;
+        m_Composition->SetContent([registry, dir, nested, tv, content = std::move(content)] {
             auto* c = rt::Composition::Current();
-            c->Provide(ui::LocalLayoutDirection, dir->Get(), [c, registry, nested, content] {
-                c->Provide(ui::LocalHostNestedScrollParent, nested, [c, registry, content] {
-                    c->Provide(rt::LocalSaveableStateRegistry, registry, content);
+            c->Provide(ui::LocalLayoutDirection, dir->Get(), [c, registry, nested, tv, content] {
+                c->Provide(ui::LocalHostNestedScrollParent, nested, [c, registry, tv, content] {
+                    c->Provide(ui::LocalIsTelevision, tv, [c, registry, content] {
+                        c->Provide(rt::LocalSaveableStateRegistry, registry, content);
+                    });
                 });
             });
         });

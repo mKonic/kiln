@@ -560,3 +560,29 @@ TEST(BringIntoViewReachesTheHostWithTheScrolledRect) {
     h.Frames(60);
     CHECK_EQ(state.Value(), 300);
 }
+
+TEST(BringIntoViewSpecDecidesHowFarToScroll) {
+    for (int mode = 0; mode < 2; ++mode) {
+        Harness h;
+        ScrollState state;
+        BringIntoViewRequester requester;
+        h.Run([&] {
+            auto content = [&] {
+                Column(VerticalScroll(FillMax(Modifier{}, Axis::Both), state), [&] {
+                    for (int i = 0; i < 20; ++i) {
+                        Modifier m = SizeMod(Modifier{}, Dp(100), Dp(20));
+                        if (i == 7) m = BringIntoViewRequesterMod(std::move(m), requester);
+                        Box(m, Alignment::TopStart(), false, {}, rt::Key(i));
+                    }
+                });
+            };
+            auto* c = rt::Composition::Current();
+            // A TV gets the pivot by default; elsewhere it can be provided.
+            if (mode == 0) c->Provide(LocalBringIntoViewSpec, PivotBringIntoViewSpec(), content);
+            else c->Provide(LocalIsTelevision, true, content);
+        });
+        requester.BringIntoView();
+        h.Frames(60);
+        CHECK_EQ(state.Value(), 140 - 30);   // item 7 (140..160) at 30 % of the viewport
+    }
+}

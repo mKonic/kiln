@@ -192,6 +192,7 @@ namespace kiln::foundation {
         bool pager = false;
         int beyondCount = 0;   // pager: beyondViewportPageCount
         std::function<int(int, int, int, int)> pageSnap;   // pager: SnapPosition
+        int stickingSize = 0;   // the header sticking to the start (stickingItemsCombinedSize)
         // Staggered grids: positions of the items measured so far (a prefix from item 0).
         bool staggered = false;
         LazyStaggeredGridState* stagState = nullptr;
@@ -860,6 +861,7 @@ namespace kiln::foundation {
             if (nextHeader != kNone) off = std::min(off, nextHeader - (sticking->size + spacing));
             stickingOffset = off;
         }
+        stickingSize = sticking ? sticking->size : 0;
 
         // Pager: beyondViewportPageCount pages on each side are composed, measured and placed
         // outside the viewport (createPagesBeforeList / AfterList), not visible pages.
@@ -1199,10 +1201,26 @@ namespace kiln::foundation {
         };
 
         // The composable part shared by lists and grids; `configure` fills the core.
+        // StickyHeaderBringIntoViewSpec: the area under a sticking header does not count as visible.
+        class StickyHeaderSpec final : public BringIntoViewSpec {
+        public:
+            StickyHeaderSpec(std::shared_ptr<LazyCore> c, bool applyOffset, std::shared_ptr<const BringIntoViewSpec> inner)
+                : core(std::move(c)), apply(applyOffset), inner(std::move(inner)) {}
+            float CalculateScrollDistance(float offset, float size, float container) const override {
+                const float sticky = float(core->stickingSize);
+                return inner->CalculateScrollDistance(apply ? offset - sticky : offset, size, container - sticky);
+            }
+        private:
+            std::shared_ptr<LazyCore> core;
+            bool apply;
+            std::shared_ptr<const BringIntoViewSpec> inner;
+        };
+
         void LazyLayout(bool vertical, const Modifier& modifier, LazyStateBase& state, bool userScrollEnabled, rt::Key key,
                         const std::function<void(LazyCore&)>& configure, FlingBehavior fling = {},
                         const std::function<Modifier(Modifier)>& extra = {}, bool reverseLayout = false,
-                        OverscrollParam overscroll = std::nullopt) {
+                        OverscrollParam overscroll = std::nullopt,
+                        std::shared_ptr<const BringIntoViewSpec> bringIntoView = nullptr) {
             auto& comp = *rt::Composition::Current();
             auto& core = comp.Remember<std::shared_ptr<LazyCore>>([] { return std::make_shared<LazyCore>(); }, {}, key);
             core->vertical = vertical;
@@ -1219,6 +1237,10 @@ namespace kiln::foundation {
             if (!vertical && comp.Read(ui::LocalLayoutDirection) == LayoutDirection::Rtl) so.reverseDirection = !so.reverseDirection;
             so.overscroll = overscroll ? *overscroll : RememberOverscrollEffect(key);
             so.flingBehavior = std::move(fling);
+            // rememberLazyLayoutBringIntoViewSpec: the sticking header covers the start.
+            const bool rtl = !vertical && comp.Read(ui::LocalLayoutDirection) == LayoutDirection::Rtl;
+            so.bringIntoViewSpec = bringIntoView ? std::move(bringIntoView)
+                                 : std::make_shared<StickyHeaderSpec>(core, reverseLayout == rtl, CurrentBringIntoViewSpec());
             // lazyLayoutSemantics: an estimated scroll range (index * 500 + offset, a little more
             // while it can go on), scroll to index, collection info, the viewport length.
             LazyCore* cp = core.get();
@@ -1346,7 +1368,7 @@ namespace kiln::foundation {
             core.verticalAlignment = config.verticalAlignment;
             core.intervals.clear();
             core.intervals.push_back({ pageCount, std::move(content), std::move(key) });
-        }, std::move(config.flingBehavior), config.extraModifier, false, config.overscrollEffect);
+        }, std::move(config.flingBehavior), config.extraModifier, false, config.overscrollEffect, std::move(config.bringIntoViewSpec));
     }
 
     void LazyColumn(const Modifier& m, LazyListState& s, std::function<void(LazyListScope&)> content, LazyListOptions o, rt::Key key) {

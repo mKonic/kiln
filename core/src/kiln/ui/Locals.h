@@ -16,4 +16,7 @@ namespace kiln::ui {
     // null when the host has none.
     inline rt::Local<HostNestedScrollParent*> LocalHostNestedScrollParent{ nullptr };
 
+    // The device is a TV (FEATURE_LEANBACK): focus scrolling pivots (LocalBringIntoViewSpec).
+    inline rt::Local<bool> LocalIsTelevision{ false };
+
 }

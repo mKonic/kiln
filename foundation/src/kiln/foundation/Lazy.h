@@ -250,6 +250,7 @@ namespace kiln::foundation {
         int beyondViewportPageCount = 0;
         // SnapPosition.position(layoutSize, pageSize, beforeContentPadding, afterContentPadding).
         std::function<int(int layout, int page, int before, int after)> snapPosition;
+        std::shared_ptr<const BringIntoViewSpec> bringIntoViewSpec;
     };
     void LazyPagerLayout(bool vertical, const Modifier& modifier, LazyStateBase& state, int pageCount,
                          std::function<void(int page)> content, std::function<rt::Key(int)> key, LazyPagerConfig config, rt::Key compositionKey);

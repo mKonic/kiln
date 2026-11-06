@@ -206,6 +206,39 @@ namespace kiln::foundation {
             bool rtl;
         };
 
+        // DefaultPagerBringIntoViewSpec: a request lands on whole pages, and a satisfied one still
+        // settles the pager onto a page.
+        class PagerBringIntoView final : public BringIntoViewSpec {
+        public:
+            PagerBringIntoView(PagerState* s, bool flip, std::shared_ptr<const BringIntoViewSpec> d) : st(s), flip(flip), inner(std::move(d)) {}
+            float CalculateScrollDistance(float offset, float size, float container) const override {
+                const float proposed = inner->CalculateScrollDistance(offset, size, container);
+                const bool out = offset > 0 ? offset + size > container : offset + size <= 1.0f;   // Int.VisibilityThreshold
+                if (proposed != 0 && out) return Override(proposed);
+                if (std::abs(float(st->FirstVisiblePageOffset())) < 1e-6f) return 0;
+                return Settling(container);
+            }
+        private:
+            int Step() const { return st->PageSize() + st->PageSpacing(); }
+            // layoutAwareFirstOffset
+            int First() const { return flip ? -st->FirstVisiblePageOffset() + Step() : st->FirstVisiblePageOffset(); }
+            float Settling(float container) const {
+                const float reversed = -float(First());
+                const bool forward = st->LastScrolledForward();
+                const float d = flip ? (forward ? reversed : reversed + float(Step())) : (forward ? reversed + float(Step()) : reversed);
+                return std::clamp(d, -container, container);
+            }
+            float Override(float proposed) const {
+                float corrected = -float(First());
+                while (proposed > 0 && corrected < proposed) corrected += float(Step());
+                while (proposed < 0 && corrected > proposed) corrected -= float(Step());
+                return corrected;
+            }
+            PagerState* st;
+            bool flip;   // RTL horizontal (shouldChangeScrollDirection)
+            std::shared_ptr<const BringIntoViewSpec> inner;
+        };
+
         rt::Task<> PageTo(PagerState* st, int page) { co_await st->AnimateScrollToPage(page); }
 
         void Pager(bool vertical, const Modifier& modifier, PagerState& state, std::function<void(int)> content,
@@ -225,6 +258,7 @@ namespace kiln::foundation {
             config.snapPosition = [snap](int layout, int page, int before, int after) { return snap.Position(layout, page, before, after); };
             config.flingBehavior = options.flingBehavior ? options.flingBehavior : PagerFlingBehavior(state);
             const bool rtl = rt::Composition::Current() && rt::Composition::Current()->Read(ui::LocalLayoutDirection) == LayoutDirection::Rtl;
+            config.bringIntoViewSpec = std::make_shared<PagerBringIntoView>(st, rtl && !vertical, CurrentBringIntoViewSpec());
             std::shared_ptr<NestedScrollConnection> connection = options.pageNestedScrollConnection;
             if (!connection) connection = PageNestedScrollConnection(state, vertical ? Orientation::Vertical : Orientation::Horizontal);
             config.extraModifier = [st, vertical, rtl, connection](Modifier m) {
