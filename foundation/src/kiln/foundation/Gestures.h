@@ -88,6 +88,11 @@ namespace kiln::foundation {
     };
     // detectDragGestures(orientationLock): slop, then drag until up or consumed by someone else.
     rt::Task<> DetectDragGestures(PointerInputScope& scope, std::optional<Orientation> orientationLock, DragCallbacks callbacks);
+    inline rt::Task<> DetectHorizontalDragGestures(PointerInputScope& s, DragCallbacks cb) { return DetectDragGestures(s, Orientation::Horizontal, std::move(cb)); }
+    inline rt::Task<> DetectVerticalDragGestures(PointerInputScope& s, DragCallbacks cb) { return DetectDragGestures(s, Orientation::Vertical, std::move(cb)); }
+    // detectDragGesturesAfterLongPress: a press held still for the long-press timeout, then a
+    // drag without slop. onDragStart gets the long-press change as both arguments.
+    rt::Task<> DetectDragGesturesAfterLongPress(PointerInputScope& scope, DragCallbacks callbacks);
 
     // TransformGestureDetector.kt: centroid, pan, zoom and rotation (degrees) of multi-touch.
     Offset CalculateCentroid(const PointerEvent& e, bool useCurrent = true);   // NaN x/y when none

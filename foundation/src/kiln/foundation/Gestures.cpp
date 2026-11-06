@@ -404,6 +404,38 @@ namespace kiln::foundation {
         }
     }
 
+    rt::Task<> DetectDragGesturesAfterLongPress(PointerInputScope& s, DragCallbacks cb) {
+        for (;;) {
+            auto down = co_await AwaitFirstDownPass(s, false, PointerEventPass::Main);
+            // awaitLongPressOrCancellation: up or moving past slop cancels; the timeout wins.
+            const float slop = s.Config().touchSlop;
+            std::optional<PointerInputChange> longPress;
+            PointerInputChange last = *down;
+            const std::int64_t deadline = down->uptimeMillis + s.Config().longPressTimeoutMillis;
+            for (;;) {
+                const std::int64_t remaining = std::max<std::int64_t>(0, deadline - last.uptimeMillis);
+                auto e = co_await s.AwaitPointerEventWithTimeout(remaining, PointerEventPass::Main);
+                if (!e) { longPress = last; break; }   // timed out still pressed
+                PointerInputChange* c = nullptr;
+                for (auto& ch : e->changes) if (ch.id == down->id) c = &ch;
+                if (!c || !c->pressed || c->IsConsumed()) break;
+                const Offset moved = c->position - down->position;
+                if (std::hypot(moved.x, moved.y) > slop) break;
+                last = *c;
+            }
+            if (longPress) {
+                if (cb.onDragStart) cb.onDragStart(*longPress, *longPress, {});
+                auto up = co_await Drag(s, longPress->id, [&](PointerInputChange& c) {
+                    if (cb.onDrag) cb.onDrag(c, c.PositionChange());
+                    c.Consume();
+                });
+                if (!up) { if (cb.onDragCancel) cb.onDragCancel(); }
+                else if (cb.onDragEnd) cb.onDragEnd(*up);
+            }
+            while (FirstPressed(s.CurrentEvent())) co_await s.AwaitPointerEvent(PointerEventPass::Final);
+        }
+    }
+
     namespace {
         // The shared clickable core: callbacks behind boxes refreshed every composition
         // (rememberUpdatedState), interactions, indication, keys, focus, semantics, taps.
