@@ -8,6 +8,7 @@
 #include "kiln/ui/Geometry.h"
 
 #include <cstdint>
+#include <memory>
 #include <vector>
 
 namespace kiln::ui {
@@ -26,7 +27,9 @@ namespace kiln::ui {
         bool previousPressed = false;
         PointerType type = PointerType::Touch;
         Offset scrollDelta;
-        bool* consumed = nullptr;        // shared across the path
+        // Shared by every copy of this change in one dispatch (all nodes, all passes); owned, so
+        // a copy kept past the dispatch (currentEvent) stays valid.
+        std::shared_ptr<bool> consumed;
 
         bool IsConsumed() const { return consumed && *consumed; }
         void Consume() { if (consumed) *consumed = true; }

@@ -85,9 +85,9 @@ namespace kiln::ui {
         struct TreeNode { HitEntry entry; std::vector<std::int64_t> pointers; std::vector<std::size_t> children; };
         std::vector<TreeNode> tree;
         std::vector<std::size_t> roots;
-        std::unordered_map<std::int64_t, bool> consumed;
+        std::unordered_map<std::int64_t, std::shared_ptr<bool>> consumed;
         for (const RawPointer& rp : raw.pointers) {
-            consumed[rp.id] = false;
+            consumed[rp.id] = std::make_shared<bool>(false);
             auto& path = m_Pointers[rp.id].path;
             // The parent is held by index: push_back below reallocates `tree`.
             std::size_t parent = SIZE_MAX;
@@ -125,7 +125,7 @@ namespace kiln::ui {
                 c.previousPressed = t.pressed;
                 c.type = rp->type;
                 c.scrollDelta = rp->scrollDelta;
-                c.consumed = reinterpret_cast<bool*>(&consumed[id]);
+                c.consumed = consumed[id];
                 ev.changes.push_back(c);
             }
             return ev;
