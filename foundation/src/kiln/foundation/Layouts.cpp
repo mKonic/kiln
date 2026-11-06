@@ -504,9 +504,14 @@ namespace kiln::foundation {
                 const Offset pivot{ size.width * params.originX, size.height * params.originY };
                 if (params.rotationZ != 0) s.Rotate(params.rotationZ, pivot);
                 if (params.scaleX != 1 || params.scaleY != 1) s.Scale(params.scaleX, params.scaleY, pivot);
-                if (params.alpha != 1) s.MultiplyAlpha(params.alpha);
+                // CompositingStrategy.Auto: alpha < 1 renders offscreen and composites once, so
+                // overlapping content fades as one image (RenderNode with overlapping rendering).
+                if (params.alpha <= 0) { s.Restore(); return; }
+                const bool offscreen = params.alpha < 1;
+                if (offscreen) s.BeginLayer({ 0, 0, size.width, size.height }, params.alpha);
                 if (params.clip) s.ClipRect({ 0, 0, size.width, size.height }, CornerRadiusPx(params.shape, size, s));
                 s.DrawContent();
+                if (offscreen) s.EndLayer();
                 s.Restore();
             }
         };
