@@ -1,5 +1,7 @@
 #include "kiln/App.h"
 
+#include <kiln/kiln.hpp>
+
 using namespace kiln;
 
 extern "C" {
@@ -47,4 +49,10 @@ KILN_API float kiln_paragraph_height(const kiln_paragraph* p) { return p ? p->da
 KILN_API int kiln_paragraph_line_count(const kiln_paragraph* p) { return p ? p->data.lineCount : 0; }
 KILN_API void kiln_paragraph_free(kiln_paragraph* p) { delete p; }
 
+}
+
+namespace kiln {
+    void SetContent(kiln_app* app, std::function<void()> content) {
+        if (app) app->impl->SetContent(std::move(content));
+    }
 }

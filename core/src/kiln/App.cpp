@@ -11,11 +11,19 @@ namespace kiln {
 
     App::App(HostServices services) : m_Services(services) {
         m_Dispatcher.requestFrame = [this] { RequestFrame(); };
+        m_Owner.SetText(m_Services.text);
+        m_Owner.SetRequestFrame([this] { RequestFrame(); });
         // Any state write schedules a frame, like Compose's global apply observer (14 §Recomposer).
         rt::Observation::SetChangeListener([this] { RequestFrame(); });
     }
 
     void App::RunIdle() { m_Dispatcher.RunPending(); }
+
+    void App::SetContent(std::function<void()> content) {
+        if (!m_Composition) m_Composition = std::make_unique<rt::Composition>(m_Owner.Root(), m_Dispatcher);
+        m_Composition->SetContent(std::move(content));
+        RequestFrame();
+    }
     App::~App() {
         if (m_Device) m_Device->WaitIdle();
     }
@@ -92,9 +100,13 @@ namespace kiln {
         m_Dispatcher.RunPending();
         m_Dispatcher.RunFrame(std::int64_t(timeSeconds * 1e9));
         for (auto& stage : m_Stages) stage(timeSeconds);
+        if (m_Composition) m_Composition->Recompose();
         if (!m_Device || m_SurfaceLost || m_Width == 0 || m_Height == 0) return;
+        m_Owner.MeasureAndLayout({ int(m_Width), int(m_Height) });
 
         m_Quads->Begin(m_Width, m_Height);
+        if (m_Services.text) m_Services.text->SyncAtlas(*this);
+        m_Owner.Draw({ m_Quads.get(), [this](std::uint32_t i) { return Page(i); } });
         kiln_frame frame{ this };
         if (m_Callbacks.on_frame) m_Callbacks.on_frame(m_Callbacks.user, &frame, timeSeconds);
         if (m_Services.text) m_Services.text->SyncAtlas(*this);

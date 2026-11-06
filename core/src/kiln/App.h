@@ -2,7 +2,9 @@
 
 #include "kiln/QuadRenderer.h"
 #include "kiln/TextBackend.h"
+#include "kiln/runtime/Composition.h"
 #include "kiln/runtime/Task.h"
+#include "kiln/ui/LayoutNode.h"
 
 #include <kiln/kiln.h>
 
@@ -47,7 +49,14 @@ namespace kiln {
         void SurfaceDestroyed();
         void Frame(double timeSeconds);
 
-        void SetDensity(float density, float fontScale) { m_Density = density; m_FontScale = fontScale; }
+        void SetDensity(float density, float fontScale) {
+            m_Density = density;
+            m_FontScale = fontScale;
+            m_Owner.SetDensity({ density, fontScale });
+        }
+        // C++ content root: composed into the window's layout tree each frame it changes.
+        void SetContent(std::function<void()> content);
+        ui::Owner& GetOwner() { return m_Owner; }
         float Density() const { return m_Density; }
         float FontScale() const { return m_FontScale; }
         TextBackend* Text() const { return m_Services.text; }
@@ -69,6 +78,8 @@ namespace kiln {
 
     private:
         HostServices m_Services;
+        ui::Owner m_Owner;
+        std::unique_ptr<rt::Composition> m_Composition;
         kiln_app_callbacks m_Callbacks{};
         std::unique_ptr<hearth::Device> m_Device;
         std::unique_ptr<QuadRenderer> m_Quads;
