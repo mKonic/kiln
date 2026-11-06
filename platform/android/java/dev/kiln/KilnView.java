@@ -345,7 +345,7 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
         this.inputType = type;
         this.imeOptions = options;
         this.singleLine = singleLine;
-        if (!hasFocus()) requestFocus();
+        requestOwnerFocus();
         imm().restartInput(this);
         imm().showSoftInput(this, 0);
     }
@@ -512,6 +512,75 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
         if (KilnNative.keyEvent(e.getAction(), e.getKeyCode(), e.getMetaState(), e.getUnicodeChar(),
                 e.getRepeatCount(), e.getEventTime())) return true;
         return super.dispatchKeyEvent(e);
+    }
+
+    // --- View focus integration (AndroidComposeView) -------------------------------------------
+    // The focused item is this view's focused rect, so focus search from outside and
+    // ViewRootImpl's scroll-into-view see it.
+    @Override
+    public void getFocusedRect(Rect r) {
+        float[] f = KilnNative.focusedRect();
+        if (f != null) {
+            r.set(Math.round(f[0]), Math.round(f[1]), Math.round(f[2]), Math.round(f[3]));
+        } else if (!KilnNative.hasFocusableContent()) {
+            r.set(Integer.MIN_VALUE, Integer.MIN_VALUE, Integer.MIN_VALUE, Integer.MIN_VALUE);
+        } else {
+            super.getFocusedRect(r);
+        }
+    }
+
+    // Nothing focusable inside: the view is not a stop for focus search.
+    @Override
+    public void addFocusables(java.util.ArrayList<android.view.View> views, int direction, int focusableMode) {
+        if (KilnNative.hasFocusableContent()) super.addFocusables(views, direction, focusableMode);
+    }
+
+    // Moving focus from a View (or from this one) compares the next View with the next kiln item.
+    @Override
+    public android.view.View focusSearch(android.view.View focused, int direction) {
+        if (focused == null || isInLayout()) return super.focusSearch(focused, direction);
+        android.view.View root = getRootView();
+        android.view.View nextView = root instanceof android.view.ViewGroup
+                ? android.view.FocusFinder.getInstance().findNextFocus((android.view.ViewGroup) root, focused, direction) : null;
+        if (nextView != null && !isDescendant(nextView)) nextView = null;
+        float[] focusedBounds = null;
+        if (focused == this) focusedBounds = KilnNative.focusedRect();
+        if (focusedBounds == null) focusedBounds = rectRelativeToThis(focused);
+        float[] found = KilnNative.focusSearch(direction, focusedBounds[0], focusedBounds[1], focusedBounds[2], focusedBounds[3]);
+        if (found[0] < 0) return focused;                                       // cancelled
+        if (found[0] == 0) return nextView != null ? nextView : super.focusSearch(focused, direction);
+        if (nextView == null) return this;
+        if (direction == FOCUS_FORWARD || direction == FOCUS_BACKWARD) return this;
+        float[] target = { found[1], found[2], found[3], found[4] };
+        return KilnNative.isBetterFocusCandidate(direction, target, rectRelativeToThis(nextView), focusedBounds) ? this : nextView;
+    }
+
+    private boolean isDescendant(android.view.View v) {
+        for (android.view.ViewParent p = v.getParent(); p != null; p = p.getParent()) if (p == this) return true;
+        return false;
+    }
+
+    private float[] rectRelativeToThis(android.view.View v) {
+        int[] a = new int[2], b = new int[2];
+        v.getLocationInWindow(a);
+        getLocationInWindow(b);
+        final float l = a[0] - b[0], t = a[1] - b[1];
+        return new float[] { l, t, l + v.getWidth(), t + v.getHeight() };
+    }
+
+    // Focus arriving from the View system goes to a kiln item.
+    @Override
+    public boolean requestFocus(int direction, Rect previouslyFocusedRect) {
+        if (isFocused()) return true;
+        final Rect p = previouslyFocusedRect;
+        return KilnNative.hostRequestFocus(direction, p != null, p != null ? p.left : 0, p != null ? p.top : 0,
+                p != null ? p.right : 0, p != null ? p.bottom : 0, hasFocus());
+    }
+
+    // requestOwnerFocus: kiln focused an item and needs platform focus for keys and the IME.
+    boolean requestOwnerFocus() {
+        if (isFocused() || hasFocus()) return true;
+        return super.requestFocus(FOCUS_DOWN, null);
     }
 
     @Override

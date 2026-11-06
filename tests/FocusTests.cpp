@@ -397,3 +397,28 @@ TEST(InteractionBarrierBlocksFocusUnderIt) {
     h.Key(keys::Tab);
     CHECK_EQ(focused, std::string("beside"));
 }
+
+TEST(FocusSearchFromAHostRect) {
+    Harness h;
+    std::string focused;
+    h.Run([&] { Grid(focused); });
+    std::string found;
+    auto name = [&](FocusTargetNode& n) { found = h.owner.FocusRectOf(n).left < 25 ? "left" : "other"; return true; };
+    // Nothing focused: a search Down from a rect above the grid's left column finds "a".
+    const Rect above{ 0, -40, 50, -10 };
+    auto r = h.owner.FocusSearch(FocusDirection::Down, &above, name);
+    CHECK(r.has_value() && *r);
+    CHECK_EQ(found, std::string("left"));
+    CHECK(focused.empty());   // a search alone moves nothing
+    // Request through the search, then reset: focus starts over from the first item.
+    h.owner.SetInputMode(InputMode::Keyboard);
+    h.owner.FocusSearch(FocusDirection::Down, &above, [&](FocusTargetNode& n) { return n.RequestFocus(FocusDirection::Down); });
+    CHECK_EQ(focused, std::string("a"));
+    h.Key(keys::Tab);
+    CHECK_EQ(focused, std::string("b"));
+    CHECK(h.owner.ResetFocus(FocusDirection::Next));
+    CHECK_EQ(focused, std::string("a"));
+    CHECK(h.owner.HasFocusableContent());
+    const auto rect = h.owner.FocusedRect();
+    CHECK(rect.has_value() && rect->left == 0 && rect->top == 0);
+}

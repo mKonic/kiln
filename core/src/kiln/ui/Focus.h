@@ -77,6 +77,10 @@ namespace kiln::ui {
 
     class FocusRequester;
 
+    // FocusFinder's 2D comparison: whether `proposed` beats `current` as the next stop from
+    // `focused` in direction `d` (beam first, then 13 * major^2 + minor^2).
+    bool IsBetterFocusCandidate(const Rect& proposed, const Rect& current, const Rect& focused, FocusDirection d);
+
     // focusProperties { ... }: overrides for the next focus target down the chain. A direction's
     // requester: null = default search, FocusProperties::Cancel() = stay put.
     // FocusEnterExitScope: what onEnter / onExit see. Requesting focus elsewhere redirects the
@@ -160,6 +164,11 @@ namespace kiln::ui {
     public:
         bool RequestFocus(FocusDirection direction = FocusDirection::Enter);
         void Add(FocusTargetNode* t) { m_Targets.push_back(t); }
+        // findFocusTarget: offers each of its targets to `onFound` until one is taken.
+        bool FindFocusTarget(const std::function<bool(FocusTargetNode&)>& onFound) {
+            for (FocusTargetNode* t : m_Targets) if (onFound(*t)) return true;
+            return false;
+        }
         void Remove(FocusTargetNode* t) { std::erase(m_Targets, t); }
         // Expires with the requester: nodes that outlive it skip Remove.
         std::weak_ptr<const char> AliveToken() const { return m_Alive; }

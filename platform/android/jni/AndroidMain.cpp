@@ -184,7 +184,7 @@ namespace {
         env->GetJavaVM(&g_Host->vm);
         g_Host->view = env->NewGlobalRef(view);
         jclass viewClass = env->GetObjectClass(view);
-        g_Host->requestFocus = env->GetMethodID(viewClass, "requestFocus", "()Z");
+        g_Host->requestFocus = env->GetMethodID(viewClass, "requestOwnerFocus", "()Z");
         env->DeleteLocalRef(viewClass);
         InstallTextInputHost(env);
         {
@@ -423,6 +423,53 @@ namespace {
         const bool consumed = g_Host->app->ProcessIndirectPointer(ev);
         ArmTimer();
         return consumed;
+    }
+
+    // View focus integration (AndroidComposeView getFocusedRect / focusSearch / requestFocus).
+    jfloatArray FocusedRect(JNIEnv* env, jclass) {
+        if (!g_Host) return nullptr;
+        const auto r = g_Host->app->FocusedRect();
+        if (!r) return nullptr;
+        jfloatArray out = env->NewFloatArray(4);
+        const jfloat v[4] = { r->left, r->top, r->right, r->bottom };
+        env->SetFloatArrayRegion(out, 0, 4, v);
+        return out;
+    }
+
+    jboolean HasFocusableContent(JNIEnv*, jclass) {
+        return g_Host && g_Host->app->HasFocusableContent();
+    }
+
+    // [result (-1 cancelled, 0 none, 1 found), left, top, right, bottom of the target]
+    jfloatArray FocusSearch(JNIEnv* env, jclass, jint direction, jfloat l, jfloat t, jfloat r, jfloat b) {
+        jfloat v[5] = { 0, 0, 0, 0, 0 };
+        if (g_Host) {
+            kiln::ui::Rect target{};
+            v[0] = jfloat(g_Host->app->HostFocusSearch(direction, { l, t, r, b }, target));
+            v[1] = target.left; v[2] = target.top; v[3] = target.right; v[4] = target.bottom;
+        }
+        jfloatArray out = env->NewFloatArray(5);
+        env->SetFloatArrayRegion(out, 0, 5, v);
+        return out;
+    }
+
+    jboolean IsBetterFocusCandidate(JNIEnv* env, jclass, jint direction, jfloatArray proposed, jfloatArray current, jfloatArray focused) {
+        if (!g_Host) return {};
+        auto rect = [&](jfloatArray a) {
+            jfloat v[4];
+            env->GetFloatArrayRegion(a, 0, 4, v);
+            return kiln::ui::Rect{ v[0], v[1], v[2], v[3] };
+        };
+        return g_Host->app->IsBetterFocusCandidate(direction, rect(proposed), rect(current), rect(focused));
+    }
+
+    jboolean HostRequestFocus(JNIEnv*, jclass, jint direction, jboolean hasRect, jfloat l, jfloat t, jfloat r, jfloat b,
+                              jboolean hostHasFocus) {
+        if (!g_Host) return {};
+        const kiln::ui::Rect prev{ l, t, r, b };
+        const bool done = g_Host->app->HostRequestFocus(direction, hasRect ? &prev : nullptr, hostHasFocus);
+        ArmTimer();
+        return done;
     }
 
     void IndirectFling(JNIEnv*, jclass, jboolean next) {
@@ -886,6 +933,11 @@ extern "C" JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void*) {
         { "rotary", "(FFJI)Z", reinterpret_cast<void*>(&Rotary) },
         { "indirectPointer", "(IIJ[I[F[F[J[FI)Z", reinterpret_cast<void*>(&IndirectPointer) },
         { "indirectFling", "(Z)V", reinterpret_cast<void*>(&IndirectFling) },
+        { "focusedRect", "()[F", reinterpret_cast<void*>(&FocusedRect) },
+        { "hasFocusableContent", "()Z", reinterpret_cast<void*>(&HasFocusableContent) },
+        { "focusSearch", "(IFFFF)[F", reinterpret_cast<void*>(&FocusSearch) },
+        { "isBetterFocusCandidate", "(I[F[F[F)Z", reinterpret_cast<void*>(&IsBetterFocusCandidate) },
+        { "hostRequestFocus", "(IZFFFFZ)Z", reinterpret_cast<void*>(&HostRequestFocus) },
         { "hostFocusChanged", "(Z)V", reinterpret_cast<void*>(&HostFocusChanged) },
         { "setInsets", "(IIIII)V", reinterpret_cast<void*>(&SetInsets) },
         { "setImeState", "(ZZ)V", reinterpret_cast<void*>(&SetImeState) },

@@ -438,6 +438,10 @@ namespace kiln::ui {
         }
     }
 
+    bool IsBetterFocusCandidate(const Rect& proposed, const Rect& current, const Rect& focused, FocusDirection d) {
+        return IsBetterCandidate(proposed, current, focused, d);
+    }
+
     bool Owner::FindChildForEnter(FocusTargetNode& t, FocusDirection dir, const OnFound& onFound) {
         // collectAccessibleChildren: focusable descendants, flattening non-focusable groups.
         std::vector<FocusTargetNode*> acc;
@@ -678,6 +682,68 @@ namespace kiln::ui {
         if (wrapAround && (d == FocusDirection::Next || d == FocusDirection::Previous) && before && ClearFocus(false)) {
             const bool wrapped = d == FocusDirection::Next ? Forward(m_RootFocus, request) : Backward(m_RootFocus, request);
             return wrapped;
+        }
+        return false;
+    }
+
+    std::optional<bool> Owner::FocusSearch(FocusDirection d, const Rect* focusedRect, const OnFound& onFound) {
+        FocusTargetNode* source = m_ActiveFocus;
+        // customFocusSearch: the focused target's own destinations.
+        if (source) {
+            const FocusProperties p = source->FetchFocusProperties();
+            const bool ltr = m_Direction == LayoutDirection::Ltr;
+            FocusRequester* dest = nullptr;
+            switch (d) {
+                case FocusDirection::Next: dest = p.next; break;
+                case FocusDirection::Previous: dest = p.previous; break;
+                case FocusDirection::Up: dest = p.up; break;
+                case FocusDirection::Down: dest = p.down; break;
+                case FocusDirection::Left: dest = p.left ? p.left : (ltr ? p.start : p.end); break;
+                case FocusDirection::Right: dest = p.right ? p.right : (ltr ? p.end : p.start); break;
+                default: break;
+            }
+            if (dest == FocusProperties::Cancel()) return std::nullopt;
+            if (dest) return dest->FindFocusTarget(onFound);
+        }
+        auto offer = [&](FocusTargetNode& n) { return &n != source && !n.m_IsRoot && onFound(n); };
+        switch (d) {
+            case FocusDirection::Next: return Forward(m_RootFocus, offer);
+            case FocusDirection::Previous: return Backward(m_RootFocus, offer);
+            case FocusDirection::Left: case FocusDirection::Right: case FocusDirection::Up: case FocusDirection::Down:
+                return Search2D(m_RootFocus, d, source ? nullptr : focusedRect, offer);
+            case FocusDirection::Enter: {
+                // Among the active item's children, as a search towards the end side.
+                if (!source) return false;
+                const FocusDirection along = m_Direction == LayoutDirection::Rtl ? FocusDirection::Left : FocusDirection::Right;
+                return Search2D(*source, along, focusedRect, offer);
+            }
+            case FocusDirection::Exit:
+                if (!source) return false;
+                for (FocusTargetNode* p = FocusParent(*source); p && !p->m_IsRoot; p = FocusParent(*p))
+                    if (p->FetchFocusProperties().canFocus) return onFound(*p);
+                return false;
+        }
+        return false;
+    }
+
+    bool Owner::ResetFocus(FocusDirection d) {
+        if (!ClearFocus(false)) return false;
+        return FocusSearch(d, nullptr, [&](FocusTargetNode& n) { return RequestFocus(n, d); }).value_or(false);
+    }
+
+    std::optional<Rect> Owner::FocusedRect() const {
+        if (!m_ActiveFocus) return std::nullopt;
+        return FocusRect(*m_ActiveFocus);
+    }
+
+    bool Owner::HasFocusableContent() const {
+        std::vector<LayoutNode*> stack{ m_Root.get() };
+        while (!stack.empty()) {
+            LayoutNode* n = stack.back();
+            stack.pop_back();
+            for (auto& m : n->m_Nodes)
+                if (auto* t = m->AsFocusTarget(); t && !t->m_IsRoot && CanFocus(*t) && Eligible(*t)) return true;
+            for (LayoutNode* c : n->m_Children) stack.push_back(c);
         }
         return false;
     }

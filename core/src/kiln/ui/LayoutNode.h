@@ -199,6 +199,19 @@ namespace kiln::ui {
         bool ClearFocus(bool force = false);
         // wrapAround: 1D search (Next / Previous) starts over from the other end when it runs out.
         bool MoveFocus(FocusDirection direction, bool wrapAround = true);
+        // FocusOwner.focusSearch: offers the target a search from the focused item (or from
+        // `focusedRect`, root pixels, when nothing is focused) finds to `onFound`, without
+        // moving focus itself. nullopt when a focusProperties destination cancels the search.
+        std::optional<bool> FocusSearch(FocusDirection direction, const Rect* focusedRect,
+                                        const std::function<bool(FocusTargetNode&)>& onFound);
+        // resetFocus: clear (unless held), then focus whatever a fresh search finds.
+        bool ResetFocus(FocusDirection direction);
+        // The focused item's focus rect in root pixels, if anything is focused.
+        std::optional<Rect> FocusedRect() const;
+        // A target's focus rect (its focusRect, else its bounds) in root pixels.
+        Rect FocusRectOf(const FocusTargetNode& t) const { return FocusRect(t); }
+        // Whether anything in the tree can take focus.
+        bool HasFocusableContent() const;
         bool CaptureFocus();
         bool FreeFocus();
         // Key input: preview tunnel, then bubble; unhandled keys move focus (AndroidComposeView

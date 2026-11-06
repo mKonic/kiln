@@ -78,6 +78,64 @@ namespace kiln {
         m_Dispatcher.RunPending();
     }
 
+    namespace {
+        // View.FOCUS_* to a focus direction (AndroidComposeView toFocusDirection).
+        std::optional<ui::FocusDirection> ToFocusDirection(int d) {
+            switch (d) {
+                case 1: return ui::FocusDirection::Previous;   // FOCUS_BACKWARD
+                case 2: return ui::FocusDirection::Next;       // FOCUS_FORWARD
+                case 17: return ui::FocusDirection::Left;
+                case 33: return ui::FocusDirection::Up;
+                case 66: return ui::FocusDirection::Right;
+                case 130: return ui::FocusDirection::Down;
+                default: return std::nullopt;
+            }
+        }
+    }
+
+    std::optional<ui::Rect> App::FocusedRect() {
+        if (m_Width && m_Height) m_Owner.MeasureAndLayout({ int(m_Width), int(m_Height) });
+        return m_Owner.FocusedRect();
+    }
+
+    bool App::HasFocusableContent() {
+        rt::Composition::RecomposeAll();
+        if (m_Width && m_Height) m_Owner.MeasureAndLayout({ int(m_Width), int(m_Height) });
+        return m_Owner.HasFocusableContent();
+    }
+
+    int App::HostFocusSearch(int direction, ui::Rect focused, ui::Rect& target) {
+        if (m_Width && m_Height) m_Owner.MeasureAndLayout({ int(m_Width), int(m_Height) });
+        const auto d = ToFocusDirection(direction).value_or(ui::FocusDirection::Down);
+        bool found = false;
+        const auto r = m_Owner.FocusSearch(d, &focused, [&](ui::FocusTargetNode& n) {
+            target = m_Owner.FocusRectOf(n);
+            found = true;
+            return true;
+        });
+        if (!r) return -1;
+        return found ? 1 : 0;
+    }
+
+    bool App::IsBetterFocusCandidate(int direction, ui::Rect proposed, ui::Rect current, ui::Rect focused) {
+        const auto d = ToFocusDirection(direction).value_or(ui::FocusDirection::Down);
+        return ui::IsBetterFocusCandidate(proposed, current, focused, d);
+    }
+
+    bool App::HostRequestFocus(int direction, const ui::Rect* previouslyFocused, bool hostHasFocus) {
+        rt::Composition::RecomposeAll();
+        if (m_Width && m_Height) m_Owner.MeasureAndLayout({ int(m_Width), int(m_Height) });
+        const auto d = ToFocusDirection(direction).value_or(ui::FocusDirection::Enter);
+        auto request = [&](ui::FocusTargetNode& n) { return n.RequestFocus(d); };
+        bool done = m_Owner.FocusSearch(d, previouslyFocused, request).value_or(false);
+        if (!done) done = m_Owner.FocusSearch(d, nullptr, request).value_or(false);
+        // FocusFinder wrapped back to this view with an item already focused (1D only).
+        if (!done && hostHasFocus && (d == ui::FocusDirection::Next || d == ui::FocusDirection::Previous))
+            done = m_Owner.ResetFocus(d);
+        m_Dispatcher.RunPending();
+        return done;
+    }
+
     void App::SetLayoutDirection(ui::LayoutDirection d) {
         if (m_Direction->Peek() == d) return;
         m_Direction->Set(d);

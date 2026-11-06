@@ -84,6 +84,17 @@ namespace kiln {
         // The host's navigation gesture detector saw a fling along the pad's axis: one focus step,
         // without wrapping.
         void MoveFocusFromIndirectFling(bool next);
+        // View focus integration (AndroidComposeView). Directions are View.FOCUS_* values.
+        // The focused item's rect, for View.getFocusedRect.
+        std::optional<ui::Rect> FocusedRect();
+        bool HasFocusableContent();
+        // focusSearch from `focused` (view pixels): -1 cancelled, 0 nothing, 1 found (its rect
+        // in `target`). Focus does not move.
+        int HostFocusSearch(int direction, ui::Rect focused, ui::Rect& target);
+        bool IsBetterFocusCandidate(int direction, ui::Rect proposed, ui::Rect current, ui::Rect focused);
+        // View.requestFocus(direction, previouslyFocusedRect) reached the host view: focus an
+        // item, first near the rect, then anywhere; a 1D search that wrapped back resets focus.
+        bool HostRequestFocus(int direction, const ui::Rect* previouslyFocused, bool hostHasFocus);
         float Density() const { return m_Density; }
         float FontScale() const { return m_FontScale; }
         TextBackend* Text() const { return m_Services.text; }
