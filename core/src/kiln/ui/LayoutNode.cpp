@@ -1,10 +1,27 @@
 #include "kiln/ui/LayoutNode.h"
+#include "kiln/ui/NestedScroll.h"
 
 #include <algorithm>
 
 namespace kiln::ui {
 
     // --- ModifierNode ---------------------------------------------------------------------
+
+    NestedScrollNode* NestedScrollNode::Parent() const {
+        // The nearest nested-scroll node before this one in the chain, else in an ancestor.
+        LayoutNode* n = Owner();
+        if (!n) return nullptr;
+        NestedScrollNode* before = nullptr;
+        for (auto& m : n->m_Nodes) {
+            if (m.get() == this) break;
+            if (auto* x = m->AsNestedScroll()) before = x;
+        }
+        if (before) return before;
+        for (LayoutNode* p = n->m_Parent; p; p = p->m_Parent)
+            for (auto it = p->m_Nodes.rbegin(); it != p->m_Nodes.rend(); ++it)
+                if (auto* x = (*it)->AsNestedScroll()) return x;
+        return nullptr;
+    }
 
     void ModifierNode::InvalidateMeasure() { if (m_Owner) m_Owner->RequestRemeasure(); }
     void ModifierNode::InvalidateDraw() { if (m_Owner) m_Owner->InvalidateDraw(); }

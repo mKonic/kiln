@@ -6,6 +6,7 @@
 // so springs stay continuous. Frame time is divided by the animator duration scale (0 finishes
 // immediately), the MotionDurationScale Compose reads from ANIMATOR_DURATION_SCALE.
 
+#include "kiln/animation/Decay.h"
 #include "kiln/animation/Spec.h"
 #include "kiln/runtime/State.h"
 #include "kiln/runtime/Task.h"
@@ -40,6 +41,10 @@ namespace kiln::anim {
         rt::Task<AnimationResult> AnimateTo(float target, SpecPtr spec = Spring()) {
             return AnimateTo(Vec{ target, 0, 0, 0 }, std::move(spec));
         }
+        // 1D decay from the current value (animateDecay): runs until the decay ends, a bound is
+        // reached, or another animation interrupts.
+        rt::Task<AnimationResult> AnimateDecay(float initialVelocity, std::shared_ptr<const DecaySpec> decay,
+                                               std::function<void(float)> onFrame = {});
         void SnapTo(Vec value);
         void SnapTo(float value) { SnapTo(Vec{ value, 0, 0, 0 }); }
         void Stop();

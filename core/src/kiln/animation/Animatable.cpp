@@ -35,6 +35,34 @@ namespace kiln::anim {
         m_Running.Set(false);
     }
 
+    rt::Task<AnimationResult> Animatable::AnimateDecay(float v0, std::shared_ptr<const DecaySpec> decay,
+                                                        std::function<void(float)> onFrame) {
+        const std::uint64_t gen = ++m_Generation;
+        const float from = m_Value.Peek()[0];
+        const std::int64_t duration = decay->DurationNanos(from, v0);
+        m_Target = { decay->TargetValue(from, v0), 0, 0, 0 };
+        m_Running.Set(true);
+        std::int64_t start = -1;
+        for (;;) {
+            const std::int64_t frame = co_await rt::NextFrame{};
+            if (gen != m_Generation) co_return { EndReason::Interrupted, m_Value.Peek(), m_Velocity };
+            if (start < 0) start = frame;
+            // Flings ignore the animator duration scale (DefaultFlingBehavior runs with scale 1).
+            const std::int64_t play = frame - start;
+            const bool done = play >= duration;
+            float value = done ? m_Target[0] : decay->ValueAt(play, from, v0);
+            float velocity = done ? 0.0f : decay->VelocityAt(play, from, v0);
+            bool clamped;
+            Vec v = Clamp({ value, 0, 0, 0 }, clamped);
+            m_Velocity = { clamped ? 0.0f : velocity, 0, 0, 0 };
+            m_Value.Set(v);
+            if (onFrame) onFrame(v[0]);
+            if (gen != m_Generation) co_return { EndReason::Interrupted, v, m_Velocity };
+            if (clamped) { m_Running.Set(false); co_return { EndReason::BoundReached, v, {} }; }
+            if (done) { m_Running.Set(false); co_return { EndReason::Finished, v, {} }; }
+        }
+    }
+
     rt::Task<AnimationResult> Animatable::AnimateTo(Vec target, SpecPtr spec, std::optional<Vec> initialVelocity,
                                                      std::function<void(const Vec&)> onFrame) {
         const std::uint64_t gen = ++m_Generation;

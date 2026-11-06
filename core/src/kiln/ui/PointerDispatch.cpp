@@ -75,8 +75,9 @@ namespace kiln::ui {
                 HitTest(*m_Root, rp.position, rp.type == PointerType::Touch, path, near, nearDistance, ancestors);
                 if (path.empty()) path = near;
                 Tracked& t = m_Pointers[rp.id];
-                if (rp.down && !wasDown) { t.path = std::move(path); }
-                else if (it == m_Pointers.end()) { t.path = std::move(path); t.position = rp.position; t.uptime = raw.uptimeMillis; }
+                // A new pointer's previous position is its current one (no movement on the down).
+                if (it == m_Pointers.end() || (rp.down && !wasDown)) { t.position = rp.position; t.uptime = raw.uptimeMillis; }
+                t.path = std::move(path);
                 t.type = rp.type;
             }
         }

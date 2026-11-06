@@ -87,6 +87,9 @@ namespace kiln::ui {
         Dp minimumTouchTargetSize{ 48 };
         float maximumFlingVelocity = 8000;           // px/s
         float minimumFlingVelocity = 50;             // px/s
+        float scrollFriction = 0.015f;               // ViewConfiguration.getScrollFriction()
+        float verticalScrollFactor = 64;             // px per wheel notch (getScaledVerticalScrollFactor)
+        float horizontalScrollFactor = 64;
     };
 
 }

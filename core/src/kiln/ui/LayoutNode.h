@@ -59,6 +59,7 @@ namespace kiln::ui {
     private:
         friend class Owner;
         friend class ModifierNode;
+        friend class NestedScrollNode;
         struct Coordinator;
         struct Watcher final : rt::Subscriber {
             LayoutNode& node; int phase;

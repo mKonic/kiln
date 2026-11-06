@@ -25,6 +25,7 @@ namespace kiln::ui {
     class FocusTargetNode;
     class FocusEventModifier;
     class KeyInputModifier;
+    class NestedScrollNode;
 
     // Data a child hands its parent's measure policy (weights, alignments).
     struct ParentData {
@@ -74,6 +75,7 @@ namespace kiln::ui {
         virtual FocusTargetNode* AsFocusTarget() { return nullptr; }
         virtual FocusEventModifier* AsFocusEvent() { return nullptr; }
         virtual KeyInputModifier* AsKeyInput() { return nullptr; }
+        virtual NestedScrollNode* AsNestedScroll() { return nullptr; }
 
         LayoutNode* Owner() const { return m_Owner; }
         // Ask the owner to measure / place / draw again (call from Update when params change).
