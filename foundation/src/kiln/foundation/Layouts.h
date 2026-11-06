@@ -99,6 +99,9 @@ namespace kiln::foundation {
     Modifier Background(Modifier m, Color color, CornerShape shape = {});
     // background(brush, shape, alpha)
     Modifier Background(Modifier m, gfx::Brush brush, CornerShape shape = {}, float alpha = 1);
+    // background(color/brush, shape) with any Shape (see Shapes.h).
+    Modifier Background(Modifier m, Color color, std::shared_ptr<const gfx::Shape> shape);
+    Modifier Background(Modifier m, gfx::Brush brush, std::shared_ptr<const gfx::Shape> shape, float alpha = 1);
 
     // graphicsLayer (draw-time part): alpha (modulated per draw), scale about transformOrigin
     // (fractions of the size), translation, and an optional clip to the shape.

@@ -1,5 +1,6 @@
 #include "kiln/graphics/Brush.h"
 #include "kiln/foundation/Layouts.h"
+#include "kiln/foundation/Shapes.h"
 
 #include "kiln/ui/Draw.h"
 
@@ -633,6 +634,38 @@ namespace kiln::foundation {
         return m;
     }
     Modifier Background(Modifier m, Color c, CornerShape s) { return m.With<BackgroundNode>(BackgroundParams{ c, s }); }
+    namespace {
+        // background(color/brush, shape) (Background.kt): the shape's outline at the node's size.
+        struct ShapeBackgroundParams {
+            std::optional<Color> color; std::optional<gfx::Brush> brush; std::shared_ptr<const gfx::Shape> shape; float alpha;
+            bool operator==(const ShapeBackgroundParams& o) const {
+                return color == o.color && brush == o.brush && alpha == o.alpha &&
+                       (shape == o.shape || (shape && o.shape && shape->Equals(*o.shape)));
+            }
+        };
+        struct ShapeBackgroundNode final : ModifierNode, DrawModifier {
+            ShapeBackgroundParams params;
+            explicit ShapeBackgroundNode(ShapeBackgroundParams p) : params(std::move(p)) {}
+            void OnParamsChanged() { InvalidateDraw(); }
+            DrawModifier* AsDraw() override { return this; }
+            void Draw(ContentDrawScope& s) override {
+                if (params.shape) {
+                    const gfx::Outline o = params.shape->CreateOutline(s.GetSize(), s.Direction(), s);
+                    if (params.color) DrawOutline(s, o, *params.color);
+                    else if (params.brush) DrawOutline(s, o, *params.brush, params.alpha);
+                }
+                s.DrawContent();
+            }
+        };
+    }
+
+    Modifier Background(Modifier m, Color c, std::shared_ptr<const gfx::Shape> shape) {
+        return m.With<ShapeBackgroundNode>(ShapeBackgroundParams{ c, std::nullopt, std::move(shape), 1 });
+    }
+    Modifier Background(Modifier m, gfx::Brush brush, std::shared_ptr<const gfx::Shape> shape, float alpha) {
+        return m.With<ShapeBackgroundNode>(ShapeBackgroundParams{ std::nullopt, std::move(brush), std::move(shape), alpha });
+    }
+
     Modifier Background(Modifier m, gfx::Brush brush, CornerShape s, float alpha) {
         return m.With<BrushBackgroundNode>(BrushBackgroundParams{ std::move(brush), s, alpha });
     }
