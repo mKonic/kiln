@@ -179,3 +179,74 @@ TEST(PagerComposesBeyondViewportPages) {
     CHECK(xs == (std::multiset<int>{ -100, 0, 100 }));
     CHECK_EQ(state.CurrentPage(), 1);
 }
+
+TEST(PagerCenterSnapPosition) {
+    Harness h;
+    PagerState state(0, 0, [] { return 6; });
+    h.Run([&] {
+        PagerOptions o;
+        o.pageSize = PageSize::Fixed(Dp(60));
+        o.snapPosition = SnapPosition::Center();
+        HorizontalPager(FillMax(Modifier{}, Axis::Both), state, [](int) { Box(FillMax(Modifier{}, Axis::Both)); }, o);
+    });
+    // At the start page 0 cannot reach the center (20): it is the closest page, a third away.
+    CHECK_EQ(state.CurrentPage(), 0);
+    CHECK(std::abs(state.CurrentPageOffsetFraction() - 20.0f / 60.0f) < 1e-4f);
+    state.ScrollToPage(2);
+    h.Pump();
+    CHECK_EQ(state.CurrentPage(), 2);
+    CHECK_EQ(state.CurrentPageOffsetFraction(), 0.0f);
+    CHECK_EQ(state.FirstVisiblePage(), 1);   // page 1 shows to the left of the centered page
+    // A slow drag of 40 px (past the 30 px threshold) settles on the next page, centered.
+    std::int64_t t = 0;
+    h.Drag(90, -48, 6, 300, t);
+    h.Frames(60);
+    CHECK_EQ(state.CurrentPage(), 3);
+    CHECK_EQ(state.CurrentPageOffsetFraction(), 0.0f);
+}
+
+TEST(PagerSnapDistanceLimitsAFling) {
+    auto flick = [](int pages) {
+        Harness h;
+        PagerState state(0, 0, [] { return 50; });
+        h.Run([&] {
+            PagerOptions o;
+            o.flingBehavior = PagerFlingBehavior(state, PagerSnapDistance::AtMost(pages));
+            HorizontalPager(FillMax(Modifier{}, Axis::Both), state, [](int) { Box(FillMax(Modifier{}, Axis::Both)); }, o);
+        });
+        std::int64_t t = 0;
+        h.Drag(95, -90, 3, 0, t);   // 3000 px/s
+        h.Frames(150);
+        CHECK(!state.IsScrollInProgress());
+        CHECK_EQ(state.CurrentPageOffsetFraction(), 0.0f);
+        return state.CurrentPage();
+    };
+    CHECK_EQ(flick(1), 1);
+    const int far = flick(10);
+    CHECK(far > 1 && far <= 10);   // the decay carries it several pages, within the limit
+    CHECK_EQ(flick(3), 3);
+}
+
+TEST(PageNestedScrollConnectionSettlesThePagerFirst) {
+    Harness h;
+    PagerState state(0, 0, [] { return 5; });
+    std::shared_ptr<NestedScrollConnection> connection;
+    h.Run([&] {
+        connection = PageNestedScrollConnection(state, Orientation::Horizontal);
+        HorizontalPager(FillMax(Modifier{}, Axis::Both), state, [](int) { Box(FillMax(Modifier{}, Axis::Both)); });
+    });
+    state.ScrollToPage(1, 0.3f);
+    h.Pump();
+    CHECK(std::abs(state.CurrentPageOffsetFraction() - 0.3f) < 1e-4f);
+    // A child dragged right by 50: the pager takes 30 to settle on page 1, the child the rest.
+    const Offset pre = connection->OnPreScroll({ 50, 0 }, NestedScrollSource::UserInput);
+    h.Pump();
+    CHECK(std::abs(pre.x - 30.0f) < 1e-3f);
+    CHECK_EQ(state.CurrentPage(), 1);
+    CHECK_EQ(state.CurrentPageOffsetFraction(), 0.0f);
+    // Settled: nothing more is taken; a child's fling leftovers never reach the pager.
+    CHECK_EQ(connection->OnPreScroll({ 50, 0 }, NestedScrollSource::UserInput).x, 0.0f);
+    CHECK_EQ(connection->OnPostScroll({}, { 20, 5 }, NestedScrollSource::SideEffect).x, 20.0f);
+    CHECK_EQ(connection->OnPostFling({}, { 900, 40 }).x, 900.0f);
+    CHECK_EQ(connection->OnPostFling({}, { 900, 40 }).y, 0.0f);
+}

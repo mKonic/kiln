@@ -26,16 +26,17 @@ namespace kiln::foundation {
         return LazyStateBase::ConsumeScrollDelta(delta);
     }
 
-    // calculateNewCurrentPage / currentPageOffsetFraction (PagerMeasure.kt), snap position Start.
+    // calculateNewCurrentPage / currentPageOffsetFraction (PagerMeasure.kt): the page closest to
+    // the snap position, and how far it is from it.
     void PagerState::OnMeasured() {
         int current = m_Current.Peek();
         float fraction = 0;
         if (!m_Lines.empty()) {
             const Line* best = &m_Lines.front();
-            for (const auto& l : m_Lines) if (std::abs(l.offset) < std::abs(best->offset)) best = &l;
+            for (const auto& l : m_Lines) if (std::abs(l.offset - m_PageSnap) < std::abs(best->offset - m_PageSnap)) best = &l;
             current = best->first;
             const int withSpacing = m_PageSize + m_Spacing;
-            fraction = withSpacing == 0 ? 0.0f : std::clamp(float(-best->offset) / float(withSpacing), -0.5f, 0.5f);
+            fraction = withSpacing == 0 ? 0.0f : std::clamp(float(m_PageSnap - best->offset) / float(withSpacing), -0.5f, 0.5f);
         }
         if (m_Current.Peek() != current) m_Current.Set(current);
         if (m_Fraction.Peek() != fraction) m_Fraction.Set(fraction);
@@ -78,7 +79,7 @@ namespace kiln::foundation {
         const int visible = last - first + 1;
         if (((forward && target > last) || (!forward && target < first)) && std::abs(target - first) >= kMaxPagesForAnimateScroll)
             SnapToItem(forward ? std::max(target - visible, first) : std::min(target + visible, first), 0);
-        const float displacement = float(DistanceTo(target)) + fraction * float(m_PageSize + m_Spacing);
+        const float displacement = float(DistanceTo(target) - m_PageSnap) + fraction * float(m_PageSize + m_Spacing);
         float previous = 0;
         co_await a.AnimateTo(anim::Vec{ displacement, 0, 0, 0 }, std::move(spec), {}, [&](const anim::Vec& v) {
             if (stopped) return;
@@ -95,11 +96,11 @@ namespace kiln::foundation {
     }
 
     // SnapLayoutInfoProvider.calculateSnapOffset + calculateFinalSnappingBound (Pager.kt).
-    float PagerState::SnapOffset(float velocity) const {
+    float PagerState::SnapOffset(float velocity, float positionalThreshold) const {
         constexpr float inf = std::numeric_limits<float>::infinity();
         float lower = -inf, upper = inf;
         for (const auto& l : m_Lines) {
-            const float d = float(l.offset);
+            const float d = float(l.offset - m_PageSnap);   // calculateDistanceToDesiredSnapPosition
             if (d <= 0 && d > lower) lower = d;
             if (d >= 0 && d < upper) upper = d;
         }
@@ -114,7 +115,7 @@ namespace kiln::foundation {
         float result;
         if (std::abs(velocity) < kMinFlingVelocityDp * m_Density) {
             const float threshold = m_PageSize == 0 ? 0.5f : std::min(kPositionThresholdDp * m_Density, m_PageSize / 2.0f) / float(m_PageSize);
-            if (std::abs(overflow) > 0.5f) result = forward ? upper : lower;
+            if (std::abs(overflow) > positionalThreshold) result = forward ? upper : lower;
             else if (std::abs(offsetFromSnapped) >= threshold) result = forward ? lower : upper;
             else result = std::abs(lower) < std::abs(upper) ? lower : upper;
         } else {
@@ -124,28 +125,6 @@ namespace kiln::foundation {
     }
 
     namespace {
-        // snapFlingBehavior with no approach (atMost(1) never travels more than a page): a spring
-        // to the snap offset carrying the fling velocity, stopping at the target.
-        rt::Task<float> PagerFling(PagerState* st, std::function<float(float)> scrollBy, float velocity) {
-            const float target = st->SnapOffset(velocity);
-            if (target == 0) co_return 0.0f;
-            anim::Animatable a(0.0f);
-            float previous = 0;
-            bool edge = false;
-            co_await a.AnimateTo(anim::Vec{ target, 0, 0, 0 }, anim::Spring(1.0f, anim::spring::StiffnessMediumLow, 1.0f),
-                                 anim::Vec{ velocity, 0, 0, 0 }, [&](const anim::Vec& v) {
-                float value = v[0];
-                const bool reached = std::abs(value) >= std::abs(target);
-                if (reached) value = target;
-                const float delta = value - previous;
-                const float consumed = scrollBy(delta);
-                previous += delta;
-                if (std::abs(delta - consumed) > 0.5f) { edge = true; a.Stop(); }
-                else if (reached) a.Stop();
-            });
-            co_return edge ? a.Velocity()[0] : 0.0f;
-        }
-
         // Records the finger's displacement of each gesture before the scrollable sees the up.
         rt::Task<> PagerGestures(PointerInputScope& s, PagerState* st, bool vertical, bool rtl) {
             for (;;) {
@@ -154,20 +133,78 @@ namespace kiln::foundation {
                 const std::int64_t id = e->changes[0].id;
                 const Offset down = e->changes[0].position;
                 st->SetGestureDelta(0);
+                st->SetGestureInProgress(true);
                 for (;;) {
                     auto m = co_await s.AwaitPointerEvent(PointerEventPass::Initial);
                     const PointerInputChange* c = nullptr;
                     for (const auto& ch : m->changes) if (ch.id == id) c = &ch;
-                    if (!c) break;
+                    if (!c) { st->SetGestureInProgress(false); break; }
                     if (c->ChangedToUpIgnoreConsumed()) {
                         const Offset d = c->position - down;
                         // In scroll terms: RTL mirrors a horizontal pager's finger direction.
                         st->SetGestureDelta(vertical ? d.y : (rtl ? -d.x : d.x));
+                        st->SetGestureInProgress(false);
                         break;
                     }
                 }
             }
         }
+
+        // SnapLayoutInfoProvider(pagerState, pagerSnapDistance) (PagerSnapLayoutInfoProvider.kt).
+        class PagerSnapProvider final : public SnapLayoutInfoProvider {
+        public:
+            PagerSnapProvider(PagerState* s, PagerSnapDistance d, float threshold) : st(s), distance(std::move(d)), threshold(threshold) {}
+            float CalculateApproachOffset(float velocity, float decayOffset) override {
+                const int step = st->PageSize() + st->PageSpacing();
+                if (step == 0) return 0;
+                const int start = velocity < 0 ? st->FirstVisiblePage() + 1 : st->FirstVisiblePage();
+                const int count = st->PageCount();
+                const int target = std::clamp(start + int(decayOffset / float(step)), 0, count);
+                int corrected = distance.calculateTargetPage ? distance.calculateTargetPage(start, target, velocity, st->PageSize(), st->PageSpacing()) : target;
+                corrected = std::clamp(corrected, 0, count);
+                const int proposed = (corrected - start) * step;
+                const int approach = std::max(std::abs(proposed) - step, 0);
+                return approach == 0 ? 0.0f : float(approach) * (velocity > 0 ? 1.0f : velocity < 0 ? -1.0f : 0.0f);
+            }
+            float CalculateSnapOffset(float velocity) override { return st->SnapOffset(velocity, threshold); }
+        private:
+            PagerState* st;
+            PagerSnapDistance distance;
+            float threshold;
+        };
+
+        // DefaultPagerNestedScrollConnection.
+        class PageConnection final : public NestedScrollConnection {
+        public:
+            PageConnection(PagerState* s, Orientation o, bool rtl) : st(s), orientation(o), rtl(rtl) {}
+            float Main(Offset o) const { return orientation == Orientation::Horizontal ? o.x : o.y; }
+            Offset OnOrientation(Offset o) const { return orientation == Orientation::Vertical ? Offset{ 0, o.y } : Offset{ o.x, 0 }; }
+            // A drag (not a fling) while between pages: the pager takes up to the next page boundary.
+            Offset OnPreScroll(Offset available, NestedScrollSource source) override {
+                const float fraction = st->CurrentPageOffsetFraction();
+                if (source != NestedScrollSource::UserInput || std::abs(fraction) <= 1e-6f || Main(available) == 0) return {};
+                const float current = fraction * float(st->PageSize());
+                const float space = float(st->PageSize() + st->PageSpacing());
+                const float next = current + space * (fraction > 0 ? -1.0f : 1.0f);
+                const float lo = fraction > 0 ? next : current, hi = fraction > 0 ? current : next;
+                const float coerced = std::clamp(Main(available), lo, hi);
+                const float consumed = orientation == Orientation::Horizontal && rtl ? st->ConsumeScrollDelta(coerced)
+                                                                                     : -st->ConsumeScrollDelta(-coerced);
+                return orientation == Orientation::Horizontal ? Offset{ consumed, available.y } : Offset{ available.x, consumed };
+            }
+            // A child's fling leftover: Compose cancels the child's fling; here it is swallowed so
+            // the pager does not move (the child runs out at its edge).
+            Offset OnPostScroll(Offset, Offset available, NestedScrollSource source) override {
+                if (Main(available) == 0) return {};
+                if (source == NestedScrollSource::SideEffect || !st->GestureInProgress()) return OnOrientation(available);
+                return {};
+            }
+            Offset OnPostFling(Offset, Offset available) override { return OnOrientation(available); }
+        private:
+            PagerState* st;
+            Orientation orientation;
+            bool rtl;
+        };
 
         rt::Task<> PageTo(PagerState* st, int page) { co_await st->AnimateScrollToPage(page); }
 
@@ -184,13 +221,16 @@ namespace kiln::foundation {
             config.overscrollEffect = options.overscrollEffect;
             config.beyondViewportPageCount = options.beyondViewportPageCount;
             PagerState* st = &state;
-            config.flingBehavior = [st](std::function<float(float)> scrollBy, float velocity) {
-                return PagerFling(st, std::move(scrollBy), velocity);
-            };
+            const SnapPosition snap = options.snapPosition;
+            config.snapPosition = [snap](int layout, int page, int before, int after) { return snap.Position(layout, page, before, after); };
+            config.flingBehavior = options.flingBehavior ? options.flingBehavior : PagerFlingBehavior(state);
             const bool rtl = rt::Composition::Current() && rt::Composition::Current()->Read(ui::LocalLayoutDirection) == LayoutDirection::Rtl;
-            config.extraModifier = [st, vertical, rtl](Modifier m) {
-                return PointerInput(std::move(m), rt::Keys(reinterpret_cast<std::uintptr_t>(st), vertical, rtl, 7),
-                                    [st, vertical, rtl](PointerInputScope& s) { return PagerGestures(s, st, vertical, rtl); });
+            std::shared_ptr<NestedScrollConnection> connection = options.pageNestedScrollConnection;
+            if (!connection) connection = PageNestedScrollConnection(state, vertical ? Orientation::Vertical : Orientation::Horizontal);
+            config.extraModifier = [st, vertical, rtl, connection](Modifier m) {
+                m = PointerInput(std::move(m), rt::Keys(reinterpret_cast<std::uintptr_t>(st), vertical, rtl, 7),
+                                 [st, vertical, rtl](PointerInputScope& s) { return PagerGestures(s, st, vertical, rtl); });
+                return NestedScroll(std::move(m), connection);
             };
             const int count = state.PageCount();
             // pagerSemantics: page up/down (vertical) or left/right to the previous/next page.
@@ -215,6 +255,30 @@ namespace kiln::foundation {
             }
             LazyPagerLayout(vertical, m, state, count, std::move(content), options.key, std::move(config), key);
         }
+    }
+
+    PagerSnapDistance PagerSnapDistance::AtMost(int pages) {
+        const int limit = std::max(0, pages);
+        return { [limit](int start, int suggested, float, int, int) {
+            const long long lo = std::max(0LL, (long long)start - limit);
+            const long long hi = std::min((long long)std::numeric_limits<int>::max(), (long long)start + limit);
+            return int(std::clamp((long long)suggested, lo, hi));
+        } };
+    }
+
+    FlingBehavior PagerFlingBehavior(PagerState& state, PagerSnapDistance snapDistance, float snapPositionalThreshold) {
+        PagerState* st = &state;
+        auto provider = std::make_shared<PagerSnapProvider>(st, std::move(snapDistance), std::clamp(snapPositionalThreshold, 0.0f, 1.0f));
+        return SnapFlingBehavior(provider, [st] { return std::make_shared<anim::SplineDecay>(st->Density()); },
+                                 anim::Spring(1.0f, anim::spring::StiffnessMediumLow, 1.0f));
+    }
+
+    std::shared_ptr<NestedScrollConnection> PageNestedScrollConnection(PagerState& state, Orientation orientation) {
+        auto* c = rt::Composition::Current();
+        const bool rtl = c && c->Read(ui::LocalLayoutDirection) == LayoutDirection::Rtl;
+        auto make = [&] { return std::shared_ptr<NestedScrollConnection>(std::make_shared<PageConnection>(&state, orientation, rtl)); };
+        if (!c) return make();
+        return c->Remember<std::shared_ptr<NestedScrollConnection>>(make, rt::Keys(reinterpret_cast<std::uintptr_t>(&state), int(orientation), rtl));
     }
 
     void HorizontalPager(const Modifier& m, PagerState& state, std::function<void(int)> content, PagerOptions o, rt::Key key) {

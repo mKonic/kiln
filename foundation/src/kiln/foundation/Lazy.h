@@ -116,6 +116,7 @@ namespace kiln::foundation {
         // Pager: the fixed page size, and a scroll position given as a fraction of a page that
         // the next measure turns into pixels.
         int m_PageSize = 0;
+        int m_PageSnap = 0;   // where a page rests: its offset from the content start (SnapPosition)
         std::optional<float> m_PendingFraction;
         float m_ViewportLength = 0;
     };
@@ -247,6 +248,8 @@ namespace kiln::foundation {
         std::function<Modifier(Modifier)> extraModifier;   // gesture observers
         OverscrollParam overscrollEffect;
         int beyondViewportPageCount = 0;
+        // SnapPosition.position(layoutSize, pageSize, beforeContentPadding, afterContentPadding).
+        std::function<int(int layout, int page, int before, int after)> snapPosition;
     };
     void LazyPagerLayout(bool vertical, const Modifier& modifier, LazyStateBase& state, int pageCount,
                          std::function<void(int page)> content, std::function<rt::Key(int)> key, LazyPagerConfig config, rt::Key compositionKey);

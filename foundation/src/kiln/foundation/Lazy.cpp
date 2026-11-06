@@ -191,6 +191,7 @@ namespace kiln::foundation {
         GridCells cells;
         bool pager = false;
         int beyondCount = 0;   // pager: beyondViewportPageCount
+        std::function<int(int, int, int, int)> pageSnap;   // pager: SnapPosition
         // Staggered grids: positions of the items measured so far (a prefix from item 0).
         bool staggered = false;
         LazyStaggeredGridState* stagState = nullptr;
@@ -695,6 +696,7 @@ namespace kiln::foundation {
         // Pager pages: a fixed main-axis size (PageSize.Fill: the viewport minus padding).
         const int pagePx = pager && pageSize ? std::max(0, pageSize(s, std::max(0, mainMax - before - after), spacing)) : 0;
         st.m_PageSize = pagePx;
+        st.m_PageSnap = pager && pageSnap ? pageSnap(mainMax, pagePx, before, after) : 0;
         const int crossSpacingPx = grid ? s.RoundToPx(crossArrangement.Spacing()) : 0;
 
         // One measured line: its cells and main-axis size.
@@ -754,11 +756,13 @@ namespace kiln::foundation {
         }
         if (pager && st.m_PendingFraction) {
             // scrollToPage(page, fraction): fractions before the page start belong to the previous page.
-            float f = *st.m_PendingFraction;
+            // The page rests at the snap position, `f` pages past it; earlier pages fill the gap.
+            const float f = *st.m_PendingFraction;
             st.m_PendingFraction.reset();
-            if (f < 0 && index > 0) { --index; f += 1; }
+            int off = int(std::lround(f * float(pagePx + spacing))) - st.m_PageSnap;
+            while (off < 0 && index > 0 && pagePx + spacing > 0) { --index; off += pagePx + spacing; }
             st.m_Index.Set(index);
-            st.m_Offset.Set(std::max(0, int(std::lround(f * float(pagePx + spacing)))));
+            st.m_Offset.Set(std::max(0, off));
         }
         if (count == 0) {
             for (auto& [k, slot] : slots) DisposeSlot(k, slot);
@@ -1330,6 +1334,7 @@ namespace kiln::foundation {
             core.staggered = false;
             core.pager = true;
             core.beyondCount = std::max(0, config.beyondViewportPageCount);
+            core.pageSnap = config.snapPosition;
             core.listState = nullptr;
             core.gridState = nullptr;
             core.pageSize = config.pageSize;
