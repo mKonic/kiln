@@ -1,6 +1,7 @@
 #include "Check.h"
 
 #include "kiln/graphics/shapes/Morph.h"
+#include "kiln/graphics/shapes/FeatureTools.h"
 #include "kiln/graphics/shapes/Shapes.h"
 
 #include <cmath>
@@ -105,4 +106,66 @@ TEST(RoundedPolygonRoundsWithinItsCorners) {
         const Point mid = c.PointOnCurve(0.5f);
         CHECK(!(std::abs(mid.x) > 0.9f && std::abs(mid.y) > 0.9f));   // nothing near a sharp corner
     }
+}
+
+TEST(SvgPathsBecomeFeatures) {
+    using namespace kiln::gfx::shapes;
+    // A square, clockwise on screen: an edge then a kink corner at each side.
+    auto features = SvgPathParser::ParseFeatures("M0 0 L10 0 L10 10 L0 10 Z");
+    CHECK_EQ(features.size(), std::size_t(8));
+    int edges = 0, corners = 0;
+    for (const auto& f : features) {
+        edges += f.IsEdge();
+        // A kink is a zero-length corner, which reads as concave (asFeature on an empty cubic).
+        if (!f.IsEdge()) { ++corners; CHECK(f.cubics.size() == 1 && f.cubics[0].ZeroLength() && f.IsConcaveCorner()); }
+    }
+    CHECK_EQ(edges, 4);
+    CHECK_EQ(corners, 4);
+    // Drawn anticlockwise, it comes back reversed (clockwise; reversed corners flip).
+    auto ccw = SvgPathParser::ParseFeatures("M0 0 L0 10 L10 10 L10 0 Z");
+    float area = 0;
+    for (const auto& f : ccw) for (const auto& c : f.cubics) area += (c.Anchor1X() - c.Anchor0X()) * (c.Anchor1Y() + c.Anchor0Y());
+    CHECK(area < 0);
+
+    // Compact numbers: exponents, signs as separators, relative commands; and a second subpath.
+    auto cubics = SvgPathParser::ParseCubics("M0,0L1e1,0l0-10h-10z M50 50 l1 1");
+    CHECK_EQ(cubics.size(), std::size_t(5));
+    CHECK_EQ(cubics[1].Anchor1X(), 10.0f);
+    CHECK_EQ(cubics[1].Anchor1Y(), -10.0f);
+    CHECK_EQ(cubics[3].Anchor1X(), 0.0f);    // closed back to the start
+    CHECK_EQ(cubics[4].Anchor0X(), 50.0f);
+    // A quadratic becomes C with both controls at its control point; T reflects it.
+    auto q = SvgPathParser::ParseCubics("M0 0 Q5 10 10 0 T20 0");
+    CHECK(q[0] == Cubic(0, 0, 5, 10, 5, 10, 10, 0));
+    CHECK(q[1] == Cubic(10, 0, 15, -10, 15, -10, 20, 0));
+    // A half circle arc through the top (sweep flag 1, y down): ends where asked, peaks at r.
+    auto arc = SvgPathParser::ParseCubics("M0 0 A10 10 0 0 1 20 0");
+    CHECK(arc.size() >= 2);
+    CHECK(std::abs(arc.back().Anchor1X() - 20) < 1e-3f && std::abs(arc.back().Anchor1Y()) < 1e-3f);
+    float top = 0;
+    for (const auto& c : arc) for (float t = 0; t <= 1; t += 0.25f) top = std::min(top, c.PointOnCurve(t).y);
+    CHECK(std::abs(top + 10) < 0.05f);
+
+    // Serialized and parsed back unchanged.
+    const std::string text = FeatureSerializer::Serialize(features);
+    CHECK(text.rfind("V1", 0) == 0);
+    auto back = FeatureSerializer::Parse(text);
+    CHECK(back.has_value());
+    CHECK(*back == features);
+    CHECK(FeatureSerializer::Parse("V1n0,0,1,1,2,2,3,3")->front().IsEdge());
+    CHECK(!FeatureSerializer::Parse("V1x0,0,1,1,2,2,3").has_value());   // a number short
+    CHECK(!FeatureSerializer::Parse("V1").has_value());                 // no features
+    // The parsed shape morphs like any other.
+    auto polygon = RoundedPolygon::FromFeatures(*back);
+    CHECK(!polygon.Cubics().empty());
+    CHECK(std::abs(polygon.CenterX() - 5) < 1e-3f && std::abs(polygon.CenterY() - 5) < 1e-3f);
+}
+
+TEST(SvgParserMatchesTheMaterialFavoriteIcon) {
+    // SvgPathParserTest.parsesMaterialThreeFavorite: 19 cubics.
+    const char* path = "m 480 -120 l -58 -52 q -101 -91 -167 -157 T 150 -447.5 Q 111 -500 95.5 -544 "
+                       "T 80 -634 q 0 -94 63 -157 t 157 -63 q 52 0 99 22 t 81 62 q 34 -40 81 -62 t 99 -22 "
+                       "q 94 0 157 63 t 63 157 q 0 46 -15.5 90 T 810 -447.5 Q 771 -395 705 -329 T 538 -172 l -58 52 Z";
+    CHECK_EQ(SvgPathParser::ParseCubics(path).size(), std::size_t(19));
+    CHECK(!SvgPathParser::ParseFeatures(path).empty());
 }
