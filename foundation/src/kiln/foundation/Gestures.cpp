@@ -412,9 +412,18 @@ namespace kiln::foundation {
             std::function<void(bool)> onPressed;
             std::function<void(SemanticsConfiguration&)> extraSemantics;
             std::shared_ptr<MutableInteractionSource> source;
-            std::uint64_t press = 0, keyPress = 0;
+            std::uint64_t press = 0, keyPress = 0, hover = 0;
             rt::Job delayJob;
         };
+
+        rt::Task<> HoverLoop(PointerInputScope& s, std::shared_ptr<ClickState> st) {
+            for (;;) {
+                auto e = co_await s.AwaitPointerEvent(PointerEventPass::Main);
+                if (!e || !st->source) continue;
+                if (e->type == PointerEventType::Enter && !st->hover) st->hover = st->source->Start(Interaction::Kind::Hover);
+                else if (e->type == PointerEventType::Exit && st->hover) { st->source->End(Interaction::Kind::Hover, st->hover); st->hover = 0; }
+            }
+        }
 
         rt::Task<> DelayedPress(std::shared_ptr<ClickState> st, Offset at, std::int64_t delayMs) {
             co_await rt::Delay(delayMs);
@@ -472,6 +481,8 @@ namespace kiln::foundation {
                 return false;
             });
             m = Focusable(std::move(m), Focusability::SystemDefined, {}, st->source);
+            // Hover: Enter / Exit events become hover interactions (AbstractClickableNode).
+            if (st->source) m = PointerInput(std::move(m), rt::Keys(1), [st](PointerInputScope& s) { return HoverLoop(s, st); });
             return PointerInput(std::move(m), rt::Keys(0), [st](PointerInputScope& s) {
                 TapCallbacks cb;
                 const bool delayed = s.InScrollableContainer();

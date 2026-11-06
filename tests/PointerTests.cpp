@@ -272,3 +272,34 @@ TEST(DisabledClickableKeepsSemanticsButIgnoresTaps) {
     CHECK(tree.children[0].config.onClickLabel.has_value());
     if (tree.children[0].config.onClickLabel) CHECK_EQ(*tree.children[0].config.onClickLabel, std::string("Open"));
 }
+
+TEST(HoverEntersAndExitsAsTheMouseMoves) {
+    Harness h;
+    auto a = std::make_shared<MutableInteractionSource>(), b = std::make_shared<MutableInteractionSource>();
+    h.Run([&] {
+        Box(FillMax(Modifier{}, Axis::Both), Alignment::TopStart(), false, [&] {
+            Row(Modifier{}, Arrangement::Start(), AlignmentV::Top(), [&] {
+                ClickableOptions oa; oa.interactionSource = a;
+                ClickableOptions ob; ob.interactionSource = b;
+                Box(Clickable(SizeMod(Modifier{}, Dp(40), Dp(40)), [] {}, oa));
+                Box(Clickable(SizeMod(Modifier{}, Dp(40), Dp(40)), [] {}, ob));
+            });
+        });
+    });
+    auto mouse = [&](PointerEventType type, float x, std::int64_t t) {
+        RawPointerEvent e;
+        e.type = type;
+        e.uptimeMillis = t;
+        e.pointers.push_back({ 7, { x, 20 }, false, PointerType::Mouse, {} });
+        h.owner.ProcessPointer(e);
+        rt::Dispatcher::Main().RunPending();
+    };
+    mouse(PointerEventType::Enter, 10, 0);
+    CHECK(a->IsHovered());
+    CHECK(!b->IsHovered());
+    mouse(PointerEventType::Move, 60, 10);   // into b
+    CHECK(!a->IsHovered());
+    CHECK(b->IsHovered());
+    mouse(PointerEventType::Exit, 60, 20);   // leaves the window
+    CHECK(!b->IsHovered());
+}

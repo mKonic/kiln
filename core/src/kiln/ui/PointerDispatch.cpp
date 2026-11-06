@@ -80,11 +80,31 @@ namespace kiln::ui {
             return;
         }
 
+        // Hover (a mouse or stylus that is not pressed) is hit-tested on every event: handlers that
+        // left the path get Exit, new ones Enter (HitPathTracker / PointerInputEventProcessor).
+        std::vector<std::pair<HitEntry, std::int64_t>> exited;
+        std::unordered_set<PointerInputModifier*> entered;
+        for (const RawPointer& rp : raw.pointers) {
+            auto it = m_Pointers.find(rp.id);
+            const bool wasDown = it != m_Pointers.end() && it->second.pressed;
+            if (rp.type == PointerType::Touch || rp.down || wasDown || it == m_Pointers.end()) continue;
+            std::vector<HitEntry> path, near, ancestors;
+            float nearDistance = INFINITY;
+            if (raw.type != PointerEventType::Exit) HitTest(*m_Root, rp.position, false, path, near, nearDistance, ancestors);
+            auto has = [](const std::vector<HitEntry>& v, const HitEntry& e) {
+                return std::any_of(v.begin(), v.end(), [&](const HitEntry& x) { return x.mod == e.mod; });
+            };
+            for (const HitEntry& e : it->second.path) if (!has(path, e)) exited.push_back({ e, rp.id });
+            for (const HitEntry& e : path) if (!has(it->second.path, e)) entered.insert(e.mod);
+            it->second.path = std::move(path);
+        }
+
         // New presses (and hovering mice without a path) are hit-tested.
         for (const RawPointer& rp : raw.pointers) {
             auto it = m_Pointers.find(rp.id);
             const bool wasDown = it != m_Pointers.end() && it->second.pressed;
             if ((rp.down && !wasDown) || it == m_Pointers.end()) {
+                const bool fresh = it == m_Pointers.end();
                 std::vector<HitEntry> path, near, ancestors;
                 float nearDistance = INFINITY;
                 HitTest(*m_Root, rp.position, rp.type == PointerType::Touch, path, near, nearDistance, ancestors);
@@ -94,7 +114,29 @@ namespace kiln::ui {
                 if (it == m_Pointers.end() || (rp.down && !wasDown)) { t.position = rp.position; t.uptime = raw.uptimeMillis; }
                 t.path = std::move(path);
                 t.type = rp.type;
+                if (fresh && !rp.down && rp.type != PointerType::Touch)
+                    for (const HitEntry& e : t.path) entered.insert(e.mod);
             }
+        }
+
+        // Exit to the handlers the hover left (all three passes, that handler alone).
+        for (const auto& [entry, id] : exited) {
+            if (!entry.node->GetOwner()) continue;   // detached meanwhile
+            PointerEvent ev;
+            ev.type = PointerEventType::Exit;
+            ev.buttons = raw.buttons;
+            const Tracked& t = m_Pointers[id];
+            const gfx::Matrix toLocal = Invert(entry.node->LocalToRoot());
+            PointerInputChange c;
+            c.id = id;
+            c.uptimeMillis = raw.uptimeMillis;
+            for (const auto& r : raw.pointers) if (r.id == id) c.position = toLocal.Map(r.position);
+            c.previousPosition = toLocal.Map(t.position);
+            c.type = t.type;
+            c.consumed = std::make_shared<bool>(false);
+            ev.changes.push_back(c);
+            for (PointerEventPass pass : { PointerEventPass::Initial, PointerEventPass::Main, PointerEventPass::Final })
+                entry.mod->OnPointerEvent(ev, pass, entry.node->Size());
         }
 
         // Merge the paths into a tree: each distinct modifier gets the pointers whose path has it.
@@ -124,6 +166,8 @@ namespace kiln::ui {
         auto eventFor = [&](const TreeNode& tn) {
             PointerEvent ev;
             ev.type = raw.type;
+            // A handler the hover just reached sees Enter.
+            if (raw.type == PointerEventType::Move && entered.count(tn.entry.mod)) ev.type = PointerEventType::Enter;
             ev.buttons = raw.buttons;
             ev.classification = raw.classification;
             const gfx::Matrix toLocal = Invert(tn.entry.node->LocalToRoot());
