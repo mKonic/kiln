@@ -91,6 +91,7 @@ namespace kiln::foundation {
         rt::Task<> AnimateScrollToItem(int index, int scrollOffset = 0);
         // The viewport along the scroll axis minus content padding (last measure).
         float ViewportLength() const { return m_ViewportLength; }
+        float Density() const { return m_Density; }
 
     protected:
         friend struct LazyCore;
@@ -217,6 +218,7 @@ namespace kiln::foundation {
         Arrangement arrangement = Arrangement::Top();
         bool reverseLayout = false;   // item 0 at the bottom (end); scrolling reversed
         OverscrollParam overscrollEffect;   // unset: rememberOverscrollEffect(); null: none
+        FlingBehavior flingBehavior;        // null: the platform decay (RememberSnapFlingBehavior snaps)
         AlignmentH horizontalAlignment = AlignmentH::Start();   // LazyColumn
         AlignmentV verticalAlignment = AlignmentV::Top();       // LazyRow
         bool userScrollEnabled = true;
@@ -230,6 +232,7 @@ namespace kiln::foundation {
         bool reverseLayout = false;
         bool userScrollEnabled = true;
         OverscrollParam overscrollEffect;
+        FlingBehavior flingBehavior;
     };
 
     // Internal: the pager's use of the lazy core (Pager.cpp).

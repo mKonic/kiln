@@ -1247,7 +1247,7 @@ namespace kiln::foundation {
                 core.horizontalAlignment = options.horizontalAlignment;
                 core.verticalAlignment = options.verticalAlignment;
                 core.intervals = std::move(scope.intervals);
-            }, {}, {}, options.reverseLayout, options.overscrollEffect);
+            }, options.flingBehavior, {}, options.reverseLayout, options.overscrollEffect);
         }
 
         void LazyGrid(bool vertical, const Modifier& modifier, GridCells cells, LazyGridState& state,
@@ -1266,7 +1266,7 @@ namespace kiln::foundation {
                 core.crossArrangement = options.crossAxisArrangement;
                 core.cells = cells;
                 core.intervals = std::move(scope.intervals);
-            }, {}, {}, options.reverseLayout, options.overscrollEffect);
+            }, options.flingBehavior, {}, options.reverseLayout, options.overscrollEffect);
         }
     }
 
