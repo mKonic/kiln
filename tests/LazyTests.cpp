@@ -140,3 +140,42 @@ TEST(PressStopsAProgrammaticScroll) {
     CHECK_EQ(state.FirstVisibleItemIndex(), at);
     h.Touch(PointerEventType::Release, 50, 50, false, 10);
 }
+
+TEST(StickyHeadersPinAndArePushedByTheNext) {
+    Harness h;
+    LazyListState state;
+    std::vector<int> headerIndices;
+    h.Run([&] {
+        LazyColumn(FillMax(Modifier{}, Axis::Both), state, [&](LazyListScope& s) {
+            for (int section = 0; section < 10; ++section) {
+                s.StickyHeader([&](int index) {
+                    headerIndices.push_back(index);
+                    Box(SizeMod(Modifier{}, Dp(100), Dp(20)));
+                });
+                s.Items(4, [](int) { Box(SizeMod(Modifier{}, Dp(100), Dp(20))); });
+            }
+        });
+    });
+    auto offsetOf = [&](int index) {
+        for (const auto& it : state.LayoutInfo().visibleItemsInfo) if (it.index == index) return it.offset;
+        return -9999;
+    };
+    CHECK_EQ(offsetOf(0), 0);
+    CHECK_EQ(offsetOf(5), -9999);     // section 1's header starts at the viewport end: not composed
+    state.ConsumeScrollDelta(30);
+    h.Pump();
+    CHECK_EQ(state.FirstVisibleItemIndex(), 1);
+    CHECK_EQ(offsetOf(0), 0);         // pinned
+    CHECK_EQ(offsetOf(1), -10);
+    state.ConsumeScrollDelta(60);     // section 1's header at 10: pushes header 0 up
+    h.Pump();
+    CHECK_EQ(offsetOf(5), 10);
+    CHECK_EQ(offsetOf(0), -10);
+    state.ConsumeScrollDelta(40);     // header 5 now pinned, header 0 gone
+    h.Pump();
+    CHECK_EQ(offsetOf(5), 0);
+    CHECK_EQ(offsetOf(0), -9999);
+    bool sawFive = false;
+    for (int i : headerIndices) { CHECK(i % 5 == 0); if (i == 5) sawFive = true; }
+    CHECK(sawFive);
+}

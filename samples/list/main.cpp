@@ -1,8 +1,10 @@
-// M5 sample: a LazyColumn of 10,000 rows; only the visible ones exist. Tap a row to select it.
+// M5 sample: a LazyColumn of 100 sections of 100 rows with sticky headers; only the visible
+// rows exist. Tap a row to select it; the buttons animate the scroll to an item.
 #include <kiln/kiln.hpp>
 #include <kiln/foundation/Animate.h>
 #include <kiln/foundation/Gestures.h>
 #include <kiln/foundation/Lazy.h>
+#include <kiln/runtime/Task.h>
 
 using namespace kiln::foundation;
 using namespace kiln::ui;
@@ -14,22 +16,39 @@ namespace {
         auto& selected = RememberState(-1);
         Column(Background(FillMax(Modifier{}, Axis::Both), Color(0xFFFEF7FFu)), [&] {
             Spacer(Height(Modifier{}, 40_dp));
-            BasicText("First visible: " + std::to_string(state.FirstVisibleItemIndex()),
-                      Padding(Modifier{}, 16_dp, 8_dp), { 22, Color(0xFF1D1B20u) });
+            auto& jump = c.Remember<kiln::rt::Job>([] { return kiln::rt::Job{}; });
+            Row(Padding(Modifier{}, 16_dp, 8_dp), Arrangement::SpacedBy(8_dp), AlignmentV::CenterVertically(), [&] {
+                BasicText("First visible: " + std::to_string(state.FirstVisibleItemIndex()), Weight(Modifier{}, 1), { 18, Color(0xFF1D1B20u) });
+                for (int target : { 0, 5050 }) {
+                    Box(Clickable(Background(Modifier{}, Color(0xFF6750A4u), CornerShape::Pill()), [&state, &jump, target] {
+                            jump = kiln::rt::Launch(kiln::rt::Dispatcher::Main(), state.AnimateScrollToItem(target));
+                        }), Alignment::Center(), false, [target] {
+                        BasicText(target == 0 ? "Top" : "Item 5050", Padding(Modifier{}, 16_dp, 8_dp), { 14, Color(0xFFFFFFFFu) });
+                    });
+                }
+            });
             LazyListOptions opt;
-            opt.contentPadding = { 16_dp, 8_dp, 16_dp, 16_dp };
+            opt.contentPadding = { 16_dp, 0_dp, 16_dp, 16_dp };
             opt.spacing = 8_dp;
             LazyColumn(FillMax(Weight(Modifier{}, 1), Axis::Horizontal), state, [&](LazyListScope& s) {
-                s.Items(10000, [&](int i) {
-                    const bool on = selected.Get() == i;
-                    const Color bg = AnimateColorAsState(on ? Color(0xFF6750A4u) : Color(0xFFF3EDF7u));
-                    Box(Clickable(Background(Height(FillMax(Modifier{}, Axis::Horizontal), 56_dp), bg, CornerShape::Rounded(12_dp)),
-                                  [&selected, i] { selected.Set(i); }),
-                        Alignment::CenterStart(), false, [&, i, on] {
-                        BasicText("Item " + std::to_string(i), Padding(Modifier{}, 16_dp, 0_dp),
-                                  { 16, on ? Color(0xFFFFFFFFu) : Color(0xFF1D1B20u) });
-                    });
-                }, [](int i) { return kiln::rt::Key(i); });
+                for (int section = 0; section < 100; ++section) {
+                    s.StickyHeader([section](int) {
+                        Box(Background(Height(FillMax(Modifier{}, Axis::Horizontal), 40_dp), Color(0xFFEADDFFu)), Alignment::CenterStart(), false, [section] {
+                            BasicText("Section " + std::to_string(section), Padding(Modifier{}, 16_dp, 0_dp), { 16, Color(0xFF21005Du) });
+                        });
+                    }, kiln::rt::Key(-1 - section));
+                    s.Items(100, [&, section](int k) {
+                        const int i = section * 100 + k;
+                        const bool on = selected.Get() == i;
+                        const Color bg = AnimateColorAsState(on ? Color(0xFF6750A4u) : Color(0xFFF3EDF7u));
+                        Box(Clickable(Background(Height(FillMax(Modifier{}, Axis::Horizontal), 56_dp), bg, CornerShape::Rounded(12_dp)),
+                                      [&selected, i] { selected.Set(i); }),
+                            Alignment::CenterStart(), false, [&, i, on] {
+                            BasicText("Item " + std::to_string(i), Padding(Modifier{}, 16_dp, 0_dp),
+                                      { 16, on ? Color(0xFFFFFFFFu) : Color(0xFF1D1B20u) });
+                        });
+                    }, [section](int k) { return kiln::rt::Key(section * 100 + k); });
+                }
             }, opt);
         });
     }

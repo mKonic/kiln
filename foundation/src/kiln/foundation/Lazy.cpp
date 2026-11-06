@@ -9,6 +9,10 @@ namespace kiln::foundation {
         auto c = std::make_shared<std::function<void()>>(std::move(content));
         intervals.push_back({ 1, [c](int) { (*c)(); }, key.value ? std::function<rt::Key(int)>([key](int) { return key; }) : nullptr });
     }
+    void LazyListScope::StickyHeader(std::function<void(int)> content, rt::Key key) {
+        // The interval's content gets the local index (0); the global index is filled in by the core.
+        intervals.push_back({ 1, std::move(content), key.value ? std::function<rt::Key(int)>([key](int) { return key; }) : nullptr, true });
+    }
     void LazyListScope::Items(int count, std::function<void(int)> content, std::function<rt::Key(int)> key) {
         intervals.push_back({ count, std::move(content), std::move(key) });
     }
@@ -69,9 +73,27 @@ namespace kiln::foundation {
         void Content(int index) const {
             int base = 0;
             for (const auto& iv : intervals) {
-                if (index < base + iv.count) { iv.content(index - base); return; }
+                if (index < base + iv.count) { iv.content(iv.sticky ? index : index - base); return; }
                 base += iv.count;
             }
+        }
+        // The last sticky header at or before `index`, or -1.
+        int StickyAtOrBefore(int index) const {
+            int base = 0, found = -1;
+            for (const auto& iv : intervals) {
+                if (base > index) break;
+                if (iv.sticky) found = base;
+                base += iv.count;
+            }
+            return found;
+        }
+        bool IsSticky(int index) const {
+            int base = 0;
+            for (const auto& iv : intervals) {
+                if (index < base + iv.count) return iv.sticky;
+                base += iv.count;
+            }
+            return false;
         }
         int IndexOfKey(rt::Key key, int hint) const {
             if (hint >= 0 && hint < count && KeyOf(hint).value == key.value) return hint;
@@ -332,32 +354,70 @@ namespace kiln::foundation {
             items.erase(items.begin());
         }
 
+        const int firstIndex = items.front().index, lastIndex = items.back().index;
+        // Offsets of the items from the content start.
+        std::vector<int> offsets;
+        {
+            int p = pos;
+            for (auto& v : items) { offsets.push_back(p); p += v.size + spacing; }
+        }
+        // Sticky header (StickToTopPlacement): the last header at or before the first visible
+        // item, at the viewport start, pushed back by the next visible header; drawn on top.
+        std::optional<Visible> sticking;
+        int stickingOffset = 0;
+        if (const int header = StickyAtOrBefore(items.front().index); header >= 0) {
+            int nextHeader = std::numeric_limits<int>::min();
+            for (std::size_t i = 0; i < items.size(); ++i)
+                if (items[i].index != header && IsSticky(items[i].index)) { nextHeader = offsets[i]; break; }
+            int itemOffset = std::numeric_limits<int>::min();
+            for (std::size_t i = 0; i < items.size(); ++i)
+                if (items[i].index == header) {
+                    sticking = items[i];
+                    itemOffset = offsets[i];
+                    items.erase(items.begin() + std::ptrdiff_t(i));
+                    offsets.erase(offsets.begin() + std::ptrdiff_t(i));
+                    break;
+                }
+            if (!sticking) {
+                attachForMeasure(header);
+                sticking = measureItem(header);
+            }
+            int off = itemOffset == std::numeric_limits<int>::min() ? -before : std::max(-before, itemOffset);
+            if (nextHeader != std::numeric_limits<int>::min()) off = std::min(off, nextHeader - (sticking->size + spacing));
+            stickingOffset = off;
+        }
+
         // Dispose slots not in use (no reuse pool yet).
         std::vector<LayoutNode*> nowActive;
         for (auto& v : items) nowActive.push_back(v.slot->holder.get());
+        if (sticking) nowActive.push_back(sticking->slot->holder.get());
         self.SetChildrenDuringMeasure(nowActive);
         for (auto it = slots.begin(); it != slots.end();) {
             bool used = false;
             for (auto& v : items) if (v.slot == &it->second) used = true;
+            if (sticking && sticking->slot == &it->second) used = true;
             if (!used) { it->second.composition.reset(); it = slots.erase(it); } else ++it;
         }
 
-        st.m_Index.Set(items.front().index);
+        st.m_Index.Set(firstIndex);
         st.m_Offset.Set(-pos);
-        st.m_FirstKey = KeyOf(items.front().index);
+        st.m_FirstKey = KeyOf(firstIndex);
         st.m_HasFirstKey = true;
         st.m_LastConsumed = consumed;
-        st.m_CanForward = !(items.back().index == count - 1 && end <= viewport);
+        st.m_CanForward = !(lastIndex == count - 1 && end <= viewport);
         st.m_Density = s.density;
 
         int cross = 0;
         for (auto& v : items) cross = std::max(cross, (vertical ? v.p->Width() : v.p->Height()) + crossPad);
+        if (sticking) cross = std::max(cross, (vertical ? sticking->p->Width() : sticking->p->Height()) + crossPad);
         const int w = vertical ? c.ConstrainWidth(cross) : c.ConstrainWidth(mainMax);
         const int h = vertical ? c.ConstrainHeight(mainMax) : c.ConstrainHeight(cross);
         {
             LazyListLayoutInfo info;
-            int p = pos;
-            for (const auto& v : items) { info.visibleItemsInfo.push_back({ v.index, UserKey(v.index), p, v.size }); p += v.size + spacing; }
+            // The sticking header precedes the items it covers (its index is lower).
+            if (sticking) info.visibleItemsInfo.push_back({ sticking->index, UserKey(sticking->index), stickingOffset, sticking->size });
+            for (std::size_t i = 0; i < items.size(); ++i)
+                info.visibleItemsInfo.push_back({ items[i].index, UserKey(items[i].index), offsets[i], items[i].size });
             info.viewportStartOffset = -before;
             info.viewportEndOffset = mainMax - before;
             info.totalItemsCount = count;
@@ -371,17 +431,19 @@ namespace kiln::foundation {
         const LazyListOptions opt = options;
         const bool vert = vertical;
         const LayoutDirection dir = s.Direction();
-        return s.Layout(w, h, [items, pos, before, spacing, crossBefore, crossPad, w, h, opt, vert, dir](PlacementScope& place) {
-            int p = pos + before;
-            for (const auto& v : items) {
+        std::vector<std::pair<Placeable*, int>> placed;   // in drawing order
+        for (std::size_t i = 0; i < items.size(); ++i) placed.push_back({ items[i].p, offsets[i] });
+        if (sticking) placed.push_back({ sticking->p, stickingOffset });
+        return s.Layout(w, h, [placed, before, crossBefore, crossPad, w, h, opt, vert, dir](PlacementScope& place) {
+            for (const auto& [pl, off] : placed) {
+                const int p = off + before;
                 if (vert) {
-                    const int x = crossBefore + opt.horizontalAlignment.Align(v.p->Width(), w - crossPad, dir);
-                    place.Place(*v.p, x, p);
+                    const int x = crossBefore + opt.horizontalAlignment.Align(pl->Width(), w - crossPad, dir);
+                    place.Place(*pl, x, p);
                 } else {
-                    const int y = crossBefore + opt.verticalAlignment.Align(v.p->Height(), h - crossPad);
-                    place.PlaceRelative(*v.p, p, y);
+                    const int y = crossBefore + opt.verticalAlignment.Align(pl->Height(), h - crossPad);
+                    place.PlaceRelative(*pl, p, y);
                 }
-                p += v.size + spacing;
             }
         });
     }

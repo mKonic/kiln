@@ -3,8 +3,8 @@
 // Lazy lists (spec 05 §Lazy layouts): items are composed during measure, only those in (or
 // entering) the viewport. Each item is a slot: a holder node with its own composition. The scroll
 // position is the first visible item (tracked by key across data changes) and its offset.
-// Not yet: reuse pool by contentType, saveable item state, prefetch, item animations, sticky
-// headers, beyond-bounds composition for focus (PLAN M5).
+// Not yet: reuse pool by contentType, saveable item state, prefetch, item animations,
+// beyond-bounds composition for focus (PLAN M5).
 
 #include "kiln/foundation/Compose.h"
 #include "kiln/foundation/Scroll.h"
@@ -70,8 +70,11 @@ namespace kiln::foundation {
     public:
         void Item(std::function<void()> content, rt::Key key = rt::Key::Positional());
         void Items(int count, std::function<void(int)> content, std::function<rt::Key(int)> key = {});
+        // stickyHeader: stays pinned at the start while the items after it scroll, until the
+        // next header pushes it out. `content` gets the header's index in the list.
+        void StickyHeader(std::function<void(int index)> content, rt::Key key = rt::Key::Positional());
 
-        struct Interval { int count; std::function<void(int)> content; std::function<rt::Key(int)> key; };
+        struct Interval { int count; std::function<void(int)> content; std::function<rt::Key(int)> key; bool sticky = false; };
         std::vector<Interval> intervals;
     };
 
