@@ -57,6 +57,9 @@ namespace kiln {
         // C++ content root: composed into the window's layout tree each frame it changes.
         void SetContent(std::function<void()> content);
         ui::Owner& GetOwner() { return m_Owner; }
+        // Input from the host, positions in surface pixels. Layout is brought up to date first
+        // so hit testing sees what is on screen (AndroidComposeView.handleMotionEvent).
+        void ProcessPointer(const ui::RawPointerEvent& event);
         float Density() const { return m_Density; }
         float FontScale() const { return m_FontScale; }
         TextBackend* Text() const { return m_Services.text; }

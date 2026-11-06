@@ -7,6 +7,8 @@ import android.os.Handler;
 import android.os.Looper;
 import android.provider.Settings;
 import android.util.DisplayMetrics;
+import android.view.MotionEvent;
+import android.view.ViewConfiguration;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
 import android.widget.FrameLayout;
@@ -46,7 +48,51 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
                 Settings.Global.getUriFor(Settings.Global.ANIMATOR_DURATION_SCALE), false,
                 animationScaleObserver);
         pushAnimationScale();
+        pushViewConfiguration();
     }
+
+    private void pushViewConfiguration() {
+        ViewConfiguration vc = ViewConfiguration.get(getContext());
+        KilnNative.setViewConfiguration(ViewConfiguration.getLongPressTimeout(),
+                ViewConfiguration.getDoubleTapTimeout(), vc.getScaledTouchSlop(),
+                vc.getScaledMaximumFlingVelocity(), vc.getScaledMinimumFlingVelocity());
+    }
+
+    private int[] ids = new int[4];
+    private float[] xy = new float[8];
+    private int[] tools = new int[4];
+
+    private boolean forward(MotionEvent e) {
+        final int n = e.getPointerCount();
+        if (ids.length < n) { ids = new int[n]; xy = new float[2 * n]; tools = new int[n]; }
+        for (int i = 0; i < n; i++) {
+            ids[i] = e.getPointerId(i);
+            xy[2 * i] = e.getX(i);
+            xy[2 * i + 1] = e.getY(i);
+            tools[i] = e.getToolType(i);
+        }
+        int[] idsN = java.util.Arrays.copyOf(ids, n);
+        float[] xyN = java.util.Arrays.copyOf(xy, 2 * n);
+        int[] toolsN = java.util.Arrays.copyOf(tools, n);
+        KilnNative.touchEvent(e.getActionMasked(), e.getActionIndex(), e.getEventTime(), idsN, xyN, toolsN,
+                e.getButtonState(), e.getClassification(),
+                e.getAxisValue(MotionEvent.AXIS_HSCROLL), e.getAxisValue(MotionEvent.AXIS_VSCROLL));
+        return true;
+    }
+
+    @Override
+    public boolean onTouchEvent(MotionEvent e) { return forward(e); }
+
+    @Override
+    public boolean onGenericMotionEvent(MotionEvent e) {
+        final int a = e.getActionMasked();
+        if (a == MotionEvent.ACTION_HOVER_MOVE || a == MotionEvent.ACTION_HOVER_ENTER
+                || a == MotionEvent.ACTION_HOVER_EXIT || a == MotionEvent.ACTION_SCROLL) return forward(e);
+        return super.onGenericMotionEvent(e);
+    }
+
+    @Override
+    public boolean onInterceptTouchEvent(MotionEvent e) { return true; }   // the SurfaceView child never sees touches
 
     private final ContentObserver animationScaleObserver;
 

@@ -14,6 +14,26 @@
 #include <cstdlib>
 
 namespace {
+    kiln::App* g_App = nullptr;
+    bool g_MouseDown = false;
+    double g_MouseX = 0, g_MouseY = 0;
+    float g_ContentScale = 1;
+
+    void SendMouse(kiln::ui::PointerEventType type, kiln::ui::Offset scroll = {}) {
+        kiln::ui::RawPointerEvent ev;
+        ev.uptimeMillis = std::int64_t(glfwGetTime() * 1000);
+        ev.type = type;
+        ev.buttons = g_MouseDown ? 1u : 0u;
+        kiln::ui::RawPointer p;
+        p.id = 0;
+        p.position = { float(g_MouseX) * g_ContentScale, float(g_MouseY) * g_ContentScale };
+        p.down = g_MouseDown;
+        p.type = kiln::ui::PointerType::Mouse;
+        p.scrollDelta = scroll;
+        ev.pointers.push_back(p);
+        g_App->ProcessPointer(ev);
+    }
+
     bool g_FrameRequested = true;
     void RequestFrame(void*) { g_FrameRequested = true; glfwPostEmptyEvent(); }
 }
@@ -34,6 +54,21 @@ int main() {
     app.Dispatcher().wake = [] { glfwPostEmptyEvent(); };
     kiln_app handle{ &app };
     kiln_main(&handle);
+
+    g_App = &app;
+    g_ContentScale = sx;
+    glfwSetCursorPosCallback(window, [](GLFWwindow*, double x, double y) {
+        g_MouseX = x; g_MouseY = y;
+        SendMouse(kiln::ui::PointerEventType::Move);
+    });
+    glfwSetMouseButtonCallback(window, [](GLFWwindow*, int button, int action, int) {
+        if (button != GLFW_MOUSE_BUTTON_LEFT) return;
+        g_MouseDown = action == GLFW_PRESS;
+        SendMouse(g_MouseDown ? kiln::ui::PointerEventType::Press : kiln::ui::PointerEventType::Release);
+    });
+    glfwSetScrollCallback(window, [](GLFWwindow*, double dx, double dy) {
+        SendMouse(kiln::ui::PointerEventType::Scroll, { float(-dx), float(-dy) });
+    });
 
     hearth::GlfwSurface surface(window);
     app.SurfaceCreated(surface);

@@ -19,6 +19,13 @@ namespace kiln {
 
     void App::RunIdle() { m_Dispatcher.RunPending(); }
 
+    void App::ProcessPointer(const ui::RawPointerEvent& event) {
+        if (m_Composition) m_Composition->Recompose();
+        if (m_Width && m_Height) m_Owner.MeasureAndLayout({ int(m_Width), int(m_Height) });
+        m_Owner.ProcessPointer(event);
+        m_Dispatcher.RunPending();
+    }
+
     void App::SetContent(std::function<void()> content) {
         if (!m_Composition) m_Composition = std::make_unique<rt::Composition>(m_Owner.Root(), m_Dispatcher);
         m_Composition->SetContent(std::move(content));

@@ -124,6 +124,63 @@ namespace {
         g_Host->app->RequestFrame();
     }
 
+    // MotionEvent -> RawPointerEvent (MotionEventAdapter, spec 02 req. 9). Positions arrive in
+    // view pixels, which are surface pixels here (the SurfaceView fills the KilnView).
+    void TouchEvent(JNIEnv* env, jclass, jint action, jint actionIndex, jlong eventTime, jintArray ids,
+                    jfloatArray xy, jintArray tools, jint buttons, jint classification, jfloat hscroll, jfloat vscroll) {
+        enum { DOWN = 0, UP = 1, MOVE = 2, CANCEL = 3, POINTER_DOWN = 5, POINTER_UP = 6, HOVER_MOVE = 7,
+               SCROLL = 8, HOVER_ENTER = 9, HOVER_EXIT = 10 };
+        kiln::ui::RawPointerEvent ev;
+        ev.uptimeMillis = eventTime;
+        ev.buttons = std::uint32_t(buttons);
+        ev.classification = classification;
+        ev.cancel = action == CANCEL;
+        const jsize n = env->GetArrayLength(ids);
+        jint* id = env->GetIntArrayElements(ids, nullptr);
+        jfloat* p = env->GetFloatArrayElements(xy, nullptr);
+        jint* tool = env->GetIntArrayElements(tools, nullptr);
+        for (jsize i = 0; i < n; ++i) {
+            kiln::ui::RawPointer rp;
+            rp.id = id[i];
+            rp.position = { p[2 * i], p[2 * i + 1] };
+            // TOOL_TYPE_FINGER 1, STYLUS 2, MOUSE 3, ERASER 4
+            rp.type = tool[i] == 1 ? kiln::ui::PointerType::Touch : tool[i] == 2 ? kiln::ui::PointerType::Stylus
+                    : tool[i] == 3 ? kiln::ui::PointerType::Mouse : tool[i] == 4 ? kiln::ui::PointerType::Eraser
+                                   : kiln::ui::PointerType::Unknown;
+            const bool lifting = (action == UP || action == POINTER_UP) && i == actionIndex;
+            const bool hover = action == HOVER_MOVE || action == HOVER_ENTER || action == HOVER_EXIT || action == SCROLL;
+            rp.down = !lifting && !hover && action != CANCEL;
+            // Compose flips the scroll axes: positive AXIS_VSCROLL scrolls content up (-y).
+            if (action == SCROLL) rp.scrollDelta = { -hscroll, -vscroll };
+            ev.pointers.push_back(rp);
+        }
+        env->ReleaseIntArrayElements(ids, id, JNI_ABORT);
+        env->ReleaseFloatArrayElements(xy, p, JNI_ABORT);
+        env->ReleaseIntArrayElements(tools, tool, JNI_ABORT);
+        using T = kiln::ui::PointerEventType;
+        switch (action) {
+            case DOWN: case POINTER_DOWN: ev.type = T::Press; break;
+            case UP: case POINTER_UP: ev.type = T::Release; break;
+            case MOVE: case HOVER_MOVE: ev.type = T::Move; break;
+            case HOVER_ENTER: ev.type = T::Enter; break;
+            case HOVER_EXIT: ev.type = T::Exit; break;
+            case SCROLL: ev.type = T::Scroll; break;
+            default: break;
+        }
+        g_Host->app->ProcessPointer(ev);
+        ArmTimer();
+    }
+
+    void SetViewConfiguration(JNIEnv*, jclass, jlong longPress, jlong doubleTap, jfloat touchSlop,
+                              jfloat maxFling, jfloat minFling) {
+        auto& c = g_Host->app->GetOwner().Config();
+        c.longPressTimeoutMillis = longPress;
+        c.doubleTapTimeoutMillis = doubleTap;
+        c.touchSlop = touchSlop;
+        c.maximumFlingVelocity = maxFling;
+        c.minimumFlingVelocity = minFling;
+    }
+
     void SurfaceCreated(JNIEnv* env, jclass, jobject surface) {
         g_Host->window = ANativeWindow_fromSurface(env, surface);
         g_Host->surface.Reset(g_Host->window);
@@ -153,6 +210,8 @@ extern "C" JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void*) {
         { "setVisible", "(Z)V", reinterpret_cast<void*>(&SetVisible) },
         { "setDensity", "(FF)V", reinterpret_cast<void*>(&SetDensity) },
         { "setAnimationScale", "(F)V", reinterpret_cast<void*>(&SetAnimationScale) },
+        { "touchEvent", "(IIJ[I[F[IIIFF)V", reinterpret_cast<void*>(&TouchEvent) },
+        { "setViewConfiguration", "(JJFFF)V", reinterpret_cast<void*>(&SetViewConfiguration) },
         { "surfaceCreated", "(Landroid/view/Surface;)V", reinterpret_cast<void*>(&SurfaceCreated) },
         { "surfaceChanged", "(II)V", reinterpret_cast<void*>(&SurfaceChanged) },
         { "surfaceDestroyed", "()V", reinterpret_cast<void*>(&SurfaceDestroyed) },
