@@ -168,6 +168,31 @@ namespace kiln::ui {
         return { c.Width(), c.Height() };
     }
 
+    namespace {
+        gfx::Matrix MatMul(const gfx::Matrix& x, const gfx::Matrix& y) {
+            return { x.a * y.a + x.c * y.b, x.b * y.a + x.d * y.b, x.a * y.c + x.c * y.d, x.b * y.c + x.d * y.d,
+                     x.a * y.e + x.c * y.f + x.e, x.b * y.e + x.d * y.f + x.f };
+        }
+    }
+
+    gfx::Matrix LayoutNode::ContentToRoot(bool inner) const {
+        // Ancestors contribute their full chains (children sit in the innermost space); this node
+        // its position and, for its own bounds, only the outer coordinator's layers.
+        gfx::Matrix m = m_Parent ? m_Parent->ContentToRoot(true) : gfx::Matrix{};
+        m = MatMul(m, gfx::Matrix::Translate(float(m_Position.x), float(m_Position.y)));
+        const std::size_t count = inner ? m_Coordinators.size() : std::min<std::size_t>(1, m_Coordinators.size());
+        for (std::size_t i = 0; i < count; ++i) {
+            const auto& c = *m_Coordinators[i];
+            if (i > 0) m = MatMul(m, gfx::Matrix::Translate(float(c.position.x), float(c.position.y)));
+            const ui::Size size{ float(c.Width()), float(c.Height()) };
+            for (const DrawModifier* d : c.draws) {
+                gfx::Matrix t;
+                if (d->LayerTransform(size, t)) m = MatMul(m, t);
+            }
+        }
+        return m;
+    }
+
     Offset LayoutNode::PositionInRoot() const {
         Offset o;
         for (const LayoutNode* n = this; n; n = n->m_Parent) {

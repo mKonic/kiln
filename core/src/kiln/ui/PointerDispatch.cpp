@@ -11,13 +11,23 @@ namespace kiln::ui {
     // node's own pointer modifiers join the path when the point is inside its bounds. For touch,
     // a node with pointer input smaller than the minimum touch target also counts within the
     // expanded area, and the nearest such node is used when nothing was hit directly.
+    namespace {
+        gfx::Matrix Invert(const gfx::Matrix& m) {
+            const float det = m.a * m.d - m.b * m.c;
+            if (std::abs(det) < 1e-12f) return {};
+            const float i = 1 / det;
+            return { m.d * i, -m.b * i, -m.c * i, m.a * i, (m.c * m.f - m.d * m.e) * i, (m.b * m.e - m.a * m.f) * i };
+        }
+    }
+
     void Owner::HitTest(LayoutNode& n, Offset p, bool touch, std::vector<HitEntry>& path,
                         std::vector<HitEntry>& near, float& nearDistance, std::vector<HitEntry>& ancestors) {
         if (!n.IsPlaced() && &n != m_Root.get()) return;
-        const Offset origin = n.PositionInRoot();
+        // Test in the node's own space, through any graphicsLayer transforms above it.
+        const Offset local = Invert(n.LocalToRoot()).Map(p);
         const IntSize size = n.Size();
-        const Rect bounds{ origin.x, origin.y, origin.x + size.width, origin.y + size.height };
-        const bool inside = bounds.Contains(p);
+        const Rect bounds{ 0, 0, float(size.width), float(size.height) };
+        const bool inside = bounds.Contains(local);
         const auto mods = n.PointerModifiers();
 
         std::vector<HitEntry> own;
@@ -29,9 +39,9 @@ namespace kiln::ui {
             const float minPx = m_Density.ToPx(m_Config.minimumTouchTargetSize);
             const float ex = std::max(0.0f, (minPx - size.width) / 2), ey = std::max(0.0f, (minPx - size.height) / 2);
             const Rect expanded{ bounds.left - ex, bounds.top - ey, bounds.right + ex, bounds.bottom + ey };
-            if ((ex > 0 || ey > 0) && expanded.Contains(p)) {
-                const float dx = std::max({ bounds.left - p.x, 0.0f, p.x - bounds.right });
-                const float dy = std::max({ bounds.top - p.y, 0.0f, p.y - bounds.bottom });
+            if ((ex > 0 || ey > 0) && expanded.Contains(local)) {
+                const float dx = std::max({ bounds.left - local.x, 0.0f, local.x - bounds.right });
+                const float dy = std::max({ bounds.top - local.y, 0.0f, local.y - bounds.bottom });
                 const float d = dx * dx + dy * dy;
                 if (d < nearDistance) {
                     nearDistance = d;
@@ -40,6 +50,11 @@ namespace kiln::ui {
                 }
             }
         }
+
+        // A clipping layer hides its children outside its bounds from hit testing too.
+        bool clips = false;
+        for (const ModifierNode* m : n.ModifierNodes()) if (m->ClipsChildren()) { clips = true; break; }
+        if (clips && !inside) { ancestors.resize(ancestorsBefore); return; }
 
         // Children in reverse draw order (zIndex, then placement order).
         std::vector<LayoutNode*> order(n.Children().begin(), n.Children().end());
@@ -111,7 +126,7 @@ namespace kiln::ui {
             ev.type = raw.type;
             ev.buttons = raw.buttons;
             ev.classification = raw.classification;
-            const Offset origin = tn.entry.node->PositionInRoot();
+            const gfx::Matrix toLocal = Invert(tn.entry.node->LocalToRoot());
             for (std::int64_t id : tn.pointers) {
                 const Tracked& t = m_Pointers[id];
                 const RawPointer* rp = nullptr;
@@ -119,10 +134,10 @@ namespace kiln::ui {
                 PointerInputChange c;
                 c.id = id;
                 c.uptimeMillis = raw.uptimeMillis;
-                c.position = rp->position - origin;
+                c.position = toLocal.Map(rp->position);
                 c.pressed = rp->down;
                 c.previousUptimeMillis = t.uptime;
-                c.previousPosition = t.position - origin;
+                c.previousPosition = toLocal.Map(t.position);
                 c.previousPressed = t.pressed;
                 c.type = rp->type;
                 c.scrollDelta = rp->scrollDelta;

@@ -484,6 +484,17 @@ namespace kiln::foundation {
             explicit LayerNode(GraphicsLayerParams p) : params(p) {}
             void OnParamsChanged() { InvalidateDraw(); InvalidateSemantics(); }
             bool ClipsChildren() const override { return params.clip; }
+            // translate(t) * translate(pivot) * rotate * scale * translate(-pivot).
+            bool LayerTransform(Size size, gfx::Matrix& out) const override {
+                if (params.translationX == 0 && params.translationY == 0 && params.rotationZ == 0 && params.scaleX == 1 && params.scaleY == 1)
+                    return false;
+                const float px = size.width * params.originX, py = size.height * params.originY;
+                const float r = params.rotationZ * 3.14159265358979f / 180.0f, c = std::cos(r), sn = std::sin(r);
+                // Linear part R*S, then the pivot and translation offsets.
+                const float a = c * params.scaleX, b = sn * params.scaleX, cc = -sn * params.scaleY, d = c * params.scaleY;
+                out = { a, b, cc, d, params.translationX + px - (a * px + cc * py), params.translationY + py - (b * px + d * py) };
+                return true;
+            }
             DrawModifier* AsDraw() override { return this; }
             void Draw(ContentDrawScope& s) override {
                 const Size size = s.GetSize();

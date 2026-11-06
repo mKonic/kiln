@@ -1,5 +1,7 @@
 #pragma once
 
+#include "kiln/graphics/Path.h"
+
 // Modifier elements and nodes (spec 03 req. 1). A Modifier is an immutable list of elements;
 // a LayoutNode keeps one live node per element and diffs a new list against it: same element
 // type at the same index updates the node in place (only when the element differs), anything
@@ -59,6 +61,9 @@ namespace kiln::ui {
         virtual ~DrawModifier() = default;
         // Must call scope.DrawContent() to draw what it wraps (or skip it on purpose).
         virtual void Draw(ContentDrawScope& scope) = 0;
+        // A layer's transform of what it wraps, for hit testing and coordinates (graphicsLayer).
+        // `size` is the size it draws in. False when it does not transform.
+        virtual bool LayerTransform(Size, gfx::Matrix&) const { return false; }
     };
 
     class ParentDataModifier {

@@ -56,6 +56,11 @@ namespace kiln::ui {
         float ZIndex() const { return m_ZIndex; }
         bool IsPlaced() const { return m_Placed; }
         Offset PositionInRoot() const;
+        // This node's local space (its outer bounds) -> root, including graphicsLayer transforms
+        // (LayoutCoordinates.localToRoot).
+        gfx::Matrix LocalToRoot() const { return ContentToRoot(false); }
+        // inner: the space its children are placed in (after every modifier).
+        gfx::Matrix ContentToRoot(bool inner) const;
         const ParentData& GetParentData() const { return m_ParentData; }
         std::vector<const ModifierNode*> ModifierNodes() const {
             std::vector<const ModifierNode*> out;

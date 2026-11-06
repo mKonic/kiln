@@ -131,3 +131,52 @@ TEST(DragCrossesSlopThenFollowsAndReportsVelocity) {
     // 10 px every 10 ms = 1000 px/s.
     CHECK(std::abs(velocity.x - 1000.0f) < 1.0f);
 }
+
+namespace {
+    // Taps (down + up) with mouse type so no touch-target expansion applies.
+    void Tap(Harness& h, float x, float y, std::int64_t t) {
+        auto send = [&](PointerEventType type, bool down, std::int64_t at) {
+            RawPointerEvent e;
+            e.type = type;
+            e.uptimeMillis = at;
+            e.buttons = down ? 1u : 0u;
+            e.pointers.push_back({ 1, { x, y }, down, PointerType::Mouse, {} });
+            h.owner.ProcessPointer(e);
+            rt::Dispatcher::Main().RunPending();
+        };
+        send(PointerEventType::Press, true, t);
+        send(PointerEventType::Release, false, t + 10);
+    }
+}
+
+TEST(HitTestFollowsLayerTranslation) {
+    Harness h;
+    int clicks = 0;
+    h.Run([&] {
+        GraphicsLayerParams p;
+        p.translationX = 40;
+        Box(GraphicsLayer(Modifier{}, p), Alignment::TopStart(), false, [&] {
+            Box(Clickable(SizeMod(Modifier{}, Dp(20), Dp(20)), [&] { ++clicks; }));
+        });
+    });
+    Tap(h, 10, 10, 1000);          // where it would be without the layer
+    CHECK_EQ(clicks, 0);
+    Tap(h, 50, 10, 2000);          // where it is drawn
+    CHECK_EQ(clicks, 1);
+}
+
+TEST(HitTestFollowsLayerRotation) {
+    Harness h;
+    int clicks = 0;
+    h.Run([&] {
+        GraphicsLayerParams p;
+        p.rotationZ = 90;           // a 60x10 bar at (20,45) turned upright about its centre (50,50)
+        Box(Padding(Modifier{}, PaddingValues{ Dp(20), Dp(45), Dp(0), Dp(0) }), Alignment::TopStart(), false, [&] {
+            Box(Clickable(SizeMod(GraphicsLayer(Modifier{}, p), Dp(60), Dp(10)), [&] { ++clicks; }));
+        });
+    });
+    Tap(h, 25, 50, 1000);          // inside the unrotated bar, outside the rotated one
+    CHECK_EQ(clicks, 0);
+    Tap(h, 50, 25, 2000);          // inside the rotated bar
+    CHECK_EQ(clicks, 1);
+}
