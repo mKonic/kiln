@@ -4,6 +4,7 @@
 #include <kiln/foundation/Compose.h>
 #include <kiln/foundation/Gestures.h>
 #include <kiln/foundation/Animate.h>
+#include <kiln/foundation/Scroll.h>
 #include <kiln/runtime/Task.h>
 
 using namespace kiln::foundation;
@@ -32,7 +33,8 @@ namespace {
         auto& seconds = RememberState(0);
         c.LaunchedEffect(kiln::rt::Keys(0), [&seconds] { return Tick(seconds); });
 
-        Column(Background(FillMax(Modifier{}, Axis::Both), kSurface), Arrangement::SpacedBy(16_dp), AlignmentH::Start(), [&] {
+        auto& scroll = c.RememberNew<ScrollState>({}, {});
+        Column(VerticalScroll(Background(FillMax(Modifier{}, Axis::Both), kSurface), scroll), Arrangement::SpacedBy(16_dp), AlignmentH::Start(), [&] {
             Spacer(Height(Modifier{}, 32_dp));
             BasicText("kiln layout", Padding(Modifier{}, 16_dp, 0_dp), { 28, kOnSurface });
             Column(Background(Padding(FillMax(Modifier{}, Axis::Horizontal), 16_dp, 0_dp), kContainer, CornerShape::Rounded(12_dp)),
@@ -82,6 +84,13 @@ namespace {
             BasicText("Text wraps to the width it is given. The paragraph below the counter is laid out by the "
                       "same platform path as before, now measured by a layout node.",
                       Padding(Modifier{}, 16_dp, 0_dp), { 16, kVariant });
+            for (int i = 1; i <= 30; ++i) {
+                Box(Background(Height(Padding(FillMax(Modifier{}, Axis::Horizontal), 16_dp, 0_dp), 56_dp), kContainer, CornerShape::Rounded(12_dp)),
+                    Alignment::CenterStart(), false, [i] {
+                    BasicText("Row " + std::to_string(i), Padding(Modifier{}, 16_dp, 0_dp), { 16, kOnSurface });
+                }, kiln::rt::Key(i));
+            }
+            Spacer(Height(Modifier{}, 32_dp));
         });
     }
 }
