@@ -10,6 +10,7 @@
 #include <cstdint>
 #include <functional>
 #include <map>
+#include <memory>
 #include <optional>
 #include <span>
 #include <string>
@@ -81,6 +82,9 @@ namespace kiln::rt {
         // Restored values not consumed yet are kept (for content not composed this time).
         Values PerformSave() const;
 
+        // Expires with the registry: holders of a raw pointer check it before unregistering.
+        std::weak_ptr<const char> AliveToken() const { return m_Alive; }
+
         static std::vector<std::uint8_t> Serialize(const Values& values);
         static Values Deserialize(std::span<const std::uint8_t> bytes);   // empty on malformed data
 
@@ -88,6 +92,7 @@ namespace kiln::rt {
         Values m_Restored;
         std::map<std::string, std::vector<std::pair<std::uint64_t, std::function<SavedValue()>>>> m_Providers;
         std::uint64_t m_NextId = 1;
+        std::shared_ptr<const char> m_Alive = std::make_shared<const char>(0);
     };
 
     inline Local<SaveableStateRegistry*> LocalSaveableStateRegistry{ nullptr };

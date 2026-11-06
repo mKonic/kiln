@@ -106,6 +106,7 @@ namespace kiln::foundation {
             std::optional<std::uint64_t> savedHash;
             std::uint64_t providerId = 0;
             std::string providerKey;
+            std::weak_ptr<const char> registryAlive;
             explicit RestorerNode(RestorerParams p) : params(p) { focusability = Focusability::Never; }
             void OnParamsChanged() {}
             void OnDetach() override { Unregister(); FocusTargetNode::OnDetach(); }
@@ -115,7 +116,7 @@ namespace kiln::foundation {
             }
             std::string Key() const { return "pfc" + std::to_string(Owner() ? Owner()->CompositeKeyHash() : 0); }
             void Unregister() {
-                if (providerId && params.registry) params.registry->Unregister(providerKey, providerId);
+                if (providerId && params.registry && !registryAlive.expired()) params.registry->Unregister(providerKey, providerId);
                 providerId = 0;
             }
             static std::uint64_t HashOf(const FocusTargetNode& c) { return c.Owner() ? c.Owner()->CompositeKeyHash() : 0; }
@@ -127,6 +128,7 @@ namespace kiln::foundation {
                     Unregister();
                     if (params.registry) {
                         providerKey = Key();
+                        registryAlive = params.registry->AliveToken();
                         providerId = params.registry->RegisterProvider(providerKey, [hash] { return rt::SavedValue(std::int64_t(hash)); });
                     }
                     return true;
