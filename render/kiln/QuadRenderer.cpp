@@ -113,14 +113,13 @@ namespace kiln {
             for (int i = 0; i < 4; ++i) instance.paint[i] = instance.paint2[i] = 0;
         }
         instance.clip[0] = m_Clip.x0; instance.clip[1] = m_Clip.y0; instance.clip[2] = m_Clip.x1; instance.clip[3] = m_Clip.y1;
-        instance.clipParams[0] = m_Clip.radius; instance.clipParams[1] = m_Clip.enabled ? 1.0f : 0.0f;
-        instance.clipParams[2] = instance.clipParams[3] = 0;
+        for (int i = 0; i < 4; ++i) instance.clipParams[i] = m_Clip.radii[i];
         const Transform& t = m_Transform;
         instance.xform[0] = t.a; instance.xform[1] = t.b; instance.xform[2] = t.c; instance.xform[3] = t.d;
         instance.xform2[0] = t.e; instance.xform2[1] = t.f; instance.xform2[2] = t.g; instance.xform2[3] = t.h;
         const Transform& ci = m_Clip.inverse;
         instance.clipInv[0] = ci.a; instance.clipInv[1] = ci.b; instance.clipInv[2] = ci.c; instance.clipInv[3] = ci.d;
-        instance.clipInv2[0] = ci.e; instance.clipInv2[1] = ci.f; instance.clipInv2[2] = instance.clipInv2[3] = 0;
+        instance.clipInv2[0] = ci.e; instance.clipInv2[1] = ci.f; instance.clipInv2[2] = m_Clip.enabled ? 1.0f : 0.0f; instance.clipInv2[3] = 0;
         Target& t2 = Current();
         const bool filtered = instance.params[2] >= 0;
         if (t2.runs.empty() || t2.runs.back().page != page || t2.runs.back().mask != mask || t2.runs.back().filtered != filtered)

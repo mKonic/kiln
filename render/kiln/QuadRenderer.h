@@ -79,7 +79,7 @@ namespace kiln {
         void SetTransform(const Transform& t) { m_Transform = t; }
         // Clip applied to quads submitted after this call: a rounded rect (x0, y0, x1, y1, radius)
         // in the space `inverse` maps framebuffer pixels into (identity: framebuffer pixels).
-        struct Clip { float x0 = 0, y0 = 0, x1 = 0, y1 = 0, radius = 0; bool enabled = false; Transform inverse; };
+        struct Clip { float x0 = 0, y0 = 0, x1 = 0, y1 = 0; float radii[4] = {}; bool enabled = false; Transform inverse; };   // radii: TL, TR, BR, BL
         void SetClip(const Clip& clip) { m_Clip = clip; }
         // Multiplies what the current target holds by the coverage in `page` (DstIn): masks an
         // offscreen layer to a path before it is composited.

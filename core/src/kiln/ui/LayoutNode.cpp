@@ -581,6 +581,7 @@ namespace kiln::ui {
     void Owner::Draw(const DrawTarget& target) {
         ContentDrawScope scope(m_Density, m_Direction, target);
         m_Root->Draw(scope);
+        scope.Finish();
     }
 
 }

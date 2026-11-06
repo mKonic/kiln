@@ -6,13 +6,13 @@ layout(location = 1) in vec4 iUv;      // u0, v0, u1, v1 (atlas, normalised)
 layout(location = 2) in vec4 iColor;   // premultiplied rgba
 layout(location = 3) in vec4 iParams;  // cornerRadius (local), mode, filter row, unused
 layout(location = 4) in vec4 iClip;    // clip rect x0, y0, x1, y1 (clip space)
-layout(location = 5) in vec4 iClipParams; // clip corner radius, enabled
+layout(location = 5) in vec4 iClipParams; // clip corner radii: top-left, top-right, bottom-right, bottom-left
 layout(location = 6) in vec4 iPaint;   // gradient geometry (framebuffer px)
 layout(location = 7) in vec4 iPaint2;  // gradient kind, tile mode, ramp v
 layout(location = 8) in vec4 iXform;   // a, b, c, d
 layout(location = 9) in vec4 iXform2;  // e, f, then g, h: perspective (w = 1 + g x + h y; 0 = affine)
 layout(location = 10) in vec4 iClipInv;  // framebuffer -> clip space: a, b, c, d
-layout(location = 11) in vec4 iClipInv2; // e, f
+layout(location = 11) in vec4 iClipInv2; // e, f, clip enabled
 
 layout(push_constant) uniform Push { vec2 viewport; vec2 origin; } pc;   // target size, its device origin
 
@@ -26,7 +26,7 @@ layout(location = 6) flat out vec4 vClipParams;
 layout(location = 7) flat out vec4 vPaint;
 layout(location = 8) flat out vec4 vPaint2;
 layout(location = 9) flat out vec4 vClipInv;
-layout(location = 10) flat out vec2 vClipInv2;
+layout(location = 10) flat out vec4 vClipInv2;
 layout(location = 11) flat out vec2 vUvMin;
 layout(location = 12) flat out vec2 vUvMax;
 
@@ -47,7 +47,7 @@ void main() {
     vPaint = iPaint;
     vPaint2 = iPaint2;
     vClipInv = iClipInv;
-    vClipInv2 = iClipInv2.xy;
+    vClipInv2 = iClipInv2;
     vUvMin = iUv.xy;
     vUvMax = iUv.zw;
     // A projective transform (a 3D-rotated layer) divides by w; handing w to the rasteriser

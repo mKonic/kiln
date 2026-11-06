@@ -193,6 +193,16 @@ namespace {
                     });
                 }
             });
+            // Nested clips: a rounded card around a full-size clipped child keeps its corners;
+            // a rotated clipped child crossing the card's corners clips through a masked layer.
+            Row(Padding(Modifier{}, 16_dp, 8_dp), Arrangement::SpacedBy(24_dp), AlignmentV::CenterVertically(), [] {
+                Box(Clip(SizeMod(Modifier{}, 120_dp, 72_dp), CornerShape::Rounded(24_dp)), Alignment::Center(), false, [] {
+                    Box(Background(ClipToBounds(FillMax(Modifier{}, Axis::Both)), kPrimary));
+                });
+                Box(Background(Clip(SizeMod(Modifier{}, 120_dp, 72_dp), CornerShape::Rounded(24_dp)), kContainer), Alignment::Center(), false, [] {
+                    Box(Background(Clip(Rotate(SizeMod(Modifier{}, 150_dp, 40_dp), 25), CornerShape::Rounded(8_dp)), kTertiary));
+                });
+            });
             // graphics-shapes: a rounded square morphing into a rounded star and back.
             {
                 static const kiln::gfx::shapes::Morph morph(

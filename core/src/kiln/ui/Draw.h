@@ -1,5 +1,7 @@
 #pragma once
 
+#include <array>
+
 // Drawing during the draw pass (spec 03 §ui-graphics, DrawScope). M2 draws straight into the
 // frame's QuadRenderer with an accumulated translation; retained layers come with GraphicsLayer.
 
@@ -24,6 +26,12 @@ namespace kiln::ui {
         FilterTable* filters = nullptr;
         float viewportWidth = 0, viewportHeight = 0;
     };
+
+    // Corner radii of a clip: top-left, top-right, bottom-right, bottom-left.
+    using ClipRadii = std::array<float, 4>;
+    // The intersection of two rounded rects in one space when it is itself a rounded rect (each
+    // corner belongs to one of them, or is square where their straight edges cross).
+    bool IntersectRoundedRects(const Rect& a, const ClipRadii& ra, const Rect& b, const ClipRadii& rb, Rect& out, ClipRadii& radii);
 
     class DrawScope : public Density {
     public:
@@ -55,9 +63,10 @@ namespace kiln::ui {
         void Concat(const gfx::Matrix& m);
         const gfx::Matrix& CurrentTransform() const { return m_State.m; }
         void MultiplyAlpha(float a) { m_State.alpha *= a; }
-        // Intersects the clip with a local rect, rounded by `radius` (local px). Nested rounded
-        // clips keep only the innermost rounding; under rotation the innermost clip replaces
-        // the outer one.
+        // Intersects the clip with a local rect, rounded by `radius` (local px). Clips that
+        // combine into one rounded rect (per-corner radii) stay analytic; others (a rect cutting
+        // into an outer rounded corner, clips in different rotations) clip through a masked layer
+        // that ends with the Restore.
         void ClipRect(Rect local, float radius = 0);
         // Offscreen layer (saveLayerAlpha): content drawn until EndLayer composites as one image
         // with `alpha`, clipped to `bounds` (local). Inherited alpha applies at compositing.
@@ -72,6 +81,8 @@ namespace kiln::ui {
         void EndLayerBlur(float sigmaX, float sigmaY, bool decal);
         void Save() { m_Stack.push_back(m_State); }
         void Restore();
+        // Ends the layers that clips left open (the end of a frame).
+        void Finish();
         void SetSize(Size s) { m_Size = s; }
 
     private:
@@ -80,9 +91,13 @@ namespace kiln::ui {
             float alpha = 1;
             bool clip = false;
             Rect clipRect;             // in clip space (device px when clipInverse is identity)
-            float clipRadius = 0;
+            ClipRadii clipRadii{};
             gfx::Matrix clipInverse;   // device -> clip space
+            int clipLayers = 0;        // masked layers opened by clips
         };
+        void BeginLayerImpl(Rect bounds, float alpha, const gfx::Path* clipPath, bool forClip);
+        void EndLayerPlain(float stretchX, float stretchY);
+        void EndClipLayers() { while (!m_Layers.empty() && m_Layers.back().forClip) EndLayerPlain(0, 0); }
         bool AxisAligned() const { return m_State.m.b == 0 && m_State.m.c == 0; }
         void ApplyTransform();
         void ApplyClip();
@@ -96,7 +111,7 @@ namespace kiln::ui {
         DrawTarget m_Target;
         State m_State;
         std::vector<State> m_Stack;
-        struct Layer { State saved; float alpha; Rect device; bool active; std::shared_ptr<gfx::Path> clip; gfx::Matrix clipMatrix; };
+        struct Layer { State saved; float alpha; Rect device; bool active; std::shared_ptr<gfx::Path> clip; gfx::Matrix clipMatrix; bool forClip = false; };
         std::vector<Layer> m_Layers;
         void MaskLayer(const Layer& l);
         Size m_Size;

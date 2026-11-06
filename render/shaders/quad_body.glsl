@@ -9,7 +9,7 @@ layout(location = 6) flat in vec4 vClipParams;
 layout(location = 7) flat in vec4 vPaint;
 layout(location = 8) flat in vec4 vPaint2;
 layout(location = 9) flat in vec4 vClipInv;
-layout(location = 10) flat in vec2 vClipInv2;
+layout(location = 10) flat in vec4 vClipInv2;
 layout(location = 11) flat in vec2 vUvMin;
 layout(location = 12) flat in vec2 vUvMax;
 
@@ -38,11 +38,14 @@ float aaCoverage(float d, vec2 p) {
 }
 
 float clipCoverage() {
-    if (vClipParams.y < 0.5) return 1.0;
-    vec2 p = mat2(vClipInv.x, vClipInv.y, vClipInv.z, vClipInv.w) * fragDevice() + vClipInv2;
+    if (vClipInv2.z < 0.5) return 1.0;
+    vec2 p = mat2(vClipInv.x, vClipInv.y, vClipInv.z, vClipInv.w) * fragDevice() + vClipInv2.xy;
     vec2 centre = (vClip.xy + vClip.zw) * 0.5;
     vec2 half_ = max((vClip.zw - vClip.xy) * 0.5, vec2(0.0));
-    return aaCoverage(roundedRectSdf(p - centre, half_, vClipParams.x), p);
+    vec2 q = p - centre;
+    // Each quadrant rounds with its own corner radius (top-left, top-right, bottom-right, bottom-left).
+    float r = q.x < 0.0 ? (q.y < 0.0 ? vClipParams.x : vClipParams.w) : (q.y < 0.0 ? vClipParams.y : vClipParams.z);
+    return aaCoverage(roundedRectSdf(q, half_, r), p);
 }
 
 // The fill colour: flat, or a gradient sampled from its ramp row (Skia tile modes).

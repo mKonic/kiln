@@ -59,39 +59,117 @@ namespace kiln::ui {
 
     void DrawScope::ApplyTransform() { if (m_Target.quads) m_Target.quads->SetTransform(ToQuad(m_State.m)); }
 
+    namespace {
+        // Signed distance to a rect rounded per corner (negative inside).
+        float RoundedRectSdf(Offset p, const Rect& r, const ClipRadii& radii) {
+            const float hx = std::max(0.0f, r.Width() / 2), hy = std::max(0.0f, r.Height() / 2);
+            const float x = p.x - (r.left + r.right) / 2, y = p.y - (r.top + r.bottom) / 2;
+            const float rr = std::min(x < 0 ? (y < 0 ? radii[0] : radii[3]) : (y < 0 ? radii[1] : radii[2]), std::min(hx, hy));
+            const float qx = std::abs(x) - hx + rr, qy = std::abs(y) - hy + rr;
+            return std::hypot(std::max(qx, 0.0f), std::max(qy, 0.0f)) + std::min(std::max(qx, qy), 0.0f) - rr;
+        }
+        bool InsideRounded(Offset p, const Rect& r, const ClipRadii& radii) { return RoundedRectSdf(p, r, radii) <= 0.01f; }
+        bool SameMatrix(const gfx::Matrix& x, const gfx::Matrix& y) {
+            auto eq = [](float u, float v) { return std::abs(u - v) <= 1e-4f * std::max(1.0f, std::max(std::abs(u), std::abs(v))); };
+            return eq(x.a, y.a) && eq(x.b, y.b) && eq(x.c, y.c) && eq(x.d, y.d) && eq(x.e, y.e) && eq(x.f, y.f);
+        }
+        // Every corner of rect `r` (space `from`, mapped by `toOther`) is inside the rounded rect.
+        bool RectInside(const Rect& r, const gfx::Matrix& toOther, const Rect& o, const ClipRadii& radii) {
+            for (const Offset q : { Offset{ r.left, r.top }, Offset{ r.right, r.top }, Offset{ r.right, r.bottom }, Offset{ r.left, r.bottom } })
+                if (!InsideRounded(toOther.Map(q), o, radii)) return false;
+            return true;
+        }
+    }
+
+    bool IntersectRoundedRects(const Rect& a, const ClipRadii& ra, const Rect& b, const ClipRadii& rb, Rect& out, ClipRadii& radii) {
+        out = a.Intersect(b);
+        radii = {};
+        if (out.Empty()) return true;
+        const float halfOut = std::min(out.Width(), out.Height()) / 2;
+        const float halfA = std::min(a.Width(), a.Height()) / 2, halfB = std::min(b.Width(), b.Height()) / 2;
+        for (int k = 0; k < 4; ++k) {
+            const bool right = k == 1 || k == 2, bottom = k >= 2;
+            const Offset p{ right ? out.right : out.left, bottom ? out.bottom : out.top };
+            const bool ownA = (right ? a.right : a.left) == p.x && (bottom ? a.bottom : a.top) == p.y;
+            const bool ownB = (right ? b.right : b.left) == p.x && (bottom ? b.bottom : b.top) == p.y;
+            const float rA = std::min(ra[k], halfA), rB = std::min(rb[k], halfB);
+            if (ownA && ownB) {
+                // The larger rounding lies inside the smaller one.
+                radii[k] = std::max(rA, rB);
+            } else if (ownA || ownB) {
+                // One rect's corner, whose arc must lie inside the other rounded rect.
+                const float r = ownA ? rA : rB;
+                const Rect& o = ownA ? b : a;
+                const ClipRadii& oRadii = ownA ? rb : ra;
+                const float sx = right ? -r : r, sy = bottom ? -r : r;
+                if (!InsideRounded(p, o, oRadii) || !InsideRounded({ p.x + sx, p.y }, o, oRadii) || !InsideRounded({ p.x, p.y + sy }, o, oRadii))
+                    return false;
+                radii[k] = r;
+            } else {
+                // Straight edges of each crossing: square, unless a rounded corner cuts in.
+                if (!InsideRounded(p, a, ra) || !InsideRounded(p, b, rb)) return false;
+            }
+            if (radii[k] > halfOut + 0.01f) return false;
+        }
+        return true;
+    }
+
     void DrawScope::ClipRect(Rect local, float radius) {
         const gfx::Matrix& m = m_State.m;
-        const bool prevDevice = !m_State.clip || (m_State.clipInverse.a == 1 && m_State.clipInverse.b == 0 &&
-                                                  m_State.clipInverse.c == 0 && m_State.clipInverse.d == 1 &&
-                                                  m_State.clipInverse.e == 0 && m_State.clipInverse.f == 0);
-        if (AxisAligned() && prevDevice) {
+        // The new clip in its own space: device pixels when axis-aligned, else local.
+        Rect r = local;
+        float rad = radius;
+        gfx::Matrix inv;
+        if (AxisAligned()) {
             const Offset p0 = m.Map({ local.left, local.top }), p1 = m.Map({ local.right, local.bottom });
-            const Rect d{ std::min(p0.x, p1.x), std::min(p0.y, p1.y), std::max(p0.x, p1.x), std::max(p0.y, p1.y) };
-            m_State.clipRect = m_State.clip ? m_State.clipRect.Intersect(d) : d;
-            m_State.clipRadius = radius * std::min(std::abs(m.a), std::abs(m.d));
-            m_State.clipInverse = {};
+            r = { std::min(p0.x, p1.x), std::min(p0.y, p1.y), std::max(p0.x, p1.x), std::max(p0.y, p1.y) };
+            rad = radius * std::min(std::abs(m.a), std::abs(m.d));
         } else {
-            m_State.clipRect = local;
-            m_State.clipRadius = radius;
-            m_State.clipInverse = Inverse(m);
+            inv = Inverse(m);
         }
-        m_State.clip = true;
-        ApplyClip();
+        const ClipRadii radii{ rad, rad, rad, rad };
+        auto set = [&](const Rect& cr, const ClipRadii& cradii, const gfx::Matrix& cinv) {
+            m_State.clip = true;
+            m_State.clipRect = cr;
+            m_State.clipRadii = cradii;
+            m_State.clipInverse = cinv;
+            ApplyClip();
+        };
+        if (!m_State.clip) { set(r, radii, inv); return; }
+        const State& old = m_State;
+        if (SameMatrix(inv, old.clipInverse)) {
+            Rect out;
+            ClipRadii outRadii;
+            if (IntersectRoundedRects(old.clipRect, old.clipRadii, r, radii, out, outRadii)) { set(out, outRadii, inv); return; }
+        } else {
+            // Different spaces combine only when one contains the other.
+            if (RectInside(old.clipRect, Mul(inv, Inverse(old.clipInverse)), r, radii)) return;
+            if (RectInside(r, Mul(old.clipInverse, Inverse(inv)), old.clipRect, old.clipRadii)) { set(r, radii, inv); return; }
+        }
+        // Not one rounded rect: content renders into a layer masked to the new clip, which is
+        // composited under the old one.
+        gfx::Path path;
+        path.AddRoundRect(gfx::RoundRect::Uniform(local, radius));
+        BeginLayerImpl(local, 1, &path, true);
     }
 
     void DrawScope::Restore() {
         if (m_Stack.empty()) return;
+        while (!m_Layers.empty() && m_Layers.back().forClip && m_State.clipLayers > m_Stack.back().clipLayers) EndLayerPlain(0, 0);
         m_State = m_Stack.back();
         m_Stack.pop_back();
         ApplyClip();
     }
 
+    void DrawScope::Finish() { while (!m_Layers.empty()) EndLayerPlain(0, 0); }
+
     void DrawScope::ApplyClip() {
+        if (!m_Target.quads) return;
         QuadRenderer::Clip c;
         c.enabled = m_State.clip;
         c.x0 = m_State.clipRect.left; c.y0 = m_State.clipRect.top;
         c.x1 = m_State.clipRect.right; c.y1 = m_State.clipRect.bottom;
-        c.radius = m_State.clipRadius;
+        for (int i = 0; i < 4; ++i) c.radii[i] = m_State.clipRadii[i];
         c.inverse = ToQuad(m_State.clipInverse);
         m_Target.quads->SetClip(c);
     }
@@ -274,13 +352,16 @@ namespace kiln::ui {
                                   { a, a, a, a }, QuadRenderer::Mode::Color, nullptr, FilterRow(filter));
     }
 
-    void DrawScope::BeginLayer(Rect bounds, float alpha, const gfx::Path* clipPath) {
-        Layer l{ m_State, alpha * m_State.alpha, {}, false, nullptr, m_State.m };
+    void DrawScope::BeginLayer(Rect bounds, float alpha, const gfx::Path* clipPath) { BeginLayerImpl(bounds, alpha, clipPath, false); }
+
+    void DrawScope::BeginLayerImpl(Rect bounds, float alpha, const gfx::Path* clipPath, bool forClip) {
+        // A clip's layer composites at full alpha; its content keeps drawing with the current one.
+        Layer l{ m_State, forClip ? 1.0f : alpha * m_State.alpha, {}, false, nullptr, m_State.m, forClip };
         if (clipPath) {
             l.clip = std::make_shared<gfx::Path>(*clipPath);
             bounds = bounds.Intersect(clipPath->Bounds());
         }
-        // Device bounding box of the local bounds, within the viewport (and a device-space clip).
+        // Device bounding box of the local bounds, within the viewport and the device-space clip.
         Rect d{ 1e30f, 1e30f, -1e30f, -1e30f };
         for (const Offset q : { Offset{ bounds.left, bounds.top }, Offset{ bounds.right, bounds.top },
                                 Offset{ bounds.left, bounds.bottom }, Offset{ bounds.right, bounds.bottom } }) {
@@ -289,18 +370,25 @@ namespace kiln::ui {
         }
         d = { std::floor(d.left), std::floor(d.top), std::ceil(d.right), std::ceil(d.bottom) };
         d = d.Intersect({ 0, 0, m_Target.viewportWidth, m_Target.viewportHeight });
-        if (m_Target.quads && !d.Empty() && l.alpha > 0) {
+        if (m_State.clip && SameMatrix(m_State.clipInverse, {}))
+            d = d.Intersect({ std::floor(m_State.clipRect.left), std::floor(m_State.clipRect.top),
+                              std::ceil(m_State.clipRect.right), std::ceil(m_State.clipRect.bottom) });
+        if (m_Target.quads && !d.Empty() && l.alpha > 0 && m_State.alpha > 0) {
             l.device = d;
             l.active = true;
             m_Target.quads->BeginLayer(int(d.left), int(d.top), int(d.Width()), int(d.Height()));
         }
         m_Layers.push_back(l);
-        // Content draws opaque into the layer, clipped to its bounds.
-        m_State.alpha = l.active ? 1.0f : 0.0f;
+        // Content draws opaque into the layer, clipped to its bounds; the enclosing clip applies
+        // when the layer is composited.
+        m_State.alpha = l.active ? (forClip ? l.saved.alpha : 1.0f) : 0.0f;
+        m_State.clip = false;
+        if (forClip) ++m_State.clipLayers;
         ClipRect(bounds);
     }
 
     void DrawScope::EndLayerProjective(const float h[9]) {
+        EndClipLayers();
         if (m_Layers.empty()) return;
         Layer l = m_Layers.back();
         m_Layers.pop_back();
@@ -355,6 +443,7 @@ namespace kiln::ui {
     }
 
     void DrawScope::EndLayerBlur(float sigmaX, float sigmaY, bool decal) {
+        EndClipLayers();
         if (m_Layers.empty()) return;
         Layer l = m_Layers.back();
         m_Layers.pop_back();
@@ -391,6 +480,11 @@ namespace kiln::ui {
     }
 
     void DrawScope::EndLayer(float stretchX, float stretchY) {
+        EndClipLayers();
+        EndLayerPlain(stretchX, stretchY);
+    }
+
+    void DrawScope::EndLayerPlain(float stretchX, float stretchY) {
         if (m_Layers.empty()) return;
         Layer l = m_Layers.back();
         m_Layers.pop_back();
