@@ -303,3 +303,36 @@ TEST(HoverEntersAndExitsAsTheMouseMoves) {
     mouse(PointerEventType::Exit, 60, 20);   // leaves the window
     CHECK(!b->IsHovered());
 }
+
+#include "kiln/foundation/Draggable.h"
+
+TEST(DraggableDeliversDeltasAfterSlopAndAVelocity) {
+    Harness h;
+    h.owner.Config().touchSlop = 8;
+    float total = 0, velocity = 0;
+    auto src = std::make_shared<MutableInteractionSource>();
+    bool sawDrag = false;
+    h.Run([&] {
+        Box(FillMax(Modifier{}, Axis::Both), Alignment::TopStart(), false, [&] {
+            auto& state = RememberDraggableState([&](float d) { total += d; if (src->IsDragged()) sawDrag = true; });
+            DraggableOptions o;
+            o.interactionSource = src;
+            o.onDragStopped = [&](float v) { velocity = v; };
+            Box(Draggable(SizeMod(Modifier{}, Dp(100), Dp(100)), state, Orientation::Horizontal, o));
+        });
+    });
+    std::int64_t t = 0;
+    h.Touch(PointerEventType::Press, 10, 50, true, t);
+    for (int i = 1; i <= 5; ++i) h.Touch(PointerEventType::Move, 10 + float(i) * 10, 50, true, t += 10);
+    h.Touch(PointerEventType::Release, 60, 50, false, t += 10);
+    CHECK_EQ(total, 42.0f);              // 50 moved, 8 of it slop
+    CHECK(sawDrag);
+    CHECK(!src->IsDragged());
+    CHECK(velocity > 500);               // ~1000 px/s
+    // Vertical movement does not drag a horizontal draggable.
+    total = 0;
+    h.Touch(PointerEventType::Press, 50, 10, true, t += 1000);
+    for (int i = 1; i <= 5; ++i) h.Touch(PointerEventType::Move, 50, 10 + float(i) * 10, true, t += 10);
+    h.Touch(PointerEventType::Release, 50, 60, false, t += 10);
+    CHECK_EQ(total, 0.0f);
+}
