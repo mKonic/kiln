@@ -41,7 +41,7 @@ namespace kiln {
         rt::Dispatcher& Dispatcher() { return m_Dispatcher; }
 
         // ANIMATOR_DURATION_SCALE (spec 02 req. 6): 0 means animations jump to their end.
-        void SetAnimationScale(float scale) { m_AnimationScale = scale; }
+        void SetAnimationScale(float scale);
         float AnimationScale() const { return m_AnimationScale; }
 
         void SurfaceCreated(hearth::Surface& surface);

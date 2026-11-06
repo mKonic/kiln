@@ -1,5 +1,6 @@
 #include "kiln/App.h"
 #include "kiln/runtime/State.h"
+#include "kiln/animation/Animatable.h"
 
 #include <hearth/Log.h>
 
@@ -18,6 +19,11 @@ namespace kiln {
     }
 
     void App::RunIdle() { m_Dispatcher.RunPending(); }
+
+    void App::SetAnimationScale(float scale) {
+        m_AnimationScale = scale;
+        anim::SetDurationScale(scale);
+    }
 
     void App::ProcessPointer(const ui::RawPointerEvent& event) {
         if (m_Composition) m_Composition->Recompose();

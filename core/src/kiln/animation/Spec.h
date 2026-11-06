@@ -1,0 +1,52 @@
+#pragma once
+
+// Animation specs (animation-core AnimationSpec.kt, FloatAnimationSpec.kt, SpringSimulation.kt,
+// SpringEstimation.kt). Values are vectors of up to 4 floats (AnimationVector1D..4D); a spring
+// runs one simulation per component and lasts as long as the slowest.
+
+#include "kiln/animation/Easing.h"
+
+#include <array>
+#include <cstdint>
+#include <memory>
+
+namespace kiln::anim {
+
+    using Vec = std::array<float, 4>;
+
+    namespace spring {
+        constexpr float StiffnessHigh = 10000, StiffnessMedium = 1500, StiffnessMediumLow = 400,
+                        StiffnessLow = 200, StiffnessVeryLow = 50;
+        constexpr float DampingRatioHighBouncy = 0.2f, DampingRatioMediumBouncy = 0.5f,
+                        DampingRatioLowBouncy = 0.75f, DampingRatioNoBouncy = 1.0f;
+        constexpr float DefaultDisplacementThreshold = 0.01f;
+    }
+    constexpr int DefaultDurationMillis = 300;
+
+    // A spec for `dims` components.
+    class AnimationSpec {
+    public:
+        virtual ~AnimationSpec() = default;
+        virtual Vec ValueAt(std::int64_t playNanos, const Vec& from, const Vec& to, const Vec& v0, int dims) const = 0;
+        virtual Vec VelocityAt(std::int64_t playNanos, const Vec& from, const Vec& to, const Vec& v0, int dims) const = 0;
+        virtual std::int64_t DurationNanos(const Vec& from, const Vec& to, const Vec& v0, int dims) const = 0;
+        virtual bool Infinite() const { return false; }
+    };
+    using SpecPtr = std::shared_ptr<const AnimationSpec>;
+
+    // spring(dampingRatio = 1, stiffness = 1500, visibilityThreshold = 0.01 per component)
+    SpecPtr Spring(float dampingRatio = spring::DampingRatioNoBouncy, float stiffness = spring::StiffnessMedium,
+                   float visibilityThreshold = spring::DefaultDisplacementThreshold);
+    // tween(durationMillis = 300, delayMillis = 0, easing = FastOutSlowIn)
+    SpecPtr Tween(int durationMillis = DefaultDurationMillis, int delayMillis = 0, Easing easing = FastOutSlowIn());
+    SpecPtr Snap(int delayMillis = 0);
+    enum class RepeatMode : std::uint8_t { Restart, Reverse };
+    SpecPtr InfiniteRepeatable(SpecPtr duration, RepeatMode mode = RepeatMode::Restart, std::int64_t initialOffsetNanos = 0);
+
+    // The single-dimension spring simulation, exposed for decay/snapping code and tests.
+    struct SpringMotion { float value, velocity; };
+    SpringMotion SpringStep(float dampingRatio, float stiffness, float from, float velocity, float target, double seconds);
+    std::int64_t EstimateSpringDurationNanos(float stiffness, float dampingRatio, float initialVelocity,
+                                             float initialDisplacement, float delta);
+
+}
