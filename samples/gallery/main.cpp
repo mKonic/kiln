@@ -5,6 +5,7 @@
 #include <kiln/foundation/Gestures.h>
 #include <kiln/foundation/Animate.h>
 #include <kiln/foundation/Scroll.h>
+#include <kiln/foundation/text/BasicTextField.h>
 #include <kiln/runtime/Task.h>
 
 using namespace kiln::foundation;
@@ -56,6 +57,16 @@ namespace {
                 Alignment::Center(), false, [&] {
                 BasicText("Running for " + std::to_string(seconds.Get()) + " s", {}, { 22, kOnSurface });
             });
+            // A text field: focus starts the platform input session (keyboard, InputConnection).
+            auto& field = c.RememberNew<TextFieldState>({}, {}, "Edit me");
+            Box(Background(Padding(FillMax(Modifier{}, Axis::Horizontal), 16_dp, 0_dp), kContainer, CornerShape::Rounded(12_dp)),
+                Alignment::CenterStart(), false, [&] {
+                TextFieldOptions opt;
+                opt.style = { 16, kOnSurface };
+                opt.ime.singleLine = true;
+                BasicTextField(field, Padding(FillMax(Modifier{}, Axis::Horizontal), 16_dp, 16_dp), opt);
+            });
+            BasicText("Field text: " + field.Text(), Padding(Modifier{}, 16_dp, 0_dp), { 14, kVariant });
             auto& taps = RememberState(0);
             auto& pressed = RememberState(false);
             Row(Padding(Modifier{}, 16_dp, 0_dp), Arrangement::SpacedBy(16_dp), AlignmentV::CenterVertically(), [&] {
