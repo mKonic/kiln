@@ -8,6 +8,9 @@ using namespace kiln;
 using namespace kiln::foundation;
 using namespace kiln::ui;
 
+#include <chrono>
+#include <thread>
+
 namespace {
     struct Harness {
         Owner owner;
@@ -84,6 +87,45 @@ TEST(ClickableIsFocusableOnlyWithKeysAndClicksOnEnter) {
     CHECK(h.owner.ActiveFocus() != nullptr);
     h.Key(keys::Enter);
     CHECK_EQ(clicks, 1);
+}
+
+TEST(ClickableKeyLongPressAndDoubleClick) {
+    Harness h;
+    int clicks = 0, longs = 0, doubles = 0;
+    h.Run([&] {
+        Column(Modifier{}, [&] {
+            ClickableOptions o;
+            o.onLongClick = [&] { ++longs; };
+            o.onDoubleClick = [&] { ++doubles; };
+            Box(Clickable(SizeMod(Modifier{}, Dp(40), Dp(40)), [&] { ++clicks; }, o));
+        });
+    });
+    h.Key(keys::Tab);
+    CHECK(h.owner.ActiveFocus() != nullptr);
+    auto wait = [](int ms) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(ms));
+        rt::Dispatcher::Main().RunPending();
+    };
+    auto send = [&](KeyEventType type) { KeyEvent e{ keys::Enter, type, 0 }; h.owner.DispatchKeyEvent(e); };
+    // Held past the long-press timeout: a long click and no click on release.
+    send(KeyEventType::KeyDown);
+    wait(450);
+    send(KeyEventType::KeyUp);
+    wait(350);
+    CHECK_EQ(longs, 1);
+    CHECK_EQ(clicks, 0);
+    // Two quick presses: a double click.
+    send(KeyEventType::KeyDown); send(KeyEventType::KeyUp);
+    wait(60);
+    send(KeyEventType::KeyDown); send(KeyEventType::KeyUp);
+    CHECK_EQ(doubles, 1);
+    // One press: the click comes once the double-tap timeout passes.
+    send(KeyEventType::KeyDown); send(KeyEventType::KeyUp);
+    CHECK_EQ(clicks, 0);
+    wait(60);    // the double-tap minimum time, then the rest of the timeout
+    wait(300);
+    CHECK_EQ(clicks, 1);
+    CHECK_EQ(longs, 1);
 }
 
 TEST(FocusPropertiesRedirectSkipAndCancel) {

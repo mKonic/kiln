@@ -6,6 +6,7 @@
 #include "kiln/foundation/Semantics.h"
 
 #include <cmath>
+#include <map>
 
 namespace kiln::foundation {
 
@@ -450,9 +451,29 @@ namespace kiln::foundation {
             // performClick: the sound, then the click.
             void PerformClick() const { PlayClickSound(); if (onClick) onClick(); }
             std::shared_ptr<MutableInteractionSource> source;
-            std::uint64_t press = 0, keyPress = 0, hover = 0;
+            std::uint64_t press = 0, hover = 0;
             rt::Job delayJob;
+            ui::ViewConfiguration config;   // the owner's, once pointer input has started
+            // Key presses (CombinedClickableNode): per key, the press interaction, the pending
+            // long click, and the first click of a possible double click.
+            struct DoubleKey { rt::Job job; bool minTimeElapsed = false; };
+            std::map<int, std::uint64_t> keyPresses;
+            std::map<int, rt::Job> longKeyJobs;
+            std::map<int, std::shared_ptr<DoubleKey>> doubleKeys;
         };
+
+        rt::Task<> LongKeyPress(std::shared_ptr<ClickState> st, std::int64_t ms) {
+            co_await rt::Delay(ms);
+            if (st->onLongClick) st->onLongClick();
+        }
+
+        rt::Task<> FirstKeyClick(std::shared_ptr<ClickState> st, std::shared_ptr<ClickState::DoubleKey> dk,
+                                 std::int64_t minMs, std::int64_t timeoutMs) {
+            co_await rt::Delay(minMs);
+            dk->minTimeElapsed = true;
+            co_await rt::Delay(timeoutMs - minMs);
+            if (st->onClick) st->onClick();
+        }
 
         rt::Task<> HoverLoop(PointerInputScope& s, std::shared_ptr<ClickState> st) {
             for (;;) {
@@ -512,17 +533,55 @@ namespace kiln::foundation {
                 const bool activate = e.keyCode == keys::Enter || e.keyCode == keys::NumpadEnter ||
                                       e.keyCode == keys::DpadCenter || e.keyCode == keys::Space;
                 if (!activate) return false;
+                const int key = e.keyCode;
+                auto& dispatcher = rt::Dispatcher::Main();
                 if (e.type == KeyEventType::KeyDown) {
-                    if (e.repeatCount == 0) {
-                        if (st->onPressed) st->onPressed(true);
-                        if (st->source && !st->keyPress) st->keyPress = st->source->Start(Interaction::Kind::Press);
+                    if (e.repeatCount != 0 || st->keyPresses.count(key)) return true;
+                    if (st->onPressed) st->onPressed(true);
+                    st->keyPresses[key] = st->source ? st->source->Start(Interaction::Kind::Press) : 0;
+                    // onClickKeyDownEvent: arm the long click; a second press inside the double
+                    // tap minimum time is a plain click instead.
+                    if (st->onLongClick && !st->longKeyJobs.count(key))
+                        st->longKeyJobs[key] = rt::Launch(dispatcher, LongKeyPress(st, st->config.longPressTimeoutMillis));
+                    if (auto it = st->doubleKeys.find(key); it != st->doubleKeys.end()) {
+                        if (it->second->job.Active()) {
+                            it->second->job.Cancel();
+                            if (!it->second->minTimeElapsed) { st->PerformClick(); st->doubleKeys.erase(it); }
+                        } else {
+                            st->doubleKeys.erase(it);
+                        }
                     }
                     return true;
                 }
                 if (e.type == KeyEventType::KeyUp) {
+                    auto pressed = st->keyPresses.find(key);
+                    if (pressed == st->keyPresses.end()) return false;
                     if (st->onPressed) st->onPressed(false);
-                    if (st->source && st->keyPress) { st->source->End(Interaction::Kind::Press, st->keyPress); st->keyPress = 0; }
-                    st->PerformClick();
+                    if (st->source && pressed->second) st->source->End(Interaction::Kind::Press, pressed->second);
+                    st->keyPresses.erase(pressed);
+                    bool longClicked = false;
+                    if (auto it = st->longKeyJobs.find(key); it != st->longKeyJobs.end()) {
+                        if (it->second.Active()) it->second.Cancel();
+                        else longClicked = true;
+                        st->longKeyJobs.erase(it);
+                    }
+                    if (st->onDoubleClick) {
+                        auto it = st->doubleKeys.find(key);
+                        if (it == st->doubleKeys.end()) {
+                            if (!longClicked) {
+                                st->PlayClickSound();
+                                auto dk = std::make_shared<ClickState::DoubleKey>();
+                                dk->job = rt::Launch(dispatcher, FirstKeyClick(st, dk, st->config.doubleTapMinTimeMillis,
+                                                                               st->config.doubleTapTimeoutMillis));
+                                st->doubleKeys[key] = std::move(dk);
+                            }
+                        } else {
+                            if (!longClicked) { st->PlayClickSound(); st->onDoubleClick(); }
+                            st->doubleKeys.erase(it);
+                        }
+                    } else if (!longClicked) {
+                        st->PerformClick();
+                    }
                     return true;
                 }
                 return false;
@@ -535,6 +594,7 @@ namespace kiln::foundation {
                 if (hasLong) cb.onLongPress = [st](Offset) { if (st->onLongClick) st->onLongClick(); };
                 if (hasDouble) cb.onDoubleTap = [st](Offset) { if (st->onDoubleClick) st->onDoubleClick(); };
                 const bool delayed = s.InScrollableContainer();
+                st->config = s.Config();
                 const std::int64_t delayMs = s.Config().tapTimeoutMillis;
                 auto* dispatcher = &rt::Dispatcher::Main();
                 cb.onPress = [st, delayed, delayMs, dispatcher](Offset at) {
