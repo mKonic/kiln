@@ -151,15 +151,27 @@ final class KilnAccessibility extends AccessibilityNodeProvider {
     }
 
     private boolean page(int id, String direction) {
-        boolean ok = KilnNative.semAction(id, 5, direction);
-        if (ok) send(id, AccessibilityEvent.TYPE_VIEW_SCROLLED);
-        return ok;
+        return KilnNative.semAction(id, 5, direction);
     }
 
     private boolean scroll(int id, String direction) {
-        boolean ok = KilnNative.semAction(id, 4, direction);
-        if (ok) send(id, AccessibilityEvent.TYPE_VIEW_SCROLLED);
-        return ok;
+        return KilnNative.semAction(id, 4, direction);
+    }
+
+    /** TYPE_VIEW_SCROLLED for each scroll container that moved (after the subtree change). */
+    void sendScrollEvents() {
+        int[] d = KilnNative.semScrollEvents();
+        if (d == null || view.getParent() == null) return;
+        for (int i = 0; i + 8 <= d.length; i += 8) {
+            AccessibilityEvent e = AccessibilityEvent.obtain(AccessibilityEvent.TYPE_VIEW_SCROLLED);
+            e.setPackageName(view.getContext().getPackageName());
+            e.setSource(view, d[i]);
+            if ((d[i + 1] & 1) != 0) { e.setScrollX(d[i + 2]); e.setMaxScrollX(d[i + 3]); }
+            if ((d[i + 1] & 2) != 0) { e.setScrollY(d[i + 4]); e.setMaxScrollY(d[i + 5]); }
+            e.setScrollDeltaX(d[i + 6]);
+            e.setScrollDeltaY(d[i + 7]);
+            view.getParent().requestSendAccessibilityEvent(view, e);
+        }
     }
 
     void send(int id, int type) {

@@ -26,7 +26,12 @@ public final class Probe extends Instrumentation {
         ua.setOnAccessibilityEventListener(e -> {
             if (e.getEventType() == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return;
             events.append("  event ").append(AccessibilityEvent.eventTypeToString(e.getEventType()))
-                  .append(" text=").append(e.getText()).append('\n');
+                  .append(" text=").append(e.getText());
+            if (e.getEventType() == AccessibilityEvent.TYPE_VIEW_SCROLLED)
+                events.append(" scrollY=").append(e.getScrollY()).append('/').append(e.getMaxScrollY())
+                      .append(" scrollX=").append(e.getScrollX()).append('/').append(e.getMaxScrollX())
+                      .append(" delta=").append(e.getScrollDeltaX()).append(',').append(e.getScrollDeltaY());
+            events.append('\n');
         });
         try {
             for (String c : cmd.split(";")) {

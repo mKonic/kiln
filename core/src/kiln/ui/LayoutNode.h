@@ -19,6 +19,7 @@
 
 #include <memory>
 #include <set>
+#include <unordered_map>
 #include <vector>
 
 namespace kiln { class TextBackend; }
@@ -191,6 +192,11 @@ namespace kiln::ui {
         void SetOnSemanticsChanged(std::function<void()> fn) { m_OnSemanticsChanged = std::move(fn); }
         LayoutNode* FindBySemanticsId(int id);
         int NextSemanticsId() { return ++m_LastSemanticsId; }
+        // dispatchOnScrollChanged: a scrollable consumed `delta` (pointer coordinates) itself.
+        // Kept per semantics id, in the direction of ACTION_SCROLL_FORWARD (down; the layout end),
+        // for the host's next TYPE_VIEW_SCROLLED; TakeScrollDelta returns and clears it.
+        void DispatchOnScrollChanged(LayoutNode& node, Offset delta);
+        Offset TakeScrollDelta(int semanticsId);
         const ViewConfiguration& Config() const { return m_Config; }
         bool NeedsMeasureOrLayout() const { return !m_MeasureDirty.empty() || !m_LayoutDirty.empty(); }
 
@@ -248,6 +254,7 @@ namespace kiln::ui {
         std::uint64_t m_SemanticsVersion = 0;
         std::function<void()> m_OnSemanticsChanged;
         int m_LastSemanticsId = 0;
+        std::unordered_map<int, Offset> m_ScrollDeltas;
     };
 
 }

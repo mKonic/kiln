@@ -184,4 +184,40 @@ namespace kiln::ui {
         return info;
     }
 
+    std::vector<ScrollEvent> ScrollEventTracker::Collect(const SemanticsNode& root, Owner& owner) {
+        std::vector<ScrollEvent> out;
+        std::unordered_map<int, Old> now;
+        std::function<void(const SemanticsNode&)> visit = [&](const SemanticsNode& n) {
+            const auto& c = n.config;
+            if (c.horizontalScrollAxisRange || c.verticalScrollAxisRange) {
+                Old cur;
+                if (const auto& r = c.horizontalScrollAxisRange; r && r->value) cur.x = r->value();
+                if (const auto& r = c.verticalScrollAxisRange; r && r->value) cur.y = r->value();
+                const auto it = m_Old.find(n.id);
+                const Offset delta = owner.TakeScrollDelta(n.id);
+                if (it != m_Old.end()) {
+                    const bool moved = (cur.x && it->second.x && *cur.x != *it->second.x) ||
+                                       (cur.y && it->second.y && *cur.y != *it->second.y);
+                    if (moved) {
+                        ScrollEvent e;
+                        e.id = n.id;
+                        auto range = [](const ScrollAxisRange& r) {
+                            return std::pair{ int(r.value()), int(r.maxValue ? r.maxValue() : 0) };
+                        };
+                        if (cur.x) e.x = range(*c.horizontalScrollAxisRange);
+                        if (cur.y) e.y = range(*c.verticalScrollAxisRange);
+                        e.deltaX = int(std::lround(delta.x));
+                        e.deltaY = int(std::lround(delta.y));
+                        out.push_back(e);
+                    }
+                }
+                now[n.id] = cur;
+            }
+            for (const auto& ch : n.children) visit(ch);
+        };
+        visit(root);
+        m_Old = std::move(now);
+        return out;
+    }
+
 }

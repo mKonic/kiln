@@ -27,6 +27,10 @@ namespace kiln::ui {
         if (m_Owner && m_Owner->GetOwner()) m_Owner->GetOwner()->InvalidateSemantics();
     }
 
+    void ModifierNode::DispatchOnScrollChanged(Offset delta) {
+        if (m_Owner && m_Owner->GetOwner()) m_Owner->GetOwner()->DispatchOnScrollChanged(*m_Owner, delta);
+    }
+
     void ModifierNode::InvalidateMeasure() { if (m_Owner) m_Owner->RequestRemeasure(); }
     void ModifierNode::InvalidateDraw() { if (m_Owner) m_Owner->InvalidateDraw(); }
 
@@ -544,7 +548,24 @@ namespace kiln::ui {
         return nullptr;
     }
 
+    void Owner::DispatchOnScrollChanged(LayoutNode& node, Offset delta) {
+        if ((delta.x == 0 && delta.y == 0) || node.SemanticsId() == 0) return;
+        // LTR negates both axes, RTL only y (a forward scroll moves content against the finger).
+        const Offset forward = m_Direction == LayoutDirection::Rtl ? Offset{ delta.x, -delta.y } : Offset{ -delta.x, -delta.y };
+        Offset& d = m_ScrollDeltas[node.SemanticsId()];
+        d = d + forward;
+    }
+
+    Offset Owner::TakeScrollDelta(int semanticsId) {
+        auto it = m_ScrollDeltas.find(semanticsId);
+        if (it == m_ScrollDeltas.end()) return {};
+        const Offset d = it->second;
+        m_ScrollDeltas.erase(it);
+        return d;
+    }
+
     void Owner::Forget(LayoutNode& n) {
+        m_ScrollDeltas.erase(n.SemanticsId());
         if (m_ActiveFocus && NodeOf(*m_ActiveFocus) == &n) { m_ActiveFocus = nullptr; m_FocusCaptured = false; }
         m_MeasureDirty.erase(&n);
         m_LayoutDirty.erase(&n);

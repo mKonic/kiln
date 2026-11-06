@@ -11,6 +11,7 @@
 #include <functional>
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace kiln::ui {
@@ -89,6 +90,24 @@ namespace kiln::ui {
         Rect boundsInRoot;
         SemanticsConfiguration config; // merged when mergeDescendants
         std::vector<SemanticsNode> children;
+    };
+
+    class Owner;
+
+    // TYPE_VIEW_SCROLLED (scheduleScrollEventIfNeeded): scroll containers whose axis range value
+    // moved since the last Collect, with their ranges and the pixels they scrolled themselves.
+    // A container seen for the first time only starts being observed.
+    struct ScrollEvent {
+        int id = 0;
+        std::optional<std::pair<int, int>> x, y;   // value, max
+        int deltaX = 0, deltaY = 0;
+    };
+    class ScrollEventTracker {
+    public:
+        std::vector<ScrollEvent> Collect(const SemanticsNode& root, Owner& owner);
+    private:
+        struct Old { std::optional<float> x, y; };
+        std::unordered_map<int, Old> m_Old;
     };
 
     // What the host reports as collection (item) info (CollectionInfo.android.kt): the node's

@@ -83,6 +83,7 @@ namespace kiln::foundation {
             const Offset left = delta - pre;
             const float selfConsumed = Reverse(state->ConsumeScrollDelta(Reverse(Axis(left))));
             const Offset self = Single(selfConsumed);
+            if (node) node->DispatchOnScrollChanged(self);
             const Offset post = node ? node->DispatchPostScroll(self, left - self, src) : Offset{};
             return pre + self + post;
         }

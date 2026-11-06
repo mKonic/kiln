@@ -100,6 +100,8 @@ namespace kiln::ui {
         std::weak_ptr<const char> AliveToken() const { return m_Alive; }
         // Semantics changed (call from Update when semantic params change).
         void InvalidateSemantics();
+        // The node's scrollable consumed `delta` itself (pointer coordinates), for accessibility.
+        void DispatchOnScrollChanged(Offset delta);
 
         LayoutNode* Owner() const { return m_Owner; }
         // Ask the owner to measure / place / draw again (call from Update when params change).

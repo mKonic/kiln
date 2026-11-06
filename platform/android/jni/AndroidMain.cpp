@@ -510,6 +510,27 @@ namespace {
         return a;
     }
 
+    // Scroll containers that moved since the last call: id, flags (1 x, 2 y), scrollX, maxScrollX,
+    // scrollY, maxScrollY, deltaX, deltaY each.
+    kiln::ui::ScrollEventTracker g_ScrollEvents;
+    jintArray SemScrollEvents(JNIEnv* env, jclass) {
+        std::vector<jint> d;
+        if (g_Host) {
+            if (const auto* root = SemFind(-1)) {
+                for (const auto& e : g_ScrollEvents.Collect(*root, g_Host->app->GetOwner())) {
+                    d.push_back(e.id);
+                    d.push_back((e.x ? 1 : 0) | (e.y ? 2 : 0));
+                    d.push_back(e.x ? e.x->first : 0); d.push_back(e.x ? e.x->second : 0);
+                    d.push_back(e.y ? e.y->first : 0); d.push_back(e.y ? e.y->second : 0);
+                    d.push_back(e.deltaX); d.push_back(e.deltaY);
+                }
+            }
+        }
+        jintArray a = env->NewIntArray(jsize(d.size()));
+        env->SetIntArrayRegion(a, 0, jsize(d.size()), d.data());
+        return a;
+    }
+
     jobjectArray SemStrings(JNIEnv* env, jclass, jint id) {
         if (!g_Host) return {};
         std::string v[6];
@@ -694,6 +715,7 @@ extern "C" JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void*) {
         { "backCancelled", "()V", reinterpret_cast<void*>(&BackCancelled) },
         { "backInvoked", "()V", reinterpret_cast<void*>(&BackInvoked) },
         { "semNode", "(I)[I", reinterpret_cast<void*>(&SemNode) },
+        { "semScrollEvents", "()[I", reinterpret_cast<void*>(&SemScrollEvents) },
         { "semStrings", "(I)[Ljava/lang/String;", reinterpret_cast<void*>(&SemStrings) },
         { "semAction", "(IILjava/lang/String;)Z", reinterpret_cast<void*>(&SemAction) },
         { "semHitTest", "(FF)I", reinterpret_cast<void*>(&SemHitTest) },

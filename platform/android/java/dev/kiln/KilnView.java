@@ -271,6 +271,7 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
             e.setPackageName(getContext().getPackageName());
             e.setSource(this);
             if (getParent() != null) getParent().requestSendAccessibilityEvent(this, e);
+            accessibility.sendScrollEvents();
         }, 100);
     }
 

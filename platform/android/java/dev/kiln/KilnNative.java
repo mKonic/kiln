@@ -40,6 +40,7 @@ final class KilnNative {
 
     // Semantics for KilnAccessibility.
     static native int[] semNode(int id);
+    static native int[] semScrollEvents();
     static native String[] semStrings(int id);
     static native boolean semAction(int id, int action, String argument);
     static native int semHitTest(float x, float y);
