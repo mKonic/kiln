@@ -155,7 +155,10 @@ namespace kiln::foundation {
                         break;
                     }
                     if (!dragging) {
-                        if (c->IsConsumed()) break;   // a child took the gesture
+                        // The down itself is usually consumed by a clickable child; only consumed
+                        // movement means a child took the gesture (awaitFirstDown requireUnconsumed=false).
+                        if (c->ChangedToDownIgnoreConsumed()) continue;
+                        if (c->IsConsumed()) break;
                         total += logic->Axis(c->PositionChangeIgnoreConsumed());
                         if (std::abs(total) >= slop && std::abs(total) > 0) {
                             dragging = true;

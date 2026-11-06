@@ -2,6 +2,7 @@
 
 #include "kiln/foundation/Compose.h"
 #include "kiln/foundation/Scroll.h"
+#include "kiln/foundation/Gestures.h"
 
 #include <cmath>
 
@@ -109,4 +110,22 @@ TEST(NestedScrollPassesLeftoverToParent) {
     CHECK_EQ(inner.Value(), 20);
     CHECK_EQ(outer.Value(), 20);                           // the leftover went to the parent
     h.Touch(PointerEventType::Release, 50, 2, false, 600);
+}
+
+TEST(DragOverClickableChildrenScrollsAndCancelsTheClick) {
+    Harness h;
+    ScrollState state;
+    int clicks = 0;
+    h.Run([&] {
+        Column(VerticalScroll(FillMax(Modifier{}, Axis::Both), state), [&] {
+            for (int i = 0; i < 10; ++i)
+                Box(Clickable(SizeMod(Modifier{}, Dp(100), Dp(50)), [&] { ++clicks; }), Alignment::TopStart(), false, {}, rt::Key(i));
+        });
+    });
+    h.Touch(PointerEventType::Press, 50, 90, true, 0);
+    h.Touch(PointerEventType::Move, 50, 60, true, 100);
+    h.Touch(PointerEventType::Move, 50, 40, true, 200);
+    h.Touch(PointerEventType::Release, 50, 40, false, 600);
+    CHECK_EQ(state.Value(), 42);
+    CHECK_EQ(clicks, 0);
 }
