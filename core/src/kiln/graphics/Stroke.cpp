@@ -1,4 +1,5 @@
 #include "kiln/graphics/Path.h"
+#include "kiln/graphics/PathEffect.h"
 
 #include <algorithm>
 #include <cmath>
@@ -156,7 +157,9 @@ namespace kiln::gfx {
         const float width = stroke.width > 0 ? stroke.width : 1.0f / scale;
         Stroker st{ width * 0.5f, tol, stroke };
         std::vector<Polyline> out;
-        for (const Polyline& c : path.Flatten(Matrix{}, tol)) st.Contour(c, out);
+        const Path effected = stroke.pathEffect ? stroke.pathEffect->Apply(path) : Path{};
+        const Path& src = stroke.pathEffect ? effected : path;
+        for (const Polyline& c : src.Flatten(Matrix{}, tol)) st.Contour(c, out);
         for (Polyline& p : out)
             for (Offset& q : p.points) q = m.Map(q);
         (void)kPi;

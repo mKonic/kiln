@@ -7,6 +7,7 @@
 #include "kiln/ui/Geometry.h"
 
 #include <cstdint>
+#include <memory>
 #include <vector>
 
 namespace kiln::gfx {
@@ -18,12 +19,15 @@ namespace kiln::gfx {
     enum class StrokeCap : std::uint8_t { Butt, Round, Square };
     enum class StrokeJoin : std::uint8_t { Miter, Round, Bevel };
 
+    class PathEffect;
+
     // DrawScope Stroke: width 0 is a hairline (one device pixel).
     struct Stroke {
         float width = 0;
         float miter = 4;
         StrokeCap cap = StrokeCap::Butt;
         StrokeJoin join = StrokeJoin::Miter;
+        std::shared_ptr<const PathEffect> pathEffect;   // applied to the path before stroking
         bool operator==(const Stroke&) const = default;
     };
 

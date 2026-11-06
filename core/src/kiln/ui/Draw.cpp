@@ -6,6 +6,7 @@
 #include "kiln/graphics/Image.h"
 #include "kiln/graphics/Brush.h"
 #include "kiln/graphics/Path.h"
+#include "kiln/graphics/PathEffect.h"
 
 #include <cmath>
 
@@ -104,7 +105,14 @@ namespace kiln::ui {
         };
         const float params[4] = { m_State.sx, m_State.sy, fx, fy };
         mix(params, sizeof(params));
-        if (stroke) { mix(stroke, sizeof(gfx::Stroke)); key ^= 0x5354524Bull; }
+        if (stroke) {
+            const float sp[2] = { stroke->width, stroke->miter };
+            const std::uint8_t cj[2] = { std::uint8_t(stroke->cap), std::uint8_t(stroke->join) };
+            mix(sp, sizeof(sp));
+            mix(cj, sizeof(cj));
+            if (stroke->pathEffect) { const std::uint64_t e = stroke->pathEffect->Hash(); mix(&e, sizeof(e)); }
+            key ^= 0x5354524Bull;
+        }
         const ui::Rect bounds = path.Bounds();
         const float pad = stroke ? std::max(stroke->width, 1.0f) * std::max(stroke->miter, 1.0f) : 1.0f;
         const ui::Rect device{ bounds.left * m.a + m.e - pad, bounds.top * m.d + m.f - pad,
