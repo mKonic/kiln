@@ -10,6 +10,7 @@
 #include <cmath>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -55,11 +56,22 @@ namespace kiln {
         bool operator==(const TextRunRequest& o) const;   // NaN-aware
     };
 
+    // A placeholder for inline content (PlaceholderSpan): a box of this size in the text,
+    // replacing the characters [start, end). Units: px, or em of the font size there.
+    struct PlaceholderRequest {
+        int start = 0, end = 0;
+        float width = 0, height = 0;
+        bool widthEm = false, heightEm = false;
+        std::uint8_t verticalAlign = 0;   // PlaceholderSpan ALIGN_*: 0 above baseline .. 6 text centre
+        bool operator==(const PlaceholderRequest&) const = default;
+    };
+
     // One paragraph. Enums carry Compose's values (TextAlign, TextDirection, LineBreak, ...).
     struct ParagraphRequest {
         std::string text;                   // UTF-8
         TextRunRequest base;                // the paragraph's style (paint before spans)
         std::vector<TextRunRequest> runs;   // cover the text, in order
+        std::vector<PlaceholderRequest> placeholders;
         float widthPx = 0;                  // <= 0 or infinite: unbounded
         float maxHeightPx = INFINITY;       // Ellipsis with several lines: fewer lines to fit
         int maxLines = 0x7fffffff;
@@ -108,6 +120,8 @@ namespace kiln {
         std::vector<LineData> lines;
         std::vector<RunSegment> segments;
         std::vector<RunMetrics> runMetrics;          // one per request run
+        // One per request placeholder: where it is, or none when ellipsized or cut off.
+        std::vector<std::optional<RectF>> placeholderRects;
         // Backend handle for position queries (0 = none). Released with TextBackend::Release.
         std::int64_t handle = 0;
     };

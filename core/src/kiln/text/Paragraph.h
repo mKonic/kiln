@@ -21,6 +21,15 @@ namespace kiln::text {
 
     enum class ResolvedTextDirection : std::uint8_t { Ltr, Rtl };
 
+    // Placeholder (Placeholder.kt): room for inline content, sized in sp or em, aligned to the
+    // line or the text.
+    enum class PlaceholderVerticalAlign : std::uint8_t { AboveBaseline = 1, Top, Bottom, Center, TextTop, TextBottom, TextCenter };
+    struct Placeholder {
+        TextUnit width, height;
+        PlaceholderVerticalAlign verticalAlign = PlaceholderVerticalAlign::AboveBaseline;
+        bool operator==(const Placeholder&) const = default;
+    };
+
     // FontMatcher.matchFont (CSS 4 font matching): the fonts of the best weight, preferring the
     // asked style.
     std::vector<Font> MatchFont(const std::vector<Font>& fonts, FontWeight weight, FontStyle style);
@@ -38,7 +47,8 @@ namespace kiln::text {
         TextOverflow overflow = TextOverflow::Clip;
     };
     ParagraphRequest BuildParagraphRequest(const AnnotatedString& text, const TextStyle& style, const ui::Density& density,
-                                           const ParagraphConstraints& constraints, std::vector<SpanStyle>* runStyles = nullptr);
+                                           const ParagraphConstraints& constraints, std::vector<SpanStyle>* runStyles = nullptr,
+                                           std::span<const Range<Placeholder>> placeholders = {});
     // resolveLineHeightInPx.
     float ResolveLineHeightPx(TextUnit lineHeight, float contextFontSizePx, const ui::Density& density);
 
@@ -79,7 +89,8 @@ namespace kiln::text {
 
     // MultiParagraphIntrinsics: per-paragraph-style intrinsic widths.
     ParagraphIntrinsicWidths MeasureIntrinsics(TextBackend* backend, const AnnotatedString& text, const TextStyle& style,
-                                               const ui::Density& density, ui::LayoutDirection direction);
+                                               const ui::Density& density, ui::LayoutDirection direction,
+                                               std::span<const Range<Placeholder>> placeholders = {});
 
     struct ParagraphInfo {
         std::shared_ptr<Paragraph> paragraph;
@@ -92,7 +103,8 @@ namespace kiln::text {
     public:
         // `style` unresolved; each paragraph merges its ParagraphStyle and resolves.
         MultiParagraph(TextBackend* backend, const AnnotatedString& text, const TextStyle& style, const ui::Density& density,
-                       ui::LayoutDirection direction, const ParagraphConstraints& constraints);
+                       ui::LayoutDirection direction, const ParagraphConstraints& constraints,
+                       std::span<const Range<Placeholder>> placeholders = {});
 
         const AnnotatedString& Text() const { return m_Text; }
         const std::vector<ParagraphInfo>& Paragraphs() const { return m_Infos; }
@@ -125,6 +137,8 @@ namespace kiln::text {
         std::pair<int, int> WordBoundary(int offset) const;
         ResolvedTextDirection ParagraphDirection(int offset) const;
         ResolvedTextDirection BidiRunDirection(int offset) const;
+        // One per placeholder given: where it is, or none (ellipsized, cut off, past maxLines).
+        const std::vector<std::optional<RectF>>& PlaceholderRects() const { return m_PlaceholderRects; }
 
     private:
         const ParagraphInfo& InfoForOffset(int offset) const;
@@ -135,6 +149,7 @@ namespace kiln::text {
         float m_Width = 0, m_Height = 0;
         int m_LineCount = 0;
         bool m_DidExceedMaxLines = false;
+        std::vector<std::optional<RectF>> m_PlaceholderRects;
     };
 
     struct TextLayoutInput {
@@ -143,6 +158,7 @@ namespace kiln::text {
         int maxLines = 0x7fffffff;
         bool softWrap = true;
         TextOverflow overflow = TextOverflow::Clip;
+        std::vector<Range<Placeholder>> placeholders;   // sorted, inside one paragraph each
         ui::Density density;
         ui::LayoutDirection layoutDirection = ui::LayoutDirection::Ltr;
         ui::Constraints constraints;
@@ -182,6 +198,7 @@ namespace kiln::text {
         std::pair<int, int> WordBoundary(int offset) const { return m_Paragraphs->WordBoundary(offset); }
         ResolvedTextDirection ParagraphDirection(int offset) const { return m_Paragraphs->ParagraphDirection(offset); }
         ResolvedTextDirection BidiRunDirection(int offset) const { return m_Paragraphs->BidiRunDirection(offset); }
+        const std::vector<std::optional<RectF>>& PlaceholderRects() const { return m_Paragraphs->PlaceholderRects(); }
 
     private:
         TextLayoutInput m_Input;

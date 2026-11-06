@@ -4,6 +4,7 @@
 #include <android/log.h>
 
 #include <chrono>
+#include <cmath>
 #include <string>
 #include <vector>
 
@@ -20,7 +21,8 @@ namespace kiln::android {
     // Request and result layouts (mirror KilnText.java).
     namespace {
         constexpr int kParagraphInts = 13, kRunInts = 8, kParagraphFloats = 6, kRunFloats = 6, kRunStrings = 4;
-        constexpr int kHeader = 12, kGlyph = 11, kLine = 14, kSegment = 5, kMetrics = 4;
+        constexpr int kHeader = 12, kGlyph = 11, kLine = 14, kSegment = 5, kMetrics = 4, kPlaceholder = 4;
+        constexpr int kPlaceholderInts = 5, kPlaceholderFloats = 2;
     }
 
     AndroidText::AndroidText(JNIEnv* env, jobject kilnText) {
@@ -78,8 +80,20 @@ namespace kiln::android {
 
     AndroidText::Args AndroidText::Encode(JNIEnv* env, const ParagraphRequest& r) {
         const int nRuns = int(r.runs.size());
-        std::vector<jint> ints(std::size_t(kParagraphInts + (nRuns + 1) * kRunInts));
-        std::vector<jfloat> floats(std::size_t(kParagraphFloats + (nRuns + 1) * kRunFloats));
+        const int nPh = int(r.placeholders.size());
+        std::vector<jint> ints(std::size_t(kParagraphInts + (nRuns + 1) * kRunInts + 1 + nPh * kPlaceholderInts));
+        std::vector<jfloat> floats(std::size_t(kParagraphFloats + (nRuns + 1) * kRunFloats + nPh * kPlaceholderFloats));
+        {
+            const std::size_t io = std::size_t(kParagraphInts + (nRuns + 1) * kRunInts), fo = std::size_t(kParagraphFloats + (nRuns + 1) * kRunFloats);
+            ints[io] = nPh;
+            for (int i = 0; i < nPh; ++i) {
+                const auto& ph = r.placeholders[std::size_t(i)];
+                jint* in = &ints[io + 1 + std::size_t(i * kPlaceholderInts)];
+                in[0] = ph.start; in[1] = ph.end; in[2] = ph.widthEm; in[3] = ph.heightEm; in[4] = ph.verticalAlign;
+                floats[fo + std::size_t(i * kPlaceholderFloats)] = ph.width;
+                floats[fo + std::size_t(i * kPlaceholderFloats) + 1] = ph.height;
+            }
+        }
         ints[0] = nRuns;
         ints[1] = r.maxLines;
         ints[2] = jint(r.overflow);
@@ -159,8 +173,8 @@ namespace kiln::android {
         out.firstBaseline = f[4];
         out.lastBaseline = f[5];
         out.didExceedMaxLines = f[6] != 0;
-        const int nGlyphs = int(f[7]), nLines = int(f[8]), nSegments = int(f[9]), nRuns = int(f[10]);
-        if (kHeader + nGlyphs * kGlyph + nLines * kLine + nSegments * kSegment + nRuns * kMetrics <= n) {
+        const int nGlyphs = int(f[7]), nLines = int(f[8]), nSegments = int(f[9]), nRuns = int(f[10]), nPh = int(f[11]);
+        if (kHeader + nGlyphs * kGlyph + nLines * kLine + nSegments * kSegment + nRuns * kMetrics + nPh * kPlaceholder <= n) {
             const jfloat* p = f + kHeader;
             out.glyphs.reserve(std::size_t(nGlyphs));
             for (int i = 0; i < nGlyphs; ++i, p += kGlyph) {
@@ -185,6 +199,10 @@ namespace kiln::android {
                 out.segments.push_back({ int(p[0]), int(p[1]), p[2], p[3], p[4] });
             for (int i = 0; i < nRuns; ++i, p += kMetrics)
                 out.runMetrics.push_back({ p[0], p[1], p[2], p[3] });
+            for (int i = 0; i < nPh; ++i, p += kPlaceholder) {
+                if (std::isnan(p[0])) out.placeholderRects.push_back(std::nullopt);
+                else out.placeholderRects.push_back(RectF{ p[0], p[1], p[2] - p[0], p[3] - p[1] });
+            }
         }
         env->ReleaseFloatArrayElements(result, f, JNI_ABORT);
         env->DeleteLocalRef(result);

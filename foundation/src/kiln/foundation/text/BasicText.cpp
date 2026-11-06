@@ -6,6 +6,7 @@
 #include "kiln/foundation/Hover.h"
 #include "kiln/foundation/Semantics.h"
 
+#include <algorithm>
 #include <cmath>
 #include <optional>
 
@@ -26,14 +27,15 @@ namespace kiln::foundation {
             TextStyle style;
             BasicTextOptions options;
             std::shared_ptr<LinkShared> links;
+            std::vector<text::Range<text::Placeholder>> placeholders;
             bool operator==(const TextParams& o) const {
                 // A callback is never equal: the node takes the new one (cheap, no relayout).
-                return !options.onTextLayout && !o.options.onTextLayout && links == o.links && text == o.text && style == o.style &&
+                return !options.onTextLayout && !o.options.onTextLayout && links == o.links && placeholders == o.placeholders && text == o.text && style == o.style &&
                        options.overflow == o.options.overflow && options.softWrap == o.options.softWrap &&
                        options.maxLines == o.options.maxLines && options.minLines == o.options.minLines;
             }
             bool SameLayout(const TextParams& o) const {
-                return text == o.text && style.HasSameLayoutAffectingAttributes(o.style) && options.overflow == o.options.overflow &&
+                return text == o.text && placeholders == o.placeholders && style.HasSameLayoutAffectingAttributes(o.style) && options.overflow == o.options.overflow &&
                        options.softWrap == o.options.softWrap && options.maxLines == o.options.maxLines && options.minLines == o.options.minLines;
             }
         };
@@ -77,6 +79,7 @@ namespace kiln::foundation {
                 in.maxLines = params.options.maxLines;
                 in.softWrap = params.options.softWrap;
                 in.overflow = params.options.overflow;
+                in.placeholders = params.placeholders;
                 in.density = d;
                 in.layoutDirection = dir;
                 in.constraints = c;
@@ -323,10 +326,27 @@ namespace kiln::foundation {
         }
     }
 
+    void AppendInlineContent(text::AnnotatedStringBuilder& b, const std::string& id, const std::string& alternateText) {
+        b.WithAnnotation(kInlineContentTag, id, [&] { b.Append(alternateText); });
+    }
+
     void BasicText(const AnnotatedString& text, const Modifier& modifier, TextStyle style, BasicTextOptions options, rt::Key key) {
         std::vector<Range<LinkAnnotation>> links;
         for (auto& l : text.GetLinkAnnotations(0, text.Length()))
             if (l.start != l.end) links.push_back(std::move(l));
+        // resolveInlineContent: the inline content ranges with content for their id.
+        struct Inline { int start, end; std::function<void(const std::string&)> children; std::string alternate; };
+        std::vector<text::Range<text::Placeholder>> placeholders;
+        std::vector<Inline> inlines;
+        if (!options.inlineContent.empty())
+            for (const auto& a : text.GetStringAnnotations(kInlineContentTag, 0, text.Length())) {
+                auto it = options.inlineContent.find(a.item);
+                if (it == options.inlineContent.end() || a.start >= a.end) continue;
+                placeholders.push_back({ it->second.placeholder, a.start, a.end, {} });
+                inlines.push_back({ a.start, a.end, it->second.children, text.SubSequence(a.start, a.end).Text() });
+            }
+        std::sort(placeholders.begin(), placeholders.end(), [](const auto& x, const auto& y) { return x.start < y.start; });
+        std::sort(inlines.begin(), inlines.end(), [](const auto& x, const auto& y) { return x.start < y.start; });
         // Text with its link and TTS spans for accessibility.
         std::vector<ui::TextSpanSemantics> spans;
         for (const auto& t : text.GetTtsAnnotations(0, text.Length()))
@@ -342,61 +362,78 @@ namespace kiln::foundation {
                                             [link = l.item] { if (link.listener && *link.listener) (*link.listener)(link); } });
             }
         });
-        if (links.empty()) {
-            Box(m.With<TextNode>(TextParams{ text, std::move(style), std::move(options), nullptr }), Alignment::TopStart(), false, {}, key);
+        if (links.empty() && inlines.empty()) {
+            Box(m.With<TextNode>(TextParams{ text, std::move(style), std::move(options), nullptr, {} }), Alignment::TopStart(), false, {}, key);
             return;
         }
 
-        // TextLinkScope: each link's style, merged with its focused / hovered / pressed styles
-        // while those hold, goes in right after the link (so later spans still win).
         // A child scope: hover / press / focus changes recompose only it.
-        rt::Composition::Current()->Child([text, m, style = std::move(style), options = std::move(options), links = std::move(links)]() mutable {
-        auto* c = rt::Composition::Current();
-        std::vector<std::shared_ptr<MutableInteractionSource>> sources;
-        for (std::size_t i = 0; i < links.size(); ++i) sources.push_back(RememberInteractionSource(rt::Key(int(i))));
-        auto shared = c->Remember<std::shared_ptr<LinkShared>>([] { return std::make_shared<LinkShared>(); });
-        std::vector<Range<text::Annotation>> annotations;
-        std::size_t index = 0;
-        for (const auto& a : text.Annotations()) {
-            annotations.push_back(a);
-            const auto* link = std::get_if<LinkAnnotation>(&a.item);
-            if (!link || a.start == a.end) continue;
-            const auto& source = sources[index++];
-            const auto& st = link->styles;
-            if (!st.style && !st.focusedStyle && !st.hoveredStyle && !st.pressedStyle) continue;
-            std::optional<SpanStyle> merged = st.style;
-            if (source->IsFocused()) merged = MergeOrUse(merged, st.focusedStyle);
-            if (source->IsHovered()) merged = MergeOrUse(merged, st.hoveredStyle);
-            if (source->IsPressed()) merged = MergeOrUse(merged, st.pressedStyle);
-            annotations.push_back({ merged.value_or(SpanStyle{}), a.start, a.end, {} });
-        }
-        AnnotatedString styled(text.Text(), std::move(annotations));
+        rt::Composition::Current()->Child([text, m, style = std::move(style), options = std::move(options), links = std::move(links),
+                                           placeholders = std::move(placeholders), inlines = std::move(inlines)]() mutable {
+            auto* c = rt::Composition::Current();
+            // TextLinkScope: each link's style, merged with its focused / hovered / pressed
+            // styles while those hold, goes in right after the link (so later spans still win).
+            std::vector<std::shared_ptr<MutableInteractionSource>> sources;
+            for (std::size_t i = 0; i < links.size(); ++i) sources.push_back(RememberInteractionSource(rt::Key(int(i))));
+            auto shared = c->Remember<std::shared_ptr<LinkShared>>([] { return std::make_shared<LinkShared>(); });
+            std::vector<Range<text::Annotation>> annotations;
+            std::size_t index = 0;
+            for (const auto& a : text.Annotations()) {
+                annotations.push_back(a);
+                const auto* link = std::get_if<LinkAnnotation>(&a.item);
+                if (!link || a.start == a.end) continue;
+                const auto& source = sources[index++];
+                const auto& st = link->styles;
+                if (!st.style && !st.focusedStyle && !st.hoveredStyle && !st.pressedStyle) continue;
+                std::optional<SpanStyle> merged = st.style;
+                if (source->IsFocused()) merged = MergeOrUse(merged, st.focusedStyle);
+                if (source->IsHovered()) merged = MergeOrUse(merged, st.hoveredStyle);
+                if (source->IsPressed()) merged = MergeOrUse(merged, st.pressedStyle);
+                annotations.push_back({ merged.value_or(SpanStyle{}), a.start, a.end, {} });
+            }
+            AnnotatedString styled(text.Text(), std::move(annotations));
 
-        auto policy = std::make_shared<ui::LambdaMeasurePolicy>([shared, links](MeasureScope& s, std::span<Measurable* const> children, const Constraints& con) {
-            std::vector<std::pair<Placeable*, ui::IntOffset>> placed;
-            for (std::size_t i = 0; i < children.size() && i < links.size(); ++i) {
-                const auto g = Geometry(links[i], *shared);
-                Placeable& p = children[i]->Measure(ui::Constraints::Fixed(g ? g->size.width : 0, g ? g->size.height : 0));
-                placed.emplace_back(&p, g ? g->topLeft : ui::IntOffset{});
-            }
-            return s.Layout(con.minWidth, con.minHeight, [placed](PlacementScope& ps) {
-                for (auto& [p, at] : placed) ps.Place(*p, at.x, at.y);
+            // Children: the link boxes, then the inline content, placed over the text.
+            const std::size_t nLinks = links.size();
+            auto policy = std::make_shared<ui::LambdaMeasurePolicy>([shared, links, nLinks](MeasureScope& s, std::span<Measurable* const> children, const Constraints& con) {
+                std::vector<std::pair<Placeable*, std::optional<ui::IntOffset>>> placed;
+                for (std::size_t i = 0; i < children.size(); ++i) {
+                    if (i < nLinks) {
+                        const auto g = Geometry(links[i], *shared);
+                        Placeable& p = children[i]->Measure(ui::Constraints::Fixed(g ? g->size.width : 0, g ? g->size.height : 0));
+                        placed.emplace_back(&p, g ? std::optional(g->topLeft) : std::nullopt);
+                        continue;
+                    }
+                    // TextMeasurePolicy: up to the placeholder's size, at its top-left.
+                    std::optional<RectF> rect;
+                    const std::size_t ph = i - nLinks;
+                    if (shared->layout && ph < shared->layout->PlaceholderRects().size()) rect = shared->layout->PlaceholderRects()[ph];
+                    Placeable& p = children[i]->Measure(rect ? ui::Constraints{ 0, int(std::floor(rect->w)), 0, int(std::floor(rect->h)) }
+                                                             : ui::Constraints::Fixed(0, 0));
+                    placed.emplace_back(&p, rect ? std::optional(ui::IntOffset{ RoundJava(rect->x), RoundJava(rect->y) }) : std::nullopt);
+                }
+                return s.Layout(con.minWidth, con.minHeight, [placed](PlacementScope& ps) {
+                    for (auto& [p, at] : placed) if (at) ps.Place(*p, at->x, at->y);
+                });
             });
-        });
-        Layout(m.With<TextNode>(TextParams{ std::move(styled), style, options, shared }), policy, [&] {
-            for (std::size_t i = 0; i < links.size(); ++i) {
-                const auto link = links[i];
-                ClickableOptions click;
-                click.interactionSource = sources[i];
-                click.useLocalIndication = false;
-                const std::string linkText = text.SubSequence(link.start, link.end).Text();
-                Modifier box = Semantics(Clip(Modifier{}, std::make_shared<LinkShape>(link, shared)),
-                                         [linkText](SemanticsConfiguration& sc) { sc.text.push_back(linkText); });
-                box = PointerHoverIcon(Hoverable(std::move(box), sources[i]), PointerIcon::Hand);
-                box = Clickable(std::move(box), [link, shared] { HandleLink(link.item, shared->owner); }, click);
-                Box(box, Alignment::TopStart(), false, {}, rt::Key(int(i)));
-            }
-        });
+            Layout(m.With<TextNode>(TextParams{ std::move(styled), style, options, shared, placeholders }), policy, [&] {
+                for (std::size_t i = 0; i < links.size(); ++i) {
+                    const auto link = links[i];
+                    ClickableOptions click;
+                    click.interactionSource = sources[i];
+                    click.useLocalIndication = false;
+                    const std::string linkText = text.SubSequence(link.start, link.end).Text();
+                    Modifier box = Semantics(Clip(Modifier{}, std::make_shared<LinkShape>(link, shared)),
+                                             [linkText](SemanticsConfiguration& sc) { sc.text.push_back(linkText); });
+                    box = PointerHoverIcon(Hoverable(std::move(box), sources[i]), PointerIcon::Hand);
+                    box = Clickable(std::move(box), [link, shared] { HandleLink(link.item, shared->owner); }, click);
+                    Box(box, Alignment::TopStart(), false, {}, rt::Key(int(i)));
+                }
+                for (std::size_t i = 0; i < inlines.size(); ++i) {
+                    const auto& in = inlines[i];
+                    Box(Modifier{}, Alignment::TopStart(), false, [&] { if (in.children) in.children(in.alternate); }, rt::Key(int(1000000 + i)));
+                }
+            });
         }, key);
     }
 

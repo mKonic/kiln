@@ -18,7 +18,7 @@ namespace kiln {
     }
 
     bool ParagraphRequest::operator==(const ParagraphRequest& o) const {
-        return text == o.text && base == o.base && runs == o.runs && widthPx == o.widthPx && maxHeightPx == o.maxHeightPx &&
+        return text == o.text && base == o.base && runs == o.runs && placeholders == o.placeholders && widthPx == o.widthPx && maxHeightPx == o.maxHeightPx &&
                maxLines == o.maxLines && overflow == o.overflow && textAlign == o.textAlign && textDirection == o.textDirection &&
                SameFloat(lineHeightPx, o.lineHeightPx) && lineHeightAlignment == o.lineHeightAlignment &&
                lineHeightTrim == o.lineHeightTrim && lineHeightMode == o.lineHeightMode && hasLineHeightStyle == o.hasLineHeightStyle &&
@@ -208,7 +208,8 @@ namespace kiln::text {
     }
 
     ParagraphRequest BuildParagraphRequest(const AnnotatedString& text, const TextStyle& style, const ui::Density& density,
-                                           const ParagraphConstraints& c, std::vector<SpanStyle>* runStyles) {
+                                           const ParagraphConstraints& c, std::vector<SpanStyle>* runStyles,
+                                           std::span<const Range<Placeholder>> placeholders) {
         ParagraphRequest r;
         r.text = text.Text();
         const float basePx = BasePx(style.span.fontSize, density);
@@ -223,6 +224,17 @@ namespace kiln::text {
             rr.end = run.end;
             r.runs.push_back(std::move(rr));
             if (runStyles) runStyles->push_back(std::move(run.item));
+        }
+        for (const auto& ph : placeholders) {
+            PlaceholderRequest pr;
+            pr.start = ph.start;
+            pr.end = ph.end;
+            pr.widthEm = ph.item.width.IsEm();
+            pr.heightEm = ph.item.height.IsEm();
+            pr.width = pr.widthEm ? ph.item.width.value : density.SpToPx(ph.item.width.value);
+            pr.height = pr.heightEm ? ph.item.height.value : density.SpToPx(ph.item.height.value);
+            pr.verticalAlign = std::uint8_t(int(ph.item.verticalAlign) - 1);
+            r.placeholders.push_back(pr);
         }
         r.widthPx = std::isinf(c.width) ? 0 : c.width;
         r.maxHeightPx = c.maxHeight;
@@ -311,6 +323,14 @@ namespace kiln::text {
             return AnnotatedString(sub.Text(), std::move(kept));
         }
 
+        // getLocalPlaceholders: the placeholders inside [start, end), shifted.
+        std::vector<Range<Placeholder>> LocalPlaceholders(std::span<const Range<Placeholder>> all, int start, int end) {
+            std::vector<Range<Placeholder>> out;
+            for (const auto& p : all)
+                if (p.start >= start && p.end <= end && p.start < p.end && !(p.start == end)) out.push_back({ p.item, p.start - start, p.end - start, p.tag });
+            return out;
+        }
+
         template<typename F>
         void ForEachParagraph(const AnnotatedString& text, const TextStyle& style, ui::LayoutDirection dir, F&& f) {
             for (const auto& range : text.NormalizedParagraphStyles(style.paragraph)) {
@@ -321,11 +341,13 @@ namespace kiln::text {
     }
 
     ParagraphIntrinsicWidths MeasureIntrinsics(TextBackend* backend, const AnnotatedString& text, const TextStyle& style,
-                                               const ui::Density& density, ui::LayoutDirection dir) {
+                                               const ui::Density& density, ui::LayoutDirection dir,
+                                               std::span<const Range<Placeholder>> placeholders) {
         ParagraphIntrinsicWidths out;
         if (!backend) return out;
-        ForEachParagraph(text, style, dir, [&](int, int, const AnnotatedString& sub, const TextStyle& merged) {
-            const auto w = backend->Intrinsics(BuildParagraphRequest(sub, merged, density, {}));
+        ForEachParagraph(text, style, dir, [&](int start, int end, const AnnotatedString& sub, const TextStyle& merged) {
+            const auto local = LocalPlaceholders(placeholders, start, end);
+            const auto w = backend->Intrinsics(BuildParagraphRequest(sub, merged, density, {}, nullptr, local));
             out.minWidth = std::max(out.minWidth, w.minWidth);
             out.maxWidth = std::max(out.maxWidth, w.maxWidth);
         });
@@ -333,7 +355,8 @@ namespace kiln::text {
     }
 
     MultiParagraph::MultiParagraph(TextBackend* backend, const AnnotatedString& text, const TextStyle& style, const ui::Density& density,
-                                   ui::LayoutDirection dir, const ParagraphConstraints& c)
+                                   ui::LayoutDirection dir, const ParagraphConstraints& c,
+                                   std::span<const Range<Placeholder>> placeholders)
         : m_Text(text) {
         float height = 0;
         int lineCount = 0;
@@ -346,7 +369,8 @@ namespace kiln::text {
             pc.maxLines = maxLines - lineCount;
             if (!std::isinf(c.maxHeight)) pc.maxHeight = std::max(0.0f, c.maxHeight - std::ceil(height));
             std::vector<SpanStyle> runStyles;
-            ParagraphRequest request = BuildParagraphRequest(WithoutParagraphStyles(text, range.start, range.end), merged, density, pc, &runStyles);
+            const auto local = LocalPlaceholders(placeholders, range.start, range.end);
+            ParagraphRequest request = BuildParagraphRequest(WithoutParagraphStyles(text, range.start, range.end), merged, density, pc, &runStyles, local);
             auto paragraph = std::make_shared<Paragraph>(backend, std::move(request), std::move(runStyles), c.width);
             ParagraphInfo info;
             info.startIndex = range.start;
@@ -359,6 +383,8 @@ namespace kiln::text {
             lineCount = info.endLineIndex;
             const bool exceeded = paragraph->Data().didExceedMaxLines || (info.endLineIndex == maxLines && i + 1 != ranges.size());
             m_Width = std::max(m_Width, paragraph->Width());
+            for (const auto& r : paragraph->Data().placeholderRects)
+                m_PlaceholderRects.push_back(r ? std::optional(RectF{ r->x, r->y + info.top, r->w, r->h }) : std::nullopt);
             info.paragraph = std::move(paragraph);
             m_Infos.push_back(std::move(info));
             if (exceeded) {
@@ -369,6 +395,7 @@ namespace kiln::text {
         if (!std::isinf(c.width) && c.width > 0) m_Width = c.width;
         m_Height = height;
         m_LineCount = lineCount;
+        m_PlaceholderRects.resize(std::max(m_PlaceholderRects.size(), placeholders.size()));
     }
 
     float MultiParagraph::FirstBaseline() const {
@@ -541,7 +568,7 @@ namespace kiln::text {
         const ui::Constraints& c = input.constraints;
         std::optional<ParagraphIntrinsicWidths> local;
         auto& intr = intrinsics ? *intrinsics : local;
-        if (!intr) intr = MeasureIntrinsics(backend, input.text, input.style, input.density, input.layoutDirection);
+        if (!intr) intr = MeasureIntrinsics(backend, input.text, input.style, input.density, input.layoutDirection, input.placeholders);
         // finalMaxWidth
         const bool widthMatters = input.softWrap || IsEllipsis(input.overflow);
         const int maxWidth = widthMatters && c.HasBoundedWidth() ? c.maxWidth : ui::Constraints::Infinity;
@@ -555,7 +582,7 @@ namespace kiln::text {
         pc.maxHeight = c.HasBoundedHeight() ? float(c.maxHeight) : INFINITY;
         pc.maxLines = maxLines;
         pc.overflow = input.overflow;
-        auto mp = std::make_shared<MultiParagraph>(backend, input.text, input.style, input.density, input.layoutDirection, pc);
+        auto mp = std::make_shared<MultiParagraph>(backend, input.text, input.style, input.density, input.layoutDirection, pc, input.placeholders);
         const ui::IntSize size{ std::clamp(int(std::ceil(mp->Width())), c.minWidth, c.maxWidth),
                                 std::clamp(int(std::ceil(mp->Height())), c.minHeight, c.maxHeight) };
         return TextLayoutResult(std::move(input), std::move(mp), size);

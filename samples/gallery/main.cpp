@@ -125,6 +125,15 @@ namespace {
                                [&] { b.Append("tapped " + std::to_string(linkTaps.Get())); });
                 });
                 BasicText(linked, Padding(Modifier{}, 16_dp, 4_dp), { 16, kOnSurface });
+                BasicTextOptions inlineOpts;
+                static const auto star = PolygonShape::Star(5, 0.5f, PolygonCornerRounding::Fraction(0.1f));
+                inlineOpts.inlineContent["star"] = { Placeholder{ Em(1.2f), Em(1.2f), PlaceholderVerticalAlign::TextCenter },
+                                                     [](const std::string&) { Box(Background(FillMax(Modifier{}, Axis::Both), Color(0xFFE8618Cu), star)); } };
+                BasicText(BuildAnnotatedString([](AnnotatedStringBuilder& b) {
+                              b.Append("Inline content: a ");
+                              AppendInlineContent(b, "star");
+                              b.Append(" sits in the line like a glyph.");
+                          }), Padding(Modifier{}, 16_dp, 4_dp), { 16, kOnSurface }, inlineOpts);
                 BasicTextOptions two;
                 two.maxLines = 2;
                 two.overflow = TextOverflow::Ellipsis;

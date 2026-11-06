@@ -10,6 +10,7 @@
 
 #include <climits>
 #include <functional>
+#include <map>
 #include <string>
 
 namespace kiln::foundation {
@@ -19,12 +20,24 @@ namespace kiln::foundation {
     using text::TextOverflow;
     using text::TextStyle;
 
+    // InlineTextContent: a composable shown in the text in place of an AppendInlineContent
+    // range, in a box the placeholder sizes; it gets the range's alternate text.
+    struct InlineTextContent {
+        text::Placeholder placeholder;
+        std::function<void(const std::string& alternateText)> children;
+    };
+    // appendInlineContent: marks text (by default U+FFFD) to be replaced by the inline content
+    // with this id.
+    inline constexpr const char* kInlineContentTag = "androidx.compose.foundation.text.inlineContent";
+    void AppendInlineContent(text::AnnotatedStringBuilder& builder, const std::string& id, const std::string& alternateText = "\xEF\xBF\xBD");
+
     struct BasicTextOptions {
         std::function<void(const TextLayoutResult&)> onTextLayout;
         TextOverflow overflow = TextOverflow::Clip;
         bool softWrap = true;
         int maxLines = INT_MAX;
         int minLines = 1;
+        std::map<std::string, InlineTextContent> inlineContent;
     };
 
     void BasicText(const AnnotatedString& text, const Modifier& modifier = {}, TextStyle style = {},

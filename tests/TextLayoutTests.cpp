@@ -1,6 +1,7 @@
 #include "Check.h"
 
 #include "kiln/foundation/Compose.h"
+#include "kiln/foundation/Semantics.h"
 #include "kiln/text/Paragraph.h"
 #include "kiln/ui/Focus.h"
 #include "kiln/ui/Semantics.h"
@@ -48,6 +49,19 @@ namespace {
                 x += w;
             }
             push(int(text.size()), int(text.size()));
+            // Placeholders: above the baseline, at their first character.
+            for (const auto& ph : r.placeholders) {
+                std::optional<RectF> rect;
+                for (const auto& l : d.lines) {
+                    if (ph.start < l.start || ph.start >= std::max(l.end, l.start + 1)) continue;
+                    float x = 0;
+                    for (int k = l.start; k < ph.start; ++k) x += Advance(r, k);
+                    const float h = ph.heightEm ? ph.height * r.base.sizePx : ph.height;
+                    rect = RectF{ x, l.baseline - h, ph.widthEm ? ph.width * r.base.sizePx : ph.width, h };
+                    break;
+                }
+                d.placeholderRects.push_back(rect);
+            }
             if (int(d.lines.size()) > r.maxLines) {
                 d.lines.resize(std::size_t(r.maxLines));
                 d.didExceedMaxLines = true;
@@ -100,6 +114,8 @@ namespace {
             return out;
         }
         static float Advance(const ParagraphRequest& r, int i) {
+            for (const auto& ph : r.placeholders)
+                if (i >= ph.start && i < ph.end) return i == ph.start ? (ph.widthEm ? ph.width * r.base.sizePx : ph.width) : 0;
             for (const auto& run : r.runs)
                 if (i >= run.start && i < run.end) return run.sizePx * 0.5f;
             return r.base.sizePx * 0.5f;
@@ -400,4 +416,53 @@ TEST(BasicTextLinksClickHoverAndOpenUris) {
     key(ui::keys::Tab);
     key(ui::keys::Enter);
     CHECK(opened.size() == 2);
+}
+
+TEST(BasicTextPlacesInlineContentInPlaceholders) {
+    FakeText backend;
+    ui::Owner owner;
+    owner.SetDensity({ 1, 1 });
+    owner.SetText(&backend);
+    rt::Composition comp(owner.Root(), rt::Dispatcher::Main());
+    AnnotatedStringBuilder b;
+    b.Append("ab ");
+    foundation::AppendInlineContent(b, "icon", "[i]");
+    b.Append(" cd");
+    const AnnotatedString text = b.ToAnnotatedString();
+    std::string alternate;
+    foundation::BasicTextOptions options;
+    options.inlineContent["icon"] = { Placeholder{ Sp(30), Sp(16), PlaceholderVerticalAlign::AboveBaseline },
+                                      [&](const std::string& alt) {
+                                          alternate = alt;
+                                          foundation::Box(foundation::Semantics(foundation::SizeMod(ui::Modifier{}, ui::Dp(30), ui::Dp(16)),
+                                                                               [](ui::SemanticsConfiguration& c) { c.text.push_back("icon"); }));
+                                      } };
+    std::shared_ptr<TextLayoutResult> last;
+    options.onTextLayout = [&](const TextLayoutResult& r) { last = std::make_shared<TextLayoutResult>(r); };
+    comp.SetContent([&] { foundation::Column(ui::Modifier{}, [&] { foundation::BasicText(text, {}, TextStyle(Sp(20)), options); }); });
+    comp.Recompose();
+    owner.MeasureAndLayout({ 300, 100 });
+    CHECK(alternate == "[i]");
+    // "ab " is 30 px, the placeholder 30 px (its other two characters none), " cd" 30 px.
+    CHECK(last && last->Size().width == 90);
+    CHECK(last && last->PlaceholderRects().size() == 1 && last->PlaceholderRects()[0]);
+    if (last && !last->PlaceholderRects().empty() && last->PlaceholderRects()[0]) {
+        const RectF r = *last->PlaceholderRects()[0];
+        CHECK_NEAR(r.x, 30, 1e-3f);
+        CHECK_NEAR(r.y, 20 - 16, 1e-3f);   // above the baseline (at 20)
+    }
+    // The content sits in it.
+    const ui::SemanticsNode root = owner.BuildSemanticsTree();
+    bool found = false;
+    std::function<void(const ui::SemanticsNode&)> walk = [&](const ui::SemanticsNode& n) {
+        if (!n.config.text.empty() && n.config.text[0] == "icon") {
+            found = true;
+            CHECK_NEAR(n.boundsInRoot.left, 30, 1e-3f);
+            CHECK_NEAR(n.boundsInRoot.top, 4, 1e-3f);
+            CHECK_NEAR(n.boundsInRoot.Width(), 30, 1e-3f);
+        }
+        for (const auto& c : n.children) walk(c);
+    };
+    walk(root);
+    CHECK(found);
 }

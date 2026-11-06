@@ -49,7 +49,10 @@ final class KilnText {
     // Request layout (mirrors AndroidText.cpp).
     private static final int P_INTS = 13, R_INTS = 8, P_FLOATS = 6, R_FLOATS = 6, R_STRS = 4;
     // Result layout.
-    private static final int HEADER = 12, GLYPH = 11, LINE = 14, SEGMENT = 5, METRICS = 4;
+    private static final int HEADER = 12, GLYPH = 11, LINE = 14, SEGMENT = 5, METRICS = 4, PLACEHOLDER = 4;
+    // After the runs: placeholder count, then [start, end, widthUnit, heightUnit, align] and
+    // [width, height] each (unit 0: px, 1: em of the font size).
+    private static final int PH_INTS = 5, PH_FLOATS = 2;
 
     private final Context context;
     private final Paint glyphPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -215,6 +218,7 @@ final class KilnText {
         TextPaint basePaint;
         Run[] runs;
         LineHeightStyleSpan lineHeightSpan;
+        PlaceholderSpan[] placeholders = new PlaceholderSpan[0];
     }
 
     private Built build(String text, int[] ints, float[] floats, String[] strs) {
@@ -245,6 +249,17 @@ final class KilnText {
         }
         final int first = (int) Math.ceil(floats[4]), rest = (int) Math.ceil(floats[5]);
         if (first != 0 || rest != 0) b.text.setSpan(new LeadingMarginSpan.Standard(first, rest), 0, len, spanFlags);
+        final int pio = P_INTS + (nRuns + 1) * R_INTS, pfo = P_FLOATS + (nRuns + 1) * R_FLOATS;
+        final int nPh = pio < ints.length ? ints[pio] : 0;
+        b.placeholders = new PlaceholderSpan[nPh];
+        for (int i = 0; i < nPh; i++) {
+            final int io = pio + 1 + i * PH_INTS, fo = pfo + i * PH_FLOATS;
+            PlaceholderSpan ph = new PlaceholderSpan(floats[fo], ints[io + 2], floats[fo + 1], ints[io + 3], ints[io + 4]);
+            ph.start = ints[io];
+            ph.end = ints[io + 1];
+            b.placeholders[i] = ph;
+            if (ph.end > ph.start) b.text.setSpan(ph, ph.start, ph.end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        }
         return b;
     }
 
@@ -370,7 +385,8 @@ final class KilnText {
         layouts.put(handle, laid);
 
         final int nRuns = b.runs.length;
-        float[] out = new float[HEADER + glyphs.size() * GLYPH + lineCount * LINE + segments.size() * SEGMENT + nRuns * METRICS];
+        final int nPh = b.placeholders.length;
+        float[] out = new float[HEADER + glyphs.size() * GLYPH + lineCount * LINE + segments.size() * SEGMENT + nRuns * METRICS + nPh * PLACEHOLDER];
         out[0] = widthPx > 0 ? Math.min(maxWidth, widthPx) : maxWidth;
         out[1] = height;
         out[2] = lineCount;
@@ -382,6 +398,7 @@ final class KilnText {
         out[8] = lineCount;
         out[9] = segments.size();
         out[10] = nRuns;
+        out[11] = nPh;
         int o = HEADER;
         for (float[] g : glyphs) { System.arraycopy(g, 0, out, o, GLYPH); o += GLYPH; }
         for (int line = 0; line < lineCount; line++) {
@@ -408,6 +425,11 @@ final class KilnText {
             out[o + 3] = run.paint.getStrikeThruThickness();
             o += METRICS;
         }
+        for (PlaceholderSpan ph : b.placeholders) {
+            final float[] r = placeholderRect(laid, ph, maxLines);
+            for (int k = 0; k < 4; k++) out[o + k] = r == null ? Float.NaN : r[k];
+            o += PLACEHOLDER;
+        }
         return out;
     }
 
@@ -420,7 +442,12 @@ final class KilnText {
         return lo;
     }
 
-    private static final class Piece { int run, start, end; boolean space; PositionedGlyphs glyphs; float advance; }
+    private static final class Piece { int run, start, end; boolean space, placeholder; PositionedGlyphs glyphs; float advance; }
+
+    private static PlaceholderSpan placeholderAt(Built b, int offset) {
+        for (PlaceholderSpan p : b.placeholders) if (offset >= p.start && offset < p.end) return p;
+        return null;
+    }
 
     private void shapeLine(Built b, StaticLayout layout, char[] chars, int line, int start, int end, float baseline,
                            ArrayList<float[]> glyphs, ArrayList<float[]> segments) {
@@ -447,8 +474,23 @@ final class KilnText {
             ArrayList<Piece> pieces = new ArrayList<>();
             int pos = rs;
             while (pos < re) {
+                PlaceholderSpan ph = placeholderAt(b, pos);
+                if (ph != null) {
+                    Piece p = new Piece();
+                    p.run = runs.length > 0 ? runAt(runs, pos) : 0;
+                    p.start = pos;
+                    p.end = Math.min(re, ph.end);
+                    p.placeholder = true;
+                    p.advance = pos == ph.start ? ph.widthPx : 0;
+                    natural += p.advance;
+                    pieces.add(p);
+                    pos = p.end;
+                    continue;
+                }
                 final int ri = runs.length > 0 ? runAt(runs, pos) : -1;
                 int next = ri >= 0 ? Math.min(re, Math.max(pos + 1, runs[ri].end)) : re;
+                for (PlaceholderSpan other : b.placeholders)
+                    if (other.start > pos && other.start < next) next = other.start;
                 boolean space = false;
                 if (justify) {
                     // Split so each space is its own piece.
@@ -476,6 +518,7 @@ final class KilnText {
         float x = justify ? layout.getParagraphLeft(line) : layout.getLineLeft(line);
         for (ArrayList<Piece> pieces : visual) {
             for (Piece p : pieces) {
+                if (p.placeholder) { x += p.advance; continue; }
                 final Run run = runs.length > 0 ? runs[p.run] : null;
                 final TextPaint paint = run != null ? run.paint : b.basePaint;
                 final float shift = paint.baselineShift;
@@ -561,6 +604,93 @@ final class KilnText {
         float min = 0;
         for (int[] range : longest) min = Math.max(min, Layout.getDesiredWidth(cs, range[0], range[1], paint));
         return new float[] { min, max };
+    }
+
+    /** AndroidParagraph.placeholderRects: [l, t, r, b], or null when ellipsized or cut off. */
+    private float[] placeholderRect(Laid l, PlaceholderSpan span, int maxLines) {
+        if (!span.laidOut || span.end <= span.start) return null;
+        final Layout layout = l.layout;
+        final int line = layout.getLineForOffset(span.start);
+        if (line >= maxLines || line >= l.lineCount) return null;
+        final boolean ellipsized = layout.getEllipsisCount(line) > 0 && span.end > layout.getLineStart(line) + layout.getEllipsisStart(line);
+        if (ellipsized || span.end > layout.getLineEnd(line)) return null;
+        final boolean ltrLine = layout.getParagraphDirection(line) == Layout.DIR_LEFT_TO_RIGHT;
+        final boolean rtlChar = layout.isRtlCharAt(span.start);
+        float left, right;
+        if (ltrLine && !rtlChar) { left = layout.getPrimaryHorizontal(span.start); right = left + span.widthPx; }
+        else if (ltrLine) { right = layout.getSecondaryHorizontal(span.start); left = right - span.widthPx; }
+        else if (rtlChar) { right = layout.getPrimaryHorizontal(span.start); left = right - span.widthPx; }
+        else { left = layout.getSecondaryHorizontal(span.start); right = left + span.widthPx; }
+        final float baseline = lineBaseline(l, line);
+        final float top;
+        switch (span.verticalAlign) {
+            case PlaceholderSpan.ALIGN_ABOVE_BASELINE: top = baseline - span.heightPx; break;
+            case PlaceholderSpan.ALIGN_TOP: top = l.lineTop[line]; break;
+            case PlaceholderSpan.ALIGN_BOTTOM: top = l.lineBottom[line] - span.heightPx; break;
+            case PlaceholderSpan.ALIGN_CENTER: top = (l.lineTop[line] + l.lineBottom[line] - span.heightPx) / 2; break;
+            case PlaceholderSpan.ALIGN_TEXT_TOP: top = span.fontMetrics.ascent + baseline; break;
+            case PlaceholderSpan.ALIGN_TEXT_BOTTOM: top = span.fontMetrics.descent + baseline - span.heightPx; break;
+            default: top = (span.fontMetrics.ascent + span.fontMetrics.descent - span.heightPx) / 2f + baseline; break;
+        }
+        return new float[] { left, top, right, top + span.heightPx };
+    }
+
+    private static float lineBaseline(Laid l, int line) {
+        if (line == l.lineCount - 1 && l.lastLineMetrics != null) return l.topPadding + l.lineTop[line] - l.lastLineMetrics.ascent;
+        return l.topPadding + l.layout.getLineBaseline(line);
+    }
+
+    /** PlaceholderSpan: reserves width and height for inline content; draws nothing. */
+    static final class PlaceholderSpan extends android.text.style.ReplacementSpan {
+        static final int ALIGN_ABOVE_BASELINE = 0, ALIGN_TOP = 1, ALIGN_BOTTOM = 2, ALIGN_CENTER = 3,
+                ALIGN_TEXT_TOP = 4, ALIGN_TEXT_BOTTOM = 5, ALIGN_TEXT_CENTER = 6;
+        final float width, height;
+        final int widthUnit, heightUnit, verticalAlign;   // unit 0: px, 1: em
+        int start, end;
+        int widthPx, heightPx;
+        boolean laidOut;
+        Paint.FontMetricsInt fontMetrics;
+
+        PlaceholderSpan(float width, int widthUnit, float height, int heightUnit, int verticalAlign) {
+            this.width = width; this.widthUnit = widthUnit; this.height = height; this.heightUnit = heightUnit;
+            this.verticalAlign = verticalAlign;
+        }
+
+        @Override
+        public int getSize(Paint paint, CharSequence text, int start, int end, Paint.FontMetricsInt fm) {
+            laidOut = true;
+            final float fontSize = paint.getTextSize();
+            fontMetrics = paint.getFontMetricsInt();
+            widthPx = (int) Math.ceil(widthUnit == 1 ? width * fontSize : width);
+            heightPx = (int) Math.ceil(heightUnit == 1 ? height * fontSize : height);
+            if (fm != null) {
+                fm.ascent = fontMetrics.ascent;
+                fm.descent = fontMetrics.descent;
+                fm.leading = fontMetrics.leading;
+                switch (verticalAlign) {
+                    case ALIGN_TOP: case ALIGN_TEXT_TOP:
+                        if (fm.ascent + heightPx > fm.descent) fm.descent = fm.ascent + heightPx;
+                        break;
+                    case ALIGN_BOTTOM: case ALIGN_TEXT_BOTTOM:
+                        if (fm.ascent > fm.descent - heightPx) fm.ascent = fm.descent - heightPx;
+                        break;
+                    case ALIGN_CENTER: case ALIGN_TEXT_CENTER:
+                        if (fm.descent - fm.ascent < heightPx) {
+                            fm.ascent -= (heightPx - (fm.descent - fm.ascent)) / 2;
+                            fm.descent = fm.ascent + heightPx;
+                        }
+                        break;
+                    default:
+                        if (fm.ascent > -heightPx) fm.ascent = -heightPx;
+                }
+                fm.top = Math.min(fontMetrics.top, fm.ascent);
+                fm.bottom = Math.max(fontMetrics.bottom, fm.descent);
+            }
+            return widthPx;
+        }
+
+        @Override
+        public void draw(Canvas canvas, CharSequence text, int start, int end, float x, int top, int y, int bottom, Paint paint) {}
     }
 
     // --- queries -----------------------------------------------------------------------------

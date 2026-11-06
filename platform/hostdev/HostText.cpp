@@ -54,7 +54,7 @@ namespace kiln::hostdev {
                 ParagraphData out;
                 if (!m_Main.ft) return out;
                 const std::string& utf8 = req.text;
-                struct PG { G g; int run; float px; };
+                struct PG { G g; int run; float px; int placeholder = -1; bool skip = false; };
                 std::vector<PG> glyphs;
                 auto runFor = [&](std::uint32_t byte) {
                     const int u16 = ByteToUtf16(utf8, byte);
@@ -74,6 +74,20 @@ namespace kiln::hostdev {
                         glyphs.push_back({ g, int(r), run.sizePx });
                     }
                 }
+                // Placeholders: their first glyph takes the placeholder's width, the rest none.
+                for (std::size_t ph = 0; ph < req.placeholders.size(); ++ph) {
+                    const auto& p = req.placeholders[ph];
+                    bool first = true;
+                    for (PG& pg : glyphs) {
+                        const int u16 = ByteToUtf16(utf8, pg.g.cluster);
+                        if (u16 < p.start || u16 >= p.end) continue;
+                        pg.skip = true;
+                        pg.g.adv = first ? std::ceil(p.widthEm ? p.width * pg.px : p.width) : 0;
+                        if (first) pg.placeholder = int(ph);
+                        first = false;
+                    }
+                }
+                out.placeholderRects.assign(req.placeholders.size(), std::nullopt);
                 const float basePx = req.base.sizePx;
                 auto metrics = [&](float px) {
                     SetSize(m_Main, px);
@@ -149,7 +163,12 @@ namespace kiln::hostdev {
                         if (pg.run != segRun) { out.segments.push_back({ pg.run, int(li), x, x, shift }); segRun = pg.run; }
                         out.segments.back().right = x + pg.g.adv;
                         para.stops.push_back({ pg.g.cluster, x, ld.top, ld.bottom, pg.g.adv });
-                        if (utf8[pg.g.cluster] != '\n') {
+                        if (pg.placeholder >= 0) {
+                            const auto& p = req.placeholders[std::size_t(pg.placeholder)];
+                            const float h = std::ceil(p.heightEm ? p.height * pg.px : p.height);
+                            out.placeholderRects[std::size_t(pg.placeholder)] = RectF{ x, ld.baseline - h, pg.g.adv, h };
+                        }
+                        if (utf8[pg.g.cluster] != '\n' && !pg.skip) {
                             const Slot sl = Rasterize(*pg.g.face, pg.g.id, pg.px);
                             if (!sl.empty) {
                                 GlyphQuad q;
