@@ -1,4 +1,5 @@
 #include "kiln/App.h"
+#include "kiln/ui/Locals.h"
 #include "kiln/runtime/State.h"
 #include "kiln/animation/Animatable.h"
 
@@ -43,11 +44,22 @@ namespace kiln {
         return handled;
     }
 
+    void App::SetLayoutDirection(ui::LayoutDirection d) {
+        if (m_Direction->Peek() == d) return;
+        m_Direction->Set(d);
+        m_Owner.SetDirection(d);
+        RequestFrame();
+    }
+
     void App::SetContent(std::function<void()> content) {
         if (!m_Composition) m_Composition = std::make_unique<rt::Composition>(m_Owner.Root(), m_Dispatcher);
         rt::SaveableStateRegistry* registry = m_Saveable.get();
-        m_Composition->SetContent([registry, content = std::move(content)] {
-            rt::Composition::Current()->Provide(rt::LocalSaveableStateRegistry, registry, content);
+        rt::State<ui::LayoutDirection>* dir = m_Direction.get();
+        m_Composition->SetContent([registry, dir, content = std::move(content)] {
+            auto* c = rt::Composition::Current();
+            c->Provide(ui::LocalLayoutDirection, dir->Get(), [c, registry, content] {
+                c->Provide(rt::LocalSaveableStateRegistry, registry, content);
+            });
         });
         RequestFrame();
     }

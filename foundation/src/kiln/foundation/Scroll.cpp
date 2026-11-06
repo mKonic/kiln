@@ -3,6 +3,7 @@
 #include "kiln/foundation/Overscroll.h"
 
 #include "kiln/ui/BringIntoView.h"
+#include "kiln/ui/Locals.h"
 #include "kiln/ui/VelocityTracker.h"
 
 #include <cmath>
@@ -476,6 +477,10 @@ namespace kiln::foundation {
             ScrollableOptions opt;
             opt.enabled = enabled;
             opt.reverseDirection = !reverseScrolling;
+            // ScrollableDefaults.reverseDirection: RTL flips horizontal scrolling again.
+            if (!vertical && rt::Composition::Current() &&
+                rt::Composition::Current()->Read(ui::LocalLayoutDirection) == LayoutDirection::Rtl)
+                opt.reverseDirection = !opt.reverseDirection;
             // rememberOverscrollEffect(): Android's default is the stretch.
             opt.overscroll = RememberOverscrollEffect();
             m = ClipToBounds(std::move(m));

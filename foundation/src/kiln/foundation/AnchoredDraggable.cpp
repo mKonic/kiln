@@ -1,6 +1,7 @@
 #include "kiln/foundation/AnchoredDraggable.h"
 
 #include "kiln/foundation/Overscroll.h"
+#include "kiln/ui/Locals.h"
 
 namespace kiln::foundation {
 
@@ -54,7 +55,9 @@ namespace kiln::foundation {
         DraggableOptions d;
         d.enabled = options.enabled;
         d.interactionSource = options.interactionSource;
-        d.reverseDirection = options.reverseDirection.value_or(false);
+        // Unset: reversed for horizontal drags in RTL (AnchoredDraggableNode.isReverseDirection).
+        d.reverseDirection = options.reverseDirection.value_or(orientation == Orientation::Horizontal &&
+                                                               c.Read(ui::LocalLayoutDirection) == LayoutDirection::Rtl);
         d.startDragImmediately = state.AnimationRunning();
         d.onDragStarted = [weak](Offset) {
             if (auto b = weak.lock()) { b->fling.Cancel(); b->state->BeginUserDrag(); }

@@ -441,7 +441,7 @@ namespace kiln::foundation {
 
     struct AnchoredDraggableOptions {
         bool enabled = true;
-        // nullopt: reversed for horizontal drags in RTL (kiln lays out LTR).
+        // nullopt: reversed for horizontal drags in RTL.
         std::optional<bool> reverseDirection;
         std::shared_ptr<MutableInteractionSource> interactionSource;
         std::shared_ptr<OverscrollEffect> overscroll;

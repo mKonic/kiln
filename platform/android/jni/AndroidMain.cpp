@@ -161,6 +161,11 @@ namespace {
         g_Host->app->SetAnimationScale(scale);
     }
 
+    void SetLayoutDirection(JNIEnv*, jclass, jboolean rtl) {
+        if (!g_Host) return;
+        g_Host->app->SetLayoutDirection(rtl ? kiln::ui::LayoutDirection::Rtl : kiln::ui::LayoutDirection::Ltr);
+    }
+
     void SetDensity(JNIEnv*, jclass, jfloat density, jfloat fontScale) {
         if (!g_Host) return;
         g_Host->app->SetDensity(density, fontScale);
@@ -641,6 +646,7 @@ extern "C" JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void*) {
         { "setVisible", "(Z)V", reinterpret_cast<void*>(&SetVisible) },
         { "setDensity", "(FF)V", reinterpret_cast<void*>(&SetDensity) },
         { "setAnimationScale", "(F)V", reinterpret_cast<void*>(&SetAnimationScale) },
+        { "setLayoutDirection", "(Z)V", reinterpret_cast<void*>(&SetLayoutDirection) },
         { "touchEvent", "(IIJ[I[F[IIIFF[J[F)V", reinterpret_cast<void*>(&TouchEvent) },
         { "keyEvent", "(IIIIIJ)Z", reinterpret_cast<void*>(&KeyEvent) },
         { "hostFocusChanged", "(Z)V", reinterpret_cast<void*>(&HostFocusChanged) },

@@ -12,6 +12,7 @@ final class KilnNative {
     static native void destroy();
     static native void setDensity(float density, float fontScale);
     static native void setAnimationScale(float scale);
+    static native void setLayoutDirection(boolean rtl);
     static native void touchEvent(int action, int actionIndex, long eventTime, int[] ids, float[] xy,
                                   int[] toolTypes, int buttons, int classification, float hscroll, float vscroll,
                                   long[] historyTimes, float[] historyXy);

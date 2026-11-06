@@ -1,6 +1,7 @@
 #include "kiln/foundation/Pager.h"
 
 #include "kiln/foundation/Gestures.h"
+#include "kiln/ui/Locals.h"
 
 #include <cmath>
 #include <limits>
@@ -145,7 +146,7 @@ namespace kiln::foundation {
         }
 
         // Records the finger's displacement of each gesture before the scrollable sees the up.
-        rt::Task<> PagerGestures(PointerInputScope& s, PagerState* st, bool vertical) {
+        rt::Task<> PagerGestures(PointerInputScope& s, PagerState* st, bool vertical, bool rtl) {
             for (;;) {
                 auto e = co_await s.AwaitPointerEvent(PointerEventPass::Initial);
                 if (e->changes.empty() || !e->changes[0].ChangedToDownIgnoreConsumed()) continue;
@@ -159,7 +160,8 @@ namespace kiln::foundation {
                     if (!c) break;
                     if (c->ChangedToUpIgnoreConsumed()) {
                         const Offset d = c->position - down;
-                        st->SetGestureDelta(vertical ? d.y : d.x);
+                        // In scroll terms: RTL mirrors a horizontal pager's finger direction.
+                        st->SetGestureDelta(vertical ? d.y : (rtl ? -d.x : d.x));
                         break;
                     }
                 }
@@ -180,9 +182,10 @@ namespace kiln::foundation {
             config.flingBehavior = [st](std::function<float(float)> scrollBy, float velocity) {
                 return PagerFling(st, std::move(scrollBy), velocity);
             };
-            config.extraModifier = [st, vertical](Modifier m) {
-                return PointerInput(std::move(m), rt::Keys(reinterpret_cast<std::uintptr_t>(st), vertical, 7),
-                                    [st, vertical](PointerInputScope& s) { return PagerGestures(s, st, vertical); });
+            const bool rtl = rt::Composition::Current() && rt::Composition::Current()->Read(ui::LocalLayoutDirection) == LayoutDirection::Rtl;
+            config.extraModifier = [st, vertical, rtl](Modifier m) {
+                return PointerInput(std::move(m), rt::Keys(reinterpret_cast<std::uintptr_t>(st), vertical, rtl, 7),
+                                    [st, vertical, rtl](PointerInputScope& s) { return PagerGestures(s, st, vertical, rtl); });
             };
             const int count = state.PageCount();
             LazyPagerLayout(vertical, modifier, state, count, std::move(content), options.key, std::move(config), key);

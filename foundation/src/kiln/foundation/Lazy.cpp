@@ -3,6 +3,7 @@
 #include "kiln/foundation/Semantics.h"
 #include "kiln/foundation/Draw.h"
 #include "kiln/runtime/Saveable.h"
+#include "kiln/ui/Locals.h"
 
 #include <algorithm>
 #include <cmath>
@@ -1189,6 +1190,7 @@ namespace kiln::foundation {
             ScrollableOptions so;
             so.enabled = userScrollEnabled;
             so.reverseDirection = !reverseLayout;   // ScrollableDefaults.reverseDirection
+            if (!vertical && comp.Read(ui::LocalLayoutDirection) == LayoutDirection::Rtl) so.reverseDirection = !so.reverseDirection;
             so.overscroll = RememberOverscrollEffect(key);
             so.flingBehavior = std::move(fling);
             // lazyLayoutSemantics: an estimated scroll range (index * 500 + offset, a little more

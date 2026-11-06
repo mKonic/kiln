@@ -59,6 +59,8 @@ namespace kiln {
             m_FontScale = fontScale;
             m_Owner.SetDensity({ density, fontScale });
         }
+        // The host view's layout direction (View.getLayoutDirection): layouts and LocalLayoutDirection.
+        void SetLayoutDirection(ui::LayoutDirection d);
         // C++ content root: composed into the window's layout tree each frame it changes.
         void SetContent(std::function<void()> content);
         // Saved instance state (rememberSaveable): restore before SetContent, save on demand.
@@ -93,6 +95,7 @@ namespace kiln {
         HostServices m_Services;
         ui::Owner m_Owner;
         std::unique_ptr<rt::SaveableStateRegistry> m_Saveable = std::make_unique<rt::SaveableStateRegistry>();
+        std::unique_ptr<rt::State<ui::LayoutDirection>> m_Direction = std::make_unique<rt::State<ui::LayoutDirection>>(ui::LayoutDirection::Ltr);
         std::unique_ptr<rt::Composition> m_Composition;
         kiln_app_callbacks m_Callbacks{};
         std::unique_ptr<hearth::Device> m_Device;

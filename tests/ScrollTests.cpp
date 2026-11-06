@@ -252,3 +252,24 @@ TEST(ShrinkingViewportKeepsTheFocusedChildVisible) {
     h.Frames(60);
     CHECK_EQ(state.Value(), 40);    // item 1 (50..100) back above the new bottom edge
 }
+
+#include "kiln/ui/Locals.h"
+
+TEST(HorizontalScrollReversesItsDragInRtl) {
+    Harness h;
+    h.owner.SetDirection(LayoutDirection::Rtl);
+    ScrollState state;
+    h.Run([&] {
+        rt::Composition::Current()->Provide(LocalLayoutDirection, LayoutDirection::Rtl, [&] {
+            Row(HorizontalScroll(FillMax(Modifier{}, Axis::Both), state), Arrangement::Start(), AlignmentV::Top(), [] {
+                for (int i = 0; i < 6; ++i) Box(SizeMod(Modifier{}, Dp(50), Dp(50)), Alignment::TopStart(), false, {}, rt::Key(i));
+            });
+        });
+    });
+    // The start is on the right; dragging right (towards the start side's opposite) scrolls forward.
+    h.Touch(PointerEventType::Press, 10, 50, true, 0);
+    h.Touch(PointerEventType::Move, 30, 50, true, 100);
+    h.Touch(PointerEventType::Move, 50, 50, true, 200);
+    CHECK_EQ(state.Value(), 32);   // 40 moved, 8 of it slop
+    h.Touch(PointerEventType::Release, 50, 50, false, 500);
+}

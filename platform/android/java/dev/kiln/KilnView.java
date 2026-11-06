@@ -310,6 +310,7 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
     protected void onAttachedToWindow() {
         super.onAttachedToWindow();
         back.onAttached();
+        KilnNative.setLayoutDirection(getLayoutDirection() == LAYOUT_DIRECTION_RTL);
     }
 
     @Override
@@ -333,6 +334,14 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
     }   // the SurfaceView child never sees touches
 
     private final ContentObserver animationScaleObserver;
+
+    // LocalLayoutDirection follows the view (locale, android:layoutDirection, RTL forced in
+    // developer options).
+    @Override
+    public void onRtlPropertiesChanged(int layoutDirection) {
+        super.onRtlPropertiesChanged(layoutDirection);
+        KilnNative.setLayoutDirection(layoutDirection == LAYOUT_DIRECTION_RTL);
+    }
 
     private void pushAnimationScale() {
         KilnNative.setAnimationScale(Settings.Global.getFloat(getContext().getContentResolver(),
