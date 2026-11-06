@@ -8,8 +8,8 @@
 #include <functional>
 #include <vector>
 
-namespace kiln { class QuadRenderer; struct ParagraphData; class AtlasPage; class PathCache; class GradientRamps; struct Rgba; }
-namespace kiln::gfx { class Path; struct Stroke; struct Brush; }
+namespace kiln { class QuadRenderer; struct ParagraphData; class AtlasPage; class PathCache; class GradientRamps; class ImageCache; struct Rgba; }
+namespace kiln::gfx { class Path; struct Stroke; struct Brush; class ImageBitmap; }
 
 namespace kiln::ui {
 
@@ -18,6 +18,7 @@ namespace kiln::ui {
         std::function<const AtlasPage*(std::uint32_t)> page;
         PathCache* paths = nullptr;
         GradientRamps* gradients = nullptr;
+        ImageCache* images = nullptr;
         float viewportWidth = 0, viewportHeight = 0;
     };
 
@@ -33,6 +34,8 @@ namespace kiln::ui {
         void DrawParagraph(const ParagraphData& paragraph, Offset topLeft, Color color);
         // Fills the path, or strokes it when `stroke` is given (DrawScope.drawPath).
         void DrawPath(const gfx::Path& path, Color color, const gfx::Stroke* stroke = nullptr);
+        // drawImage(image, srcOffset, srcSize, dstOffset, dstSize, alpha): src in image pixels.
+        void DrawImage(const gfx::ImageBitmap& image, Rect src, Offset dstOffset, Size dstSize, float alpha = 1);
         // Brush overloads; `alpha` multiplies the brush (gradient geometry is in scope coordinates).
         void DrawRect(const gfx::Brush& brush, Offset topLeft, Size size, float alpha = 1);
         void DrawRoundRect(const gfx::Brush& brush, Offset topLeft, Size size, float cornerRadius, float alpha = 1);

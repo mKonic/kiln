@@ -25,6 +25,8 @@ namespace kiln {
     class AtlasPage {
     public:
         AtlasPage(hearth::Device& device, std::uint32_t width, std::uint32_t height);
+        // A whole image uploaded once, with a mip chain for minified drawing.
+        AtlasPage(hearth::Device& device, std::uint32_t width, std::uint32_t height, const void* rgba, bool mipmaps);
         void Upload(const void* rgba, std::uint32_t strideBytes, std::uint32_t x, std::uint32_t y,
                     std::uint32_t w, std::uint32_t h);
         const hearth::Ref<hearth::Texture>& Texture() const { return m_Texture; }
@@ -61,6 +63,8 @@ namespace kiln {
         void DrawAtlas(const RectF& rect, const RectF& uv, const AtlasPage& page, Rgba color, Mode mode,
                        const Paint* paint = nullptr);
         // The gradient ramp texture (bound next to every atlas page).
+        // Drops the cached bind group of a page about to be destroyed.
+        void ForgetPage(const AtlasPage* page) { std::erase_if(m_Groups, [page](const auto& g) { return g.first == page; }); }
         void SetRampTexture(hearth::Ref<hearth::Texture> ramp) { m_Ramp = std::move(ramp); m_Groups.clear(); }
         // Clip applied to quads submitted after this call: rect in framebuffer pixels (x0, y0,
         // x1, y1) with a corner radius; nullopt-like when enabled is false.

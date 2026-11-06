@@ -144,8 +144,10 @@ namespace kiln {
         m_Paths->BeginFrame();
         if (!m_Gradients) { m_Gradients = std::make_unique<GradientRamps>(*m_Device); m_Quads->SetRampTexture(m_Gradients->Texture()); }
         m_Gradients->BeginFrame();
+        if (!m_Images) m_Images = std::make_unique<ImageCache>(*m_Device, *m_Quads);
+        m_Images->BeginFrame();
         if (m_Services.text) m_Services.text->SyncAtlas(*this);
-        m_Owner.Draw({ m_Quads.get(), [this](std::uint32_t i) { return Page(i); }, m_Paths.get(), m_Gradients.get(), float(m_Width), float(m_Height) });
+        m_Owner.Draw({ m_Quads.get(), [this](std::uint32_t i) { return Page(i); }, m_Paths.get(), m_Gradients.get(), m_Images.get(), float(m_Width), float(m_Height) });
         kiln_frame frame{ this };
         if (m_Callbacks.on_frame) m_Callbacks.on_frame(m_Callbacks.user, &frame, timeSeconds);
         if (m_Services.text) m_Services.text->SyncAtlas(*this);

@@ -2,6 +2,8 @@
 
 #include "kiln/PathCache.h"
 #include "kiln/Gradients.h"
+#include "kiln/ImageCache.h"
+#include "kiln/graphics/Image.h"
 #include "kiln/graphics/Brush.h"
 #include "kiln/graphics/Path.h"
 
@@ -189,6 +191,19 @@ namespace kiln::ui {
         }
         if (a <= 0) return;
         PathCoverage(path, stroke, { a, a, a, a }, &paint);
+    }
+
+    void DrawScope::DrawImage(const gfx::ImageBitmap& image, Rect src, Offset dst, Size size, float alpha) {
+        if (!m_Target.quads || !m_Target.images || !image) return;
+        const float a = alpha * m_State.alpha;
+        if (a <= 0) return;
+        const AtlasPage* page = m_Target.images->PageFor(image);
+        if (!page) return;
+        const float iw = float(image.Width()), ih = float(image.Height());
+        const Rect d = ToDevice(dst, size);
+        m_Target.quads->DrawAtlas({ d.left, d.top, d.Width(), d.Height() },
+                                  { src.left / iw, src.top / ih, src.Width() / iw, src.Height() / ih }, *page,
+                                  { a, a, a, a }, QuadRenderer::Mode::Color);
     }
 
 }
