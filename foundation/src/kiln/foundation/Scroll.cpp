@@ -1,5 +1,6 @@
 #include "kiln/foundation/Scroll.h"
 #include "kiln/foundation/Semantics.h"
+#include "kiln/foundation/Focus.h"
 #include "kiln/foundation/Overscroll.h"
 
 #include "kiln/ui/BringIntoView.h"
@@ -62,6 +63,7 @@ namespace kiln::foundation {
         float friction = 0.015f;
         FlingBehavior flingBehavior;
         rt::Job semanticsScroll;   // ScrollBy from accessibility (an animated scroll)
+        IntSize viewport;          // ContentInViewNode's measured size (page keys)
 
         float Axis(Offset o) const { return orientation == Orientation::Vertical ? o.y : o.x; }
         Offset Single(float v) const { return orientation == Orientation::Vertical ? Offset{ 0, v } : Offset{ v, 0 }; }
@@ -253,6 +255,7 @@ namespace kiln::foundation {
             void OnRemeasured(IntSize size) {
                 const IntSize previous = ViewportOrZero();
                 viewport = size;
+                params.logic->viewport = size;
                 if (AxisOf(size) >= AxisOf(previous)) return;
                 // Content anchored at the far edge (reverseDirection false) moves with the shrink.
                 const IntOffset adjust = !params.logic->reverse
@@ -449,6 +452,17 @@ namespace kiln::foundation {
         m = m.With<NestedNode>(NestedParams{ logic });
         m = m.With<ContentInViewNode>(ContentInViewParams{ logic });
         if (!opt.enabled) return m;
+        // PageUp / PageDown (ScrollableNode.onKeyEvent): a viewport at once, unless Ctrl is held.
+        m = OnKeyEvent(std::move(m), [logic](const ui::KeyEvent& e) {
+            if ((e.keyCode != ui::keys::PageUp && e.keyCode != ui::keys::PageDown) || e.type != ui::KeyEventType::KeyDown || e.Ctrl())
+                return false;
+            const IntSize v = logic->viewport;
+            const float size = float(logic->orientation == Orientation::Vertical ? v.height : v.width);
+            const float amount = e.keyCode == ui::keys::PageUp ? size : -size;   // in drag direction
+            ScrollSession session(*logic->state, [] {});
+            logic->Dispatch(logic->Single(amount), NestedScrollSource::UserInput);
+            return true;
+        });
         // SemanticsActions.ScrollBy (semanticsScrollBy): an animated scroll along our axis.
         m = Semantics(std::move(m), [logic, o](SemanticsConfiguration& c) {
             c.scrollBy = [logic, o](float x, float y) {

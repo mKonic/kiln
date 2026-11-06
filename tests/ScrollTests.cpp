@@ -273,3 +273,32 @@ TEST(HorizontalScrollReversesItsDragInRtl) {
     CHECK_EQ(state.Value(), 32);   // 40 moved, 8 of it slop
     h.Touch(PointerEventType::Release, 50, 50, false, 500);
 }
+
+TEST(PageKeysScrollByAViewport) {
+    Harness h;
+    ScrollState state;
+    FocusRequester focus;
+    h.Run([&] {
+        Column(VerticalScroll(FillMax(Modifier{}, Axis::Both), state), [&] {
+            for (int i = 0; i < 10; ++i) {
+                Modifier m = SizeMod(Modifier{}, Dp(100), Dp(50));
+                if (i == 0) m = Focusable(FocusRequesterModifier(std::move(m), focus));
+                Box(m, Alignment::TopStart(), false, {}, rt::Key(i));
+            }
+        });
+    });
+    CHECK(focus.RequestFocus());
+    h.Frames(5);
+    KeyEvent down{ keys::PageDown, KeyEventType::KeyDown };
+    CHECK(h.owner.DispatchKeyEvent(down));
+    h.Pump();
+    CHECK_EQ(state.Value(), 100);
+    KeyEvent up{ keys::PageUp, KeyEventType::KeyDown };
+    CHECK(h.owner.DispatchKeyEvent(up));
+    h.Pump();
+    CHECK_EQ(state.Value(), 0);
+    KeyEvent ctrl{ keys::PageDown, KeyEventType::KeyDown, kMetaCtrl };
+    CHECK(!h.owner.DispatchKeyEvent(ctrl) || state.Value() == 0);
+    h.Pump();
+    CHECK_EQ(state.Value(), 0);
+}
