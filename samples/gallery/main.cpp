@@ -12,7 +12,7 @@
 #include <kiln/foundation/Draw.h>
 #include <kiln/foundation/Image.h>
 
-#include "assets/Orb.h"
+#include <kiln/Assets.h>
 #include <kiln/foundation/text/BasicTextField.h>
 #include <kiln/runtime/Task.h>
 #include <kiln/runtime/Saveable.h>
@@ -173,10 +173,19 @@ namespace {
             // Images: a decoded PNG at its intrinsic size, scaled down with Fit, and cropped.
             Row(Padding(Modifier{}, 16_dp, 0_dp), Arrangement::SpacedBy(16_dp), AlignmentV::CenterVertically(), [&] {
                 auto& c2 = *kiln::rt::Composition::Current();
-                const auto& orb = c2.Remember<kiln::gfx::ImageBitmap>([] { return kiln::gfx::ImageBitmap::Decode(kOrbPng); });
+                const auto& orb = c2.Remember<kiln::gfx::ImageBitmap>([] {
+                    auto bytes = kiln::ReadAsset("orb.png");
+                    return bytes ? kiln::gfx::ImageBitmap::Decode(*bytes) : kiln::gfx::ImageBitmap{};
+                });
                 Image(orb, "Orb");
                 Image(orb, "Small orb", SizeMod(Modifier{}, 32_dp, 32_dp));
                 Image(orb, "Cropped orb", SizeMod(Modifier{}, 96_dp, 32_dp), Alignment::Center(), ContentScale::Crop());
+                // ColorFilter.tint (SrcIn) and a greyscale colour matrix.
+                Image(orb, "Tinted orb", SizeMod(Modifier{}, 32_dp, 32_dp), Alignment::Center(), ContentScale::Fit(), 1,
+                      kiln::gfx::ColorFilter::Tint(kTertiary));
+                Image(orb, "Grey orb", SizeMod(Modifier{}, 32_dp, 32_dp), Alignment::Center(), ContentScale::Fit(), 1,
+                      kiln::gfx::ColorFilter::ColorMatrix({ 0.3f, 0.59f, 0.11f, 0, 0, 0.3f, 0.59f, 0.11f, 0, 0,
+                                                            0.3f, 0.59f, 0.11f, 0, 0, 0, 0, 0, 1, 0 }));
             });
             Row(Padding(Modifier{}, 16_dp, 0_dp), Arrangement::SpacedBy(16_dp), AlignmentV::CenterVertically(), [&] {
                 // Rounded clip around a child that overflows it.
