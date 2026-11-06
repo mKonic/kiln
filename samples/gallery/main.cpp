@@ -9,6 +9,7 @@
 #include <kiln/foundation/Back.h>
 #include <kiln/foundation/text/BasicTextField.h>
 #include <kiln/runtime/Task.h>
+#include <kiln/runtime/Saveable.h>
 
 using namespace kiln::foundation;
 using namespace kiln::ui;
@@ -71,7 +72,7 @@ namespace {
                 BasicTextField(field, Padding(FillMax(Modifier{}, Axis::Horizontal), 16_dp, 16_dp), opt);
             });
             BasicText("Field text: " + field.Text(), Padding(Modifier{}, 16_dp, 0_dp), { 14, kVariant });
-            auto& taps = RememberState(0);
+            auto& taps = kiln::rt::RememberSaveableState(0);
             auto& pressed = RememberState(false);
             Row(Padding(Modifier{}, 16_dp, 0_dp), Arrangement::SpacedBy(16_dp), AlignmentV::CenterVertically(), [&] {
                 // Pressed colour animates in Oklab with a spring.
@@ -85,7 +86,7 @@ namespace {
                 BasicText("Tapped " + std::to_string(taps.Get()) + " times", {}, { 16, kOnSurface });
             });
             // Predictive back: the panel follows the gesture and closes when it completes.
-            auto& panelOpen = RememberState(false);
+            auto& panelOpen = kiln::rt::RememberSaveableState(false);
             auto& backProgress = RememberState(0.0f);
             PredictiveBackHandler(panelOpen.Get(), [&](BackProgress& p) -> kiln::rt::Task<> {
                 while (auto e = co_await p.Next()) backProgress.Set(e->progress);
