@@ -1,0 +1,90 @@
+#pragma once
+
+// Focus and keys (spec 03 req. 4-5, §focus): a single active focus target per owner; states are
+// derived (Active/Captured for the target, ActiveParent for its focus ancestors, Inactive for the
+// rest). 1D search (Tab) follows placement order and wraps; 2D search (arrows, DPAD) is Android
+// FocusFinder's beam algorithm. Key events tunnel root -> focused (preview) and bubble back.
+
+#include "kiln/ui/Geometry.h"
+#include "kiln/ui/Modifier.h"
+
+#include <cstdint>
+#include <functional>
+#include <vector>
+
+namespace kiln::ui {
+
+    enum class FocusDirection : std::uint8_t { Next = 1, Previous, Left, Right, Up, Down, Enter, Exit };
+    enum class FocusState : std::uint8_t { Inactive, Active, ActiveParent, Captured };
+    enum class Focusability : std::uint8_t { SystemDefined, Always, Never };
+    enum class InputMode : std::uint8_t { Touch, Keyboard };
+
+    inline bool IsFocused(FocusState s) { return s == FocusState::Active || s == FocusState::Captured; }
+    inline bool HasFocus(FocusState s) { return s != FocusState::Inactive; }
+
+    // Android key codes (KeyEvent.KEYCODE_*); Key.kt wraps the native code.
+    namespace keys {
+        constexpr int DpadUp = 19, DpadDown = 20, DpadLeft = 21, DpadRight = 22, DpadCenter = 23;
+        constexpr int Tab = 61, Space = 62, Enter = 66, Del = 67, Escape = 111, Back = 4;
+        constexpr int PageUp = 92, PageDown = 93, MoveHome = 122, MoveEnd = 123, NumpadEnter = 160;
+        constexpr int NavigatePrevious = 260, NavigateNext = 261;
+    }
+    constexpr std::uint32_t kMetaShift = 0x1, kMetaAlt = 0x2, kMetaCtrl = 0x1000, kMetaMeta = 0x10000;
+
+    enum class KeyEventType : std::uint8_t { Unknown, KeyDown, KeyUp };
+    struct KeyEvent {
+        int keyCode = 0;
+        KeyEventType type = KeyEventType::Unknown;
+        std::uint32_t metaState = 0;
+        std::uint32_t unicode = 0;
+        int repeatCount = 0;
+        std::int64_t uptimeMillis = 0;
+        bool Shift() const { return metaState & kMetaShift; }
+        bool Ctrl() const { return metaState & kMetaCtrl; }
+    };
+
+    class KeyInputModifier {
+    public:
+        virtual ~KeyInputModifier() = default;
+        virtual bool OnPreKeyEvent(const KeyEvent&) { return false; }
+        virtual bool OnKeyEvent(const KeyEvent&) { return false; }
+    };
+
+    class FocusTargetNode;
+
+    // focusTarget(): a node that can hold focus.
+    class FocusTargetNode : public ModifierNode {
+    public:
+        Focusability focusability = Focusability::Always;
+        std::function<void(FocusState previous, FocusState current)> onFocusChange;
+
+        FocusTargetNode* AsFocusTarget() override { return this; }
+        FocusState State() const;
+        bool CanFocus() const;
+        bool RequestFocus(FocusDirection direction = FocusDirection::Enter);
+        void OnDetach() override;
+
+    private:
+        friend class Owner;
+        FocusState m_LastReported = FocusState::Inactive;
+        bool m_IsRoot = false;
+    };
+
+    // onFocusChanged / onFocusEvent: observes the first focus target at or after it.
+    class FocusEventModifier {
+    public:
+        virtual ~FocusEventModifier() = default;
+        virtual void OnFocusEvent(FocusState state) = 0;
+    };
+
+    // FocusRequester: requestFocus() from code. Nodes register while attached.
+    class FocusRequester {
+    public:
+        bool RequestFocus(FocusDirection direction = FocusDirection::Enter);
+        void Add(FocusTargetNode* t) { m_Targets.push_back(t); }
+        void Remove(FocusTargetNode* t) { std::erase(m_Targets, t); }
+    private:
+        std::vector<FocusTargetNode*> m_Targets;
+    };
+
+}

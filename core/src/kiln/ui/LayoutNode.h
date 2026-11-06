@@ -10,6 +10,7 @@
 #include "kiln/ui/Draw.h"
 #include "kiln/ui/Layout.h"
 #include "kiln/ui/Pointer.h"
+#include "kiln/ui/Focus.h"
 
 #include <map>
 
@@ -122,6 +123,24 @@ namespace kiln::ui {
         // Pointer input: hit test on press, dispatch in three passes along the kept path.
         void ProcessPointer(const RawPointerEvent& event);
         ViewConfiguration& Config() { return m_Config; }
+
+        // Focus (FocusOwnerImpl). Host hooks: ask the platform to focus the host view.
+        FocusTargetNode* ActiveFocus() const { return m_ActiveFocus; }
+        bool FocusCaptured() const { return m_FocusCaptured; }
+        FocusState StateOf(const FocusTargetNode& t) const;
+        bool RequestFocus(FocusTargetNode& t, FocusDirection direction);
+        bool ClearFocus(bool force = false);
+        bool MoveFocus(FocusDirection direction);
+        bool CaptureFocus();
+        bool FreeFocus();
+        // Key input: preview tunnel, then bubble; unhandled keys move focus (AndroidComposeView
+        // root key handler). Returns whether the event was consumed.
+        bool DispatchKeyEvent(const KeyEvent& event);
+        InputMode GetInputMode() const { return m_InputMode.Get(); }
+        void SetInputMode(InputMode mode) { m_InputMode.Set(mode); }
+        void SetRequestHostFocus(std::function<bool()> fn) { m_RequestHostFocus = std::move(fn); }
+        // The platform took focus away from (or gave it back to) the host view.
+        void OnHostFocusChanged(bool focused);
         const ViewConfiguration& Config() const { return m_Config; }
         bool NeedsMeasureOrLayout() const { return !m_MeasureDirty.empty() || !m_LayoutDirty.empty(); }
 
@@ -134,6 +153,24 @@ namespace kiln::ui {
         void OnDrawRequested() { if (m_RequestFrame) m_RequestFrame(); }
         void Forget(LayoutNode& n);
         void ForgetPointerModifier(PointerInputModifier* m);
+        friend class FocusTargetNode;
+        LayoutNode* NodeOf(const FocusTargetNode& t) const;
+        FocusTargetNode* FocusParent(const FocusTargetNode& t) const;
+        std::vector<FocusTargetNode*> FocusChildren(const FocusTargetNode& t) const;
+        void FirstTargets(LayoutNode& n, std::vector<FocusTargetNode*>& out) const;
+        Rect FocusRect(const FocusTargetNode& t) const;
+        bool Eligible(const FocusTargetNode& t) const;
+        bool CanFocus(const FocusTargetNode& t) const;
+        void SetActive(FocusTargetNode* t);
+        void DispatchFocusEvents();
+        bool FindChildForEnter(FocusTargetNode& t, FocusDirection dir, const std::function<bool(FocusTargetNode&)>& onFound);
+        bool Search2D(FocusTargetNode& t, FocusDirection dir, const Rect* previous, const std::function<bool(FocusTargetNode&)>& onFound);
+        bool SearchChildren2D(FocusTargetNode& t, Rect focused, FocusDirection dir, const std::function<bool(FocusTargetNode&)>& onFound);
+        bool Forward(FocusTargetNode& t, const std::function<bool(FocusTargetNode&)>& onFound);
+        bool Backward(FocusTargetNode& t, const std::function<bool(FocusTargetNode&)>& onFound);
+        bool SearchChildren1D(FocusTargetNode& t, FocusTargetNode& focused, FocusDirection dir, const std::function<bool(FocusTargetNode&)>& onFound);
+        std::vector<FocusTargetNode*> SortedChildren(const FocusTargetNode& t) const;
+        FocusTargetNode* ActiveChild(const FocusTargetNode& t) const;
         struct HitEntry { LayoutNode* node; PointerInputModifier* mod; };
         void HitTest(LayoutNode& n, Offset p, bool touch, std::vector<HitEntry>& path,
                      std::vector<HitEntry>& near, float& nearDistance, std::vector<HitEntry>& ancestors);
@@ -149,6 +186,12 @@ namespace kiln::ui {
         ViewConfiguration m_Config;
         struct Tracked { std::vector<HitEntry> path; Offset position; bool pressed = false; std::int64_t uptime = 0; PointerType type{}; };
         std::map<std::int64_t, Tracked> m_Pointers;
+        FocusTargetNode m_RootFocus;
+        FocusTargetNode* m_ActiveFocus = nullptr;
+        bool m_FocusCaptured = false;
+        rt::State<InputMode> m_InputMode{ InputMode::Touch };
+        std::function<bool()> m_RequestHostFocus;
+        std::vector<int> m_KeysDown;
     };
 
 }

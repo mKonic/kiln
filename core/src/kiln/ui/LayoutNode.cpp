@@ -352,6 +352,8 @@ namespace kiln::ui {
     }
 
     Owner::Owner() : m_Root(std::make_unique<LayoutNode>()) {
+        m_RootFocus.m_IsRoot = true;
+        m_RootFocus.focusability = Focusability::Never;
         m_Root->SetMeasurePolicy(std::make_shared<RootMeasurePolicy>());
         m_Root->Attach(*this, 0);
     }
@@ -420,6 +422,7 @@ namespace kiln::ui {
     }
 
     void Owner::Forget(LayoutNode& n) {
+        if (m_ActiveFocus && NodeOf(*m_ActiveFocus) == &n) { m_ActiveFocus = nullptr; m_FocusCaptured = false; }
         m_MeasureDirty.erase(&n);
         m_LayoutDirty.erase(&n);
         for (auto& [id, t] : m_Pointers)
