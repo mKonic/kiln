@@ -1,6 +1,8 @@
 // JNI entry points for dev.kiln.KilnNative and the Choreographer-driven frame loop.
 #include "AndroidText.h"
 
+namespace kiln::android { void InstallImageDecoder(); }
+
 #include "kiln/foundation/text/TextFieldState.h"
 #include "kiln/ui/Back.h"
 
@@ -99,6 +101,7 @@ namespace {
 
     void Create(JNIEnv* env, jclass, jobject view, jobject text, jfloat density, jfloat fontScale, jbyteArray saved) {
         hearth::SetLogSink(&LogToLogcat);
+        kiln::android::InstallImageDecoder();
         g_Host = new Host();
         g_Host->text = std::make_unique<kiln::android::AndroidText>(env, text);
         g_Host->app = std::make_unique<kiln::App>(kiln::HostServices{ g_Host->text.get(), &PostFrame, nullptr });
