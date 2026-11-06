@@ -112,6 +112,15 @@ namespace kiln::foundation {
     };
     Modifier Scrollable(Modifier m, ScrollableState& state, Orientation orientation, ScrollableOptions options = {});
 
+    // nestedScroll(connection): `connection` sees the scrolls and flings of scrollables inside
+    // (before them: pre, after them: post) and may consume part of each.
+    Modifier NestedScroll(Modifier m, std::shared_ptr<NestedScrollConnection> connection);
+
+    // rememberNestedScrollInteropConnection(): passes nested scroll on to the host view's
+    // nested-scrolling parents (a CoordinatorLayout's app bar), in View pixels and signs. Use
+    // it with NestedScroll around a scrollable. Without a host parent it consumes nothing.
+    std::shared_ptr<NestedScrollConnection> RememberNestedScrollInteropConnection();
+
     // verticalScroll / horizontalScroll: clip, scrollable, and a layout that measures the content
     // unbounded on the scroll axis and offsets it by the scroll value.
     Modifier VerticalScroll(Modifier m, ScrollState& state, bool enabled = true, bool reverseScrolling = false,

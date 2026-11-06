@@ -55,10 +55,13 @@ namespace kiln {
         if (!m_Composition) m_Composition = std::make_unique<rt::Composition>(m_Owner.Root(), m_Dispatcher);
         rt::SaveableStateRegistry* registry = m_Saveable.get();
         rt::State<ui::LayoutDirection>* dir = m_Direction.get();
-        m_Composition->SetContent([registry, dir, content = std::move(content)] {
+        ui::HostNestedScrollParent* nested = m_Services.nestedScrollParent;
+        m_Composition->SetContent([registry, dir, nested, content = std::move(content)] {
             auto* c = rt::Composition::Current();
-            c->Provide(ui::LocalLayoutDirection, dir->Get(), [c, registry, content] {
-                c->Provide(rt::LocalSaveableStateRegistry, registry, content);
+            c->Provide(ui::LocalLayoutDirection, dir->Get(), [c, registry, nested, content] {
+                c->Provide(ui::LocalHostNestedScrollParent, nested, [c, registry, content] {
+                    c->Provide(rt::LocalSaveableStateRegistry, registry, content);
+                });
             });
         });
         RequestFrame();

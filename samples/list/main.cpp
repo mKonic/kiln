@@ -36,7 +36,9 @@ namespace {
             LazyListOptions opt;
             opt.contentPadding = { 16_dp, 0_dp, 16_dp, 16_dp };
             opt.arrangement = Arrangement::SpacedBy(8_dp);
-            LazyColumn(FillMax(Weight(Modifier{}, 1), Axis::Horizontal), state, [&](LazyListScope& s) {
+            // Shares scrolls with a nested-scrolling parent View when the app embeds kiln in one.
+            auto interop = RememberNestedScrollInteropConnection();
+            LazyColumn(NestedScroll(FillMax(Weight(Modifier{}, 1), Axis::Horizontal), interop), state, [&](LazyListScope& s) {
                 for (int section = 0; section < 100; ++section) {
                     s.StickyHeader([section](int) {
                         Box(Background(Height(FillMax(Modifier{}, Axis::Horizontal), 40_dp), Color(0xFFEADDFFu)), Alignment::CenterStart(), false, [section] {

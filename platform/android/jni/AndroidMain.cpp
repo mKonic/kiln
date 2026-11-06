@@ -44,10 +44,43 @@ namespace {
         jmethodID requestFocus = nullptr;
     };
     Host* g_Host = nullptr;
+
     void ArmTimer();
     void InstallTextInputHost(JNIEnv* env);
     JNIEnv* MainEnv();
     void SurfaceDestroyed(JNIEnv*, jclass);
+
+    // NestedScrollInteropConnection's View side: KilnView's NestedScrollingChildHelper port.
+    struct ViewNestedScrollParent final : kiln::ui::HostNestedScrollParent {
+        jmethodID start = nullptr, pre = nullptr, scroll = nullptr, preFling = nullptr, fling = nullptr, stop = nullptr;
+        bool Ready() const { return g_Host && g_Host->view && start; }
+        static void Copy(JNIEnv* env, jintArray a, int consumed[2]) {
+            if (!a) return;
+            jint v[2] = { 0, 0 };
+            if (env->GetArrayLength(a) >= 2) env->GetIntArrayRegion(a, 0, 2, v);
+            consumed[0] = v[0]; consumed[1] = v[1];
+            env->DeleteLocalRef(a);
+        }
+        bool Start(int axes, bool touch) override {
+            return Ready() && MainEnv()->CallBooleanMethod(g_Host->view, start, jint(axes), jboolean(touch));
+        }
+        void PreScroll(int dx, int dy, bool touch, int consumed[2]) override {
+            if (!Ready()) return;
+            JNIEnv* env = MainEnv();
+            Copy(env, static_cast<jintArray>(env->CallObjectMethod(g_Host->view, pre, jint(dx), jint(dy), jboolean(touch))), consumed);
+        }
+        void Scroll(int dxc, int dyc, int dxu, int dyu, bool touch, int consumed[2]) override {
+            if (!Ready()) return;
+            JNIEnv* env = MainEnv();
+            Copy(env, static_cast<jintArray>(env->CallObjectMethod(g_Host->view, scroll, jint(dxc), jint(dyc), jint(dxu), jint(dyu), jboolean(touch))), consumed);
+        }
+        bool PreFling(float vx, float vy) override { return Ready() && MainEnv()->CallBooleanMethod(g_Host->view, preFling, vx, vy); }
+        bool Fling(float vx, float vy, bool consumed) override {
+            return Ready() && MainEnv()->CallBooleanMethod(g_Host->view, fling, vx, vy, jboolean(consumed));
+        }
+        void StopAll() override { if (Ready()) MainEnv()->CallVoidMethod(g_Host->view, stop); }
+    };
+    ViewNestedScrollParent g_NestedScrollParent;
 
     void OnVsync(int64_t frameTimeNanos, void*) {
         if (!g_Host) return;
@@ -105,7 +138,19 @@ namespace {
         kiln::android::InstallAssetReader(env, assets);
         g_Host = new Host();
         g_Host->text = std::make_unique<kiln::android::AndroidText>(env, text);
-        g_Host->app = std::make_unique<kiln::App>(kiln::HostServices{ g_Host->text.get(), &PostFrame, nullptr });
+        {
+            jclass vc = env->GetObjectClass(view);
+            g_NestedScrollParent.start = env->GetMethodID(vc, "nsStart", "(IZ)Z");
+            g_NestedScrollParent.pre = env->GetMethodID(vc, "nsPreScroll", "(IIZ)[I");
+            g_NestedScrollParent.scroll = env->GetMethodID(vc, "nsScroll", "(IIIIZ)[I");
+            g_NestedScrollParent.preFling = env->GetMethodID(vc, "nsPreFling", "(FF)Z");
+            g_NestedScrollParent.fling = env->GetMethodID(vc, "nsFling", "(FFZ)Z");
+            g_NestedScrollParent.stop = env->GetMethodID(vc, "nsStop", "()V");
+            env->DeleteLocalRef(vc);
+        }
+        kiln::HostServices services{ g_Host->text.get(), &PostFrame, nullptr };
+        services.nestedScrollParent = &g_NestedScrollParent;
+        g_Host->app = std::make_unique<kiln::App>(services);
         g_Host->app->SetDensity(density, fontScale);
         g_Host->handle.impl = g_Host->app.get();
         env->GetJavaVM(&g_Host->vm);

@@ -498,3 +498,39 @@ TEST(MouseDragDoesNotScroll) {
     h.Frames(10);
     CHECK_EQ(state.Value(), 0);
 }
+
+namespace {
+    // A View parent (an app bar) that takes half of every pre-scroll, in View signs.
+    struct FakeViewParent final : HostNestedScrollParent {
+        int started = 0, stopped = 0, preScrolled = 0, scrolledUnconsumed = 0;
+        bool Start(int axes, bool) override { started |= axes; return true; }
+        void PreScroll(int, int dy, bool, int consumed[2]) override { consumed[1] = dy / 2; preScrolled += dy / 2; }
+        void Scroll(int, int, int, int dyUnconsumed, bool, int consumed[2]) override { scrolledUnconsumed += dyUnconsumed; consumed[1] = 0; }
+        bool PreFling(float, float) override { return false; }
+        bool Fling(float, float, bool) override { return false; }
+        void StopAll() override { ++stopped; }
+    };
+}
+
+TEST(NestedScrollInteropSharesScrollWithTheHostViewParent) {
+    Harness h;
+    ScrollState state;
+    FakeViewParent parent;
+    h.Run([&] {
+        rt::Composition::Current()->Provide(LocalHostNestedScrollParent, static_cast<HostNestedScrollParent*>(&parent), [&] {
+            auto interop = RememberNestedScrollInteropConnection();
+            Column(VerticalScroll(NestedScroll(FillMax(Modifier{}, Axis::Both), interop), state), [&] {
+                for (int i = 0; i < 10; ++i) Box(SizeMod(Modifier{}, Dp(100), Dp(50)), Alignment::TopStart(), false, {}, rt::Key(i));
+            });
+        });
+    });
+    h.Touch(PointerEventType::Press, 50, 90, true, 0);
+    h.Touch(PointerEventType::Move, 50, 70, true, 100);   // 12 past slop
+    h.Touch(PointerEventType::Move, 50, 40, true, 200);   // 30 more
+    CHECK_EQ(parent.started, 2);                          // vertical
+    CHECK_EQ(parent.preScrolled, 6 + 15);                 // the View side scrolled content up (+)
+    CHECK_EQ(state.Value(), 42 - 21);
+    h.Touch(PointerEventType::Release, 50, 40, false, 400);
+    h.Frames(5);
+    CHECK(parent.stopped >= 1);                           // the fling's end stops nested scrolling
+}

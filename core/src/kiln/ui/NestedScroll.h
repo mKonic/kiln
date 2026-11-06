@@ -10,6 +10,19 @@ namespace kiln::ui {
 
     enum class NestedScrollSource : std::uint8_t { UserInput, SideEffect };
 
+    // The host view's nested-scrolling parent (NestedScrollingChildHelper on the View side):
+    // View pixels and signs. axes: 1 horizontal, 2 vertical; touch: TYPE_TOUCH, else NON_TOUCH.
+    class HostNestedScrollParent {
+    public:
+        virtual ~HostNestedScrollParent() = default;
+        virtual bool Start(int axes, bool touch) = 0;
+        virtual void PreScroll(int dx, int dy, bool touch, int consumed[2]) = 0;
+        virtual void Scroll(int dxConsumed, int dyConsumed, int dxUnconsumed, int dyUnconsumed, bool touch, int consumed[2]) = 0;
+        virtual bool PreFling(float vx, float vy) = 0;
+        virtual bool Fling(float vx, float vy, bool consumed) = 0;
+        virtual void StopAll() = 0;
+    };
+
     class NestedScrollConnection {
     public:
         virtual ~NestedScrollConnection() = default;

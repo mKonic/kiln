@@ -10,6 +10,7 @@
 #include "kiln/runtime/Saveable.h"
 #include "kiln/runtime/Task.h"
 #include "kiln/ui/LayoutNode.h"
+#include "kiln/ui/NestedScroll.h"
 
 #include <kiln/kiln.h>
 
@@ -26,6 +27,7 @@ namespace kiln {
         TextBackend* text = nullptr;
         void (*requestFrame)(void* host) = nullptr;   // schedule one vsync callback
         void* host = nullptr;
+        ui::HostNestedScrollParent* nestedScrollParent = nullptr;   // the host view's parents (interop)
     };
 
     // The process-wide app object behind kiln_app. Hosts drive it: SurfaceCreated/Destroyed,

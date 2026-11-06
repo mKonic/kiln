@@ -266,6 +266,15 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
 
     // --- accessibility (spec 01) --------------------------------------------------------------
     private final KilnAccessibility accessibility = new KilnAccessibility(this);
+
+    // --- nested scrolling to our parents (called from native; NestedScrollInteropConnection) ---
+    private final KilnNestedScrolling nestedScrolling = new KilnNestedScrolling(this);
+    boolean nsStart(int axes, boolean touch) { return nestedScrolling.start(axes, touch ? 0 : 1); }
+    int[] nsPreScroll(int dx, int dy, boolean touch) { return nestedScrolling.preScroll(dx, dy, touch ? 0 : 1); }
+    int[] nsScroll(int dxc, int dyc, int dxu, int dyu, boolean touch) { return nestedScrolling.scroll(dxc, dyc, dxu, dyu, touch ? 0 : 1); }
+    boolean nsPreFling(float vx, float vy) { return nestedScrolling.preFling(vx, vy); }
+    boolean nsFling(float vx, float vy, boolean consumed) { return nestedScrolling.fling(vx, vy, consumed); }
+    void nsStop() { nestedScrolling.stopAll(); }
     private boolean contentChangePosted;
 
     @Override
