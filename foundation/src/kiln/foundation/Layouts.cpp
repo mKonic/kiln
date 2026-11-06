@@ -549,6 +549,45 @@ namespace kiln::foundation {
         };
     }
 
+    namespace {
+        // IntrinsicWidthNode / IntrinsicHeightNode (Intrinsic.kt).
+        struct IntrinsicParams { bool width; IntrinsicSize size; bool enforce; bool operator==(const IntrinsicParams&) const = default; };
+        struct IntrinsicNode final : ModifierNode, LayoutModifier {
+            IntrinsicParams params;
+            explicit IntrinsicNode(IntrinsicParams p) : params(p) {}
+            void OnParamsChanged() { InvalidateMeasure(); }
+            LayoutModifier* AsLayout() override { return this; }
+            Constraints Content(Measurable& m, const Constraints& c) const {
+                if (params.width) {
+                    if (params.enforce && c.HasFixedWidth()) return c;
+                    const int w = params.size == IntrinsicSize::Min ? m.MinIntrinsicWidth(c.maxHeight) : m.MaxIntrinsicWidth(c.maxHeight);
+                    return Constraints::FixedWidth(std::max(0, w));
+                }
+                if (params.enforce && c.HasFixedHeight()) return c;
+                const int h = params.size == IntrinsicSize::Min ? m.MinIntrinsicHeight(c.maxWidth) : m.MaxIntrinsicHeight(c.maxWidth);
+                return Constraints::FixedHeight(std::max(0, h));
+            }
+            MeasureResult Measure(MeasureScope& s, Measurable& m, const Constraints& c) override {
+                const Constraints content = Content(m, c);
+                Placeable& p = m.Measure(params.enforce ? c.Constrain(content) : content);
+                return s.Layout(p.Width(), p.Height(), [&p](PlacementScope& place) { place.PlaceRelative(p, 0, 0); });
+            }
+            int Pick(Measurable& m, int other, bool widthQuery) const {
+                if (widthQuery) return params.size == IntrinsicSize::Min ? m.MinIntrinsicWidth(other) : m.MaxIntrinsicWidth(other);
+                return params.size == IntrinsicSize::Min ? m.MinIntrinsicHeight(other) : m.MaxIntrinsicHeight(other);
+            }
+            int MinIntrinsicWidth(MeasureScope&, Measurable& m, int h) override { return params.width ? Pick(m, h, true) : m.MinIntrinsicWidth(h); }
+            int MaxIntrinsicWidth(MeasureScope&, Measurable& m, int h) override { return params.width ? Pick(m, h, true) : m.MaxIntrinsicWidth(h); }
+            int MinIntrinsicHeight(MeasureScope&, Measurable& m, int w) override { return params.width ? m.MinIntrinsicHeight(w) : Pick(m, w, false); }
+            int MaxIntrinsicHeight(MeasureScope&, Measurable& m, int w) override { return params.width ? m.MaxIntrinsicHeight(w) : Pick(m, w, false); }
+        };
+    }
+
+    Modifier Width(Modifier m, IntrinsicSize s) { return m.With<IntrinsicNode>(IntrinsicParams{ true, s, true }); }
+    Modifier Height(Modifier m, IntrinsicSize s) { return m.With<IntrinsicNode>(IntrinsicParams{ false, s, true }); }
+    Modifier RequiredWidth(Modifier m, IntrinsicSize s) { return m.With<IntrinsicNode>(IntrinsicParams{ true, s, false }); }
+    Modifier RequiredHeight(Modifier m, IntrinsicSize s) { return m.With<IntrinsicNode>(IntrinsicParams{ false, s, false }); }
+
     Modifier PaddingFrom(Modifier m, const AlignmentLine& line, Dp before, Dp after) {
         return m.With<LineOffsetNode>(LineOffsetParams{ &line, before, after });
     }

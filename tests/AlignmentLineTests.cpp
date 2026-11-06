@@ -75,3 +75,34 @@ TEST(PaddingFromBaselineAddsSpace) {
     // 20 above (50 - 30) and 18 below (20 - (40 - 38)).
     CHECK_EQ(leaf->Size().height, 20 + 40 + 18);
 }
+
+TEST(IntrinsicHeightMatchesTheTallestSibling) {
+    // The classic: a Row of height(IntrinsicSize.Min) whose divider fills the height.
+    Harness h;
+    LayoutNode* divider = nullptr;
+    h.Run([&] {
+        Box(Modifier{}, Alignment::TopStart(), false, [&] {
+            Row(Height(Modifier{}, IntrinsicSize::Min), Arrangement::Start(), AlignmentV::Top(), [&] {
+                Leaf({}, 10, 40, 30);
+                divider = &Layout(FillMax(Width(Modifier{}, Dp(1)), Axis::Vertical), std::make_shared<BaselinePolicy>(1, 0, 0));
+                Leaf({}, 10, 25, 20);
+            });
+        });
+    });
+    CHECK_EQ(divider->Size().height, 40);
+}
+
+TEST(IntrinsicWidthOfAColumnIsItsWidestChild) {
+    Harness h;
+    LayoutNode *a = nullptr, *b = nullptr;
+    h.Run([&] {
+        Box(Modifier{}, Alignment::TopStart(), false, [&] {
+            Column(Width(Modifier{}, IntrinsicSize::Max), Arrangement::Top(), AlignmentH::Start(), [&] {
+                a = Leaf(FillMax(Modifier{}, Axis::Horizontal), 30, 10, 5);
+                b = Leaf(FillMax(Modifier{}, Axis::Horizontal), 70, 10, 5);
+            });
+        });
+    });
+    CHECK_EQ(a->Size().width, 70);
+    CHECK_EQ(b->Size().width, 70);
+}

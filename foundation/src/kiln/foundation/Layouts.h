@@ -81,6 +81,13 @@ namespace kiln::foundation {
     // and `after` from the bottom (or end).
     Modifier PaddingFrom(Modifier m, const AlignmentLine& line, Dp before = Dp::Unspecified(), Dp after = Dp::Unspecified());
     Modifier PaddingFromBaseline(Modifier m, Dp top = Dp::Unspecified(), Dp bottom = Dp::Unspecified());
+    // width/height(IntrinsicSize.Min/Max): size to the content's intrinsic measurement;
+    // the required forms ignore the incoming constraints.
+    enum class IntrinsicSize : std::uint8_t { Min, Max };
+    Modifier Width(Modifier m, IntrinsicSize s);
+    Modifier Height(Modifier m, IntrinsicSize s);
+    Modifier RequiredWidth(Modifier m, IntrinsicSize s);
+    Modifier RequiredHeight(Modifier m, IntrinsicSize s);
     Modifier MatchParentSize(Modifier m);
 
     // Drawing
