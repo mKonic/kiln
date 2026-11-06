@@ -5,6 +5,7 @@
 // absorb into them; the content draws through HWUI's stretch distortion.
 
 #include "kiln/foundation/EdgeEffect.h"
+#include "kiln/runtime/Composition.h"
 #include "kiln/runtime/State.h"
 #include "kiln/ui/Geometry.h"
 #include "kiln/ui/LayoutNode.h"
@@ -12,6 +13,7 @@
 
 #include <functional>
 #include <memory>
+#include <optional>
 
 namespace kiln::foundation {
 
@@ -51,8 +53,27 @@ namespace kiln::foundation {
         rt::State<int> m_Redraw{ 0 };
     };
 
-    // The overscroll draw node; also tells the effect its container size.
+    // The overscroll draw node; also tells the effect its container size. A null effect draws
+    // nothing.
     ui::Modifier Overscroll(ui::Modifier m, std::shared_ptr<OverscrollEffect> effect);
+
+    // OverscrollFactory / LocalOverscrollFactory: what rememberOverscrollEffect() makes. Provide
+    // null to turn overscroll off below; the default is Android's stretch.
+    class OverscrollFactory {
+    public:
+        virtual ~OverscrollFactory() = default;
+        virtual std::shared_ptr<OverscrollEffect> CreateOverscrollEffect() const = 0;
+    };
+    class StretchOverscrollFactory final : public OverscrollFactory {
+    public:
+        std::shared_ptr<OverscrollEffect> CreateOverscrollEffect() const override { return std::make_shared<OverscrollEffect>(); }
+    };
+    inline rt::Local<std::shared_ptr<const OverscrollFactory>> LocalOverscrollFactory{ std::make_shared<StretchOverscrollFactory>() };
+    // rememberOverscrollEffect(): from LocalOverscrollFactory (null when it is null).
     std::shared_ptr<OverscrollEffect> RememberOverscrollEffect(rt::Key key = {});
+
+    // The overscrollEffect parameter of the scroll APIs: unset uses RememberOverscrollEffect(),
+    // a null effect turns it off, anything else is used as given.
+    using OverscrollParam = std::optional<std::shared_ptr<OverscrollEffect>>;
 
 }

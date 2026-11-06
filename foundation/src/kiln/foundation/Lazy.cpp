@@ -1176,7 +1176,8 @@ namespace kiln::foundation {
         // The composable part shared by lists and grids; `configure` fills the core.
         void LazyLayout(bool vertical, const Modifier& modifier, LazyStateBase& state, bool userScrollEnabled, rt::Key key,
                         const std::function<void(LazyCore&)>& configure, FlingBehavior fling = {},
-                        const std::function<Modifier(Modifier)>& extra = {}, bool reverseLayout = false) {
+                        const std::function<Modifier(Modifier)>& extra = {}, bool reverseLayout = false,
+                        OverscrollParam overscroll = std::nullopt) {
             auto& comp = *rt::Composition::Current();
             auto& core = comp.Remember<std::shared_ptr<LazyCore>>([] { return std::make_shared<LazyCore>(); }, {}, key);
             core->vertical = vertical;
@@ -1191,7 +1192,7 @@ namespace kiln::foundation {
             so.enabled = userScrollEnabled;
             so.reverseDirection = !reverseLayout;   // ScrollableDefaults.reverseDirection
             if (!vertical && comp.Read(ui::LocalLayoutDirection) == LayoutDirection::Rtl) so.reverseDirection = !so.reverseDirection;
-            so.overscroll = RememberOverscrollEffect(key);
+            so.overscroll = overscroll ? *overscroll : RememberOverscrollEffect(key);
             so.flingBehavior = std::move(fling);
             // lazyLayoutSemantics: an estimated scroll range (index * 500 + offset, a little more
             // while it can go on), scroll to index, collection info, the viewport length.
@@ -1246,7 +1247,7 @@ namespace kiln::foundation {
                 core.horizontalAlignment = options.horizontalAlignment;
                 core.verticalAlignment = options.verticalAlignment;
                 core.intervals = std::move(scope.intervals);
-            }, {}, {}, options.reverseLayout);
+            }, {}, {}, options.reverseLayout, options.overscrollEffect);
         }
 
         void LazyGrid(bool vertical, const Modifier& modifier, GridCells cells, LazyGridState& state,
@@ -1265,7 +1266,7 @@ namespace kiln::foundation {
                 core.crossArrangement = options.crossAxisArrangement;
                 core.cells = cells;
                 core.intervals = std::move(scope.intervals);
-            }, {}, {}, options.reverseLayout);
+            }, {}, {}, options.reverseLayout, options.overscrollEffect);
         }
     }
 
@@ -1288,7 +1289,7 @@ namespace kiln::foundation {
                 core.crossArrangement = options.crossAxisArrangement;
                 core.cells = cells;
                 core.intervals = std::move(scope.intervals);
-            });
+            }, {}, {}, false, options.overscrollEffect);
         }
     }
 
@@ -1318,7 +1319,7 @@ namespace kiln::foundation {
             core.verticalAlignment = config.verticalAlignment;
             core.intervals.clear();
             core.intervals.push_back({ pageCount, std::move(content), std::move(key) });
-        }, std::move(config.flingBehavior), config.extraModifier);
+        }, std::move(config.flingBehavior), config.extraModifier, false, config.overscrollEffect);
     }
 
     void LazyColumn(const Modifier& m, LazyListState& s, std::function<void(LazyListScope&)> content, LazyListOptions o, rt::Key key) {

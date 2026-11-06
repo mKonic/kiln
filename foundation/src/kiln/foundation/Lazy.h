@@ -11,6 +11,7 @@
 #include "kiln/foundation/Arrangement.h"
 #include "kiln/foundation/Compose.h"
 #include "kiln/foundation/Scroll.h"
+#include "kiln/foundation/Overscroll.h"
 
 #include <map>
 
@@ -215,6 +216,7 @@ namespace kiln::foundation {
         // Compose's default for reverseLayout is Bottom (End).
         Arrangement arrangement = Arrangement::Top();
         bool reverseLayout = false;   // item 0 at the bottom (end); scrolling reversed
+        OverscrollParam overscrollEffect;   // unset: rememberOverscrollEffect(); null: none
         AlignmentH horizontalAlignment = AlignmentH::Start();   // LazyColumn
         AlignmentV verticalAlignment = AlignmentV::Top();       // LazyRow
         bool userScrollEnabled = true;
@@ -227,6 +229,7 @@ namespace kiln::foundation {
         Arrangement crossAxisArrangement = Arrangement::Start();
         bool reverseLayout = false;
         bool userScrollEnabled = true;
+        OverscrollParam overscrollEffect;
     };
 
     // Internal: the pager's use of the lazy core (Pager.cpp).
@@ -239,6 +242,7 @@ namespace kiln::foundation {
         bool userScrollEnabled = true;
         FlingBehavior flingBehavior;
         std::function<Modifier(Modifier)> extraModifier;   // gesture observers
+        OverscrollParam overscrollEffect;
     };
     void LazyPagerLayout(bool vertical, const Modifier& modifier, LazyStateBase& state, int pageCount,
                          std::function<void(int page)> content, std::function<rt::Key(int)> key, LazyPagerConfig config, rt::Key compositionKey);
@@ -248,6 +252,7 @@ namespace kiln::foundation {
         Dp mainAxisItemSpacing{ 0 };                               // verticalItemSpacing (vertical grids)
         Arrangement crossAxisArrangement = Arrangement::Start();   // lanes: spacing and placement
         bool userScrollEnabled = true;
+        OverscrollParam overscrollEffect;
     };
 
     void LazyVerticalStaggeredGrid(const Modifier& modifier, GridCells columns, LazyStaggeredGridState& state,

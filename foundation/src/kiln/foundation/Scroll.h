@@ -114,7 +114,9 @@ namespace kiln::foundation {
 
     // verticalScroll / horizontalScroll: clip, scrollable, and a layout that measures the content
     // unbounded on the scroll axis and offsets it by the scroll value.
-    Modifier VerticalScroll(Modifier m, ScrollState& state, bool enabled = true, bool reverseScrolling = false);
-    Modifier HorizontalScroll(Modifier m, ScrollState& state, bool enabled = true, bool reverseScrolling = false);
+    Modifier VerticalScroll(Modifier m, ScrollState& state, bool enabled = true, bool reverseScrolling = false,
+                            std::optional<std::shared_ptr<OverscrollEffect>> overscrollEffect = std::nullopt);
+    Modifier HorizontalScroll(Modifier m, ScrollState& state, bool enabled = true, bool reverseScrolling = false,
+                              std::optional<std::shared_ptr<OverscrollEffect>> overscrollEffect = std::nullopt);
 
 }

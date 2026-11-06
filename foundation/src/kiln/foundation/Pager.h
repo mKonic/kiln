@@ -66,6 +66,7 @@ namespace kiln::foundation {
         AlignmentH horizontalAlignment = AlignmentH::CenterHorizontally();   // VerticalPager
         bool userScrollEnabled = true;
         std::function<rt::Key(int page)> key;
+        OverscrollParam overscrollEffect;   // unset: rememberOverscrollEffect(); null: none
     };
 
     void HorizontalPager(const Modifier& modifier, PagerState& state, std::function<void(int page)> content,

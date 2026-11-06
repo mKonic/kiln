@@ -184,11 +184,15 @@ namespace kiln::foundation {
     }
 
     ui::Modifier Overscroll(ui::Modifier m, std::shared_ptr<OverscrollEffect> effect) {
+        if (!effect) return m;
         return m.With<OverscrollNode>(OverscrollParams{ std::move(effect) });
     }
 
     std::shared_ptr<OverscrollEffect> RememberOverscrollEffect(rt::Key key) {
-        return rt::Composition::Current()->Remember<std::shared_ptr<OverscrollEffect>>([] { return std::make_shared<OverscrollEffect>(); }, {}, key);
+        auto& c = *rt::Composition::Current();
+        const auto& factory = c.Read(LocalOverscrollFactory);
+        return c.Remember<std::shared_ptr<OverscrollEffect>>([&] { return factory ? factory->CreateOverscrollEffect() : nullptr; },
+                                                             rt::Keys(reinterpret_cast<std::uintptr_t>(factory.get())), key);
     }
 
 }

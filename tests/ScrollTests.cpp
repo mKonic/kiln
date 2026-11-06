@@ -302,3 +302,18 @@ TEST(PageKeysScrollByAViewport) {
     h.Pump();
     CHECK_EQ(state.Value(), 0);
 }
+
+#include "kiln/foundation/Overscroll.h"
+
+TEST(OverscrollFactoryCanTurnOverscrollOff) {
+    Harness h;
+    std::shared_ptr<OverscrollEffect> withDefault, withNone;
+    h.Run([&] {
+        withDefault = RememberOverscrollEffect();
+        rt::Composition::Current()->Provide(LocalOverscrollFactory, std::shared_ptr<const OverscrollFactory>{}, [&] {
+            withNone = RememberOverscrollEffect();
+        });
+    });
+    CHECK(withDefault != nullptr);
+    CHECK(withNone == nullptr);
+}

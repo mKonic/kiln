@@ -181,6 +181,7 @@ namespace kiln::foundation {
             config.horizontalAlignment = options.horizontalAlignment;
             config.verticalAlignment = options.verticalAlignment;
             config.userScrollEnabled = options.userScrollEnabled;
+            config.overscrollEffect = options.overscrollEffect;
             PagerState* st = &state;
             config.flingBehavior = [st](std::function<float(float)> scrollBy, float velocity) {
                 return PagerFling(st, std::move(scrollBy), velocity);

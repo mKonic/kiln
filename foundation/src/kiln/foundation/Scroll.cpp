@@ -484,7 +484,8 @@ namespace kiln::foundation {
     }
 
     namespace {
-        Modifier ScrollModifier(Modifier m, ScrollState& state, bool vertical, bool enabled, bool reverseScrolling) {
+        Modifier ScrollModifier(Modifier m, ScrollState& state, bool vertical, bool enabled, bool reverseScrolling,
+                                OverscrollParam overscroll) {
             // ScrollableDefaults.reverseDirection: dragging moves content with the finger, so the
             // drag delta is reversed unless reverseScrolling (RTL flips horizontal again; TODO when
             // the scrollable reads the layout direction).
@@ -496,7 +497,7 @@ namespace kiln::foundation {
                 rt::Composition::Current()->Read(ui::LocalLayoutDirection) == LayoutDirection::Rtl)
                 opt.reverseDirection = !opt.reverseDirection;
             // rememberOverscrollEffect(): Android's default is the stretch.
-            opt.overscroll = RememberOverscrollEffect();
+            opt.overscroll = overscroll ? *overscroll : RememberOverscrollEffect();
             m = ClipToBounds(std::move(m));
             // Vertical/HorizontalScrollAxisRange (ScrollingContainer semantics).
             ScrollState* st = &state;
@@ -510,7 +511,11 @@ namespace kiln::foundation {
         }
     }
 
-    Modifier VerticalScroll(Modifier m, ScrollState& s, bool enabled, bool reverse) { return ScrollModifier(std::move(m), s, true, enabled, reverse); }
-    Modifier HorizontalScroll(Modifier m, ScrollState& s, bool enabled, bool reverse) { return ScrollModifier(std::move(m), s, false, enabled, reverse); }
+    Modifier VerticalScroll(Modifier m, ScrollState& s, bool enabled, bool reverse, OverscrollParam o) {
+        return ScrollModifier(std::move(m), s, true, enabled, reverse, std::move(o));
+    }
+    Modifier HorizontalScroll(Modifier m, ScrollState& s, bool enabled, bool reverse, OverscrollParam o) {
+        return ScrollModifier(std::move(m), s, false, enabled, reverse, std::move(o));
+    }
 
 }
