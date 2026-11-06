@@ -5,6 +5,7 @@
 
 #include "kiln/graphics/Brush.h"
 #include "kiln/graphics/Shape.h"
+#include "kiln/graphics/shapes/Morph.h"
 #include "kiln/ui/Draw.h"
 #include "kiln/ui/Geometry.h"
 
@@ -75,6 +76,16 @@ namespace kiln::foundation {
     const ShapePtr& RectangleShape();
     // Same kind of corner-based shape: corners interpolated; otherwise the nearer one by t.
     ShapePtr Lerp(const ShapePtr& a, const ShapePtr& b, float t);
+
+    // RoundedPolygon / Morph to Path (material3 internal/ShapeUtil.kt pathFromCubics): the path is
+    // rotated about the origin so its first cubic starts at `startAngle` degrees (270 = 12
+    // o'clock); repeatPath draws the outline twice (for stroked progress animations).
+    gfx::Path PolygonToPath(const gfx::shapes::RoundedPolygon& polygon, int startAngle = 270, bool repeatPath = false, bool closePath = true);
+    gfx::Path MorphToPath(const gfx::shapes::Morph& morph, float progress, int startAngle = 270, bool repeatPath = false,
+                          bool closePath = true, float pivotX = 0, float pivotY = 0);
+    // RoundedPolygon.toShape (MaterialShapes.kt): a normalized polygon scaled to the size and
+    // centred on it.
+    ShapePtr ToShape(const gfx::shapes::RoundedPolygon& polygon, int startAngle = 0);
 
     // drawOutline: rectangles and uniform circular rounded rects take the SDF fast path.
     void DrawOutline(ui::DrawScope& s, const gfx::Outline& outline, ui::Color color);

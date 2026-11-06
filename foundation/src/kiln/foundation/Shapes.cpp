@@ -1,5 +1,7 @@
 #include "kiln/foundation/Shapes.h"
 
+#include <cmath>
+
 namespace kiln::foundation {
 
     using namespace ui;
@@ -120,6 +122,63 @@ namespace kiln::foundation {
             return;
         }
         s.DrawPath(o.ToPath(), b, nullptr, alpha);
+    }
+
+    namespace {
+        void PathFromCubics(gfx::Path& path, int startAngle, bool repeat, bool close, const std::vector<gfx::shapes::Cubic>& cubics,
+                            float pivotX, float pivotY) {
+            bool first = true;
+            for (const auto& c : cubics) {
+                if (first) { path.MoveTo(c.Anchor0X(), c.Anchor0Y()); first = false; }
+                path.CubicTo(c.Control0X(), c.Control0Y(), c.Control1X(), c.Control1Y(), c.Anchor1X(), c.Anchor1Y());
+            }
+            if (repeat) {
+                bool firstInRepeat = true;
+                for (const auto& c : cubics) {
+                    if (firstInRepeat) { path.LineTo(c.Anchor0X(), c.Anchor0Y()); firstInRepeat = false; }
+                    path.CubicTo(c.Control0X(), c.Control0Y(), c.Control1X(), c.Control1Y(), c.Anchor1X(), c.Anchor1Y());
+                }
+            }
+            if (close) path.Close();
+            if (startAngle != 0 && !cubics.empty()) {
+                const float toFirst = std::atan2(cubics[0].Anchor0Y() - pivotY, cubics[0].Anchor0X() - pivotX) * 180.0f / 3.14159265358979f;
+                const float r = (-toFirst + float(startAngle)) * 3.14159265358979f / 180.0f;
+                const float c = std::cos(r), sn = std::sin(r);
+                path.Transform({ c, sn, -sn, c, 0, 0 });   // Matrix.rotateZ: about the origin
+            }
+        }
+    }
+
+    gfx::Path PolygonToPath(const gfx::shapes::RoundedPolygon& polygon, int startAngle, bool repeat, bool close) {
+        gfx::Path p;
+        PathFromCubics(p, startAngle, repeat, close, polygon.Cubics(), polygon.CenterX(), polygon.CenterY());
+        return p;
+    }
+
+    gfx::Path MorphToPath(const gfx::shapes::Morph& morph, float progress, int startAngle, bool repeat, bool close, float px, float py) {
+        gfx::Path p;
+        PathFromCubics(p, startAngle, repeat, close, morph.AsCubics(progress), px, py);
+        return p;
+    }
+
+    namespace {
+        class PolygonShape final : public gfx::Shape {
+        public:
+            PolygonShape(gfx::Path path) : m_Path(std::move(path)) {}
+            gfx::Outline CreateOutline(Size size, LayoutDirection, const Density&) const override {
+                gfx::Path p = m_Path;
+                p.Transform(gfx::Matrix::Scale(size.width, size.height));
+                const Rect b = p.Bounds();
+                p.Translate({ size.width / 2 - (b.left + b.right) / 2, size.height / 2 - (b.top + b.bottom) / 2 });
+                return { std::move(p) };
+            }
+        private:
+            gfx::Path m_Path;
+        };
+    }
+
+    ShapePtr ToShape(const gfx::shapes::RoundedPolygon& polygon, int startAngle) {
+        return std::make_shared<PolygonShape>(PolygonToPath(polygon, startAngle));
     }
 
 }
