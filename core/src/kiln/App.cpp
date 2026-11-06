@@ -45,8 +45,19 @@ namespace kiln {
 
     void App::SetContent(std::function<void()> content) {
         if (!m_Composition) m_Composition = std::make_unique<rt::Composition>(m_Owner.Root(), m_Dispatcher);
-        m_Composition->SetContent(std::move(content));
+        rt::SaveableStateRegistry* registry = m_Saveable.get();
+        m_Composition->SetContent([registry, content = std::move(content)] {
+            rt::Composition::Current()->Provide(rt::LocalSaveableStateRegistry, registry, content);
+        });
         RequestFrame();
+    }
+
+    void App::RestoreState(std::span<const std::uint8_t> bytes) {
+        *m_Saveable = rt::SaveableStateRegistry(rt::SaveableStateRegistry::Deserialize(bytes));
+    }
+
+    std::vector<std::uint8_t> App::SaveState() const {
+        return rt::SaveableStateRegistry::Serialize(m_Saveable->PerformSave());
     }
     App::~App() {
         if (m_Device) m_Device->WaitIdle();

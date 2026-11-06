@@ -3,6 +3,7 @@
 #include "kiln/QuadRenderer.h"
 #include "kiln/TextBackend.h"
 #include "kiln/runtime/Composition.h"
+#include "kiln/runtime/Saveable.h"
 #include "kiln/runtime/Task.h"
 #include "kiln/ui/LayoutNode.h"
 
@@ -56,6 +57,9 @@ namespace kiln {
         }
         // C++ content root: composed into the window's layout tree each frame it changes.
         void SetContent(std::function<void()> content);
+        // Saved instance state (rememberSaveable): restore before SetContent, save on demand.
+        void RestoreState(std::span<const std::uint8_t> bytes);
+        std::vector<std::uint8_t> SaveState() const;
         ui::Owner& GetOwner() { return m_Owner; }
         // Input from the host, positions in surface pixels. Layout is brought up to date first
         // so hit testing sees what is on screen (AndroidComposeView.handleMotionEvent).
@@ -84,6 +88,7 @@ namespace kiln {
     private:
         HostServices m_Services;
         ui::Owner m_Owner;
+        std::unique_ptr<rt::SaveableStateRegistry> m_Saveable = std::make_unique<rt::SaveableStateRegistry>();
         std::unique_ptr<rt::Composition> m_Composition;
         kiln_app_callbacks m_Callbacks{};
         std::unique_ptr<hearth::Device> m_Device;
