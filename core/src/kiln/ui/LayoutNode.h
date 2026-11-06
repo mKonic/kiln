@@ -113,6 +113,7 @@ namespace kiln::ui {
         bool m_MeasureDirty = true;
         bool m_LayoutDirty = true;
         bool m_Placed = false;
+        bool m_PlacedThisPass = false;   // set by the parent's current layout pass
         IntOffset m_Position;
         float m_ZIndex = 0;
         int m_PlaceOrder = 0;

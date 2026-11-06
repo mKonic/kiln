@@ -105,6 +105,7 @@ namespace kiln::ui {
                 node.m_ZIndex = z;
                 node.m_PlaceOrder = parent ? parent->m_NextPlaceOrder++ : 0;
                 node.m_Placed = true;
+                node.m_PlacedThisPass = true;
                 if (moved) node.InvalidateDraw();
                 node.LayoutIfNeeded();
             } else {
@@ -348,12 +349,16 @@ namespace kiln::ui {
         if (m_Owner) m_Owner->m_LayoutDirty.erase(this);
         m_NextPlaceOrder = 0;
         const LayoutDirection dir = m_Owner ? m_Owner->Direction() : LayoutDirection::Ltr;
+        for (LayoutNode* c : m_Children) c->m_PlacedThisPass = false;
         rt::Observation::Track(m_LayoutWatch, [&] {
             for (auto& c : m_Coordinators) {
                 PlacementScope scope(dir, c->Width());
                 if (c->result.place) c->result.place(scope);
             }
         });
+        // Children this pass did not place stop drawing and hit testing (markNodeAndSubtreeAsNotPlaced).
+        for (LayoutNode* c : m_Children)
+            if (!c->m_PlacedThisPass && c->m_Placed) { c->m_Placed = false; InvalidateDraw(); }
         InvalidateDraw();
     }
 
