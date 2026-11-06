@@ -2,6 +2,7 @@
 #include "kiln/foundation/Semantics.h"
 #include "kiln/foundation/Overscroll.h"
 
+#include "kiln/ui/BringIntoView.h"
 #include "kiln/ui/VelocityTracker.h"
 
 #include <cmath>
@@ -145,6 +146,180 @@ namespace kiln::foundation {
         bool m_Flinging = false;
     };
 
+    // --- ContentInViewNode (bring into view for scroll containers) ----------------------------
+
+    namespace {
+        constexpr float kMinScrollThreshold = 0.5f;
+
+        // BringIntoViewSpec.defaultCalculateScrollDistance.
+        float ScrollDistance(float offset, float size, float container) {
+            const float leading = offset, trailing = offset + size;
+            if (leading >= 0 && trailing <= container) return 0;          // already visible
+            if (leading < 0 && trailing > container) return 0;            // larger and covering
+            return std::abs(leading) < std::abs(trailing - container) ? leading : trailing - container;
+        }
+
+        struct ContentInViewParams {
+            std::shared_ptr<ScrollingLogic> logic;
+            bool operator==(const ContentInViewParams& o) const { return logic == o.logic; }
+        };
+
+        struct ContentInViewNode final : ModifierNode, LayoutModifier, ui::BringIntoViewResponder {
+            ContentInViewParams params;
+            IntSize viewport{ -1, -1 };
+            std::vector<std::function<std::optional<Rect>()>> requests;
+            bool running = false, tracking = false;
+            rt::Job job;
+
+            explicit ContentInViewNode(ContentInViewParams p) : params(std::move(p)) {}
+            void OnParamsChanged() {}
+            LayoutModifier* AsLayout() override { return this; }
+            ui::BringIntoViewResponder* AsBringIntoViewResponder() override { return this; }
+
+            bool Vertical() const { return params.logic->orientation == Orientation::Vertical; }
+            IntSize ViewportOrZero() const { return viewport.width < 0 ? IntSize{} : viewport; }
+            float AxisOf(IntSize s) const { return float(Vertical() ? s.height : s.width); }
+
+            float Relocation(const Rect& r, IntSize container, IntOffset adjust) const {
+                return Vertical() ? ScrollDistance(r.top - float(adjust.y), r.bottom - r.top, float(container.height))
+                                  : ScrollDistance(r.left - float(adjust.x), r.right - r.left, float(container.width));
+            }
+            bool MaxVisible(const Rect& r, IntSize container, IntOffset adjust = {}) const {
+                return std::abs(Relocation(r, container, adjust)) <= kMinScrollThreshold;
+            }
+
+            Rect CalculateRectForParent(Rect r) override {
+                const float d = Relocation(r, ViewportOrZero(), {});
+                return Vertical() ? Rect{ r.left, r.top - d, r.right, r.bottom - d } : Rect{ r.left - d, r.top, r.right - d, r.bottom };
+            }
+
+            void BringChildIntoView(std::function<std::optional<Rect>()> localRect) override {
+                auto r = localRect();
+                if (!r || MaxVisible(*r, ViewportOrZero())) return;
+                requests.push_back(std::move(localRect));
+                if (!running) Launch({});
+            }
+
+            // The focused descendant's bounds in ours (getFocusedRect).
+            std::optional<Rect> FocusedRect() const {
+                LayoutNode* self = Owner();
+                if (!self || !self->GetOwner()) return std::nullopt;
+                ui::FocusTargetNode* f = self->GetOwner()->ActiveFocus();
+                LayoutNode* n = f ? f->Owner() : nullptr;
+                if (!n || n == self) return std::nullopt;
+                bool inside = false;
+                for (LayoutNode* a = n->Parent(); a; a = a->Parent()) if (a == self) { inside = true; break; }
+                if (!inside) return std::nullopt;
+                const Rect b = self->LayoutModifierBoundsInRoot(this);
+                const Offset p = n->PositionInRoot();
+                const IntSize s = n->Size();
+                return Rect{ p.x - b.left, p.y - b.top, p.x - b.left + float(s.width), p.y - b.top + float(s.height) };
+            }
+
+            // findBringIntoViewRequest: from the smallest, the largest that still fits.
+            std::optional<Rect> FindRequest() const {
+                std::vector<Rect> rects;
+                for (const auto& q : requests) if (auto r = q()) rects.push_back(*r);
+                std::sort(rects.begin(), rects.end(), [](const Rect& a, const Rect& b) {
+                    return (a.right - a.left) * (a.bottom - a.top) < (b.right - b.left) * (b.bottom - b.top);
+                });
+                std::optional<Rect> chosen;
+                const IntSize v = ViewportOrZero();
+                for (const Rect& r : rects) {
+                    const bool fits = Vertical() ? r.bottom - r.top <= float(v.height) : r.right - r.left <= float(v.width);
+                    if (fits) chosen = r;
+                    else return chosen ? chosen : r;
+                }
+                return chosen;
+            }
+
+            float ScrollDelta(IntOffset adjust) const {
+                if (viewport.width < 0) return 0;
+                std::optional<Rect> r = FindRequest();
+                if (!r && tracking) r = FocusedRect();
+                if (!r) return 0;
+                const float d = Relocation(*r, viewport, adjust);
+                return std::abs(d) <= kMinScrollThreshold ? 0.0f : d;
+            }
+
+            MeasureResult Measure(MeasureScope& s, Measurable& m, const Constraints& c) override {
+                Placeable& p = m.Measure(c);
+                OnRemeasured({ p.Width(), p.Height() });
+                return s.Layout(p.Width(), p.Height(), [&p](PlacementScope& place) { place.Place(p, 0, 0); });
+            }
+
+            // The viewport shrank (an IME came up): keep a focused child that was visible in view.
+            void OnRemeasured(IntSize size) {
+                const IntSize previous = ViewportOrZero();
+                viewport = size;
+                if (AxisOf(size) >= AxisOf(previous)) return;
+                // Content anchored at the far edge (reverseDirection false) moves with the shrink.
+                const IntOffset adjust = !params.logic->reverse
+                    ? (Vertical() ? IntOffset{ 0, previous.height - size.height } : IntOffset{ previous.width - size.width, 0 })
+                    : IntOffset{};
+                if (auto f = FocusedRect(); f && !running && !tracking && MaxVisible(*f, previous) && !MaxVisible(*f, size, adjust)) {
+                    tracking = true;
+                    Launch(adjust);
+                }
+            }
+
+            void Launch(IntOffset adjust) { job = rt::Launch(rt::Dispatcher::Main(), Animate(adjust)); }
+
+            // UpdatableAnimationState.animateToZero with the default spring, retargeted after
+            // every frame to what is still left to scroll.
+            rt::Task<> Animate(IntOffset adjust) {
+                ScrollableState* state = params.logic->state;
+                if (!state) co_return;
+                struct Reset {
+                    ContentInViewNode* n;
+                    ~Reset() { n->running = false; n->tracking = false; n->requests.clear(); }
+                } reset{ this };
+                running = true;
+                bool stopped = false;
+                ScrollSession session(*state, [&stopped] { stopped = true; });
+                float value = ScrollDelta(adjust), velocity = 0;
+                std::int64_t last = -1;
+                const float sign = params.logic->reverse ? 1.0f : -1.0f;
+                auto scroll = [&](float d) {
+                    // Content coordinates to the state's: reverseDirection containers scroll forward.
+                    const float consumed = state->ConsumeScrollDelta(sign * d) * sign;
+                    // Children must sit where the scroll put them before the next rect is read.
+                    if (!state->LaysOutOnScroll() && Owner()) Owner()->ForceRemeasure();
+                    return std::abs(consumed) + 0.01f >= std::abs(d);
+                };
+                auto afterFrame = [&] {
+                    std::erase_if(requests, [&](const auto& q) { auto r = q(); return !r || MaxVisible(*r, ViewportOrZero()); });
+                    if (tracking) if (auto f = FocusedRect(); f && MaxVisible(*f, ViewportOrZero())) tracking = false;
+                    value = ScrollDelta({});
+                };
+                while (std::abs(value) >= 0.01f) {
+                    const std::int64_t now = co_await rt::NextFrame();
+                    if (stopped) co_return;
+                    if (last < 0) last = now;
+                    const float scale = anim::DurationScale();
+                    float next = 0;
+                    if (scale > 0) {
+                        const anim::SpringMotion mo = anim::SpringStep(1.0f, anim::spring::StiffnessMedium, value, velocity, 0,
+                                                                       double(now - last) * 1e-9 / scale);
+                        next = mo.value;
+                        velocity = mo.velocity;
+                    }
+                    last = now;
+                    const float d = value - next;
+                    value = next;
+                    if (!scroll(d)) co_return;   // not consumed: an edge
+                    afterFrame();
+                    if (scale == 0) break;
+                }
+                if (value != 0) {
+                    co_await rt::NextFrame();
+                    if (stopped) co_return;
+                    scroll(value);
+                }
+            }
+        };
+    }
+
     namespace {
         struct NestedParams { std::shared_ptr<ScrollingLogic> logic; bool operator==(const NestedParams& o) const { return logic == o.logic; } };
         struct NestedNode final : NestedScrollNode {
@@ -271,6 +446,7 @@ namespace kiln::foundation {
         logic->overscroll = opt.overscroll;
         logic->flingBehavior = opt.flingBehavior;
         m = m.With<NestedNode>(NestedParams{ logic });
+        m = m.With<ContentInViewNode>(ContentInViewParams{ logic });
         if (!opt.enabled) return m;
         // SemanticsActions.ScrollBy (semanticsScrollBy): an animated scroll along our axis.
         m = Semantics(std::move(m), [logic, o](SemanticsConfiguration& c) {

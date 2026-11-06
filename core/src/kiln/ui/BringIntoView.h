@@ -1,0 +1,27 @@
+#pragma once
+
+// Bring into view (foundation relocation + ContentInViewNode's contract): a node asks for a rect
+// of itself to become visible, and every scrollable ancestor scrolls as needed, the outer ones
+// towards where the inner ones will put it.
+
+#include "kiln/ui/LayoutNode.h"
+
+#include <functional>
+#include <optional>
+
+namespace kiln::ui {
+
+    class BringIntoViewResponder {
+    public:
+        virtual ~BringIntoViewResponder() = default;
+        // Rects are in the responder's bounds (its layout modifier). Where `localRect` will be once
+        // this responder has scrolled it in (calculateRectForParent).
+        virtual Rect CalculateRectForParent(Rect localRect) = 0;
+        // Scroll until the rect (re-read every frame; nullopt when gone) is visible.
+        virtual void BringChildIntoView(std::function<std::optional<Rect>()> localRect) = 0;
+    };
+
+    // bringIntoView(rect): `rect` in the node's own bounds; the whole node when omitted.
+    void BringIntoView(LayoutNode& node, std::optional<Rect> rect = std::nullopt);
+
+}

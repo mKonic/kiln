@@ -197,3 +197,58 @@ TEST(OverscrollSpringsBackAfterRelease) {
     CHECK(!e.IsInProgress());
     CHECK_EQ(sy, 0.0f);
 }
+
+#include "kiln/foundation/BringIntoView.h"
+#include "kiln/foundation/Focus.h"
+
+TEST(FocusAndRequestersBringContentIntoView) {
+    Harness h;
+    ScrollState state;
+    FocusRequester focus;
+    BringIntoViewRequester requester;
+    h.Run([&] {
+        Column(VerticalScroll(FillMax(Modifier{}, Axis::Both), state), [&] {
+            for (int i = 0; i < 10; ++i) {
+                Modifier m = SizeMod(Modifier{}, Dp(100), Dp(50));
+                if (i == 7) m = Focusable(FocusRequesterModifier(std::move(m), focus));
+                if (i == 2) m = BringIntoViewRequesterMod(std::move(m), requester);
+                Box(m, Alignment::TopStart(), false, {}, rt::Key(i));
+            }
+        });
+    });
+    CHECK(focus.RequestFocus());
+    h.Frames(60);
+    CHECK_EQ(state.Value(), 300);   // item 7 (350..400) lines up with the bottom edge
+    requester.BringIntoView();
+    h.Frames(60);
+    CHECK_EQ(state.Value(), 100);   // item 2 (100..150) lines up with the top edge
+    // A rect within a node: the part asked for, not the whole node.
+    requester.BringIntoView(Rect{ 0, 40, 100, 50 });
+    h.Frames(60);
+    CHECK_EQ(state.Value(), 100);   // already visible
+}
+
+TEST(ShrinkingViewportKeepsTheFocusedChildVisible) {
+    Harness h;
+    ScrollState state;
+    FocusRequester focus;
+    rt::State<int> height{ 100 };
+    h.Run([&] {
+        Box(FillMax(Modifier{}, Axis::Both), Alignment::TopStart(), false, [&] {
+            Column(VerticalScroll(Height(Modifier{}, Dp(float(height.Get()))), state), [&] {
+                for (int i = 0; i < 10; ++i) {
+                    Modifier m = SizeMod(Modifier{}, Dp(100), Dp(50));
+                    if (i == 1) m = Focusable(FocusRequesterModifier(std::move(m), focus));
+                    Box(m, Alignment::TopStart(), false, {}, rt::Key(i));
+                }
+            });
+        });
+    });
+    CHECK(focus.RequestFocus());
+    h.Frames(10);
+    CHECK_EQ(state.Value(), 0);     // visible already
+    height.Set(60);                 // an IME takes 40 px
+    h.Pump();
+    h.Frames(60);
+    CHECK_EQ(state.Value(), 40);    // item 1 (50..100) back above the new bottom edge
+}

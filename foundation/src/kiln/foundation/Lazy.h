@@ -70,6 +70,7 @@ namespace kiln::foundation {
         float ConsumeScrollDelta(float delta) override;
         bool CanScrollForward() const override { return m_CanForward; }
         bool CanScrollBackward() const override { return m_Index.Peek() > 0 || m_Offset.Peek() > 0; }
+        bool LaysOutOnScroll() const override { return true; }
         void ScrollToItem(int index, int offset = 0);
         // Scrolls in animated steps of up to 2500 dp (jumping to 100 items before the target when
         // further), then seeks the target once it is composed (LazyLayoutScrollScope).

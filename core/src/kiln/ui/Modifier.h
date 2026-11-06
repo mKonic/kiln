@@ -30,6 +30,7 @@ namespace kiln::ui {
     class FocusPropertiesModifier;
     class NestedScrollNode;
     class SemanticsModifier;
+    class BringIntoViewResponder;
 
     // Data a child hands its parent's measure policy (weights, alignments).
     struct AlignmentLine;
@@ -93,6 +94,10 @@ namespace kiln::ui {
         virtual KeyInputModifier* AsKeyInput() { return nullptr; }
         virtual NestedScrollNode* AsNestedScroll() { return nullptr; }
         virtual SemanticsModifier* AsSemantics() { return nullptr; }
+        // A scroll container's bringIntoView responder (it must also be a layout modifier).
+        virtual BringIntoViewResponder* AsBringIntoViewResponder() { return nullptr; }
+        // Expires when the node is destroyed (for callbacks that may outlive it).
+        std::weak_ptr<const char> AliveToken() const { return m_Alive; }
         // Semantics changed (call from Update when semantic params change).
         void InvalidateSemantics();
 
@@ -104,6 +109,7 @@ namespace kiln::ui {
     private:
         friend class LayoutNode;
         LayoutNode* m_Owner = nullptr;
+        std::shared_ptr<const char> m_Alive = std::make_shared<const char>(0);
     };
 
     class ModifierElement {

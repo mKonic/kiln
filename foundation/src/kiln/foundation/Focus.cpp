@@ -1,4 +1,5 @@
 #include "kiln/foundation/Focus.h"
+#include "kiln/ui/BringIntoView.h"
 
 #include "kiln/runtime/Composition.h"
 #include "kiln/ui/Semantics.h"
@@ -40,6 +41,8 @@ namespace kiln::foundation {
                         if (IsFocused(now) && !focusInteraction) focusInteraction = params.source->Start(Interaction::Kind::Focus);
                         else if (!IsFocused(now) && focusInteraction) { params.source->End(Interaction::Kind::Focus, focusInteraction); focusInteraction = 0; }
                     }
+                    // FocusableNode: a node that gains focus asks its scroll containers to show it.
+                    if (IsFocused(now) && Owner()) ui::BringIntoView(*Owner());
                     if (cb && *cb) (*cb)(now);
                 };
             }

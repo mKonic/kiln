@@ -193,6 +193,18 @@ namespace kiln::ui {
         return m;
     }
 
+    Rect LayoutNode::LayoutModifierBoundsInRoot(const LayoutModifier* modifier) const {
+        Offset o = PositionInRoot();
+        for (std::size_t i = 0; i < m_Coordinators.size(); ++i) {
+            const auto& c = *m_Coordinators[i];
+            if (i > 0) o = o + Offset{ float(c.position.x), float(c.position.y) };
+            if (c.mod == modifier) return { o.x, o.y, o.x + float(c.Width()), o.y + float(c.Height()) };
+        }
+        const IntSize s = Size();
+        const Offset p = PositionInRoot();
+        return { p.x, p.y, p.x + float(s.width), p.y + float(s.height) };
+    }
+
     Offset LayoutNode::PositionInRoot() const {
         Offset o;
         for (const LayoutNode* n = this; n; n = n->m_Parent) {

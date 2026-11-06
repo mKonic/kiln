@@ -56,6 +56,10 @@ namespace kiln::ui {
         float ZIndex() const { return m_ZIndex; }
         bool IsPlaced() const { return m_Placed; }
         Offset PositionInRoot() const;
+        // The bounds a layout modifier of this node measured, in root coordinates (no layers).
+        Rect LayoutModifierBoundsInRoot(const LayoutModifier* modifier) const;
+        // Expires when the node is destroyed.
+        std::weak_ptr<const char> AliveToken() const { return m_Alive; }
         // This node's local space (its outer bounds) -> root, including graphicsLayer transforms
         // (LayoutCoordinates.localToRoot).
         gfx::Matrix LocalToRoot() const { return ContentToRoot(false); }
@@ -110,6 +114,7 @@ namespace kiln::ui {
         std::vector<std::shared_ptr<const ModifierElement>> m_Elements;
         std::vector<std::unique_ptr<ModifierNode>> m_Nodes;
         std::vector<std::unique_ptr<Coordinator>> m_Coordinators;   // outer .. inner
+        std::shared_ptr<const char> m_Alive = std::make_shared<const char>(0);
         ParentData m_ParentData;
 
         Constraints m_LastConstraints;

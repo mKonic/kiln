@@ -21,6 +21,9 @@ namespace kiln::foundation {
         virtual bool CanScrollForward() const { return true; }
         virtual bool CanScrollBackward() const { return true; }
         bool IsScrollInProgress() const { return m_InProgress.Get(); }
+        // True when ConsumeScrollDelta lays the content out itself (lazy layouts remeasure now);
+        // otherwise placement catches up at the next layout pass.
+        virtual bool LaysOutOnScroll() const { return false; }
 
         // Stops a running fling or programmatic scroll (stopScroll()).
         void StopScroll() { if (m_Stop) { auto stop = std::move(m_Stop); m_Stop = nullptr; stop(); } }
