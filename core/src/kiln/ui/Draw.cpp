@@ -57,7 +57,13 @@ namespace kiln::ui {
         Concat(gfx::Matrix::Translate(-pivot.x, -pivot.y));
     }
 
-    void DrawScope::ApplyTransform() { if (m_Target.quads) m_Target.quads->SetTransform(ToQuad(m_State.m)); }
+    void DrawScope::ApplyTransform() {
+        if (!m_Target.quads) return;
+        m_Target.quads->SetTransform(ToQuad(m_State.m));
+        m_Target.quads->SetBlendMode(int(m_State.blend));
+    }
+
+    void DrawScope::ApplyBlend(gfx::BlendMode mode) { if (m_Target.quads) m_Target.quads->SetBlendMode(int(mode)); }
 
     namespace {
         // Signed distance to a rect rounded per corner (negative inside).
@@ -266,6 +272,7 @@ namespace kiln::ui {
         const auto* e = static_cast<const PathCache::Entry*>(PathMask(path, stroke, ox, oy));
         if (!e) return;
         ApplyClip();
+        ApplyBlend(m_State.blend);
         m_Target.quads->SetTransform({});   // masks are in device pixels
         m_Target.quads->DrawAtlas({ ox + float(e->x), oy + float(e->y), float(e->w), float(e->h) }, e->uv, *e->page,
                                   tint, QuadRenderer::Mode::TintedCoverage, static_cast<const QuadRenderer::Paint*>(paint), filterRow);
@@ -352,11 +359,16 @@ namespace kiln::ui {
                                   { a, a, a, a }, QuadRenderer::Mode::Color, nullptr, FilterRow(filter));
     }
 
-    void DrawScope::BeginLayer(Rect bounds, float alpha, const gfx::Path* clipPath) { BeginLayerImpl(bounds, alpha, clipPath, false); }
+    void DrawScope::BeginLayer(Rect bounds, float alpha, const gfx::Path* clipPath, gfx::BlendMode blend, const gfx::ColorFilter* colorFilter) {
+        BeginLayerImpl(bounds, alpha, clipPath, false, blend, colorFilter);
+    }
 
-    void DrawScope::BeginLayerImpl(Rect bounds, float alpha, const gfx::Path* clipPath, bool forClip) {
+    void DrawScope::BeginLayerImpl(Rect bounds, float alpha, const gfx::Path* clipPath, bool forClip, gfx::BlendMode blend,
+                                   const gfx::ColorFilter* colorFilter) {
         // A clip's layer composites at full alpha; its content keeps drawing with the current one.
-        Layer l{ m_State, forClip ? 1.0f : alpha * m_State.alpha, {}, false, nullptr, m_State.m, forClip };
+        // It also carries the enclosing blend mode to its composite.
+        Layer l{ m_State, forClip ? 1.0f : alpha * m_State.alpha, {}, false, nullptr, m_State.m, forClip,
+                 forClip ? m_State.blend : blend, colorFilter ? std::make_shared<gfx::ColorFilter>(*colorFilter) : nullptr };
         if (clipPath) {
             l.clip = std::make_shared<gfx::Path>(*clipPath);
             bounds = bounds.Intersect(clipPath->Bounds());
@@ -383,6 +395,7 @@ namespace kiln::ui {
         // when the layer is composited.
         m_State.alpha = l.active ? (forClip ? l.saved.alpha : 1.0f) : 0.0f;
         m_State.clip = false;
+        m_State.blend = gfx::BlendMode::SrcOver;
         if (forClip) ++m_State.clipLayers;
         ClipRect(bounds);
     }
@@ -421,8 +434,7 @@ namespace kiln::ui {
         const float a = l.alpha;
         const float u = l.device.Width() / float(r.page->Width()), v = l.device.Height() / float(r.page->Height());
         m_Target.quads->SetTransform(x);
-        m_Target.quads->DrawAtlas({ l.device.left, l.device.top, l.device.Width(), l.device.Height() }, { 0, 0, u, v }, *r.page,
-                                  { a, a, a, a }, QuadRenderer::Mode::Color);
+        CompositeLayer(l, { l.device.left, l.device.top, l.device.Width(), l.device.Height() }, { 0, 0, u, v }, *r.page);
         m_Target.quads->SetTransform({});
     }
 
@@ -475,8 +487,9 @@ namespace kiln::ui {
         }
         ApplyClip();
         const float a = l.alpha;
+        (void)a;
         q.SetTransform({});
-        q.DrawAtlas(rect, uvOf(r), *r.page, { a, a, a, a }, QuadRenderer::Mode::Color);
+        CompositeLayer(l, rect, uvOf(r), *r.page);
     }
 
     void DrawScope::EndLayer(float stretchX, float stretchY) {
@@ -500,8 +513,14 @@ namespace kiln::ui {
         if (stretchX != 0 || stretchY != 0)
             m_Target.quads->DrawStretched({ l.device.left, l.device.top, l.device.Width(), l.device.Height() }, { 0, 0, u, v }, *r.page, a, stretchX, stretchY);
         else
-            m_Target.quads->DrawAtlas({ l.device.left, l.device.top, l.device.Width(), l.device.Height() }, { 0, 0, u, v }, *r.page,
-                                      { a, a, a, a }, QuadRenderer::Mode::Color);
+            CompositeLayer(l, { l.device.left, l.device.top, l.device.Width(), l.device.Height() }, { 0, 0, u, v }, *r.page);
+    }
+
+    void DrawScope::CompositeLayer(const Layer& l, const kiln::RectF& rect, const kiln::RectF& uv, const AtlasPage& page) {
+        const float a = l.alpha;
+        ApplyBlend(l.blend);
+        m_Target.quads->DrawAtlas(rect, uv, page, { a, a, a, a }, QuadRenderer::Mode::Color, nullptr, FilterRow(l.filter.get()));
+        ApplyBlend(m_State.blend);
     }
 
 }

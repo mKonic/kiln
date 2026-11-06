@@ -16,6 +16,7 @@ layout(location = 12) flat in vec2 vUvMax;
 layout(set = 0, binding = 0) uniform sampler2D uAtlas;
 layout(set = 0, binding = 1) uniform sampler2D uRamp;
 layout(set = 0, binding = 2) uniform sampler2D uFilters;
+layout(set = 0, binding = 3) uniform sampler2D uDst;   // blend modes: the target's content so far
 
 layout(location = 0) out vec4 outColor;
 
@@ -231,13 +232,27 @@ void main() {
         return;
     }
     // Skia order: source colour (paint or image texel times alpha), colour filter, coverage.
+    vec4 src;
+    float coverage;
     if (mode == 0) {            // solid rounded rect, analytic coverage
-        float d = roundedRectSdf(vLocal, vHalf, vParams.x);
-        outColor = applyFilter(paint()) * aaCoverage(d, vLocal);
+        src = applyFilter(paint());
+        coverage = aaCoverage(roundedRectSdf(vLocal, vHalf, vParams.x), vLocal);
     } else if (mode == 1) {     // atlas coverage (text, path masks) filled with the paint
-        outColor = applyFilter(paint()) * texture(uAtlas, vUv).a;
+        src = applyFilter(paint());
+        coverage = texture(uAtlas, vUv).a;
     } else {                    // atlas colour (emoji, images), premultiplied, alpha-modulated
-        outColor = applyFilter(texture(uAtlas, vUv) * vColor.a);
+        src = applyFilter(texture(uAtlas, vUv) * vColor.a);
+        coverage = 1.0;
     }
-    outColor *= clipCoverage();
+    coverage *= clipCoverage();
+#ifdef KILN_FILTERS
+    // A blend mode: the result replaces the pixel, lerped to the destination by coverage (Skia).
+    int blendMode = int(vParams.w + 0.5) - 1;
+    if (blendMode >= 0) {
+        vec4 dst = texture(uDst, gl_FragCoord.xy / vec2(textureSize(uDst, 0)));
+        outColor = mix(dst, blend(blendMode, src, dst), coverage);
+        return;
+    }
+#endif
+    outColor = src * coverage;
 }

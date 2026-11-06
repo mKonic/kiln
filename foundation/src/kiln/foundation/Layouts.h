@@ -3,6 +3,7 @@
 #include <optional>
 
 #include "kiln/graphics/Brush.h"
+#include "kiln/graphics/ColorFilter.h"
 #include "kiln/graphics/Shape.h"
 
 // Foundation layouts and layout modifiers (spec 06 §13).
@@ -135,6 +136,10 @@ namespace kiln::foundation {
         float rotationX = 0, rotationY = 0, cameraDistance = 8;
         CompositingStrategy compositingStrategy = CompositingStrategy::Auto;
         std::optional<BlurEffect> renderEffect;   // renders offscreen and composites blurred
+        // How the layer composites onto what is below, and a colour filter on its image; either
+        // other than the default makes the layer offscreen (GraphicsLayer requiresCompositingLayer).
+        gfx::BlendMode blendMode = gfx::BlendMode::SrcOver;
+        std::optional<gfx::ColorFilter> colorFilter;
         float originX = 0.5f, originY = 0.5f; // transform origin (pivot) as a fraction of the size
         bool clip = false;
         CornerShape shape;

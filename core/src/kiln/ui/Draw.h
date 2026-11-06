@@ -5,6 +5,7 @@
 // Drawing during the draw pass (spec 03 §ui-graphics, DrawScope). M2 draws straight into the
 // frame's QuadRenderer with an accumulated translation; retained layers come with GraphicsLayer.
 
+#include "kiln/graphics/ColorFilter.h"
 #include "kiln/graphics/Path.h"
 #include "kiln/ui/Geometry.h"
 
@@ -12,8 +13,8 @@
 #include <memory>
 #include <vector>
 
-namespace kiln { class QuadRenderer; struct ParagraphData; class AtlasPage; class PathCache; class GradientRamps; class ImageCache; class FilterTable; struct Rgba; }
-namespace kiln::gfx { class Path; struct Stroke; struct Brush; class ImageBitmap; struct ColorFilter; }
+namespace kiln { class QuadRenderer; struct ParagraphData; class AtlasPage; class PathCache; class GradientRamps; class ImageCache; class FilterTable; struct Rgba; struct RectF; }
+namespace kiln::gfx { class Path; struct Stroke; struct Brush; class ImageBitmap; }
 
 namespace kiln::ui {
 
@@ -63,6 +64,9 @@ namespace kiln::ui {
         void Concat(const gfx::Matrix& m);
         const gfx::Matrix& CurrentTransform() const { return m_State.m; }
         void MultiplyAlpha(float a) { m_State.alpha *= a; }
+        // Blend mode of the draws that follow, until the Restore (DrawScope's blendMode argument).
+        // Modes other than SrcOver read what is drawn below (a copy of it), so they cost a pass.
+        void SetBlendMode(gfx::BlendMode mode) { m_State.blend = mode; }
         // Intersects the clip with a local rect, rounded by `radius` (local px). Clips that
         // combine into one rounded rect (per-corner radii) stay analytic; others (a rect cutting
         // into an outer rounded corner, clips in different rotations) clip through a masked layer
@@ -71,7 +75,10 @@ namespace kiln::ui {
         // Offscreen layer (saveLayerAlpha): content drawn until EndLayer composites as one image
         // with `alpha`, clipped to `bounds` (local). Inherited alpha applies at compositing.
         // With `clipPath` (local), the layer is masked to it (anti-aliased clip by path).
-        void BeginLayer(Rect bounds, float alpha, const gfx::Path* clipPath = nullptr);
+        // The layer composites with `blend` and through `colorFilter` (graphicsLayer.blendMode /
+        // colorFilter); its content starts in SrcOver.
+        void BeginLayer(Rect bounds, float alpha, const gfx::Path* clipPath = nullptr, gfx::BlendMode blend = gfx::BlendMode::SrcOver,
+                        const gfx::ColorFilter* colorFilter = nullptr);
         void EndLayer(float stretchX = 0, float stretchY = 0);   // with a stretch overscroll
         // Composites the layer through a projective transform `h` (row-major 3x3, local
         // coordinates of the BeginLayer call -> local), for 3D-rotated graphics layers.
@@ -94,8 +101,11 @@ namespace kiln::ui {
             ClipRadii clipRadii{};
             gfx::Matrix clipInverse;   // device -> clip space
             int clipLayers = 0;        // masked layers opened by clips
+            gfx::BlendMode blend = gfx::BlendMode::SrcOver;
         };
-        void BeginLayerImpl(Rect bounds, float alpha, const gfx::Path* clipPath, bool forClip);
+        void ApplyBlend(gfx::BlendMode mode);
+        void BeginLayerImpl(Rect bounds, float alpha, const gfx::Path* clipPath, bool forClip, gfx::BlendMode blend = gfx::BlendMode::SrcOver,
+                            const gfx::ColorFilter* colorFilter = nullptr);
         void EndLayerPlain(float stretchX, float stretchY);
         void EndClipLayers() { while (!m_Layers.empty() && m_Layers.back().forClip) EndLayerPlain(0, 0); }
         bool AxisAligned() const { return m_State.m.b == 0 && m_State.m.c == 0; }
@@ -111,8 +121,10 @@ namespace kiln::ui {
         DrawTarget m_Target;
         State m_State;
         std::vector<State> m_Stack;
-        struct Layer { State saved; float alpha; Rect device; bool active; std::shared_ptr<gfx::Path> clip; gfx::Matrix clipMatrix; bool forClip = false; };
+        struct Layer { State saved; float alpha; Rect device; bool active; std::shared_ptr<gfx::Path> clip; gfx::Matrix clipMatrix; bool forClip = false;
+                       gfx::BlendMode blend = gfx::BlendMode::SrcOver; std::shared_ptr<gfx::ColorFilter> filter; };
         std::vector<Layer> m_Layers;
+        void CompositeLayer(const Layer& l, const kiln::RectF& rect, const kiln::RectF& uv, const kiln::AtlasPage& page);
         void MaskLayer(const Layer& l);
         Size m_Size;
     };

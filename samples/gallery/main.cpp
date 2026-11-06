@@ -203,6 +203,32 @@ namespace {
                     Box(Background(Clip(Rotate(SizeMod(Modifier{}, 150_dp, 40_dp), 25), CornerShape::Rounded(8_dp)), kTertiary));
                 });
             });
+            // Blend modes: a hole punched with DstOut in an offscreen layer; a layer that
+            // composites with Difference; a layer through a desaturating colour filter.
+            Row(Padding(Modifier{}, 16_dp, 8_dp), Arrangement::SpacedBy(16_dp), AlignmentV::CenterVertically(), [] {
+                GraphicsLayerParams offscreen;
+                offscreen.compositingStrategy = CompositingStrategy::Offscreen;
+                Canvas(GraphicsLayer(SizeMod(Modifier{}, 72_dp, 72_dp), offscreen), [](DrawScope& d) {
+                    const Size sz = d.GetSize();
+                    d.DrawRoundRect(kPrimary, { 0, 0 }, sz, sz.width * 0.2f);
+                    d.SetBlendMode(kiln::gfx::BlendMode::DstOut);
+                    d.DrawRoundRect(kPrimary, { sz.width * 0.25f, sz.height * 0.25f }, { sz.width * 0.5f, sz.height * 0.5f }, sz.width * 0.25f);
+                });
+                Box(Background(SizeMod(Modifier{}, 72_dp, 72_dp), kTertiary, CornerShape::Rounded(12_dp)), Alignment::Center(), false, [] {
+                    GraphicsLayerParams difference;
+                    difference.blendMode = kiln::gfx::BlendMode::Difference;
+                    Box(Background(GraphicsLayer(SizeMod(Modifier{}, 48_dp, 48_dp), difference), Color(0xffffffff), CornerShape::Pill()));
+                });
+                GraphicsLayerParams gray;
+                gray.colorFilter = kiln::gfx::ColorFilter::ColorMatrix({ 0.2126f, 0.7152f, 0.0722f, 0, 0,
+                                                                         0.2126f, 0.7152f, 0.0722f, 0, 0,
+                                                                         0.2126f, 0.7152f, 0.0722f, 0, 0,
+                                                                         0, 0, 0, 1, 0 });
+                Row(GraphicsLayer(Modifier{}, gray), Arrangement::SpacedBy(4_dp), AlignmentV::CenterVertically(), [] {
+                    Box(Background(SizeMod(Modifier{}, 32_dp, 72_dp), kPrimary, CornerShape::Rounded(8_dp)));
+                    Box(Background(SizeMod(Modifier{}, 32_dp, 72_dp), kTertiary, CornerShape::Rounded(8_dp)));
+                });
+            });
             // graphics-shapes: a rounded square morphing into a rounded star and back.
             {
                 static const kiln::gfx::shapes::Morph morph(

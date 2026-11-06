@@ -158,6 +158,7 @@ namespace kiln {
         m_Owner.MeasureAndLayout({ int(m_Width), int(m_Height) });
 
         m_Quads->Begin(m_Width, m_Height);
+        m_Quads->SetClearColor(m_Clear.r, m_Clear.g, m_Clear.b, m_Clear.a);
         if (!m_Paths) m_Paths = std::make_unique<PathCache>(*m_Device);
         m_Paths->BeginFrame();
         if (!m_Gradients) { m_Gradients = std::make_unique<GradientRamps>(*m_Device); m_Quads->SetRampTexture(m_Gradients->Texture()); }

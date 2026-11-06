@@ -3,6 +3,7 @@
 #include <kiln/Shaders.h>
 
 #include <algorithm>
+#include <cmath>
 #include <cstring>
 
 namespace kiln {
@@ -64,6 +65,7 @@ namespace kiln {
         desc.bindings.push_back({ 0, BindingType::SampledTexture, 1, StageBit(ShaderStage::Fragment) });
         desc.bindings.push_back({ 1, BindingType::SampledTexture, 1, StageBit(ShaderStage::Fragment) });
         desc.bindings.push_back({ 2, BindingType::SampledTexture, 1, StageBit(ShaderStage::Fragment) });
+        desc.bindings.push_back({ 3, BindingType::SampledTexture, 1, StageBit(ShaderStage::Fragment) });   // blend destination
         desc.pushConstantSize = 16;   // viewport size, device origin of the target
         desc.topology = PrimitiveTopology::TriangleStrip;
         desc.blend = BlendMode::AlphaPremultiplied;
@@ -74,6 +76,10 @@ namespace kiln {
                                               ShaderStage::Fragment, "main", "kiln.quad_filtered.frag" });
         desc.debugName = "kiln.quad.filtered";
         m_FilteredPipeline = device.CreatePipeline(desc);
+        // Blend modes compute the result from the destination copy and replace the pixel.
+        desc.blend = BlendMode::None;
+        desc.debugName = "kiln.quad.blend";
+        m_BlendPipeline = device.CreatePipeline(desc);
         desc.fragment = fs;
         // DstIn: dst * src.alpha, for masking a layer to a path.
         desc.blend = BlendMode::Custom;
@@ -98,6 +104,7 @@ namespace kiln {
         m_Uploaded = false;
         for (auto& l : m_Pool[m_Device.FrameIndex() % m_Pool.size()]) l.used = false;
         m_Clip = {};
+        m_BlendMode = 3;
         m_Transform = {};
     }
 
@@ -120,17 +127,25 @@ namespace kiln {
         const Transform& ci = m_Clip.inverse;
         instance.clipInv[0] = ci.a; instance.clipInv[1] = ci.b; instance.clipInv[2] = ci.c; instance.clipInv[3] = ci.d;
         instance.clipInv2[0] = ci.e; instance.clipInv2[1] = ci.f; instance.clipInv2[2] = m_Clip.enabled ? 1.0f : 0.0f; instance.clipInv2[3] = 0;
+        const AtlasPage* dst = nullptr;
+        // Stretch and blur passes composite layers themselves and never blend.
+        if (m_BlendMode != 3 && !mask && instance.params[1] <= float(Mode::Color)) {
+            dst = DestinationCopy(instance);
+            instance.params[3] = float(m_BlendMode + 1);
+        }
         Target& t2 = Current();
         const bool filtered = instance.params[2] >= 0;
-        if (t2.runs.empty() || t2.runs.back().page != page || t2.runs.back().mask != mask || t2.runs.back().filtered != filtered)
-            t2.runs.push_back({ page, std::uint32_t(t2.instances.size()), 0, mask, filtered });
+        if (t2.runs.empty() || t2.runs.back().page != page || t2.runs.back().mask != mask || t2.runs.back().filtered != filtered ||
+            t2.runs.back().dst != dst || dst)
+            t2.runs.push_back({ page, std::uint32_t(t2.instances.size()), 0, mask, filtered, dst });
         t2.instances.push_back(instance);
         ++t2.runs.back().count;
     }
 
     void QuadRenderer::FillRect(const RectF& r, Rgba c, float radius, const Paint* paint, int filterRow) {
         // Solid quads ignore the atlas, so they join whatever run is open instead of splitting it.
-        const bool openMask = !Current().runs.empty() && (Current().runs.back().mask || Current().runs.back().filtered != (filterRow >= 0));
+        const bool openMask = !Current().runs.empty() && (Current().runs.back().mask || Current().runs.back().dst ||
+                                                          Current().runs.back().filtered != (filterRow >= 0));
         const AtlasPage* page = Current().runs.empty() || openMask ? nullptr : Current().runs.back().page;
         Push({ { r.x, r.y, r.w, r.h }, { 0, 0, 0, 0 }, { c.r, c.g, c.b, c.a },
                { radius, float(Mode::Solid), float(filterRow), 0 }, {}, {}, {}, {}, {}, {}, {}, {} }, page, paint);
@@ -141,9 +156,9 @@ namespace kiln {
                { 0, float(mode), float(filterRow), 0 }, {}, {}, {}, {}, {}, {}, {}, {} }, &page, paint);
     }
 
-    Ref<BindGroup> QuadRenderer::GroupFor(const AtlasPage* page) {
-        for (auto& [p, g] : m_Groups)
-            if (p == page) return g;
+    Ref<BindGroup> QuadRenderer::GroupFor(const AtlasPage* page, const AtlasPage* dst) {
+        for (auto& g : m_Groups)
+            if (g.page == page && g.dst == dst) return g.group;
         BindGroupEntry entry;
         entry.binding = 0;
         entry.type = BindingType::SampledTexture;
@@ -156,8 +171,12 @@ namespace kiln {
         filters.binding = 2;
         filters.type = BindingType::SampledTexture;
         filters.textures = { m_Filters ? m_Filters : m_White };
-        auto group = m_Device.CreateBindGroup(m_Pipeline, { entry, ramp, filters });
-        m_Groups.emplace_back(page, group);
+        BindGroupEntry destination;
+        destination.binding = 3;
+        destination.type = BindingType::SampledTexture;
+        destination.textures = { dst ? dst->Texture() : m_White };
+        auto group = m_Device.CreateBindGroup(m_Pipeline, { entry, ramp, filters, destination });
+        m_Groups.push_back({ page, dst, group });
         return group;
     }
 
@@ -183,7 +202,7 @@ namespace kiln {
         last.paint[0] = su; last.paint[1] = sv; last.paint[2] = sigma; last.paint[3] = decal ? 1.0f : 0.0f;
     }
 
-    void QuadRenderer::BeginLayer(int x, int y, int w, int h) {
+    QuadRenderer::PooledLayer& QuadRenderer::AcquireLayer(int w, int h) {
         // Pooled targets come in 64 px steps so animated sizes reuse them.
         const std::uint32_t tw = std::uint32_t((std::max(w, 1) + 63) / 64 * 64), th = std::uint32_t((std::max(h, 1) + 63) / 64 * 64);
         auto& pool = m_Pool[m_Device.FrameIndex() % m_Pool.size()];
@@ -204,15 +223,58 @@ namespace kiln {
             layer = &pool.back();
         }
         layer->used = true;
+        return *layer;
+    }
+
+    void QuadRenderer::BeginLayer(int x, int y, int w, int h) {
+        PooledLayer& layer = AcquireLayer(w, h);
         Target t;
         t.origin[0] = float(x);
         t.origin[1] = float(y);
-        t.size[0] = float(tw);
-        t.size[1] = float(th);
-        t.rt = layer->rt.get();
+        t.size[0] = float(layer.width);
+        t.size[1] = float(layer.height);
+        t.rt = layer.rt.get();
         m_Targets.push_back(std::move(t));
         m_Stack.push_back(m_Targets.size() - 1);
-        m_LayerPages.push_back(layer->page.get());
+        m_LayerPages.push_back(layer.page.get());
+    }
+
+    const AtlasPage* QuadRenderer::DestinationCopy(const Instance& in) {
+        const std::size_t index = m_Stack.back();
+        const Target& cur = m_Targets[index];
+        const float ox = cur.origin[0], oy = cur.origin[1], tw = cur.size[0], th = cur.size[1];
+        // Device bounds of the quad (with the solid-edge growth), in target pixels.
+        float x0 = 0, y0 = 0, x1 = tw, y1 = th;
+        if (in.xform2[2] == 0 && in.xform2[3] == 0) {
+            x0 = y0 = 1e30f; x1 = y1 = -1e30f;
+            for (const float cx : { in.rect[0], in.rect[0] + in.rect[2] })
+                for (const float cy : { in.rect[1], in.rect[1] + in.rect[3] }) {
+                    const float dx = in.xform[0] * cx + in.xform[2] * cy + in.xform2[0] - ox;
+                    const float dy = in.xform[1] * cx + in.xform[3] * cy + in.xform2[1] - oy;
+                    x0 = std::min(x0, dx); y0 = std::min(y0, dy); x1 = std::max(x1, dx); y1 = std::max(y1, dy);
+                }
+            x0 = std::max(0.0f, std::floor(x0) - 2); y0 = std::max(0.0f, std::floor(y0) - 2);
+            x1 = std::min(tw, std::ceil(x1) + 2); y1 = std::min(th, std::ceil(y1) + 2);
+        }
+        Target copy;
+        copy.origin[0] = ox;
+        copy.origin[1] = oy;
+        copy.runs = cur.runs;
+        copy.aliased = true;
+        copy.alias = index;
+        if (index == 0) std::copy(std::begin(m_RootClear), std::end(m_RootClear), copy.clear);
+        copy.scissor[0] = std::uint32_t(x0);
+        copy.scissor[1] = std::uint32_t(y0);
+        copy.scissor[2] = std::uint32_t(std::max(0.0f, x1 - x0));
+        copy.scissor[3] = std::uint32_t(std::max(0.0f, y1 - y0));
+        PooledLayer& layer = AcquireLayer(int(tw), int(th));
+        copy.size[0] = float(layer.width);
+        copy.size[1] = float(layer.height);
+        copy.rt = layer.rt.get();
+        m_Targets.push_back(std::move(copy));
+        m_LayerPages.push_back(layer.page.get());
+        m_LayerOrder.push_back(m_Targets.size() - 1);
+        return layer.page.get();
     }
 
     QuadRenderer::LayerResult QuadRenderer::EndLayer() {
@@ -246,22 +308,26 @@ namespace kiln {
     }
 
     void QuadRenderer::DrawTarget(CommandList& cmd, const Target& t) {
-        if (t.instances.empty()) return;
+        if (t.runs.empty()) return;
+        const std::uint32_t base = t.aliased ? m_Targets[t.alias].base : t.base;
         auto& buffer = m_Buffers[m_Device.FrameIndex() % m_Buffers.size()];
         const float push[4] = { t.size[0], t.size[1], t.origin[0], t.origin[1] };
+        const ScissorRect scissor = t.aliased ? ScissorRect{ i32(t.scissor[0]), i32(t.scissor[1]), t.scissor[2], t.scissor[3] }
+                                              : ScissorRect{ 0, 0, u32(t.size[0]), u32(t.size[1]) };
+        if (scissor.width == 0 || scissor.height == 0) return;
         const Pipeline* boundPipeline = nullptr;
         for (const Run& run : t.runs) {
-            const Ref<Pipeline>& want = run.mask ? m_MaskPipeline : run.filtered ? m_FilteredPipeline : m_Pipeline;
+            const Ref<Pipeline>& want = run.mask ? m_MaskPipeline : run.dst ? m_BlendPipeline : run.filtered ? m_FilteredPipeline : m_Pipeline;
             if (boundPipeline != want.get()) {
                 cmd.BindPipeline(want);
                 cmd.SetViewport({ 0, 0, t.size[0], t.size[1], 0, 1 });
-                cmd.SetScissor({ 0, 0, u32(t.size[0]), u32(t.size[1]) });
+                cmd.SetScissor(scissor);
                 cmd.SetPushConstants(push, sizeof(push));
                 cmd.BindVertexBuffer(0, buffer);
                 boundPipeline = want.get();
             }
-            cmd.BindBindGroup(GroupFor(run.page));
-            cmd.Draw(4, run.count, 0, t.base + run.first);
+            cmd.BindBindGroup(GroupFor(run.page, run.dst));
+            cmd.Draw(4, run.count, 0, base + run.first);
         }
     }
 
@@ -271,7 +337,7 @@ namespace kiln {
             const Target& t = m_Targets[index];
             RenderPassDesc pass;
             pass.target = t.rt;
-            pass.clearColor = { 0, 0, 0, 0 };
+            pass.clearColor = { t.clear[0], t.clear[1], t.clear[2], t.clear[3] };
             cmd.BeginRenderPass(pass);
             DrawTarget(cmd, t);
             cmd.EndRenderPass();

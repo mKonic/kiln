@@ -70,13 +70,18 @@ namespace kiln {
         void SetFilterTexture(hearth::Ref<hearth::Texture> t) { m_Filters = std::move(t); m_Groups.clear(); }
         // The gradient ramp texture (bound next to every atlas page).
         // Drops the cached bind group of a page about to be destroyed.
-        void ForgetPage(const AtlasPage* page) { std::erase_if(m_Groups, [page](const auto& g) { return g.first == page; }); }
+        void ForgetPage(const AtlasPage* page) { std::erase_if(m_Groups, [page](const auto& g) { return g.page == page || g.dst == page; }); }
         void SetRampTexture(hearth::Ref<hearth::Texture> ramp) { m_Ramp = std::move(ramp); m_Groups.clear(); }
         // Affine transform (x' = a*x + c*y + e, y' = b*x + d*y + f) applied to quads submitted
         // after this call: their rects are in its local space.
         // Affine a..f; g, h are the perspective row (x' = (a x + c y + e) / (g x + h y + 1)).
         struct Transform { float a = 1, b = 0, c = 0, d = 1, e = 0, f = 0, g = 0, h = 0; };
         void SetTransform(const Transform& t) { m_Transform = t; }
+        // Blend mode of quads submitted after this call (gfx::BlendMode order; 3 = SrcOver). Other
+        // modes read the target: what it holds so far renders into a copy that the quad samples.
+        void SetBlendMode(int mode) { m_BlendMode = mode; }
+        // The main target's clear colour (destination copies of it start from the same pixels).
+        void SetClearColor(float r, float g, float b, float a) { m_RootClear[0] = r; m_RootClear[1] = g; m_RootClear[2] = b; m_RootClear[3] = a; }
         // Clip applied to quads submitted after this call: a rounded rect (x0, y0, x1, y1, radius)
         // in the space `inverse` maps framebuffer pixels into (identity: framebuffer pixels).
         struct Clip { float x0 = 0, y0 = 0, x1 = 0, y1 = 0; float radii[4] = {}; bool enabled = false; Transform inverse; };   // radii: TL, TR, BR, BL
@@ -106,7 +111,7 @@ namespace kiln {
     private:
         struct Instance { float rect[4]; float uv[4]; float color[4]; float params[4]; float clip[4]; float clipParams[4]; float paint[4]; float paint2[4];
                          float xform[4]; float xform2[4]; float clipInv[4]; float clipInv2[4]; };
-        struct Run { const AtlasPage* page; std::uint32_t first, count; bool mask = false; bool filtered = false; };
+        struct Run { const AtlasPage* page; std::uint32_t first, count; bool mask = false; bool filtered = false; const AtlasPage* dst = nullptr; };
 
         void Push(const Instance& instance, const AtlasPage* page, const Paint* paint, bool mask = false);
         struct Target {
@@ -115,7 +120,18 @@ namespace kiln {
             float origin[2] = { 0, 0 }, size[2] = { 1, 1 };
             hearth::RenderTarget* rt = nullptr;   // null: the swapchain
             std::uint32_t base = 0;               // first instance in the shared buffer
+            // A destination copy: draws the first runs of target `alias` (its instances),
+            // within the scissor (target pixels x, y, w, h).
+            bool aliased = false;
+            std::size_t alias = 0;
+            std::uint32_t scissor[4] = { 0, 0, 0, 0 };
+            float clear[4] = { 0, 0, 0, 0 };
         };
+        // The current target's content so far, rendered into a layer within the device bounds
+        // of `instance` (for a blend mode's destination reads).
+        const AtlasPage* DestinationCopy(const Instance& instance);
+        struct PooledLayer;
+        PooledLayer& AcquireLayer(int width, int height);
         struct PooledLayer {
             hearth::Ref<hearth::RenderTarget> rt;
             std::unique_ptr<AtlasPage> page;
@@ -125,12 +141,15 @@ namespace kiln {
         Target& Current() { return m_Targets[m_Stack.back()]; }
         void Upload();
         void DrawTarget(hearth::CommandList& cmd, const Target& t);
-        hearth::Ref<hearth::BindGroup> GroupFor(const AtlasPage* page);
+        hearth::Ref<hearth::BindGroup> GroupFor(const AtlasPage* page, const AtlasPage* dst = nullptr);
 
         hearth::Device& m_Device;
         hearth::Ref<hearth::Pipeline> m_Pipeline;
         hearth::Ref<hearth::Pipeline> m_MaskPipeline;
         hearth::Ref<hearth::Pipeline> m_FilteredPipeline;
+        hearth::Ref<hearth::Pipeline> m_BlendPipeline;   // filtered shader, no fixed-function blending
+        int m_BlendMode = 3;
+        float m_RootClear[4] = { 0, 0, 0, 1 };
         hearth::Ref<hearth::Texture> m_White;
         hearth::Ref<hearth::Texture> m_Ramp;
         hearth::Ref<hearth::Texture> m_Filters;
@@ -142,7 +161,8 @@ namespace kiln {
         std::vector<const AtlasPage*> m_LayerPages;   // per offscreen target (index - 1)
         std::vector<Instance> m_Staging;
         std::vector<hearth::Ref<hearth::Buffer>> m_Buffers;   // one per frame in flight
-        std::vector<std::pair<const AtlasPage*, hearth::Ref<hearth::BindGroup>>> m_Groups;
+        struct Group { const AtlasPage* page; const AtlasPage* dst; hearth::Ref<hearth::BindGroup> group; };
+        std::vector<Group> m_Groups;
         float m_Viewport[2] = { 1, 1 };
         Clip m_Clip;
         Transform m_Transform;

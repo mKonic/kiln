@@ -600,14 +600,16 @@ namespace kiln::foundation {
                 }
                 if (params.renderEffect) { DrawBlurred(s, size, clipPath ? &*clipPath : nullptr, outline ? &*outline : nullptr); s.Restore(); return; }
                 const bool offscreen = clipPath || params.compositingStrategy == CompositingStrategy::Offscreen ||
+                                       params.blendMode != gfx::BlendMode::SrcOver || params.colorFilter ||
                                        (params.compositingStrategy == CompositingStrategy::Auto && params.alpha < 1);
-                if (offscreen) s.BeginLayer({ 0, 0, size.width, size.height }, params.alpha, clipPath ? &*clipPath : nullptr);
+                if (offscreen) s.BeginLayer({ 0, 0, size.width, size.height }, params.alpha, clipPath ? &*clipPath : nullptr, params.blendMode, Filter());
                 else if (params.alpha < 1) s.MultiplyAlpha(params.alpha);   // ModulateAlpha
                 if (params.clip && !clipPath) ClipToShape(s, size, outline ? &*outline : nullptr);
                 s.DrawContent();
                 if (offscreen) s.EndLayer();
                 s.Restore();
             }
+            const gfx::ColorFilter* Filter() const { return params.colorFilter ? &*params.colorFilter : nullptr; }
             void ClipToShape(ContentDrawScope& s, Size size, const gfx::Outline* outline) {
                 if (outline) {
                     if (auto* r = std::get_if<Rect>(&outline->value)) s.ClipRect(*r);
@@ -627,11 +629,12 @@ namespace kiln::foundation {
                 const bool decal = b.edgeTreatment == gfx::TileMode::Decal;
                 const Rect bounds{ 0, 0, size.width, size.height };
                 float alpha = params.alpha;
-                if (clipPath) { s.BeginLayer(bounds, alpha, clipPath); alpha = 1; }
+                if (clipPath) { s.BeginLayer(bounds, alpha, clipPath, params.blendMode, Filter()); alpha = 1; }
                 else if (params.clip) ClipToShape(s, size, outline);
                 // Decal lets the blur spread 3 sigma past the content (SkBlurImageFilter bounds).
                 const Rect layer = decal ? Rect{ -3 * sx, -3 * sy, size.width + 3 * sx, size.height + 3 * sy } : bounds;
-                s.BeginLayer(layer, alpha);
+                if (clipPath) s.BeginLayer(layer, alpha);
+                else s.BeginLayer(layer, alpha, nullptr, params.blendMode, Filter());
                 s.DrawContent();
                 s.EndLayerBlur(sx, sy, decal);
                 if (clipPath) s.EndLayer();
@@ -640,7 +643,7 @@ namespace kiln::foundation {
             // is composited through the perspective matrix (it is planar, so this is the same image).
             void Draw3D(ContentDrawScope& s, Size size) {
                 s.Save();
-                s.BeginLayer({ 0, 0, size.width, size.height }, params.alpha);
+                s.BeginLayer({ 0, 0, size.width, size.height }, params.alpha, nullptr, params.blendMode, Filter());
                 std::optional<gfx::Path> clipPath;
                 if (params.clip) {
                     if (params.clipShape) {
