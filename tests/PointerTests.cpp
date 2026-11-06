@@ -372,3 +372,26 @@ TEST(TransformGesturesReportZoomAndRotation) {
     // 90 degrees minus what the slop absorbed (three 5-degree steps at a 30 px radius), clockwise.
     CHECK(std::abs(rotation - 75) < 0.5f);
 }
+
+TEST(CombinedClickableLongAndDoubleClick) {
+    Harness h;
+    int clicks = 0, longs = 0, doubles = 0;
+    h.Run([&] {
+        Box(FillMax(Modifier{}, Axis::Both), Alignment::TopStart(), false, [&] {
+            ClickableOptions o;
+            o.onLongClick = [&] { ++longs; };
+            o.onDoubleClick = [&] { ++doubles; };
+            Box(Clickable(SizeMod(Modifier{}, Dp(60), Dp(60)), [&] { ++clicks; }, o));
+        });
+    });
+    auto& d = rt::Dispatcher::Main();
+    (void)d;
+    h.Touch(PointerEventType::Press, 30, 30, true, 0);
+    h.Touch(PointerEventType::Release, 30, 30, false, 50);
+    h.Touch(PointerEventType::Press, 30, 30, true, 120);
+    h.Touch(PointerEventType::Release, 30, 30, false, 170);
+    CHECK_EQ(doubles, 1);
+    CHECK_EQ(clicks, 0);
+    const auto tree = h.owner.BuildSemanticsTree();
+    CHECK(bool(tree.children[0].config.onLongClick));
+}

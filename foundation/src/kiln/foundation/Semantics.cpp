@@ -18,7 +18,8 @@ namespace kiln::foundation {
                        a.selected == b.selected && a.toggleableState == b.toggleableState && a.focused == b.focused &&
                        a.disabled == b.disabled && a.paneTitle == b.paneTitle && a.textSelection == b.textSelection &&
                        bool(a.onClick) == bool(b.onClick) && bool(a.setText) == bool(b.setText) &&
-                       a.onClickLabel == b.onClickLabel && a.selectableGroup == b.selectableGroup;
+                       a.onClickLabel == b.onClickLabel && a.selectableGroup == b.selectableGroup &&
+                       a.onLongClickLabel == b.onLongClickLabel && bool(a.onLongClick) == bool(b.onLongClick);
             }
         };
         struct SemNode final : ui::ModifierNode, ui::SemanticsModifier {
@@ -48,6 +49,7 @@ namespace kiln::foundation {
                 if (!c.focused) c.focused = mine.focused;
                 if (!c.onClick) c.onClick = mine.onClick;
                 if (!c.onClickLabel) c.onClickLabel = mine.onClickLabel;
+                if (!c.onLongClickLabel) c.onLongClickLabel = mine.onLongClickLabel;
                 c.selectableGroup = c.selectableGroup || mine.selectableGroup;
                 if (!c.onLongClick) c.onLongClick = mine.onLongClick;
                 if (!c.setText) c.setText = mine.setText;

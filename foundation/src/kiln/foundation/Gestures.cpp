@@ -411,6 +411,7 @@ namespace kiln::foundation {
             std::function<void()> onClick;
             std::function<void(bool)> onPressed;
             std::function<void(SemanticsConfiguration&)> extraSemantics;
+            std::function<void()> onLongClick, onDoubleClick;
             std::shared_ptr<MutableInteractionSource> source;
             std::uint64_t press = 0, keyPress = 0, hover = 0;
             rt::Job delayJob;
@@ -437,6 +438,10 @@ namespace kiln::foundation {
             st->onClick = std::move(onClick);
             st->onPressed = std::move(onPressed);
             st->extraSemantics = std::move(extra);
+            st->onLongClick = o.onLongClick;
+            st->onDoubleClick = o.onDoubleClick;
+            const bool hasLong = bool(o.onLongClick), hasDouble = bool(o.onDoubleClick);
+            const std::optional<std::string> longLabel = o.onLongClickLabel;
             // An indication needs a source; create one when the caller passed none.
             IndicationPtr indication = o.indication;
             if (!indication && o.useLocalIndication) {
@@ -451,10 +456,14 @@ namespace kiln::foundation {
 
             // Semantics come first so they hold even when disabled (applySemantics: role, onClick
             // with label, focusable or disabled).
-            m = Semantics(std::move(m), [st, role, label, enabled](SemanticsConfiguration& c) {
+            m = Semantics(std::move(m), [st, role, label, enabled, hasLong, longLabel](SemanticsConfiguration& c) {
                 if (role) c.role = *role;
                 c.onClick = [st] { if (st->onClick) st->onClick(); return true; };
                 if (label) c.onClickLabel = *label;
+                if (hasLong) {
+                    c.onLongClick = [st] { if (st->onLongClick) st->onLongClick(); return true; };
+                    if (longLabel) c.onLongClickLabel = *longLabel;
+                }
                 if (!enabled) c.disabled = true;
                 if (st->extraSemantics) st->extraSemantics(c);
             }, true);
@@ -483,8 +492,10 @@ namespace kiln::foundation {
             m = Focusable(std::move(m), Focusability::SystemDefined, {}, st->source);
             // Hover: Enter / Exit events become hover interactions (AbstractClickableNode).
             if (st->source) m = PointerInput(std::move(m), rt::Keys(1), [st](PointerInputScope& s) { return HoverLoop(s, st); });
-            return PointerInput(std::move(m), rt::Keys(0), [st](PointerInputScope& s) {
+            return PointerInput(std::move(m), rt::Keys(0, hasLong, hasDouble), [st, hasLong, hasDouble](PointerInputScope& s) {
                 TapCallbacks cb;
+                if (hasLong) cb.onLongPress = [st](Offset) { if (st->onLongClick) st->onLongClick(); };
+                if (hasDouble) cb.onDoubleTap = [st](Offset) { if (st->onDoubleClick) st->onDoubleClick(); };
                 const bool delayed = s.InScrollableContainer();
                 const std::int64_t delayMs = s.Config().tapTimeoutMillis;
                 auto* dispatcher = &rt::Dispatcher::Main();

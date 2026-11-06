@@ -108,6 +108,11 @@ namespace kiln::foundation {
         // Null with useLocalIndication: LocalIndication (DefaultDebugIndication when unset).
         IndicationPtr indication;
         bool useLocalIndication = true;
+        // combinedClickable: a long press and/or a double tap besides the click (with a double
+        // tap set, a single tap waits out the double-tap timeout).
+        std::function<void()> onLongClick;
+        std::optional<std::string> onLongClickLabel;
+        std::function<void()> onDoubleClick;
     };
     // clickable(interactionSource, indication, enabled, onClickLabel, role, onClick): tap and
     // Enter/Space/DPAD-centre activation, press interactions (delayed TapTimeout inside scrollable
