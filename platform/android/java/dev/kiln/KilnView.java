@@ -248,6 +248,8 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
         contentChangePosted = true;
         postDelayed(() -> {
             contentChangePosted = false;
+            // Services can go away during the delay; sending with accessibility off throws.
+            if (!am.isEnabled()) return;
             AccessibilityEvent e = AccessibilityEvent.obtain(AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED);
             e.setContentChangeTypes(AccessibilityEvent.CONTENT_CHANGE_TYPE_SUBTREE);
             e.setPackageName(getContext().getPackageName());

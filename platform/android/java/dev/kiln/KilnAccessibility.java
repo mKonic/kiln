@@ -114,6 +114,9 @@ final class KilnAccessibility extends AccessibilityNodeProvider {
     }
 
     void send(int id, int type) {
+        android.view.accessibility.AccessibilityManager am =
+                view.getContext().getSystemService(android.view.accessibility.AccessibilityManager.class);
+        if (am == null || !am.isEnabled() || view.getParent() == null) return;
         AccessibilityEvent e = AccessibilityEvent.obtain(type);
         e.setPackageName(view.getContext().getPackageName());
         e.setSource(view, id);
