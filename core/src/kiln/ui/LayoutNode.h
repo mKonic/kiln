@@ -243,6 +243,17 @@ namespace kiln::ui {
         void SetRequestRectangleOnScreen(std::function<void(Rect)> fn) { m_RequestRectangle = std::move(fn); }
         // The host's View.playSoundEffect (SoundEffectConstants: 0 click, 1-4 navigation left, up,
         // right, down, 5-8 their repeating variants).
+        // Pointer icons (PointerIconService): nodes under a hovering mouse or stylus ask for an
+        // icon (android.view.PointerIcon types); the deepest one wins, and the host shows it.
+        // Without any, the default (TYPE_DEFAULT 1000).
+        void SetPointerIconHost(std::function<void(int)> fn) { m_PointerIconHost = std::move(fn); }
+        // UriHandler (AndroidUriHandler): opens a URI with the platform (ACTION_VIEW); false when
+        // nothing can open it.
+        void SetUriHandler(std::function<bool(const std::string&)> fn) { m_UriHandler = std::move(fn); }
+        bool OpenUri(const std::string& uri) { return m_UriHandler && m_UriHandler(uri); }
+        void RequestPointerIcon(const void* requester, int depth, int type);
+        void ReleasePointerIcon(const void* requester);
+        int CurrentPointerIcon() const { return m_PointerIcon; }
         void SetPlaySoundEffect(std::function<void(int)> fn) { m_PlaySound = std::move(fn); }
         void PlaySoundEffect(int constant) { if (m_PlaySound) m_PlaySound(constant); }
         // KeyCharacterMap.getDeadChar: the character a dead key's accent makes with `c`, or 0.
@@ -320,6 +331,12 @@ namespace kiln::ui {
         void RequestFullRemeasure();
 
         std::function<void(int)> m_PlaySound;
+        std::function<void(int)> m_PointerIconHost;
+        std::function<bool(const std::string&)> m_UriHandler;
+        struct IconRequest { const void* requester; int depth; int type; };
+        std::vector<IconRequest> m_IconRequests;
+        int m_PointerIcon = 1000;
+        void UpdatePointerIcon();
         std::function<int(int, int)> m_DeadChar;
         std::unique_ptr<LayoutNode> m_Root;
         Density m_Density;

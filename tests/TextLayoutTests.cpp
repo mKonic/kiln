@@ -1,9 +1,12 @@
 #include "Check.h"
 
+#include "kiln/foundation/Compose.h"
 #include "kiln/text/Paragraph.h"
+#include "kiln/ui/Pointer.h"
 
 #include <algorithm>
 #include <cmath>
+#include <map>
 
 using namespace kiln;
 using namespace kiln::text;
@@ -52,6 +55,7 @@ namespace {
             d.firstBaseline = d.lines.front().baseline;
             d.lastBaseline = d.lines.back().baseline;
             d.handle = ++m_Next;
+            m_Laid[d.handle] = { r.base.sizePx * 0.5f, d.lines };
             return d;
         }
         ParagraphIntrinsicWidths Intrinsics(const ParagraphRequest& r) override {
@@ -73,10 +77,18 @@ namespace {
         CursorRect GetCursorRect(std::int64_t, int) override { return {}; }
         int GetOffsetForPosition(std::int64_t, float, float) override { return 0; }
         RectF GetBoundingBox(std::int64_t, int) override { return {}; }
-        std::vector<RectF> GetSelectionRects(std::int64_t, int, int) override { return {}; }
+        std::vector<RectF> GetSelectionRects(std::int64_t h, int start, int end) override {
+            std::vector<RectF> out;
+            const auto& [cw, lines] = m_Laid[h];
+            for (const auto& l : lines) {
+                const int s = std::max(start, l.start), e = std::min(end, l.visibleEnd);
+                if (s < e) out.push_back({ float(s - l.start) * cw, l.top, float(e - s) * cw, l.bottom - l.top });
+            }
+            return out;
+        }
         std::pair<int, int> GetWordBoundary(std::int64_t, int o) override { return { o, o }; }
         bool IsRtlCharAt(std::int64_t, int) override { return false; }
-        void Release(std::int64_t) override { ++released; }
+        void Release(std::int64_t h) override { ++released; m_Laid.erase(h); }
         int released = 0;
 
     private:
@@ -91,6 +103,7 @@ namespace {
             return r.base.sizePx * 0.5f;
         }
         std::int64_t m_Next = 0;
+        std::map<std::int64_t, std::pair<float, std::vector<LineData>>> m_Laid;
     };
 }
 
@@ -280,4 +293,65 @@ TEST(LayoutTextSizesToIntrinsicsAndConstraints) {
     in.constraints = {};
     LayoutText(&backend, in, &intr);
     CHECK(intr && std::abs(intr->maxWidth - 360) < 1e-3f && std::abs(intr->minWidth - 60) < 1e-3f);
+}
+
+TEST(BasicTextLinksClickHoverAndOpenUris) {
+    FakeText backend;
+    ui::Owner owner;
+    owner.SetDensity({ 1, 1 });
+    owner.SetText(&backend);
+    std::vector<std::string> opened;
+    owner.SetUriHandler([&](const std::string& uri) { opened.push_back(uri); return true; });
+    std::vector<int> icons;
+    owner.SetPointerIconHost([&](int type) { icons.push_back(type); });
+    rt::Composition comp(owner.Root(), rt::Dispatcher::Main());
+    int clicks = 0;
+    AnnotatedStringBuilder b;
+    b.Append("Go to ");
+    TextLinkStyles styles;
+    SpanStyle underline;
+    underline.textDecoration = TextDecoration::Underline;
+    styles.hoveredStyle = underline;
+    b.WithLink(LinkAnnotation::Clickable("kiln", styles, [&](const LinkAnnotation& l) { if (l.tag == "kiln") ++clicks; }), [&] { b.Append("kiln"); });
+    b.Append(" or ");
+    b.WithLink(LinkAnnotation::Url("https://example.com"), [&] { b.Append("site"); });
+    const AnnotatedString text = b.ToAnnotatedString();
+    std::shared_ptr<TextLayoutResult> last;
+    foundation::BasicTextOptions options;
+    options.onTextLayout = [&](const TextLayoutResult& r) { last = std::make_shared<TextLayoutResult>(r); };
+    comp.SetContent([&] { foundation::Column(ui::Modifier{}, [&] { foundation::BasicText(text, {}, TextStyle(Sp(20)), options); }); });
+    comp.Recompose();
+    owner.MeasureAndLayout({ 300, 100 });
+    CHECK(last && last->Size().width == 180);   // 18 chars of 10 px
+
+    std::int64_t t = 1000;
+    auto send = [&](ui::PointerEventType type, float x, bool down) {
+        ui::RawPointerEvent e;
+        e.type = type;
+        e.uptimeMillis = t += 20;
+        e.buttons = down ? 1u : 0u;
+        e.pointers.push_back({ 1, { x, 10 }, down, ui::PointerType::Mouse, {} });
+        owner.ProcessPointer(e);
+        rt::Dispatcher::Main().RunPending();
+    };
+    auto tap = [&](float x) { send(ui::PointerEventType::Press, x, true); send(ui::PointerEventType::Release, x, false); };
+    tap(80);    // "kiln" spans 60..100
+    CHECK_EQ(clicks, 1);
+    tap(20);    // plain text
+    CHECK_EQ(clicks, 1);
+    tap(155);   // "site" spans 140..180: no listener, so the UriHandler opens it
+    CHECK(opened.size() == 1 && opened[0] == "https://example.com");
+
+    // Hover: the hand icon, and the hovered style (a re-layout with an underline span).
+    send(ui::PointerEventType::Move, 80, false);
+    CHECK(owner.CurrentPointerIcon() == 1002);
+    comp.Recompose();
+    owner.MeasureAndLayout({ 300, 100 });
+    bool underlined = false;
+    for (const auto& span : last->LayoutInput().text.SpanStyles())
+        if (span.start == 6 && span.end == 10 && span.item.textDecoration == TextDecoration::Underline) underlined = true;
+    CHECK(underlined);
+    send(ui::PointerEventType::Move, 20, false);
+    CHECK(owner.CurrentPointerIcon() == 1000);
+    CHECK(icons.size() >= 2 && icons.back() == 1000);
 }

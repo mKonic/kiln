@@ -411,6 +411,21 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
     }
 
     /** The root's bringIntoView: our parents (a ScrollView) scroll the rect into view. */
+    /** PointerIconService: the hovered content's icon (android.view.PointerIcon types). */
+    void setPointerIconType(int type) {
+        setPointerIcon(android.view.PointerIcon.getSystemIcon(getContext(), type));
+    }
+
+    /** AndroidUriHandler.openUri: ACTION_VIEW; false when no activity handles it. */
+    boolean openUri(String uri) {
+        try {
+            getContext().startActivity(new android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(uri)));
+            return true;
+        } catch (android.content.ActivityNotFoundException e) {
+            return false;
+        }
+    }
+
     // View.playSoundEffect; the audio service may be gone (DeadSystemException).
     void playSound(int constant) {
         try { playSoundEffect(constant); } catch (RuntimeException ignored) {}

@@ -273,3 +273,28 @@ namespace kiln::ui {
     }
 
 }
+
+namespace kiln::ui {
+
+    void Owner::RequestPointerIcon(const void* requester, int depth, int type) {
+        for (auto& r : m_IconRequests)
+            if (r.requester == requester) { r.depth = depth; r.type = type; UpdatePointerIcon(); return; }
+        m_IconRequests.push_back({ requester, depth, type });
+        UpdatePointerIcon();
+    }
+
+    void Owner::ReleasePointerIcon(const void* requester) {
+        std::erase_if(m_IconRequests, [&](const IconRequest& r) { return r.requester == requester; });
+        UpdatePointerIcon();
+    }
+
+    void Owner::UpdatePointerIcon() {
+        int type = 1000, depth = -1;
+        for (const auto& r : m_IconRequests)
+            if (r.depth >= depth) { depth = r.depth; type = r.type; }
+        if (type == m_PointerIcon) return;
+        m_PointerIcon = type;
+        if (m_PointerIconHost) m_PointerIconHost(type);
+    }
+
+}

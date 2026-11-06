@@ -111,6 +111,20 @@ namespace {
                 gradient.span.brush = kiln::gfx::Brush::LinearGradient({ kPrimary, Color(0xFFE8618Cu) }, { 0, 0 }, { 400, 0 });
                 gradient.span.fontWeight = FontWeight::Bold();
                 BasicText("Gradient brush", Padding(Modifier{}, 16_dp, 4_dp), gradient);
+                auto& linkTaps = RememberState(0);
+                const AnnotatedString linked = BuildAnnotatedString([&](AnnotatedStringBuilder& b) {
+                    b.Append("Links: ");
+                    TextLinkStyles ls;
+                    SpanStyle linkStyle; linkStyle.color = kPrimary; linkStyle.textDecoration = TextDecoration::Underline;
+                    SpanStyle pressed; pressed.background = Color(0x336750A4u);
+                    ls.style = linkStyle;
+                    ls.pressedStyle = pressed;
+                    b.WithLink(LinkAnnotation::Url("https://developer.android.com/develop/ui/compose/text", ls), [&] { b.Append("Compose text docs"); });
+                    b.Append(" or ");
+                    b.WithLink(LinkAnnotation::Clickable("count", ls, [&linkTaps](const LinkAnnotation&) { linkTaps.Set(linkTaps.Get() + 1); }),
+                               [&] { b.Append("tapped " + std::to_string(linkTaps.Get())); });
+                });
+                BasicText(linked, Padding(Modifier{}, 16_dp, 4_dp), { 16, kOnSurface });
                 BasicTextOptions two;
                 two.maxLines = 2;
                 two.overflow = TextOverflow::Ellipsis;

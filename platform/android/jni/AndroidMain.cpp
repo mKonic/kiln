@@ -213,6 +213,20 @@ namespace {
             g_Host->app->GetOwner().SetPlaySoundEffect([](int constant) { MainEnv()->CallVoidMethod(g_Host->view, playSound, jint(constant)); });
         }
         {
+            jclass vc = env->GetObjectClass(view);
+            static jmethodID setIcon = env->GetMethodID(vc, "setPointerIconType", "(I)V");
+            static jmethodID openUri = env->GetMethodID(vc, "openUri", "(Ljava/lang/String;)Z");
+            env->DeleteLocalRef(vc);
+            g_Host->app->GetOwner().SetPointerIconHost([](int type) { MainEnv()->CallVoidMethod(g_Host->view, setIcon, jint(type)); });
+            g_Host->app->GetOwner().SetUriHandler([](const std::string& uri) {
+                JNIEnv* e = MainEnv();
+                jstring s = e->NewStringUTF(uri.c_str());   // URIs are ASCII (percent-encoded)
+                const bool ok = e->CallBooleanMethod(g_Host->view, openUri, s);
+                e->DeleteLocalRef(s);
+                return ok;
+            });
+        }
+        {
             jclass kcm = env->FindClass("android/view/KeyCharacterMap");
             static jclass kcmClass = reinterpret_cast<jclass>(env->NewGlobalRef(kcm));
             static jmethodID getDeadChar = env->GetStaticMethodID(kcm, "getDeadChar", "(II)I");
