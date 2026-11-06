@@ -2,6 +2,7 @@
 // backgrounds and wrapped text, plus a counter driven by a coroutine to show recomposition.
 #include <kiln/kiln.hpp>
 #include <kiln/foundation/Compose.h>
+#include <kiln/foundation/Gestures.h>
 #include <kiln/runtime/Task.h>
 
 using namespace kiln::foundation;
@@ -51,6 +52,16 @@ namespace {
             Box(Background(Height(Padding(FillMax(Modifier{}, Axis::Horizontal), 16_dp, 0_dp), 120_dp), kPrimaryContainer, CornerShape::Rounded(28_dp)),
                 Alignment::Center(), false, [&] {
                 BasicText("Running for " + std::to_string(seconds.Get()) + " s", {}, { 22, kOnSurface });
+            });
+            auto& taps = RememberState(0);
+            auto& pressed = RememberState(false);
+            Row(Padding(Modifier{}, 16_dp, 0_dp), Arrangement::SpacedBy(16_dp), AlignmentV::CenterVertically(), [&] {
+                Box(Clickable(Background(Height(Modifier{}, 40_dp), pressed.Get() ? Color(0xFF4F378Bu) : kPrimary, CornerShape::Pill()),
+                              [&taps] { taps.Set(taps.Peek() + 1); }, [&pressed](bool p) { pressed.Set(p); }),
+                    Alignment::Center(), false, [&] {
+                    BasicText("Tap me", Padding(Modifier{}, 24_dp, 0_dp), { 14, kOnPrimary });
+                });
+                BasicText("Tapped " + std::to_string(taps.Get()) + " times", {}, { 16, kOnSurface });
             });
             BasicText("Text wraps to the width it is given. The paragraph below the counter is laid out by the "
                       "same platform path as before, now measured by a layout node.",
