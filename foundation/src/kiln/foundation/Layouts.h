@@ -1,5 +1,7 @@
 #pragma once
 
+#include "kiln/graphics/Brush.h"
+
 // Foundation layouts and layout modifiers (spec 06 §13).
 
 #include "kiln/foundation/Arrangement.h"
@@ -79,6 +81,8 @@ namespace kiln::foundation {
         static CornerShape Pill() { CornerShape s; s.percent = 50; return s; }
         bool operator==(const CornerShape&) const = default; };
     Modifier Background(Modifier m, Color color, CornerShape shape = {});
+    // background(brush, shape, alpha)
+    Modifier Background(Modifier m, gfx::Brush brush, CornerShape shape = {}, float alpha = 1);
 
     // graphicsLayer (draw-time part): alpha (modulated per draw), scale about transformOrigin
     // (fractions of the size), translation, and an optional clip to the shape.

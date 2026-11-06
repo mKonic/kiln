@@ -1,3 +1,4 @@
+#include "kiln/graphics/Brush.h"
 #include "kiln/foundation/Layouts.h"
 
 #include "kiln/ui/Draw.h"
@@ -434,6 +435,24 @@ namespace kiln::foundation {
     }
 
     namespace {
+        struct BrushBackgroundParams { gfx::Brush brush; CornerShape shape; float alpha; bool operator==(const BrushBackgroundParams&) const = default; };
+        struct BrushBackgroundNode final : ModifierNode, DrawModifier {
+            BrushBackgroundParams params;
+            explicit BrushBackgroundNode(BrushBackgroundParams p) : params(std::move(p)) {}
+            void OnParamsChanged() { InvalidateDraw(); }
+            DrawModifier* AsDraw() override { return this; }
+            void Draw(ContentDrawScope& s) override {
+                const Size size = s.GetSize();
+                const CornerShape& sh = params.shape;
+                float r = sh.percent >= 0 ? size.MinDimension() * sh.percent / 100.0f : s.ToPx(sh.topStart);
+                r = std::min(r, size.MinDimension() / 2);
+                s.DrawRoundRect(params.brush, {}, size, r, params.alpha);
+                s.DrawContent();
+            }
+        };
+    }
+
+    namespace {
         float CornerRadiusPx(const CornerShape& sh, Size size, const Density& d) {
             float r = sh.percent >= 0 ? size.MinDimension() * sh.percent / 100.0f : d.ToPx(sh.topStart);
             return std::min(r, size.MinDimension() / 2);
@@ -473,5 +492,8 @@ namespace kiln::foundation {
     Modifier AlignInBox(Modifier m, Alignment a) { return m.With<ParentDataNode>(ParentParams{ 3, 0, true, a.horizontal, a.vertical }); }
     Modifier MatchParentSize(Modifier m) { return m.With<ParentDataNode>(ParentParams{ 4, 0, true, 0, 0 }); }
     Modifier Background(Modifier m, Color c, CornerShape s) { return m.With<BackgroundNode>(BackgroundParams{ c, s }); }
+    Modifier Background(Modifier m, gfx::Brush brush, CornerShape s, float alpha) {
+        return m.With<BrushBackgroundNode>(BrushBackgroundParams{ std::move(brush), s, alpha });
+    }
 
 }
