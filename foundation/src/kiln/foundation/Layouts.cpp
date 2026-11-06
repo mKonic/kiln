@@ -488,9 +488,11 @@ namespace kiln::foundation {
             void Draw(ContentDrawScope& s) override {
                 const Size size = s.GetSize();
                 s.Save();
+                // RenderNode order: translation, then rotation and scale about the pivot (scale first).
                 s.Translate({ params.translationX, params.translationY });
-                if (params.scaleX != 1 || params.scaleY != 1)
-                    s.Scale(params.scaleX, params.scaleY, { size.width * params.originX, size.height * params.originY });
+                const Offset pivot{ size.width * params.originX, size.height * params.originY };
+                if (params.rotationZ != 0) s.Rotate(params.rotationZ, pivot);
+                if (params.scaleX != 1 || params.scaleY != 1) s.Scale(params.scaleX, params.scaleY, pivot);
                 if (params.alpha != 1) s.MultiplyAlpha(params.alpha);
                 if (params.clip) s.ClipRect({ 0, 0, size.width, size.height }, CornerRadiusPx(params.shape, size, s));
                 s.DrawContent();
