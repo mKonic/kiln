@@ -23,14 +23,46 @@ namespace kiln::foundation {
         bool IsScrollInProgress() const { return m_InProgress.Get(); }
 
         // Stops a running fling or programmatic scroll (stopScroll()).
-        void StopScroll() { if (m_Stop) m_Stop(); }
-        void SetScrollInProgress(bool v) { m_InProgress.Set(v); }   // used by the gesture code
+        void StopScroll() { if (m_Stop) { auto stop = std::move(m_Stop); m_Stop = nullptr; stop(); } }
+        bool HasRunningScroll() const { return bool(m_Stop); }
+        void SetScrollInProgress(bool v) { if (m_InProgress.Peek() != v) m_InProgress.Set(v); }   // used by the gesture code
+
+        // scroll { } (the scroll mutex): stops whatever runs, marks the scroll in progress and
+        // returns a token; `stop` is how a later scroll or a press stops this one.
+        std::uint64_t BeginScroll(std::function<void()> stop) {
+            StopScroll();
+            m_Stop = std::move(stop);
+            SetScrollInProgress(true);
+            return ++m_ScrollToken;
+        }
+        bool IsCurrentScroll(std::uint64_t token) const { return token == m_ScrollToken; }
+        void EndScroll(std::uint64_t token) {
+            if (token != m_ScrollToken) return;
+            m_Stop = nullptr;
+            SetScrollInProgress(false);
+        }
 
     protected:
         friend class ScrollingLogic;
         rt::State<bool> m_InProgress{ false };
         std::function<void()> m_Stop;
+        std::uint64_t m_ScrollToken = 0;
     };
+
+    // Ends a BeginScroll when the coroutine frame holding it goes away (cancelled jobs included),
+    // so the stop callback never outlives what it captures.
+    struct ScrollSession {
+        ScrollableState& state;
+        std::uint64_t token;
+        ScrollSession(ScrollableState& s, std::function<void()> stop) : state(s), token(s.BeginScroll(std::move(stop))) {}
+        ~ScrollSession() { state.EndScroll(token); }
+        bool Current() const { return state.IsCurrentScroll(token); }
+        ScrollSession(const ScrollSession&) = delete;
+        ScrollSession& operator=(const ScrollSession&) = delete;
+    };
+
+    // animateScrollBy: animates `value` px of scrolling; returns what was consumed.
+    rt::Task<float> AnimateScrollBy(ScrollableState& state, float value, anim::SpecPtr spec = anim::Spring());
 
     // ScrollState for verticalScroll/horizontalScroll (ScrollState.kt).
     class ScrollState final : public ScrollableState {

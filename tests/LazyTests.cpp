@@ -13,6 +13,17 @@ namespace {
         Harness() { owner.SetDensity({ 1, 1 }); }
         void Run(std::function<void()> content) { composition.SetContent(std::move(content)); Pump(); }
         void Pump() { rt::Composition::RecomposeAll(); owner.MeasureAndLayout({ 100, 100 }); }
+        std::int64_t frameNs = 0;
+        void Frames(int n) { for (int i = 0; i < n; ++i) { frameNs += 16'000'000; rt::Dispatcher::Main().RunFrame(frameNs); Pump(); } }
+        void Touch(PointerEventType type, float x, float y, bool down, std::int64_t t) {
+            RawPointerEvent e;
+            e.type = type;
+            e.uptimeMillis = t;
+            e.pointers.push_back({ 1, { x, y }, down, PointerType::Touch, {} });
+            owner.ProcessPointer(e);
+            rt::Dispatcher::Main().RunPending();
+            Pump();
+        }
     };
 }
 
@@ -71,4 +82,61 @@ TEST(LazyColumnKeepsPositionByKey) {
     h.Pump();
     CHECK_EQ(state.FirstVisibleItemIndex(), 4);  // still key 12
     CHECK_EQ(state.FirstVisibleItemScrollOffset(), 5);
+}
+
+TEST(LazyLayoutInfoAndAnimateScrollToItem) {
+    Harness h;
+    LazyListState state;
+    h.Run([&] {
+        LazyColumn(FillMax(Modifier{}, Axis::Both), state, [](LazyListScope& s) {
+            s.Items(1000, [](int i) { Box(SizeMod(Modifier{}, Dp(100), Dp(20)), Alignment::TopStart(), false, {}); },
+                    [](int i) { return rt::Key(i + 5000); });
+        });
+    });
+    const auto& info = state.LayoutInfo();
+    CHECK_EQ(info.totalItemsCount, 1000);
+    CHECK_EQ(int(info.visibleItemsInfo.size()), 5);   // 100 px viewport, 20 px items
+    CHECK_EQ(info.visibleItemsInfo[1].offset, 20);
+    CHECK_EQ(info.visibleItemsInfo[1].size, 20);
+    CHECK(info.visibleItemsInfo[1].key == rt::Key(5001));
+    // A visible target: one seek.
+    rt::Job job = rt::Launch(rt::Dispatcher::Main(), state.AnimateScrollToItem(3));
+    CHECK(state.IsScrollInProgress());
+    h.Frames(120);
+    CHECK_EQ(state.FirstVisibleItemIndex(), 3);
+    CHECK_EQ(state.FirstVisibleItemScrollOffset(), 0);
+    CHECK(!state.IsScrollInProgress());
+    // Far away: teleports and lands exactly, with an offset.
+    job = rt::Launch(rt::Dispatcher::Main(), state.AnimateScrollToItem(700, 7));
+    h.Frames(400);
+    CHECK_EQ(state.FirstVisibleItemIndex(), 700);
+    CHECK_EQ(state.FirstVisibleItemScrollOffset(), 7);
+    // Backward.
+    job = rt::Launch(rt::Dispatcher::Main(), state.AnimateScrollToItem(10));
+    h.Frames(400);
+    CHECK_EQ(state.FirstVisibleItemIndex(), 10);
+    // Near the end the list stops at its last position.
+    job = rt::Launch(rt::Dispatcher::Main(), state.AnimateScrollToItem(999));
+    h.Frames(400);
+    CHECK_EQ(state.FirstVisibleItemIndex(), 995);
+    CHECK(!state.IsScrollInProgress());
+}
+
+TEST(PressStopsAProgrammaticScroll) {
+    Harness h;
+    LazyListState state;
+    h.Run([&] {
+        LazyColumn(FillMax(Modifier{}, Axis::Both), state, [](LazyListScope& s) {
+            s.Items(1000, [](int) { Box(SizeMod(Modifier{}, Dp(100), Dp(20)), Alignment::TopStart(), false, {}); });
+        });
+    });
+    rt::Job job = rt::Launch(rt::Dispatcher::Main(), state.AnimateScrollToItem(500));
+    h.Frames(3);
+    CHECK(state.IsScrollInProgress());
+    h.Touch(PointerEventType::Press, 50, 50, true, 0);
+    const int at = state.FirstVisibleItemIndex();
+    h.Frames(30);
+    CHECK(!state.IsScrollInProgress());
+    CHECK_EQ(state.FirstVisibleItemIndex(), at);
+    h.Touch(PointerEventType::Release, 50, 50, false, 10);
 }

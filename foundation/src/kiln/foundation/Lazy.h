@@ -13,6 +13,27 @@
 
 namespace kiln::foundation {
 
+    // LazyListItemInfo / LazyListLayoutInfo: offsets are from the content start (0 is the first
+    // item's leading edge at scroll 0, before content padding).
+    struct LazyListItemInfo {
+        int index = 0;
+        rt::Key key = rt::Key::Positional();   // the item's key, or its index when it has none
+        int offset = 0;
+        int size = 0;
+        bool operator==(const LazyListItemInfo&) const = default;
+    };
+    struct LazyListLayoutInfo {
+        std::vector<LazyListItemInfo> visibleItemsInfo;
+        int viewportStartOffset = 0;   // -beforeContentPadding
+        int viewportEndOffset = 0;
+        int totalItemsCount = 0;
+        IntSize viewportSize;
+        Orientation orientation = Orientation::Vertical;
+        int beforeContentPadding = 0, afterContentPadding = 0;
+        int mainAxisItemSpacing = 0;
+        bool operator==(const LazyListLayoutInfo&) const = default;
+    };
+
     class LazyListState final : public ScrollableState {
     public:
         explicit LazyListState(int firstIndex = 0, int firstOffset = 0) : m_Index(firstIndex), m_Offset(firstOffset) {}
@@ -22,8 +43,19 @@ namespace kiln::foundation {
         bool CanScrollForward() const override { return m_CanForward; }
         bool CanScrollBackward() const override { return m_Index.Peek() > 0 || m_Offset.Peek() > 0; }
         void ScrollToItem(int index, int offset = 0);
+        // Scrolls in animated steps of up to 2500 dp (jumping to 100 items before the target when
+        // further), then seeks the target once it is composed (LazyLayoutScrollScope).
+        rt::Task<> AnimateScrollToItem(int index, int scrollOffset = 0);
+        // Reading subscribes; updated by every measure.
+        const LazyListLayoutInfo& LayoutInfo() const { return m_Info.Get(); }
 
     private:
+        int LastVisibleIndex() const;
+        int DistanceTo(int index, int targetOffset = 0) const;
+        bool Visible(int index) const;
+        void SnapToItem(int index, int offset);
+        rt::State<LazyListLayoutInfo> m_Info{ LazyListLayoutInfo{} };
+        float m_Density = 1;
         friend struct LazyCore;
         rt::State<int> m_Index, m_Offset;
         float m_PendingScroll = 0;

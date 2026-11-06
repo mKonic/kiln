@@ -43,6 +43,16 @@ namespace kiln::foundation {
         rt::Scope* context = nullptr;            // Locals the items see
         int count = 0;
 
+        rt::Key UserKey(int index) const {
+            int base = 0;
+            for (const auto& iv : intervals) {
+                if (index < base + iv.count) { if (iv.key) return iv.key(index - base); break; }
+                base += iv.count;
+            }
+            rt::Key k = rt::Key::Positional();
+            k.value = std::uint64_t(index);
+            return k;
+        }
         rt::Key KeyOf(int index) const {
             int base = 0;
             for (const auto& iv : intervals) {
@@ -101,11 +111,122 @@ namespace kiln::foundation {
     }
 
     void LazyListState::ScrollToItem(int index, int offset) {
+        StopScroll();
         m_Index.Set(index);
         m_Offset.Set(offset);
         m_HasFirstKey = false;
         m_PendingScroll = 0;
         if (m_Node) m_Node->RequestRemeasure();
+    }
+
+    void LazyListState::SnapToItem(int index, int offset) {
+        m_Index.Set(index);
+        m_Offset.Set(offset);
+        m_HasFirstKey = false;
+        m_PendingScroll = 0;
+        if (m_Node) m_Node->ForceRemeasure();
+    }
+
+    int LazyListState::LastVisibleIndex() const {
+        const auto& v = m_Info.Peek().visibleItemsInfo;
+        return v.empty() ? 0 : v.back().index;
+    }
+    bool LazyListState::Visible(int index) const { return index >= m_Index.Peek() && index <= LastVisibleIndex(); }
+
+    // calculateDistanceTo: exact for composed items, else by the average visible item size.
+    int LazyListState::DistanceTo(int index, int targetOffset) const {
+        const auto& info = m_Info.Peek();
+        if (info.visibleItemsInfo.empty()) return 0;
+        int d = 0;
+        if (!Visible(index)) {
+            int sum = 0;
+            for (const auto& it : info.visibleItemsInfo) sum += it.size;
+            const int average = sum / int(info.visibleItemsInfo.size()) + info.mainAxisItemSpacing;
+            d = average * (index - m_Index.Peek()) - m_Offset.Peek();
+        } else {
+            for (const auto& it : info.visibleItemsInfo) if (it.index == index) { d = it.offset; break; }
+        }
+        return d + targetOffset;
+    }
+
+    rt::Task<> LazyListState::AnimateScrollToItem(int index, int scrollOffset) {
+        constexpr int kTeleport = 100;   // numOfItemsForTeleport
+        const float targetDistance = 2500 * m_Density, boundDistance = 1500 * m_Density, minDistance = 50 * m_Density;
+        anim::Animatable* running = nullptr;
+        bool stopped = false;
+        ScrollSession session(*this, [&] { stopped = true; if (running) running->Stop(); });
+        index = std::max(0, index);
+        float velocity = 0;
+        bool found = Visible(index);
+        const bool forward = index > m_Index.Peek();
+        auto overshot = [&] {
+            const int first = m_Index.Peek(), off = m_Offset.Peek();
+            return forward ? (first > index || (first == index && off > scrollOffset))
+                           : (first < index || (first == index && off < scrollOffset));
+        };
+        bool loop = !found;
+        int loops = 1;
+        while (loop && m_Info.Peek().totalItemsCount > 0) {
+            const int expected = DistanceTo(index) + scrollOffset;
+            const float target = std::abs(float(expected)) < targetDistance
+                ? (forward ? 1.0f : -1.0f) * std::max(std::abs(float(expected)), minDistance)
+                : (forward ? targetDistance : -targetDistance);
+            anim::Animatable a(0.0f);
+            running = &a;
+            float prev = 0;
+            co_await a.AnimateTo(anim::Vec{ target, 0, 0, 0 }, anim::Spring(), anim::Vec{ velocity, 0, 0, 0 }, [&](const anim::Vec& vv) {
+                const float value = vv[0];
+                if (stopped) return;
+                if (!Visible(index)) {
+                    const float coerced = target > 0 ? std::min(value, target) : std::max(value, target);
+                    const float delta = coerced - prev;
+                    const float consumed = ConsumeScrollDelta(delta);
+                    if (!Visible(index) && !overshot()) {
+                        if (std::abs(delta - consumed) > 0.5f) { loop = false; a.Stop(); return; }   // hit the end
+                        prev += delta;
+                        if (forward ? value > boundDistance : value < -boundDistance) a.Stop();
+                        if (forward) {
+                            if (loops >= 2 && index - LastVisibleIndex() > kTeleport) SnapToItem(index - kTeleport, 0);
+                        } else {
+                            if (loops >= 2 && m_Index.Peek() - index > kTeleport) SnapToItem(index + kTeleport, 0);
+                        }
+                    }
+                }
+                if (overshot()) {
+                    SnapToItem(index, scrollOffset);
+                    loop = false;
+                    a.Stop();
+                } else if (Visible(index)) {
+                    found = true;
+                    loop = false;
+                    a.Stop();
+                }
+            });
+            velocity = a.Velocity()[0];
+            running = nullptr;
+            if (stopped) co_return;
+            ++loops;
+        }
+        if (!found) co_return;
+        // Seek: the exact distance, continuing with the velocity so far.
+        const float target = float(DistanceTo(index) + scrollOffset);
+        if (target != 0) {
+            anim::Animatable a(0.0f);
+            running = &a;
+            float prev = 0;
+            co_await a.AnimateTo(anim::Vec{ target, 0, 0, 0 }, anim::Spring(), anim::Vec{ velocity, 0, 0, 0 }, [&](const anim::Vec& vv) {
+                if (stopped) return;
+                const float value = vv[0];
+                const float coerced = target > 0 ? std::min(value, target) : std::max(value, target);
+                const float delta = coerced - prev;
+                const float consumed = ConsumeScrollDelta(delta);
+                if (std::abs(delta - consumed) > 0.5f || coerced != value) a.Stop();
+                prev += delta;
+            });
+            running = nullptr;
+            if (stopped) co_return;
+        }
+        SnapToItem(index, scrollOffset);
     }
 
     MeasureResult LazyCore::Measure(LayoutNode& self, MeasureScope& s, const Constraints& c) {
@@ -134,6 +255,10 @@ namespace kiln::foundation {
             slots.clear();
             self.SetChildrenDuringMeasure({});
             st.m_LastConsumed = st.m_PendingScroll = 0;
+            LazyListLayoutInfo info;
+            info.orientation = vertical ? Orientation::Vertical : Orientation::Horizontal;
+            info.viewportSize = { c.minWidth, c.minHeight };
+            if (!(st.m_Info.Peek() == info)) st.m_Info.Set(std::move(info));
             return s.Layout(c.minWidth, c.minHeight);
         }
         index = std::clamp(index, 0, count - 1);
@@ -223,11 +348,26 @@ namespace kiln::foundation {
         st.m_HasFirstKey = true;
         st.m_LastConsumed = consumed;
         st.m_CanForward = !(items.back().index == count - 1 && end <= viewport);
+        st.m_Density = s.density;
 
         int cross = 0;
         for (auto& v : items) cross = std::max(cross, (vertical ? v.p->Width() : v.p->Height()) + crossPad);
         const int w = vertical ? c.ConstrainWidth(cross) : c.ConstrainWidth(mainMax);
         const int h = vertical ? c.ConstrainHeight(mainMax) : c.ConstrainHeight(cross);
+        {
+            LazyListLayoutInfo info;
+            int p = pos;
+            for (const auto& v : items) { info.visibleItemsInfo.push_back({ v.index, UserKey(v.index), p, v.size }); p += v.size + spacing; }
+            info.viewportStartOffset = -before;
+            info.viewportEndOffset = mainMax - before;
+            info.totalItemsCount = count;
+            info.viewportSize = { w, h };
+            info.orientation = vertical ? Orientation::Vertical : Orientation::Horizontal;
+            info.beforeContentPadding = before;
+            info.afterContentPadding = after;
+            info.mainAxisItemSpacing = spacing;
+            if (!(st.m_Info.Peek() == info)) st.m_Info.Set(std::move(info));
+        }
         const LazyListOptions opt = options;
         const bool vert = vertical;
         const LayoutDirection dir = s.Direction();

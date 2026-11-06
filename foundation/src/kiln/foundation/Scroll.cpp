@@ -28,16 +28,23 @@ namespace kiln::foundation {
     }
 
     rt::Task<> ScrollState::AnimateScrollTo(int value, anim::SpecPtr spec) {
-        anim::Animatable a(float(m_Value.Peek()));
-        m_InProgress.Set(true);
+        co_await AnimateScrollBy(*this, float(value - m_Value.Peek()), std::move(spec));
+    }
+
+    rt::Task<float> AnimateScrollBy(ScrollableState& state, float value, anim::SpecPtr spec) {
+        anim::Animatable a(0.0f);
         bool stopped = false;
-        m_Stop = [&] { stopped = true; a.Stop(); };
-        co_await a.AnimateTo(anim::Vec{ float(value), 0, 0, 0 }, spec, {}, [this](const anim::Vec& v) {
-            ConsumeScrollDelta(v[0] - float(m_Value.Peek()));
+        ScrollSession session(state, [&] { stopped = true; a.Stop(); });
+        float previous = 0, consumed = 0;
+        co_await a.AnimateTo(anim::Vec{ value, 0, 0, 0 }, std::move(spec), {}, [&](const anim::Vec& v) {
+            if (stopped) return;
+            const float delta = v[0] - previous;
+            const float used = state.ConsumeScrollDelta(delta);
+            previous += delta;
+            consumed += used;
+            if (std::abs(delta - used) > 0.5f) a.Stop();   // reached an edge
         });
-        m_Stop = nullptr;
-        m_InProgress.Set(false);
-        (void)stopped;
+        co_return consumed;
     }
 
     // --- ScrollingLogic (Scrollable.kt) -------------------------------------------------------
@@ -85,7 +92,10 @@ namespace kiln::foundation {
         }
 
         bool Flinging() const { return m_Flinging; }
-        void StopFling() { m_FlingJob.Cancel(); m_Flinging = false; state->m_InProgress.Set(false); }
+        void StopFling() {
+            m_FlingJob.Cancel();
+            if (m_Flinging) { m_Flinging = false; state->EndScroll(m_Token); }
+        }
 
         void StartFling(Offset velocity) {
             m_FlingJob = rt::Launch(rt::Dispatcher::Main(), Fling(velocity));
@@ -94,8 +104,7 @@ namespace kiln::foundation {
     private:
         rt::Task<> Fling(Offset velocity) {
             m_Flinging = true;
-            state->m_InProgress.Set(true);
-            state->m_Stop = [this] { StopFling(); };
+            m_Token = state->BeginScroll([this] { m_FlingJob.Cancel(); m_Flinging = false; state->SetScrollInProgress(false); });
             // The stretch may take the velocity to relax (applyToFling's first half).
             const Offset relaxed = overscroll ? overscroll->ConsumePreFling(velocity) : Offset{};
             velocity = velocity - relaxed;
@@ -119,11 +128,11 @@ namespace kiln::foundation {
             // Whatever is left hits the edge (applyToFling's second half; also releases a pull).
             if (overscroll) overscroll->AbsorbPostFling(left);
             m_Flinging = false;
-            state->m_Stop = nullptr;
-            state->m_InProgress.Set(false);
+            state->EndScroll(m_Token);
         }
 
         rt::Job m_FlingJob;
+        std::uint64_t m_Token = 0;
         bool m_Flinging = false;
     };
 
@@ -147,7 +156,9 @@ namespace kiln::foundation {
                 auto e = co_await s.AwaitPointerEvent(PointerEventPass::Initial);
                 bool down = !e->changes.empty() && e->changes[0].ChangedToDownIgnoreConsumed();
                 if (!down) continue;
+                // Also stops a programmatic scroll (the drag takes the scroll mutex).
                 if (logic->Flinging()) { logic->StopFling(); e->changes[0].Consume(); }
+                else if (logic->state->HasRunningScroll()) { logic->state->StopScroll(); e->changes[0].Consume(); }
                 tracker.Reset();
                 tracker.AddPointerInputChange(e->changes[0]);
                 // Slop then drag, locked to our axis.
