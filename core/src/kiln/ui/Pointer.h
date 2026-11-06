@@ -15,10 +15,12 @@ namespace kiln::ui {
 
     enum class PointerType : std::uint8_t { Unknown, Touch, Mouse, Stylus, Eraser };
     enum class PointerEventPass : std::uint8_t { Initial, Main, Final };
-    enum class PointerEventType : std::uint8_t { Unknown, Press, Release, Move, Enter, Exit, Scroll };
+    // PanStart / PanMove / PanEnd: a trackpad two-finger swipe (CLASSIFICATION_TWO_FINGER_SWIPE),
+    // reported as one unpressed mouse pointer at the cursor carrying panOffset.
+    enum class PointerEventType : std::uint8_t { Unknown, Press, Release, Move, Enter, Exit, Scroll, PanStart, PanMove, PanEnd };
 
     // A sample batched into an event before its current position (MotionEvent history).
-    struct HistoricalChange { std::int64_t uptimeMillis = 0; Offset position; };
+    struct HistoricalChange { std::int64_t uptimeMillis = 0; Offset position; Offset panOffset; };
 
     struct PointerInputChange {
         std::int64_t id = 0;
@@ -31,6 +33,7 @@ namespace kiln::ui {
         bool previousPressed = false;
         PointerType type = PointerType::Touch;
         Offset scrollDelta;
+        Offset panOffset;                // trackpad pan: AXIS_GESTURE_SCROLL_X/Y_DISTANCE
         // Shared by every copy of this change in one dispatch (all nodes, all passes); owned, so
         // a copy kept past the dispatch (currentEvent) stays valid.
         std::shared_ptr<bool> consumed;
@@ -63,6 +66,7 @@ namespace kiln::ui {
         bool down = false;
         PointerType type = PointerType::Touch;
         Offset scrollDelta;
+        Offset panOffset;
         std::vector<HistoricalChange> historical;   // root coordinates
     };
     struct RawPointerEvent {

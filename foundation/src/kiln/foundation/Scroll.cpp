@@ -7,6 +7,7 @@
 #include "kiln/ui/Locals.h"
 #include "kiln/ui/VelocityTracker.h"
 
+#include <algorithm>
 #include <cmath>
 #include <deque>
 #include <limits>
@@ -346,7 +347,8 @@ namespace kiln::foundation {
                 // see a press (Scrollable startDragImmediately while scrolling).
                 auto e = co_await s.AwaitPointerEvent(PointerEventPass::Initial);
                 bool down = !e->changes.empty() && e->changes[0].ChangedToDownIgnoreConsumed();
-                if (!down) continue;
+                // CanDragCalculation: a mouse never drags a scrollable (it has the wheel).
+                if (!down || e->changes[0].type == PointerType::Mouse) continue;
                 // Also stops a programmatic scroll (the drag takes the scroll mutex).
                 if (logic->Flinging()) { logic->StopFling(); e->changes[0].Consume(); }
                 else if (logic->state->HasRunningScroll()) { logic->state->StopScroll(); e->changes[0].Consume(); }
@@ -548,6 +550,96 @@ namespace kiln::foundation {
             }
         }
 
+        // --- TrackpadScrollingLogic --------------------------------------------------------
+        // A two-finger swipe's pan offsets scroll directly (with overscroll) until PanEnd, then
+        // fling with their velocity.
+        struct PanDelta { float value; std::int64_t time; bool end; };
+        struct PanLogic {
+            std::deque<PanDelta> queue;
+            ui::VelocityTracker1D velocity{ true };
+            rt::Job job;
+            bool running = false, scrolling = false;
+            std::optional<PanDelta> Sum() {
+                if (queue.empty()) return std::nullopt;
+                PanDelta sum{ 0, 0, false };
+                for (const auto& d : queue) { sum.value += d.value; sum.time = std::max(sum.time, d.time); sum.end = sum.end || d.end; }
+                queue.clear();
+                return sum;
+            }
+        };
+
+        rt::Task<> RunPan(std::shared_ptr<ScrollingLogic> logic, std::shared_ptr<PanLogic> p) {
+            p->running = true;
+            while (!p->queue.empty()) {
+                PanDelta d = *p->Sum();
+                p->velocity.AddDataPoint(d.time, d.value);
+                bool stopped = false;
+                {
+                    ScrollSession session(*logic->state, [&] { stopped = true; });
+                    p->scrolling = true;
+                    logic->Dispatch(logic->Single(d.value), NestedScrollSource::UserInput);
+                    while (!d.end && !stopped) {
+                        while (p->queue.empty() && !stopped) co_await rt::NextFrame();
+                        if (stopped) break;
+                        d = *p->Sum();
+                        p->velocity.AddDataPoint(d.time, d.value);
+                        logic->Dispatch(logic->Single(d.value), NestedScrollSource::UserInput);
+                    }
+                    p->scrolling = false;
+                }
+                const float v = p->velocity.CalculateVelocity(std::numeric_limits<float>::max());
+                p->velocity.Reset();
+                if (!stopped) logic->StartFling(logic->Single(v));
+            }
+            p->running = false;
+        }
+
+        rt::Task<> TrackpadGestures(PointerInputScope& s, std::shared_ptr<ScrollingLogic> logic) {
+            auto p = std::make_shared<PanLogic>();
+            struct Guard { std::shared_ptr<PanLogic> p; ~Guard() { p->job.Cancel(); p->running = false; p->scrolling = false; } } guard{ p };
+            auto can = [logic](float px) {
+                const float directional = logic->Reverse(px);
+                return directional < 0 ? logic->state->CanScrollBackward() : directional > 0 && logic->state->CanScrollForward();
+            };
+            // onScrollingEvent: queue the (negated) pan offsets this container can take.
+            auto offer = [logic, p, can](PointerEvent& e) {
+                if (e.changes.empty()) return p->scrolling;
+                const PointerInputChange& c = e.changes[0];
+                bool sent = false;
+                if (e.type == PointerEventType::PanStart && c.panOffset.x == 0 && c.panOffset.y == 0 &&
+                    std::all_of(c.historical.begin(), c.historical.end(), [](const HistoricalChange& h) { return h.panOffset.x == 0 && h.panOffset.y == 0; }))
+                    return p->scrolling;   // nothing yet: a descendant may want it
+                for (const auto& h : c.historical) {
+                    const float d = -logic->Axis(h.panOffset);
+                    if (can(d)) { p->queue.push_back({ d, h.uptimeMillis, false }); sent = true; }
+                }
+                const float d = -logic->Axis(c.panOffset);
+                const bool end = e.type == PointerEventType::PanEnd;
+                if (can(d) || end) { p->queue.push_back({ d, c.uptimeMillis, end }); sent = true; }
+                if (sent && !p->running) p->job = rt::Launch(rt::Dispatcher::Main(), RunPan(logic, p));
+                return sent || p->scrolling;
+            };
+            auto isPan = [](const PointerEvent& e) {
+                return e.type == PointerEventType::PanStart || e.type == PointerEventType::PanMove || e.type == PointerEventType::PanEnd;
+            };
+            auto isConsumed = [](const PointerEvent& e) {
+                for (const auto& c : e.changes) if (c.IsConsumed()) return true;
+                return false;
+            };
+            for (;;) {
+                auto e = co_await s.AwaitPointerEvent(PointerEventPass::Initial);
+                if (!isPan(*e) || isConsumed(*e)) continue;
+                if (p->scrolling) {
+                    offer(*e);
+                    for (auto& c : e->changes) c.Consume();
+                    continue;
+                }
+                auto m = co_await s.AwaitPointerEvent(PointerEventPass::Main);
+                if (!isPan(*m) || isConsumed(*m) || p->scrolling) continue;
+                if (offer(*m)) for (auto& c : m->changes) c.Consume();
+            }
+        }
+
         struct ScrollLayoutParams { ScrollState* state; bool vertical; bool reverse; bool operator==(const ScrollLayoutParams&) const = default; };
         struct ScrollLayoutNode final : ModifierNode, LayoutModifier {
             ScrollLayoutParams params;
@@ -622,6 +714,9 @@ namespace kiln::foundation {
         });
         m = PointerInput(std::move(m), rt::Keys(reinterpret_cast<std::uintptr_t>(&state), int(o), 1), [logic](PointerInputScope& s) {
             return WheelGestures(s, logic);
+        });
+        m = PointerInput(std::move(m), rt::Keys(reinterpret_cast<std::uintptr_t>(&state), int(o), 2), [logic](PointerInputScope& s) {
+            return TrackpadGestures(s, logic);
         });
         return m;
     }

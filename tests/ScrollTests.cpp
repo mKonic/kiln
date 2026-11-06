@@ -448,3 +448,53 @@ TEST(MouseWheelAtTheEdgeIsLeftForOthers) {
     h.Frames(20);
     CHECK_EQ(outer.Value(), 108);
 }
+
+namespace {
+    void Pan(Harness& h, PointerEventType type, float panY, std::int64_t t) {
+        RawPointerEvent e;
+        e.type = type;
+        e.uptimeMillis = t;
+        RawPointer p{ 1, { 50, 50 }, false, PointerType::Mouse, {} };
+        p.panOffset = { 0, panY };
+        e.pointers.push_back(p);
+        h.owner.ProcessPointer(e);
+        h.d.RunPending();
+        h.Pump();
+    }
+}
+
+TEST(TrackpadPanScrollsWithoutSlopAndFlings) {
+    Harness h;
+    ScrollState state;
+    h.Run([&] { Tall(state, 10); });
+    Pan(h, PointerEventType::PanStart, 0, 0);
+    for (int i = 1; i <= 3; ++i) { Pan(h, PointerEventType::PanMove, 10, 10 * i); h.Frames(1); }
+    CHECK_EQ(state.Value(), 30);             // offsets apply directly: no touch slop
+    CHECK(state.IsScrollInProgress());
+    Pan(h, PointerEventType::PanEnd, 0, 31);
+    h.Frames(60);
+    CHECK(state.Value() > 45);               // ~1000 px/s carries on as a fling
+    CHECK(!state.IsScrollInProgress());
+}
+
+TEST(MouseDragDoesNotScroll) {
+    Harness h;
+    ScrollState state;
+    h.Run([&] { Tall(state, 10); });
+    auto mouse = [&](PointerEventType type, float y, bool down, std::int64_t t) {
+        RawPointerEvent e;
+        e.type = type;
+        e.uptimeMillis = t;
+        e.buttons = down ? 1 : 0;
+        e.pointers.push_back({ 1, { 50, y }, down, PointerType::Mouse, {} });
+        h.owner.ProcessPointer(e);
+        h.d.RunPending();
+        h.Pump();
+    };
+    mouse(PointerEventType::Press, 90, true, 0);
+    mouse(PointerEventType::Move, 50, true, 50);
+    mouse(PointerEventType::Move, 10, true, 100);
+    mouse(PointerEventType::Release, 10, false, 150);
+    h.Frames(10);
+    CHECK_EQ(state.Value(), 0);
+}

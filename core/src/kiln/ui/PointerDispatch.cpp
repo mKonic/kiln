@@ -185,7 +185,8 @@ namespace kiln::ui {
                 c.previousPressed = t.pressed;
                 c.type = rp->type;
                 c.scrollDelta = rp->scrollDelta;
-                for (const HistoricalChange& h : rp->historical) c.historical.push_back({ h.uptimeMillis, toLocal.Map(h.position) });
+                c.panOffset = rp->panOffset;
+                for (const HistoricalChange& h : rp->historical) c.historical.push_back({ h.uptimeMillis, toLocal.Map(h.position), h.panOffset });
                 c.consumed = consumed[id];
                 ev.changes.push_back(c);
             }

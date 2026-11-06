@@ -15,7 +15,7 @@ final class KilnNative {
     static native void setLayoutDirection(boolean rtl);
     static native void touchEvent(int action, int actionIndex, long eventTime, int[] ids, float[] xy,
                                   int[] toolTypes, int buttons, int classification, float hscroll, float vscroll,
-                                  long[] historyTimes, float[] historyXy);
+                                  long[] historyTimes, float[] historyXy, float[] pan);
     static native boolean keyEvent(int action, int keyCode, int metaState, int unicode, int repeatCount, long eventTime);
     static native void hostFocusChanged(boolean focused);
     static native void setInsets(int type, int left, int top, int right, int bottom);

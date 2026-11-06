@@ -9,6 +9,7 @@ import android.provider.Settings;
 import android.util.DisplayMetrics;
 import android.graphics.Rect;
 import android.view.KeyEvent;
+import android.view.InputDevice;
 import android.view.MotionEvent;
 import android.view.accessibility.AccessibilityEvent;
 import android.view.accessibility.AccessibilityManager;
@@ -155,10 +156,23 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
                 }
             }
         }
+        // Trackpad swipes: the gesture scroll distance now and per batched sample (pointer 0).
+        // Intermediate events of a swipe do not repeat the classification, so send it for every
+        // touchpad / mouse event and let native track the gesture.
+        float[] pan = null;
+        if (e.isFromSource(InputDevice.SOURCE_TOUCHPAD) || e.isFromSource(InputDevice.SOURCE_MOUSE)) {
+            pan = new float[2 + 2 * hs];
+            pan[0] = e.getAxisValue(MotionEvent.AXIS_GESTURE_SCROLL_X_DISTANCE, 0);
+            pan[1] = e.getAxisValue(MotionEvent.AXIS_GESTURE_SCROLL_Y_DISTANCE, 0);
+            for (int h = 0; h < hs; h++) {
+                pan[2 + 2 * h] = e.getHistoricalAxisValue(MotionEvent.AXIS_GESTURE_SCROLL_X_DISTANCE, 0, h);
+                pan[3 + 2 * h] = e.getHistoricalAxisValue(MotionEvent.AXIS_GESTURE_SCROLL_Y_DISTANCE, 0, h);
+            }
+        }
         KilnNative.touchEvent(e.getActionMasked(), e.getActionIndex(), e.getEventTime(), idsN, xyN, toolsN,
                 e.getButtonState(), e.getClassification(),
                 e.getAxisValue(MotionEvent.AXIS_HSCROLL), e.getAxisValue(MotionEvent.AXIS_VSCROLL),
-                historyTimes, historyXy);
+                historyTimes, historyXy, pan);
         return true;
     }
 
