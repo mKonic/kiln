@@ -7,11 +7,11 @@ namespace kiln {
 
     void PathCache::BeginFrame() {
         if (!m_Overflowed) return;
+        // Start over in the pages already allocated: creating and destroying 16 MB pages costs
+        // hundreds of milliseconds on slow devices, so pages are kept for the app's lifetime.
         m_Overflowed = false;
         m_Entries.clear();
-        m_Pages.resize(1);
-        Page& p = m_Pages[0];
-        p.shelfY = p.shelfH = p.cursorX = 0;
+        for (Page& p : m_Pages) p.shelfY = p.shelfH = p.cursorX = 0;
     }
 
     const PathCache::Entry* PathCache::Find(std::uint64_t key) const {
@@ -38,8 +38,8 @@ namespace kiln {
         Page* page = nullptr;
         for (Page& p : m_Pages)
             if (Place(p, w, h, px, py)) { page = &p; break; }
+        if (!page) m_Overflowed = true;   // reset at the next frame
         if (!page) {
-            m_Overflowed = true;   // reset at the next frame; this frame gets a new page
             m_Pages.emplace_back();
             Page& p = m_Pages.back();
             p.gpu = std::make_unique<AtlasPage>(m_Device, kPageSize, kPageSize);
