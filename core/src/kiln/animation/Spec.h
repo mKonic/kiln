@@ -9,6 +9,7 @@
 #include <array>
 #include <cstdint>
 #include <memory>
+#include <vector>
 
 namespace kiln::anim {
 
@@ -44,6 +45,14 @@ namespace kiln::anim {
     SpecPtr InfiniteRepeatable(SpecPtr duration, RepeatMode mode = RepeatMode::Restart, std::int64_t initialOffsetNanos = 0);
 
     // The single-dimension spring simulation, exposed for decay/snapping code and tests.
+    // keyframes { durationMillis; value at ms using easing }: each keyframe's easing applies to the
+    // segment starting at it (default Linear); missing 0 / duration keyframes use the start and
+    // target values. Velocity reads as 0, as Compose's keyframes effectively report.
+    struct Keyframe { int timeMillis; Vec value; Easing easing = Linear(); };
+    SpecPtr Keyframes(int durationMillis, std::vector<Keyframe> keyframes, int delayMillis = 0);
+    // repeatable(iterations, animation, repeatMode, initialStartOffset) for duration-based specs.
+    SpecPtr Repeatable(int iterations, SpecPtr duration, RepeatMode mode = RepeatMode::Restart, std::int64_t initialOffsetNanos = 0);
+
     struct SpringMotion { float value, velocity; };
     SpringMotion SpringStep(float dampingRatio, float stiffness, float from, float velocity, float target, double seconds);
     std::int64_t EstimateSpringDurationNanos(float stiffness, float dampingRatio, float initialVelocity,

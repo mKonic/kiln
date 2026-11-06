@@ -205,6 +205,77 @@ namespace kiln::anim {
     }
 
     SpecPtr Spring(float d, float k, float t) { return std::make_shared<SpringSpec>(d, k, t); }
+    namespace {
+        // VectorizedKeyframesSpec, linear path.
+        class KeyframesSpec final : public AnimationSpec {
+        public:
+            KeyframesSpec(int d, std::vector<Keyframe> k, int delay) : m_DurMs(d), m_DelayMs(delay), m_Frames(std::move(k)) {
+                std::stable_sort(m_Frames.begin(), m_Frames.end(), [](const Keyframe& a, const Keyframe& b) { return a.timeMillis < b.timeMillis; });
+            }
+            Vec ValueAt(std::int64_t n, const Vec& from, const Vec& to, const Vec&, int dims) const override {
+                const std::int64_t ms = std::clamp<std::int64_t>(n / 1000000 - m_DelayMs, 0, m_DurMs);
+                const float t = std::clamp(float(n - std::int64_t(m_DelayMs) * 1000000) / 1e6f, 0.0f, float(m_DurMs));
+                for (const Keyframe& k : m_Frames)
+                    if (k.timeMillis == ms && float(ms) == t) return k.value;   // exactly on a keyframe
+                if (t >= float(m_DurMs)) return to;
+                if (t <= 0) return from;
+                // Segment [start, end] around t; the start keyframe's easing shapes it.
+                int t0 = 0, t1 = m_DurMs;
+                Vec v0 = from, v1 = to;
+                const Easing* easing = nullptr;
+                static const Easing linear = Linear();
+                for (const Keyframe& k : m_Frames) {
+                    if (float(k.timeMillis) <= t) { t0 = k.timeMillis; v0 = k.value; easing = &k.easing; }
+                    else { t1 = k.timeMillis; v1 = k.value; break; }
+                }
+                if (!easing) easing = &linear;
+                const float f = t1 > t0 ? easing->Transform((t - float(t0)) / float(t1 - t0)) : 1.0f;
+                Vec out{};
+                for (int i = 0; i < dims; ++i) out[i] = v0[i] + (v1[i] - v0[i]) * f;
+                return out;
+            }
+            Vec VelocityAt(std::int64_t, const Vec&, const Vec&, const Vec&, int) const override { return {}; }
+            std::int64_t DurationNanos(const Vec&, const Vec&, const Vec&, int) const override {
+                return (std::int64_t(m_DelayMs) + m_DurMs) * 1000000;
+            }
+        private:
+            int m_DurMs, m_DelayMs;
+            std::vector<Keyframe> m_Frames;
+        };
+
+        // VectorizedRepeatableSpec.
+        class RepeatableSpec final : public AnimationSpec {
+        public:
+            RepeatableSpec(int iterations, SpecPtr s, RepeatMode m, std::int64_t off)
+                : m_Iterations(std::max(1, iterations)), m_Spec(std::move(s)), m_Mode(m), m_Offset(off) {}
+            std::int64_t Iteration(const Vec& f, const Vec& t, const Vec& v, int d) const { return m_Spec->DurationNanos(f, t, v, d); }
+            std::int64_t RepetitionPlay(std::int64_t n, std::int64_t dur) const {
+                if (dur <= 0) return 0;
+                const std::int64_t played = n + m_Offset;
+                const std::int64_t repeats = std::min<std::int64_t>(played / dur, m_Iterations - 1);
+                if (m_Mode == RepeatMode::Restart || repeats % 2 == 0) return played - repeats * dur;
+                return (repeats + 1) * dur - played;
+            }
+            Vec ValueAt(std::int64_t n, const Vec& f, const Vec& t, const Vec& v0, int d) const override {
+                return m_Spec->ValueAt(RepetitionPlay(n, Iteration(f, t, v0, d)), f, t, v0, d);
+            }
+            Vec VelocityAt(std::int64_t n, const Vec& f, const Vec& t, const Vec& v0, int d) const override {
+                return m_Spec->VelocityAt(RepetitionPlay(n, Iteration(f, t, v0, d)), f, t, v0, d);
+            }
+            std::int64_t DurationNanos(const Vec& f, const Vec& t, const Vec& v0, int d) const override {
+                return m_Iterations * Iteration(f, t, v0, d) - m_Offset;
+            }
+        private:
+            int m_Iterations;
+            SpecPtr m_Spec;
+            RepeatMode m_Mode;
+            std::int64_t m_Offset;
+        };
+    }
+
+    SpecPtr Keyframes(int d, std::vector<Keyframe> k, int delay) { return std::make_shared<KeyframesSpec>(d, std::move(k), delay); }
+    SpecPtr Repeatable(int it, SpecPtr s, RepeatMode m, std::int64_t off) { return std::make_shared<RepeatableSpec>(it, std::move(s), m, off); }
+
     SpecPtr Tween(int d, int delay, Easing e) { return std::make_shared<TweenSpec>(d, delay, std::move(e)); }
     SpecPtr Snap(int delay) { return std::make_shared<SnapSpec>(delay); }
     SpecPtr InfiniteRepeatable(SpecPtr s, RepeatMode m, std::int64_t off) { return std::make_shared<InfiniteSpec>(std::move(s), m, off); }
