@@ -190,6 +190,7 @@ namespace kiln::foundation {
         Arrangement crossArrangement = Arrangement::Start();    // grid slots
         GridCells cells;
         bool pager = false;
+        int beyondCount = 0;   // pager: beyondViewportPageCount
         // Staggered grids: positions of the items measured so far (a prefix from item 0).
         bool staggered = false;
         LazyStaggeredGridState* stagState = nullptr;
@@ -856,6 +857,15 @@ namespace kiln::foundation {
             stickingOffset = off;
         }
 
+        // Pager: beyondViewportPageCount pages on each side are composed, measured and placed
+        // outside the viewport (createPagesBeforeList / AfterList), not visible pages.
+        std::vector<MLine> extraBefore, extraAfter;
+        if (pager && beyondCount > 0 && !lines.empty()) {
+            const int n = std::min(beyondCount, lineCount);
+            for (int l = lines.front().line - 1; l >= std::max(0, lines.front().line - n); --l) extraBefore.push_back(measureLine(l));
+            for (int l = lines.back().line + 1; l <= std::min(lineCount - 1, lines.back().line + n); ++l) extraAfter.push_back(measureLine(l));
+        }
+
         // Item animations: which keys are in the data now and before, and removed items still
         // fading out (their slots stay, frozen, where they were).
         const bool animating = std::any_of(anims.begin(), anims.end(), [](const auto& e) { return e.second->has; });
@@ -894,6 +904,8 @@ namespace kiln::foundation {
         std::vector<const Slot*> used;
         for (auto& l : lines) for (auto& cell : l.cells) { nowActive.push_back(cell.slot->holder.get()); used.push_back(cell.slot); }
         if (sticking) for (auto& cell : sticking->cells) { nowActive.push_back(cell.slot->holder.get()); used.push_back(cell.slot); }
+        for (auto* extra : { &extraBefore, &extraAfter })
+            for (auto& l : *extra) for (auto& cell : l.cells) { nowActive.push_back(cell.slot->holder.get()); used.push_back(cell.slot); }
         for (auto& [k, a] : disappearing) { Slot& sl = slots[k]; nowActive.push_back(sl.holder.get()); used.push_back(&sl); }
         for (auto& m : movingAway) { Slot& sl = Compose(m.index, d); nowActive.push_back(sl.holder.get()); used.push_back(&sl); }
         self.SetChildrenDuringMeasure(nowActive);
@@ -930,6 +942,8 @@ namespace kiln::foundation {
             auto crossOf = [&](const MLine& l) { for (auto& cell : l.cells) cross = std::max(cross, (vertical ? cell.p->Width() : cell.p->Height()) + crossPad); };
             for (auto& l : lines) crossOf(l);
             if (sticking) crossOf(*sticking);
+            for (auto& l : extraBefore) crossOf(l);
+            for (auto& l : extraAfter) crossOf(l);
         }
         const int w = vertical ? c.ConstrainWidth(cross) : c.ConstrainWidth(mainMax);
         const int h = vertical ? c.ConstrainHeight(mainMax) : c.ConstrainHeight(cross);
@@ -1133,6 +1147,13 @@ namespace kiln::foundation {
         };
         for (std::size_t i = 0; i < lines.size(); ++i)
             for (const auto& cell : lines[i].cells) placed.push_back({ cell.p, screen[i], cell.crossPos, animOf(cell.index), {} });
+        if (!extraBefore.empty() || !extraAfter.empty()) {
+            const int step = st.m_PageSize + spacing;
+            for (std::size_t k = 0; k < extraBefore.size(); ++k)
+                for (const auto& cell : extraBefore[k].cells) placed.push_back({ cell.p, before + offsets.front() - int(k + 1) * step, cell.crossPos, nullptr, {} });
+            for (std::size_t k = 0; k < extraAfter.size(); ++k)
+                for (const auto& cell : extraAfter[k].cells) placed.push_back({ cell.p, before + offsets.back() + int(k + 1) * step, cell.crossPos, nullptr, {} });
+        }
         for (auto& [p, a] : fading) placed.push_back({ p, kNone, kNone, a, a->target });   // removed, fading where they were
         if (sticking) for (const auto& cell : sticking->cells) placed.push_back({ cell.p, stickingScreen, cell.crossPos, nullptr, {} });
         const AlignmentH ha = horizontalAlignment;
@@ -1308,6 +1329,7 @@ namespace kiln::foundation {
             core.grid = false;
             core.staggered = false;
             core.pager = true;
+            core.beyondCount = std::max(0, config.beyondViewportPageCount);
             core.listState = nullptr;
             core.gridState = nullptr;
             core.pageSize = config.pageSize;

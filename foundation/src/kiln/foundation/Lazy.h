@@ -246,6 +246,7 @@ namespace kiln::foundation {
         FlingBehavior flingBehavior;
         std::function<Modifier(Modifier)> extraModifier;   // gesture observers
         OverscrollParam overscrollEffect;
+        int beyondViewportPageCount = 0;
     };
     void LazyPagerLayout(bool vertical, const Modifier& modifier, LazyStateBase& state, int pageCount,
                          std::function<void(int page)> content, std::function<rt::Key(int)> key, LazyPagerConfig config, rt::Key compositionKey);

@@ -4,6 +4,8 @@
 #include "kiln/foundation/Pager.h"
 
 #include <cmath>
+#include <map>
+#include <set>
 
 using namespace kiln;
 using namespace kiln::foundation;
@@ -138,4 +140,42 @@ TEST(PagerPagesForAccessibility) {
     CHECK(n->config.pageLeft());
     h.Frames(60);
     CHECK_EQ(state.CurrentPage(), 0);
+}
+
+namespace {
+    // x positions of the placed 100 x 100 nodes (the pages) under `n`.
+    void PageXs(LayoutNode& n, std::multiset<int>& out) {
+        for (LayoutNode* c : n.Children()) {
+            if (!c->IsPlaced()) continue;
+            if (c->Size() == IntSize{ 100, 100 } && c->Children().empty()) out.insert(int(c->PositionInRoot().x));
+            PageXs(*c, out);
+        }
+    }
+}
+
+TEST(PagerComposesBeyondViewportPages) {
+    Harness h;
+    PagerState state(0, 0, [] { return 6; });
+    std::map<int, int> compositions;
+    h.Run([&] {
+        PagerOptions o;
+        o.beyondViewportPageCount = 1;
+        HorizontalPager(FillMax(Modifier{}, Axis::Both), state, [&](int page) {
+            rt::Composition::Current()->Remember<int>([&, page] { return ++compositions[page]; });
+            Box(FillMax(Modifier{}, Axis::Both));
+        }, o);
+    });
+    CHECK(compositions == (std::map<int, int>{ { 0, 1 }, { 1, 1 } }));   // page 1 is ready to the right
+    std::multiset<int> xs;
+    PageXs(h.owner.Root(), xs);
+    CHECK(xs == (std::multiset<int>{ 0, 100 }));
+    CHECK_EQ(state.CurrentPage(), 0);
+    state.ScrollToPage(1);
+    h.Pump();
+    // Page 1 was kept (not composed again); page 2 joins, page 0 stays as the one before.
+    CHECK(compositions == (std::map<int, int>{ { 0, 1 }, { 1, 1 }, { 2, 1 } }));
+    xs.clear();
+    PageXs(h.owner.Root(), xs);
+    CHECK(xs == (std::multiset<int>{ -100, 0, 100 }));
+    CHECK_EQ(state.CurrentPage(), 1);
 }

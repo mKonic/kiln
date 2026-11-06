@@ -4,8 +4,7 @@
 // that settles on a page. A release flings to the next page past 400 dp/s, otherwise it returns
 // to the page it started on unless dragged more than half a page (PagerDefaults.flingBehavior
 // with PagerSnapDistance.atMost(1), snap spring StiffnessMediumLow).
-// Not yet: pageNestedScrollConnection, beyondViewportPageCount, custom snap positions and snap
-// distances (PLAN M5).
+// Not yet: pageNestedScrollConnection, custom snap positions and snap distances (PLAN M5).
 
 #include "kiln/foundation/Lazy.h"
 
@@ -67,6 +66,9 @@ namespace kiln::foundation {
         bool userScrollEnabled = true;
         std::function<rt::Key(int page)> key;
         OverscrollParam overscrollEffect;   // unset: rememberOverscrollEffect(); null: none
+        // Pages composed and laid out on each side beyond the visible ones (ready before they
+        // scroll in, and keeping their state).
+        int beyondViewportPageCount = 0;
     };
 
     void HorizontalPager(const Modifier& modifier, PagerState& state, std::function<void(int page)> content,
