@@ -159,21 +159,28 @@ namespace kiln::ui {
         virtual void OnFocusEvent(FocusState state) = 0;
     };
 
-    // FocusRequester: requestFocus() from code. Nodes register while attached.
+    // The focus targets right below `anchor` (visitChildren(FocusTarget)): the next target in
+    // its own chain, else the first target down each child subtree.
+    std::vector<FocusTargetNode*> FocusTargetsBelow(const ModifierNode& anchor);
+
+    // FocusRequester: requestFocus() from code. focusRequester nodes register while attached;
+    // a request goes to the targets right below them.
     class FocusRequester {
     public:
         bool RequestFocus(FocusDirection direction = FocusDirection::Enter);
-        void Add(FocusTargetNode* t) { m_Targets.push_back(t); }
-        // findFocusTarget: offers each of its targets to `onFound` until one is taken.
+        void Add(const ModifierNode* anchor) { m_Anchors.push_back(anchor); }
+        // findFocusTarget: offers each target below its nodes to `onFound` until one is taken.
         bool FindFocusTarget(const std::function<bool(FocusTargetNode&)>& onFound) {
-            for (FocusTargetNode* t : m_Targets) if (onFound(*t)) return true;
+            const auto anchors = m_Anchors;
+            for (const ModifierNode* a : anchors)
+                for (FocusTargetNode* t : FocusTargetsBelow(*a)) if (onFound(*t)) return true;
             return false;
         }
-        void Remove(FocusTargetNode* t) { std::erase(m_Targets, t); }
+        void Remove(const ModifierNode* anchor) { std::erase(m_Anchors, anchor); }
         // Expires with the requester: nodes that outlive it skip Remove.
         std::weak_ptr<const char> AliveToken() const { return m_Alive; }
     private:
-        std::vector<FocusTargetNode*> m_Targets;
+        std::vector<const ModifierNode*> m_Anchors;
         std::shared_ptr<const char> m_Alive = std::make_shared<const char>(0);
     };
 

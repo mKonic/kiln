@@ -284,6 +284,11 @@ namespace kiln::ui {
         void OnLayoutRequested(LayoutNode& n);
         void OnDrawRequested() { if (m_RequestFrame) m_RequestFrame(); }
         void Forget(LayoutNode& n);
+        // FocusInvalidationManager: focus modifiers on `n` were attached, changed or removed.
+        // Handled once, after the composition applied (at the next MeasureAndLayout).
+        void ScheduleFocusInvalidation(LayoutNode& n) { m_FocusInvalid.insert(&n); }
+        void InvalidateFocusNodes();
+        FocusState EventStateAt(LayoutNode& n, std::size_t index);
         void ForgetPointerModifier(PointerInputModifier* m);
         friend class FocusTargetNode;
         LayoutNode* NodeOf(const FocusTargetNode& t) const;
@@ -328,6 +333,8 @@ namespace kiln::ui {
         FocusTargetNode m_RootFocus;
         FocusTargetNode* m_ActiveFocus = nullptr;
         std::vector<const LayoutNode*> m_Barriers;
+        std::set<LayoutNode*> m_FocusInvalid;
+        bool m_FocusTargetLost = false;   // the focused node went away: every state changes
         bool m_FocusCaptured = false;
         rt::State<InputMode> m_InputMode{ InputMode::Touch };
         std::function<bool()> m_RequestHostFocus;

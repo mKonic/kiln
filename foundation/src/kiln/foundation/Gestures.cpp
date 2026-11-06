@@ -478,25 +478,35 @@ namespace kiln::foundation {
             std::uint64_t indirectPress = 0;
         };
 
-        rt::Task<> LongKeyPress(std::shared_ptr<ClickState> st, std::int64_t ms) {
+        // The timers hold the state weakly: a finished frame lives as long as its Job, which the
+        // state owns.
+        rt::Task<> LongKeyPress(std::weak_ptr<ClickState> w, std::int64_t ms) {
             co_await rt::Delay(ms);
+            auto st = w.lock();
+            if (!st) co_return;
             if (st->onLongClick) st->onLongClick();
         }
 
-        rt::Task<> IndirectLongPress(std::shared_ptr<ClickState> st, std::int64_t ms) {
+        rt::Task<> IndirectLongPress(std::weak_ptr<ClickState> w, std::int64_t ms) {
             co_await rt::Delay(ms);
+            auto st = w.lock();
+            if (!st) co_return;
             if (st->onLongClick) st->onLongClick();
             st->indirectLongTriggered = true;
             st->indirectTapJob.Cancel();
         }
 
-        rt::Task<> IndirectTap(std::shared_ptr<ClickState> st, std::int64_t ms) {
+        rt::Task<> IndirectTap(std::weak_ptr<ClickState> w, std::int64_t ms) {
             co_await rt::Delay(ms);
+            auto st = w.lock();
+            if (!st) co_return;
             if (st->onClick) st->onClick();   // the sound already played on release
         }
 
-        rt::Task<> IndirectDelayedPress(std::shared_ptr<ClickState> st, Offset at, std::int64_t ms) {
+        rt::Task<> IndirectDelayedPress(std::weak_ptr<ClickState> w, Offset at, std::int64_t ms) {
             co_await rt::Delay(ms);
+            auto st = w.lock();
+            if (!st) co_return;
             if (st->source && !st->indirectPress) st->indirectPress = st->source->Start(Interaction::Kind::Press, at);
         }
 
@@ -655,11 +665,14 @@ namespace kiln::foundation {
             }
         };
 
-        rt::Task<> FirstKeyClick(std::shared_ptr<ClickState> st, std::shared_ptr<ClickState::DoubleKey> dk,
+        rt::Task<> FirstKeyClick(std::weak_ptr<ClickState> w, std::weak_ptr<ClickState::DoubleKey> wdk,
                                  std::int64_t minMs, std::int64_t timeoutMs) {
             co_await rt::Delay(minMs);
-            dk->minTimeElapsed = true;
+            if (auto dk = wdk.lock()) dk->minTimeElapsed = true;
+            else co_return;
             co_await rt::Delay(timeoutMs - minMs);
+            auto st = w.lock();
+            if (!st) co_return;
             if (st->onClick) st->onClick();
         }
 
@@ -672,8 +685,10 @@ namespace kiln::foundation {
             }
         }
 
-        rt::Task<> DelayedPress(std::shared_ptr<ClickState> st, Offset at, std::int64_t delayMs) {
+        rt::Task<> DelayedPress(std::weak_ptr<ClickState> w, Offset at, std::int64_t delayMs) {
             co_await rt::Delay(delayMs);
+            auto st = w.lock();
+            if (!st) co_return;
             if (st->source && !st->press) st->press = st->source->Start(Interaction::Kind::Press, at);
         }
 

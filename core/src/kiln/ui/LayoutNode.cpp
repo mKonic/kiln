@@ -372,14 +372,21 @@ namespace kiln::ui {
         bool updated = false;
         std::vector<std::unique_ptr<ModifierNode>> nodes;
         nodes.reserve(next.size());
+        auto focusKind = [](ModifierNode& m) { return m.AsFocusTarget() || m.AsFocusEvent() || m.AsFocusProperties(); };
+        bool focusChanged = false;
         for (std::size_t i = 0; i < next.size(); ++i) {
             const ModifierElement& e = *next[i];
             if (i < m_Elements.size() && m_Nodes[i] && m_Elements[i]->Type() == e.Type()) {
-                if (!m_Elements[i]->Equals(e)) { e.Update(*m_Nodes[i]); updated = true; }
+                if (!m_Elements[i]->Equals(e)) {
+                    e.Update(*m_Nodes[i]);
+                    updated = true;
+                    if (focusKind(*m_Nodes[i])) focusChanged = true;
+                }
                 nodes.push_back(std::move(m_Nodes[i]));
             } else {
                 structural = true;
                 auto n = e.Create();
+                if (focusKind(*n)) focusChanged = true;
                 n->m_Owner = this;
                 nodes.push_back(std::move(n));
                 if (m_Owner) nodes.back()->OnAttach();
@@ -387,6 +394,7 @@ namespace kiln::ui {
         }
         for (auto& old : m_Nodes)
             if (old) {
+                if (focusKind(*old)) focusChanged = true;
                 if (m_Owner) {
                     if (auto* p = old->AsPointerInput()) m_Owner->ForgetPointerModifier(p);
                     old->OnDetach();
@@ -395,6 +403,7 @@ namespace kiln::ui {
             }
         m_Nodes = std::move(nodes);
         m_Elements = next;
+        if (m_Owner && focusChanged) m_Owner->ScheduleFocusInvalidation(*this);
         if (structural) RebuildChain();
         if (m_Owner && (structural || updated)) m_Owner->InvalidateSemantics();
         // Parent data may have changed: the parent measures with it.
@@ -473,6 +482,9 @@ namespace kiln::ui {
         if (m_SemanticsId == 0) m_SemanticsId = owner.NextSemanticsId();
         m_Depth = depth;
         if (fresh) for (auto& n : m_Nodes) n->OnAttach();
+        if (fresh)
+            for (auto& n : m_Nodes)
+                if (n->AsFocusTarget() || n->AsFocusEvent()) { owner.ScheduleFocusInvalidation(*this); break; }
         for (LayoutNode* c : m_Children) c->Attach(owner, depth + 1);
         m_MeasureDirty = true;
         owner.OnMeasureRequested(*this);
@@ -666,6 +678,8 @@ namespace kiln::ui {
     }
 
     void Owner::MeasureAndLayout(IntSize window) {
+        // The focused item's properties are re-read every pass (Compose observes the reads).
+        if (!m_FocusInvalid.empty() || m_FocusTargetLost || m_ActiveFocus) InvalidateFocusNodes();
         if (window != m_Window) {
             m_Window = window;
             m_Root->RequestRemeasure();
@@ -735,7 +749,8 @@ namespace kiln::ui {
 
     void Owner::Forget(LayoutNode& n) {
         m_ScrollDeltas.erase(n.SemanticsId());
-        if (m_ActiveFocus && NodeOf(*m_ActiveFocus) == &n) { m_ActiveFocus = nullptr; m_FocusCaptured = false; }
+        m_FocusInvalid.erase(&n);
+        if (m_ActiveFocus && NodeOf(*m_ActiveFocus) == &n) { m_ActiveFocus = nullptr; m_FocusCaptured = false; m_FocusTargetLost = true; }
         m_MeasureDirty.erase(&n);
         m_LayoutDirty.erase(&n);
         for (auto& [id, t] : m_Pointers)

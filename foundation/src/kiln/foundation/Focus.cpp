@@ -81,15 +81,15 @@ namespace kiln::foundation {
         };
 
         struct RequesterParams { FocusRequester* r; bool operator==(const RequesterParams&) const = default; };
-        struct RequesterNode final : FocusTargetNode {
-            // Not a real target: registers the first target after it with the requester. kiln
-            // keeps it simple by being a never-focusable group the requester enters.
+        // FocusRequesterModifierNode: not a target itself; the requester reaches the targets
+        // right below it.
+        struct RequesterNode final : ModifierNode {
             RequesterParams params;
-            explicit RequesterNode(RequesterParams p) : params(p) { focusability = Focusability::Never; }
+            explicit RequesterNode(RequesterParams p) : params(p) {}
             void OnParamsChanged() {}
             std::weak_ptr<const char> alive;
             void OnAttach() override { alive = params.r->AliveToken(); params.r->Add(this); }
-            void OnDetach() override { if (!alive.expired()) params.r->Remove(this); FocusTargetNode::OnDetach(); }
+            void OnDetach() override { if (!alive.expired()) params.r->Remove(this); }
         };
 
         struct RestorerParams { FocusRequester* fallback; bool operator==(const RestorerParams&) const = default; };

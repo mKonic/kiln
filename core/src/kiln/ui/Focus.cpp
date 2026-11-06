@@ -60,8 +60,28 @@ namespace kiln::ui {
     }
 
     bool FocusRequester::RequestFocus(FocusDirection d) {
-        for (FocusTargetNode* t : m_Targets) if (t->RequestFocus(d)) return true;
-        return false;
+        return FindFocusTarget([d](FocusTargetNode& t) { return t.RequestFocus(d); });
+    }
+
+    namespace {
+        void FirstTargetsIn(const LayoutNode& n, std::vector<FocusTargetNode*>& out) {
+            for (const ModifierNode* m : n.ModifierNodes())
+                if (auto* t = const_cast<ModifierNode*>(m)->AsFocusTarget()) { out.push_back(t); return; }
+            for (const LayoutNode* c : n.Children()) FirstTargetsIn(*c, out);
+        }
+    }
+
+    std::vector<FocusTargetNode*> FocusTargetsBelow(const ModifierNode& anchor) {
+        std::vector<FocusTargetNode*> out;
+        const LayoutNode* n = anchor.Owner();
+        if (!n) return out;
+        const auto& own = n->ModifierNodes();
+        auto self = std::find(own.begin(), own.end(), &anchor);
+        if (self != own.end())
+            for (auto it = self + 1; it != own.end(); ++it)
+                if (auto* t = const_cast<ModifierNode*>(*it)->AsFocusTarget()) { out.push_back(t); return out; }
+        for (const LayoutNode* c : n->Children()) FirstTargetsIn(*c, out);
+        return out;
     }
 
     // --- tree relations -----------------------------------------------------------------------
@@ -210,6 +230,41 @@ namespace kiln::ui {
         DispatchFocusEvents();
     }
 
+    void Owner::InvalidateFocusNodes() {
+        auto dirty = std::move(m_FocusInvalid);
+        m_FocusInvalid.clear();
+        const bool lost = m_FocusTargetLost;
+        m_FocusTargetLost = false;
+        // invalidateFocus: a focused target that can no longer take focus lets it go.
+        if (m_ActiveFocus) {
+            const FocusTargetNode& t = *m_ActiveFocus;
+            if (!t.FetchFocusProperties().canFocus || t.focusability == Focusability::Never || IsOccludedByInteractionBarrier(t)) {
+                ClearFocus(true);   // dispatches to everyone
+                return;
+            }
+        }
+        if (lost) { DispatchFocusEvents(); return; }
+        // New or changed focus-event nodes learn the current state (onFocusEvent dedupes).
+        for (LayoutNode* n : dirty) {
+            if (n->m_Owner != this) continue;
+            for (std::size_t i = 0; i < n->m_Nodes.size(); ++i) {
+                ModifierNode* m = n->m_Nodes[i].get();
+                if (auto* e = m->AsFocusEvent()) e->OnFocusEvent(EventStateAt(*n, i));
+            }
+        }
+    }
+
+    FocusState Owner::EventStateAt(LayoutNode& n, std::size_t i) {
+        // The first target at or after this node in the chain, else the children's.
+        FocusTargetNode* below = nullptr;
+        for (std::size_t j = i + 1; j < n.m_Nodes.size() && !below; ++j) below = n.m_Nodes[j]->AsFocusTarget();
+        if (below) return StateOf(*below);
+        std::vector<FocusTargetNode*> firsts;
+        for (LayoutNode* c : n.m_Children) FirstTargets(*c, firsts);
+        for (auto* f : firsts) if (HasFocus(StateOf(*f))) return StateOf(*f);
+        return FocusState::Inactive;
+    }
+
     void Owner::DispatchFocusEvents() {
         InvalidateSemantics();
         // Every target and focus-event node re-derives its state and reports changes. A focus
@@ -228,19 +283,7 @@ namespace kiln::ui {
                         if (t->onFocusChange) t->onFocusChange(prev, now);
                     }
                 }
-                if (auto* e = m->AsFocusEvent()) {
-                    // The first target at or after this node in the chain, else the children's.
-                    FocusTargetNode* below = nullptr;
-                    for (std::size_t j = i + 1; j < n->m_Nodes.size() && !below; ++j) below = n->m_Nodes[j]->AsFocusTarget();
-                    FocusState st = FocusState::Inactive;
-                    if (below) st = StateOf(*below);
-                    else {
-                        std::vector<FocusTargetNode*> firsts;
-                        for (LayoutNode* c : n->m_Children) FirstTargets(*c, firsts);
-                        for (auto* f : firsts) if (HasFocus(StateOf(*f))) { st = StateOf(*f); break; }
-                    }
-                    e->OnFocusEvent(st);
-                }
+                if (auto* e = m->AsFocusEvent()) e->OnFocusEvent(EventStateAt(*n, i));
             }
             for (LayoutNode* c : n->m_Children) stack.push_back(c);
         }

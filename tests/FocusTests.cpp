@@ -422,3 +422,48 @@ TEST(FocusSearchFromAHostRect) {
     const auto rect = h.owner.FocusedRect();
     CHECK(rect.has_value() && rect->left == 0 && rect->top == 0);
 }
+
+TEST(FocusChangesSettleAfterComposition) {
+    Harness h;
+    rt::State<bool> canFocus{ true }, present{ true };
+    FocusRequester r;
+    std::vector<std::string> outer;
+    int itemInactive = 0;
+    h.Run([&] {
+        Column(OnFocusChanged(Modifier{}, [&](FocusState s) {
+                   outer.push_back(s == FocusState::Inactive ? "inactive" : s == FocusState::Active ? "active" : "other");
+               }), [&] {
+            if (present.Get()) {
+                const bool can = canFocus.Get();
+                Box(Focusable(FocusRequesterModifier(
+                                  FocusPropertiesMod(OnFocusChanged(SizeMod(Modifier{}, Dp(40), Dp(40)),
+                                                                    [&](FocusState s) { if (s == FocusState::Inactive) ++itemInactive; }),
+                                                     [can](ui::FocusProperties& p) { p.canFocus = can; }),
+                                  r)));
+            }
+        });
+    });
+    // A new focus-event node hears the current state once.
+    CHECK_EQ(outer.size(), std::size_t(1));
+    CHECK_EQ(outer.back(), std::string("inactive"));
+    CHECK_EQ(itemInactive, 1);
+    CHECK(r.RequestFocus());
+    CHECK_EQ(outer.back(), std::string("active"));   // the state of the target below it
+    // The focused item stops being focusable: focus goes once the change is applied.
+    canFocus.Set(false);
+    h.composition.Recompose();
+    h.owner.MeasureAndLayout({ 300, 300 });
+    CHECK(h.owner.ActiveFocus() == nullptr);
+    CHECK_EQ(outer.back(), std::string("inactive"));
+    // The focused item goes away: its ancestors hear it.
+    canFocus.Set(true);
+    h.composition.Recompose();
+    h.owner.MeasureAndLayout({ 300, 300 });
+    CHECK(r.RequestFocus());
+    CHECK_EQ(outer.back(), std::string("active"));   // the state of the target below it
+    present.Set(false);
+    h.composition.Recompose();
+    h.owner.MeasureAndLayout({ 300, 300 });
+    CHECK(h.owner.ActiveFocus() == nullptr);
+    CHECK_EQ(outer.back(), std::string("inactive"));
+}
