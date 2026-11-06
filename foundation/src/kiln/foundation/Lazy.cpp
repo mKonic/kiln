@@ -39,6 +39,7 @@ namespace kiln::foundation {
         std::vector<LazyListScope::Interval> intervals;
         std::uint64_t version = 0;
         std::map<std::uint64_t, Slot> slots;     // by item key value
+        rt::Scope* context = nullptr;            // Locals the items see
         int count = 0;
 
         rt::Key KeyOf(int index) const {
@@ -75,6 +76,7 @@ namespace kiln::foundation {
                 slot.holder->SetMeasurePolicy(std::make_shared<HolderPolicy>());
                 slot.composition = std::make_unique<rt::Composition>(*slot.holder, d);
             }
+            slot.composition->SetParentContext(context);
             if (slot.index != index || slot.contentVersion != version) {
                 slot.index = index;
                 slot.contentVersion = version;
@@ -259,6 +261,7 @@ namespace kiln::foundation {
             LazyListScope scope;
             content(scope);
             core->vertical = vertical;
+            core->context = comp.CurrentScope();
             core->state = &state;
             core->options = options;
             core->intervals = std::move(scope.intervals);
