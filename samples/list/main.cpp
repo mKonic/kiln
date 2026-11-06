@@ -12,7 +12,7 @@ using namespace kiln::ui;
 namespace {
     void ListScreen() {
         auto& c = *kiln::rt::Composition::Current();
-        auto& state = c.RememberNew<LazyListState>({}, {});
+        auto& state = RememberLazyListState();
         auto& selected = RememberState(-1);
         auto& flipped = RememberState(false);   // section 0 in reverse order (animateItem moves the rows)
         Column(Background(FillMax(Modifier{}, Axis::Both), Color(0xFFFEF7FFu)), [&] {

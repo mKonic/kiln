@@ -69,6 +69,50 @@ namespace kiln::rt {
         };
     }
 
+    // listSaver: T as a list of saveable values.
+    template<typename T>
+    Saver<T> ListSaver(std::function<SavedValue::List(const T&)> save, std::function<std::optional<T>(const SavedValue::List&)> restore) {
+        return {
+            [save = std::move(save)](const T& v) { return SavedValue(save(v)); },
+            [restore = std::move(restore)](const SavedValue& s) -> std::optional<T> {
+                const auto* l = std::get_if<SavedValue::List>(&s.v);
+                if (!l) return std::nullopt;
+                return restore(*l);
+            },
+        };
+    }
+    // mapSaver: T as named saveable values (kept as [key, value] pairs).
+    template<typename T>
+    Saver<T> MapSaver(std::function<std::map<std::string, SavedValue>(const T&)> save,
+                      std::function<std::optional<T>(const std::map<std::string, SavedValue>&)> restore) {
+        return {
+            [save = std::move(save)](const T& v) {
+                SavedValue::List pairs;
+                for (auto& [k, value] : save(v)) pairs.emplace_back(SavedValue::List{ SavedValue(k), value });
+                return SavedValue(std::move(pairs));
+            },
+            [restore = std::move(restore)](const SavedValue& s) -> std::optional<T> {
+                const auto* l = std::get_if<SavedValue::List>(&s.v);
+                if (!l) return std::nullopt;
+                std::map<std::string, SavedValue> m;
+                for (const auto& item : *l) {
+                    const auto* pair = std::get_if<SavedValue::List>(&item.v);
+                    if (!pair || pair->size() != 2) return std::nullopt;
+                    const auto* k = std::get_if<std::string>(&(*pair)[0].v);
+                    if (!k) return std::nullopt;
+                    m[*k] = (*pair)[1];
+                }
+                return restore(m);
+            },
+        };
+    }
+    // Reads a saved number (integer or float) or nullopt.
+    inline std::optional<double> SavedNumber(const SavedValue& v) {
+        if (const auto* i = std::get_if<std::int64_t>(&v.v)) return double(*i);
+        if (const auto* d = std::get_if<double>(&v.v)) return *d;
+        return std::nullopt;
+    }
+
     class SaveableStateRegistry {
     public:
         using Values = std::map<std::string, std::vector<SavedValue>>;

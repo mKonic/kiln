@@ -261,7 +261,7 @@ namespace kiln::foundation {
         rt::State<std::vector<text::AnnotatedString>> m_SelectedTexts;
         selection::SelectionManager* m_Manager = nullptr;
     };
-    // rememberSelectionState: survives re-creation (selected texts are kept as plain text).
+    // rememberSelectionState: survives re-creation.
     SelectionState& RememberSelectionState();
 
     void SelectionContainer(const Modifier& modifier, std::function<void()> content);

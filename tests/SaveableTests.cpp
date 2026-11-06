@@ -117,3 +117,81 @@ TEST(SaveablesOutlivingTheirRegistryDoNotUnregister) {
     composition.reset();
     CHECK(true);
 }
+
+#include "kiln/foundation/Lazy.h"
+#include "kiln/foundation/Pager.h"
+#include "kiln/foundation/Scroll.h"
+#include "kiln/foundation/text/TextFieldState.h"
+#include "kiln/text/Savers.h"
+
+TEST(AnnotatedStringSaverKeepsStylesAndAnnotations) {
+    using namespace kiln::text;
+    AnnotatedStringBuilder b;
+    SpanStyle bold;
+    bold.fontWeight = FontWeight::Bold();
+    bold.fontSize = Sp(20);
+    bold.color = ui::Color(0xFF112233u);
+    bold.shadow = Shadow{ ui::Color(0x80000000u), { 2, 3 }, 4 };
+    bold.textDecoration = TextDecoration::Underline;
+    b.WithStyle(bold, [&] { b.Append("Bold"); });
+    ParagraphStyle para;
+    para.textAlign = TextAlign::Center;
+    para.lineHeight = Em(1.5f);
+    para.textIndent = TextIndent{ Sp(8), Sp(0) };
+    b.WithStyle(para, [&] { b.Append(" centred"); });
+    TextLinkStyles ls;
+    SpanStyle u;
+    u.textDecoration = TextDecoration::Underline;
+    ls.style = u;
+    b.WithLink(LinkAnnotation::Url("https://example.com", ls), [&] { b.Append(" link"); });
+    b.WithAnnotation("tag", "value", [&] { b.Append(" tagged"); });
+    const AnnotatedString original = b.ToAnnotatedString();
+    const auto saver = AnnotatedStringSaver();
+    // Through the byte form the host bundle stores.
+    SaveableStateRegistry::Values v;
+    v["k"] = { saver.save(original) };
+    const auto back = SaveableStateRegistry::Deserialize(SaveableStateRegistry::Serialize(v));
+    const auto restored = saver.restore(back.at("k")[0]);
+    CHECK(restored.has_value());
+    if (restored) CHECK(*restored == original);
+}
+
+TEST(RememberedStatesSurviveRecreation) {
+    using namespace kiln::foundation;
+    std::vector<std::uint8_t> saved;
+    {
+        Root a(saved);
+        ScrollState* scroll = nullptr;
+        LazyListState* list = nullptr;
+        PagerState* pager = nullptr;
+        TextFieldState* field = nullptr;
+        a.Run([&] {
+            scroll = &RememberScrollState();
+            list = &RememberLazyListState();
+            pager = &RememberPagerState(2, 0.25f, [] { return 10; });
+            field = &RememberTextFieldState("hello");
+        });
+        scroll->SetBounds(500, 100);
+        scroll->ScrollTo(120);
+        list->ConsumeScrollDelta(0);   // nothing laid out: the position below is what is saved
+        field->SetText("hello world");
+        field->SetSelection(0, 5);
+        saved = a.Save();
+    }
+    Root b(saved);
+    ScrollState* scroll = nullptr;
+    PagerState* pager = nullptr;
+    TextFieldState* field = nullptr;
+    b.Run([&] {
+        scroll = &RememberScrollState();
+        RememberLazyListState();
+        pager = &RememberPagerState(0, 0, [] { return 10; });
+        field = &RememberTextFieldState();
+    });
+    CHECK_EQ(scroll->Value(), 120);
+    CHECK_EQ(pager->CurrentPage(), 2);
+    CHECK(std::abs(pager->CurrentPageOffsetFraction() - 0.25f) < 1e-6f);
+    CHECK_EQ(pager->PageCount(), 10);
+    CHECK_EQ(field->Text(), std::string("hello world"));
+    CHECK(field->Peek().selection.start == 0 && field->Peek().selection.end == 5);
+}

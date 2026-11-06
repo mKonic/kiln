@@ -35,6 +35,7 @@ namespace kiln::foundation {
         // (upDownDifference) and whether a finger is down on the pager (isGestureInProgress).
         float SnapOffset(float velocity, float positionalThreshold = 0.5f) const;
         void SetPageCount(int n) { m_PageCount = n; }
+        void SetPageCountProvider(std::function<int()> fn) { m_PageCountFn = std::move(fn); }
         void SetGestureDelta(float d) { m_UpDown = d; }
         void SetGestureInProgress(bool b) { m_GestureInProgress = b; }
         bool GestureInProgress() const { return m_GestureInProgress; }
@@ -102,5 +103,10 @@ namespace kiln::foundation {
                          PagerOptions options = {}, rt::Key key = {});
     void VerticalPager(const Modifier& modifier, PagerState& state, std::function<void(int page)> content,
                        PagerOptions options = {}, rt::Key key = {});
+
+    // rememberPagerState: the current page and its offset fraction survive re-creation; the page
+    // count is read from `pageCount` (refreshed every composition).
+    PagerState& RememberPagerState(int initialPage, float initialPageOffsetFraction, std::function<int()> pageCount);
+    inline PagerState& RememberPagerState(std::function<int()> pageCount) { return RememberPagerState(0, 0, std::move(pageCount)); }
 
 }

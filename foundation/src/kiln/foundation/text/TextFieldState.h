@@ -64,4 +64,7 @@ namespace kiln::foundation {
         std::uint64_t m_Version = 0;
     };
 
+    // rememberTextFieldState: the text and selection survive re-creation (TextFieldState.Saver).
+    TextFieldState& RememberTextFieldState(std::string_view initialText = {});
+
 }

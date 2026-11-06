@@ -5,6 +5,7 @@
 
 #include <hearth/Log.h>
 
+#include <algorithm>
 #include <cstring>
 
 namespace kiln {
@@ -176,7 +177,23 @@ namespace kiln {
     }
 
     std::vector<std::uint8_t> App::SaveState() const {
-        return rt::SaveableStateRegistry::Serialize(m_Saveable->PerformSave());
+        const auto values = m_Saveable->PerformSave();
+        auto bytes = rt::SaveableStateRegistry::Serialize(values);
+        // The saved blob rides in the Activity bundle, and a Binder transaction holds about
+        // 1 MB in total: past half of that, name the biggest entries.
+        constexpr std::size_t kWarnBytes = 512 * 1024;
+        if (bytes.size() > kWarnBytes) {
+            std::vector<std::pair<std::size_t, std::string>> sizes;
+            for (const auto& [key, list] : values)
+                sizes.emplace_back(rt::SaveableStateRegistry::Serialize({ { key, list } }).size(), key);
+            std::sort(sizes.rbegin(), sizes.rend());
+            std::string message = "saved state is " + std::to_string(bytes.size() / 1024) +
+                                  " KB, near the ~1 MB Binder limit (TransactionTooLargeException); largest keys:";
+            for (std::size_t i = 0; i < sizes.size() && i < 5; ++i)
+                message += " " + sizes[i].second + " (" + std::to_string(sizes[i].first / 1024) + " KB)";
+            hearth::LogMessage(hearth::LogLevel::Warn, message);
+        }
+        return bytes;
     }
     App::~App() {
         if (m_Device) m_Device->WaitIdle();

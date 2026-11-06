@@ -70,7 +70,7 @@ namespace {
         auto& seconds = RememberState(0);
         c.LaunchedEffect(kiln::rt::Keys(0), [&seconds] { return Tick(seconds); });
 
-        auto& scroll = c.RememberNew<ScrollState>({}, {});
+        auto& scroll = RememberScrollState();
         // Edge to edge: the background fills the window, content stays inside the safe area and
         // above the keyboard.
         Column(VerticalScroll(SafeDrawingPadding(Background(FillMax(Modifier{}, Axis::Both), kSurface)), scroll), Arrangement::SpacedBy(16_dp), AlignmentH::Start(), [&] {
@@ -172,7 +172,7 @@ namespace {
                 BasicText("Running for " + std::to_string(seconds.Get()) + " s", {}, { 22, kOnSurface });
             });
             // A text field: focus starts the platform input session (keyboard, InputConnection).
-            auto& field = c.RememberNew<TextFieldState>({}, {}, "Edit me");
+            auto& field = RememberTextFieldState("Edit me");
             Box(Background(Padding(FillMax(Modifier{}, Axis::Horizontal), 16_dp, 0_dp), kContainer, CornerShape::Rounded(12_dp)),
                 Alignment::CenterStart(), false, [&] {
                 TextFieldOptions opt;
@@ -367,7 +367,7 @@ namespace {
             }
             // A lazy horizontal grid: two rows, every fifth cell spanning both.
             {
-                auto& gridState = c.RememberNew<LazyGridState>({}, {});
+                auto& gridState = RememberLazyGridState();
                 LazyGridOptions go;
                 go.contentPadding = { 16_dp, 0_dp, 16_dp, 0_dp };
                 go.mainAxisArrangement = Arrangement::SpacedBy(8_dp);
@@ -383,7 +383,7 @@ namespace {
             }
             // A horizontal pager of cards with page dots.
             {
-                auto& pager = c.RememberNew<PagerState>({}, {}, 0, 0.0f, [] { return 6; });
+                auto& pager = RememberPagerState([] { return 6; });
                 PagerOptions po;
                 po.contentPadding = { 16_dp, 0_dp, 16_dp, 0_dp };
                 po.pageSpacing = 8_dp;

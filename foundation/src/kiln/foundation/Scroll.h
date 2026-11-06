@@ -130,4 +130,7 @@ namespace kiln::foundation {
     Modifier HorizontalScroll(Modifier m, ScrollState& state, bool enabled = true, bool reverseScrolling = false,
                               std::optional<std::shared_ptr<OverscrollEffect>> overscrollEffect = std::nullopt);
 
+    // rememberScrollState: the scroll position survives re-creation (ScrollState.Saver).
+    ScrollState& RememberScrollState(int initial = 0);
+
 }

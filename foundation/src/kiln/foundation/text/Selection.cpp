@@ -7,6 +7,7 @@
 #include "kiln/foundation/Draw.h"
 #include "kiln/foundation/Gestures.h"
 #include "kiln/runtime/Saveable.h"
+#include "kiln/text/Savers.h"
 
 #include <algorithm>
 #include <cmath>
@@ -1076,11 +1077,12 @@ namespace kiln::foundation {
 
     SelectionState& RememberSelectionState() {
         using namespace selection;
-        // Saver: the selected texts (as plain text) and the selection's anchors.
+        // Saver: the selected texts and the selection's anchors.
         rt::Saver<std::shared_ptr<SelectionState>> saver{
             [](const std::shared_ptr<SelectionState>& s) {
                 rt::SavedValue::List texts;
-                for (const auto& t : s->m_SelectedTexts.Peek()) texts.emplace_back(t.Text());
+                const auto textSaver = text::AnnotatedStringSaver();
+                for (const auto& t : s->m_SelectedTexts.Peek()) texts.push_back(textSaver.save(t));
                 rt::SavedValue::List out{ rt::SavedValue(std::move(texts)) };
                 if (const auto& sel = s->m_Selection.Peek()) {
                     out.emplace_back(sel->start.offset);
@@ -1099,7 +1101,7 @@ namespace kiln::foundation {
                 auto s = std::make_shared<SelectionState>();
                 std::vector<text::AnnotatedString> texts;
                 if (const auto* t = std::get_if<rt::SavedValue::List>(&(*list)[0].v))
-                    for (const auto& item : *t) if (const auto* str = std::get_if<std::string>(&item.v)) texts.emplace_back(*str);
+                    for (const auto& item : *t) if (auto restored = text::AnnotatedStringSaver().restore(item)) texts.push_back(std::move(*restored));
                 s->m_SelectedTexts.Set(std::move(texts));
                 if (list->size() == 8) {
                     auto i = [&](std::size_t k) { const auto* p = std::get_if<std::int64_t>(&(*list)[k].v); return p ? *p : 0; };

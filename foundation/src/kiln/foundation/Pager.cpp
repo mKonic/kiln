@@ -18,7 +18,11 @@ namespace kiln::foundation {
     PagerState::PagerState(int currentPage, float fraction, std::function<int()> pageCount)
         : LazyStateBase(std::max(0, currentPage), 0), m_PageCountFn(std::move(pageCount)),
           m_Current(std::max(0, currentPage)), m_Settled(std::max(0, currentPage)) {
-        if (fraction != 0) m_PendingFraction = std::clamp(fraction, -0.5f, 0.5f);
+        // ScrollPosition holds the fraction from the start: it reads back before the first layout.
+        if (fraction != 0) {
+            m_PendingFraction = std::clamp(fraction, -0.5f, 0.5f);
+            m_Fraction.Set(*m_PendingFraction);
+        }
     }
 
     float PagerState::ConsumeScrollDelta(float delta) {
