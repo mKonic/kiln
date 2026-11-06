@@ -112,6 +112,12 @@ namespace {
                     BasicText("Panel: back closes it", Padding(Modifier{}, 16_dp, 24_dp), { 16, kOnPrimary });
                 });
             }
+            // Mixed text sizes sharing a baseline (alignByBaseline).
+            Row(Padding(Modifier{}, 16_dp, 0_dp), Arrangement::SpacedBy(8_dp), AlignmentV::Top(), [&] {
+                BasicText("Baseline", AlignByBaseline({}), { 32, kOnSurface });
+                BasicText("shared by", AlignByBaseline({}), { 14, kVariant });
+                BasicText("three sizes", AlignByBaseline({}), { 20, kPrimary });
+            });
             // Paths: even-odd star, filled heart, stroked wave with round caps, bevel-joined zigzag.
             Row(Padding(Modifier{}, 16_dp, 0_dp), Arrangement::SpacedBy(16_dp), AlignmentV::CenterVertically(), [&] {
                 Canvas(SizeMod(Modifier{}, 56_dp, 56_dp), [](DrawScope& d) {
