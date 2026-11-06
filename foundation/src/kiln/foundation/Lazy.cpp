@@ -665,9 +665,27 @@ namespace kiln::foundation {
         stagScroll = scroll;
         const int sp = int(std::lround(scroll));
 
+        // Items kept past the viewport: pinned ones and a focus search's beyond-bounds range,
+        // laid out where they are (measuring the items before them when needed).
+        std::vector<int> extra;
+        auto addExtra = [&](int i) {
+            if (i < 0 || i >= count || std::find(visible.begin(), visible.end(), i) != visible.end() ||
+                std::find(extra.begin(), extra.end(), i) != extra.end()) return;
+            while (int(stag.size()) <= i) addNext();
+            const auto& it = stag[std::size_t(i)];
+            if (!measured.count(i)) measureAt(i, it.lane, it.full);
+            extra.push_back(i);
+        };
+        if (beyondInterval) for (int i = beyondInterval->first; i <= beyondInterval->second; ++i) addExtra(i);
+        for (const auto& [kv, key] : pinned) {
+            auto sl = slots.find(kv);
+            addExtra(IndexOfKey(key, sl != slots.end() ? sl->second.index : -1));
+        }
+
         std::vector<LayoutNode*> nowActive;
         std::vector<const Slot*> used;
         for (int i : visible) { Slot& sl = slots[KeyOf(i).value]; nowActive.push_back(sl.holder.get()); used.push_back(&sl); }
+        for (int i : extra) { Slot& sl = slots[KeyOf(i).value]; nowActive.push_back(sl.holder.get()); used.push_back(&sl); }
         self.SetChildrenDuringMeasure(nowActive);
         for (auto it = slots.begin(); it != slots.end();) {
             if (std::find(used.begin(), used.end(), &it->second) == used.end()) { DisposeSlot(it->first, it->second); it = slots.erase(it); }
@@ -722,6 +740,10 @@ namespace kiln::foundation {
         struct Placed { Placeable* p; int main; int cross; };
         std::vector<Placed> placed;
         for (int i : visible) {
+            const auto& it = stag[std::size_t(i)];
+            placed.push_back({ measured[i], it.top - sp + before, crossBefore + (it.full ? 0 : positions[std::size_t(it.lane)]) });
+        }
+        for (int i : extra) {
             const auto& it = stag[std::size_t(i)];
             placed.push_back({ measured[i], it.top - sp + before, crossBefore + (it.full ? 0 : positions[std::size_t(it.lane)]) });
         }

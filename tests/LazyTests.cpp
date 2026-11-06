@@ -627,3 +627,36 @@ TEST(StickyHeaderSticksToTheStartOfAReversedList) {
     CHECK_EQ(headerAt(6), 10);
     CHECK_EQ(headerAt(0), -10);  // pushed back: it ends where header 6 begins
 }
+
+TEST(StaggeredGridFocusSearchAndPinning) {
+    int focused = -1;
+    std::map<int, int> disposed;
+    FocusRequester first;
+    LazyStaggeredGridState state;
+    Harness h;
+    h.Run([&] {
+        LazyVerticalStaggeredGrid(FillMax(Modifier{}, Axis::Both), GridCells::Fixed(2), state, [&](LazyStaggeredGridScope& s) {
+            s.Items(60, [&](int i) {
+                rt::Composition::Current()->Remember<std::shared_ptr<int>>([&, i] {
+                    return std::shared_ptr<int>(new int(i), [&disposed](int* p) { ++disposed[*p]; delete p; });
+                });
+                Modifier m = SizeMod(Modifier{}, Dp(50), Dp(i % 2 ? 40 : 30));
+                if (i == 0) m = FocusRequesterModifier(std::move(m), first);
+                Box(Focusable(std::move(m), Focusability::Always, [&, i](FocusState f) { if (IsFocused(f)) focused = i; }));
+            });
+        });
+    });
+    CHECK(first.RequestFocus());
+    h.Frames(2);
+    // Down the left lane (items 0, 2, 4, ... at 0, 30, 60, ...): past the viewport and beyond.
+    for (int k = 1; k <= 5; ++k) {
+        CHECK(h.owner.MoveFocus(FocusDirection::Down));
+        h.Frames(30);
+    }
+    CHECK(focused >= 8);
+    const int pinnedItem = focused;
+    state.ScrollToItem(50);
+    h.Pump();
+    CHECK_EQ(disposed[pinnedItem], 0);   // focused: kept while scrolled away
+    CHECK(disposed[pinnedItem - 2] >= 1);
+}
