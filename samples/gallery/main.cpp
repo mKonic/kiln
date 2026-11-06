@@ -11,6 +11,8 @@
 #include <kiln/foundation/Back.h>
 #include <kiln/foundation/Draw.h>
 #include <kiln/foundation/Image.h>
+#include <kiln/foundation/Shapes.h>
+#include <kiln/graphics/shapes/Shapes.h>
 
 #include <kiln/Assets.h>
 #include <kiln/foundation/text/BasicTextField.h>
@@ -38,6 +40,14 @@ namespace {
         for (;;) {
             const std::int64_t t = co_await kiln::rt::NextFrame();
             angle.Set(float(double(t - start) * 1e-9 * 45.0));   // 45 degrees per second
+        }
+    }
+
+    kiln::rt::Task<> Breathe(kiln::rt::State<float>& t) {
+        const std::int64_t start = co_await kiln::rt::NextFrame();
+        for (;;) {
+            const std::int64_t now = co_await kiln::rt::NextFrame();
+            t.Set(0.5f - 0.5f * std::cos(float(double(now - start) * 1e-9 * 2.0)));   // 0..1..0
         }
     }
 
@@ -143,6 +153,19 @@ namespace {
                     Box(Background(SizeMod(OffsetMod(Modifier{}, 32_dp, 0_dp), 48_dp, 48_dp), kTertiary, CornerShape::Pill()));
                 });
             });
+            // graphics-shapes: a rounded square morphing into a rounded star and back.
+            {
+                static const kiln::gfx::shapes::Morph morph(
+                    kiln::gfx::shapes::Rectangle(2, 2, { 0.4f }).Normalized(),
+                    kiln::gfx::shapes::Star(8, 1, 0.7f, { 0.15f }).Normalized());
+                auto& morphT = RememberState(0.0f);
+                c.LaunchedEffect({}, [&morphT] { return Breathe(morphT); });
+                Canvas(SizeMod(Padding(Modifier{}, 16_dp, 0_dp), 72_dp, 72_dp), [&morphT](DrawScope& d) {
+                    kiln::gfx::Path p = MorphToPath(morph, morphT.Get(), 0);
+                    p.Transform(kiln::gfx::Matrix::Scale(d.GetSize().width, d.GetSize().height));
+                    d.DrawPath(p, kiln::gfx::Brush::LinearGradient({ kPrimary, kTertiary }));
+                });
+            }
             // Mixed text sizes sharing a baseline (alignByBaseline).
             Row(Padding(Modifier{}, 16_dp, 0_dp), Arrangement::SpacedBy(8_dp), AlignmentV::Top(), [&] {
                 BasicText("Baseline", AlignByBaseline({}), { 32, kOnSurface });
