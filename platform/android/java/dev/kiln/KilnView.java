@@ -190,6 +190,7 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
                     e.getEventTime(), e.getDeviceId())) return true;
             return super.onGenericMotionEvent(e);
         }
+        if (e.isFromSource(InputDevice.SOURCE_TOUCH_NAVIGATION)) return indirect(e);
         if (a == MotionEvent.ACTION_HOVER_MOVE || a == MotionEvent.ACTION_HOVER_ENTER
                 || a == MotionEvent.ACTION_HOVER_EXIT || a == MotionEvent.ACTION_SCROLL) return forward(e);
         return super.onGenericMotionEvent(e);
@@ -197,6 +198,88 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
 
     @Override
     public boolean onInterceptTouchEvent(MotionEvent e) { return true; }
+
+    // --- indirect pointers (touch-navigation pads) --------------------------------------------
+    // The focused path sees every event first; a fling the path did not consume moves focus along
+    // the pad's axis (AndroidComposeView's IndirectPointerNavigationGestureDetector).
+    private android.view.GestureDetector navDetector;
+    private int navAxis;               // 0 none, 1 x, 2 y
+    private boolean navIgnoreStream;
+
+    private boolean indirect(MotionEvent e) {
+        final int a = e.getActionMasked();
+        final int axis = indirectAxis(e);
+        final int n = e.getPointerCount();
+        int[] pids = new int[n];
+        float[] pxy = new float[2 * n];
+        float[] pressures = new float[n];
+        for (int i = 0; i < n; i++) {
+            pids[i] = e.getPointerId(i);
+            pxy[2 * i] = e.getX(i);
+            pxy[2 * i + 1] = e.getY(i);
+            pressures[i] = e.getPressure(i);
+        }
+        long[] historyTimes = null;
+        float[] historyXy = null;
+        final int hs = e.getHistorySize();
+        if (hs > 0) {
+            historyTimes = new long[hs];
+            historyXy = new float[hs * n * 2];
+            for (int h = 0; h < hs; h++) {
+                historyTimes[h] = e.getHistoricalEventTime(h);
+                for (int i = 0; i < n; i++) {
+                    historyXy[(h * n + i) * 2] = e.getHistoricalX(i, h);
+                    historyXy[(h * n + i) * 2 + 1] = e.getHistoricalY(i, h);
+                }
+            }
+        }
+        final boolean consumed = KilnNative.indirectPointer(a, e.getActionIndex(), e.getEventTime(), pids, pxy,
+                pressures, historyTimes, historyXy, axis);
+        if (a == MotionEvent.ACTION_CANCEL) {
+            navAxis = 0;
+            navIgnoreStream = true;
+            return true;
+        }
+        switch (e.getAction()) {
+            case MotionEvent.ACTION_DOWN:
+                navAxis = axis;
+                navIgnoreStream = false;
+                break;
+            case MotionEvent.ACTION_MOVE:
+            case MotionEvent.ACTION_UP:
+                if (consumed) { navAxis = 0; navIgnoreStream = true; }
+                break;
+        }
+        if (navDetector == null) {
+            navDetector = new android.view.GestureDetector(getContext(), new android.view.GestureDetector.SimpleOnGestureListener() {
+                @Override public boolean onDown(MotionEvent ev) { return true; }
+                @Override public boolean onFling(MotionEvent e1, MotionEvent e2, float vx, float vy) {
+                    if (navIgnoreStream) return true;
+                    if (navAxis == 1 && Math.abs(vx) > Math.abs(vy)) KilnNative.indirectFling(vx > 0);
+                    else if (navAxis == 2 && Math.abs(vy) > Math.abs(vx)) KilnNative.indirectFling(vy > 0);
+                    return true;
+                }
+            }, getHandler());
+        }
+        navDetector.onTouchEvent(e);
+        return true;
+    }
+
+    // indirectPrimaryDirectionalScrollAxis: the axis with a motion range, or the much longer one.
+    private static int indirectAxis(MotionEvent e) {
+        InputDevice d = e.getDevice();
+        if (d == null) return 0;
+        InputDevice.MotionRange x = d.getMotionRange(MotionEvent.AXIS_X);
+        InputDevice.MotionRange y = d.getMotionRange(MotionEvent.AXIS_Y);
+        if (x != null && y == null) return 1;
+        if (y != null && x == null) return 2;
+        if (x != null && y != null) {
+            final float xr = x.getRange(), yr = y.getRange();
+            if (xr > yr && (yr == 0f || xr / yr >= 5f)) return 1;
+            if (yr > xr && (xr == 0f || yr / xr >= 5f)) return 2;
+        }
+        return 0;
+    }
 
     // --- text input (called from native; spec 02 req. 12) -----------------------------------
     private boolean inputActive;

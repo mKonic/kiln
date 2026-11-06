@@ -60,6 +60,24 @@ namespace kiln {
         return handled;
     }
 
+    bool App::ProcessIndirectPointer(const ui::RawIndirectPointerEvent& raw) {
+        rt::Composition::RecomposeAll();
+        if (m_Width && m_Height) m_Owner.MeasureAndLayout({ int(m_Width), int(m_Height) });
+        ui::IndirectPointerEvent event;
+        bool consumed = false;
+        if (m_IndirectAdapter.Convert(raw, event)) consumed = m_Owner.DispatchIndirectPointerEvent(event);
+        else m_Owner.DispatchIndirectPointerCancel();
+        m_Dispatcher.RunPending();
+        return consumed;
+    }
+
+    void App::MoveFocusFromIndirectFling(bool next) {
+        rt::Composition::RecomposeAll();
+        if (m_Width && m_Height) m_Owner.MeasureAndLayout({ int(m_Width), int(m_Height) });
+        m_Owner.MoveFocus(next ? ui::FocusDirection::Next : ui::FocusDirection::Previous, false);
+        m_Dispatcher.RunPending();
+    }
+
     void App::SetLayoutDirection(ui::LayoutDirection d) {
         if (m_Direction->Peek() == d) return;
         m_Direction->Set(d);

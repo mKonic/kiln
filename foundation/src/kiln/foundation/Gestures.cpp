@@ -460,12 +460,200 @@ namespace kiln::foundation {
             std::map<int, std::uint64_t> keyPresses;
             std::map<int, rt::Job> longKeyJobs;
             std::map<int, std::shared_ptr<DoubleKey>> doubleKeys;
+            void ResetKeyPresses() {
+                if (source) for (auto& [key, id] : keyPresses) if (id) source->Cancel(Interaction::Kind::Press, id);
+                keyPresses.clear();
+                longKeyJobs.clear();      // ~Job cancels
+                doubleKeys.clear();
+            }
+            // Indirect pointer (CombinedClickableNode): the press, and the long / double click
+            // state of that stream.
+            struct IndirectDown { Offset position; };
+            std::optional<IndirectDown> indirectDown;
+            bool indirectDownThisEvent = false;   // the down change is this event's first change
+            rt::Job indirectLongJob, indirectTapJob, indirectDelayJob;
+            bool indirectIsSecondTap = false, indirectLongTriggered = false, indirectIgnoreNextUp = false;
+            bool indirectPressedReported = false;   // onPressed(true) went out for this press
+            std::int64_t indirectFirstTapUpTime = -1;
+            std::uint64_t indirectPress = 0;
         };
 
         rt::Task<> LongKeyPress(std::shared_ptr<ClickState> st, std::int64_t ms) {
             co_await rt::Delay(ms);
             if (st->onLongClick) st->onLongClick();
         }
+
+        rt::Task<> IndirectLongPress(std::shared_ptr<ClickState> st, std::int64_t ms) {
+            co_await rt::Delay(ms);
+            if (st->onLongClick) st->onLongClick();
+            st->indirectLongTriggered = true;
+            st->indirectTapJob.Cancel();
+        }
+
+        rt::Task<> IndirectTap(std::shared_ptr<ClickState> st, std::int64_t ms) {
+            co_await rt::Delay(ms);
+            if (st->onClick) st->onClick();   // the sound already played on release
+        }
+
+        rt::Task<> IndirectDelayedPress(std::shared_ptr<ClickState> st, Offset at, std::int64_t ms) {
+            co_await rt::Delay(ms);
+            if (st->source && !st->indirectPress) st->indirectPress = st->source->Start(Interaction::Kind::Press, at);
+        }
+
+        struct IndirectClickParams {
+            std::shared_ptr<ClickState> st;
+            bool operator==(const IndirectClickParams& o) const { return st == o.st; }
+        };
+
+        // The clickable's IndirectPointerInputModifierNode side (Clickable.kt): a press on the pad
+        // clicks the focused clickable unless it moves past the touch slop or something consumes it.
+        class IndirectClickNode final : public ModifierNode, public ui::IndirectPointerInputModifier {
+        public:
+            IndirectClickParams params;
+            explicit IndirectClickNode(IndirectClickParams p) : params(std::move(p)) {}
+            void OnParamsChanged() {}
+            ui::IndirectPointerInputModifier* AsIndirectPointerInput() override { return this; }
+            void OnAttach() override { params.st->config = Config(); }
+            void OnDetach() override { Cancel(); }
+
+            void OnIndirectPointerEvent(ui::IndirectPointerEvent& e, PointerEventPass pass) override {
+                ClickState& st = *params.st;
+                st.config = Config();
+                if (e.changes.empty()) return;
+                if (pass == PointerEventPass::Main) {
+                    if (!st.indirectDown) {
+                        for (const auto& c : e.changes)
+                            if (c.ChangedToDownIgnoreConsumed()) { Down(e.changes[0]); break; }
+                        return;
+                    }
+                    const bool allUp = std::all_of(e.changes.begin(), e.changes.end(), [](const auto& c) { return c.ChangedToUp(); });
+                    if (st.indirectLongTriggered) {
+                        // After the long click, every event is ours until the pointers lift.
+                        if (std::all_of(e.changes.begin(), e.changes.end(), [](const auto& c) { return c.ChangedToUpIgnoreConsumed(); })) {
+                            e.changes[0].Consume();
+                            Up(e.changes[0].uptimeMillis);
+                        } else {
+                            for (auto& c : e.changes) c.Consume();
+                        }
+                        return;
+                    }
+                    if (allUp) {
+                        e.changes[0].Consume();
+                        Up(e.changes[0].uptimeMillis);
+                        return;
+                    }
+                    const float slop = st.config.touchSlop;
+                    for (const auto& c : e.changes) {
+                        const Offset d{ c.position.x - st.indirectDown->position.x, c.position.y - st.indirectDown->position.y };
+                        if (c.isConsumed || std::hypot(d.x, d.y) > slop) { Cancel(); return; }
+                    }
+                } else if (pass == PointerEventPass::Final) {
+                    // Consumed by someone else: cancelled (not the down change we consumed ourselves).
+                    if (st.indirectDown && !st.indirectLongTriggered) {
+                        for (std::size_t i = 0; i < e.changes.size(); ++i) {
+                            if (i == 0 && st.indirectDownThisEvent) continue;
+                            if (e.changes[i].isConsumed) { Cancel(); break; }
+                        }
+                    }
+                    st.indirectDownThisEvent = false;
+                }
+            }
+            void OnCancelIndirectPointerInput() override { Cancel(); }
+
+        private:
+            const ViewConfiguration& Config() const {
+                static const ViewConfiguration fallback;
+                return Owner() && Owner()->GetOwner() ? Owner()->GetOwner()->Config() : fallback;
+            }
+            bool InScrollableContainer() const {
+                for (const LayoutNode* n = Owner(); n; n = n->Parent())
+                    for (const ModifierNode* m : n->ModifierNodes())
+                        if (m->IsScrollableContainer()) return true;
+                return false;
+            }
+
+            void Down(ui::IndirectPointerInputChange& down) {
+                ClickState& st = *params.st;
+                auto self = params.st;
+                down.Consume();
+                st.indirectDown = ClickState::IndirectDown{ down.position };
+                st.indirectDownThisEvent = true;
+                if (st.indirectTapJob.Active()) {
+                    if (down.uptimeMillis - st.indirectFirstTapUpTime < st.config.doubleTapMinTimeMillis) {
+                        // Too soon after the first tap: ignore this press entirely.
+                        st.indirectIgnoreNextUp = true;
+                        return;
+                    }
+                    st.indirectIsSecondTap = true;
+                    st.indirectTapJob.Cancel();
+                }
+                st.indirectLongTriggered = false;
+                if (st.onPressed) { st.onPressed(true); st.indirectPressedReported = true; }
+                if (st.source) {
+                    if (InScrollableContainer())
+                        st.indirectDelayJob = rt::Launch(rt::Dispatcher::Main(), IndirectDelayedPress(self, down.position, st.config.tapTimeoutMillis));
+                    else
+                        st.indirectPress = st.source->Start(Interaction::Kind::Press, down.position);
+                }
+                if (st.onLongClick)
+                    st.indirectLongJob = rt::Launch(rt::Dispatcher::Main(), IndirectLongPress(self, st.config.longPressTimeoutMillis));
+            }
+
+            void Up(std::int64_t uptime) {
+                ClickState& st = *params.st;
+                if (!st.indirectIgnoreNextUp) {
+                    ReleasePress(true);
+                    st.indirectFirstTapUpTime = uptime;
+                    if (!st.indirectLongTriggered) {
+                        if (st.indirectIsSecondTap) {
+                            if (st.onDoubleClick) st.onDoubleClick();
+                        } else if (st.onDoubleClick) {
+                            st.PlayClickSound();
+                            st.indirectTapJob = rt::Launch(rt::Dispatcher::Main(), IndirectTap(params.st, st.config.doubleTapTimeoutMillis));
+                        } else {
+                            st.PerformClick();
+                        }
+                    }
+                }
+                st.indirectDown.reset();
+                st.indirectIgnoreNextUp = false;
+                st.indirectIsSecondTap = false;
+                st.indirectLongJob.Cancel();
+                st.indirectLongTriggered = false;
+            }
+
+            // handlePressInteractionRelease / Cancel for the indirect press.
+            void ReleasePress(bool released) {
+                ClickState& st = *params.st;
+                if (st.indirectPressedReported) { st.indirectPressedReported = false; if (st.onPressed) st.onPressed(false); }
+                if (!st.source) return;
+                if (st.indirectDelayJob.Active()) {
+                    st.indirectDelayJob.Cancel();
+                    // Released before the delay: a brief press still shows.
+                    if (released && st.indirectDown) {
+                        const auto id = st.source->Start(Interaction::Kind::Press, st.indirectDown->position);
+                        st.source->End(Interaction::Kind::Press, id);
+                    }
+                } else if (st.indirectPress) {
+                    if (released) st.source->End(Interaction::Kind::Press, st.indirectPress);
+                    else st.source->Cancel(Interaction::Kind::Press, st.indirectPress);
+                }
+                st.indirectPress = 0;
+            }
+
+            void Cancel() {
+                ClickState& st = *params.st;
+                ReleasePress(false);
+                st.indirectDown.reset();
+                st.indirectDownThisEvent = false;
+                st.indirectLongJob.Cancel();
+                st.indirectTapJob.Cancel();
+                st.indirectIsSecondTap = false;
+                st.indirectLongTriggered = false;
+                st.indirectFirstTapUpTime = -1;
+                st.indirectIgnoreNextUp = false;
+            }
+        };
 
         rt::Task<> FirstKeyClick(std::shared_ptr<ClickState> st, std::shared_ptr<ClickState::DoubleKey> dk,
                                  std::int64_t minMs, std::int64_t timeoutMs) {
@@ -586,7 +774,14 @@ namespace kiln::foundation {
                 }
                 return false;
             });
-            m = Focusable(std::move(m), Focusability::SystemDefined, {}, st->source);
+            m = m.With<IndirectClickNode>(IndirectClickParams{ st });
+            // Losing focus ends key presses and the indirect press (onFocusChange).
+            m = Focusable(std::move(m), Focusability::SystemDefined, [st](FocusState s) {
+                if (IsFocused(s)) return;
+                st->ResetKeyPresses();
+                if (st->source && st->indirectPress) st->source->Cancel(Interaction::Kind::Press, st->indirectPress);
+                st->indirectPress = 0;
+            }, st->source);
             // Hover: Enter / Exit events become hover interactions (AbstractClickableNode).
             if (st->source) m = PointerInput(std::move(m), rt::Keys(1), [st](PointerInputScope& s) { return HoverLoop(s, st); });
             return PointerInput(std::move(m), rt::Keys(0, hasLong, hasDouble), [st, hasLong, hasDouble](PointerInputScope& s) {

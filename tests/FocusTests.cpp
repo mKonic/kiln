@@ -128,6 +128,88 @@ TEST(ClickableKeyLongPressAndDoubleClick) {
     CHECK_EQ(longs, 1);
 }
 
+namespace {
+    // One pad sample through the adapter and the owner, as App does.
+    struct Pad {
+        Harness& h;
+        IndirectPointerAdapter adapter;
+        bool Send(RawIndirectPointerEvent::Action a, float x, float y, std::int64_t t) {
+            RawIndirectPointerEvent raw;
+            raw.action = a;
+            raw.uptimeMillis = t;
+            raw.pointers.push_back({ 0, { x, y }, 1, {} });
+            IndirectPointerEvent e;
+            const bool consumed = adapter.Convert(raw, e) ? h.owner.DispatchIndirectPointerEvent(e)
+                                                          : (h.owner.DispatchIndirectPointerCancel(), false);
+            rt::Dispatcher::Main().RunPending();
+            return consumed;
+        }
+    };
+}
+
+TEST(IndirectPointerClicksTheFocusedClickable) {
+    Harness h;
+    int a = 0, b = 0;
+    FocusRequester ra, rb;
+    h.Run([&] {
+        Column(Modifier{}, [&] {
+            Box(Clickable(FocusRequesterModifier(SizeMod(Modifier{}, Dp(40), Dp(40)), ra), [&] { ++a; }));
+            Box(Clickable(FocusRequesterModifier(SizeMod(Modifier{}, Dp(40), Dp(40)), rb), [&] { ++b; }));
+        });
+    });
+    using A = RawIndirectPointerEvent::Action;
+    Pad pad{ h };
+    // Nothing focused: nobody takes it.
+    CHECK(!pad.Send(A::Down, 10, 10, 0));
+    pad.Send(A::Up, 10, 10, 20);
+    h.owner.SetInputMode(InputMode::Keyboard);
+    ra.RequestFocus();
+    CHECK(pad.Send(A::Down, 10, 10, 100));
+    CHECK(pad.Send(A::Up, 12, 10, 150));
+    CHECK_EQ(a, 1);
+    // Past the touch slop: no click.
+    pad.Send(A::Down, 10, 10, 1000);
+    pad.Send(A::Move, 60, 10, 1020);
+    pad.Send(A::Up, 60, 10, 1040);
+    CHECK_EQ(a, 1);
+    // Focus leaves mid-press: the press is cancelled, so its release clicks nothing.
+    pad.Send(A::Down, 10, 10, 2000);
+    rb.RequestFocus();
+    ra.RequestFocus();
+    pad.Send(A::Up, 10, 10, 2050);
+    CHECK_EQ(a, 1);
+    CHECK_EQ(b, 0);
+    // The other one, once focused.
+    rb.RequestFocus();
+    pad.Send(A::Down, 10, 10, 3000);
+    pad.Send(A::Up, 10, 10, 3050);
+    CHECK_EQ(b, 1);
+    // A fling moves focus one step without wrapping.
+    CHECK(!h.owner.MoveFocus(FocusDirection::Next, false));
+    CHECK(h.owner.MoveFocus(FocusDirection::Previous, false));
+}
+
+TEST(IndirectPointerDoubleClick) {
+    Harness h;
+    int clicks = 0, doubles = 0;
+    FocusRequester r;
+    h.Run([&] {
+        ClickableOptions o;
+        o.onDoubleClick = [&] { ++doubles; };
+        Box(Clickable(FocusRequesterModifier(SizeMod(Modifier{}, Dp(40), Dp(40)), r), [&] { ++clicks; }, o));
+    });
+    h.owner.SetInputMode(InputMode::Keyboard);
+    r.RequestFocus();
+    using A = RawIndirectPointerEvent::Action;
+    Pad pad{ h };
+    pad.Send(A::Down, 10, 10, 0);
+    pad.Send(A::Up, 10, 10, 50);
+    pad.Send(A::Down, 10, 10, 120);
+    pad.Send(A::Up, 10, 10, 170);
+    CHECK_EQ(doubles, 1);
+    CHECK_EQ(clicks, 0);
+}
+
 TEST(FocusPropertiesRedirectSkipAndCancel) {
     Harness h;
     std::string focused;

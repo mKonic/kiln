@@ -144,8 +144,16 @@ namespace kiln::ui {
     // --- transactions -------------------------------------------------------------------------
 
     void Owner::SetActive(FocusTargetNode* t) {
+        // AndroidComposeView.onFocusChanged: indirect pointer nodes that leave the focused path
+        // lose their stream.
+        auto before = FocusedPath(&ModifierNode::AsIndirectPointerInput);
         m_ActiveFocus = t;
         m_FocusCaptured = false;
+        if (!before.empty()) {
+            const auto after = FocusedPath(&ModifierNode::AsIndirectPointerInput);
+            for (auto* n : before)
+                if (std::find(after.begin(), after.end(), n) == after.end()) n->OnCancelIndirectPointerInput();
+        }
         DispatchFocusEvents();
     }
 
@@ -568,7 +576,7 @@ namespace kiln::ui {
         return SearchBeyondBounds(t, d, [&] { return SearchChildren2D(t, focused, d, onFound); });
     }
 
-    bool Owner::MoveFocus(FocusDirection d) {
+    bool Owner::MoveFocus(FocusDirection d, bool wrapAround) {
         FocusTargetNode* before = m_ActiveFocus;
         // An explicit destination on the focused target (focusProperties next/up/...).
         if (m_ActiveFocus) {
@@ -613,7 +621,7 @@ namespace kiln::ui {
         }
         if (found && m_ActiveFocus != before) return true;
         // 1D wraps around like the Android framework: clear, then take focus from the start.
-        if ((d == FocusDirection::Next || d == FocusDirection::Previous) && before && ClearFocus(false)) {
+        if (wrapAround && (d == FocusDirection::Next || d == FocusDirection::Previous) && before && ClearFocus(false)) {
             const bool wrapped = d == FocusDirection::Next ? Forward(m_RootFocus, request) : Backward(m_RootFocus, request);
             return wrapped;
         }
@@ -655,6 +663,20 @@ namespace kiln::ui {
         for (auto* k : path) if (k->OnPreRotaryScrollEvent(e)) return true;
         for (auto it = path.rbegin(); it != path.rend(); ++it) if ((*it)->OnRotaryScrollEvent(e)) return true;
         return false;
+    }
+
+    bool Owner::DispatchIndirectPointerEvent(IndirectPointerEvent& e) {
+        const auto path = FocusedPath(&ModifierNode::AsIndirectPointerInput);
+        // Initial and Final tunnel (root first), Main bubbles (focused first).
+        for (auto* n : path) n->OnIndirectPointerEvent(e, PointerEventPass::Initial);
+        for (auto it = path.rbegin(); it != path.rend(); ++it) (*it)->OnIndirectPointerEvent(e, PointerEventPass::Main);
+        for (auto* n : path) n->OnIndirectPointerEvent(e, PointerEventPass::Final);
+        return std::any_of(e.changes.begin(), e.changes.end(), [](const IndirectPointerInputChange& c) { return c.isConsumed; });
+    }
+
+    void Owner::DispatchIndirectPointerCancel() {
+        const auto path = FocusedPath(&ModifierNode::AsIndirectPointerInput);
+        for (auto it = path.rbegin(); it != path.rend(); ++it) (*it)->OnCancelIndirectPointerInput();
     }
 
     bool Owner::DispatchKeyEvent(const KeyEvent& e) {

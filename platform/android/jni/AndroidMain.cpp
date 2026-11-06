@@ -411,6 +411,57 @@ namespace {
         return handled;
     }
 
+    // Touch-navigation pads (AndroidComposeView.dispatchGenericMotionEvent): the MotionEvent's
+    // pointers, pressures and batched samples, plus the pad's primary axis (0 none, 1 x, 2 y).
+    jboolean IndirectPointer(JNIEnv* env, jclass, jint action, jint actionIndex, jlong eventTime, jintArray ids,
+                             jfloatArray xy, jfloatArray pressures, jlongArray historyTimes, jfloatArray historyXy, jint axis) {
+        if (!g_Host) return {};
+        using kiln::ui::RawIndirectPointerEvent;
+        using A = RawIndirectPointerEvent::Action;
+        RawIndirectPointerEvent ev;
+        // MotionEvent ACTION_DOWN 0, UP 1, MOVE 2, CANCEL 3, POINTER_DOWN 5, POINTER_UP 6
+        switch (action) {
+            case 0: ev.action = A::Down; break;
+            case 1: ev.action = A::Up; break;
+            case 2: ev.action = A::Move; break;
+            case 3: ev.action = A::Cancel; break;
+            case 5: ev.action = A::PointerDown; break;
+            case 6: ev.action = A::PointerUp; break;
+            default: ev.action = A::Other; break;
+        }
+        ev.actionIndex = actionIndex;
+        ev.uptimeMillis = eventTime;
+        ev.axis = kiln::ui::IndirectPointerEventPrimaryDirectionalMotionAxis(axis);
+        const jsize n = env->GetArrayLength(ids);
+        jint* id = env->GetIntArrayElements(ids, nullptr);
+        jfloat* p = env->GetFloatArrayElements(xy, nullptr);
+        jfloat* pr = env->GetFloatArrayElements(pressures, nullptr);
+        for (jsize i = 0; i < n; ++i)
+            ev.pointers.push_back({ id[i], { p[2 * i], p[2 * i + 1] }, pr[i], {} });
+        if (historyTimes) {
+            const jsize hn = env->GetArrayLength(historyTimes);
+            jlong* ht = env->GetLongArrayElements(historyTimes, nullptr);
+            jfloat* hx = env->GetFloatArrayElements(historyXy, nullptr);
+            for (jsize h = 0; h < hn; ++h)
+                for (jsize i = 0; i < n; ++i)
+                    ev.pointers[std::size_t(i)].historical.push_back({ std::int64_t(ht[h]), { hx[(h * n + i) * 2], hx[(h * n + i) * 2 + 1] }, {} });
+            env->ReleaseLongArrayElements(historyTimes, ht, JNI_ABORT);
+            env->ReleaseFloatArrayElements(historyXy, hx, JNI_ABORT);
+        }
+        env->ReleaseIntArrayElements(ids, id, JNI_ABORT);
+        env->ReleaseFloatArrayElements(xy, p, JNI_ABORT);
+        env->ReleaseFloatArrayElements(pressures, pr, JNI_ABORT);
+        const bool consumed = g_Host->app->ProcessIndirectPointer(ev);
+        ArmTimer();
+        return consumed;
+    }
+
+    void IndirectFling(JNIEnv*, jclass, jboolean next) {
+        if (!g_Host) return;
+        g_Host->app->MoveFocusFromIndirectFling(next);
+        ArmTimer();
+    }
+
     void SetInsets(JNIEnv*, jclass, jint type, jint l, jint t, jint r, jint b) {
         if (!g_Host) return;
         if (type < 0 || type >= jint(kiln::ui::InsetsType::Count)) return;
@@ -864,6 +915,8 @@ extern "C" JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void*) {
         { "keyEvent", "(IIIIIJ)Z", reinterpret_cast<void*>(&KeyEvent) },
         { "keyEventPreIme", "(IIIIIJ)Z", reinterpret_cast<void*>(&KeyEventPreIme) },
         { "rotary", "(FFJI)Z", reinterpret_cast<void*>(&Rotary) },
+        { "indirectPointer", "(IIJ[I[F[F[J[FI)Z", reinterpret_cast<void*>(&IndirectPointer) },
+        { "indirectFling", "(Z)V", reinterpret_cast<void*>(&IndirectFling) },
         { "hostFocusChanged", "(Z)V", reinterpret_cast<void*>(&HostFocusChanged) },
         { "setInsets", "(IIIII)V", reinterpret_cast<void*>(&SetInsets) },
         { "setImeState", "(ZZ)V", reinterpret_cast<void*>(&SetImeState) },

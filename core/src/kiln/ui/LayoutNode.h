@@ -11,6 +11,7 @@
 #include "kiln/ui/Layout.h"
 #include "kiln/ui/Pointer.h"
 #include "kiln/ui/Focus.h"
+#include "kiln/ui/IndirectPointer.h"
 #include "kiln/ui/TextInput.h"
 #include "kiln/ui/Insets.h"
 #include "kiln/ui/Semantics.h"
@@ -195,7 +196,8 @@ namespace kiln::ui {
         // The nearest focus targets below `t` (its focus children).
         std::vector<FocusTargetNode*> FocusChildrenOf(const FocusTargetNode& t) const { return FocusChildren(t); }
         bool ClearFocus(bool force = false);
-        bool MoveFocus(FocusDirection direction);
+        // wrapAround: 1D search (Next / Previous) starts over from the other end when it runs out.
+        bool MoveFocus(FocusDirection direction, bool wrapAround = true);
         bool CaptureFocus();
         bool FreeFocus();
         // Key input: preview tunnel, then bubble; unhandled keys move focus (AndroidComposeView
@@ -205,6 +207,10 @@ namespace kiln::ui {
         // then events focused to root. False when no node took it (or nothing is focused).
         bool DispatchInterceptedSoftKeyboardEvent(const KeyEvent& event);
         bool DispatchRotaryEvent(const RotaryScrollEvent& event);
+        // Indirect pointer events go along the focused path in three passes; returns whether any
+        // change was consumed. The cancel tells the path the stream ended.
+        bool DispatchIndirectPointerEvent(IndirectPointerEvent& event);
+        void DispatchIndirectPointerCancel();
         // The modifiers of one kind on the focused path, root first (the key dispatch path).
         template <typename T> std::vector<T*> FocusedPath(T* (ModifierNode::*as)());
         InputMode GetInputMode() const { return m_InputMode.Get(); }

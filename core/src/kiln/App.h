@@ -78,6 +78,12 @@ namespace kiln {
         bool ProcessKey(const ui::KeyEvent& event);
         bool ProcessKeyPreIme(const ui::KeyEvent& event);
         bool ProcessRotary(const ui::RotaryScrollEvent& event);
+        // A touch-navigation pad sample (dispatchGenericMotionEvent, SOURCE_TOUCH_NAVIGATION):
+        // returns whether a node on the focused path consumed it. A cancel ends the stream.
+        bool ProcessIndirectPointer(const ui::RawIndirectPointerEvent& event);
+        // The host's navigation gesture detector saw a fling along the pad's axis: one focus step,
+        // without wrapping.
+        void MoveFocusFromIndirectFling(bool next);
         float Density() const { return m_Density; }
         float FontScale() const { return m_FontScale; }
         TextBackend* Text() const { return m_Services.text; }
@@ -100,6 +106,7 @@ namespace kiln {
     private:
         HostServices m_Services;
         ui::Owner m_Owner;
+        ui::IndirectPointerAdapter m_IndirectAdapter;
         std::unique_ptr<rt::SaveableStateRegistry> m_Saveable = std::make_unique<rt::SaveableStateRegistry>();
         bool m_Television = false;
         std::unique_ptr<rt::State<ui::LayoutDirection>> m_Direction = std::make_unique<rt::State<ui::LayoutDirection>>(ui::LayoutDirection::Ltr);
