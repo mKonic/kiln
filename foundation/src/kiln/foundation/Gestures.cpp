@@ -541,4 +541,106 @@ namespace kiln::foundation {
         return Semantics(std::move(m), [](SemanticsConfiguration& c) { c.isTraversalGroup = true; c.selectableGroup = true; });
     }
 
+    // --- TransformGestureDetector.kt ---------------------------------------------------------
+
+    namespace {
+        bool Both(const PointerInputChange& c) { return c.pressed && c.previousPressed; }
+    }
+
+    Offset CalculateCentroid(const PointerEvent& e, bool useCurrent) {
+        Offset sum{};
+        int n = 0;
+        for (const auto& c : e.changes)
+            if (Both(c)) { sum = sum + (useCurrent ? c.position : c.previousPosition); ++n; }
+        if (n == 0) return { std::nanf(""), std::nanf("") };
+        return { sum.x / float(n), sum.y / float(n) };
+    }
+
+    float CalculateCentroidSize(const PointerEvent& e, bool useCurrent) {
+        const Offset centroid = CalculateCentroid(e, useCurrent);
+        if (std::isnan(centroid.x)) return 0;
+        float d = 0;
+        int n = 0;
+        for (const auto& c : e.changes)
+            if (Both(c)) { const Offset p = (useCurrent ? c.position : c.previousPosition) - centroid; d += std::hypot(p.x, p.y); ++n; }
+        return d / float(n);
+    }
+
+    Offset CalculatePan(const PointerEvent& e) {
+        const Offset cur = CalculateCentroid(e, true);
+        if (std::isnan(cur.x)) return {};
+        return cur - CalculateCentroid(e, false);
+    }
+
+    float CalculateZoom(const PointerEvent& e) {
+        const float cur = CalculateCentroidSize(e, true), prev = CalculateCentroidSize(e, false);
+        if (cur == 0 || prev == 0) return 1;
+        return cur / prev;
+    }
+
+    float CalculateRotation(const PointerEvent& e) {
+        int count = 0;
+        for (const auto& c : e.changes) if (Both(c)) ++count;
+        if (count < 2) return 0;
+        const Offset curC = CalculateCentroid(e, true), prevC = CalculateCentroid(e, false);
+        auto angle = [](Offset o) { return (o.x == 0 && o.y == 0) ? 0.0f : -std::atan2(o.x, o.y) * 180.0f / 3.14159265358979f; };
+        float rotation = 0, weight = 0;
+        for (const auto& c : e.changes) {
+            if (!Both(c)) continue;
+            const Offset prevO = c.previousPosition - prevC, curO = c.position - curC;
+            float diff = angle(curO) - angle(prevO);
+            if (diff > 180) diff -= 360; else if (diff < -180) diff += 360;
+            const Offset sum = curO + prevO;
+            const float w = std::hypot(sum.x, sum.y) / 2;
+            rotation += diff * w;
+            weight += w;
+        }
+        return weight == 0 ? 0 : rotation / weight;
+    }
+
+    rt::Task<> DetectTransformGestures(PointerInputScope& s, bool panZoomLock, std::function<void(Offset, Offset, float, float)> onGesture) {
+        for (;;) {
+            // awaitFirstDown(requireUnconsumed = false)
+            for (;;) {
+                auto e = co_await s.AwaitPointerEvent(PointerEventPass::Main);
+                bool down = false;
+                for (const auto& c : e->changes) if (c.ChangedToDownIgnoreConsumed()) down = true;
+                if (down) break;
+            }
+            float rotation = 0, zoom = 1;
+            Offset pan{};
+            bool pastSlop = false, locked = false;
+            const float slop = s.Config().touchSlop;
+            for (;;) {
+                auto e = co_await s.AwaitPointerEvent(PointerEventPass::Main);
+                bool canceled = false, anyPressed = false;
+                for (const auto& c : e->changes) { canceled = canceled || c.IsConsumed(); anyPressed = anyPressed || c.pressed; }
+                if (!canceled) {
+                    const float zoomChange = CalculateZoom(*e), rotationChange = CalculateRotation(*e);
+                    const Offset panChange = CalculatePan(*e);
+                    if (!pastSlop) {
+                        zoom *= zoomChange;
+                        rotation += rotationChange;
+                        pan = pan + panChange;
+                        const float size = CalculateCentroidSize(*e, false);
+                        const float zoomMotion = std::abs(1 - zoom) * size;
+                        const float rotationMotion = std::abs(rotation * 3.14159265358979f * size / 180.0f);
+                        const float panMotion = std::hypot(pan.x, pan.y);
+                        if (zoomMotion > slop || rotationMotion > slop || panMotion > slop) {
+                            pastSlop = true;
+                            locked = panZoomLock && rotationMotion < slop;
+                        }
+                    }
+                    if (pastSlop) {
+                        const Offset centroid = CalculateCentroid(*e, false);
+                        const float effectiveRotation = locked ? 0 : rotationChange;
+                        if (effectiveRotation != 0 || zoomChange != 1 || !(panChange == Offset{})) onGesture(centroid, panChange, zoomChange, effectiveRotation);
+                        for (auto& c : e->changes) if (!(c.position == c.previousPosition)) c.Consume();
+                    }
+                }
+                if (canceled || !anyPressed) break;
+            }
+        }
+    }
+
 }

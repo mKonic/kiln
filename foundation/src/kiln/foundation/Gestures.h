@@ -89,6 +89,16 @@ namespace kiln::foundation {
     // detectDragGestures(orientationLock): slop, then drag until up or consumed by someone else.
     rt::Task<> DetectDragGestures(PointerInputScope& scope, std::optional<Orientation> orientationLock, DragCallbacks callbacks);
 
+    // TransformGestureDetector.kt: centroid, pan, zoom and rotation (degrees) of multi-touch.
+    Offset CalculateCentroid(const PointerEvent& e, bool useCurrent = true);   // NaN x/y when none
+    float CalculateCentroidSize(const PointerEvent& e, bool useCurrent = true);
+    Offset CalculatePan(const PointerEvent& e);
+    float CalculateZoom(const PointerEvent& e);
+    float CalculateRotation(const PointerEvent& e);
+    // detectTransformGestures(panZoomLock, onGesture(centroid, pan, zoom, rotation)).
+    rt::Task<> DetectTransformGestures(PointerInputScope& scope, bool panZoomLock,
+                                       std::function<void(Offset centroid, Offset pan, float zoom, float rotation)> onGesture);
+
     struct ClickableOptions {
         bool enabled = true;
         std::optional<ui::Role> role;

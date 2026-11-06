@@ -5,6 +5,7 @@
 #include "kiln/ui/VelocityTracker.h"
 
 #include <cmath>
+#include <cstdio>
 
 #include <string>
 
@@ -335,4 +336,39 @@ TEST(DraggableDeliversDeltasAfterSlopAndAVelocity) {
     for (int i = 1; i <= 5; ++i) h.Touch(PointerEventType::Move, 50, 10 + float(i) * 10, true, t += 10);
     h.Touch(PointerEventType::Release, 50, 60, false, t += 10);
     CHECK_EQ(total, 0.0f);
+}
+
+TEST(TransformGesturesReportZoomAndRotation) {
+    Harness h;
+    float zoom = 1, rotation = 0;
+    h.Run([&] {
+        Box(FillMax(Modifier{}, Axis::Both), Alignment::TopStart(), false, [&] {
+            Box(PointerInput(SizeMod(Modifier{}, Dp(100), Dp(100)), rt::Keys(0), [&](PointerInputScope& s) {
+                return DetectTransformGestures(s, false, [&](Offset, Offset, float z, float r) { zoom *= z; rotation += r; });
+            }));
+        });
+    });
+    auto two = [&](PointerEventType type, Offset a, Offset b, bool down, std::int64_t t) {
+        RawPointerEvent e;
+        e.type = type;
+        e.uptimeMillis = t;
+        e.pointers.push_back({ 1, a, down, PointerType::Touch, {} });
+        e.pointers.push_back({ 2, b, down, PointerType::Touch, {} });
+        h.owner.ProcessPointer(e);
+        rt::Dispatcher::Main().RunPending();
+    };
+    std::int64_t t = 0;
+    two(PointerEventType::Press, { 40, 50 }, { 60, 50 }, true, t);
+    for (int i = 1; i <= 10; ++i) two(PointerEventType::Move, { 40 - float(i) * 2, 50 }, { 60 + float(i) * 2, 50 }, true, t += 10);
+    CHECK(zoom > 1.5f);                       // 20 apart -> 60 apart (slop eats the first steps)
+    two(PointerEventType::Release, { 20, 50 }, { 80, 50 }, false, t += 10);
+    // Quarter turn around (50, 50).
+    zoom = 1; rotation = 0;
+    two(PointerEventType::Press, { 20, 50 }, { 80, 50 }, true, t += 1000);
+    for (int i = 1; i <= 18; ++i) {
+        const float a = float(i) * 5 * 3.14159265f / 180;
+        two(PointerEventType::Move, { 50 - 30 * std::cos(a), 50 - 30 * std::sin(a) }, { 50 + 30 * std::cos(a), 50 + 30 * std::sin(a) }, true, t += 10);
+    }
+    // 90 degrees minus what the slop absorbed (three 5-degree steps at a 30 px radius), clockwise.
+    CHECK(std::abs(rotation - 75) < 0.5f);
 }
