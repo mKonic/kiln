@@ -21,7 +21,12 @@ namespace kiln {
         float width = 0, height = 0;
         int lineCount = 0;
         std::vector<GlyphQuad> glyphs;
+        // Backend handle for position queries (0 = none). Released with TextBackend::Release.
+        std::int64_t handle = 0;
     };
+
+    // A zero-width caret rectangle (TextLayoutResult.getCursorRect: the caller applies width).
+    struct CursorRect { float x = 0, top = 0, bottom = 0; };
 
     // Receives atlas pixels from a backend. Pages are created on demand by index.
     class AtlasSink {
@@ -39,6 +44,10 @@ namespace kiln {
         virtual ParagraphData Layout(std::string_view utf8, float sizeSp, float widthPx) = 0;
         // Pushes every atlas region rasterised since the last call.
         virtual void SyncAtlas(AtlasSink& sink) = 0;
+        // Queries on a laid-out paragraph; offsets are UTF-16 code units (what IMEs use).
+        virtual CursorRect GetCursorRect(std::int64_t handle, int offset) = 0;
+        virtual int GetOffsetForPosition(std::int64_t handle, float x, float y) = 0;
+        virtual void Release(std::int64_t handle) = 0;
     };
 
 }

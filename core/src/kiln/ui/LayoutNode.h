@@ -11,6 +11,7 @@
 #include "kiln/ui/Layout.h"
 #include "kiln/ui/Pointer.h"
 #include "kiln/ui/Focus.h"
+#include "kiln/ui/TextInput.h"
 
 #include <map>
 
@@ -151,6 +152,14 @@ namespace kiln::ui {
         void SetRequestHostFocus(std::function<bool()> fn) { m_RequestHostFocus = std::move(fn); }
         // The platform took focus away from (or gave it back to) the host view.
         void OnHostFocusChanged(bool focused);
+
+        // Text input: one active session at a time (TextInputServiceAndroid).
+        void SetTextInputHost(TextInputHost host) { m_InputHost = std::move(host); }
+        void StartTextInput(TextInputSession& session);
+        void StopTextInput(TextInputSession& session);
+        // The field's state changed outside the IME (programmatic edit, key, gesture).
+        void NotifyTextInputChanged(TextInputSession& session, bool contentChanged);
+        TextInputSession* ActiveTextInput() const { return m_Input; }
         const ViewConfiguration& Config() const { return m_Config; }
         bool NeedsMeasureOrLayout() const { return !m_MeasureDirty.empty() || !m_LayoutDirty.empty(); }
 
@@ -202,6 +211,8 @@ namespace kiln::ui {
         rt::State<InputMode> m_InputMode{ InputMode::Touch };
         std::function<bool()> m_RequestHostFocus;
         std::vector<int> m_KeysDown;
+        TextInputHost m_InputHost;
+        TextInputSession* m_Input = nullptr;
     };
 
 }

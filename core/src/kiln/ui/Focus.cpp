@@ -186,6 +186,26 @@ namespace kiln::ui {
         if (!focused) ClearFocus(true);
     }
 
+    // --- text input -----------------------------------------------------------------------------
+
+    void Owner::StartTextInput(TextInputSession& s) {
+        m_Input = &s;
+        if (m_InputHost.start) m_InputHost.start(s.Options(), s.Snapshot());
+    }
+    void Owner::StopTextInput(TextInputSession& s) {
+        if (m_Input != &s) return;
+        m_Input = nullptr;
+        if (m_InputHost.stop) m_InputHost.stop();
+    }
+    void Owner::NotifyTextInputChanged(TextInputSession& s, bool contentChanged) {
+        if (m_Input != &s) return;
+        const TextInputSnapshot snap = s.Snapshot();
+        // A content change under an active composition invalidates the IME's view of the text:
+        // restart (RecordingInputConnection / TextInputServiceAndroid.updateState rule).
+        if (contentChanged && snap.compStart >= 0 && m_InputHost.restartInput) { m_InputHost.restartInput(); return; }
+        if (m_InputHost.updateSelection) m_InputHost.updateSelection(snap);
+    }
+
     // --- 2D search (TwoDimensionalFocusSearch.kt) -----------------------------------------------
 
     namespace {
