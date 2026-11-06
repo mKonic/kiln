@@ -153,7 +153,7 @@ namespace kiln::rt {
         c.DisposableEffect(Keys(registry, k), [registry, k, h, keep = holder] {
             if (!registry) return std::function<void()>([] {});
             const std::uint64_t id = registry->RegisterProvider(k, [h] { return h->saver.save(h->value); });
-            return std::function<void()>([registry, k, id] { registry->Unregister(k, id); });
+            return std::function<void()>([registry, alive = registry->AliveToken(), k, id] { if (!alive.expired()) registry->Unregister(k, id); });
         }, key);
         return holder->value;
     }
@@ -177,7 +177,7 @@ namespace kiln::rt {
         c.DisposableEffect(Keys(registry, k), [registry, k, h, keep = holder] {
             if (!registry) return std::function<void()>([] {});
             const std::uint64_t id = registry->RegisterProvider(k, [h] { return h->saver.save(h->state->Peek()); });
-            return std::function<void()>([registry, k, id] { registry->Unregister(k, id); });
+            return std::function<void()>([registry, alive = registry->AliveToken(), k, id] { if (!alive.expired()) registry->Unregister(k, id); });
         }, key);
         return *holder->state;
     }

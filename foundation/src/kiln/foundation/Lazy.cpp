@@ -107,9 +107,11 @@ namespace kiln::foundation {
         };
         struct Slot {
             std::shared_ptr<PinItem> pin;            // its LocalPinnableContainer
+            // Destroyed in reverse: the composition first (its disposers unregister from the
+            // registry and it unhooks its nodes from the holder).
             std::unique_ptr<LayoutNode> holder;
-            std::unique_ptr<rt::Composition> composition;
             std::shared_ptr<rt::SaveableStateRegistry> registry;   // the item's rememberSaveable values
+            std::unique_ptr<rt::Composition> composition;
             int index = -1;
             std::uint64_t contentVersion = 0;
         };

@@ -97,3 +97,23 @@ TEST(UncomposedSavedValuesAreKept) {
     c.Run(content);
     CHECK_EQ(state->Peek(), 6);
 }
+
+TEST(SaveablesOutlivingTheirRegistryDoNotUnregister) {
+    // A lazy item's registry can go before the item's composition: the composition's
+    // disposers must not reach into it.
+    Node root;
+    auto registry = std::make_unique<SaveableStateRegistry>();
+    auto composition = std::make_unique<Composition>(root);
+    SaveableStateRegistry* r = registry.get();
+    composition->SetContent([r] {
+        Composition::Current()->Provide(LocalSaveableStateRegistry, r, [] {
+            RememberSaveable<int>([] { return 1; });
+            RememberSaveableState(2);
+        });
+    });
+    composition->Recompose();
+    CHECK(r->PerformSave().size() == 2);
+    registry.reset();
+    composition.reset();
+    CHECK(true);
+}
