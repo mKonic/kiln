@@ -132,6 +132,9 @@ namespace kiln::rt {
 
         Dispatcher& GetDispatcher() { return m_Dispatcher; }
         static Composition* Current();
+        // Every live composition (the main content and measure-time ones such as lazy items);
+        // the host recomposes all of them each frame.
+        static bool RecomposeAll();
 
         // --- calls made from inside content -------------------------------------------------
 

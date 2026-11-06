@@ -26,7 +26,7 @@ namespace kiln {
     }
 
     void App::ProcessPointer(const ui::RawPointerEvent& event) {
-        if (m_Composition) m_Composition->Recompose();
+        rt::Composition::RecomposeAll();
         if (m_Width && m_Height) m_Owner.MeasureAndLayout({ int(m_Width), int(m_Height) });
         // Touch input switches to touch mode (focus rings and SystemDefined focusability off).
         for (const auto& p : event.pointers)
@@ -36,7 +36,7 @@ namespace kiln {
     }
 
     bool App::ProcessKey(const ui::KeyEvent& event) {
-        if (m_Composition) m_Composition->Recompose();
+        rt::Composition::RecomposeAll();
         if (m_Width && m_Height) m_Owner.MeasureAndLayout({ int(m_Width), int(m_Height) });
         const bool handled = m_Owner.DispatchKeyEvent(event);
         m_Dispatcher.RunPending();
@@ -124,7 +124,7 @@ namespace kiln {
         m_Dispatcher.RunPending();
         m_Dispatcher.RunFrame(std::int64_t(timeSeconds * 1e9));
         for (auto& stage : m_Stages) stage(timeSeconds);
-        if (m_Composition) m_Composition->Recompose();
+        rt::Composition::RecomposeAll();
         if (!m_Device || m_SurfaceLost || m_Width == 0 || m_Height == 0) return;
         m_Owner.MeasureAndLayout({ int(m_Width), int(m_Height) });
 

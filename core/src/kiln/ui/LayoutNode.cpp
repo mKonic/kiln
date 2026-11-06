@@ -215,6 +215,7 @@ namespace kiln::ui {
     }
 
     void LayoutNode::SetChildren(std::vector<rt::TreeNode*> children) {
+        if (m_MeasureManaged) return;
         std::vector<LayoutNode*> next;
         next.reserve(children.size());
         for (auto* c : children) next.push_back(static_cast<LayoutNode*>(c));
@@ -232,6 +233,25 @@ namespace kiln::ui {
         }
         m_Children = std::move(next);
         RequestRemeasure();
+    }
+
+    void LayoutNode::SetChildrenDuringMeasure(std::vector<LayoutNode*> next) {
+        if (next == m_Children) return;
+        for (LayoutNode* old : m_Children)
+            if (std::find(next.begin(), next.end(), old) == next.end()) { old->Detach(); old->m_Parent = nullptr; }
+        for (LayoutNode* c : next)
+            if (c->m_Parent != this) { c->m_Parent = this; if (m_Owner) c->Attach(*m_Owner, m_Depth + 1); }
+        m_Children = std::move(next);
+        InvalidateDraw();
+    }
+
+    void LayoutNode::ForceRemeasure() {
+        if (!m_Measured) { RequestRemeasure(); return; }
+        m_MeasureDirty = true;
+        const IntSize before = Size();
+        MeasureNode(m_LastConstraints);
+        if (before != Size() && m_Parent) m_Parent->RequestRemeasure();
+        LayoutChain();
     }
 
     void LayoutNode::Attach(Owner& owner, int depth) {

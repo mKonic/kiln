@@ -6,6 +6,7 @@ namespace kiln::rt {
 
     namespace {
         thread_local Composition* t_Current = nullptr;
+        thread_local std::vector<Composition*> t_All;
         struct DisposableTag {};
         struct LaunchedTag {};
         struct SideEffectTag {};
@@ -39,9 +40,22 @@ namespace kiln::rt {
 
     // --- Composition --------------------------------------------------------------------------
 
-    Composition::Composition(TreeNode& root, Dispatcher& dispatcher) : m_Root(root), m_Dispatcher(dispatcher) {}
+    Composition::Composition(TreeNode& root, Dispatcher& dispatcher) : m_Root(root), m_Dispatcher(dispatcher) {
+        t_All.push_back(this);
+    }
+
+    bool Composition::RecomposeAll() {
+        bool any = false;
+        // Recomposing one composition may create or destroy others (lazy items): iterate a copy
+        // and skip ones that are gone.
+        auto all = t_All;
+        for (Composition* c : all)
+            if (std::find(t_All.begin(), t_All.end(), c) != t_All.end()) any |= c->Recompose();
+        return any;
+    }
 
     Composition::~Composition() {
+        std::erase(t_All, this);
         if (m_RootScope) {
             for (Group& g : m_RootScope->m_Groups) Dispose(g);
             m_RootScope->m_Groups.clear();

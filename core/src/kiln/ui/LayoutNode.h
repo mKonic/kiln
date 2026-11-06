@@ -33,6 +33,14 @@ namespace kiln::ui {
         const std::shared_ptr<MeasurePolicy>& Policy() const { return m_Policy; }
         void SetModifier(const Modifier& modifier);
         void SetChildren(std::vector<rt::TreeNode*> children) override;
+        // Measure-time child changes (subcomposition): attaches without re-dirtying this node,
+        // which is being measured right now.
+        void SetChildrenDuringMeasure(std::vector<LayoutNode*> children);
+        // Children come from measure (SubcomposeLayout), not from the composition: SetChildren
+        // from the composition is ignored.
+        void SetMeasureManagedChildren(bool v) { m_MeasureManaged = v; }
+        // Remeasurement.forceRemeasure: measure and place now with the last constraints.
+        void ForceRemeasure();
 
         LayoutNode* Parent() const { return m_Parent; }
         const std::vector<LayoutNode*>& Children() const { return m_Children; }
@@ -91,6 +99,7 @@ namespace kiln::ui {
 
         Constraints m_LastConstraints;
         bool m_Measured = false;
+        bool m_MeasureManaged = false;
         bool m_MeasureDirty = true;
         bool m_LayoutDirty = true;
         bool m_Placed = false;
