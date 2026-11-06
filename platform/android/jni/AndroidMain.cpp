@@ -306,7 +306,8 @@ namespace {
                                    : kiln::ui::PointerType::Unknown;
             const bool lifting = (action == UP || action == POINTER_UP) && i == actionIndex;
             const bool hover = action == HOVER_MOVE || action == HOVER_ENTER || action == HOVER_EXIT || action == SCROLL;
-            rp.down = !lifting && !hover && action != CANCEL;
+            // A wheel scroll with a button held is a drag in progress (MotionEventAdapter).
+            rp.down = !lifting && (!hover || (action == SCROLL && buttons != 0)) && action != CANCEL;
             // Compose flips the scroll axes: positive AXIS_VSCROLL scrolls content up (-y).
             if (action == SCROLL) rp.scrollDelta = { -hscroll, -vscroll };
             ev.pointers.push_back(rp);

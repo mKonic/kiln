@@ -52,10 +52,52 @@ namespace kiln::ui {
         }
     };
 
+    // PointerButtons: MotionEvent.getButtonState bits. A stylus side button counts as the
+    // primary (BUTTON_STYLUS_PRIMARY) or secondary (BUTTON_STYLUS_SECONDARY) button.
+    struct PointerButtons {
+        static constexpr std::uint32_t Primary = 1, Secondary = 2, Tertiary = 4, Back = 8, Forward = 16,
+                                       StylusPrimary = 32, StylusSecondary = 64;
+        std::uint32_t packed = 0;
+        PointerButtons() = default;
+        PointerButtons(std::uint32_t bits) : packed(bits) {}
+        operator std::uint32_t() const { return packed; }
+        bool IsPrimaryPressed() const { return (packed & (Primary | StylusPrimary)) != 0; }
+        bool IsSecondaryPressed() const { return (packed & (Secondary | StylusSecondary)) != 0; }
+        bool IsTertiaryPressed() const { return (packed & Tertiary) != 0; }
+        bool IsBackPressed() const { return (packed & Back) != 0; }
+        bool IsForwardPressed() const { return (packed & Forward) != 0; }
+        bool IsPressed(int index) const {
+            switch (index) {
+                case 0: return IsPrimaryPressed();
+                case 1: return IsSecondaryPressed();
+                case 2: case 3: case 4: return (packed & (1u << index)) != 0;
+                default: return index >= 0 && index < 30 && (packed & (1u << (index + 2))) != 0;
+            }
+        }
+        bool AreAnyPressed() const { return packed != 0; }
+        // Stylus buttons fold into primary / secondary for the index; -1 when none are down.
+        int IndexOfFirstPressed() const {
+            if (!packed) return -1;
+            std::uint32_t s = Folded();
+            int i = 0;
+            while (!(s & 1)) { ++i; s >>= 1; }
+            return i;
+        }
+        int IndexOfLastPressed() const {
+            std::uint32_t s = Folded();
+            int i = -1;
+            while (s) { ++i; s >>= 1; }
+            return i;
+        }
+
+    private:
+        std::uint32_t Folded() const { return ((packed & 0x60u) >> 5) | (packed & ~0x60u); }
+    };
+
     struct PointerEvent {
         std::vector<PointerInputChange> changes;
         PointerEventType type = PointerEventType::Unknown;
-        std::uint32_t buttons = 0;       // bit 0 primary
+        PointerButtons buttons;
         int classification = 0;          // MotionEvent classification (2 = deep press)
     };
 

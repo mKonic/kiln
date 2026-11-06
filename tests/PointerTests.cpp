@@ -525,3 +525,21 @@ TEST(ClicksPlayTheLocalSoundUnlessTurnedOff) {
     CHECK_EQ(clicks, 2);
     CHECK_EQ(sound->clicks, 1);
 }
+
+TEST(PointerButtonsFoldStylusButtons) {
+    PointerButtons none;
+    CHECK(!none.AreAnyPressed());
+    CHECK_EQ(none.IndexOfFirstPressed(), -1);
+    CHECK_EQ(none.IndexOfLastPressed(), -1);
+    // The stylus side buttons read as primary and secondary.
+    PointerButtons stylus(PointerButtons::StylusPrimary);
+    CHECK(stylus.IsPrimaryPressed());
+    CHECK(!stylus.IsSecondaryPressed());
+    CHECK_EQ(stylus.IndexOfFirstPressed(), 0);
+    PointerButtons side(PointerButtons::StylusSecondary | PointerButtons::Forward);
+    CHECK(side.IsSecondaryPressed());
+    CHECK(side.IsPressed(1));
+    CHECK(side.IsPressed(4));
+    CHECK_EQ(side.IndexOfFirstPressed(), 1);
+    CHECK_EQ(side.IndexOfLastPressed(), 4);
+}
