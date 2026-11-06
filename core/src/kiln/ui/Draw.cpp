@@ -240,7 +240,8 @@ namespace kiln::ui {
             key ^= 0x5354524Bull;
         }
         const ui::Rect bounds = path.Bounds();
-        const float pad = stroke ? std::max(stroke->width, 1.0f) * std::max(stroke->miter, 1.0f) : 1.0f;
+        float pad = stroke ? std::max(stroke->width, 1.0f) * std::max(stroke->miter, 1.0f) : 1.0f;
+        if (stroke && stroke->pathEffect) pad += stroke->pathEffect->Outset() * std::max(1.0f, m.MaxScale());
         ui::Rect device{ 1e30f, 1e30f, -1e30f, -1e30f };
         for (const Offset q : { Offset{ bounds.left, bounds.top }, Offset{ bounds.right, bounds.top },
                                 Offset{ bounds.left, bounds.bottom }, Offset{ bounds.right, bounds.bottom } }) {

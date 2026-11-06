@@ -1,5 +1,6 @@
 #include "Check.h"
 
+#include "kiln/graphics/PathEffect.h"
 #include "kiln/graphics/Rasterizer.h"
 
 #include <cmath>
@@ -113,4 +114,44 @@ TEST(ClipLimitsTheMask) {
     const Mask m = Rasterize(polys, FillType::NonZero, { 0, 0, 10, 10 });
     CHECK_EQ(m.width, 10);
     CHECK(Near(Area(m), 100, 0.05f));
+}
+
+namespace {
+    int CountMoves(const gfx::Path& p) {
+        int n = 0;
+        for (auto v : p.Verbs()) if (v == gfx::Path::Verb::Move) ++n;
+        return n;
+    }
+    gfx::Path Square(float x0, float y0, float x1, float y1) {
+        gfx::Path p;
+        p.MoveTo(x0, y0); p.LineTo(x1, y0); p.LineTo(x1, y1); p.LineTo(x0, y1); p.Close();
+        return p;
+    }
+}
+
+TEST(StampedEffectPlacesShapesAlongThePath) {
+    gfx::Path line;
+    line.MoveTo(0, 0);
+    line.LineTo(50, 0);
+    // Phase 0: from the start, every 10 while the distance stays short of the length.
+    auto e = gfx::PathEffect::Stamped(Square(-1, -1, 1, 1), 10, 0, gfx::PathEffect::StampStyle::Translate);
+    gfx::Path out = e->Apply(line);
+    CHECK_EQ(CountMoves(out), 5);
+    CHECK_EQ(out.Points()[4 * 4].x, 39.0f);   // the fifth stamp's first point
+    CHECK(e->FillsResult());
+    // A positive phase shifts back into the pattern: the first stamp lands at advance - phase.
+    out = gfx::PathEffect::Stamped(Square(-1, -1, 1, 1), 10, 3, gfx::PathEffect::StampStyle::Translate)->Apply(line);
+    CHECK_EQ(out.Points()[0].x, 6.0f);
+    // Rotate turns the stamp with the tangent: along a downward line, +x points down.
+    gfx::Path down;
+    down.MoveTo(0, 0);
+    down.LineTo(0, 30);
+    out = gfx::PathEffect::Stamped(Square(4, -1, 6, 1), 100, 0, gfx::PathEffect::StampStyle::Rotate)->Apply(down);
+    CHECK(std::abs(out.Points()[0].x - 1.0f) < 1e-4f);
+    CHECK(std::abs(out.Points()[0].y - 4.0f) < 1e-4f);
+    // Morph bends the stamp: x runs along the path, y along its normal; lines become quads.
+    out = gfx::PathEffect::Stamped(Square(0, -1, 4, 1), 100, 0, gfx::PathEffect::StampStyle::Morph)->Apply(down);
+    CHECK(out.Verbs()[1] == gfx::Path::Verb::Quad);
+    CHECK(std::abs(out.Points()[0].x - 1.0f) < 1e-4f);
+    CHECK(std::abs(out.Points()[0].y - 0.0f) < 1e-4f);
 }

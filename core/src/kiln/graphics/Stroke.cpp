@@ -159,6 +159,8 @@ namespace kiln::gfx {
         std::vector<Polyline> out;
         const Path effected = stroke.pathEffect ? stroke.pathEffect->Apply(path) : Path{};
         const Path& src = stroke.pathEffect ? effected : path;
+        // A stamped effect's result is filled, not stroked.
+        if (stroke.pathEffect && stroke.pathEffect->FillsResult()) return src.Flatten(m, tolerance);
         for (const Polyline& c : src.Flatten(Matrix{}, tol)) st.Contour(c, out);
         for (Polyline& p : out)
             for (Offset& q : p.points) q = m.Map(q);

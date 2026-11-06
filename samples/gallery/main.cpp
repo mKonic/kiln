@@ -4,6 +4,7 @@
 
 #include <cmath>
 #include <kiln/foundation/Compose.h>
+#include <kiln/graphics/PathEffect.h>
 #include <kiln/foundation/Gestures.h>
 #include <kiln/foundation/Animate.h>
 #include <kiln/foundation/Scroll.h>
@@ -356,6 +357,35 @@ namespace {
                     tri.MoveTo(w / 2, m); tri.LineTo(w - m, h - m); tri.LineTo(m, h - m); tri.Close();
                     kiln::gfx::Stroke stroke{ d.ToPx(3_dp), 4, kiln::gfx::StrokeCap::Butt, kiln::gfx::StrokeJoin::Bevel };
                     d.DrawPath(tri, kVariant, &stroke);
+                });
+            });
+            // Stamped path effects: dots along a wave (Translate), arrows along an arc (Rotate).
+            Row(Padding(Modifier{}, 16_dp, 8_dp), Arrangement::SpacedBy(16_dp), AlignmentV::CenterVertically(), [&] {
+                Canvas(SizeMod(Modifier{}, 128_dp, 56_dp), [](DrawScope& d) {
+                    const float w = d.GetSize().width, h = d.GetSize().height;
+                    kiln::gfx::Path wave;
+                    wave.MoveTo(d.ToPx(6_dp), h / 2);
+                    for (int i = 0; i < 4; ++i) {
+                        const float x0 = d.ToPx(6_dp) + (w - d.ToPx(12_dp)) * float(i) / 4, step = (w - d.ToPx(12_dp)) / 4;
+                        wave.QuadraticTo(x0 + step / 2, i % 2 ? h * 0.85f : h * 0.15f, x0 + step, h / 2);
+                    }
+                    kiln::gfx::Path dot;
+                    const float r = d.ToPx(3_dp);
+                    dot.AddOval({ -r, -r, r, r });
+                    kiln::gfx::Stroke stroke{ 1 };
+                    stroke.pathEffect = kiln::gfx::PathEffect::Stamped(dot, d.ToPx(10_dp), 0, kiln::gfx::PathEffect::StampStyle::Translate);
+                    d.DrawPath(wave, kPrimary, &stroke);
+                });
+                Canvas(SizeMod(Modifier{}, 72_dp, 56_dp), [](DrawScope& d) {
+                    const float w = d.GetSize().width, h = d.GetSize().height, m = d.ToPx(8_dp);
+                    kiln::gfx::Path arc;
+                    arc.ArcTo({ m, m, w - m, h * 2 - m }, 180, 180, true);
+                    kiln::gfx::Path arrow;
+                    const float a = d.ToPx(5_dp);
+                    arrow.MoveTo(a, 0); arrow.LineTo(-a, -a * 0.7f); arrow.LineTo(-a, a * 0.7f); arrow.Close();
+                    kiln::gfx::Stroke stroke{ 1 };
+                    stroke.pathEffect = kiln::gfx::PathEffect::Stamped(arrow, d.ToPx(14_dp), 0, kiln::gfx::PathEffect::StampStyle::Rotate);
+                    d.DrawPath(arc, kTertiary, &stroke);
                 });
             });
             // Gradients: linear background, radial circle, sweep ring stroke, repeated diagonal.
