@@ -47,6 +47,8 @@ namespace kiln::rt {
             m_RootScope->m_Groups.clear();
             m_RootScope.reset();
         }
+        // Unhook the nodes from the host tree before freeing them; the root outlives us.
+        m_Root.SetChildren({});
         m_DeadNodes.clear();
         for (auto& d : m_Disposers) d();
     }
