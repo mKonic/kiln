@@ -1,5 +1,7 @@
 #include "kiln/runtime/Composition.h"
 
+#include <bit>
+
 #include <algorithm>
 
 namespace kiln::rt {
@@ -14,9 +16,19 @@ namespace kiln::rt {
 
     // --- Scope --------------------------------------------------------------------------------
 
-    Scope::Scope(Composition& composition, Scope* parent, TreeNode* hostNode)
+    namespace {
+        // currentCompositeKeyHash: rotate the parent's hash and mix in the group key.
+        std::uint64_t Compound(std::uint64_t parent, std::uint64_t key) { return std::rotl(parent, 3) ^ key; }
+    }
+
+    Scope::Scope(Composition& composition, Scope* parent, TreeNode* hostNode, std::uint64_t groupKey)
         : m_Composition(composition), m_Parent(parent), m_Host(hostNode),
-          m_Depth(parent ? parent->m_Depth + 1 : 0) {}
+          m_Depth(parent ? parent->m_Depth + 1 : 0),
+          m_CompositeKey(parent ? Compound(parent->m_CompositeKey, groupKey) : 0) {}
+
+    std::uint64_t Composition::CompositeKey(Key key) const {
+        return Compound(m_Current ? m_Current->m_CompositeKey : 0, key.value);
+    }
 
     Scope::~Scope() {
         m_Disposed = true;
@@ -154,7 +166,7 @@ namespace kiln::rt {
 
     void Composition::Child(std::function<void()> content, Key key, const Keys* memo) {
         Group& g = Take(Group::Kind::Scope, typeid(Scope), key);
-        if (!g.scope) g.scope = std::make_unique<Scope>(*this, m_Current, m_Current->m_Host);
+        if (!g.scope) g.scope = std::make_unique<Scope>(*this, m_Current, m_Current->m_Host, g.key.value);
         RunChild(*g.scope, std::move(content), memo);
     }
 

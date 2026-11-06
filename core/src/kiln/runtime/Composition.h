@@ -92,7 +92,7 @@ namespace kiln::rt {
 
     class Scope final : public Subscriber {
     public:
-        Scope(Composition& composition, Scope* parent, TreeNode* hostNode);
+        Scope(Composition& composition, Scope* parent, TreeNode* hostNode, std::uint64_t groupKey = 0);
         ~Scope() override;
 
         bool Invalid() const { return m_Invalid; }
@@ -113,6 +113,7 @@ namespace kiln::rt {
         bool m_HasMemo = false;
         std::vector<Group> m_Groups;
         int m_Depth = 0;
+        std::uint64_t m_CompositeKey = 0;
         bool m_Invalid = true;
         bool m_Disposed = false;
         std::unordered_map<const void*, StateObject*> m_Provided;   // Local* -> State<T>*
@@ -131,6 +132,9 @@ namespace kiln::rt {
         bool HasInvalidScopes() const { return !m_Pending.empty(); }
 
         Dispatcher& GetDispatcher() { return m_Dispatcher; }
+        // currentCompositeKeyHash for a call at `key` in the current scope: stable across runs and
+        // process restarts (built from call-site and explicit keys), shared by repeated calls.
+        std::uint64_t CompositeKey(Key key = {}) const;
         static Composition* Current();
         // Every live composition (the main content and measure-time ones such as lazy items);
         // the host recomposes all of them each frame.
@@ -174,7 +178,7 @@ namespace kiln::rt {
             Group& g = Take(Group::Kind::Node, typeid(N), key);
             if (!g.node) {
                 g.node = make();
-                g.scope = std::make_unique<Scope>(*this, m_Current, g.node.get());
+                g.scope = std::make_unique<Scope>(*this, m_Current, g.node.get(), g.key.value);
             }
             auto& n = static_cast<N&>(*g.node);
             if (update) update(n);
@@ -200,7 +204,7 @@ namespace kiln::rt {
             // Equal values must not notify readers; NeverEqual is only the storage type.
             if (!(cell.Peek() == value)) cell.Set(std::move(value));
             Group& g = Take(Group::Kind::Scope, typeid(Local<T>), key);
-            if (!g.scope) g.scope = std::make_unique<Scope>(*this, m_Current, m_Current->m_Host);
+            if (!g.scope) g.scope = std::make_unique<Scope>(*this, m_Current, m_Current->m_Host, g.key.value);
             g.scope->m_Provided[&local] = &cell;
             RunChild(*g.scope, std::move(content), nullptr);
         }
