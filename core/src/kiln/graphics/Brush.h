@@ -74,6 +74,12 @@ namespace kiln::gfx {
         bool operator==(const Brush&) const = default;
     };
 
+    // Interpolatable.lerp between brushes (Brush.kt): colours in Oklab, lists element-wise (the
+    // shorter repeating its last), stops only when both have them. A solid colour lerps with a
+    // gradient as that gradient filled with the colour; different gradient kinds switch at
+    // t = 0.5. `b` null: transparent.
+    Brush Lerp(const Brush& a, const Brush* b, float t);
+
     // The 256-texel colour ramp of a gradient: colours interpolated unpremultiplied between
     // stops (Skia's default), stored premultiplied RGBA8.
     void BuildRamp(const Brush& b, std::uint8_t out[256 * 4]);

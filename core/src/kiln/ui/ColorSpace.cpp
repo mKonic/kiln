@@ -37,4 +37,10 @@ namespace kiln::ui {
         return Color((a8 << 24) | (to8(r) << 16) | (to8(g) << 8) | to8(b));
     }
 
+    Color Lerp(Color start, Color stop, float fraction) {
+        const float t = std::clamp(fraction, 0.0f, 1.0f);
+        const auto a = ToOklab(start), b = ToOklab(stop);
+        return FromOklab({ a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t, a[3] + (b[3] - a[3]) * t });
+    }
+
 }

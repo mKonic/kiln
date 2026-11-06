@@ -12,4 +12,6 @@
 namespace kiln::ui {
     std::array<float, 4> ToOklab(Color c);            // { alpha, L, a, b }
     Color FromOklab(const std::array<float, 4>& v);
+    // lerp(Color, Color, fraction): in Oklab, the fraction clamped to [0, 1] (Color.kt).
+    Color Lerp(Color start, Color stop, float fraction);
 }
