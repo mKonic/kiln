@@ -3,6 +3,7 @@
 #include <kiln/kiln.hpp>
 #include <kiln/foundation/Compose.h>
 #include <kiln/foundation/Gestures.h>
+#include <kiln/foundation/Animate.h>
 #include <kiln/runtime/Task.h>
 
 using namespace kiln::foundation;
@@ -56,7 +57,10 @@ namespace {
             auto& taps = RememberState(0);
             auto& pressed = RememberState(false);
             Row(Padding(Modifier{}, 16_dp, 0_dp), Arrangement::SpacedBy(16_dp), AlignmentV::CenterVertically(), [&] {
-                Box(Clickable(Background(Height(Modifier{}, 40_dp), pressed.Get() ? Color(0xFF4F378Bu) : kPrimary, CornerShape::Pill()),
+                // Pressed colour animates in Oklab with a spring.
+                const Color buttonColor = AnimateColorAsState(pressed.Get() ? Color(0xFF21005Du) : kPrimary,
+                                                              kiln::anim::Spring(1.0f, kiln::anim::spring::StiffnessMediumLow));
+                Box(Clickable(Background(Height(Modifier{}, 40_dp), buttonColor, CornerShape::Pill()),
                               [&taps] { taps.Set(taps.Peek() + 1); }, [&pressed](bool p) { pressed.Set(p); }),
                     Alignment::Center(), false, [&] {
                     BasicText("Tap me", Padding(Modifier{}, 24_dp, 0_dp), { 14, kOnPrimary });

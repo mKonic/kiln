@@ -57,3 +57,38 @@ TEST(AnimatableInterruptsAndHonoursScale) {
     CHECK_EQ(a.Float(), 10.0f);
     SetDurationScale(1);
 }
+
+#include "kiln/foundation/Animate.h"
+#include "kiln/ui/ColorSpace.h"
+
+TEST(OklabRoundTripAndMidpoint) {
+    for (std::uint32_t argb : { 0xFF6750A4u, 0xFFFFFFFFu, 0xFF000000u, 0x80123456u }) {
+        auto lab = ui::ToOklab(ui::Color(argb));
+        CHECK_EQ(ui::FromOklab(lab).argb, argb);
+    }
+    // White's Oklab lightness is 1 with no chroma.
+    auto w = ui::ToOklab(ui::Color(0xFFFFFFFFu));
+    CHECK(std::abs(w[1] - 1) < 1e-3f && std::abs(w[2]) < 1e-3f && std::abs(w[3]) < 1e-3f);
+}
+
+namespace {
+    struct NullNode : rt::TreeNode { void SetChildren(std::vector<rt::TreeNode*>) override {} };
+}
+
+TEST(AnimateFloatAsStateFollowsTarget) {
+    NullNode root;
+    rt::Dispatcher d;
+    rt::Composition c(root, d);
+    rt::State<float> target(0);
+    float seen = -1;
+    c.SetContent([&] { seen = foundation::AnimateFloatAsState(target.Get(), Tween(100, 0, Linear())); });
+    c.Recompose();
+    CHECK_EQ(seen, 0.0f);
+    target.Set(10);
+    c.Recompose();
+    d.RunFrame(0); c.Recompose();
+    d.RunFrame(50'000'000); c.Recompose();
+    CHECK(std::abs(seen - 5) < 0.1f);
+    d.RunFrame(120'000'000); c.Recompose();
+    CHECK_EQ(seen, 10.0f);
+}
