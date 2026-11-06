@@ -62,6 +62,24 @@ namespace kiln::foundation {
     // The handler starts on the first event and restarts when cancelled or when keys change.
     Modifier PointerInput(Modifier m, rt::Keys keys, PointerInputHandler handler);
 
+    // --- awaitEachGesture building blocks (AwaitPointerEventScope extensions) ----------------
+
+    // awaitFirstDown: the next event where every change went down.
+    rt::Task<std::optional<PointerInputChange>> AwaitFirstDown(PointerInputScope& scope, bool requireUnconsumed = true,
+                                                               PointerEventPass pass = PointerEventPass::Main);
+    // awaitTouchSlopOrCancellation: the change that moved past the pointer's slop (onSlop gets
+    // it and the over-slop distance; it must consume it to accept), or nullopt when the pointer
+    // lifted or someone else consumed the motion. Follows another pressed pointer if this lifts.
+    rt::Task<std::optional<PointerInputChange>> AwaitTouchSlopOrCancellation(PointerInputScope& scope, std::int64_t pointerId,
+                                                                             std::function<void(PointerInputChange&, Offset overSlop)> onSlop);
+    // drag(pointerId, onDrag): each move until the pointer lifts (returns the up) or someone else
+    // consumed a move (nullopt).
+    rt::Task<std::optional<PointerInputChange>> DragPointer(PointerInputScope& scope, std::int64_t pointerId,
+                                                            std::function<void(PointerInputChange&)> onDrag);
+    // awaitLongPressOrCancellation: the pressed change once the long-press timeout passes (or a
+    // deep press), nullopt when it lifted, was consumed or left the bounds first.
+    rt::Task<std::optional<PointerInputChange>> AwaitLongPressOrCancellation(PointerInputScope& scope, std::int64_t pointerId);
+
     // --- detectors (TapGestureDetector.kt) ---------------------------------------------------
 
     struct TapCallbacks {

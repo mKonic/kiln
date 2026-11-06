@@ -297,14 +297,17 @@ namespace kiln::ui {
         }
     }
 
-    Rect LayoutNode::RectInRoot(std::optional<Rect> local, const ModifierNode* at) const {
+    LayoutNode::Mat3 LayoutNode::SpaceToRoot(const ModifierNode* at, ui::Size* sizeOut) const {
         Mat3 m = Mul3(ParentInner(m_Parent), Translate3(float(m_Position.x), float(m_Position.y)));
         if (at) {
             std::size_t ci = 0;
             for (const auto& node : m_Nodes) {
                 const auto& c = *m_Coordinators[ci];
                 const ui::Size size{ float(c.Width()), float(c.Height()) };
-                if (node.get() == at) return MapBox(m, local.value_or(Rect{ 0, 0, size.width, size.height }));
+                if (node.get() == at) {
+                    if (sizeOut) *sizeOut = size;
+                    return m;
+                }
                 if (const DrawModifier* d = node->AsDraw()) {
                     Mat3 t;
                     if (LayerOf(d, size, t)) m = Mul3(m, t);
@@ -325,7 +328,39 @@ namespace kiln::ui {
                 if (LayerOf(d, size, t)) m = Mul3(m, t);
             }
         }
-        return MapBox(m, local.value_or(Rect{ 0, 0, float(sz.width), float(sz.height) }));
+        if (sizeOut) *sizeOut = { float(sz.width), float(sz.height) };
+        return m;
+    }
+
+    LayoutNode::Mat3 LayoutNode::InnerToRoot() const {
+        std::vector<HitStep> steps;
+        Mat3 inner;
+        HitSteps(ParentInner(m_Parent), steps, inner);
+        return inner;
+    }
+
+    Offset LayoutNode::MapPoint(const Mat3& m, Offset p) {
+        const float w = m[6] * p.x + m[7] * p.y + m[8];
+        return { (m[0] * p.x + m[1] * p.y + m[2]) / w, (m[3] * p.x + m[4] * p.y + m[5]) / w };
+    }
+
+    std::optional<Offset> LayoutNode::UnmapPoint(const Mat3& m, Offset p) {
+        const double a = m[0], b = m[1], c = m[2], d = m[3], e = m[4], f = m[5], g = m[6], h = m[7], i = m[8];
+        const double A = e * i - f * h, B = -(d * i - f * g), C = d * h - e * g;
+        const double det = a * A + b * B + c * C;
+        if (std::abs(det) < 1e-12) return std::nullopt;
+        const double inv[9] = { A / det, -(b * i - c * h) / det, (b * f - c * e) / det,
+                                B / det, (a * i - c * g) / det, -(a * f - c * d) / det,
+                                C / det, -(a * h - b * g) / det, (a * e - b * d) / det };
+        const double w = inv[6] * p.x + inv[7] * p.y + inv[8];
+        if (w <= 1e-9) return std::nullopt;
+        return Offset{ float((inv[0] * p.x + inv[1] * p.y + inv[2]) / w), float((inv[3] * p.x + inv[4] * p.y + inv[5]) / w) };
+    }
+
+    Rect LayoutNode::RectInRoot(std::optional<Rect> local, const ModifierNode* at) const {
+        ui::Size size;
+        const Mat3 m = SpaceToRoot(at, &size);
+        return MapBox(m, local.value_or(Rect{ 0, 0, size.width, size.height }));
     }
 
     Rect LayoutNode::LayoutModifierRectInRoot(const LayoutModifier* modifier) const {
@@ -408,6 +443,7 @@ namespace kiln::ui {
         m_Nodes = std::move(nodes);
         m_Elements = next;
         if (m_Owner && focusChanged) m_Owner->ScheduleFocusInvalidation(*this);
+        if (m_Owner && (structural || updated)) m_Owner->TrackPositionAware(*this);
         if (structural) RebuildChain();
         if (m_Owner && (structural || updated)) m_Owner->InvalidateSemantics();
         // Parent data may have changed: the parent measures with it.
@@ -498,6 +534,7 @@ namespace kiln::ui {
         if (fresh)
             for (auto& n : m_Nodes)
                 if (n->AsFocusTarget() || n->AsFocusEvent()) { owner.ScheduleFocusInvalidation(*this); break; }
+        owner.TrackPositionAware(*this);
         for (LayoutNode* c : m_Children) c->Attach(owner, depth + 1);
         m_MeasureDirty = true;
         owner.OnMeasureRequested(*this);
@@ -700,6 +737,7 @@ namespace kiln::ui {
         // Shallowest first. A node whose size changed makes its parent remeasure, which the
         // ordered set then visits next (it is shallower).
         while (!m_MeasureDirty.empty()) {
+            m_LaidOut = true;
             LayoutNode* n = *m_MeasureDirty.begin();
             m_MeasureDirty.erase(m_MeasureDirty.begin());
             if (!n->m_MeasureDirty) continue;
@@ -722,6 +760,11 @@ namespace kiln::ui {
             LayoutNode* n = *m_LayoutDirty.begin();
             m_LayoutDirty.erase(m_LayoutDirty.begin());
             if (n->m_Placed || n == m_Root.get()) n->LayoutIfNeeded();
+            m_LaidOut = true;
+        }
+        if (m_LaidOut) {
+            m_LaidOut = false;
+            DispatchGloballyPositioned();
         }
         // onBarrierPositionChanged: a barrier that now covers the focused target takes focus away.
         if (!m_Barriers.empty() && m_ActiveFocus && IsOccludedByInteractionBarrier(*m_ActiveFocus)) ClearFocus(true);
@@ -761,6 +804,7 @@ namespace kiln::ui {
     }
 
     void Owner::Forget(LayoutNode& n) {
+        m_PositionAware.erase(&n);
         m_ScrollDeltas.erase(n.SemanticsId());
         m_FocusInvalid.erase(&n);
         if (m_ActiveFocus && NodeOf(*m_ActiveFocus) == &n) { m_ActiveFocus = nullptr; m_FocusCaptured = false; m_FocusTargetLost = true; }
@@ -768,6 +812,71 @@ namespace kiln::ui {
         m_LayoutDirty.erase(&n);
         for (auto& [id, t] : m_Pointers)
             std::erase_if(t.path, [&](const HitEntry& e) { return e.node == &n; });
+    }
+
+    void Owner::TrackPositionAware(LayoutNode& n) {
+        bool any = false;
+        for (auto& m : n.m_Nodes) if (m->AsGlobalPositionAware()) any = true;
+        if (any) { if (m_PositionAware.insert(&n).second) m_LaidOut = true; }
+        else m_PositionAware.erase(&n);
+    }
+
+    void Owner::DispatchGloballyPositioned() {
+        // Parents first (OnPositionedDispatcher sorts by depth); callbacks may change the tree.
+        std::vector<LayoutNode*> nodes(m_PositionAware.begin(), m_PositionAware.end());
+        std::stable_sort(nodes.begin(), nodes.end(), [](const LayoutNode* a, const LayoutNode* b) { return a->Depth() < b->Depth(); });
+        for (LayoutNode* n : nodes) {
+            if (!m_PositionAware.count(n) || !n->IsPlaced()) continue;
+            std::vector<GlobalPositionAwareModifier*> mods;
+            std::vector<const ModifierNode*> at;
+            for (auto& m : n->m_Nodes)
+                if (auto* g = m->AsGlobalPositionAware()) { mods.push_back(g); at.push_back(m.get()); }
+            for (std::size_t i = 0; i < mods.size(); ++i) {
+                ui::Size size;
+                const auto toRoot = n->SpaceToRoot(at[i], &size);
+                if (toRoot == mods[i]->lastToRoot && size == mods[i]->lastSize) continue;
+                mods[i]->lastToRoot = toRoot;
+                mods[i]->lastSize = size;
+                mods[i]->OnGloballyPositioned();
+                if (!m_PositionAware.count(n)) break;
+            }
+        }
+    }
+
+    void Owner::SetClipboardText(const std::string& text) {
+        if (m_Clipboard.setText) m_Clipboard.setText(text);
+        else m_LocalClip = text;
+    }
+    std::optional<std::string> Owner::ClipboardText() const {
+        return m_Clipboard.getText ? m_Clipboard.getText() : m_LocalClip;
+    }
+    bool Owner::ClipboardHasText() const {
+        return m_Clipboard.hasText ? m_Clipboard.hasText() : m_LocalClip.has_value();
+    }
+
+    unsigned Owner::TextToolbarItems() const {
+        const auto& a = m_ToolbarActions;
+        return (a.copy ? kToolbarCopy : 0u) | (a.paste ? kToolbarPaste : 0u) | (a.cut ? kToolbarCut : 0u) | (a.selectAll ? kToolbarSelectAll : 0u);
+    }
+    void Owner::ShowTextToolbar(Rect rect, TextToolbarActions actions) {
+        m_ToolbarRect = rect;
+        m_ToolbarActions = std::move(actions);
+        m_ToolbarShown = true;
+        m_ToolbarActive = true;
+        if (m_ToolbarHost.show) m_ToolbarHost.show(rect, TextToolbarItems());
+    }
+    void Owner::HideTextToolbar() {
+        m_ToolbarShown = false;
+        m_ToolbarActions = {};
+        if (m_ToolbarActive && m_ToolbarHost.hide) m_ToolbarHost.hide();
+        m_ToolbarActive = false;
+    }
+    void Owner::OnTextToolbarItem(unsigned item) {
+        // The action runs, then the mode finishes (TextActionModeCallback.onActionItemClicked).
+        const auto actions = m_ToolbarActions;
+        const std::function<void()>* fn = item == kToolbarCopy ? &actions.copy : item == kToolbarPaste ? &actions.paste
+                                        : item == kToolbarCut ? &actions.cut : item == kToolbarSelectAll ? &actions.selectAll : nullptr;
+        if (fn && *fn) (*fn)();
     }
 
     void Owner::ForgetPointerModifier(PointerInputModifier* m) {

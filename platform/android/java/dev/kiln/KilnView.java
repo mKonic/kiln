@@ -432,6 +432,100 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
         }
     }
 
+    // --- clipboard, haptics, text toolbar -------------------------------------------------------
+
+    private android.content.ClipboardManager clipboard() {
+        return (android.content.ClipboardManager) getContext().getSystemService(Context.CLIPBOARD_SERVICE);
+    }
+
+    /** AndroidClipboard.setClipEntry: plain text under the "plain text" label. */
+    void setClipboardText(String text) {
+        android.content.ClipboardManager cm = clipboard();
+        if (cm != null) cm.setPrimaryClip(android.content.ClipData.newPlainText("plain text", text));
+    }
+
+    String getClipboardText() {
+        android.content.ClipboardManager cm = clipboard();
+        android.content.ClipData clip = cm != null ? cm.getPrimaryClip() : null;
+        if (clip == null || clip.getItemCount() == 0) return null;
+        CharSequence t = clip.getItemAt(0).getText();
+        return t != null ? t.toString() : null;
+    }
+
+    /** From the clip's description only: reading the clip itself shows the "pasted" toast. */
+    boolean clipboardHasText() {
+        android.content.ClipboardManager cm = clipboard();
+        android.content.ClipDescription d = cm != null ? cm.getPrimaryClipDescription() : null;
+        return d != null && d.hasMimeType("text/*");
+    }
+
+    /** PlatformHapticFeedback: View.performHapticFeedback(HapticFeedbackConstants.*). */
+    void performHaptic(int constant) {
+        performHapticFeedback(constant);
+    }
+
+    // AndroidTextContextMenuToolbarProvider: a floating ActionMode over the content rect, items
+    // in the order cut, copy, paste, select all (bits 4, 1, 2, 8), always shown as actions.
+    private android.view.ActionMode toolbarMode;
+    private final Rect toolbarRect = new Rect();
+    private int toolbarItems;
+
+    void showTextToolbar(int left, int top, int right, int bottom, int items) {
+        toolbarRect.set(left, top, right, bottom);
+        toolbarItems = items;
+        if (toolbarMode == null) {
+            toolbarMode = startActionMode(toolbarCallback, android.view.ActionMode.TYPE_FLOATING);
+        } else {
+            toolbarMode.invalidate();
+            toolbarMode.invalidateContentRect();
+        }
+    }
+
+    void hideTextToolbar() {
+        android.view.ActionMode mode = toolbarMode;
+        toolbarMode = null;
+        if (mode != null) mode.finish();
+    }
+
+    private static final int[][] TOOLBAR_ITEMS = {
+        { 4, android.R.id.cut, android.R.string.cut },
+        { 1, android.R.id.copy, android.R.string.copy },
+        { 2, android.R.id.paste, android.R.string.paste },
+        { 8, android.R.id.selectAll, android.R.string.selectAll },
+    };
+
+    private void fillToolbar(android.view.Menu menu) {
+        menu.clear();
+        int order = 1;
+        for (int[] item : TOOLBAR_ITEMS) {
+            if ((toolbarItems & item[0]) == 0) continue;
+            menu.add(1, item[1], order++, item[2]).setShowAsAction(android.view.MenuItem.SHOW_AS_ACTION_ALWAYS);
+        }
+    }
+
+    private final android.view.ActionMode.Callback2 toolbarCallback = new android.view.ActionMode.Callback2() {
+        @Override public boolean onCreateActionMode(android.view.ActionMode mode, android.view.Menu menu) {
+            fillToolbar(menu);
+            return menu.size() > 0;
+        }
+        @Override public boolean onPrepareActionMode(android.view.ActionMode mode, android.view.Menu menu) {
+            fillToolbar(menu);
+            return true;
+        }
+        @Override public boolean onActionItemClicked(android.view.ActionMode mode, android.view.MenuItem item) {
+            for (int[] i : TOOLBAR_ITEMS)
+                if (i[1] == item.getItemId()) { KilnNative.textToolbarItem(i[0]); return true; }
+            return false;
+        }
+        @Override public void onDestroyActionMode(android.view.ActionMode mode) {
+            if (mode == toolbarMode) toolbarMode = null;
+            KilnNative.textToolbarDestroyed();
+        }
+        @Override public void onGetContentRect(android.view.ActionMode mode, android.view.View view, Rect outRect) {
+            outRect.set(toolbarRect);
+        }
+    };
+
     // View.playSoundEffect; the audio service may be gone (DeadSystemException).
     void playSound(int constant) {
         try { playSoundEffect(constant); } catch (RuntimeException ignored) {}

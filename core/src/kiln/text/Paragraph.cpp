@@ -39,6 +39,20 @@ namespace kiln {
         return Layout(r);
     }
 
+    int TextBackend::SurrogateCharacterBreak(std::u16string_view t, int offset, bool following) {
+        const int n = int(t.size());
+        auto high = [&](int i) { return i >= 0 && i < n && t[std::size_t(i)] >= 0xD800 && t[std::size_t(i)] <= 0xDBFF; };
+        auto low = [&](int i) { return i >= 0 && i < n && t[std::size_t(i)] >= 0xDC00 && t[std::size_t(i)] <= 0xDFFF; };
+        if (following) {
+            if (offset >= n) return -1;
+            const int i = std::max(offset, 0);
+            return high(i) && low(i + 1) ? i + 2 : i + 1;
+        }
+        if (offset <= 0) return -1;
+        const int i = std::min(offset, n);
+        return low(i - 1) && high(i - 2) ? i - 2 : i - 1;
+    }
+
 }
 
 namespace kiln::text {

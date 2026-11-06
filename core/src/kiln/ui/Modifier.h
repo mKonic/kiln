@@ -1,5 +1,7 @@
 #pragma once
 
+#include <array>
+
 #include "kiln/graphics/Path.h"
 
 // Modifier elements and nodes (spec 03 req. 1). A Modifier is an immutable list of elements;
@@ -80,6 +82,16 @@ namespace kiln::ui {
         virtual bool LayerClipContains(Size, Offset, LayoutDirection, const Density&) const { return true; }
     };
 
+    // onGloballyPositioned (OnGloballyPositionedModifier): told after a layout pass when the
+    // space it sits in moved, changed transform or changed size. The Owner keeps the last values.
+    class GlobalPositionAwareModifier {
+    public:
+        virtual ~GlobalPositionAwareModifier() = default;
+        virtual void OnGloballyPositioned() = 0;
+        std::array<float, 9> lastToRoot{};
+        Size lastSize{ -1, -1 };
+    };
+
     class ParentDataModifier {
     public:
         virtual ~ParentDataModifier() = default;
@@ -113,6 +125,7 @@ namespace kiln::ui {
         virtual BringIntoViewResponder* AsBringIntoViewResponder() { return nullptr; }
         // A lazy layout that can compose items past its bounds for a focus search.
         virtual BeyondBoundsLayout* AsBeyondBoundsLayout() { return nullptr; }
+        virtual GlobalPositionAwareModifier* AsGlobalPositionAware() { return nullptr; }
         // Expires when the node is destroyed (for callbacks that may outlive it).
         std::weak_ptr<const char> AliveToken() const { return m_Alive; }
         // Semantics changed (call from Update when semantic params change).

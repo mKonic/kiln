@@ -54,6 +54,19 @@ public final class Probe extends Instrumentation {
         String verb = c.contains(":") ? c.substring(0, c.indexOf(':')) : c;
         String arg = c.contains(":") ? c.substring(c.indexOf(':') + 1) : "";
         if (verb.equals("wait")) { Thread.sleep(Long.parseLong(arg)); return; }
+        if (verb.equals("clip")) {
+            // The primary clip's text, read with the shell's background-clipboard permission.
+            ua.adoptShellPermissionIdentity("android.permission.READ_CLIPBOARD_IN_BACKGROUND");
+            try {
+                android.content.ClipboardManager cm = (android.content.ClipboardManager)
+                    getContext().getSystemService(android.content.Context.CLIPBOARD_SERVICE);
+                android.content.ClipData clip = cm.getPrimaryClip();
+                out.append("clip: ").append(clip == null || clip.getItemCount() == 0 ? "(none)" : String.valueOf(clip.getItemAt(0).getText())).append('\n');
+            } finally {
+                ua.dropShellPermissionIdentity();
+            }
+            return;
+        }
         AccessibilityNodeInfo root = null;
         for (int i = 0; i < 40 && root == null; i++) {   // the first window list arrives after connecting
             root = ua.getRootInActiveWindow();

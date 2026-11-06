@@ -35,7 +35,12 @@ namespace kiln::foundation {
                 if (!m_Waiter || m_WaitPass != pass) return;
                 auto h = m_Waiter;
                 m_Waiter = nullptr;
-                if (m_Job.Active()) m_JobState->unregister = nullptr;
+                // The event came first: drop the timeout's timer.
+                if (m_Job.Active() && m_JobState->unregister) {
+                    auto unregister = std::move(m_JobState->unregister);
+                    m_JobState->unregister = nullptr;
+                    unregister();
+                }
                 // The copy shares the consumption flags with the dispatch, so Consume() on it is
                 // seen by later passes and nodes.
                 m_Event = ev;
@@ -64,35 +69,32 @@ namespace kiln::foundation {
                 m_Waiter = h;
                 m_WaitPass = pass;
                 m_JobState = job;
-                m_TimedOut = false;
-                const std::uint64_t ticket = ++m_Ticket;
+                // A timeout is a dispatcher timer on the waiting coroutine itself: it resumes it
+                // with nullopt unless an event came first (which removes the timer).
+                std::function<void()> removeTimer;
                 if (timeout >= 0) {
-                    // A timer resumes with nullopt unless an event came first (the ticket moved on).
-                    m_TimerJob = rt::Launch(*job->dispatcher, Timer(this, ticket, timeout));
+                    job->dispatcher->AddTimer(rt::Dispatcher::Clock::now() + std::chrono::milliseconds(timeout), h, job);
+                    removeTimer = std::move(job->unregister);
                 }
-                job->unregister = [this] { m_Waiter = nullptr; m_TimerJob.Cancel(); };
+                job->unregister = [this, removeTimer = std::move(removeTimer)] {
+                    m_Waiter = nullptr;
+                    if (removeTimer) removeTimer();
+                };
             }
             std::optional<PointerEvent> TakeEvent() override {
-                m_TimerJob.Cancel();
-                if (m_TimedOut) { m_TimedOut = false; return std::nullopt; }
+                // Still waiting: the timer resumed us.
+                if (m_Waiter) {
+                    m_Waiter = nullptr;
+                    return std::nullopt;
+                }
                 auto e = std::move(m_Event);
                 m_Event.reset();
                 return e;
             }
 
         private:
-            static rt::Task<> Timer(PointerInputNode* self, std::uint64_t ticket, std::int64_t ms) {
-                co_await rt::Delay(ms);
-                if (self->m_Ticket != ticket || !self->m_Waiter) co_return;
-                auto h = self->m_Waiter;
-                self->m_Waiter = nullptr;
-                self->m_TimedOut = true;
-                h.resume();
-            }
-
             void Stop() {
                 m_Waiter = nullptr;
-                m_TimerJob.Cancel();
                 m_Job.Cancel();
             }
             void Restart(bool start) {
@@ -102,14 +104,12 @@ namespace kiln::foundation {
                 m_Job = rt::Launch(rt::Dispatcher::Main(), (*params.handler)(*this));
             }
 
-            rt::Job m_Job, m_TimerJob;
+            rt::Job m_Job;
             std::shared_ptr<rt::JobState> m_JobState;
             rt::Keys m_StartedKeys;
             std::coroutine_handle<> m_Waiter;
             PointerEventPass m_WaitPass = PointerEventPass::Main;
             std::optional<PointerEvent> m_Event;
-            bool m_TimedOut = false;
-            std::uint64_t m_Ticket = 0;
         };
     }
 
@@ -126,15 +126,6 @@ namespace kiln::foundation {
         bool AllUp(const PointerEvent& e) {
             for (const auto& c : e.changes) if (c.pressed) return false;
             return true;
-        }
-        rt::Task<std::optional<PointerInputChange>> AwaitFirstDown(PointerInputScope& s, bool requireUnconsumed = true) {
-            for (;;) {
-                auto e = co_await s.AwaitPointerEvent(PointerEventPass::Main);
-                bool allDown = !e->changes.empty();
-                for (const auto& c : e->changes)
-                    if (!(requireUnconsumed ? c.ChangedToDown() : c.ChangedToDownIgnoreConsumed())) allDown = false;
-                if (allDown) co_return e->changes[0];
-            }
         }
         // waitForUpOrCancellation: null when consumed by someone else or out of bounds.
         rt::Task<std::optional<PointerInputChange>> WaitForUpOrCancellation(PointerInputScope& s) {
@@ -350,21 +341,65 @@ namespace kiln::foundation {
             }
         }
 
-        rt::Task<std::optional<PointerInputChange>> AwaitFirstDownPass(PointerInputScope& s, bool requireUnconsumed, PointerEventPass pass) {
-            for (;;) {
-                auto e = co_await s.AwaitPointerEvent(pass);
-                bool all = !e->changes.empty();
-                for (const auto& c : e->changes)
-                    if (!(requireUnconsumed ? c.ChangedToDown() : c.ChangedToDownIgnoreConsumed())) all = false;
-                if (all) co_return e->changes[0];
+    }
+
+    rt::Task<std::optional<PointerInputChange>> AwaitFirstDown(PointerInputScope& s, bool requireUnconsumed, PointerEventPass pass) {
+        for (;;) {
+            auto e = co_await s.AwaitPointerEvent(pass);
+            bool all = !e->changes.empty();
+            for (const auto& c : e->changes)
+                if (!(requireUnconsumed ? c.ChangedToDown() : c.ChangedToDownIgnoreConsumed())) all = false;
+            if (all) co_return e->changes[0];
+        }
+    }
+
+    rt::Task<std::optional<PointerInputChange>> AwaitTouchSlopOrCancellation(PointerInputScope& s, std::int64_t pointerId,
+                                                                             std::function<void(PointerInputChange&, Offset)> onSlop) {
+        const auto* c = Find(s.CurrentEvent(), pointerId);
+        co_return co_await AwaitSlop(s, pointerId, c ? c->type : PointerType::Touch, std::nullopt, {}, std::move(onSlop));
+    }
+
+    rt::Task<std::optional<PointerInputChange>> DragPointer(PointerInputScope& s, std::int64_t pointerId,
+                                                            std::function<void(PointerInputChange&)> onDrag) {
+        co_return co_await Drag(s, pointerId, std::move(onDrag));
+    }
+
+    rt::Task<std::optional<PointerInputChange>> AwaitLongPressOrCancellation(PointerInputScope& s, std::int64_t pointerId) {
+        if (IsPointerUp(s.CurrentEvent(), pointerId)) co_return std::nullopt;
+        const PointerInputChange* initial = Find(s.CurrentEvent(), pointerId);
+        if (!initial) co_return std::nullopt;
+        const PointerInputChange initialDown = *initial;
+        std::optional<PointerInputChange> longPress;
+        PointerInputChange currentDown = initialDown;
+        // withTimeout(longPressTimeout) from the down; each wait gets what is left of it.
+        const std::int64_t deadline = initialDown.uptimeMillis + s.Config().longPressTimeoutMillis;
+        std::int64_t now = initialDown.uptimeMillis;
+        bool deepPress = false;
+        for (;;) {
+            auto e = co_await s.AwaitPointerEventWithTimeout(std::max<std::int64_t>(0, deadline - now), PointerEventPass::Main);
+            if (!e) co_return longPress ? longPress : std::optional(initialDown);
+            if (!e->changes.empty()) now = e->changes[0].uptimeMillis;
+            bool finished = true;
+            for (const auto& c : e->changes) if (!c.ChangedToUpIgnoreConsumed()) finished = false;
+            for (const auto& c : e->changes) if (c.IsConsumed() || c.IsOutOfBounds(s.Size())) finished = true;
+            if (e->classification == 2) { deepPress = true; finished = true; }
+            auto check = co_await s.AwaitPointerEventWithTimeout(std::max<std::int64_t>(0, deadline - now), PointerEventPass::Final);
+            if (!check) co_return longPress ? longPress : std::optional(initialDown);
+            for (const auto& c : check->changes) if (c.IsConsumed()) finished = true;
+            if (IsPointerUp(*e, currentDown.id)) {
+                if (const auto* p = FirstPressed(*e)) { currentDown = *p; longPress = currentDown; }
+                else finished = true;
+            } else if (const auto* c = Find(*e, currentDown.id)) {
+                longPress = *c;
             }
+            if (finished) co_return deepPress ? (longPress ? longPress : std::optional(initialDown)) : std::nullopt;
         }
     }
 
     rt::Task<> DetectDragGestures(PointerInputScope& s, std::optional<Orientation> lock, DragCallbacks cb) {
         for (;;) {
-            auto initialDown = co_await AwaitFirstDownPass(s, false, PointerEventPass::Initial);
-            auto down = co_await AwaitFirstDownPass(s, false, PointerEventPass::Main);
+            auto initialDown = co_await AwaitFirstDown(s, false, PointerEventPass::Initial);
+            auto down = co_await AwaitFirstDown(s, false, PointerEventPass::Main);
             std::optional<PointerInputChange> drag;
             Offset overSlop;
             do {
@@ -408,23 +443,8 @@ namespace kiln::foundation {
 
     rt::Task<> DetectDragGesturesAfterLongPress(PointerInputScope& s, DragCallbacks cb) {
         for (;;) {
-            auto down = co_await AwaitFirstDownPass(s, false, PointerEventPass::Main);
-            // awaitLongPressOrCancellation: up or moving past slop cancels; the timeout wins.
-            const float slop = s.Config().touchSlop;
-            std::optional<PointerInputChange> longPress;
-            PointerInputChange last = *down;
-            const std::int64_t deadline = down->uptimeMillis + s.Config().longPressTimeoutMillis;
-            for (;;) {
-                const std::int64_t remaining = std::max<std::int64_t>(0, deadline - last.uptimeMillis);
-                auto e = co_await s.AwaitPointerEventWithTimeout(remaining, PointerEventPass::Main);
-                if (!e) { longPress = last; break; }   // timed out still pressed
-                PointerInputChange* c = nullptr;
-                for (auto& ch : e->changes) if (ch.id == down->id) c = &ch;
-                if (!c || !c->pressed || c->IsConsumed()) break;
-                const Offset moved = c->position - down->position;
-                if (std::hypot(moved.x, moved.y) > slop) break;
-                last = *c;
-            }
+            auto down = co_await AwaitFirstDown(s, false, PointerEventPass::Main);
+            auto longPress = co_await AwaitLongPressOrCancellation(s, down->id);
             if (longPress) {
                 if (cb.onDragStart) cb.onDragStart(*longPress, *longPress, {});
                 auto up = co_await Drag(s, longPress->id, [&](PointerInputChange& c) {

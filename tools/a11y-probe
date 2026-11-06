@@ -6,7 +6,8 @@
 #   tools/a11y-probe "dump; click:Tap me; settext:Edit me=hello; wait:300; dump"
 #
 # Verbs: dump, click:<text>, longclick:<text>, focus:<text>, a11yfocus:<text>,
-# settext:<text>=<value>, wait:<ms>, scroll:<n> / scrollback:<n> (the n-th scrollable node). <text> matches a node's text or content description.
+# settext:<text>=<value>, wait:<ms>, scroll:<n> / scrollback:<n> (the n-th scrollable node), clip (the
+# clipboard's text). <text> matches a node's text or content description.
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/android-env.sh"
 APK="$KILN_ROOT/build/a11y-probe.apk"

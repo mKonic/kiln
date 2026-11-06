@@ -5,6 +5,10 @@
 #include "kiln/foundation/Gestures.h"
 #include "kiln/foundation/Hover.h"
 #include "kiln/foundation/Semantics.h"
+#include "kiln/foundation/text/Selection.h"
+#include "kiln/runtime/Saveable.h"
+#include "kiln/ui/BringIntoView.h"
+#include "kiln/ui/Locals.h"
 
 #include <algorithm>
 #include <cmath>
@@ -22,15 +26,72 @@ namespace kiln::foundation {
             ui::Owner* owner = nullptr;
         };
 
+        // SelectionController: the text's selectable inside a SelectionContainer, and its highlight.
+        struct SelectionController {
+            std::int64_t selectableId = 0;
+            std::shared_ptr<selection::SelectionRegistrar> registrar;
+            Color backgroundColor;
+            std::shared_ptr<ui::PinnableContainer> pinnable;
+            std::optional<selection::Coordinates> coordinates;
+            std::shared_ptr<const TextLayoutResult> layout;
+            std::shared_ptr<selection::Selectable> selectable;
+
+            void OnPlaced(TextBackend* backend, ui::LayoutNode* node, const ModifierNode* at) {
+                if (selectable) return;
+                auto s = std::make_shared<selection::Selectable>();
+                s->selectableId = selectableId;
+                s->coordinatesCallback = [this] { return coordinates; };
+                s->layoutCallback = [this] { return layout; };
+                s->backend = backend;
+                s->pinnableContainer = [this] { return pinnable; };
+                s->bringIntoView = [node, at, alive = at->AliveToken()](Rect r) {
+                    if (!alive.expired() && node->GetOwner()) ui::BringIntoView(*node, r, at);
+                };
+                selectable = registrar->Subscribe(std::move(s));
+            }
+            void OnUnplaced() {
+                if (!selectable) return;
+                registrar->Unsubscribe(*selectable);
+                selectable.reset();
+            }
+            void UpdateTextLayout(std::shared_ptr<const TextLayoutResult> result) {
+                if (layout && !(layout->LayoutInput().text == result->LayoutInput().text)) registrar->NotifySelectableChange(selectableId);
+                layout = std::move(result);
+            }
+            void UpdateLayoutCoordinates(selection::Coordinates c) {
+                coordinates = std::move(c);
+                registrar->NotifyPositionChange(selectableId);
+            }
+            // The selected range's path behind the text (clipped like the text).
+            void Draw(ui::DrawScope& s, bool clip) {
+                const auto& subs = registrar->subselections.Get();
+                auto it = subs.find(selectableId);
+                if (it == subs.end() || !layout) return;
+                const auto& sel = it->second;
+                const int start = sel.handlesCrossed ? sel.end.offset : sel.start.offset;
+                const int end = sel.handlesCrossed ? sel.start.offset : sel.end.offset;
+                if (start == end) return;
+                const int last = selectable ? selectable->GetLastVisibleOffset() : 0;
+                const int a = std::min(start, last), b = std::min(end, last);
+                if (clip) {
+                    s.Save();
+                    s.ClipRect({ 0, 0, s.GetSize().width, s.GetSize().height });
+                }
+                for (const RectF& r : layout->SelectionRects(std::min(a, b), std::max(a, b))) s.DrawRect(backgroundColor, { r.x, r.y }, { r.w, r.h });
+                if (clip) s.Restore();
+            }
+        };
+
         struct TextParams {
             AnnotatedString text;
             TextStyle style;
             BasicTextOptions options;
             std::shared_ptr<LinkShared> links;
             std::vector<text::Range<text::Placeholder>> placeholders;
+            std::shared_ptr<SelectionController> selection;
             bool operator==(const TextParams& o) const {
                 // A callback is never equal: the node takes the new one (cheap, no relayout).
-                return !options.onTextLayout && !o.options.onTextLayout && links == o.links && placeholders == o.placeholders && text == o.text && style == o.style &&
+                return !options.onTextLayout && !o.options.onTextLayout && links == o.links && selection == o.selection && placeholders == o.placeholders && text == o.text && style == o.style &&
                        options.overflow == o.options.overflow && options.softWrap == o.options.softWrap &&
                        options.maxLines == o.options.maxLines && options.minLines == o.options.minLines;
             }
@@ -40,13 +101,27 @@ namespace kiln::foundation {
             }
         };
 
-        struct TextNode final : ModifierNode, LayoutModifier, DrawModifier {
+        struct TextNode final : ModifierNode, LayoutModifier, DrawModifier, ui::GlobalPositionAwareModifier {
             TextParams params;
             explicit TextNode(TextParams p) : params(std::move(p)), m_Previous(params) {}
             LayoutModifier* AsLayout() override { return this; }
             DrawModifier* AsDraw() override { return this; }
+            ui::GlobalPositionAwareModifier* AsGlobalPositionAware() override { return params.selection ? this : nullptr; }
+
+            void OnAttach() override { if (params.selection) params.selection->OnPlaced(Backend(), Owner(), this); }
+            void OnDetach() override { if (params.selection) params.selection->OnUnplaced(); }
+            void OnGloballyPositioned() override {
+                if (params.selection && Owner()) params.selection->UpdateLayoutCoordinates({ Owner(), this, AliveToken() });
+            }
 
             void OnParamsChanged() {
+                if (m_Previous.selection != params.selection) {
+                    if (m_Previous.selection) m_Previous.selection->OnUnplaced();
+                    if (params.selection && Owner() && Owner()->GetOwner()) {
+                        params.selection->OnPlaced(Backend(), Owner(), this);
+                        if (m_Drawn) params.selection->UpdateTextLayout(m_Drawn);
+                    }
+                }
                 if (!params.SameLayout(m_Previous)) {
                     m_Layouts.clear();
                     m_Intrinsics.reset();
@@ -129,6 +204,7 @@ namespace kiln::foundation {
                     params.links->layout = result;
                     params.links->owner = Owner() ? Owner()->GetOwner() : nullptr;
                 }
+                if (params.selection) params.selection->UpdateTextLayout(result);
                 if (params.options.onTextLayout) params.options.onTextLayout(*result);
                 const ui::IntSize size = result->Size();
                 const int w = c.ConstrainWidth(size.width), h = std::clamp(std::max(size.height, c.minHeight), c.minHeight, c.maxHeight);
@@ -154,6 +230,7 @@ namespace kiln::foundation {
             void Draw(ContentDrawScope& s) override {
                 if (m_Drawn) {
                     const bool clip = m_Drawn->HasVisualOverflow() && params.options.overflow != TextOverflow::Visible;
+                    if (params.selection) params.selection->Draw(s, clip);
                     if (clip) {
                         s.Save();
                         s.ClipRect({ 0, 0, s.GetSize().width, s.GetSize().height });
@@ -334,6 +411,27 @@ namespace kiln::foundation {
     }
 
     void BasicText(const AnnotatedString& text, const Modifier& modifier, TextStyle style, BasicTextOptions options, rt::Key key) {
+        // Inside a SelectionContainer: a selectable with an id that survives re-creation.
+        auto* comp = rt::Composition::Current();
+        const auto registrar = comp->Read(selection::LocalSelectionRegistrar);
+        const std::int64_t selectableId = rt::RememberSaveable<std::int64_t>(
+            [&] { return registrar ? registrar->NextSelectableId() : selection::kInvalidSelectableId; }, rt::AutoSaver<std::int64_t>(),
+            rt::Keys(registrar.get()));
+        std::shared_ptr<SelectionController> selectionController;
+        Modifier selectionModifier = modifier;
+        if (registrar) {
+            const Color background = comp->Read(LocalTextSelectionColors).backgroundColor;
+            selectionController = comp->Remember<std::shared_ptr<SelectionController>>([&] {
+                auto c = std::make_shared<SelectionController>();
+                c->selectableId = selectableId;
+                c->registrar = registrar;
+                c->backgroundColor = background;
+                return c;
+            }, rt::Keys(registrar.get(), selectableId, background.argb));
+            selectionController->pinnable = comp->Read(ui::LocalPinnableContainer);
+            selectionModifier = PointerHoverIcon(selection::SelectionGestures(modifier, registrar, selectableId, [c = selectionController] { return c->coordinates; }),
+                                                 PointerIcon::Text);
+        }
         std::vector<Range<LinkAnnotation>> links;
         for (auto& l : text.GetLinkAnnotations(0, text.Length()))
             if (l.start != l.end) links.push_back(std::move(l));
@@ -354,7 +452,7 @@ namespace kiln::foundation {
         std::vector<ui::TextSpanSemantics> spans;
         for (const auto& t : text.GetTtsAnnotations(0, text.Length()))
             if (t.start < t.end) spans.push_back({ ui::TextSpanSemantics::Kind::Tts, 0, t.start, t.end, t.item.verbatim, {} });
-        Modifier m = Semantics(modifier, [plain = text.Text(), spans, links](SemanticsConfiguration& c) {
+        Modifier m = Semantics(selectionModifier, [plain = text.Text(), spans, links](SemanticsConfiguration& c) {
             c.text.push_back(plain);
             c.textSpans = spans;
             for (const auto& l : links) {
@@ -366,12 +464,12 @@ namespace kiln::foundation {
             }
         });
         if (links.empty() && inlines.empty()) {
-            Box(m.With<TextNode>(TextParams{ text, std::move(style), std::move(options), nullptr, {} }), Alignment::TopStart(), false, {}, key);
+            Box(m.With<TextNode>(TextParams{ text, std::move(style), std::move(options), nullptr, {}, selectionController }), Alignment::TopStart(), false, {}, key);
             return;
         }
 
         // A child scope: hover / press / focus changes recompose only it.
-        rt::Composition::Current()->Child([text, m, style = std::move(style), options = std::move(options), links = std::move(links),
+        rt::Composition::Current()->Child([text, m, selectionController, style = std::move(style), options = std::move(options), links = std::move(links),
                                            placeholders = std::move(placeholders), inlines = std::move(inlines)]() mutable {
             auto* c = rt::Composition::Current();
             // TextLinkScope: each link's style, merged with its focused / hovered / pressed
@@ -419,7 +517,7 @@ namespace kiln::foundation {
                     for (auto& [p, at] : placed) if (at) ps.Place(*p, at->x, at->y);
                 });
             });
-            Layout(m.With<TextNode>(TextParams{ std::move(styled), style, options, shared, placeholders }), policy, [&] {
+            Layout(m.With<TextNode>(TextParams{ std::move(styled), style, options, shared, placeholders, selectionController }), policy, [&] {
                 for (std::size_t i = 0; i < links.size(); ++i) {
                     const auto link = links[i];
                     ClickableOptions click;

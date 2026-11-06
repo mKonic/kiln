@@ -800,6 +800,15 @@ final class KilnText {
         return out;
     }
 
+    /** BreakIterator.getCharacterInstance preceding / following a UTF-16 offset; -1 at the ends. */
+    int characterBreak(String text, int offset, boolean following) {
+        BreakIterator it = BreakIterator.getCharacterInstance();
+        it.setText(text);
+        offset = Math.max(0, Math.min(offset, text.length()));
+        int r = following ? it.following(offset) : it.preceding(offset);
+        return r == BreakIterator.DONE ? -1 : r;
+    }
+
     /** (start << 32) | end of the word around offset. */
     long wordBoundary(int handle, int offset) {
         Laid l = layouts.get(handle);

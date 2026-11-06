@@ -228,6 +228,46 @@ namespace {
             });
         }
         {
+            // Clipboard, haptics and the floating text toolbar.
+            jclass vc = env->GetObjectClass(view);
+            static jmethodID setClip = env->GetMethodID(vc, "setClipboardText", "(Ljava/lang/String;)V");
+            static jmethodID getClip = env->GetMethodID(vc, "getClipboardText", "()Ljava/lang/String;");
+            static jmethodID hasClip = env->GetMethodID(vc, "clipboardHasText", "()Z");
+            static jmethodID haptic = env->GetMethodID(vc, "performHaptic", "(I)V");
+            static jmethodID showBar = env->GetMethodID(vc, "showTextToolbar", "(IIIII)V");
+            static jmethodID hideBar = env->GetMethodID(vc, "hideTextToolbar", "()V");
+            env->DeleteLocalRef(vc);
+            auto& owner = g_Host->app->GetOwner();
+            kiln::ui::Owner::ClipboardHost clip;
+            clip.setText = [](const std::string& text) {
+                JNIEnv* e = MainEnv();
+                const std::u16string u = kiln::foundation::ToUtf16(text);
+                jstring s = e->NewString(reinterpret_cast<const jchar*>(u.data()), jsize(u.size()));
+                e->CallVoidMethod(g_Host->view, setClip, s);
+                e->DeleteLocalRef(s);
+            };
+            clip.getText = []() -> std::optional<std::string> {
+                JNIEnv* e = MainEnv();
+                auto s = static_cast<jstring>(e->CallObjectMethod(g_Host->view, getClip));
+                if (!s) return std::nullopt;
+                std::u16string u(std::size_t(e->GetStringLength(s)), u'\0');
+                e->GetStringRegion(s, 0, jsize(u.size()), reinterpret_cast<jchar*>(u.data()));
+                std::string out = kiln::foundation::ToUtf8(u);
+                e->DeleteLocalRef(s);
+                return out;
+            };
+            clip.hasText = [] { return bool(MainEnv()->CallBooleanMethod(g_Host->view, hasClip)); };
+            owner.SetClipboardHost(std::move(clip));
+            owner.SetHapticHost([](int constant) { MainEnv()->CallVoidMethod(g_Host->view, haptic, jint(constant)); });
+            kiln::ui::Owner::TextToolbarHost bar;
+            bar.show = [](kiln::ui::Rect r, unsigned items) {
+                MainEnv()->CallVoidMethod(g_Host->view, showBar, jint(std::floor(r.left)), jint(std::floor(r.top)), jint(std::ceil(r.right)),
+                                          jint(std::ceil(r.bottom)), jint(items));
+            };
+            bar.hide = [] { MainEnv()->CallVoidMethod(g_Host->view, hideBar); };
+            owner.SetTextToolbarHost(std::move(bar));
+        }
+        {
             jclass kcm = env->FindClass("android/view/KeyCharacterMap");
             static jclass kcmClass = reinterpret_cast<jclass>(env->NewGlobalRef(kcm));
             static jmethodID getDeadChar = env->GetStaticMethodID(kcm, "getDeadChar", "(II)I");
@@ -283,6 +323,17 @@ namespace {
         if (!g_Host) return;
         g_Host->app->GetOwner().OnFontsChanged();
         g_Host->app->RequestFrame();
+    }
+
+    void TextToolbarItem(JNIEnv*, jclass, jint item) {
+        if (!g_Host) return;
+        g_Host->app->GetOwner().OnTextToolbarItem(unsigned(item));
+        g_Host->app->RequestFrame();
+    }
+
+    void TextToolbarDestroyed(JNIEnv*, jclass) {
+        if (!g_Host) return;
+        g_Host->app->GetOwner().OnTextToolbarDestroyed();
     }
 
     void SetFontWeightAdjustment(JNIEnv*, jclass, jint adjustment) {
@@ -989,6 +1040,8 @@ extern "C" JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void*) {
         { "setDensity", "(FF)V", reinterpret_cast<void*>(&SetDensity) },
         { "setFontWeightAdjustment", "(I)V", reinterpret_cast<void*>(&SetFontWeightAdjustment) },
         { "fontsChanged", "()V", reinterpret_cast<void*>(&FontsChanged) },
+        { "textToolbarItem", "(I)V", reinterpret_cast<void*>(&TextToolbarItem) },
+        { "textToolbarDestroyed", "()V", reinterpret_cast<void*>(&TextToolbarDestroyed) },
         { "setAnimationScale", "(F)V", reinterpret_cast<void*>(&SetAnimationScale) },
         { "setLayoutDirection", "(Z)V", reinterpret_cast<void*>(&SetLayoutDirection) },
         { "touchEvent", "(IIJ[I[F[IIIIFF[J[F[F)V", reinterpret_cast<void*>(&TouchEvent) },

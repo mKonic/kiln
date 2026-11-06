@@ -38,6 +38,7 @@ namespace kiln::android {
         m_BoundingBox = env->GetMethodID(cls, "boundingBox", "(II)[F");
         m_SelectionRects = env->GetMethodID(cls, "selectionRects", "(III)[F");
         m_WordBoundary = env->GetMethodID(cls, "wordBoundary", "(II)J");
+        m_CharacterBreak = env->GetMethodID(cls, "characterBreak", "(Ljava/lang/String;IZ)I");
         m_IsRtl = env->GetMethodID(cls, "isRtlCharAt", "(II)Z");
         m_Release = env->GetMethodID(cls, "release", "(I)V");
         m_PageCount = env->GetMethodID(cls, "pageCount", "()I");
@@ -268,6 +269,15 @@ namespace kiln::android {
     std::pair<int, int> AndroidText::GetWordBoundary(std::int64_t handle, int offset) {
         const jlong packed = Env(m_Vm)->CallLongMethod(m_Text, m_WordBoundary, jint(handle), jint(offset));
         return { int(packed >> 32), int(packed & 0xffffffff) };
+    }
+
+    int AndroidText::CharacterBreak(std::u16string_view text, int offset, bool following) {
+        JNIEnv* env = Env(m_Vm);
+        if (!env) return TextBackend::CharacterBreak(text, offset, following);
+        jstring s = env->NewString(reinterpret_cast<const jchar*>(text.data()), jsize(text.size()));
+        const int r = env->CallIntMethod(m_Text, m_CharacterBreak, s, jint(offset), jboolean(following));
+        env->DeleteLocalRef(s);
+        return r;
     }
 
     bool AndroidText::IsRtlCharAt(std::int64_t handle, int offset) {

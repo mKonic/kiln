@@ -72,6 +72,7 @@ namespace {
             d.lastBaseline = d.lines.back().baseline;
             d.handle = ++m_Next;
             m_Laid[d.handle] = { r.base.sizePx * 0.5f, d.lines };
+            m_Texts[d.handle] = text;
             return d;
         }
         ParagraphIntrinsicWidths Intrinsics(const ParagraphRequest& r) override {
@@ -89,10 +90,27 @@ namespace {
             return { maxWord, maxLine };
         }
         void SyncAtlas(AtlasSink&) override {}
-        float GetHorizontalPosition(std::int64_t, int, bool) override { return 0; }
-        CursorRect GetCursorRect(std::int64_t, int) override { return {}; }
-        int GetOffsetForPosition(std::int64_t, float, float) override { return 0; }
-        RectF GetBoundingBox(std::int64_t, int) override { return {}; }
+        float GetHorizontalPosition(std::int64_t h, int o, bool) override {
+            const auto& [cw, lines] = Laid(h);
+            const LineData& l = LineOf(lines, o);
+            return float(o - l.start) * cw;
+        }
+        CursorRect GetCursorRect(std::int64_t h, int o) override {
+            const auto& [cw, lines] = Laid(h);
+            const LineData& l = LineOf(lines, o);
+            return { float(o - l.start) * cw, l.top, l.bottom };
+        }
+        int GetOffsetForPosition(std::int64_t h, float x, float y) override {
+            const auto& [cw, lines] = Laid(h);
+            const LineData* l = &lines.back();
+            for (const auto& line : lines) if (y < line.bottom) { l = &line; break; }
+            return std::clamp(l->start + int(std::lround(x / cw)), l->start, l->visibleEnd);
+        }
+        RectF GetBoundingBox(std::int64_t h, int o) override {
+            const auto& [cw, lines] = Laid(h);
+            const LineData& l = LineOf(lines, o);
+            return { float(o - l.start) * cw, l.top, cw, l.bottom - l.top };
+        }
         std::vector<RectF> GetSelectionRects(std::int64_t h, int start, int end) override {
             std::vector<RectF> out;
             const auto& [cw, lines] = m_Laid[h];
@@ -102,9 +120,18 @@ namespace {
             }
             return out;
         }
-        std::pair<int, int> GetWordBoundary(std::int64_t, int o) override { return { o, o }; }
+        // Words are runs of letters and digits; between words the boundary is empty.
+        std::pair<int, int> GetWordBoundary(std::int64_t h, int o) override {
+            const std::u16string& t = m_Texts[h];
+            auto word = [&](int i) { return i >= 0 && i < int(t.size()) && std::isalnum(int(t[std::size_t(i)])); };
+            if (!word(o) && !word(o - 1)) return { o, o };
+            int a = o, b = o;
+            while (word(a - 1)) --a;
+            while (word(b)) ++b;
+            return { a, b };
+        }
         bool IsRtlCharAt(std::int64_t, int) override { return false; }
-        void Release(std::int64_t h) override { ++released; m_Laid.erase(h); }
+        void Release(std::int64_t h) override { ++released; m_Laid.erase(h); m_Texts.erase(h); }
         int released = 0;
 
     private:
@@ -120,8 +147,14 @@ namespace {
                 if (i >= run.start && i < run.end) return run.sizePx * 0.5f;
             return r.base.sizePx * 0.5f;
         }
+        const std::pair<float, std::vector<LineData>>& Laid(std::int64_t h) { return m_Laid[h]; }
+        static const LineData& LineOf(const std::vector<LineData>& lines, int o) {
+            for (const auto& l : lines) if (o < l.end) return l;
+            return lines.back();
+        }
         std::int64_t m_Next = 0;
         std::map<std::int64_t, std::pair<float, std::vector<LineData>>> m_Laid;
+        std::map<std::int64_t, std::u16string> m_Texts;
     };
 }
 
@@ -496,4 +529,236 @@ TEST(DownloadableFontsQueryTheProviderAndRelayoutOnArrival) {
     owner.OnFontsChanged();
     owner.MeasureAndLayout({ 300, 100 });
     CHECK(backend.layouts > before);
+}
+
+#include "kiln/foundation/text/Selection.h"
+
+#include <thread>
+
+namespace {
+    // Two texts in a SelectionContainer: "Hello world" at y 0..25 and "Second line" at 25..50,
+    // 10 px per character.
+    struct SelectionHarness {
+        FakeText backend;
+        ui::Owner owner;
+        rt::Composition comp{ owner.Root(), rt::Dispatcher::Main() };
+        std::int64_t t = 1000;
+        SelectionHarness() {
+            owner.SetDensity({ 1, 1 });
+            owner.SetText(&backend);
+            owner.Config().longPressTimeoutMillis = 40;
+        }
+        void Pump() {
+            rt::Dispatcher::Main().RunPending();
+            comp.Recompose();
+            owner.MeasureAndLayout({ 300, 200 });
+        }
+        void Run(std::function<void()> content) {
+            comp.SetContent(std::move(content));
+            Pump();
+        }
+        void Send(ui::PointerType type, ui::PointerEventType kind, float x, float y, bool down, std::int64_t dt = 16, std::uint32_t meta = 0) {
+            ui::RawPointerEvent e;
+            e.type = kind;
+            e.uptimeMillis = t += dt;
+            e.buttons = down && type == ui::PointerType::Mouse ? 1u : 0u;
+            e.metaState = meta;
+            e.pointers.push_back({ 1, { x, y }, down, type, {} });
+            owner.ProcessPointer(e);
+            Pump();
+        }
+        void Wait(int ms) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(ms));
+            t += ms;
+            Pump();
+        }
+        // The container's handle layer (its last child) and the handles in it.
+        std::vector<ui::LayoutNode*> Handles() {
+            ui::LayoutNode* container = owner.Root().Children()[0];
+            ui::LayoutNode* layer = container->Children().back();
+            return layer->Children();
+        }
+    };
+    void TwoTexts() {
+        foundation::Column(ui::Modifier{}, [] {
+            foundation::BasicText("Hello world", {}, TextStyle(Sp(20)));
+            foundation::BasicText("Second line", {}, TextStyle(Sp(20)));
+        });
+    }
+}
+
+TEST(SelectionLongPressSelectsWordsAcrossTextsAndCopies) {
+    SelectionHarness h;
+    foundation::SelectionState* state = nullptr;
+    h.Run([&] {
+        auto& s = foundation::RememberSelectionState();
+        state = &s;
+        foundation::SelectionContainer(s, ui::Modifier{}, TwoTexts);
+    });
+    using ui::PointerEventType;
+    using ui::PointerType;
+    // Long press on "world": the word is selected, the toolbar waits for the gesture to end.
+    h.Send(PointerType::Touch, PointerEventType::Press, 75, 10, true);
+    h.Wait(80);
+    CHECK(state->SelectedTexts().size() == 1 && state->SelectedTexts()[0].Text() == "world");
+    CHECK(!h.owner.TextToolbarShown());
+    // Dragging into the second text extends by words.
+    h.Send(PointerType::Touch, PointerEventType::Move, 75, 30, true);
+    h.Send(PointerType::Touch, PointerEventType::Move, 45, 35, true);
+    CHECK(state->SelectedTexts().size() == 2);
+    if (state->SelectedTexts().size() == 2) {
+        CHECK(state->SelectedTexts()[0].Text() == "world");
+        CHECK(state->SelectedTexts()[1].Text() == "Second");
+    }
+    h.Send(PointerType::Touch, PointerEventType::Release, 45, 35, false);
+    // Released: the toolbar with Copy and Select all over the selection.
+    CHECK(h.owner.TextToolbarShown());
+    CHECK_EQ(h.owner.TextToolbarItems(), unsigned(ui::Owner::kToolbarCopy | ui::Owner::kToolbarSelectAll));
+    CHECK(h.owner.TextToolbarRect().top >= 0 && h.owner.TextToolbarRect().bottom > 50);
+    // Two handles, at the ends of the selection.
+    const auto handles = h.Handles();
+    CHECK_EQ(int(handles.size()), 2);
+    if (handles.size() == 2) {
+        CHECK_EQ(handles[0]->Position().x, 60 - 25);   // the start handle's point at x 60, left of it
+        CHECK_EQ(handles[0]->Position().y, 25);
+        CHECK_EQ(handles[1]->Position().x, 60);        // after "Second", on its line's bottom
+        CHECK_EQ(handles[1]->Position().y, 50);
+    }
+    // Copy: the texts joined by a line break; touch mode clears the selection.
+    h.owner.OnTextToolbarItem(ui::Owner::kToolbarCopy);
+    h.Pump();
+    CHECK(h.owner.ClipboardText() == std::optional<std::string>("world\nSecond"));
+    CHECK(state->SelectedTexts().empty());
+    CHECK(!h.owner.TextToolbarShown());
+    CHECK(h.Handles().empty());
+}
+
+TEST(SelectionHandlesDragAndTapClears) {
+    SelectionHarness h;
+    foundation::SelectionState* state = nullptr;
+    h.Run([&] {
+        auto& s = foundation::RememberSelectionState();
+        state = &s;
+        foundation::SelectionContainer(s, ui::Modifier{}, TwoTexts);
+    });
+    using ui::PointerEventType;
+    using ui::PointerType;
+    h.Send(PointerType::Touch, PointerEventType::Press, 25, 10, true);
+    h.Wait(80);
+    h.Send(PointerType::Touch, PointerEventType::Release, 25, 10, false);
+    CHECK(state->SelectedTexts().size() == 1 && state->SelectedTexts()[0].Text() == "Hello");
+    // The end handle hangs below "Hello" (point at 50, 25); drag it down into the second text.
+    const auto handles = h.Handles();
+    CHECK_EQ(int(handles.size()), 2);
+    h.Send(PointerType::Touch, PointerEventType::Press, 60, 35, true, 400);
+    h.Send(PointerType::Touch, PointerEventType::Move, 60, 50, true);
+    h.Send(PointerType::Touch, PointerEventType::Move, 32, 60, true);
+    CHECK(state->SelectedTexts().size() == 2);
+    if (state->SelectedTexts().size() == 2) CHECK(state->SelectedTexts()[0].Text() == "Hello world");
+    CHECK(!h.owner.TextToolbarShown());   // hidden while a handle drags
+    h.Send(PointerType::Touch, PointerEventType::Release, 32, 60, false);
+    CHECK(h.owner.TextToolbarShown());
+    // A tap (no slop) on the container clears the selection.
+    h.Send(PointerType::Touch, PointerEventType::Press, 100, 40, true, 400);
+    h.Send(PointerType::Touch, PointerEventType::Release, 100, 40, false);
+    CHECK(state->SelectedTexts().empty());
+    CHECK(!h.owner.TextToolbarShown());
+}
+
+TEST(SelectionMouseClicksShiftExtendAndCtrlC) {
+    SelectionHarness h;
+    foundation::SelectionState* state = nullptr;
+    h.Run([&] {
+        auto& s = foundation::RememberSelectionState();
+        state = &s;
+        foundation::SelectionContainer(s, ui::Modifier{}, TwoTexts);
+    });
+    using ui::PointerEventType;
+    using ui::PointerType;
+    // A double click selects a word.
+    h.Send(PointerType::Mouse, PointerEventType::Press, 25, 10, true);
+    h.Send(PointerType::Mouse, PointerEventType::Release, 25, 10, false);
+    h.Send(PointerType::Mouse, PointerEventType::Press, 25, 10, true, 60);
+    h.Send(PointerType::Mouse, PointerEventType::Release, 25, 10, false);
+    CHECK(state->SelectedTexts().size() == 1 && state->SelectedTexts()[0].Text() == "Hello");
+    CHECK(!h.owner.TextToolbarShown());   // no toolbar for a mouse
+    CHECK(h.Handles().empty());
+    // Shift-click extends by characters into the second text.
+    h.Send(PointerType::Mouse, PointerEventType::Press, 30, 35, true, 400, ui::kMetaShift);
+    h.Send(PointerType::Mouse, PointerEventType::Release, 30, 35, false, 16, ui::kMetaShift);
+    CHECK(state->SelectedTexts().size() == 2);
+    if (state->SelectedTexts().size() == 2) CHECK(state->SelectedTexts()[1].Text() == "Sec");
+    // Ctrl+C copies.
+    h.owner.DispatchKeyEvent(ui::KeyEvent{ 31, ui::KeyEventType::KeyDown, ui::kMetaCtrl });
+    h.owner.DispatchKeyEvent(ui::KeyEvent{ 31, ui::KeyEventType::KeyUp, ui::kMetaCtrl });
+    CHECK(h.owner.ClipboardText() == std::optional<std::string>("Hello world\nSec"));
+    // A triple click selects the paragraph.
+    h.Send(PointerType::Mouse, PointerEventType::Press, 25, 35, true, 400);
+    h.Send(PointerType::Mouse, PointerEventType::Release, 25, 35, false);
+    h.Send(PointerType::Mouse, PointerEventType::Press, 25, 35, true, 60);
+    h.Send(PointerType::Mouse, PointerEventType::Release, 25, 35, false);
+    h.Send(PointerType::Mouse, PointerEventType::Press, 25, 35, true, 60);
+    h.Send(PointerType::Mouse, PointerEventType::Release, 25, 35, false);
+    CHECK(state->SelectedTexts().size() == 1 && state->SelectedTexts()[0].Text() == "Second line");
+}
+
+TEST(SelectionStateSelectAllSkipsDisabledTexts) {
+    SelectionHarness h;
+    foundation::SelectionState* state = nullptr;
+    h.Run([&] {
+        auto& s = foundation::RememberSelectionState();
+        state = &s;
+        foundation::SelectionContainer(s, ui::Modifier{}, [] {
+            foundation::Column(ui::Modifier{}, [] {
+                foundation::BasicText("One", {}, TextStyle(Sp(20)));
+                foundation::DisableSelection([] { foundation::BasicText("Two", {}, TextStyle(Sp(20))); });
+                foundation::BasicText("Three", {}, TextStyle(Sp(20)));
+            });
+        });
+    });
+    CHECK(state->GetSelectableTexts().size() == 2);
+    state->SelectAll();
+    h.Pump();
+    CHECK(state->SelectedTexts().size() == 2);
+    if (state->SelectedTexts().size() == 2) {
+        CHECK(state->SelectedTexts()[0].Text() == "One");
+        CHECK(state->SelectedTexts()[1].Text() == "Three");
+    }
+    // select(range): over the texts end to end ("OneThree").
+    state->Select(1, 5);
+    h.Pump();
+    CHECK(state->SelectedTexts().size() == 2);
+    if (state->SelectedTexts().size() == 2) {
+        CHECK(state->SelectedTexts()[0].Text() == "ne");
+        CHECK(state->SelectedTexts()[1].Text() == "Th");
+    }
+    state->Clear();
+    h.Pump();
+    CHECK(state->SelectedTexts().empty());
+}
+
+TEST(SelectionGesturesSurviveParentRecomposition) {
+    // A parent that recomposes (a ticking clock) hands the container new handler lambdas; the
+    // running gesture handlers must not depend on the old ones.
+    SelectionHarness h;
+    rt::State<int> tick(0);
+    foundation::SelectionState* state = nullptr;
+    h.Run([&] {
+        (void)tick.Get();
+        auto& s = foundation::RememberSelectionState();
+        state = &s;
+        foundation::SelectionContainer(s, ui::Modifier{}, TwoTexts);
+    });
+    using ui::PointerEventType;
+    using ui::PointerType;
+    h.Send(PointerType::Touch, PointerEventType::Press, 100, 60, true);
+    h.Send(PointerType::Touch, PointerEventType::Release, 100, 60, false);
+    for (int i = 1; i <= 3; ++i) {
+        tick.Set(i);
+        h.Pump();
+    }
+    h.Send(PointerType::Touch, PointerEventType::Press, 75, 10, true, 400);
+    h.Wait(80);
+    h.Send(PointerType::Touch, PointerEventType::Release, 75, 10, false);
+    CHECK(state->SelectedTexts().size() == 1 && state->SelectedTexts()[0].Text() == "world");
 }

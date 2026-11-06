@@ -23,6 +23,7 @@
 
 #include <kiln/Assets.h>
 #include <kiln/foundation/text/BasicTextField.h>
+#include <kiln/foundation/text/Selection.h>
 #include <kiln/runtime/Task.h>
 #include <kiln/runtime/Saveable.h>
 
@@ -143,6 +144,13 @@ namespace {
                 two.overflow = TextOverflow::Ellipsis;
                 BasicText("Two lines at most, then an ellipsis: this sentence keeps going well past the second line so "
                           "the end of it is cut off and replaced.", Padding(Modifier{}, 16_dp, 4_dp), { 14, kVariant }, two);
+                SelectionContainer(Modifier{}, [] {
+                    Column(Padding(Modifier{}, 16_dp, 4_dp), [] {
+                        BasicText("Selection runs across these texts: from the first sentence", {}, { 16, kOnSurface });
+                        BasicText("into the second one, and copies them on separate lines.", {}, { 16, kOnSurface });
+                        DisableSelection([] { BasicText("This line is not selectable.", {}, { 14, kVariant }); });
+                    });
+                });
             }
             Column(Background(Padding(FillMax(Modifier{}, Axis::Horizontal), 16_dp, 0_dp), kContainer, CornerShape::Rounded(12_dp)),
                    Arrangement::SpacedBy(8_dp), AlignmentH::Start(), [&] {

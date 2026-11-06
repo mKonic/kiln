@@ -84,6 +84,15 @@ namespace kiln::ui {
         // coordinates, through every layer above it (the bounding box).
         // With `at`, the space is that modifier's: its coordinator, through the layers before it.
         Rect RectInRoot(std::optional<Rect> local, const ModifierNode* at = nullptr) const;
+        // The space at a modifier of this node (its coordinator, through the layers before it;
+        // null: the outer bounds) -> root, projective, with that space's size
+        // (LayoutCoordinates.localToRoot for a modifier node's coordinates).
+        Mat3 SpaceToRoot(const ModifierNode* at, ui::Size* size = nullptr) const;
+        // The space the children are placed in -> root.
+        Mat3 InnerToRoot() const;
+        // A point through a local -> root matrix, and back (nullopt behind the camera).
+        static Offset MapPoint(const Mat3& toRoot, Offset local);
+        static std::optional<Offset> UnmapPoint(const Mat3& toRoot, Offset root);
         // The bounds a layout modifier of this node measured, in root coordinates through the
         // layers above it (bounding box).
         Rect LayoutModifierRectInRoot(const LayoutModifier* modifier) const;
@@ -258,6 +267,37 @@ namespace kiln::ui {
         void ReleasePointerIcon(const void* requester);
         int CurrentPointerIcon() const { return m_PointerIcon; }
         void SetPlaySoundEffect(std::function<void(int)> fn) { m_PlaySound = std::move(fn); }
+        // HapticFeedback (View.performHapticFeedback with HapticFeedbackConstants).
+        void SetHapticHost(std::function<void(int)> fn) { m_Haptic = std::move(fn); }
+        void PerformHapticFeedback(int constant) { if (m_Haptic) m_Haptic(constant); }
+        // Clipboard (AndroidClipboard: ClipboardManager primary clip, plain text).
+        struct ClipboardHost {
+            std::function<void(const std::string&)> setText;
+            std::function<std::optional<std::string>()> getText;
+            std::function<bool()> hasText;   // without reading it (no "pasted" toast)
+        };
+        void SetClipboardHost(ClipboardHost host) { m_Clipboard = std::move(host); }
+        void SetClipboardText(const std::string& text);
+        std::optional<std::string> ClipboardText() const;
+        bool ClipboardHasText() const;
+        // TextToolbar (AndroidTextToolbar): a floating ActionMode over a rect in root pixels with
+        // the actions that are set (copy, paste, cut, select all). The host calls
+        // OnTextToolbarItem when one is tapped (it then closes) and OnTextToolbarDestroyed when
+        // the action mode ends; the status stays Shown until HideTextToolbar, like Compose.
+        struct TextToolbarActions { std::function<void()> copy, paste, cut, selectAll; };
+        enum TextToolbarItem : unsigned { kToolbarCopy = 1, kToolbarPaste = 2, kToolbarCut = 4, kToolbarSelectAll = 8 };
+        struct TextToolbarHost {
+            std::function<void(Rect, unsigned items)> show;   // starts the action mode, or updates it
+            std::function<void()> hide;
+        };
+        void SetTextToolbarHost(TextToolbarHost host) { m_ToolbarHost = std::move(host); }
+        void ShowTextToolbar(Rect rect, TextToolbarActions actions);
+        void HideTextToolbar();
+        bool TextToolbarShown() const { return m_ToolbarShown; }
+        Rect TextToolbarRect() const { return m_ToolbarRect; }
+        unsigned TextToolbarItems() const;
+        void OnTextToolbarItem(unsigned item);
+        void OnTextToolbarDestroyed() { m_ToolbarActive = false; }
         void PlaySoundEffect(int constant) { if (m_PlaySound) m_PlaySound(constant); }
         // KeyCharacterMap.getDeadChar: the character a dead key's accent makes with `c`, or 0.
         void SetDeadCharCombiner(std::function<int(int accent, int c)> fn) { m_DeadChar = std::move(fn); }
@@ -305,6 +345,18 @@ namespace kiln::ui {
         void InvalidateFocusNodes();
         FocusState EventStateAt(LayoutNode& n, std::size_t index);
         void ForgetPointerModifier(PointerInputModifier* m);
+        // OnPositionedDispatcher: nodes with onGloballyPositioned modifiers, told after layout.
+        void TrackPositionAware(LayoutNode& n);
+        void DispatchGloballyPositioned();
+        std::set<LayoutNode*> m_PositionAware;
+        bool m_LaidOut = false;
+        std::function<void(int)> m_Haptic;
+        ClipboardHost m_Clipboard;
+        std::optional<std::string> m_LocalClip;   // without a host (tests): an in-process clipboard
+        TextToolbarHost m_ToolbarHost;
+        TextToolbarActions m_ToolbarActions;
+        Rect m_ToolbarRect;
+        bool m_ToolbarShown = false, m_ToolbarActive = false;
         friend class FocusTargetNode;
         LayoutNode* NodeOf(const FocusTargetNode& t) const;
         FocusTargetNode* FocusParent(const FocusTargetNode& t) const;

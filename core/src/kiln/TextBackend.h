@@ -166,6 +166,10 @@ namespace kiln {
         // Whether the character at offset is in a right-to-left run.
         virtual bool IsRtlCharAt(std::int64_t handle, int offset) = 0;
         virtual void Release(std::int64_t handle) = 0;
+        // BreakIterator.getCharacterInstance preceding / following: the grapheme boundary before
+        // or after a UTF-16 offset (-1 when there is none). The default steps over surrogate pairs only.
+        virtual int CharacterBreak(std::u16string_view text, int offset, bool following) { return SurrogateCharacterBreak(text, offset, following); }
+        static int SurrogateCharacterBreak(std::u16string_view text, int offset, bool following);
     };
 
 }
