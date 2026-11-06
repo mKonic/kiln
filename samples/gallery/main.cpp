@@ -1,12 +1,15 @@
 // M2 sample: the declarative C++ layer. Rows, columns, weights, arrangements, padding,
 // backgrounds and wrapped text, plus a counter driven by a coroutine to show recomposition.
 #include <kiln/kiln.hpp>
+
+#include <cmath>
 #include <kiln/foundation/Compose.h>
 #include <kiln/foundation/Gestures.h>
 #include <kiln/foundation/Animate.h>
 #include <kiln/foundation/Scroll.h>
 #include <kiln/foundation/Insets.h>
 #include <kiln/foundation/Back.h>
+#include <kiln/foundation/Draw.h>
 #include <kiln/foundation/text/BasicTextField.h>
 #include <kiln/runtime/Task.h>
 #include <kiln/runtime/Saveable.h>
@@ -106,6 +109,48 @@ namespace {
                     BasicText("Panel: back closes it", Padding(Modifier{}, 16_dp, 24_dp), { 16, kOnPrimary });
                 });
             }
+            // Paths: even-odd star, filled heart, stroked wave with round caps, bevel-joined zigzag.
+            Row(Padding(Modifier{}, 16_dp, 0_dp), Arrangement::SpacedBy(16_dp), AlignmentV::CenterVertically(), [&] {
+                Canvas(SizeMod(Modifier{}, 56_dp, 56_dp), [](DrawScope& d) {
+                    kiln::gfx::Path star;
+                    star.fillType = kiln::gfx::FillType::EvenOdd;
+                    const float cx = d.GetSize().width / 2, cy = d.GetSize().height / 2, r = d.GetSize().width / 2;
+                    for (int i = 0; i < 5; ++i) {
+                        const float a = -1.5707964f + float(i) * 2.5132742f;   // 144 degrees: a pentagram
+                        if (i == 0) star.MoveTo(cx + r * std::cos(a), cy + r * std::sin(a));
+                        else star.LineTo(cx + r * std::cos(a), cy + r * std::sin(a));
+                    }
+                    star.Close();
+                    d.DrawPath(star, kPrimary);
+                });
+                Canvas(SizeMod(Modifier{}, 56_dp, 56_dp), [](DrawScope& d) {
+                    const float w = d.GetSize().width, h = d.GetSize().height;
+                    kiln::gfx::Path heart;
+                    heart.MoveTo(w / 2, h * 0.9f);
+                    heart.CubicTo(w * -0.1f, h * 0.45f, w * 0.15f, h * -0.05f, w / 2, h * 0.28f);
+                    heart.CubicTo(w * 0.85f, h * -0.05f, w * 1.1f, h * 0.45f, w / 2, h * 0.9f);
+                    heart.Close();
+                    d.DrawPath(heart, kTertiary);
+                });
+                Canvas(SizeMod(Modifier{}, 96_dp, 56_dp), [](DrawScope& d) {
+                    const float w = d.GetSize().width, h = d.GetSize().height;
+                    kiln::gfx::Path wave;
+                    wave.MoveTo(d.ToPx(6_dp), h / 2);
+                    for (int i = 0; i < 4; ++i) {
+                        const float x0 = d.ToPx(6_dp) + (w - d.ToPx(12_dp)) * float(i) / 4, step = (w - d.ToPx(12_dp)) / 4;
+                        wave.QuadraticTo(x0 + step / 2, i % 2 ? h * 0.85f : h * 0.15f, x0 + step, h / 2);
+                    }
+                    kiln::gfx::Stroke stroke{ d.ToPx(4_dp), 4, kiln::gfx::StrokeCap::Round, kiln::gfx::StrokeJoin::Round };
+                    d.DrawPath(wave, kPrimary, &stroke);
+                });
+                Canvas(SizeMod(Modifier{}, 56_dp, 56_dp), [](DrawScope& d) {
+                    const float w = d.GetSize().width, h = d.GetSize().height, m = d.ToPx(6_dp);
+                    kiln::gfx::Path tri;
+                    tri.MoveTo(w / 2, m); tri.LineTo(w - m, h - m); tri.LineTo(m, h - m); tri.Close();
+                    kiln::gfx::Stroke stroke{ d.ToPx(3_dp), 4, kiln::gfx::StrokeCap::Butt, kiln::gfx::StrokeJoin::Bevel };
+                    d.DrawPath(tri, kVariant, &stroke);
+                });
+            });
             Row(Padding(Modifier{}, 16_dp, 0_dp), Arrangement::SpacedBy(16_dp), AlignmentV::CenterVertically(), [&] {
                 // Rounded clip around a child that overflows it.
                 // Modifiers wrap what follows them: clip before the background so both are clipped.
