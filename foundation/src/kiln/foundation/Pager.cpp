@@ -1,6 +1,7 @@
 #include "kiln/foundation/Pager.h"
 
 #include "kiln/foundation/Gestures.h"
+#include "kiln/foundation/Semantics.h"
 #include "kiln/ui/Locals.h"
 
 #include <cmath>
@@ -168,6 +169,8 @@ namespace kiln::foundation {
             }
         }
 
+        rt::Task<> PageTo(PagerState* st, int page) { co_await st->AnimateScrollToPage(page); }
+
         void Pager(bool vertical, const Modifier& modifier, PagerState& state, std::function<void(int)> content,
                    PagerOptions options, rt::Key key) {
             LazyPagerConfig config;
@@ -188,7 +191,27 @@ namespace kiln::foundation {
                                     [st, vertical, rtl](PointerInputScope& s) { return PagerGestures(s, st, vertical, rtl); });
             };
             const int count = state.PageCount();
-            LazyPagerLayout(vertical, modifier, state, count, std::move(content), options.key, std::move(config), key);
+            // pagerSemantics: page up/down (vertical) or left/right to the previous/next page.
+            Modifier m = modifier;
+            if (options.userScrollEnabled) {
+                auto& comp = *rt::Composition::Current();
+                auto job = comp.Remember<std::shared_ptr<rt::Job>>([] { return std::make_shared<rt::Job>(); });
+                m = Semantics(std::move(m), [st, vertical, job](SemanticsConfiguration& c) {
+                    auto back = [st, job] {
+                        if (!st->CanScrollBackward()) return false;
+                        *job = rt::Launch(rt::Dispatcher::Main(), PageTo(st, std::max(0, st->CurrentPage() - 1)));
+                        return true;
+                    };
+                    auto forward = [st, job] {
+                        if (!st->CanScrollForward()) return false;
+                        *job = rt::Launch(rt::Dispatcher::Main(), PageTo(st, std::min(st->PageCount() - 1, st->CurrentPage() + 1)));
+                        return true;
+                    };
+                    if (vertical) { c.pageUp = back; c.pageDown = forward; }
+                    else { c.pageLeft = back; c.pageRight = forward; }
+                });
+            }
+            LazyPagerLayout(vertical, m, state, count, std::move(content), options.key, std::move(config), key);
         }
     }
 

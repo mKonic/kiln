@@ -489,6 +489,10 @@ namespace {
             axis(c.horizontalScrollAxisRange, 1, 4, 8, 256);
             axis(c.verticalScrollAxisRange, 2, 16, 32, 256);
             if (c.collectionInfo) sf |= 512;
+            if (c.pageUp) sf |= 1024;
+            if (c.pageDown) sf |= 2048;
+            if (c.pageLeft) sf |= 4096;
+            if (c.pageRight) sf |= 8192;
             d.push_back(sf);
             d.push_back(c.collectionInfo ? c.collectionInfo->first : 0);
             d.push_back(c.collectionInfo ? c.collectionInfo->second : 0);
@@ -533,6 +537,14 @@ namespace {
             case 1: ok = c.onLongClick && c.onLongClick(); break;
             case 2: ok = c.requestFocus && c.requestFocus(); break;
             case 3: ok = c.setText && c.setText(kiln::foundation::ToUtf8(FromJava(env, arg))); break;
+            case 5: {
+                // Page actions: arg u d l r.
+                const std::string dir = kiln::foundation::ToUtf8(FromJava(env, arg));
+                const char k = dir.empty() ? ' ' : dir[0];
+                const auto& f = k == 'u' ? c.pageUp : k == 'd' ? c.pageDown : k == 'l' ? c.pageLeft : c.pageRight;
+                ok = f && f();
+                break;
+            }
             case 4: {
                 // Scroll actions: arg is f(orward) b(ackward) u d l r. The amount is the viewport
                 // (GetScrollViewportLength, else the node's size), signed like Compose's delegate.
@@ -549,13 +561,21 @@ namespace {
                     float amount = c.scrollViewportLength ? c.scrollViewportLength() : b.right - b.left;
                     if (k == 'l' || back) amount = -amount;
                     if (r->reverseScrolling) amount = -amount;
-                    if (canScroll(*r, amount)) { ok = c.scrollBy(amount, 0); break; }
+                    if (canScroll(*r, amount)) {
+                        // A pageable node pages instead (PageLeft / PageRight).
+                        if (c.pageLeft || c.pageRight) ok = amount > 0 ? (c.pageRight && c.pageRight()) : (c.pageLeft && c.pageLeft());
+                        else ok = c.scrollBy(amount, 0);
+                        break;
+                    }
                 }
                 if (const auto& r = c.verticalScrollAxisRange; r && (k == 'u' || k == 'd' || fwd || back)) {
                     float amount = c.scrollViewportLength ? c.scrollViewportLength() : b.bottom - b.top;
                     if (k == 'u' || back) amount = -amount;
                     if (r->reverseScrolling) amount = -amount;
-                    if (canScroll(*r, amount)) ok = c.scrollBy(0, amount);
+                    if (canScroll(*r, amount)) {
+                        if (c.pageUp || c.pageDown) ok = amount > 0 ? (c.pageDown && c.pageDown()) : (c.pageUp && c.pageUp());
+                        else ok = c.scrollBy(0, amount);
+                    }
                 }
                 break;
             }

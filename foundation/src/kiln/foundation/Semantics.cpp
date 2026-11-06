@@ -23,7 +23,8 @@ namespace kiln::foundation {
                        bool(a.scrollBy) == bool(b.scrollBy) && a.collectionInfo == b.collectionInfo &&
                        bool(a.horizontalScrollAxisRange) == bool(b.horizontalScrollAxisRange) &&
                        bool(a.verticalScrollAxisRange) == bool(b.verticalScrollAxisRange) &&
-                       bool(a.scrollToIndex) == bool(b.scrollToIndex);
+                       bool(a.scrollToIndex) == bool(b.scrollToIndex) && bool(a.pageUp) == bool(b.pageUp) &&
+                       bool(a.pageDown) == bool(b.pageDown) && bool(a.pageLeft) == bool(b.pageLeft) && bool(a.pageRight) == bool(b.pageRight);
             }
         };
         struct SemNode final : ui::ModifierNode, ui::SemanticsModifier {
@@ -65,6 +66,10 @@ namespace kiln::foundation {
                 if (!c.scrollToIndex) c.scrollToIndex = mine.scrollToIndex;
                 if (!c.scrollViewportLength) c.scrollViewportLength = mine.scrollViewportLength;
                 if (!c.collectionInfo) c.collectionInfo = mine.collectionInfo;
+                if (!c.pageUp) c.pageUp = mine.pageUp;
+                if (!c.pageDown) c.pageDown = mine.pageDown;
+                if (!c.pageLeft) c.pageLeft = mine.pageLeft;
+                if (!c.pageRight) c.pageRight = mine.pageRight;
             }
         };
 

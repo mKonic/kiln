@@ -115,3 +115,27 @@ TEST(PagerFixedPageSizeAndSpacing) {
     CHECK_EQ(state.FirstVisibleItemScrollOffset(), 0);
     CHECK_EQ(state.FirstVisibleItemIndex(), 3);
 }
+
+TEST(PagerPagesForAccessibility) {
+    Harness h;
+    PagerState state(0, 0, [] { return 3; });
+    h.Run([&] {
+        HorizontalPager(FillMax(Modifier{}, Axis::Both), state, [](int) { Box(FillMax(Modifier{}, Axis::Both)); });
+    });
+    std::function<const SemanticsNode*(const SemanticsNode&)> find = [&](const SemanticsNode& n) -> const SemanticsNode* {
+        if (n.config.pageRight) return &n;
+        for (const auto& c : n.children) if (const auto* f = find(c)) return f;
+        return nullptr;
+    };
+    const SemanticsNode root = h.owner.BuildSemanticsTree();
+    const SemanticsNode* n = find(root);
+    CHECK(n != nullptr);
+    if (!n) return;
+    CHECK(!n->config.pageLeft());   // at the first page
+    CHECK(n->config.pageRight());
+    h.Frames(60);
+    CHECK_EQ(state.CurrentPage(), 1);
+    CHECK(n->config.pageLeft());
+    h.Frames(60);
+    CHECK_EQ(state.CurrentPage(), 0);
+}

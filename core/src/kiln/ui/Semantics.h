@@ -55,6 +55,8 @@ namespace kiln::ui {
         std::function<bool(int index)> scrollToIndex;
         std::function<float()> scrollViewportLength;          // GetScrollViewportLength (minus padding)
         std::optional<std::pair<int, int>> collectionInfo;     // rows, columns
+        // Paging (pagers): scroll actions on a node that pages use these instead of scrollBy.
+        std::function<bool()> pageUp, pageDown, pageLeft, pageRight;
 
         bool HasContent() const {
             return !contentDescription.empty() || !text.empty() || editableText || stateDescription || onClick ||

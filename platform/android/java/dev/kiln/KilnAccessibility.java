@@ -94,6 +94,10 @@ final class KilnAccessibility extends AccessibilityNodeProvider {
                 if ((sf & 32) != 0) { info.addAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_BACKWARD); info.addAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_UP); }
             }
         }
+        if ((sf & 1024) != 0) info.addAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_PAGE_UP);
+        if ((sf & 2048) != 0) info.addAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_PAGE_DOWN);
+        if ((sf & 4096) != 0) info.addAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_PAGE_LEFT);
+        if ((sf & 8192) != 0) info.addAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_PAGE_RIGHT);
         if (hasCollection) info.setCollectionInfo(AccessibilityNodeInfo.CollectionInfo.obtain(d[12 + d[10]], d[13 + d[10]], false));
         info.setAccessibilityFocused(id == accessibilityFocused);
         info.addAction(id == accessibilityFocused ? AccessibilityNodeInfo.AccessibilityAction.ACTION_CLEAR_ACCESSIBILITY_FOCUS
@@ -135,8 +139,18 @@ final class KilnAccessibility extends AccessibilityNodeProvider {
                 if (action == android.R.id.accessibilityActionScrollDown) return scroll(id, "d");
                 if (action == android.R.id.accessibilityActionScrollLeft) return scroll(id, "l");
                 if (action == android.R.id.accessibilityActionScrollRight) return scroll(id, "r");
+                if (action == android.R.id.accessibilityActionPageUp) return page(id, "u");
+                if (action == android.R.id.accessibilityActionPageDown) return page(id, "d");
+                if (action == android.R.id.accessibilityActionPageLeft) return page(id, "l");
+                if (action == android.R.id.accessibilityActionPageRight) return page(id, "r");
                 return false;
         }
+    }
+
+    private boolean page(int id, String direction) {
+        boolean ok = KilnNative.semAction(id, 5, direction);
+        if (ok) send(id, AccessibilityEvent.TYPE_VIEW_SCROLLED);
+        return ok;
     }
 
     private boolean scroll(int id, String direction) {
