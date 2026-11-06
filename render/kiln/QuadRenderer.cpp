@@ -176,6 +176,14 @@ namespace kiln {
         last.paint[0] = sx; last.paint[1] = sy; last.paint[2] = r.w; last.paint[3] = r.h;
     }
 
+    void QuadRenderer::DrawBlur(const RectF& r, const RectF& uv, const AtlasPage& page, float a, float su, float sv, float sigma, bool decal) {
+        Instance in{ { r.x, r.y, r.w, r.h }, { uv.x, uv.y, uv.x + uv.w, uv.y + uv.h }, { a, a, a, a },
+                     { 0, float(Mode::Blur), -1, 0 }, {}, {}, {}, {}, {}, {}, {}, {} };
+        Push(in, &page, nullptr);
+        Instance& last = Current().instances.back();
+        last.paint[0] = su; last.paint[1] = sv; last.paint[2] = sigma; last.paint[3] = decal ? 1.0f : 0.0f;
+    }
+
     void QuadRenderer::BeginLayer(int x, int y, int w, int h) {
         // Pooled targets come in 64 px steps so animated sizes reuse them.
         const std::uint32_t tw = std::uint32_t((std::max(w, 1) + 63) / 64 * 64), th = std::uint32_t((std::max(h, 1) + 63) / 64 * 64);

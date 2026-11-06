@@ -1,5 +1,7 @@
 #pragma once
 
+#include <optional>
+
 #include "kiln/graphics/Brush.h"
 #include "kiln/graphics/Shape.h"
 
@@ -115,6 +117,15 @@ namespace kiln::foundation {
     // draw's alpha instead (cheaper, but overlaps show through).
     enum class CompositingStrategy : std::uint8_t { Auto, Offscreen, ModulateAlpha };
 
+    // RenderEffect.createBlurEffect: radii in pixels (HWUI turns them into Gaussian sigmas);
+    // `edgeTreatment` is how pixels outside the layer read (Clamp or Decal).
+    struct BlurEffect {
+        float radiusX = 0, radiusY = 0;
+        gfx::TileMode edgeTreatment = gfx::TileMode::Clamp;
+        bool radiiInDp = false;   // Modifier.blur: converted with the draw's density
+        bool operator==(const BlurEffect&) const = default;
+    };
+
     struct GraphicsLayerParams {
         float alpha = 1, scaleX = 1, scaleY = 1, translationX = 0, translationY = 0;
         float rotationZ = 0;                  // degrees, clockwise
@@ -123,6 +134,7 @@ namespace kiln::foundation {
         // offscreen and is composited in perspective.
         float rotationX = 0, rotationY = 0, cameraDistance = 8;
         CompositingStrategy compositingStrategy = CompositingStrategy::Auto;
+        std::optional<BlurEffect> renderEffect;   // renders offscreen and composites blurred
         float originX = 0.5f, originY = 0.5f; // transform origin (pivot) as a fraction of the size
         bool clip = false;
         CornerShape shape;
@@ -134,6 +146,19 @@ namespace kiln::foundation {
     void GraphicsLayerMatrix(const GraphicsLayerParams& p, Size size, float out[9]);
     inline Modifier Rotate(Modifier m, float degrees) { GraphicsLayerParams p; p.rotationZ = degrees; return GraphicsLayer(std::move(m), p); }
     inline Modifier Alpha(Modifier m, float a) { GraphicsLayerParams p; p.alpha = a; return GraphicsLayer(std::move(m), p); }
+    // Modifier.blur's edge treatment: Rectangle clips the blurred image to the bounds, a shape to
+    // that shape (both read clamped edges); Unbounded lets the blur spread past the bounds.
+    struct BlurredEdgeTreatment {
+        bool clip = true;
+        std::shared_ptr<const gfx::Shape> shape;   // null with clip: the bounds
+        static BlurredEdgeTreatment Rectangle() { return {}; }
+        static BlurredEdgeTreatment Unbounded() { return { false, nullptr }; }
+        static BlurredEdgeTreatment Of(std::shared_ptr<const gfx::Shape> shape) { return { true, std::move(shape) }; }
+    };
+    Modifier Blur(Modifier m, Dp radiusX, Dp radiusY, BlurredEdgeTreatment edgeTreatment = BlurredEdgeTreatment::Rectangle());
+    inline Modifier Blur(Modifier m, Dp radius, BlurredEdgeTreatment edgeTreatment = BlurredEdgeTreatment::Rectangle()) {
+        return Blur(std::move(m), radius, radius, std::move(edgeTreatment));
+    }
     inline Modifier ClipToBounds(Modifier m) { GraphicsLayerParams p; p.clip = true; return GraphicsLayer(std::move(m), p); }
     inline Modifier Clip(Modifier m, std::shared_ptr<const gfx::Shape> shape) { GraphicsLayerParams p; p.clip = true; p.clipShape = std::move(shape); return GraphicsLayer(std::move(m), p); }
     inline Modifier Clip(Modifier m, CornerShape shape) { GraphicsLayerParams p; p.clip = true; p.shape = shape; return GraphicsLayer(std::move(m), p); }

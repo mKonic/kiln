@@ -598,21 +598,43 @@ namespace kiln::foundation {
                                      rr->topLeft.x == rr->topLeft.y))
                         clipPath = outline->ToPath();   // non-uniform corners: no SDF fast path
                 }
+                if (params.renderEffect) { DrawBlurred(s, size, clipPath ? &*clipPath : nullptr, outline ? &*outline : nullptr); s.Restore(); return; }
                 const bool offscreen = clipPath || params.compositingStrategy == CompositingStrategy::Offscreen ||
                                        (params.compositingStrategy == CompositingStrategy::Auto && params.alpha < 1);
                 if (offscreen) s.BeginLayer({ 0, 0, size.width, size.height }, params.alpha, clipPath ? &*clipPath : nullptr);
                 else if (params.alpha < 1) s.MultiplyAlpha(params.alpha);   // ModulateAlpha
-                if (params.clip && !clipPath) {
-                    if (outline) {
-                        if (auto* r = std::get_if<Rect>(&outline->value)) s.ClipRect(*r);
-                        else { const auto& rr = std::get<gfx::RoundRect>(outline->value); s.ClipRect(rr.rect, rr.topLeft.x); }
-                    } else {
-                        s.ClipRect({ 0, 0, size.width, size.height }, CornerRadiusPx(params.shape, size, s));
-                    }
-                }
+                if (params.clip && !clipPath) ClipToShape(s, size, outline ? &*outline : nullptr);
                 s.DrawContent();
                 if (offscreen) s.EndLayer();
                 s.Restore();
+            }
+            void ClipToShape(ContentDrawScope& s, Size size, const gfx::Outline* outline) {
+                if (outline) {
+                    if (auto* r = std::get_if<Rect>(&outline->value)) s.ClipRect(*r);
+                    else { const auto& rr = std::get<gfx::RoundRect>(outline->value); s.ClipRect(rr.rect, rr.topLeft.x); }
+                } else {
+                    s.ClipRect({ 0, 0, size.width, size.height }, CornerRadiusPx(params.shape, size, s));
+                }
+            }
+            // A render effect blurs the layer's image; the clip shape then clips the blurred image
+            // (HWUI clips the layer draw to the outline), so it wraps the blur.
+            void DrawBlurred(ContentDrawScope& s, Size size, const gfx::Path* clipPath, const gfx::Outline* outline) {
+                const BlurEffect& b = *params.renderEffect;
+                // HWUI Blur::convertRadiusToSigma.
+                auto sigma = [](float r) { return r > 0 ? 0.57735f * r + 0.5f : 0.0f; };
+                const float k = b.radiiInDp ? s.ToPx(Dp(1)) : 1.0f;
+                const float sx = sigma(b.radiusX * k), sy = sigma(b.radiusY * k);
+                const bool decal = b.edgeTreatment == gfx::TileMode::Decal;
+                const Rect bounds{ 0, 0, size.width, size.height };
+                float alpha = params.alpha;
+                if (clipPath) { s.BeginLayer(bounds, alpha, clipPath); alpha = 1; }
+                else if (params.clip) ClipToShape(s, size, outline);
+                // Decal lets the blur spread 3 sigma past the content (SkBlurImageFilter bounds).
+                const Rect layer = decal ? Rect{ -3 * sx, -3 * sy, size.width + 3 * sx, size.height + 3 * sy } : bounds;
+                s.BeginLayer(layer, alpha);
+                s.DrawContent();
+                s.EndLayerBlur(sx, sy, decal);
+                if (clipPath) s.EndLayer();
             }
             // rotationX / rotationY: the content renders flat (clipped as usual) into a layer that
             // is composited through the perspective matrix (it is planar, so this is the same image).
@@ -642,6 +664,16 @@ namespace kiln::foundation {
 
     Modifier GraphicsLayer(Modifier m, GraphicsLayerParams p) { return m.With<LayerNode>(p); }
     void GraphicsLayerMatrix(const GraphicsLayerParams& p, Size size, float out[9]) { LayerMatrix3D(p, size, out); }
+    Modifier Blur(Modifier m, Dp radiusX, Dp radiusY, BlurredEdgeTreatment e) {
+        // Modifier.blur: zero radii still clip with a bounded treatment.
+        if (!((radiusX.value > 0 && radiusY.value > 0) || e.clip)) return m;
+        GraphicsLayerParams p;
+        if (radiusX.value > 0 && radiusY.value > 0)
+            p.renderEffect = BlurEffect{ radiusX.value, radiusY.value, e.clip ? gfx::TileMode::Clamp : gfx::TileMode::Decal, true };
+        p.clip = e.clip;
+        p.clipShape = std::move(e.shape);
+        return GraphicsLayer(std::move(m), p);
+    }
 
     Modifier Padding(Modifier m, PaddingValues p) { return m.With<PaddingNode>(p); }
     Modifier SizeIn(Modifier m, Dp minW, Dp minH, Dp maxW, Dp maxH, bool enforce) { return m.With<SizeNode>(SizeParams{ minW, minH, maxW, maxH, enforce }); }

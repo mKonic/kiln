@@ -47,7 +47,7 @@ namespace kiln {
     // glyphs/images. One draw per run of quads sharing an atlas page, in submission order.
     class QuadRenderer {
     public:
-        enum class Mode : std::uint8_t { Solid = 0, TintedCoverage = 1, Color = 2, Stretch = 3 };
+        enum class Mode : std::uint8_t { Solid = 0, TintedCoverage = 1, Color = 2, Stretch = 3, Blur = 4 };
 
         // A gradient paint instead of the flat colour: geometry in framebuffer pixels (linear
         // x0,y0,x1,y1; radial cx,cy,r; sweep cx,cy), the ramp row in the ramp texture.
@@ -87,6 +87,9 @@ namespace kiln {
         // A layer composited through HWUI's stretch (StretchEffect.cpp): stretchX/Y are the
         // normalised overscroll vector (dampStretchVector of the edge distances).
         void DrawStretched(const RectF& rect, const RectF& uv, const AtlasPage& page, float alpha, float stretchX, float stretchY);
+        // One Gaussian pass over a layer: `step` is one texel along the pass axis in uv, `sigma` in
+        // texels; outside the layer the edge repeats, or with `decal` is transparent.
+        void DrawBlur(const RectF& rect, const RectF& uv, const AtlasPage& page, float alpha, float stepU, float stepV, float sigma, bool decal);
 
         // Offscreen layers: quads submitted between BeginLayer and EndLayer render into a target
         // covering the device-space rect `bounds` (whole pixels). EndLayer returns the texture and

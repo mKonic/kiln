@@ -182,6 +182,17 @@ namespace {
                     Box(Background(SizeMod(OffsetMod(Modifier{}, 32_dp, 0_dp), 48_dp, 48_dp), kTertiary, CornerShape::Pill()));
                 });
             });
+            // Modifier.blur: Rectangle keeps the edges inside the bounds; Unbounded lets them spread.
+            Row(Padding(Modifier{}, 16_dp, 8_dp), Arrangement::SpacedBy(24_dp), AlignmentV::CenterVertically(), [] {
+                for (const bool bounded : { true, false }) {
+                    Box(Blur(SizeMod(Modifier{}, 120_dp, 64_dp), 6_dp, bounded ? BlurredEdgeTreatment::Rectangle() : BlurredEdgeTreatment::Unbounded()),
+                        Alignment::Center(), false, [bounded] {
+                        Box(Background(FillMax(Modifier{}, Axis::Both), bounded ? kPrimary : kTertiary), Alignment::Center(), false, [bounded] {
+                            BasicText(bounded ? "Rectangle" : "Unbounded", {}, { 14, kOnPrimary });
+                        });
+                    });
+                }
+            });
             // graphics-shapes: a rounded square morphing into a rounded star and back.
             {
                 static const kiln::gfx::shapes::Morph morph(

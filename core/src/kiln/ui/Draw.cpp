@@ -338,10 +338,7 @@ namespace kiln::ui {
         m_Target.quads->SetTransform({});
     }
 
-    void DrawScope::EndLayer(float stretchX, float stretchY) {
-        if (m_Layers.empty()) return;
-        Layer l = m_Layers.back();
-        m_Layers.pop_back();
+    void DrawScope::MaskLayer(const Layer& l) {
         if (l.active && l.clip) {
             // Mask the layer to the path: dst *= coverage, under the layer's own transform.
             State inner = m_State;
@@ -355,6 +352,49 @@ namespace kiln::ui {
             }
             m_State = inner;
         }
+    }
+
+    void DrawScope::EndLayerBlur(float sigmaX, float sigmaY, bool decal) {
+        if (m_Layers.empty()) return;
+        Layer l = m_Layers.back();
+        m_Layers.pop_back();
+        MaskLayer(l);
+        m_State = l.saved;
+        if (!l.active) { ApplyClip(); return; }
+        // Sigmas are in the layer's local units; the passes run in device pixels.
+        sigmaX *= std::hypot(l.saved.m.a, l.saved.m.b);
+        sigmaY *= std::hypot(l.saved.m.c, l.saved.m.d);
+        QuadRenderer& q = *m_Target.quads;
+        QuadRenderer::LayerResult r = q.EndLayer();
+        if (!r.page) { ApplyClip(); return; }
+        const kiln::RectF rect{ l.device.left, l.device.top, l.device.Width(), l.device.Height() };
+        const int x = int(l.device.left), y = int(l.device.top), w = int(l.device.Width()), h = int(l.device.Height());
+        auto uvOf = [&](const QuadRenderer::LayerResult& lr) {
+            return kiln::RectF{ 0, 0, rect.w / float(lr.page->Width()), rect.h / float(lr.page->Height()) };
+        };
+        // Horizontal then vertical pass, each into a layer over the same device pixels, unclipped.
+        q.SetTransform({});
+        q.SetClip({});
+        for (int pass = 0; pass < 2; ++pass) {
+            const float sigma = pass == 0 ? sigmaX : sigmaY;
+            if (sigma <= 0) continue;
+            q.BeginLayer(x, y, w, h);
+            const float su = pass == 0 ? 1.0f / float(r.page->Width()) : 0, sv = pass == 0 ? 0 : 1.0f / float(r.page->Height());
+            q.DrawBlur(rect, uvOf(r), *r.page, 1, su, sv, sigma, decal);
+            r = q.EndLayer();
+            if (!r.page) { ApplyClip(); return; }
+        }
+        ApplyClip();
+        const float a = l.alpha;
+        q.SetTransform({});
+        q.DrawAtlas(rect, uvOf(r), *r.page, { a, a, a, a }, QuadRenderer::Mode::Color);
+    }
+
+    void DrawScope::EndLayer(float stretchX, float stretchY) {
+        if (m_Layers.empty()) return;
+        Layer l = m_Layers.back();
+        m_Layers.pop_back();
+        MaskLayer(l);
         m_State = l.saved;
         ApplyClip();
         if (!l.active) return;

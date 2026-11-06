@@ -179,8 +179,44 @@ float stretchAxis(float inPos, float overscroll, float dim) {
     return inPos;
 }
 
+// --- blur (one pass of a separable Gaussian, Skia GrGaussianConvolutionFragmentProcessor) ---
+
+// A layer texel at uv: edge texels repeat (clamp) or nothing (decal) outside the layer.
+vec4 blurTap(vec2 uv, vec2 lo, vec2 hi, bool decal) {
+    if (decal) {
+        if (any(lessThan(uv, vUvMin)) || any(greaterThan(uv, vUvMax))) return vec4(0.0);
+        return texture(uAtlas, clamp(uv, lo, hi));
+    }
+    return texture(uAtlas, clamp(uv, lo, hi));
+}
+
+vec4 blurPass() {
+    vec2 dir = vPaint.xy;   // one texel along the pass axis, in uv
+    float sigma = vPaint.z;
+    bool decal = vPaint.w > 0.5;
+    vec2 lo = vUvMin + 0.5 * abs(dir), hi = vUvMax - 0.5 * abs(dir);
+    int n = min(int(ceil(3.0 * sigma)), 192);
+    float k = -0.5 / (sigma * sigma);
+    vec4 sum = blurTap(vUv, lo, hi, decal);
+    float wsum = 1.0;
+    // Pairs of taps share one bilinear fetch at their weighted centre.
+    for (int i = 1; i <= n; i += 2) {
+        float f0 = float(i), f1 = float(i + 1);
+        float w0 = exp(f0 * f0 * k), w1 = i + 1 <= n ? exp(f1 * f1 * k) : 0.0;
+        float w = w0 + w1;
+        float o = (f0 * w0 + f1 * w1) / w;
+        sum += (blurTap(vUv + dir * o, lo, hi, decal) + blurTap(vUv - dir * o, lo, hi, decal)) * w;
+        wsum += 2.0 * w;
+    }
+    return sum / wsum;
+}
+
 void main() {
     int mode = int(vParams.y + 0.5);
+    if (mode == 4) {
+        outColor = blurPass() * vColor.a * clipCoverage();
+        return;
+    }
     if (mode == 3) {            // a layer seen through the stretch overscroll
         vec2 size = vPaint.zw;
         vec2 uvMin = vec2(0.0);

@@ -67,6 +67,9 @@ namespace kiln::ui {
         // Composites the layer through a projective transform `h` (row-major 3x3, local
         // coordinates of the BeginLayer call -> local), for 3D-rotated graphics layers.
         void EndLayerProjective(const float h[9]);
+        // Ends a layer through a Gaussian blur (RenderEffect.createBlurEffect): sigmas in device
+        // pixels; outside the layer the edge repeats (TileMode.CLAMP) or with `decal` is transparent.
+        void EndLayerBlur(float sigmaX, float sigmaY, bool decal);
         void Save() { m_Stack.push_back(m_State); }
         void Restore();
         void SetSize(Size s) { m_Size = s; }
@@ -95,6 +98,7 @@ namespace kiln::ui {
         std::vector<State> m_Stack;
         struct Layer { State saved; float alpha; Rect device; bool active; std::shared_ptr<gfx::Path> clip; gfx::Matrix clipMatrix; };
         std::vector<Layer> m_Layers;
+        void MaskLayer(const Layer& l);
         Size m_Size;
     };
 
