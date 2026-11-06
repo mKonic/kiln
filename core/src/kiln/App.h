@@ -2,11 +2,13 @@
 
 #include "kiln/QuadRenderer.h"
 #include "kiln/TextBackend.h"
+#include "kiln/runtime/Task.h"
 
 #include <kiln/kiln.h>
 
 #include <hearth/Device.h>
 
+#include <functional>
 #include <memory>
 #include <vector>
 
@@ -28,6 +30,17 @@ namespace kiln {
 
         void SetCallbacks(const kiln_app_callbacks& callbacks);
         void RequestFrame();
+
+        // Runs posted work and due timers. Hosts call it when woken and before each frame.
+        void RunIdle();
+        // Frame stages run in order after animations, before drawing (recomposition, layout...).
+        using FrameStage = std::function<void(double timeSeconds)>;
+        void AddFrameStage(FrameStage stage) { m_Stages.push_back(std::move(stage)); }
+        rt::Dispatcher& Dispatcher() { return m_Dispatcher; }
+
+        // ANIMATOR_DURATION_SCALE (spec 02 req. 6): 0 means animations jump to their end.
+        void SetAnimationScale(float scale) { m_AnimationScale = scale; }
+        float AnimationScale() const { return m_AnimationScale; }
 
         void SurfaceCreated(hearth::Surface& surface);
         void SurfaceResized(std::uint32_t width, std::uint32_t height);
@@ -64,6 +77,9 @@ namespace kiln {
         float m_Density = 1, m_FontScale = 1;
         Rgba m_Clear{ 1, 1, 1, 1 };
         bool m_FramePending = false;
+        rt::Dispatcher& m_Dispatcher = rt::Dispatcher::Main();
+        std::vector<FrameStage> m_Stages;
+        float m_AnimationScale = 1.0f;
         bool m_SurfaceLost = false;
     };
 

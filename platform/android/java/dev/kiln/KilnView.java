@@ -2,6 +2,10 @@ package dev.kiln;
 
 import android.content.Context;
 import android.content.res.Configuration;
+import android.database.ContentObserver;
+import android.os.Handler;
+import android.os.Looper;
+import android.provider.Settings;
 import android.util.DisplayMetrics;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
@@ -33,6 +37,22 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
         text = new KilnText(context);
         DisplayMetrics metrics = getResources().getDisplayMetrics();
         KilnNative.create(this, text, metrics.density, getResources().getConfiguration().fontScale);
+
+        // ANIMATOR_DURATION_SCALE, observed for changes (WindowRecomposer:95-135).
+        animationScaleObserver = new ContentObserver(new Handler(Looper.getMainLooper())) {
+            @Override public void onChange(boolean selfChange) { pushAnimationScale(); }
+        };
+        context.getContentResolver().registerContentObserver(
+                Settings.Global.getUriFor(Settings.Global.ANIMATOR_DURATION_SCALE), false,
+                animationScaleObserver);
+        pushAnimationScale();
+    }
+
+    private final ContentObserver animationScaleObserver;
+
+    private void pushAnimationScale() {
+        KilnNative.setAnimationScale(Settings.Global.getFloat(getContext().getContentResolver(),
+                Settings.Global.ANIMATOR_DURATION_SCALE, 1.0f));
     }
 
     void onHostStart() { KilnNative.setVisible(true); }

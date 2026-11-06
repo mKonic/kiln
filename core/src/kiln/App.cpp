@@ -1,4 +1,5 @@
 #include "kiln/App.h"
+#include "kiln/runtime/State.h"
 
 #include <hearth/Log.h>
 
@@ -8,7 +9,13 @@ namespace kiln {
 
     using namespace hearth;
 
-    App::App(HostServices services) : m_Services(services) {}
+    App::App(HostServices services) : m_Services(services) {
+        m_Dispatcher.requestFrame = [this] { RequestFrame(); };
+        // Any state write schedules a frame, like Compose's global apply observer (14 §Recomposer).
+        rt::Observation::SetChangeListener([this] { RequestFrame(); });
+    }
+
+    void App::RunIdle() { m_Dispatcher.RunPending(); }
     App::~App() {
         if (m_Device) m_Device->WaitIdle();
     }
@@ -80,6 +87,11 @@ namespace kiln {
 
     void App::Frame(double timeSeconds) {
         m_FramePending = false;
+        // Frame order (architecture 3.3): posted work, animation frame waiters with the shared
+        // vsync time, then stages (state apply + recomposition, measure, layout), then drawing.
+        m_Dispatcher.RunPending();
+        m_Dispatcher.RunFrame(std::int64_t(timeSeconds * 1e9));
+        for (auto& stage : m_Stages) stage(timeSeconds);
         if (!m_Device || m_SurfaceLost || m_Width == 0 || m_Height == 0) return;
 
         m_Quads->Begin(m_Width, m_Height);

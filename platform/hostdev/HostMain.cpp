@@ -9,6 +9,7 @@
 
 #include <GLFW/glfw3.h>
 
+#include <chrono>
 #include <cstdio>
 #include <cstdlib>
 
@@ -30,6 +31,7 @@ int main() {
     auto text = kiln::hostdev::CreateHostText(density, 1.0f);
     kiln::App app({ text.get(), &RequestFrame, nullptr });
     app.SetDensity(density, 1.0f);
+    app.Dispatcher().wake = [] { glfwPostEmptyEvent(); };
     kiln_app handle{ &app };
     kiln_main(&handle);
 
@@ -37,7 +39,12 @@ int main() {
     app.SurfaceCreated(surface);
     int lastW = 0, lastH = 0;
     while (!glfwWindowShouldClose(window)) {
-        if (g_FrameRequested) glfwPollEvents(); else glfwWaitEvents();
+        if (g_FrameRequested) glfwPollEvents();
+        else if (auto next = app.Dispatcher().NextTimer()) {
+            const double wait = std::chrono::duration<double>(*next - kiln::rt::Dispatcher::Clock::now()).count();
+            glfwWaitEventsTimeout(wait > 0 ? wait : 0.0);
+        } else glfwWaitEvents();
+        app.RunIdle();
         int w = 0, h = 0;
         glfwGetFramebufferSize(window, &w, &h);
         if (w != lastW || h != lastH) { lastW = w; lastH = h; app.SurfaceResized(w, h); }
