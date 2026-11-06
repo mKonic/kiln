@@ -152,3 +152,48 @@ TEST(DragScrollsWhileContentRecomposesEveryFrame) {
     h.Touch(PointerEventType::Release, 50, 40, false, t += 16);
     CHECK(state.Value() > 30);
 }
+
+#include "kiln/foundation/Overscroll.h"
+
+TEST(OverscrollPullsAtTheEdgeAndRelaxesFirst) {
+    OverscrollEffect e;
+    e.UpdateSize({ 100, 400 });
+    float scrolled = 0;
+    auto perform = [&](Offset d) {
+        // Content at the top: it can only move towards negative y (scroll down).
+        const float can = d.y > 0 ? 0.0f : d.y;
+        scrolled += can;
+        return Offset{ 0, can };
+    };
+    // Dragging down at the top: nothing scrolls, the top edge stretches.
+    Offset c = e.ApplyToScroll({ 0, 40 }, NestedScrollSource::UserInput, perform);
+    CHECK_EQ(scrolled, 0.0f);
+    CHECK(e.IsInProgress());
+    CHECK_EQ(c.y, 0.0f);
+    float sx = 0, sy = 0;
+    e.Advance(0, sx, sy);
+    CHECK(sy > 0);                                   // top stretch is positive
+    // Dragging back up relaxes the stretch before the content scrolls.
+    c = e.ApplyToScroll({ 0, -20 }, NestedScrollSource::UserInput, perform);
+    CHECK_EQ(c.y, -20.0f);
+    CHECK_EQ(scrolled, 0.0f);
+    c = e.ApplyToScroll({ 0, -40 }, NestedScrollSource::UserInput, perform);
+    CHECK(!e.IsInProgress());
+    CHECK(scrolled < 0);                             // the rest scrolled the content
+}
+
+TEST(OverscrollSpringsBackAfterRelease) {
+    OverscrollEffect e;
+    std::int64_t t = 1'000'000;
+    e.clock = [&t] { return t; };
+    e.UpdateSize({ 100, 400 });
+    auto none = [](Offset) { return Offset{}; };
+    e.ApplyToScroll({ 0, 60 }, NestedScrollSource::UserInput, none);
+    e.AbsorbPostFling({});                           // finger up, no velocity: release
+    float sx = 0, sy = 0;
+    bool animating = true;
+    for (int i = 0; i < 200 && animating; ++i) animating = e.Advance(t += 16, sx, sy);
+    CHECK(!animating);
+    CHECK(!e.IsInProgress());
+    CHECK_EQ(sy, 0.0f);
+}

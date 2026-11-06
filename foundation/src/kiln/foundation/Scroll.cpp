@@ -1,4 +1,5 @@
 #include "kiln/foundation/Scroll.h"
+#include "kiln/foundation/Overscroll.h"
 
 #include "kiln/ui/VelocityTracker.h"
 
@@ -55,7 +56,15 @@ namespace kiln::foundation {
         float Reverse(float v) const { return reverse ? -v : v; }
 
         // performScroll: pre -> self -> post, all in pixel (drag) direction. Returns consumed.
+        std::shared_ptr<OverscrollEffect> overscroll;
+
+        // performScroll, through the overscroll effect when there is one.
         Offset Dispatch(Offset delta, NestedScrollSource src) {
+            if (overscroll) return overscroll->ApplyToScroll(delta, src, [this, src](Offset d) { return DispatchNested(d, src); });
+            return DispatchNested(delta, src);
+        }
+
+        Offset DispatchNested(Offset delta, NestedScrollSource src) {
             const Offset pre = node ? node->DispatchPreScroll(delta, src) : Offset{};
             const Offset left = delta - pre;
             const float selfConsumed = Reverse(state->ConsumeScrollDelta(Reverse(Axis(left))));
@@ -87,6 +96,9 @@ namespace kiln::foundation {
             m_Flinging = true;
             state->m_InProgress.Set(true);
             state->m_Stop = [this] { StopFling(); };
+            // The stretch may take the velocity to relax (applyToFling's first half).
+            const Offset relaxed = overscroll ? overscroll->ConsumePreFling(velocity) : Offset{};
+            velocity = velocity - relaxed;
             const Offset pre = node ? node->DispatchPreFling(velocity) : Offset{};
             const Offset available = velocity - pre;
             float remaining = Axis(available);
@@ -102,7 +114,10 @@ namespace kiln::foundation {
                 });
                 remaining = r.reason == anim::EndReason::Interrupted ? a.Velocity()[0] : 0.0f;
             }
-            if (node) node->DispatchPostFling(available - Single(remaining), Single(remaining));
+            Offset left = Single(remaining);
+            if (node) left = left - node->DispatchPostFling(available - Single(remaining), Single(remaining));
+            // Whatever is left hits the edge (applyToFling's second half; also releases a pull).
+            if (overscroll) overscroll->AbsorbPostFling(left);
             m_Flinging = false;
             state->m_Stop = nullptr;
             state->m_InProgress.Set(false);
@@ -227,6 +242,7 @@ namespace kiln::foundation {
         logic->state = &state;
         logic->orientation = o;
         logic->reverse = opt.reverseDirection;
+        logic->overscroll = opt.overscroll;
         m = m.With<NestedNode>(NestedParams{ logic });
         if (!opt.enabled) return m;
         m = PointerInput(std::move(m), rt::Keys(reinterpret_cast<std::uintptr_t>(&state), int(o)), [logic](PointerInputScope& s) {
@@ -248,7 +264,10 @@ namespace kiln::foundation {
             ScrollableOptions opt;
             opt.enabled = enabled;
             opt.reverseDirection = !reverseScrolling;
+            // rememberOverscrollEffect(): Android's default is the stretch.
+            opt.overscroll = RememberOverscrollEffect();
             m = ClipToBounds(std::move(m));
+            m = Overscroll(std::move(m), opt.overscroll);
             m = Scrollable(std::move(m), state, vertical ? Orientation::Vertical : Orientation::Horizontal, opt);
             return m.With<ScrollLayoutNode>(ScrollLayoutParams{ &state, vertical, reverseScrolling });
         }

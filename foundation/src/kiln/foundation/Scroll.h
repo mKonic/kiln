@@ -1,5 +1,7 @@
 #pragma once
 
+#include <memory>
+
 // Scrolling (spec 05 §Scrollable, §Scroll): ScrollableState, the Scrollable modifier (drag ->
 // nested pre-scroll -> self -> nested post-scroll; fling with the platform spline; a press
 // catches a running fling; mouse wheel), and verticalScroll/horizontalScroll.
@@ -53,9 +55,11 @@ namespace kiln::foundation {
         float m_Accumulator = 0;
     };
 
+    class OverscrollEffect;
     struct ScrollableOptions {
         bool enabled = true;
         bool reverseDirection = false;   // already resolved (ScrollableDefaults.reverseDirection)
+        std::shared_ptr<OverscrollEffect> overscroll;   // null: no overscroll
     };
     Modifier Scrollable(Modifier m, ScrollableState& state, Orientation orientation, ScrollableOptions options = {});
 

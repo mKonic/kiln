@@ -1,4 +1,5 @@
 #include "kiln/foundation/Lazy.h"
+#include "kiln/foundation/Overscroll.h"
 
 #include <cmath>
 
@@ -271,7 +272,9 @@ namespace kiln::foundation {
             ScrollableOptions so;
             so.enabled = options.userScrollEnabled;
             so.reverseDirection = true;
-            Modifier m = Scrollable(ClipToBounds(modifier), state, vertical ? Orientation::Vertical : Orientation::Horizontal, so);
+            so.overscroll = RememberOverscrollEffect(key);
+            Modifier m = Scrollable(Overscroll(ClipToBounds(modifier), so.overscroll), state,
+                                    vertical ? Orientation::Vertical : Orientation::Horizontal, so);
             auto c = core;
             comp.Node<LayoutNode>([] { return std::make_unique<LayoutNode>(); },
                                   [&](LayoutNode& n) {

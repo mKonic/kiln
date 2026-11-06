@@ -63,7 +63,7 @@ namespace kiln::ui {
         // with `alpha`, clipped to `bounds` (local). Inherited alpha applies at compositing.
         // With `clipPath` (local), the layer is masked to it (anti-aliased clip by path).
         void BeginLayer(Rect bounds, float alpha, const gfx::Path* clipPath = nullptr);
-        void EndLayer();
+        void EndLayer(float stretchX = 0, float stretchY = 0);   // with a stretch overscroll
         void Save() { m_Stack.push_back(m_State); }
         void Restore();
         void SetSize(Size s) { m_Size = s; }

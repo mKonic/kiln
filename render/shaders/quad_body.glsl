@@ -10,6 +10,8 @@ layout(location = 7) flat in vec4 vPaint;
 layout(location = 8) flat in vec4 vPaint2;
 layout(location = 9) flat in vec4 vClipInv;
 layout(location = 10) flat in vec2 vClipInv2;
+layout(location = 11) flat in vec2 vUvMin;
+layout(location = 12) flat in vec2 vUvMax;
 
 layout(set = 0, binding = 0) uniform sampler2D uAtlas;
 layout(set = 0, binding = 1) uniform sampler2D uRamp;
@@ -152,8 +154,43 @@ vec4 applyFilter(vec4 c) {
 vec4 applyFilter(vec4 c) { return c; }
 #endif
 
+// --- stretch overscroll (HWUI StretchEffect.cpp, uInterpolationStrength 0.7) ----------------
+
+float stretchAxis(float inPos, float overscroll, float dim) {
+    float distStretched = dim / (1.0 + abs(overscroll));
+    float invDist = 1.0 / dim;
+    float diff = distStretched - dim;
+    if (overscroll > 0.0) {
+        if (inPos <= dim) {
+            float offsetPos = dim - inPos;
+            float posVar = mix(1.0, offsetPos * invDist, 0.7);
+            return distStretched - (offsetPos / (1.0 + overscroll * posVar));
+        }
+        return diff + inPos;
+    } else if (overscroll < 0.0) {
+        float affected = dim - dim;   // viewportDimension - uStretchAffectedDist = 0
+        if (inPos >= affected) {
+            float offsetPos = inPos - affected;
+            float posVar = mix(1.0, offsetPos * invDist, 0.7);
+            return dim - (distStretched - (offsetPos / (1.0 + (-overscroll) * posVar)));
+        }
+        return -diff + inPos;
+    }
+    return inPos;
+}
+
 void main() {
     int mode = int(vParams.y + 0.5);
+    if (mode == 3) {            // a layer seen through the stretch overscroll
+        vec2 size = vPaint.zw;
+        vec2 uvMin = vec2(0.0);
+        vec2 local = (vLocal + vHalf);   // pixels within the layer rect
+        vec2 src = vec2(stretchAxis(local.x, vPaint.x, size.x), stretchAxis(local.y, vPaint.y, size.y));
+        vec2 uvSize = vUvMax - vUvMin;
+        outColor = texture(uAtlas, vUvMin + clamp(src / size, 0.0, 1.0) * uvSize) * vColor.a;
+        outColor *= clipCoverage();
+        return;
+    }
     // Skia order: source colour (paint or image texel times alpha), colour filter, coverage.
     if (mode == 0) {            // solid rounded rect, analytic coverage
         float d = roundedRectSdf(vLocal, vHalf, vParams.x);

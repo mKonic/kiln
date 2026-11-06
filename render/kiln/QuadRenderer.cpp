@@ -167,6 +167,15 @@ namespace kiln {
                { 0, float(Mode::TintedCoverage), -1, 0 }, {}, {}, {}, {}, {}, {}, {}, {} }, &page, nullptr, true);
     }
 
+    void QuadRenderer::DrawStretched(const RectF& r, const RectF& uv, const AtlasPage& page, float a, float sx, float sy) {
+        Instance in{ { r.x, r.y, r.w, r.h }, { uv.x, uv.y, uv.x + uv.w, uv.y + uv.h }, { a, a, a, a },
+                     { 0, float(Mode::Stretch), -1, 0 }, {}, {}, {}, {}, {}, {}, {}, {} };
+        Push(in, &page, nullptr);
+        // Stretch parameters ride in the paint slots (Push zeroes them for a null paint).
+        Instance& last = Current().instances.back();
+        last.paint[0] = sx; last.paint[1] = sy; last.paint[2] = r.w; last.paint[3] = r.h;
+    }
+
     void QuadRenderer::BeginLayer(int x, int y, int w, int h) {
         // Pooled targets come in 64 px steps so animated sizes reuse them.
         const std::uint32_t tw = std::uint32_t((std::max(w, 1) + 63) / 64 * 64), th = std::uint32_t((std::max(h, 1) + 63) / 64 * 64);

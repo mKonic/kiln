@@ -300,7 +300,7 @@ namespace kiln::ui {
         ClipRect(bounds);
     }
 
-    void DrawScope::EndLayer() {
+    void DrawScope::EndLayer(float stretchX, float stretchY) {
         if (m_Layers.empty()) return;
         Layer l = m_Layers.back();
         m_Layers.pop_back();
@@ -325,8 +325,11 @@ namespace kiln::ui {
         const float a = l.alpha;
         const float u = l.device.Width() / float(r.page->Width()), v = l.device.Height() / float(r.page->Height());
         m_Target.quads->SetTransform({});
-        m_Target.quads->DrawAtlas({ l.device.left, l.device.top, l.device.Width(), l.device.Height() }, { 0, 0, u, v }, *r.page,
-                                  { a, a, a, a }, QuadRenderer::Mode::Color);
+        if (stretchX != 0 || stretchY != 0)
+            m_Target.quads->DrawStretched({ l.device.left, l.device.top, l.device.Width(), l.device.Height() }, { 0, 0, u, v }, *r.page, a, stretchX, stretchY);
+        else
+            m_Target.quads->DrawAtlas({ l.device.left, l.device.top, l.device.Width(), l.device.Height() }, { 0, 0, u, v }, *r.page,
+                                      { a, a, a, a }, QuadRenderer::Mode::Color);
     }
 
 }

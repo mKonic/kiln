@@ -27,6 +27,8 @@ layout(location = 7) flat out vec4 vPaint;
 layout(location = 8) flat out vec4 vPaint2;
 layout(location = 9) flat out vec4 vClipInv;
 layout(location = 10) flat out vec2 vClipInv2;
+layout(location = 11) flat out vec2 vUvMin;
+layout(location = 12) flat out vec2 vUvMax;
 
 void main() {
     vec2 corner = vec2(gl_VertexIndex & 1, (gl_VertexIndex >> 1) & 1);
@@ -46,6 +48,8 @@ void main() {
     vPaint2 = iPaint2;
     vClipInv = iClipInv;
     vClipInv2 = iClipInv2.xy;
+    vUvMin = iUv.xy;
+    vUvMax = iUv.zw;
     vec2 device = m * pos + iXform2.xy;
     gl_Position = vec4((device - pc.origin) / pc.viewport * 2.0 - 1.0, 0.0, 1.0);
 }
