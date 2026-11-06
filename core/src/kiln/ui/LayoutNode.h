@@ -12,6 +12,7 @@
 #include "kiln/ui/Pointer.h"
 #include "kiln/ui/Focus.h"
 #include "kiln/ui/TextInput.h"
+#include "kiln/ui/Insets.h"
 
 #include <map>
 
@@ -55,6 +56,11 @@ namespace kiln::ui {
         bool IsPlaced() const { return m_Placed; }
         Offset PositionInRoot() const;
         const ParentData& GetParentData() const { return m_ParentData; }
+        std::vector<const ModifierNode*> ModifierNodes() const {
+            std::vector<const ModifierNode*> out;
+            for (auto& n : m_Nodes) out.push_back(n.get());
+            return out;
+        }
 
         void RequestRemeasure();
         void RequestRelayout();
@@ -160,6 +166,8 @@ namespace kiln::ui {
         // The field's state changed outside the IME (programmatic edit, key, gesture).
         void NotifyTextInputChanged(TextInputSession& session, bool contentChanged);
         TextInputSession* ActiveTextInput() const { return m_Input; }
+
+        WindowInsetsHolder& Insets() { return m_Insets; }
         const ViewConfiguration& Config() const { return m_Config; }
         bool NeedsMeasureOrLayout() const { return !m_MeasureDirty.empty() || !m_LayoutDirty.empty(); }
 
@@ -213,6 +221,7 @@ namespace kiln::ui {
         std::vector<int> m_KeysDown;
         TextInputHost m_InputHost;
         TextInputSession* m_Input = nullptr;
+        WindowInsetsHolder m_Insets;
     };
 
 }
