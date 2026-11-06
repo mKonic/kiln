@@ -720,7 +720,11 @@ namespace kiln::foundation {
             // is composited through the perspective matrix (it is planar, so this is the same image).
             void Draw3D(ContentDrawScope& s, Size size) {
                 s.Save();
-                s.BeginLayer({ 0, 0, size.width, size.height }, params.alpha, nullptr, params.blendMode, Filter());
+                // Without a clip, content overflowing the bounds is drawn too (a RenderNode projects
+                // its whole display list): the layer then covers everything visible.
+                constexpr float kAll = 1e6f;
+                const Rect captured = params.clip ? Rect{ 0, 0, size.width, size.height } : Rect{ -kAll, -kAll, kAll, kAll };
+                s.BeginLayer(captured, params.alpha, nullptr, params.blendMode, Filter());
                 std::optional<gfx::Path> clipPath;
                 if (params.clip) {
                     if (params.clipShape) {

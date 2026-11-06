@@ -169,6 +169,15 @@ namespace {
                     BasicText("rotationY 50", {}, { 16, kOnPrimary });
                 });
             });
+            // An unclipped tilt: the child hanging out of its parent turns with it.
+            Row(Padding(Modifier{}, 16_dp, 8_dp), Arrangement::Start(), AlignmentV::CenterVertically(), [] {
+                GraphicsLayerParams tilt;
+                tilt.rotationY = -40;
+                Box(Background(GraphicsLayer(SizeMod(Modifier{}, 80_dp, 60_dp), tilt), kPrimaryContainer), Alignment::TopStart(), false, [] {
+                    Box(Background(SizeMod(OffsetMod(Modifier{}, 60_dp, 15_dp), 100_dp, 30_dp), kPrimary, CornerShape::Pill()),
+                        Alignment::Center(), false, [] { BasicText("overflow", {}, { 12, kOnPrimary }); });
+                });
+            });
             // Group alpha: overlapping circles fade as one image (offscreen layer).
             Row(Padding(Modifier{}, 16_dp, 0_dp), Arrangement::SpacedBy(16_dp), AlignmentV::CenterVertically(), [&] {
                 Box(Alpha(SizeMod(Modifier{}, 80_dp, 48_dp), 0.5f), Alignment::TopStart(), false, [&] {
