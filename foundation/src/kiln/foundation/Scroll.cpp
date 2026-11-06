@@ -57,6 +57,7 @@ namespace kiln::foundation {
         NestedScrollNode* node = nullptr;
         Density density;
         float friction = 0.015f;
+        FlingBehavior flingBehavior;
 
         float Axis(Offset o) const { return orientation == Orientation::Vertical ? o.y : o.x; }
         Offset Single(float v) const { return orientation == Orientation::Vertical ? Offset{ 0, v } : Offset{ v, 0 }; }
@@ -111,7 +112,13 @@ namespace kiln::foundation {
             const Offset pre = node ? node->DispatchPreFling(velocity) : Offset{};
             const Offset available = velocity - pre;
             float remaining = Axis(available);
-            if (std::abs(remaining) > 1) {   // DefaultFlingBehavior: below 1 px/s the spline gives NaNs
+            if (flingBehavior) {
+                // Custom (snapping) flings run even at zero velocity: a release settles.
+                std::function<float(float)> scrollBy = [this](float d) {
+                    return Reverse(Axis(Dispatch(Single(Reverse(d)), NestedScrollSource::SideEffect)));
+                };
+                remaining = Reverse(co_await flingBehavior(std::move(scrollBy), Reverse(remaining)));
+            } else if (std::abs(remaining) > 1) {   // DefaultFlingBehavior: below 1 px/s the spline gives NaNs
                 anim::Animatable a(0.0f);
                 float last = 0;
                 auto decay = std::make_shared<anim::SplineDecay>(density.density, friction);
@@ -254,6 +261,7 @@ namespace kiln::foundation {
         logic->orientation = o;
         logic->reverse = opt.reverseDirection;
         logic->overscroll = opt.overscroll;
+        logic->flingBehavior = opt.flingBehavior;
         m = m.With<NestedNode>(NestedParams{ logic });
         if (!opt.enabled) return m;
         m = PointerInput(std::move(m), rt::Keys(reinterpret_cast<std::uintptr_t>(&state), int(o)), [logic](PointerInputScope& s) {

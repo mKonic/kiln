@@ -88,10 +88,16 @@ namespace kiln::foundation {
     };
 
     class OverscrollEffect;
+    // FlingBehavior.performFling: `scrollBy` takes and returns scroll-direction pixels (through
+    // nested scroll); velocity is in the scroll direction; returns the velocity left over.
+    // Implement it with a free coroutine function (captures of a coroutine lambda dangle).
+    using FlingBehavior = std::function<rt::Task<float>(std::function<float(float)> scrollBy, float velocity)>;
+
     struct ScrollableOptions {
         bool enabled = true;
         bool reverseDirection = false;   // already resolved (ScrollableDefaults.reverseDirection)
         std::shared_ptr<OverscrollEffect> overscroll;   // null: no overscroll
+        FlingBehavior flingBehavior;                     // null: the platform spline decay
     };
     Modifier Scrollable(Modifier m, ScrollableState& state, Orientation orientation, ScrollableOptions options = {});
 

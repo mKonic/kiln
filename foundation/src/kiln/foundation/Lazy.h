@@ -77,6 +77,8 @@ namespace kiln::foundation {
 
     protected:
         friend struct LazyCore;
+        // After each measure (the pager derives its current page here).
+        virtual void OnMeasured() {}
         struct Line { int first, last, offset, size; };   // visible lines, items first..last
         int LastVisibleIndex() const { return m_Lines.empty() ? 0 : m_Lines.back().last; }
         int DistanceTo(int index, int targetOffset = 0) const;
@@ -93,6 +95,10 @@ namespace kiln::foundation {
         std::vector<Line> m_Lines;
         int m_SlotsPerLine = 1, m_Spacing = 0, m_TotalItems = 0;
         float m_Density = 1;
+        // Pager: the fixed page size, and a scroll position given as a fraction of a page that
+        // the next measure turns into pixels.
+        int m_PageSize = 0;
+        std::optional<float> m_PendingFraction;
     };
 
     class LazyListState final : public LazyStateBase {
@@ -180,6 +186,20 @@ namespace kiln::foundation {
         Arrangement crossAxisArrangement = Arrangement::Start();
         bool userScrollEnabled = true;
     };
+
+    // Internal: the pager's use of the lazy core (Pager.cpp).
+    struct LazyPagerConfig {
+        PaddingValues contentPadding;
+        Dp pageSpacing{ 0 };
+        std::function<int(const Density&, int available, int spacing)> pageSize;   // PageSize.calculateMainAxisPageSize
+        AlignmentH horizontalAlignment = AlignmentH::CenterHorizontally();
+        AlignmentV verticalAlignment = AlignmentV::CenterVertically();
+        bool userScrollEnabled = true;
+        FlingBehavior flingBehavior;
+        std::function<Modifier(Modifier)> extraModifier;   // gesture observers
+    };
+    void LazyPagerLayout(bool vertical, const Modifier& modifier, LazyStateBase& state, int pageCount,
+                         std::function<void(int page)> content, std::function<rt::Key(int)> key, LazyPagerConfig config, rt::Key compositionKey);
 
     void LazyColumn(const Modifier& modifier, LazyListState& state, std::function<void(LazyListScope&)> content,
                     LazyListOptions options = {}, rt::Key key = {});

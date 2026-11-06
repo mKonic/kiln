@@ -92,6 +92,8 @@ namespace kiln::foundation {
         AlignmentV verticalAlignment = AlignmentV::Top();
         Arrangement crossArrangement = Arrangement::Start();    // grid slots
         GridCells cells;
+        bool pager = false;
+        std::function<int(const Density&, int, int)> pageSize;
         std::vector<LazyInterval> intervals;
         std::uint64_t version = 0;
         std::map<std::uint64_t, Slot> slots;     // by item key value
@@ -226,10 +228,12 @@ namespace kiln::foundation {
         if (!m_Node) return 0;
         if (delta < 0 && !CanScrollBackward()) return 0;
         if (delta > 0 && !CanScrollForward()) return 0;
+        // The measure consumes the carried sub-pixel remainder too; report only this delta's part.
+        const float carried = m_PendingScroll;
         m_PendingScroll += delta;
-        m_LastConsumed = 0;
+        m_LastConsumed = carried;
         m_Node->ForceRemeasure();
-        return m_LastConsumed;
+        return m_LastConsumed - carried;
     }
 
     void LazyStateBase::ScrollToItem(int index, int offset) {
@@ -372,6 +376,9 @@ namespace kiln::foundation {
         }
         slotsPerLine = int(slotSizes.size());
         UpdateLines();
+        // Pager pages: a fixed main-axis size (PageSize.Fill: the viewport minus padding).
+        const int pagePx = pager && pageSize ? std::max(0, pageSize(s, std::max(0, mainMax - before - after), spacing)) : 0;
+        st.m_PageSize = pagePx;
         const int crossSpacingPx = grid ? s.RoundToPx(crossArrangement.Spacing()) : 0;
 
         // One measured line: its cells and main-axis size.
@@ -394,6 +401,9 @@ namespace kiln::foundation {
                     w += crossSpacingPx * (span - 1);
                     ic = vertical ? Constraints{ w, w, 0, Constraints::Infinity } : Constraints{ 0, Constraints::Infinity, w, w };
                     crossPos = slotPositions[std::size_t(slot)];
+                } else if (pager) {
+                    ic = vertical ? Constraints{ 0, crossAvailable, pagePx, pagePx }
+                                  : Constraints{ pagePx, pagePx, 0, crossAvailable };
                 } else {
                     ic = vertical ? Constraints{ 0, crossAvailable, 0, Constraints::Infinity }
                                   : Constraints{ 0, Constraints::Infinity, 0, crossAvailable };
@@ -426,6 +436,14 @@ namespace kiln::foundation {
             const int found = IndexOfKey(st.m_FirstKey, index);
             if (found >= 0) index = found;
         }
+        if (pager && st.m_PendingFraction) {
+            // scrollToPage(page, fraction): fractions before the page start belong to the previous page.
+            float f = *st.m_PendingFraction;
+            st.m_PendingFraction.reset();
+            if (f < 0 && index > 0) { --index; f += 1; }
+            st.m_Index.Set(index);
+            st.m_Offset.Set(std::max(0, int(std::lround(f * float(pagePx + spacing)))));
+        }
         if (count == 0) {
             for (auto& [k, slot] : slots) DisposeSlot(k, slot);
             slots.clear();
@@ -434,15 +452,20 @@ namespace kiln::foundation {
             st.m_Lines.clear();
             st.m_TotalItems = 0;
             publishEmpty();
+            st.OnMeasured();
             return s.Layout(c.minWidth, c.minHeight);
         }
         index = std::clamp(index, 0, count - 1);
         int line = LineOf(index);
         const int lineCount = LineCount();
+        // Whole pixels are applied; the fraction waits for the next scroll (scrollToBeConsumed),
+        // so many small deltas add up exactly.
         const float delta = st.m_PendingScroll;
+        const int wholeDelta = RoundJava(delta);
+        float remainder = delta - float(wholeDelta);
         st.m_PendingScroll = 0;
         // pos: where the first line's leading edge sits relative to the content start.
-        int pos = RoundJava(-float(st.m_Offset.Peek()) - delta);
+        int pos = -st.m_Offset.Peek() - wholeDelta;
 
         std::vector<MLine> lines;
         // Scrolled backward past the first line: measure earlier lines.
@@ -451,7 +474,7 @@ namespace kiln::foundation {
             pos -= measureLine(line).size + spacing;
         }
         float consumed = delta;
-        if (pos > 0) { consumed += float(pos); pos = 0; }   // reached the very start
+        if (pos > 0) { consumed += float(pos) - remainder; remainder = 0; pos = 0; }   // reached the very start
 
         // Skip lines fully above the viewport, then fill forward.
         const int viewport = mainMax - before - after;
@@ -471,8 +494,8 @@ namespace kiln::foundation {
         if (end < viewport && lines.back().line == lineCount - 1) {
             int gap = viewport - end;
             while (gap > 0) {
-                if (pos + gap <= 0) { pos += gap; consumed -= float(gap); gap = 0; break; }
-                gap -= -pos; consumed -= float(-pos); pos = 0;
+                if (pos + gap <= 0) { pos += gap; consumed -= float(gap) + remainder; remainder = 0; gap = 0; break; }
+                gap -= -pos; consumed -= float(-pos) + remainder; remainder = 0; pos = 0;
                 if (lines.front().line == 0) break;
                 lines.insert(lines.begin(), measureLine(lines.front().line - 1));
                 pos -= lines.front().size + spacing;
@@ -534,12 +557,14 @@ namespace kiln::foundation {
         st.m_FirstKey = KeyOf(firstIndex);
         st.m_HasFirstKey = true;
         st.m_LastConsumed = consumed;
+        st.m_PendingScroll = remainder;
         st.m_CanForward = !(lastLine == lineCount - 1 && end <= viewport);
         st.m_Density = s.density;
         st.m_SlotsPerLine = slotsPerLine;
         st.m_Spacing = spacing;
         st.m_TotalItems = count;
         (void)lastIndex;
+        st.OnMeasured();
 
         int cross = 0;
         if (grid) {
@@ -630,7 +655,8 @@ namespace kiln::foundation {
 
         // The composable part shared by lists and grids; `configure` fills the core.
         void LazyLayout(bool vertical, const Modifier& modifier, LazyStateBase& state, bool userScrollEnabled, rt::Key key,
-                        const std::function<void(LazyCore&)>& configure) {
+                        const std::function<void(LazyCore&)>& configure, FlingBehavior fling = {},
+                        const std::function<Modifier(Modifier)>& extra = {}) {
             auto& comp = *rt::Composition::Current();
             auto& core = comp.Remember<std::shared_ptr<LazyCore>>([] { return std::make_shared<LazyCore>(); }, {}, key);
             core->vertical = vertical;
@@ -645,8 +671,10 @@ namespace kiln::foundation {
             so.enabled = userScrollEnabled;
             so.reverseDirection = true;
             so.overscroll = RememberOverscrollEffect(key);
+            so.flingBehavior = std::move(fling);
             Modifier m = Scrollable(Overscroll(ClipToBounds(modifier), so.overscroll), state,
                                     vertical ? Orientation::Vertical : Orientation::Horizontal, so);
+            if (extra) m = extra(std::move(m));
             auto c = core;
             comp.Node<LayoutNode>([] { return std::make_unique<LayoutNode>(); },
                                   [&](LayoutNode& n) {
@@ -694,6 +722,23 @@ namespace kiln::foundation {
                 core.intervals = std::move(scope.intervals);
             });
         }
+    }
+
+    void LazyPagerLayout(bool vertical, const Modifier& modifier, LazyStateBase& state, int pageCount,
+                         std::function<void(int)> content, std::function<rt::Key(int)> key, LazyPagerConfig config, rt::Key compositionKey) {
+        LazyLayout(vertical, modifier, state, config.userScrollEnabled, compositionKey, [&](LazyCore& core) {
+            core.grid = false;
+            core.pager = true;
+            core.listState = nullptr;
+            core.gridState = nullptr;
+            core.pageSize = config.pageSize;
+            core.contentPadding = config.contentPadding;
+            core.mainSpacing = config.pageSpacing;
+            core.horizontalAlignment = config.horizontalAlignment;
+            core.verticalAlignment = config.verticalAlignment;
+            core.intervals.clear();
+            core.intervals.push_back({ pageCount, std::move(content), std::move(key) });
+        }, std::move(config.flingBehavior), config.extraModifier);
     }
 
     void LazyColumn(const Modifier& m, LazyListState& s, std::function<void(LazyListScope&)> content, LazyListOptions o, rt::Key key) {

@@ -13,6 +13,7 @@
 #include <kiln/foundation/AnimatedVisibility.h>
 #include <kiln/foundation/AnchoredDraggable.h>
 #include <kiln/foundation/Lazy.h>
+#include <kiln/foundation/Pager.h>
 #include <kiln/foundation/Image.h>
 #include <kiln/foundation/Shapes.h>
 #include <kiln/graphics/shapes/Shapes.h>
@@ -197,6 +198,23 @@ namespace {
                         });
                     }, {}, [](const GridItemSpanScope& sc, int i) { return i % 5 == 0 ? sc.maxLineSpan : 1; });
                 }, go);
+            }
+            // A horizontal pager of cards with page dots.
+            {
+                auto& pager = c.RememberNew<PagerState>({}, {}, 0, 0.0f, [] { return 6; });
+                PagerOptions po;
+                po.contentPadding = { 16_dp, 0_dp, 16_dp, 0_dp };
+                po.pageSpacing = 8_dp;
+                HorizontalPager(Height(FillMax(Modifier{}, Axis::Horizontal), 140_dp), pager, [](int page) {
+                    const Color colors[] = { kPrimary, kTertiary, kPrimaryContainer, kVariant, Color(0xFFB3261Eu), Color(0xFF386A20u) };
+                    Box(Background(FillMax(Modifier{}, Axis::Both), colors[page % 6], CornerShape::Rounded(24_dp)), Alignment::Center(), false, [page] {
+                        BasicText("Page " + std::to_string(page + 1), {}, { 24, page == 2 ? kOnSurface : kOnPrimary });
+                    });
+                }, po);
+                Row(Padding(Modifier{}, 16_dp, 0_dp), Arrangement::SpacedBy(6_dp), AlignmentV::CenterVertically(), [&pager] {
+                    for (int i = 0; i < 6; ++i)
+                        Box(Background(SizeMod(Modifier{}, 8_dp, 8_dp), pager.CurrentPage() == i ? kPrimary : kPrimaryContainer, CornerShape::Pill()));
+                });
             }
             // Mixed text sizes sharing a baseline (alignByBaseline).
             Row(Padding(Modifier{}, 16_dp, 0_dp), Arrangement::SpacedBy(8_dp), AlignmentV::Top(), [&] {
