@@ -351,3 +351,113 @@ TEST(RequestScrollToItemKeepsAFlingRunning) {
     state.ScrollToItem(10);   // scrollToItem stops it
     CHECK(!state.IsScrollInProgress());
 }
+
+namespace {
+    struct NodeSink { std::map<int, LayoutNode*>* map; int key; bool operator==(const NodeSink&) const = default; };
+    struct NodeSinkNode final : ModifierNode {
+        NodeSink params;
+        explicit NodeSinkNode(NodeSink p) : params(p) {}
+        void OnParamsChanged() { (*params.map)[params.key] = Owner(); }
+        void OnAttach() override { (*params.map)[params.key] = Owner(); }
+        void OnDetach() override { params.map->erase(params.key); }
+    };
+    Modifier Sink(Modifier m, std::map<int, LayoutNode*>& map, int key) { return m.With<NodeSinkNode>(NodeSink{ &map, key }); }
+}
+
+TEST(AnimateItemMovesAndFadesItems) {
+    std::map<int, LayoutNode*> nodes;   // outlives the composition (nodes detach into it)
+    Harness h;
+    LazyListState state;
+    rt::State<std::vector<int>> data{ std::vector<int>{ 0, 1, 2, 3, 4 } };
+    h.Run([&] {
+        const auto& d = data.Get();
+        LazyColumn(FillMax(Modifier{}, Axis::Both), state, [&, d](LazyListScope& s) {
+            s.Items(int(d.size()), [&, d](int i) {
+                Box(Sink(AnimateItem(SizeMod(Modifier{}, Dp(100), Dp(20))), nodes, d[size_t(i)]));
+            }, [d](int i) { return rt::Key(d[size_t(i)] + 1); });
+        });
+    });
+    CHECK_EQ(nodes[0]->PositionInRoot().y, 0.0f);
+    // Move item 4 to the front: everything else shifts down 20, animated from where it was.
+    data.Set({ 4, 0, 1, 2, 3 });
+    h.Pump();
+    CHECK_EQ(nodes[0]->PositionInRoot().y, 0.0f);    // still drawn at its old place
+    CHECK_EQ(nodes[4]->PositionInRoot().y, 80.0f);
+    h.Frames(5);
+    const float mid = nodes[0]->PositionInRoot().y;
+    CHECK(mid > 0 && mid < 20);
+    h.Frames(80);
+    CHECK_EQ(nodes[0]->PositionInRoot().y, 20.0f);
+    CHECK_EQ(nodes[4]->PositionInRoot().y, 0.0f);
+    // Remove item 1: it stays (fading) where it was while the rest close the gap.
+    data.Set({ 4, 0, 2, 3 });
+    h.Pump();
+    CHECK(nodes.count(1) == 1);
+    CHECK_EQ(nodes[1]->PositionInRoot().y, 40.0f);
+    h.Frames(120);
+    CHECK(nodes.count(1) == 0);                       // gone once faded
+    CHECK_EQ(nodes[2]->PositionInRoot().y, 40.0f);
+    // Scrolling does not animate.
+    data.Set({ 4, 0, 2, 3, 5, 6, 7, 8, 9, 10 });
+    h.Pump();
+    h.Frames(80);
+    state.ConsumeScrollDelta(30);
+    h.Pump();
+    CHECK_EQ(nodes[3]->PositionInRoot().y, 60.0f - 30.0f);
+}
+
+TEST(AnimateItemSlidesItemsInAndOutAcrossTheEdges) {
+    std::map<int, LayoutNode*> nodes;
+    Harness h;
+    LazyListState state;
+    rt::State<bool> flipped{ false };
+    h.Run([&] {
+        const bool f = flipped.Get();
+        LazyColumn(FillMax(Modifier{}, Axis::Both), state, [&, f](LazyListScope& s) {
+            // A fixed first item keeps the scroll position put (it is the first visible key).
+            s.Item([] { Box(SizeMod(Modifier{}, Dp(100), Dp(20))); }, rt::Key(1000));
+            s.Items(20, [&, f](int i) {
+                const int id = f ? 19 - i : i;
+                Box(Sink(AnimateItem(SizeMod(Modifier{}, Dp(100), Dp(20))), nodes, id));
+            }, [f](int i) { return rt::Key((f ? 19 - i : i) + 1); });
+        });
+    });
+    flipped.Set(true);
+    h.Pump();
+    // Incoming (ids 19..16) start below the viewport, stacked in their old order (Compose's
+    // movingInFromEndBound sorts by previous index).
+    CHECK_EQ(nodes[16]->PositionInRoot().y, 100.0f);
+    CHECK_EQ(nodes[19]->PositionInRoot().y, 160.0f);
+    // Outgoing (ids 0..3) are still drawn where they were.
+    CHECK(nodes.count(0) == 1);
+    CHECK_EQ(nodes[0]->PositionInRoot().y, 20.0f);
+    h.Frames(5);
+    CHECK(nodes[19]->PositionInRoot().y < 160.0f);
+    CHECK(nodes[0]->PositionInRoot().y > 20.0f);
+    h.Frames(120);
+    CHECK_EQ(nodes[19]->PositionInRoot().y, 20.0f);
+    CHECK(nodes.count(0) == 0);   // slid out and dropped
+}
+
+TEST(AnimateItemSlidesOutUnderAStickyHeader) {
+    std::map<int, LayoutNode*> nodes;
+    Harness h;
+    LazyListState state;
+    rt::State<bool> flipped{ false };
+    h.Run([&] {
+        const bool f = flipped.Get();
+        LazyColumn(FillMax(Modifier{}, Axis::Both), state, [&, f](LazyListScope& s) {
+            s.StickyHeader([](int) { Box(SizeMod(Modifier{}, Dp(100), Dp(20))); }, rt::Key(1000));
+            s.Items(20, [&, f](int i) {
+                const int id = f ? 19 - i : i;
+                Box(Sink(AnimateItem(SizeMod(Modifier{}, Dp(100), Dp(20))), nodes, id));
+            }, [f](int i) { return rt::Key((f ? 19 - i : i) + 1); });
+        });
+    });
+    flipped.Set(true);
+    h.Pump();
+    CHECK(nodes.count(0) == 1);
+    if (nodes.count(0)) CHECK_EQ(nodes[0]->PositionInRoot().y, 20.0f);
+    h.Frames(5);
+    CHECK(nodes.count(0) == 1);
+}

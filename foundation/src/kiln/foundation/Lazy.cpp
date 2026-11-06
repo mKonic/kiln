@@ -1,11 +1,14 @@
 #include "kiln/foundation/Lazy.h"
 #include "kiln/foundation/Overscroll.h"
 #include "kiln/foundation/Semantics.h"
+#include "kiln/foundation/Draw.h"
 #include "kiln/runtime/Saveable.h"
 
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <set>
+#include <unordered_map>
 
 namespace kiln::foundation {
 
@@ -79,6 +82,83 @@ namespace kiln::foundation {
             std::uint64_t contentVersion = 0;
         };
         constexpr int kNone = std::numeric_limits<int>::min();
+
+        // LazyLayoutItemAnimation: one item's placement delta and fade, by key.
+        struct ItemAnim {
+            LazyItemAnimationSpecs specs;
+            bool has = false;                      // animateItem() is on this item
+            bool targetSet = false;
+            IntOffset target;                      // where it was last placed (layout coordinates)
+            rt::State<IntOffset> delta{ IntOffset{} };   // placementDelta: drawn offset from the target
+            anim::Animatable placement{ anim::Vec{ 0, 0, 0, 0 }, 2 };
+            anim::Vec placementTarget{ 0, 0, 0, 0 };
+            bool placing = false;
+            bool movingAway = false;   // still in the data, animating out past an edge
+            rt::State<float> alpha{ 1.0f };
+            anim::Animatable fade{ 1.0f };
+            bool appearing = false, disappearing = false, disappeared = false;
+            Constraints constraints;               // to re-place a disappearing item
+            int mainSize = 0;
+            rt::Job placementJob, fadeJob;
+
+            // animatePlacementDelta: stay where it was drawn, then spring to the new target with
+            // the velocity so far.
+            void AnimateDelta(IntOffset d) {
+                if (!specs.placement) return;
+                placementTarget[0] += float(d.x);
+                placementTarget[1] += float(d.y);
+                const anim::Vec v = placement.Value();
+                delta.Set({ int(std::lround(v[0] - placementTarget[0])), int(std::lround(v[1] - placementTarget[1])) });
+                placementJob = rt::Launch(rt::Dispatcher::Main(), RunPlacement());
+            }
+            rt::Task<> RunPlacement() {
+                placing = true;
+                co_await placement.AnimateTo(placementTarget, specs.placement, std::nullopt, [this](const anim::Vec& v) {
+                    delta.Set({ int(std::lround(v[0] - placementTarget[0])), int(std::lround(v[1] - placementTarget[1])) });
+                });
+                if (placement.Value()[0] == placementTarget[0] && placement.Value()[1] == placementTarget[1]) {
+                    placing = false;
+                    if (movingAway && onDisappeared) onDisappeared();   // the layout drops it now
+                }
+            }
+            void FadeIn() {
+                if (!specs.fadeIn) return;
+                appearing = true;
+                fade.SnapTo(0.0f);
+                alpha.Set(0.0f);
+                fadeJob = rt::Launch(rt::Dispatcher::Main(), RunFade(1.0f, specs.fadeIn));
+            }
+            void FadeOut() {
+                disappearing = true;
+                fadeJob = rt::Launch(rt::Dispatcher::Main(), RunFade(0.0f, specs.fadeOut));
+            }
+            rt::Task<> RunFade(float to, anim::SpecPtr spec) {
+                co_await fade.AnimateTo(to, std::move(spec));
+                alpha.Set(fade.Float());
+                if (to == 0 && fade.Float() == 0) { disappeared = true; if (onDisappeared) onDisappeared(); }
+                if (to == 1) appearing = false;
+            }
+            std::function<void()> onDisappeared;   // the layout drops the item then
+            bool Busy() const { return placing || appearing || (disappearing && !disappeared); }
+        };
+
+        rt::Local<ItemAnim*> LocalItemAnim{ nullptr };
+    }
+
+    Modifier AnimateItem(Modifier m, LazyItemAnimationSpecs specs) {
+        ItemAnim* a = rt::Composition::Current() ? rt::Composition::Current()->Read(LocalItemAnim) : nullptr;
+        if (!a) return m;   // not in a lazy item
+        a->specs = std::move(specs);
+        a->has = true;
+        // The fade, read at draw time (graphicsLayer { alpha }).
+        return DrawWithContent(std::move(m), [a](ContentDrawScope& d) {
+            const float alpha = a->fade.Float();
+            if (alpha >= 1) { d.DrawContent(); return; }
+            const Size sz = d.GetSize();
+            d.BeginLayer({ 0, 0, sz.width, sz.height }, alpha);
+            d.DrawContent();
+            d.EndLayer();
+        });
     }
 
     struct LazyCore {
@@ -110,6 +190,18 @@ namespace kiln::foundation {
         std::vector<int> lineStarts;
         std::uint64_t lineCacheVersion = ~0ull;
         int lineCacheSlots = -1;
+
+        // Item animations (LazyLayoutItemAnimator), by key; only items with animateItem().
+        std::map<std::uint64_t, std::shared_ptr<ItemAnim>> anims;
+        std::unordered_map<std::uint64_t, int> keyIndex, prevKeyIndex;
+        std::uint64_t keyIndexVersion = ~0ull;
+        bool hadLayout = false;
+        int prevFirstIndex = 0;
+        std::shared_ptr<ItemAnim> AnimFor(std::uint64_t key) {
+            auto& a = anims[key];
+            if (!a) a = std::make_shared<ItemAnim>();
+            return a;
+        }
 
         static std::string SaveKey(std::uint64_t keyValue) { return std::to_string(keyValue); }
         void DisposeSlot(std::uint64_t keyValue, Slot& slot) {
@@ -213,9 +305,13 @@ namespace kiln::foundation {
                 slot.index = index;
                 slot.contentVersion = version;
                 rt::SaveableStateRegistry* reg = slot.registry.get();
-                slot.composition->SetContent([this, index, reg] {
-                    if (!reg) { Content(index); return; }
-                    rt::Composition::Current()->Provide(rt::LocalSaveableStateRegistry, reg, [this, index] { Content(index); });
+                ItemAnim* anim = AnimFor(key.value).get();
+                slot.composition->SetContent([this, index, reg, anim] {
+                    auto* c = rt::Composition::Current();
+                    c->Provide(LocalItemAnim, anim, [this, index, reg, c] {
+                        if (!reg) { Content(index); return; }
+                        c->Provide(rt::LocalSaveableStateRegistry, reg, [this, index] { Content(index); });
+                    });
                 });
             }
             slot.composition->Recompose();
@@ -396,7 +492,7 @@ namespace kiln::foundation {
         const int crossSpacingPx = grid ? s.RoundToPx(crossArrangement.Spacing()) : 0;
 
         // One measured line: its cells and main-axis size.
-        struct Cell { int index; Slot* slot; Placeable* p; int crossPos; int column; };
+        struct Cell { int index; Slot* slot; Placeable* p; int crossPos; int column; Constraints constraints; };
         struct MLine { int line, first, last; std::vector<Cell> cells; int size; };
         std::vector<LayoutNode*> active;
         auto measureLine = [&](int line) -> MLine {
@@ -423,7 +519,7 @@ namespace kiln::foundation {
                                   : Constraints{ 0, Constraints::Infinity, 0, crossAvailable };
                 }
                 Placeable& p = sl.holder->AsMeasurable().Measure(ic);
-                ml.cells.push_back({ i, &sl, &p, crossPos, slot });
+                ml.cells.push_back({ i, &sl, &p, crossPos, slot, ic });
                 ml.size = std::max(ml.size, vertical ? p.Height() : p.Width());
                 slot += span;
             }
@@ -555,14 +651,53 @@ namespace kiln::foundation {
             stickingOffset = off;
         }
 
+        // Item animations: which keys are in the data now and before, and removed items still
+        // fading out (their slots stay, frozen, where they were).
+        const bool animating = std::any_of(anims.begin(), anims.end(), [](const auto& e) { return e.second->has; });
+        std::set<std::uint64_t> placedKeys;
+        std::vector<std::pair<std::uint64_t, std::shared_ptr<ItemAnim>>> disappearing;
+        struct Away { std::uint64_t key; std::shared_ptr<ItemAnim> anim; int index; };
+        std::vector<Away> movingAway;
+        if (animating) {
+            if (keyIndexVersion != version) {
+                prevKeyIndex = std::move(keyIndex);
+                keyIndex.clear();
+                for (int i = 0; i < count; ++i) keyIndex[KeyOf(i).value] = i;
+                keyIndexVersion = version;
+            } else {
+                prevKeyIndex = keyIndex;
+            }
+            for (auto& l : lines) for (auto& cell : l.cells) placedKeys.insert(KeyOf(cell.index).value);
+            if (sticking) for (auto& cell : sticking->cells) placedKeys.insert(KeyOf(cell.index).value);
+            for (auto& [k, a] : anims)
+                if (a->has && a->targetSet && !placedKeys.count(k) && !keyIndex.count(k) && a->specs.fadeOut && !a->disappeared && slots.count(k))
+                    disappearing.push_back({ k, a });
+            // Moved out of view but still in the data: keep it (recomposed at its new index)
+            // while it slides to the edge (movingAwayToStart / ToEnd).
+            for (auto& [k, a] : anims) {
+                if (!a->has || !a->targetSet || placedKeys.count(k) || !slots.count(k)) continue;
+                auto ni = keyIndex.find(k);
+                if (ni == keyIndex.end()) continue;
+                auto pi = prevKeyIndex.find(k);
+                if (!a->placing && pi != prevKeyIndex.end() && pi->second == ni->second) continue;
+                movingAway.push_back({ k, a, ni->second });
+            }
+        }
+
         // Dispose slots not in use (no reuse pool yet).
         std::vector<LayoutNode*> nowActive;
         std::vector<const Slot*> used;
         for (auto& l : lines) for (auto& cell : l.cells) { nowActive.push_back(cell.slot->holder.get()); used.push_back(cell.slot); }
         if (sticking) for (auto& cell : sticking->cells) { nowActive.push_back(cell.slot->holder.get()); used.push_back(cell.slot); }
+        for (auto& [k, a] : disappearing) { Slot& sl = slots[k]; nowActive.push_back(sl.holder.get()); used.push_back(&sl); }
+        for (auto& m : movingAway) { Slot& sl = Compose(m.index, d); nowActive.push_back(sl.holder.get()); used.push_back(&sl); }
         self.SetChildrenDuringMeasure(nowActive);
         for (auto it = slots.begin(); it != slots.end();) {
             if (std::find(used.begin(), used.end(), &it->second) == used.end()) { DisposeSlot(it->first, it->second); it = slots.erase(it); }
+            else ++it;
+        }
+        for (auto it = anims.begin(); it != anims.end();) {
+            if (!slots.count(it->first) && !it->second->Busy()) it = anims.erase(it);
             else ++it;
         }
 
@@ -612,6 +747,132 @@ namespace kiln::foundation {
         }
         const int stickingScreen = !sticking ? 0 : reverse ? mainMax - (stickingOffset + before) - sticking->size : stickingOffset + before;
 
+        // LazyLayoutItemAnimator.onMeasured: scrolling moves old targets along; a changed target
+        // animates the difference; new items fade in; items that came from beyond the viewport
+        // slide in from that edge; removed ones fade out where they were.
+        const AlignmentH ha0 = horizontalAlignment;
+        const AlignmentV va0 = verticalAlignment;
+        auto layoutPos = [&](const Cell& cell, int mainScreen) {
+            const int cross = cell.crossPos >= 0 ? crossBefore + cell.crossPos
+                            : crossBefore + (vertical ? ha0.Align(cell.p->Width(), w - crossPad, s.Direction())
+                                                      : va0.Align(cell.p->Height(), h - crossPad));
+            return vertical ? IntOffset{ cross, mainScreen } : IntOffset{ mainScreen, cross };
+        };
+        std::vector<std::pair<Placeable*, std::shared_ptr<ItemAnim>>> fading;   // placed after the rest
+        struct MovingIn { ItemAnim* anim; IntOffset cur; int size; int lane; bool fromStart; int prevIndex; };
+        std::vector<MovingIn> movingIn;
+        if (animating) {
+            // Only the requested scroll moves old targets (not a pull-back after a data change).
+            const int consumedPx = RoundJava(consumed - remainder);
+            const int applied = wholeDelta >= 0 ? std::clamp(consumedPx, 0, wholeDelta) : std::clamp(consumedPx, wholeDelta, 0);
+            const int mainShift = reverse ? applied : -applied;
+            const IntOffset shift = vertical ? IntOffset{ 0, mainShift } : IntOffset{ mainShift, 0 };
+            auto step = [&](const Cell& cell, int mainScreen, int size) {
+                const std::uint64_t key = KeyOf(cell.index).value;
+                auto it = anims.find(key);
+                if (it == anims.end() || !it->second->has) return;
+                ItemAnim& a = *it->second;
+                const IntOffset cur = layoutPos(cell, mainScreen);
+                a.constraints = cell.constraints;
+                a.mainSize = size;
+                a.movingAway = false;
+                if (a.disappearing) {   // back in the data before it was gone
+                    a.disappearing = a.disappeared = false;
+                    a.fadeJob.Cancel();
+                    a.fade.SnapTo(1.0f);
+                    a.alpha.Set(1.0f);
+                }
+                if (!a.targetSet) {
+                    a.targetSet = true;
+                    a.target = cur;
+                    const auto prev = prevKeyIndex.find(key);
+                    if (hadLayout && prev == prevKeyIndex.end()) {
+                        a.FadeIn();
+                    } else if (hadLayout && prev->second != cell.index) {
+                        movingIn.push_back({ &a, cur, size, cell.column, prev->second < prevFirstIndex, prev->second });
+                    }
+                } else {
+                    a.target = { a.target.x + shift.x, a.target.y + shift.y };
+                    if (a.target != cur) a.AnimateDelta({ cur.x - a.target.x, cur.y - a.target.y });
+                    a.target = cur;
+                }
+            };
+            for (std::size_t i = 0; i < lines.size(); ++i)
+                for (const auto& cell : lines[i].cells) step(cell, screen[i], lines[i].size);
+            // Items that came from beyond an edge start just past it, stacked in their old order
+            // (movingInFromStartBound / EndBound), so they arrive as a block.
+            const int startBound = reverse ? mainMax : 0, endBound = reverse ? 0 : mainMax;
+            const int dirSign = reverse ? -1 : 1;   // the screen direction of the content
+            auto slideIn = [&](bool fromStart) {
+                std::vector<MovingIn*> list;
+                for (auto& m : movingIn) if (m.fromStart == fromStart) list.push_back(&m);
+                std::sort(list.begin(), list.end(), [&](MovingIn* x, MovingIn* y) { return fromStart ? x->prevIndex > y->prevIndex : x->prevIndex < y->prevIndex; });
+                std::map<int, int> acc;
+                for (MovingIn* m : list) {
+                    acc[m->lane] += m->size + spacing;
+                    const int a2 = acc[m->lane];
+                    // Leading edge (in content direction) of the start position.
+                    int lead = fromStart ? startBound - dirSign * a2 : endBound + dirSign * (a2 - m->size - spacing);
+                    const int screenTop = reverse ? lead - m->size : lead;
+                    const IntOffset start = vertical ? IntOffset{ m->cur.x, screenTop } : IntOffset{ screenTop, m->cur.y };
+                    m->anim->AnimateDelta({ m->cur.x - start.x, m->cur.y - start.y });
+                }
+            };
+            slideIn(true);
+            slideIn(false);
+            for (auto& [k, a] : disappearing) {
+                a->target = { a->target.x + shift.x, a->target.y + shift.y };
+                if (!a->disappearing) {
+                    LayoutNode* node = &self;
+                    a->onDisappeared = [node, alive = self.AliveToken()] { if (!alive.expired()) node->RequestRemeasure(); };
+                    a->FadeOut();
+                }
+                fading.push_back({ &slots[k].holder->AsMeasurable().Measure(a->constraints), a });
+            }
+            // Moving away: placed just past the edge they went beyond, stacked in their new order,
+            // and animated there from where they were.
+            {
+                std::vector<Away*> toStart, toEnd;
+                for (auto& m : movingAway) (m.index < firstIndex ? toStart : toEnd).push_back(&m);
+                std::sort(toStart.begin(), toStart.end(), [](Away* x, Away* y) { return x->index > y->index; });
+                std::sort(toEnd.begin(), toEnd.end(), [](Away* x, Away* y) { return x->index < y->index; });
+                const int startBound = reverse ? mainMax : 0, endBound = reverse ? 0 : mainMax;
+                const int dirSign = reverse ? -1 : 1;
+                auto place = [&](std::vector<Away*>& list, bool toStartEdge) {
+                    int acc = 0;
+                    for (Away* m : list) {
+                        ItemAnim& a = *m->anim;
+                        Placeable& p = slots[m->key].holder->AsMeasurable().Measure(a.constraints);
+                        const int size = vertical ? p.Height() : p.Width();
+                        acc += size + spacing;
+                        const int lead = toStartEdge ? startBound - dirSign * acc : endBound + dirSign * (acc - size - spacing);
+                        const int screenTop = reverse ? lead - size : lead;
+                        const IntOffset old{ a.target.x + shift.x, a.target.y + shift.y };
+                        const IntOffset dest = vertical ? IntOffset{ old.x, screenTop } : IntOffset{ screenTop, old.y };
+                        a.target = old;
+                        a.movingAway = true;
+                        LayoutNode* node = &self;
+                        a.onDisappeared = [node, alive = self.AliveToken()] { if (!alive.expired()) node->RequestRemeasure(); };
+                        if (dest != old) a.AnimateDelta({ dest.x - old.x, dest.y - old.y });
+                        a.target = dest;
+                        fading.push_back({ &p, m->anim });
+                    }
+                };
+                place(toStart, true);
+                place(toEnd, false);
+            }
+            // Items still in the data, out of view and done moving, forget their place (they come
+            // back from an edge).
+            for (auto& [k, a] : anims)
+                if (a->has && a->targetSet && !placedKeys.count(k) && keyIndex.count(k) &&
+                    std::none_of(movingAway.begin(), movingAway.end(), [&](const Away& m) { return m.key == k; })) {
+                    a->targetSet = false;
+                    a->movingAway = false;
+                }
+            prevFirstIndex = firstIndex;
+        }
+        hadLayout = true;
+
         // Layout info: offsets along the scroll direction from the content start (arranged
         // and reverse-aware, like Compose's).
         auto infoOffset = [&](int scr, int size) { return reverse ? mainMax - scr - size - before : scr - before; };
@@ -658,17 +919,34 @@ namespace kiln::foundation {
         }
 
         // Placement, in drawing order (the sticking header last, on top).
-        struct Placed { Placeable* p; int main; int cross; };   // cross -1: aligned (list)
+        struct Placed { Placeable* p; int main; int cross; std::shared_ptr<ItemAnim> anim; IntOffset at; };   // cross -1: aligned (list)
         std::vector<Placed> placed;
+        auto animOf = [&](int index) -> std::shared_ptr<ItemAnim> {
+            if (!animating) return nullptr;
+            auto it = anims.find(KeyOf(index).value);
+            return it != anims.end() && it->second->has ? it->second : nullptr;
+        };
         for (std::size_t i = 0; i < lines.size(); ++i)
-            for (const auto& cell : lines[i].cells) placed.push_back({ cell.p, screen[i], cell.crossPos });
-        if (sticking) for (const auto& cell : sticking->cells) placed.push_back({ cell.p, stickingScreen, cell.crossPos });
+            for (const auto& cell : lines[i].cells) placed.push_back({ cell.p, screen[i], cell.crossPos, animOf(cell.index), {} });
+        for (auto& [p, a] : fading) placed.push_back({ p, kNone, kNone, a, a->target });   // removed, fading where they were
+        if (sticking) for (const auto& cell : sticking->cells) placed.push_back({ cell.p, stickingScreen, cell.crossPos, nullptr, {} });
         const AlignmentH ha = horizontalAlignment;
         const AlignmentV va = verticalAlignment;
         const bool vert = vertical;
         const LayoutDirection dir = s.Direction();
         return s.Layout(w, h, [placed, crossBefore, crossPad, w, h, ha, va, vert, dir](PlacementScope& place) {
             for (const auto& pl : placed) {
+                // placementDelta, read here so its animation re-places without remeasuring.
+                const IntOffset d = pl.anim ? pl.anim->delta.Get() : IntOffset{};
+                if (pl.main == kNone) { place.Place(*pl.p, pl.at.x + d.x, pl.at.y + d.y); continue; }
+                if (d.x || d.y) {
+                    // Animated cells: their layout position (as targeted) plus the delta.
+                    int x, y;
+                    if (vert) { x = pl.cross >= 0 ? crossBefore + pl.cross : crossBefore + ha.Align(pl.p->Width(), w - crossPad, dir); y = pl.main; }
+                    else { x = pl.main; y = crossBefore + (pl.cross >= 0 ? pl.cross : va.Align(pl.p->Height(), h - crossPad)); }
+                    place.Place(*pl.p, x + d.x, y + d.y);
+                    continue;
+                }
                 const int m = pl.main;
                 if (vert) {
                     if (pl.cross >= 0) place.PlaceRelative(*pl.p, crossBefore + pl.cross, m);

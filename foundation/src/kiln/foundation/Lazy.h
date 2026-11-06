@@ -61,6 +61,16 @@ namespace kiln::foundation {
 
     struct LazyCore;
 
+    // animateItem(fadeInSpec, placementSpec, fadeOutSpec): call on the root modifier of a lazy
+    // item. New items fade in, moved items animate to their new place, removed items fade out
+    // where they were. A null spec turns that part off. Defaults: spring(StiffnessMediumLow).
+    struct LazyItemAnimationSpecs {
+        anim::SpecPtr fadeIn = anim::Spring(1.0f, anim::spring::StiffnessMediumLow);
+        anim::SpecPtr placement = anim::Spring(1.0f, anim::spring::StiffnessMediumLow, 1.0f);
+        anim::SpecPtr fadeOut = anim::Spring(1.0f, anim::spring::StiffnessMediumLow);
+    };
+    Modifier AnimateItem(Modifier m, LazyItemAnimationSpecs specs = {});
+
     // The scroll position and programmatic scrolling shared by LazyListState and LazyGridState.
     class LazyStateBase : public ScrollableState {
     public:
