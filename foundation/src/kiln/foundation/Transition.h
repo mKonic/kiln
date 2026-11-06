@@ -7,6 +7,7 @@
 // InfiniteTransition runs repeatable specs on a free clock.
 
 #include "kiln/animation/Animatable.h"
+#include "kiln/foundation/Animate.h"
 #include "kiln/animation/Spec.h"
 #include "kiln/runtime/Composition.h"
 #include "kiln/runtime/State.h"
@@ -92,12 +93,26 @@ namespace kiln::foundation {
             bool IsTransitioningTo(const S& from, const S& to) const { return initialState == from && targetState == to; }
         };
         explicit Transition(S initial) : m_Current(initial), m_Target(initial) {}
+        Transition(const Transition&) = delete;
+        Transition& operator=(const Transition&) = delete;
 
         S CurrentState() const { return m_Current.Get(); }
         S TargetState() const { return m_Target.Get(); }
         Segment CurrentSegment() const { return { m_Current.Peek(), m_Target.Peek() }; }
-        bool IsRunning() const { return m_Core.RunningObserved(); }
-        TransitionCore& Core() { return m_Core; }
+        bool IsRunning() const { return Core().RunningObserved(); }
+        // A child transition runs its animations on its parent's clock.
+        TransitionCore& Core() { return m_Parent ? *m_Parent : m_Core; }
+        const TransitionCore& Core() const { return m_Parent ? *m_Parent : m_Core; }
+
+        // createChildTransition: states come from the parent each composition, no clock of its own.
+        void AttachToParent(TransitionCore& parent, std::function<bool()> parentSnap) {
+            m_Parent = &parent;
+            m_ParentSnap = std::move(parentSnap);
+        }
+        void SetStates(const S& current, const S& target) {
+            if (!(current == m_Current.Peek())) m_Current.Set(current);
+            if (!(target == m_Target.Peek())) m_Target.Set(target);
+        }
 
         // Called by UpdateTransition each composition.
         void UpdateTarget(const S& target) {
@@ -109,11 +124,13 @@ namespace kiln::foundation {
         // snapTo: both states jump; children follow on their next composition.
         void SnapAll(const S& s) { m_Current.Set(s); m_Target.Set(s); m_Core.PauseClock(); m_SnapNext = true; }
         bool TakeSnap() { return std::exchange(m_SnapNext, false); }
-        bool PeekSnap() const { return m_SnapNext; }
+        bool PeekSnap() const { return m_SnapNext || (m_ParentSnap && m_ParentSnap()); }
 
     private:
         rt::State<S> m_Current, m_Target;
         TransitionCore m_Core;
+        TransitionCore* m_Parent = nullptr;
+        std::function<bool()> m_ParentSnap;
         bool m_SnapNext = false;
     };
 
@@ -174,6 +191,61 @@ namespace kiln::foundation {
     }
 
     using SegmentSpec = std::function<anim::SpecPtr()>;
+
+    // Transition.createChildTransition(transformToChildState): a transition over a derived
+    // state. Its animations are part of the parent's: they share its clock, count towards its
+    // running state and duration, and snap with it.
+    template<typename T, typename S>
+    Transition<T>& CreateChildTransition(Transition<S>& parent, std::function<T(const S&)> transform, rt::Key key = {}) {
+        auto& c = *rt::Composition::Current();
+        auto& child = c.RememberNew<Transition<T>>({}, key, transform(parent.CurrentState()));
+        auto* pp = &parent;
+        child.AttachToParent(parent.Core(), [pp] { return pp->PeekSnap(); });
+        child.SetStates(transform(parent.CurrentState()), transform(parent.TargetState()));
+        return child;
+    }
+
+    // Transition.animateValue(typeConverter, transitionSpec, targetValueByState)
+    template<typename T, typename S>
+    T AnimateValue(Transition<S>& t, const VectorConverter<T>& converter, std::function<T(const S&)> valueOf,
+                   std::function<anim::SpecPtr(const typename Transition<S>::Segment&)> spec = {}, rt::Key key = {}) {
+        return converter.fromVector(detail::AnimateChild<S>(t, converter.dims, [&](const S& s) { return converter.toVector(valueOf(s)); }, spec, key));
+    }
+    template<typename S>
+    ui::Dp AnimateDp(Transition<S>& t, std::function<ui::Dp(const S&)> valueOf,
+                     std::function<anim::SpecPtr(const typename Transition<S>::Segment&)> spec = {}, rt::Key key = {}) {
+        return AnimateValue<ui::Dp, S>(t, converters::Dp(), std::move(valueOf), std::move(spec), key);
+    }
+    template<typename S>
+    ui::Offset AnimateOffset(Transition<S>& t, std::function<ui::Offset(const S&)> valueOf,
+                             std::function<anim::SpecPtr(const typename Transition<S>::Segment&)> spec = {}, rt::Key key = {}) {
+        return AnimateValue<ui::Offset, S>(t, converters::Offset(), std::move(valueOf), std::move(spec), key);
+    }
+    template<typename S>
+    ui::Size AnimateSize(Transition<S>& t, std::function<ui::Size(const S&)> valueOf,
+                         std::function<anim::SpecPtr(const typename Transition<S>::Segment&)> spec = {}, rt::Key key = {}) {
+        return AnimateValue<ui::Size, S>(t, converters::Size(), std::move(valueOf), std::move(spec), key);
+    }
+    template<typename S>
+    ui::Rect AnimateRect(Transition<S>& t, std::function<ui::Rect(const S&)> valueOf,
+                         std::function<anim::SpecPtr(const typename Transition<S>::Segment&)> spec = {}, rt::Key key = {}) {
+        return AnimateValue<ui::Rect, S>(t, converters::Rect(), std::move(valueOf), std::move(spec), key);
+    }
+    template<typename S>
+    int AnimateInt(Transition<S>& t, std::function<int(const S&)> valueOf,
+                   std::function<anim::SpecPtr(const typename Transition<S>::Segment&)> spec = {}, rt::Key key = {}) {
+        return AnimateValue<int, S>(t, converters::Int(), std::move(valueOf), std::move(spec), key);
+    }
+    template<typename S>
+    ui::IntOffset AnimateIntOffset(Transition<S>& t, std::function<ui::IntOffset(const S&)> valueOf,
+                                   std::function<anim::SpecPtr(const typename Transition<S>::Segment&)> spec = {}, rt::Key key = {}) {
+        return AnimateValue<ui::IntOffset, S>(t, converters::IntOffset(), std::move(valueOf), std::move(spec), key);
+    }
+    template<typename S>
+    ui::IntSize AnimateIntSize(Transition<S>& t, std::function<ui::IntSize(const S&)> valueOf,
+                               std::function<anim::SpecPtr(const typename Transition<S>::Segment&)> spec = {}, rt::Key key = {}) {
+        return AnimateValue<ui::IntSize, S>(t, converters::IntSize(), std::move(valueOf), std::move(spec), key);
+    }
 
     template<typename S>
     float AnimateFloat(Transition<S>& t, std::function<float(const S&)> valueOf,

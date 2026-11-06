@@ -208,3 +208,37 @@ TEST(AnimatedContentSwapsWithBothShownMeanwhile) {
     CHECK_EQ(int(container->Children().size()), 1);
     CHECK_EQ(container->Size().height, 80);
 }
+
+TEST(ChildTransitionRunsOnTheParentClock) {
+    Harness h;
+    rt::State<int> step(0);
+    float child = -1;
+    ui::IntOffset offset{};
+    Transition<int>* parent = nullptr;
+    Transition<bool>* kid = nullptr;
+    h.Run([&] {
+        auto& t = UpdateTransition(step.Get());
+        parent = &t;
+        // The child only cares whether the step is past 1.
+        auto& c = CreateChildTransition<bool, int>(t, [](const int& s) { return s > 1; });
+        kid = &c;
+        child = AnimateFloat<bool>(c, [](bool far) { return far ? 100.0f : 0.0f; },
+                                   [](const Transition<bool>::Segment&) { return anim::Tween(320, 0, anim::Linear()); });
+        offset = AnimateIntOffset<int>(t, [](const int& s) { return ui::IntOffset{ s * 10, 0 }; },
+                                       [](const Transition<int>::Segment&) { return anim::Tween(160, 0, anim::Linear()); });
+    });
+    step.Set(2);
+    h.Pump();
+    CHECK(kid->TargetState());
+    CHECK(!kid->CurrentState());
+    h.Frames(1);
+    h.Frames(10);                // 160 ms: the parent's own animation is done, the child's half way
+    CHECK_EQ(offset.x, 20);
+    CHECK(Near(child, 50, 2));
+    CHECK(parent->IsRunning());  // the child's animation keeps the parent running
+    CHECK(kid->IsRunning());
+    h.Frames(12);
+    CHECK_EQ(child, 100.0f);
+    CHECK(!parent->IsRunning());
+    CHECK(kid->CurrentState());  // finished with the parent
+}
