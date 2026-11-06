@@ -19,8 +19,8 @@ namespace kiln::gfx {
     private:
         friend class PathMeasure;
         friend std::vector<ContourMeasure> MeasureContours(const Path&, bool, float);
-        enum class Kind : std::uint8_t { Line, Quad, Cubic };
-        struct Segment { Kind kind; Offset p[4]; };
+        enum class Kind : std::uint8_t { Line, Quad, Conic, Cubic };
+        struct Segment { Kind kind; Offset p[4]; float w = 1; };   // w: conic weight
         struct Sample { float distance; std::uint32_t segment; float t; };   // cumulative
         std::vector<Segment> m_Segments;
         std::vector<Sample> m_Samples;

@@ -57,7 +57,7 @@ namespace kiln::gfx {
 
     class Path {
     public:
-        enum class Verb : std::uint8_t { Move, Line, Quad, Cubic, Close };
+        enum class Verb : std::uint8_t { Move, Line, Quad, Conic, Cubic, Close };
         enum class Direction : std::uint8_t { Clockwise, CounterClockwise };
 
         FillType fillType = FillType::NonZero;
@@ -70,6 +70,9 @@ namespace kiln::gfx {
         void RelativeQuadraticTo(float dx1, float dy1, float dx2, float dy2);
         void CubicTo(float x1, float y1, float x2, float y2, float x3, float y3);
         void RelativeCubicTo(float dx1, float dy1, float dx2, float dy2, float dx3, float dy3);
+        // A conic (rational quadratic) with `weight` (SkPath::conicTo: 1 is a quadratic; not
+        // positive, a line). Arcs, ovals and round rects are built from conics, as in Skia.
+        void ConicTo(float x1, float y1, float x2, float y2, float weight);
         // arcTo: the arc of `oval` from startAngle sweeping sweepAngle (degrees, clockwise in a
         // y-down space). Without forceMoveTo a line joins the current point to the arc start.
         void ArcTo(Rect oval, float startAngleDegrees, float sweepAngleDegrees, bool forceMoveTo);
@@ -78,8 +81,10 @@ namespace kiln::gfx {
         void AddRoundRect(const RoundRect& rr, Direction dir = Direction::CounterClockwise);
         void AddArc(Rect oval, float startAngleDegrees, float sweepAngleDegrees);
         void AddPath(const Path& other, Offset offset = {});
+        // addOval from one of its four points (0 top, 1 right, 2 bottom, 3 left).
+        void AddOvalAt(Rect oval, Direction dir, unsigned startIndex);
         void Close();
-        void Reset() { m_Verbs.clear(); m_Points.clear(); m_ContourStart = 0; m_NeedsMove = true; }
+        void Reset() { m_Verbs.clear(); m_Points.clear(); m_Weights.clear(); m_ContourStart = 0; m_NeedsMove = true; }
         void Translate(Offset o) { Transform(Matrix::Translate(o.x, o.y)); }
         void Transform(const Matrix& m) { for (Offset& p : m_Points) p = m.Map(p); }
 
@@ -87,6 +92,7 @@ namespace kiln::gfx {
         Rect Bounds() const;   // of all points, control points included (like getBounds' conservative form)
         const std::vector<Verb>& Verbs() const { return m_Verbs; }
         const std::vector<Offset>& Points() const { return m_Points; }
+        const std::vector<float>& ConicWeights() const { return m_Weights; }   // one per Conic verb
         std::uint64_t Hash() const;
 
         // Polylines through `m` with at most `tolerance` device pixels of error.
@@ -97,6 +103,7 @@ namespace kiln::gfx {
         void EnsureMove();
         std::vector<Verb> m_Verbs;
         std::vector<Offset> m_Points;
+        std::vector<float> m_Weights;
         std::size_t m_ContourStart = 0;   // index into m_Points of the current contour's start
         bool m_NeedsMove = true;
     };

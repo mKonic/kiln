@@ -1,5 +1,7 @@
 #include "kiln/graphics/PathMeasure.h"
 
+#include "kiln/graphics/Conic.h"
+
 #include <algorithm>
 #include <cmath>
 
@@ -14,6 +16,7 @@ namespace kiln::gfx {
         switch (s.kind) {
             case Kind::Line: return L(s.p[0], s.p[1], t);
             case Kind::Quad: return L(L(s.p[0], s.p[1], t), L(s.p[1], s.p[2], t), t);
+            case Kind::Conic: return Conic{ { s.p[0], s.p[1], s.p[2] }, s.w }.Eval(t);
             case Kind::Cubic: {
                 const Offset a = L(s.p[0], s.p[1], t), b = L(s.p[1], s.p[2], t), c = L(s.p[2], s.p[3], t);
                 return L(L(a, b, t), L(b, c, t), t);
@@ -26,6 +29,18 @@ namespace kiln::gfx {
         switch (s.kind) {
             case Kind::Line: return s.p[1] - s.p[0];
             case Kind::Quad: { const Offset a = L(s.p[0], s.p[1], t), b = L(s.p[1], s.p[2], t); return b - a; }
+            case Kind::Conic: {
+                // (N' D - N D') / D^2; the direction is all that is needed, so no division.
+                const float u = 1 - t, w = s.w;
+                const float b0 = u * u, b1 = 2 * w * u * t, b2 = t * t;
+                const float d0 = -2 * u, d1 = 2 * w * (1 - 2 * t), d2 = 2 * t;
+                const float D = b0 + b1 + b2, dD = d0 + d1 + d2;
+                const Offset N{ b0 * s.p[0].x + b1 * s.p[1].x + b2 * s.p[2].x, b0 * s.p[0].y + b1 * s.p[1].y + b2 * s.p[2].y };
+                const Offset dN{ d0 * s.p[0].x + d1 * s.p[1].x + d2 * s.p[2].x, d0 * s.p[0].y + d1 * s.p[1].y + d2 * s.p[2].y };
+                Offset d{ dN.x * D - N.x * dD, dN.y * D - N.y * dD };
+                if (std::abs(d.x) + std::abs(d.y) < 1e-9f) d = s.p[2] - s.p[0];
+                return d;
+            }
             case Kind::Cubic: {
                 const Offset a = L(s.p[0], s.p[1], t), b = L(s.p[1], s.p[2], t), c = L(s.p[2], s.p[3], t);
                 Offset d = L(b, c, t) - L(a, b, t);
@@ -51,6 +66,26 @@ namespace kiln::gfx {
                 out.p[0] = L(ab, bc, u); out.p[1] = bc; out.p[2] = c;
                 break;
             }
+            case Kind::Conic: {
+                // SkConic::chopAt: the sub-quadratic in homogeneous coordinates (its blossom),
+                // then back to points and a weight.
+                const float w = s.w;
+                auto blossom = [&](float a, float b, float out[3]) {
+                    const float c0 = (1 - a) * (1 - b), c1 = (1 - a) * b + a * (1 - b), c2 = a * b;
+                    out[0] = c0 * s.p[0].x + c1 * w * s.p[1].x + c2 * s.p[2].x;
+                    out[1] = c0 * s.p[0].y + c1 * w * s.p[1].y + c2 * s.p[2].y;
+                    out[2] = c0 + c1 * w + c2;
+                };
+                float A[3], B[3], C[3];
+                blossom(t0, t0, A);
+                blossom(t0, t1, B);
+                blossom(t1, t1, C);
+                out.p[0] = { A[0] / A[2], A[1] / A[2] };
+                out.p[1] = { B[0] / B[2], B[1] / B[2] };
+                out.p[2] = { C[0] / C[2], C[1] / C[2] };
+                out.w = B[2] / std::sqrt(A[2] * C[2]);
+                break;
+            }
             case Kind::Cubic: {
                 const Offset p01 = L(s.p[0], s.p[1], t1), p12 = L(s.p[1], s.p[2], t1), p23 = L(s.p[2], s.p[3], t1);
                 const Offset p012 = L(p01, p12, t1), p123 = L(p12, p23, t1);
@@ -74,8 +109,9 @@ namespace kiln::gfx {
             // Sample densely enough that chords stay within tol of the curve.
             int n = 1;
             if (s.kind != ContourMeasure::Kind::Line) {
-                const float dd = s.kind == ContourMeasure::Kind::Quad
-                    ? std::hypot(s.p[0].x - 2 * s.p[1].x + s.p[2].x, s.p[0].y - 2 * s.p[1].y + s.p[2].y) * 0.25f
+                const float dd = s.kind != ContourMeasure::Kind::Cubic
+                    ? std::hypot(s.p[0].x - 2 * s.p[1].x + s.p[2].x, s.p[0].y - 2 * s.p[1].y + s.p[2].y) *
+                          (s.kind == ContourMeasure::Kind::Conic ? 2.0f : 0.25f)   // conics bend unevenly
                     : std::max(std::hypot(s.p[0].x - 2 * s.p[1].x + s.p[2].x, s.p[0].y - 2 * s.p[1].y + s.p[2].y),
                                std::hypot(s.p[1].x - 2 * s.p[2].x + s.p[3].x, s.p[1].y - 2 * s.p[2].y + s.p[3].y)) * 0.75f;
                 n = std::clamp(int(std::ceil(std::sqrt(dd / tol))), 1, 1000);
@@ -101,7 +137,7 @@ namespace kiln::gfx {
         };
         const auto& verbs = path.Verbs();
         const auto& pts = path.Points();
-        std::size_t pi = 0;
+        std::size_t pi = 0, wi = 0;
         bool open = false;
         for (Path::Verb v : verbs) {
             switch (v) {
@@ -119,6 +155,14 @@ namespace kiln::gfx {
                     last = pts[pi + 1];
                     pi += 2;
                     break;
+                case Path::Verb::Conic: {
+                    ContourMeasure::Segment seg{ ContourMeasure::Kind::Conic, { last, pts[pi], pts[pi + 1] } };
+                    seg.w = path.ConicWeights()[wi++];
+                    addSegment(seg);
+                    last = pts[pi + 1];
+                    pi += 2;
+                    break;
+                }
                 case Path::Verb::Cubic:
                     addSegment({ ContourMeasure::Kind::Cubic, { last, pts[pi], pts[pi + 1], pts[pi + 2] } });
                     last = pts[pi + 2];
@@ -178,6 +222,7 @@ namespace kiln::gfx {
             switch (c.kind) {
                 case Kind::Line: dst.LineTo(c.p[1].x, c.p[1].y); break;
                 case Kind::Quad: dst.QuadraticTo(c.p[1].x, c.p[1].y, c.p[2].x, c.p[2].y); break;
+                case Kind::Conic: dst.ConicTo(c.p[1].x, c.p[1].y, c.p[2].x, c.p[2].y, c.w); break;
                 case Kind::Cubic: dst.CubicTo(c.p[1].x, c.p[1].y, c.p[2].x, c.p[2].y, c.p[3].x, c.p[3].y); break;
             }
         };

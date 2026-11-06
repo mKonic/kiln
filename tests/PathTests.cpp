@@ -1,6 +1,7 @@
 #include "Check.h"
 
 #include "kiln/graphics/PathEffect.h"
+#include "kiln/graphics/PathIterator.h"
 #include "kiln/graphics/Rasterizer.h"
 
 #include <cmath>
@@ -154,4 +155,49 @@ TEST(StampedEffectPlacesShapesAlongThePath) {
     CHECK(out.Verbs()[1] == gfx::Path::Verb::Quad);
     CHECK(std::abs(out.Points()[0].x - 1.0f) < 1e-4f);
     CHECK(std::abs(out.Points()[0].y - 0.0f) < 1e-4f);
+}
+
+TEST(OvalsAreConicsLikeSkia) {
+    gfx::Path p;
+    p.AddOval({ 0, 0, 100, 100 }, gfx::Path::Direction::Clockwise);
+    // Move at the right-hand point, four quarter conics through the bounds' corners, close.
+    CHECK(p.Verbs().size() == 6u);
+    CHECK(p.Verbs()[1] == gfx::Path::Verb::Conic);
+    CHECK_EQ(p.Points()[0].x, 100.0f);
+    CHECK_EQ(p.Points()[1].x, 100.0f);   // control point: the bottom-right corner
+    CHECK_EQ(p.Points()[1].y, 100.0f);
+    CHECK(std::abs(p.ConicWeights()[0] - 0.70710678f) < 1e-6f);
+    // Every point of the flattened circle lies on it.
+    for (const auto& poly : p.Flatten(gfx::Matrix{}, 0.05f))
+        for (const auto& q : poly.points) CHECK(std::abs(std::hypot(q.x - 50, q.y - 50) - 50) < 0.06f);
+    // A quarter arc is one conic.
+    gfx::Path arc;
+    arc.ArcTo({ 0, 0, 100, 100 }, 0, 90, true);
+    CHECK(arc.Verbs().size() == 2u);
+    CHECK(arc.Verbs()[1] == gfx::Path::Verb::Conic);
+}
+
+TEST(PathIteratorReportsSegmentsWithTheirStartPoints) {
+    gfx::Path p;
+    p.MoveTo(0, 0);
+    p.LineTo(10, 0);
+    p.ArcTo({ 0, 0, 20, 20 }, 0, 90, false);
+    p.Close();
+    gfx::PathIterator asConic(p, gfx::PathIterator::ConicEvaluation::AsConic);
+    std::vector<gfx::PathSegment> segs;
+    while (asConic.HasNext()) segs.push_back(asConic.Next());
+    CHECK(asConic.Next().type == gfx::PathSegment::Type::Done);
+    CHECK(segs.size() == 5u);   // move, line, line to the arc start, conic, close
+    CHECK(segs[1].points.size() == 2u);
+    CHECK_EQ(segs[1].points[0].x, 0.0f);
+    CHECK(segs[3].type == gfx::PathSegment::Type::Conic);
+    CHECK_EQ(segs[3].points[0].x, 20.0f);
+    CHECK(segs[3].weight > 0.7f);
+    // By default the conic becomes quadratics.
+    gfx::PathIterator quads(p);
+    CHECK(quads.CalculateSize() >= 5u);
+    CHECK_EQ(quads.CalculateSize(false), 5u);
+    bool anyConic = false;
+    while (quads.HasNext()) anyConic = anyConic || quads.Next().type == gfx::PathSegment::Type::Conic;
+    CHECK(!anyConic);
 }

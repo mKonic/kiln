@@ -92,7 +92,7 @@ namespace kiln::gfx {
                 Path dst;
                 const auto& verbs = src.Verbs();
                 const auto& pts = src.Points();
-                std::size_t pi = 0;
+                std::size_t pi = 0, wi = 0;
                 Offset moveTo{}, last{};
                 bool prevIsValid = false, closed = false;
                 Offset step{};
@@ -127,11 +127,12 @@ namespace kiln::gfx {
                             last = p;
                             break;
                         }
-                        case Path::Verb::Quad: case Path::Verb::Cubic: {
-                            const int n = verbs[vi] == Path::Verb::Quad ? 2 : 3;
+                        case Path::Verb::Quad: case Path::Verb::Conic: case Path::Verb::Cubic: {
+                            const int n = verbs[vi] == Path::Verb::Cubic ? 3 : 2;
                             if (!prevIsValid) { dst.MoveTo(last.x, last.y); prevIsValid = true; }
                             else dst.LineTo(last.x, last.y);
-                            if (n == 2) dst.QuadraticTo(pts[pi].x, pts[pi].y, pts[pi + 1].x, pts[pi + 1].y);
+                            if (verbs[vi] == Path::Verb::Conic) dst.ConicTo(pts[pi].x, pts[pi].y, pts[pi + 1].x, pts[pi + 1].y, src.ConicWeights()[wi++]);
+                            else if (n == 2) dst.QuadraticTo(pts[pi].x, pts[pi].y, pts[pi + 1].x, pts[pi + 1].y);
                             else dst.CubicTo(pts[pi].x, pts[pi].y, pts[pi + 1].x, pts[pi + 1].y, pts[pi + 2].x, pts[pi + 2].y);
                             last = pts[pi + n - 1];
                             pi += std::size_t(n);
@@ -254,7 +255,7 @@ namespace kiln::gfx {
                     return Offset{ pos.x - t.y * s.y, pos.y + t.x * s.y };
                 };
                 const auto& pts = m_Shape.Points();
-                std::size_t pi = 0;
+                std::size_t pi = 0, wi = 0;
                 Offset last{};
                 for (const Path::Verb v : m_Shape.Verbs()) {
                     switch (v) {
@@ -269,6 +270,13 @@ namespace kiln::gfx {
                         case Path::Verb::Quad: {
                             const Offset a = map(pts[pi]), b = map(pts[pi + 1]);
                             dst.QuadraticTo(a.x, a.y, b.x, b.y);
+                            last = pts[pi + 1];
+                            pi += 2;
+                            break;
+                        }
+                        case Path::Verb::Conic: {
+                            const Offset a = map(pts[pi]), b = map(pts[pi + 1]);
+                            dst.ConicTo(a.x, a.y, b.x, b.y, m_Shape.ConicWeights()[wi++]);
                             last = pts[pi + 1];
                             pi += 2;
                             break;
