@@ -16,8 +16,9 @@ namespace kiln::foundation {
             RequesterParams params;
             explicit RequesterNode(RequesterParams p) : params(p) {}
             void OnParamsChanged() {}
-            void OnAttach() override { params.r->Add(this); }
-            void OnDetach() override { params.r->Remove(this); }
+            std::weak_ptr<const char> alive;   // the requester may go first
+            void OnAttach() override { alive = params.r->AliveToken(); params.r->Add(this); }
+            void OnDetach() override { if (!alive.expired()) params.r->Remove(this); }
         };
     }
 

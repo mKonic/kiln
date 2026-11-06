@@ -253,6 +253,9 @@ namespace kiln::rt {
         std::vector<std::unique_ptr<TreeNode>> m_DeadNodes;
         std::vector<std::function<void()>> m_Effects;     // run after apply, in order
         std::vector<std::function<void()>> m_Disposers;   // run after apply, before effects
+        // Remembered values of disposed groups, freed after the disposers ran (a disposer may
+        // still use what was remembered beside it).
+        std::vector<std::shared_ptr<void>> m_DeadSlots;
     };
 
 }

@@ -216,9 +216,9 @@ TEST(ClickableReportsPressInteractions) {
 }
 
 TEST(PressInScrollableContainerIsDelayed) {
+    ScrollState state;   // outlives the composition
     Harness h;
     auto source = std::make_shared<MutableInteractionSource>();
-    auto& state = *new ScrollState();   // outlives the composition in this test
     h.Run([&] {
         Column(VerticalScroll(FillMax(Modifier{}, Axis::Both), state), [&] {
             ClickableOptions o;

@@ -77,6 +77,8 @@ namespace kiln::rt {
         m_Root.SetChildren({});
         m_DeadNodes.clear();
         for (auto& d : m_Disposers) d();
+        m_Disposers.clear();
+        m_DeadSlots.clear();
     }
 
     Composition* Composition::Current() { return t_Current; }
@@ -182,7 +184,7 @@ namespace kiln::rt {
             if (g.effect->disposer) m_Disposers.push_back(std::move(g.effect->disposer));
             g.effect.reset();
         }
-        g.slot.reset();
+        if (g.slot) m_DeadSlots.push_back(std::move(g.slot));
     }
 
     void Composition::SideEffect(std::function<void()> effect) {
@@ -231,11 +233,14 @@ namespace kiln::rt {
     void Composition::RunEffects() {
         // Disposers first (removed or restarted effects), then new effects, in call order.
         // Effects run untracked: their reads do not subscribe anything.
-        while (!m_Disposers.empty() || !m_Effects.empty()) {
+        while (!m_Disposers.empty() || !m_Effects.empty() || !m_DeadSlots.empty()) {
             auto disposers = std::move(m_Disposers); m_Disposers.clear();
             auto effects = std::move(m_Effects); m_Effects.clear();
             Observation::Untracked([&] {
                 for (auto& d : disposers) d();
+                // The disposers are done with what was remembered next to them.
+                auto dead = std::move(m_DeadSlots); m_DeadSlots.clear();
+                dead.clear();
                 for (auto& e : effects) e();
             });
         }

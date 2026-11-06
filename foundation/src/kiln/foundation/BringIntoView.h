@@ -21,8 +21,10 @@ namespace kiln::foundation {
         // internal
         void Add(ui::ModifierNode* n) { m_Nodes.push_back(n); }
         void Remove(ui::ModifierNode* n) { std::erase(m_Nodes, n); }
+        std::weak_ptr<const char> AliveToken() const { return m_Alive; }
     private:
         std::vector<ui::ModifierNode*> m_Nodes;
+        std::shared_ptr<const char> m_Alive = std::make_shared<const char>(0);
     };
 
     Modifier BringIntoViewRequesterMod(Modifier m, BringIntoViewRequester& requester);

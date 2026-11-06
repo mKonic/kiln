@@ -13,8 +13,8 @@ namespace kiln::foundation {
         auto make = [&](int mMin, int mMax, int xMin, int xMax) {
             return row ? Constraints{ mMin, mMax, xMin, xMax } : Constraints{ xMin, xMax, mMin, mMax };
         };
-        auto mainOf = [&](const Placeable& p) { return row ? p.Width() : p.Height(); };
-        auto crossOf = [&](const Placeable& p) { return row ? p.Height() : p.Width(); };
+        auto mainOf = [row](const Placeable& p) { return row ? p.Width() : p.Height(); };
+        auto crossOf = [row](const Placeable& p) { return row ? p.Height() : p.Width(); };   // copied into the placement
         // FlowLayout spacing is ceil(toPx) (breakDownItems).
         const int spacing = int(std::ceil(s.ToPx(m_Main.Spacing())));
         const int crossSpacing = int(std::ceil(s.ToPx(m_Cross.Spacing())));

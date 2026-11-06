@@ -50,6 +50,11 @@ namespace kiln::foundation {
         box->orientation = orientation;
         box->options = options;
         std::weak_ptr<AnchoredBox> weak = box;
+        // The node's coroutine scope: a fling still running when this leaves is cancelled (the
+        // fling holds the box, so it would otherwise keep it alive until it settled).
+        c.DisposableEffect(rt::Keys(), [weak] {
+            return [weak] { if (auto b = weak.lock()) b->fling.Cancel(); };
+        });
         auto& drag = RememberDraggableState([weak](float d) { if (auto b = weak.lock()) b->Delta(d); });
         box->drag = &drag;
         DraggableOptions d;

@@ -59,9 +59,11 @@ namespace kiln::foundation {
             // Disabled until the side effect below applies `enabled`.
             auto& h = c.Remember<std::shared_ptr<H>>([] { auto p = std::make_shared<H>(); p->enabled = false; return p; });
             H* raw = h.get();
-            c.DisposableEffect(rt::Keys(d), [d, raw] {
-                d->Add(raw);
-                return [d, raw] { d->Remove(raw); };
+            // The dispose owns the handler: remembered values may be freed before effects run.
+            std::shared_ptr<H> keep = h;
+            c.DisposableEffect(rt::Keys(d), [d, keep] {
+                d->Add(keep.get());
+                return [d, keep] { d->Remove(keep.get()); };
             });
             c.SideEffect([d, raw, enabled] {
                 if constexpr (std::is_same_v<H, PredictiveHandler>) raw->SetEnabled(enabled);
