@@ -1,3 +1,4 @@
+#include "kiln/foundation/IndirectDrag.h"
 #include "kiln/foundation/Scroll.h"
 #include "kiln/foundation/Semantics.h"
 #include "kiln/foundation/Focus.h"
@@ -67,6 +68,7 @@ namespace kiln::foundation {
         FlingBehavior flingBehavior;
         rt::Job semanticsScroll;   // ScrollBy from accessibility (an animated scroll)
         IntSize viewport;          // ContentInViewNode's measured size (page keys)
+        std::shared_ptr<IndirectDragDetector> indirect;   // touch-navigation pad drags
         std::shared_ptr<const BringIntoViewSpec> bringIntoViewSpec = DefaultBringIntoViewSpec();
 
         float Axis(Offset o) const { return orientation == Orientation::Vertical ? o.y : o.x; }
@@ -711,6 +713,32 @@ namespace kiln::foundation {
                 return true;
             };
         });
+        // Pad drags scroll the way the finger moves (Scrollable undoes its usual inversion).
+        if (!logic->indirect) {
+            logic->indirect = std::make_shared<IndirectDragDetector>();
+            std::weak_ptr<ScrollingLogic> w = logic;
+            auto& cb = logic->indirect->callbacks;
+            cb.startDragImmediately = [w] { auto l = w.lock(); return l && (l->Flinging() || l->state->HasRunningScroll()); };
+            cb.onStart = [w](Offset) {
+                auto l = w.lock();
+                if (!l) return;
+                if (l->Flinging()) l->StopFling();
+                else if (l->state->HasRunningScroll()) l->state->StopScroll();
+                l->state->SetScrollInProgress(true);
+            };
+            cb.onDelta = [w](Offset d) {
+                if (auto l = w.lock()) l->Dispatch(l->Single(-l->Axis(d)), NestedScrollSource::UserInput);
+            };
+            cb.onStop = [w](Offset v) {
+                auto l = w.lock();
+                if (!l) return;
+                l->state->SetScrollInProgress(false);
+                l->StartFling(l->Single(-l->Axis(v)));
+            };
+            cb.onCancel = [w] { if (auto l = w.lock()) l->state->SetScrollInProgress(false); };
+        }
+        logic->indirect->orientation = o;
+        m = IndirectDrag(std::move(m), logic->indirect);
         m = PointerInput(std::move(m), rt::Keys(reinterpret_cast<std::uintptr_t>(&state), int(o)), [logic](PointerInputScope& s) {
             logic->density = s.GetDensity();
             logic->friction = s.Config().scrollFriction;

@@ -1,5 +1,6 @@
 #include "kiln/foundation/Draggable.h"
 
+#include "kiln/foundation/IndirectDrag.h"
 #include "kiln/ui/VelocityTracker.h"
 
 #include <cmath>
@@ -21,7 +22,46 @@ namespace kiln::foundation {
             Orientation orientation = Orientation::Horizontal;
             DraggableOptions options;
             std::uint64_t interaction = 0;
+            std::shared_ptr<IndirectDragDetector> indirect;
         };
+
+        // Pad drags (DragGestureNode with the indirect detector): the same start, deltas and
+        // stop as a touch drag, along our axis.
+        void WireIndirect(const std::shared_ptr<DragBox>& box) {
+            box->indirect = std::make_shared<IndirectDragDetector>();
+            std::weak_ptr<DragBox> w = box;
+            auto& cb = box->indirect->callbacks;
+            cb.startDragImmediately = [w] { auto b = w.lock(); return b && b->options.startDragImmediately; };
+            cb.onStart = [w](Offset at) {
+                auto b = w.lock();
+                if (!b || !b->options.enabled) return;
+                b->state->SetDragging(true);
+                if (b->options.interactionSource) b->interaction = b->options.interactionSource->Start(Interaction::Kind::Drag, at);
+                if (b->options.onDragStarted) b->options.onDragStarted(at);
+            };
+            cb.onDelta = [w](Offset d) {
+                auto b = w.lock();
+                if (!b || !b->options.enabled) return;
+                const float v = b->orientation == Orientation::Vertical ? d.y : d.x;
+                b->state->DispatchRawDelta(b->options.reverseDirection ? -v : v);
+            };
+            auto end = [w](float velocity, bool cancelled) {
+                auto b = w.lock();
+                if (!b) return;
+                b->state->SetDragging(false);
+                if (b->options.interactionSource && b->interaction) {
+                    if (cancelled) b->options.interactionSource->Cancel(Interaction::Kind::Drag, b->interaction);
+                    else b->options.interactionSource->End(Interaction::Kind::Drag, b->interaction);
+                    b->interaction = 0;
+                }
+                if (b->options.onDragStopped) b->options.onDragStopped(b->options.reverseDirection ? -velocity : velocity);
+            };
+            cb.onStop = [w, end](Offset v) {
+                auto b = w.lock();
+                if (b) end(b->orientation == Orientation::Vertical ? v.y : v.x, false);
+            };
+            cb.onCancel = [end] { end(0, true); };
+        }
 
         rt::Task<> DragLoop(PointerInputScope& s, std::shared_ptr<DragBox> box) {
             VelocityTracker tracker;
@@ -95,6 +135,9 @@ namespace kiln::foundation {
         box->state = &state;
         box->orientation = orientation;
         box->options = std::move(options);
+        if (!box->indirect) WireIndirect(box);
+        box->indirect->orientation = orientation;
+        if (box->options.enabled) m = IndirectDrag(std::move(m), box->indirect);
         return PointerInput(std::move(m), rt::Keys(reinterpret_cast<std::uintptr_t>(&state), int(orientation)),
                             [box](PointerInputScope& s) { return DragLoop(s, box); });
     }

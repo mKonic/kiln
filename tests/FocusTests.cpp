@@ -3,6 +3,8 @@
 #include "kiln/foundation/Compose.h"
 #include "kiln/foundation/Focus.h"
 #include "kiln/foundation/Gestures.h"
+#include "kiln/foundation/Draggable.h"
+#include "kiln/foundation/Scroll.h"
 #include "kiln/runtime/Saveable.h"
 
 using namespace kiln;
@@ -504,4 +506,55 @@ TEST(FocusRestorerSurvivesRecreation) {
     CHECK_EQ(focused, std::string("a"));
     h.Key(keys::DpadRight);
     CHECK_EQ(focused, std::string("b2"));
+}
+
+TEST(IndirectPointerDragsScrollAndDraggable) {
+    Harness h;
+    ScrollState scroll;
+    float dragged = 0;
+    int clicks = 0;
+    FocusRequester inList, inDrag;
+    h.Run([&] {
+        Column(Modifier{}, [&] {
+            Column(VerticalScroll(SizeMod(Modifier{}, Dp(100), Dp(100)), scroll), [&] {
+                Box(Clickable(FocusRequesterModifier(SizeMod(Modifier{}, Dp(100), Dp(50)), inList), [&] { ++clicks; }));
+                for (int i = 0; i < 10; ++i) Box(SizeMod(Modifier{}, Dp(100), Dp(50)));
+            });
+            auto& state = RememberDraggableState([&](float d) { dragged += d; });
+            Box(Draggable(SizeMod(Modifier{}, Dp(100), Dp(50)), state, Orientation::Horizontal), Alignment::TopStart(), false, [&] {
+                Box(Focusable(FocusRequesterModifier(SizeMod(Modifier{}, Dp(20), Dp(20)), inDrag)));
+            });
+        });
+    });
+    h.owner.SetInputMode(InputMode::Keyboard);
+    CHECK(inList.RequestFocus());
+    using A = RawIndirectPointerEvent::Action;
+    IndirectPointerAdapter adapter;
+    auto send = [&](A a, Offset at, std::int64_t t, IndirectPointerEventPrimaryDirectionalMotionAxis axis) {
+        RawIndirectPointerEvent raw;
+        raw.action = a;
+        raw.uptimeMillis = t;
+        raw.axis = axis;
+        raw.pointers.push_back({ 0, at, 1, {} });
+        IndirectPointerEvent e;
+        if (adapter.Convert(raw, e)) h.owner.DispatchIndirectPointerEvent(e);
+        rt::Dispatcher::Main().RunPending();
+        h.composition.Recompose();
+        h.owner.MeasureAndLayout({ 300, 300 });
+    };
+    // An X-axis pad drives the vertical list along its length: moving right scrolls forward.
+    const auto X = IndirectPointerEventPrimaryDirectionalMotionAxis::X;
+    send(A::Down, { 100, 10 }, 0, X);
+    send(A::Move, { 130, 10 }, 16, X);
+    send(A::Move, { 160, 10 }, 32, X);
+    send(A::Up, { 160, 10 }, 48, X);
+    CHECK(scroll.Value() >= 45);   // 60 px of pad motion less the slop (plus any fling)
+    CHECK_EQ(clicks, 0);           // a drag is not a tap
+    // The draggable around another focused item gets the pad's motion as is.
+    CHECK(inDrag.RequestFocus());
+    send(A::Down, { 100, 10 }, 1000, X);
+    send(A::Move, { 120, 10 }, 1016, X);
+    send(A::Move, { 140, 10 }, 1032, X);
+    send(A::Up, { 140, 10 }, 1048, X);
+    CHECK(dragged > 25 && dragged <= 40);
 }
