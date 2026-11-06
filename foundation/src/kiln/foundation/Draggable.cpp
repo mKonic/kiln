@@ -41,6 +41,7 @@ namespace kiln::foundation {
                 bool dragging = false;
                 auto start = [&](Offset at) {
                     dragging = true;
+                    box->state->SetDensity(s.GetDensity());
                     box->state->SetDragging(true);
                     if (o.interactionSource) box->interaction = o.interactionSource->Start(Interaction::Kind::Drag, at);
                     if (o.onDragStarted) o.onDragStarted(at);

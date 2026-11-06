@@ -67,6 +67,11 @@ namespace kiln::foundation {
     Modifier FillMax(Modifier m, Axis axis, float fraction = 1.0f);
     Modifier WrapContent(Modifier m, Axis axis, Alignment align = Alignment::Center(), bool unbounded = false);
     Modifier OffsetMod(Modifier m, Dp x, Dp y, bool rtlAware = true);
+    // offset { IntOffset }: evaluated at placement, so state it reads re-places without
+    // recomposing (the form for offsets that change every frame).
+    Modifier OffsetMod(Modifier m, std::function<IntOffset(const Density&)> offset, bool rtlAware = true);
+    // onSizeChanged: called after measuring when the size differs from the last one (and the first time).
+    Modifier OnSizeChanged(Modifier m, std::function<void(IntSize)> onSizeChanged);
     Modifier AspectRatio(Modifier m, float ratio, bool matchHeightConstraintsFirst = false);
 
     // Parent data

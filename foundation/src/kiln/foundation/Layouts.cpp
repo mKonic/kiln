@@ -379,6 +379,48 @@ namespace kiln::foundation {
             }
         };
 
+        // OffsetPxNode: the lambda runs in placement (its reads re-place the node).
+        struct OffsetPxParams {
+            std::function<IntOffset(const Density&)> offset;
+            bool rtlAware;
+            bool operator==(const OffsetPxParams&) const { return false; }   // lambdas never compare equal
+        };
+        struct OffsetPxNode final : ModifierNode, LayoutModifier {
+            OffsetPxParams params;
+            explicit OffsetPxNode(OffsetPxParams p) : params(std::move(p)) {}
+            void OnParamsChanged() {}
+            LayoutModifier* AsLayout() override { return this; }
+            MeasureResult Measure(MeasureScope& s, Measurable& m, const Constraints& c) override {
+                Placeable& p = m.Measure(c);
+                const Density d = s;
+                return s.Layout(p.Width(), p.Height(), [this, &p, d](PlacementScope& place) {
+                    const IntOffset o = params.offset(d);
+                    if (params.rtlAware) place.PlaceRelative(p, o.x, o.y); else place.Place(p, o.x, o.y);
+                });
+            }
+        };
+
+        struct SizeChangedParams {
+            std::function<void(IntSize)> callback;
+            bool operator==(const SizeChangedParams&) const { return false; }
+        };
+        struct SizeChangedNode final : ModifierNode, LayoutModifier {
+            SizeChangedParams params;
+            std::optional<IntSize> last;
+            explicit SizeChangedNode(SizeChangedParams p) : params(std::move(p)) {}
+            void OnParamsChanged() {}
+            LayoutModifier* AsLayout() override { return this; }
+            MeasureResult Measure(MeasureScope& s, Measurable& m, const Constraints& c) override {
+                Placeable& p = m.Measure(c);
+                const IntSize size{ p.Width(), p.Height() };
+                if (!last || *last != size) {
+                    last = size;
+                    if (params.callback) params.callback(size);
+                }
+                return s.Layout(p.Width(), p.Height(), [&p](PlacementScope& place) { place.Place(p, 0, 0); });
+            }
+        };
+
         struct AspectParams { float ratio; bool heightFirst; bool operator==(const AspectParams&) const = default; };
         struct AspectNode final : ModifierNode, LayoutModifier {
             AspectParams params;
@@ -544,6 +586,10 @@ namespace kiln::foundation {
     Modifier FillMax(Modifier m, Axis axis, float fraction) { return m.With<FillNode>(FillParams{ axis, fraction }); }
     Modifier WrapContent(Modifier m, Axis axis, Alignment a, bool unbounded) { return m.With<WrapNode>(WrapParams{ axis, a, unbounded }); }
     Modifier OffsetMod(Modifier m, Dp x, Dp y, bool rtlAware) { return m.With<OffsetNode>(OffsetParams{ x, y, rtlAware }); }
+    Modifier OffsetMod(Modifier m, std::function<IntOffset(const Density&)> offset, bool rtlAware) {
+        return m.With<OffsetPxNode>(OffsetPxParams{ std::move(offset), rtlAware });
+    }
+    Modifier OnSizeChanged(Modifier m, std::function<void(IntSize)> f) { return m.With<SizeChangedNode>(SizeChangedParams{ std::move(f) }); }
     Modifier AspectRatio(Modifier m, float ratio, bool heightFirst) { return m.With<AspectNode>(AspectParams{ ratio, heightFirst }); }
     Modifier Weight(Modifier m, float w, bool fill) { return m.With<ParentDataNode>(ParentParams{ 0, w, fill, 0, 0 }); }
     Modifier AlignInRow(Modifier m, AlignmentV a) { return m.With<ParentDataNode>(ParentParams{ 1, 0, true, a.bias, 0 }); }

@@ -11,6 +11,7 @@
 #include <kiln/foundation/Back.h>
 #include <kiln/foundation/Draw.h>
 #include <kiln/foundation/AnimatedVisibility.h>
+#include <kiln/foundation/AnchoredDraggable.h>
 #include <kiln/foundation/Image.h>
 #include <kiln/foundation/Shapes.h>
 #include <kiln/graphics/shapes/Shapes.h>
@@ -165,6 +166,19 @@ namespace {
                     kiln::gfx::Path p = MorphToPath(morph, morphT.Get(), 0);
                     p.Transform(kiln::gfx::Matrix::Scale(d.GetSize().width, d.GetSize().height));
                     d.DrawPath(p, kiln::gfx::Brush::LinearGradient({ kPrimary, kTertiary }));
+                });
+            }
+            // anchoredDraggable: a thumb that snaps to either end of its track.
+            {
+                auto& knob = c.RememberNew<AnchoredDraggableState<bool>>({}, {}, false);
+                Box(AnchoredDraggable(OnSizeChanged(Background(SizeMod(Padding(Modifier{}, 16_dp, 0_dp), 200_dp, 48_dp), kContainer, CornerShape::Pill()),
+                                                    [&knob](IntSize s) { knob.UpdateAnchors({ { false, 0 }, { true, float(s.width - s.height) } }); }),
+                                      knob, Orientation::Horizontal),
+                    Alignment::TopStart(), false, [&knob] {
+                    Box(Background(SizeMod(OffsetMod(Modifier{}, [&knob](const Density&) {
+                            const float o = knob.Offset();
+                            return IntOffset{ std::isnan(o) ? 0 : int(std::lround(o)), 0 };
+                        }), 48_dp, 48_dp), knob.SettledValue() ? kPrimary : kVariant, CornerShape::Pill()));
                 });
             }
             // Mixed text sizes sharing a baseline (alignByBaseline).

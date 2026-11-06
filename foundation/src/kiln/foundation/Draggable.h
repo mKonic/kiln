@@ -20,7 +20,11 @@ namespace kiln::foundation {
         // internal
         void SetOnDelta(std::function<void(float)> f) { m_OnDelta = std::move(f); }
         void SetDragging(bool d) { if (m_Dragging.Peek() != d) m_Dragging.Set(d); }
+        // Density of the node the last drag ran on (for dp thresholds in onDragStopped).
+        ui::Density LastDensity() const { return m_Density; }
+        void SetDensity(ui::Density d) { m_Density = d; }
     private:
+        ui::Density m_Density{};
         std::function<void(float)> m_OnDelta;
         rt::State<bool> m_Dragging{ false };
     };
