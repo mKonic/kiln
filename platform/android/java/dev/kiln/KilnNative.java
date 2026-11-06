@@ -14,6 +14,8 @@ final class KilnNative {
                                   int[] toolTypes, int buttons, int classification, float hscroll, float vscroll);
     static native boolean keyEvent(int action, int keyCode, int metaState, int unicode, int repeatCount, long eventTime);
     static native void hostFocusChanged(boolean focused);
+    static native void setInsets(int type, int left, int top, int right, int bottom);
+    static native void setImeState(boolean visible, boolean animating);
 
     // InputConnection -> the active native text input session.
     static native void imeCommitText(String text, int newCursorPosition);

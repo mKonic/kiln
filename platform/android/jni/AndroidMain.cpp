@@ -201,6 +201,16 @@ namespace {
         return handled;
     }
 
+    void SetInsets(JNIEnv*, jclass, jint type, jint l, jint t, jint r, jint b) {
+        if (type < 0 || type >= jint(kiln::ui::InsetsType::Count)) return;
+        g_Host->app->GetOwner().Insets().Set(kiln::ui::InsetsType(type), { l, t, r, b });
+    }
+    void SetImeState(JNIEnv*, jclass, jboolean visible, jboolean animating) {
+        auto& h = g_Host->app->GetOwner().Insets();
+        h.SetImeVisible(visible);
+        h.SetImeAnimating(animating);
+    }
+
     void HostFocusChanged(JNIEnv*, jclass, jboolean focused) {
         g_Host->app->GetOwner().OnHostFocusChanged(focused);
     }
@@ -364,6 +374,8 @@ extern "C" JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void*) {
         { "touchEvent", "(IIJ[I[F[IIIFF)V", reinterpret_cast<void*>(&TouchEvent) },
         { "keyEvent", "(IIIIIJ)Z", reinterpret_cast<void*>(&KeyEvent) },
         { "hostFocusChanged", "(Z)V", reinterpret_cast<void*>(&HostFocusChanged) },
+        { "setInsets", "(IIIII)V", reinterpret_cast<void*>(&SetInsets) },
+        { "setImeState", "(ZZ)V", reinterpret_cast<void*>(&SetImeState) },
         { "imeCommitText", "(Ljava/lang/String;I)V", reinterpret_cast<void*>(&ImeCommitText) },
         { "imeSetComposingText", "(Ljava/lang/String;I)V", reinterpret_cast<void*>(&ImeSetComposingText) },
         { "imeSetComposingRegion", "(II)V", reinterpret_cast<void*>(&ImeSetComposingRegion) },

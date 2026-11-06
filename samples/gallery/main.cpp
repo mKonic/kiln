@@ -5,6 +5,7 @@
 #include <kiln/foundation/Gestures.h>
 #include <kiln/foundation/Animate.h>
 #include <kiln/foundation/Scroll.h>
+#include <kiln/foundation/Insets.h>
 #include <kiln/foundation/text/BasicTextField.h>
 #include <kiln/runtime/Task.h>
 
@@ -35,8 +36,10 @@ namespace {
         c.LaunchedEffect(kiln::rt::Keys(0), [&seconds] { return Tick(seconds); });
 
         auto& scroll = c.RememberNew<ScrollState>({}, {});
-        Column(VerticalScroll(Background(FillMax(Modifier{}, Axis::Both), kSurface), scroll), Arrangement::SpacedBy(16_dp), AlignmentH::Start(), [&] {
-            Spacer(Height(Modifier{}, 32_dp));
+        // Edge to edge: the background fills the window, content stays inside the safe area and
+        // above the keyboard.
+        Column(VerticalScroll(SafeDrawingPadding(Background(FillMax(Modifier{}, Axis::Both), kSurface)), scroll), Arrangement::SpacedBy(16_dp), AlignmentH::Start(), [&] {
+            Spacer(Height(Modifier{}, 8_dp));
             BasicText("kiln layout", Padding(Modifier{}, 16_dp, 0_dp), { 28, kOnSurface });
             Column(Background(Padding(FillMax(Modifier{}, Axis::Horizontal), 16_dp, 0_dp), kContainer, CornerShape::Rounded(12_dp)),
                    Arrangement::SpacedBy(8_dp), AlignmentH::Start(), [&] {

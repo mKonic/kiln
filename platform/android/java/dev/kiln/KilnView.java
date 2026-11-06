@@ -10,6 +10,9 @@ import android.util.DisplayMetrics;
 import android.graphics.Rect;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
+import android.view.WindowInsets;
+import android.view.WindowInsetsAnimation;
+import java.util.List;
 import android.view.ViewConfiguration;
 import android.graphics.Matrix;
 import android.view.inputmethod.CursorAnchorInfo;
@@ -56,6 +59,56 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
                 animationScaleObserver);
         pushAnimationScale();
         pushViewConfiguration();
+        installInsets();
+    }
+
+    // --- window insets (spec 02 req. 15) ----------------------------------------------------
+    // Order matches kiln::ui::InsetsType.
+    private static final int[] TYPES = {
+        WindowInsets.Type.statusBars(), WindowInsets.Type.navigationBars(), WindowInsets.Type.captionBar(),
+        WindowInsets.Type.ime(), WindowInsets.Type.displayCutout(), WindowInsets.Type.systemGestures(),
+        WindowInsets.Type.mandatorySystemGestures(), WindowInsets.Type.tappableElement(), 0 /* waterfall below */ };
+    private boolean imeAnimating;
+
+    private void pushInsets(WindowInsets insets, boolean skipIme) {
+        for (int i = 0; i < TYPES.length; i++) {
+            if (skipIme && i == 3) continue;
+            android.graphics.Insets v;
+            if (i == 8) {
+                android.view.DisplayCutout c = insets.getDisplayCutout();
+                v = c != null ? c.getWaterfallInsets() : android.graphics.Insets.NONE;
+            } else {
+                v = insets.getInsets(TYPES[i]);
+            }
+            KilnNative.setInsets(i, v.left, v.top, v.right, v.bottom);
+        }
+        KilnNative.setImeState(insets.isVisible(WindowInsets.Type.ime()), imeAnimating);
+    }
+
+    private void installInsets() {
+        setOnApplyWindowInsetsListener((v, insets) -> {
+            // While the IME animates, onProgress drives its insets frame by frame.
+            pushInsets(insets, imeAnimating);
+            return insets;
+        });
+        setWindowInsetsAnimationCallback(new WindowInsetsAnimation.Callback(
+                WindowInsetsAnimation.Callback.DISPATCH_MODE_STOP) {
+            @Override public void onPrepare(WindowInsetsAnimation animation) {
+                if ((animation.getTypeMask() & WindowInsets.Type.ime()) != 0) imeAnimating = true;
+            }
+            @Override public WindowInsets onProgress(WindowInsets insets, List<WindowInsetsAnimation> running) {
+                android.graphics.Insets ime = insets.getInsets(WindowInsets.Type.ime());
+                KilnNative.setInsets(3, ime.left, ime.top, ime.right, ime.bottom);
+                return insets;
+            }
+            @Override public void onEnd(WindowInsetsAnimation animation) {
+                if ((animation.getTypeMask() & WindowInsets.Type.ime()) == 0) return;
+                imeAnimating = false;
+                WindowInsets now = getRootWindowInsets();
+                if (now != null) pushInsets(now, false);
+            }
+        });
+        requestApplyInsets();
     }
 
     private void pushViewConfiguration() {
