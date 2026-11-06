@@ -10,6 +10,7 @@
 #include <kiln/foundation/Insets.h>
 #include <kiln/foundation/Back.h>
 #include <kiln/foundation/Draw.h>
+#include <kiln/foundation/AnimatedVisibility.h>
 #include <kiln/foundation/Image.h>
 #include <kiln/foundation/Shapes.h>
 #include <kiln/graphics/shapes/Shapes.h>
@@ -123,14 +124,14 @@ namespace {
                 Alignment::Center(), false, [&] {
                 BasicText(panelOpen.Get() ? "Close panel" : "Open panel", Padding(Modifier{}, 24_dp, 10_dp), { 14, kOnSurface });
             });
-            if (panelOpen.Get()) {
+            AnimatedVisibility(panelOpen.Get(), Modifier{}, [&] {
                 GraphicsLayerParams layer;
                 layer.scaleX = layer.scaleY = 1.0f - 0.1f * backProgress.Get();
                 Box(Background(GraphicsLayer(Padding(FillMax(Modifier{}, Axis::Horizontal), 16_dp, 0_dp), layer),
                                kTertiary, CornerShape::Rounded(16_dp)), Alignment::Center(), false, [&] {
                     BasicText("Panel: back closes it", Padding(Modifier{}, 16_dp, 24_dp), { 16, kOnPrimary });
                 });
-            }
+            }, ExpandVertically() + FadeIn(), ShrinkVertically() + FadeOut());
             // Rotation: a clipped card with text and a path, spinning.
             {
                 auto& angle = RememberState(0.0f);
