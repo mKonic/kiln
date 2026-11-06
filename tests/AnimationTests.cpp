@@ -95,6 +95,51 @@ TEST(AnimateFloatAsStateFollowsTarget) {
     CHECK_EQ(seen, 10.0f);
 }
 
+TEST(AnimateAsStateFinishedListenerAndIntTypes) {
+    NullNode root;
+    rt::Dispatcher d;
+    rt::Composition c(root, d);
+    rt::State<int> step(0);
+    std::vector<ui::IntOffset> finished;
+    ui::IntOffset seen{};
+    ui::Rect rect{};
+    c.SetContent([&] {
+        const int s = step.Get();
+        seen = foundation::AnimateIntOffsetAsState(ui::IntOffset{ s * 10, 0 }, Tween(100, 0, Linear()),
+                                                   [&](ui::IntOffset v) { finished.push_back(v); });
+        rect = foundation::AnimateRectAsState(ui::Rect{ 0, 0, float(s * 100), 10 }, Tween(100, 0, Linear()));
+    });
+    c.Recompose();
+    step.Set(1);
+    c.Recompose();
+    d.RunFrame(0); c.Recompose();
+    d.RunFrame(44'000'000); c.Recompose();
+    CHECK(seen.x == 4);                            // 4.4 rounds to 4 (IntOffset rounds)
+    CHECK(std::abs(rect.right - 44) < 0.5f);
+    // Retargeting mid-way: the first animation never finishes, so it reports nothing.
+    step.Set(2);
+    c.Recompose();
+    for (std::int64_t t = 50; t <= 400; t += 16) { d.RunFrame(t * 1'000'000); c.Recompose(); }
+    CHECK_EQ(seen.x, 20);
+    CHECK_EQ(finished.size(), std::size_t(1));
+    CHECK_EQ(finished[0].x, 20);
+}
+
+TEST(InterruptionAwareSpecPicksItsInterruptionSpec) {
+    rt::Dispatcher d;
+    Animatable a(0.0f);
+    // Normally a 1 s linear tween; once interrupted, a 100 ms one.
+    auto spec = InterruptionAware(Tween(1000, 0, Linear()), Tween(100, 0, Linear()));
+    auto first = rt::Launch(d, [](Animatable& an, SpecPtr sp) -> rt::Task<> { co_await an.AnimateTo(Vec{ 100, 0, 0, 0 }, sp); }(a, spec));
+    d.RunFrame(0);
+    d.RunFrame(100'000'000);
+    CHECK(std::abs(a.Float() - 10) < 0.5f);       // the normal spec
+    auto second = rt::Launch(d, [](Animatable& an, SpecPtr sp) -> rt::Task<> { co_await an.AnimateTo(Vec{ 0, 0, 0, 0 }, sp); }(a, spec));
+    d.RunFrame(200'000'000);
+    d.RunFrame(300'000'000);
+    CHECK(std::abs(a.Float()) < 0.01f);          // done within the short interruption spec
+}
+
 TEST(CssEasingsAndBounce) {
     using namespace kiln::anim::easing;
     CHECK(std::abs(EaseInOut().Transform(0.5f) - 0.5f) < 1e-3f);           // symmetric

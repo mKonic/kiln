@@ -41,6 +41,20 @@ namespace kiln::anim {
     // tween(durationMillis = 300, delayMillis = 0, easing = FastOutSlowIn)
     SpecPtr Tween(int durationMillis = DefaultDurationMillis, int delayMillis = 0, Easing easing = FastOutSlowIn());
     SpecPtr Snap(int delayMillis = 0);
+    // InterruptionAwareAnimationSpec: `animation` normally, `interruption` when it starts while
+    // an animation is already running (Animatable.animateTo, animate*AsState, Transition).
+    class InterruptionAwareSpec final : public AnimationSpec {
+    public:
+        InterruptionAwareSpec(SpecPtr animation, SpecPtr interruption)
+            : animationSpec(std::move(animation)), interruptionSpec(interruption ? std::move(interruption) : animationSpec) {}
+        Vec ValueAt(std::int64_t t, const Vec& f, const Vec& to, const Vec& v0, int d) const override { return animationSpec->ValueAt(t, f, to, v0, d); }
+        Vec VelocityAt(std::int64_t t, const Vec& f, const Vec& to, const Vec& v0, int d) const override { return animationSpec->VelocityAt(t, f, to, v0, d); }
+        std::int64_t DurationNanos(const Vec& f, const Vec& to, const Vec& v0, int d) const override { return animationSpec->DurationNanos(f, to, v0, d); }
+        const SpecPtr animationSpec, interruptionSpec;
+    };
+    inline SpecPtr InterruptionAware(SpecPtr animation, SpecPtr interruption = nullptr) {
+        return std::make_shared<InterruptionAwareSpec>(std::move(animation), std::move(interruption));
+    }
     enum class RepeatMode : std::uint8_t { Restart, Reverse };
     SpecPtr InfiniteRepeatable(SpecPtr duration, RepeatMode mode = RepeatMode::Restart, std::int64_t initialOffsetNanos = 0);
 

@@ -65,6 +65,9 @@ namespace kiln::anim {
 
     rt::Task<AnimationResult> Animatable::AnimateTo(Vec target, SpecPtr spec, std::optional<Vec> initialVelocity,
                                                      std::function<void(const Vec&)> onFrame) {
+        // An interruption-aware spec picks its interruption spec when we are already running.
+        if (auto* aware = dynamic_cast<const InterruptionAwareSpec*>(spec.get()))
+            spec = m_Running.Peek() ? aware->interruptionSpec : aware->animationSpec;
         const std::uint64_t gen = ++m_Generation;
         const Vec from = m_Value.Peek();
         const Vec v0 = initialVelocity.value_or(m_Velocity);

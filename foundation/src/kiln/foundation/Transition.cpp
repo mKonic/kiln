@@ -20,8 +20,12 @@ namespace kiln::foundation {
         c.start = c.value.Peek();
         c.startVelocity = c.velocity;
         c.target = target;
-        // Transition.kt: an interrupted child keeps moving with a spring unless its spec is one.
-        c.spec = interrupted && !IsSpring(spec) ? anim::Spring() : (spec ? spec : anim::Spring());
+        // Transition.kt: an interrupted child keeps moving with a spring unless its spec is one or
+        // brings its own interruption spec.
+        const auto* aware = dynamic_cast<const anim::InterruptionAwareSpec*>(spec.get());
+        if (interrupted && aware) c.spec = aware->interruptionSpec;
+        else if (aware) c.spec = aware->animationSpec;
+        else c.spec = interrupted && !IsSpring(spec) ? anim::Spring() : (spec ? spec : anim::Spring());
         c.duration = c.spec->DurationNanos(c.start, c.target, c.startVelocity, c.dims);
         c.finished = snap;
         if (snap) { c.value.Set(target); c.velocity = {}; }
