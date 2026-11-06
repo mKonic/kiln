@@ -27,10 +27,10 @@ namespace kiln::foundation {
         return { 1, 1 };
     }
 
-    void BitmapPainter::Draw(DrawScope& scope, Size size, float alpha) {
+    void BitmapPainter::Draw(DrawScope& scope, Size size, float alpha, const gfx::ColorFilter* filter) {
         // BitmapPainter.onDraw: the whole bitmap into the size rounded to whole pixels.
         scope.DrawImage(m_Image, { 0, 0, float(m_Image.Width()), float(m_Image.Height()) }, {},
-                        { std::round(size.width), std::round(size.height) }, alpha);
+                        { std::round(size.width), std::round(size.height) }, alpha, filter);
     }
 
     namespace {
@@ -42,10 +42,11 @@ namespace kiln::foundation {
             Alignment alignment;
             ContentScale scale;
             float alpha;
+            std::optional<gfx::ColorFilter> filter;
             bool operator==(const PaintParams& o) const {
                 const bool samePainter = painter == o.painter || (painter && o.painter && painter->Equals(*o.painter));
                 return samePainter && sizeToIntrinsics == o.sizeToIntrinsics && alignment.horizontal == o.alignment.horizontal &&
-                       alignment.vertical == o.alignment.vertical && scale == o.scale && alpha == o.alpha;
+                       alignment.vertical == o.alignment.vertical && scale == o.scale && alpha == o.alpha && filter == o.filter;
             }
         };
 
@@ -115,7 +116,7 @@ namespace kiln::foundation {
                                                                 { RoundJava(size.width), RoundJava(size.height) }, s.Direction());
                     s.Save();
                     s.Translate({ float(at.x), float(at.y) });
-                    params.painter->Draw(s, scaled, params.alpha);
+                    params.painter->Draw(s, scaled, params.alpha, params.filter ? &*params.filter : nullptr);
                     s.Restore();
                 }
                 s.DrawContent();
@@ -130,28 +131,29 @@ namespace kiln::foundation {
         };
     }
 
-    Modifier Paint(Modifier m, std::shared_ptr<Painter> painter, bool sizeToIntrinsics, Alignment alignment, ContentScale scale, float alpha) {
-        return m.With<PaintNode>(PaintParams{ std::move(painter), sizeToIntrinsics, alignment, scale, alpha });
+    Modifier Paint(Modifier m, std::shared_ptr<Painter> painter, bool sizeToIntrinsics, Alignment alignment, ContentScale scale, float alpha,
+                   std::optional<gfx::ColorFilter> filter) {
+        return m.With<PaintNode>(PaintParams{ std::move(painter), sizeToIntrinsics, alignment, scale, alpha, filter });
     }
 
     void Image(std::shared_ptr<Painter> painter, const std::optional<std::string>& description, const Modifier& modifier,
-               Alignment alignment, ContentScale scale, float alpha) {
+               Alignment alignment, ContentScale scale, float alpha, std::optional<gfx::ColorFilter> filter) {
         Modifier m = modifier;
         if (description) {
             const std::string d = *description;
             m = Semantics(std::move(m), [d](SemanticsConfiguration& c) { c.contentDescription.push_back(d); c.role = Role::Image; });
         }
-        m = Paint(ClipToBounds(std::move(m)), std::move(painter), true, alignment, scale, alpha);
+        m = Paint(ClipToBounds(std::move(m)), std::move(painter), true, alignment, scale, alpha, filter);
         static const auto policy = std::make_shared<ImagePolicy>();
         Layout(m, policy);
     }
 
     void Image(const gfx::ImageBitmap& bitmap, const std::optional<std::string>& description, const Modifier& modifier,
-               Alignment alignment, ContentScale scale, float alpha) {
+               Alignment alignment, ContentScale scale, float alpha, std::optional<gfx::ColorFilter> filter) {
         // remember(bitmap) { BitmapPainter(bitmap) }
         auto& c = *rt::Composition::Current();
         auto& painter = c.Remember<std::shared_ptr<Painter>>([&] { return std::make_shared<BitmapPainter>(bitmap); }, rt::Keys(bitmap.Id()));
-        Image(painter, description, modifier, alignment, scale, alpha);
+        Image(painter, description, modifier, alignment, scale, alpha, filter);
     }
 
 }

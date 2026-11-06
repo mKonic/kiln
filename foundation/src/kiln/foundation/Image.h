@@ -2,6 +2,7 @@
 
 // Image, painters and Modifier.paint (foundation Image.kt, ui PainterModifier.kt, ContentScale.kt).
 
+#include "kiln/graphics/ColorFilter.h"
 #include "kiln/graphics/Image.h"
 #include "kiln/ui/Draw.h"
 #include "kiln/ui/LayoutNode.h"
@@ -42,7 +43,7 @@ namespace kiln::foundation {
     public:
         virtual ~Painter() = default;
         virtual std::optional<Size> IntrinsicSize() const = 0;
-        virtual void Draw(DrawScope& scope, Size size, float alpha) = 0;
+        virtual void Draw(DrawScope& scope, Size size, float alpha, const gfx::ColorFilter* colorFilter) = 0;
         virtual bool Equals(const Painter& other) const { return this == &other; }
     };
 
@@ -50,7 +51,7 @@ namespace kiln::foundation {
     public:
         explicit BitmapPainter(gfx::ImageBitmap image) : m_Image(std::move(image)) {}
         std::optional<Size> IntrinsicSize() const override { return Size{ float(m_Image.Width()), float(m_Image.Height()) }; }
-        void Draw(DrawScope& scope, Size size, float alpha) override;
+        void Draw(DrawScope& scope, Size size, float alpha, const gfx::ColorFilter* colorFilter) override;
         bool Equals(const Painter& o) const override {
             auto* b = dynamic_cast<const BitmapPainter*>(&o);
             return b && b->m_Image == m_Image;
@@ -60,11 +61,14 @@ namespace kiln::foundation {
     };
 
     Modifier Paint(Modifier m, std::shared_ptr<Painter> painter, bool sizeToIntrinsics = true,
-                   Alignment alignment = Alignment::Center(), ContentScale contentScale = ContentScale::Inside(), float alpha = 1);
+                   Alignment alignment = Alignment::Center(), ContentScale contentScale = ContentScale::Inside(), float alpha = 1,
+                   std::optional<gfx::ColorFilter> colorFilter = std::nullopt);
 
     void Image(std::shared_ptr<Painter> painter, const std::optional<std::string>& contentDescription, const Modifier& modifier = {},
-               Alignment alignment = Alignment::Center(), ContentScale contentScale = ContentScale::Fit(), float alpha = 1);
+               Alignment alignment = Alignment::Center(), ContentScale contentScale = ContentScale::Fit(), float alpha = 1,
+               std::optional<gfx::ColorFilter> colorFilter = std::nullopt);
     void Image(const gfx::ImageBitmap& bitmap, const std::optional<std::string>& contentDescription, const Modifier& modifier = {},
-               Alignment alignment = Alignment::Center(), ContentScale contentScale = ContentScale::Fit(), float alpha = 1);
+               Alignment alignment = Alignment::Center(), ContentScale contentScale = ContentScale::Fit(), float alpha = 1,
+               std::optional<gfx::ColorFilter> colorFilter = std::nullopt);
 
 }

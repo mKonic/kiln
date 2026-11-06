@@ -13,7 +13,7 @@ namespace {
         Size size;
         explicit FixedPainter(Size s) : size(s) {}
         std::optional<Size> IntrinsicSize() const override { return size; }
-        void Draw(DrawScope&, Size, float) override {}
+        void Draw(DrawScope&, Size, float, const gfx::ColorFilter*) override {}
     };
     struct Harness {
         Owner owner;
