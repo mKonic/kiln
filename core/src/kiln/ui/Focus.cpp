@@ -622,6 +622,41 @@ namespace kiln::ui {
 
     // --- keys -----------------------------------------------------------------------------------
 
+    // Path root -> focused: ancestors' chains, then the focused node's chain up to the next focus
+    // target after the active one.
+    template <typename T> std::vector<T*> Owner::FocusedPath(T* (ModifierNode::*as)()) {
+        std::vector<T*> path;
+        if (!m_ActiveFocus) return path;
+        LayoutNode* n = NodeOf(*m_ActiveFocus);
+        std::vector<LayoutNode*> line;
+        for (LayoutNode* p = n ? n->m_Parent : nullptr; p; p = p->m_Parent) line.insert(line.begin(), p);
+        for (LayoutNode* p : line)
+            for (auto& m : p->m_Nodes) if (T* k = (m.get()->*as)()) path.push_back(k);
+        if (n) {
+            bool passedActive = false;
+            for (auto& m : n->m_Nodes) {
+                if (passedActive && m->AsFocusTarget()) break;
+                if (m.get() == m_ActiveFocus) passedActive = true;
+                if (T* k = (m.get()->*as)()) path.push_back(k);
+            }
+        }
+        return path;
+    }
+
+    bool Owner::DispatchInterceptedSoftKeyboardEvent(const KeyEvent& e) {
+        const auto path = FocusedPath(&ModifierNode::AsSoftKeyboardInterception);
+        for (auto* k : path) if (k->OnPreInterceptKeyBeforeSoftKeyboard(e)) return true;
+        for (auto it = path.rbegin(); it != path.rend(); ++it) if ((*it)->OnInterceptKeyBeforeSoftKeyboard(e)) return true;
+        return false;
+    }
+
+    bool Owner::DispatchRotaryEvent(const RotaryScrollEvent& e) {
+        const auto path = FocusedPath(&ModifierNode::AsRotaryInput);
+        for (auto* k : path) if (k->OnPreRotaryScrollEvent(e)) return true;
+        for (auto it = path.rbegin(); it != path.rend(); ++it) if ((*it)->OnRotaryScrollEvent(e)) return true;
+        return false;
+    }
+
     bool Owner::DispatchKeyEvent(const KeyEvent& e) {
         // A key going up that was never seen going down is dropped (FocusOwnerImpl.validateKeyEvent).
         if (e.type == KeyEventType::KeyDown) {
@@ -633,24 +668,7 @@ namespace kiln::ui {
         }
         if (m_InputMode.Peek() != InputMode::Keyboard && e.keyCode != keys::Back) m_InputMode.Set(InputMode::Keyboard);
 
-        // Path of key nodes root -> focused: ancestors' chains, then the focused node's chain up
-        // to the next focus target after the active one.
-        std::vector<KeyInputModifier*> path;
-        if (m_ActiveFocus) {
-            LayoutNode* n = NodeOf(*m_ActiveFocus);
-            std::vector<LayoutNode*> line;
-            for (LayoutNode* p = n ? n->m_Parent : nullptr; p; p = p->m_Parent) line.insert(line.begin(), p);
-            for (LayoutNode* p : line)
-                for (auto& m : p->m_Nodes) if (auto* k = m->AsKeyInput()) path.push_back(k);
-            if (n) {
-                bool passedActive = false;
-                for (auto& m : n->m_Nodes) {
-                    if (passedActive && m->AsFocusTarget()) break;
-                    if (m.get() == m_ActiveFocus) passedActive = true;
-                    if (auto* k = m->AsKeyInput()) path.push_back(k);
-                }
-            }
-        }
+        const std::vector<KeyInputModifier*> path = FocusedPath(&ModifierNode::AsKeyInput);
         for (KeyInputModifier* k : path) if (k->OnPreKeyEvent(e)) return true;
         for (auto it = path.rbegin(); it != path.rend(); ++it) if ((*it)->OnKeyEvent(e)) return true;
 
@@ -670,7 +688,19 @@ namespace kiln::ui {
             default: break;
         }
         if (!d) return false;
-        return MoveFocus(*d);
+        if (!MoveFocus(*d)) return false;
+        // playNavigationSoundEffect (SoundEffectConstants.getConstantForFocusDirection): arrows and
+        // 1D moves sound, repeating while the key repeats; Enter / Exit do not.
+        int sound = -1;
+        switch (*d) {
+            case FocusDirection::Left: sound = 1; break;
+            case FocusDirection::Up: case FocusDirection::Previous: sound = 2; break;
+            case FocusDirection::Right: sound = 3; break;
+            case FocusDirection::Down: case FocusDirection::Next: sound = 4; break;
+            default: break;
+        }
+        if (sound > 0) PlaySoundEffect(e.repeatCount > 0 ? sound + 4 : sound);
+        return true;
     }
 
 }

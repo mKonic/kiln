@@ -2,6 +2,7 @@
 
 #include "kiln/foundation/Compose.h"
 #include "kiln/foundation/Gestures.h"
+#include "kiln/ui/Locals.h"
 #include "kiln/ui/VelocityTracker.h"
 
 #include <cmath>
@@ -487,4 +488,40 @@ TEST(HitTestFollowsTheClipShape) {
     CHECK_EQ(clicks, 0);
     Tap(h, 50, 50, 2000);
     CHECK_EQ(clicks, 1);
+}
+
+namespace {
+    struct CountingSound final : ui::SoundEffect {
+        int clicks = 0;
+        void PlayClickSound() override { ++clicks; }
+    };
+}
+
+TEST(ClicksPlayTheLocalSoundUnlessTurnedOff) {
+    Harness h;
+    auto sound = std::make_shared<CountingSound>();
+    int clicks = 0;
+    bool soundsOn = true;
+    rt::State<int> recompose(0);
+    h.Run([&] {
+        recompose.Get();
+        auto* c = rt::Composition::Current();
+        c->Provide(ui::LocalSoundEffect, std::shared_ptr<ui::SoundEffect>(sound), [&] {
+            SoundEffectOnInteraction(soundsOn, [&] {
+                Box(FillMax(Modifier{}, Axis::Both), Alignment::TopStart(), false, [&] {
+                    Box(Clickable(SizeMod(Modifier{}, Dp(60), Dp(60)), [&] { ++clicks; }));
+                });
+            });
+        });
+    });
+    Tap(h, 30, 30, 1000);
+    CHECK_EQ(clicks, 1);
+    CHECK_EQ(sound->clicks, 1);
+    soundsOn = false;
+    recompose.Set(1);
+    h.composition.Recompose();
+    h.owner.MeasureAndLayout({ 100, 100 });
+    Tap(h, 30, 30, 2000);
+    CHECK_EQ(clicks, 2);
+    CHECK_EQ(sound->clicks, 1);
 }

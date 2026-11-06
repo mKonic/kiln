@@ -44,6 +44,22 @@ namespace kiln {
         return handled;
     }
 
+    bool App::ProcessKeyPreIme(const ui::KeyEvent& event) {
+        rt::Composition::RecomposeAll();
+        if (m_Width && m_Height) m_Owner.MeasureAndLayout({ int(m_Width), int(m_Height) });
+        const bool handled = m_Owner.DispatchInterceptedSoftKeyboardEvent(event);
+        m_Dispatcher.RunPending();
+        return handled;
+    }
+
+    bool App::ProcessRotary(const ui::RotaryScrollEvent& event) {
+        rt::Composition::RecomposeAll();
+        if (m_Width && m_Height) m_Owner.MeasureAndLayout({ int(m_Width), int(m_Height) });
+        const bool handled = m_Owner.DispatchRotaryEvent(event);
+        m_Dispatcher.RunPending();
+        return handled;
+    }
+
     void App::SetLayoutDirection(ui::LayoutDirection d) {
         if (m_Direction->Peek() == d) return;
         m_Direction->Set(d);
@@ -57,12 +73,21 @@ namespace kiln {
         rt::State<ui::LayoutDirection>* dir = m_Direction.get();
         ui::HostNestedScrollParent* nested = m_Services.nestedScrollParent;
         const bool tv = m_Television;
-        m_Composition->SetContent([registry, dir, nested, tv, content = std::move(content)] {
+        // AndroidSoundEffect: clicks go to the host view.
+        struct HostSound final : ui::SoundEffect {
+            ui::Owner* owner;
+            explicit HostSound(ui::Owner* o) : owner(o) {}
+            void PlayClickSound() override { owner->PlaySoundEffect(0); }
+        };
+        std::shared_ptr<ui::SoundEffect> sound = std::make_shared<HostSound>(&m_Owner);
+        m_Composition->SetContent([registry, dir, nested, tv, sound, content = std::move(content)] {
             auto* c = rt::Composition::Current();
-            c->Provide(ui::LocalLayoutDirection, dir->Get(), [c, registry, nested, tv, content] {
-                c->Provide(ui::LocalHostNestedScrollParent, nested, [c, registry, tv, content] {
-                    c->Provide(ui::LocalIsTelevision, tv, [c, registry, content] {
-                        c->Provide(rt::LocalSaveableStateRegistry, registry, content);
+            c->Provide(ui::LocalLayoutDirection, dir->Get(), [c, registry, nested, tv, sound, content] {
+                c->Provide(ui::LocalHostNestedScrollParent, nested, [c, registry, tv, sound, content] {
+                    c->Provide(ui::LocalIsTelevision, tv, [c, registry, sound, content] {
+                        c->Provide(ui::LocalSoundEffect, sound, [c, registry, content] {
+                            c->Provide(rt::LocalSaveableStateRegistry, registry, content);
+                        });
                     });
                 });
             });

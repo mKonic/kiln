@@ -147,6 +147,35 @@ namespace kiln::foundation {
             bool OnPreKeyEvent(const KeyEvent& e) override { return params.onPreview && *params.onPreview && (*params.onPreview)(e); }
             bool OnKeyEvent(const KeyEvent& e) override { return params.onKey && *params.onKey && (*params.onKey)(e); }
         };
+
+        struct SoftKeyNode final : ModifierNode, SoftKeyboardInterceptionModifier {
+            KeyParams params;
+            explicit SoftKeyNode(KeyParams p) : params(std::move(p)) {}
+            void OnParamsChanged() {}
+            SoftKeyboardInterceptionModifier* AsSoftKeyboardInterception() override { return this; }
+            bool OnPreInterceptKeyBeforeSoftKeyboard(const KeyEvent& e) override { return params.onPreview && *params.onPreview && (*params.onPreview)(e); }
+            bool OnInterceptKeyBeforeSoftKeyboard(const KeyEvent& e) override { return params.onKey && *params.onKey && (*params.onKey)(e); }
+        };
+
+        struct RotaryParams {
+            std::shared_ptr<std::function<bool(const RotaryScrollEvent&)>> on, onPre;
+            bool operator==(const RotaryParams& o) const { return on == o.on && onPre == o.onPre; }
+        };
+        struct RotaryNode final : ModifierNode, RotaryInputModifier {
+            RotaryParams params;
+            explicit RotaryNode(RotaryParams p) : params(std::move(p)) {}
+            void OnParamsChanged() {}
+            RotaryInputModifier* AsRotaryInput() override { return this; }
+            bool OnPreRotaryScrollEvent(const RotaryScrollEvent& e) override { return params.onPre && *params.onPre && (*params.onPre)(e); }
+            bool OnRotaryScrollEvent(const RotaryScrollEvent& e) override { return params.on && *params.on && (*params.on)(e); }
+        };
+    }
+
+    Modifier OnInterceptKeyBeforeSoftKeyboard(Modifier m, std::function<bool(const KeyEvent&)> onKey, std::function<bool(const KeyEvent&)> onPre) {
+        return m.With<SoftKeyNode>(KeyParams{ Latest(std::move(onKey)), Latest(std::move(onPre)) });
+    }
+    Modifier OnRotaryScrollEvent(Modifier m, std::function<bool(const RotaryScrollEvent&)> on, std::function<bool(const RotaryScrollEvent&)> onPre) {
+        return m.With<RotaryNode>(RotaryParams{ Latest(std::move(on)), Latest(std::move(onPre)) });
     }
 
     Modifier Focusable(Modifier m, Focusability f, std::function<void(FocusState)> cb, std::shared_ptr<MutableInteractionSource> source) {

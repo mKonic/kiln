@@ -29,5 +29,12 @@ namespace kiln::foundation {
     // onKeyEvent / onPreviewKeyEvent: return true to consume.
     Modifier OnKeyEvent(Modifier m, std::function<bool(const KeyEvent&)> onKey,
                         std::function<bool(const KeyEvent&)> onPreview = {});
+    // onInterceptKeyBeforeSoftKeyboard / onPreInterceptKeyBeforeSoftKeyboard: keys before the
+    // IME sees them, when focused. Return true to consume.
+    Modifier OnInterceptKeyBeforeSoftKeyboard(Modifier m, std::function<bool(const KeyEvent&)> onKey,
+                                              std::function<bool(const KeyEvent&)> onPreKey = {});
+    // onRotaryScrollEvent / onPreRotaryScrollEvent: rotary encoder turns, when focused.
+    Modifier OnRotaryScrollEvent(Modifier m, std::function<bool(const RotaryScrollEvent&)> onEvent,
+                                 std::function<bool(const RotaryScrollEvent&)> onPreEvent = {});
 
 }

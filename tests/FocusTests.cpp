@@ -190,3 +190,49 @@ TEST(FocusRectMovesTheSearchArea) {
     h.Key(keys::DpadDown); CHECK_EQ(focused, std::string("d"));
     h.Key(keys::DpadDown); CHECK_EQ(focused, std::string("c"));
 }
+
+TEST(RotaryAndPreImeKeysFollowTheFocusedPath) {
+    Harness h;
+    std::vector<std::string> log;
+    bool innerConsumes = false;
+    h.Run([&] {
+        Box(OnRotaryScrollEvent(Modifier{}, [&](const RotaryScrollEvent&) { log.push_back("outer"); return false; },
+                                [&](const RotaryScrollEvent&) { log.push_back("pre-outer"); return false; }),
+            Alignment::TopStart(), false, [&] {
+            Box(Focusable(OnInterceptKeyBeforeSoftKeyboard(
+                              OnRotaryScrollEvent(SizeMod(Modifier{}, Dp(50), Dp(50)),
+                                                  [&](const RotaryScrollEvent& e) { log.push_back("inner " + std::to_string(int(e.verticalScrollPixels))); return innerConsumes; },
+                                                  [&](const RotaryScrollEvent&) { log.push_back("pre-inner"); return false; }),
+                              [&](const KeyEvent& k) { log.push_back("ime " + std::to_string(k.keyCode)); return true; })));
+        });
+    });
+    // Nothing focused: no one sees it (the host's view gets it instead).
+    CHECK(!h.owner.DispatchRotaryEvent({ 64, 0, 0, 0 }));
+    CHECK(log.empty());
+    h.Key(keys::Tab);
+    CHECK(!h.owner.DispatchRotaryEvent({ 64, 0, 0, 0 }));
+    CHECK(log == std::vector<std::string>({ "pre-outer", "pre-inner", "inner 64", "outer" }));
+    log.clear();
+    innerConsumes = true;
+    CHECK(h.owner.DispatchRotaryEvent({ 32, 0, 0, 0 }));
+    CHECK(log == std::vector<std::string>({ "pre-outer", "pre-inner", "inner 32" }));
+    log.clear();
+    CHECK(h.owner.DispatchInterceptedSoftKeyboardEvent(KeyEvent{ keys::Back, KeyEventType::KeyDown }));
+    CHECK(log == std::vector<std::string>({ "ime " + std::to_string(keys::Back) }));
+}
+
+TEST(KeyFocusMovesPlayNavigationSounds) {
+    Harness h;
+    std::string focused;
+    std::vector<int> sounds;
+    h.owner.SetPlaySoundEffect([&](int c) { sounds.push_back(c); });
+    h.Run([&] { Grid(focused); });
+    h.Key(keys::Tab);                                   // next: navigation down
+    h.Key(keys::DpadRight);
+    KeyEvent repeat{ keys::DpadLeft, KeyEventType::KeyDown };
+    repeat.repeatCount = 1;
+    h.owner.DispatchKeyEvent(repeat);                   // held: the repeating variant
+    h.owner.DispatchKeyEvent(KeyEvent{ keys::DpadLeft, KeyEventType::KeyUp });
+    h.Key(keys::DpadLeft);                              // nothing to the left of a: silent
+    CHECK(sounds == std::vector<int>({ 4, 3, 5 }));
+}

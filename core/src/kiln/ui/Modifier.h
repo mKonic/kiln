@@ -29,6 +29,8 @@ namespace kiln::ui {
     class BeyondBoundsLayout;
     class FocusEventModifier;
     class KeyInputModifier;
+    class SoftKeyboardInterceptionModifier;
+    class RotaryInputModifier;
     class FocusPropertiesModifier;
     class NestedScrollNode;
     class SemanticsModifier;
@@ -101,6 +103,8 @@ namespace kiln::ui {
         virtual FocusEventModifier* AsFocusEvent() { return nullptr; }
         virtual FocusPropertiesModifier* AsFocusProperties() { return nullptr; }
         virtual KeyInputModifier* AsKeyInput() { return nullptr; }
+        virtual SoftKeyboardInterceptionModifier* AsSoftKeyboardInterception() { return nullptr; }
+        virtual RotaryInputModifier* AsRotaryInput() { return nullptr; }
         virtual NestedScrollNode* AsNestedScroll() { return nullptr; }
         virtual SemanticsModifier* AsSemantics() { return nullptr; }
         // A scroll container's bringIntoView responder (it must also be a layout modifier).

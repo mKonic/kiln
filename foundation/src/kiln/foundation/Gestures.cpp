@@ -1,4 +1,5 @@
 #include "kiln/foundation/Gestures.h"
+#include "kiln/ui/Locals.h"
 
 #include "kiln/runtime/Task.h"
 #include "kiln/foundation/Focus.h"
@@ -444,6 +445,10 @@ namespace kiln::foundation {
             std::function<void(bool)> onPressed;
             std::function<void(SemanticsConfiguration&)> extraSemantics;
             std::function<void()> onLongClick, onDoubleClick;
+            std::shared_ptr<ui::SoundEffect> sound;   // LocalSoundEffect
+            void PlayClickSound() const { if (sound) sound->PlayClickSound(); }
+            // performClick: the sound, then the click.
+            void PerformClick() const { PlayClickSound(); if (onClick) onClick(); }
             std::shared_ptr<MutableInteractionSource> source;
             std::uint64_t press = 0, keyPress = 0, hover = 0;
             rt::Job delayJob;
@@ -472,6 +477,7 @@ namespace kiln::foundation {
             st->extraSemantics = std::move(extra);
             st->onLongClick = o.onLongClick;
             st->onDoubleClick = o.onDoubleClick;
+            if (auto* c = rt::Composition::Current()) st->sound = c->Read(ui::LocalSoundEffect);
             const bool hasLong = bool(o.onLongClick), hasDouble = bool(o.onDoubleClick);
             const std::optional<std::string> longLabel = o.onLongClickLabel;
             // An indication needs a source; create one when the caller passed none.
@@ -516,7 +522,7 @@ namespace kiln::foundation {
                 if (e.type == KeyEventType::KeyUp) {
                     if (st->onPressed) st->onPressed(false);
                     if (st->source && st->keyPress) { st->source->End(Interaction::Kind::Press, st->keyPress); st->keyPress = 0; }
-                    if (st->onClick) st->onClick();
+                    st->PerformClick();
                     return true;
                 }
                 return false;
@@ -551,10 +557,30 @@ namespace kiln::foundation {
                     }
                     st->press = 0;
                 };
-                cb.onTap = [st](Offset) { if (st->onClick) st->onClick(); };
+                cb.onTap = [st](Offset) { st->PerformClick(); };
                 return DetectTapGestures(s, cb);
             });
         }
+    }
+
+    namespace {
+        // DelegatingSoundEffect: passes through to the underlying effect unless disabled.
+        struct DelegatingSoundEffect final : ui::SoundEffect {
+            std::shared_ptr<ui::SoundEffect> delegate;
+            bool enabled;
+            DelegatingSoundEffect(std::shared_ptr<ui::SoundEffect> d, bool e) : delegate(std::move(d)), enabled(e) {}
+            void PlayClickSound() override { if (enabled && delegate) delegate->PlayClickSound(); }
+        };
+    }
+
+    void SoundEffectOnInteraction(bool enabled, std::function<void()> content) {
+        auto& c = *rt::Composition::Current();
+        std::shared_ptr<ui::SoundEffect> current = c.Read(ui::LocalSoundEffect);
+        // Unwrap delegating wrappers so the chain stays one deep.
+        while (auto* d = dynamic_cast<DelegatingSoundEffect*>(current.get())) current = d->delegate;
+        auto& wrapper = c.Remember<std::shared_ptr<ui::SoundEffect>>(
+            [&] { return std::make_shared<DelegatingSoundEffect>(current, enabled); }, rt::Keys(std::uintptr_t(current.get()), enabled));
+        c.Provide(ui::LocalSoundEffect, wrapper, std::move(content));
     }
 
     Modifier Clickable(Modifier m, std::function<void()> onClick, ClickableOptions o) {

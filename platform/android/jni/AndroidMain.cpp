@@ -205,6 +205,12 @@ namespace {
                                           jint(std::ceil(r.right)), jint(std::ceil(r.bottom)));
             });
         }
+        {
+            jclass vc = env->GetObjectClass(view);
+            static jmethodID playSound = env->GetMethodID(vc, "playSound", "(I)V");
+            env->DeleteLocalRef(vc);
+            g_Host->app->GetOwner().SetPlaySoundEffect([](int constant) { MainEnv()->CallVoidMethod(g_Host->view, playSound, jint(constant)); });
+        }
         // Keys and the IME reach a View only while it holds platform focus.
         g_Host->app->GetOwner().SetRequestHostFocus([] {
             JNIEnv* e = nullptr;
@@ -369,6 +375,29 @@ namespace {
         e.repeatCount = repeat;
         e.uptimeMillis = time;
         const bool handled = g_Host->app->ProcessKey(e);
+        ArmTimer();
+        return handled;
+    }
+
+    jboolean KeyEventPreIme(JNIEnv*, jclass, jint action, jint keyCode, jint metaState, jint unicode, jint repeat, jlong time) {
+        if (!g_Host) return {};
+        kiln::ui::KeyEvent e;
+        e.keyCode = keyCode;
+        e.type = action == 0 ? kiln::ui::KeyEventType::KeyDown : action == 1 ? kiln::ui::KeyEventType::KeyUp
+                                                                           : kiln::ui::KeyEventType::Unknown;
+        e.metaState = std::uint32_t(metaState);
+        e.unicode = std::uint32_t(unicode);
+        e.repeatCount = repeat;
+        e.uptimeMillis = time;
+        const bool handled = g_Host->app->ProcessKeyPreIme(e);
+        ArmTimer();
+        return handled;
+    }
+
+    // AndroidComposeView.handleRotaryEvent: pixels already scaled by the view configuration.
+    jboolean Rotary(JNIEnv*, jclass, jfloat vertical, jfloat horizontal, jlong time, jint deviceId) {
+        if (!g_Host) return {};
+        const bool handled = g_Host->app->ProcessRotary({ vertical, horizontal, time, deviceId });
         ArmTimer();
         return handled;
     }
@@ -824,6 +853,8 @@ extern "C" JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void*) {
         { "setLayoutDirection", "(Z)V", reinterpret_cast<void*>(&SetLayoutDirection) },
         { "touchEvent", "(IIJ[I[F[IIIFF[J[F[F)V", reinterpret_cast<void*>(&TouchEvent) },
         { "keyEvent", "(IIIIIJ)Z", reinterpret_cast<void*>(&KeyEvent) },
+        { "keyEventPreIme", "(IIIIIJ)Z", reinterpret_cast<void*>(&KeyEventPreIme) },
+        { "rotary", "(FFJI)Z", reinterpret_cast<void*>(&Rotary) },
         { "hostFocusChanged", "(Z)V", reinterpret_cast<void*>(&HostFocusChanged) },
         { "setInsets", "(IIIII)V", reinterpret_cast<void*>(&SetInsets) },
         { "setImeState", "(ZZ)V", reinterpret_cast<void*>(&SetImeState) },

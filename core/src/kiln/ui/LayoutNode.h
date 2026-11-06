@@ -201,12 +201,22 @@ namespace kiln::ui {
         // Key input: preview tunnel, then bubble; unhandled keys move focus (AndroidComposeView
         // root key handler). Returns whether the event was consumed.
         bool DispatchKeyEvent(const KeyEvent& event);
+        // dispatchInterceptedSoftKeyboardEvent / dispatchRotaryEvent: pre-events root to focused,
+        // then events focused to root. False when no node took it (or nothing is focused).
+        bool DispatchInterceptedSoftKeyboardEvent(const KeyEvent& event);
+        bool DispatchRotaryEvent(const RotaryScrollEvent& event);
+        // The modifiers of one kind on the focused path, root first (the key dispatch path).
+        template <typename T> std::vector<T*> FocusedPath(T* (ModifierNode::*as)());
         InputMode GetInputMode() const { return m_InputMode.Get(); }
         void SetInputMode(InputMode mode) { m_InputMode.Set(mode); }
         void SetRequestHostFocus(std::function<bool()> fn) { m_RequestHostFocus = std::move(fn); }
         // The root's bringIntoView: the rect (root pixels, where the scroll containers will have
         // put it) goes to the host view's requestRectangleOnScreen (its scrolling parents).
         void SetRequestRectangleOnScreen(std::function<void(Rect)> fn) { m_RequestRectangle = std::move(fn); }
+        // The host's View.playSoundEffect (SoundEffectConstants: 0 click, 1-4 navigation left, up,
+        // right, down, 5-8 their repeating variants).
+        void SetPlaySoundEffect(std::function<void(int)> fn) { m_PlaySound = std::move(fn); }
+        void PlaySoundEffect(int constant) { if (m_PlaySound) m_PlaySound(constant); }
         void RequestRectangleOnScreen(Rect r) { if (m_RequestRectangle) m_RequestRectangle(r); }
         // The platform took focus away from (or gave it back to) the host view.
         void OnHostFocusChanged(bool focused);
@@ -273,6 +283,7 @@ namespace kiln::ui {
                      std::vector<HitEntry>& near, float& nearDistance, std::vector<HitEntry>& ancestors);
         void RequestFullRemeasure();
 
+        std::function<void(int)> m_PlaySound;
         std::unique_ptr<LayoutNode> m_Root;
         Density m_Density;
         LayoutDirection m_Direction = LayoutDirection::Ltr;

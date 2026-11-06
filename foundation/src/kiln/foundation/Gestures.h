@@ -122,6 +122,10 @@ namespace kiln::foundation {
     // clickable(interactionSource, indication, enabled, onClickLabel, role, onClick): tap and
     // Enter/Space/DPAD-centre activation, press interactions (delayed TapTimeout inside scrollable
     // containers), focusable outside touch mode, merged click semantics with role and label.
+    // SoundEffectOnInteraction: turns the click sound of the clickables in `content` off (or back
+    // on), by wrapping LocalSoundEffect.
+    void SoundEffectOnInteraction(bool enabled, std::function<void()> content);
+
     Modifier Clickable(Modifier m, std::function<void()> onClick, ClickableOptions options);
     // Compatibility form: pressed-state callback, local indication.
     Modifier Clickable(Modifier m, std::function<void()> onClick, std::function<void(bool)> onPressedChange = {},

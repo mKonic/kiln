@@ -182,6 +182,14 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
     @Override
     public boolean onGenericMotionEvent(MotionEvent e) {
         final int a = e.getActionMasked();
+        // Rotary encoders (AndroidComposeView.handleRotaryEvent): AXIS_SCROLL, inverted, in pixels.
+        if (a == MotionEvent.ACTION_SCROLL && e.isFromSource(android.view.InputDevice.SOURCE_ROTARY_ENCODER)) {
+            android.view.ViewConfiguration vc = android.view.ViewConfiguration.get(getContext());
+            final float v = -e.getAxisValue(MotionEvent.AXIS_SCROLL);
+            if (KilnNative.rotary(v * vc.getScaledVerticalScrollFactor(), v * vc.getScaledHorizontalScrollFactor(),
+                    e.getEventTime(), e.getDeviceId())) return true;
+            return super.onGenericMotionEvent(e);
+        }
         if (a == MotionEvent.ACTION_HOVER_MOVE || a == MotionEvent.ACTION_HOVER_ENTER
                 || a == MotionEvent.ACTION_HOVER_EXIT || a == MotionEvent.ACTION_SCROLL) return forward(e);
         return super.onGenericMotionEvent(e);
@@ -273,6 +281,11 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
     }
 
     /** The root's bringIntoView: our parents (a ScrollView) scroll the rect into view. */
+    // View.playSoundEffect; the audio service may be gone (DeadSystemException).
+    void playSound(int constant) {
+        try { playSoundEffect(constant); } catch (RuntimeException ignored) {}
+    }
+
     void requestRectangle(int left, int top, int right, int bottom) {
         requestRectangleOnScreen(new Rect(left, top, right, bottom), false);
     }
@@ -351,6 +364,14 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
     protected void onDetachedFromWindow() {
         back.onDetached();
         super.onDetachedFromWindow();
+    }
+
+    // Keys before the IME (dispatchKeyEventPreIme): onInterceptKeyBeforeSoftKeyboard, when focused.
+    @Override
+    public boolean dispatchKeyEventPreIme(KeyEvent e) {
+        if (isFocused() && KilnNative.keyEventPreIme(e.getAction(), e.getKeyCode(), e.getMetaState(), e.getUnicodeChar(),
+                e.getRepeatCount(), e.getEventTime())) return true;
+        return super.dispatchKeyEventPreIme(e);
     }
 
     @Override

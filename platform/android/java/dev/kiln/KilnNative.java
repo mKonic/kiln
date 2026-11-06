@@ -17,6 +17,8 @@ final class KilnNative {
                                   int[] toolTypes, int buttons, int classification, float hscroll, float vscroll,
                                   long[] historyTimes, float[] historyXy, float[] pan);
     static native boolean keyEvent(int action, int keyCode, int metaState, int unicode, int repeatCount, long eventTime);
+    static native boolean keyEventPreIme(int action, int keyCode, int metaState, int unicode, int repeatCount, long eventTime);
+    static native boolean rotary(float verticalPixels, float horizontalPixels, long eventTime, int deviceId);
     static native void hostFocusChanged(boolean focused);
     static native void setInsets(int type, int left, int top, int right, int bottom);
     static native void setImeState(boolean visible, boolean animating);

@@ -76,6 +76,8 @@ namespace kiln {
         void ProcessPointer(const ui::RawPointerEvent& event);
         // A key event from the host; false means the platform should handle it (e.g. Back).
         bool ProcessKey(const ui::KeyEvent& event);
+        bool ProcessKeyPreIme(const ui::KeyEvent& event);
+        bool ProcessRotary(const ui::RotaryScrollEvent& event);
         float Density() const { return m_Density; }
         float FontScale() const { return m_FontScale; }
         TextBackend* Text() const { return m_Services.text; }

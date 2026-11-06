@@ -52,6 +52,29 @@ namespace kiln::ui {
         virtual bool OnKeyEvent(const KeyEvent&) { return false; }
     };
 
+    // onPreInterceptKeyBeforeSoftKeyboard / onInterceptKeyBeforeSoftKeyboard: keys seen before
+    // the IME gets them (View.dispatchKeyEventPreIme), along the focused path.
+    class SoftKeyboardInterceptionModifier {
+    public:
+        virtual ~SoftKeyboardInterceptionModifier() = default;
+        virtual bool OnPreInterceptKeyBeforeSoftKeyboard(const KeyEvent&) { return false; }
+        virtual bool OnInterceptKeyBeforeSoftKeyboard(const KeyEvent&) { return false; }
+    };
+
+    // RotaryScrollEvent: a rotary encoder (crown, bezel) turn, in pixels (AXIS_SCROLL times the
+    // view's scaled scroll factors; positive scrolls down / right).
+    struct RotaryScrollEvent {
+        float verticalScrollPixels = 0, horizontalScrollPixels = 0;
+        std::int64_t uptimeMillis = 0;
+        int inputDeviceId = 0;
+    };
+    class RotaryInputModifier {
+    public:
+        virtual ~RotaryInputModifier() = default;
+        virtual bool OnPreRotaryScrollEvent(const RotaryScrollEvent&) { return false; }
+        virtual bool OnRotaryScrollEvent(const RotaryScrollEvent&) { return false; }
+    };
+
     class FocusRequester;
 
     // focusProperties { ... }: overrides for the next focus target down the chain. A direction's

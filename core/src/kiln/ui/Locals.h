@@ -6,6 +6,8 @@
 #include "kiln/ui/Geometry.h"
 #include "kiln/ui/NestedScroll.h"
 
+#include <memory>
+
 namespace kiln::ui {
 
     // LocalLayoutDirection: the host view's layout direction (RTL locales mirror layouts and
@@ -29,5 +31,13 @@ namespace kiln::ui {
 
     // The device is a TV (FEATURE_LEANBACK): focus scrolling pivots (LocalBringIntoViewSpec).
     inline rt::Local<bool> LocalIsTelevision{ false };
+
+    // SoundEffect / LocalSoundEffect: the click sound clickables play (View.playSoundEffect).
+    class SoundEffect {
+    public:
+        virtual ~SoundEffect() = default;
+        virtual void PlayClickSound() = 0;
+    };
+    inline rt::Local<std::shared_ptr<SoundEffect>> LocalSoundEffect{ nullptr };
 
 }
