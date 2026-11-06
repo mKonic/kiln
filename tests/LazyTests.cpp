@@ -660,3 +660,33 @@ TEST(StaggeredGridFocusSearchAndPinning) {
     CHECK_EQ(disposed[pinnedItem], 0);   // focused: kept while scrolled away
     CHECK(disposed[pinnedItem - 2] >= 1);
 }
+
+TEST(AnimateItemInStaggeredGrids) {
+    std::map<int, LayoutNode*> nodes;
+    LazyStaggeredGridState state;
+    rt::State<std::vector<int>> data{ std::vector<int>{ 0, 1, 2, 3 } };
+    Harness h;
+    h.Run([&] {
+        const auto& d = data.Get();
+        LazyVerticalStaggeredGrid(FillMax(Modifier{}, Axis::Both), GridCells::Fixed(2), state, [&, d](LazyStaggeredGridScope& s) {
+            s.Items(int(d.size()), [&, d](int i) {
+                Box(Sink(AnimateItem(SizeMod(Modifier{}, Dp(50), Dp(20))), nodes, d[size_t(i)]));
+            }, [d](int i) { return rt::Key(d[size_t(i)] + 1); });
+        });
+    });
+    // 0 | 1 / 2 | 3 in two lanes.
+    CHECK_EQ(nodes[2]->PositionInRoot().x, 0.0f);
+    CHECK_EQ(nodes[2]->PositionInRoot().y, 20.0f);
+    // Remove item 0: the others move up a lane slot, animated from where they were; 0 fades.
+    data.Set({ 1, 2, 3 });
+    h.Pump();
+    CHECK_EQ(nodes[2]->PositionInRoot().y, 20.0f);   // still at its old place
+    CHECK(nodes.count(0) == 1);                       // fading out where it was
+    h.Frames(5);
+    const Offset mid = nodes[2]->PositionInRoot();
+    CHECK(mid.y < 20.0f && mid.y > 0.0f);
+    h.Frames(120);
+    CHECK_EQ(nodes[2]->PositionInRoot().x, 50.0f);   // 1 | 2 / 3
+    CHECK_EQ(nodes[2]->PositionInRoot().y, 0.0f);
+    CHECK(nodes.count(0) == 0);
+}
