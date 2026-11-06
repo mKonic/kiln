@@ -2,6 +2,8 @@
 
 #include "kiln/graphics/Conic.h"
 
+#include <clipper2/clipper.h>
+
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -374,6 +376,51 @@ namespace kiln::gfx {
         }
         (void)Sub;
         return out;
+    }
+
+    namespace {
+        // Fixed point for the clipper: 1/1024 px.
+        constexpr double kClipScale = 1024.0;
+        Clipper2Lib::Paths64 ToClipper(const Path& p, float tolerance) {
+            Clipper2Lib::Paths64 out;
+            for (const Polyline& poly : p.Flatten(Matrix{}, tolerance)) {
+                if (poly.points.size() < 3) continue;
+                Clipper2Lib::Path64 c;
+                c.reserve(poly.points.size());
+                for (const Offset& q : poly.points)
+                    c.emplace_back(std::int64_t(std::llround(double(q.x) * kClipScale)), std::int64_t(std::llround(double(q.y) * kClipScale)));
+                out.push_back(std::move(c));
+            }
+            return out;
+        }
+        Clipper2Lib::FillRule RuleOf(const Path& p) {
+            return p.fillType == FillType::EvenOdd ? Clipper2Lib::FillRule::EvenOdd : Clipper2Lib::FillRule::NonZero;
+        }
+    }
+
+    bool Path::Op(const Path& a, const Path& b, PathOperation op, float tolerance) {
+        using namespace Clipper2Lib;
+        // Each operand resolved by its own fill type first, then combined (Skia keeps per-path fill
+        // types too); both are then simple, so one rule serves the combination.
+        const Paths64 sa = Union(ToClipper(a, tolerance), RuleOf(a));
+        const Paths64 sb = Union(ToClipper(b, tolerance), RuleOf(b));
+        Paths64 r;
+        switch (op) {
+            case PathOperation::Difference: r = BooleanOp(ClipType::Difference, FillRule::NonZero, sa, sb); break;
+            case PathOperation::Intersect: r = BooleanOp(ClipType::Intersection, FillRule::NonZero, sa, sb); break;
+            case PathOperation::Union: r = BooleanOp(ClipType::Union, FillRule::NonZero, sa, sb); break;
+            case PathOperation::Xor: r = BooleanOp(ClipType::Xor, FillRule::NonZero, sa, sb); break;
+            case PathOperation::ReverseDifference: r = BooleanOp(ClipType::Difference, FillRule::NonZero, sb, sa); break;
+        }
+        Reset();
+        fillType = FillType::EvenOdd;
+        for (const Path64& c : r) {
+            if (c.empty()) continue;
+            MoveTo(float(double(c[0].x) / kClipScale), float(double(c[0].y) / kClipScale));
+            for (std::size_t i = 1; i < c.size(); ++i) LineTo(float(double(c[i].x) / kClipScale), float(double(c[i].y) / kClipScale));
+            Close();
+        }
+        return true;
     }
 
 }

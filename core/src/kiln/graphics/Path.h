@@ -55,6 +55,10 @@ namespace kiln::gfx {
         bool closed = false;
     };
 
+    // Path.op operations: the first path minus, within, with, or exclusive of the second; or
+    // the second minus the first.
+    enum class PathOperation : std::uint8_t { Difference, Intersect, Union, Xor, ReverseDifference };
+
     class Path {
     public:
         enum class Verb : std::uint8_t { Move, Line, Quad, Conic, Cubic, Close };
@@ -81,6 +85,11 @@ namespace kiln::gfx {
         void AddRoundRect(const RoundRect& rr, Direction dir = Direction::CounterClockwise);
         void AddArc(Rect oval, float startAngleDegrees, float sweepAngleDegrees);
         void AddPath(const Path& other, Offset offset = {});
+        // Path.op: this path becomes `a` combined with `b` (each by its own fill type). The
+        // result is polygonal (flattened within `tolerance`, Clipper2) and EvenOdd, like Skia's
+        // PathOps result type. False when it cannot be computed (this path is then emptied).
+        bool Op(const Path& a, const Path& b, PathOperation op, float tolerance = 0.05f);
+        static Path Combine(PathOperation op, const Path& a, const Path& b) { Path p; p.Op(a, b, op); return p; }
         // addOval from one of its four points (0 top, 1 right, 2 bottom, 3 left).
         void AddOvalAt(Rect oval, Direction dir, unsigned startIndex);
         void Close();

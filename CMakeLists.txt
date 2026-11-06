@@ -9,11 +9,15 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 include(cmake/Hearth.cmake)
 include(cmake/Shaders.cmake)
 
+# Clipper2 (polygon booleans behind Path.op).
+add_library(clipper2 STATIC vendor/Clipper2/CPP/Clipper2Lib/src/clipper.engine.cpp)
+target_include_directories(clipper2 SYSTEM PUBLIC vendor/Clipper2/CPP/Clipper2Lib/include)
+
 # kiln_core: platform-independent; never includes JNI or Android headers.
 file(GLOB_RECURSE KILN_CORE_SOURCES CONFIGURE_DEPENDS core/src/*.cpp render/*.cpp)
 add_library(kiln_core STATIC ${KILN_CORE_SOURCES})
 target_include_directories(kiln_core PUBLIC include core/src render)
-target_link_libraries(kiln_core PUBLIC hearth)
+target_link_libraries(kiln_core PUBLIC hearth PRIVATE clipper2)
 target_compile_options(kiln_core PRIVATE -Wall -Wextra -Wno-missing-field-initializers)
 kiln_embed_shaders(kiln_core render/shaders)
 

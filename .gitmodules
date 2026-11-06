@@ -1,3 +1,6 @@
 [submodule "vendor/hearth"]
 	path = vendor/hearth
 	url = https://github.com/mKonic/hearth.git
+[submodule "vendor/Clipper2"]
+	path = vendor/Clipper2
+	url = https://github.com/AngusJohnson/Clipper2.git

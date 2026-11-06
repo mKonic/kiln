@@ -201,3 +201,27 @@ TEST(PathIteratorReportsSegmentsWithTheirStartPoints) {
     while (quads.HasNext()) anyConic = anyConic || quads.Next().type == gfx::PathSegment::Type::Conic;
     CHECK(!anyConic);
 }
+
+namespace {
+    float CoveredArea(const gfx::Path& p) {
+        const auto mask = gfx::Rasterize(p.Flatten(gfx::Matrix{}), p.fillType, { 0, 0, 200, 200 });
+        float a = 0;
+        for (auto v : mask.alpha) a += float(v) / 255.0f;
+        return a;
+    }
+}
+
+TEST(PathOpCombinesAreas) {
+    const gfx::Path a = Square(0, 0, 100, 100), b = Square(50, 50, 150, 150);
+    using Op = gfx::PathOperation;
+    CHECK(std::abs(CoveredArea(gfx::Path::Combine(Op::Union, a, b)) - 17500) < 20);
+    CHECK(std::abs(CoveredArea(gfx::Path::Combine(Op::Intersect, a, b)) - 2500) < 20);
+    CHECK(std::abs(CoveredArea(gfx::Path::Combine(Op::Difference, a, b)) - 7500) < 20);
+    CHECK(std::abs(CoveredArea(gfx::Path::Combine(Op::ReverseDifference, a, b)) - 7500) < 20);
+    CHECK(std::abs(CoveredArea(gfx::Path::Combine(Op::Xor, a, b)) - 15000) < 20);
+    // A circle cut out of a square keeps its curve (flattened finely).
+    gfx::Path circle;
+    circle.AddOval({ 25, 25, 75, 75 });
+    const float holed = CoveredArea(gfx::Path::Combine(Op::Difference, a, circle));
+    CHECK(std::abs(holed - (10000 - 3.14159265f * 625)) < 20);
+}
