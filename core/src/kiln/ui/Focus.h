@@ -56,8 +56,20 @@ namespace kiln::ui {
 
     // focusProperties { ... }: overrides for the next focus target down the chain. A direction's
     // requester: null = default search, FocusProperties::Cancel() = stay put.
+    // FocusEnterExitScope: what onEnter / onExit see. Requesting focus elsewhere redirects the
+    // change; CancelFocusChange stops it.
+    struct FocusEnterExitScope {
+        FocusDirection requestedFocusDirection = FocusDirection::Enter;
+        void CancelFocusChange() { canceled = true; }
+        bool canceled = false;
+    };
+
     struct FocusProperties {
         bool canFocus = true;
+        // Called when focus is about to enter / leave this target's subtree (a group).
+        std::function<void(FocusEnterExitScope&)> onEnter, onExit;
+        // The target's focus area in its own coordinates (unset: its bounds), for focus search.
+        std::optional<Rect> focusRect;
         FocusRequester* next = nullptr;
         FocusRequester* previous = nullptr;
         FocusRequester* up = nullptr;
@@ -92,10 +104,15 @@ namespace kiln::ui {
         // target, then up the parents until a target (fetchFocusProperties).
         FocusProperties FetchFocusProperties() const;
 
+    protected:
+        // Properties the target sets on itself, after the modifiers above it (focusRestorer).
+        virtual void ApplyOwnFocusProperties(FocusProperties&) const {}
+
     private:
         friend class Owner;
         FocusState m_LastReported = FocusState::Inactive;
         bool m_IsRoot = false;
+        bool m_InCustomEnter = false, m_InCustomExit = false;   // re-entrancy guards
     };
 
     // BeyondBoundsLayout: a lazy layout composes items past its edge in `direction`, one at a

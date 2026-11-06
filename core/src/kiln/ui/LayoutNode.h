@@ -188,6 +188,12 @@ namespace kiln::ui {
         bool FocusCaptured() const { return m_FocusCaptured; }
         FocusState StateOf(const FocusTargetNode& t) const;
         bool RequestFocus(FocusTargetNode& t, FocusDirection direction);
+        enum class CustomResult : std::uint8_t { None, Cancelled, Redirected, RedirectCancelled };
+        CustomResult CustomEnterExit(FocusTargetNode& t, FocusDirection d, bool enter);
+        CustomResult CustomClearFocus(FocusTargetNode& t, FocusDirection d);
+        CustomResult CustomRequestFocus(FocusTargetNode& t, FocusDirection d);
+        // The nearest focus targets below `t` (its focus children).
+        std::vector<FocusTargetNode*> FocusChildrenOf(const FocusTargetNode& t) const { return FocusChildren(t); }
         bool ClearFocus(bool force = false);
         bool MoveFocus(FocusDirection direction);
         bool CaptureFocus();

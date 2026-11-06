@@ -92,6 +92,49 @@ namespace kiln::foundation {
             void OnDetach() override { if (!alive.expired()) params.r->Remove(this); FocusTargetNode::OnDetach(); }
         };
 
+        struct RestorerParams { FocusRequester* fallback; bool operator==(const RestorerParams&) const = default; };
+        // FocusRestorerNode (saveFocusedChild on exit, restoreFocusedChild on enter), as a
+        // never-focusable group like the requester node.
+        struct RestorerNode final : FocusTargetNode {
+            RestorerParams params;
+            FocusTargetNode* saved = nullptr;
+            std::weak_ptr<const char> savedAlive;
+            explicit RestorerNode(RestorerParams p) : params(p) { focusability = Focusability::Never; }
+            void OnParamsChanged() {}
+            std::vector<FocusTargetNode*> Children() const {
+                ui::Owner* o = Owner() ? Owner()->GetOwner() : nullptr;
+                return o ? o->FocusChildrenOf(*this) : std::vector<FocusTargetNode*>{};
+            }
+            bool Save() {
+                for (FocusTargetNode* c : Children())
+                    if (HasFocus(c->State())) { saved = c; savedAlive = c->AliveToken(); return true; }
+                return false;
+            }
+            bool Restore() {
+                if (!saved || savedAlive.expired()) return false;
+                for (FocusTargetNode* c : Children()) if (c == saved) return c->RequestFocus();
+                return false;
+            }
+            void ApplyOwnFocusProperties(ui::FocusProperties& p) const override {
+                auto* self = const_cast<RestorerNode*>(this);
+                p.onExit = [self](FocusEnterExitScope&) { self->Save(); };
+                p.onEnter = [self](FocusEnterExitScope& scope) {
+                    // Restoring requests focus, which redirects the change; otherwise the fallback.
+                    if (!self->Restore() && self->params.fallback) {
+                        if (self->params.fallback == ui::FocusProperties::Cancel()) scope.CancelFocusChange();
+                        else self->params.fallback->RequestFocus();
+                    }
+                };
+            }
+        };
+
+        struct GroupParams { bool operator==(const GroupParams&) const = default; };
+        struct GroupNode final : FocusTargetNode {
+            GroupParams params;
+            explicit GroupNode(GroupParams p) : params(p) { focusability = Focusability::Never; }
+            void OnParamsChanged() {}
+        };
+
         struct KeyParams {
             std::shared_ptr<std::function<bool(const KeyEvent&)>> onKey, onPreview;
             bool operator==(const KeyParams& o) const { return onKey == o.onKey && onPreview == o.onPreview; }
@@ -135,6 +178,8 @@ namespace kiln::foundation {
     Modifier FocusRequesterModifier(Modifier m, FocusRequester& r) {
         return m.With<RequesterNode>(RequesterParams{ &r });
     }
+    Modifier FocusGroup(Modifier m) { return m.With<GroupNode>(GroupParams{}); }
+    Modifier FocusRestorer(Modifier m, FocusRequester* fallback) { return m.With<RestorerNode>(RestorerParams{ fallback }); }
     Modifier OnKeyEvent(Modifier m, std::function<bool(const KeyEvent&)> onKey, std::function<bool(const KeyEvent&)> onPreview) {
         return m.With<KeyNode>(KeyParams{ Latest(std::move(onKey)), Latest(std::move(onPreview)) });
     }

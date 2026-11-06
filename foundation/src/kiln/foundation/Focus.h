@@ -19,6 +19,13 @@ namespace kiln::foundation {
     // onFocusChanged: reports the state of the first focus target after it (deduplicated).
     Modifier OnFocusChanged(Modifier m, std::function<void(FocusState)> onChange);
     Modifier FocusRequesterModifier(Modifier m, FocusRequester& requester);
+    // focusRestorer: a focus group that remembers which child had focus when focus left it and
+    // gives it back when focus comes in again. `fallback` when that child is gone: null enters
+    // the default child, FocusProperties::Cancel() keeps focus out.
+    Modifier FocusRestorer(Modifier m, FocusRequester* fallback = nullptr);
+    // focusGroup: a never-focusable focus target grouping its children (focus searches stay
+    // inside first; focusProperties before it, such as onEnter / onExit, apply to the group).
+    Modifier FocusGroup(Modifier m);
     // onKeyEvent / onPreviewKeyEvent: return true to consume.
     Modifier OnKeyEvent(Modifier m, std::function<bool(const KeyEvent&)> onKey,
                         std::function<bool(const KeyEvent&)> onPreview = {});

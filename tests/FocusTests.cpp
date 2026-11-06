@@ -113,3 +113,80 @@ TEST(FocusPropertiesRedirectSkipAndCancel) {
     h.Key(keys::Tab, kMetaShift);
     CHECK_EQ(focused, std::string("c"));     // b cannot take focus
 }
+
+namespace {
+    void Item(std::string& focused, const char* name) {
+        Box(Focusable(SizeMod(Modifier{}, Dp(50), Dp(50)), Focusability::Always,
+                      [&focused, name](FocusState s) { if (IsFocused(s)) focused = name; }));
+    }
+}
+
+TEST(FocusRestorerReturnsToTheLastFocusedChild) {
+    Harness h;
+    std::string focused;
+    h.Run([&] {
+        Column(Modifier{}, [&] {
+            Row(Modifier{}, [&] {
+                Item(focused, "a");
+                Row(FocusRestorer(Modifier{}), [&] { Item(focused, "b1"); Item(focused, "b2"); Item(focused, "b3"); });
+            });
+            Item(focused, "d");
+        });
+    });
+    h.Key(keys::Tab); h.Key(keys::Tab); h.Key(keys::Tab);
+    CHECK_EQ(focused, std::string("b2"));
+    h.Key(keys::DpadDown); CHECK_EQ(focused, std::string("d"));    // leaves the group: b2 saved
+    h.Key(keys::DpadUp); CHECK_EQ(focused, std::string("a"));
+    h.Key(keys::DpadRight); CHECK_EQ(focused, std::string("b2"));  // not the nearest, b1
+}
+
+TEST(FocusOnEnterCanCancelAndOnExitRedirect) {
+    Harness h;
+    std::string focused;
+    bool blockEntry = true;
+    FocusRequester target, other;
+    h.Run([&] {
+        Row(Modifier{}, [&] {
+            Item(focused, "a");
+            Row(FocusGroup(FocusPropertiesMod(Modifier{}, [&](ui::FocusProperties& p) {
+                    p.onEnter = [&](FocusEnterExitScope& s) { if (blockEntry) s.CancelFocusChange(); };
+                    p.onExit = [&](FocusEnterExitScope&) { other.RequestFocus(); };
+                })), [&] {
+                Box(Focusable(FocusRequesterModifier(SizeMod(Modifier{}, Dp(50), Dp(50)), target), Focusability::Always,
+                              [&focused](FocusState s) { if (IsFocused(s)) focused = "t"; }));
+                Box(Focusable(FocusRequesterModifier(SizeMod(Modifier{}, Dp(50), Dp(50)), other), Focusability::Always,
+                              [&focused](FocusState s) { if (IsFocused(s)) focused = "c"; }));
+            });
+        });
+    });
+    h.Key(keys::Tab); CHECK_EQ(focused, std::string("a"));
+    h.Key(keys::DpadRight); CHECK_EQ(focused, std::string("a"));   // entry cancelled
+    blockEntry = false;
+    h.Key(keys::DpadRight); CHECK_EQ(focused, std::string("t"));
+    h.Key(keys::DpadRight); CHECK_EQ(focused, std::string("c"));
+    h.Key(keys::DpadLeft); CHECK_EQ(focused, std::string("t"));    // inside the group: no exit
+    h.Key(keys::DpadLeft); CHECK_EQ(focused, std::string("c"));    // leaving: redirected to c
+}
+
+TEST(FocusRectMovesTheSearchArea) {
+    Harness h;
+    std::string focused;
+    h.Run([&] {
+        auto item = [&](const char* name, Modifier m) {
+            Box(Focusable(SizeMod(std::move(m), Dp(50), Dp(50)), Focusability::Always,
+                          [&focused, name](FocusState s) { if (IsFocused(s)) focused = name; }));
+        };
+        Column(Modifier{}, [&] {
+            Row(Modifier{}, [&] {
+                item("a", {});
+                item("b", {});
+                // c sits at (100, 0) but declares its focus area at (0, 100), below d.
+                item("c", FocusPropertiesMod(Modifier{}, [](ui::FocusProperties& p) { p.focusRect = Rect{ -100, 100, -50, 150 }; }));
+            });
+            item("d", {});
+        });
+    });
+    h.Key(keys::Tab); CHECK_EQ(focused, std::string("a"));
+    h.Key(keys::DpadDown); CHECK_EQ(focused, std::string("d"));
+    h.Key(keys::DpadDown); CHECK_EQ(focused, std::string("c"));
+}

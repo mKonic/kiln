@@ -55,6 +55,7 @@ namespace kiln::ui {
         }
     apply:
         for (auto it = found.rbegin(); it != found.rend(); ++it) (*it)->ApplyFocusProperties(props);
+        ApplyOwnFocusProperties(props);
         return props;
     }
 
@@ -131,7 +132,8 @@ namespace kiln::ui {
         if (t.m_IsRoot) return { 0, 0, float(m_Window.width), float(m_Window.height) };
         LayoutNode* n = NodeOf(t);
         if (!n) return {};
-        return n->BoundsInRoot();
+        // fetchFocusRect: a custom focusRect, else the target's bounds, both in its own coordinator.
+        return n->RectInRoot(t.FetchFocusProperties().focusRect, &t);
     }
 
     FocusTargetNode* Owner::ActiveChild(const FocusTargetNode& t) const {
@@ -183,10 +185,74 @@ namespace kiln::ui {
         }
     }
 
+    // --- custom enter / exit (FocusTransactions performCustom*) ---------------------------------
+
+    Owner::CustomResult Owner::CustomEnterExit(FocusTargetNode& t, FocusDirection dir, bool enter) {
+        if (t.m_IsRoot) return CustomResult::None;
+        bool& guard = enter ? t.m_InCustomEnter : t.m_InCustomExit;
+        if (guard) return CustomResult::None;   // one invocation at a time
+        const FocusProperties p = t.FetchFocusProperties();
+        const auto& fn = enter ? p.onEnter : p.onExit;
+        if (!fn) return CustomResult::None;
+        guard = true;
+        FocusEnterExitScope scope;
+        scope.requestedFocusDirection = dir;
+        FocusTargetNode* before = m_ActiveFocus;
+        fn(scope);
+        guard = false;
+        if (scope.canceled) return CustomResult::Cancelled;
+        if (m_ActiveFocus != before && m_ActiveFocus) return CustomResult::Redirected;
+        return CustomResult::None;
+    }
+
+    Owner::CustomResult Owner::CustomClearFocus(FocusTargetNode& t, FocusDirection dir) {
+        switch (StateOf(t)) {
+            case FocusState::Active: case FocusState::Inactive: return CustomResult::None;
+            case FocusState::Captured: return CustomResult::Cancelled;
+            case FocusState::ActiveParent: {
+                FocusTargetNode* c = ActiveChild(t);
+                const CustomResult r = c ? CustomClearFocus(*c, dir) : CustomResult::None;
+                return r != CustomResult::None ? r : CustomEnterExit(t, dir, false);
+            }
+        }
+        return CustomResult::None;
+    }
+
+    Owner::CustomResult Owner::CustomRequestFocus(FocusTargetNode& t, FocusDirection dir) {
+        switch (StateOf(t)) {
+            case FocusState::Active: case FocusState::Captured: return CustomResult::None;
+            case FocusState::ActiveParent: {
+                FocusTargetNode* c = ActiveChild(t);
+                return c ? CustomClearFocus(*c, dir) : CustomResult::None;
+            }
+            case FocusState::Inactive: {
+                FocusTargetNode* parent = FocusParent(t);
+                if (!parent) return CustomResult::None;
+                switch (StateOf(*parent)) {
+                    case FocusState::Captured: return CustomResult::Cancelled;
+                    case FocusState::ActiveParent: return CustomRequestFocus(*parent, dir);
+                    case FocusState::Active: return CustomEnterExit(*parent, dir, true);
+                    case FocusState::Inactive: {
+                        const CustomResult r = CustomRequestFocus(*parent, dir);
+                        return r != CustomResult::None ? r : CustomEnterExit(*parent, dir, true);
+                    }
+                }
+            }
+        }
+        return CustomResult::None;
+    }
+
     bool Owner::RequestFocus(FocusTargetNode& t, FocusDirection dir) {
         if (!CanFocus(t)) return FindChildForEnter(t, dir, [&](FocusTargetNode& c) { return RequestFocus(c, dir); });
         if (m_ActiveFocus == &t) { DispatchFocusEvents(); return true; }
         if (m_FocusCaptured) return false;      // Captured only yields to a forced clear
+        // Groups on the way out of the old focus and into the new one may redirect or cancel.
+        switch (CustomRequestFocus(t, dir)) {
+            case CustomResult::Redirected: return true;
+            case CustomResult::Cancelled: case CustomResult::RedirectCancelled: return false;
+            case CustomResult::None: break;
+        }
+        if (m_ActiveFocus == &t) { DispatchFocusEvents(); return true; }
         // The host view must hold platform focus for keys and IME to arrive.
         if (m_RequestHostFocus && !m_ActiveFocus && !m_RequestHostFocus()) return false;
         SetActive(&t);
@@ -196,6 +262,8 @@ namespace kiln::ui {
     bool Owner::ClearFocus(bool force) {
         if (!m_ActiveFocus) return true;
         if (m_FocusCaptured && !force) return false;
+        // A group on the focused path with a custom exit can keep focus (or move it).
+        if (!force && CustomClearFocus(m_RootFocus, FocusDirection::Exit) != CustomResult::None) return false;
         SetActive(nullptr);
         return true;
     }
@@ -518,6 +586,14 @@ namespace kiln::ui {
             }
             if (dest == FocusProperties::Cancel()) return false;
             if (dest) return dest->RequestFocus(d);
+            // Enter / Exit consult the focused target's own onEnter / onExit (customFocusSearch).
+            if ((d == FocusDirection::Enter && p.onEnter) || (d == FocusDirection::Exit && p.onExit)) {
+                switch (CustomEnterExit(*m_ActiveFocus, d, d == FocusDirection::Enter)) {
+                    case CustomResult::Cancelled: case CustomResult::RedirectCancelled: return false;
+                    case CustomResult::Redirected: return true;
+                    case CustomResult::None: break;
+                }
+            }
         }
         auto request = [&](FocusTargetNode& n) { return RequestFocus(n, d); };
         bool found = false;
