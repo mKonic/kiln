@@ -254,3 +254,22 @@ TEST(SemanticsBoundsFollowLayerTransforms) {
     CHECK_EQ(b.top, 0.f);   // -10, clipped to the window
     CHECK_EQ(b.bottom, 30.f);
 }
+
+TEST(SemanticsBoundsComeFromTheSemanticsModifierSpace) {
+    // size(100, 40).padding(10).clickable: the clickable's bounds are inside the padding;
+    // size(100, 40).clickable.padding(10): they cover the whole box.
+    Harness h;
+    h.Run([&] {
+        Column(Modifier{}, [&] {
+            Box(Clickable(Padding(SizeMod(Modifier{}, Dp(100), Dp(40)), Dp(10)), [] {}));
+            Box(Padding(Clickable(SizeMod(Modifier{}, Dp(100), Dp(40)), [] {}), Dp(10)));
+        });
+    });
+    const auto root = h.owner.BuildSemanticsTree();
+    CHECK_EQ(int(root.children.size()), 2);
+    if (root.children.size() == 2) {
+        const Rect a = root.children[0].boundsInRoot, b = root.children[1].boundsInRoot;
+        CHECK(a.left == 10 && a.top == 10 && a.right == 90 && a.bottom == 30);
+        CHECK(b.left == 0 && b.top == 40 && b.right == 100 && b.bottom == 80);
+    }
+}

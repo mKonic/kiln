@@ -33,7 +33,22 @@ namespace kiln::ui {
                 if (auto* s = const_cast<ModifierNode*>(m)->AsSemantics()) { s->ApplySemantics(out); any = true; }
             return any && (out.HasContent() || out.mergeDescendants || out.isTraversalGroup);
         }
-        Rect Bounds(LayoutNode& n) { return n.BoundsInRoot(); }
+        // findCoordinatorToGetBounds: the space of the outermost semantics modifier that is
+        // important for bounds (a merging one first when the node merges), else the node's inner
+        // content (padding before the semantics, such as a clickable's, is outside the bounds).
+        Rect Bounds(LayoutNode& n, bool merging) {
+            const ModifierNode* pick = nullptr;
+            for (const ModifierNode* m : n.ModifierNodes()) {
+                auto* s = const_cast<ModifierNode*>(m)->AsSemantics();
+                if (!s || !s->IsImportantForBounds()) continue;
+                if (!merging) { pick = m; break; }
+                SemanticsConfiguration own;
+                s->ApplySemantics(own);
+                if (own.mergeDescendants) { pick = m; break; }
+                if (!pick) pick = m;
+            }
+            return pick ? n.RectInRoot(std::nullopt, pick) : n.InnerRectInRoot();
+        }
         // Collects descendants' content into `into` (stopping at nodes that merge their own).
         void MergeDescendants(LayoutNode& n, SemanticsConfiguration& into) {
             for (LayoutNode* c : n.Children()) {
@@ -59,10 +74,10 @@ namespace kiln::ui {
         // (SemanticsNode.boundsInRoot uses the clipped coordinator bounds).
         void Build(LayoutNode& n, const Rect& clip, std::vector<SemanticsNode>& out) {
             if (!n.IsPlaced() && n.Parent()) return;
-            const Rect bounds = Bounds(n);
-            const Rect inner = Clips(n) ? Intersect(clip, bounds) : clip;
+            const Rect inner = Clips(n) ? Intersect(clip, n.BoundsInRoot()) : clip;
             SemanticsConfiguration cfg;
             if (OwnConfig(n, cfg)) {
+                const Rect bounds = Bounds(n, cfg.mergeDescendants);
                 SemanticsNode node;
                 node.id = n.SemanticsId();
                 node.layout = &n;

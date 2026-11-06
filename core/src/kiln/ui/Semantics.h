@@ -92,6 +92,8 @@ namespace kiln::ui {
     public:
         virtual ~SemanticsModifier() = default;
         virtual void ApplySemantics(SemanticsConfiguration& config) = 0;
+        // isImportantForBounds: whether the node's bounds may come from this modifier's space.
+        virtual bool IsImportantForBounds() const { return true; }
     };
 
     class LayoutNode;

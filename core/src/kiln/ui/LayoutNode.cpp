@@ -339,6 +339,11 @@ namespace kiln::ui {
         return inner;
     }
 
+    Rect LayoutNode::InnerRectInRoot() const {
+        const auto& c = *m_Coordinators.back();
+        return MapBox(InnerToRoot(), { 0, 0, float(c.Width()), float(c.Height()) });
+    }
+
     Offset LayoutNode::MapPoint(const Mat3& m, Offset p) {
         const float w = m[6] * p.x + m[7] * p.y + m[8];
         return { (m[0] * p.x + m[1] * p.y + m[2]) / w, (m[3] * p.x + m[4] * p.y + m[5]) / w };

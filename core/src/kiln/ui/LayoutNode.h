@@ -88,8 +88,9 @@ namespace kiln::ui {
         // null: the outer bounds) -> root, projective, with that space's size
         // (LayoutCoordinates.localToRoot for a modifier node's coordinates).
         Mat3 SpaceToRoot(const ModifierNode* at, ui::Size* size = nullptr) const;
-        // The space the children are placed in -> root.
+        // The space the children are placed in -> root, and its bounds in root (bounding box).
         Mat3 InnerToRoot() const;
+        Rect InnerRectInRoot() const;
         // A point through a local -> root matrix, and back (nullopt behind the camera).
         static Offset MapPoint(const Mat3& toRoot, Offset local);
         static std::optional<Offset> UnmapPoint(const Mat3& toRoot, Offset root);
