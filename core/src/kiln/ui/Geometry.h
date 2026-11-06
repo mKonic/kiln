@@ -1,0 +1,168 @@
+#pragma once
+
+// Units and layout primitives (spec 03 §layout, 07 §A).
+
+#include <algorithm>
+#include <climits>
+#include <cmath>
+#include <cstdint>
+
+namespace kiln::ui {
+
+    // Java's Math.round (Compose's fastRoundToInt): floor(x + 0.5). std::lround differs for
+    // negative halves, which appear when content overflows its space.
+    inline int RoundJava(float v) { return int(std::floor(v + 0.5f)); }
+
+    struct Dp {
+        float value = 0;
+        constexpr Dp() = default;
+        constexpr explicit Dp(float v) : value(v) {}
+        constexpr Dp operator+(Dp o) const { return Dp(value + o.value); }
+        constexpr Dp operator-(Dp o) const { return Dp(value - o.value); }
+        constexpr Dp operator*(float f) const { return Dp(value * f); }
+        constexpr Dp operator/(float f) const { return Dp(value / f); }
+        constexpr bool operator==(const Dp&) const = default;
+        constexpr bool Specified() const { return !std::isnan(value); }
+        static constexpr Dp Unspecified() { return Dp(NAN); }
+    };
+    constexpr Dp operator""_dp(long double v) { return Dp(float(v)); }
+    constexpr Dp operator""_dp(unsigned long long v) { return Dp(float(v)); }
+
+    enum class LayoutDirection : std::uint8_t { Ltr, Rtl };
+
+    struct Density {
+        float density = 1;     // px per dp
+        float fontScale = 1;
+        float ToPx(Dp d) const { return d.value * density; }
+        // roundToPx: Compose rounds half away from zero, and a tiny positive dp never becomes 0.
+        int RoundToPx(Dp d) const {
+            const float px = ToPx(d);
+            if (std::isinf(px)) return INT_MAX;   // Constraints.Infinity
+            return RoundJava(px);
+        }
+        Dp ToDp(float px) const { return Dp(px / density); }
+    };
+
+    struct IntSize {
+        int width = 0, height = 0;
+        bool operator==(const IntSize&) const = default;
+    };
+    struct IntOffset {
+        int x = 0, y = 0;
+        IntOffset operator+(IntOffset o) const { return { x + o.x, y + o.y }; }
+        IntOffset operator-(IntOffset o) const { return { x - o.x, y - o.y }; }
+        bool operator==(const IntOffset&) const = default;
+    };
+    struct Offset {
+        float x = 0, y = 0;
+        Offset operator+(Offset o) const { return { x + o.x, y + o.y }; }
+        Offset operator-(Offset o) const { return { x - o.x, y - o.y }; }
+        bool operator==(const Offset&) const = default;
+    };
+    struct Size {
+        float width = 0, height = 0;
+        float MinDimension() const { return std::min(width, height); }
+        bool operator==(const Size&) const = default;
+    };
+    struct Rect {
+        float left = 0, top = 0, right = 0, bottom = 0;
+        float Width() const { return right - left; }
+        float Height() const { return bottom - top; }
+        bool Contains(Offset p) const { return p.x >= left && p.x < right && p.y >= top && p.y < bottom; }
+        Rect Translate(Offset o) const { return { left + o.x, top + o.y, right + o.x, bottom + o.y }; }
+        Rect Intersect(const Rect& o) const {
+            return { std::max(left, o.left), std::max(top, o.top), std::min(right, o.right), std::min(bottom, o.bottom) };
+        }
+        bool Empty() const { return right <= left || bottom <= top; }
+    };
+
+    // Measurement constraints (androidx.compose.ui.unit.Constraints).
+    struct Constraints {
+        static constexpr int Infinity = INT_MAX;
+        int minWidth = 0, maxWidth = Infinity, minHeight = 0, maxHeight = Infinity;
+
+        static Constraints Fixed(int w, int h) { return { w, w, h, h }; }
+        static Constraints FixedWidth(int w) { return { w, w, 0, Infinity }; }
+        static Constraints FixedHeight(int h) { return { 0, Infinity, h, h }; }
+
+        bool HasBoundedWidth() const { return maxWidth != Infinity; }
+        bool HasBoundedHeight() const { return maxHeight != Infinity; }
+        bool HasFixedWidth() const { return minWidth == maxWidth; }
+        bool HasFixedHeight() const { return minHeight == maxHeight; }
+        bool IsZero() const { return maxWidth == 0 || maxHeight == 0; }
+
+        int ConstrainWidth(int w) const { return std::clamp(w, minWidth, maxWidth); }
+        int ConstrainHeight(int h) const { return std::clamp(h, minHeight, maxHeight); }
+        IntSize Constrain(IntSize s) const { return { ConstrainWidth(s.width), ConstrainHeight(s.height) }; }
+        // The intersection with `other`, coerced into this (Constraints.constrain(Constraints)).
+        Constraints Constrain(const Constraints& o) const {
+            return { std::clamp(o.minWidth, minWidth, maxWidth), std::clamp(o.maxWidth, minWidth, maxWidth),
+                     std::clamp(o.minHeight, minHeight, maxHeight), std::clamp(o.maxHeight, minHeight, maxHeight) };
+        }
+        // Shrinks by horizontal/vertical insets (offset()): min coerced at 0, Infinity kept.
+        Constraints Offset(int horizontal, int vertical) const {
+            auto add = [](int v, int d) { return v == Infinity ? Infinity : std::max(0, v + d); };
+            return { std::max(0, minWidth + horizontal), add(maxWidth, horizontal),
+                     std::max(0, minHeight + vertical), add(maxHeight, vertical) };
+        }
+        Constraints CopyMaxDimensions() const { return { 0, maxWidth, 0, maxHeight }; }
+        bool operator==(const Constraints&) const = default;
+    };
+
+    // Alignment (androidx.compose.ui.Alignment): bias in [-1, 1], RTL mirrors horizontal bias.
+    struct Alignment {
+        float horizontal = -1, vertical = -1;
+        IntOffset Align(IntSize size, IntSize space, LayoutDirection dir) const {
+            const float cx = (space.width - size.width) / 2.0f;
+            const float cy = (space.height - size.height) / 2.0f;
+            const float h = dir == LayoutDirection::Ltr ? horizontal : -horizontal;
+            return { RoundJava(cx * (1 + h)), RoundJava(cy * (1 + vertical)) };
+        }
+        static constexpr Alignment TopStart() { return { -1, -1 }; }
+        static constexpr Alignment TopCenter() { return { 0, -1 }; }
+        static constexpr Alignment TopEnd() { return { 1, -1 }; }
+        static constexpr Alignment CenterStart() { return { -1, 0 }; }
+        static constexpr Alignment Center() { return { 0, 0 }; }
+        static constexpr Alignment CenterEnd() { return { 1, 0 }; }
+        static constexpr Alignment BottomStart() { return { -1, 1 }; }
+        static constexpr Alignment BottomCenter() { return { 0, 1 }; }
+        static constexpr Alignment BottomEnd() { return { 1, 1 }; }
+        bool operator==(const Alignment&) const = default;
+    };
+    // One-axis alignments used by Row (vertical) and Column (horizontal).
+    struct AlignmentH {
+        float bias = -1;
+        int Align(int size, int space, LayoutDirection dir) const {
+            const float c = (space - size) / 2.0f;
+            return RoundJava(c * (1 + (dir == LayoutDirection::Ltr ? bias : -bias)));
+        }
+        static constexpr AlignmentH Start() { return { -1 }; }
+        static constexpr AlignmentH CenterHorizontally() { return { 0 }; }
+        static constexpr AlignmentH End() { return { 1 }; }
+        bool operator==(const AlignmentH&) const = default;
+    };
+    struct AlignmentV {
+        float bias = -1;
+        int Align(int size, int space) const { return RoundJava((space - size) / 2.0f * (1 + bias)); }
+        static constexpr AlignmentV Top() { return { -1 }; }
+        static constexpr AlignmentV CenterVertically() { return { 0 }; }
+        static constexpr AlignmentV Bottom() { return { 1 }; }
+        bool operator==(const AlignmentV&) const = default;
+    };
+
+    // ARGB colour, 8 bits per channel (sRGB). Wide-gamut colour comes with the renderer work.
+    struct Color {
+        std::uint32_t argb = 0xFF000000u;
+        constexpr Color() = default;
+        constexpr explicit Color(std::uint32_t v) : argb(v) {}
+        constexpr float Alpha() const { return ((argb >> 24) & 0xff) / 255.0f; }
+        Color WithAlpha(float a) const {
+            return Color((std::uint32_t(RoundJava(std::clamp(a, 0.0f, 1.0f) * 255)) << 24) | (argb & 0xFFFFFFu));
+        }
+        static constexpr Color Transparent() { return Color(0); }
+        static constexpr Color Unspecified() { return Color(0x00000001u); }   // sentinel
+        constexpr bool Specified() const { return argb != 0x00000001u; }
+        bool operator==(const Color&) const = default;
+    };
+
+}
