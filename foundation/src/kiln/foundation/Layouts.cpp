@@ -598,8 +598,10 @@ namespace kiln::foundation {
                                      rr->topLeft.x == rr->topLeft.y))
                         clipPath = outline->ToPath();   // non-uniform corners: no SDF fast path
                 }
-                const bool offscreen = params.alpha < 1 || clipPath;
+                const bool offscreen = clipPath || params.compositingStrategy == CompositingStrategy::Offscreen ||
+                                       (params.compositingStrategy == CompositingStrategy::Auto && params.alpha < 1);
                 if (offscreen) s.BeginLayer({ 0, 0, size.width, size.height }, params.alpha, clipPath ? &*clipPath : nullptr);
+                else if (params.alpha < 1) s.MultiplyAlpha(params.alpha);   // ModulateAlpha
                 if (params.clip && !clipPath) {
                     if (outline) {
                         if (auto* r = std::get_if<Rect>(&outline->value)) s.ClipRect(*r);

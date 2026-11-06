@@ -173,6 +173,14 @@ namespace {
                     Box(Background(SizeMod(Modifier{}, 48_dp, 48_dp), kPrimary, CornerShape::Pill()));
                     Box(Background(SizeMod(OffsetMod(Modifier{}, 32_dp, 0_dp), 48_dp, 48_dp), kTertiary, CornerShape::Pill()));
                 });
+                // CompositingStrategy::ModulateAlpha: each circle fades on its own; the overlap shows.
+                GraphicsLayerParams modulate;
+                modulate.alpha = 0.5f;
+                modulate.compositingStrategy = CompositingStrategy::ModulateAlpha;
+                Box(GraphicsLayer(SizeMod(Modifier{}, 80_dp, 48_dp), modulate), Alignment::TopStart(), false, [&] {
+                    Box(Background(SizeMod(Modifier{}, 48_dp, 48_dp), kPrimary, CornerShape::Pill()));
+                    Box(Background(SizeMod(OffsetMod(Modifier{}, 32_dp, 0_dp), 48_dp, 48_dp), kTertiary, CornerShape::Pill()));
+                });
             });
             // graphics-shapes: a rounded square morphing into a rounded star and back.
             {

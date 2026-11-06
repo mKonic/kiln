@@ -110,6 +110,11 @@ namespace kiln::foundation {
 
     // graphicsLayer (draw-time part): alpha (modulated per draw), scale about transformOrigin
     // (fractions of the size), translation, and an optional clip to the shape.
+    // CompositingStrategy: Auto renders offscreen only when alpha < 1 (so overlapping content
+    // fades as one image); Offscreen always does; ModulateAlpha never does and multiplies each
+    // draw's alpha instead (cheaper, but overlaps show through).
+    enum class CompositingStrategy : std::uint8_t { Auto, Offscreen, ModulateAlpha };
+
     struct GraphicsLayerParams {
         float alpha = 1, scaleX = 1, scaleY = 1, translationX = 0, translationY = 0;
         float rotationZ = 0;                  // degrees, clockwise
@@ -117,6 +122,7 @@ namespace kiln::foundation {
         // `cameraDistance` away (RenderNode units: 72 px each, so 8 = 576 px). The layer renders
         // offscreen and is composited in perspective.
         float rotationX = 0, rotationY = 0, cameraDistance = 8;
+        CompositingStrategy compositingStrategy = CompositingStrategy::Auto;
         float originX = 0.5f, originY = 0.5f; // transform origin (pivot) as a fraction of the size
         bool clip = false;
         CornerShape shape;
