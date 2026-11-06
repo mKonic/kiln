@@ -4,6 +4,8 @@ layout(location = 1) in vec2 vUv;
 layout(location = 2) in vec4 vColor;
 layout(location = 3) flat in vec4 vParams;
 layout(location = 4) flat in vec2 vHalf;
+layout(location = 5) flat in vec4 vClip;
+layout(location = 6) flat in vec4 vClipParams;
 
 layout(set = 0, binding = 0) uniform sampler2D uAtlas;
 
@@ -13,6 +15,14 @@ float roundedRectSdf(vec2 p, vec2 half_, float r) {
     r = min(r, min(half_.x, half_.y));
     vec2 q = abs(p) - half_ + r;
     return length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - r;
+}
+
+float clipCoverage() {
+    if (vClipParams.y < 0.5) return 1.0;
+    vec2 centre = (vClip.xy + vClip.zw) * 0.5;
+    vec2 half_ = max((vClip.zw - vClip.xy) * 0.5, vec2(0.0));
+    float d = roundedRectSdf(gl_FragCoord.xy - centre, half_, vClipParams.x);
+    return clamp(0.5 - d, 0.0, 1.0);
 }
 
 void main() {
@@ -26,4 +36,5 @@ void main() {
     } else {                    // atlas colour (emoji, images), premultiplied, alpha-modulated
         outColor = texture(uAtlas, vUv) * vColor.a;
     }
+    outColor *= clipCoverage();
 }

@@ -4,6 +4,8 @@ layout(location = 0) in vec4 iRect;    // x, y, w, h
 layout(location = 1) in vec4 iUv;      // u0, v0, u1, v1 (atlas, normalised)
 layout(location = 2) in vec4 iColor;   // premultiplied rgba
 layout(location = 3) in vec4 iParams;  // cornerRadius, mode, unused, unused
+layout(location = 4) in vec4 iClip;    // clip rect x0, y0, x1, y1 (framebuffer px)
+layout(location = 5) in vec4 iClipParams; // clip corner radius, enabled
 
 layout(push_constant) uniform Push { vec2 viewport; } pc;
 
@@ -12,6 +14,8 @@ layout(location = 1) out vec2 vUv;
 layout(location = 2) out vec4 vColor;
 layout(location = 3) flat out vec4 vParams;
 layout(location = 4) flat out vec2 vHalf;
+layout(location = 5) flat out vec4 vClip;
+layout(location = 6) flat out vec4 vClipParams;
 
 void main() {
     vec2 corner = vec2(gl_VertexIndex & 1, (gl_VertexIndex >> 1) & 1);
@@ -23,5 +27,7 @@ void main() {
     vUv = mix(iUv.xy, iUv.zw, corner);
     vColor = iColor;
     vParams = iParams;
+    vClip = iClip;
+    vClipParams = iClipParams;
     gl_Position = vec4(pos / pc.viewport * 2.0 - 1.0, 0.0, 1.0);
 }

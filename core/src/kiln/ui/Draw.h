@@ -6,6 +6,7 @@
 #include "kiln/ui/Geometry.h"
 
 #include <functional>
+#include <vector>
 
 namespace kiln { class QuadRenderer; struct ParagraphData; class AtlasPage; }
 
@@ -27,15 +28,37 @@ namespace kiln::ui {
         void DrawRoundRect(Color color, Offset topLeft, Size size, float cornerRadius);
         void DrawParagraph(const ParagraphData& paragraph, Offset topLeft, Color color);
 
-        // Translation stack, managed by the node tree while it draws.
-        Offset Translation() const { return m_Translate; }
-        void Translate(Offset o) { m_Translate = m_Translate + o; }
+        // Transform: device = origin + scale * local (axis-aligned; rotation needs the retained
+        // layer renderer). Translate moves the local origin.
+        void Translate(Offset o) { m_State.origin = m_State.origin + Offset{ o.x * m_State.sx, o.y * m_State.sy }; }
+        // Scales about `pivot` (local coordinates).
+        void Scale(float sx, float sy, Offset pivot);
+        void MultiplyAlpha(float a) { m_State.alpha *= a; }
+        // Intersects the clip with a local rect, rounded by `radius` (local px). Nested rounded
+        // clips keep only the innermost rounding.
+        void ClipRect(Rect local, float radius = 0);
+        void Save() { m_Stack.push_back(m_State); }
+        void Restore();
         void SetSize(Size s) { m_Size = s; }
 
     private:
+        struct State {
+            Offset origin;
+            float sx = 1, sy = 1;
+            float alpha = 1;
+            bool clip = false;
+            Rect clipRect;
+            float clipRadius = 0;
+        };
+        Rect ToDevice(Offset p, Size s) const {
+            return { m_State.origin.x + p.x * m_State.sx, m_State.origin.y + p.y * m_State.sy,
+                     m_State.origin.x + (p.x + s.width) * m_State.sx, m_State.origin.y + (p.y + s.height) * m_State.sy };
+        }
+        void ApplyClip();
         LayoutDirection m_Dir;
         DrawTarget m_Target;
-        Offset m_Translate;
+        State m_State;
+        std::vector<State> m_Stack;
         Size m_Size;
     };
 

@@ -48,10 +48,14 @@ namespace kiln {
         void Begin(std::uint32_t viewportWidth, std::uint32_t viewportHeight);
         void FillRect(const RectF& rect, Rgba color, float cornerRadius = 0.0f);
         void DrawAtlas(const RectF& rect, const RectF& uv, const AtlasPage& page, Rgba color, Mode mode);
+        // Clip applied to quads submitted after this call: rect in framebuffer pixels (x0, y0,
+        // x1, y1) with a corner radius; nullopt-like when enabled is false.
+        struct Clip { float x0 = 0, y0 = 0, x1 = 0, y1 = 0, radius = 0; bool enabled = false; };
+        void SetClip(const Clip& clip) { m_Clip = clip; }
         void Flush(hearth::CommandList& cmd);
 
     private:
-        struct Instance { float rect[4]; float uv[4]; float color[4]; float params[4]; };
+        struct Instance { float rect[4]; float uv[4]; float color[4]; float params[4]; float clip[4]; float clipParams[4]; };
         struct Run { const AtlasPage* page; std::uint32_t first, count; };
 
         void Push(const Instance& instance, const AtlasPage* page);
@@ -65,6 +69,7 @@ namespace kiln {
         std::vector<hearth::Ref<hearth::Buffer>> m_Buffers;   // one per frame in flight
         std::vector<std::pair<const AtlasPage*, hearth::Ref<hearth::BindGroup>>> m_Groups;
         float m_Viewport[2] = { 1, 1 };
+        Clip m_Clip;
     };
 
 }
