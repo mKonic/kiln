@@ -118,13 +118,27 @@ namespace kiln::foundation {
     // draw's alpha instead (cheaper, but overlaps show through).
     enum class CompositingStrategy : std::uint8_t { Auto, Offscreen, ModulateAlpha };
 
-    // RenderEffect.createBlurEffect: radii in pixels (HWUI turns them into Gaussian sigmas);
-    // `edgeTreatment` is how pixels outside the layer read (Clamp or Decal).
-    struct BlurEffect {
-        float radiusX = 0, radiusY = 0;
+    // A render effect on a graphics layer's image (RenderEffect): a Gaussian blur (radii in
+    // pixels, which HWUI turns into sigmas; `edgeTreatment` is how pixels outside the image read,
+    // Clamp or Decal) or an offset, applied after its `input` effect.
+    struct RenderEffect {
+        enum class Kind : std::uint8_t { Blur, Offset };
+        Kind kind = Kind::Blur;
+        float x = 0, y = 0;   // blur radii or offset
         gfx::TileMode edgeTreatment = gfx::TileMode::Clamp;
-        bool radiiInDp = false;   // Modifier.blur: converted with the draw's density
-        bool operator==(const BlurEffect&) const = default;
+        bool inDp = false;    // Modifier.blur: radii in dp, converted with the draw's density
+        std::shared_ptr<const RenderEffect> input;
+        static RenderEffect Blur(float radiusX, float radiusY, gfx::TileMode edgeTreatment = gfx::TileMode::Clamp,
+                                 std::shared_ptr<const RenderEffect> input = {}) {
+            return { Kind::Blur, radiusX, radiusY, edgeTreatment, false, std::move(input) };
+        }
+        static RenderEffect Offset(float x, float y, std::shared_ptr<const RenderEffect> input = {}) {
+            return { Kind::Offset, x, y, gfx::TileMode::Clamp, false, std::move(input) };
+        }
+        bool operator==(const RenderEffect& o) const {
+            return kind == o.kind && x == o.x && y == o.y && edgeTreatment == o.edgeTreatment && inDp == o.inDp &&
+                   (input == o.input || (input && o.input && *input == *o.input));
+        }
     };
 
     struct GraphicsLayerParams {
@@ -135,7 +149,7 @@ namespace kiln::foundation {
         // offscreen and is composited in perspective.
         float rotationX = 0, rotationY = 0, cameraDistance = 8;
         CompositingStrategy compositingStrategy = CompositingStrategy::Auto;
-        std::optional<BlurEffect> renderEffect;   // renders offscreen and composites blurred
+        std::optional<RenderEffect> renderEffect;   // renders offscreen and composites through it
         // How the layer composites onto what is below, and a colour filter on its image; either
         // other than the default makes the layer offscreen (GraphicsLayer requiresCompositingLayer).
         gfx::BlendMode blendMode = gfx::BlendMode::SrcOver;

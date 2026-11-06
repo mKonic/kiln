@@ -83,9 +83,11 @@ namespace kiln::ui {
         // Composites the layer through a projective transform `h` (row-major 3x3, local
         // coordinates of the BeginLayer call -> local), for 3D-rotated graphics layers.
         void EndLayerProjective(const float h[9]);
-        // Ends a layer through a Gaussian blur (RenderEffect.createBlurEffect): sigmas in device
-        // pixels; outside the layer the edge repeats (TileMode.CLAMP) or with `decal` is transparent.
-        void EndLayerBlur(float sigmaX, float sigmaY, bool decal);
+        // Ends a layer through render effects: Gaussian blurs in order (RenderEffect.createBlurEffect,
+        // sigmas in local units; outside the image the edge repeats, or with `decal` is
+        // transparent), then composited moved by `offset` (createOffsetEffect, local units).
+        struct LayerBlur { float sigmaX = 0, sigmaY = 0; bool decal = false; };
+        void EndLayerEffects(const std::vector<LayerBlur>& blurs, Offset offset = {});
         void Save() { m_Stack.push_back(m_State); }
         void Restore();
         // Ends the layers that clips left open (the end of a frame).

@@ -454,7 +454,7 @@ namespace kiln::ui {
         }
     }
 
-    void DrawScope::EndLayerBlur(float sigmaX, float sigmaY, bool decal) {
+    void DrawScope::EndLayerEffects(const std::vector<LayerBlur>& blurs, Offset offset) {
         EndClipLayers();
         if (m_Layers.empty()) return;
         Layer l = m_Layers.back();
@@ -462,34 +462,35 @@ namespace kiln::ui {
         MaskLayer(l);
         m_State = l.saved;
         if (!l.active) { ApplyClip(); return; }
-        // Sigmas are in the layer's local units; the passes run in device pixels.
-        sigmaX *= std::hypot(l.saved.m.a, l.saved.m.b);
-        sigmaY *= std::hypot(l.saved.m.c, l.saved.m.d);
         QuadRenderer& q = *m_Target.quads;
         QuadRenderer::LayerResult r = q.EndLayer();
         if (!r.page) { ApplyClip(); return; }
+        const gfx::Matrix& m = l.saved.m;
         const kiln::RectF rect{ l.device.left, l.device.top, l.device.Width(), l.device.Height() };
         const int x = int(l.device.left), y = int(l.device.top), w = int(l.device.Width()), h = int(l.device.Height());
         auto uvOf = [&](const QuadRenderer::LayerResult& lr) {
             return kiln::RectF{ 0, 0, rect.w / float(lr.page->Width()), rect.h / float(lr.page->Height()) };
         };
-        // Horizontal then vertical pass, each into a layer over the same device pixels, unclipped.
+        // Each blur is a horizontal then a vertical pass, into layers over the same device
+        // pixels, unclipped. Sigmas are local; the passes run in device pixels.
         q.SetTransform({});
         q.SetClip({});
-        for (int pass = 0; pass < 2; ++pass) {
-            const float sigma = pass == 0 ? sigmaX : sigmaY;
-            if (sigma <= 0) continue;
-            q.BeginLayer(x, y, w, h);
-            const float su = pass == 0 ? 1.0f / float(r.page->Width()) : 0, sv = pass == 0 ? 0 : 1.0f / float(r.page->Height());
-            q.DrawBlur(rect, uvOf(r), *r.page, 1, su, sv, sigma, decal);
-            r = q.EndLayer();
-            if (!r.page) { ApplyClip(); return; }
-        }
+        for (const LayerBlur& b : blurs)
+            for (int pass = 0; pass < 2; ++pass) {
+                const float sigma = pass == 0 ? b.sigmaX * std::hypot(m.a, m.b) : b.sigmaY * std::hypot(m.c, m.d);
+                if (sigma <= 0) continue;
+                q.BeginLayer(x, y, w, h);
+                const float su = pass == 0 ? 1.0f / float(r.page->Width()) : 0, sv = pass == 0 ? 0 : 1.0f / float(r.page->Height());
+                q.DrawBlur(rect, uvOf(r), *r.page, 1, su, sv, sigma, b.decal);
+                r = q.EndLayer();
+                if (!r.page) { ApplyClip(); return; }
+            }
         ApplyClip();
-        const float a = l.alpha;
-        (void)a;
-        q.SetTransform({});
+        // An offset commutes with the blurs (the image's edges move with it).
+        const Offset d{ m.a * offset.x + m.c * offset.y, m.b * offset.x + m.d * offset.y };
+        q.SetTransform({ 1, 0, 0, 1, d.x, d.y });
         CompositeLayer(l, rect, uvOf(r), *r.page);
+        q.SetTransform({});
     }
 
     void DrawScope::EndLayer(float stretchX, float stretchY) {

@@ -184,6 +184,10 @@ namespace {
             });
             // Modifier.blur: Rectangle keeps the edges inside the bounds; Unbounded lets them spread.
             Row(Padding(Modifier{}, 16_dp, 8_dp), Arrangement::SpacedBy(24_dp), AlignmentV::CenterVertically(), [] {
+                // RenderEffect chain: an offset of a decal blur, like a soft shadow.
+                GraphicsLayerParams shadow;
+                shadow.renderEffect = RenderEffect::Offset(24, 24, std::make_shared<RenderEffect>(RenderEffect::Blur(16, 16, kiln::gfx::TileMode::Decal)));
+                Box(Background(GraphicsLayer(SizeMod(Modifier{}, 56_dp, 56_dp), shadow), kPrimary, CornerShape::Rounded(12_dp)));
                 for (const bool bounded : { true, false }) {
                     Box(Blur(SizeMod(Modifier{}, 120_dp, 64_dp), 6_dp, bounded ? BlurredEdgeTreatment::Rectangle() : BlurredEdgeTreatment::Unbounded()),
                         Alignment::Center(), false, [bounded] {

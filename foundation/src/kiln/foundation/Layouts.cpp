@@ -623,25 +623,35 @@ namespace kiln::foundation {
                     s.ClipRect({ 0, 0, size.width, size.height }, CornerRadiusPx(params.shape, size, s));
                 }
             }
-            // A render effect blurs the layer's image; the clip shape then clips the blurred image
-            // (HWUI clips the layer draw to the outline), so it wraps the blur.
+            // A render effect works on the layer's image; the clip shape then clips the result
+            // (HWUI clips the layer draw to the outline), so it wraps the effect.
             void DrawBlurred(ContentDrawScope& s, Size size, const gfx::Path* clipPath, const gfx::Outline* outline) {
-                const BlurEffect& b = *params.renderEffect;
-                // HWUI Blur::convertRadiusToSigma.
-                auto sigma = [](float r) { return r > 0 ? 0.57735f * r + 0.5f : 0.0f; };
-                const float k = b.radiiInDp ? s.ToPx(Dp(1)) : 1.0f;
-                const float sx = sigma(b.radiusX * k), sy = sigma(b.radiusY * k);
-                const bool decal = b.edgeTreatment == gfx::TileMode::Decal;
+                // The chain, input first: blurs in order and the summed offset.
+                std::vector<const RenderEffect*> chain;
+                for (const RenderEffect* e = &*params.renderEffect; e; e = e->input.get()) chain.push_back(e);
+                std::vector<DrawScope::LayerBlur> blurs;
+                Offset offset;
+                float marginX = 0, marginY = 0;
+                for (auto it = chain.rbegin(); it != chain.rend(); ++it) {
+                    const RenderEffect& e = **it;
+                    const float k = e.inDp ? s.ToPx(Dp(1)) : 1.0f;
+                    if (e.kind == RenderEffect::Kind::Offset) { offset = offset + Offset{ e.x * k, e.y * k }; continue; }
+                    // HWUI Blur::convertRadiusToSigma.
+                    auto sigma = [](float r) { return r > 0 ? 0.57735f * r + 0.5f : 0.0f; };
+                    const DrawScope::LayerBlur b{ sigma(e.x * k), sigma(e.y * k), e.edgeTreatment == gfx::TileMode::Decal };
+                    // Decal lets the blur spread 3 sigma past the image (SkBlurImageFilter bounds).
+                    if (b.decal) { marginX += 3 * b.sigmaX; marginY += 3 * b.sigmaY; }
+                    blurs.push_back(b);
+                }
                 const Rect bounds{ 0, 0, size.width, size.height };
                 float alpha = params.alpha;
                 if (clipPath) { s.BeginLayer(bounds, alpha, clipPath, params.blendMode, Filter()); alpha = 1; }
                 else if (params.clip) ClipToShape(s, size, outline);
-                // Decal lets the blur spread 3 sigma past the content (SkBlurImageFilter bounds).
-                const Rect layer = decal ? Rect{ -3 * sx, -3 * sy, size.width + 3 * sx, size.height + 3 * sy } : bounds;
+                const Rect layer{ -marginX, -marginY, size.width + marginX, size.height + marginY };
                 if (clipPath) s.BeginLayer(layer, alpha);
                 else s.BeginLayer(layer, alpha, nullptr, params.blendMode, Filter());
                 s.DrawContent();
-                s.EndLayerBlur(sx, sy, decal);
+                s.EndLayerEffects(blurs, offset);
                 if (clipPath) s.EndLayer();
             }
             // rotationX / rotationY: the content renders flat (clipped as usual) into a layer that
@@ -677,7 +687,8 @@ namespace kiln::foundation {
         if (!((radiusX.value > 0 && radiusY.value > 0) || e.clip)) return m;
         GraphicsLayerParams p;
         if (radiusX.value > 0 && radiusY.value > 0)
-            p.renderEffect = BlurEffect{ radiusX.value, radiusY.value, e.clip ? gfx::TileMode::Clamp : gfx::TileMode::Decal, true };
+            p.renderEffect = RenderEffect{ RenderEffect::Kind::Blur, radiusX.value, radiusY.value,
+                                           e.clip ? gfx::TileMode::Clamp : gfx::TileMode::Decal, true, nullptr };
         p.clip = e.clip;
         p.clipShape = std::move(e.shape);
         return GraphicsLayer(std::move(m), p);
