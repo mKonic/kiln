@@ -10,6 +10,9 @@
 #include <kiln/foundation/Insets.h>
 #include <kiln/foundation/Back.h>
 #include <kiln/foundation/Draw.h>
+#include <kiln/foundation/Image.h>
+
+#include "assets/Orb.h"
 #include <kiln/foundation/text/BasicTextField.h>
 #include <kiln/runtime/Task.h>
 #include <kiln/runtime/Saveable.h>
@@ -166,6 +169,14 @@ namespace {
                 Box(Background(SizeMod(Modifier{}, 56_dp, 56_dp),
                                Brush::LinearGradient({ kPrimaryContainer, kPrimary }, { 0, 0 }, { 24, 24 }, kiln::gfx::TileMode::Mirror),
                                CornerShape::Rounded(12_dp)));
+            });
+            // Images: a decoded PNG at its intrinsic size, scaled down with Fit, and cropped.
+            Row(Padding(Modifier{}, 16_dp, 0_dp), Arrangement::SpacedBy(16_dp), AlignmentV::CenterVertically(), [&] {
+                auto& c2 = *kiln::rt::Composition::Current();
+                const auto& orb = c2.Remember<kiln::gfx::ImageBitmap>([] { return kiln::gfx::ImageBitmap::Decode(kOrbPng); });
+                Image(orb, "Orb");
+                Image(orb, "Small orb", SizeMod(Modifier{}, 32_dp, 32_dp));
+                Image(orb, "Cropped orb", SizeMod(Modifier{}, 96_dp, 32_dp), Alignment::Center(), ContentScale::Crop());
             });
             Row(Padding(Modifier{}, 16_dp, 0_dp), Arrangement::SpacedBy(16_dp), AlignmentV::CenterVertically(), [&] {
                 // Rounded clip around a child that overflows it.
