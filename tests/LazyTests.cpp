@@ -1,6 +1,7 @@
 #include "Check.h"
 
 #include "kiln/foundation/BringIntoView.h"
+#include "kiln/foundation/Focus.h"
 #include "kiln/foundation/Lazy.h"
 #include "kiln/runtime/Saveable.h"
 #include <map>
@@ -523,4 +524,42 @@ TEST(BringIntoViewKeepsItemsClearOfTheStickyHeader) {
     // It ends just below the header (at 20), not at the viewport's top.
     CHECK_EQ(state.FirstVisibleItemIndex(), 2);
     CHECK_EQ(state.FirstVisibleItemScrollOffset(), 10);
+}
+
+TEST(FocusedItemStaysComposedWhenScrolledAway) {
+    Harness h;
+    LazyListState outer;
+    LazyListState inner;
+    FocusRequester focus;
+    std::map<int, int> composed, disposed;
+    h.Run([&] {
+        LazyColumn(FillMax(Modifier{}, Axis::Both), outer, [&](LazyListScope& s) {
+            s.Items(100, [&](int i) {
+                rt::Composition::Current()->Remember<std::shared_ptr<int>>([&, i] {
+                    ++composed[i];
+                    return std::shared_ptr<int>(new int(i), [&disposed](int* p) { ++disposed[*p]; delete p; });
+                });
+                if (i != 1) { Box(SizeMod(Modifier{}, Dp(100), Dp(30))); return; }
+                // Item 1 holds a row whose item 0 is focusable: pinning goes through both lists.
+                LazyRow(SizeMod(Modifier{}, Dp(100), Dp(30)), inner, [&](LazyListScope& r) {
+                    r.Items(10, [&](int j) {
+                        Modifier m = SizeMod(Modifier{}, Dp(30), Dp(30));
+                        if (j == 0) m = Focusable(FocusRequesterModifier(std::move(m), focus));
+                        Box(m);
+                    });
+                });
+            });
+        });
+    });
+    CHECK(focus.RequestFocus());
+    h.Frames(5);
+    outer.ScrollToItem(50);
+    h.Pump();
+    CHECK_EQ(composed[1], 1);
+    CHECK_EQ(disposed[1], 0);                 // pinned: still composed far above the viewport
+    CHECK_EQ(disposed[2], 1);                 // its neighbours were let go
+    CHECK_EQ(outer.LayoutInfo().visibleItemsInfo.front().index, 50);   // not a visible item
+    h.owner.ClearFocus(true);
+    h.Frames(2);
+    CHECK_EQ(disposed[1], 1);                 // released: disposed on the next measure
 }

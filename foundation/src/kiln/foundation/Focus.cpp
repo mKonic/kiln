@@ -2,6 +2,7 @@
 #include "kiln/ui/BringIntoView.h"
 
 #include "kiln/runtime/Composition.h"
+#include "kiln/ui/Locals.h"
 #include "kiln/ui/Semantics.h"
 
 namespace kiln::foundation {
@@ -19,7 +20,8 @@ namespace kiln::foundation {
         struct FocusParams {
             Focusability f; std::shared_ptr<std::function<void(FocusState)>> cb;
             std::shared_ptr<MutableInteractionSource> source;
-            bool operator==(const FocusParams& o) const { return f == o.f && cb == o.cb && source == o.source; }
+            std::shared_ptr<ui::PinnableContainer> pin;   // LocalPinnableContainer where it was composed
+            bool operator==(const FocusParams& o) const { return f == o.f && cb == o.cb && source == o.source && pin == o.pin; }
         };
         struct FocusNode final : FocusTargetNode, ui::SemanticsModifier {
             FocusParams params;
@@ -30,8 +32,13 @@ namespace kiln::foundation {
                 c.focused = IsFocused(State());
                 c.requestFocus = [this] { return RequestFocus(); };
             }
-            void OnParamsChanged() { Apply(); }
+            void OnParamsChanged() {
+                // A new container while focused: move the pin over.
+                if (pinned && pinned != params.pin) { pinned->Release(); pinned = nullptr; if (IsFocused(State()) && params.pin) { pinned = params.pin; pinned->Pin(); } }
+                Apply();
+            }
             std::uint64_t focusInteraction = 0;
+            std::shared_ptr<ui::PinnableContainer> pinned;
             void Apply() {
                 focusability = params.f;
                 auto cb = params.cb;
@@ -41,13 +48,17 @@ namespace kiln::foundation {
                         if (IsFocused(now) && !focusInteraction) focusInteraction = params.source->Start(Interaction::Kind::Focus);
                         else if (!IsFocused(now) && focusInteraction) { params.source->End(Interaction::Kind::Focus, focusInteraction); focusInteraction = 0; }
                     }
-                    // FocusableNode: a node that gains focus asks its scroll containers to show it.
+                    // FocusableNode: focused content pins its lazy item (it stays composed when
+                    // scrolled away) and asks its scroll containers to show it.
+                    if (IsFocused(now) && !pinned && params.pin) { pinned = params.pin; pinned->Pin(); }
+                    else if (!IsFocused(now) && pinned) { pinned->Release(); pinned = nullptr; }
                     if (IsFocused(now) && Owner()) ui::BringIntoView(*Owner());
                     if (cb && *cb) (*cb)(now);
                 };
             }
             void OnDetach() override {
                 if (params.source && focusInteraction) { params.source->End(Interaction::Kind::Focus, focusInteraction); focusInteraction = 0; }
+                if (pinned) { pinned->Release(); pinned = nullptr; }
                 FocusTargetNode::OnDetach();
             }
         };
@@ -95,7 +106,9 @@ namespace kiln::foundation {
     }
 
     Modifier Focusable(Modifier m, Focusability f, std::function<void(FocusState)> cb, std::shared_ptr<MutableInteractionSource> source) {
-        return m.With<FocusNode>(FocusParams{ f, Latest(std::move(cb)), std::move(source) });
+        auto* c = rt::Composition::Current();
+        auto pin = c ? c->Read(ui::LocalPinnableContainer) : nullptr;
+        return m.With<FocusNode>(FocusParams{ f, Latest(std::move(cb)), std::move(source), std::move(pin) });
     }
     namespace {
         struct PropsParams {

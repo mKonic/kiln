@@ -16,6 +16,17 @@ namespace kiln::ui {
     // null when the host has none.
     inline rt::Local<HostNestedScrollParent*> LocalHostNestedScrollParent{ nullptr };
 
+    // PinnableContainer: content that matters right now (a focused field) pins its container, and
+    // a lazy item stays composed and laid out while pinned even when scrolled away. Pins count.
+    class PinnableContainer {
+    public:
+        virtual ~PinnableContainer() = default;
+        virtual void Pin() = 0;
+        virtual void Release() = 0;
+    };
+    // The pinnable container around this content (a lazy item), or null.
+    inline rt::Local<std::shared_ptr<PinnableContainer>> LocalPinnableContainer{ nullptr };
+
     // The device is a TV (FEATURE_LEANBACK): focus scrolling pivots (LocalBringIntoViewSpec).
     inline rt::Local<bool> LocalIsTelevision{ false };
 

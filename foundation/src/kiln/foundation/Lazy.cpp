@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <map>
 #include <set>
 #include <unordered_map>
 
@@ -88,7 +89,21 @@ namespace kiln::foundation {
                 return s.Layout(w, h, [ps](PlacementScope& place) { for (Placeable* p : ps) place.PlaceRelative(*p, 0, 0); });
             }
         };
+        // LazyLayoutPinnableItem: an item's pin. Pinning it pins the item around the layout too.
+        struct PinItem final : ui::PinnableContainer {
+            PinItem(std::weak_ptr<LazyCore> c, rt::Key k) : core(std::move(c)), key(k) {}
+            void Pin() override;
+            void Release() override;
+            void Dispose();
+            void Unpin(bool remeasure);
+            std::weak_ptr<LazyCore> core;
+            rt::Key key;
+            std::shared_ptr<ui::PinnableContainer> parent, parentHandle;
+            int count = 0;
+            bool disposed = false;
+        };
         struct Slot {
+            std::shared_ptr<PinItem> pin;            // its LocalPinnableContainer
             std::unique_ptr<LayoutNode> holder;
             std::unique_ptr<rt::Composition> composition;
             std::shared_ptr<rt::SaveableStateRegistry> registry;   // the item's rememberSaveable values
@@ -175,7 +190,11 @@ namespace kiln::foundation {
         });
     }
 
-    struct LazyCore {
+    struct LazyCore : std::enable_shared_from_this<LazyCore> {
+        // LazyLayoutPinnedItemList: keys of items pinned now (kept composed and laid out).
+        std::map<std::uint64_t, rt::Key> pinned;
+        std::shared_ptr<ui::PinnableContainer> parentPin;   // the item around this layout, if any
+        void RequestRemeasure() { if (state && state->m_Node) state->m_Node->RequestRemeasure(); }
         bool vertical = true;
         bool grid = false;
         LazyStateBase* state = nullptr;
@@ -231,6 +250,8 @@ namespace kiln::foundation {
 
         static std::string SaveKey(std::uint64_t keyValue) { return std::to_string(keyValue); }
         void DisposeSlot(std::uint64_t keyValue, Slot& slot) {
+            // The pin goes first: content releasing it while it is disposed changes nothing.
+            if (slot.pin) slot.pin->Dispose();
             // Saves the item's state while it is still composed, then disposes it.
             if (holder && slot.registry) holder->Close(SaveKey(keyValue));
             slot.composition.reset();
@@ -327,16 +348,21 @@ namespace kiln::foundation {
                 if (holder) slot.registry = holder->Open(SaveKey(key.value));
             }
             slot.composition->SetParentContext(context);
+            if (!slot.pin) slot.pin = std::make_shared<PinItem>(weak_from_this(), key);
+            slot.pin->parent = parentPin;
             if (slot.index != index || slot.contentVersion != version) {
                 slot.index = index;
                 slot.contentVersion = version;
                 rt::SaveableStateRegistry* reg = slot.registry.get();
                 ItemAnim* anim = AnimFor(key.value).get();
-                slot.composition->SetContent([this, index, reg, anim] {
+                std::shared_ptr<ui::PinnableContainer> pin = slot.pin;
+                slot.composition->SetContent([this, index, reg, anim, pin] {
                     auto* c = rt::Composition::Current();
-                    c->Provide(LocalItemAnim, anim, [this, index, reg, c] {
-                        if (!reg) { Content(index); return; }
-                        c->Provide(rt::LocalSaveableStateRegistry, reg, [this, index] { Content(index); });
+                    c->Provide(LocalItemAnim, anim, [this, index, reg, c, pin] {
+                        c->Provide(ui::LocalPinnableContainer, pin, [this, index, reg, c] {
+                            if (!reg) { Content(index); return; }
+                            c->Provide(rt::LocalSaveableStateRegistry, reg, [this, index] { Content(index); });
+                        });
                     });
                 });
             }
@@ -346,6 +372,35 @@ namespace kiln::foundation {
 
         MeasureResult Measure(LayoutNode& self, MeasureScope& s, const Constraints& c);
     };
+
+    namespace {
+        void PinItem::Pin() {
+            if (disposed) return;
+            if (count++ == 0) {
+                if (auto c = core.lock()) c->pinned[key.value] = key;
+                parentHandle = parent;
+                if (parentHandle) parentHandle->Pin();
+            }
+        }
+        void PinItem::Release() {
+            if (disposed || count == 0) return;
+            if (--count == 0) Unpin(true);
+        }
+        void PinItem::Dispose() {
+            if (disposed) return;
+            disposed = true;
+            if (count > 0) Unpin(false);
+            count = 0;
+        }
+        void PinItem::Unpin(bool remeasure) {
+            if (auto c = core.lock()) {
+                c->pinned.erase(key.value);
+                // Scrolled away meanwhile: the next measure lets it go.
+                if (remeasure) c->RequestRemeasure();
+            }
+            if (parentHandle) { parentHandle->Release(); parentHandle = nullptr; }
+        }
+    }
 
     // --- state ------------------------------------------------------------------------------------
 
@@ -525,6 +580,7 @@ namespace kiln::foundation {
         };
         rebuildEnds();
         std::vector<LayoutNode*> active;
+        for (auto& [k, sl] : slots) if (sl.holder) active.push_back(sl.holder.get());   // no detaching mid-measure
         std::map<int, Placeable*> measured;
         auto isFull = [&](int i) { int local = 0; const auto* iv = IntervalOf(i, local); return iv && iv->span && iv->span(local, lanes, lanes) >= lanes; };
         auto measureAt = [&](int i, int lane, bool full) -> Placeable& {
@@ -703,7 +759,10 @@ namespace kiln::foundation {
         // One measured line: its cells and main-axis size.
         struct Cell { int index; Slot* slot; Placeable* p; int crossPos; int column; Constraints constraints; };
         struct MLine { int line, first, last; std::vector<Cell> cells; int size; };
+        // Slots composed earlier stay attached until the final children are set: detaching one
+        // mid-measure would detach its content (a focused item would lose its pin).
         std::vector<LayoutNode*> active;
+        for (auto& [k, sl] : slots) if (sl.holder) active.push_back(sl.holder.get());
         auto measureLine = [&](int line) -> MLine {
             MLine ml{ line, LineFirst(line), LineEnd(line) - 1, {}, 0 };
             int slot = 0;
@@ -863,13 +922,28 @@ namespace kiln::foundation {
         }
         stickingSize = sticking ? sticking->size : 0;
 
-        // Pager: beyondViewportPageCount pages on each side are composed, measured and placed
-        // outside the viewport (createPagesBeforeList / AfterList), not visible pages.
+        // Lines beyond the viewport that are composed, measured and placed past its edges but
+        // are not visible (createItemsBeforeList / AfterList): the pager's beyondViewportPageCount,
+        // then pinned items further away (stacked after those).
         std::vector<MLine> extraBefore, extraAfter;
-        if (pager && beyondCount > 0 && !lines.empty()) {
-            const int n = std::min(beyondCount, lineCount);
-            for (int l = lines.front().line - 1; l >= std::max(0, lines.front().line - n); --l) extraBefore.push_back(measureLine(l));
-            for (int l = lines.back().line + 1; l <= std::min(lineCount - 1, lines.back().line + n); ++l) extraAfter.push_back(measureLine(l));
+        if (!lines.empty()) {
+            const int firstL = lines.front().line, lastL = lines.back().line;
+            const int n = pager ? std::min(beyondCount, lineCount) : 0;
+            const int startL = std::max(0, firstL - n), endL = std::min(lineCount - 1, lastL + n);
+            for (int l = firstL - 1; l >= startL; --l) extraBefore.push_back(measureLine(l));
+            for (int l = lastL + 1; l <= endL; ++l) extraAfter.push_back(measureLine(l));
+            std::set<int> before_, after_;
+            for (const auto& [kv, key] : pinned) {
+                auto sl = slots.find(kv);
+                const int idx = IndexOfKey(key, sl != slots.end() ? sl->second.index : -1);
+                if (idx < 0) continue;
+                const int l = LineOf(idx);
+                if (sticking && sticking->line == l) continue;
+                if (l < startL) before_.insert(l);
+                else if (l > endL) after_.insert(l);
+            }
+            for (auto it = before_.rbegin(); it != before_.rend(); ++it) extraBefore.push_back(measureLine(*it));
+            for (int l : after_) extraAfter.push_back(measureLine(l));
         }
 
         // Item animations: which keys are in the data now and before, and removed items still
@@ -1153,12 +1227,18 @@ namespace kiln::foundation {
         };
         for (std::size_t i = 0; i < lines.size(); ++i)
             for (const auto& cell : lines[i].cells) placed.push_back({ cell.p, screen[i], cell.crossPos, animOf(cell.index), {} });
-        if (!extraBefore.empty() || !extraAfter.empty()) {
-            const int step = st.m_PageSize + spacing;
-            for (std::size_t k = 0; k < extraBefore.size(); ++k)
-                for (const auto& cell : extraBefore[k].cells) placed.push_back({ cell.p, before + offsets.front() - int(k + 1) * step, cell.crossPos, nullptr, {} });
-            for (std::size_t k = 0; k < extraAfter.size(); ++k)
-                for (const auto& cell : extraAfter[k].cells) placed.push_back({ cell.p, before + offsets.back() + int(k + 1) * step, cell.crossPos, nullptr, {} });
+        if ((!extraBefore.empty() || !extraAfter.empty()) && !offsets.empty()) {
+            auto toScreen = [&](int off, int size) { return reverse ? mainMax - (off + before) - size : off + before; };
+            int acc = offsets.front();
+            for (const auto& l : extraBefore) {
+                acc -= l.size + spacing;
+                for (const auto& cell : l.cells) placed.push_back({ cell.p, toScreen(acc, l.size), cell.crossPos, nullptr, {} });
+            }
+            acc = offsets.back() + lines.back().size + spacing;
+            for (const auto& l : extraAfter) {
+                for (const auto& cell : l.cells) placed.push_back({ cell.p, toScreen(acc, l.size), cell.crossPos, nullptr, {} });
+                acc += l.size + spacing;
+            }
         }
         for (auto& [p, a] : fading) placed.push_back({ p, kNone, kNone, a, a->target });   // removed, fading where they were
         if (sticking) for (const auto& cell : sticking->cells) placed.push_back({ cell.p, stickingScreen, cell.crossPos, nullptr, {} });
@@ -1227,6 +1307,7 @@ namespace kiln::foundation {
             core->context = comp.CurrentScope();
             core->holder = &rt::RememberSaveableStateHolder(key);
             core->state = &state;
+            core->parentPin = comp.Read(ui::LocalPinnableContainer);
             configure(*core);
             core->count = 0;
             for (const auto& iv : core->intervals) core->count += iv.count;
