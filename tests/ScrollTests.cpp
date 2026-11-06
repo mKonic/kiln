@@ -129,3 +129,26 @@ TEST(DragOverClickableChildrenScrollsAndCancelsTheClick) {
     CHECK_EQ(state.Value(), 42);
     CHECK_EQ(clicks, 0);
 }
+
+TEST(DragScrollsWhileContentRecomposesEveryFrame) {
+    Harness h;
+    ScrollState state;
+    rt::State<int> tick(0);
+    h.Run([&] {
+        auto& c = *rt::Composition::Current();
+        (void)c;
+        Column(VerticalScroll(FillMax(Modifier{}, Axis::Both), state), [&] {
+            Box(SizeMod(Modifier{}, Dp(100), Dp(float(50 + tick.Get() % 2))));   // read: recomposes
+            for (int i = 0; i < 9; ++i) Box(SizeMod(Modifier{}, Dp(100), Dp(50)), Alignment::TopStart(), false, {}, rt::Key(i));
+        });
+    });
+    std::int64_t t = 0;
+    h.Touch(PointerEventType::Press, 50, 90, true, t);
+    for (int i = 1; i <= 10; ++i) {
+        tick.Set(i);
+        h.Pump();
+        h.Touch(PointerEventType::Move, 50, 90 - float(i) * 5, true, t += 16);
+    }
+    h.Touch(PointerEventType::Release, 50, 40, false, t += 16);
+    CHECK(state.Value() > 30);
+}

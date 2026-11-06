@@ -217,6 +217,26 @@ namespace {
                 Image(orb, "Orb");
                 Image(orb, "Small orb", SizeMod(Modifier{}, 32_dp, 32_dp));
                 Image(orb, "Cropped orb", SizeMod(Modifier{}, 96_dp, 32_dp), Alignment::Center(), ContentScale::Crop());
+                // Clip by a path (GenericShape): a hexagon over a gradient, a star over the image.
+                static const auto hexagon = std::make_shared<kiln::gfx::GenericShape>([](kiln::gfx::Path& p, Size s, LayoutDirection) {
+                    for (int i = 0; i < 6; ++i) {
+                        const float a = 3.14159265f / 3 * float(i);
+                        const float x = s.width / 2 + s.width / 2 * std::cos(a), y = s.height / 2 + s.height / 2 * std::sin(a);
+                        if (i == 0) p.MoveTo(x, y); else p.LineTo(x, y);
+                    }
+                    p.Close();
+                });
+                static const auto star = std::make_shared<kiln::gfx::GenericShape>([](kiln::gfx::Path& p, Size s, LayoutDirection) {
+                    for (int i = 0; i < 10; ++i) {
+                        const float a = -1.5707964f + 3.14159265f / 5 * float(i), r = (i % 2 ? 0.45f : 1.0f) * s.width / 2;
+                        const float x = s.width / 2 + r * std::cos(a), y = s.height / 2 + r * std::sin(a);
+                        if (i == 0) p.MoveTo(x, y); else p.LineTo(x, y);
+                    }
+                    p.Close();
+                });
+                Box(Background(Clip(SizeMod(Modifier{}, 48_dp, 48_dp), hexagon),
+                               kiln::gfx::Brush::LinearGradient({ kPrimary, kTertiary })));
+                Image(orb, "Star orb", Clip(SizeMod(Modifier{}, 48_dp, 48_dp), star), Alignment::Center(), ContentScale::Crop());
                 // ColorFilter.tint (SrcIn) and a greyscale colour matrix.
                 Image(orb, "Tinted orb", SizeMod(Modifier{}, 32_dp, 32_dp), Alignment::Center(), ContentScale::Fit(), 1,
                       kiln::gfx::ColorFilter::Tint(kTertiary));
