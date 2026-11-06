@@ -2,14 +2,14 @@
 
 namespace kiln::ui {
 
-    void BringIntoView(LayoutNode& node, std::optional<Rect> rect) {
+    void BringIntoView(LayoutNode& node, std::optional<Rect> rect, const ModifierNode* from) {
         // The rect in root coordinates, re-read each time (the content moves while scrolling).
-        std::function<std::optional<Rect>()> inRoot = [alive = node.AliveToken(), n = &node, rect]() -> std::optional<Rect> {
+        std::function<std::optional<Rect>()> inRoot = [alive = node.AliveToken(), n = &node, rect,
+                                                        fromAlive = from ? from->AliveToken() : std::weak_ptr<const char>{}, from]() -> std::optional<Rect> {
             if (alive.expired() || !n->IsPlaced()) return std::nullopt;
-            const Offset p = n->PositionInRoot();
-            const IntSize s = n->Size();
-            const Rect r = rect ? *rect : Rect{ 0, 0, float(s.width), float(s.height) };
-            return Rect{ r.left + p.x, r.top + p.y, r.right + p.x, r.bottom + p.y };
+            if (from && fromAlive.expired()) return std::nullopt;
+            // Through layer transforms (localBoundingBoxOf), like the container's bounds below.
+            return n->RectInRoot(rect, from);
         };
         for (LayoutNode* a = node.Parent(); a; a = a->Parent()) {
             const auto mods = a->ModifierNodes();
@@ -21,7 +21,7 @@ namespace kiln::ui {
                 if (!r || !lm) continue;
                 auto bounds = [a, lm, aliveA = a->AliveToken(), aliveM = m->AliveToken()]() -> std::optional<Rect> {
                     if (aliveA.expired() || aliveM.expired()) return std::nullopt;
-                    return a->LayoutModifierBoundsInRoot(lm);
+                    return a->LayoutModifierRectInRoot(lm);
                 };
                 auto local = [inRoot, bounds]() -> std::optional<Rect> {
                     auto rr = inRoot();

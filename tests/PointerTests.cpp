@@ -474,3 +474,17 @@ TEST(HitTestFollowsPerspectiveLayers) {
     Tap(h, 50, 50, 2000);
     CHECK_EQ(clicks, 1);
 }
+
+TEST(HitTestFollowsTheClipShape) {
+    Harness h;
+    int clicks = 0;
+    h.Run([&] {
+        Box(FillMax(Modifier{}, Axis::Both), Alignment::TopStart(), false, [&] {
+            Box(Clickable(Clip(SizeMod(Modifier{}, Dp(100), Dp(100)), CornerShape::Pill()), [&] { ++clicks; }));
+        });
+    });
+    Tap(h, 6, 6, 1000);      // inside the bounds, outside the circle
+    CHECK_EQ(clicks, 0);
+    Tap(h, 50, 50, 2000);
+    CHECK_EQ(clicks, 1);
+}

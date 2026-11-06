@@ -70,6 +70,8 @@ namespace kiln::ui {
         // The full projective transform (row-major 3x3) when the layer is 3D-rotated, for hit
         // testing; LayerTransform then gives only its affine part.
         virtual bool LayerProjective(Size, float[9]) const { return false; }
+        // A clipping layer's hit test inside its bounds (layer.isInLayer: the clip outline).
+        virtual bool LayerClipContains(Size, Offset, LayoutDirection, const Density&) const { return true; }
     };
 
     class ParentDataModifier {

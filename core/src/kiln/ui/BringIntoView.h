@@ -21,7 +21,8 @@ namespace kiln::ui {
         virtual void BringChildIntoView(std::function<std::optional<Rect>()> localRect) = 0;
     };
 
-    // bringIntoView(rect): `rect` in the node's own bounds; the whole node when omitted.
-    void BringIntoView(LayoutNode& node, std::optional<Rect> rect = std::nullopt);
+    // bringIntoView(rect): `rect` in the space of modifier `from` (its coordinator, through the
+    // layers before it), or of the node's outer bounds without one; all of that space when omitted.
+    void BringIntoView(LayoutNode& node, std::optional<Rect> rect = std::nullopt, const ModifierNode* from = nullptr);
 
 }

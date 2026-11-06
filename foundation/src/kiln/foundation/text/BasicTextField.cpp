@@ -66,8 +66,9 @@ namespace kiln::foundation {
             Caret c;
             if (!core.text || !core.handle || !core.node) return c;
             const auto r = core.text->GetCursorRect(core.handle, core.state->Peek().selection.end);
-            const Offset o = core.node->PositionInRoot();
-            c.x = o.x + r.x; c.top = o.y + r.top; c.bottom = o.y + r.bottom;
+            // Through layer transforms (textLayoutCoordinates.localToRoot).
+            const ui::Rect box = core.node->RectInRoot(ui::Rect{ r.x, r.top, r.x, r.bottom });
+            c.x = box.left; c.top = box.top; c.bottom = box.bottom;
             c.baseline = c.bottom - (r.bottom - r.top) * 0.2f;   // approximate until line metrics are exposed
             c.valid = true;
             return c;

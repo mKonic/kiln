@@ -27,6 +27,9 @@ namespace kiln::gfx {
             else p.AddRoundRect(std::get<RoundRect>(value));
             return p;
         }
+        // isInOutline (ShapeContainingUtil.kt): the rect, the round rect's corner ellipses, or
+        // the path by its fill type.
+        bool Contains(ui::Offset p) const;
     };
 
     class Shape {

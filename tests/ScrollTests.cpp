@@ -586,3 +586,26 @@ TEST(BringIntoViewSpecDecidesHowFarToScroll) {
         CHECK_EQ(state.Value(), 140 - 30);   // item 7 (140..160) at 30 % of the viewport
     }
 }
+
+TEST(BringIntoViewSeesLayerTransforms) {
+    Harness h;
+    ScrollState state;
+    BringIntoViewRequester requester;
+    h.Run([&] {
+        Column(VerticalScroll(FillMax(Modifier{}, Axis::Both), state), [&] {
+            for (int i = 0; i < 10; ++i) {
+                Modifier m = SizeMod(Modifier{}, Dp(100), Dp(50));
+                if (i == 2) {
+                    // Laid out at 100..150 but drawn 100 lower, at 200..250.
+                    GraphicsLayerParams p;
+                    p.translationY = 100;
+                    m = BringIntoViewRequesterMod(GraphicsLayer(std::move(m), p), requester);
+                }
+                Box(m, Alignment::TopStart(), false, {}, rt::Key(i));
+            }
+        });
+    });
+    requester.BringIntoView();
+    h.Frames(60);
+    CHECK_EQ(state.Value(), 150);   // the drawn bottom (250) at the viewport's bottom (100)
+}

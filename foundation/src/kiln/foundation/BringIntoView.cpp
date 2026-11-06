@@ -7,7 +7,7 @@ namespace kiln::foundation {
 
     void BringIntoViewRequester::BringIntoView(std::optional<Rect> rect) {
         for (ui::ModifierNode* n : m_Nodes)
-            if (n->Owner()) ui::BringIntoView(*n->Owner(), rect);
+            if (n->Owner()) ui::BringIntoView(*n->Owner(), rect, n);
     }
 
     namespace {

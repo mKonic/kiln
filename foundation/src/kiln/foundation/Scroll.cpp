@@ -211,10 +211,9 @@ namespace kiln::foundation {
                 bool inside = false;
                 for (LayoutNode* a = n->Parent(); a; a = a->Parent()) if (a == self) { inside = true; break; }
                 if (!inside) return std::nullopt;
-                const Rect b = self->LayoutModifierBoundsInRoot(this);
-                const Offset p = n->PositionInRoot();
-                const IntSize s = n->Size();
-                return Rect{ p.x - b.left, p.y - b.top, p.x - b.left + float(s.width), p.y - b.top + float(s.height) };
+                const Rect b = self->LayoutModifierRectInRoot(this);
+                const Rect r = n->BoundsInRoot();
+                return Rect{ r.left - b.left, r.top - b.top, r.right - b.left, r.bottom - b.top };
             }
 
             // findBringIntoViewRequest: from the smallest, the largest that still fits.

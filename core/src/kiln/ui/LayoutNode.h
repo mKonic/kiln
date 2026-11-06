@@ -17,6 +17,7 @@
 
 #include <array>
 #include <map>
+#include <optional>
 
 #include <memory>
 #include <set>
@@ -58,8 +59,6 @@ namespace kiln::ui {
         float ZIndex() const { return m_ZIndex; }
         bool IsPlaced() const { return m_Placed; }
         Offset PositionInRoot() const;
-        // The bounds a layout modifier of this node measured, in root coordinates (no layers).
-        Rect LayoutModifierBoundsInRoot(const LayoutModifier* modifier) const;
         // Expires when the node is destroyed.
         std::weak_ptr<const char> AliveToken() const { return m_Alive; }
         // This node's local space (its outer bounds) -> root, including graphicsLayer transforms
@@ -71,14 +70,21 @@ namespace kiln::ui {
         // order, each with the space and size of the coordinator it sits in. Row-major 3x3
         // matrices (projective through 3D-rotated layers), local -> root.
         using Mat3 = std::array<float, 9>;
-        struct HitStep { PointerInputModifier* mod = nullptr; Mat3 toRoot{}; ui::Size size; };   // mod null: a clip
+        struct HitStep { PointerInputModifier* mod = nullptr; Mat3 toRoot{}; ui::Size size; const DrawModifier* clip = nullptr; };   // mod null: a clip
         // `parentInner`: the parent's children space; `inner` receives this node's.
         void HitSteps(const Mat3& parentInner, std::vector<HitStep>& out, Mat3& inner) const;
         // The space and size a pointer modifier of this node receives events in.
         bool PointerSpace(const PointerInputModifier* mod, Mat3& toRoot, ui::Size& size) const;
         // The bounding box of this node's outer bounds in root coordinates, through every layer
         // above it, 3D ones included (LayoutCoordinates.boundsInRoot without clipping).
-        Rect BoundsInRoot() const;
+        Rect BoundsInRoot() const { return RectInRoot(std::nullopt); }
+        // A rect of this node's local space (its outer bounds; nullopt: all of them) in root
+        // coordinates, through every layer above it (the bounding box).
+        // With `at`, the space is that modifier's: its coordinator, through the layers before it.
+        Rect RectInRoot(std::optional<Rect> local, const ModifierNode* at = nullptr) const;
+        // The bounds a layout modifier of this node measured, in root coordinates through the
+        // layers above it (bounding box).
+        Rect LayoutModifierRectInRoot(const LayoutModifier* modifier) const;
         const ParentData& GetParentData() const { return m_ParentData; }
         std::vector<const ModifierNode*> ModifierNodes() const {
             std::vector<const ModifierNode*> out;

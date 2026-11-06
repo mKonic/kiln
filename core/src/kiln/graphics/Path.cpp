@@ -1,6 +1,7 @@
 #include "kiln/graphics/Path.h"
 
 #include "kiln/graphics/Conic.h"
+#include "kiln/graphics/Shape.h"
 
 #include <clipper2/clipper.h>
 
@@ -421,6 +422,40 @@ namespace kiln::gfx {
             Close();
         }
         return true;
+    }
+
+    bool Outline::Contains(ui::Offset p) const {
+        if (auto* r = std::get_if<ui::Rect>(&value)) return r->Contains(p);
+        if (auto* rr = std::get_if<RoundRect>(&value)) {
+            const ui::Rect& r = rr->rect;
+            if (!r.Contains(p)) return false;
+            // Inside a corner's box, the point must be inside that corner's ellipse.
+            auto corner = [&](Offset rad, float cx, float cy, bool left, bool top) {
+                if (rad.x <= 0 || rad.y <= 0) return true;
+                const bool inBox = (left ? p.x < cx : p.x > cx) && (top ? p.y < cy : p.y > cy);
+                if (!inBox) return true;
+                const float dx = (p.x - cx) / rad.x, dy = (p.y - cy) / rad.y;
+                return dx * dx + dy * dy <= 1;
+            };
+            return corner(rr->topLeft, r.left + rr->topLeft.x, r.top + rr->topLeft.y, true, true) &&
+                   corner(rr->topRight, r.right - rr->topRight.x, r.top + rr->topRight.y, false, true) &&
+                   corner(rr->bottomRight, r.right - rr->bottomRight.x, r.bottom - rr->bottomRight.y, false, false) &&
+                   corner(rr->bottomLeft, r.left + rr->bottomLeft.x, r.bottom - rr->bottomLeft.y, true, false);
+        }
+        // Winding number over the flattened path.
+        const Path& path = std::get<Path>(value);
+        int winding = 0;
+        for (const Polyline& poly : path.Flatten(Matrix{}, 0.25f)) {
+            const auto& q = poly.points;
+            for (std::size_t i = 0; i < q.size(); ++i) {
+                const Offset a = q[i], b = q[(i + 1) % q.size()];
+                if ((a.y <= p.y) != (b.y <= p.y)) {
+                    const float x = a.x + (p.y - a.y) / (b.y - a.y) * (b.x - a.x);
+                    if (x > p.x) winding += b.y > a.y ? 1 : -1;
+                }
+            }
+        }
+        return path.fillType == FillType::EvenOdd ? (winding & 1) != 0 : winding != 0;
     }
 
 }

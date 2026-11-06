@@ -51,7 +51,8 @@ namespace kiln::ui {
             const bool inBounds = mapped && bounds.Contains(local);
             if (!step.mod) {
                 // A clipping layer hides the rest of the chain and the children outside it.
-                if (!inBounds) { ancestors.resize(ancestorsBefore); return; }
+                const bool inClip = inBounds && (!step.clip || step.clip->LayerClipContains(step.size, local, m_Direction, m_Density));
+                if (!inClip) { ancestors.resize(ancestorsBefore); return; }
                 continue;
             }
             ancestors.push_back({ &n, step.mod, inBounds });

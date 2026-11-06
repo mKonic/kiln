@@ -574,6 +574,12 @@ namespace kiln::foundation {
                 out = { a, b, cc, d, params.translationX + px - (a * px + cc * py), params.translationY + py - (b * px + d * py) };
                 return true;
             }
+            bool LayerClipContains(Size size, Offset p, LayoutDirection dir, const Density& d) const override {
+                if (!params.clip) return true;
+                if (params.clipShape) return params.clipShape->CreateOutline(size, dir, d).Contains(p);
+                const float r = CornerRadiusPx(params.shape, size, d);
+                return gfx::Outline{ gfx::RoundRect::Uniform({ 0, 0, size.width, size.height }, r) }.Contains(p);
+            }
             bool LayerProjective(Size size, float out[9]) const override {
                 if (params.rotationX == 0 && params.rotationY == 0) return false;
                 LayerMatrix3D(params, size, out);

@@ -230,7 +230,7 @@ namespace kiln::ui {
             if (const DrawModifier* d = node->AsDraw()) {
                 Mat3 t;
                 if (LayerOf(d, size, t)) m = Mul3(m, t);
-                if (node->ClipsChildren()) out.push_back({ nullptr, m, size });
+                if (node->ClipsChildren()) out.push_back({ nullptr, m, size, d });
             }
             if (node->AsLayout() && ci + 1 < m_Coordinators.size()) {
                 ++ci;
@@ -257,21 +257,53 @@ namespace kiln::ui {
         return false;
     }
 
-    Rect LayoutNode::BoundsInRoot() const {
-        Mat3 m = kIdentity3;
-        std::vector<HitStep> steps;
-        if (m_Parent) {
+    namespace {
+        Rect MapBox(const Mat3& m, const Rect& r) {
+            Rect out{ INFINITY, INFINITY, -INFINITY, -INFINITY };
+            for (const Offset q : { Offset{ r.left, r.top }, Offset{ r.right, r.top }, Offset{ r.left, r.bottom }, Offset{ r.right, r.bottom } }) {
+                const float w = m[6] * q.x + m[7] * q.y + m[8];
+                if (w <= 1e-6f) continue;
+                const float x = (m[0] * q.x + m[1] * q.y + m[2]) / w, y = (m[3] * q.x + m[4] * q.y + m[5]) / w;
+                out = { std::min(out.left, x), std::min(out.top, y), std::max(out.right, x), std::max(out.bottom, y) };
+            }
+            return out.left > out.right ? Rect{} : out;
+        }
+        // The parent's children space (root <- parent inner).
+        Mat3 ParentInner(const LayoutNode* parent) {
+            Mat3 m = kIdentity3;
             std::vector<const LayoutNode*> chain;
-            for (const LayoutNode* n = m_Parent; n; n = n->m_Parent) chain.push_back(n);
+            for (const LayoutNode* n = parent; n; n = n->Parent()) chain.push_back(n);
+            std::vector<LayoutNode::HitStep> steps;
             for (auto it = chain.rbegin(); it != chain.rend(); ++it) {
                 steps.clear();
                 Mat3 inner;
                 (*it)->HitSteps(m, steps, inner);
                 m = inner;
             }
+            return m;
         }
-        // The node's own position and the layers of its outer coordinator.
-        m = Mul3(m, Translate3(float(m_Position.x), float(m_Position.y)));
+    }
+
+    Rect LayoutNode::RectInRoot(std::optional<Rect> local, const ModifierNode* at) const {
+        Mat3 m = Mul3(ParentInner(m_Parent), Translate3(float(m_Position.x), float(m_Position.y)));
+        if (at) {
+            std::size_t ci = 0;
+            for (const auto& node : m_Nodes) {
+                const auto& c = *m_Coordinators[ci];
+                const ui::Size size{ float(c.Width()), float(c.Height()) };
+                if (node.get() == at) return MapBox(m, local.value_or(Rect{ 0, 0, size.width, size.height }));
+                if (const DrawModifier* d = node->AsDraw()) {
+                    Mat3 t;
+                    if (LayerOf(d, size, t)) m = Mul3(m, t);
+                }
+                if (node->AsLayout() && ci + 1 < m_Coordinators.size()) {
+                    ++ci;
+                    const auto& n = *m_Coordinators[ci];
+                    m = Mul3(m, Translate3(float(n.position.x), float(n.position.y)));
+                }
+            }
+            m = Mul3(ParentInner(m_Parent), Translate3(float(m_Position.x), float(m_Position.y)));
+        }
         const IntSize sz = Size();
         if (!m_Coordinators.empty()) {
             const ui::Size size{ float(sz.width), float(sz.height) };
@@ -280,27 +312,30 @@ namespace kiln::ui {
                 if (LayerOf(d, size, t)) m = Mul3(m, t);
             }
         }
-        Rect r{ INFINITY, INFINITY, -INFINITY, -INFINITY };
-        for (const Offset q : { Offset{ 0, 0 }, Offset{ float(sz.width), 0 }, Offset{ 0, float(sz.height) }, Offset{ float(sz.width), float(sz.height) } }) {
-            const float w = m[6] * q.x + m[7] * q.y + m[8];
-            if (w <= 1e-6f) continue;
-            const float x = (m[0] * q.x + m[1] * q.y + m[2]) / w, y = (m[3] * q.x + m[4] * q.y + m[5]) / w;
-            r = { std::min(r.left, x), std::min(r.top, y), std::max(r.right, x), std::max(r.bottom, y) };
-        }
-        if (r.left > r.right) return {};
-        return r;
+        return MapBox(m, local.value_or(Rect{ 0, 0, float(sz.width), float(sz.height) }));
     }
 
-    Rect LayoutNode::LayoutModifierBoundsInRoot(const LayoutModifier* modifier) const {
-        Offset o = PositionInRoot();
-        for (std::size_t i = 0; i < m_Coordinators.size(); ++i) {
-            const auto& c = *m_Coordinators[i];
-            if (i > 0) o = o + Offset{ float(c.position.x), float(c.position.y) };
-            if (c.mod == modifier) return { o.x, o.y, o.x + float(c.Width()), o.y + float(c.Height()) };
+    Rect LayoutNode::LayoutModifierRectInRoot(const LayoutModifier* modifier) const {
+        // The walk of HitSteps, stopping after the modifier's coordinator (its layers included).
+        Mat3 m = Mul3(ParentInner(m_Parent), Translate3(float(m_Position.x), float(m_Position.y)));
+        std::size_t ci = 0;
+        for (const auto& node : m_Nodes) {
+            const auto& c = *m_Coordinators[ci];
+            const ui::Size size{ float(c.Width()), float(c.Height()) };
+            if (const DrawModifier* d = node->AsDraw()) {
+                Mat3 t;
+                if (LayerOf(d, size, t)) m = Mul3(m, t);
+            }
+            if (auto* l = node->AsLayout()) {
+                if (l == modifier) return MapBox(m, { 0, 0, size.width, size.height });
+                if (ci + 1 < m_Coordinators.size()) {
+                    ++ci;
+                    const auto& n = *m_Coordinators[ci];
+                    m = Mul3(m, Translate3(float(n.position.x), float(n.position.y)));
+                }
+            }
         }
-        const IntSize s = Size();
-        const Offset p = PositionInRoot();
-        return { p.x, p.y, p.x + float(s.width), p.y + float(s.height) };
+        return RectInRoot(std::nullopt);
     }
 
     Offset LayoutNode::PositionInRoot() const {

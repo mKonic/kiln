@@ -52,7 +52,7 @@ namespace kiln::foundation {
                     // scrolled away) and asks its scroll containers to show it.
                     if (IsFocused(now) && !pinned && params.pin) { pinned = params.pin; pinned->Pin(); }
                     else if (!IsFocused(now) && pinned) { pinned->Release(); pinned = nullptr; }
-                    if (IsFocused(now) && Owner()) ui::BringIntoView(*Owner());
+                    if (IsFocused(now) && Owner()) ui::BringIntoView(*Owner(), std::nullopt, this);
                     if (cb && *cb) (*cb)(now);
                 };
             }
