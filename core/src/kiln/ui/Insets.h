@@ -7,6 +7,7 @@
 
 #include <array>
 #include <cstdint>
+#include <functional>
 #include <optional>
 #include <vector>
 
@@ -37,8 +38,51 @@ namespace kiln::ui {
         bool operator==(const InsetsRect&) const = default;
     };
 
+    // WindowInsetsAnimationControlListener: a controlled type is ready (with its hidden and shown
+    // insets), or control ended (finished or cancelled).
+    class InsetsControlListener {
+    public:
+        virtual ~InsetsControlListener() = default;
+        virtual void OnControlReady(const InsetsValue& hidden, const InsetsValue& shown, const InsetsValue& current) = 0;
+        virtual void OnControlEnded() = 0;
+    };
+    // WindowInsetsController.controlWindowInsetsAnimation on the host (API 30+).
+    struct InsetsControlHost {
+        std::function<bool(InsetsType)> request;   // false: not available
+        std::function<void(const InsetsValue&, float alpha, float progress)> setInsetsAndAlpha;
+        std::function<void(bool shown)> finish;
+    };
+
     class WindowInsetsHolder {
     public:
+        // Direct control of one type's insets (imeNestedScroll), one listener at a time.
+        void SetControlHost(InsetsControlHost host) { m_ControlHost = std::move(host); }
+        bool CanControl() const { return bool(m_ControlHost.request); }
+        bool RequestControl(InsetsType t, InsetsControlListener* l) {
+            if (!m_ControlHost.request || (m_ControlListener && m_ControlListener != l)) return false;
+            m_ControlListener = l;
+            if (!m_ControlHost.request(t)) { m_ControlListener = nullptr; return false; }
+            return true;
+        }
+        // controller.currentInsets after the last set (or as it became ready).
+        const InsetsValue& ControlledInsets() const { return m_Controlled; }
+        void SetControlledInsets(const InsetsValue& v, float alpha = 1, float progress = 0) {
+            m_Controlled = v;
+            if (m_ControlHost.setInsetsAndAlpha) m_ControlHost.setInsetsAndAlpha(v, alpha, progress);
+        }
+        void FinishControl(bool shown) { if (m_ControlHost.finish) m_ControlHost.finish(shown); }
+        void ReleaseControl(InsetsControlListener* l) { if (m_ControlListener == l) m_ControlListener = nullptr; }
+        // From the host.
+        void OnControlReady(const InsetsValue& hidden, const InsetsValue& shown, const InsetsValue& current) {
+            m_Controlled = current;
+            if (m_ControlListener) m_ControlListener->OnControlReady(hidden, shown, current);
+        }
+        void OnControlEnded() {
+            auto* l = m_ControlListener;
+            m_ControlListener = nullptr;
+            if (l) l->OnControlEnded();
+        }
+
         // Current insets (zero while the type is hidden).
         const InsetsValue& Get(InsetsType t) const { return At(t).current.Get(); }
         void Set(InsetsType t, InsetsValue v) { At(t).current.Set(v); }
@@ -74,6 +118,9 @@ namespace kiln::ui {
         std::array<PerType, std::size_t(InsetsType::Count)> m_Types;
         rt::State<std::vector<InsetsRect>> m_Cutouts;
         rt::State<bool> m_Has{ false };
+        InsetsControlHost m_ControlHost;
+        InsetsControlListener* m_ControlListener = nullptr;
+        InsetsValue m_Controlled;
     };
 
 }

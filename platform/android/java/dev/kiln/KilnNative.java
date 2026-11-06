@@ -36,6 +36,8 @@ final class KilnNative {
                                            float bottom, boolean hostHasFocus);
     static native void hostFocusChanged(boolean focused);
     static native void setWindowInsets(int[] data);
+    static native void insetsControlReady(int[] hiddenShownCurrent);
+    static native void insetsControlEnded();
     static native void setInsetsAnimation(int type, boolean running, int[] sourceTarget, float fraction, float alpha, long durationMillis);
 
     // InputConnection -> the active native text input session.

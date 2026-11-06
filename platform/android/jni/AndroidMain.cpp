@@ -266,6 +266,20 @@ namespace {
             };
             bar.hide = [] { MainEnv()->CallVoidMethod(g_Host->view, hideBar); };
             owner.SetTextToolbarHost(std::move(bar));
+            static jmethodID requestControl = env->GetMethodID(env->GetObjectClass(view), "requestInsetsControl", "(I)Z");
+            static jmethodID setControlled = env->GetMethodID(env->GetObjectClass(view), "setControlledInsets", "(IIIIFF)V");
+            static jmethodID finishControl = env->GetMethodID(env->GetObjectClass(view), "finishInsetsControl", "(Z)V");
+            kiln::ui::InsetsControlHost control;
+            control.request = [](kiln::ui::InsetsType t) { return bool(MainEnv()->CallBooleanMethod(g_Host->view, requestControl, jint(t))); };
+            control.setInsetsAndAlpha = [](const kiln::ui::InsetsValue& v, float alpha, float progress) {
+                MainEnv()->CallVoidMethod(g_Host->view, setControlled, jint(v.left), jint(v.top), jint(v.right), jint(v.bottom), jfloat(alpha), jfloat(progress));
+            };
+            control.finish = [](bool shown) { MainEnv()->CallVoidMethod(g_Host->view, finishControl, jboolean(shown)); };
+            owner.Insets().SetControlHost(std::move(control));
+            static jmethodID barsAppearance = env->GetMethodID(env->GetObjectClass(view), "setSystemBarsAppearance", "(ZZ)V");
+            owner.SetSystemBarsAppearanceHost([](bool lightStatus, bool lightNav) {
+                MainEnv()->CallVoidMethod(g_Host->view, barsAppearance, jboolean(lightStatus), jboolean(lightNav));
+            });
         }
         {
             jclass kcm = env->FindClass("android/view/KeyCharacterMap");
@@ -578,6 +592,18 @@ namespace {
         }
         h.SetCutoutRects(std::move(cutouts));
         h.SetHasInsets(true);
+        g_Host->app->RequestFrame();
+    }
+    void InsetsControlReady(JNIEnv* env, jclass, jintArray data) {
+        if (!g_Host || env->GetArrayLength(data) < 12) return;
+        jint v[12];
+        env->GetIntArrayRegion(data, 0, 12, v);
+        g_Host->app->GetOwner().Insets().OnControlReady({ v[0], v[1], v[2], v[3] }, { v[4], v[5], v[6], v[7] }, { v[8], v[9], v[10], v[11] });
+        g_Host->app->RequestFrame();
+    }
+    void InsetsControlEnded(JNIEnv*, jclass) {
+        if (!g_Host) return;
+        g_Host->app->GetOwner().Insets().OnControlEnded();
         g_Host->app->RequestFrame();
     }
     void SetInsetsAnimation(JNIEnv* env, jclass, jint type, jboolean running, jintArray bounds, jfloat fraction, jfloat alpha, jlong duration) {
@@ -1089,6 +1115,8 @@ extern "C" JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void*) {
         { "hostRequestFocus", "(IZFFFFZ)Z", reinterpret_cast<void*>(&HostRequestFocus) },
         { "hostFocusChanged", "(Z)V", reinterpret_cast<void*>(&HostFocusChanged) },
         { "setWindowInsets", "([I)V", reinterpret_cast<void*>(&SetWindowInsets) },
+        { "insetsControlReady", "([I)V", reinterpret_cast<void*>(&InsetsControlReady) },
+        { "insetsControlEnded", "()V", reinterpret_cast<void*>(&InsetsControlEnded) },
         { "setInsetsAnimation", "(IZ[IFFJ)V", reinterpret_cast<void*>(&SetInsetsAnimation) },
         { "imeCommitText", "(Ljava/lang/String;I)V", reinterpret_cast<void*>(&ImeCommitText) },
         { "imeSetComposingText", "(Ljava/lang/String;I)V", reinterpret_cast<void*>(&ImeSetComposingText) },

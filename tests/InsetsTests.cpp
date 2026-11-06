@@ -94,3 +94,49 @@ TEST(InsetsPaddingConsumesForDescendants) {
     // The bottom height is what is left of the navigation bar: nothing.
     CHECK_EQ(bar->Size().height, 0);
 }
+
+#include "kiln/foundation/Scroll.h"
+
+TEST(ImeNestedScrollPullsTheKeyboard) {
+    Harness h;
+    auto& ins = h.owner.Insets();
+    ins.Set(InsetsType::Ime, {});
+    ins.SetVisible(InsetsType::Ime, false);
+    std::vector<int> set;
+    int finished = -1, requests = 0;
+    InsetsControlHost host;
+    host.request = [&](InsetsType) { ++requests; rt::Dispatcher::Main().Post([&] { ins.OnControlReady({}, { 0, 0, 0, 300 }, {}); }); return true; };
+    host.setInsetsAndAlpha = [&](const InsetsValue& v, float, float) { set.push_back(v.bottom); };
+    host.finish = [&](bool shown) { finished = shown ? 1 : 0; ins.OnControlEnded(); };
+    ins.SetControlHost(host);
+    ScrollState scroll;
+    h.Run([&] {
+        Column(VerticalScroll(ImeNestedScroll(FillMax(Modifier{}, Axis::Both)), scroll), [&] {
+            Box(SizeMod(Modifier{}, Dp(100), Dp(100)));   // nothing to scroll: every drag is left over
+        });
+    });
+    std::int64_t t = 0;
+    auto touch = [&](PointerEventType type, float y, bool down) {
+        RawPointerEvent e;
+        e.type = type;
+        e.uptimeMillis = t += 16;
+        e.pointers.push_back({ 1, { 50, y }, down, PointerType::Touch, {} });
+        h.owner.ProcessPointer(e);
+        rt::Dispatcher::Main().RunPending();
+        h.Pump();
+    };
+    touch(PointerEventType::Press, 600, true);
+    for (int i = 1; i <= 8; ++i) touch(PointerEventType::Move, 600 - 20.0f * float(i), true);
+    CHECK_EQ(requests, 1);
+    CHECK(!set.empty() && set.back() > 0 && set.back() <= 300);
+    // Pulled most of the way: the release finishes it open.
+    for (int i = 9; i <= 14; ++i) touch(PointerEventType::Move, 600 - 20.0f * float(i), true);
+    touch(PointerEventType::Release, 320, false);
+    std::int64_t frame = 0;
+    for (int i = 0; i < 120 && finished < 0; ++i) {
+        rt::Dispatcher::Main().RunFrame(frame += 16'000'000);
+        rt::Dispatcher::Main().RunPending();
+    }
+    CHECK_EQ(finished, 1);
+    CHECK_EQ(set.back(), 300);
+}

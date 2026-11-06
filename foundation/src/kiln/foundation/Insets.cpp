@@ -1,6 +1,9 @@
 #include "kiln/foundation/Insets.h"
 
+#include "kiln/animation/Animatable.h"
+#include "kiln/animation/Decay.h"
 #include "kiln/runtime/Composition.h"
+#include "kiln/ui/NestedScroll.h"
 #include "kiln/ui/Locals.h"
 
 #include <algorithm>
@@ -290,5 +293,162 @@ namespace kiln::foundation {
     Modifier WindowInsetsBottomHeight(Modifier m, WindowInsets insets) { return With(std::move(m), ConsumeKind::BottomHeight, std::move(insets)); }
     Modifier WindowInsetsStartWidth(Modifier m, WindowInsets insets) { return With(std::move(m), ConsumeKind::StartWidth, std::move(insets)); }
     Modifier WindowInsetsEndWidth(Modifier m, WindowInsets insets) { return With(std::move(m), ConsumeKind::EndWidth, std::move(insets)); }
+
+    // --- imeNestedScroll -------------------------------------------------------------------------
+
+    namespace {
+        // WindowInsetsNestedScrollConnection with the bottom side calculator: content scrolling up
+        // (finger moving up, negative y) shows the IME, scrolling down hides it.
+        struct ImeNestedScrollNode final : ui::NestedScrollNode, ui::NestedScrollConnection, ui::InsetsControlListener {
+            struct Params { bool operator==(const Params&) const = default; } params;
+            explicit ImeNestedScrollNode(Params) { connection = this; }
+            ~ImeNestedScrollNode() override { Dispose(); }
+            void OnParamsChanged() {}
+            void OnDetach() override { Dispose(); }
+
+            ui::WindowInsetsHolder* Holder() const {
+                auto* o = Owner() ? Owner()->GetOwner() : nullptr;
+                return o ? &o->Insets() : nullptr;
+            }
+            static float Motion(Offset o) { return -o.y; }
+            static float ShowMotion(Offset o) { return std::max(0.0f, Motion(o)); }
+            static float HideMotion(Offset o) { return std::min(0.0f, Motion(o)); }
+            static ui::InsetsValue Adjust(ui::InsetsValue v, int bottom) { v.bottom = bottom; return v; }
+
+            Offset OnPreScroll(Offset available, ui::NestedScrollSource) override { return Scroll(available, HideMotion(available)); }
+            Offset OnPostScroll(Offset, Offset available, ui::NestedScrollSource) override { return Scroll(available, ShowMotion(available)); }
+            Offset OnPreFling(Offset available) override { return Fling(available, HideMotion(available), false); }
+            Offset OnPostFling(Offset, Offset available) override { return Fling(available, ShowMotion(available), true); }
+
+            Offset Scroll(Offset available, float amount) {
+                m_Job.Cancel();
+                auto* h = Holder();
+                if (!h || !h->CanControl()) return {};
+                if (amount == 0 || (h->IsVisible(ui::InsetsType::Ime) == (amount > 0) && !m_Ready)) return {};
+                if (!m_Ready) {
+                    m_Partial = 0;
+                    Request();
+                    return { 0, available.y };
+                }
+                const int current = h->ControlledInsets().bottom;
+                const int target = amount > 0 ? m_Shown : m_Hidden;
+                if (current == target) { m_Partial = 0; return {}; }
+                const float total = float(current) + amount + m_Partial;
+                const int next = std::clamp(int(std::lround(total)), m_Hidden, m_Shown);
+                m_Partial = total - float(std::lround(total));
+                if (next != current) h->SetControlledInsets(Adjust(h->ControlledInsets(), next));
+                return { 0, available.y };
+            }
+
+            Offset Fling(Offset available, float amount, bool towardShown) {
+                m_Job.Cancel();
+                m_Partial = 0;
+                auto* h = Holder();
+                if (!h || !h->CanControl()) return {};
+                if ((amount == 0 && !towardShown) || (!m_Ready && h->IsVisible(ui::InsetsType::Ime) == towardShown)) return {};
+                if (!m_Ready) {
+                    // getAnimationController: the fling runs once control is ready.
+                    m_PendingFling = { amount, towardShown };
+                    Request();
+                    return { 0, available.y };
+                }
+                const float remaining = RunFling(amount);
+                return { 0, available.y - remaining };
+            }
+
+            // Returns the velocity left over (the decay passing an end hands the rest back).
+            float RunFling(float amount) {
+                auto* h = Holder();
+                const int current = h->ControlledInsets().bottom;
+                if ((amount <= 0 && current == m_Hidden) || (amount >= 0 && current == m_Shown)) {
+                    h->FinishControl(current == m_Shown);
+                    m_Ready = false;
+                    return 0;
+                }
+                auto* o = Owner() ? Owner()->GetOwner() : nullptr;
+                auto spec = std::make_shared<anim::SplineDecay>(o ? o->GetDensity().density : 1.0f);
+                const float distance = float(current) + spec->TargetValue(0, amount);
+                const float endPercent = (distance - float(m_Hidden)) / float(m_Shown - m_Hidden);
+                const bool targetShown = endPercent > 0.5f;
+                const int target = targetShown ? m_Shown : m_Hidden;
+                if (distance > float(m_Shown) || distance < float(m_Hidden)) {
+                    // The velocity where the decay crosses the end.
+                    float endVelocity = 0;
+                    const std::int64_t duration = spec->DurationNanos(float(current), amount);
+                    for (std::int64_t t = 0; t <= duration; t += 1'000'000) {
+                        const float v = spec->ValueAt(t, float(current), amount);
+                        if (v < float(m_Hidden) || v > float(m_Shown)) { endVelocity = spec->VelocityAt(t, float(current), amount); break; }
+                    }
+                    m_Job = rt::Launch(rt::Dispatcher::Main(), Decay(float(current), amount, spec, targetShown));
+                    return endVelocity;
+                }
+                m_Job = rt::Launch(rt::Dispatcher::Main(), SpringTo(float(current), float(target), amount, targetShown));
+                return 0;
+            }
+
+            rt::Task<> Decay(float from, float velocity, std::shared_ptr<anim::SplineDecay> spec, bool targetShown) {
+                anim::Animatable a(from);
+                a.UpdateBounds(anim::Vec{ float(m_Hidden), 0, 0, 0 }, anim::Vec{ float(m_Shown), 0, 0, 0 });
+                co_await a.AnimateDecay(velocity, spec, [this](float v) { AdjustTo(v); });
+                End(targetShown);
+            }
+            rt::Task<> SpringTo(float from, float to, float velocity, bool targetShown) {
+                anim::Animatable a(from);
+                co_await a.AnimateTo(anim::Vec{ to, 0, 0, 0 }, anim::Spring(), anim::Vec{ velocity, 0, 0, 0 },
+                                     [this](const anim::Vec& v) { AdjustTo(v[0]); });
+                End(targetShown);
+            }
+            void AdjustTo(float inset) {
+                if (auto* h = Holder(); h && m_Ready) h->SetControlledInsets(Adjust(h->ControlledInsets(), int(std::lround(inset))));
+            }
+            void End(bool shown) {
+                if (auto* h = Holder(); h && m_Ready) h->FinishControl(shown);
+                m_Ready = false;
+            }
+
+            void Request() {
+                if (m_Requested) return;
+                auto* h = Holder();
+                if (h && h->RequestControl(ui::InsetsType::Ime, this)) m_Requested = true;
+            }
+            void OnControlReady(const ui::InsetsValue& hidden, const ui::InsetsValue& shown, const ui::InsetsValue&) override {
+                m_Ready = true;
+                m_Requested = false;
+                m_Hidden = hidden.bottom;
+                m_Shown = shown.bottom;
+                if (m_PendingFling) {
+                    const auto f = *m_PendingFling;
+                    m_PendingFling.reset();
+                    RunFling(f.first);
+                }
+            }
+            void OnControlEnded() override {
+                // animationEnded: control is gone (finished by us or cancelled by the system).
+                m_Ready = false;
+                m_Requested = false;
+                m_PendingFling.reset();
+                m_Job.Cancel();
+                m_Partial = 0;
+            }
+            void Dispose() {
+                m_Job.Cancel();
+                m_PendingFling.reset();
+                if (auto* h = Holder()) {
+                    // finish at the nearer state: shown unless at the hidden insets.
+                    if (m_Ready) h->FinishControl(h->ControlledInsets().bottom != m_Hidden);
+                    h->ReleaseControl(this);
+                }
+                m_Ready = m_Requested = false;
+            }
+
+            bool m_Ready = false, m_Requested = false;
+            int m_Hidden = 0, m_Shown = 0;
+            float m_Partial = 0;
+            std::optional<std::pair<float, bool>> m_PendingFling;
+            rt::Job m_Job;
+        };
+    }
+
+    Modifier ImeNestedScroll(Modifier m) { return m.With<ImeNestedScrollNode>(ImeNestedScrollNode::Params{}); }
 
 }

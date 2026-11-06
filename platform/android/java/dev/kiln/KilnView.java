@@ -190,6 +190,49 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
         requestApplyInsets();
     }
 
+    /** WindowInsetsController appearance: dark status / navigation bar icons over light content. */
+    void setSystemBarsAppearance(boolean lightStatus, boolean lightNavigation) {
+        android.view.WindowInsetsController c = getWindowInsetsController();
+        if (c == null) return;
+        final int status = android.view.WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS;
+        final int nav = android.view.WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS;
+        c.setSystemBarsAppearance((lightStatus ? status : 0) | (lightNavigation ? nav : 0), status | nav);
+    }
+
+    // --- imeNestedScroll: direct control of a type's insets (API 30+) ---------------------------
+    private android.view.WindowInsetsAnimationController insetsController;
+
+    boolean requestInsetsControl(int typeIndex) {
+        if (android.os.Build.VERSION.SDK_INT < 30 || typeIndex < 0 || typeIndex >= TYPES.length - 1) return false;
+        android.view.WindowInsetsController c = getWindowInsetsController();
+        if (c == null) return false;
+        c.controlWindowInsetsAnimation(TYPES[typeIndex], -1, null, new android.os.CancellationSignal(),
+            new android.view.WindowInsetsAnimationControlListener() {
+                @Override public void onReady(android.view.WindowInsetsAnimationController controller, int types) {
+                    insetsController = controller;
+                    android.graphics.Insets h = controller.getHiddenStateInsets(), s = controller.getShownStateInsets(), cur = controller.getCurrentInsets();
+                    KilnNative.insetsControlReady(new int[] { h.left, h.top, h.right, h.bottom, s.left, s.top, s.right, s.bottom,
+                                                              cur.left, cur.top, cur.right, cur.bottom });
+                }
+                @Override public void onFinished(android.view.WindowInsetsAnimationController controller) { ended(); }
+                @Override public void onCancelled(android.view.WindowInsetsAnimationController controller) { ended(); }
+                private void ended() {
+                    insetsController = null;
+                    KilnNative.insetsControlEnded();
+                }
+            });
+        return true;
+    }
+
+    void setControlledInsets(int left, int top, int right, int bottom, float alpha, float progress) {
+        if (android.os.Build.VERSION.SDK_INT >= 30 && insetsController != null && insetsController.isReady())
+            insetsController.setInsetsAndAlpha(android.graphics.Insets.of(left, top, right, bottom), alpha, progress);
+    }
+
+    void finishInsetsControl(boolean shown) {
+        if (android.os.Build.VERSION.SDK_INT >= 30 && insetsController != null && insetsController.isReady()) insetsController.finish(shown);
+    }
+
     private void pushViewConfiguration() {
         ViewConfiguration vc = ViewConfiguration.get(getContext());
         KilnNative.setViewConfiguration(ViewConfiguration.getLongPressTimeout(),

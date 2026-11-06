@@ -119,6 +119,10 @@ namespace kiln::foundation {
     inline Modifier SystemGesturesPadding(Modifier m) { return WindowInsetsPadding(std::move(m), WindowInsets::SystemGestures()); }
     inline Modifier MandatorySystemGesturesPadding(Modifier m) { return WindowInsetsPadding(std::move(m), WindowInsets::MandatorySystemGestures()); }
 
+    // imeNestedScroll (API 30+): scrolling content at the bottom pulls the keyboard open or pushes
+    // it closed, and a fling finishes the motion (WindowInsetsConnection.android.kt).
+    Modifier ImeNestedScroll(Modifier m);
+
     // windowInsetsTopHeight / BottomHeight / StartWidth / EndWidth: a size of that side of the
     // insets (minus what ancestors consumed).
     Modifier WindowInsetsTopHeight(Modifier m, WindowInsets insets);

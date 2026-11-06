@@ -73,7 +73,7 @@ namespace {
         auto& scroll = RememberScrollState();
         // Edge to edge: the background fills the window, content stays inside the safe area and
         // above the keyboard.
-        Column(VerticalScroll(SafeDrawingPadding(Background(FillMax(Modifier{}, Axis::Both), kSurface)), scroll), Arrangement::SpacedBy(16_dp), AlignmentH::Start(), [&] {
+        Column(VerticalScroll(ImeNestedScroll(SafeDrawingPadding(Background(FillMax(Modifier{}, Axis::Both), kSurface))), scroll), Arrangement::SpacedBy(16_dp), AlignmentH::Start(), [&] {
             Spacer(Height(Modifier{}, 8_dp));
             BasicText("kiln layout", Padding(Modifier{}, 16_dp, 0_dp), { 28, kOnSurface });
             {

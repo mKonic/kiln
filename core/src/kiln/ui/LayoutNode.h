@@ -273,6 +273,12 @@ namespace kiln::ui {
         void ReleasePointerIcon(const void* requester);
         int CurrentPointerIcon() const { return m_PointerIcon; }
         void SetPlaySoundEffect(std::function<void(int)> fn) { m_PlaySound = std::move(fn); }
+        // System bar icons (WindowInsetsControllerCompat.isAppearanceLight*Bars): dark icons for
+        // light content behind the bars.
+        void SetSystemBarsAppearanceHost(std::function<void(bool lightStatusBars, bool lightNavigationBars)> fn) { m_BarsAppearance = std::move(fn); }
+        void SetSystemBarsAppearance(bool lightStatusBars, bool lightNavigationBars) {
+            if (m_BarsAppearance) m_BarsAppearance(lightStatusBars, lightNavigationBars);
+        }
         // HapticFeedback (View.performHapticFeedback with HapticFeedbackConstants).
         void SetHapticHost(std::function<void(int)> fn) { m_Haptic = std::move(fn); }
         void PerformHapticFeedback(int constant) { if (m_Haptic) m_Haptic(constant); }
@@ -357,6 +363,7 @@ namespace kiln::ui {
         std::set<LayoutNode*> m_PositionAware;
         bool m_LaidOut = false;
         std::function<void(int)> m_Haptic;
+        std::function<void(bool, bool)> m_BarsAppearance;
         ClipboardHost m_Clipboard;
         std::optional<std::string> m_LocalClip;   // without a host (tests): an in-process clipboard
         TextToolbarHost m_ToolbarHost;
