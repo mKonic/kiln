@@ -67,6 +67,18 @@ namespace {
                 });
                 BasicText("Tapped " + std::to_string(taps.Get()) + " times", {}, { 16, kOnSurface });
             });
+            Row(Padding(Modifier{}, 16_dp, 0_dp), Arrangement::SpacedBy(16_dp), AlignmentV::CenterVertically(), [&] {
+                // Rounded clip around a child that overflows it.
+                // Modifiers wrap what follows them: clip before the background so both are clipped.
+                Box(Background(Clip(SizeMod(Modifier{}, 64_dp, 64_dp), CornerShape::Rounded(20_dp)), kPrimaryContainer),
+                    Alignment::TopStart(), false, [&] {
+                    Box(Background(OffsetMod(RequiredSize(Modifier{}, 80_dp, 80_dp), 24_dp, 24_dp), kTertiary));
+                });
+                Box(Background(Alpha(SizeMod(Modifier{}, 64_dp, 64_dp), 0.5f), kPrimary, CornerShape::Rounded(12_dp)));
+                GraphicsLayerParams scaled;
+                scaled.scaleX = scaled.scaleY = 0.75f;
+                Box(Background(GraphicsLayer(SizeMod(Modifier{}, 64_dp, 64_dp), scaled), kTertiary, CornerShape::Pill()));
+            });
             BasicText("Text wraps to the width it is given. The paragraph below the counter is laid out by the "
                       "same platform path as before, now measured by a layout node.",
                       Padding(Modifier{}, 16_dp, 0_dp), { 16, kVariant });

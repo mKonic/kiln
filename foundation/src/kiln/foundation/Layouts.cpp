@@ -433,6 +433,32 @@ namespace kiln::foundation {
         };
     }
 
+    namespace {
+        float CornerRadiusPx(const CornerShape& sh, Size size, const Density& d) {
+            float r = sh.percent >= 0 ? size.MinDimension() * sh.percent / 100.0f : d.ToPx(sh.topStart);
+            return std::min(r, size.MinDimension() / 2);
+        }
+        struct LayerNode final : ModifierNode, DrawModifier {
+            GraphicsLayerParams params;
+            explicit LayerNode(GraphicsLayerParams p) : params(p) {}
+            void OnParamsChanged() { InvalidateDraw(); }
+            DrawModifier* AsDraw() override { return this; }
+            void Draw(ContentDrawScope& s) override {
+                const Size size = s.GetSize();
+                s.Save();
+                s.Translate({ params.translationX, params.translationY });
+                if (params.scaleX != 1 || params.scaleY != 1)
+                    s.Scale(params.scaleX, params.scaleY, { size.width * params.originX, size.height * params.originY });
+                if (params.alpha != 1) s.MultiplyAlpha(params.alpha);
+                if (params.clip) s.ClipRect({ 0, 0, size.width, size.height }, CornerRadiusPx(params.shape, size, s));
+                s.DrawContent();
+                s.Restore();
+            }
+        };
+    }
+
+    Modifier GraphicsLayer(Modifier m, GraphicsLayerParams p) { return m.With<LayerNode>(p); }
+
     Modifier Padding(Modifier m, PaddingValues p) { return m.With<PaddingNode>(p); }
     Modifier SizeIn(Modifier m, Dp minW, Dp minH, Dp maxW, Dp maxH, bool enforce) { return m.With<SizeNode>(SizeParams{ minW, minH, maxW, maxH, enforce }); }
     Modifier DefaultMinSize(Modifier m, Dp minW, Dp minH) { return m.With<MinSizeNode>(MinSizeParams{ minW, minH }); }

@@ -80,4 +80,18 @@ namespace kiln::foundation {
         bool operator==(const CornerShape&) const = default; };
     Modifier Background(Modifier m, Color color, CornerShape shape = {});
 
+    // graphicsLayer (draw-time part): alpha (modulated per draw), scale about transformOrigin
+    // (fractions of the size), translation, and an optional clip to the shape.
+    struct GraphicsLayerParams {
+        float alpha = 1, scaleX = 1, scaleY = 1, translationX = 0, translationY = 0;
+        float originX = 0.5f, originY = 0.5f;
+        bool clip = false;
+        CornerShape shape;
+        bool operator==(const GraphicsLayerParams&) const = default;
+    };
+    Modifier GraphicsLayer(Modifier m, GraphicsLayerParams p);
+    inline Modifier Alpha(Modifier m, float a) { GraphicsLayerParams p; p.alpha = a; return GraphicsLayer(std::move(m), p); }
+    inline Modifier ClipToBounds(Modifier m) { GraphicsLayerParams p; p.clip = true; return GraphicsLayer(std::move(m), p); }
+    inline Modifier Clip(Modifier m, CornerShape shape) { GraphicsLayerParams p; p.clip = true; p.shape = shape; return GraphicsLayer(std::move(m), p); }
+
 }
