@@ -67,6 +67,9 @@ namespace kiln::ui {
         // A layer's transform of what it wraps, for hit testing and coordinates (graphicsLayer).
         // `size` is the size it draws in. False when it does not transform.
         virtual bool LayerTransform(Size, gfx::Matrix&) const { return false; }
+        // The full projective transform (row-major 3x3) when the layer is 3D-rotated, for hit
+        // testing; LayerTransform then gives only its affine part.
+        virtual bool LayerProjective(Size, float[9]) const { return false; }
     };
 
     class ParentDataModifier {

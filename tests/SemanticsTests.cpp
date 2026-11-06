@@ -235,3 +235,22 @@ TEST(SelectableGroupReportsCollectionAndItemInfo) {
         CHECK(item && item->rowIndex == 1);
     }
 }
+
+TEST(SemanticsBoundsFollowLayerTransforms) {
+    Harness h;
+    h.Run([&] {
+        GraphicsLayerParams p;
+        p.translationX = 40;
+        p.scaleY = 2;   // about the centre: 20 tall becomes 40, from y = -10
+        Box(FillMax(Modifier{}, Axis::Both), Alignment::TopStart(), false, [&] {
+            Box(Label(SizeMod(GraphicsLayer(Modifier{}, p), Dp(10), Dp(20)), "moved"));
+        });
+    });
+    const auto root = h.owner.BuildSemanticsTree();
+    CHECK_EQ(root.children.size(), 1u);
+    const Rect b = root.children[0].boundsInRoot;
+    CHECK_EQ(b.left, 40.f);
+    CHECK_EQ(b.right, 50.f);
+    CHECK_EQ(b.top, 0.f);   // -10, clipped to the window
+    CHECK_EQ(b.bottom, 30.f);
+}

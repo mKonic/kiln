@@ -395,3 +395,82 @@ TEST(CombinedClickableLongAndDoubleClick) {
     const auto tree = h.owner.BuildSemanticsTree();
     CHECK(bool(tree.children[0].config.onLongClick));
 }
+
+namespace {
+    void Mouse(Harness& h, PointerEventType type, float x, float y, bool down, std::int64_t t) {
+        RawPointerEvent e;
+        e.type = type;
+        e.uptimeMillis = t;
+        e.buttons = down ? 1 : 0;
+        e.pointers.push_back({ 1, { x, y }, down, PointerType::Mouse, {} });
+        h.owner.ProcessPointer(e);
+        rt::Dispatcher::Main().RunPending();
+    }
+    rt::Task<> RecordPresses(PointerInputScope& s, std::vector<Offset>& at) {
+        for (;;) {
+            auto e = co_await s.AwaitPointerEvent();
+            if (e->type == PointerEventType::Press) at.push_back(e->changes[0].position);
+        }
+    }
+}
+
+TEST(HitTestUsesTheModifiersOwnCoordinator) {
+    Harness h;
+    std::vector<Offset> presses;
+    h.Run([&] {
+        // Pointer input after the padding: hit and positioned within the padded area.
+        Box(FillMax(Modifier{}, Axis::Both), Alignment::TopStart(), false, [&] {
+            Box(PointerInput(Padding(SizeMod(Modifier{}, Dp(60), Dp(60)), Dp(10)), rt::Keys(1),
+                             [&](PointerInputScope& s) { return RecordPresses(s, presses); }));
+        });
+    });
+    Mouse(h, PointerEventType::Press, 5, 5, true, 0);
+    Mouse(h, PointerEventType::Release, 5, 5, false, 10);
+    CHECK(presses.empty());
+    Mouse(h, PointerEventType::Press, 15, 25, true, 100);
+    Mouse(h, PointerEventType::Release, 15, 25, false, 110);
+    CHECK_EQ(presses.size(), 1u);
+    CHECK_EQ(presses[0].x, 5.0f);
+    CHECK_EQ(presses[0].y, 15.0f);
+}
+
+TEST(HitTestKeepsParentsOfAnOverflowingChild) {
+    Harness h;
+    std::vector<Offset> parent, child;
+    h.Run([&] {
+        Box(FillMax(Modifier{}, Axis::Both), Alignment::TopStart(), false, [&] {
+            Box(PointerInput(SizeMod(Modifier{}, Dp(40), Dp(40)), rt::Keys(1), [&](PointerInputScope& s) { return RecordPresses(s, parent); }),
+                Alignment::TopStart(), false, [&] {
+                Box(PointerInput(SizeMod(OffsetMod(Modifier{}, Dp(50), Dp(0)), Dp(30), Dp(30)), rt::Keys(1),
+                                 [&](PointerInputScope& s) { return RecordPresses(s, child); }));
+            });
+        });
+    });
+    // Outside the parent, on its child: both see it (speculativeHit), in their own spaces.
+    Mouse(h, PointerEventType::Press, 60, 10, true, 0);
+    CHECK_EQ(child.size(), 1u);
+    CHECK_EQ(parent.size(), 1u);
+    CHECK_EQ(parent[0].x, 60.0f);
+    CHECK_EQ(child[0].x, 10.0f);
+    Mouse(h, PointerEventType::Release, 60, 10, false, 10);
+    // Outside both: nobody.
+    Mouse(h, PointerEventType::Press, 60, 60, true, 100);
+    CHECK_EQ(parent.size(), 1u);
+}
+
+TEST(HitTestFollowsPerspectiveLayers) {
+    Harness h;
+    int clicks = 0;
+    h.Run([&] {
+        // Tipped 80 degrees about the horizontal axis: a thin band around y = 50.
+        GraphicsLayerParams p;
+        p.rotationX = 80;
+        Box(FillMax(Modifier{}, Axis::Both), Alignment::TopStart(), false, [&] {
+            Box(Clickable(SizeMod(GraphicsLayer(Modifier{}, p), Dp(100), Dp(100)), [&] { ++clicks; }));
+        });
+    });
+    Tap(h, 50, 10, 1000);
+    CHECK_EQ(clicks, 0);
+    Tap(h, 50, 50, 2000);
+    CHECK_EQ(clicks, 1);
+}

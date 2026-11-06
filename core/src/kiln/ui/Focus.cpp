@@ -131,9 +131,7 @@ namespace kiln::ui {
         if (t.m_IsRoot) return { 0, 0, float(m_Window.width), float(m_Window.height) };
         LayoutNode* n = NodeOf(t);
         if (!n) return {};
-        const Offset o = n->PositionInRoot();
-        const IntSize s = n->Size();
-        return { o.x, o.y, o.x + s.width, o.y + s.height };
+        return n->BoundsInRoot();
     }
 
     FocusTargetNode* Owner::ActiveChild(const FocusTargetNode& t) const {

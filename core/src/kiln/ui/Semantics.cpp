@@ -28,11 +28,7 @@ namespace kiln::ui {
                 if (auto* s = const_cast<ModifierNode*>(m)->AsSemantics()) { s->ApplySemantics(out); any = true; }
             return any && (out.HasContent() || out.mergeDescendants || out.isTraversalGroup);
         }
-        Rect Bounds(LayoutNode& n) {
-            const Offset o = n.PositionInRoot();
-            const IntSize s = n.Size();
-            return { o.x, o.y, o.x + s.width, o.y + s.height };
-        }
+        Rect Bounds(LayoutNode& n) { return n.BoundsInRoot(); }
         // Collects descendants' content into `into` (stopping at nodes that merge their own).
         void MergeDescendants(LayoutNode& n, SemanticsConfiguration& into) {
             for (LayoutNode* c : n.Children()) {

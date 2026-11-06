@@ -1,4 +1,6 @@
 #include "kiln/ui/LayoutNode.h"
+
+#include <cmath>
 #include "kiln/ui/NestedScroll.h"
 
 #include <algorithm>
@@ -195,6 +197,98 @@ namespace kiln::ui {
             }
         }
         return m;
+    }
+
+    namespace {
+        using Mat3 = LayoutNode::Mat3;
+        constexpr Mat3 kIdentity3{ 1, 0, 0, 0, 1, 0, 0, 0, 1 };
+        Mat3 Mul3(const Mat3& x, const Mat3& y) {
+            Mat3 r{};
+            for (int i = 0; i < 3; ++i) for (int j = 0; j < 3; ++j) r[i * 3 + j] = x[i * 3] * y[j] + x[i * 3 + 1] * y[3 + j] + x[i * 3 + 2] * y[6 + j];
+            return r;
+        }
+        Mat3 Translate3(float x, float y) { return { 1, 0, x, 0, 1, y, 0, 0, 1 }; }
+        Mat3 FromAffine(const gfx::Matrix& m) { return { m.a, m.c, m.e, m.b, m.d, m.f, 0, 0, 1 }; }
+        // A draw modifier's layer transform, projective when it has one.
+        bool LayerOf(const DrawModifier* d, ui::Size size, Mat3& out) {
+            float h[9];
+            if (d->LayerProjective(size, h)) { std::copy(h, h + 9, out.begin()); return true; }
+            gfx::Matrix t;
+            if (d->LayerTransform(size, t)) { out = FromAffine(t); return true; }
+            return false;
+        }
+    }
+
+    void LayoutNode::HitSteps(const Mat3& parentInner, std::vector<HitStep>& out, Mat3& inner) const {
+        Mat3 m = Mul3(parentInner, Translate3(float(m_Position.x), float(m_Position.y)));
+        // Nodes up to and including a layout modifier sit in that modifier's coordinator.
+        std::size_t ci = 0;
+        auto sizeOf = [&](std::size_t i) { const auto& c = *m_Coordinators[i]; return ui::Size{ float(c.Width()), float(c.Height()) }; };
+        for (const auto& node : m_Nodes) {
+            const ui::Size size = sizeOf(ci);
+            if (auto* p = node->AsPointerInput()) out.push_back({ p, m, size });
+            if (const DrawModifier* d = node->AsDraw()) {
+                Mat3 t;
+                if (LayerOf(d, size, t)) m = Mul3(m, t);
+                if (node->ClipsChildren()) out.push_back({ nullptr, m, size });
+            }
+            if (node->AsLayout() && ci + 1 < m_Coordinators.size()) {
+                ++ci;
+                const auto& c = *m_Coordinators[ci];
+                m = Mul3(m, Translate3(float(c.position.x), float(c.position.y)));
+            }
+        }
+        inner = m;
+    }
+
+    bool LayoutNode::PointerSpace(const PointerInputModifier* mod, Mat3& toRoot, ui::Size& size) const {
+        std::vector<const LayoutNode*> chain;
+        for (const LayoutNode* n = this; n; n = n->m_Parent) chain.push_back(n);
+        Mat3 m = kIdentity3;
+        std::vector<HitStep> steps;
+        for (auto it = chain.rbegin(); it != chain.rend(); ++it) {
+            steps.clear();
+            Mat3 inner;
+            (*it)->HitSteps(m, steps, inner);
+            m = inner;
+        }
+        for (const HitStep& s : steps)
+            if (s.mod == mod) { toRoot = s.toRoot; size = s.size; return true; }
+        return false;
+    }
+
+    Rect LayoutNode::BoundsInRoot() const {
+        Mat3 m = kIdentity3;
+        std::vector<HitStep> steps;
+        if (m_Parent) {
+            std::vector<const LayoutNode*> chain;
+            for (const LayoutNode* n = m_Parent; n; n = n->m_Parent) chain.push_back(n);
+            for (auto it = chain.rbegin(); it != chain.rend(); ++it) {
+                steps.clear();
+                Mat3 inner;
+                (*it)->HitSteps(m, steps, inner);
+                m = inner;
+            }
+        }
+        // The node's own position and the layers of its outer coordinator.
+        m = Mul3(m, Translate3(float(m_Position.x), float(m_Position.y)));
+        const IntSize sz = Size();
+        if (!m_Coordinators.empty()) {
+            const ui::Size size{ float(sz.width), float(sz.height) };
+            for (const DrawModifier* d : m_Coordinators.front()->draws) {
+                Mat3 t;
+                if (LayerOf(d, size, t)) m = Mul3(m, t);
+            }
+        }
+        Rect r{ INFINITY, INFINITY, -INFINITY, -INFINITY };
+        for (const Offset q : { Offset{ 0, 0 }, Offset{ float(sz.width), 0 }, Offset{ 0, float(sz.height) }, Offset{ float(sz.width), float(sz.height) } }) {
+            const float w = m[6] * q.x + m[7] * q.y + m[8];
+            if (w <= 1e-6f) continue;
+            const float x = (m[0] * q.x + m[1] * q.y + m[2]) / w, y = (m[3] * q.x + m[4] * q.y + m[5]) / w;
+            r = { std::min(r.left, x), std::min(r.top, y), std::max(r.right, x), std::max(r.bottom, y) };
+        }
+        if (r.left > r.right) return {};
+        return r;
     }
 
     Rect LayoutNode::LayoutModifierBoundsInRoot(const LayoutModifier* modifier) const {

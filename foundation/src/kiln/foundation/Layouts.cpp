@@ -574,6 +574,11 @@ namespace kiln::foundation {
                 out = { a, b, cc, d, params.translationX + px - (a * px + cc * py), params.translationY + py - (b * px + d * py) };
                 return true;
             }
+            bool LayerProjective(Size size, float out[9]) const override {
+                if (params.rotationX == 0 && params.rotationY == 0) return false;
+                LayerMatrix3D(params, size, out);
+                return true;
+            }
             DrawModifier* AsDraw() override { return this; }
             void Draw(ContentDrawScope& s) override {
                 const Size size = s.GetSize();

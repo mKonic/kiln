@@ -15,6 +15,7 @@
 #include "kiln/ui/Insets.h"
 #include "kiln/ui/Semantics.h"
 
+#include <array>
 #include <map>
 
 #include <memory>
@@ -66,6 +67,18 @@ namespace kiln::ui {
         gfx::Matrix LocalToRoot() const { return ContentToRoot(false); }
         // inner: the space its children are placed in (after every modifier).
         gfx::Matrix ContentToRoot(bool inner) const;
+        // Hit testing (NodeCoordinator.hitTest): the pointer modifiers and clipping layers in chain
+        // order, each with the space and size of the coordinator it sits in. Row-major 3x3
+        // matrices (projective through 3D-rotated layers), local -> root.
+        using Mat3 = std::array<float, 9>;
+        struct HitStep { PointerInputModifier* mod = nullptr; Mat3 toRoot{}; ui::Size size; };   // mod null: a clip
+        // `parentInner`: the parent's children space; `inner` receives this node's.
+        void HitSteps(const Mat3& parentInner, std::vector<HitStep>& out, Mat3& inner) const;
+        // The space and size a pointer modifier of this node receives events in.
+        bool PointerSpace(const PointerInputModifier* mod, Mat3& toRoot, ui::Size& size) const;
+        // The bounding box of this node's outer bounds in root coordinates, through every layer
+        // above it, 3D ones included (LayoutCoordinates.boundsInRoot without clipping).
+        Rect BoundsInRoot() const;
         const ParentData& GetParentData() const { return m_ParentData; }
         std::vector<const ModifierNode*> ModifierNodes() const {
             std::vector<const ModifierNode*> out;
@@ -236,8 +249,8 @@ namespace kiln::ui {
         bool SearchBeyondBounds(FocusTargetNode& t, FocusDirection dir, const std::function<bool()>& search);
         std::vector<FocusTargetNode*> SortedChildren(const FocusTargetNode& t) const;
         FocusTargetNode* ActiveChild(const FocusTargetNode& t) const;
-        struct HitEntry { LayoutNode* node; PointerInputModifier* mod; };
-        void HitTest(LayoutNode& n, Offset p, bool touch, std::vector<HitEntry>& path,
+        struct HitEntry { LayoutNode* node; PointerInputModifier* mod; bool inBounds = true; };
+        void HitTest(LayoutNode& n, const LayoutNode::Mat3& parentInner, Offset p, bool touch, std::vector<HitEntry>& path,
                      std::vector<HitEntry>& near, float& nearDistance, std::vector<HitEntry>& ancestors);
         void RequestFullRemeasure();
 
