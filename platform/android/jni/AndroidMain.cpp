@@ -7,6 +7,7 @@ namespace kiln::android { void InstallImageDecoder(); void InstallAssetReader(JN
 #include "kiln/ui/Back.h"
 
 #include <climits>
+#include <cmath>
 #include <functional>
 #include <unordered_map>
 
@@ -168,6 +169,15 @@ namespace {
             auto& back = kiln::ui::BackDispatcher::Main();
             back.onHasEnabledChanged = [](bool on) { MainEnv()->CallVoidMethod(g_Host->view, setBack, jboolean(on)); };
             if (back.HasEnabledCallbacks()) back.onHasEnabledChanged(true);
+        }
+        {
+            jclass vc = env->GetObjectClass(view);
+            static jmethodID requestRect = env->GetMethodID(vc, "requestRectangle", "(IIII)V");
+            env->DeleteLocalRef(vc);
+            g_Host->app->GetOwner().SetRequestRectangleOnScreen([](kiln::ui::Rect r) {
+                MainEnv()->CallVoidMethod(g_Host->view, requestRect, jint(std::floor(r.left)), jint(std::floor(r.top)),
+                                          jint(std::ceil(r.right)), jint(std::ceil(r.bottom)));
+            });
         }
         // Keys and the IME reach a View only while it holds platform focus.
         g_Host->app->GetOwner().SetRequestHostFocus([] {

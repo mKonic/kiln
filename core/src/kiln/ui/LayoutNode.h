@@ -172,6 +172,10 @@ namespace kiln::ui {
         InputMode GetInputMode() const { return m_InputMode.Get(); }
         void SetInputMode(InputMode mode) { m_InputMode.Set(mode); }
         void SetRequestHostFocus(std::function<bool()> fn) { m_RequestHostFocus = std::move(fn); }
+        // The root's bringIntoView: the rect (root pixels, where the scroll containers will have
+        // put it) goes to the host view's requestRectangleOnScreen (its scrolling parents).
+        void SetRequestRectangleOnScreen(std::function<void(Rect)> fn) { m_RequestRectangle = std::move(fn); }
+        void RequestRectangleOnScreen(Rect r) { if (m_RequestRectangle) m_RequestRectangle(r); }
         // The platform took focus away from (or gave it back to) the host view.
         void OnHostFocusChanged(bool focused);
 
@@ -247,6 +251,7 @@ namespace kiln::ui {
         bool m_FocusCaptured = false;
         rt::State<InputMode> m_InputMode{ InputMode::Touch };
         std::function<bool()> m_RequestHostFocus;
+        std::function<void(Rect)> m_RequestRectangle;
         std::vector<int> m_KeysDown;
         TextInputHost m_InputHost;
         TextInputSession* m_Input = nullptr;

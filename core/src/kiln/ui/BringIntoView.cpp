@@ -40,6 +40,9 @@ namespace kiln::ui {
                 };
             }
         }
+        // The root responder (AndroidComposeView): the host's own scrolling parents.
+        if (Owner* o = node.GetOwner())
+            if (auto r = inRoot()) o->RequestRectangleOnScreen(*r);
     }
 
 }

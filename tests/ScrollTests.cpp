@@ -534,3 +534,29 @@ TEST(NestedScrollInteropSharesScrollWithTheHostViewParent) {
     h.Frames(5);
     CHECK(parent.stopped >= 1);                           // the fling's end stops nested scrolling
 }
+
+TEST(BringIntoViewReachesTheHostWithTheScrolledRect) {
+    Harness h;
+    ScrollState state;
+    BringIntoViewRequester requester;
+    std::vector<Rect> host;
+    h.owner.SetRequestRectangleOnScreen([&](Rect r) { host.push_back(r); });
+    h.Run([&] {
+        Column(VerticalScroll(FillMax(Modifier{}, Axis::Both), state), [&] {
+            for (int i = 0; i < 10; ++i) {
+                Modifier m = SizeMod(Modifier{}, Dp(100), Dp(50));
+                if (i == 7) m = BringIntoViewRequesterMod(std::move(m), requester);
+                Box(m, Alignment::TopStart(), false, {}, rt::Key(i));
+            }
+        });
+    });
+    requester.BringIntoView();
+    // At once, before the scroll animates: where the container will have put it (the bottom edge).
+    CHECK_EQ(int(host.size()), 1);
+    if (!host.empty()) {
+        CHECK_EQ(host[0].top, 50.0f);
+        CHECK_EQ(host[0].bottom, 100.0f);
+    }
+    h.Frames(60);
+    CHECK_EQ(state.Value(), 300);
+}
