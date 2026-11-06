@@ -6,6 +6,7 @@
 #include <kiln/foundation/Animate.h>
 #include <kiln/foundation/Scroll.h>
 #include <kiln/foundation/Insets.h>
+#include <kiln/foundation/Back.h>
 #include <kiln/foundation/text/BasicTextField.h>
 #include <kiln/runtime/Task.h>
 
@@ -83,6 +84,27 @@ namespace {
                 });
                 BasicText("Tapped " + std::to_string(taps.Get()) + " times", {}, { 16, kOnSurface });
             });
+            // Predictive back: the panel follows the gesture and closes when it completes.
+            auto& panelOpen = RememberState(false);
+            auto& backProgress = RememberState(0.0f);
+            PredictiveBackHandler(panelOpen.Get(), [&](BackProgress& p) -> kiln::rt::Task<> {
+                while (auto e = co_await p.Next()) backProgress.Set(e->progress);
+                backProgress.Set(0.0f);
+                panelOpen.Set(false);
+            });
+            Box(Clickable(Background(Padding(Modifier{}, 16_dp, 0_dp), kPrimaryContainer, CornerShape::Pill()),
+                          [&panelOpen] { panelOpen.Set(!panelOpen.Peek()); }),
+                Alignment::Center(), false, [&] {
+                BasicText(panelOpen.Get() ? "Close panel" : "Open panel", Padding(Modifier{}, 24_dp, 10_dp), { 14, kOnSurface });
+            });
+            if (panelOpen.Get()) {
+                GraphicsLayerParams layer;
+                layer.scaleX = layer.scaleY = 1.0f - 0.1f * backProgress.Get();
+                Box(Background(GraphicsLayer(Padding(FillMax(Modifier{}, Axis::Horizontal), 16_dp, 0_dp), layer),
+                               kTertiary, CornerShape::Rounded(16_dp)), Alignment::Center(), false, [&] {
+                    BasicText("Panel: back closes it", Padding(Modifier{}, 16_dp, 24_dp), { 16, kOnPrimary });
+                });
+            }
             Row(Padding(Modifier{}, 16_dp, 0_dp), Arrangement::SpacedBy(16_dp), AlignmentV::CenterVertically(), [&] {
                 // Rounded clip around a child that overflows it.
                 // Modifiers wrap what follows them: clip before the background so both are clipped.
