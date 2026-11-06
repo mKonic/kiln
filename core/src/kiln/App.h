@@ -1,0 +1,74 @@
+#pragma once
+
+#include "kiln/QuadRenderer.h"
+#include "kiln/TextBackend.h"
+
+#include <kiln/kiln.h>
+
+#include <hearth/Device.h>
+
+#include <memory>
+#include <vector>
+
+namespace kiln {
+
+    // Everything a platform host provides to the core.
+    struct HostServices {
+        TextBackend* text = nullptr;
+        void (*requestFrame)(void* host) = nullptr;   // schedule one vsync callback
+        void* host = nullptr;
+    };
+
+    // The process-wide app object behind kiln_app. Hosts drive it: SurfaceCreated/Destroyed,
+    // Frame, configuration. The M0 frame runs drawing and submission on the calling thread.
+    class App final : public AtlasSink {
+    public:
+        explicit App(HostServices services);
+        ~App();
+
+        void SetCallbacks(const kiln_app_callbacks& callbacks);
+        void RequestFrame();
+
+        void SurfaceCreated(hearth::Surface& surface);
+        void SurfaceResized(std::uint32_t width, std::uint32_t height);
+        void SurfaceDestroyed();
+        void Frame(double timeSeconds);
+
+        void SetDensity(float density, float fontScale) { m_Density = density; m_FontScale = fontScale; }
+        float Density() const { return m_Density; }
+        float FontScale() const { return m_FontScale; }
+        TextBackend* Text() const { return m_Services.text; }
+        bool FramePending() const { return m_FramePending; }
+
+        // AtlasSink
+        void EnsurePage(std::uint32_t index, std::uint32_t width, std::uint32_t height) override;
+        void UploadPage(std::uint32_t index, const void* rgba, std::uint32_t strideBytes,
+                        std::uint32_t x, std::uint32_t y, std::uint32_t w, std::uint32_t h) override;
+
+        // Used by the C frame calls.
+        QuadRenderer& Quads() { return *m_Quads; }
+        const AtlasPage* Page(std::uint32_t index) const {
+            return index < m_Pages.size() ? m_Pages[index].get() : nullptr;
+        }
+        void SetClearColor(Rgba c) { m_Clear = c; }
+        std::uint32_t Width() const { return m_Width; }
+        std::uint32_t Height() const { return m_Height; }
+
+    private:
+        HostServices m_Services;
+        kiln_app_callbacks m_Callbacks{};
+        std::unique_ptr<hearth::Device> m_Device;
+        std::unique_ptr<QuadRenderer> m_Quads;
+        std::vector<std::unique_ptr<AtlasPage>> m_Pages;
+        std::uint32_t m_Width = 0, m_Height = 0;
+        float m_Density = 1, m_FontScale = 1;
+        Rgba m_Clear{ 1, 1, 1, 1 };
+        bool m_FramePending = false;
+        bool m_SurfaceLost = false;
+    };
+
+}
+
+struct kiln_app { kiln::App* impl; };
+struct kiln_frame { kiln::App* app; };
+struct kiln_paragraph { kiln::ParagraphData data; };
