@@ -9,6 +9,7 @@
 #include <array>
 #include <cstdint>
 #include <memory>
+#include <limits>
 #include <vector>
 
 namespace kiln::anim {
@@ -62,8 +63,20 @@ namespace kiln::anim {
     // keyframes { durationMillis; value at ms using easing }: each keyframe's easing applies to the
     // segment starting at it (default Linear); missing 0 / duration keyframes use the start and
     // target values. Velocity reads as 0, as Compose's keyframes effectively report.
-    struct Keyframe { int timeMillis; Vec value; Easing easing = Linear(); };
+    //
+    // ArcMode (keyframe `using arcMode`): from a keyframe on, pairs of components (x, y) travel a
+    // quarter ellipse instead of a line, curving below or above the straight path.
+    enum class ArcMode : std::uint8_t { Linear = 0, Below = 4, Above = 5 };
+    struct Keyframe { int timeMillis; Vec value; Easing easing = Linear(); ArcMode arcMode = ArcMode::Linear; };
     SpecPtr Keyframes(int durationMillis, std::vector<Keyframe> keyframes, int delayMillis = 0);
+    // ArcAnimationSpec: from start to target along a quarter ellipse (per component pair).
+    SpecPtr ArcAnimation(ArcMode mode = ArcMode::Below, int durationMillis = DefaultDurationMillis, int delayMillis = 0,
+                         Easing easing = FastOutSlowIn());
+    // keyframesWithSpline: a smooth monotone cubic through the keyframes (each keyframe's easing
+    // still shapes the time to the next one). periodicBias in [0, 1], when given, matches the end
+    // slopes so a repeating animation loops without a kink.
+    SpecPtr KeyframesWithSpline(int durationMillis, std::vector<Keyframe> keyframes, int delayMillis = 0,
+                                float periodicBias = std::numeric_limits<float>::quiet_NaN());
     // repeatable(iterations, animation, repeatMode, initialStartOffset) for duration-based specs.
     SpecPtr Repeatable(int iterations, SpecPtr duration, RepeatMode mode = RepeatMode::Restart, std::int64_t initialOffsetNanos = 0);
 

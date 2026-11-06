@@ -1,8 +1,10 @@
 #include "kiln/animation/Spec.h"
+#include "kiln/animation/Spline.h"
 
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <memory>
 
 namespace kiln::anim {
 
@@ -201,11 +203,55 @@ namespace kiln::anim {
 
     SpecPtr Spring(float d, float k, float t) { return std::make_shared<SpringSpec>(d, k, t); }
     namespace {
-        // VectorizedKeyframesSpec, linear path.
+        // Timestamps of a keyframes spec: the keyframes, with 0 and the duration added when missing.
+        struct Timeline {
+            std::vector<int> times;
+            std::vector<const Keyframe*> frames;   // null at an added 0 / duration
+            Timeline(const std::vector<Keyframe>& k, int duration) {
+                std::vector<std::pair<int, const Keyframe*>> all;
+                for (const Keyframe& f : k) all.push_back({ f.timeMillis, &f });
+                bool has0 = false, hasEnd = false;
+                for (const Keyframe& f : k) { has0 = has0 || f.timeMillis == 0; hasEnd = hasEnd || f.timeMillis == duration; }
+                if (!has0) all.push_back({ 0, nullptr });
+                if (!hasEnd) all.push_back({ duration, nullptr });
+                std::stable_sort(all.begin(), all.end(), [](const auto& x, const auto& y) { return x.first < y.first; });
+                for (auto& [t, f] : all) { times.push_back(t); frames.push_back(f); }
+            }
+            // findEntryForTimeMillis: the segment holding `ms`.
+            std::size_t Entry(int ms) const {
+                auto it = std::upper_bound(times.begin(), times.end(), ms);
+                const std::size_t i = std::size_t(it - times.begin());
+                return i == 0 ? 0 : i - 1;
+            }
+            // getEasedTimeFromIndexNanos, in seconds.
+            float EasedSeconds(std::size_t index, std::int64_t nanos, const Easing& fallback) const {
+                if (index + 1 >= times.size()) return float(double(nanos) / 1e9);
+                const int t0 = times[index], t1 = times[index + 1];
+                const std::int64_t t0n = std::int64_t(t0) * 1000000;
+                if (nanos == t0n) return float(t0) / 1000.0f;
+                const Easing& easing = frames[index] ? frames[index]->easing : fallback;
+                const float raw = float(double(nanos - t0n) / (double(t1 - t0) * 1e6));
+                return (float(t1 - t0) * easing.Transform(raw) + float(t0)) / 1000.0f;
+            }
+            std::vector<std::vector<float>> Rows(const Vec& from, const Vec& to, int dims, int duration) const {
+                std::vector<std::vector<float>> rows;
+                for (std::size_t i = 0; i < times.size(); ++i) {
+                    const Vec& v = frames[i] ? frames[i]->value : (times[i] == 0 ? from : to);
+                    (void)duration;
+                    rows.emplace_back(v.begin(), v.begin() + dims);
+                }
+                return rows;
+            }
+        };
+
+        // VectorizedKeyframesSpec: straight segments, or ArcSpline once any segment arcs.
         class KeyframesSpec final : public AnimationSpec {
         public:
-            KeyframesSpec(int d, std::vector<Keyframe> k, int delay) : m_DurMs(d), m_DelayMs(delay), m_Frames(std::move(k)) {
-                std::stable_sort(m_Frames.begin(), m_Frames.end(), [](const Keyframe& a, const Keyframe& b) { return a.timeMillis < b.timeMillis; });
+            KeyframesSpec(int d, std::vector<Keyframe> k, int delay, Easing defaultEasing = Linear(), ArcMode initial = ArcMode::Linear)
+                : m_DurMs(d), m_DelayMs(delay), m_Frames(std::move(k)), m_Default(std::move(defaultEasing)), m_Initial(initial),
+                  m_Timeline(m_Frames, m_DurMs) {
+                for (std::size_t i = 0; i < m_Timeline.times.size(); ++i)
+                    if (Mode(i) != ArcMode::Linear) m_Arcs = true;
             }
             Vec ValueAt(std::int64_t n, const Vec& from, const Vec& to, const Vec&, int dims) const override {
                 const std::int64_t ms = std::clamp<std::int64_t>(n / 1000000 - m_DelayMs, 0, m_DurMs);
@@ -214,28 +260,119 @@ namespace kiln::anim {
                     if (k.timeMillis == ms && float(ms) == t) return k.value;   // exactly on a keyframe
                 if (t >= float(m_DurMs)) return to;
                 if (t <= 0) return from;
+                if (m_Arcs) {
+                    const std::int64_t play = std::int64_t(double(t) * 1e6);
+                    const float eased = m_Timeline.EasedSeconds(m_Timeline.Entry(int(ms)), play, m_Default);
+                    std::vector<float> out(static_cast<std::size_t>(Even(dims)));
+                    Spline(from, to, dims).Position(eased, out);
+                    Vec v{};
+                    for (int i = 0; i < dims; ++i) v[std::size_t(i)] = out[std::size_t(i)];
+                    return v;
+                }
                 // Segment [start, end] around t; the start keyframe's easing shapes it.
                 int t0 = 0, t1 = m_DurMs;
                 Vec v0 = from, v1 = to;
                 const Easing* easing = nullptr;
-                static const Easing linear = Linear();
                 for (const Keyframe& k : m_Frames) {
                     if (float(k.timeMillis) <= t) { t0 = k.timeMillis; v0 = k.value; easing = &k.easing; }
                     else { t1 = k.timeMillis; v1 = k.value; break; }
                 }
-                if (!easing) easing = &linear;
+                if (!easing) easing = &m_Default;
                 const float f = t1 > t0 ? easing->Transform((t - float(t0)) / float(t1 - t0)) : 1.0f;
                 Vec out{};
                 for (int i = 0; i < dims; ++i) out[i] = v0[i] + (v1[i] - v0[i]) * f;
                 return out;
             }
-            Vec VelocityAt(std::int64_t, const Vec&, const Vec&, const Vec&, int) const override { return {}; }
+            Vec VelocityAt(std::int64_t n, const Vec& from, const Vec& to, const Vec&, int dims) const override {
+                if (!m_Arcs) return {};
+                const std::int64_t play = std::clamp<std::int64_t>(n - std::int64_t(m_DelayMs) * 1000000, 0, std::int64_t(m_DurMs) * 1000000);
+                const float eased = m_Timeline.EasedSeconds(m_Timeline.Entry(int(play / 1000000)), play, m_Default);
+                std::vector<float> out(static_cast<std::size_t>(Even(dims)));
+                Spline(from, to, dims).Slope(eased, out);
+                Vec v{};
+                for (int i = 0; i < dims; ++i) v[std::size_t(i)] = out[std::size_t(i)];
+                return v;
+            }
             std::int64_t DurationNanos(const Vec&, const Vec&, const Vec&, int) const override {
                 return (std::int64_t(m_DelayMs) + m_DurMs) * 1000000;
             }
         private:
+            static int Even(int dims) { return dims + dims % 2; }
+            ArcMode Mode(std::size_t i) const { return m_Timeline.frames[i] ? m_Timeline.frames[i]->arcMode : m_Initial; }
+            // Built for the current start and target, kept until they change.
+            const detail::ArcSpline& Spline(const Vec& from, const Vec& to, int dims) const {
+                if (!m_Spline || from != m_From || to != m_To || dims != m_Dims) {
+                    std::vector<int> modes;
+                    std::vector<float> secs;
+                    for (std::size_t i = 0; i < m_Timeline.times.size(); ++i) {
+                        modes.push_back(int(Mode(i)));
+                        secs.push_back(float(m_Timeline.times[i]) / 1000.0f);
+                    }
+                    auto rows = m_Timeline.Rows(from, to, Even(dims), m_DurMs);
+                    m_Spline = std::make_shared<detail::ArcSpline>(modes, secs, rows);
+                    m_From = from; m_To = to; m_Dims = dims;
+                }
+                return *m_Spline;
+            }
             int m_DurMs, m_DelayMs;
             std::vector<Keyframe> m_Frames;
+            Easing m_Default;
+            ArcMode m_Initial;
+            Timeline m_Timeline;
+            bool m_Arcs = false;
+            mutable std::shared_ptr<detail::ArcSpline> m_Spline;
+            mutable Vec m_From{}, m_To{};
+            mutable int m_Dims = 0;
+        };
+
+        // VectorizedMonoSplineKeyframesSpec.
+        class MonoSplineSpec final : public AnimationSpec {
+        public:
+            MonoSplineSpec(int d, std::vector<Keyframe> k, int delay, float bias)
+                : m_DurMs(d), m_DelayMs(delay), m_Frames(std::move(k)), m_Bias(bias), m_Timeline(m_Frames, m_DurMs) {}
+            Vec ValueAt(std::int64_t n, const Vec& from, const Vec& to, const Vec&, int dims) const override {
+                const std::int64_t play = std::clamp<std::int64_t>(n - std::int64_t(m_DelayMs) * 1000000, 0, std::int64_t(m_DurMs) * 1000000);
+                if (play % 1000000 == 0)
+                    for (const Keyframe& k : m_Frames) if (std::int64_t(k.timeMillis) * 1000000 == play) return k.value;
+                if (play >= std::int64_t(m_DurMs) * 1000000) return to;
+                if (play <= 0) return from;
+                const std::size_t index = m_Timeline.Entry(int(play / 1000000));
+                std::vector<float> out(static_cast<std::size_t>(dims));
+                Spline(from, to, dims).Position(m_Timeline.EasedSeconds(index, play, s_Linear), out, index);
+                Vec v{};
+                for (int i = 0; i < dims; ++i) v[std::size_t(i)] = out[std::size_t(i)];
+                return v;
+            }
+            Vec VelocityAt(std::int64_t n, const Vec& from, const Vec& to, const Vec&, int dims) const override {
+                const std::int64_t play = std::clamp<std::int64_t>(n - std::int64_t(m_DelayMs) * 1000000, 0, std::int64_t(m_DurMs) * 1000000);
+                const std::size_t index = m_Timeline.Entry(int(play / 1000000));
+                std::vector<float> out(static_cast<std::size_t>(dims));
+                Spline(from, to, dims).Slope(m_Timeline.EasedSeconds(index, play, s_Linear), out, index);
+                Vec v{};
+                for (int i = 0; i < dims; ++i) v[std::size_t(i)] = out[std::size_t(i)];
+                return v;
+            }
+            std::int64_t DurationNanos(const Vec&, const Vec&, const Vec&, int) const override {
+                return (std::int64_t(m_DelayMs) + m_DurMs) * 1000000;
+            }
+        private:
+            const detail::MonoSpline& Spline(const Vec& from, const Vec& to, int dims) const {
+                if (!m_Spline || from != m_From || to != m_To || dims != m_Dims) {
+                    std::vector<float> secs;
+                    for (int t : m_Timeline.times) secs.push_back(float(t) / 1000.0f);
+                    m_Spline = std::make_shared<detail::MonoSpline>(secs, m_Timeline.Rows(from, to, dims, m_DurMs), m_Bias);
+                    m_From = from; m_To = to; m_Dims = dims;
+                }
+                return *m_Spline;
+            }
+            static inline const Easing s_Linear = Linear();
+            int m_DurMs, m_DelayMs;
+            std::vector<Keyframe> m_Frames;
+            float m_Bias;
+            Timeline m_Timeline;
+            mutable std::shared_ptr<detail::MonoSpline> m_Spline;
+            mutable Vec m_From{}, m_To{};
+            mutable int m_Dims = 0;
         };
 
         // VectorizedRepeatableSpec.
@@ -269,6 +406,10 @@ namespace kiln::anim {
     }
 
     SpecPtr Keyframes(int d, std::vector<Keyframe> k, int delay) { return std::make_shared<KeyframesSpec>(d, std::move(k), delay); }
+    SpecPtr ArcAnimation(ArcMode mode, int d, int delay, Easing e) { return std::make_shared<KeyframesSpec>(d, std::vector<Keyframe>{}, delay, std::move(e), mode); }
+    SpecPtr KeyframesWithSpline(int d, std::vector<Keyframe> k, int delay, float bias) {
+        return std::make_shared<MonoSplineSpec>(d, std::move(k), delay, bias);
+    }
     SpecPtr Repeatable(int it, SpecPtr s, RepeatMode m, std::int64_t off) { return std::make_shared<RepeatableSpec>(it, std::move(s), m, off); }
 
     SpecPtr Tween(int d, int delay, Easing e) { return std::make_shared<TweenSpec>(d, delay, std::move(e)); }

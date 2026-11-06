@@ -140,6 +140,32 @@ TEST(InterruptionAwareSpecPicksItsInterruptionSpec) {
     CHECK(std::abs(a.Float()) < 0.01f);          // done within the short interruption spec
 }
 
+TEST(ArcAndSplineKeyframes) {
+    // ArcBelow from (0, 0) to (100, 100): a quarter circle around (100, 0); halfway is at 45 degrees.
+    auto arc = ArcAnimation(ArcMode::Below, 1000, 0, Linear());
+    const Vec from{ 0, 0, 0, 0 }, to{ 100, 100, 0, 0 };
+    const Vec mid = arc->ValueAt(500'000'000, from, to, {}, 2);
+    CHECK(std::abs(mid[0] - 29.29f) < 0.3f);
+    CHECK(std::abs(mid[1] - 70.71f) < 0.3f);
+    CHECK(arc->ValueAt(0, from, to, {}, 2) == from);
+    CHECK(arc->ValueAt(1'000'000'000, from, to, {}, 2) == to);
+    // The arc moves at a steady speed along its length (quarter circle of radius 100 in 1 s).
+    const Vec v = arc->VelocityAt(500'000'000, from, to, {}, 2);
+    CHECK(std::abs(std::hypot(v[0], v[1]) - 157.08f) < 1.0f);
+    // A one-component arc still runs (the pair is padded).
+    CHECK(std::abs(arc->ValueAt(500'000'000, Vec{ 0, 0, 0, 0 }, Vec{ 10, 0, 0, 0 }, {}, 1)[0] - 5) < 0.01f);
+
+    // keyframesWithSpline 0 -> 100 (at 500 ms) -> 0: flat at the peak, a cubic on the way down.
+    auto spline = KeyframesWithSpline(1000, { Keyframe{ 500, Vec{ 100, 0, 0, 0 } } });
+    const Vec zero{ 0, 0, 0, 0 };
+    CHECK_EQ(spline->ValueAt(500'000'000, zero, zero, {}, 1)[0], 100.0f);
+    CHECK(std::abs(spline->ValueAt(750'000'000, zero, zero, {}, 1)[0] - 62.5f) < 0.01f);
+    CHECK(std::abs(spline->VelocityAt(500'000'000, zero, zero, {}, 1)[0]) < 0.01f);
+    // Plain keyframes stay straight.
+    auto straight = Keyframes(1000, { Keyframe{ 500, Vec{ 100, 0, 0, 0 } } });
+    CHECK(std::abs(straight->ValueAt(750'000'000, zero, zero, {}, 1)[0] - 50) < 0.01f);
+}
+
 TEST(CssEasingsAndBounce) {
     using namespace kiln::anim::easing;
     CHECK(std::abs(EaseInOut().Transform(0.5f) - 0.5f) < 1e-3f);           // symmetric
