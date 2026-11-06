@@ -29,6 +29,8 @@ namespace kiln::ui {
     class SemanticsModifier;
 
     // Data a child hands its parent's measure policy (weights, alignments).
+    struct AlignmentLine;
+
     struct ParentData {
         float weight = 0;                 // Row/Column
         bool fill = true;
@@ -36,6 +38,7 @@ namespace kiln::ui {
         std::optional<AlignmentH> alignH; // Column child
         std::optional<Alignment> boxAlign;// Box child
         bool matchParentSize = false;     // Box child
+        const AlignmentLine* alignBy = nullptr;   // Row/Column child: align on this line
         std::any extra;                   // other layouts' data
     };
 

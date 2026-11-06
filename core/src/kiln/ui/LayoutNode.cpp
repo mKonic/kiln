@@ -72,6 +72,31 @@ namespace kiln::ui {
             return *this;
         }
 
+        // Placeable[line]: provided by this coordinator's result, else inherited from what it
+        // wraps at its placed offset (running placement first, as Compose does when a parent
+        // reads a line during measure).
+        int Get(const AlignmentLine& line) override {
+            for (const auto& [l, v] : result.alignmentLines)
+                if (l == &line) return v;
+            node.LayoutIfNeeded();
+            if (mod) {
+                Coordinator* w = Next();
+                const int v = w->Get(line);
+                if (v == AlignmentLine::Unspecified) return v;
+                return v + (line.horizontal ? w->position.y : w->position.x);
+            }
+            int merged = AlignmentLine::Unspecified;
+            for (LayoutNode* c : node.m_Children) {
+                if (!c->m_Placed) continue;
+                Coordinator& outer = *c->m_Coordinators.front();
+                const int v = outer.Get(line);
+                if (v == AlignmentLine::Unspecified) continue;
+                const int at = v + (line.horizontal ? c->m_Position.y : c->m_Position.x);   // placed in this node
+                merged = merged == AlignmentLine::Unspecified ? at : line.Combine(merged, at);
+            }
+            return merged;
+        }
+
         void PlaceAt(IntOffset p, float z) override {
             if (index == 0) {
                 LayoutNode* parent = node.m_Parent;

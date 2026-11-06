@@ -1,5 +1,8 @@
 #pragma once
 
+#include <algorithm>
+#include <climits>
+
 // The measure/layout contract (spec 03 §layout, req. 2): constraints down, size up, each child
 // measured at most once per pass, placement in a separate phase, placeRelative mirrors in RTL.
 
@@ -13,9 +16,24 @@ namespace kiln::ui {
 
     class PlacementScope;
 
+    // AlignmentLine: a position a layout reports to its parent (baselines). Horizontal lines are
+    // y positions, vertical ones x positions. A parent inheriting a line from several children
+    // merges them: FirstBaseline takes the minimum, LastBaseline the maximum.
+    struct AlignmentLine {
+        enum class Merge : std::uint8_t { Min, Max };
+        Merge merge;
+        bool horizontal;
+        static constexpr int Unspecified = INT_MIN;
+        int Combine(int a, int b) const { return merge == Merge::Min ? std::min(a, b) : std::max(a, b); }
+    };
+    inline constexpr AlignmentLine FirstBaseline{ AlignmentLine::Merge::Min, true };
+    inline constexpr AlignmentLine LastBaseline{ AlignmentLine::Merge::Max, true };
+
     class Placeable {
     public:
         virtual ~Placeable() = default;
+        // The line's position from this placeable's top-left, or AlignmentLine::Unspecified.
+        virtual int Get(const AlignmentLine&) { return AlignmentLine::Unspecified; }
         // Size as seen by the parent: the measured size coerced into the constraints it was
         // measured with (Placeable.width/height).
         int Width() const { return m_Width; }
@@ -77,14 +95,17 @@ namespace kiln::ui {
     struct MeasureResult {
         int width = 0, height = 0;
         std::function<void(PlacementScope&)> place;
+        // Lines this layout provides itself (others are inherited from what it wraps).
+        std::vector<std::pair<const AlignmentLine*, int>> alignmentLines = {};
     };
 
     class MeasureScope : public Density {
     public:
         MeasureScope(Density d, LayoutDirection dir) : Density(d), m_Dir(dir) {}
         LayoutDirection Direction() const { return m_Dir; }
-        MeasureResult Layout(int width, int height, std::function<void(PlacementScope&)> place = {}) const {
-            return { width, height, std::move(place) };
+        MeasureResult Layout(int width, int height, std::function<void(PlacementScope&)> place = {},
+                             std::vector<std::pair<const AlignmentLine*, int>> lines = {}) const {
+            return { width, height, std::move(place), std::move(lines) };
         }
 
     private:
