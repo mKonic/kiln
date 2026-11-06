@@ -62,6 +62,7 @@ namespace kiln {
         desc.vertexBuffers.push_back(layout);
         desc.bindings.push_back({ 0, BindingType::SampledTexture, 1, StageBit(ShaderStage::Fragment) });
         desc.bindings.push_back({ 1, BindingType::SampledTexture, 1, StageBit(ShaderStage::Fragment) });
+        desc.bindings.push_back({ 2, BindingType::SampledTexture, 1, StageBit(ShaderStage::Fragment) });
         desc.pushConstantSize = 8;
         desc.topology = PrimitiveTopology::TriangleStrip;
         desc.blend = BlendMode::AlphaPremultiplied;
@@ -100,16 +101,16 @@ namespace kiln {
         ++m_Runs.back().count;
     }
 
-    void QuadRenderer::FillRect(const RectF& r, Rgba c, float radius, const Paint* paint) {
+    void QuadRenderer::FillRect(const RectF& r, Rgba c, float radius, const Paint* paint, int filterRow) {
         // Solid quads ignore the atlas, so they join whatever run is open instead of splitting it.
         const AtlasPage* page = m_Runs.empty() ? nullptr : m_Runs.back().page;
         Push({ { r.x, r.y, r.w, r.h }, { 0, 0, 0, 0 }, { c.r, c.g, c.b, c.a },
-               { radius, float(Mode::Solid), 0, 0 }, {}, {}, {}, {} }, page, paint);
+               { radius, float(Mode::Solid), float(filterRow), 0 }, {}, {}, {}, {} }, page, paint);
     }
 
-    void QuadRenderer::DrawAtlas(const RectF& r, const RectF& uv, const AtlasPage& page, Rgba c, Mode mode, const Paint* paint) {
+    void QuadRenderer::DrawAtlas(const RectF& r, const RectF& uv, const AtlasPage& page, Rgba c, Mode mode, const Paint* paint, int filterRow) {
         Push({ { r.x, r.y, r.w, r.h }, { uv.x, uv.y, uv.x + uv.w, uv.y + uv.h }, { c.r, c.g, c.b, c.a },
-               { 0, float(mode), 0, 0 }, {}, {}, {}, {} }, &page, paint);
+               { 0, float(mode), float(filterRow), 0 }, {}, {}, {}, {} }, &page, paint);
     }
 
     Ref<BindGroup> QuadRenderer::GroupFor(const AtlasPage* page) {
@@ -123,7 +124,11 @@ namespace kiln {
         ramp.binding = 1;
         ramp.type = BindingType::SampledTexture;
         ramp.textures = { m_Ramp ? m_Ramp : m_White };
-        auto group = m_Device.CreateBindGroup(m_Pipeline, { entry, ramp });
+        BindGroupEntry filters;
+        filters.binding = 2;
+        filters.type = BindingType::SampledTexture;
+        filters.textures = { m_Filters ? m_Filters : m_White };
+        auto group = m_Device.CreateBindGroup(m_Pipeline, { entry, ramp, filters });
         m_Groups.emplace_back(page, group);
         return group;
     }

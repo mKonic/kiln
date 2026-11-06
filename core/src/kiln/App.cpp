@@ -146,13 +146,16 @@ namespace kiln {
         m_Gradients->BeginFrame();
         if (!m_Images) m_Images = std::make_unique<ImageCache>(*m_Device, *m_Quads);
         m_Images->BeginFrame();
+        if (!m_Filters) { m_Filters = std::make_unique<FilterTable>(*m_Device); m_Quads->SetFilterTexture(m_Filters->Texture()); }
+        m_Filters->BeginFrame();
         if (m_Services.text) m_Services.text->SyncAtlas(*this);
-        m_Owner.Draw({ m_Quads.get(), [this](std::uint32_t i) { return Page(i); }, m_Paths.get(), m_Gradients.get(), m_Images.get(), float(m_Width), float(m_Height) });
+        m_Owner.Draw({ m_Quads.get(), [this](std::uint32_t i) { return Page(i); }, m_Paths.get(), m_Gradients.get(), m_Images.get(), m_Filters.get(), float(m_Width), float(m_Height) });
         kiln_frame frame{ this };
         if (m_Callbacks.on_frame) m_Callbacks.on_frame(m_Callbacks.user, &frame, timeSeconds);
         if (m_Services.text) m_Services.text->SyncAtlas(*this);
         m_Paths->Sync();
         m_Gradients->Sync();
+        m_Filters->Sync();
 
         CommandList* cmd = m_Device->BeginFrame();
         if (!cmd) return;   // swapchain out of date; hearth rebuilds it, try next vsync

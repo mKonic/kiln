@@ -59,9 +59,11 @@ namespace kiln {
 
         void Begin(std::uint32_t viewportWidth, std::uint32_t viewportHeight);
         // With a paint, colour.a modulates the gradient.
-        void FillRect(const RectF& rect, Rgba color, float cornerRadius = 0.0f, const Paint* paint = nullptr);
+        // filterRow: a row of the filter table (FilterTable), or -1 for none.
+        void FillRect(const RectF& rect, Rgba color, float cornerRadius = 0.0f, const Paint* paint = nullptr, int filterRow = -1);
         void DrawAtlas(const RectF& rect, const RectF& uv, const AtlasPage& page, Rgba color, Mode mode,
-                       const Paint* paint = nullptr);
+                       const Paint* paint = nullptr, int filterRow = -1);
+        void SetFilterTexture(hearth::Ref<hearth::Texture> t) { m_Filters = std::move(t); m_Groups.clear(); }
         // The gradient ramp texture (bound next to every atlas page).
         // Drops the cached bind group of a page about to be destroyed.
         void ForgetPage(const AtlasPage* page) { std::erase_if(m_Groups, [page](const auto& g) { return g.first == page; }); }
@@ -83,6 +85,7 @@ namespace kiln {
         hearth::Ref<hearth::Pipeline> m_Pipeline;
         hearth::Ref<hearth::Texture> m_White;
         hearth::Ref<hearth::Texture> m_Ramp;
+        hearth::Ref<hearth::Texture> m_Filters;
         std::vector<Instance> m_Instances;
         std::vector<Run> m_Runs;
         std::vector<hearth::Ref<hearth::Buffer>> m_Buffers;   // one per frame in flight

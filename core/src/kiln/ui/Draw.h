@@ -8,8 +8,8 @@
 #include <functional>
 #include <vector>
 
-namespace kiln { class QuadRenderer; struct ParagraphData; class AtlasPage; class PathCache; class GradientRamps; class ImageCache; struct Rgba; }
-namespace kiln::gfx { class Path; struct Stroke; struct Brush; class ImageBitmap; }
+namespace kiln { class QuadRenderer; struct ParagraphData; class AtlasPage; class PathCache; class GradientRamps; class ImageCache; class FilterTable; struct Rgba; }
+namespace kiln::gfx { class Path; struct Stroke; struct Brush; class ImageBitmap; struct ColorFilter; }
 
 namespace kiln::ui {
 
@@ -19,6 +19,7 @@ namespace kiln::ui {
         PathCache* paths = nullptr;
         GradientRamps* gradients = nullptr;
         ImageCache* images = nullptr;
+        FilterTable* filters = nullptr;
         float viewportWidth = 0, viewportHeight = 0;
     };
 
@@ -35,11 +36,13 @@ namespace kiln::ui {
         // Fills the path, or strokes it when `stroke` is given (DrawScope.drawPath).
         void DrawPath(const gfx::Path& path, Color color, const gfx::Stroke* stroke = nullptr);
         // drawImage(image, srcOffset, srcSize, dstOffset, dstSize, alpha): src in image pixels.
-        void DrawImage(const gfx::ImageBitmap& image, Rect src, Offset dstOffset, Size dstSize, float alpha = 1);
+        void DrawImage(const gfx::ImageBitmap& image, Rect src, Offset dstOffset, Size dstSize, float alpha = 1,
+                       const gfx::ColorFilter* colorFilter = nullptr);
         // Brush overloads; `alpha` multiplies the brush (gradient geometry is in scope coordinates).
         void DrawRect(const gfx::Brush& brush, Offset topLeft, Size size, float alpha = 1);
         void DrawRoundRect(const gfx::Brush& brush, Offset topLeft, Size size, float cornerRadius, float alpha = 1);
-        void DrawPath(const gfx::Path& path, const gfx::Brush& brush, const gfx::Stroke* stroke = nullptr, float alpha = 1);
+        void DrawPath(const gfx::Path& path, const gfx::Brush& brush, const gfx::Stroke* stroke = nullptr, float alpha = 1,
+                      const gfx::ColorFilter* colorFilter = nullptr);
 
         // Transform: device = origin + scale * local (axis-aligned; rotation needs the retained
         // layer renderer). Translate moves the local origin.
@@ -70,7 +73,8 @@ namespace kiln::ui {
         void ApplyClip();
         // Paint for a gradient brush; false for a solid one (its colour is returned in `solid`).
         bool MakePaint(const gfx::Brush& brush, float alpha, void* paint, Color& solid, float& outAlpha);
-        void PathCoverage(const gfx::Path& path, const gfx::Stroke* stroke, kiln::Rgba tint, const void* paint);
+        void PathCoverage(const gfx::Path& path, const gfx::Stroke* stroke, kiln::Rgba tint, const void* paint, int filterRow = -1);
+        int FilterRow(const gfx::ColorFilter* f);
         LayoutDirection m_Dir;
         DrawTarget m_Target;
         State m_State;

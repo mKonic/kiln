@@ -2,6 +2,7 @@
 
 #include "kiln/PathCache.h"
 #include "kiln/Gradients.h"
+#include "kiln/Filters.h"
 #include "kiln/ImageCache.h"
 #include "kiln/graphics/Image.h"
 #include "kiln/graphics/Brush.h"
@@ -86,7 +87,7 @@ namespace kiln::ui {
         PathCoverage(path, stroke, Scaled(ToRgba(color), m_State.alpha), nullptr);
     }
 
-    void DrawScope::PathCoverage(const gfx::Path& path, const gfx::Stroke* stroke, Rgba tint, const void* paint) {
+    void DrawScope::PathCoverage(const gfx::Path& path, const gfx::Stroke* stroke, Rgba tint, const void* paint, int filterRow) {
         if (!m_Target.quads || !m_Target.paths || path.IsEmpty()) return;
         // Integer part of the translation is applied when drawing; the mask is built for the
         // scale and the quarter-pixel fraction so moving by whole pixels reuses it.
@@ -134,7 +135,7 @@ namespace kiln::ui {
         }
         ApplyClip();
         m_Target.quads->DrawAtlas({ ox + float(e->x), oy + float(e->y), float(e->w), float(e->h) }, e->uv, *e->page,
-                                  tint, QuadRenderer::Mode::TintedCoverage, static_cast<const QuadRenderer::Paint*>(paint));
+                                  tint, QuadRenderer::Mode::TintedCoverage, static_cast<const QuadRenderer::Paint*>(paint), filterRow);
     }
 
 
@@ -188,20 +189,24 @@ namespace kiln::ui {
         m_Target.quads->FillRect({ d.left, d.top, d.Width(), d.Height() }, { a, a, a, a }, r * std::min(m_State.sx, m_State.sy), &paint);
     }
 
-    void DrawScope::DrawPath(const gfx::Path& path, const gfx::Brush& b, const gfx::Stroke* stroke, float alpha) {
+    int DrawScope::FilterRow(const gfx::ColorFilter* f) {
+        return f && m_Target.filters ? m_Target.filters->RowFor(*f) : -1;
+    }
+
+    void DrawScope::DrawPath(const gfx::Path& path, const gfx::Brush& b, const gfx::Stroke* stroke, float alpha, const gfx::ColorFilter* filter) {
         QuadRenderer::Paint paint;
         Color solid;
         float a;
         if (!MakePaint(b, alpha, &paint, solid, a)) {
             if (solid.Alpha() * a <= 0) return;
-            PathCoverage(path, stroke, Scaled(ToRgba(solid), a), nullptr);
+            PathCoverage(path, stroke, Scaled(ToRgba(solid), a), nullptr, FilterRow(filter));
             return;
         }
         if (a <= 0) return;
-        PathCoverage(path, stroke, { a, a, a, a }, &paint);
+        PathCoverage(path, stroke, { a, a, a, a }, &paint, FilterRow(filter));
     }
 
-    void DrawScope::DrawImage(const gfx::ImageBitmap& image, Rect src, Offset dst, Size size, float alpha) {
+    void DrawScope::DrawImage(const gfx::ImageBitmap& image, Rect src, Offset dst, Size size, float alpha, const gfx::ColorFilter* filter) {
         if (!m_Target.quads || !m_Target.images || !image) return;
         const float a = alpha * m_State.alpha;
         if (a <= 0) return;
@@ -211,7 +216,7 @@ namespace kiln::ui {
         const Rect d = ToDevice(dst, size);
         m_Target.quads->DrawAtlas({ d.left, d.top, d.Width(), d.Height() },
                                   { src.left / iw, src.top / ih, src.Width() / iw, src.Height() / ih }, *page,
-                                  { a, a, a, a }, QuadRenderer::Mode::Color);
+                                  { a, a, a, a }, QuadRenderer::Mode::Color, nullptr, FilterRow(filter));
     }
 
 }
