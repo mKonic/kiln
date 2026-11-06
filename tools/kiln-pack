@@ -1,0 +1,77 @@
+#!/usr/bin/env bash
+# kiln-pack: builds an APK from a kiln app's native library without Gradle.
+#
+#   kiln-pack --package dev.example.app --label "App" --lib-name hello \
+#             --lib arm64-v8a=path/libhello.so [--lib x86_64=path/libhello.so] --out app.apk
+#
+# Steps: javac (kiln's Java host, platform APIs only) -> d8 -> manifest -> aapt2 link ->
+# add classes.dex + lib/<abi>/*.so -> zipalign -> apksigner (debug key in build/).
+set -euo pipefail
+source "$(dirname "${BASH_SOURCE[0]}")/android-env.sh"
+PACKAGE=""; LABEL="kiln app"; LIBNAME=""; OUT=""; LIBS=()
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --package) PACKAGE="$2"; shift 2 ;;
+        --label) LABEL="$2"; shift 2 ;;
+        --lib-name) LIBNAME="$2"; shift 2 ;;
+        --lib) LIBS+=("$2"); shift 2 ;;
+        --out) OUT="$2"; shift 2 ;;
+        *) echo "kiln-pack: unknown argument $1" >&2; exit 2 ;;
+    esac
+done
+[ -n "$PACKAGE" ] && [ -n "$LIBNAME" ] && [ -n "$OUT" ] && [ ${#LIBS[@]} -gt 0 ] \
+    || { sed -n '2,8p' "$0" >&2; exit 2; }
+
+STAGING="$KILN_ROOT/build/pack/$PACKAGE"
+rm -rf "$STAGING"; mkdir -p "$STAGING/classes" "$STAGING/dex"
+
+# Java host -> dex. --release keeps the class files at a level d8 understands.
+mapfile -t SOURCES < <(find "$KILN_ROOT/platform/android/java" -name '*.java')
+javac --release 17 -nowarn -classpath "$ANDROID_JAR" -d "$STAGING/classes" "${SOURCES[@]}"
+mapfile -t CLASSES < <(find "$STAGING/classes" -name '*.class')
+"$D8" --min-api "$ANDROID_MIN_SDK" --lib "$ANDROID_JAR" --output "$STAGING/dex" "${CLASSES[@]}"
+cp "$STAGING/dex/classes.dex" "$STAGING/classes.dex"
+
+cat > "$STAGING/AndroidManifest.xml" <<XML
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+          package="$PACKAGE" android:versionCode="1" android:versionName="1.0">
+    <uses-feature android:name="android.hardware.vulkan.version" android:version="0x00401000"
+                  android:required="true" />
+    <application android:label="$LABEL" android:hasCode="true" android:extractNativeLibs="false"
+                 android:theme="@android:style/Theme.DeviceDefault.NoActionBar">
+        <activity android:name="dev.kiln.KilnActivity" android:exported="true"
+                  android:windowSoftInputMode="adjustResize"
+                  android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|uiMode|density|fontScale|fontWeightAdjustment|keyboard|keyboardHidden|navigation|locale|layoutDirection|colorMode|touchscreen|grammaticalGender">
+            <meta-data android:name="dev.kiln.lib_name" android:value="$LIBNAME" />
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>
+XML
+
+UNSIGNED="$STAGING/unsigned.apk"; ALIGNED="$STAGING/aligned.apk"
+"$AAPT2" link -o "$UNSIGNED" -I "$ANDROID_JAR" --manifest "$STAGING/AndroidManifest.xml" \
+    --min-sdk-version "$ANDROID_MIN_SDK" --target-sdk-version "$ANDROID_TARGET_SDK"
+
+ENTRIES=(classes.dex)
+for spec in "${LIBS[@]}"; do
+    abi="${spec%%=*}"; so="${spec#*=}"
+    mkdir -p "$STAGING/lib/$abi"
+    "$NDK_TOOLCHAIN/bin/llvm-strip" --strip-unneeded "$so" -o "$STAGING/lib/$abi/lib$LIBNAME.so"
+    ENTRIES+=("lib/$abi/lib$LIBNAME.so")
+done
+# Native libs stay uncompressed and page-aligned so they load in place (extractNativeLibs=false).
+python3 "$KILN_ROOT/tools/apkzip.py" "$UNSIGNED" "$STAGING" "${ENTRIES[@]}"
+"$ZIPALIGN" -f -P 16 4 "$UNSIGNED" "$ALIGNED"
+
+KEYSTORE="$KILN_ROOT/build/kiln-debug.keystore"
+[ -f "$KEYSTORE" ] || keytool -genkeypair -keystore "$KEYSTORE" -alias kiln -keyalg RSA -keysize 2048 \
+    -validity 10000 -storepass android -keypass android -dname "CN=kiln debug" >/dev/null 2>&1
+mkdir -p "$(dirname "$OUT")"
+"$APKSIGNER" sign --ks "$KEYSTORE" --ks-key-alias kiln --ks-pass pass:android --key-pass pass:android \
+    --out "$OUT" "$ALIGNED"
+echo "APK: $OUT ($(du -h "$OUT" | cut -f1))"
