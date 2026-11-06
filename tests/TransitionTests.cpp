@@ -7,6 +7,7 @@
 
 using namespace kiln;
 using namespace kiln::foundation;
+using kiln::ui::LayoutNode;
 
 namespace {
     struct Harness {
@@ -15,7 +16,7 @@ namespace {
         rt::Composition composition{ owner.Root(), d };
         std::int64_t now = 1'000'000'000;
         void Run(std::function<void()> content) { composition.SetContent(std::move(content)); Pump(); }
-        void Pump() { d.RunPending(); composition.Recompose(); d.RunPending(); }
+        void Pump() { d.RunPending(); composition.Recompose(); d.RunPending(); composition.Recompose(); }
         void Frames(int n, std::int64_t stepMs = 16) {
             for (int i = 0; i < n; ++i) { now += stepMs * 1'000'000; d.RunFrame(now); Pump(); }
         }
@@ -144,4 +145,66 @@ TEST(AnimatedVisibilityExpandsFadesAndLeaves) {
     CHECK(wrapper()->Size().height < 80);
     h.Step(150);
     CHECK(wrapper() == nullptr);                       // exit finished: gone
+}
+
+TEST(SeekableTransitionFollowsTheGestureThenCompletesOrReturns) {
+    Harness h;
+    SeekableTransitionState<bool> state(false);
+    float value = -1;
+    h.Run([&] {
+        auto& t = UpdateTransition(state);
+        value = AnimateFloat<bool>(t, [](bool s) { return s ? 100.0f : 0.0f; },
+                                   [](const Transition<bool>::Segment&) { return anim::Tween(200, 0, anim::Linear()); });
+    });
+    // A back gesture: seek towards `true` with the finger.
+    state.SeekTo(0.25f, true);
+    h.Pump();
+    CHECK(Near(value, 25, 0.5f));
+    state.SeekTo(0.5f);
+    h.Pump();
+    CHECK(Near(value, 50, 0.5f));
+    CHECK(!state.CurrentState());
+    // Released: finish on the clock from 50%.
+    state.AnimateTo();
+    h.Pump();
+    h.Frames(1);
+    CHECK(value >= 50);
+    h.Frames(10);
+    CHECK_EQ(value, 100.0f);
+    CHECK(state.CurrentState());
+    // Another gesture that is cancelled: back to where it started.
+    state.SeekTo(0.4f, false);
+    h.Pump();
+    CHECK(Near(value, 60, 0.5f));
+    state.AnimateTo(true);
+    h.Pump();
+    h.Frames(60);
+    CHECK(Near(value, 100, 0.05f));
+    CHECK(state.CurrentState());
+}
+
+TEST(AnimatedContentSwapsWithBothShownMeanwhile) {
+    LayoutHarness h;
+    rt::State<int> page(1);
+    h.Run([&] {
+        Box(Modifier{}, Alignment::TopStart(), false, [&] {
+            AnimatedContent(rt::Key(page.Get()), Modifier{}, [](rt::Key k) {
+                Box(SizeMod(Modifier{}, Dp(100), Dp(k == rt::Key(1) ? 40.0f : 80.0f)));
+            });
+        });
+    });
+    h.Layout();
+    LayoutNode* container = h.owner.Root().Children()[0]->Children()[0];
+    CHECK_EQ(int(container->Children().size()), 1);
+    CHECK_EQ(container->Size().height, 40);
+    page.Set(2);
+    h.Pump();
+    h.Layout();
+    h.Step(5);
+    CHECK_EQ(int(container->Children().size()), 2);          // old and new while swapping
+    const int mid = container->Size().height;
+    CHECK(mid > 40 && mid < 80);                              // SizeTransform
+    h.Step(100);
+    CHECK_EQ(int(container->Children().size()), 1);
+    CHECK_EQ(container->Size().height, 80);
 }

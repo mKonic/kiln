@@ -16,7 +16,7 @@ namespace kiln::foundation {
     }
 
     void TransitionCore::Retarget(Child& c, const anim::Vec& target, anim::SpecPtr spec, bool snap) {
-        const bool interrupted = !c.finished && m_Running.Peek();
+        const bool interrupted = !c.finished && (m_Running.Peek() || m_Seeking);
         c.start = c.value.Peek();
         c.startVelocity = c.velocity;
         c.target = target;
@@ -31,6 +31,7 @@ namespace kiln::foundation {
     void TransitionCore::Begin() {
         m_StartNanos = -1;
         m_PlayTime = 0;
+        m_ResumeFrom = 0;
         // Children start from where they are now.
         for (Child* c : m_Children) {
             if (!c->finished) {
@@ -43,8 +44,26 @@ namespace kiln::foundation {
         m_Generation.Set(m_Generation.Peek() + 1);
     }
 
+    std::int64_t TransitionCore::TotalDurationNanos() const {
+        std::int64_t d = 0;
+        for (const Child* c : m_Children) d = std::max(d, c->duration);
+        return d;
+    }
+
+    void TransitionCore::SetPlayTime(std::int64_t t) {
+        m_PlayTime = t;
+        for (Child* c : m_Children) {
+            if (c->finished && c->Current() == c->target) continue;
+            if (t >= c->duration) { c->value.Set(c->target); c->velocity = {}; continue; }
+            c->finished = false;
+            c->value.Set(c->spec->ValueAt(t, c->start, c->target, c->startVelocity, c->dims));
+            c->velocity = c->spec->VelocityAt(t, c->start, c->target, c->startVelocity, c->dims);
+        }
+    }
+
     bool TransitionCore::Step(std::int64_t frame) {
-        if (m_StartNanos < 0) m_StartNanos = frame;
+        // Resuming after a seek: the clock continues from the seeked play time.
+        if (m_StartNanos < 0) { m_StartNanos = frame - m_ResumeFrom; m_ResumeFrom = 0; }
         const float scale = anim::DurationScale();
         m_PlayTime = scale <= 0 ? std::numeric_limits<std::int64_t>::max() / 4 : std::int64_t(double(frame - m_StartNanos) / scale);
         bool any = false;

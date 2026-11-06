@@ -65,6 +65,24 @@ namespace kiln::foundation {
     void AnimatedVisibility(bool visible, const Modifier& modifier, std::function<void()> content,
                             EnterTransition enter = FadeIn() + ExpandIn(), ExitTransition exit = ShrinkOut() + FadeOut(), rt::Key key = {});
 
+    // ContentTransform (enter togetherWith exit, plus SizeTransform).
+    struct ContentTransform {
+        EnterTransition enter;
+        ExitTransition exit;
+        bool sizeTransform = true;          // animate the container size, clipped
+        anim::SpecPtr sizeSpec = anim::Spring(1.0f, anim::spring::StiffnessMediumLow, 0.5f);
+    };
+    // AnimatedContent's default: fadeIn(tween(220, 90)) + scaleIn(0.92, tween(220, 90)) togetherWith
+    // fadeOut(tween(90)) (the Material fade-through numbers).
+    ContentTransform DefaultContentTransform();
+    // AnimatedContent(targetState): content keyed by `target`; the old content leaves with the
+    // exit while the new one enters, both stacked at contentAlignment.
+    void AnimatedContent(rt::Key target, const Modifier& modifier, std::function<void(rt::Key)> content,
+                         std::function<ContentTransform()> transform = DefaultContentTransform,
+                         Alignment contentAlignment = Alignment::TopStart(), rt::Key key = {});
+    // animateContentSize(spring): the size follows content size changes with an animation.
+    Modifier AnimateContentSize(Modifier m, anim::SpecPtr spec = anim::Spring(1.0f, anim::spring::StiffnessMediumLow, 0.5f));
+
     // Crossfade(targetState, animationSpec = tween()): the old content fades out while the new one
     // fades in, both kept until the fade ends. The key identifies the content.
     void Crossfade(rt::Key target, const Modifier& modifier, std::function<void(rt::Key)> content,

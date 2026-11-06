@@ -14,7 +14,9 @@
 #include "kiln/ui/ColorSpace.h"
 #include "kiln/ui/Geometry.h"
 
+#include <algorithm>
 #include <functional>
+#include <optional>
 #include <memory>
 #include <vector>
 
@@ -43,6 +45,15 @@ namespace kiln::foundation {
         void Begin();
         // One frame: advances play time; true while anything still runs.
         bool Step(std::int64_t frameNanos);
+        // Seeking: children take their values at an explicit play time; no clock runs.
+        void SetPlayTime(std::int64_t nanos);
+        std::int64_t TotalDurationNanos() const;
+        // Continue on the clock from the current play time (after seeking).
+        void ResumeClock() { m_ResumeFrom = m_PlayTime; m_StartNanos = -1; if (!m_Running.Peek()) m_Running.Set(true); m_Generation.Set(m_Generation.Peek() + 1); }
+        void PauseClock() { if (m_Running.Peek()) m_Running.Set(false); }
+        // While seeking, retargets do not start the clock.
+        void SetSeeking(bool s) { m_Seeking = s; if (s) PauseClock(); }
+        bool Seeking() const { return m_Seeking; }
         bool Running() const { return m_Running.Peek(); }
         bool RunningObserved() const { return m_Running.Get(); }
         std::int64_t PlayTimeNanos() const { return m_PlayTime; }
@@ -50,7 +61,8 @@ namespace kiln::foundation {
 
     private:
         std::vector<Child*> m_Children;
-        std::int64_t m_StartNanos = -1, m_PlayTime = 0;
+        std::int64_t m_StartNanos = -1, m_PlayTime = 0, m_ResumeFrom = 0;
+        bool m_Seeking = false;
         rt::State<bool> m_Running{ false };
         rt::State<std::uint64_t> m_Generation{ 0 };
     };
@@ -94,10 +106,15 @@ namespace kiln::foundation {
             m_Core.Begin();
         }
         void Finish() { if (!(m_Current.Peek() == m_Target.Peek())) m_Current.Set(m_Target.Peek()); }
+        // snapTo: both states jump; children follow on their next composition.
+        void SnapAll(const S& s) { m_Current.Set(s); m_Target.Set(s); m_Core.PauseClock(); m_SnapNext = true; }
+        bool TakeSnap() { return std::exchange(m_SnapNext, false); }
+        bool PeekSnap() const { return m_SnapNext; }
 
     private:
         rt::State<S> m_Current, m_Target;
         TransitionCore m_Core;
+        bool m_SnapNext = false;
     };
 
     namespace detail {
@@ -151,7 +168,7 @@ namespace kiln::foundation {
                 return std::function<void()>([core, cp] { core->Remove(cp); });
             }, key);
             const anim::Vec target = valueOf(t.TargetState());
-            if (!(target == child.target)) core->Retarget(child, target, specFor ? specFor(t.CurrentSegment()) : anim::Spring(), false);
+            if (!(target == child.target)) core->Retarget(child, target, specFor ? specFor(t.CurrentSegment()) : anim::Spring(), t.PeekSnap());
             return child.value.Get();
         }
     }
@@ -173,6 +190,70 @@ namespace kiln::foundation {
             return anim::Vec{ lab[0], lab[1], lab[2], lab[3] };
         }, spec, key);
         return ui::FromOklab({ v[0], v[1], v[2], v[3] });
+    }
+
+    // SeekableTransitionState: fraction 0..1 between currentState and targetState, set by
+    // SeekTo (a back gesture's progress), then AnimateTo finishes on the clock or goes back.
+    template<typename S>
+    class SeekableTransitionState {
+    public:
+        explicit SeekableTransitionState(S initial) : m_Current(initial), m_Target(initial) {}
+        S CurrentState() const { return m_Current.Get(); }
+        S TargetState() const { return m_Target.Get(); }
+        float Fraction() const { return m_Fraction.Get(); }
+
+        // seekTo(fraction, targetState)
+        void SeekTo(float fraction, std::optional<S> target = std::nullopt) {
+            m_Seeking = true;
+            m_Fraction.Set(std::clamp(fraction, 0.0f, 1.0f));
+            if (m_Core) m_Core->SetSeeking(true);
+            if (target && !(*target == m_Target.Peek())) { m_Target.Set(*target); return; }   // children retarget on recomposition
+            Apply();
+        }
+        // animateTo(targetState): to the current target it completes from the seeked fraction;
+        // to the current state it goes back (the gesture was cancelled).
+        void AnimateTo(std::optional<S> target = std::nullopt) {
+            m_Seeking = false;
+            if (m_Core) m_Core->SetSeeking(false);
+            if (target && !(*target == m_Target.Peek())) { m_Target.Set(*target); return; }   // retarget with velocity
+            if (m_Core) m_Core->ResumeClock();
+        }
+        void SnapTo(S target) {
+            m_Seeking = false;
+            m_Current.Set(target);
+            m_Target.Set(target);
+            m_Fraction.Set(0);
+            m_Snap = true;
+        }
+        // internal
+        void Apply() { if (m_Core) m_Core->SetPlayTime(std::int64_t(double(m_Core->TotalDurationNanos()) * m_Fraction.Peek())); }
+        rt::State<S> m_Current, m_Target;
+        rt::State<float> m_Fraction{ 0 };
+        bool m_Seeking = false, m_Snap = false;
+        TransitionCore* m_Core = nullptr;
+    };
+
+    template<typename S>
+    Transition<S>& UpdateTransition(SeekableTransitionState<S>& state, rt::Key key = {}) {
+        auto& c = *rt::Composition::Current();
+        auto& t = c.RememberNew<Transition<S>>({}, key, state.CurrentState());
+        auto* tp = &t;
+        auto* sp = &state;
+        state.m_Core = &t.Core();
+        t.Core().SetSeeking(state.m_Seeking);
+        if (state.m_Snap) { state.m_Snap = false; t.SnapAll(state.TargetState()); }
+        else t.UpdateTarget(state.TargetState());
+        // A new seek target: once the children have retargeted, apply the fraction.
+        if (state.m_Seeking) c.SideEffect([sp] { sp->Apply(); });
+        c.LaunchedEffect(rt::Keys(t.Core().Generation()), [tp, sp] {
+            return detail::DriveTransition(tp->Core(), [tp, sp] {
+                if (sp->m_Seeking) return;
+                tp->Finish();
+                sp->m_Current.Set(tp->TargetState());
+                sp->m_Fraction.Set(0);
+            });
+        }, key);
+        return t;
     }
 
     // --- InfiniteTransition --------------------------------------------------------------------

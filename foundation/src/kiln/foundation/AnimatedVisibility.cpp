@@ -3,6 +3,7 @@
 #include "kiln/foundation/Compose.h"
 
 #include <algorithm>
+#include <cmath>
 
 namespace kiln::foundation {
 
@@ -144,14 +145,97 @@ namespace kiln::foundation {
         if (std::find(items.begin(), items.end(), target.value) == items.end()) items.push_back(target.value);
         // Finished: only the target remains.
         if (!t.IsRunning() && t.CurrentState() == t.TargetState()) items = { target.value };
-        Box(modifier, Alignment::TopStart(), false, [&, spec] {
+        Box(modifier, Alignment::TopStart(), false, [&c, &t, &items, content, spec] {
             for (std::uint64_t k : items) {
-                c.Child([&, k, spec] {
+                c.Child([&t, content, k, spec] {
                     const float a = AnimateFloat<std::uint64_t>(t, [k](std::uint64_t s) { return s == k ? 1.0f : 0.0f; },
                                                                 [spec](const Transition<std::uint64_t>::Segment&) { return spec; });
                     rt::Key itemKey = rt::Key::Positional();
                     itemKey.value = k;
-                    Box(Alpha(Modifier{}, a), Alignment::TopStart(), false, [&content, itemKey] { content(itemKey); });
+                    Box(Alpha(Modifier{}, a), Alignment::TopStart(), false, [content, itemKey] { content(itemKey); });
+                }, rt::Key(std::int64_t(k)));
+            }
+        }, key);
+    }
+
+    ContentTransform DefaultContentTransform() {
+        ContentTransform t;
+        t.enter = FadeIn(anim::Tween(220, 90)) + ScaleIn(anim::Tween(220, 90), 0.92f);
+        t.exit = FadeOut(anim::Tween(90));
+        return t;
+    }
+
+    namespace {
+        // SizeAnimationModifier: reports an animated size that follows the measured one.
+        struct SizeAnimParams { anim::SpecPtr spec; bool operator==(const SizeAnimParams& o) const { return spec == o.spec; } };
+        struct SizeAnimNode final : ModifierNode, LayoutModifier {
+            SizeAnimParams params;
+            std::unique_ptr<anim::Animatable> size;
+            IntSize target{ -1, -1 };
+            rt::Job job;
+            explicit SizeAnimNode(SizeAnimParams p) : params(std::move(p)) {}
+            void OnParamsChanged() {}
+            void OnDetach() override { job.Cancel(); }
+            LayoutModifier* AsLayout() override { return this; }
+            static rt::Task<> Run(anim::Animatable* a, anim::Vec to, anim::SpecPtr spec) { co_await a->AnimateTo(to, spec); }
+            MeasureResult Measure(MeasureScope& s, Measurable& m, const Constraints& c) override {
+                Placeable& p = m.Measure(c);
+                const IntSize full{ p.Width(), p.Height() };
+                if (!size) {
+                    size = std::make_unique<anim::Animatable>(anim::Vec{ float(full.width), float(full.height), 0, 0 }, 2);
+                    target = full;
+                } else if (!(full == target)) {
+                    target = full;
+                    job = rt::Launch(rt::Dispatcher::Main(), Run(size.get(), { float(full.width), float(full.height), 0, 0 }, params.spec));
+                }
+                const anim::Vec& v = size->Value();   // read: re-measures every frame of the animation
+                const IntSize now = c.Constrain(IntSize{ int(std::lround(v[0])), int(std::lround(v[1])) });
+                return s.Layout(now.width, now.height, [&p](PlacementScope& place) { place.PlaceRelative(p, 0, 0); });
+            }
+        };
+    }
+
+    Modifier AnimateContentSize(Modifier m, anim::SpecPtr spec) {
+        return m.With<SizeAnimNode>(SizeAnimParams{ std::move(spec) });
+    }
+
+    void AnimatedContent(rt::Key target, const Modifier& modifier, std::function<void(rt::Key)> content,
+                         std::function<ContentTransform()> transformFn, Alignment alignment, rt::Key key) {
+        auto& c = *rt::Composition::Current();
+        auto& t = UpdateTransition<std::uint64_t>(target.value, key);
+        auto& items = c.Remember<std::vector<std::uint64_t>>([&] { return std::vector<std::uint64_t>{ target.value }; }, {}, key);
+        if (std::find(items.begin(), items.end(), target.value) == items.end()) items.push_back(target.value);
+        if (!t.IsRunning() && t.CurrentState() == t.TargetState()) items = { target.value };
+        const ContentTransform tr = transformFn ? transformFn() : DefaultContentTransform();
+        Modifier m = modifier;
+        if (tr.sizeTransform) m = AnimateContentSize(ClipToBounds(std::move(m)), tr.sizeSpec);
+        Box(m, alignment, false, [&c, &t, &items, content, tr] {
+            for (std::uint64_t k : items) {
+                c.Child([&t, content, k, tr] {
+                    const bool entering = k == t.TargetState();
+                    using Seg = Transition<std::uint64_t>::Segment;
+                    const float alpha = AnimateFloat<std::uint64_t>(t, [&tr, entering, k](std::uint64_t s) {
+                        if (s == k) return 1.0f;
+                        if (entering) return tr.enter.parts.fade ? tr.enter.parts.fade->first : 1.0f;
+                        return tr.exit.parts.fade ? tr.exit.parts.fade->first : 1.0f;
+                    }, [&](const Seg&) {
+                        const auto& f = entering ? tr.enter.parts.fade : tr.exit.parts.fade;
+                        return f ? f->second : DefaultEnterExitSpring();
+                    });
+                    const float scale = AnimateFloat<std::uint64_t>(t, [&tr, entering, k](std::uint64_t s) {
+                        if (s == k) return 1.0f;
+                        if (entering) return tr.enter.parts.scale ? tr.enter.parts.scale->scale : 1.0f;
+                        return tr.exit.parts.scale ? tr.exit.parts.scale->scale : 1.0f;
+                    }, [&](const Seg&) {
+                        const auto& sc = entering ? tr.enter.parts.scale : tr.exit.parts.scale;
+                        return sc ? sc->spec : DefaultEnterExitSpring();
+                    });
+                    GraphicsLayerParams layer;
+                    layer.alpha = alpha;
+                    layer.scaleX = layer.scaleY = scale;
+                    rt::Key itemKey = rt::Key::Positional();
+                    itemKey.value = k;
+                    Box(GraphicsLayer(Modifier{}, layer), Alignment::TopStart(), false, [content, itemKey] { content(itemKey); });
                 }, rt::Key(std::int64_t(k)));
             }
         }, key);
