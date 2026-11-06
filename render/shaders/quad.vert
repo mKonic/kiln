@@ -10,7 +10,7 @@ layout(location = 5) in vec4 iClipParams; // clip corner radius, enabled
 layout(location = 6) in vec4 iPaint;   // gradient geometry (framebuffer px)
 layout(location = 7) in vec4 iPaint2;  // gradient kind, tile mode, ramp v
 layout(location = 8) in vec4 iXform;   // a, b, c, d
-layout(location = 9) in vec4 iXform2;  // e, f
+layout(location = 9) in vec4 iXform2;  // e, f, then g, h: perspective (w = 1 + g x + h y; 0 = affine)
 layout(location = 10) in vec4 iClipInv;  // framebuffer -> clip space: a, b, c, d
 layout(location = 11) in vec4 iClipInv2; // e, f
 
@@ -50,6 +50,9 @@ void main() {
     vClipInv2 = iClipInv2.xy;
     vUvMin = iUv.xy;
     vUvMax = iUv.zw;
-    vec2 device = m * pos + iXform2.xy;
-    gl_Position = vec4((device - pc.origin) / pc.viewport * 2.0 - 1.0, 0.0, 1.0);
+    // A projective transform (a 3D-rotated layer) divides by w; handing w to the rasteriser
+    // keeps the interpolated local and texture coordinates perspective-correct.
+    float w = 1.0 + dot(iXform2.zw, pos);
+    vec2 device = (m * pos + iXform2.xy) / w;
+    gl_Position = vec4(((device - pc.origin) / pc.viewport * 2.0 - 1.0) * w, 0.0, w);
 }

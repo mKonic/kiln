@@ -64,6 +64,9 @@ namespace kiln::ui {
         // With `clipPath` (local), the layer is masked to it (anti-aliased clip by path).
         void BeginLayer(Rect bounds, float alpha, const gfx::Path* clipPath = nullptr);
         void EndLayer(float stretchX = 0, float stretchY = 0);   // with a stretch overscroll
+        // Composites the layer through a projective transform `h` (row-major 3x3, local
+        // coordinates of the BeginLayer call -> local), for 3D-rotated graphics layers.
+        void EndLayerProjective(const float h[9]);
         void Save() { m_Stack.push_back(m_State); }
         void Restore();
         void SetSize(Size s) { m_Size = s; }

@@ -117,7 +117,7 @@ namespace kiln {
         instance.clipParams[2] = instance.clipParams[3] = 0;
         const Transform& t = m_Transform;
         instance.xform[0] = t.a; instance.xform[1] = t.b; instance.xform[2] = t.c; instance.xform[3] = t.d;
-        instance.xform2[0] = t.e; instance.xform2[1] = t.f; instance.xform2[2] = instance.xform2[3] = 0;
+        instance.xform2[0] = t.e; instance.xform2[1] = t.f; instance.xform2[2] = t.g; instance.xform2[3] = t.h;
         const Transform& ci = m_Clip.inverse;
         instance.clipInv[0] = ci.a; instance.clipInv[1] = ci.b; instance.clipInv[2] = ci.c; instance.clipInv[3] = ci.d;
         instance.clipInv2[0] = ci.e; instance.clipInv2[1] = ci.f; instance.clipInv2[2] = instance.clipInv2[3] = 0;

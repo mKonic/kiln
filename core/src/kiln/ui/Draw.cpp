@@ -300,6 +300,44 @@ namespace kiln::ui {
         ClipRect(bounds);
     }
 
+    void DrawScope::EndLayerProjective(const float h[9]) {
+        if (m_Layers.empty()) return;
+        Layer l = m_Layers.back();
+        m_Layers.pop_back();
+        m_State = l.saved;
+        ApplyClip();
+        if (!l.active) return;
+        const QuadRenderer::LayerResult r = m_Target.quads->EndLayer();
+        if (!r.page) return;
+        // The layer holds the content drawn under the parent transform P (device pixels);
+        // device -> device is P * H * P^-1.
+        const gfx::Matrix& p = l.saved.m;
+        const double P[9] = { p.a, p.c, p.e, p.b, p.d, p.f, 0, 0, 1 };
+        const double det = double(p.a) * p.d - double(p.b) * p.c;
+        if (std::abs(det) < 1e-12) return;
+        const double Pi[9] = { p.d / det, -p.c / det, (p.c * p.f - p.d * p.e) / det,
+                               -p.b / det, p.a / det, (p.b * p.e - p.a * p.f) / det, 0, 0, 1 };
+        auto mul = [](const double* x, const double* y, double* o) {
+            for (int i = 0; i < 3; ++i) for (int j = 0; j < 3; ++j) o[i * 3 + j] = x[i * 3] * y[j] + x[i * 3 + 1] * y[3 + j] + x[i * 3 + 2] * y[6 + j];
+        };
+        const double H[9] = { h[0], h[1], h[2], h[3], h[4], h[5], h[6], h[7], h[8] };
+        double t[9], d[9];
+        mul(P, H, t);
+        mul(t, Pi, d);
+        if (std::abs(d[8]) < 1e-12) return;
+        for (double& v : d) v /= d[8];
+        QuadRenderer::Transform x;
+        x.a = float(d[0]); x.c = float(d[1]); x.e = float(d[2]);
+        x.b = float(d[3]); x.d = float(d[4]); x.f = float(d[5]);
+        x.g = float(d[6]); x.h = float(d[7]);
+        const float a = l.alpha;
+        const float u = l.device.Width() / float(r.page->Width()), v = l.device.Height() / float(r.page->Height());
+        m_Target.quads->SetTransform(x);
+        m_Target.quads->DrawAtlas({ l.device.left, l.device.top, l.device.Width(), l.device.Height() }, { 0, 0, u, v }, *r.page,
+                                  { a, a, a, a }, QuadRenderer::Mode::Color);
+        m_Target.quads->SetTransform({});
+    }
+
     void DrawScope::EndLayer(float stretchX, float stretchY) {
         if (m_Layers.empty()) return;
         Layer l = m_Layers.back();

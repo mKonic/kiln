@@ -150,6 +150,23 @@ namespace {
                     });
                 });
             }
+            // 3D tilts: rotationX / rotationY in perspective (the default camera distance).
+            Row(Padding(Modifier{}, 16_dp, 8_dp), Arrangement::SpacedBy(24_dp), AlignmentV::CenterVertically(), [] {
+                GraphicsLayerParams tiltX;
+                tiltX.rotationX = 45;
+                tiltX.clip = true;
+                tiltX.shape = CornerShape::Rounded(12_dp);
+                Box(Background(GraphicsLayer(SizeMod(Modifier{}, 140_dp, 80_dp), tiltX), kPrimary), Alignment::Center(), false, [] {
+                    BasicText("rotationX 45", {}, { 16, kOnPrimary });
+                });
+                GraphicsLayerParams tiltY;
+                tiltY.rotationY = 50;
+                tiltY.clip = true;
+                tiltY.shape = CornerShape::Rounded(12_dp);
+                Box(Background(GraphicsLayer(SizeMod(Modifier{}, 140_dp, 80_dp), tiltY), kTertiary), Alignment::Center(), false, [] {
+                    BasicText("rotationY 50", {}, { 16, kOnPrimary });
+                });
+            });
             // Group alpha: overlapping circles fade as one image (offscreen layer).
             Row(Padding(Modifier{}, 16_dp, 0_dp), Arrangement::SpacedBy(16_dp), AlignmentV::CenterVertically(), [&] {
                 Box(Alpha(SizeMod(Modifier{}, 80_dp, 48_dp), 0.5f), Alignment::TopStart(), false, [&] {

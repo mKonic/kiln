@@ -113,6 +113,10 @@ namespace kiln::foundation {
     struct GraphicsLayerParams {
         float alpha = 1, scaleX = 1, scaleY = 1, translationX = 0, translationY = 0;
         float rotationZ = 0;                  // degrees, clockwise
+        // Degrees about the horizontal / vertical axis through the pivot, seen by a camera
+        // `cameraDistance` away (RenderNode units: 72 px each, so 8 = 576 px). The layer renders
+        // offscreen and is composited in perspective.
+        float rotationX = 0, rotationY = 0, cameraDistance = 8;
         float originX = 0.5f, originY = 0.5f; // transform origin (pivot) as a fraction of the size
         bool clip = false;
         CornerShape shape;
@@ -120,6 +124,8 @@ namespace kiln::foundation {
         bool operator==(const GraphicsLayerParams&) const = default;
     };
     Modifier GraphicsLayer(Modifier m, GraphicsLayerParams p);
+    // The layer's full matrix (row-major 3x3, projective with rotationX/Y) for a layer of `size`.
+    void GraphicsLayerMatrix(const GraphicsLayerParams& p, Size size, float out[9]);
     inline Modifier Rotate(Modifier m, float degrees) { GraphicsLayerParams p; p.rotationZ = degrees; return GraphicsLayer(std::move(m), p); }
     inline Modifier Alpha(Modifier m, float a) { GraphicsLayerParams p; p.alpha = a; return GraphicsLayer(std::move(m), p); }
     inline Modifier ClipToBounds(Modifier m) { GraphicsLayerParams p; p.clip = true; return GraphicsLayer(std::move(m), p); }

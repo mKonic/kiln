@@ -1,6 +1,9 @@
 #include "Check.h"
+#include <cmath>
 
+#include <cmath>
 #include "kiln/foundation/Compose.h"
+#include <cmath>
 
 using namespace kiln;
 using namespace kiln::foundation;
@@ -162,4 +165,41 @@ TEST(StateChangeRemeasuresOnlyWhatChanged) {
     h.owner.MeasureAndLayout({ 100, 100 });
     CHECK_EQ(box->Size().width, 25);
     CHECK_EQ(after->Position().x, 25);
+}
+
+namespace {
+    Offset MapH(const float h[9], Offset p) {
+        const float w = h[6] * p.x + h[7] * p.y + h[8];
+        return { (h[0] * p.x + h[1] * p.y + h[2]) / w, (h[3] * p.x + h[4] * p.y + h[5]) / w };
+    }
+}
+
+TEST(GraphicsLayerMatrixRotatesInPerspective) {
+    const Size size{ 200, 100 };   // pivot at the centre (100, 50)
+    float h[9];
+    GraphicsLayerParams p;
+    p.rotationY = 90;              // edge-on: everything on the vertical line through the pivot
+    GraphicsLayerMatrix(p, size, h);
+    CHECK(std::abs(MapH(h, { 0, 0 }).x - 100) < 0.01f);
+    CHECK(std::abs(MapH(h, { 200, 100 }).x - 100) < 0.01f);
+    p.rotationY = 180;             // mirrored left to right, no perspective left
+    GraphicsLayerMatrix(p, size, h);
+    CHECK(std::abs(MapH(h, { 0, 0 }).x - 200) < 0.01f && std::abs(MapH(h, { 0, 0 }).y) < 0.01f);
+    p.rotationY = 0;
+    p.rotationX = 180;             // upside down
+    GraphicsLayerMatrix(p, size, h);
+    CHECK(std::abs(MapH(h, { 0, 0 }).y - 100) < 0.01f && std::abs(MapH(h, { 0, 0 }).x) < 0.01f);
+    // A tilt: one vertical edge comes nearer (taller), the other recedes (shorter).
+    p.rotationX = 0;
+    p.rotationY = 60;
+    GraphicsLayerMatrix(p, size, h);
+    const float left = MapH(h, { 0, 100 }).y - MapH(h, { 0, 0 }).y, right = MapH(h, { 200, 100 }).y - MapH(h, { 200, 0 }).y;
+    CHECK(std::abs(left - right) > 5);
+    CHECK(std::abs((left + right) / 2 - 100) < 15);
+    // No rotation: the 2D path (translation, rotation, scale about the pivot).
+    GraphicsLayerParams q;
+    q.translationX = 10;
+    q.scaleX = 2;
+    GraphicsLayerMatrix(q, size, h);
+    CHECK(std::abs(MapH(h, { 0, 0 }).x - (-100 + 10)) < 0.01f);
 }

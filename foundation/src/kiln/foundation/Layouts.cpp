@@ -522,6 +522,42 @@ namespace kiln::foundation {
             float r = sh.percent >= 0 ? size.MinDimension() * sh.percent / 100.0f : d.ToPx(sh.topStart);
             return std::min(r, size.MinDimension() / 2);
         }
+        // RenderProperties::updateMatrix with rotationX/Y: translate(pivot + t) * camera * scale *
+        // translate(-pivot), the camera being Sk3DView's (rotateX, rotateY, rotateZ(-rz)) seen from
+        // z = -72 * cameraDistance through SkCamera3D::patchToMatrix. Row-major 3x3.
+        void LayerMatrix3D(const GraphicsLayerParams& p, Size size, float out[9]) {
+            const double px = size.width * p.originX, py = size.height * p.originY;
+            auto rot = [](double ax, double ay, double az, double deg, double r[9]) {
+                const double a = deg * 3.14159265358979323846 / 180.0, c = std::cos(a), s = std::sin(a), t = 1 - c;
+                const double m[9] = { t * ax * ax + c, t * ax * ay - s * az, t * ax * az + s * ay,
+                                      t * ax * ay + s * az, t * ay * ay + c, t * ay * az - s * ax,
+                                      t * ax * az - s * ay, t * ay * az + s * ax, t * az * az + c };
+                std::copy(m, m + 9, r);
+            };
+            auto mul = [](const double* x, const double* y, double* o) {
+                double r[9];
+                for (int i = 0; i < 3; ++i) for (int j = 0; j < 3; ++j) r[i * 3 + j] = x[i * 3] * y[j] + x[i * 3 + 1] * y[3 + j] + x[i * 3 + 2] * y[6 + j];
+                std::copy(r, r + 9, o);
+            };
+            double rx[9], ry[9], rz[9], m[9];
+            rot(1, 0, 0, p.rotationX, rx);
+            rot(0, -1, 0, p.rotationY, ry);
+            rot(0, 0, 1, -p.rotationZ, rz);
+            mul(rx, ry, m);
+            mul(m, rz, m);
+            // The patch's u = M (1, 0, 0), v = M (0, -1, 0); the camera on the z axis at lz.
+            const double ux = m[0], uy = m[3], uz = m[6];
+            const double vx = -m[1], vy = -m[4], vz = -m[7];
+            const double lz = -72.0 * std::max(0.0f, p.cameraDistance);
+            const double cam[9] = { ux, vx, 0, -uy, -vy, 0, uz / -lz, vz / -lz, 1 };
+            const double tr[9] = { 1, 0, px + p.translationX, 0, 1, py + p.translationY, 0, 0, 1 };
+            const double sc[9] = { p.scaleX, 0, -px * p.scaleX, 0, p.scaleY, -py * p.scaleY, 0, 0, 1 };   // S * T(-pivot)
+            double h[9];
+            mul(tr, cam, h);
+            mul(h, sc, h);
+            for (int i = 0; i < 9; ++i) out[i] = float(h[i]);
+        }
+
         struct LayerNode final : ModifierNode, DrawModifier {
             GraphicsLayerParams params;
             explicit LayerNode(GraphicsLayerParams p) : params(p) {}
@@ -541,6 +577,7 @@ namespace kiln::foundation {
             DrawModifier* AsDraw() override { return this; }
             void Draw(ContentDrawScope& s) override {
                 const Size size = s.GetSize();
+                if ((params.rotationX != 0 || params.rotationY != 0) && params.alpha > 0) { Draw3D(s, size); return; }
                 s.Save();
                 // RenderNode order: translation, then rotation and scale about the pivot (scale first).
                 s.Translate({ params.translationX, params.translationY });
@@ -575,10 +612,34 @@ namespace kiln::foundation {
                 if (offscreen) s.EndLayer();
                 s.Restore();
             }
+            // rotationX / rotationY: the content renders flat (clipped as usual) into a layer that
+            // is composited through the perspective matrix (it is planar, so this is the same image).
+            void Draw3D(ContentDrawScope& s, Size size) {
+                s.Save();
+                s.BeginLayer({ 0, 0, size.width, size.height }, params.alpha);
+                std::optional<gfx::Path> clipPath;
+                if (params.clip) {
+                    if (params.clipShape) {
+                        auto outline = params.clipShape->CreateOutline(size, s.Direction(), s);
+                        if (auto* r = std::get_if<Rect>(&outline.value)) s.ClipRect(*r);
+                        else clipPath = outline.ToPath();
+                    } else {
+                        s.ClipRect({ 0, 0, size.width, size.height }, CornerRadiusPx(params.shape, size, s));
+                    }
+                }
+                if (clipPath) s.BeginLayer({ 0, 0, size.width, size.height }, 1, &*clipPath);
+                s.DrawContent();
+                if (clipPath) s.EndLayer();
+                float h[9];
+                LayerMatrix3D(params, size, h);
+                s.EndLayerProjective(h);
+                s.Restore();
+            }
         };
     }
 
     Modifier GraphicsLayer(Modifier m, GraphicsLayerParams p) { return m.With<LayerNode>(p); }
+    void GraphicsLayerMatrix(const GraphicsLayerParams& p, Size size, float out[9]) { LayerMatrix3D(p, size, out); }
 
     Modifier Padding(Modifier m, PaddingValues p) { return m.With<PaddingNode>(p); }
     Modifier SizeIn(Modifier m, Dp minW, Dp minH, Dp maxW, Dp maxH, bool enforce) { return m.With<SizeNode>(SizeParams{ minW, minH, maxW, maxH, enforce }); }

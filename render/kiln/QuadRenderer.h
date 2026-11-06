@@ -74,7 +74,8 @@ namespace kiln {
         void SetRampTexture(hearth::Ref<hearth::Texture> ramp) { m_Ramp = std::move(ramp); m_Groups.clear(); }
         // Affine transform (x' = a*x + c*y + e, y' = b*x + d*y + f) applied to quads submitted
         // after this call: their rects are in its local space.
-        struct Transform { float a = 1, b = 0, c = 0, d = 1, e = 0, f = 0; };
+        // Affine a..f; g, h are the perspective row (x' = (a x + c y + e) / (g x + h y + 1)).
+        struct Transform { float a = 1, b = 0, c = 0, d = 1, e = 0, f = 0, g = 0, h = 0; };
         void SetTransform(const Transform& t) { m_Transform = t; }
         // Clip applied to quads submitted after this call: a rounded rect (x0, y0, x1, y1, radius)
         // in the space `inverse` maps framebuffer pixels into (identity: framebuffer pixels).
