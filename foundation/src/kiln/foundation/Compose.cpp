@@ -1,6 +1,7 @@
 #include "kiln/foundation/Compose.h"
 
 #include "kiln/TextBackend.h"
+#include "kiln/foundation/Semantics.h"
 
 #include <cmath>
 #include <map>
@@ -101,7 +102,7 @@ namespace kiln::foundation {
     }
 
     void BasicText(const std::string& text, const Modifier& modifier, TextStyle style, Key key) {
-        Modifier m = modifier.With<TextNode>(TextParams{ text, style });
+        Modifier m = Semantics(modifier, [text](SemanticsConfiguration& c) { c.text.push_back(text); }).With<TextNode>(TextParams{ text, style });
         ValueLayout<BoxPolicy>(m, {}, key, Alignment::TopStart(), false);
     }
 

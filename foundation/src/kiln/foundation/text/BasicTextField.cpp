@@ -3,6 +3,7 @@
 #include "kiln/TextBackend.h"
 #include "kiln/foundation/Focus.h"
 #include "kiln/foundation/Gestures.h"
+#include "kiln/foundation/Semantics.h"
 
 #include <cmath>
 
@@ -242,6 +243,18 @@ namespace kiln::foundation {
             };
             return DetectTapGestures(s, cb);
         });
+        // Text field semantics (spec 04 req. 7): editable text, focus, set text, selection.
+        const TextFieldValue& val = state.Value();
+        const bool password = options.ime.keyboardType == ui::KeyboardType::Password || options.ime.keyboardType == ui::KeyboardType::NumberPassword;
+        m = Semantics(std::move(m), [c, text = ToUtf8(val.text), sel = val.selection, password](SemanticsConfiguration& cfg) {
+            cfg.editableText = text;
+            cfg.password = password;
+            cfg.focused = c->focused;
+            cfg.textSelection = std::make_pair(sel.start, sel.end);
+            cfg.setText = [c](const std::string& t) { c->state->SetText(t); c->AfterLocalEdit(true); return true; };
+            cfg.requestFocus = [c] { return c->requester.RequestFocus(); };
+            cfg.onClick = [c] { if (!c->focused) c->requester.RequestFocus(); else if (c->owner) c->owner->StartTextInput(c->session); return true; };
+        }, true);
         m = m.With<FieldNode>(FieldParams{ c });
         Layout(m, std::make_shared<LambdaMeasurePolicy>([](MeasureScope& s, std::span<Measurable* const>, const Constraints& con) {
             return s.Layout(con.minWidth, con.minHeight);

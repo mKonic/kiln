@@ -2,6 +2,7 @@
 
 #include "kiln/runtime/Task.h"
 #include "kiln/foundation/Focus.h"
+#include "kiln/foundation/Semantics.h"
 
 #include <cmath>
 
@@ -420,6 +421,10 @@ namespace kiln::foundation {
             return false;
         });
         m = Focusable(std::move(m), Focusability::SystemDefined);
+        // ClickableSemanticsNode: merges descendants, exposes the click action.
+        m = Semantics(std::move(m), [click](SemanticsConfiguration& c) {
+            c.onClick = [click] { if (*click) (*click)(); return true; };
+        }, true);
         return PointerInput(std::move(m), rt::Keys(0), [click, pressed](PointerInputScope& s) {
             TapCallbacks cb;
             cb.onPress = [pressed](Offset) { if (*pressed) (*pressed)(true); };

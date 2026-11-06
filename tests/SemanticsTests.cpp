@@ -1,0 +1,135 @@
+#include "Check.h"
+
+#include "kiln/foundation/Compose.h"
+#include "kiln/foundation/Gestures.h"
+#include "kiln/foundation/Semantics.h"
+
+using namespace kiln;
+using namespace kiln::foundation;
+using namespace kiln::ui;
+
+namespace {
+    struct Harness {
+        Owner owner;
+        rt::Composition composition{ owner.Root(), rt::Dispatcher::Main() };
+        Harness() { owner.SetDensity({ 1, 1 }); }
+        void Run(std::function<void()> content) {
+            composition.SetContent(std::move(content));
+            composition.Recompose();
+            owner.MeasureAndLayout({ 300, 300 });
+        }
+    };
+    Modifier Label(Modifier m, std::string s) {
+        return Semantics(std::move(m), [s](SemanticsConfiguration& c) { c.text.push_back(s); });
+    }
+    int Count(const SemanticsNode& n) {
+        int k = 1;
+        for (const auto& c : n.children) k += Count(c);
+        return k;
+    }
+}
+
+TEST(SemanticsTreeSkipsNodesWithoutContent) {
+    Harness h;
+    h.Run([&] {
+        Column(Modifier{}, [&] {
+            Box(Label(SizeMod({}, Dp(10), Dp(20)), "a"));
+            Box(SizeMod({}, Dp(10), Dp(20)));
+            Box(Modifier{}, Alignment::TopStart(), false, [&] { Box(Label(SizeMod({}, Dp(10), Dp(20)), "b")); });
+        });
+    });
+    const SemanticsNode root = h.owner.BuildSemanticsTree();
+    CHECK_EQ(root.id, -1);
+    CHECK_EQ(int(root.children.size()), 2);   // a, b (wrappers without content are transparent)
+    CHECK_EQ(root.children[0].config.text[0], std::string("a"));
+    CHECK_EQ(root.children[1].config.text[0], std::string("b"));
+    CHECK_EQ(root.children[1].boundsInRoot.top, 40.f);
+}
+
+TEST(ClickableMergesDescendants) {
+    Harness h;
+    int clicks = 0;
+    h.Run([&] {
+        Row(Clickable({}, [&] { ++clicks; }), [&] {
+            Box(Label(SizeMod({}, Dp(10), Dp(10)), "Save"));
+            Box(Label(SizeMod({}, Dp(10), Dp(10)), "now"));
+        });
+    });
+    const SemanticsNode root = h.owner.BuildSemanticsTree();
+    CHECK_EQ(int(root.children.size()), 1);
+    const auto& button = root.children[0];
+    CHECK_EQ(int(button.config.text.size()), 2);
+    CHECK_EQ(button.config.text[1], std::string("now"));
+    CHECK(button.children.empty());           // merged children are not exposed separately
+    CHECK(bool(button.config.onClick));
+    CHECK(button.config.onClick());
+    CHECK_EQ(clicks, 1);
+}
+
+TEST(ClearAndSetReplacesDescendants) {
+    Harness h;
+    h.Run([&] {
+        Box(ClearAndSetSemantics({}, [](SemanticsConfiguration& c) { c.contentDescription.push_back("Avatar"); }), Alignment::TopStart(), false, [&] {
+            Box(Label(SizeMod({}, Dp(10), Dp(10)), "hidden"));
+        });
+    });
+    const SemanticsNode root = h.owner.BuildSemanticsTree();
+    CHECK_EQ(Count(root), 2);
+    CHECK_EQ(root.children[0].config.contentDescription[0], std::string("Avatar"));
+    CHECK(root.children[0].config.text.empty());
+}
+
+TEST(SemanticsVersionBumpsOnChangeAndIdsStayStable) {
+    Harness h;
+    rt::State<std::string> label("one");
+    rt::State<bool> show(true);
+    h.Run([&] {
+        Column(Modifier{}, [&] {
+            Box(Label(SizeMod({}, Dp(10), Dp(10)), label.Get()));
+            if (show.Get()) Box(Label(SizeMod({}, Dp(10), Dp(10)), "extra"));
+        });
+    });
+    const int id = h.owner.BuildSemanticsTree().children[0].id;
+    auto v = h.owner.SemanticsVersion();
+    label.Set("two");
+    h.composition.Recompose();
+    h.owner.MeasureAndLayout({ 300, 300 });
+    CHECK(h.owner.SemanticsVersion() != v);
+    SemanticsNode root = h.owner.BuildSemanticsTree();
+    CHECK_EQ(root.children[0].id, id);
+    CHECK_EQ(root.children[0].config.text[0], std::string("two"));
+    v = h.owner.SemanticsVersion();
+    show.Set(false);
+    h.composition.Recompose();
+    h.owner.MeasureAndLayout({ 300, 300 });
+    CHECK(h.owner.SemanticsVersion() != v);
+    CHECK_EQ(int(h.owner.BuildSemanticsTree().children.size()), 1);
+    CHECK(h.owner.FindBySemanticsId(id) != nullptr);
+}
+
+TEST(ClippedAndCoveredNodesAreDropped) {
+    Harness h;
+    h.Run([&] {
+        Box(Modifier{}, Alignment::TopStart(), false, [&] {
+            // A 100x50 clipping viewport over a 100x200 column: rows below 50 px are clipped away.
+            Box(ClipToBounds(SizeMod({}, Dp(100), Dp(50))), Alignment::TopStart(), false, [&] {
+                Column(SizeMod(WrapContent({}, Axis::Vertical, Alignment::TopStart(), true), Dp(100), Dp(200)), [&] {
+                    Box(Label(SizeMod({}, Dp(100), Dp(40)), "visible"));
+                    Box(Label(SizeMod({}, Dp(100), Dp(40)), "partly"));
+                    Box(Label(SizeMod({}, Dp(100), Dp(40)), "clipped"));
+                });
+            });
+            // Drawn later at the same place: covers "under" completely.
+            Box(Label(OffsetMod(SizeMod({}, Dp(50), Dp(50)), Dp(200), Dp(0)), "under"));
+            Box(Label(OffsetMod(SizeMod({}, Dp(60), Dp(60)), Dp(195), Dp(0)), "over"));
+        });
+    });
+    const SemanticsNode root = h.owner.BuildSemanticsTree();
+    std::vector<std::string> seen;
+    for (const auto& c : root.children) seen.push_back(c.config.text[0]);
+    CHECK_EQ(int(seen.size()), 3);
+    CHECK_EQ(seen[0], std::string("visible"));
+    CHECK_EQ(seen[1], std::string("partly"));
+    CHECK_EQ(seen[2], std::string("over"));
+    CHECK_EQ(root.children[1].boundsInRoot.bottom, 50.f);   // clipped to the viewport
+}

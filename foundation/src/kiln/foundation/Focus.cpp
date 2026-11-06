@@ -1,6 +1,7 @@
 #include "kiln/foundation/Focus.h"
 
 #include "kiln/runtime/Composition.h"
+#include "kiln/ui/Semantics.h"
 
 namespace kiln::foundation {
 
@@ -18,9 +19,15 @@ namespace kiln::foundation {
             Focusability f; std::shared_ptr<std::function<void(FocusState)>> cb;
             bool operator==(const FocusParams& o) const { return f == o.f && cb == o.cb; }
         };
-        struct FocusNode final : FocusTargetNode {
+        struct FocusNode final : FocusTargetNode, ui::SemanticsModifier {
             FocusParams params;
             explicit FocusNode(FocusParams p) : params(std::move(p)) { Apply(); }
+            // FocusableNode.applySemantics: focused state and the requestFocus action.
+            ui::SemanticsModifier* AsSemantics() override { return this; }
+            void ApplySemantics(ui::SemanticsConfiguration& c) override {
+                c.focused = IsFocused(State());
+                c.requestFocus = [this] { return RequestFocus(); };
+            }
             void OnParamsChanged() { Apply(); }
             void Apply() {
                 focusability = params.f;

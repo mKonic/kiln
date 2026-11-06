@@ -441,7 +441,8 @@ namespace kiln::foundation {
         struct LayerNode final : ModifierNode, DrawModifier {
             GraphicsLayerParams params;
             explicit LayerNode(GraphicsLayerParams p) : params(p) {}
-            void OnParamsChanged() { InvalidateDraw(); }
+            void OnParamsChanged() { InvalidateDraw(); InvalidateSemantics(); }
+            bool ClipsChildren() const override { return params.clip; }
             DrawModifier* AsDraw() override { return this; }
             void Draw(ContentDrawScope& s) override {
                 const Size size = s.GetSize();
