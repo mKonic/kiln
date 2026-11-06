@@ -115,10 +115,10 @@ namespace kiln::foundation {
                                                       float startLocation = 0, PolygonCornerRounding outerRounding = {},
                                                       std::optional<PolygonCornerRounding> innerRounding = std::nullopt);
         static std::shared_ptr<PolygonShape> Circle(int numVertices = 8);
-        static std::shared_ptr<PolygonShape> Rectangle(PolygonCornerRounding rounding);
+        static std::shared_ptr<PolygonShape> Rectangle(PolygonCornerRounding rounding = {});
         // Start / end follow the layout direction.
-        static std::shared_ptr<PolygonShape> Rectangle(PolygonCornerRounding topStart = {}, PolygonCornerRounding topEnd = {},
-                                                       PolygonCornerRounding bottomEnd = {}, PolygonCornerRounding bottomStart = {});
+        static std::shared_ptr<PolygonShape> Rectangle(PolygonCornerRounding topStart, PolygonCornerRounding topEnd,
+                                                       PolygonCornerRounding bottomEnd, PolygonCornerRounding bottomStart);
         static std::shared_ptr<PolygonShape> AbsoluteRectangle(PolygonCornerRounding topLeft = {}, PolygonCornerRounding topRight = {},
                                                                PolygonCornerRounding bottomRight = {}, PolygonCornerRounding bottomLeft = {});
 

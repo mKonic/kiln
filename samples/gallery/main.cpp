@@ -18,6 +18,7 @@
 #include <kiln/foundation/Pager.h>
 #include <kiln/foundation/Image.h>
 #include <kiln/foundation/Shapes.h>
+#include <kiln/foundation/PolygonShape.h>
 #include <kiln/graphics/shapes/Shapes.h>
 
 #include <kiln/Assets.h>
@@ -255,6 +256,23 @@ namespace {
                     kiln::gfx::Path p = MorphToPath(morph, morphT.Get(), 0);
                     p.Transform(kiln::gfx::Matrix::Scale(d.GetSize().width, d.GetSize().height));
                     d.DrawPath(p, kiln::gfx::Brush::LinearGradient({ kPrimary, kTertiary }));
+                });
+            }
+            // PolygonShape: a rounded rectangle morphing into a rotated, rounded pill star, as a
+            // background shape (the morph progress is read at draw time).
+            {
+                static const auto rect = PolygonShape::Rectangle(PolygonCornerRounding::Fraction(0.25f));
+                static const auto star = [] {
+                    auto s = PolygonShape::PillStar(8, 0.6f, 0.5f, 0, PolygonCornerRounding::Fraction(0.1f));
+                    s->Transform([](PolygonShapeTransformScope& t) { t.Rotate(22.5f); });
+                    return s;
+                }();
+                auto& polyT = RememberState(0.0f);
+                c.LaunchedEffect({}, [&polyT] { return Breathe(polyT); });
+                auto& shape = c.Remember<ShapePtr>([&polyT] { return MorphPolygonShape(rect, star, [&polyT] { return polyT.Get(); }); });
+                Row(Padding(Modifier{}, 16_dp, 0_dp), Arrangement::SpacedBy(16_dp), AlignmentV::CenterVertically(), [&] {
+                    Box(Background(SizeMod(Modifier{}, 120_dp, 72_dp), kTertiary, shape));
+                    Box(Background(SizeMod(Modifier{}, 72_dp, 72_dp), kPrimary, star));
                 });
             }
             // anchoredDraggable: a thumb that snaps to either end of its track.
