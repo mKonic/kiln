@@ -461,3 +461,42 @@ TEST(AnimateItemSlidesOutUnderAStickyHeader) {
     h.Frames(5);
     CHECK(nodes.count(0) == 1);
 }
+
+TEST(StaggeredGridPlacesItemsInTheShortestLane) {
+    Harness h;
+    LazyStaggeredGridState state;
+    const int heights[] = { 30, 50, 20, 40, 10, 30, 30, 30, 30, 30, 30, 30 };
+    h.Run([&] {
+        LazyVerticalStaggeredGrid(FillMax(Modifier{}, Axis::Both), GridCells::Fixed(2), state, [&](LazyStaggeredGridScope& s) {
+            s.Items(12, [&](int i) { Box(Height(Modifier{}, Dp(float(heights[i])))); }, {}, [](int i) { return i == 4; });
+        });
+    });
+    auto item = [&](int index) -> const LazyGridItemInfo* {
+        for (const auto& it : state.LayoutInfo().visibleItemsInfo) if (it.index == index) return &it;
+        return nullptr;
+    };
+    CHECK_EQ(item(0)->column, 0);
+    CHECK_EQ(item(1)->column, 1);
+    CHECK_EQ(item(1)->offset.x, 50);
+    CHECK_EQ(item(2)->offset.y, 30);   // under item 0 (lane 0 was shorter)
+    CHECK_EQ(item(3)->column, 0);      // lanes tie at 50: the first one
+    CHECK_EQ(item(3)->offset.y, 50);
+    CHECK_EQ(item(4)->offset.y, 90);   // full line: below every lane
+    CHECK_EQ(item(4)->size.width, 100);
+    CHECK(item(5) == nullptr);         // starts at 100: the viewport's end
+    state.ConsumeScrollDelta(60);
+    h.Pump();
+    CHECK_EQ(item(3)->offset.y, -10);
+    CHECK(item(0) == nullptr);
+    state.ScrollToItem(5);
+    h.Pump();
+    CHECK_EQ(state.FirstVisibleItemIndex(), 5);
+    CHECK_EQ(item(5)->offset.y, 0);
+    // The end: 12 items end at 190 (two lanes of 30 from 100); a 100 px viewport stops at 90.
+    state.ConsumeScrollDelta(500);
+    h.Pump();
+    CHECK(!state.CanScrollForward());
+    int bottom = 0;
+    for (const auto& it : state.LayoutInfo().visibleItemsInfo) bottom = std::max(bottom, it.offset.y + it.size.height);
+    CHECK_EQ(bottom, 100);
+}

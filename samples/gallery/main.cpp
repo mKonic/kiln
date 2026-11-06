@@ -216,6 +216,24 @@ namespace {
                         Box(Background(SizeMod(Modifier{}, 8_dp, 8_dp), pager.CurrentPage() == i ? kPrimary : kPrimaryContainer, CornerShape::Pill()));
                 });
             }
+            // A staggered grid: three lanes of tiles of different heights, a full-width banner.
+            {
+                auto& stagState = c.RememberNew<LazyStaggeredGridState>({}, {});
+                LazyStaggeredGridOptions so;
+                so.contentPadding = { 16_dp, 0_dp, 16_dp, 0_dp };
+                so.mainAxisItemSpacing = 8_dp;
+                so.crossAxisArrangement = Arrangement::SpacedBy(8_dp);
+                LazyVerticalStaggeredGrid(Height(FillMax(Modifier{}, Axis::Horizontal), 220_dp), GridCells::Fixed(3), stagState,
+                                          [](LazyStaggeredGridScope& s) {
+                    s.Items(40, [](int i) {
+                        const Dp h = i == 6 ? 40_dp : Dp(float(48 + (i * 37) % 64));
+                        Box(Background(Height(Modifier{}, h), i == 6 ? kTertiary : (i % 3 == 0 ? kPrimary : kPrimaryContainer), CornerShape::Rounded(12_dp)),
+                            Alignment::Center(), false, [i] {
+                            BasicText(i == 6 ? "Full line" : std::to_string(i), {}, { 14, i == 6 || i % 3 == 0 ? kOnPrimary : kOnSurface });
+                        });
+                    }, {}, [](int i) { return i == 6; });
+                }, so);
+            }
             // Mixed text sizes sharing a baseline (alignByBaseline).
             Row(Padding(Modifier{}, 16_dp, 0_dp), Arrangement::SpacedBy(8_dp), AlignmentV::Top(), [&] {
                 BasicText("Baseline", AlignByBaseline({}), { 32, kOnSurface });

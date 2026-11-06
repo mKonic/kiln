@@ -137,6 +137,16 @@ namespace kiln::foundation {
         rt::State<LazyGridLayoutInfo> m_Info{ LazyGridLayoutInfo{} };
     };
 
+    class LazyStaggeredGridState final : public LazyStateBase {
+    public:
+        explicit LazyStaggeredGridState(int firstIndex = 0, int firstOffset = 0) : LazyStateBase(firstIndex, firstOffset) {}
+        // Items carry their lane in `column` (row is -1).
+        const LazyGridLayoutInfo& LayoutInfo() const { return m_Info.Get(); }
+    private:
+        friend struct LazyCore;
+        rt::State<LazyGridLayoutInfo> m_Info{ LazyGridLayoutInfo{} };
+    };
+
     struct LazyInterval {
         int count;
         std::function<void(int)> content;
@@ -171,6 +181,16 @@ namespace kiln::foundation {
         // A full-line header that sticks like LazyColumn's.
         void StickyHeader(std::function<void(int index)> content, rt::Key key = rt::Key::Positional());
 
+        std::vector<LazyInterval> intervals;
+    };
+
+    // LazyStaggeredGridScope: items go to the shortest lane; full-line items span all lanes and
+    // start below every lane (StaggeredGridItemSpan.FullLine).
+    class LazyStaggeredGridScope {
+    public:
+        void Item(std::function<void()> content, rt::Key key = rt::Key::Positional(), bool fullLine = false);
+        void Items(int count, std::function<void(int)> content, std::function<rt::Key(int)> key = {},
+                   std::function<bool(int index)> fullLine = {});
         std::vector<LazyInterval> intervals;
     };
 
@@ -222,6 +242,18 @@ namespace kiln::foundation {
     };
     void LazyPagerLayout(bool vertical, const Modifier& modifier, LazyStateBase& state, int pageCount,
                          std::function<void(int page)> content, std::function<rt::Key(int)> key, LazyPagerConfig config, rt::Key compositionKey);
+
+    struct LazyStaggeredGridOptions {
+        PaddingValues contentPadding;
+        Dp mainAxisItemSpacing{ 0 };                               // verticalItemSpacing (vertical grids)
+        Arrangement crossAxisArrangement = Arrangement::Start();   // lanes: spacing and placement
+        bool userScrollEnabled = true;
+    };
+
+    void LazyVerticalStaggeredGrid(const Modifier& modifier, GridCells columns, LazyStaggeredGridState& state,
+                                   std::function<void(LazyStaggeredGridScope&)> content, LazyStaggeredGridOptions options = {}, rt::Key key = {});
+    void LazyHorizontalStaggeredGrid(const Modifier& modifier, GridCells rows, LazyStaggeredGridState& state,
+                                     std::function<void(LazyStaggeredGridScope&)> content, LazyStaggeredGridOptions options = {}, rt::Key key = {});
 
     void LazyColumn(const Modifier& modifier, LazyListState& state, std::function<void(LazyListScope&)> content,
                     LazyListOptions options = {}, rt::Key key = {});

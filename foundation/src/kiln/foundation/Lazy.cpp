@@ -41,6 +41,19 @@ namespace kiln::foundation {
         intervals.push_back({ 1, std::move(content), key.value ? std::function<rt::Key(int)>([key](int) { return key; }) : nullptr, true });
     }
 
+    void LazyStaggeredGridScope::Item(std::function<void()> content, rt::Key key, bool fullLine) {
+        auto c = std::make_shared<std::function<void()>>(std::move(content));
+        LazyInterval iv{ 1, [c](int) { (*c)(); }, key.value ? std::function<rt::Key(int)>([key](int) { return key; }) : nullptr };
+        if (fullLine) iv.span = [](int, int, int max) { return max; };
+        intervals.push_back(std::move(iv));
+    }
+    void LazyStaggeredGridScope::Items(int count, std::function<void(int)> content, std::function<rt::Key(int)> key,
+                                       std::function<bool(int)> fullLine) {
+        LazyInterval iv{ count, std::move(content), std::move(key) };
+        if (fullLine) iv.span = [fullLine](int i, int, int max) { return fullLine(i) ? max : 1; };
+        intervals.push_back(std::move(iv));
+    }
+
     // GridCells.calculateCrossAxisCellSizes (LazyGridDsl.kt).
     std::vector<int> GridCells::CellSizes(const Density& d, int available, int spacing) const {
         auto split = [&](int slots) {
@@ -176,6 +189,15 @@ namespace kiln::foundation {
         Arrangement crossArrangement = Arrangement::Start();    // grid slots
         GridCells cells;
         bool pager = false;
+        // Staggered grids: positions of the items measured so far (a prefix from item 0).
+        bool staggered = false;
+        LazyStaggeredGridState* stagState = nullptr;
+        struct StagItem { std::uint64_t key; int lane; int top; int size; bool full; };
+        std::vector<StagItem> stag;
+        std::vector<int> stagLaneSizes;
+        std::uint64_t stagCheckedVersion = ~0ull;
+        float stagScroll = 0;
+        MeasureResult MeasureStaggered(LayoutNode& self, MeasureScope& s, const Constraints& c);
         std::function<int(const Density&, int, int)> pageSize;
         std::vector<LazyInterval> intervals;
         std::uint64_t version = 0;
@@ -460,7 +482,189 @@ namespace kiln::foundation {
 
     // --- measure ----------------------------------------------------------------------------------
 
+    // --- staggered grids (LazyStaggeredGridMeasure, simplified: lanes from a cached prefix) -----
+
+    MeasureResult LazyCore::MeasureStaggered(LayoutNode& self, MeasureScope& s, const Constraints& c) {
+        LazyStateBase& st = *state;
+        st.m_Node = &self;
+        rt::Dispatcher& d = rt::Dispatcher::Main();
+        const int mainMax = vertical ? c.maxHeight : c.maxWidth;
+        const int crossMax = vertical ? c.maxWidth : c.maxHeight;
+        const int before = s.RoundToPx(vertical ? contentPadding.top : contentPadding.start);
+        const int after = s.RoundToPx(vertical ? contentPadding.bottom : contentPadding.end);
+        const int crossBefore = s.RoundToPx(vertical ? contentPadding.start : contentPadding.top);
+        const int crossPad = crossBefore + s.RoundToPx(vertical ? contentPadding.end : contentPadding.bottom);
+        const int spacing = s.RoundToPx(mainSpacing);
+        const int crossAvailable = std::max(0, crossMax - crossPad);
+        const int crossSpacing = s.RoundToPx(crossArrangement.Spacing());
+        std::vector<int> sizes = cells.CellSizes(s, crossAvailable, crossSpacing), positions(sizes.size(), 0);
+        crossArrangement.Arrange(s, crossAvailable, sizes, LayoutDirection::Ltr, positions);
+        const int lanes = int(sizes.size());
+        slotsPerLine = lanes;
+        if (sizes != stagLaneSizes) { stag.clear(); stagLaneSizes = sizes; }
+        // After a data change, keep the prefix only while its keys still match.
+        if (stagCheckedVersion != version) {
+            stagCheckedVersion = version;
+            std::size_t i = 0;
+            for (const std::size_t n = std::min(stag.size(), std::size_t(count)); i < n; ++i) if (stag[i].key != KeyOf(int(i)).value) break;
+            stag.resize(i);
+        }
+        if (int(stag.size()) > count) stag.resize(std::size_t(count));
+
+        std::vector<int> ends(std::size_t(lanes), 0);
+        auto rebuildEnds = [&] {
+            std::fill(ends.begin(), ends.end(), 0);
+            for (const auto& it : stag) {
+                if (it.full) std::fill(ends.begin(), ends.end(), it.top + it.size + spacing);
+                else ends[std::size_t(it.lane)] = it.top + it.size + spacing;
+            }
+        };
+        rebuildEnds();
+        std::vector<LayoutNode*> active;
+        std::map<int, Placeable*> measured;
+        auto isFull = [&](int i) { int local = 0; const auto* iv = IntervalOf(i, local); return iv && iv->span && iv->span(local, lanes, lanes) >= lanes; };
+        auto measureAt = [&](int i, int lane, bool full) -> Placeable& {
+            Slot& sl = Compose(i, d);
+            if (std::find(active.begin(), active.end(), sl.holder.get()) == active.end()) active.push_back(sl.holder.get());
+            self.SetChildrenDuringMeasure(active);
+            const int w = full ? crossAvailable : sizes[std::size_t(lane)];
+            const Constraints ic = vertical ? Constraints{ w, w, 0, Constraints::Infinity } : Constraints{ 0, Constraints::Infinity, w, w };
+            Placeable& p = sl.holder->AsMeasurable().Measure(ic);
+            measured[i] = &p;
+            return p;
+        };
+        auto addNext = [&] {
+            const int i = int(stag.size());
+            const bool full = isFull(i);
+            int lane = 0;
+            if (!full) for (int l = 1; l < lanes; ++l) if (ends[std::size_t(l)] < ends[std::size_t(lane)]) lane = l;
+            const int top = full ? *std::max_element(ends.begin(), ends.end()) : ends[std::size_t(lane)];
+            Placeable& p = measureAt(i, lane, full);
+            const int size = vertical ? p.Height() : p.Width();
+            stag.push_back({ KeyOf(i).value, lane, top, size, full });
+            if (full) std::fill(ends.begin(), ends.end(), top + size + spacing);
+            else ends[std::size_t(lane)] = top + size + spacing;
+        };
+        auto minEnd = [&] { return lanes ? *std::min_element(ends.begin(), ends.end()) : 0; };
+
+        const int viewport = mainMax - before - after;
+        if (count == 0) {
+            for (auto& [k, slot] : slots) DisposeSlot(k, slot);
+            slots.clear();
+            self.SetChildrenDuringMeasure({});
+            st.m_Lines.clear();
+            st.m_TotalItems = 0;
+            st.m_LastConsumed = st.m_PendingScroll = 0;
+            st.OnMeasured();
+            return s.Layout(c.minWidth, c.minHeight);
+        }
+        // scrollToItem: jump to the item's position (measuring the items before it).
+        if (!st.m_HasFirstKey) {
+            const int target = std::clamp(st.m_Index.Peek(), 0, count - 1);
+            while (int(stag.size()) <= target) addNext();
+            stagScroll = float(stag[std::size_t(target)].top + st.m_Offset.Peek());
+        }
+        const float delta = st.m_PendingScroll;
+        st.m_PendingScroll = 0;
+        float scroll = stagScroll + delta, consumed = delta;
+        if (scroll < 0) { consumed -= scroll; scroll = 0; }
+        int maxScroll = std::numeric_limits<int>::max();
+        std::vector<int> visible;
+        for (int pass = 0; pass < 3; ++pass) {
+            while (int(stag.size()) < count && minEnd() < int(scroll) + viewport + after) addNext();
+            if (int(stag.size()) == count) {
+                const int contentEnd = std::max(0, *std::max_element(ends.begin(), ends.end()) - spacing);
+                maxScroll = std::max(0, contentEnd - viewport);
+                if (scroll > float(maxScroll)) { consumed -= scroll - float(maxScroll); scroll = float(maxScroll); }
+            }
+            const int sp = int(std::lround(scroll));
+            visible.clear();
+            for (int i = 0; i < int(stag.size()); ++i)
+                if (stag[std::size_t(i)].top + stag[std::size_t(i)].size > sp && stag[std::size_t(i)].top < sp + viewport + after) visible.push_back(i);
+            // Measure what is shown; a size that changed moves everything after it.
+            bool changed = false;
+            for (int i : visible) {
+                auto& it = stag[std::size_t(i)];
+                Placeable& p = measured.count(i) ? *measured[i] : measureAt(i, it.lane, it.full);
+                const int size = vertical ? p.Height() : p.Width();
+                if (size != it.size) { it.size = size; stag.resize(std::size_t(i) + 1); rebuildEnds(); changed = true; break; }
+            }
+            if (!changed) break;
+        }
+        stagScroll = scroll;
+        const int sp = int(std::lround(scroll));
+
+        std::vector<LayoutNode*> nowActive;
+        std::vector<const Slot*> used;
+        for (int i : visible) { Slot& sl = slots[KeyOf(i).value]; nowActive.push_back(sl.holder.get()); used.push_back(&sl); }
+        self.SetChildrenDuringMeasure(nowActive);
+        for (auto it = slots.begin(); it != slots.end();) {
+            if (std::find(used.begin(), used.end(), &it->second) == used.end()) { DisposeSlot(it->first, it->second); it = slots.erase(it); }
+            else ++it;
+        }
+
+        const int first = visible.empty() ? 0 : visible.front();
+        const int firstOffset = visible.empty() ? 0 : sp - stag[std::size_t(first)].top;
+        if ((st.m_Index.Peek() != first || st.m_Offset.Peek() != firstOffset) && self.GetOwner()) self.GetOwner()->InvalidateSemantics();
+        st.m_Index.Set(first);
+        st.m_Offset.Set(firstOffset);
+        st.m_FirstKey = KeyOf(first);
+        st.m_HasFirstKey = true;
+        st.m_LastConsumed = consumed;
+        st.m_CanForward = !(int(stag.size()) == count && sp >= maxScroll);
+        st.m_Lines.clear();
+        for (int i : visible) st.m_Lines.push_back({ i, i, stag[std::size_t(i)].top - sp, stag[std::size_t(i)].size });
+        st.m_SlotsPerLine = lanes;
+        st.m_Spacing = spacing;
+        st.m_TotalItems = count;
+        st.m_ViewportLength = float(viewport);
+        st.m_Density = s.density;
+        st.OnMeasured();
+
+        const int w = vertical ? c.ConstrainWidth(crossMax == Constraints::Infinity ? crossPad : crossMax) : c.ConstrainWidth(mainMax);
+        const int h = vertical ? c.ConstrainHeight(mainMax) : c.ConstrainHeight(crossMax == Constraints::Infinity ? crossPad : crossMax);
+        if (stagState) {
+            LazyGridLayoutInfo info;
+            for (int i : visible) {
+                const auto& it = stag[std::size_t(i)];
+                Placeable& p = *measured[i];
+                const int cross = it.full ? 0 : positions[std::size_t(it.lane)];
+                LazyGridItemInfo ii;
+                ii.index = i;
+                ii.key = UserKey(i);
+                ii.offset = vertical ? IntOffset{ cross, it.top - sp } : IntOffset{ it.top - sp, cross };
+                ii.size = { p.Width(), p.Height() };
+                ii.row = -1;
+                ii.column = it.full ? 0 : it.lane;
+                info.visibleItemsInfo.push_back(ii);
+            }
+            info.viewportStartOffset = -before;
+            info.viewportEndOffset = mainMax - before;
+            info.totalItemsCount = count;
+            info.viewportSize = { w, h };
+            info.orientation = vertical ? Orientation::Vertical : Orientation::Horizontal;
+            info.beforeContentPadding = before;
+            info.afterContentPadding = after;
+            info.mainAxisItemSpacing = spacing;
+            if (!(stagState->m_Info.Peek() == info)) stagState->m_Info.Set(std::move(info));
+        }
+        struct Placed { Placeable* p; int main; int cross; };
+        std::vector<Placed> placed;
+        for (int i : visible) {
+            const auto& it = stag[std::size_t(i)];
+            placed.push_back({ measured[i], it.top - sp + before, crossBefore + (it.full ? 0 : positions[std::size_t(it.lane)]) });
+        }
+        const bool vert = vertical;
+        return s.Layout(w, h, [placed, vert](PlacementScope& place) {
+            for (const auto& pl : placed) {
+                if (vert) place.PlaceRelative(*pl.p, pl.cross, pl.main);
+                else place.PlaceRelative(*pl.p, pl.main, pl.cross);
+            }
+        });
+    }
+
     MeasureResult LazyCore::Measure(LayoutNode& self, MeasureScope& s, const Constraints& c) {
+        if (staggered) return MeasureStaggered(self, s, c);
         LazyStateBase& st = *state;
         st.m_Node = &self;
         rt::Dispatcher& d = rt::Dispatcher::Main();
@@ -1002,7 +1206,7 @@ namespace kiln::foundation {
                     return true;
                 };
                 c.scrollViewportLength = [sp] { return sp->ViewportLength(); };
-                if (cp->grid) c.collectionInfo = std::pair{ -1, -1 };
+                if (cp->grid || cp->staggered) c.collectionInfo = std::pair{ -1, -1 };
                 else c.collectionInfo = vertical ? std::pair{ cp->count, 1 } : std::pair{ 1, cp->count };
             });
             Modifier m = Scrollable(Overscroll(std::move(sem), so.overscroll), state,
@@ -1030,6 +1234,7 @@ namespace kiln::foundation {
             content(scope);
             LazyLayout(vertical, modifier, state, options.userScrollEnabled, key, [&](LazyCore& core) {
                 core.grid = false;
+                core.staggered = false;
                 core.listState = &state;
                 core.gridState = nullptr;
                 core.contentPadding = options.contentPadding;
@@ -1048,6 +1253,7 @@ namespace kiln::foundation {
             content(scope);
             LazyLayout(vertical, modifier, state, options.userScrollEnabled, key, [&](LazyCore& core) {
                 core.grid = true;
+                core.staggered = false;
                 core.gridState = &state;
                 core.listState = nullptr;
                 core.contentPadding = options.contentPadding;
@@ -1061,10 +1267,43 @@ namespace kiln::foundation {
         }
     }
 
+    namespace {
+        void LazyStaggered(bool vertical, const Modifier& modifier, GridCells cells, LazyStaggeredGridState& state,
+                           std::function<void(LazyStaggeredGridScope&)> content, LazyStaggeredGridOptions options, rt::Key key) {
+            LazyStaggeredGridScope scope;
+            content(scope);
+            LazyLayout(vertical, modifier, state, options.userScrollEnabled, key, [&](LazyCore& core) {
+                core.grid = false;
+                core.pager = false;
+                core.staggered = true;
+                core.stagState = &state;
+                core.listState = nullptr;
+                core.gridState = nullptr;
+                core.contentPadding = options.contentPadding;
+                core.mainSpacing = options.mainAxisItemSpacing;
+                core.mainArrangement.reset();
+                core.reverse = false;
+                core.crossArrangement = options.crossAxisArrangement;
+                core.cells = cells;
+                core.intervals = std::move(scope.intervals);
+            });
+        }
+    }
+
+    void LazyVerticalStaggeredGrid(const Modifier& m, GridCells columns, LazyStaggeredGridState& s,
+                                   std::function<void(LazyStaggeredGridScope&)> content, LazyStaggeredGridOptions o, rt::Key key) {
+        LazyStaggered(true, m, columns, s, std::move(content), o, key);
+    }
+    void LazyHorizontalStaggeredGrid(const Modifier& m, GridCells rows, LazyStaggeredGridState& s,
+                                     std::function<void(LazyStaggeredGridScope&)> content, LazyStaggeredGridOptions o, rt::Key key) {
+        LazyStaggered(false, m, rows, s, std::move(content), o, key);
+    }
+
     void LazyPagerLayout(bool vertical, const Modifier& modifier, LazyStateBase& state, int pageCount,
                          std::function<void(int)> content, std::function<rt::Key(int)> key, LazyPagerConfig config, rt::Key compositionKey) {
         LazyLayout(vertical, modifier, state, config.userScrollEnabled, compositionKey, [&](LazyCore& core) {
             core.grid = false;
+            core.staggered = false;
             core.pager = true;
             core.listState = nullptr;
             core.gridState = nullptr;
