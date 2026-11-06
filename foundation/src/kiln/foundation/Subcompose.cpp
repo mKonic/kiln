@@ -1,5 +1,6 @@
 #include "kiln/foundation/Subcompose.h"
 
+#include <algorithm>
 #include <map>
 #include <set>
 
@@ -19,6 +20,7 @@ namespace kiln::foundation {
         struct Slot {
             std::unique_ptr<LayoutNode> holder;
             std::unique_ptr<rt::Composition> composition;
+            bool precomposed = false;   // composed ahead, not yet claimed by a measure
         };
 
         struct State;
@@ -47,18 +49,21 @@ namespace kiln::foundation {
                 used.clear();
                 Scope scope(ms, *this);
                 MeasureResult r = measure ? measure(scope, c) : MeasureResult{ c.minWidth, c.minHeight, {} };
-                // Unused slots are disposed; the used holders become the children.
+                // Unused slots are disposed (precomposed ones wait); the used holders become the
+                // placed children, precomposed ones follow unplaced.
                 std::set<std::uint64_t> keep(used.begin(), used.end());
                 for (auto it = slots.begin(); it != slots.end();) {
-                    if (keep.count(it->first)) { ++it; continue; }
+                    if (keep.count(it->first) || it->second.precomposed) { ++it; continue; }
                     it->second.composition.reset();
                     it = slots.erase(it);
                 }
                 std::vector<LayoutNode*> children;
                 for (std::uint64_t k : used) children.push_back(slots[k].holder.get());
+                const std::size_t placed = children.size();
+                for (auto& [k, sl] : slots) if (sl.precomposed) children.push_back(sl.holder.get());
                 node->SetChildrenDuringMeasure(children);
                 std::vector<Placeable*> holders;
-                for (LayoutNode* h : children) holders.push_back(&h->AsMeasurable().Measure(Constraints::Fixed(r.width, r.height)));
+                for (std::size_t i = 0; i < placed; ++i) holders.push_back(&children[i]->AsMeasurable().Measure(Constraints::Fixed(r.width, r.height)));
                 auto place = std::move(r.place);
                 r.place = [holders, place](PlacementScope& p) {
                     for (Placeable* h : holders) p.Place(*h, 0, 0);
@@ -68,18 +73,25 @@ namespace kiln::foundation {
             }
         };
 
-        std::vector<Measurable*> Scope::Subcompose(rt::Key slotId, std::function<void()> content) {
-            State& st = m_State;
-            Slot& slot = st.slots[slotId.value];
+        // Creates the slot if needed and composes `content` into it.
+        Slot& ComposeSlot(State& st, std::uint64_t id, std::function<void()> content) {
+            Slot& slot = st.slots[id];
             if (!slot.holder) {
                 slot.holder = std::make_unique<LayoutNode>();
                 slot.holder->SetMeasurePolicy(std::make_shared<HolderPolicy>());
                 slot.composition = std::make_unique<rt::Composition>(*slot.holder, rt::Dispatcher::Main());
                 slot.composition->SetParentContext(st.context);
             }
-            st.used.push_back(slotId.value);
             slot.composition->SetContent(std::move(content));
             slot.composition->Recompose();
+            return slot;
+        }
+
+        std::vector<Measurable*> Scope::Subcompose(rt::Key slotId, std::function<void()> content) {
+            State& st = m_State;
+            st.used.push_back(slotId.value);
+            Slot& slot = ComposeSlot(st, slotId.value, std::move(content));
+            slot.precomposed = false;
             std::vector<Measurable*> out;
             for (LayoutNode* c : slot.holder->Children()) out.push_back(&c->AsMeasurable());
             return out;
@@ -93,24 +105,87 @@ namespace kiln::foundation {
         };
     }
 
+    namespace {
+        void SubcomposeLayoutWith(const std::shared_ptr<State>& state, const Modifier& modifier, SubcomposeMeasure measure, rt::Key key) {
+            auto& comp = *rt::Composition::Current();
+            state->measure = std::move(measure);
+            state->context = comp.CurrentScope();
+            auto st = state;
+            comp.Node<LayoutNode>([] { return std::make_unique<LayoutNode>(); },
+                                  [&](LayoutNode& n) {
+                                      n.SetModifier(modifier);
+                                      n.SetMeasureManagedChildren(true);
+                                      st->node = &n;
+                                      if (!dynamic_cast<Policy*>(n.Policy().get())) {
+                                          auto p = std::make_shared<Policy>();
+                                          p->state = st;
+                                          n.SetMeasurePolicy(p);
+                                      }
+                                      n.RequestRemeasure();   // the measure block may capture new values
+                                  }, {}, key);
+        }
+    }
+
+    SubcomposeLayoutState::SubcomposeLayoutState() : m_Impl(std::make_shared<State>()) {}
+
+    SubcomposeLayoutState::PrecomposedSlotHandle SubcomposeLayoutState::Precompose(rt::Key slotId, std::function<void()> content) {
+        PrecomposedSlotHandle h;
+        auto st = std::static_pointer_cast<State>(m_Impl);
+        if (!st->node || !st->node->GetOwner()) return h;   // root.isAttached
+        const bool inUse = st->slots.count(slotId.value) && !st->slots[slotId.value].precomposed;
+        if (!inUse) {
+            Slot& slot = ComposeSlot(*st, slotId.value, std::move(content));
+            slot.precomposed = true;
+            // Attached (unplaced) after the current children, so it can be premeasured.
+            std::vector<LayoutNode*> children(st->node->Children().begin(), st->node->Children().end());
+            if (std::find(children.begin(), children.end(), slot.holder.get()) == children.end()) {
+                children.push_back(slot.holder.get());
+                st->node->SetChildrenDuringMeasure(children);
+            }
+        }
+        h.m_State = st;
+        h.m_Slot = slotId.value;
+        return h;
+    }
+
+    void SubcomposeLayoutState::PrecomposedSlotHandle::Dispose() {
+        auto st = std::static_pointer_cast<State>(m_State.lock());
+        if (!st) return;
+        auto it = st->slots.find(m_Slot);
+        if (it == st->slots.end() || !it->second.precomposed) return;   // claimed by a measure meanwhile
+        LayoutNode* holder = it->second.holder.get();
+        std::vector<LayoutNode*> children;
+        for (LayoutNode* c : st->node->Children()) if (c != holder) children.push_back(c);
+        st->node->SetChildrenDuringMeasure(children);
+        it->second.composition.reset();
+        st->slots.erase(it);
+        m_State.reset();
+    }
+
+    int SubcomposeLayoutState::PrecomposedSlotHandle::PlaceablesCount() const {
+        auto st = std::static_pointer_cast<State>(m_State.lock());
+        if (!st) return 0;
+        auto it = st->slots.find(m_Slot);
+        return it == st->slots.end() ? 0 : int(it->second.holder->Children().size());
+    }
+
+    void SubcomposeLayoutState::PrecomposedSlotHandle::Premeasure(int index, const Constraints& c) {
+        auto st = std::static_pointer_cast<State>(m_State.lock());
+        if (!st) return;
+        auto it = st->slots.find(m_Slot);
+        if (it == st->slots.end()) return;
+        const auto& kids = it->second.holder->Children();
+        if (index >= 0 && std::size_t(index) < kids.size()) kids[std::size_t(index)]->AsMeasurable().Measure(c);
+    }
+
+    void SubcomposeLayout(SubcomposeLayoutState& state, const Modifier& modifier, SubcomposeMeasure measure) {
+        SubcomposeLayoutWith(std::static_pointer_cast<State>(state.Impl()), modifier, std::move(measure), {});
+    }
+
     void SubcomposeLayout(const Modifier& modifier, SubcomposeMeasure measure, rt::Key key) {
         auto& comp = *rt::Composition::Current();
         auto& state = comp.Remember<std::shared_ptr<State>>([] { return std::make_shared<State>(); }, {}, key);
-        state->measure = std::move(measure);
-        state->context = comp.CurrentScope();
-        auto st = state;
-        comp.Node<LayoutNode>([] { return std::make_unique<LayoutNode>(); },
-                              [&](LayoutNode& n) {
-                                  n.SetModifier(modifier);
-                                  n.SetMeasureManagedChildren(true);
-                                  st->node = &n;
-                                  if (!dynamic_cast<Policy*>(n.Policy().get())) {
-                                      auto p = std::make_shared<Policy>();
-                                      p->state = st;
-                                      n.SetMeasurePolicy(p);
-                                  }
-                                  n.RequestRemeasure();   // the measure block may capture new values
-                              }, {}, key);
+        SubcomposeLayoutWith(state, modifier, std::move(measure), key);
     }
 
     void BoxWithConstraints(const Modifier& modifier, Alignment alignment, bool propagateMin,

@@ -102,3 +102,44 @@ TEST(LazyItemsSeeLocals) {
     });
     CHECK_EQ(seen, 7);
 }
+
+TEST(PrecomposedSlotsAreClaimedByMeasureOrDisposed) {
+    Harness h;
+    SubcomposeLayoutState state;
+    rt::State<bool> showB(false);
+    int composedA = 0, composedB = 0;
+    auto slotA = [&] { ++composedA; auto& c = *rt::Composition::Current(); c.Remember<int>([] { return 7; }); Box(SizeMod(Modifier{}, Dp(10), Dp(20))); };
+    auto slotB = [&] { ++composedB; Box(SizeMod(Modifier{}, Dp(30), Dp(30))); };
+    h.Run([&] {
+        Box(Modifier{}, Alignment::TopStart(), false, [&] {
+            SubcomposeLayout(state, Modifier{}, [&](SubcomposeMeasureScope& s, const Constraints& c) {
+                std::vector<Measurable*> ms;
+                if (showB.Get()) ms = s.Subcompose(rt::Key(1), slotA);
+                int w = 0;
+                std::vector<Placeable*> ps;
+                for (auto* m : ms) { ps.push_back(&m->Measure(Constraints{})); w += ps.back()->Width(); }
+                return s.Layout(w, 20, [ps](PlacementScope& p) { for (auto* q : ps) p.Place(*q, 0, 0); });
+            });
+        });
+    });
+    // Composed ahead and premeasured, before any measure asks for it.
+    auto a = state.Precompose(rt::Key(1), slotA);
+    CHECK_EQ(composedA, 1);
+    CHECK_EQ(a.PlaceablesCount(), 1);
+    a.Premeasure(0, Constraints{});
+    auto b = state.Precompose(rt::Key(2), slotB);
+    CHECK_EQ(composedB, 1);
+    // A frame that does not use them keeps them composed.
+    h.Frame();
+    CHECK_EQ(b.PlaceablesCount(), 1);
+    // The measure claims slot 1: the same composition (recomposed with its content).
+    showB.Set(true);
+    h.Frame();
+    CHECK_EQ(a.PlaceablesCount(), 1);
+    // Disposing slot 2 drops it; disposing the claimed slot 1 does nothing.
+    b.Dispose();
+    CHECK_EQ(b.PlaceablesCount(), 0);
+    a.Dispose();
+    h.Frame();
+    CHECK_EQ(a.PlaceablesCount(), 1);
+}

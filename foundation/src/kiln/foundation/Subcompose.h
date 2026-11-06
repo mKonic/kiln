@@ -29,6 +29,37 @@ namespace kiln::foundation {
 
     void SubcomposeLayout(const Modifier& modifier, SubcomposeMeasure measure, rt::Key key = {});
 
+    // SubcomposeLayoutState: shared with SubcomposeLayout to compose slots ahead of measure.
+    // (Compose's slot reuse policy needs reusable compositions in the runtime; slots that leave
+    // are disposed.)
+    class SubcomposeLayoutState {
+    public:
+        // PrecomposedSlotHandle: the slot stays composed (unplaced) until a measure subcomposes
+        // the same id, or until Dispose.
+        class PrecomposedSlotHandle {
+        public:
+            PrecomposedSlotHandle() = default;
+            void Dispose();
+            int PlaceablesCount() const;
+            // Measures the slot's `index`-th root ahead of time.
+            void Premeasure(int index, const Constraints& constraints);
+        private:
+            friend class SubcomposeLayoutState;
+            std::weak_ptr<void> m_State;
+            std::uint64_t m_Slot = 0;
+        };
+
+        SubcomposeLayoutState();
+        // Composes `content` for `slotId` now (nothing when the layout is not composed yet).
+        PrecomposedSlotHandle Precompose(rt::Key slotId, std::function<void()> content);
+        std::shared_ptr<void> Impl() const { return m_Impl; }
+
+    private:
+        std::shared_ptr<void> m_Impl;
+    };
+
+    void SubcomposeLayout(SubcomposeLayoutState& state, const Modifier& modifier, SubcomposeMeasure measure);
+
     struct BoxWithConstraintsScope {
         Constraints constraints;
         ui::Density density;
