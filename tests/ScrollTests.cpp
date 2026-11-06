@@ -317,3 +317,38 @@ TEST(OverscrollFactoryCanTurnOverscrollOff) {
     CHECK(withDefault != nullptr);
     CHECK(withNone == nullptr);
 }
+
+TEST(ChildOverscrollStretchesOnlyWhatTheParentLeaves) {
+    Harness h;
+    ScrollState outer, inner;
+    auto innerEffect = std::make_shared<OverscrollEffect>();
+    auto outerEffect = std::make_shared<OverscrollEffect>();
+    innerEffect->UpdateSize({ 100, 60 });    // normally learnt while drawing
+    outerEffect->UpdateSize({ 100, 100 });
+    h.Run([&] {
+        Column(VerticalScroll(FillMax(Modifier{}, Axis::Both), outer, true, false, outerEffect), [&] {
+            Box(VerticalScroll(Height(Modifier{}, Dp(60)), inner, true, false, innerEffect), Alignment::TopStart(), false, [&] {
+                Box(SizeMod(Modifier{}, Dp(100), Dp(80)));
+            });
+            Box(SizeMod(Modifier{}, Dp(100), Dp(200)));
+        });
+    });
+    // Inner at its end, outer can take the rest: no stretch anywhere.
+    h.Touch(PointerEventType::Press, 50, 50, true, 0);
+    h.Touch(PointerEventType::Move, 50, 42, true, 100);
+    h.Touch(PointerEventType::Move, 50, 2, true, 300);
+    CHECK(!innerEffect->IsInProgress());
+    CHECK(!outerEffect->IsInProgress());
+    h.Touch(PointerEventType::Release, 50, 2, false, 600);
+    h.Frames(60);
+    // Both at their start: pulling down stretches the inner one (the leftover after the parent).
+    outer.ScrollTo(0);
+    inner.ScrollTo(0);
+    h.Pump();
+    h.Touch(PointerEventType::Press, 50, 10, true, 1000);
+    h.Touch(PointerEventType::Move, 50, 20, true, 1100);
+    h.Touch(PointerEventType::Move, 50, 50, true, 1200);
+    CHECK(innerEffect->IsInProgress());
+    CHECK(!outerEffect->IsInProgress());
+    h.Touch(PointerEventType::Release, 50, 50, false, 1500);
+}
