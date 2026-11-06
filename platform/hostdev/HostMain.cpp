@@ -38,10 +38,11 @@ namespace {
     void RequestFrame(void*) { g_FrameRequested = true; glfwPostEmptyEvent(); }
 }
 
-namespace kiln::hostdev { void InstallImageDecoder(); }
+namespace kiln::hostdev { void InstallImageDecoder(); void InstallAssetReader(); }
 
 int main() {
     kiln::hostdev::InstallImageDecoder();
+    kiln::hostdev::InstallAssetReader();
     if (!glfwInit()) { std::fprintf(stderr, "glfwInit failed\n"); return 1; }
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
     GLFWwindow* window = glfwCreateWindow(412, 915, "kiln", nullptr, nullptr);

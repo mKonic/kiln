@@ -2,13 +2,13 @@
 # kiln-pack: builds an APK from a kiln app's native library without Gradle.
 #
 #   kiln-pack --package dev.example.app --label "App" --lib-name hello \
-#             --lib arm64-v8a=path/libhello.so [--lib x86_64=path/libhello.so] --out app.apk
+#             --lib arm64-v8a=path/libhello.so [--lib x86_64=path/libhello.so] [--assets dir] --out app.apk
 #
 # Steps: javac (kiln's Java host, platform APIs only) -> d8 -> manifest -> aapt2 link ->
 # add classes.dex + lib/<abi>/*.so -> zipalign -> apksigner (debug key in build/).
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/android-env.sh"
-PACKAGE=""; LABEL="kiln app"; LIBNAME=""; OUT=""; LIBS=()
+PACKAGE=""; LABEL="kiln app"; LIBNAME=""; OUT=""; LIBS=(); ASSETS=""
 while [ $# -gt 0 ]; do
     case "$1" in
         --package) PACKAGE="$2"; shift 2 ;;
@@ -16,6 +16,7 @@ while [ $# -gt 0 ]; do
         --lib-name) LIBNAME="$2"; shift 2 ;;
         --lib) LIBS+=("$2"); shift 2 ;;
         --out) OUT="$2"; shift 2 ;;
+        --assets) ASSETS="$2"; shift 2 ;;
         *) echo "kiln-pack: unknown argument $1" >&2; exit 2 ;;
     esac
 done
@@ -55,7 +56,8 @@ cat > "$STAGING/AndroidManifest.xml" <<XML
 XML
 
 UNSIGNED="$STAGING/unsigned.apk"; ALIGNED="$STAGING/aligned.apk"
-"$AAPT2" link -o "$UNSIGNED" -I "$ANDROID_JAR" --manifest "$STAGING/AndroidManifest.xml" \
+ASSET_ARGS=(); [ -n "$ASSETS" ] && ASSET_ARGS=(-A "$ASSETS")
+"$AAPT2" link -o "$UNSIGNED" -I "$ANDROID_JAR" --manifest "$STAGING/AndroidManifest.xml" "${ASSET_ARGS[@]}" \
     --min-sdk-version "$ANDROID_MIN_SDK" --target-sdk-version "$ANDROID_TARGET_SDK"
 
 ENTRIES=(classes.dex)

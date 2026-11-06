@@ -1,7 +1,7 @@
 // JNI entry points for dev.kiln.KilnNative and the Choreographer-driven frame loop.
 #include "AndroidText.h"
 
-namespace kiln::android { void InstallImageDecoder(); }
+namespace kiln::android { void InstallImageDecoder(); void InstallAssetReader(JNIEnv* env, jobject assets); }
 
 #include "kiln/foundation/text/TextFieldState.h"
 #include "kiln/ui/Back.h"
@@ -99,9 +99,10 @@ namespace {
         __android_log_print(prio, "kiln", "%.*s", int(message.size()), message.data());
     }
 
-    void Create(JNIEnv* env, jclass, jobject view, jobject text, jfloat density, jfloat fontScale, jbyteArray saved) {
+    void Create(JNIEnv* env, jclass, jobject view, jobject text, jobject assets, jfloat density, jfloat fontScale, jbyteArray saved) {
         hearth::SetLogSink(&LogToLogcat);
         kiln::android::InstallImageDecoder();
+        kiln::android::InstallAssetReader(env, assets);
         g_Host = new Host();
         g_Host->text = std::make_unique<kiln::android::AndroidText>(env, text);
         g_Host->app = std::make_unique<kiln::App>(kiln::HostServices{ g_Host->text.get(), &PostFrame, nullptr });
@@ -580,7 +581,7 @@ extern "C" JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void*) {
     jclass cls = env->FindClass("dev/kiln/KilnNative");
     if (!cls) return JNI_ERR;
     static const JNINativeMethod methods[] = {
-        { "create", "(Ldev/kiln/KilnView;Ldev/kiln/KilnText;FF[B)V", reinterpret_cast<void*>(&Create) },
+        { "create", "(Ldev/kiln/KilnView;Ldev/kiln/KilnText;Landroid/content/res/AssetManager;FF[B)V", reinterpret_cast<void*>(&Create) },
         { "setVisible", "(Z)V", reinterpret_cast<void*>(&SetVisible) },
         { "setDensity", "(FF)V", reinterpret_cast<void*>(&SetDensity) },
         { "setAnimationScale", "(F)V", reinterpret_cast<void*>(&SetAnimationScale) },

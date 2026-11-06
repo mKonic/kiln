@@ -54,6 +54,8 @@ else()
     target_link_libraries(list PRIVATE kiln_hostdev)
     add_executable(gallery samples/gallery/main.cpp)
     target_link_libraries(gallery PRIVATE kiln_hostdev)
+    add_custom_command(TARGET gallery POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_directory
+                       ${CMAKE_SOURCE_DIR}/samples/gallery/assets $<TARGET_FILE_DIR:gallery>/assets)
 endif()
 
 if(NOT ANDROID)

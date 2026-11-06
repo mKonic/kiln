@@ -54,7 +54,7 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
 
         text = new KilnText(context);
         DisplayMetrics metrics = getResources().getDisplayMetrics();
-        KilnNative.create(this, text, metrics.density, getResources().getConfiguration().fontScale, savedState);
+        KilnNative.create(this, text, context.getAssets(), metrics.density, getResources().getConfiguration().fontScale, savedState);
 
         // ANIMATOR_DURATION_SCALE, observed for changes (WindowRecomposer:95-135).
         animationScaleObserver = new ContentObserver(new Handler(Looper.getMainLooper())) {
