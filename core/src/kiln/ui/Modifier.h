@@ -26,6 +26,7 @@ namespace kiln::ui {
     class FocusEventModifier;
     class KeyInputModifier;
     class NestedScrollNode;
+    class SemanticsModifier;
 
     // Data a child hands its parent's measure policy (weights, alignments).
     struct ParentData {
@@ -70,12 +71,18 @@ namespace kiln::ui {
         virtual void OnDetach() {}
         virtual LayoutModifier* AsLayout() { return nullptr; }
         virtual DrawModifier* AsDraw() { return nullptr; }
+        // True when the node clips what is drawn under it to its bounds (graphicsLayer clip):
+        // semantics bounds of descendants are clipped the same way.
+        virtual bool ClipsChildren() const { return false; }
         virtual ParentDataModifier* AsParentData() { return nullptr; }
         virtual PointerInputModifier* AsPointerInput() { return nullptr; }
         virtual FocusTargetNode* AsFocusTarget() { return nullptr; }
         virtual FocusEventModifier* AsFocusEvent() { return nullptr; }
         virtual KeyInputModifier* AsKeyInput() { return nullptr; }
         virtual NestedScrollNode* AsNestedScroll() { return nullptr; }
+        virtual SemanticsModifier* AsSemantics() { return nullptr; }
+        // Semantics changed (call from Update when semantic params change).
+        void InvalidateSemantics();
 
         LayoutNode* Owner() const { return m_Owner; }
         // Ask the owner to measure / place / draw again (call from Update when params change).

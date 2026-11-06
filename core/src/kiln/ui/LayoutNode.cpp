@@ -23,6 +23,10 @@ namespace kiln::ui {
         return nullptr;
     }
 
+    void ModifierNode::InvalidateSemantics() {
+        if (m_Owner && m_Owner->GetOwner()) m_Owner->GetOwner()->InvalidateSemantics();
+    }
+
     void ModifierNode::InvalidateMeasure() { if (m_Owner) m_Owner->RequestRemeasure(); }
     void ModifierNode::InvalidateDraw() { if (m_Owner) m_Owner->InvalidateDraw(); }
 
@@ -160,12 +164,13 @@ namespace kiln::ui {
     void LayoutNode::SetModifier(const Modifier& modifier) {
         const auto& next = modifier.Elements();
         bool structural = next.size() != m_Elements.size();
+        bool updated = false;
         std::vector<std::unique_ptr<ModifierNode>> nodes;
         nodes.reserve(next.size());
         for (std::size_t i = 0; i < next.size(); ++i) {
             const ModifierElement& e = *next[i];
             if (i < m_Elements.size() && m_Nodes[i] && m_Elements[i]->Type() == e.Type()) {
-                if (!m_Elements[i]->Equals(e)) e.Update(*m_Nodes[i]);
+                if (!m_Elements[i]->Equals(e)) { e.Update(*m_Nodes[i]); updated = true; }
                 nodes.push_back(std::move(m_Nodes[i]));
             } else {
                 structural = true;
@@ -186,6 +191,7 @@ namespace kiln::ui {
         m_Nodes = std::move(nodes);
         m_Elements = next;
         if (structural) RebuildChain();
+        if (m_Owner && (structural || updated)) m_Owner->InvalidateSemantics();
         // Parent data may have changed: the parent measures with it.
         ParentData pd;
         for (auto& n : m_Nodes) if (auto* p = n->AsParentData()) p->ModifyParentData(pd);
@@ -233,6 +239,7 @@ namespace kiln::ui {
         }
         m_Children = std::move(next);
         RequestRemeasure();
+        if (m_Owner) m_Owner->InvalidateSemantics();
     }
 
     void LayoutNode::SetChildrenDuringMeasure(std::vector<LayoutNode*> next) {
@@ -258,6 +265,7 @@ namespace kiln::ui {
         if (m_Owner) owner.Forget(*this);
         const bool fresh = m_Owner == nullptr;
         m_Owner = &owner;
+        if (m_SemanticsId == 0) m_SemanticsId = owner.NextSemanticsId();
         m_Depth = depth;
         if (fresh) for (auto& n : m_Nodes) n->OnAttach();
         for (LayoutNode* c : m_Children) c->Attach(owner, depth + 1);
@@ -456,6 +464,17 @@ namespace kiln::ui {
         std::vector<PointerInputModifier*> out;
         for (auto& n : m_Nodes) if (auto* p = n->AsPointerInput()) out.push_back(p);
         return out;
+    }
+
+    LayoutNode* Owner::FindBySemanticsId(int id) {
+        std::vector<LayoutNode*> stack{ m_Root.get() };
+        while (!stack.empty()) {
+            LayoutNode* n = stack.back();
+            stack.pop_back();
+            if (n->m_SemanticsId == id) return n;
+            for (LayoutNode* c : n->m_Children) stack.push_back(c);
+        }
+        return nullptr;
     }
 
     void Owner::Forget(LayoutNode& n) {

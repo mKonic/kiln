@@ -118,6 +118,7 @@ namespace kiln::ui {
     }
 
     void Owner::DispatchFocusEvents() {
+        InvalidateSemantics();
         // Every target and focus-event node re-derives its state and reports changes. A focus
         // change is rare enough that a walk of the tree is fine.
         std::vector<LayoutNode*> stack{ m_Root.get() };

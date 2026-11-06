@@ -13,6 +13,7 @@
 #include "kiln/ui/Focus.h"
 #include "kiln/ui/TextInput.h"
 #include "kiln/ui/Insets.h"
+#include "kiln/ui/Semantics.h"
 
 #include <map>
 
@@ -70,6 +71,8 @@ namespace kiln::ui {
         void Draw(ContentDrawScope& scope);
 
         Measurable& AsMeasurable();
+        // Stable id for semantics / accessibility virtual views.
+        int SemanticsId() const { return m_SemanticsId; }
 
     private:
         friend class Owner;
@@ -114,6 +117,7 @@ namespace kiln::ui {
         float m_ZIndex = 0;
         int m_PlaceOrder = 0;
         int m_NextPlaceOrder = 0;   // for children, reset each layout of this node
+        int m_SemanticsId = 0;
 
         Watcher m_MeasureWatch{ *this, 0 }, m_LayoutWatch{ *this, 1 }, m_DrawWatch{ *this, 2 };
     };
@@ -168,6 +172,14 @@ namespace kiln::ui {
         TextInputSession* ActiveTextInput() const { return m_Input; }
 
         WindowInsetsHolder& Insets() { return m_Insets; }
+
+        // Semantics: rebuilt on demand from the layout tree. Changes bump the version and notify.
+        SemanticsNode BuildSemanticsTree();
+        void InvalidateSemantics() { ++m_SemanticsVersion; if (m_OnSemanticsChanged) m_OnSemanticsChanged(); }
+        std::uint64_t SemanticsVersion() const { return m_SemanticsVersion; }
+        void SetOnSemanticsChanged(std::function<void()> fn) { m_OnSemanticsChanged = std::move(fn); }
+        LayoutNode* FindBySemanticsId(int id);
+        int NextSemanticsId() { return ++m_LastSemanticsId; }
         const ViewConfiguration& Config() const { return m_Config; }
         bool NeedsMeasureOrLayout() const { return !m_MeasureDirty.empty() || !m_LayoutDirty.empty(); }
 
@@ -222,6 +234,9 @@ namespace kiln::ui {
         TextInputHost m_InputHost;
         TextInputSession* m_Input = nullptr;
         WindowInsetsHolder m_Insets;
+        std::uint64_t m_SemanticsVersion = 0;
+        std::function<void()> m_OnSemanticsChanged;
+        int m_LastSemanticsId = 0;
     };
 
 }
