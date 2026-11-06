@@ -1,6 +1,7 @@
 #include "kiln/foundation/Gestures.h"
 
 #include "kiln/runtime/Task.h"
+#include "kiln/foundation/Focus.h"
 
 namespace kiln::foundation {
 
@@ -247,6 +248,18 @@ namespace kiln::foundation {
         *box.pressed = std::move(onPressedChange);
         auto click = box.click;
         auto pressed = box.pressed;
+        // Keyboard activation (Clickable.kt CombinedClickable keys): Enter, NumpadEnter,
+        // DPAD center and Space press on key down and click on key up, when focused. Clickables
+        // are focusable only outside touch mode (Focusability::SystemDefined).
+        m = OnKeyEvent(std::move(m), [click, pressed](const KeyEvent& e) {
+            const bool activate = e.keyCode == keys::Enter || e.keyCode == keys::NumpadEnter ||
+                                  e.keyCode == keys::DpadCenter || e.keyCode == keys::Space;
+            if (!activate) return false;
+            if (e.type == KeyEventType::KeyDown) { if (e.repeatCount == 0 && *pressed) (*pressed)(true); return true; }
+            if (e.type == KeyEventType::KeyUp) { if (*pressed) (*pressed)(false); if (*click) (*click)(); return true; }
+            return false;
+        });
+        m = Focusable(std::move(m), Focusability::SystemDefined);
         return PointerInput(std::move(m), rt::Keys(0), [click, pressed](PointerInputScope& s) {
             TapCallbacks cb;
             cb.onPress = [pressed](Offset) { if (*pressed) (*pressed)(true); };
