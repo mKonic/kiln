@@ -1,5 +1,6 @@
 #pragma once
 
+#include "kiln/Gradients.h"
 #include "kiln/PathCache.h"
 #include "kiln/QuadRenderer.h"
 #include "kiln/TextBackend.h"
@@ -96,6 +97,7 @@ namespace kiln {
         std::unique_ptr<QuadRenderer> m_Quads;
         std::vector<std::unique_ptr<AtlasPage>> m_Pages;
         std::unique_ptr<PathCache> m_Paths;
+        std::unique_ptr<GradientRamps> m_Gradients;
         std::uint32_t m_Width = 0, m_Height = 0;
         float m_Density = 1, m_FontScale = 1;
         Rgba m_Clear{ 1, 1, 1, 1 };

@@ -43,11 +43,25 @@ namespace kiln {
     public:
         enum class Mode : std::uint8_t { Solid = 0, TintedCoverage = 1, Color = 2 };
 
+        // A gradient paint instead of the flat colour: geometry in framebuffer pixels (linear
+        // x0,y0,x1,y1; radial cx,cy,r; sweep cx,cy), the ramp row in the ramp texture.
+        struct Paint {
+            enum class Kind : std::uint8_t { Color = 0, Linear = 1, Radial = 2, Sweep = 3 };
+            Kind kind = Kind::Color;
+            float geometry[4] = {};
+            std::uint8_t tile = 0;       // gfx::TileMode
+            float rampV = 0;             // texture v of the ramp row centre
+        };
+
         explicit QuadRenderer(hearth::Device& device);
 
         void Begin(std::uint32_t viewportWidth, std::uint32_t viewportHeight);
-        void FillRect(const RectF& rect, Rgba color, float cornerRadius = 0.0f);
-        void DrawAtlas(const RectF& rect, const RectF& uv, const AtlasPage& page, Rgba color, Mode mode);
+        // With a paint, colour.a modulates the gradient.
+        void FillRect(const RectF& rect, Rgba color, float cornerRadius = 0.0f, const Paint* paint = nullptr);
+        void DrawAtlas(const RectF& rect, const RectF& uv, const AtlasPage& page, Rgba color, Mode mode,
+                       const Paint* paint = nullptr);
+        // The gradient ramp texture (bound next to every atlas page).
+        void SetRampTexture(hearth::Ref<hearth::Texture> ramp) { m_Ramp = std::move(ramp); m_Groups.clear(); }
         // Clip applied to quads submitted after this call: rect in framebuffer pixels (x0, y0,
         // x1, y1) with a corner radius; nullopt-like when enabled is false.
         struct Clip { float x0 = 0, y0 = 0, x1 = 0, y1 = 0, radius = 0; bool enabled = false; };
@@ -55,15 +69,16 @@ namespace kiln {
         void Flush(hearth::CommandList& cmd);
 
     private:
-        struct Instance { float rect[4]; float uv[4]; float color[4]; float params[4]; float clip[4]; float clipParams[4]; };
+        struct Instance { float rect[4]; float uv[4]; float color[4]; float params[4]; float clip[4]; float clipParams[4]; float paint[4]; float paint2[4]; };
         struct Run { const AtlasPage* page; std::uint32_t first, count; };
 
-        void Push(const Instance& instance, const AtlasPage* page);
+        void Push(const Instance& instance, const AtlasPage* page, const Paint* paint);
         hearth::Ref<hearth::BindGroup> GroupFor(const AtlasPage* page);
 
         hearth::Device& m_Device;
         hearth::Ref<hearth::Pipeline> m_Pipeline;
         hearth::Ref<hearth::Texture> m_White;
+        hearth::Ref<hearth::Texture> m_Ramp;
         std::vector<Instance> m_Instances;
         std::vector<Run> m_Runs;
         std::vector<hearth::Ref<hearth::Buffer>> m_Buffers;   // one per frame in flight

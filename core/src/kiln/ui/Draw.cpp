@@ -1,6 +1,8 @@
 #include "kiln/ui/Draw.h"
 
 #include "kiln/PathCache.h"
+#include "kiln/Gradients.h"
+#include "kiln/graphics/Brush.h"
 #include "kiln/graphics/Path.h"
 
 #include <cmath>
@@ -77,7 +79,12 @@ namespace kiln::ui {
     }
 
     void DrawScope::DrawPath(const gfx::Path& path, Color color, const gfx::Stroke* stroke) {
-        if (!m_Target.quads || !m_Target.paths || path.IsEmpty() || color.Alpha() * m_State.alpha <= 0) return;
+        if (color.Alpha() * m_State.alpha <= 0) return;
+        PathCoverage(path, stroke, Scaled(ToRgba(color), m_State.alpha), nullptr);
+    }
+
+    void DrawScope::PathCoverage(const gfx::Path& path, const gfx::Stroke* stroke, Rgba tint, const void* paint) {
+        if (!m_Target.quads || !m_Target.paths || path.IsEmpty()) return;
         // Integer part of the translation is applied when drawing; the mask is built for the
         // scale and the quarter-pixel fraction so moving by whole pixels reuses it.
         const float ox = std::floor(m_State.origin.x), oy = std::floor(m_State.origin.y);
@@ -117,7 +124,71 @@ namespace kiln::ui {
         }
         ApplyClip();
         m_Target.quads->DrawAtlas({ ox + float(e->x), oy + float(e->y), float(e->w), float(e->h) }, e->uv, *e->page,
-                                  Scaled(ToRgba(color), m_State.alpha), QuadRenderer::Mode::TintedCoverage);
+                                  tint, QuadRenderer::Mode::TintedCoverage, static_cast<const QuadRenderer::Paint*>(paint));
+    }
+
+
+    bool DrawScope::MakePaint(const gfx::Brush& b, float alpha, void* out, Color& solid, float& outAlpha) {
+        outAlpha = alpha * m_State.alpha;
+        if (b.kind == gfx::Brush::Kind::Solid || b.colors.size() < 2 || !m_Target.gradients) {
+            solid = b.colors.empty() ? Color::Transparent() : b.colors[0];
+            return false;
+        }
+        auto& p = *static_cast<QuadRenderer::Paint*>(out);
+        float g[4];
+        b.Resolve(m_Size, g);
+        auto dev = [&](float x, float y) { return Offset{ m_State.origin.x + x * m_State.sx, m_State.origin.y + y * m_State.sy }; };
+        switch (b.kind) {
+            case gfx::Brush::Kind::Linear: {
+                const Offset a = dev(g[0], g[1]), c = dev(g[2], g[3]);
+                p.kind = QuadRenderer::Paint::Kind::Linear;
+                p.geometry[0] = a.x; p.geometry[1] = a.y; p.geometry[2] = c.x; p.geometry[3] = c.y;
+                break;
+            }
+            case gfx::Brush::Kind::Radial: case gfx::Brush::Kind::Sweep: {
+                const Offset c = dev(g[0], g[1]);
+                p.kind = b.kind == gfx::Brush::Kind::Radial ? QuadRenderer::Paint::Kind::Radial : QuadRenderer::Paint::Kind::Sweep;
+                p.geometry[0] = c.x; p.geometry[1] = c.y; p.geometry[2] = g[2] * std::min(m_State.sx, m_State.sy); p.geometry[3] = 0;
+                break;
+            }
+            default: break;
+        }
+        p.tile = std::uint8_t(b.tile);
+        p.rampV = m_Target.gradients->RowFor(b);
+        return true;
+    }
+
+    void DrawScope::DrawRect(const gfx::Brush& b, Offset topLeft, Size size, float alpha) {
+        DrawRoundRect(b, topLeft, size, 0, alpha);
+    }
+
+    void DrawScope::DrawRoundRect(const gfx::Brush& b, Offset p, Size size, float r, float alpha) {
+        if (!m_Target.quads) return;
+        QuadRenderer::Paint paint;
+        Color solid;
+        float a;
+        if (!MakePaint(b, alpha, &paint, solid, a)) {
+            if (solid.Alpha() * a <= 0) return;
+            const Rect d = ToDevice(p, size);
+            m_Target.quads->FillRect({ d.left, d.top, d.Width(), d.Height() }, Scaled(ToRgba(solid), a), r * std::min(m_State.sx, m_State.sy));
+            return;
+        }
+        if (a <= 0) return;
+        const Rect d = ToDevice(p, size);
+        m_Target.quads->FillRect({ d.left, d.top, d.Width(), d.Height() }, { a, a, a, a }, r * std::min(m_State.sx, m_State.sy), &paint);
+    }
+
+    void DrawScope::DrawPath(const gfx::Path& path, const gfx::Brush& b, const gfx::Stroke* stroke, float alpha) {
+        QuadRenderer::Paint paint;
+        Color solid;
+        float a;
+        if (!MakePaint(b, alpha, &paint, solid, a)) {
+            if (solid.Alpha() * a <= 0) return;
+            PathCoverage(path, stroke, Scaled(ToRgba(solid), a), nullptr);
+            return;
+        }
+        if (a <= 0) return;
+        PathCoverage(path, stroke, { a, a, a, a }, &paint);
     }
 
 }

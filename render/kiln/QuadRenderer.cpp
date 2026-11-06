@@ -45,10 +45,11 @@ namespace kiln {
         VertexBufferLayout layout;
         layout.stride = sizeof(Instance);
         layout.stepMode = VertexStepMode::Instance;
-        for (u32 i = 0; i < 6; ++i)
+        for (u32 i = 0; i < 8; ++i)
             layout.attributes.push_back({ i, Format::RGBA32_SFLOAT, i * 16 });
         desc.vertexBuffers.push_back(layout);
         desc.bindings.push_back({ 0, BindingType::SampledTexture, 1, StageBit(ShaderStage::Fragment) });
+        desc.bindings.push_back({ 1, BindingType::SampledTexture, 1, StageBit(ShaderStage::Fragment) });
         desc.pushConstantSize = 8;
         desc.topology = PrimitiveTopology::TriangleStrip;
         desc.blend = BlendMode::AlphaPremultiplied;
@@ -67,8 +68,17 @@ namespace kiln {
         m_Clip = {};
     }
 
-    void QuadRenderer::Push(const Instance& in, const AtlasPage* page) {
+    void QuadRenderer::Push(const Instance& in, const AtlasPage* page, const Paint* paint) {
         Instance instance = in;
+        if (paint && paint->kind != Paint::Kind::Color) {
+            for (int i = 0; i < 4; ++i) instance.paint[i] = paint->geometry[i];
+            instance.paint2[0] = float(paint->kind);
+            instance.paint2[1] = float(paint->tile);
+            instance.paint2[2] = paint->rampV;
+            instance.paint2[3] = 0;
+        } else {
+            for (int i = 0; i < 4; ++i) instance.paint[i] = instance.paint2[i] = 0;
+        }
         instance.clip[0] = m_Clip.x0; instance.clip[1] = m_Clip.y0; instance.clip[2] = m_Clip.x1; instance.clip[3] = m_Clip.y1;
         instance.clipParams[0] = m_Clip.radius; instance.clipParams[1] = m_Clip.enabled ? 1.0f : 0.0f;
         instance.clipParams[2] = instance.clipParams[3] = 0;
@@ -78,16 +88,16 @@ namespace kiln {
         ++m_Runs.back().count;
     }
 
-    void QuadRenderer::FillRect(const RectF& r, Rgba c, float radius) {
+    void QuadRenderer::FillRect(const RectF& r, Rgba c, float radius, const Paint* paint) {
         // Solid quads ignore the atlas, so they join whatever run is open instead of splitting it.
         const AtlasPage* page = m_Runs.empty() ? nullptr : m_Runs.back().page;
         Push({ { r.x, r.y, r.w, r.h }, { 0, 0, 0, 0 }, { c.r, c.g, c.b, c.a },
-               { radius, float(Mode::Solid), 0, 0 }, {}, {} }, page);
+               { radius, float(Mode::Solid), 0, 0 }, {}, {}, {}, {} }, page, paint);
     }
 
-    void QuadRenderer::DrawAtlas(const RectF& r, const RectF& uv, const AtlasPage& page, Rgba c, Mode mode) {
+    void QuadRenderer::DrawAtlas(const RectF& r, const RectF& uv, const AtlasPage& page, Rgba c, Mode mode, const Paint* paint) {
         Push({ { r.x, r.y, r.w, r.h }, { uv.x, uv.y, uv.x + uv.w, uv.y + uv.h }, { c.r, c.g, c.b, c.a },
-               { 0, float(mode), 0, 0 }, {}, {} }, &page);
+               { 0, float(mode), 0, 0 }, {}, {}, {}, {} }, &page, paint);
     }
 
     Ref<BindGroup> QuadRenderer::GroupFor(const AtlasPage* page) {
@@ -97,7 +107,11 @@ namespace kiln {
         entry.binding = 0;
         entry.type = BindingType::SampledTexture;
         entry.textures = { page ? page->Texture() : m_White };
-        auto group = m_Device.CreateBindGroup(m_Pipeline, { entry });
+        BindGroupEntry ramp;
+        ramp.binding = 1;
+        ramp.type = BindingType::SampledTexture;
+        ramp.textures = { m_Ramp ? m_Ramp : m_White };
+        auto group = m_Device.CreateBindGroup(m_Pipeline, { entry, ramp });
         m_Groups.emplace_back(page, group);
         return group;
     }

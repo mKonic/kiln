@@ -8,8 +8,8 @@
 #include <functional>
 #include <vector>
 
-namespace kiln { class QuadRenderer; struct ParagraphData; class AtlasPage; class PathCache; }
-namespace kiln::gfx { class Path; struct Stroke; }
+namespace kiln { class QuadRenderer; struct ParagraphData; class AtlasPage; class PathCache; class GradientRamps; struct Rgba; }
+namespace kiln::gfx { class Path; struct Stroke; struct Brush; }
 
 namespace kiln::ui {
 
@@ -17,6 +17,7 @@ namespace kiln::ui {
         QuadRenderer* quads = nullptr;
         std::function<const AtlasPage*(std::uint32_t)> page;
         PathCache* paths = nullptr;
+        GradientRamps* gradients = nullptr;
         float viewportWidth = 0, viewportHeight = 0;
     };
 
@@ -32,6 +33,10 @@ namespace kiln::ui {
         void DrawParagraph(const ParagraphData& paragraph, Offset topLeft, Color color);
         // Fills the path, or strokes it when `stroke` is given (DrawScope.drawPath).
         void DrawPath(const gfx::Path& path, Color color, const gfx::Stroke* stroke = nullptr);
+        // Brush overloads; `alpha` multiplies the brush (gradient geometry is in scope coordinates).
+        void DrawRect(const gfx::Brush& brush, Offset topLeft, Size size, float alpha = 1);
+        void DrawRoundRect(const gfx::Brush& brush, Offset topLeft, Size size, float cornerRadius, float alpha = 1);
+        void DrawPath(const gfx::Path& path, const gfx::Brush& brush, const gfx::Stroke* stroke = nullptr, float alpha = 1);
 
         // Transform: device = origin + scale * local (axis-aligned; rotation needs the retained
         // layer renderer). Translate moves the local origin.
@@ -60,6 +65,9 @@ namespace kiln::ui {
                      m_State.origin.x + (p.x + s.width) * m_State.sx, m_State.origin.y + (p.y + s.height) * m_State.sy };
         }
         void ApplyClip();
+        // Paint for a gradient brush; false for a solid one (its colour is returned in `solid`).
+        bool MakePaint(const gfx::Brush& brush, float alpha, void* paint, Color& solid, float& outAlpha);
+        void PathCoverage(const gfx::Path& path, const gfx::Stroke* stroke, kiln::Rgba tint, const void* paint);
         LayoutDirection m_Dir;
         DrawTarget m_Target;
         State m_State;
