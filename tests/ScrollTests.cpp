@@ -378,3 +378,73 @@ TEST(ScrollEventsReportRangesAndForwardDeltas) {
     events = tracker.Collect(h.owner.BuildSemanticsTree(), h.owner);
     CHECK(events.size() == 1 && events[0].y == (std::pair<int, int>{ 10, 400 }) && events[0].deltaY == 0);
 }
+
+namespace {
+    // One wheel notch towards the end (AXIS_VSCROLL -1; the host flips it to scrollDelta +1).
+    void Wheel(Harness& h, float notches, std::int64_t t) {
+        RawPointerEvent e;
+        e.type = PointerEventType::Scroll;
+        e.uptimeMillis = t;
+        RawPointer p{ 1, { 50, 50 }, false, PointerType::Mouse, {} };
+        p.scrollDelta = { 0, notches };
+        e.pointers.push_back(p);
+        h.owner.ProcessPointer(e);
+        h.d.RunPending();
+        h.Pump();
+    }
+}
+
+TEST(MouseWheelScrollsSmoothly) {
+    Harness h;
+    ScrollState state;
+    h.Run([&] { Tall(state, 10); });
+    Wheel(h, 1, 0);
+    CHECK_EQ(state.Value(), 6);              // the 6 dp threshold at once
+    CHECK(state.IsScrollInProgress());
+    h.Frames(2);
+    CHECK(state.Value() > 6 && state.Value() < 64);   // then animated (1 dp/ms)
+    h.Frames(4);
+    CHECK_EQ(state.Value(), 64);             // one notch = the scroll factor
+    // The scroll waits 50 ms minus the animation's 58 ms for more notches: none here.
+    CHECK(!state.IsScrollInProgress());
+    // Notches during the animation retarget it: two notches land 128 further.
+    Wheel(h, 1, 300);
+    h.Frames(1);
+    Wheel(h, 1, 316);
+    h.Frames(20);
+    CHECK_EQ(state.Value(), 192);
+    // Wheel up scrolls back.
+    Wheel(h, -1, 900);
+    h.Frames(20);
+    CHECK_EQ(state.Value(), 128);
+}
+
+TEST(MouseWheelAtTheEdgeIsLeftForOthers) {
+    Harness h;
+    ScrollState inner;
+    int outerScrolled = 0;
+    ScrollState outer;
+    h.Run([&] {
+        Column(VerticalScroll(FillMax(Modifier{}, Axis::Both), outer), [&] {
+            Column(VerticalScroll(Height(Modifier{}, Dp(60)), inner), [&] {
+                Box(SizeMod(Modifier{}, Dp(100), Dp(80)));
+            });
+            Box(SizeMod(Modifier{}, Dp(100), Dp(200)));
+        });
+    });
+    // Wheel up with both at the top: neither can take it.
+    Wheel(h, -1, 0);
+    h.Frames(10);
+    CHECK_EQ(inner.Value(), 0);
+    CHECK_EQ(outer.Value(), 0);
+    // Down: the inner one scrolls to its end (20 px) and the rest goes up to the outer one.
+    Wheel(h, 1, 100);
+    h.Frames(20);
+    CHECK_EQ(inner.Value(), 20);
+    outerScrolled = outer.Value();
+    CHECK_EQ(outerScrolled, 44);
+    // The inner one is at its end now: the next notch goes straight to the outer one.
+    Wheel(h, 1, 400);
+    h.Frames(20);
+    CHECK_EQ(outer.Value(), 108);
+}

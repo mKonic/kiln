@@ -8,6 +8,8 @@
 #include "kiln/ui/VelocityTracker.h"
 
 #include <cmath>
+#include <deque>
+#include <limits>
 
 namespace kiln::foundation {
 
@@ -392,17 +394,157 @@ namespace kiln::foundation {
             }
         }
 
+        // --- MouseWheelScrollingLogic -----------------------------------------------------
+        // Wheel deltas queue up; one coroutine animates them: a notch scrolls 6 dp at once and the
+        // rest linearly at 1 dp/ms (at most 100 ms), new notches retarget the animation, and the
+        // scroll ends 50 ms after the last one (isScrollInProgress meanwhile). Only a custom
+        // fling behavior (snapping, pagers) runs afterwards. Times come from frames.
+        constexpr float kWheelThresholdDp = 6;      // AnimationThreshold
+        constexpr float kWheelSpeedDp = 1;          // AnimationSpeed, dp per ms
+        constexpr int kWheelMaxDurationMs = 100;    // MaxAnimationDuration
+        constexpr std::int64_t kWheelProgressTimeoutMs = 50;   // ScrollProgressTimeout
+        bool Low(float v) { return std::abs(v) < 0.5f; }
+
+        struct WheelDelta { float value; std::int64_t time; };
+        struct WheelLogic {
+            std::deque<WheelDelta> queue;
+            ui::VelocityTracker1D velocity{ true };
+            rt::Job job;
+            bool running = false, scrolling = false;
+            void Track(const WheelDelta& d) { velocity.AddDataPoint(d.time, d.value); }
+            std::optional<WheelDelta> Sum() {
+                if (queue.empty()) return std::nullopt;
+                WheelDelta sum{ 0, 0 };
+                for (const auto& d : queue) { sum.value += d.value; sum.time = std::max(sum.time, d.time); }
+                queue.clear();
+                return sum;
+            }
+        };
+
+        rt::Task<> RunWheel(std::shared_ptr<ScrollingLogic> logic, std::shared_ptr<WheelLogic> w) {
+            w->running = true;
+            while (!w->queue.empty()) {
+                const float density = logic->density.density;
+                const float threshold = kWheelThresholdDp * density, speed = kWheelSpeedDp * density;
+                WheelDelta first = w->queue.front();
+                w->queue.pop_front();
+                w->Track(first);
+                float target = first.value;
+                if (auto rest = w->Sum()) { w->Track(*rest); target += rest->value; }
+                if (Low(target)) continue;
+                float animValue = 0;
+                bool stopped = false;
+                auto dispatch = [&](float d) { return logic->Axis(logic->DispatchNested(logic->Single(d), NestedScrollSource::UserInput)); };
+                // waitNextScrollDelta: the next notch within `timeout` ms starts over from it.
+                auto waitNext = [&](std::int64_t timeout) -> rt::Task<bool> {
+                    if (timeout < 0) co_return false;
+                    const std::int64_t start = co_await rt::NextFrame();
+                    for (;;) {
+                        if (stopped) co_return false;
+                        if (!w->queue.empty()) {
+                            const WheelDelta next = w->queue.front();
+                            w->queue.pop_front();
+                            target = next.value;
+                            animValue = 0;
+                            w->Track(next);
+                            co_return !Low(target);
+                        }
+                        const std::int64_t t = co_await rt::NextFrame();
+                        if ((t - start) / 1'000'000 >= timeout) co_return false;
+                    }
+                };
+                {
+                    ScrollSession session(*logic->state, [&] { stopped = true; });
+                    w->scrolling = true;
+                    bool required = true;
+                    while (required && !stopped) {
+                        required = false;
+                        const float leftover = target - animValue;
+                        if (std::abs(leftover) < threshold) {
+                            dispatch(leftover);
+                            required = co_await waitNext(kWheelProgressTimeoutMs);
+                        } else {
+                            // The animation starts next frame: apply the threshold now.
+                            const float instant = (leftover > 0 ? 1.0f : -1.0f) * threshold;
+                            dispatch(instant);
+                            const float from = animValue + instant;
+                            const int duration = std::min(int(std::lround(std::abs(target - from) / speed)), kWheelMaxDurationMs);
+                            float last = from, value = from;
+                            bool cancelled = false;
+                            std::int64_t t0 = -1;
+                            while (!cancelled && !stopped) {
+                                const std::int64_t t = co_await rt::NextFrame();
+                                if (stopped) break;
+                                if (t0 < 0) t0 = t;
+                                const float f = duration <= 0 ? 1.0f : std::min(1.0f, float(t - t0) / 1e6f / float(duration));
+                                value = from + (target - from) * f;
+                                const float delta = value - last;
+                                if (!Low(delta)) {
+                                    const float consumed = dispatch(delta);
+                                    if (!Low(delta - consumed)) { cancelled = true; break; }   // an edge
+                                    last += delta;
+                                }
+                                if (auto more = w->Sum()) {
+                                    w->Track(*more);
+                                    target += more->value;
+                                    required = !Low(target - last);
+                                    cancelled = true;
+                                    break;
+                                }
+                                if (f >= 1.0f) break;
+                            }
+                            animValue = value;
+                            if (!required && !stopped) required = co_await waitNext(kWheelProgressTimeoutMs - duration);
+                        }
+                    }
+                    w->scrolling = false;
+                }
+                float v = w->velocity.CalculateVelocity(std::numeric_limits<float>::max());
+                if (v == 0) {
+                    // A single notch: the animation speed in the delta's direction.
+                    const float pxPerMs = std::min(std::abs(target) / float(kWheelMaxDurationMs), speed);
+                    v = (target > 0 ? 1.0f : target < 0 ? -1.0f : 0.0f) * pxPerMs * 1000.0f;
+                }
+                // shouldBeTriggeredByMouseWheel: the default decay never runs for a wheel.
+                if (logic->flingBehavior && !stopped) logic->StartFling(logic->Single(v));
+            }
+            w->running = false;
+        }
+
         rt::Task<> WheelGestures(PointerInputScope& s, std::shared_ptr<ScrollingLogic> logic) {
-            for (;;) {
-                auto e = co_await s.AwaitPointerEvent(PointerEventPass::Main);
-                if (e->type != PointerEventType::Scroll || e->changes.empty() || e->changes[0].IsConsumed()) continue;
+            auto w = std::make_shared<WheelLogic>();
+            // The handler restarting or leaving cancels a wheel scroll in progress.
+            struct Guard { std::shared_ptr<WheelLogic> w; ~Guard() { w->job.Cancel(); w->running = false; w->scrolling = false; } } guard{ w };
+            // onScrollingEvent: queue the pixel delta (drag direction) if we can scroll that way.
+            auto offer = [&s, logic, w](PointerEvent& e) {
                 const auto& cfg = s.Config();
-                const Offset d = e->changes[0].scrollDelta;
-                // AndroidScrollable AndroidConfig: pixel delta = scrollDelta * -factor, then handled
-                // like a drag delta (wheel up = finger moving down = towards the start).
+                const Offset d = e.changes[0].scrollDelta;
+                // AndroidConfig.calculateMouseWheelScroll: scrollDelta * -factor (wheel up = finger
+                // moving down = towards the start).
                 const float px = -(logic->orientation == Orientation::Vertical ? d.y * cfg.verticalScrollFactor : d.x * cfg.horizontalScrollFactor);
-                const Offset consumed = logic->Dispatch(logic->Single(px), NestedScrollSource::UserInput);
-                if (logic->Axis(consumed) != 0) e->changes[0].Consume();
+                const float directional = logic->Reverse(px);
+                const bool can = directional < 0 ? logic->state->CanScrollBackward() : directional > 0 && logic->state->CanScrollForward();
+                if (!can) return w->scrolling;
+                w->queue.push_back({ px, e.changes[0].uptimeMillis });
+                if (!w->running) w->job = rt::Launch(rt::Dispatcher::Main(), RunWheel(logic, w));
+                return true;
+            };
+            auto isConsumed = [](const PointerEvent& e) {
+                for (const auto& c : e.changes) if (c.IsConsumed()) return true;
+                return false;
+            };
+            for (;;) {
+                auto e = co_await s.AwaitPointerEvent(PointerEventPass::Initial);
+                if (e->type != PointerEventType::Scroll || e->changes.empty() || isConsumed(*e)) continue;
+                // Already scrolling from earlier notches: take it first (priority over children).
+                if (w->scrolling) {
+                    offer(*e);
+                    for (auto& c : e->changes) c.Consume();
+                    continue;
+                }
+                auto m = co_await s.AwaitPointerEvent(PointerEventPass::Main);
+                if (m->type != PointerEventType::Scroll || isConsumed(*m) || w->scrolling) continue;
+                if (offer(*m)) for (auto& c : m->changes) c.Consume();
             }
         }
 
