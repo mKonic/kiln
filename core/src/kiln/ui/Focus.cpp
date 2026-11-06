@@ -27,6 +27,37 @@ namespace kiln::ui {
             n->GetOwner()->ClearFocus(true);
         }
     }
+    FocusRequester* FocusProperties::Cancel() {
+        static FocusRequester cancel;
+        return &cancel;
+    }
+
+    FocusProperties FocusTargetNode::FetchFocusProperties() const {
+        FocusProperties props;
+        const LayoutNode* n = Owner();
+        if (!n) return props;
+        // Collected nearest-last so the modifier closest to the target wins.
+        std::vector<FocusPropertiesModifier*> found;
+        const auto& own = n->ModifierNodes();
+        auto self = std::find(own.begin(), own.end(), this);
+        for (auto it = std::make_reverse_iterator(self); it != own.rend(); ++it) {
+            ModifierNode* m = const_cast<ModifierNode*>(*it);
+            if (m->AsFocusTarget()) goto apply;
+            if (auto* f = m->AsFocusProperties()) found.push_back(f);
+        }
+        for (const LayoutNode* p = n->Parent(); p; p = p->Parent()) {
+            const auto& mods = p->ModifierNodes();
+            for (auto it = mods.rbegin(); it != mods.rend(); ++it) {
+                ModifierNode* m = const_cast<ModifierNode*>(*it);
+                if (m->AsFocusTarget()) goto apply;
+                if (auto* f = m->AsFocusProperties()) found.push_back(f);
+            }
+        }
+    apply:
+        for (auto it = found.rbegin(); it != found.rend(); ++it) (*it)->ApplyFocusProperties(props);
+        return props;
+    }
+
     bool FocusRequester::RequestFocus(FocusDirection d) {
         for (FocusTargetNode* t : m_Targets) if (t->RequestFocus(d)) return true;
         return false;
@@ -82,6 +113,7 @@ namespace kiln::ui {
 
     bool Owner::CanFocus(const FocusTargetNode& t) const {
         if (t.m_IsRoot) return false;
+        if (!t.FetchFocusProperties().canFocus) return false;
         switch (t.focusability) {
             case Focusability::Always: return true;
             case Focusability::Never: return false;
@@ -425,6 +457,23 @@ namespace kiln::ui {
 
     bool Owner::MoveFocus(FocusDirection d) {
         FocusTargetNode* before = m_ActiveFocus;
+        // An explicit destination on the focused target (focusProperties next/up/...).
+        if (m_ActiveFocus) {
+            const FocusProperties p = m_ActiveFocus->FetchFocusProperties();
+            const bool ltr = m_Direction == LayoutDirection::Ltr;
+            FocusRequester* dest = nullptr;
+            switch (d) {
+                case FocusDirection::Next: dest = p.next; break;
+                case FocusDirection::Previous: dest = p.previous; break;
+                case FocusDirection::Up: dest = p.up; break;
+                case FocusDirection::Down: dest = p.down; break;
+                case FocusDirection::Left: dest = p.left ? p.left : (ltr ? p.start : p.end); break;
+                case FocusDirection::Right: dest = p.right ? p.right : (ltr ? p.end : p.start); break;
+                default: break;
+            }
+            if (dest == FocusProperties::Cancel()) return false;
+            if (dest) return dest->RequestFocus(d);
+        }
         auto request = [&](FocusTargetNode& n) { return RequestFocus(n, d); };
         bool found = false;
         switch (d) {

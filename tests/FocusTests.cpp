@@ -85,3 +85,31 @@ TEST(ClickableIsFocusableOnlyWithKeysAndClicksOnEnter) {
     h.Key(keys::Enter);
     CHECK_EQ(clicks, 1);
 }
+
+TEST(FocusPropertiesRedirectSkipAndCancel) {
+    Harness h;
+    std::string focused;
+    FocusRequester toD;
+    h.Run([&] {
+        auto item = [&](const char* name, Modifier m) {
+            Box(Focusable(SizeMod(std::move(m), Dp(50), Dp(50)), Focusability::Always,
+                          [&focused, name](FocusState s) { if (IsFocused(s)) focused = name; }));
+        };
+        Column(Modifier{}, [&] {
+            Row(Modifier{}, [&] {
+                item("a", FocusPropertiesMod({}, [&](FocusProperties& p) { p.next = &toD; p.right = FocusProperties::Cancel(); }));
+                item("b", FocusPropertiesMod({}, [](FocusProperties& p) { p.canFocus = false; }));
+                item("c", {});
+            });
+            item("d", FocusRequesterModifier({}, toD));
+        });
+    });
+    h.Key(keys::Tab);
+    CHECK_EQ(focused, std::string("a"));
+    h.Key(keys::DpadRight);
+    CHECK_EQ(focused, std::string("a"));     // Cancel
+    h.Key(keys::Tab);
+    CHECK_EQ(focused, std::string("d"));     // explicit next
+    h.Key(keys::Tab, kMetaShift);
+    CHECK_EQ(focused, std::string("c"));     // b cannot take focus
+}

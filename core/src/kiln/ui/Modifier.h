@@ -27,6 +27,7 @@ namespace kiln::ui {
     class FocusTargetNode;
     class FocusEventModifier;
     class KeyInputModifier;
+    class FocusPropertiesModifier;
     class NestedScrollNode;
     class SemanticsModifier;
 
@@ -88,6 +89,7 @@ namespace kiln::ui {
         virtual PointerInputModifier* AsPointerInput() { return nullptr; }
         virtual FocusTargetNode* AsFocusTarget() { return nullptr; }
         virtual FocusEventModifier* AsFocusEvent() { return nullptr; }
+        virtual FocusPropertiesModifier* AsFocusProperties() { return nullptr; }
         virtual KeyInputModifier* AsKeyInput() { return nullptr; }
         virtual NestedScrollNode* AsNestedScroll() { return nullptr; }
         virtual SemanticsModifier* AsSemantics() { return nullptr; }

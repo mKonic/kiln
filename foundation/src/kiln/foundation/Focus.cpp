@@ -94,6 +94,24 @@ namespace kiln::foundation {
     Modifier Focusable(Modifier m, Focusability f, std::function<void(FocusState)> cb, std::shared_ptr<MutableInteractionSource> source) {
         return m.With<FocusNode>(FocusParams{ f, Latest(std::move(cb)), std::move(source) });
     }
+    namespace {
+        struct PropsParams {
+            std::shared_ptr<std::function<void(ui::FocusProperties&)>> fn;
+            bool operator==(const PropsParams& o) const { return fn == o.fn; }
+        };
+        struct PropsNode final : ModifierNode, ui::FocusPropertiesModifier {
+            PropsParams params;
+            explicit PropsNode(PropsParams p) : params(std::move(p)) {}
+            void OnParamsChanged() {}
+            ui::FocusPropertiesModifier* AsFocusProperties() override { return this; }
+            void ApplyFocusProperties(ui::FocusProperties& p) override { if (params.fn && *params.fn) (*params.fn)(p); }
+        };
+    }
+
+    Modifier FocusPropertiesMod(Modifier m, std::function<void(ui::FocusProperties&)> fn) {
+        return m.With<PropsNode>(PropsParams{ Latest(std::move(fn)) });
+    }
+
     Modifier OnFocusChanged(Modifier m, std::function<void(FocusState)> cb) {
         return m.With<EventNode>(EventParams{ Latest(std::move(cb)) });
     }

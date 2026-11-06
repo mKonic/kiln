@@ -50,6 +50,29 @@ namespace kiln::ui {
         virtual bool OnKeyEvent(const KeyEvent&) { return false; }
     };
 
+    class FocusRequester;
+
+    // focusProperties { ... }: overrides for the next focus target down the chain. A direction's
+    // requester: null = default search, FocusProperties::Cancel() = stay put.
+    struct FocusProperties {
+        bool canFocus = true;
+        FocusRequester* next = nullptr;
+        FocusRequester* previous = nullptr;
+        FocusRequester* up = nullptr;
+        FocusRequester* down = nullptr;
+        FocusRequester* left = nullptr;
+        FocusRequester* right = nullptr;
+        FocusRequester* start = nullptr;   // left in LTR, right in RTL (when left/right are unset)
+        FocusRequester* end = nullptr;
+        static FocusRequester* Cancel();
+    };
+
+    class FocusPropertiesModifier {
+    public:
+        virtual ~FocusPropertiesModifier() = default;
+        virtual void ApplyFocusProperties(FocusProperties& p) = 0;
+    };
+
     class FocusTargetNode;
 
     // focusTarget(): a node that can hold focus.
@@ -63,6 +86,9 @@ namespace kiln::ui {
         bool CanFocus() const;
         bool RequestFocus(FocusDirection direction = FocusDirection::Enter);
         void OnDetach() override;
+        // The focusProperties above this target: earlier in its chain back to the previous
+        // target, then up the parents until a target (fetchFocusProperties).
+        FocusProperties FetchFocusProperties() const;
 
     private:
         friend class Owner;

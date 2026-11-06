@@ -14,6 +14,8 @@ namespace kiln::foundation {
     Modifier Focusable(Modifier m, Focusability f = Focusability::Always,
                        std::function<void(FocusState)> onFocusChange = {},
                        std::shared_ptr<MutableInteractionSource> interactionSource = nullptr);
+    // focusProperties { }: applies to the next focusable down the chain (or in children).
+    Modifier FocusPropertiesMod(Modifier m, std::function<void(ui::FocusProperties&)> properties);
     // onFocusChanged: reports the state of the first focus target after it (deduplicated).
     Modifier OnFocusChanged(Modifier m, std::function<void(FocusState)> onChange);
     Modifier FocusRequesterModifier(Modifier m, FocusRequester& requester);
