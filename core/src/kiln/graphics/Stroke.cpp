@@ -95,8 +95,8 @@ namespace kiln::gfx {
             void Contour(const Polyline& in, std::vector<Polyline>& out) const {
                 std::vector<Offset> pts;
                 for (const Offset& p : in.points)
-                    if (pts.empty() || Dot(Sub(p, pts.back()), Sub(p, pts.back())) > 1e-12f) pts.push_back(p);
-                if (in.closed && pts.size() > 2 && Dot(Sub(pts.front(), pts.back()), Sub(pts.front(), pts.back())) <= 1e-12f) pts.pop_back();
+                    if (pts.empty() || Dot(Sub(p, pts.back()), Sub(p, pts.back())) > 1e-6f) pts.push_back(p);
+                if (in.closed && pts.size() > 2 && Dot(Sub(pts.front(), pts.back()), Sub(pts.front(), pts.back())) <= 1e-6f) pts.pop_back();
                 if (pts.size() == 1) {
                     // Zero-length contour: round and square caps draw a dot (Skia), butt nothing.
                     if (s.cap == StrokeCap::Butt) return;
