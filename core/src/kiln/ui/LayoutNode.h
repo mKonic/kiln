@@ -175,6 +175,9 @@ namespace kiln::ui {
         void SetDirection(LayoutDirection d) { m_Direction = d; RequestFullRemeasure(); }
         LayoutDirection Direction() const { return m_Direction; }
         void SetText(TextBackend* text) { m_Text = text; }
+        // Fonts arrived (downloadable fonts): text lays out again.
+        void OnFontsChanged() { ++m_FontGeneration; RequestFullRemeasure(); }
+        int FontGeneration() const { return m_FontGeneration; }
         TextBackend* Text() const { return m_Text; }
         void SetRequestFrame(std::function<void()> fn) { m_RequestFrame = std::move(fn); }
 
@@ -332,6 +335,7 @@ namespace kiln::ui {
 
         std::function<void(int)> m_PlaySound;
         std::function<void(int)> m_PointerIconHost;
+        int m_FontGeneration = 0;
         std::function<bool(const std::string&)> m_UriHandler;
         struct IconRequest { const void* requester; int depth; int type; };
         std::vector<IconRequest> m_IconRequests;

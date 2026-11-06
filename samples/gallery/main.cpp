@@ -134,6 +134,10 @@ namespace {
                               AppendInlineContent(b, "star");
                               b.Append(" sits in the line like a glyph.");
                           }), Padding(Modifier{}, 16_dp, 4_dp), { 16, kOnSurface }, inlineOpts);
+                TextStyle downloaded(26, kPrimary);
+                downloaded.span.fontFamily = FontFamily::Of({ Font::Google("Lobster Two", FontWeight::Bold()) });
+                downloaded.span.fontWeight = FontWeight::Bold();
+                BasicText("Downloaded: Lobster Two", Padding(Modifier{}, 16_dp, 4_dp), downloaded);
                 BasicTextOptions two;
                 two.maxLines = 2;
                 two.overflow = TextOverflow::Ellipsis;

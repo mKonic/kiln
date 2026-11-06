@@ -466,3 +466,34 @@ TEST(BasicTextPlacesInlineContentInPlaceholders) {
     walk(root);
     CHECK(found);
 }
+
+TEST(DownloadableFontsQueryTheProviderAndRelayoutOnArrival) {
+    const Font lobster = Font::Google("Lobster Two", FontWeight::Bold(), FontStyle::Italic);
+    CHECK(lobster.source == Font::Source::Downloadable);
+    CHECK(lobster.path == "name=Lobster Two&weight=700&italic=1&besteffort=true");
+    CHECK(lobster.provider.authority == "com.google.android.gms.fonts" && lobster.provider.certificates.size() == 2);
+    TextStyle style = ResolveDefaults(TextStyle(Sp(14)), ui::LayoutDirection::Ltr);
+    style.span.fontFamily = FontFamily::Of({ lobster });
+    style.span.fontWeight = FontWeight::Bold();
+    style.span.fontStyle = FontStyle::Italic;
+    const auto f = BuildParagraphRequest(AnnotatedString("x"), style, {}, {}).base.font;
+    CHECK(f.kind == TextFontRequest::Kind::Downloadable);
+    CHECK(f.name.rfind("com.google.android.gms.fonts\ncom.google.android.gms\nname=Lobster Two", 0) == 0);
+    CHECK(f.weight == 700 && f.italic && !f.fakeBold && !f.fakeItalic);
+
+    // When fonts arrive, text lays out again.
+    FakeText backend;
+    ui::Owner owner;
+    owner.SetDensity({ 1, 1 });
+    owner.SetText(&backend);
+    rt::Composition comp(owner.Root(), rt::Dispatcher::Main());
+    comp.SetContent([&] { foundation::Column(ui::Modifier{}, [&] { foundation::BasicText("Hello", {}, style); }); });
+    comp.Recompose();
+    owner.MeasureAndLayout({ 300, 100 });
+    const int before = backend.layouts;
+    owner.MeasureAndLayout({ 300, 100 });
+    CHECK_EQ(backend.layouts, before);
+    owner.OnFontsChanged();
+    owner.MeasureAndLayout({ 300, 100 });
+    CHECK(backend.layouts > before);
+}

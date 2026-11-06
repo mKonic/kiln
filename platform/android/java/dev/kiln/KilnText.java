@@ -159,12 +159,47 @@ final class KilnText {
         return run;
     }
 
+    // Downloadable fonts by query: loaded, or null while loading / after failing.
+    private final HashMap<String, Typeface> downloaded = new HashMap<>();
+    private final java.util.HashSet<String> requested = new java.util.HashSet<>();
+    private final android.os.Handler mainHandler = new android.os.Handler(android.os.Looper.getMainLooper());
+
+    /** FontsContract.requestFonts; on arrival native lays text out again. */
+    private Typeface downloadable(String spec) {
+        Typeface tf = downloaded.get(spec);
+        if (tf != null || requested.contains(spec)) return tf;
+        requested.add(spec);
+        final String[] parts = spec.split("\n", -1);
+        if (parts.length < 4) return null;
+        java.util.ArrayList<byte[]> certs = new java.util.ArrayList<>();
+        for (String c : parts[3].split(",")) if (!c.isEmpty()) certs.add(android.util.Base64.decode(c.trim(), android.util.Base64.DEFAULT));
+        java.util.ArrayList<java.util.List<byte[]>> certSets = new java.util.ArrayList<>();
+        for (byte[] c : certs) certSets.add(java.util.Collections.singletonList(c));
+        android.provider.FontRequest request = new android.provider.FontRequest(parts[0], parts[1], parts[2], certSets);
+        android.provider.FontsContract.requestFonts(context, request, mainHandler, null, new android.provider.FontsContract.FontRequestCallback() {
+            @Override public void onTypefaceRetrieved(Typeface typeface) {
+                downloaded.put(spec, typeface);
+                typefaces.clear();   // drop the fallbacks made while loading
+                KilnNative.fontsChanged();
+            }
+            @Override public void onTypefaceRequestFailed(int reason) {
+                android.util.Log.w("kiln", "downloadable font failed (" + reason + "): " + parts[2]);
+            }
+        });
+        return null;
+    }
+
     private Typeface typeface(int kind, String name, int weight, boolean italic, String variation) {
         final String key = kind + "|" + name + "|" + weight + "|" + italic + "|" + variation;
         Typeface cached = typefaces.get(key);
         if (cached != null) return cached;
         Typeface base;
         switch (kind) {
+            case 8: {
+                base = downloadable(name);
+                if (base == null) return Typeface.create(Typeface.DEFAULT, Math.max(1, Math.min(1000, weight)), italic);   // not cached
+                break;
+            }
             case 1: base = Typeface.SANS_SERIF; break;
             case 2: base = Typeface.SERIF; break;
             case 3: base = Typeface.MONOSPACE; break;

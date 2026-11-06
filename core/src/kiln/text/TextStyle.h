@@ -68,16 +68,32 @@ namespace kiln::text {
     // FontSynthesis: which of bold / italic the system may fake when a font lacks them.
     enum class FontSynthesis : std::uint8_t { None = 0, Weight = 1, Style = 2, All = 3 };
 
-    // A font file (Font(resId/asset/file, weight, style, variationSettings)).
+    // A downloadable font provider (FontRequest's authority, package and signing certificates,
+    // base64 DER; any one may match).
+    struct FontProvider {
+        std::string authority, package;
+        std::vector<std::string> certificates;
+        bool operator==(const FontProvider&) const = default;
+        // GoogleFont.Provider for Google Play services' font provider.
+        static FontProvider GoogleFonts();
+    };
+
+    // A font: a file (Font(asset/file, weight, style, variationSettings)), or a downloadable font
+    // (path is the provider query) that loads in the background; text uses the default family
+    // until it arrives, then lays out again.
     struct Font {
-        enum class Source : std::uint8_t { Asset, File };
+        enum class Source : std::uint8_t { Asset, File, Downloadable };
         Source source = Source::Asset;
         std::string path;
+        FontProvider provider;   // Downloadable
         FontWeight weight = FontWeight::Normal();
         FontStyle style = FontStyle::Normal;
         // FontVariation.Settings: "'wght' 650, 'wdth' 90" style axes.
         std::string variationSettings;
         bool operator==(const Font&) const = default;
+        // Font(GoogleFont(name, bestEffort), provider, weight, style).
+        static Font Google(const std::string& name, FontWeight weight = FontWeight::Normal(), FontStyle style = FontStyle::Normal,
+                           bool bestEffort = true, FontProvider provider = FontProvider::GoogleFonts());
     };
 
     // FontFamily: a generic system family, a named system family, or a list of fonts.

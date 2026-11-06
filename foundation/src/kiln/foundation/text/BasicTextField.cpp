@@ -110,6 +110,7 @@ namespace kiln::foundation {
             ParagraphData paragraph;
             std::u16string laidOut;
             int laidOutWidth = -1;
+            int laidOutGeneration = 0;
             bool laidOutEmpty = false;
             float lineHeight = 0;
 
@@ -126,7 +127,9 @@ namespace kiln::foundation {
             void Relayout(const std::u16string& text, int width, const ui::Density& density, ui::LayoutDirection dir) {
                 FieldCore& c = *params.core;
                 if (!c.text) return;
-                if (text == laidOut && width == laidOutWidth && paragraph.handle) return;
+                const int generation = c.owner ? c.owner->FontGeneration() : 0;
+                if (text == laidOut && width == laidOutWidth && paragraph.handle && generation == laidOutGeneration) return;
+                laidOutGeneration = generation;
                 Release();
                 laidOut = text;
                 laidOutWidth = width;

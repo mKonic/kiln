@@ -154,8 +154,15 @@ namespace kiln::text {
                     const auto matched = MatchFont(family.fonts, weight, style);
                     if (matched.empty()) break;   // default family
                     const Font& font = matched.front();
-                    f.kind = font.source == Font::Source::Asset ? TextFontRequest::Kind::Asset : TextFontRequest::Kind::File;
-                    f.name = font.path;
+                    if (font.source == Font::Source::Downloadable) {
+                        f.kind = TextFontRequest::Kind::Downloadable;
+                        f.name = font.provider.authority + "\n" + font.provider.package + "\n" + font.path + "\n";
+                        for (std::size_t i = 0; i < font.provider.certificates.size(); ++i)
+                            f.name += (i ? "," : "") + font.provider.certificates[i];
+                    } else {
+                        f.kind = font.source == Font::Source::Asset ? TextFontRequest::Kind::Asset : TextFontRequest::Kind::File;
+                        f.name = font.path;
+                    }
                     // synthesizeTypeface: fake bold only from below 600 to 600+, fake slant when
                     // the slant differs; otherwise the font's own weight and slant.
                     const bool weightOn = synthesis == FontSynthesis::All || synthesis == FontSynthesis::Weight;

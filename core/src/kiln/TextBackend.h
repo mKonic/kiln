@@ -29,9 +29,10 @@ namespace kiln {
     // The font a run asks for: a generic or named system family, or a font file already matched
     // (FontMatcher) with synthesis applied (synthesizeTypeface: weight and slant are final).
     struct TextFontRequest {
-        enum class Kind : std::uint8_t { Default, SansSerif, Serif, Monospace, Cursive, SystemName, Asset, File };
+        enum class Kind : std::uint8_t { Default, SansSerif, Serif, Monospace, Cursive, SystemName, Asset, File, Downloadable };
         Kind kind = Kind::Default;
-        std::string name;                   // SystemName family, or the font's path
+        // SystemName family, the font's path, or for Downloadable "authority\npackage\nquery\ncert,cert".
+        std::string name;
         int weight = 400;
         bool italic = false;
         std::string variationSettings;      // files: "'wght' 650, 'wdth' 90"

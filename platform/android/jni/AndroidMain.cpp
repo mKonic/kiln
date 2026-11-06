@@ -279,6 +279,12 @@ namespace {
         }
     }
 
+    void FontsChanged(JNIEnv*, jclass) {
+        if (!g_Host) return;
+        g_Host->app->GetOwner().OnFontsChanged();
+        g_Host->app->RequestFrame();
+    }
+
     void SetFontWeightAdjustment(JNIEnv*, jclass, jint adjustment) {
         if (!g_Host) return;
         g_Host->app->SetFontWeightAdjustment(adjustment);
@@ -982,6 +988,7 @@ extern "C" JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void*) {
         { "setVisible", "(Z)V", reinterpret_cast<void*>(&SetVisible) },
         { "setDensity", "(FF)V", reinterpret_cast<void*>(&SetDensity) },
         { "setFontWeightAdjustment", "(I)V", reinterpret_cast<void*>(&SetFontWeightAdjustment) },
+        { "fontsChanged", "()V", reinterpret_cast<void*>(&FontsChanged) },
         { "setAnimationScale", "(F)V", reinterpret_cast<void*>(&SetAnimationScale) },
         { "setLayoutDirection", "(Z)V", reinterpret_cast<void*>(&SetLayoutDirection) },
         { "touchEvent", "(IIJ[I[F[IIIIFF[J[F[F)V", reinterpret_cast<void*>(&TouchEvent) },

@@ -63,7 +63,9 @@ namespace kiln::foundation {
 
             // The layout for the constraints (a few are cached: intrinsics ask several).
             std::shared_ptr<TextLayoutResult> Layout(const ui::Density& d, ui::LayoutDirection dir, const ui::Constraints& c) {
-                if (!(m_Density == d) || m_Direction != dir) {
+                const int generation = Owner() && Owner()->GetOwner() ? Owner()->GetOwner()->FontGeneration() : 0;
+                if (!(m_Density == d) || m_Direction != dir || generation != m_FontGeneration) {
+                    m_FontGeneration = generation;
                     m_Layouts.clear();
                     m_Intrinsics.reset();
                     m_LineHeights.reset();
@@ -168,6 +170,7 @@ namespace kiln::foundation {
             std::optional<std::pair<float, float>> m_LineHeights;
             ui::Density m_Density{ -1, -1 };
             ui::LayoutDirection m_Direction = ui::LayoutDirection::Ltr;
+            int m_FontGeneration = 0;
             std::shared_ptr<TextLayoutResult> m_Drawn;
         };
 

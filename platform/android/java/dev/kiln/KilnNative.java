@@ -13,6 +13,8 @@ final class KilnNative {
     static native void setDensity(float density, float fontScale);
     /** Configuration.fontWeightAdjustment (the bold text setting). */
     static native void setFontWeightAdjustment(int adjustment);
+    /** Downloadable fonts arrived: lay text out again. */
+    static native void fontsChanged();
     static native void setAnimationScale(float scale);
     static native void setLayoutDirection(boolean rtl);
     static native void touchEvent(int action, int actionIndex, long eventTime, int[] ids, float[] xy,
