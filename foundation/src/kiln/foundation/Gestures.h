@@ -36,6 +36,8 @@ namespace kiln::foundation {
         }
 
         IntSize Size() const { return m_Size; }
+        // The event last delivered to this handler (currentEvent).
+        const PointerEvent& CurrentEvent() const { return m_Current; }
         virtual const ViewConfiguration& Config() const = 0;
         virtual Density GetDensity() const = 0;
 
@@ -44,6 +46,7 @@ namespace kiln::foundation {
                              const std::shared_ptr<rt::JobState>& job) = 0;
         virtual std::optional<PointerEvent> TakeEvent() = 0;
         IntSize m_Size;
+        PointerEvent m_Current;
     };
 
     using PointerInputHandler = std::function<rt::Task<>(PointerInputScope&)>;
@@ -61,6 +64,22 @@ namespace kiln::foundation {
         std::function<void(Offset)> onLongPress;
     };
     rt::Task<> DetectTapGestures(PointerInputScope& scope, TapCallbacks callbacks);
+
+    // --- drag (DragGestureDetector.kt) ------------------------------------------------------
+
+    enum class Orientation : std::uint8_t { Vertical, Horizontal };
+
+    // ViewConfiguration.pointerSlop: mice use touchSlop * (0.125dp / 18dp).
+    float PointerSlop(const ViewConfiguration& c, PointerType type);
+
+    struct DragCallbacks {
+        std::function<void(const PointerInputChange& down, const PointerInputChange& slopTrigger, Offset overSlop)> onDragStart;
+        std::function<void(const PointerInputChange& change, Offset dragAmount)> onDrag;
+        std::function<void(const PointerInputChange& up)> onDragEnd;
+        std::function<void()> onDragCancel;
+    };
+    // detectDragGestures(orientationLock): slop, then drag until up or consumed by someone else.
+    rt::Task<> DetectDragGestures(PointerInputScope& scope, std::optional<Orientation> orientationLock, DragCallbacks callbacks);
 
     // Clickable: tap + pressed state. Semantics, keys, focus and indication come with M3/M10.
     Modifier Clickable(Modifier m, std::function<void()> onClick, std::function<void(bool)> onPressedChange = {},

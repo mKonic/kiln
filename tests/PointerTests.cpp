@@ -2,6 +2,9 @@
 
 #include "kiln/foundation/Compose.h"
 #include "kiln/foundation/Gestures.h"
+#include "kiln/ui/VelocityTracker.h"
+
+#include <cmath>
 
 #include <string>
 
@@ -97,4 +100,34 @@ TEST(TouchTargetExpandsSmallNodes) {
     h.Touch(PointerEventType::Press, 30, 50, true, 0);
     h.Touch(PointerEventType::Release, 30, 50, false, 30);
     CHECK_EQ(clicks, 1);
+}
+
+TEST(DragCrossesSlopThenFollowsAndReportsVelocity) {
+    Harness h;
+    h.owner.Config().touchSlop = 8;
+    Offset total;
+    bool started = false, ended = false;
+    VelocityTracker tracker;
+    Offset velocity;
+    h.Run([&] {
+        Box(PointerInput(FillMax(Modifier{}, Axis::Both), rt::Keys(1), [&](PointerInputScope& s) {
+            DragCallbacks cb;
+            cb.onDragStart = [&](const PointerInputChange&, const PointerInputChange&, Offset) { started = true; };
+            cb.onDrag = [&](const PointerInputChange& c, Offset d) { total = total + d; tracker.AddPointerInputChange(c); };
+            cb.onDragEnd = [&](const PointerInputChange& up) { ended = true; tracker.AddPointerInputChange(up); velocity = tracker.CalculateVelocity(); };
+            return DetectDragGestures(s, std::nullopt, cb);
+        }));
+    });
+    h.Touch(PointerEventType::Press, 10, 50, true, 0);
+    h.Touch(PointerEventType::Move, 15, 50, true, 10);     // 5 px: under slop
+    CHECK(!started);
+    for (int i = 1; i <= 8; ++i) h.Touch(PointerEventType::Move, 15.0f + 10 * i, 50, true, 10 + 10 * i);
+    CHECK(started);
+    h.Touch(PointerEventType::Release, 95, 50, false, 95);
+    CHECK(ended);
+    // Total drag = movement after the slop: 85 px moved, 8 px of slop removed.
+    CHECK(std::abs(total.x - 77.0f) < 0.01f);
+    CHECK(std::abs(total.y) < 0.01f);
+    // 10 px every 10 ms = 1000 px/s.
+    CHECK(std::abs(velocity.x - 1000.0f) < 1.0f);
 }

@@ -3,6 +3,8 @@
 #include "kiln/runtime/Task.h"
 #include "kiln/foundation/Focus.h"
 
+#include <cmath>
+
 namespace kiln::foundation {
 
     namespace {
@@ -31,10 +33,11 @@ namespace kiln::foundation {
                 auto h = m_Waiter;
                 m_Waiter = nullptr;
                 if (m_Job.Active()) m_JobState->unregister = nullptr;
+                // The copy shares the consumption flags with the dispatch, so Consume() on it is
+                // seen by later passes and nodes.
                 m_Event = ev;
-                // The event is copied, but consumption must reach the live flags: keep pointers.
+                m_Current = ev;
                 h.resume();
-                // Changes made through the copy's Consume() write the shared flags directly.
             }
             void OnCancelPointerInput() override { Restart(false); }
 
@@ -234,6 +237,163 @@ namespace kiln::foundation {
                 }
             }
             co_await AwaitAllUp(s);
+        }
+    }
+
+    // --- drag ---------------------------------------------------------------------------------
+
+    float PointerSlop(const ViewConfiguration& c, PointerType type) {
+        return type == PointerType::Mouse ? c.touchSlop * (0.125f / 18.0f) : c.touchSlop;
+    }
+
+    namespace {
+        const PointerInputChange* Find(const PointerEvent& e, std::int64_t id) {
+            for (const auto& c : e.changes) if (c.id == id) return &c;
+            return nullptr;
+        }
+        PointerInputChange* Find(PointerEvent& e, std::int64_t id) {
+            for (auto& c : e.changes) if (c.id == id) return &c;
+            return nullptr;
+        }
+        const PointerInputChange* FirstPressed(const PointerEvent& e) {
+            for (const auto& c : e.changes) if (c.pressed) return &c;
+            return nullptr;
+        }
+        bool IsPointerUp(const PointerEvent& e, std::int64_t id) {
+            const auto* c = Find(e, id);
+            return !c || !c->pressed;
+        }
+        float Length(Offset o) { return std::sqrt(o.x * o.x + o.y * o.y); }
+
+        struct TouchSlopDetector {
+            std::optional<Orientation> orientation;
+            Offset total;
+            float Main(Offset o) const { return orientation == Orientation::Horizontal ? o.x : o.y; }
+            float Cross(Offset o) const { return orientation == Orientation::Horizontal ? o.y : o.x; }
+            std::optional<Offset> PostSlop(Offset change, float slop) {
+                total = total + change;
+                const float inDir = orientation ? std::abs(Main(total)) : Length(total);
+                if (!(inDir > 0 && inDir >= slop)) return std::nullopt;
+                if (!orientation) {
+                    const float len = Length(total);
+                    return Offset{ total.x - total.x / len * slop, total.y - total.y / len * slop };
+                }
+                const float m = Main(total) - (Main(total) > 0 ? 1 : -1) * slop;
+                const float c = Cross(total);
+                return *orientation == Orientation::Horizontal ? Offset{ m, c } : Offset{ c, m };
+            }
+        };
+
+        // awaitPointerSlopOrCancellation: returns the change that crossed slop, consumed by the
+        // callback, or nullopt if cancelled.
+        rt::Task<std::optional<PointerInputChange>> AwaitSlop(PointerInputScope& s, std::int64_t id, PointerType type,
+                                                              std::optional<Orientation> o, Offset initial,
+                                                              std::function<void(PointerInputChange&, Offset)> onSlop) {
+            if (IsPointerUp(s.CurrentEvent(), id)) co_return std::nullopt;
+            const float slop = PointerSlop(s.Config(), type);
+            std::int64_t pointer = id;
+            TouchSlopDetector det{ o, initial };
+            for (;;) {
+                auto e = co_await s.AwaitPointerEvent(PointerEventPass::Main);
+                PointerInputChange* drag = Find(*e, pointer);
+                if (!drag) co_return std::nullopt;
+                if (drag->IsConsumed()) co_return std::nullopt;
+                if (drag->ChangedToUpIgnoreConsumed()) {
+                    const auto* other = FirstPressed(*e);
+                    if (!other) co_return std::nullopt;
+                    pointer = other->id;
+                } else if (auto over = det.PostSlop(drag->PositionChangeIgnoreConsumed(), slop)) {
+                    onSlop(*drag, *over);
+                    if (drag->IsConsumed()) co_return *drag;
+                    det.total = {};
+                } else {
+                    co_await s.AwaitPointerEvent(PointerEventPass::Final);
+                    if (drag->IsConsumed()) co_return std::nullopt;
+                }
+            }
+        }
+
+        // drag(): follows the pointer until it lifts (returns the up) or motion is consumed (nullopt).
+        rt::Task<std::optional<PointerInputChange>> Drag(PointerInputScope& s, std::int64_t id,
+                                                         std::function<void(PointerInputChange&)> onDrag) {
+            if (IsPointerUp(s.CurrentEvent(), id)) co_return std::nullopt;
+            std::int64_t pointer = id;
+            for (;;) {
+                // awaitDragOrUp
+                std::optional<PointerInputChange> change;
+                for (;;) {
+                    auto e = co_await s.AwaitPointerEvent(PointerEventPass::Main);
+                    PointerInputChange* c = Find(*e, pointer);
+                    if (!c) co_return std::nullopt;
+                    if (c->ChangedToUpIgnoreConsumed()) {
+                        const auto* other = FirstPressed(*e);
+                        if (!other) { change = *c; break; }
+                        pointer = other->id;
+                    } else if (Length(c->PositionChangeIgnoreConsumed()) != 0) {
+                        change = *c;
+                        break;
+                    }
+                }
+                if (change->IsConsumed()) co_return std::nullopt;
+                if (change->ChangedToUpIgnoreConsumed()) co_return change;
+                onDrag(*change);
+                pointer = change->id;
+            }
+        }
+
+        rt::Task<std::optional<PointerInputChange>> AwaitFirstDownPass(PointerInputScope& s, bool requireUnconsumed, PointerEventPass pass) {
+            for (;;) {
+                auto e = co_await s.AwaitPointerEvent(pass);
+                bool all = !e->changes.empty();
+                for (const auto& c : e->changes)
+                    if (!(requireUnconsumed ? c.ChangedToDown() : c.ChangedToDownIgnoreConsumed())) all = false;
+                if (all) co_return e->changes[0];
+            }
+        }
+    }
+
+    rt::Task<> DetectDragGestures(PointerInputScope& s, std::optional<Orientation> lock, DragCallbacks cb) {
+        for (;;) {
+            auto initialDown = co_await AwaitFirstDownPass(s, false, PointerEventPass::Initial);
+            auto down = co_await AwaitFirstDownPass(s, false, PointerEventPass::Main);
+            std::optional<PointerInputChange> drag;
+            Offset overSlop;
+            do {
+                drag = co_await AwaitSlop(s, down->id, down->type, lock, {}, [&](PointerInputChange& c, Offset over) {
+                    c.Consume();
+                    overSlop = over;
+                });
+            } while (drag && !drag->IsConsumed());
+            // Gesture pickup: someone else consumed the slop crossing; wait for them to let go.
+            while (!drag && FirstPressed(s.CurrentEvent())) {
+                PointerEvent e;
+                do {
+                    e = *co_await s.AwaitPointerEvent(PointerEventPass::Final);
+                    bool anyConsumed = false;
+                    for (const auto& c : e.changes) if (c.IsConsumed()) anyConsumed = true;
+                    if (!(anyConsumed && FirstPressed(e))) break;
+                } while (true);
+                if (FirstPressed(e)) {
+                    const Offset initial = (e.changes.empty() ? down->position : e.changes[0].position) - down->position;
+                    drag = co_await AwaitSlop(s, down->id, down->type, lock, initial, [&](PointerInputChange& c, Offset) {
+                        c.Consume();
+                        overSlop = c.PositionChange();
+                    });
+                }
+            }
+            (void)initialDown;
+            if (drag) {
+                if (cb.onDragStart) cb.onDragStart(*down, *drag, overSlop);
+                if (cb.onDrag) cb.onDrag(*drag, overSlop);
+                auto up = co_await Drag(s, drag->id, [&](PointerInputChange& c) {
+                    if (cb.onDrag) cb.onDrag(c, c.PositionChange());
+                    c.Consume();
+                });
+                if (!up) { if (cb.onDragCancel) cb.onDragCancel(); }
+                else if (cb.onDragEnd) cb.onDragEnd(*up);
+            }
+            // awaitEachGesture: wait until every pointer is up before the next gesture.
+            while (FirstPressed(s.CurrentEvent())) co_await s.AwaitPointerEvent(PointerEventPass::Final);
         }
     }
 
