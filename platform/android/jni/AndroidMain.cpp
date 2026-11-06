@@ -26,6 +26,9 @@ namespace kiln::android { void InstallImageDecoder(); void InstallAssetReader(JN
 #include <jni.h>
 
 #include <chrono>
+#include <algorithm>
+#include <numeric>
+#include <sys/system_properties.h>
 #include <memory>
 #include <string>
 
@@ -83,10 +86,33 @@ namespace {
     };
     ViewNestedScrollParent g_NestedScrollParent;
 
+    // `setprop debug.kiln.frametimes 1`: logs the CPU time of each frame's work (recompose,
+    // layout, draw, submit), summarised every 120 frames, for measuring before optimising.
+    struct FrameStats {
+        bool enabled = false;
+        std::vector<double> ms;
+        void Add(double v) {
+            ms.push_back(v);
+            if (ms.size() < 120) return;
+            std::sort(ms.begin(), ms.end());
+            const double sum = std::accumulate(ms.begin(), ms.end(), 0.0);
+            __android_log_print(ANDROID_LOG_INFO, "kiln", "frames: n=%zu mean=%.2fms p50=%.2fms p90=%.2fms p99=%.2fms max=%.2fms over16=%td",
+                                ms.size(), sum / double(ms.size()), ms[ms.size() / 2], ms[ms.size() * 9 / 10], ms[ms.size() * 99 / 100], ms.back(),
+                                std::count_if(ms.begin(), ms.end(), [](double v) { return v > 16.6; }));
+            ms.clear();
+        }
+    };
+    FrameStats g_FrameStats;
+
     void OnVsync(int64_t frameTimeNanos, void*) {
         if (!g_Host) return;
         g_Host->callbackPosted = false;
-        if (g_Host->visible && g_Host->window) g_Host->app->Frame(double(frameTimeNanos) * 1e-9);
+        if (g_Host->visible && g_Host->window) {
+            const auto t0 = std::chrono::steady_clock::now();
+            g_Host->app->Frame(double(frameTimeNanos) * 1e-9);
+            if (g_FrameStats.enabled)
+                g_FrameStats.Add(std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count());
+        }
         ArmTimer();
     }
 
@@ -205,6 +231,10 @@ namespace {
             jmethodID isTv = env->GetMethodID(vc, "isTelevision", "()Z");
             env->DeleteLocalRef(vc);
             g_Host->app->SetTelevision(isTv && env->CallBooleanMethod(view, isTv));
+        }
+        {
+            char v[PROP_VALUE_MAX] = {};
+            g_FrameStats.enabled = __system_property_get("debug.kiln.frametimes", v) > 0 && v[0] == '1';
         }
         kiln_main(&g_Host->handle);
     }

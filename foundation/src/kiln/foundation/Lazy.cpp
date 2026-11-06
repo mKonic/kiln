@@ -1,6 +1,7 @@
 #include "kiln/foundation/Lazy.h"
 #include "kiln/foundation/Overscroll.h"
 #include "kiln/foundation/Semantics.h"
+#include "kiln/foundation/StaggeredLaneInfo.h"
 #include "kiln/foundation/Draw.h"
 #include "kiln/runtime/Saveable.h"
 #include "kiln/ui/Locals.h"
@@ -8,7 +9,9 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <deque>
 #include <map>
+#include <tuple>
 #include <set>
 #include <unordered_map>
 
@@ -226,11 +229,10 @@ namespace kiln::foundation {
         // Staggered grids: positions of the items measured so far (a prefix from item 0).
         bool staggered = false;
         LazyStaggeredGridState* stagState = nullptr;
-        struct StagItem { std::uint64_t key; int lane; int top; int size; bool full; };
-        std::vector<StagItem> stag;
+        StaggeredLaneInfo stagLaneInfo;
+        std::vector<int> stagIndices, stagOffsets;   // per lane: the first item and its offset
         std::vector<int> stagLaneSizes;
-        std::uint64_t stagCheckedVersion = ~0ull;
-        float stagScroll = 0;
+        std::map<int, int> stagVisibleOffsets;       // last measure: visible item -> main offset
         MeasureResult MeasureStaggered(LayoutNode& self, MeasureScope& s, const Constraints& c);
         // LazyLayoutItemAnimator, shared by every mode. AnimBegin: which items appear, leave the
         // data or move out of view; AnimPlace: placement deltas, fades and edge slides for the
@@ -568,7 +570,11 @@ namespace kiln::foundation {
 
     // --- staggered grids (LazyStaggeredGridMeasure, simplified: lanes from a cached prefix) -----
 
+    // LazyStaggeredGridMeasure: each lane keeps its first item and its offset; scrolling back
+    // finds earlier items lane by lane (StaggeredLaneInfo remembers assignments), so a far
+    // scrollToItem never measures the items before the target.
     MeasureResult LazyCore::MeasureStaggered(LayoutNode& self, MeasureScope& s, const Constraints& c) {
+        using LI = StaggeredLaneInfo;
         LazyStateBase& st = *state;
         st.m_Node = &self;
         rt::Dispatcher& d = rt::Dispatcher::Main();
@@ -585,124 +591,435 @@ namespace kiln::foundation {
         crossArrangement.Arrange(s, crossAvailable, sizes, LayoutDirection::Ltr, positions);
         const int lanes = int(sizes.size());
         slotsPerLine = lanes;
-        if (sizes != stagLaneSizes) { stag.clear(); stagLaneSizes = sizes; }
-        // After a data change, keep the prefix only while its keys still match.
-        if (stagCheckedVersion != version) {
-            stagCheckedVersion = version;
-            std::size_t i = 0;
-            for (const std::size_t n = std::min(stag.size(), std::size_t(count)); i < n; ++i) if (stag[i].key != KeyOf(int(i)).value) break;
-            stag.resize(i);
-        }
-        if (int(stag.size()) > count) stag.resize(std::size_t(count));
+        const int viewport = mainMax - before - after;   // mainAxisAvailableSize
+        const int w = vertical ? c.ConstrainWidth(crossMax == Constraints::Infinity ? crossPad : crossMax) : c.ConstrainWidth(mainMax);
+        const int h = vertical ? c.ConstrainHeight(mainMax) : c.ConstrainHeight(crossMax == Constraints::Infinity ? crossPad : crossMax);
 
-        std::vector<int> ends(std::size_t(lanes), 0);
-        auto rebuildEnds = [&] {
-            std::fill(ends.begin(), ends.end(), 0);
-            for (const auto& it : stag) {
-                if (it.full) std::fill(ends.begin(), ends.end(), it.top + it.size + spacing);
-                else ends[std::size_t(it.lane)] = it.top + it.size + spacing;
-            }
-        };
-        rebuildEnds();
-        std::vector<LayoutNode*> active;
-        for (auto& [k, sl] : slots) if (sl.holder) active.push_back(sl.holder.get());   // no detaching mid-measure
-        std::map<int, Placeable*> measured;
-        std::map<int, Constraints> measuredWith;   // for animateItem (disappearing items re-measure)
-        auto isFull = [&](int i) { int local = 0; const auto* iv = IntervalOf(i, local); return iv && iv->span && iv->span(local, lanes, lanes) >= lanes; };
-        auto measureAt = [&](int i, int lane, bool full) -> Placeable& {
-            Slot& sl = Compose(i, d);
-            if (std::find(active.begin(), active.end(), sl.holder.get()) == active.end()) active.push_back(sl.holder.get());
-            self.SetChildrenDuringMeasure(active);
-            const int w = full ? crossAvailable : sizes[std::size_t(lane)];
-            const Constraints ic = vertical ? Constraints{ w, w, 0, Constraints::Infinity } : Constraints{ 0, Constraints::Infinity, w, w };
-            Placeable& p = sl.holder->AsMeasurable().Measure(ic);
-            measured[i] = &p;
-            measuredWith[i] = ic;
-            return p;
-        };
-        auto addNext = [&] {
-            const int i = int(stag.size());
-            const bool full = isFull(i);
-            int lane = 0;
-            if (!full) for (int l = 1; l < lanes; ++l) if (ends[std::size_t(l)] < ends[std::size_t(lane)]) lane = l;
-            const int top = full ? *std::max_element(ends.begin(), ends.end()) : ends[std::size_t(lane)];
-            Placeable& p = measureAt(i, lane, full);
-            const int size = vertical ? p.Height() : p.Width();
-            stag.push_back({ KeyOf(i).value, lane, top, size, full });
-            if (full) std::fill(ends.begin(), ends.end(), top + size + spacing);
-            else ends[std::size_t(lane)] = top + size + spacing;
-        };
-        auto minEnd = [&] { return lanes ? *std::min_element(ends.begin(), ends.end()) : 0; };
-
-        const int viewport = mainMax - before - after;
-        if (count == 0) {
+        if (count == 0 || lanes == 0) {
             for (auto& [k, slot] : slots) DisposeSlot(k, slot);
             slots.clear();
             self.SetChildrenDuringMeasure({});
             st.m_Lines.clear();
             st.m_TotalItems = 0;
             st.m_LastConsumed = st.m_PendingScroll = 0;
+            st.m_CanForward = false;
             st.OnMeasured();
             return s.Layout(c.minWidth, c.minHeight);
         }
-        // scrollToItem: jump to the item's position (measuring the items before it).
-        if (!st.m_HasFirstKey) {
-            const int target = std::clamp(st.m_Index.Peek(), 0, count - 1);
-            while (int(stag.size()) <= target) addNext();
-            stagScroll = float(stag[std::size_t(target)].top + st.m_Offset.Peek());
-        }
-        const float delta = st.m_PendingScroll;
-        st.m_PendingScroll = 0;
-        float scroll = stagScroll + delta, consumed = delta;
-        if (scroll < 0) { consumed -= scroll; scroll = 0; }
-        int maxScroll = std::numeric_limits<int>::max();
-        std::vector<int> visible;
-        for (int pass = 0; pass < 3; ++pass) {
-            while (int(stag.size()) < count && minEnd() < int(scroll) + viewport + after) addNext();
-            if (int(stag.size()) == count) {
-                const int contentEnd = std::max(0, *std::max_element(ends.begin(), ends.end()) - spacing);
-                maxScroll = std::max(0, contentEnd - viewport);
-                if (scroll > float(maxScroll)) { consumed -= scroll - float(maxScroll); scroll = float(maxScroll); }
-            }
-            const int sp = int(std::lround(scroll));
-            visible.clear();
-            for (int i = 0; i < int(stag.size()); ++i)
-                if (stag[std::size_t(i)].top + stag[std::size_t(i)].size > sp && stag[std::size_t(i)].top < sp + viewport + after) visible.push_back(i);
-            // Measure what is shown; a size that changed moves everything after it.
-            bool changed = false;
-            for (int i : visible) {
-                auto& it = stag[std::size_t(i)];
-                Placeable& p = measured.count(i) ? *measured[i] : measureAt(i, it.lane, it.full);
-                const int size = vertical ? p.Height() : p.Width();
-                if (size != it.size) { it.size = size; stag.resize(std::size_t(i) + 1); rebuildEnds(); changed = true; break; }
-            }
-            if (!changed) break;
-        }
-        stagScroll = scroll;
-        const int sp = int(std::lround(scroll));
 
-        // Items kept past the viewport: pinned ones and a focus search's beyond-bounds range,
-        // laid out where they are (measuring the items before them when needed).
-        std::vector<int> extra;
-        auto addExtra = [&](int i) {
-            if (i < 0 || i >= count || std::find(visible.begin(), visible.end(), i) != visible.end() ||
-                std::find(extra.begin(), extra.end(), i) != extra.end()) return;
-            while (int(stag.size()) <= i) addNext();
-            const auto& it = stag[std::size_t(i)];
-            if (!measured.count(i)) measureAt(i, it.lane, it.full);
-            extra.push_back(i);
+        // --- measured items (cached by index, lane and span for this pass) ---
+        struct SpanR { int start, size; bool Full() const { return size != 1; } int LaneInfo() const { return Full() ? LI::kLaneFullSpan : start; } };
+        struct SItem { int index, lane, span, size, sws; Placeable* p; Constraints constraints; bool visible = true; int main = 0, cross = 0; };
+        std::deque<SItem> pool;
+        std::map<std::tuple<int, int, int>, SItem*> cache;
+        std::vector<LayoutNode*> active;
+        for (auto& [k, sl] : slots) if (sl.holder) active.push_back(sl.holder.get());   // no detaching mid-measure
+        auto isFull = [&](int i) { int local = 0; const auto* iv = IntervalOf(i, local); return iv && iv->span && iv->span(local, lanes, lanes) >= lanes; };
+        auto spanRange = [&](int i, int lane) { return isFull(i) ? SpanR{ 0, lanes } : SpanR{ lane, 1 }; };
+        auto getAndMeasure = [&](int i, SpanR span) -> SItem& {
+            const int start = std::min(span.start, lanes - 1), size = std::min(span.size, lanes - start);
+            auto key = std::make_tuple(i, start, size);
+            if (auto it = cache.find(key); it != cache.end()) return *it->second;
+            Slot& sl = Compose(i, d);
+            if (std::find(active.begin(), active.end(), sl.holder.get()) == active.end()) active.push_back(sl.holder.get());
+            self.SetChildrenDuringMeasure(active);
+            const int cw = size == 1 ? sizes[std::size_t(start)]
+                                     : positions[std::size_t(start + size - 1)] + sizes[std::size_t(start + size - 1)] - positions[std::size_t(start)];
+            const Constraints ic = vertical ? Constraints{ cw, cw, 0, Constraints::Infinity } : Constraints{ 0, Constraints::Infinity, cw, cw };
+            Placeable& p = sl.holder->AsMeasurable().Measure(ic);
+            const int mainSize = vertical ? p.Height() : p.Width();
+            pool.push_back({ i, start, size, mainSize, mainSize + spacing, &p, ic });
+            cache[key] = &pool.back();
+            return pool.back();
         };
-        if (beyondInterval) for (int i = beyondInterval->first; i <= beyondInterval->second; ++i) addExtra(i);
-        for (const auto& [kv, key] : pinned) {
-            auto sl = slots.find(kv);
-            addExtra(IndexOfKey(key, sl != slots.end() ? sl->second.index : -1));
+        auto maxIn = [](const std::vector<int>& v, SpanR r) { int m = std::numeric_limits<int>::min(); for (int l = r.start; l < r.start + r.size; ++l) m = std::max(m, v[std::size_t(l)]); return m; };
+        auto offsetBy = [](std::vector<int>& v, int delta) { for (int& x : v) x += delta; };
+        auto indexOfMin = [](const std::vector<int>& v, int minBound = std::numeric_limits<int>::min()) {
+            int result = -1, mn = std::numeric_limits<int>::max();
+            // Values in (minBound, min): IntArray.indexOfMinValue.
+            for (int i = 0; i < int(v.size()); ++i) if (v[std::size_t(i)] > minBound && v[std::size_t(i)] < mn) { mn = v[std::size_t(i)]; result = i; }
+            return result;
+        };
+        auto indexOfMax = [](const std::vector<int>& v) {
+            int result = -1, mx = std::numeric_limits<int>::min();
+            for (int i = 0; i < int(v.size()); ++i) if (mx < v[std::size_t(i)]) { mx = v[std::size_t(i)]; result = i; }
+            return result;
+        };
+
+        // fillNearestIndices: the lanes around `itemIndex` (previous lanes take earlier items).
+        auto fillNearest = [&](int itemIndex) {
+            std::vector<int> idx(std::size_t(lanes), 0);
+            if (isFull(itemIndex)) { std::fill(idx.begin(), idx.end(), itemIndex); return idx; }
+            stagLaneInfo.EnsureValidIndex(itemIndex + lanes);
+            const int prevLane = stagLaneInfo.GetLane(itemIndex);
+            const int target = prevLane == LI::kLaneUnset || prevLane == LI::kLaneFullSpan ? 0 : std::min(prevLane, lanes);
+            int current = itemIndex;
+            for (int lane = target - 1; lane >= 0; --lane) {
+                idx[std::size_t(lane)] = stagLaneInfo.FindPreviousItemIndex(current, lane);
+                if (idx[std::size_t(lane)] == LI::kLaneUnset) { std::fill(idx.begin(), idx.begin() + lane, -1); break; }
+                current = idx[std::size_t(lane)];
+            }
+            idx[std::size_t(std::min(target, lanes - 1))] = itemIndex;
+            current = itemIndex;
+            for (int lane = target + 1; lane < lanes; ++lane) {
+                idx[std::size_t(lane)] = stagLaneInfo.FindNextItemIndex(current, lane);
+                current = idx[std::size_t(lane)];
+            }
+            return idx;
+        };
+
+        // --- the scroll position: per-lane first items and offsets ---
+        if (sizes != stagLaneSizes) { stagLaneSizes = sizes; }
+        if (int(stagIndices.size()) != lanes) {
+            // Initial state or a resized grid: lanes after the known ones start after them.
+            stagLaneInfo.Reset();
+            std::vector<int> idx(static_cast<std::size_t>(lanes)), off(static_cast<std::size_t>(lanes));
+            for (int lane = 0; lane < lanes; ++lane) {
+                idx[std::size_t(lane)] = lane < int(stagIndices.size()) && stagIndices[std::size_t(lane)] != LI::kLaneUnset ? stagIndices[std::size_t(lane)]
+                                       : lane == 0 ? 0 : maxIn(idx, { 0, lane }) + 1;
+                stagLaneInfo.SetLane(idx[std::size_t(lane)], lane);
+                off[std::size_t(lane)] = lane < int(stagOffsets.size()) ? stagOffsets[std::size_t(lane)] : lane == 0 ? 0 : off[std::size_t(lane - 1)];
+            }
+            stagIndices = std::move(idx);
+            stagOffsets = std::move(off);
         }
+        if (!st.m_HasFirstKey) {
+            // scrollToItem / requestScrollToItem (snapToItemInternal): a visible target moves the
+            // offsets by its distance; otherwise the lanes are filled around it.
+            const int target = std::clamp(st.m_Index.Peek(), 0, count - 1), scrollOffset = st.m_Offset.Peek();
+            auto vis = stagVisibleOffsets.find(target);
+            if (vis != stagVisibleOffsets.end()) {
+                for (int& o : stagOffsets) o += vis->second + scrollOffset;
+            } else {
+                stagIndices = fillNearest(target);
+                std::fill(stagOffsets.begin(), stagOffsets.end(), scrollOffset);
+            }
+        } else {
+            // updateScrollPositionIfTheFirstItemWasMoved: keep the first item by key.
+            const int found = IndexOfKey(st.m_FirstKey, stagIndices.empty() ? 0 : stagIndices[0]);
+            if (found >= 0 && std::find(stagIndices.begin(), stagIndices.end(), found) == stagIndices.end()) stagIndices = fillNearest(found);
+        }
+
+        // --- measure (LazyStaggeredGridMeasureContext.measure) ---
+        const float pending = st.m_PendingScroll;
+        st.m_PendingScroll = 0;
+        const int wholeDelta = RoundJava(pending);
+        struct Out {
+            bool restart = false;
+            int scrollDelta = 0;
+            std::vector<int> fi, fo, ci, co;
+            std::vector<SItem*> visibleItems;
+            std::vector<std::deque<SItem*>> measured;
+            std::vector<int> scrollOffsets;
+        };
+        auto measure = [&](int initialScrollDelta, std::vector<int> fi, std::vector<int> fo, bool canRestart) -> Out {
+            Out out;
+            const int itemCount = count;
+            int scrollDelta = initialScrollDelta;
+            // ensureIndicesInRange (last lanes keep the last items)
+            for (int i = lanes - 1; i >= 0; --i) {
+                while (fi[std::size_t(i)] >= itemCount || !stagLaneInfo.AssignedToLane(fi[std::size_t(i)], i)) fi[std::size_t(i)] = stagLaneInfo.FindPreviousItemIndex(fi[std::size_t(i)], i);
+                if (fi[std::size_t(i)] >= 0) {
+                    const int itemIndex = fi[std::size_t(i)];
+                    if (!isFull(itemIndex)) {
+                        int lane = i;
+                        if (stagLaneInfo.GetLane(itemIndex) == LI::kLaneFullSpan) {
+                            const int targetLane = int(std::find(fi.begin(), fi.end(), itemIndex) - fi.begin());
+                            for (int l = targetLane + 1; l <= i; ++l) if (fi[std::size_t(l)] == itemIndex) fi[std::size_t(l)] = stagLaneInfo.FindPreviousItemIndex(itemIndex, l);
+                            lane = targetLane;
+                        }
+                        stagLaneInfo.SetLane(itemIndex, lane);
+                    }
+                }
+            }
+            offsetBy(fo, -scrollDelta);
+            std::vector<std::deque<SItem*>> measured(static_cast<std::size_t>(lanes));
+            offsetBy(fo, -before);
+            auto hasSpaceBeforeFirst = [&] {
+                for (int lane = 0; lane < lanes; ++lane) if (fo[std::size_t(lane)] < std::max(-spacing, 0) && fi[std::size_t(lane)] > 0) return true;
+                return false;
+            };
+            int laneToCheckForGaps = -1;
+            while (hasSpaceBeforeFirst()) {
+                const int laneIndex = indexOfMax(fi);
+                const int itemIndex = fi[std::size_t(laneIndex)];
+                for (int i = 0; i < lanes; ++i)
+                    if (fi[std::size_t(i)] != fi[std::size_t(laneIndex)] && fo[std::size_t(i)] < fo[std::size_t(laneIndex)]) fo[std::size_t(i)] = fo[std::size_t(laneIndex)];
+                const int previous = stagLaneInfo.FindPreviousItemIndex(itemIndex, laneIndex);
+                if (previous < 0) { laneToCheckForGaps = laneIndex; break; }
+                const SpanR span = spanRange(previous, laneIndex);
+                stagLaneInfo.SetLane(previous, span.LaneInfo());
+                SItem& item = getAndMeasure(previous, span);
+                const int offset = maxIn(fo, span);
+                const std::vector<int>* gaps = span.Full() ? stagLaneInfo.GetGaps(previous) : nullptr;
+                for (int lane = span.start; lane < span.start + span.size; ++lane) {
+                    fi[std::size_t(lane)] = previous;
+                    fo[std::size_t(lane)] = offset + item.sws + (gaps ? (*gaps)[std::size_t(lane)] : 0);
+                }
+            }
+            auto misalignedStart = [&](int ref) {
+                for (int lane = 0; lane < lanes; ++lane)
+                    if (stagLaneInfo.FindPreviousItemIndex(fi[std::size_t(lane)], lane) == LI::kLaneUnset && fo[std::size_t(lane)] != fo[std::size_t(ref)]) return true;
+                for (int lane = 0; lane < lanes; ++lane)
+                    if (stagLaneInfo.FindPreviousItemIndex(fi[std::size_t(lane)], lane) != LI::kLaneUnset && fo[std::size_t(lane)] >= fo[std::size_t(ref)]) return true;
+                const int firstLane = stagLaneInfo.GetLane(0);
+                return firstLane != 0 && firstLane != LI::kLaneUnset && firstLane != LI::kLaneFullSpan;
+            };
+            const int minOffset = -before;
+            if (fo[0] < minOffset) {
+                const int notConsumed = minOffset - fo[0];
+                offsetBy(fo, minOffset - fo[0]);
+                scrollDelta -= notConsumed;
+            }
+            offsetBy(fo, before);
+            if (laneToCheckForGaps == -1) {
+                auto it = std::find(fi.begin(), fi.end(), 0);
+                laneToCheckForGaps = it == fi.end() ? -1 : int(it - fi.begin());
+            }
+            if (laneToCheckForGaps != -1 && misalignedStart(laneToCheckForGaps) && canRestart) {
+                stagLaneInfo.Reset();
+                out.restart = true;
+                out.scrollDelta = scrollDelta;
+                out.fi.assign(std::size_t(lanes), -1);
+                out.fo.assign(std::size_t(lanes), fo[std::size_t(laneToCheckForGaps)]);
+                return out;
+            }
+            std::vector<int> ci = fi, co(static_cast<std::size_t>(lanes));
+            for (int lane = 0; lane < lanes; ++lane) co[std::size_t(lane)] = -fo[std::size_t(lane)];
+            const int minVisibleOffset = minOffset + spacing;
+            const int maxOffset = std::max(0, viewport + after);
+            auto place = [&](SItem& item, SpanR span, int offset, std::vector<int>* gaps) {
+                for (int lane = span.start; lane < span.start + span.size; ++lane) {
+                    if (gaps) (*gaps)[std::size_t(lane)] = offset - co[std::size_t(lane)];
+                    co[std::size_t(lane)] = offset + item.sws;
+                    ci[std::size_t(lane)] = item.index;
+                    measured[std::size_t(lane)].push_back(&item);
+                }
+                if (offset < minVisibleOffset && co[std::size_t(span.start)] <= minVisibleOffset) item.visible = false;
+            };
+            // The items the lanes start with, in index order (their lanes depend on earlier ones).
+            int initialMeasured = 0;
+            int initialLane = indexOfMin(ci);
+            while (initialLane != -1 && initialMeasured < lanes) {
+                const int itemIndex = ci[std::size_t(initialLane)];
+                const int laneIndex = initialLane;
+                initialLane = indexOfMin(ci, itemIndex);
+                ++initialMeasured;
+                if (itemIndex < 0) continue;
+                const SpanR span = spanRange(itemIndex, laneIndex);
+                SItem& item = getAndMeasure(itemIndex, span);
+                stagLaneInfo.SetLane(itemIndex, span.LaneInfo());
+                const int offset = maxIn(co, span);
+                std::vector<int> gaps;
+                if (span.Full()) { const auto* g = stagLaneInfo.GetGaps(itemIndex); gaps = g ? *g : std::vector<int>(std::size_t(lanes), 0); }
+                place(item, span, offset, span.Full() ? &gaps : nullptr);
+                if (span.Full()) { stagLaneInfo.SetGaps(itemIndex, &gaps); initialMeasured = lanes; }
+            }
+            // Then forward until the viewport is full (at least one item).
+            auto allEmpty = [&] { for (auto& q : measured) if (!q.empty()) return false; return true; };
+            auto needMore = [&] { for (int v : co) if (v < maxOffset || v <= 0) return true; return false; };
+            while (needMore() || allEmpty()) {
+                const int lane = indexOfMin(co);
+                const int itemIndex = *std::max_element(ci.begin(), ci.end()) + 1;
+                if (itemIndex >= itemCount || lane < 0) break;
+                const SpanR span = spanRange(itemIndex, lane);
+                stagLaneInfo.SetLane(itemIndex, span.LaneInfo());
+                SItem& item = getAndMeasure(itemIndex, span);
+                const int offset = maxIn(co, span);
+                std::vector<int> gaps;
+                if (span.Full()) { const auto* g = stagLaneInfo.GetGaps(itemIndex); gaps = g ? *g : std::vector<int>(std::size_t(lanes), 0); }
+                place(item, span, offset, span.Full() ? &gaps : nullptr);
+                stagLaneInfo.SetGaps(itemIndex, span.Full() ? &gaps : nullptr);
+            }
+            // Drop items measured only to position the others.
+            for (int lane = 0; lane < lanes; ++lane) {
+                auto& q = measured[std::size_t(lane)];
+                while (q.size() > 1 && !q.front()->visible) {
+                    SItem* item = q.front();
+                    q.pop_front();
+                    const std::vector<int>* gaps = item->span != 1 ? stagLaneInfo.GetGaps(item->index) : nullptr;
+                    fo[std::size_t(lane)] -= item->sws + (gaps ? (*gaps)[std::size_t(lane)] : 0);
+                }
+                fi[std::size_t(lane)] = q.empty() ? LI::kLaneUnset : q.front()->index;
+            }
+            if (std::find(ci.begin(), ci.end(), itemCount - 1) != ci.end()) offsetBy(co, -spacing);   // no spacing after the last
+            // Short of the end: scroll back, filling the start.
+            if (std::all_of(co.begin(), co.end(), [&](int v) { return v < viewport; })) {
+                const int maxLane = indexOfMax(co);
+                const int toScrollBack = viewport - co[std::size_t(maxLane)];
+                offsetBy(fo, -toScrollBack);
+                offsetBy(co, toScrollBack);
+                bool gapDetected = false;
+                while (std::any_of(fo.begin(), fo.end(), [&](int v) { return v < before; })) {
+                    int laneIndex = indexOfMin(fo);
+                    const int nextLane = indexOfMax(fi);
+                    if (laneIndex != nextLane) {
+                        if (fo[std::size_t(laneIndex)] == fo[std::size_t(nextLane)]) laneIndex = nextLane;
+                        else gapDetected = true;
+                    }
+                    const int currentIndex = fi[std::size_t(laneIndex)] == -1 ? itemCount : fi[std::size_t(laneIndex)];
+                    const int previous = stagLaneInfo.FindPreviousItemIndex(currentIndex, laneIndex);
+                    if (previous < 0) {
+                        if ((gapDetected || misalignedStart(laneIndex)) && canRestart) {
+                            stagLaneInfo.Reset();
+                            out.restart = true;
+                            out.scrollDelta = scrollDelta;
+                            out.fi.assign(std::size_t(lanes), -1);
+                            out.fo.assign(std::size_t(lanes), fo[std::size_t(laneIndex)]);
+                            return out;
+                        }
+                        break;
+                    }
+                    const SpanR span = spanRange(previous, laneIndex);
+                    stagLaneInfo.SetLane(previous, span.LaneInfo());
+                    SItem& item = getAndMeasure(previous, span);
+                    const int offset = maxIn(fo, span);
+                    const std::vector<int>* gaps = span.Full() ? stagLaneInfo.GetGaps(previous) : nullptr;
+                    for (int lane = span.start; lane < span.start + span.size; ++lane) {
+                        if (fo[std::size_t(lane)] != offset) gapDetected = true;
+                        measured[std::size_t(lane)].push_front(&item);
+                        fi[std::size_t(lane)] = previous;
+                        fo[std::size_t(lane)] = offset + item.sws + (gaps ? (*gaps)[std::size_t(lane)] : 0);
+                    }
+                }
+                if (gapDetected && canRestart) {
+                    stagLaneInfo.Reset();
+                    out.restart = true;
+                    out.scrollDelta = scrollDelta;
+                    out.fi = fi;
+                    out.fo = fo;
+                    return out;
+                }
+                scrollDelta += toScrollBack;
+                const int minLane = indexOfMin(fo);
+                if (minLane >= 0 && fo[std::size_t(minLane)] < 0) {
+                    const int v = fo[std::size_t(minLane)];
+                    scrollDelta += v;
+                    offsetBy(co, v);
+                    offsetBy(fo, -v);
+                }
+            }
+            std::vector<int> scrollOffsets(static_cast<std::size_t>(lanes));
+            for (int lane = 0; lane < lanes; ++lane) scrollOffsets[std::size_t(lane)] = -fo[std::size_t(lane)];
+            // Items fully inside the start padding do not count for the scroll position.
+            if (before > spacing) {
+                for (int lane = 0; lane < lanes; ++lane) {
+                    auto& q = measured[std::size_t(lane)];
+                    for (std::size_t i = 0; i < q.size(); ++i) {
+                        const std::vector<int>* gaps = stagLaneInfo.GetGaps(q[i]->index);
+                        const int size = q[i]->sws + (gaps ? (*gaps)[std::size_t(lane)] : 0);
+                        if (i + 1 != q.size() && fo[std::size_t(lane)] != 0 && fo[std::size_t(lane)] >= size) {
+                            fo[std::size_t(lane)] -= size;
+                            fi[std::size_t(lane)] = q[i + 1]->index;
+                        } else {
+                            break;
+                        }
+                    }
+                }
+            }
+            out.scrollDelta = scrollDelta;
+            out.fi = std::move(fi);
+            out.fo = std::move(fo);
+            out.ci = std::move(ci);
+            out.co = std::move(co);
+            out.measured = std::move(measured);
+            out.scrollOffsets = std::move(scrollOffsets);
+            return out;
+        };
+        // Compose's scroll delta is negative going forward; kiln's is positive.
+        Out out = measure(-wholeDelta, stagIndices, stagOffsets, true);
+        if (out.restart) out = measure(out.scrollDelta, out.fi, out.fo, false);
+        const int minOffset = -before, maxOffset = std::max(0, viewport + after);
+
+        // calculateVisibleItems: positions in index order across the lanes.
+        std::vector<int> visible;
+        std::map<int, SItem*> byIndex;
+        {
+            auto lanesQ = out.measured;
+            std::vector<int> offs = out.scrollOffsets;
+            for (;;) {
+                int laneIndex = -1, best = std::numeric_limits<int>::max();
+                for (int l = 0; l < lanes; ++l) if (!lanesQ[std::size_t(l)].empty() && lanesQ[std::size_t(l)].front()->index < best) { best = lanesQ[std::size_t(l)].front()->index; laneIndex = l; }
+                if (laneIndex < 0) break;
+                SItem* item = lanesQ[std::size_t(laneIndex)].front();
+                lanesQ[std::size_t(laneIndex)].pop_front();
+                if (item->lane != laneIndex) continue;
+                const SpanR span{ item->lane, item->span };
+                const int main = maxIn(offs, span);
+                if (main + item->size >= minOffset && main <= maxOffset) {
+                    item->main = main;
+                    item->cross = positions[std::size_t(laneIndex)];
+                    visible.push_back(item->index);
+                    byIndex[item->index] = item;
+                }
+                for (int l = span.start; l < span.start + span.size; ++l) offs[std::size_t(l)] = main + item->sws;
+            }
+        }
+
+        // Pinned items and a focus search's beyond-bounds range past the viewport, stacked before
+        // and after the visible ones (calculateExtraItems).
+        std::vector<int> extra;
+        {
+            std::vector<int> wanted;
+            if (beyondInterval) for (int i = beyondInterval->first; i <= beyondInterval->second; ++i) wanted.push_back(i);
+            for (const auto& [kv, key] : pinned) {
+                auto sl = slots.find(kv);
+                wanted.push_back(IndexOfKey(key, sl != slots.end() ? sl->second.index : -1));
+            }
+            std::sort(wanted.begin(), wanted.end());
+            wanted.erase(std::unique(wanted.begin(), wanted.end()), wanted.end());
+            auto firstIn = [&](int lane) { return out.measured[std::size_t(lane)].empty() ? -1 : out.measured[std::size_t(lane)].front()->index; };
+            std::vector<int> beforeList, afterList;
+            for (int i : wanted) {
+                if (i < 0 || i >= count || byIndex.count(i)) continue;
+                const int lane = stagLaneInfo.GetLane(i);
+                bool isBefore, isAfter;
+                if (lane == LI::kLaneUnset || lane == LI::kLaneFullSpan) {
+                    isBefore = true; for (int l = 0; l < lanes; ++l) isBefore = isBefore && firstIn(l) > i;
+                    isAfter = true; for (int v : out.ci) isAfter = isAfter && v < i;
+                } else {
+                    isBefore = firstIn(lane) > i;
+                    isAfter = out.ci[std::size_t(lane)] < i;
+                }
+                if (isBefore) beforeList.push_back(i); else if (isAfter) afterList.push_back(i);
+            }
+            int off = out.scrollOffsets[0];
+            for (auto it = beforeList.rbegin(); it != beforeList.rend(); ++it) {
+                const int lane = std::max(0, stagLaneInfo.GetLane(*it));
+                SItem& item = getAndMeasure(*it, spanRange(*it, std::min(lane, lanes - 1)));
+                off -= item.sws;
+                item.main = off;
+                item.cross = 0;
+                byIndex[*it] = &item;
+                extra.push_back(*it);
+            }
+            off = visible.empty() ? out.scrollOffsets[0] : byIndex[visible.back()]->main + byIndex[visible.back()]->sws;
+            for (int i : afterList) {
+                const int lane = std::max(0, stagLaneInfo.GetLane(i));
+                SItem& item = getAndMeasure(i, spanRange(i, std::min(lane, lanes - 1)));
+                item.main = off;
+                item.cross = 0;
+                off += item.sws;
+                byIndex[i] = &item;
+                extra.push_back(i);
+            }
+        }
+
+        // The scroll position and what was consumed (the requested scroll unless clamped).
+        float consumed;
+        if (-out.scrollDelta == wholeDelta) { consumed = pending; st.m_PendingScroll = pending - float(wholeDelta); }
+        else { consumed = float(-out.scrollDelta); st.m_PendingScroll = 0; }
+        stagIndices = out.fi;
+        stagOffsets = out.fo;
+        stagVisibleOffsets.clear();
+        for (int i : visible) stagVisibleOffsets[i] = byIndex[i]->main;
 
         AnimFrame af = AnimBegin(visible);
         std::vector<LayoutNode*> nowActive;
         std::vector<const Slot*> used;
-        for (int i : visible) { Slot& sl = slots[KeyOf(i).value]; nowActive.push_back(sl.holder.get()); used.push_back(&sl); }
-        for (int i : extra) { Slot& sl = slots[KeyOf(i).value]; nowActive.push_back(sl.holder.get()); used.push_back(&sl); }
+        auto use = [&](int i) { Slot& sl = slots[KeyOf(i).value]; nowActive.push_back(sl.holder.get()); used.push_back(&sl); };
+        for (int i : visible) use(i);
+        for (int i : extra) use(i);
         for (auto& [k, a] : af.disappearing) { Slot& sl = slots[k]; nowActive.push_back(sl.holder.get()); used.push_back(&sl); }
         for (auto& m : af.movingAway) { Slot& sl = Compose(m.index, d); nowActive.push_back(sl.holder.get()); used.push_back(&sl); }
         self.SetChildrenDuringMeasure(nowActive);
@@ -711,17 +1028,23 @@ namespace kiln::foundation {
             else ++it;
         }
 
-        const int first = visible.empty() ? 0 : visible.front();
-        const int firstOffset = visible.empty() ? 0 : sp - stag[std::size_t(first)].top;
+        // calculateFirstVisibleIndex / Offset.
+        int first = std::numeric_limits<int>::max();
+        for (int i : out.fi) { if (i <= 0) { first = 0; break; } first = std::min(first, i); }
+        if (first == std::numeric_limits<int>::max()) first = 0;
+        int firstOffset = std::numeric_limits<int>::max();
+        for (int l = 0; l < lanes; ++l) if (out.fi[std::size_t(l)] == first) firstOffset = std::min(firstOffset, out.fo[std::size_t(l)]);
+        if (firstOffset == std::numeric_limits<int>::max()) firstOffset = 0;
         if ((st.m_Index.Peek() != first || st.m_Offset.Peek() != firstOffset) && self.GetOwner()) self.GetOwner()->InvalidateSemantics();
         st.m_Index.Set(first);
         st.m_Offset.Set(firstOffset);
-        st.m_FirstKey = KeyOf(first);
+        st.m_FirstKey = KeyOf(std::min(first, count - 1));
         st.m_HasFirstKey = true;
         st.m_LastConsumed = consumed;
-        st.m_CanForward = !(int(stag.size()) == count && sp >= maxScroll);
+        st.m_CanForward = std::any_of(out.co.begin(), out.co.end(), [&](int v) { return v > viewport; }) ||
+                          std::all_of(out.ci.begin(), out.ci.end(), [&](int v) { return v < count - 1; });
         st.m_Lines.clear();
-        for (int i : visible) st.m_Lines.push_back({ i, i, stag[std::size_t(i)].top - sp, stag[std::size_t(i)].size });
+        for (int i : visible) st.m_Lines.push_back({ i, i, byIndex[i]->main, byIndex[i]->size });
         st.m_SlotsPerLine = lanes;
         st.m_Spacing = spacing;
         st.m_TotalItems = count;
@@ -729,21 +1052,17 @@ namespace kiln::foundation {
         st.m_Density = s.density;
         st.OnMeasured();
 
-        const int w = vertical ? c.ConstrainWidth(crossMax == Constraints::Infinity ? crossPad : crossMax) : c.ConstrainWidth(mainMax);
-        const int h = vertical ? c.ConstrainHeight(mainMax) : c.ConstrainHeight(crossMax == Constraints::Infinity ? crossPad : crossMax);
         if (stagState) {
             LazyGridLayoutInfo info;
             for (int i : visible) {
-                const auto& it = stag[std::size_t(i)];
-                Placeable& p = *measured[i];
-                const int cross = it.full ? 0 : positions[std::size_t(it.lane)];
+                const SItem& it = *byIndex[i];
                 LazyGridItemInfo ii;
                 ii.index = i;
                 ii.key = UserKey(i);
-                ii.offset = vertical ? IntOffset{ cross, it.top - sp } : IntOffset{ it.top - sp, cross };
-                ii.size = { p.Width(), p.Height() };
+                ii.offset = vertical ? IntOffset{ it.cross, it.main } : IntOffset{ it.main, it.cross };
+                ii.size = { it.p->Width(), it.p->Height() };
                 ii.row = -1;
-                ii.column = it.full ? 0 : it.lane;
+                ii.column = it.span != 1 ? 0 : it.lane;
                 info.visibleItemsInfo.push_back(ii);
             }
             info.viewportStartOffset = -before;
@@ -756,24 +1075,20 @@ namespace kiln::foundation {
             info.mainAxisItemSpacing = spacing;
             if (!(stagState->m_Info.Peek() == info)) stagState->m_Info.Set(std::move(info));
         }
-        // animateItem: the same item animator as lists and grids, on absolute positions.
+
+        // animateItem: the same item animator as lists and grids.
         std::vector<std::pair<Placeable*, std::shared_ptr<ItemAnim>>> fading;
-        auto at = [&](int i) {
-            const auto& it = stag[std::size_t(i)];
-            const int cross = crossBefore + (it.full ? 0 : positions[std::size_t(it.lane)]);
-            const int main = it.top - sp + before;
+        auto at = [&](const SItem& it) {
+            const int cross = crossBefore + it.cross, main = it.main + before;
             return vertical ? IntOffset{ cross, main } : IntOffset{ main, cross };
         };
         if (af.animating) {
             // Only the requested scroll moves old targets (not a clamp at the edges).
-            const int wanted = int(std::lround(delta)), got = int(std::lround(consumed));
-            const int applied = wanted >= 0 ? std::clamp(got, 0, wanted) : std::clamp(got, wanted, 0);
+            const int got = int(std::lround(consumed));
+            const int applied = wholeDelta >= 0 ? std::clamp(got, 0, wholeDelta) : std::clamp(got, wholeDelta, 0);
             const IntOffset shift = vertical ? IntOffset{ 0, -applied } : IntOffset{ -applied, 0 };
             std::vector<AnimItem> items;
-            for (int i : visible) {
-                const auto& it = stag[std::size_t(i)];
-                items.push_back({ i, at(i), it.size, it.full ? 0 : it.lane, measuredWith[i] });
-            }
+            for (int i : visible) { const SItem& it = *byIndex[i]; items.push_back({ i, at(it), it.size, it.span != 1 ? 0 : it.lane, it.constraints }); }
             AnimPlace(self, af, items, shift, mainMax, false, spacing, first, fading);
         }
         hadLayout = true;
@@ -784,14 +1099,14 @@ namespace kiln::foundation {
         };
         struct Placed { Placeable* p; IntOffset at; std::shared_ptr<ItemAnim> anim; bool relative; };
         std::vector<Placed> placed;
-        for (int i : visible) placed.push_back({ measured[i], at(i), animOf(i), true });
-        for (int i : extra) placed.push_back({ measured[i], at(i), nullptr, true });
+        for (int i : visible) placed.push_back({ byIndex[i]->p, at(*byIndex[i]), animOf(i), true });
+        for (int i : extra) placed.push_back({ byIndex[i]->p, at(*byIndex[i]), nullptr, true });
         for (auto& [p, a] : fading) placed.push_back({ p, a->target, a, false });   // leaving, where they were
         return s.Layout(w, h, [placed](PlacementScope& place) {
             for (const auto& pl : placed) {
-                const IntOffset d = pl.anim ? pl.anim->delta.Get() : IntOffset{};
-                if (pl.relative && !d.x && !d.y) place.PlaceRelative(*pl.p, pl.at.x, pl.at.y);
-                else place.Place(*pl.p, pl.at.x + d.x, pl.at.y + d.y);
+                const IntOffset dd = pl.anim ? pl.anim->delta.Get() : IntOffset{};
+                if (pl.relative && !dd.x && !dd.y) place.PlaceRelative(*pl.p, pl.at.x, pl.at.y);
+                else place.Place(*pl.p, pl.at.x + dd.x, pl.at.y + dd.y);
             }
         });
     }

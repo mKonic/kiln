@@ -4,6 +4,8 @@
 #include "kiln/foundation/Focus.h"
 #include "kiln/foundation/Lazy.h"
 #include "kiln/runtime/Saveable.h"
+#include <chrono>
+#include <cstdio>
 #include <map>
 
 using namespace kiln;
@@ -689,4 +691,32 @@ TEST(AnimateItemInStaggeredGrids) {
     CHECK_EQ(nodes[2]->PositionInRoot().x, 50.0f);   // 1 | 2 / 3
     CHECK_EQ(nodes[2]->PositionInRoot().y, 0.0f);
     CHECK(nodes.count(0) == 0);
+}
+
+TEST(StaggeredFarJumpThenScrollBackToTheStart) {
+    LazyStaggeredGridState state;
+    Harness h;
+    h.Run([&] {
+        LazyVerticalStaggeredGrid(FillMax(Modifier{}, Axis::Both), GridCells::Fixed(2), state, [&](LazyStaggeredGridScope& s) {
+            s.Items(10000, [](int i) { Box(SizeMod(Modifier{}, Dp(50), Dp(20 + (i * 7) % 30))); }, {}, [](int i) { return i % 97 == 50; });
+        });
+    });
+    // A far jump measures only around the target (per-lane offsets), not the items before it.
+    const auto t0 = std::chrono::steady_clock::now();
+    state.ScrollToItem(5000);
+    h.Pump();
+    const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
+    CHECK(ms < 50.0);
+    CHECK_EQ(state.FirstVisibleItemIndex(), 5000);
+    // Scrolling back discovers the earlier items lane by lane and realigns at the top.
+    int guard = 0;
+    while (state.CanScrollBackward() && guard++ < 2000) { state.ConsumeScrollDelta(-1000); h.Pump(); }
+    CHECK_EQ(state.FirstVisibleItemIndex(), 0);
+    CHECK_EQ(state.FirstVisibleItemScrollOffset(), 0);
+    const auto& items = state.LayoutInfo().visibleItemsInfo;
+    CHECK(!items.empty() && items.front().index == 0 && items.front().offset.y == 0 && items.front().column == 0);
+    // Both lanes start at the top.
+    bool lane1AtTop = false;
+    for (const auto& it : items) if (it.column == 1 && it.offset.y == 0) lane1AtTop = true;
+    CHECK(lane1AtTop);
 }
