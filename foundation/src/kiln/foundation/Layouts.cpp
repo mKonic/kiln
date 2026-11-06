@@ -66,8 +66,21 @@ namespace kiln::foundation {
             weightedSpace = int(std::clamp<long long>(weightedSpace + spacingTotal, 0, (long long)mainMax - fixedSpace));
         }
 
+        // alignBy children (RowColumnMeasurePolicy.kt:222-258): the cross size fits the largest
+        // extent before and after the shared line.
+        int beforeLine = 0, afterLine = 0;
+        bool anyAlignBy = false;
+        for (std::size_t i = 0; i < n; ++i) {
+            const AlignmentLine* line = children[i]->GetParentData().alignBy;
+            if (!line) continue;
+            anyAlignBy = true;
+            const int v = placeables[i]->Get(*line);
+            const int at = v != AlignmentLine::Unspecified ? v : 0;
+            beforeLine = std::max(beforeLine, at);
+            afterLine = std::max(afterLine, crossOf(*placeables[i]) - at);
+        }
         const int mainSize = std::max(std::max(0, fixedSpace + weightedSpace), mainMin);
-        const int crossSize = std::max(crossSpace, crossMin);
+        const int crossSize = std::max({ crossSpace, crossMin, anyAlignBy ? beforeLine + afterLine : 0 });
         std::vector<int> positions(n, 0);
         m_Main.Arrange(s, mainSize, mainSizes, row ? s.Direction() : LayoutDirection::Ltr, positions);
 
@@ -77,6 +90,14 @@ namespace kiln::foundation {
             for (std::size_t i = 0; i < n; ++i) {
                 Placeable& p = *placeables[i];
                 const ParentData& pd = children[i]->GetParentData();
+                if (pd.alignBy) {
+                    const int v = p.Get(*pd.alignBy);
+                    int cross = v != AlignmentLine::Unspecified ? beforeLine - v : 0;
+                    if (!row && dir == LayoutDirection::Rtl) cross = crossSize - p.Width() - cross;
+                    if (row) place.Place(p, positions[i], cross);
+                    else place.Place(p, cross, positions[i]);
+                    continue;
+                }
                 if (row) {
                     const AlignmentV a = pd.alignV.value_or(m_RowAlign);
                     place.Place(p, positions[i], a.Align(p.Height(), crossSize));
@@ -397,7 +418,7 @@ namespace kiln::foundation {
         };
 
         // Parent data
-        struct ParentParams { int kind; float weight; bool fill; float bias, bias2;
+        struct ParentParams { int kind; float weight; bool fill; float bias, bias2; const AlignmentLine* line = nullptr;
             bool operator==(const ParentParams&) const = default; };
         struct ParentDataNode final : ModifierNode, ParentDataModifier {
             ParentParams params;
@@ -411,6 +432,7 @@ namespace kiln::foundation {
                     case 2: d.alignH = AlignmentH{ params.bias }; break;
                     case 3: d.boxAlign = Alignment{ params.bias, params.bias2 }; break;
                     case 4: d.matchParentSize = true; break;
+                    case 5: d.alignBy = params.line; break;
                 }
             }
         };
@@ -491,6 +513,50 @@ namespace kiln::foundation {
     Modifier AlignInColumn(Modifier m, AlignmentH a) { return m.With<ParentDataNode>(ParentParams{ 2, 0, true, a.bias, 0 }); }
     Modifier AlignInBox(Modifier m, Alignment a) { return m.With<ParentDataNode>(ParentParams{ 3, 0, true, a.horizontal, a.vertical }); }
     Modifier MatchParentSize(Modifier m) { return m.With<ParentDataNode>(ParentParams{ 4, 0, true, 0, 0 }); }
+    Modifier AlignBy(Modifier m, const AlignmentLine& line) { return m.With<ParentDataNode>(ParentParams{ 5, 0, true, 0, 0, &line }); }
+
+    namespace {
+        // AlignmentLineOffsetDpNode (AlignmentLine.kt:307-362).
+        struct LineOffsetParams { const AlignmentLine* line; Dp before, after; bool operator==(const LineOffsetParams&) const = default; };
+        struct LineOffsetNode final : ModifierNode, LayoutModifier {
+            LineOffsetParams params;
+            explicit LineOffsetNode(LineOffsetParams p) : params(p) {}
+            void OnParamsChanged() { InvalidateMeasure(); }
+            LayoutModifier* AsLayout() override { return this; }
+            MeasureResult Measure(MeasureScope& s, Measurable& m, const Constraints& c) override {
+                const bool horizontal = params.line->horizontal;
+                Constraints loose = c;
+                if (horizontal) loose.minHeight = 0; else loose.minWidth = 0;
+                Placeable& p = m.Measure(loose);
+                const int v = p.Get(*params.line);
+                const int linePos = v != AlignmentLine::Unspecified ? v : 0;
+                const int axis = horizontal ? p.Height() : p.Width();
+                const int axisMax = horizontal ? c.maxHeight : c.maxWidth;
+                const int room = axisMax == Constraints::Infinity ? Constraints::Infinity : axisMax - axis;
+                const int before = params.before.Specified() ? s.RoundToPx(params.before) : 0;
+                const int after = params.after.Specified() ? s.RoundToPx(params.after) : 0;
+                const int padBefore = std::clamp(before - linePos, 0, std::max(0, room));
+                const int padAfter = std::clamp(after - axis + linePos, 0, std::max(0, room == Constraints::Infinity ? room : room - padBefore));
+                const int w = horizontal ? p.Width() : std::max(padBefore + p.Width() + padAfter, c.minWidth);
+                const int h = horizontal ? std::max(padBefore + p.Height() + padAfter, c.minHeight) : p.Height();
+                const bool hasBefore = params.before.Specified();
+                return s.Layout(w, h, [&p, horizontal, hasBefore, padBefore, padAfter, w, h](PlacementScope& place) {
+                    const int x = horizontal ? 0 : (hasBefore ? padBefore : w - padAfter - p.Width());
+                    const int y = !horizontal ? 0 : (hasBefore ? padBefore : h - padAfter - p.Height());
+                    place.PlaceRelative(p, x, y);
+                });
+            }
+        };
+    }
+
+    Modifier PaddingFrom(Modifier m, const AlignmentLine& line, Dp before, Dp after) {
+        return m.With<LineOffsetNode>(LineOffsetParams{ &line, before, after });
+    }
+    Modifier PaddingFromBaseline(Modifier m, Dp top, Dp bottom) {
+        if (top.Specified()) m = PaddingFrom(std::move(m), FirstBaseline, top, Dp::Unspecified());
+        if (bottom.Specified()) m = PaddingFrom(std::move(m), LastBaseline, Dp::Unspecified(), bottom);
+        return m;
+    }
     Modifier Background(Modifier m, Color c, CornerShape s) { return m.With<BackgroundNode>(BackgroundParams{ c, s }); }
     Modifier Background(Modifier m, gfx::Brush brush, CornerShape s, float alpha) {
         return m.With<BrushBackgroundNode>(BrushBackgroundParams{ std::move(brush), s, alpha });

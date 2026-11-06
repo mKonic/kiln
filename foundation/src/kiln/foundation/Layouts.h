@@ -73,6 +73,14 @@ namespace kiln::foundation {
     Modifier AlignInRow(Modifier m, AlignmentV a);
     Modifier AlignInColumn(Modifier m, AlignmentH a);
     Modifier AlignInBox(Modifier m, Alignment a);
+    // Row/Column child: align on an alignment line shared with the siblings that use it
+    // (alignBy / alignByBaseline).
+    Modifier AlignBy(Modifier m, const AlignmentLine& line);
+    inline Modifier AlignByBaseline(Modifier m) { return AlignBy(std::move(m), FirstBaseline); }
+    // paddingFrom / paddingFromBaseline: space so the line sits `before` from the top (or start)
+    // and `after` from the bottom (or end).
+    Modifier PaddingFrom(Modifier m, const AlignmentLine& line, Dp before = Dp::Unspecified(), Dp after = Dp::Unspecified());
+    Modifier PaddingFromBaseline(Modifier m, Dp top = Dp::Unspecified(), Dp bottom = Dp::Unspecified());
     Modifier MatchParentSize(Modifier m);
 
     // Drawing

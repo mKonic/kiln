@@ -83,7 +83,8 @@ namespace kiln::foundation {
                 m_DrawnKey = c.maxWidth;
                 const int w = c.ConstrainWidth(int(std::ceil(p.width)));
                 const int h = c.ConstrainHeight(int(std::ceil(p.height)));
-                return s.Layout(w, h);
+                // TextLayoutResult.firstBaseline / lastBaseline, rounded (BasicText's measure).
+                return s.Layout(w, h, {}, { { &FirstBaseline, RoundJava(p.firstBaseline) }, { &LastBaseline, RoundJava(p.lastBaseline) } });
             }
             // Min intrinsic width: the widest unbreakable run, approximated by breaking at 1px.
             int MinIntrinsicWidth(MeasureScope&, Measurable&, int) override { return int(std::ceil(Paragraph(1).width)); }
