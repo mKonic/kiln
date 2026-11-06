@@ -20,6 +20,7 @@ namespace kiln {
     struct ParagraphData {
         float width = 0, height = 0;
         int lineCount = 0;
+        float firstBaseline = 0, lastBaseline = 0;   // from the top (FirstBaseline / LastBaseline)
         std::vector<GlyphQuad> glyphs;
         // Backend handle for position queries (0 = none). Released with TextBackend::Release.
         std::int64_t handle = 0;

@@ -118,13 +118,15 @@ final class KilnText {
         final int handle = nextHandle++;
         if (nextHandle >= (1 << 23)) nextHandle = 1;   // stays exact as a float
         layouts.put(handle, layout);
-        float[] out = new float[4 + glyphs.size() * GLYPH_FLOATS];
+        float[] out = new float[6 + glyphs.size() * GLYPH_FLOATS];
         out[0] = widthPx > 0 ? Math.min(maxWidth, widthPx) : maxWidth;
         out[1] = layout.getHeight();
         out[2] = layout.getLineCount();
         out[3] = handle;
+        out[4] = layout.getLineBaseline(0);
+        out[5] = layout.getLineBaseline(Math.max(0, layout.getLineCount() - 1));
         for (int i = 0; i < glyphs.size(); i++)
-            System.arraycopy(glyphs.get(i), 0, out, 4 + i * GLYPH_FLOATS, GLYPH_FLOATS);
+            System.arraycopy(glyphs.get(i), 0, out, 6 + i * GLYPH_FLOATS, GLYPH_FLOATS);
         return out;
     }
 

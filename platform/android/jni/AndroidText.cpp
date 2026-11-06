@@ -56,7 +56,9 @@ namespace kiln::android {
         out.height = f[1];
         out.lineCount = int(f[2]);
         out.handle = std::int64_t(f[3]);
-        for (jsize i = 4; i + 10 <= n; i += 10) {
+        out.firstBaseline = f[4];
+        out.lastBaseline = f[5];
+        for (jsize i = 6; i + 10 <= n; i += 10) {
             GlyphQuad q;
             q.page = std::uint32_t(f[i]);
             q.rect = { f[i + 1], f[i + 2], f[i + 3], f[i + 4] };

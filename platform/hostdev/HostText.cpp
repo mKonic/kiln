@@ -78,6 +78,8 @@ namespace kiln::hostdev {
                     out.width = std::max(out.width, x);
                 }
                 out.lineCount = lines;
+                out.firstBaseline = ascent;
+                out.lastBaseline = ascent + float(lines - 1) * lineHeight;
                 // Position data for cursor queries: one stop per glyph cluster plus the end.
                 Para para;
                 para.text = std::string(utf8);
