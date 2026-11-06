@@ -203,3 +203,20 @@ TEST(AnchorsFromOnSizeChangedAndAPlacementOffset) {
     CHECK_EQ(thumb->PositionInRoot().x, 160.0f);
     CHECK_EQ(compositions, before);   // only placement followed the offset
 }
+
+TEST(AnchoredFlingRestartsWhenAnchorsChange) {
+    Harness h;
+    AnchoredDraggableState<Pos> state(Pos::Start, StartEnd());
+    h.Content(state);
+    std::int64_t t = 0;
+    h.Drag(10, 30, 3, 10, 0, t);   // a flick towards End
+    h.Frames(3);
+    const float mid = state.Offset();
+    CHECK(mid > 22 && mid < 100);
+    // The End anchor moves while the fling runs: the fling restarts from here, with its
+    // velocity, and lands on the new position.
+    state.UpdateAnchors({ { Pos::Start, 0 }, { Pos::End, 160 } });
+    h.Frames(40);
+    CHECK_EQ(state.Offset(), 160.0f);
+    CHECK(state.SettledValue() == Pos::End);
+}

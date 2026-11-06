@@ -171,10 +171,14 @@ namespace kiln::foundation {
                      : TargetValuePeek();
             m_Anchors.Set(std::move(anchors));
             if (m_Busy) {
-                // A running animation restarts towards the new target; a drag or a fling
-                // carries on (clamped by the new anchors on its next delta).
+                // A running animation restarts towards the new target, a release fling from
+                // where it is with its velocity (restartable anchoredDrag); a drag carries on
+                // (clamped by the new anchors on its next delta).
                 if (m_Owner == Owner::Run) {
                     m_DragTarget.Set(target);
+                    m_Restart = true;
+                    m_Anim.Stop();
+                } else if (m_Owner == Owner::Fling) {
                     m_Restart = true;
                     m_Anim.Stop();
                 }
@@ -235,10 +239,14 @@ namespace kiln::foundation {
             const auto gen = Take();
             m_Busy = true;
             m_Owner = Owner::Fling;
-            const T proposed = ComputeTarget(m_Offset.Peek(), velocity, positional, velocityThreshold);
-            const T target = Confirm(proposed) ? proposed : m_Settled.Peek();
-            co_await AnimateOffset(m_Anchors.Peek().PositionOf(target), velocity, snap);
-            if (gen != m_Gen) co_return 0.0f;
+            for (;;) {
+                m_Restart = false;
+                const T proposed = ComputeTarget(m_Offset.Peek(), velocity, positional, velocityThreshold);
+                const T target = Confirm(proposed) ? proposed : m_Settled.Peek();
+                co_await AnimateOffset(m_Anchors.Peek().PositionOf(target), velocity, snap);
+                if (gen != m_Gen) co_return 0.0f;
+                if (!m_Restart) break;
+            }
             m_Busy = false;
             SettleIfAtAnchor();
             co_return 0.0f;
