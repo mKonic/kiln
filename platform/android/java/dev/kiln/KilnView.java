@@ -10,6 +10,9 @@ import android.util.DisplayMetrics;
 import android.graphics.Rect;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
+import android.view.accessibility.AccessibilityEvent;
+import android.view.accessibility.AccessibilityManager;
+import android.view.accessibility.AccessibilityNodeProvider;
 import android.view.WindowInsets;
 import android.view.WindowInsetsAnimation;
 import java.util.List;
@@ -227,6 +230,36 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
 
     boolean isCurrentConnection(KilnInputConnection c) { return c == connection && inputActive; }
     boolean isSingleLineInput() { return singleLine; }
+
+    // --- accessibility (spec 01) --------------------------------------------------------------
+    private final KilnAccessibility accessibility = new KilnAccessibility(this);
+    private boolean contentChangePosted;
+
+    @Override
+    public AccessibilityNodeProvider getAccessibilityNodeProvider() { return accessibility; }
+
+    /** Native semantics changed: one content-changed event per 100 ms while a service listens. */
+    void onSemanticsChanged() {
+        AccessibilityManager am = getContext().getSystemService(AccessibilityManager.class);
+        if (am == null || !am.isEnabled() || contentChangePosted) return;
+        contentChangePosted = true;
+        postDelayed(() -> {
+            contentChangePosted = false;
+            AccessibilityEvent e = AccessibilityEvent.obtain(AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED);
+            e.setContentChangeTypes(AccessibilityEvent.CONTENT_CHANGE_TYPE_SUBTREE);
+            e.setPackageName(getContext().getPackageName());
+            e.setSource(this);
+            if (getParent() != null) getParent().requestSendAccessibilityEvent(this, e);
+        }, 100);
+    }
+
+    @Override
+    public boolean dispatchHoverEvent(MotionEvent e) {
+        AccessibilityManager am = getContext().getSystemService(AccessibilityManager.class);
+        if (am != null && am.isTouchExplorationEnabled()
+                && accessibility.onHover(e.getActionMasked(), e.getX(), e.getY())) return true;
+        return super.dispatchHoverEvent(e);
+    }
 
     @Override
     public boolean onCheckIsTextEditor() { return inputActive; }

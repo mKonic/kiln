@@ -1,6 +1,12 @@
 // JNI entry points for dev.kiln.KilnNative and the Choreographer-driven frame loop.
 #include "AndroidText.h"
 
+#include "kiln/foundation/text/TextFieldState.h"
+
+#include <climits>
+#include <functional>
+#include <unordered_map>
+
 #include "kiln/App.h"
 
 #include <hearth/Log.h>
@@ -37,6 +43,7 @@ namespace {
     Host* g_Host = nullptr;
     void ArmTimer();
     void InstallTextInputHost(JNIEnv* env);
+    JNIEnv* MainEnv();
 
     void OnVsync(int64_t frameTimeNanos, void*) {
         if (!g_Host) return;
@@ -105,6 +112,12 @@ namespace {
         g_Host->requestFocus = env->GetMethodID(viewClass, "requestFocus", "()Z");
         env->DeleteLocalRef(viewClass);
         InstallTextInputHost(env);
+        {
+            jclass vc = env->GetObjectClass(view);
+            static jmethodID onSem = env->GetMethodID(vc, "onSemanticsChanged", "()V");
+            env->DeleteLocalRef(vc);
+            g_Host->app->GetOwner().SetOnSemanticsChanged([] { MainEnv()->CallVoidMethod(g_Host->view, onSem); });
+        }
         // Keys and the IME reach a View only while it holds platform focus.
         g_Host->app->GetOwner().SetRequestHostFocus([] {
             JNIEnv* e = nullptr;
@@ -332,6 +345,120 @@ namespace {
         return a;
     }
 
+    // --- semantics -------------------------------------------------------------------------
+
+    struct SemCache {
+        std::uint64_t version = ~0ull;
+        kiln::ui::SemanticsNode root;
+        std::unordered_map<int, const kiln::ui::SemanticsNode*> byId;
+        std::unordered_map<int, int> parent;
+    };
+    SemCache g_Sem;
+
+    void IndexSem(const kiln::ui::SemanticsNode& n, int parent) {
+        g_Sem.byId[n.id] = &n;
+        g_Sem.parent[n.id] = parent;
+        for (const auto& c : n.children) IndexSem(c, n.id);
+    }
+    const kiln::ui::SemanticsNode* SemFind(int id) {
+        auto& owner = g_Host->app->GetOwner();
+        if (g_Sem.version != owner.SemanticsVersion()) {
+            g_Sem.version = owner.SemanticsVersion();
+            g_Sem.root = owner.BuildSemanticsTree();
+            g_Sem.byId.clear();
+            g_Sem.parent.clear();
+            IndexSem(g_Sem.root, -1);
+        }
+        auto it = g_Sem.byId.find(id);
+        return it == g_Sem.byId.end() ? nullptr : it->second;
+    }
+    std::string Join(const std::vector<std::string>& v) {
+        std::string out;
+        for (const auto& s : v) { if (!out.empty()) out += ' '; out += s; }
+        return out;
+    }
+
+    jintArray SemNode(JNIEnv* env, jclass, jint id) {
+        std::vector<jint> d(11, 0);
+        if (const auto* n = SemFind(id)) {
+            const auto& c = n->config;
+            d[0] = 1;
+            d[1] = g_Sem.parent.count(id) ? g_Sem.parent[id] : -1;
+            if (c.textSelection) { d[2] = c.textSelection->first; d[3] = c.textSelection->second; }
+            int f = 0;
+            if (c.onClick) f |= 1;
+            if (c.focused) { f |= 2; if (*c.focused) f |= 4; }
+            if (c.editableText) f |= 8;
+            if (c.heading) f |= 16;
+            if (c.disabled) f |= 32;
+            if (c.password) f |= 64;
+            if (c.selected) { f |= 128; if (*c.selected) f |= 256; }
+            if (c.toggleableState) { f |= 512; if (*c.toggleableState == 1) f |= 1024; }
+            if (c.onLongClick) f |= 2048;
+            d[4] = f;
+            d[5] = jint(c.role);
+            d[6] = jint(n->boundsInRoot.left); d[7] = jint(n->boundsInRoot.top);
+            d[8] = jint(n->boundsInRoot.right); d[9] = jint(n->boundsInRoot.bottom);
+            d[10] = jint(n->children.size());
+            for (const auto& ch : n->children) d.push_back(ch.id);
+        }
+        jintArray a = env->NewIntArray(jsize(d.size()));
+        env->SetIntArrayRegion(a, 0, jsize(d.size()), d.data());
+        return a;
+    }
+
+    jobjectArray SemStrings(JNIEnv* env, jclass, jint id) {
+        std::string v[5];
+        if (const auto* n = SemFind(id)) {
+            const auto& c = n->config;
+            v[0] = Join(c.text);
+            v[1] = Join(c.contentDescription);
+            v[2] = c.editableText.value_or("");
+            v[3] = c.stateDescription.value_or("");
+            v[4] = c.paneTitle.value_or("");
+        }
+        jclass str = env->FindClass("java/lang/String");
+        jobjectArray out = env->NewObjectArray(5, str, nullptr);
+        for (int i = 0; i < 5; ++i) {
+            const std::u16string u = kiln::foundation::ToUtf16(v[i]);
+            jstring js = env->NewString(reinterpret_cast<const jchar*>(u.data()), jsize(u.size()));
+            env->SetObjectArrayElement(out, i, js);
+            env->DeleteLocalRef(js);
+        }
+        env->DeleteLocalRef(str);
+        return out;
+    }
+
+    jboolean SemAction(JNIEnv* env, jclass, jint id, jint action, jstring arg) {
+        const auto* n = SemFind(id);
+        if (!n) return false;
+        const auto& c = n->config;
+        bool ok = false;
+        switch (action) {
+            case 0: ok = c.onClick && c.onClick(); break;
+            case 1: ok = c.onLongClick && c.onLongClick(); break;
+            case 2: ok = c.requestFocus && c.requestFocus(); break;
+            case 3: ok = c.setText && c.setText(kiln::foundation::ToUtf8(FromJava(env, arg))); break;
+            default: break;
+        }
+        g_Host->app->RequestFrame();
+        return ok;
+    }
+
+    jint SemHitTest(JNIEnv*, jclass, jfloat x, jfloat y) {
+        SemFind(-1);
+        // Deepest node whose bounds contain the point, last child first (drawn on top).
+        std::function<int(const kiln::ui::SemanticsNode&)> hit = [&](const kiln::ui::SemanticsNode& n) -> int {
+            for (auto it = n.children.rbegin(); it != n.children.rend(); ++it) {
+                if (!it->boundsInRoot.Contains({ x, y })) continue;
+                const int deeper = hit(*it);
+                return deeper != INT_MIN ? deeper : it->id;
+            }
+            return INT_MIN;
+        };
+        return hit(g_Sem.root);
+    }
+
     void SetViewConfiguration(JNIEnv*, jclass, jlong longPress, jlong doubleTap, jfloat touchSlop,
                               jfloat maxFling, jfloat minFling) {
         auto& c = g_Host->app->GetOwner().Config();
@@ -386,6 +513,10 @@ extern "C" JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void*) {
         { "imeGetText", "()Ljava/lang/String;", reinterpret_cast<void*>(&ImeGetText) },
         { "imeGetSelection", "()[I", reinterpret_cast<void*>(&ImeGetSelection) },
         { "imeGetCaret", "()[F", reinterpret_cast<void*>(&ImeGetCaret) },
+        { "semNode", "(I)[I", reinterpret_cast<void*>(&SemNode) },
+        { "semStrings", "(I)[Ljava/lang/String;", reinterpret_cast<void*>(&SemStrings) },
+        { "semAction", "(IILjava/lang/String;)Z", reinterpret_cast<void*>(&SemAction) },
+        { "semHitTest", "(FF)I", reinterpret_cast<void*>(&SemHitTest) },
         { "setViewConfiguration", "(JJFFF)V", reinterpret_cast<void*>(&SetViewConfiguration) },
         { "surfaceCreated", "(Landroid/view/Surface;)V", reinterpret_cast<void*>(&SurfaceCreated) },
         { "surfaceChanged", "(II)V", reinterpret_cast<void*>(&SurfaceChanged) },

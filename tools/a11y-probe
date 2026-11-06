@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+# a11y-probe: reads and drives the foreground app's accessibility tree through UiAutomation, the
+# way TalkBack or Switch Access would (adb input skips the touch explorer, so this is the way to
+# exercise AccessibilityNodeProvider actions from a script).
+#
+#   tools/a11y-probe "dump; click:Tap me; settext:Edit me=hello; wait:300; dump"
+#
+# Verbs: dump, click:<text>, longclick:<text>, focus:<text>, a11yfocus:<text>,
+# settext:<text>=<value>, wait:<ms>. <text> matches a node's text or content description.
+set -euo pipefail
+source "$(dirname "${BASH_SOURCE[0]}")/android-env.sh"
+APK="$KILN_ROOT/build/a11y-probe.apk"
+SRC="$KILN_ROOT/tools/a11y-probe-src"
+if [ ! -f "$APK" ] || [ -n "$(find "$SRC" -newer "$APK" -name '*.java')" ]; then
+    S="$KILN_ROOT/build/pack/a11y-probe"; rm -rf "$S"; mkdir -p "$S/classes" "$S/dex"
+    javac --release 17 -nowarn -classpath "$ANDROID_JAR" -d "$S/classes" $(find "$SRC" -name '*.java')
+    "$D8" --min-api "$ANDROID_MIN_SDK" --lib "$ANDROID_JAR" --output "$S/dex" $(find "$S/classes" -name '*.class')
+    cp "$S/dex/classes.dex" "$S/classes.dex"
+    cat > "$S/AndroidManifest.xml" <<XML
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="dev.kiln.probe">
+    <application android:hasCode="true" />
+    <instrumentation android:name="dev.kiln.probe.Probe" android:targetPackage="dev.kiln.probe" />
+</manifest>
+XML
+    "$AAPT2" link -o "$S/unsigned.apk" -I "$ANDROID_JAR" --manifest "$S/AndroidManifest.xml" \
+        --min-sdk-version "$ANDROID_MIN_SDK" --target-sdk-version "$ANDROID_TARGET_SDK"
+    python3 "$KILN_ROOT/tools/apkzip.py" "$S/unsigned.apk" "$S" classes.dex
+    "$ZIPALIGN" -f 4 "$S/unsigned.apk" "$S/aligned.apk"
+    "$APKSIGNER" sign --ks "$KILN_ROOT/build/kiln-debug.keystore" --ks-key-alias kiln --ks-pass pass:android \
+        --key-pass pass:android --out "$APK" "$S/aligned.apk"
+    adb install -r "$APK" >/dev/null
+fi
+adb shell am instrument -w -e cmd "'${1:-dump}'" dev.kiln.probe/.Probe

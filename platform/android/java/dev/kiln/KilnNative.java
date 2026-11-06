@@ -28,6 +28,12 @@ final class KilnNative {
     static native String imeGetText();
     static native int[] imeGetSelection();
     static native float[] imeGetCaret();
+
+    // Semantics for KilnAccessibility.
+    static native int[] semNode(int id);
+    static native String[] semStrings(int id);
+    static native boolean semAction(int id, int action, String argument);
+    static native int semHitTest(float x, float y);
     static native void setViewConfiguration(long longPressTimeout, long doubleTapTimeout, float touchSlop,
                                             float maxFling, float minFling);
     static native void surfaceCreated(Surface surface);
