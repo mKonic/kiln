@@ -136,6 +136,13 @@ namespace {
                     });
                 });
             }
+            // Group alpha: overlapping circles fade as one image (offscreen layer).
+            Row(Padding(Modifier{}, 16_dp, 0_dp), Arrangement::SpacedBy(16_dp), AlignmentV::CenterVertically(), [&] {
+                Box(Alpha(SizeMod(Modifier{}, 80_dp, 48_dp), 0.5f), Alignment::TopStart(), false, [&] {
+                    Box(Background(SizeMod(Modifier{}, 48_dp, 48_dp), kPrimary, CornerShape::Pill()));
+                    Box(Background(SizeMod(OffsetMod(Modifier{}, 32_dp, 0_dp), 48_dp, 48_dp), kTertiary, CornerShape::Pill()));
+                });
+            });
             // Mixed text sizes sharing a baseline (alignByBaseline).
             Row(Padding(Modifier{}, 16_dp, 0_dp), Arrangement::SpacedBy(8_dp), AlignmentV::Top(), [&] {
                 BasicText("Baseline", AlignByBaseline({}), { 32, kOnSurface });
