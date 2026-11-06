@@ -68,6 +68,9 @@ namespace kiln::foundation {
     inline Modifier SizeMod(Modifier m, Dp w, Dp h) { return SizeIn(std::move(m), w, h, w, h); }
     inline Modifier RequiredSize(Modifier m, Dp w, Dp h) { return SizeIn(std::move(m), w, h, w, h, false); }
     Modifier DefaultMinSize(Modifier m, Dp minW, Dp minH);
+    // zIndex: draw order among siblings (higher on top; ties keep placement order). Adds to
+    // the zIndex the parent places with.
+    Modifier ZIndex(Modifier m, float zIndex);
     enum class Axis : std::uint8_t { Horizontal, Vertical, Both };
     Modifier FillMax(Modifier m, Axis axis, float fraction = 1.0f);
     Modifier WrapContent(Modifier m, Axis axis, Alignment align = Alignment::Center(), bool unbounded = false);

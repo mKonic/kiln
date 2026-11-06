@@ -242,3 +242,73 @@ TEST(ChildTransitionRunsOnTheParentClock) {
     CHECK(!parent->IsRunning());
     CHECK(kid->CurrentState());  // finished with the parent
 }
+
+TEST(AnimatedContentSlidesWithTheTransitionScope) {
+    LayoutHarness h;
+    rt::State<int> page(1);
+    std::vector<std::pair<std::uint64_t, std::uint64_t>> segments;
+    h.Run([&] {
+        Box(Modifier{}, Alignment::TopStart(), false, [&] {
+            AnimatedContent(rt::Key(page.Get()), Modifier{}, [](rt::Key) {
+                Box(SizeMod(Modifier{}, Dp(100), Dp(50)));
+            }, [&](AnimatedContentTransitionScope& s) {
+                segments.push_back({ s.initialState.value, s.targetState.value });
+                using D = AnimatedContentTransitionScope::SlideDirection;
+                ContentTransform t = TogetherWith(s.SlideIntoContainer(D::Left, anim::Tween(160, 0, anim::Linear())),
+                                                  s.SlideOutOfContainer(D::Left, anim::Tween(160, 0, anim::Linear())));
+                t.targetContentZIndex = 1;
+                return Using(t, std::nullopt);
+            });
+        });
+    });
+    h.Layout();
+    LayoutNode* container = h.owner.Root().Children()[0]->Children()[0];
+    page.Set(2);
+    h.Pump();
+    h.Layout();
+    h.Step(6);                                   // about half way
+    CHECK_EQ(int(container->Children().size()), 2);
+    // Children: the old page's enter/exit box, then the new one's; their content is offset.
+    auto contentX = [](LayoutNode* item) { return item->Children()[0]->BoundsInRoot().left; };
+    const float oldX = contentX(container->Children()[0]), newX = contentX(container->Children()[1]);
+    CHECK(oldX < -10 && oldX > -90);             // leaving to the left
+    CHECK(newX > 10 && newX < 90);               // coming in from the right edge
+    CHECK_EQ(container->Children()[1]->ZIndex(), 1.0f);   // the incoming page draws on top
+    CHECK_EQ(container->Size().width, 100);       // no size transform
+    // The spec saw the segment once.
+    CHECK(!segments.empty() && segments.back() == (std::pair<std::uint64_t, std::uint64_t>{ rt::Key(1).value, rt::Key(2).value }));
+    h.Step(20);
+    CHECK_EQ(int(container->Children().size()), 1);
+    CHECK_EQ(contentX(container->Children()[0]), 0.0f);
+}
+
+TEST(AnimatedVisibilityInRowExpandsAlongTheRowOnly) {
+    LayoutHarness h;
+    rt::State<bool> visible(false);
+    MutableTransitionState<bool> state(false);
+    LayoutNode* row = nullptr;
+    h.Run([&] {
+        Row(Modifier{}, [&] {
+            AnimatedVisibilityInRow(visible.Get(), Modifier{}, [] { Box(SizeMod(Modifier{}, Dp(100), Dp(60))); });
+            // Starts invisible and animates in from the first composition.
+            AnimatedVisibilityInColumn(state, Modifier{}, [] { Box(SizeMod(Modifier{}, Dp(40), Dp(80))); });
+        });
+    });
+    state.SetTargetState(true);
+    h.Pump();
+    h.Layout();
+    row = h.owner.Root().Children()[0];
+    visible.Set(true);
+    h.Pump();
+    h.Layout();
+    h.Step(4);
+    LayoutNode* first = row->Children()[0];
+    CHECK(first->Size().width > 0 && first->Size().width < 100);   // growing across
+    CHECK_EQ(first->Size().height, 60);                             // full height throughout
+    LayoutNode* second = row->Children()[1];
+    CHECK_EQ(second->Size().width, 40);                             // a column version: full width
+    CHECK(second->Size().height < 80);
+    h.Step(60);
+    CHECK_EQ(first->Size().width, 100);
+    CHECK(state.IsIdle() && state.CurrentState());
+}

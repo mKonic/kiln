@@ -65,18 +65,87 @@ namespace kiln::foundation {
     void AnimatedVisibility(bool visible, const Modifier& modifier, std::function<void()> content,
                             EnterTransition enter = FadeIn() + ExpandIn(), ExitTransition exit = ShrinkOut() + FadeOut(), rt::Key key = {});
 
-    // ContentTransform (enter togetherWith exit, plus SizeTransform).
+    // AnimatedVisibility(visibleState): driven by a MutableTransitionState (start invisible and
+    // set the target to animate in on first composition; IsIdle once done).
+    void AnimatedVisibility(MutableTransitionState<bool>& visibleState, const Modifier& modifier, std::function<void()> content,
+                            EnterTransition enter = FadeIn() + ExpandIn(), ExitTransition exit = FadeOut() + ShrinkOut(), rt::Key key = {});
+    // RowScope / ColumnScope.AnimatedVisibility: the defaults expand and shrink along the
+    // layout's main axis only.
+    void AnimatedVisibilityInRow(bool visible, const Modifier& modifier, std::function<void()> content,
+                                 EnterTransition enter = FadeIn() + ExpandHorizontally(),
+                                 ExitTransition exit = FadeOut() + ShrinkHorizontally(), rt::Key key = {});
+    void AnimatedVisibilityInRow(MutableTransitionState<bool>& visibleState, const Modifier& modifier, std::function<void()> content,
+                                 EnterTransition enter = ExpandHorizontally() + FadeIn(),
+                                 ExitTransition exit = ShrinkHorizontally() + FadeOut(), rt::Key key = {});
+    void AnimatedVisibilityInColumn(bool visible, const Modifier& modifier, std::function<void()> content,
+                                    EnterTransition enter = FadeIn() + ExpandVertically(),
+                                    ExitTransition exit = FadeOut() + ShrinkVertically(), rt::Key key = {});
+    void AnimatedVisibilityInColumn(MutableTransitionState<bool>& visibleState, const Modifier& modifier, std::function<void()> content,
+                                    EnterTransition enter = ExpandVertically() + FadeIn(),
+                                    ExitTransition exit = ShrinkVertically() + FadeOut(), rt::Key key = {});
+
+    // AnimatedEnterExit: content that enters while `visibility` goes to true and exits (then
+    // leaves the composition) while it goes to false.
+    void AnimatedEnterExit(Transition<bool>& visibility, const Modifier& modifier, std::function<void()> content,
+                           const EnterTransition& enter, const ExitTransition& exit, rt::Key key = {});
+
+    // Transition.AnimatedVisibility(visible): visibility derived from a parent transition's
+    // state, animated on the parent's clock (a child transition).
+    template<typename S>
+    void AnimatedVisibility(Transition<S>& transition, std::function<bool(const S&)> visible, const Modifier& modifier,
+                            std::function<void()> content, EnterTransition enter = FadeIn() + ExpandIn(),
+                            ExitTransition exit = ShrinkOut() + FadeOut(), rt::Key key = {}) {
+        auto& child = CreateChildTransition<bool, S>(transition, std::move(visible), key);
+        AnimatedEnterExit(child, modifier, std::move(content), enter, exit, key);
+    }
+
+    // SizeTransform: how the container's size follows the content (clipped or not), with a spec
+    // chosen from the initial and target sizes.
+    struct SizeTransform {
+        bool clip = true;
+        std::function<anim::SpecPtr(IntSize initial, IntSize target)> spec;   // null: spring(MediumLow)
+    };
+
+    // ContentTransform (enter togetherWith exit, targetContentZIndex, using SizeTransform).
     struct ContentTransform {
         EnterTransition enter;
         ExitTransition exit;
-        bool sizeTransform = true;          // animate the container size, clipped
-        anim::SpecPtr sizeSpec = anim::Spring(1.0f, anim::spring::StiffnessMediumLow, 0.5f);
+        float targetContentZIndex = 0;      // the incoming content's draw order among the contents
+        std::optional<SizeTransform> sizeTransform = SizeTransform{};   // none: size snaps
     };
+    // enter togetherWith exit
+    inline ContentTransform TogetherWith(EnterTransition enter, ExitTransition exit) { return { std::move(enter), std::move(exit) }; }
+    // ContentTransform using sizeTransform
+    inline ContentTransform Using(ContentTransform t, std::optional<SizeTransform> size) { t.sizeTransform = std::move(size); return t; }
+
+    // AnimatedContentTransitionScope: what a transitionSpec sees, and its slide helpers.
+    class AnimatedContentTransitionScope {
+    public:
+        enum class SlideDirection : std::uint8_t { Left, Right, Up, Down, Start, End };
+        rt::Key initialState, targetState;
+        Alignment contentAlignment = Alignment::TopStart();
+        ui::LayoutDirection layoutDirection = ui::LayoutDirection::Ltr;
+        // slideIntoContainer: the new content slides in from the container's edge towards
+        // `towards` (initialOffset maps the full-slide offset; identity by default).
+        EnterTransition SlideIntoContainer(SlideDirection towards, anim::SpecPtr spec = nullptr,
+                                           std::function<int(int)> initialOffset = {}) const;
+        // slideOutOfContainer: the old content slides out past the edge towards `towards`.
+        ExitTransition SlideOutOfContainer(SlideDirection towards, anim::SpecPtr spec = nullptr,
+                                           std::function<int(int)> targetOffset = {}) const;
+
+        // internal: sizes measured on the last pass.
+        struct Sizes { IntSize container; IntSize target; };
+        std::shared_ptr<Sizes> sizes = std::make_shared<Sizes>();
+    };
+
     // AnimatedContent's default: fadeIn(tween(220, 90)) + scaleIn(0.92, tween(220, 90)) togetherWith
     // fadeOut(tween(90)) (the Material fade-through numbers).
     ContentTransform DefaultContentTransform();
     // AnimatedContent(targetState): content keyed by `target`; the old content leaves with the
     // exit while the new one enters, both stacked at contentAlignment.
+    void AnimatedContent(rt::Key target, const Modifier& modifier, std::function<void(rt::Key)> content,
+                         std::function<ContentTransform(AnimatedContentTransitionScope&)> transitionSpec,
+                         Alignment contentAlignment = Alignment::TopStart(), rt::Key key = {});
     void AnimatedContent(rt::Key target, const Modifier& modifier, std::function<void(rt::Key)> content,
                          std::function<ContentTransform()> transform = DefaultContentTransform,
                          Alignment contentAlignment = Alignment::TopStart(), rt::Key key = {});

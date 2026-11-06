@@ -45,6 +45,7 @@ namespace kiln::ui {
         std::vector<DrawModifier*> draws;    // drawn within this coordinator's size
         MeasureResult result;
         IntOffset position;                  // within the enclosing coordinator (0: in parent)
+        float zIndex = 0;                    // as placed by the enclosing coordinator (or parent)
 
         // The list handed to the policy. It lives until the next measure, so a policy's placement
         // lambda may keep the span it was given (they usually do).
@@ -115,9 +116,10 @@ namespace kiln::ui {
         void PlaceAt(IntOffset p, float z) override {
             if (index == 0) {
                 LayoutNode* parent = node.m_Parent;
-                const bool moved = !node.m_Placed || node.m_Position != p || node.m_ZIndex != z;
+                const bool moved = !node.m_Placed || node.m_Position != p || zIndex != z;
                 node.m_Position = p;
-                node.m_ZIndex = z;
+                zIndex = z;
+                node.UpdateZIndex();
                 node.m_PlaceOrder = parent ? parent->m_NextPlaceOrder++ : 0;
                 node.m_Placed = true;
                 node.m_PlacedThisPass = true;
@@ -125,6 +127,8 @@ namespace kiln::ui {
                 node.LayoutIfNeeded();
             } else {
                 position = p;
+                // A layout modifier's zIndex adds to the node's (Modifier.zIndex).
+                if (zIndex != z) { zIndex = z; node.UpdateZIndex(); }
             }
         }
 
@@ -413,6 +417,15 @@ namespace kiln::ui {
         if (m_Parent) m_Parent->RequestRemeasure();
         RequestRemeasure();
         InvalidateDraw();
+    }
+
+    // The node's draw order among its siblings: the sum of every placement zIndex in its chain.
+    void LayoutNode::UpdateZIndex() {
+        float sum = 0;
+        for (const auto& c : m_Coordinators) sum += c->zIndex;
+        if (sum == m_ZIndex) return;
+        m_ZIndex = sum;
+        if (m_Parent) m_Parent->InvalidateDraw();
     }
 
     void LayoutNode::RebuildChain() {

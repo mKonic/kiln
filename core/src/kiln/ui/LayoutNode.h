@@ -123,6 +123,7 @@ namespace kiln::ui {
         Placeable& MeasureNode(const Constraints& c);
         void LayoutChain();
         void LayoutIfNeeded() { if (m_LayoutDirty) LayoutChain(); }
+        void UpdateZIndex();
         void DrawCoordinator(std::size_t index, ContentDrawScope& scope);
         void DrawWrapped(std::size_t index, ContentDrawScope& scope);
         MeasureScope Scope() const;

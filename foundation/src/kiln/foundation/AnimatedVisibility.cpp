@@ -1,9 +1,11 @@
 #include "kiln/foundation/AnimatedVisibility.h"
 
 #include "kiln/foundation/Compose.h"
+#include "kiln/ui/Locals.h"
 
 #include <algorithm>
 #include <cmath>
+#include <map>
 
 namespace kiln::foundation {
 
@@ -91,6 +93,29 @@ namespace kiln::foundation {
     void AnimatedVisibility(bool visible, const Modifier& modifier, std::function<void()> content,
                             EnterTransition enter, ExitTransition exit, rt::Key key) {
         auto& t = UpdateTransition(visible, key);
+        AnimatedEnterExit(t, modifier, std::move(content), enter, exit, key);
+    }
+
+    void AnimatedVisibility(MutableTransitionState<bool>& state, const Modifier& modifier, std::function<void()> content,
+                            EnterTransition enter, ExitTransition exit, rt::Key key) {
+        auto& t = UpdateTransition(state, key);
+        AnimatedEnterExit(t, modifier, std::move(content), enter, exit, key);
+    }
+    void AnimatedVisibilityInRow(bool visible, const Modifier& m, std::function<void()> content, EnterTransition enter, ExitTransition exit, rt::Key key) {
+        AnimatedVisibility(visible, m, std::move(content), std::move(enter), std::move(exit), key);
+    }
+    void AnimatedVisibilityInRow(MutableTransitionState<bool>& s, const Modifier& m, std::function<void()> content, EnterTransition enter, ExitTransition exit, rt::Key key) {
+        AnimatedVisibility(s, m, std::move(content), std::move(enter), std::move(exit), key);
+    }
+    void AnimatedVisibilityInColumn(bool visible, const Modifier& m, std::function<void()> content, EnterTransition enter, ExitTransition exit, rt::Key key) {
+        AnimatedVisibility(visible, m, std::move(content), std::move(enter), std::move(exit), key);
+    }
+    void AnimatedVisibilityInColumn(MutableTransitionState<bool>& s, const Modifier& m, std::function<void()> content, EnterTransition enter, ExitTransition exit, rt::Key key) {
+        AnimatedVisibility(s, m, std::move(content), std::move(enter), std::move(exit), key);
+    }
+
+    void AnimatedEnterExit(Transition<bool>& t, const Modifier& modifier, std::function<void()> content,
+                           const EnterTransition& enter, const ExitTransition& exit, rt::Key key) {
         const bool exiting = !t.TargetState();
         auto specFor = [&](auto part) -> anim::SpecPtr {
             // Entering uses the enter part's spec, exiting the exit part's.
@@ -199,46 +224,119 @@ namespace kiln::foundation {
         return m.With<SizeAnimNode>(SizeAnimParams{ std::move(spec) });
     }
 
+    // --- AnimatedContent ----------------------------------------------------------------------
+
+    namespace {
+        bool IsLeft(AnimatedContentTransitionScope::SlideDirection d, ui::LayoutDirection dir) {
+            using D = AnimatedContentTransitionScope::SlideDirection;
+            return d == D::Left || (d == D::Start && dir == ui::LayoutDirection::Ltr) || (d == D::End && dir == ui::LayoutDirection::Rtl);
+        }
+        bool IsRight(AnimatedContentTransitionScope::SlideDirection d, ui::LayoutDirection dir) {
+            using D = AnimatedContentTransitionScope::SlideDirection;
+            return d == D::Right || (d == D::Start && dir == ui::LayoutDirection::Rtl) || (d == D::End && dir == ui::LayoutDirection::Ltr);
+        }
+        std::function<int(int)> OrIdentity(std::function<int(int)> f) { return f ? f : [](int v) { return v; }; }
+    }
+
+    EnterTransition AnimatedContentTransitionScope::SlideIntoContainer(SlideDirection towards, anim::SpecPtr spec,
+                                                                       std::function<int(int)> initialOffset) const {
+        auto f = OrIdentity(std::move(initialOffset));
+        auto sizes = this->sizes;
+        const Alignment align = contentAlignment;
+        // calculateOffset: where content of the full-slide size sits in the container.
+        auto offset = [sizes, align](int it) { return align.Align(IntSize{ it, it }, sizes->container, ui::LayoutDirection::Ltr); };
+        if (IsLeft(towards, layoutDirection))
+            return SlideInHorizontally([f, sizes, offset](int it) { return f(sizes->container.width - offset(it).x); }, spec);
+        if (IsRight(towards, layoutDirection))
+            return SlideInHorizontally([f, offset](int it) { return f(-offset(it).x - it); }, spec);
+        if (towards == SlideDirection::Up)
+            return SlideInVertically([f, sizes, offset](int it) { return f(sizes->container.height - offset(it).y); }, spec);
+        if (towards == SlideDirection::Down)
+            return SlideInVertically([f, offset](int it) { return f(-offset(it).y - it); }, spec);
+        return {};
+    }
+
+    ExitTransition AnimatedContentTransitionScope::SlideOutOfContainer(SlideDirection towards, anim::SpecPtr spec,
+                                                                       std::function<int(int)> targetOffset) const {
+        auto f = OrIdentity(std::move(targetOffset));
+        auto sizes = this->sizes;
+        const Alignment align = contentAlignment;
+        // Against the incoming content's size (it may differ from the container's).
+        auto offset = [sizes, align](int it) { return align.Align(IntSize{ it, it }, sizes->target, ui::LayoutDirection::Ltr); };
+        if (IsLeft(towards, layoutDirection))
+            return SlideOutHorizontally([f, offset](int it) { return f(-offset(it).x - it); }, spec);
+        if (IsRight(towards, layoutDirection))
+            return SlideOutHorizontally([f, sizes, offset](int it) { return f(-offset(it).x + sizes->target.width); }, spec);
+        if (towards == SlideDirection::Up)
+            return SlideOutVertically([f, offset](int it) { return f(-offset(it).y - it); }, spec);
+        if (towards == SlideDirection::Down)
+            return SlideOutVertically([f, sizes, offset](int it) { return f(-offset(it).y + sizes->target.height); }, spec);
+        return {};
+    }
+
     void AnimatedContent(rt::Key target, const Modifier& modifier, std::function<void(rt::Key)> content,
-                         std::function<ContentTransform()> transformFn, Alignment alignment, rt::Key key) {
+                         std::function<ContentTransform(AnimatedContentTransitionScope&)> transitionSpec,
+                         Alignment alignment, rt::Key key) {
         auto& c = *rt::Composition::Current();
         auto& t = UpdateTransition<std::uint64_t>(target.value, key);
         auto& items = c.Remember<std::vector<std::uint64_t>>([&] { return std::vector<std::uint64_t>{ target.value }; }, {}, key);
         if (std::find(items.begin(), items.end(), target.value) == items.end()) items.push_back(target.value);
         if (!t.IsRunning() && t.CurrentState() == t.TargetState()) items = { target.value };
-        const ContentTransform tr = transformFn ? transformFn() : DefaultContentTransform();
+
+        auto& scope = c.Remember<std::shared_ptr<AnimatedContentTransitionScope>>(
+            [] { return std::make_shared<AnimatedContentTransitionScope>(); }, {}, key);
+        scope->initialState = rt::Key::Positional();
+        scope->initialState.value = t.CurrentState();
+        scope->targetState = rt::Key::Positional();
+        scope->targetState.value = t.TargetState();
+        scope->contentAlignment = alignment;
+        scope->layoutDirection = c.Read(ui::LocalLayoutDirection);
+        // The transitionSpec runs once per segment (initial -> target).
+        struct Cached { std::uint64_t from = 0, to = 0; bool valid = false; ContentTransform transform; };
+        auto& cached = c.Remember<Cached>([] { return Cached{}; }, {}, key);
+        if (!cached.valid || cached.from != t.CurrentState() || cached.to != t.TargetState()) {
+            cached.transform = transitionSpec ? transitionSpec(*scope) : DefaultContentTransform();
+            cached.from = t.CurrentState();
+            cached.to = t.TargetState();
+            cached.valid = true;
+        }
+        const ContentTransform& tr = cached.transform;
+        // Each content keeps the zIndex it was given when it became the target.
+        auto& zIndex = c.Remember<std::map<std::uint64_t, float>>([] { return std::map<std::uint64_t, float>{}; }, {}, key);
+        zIndex[t.TargetState()] = tr.targetContentZIndex;
+        std::erase_if(zIndex, [&](const auto& e) { return std::find(items.begin(), items.end(), e.first) == items.end(); });
+
+        auto sizes = scope->sizes;
         Modifier m = modifier;
-        if (tr.sizeTransform) m = AnimateContentSize(ClipToBounds(std::move(m)), tr.sizeSpec);
-        Box(m, alignment, false, [&c, &t, &items, content, tr] {
+        if (tr.sizeTransform) {
+            const anim::SpecPtr spec = tr.sizeTransform->spec ? tr.sizeTransform->spec(sizes->container, sizes->target)
+                                                               : anim::Spring(1.0f, anim::spring::StiffnessMediumLow, 0.5f);
+            if (tr.sizeTransform->clip) m = ClipToBounds(std::move(m));
+            m = AnimateContentSize(std::move(m), spec);
+        }
+        m = OnSizeChanged(std::move(m), [sizes](IntSize s) { sizes->container = s; });
+        const std::uint64_t targetKey = t.TargetState();
+        Box(m, alignment, false, [&c, &t, &items, &zIndex, content, &tr, sizes, targetKey] {
             for (std::uint64_t k : items) {
-                c.Child([&t, content, k, tr] {
-                    const bool entering = k == t.TargetState();
-                    using Seg = Transition<std::uint64_t>::Segment;
-                    const float alpha = AnimateFloat<std::uint64_t>(t, [&tr, entering, k](std::uint64_t s) {
-                        if (s == k) return 1.0f;
-                        if (entering) return tr.enter.parts.fade ? tr.enter.parts.fade->first : 1.0f;
-                        return tr.exit.parts.fade ? tr.exit.parts.fade->first : 1.0f;
-                    }, [&](const Seg&) {
-                        const auto& f = entering ? tr.enter.parts.fade : tr.exit.parts.fade;
-                        return f ? f->second : DefaultEnterExitSpring();
-                    });
-                    const float scale = AnimateFloat<std::uint64_t>(t, [&tr, entering, k](std::uint64_t s) {
-                        if (s == k) return 1.0f;
-                        if (entering) return tr.enter.parts.scale ? tr.enter.parts.scale->scale : 1.0f;
-                        return tr.exit.parts.scale ? tr.exit.parts.scale->scale : 1.0f;
-                    }, [&](const Seg&) {
-                        const auto& sc = entering ? tr.enter.parts.scale : tr.exit.parts.scale;
-                        return sc ? sc->spec : DefaultEnterExitSpring();
-                    });
-                    GraphicsLayerParams layer;
-                    layer.alpha = alpha;
-                    layer.scaleX = layer.scaleY = scale;
+                const float z = zIndex.count(k) ? zIndex[k] : 0.0f;
+                c.Child([&t, content, k, &tr, sizes, targetKey, z] {
+                    // Each content is visible while it is the target (a child transition).
+                    auto& visibility = CreateChildTransition<bool, std::uint64_t>(t, [k](const std::uint64_t& s) { return s == k; });
+                    Modifier im = ZIndex(Modifier{}, z);
+                    if (k == targetKey) im = OnSizeChanged(std::move(im), [sizes](IntSize s) { sizes->target = s; });
                     rt::Key itemKey = rt::Key::Positional();
                     itemKey.value = k;
-                    Box(GraphicsLayer(Modifier{}, layer), Alignment::TopStart(), false, [content, itemKey] { content(itemKey); });
+                    AnimatedEnterExit(visibility, im, [content, itemKey] { content(itemKey); }, tr.enter, tr.exit);
                 }, rt::Key(std::int64_t(k)));
             }
         }, key);
+    }
+
+    void AnimatedContent(rt::Key target, const Modifier& modifier, std::function<void(rt::Key)> content,
+                         std::function<ContentTransform()> transformFn, Alignment alignment, rt::Key key) {
+        std::function<ContentTransform(AnimatedContentTransitionScope&)> spec;
+        if (transformFn) spec = [transformFn](AnimatedContentTransitionScope&) { return transformFn(); };
+        AnimatedContent(target, modifier, std::move(content), std::move(spec), alignment, key);
     }
 
 }

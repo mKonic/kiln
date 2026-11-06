@@ -324,6 +324,21 @@ namespace kiln::foundation {
             }
         };
 
+        // ZIndexNode (ZIndexModifier.kt): places its content with a zIndex, which adds to the
+        // layout's draw order among its siblings.
+        struct ZIndexParams { float z; bool operator==(const ZIndexParams&) const = default; };
+        struct ZIndexNode final : ModifierNode, LayoutModifier {
+            ZIndexParams params;
+            explicit ZIndexNode(ZIndexParams p) : params(p) {}
+            void OnParamsChanged() { InvalidateMeasure(); }
+            LayoutModifier* AsLayout() override { return this; }
+            MeasureResult Measure(MeasureScope& s, Measurable& m, const Constraints& c) override {
+                Placeable& p = m.Measure(c);
+                const float z = params.z;
+                return s.Layout(p.Width(), p.Height(), [&p, z](PlacementScope& place) { place.Place(p, 0, 0, z); });
+            }
+        };
+
         // FillNode (Size.kt:697-750).
         struct FillParams { Axis axis; float fraction; bool operator==(const FillParams&) const = default; };
         struct FillNode final : ModifierNode, LayoutModifier {
@@ -762,6 +777,7 @@ namespace kiln::foundation {
 
     Modifier Padding(Modifier m, PaddingValues p) { return m.With<PaddingNode>(p); }
     Modifier SizeIn(Modifier m, Dp minW, Dp minH, Dp maxW, Dp maxH, bool enforce) { return m.With<SizeNode>(SizeParams{ minW, minH, maxW, maxH, enforce }); }
+    Modifier ZIndex(Modifier m, float zIndex) { return m.With<ZIndexNode>(ZIndexParams{ zIndex }); }
     Modifier DefaultMinSize(Modifier m, Dp minW, Dp minH) { return m.With<MinSizeNode>(MinSizeParams{ minW, minH }); }
     Modifier FillMax(Modifier m, Axis axis, float fraction) { return m.With<FillNode>(FillParams{ axis, fraction }); }
     Modifier WrapContent(Modifier m, Axis axis, Alignment a, bool unbounded) { return m.With<WrapNode>(WrapParams{ axis, a, unbounded }); }
