@@ -597,3 +597,33 @@ TEST(FocusMovesIntoItemsBeyondTheViewport) {
     h.Frames(30);
     CHECK_EQ(focused, 6);
 }
+
+TEST(StickyHeaderSticksToTheStartOfAReversedList) {
+    LazyListState state;
+    Harness h;
+    h.Run([&] {
+        LazyListOptions o;
+        o.reverseLayout = true;
+        LazyColumn(FillMax(Modifier{}, Axis::Both), state, [&](LazyListScope& s) {
+            for (int section = 0; section < 3; ++section) {
+                s.StickyHeader([](int) { Box(SizeMod(Modifier{}, Dp(100), Dp(20))); });
+                s.Items(5, [](int) { Box(SizeMod(Modifier{}, Dp(100), Dp(30))); });
+            }
+        }, o);
+    });
+    // Item 0 (the first header) sits at the bottom of a reversed list.
+    auto headerAt = [&](int index) {
+        for (const auto& it : state.LayoutInfo().visibleItemsInfo) if (it.index == index) return it.offset;
+        return -999;
+    };
+    CHECK_EQ(headerAt(0), 0);
+    // Scrolled 50 into the first section: the header stays at the start (the bottom edge).
+    state.ScrollToItem(1, 20);
+    h.Pump();
+    CHECK_EQ(headerAt(0), 0);
+    // The next header (index 6, at 170) pushes it out once it is closer than the header's size.
+    state.ScrollToItem(5, 20);   // content start at 160: header 6 is 10 from the start
+    h.Pump();
+    CHECK_EQ(headerAt(6), 10);
+    CHECK_EQ(headerAt(0), -10);  // pushed back: it ends where header 6 begins
+}
