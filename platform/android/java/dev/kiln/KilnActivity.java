@@ -58,6 +58,12 @@ public class KilnActivity extends Activity {
     }
 
     @Override
+    protected void onDestroy() {
+        KilnNative.destroy();
+        super.onDestroy();
+    }
+
+    @Override
     public void onConfigurationChanged(Configuration newConfig) {
         super.onConfigurationChanged(newConfig);
         view.onHostConfigurationChanged(newConfig);

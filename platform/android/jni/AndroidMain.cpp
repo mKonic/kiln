@@ -2,6 +2,7 @@
 #include "AndroidText.h"
 
 #include "kiln/foundation/text/TextFieldState.h"
+#include "kiln/ui/Back.h"
 
 #include <climits>
 #include <functional>
@@ -44,6 +45,7 @@ namespace {
     void ArmTimer();
     void InstallTextInputHost(JNIEnv* env);
     JNIEnv* MainEnv();
+    void SurfaceDestroyed(JNIEnv*, jclass);
 
     void OnVsync(int64_t frameTimeNanos, void*) {
         if (!g_Host) return;
@@ -96,10 +98,6 @@ namespace {
     }
 
     void Create(JNIEnv* env, jclass, jobject view, jobject text, jfloat density, jfloat fontScale) {
-        if (g_Host) {   // Activity recreated: keep the app, swap nothing for M0.
-            g_Host->app->SetDensity(density, fontScale);
-            return;
-        }
         hearth::SetLogSink(&LogToLogcat);
         g_Host = new Host();
         g_Host->text = std::make_unique<kiln::android::AndroidText>(env, text);
@@ -117,6 +115,10 @@ namespace {
             static jmethodID onSem = env->GetMethodID(vc, "onSemanticsChanged", "()V");
             env->DeleteLocalRef(vc);
             g_Host->app->GetOwner().SetOnSemanticsChanged([] { MainEnv()->CallVoidMethod(g_Host->view, onSem); });
+            static jmethodID setBack = env->GetMethodID(env->GetObjectClass(view), "setBackEnabled", "(Z)V");
+            auto& back = kiln::ui::BackDispatcher::Main();
+            back.onHasEnabledChanged = [](bool on) { MainEnv()->CallVoidMethod(g_Host->view, setBack, jboolean(on)); };
+            if (back.HasEnabledCallbacks()) back.onHasEnabledChanged(true);
         }
         // Keys and the IME reach a View only while it holds platform focus.
         g_Host->app->GetOwner().SetRequestHostFocus([] {
@@ -137,6 +139,7 @@ namespace {
     }
 
     void SetVisible(JNIEnv*, jclass, jboolean visible) {
+        if (!g_Host) return;
         g_Host->visible = visible;
         if (visible && g_Host->app->FramePending()) {
             g_Host->callbackPosted = false;
@@ -145,10 +148,12 @@ namespace {
     }
 
     void SetAnimationScale(JNIEnv*, jclass, jfloat scale) {
+        if (!g_Host) return;
         g_Host->app->SetAnimationScale(scale);
     }
 
     void SetDensity(JNIEnv*, jclass, jfloat density, jfloat fontScale) {
+        if (!g_Host) return;
         g_Host->app->SetDensity(density, fontScale);
         g_Host->app->RequestFrame();
     }
@@ -157,6 +162,7 @@ namespace {
     // view pixels, which are surface pixels here (the SurfaceView fills the KilnView).
     void TouchEvent(JNIEnv* env, jclass, jint action, jint actionIndex, jlong eventTime, jintArray ids,
                     jfloatArray xy, jintArray tools, jint buttons, jint classification, jfloat hscroll, jfloat vscroll) {
+        if (!g_Host) return;
         enum { DOWN = 0, UP = 1, MOVE = 2, CANCEL = 3, POINTER_DOWN = 5, POINTER_UP = 6, HOVER_MOVE = 7,
                SCROLL = 8, HOVER_ENTER = 9, HOVER_EXIT = 10 };
         kiln::ui::RawPointerEvent ev;
@@ -201,6 +207,7 @@ namespace {
     }
 
     jboolean KeyEvent(JNIEnv*, jclass, jint action, jint keyCode, jint metaState, jint unicode, jint repeat, jlong time) {
+        if (!g_Host) return {};
         kiln::ui::KeyEvent e;
         e.keyCode = keyCode;
         e.type = action == 0 ? kiln::ui::KeyEventType::KeyDown : action == 1 ? kiln::ui::KeyEventType::KeyUp
@@ -215,16 +222,19 @@ namespace {
     }
 
     void SetInsets(JNIEnv*, jclass, jint type, jint l, jint t, jint r, jint b) {
+        if (!g_Host) return;
         if (type < 0 || type >= jint(kiln::ui::InsetsType::Count)) return;
         g_Host->app->GetOwner().Insets().Set(kiln::ui::InsetsType(type), { l, t, r, b });
     }
     void SetImeState(JNIEnv*, jclass, jboolean visible, jboolean animating) {
+        if (!g_Host) return;
         auto& h = g_Host->app->GetOwner().Insets();
         h.SetImeVisible(visible);
         h.SetImeAnimating(animating);
     }
 
     void HostFocusChanged(JNIEnv*, jclass, jboolean focused) {
+        if (!g_Host) return;
         g_Host->app->GetOwner().OnHostFocusChanged(focused);
     }
 
@@ -316,20 +326,24 @@ namespace {
     void ImeSetComposingRegion(JNIEnv*, jclass, jint a, jint b) { if (auto* s = Session()) { s->SetComposingRegion(a, b); AfterIme(); } }
     void ImeFinishComposingText(JNIEnv*, jclass) { if (auto* s = Session()) { s->FinishComposingText(); AfterIme(); } }
     void ImeDeleteSurroundingText(JNIEnv*, jclass, jint b, jint a, jboolean cp) {
+        if (!g_Host) return;
         if (auto* s = Session()) { if (cp) s->DeleteSurroundingTextInCodePoints(b, a); else s->DeleteSurroundingText(b, a); AfterIme(); }
     }
     void ImeSetSelection(JNIEnv*, jclass, jint a, jint b) { if (auto* s = Session()) { s->SetSelection(a, b); AfterIme(); } }
     void ImePerformEditorAction(JNIEnv*, jclass, jint action) {
+        if (!g_Host) return;
         using A = kiln::ui::ImeAction;
         const A map[] = { A::Default, A::None, A::Go, A::Search, A::Send, A::Next, A::Done, A::Previous };
         if (auto* s = Session()) { s->PerformImeAction(action >= 0 && action < 8 ? map[action] : A::Default); AfterIme(); }
     }
     jstring ImeGetText(JNIEnv* env, jclass) {
+        if (!g_Host) return {};
         auto* s = Session();
         const std::u16string t = s ? s->Snapshot().text : std::u16string();
         return env->NewString(reinterpret_cast<const jchar*>(t.data()), jsize(t.size()));
     }
     jfloatArray ImeGetCaret(JNIEnv* env, jclass) {
+        if (!g_Host) return {};
         jfloat v[5] = { 0, 0, 0, 0, 0 };
         if (auto* s = Session()) { auto c = s->CaretRect(); v[0] = c.x; v[1] = c.top; v[2] = c.baseline; v[3] = c.bottom; v[4] = c.valid ? 1.0f : 0.0f; }
         jfloatArray a = env->NewFloatArray(5);
@@ -338,11 +352,36 @@ namespace {
     }
 
     jintArray ImeGetSelection(JNIEnv* env, jclass) {
+        if (!g_Host) return {};
         jint v[4] = { 0, 0, -1, -1 };
         if (auto* s = Session()) { auto snap = s->Snapshot(); v[0] = snap.selStart; v[1] = snap.selEnd; v[2] = snap.compStart; v[3] = snap.compEnd; }
         jintArray a = env->NewIntArray(4);
         env->SetIntArrayRegion(a, 0, 4, v);
         return a;
+    }
+
+    // --- back ------------------------------------------------------------------------------
+
+    void AfterInput() {
+        kiln::rt::Dispatcher::Main().RunPending();
+        g_Host->app->RequestFrame();
+    }
+    void BackEventJni(JNIEnv*, jclass, jboolean started, jfloat x, jfloat y, jfloat progress, jint edge, jlong frameTime) {
+        if (!g_Host) return;
+        const kiln::ui::BackEvent e{ x, y, progress, kiln::ui::SwipeEdge(edge), frameTime };
+        auto& d = kiln::ui::BackDispatcher::Main();
+        if (started) d.Started(e); else d.Progressed(e);
+        AfterInput();
+    }
+    void BackCancelled(JNIEnv*, jclass) {
+        if (!g_Host) return;
+        kiln::ui::BackDispatcher::Main().Cancelled();
+        AfterInput();
+    }
+    void BackInvoked(JNIEnv*, jclass) {
+        if (!g_Host) return;
+        kiln::ui::BackDispatcher::Main().Completed();
+        AfterInput();
     }
 
     // --- semantics -------------------------------------------------------------------------
@@ -379,6 +418,7 @@ namespace {
     }
 
     jintArray SemNode(JNIEnv* env, jclass, jint id) {
+        if (!g_Host) return {};
         std::vector<jint> d(11, 0);
         if (const auto* n = SemFind(id)) {
             const auto& c = n->config;
@@ -408,6 +448,7 @@ namespace {
     }
 
     jobjectArray SemStrings(JNIEnv* env, jclass, jint id) {
+        if (!g_Host) return {};
         std::string v[5];
         if (const auto* n = SemFind(id)) {
             const auto& c = n->config;
@@ -430,6 +471,7 @@ namespace {
     }
 
     jboolean SemAction(JNIEnv* env, jclass, jint id, jint action, jstring arg) {
+        if (!g_Host) return {};
         const auto* n = SemFind(id);
         if (!n) return false;
         const auto& c = n->config;
@@ -446,6 +488,7 @@ namespace {
     }
 
     jint SemHitTest(JNIEnv*, jclass, jfloat x, jfloat y) {
+        if (!g_Host) return {};
         SemFind(-1);
         // Deepest node whose bounds contain the point, last child first (drawn on top).
         std::function<int(const kiln::ui::SemanticsNode&)> hit = [&](const kiln::ui::SemanticsNode& n) -> int {
@@ -461,6 +504,7 @@ namespace {
 
     void SetViewConfiguration(JNIEnv*, jclass, jlong longPress, jlong doubleTap, jfloat touchSlop,
                               jfloat maxFling, jfloat minFling) {
+        if (!g_Host) return;
         auto& c = g_Host->app->GetOwner().Config();
         c.longPressTimeoutMillis = longPress;
         c.doubleTapTimeoutMillis = doubleTap;
@@ -470,16 +514,42 @@ namespace {
     }
 
     void SurfaceCreated(JNIEnv* env, jclass, jobject surface) {
+        if (!g_Host) return;
         g_Host->window = ANativeWindow_fromSurface(env, surface);
         g_Host->surface.Reset(g_Host->window);
         g_Host->app->SurfaceCreated(g_Host->surface);
     }
 
     void SurfaceChanged(JNIEnv*, jclass, jint width, jint height) {
+        if (!g_Host) return;
         g_Host->app->SurfaceResized(std::uint32_t(width), std::uint32_t(height));
     }
 
+    // Activity destroyed: dispose the composition and everything bound to the old view (Compose
+    // disposes its composition with the activity; a new activity gets a fresh kiln_main).
+    void Destroy(JNIEnv* env, jclass) {
+        if (!g_Host) return;
+        ALooper* looper = ALooper_forThread();
+        ALooper_removeFd(looper, g_Host->eventFd);
+        ALooper_removeFd(looper, g_Host->timerFd);
+        g_Host->visible = false;
+        g_Sem = {};
+        if (g_Host->window) { SurfaceDestroyed(env, nullptr); }
+        g_Host->app.reset();
+        kiln::ui::BackDispatcher::Main().onHasEnabledChanged = nullptr;
+        auto& d = kiln::rt::Dispatcher::Main();
+        d.wake = nullptr;
+        d.requestFrame = nullptr;
+        g_Host->text.reset();
+        close(g_Host->eventFd);
+        close(g_Host->timerFd);
+        env->DeleteGlobalRef(g_Host->view);
+        delete g_Host;
+        g_Host = nullptr;
+    }
+
     void SurfaceDestroyed(JNIEnv*, jclass) {
+        if (!g_Host) return;
         g_Host->app->SurfaceDestroyed();
         g_Host->surface.Reset(nullptr);
         if (g_Host->window) ANativeWindow_release(g_Host->window);
@@ -513,6 +583,9 @@ extern "C" JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void*) {
         { "imeGetText", "()Ljava/lang/String;", reinterpret_cast<void*>(&ImeGetText) },
         { "imeGetSelection", "()[I", reinterpret_cast<void*>(&ImeGetSelection) },
         { "imeGetCaret", "()[F", reinterpret_cast<void*>(&ImeGetCaret) },
+        { "backEvent", "(ZFFFIJ)V", reinterpret_cast<void*>(&BackEventJni) },
+        { "backCancelled", "()V", reinterpret_cast<void*>(&BackCancelled) },
+        { "backInvoked", "()V", reinterpret_cast<void*>(&BackInvoked) },
         { "semNode", "(I)[I", reinterpret_cast<void*>(&SemNode) },
         { "semStrings", "(I)[Ljava/lang/String;", reinterpret_cast<void*>(&SemStrings) },
         { "semAction", "(IILjava/lang/String;)Z", reinterpret_cast<void*>(&SemAction) },
@@ -521,6 +594,7 @@ extern "C" JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void*) {
         { "surfaceCreated", "(Landroid/view/Surface;)V", reinterpret_cast<void*>(&SurfaceCreated) },
         { "surfaceChanged", "(II)V", reinterpret_cast<void*>(&SurfaceChanged) },
         { "surfaceDestroyed", "()V", reinterpret_cast<void*>(&SurfaceDestroyed) },
+        { "destroy", "()V", reinterpret_cast<void*>(&Destroy) },
     };
     if (env->RegisterNatives(cls, methods, sizeof(methods) / sizeof(methods[0])) != JNI_OK) return JNI_ERR;
     return JNI_VERSION_1_6;

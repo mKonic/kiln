@@ -39,6 +39,7 @@ cat > "$STAGING/AndroidManifest.xml" <<XML
     <uses-feature android:name="android.hardware.vulkan.version" android:version="0x00401000"
                   android:required="true" />
     <application android:label="$LABEL" android:hasCode="true" android:extractNativeLibs="false"
+                 android:enableOnBackInvokedCallback="true"
                  android:theme="@android:style/Theme.DeviceDefault.NoActionBar">
         <activity android:name="dev.kiln.KilnActivity" android:exported="true"
                   android:windowSoftInputMode="adjustResize"

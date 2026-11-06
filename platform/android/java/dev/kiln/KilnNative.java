@@ -8,6 +8,7 @@ final class KilnNative {
 
     static native void create(KilnView view, KilnText text, float density, float fontScale);
     static native void setVisible(boolean visible);
+    static native void destroy();
     static native void setDensity(float density, float fontScale);
     static native void setAnimationScale(float scale);
     static native void touchEvent(int action, int actionIndex, long eventTime, int[] ids, float[] xy,
@@ -28,6 +29,11 @@ final class KilnNative {
     static native String imeGetText();
     static native int[] imeGetSelection();
     static native float[] imeGetCaret();
+
+    // Back: started/progressed gesture events, cancel, completion.
+    static native void backEvent(boolean started, float x, float y, float progress, int edge, long frameTimeMillis);
+    static native void backCancelled();
+    static native void backInvoked();
 
     // Semantics for KilnAccessibility.
     static native int[] semNode(int id);

@@ -279,8 +279,27 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
         return connection;
     }
 
+    // --- back (spec 15 req. 2) --------------------------------------------------------------
+    final KilnBack back = new KilnBack(this);
+
+    /** From native when the first handler becomes enabled or the last one disabled. */
+    void setBackEnabled(boolean enabled) { back.setEnabled(enabled); }
+
+    @Override
+    protected void onAttachedToWindow() {
+        super.onAttachedToWindow();
+        back.onAttached();
+    }
+
+    @Override
+    protected void onDetachedFromWindow() {
+        back.onDetached();
+        super.onDetachedFromWindow();
+    }
+
     @Override
     public boolean dispatchKeyEvent(KeyEvent e) {
+        if (back.onKey(e)) return true;
         if (KilnNative.keyEvent(e.getAction(), e.getKeyCode(), e.getMetaState(), e.getUnicodeChar(),
                 e.getRepeatCount(), e.getEventTime())) return true;
         return super.dispatchKeyEvent(e);
