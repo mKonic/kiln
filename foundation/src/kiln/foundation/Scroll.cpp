@@ -1,4 +1,5 @@
 #include "kiln/foundation/Scroll.h"
+#include "kiln/foundation/Semantics.h"
 #include "kiln/foundation/Overscroll.h"
 
 #include "kiln/ui/VelocityTracker.h"
@@ -58,6 +59,7 @@ namespace kiln::foundation {
         Density density;
         float friction = 0.015f;
         FlingBehavior flingBehavior;
+        rt::Job semanticsScroll;   // ScrollBy from accessibility (an animated scroll)
 
         float Axis(Offset o) const { return orientation == Orientation::Vertical ? o.y : o.x; }
         Offset Single(float v) const { return orientation == Orientation::Vertical ? Offset{ 0, v } : Offset{ v, 0 }; }
@@ -228,6 +230,7 @@ namespace kiln::foundation {
         struct ScrollLayoutNode final : ModifierNode, LayoutModifier {
             ScrollLayoutParams params;
             explicit ScrollLayoutNode(ScrollLayoutParams p) : params(p) {}
+            int lastValue = -1;   // scrolling changes bounds below: tell accessibility
             void OnParamsChanged() { InvalidateMeasure(); }
             LayoutModifier* AsLayout() override { return this; }
             MeasureResult Measure(MeasureScope& s, Measurable& m, const Constraints& c) override {
@@ -242,16 +245,21 @@ namespace kiln::foundation {
                 params.state->SetBounds(params.vertical ? scrollHeight : scrollWidth, side);
                 ScrollState* state = params.state;
                 const bool vertical = params.vertical, reverse = params.reverse;
-                return s.Layout(w, h, [&p, state, vertical, reverse, scrollHeight, scrollWidth](PlacementScope& place) {
+                return s.Layout(w, h, [this, &p, state, vertical, reverse, scrollHeight, scrollWidth](PlacementScope& place) {
                     // Reading the value here subscribes placement only: scrolling re-places, it
                     // does not re-measure.
                     const int value = std::clamp(state->Value(), 0, vertical ? scrollHeight : scrollWidth);
+                    if (value != lastValue) { lastValue = value; InvalidateSemantics(); }
                     const int abs = reverse ? value - (vertical ? scrollHeight : scrollWidth) : -value;
                     if (vertical) place.PlaceRelative(p, 0, abs);
                     else place.PlaceRelative(p, abs, 0);
                 });
             }
         };
+    }
+
+    namespace {
+        rt::Task<> SemanticsScrollBy(ScrollableState* state, float amount) { co_await AnimateScrollBy(*state, amount); }
     }
 
     Modifier Scrollable(Modifier m, ScrollableState& state, Orientation o, ScrollableOptions opt) {
@@ -264,6 +272,15 @@ namespace kiln::foundation {
         logic->flingBehavior = opt.flingBehavior;
         m = m.With<NestedNode>(NestedParams{ logic });
         if (!opt.enabled) return m;
+        // SemanticsActions.ScrollBy (semanticsScrollBy): an animated scroll along our axis.
+        m = Semantics(std::move(m), [logic, o](SemanticsConfiguration& c) {
+            c.scrollBy = [logic, o](float x, float y) {
+                const float amount = o == Orientation::Vertical ? y : x;
+                if (amount == 0 || !logic->state) return false;
+                logic->semanticsScroll = rt::Launch(rt::Dispatcher::Main(), SemanticsScrollBy(logic->state, amount));
+                return true;
+            };
+        });
         m = PointerInput(std::move(m), rt::Keys(reinterpret_cast<std::uintptr_t>(&state), int(o)), [logic](PointerInputScope& s) {
             logic->density = s.GetDensity();
             logic->friction = s.Config().scrollFriction;
@@ -286,6 +303,12 @@ namespace kiln::foundation {
             // rememberOverscrollEffect(): Android's default is the stretch.
             opt.overscroll = RememberOverscrollEffect();
             m = ClipToBounds(std::move(m));
+            // Vertical/HorizontalScrollAxisRange (ScrollingContainer semantics).
+            ScrollState* st = &state;
+            m = Semantics(std::move(m), [st, vertical, reverseScrolling](SemanticsConfiguration& c) {
+                ui::ScrollAxisRange range{ [st] { return float(st->Value()); }, [st] { return float(st->MaxValue()); }, reverseScrolling };
+                if (vertical) c.verticalScrollAxisRange = range; else c.horizontalScrollAxisRange = range;
+            });
             m = Overscroll(std::move(m), opt.overscroll);
             m = Scrollable(std::move(m), state, vertical ? Orientation::Vertical : Orientation::Horizontal, opt);
             return m.With<ScrollLayoutNode>(ScrollLayoutParams{ &state, vertical, reverseScrolling });

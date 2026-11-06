@@ -81,6 +81,20 @@ final class KilnAccessibility extends AccessibilityNodeProvider {
         }
         if ((f & F_CHECKABLE) != 0) { info.setCheckable(true); info.setChecked((f & F_CHECKED) != 0); }
         if ((f & F_HAS_SELECTED) != 0) info.setSelected((f & F_SELECTED) != 0);
+        // Scrolling (after the children): flags, collection rows and columns.
+        final int sf = d[11 + d[10]];
+        final boolean hasCollection = (sf & 512) != 0;
+        if ((sf & 3) != 0) {
+            if (!hasCollection) info.setClassName((sf & 2) != 0 ? "android.widget.ScrollView" : "android.widget.HorizontalScrollView");
+            if ((sf & 256) != 0) info.setScrollable(true);
+            if ((f & F_DISABLED) == 0) {
+                if ((sf & 4) != 0) { info.addAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_FORWARD); info.addAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_RIGHT); }
+                if ((sf & 8) != 0) { info.addAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_BACKWARD); info.addAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_LEFT); }
+                if ((sf & 16) != 0) { info.addAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_FORWARD); info.addAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_DOWN); }
+                if ((sf & 32) != 0) { info.addAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_BACKWARD); info.addAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_UP); }
+            }
+        }
+        if (hasCollection) info.setCollectionInfo(AccessibilityNodeInfo.CollectionInfo.obtain(d[12 + d[10]], d[13 + d[10]], false));
         info.setAccessibilityFocused(id == accessibilityFocused);
         info.addAction(id == accessibilityFocused ? AccessibilityNodeInfo.AccessibilityAction.ACTION_CLEAR_ACCESSIBILITY_FOCUS
                                                   : AccessibilityNodeInfo.AccessibilityAction.ACTION_ACCESSIBILITY_FOCUS);
@@ -114,8 +128,21 @@ final class KilnAccessibility extends AccessibilityNodeProvider {
                 CharSequence t = args != null ? args.getCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE) : null;
                 return KilnNative.semAction(id, 3, t == null ? "" : t.toString());
             }
-            default: return false;
+            case AccessibilityNodeInfo.ACTION_SCROLL_FORWARD: return scroll(id, "f");
+            case AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD: return scroll(id, "b");
+            default:
+                if (action == android.R.id.accessibilityActionScrollUp) return scroll(id, "u");
+                if (action == android.R.id.accessibilityActionScrollDown) return scroll(id, "d");
+                if (action == android.R.id.accessibilityActionScrollLeft) return scroll(id, "l");
+                if (action == android.R.id.accessibilityActionScrollRight) return scroll(id, "r");
+                return false;
         }
+    }
+
+    private boolean scroll(int id, String direction) {
+        boolean ok = KilnNative.semAction(id, 4, direction);
+        if (ok) send(id, AccessibilityEvent.TYPE_VIEW_SCROLLED);
+        return ok;
     }
 
     void send(int id, int type) {

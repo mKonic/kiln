@@ -1,5 +1,6 @@
 #include "kiln/foundation/Lazy.h"
 #include "kiln/foundation/Overscroll.h"
+#include "kiln/foundation/Semantics.h"
 #include "kiln/runtime/Saveable.h"
 
 #include <algorithm>
@@ -552,6 +553,8 @@ namespace kiln::foundation {
             else ++it;
         }
 
+        if (st.m_Index.Peek() != firstIndex || st.m_Offset.Peek() != -pos)
+            if (self.GetOwner()) self.GetOwner()->InvalidateSemantics();   // bounds moved
         st.m_Index.Set(firstIndex);
         st.m_Offset.Set(-pos);
         st.m_FirstKey = KeyOf(firstIndex);
@@ -563,6 +566,7 @@ namespace kiln::foundation {
         st.m_SlotsPerLine = slotsPerLine;
         st.m_Spacing = spacing;
         st.m_TotalItems = count;
+        st.m_ViewportLength = float(viewport);
         (void)lastIndex;
         st.OnMeasured();
 
@@ -672,7 +676,25 @@ namespace kiln::foundation {
             so.reverseDirection = true;
             so.overscroll = RememberOverscrollEffect(key);
             so.flingBehavior = std::move(fling);
-            Modifier m = Scrollable(Overscroll(ClipToBounds(modifier), so.overscroll), state,
+            // lazyLayoutSemantics: an estimated scroll range (index * 500 + offset, a little more
+            // while it can go on), scroll to index, collection info, the viewport length.
+            LazyCore* cp = core.get();
+            LazyStateBase* sp = &state;
+            Modifier sem = Semantics(ClipToBounds(modifier), [cp, sp, vertical, userScrollEnabled](SemanticsConfiguration& c) {
+                c.isTraversalGroup = true;
+                auto value = [sp] { return float(sp->FirstVisibleItemScrollOffset() + sp->FirstVisibleItemIndex() * 500); };
+                ui::ScrollAxisRange range{ value, [sp, value] { return value() + (sp->CanScrollForward() ? 100.0f : 0.0f); }, false };
+                if (vertical) c.verticalScrollAxisRange = range; else c.horizontalScrollAxisRange = range;
+                if (userScrollEnabled) c.scrollToIndex = [sp, cp](int index) {
+                    if (index < 0 || index >= cp->count) return false;
+                    sp->ScrollToItem(index);
+                    return true;
+                };
+                c.scrollViewportLength = [sp] { return sp->ViewportLength(); };
+                if (cp->grid) c.collectionInfo = std::pair{ -1, -1 };
+                else c.collectionInfo = vertical ? std::pair{ cp->count, 1 } : std::pair{ 1, cp->count };
+            });
+            Modifier m = Scrollable(Overscroll(std::move(sem), so.overscroll), state,
                                     vertical ? Orientation::Vertical : Orientation::Horizontal, so);
             if (extra) m = extra(std::move(m));
             auto c = core;

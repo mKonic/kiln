@@ -74,6 +74,8 @@ namespace kiln::foundation {
         // Scrolls in animated steps of up to 2500 dp (jumping to 100 items before the target when
         // further), then seeks the target once it is composed (LazyLayoutScrollScope).
         rt::Task<> AnimateScrollToItem(int index, int scrollOffset = 0);
+        // The viewport along the scroll axis minus content padding (last measure).
+        float ViewportLength() const { return m_ViewportLength; }
 
     protected:
         friend struct LazyCore;
@@ -99,6 +101,7 @@ namespace kiln::foundation {
         // the next measure turns into pixels.
         int m_PageSize = 0;
         std::optional<float> m_PendingFraction;
+        float m_ViewportLength = 0;
     };
 
     class LazyListState final : public LazyStateBase {

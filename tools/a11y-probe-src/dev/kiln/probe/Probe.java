@@ -56,6 +56,17 @@ public final class Probe extends Instrumentation {
         }
         if (root == null) { out.append("no active window\n"); return; }
         if (verb.equals("dump")) { dump(root, 0); return; }
+        if (verb.equals("scroll") || verb.equals("scrollback")) {
+            // The n-th scrollable node in pre-order (0 when no argument).
+            java.util.List<AccessibilityNodeInfo> list = new java.util.ArrayList<>();
+            scrollables(root, list);
+            int i = arg.isEmpty() ? 0 : Integer.parseInt(arg);
+            if (i >= list.size()) { out.append("no scrollable ").append(i).append('\n'); return; }
+            boolean ok = list.get(i).performAction(verb.equals("scroll") ? AccessibilityNodeInfo.ACTION_SCROLL_FORWARD
+                                                                         : AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD);
+            out.append("  ").append(verb).append(' ').append(i).append(" -> ").append(ok).append('\n');
+            return;
+        }
         String find = arg, value = null;
         if (verb.equals("settext")) { find = arg.substring(0, arg.indexOf('=')); value = arg.substring(arg.indexOf('=') + 1); }
         AccessibilityNodeInfo n = findByText(root, find);
@@ -75,6 +86,12 @@ public final class Probe extends Instrumentation {
             default: out.append("unknown verb ").append(verb).append('\n'); return;
         }
         out.append("  ").append(verb).append(" -> ").append(ok).append('\n');
+    }
+
+    private void scrollables(AccessibilityNodeInfo n, java.util.List<AccessibilityNodeInfo> out) {
+        if (n == null) return;
+        if (n.isScrollable()) out.add(n);
+        for (int i = 0; i < n.getChildCount(); i++) scrollables(n.getChild(i), out);
     }
 
     private AccessibilityNodeInfo findByText(AccessibilityNodeInfo n, String text) {
@@ -104,6 +121,8 @@ public final class Probe extends Instrumentation {
         if (n.isPassword()) out.append(" password");
         if (n.isHeading()) out.append(" heading");
         if (!n.isVisibleToUser()) out.append(" invisible");
+        if (n.isScrollable()) out.append(" scrollable");
+        if (n.getCollectionInfo() != null) out.append(" collection=").append(n.getCollectionInfo().getRowCount()).append('x').append(n.getCollectionInfo().getColumnCount());
         out.append('\n');
         for (int i = 0; i < n.getChildCount(); i++) dump(n.getChild(i), depth + 1);
     }

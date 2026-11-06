@@ -470,6 +470,23 @@ namespace {
             d[8] = jint(n->boundsInRoot.right); d[9] = jint(n->boundsInRoot.bottom);
             d[10] = jint(n->children.size());
             for (const auto& ch : n->children) d.push_back(ch.id);
+            // After the children: scroll flags, collection rows, collection columns.
+            int sf = 0;
+            auto axis = [&](const std::optional<kiln::ui::ScrollAxisRange>& r, int present, int fwd, int back, int scrollable) {
+                if (!r || !c.scrollBy) return;
+                sf |= present;
+                const float v = r->value ? r->value() : 0, max = r->maxValue ? r->maxValue() : 0;
+                if (max > 0) sf |= scrollable;
+                // canScrollForward / canScrollBackward (reverseScrolling swaps them).
+                if ((v < max && !r->reverseScrolling) || (v > 0 && r->reverseScrolling)) sf |= fwd;
+                if ((v > 0 && !r->reverseScrolling) || (v < max && r->reverseScrolling)) sf |= back;
+            };
+            axis(c.horizontalScrollAxisRange, 1, 4, 8, 256);
+            axis(c.verticalScrollAxisRange, 2, 16, 32, 256);
+            if (c.collectionInfo) sf |= 512;
+            d.push_back(sf);
+            d.push_back(c.collectionInfo ? c.collectionInfo->first : 0);
+            d.push_back(c.collectionInfo ? c.collectionInfo->second : 0);
         }
         jintArray a = env->NewIntArray(jsize(d.size()));
         env->SetIntArrayRegion(a, 0, jsize(d.size()), d.data());
@@ -511,6 +528,32 @@ namespace {
             case 1: ok = c.onLongClick && c.onLongClick(); break;
             case 2: ok = c.requestFocus && c.requestFocus(); break;
             case 3: ok = c.setText && c.setText(kiln::foundation::ToUtf8(FromJava(env, arg))); break;
+            case 4: {
+                // Scroll actions: arg is f(orward) b(ackward) u d l r. The amount is the viewport
+                // (GetScrollViewportLength, else the node's size), signed like Compose's delegate.
+                if (!c.scrollBy) break;
+                const std::string dir = kiln::foundation::ToUtf8(FromJava(env, arg));
+                const char k = dir.empty() ? 'f' : dir[0];
+                const bool fwd = k == 'f', back = k == 'b';
+                auto canScroll = [](const kiln::ui::ScrollAxisRange& r, float amount) {
+                    const float v = r.value ? r.value() : 0, max = r.maxValue ? r.maxValue() : 0;
+                    return (amount < 0 && v > 0) || (amount > 0 && v < max);
+                };
+                const auto& b = n->boundsInRoot;
+                if (const auto& r = c.horizontalScrollAxisRange; r && (k == 'l' || k == 'r' || fwd || back)) {
+                    float amount = c.scrollViewportLength ? c.scrollViewportLength() : b.right - b.left;
+                    if (k == 'l' || back) amount = -amount;
+                    if (r->reverseScrolling) amount = -amount;
+                    if (canScroll(*r, amount)) { ok = c.scrollBy(amount, 0); break; }
+                }
+                if (const auto& r = c.verticalScrollAxisRange; r && (k == 'u' || k == 'd' || fwd || back)) {
+                    float amount = c.scrollViewportLength ? c.scrollViewportLength() : b.bottom - b.top;
+                    if (k == 'u' || back) amount = -amount;
+                    if (r->reverseScrolling) amount = -amount;
+                    if (canScroll(*r, amount)) ok = c.scrollBy(0, amount);
+                }
+                break;
+            }
             default: break;
         }
         g_Host->app->RequestFrame();

@@ -133,3 +133,71 @@ TEST(ClippedAndCoveredNodesAreDropped) {
     CHECK_EQ(seen[2], std::string("over"));
     CHECK_EQ(root.children[1].boundsInRoot.bottom, 50.f);   // clipped to the viewport
 }
+
+#include "kiln/foundation/Lazy.h"
+#include "kiln/foundation/Scroll.h"
+
+namespace {
+    const SemanticsNode* FindScrollable(const SemanticsNode& n) {
+        if (n.config.scrollBy) return &n;
+        for (const auto& c : n.children) if (const auto* f = FindScrollable(c)) return f;
+        return nullptr;
+    }
+    void Frames(Harness& h, int n) {
+        static std::int64_t t = 0;
+        for (int i = 0; i < n; ++i) {
+            t += 16'000'000;
+            rt::Dispatcher::Main().RunFrame(t);
+            rt::Composition::RecomposeAll();
+            h.owner.MeasureAndLayout({ 300, 300 });
+        }
+    }
+}
+
+TEST(VerticalScrollExposesItsRangeAndScrollsByForAccessibility) {
+    Harness h;
+    ScrollState state;
+    h.Run([&] {
+        Box(FillMax(Modifier{}, Axis::Both), Alignment::TopStart(), false, [&] {
+            Column(VerticalScroll(Height(Modifier{}, Dp(100)), state), [] {
+                for (int i = 0; i < 10; ++i) Box(SizeMod(Modifier{}, Dp(50), Dp(50)));
+            });
+        });
+    });
+    const SemanticsNode root = h.owner.BuildSemanticsTree();
+    const SemanticsNode* n = FindScrollable(root);
+    CHECK(n != nullptr);
+    if (!n) return;
+    CHECK(n->config.verticalScrollAxisRange.has_value());
+    CHECK(!n->config.horizontalScrollAxisRange.has_value());
+    CHECK_EQ(n->config.verticalScrollAxisRange->maxValue(), 400.0f);
+    CHECK_EQ(n->config.verticalScrollAxisRange->value(), 0.0f);
+    CHECK(n->config.scrollBy(0, 100));
+    Frames(h, 60);
+    CHECK_EQ(state.Value(), 100);
+    CHECK_EQ(n->config.verticalScrollAxisRange->value(), 100.0f);
+}
+
+TEST(LazyColumnExposesCollectionInfoAndScrollToIndex) {
+    Harness h;
+    LazyListState state;
+    h.Run([&] {
+        Box(FillMax(Modifier{}, Axis::Both), Alignment::TopStart(), false, [&] {
+            LazyColumn(Height(Modifier{}, Dp(100)), state, [](LazyListScope& s) {
+                s.Items(40, [](int) { Box(SizeMod(Modifier{}, Dp(50), Dp(25))); });
+            });
+        });
+    });
+    const SemanticsNode root = h.owner.BuildSemanticsTree();
+    const SemanticsNode* n = FindScrollable(root);
+    CHECK(n != nullptr);
+    if (!n) return;
+    CHECK(n->config.isTraversalGroup);
+    CHECK(n->config.collectionInfo == (std::pair<int, int>{ 40, 1 }));
+    CHECK_EQ(n->config.verticalScrollAxisRange->maxValue(), 100.0f);   // estimated: can go on
+    CHECK_EQ(n->config.scrollViewportLength(), 100.0f);
+    CHECK(n->config.scrollToIndex(20));
+    h.owner.MeasureAndLayout({ 300, 300 });
+    CHECK_EQ(state.FirstVisibleItemIndex(), 20);
+    CHECK_EQ(n->config.verticalScrollAxisRange->value(), 10000.0f);
+}

@@ -19,7 +19,11 @@ namespace kiln::foundation {
                        a.disabled == b.disabled && a.paneTitle == b.paneTitle && a.textSelection == b.textSelection &&
                        bool(a.onClick) == bool(b.onClick) && bool(a.setText) == bool(b.setText) &&
                        a.onClickLabel == b.onClickLabel && a.selectableGroup == b.selectableGroup &&
-                       a.onLongClickLabel == b.onLongClickLabel && bool(a.onLongClick) == bool(b.onLongClick);
+                       a.onLongClickLabel == b.onLongClickLabel && bool(a.onLongClick) == bool(b.onLongClick) &&
+                       bool(a.scrollBy) == bool(b.scrollBy) && a.collectionInfo == b.collectionInfo &&
+                       bool(a.horizontalScrollAxisRange) == bool(b.horizontalScrollAxisRange) &&
+                       bool(a.verticalScrollAxisRange) == bool(b.verticalScrollAxisRange) &&
+                       bool(a.scrollToIndex) == bool(b.scrollToIndex);
             }
         };
         struct SemNode final : ui::ModifierNode, ui::SemanticsModifier {
@@ -55,6 +59,12 @@ namespace kiln::foundation {
                 if (!c.setText) c.setText = mine.setText;
                 if (!c.requestFocus) c.requestFocus = mine.requestFocus;
                 if (!c.textSelection) c.textSelection = mine.textSelection;
+                if (!c.horizontalScrollAxisRange) c.horizontalScrollAxisRange = mine.horizontalScrollAxisRange;
+                if (!c.verticalScrollAxisRange) c.verticalScrollAxisRange = mine.verticalScrollAxisRange;
+                if (!c.scrollBy) c.scrollBy = mine.scrollBy;
+                if (!c.scrollToIndex) c.scrollToIndex = mine.scrollToIndex;
+                if (!c.scrollViewportLength) c.scrollViewportLength = mine.scrollViewportLength;
+                if (!c.collectionInfo) c.collectionInfo = mine.collectionInfo;
             }
         };
 

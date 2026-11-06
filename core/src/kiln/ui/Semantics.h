@@ -17,6 +17,13 @@ namespace kiln::ui {
 
     enum class Role : std::uint8_t { None, Button, Checkbox, Switch, RadioButton, Tab, Image, DropdownList, ValuePicker, Carousel };
 
+    // ScrollAxisRange: the scroll position and its maximum, read when asked (they change with
+    // every scroll). reverseScrolling: a higher value means further towards the start.
+    struct ScrollAxisRange {
+        std::function<float()> value, maxValue;
+        bool reverseScrolling = false;
+    };
+
     struct SemanticsConfiguration {
         bool mergeDescendants = false;
         bool clearAndSet = false;
@@ -42,10 +49,17 @@ namespace kiln::ui {
         std::function<bool(const std::string&)> setText;
         std::function<bool()> requestFocus;
         std::optional<std::pair<int, int>> textSelection;
+        // Scrolling (not merged into ancestors, like Compose's unmerged config).
+        std::optional<ScrollAxisRange> horizontalScrollAxisRange, verticalScrollAxisRange;
+        std::function<bool(float x, float y)> scrollBy;        // positive: further into the content
+        std::function<bool(int index)> scrollToIndex;
+        std::function<float()> scrollViewportLength;          // GetScrollViewportLength (minus padding)
+        std::optional<std::pair<int, int>> collectionInfo;     // rows, columns
 
         bool HasContent() const {
             return !contentDescription.empty() || !text.empty() || editableText || stateDescription || onClick ||
-                   focused || role != Role::None || heading || selected || toggleableState || paneTitle;
+                   focused || role != Role::None || heading || selected || toggleableState || paneTitle ||
+                   scrollBy || collectionInfo;
         }
         // Merge `child` into this (SemanticsConfiguration.mergeChild: lists concatenate, a
         // parent's own value wins for single values).
