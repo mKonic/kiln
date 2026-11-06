@@ -68,14 +68,19 @@ namespace kiln {
         // Drops the cached bind group of a page about to be destroyed.
         void ForgetPage(const AtlasPage* page) { std::erase_if(m_Groups, [page](const auto& g) { return g.first == page; }); }
         void SetRampTexture(hearth::Ref<hearth::Texture> ramp) { m_Ramp = std::move(ramp); m_Groups.clear(); }
-        // Clip applied to quads submitted after this call: rect in framebuffer pixels (x0, y0,
-        // x1, y1) with a corner radius; nullopt-like when enabled is false.
-        struct Clip { float x0 = 0, y0 = 0, x1 = 0, y1 = 0, radius = 0; bool enabled = false; };
+        // Affine transform (x' = a*x + c*y + e, y' = b*x + d*y + f) applied to quads submitted
+        // after this call: their rects are in its local space.
+        struct Transform { float a = 1, b = 0, c = 0, d = 1, e = 0, f = 0; };
+        void SetTransform(const Transform& t) { m_Transform = t; }
+        // Clip applied to quads submitted after this call: a rounded rect (x0, y0, x1, y1, radius)
+        // in the space `inverse` maps framebuffer pixels into (identity: framebuffer pixels).
+        struct Clip { float x0 = 0, y0 = 0, x1 = 0, y1 = 0, radius = 0; bool enabled = false; Transform inverse; };
         void SetClip(const Clip& clip) { m_Clip = clip; }
         void Flush(hearth::CommandList& cmd);
 
     private:
-        struct Instance { float rect[4]; float uv[4]; float color[4]; float params[4]; float clip[4]; float clipParams[4]; float paint[4]; float paint2[4]; };
+        struct Instance { float rect[4]; float uv[4]; float color[4]; float params[4]; float clip[4]; float clipParams[4]; float paint[4]; float paint2[4];
+                         float xform[4]; float xform2[4]; float clipInv[4]; float clipInv2[4]; };
         struct Run { const AtlasPage* page; std::uint32_t first, count; };
 
         void Push(const Instance& instance, const AtlasPage* page, const Paint* paint);
@@ -92,6 +97,7 @@ namespace kiln {
         std::vector<std::pair<const AtlasPage*, hearth::Ref<hearth::BindGroup>>> m_Groups;
         float m_Viewport[2] = { 1, 1 };
         Clip m_Clip;
+        Transform m_Transform;
     };
 
 }

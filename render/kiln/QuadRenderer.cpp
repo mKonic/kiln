@@ -57,7 +57,7 @@ namespace kiln {
         VertexBufferLayout layout;
         layout.stride = sizeof(Instance);
         layout.stepMode = VertexStepMode::Instance;
-        for (u32 i = 0; i < 8; ++i)
+        for (u32 i = 0; i < 12; ++i)
             layout.attributes.push_back({ i, Format::RGBA32_SFLOAT, i * 16 });
         desc.vertexBuffers.push_back(layout);
         desc.bindings.push_back({ 0, BindingType::SampledTexture, 1, StageBit(ShaderStage::Fragment) });
@@ -79,6 +79,7 @@ namespace kiln {
         m_Instances.clear();
         m_Runs.clear();
         m_Clip = {};
+        m_Transform = {};
     }
 
     void QuadRenderer::Push(const Instance& in, const AtlasPage* page, const Paint* paint) {
@@ -95,6 +96,12 @@ namespace kiln {
         instance.clip[0] = m_Clip.x0; instance.clip[1] = m_Clip.y0; instance.clip[2] = m_Clip.x1; instance.clip[3] = m_Clip.y1;
         instance.clipParams[0] = m_Clip.radius; instance.clipParams[1] = m_Clip.enabled ? 1.0f : 0.0f;
         instance.clipParams[2] = instance.clipParams[3] = 0;
+        const Transform& t = m_Transform;
+        instance.xform[0] = t.a; instance.xform[1] = t.b; instance.xform[2] = t.c; instance.xform[3] = t.d;
+        instance.xform2[0] = t.e; instance.xform2[1] = t.f; instance.xform2[2] = instance.xform2[3] = 0;
+        const Transform& ci = m_Clip.inverse;
+        instance.clipInv[0] = ci.a; instance.clipInv[1] = ci.b; instance.clipInv[2] = ci.c; instance.clipInv[3] = ci.d;
+        instance.clipInv2[0] = ci.e; instance.clipInv2[1] = ci.f; instance.clipInv2[2] = instance.clipInv2[3] = 0;
         if (m_Runs.empty() || m_Runs.back().page != page)
             m_Runs.push_back({ page, std::uint32_t(m_Instances.size()), 0 });
         m_Instances.push_back(instance);
@@ -105,12 +112,12 @@ namespace kiln {
         // Solid quads ignore the atlas, so they join whatever run is open instead of splitting it.
         const AtlasPage* page = m_Runs.empty() ? nullptr : m_Runs.back().page;
         Push({ { r.x, r.y, r.w, r.h }, { 0, 0, 0, 0 }, { c.r, c.g, c.b, c.a },
-               { radius, float(Mode::Solid), float(filterRow), 0 }, {}, {}, {}, {} }, page, paint);
+               { radius, float(Mode::Solid), float(filterRow), 0 }, {}, {}, {}, {}, {}, {}, {}, {} }, page, paint);
     }
 
     void QuadRenderer::DrawAtlas(const RectF& r, const RectF& uv, const AtlasPage& page, Rgba c, Mode mode, const Paint* paint, int filterRow) {
         Push({ { r.x, r.y, r.w, r.h }, { uv.x, uv.y, uv.x + uv.w, uv.y + uv.h }, { c.r, c.g, c.b, c.a },
-               { 0, float(mode), float(filterRow), 0 }, {}, {}, {}, {} }, &page, paint);
+               { 0, float(mode), float(filterRow), 0 }, {}, {}, {}, {}, {}, {}, {}, {} }, &page, paint);
     }
 
     Ref<BindGroup> QuadRenderer::GroupFor(const AtlasPage* page) {

@@ -1,17 +1,22 @@
 #version 450
-// One instanced unit quad per primitive. Coordinates are framebuffer pixels, +y down.
-layout(location = 0) in vec4 iRect;    // x, y, w, h
+// One instanced unit quad per primitive. Rects are in the instance's local space; the affine
+// transform maps them to framebuffer pixels (+y down).
+layout(location = 0) in vec4 iRect;    // x, y, w, h (local)
 layout(location = 1) in vec4 iUv;      // u0, v0, u1, v1 (atlas, normalised)
 layout(location = 2) in vec4 iColor;   // premultiplied rgba
-layout(location = 3) in vec4 iParams;  // cornerRadius, mode, unused, unused
-layout(location = 4) in vec4 iClip;    // clip rect x0, y0, x1, y1 (framebuffer px)
+layout(location = 3) in vec4 iParams;  // cornerRadius (local), mode, filter row, unused
+layout(location = 4) in vec4 iClip;    // clip rect x0, y0, x1, y1 (clip space)
 layout(location = 5) in vec4 iClipParams; // clip corner radius, enabled
 layout(location = 6) in vec4 iPaint;   // gradient geometry (framebuffer px)
 layout(location = 7) in vec4 iPaint2;  // gradient kind, tile mode, ramp v
+layout(location = 8) in vec4 iXform;   // a, b, c, d
+layout(location = 9) in vec4 iXform2;  // e, f
+layout(location = 10) in vec4 iClipInv;  // framebuffer -> clip space: a, b, c, d
+layout(location = 11) in vec4 iClipInv2; // e, f
 
 layout(push_constant) uniform Push { vec2 viewport; } pc;
 
-layout(location = 0) out vec2 vLocal;      // pixels from the rect centre
+layout(location = 0) out vec2 vLocal;      // local units from the rect centre
 layout(location = 1) out vec2 vUv;
 layout(location = 2) out vec4 vColor;
 layout(location = 3) flat out vec4 vParams;
@@ -20,11 +25,15 @@ layout(location = 5) flat out vec4 vClip;
 layout(location = 6) flat out vec4 vClipParams;
 layout(location = 7) flat out vec4 vPaint;
 layout(location = 8) flat out vec4 vPaint2;
+layout(location = 9) flat out vec4 vClipInv;
+layout(location = 10) flat out vec2 vClipInv2;
 
 void main() {
     vec2 corner = vec2(gl_VertexIndex & 1, (gl_VertexIndex >> 1) & 1);
-    // Grow solid shapes by one pixel so the anti-aliased edge has room.
-    float grow = iParams.y == 0.0 ? 1.0 : 0.0;
+    mat2 m = mat2(iXform.x, iXform.y, iXform.z, iXform.w);
+    // Grow solid shapes by one device pixel (in local units) so the anti-aliased edge has room.
+    float scale = sqrt(max(abs(determinant(m)), 1e-8));
+    float grow = iParams.y == 0.0 ? 1.0 / scale : 0.0;
     vec2 pos = iRect.xy - grow + corner * (iRect.zw + 2.0 * grow);
     vHalf = iRect.zw * 0.5;
     vLocal = pos - (iRect.xy + vHalf);
@@ -35,5 +44,8 @@ void main() {
     vClipParams = iClipParams;
     vPaint = iPaint;
     vPaint2 = iPaint2;
-    gl_Position = vec4(pos / pc.viewport * 2.0 - 1.0, 0.0, 1.0);
+    vClipInv = iClipInv;
+    vClipInv2 = iClipInv2.xy;
+    vec2 device = m * pos + iXform2.xy;
+    gl_Position = vec4(device / pc.viewport * 2.0 - 1.0, 0.0, 1.0);
 }

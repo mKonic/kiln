@@ -8,6 +8,8 @@ layout(location = 5) flat in vec4 vClip;
 layout(location = 6) flat in vec4 vClipParams;
 layout(location = 7) flat in vec4 vPaint;
 layout(location = 8) flat in vec4 vPaint2;
+layout(location = 9) flat in vec4 vClipInv;
+layout(location = 10) flat in vec2 vClipInv2;
 
 layout(set = 0, binding = 0) uniform sampler2D uAtlas;
 layout(set = 0, binding = 1) uniform sampler2D uRamp;
@@ -23,12 +25,18 @@ float roundedRectSdf(vec2 p, vec2 half_, float r) {
     return length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - r;
 }
 
+// Coverage of a signed distance in a space whose units may not be device pixels.
+float aaCoverage(float d, vec2 p) {
+    float px = max(length(fwidth(p)) * 0.70710678, 1e-5);
+    return clamp(0.5 - d / px, 0.0, 1.0);
+}
+
 float clipCoverage() {
     if (vClipParams.y < 0.5) return 1.0;
+    vec2 p = mat2(vClipInv.x, vClipInv.y, vClipInv.z, vClipInv.w) * gl_FragCoord.xy + vClipInv2;
     vec2 centre = (vClip.xy + vClip.zw) * 0.5;
     vec2 half_ = max((vClip.zw - vClip.xy) * 0.5, vec2(0.0));
-    float d = roundedRectSdf(gl_FragCoord.xy - centre, half_, vClipParams.x);
-    return clamp(0.5 - d, 0.0, 1.0);
+    return aaCoverage(roundedRectSdf(p - centre, half_, vClipParams.x), p);
 }
 
 // The fill colour: flat, or a gradient sampled from its ramp row (Skia tile modes).
@@ -138,7 +146,7 @@ void main() {
     // Skia order: source colour (paint or image texel times alpha), colour filter, coverage.
     if (mode == 0) {            // solid rounded rect, analytic coverage
         float d = roundedRectSdf(vLocal, vHalf, vParams.x);
-        outColor = applyFilter(paint()) * clamp(0.5 - d, 0.0, 1.0);
+        outColor = applyFilter(paint()) * aaCoverage(d, vLocal);
     } else if (mode == 1) {     // atlas coverage (text, path masks) filled with the paint
         outColor = applyFilter(paint()) * texture(uAtlas, vUv).a;
     } else {                    // atlas colour (emoji, images), premultiplied, alpha-modulated

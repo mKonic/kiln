@@ -3,6 +3,7 @@
 // Drawing during the draw pass (spec 03 §ui-graphics, DrawScope). M2 draws straight into the
 // frame's QuadRenderer with an accumulated translation; retained layers come with GraphicsLayer.
 
+#include "kiln/graphics/Path.h"
 #include "kiln/ui/Geometry.h"
 
 #include <functional>
@@ -44,14 +45,18 @@ namespace kiln::ui {
         void DrawPath(const gfx::Path& path, const gfx::Brush& brush, const gfx::Stroke* stroke = nullptr, float alpha = 1,
                       const gfx::ColorFilter* colorFilter = nullptr);
 
-        // Transform: device = origin + scale * local (axis-aligned; rotation needs the retained
-        // layer renderer). Translate moves the local origin.
-        void Translate(Offset o) { m_State.origin = m_State.origin + Offset{ o.x * m_State.sx, o.y * m_State.sy }; }
+        // Transform (affine, local -> device). Each call composes onto the current one.
+        void Translate(Offset o);
         // Scales about `pivot` (local coordinates).
         void Scale(float sx, float sy, Offset pivot);
+        // Rotates clockwise (y-down) by `degrees` about `pivot`.
+        void Rotate(float degrees, Offset pivot);
+        void Concat(const gfx::Matrix& m);
+        const gfx::Matrix& CurrentTransform() const { return m_State.m; }
         void MultiplyAlpha(float a) { m_State.alpha *= a; }
         // Intersects the clip with a local rect, rounded by `radius` (local px). Nested rounded
-        // clips keep only the innermost rounding.
+        // clips keep only the innermost rounding; under rotation the innermost clip replaces
+        // the outer one.
         void ClipRect(Rect local, float radius = 0);
         void Save() { m_Stack.push_back(m_State); }
         void Restore();
@@ -59,17 +64,15 @@ namespace kiln::ui {
 
     private:
         struct State {
-            Offset origin;
-            float sx = 1, sy = 1;
+            gfx::Matrix m;
             float alpha = 1;
             bool clip = false;
-            Rect clipRect;
+            Rect clipRect;             // in clip space (device px when clipInverse is identity)
             float clipRadius = 0;
+            gfx::Matrix clipInverse;   // device -> clip space
         };
-        Rect ToDevice(Offset p, Size s) const {
-            return { m_State.origin.x + p.x * m_State.sx, m_State.origin.y + p.y * m_State.sy,
-                     m_State.origin.x + (p.x + s.width) * m_State.sx, m_State.origin.y + (p.y + s.height) * m_State.sy };
-        }
+        bool AxisAligned() const { return m_State.m.b == 0 && m_State.m.c == 0; }
+        void ApplyTransform();
         void ApplyClip();
         // Paint for a gradient brush; false for a solid one (its colour is returned in `solid`).
         bool MakePaint(const gfx::Brush& brush, float alpha, void* paint, Color& solid, float& outAlpha);
