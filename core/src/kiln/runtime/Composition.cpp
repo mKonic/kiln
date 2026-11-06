@@ -30,6 +30,17 @@ namespace kiln::rt {
         return Compound(m_Current ? m_Current->m_CompositeKey : 0, key.value);
     }
 
+    std::uint64_t Composition::NodeKeyHash(const Group& g) const {
+        std::uint64_t ordinal = 0;
+        if (!m_Stack.empty() && m_Stack.back().scope)
+            for (const Group& o : m_Stack.back().scope->m_Groups) {
+                if (&o == &g) break;
+                if (o.kind == g.kind && o.type == g.type && o.key.value == g.key.value) ++ordinal;
+            }
+        const std::uint64_t key = CompositeKey(g.key);
+        return ordinal ? Compound(key, ordinal) : key;
+    }
+
     Scope::~Scope() {
         m_Disposed = true;
         m_Composition.m_Pending.erase(this);

@@ -35,6 +35,10 @@ namespace kiln::rt {
         virtual ~TreeNode() = default;
         // The full ordered child list after a recomposition touched this node's children.
         virtual void SetChildren(std::vector<TreeNode*> children) = 0;
+        // compositeKeyHash: the composite key of the call that emitted it (stable across runs
+        // and process restarts).
+        std::uint64_t CompositeKeyHash() const { return m_CompositeKeyHash; }
+        std::uint64_t m_CompositeKeyHash = 0;
     };
 
     // Identity of a call. Default-constructed at a call site it is that site's source location,
@@ -135,6 +139,9 @@ namespace kiln::rt {
         // currentCompositeKeyHash for a call at `key` in the current scope: stable across runs and
         // process restarts (built from call-site and explicit keys), shared by repeated calls.
         std::uint64_t CompositeKey(Key key = {}) const;
+        // A new node's compositeKeyHash: its composite key, told apart from earlier nodes of the
+        // same call site in this scope by their order.
+        std::uint64_t NodeKeyHash(const Group& g) const;
         static Composition* Current();
         // Every live composition (the main content and measure-time ones such as lazy items);
         // the host recomposes all of them each frame.
@@ -179,6 +186,7 @@ namespace kiln::rt {
             if (!g.node) {
                 g.node = make();
                 g.scope = std::make_unique<Scope>(*this, m_Current, g.node.get(), g.key.value);
+                g.node->m_CompositeKeyHash = NodeKeyHash(g);
             }
             auto& n = static_cast<N&>(*g.node);
             if (update) update(n);

@@ -3,6 +3,7 @@
 #include "kiln/foundation/Compose.h"
 #include "kiln/foundation/Focus.h"
 #include "kiln/foundation/Gestures.h"
+#include "kiln/runtime/Saveable.h"
 
 using namespace kiln;
 using namespace kiln::foundation;
@@ -466,4 +467,41 @@ TEST(FocusChangesSettleAfterComposition) {
     h.owner.MeasureAndLayout({ 300, 300 });
     CHECK(h.owner.ActiveFocus() == nullptr);
     CHECK_EQ(outer.back(), std::string("inactive"));
+}
+
+TEST(FocusRestorerSurvivesRecreation) {
+    // One "process": focus b2 inside the restorer, leave the group, save.
+    // One call site for both runs, as in an app (the provider's position is part of the keys).
+    auto content = [](rt::SaveableStateRegistry& registry, std::string& focused) {
+        rt::Composition::Current()->Provide(rt::LocalSaveableStateRegistry, &registry, [&] {
+        Column(Modifier{}, [&] {
+            Row(Modifier{}, [&] {
+                Item(focused, "a");
+                Row(FocusRestorer(Modifier{}), [&] { Item(focused, "b1"); Item(focused, "b2"); Item(focused, "b3"); });
+            });
+            Item(focused, "d");
+        });
+        });
+    };
+    std::vector<std::uint8_t> saved;
+    {
+        Harness h;
+        rt::SaveableStateRegistry registry;
+        std::string focused;
+        h.Run([&] { content(registry, focused); });
+        h.Key(keys::Tab); h.Key(keys::Tab); h.Key(keys::Tab);
+        CHECK_EQ(focused, std::string("b2"));
+        h.Key(keys::DpadDown);
+        CHECK_EQ(focused, std::string("d"));
+        saved = rt::SaveableStateRegistry::Serialize(registry.PerformSave());
+    }
+    // The next one restores: entering the group goes back to b2.
+    Harness h;
+    rt::SaveableStateRegistry registry(rt::SaveableStateRegistry::Deserialize(saved));
+    std::string focused;
+    h.Run([&] { content(registry, focused); });
+    h.Key(keys::Tab);
+    CHECK_EQ(focused, std::string("a"));
+    h.Key(keys::DpadRight);
+    CHECK_EQ(focused, std::string("b2"));
 }

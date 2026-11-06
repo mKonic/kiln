@@ -1,4 +1,5 @@
 #include "kiln/foundation/Focus.h"
+#include "kiln/runtime/Saveable.h"
 #include "kiln/ui/BringIntoView.h"
 
 #include "kiln/runtime/Composition.h"
@@ -92,27 +93,53 @@ namespace kiln::foundation {
             void OnDetach() override { if (!alive.expired()) params.r->Remove(this); }
         };
 
-        struct RestorerParams { FocusRequester* fallback; bool operator==(const RestorerParams&) const = default; };
-        // FocusRestorerNode (saveFocusedChild on exit, restoreFocusedChild on enter), as a
-        // never-focusable group like the requester node.
+        struct RestorerParams {
+            FocusRequester* fallback;
+            rt::SaveableStateRegistry* registry;   // LocalSaveableStateRegistry where it was composed
+            bool operator==(const RestorerParams&) const = default;
+        };
+        // FocusRestorerNode (saveFocusedChild on exit, restoreFocusedChild on enter), a
+        // never-focusable group. The child is remembered by its composite key hash, also in the
+        // saveable registry ("pfc" + the group's hash), so it survives recreation.
         struct RestorerNode final : FocusTargetNode {
             RestorerParams params;
-            FocusTargetNode* saved = nullptr;
-            std::weak_ptr<const char> savedAlive;
+            std::optional<std::uint64_t> savedHash;
+            std::uint64_t providerId = 0;
+            std::string providerKey;
             explicit RestorerNode(RestorerParams p) : params(p) { focusability = Focusability::Never; }
             void OnParamsChanged() {}
+            void OnDetach() override { Unregister(); FocusTargetNode::OnDetach(); }
             std::vector<FocusTargetNode*> Children() const {
                 ui::Owner* o = Owner() ? Owner()->GetOwner() : nullptr;
                 return o ? o->FocusChildrenOf(*this) : std::vector<FocusTargetNode*>{};
             }
+            std::string Key() const { return "pfc" + std::to_string(Owner() ? Owner()->CompositeKeyHash() : 0); }
+            void Unregister() {
+                if (providerId && params.registry) params.registry->Unregister(providerKey, providerId);
+                providerId = 0;
+            }
+            static std::uint64_t HashOf(const FocusTargetNode& c) { return c.Owner() ? c.Owner()->CompositeKeyHash() : 0; }
             bool Save() {
-                for (FocusTargetNode* c : Children())
-                    if (HasFocus(c->State())) { saved = c; savedAlive = c->AliveToken(); return true; }
+                for (FocusTargetNode* c : Children()) {
+                    if (!HasFocus(c->State())) continue;
+                    const std::uint64_t hash = HashOf(*c);
+                    savedHash = hash;
+                    Unregister();
+                    if (params.registry) {
+                        providerKey = Key();
+                        providerId = params.registry->RegisterProvider(providerKey, [hash] { return rt::SavedValue(std::int64_t(hash)); });
+                    }
+                    return true;
+                }
                 return false;
             }
             bool Restore() {
-                if (!saved || savedAlive.expired()) return false;
-                for (FocusTargetNode* c : Children()) if (c == saved) return c->RequestFocus();
+                // After recreation the hash comes back from the registry.
+                if (!savedHash && params.registry)
+                    if (auto v = params.registry->ConsumeRestored(Key()))
+                        if (auto* i = std::get_if<std::int64_t>(&v->v)) savedHash = std::uint64_t(*i);
+                if (!savedHash) return false;
+                for (FocusTargetNode* c : Children()) if (HashOf(*c) == *savedHash) return c->RequestFocus();
                 return false;
             }
             void ApplyOwnFocusProperties(ui::FocusProperties& p) const override {
@@ -233,7 +260,11 @@ namespace kiln::foundation {
         return m.With<RequesterNode>(RequesterParams{ &r });
     }
     Modifier FocusGroup(Modifier m) { return m.With<GroupNode>(GroupParams{}); }
-    Modifier FocusRestorer(Modifier m, FocusRequester* fallback) { return m.With<RestorerNode>(RestorerParams{ fallback }); }
+    Modifier FocusRestorer(Modifier m, FocusRequester* fallback) {
+        rt::SaveableStateRegistry* registry = nullptr;
+        if (auto* c = rt::Composition::Current()) registry = c->Read(rt::LocalSaveableStateRegistry);
+        return m.With<RestorerNode>(RestorerParams{ fallback, registry });
+    }
     Modifier OnKeyEvent(Modifier m, std::function<bool(const KeyEvent&)> onKey, std::function<bool(const KeyEvent&)> onPreview) {
         return m.With<KeyNode>(KeyParams{ Latest(std::move(onKey)), Latest(std::move(onPreview)) });
     }
