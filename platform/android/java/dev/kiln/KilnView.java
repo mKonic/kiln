@@ -191,6 +191,15 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
             return super.onGenericMotionEvent(e);
         }
         if (e.isFromSource(InputDevice.SOURCE_TOUCH_NAVIGATION)) return indirect(e);
+        if (a == MotionEvent.ACTION_HOVER_EXIT && e.getX() >= 0 && e.getY() >= 0
+                && e.getX() < getWidth() && e.getY() < getHeight()) {
+            // A mouse button press: not leaving at all.
+            if (e.getToolType(0) == MotionEvent.TOOL_TYPE_MOUSE && e.getButtonState() != 0) return true;
+            // Maybe a stylus or mouse about to press: hold the exit until the next event says so.
+            pendingHoverExit = MotionEvent.obtainNoHistory(e);
+            postDelayed(sendHoverExit, HOVER_EXIT_DELAY_MS);
+            return true;
+        }
         if (a == MotionEvent.ACTION_HOVER_MOVE || a == MotionEvent.ACTION_HOVER_ENTER
                 || a == MotionEvent.ACTION_HOVER_EXIT || a == MotionEvent.ACTION_SCROLL) return forward(e);
         return super.onGenericMotionEvent(e);
@@ -198,6 +207,41 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
 
     @Override
     public boolean onInterceptTouchEvent(MotionEvent e) { return true; }
+
+    // --- deferred hover exit (AndroidComposeView.sendHoverExitEvent) ---------------------------
+    // A stylus or mouse sends HOVER_EXIT right before it presses down. The exit waits one 120 Hz
+    // frame: a DOWN from the same device drops it, anything else sends it first.
+    private static final long HOVER_EXIT_DELAY_MS = 8;
+    private MotionEvent pendingHoverExit;
+    private final Runnable sendHoverExit = () -> {
+        MotionEvent e = pendingHoverExit;
+        pendingHoverExit = null;
+        if (e != null) { forward(e); e.recycle(); }
+    };
+
+    private void flushHoverExit(boolean drop) {
+        if (pendingHoverExit == null) return;
+        removeCallbacks(sendHoverExit);
+        if (drop) { pendingHoverExit.recycle(); pendingHoverExit = null; }
+        else sendHoverExit.run();
+    }
+
+    @Override
+    public boolean dispatchTouchEvent(MotionEvent e) {
+        if (pendingHoverExit != null) {
+            final MotionEvent last = pendingHoverExit;
+            final boolean sameDevice = last.getSource() == e.getSource() && last.getToolType(0) == e.getToolType(0);
+            flushHoverExit(e.getActionMasked() == MotionEvent.ACTION_DOWN && sameDevice);
+        }
+        return super.dispatchTouchEvent(e);
+    }
+
+    @Override
+    public boolean dispatchGenericMotionEvent(MotionEvent e) {
+        // An exit right before a scroll is spurious (screen mirroring adds them).
+        flushHoverExit(e.getActionMasked() == MotionEvent.ACTION_SCROLL);
+        return super.dispatchGenericMotionEvent(e);
+    }
 
     // --- indirect pointers (touch-navigation pads) --------------------------------------------
     // The focused path sees every event first; a fling the path did not consume moves focus along
@@ -406,6 +450,7 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
 
     @Override
     public boolean dispatchHoverEvent(MotionEvent e) {
+        flushHoverExit(false);
         AccessibilityManager am = getContext().getSystemService(AccessibilityManager.class);
         if (am != null && am.isTouchExplorationEnabled()
                 && accessibility.onHover(e.getActionMasked(), e.getX(), e.getY())) return true;
@@ -446,6 +491,7 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
     @Override
     protected void onDetachedFromWindow() {
         back.onDetached();
+        flushHoverExit(true);
         super.onDetachedFromWindow();
     }
 
