@@ -32,6 +32,15 @@ namespace {
         }
     }
 
+    // A coroutine must not be a capturing lambda: its frame would outlive the captures.
+    kiln::rt::Task<> Spin(kiln::rt::State<float>& angle) {
+        const std::int64_t start = co_await kiln::rt::NextFrame();
+        for (;;) {
+            const std::int64_t t = co_await kiln::rt::NextFrame();
+            angle.Set(float(double(t - start) * 1e-9 * 45.0));   // 45 degrees per second
+        }
+    }
+
     void Chip(const std::string& label, Color bg, Color fg) {
         Box(Background(Padding(Modifier{}, 0_dp), bg, CornerShape::Rounded(8_dp)), Alignment::Center(), false, [=] {
             BasicText(label, Padding(Modifier{}, 12_dp, 6_dp), { 14, fg });
@@ -110,6 +119,21 @@ namespace {
                 Box(Background(GraphicsLayer(Padding(FillMax(Modifier{}, Axis::Horizontal), 16_dp, 0_dp), layer),
                                kTertiary, CornerShape::Rounded(16_dp)), Alignment::Center(), false, [&] {
                     BasicText("Panel: back closes it", Padding(Modifier{}, 16_dp, 24_dp), { 16, kOnPrimary });
+                });
+            }
+            // Rotation: a clipped card with text and a path, spinning.
+            {
+                auto& angle = RememberState(0.0f);
+                c.LaunchedEffect({}, [&angle] { return Spin(angle); });
+                GraphicsLayerParams spin;
+                spin.rotationZ = angle.Get();
+                spin.clip = true;
+                spin.shape = CornerShape::Rounded(12_dp);
+                Box(Padding(Modifier{}, 32_dp, 8_dp), Alignment::TopStart(), false, [&] {
+                    Box(Background(GraphicsLayer(SizeMod(Modifier{}, 120_dp, 64_dp), spin), kPrimaryContainer),
+                        Alignment::Center(), false, [&] {
+                        BasicText("Rotated", {}, { 18, kOnSurface });
+                    });
                 });
             }
             // Mixed text sizes sharing a baseline (alignByBaseline).
