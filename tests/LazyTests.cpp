@@ -223,3 +223,73 @@ TEST(ItemSaveableStateSurvivesScrollingAwayAndRecreation) {
     CHECK_EQ(counters[2]->Peek(), 22);
     CHECK_EQ(counters[3]->Peek(), 0);
 }
+
+TEST(GridCellSizesSplitLikeCompose) {
+    Density d{ 1, 1 };
+    CHECK(GridCells::Fixed(3).CellSizes(d, 100, 0) == (std::vector<int>{ 34, 33, 33 }));
+    CHECK(GridCells::Fixed(3).CellSizes(d, 100, 5) == (std::vector<int>{ 30, 30, 30 }));
+    CHECK_EQ(int(GridCells::Adaptive(Dp(30)).CellSizes(d, 100, 0).size()), 3);
+    CHECK_EQ(int(GridCells::Adaptive(Dp(200)).CellSizes(d, 100, 0).size()), 1);
+    CHECK(GridCells::FixedSize(Dp(40)).CellSizes(d, 100, 10) == (std::vector<int>{ 40, 40 }));
+}
+
+TEST(LazyVerticalGridPlacesCellsInLinesWithSpans) {
+    Harness h;
+    LazyGridState state;
+    h.Run([&] {
+        LazyGridOptions o;
+        o.crossAxisArrangement = Arrangement::SpacedBy(Dp(5));
+        o.mainAxisArrangement = Arrangement::SpacedBy(Dp(2));
+        LazyVerticalGrid(FillMax(Modifier{}, Axis::Both), GridCells::Fixed(3), state, [](LazyGridScope& s) {
+            s.StickyHeader([](int) { Box(SizeMod(Modifier{}, Dp(10), Dp(10))); });   // index 0, full line
+            s.Items(100, [](int) { Box(Height(Modifier{}, Dp(20))); }, {},
+                    [](const GridItemSpanScope& sc, int i) { return i == 1 ? 3 : i == 4 ? sc.maxLineSpan : 1; });
+        }, o);
+    });
+    const auto& info = state.LayoutInfo();
+    auto item = [&](int index) -> const LazyGridItemInfo* {
+        for (const auto& it : info.visibleItemsInfo) if (it.index == index) return &it;
+        return nullptr;
+    };
+    // Header line 0 (10 tall, full width), then items: [1 2 _] -> 2's span 3 wraps: [1][2 full]...
+    CHECK_EQ(item(0)->size.width, 100);
+    CHECK_EQ(item(0)->row, 0);
+    CHECK_EQ(item(1)->row, 1);          // local 0: span 1
+    CHECK_EQ(item(1)->size.width, 30);
+    CHECK_EQ(item(2)->row, 2);          // local 1: span 3, does not fit after one cell
+    CHECK_EQ(item(2)->size.width, 100);
+    CHECK_EQ(item(3)->row, 3);
+    CHECK_EQ(item(4)->offset.x, 35);    // second slot: 30 + 5 spacing
+    CHECK_EQ(item(4)->row, 3);
+    CHECK_EQ(item(5)->row, 4);          // local 4: full line
+    CHECK_EQ(item(1)->offset.y, 12);    // header 10 + spacing 2
+    CHECK_EQ(item(3)->offset.y, 12 + 22 + 22);
+    // Scrolling moves whole lines; the first visible index is the first item of a line.
+    state.ConsumeScrollDelta(60);
+    h.Pump();
+    CHECK_EQ(state.FirstVisibleItemIndex(), 3);
+    CHECK_EQ(item(0)->offset.y, 0);     // header pinned
+    // Animated scroll to a far item lands on its line.
+    rt::Job job = rt::Launch(rt::Dispatcher::Main(), state.AnimateScrollToItem(60));
+    h.Frames(300);
+    CHECK(state.FirstVisibleItemIndex() <= 60);
+    const auto* far = item(60);
+    CHECK(far != nullptr);
+    if (far) CHECK_EQ(far->offset.y, 0);
+}
+
+TEST(LazyHorizontalGridAdaptiveRows) {
+    Harness h;
+    LazyGridState state;
+    h.Run([&] {
+        LazyHorizontalGrid(FillMax(Modifier{}, Axis::Both), GridCells::Adaptive(Dp(45)), state, [](LazyGridScope& s) {
+            s.Items(50, [](int) { Box(Width(Modifier{}, Dp(30))); });
+        });
+    });
+    const auto& info = state.LayoutInfo();
+    CHECK_EQ(info.visibleItemsInfo[0].size.height, 50);   // two rows of 50
+    CHECK_EQ(info.visibleItemsInfo[1].offset.y, 50);
+    CHECK_EQ(info.visibleItemsInfo[1].column, 0);
+    CHECK_EQ(info.visibleItemsInfo[2].offset.x, 30);
+    CHECK_EQ(int(info.visibleItemsInfo.size()), 8);       // 4 columns of 30 cover 100
+}

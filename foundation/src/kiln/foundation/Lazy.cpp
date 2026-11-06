@@ -2,20 +2,60 @@
 #include "kiln/foundation/Overscroll.h"
 #include "kiln/runtime/Saveable.h"
 
+#include <algorithm>
 #include <cmath>
+#include <limits>
 
 namespace kiln::foundation {
+
+    // --- scopes ---------------------------------------------------------------------------------
 
     void LazyListScope::Item(std::function<void()> content, rt::Key key) {
         auto c = std::make_shared<std::function<void()>>(std::move(content));
         intervals.push_back({ 1, [c](int) { (*c)(); }, key.value ? std::function<rt::Key(int)>([key](int) { return key; }) : nullptr });
     }
     void LazyListScope::StickyHeader(std::function<void(int)> content, rt::Key key) {
-        // The interval's content gets the local index (0); the global index is filled in by the core.
+        // The content gets the global index (filled in by the core).
         intervals.push_back({ 1, std::move(content), key.value ? std::function<rt::Key(int)>([key](int) { return key; }) : nullptr, true });
     }
     void LazyListScope::Items(int count, std::function<void(int)> content, std::function<rt::Key(int)> key) {
         intervals.push_back({ count, std::move(content), std::move(key) });
+    }
+
+    void LazyGridScope::Item(std::function<void()> content, rt::Key key, std::function<int(const GridItemSpanScope&)> span) {
+        auto c = std::make_shared<std::function<void()>>(std::move(content));
+        LazyInterval iv{ 1, [c](int) { (*c)(); }, key.value ? std::function<rt::Key(int)>([key](int) { return key; }) : nullptr };
+        if (span) iv.span = [span](int, int cur, int max) { return span({ cur, max }); };
+        intervals.push_back(std::move(iv));
+    }
+    void LazyGridScope::Items(int count, std::function<void(int)> content, std::function<rt::Key(int)> key, GridSpan span) {
+        LazyInterval iv{ count, std::move(content), std::move(key) };
+        if (span) iv.span = [span](int i, int cur, int max) { return span({ cur, max }, i); };
+        intervals.push_back(std::move(iv));
+    }
+    void LazyGridScope::StickyHeader(std::function<void(int)> content, rt::Key key) {
+        intervals.push_back({ 1, std::move(content), key.value ? std::function<rt::Key(int)>([key](int) { return key; }) : nullptr, true });
+    }
+
+    // GridCells.calculateCrossAxisCellSizes (LazyGridDsl.kt).
+    std::vector<int> GridCells::CellSizes(const Density& d, int available, int spacing) const {
+        auto split = [&](int slots) {
+            const int without = available - spacing * (slots - 1);
+            const int slot = without / slots, remaining = without % slots;
+            std::vector<int> out(std::size_t(slots), slot);
+            for (int i = 0; i < remaining; ++i) ++out[std::size_t(i)];
+            return out;
+        };
+        switch (kind) {
+            case Kind::Fixed: return split(count);
+            case Kind::Adaptive: return split(std::max((available + spacing) / (d.RoundToPx(size) + spacing), 1));
+            case Kind::FixedSize: {
+                const int cell = d.RoundToPx(size);
+                if (cell + spacing < available + spacing) return std::vector<int>(std::size_t((available + spacing) / (cell + spacing)), cell);
+                return { available };
+            }
+        }
+        return { available };
     }
 
     // --- the measure-time core ------------------------------------------------------------------
@@ -37,57 +77,70 @@ namespace kiln::foundation {
             int index = -1;
             std::uint64_t contentVersion = 0;
         };
+        constexpr int kNone = std::numeric_limits<int>::min();
     }
 
     struct LazyCore {
         bool vertical = true;
-        LazyListState* state = nullptr;
-        LazyListOptions options;
-        std::vector<LazyListScope::Interval> intervals;
+        bool grid = false;
+        LazyStateBase* state = nullptr;
+        LazyListState* listState = nullptr;
+        LazyGridState* gridState = nullptr;
+        PaddingValues contentPadding;
+        Dp mainSpacing{ 0 };
+        AlignmentH horizontalAlignment = AlignmentH::Start();   // list cross alignment
+        AlignmentV verticalAlignment = AlignmentV::Top();
+        Arrangement crossArrangement = Arrangement::Start();    // grid slots
+        GridCells cells;
+        std::vector<LazyInterval> intervals;
         std::uint64_t version = 0;
         std::map<std::uint64_t, Slot> slots;     // by item key value
         rt::Scope* context = nullptr;            // Locals the items see
         rt::SaveableStateHolder* holder = nullptr;   // keeps item state while items are off-screen
         int count = 0;
 
+        // Lines: arithmetic when every item spans one slot, else the start item of each line.
+        int slotsPerLine = 1;
+        bool regular = true;
+        std::vector<int> lineStarts;
+        std::uint64_t lineCacheVersion = ~0ull;
+        int lineCacheSlots = -1;
+
         static std::string SaveKey(std::uint64_t keyValue) { return std::to_string(keyValue); }
-        // Saves the item's state (while it is still composed), then disposes it.
         void DisposeSlot(std::uint64_t keyValue, Slot& slot) {
+            // Saves the item's state while it is still composed, then disposes it.
             if (holder && slot.registry) holder->Close(SaveKey(keyValue));
             slot.composition.reset();
             slot.registry.reset();
         }
 
-        rt::Key UserKey(int index) const {
+        const LazyInterval* IntervalOf(int index, int& local) const {
             int base = 0;
             for (const auto& iv : intervals) {
-                if (index < base + iv.count) { if (iv.key) return iv.key(index - base); break; }
+                if (index < base + iv.count) { local = index - base; return &iv; }
                 base += iv.count;
             }
+            return nullptr;
+        }
+        rt::Key UserKey(int index) const {
+            int local = 0;
+            if (const auto* iv = IntervalOf(index, local); iv && iv->key) return iv->key(local);
             rt::Key k = rt::Key::Positional();
             k.value = std::uint64_t(index);
             return k;
         }
         rt::Key KeyOf(int index) const {
-            int base = 0;
-            for (const auto& iv : intervals) {
-                if (index < base + iv.count) {
-                    if (iv.key) { rt::Key k = iv.key(index - base); k.value = k.value * 31 + 0x51ed; return k; }
-                    break;
-                }
-                base += iv.count;
-            }
+            int local = 0;
+            if (const auto* iv = IntervalOf(index, local); iv && iv->key) { rt::Key k = iv->key(local); k.value = k.value * 31 + 0x51ed; return k; }
             rt::Key k = rt::Key::Positional();
             k.value = std::uint64_t(index) * 2 + 1;   // index-keyed items
             return k;
         }
         void Content(int index) const {
-            int base = 0;
-            for (const auto& iv : intervals) {
-                if (index < base + iv.count) { iv.content(iv.sticky ? index : index - base); return; }
-                base += iv.count;
-            }
+            int local = 0;
+            if (const auto* iv = IntervalOf(index, local)) iv->content(iv->sticky ? index : local);
         }
+        bool IsSticky(int index) const { int local = 0; const auto* iv = IntervalOf(index, local); return iv && iv->sticky; }
         // The last sticky header at or before `index`, or -1.
         int StickyAtOrBefore(int index) const {
             int base = 0, found = -1;
@@ -98,18 +151,47 @@ namespace kiln::foundation {
             }
             return found;
         }
-        bool IsSticky(int index) const {
-            int base = 0;
-            for (const auto& iv : intervals) {
-                if (index < base + iv.count) return iv.sticky;
-                base += iv.count;
-            }
-            return false;
-        }
         int IndexOfKey(rt::Key key, int hint) const {
             if (hint >= 0 && hint < count && KeyOf(hint).value == key.value) return hint;
             for (int i = 0; i < count; ++i) if (KeyOf(i).value == key.value) return i;
             return -1;
+        }
+
+        // spanOf: headers fill the line; spans are clamped to [1, slotsPerLine].
+        int SpanOf(int index, int maxCurrent) const {
+            if (!grid) return 1;
+            int local = 0;
+            const auto* iv = IntervalOf(index, local);
+            if (!iv) return 1;
+            if (iv->sticky) return slotsPerLine;
+            if (!iv->span) return 1;
+            return std::clamp(iv->span(local, maxCurrent, slotsPerLine), 1, slotsPerLine);
+        }
+        void UpdateLines() {
+            regular = !grid || std::none_of(intervals.begin(), intervals.end(), [](const LazyInterval& iv) { return iv.span || iv.sticky; });
+            if (regular) return;
+            if (lineCacheVersion == version && lineCacheSlots == slotsPerLine) return;
+            lineCacheVersion = version;
+            lineCacheSlots = slotsPerLine;
+            lineStarts.clear();
+            int used = 0;
+            for (int i = 0; i < count; ++i) {
+                const int s = SpanOf(i, used == 0 ? slotsPerLine : slotsPerLine - used);
+                if (used == 0 || used + s > slotsPerLine) { lineStarts.push_back(i); used = s; }
+                else used += s;
+                if (used >= slotsPerLine) used = 0;
+            }
+        }
+        int LineCount() const { return regular ? (count + slotsPerLine - 1) / slotsPerLine : int(lineStarts.size()); }
+        int LineOf(int index) const {
+            if (regular) return index / slotsPerLine;
+            auto it = std::upper_bound(lineStarts.begin(), lineStarts.end(), index);
+            return int(it - lineStarts.begin()) - 1;
+        }
+        int LineFirst(int line) const { return regular ? line * slotsPerLine : lineStarts[std::size_t(line)]; }
+        int LineEnd(int line) const {
+            if (regular) return std::min(count, (line + 1) * slotsPerLine);
+            return line + 1 < int(lineStarts.size()) ? lineStarts[std::size_t(line) + 1] : count;
         }
 
         Slot& Compose(int index, rt::Dispatcher& d) {
@@ -138,7 +220,9 @@ namespace kiln::foundation {
         MeasureResult Measure(LayoutNode& self, MeasureScope& s, const Constraints& c);
     };
 
-    float LazyListState::ConsumeScrollDelta(float delta) {
+    // --- state ------------------------------------------------------------------------------------
+
+    float LazyStateBase::ConsumeScrollDelta(float delta) {
         if (!m_Node) return 0;
         if (delta < 0 && !CanScrollBackward()) return 0;
         if (delta > 0 && !CanScrollForward()) return 0;
@@ -148,7 +232,7 @@ namespace kiln::foundation {
         return m_LastConsumed;
     }
 
-    void LazyListState::ScrollToItem(int index, int offset) {
+    void LazyStateBase::ScrollToItem(int index, int offset) {
         StopScroll();
         m_Index.Set(index);
         m_Offset.Set(offset);
@@ -157,7 +241,7 @@ namespace kiln::foundation {
         if (m_Node) m_Node->RequestRemeasure();
     }
 
-    void LazyListState::SnapToItem(int index, int offset) {
+    void LazyStateBase::SnapToItem(int index, int offset) {
         m_Index.Set(index);
         m_Offset.Set(offset);
         m_HasFirstKey = false;
@@ -165,29 +249,25 @@ namespace kiln::foundation {
         if (m_Node) m_Node->ForceRemeasure();
     }
 
-    int LazyListState::LastVisibleIndex() const {
-        const auto& v = m_Info.Peek().visibleItemsInfo;
-        return v.empty() ? 0 : v.back().index;
-    }
-    bool LazyListState::Visible(int index) const { return index >= m_Index.Peek() && index <= LastVisibleIndex(); }
-
-    // calculateDistanceTo: exact for composed items, else by the average visible item size.
-    int LazyListState::DistanceTo(int index, int targetOffset) const {
-        const auto& info = m_Info.Peek();
-        if (info.visibleItemsInfo.empty()) return 0;
+    // calculateDistanceTo: exact for composed items, else by the average visible line size
+    // (LazyListScrollScope / LazyGridScrollScope).
+    int LazyStateBase::DistanceTo(int index, int targetOffset) const {
+        if (m_Lines.empty()) return 0;
         int d = 0;
         if (!Visible(index)) {
             int sum = 0;
-            for (const auto& it : info.visibleItemsInfo) sum += it.size;
-            const int average = sum / int(info.visibleItemsInfo.size()) + info.mainAxisItemSpacing;
-            d = average * (index - m_Index.Peek()) - m_Offset.Peek();
+            for (const auto& l : m_Lines) sum += l.size;
+            const int average = sum / int(m_Lines.size()) + m_Spacing;
+            const bool before = index < m_Index.Peek();
+            const int linesDiff = (index - m_Index.Peek() + (m_SlotsPerLine - 1) * (before ? -1 : 1)) / m_SlotsPerLine;
+            d = average * linesDiff - m_Offset.Peek();
         } else {
-            for (const auto& it : info.visibleItemsInfo) if (it.index == index) { d = it.offset; break; }
+            for (const auto& l : m_Lines) if (index >= l.first && index <= l.last) { d = l.offset; break; }
         }
         return d + targetOffset;
     }
 
-    rt::Task<> LazyListState::AnimateScrollToItem(int index, int scrollOffset) {
+    rt::Task<> LazyStateBase::AnimateScrollToItem(int index, int scrollOffset) {
         constexpr int kTeleport = 100;   // numOfItemsForTeleport
         const float targetDistance = 2500 * m_Density, boundDistance = 1500 * m_Density, minDistance = 50 * m_Density;
         anim::Animatable* running = nullptr;
@@ -204,7 +284,7 @@ namespace kiln::foundation {
         };
         bool loop = !found;
         int loops = 1;
-        while (loop && m_Info.Peek().totalItemsCount > 0) {
+        while (loop && m_TotalItems > 0) {
             const int expected = DistanceTo(index) + scrollOffset;
             const float target = std::abs(float(expected)) < targetDistance
                 ? (forward ? 1.0f : -1.0f) * std::max(std::abs(float(expected)), minDistance)
@@ -267,20 +347,78 @@ namespace kiln::foundation {
         SnapToItem(index, scrollOffset);
     }
 
+    // --- measure ----------------------------------------------------------------------------------
+
     MeasureResult LazyCore::Measure(LayoutNode& self, MeasureScope& s, const Constraints& c) {
-        LazyListState& st = *state;
+        LazyStateBase& st = *state;
         st.m_Node = &self;
         rt::Dispatcher& d = rt::Dispatcher::Main();
         const int mainMax = vertical ? c.maxHeight : c.maxWidth;
         const int crossMax = vertical ? c.maxWidth : c.maxHeight;
-        const int before = s.RoundToPx(vertical ? options.contentPadding.top : options.contentPadding.start);
-        const int after = s.RoundToPx(vertical ? options.contentPadding.bottom : options.contentPadding.end);
-        const int crossBefore = s.RoundToPx(vertical ? options.contentPadding.start : options.contentPadding.top);
-        const int crossPad = crossBefore + s.RoundToPx(vertical ? options.contentPadding.end : options.contentPadding.bottom);
-        const int spacing = s.RoundToPx(options.spacing);
-        const Constraints itemC = vertical ? Constraints{ 0, std::max(0, crossMax - crossPad), 0, Constraints::Infinity }
-                                           : Constraints{ 0, Constraints::Infinity, 0, std::max(0, crossMax - crossPad) };
-        auto mainOf = [&](Placeable& p) { return vertical ? p.Height() : p.Width(); };
+        const int before = s.RoundToPx(vertical ? contentPadding.top : contentPadding.start);
+        const int after = s.RoundToPx(vertical ? contentPadding.bottom : contentPadding.end);
+        const int crossBefore = s.RoundToPx(vertical ? contentPadding.start : contentPadding.top);
+        const int crossPad = crossBefore + s.RoundToPx(vertical ? contentPadding.end : contentPadding.bottom);
+        const int spacing = s.RoundToPx(mainSpacing);
+        const int crossAvailable = std::max(0, crossMax - crossPad);
+
+        // Grid slots: sizes and positions across (LazyGridSlots).
+        std::vector<int> slotSizes{ crossAvailable }, slotPositions{ 0 };
+        if (grid) {
+            const int crossSpacing = s.RoundToPx(crossArrangement.Spacing());
+            slotSizes = cells.CellSizes(s, crossAvailable, crossSpacing);
+            slotPositions.assign(slotSizes.size(), 0);
+            crossArrangement.Arrange(s, crossAvailable, slotSizes, LayoutDirection::Ltr, slotPositions);
+        }
+        slotsPerLine = int(slotSizes.size());
+        UpdateLines();
+        const int crossSpacingPx = grid ? s.RoundToPx(crossArrangement.Spacing()) : 0;
+
+        // One measured line: its cells and main-axis size.
+        struct Cell { int index; Slot* slot; Placeable* p; int crossPos; int column; };
+        struct MLine { int line, first, last; std::vector<Cell> cells; int size; };
+        std::vector<LayoutNode*> active;
+        auto measureLine = [&](int line) -> MLine {
+            MLine ml{ line, LineFirst(line), LineEnd(line) - 1, {}, 0 };
+            int slot = 0;
+            for (int i = ml.first; i <= ml.last; ++i) {
+                const int span = std::min(SpanOf(i, slotsPerLine - slot), slotsPerLine - slot);
+                Slot& sl = Compose(i, d);
+                if (std::find(active.begin(), active.end(), sl.holder.get()) == active.end()) active.push_back(sl.holder.get());
+                self.SetChildrenDuringMeasure(active);   // attached before measuring (to get an owner)
+                Constraints ic;
+                int crossPos = -1;
+                if (grid) {
+                    int w = 0;
+                    for (int k = slot; k < slot + span; ++k) w += slotSizes[std::size_t(k)];
+                    w += crossSpacingPx * (span - 1);
+                    ic = vertical ? Constraints{ w, w, 0, Constraints::Infinity } : Constraints{ 0, Constraints::Infinity, w, w };
+                    crossPos = slotPositions[std::size_t(slot)];
+                } else {
+                    ic = vertical ? Constraints{ 0, crossAvailable, 0, Constraints::Infinity }
+                                  : Constraints{ 0, Constraints::Infinity, 0, crossAvailable };
+                }
+                Placeable& p = sl.holder->AsMeasurable().Measure(ic);
+                ml.cells.push_back({ i, &sl, &p, crossPos, slot });
+                ml.size = std::max(ml.size, vertical ? p.Height() : p.Width());
+                slot += span;
+            }
+            return ml;
+        };
+
+        auto publishEmpty = [&] {
+            if (listState) {
+                LazyListLayoutInfo info;
+                info.orientation = vertical ? Orientation::Vertical : Orientation::Horizontal;
+                info.viewportSize = { c.minWidth, c.minHeight };
+                if (!(listState->m_Info.Peek() == info)) listState->m_Info.Set(std::move(info));
+            } else if (gridState) {
+                LazyGridLayoutInfo info;
+                info.orientation = vertical ? Orientation::Vertical : Orientation::Horizontal;
+                info.viewportSize = { c.minWidth, c.minHeight };
+                if (!(gridState->m_Info.Peek() == info)) gridState->m_Info.Set(std::move(info));
+            }
+        };
 
         // Key-stable position: after a data change, find the first item by key.
         int index = st.m_Index.Peek();
@@ -293,126 +431,102 @@ namespace kiln::foundation {
             slots.clear();
             self.SetChildrenDuringMeasure({});
             st.m_LastConsumed = st.m_PendingScroll = 0;
-            LazyListLayoutInfo info;
-            info.orientation = vertical ? Orientation::Vertical : Orientation::Horizontal;
-            info.viewportSize = { c.minWidth, c.minHeight };
-            if (!(st.m_Info.Peek() == info)) st.m_Info.Set(std::move(info));
+            st.m_Lines.clear();
+            st.m_TotalItems = 0;
+            publishEmpty();
             return s.Layout(c.minWidth, c.minHeight);
         }
         index = std::clamp(index, 0, count - 1);
+        int line = LineOf(index);
+        const int lineCount = LineCount();
         const float delta = st.m_PendingScroll;
         st.m_PendingScroll = 0;
-        // pos: where the first item's leading edge sits relative to the content start.
-        float posF = -float(st.m_Offset.Peek()) - delta;
-        int pos = RoundJava(posF);
+        // pos: where the first line's leading edge sits relative to the content start.
+        int pos = RoundJava(-float(st.m_Offset.Peek()) - delta);
 
-        struct Visible { int index; Slot* slot; Placeable* p; int size; };
-        std::vector<Visible> items;
-        auto measureItem = [&](int i) -> Visible {
-            Slot& slot = Compose(i, d);
-            Placeable& p = slot.holder->AsMeasurable().Measure(itemC);
-            return { i, &slot, &p, mainOf(p) };
-        };
-        std::vector<LayoutNode*> active;
-        auto activate = [&](Slot* slot) {
-            if (std::find(active.begin(), active.end(), slot->holder.get()) == active.end()) active.push_back(slot->holder.get());
-        };
-        // Children must be attached before they are measured (to get an owner).
-        auto attachForMeasure = [&](int i) {
-            Slot& slot = Compose(i, d);
-            activate(&slot);
-            self.SetChildrenDuringMeasure(active);
-        };
-
-        // Scrolled backward past the first item: compose earlier items.
-        while (pos > 0 && index > 0) {
-            --index;
-            attachForMeasure(index);
-            Visible v = measureItem(index);
-            pos -= v.size + spacing;
+        std::vector<MLine> lines;
+        // Scrolled backward past the first line: measure earlier lines.
+        while (pos > 0 && line > 0) {
+            --line;
+            pos -= measureLine(line).size + spacing;
         }
         float consumed = delta;
         if (pos > 0) { consumed += float(pos); pos = 0; }   // reached the very start
 
-        // Skip items fully above the viewport, then fill forward.
+        // Skip lines fully above the viewport, then fill forward.
         const int viewport = mainMax - before - after;
         for (;;) {
-            attachForMeasure(index);
-            Visible v = measureItem(index);
-            if (pos + v.size + spacing <= 0 && index < count - 1) { pos += v.size + spacing; ++index; continue; }
-            items.push_back(v);
+            MLine ml = measureLine(line);
+            if (pos + ml.size + spacing <= 0 && line < lineCount - 1) { pos += ml.size + spacing; ++line; continue; }
+            lines.push_back(std::move(ml));
             break;
         }
-        int end = pos + items.back().size;
-        while (end < viewport + after && items.back().index < count - 1) {
-            attachForMeasure(items.back().index + 1);
-            Visible v = measureItem(items.back().index + 1);
-            items.push_back(v);
-            end += spacing + v.size;
+        int end = pos + lines.back().size;
+        while (end < viewport + after && lines.back().line < lineCount - 1) {
+            lines.push_back(measureLine(lines.back().line + 1));
+            end += spacing + lines.back().size;
         }
-        // Content ends before the viewport does: pull back (composing earlier items) and give the
+        // Content ends before the viewport does: pull back (measuring earlier lines) and give the
         // unconsumed part back.
-        if (end < viewport && items.back().index == count - 1) {
+        if (end < viewport && lines.back().line == lineCount - 1) {
             int gap = viewport - end;
             while (gap > 0) {
                 if (pos + gap <= 0) { pos += gap; consumed -= float(gap); gap = 0; break; }
                 gap -= -pos; consumed -= float(-pos); pos = 0;
-                if (items.front().index == 0) { break; }
-                attachForMeasure(items.front().index - 1);
-                Visible v = measureItem(items.front().index - 1);
-                items.insert(items.begin(), v);
-                pos -= v.size + spacing;
+                if (lines.front().line == 0) break;
+                lines.insert(lines.begin(), measureLine(lines.front().line - 1));
+                pos -= lines.front().size + spacing;
             }
         }
-        // Drop items that ended up above the viewport after the pull-back.
-        while (items.size() > 1 && pos + items.front().size + spacing <= 0) {
-            pos += items.front().size + spacing;
-            items.erase(items.begin());
+        // Drop lines that ended up above the viewport after the pull-back.
+        while (lines.size() > 1 && pos + lines.front().size + spacing <= 0) {
+            pos += lines.front().size + spacing;
+            lines.erase(lines.begin());
         }
 
-        const int firstIndex = items.front().index, lastIndex = items.back().index;
-        // Offsets of the items from the content start.
+        const int firstIndex = lines.front().first, lastIndex = lines.back().last;
+        const int lastLine = lines.back().line;
         std::vector<int> offsets;
         {
             int p = pos;
-            for (auto& v : items) { offsets.push_back(p); p += v.size + spacing; }
+            for (auto& l : lines) { offsets.push_back(p); p += l.size + spacing; }
         }
+        st.m_Lines.clear();
+        for (std::size_t i = 0; i < lines.size(); ++i) st.m_Lines.push_back({ lines[i].first, lines[i].last, offsets[i], lines[i].size });
+
         // Sticky header (StickToTopPlacement): the last header at or before the first visible
         // item, at the viewport start, pushed back by the next visible header; drawn on top.
-        std::optional<Visible> sticking;
+        std::optional<MLine> sticking;
         int stickingOffset = 0;
-        if (const int header = StickyAtOrBefore(items.front().index); header >= 0) {
-            int nextHeader = std::numeric_limits<int>::min();
-            for (std::size_t i = 0; i < items.size(); ++i)
-                if (items[i].index != header && IsSticky(items[i].index)) { nextHeader = offsets[i]; break; }
-            int itemOffset = std::numeric_limits<int>::min();
-            for (std::size_t i = 0; i < items.size(); ++i)
-                if (items[i].index == header) {
-                    sticking = items[i];
+        if (const int header = StickyAtOrBefore(firstIndex); header >= 0) {
+            const int headerLine = LineOf(header);
+            int nextHeader = kNone;
+            for (std::size_t i = 0; i < lines.size(); ++i)
+                if (lines[i].line != headerLine && IsSticky(lines[i].first)) { nextHeader = offsets[i]; break; }
+            int itemOffset = kNone;
+            for (std::size_t i = 0; i < lines.size(); ++i)
+                if (lines[i].line == headerLine) {
+                    sticking = std::move(lines[i]);
                     itemOffset = offsets[i];
-                    items.erase(items.begin() + std::ptrdiff_t(i));
+                    lines.erase(lines.begin() + std::ptrdiff_t(i));
                     offsets.erase(offsets.begin() + std::ptrdiff_t(i));
                     break;
                 }
-            if (!sticking) {
-                attachForMeasure(header);
-                sticking = measureItem(header);
-            }
-            int off = itemOffset == std::numeric_limits<int>::min() ? -before : std::max(-before, itemOffset);
-            if (nextHeader != std::numeric_limits<int>::min()) off = std::min(off, nextHeader - (sticking->size + spacing));
+            if (!sticking) sticking = measureLine(headerLine);
+            int off = itemOffset == kNone ? -before : std::max(-before, itemOffset);
+            if (nextHeader != kNone) off = std::min(off, nextHeader - (sticking->size + spacing));
             stickingOffset = off;
         }
 
         // Dispose slots not in use (no reuse pool yet).
         std::vector<LayoutNode*> nowActive;
-        for (auto& v : items) nowActive.push_back(v.slot->holder.get());
-        if (sticking) nowActive.push_back(sticking->slot->holder.get());
+        std::vector<const Slot*> used;
+        for (auto& l : lines) for (auto& cell : l.cells) { nowActive.push_back(cell.slot->holder.get()); used.push_back(cell.slot); }
+        if (sticking) for (auto& cell : sticking->cells) { nowActive.push_back(cell.slot->holder.get()); used.push_back(cell.slot); }
         self.SetChildrenDuringMeasure(nowActive);
         for (auto it = slots.begin(); it != slots.end();) {
-            bool used = false;
-            for (auto& v : items) if (v.slot == &it->second) used = true;
-            if (sticking && sticking->slot == &it->second) used = true;
-            if (!used) { DisposeSlot(it->first, it->second); it = slots.erase(it); } else ++it;
+            if (std::find(used.begin(), used.end(), &it->second) == used.end()) { DisposeSlot(it->first, it->second); it = slots.erase(it); }
+            else ++it;
         }
 
         st.m_Index.Set(firstIndex);
@@ -420,20 +534,31 @@ namespace kiln::foundation {
         st.m_FirstKey = KeyOf(firstIndex);
         st.m_HasFirstKey = true;
         st.m_LastConsumed = consumed;
-        st.m_CanForward = !(lastIndex == count - 1 && end <= viewport);
+        st.m_CanForward = !(lastLine == lineCount - 1 && end <= viewport);
         st.m_Density = s.density;
+        st.m_SlotsPerLine = slotsPerLine;
+        st.m_Spacing = spacing;
+        st.m_TotalItems = count;
+        (void)lastIndex;
 
         int cross = 0;
-        for (auto& v : items) cross = std::max(cross, (vertical ? v.p->Width() : v.p->Height()) + crossPad);
-        if (sticking) cross = std::max(cross, (vertical ? sticking->p->Width() : sticking->p->Height()) + crossPad);
+        if (grid) {
+            cross = crossMax == Constraints::Infinity ? crossPad : crossMax;
+        } else {
+            auto crossOf = [&](const MLine& l) { for (auto& cell : l.cells) cross = std::max(cross, (vertical ? cell.p->Width() : cell.p->Height()) + crossPad); };
+            for (auto& l : lines) crossOf(l);
+            if (sticking) crossOf(*sticking);
+        }
         const int w = vertical ? c.ConstrainWidth(cross) : c.ConstrainWidth(mainMax);
         const int h = vertical ? c.ConstrainHeight(mainMax) : c.ConstrainHeight(cross);
-        {
+
+        // Layout info.
+        if (listState) {
             LazyListLayoutInfo info;
             // The sticking header precedes the items it covers (its index is lower).
-            if (sticking) info.visibleItemsInfo.push_back({ sticking->index, UserKey(sticking->index), stickingOffset, sticking->size });
-            for (std::size_t i = 0; i < items.size(); ++i)
-                info.visibleItemsInfo.push_back({ items[i].index, UserKey(items[i].index), offsets[i], items[i].size });
+            if (sticking) info.visibleItemsInfo.push_back({ sticking->first, UserKey(sticking->first), stickingOffset, sticking->size });
+            for (std::size_t i = 0; i < lines.size(); ++i)
+                info.visibleItemsInfo.push_back({ lines[i].first, UserKey(lines[i].first), offsets[i], lines[i].size });
             info.viewportStartOffset = -before;
             info.viewportEndOffset = mainMax - before;
             info.totalItemsCount = count;
@@ -442,23 +567,53 @@ namespace kiln::foundation {
             info.beforeContentPadding = before;
             info.afterContentPadding = after;
             info.mainAxisItemSpacing = spacing;
-            if (!(st.m_Info.Peek() == info)) st.m_Info.Set(std::move(info));
+            if (!(listState->m_Info.Peek() == info)) listState->m_Info.Set(std::move(info));
+        } else if (gridState) {
+            LazyGridLayoutInfo info;
+            auto add = [&](const MLine& l, int off) {
+                for (const auto& cell : l.cells) {
+                    LazyGridItemInfo it;
+                    it.index = cell.index;
+                    it.key = UserKey(cell.index);
+                    it.offset = vertical ? IntOffset{ cell.crossPos, off } : IntOffset{ off, cell.crossPos };
+                    it.size = { cell.p->Width(), cell.p->Height() };
+                    it.row = vertical ? l.line : cell.column;
+                    it.column = vertical ? cell.column : l.line;
+                    info.visibleItemsInfo.push_back(it);
+                }
+            };
+            if (sticking) add(*sticking, stickingOffset);
+            for (std::size_t i = 0; i < lines.size(); ++i) add(lines[i], offsets[i]);
+            info.viewportStartOffset = -before;
+            info.viewportEndOffset = mainMax - before;
+            info.totalItemsCount = count;
+            info.viewportSize = { w, h };
+            info.orientation = vertical ? Orientation::Vertical : Orientation::Horizontal;
+            info.beforeContentPadding = before;
+            info.afterContentPadding = after;
+            info.mainAxisItemSpacing = spacing;
+            if (!(gridState->m_Info.Peek() == info)) gridState->m_Info.Set(std::move(info));
         }
-        const LazyListOptions opt = options;
+
+        // Placement, in drawing order (the sticking header last, on top).
+        struct Placed { Placeable* p; int main; int cross; };   // cross -1: aligned (list)
+        std::vector<Placed> placed;
+        for (std::size_t i = 0; i < lines.size(); ++i)
+            for (const auto& cell : lines[i].cells) placed.push_back({ cell.p, offsets[i], cell.crossPos });
+        if (sticking) for (const auto& cell : sticking->cells) placed.push_back({ cell.p, stickingOffset, cell.crossPos });
+        const AlignmentH ha = horizontalAlignment;
+        const AlignmentV va = verticalAlignment;
         const bool vert = vertical;
         const LayoutDirection dir = s.Direction();
-        std::vector<std::pair<Placeable*, int>> placed;   // in drawing order
-        for (std::size_t i = 0; i < items.size(); ++i) placed.push_back({ items[i].p, offsets[i] });
-        if (sticking) placed.push_back({ sticking->p, stickingOffset });
-        return s.Layout(w, h, [placed, before, crossBefore, crossPad, w, h, opt, vert, dir](PlacementScope& place) {
-            for (const auto& [pl, off] : placed) {
-                const int p = off + before;
+        return s.Layout(w, h, [placed, before, crossBefore, crossPad, w, h, ha, va, vert, dir](PlacementScope& place) {
+            for (const auto& pl : placed) {
+                const int m = pl.main + before;
                 if (vert) {
-                    const int x = crossBefore + opt.horizontalAlignment.Align(pl->Width(), w - crossPad, dir);
-                    place.Place(*pl, x, p);
+                    if (pl.cross >= 0) place.PlaceRelative(*pl.p, crossBefore + pl.cross, m);
+                    else place.Place(*pl.p, crossBefore + ha.Align(pl.p->Width(), w - crossPad, dir), m);
                 } else {
-                    const int y = crossBefore + opt.verticalAlignment.Align(pl->Height(), h - crossPad);
-                    place.PlaceRelative(*pl, p, y);
+                    const int y = pl.cross >= 0 ? pl.cross : va.Align(pl.p->Height(), h - crossPad);
+                    place.PlaceRelative(*pl.p, m, crossBefore + y);
                 }
             }
         });
@@ -473,23 +628,21 @@ namespace kiln::foundation {
             }
         };
 
-        void LazyList(bool vertical, const Modifier& modifier, LazyListState& state, std::function<void(LazyListScope&)> content,
-                      LazyListOptions options, rt::Key key) {
+        // The composable part shared by lists and grids; `configure` fills the core.
+        void LazyLayout(bool vertical, const Modifier& modifier, LazyStateBase& state, bool userScrollEnabled, rt::Key key,
+                        const std::function<void(LazyCore&)>& configure) {
             auto& comp = *rt::Composition::Current();
             auto& core = comp.Remember<std::shared_ptr<LazyCore>>([] { return std::make_shared<LazyCore>(); }, {}, key);
-            LazyListScope scope;
-            content(scope);
             core->vertical = vertical;
             core->context = comp.CurrentScope();
             core->holder = &rt::RememberSaveableStateHolder(key);
             core->state = &state;
-            core->options = options;
-            core->intervals = std::move(scope.intervals);
+            configure(*core);
             core->count = 0;
             for (const auto& iv : core->intervals) core->count += iv.count;
             ++core->version;   // item lambdas may capture new values: recompose visible items
             ScrollableOptions so;
-            so.enabled = options.userScrollEnabled;
+            so.enabled = userScrollEnabled;
             so.reverseDirection = true;
             so.overscroll = RememberOverscrollEffect(key);
             Modifier m = Scrollable(Overscroll(ClipToBounds(modifier), so.overscroll), state,
@@ -509,6 +662,38 @@ namespace kiln::foundation {
                                       n.RequestRemeasure();
                                   }, {}, key);
         }
+
+        void LazyList(bool vertical, const Modifier& modifier, LazyListState& state, std::function<void(LazyListScope&)> content,
+                      LazyListOptions options, rt::Key key) {
+            LazyListScope scope;
+            content(scope);
+            LazyLayout(vertical, modifier, state, options.userScrollEnabled, key, [&](LazyCore& core) {
+                core.grid = false;
+                core.listState = &state;
+                core.gridState = nullptr;
+                core.contentPadding = options.contentPadding;
+                core.mainSpacing = options.spacing;
+                core.horizontalAlignment = options.horizontalAlignment;
+                core.verticalAlignment = options.verticalAlignment;
+                core.intervals = std::move(scope.intervals);
+            });
+        }
+
+        void LazyGrid(bool vertical, const Modifier& modifier, GridCells cells, LazyGridState& state,
+                      std::function<void(LazyGridScope&)> content, LazyGridOptions options, rt::Key key) {
+            LazyGridScope scope;
+            content(scope);
+            LazyLayout(vertical, modifier, state, options.userScrollEnabled, key, [&](LazyCore& core) {
+                core.grid = true;
+                core.gridState = &state;
+                core.listState = nullptr;
+                core.contentPadding = options.contentPadding;
+                core.mainSpacing = options.mainAxisArrangement.Spacing();
+                core.crossArrangement = options.crossAxisArrangement;
+                core.cells = cells;
+                core.intervals = std::move(scope.intervals);
+            });
+        }
     }
 
     void LazyColumn(const Modifier& m, LazyListState& s, std::function<void(LazyListScope&)> content, LazyListOptions o, rt::Key key) {
@@ -516,6 +701,14 @@ namespace kiln::foundation {
     }
     void LazyRow(const Modifier& m, LazyListState& s, std::function<void(LazyListScope&)> content, LazyListOptions o, rt::Key key) {
         LazyList(false, m, s, std::move(content), o, key);
+    }
+    void LazyVerticalGrid(const Modifier& m, GridCells columns, LazyGridState& s, std::function<void(LazyGridScope&)> content,
+                          LazyGridOptions o, rt::Key key) {
+        LazyGrid(true, m, columns, s, std::move(content), o, key);
+    }
+    void LazyHorizontalGrid(const Modifier& m, GridCells rows, LazyGridState& s, std::function<void(LazyGridScope&)> content,
+                            LazyGridOptions o, rt::Key key) {
+        LazyGrid(false, m, rows, s, std::move(content), o, key);
     }
 
 }

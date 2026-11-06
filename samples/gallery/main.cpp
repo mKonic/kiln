@@ -12,6 +12,7 @@
 #include <kiln/foundation/Draw.h>
 #include <kiln/foundation/AnimatedVisibility.h>
 #include <kiln/foundation/AnchoredDraggable.h>
+#include <kiln/foundation/Lazy.h>
 #include <kiln/foundation/Image.h>
 #include <kiln/foundation/Shapes.h>
 #include <kiln/graphics/shapes/Shapes.h>
@@ -180,6 +181,22 @@ namespace {
                             return IntOffset{ std::isnan(o) ? 0 : int(std::lround(o)), 0 };
                         }), 48_dp, 48_dp), knob.SettledValue() ? kPrimary : kVariant, CornerShape::Pill()));
                 });
+            }
+            // A lazy horizontal grid: two rows, every fifth cell spanning both.
+            {
+                auto& gridState = c.RememberNew<LazyGridState>({}, {});
+                LazyGridOptions go;
+                go.contentPadding = { 16_dp, 0_dp, 16_dp, 0_dp };
+                go.mainAxisArrangement = Arrangement::SpacedBy(8_dp);
+                go.crossAxisArrangement = Arrangement::SpacedBy(8_dp);
+                LazyHorizontalGrid(Height(FillMax(Modifier{}, Axis::Horizontal), 120_dp), GridCells::Fixed(2), gridState, [](LazyGridScope& s) {
+                    s.Items(60, [](int i) {
+                        Box(Background(Width(Modifier{}, i % 5 == 0 ? 96_dp : 56_dp), i % 5 == 0 ? kTertiary : kPrimaryContainer, CornerShape::Rounded(12_dp)),
+                            Alignment::Center(), false, [i] {
+                            BasicText(std::to_string(i), {}, { 14, i % 5 == 0 ? kOnPrimary : kOnSurface });
+                        });
+                    }, {}, [](const GridItemSpanScope& sc, int i) { return i % 5 == 0 ? sc.maxLineSpan : 1; });
+                }, go);
             }
             // Mixed text sizes sharing a baseline (alignByBaseline).
             Row(Padding(Modifier{}, 16_dp, 0_dp), Arrangement::SpacedBy(8_dp), AlignmentV::Top(), [&] {

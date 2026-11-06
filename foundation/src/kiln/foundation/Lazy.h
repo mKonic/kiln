@@ -1,11 +1,14 @@
 #pragma once
 
-// Lazy lists (spec 05 §Lazy layouts): items are composed during measure, only those in (or
-// entering) the viewport. Each item is a slot: a holder node with its own composition. The scroll
-// position is the first visible item (tracked by key across data changes) and its offset.
-// Not yet: reuse pool by contentType, saveable item state, prefetch, item animations,
-// beyond-bounds composition for focus (PLAN M5).
+// Lazy lists and grids (spec 05 §Lazy layouts): items are composed during measure, only those in
+// (or entering) the viewport. Each item is a slot: a holder node with its own composition and its
+// own saveable registry (kept while it is off-screen). Both layouts measure lines: a list line
+// is one item, a grid line is a row (column) of cells. The scroll position is the first visible
+// item (tracked by key across data changes) and its offset.
+// Not yet: reuse pool by contentType, prefetch, item animations, beyond-bounds composition for
+// focus (PLAN M5).
 
+#include "kiln/foundation/Arrangement.h"
 #include "kiln/foundation/Compose.h"
 #include "kiln/foundation/Scroll.h"
 
@@ -34,9 +37,34 @@ namespace kiln::foundation {
         bool operator==(const LazyListLayoutInfo&) const = default;
     };
 
-    class LazyListState final : public ScrollableState {
+    // LazyGridItemInfo / LazyGridLayoutInfo: offset is (cross, main) for horizontal grids too,
+    // in x/y terms like Compose (x across for a vertical grid).
+    struct LazyGridItemInfo {
+        int index = 0;
+        rt::Key key = rt::Key::Positional();
+        IntOffset offset;
+        IntSize size;
+        int row = 0, column = 0;
+        bool operator==(const LazyGridItemInfo&) const = default;
+    };
+    struct LazyGridLayoutInfo {
+        std::vector<LazyGridItemInfo> visibleItemsInfo;
+        int viewportStartOffset = 0;
+        int viewportEndOffset = 0;
+        int totalItemsCount = 0;
+        IntSize viewportSize;
+        Orientation orientation = Orientation::Vertical;
+        int beforeContentPadding = 0, afterContentPadding = 0;
+        int mainAxisItemSpacing = 0;
+        bool operator==(const LazyGridLayoutInfo&) const = default;
+    };
+
+    struct LazyCore;
+
+    // The scroll position and programmatic scrolling shared by LazyListState and LazyGridState.
+    class LazyStateBase : public ScrollableState {
     public:
-        explicit LazyListState(int firstIndex = 0, int firstOffset = 0) : m_Index(firstIndex), m_Offset(firstOffset) {}
+        explicit LazyStateBase(int firstIndex, int firstOffset) : m_Index(firstIndex), m_Offset(firstOffset) {}
         int FirstVisibleItemIndex() const { return m_Index.Get(); }
         int FirstVisibleItemScrollOffset() const { return m_Offset.Get(); }
         float ConsumeScrollDelta(float delta) override;
@@ -46,24 +74,53 @@ namespace kiln::foundation {
         // Scrolls in animated steps of up to 2500 dp (jumping to 100 items before the target when
         // further), then seeks the target once it is composed (LazyLayoutScrollScope).
         rt::Task<> AnimateScrollToItem(int index, int scrollOffset = 0);
-        // Reading subscribes; updated by every measure.
-        const LazyListLayoutInfo& LayoutInfo() const { return m_Info.Get(); }
 
-    private:
-        int LastVisibleIndex() const;
-        int DistanceTo(int index, int targetOffset = 0) const;
-        bool Visible(int index) const;
-        void SnapToItem(int index, int offset);
-        rt::State<LazyListLayoutInfo> m_Info{ LazyListLayoutInfo{} };
-        float m_Density = 1;
+    protected:
         friend struct LazyCore;
+        struct Line { int first, last, offset, size; };   // visible lines, items first..last
+        int LastVisibleIndex() const { return m_Lines.empty() ? 0 : m_Lines.back().last; }
+        int DistanceTo(int index, int targetOffset = 0) const;
+        bool Visible(int index) const { return index >= m_Index.Peek() && index <= LastVisibleIndex(); }
+        void SnapToItem(int index, int offset);
+
         rt::State<int> m_Index, m_Offset;
         float m_PendingScroll = 0;
         float m_LastConsumed = 0;
         bool m_CanForward = true;
         rt::Key m_FirstKey = rt::Key::Positional();
         bool m_HasFirstKey = false;
-        LayoutNode* m_Node = nullptr;   // the list, for forced remeasure
+        LayoutNode* m_Node = nullptr;   // the layout, for forced remeasure
+        std::vector<Line> m_Lines;
+        int m_SlotsPerLine = 1, m_Spacing = 0, m_TotalItems = 0;
+        float m_Density = 1;
+    };
+
+    class LazyListState final : public LazyStateBase {
+    public:
+        explicit LazyListState(int firstIndex = 0, int firstOffset = 0) : LazyStateBase(firstIndex, firstOffset) {}
+        // Reading subscribes; updated by every measure.
+        const LazyListLayoutInfo& LayoutInfo() const { return m_Info.Get(); }
+    private:
+        friend struct LazyCore;
+        rt::State<LazyListLayoutInfo> m_Info{ LazyListLayoutInfo{} };
+    };
+
+    class LazyGridState final : public LazyStateBase {
+    public:
+        explicit LazyGridState(int firstIndex = 0, int firstOffset = 0) : LazyStateBase(firstIndex, firstOffset) {}
+        const LazyGridLayoutInfo& LayoutInfo() const { return m_Info.Get(); }
+    private:
+        friend struct LazyCore;
+        rt::State<LazyGridLayoutInfo> m_Info{ LazyGridLayoutInfo{} };
+    };
+
+    struct LazyInterval {
+        int count;
+        std::function<void(int)> content;
+        std::function<rt::Key(int)> key;
+        bool sticky = false;
+        // Grid only: the span for local index i given (maxCurrentLineSpan, maxLineSpan).
+        std::function<int(int i, int maxCurrentLineSpan, int maxLineSpan)> span;
     };
 
     class LazyListScope {
@@ -74,8 +131,38 @@ namespace kiln::foundation {
         // next header pushes it out. `content` gets the header's index in the list.
         void StickyHeader(std::function<void(int index)> content, rt::Key key = rt::Key::Positional());
 
-        struct Interval { int count; std::function<void(int)> content; std::function<rt::Key(int)> key; bool sticky = false; };
+        using Interval = LazyInterval;
         std::vector<Interval> intervals;
+    };
+
+    // GridItemSpanScope: maxCurrentLineSpan is what is left on the current line (a larger span
+    // moves the item to the next line), maxLineSpan the slots per line.
+    struct GridItemSpanScope { int maxCurrentLineSpan, maxLineSpan; };
+    using GridSpan = std::function<int(const GridItemSpanScope&, int index)>;
+
+    class LazyGridScope {
+    public:
+        void Item(std::function<void()> content, rt::Key key = rt::Key::Positional(),
+                  std::function<int(const GridItemSpanScope&)> span = {});
+        void Items(int count, std::function<void(int)> content, std::function<rt::Key(int)> key = {}, GridSpan span = {});
+        // A full-line header that sticks like LazyColumn's.
+        void StickyHeader(std::function<void(int index)> content, rt::Key key = rt::Key::Positional());
+
+        std::vector<LazyInterval> intervals;
+    };
+
+    // GridCells: how the cross axis is split into slots.
+    struct GridCells {
+        enum class Kind : std::uint8_t { Fixed, Adaptive, FixedSize } kind = Kind::Fixed;
+        int count = 1;
+        Dp size{ 0 };
+        static GridCells Fixed(int count) { return { Kind::Fixed, std::max(1, count), {} }; }
+        // As many slots as fit with at least minSize each.
+        static GridCells Adaptive(Dp minSize) { return { Kind::Adaptive, 1, minSize }; }
+        // Slots of exactly `size` (one slot of the full size if it does not fit).
+        static GridCells FixedSize(Dp size) { return { Kind::FixedSize, 1, size }; }
+        std::vector<int> CellSizes(const Density& d, int available, int spacing) const;
+        bool operator==(const GridCells&) const = default;
     };
 
     struct LazyListOptions {
@@ -86,9 +173,21 @@ namespace kiln::foundation {
         bool userScrollEnabled = true;
     };
 
+    struct LazyGridOptions {
+        PaddingValues contentPadding;
+        // Between lines (its spacing) and across them (spacing and placement of the slots).
+        Arrangement mainAxisArrangement = Arrangement::Top();
+        Arrangement crossAxisArrangement = Arrangement::Start();
+        bool userScrollEnabled = true;
+    };
+
     void LazyColumn(const Modifier& modifier, LazyListState& state, std::function<void(LazyListScope&)> content,
                     LazyListOptions options = {}, rt::Key key = {});
     void LazyRow(const Modifier& modifier, LazyListState& state, std::function<void(LazyListScope&)> content,
                  LazyListOptions options = {}, rt::Key key = {});
+    void LazyVerticalGrid(const Modifier& modifier, GridCells columns, LazyGridState& state,
+                          std::function<void(LazyGridScope&)> content, LazyGridOptions options = {}, rt::Key key = {});
+    void LazyHorizontalGrid(const Modifier& modifier, GridCells rows, LazyGridState& state,
+                            std::function<void(LazyGridScope&)> content, LazyGridOptions options = {}, rt::Key key = {});
 
 }
