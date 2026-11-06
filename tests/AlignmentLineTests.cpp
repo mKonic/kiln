@@ -106,3 +106,54 @@ TEST(IntrinsicWidthOfAColumnIsItsWidestChild) {
     CHECK_EQ(a->Size().width, 70);
     CHECK_EQ(b->Size().width, 70);
 }
+
+TEST(AlignByBlockUsesTheMeasuredChild) {
+    Harness h;
+    LayoutNode *a = nullptr, *b = nullptr;
+    h.Run([&] {
+        Box(Modifier{}, Alignment::TopStart(), false, [&] {
+            Row(Modifier{}, Arrangement::Start(), AlignmentV::Top(), [&] {
+                // Centres on one line: 20 into a, 40 into b.
+                a = Leaf(AlignBy(Modifier{}, [](Placeable& p) { return p.Height() / 2; }), 10, 40, 0);
+                b = Leaf(AlignBy(Modifier{}, [](Placeable& p) { return p.Height() / 2; }), 10, 80, 0);
+            });
+        });
+    });
+    // The shared line sits 40 down: a starts at 20, b at 0; the row is 40 + 40 tall.
+    CHECK_EQ(Top(a), 20);
+    CHECK_EQ(Top(b), 0);
+    CHECK_EQ(a->Parent()->Size().height, 80);
+}
+
+namespace {
+    // A fixed-size leaf whose baseline comes from state read during its own measure.
+    struct StateBaselinePolicy final : MeasurePolicy {
+        rt::State<int>* baseline;
+        explicit StateBaselinePolicy(rt::State<int>* b) : baseline(b) {}
+        MeasureResult Measure(MeasureScope& s, std::span<Measurable* const>, const Constraints& c) override {
+            return s.Layout(c.ConstrainWidth(10), c.ConstrainHeight(40), {}, { { &FirstBaseline, baseline->Get() } });
+        }
+    };
+}
+
+TEST(ParentFollowsAMovedLineOfAnUnresizedChild) {
+    Harness h;
+    rt::State<int> base(10);
+    LayoutNode *fixed = nullptr;
+    h.Run([&] {
+        Box(Modifier{}, Alignment::TopStart(), false, [&] {
+            Row(Modifier{}, Arrangement::Start(), AlignmentV::Top(), [&] {
+                Layout(AlignByBaseline(Modifier{}), std::make_shared<StateBaselinePolicy>(&base));
+                fixed = Leaf(AlignByBaseline(Modifier{}), 10, 40, 30);
+            });
+        });
+    });
+    // Line at max(10, 30) = 30: the fixed leaf at the top.
+    CHECK_EQ(Top(fixed), 0);
+    // Only the first child re-measures (same size); its baseline at 35 moves the shared line.
+    base.Set(35);
+    rt::Composition::RecomposeAll();
+    h.owner.MeasureAndLayout({ 400, 400 });
+    h.owner.MeasureAndLayout({ 400, 400 });
+    CHECK_EQ(Top(fixed), 5);
+}

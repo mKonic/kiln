@@ -71,11 +71,16 @@ namespace kiln::foundation {
         // extent before and after the shared line.
         int beforeLine = 0, afterLine = 0;
         bool anyAlignBy = false;
+        // The alignment position of an alignBy child (a line, or a block's own position).
+        auto alignPos = [](const ParentData& pd, Placeable& p) -> int {
+            if (pd.alignByBlock) return (*pd.alignByBlock)(p);
+            return p.Get(*pd.alignBy);
+        };
         for (std::size_t i = 0; i < n; ++i) {
-            const AlignmentLine* line = children[i]->GetParentData().alignBy;
-            if (!line) continue;
+            const ParentData& apd = children[i]->GetParentData();
+            if (!apd.alignBy && !apd.alignByBlock) continue;
             anyAlignBy = true;
-            const int v = placeables[i]->Get(*line);
+            const int v = alignPos(apd, *placeables[i]);
             const int at = v != AlignmentLine::Unspecified ? v : 0;
             beforeLine = std::max(beforeLine, at);
             afterLine = std::max(afterLine, crossOf(*placeables[i]) - at);
@@ -91,8 +96,8 @@ namespace kiln::foundation {
             for (std::size_t i = 0; i < n; ++i) {
                 Placeable& p = *placeables[i];
                 const ParentData& pd = children[i]->GetParentData();
-                if (pd.alignBy) {
-                    const int v = p.Get(*pd.alignBy);
+                if (pd.alignBy || pd.alignByBlock) {
+                    const int v = alignPos(pd, p);
                     int cross = v != AlignmentLine::Unspecified ? beforeLine - v : 0;
                     if (!row && dir == LayoutDirection::Rtl) cross = crossSize - p.Width() - cross;
                     if (row) place.Place(p, positions[i], cross);
@@ -475,7 +480,7 @@ namespace kiln::foundation {
                     case 2: d.alignH = AlignmentH{ params.bias }; break;
                     case 3: d.boxAlign = Alignment{ params.bias, params.bias2 }; break;
                     case 4: d.matchParentSize = true; break;
-                    case 5: d.alignBy = params.line; break;
+                    case 5: d.alignBy = params.line; d.alignByBlock.reset(); break;
                     case 6: d.fillCrossAxisFraction = params.weight; break;
                 }
             }
@@ -718,6 +723,20 @@ namespace kiln::foundation {
     Modifier AlignInBox(Modifier m, Alignment a) { return m.With<ParentDataNode>(ParentParams{ 3, 0, true, a.horizontal, a.vertical }); }
     Modifier MatchParentSize(Modifier m) { return m.With<ParentDataNode>(ParentParams{ 4, 0, true, 0, 0 }); }
     Modifier AlignBy(Modifier m, const AlignmentLine& line) { return m.With<ParentDataNode>(ParentParams{ 5, 0, true, 0, 0, &line }); }
+    namespace {
+        struct AlignBlockParams { std::shared_ptr<const std::function<int(Placeable&)>> block; bool operator==(const AlignBlockParams&) const = default; };
+        struct AlignBlockNode final : ModifierNode, ParentDataModifier {
+            AlignBlockParams params;
+            explicit AlignBlockNode(AlignBlockParams p) : params(std::move(p)) {}
+            void OnParamsChanged() { if (Owner() && Owner()->Parent()) Owner()->Parent()->RequestRemeasure(); }
+            ParentDataModifier* AsParentData() override { return this; }
+            void ModifyParentData(ParentData& d) const override { d.alignByBlock = params.block; d.alignBy = nullptr; }
+        };
+    }
+    Modifier AlignBy(Modifier m, std::function<int(Placeable&)> block) {
+        return m.With<AlignBlockNode>(AlignBlockParams{ std::make_shared<const std::function<int(Placeable&)>>(std::move(block)) });
+    }
+
     Modifier FillCrossAxisOfLine(Modifier m, float fraction) {
         return m.With<ParentDataNode>(ParentParams{ 6, std::clamp(fraction, 0.0f, 1.0f), true, 0, 0 });
     }

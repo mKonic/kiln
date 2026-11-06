@@ -82,6 +82,15 @@ namespace kiln::ui {
         // wraps at its placed offset (running placement first, as Compose does when a parent
         // reads a line during measure).
         int Get(const AlignmentLine& line) override {
+            if (index == 0) {
+                const int v = GetHere(line);
+                node.RecordLineRead(line, v);
+                return v;
+            }
+            return GetHere(line);
+        }
+
+        int GetHere(const AlignmentLine& line) {
             for (const auto& [l, v] : result.alignmentLines)
                 if (l == &line) return v;
             node.LayoutIfNeeded();
@@ -501,7 +510,9 @@ namespace kiln::ui {
         Coordinator& outer = *m_Coordinators.front();
         if (m_Measured && !m_MeasureDirty && c == m_LastConstraints) return outer;
         const IntSize before = Size();
+        m_InMeasure = true;
         rt::Observation::Track(m_MeasureWatch, [&] { outer.MeasureHere(c); });
+        m_InMeasure = false;
         m_LastConstraints = c;
         m_Measured = true;
         m_MeasureDirty = false;
@@ -520,16 +531,43 @@ namespace kiln::ui {
         m_NextPlaceOrder = 0;
         const LayoutDirection dir = m_Owner ? m_Owner->Direction() : LayoutDirection::Ltr;
         for (LayoutNode* c : m_Children) c->m_PlacedThisPass = false;
+        m_InLayout = true;
         rt::Observation::Track(m_LayoutWatch, [&] {
             for (auto& c : m_Coordinators) {
                 PlacementScope scope(dir, c->Width());
                 if (c->result.place) c->result.place(scope);
             }
         });
+        m_InLayout = false;
         // Children this pass did not place stop drawing and hit testing (markNodeAndSubtreeAsNotPlaced).
         for (LayoutNode* c : m_Children)
             if (!c->m_PlacedThisPass && c->m_Placed) { c->m_Placed = false; InvalidateDraw(); }
         InvalidateDraw();
+        CheckLinesReadByParent();
+    }
+
+    void LayoutNode::RecordLineRead(const AlignmentLine& line, int value) {
+        if (m_CheckingLines || !m_Parent || !(m_Parent->m_InMeasure || m_Parent->m_InLayout)) return;
+        if (m_Parent->m_InMeasure) m_LinesReadInMeasure = true;
+        for (auto& [l, v] : m_LinesReadByParent)
+            if (l == &line) { v = value; return; }
+        m_LinesReadByParent.emplace_back(&line, value);
+    }
+
+    // After this node was measured or laid out on its own: a line the parent read that moved
+    // invalidates the parent's measure (read while measuring) or its placement.
+    void LayoutNode::CheckLinesReadByParent() {
+        if (m_LinesReadByParent.empty() || !m_Parent || m_Parent->m_InMeasure || m_Parent->m_InLayout) return;
+        m_CheckingLines = true;
+        bool changed = false;
+        for (auto& [l, v] : m_LinesReadByParent) {
+            const int now = m_Coordinators.front()->Get(*l);
+            if (now != v) { v = now; changed = true; }
+        }
+        m_CheckingLines = false;
+        if (!changed) return;
+        if (m_LinesReadInMeasure) m_Parent->RequestRemeasure();
+        else m_Parent->RequestRelayout();
     }
 
     void LayoutNode::Draw(ContentDrawScope& scope) {

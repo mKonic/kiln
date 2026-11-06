@@ -90,6 +90,9 @@ namespace kiln::foundation {
     // Row/Column child: align on an alignment line shared with the siblings that use it
     // (alignBy / alignByBaseline).
     Modifier AlignBy(Modifier m, const AlignmentLine& line);
+    // alignBy { measured -> position }: align on a position the block reads from the measured
+    // child (its size or lines).
+    Modifier AlignBy(Modifier m, std::function<int(ui::Placeable&)> block);
     inline Modifier AlignByBaseline(Modifier m) { return AlignBy(std::move(m), FirstBaseline); }
     // paddingFrom / paddingFromBaseline: space so the line sits `before` from the top (or start)
     // and `after` from the bottom (or end).

@@ -142,6 +142,13 @@ namespace kiln::ui {
         bool m_MeasureManaged = false;
         bool m_MeasureDirty = true;
         bool m_LayoutDirty = true;
+        // Alignment-line change tracking (LayoutNodeAlignmentLines): the lines the parent read
+        // from this node, their values then, and whether it read any while measuring.
+        bool m_InMeasure = false, m_InLayout = false;
+        std::vector<std::pair<const AlignmentLine*, int>> m_LinesReadByParent;
+        bool m_LinesReadInMeasure = false, m_CheckingLines = false;
+        void RecordLineRead(const AlignmentLine& line, int value);
+        void CheckLinesReadByParent();
         bool m_Placed = false;
         bool m_PlacedThisPass = false;   // set by the parent's current layout pass
         IntOffset m_Position;
