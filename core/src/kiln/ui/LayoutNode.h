@@ -18,6 +18,7 @@
 #include "kiln/ui/Autofill.h"
 #include "kiln/ui/Configuration.h"
 #include "kiln/ui/Popup.h"
+#include "kiln/ui/Window.h"
 #include "kiln/ui/DragAndDrop.h"
 #include "kiln/ui/ScrollCapture.h"
 #include "kiln/ui/ActivityResult.h"
@@ -206,6 +207,20 @@ namespace kiln::ui {
         LayoutNode& Root() { return *m_ContentRoot; }
         // The window root above it: the content root, then each shown popup on top.
         LayoutNode& WindowRoot() { return *m_Root; }
+
+        // A dialog window's owner (DialogLayout): the content is measured within these
+        // constraints rather than filling the window, and centred in it. The host measures it
+        // first (its view's onMeasure) to size the window.
+        void SetContentConstraints(std::optional<Constraints> c);
+        IntSize MeasureContent(Constraints c);
+        // Where the content sits in the window (window pixels).
+        IntRect ContentBounds() const;
+        // The content's measured size changed (the host re-measures its window).
+        void SetOnContentSizeChanged(std::function<void(IntSize)> fn) { m_OnContentSizeChanged = std::move(fn); }
+        // Dialog windows for Dialog composables in this owner's content.
+        void SetDialogHost(DialogHost host) { m_DialogHost = std::move(host); }
+        const DialogHost& Dialogs() const { return m_DialogHost; }
+        const std::optional<Constraints>& ContentConstraintsForRoot() const { return m_ContentConstraints; }
 
         // Popups (PopupLayout windows) in show order; the last is on top. The layer's node is the
         // caller's and stays theirs; the owner places it and routes input to it.
@@ -589,6 +604,10 @@ namespace kiln::ui {
         rt::State<bool> m_FlagSecure{ false };
         std::function<void(bool)> m_FlagSecureHost;
         bool m_AppliedSecure = false;
+        std::optional<Constraints> m_ContentConstraints;
+        IntSize m_LastContentSize{ -1, -1 };
+        std::function<void(IntSize)> m_OnContentSizeChanged;
+        DialogHost m_DialogHost;
         ContextMenuHost m_ContextMenuHost;
         PopupLayer* m_PopupBackTracking = nullptr;
         // The top focusable popup takes the key focus: the focus under it is parked there.

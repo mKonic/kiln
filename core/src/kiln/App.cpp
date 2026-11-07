@@ -10,6 +10,16 @@
 
 namespace kiln {
 
+    // An extra window (see App.h).
+    struct App::Window {
+        ui::Owner* owner = nullptr;
+        hearth::PresentSurface* present = nullptr;
+        std::unique_ptr<QuadRenderer> quads;
+        std::uint32_t width = 0, height = 0;
+        bool drawn = false;   // drawn this frame (its batch is ready to record)
+        bool textures = false;   // the shared ramp and filter textures are bound
+    };
+
     using namespace hearth;
 
     App::App(HostServices services) : m_Services(services) {
@@ -382,6 +392,88 @@ namespace kiln {
         return out;
     }
 
+    // --- extra windows -------------------------------------------------------------------------
+
+
+    App::Window* App::AddWindow(ui::Owner& owner) {
+        auto w = std::make_unique<Window>();
+        w->owner = &owner;
+        owner.SetText(m_Services.text);
+        owner.SetRequestFrame([this] { RequestFrame(); });
+        m_Windows.push_back(std::move(w));
+        return m_Windows.back().get();
+    }
+
+    void App::RemoveWindow(Window* window) {
+        WindowSurfaceDestroyed(window);
+        std::erase_if(m_Windows, [&](const auto& w) { return w.get() == window; });
+    }
+
+    void App::WindowSurfaceCreated(Window* window, hearth::Surface& surface) {
+        if (!window || !m_Device || window->present) return;
+        window->present = m_Device->AddPresentSurface(surface, /*transparent*/ true);
+        if (!window->present) return;
+        window->quads = std::make_unique<QuadRenderer>(*m_Device);
+        window->textures = false;
+        if (m_Images) m_Images->AddRenderer(*window->quads);
+        hearth::u32 w = 0, h = 0;
+        surface.FramebufferSize(w, h);
+        window->width = w;
+        window->height = h;
+        RequestFrame();
+    }
+
+    void App::WindowSurfaceResized(Window* window, std::uint32_t width, std::uint32_t height) {
+        if (!window) return;
+        window->width = width;
+        window->height = height;
+        if (m_Device && window->present) m_Device->ResizePresentSurface(window->present, width, height);
+        RequestFrame();
+    }
+
+    void App::WindowSurfaceDestroyed(Window* window) {
+        if (!window || !window->present) return;
+        if (m_Images && window->quads) m_Images->RemoveRenderer(*window->quads);
+        m_Device->RemovePresentSurface(window->present);
+        window->present = nullptr;
+        window->quads.reset();
+    }
+
+    ui::IntSize App::WindowSize(const Window* window) const {
+        return window ? ui::IntSize{ int(window->width), int(window->height) } : ui::IntSize{};
+    }
+
+    void App::MeasureWindows() {
+        for (auto& w : m_Windows)
+            if (w->width && w->height) w->owner->MeasureAndLayout({ int(w->width), int(w->height) });
+    }
+
+    void App::ProcessPointer(Window* window, const ui::RawPointerEvent& event) {
+        rt::Composition::RecomposeAll();
+        if (m_Width && m_Height) m_Owner.MeasureAndLayout({ int(m_Width), int(m_Height) });
+        MeasureWindows();
+        for (const auto& p : event.pointers)
+            if (p.type == ui::PointerType::Touch && p.down) { window->owner->SetInputMode(ui::InputMode::Touch); break; }
+        window->owner->ProcessPointer(event);
+        m_Dispatcher.RunPending();
+    }
+
+    bool App::ProcessKey(Window* window, const ui::KeyEvent& event) {
+        rt::Composition::RecomposeAll();
+        MeasureWindows();
+        const bool handled = window->owner->DispatchKeyEvent(event);
+        m_Dispatcher.RunPending();
+        return handled;
+    }
+
+    bool App::ProcessKeyPreIme(Window* window, const ui::KeyEvent& event) {
+        rt::Composition::RecomposeAll();
+        MeasureWindows();
+        const bool handled = window->owner->DispatchInterceptedSoftKeyboardEvent(event);
+        m_Dispatcher.RunPending();
+        return handled;
+    }
+
     void App::Frame(double timeSeconds) {
         m_FramePending = false;
         // Frame order (architecture 3.3): posted work, animation frame waiters with the shared
@@ -392,6 +484,7 @@ namespace kiln {
         rt::Composition::RecomposeAll();
         if (!m_Device || m_SurfaceLost || m_Width == 0 || m_Height == 0) return;
         m_Owner.MeasureAndLayout({ int(m_Width), int(m_Height) });
+        MeasureWindows();
 
         m_Quads->Begin(m_Width, m_Height);
         m_Quads->SetClearColor(m_Clear.r, m_Clear.g, m_Clear.b, m_Clear.a);
@@ -405,6 +498,20 @@ namespace kiln {
         m_Filters->BeginFrame();
         if (m_Services.text) m_Services.text->SyncAtlas(*this);
         m_Owner.Draw({ m_Quads.get(), [this](std::uint32_t i) { return Page(i); }, m_Paths.get(), m_Gradients.get(), m_Images.get(), m_Filters.get(), float(m_Width), float(m_Height) });
+        // The extra windows into their own batches (transparent where they draw nothing).
+        for (auto& w : m_Windows) {
+            w->drawn = false;
+            if (!w->present || !w->quads || !w->width || !w->height) continue;
+            if (!w->textures) {
+                w->quads->SetRampTexture(m_Gradients->Texture());
+                w->quads->SetFilterTexture(m_Filters->Texture());
+                w->textures = true;
+            }
+            w->quads->Begin(w->width, w->height);
+            w->quads->SetClearColor(0, 0, 0, 0);
+            w->owner->Draw({ w->quads.get(), [this](std::uint32_t i) { return Page(i); }, m_Paths.get(), m_Gradients.get(), m_Images.get(), m_Filters.get(), float(w->width), float(w->height) });
+            w->drawn = true;
+        }
         kiln_frame frame{ this };
         if (m_Callbacks.on_frame) m_Callbacks.on_frame(m_Callbacks.user, &frame, timeSeconds);
         if (m_Services.text) m_Services.text->SyncAtlas(*this);
@@ -420,6 +527,16 @@ namespace kiln {
         cmd->BeginRenderPass(pass);
         m_Quads->Flush(*cmd);
         cmd->EndRenderPass();
+        for (auto& w : m_Windows) {
+            if (!w->drawn || !w->present->Ready()) continue;
+            w->quads->RenderLayers(*cmd);
+            RenderPassDesc wp;
+            wp.present = w->present;
+            wp.clearColor = { 0, 0, 0, 0 };
+            cmd->BeginRenderPass(wp);
+            w->quads->Flush(*cmd);
+            cmd->EndRenderPass();
+        }
         m_Device->EndFrame();
     }
 

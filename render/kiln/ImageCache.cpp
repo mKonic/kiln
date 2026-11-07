@@ -5,7 +5,10 @@ namespace kiln {
     void ImageCache::BeginFrame() {
         const int keep = int(m_Device.Caps().framesInFlight) + 1;
         for (auto it = m_Entries.begin(); it != m_Entries.end();) {
-            if (it->second.token.expired() && ++it->second.deadFrames > keep) { m_Quads.ForgetPage(it->second.page.get()); it = m_Entries.erase(it); }
+            if (it->second.token.expired() && ++it->second.deadFrames > keep) {
+                for (QuadRenderer* q : m_Quads) q->ForgetPage(it->second.page.get());
+                it = m_Entries.erase(it);
+            }
             else ++it;
         }
     }

@@ -111,6 +111,20 @@ namespace kiln {
         TextBackend* Text() const { return m_Services.text; }
         bool FramePending() const { return m_FramePending; }
 
+        // Extra windows (dialogs): an owner shown in its own platform window, laid out at that
+        // window's size and drawn into its own presentation surface, every frame with the main
+        // one. Input for it goes to its owner through the overloads below.
+        struct Window;
+        Window* AddWindow(ui::Owner& owner);
+        void RemoveWindow(Window* window);
+        void WindowSurfaceCreated(Window* window, hearth::Surface& surface);
+        void WindowSurfaceResized(Window* window, std::uint32_t width, std::uint32_t height);
+        void WindowSurfaceDestroyed(Window* window);
+        ui::IntSize WindowSize(const Window* window) const;
+        void ProcessPointer(Window* window, const ui::RawPointerEvent& event);
+        bool ProcessKey(Window* window, const ui::KeyEvent& event);
+        bool ProcessKeyPreIme(Window* window, const ui::KeyEvent& event);
+
         // AtlasSink
         void EnsurePage(std::uint32_t index, std::uint32_t width, std::uint32_t height) override;
         void UploadPage(std::uint32_t index, const void* rgba, std::uint32_t strideBytes,
@@ -152,6 +166,8 @@ namespace kiln {
         std::vector<FrameStage> m_Stages;
         float m_AnimationScale = 1.0f;
         bool m_SurfaceLost = false;
+        std::vector<std::unique_ptr<Window>> m_Windows;
+        void MeasureWindows();
     };
 
 }

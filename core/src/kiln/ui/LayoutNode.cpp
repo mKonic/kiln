@@ -852,16 +852,24 @@ namespace kiln::ui {
             MeasureResult Measure(MeasureScope& s, std::span<Measurable* const> ch, const Constraints& c) override {
                 std::vector<Placeable*> ps;
                 std::vector<PopupLayer*> layers;
+                const std::optional<Constraints> content = owner->ContentConstraintsForRoot();
                 for (std::size_t i = 0; i < ch.size(); ++i) {
-                    if (i == 0) { ps.push_back(&ch[0]->Measure(c)); layers.push_back(nullptr); continue; }
+                    if (i == 0) { ps.push_back(&ch[0]->Measure(content ? *content : c)); layers.push_back(nullptr); continue; }
                     PopupLayer* l = i - 1 < owner->Popups().size() ? owner->Popups()[i - 1] : nullptr;
                     const IntRect d = owner->PopupDisplayBounds(!l || l->properties.clippingEnabled);
                     ps.push_back(&ch[i]->Measure(Constraints{ 0, std::max(0, d.right - d.left), 0, std::max(0, d.bottom - d.top) }));
                     layers.push_back(l);
                 }
-                MeasureResult r = s.Layout(c.minWidth, c.minHeight, [ps, layers, o = owner](PlacementScope& place) {
+                const int rootW = c.ConstrainWidth(ps.empty() ? 0 : ps[0]->Width()), rootH = c.ConstrainHeight(ps.empty() ? 0 : ps[0]->Height());
+                const bool centre = content.has_value();
+                MeasureResult r = s.Layout(rootW, rootH, [ps, layers, o = owner, centre, rootW, rootH](PlacementScope& place) {
                     for (std::size_t i = 0; i < ps.size(); ++i) {
-                        if (!layers[i]) { place.PlaceRelative(*ps[i], 0, 0); continue; }
+                        if (!layers[i]) {
+                            // DialogLayout.internalOnLayout: centred in the window.
+                            if (centre) place.Place(*ps[i], (rootW - ps[i]->Width()) / 2, (rootH - ps[i]->Height()) / 2);
+                            else place.PlaceRelative(*ps[i], 0, 0);
+                            continue;
+                        }
                         PopupLayer& l = *layers[i];
                         const IntSize size{ ps[i]->Width(), ps[i]->Height() };
                         const auto anchor = l.anchorBounds ? l.anchorBounds() : std::nullopt;
@@ -900,6 +908,29 @@ namespace kiln::ui {
         m_Popups.clear();
         m_Root->SetChildren({ m_ContentRoot.get() });
         m_Root->Detach();
+    }
+
+    // --- dialog window content -------------------------------------------------------------------
+
+    void Owner::SetContentConstraints(std::optional<Constraints> c) {
+        if (m_ContentConstraints == c) return;
+        m_ContentConstraints = c;
+        m_Root->RequestRemeasure();
+    }
+
+    IntSize Owner::MeasureContent(Constraints c) {
+        const auto saved = m_ContentConstraints;
+        m_ContentConstraints = c;
+        m_ContentRoot->MeasureNode(c);
+        m_ContentConstraints = saved;
+        m_Root->RequestRemeasure();
+        return m_ContentRoot->Size();
+    }
+
+    IntRect Owner::ContentBounds() const {
+        const IntOffset p = m_ContentRoot->Position();
+        const IntSize s = m_ContentRoot->Size();
+        return { p.x, p.y, p.x + s.width, p.y + s.height };
     }
 
     // --- popups ---------------------------------------------------------------------------------
@@ -1098,6 +1129,10 @@ namespace kiln::ui {
         // onBarrierPositionChanged: a barrier that now covers the focused target takes focus away.
         if (!m_Barriers.empty() && m_ActiveFocus && IsOccludedByInteractionBarrier(*m_ActiveFocus)) ClearFocus(true);
         if (m_Autofill) m_Autofill->OnEndApplyChanges();
+        if (m_ContentConstraints && m_ContentRoot->Size() != m_LastContentSize) {
+            m_LastContentSize = m_ContentRoot->Size();
+            if (m_OnContentSizeChanged) m_OnContentSizeChanged(m_LastContentSize);
+        }
     }
 
     std::vector<PointerInputModifier*> LayoutNode::PointerModifiers() const {
