@@ -320,9 +320,16 @@ namespace kiln::ui {
             std::function<bool()> hasText;   // without reading it (no "pasted" toast)
             std::function<std::optional<std::pair<ClipEntry, ClipMetadata>>()> getClip;   // the whole primary clip
             std::function<std::optional<ClipMetadata>()> getMetadata;                      // its description only
+            // The first item's text with its span styles (Compose's Annotation encoding).
+            std::function<void(const text::AnnotatedString&)> setAnnotatedText;
+            std::function<std::optional<text::AnnotatedString>()> getAnnotatedText;
         };
         void SetClipboardHost(ClipboardHost host) { m_Clipboard = std::move(host); }
         void SetClipboardText(const std::string& text);
+        // ClipboardManager.setText / getText with an AnnotatedString: the span styles travel
+        // with the text (other annotations do not).
+        void SetClipboardAnnotatedText(const text::AnnotatedString& text);
+        std::optional<text::AnnotatedString> ClipboardAnnotatedText() const;
         std::optional<std::string> ClipboardText() const;
         bool ClipboardHasText() const;
         // Clipboard.getClipEntry with its metadata (text items only without a host).
@@ -433,6 +440,7 @@ namespace kiln::ui {
         MagnifierHost m_Magnifier;
         ContentHost m_Content;
         std::optional<std::string> m_LocalClip;   // without a host (tests): an in-process clipboard
+        std::optional<text::AnnotatedString> m_LocalStyledClip;
         TextToolbarHost m_ToolbarHost;
         TextToolbarClient* m_ToolbarClient = nullptr;
         Rect m_ToolbarRect;

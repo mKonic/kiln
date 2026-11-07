@@ -7,6 +7,7 @@ namespace kiln::android { void InstallImageDecoder(); void InstallAssetReader(JN
 #include "kiln/text/AnnotatedString.h"
 #include "kiln/ui/Back.h"
 #include "kiln/ui/Accessibility.h"
+#include <array>
 #include <cstring>
 
 #include <climits>
@@ -117,6 +118,91 @@ namespace {
         }
         ~ToolbarArrays() {
             for (jobject o : { (jobject)kinds, (jobject)ids, (jobject)groups, (jobject)classifications, (jobject)indexes, (jobject)labels }) env->DeleteLocalRef(o);
+        }
+    };
+
+    // Span styles in the flat layout KilnClipSpans takes (its INTS / FLOATS per span, field ids
+    // as AndroidClipboardManager's: colour 1 ... shadow 12).
+    struct ClipSpans {
+        static constexpr int kInts = 12, kFloats = 8;
+        std::vector<jint> ints;
+        std::vector<jfloat> floats;
+        std::vector<std::string> strings;
+        static jint Synthesis(kiln::text::FontSynthesis s) {
+            using S = kiln::text::FontSynthesis;   // FONT_SYNTHESIS_NONE 0, ALL 1, WEIGHT 2, STYLE 3
+            return s == S::All ? 1 : s == S::Weight ? 2 : s == S::Style ? 3 : 0;
+        }
+        static kiln::text::FontSynthesis SynthesisOf(jint v) {
+            using S = kiln::text::FontSynthesis;
+            return v == 1 ? S::All : v == 2 ? S::Weight : v == 3 ? S::Style : S::None;
+        }
+        static jint UnitType(const kiln::text::TextUnit& u) { return u.IsSp() ? 1 : u.IsEm() ? 2 : 0; }
+        static ClipSpans From(const kiln::text::AnnotatedString& text) {
+            ClipSpans out;
+            for (const auto& r : text.SpanStyles()) {
+                const auto& st = r.item;
+                std::array<jint, kInts> in{};
+                std::array<jfloat, kFloats> fl{};
+                int mask = 0;
+                auto set = [&](int id) { mask |= 1 << id; };
+                in[0] = r.start;
+                in[1] = r.end;
+                if (st.color.Specified()) { set(1); in[9] = jint(st.color.argb); }
+                if (st.fontSize.IsSpecified()) { set(2); in[3] = UnitType(st.fontSize); fl[0] = st.fontSize.value; }
+                if (st.fontWeight) { set(3); in[5] = st.fontWeight->weight; }
+                if (st.fontStyle) { set(4); in[6] = *st.fontStyle == kiln::text::FontStyle::Italic ? 1 : 0; }
+                if (st.fontSynthesis) { set(5); in[7] = Synthesis(*st.fontSynthesis); }
+                if (st.fontFeatureSettings) set(6);
+                if (st.letterSpacing.IsSpecified()) { set(7); in[4] = UnitType(st.letterSpacing); fl[1] = st.letterSpacing.value; }
+                if (st.baselineShift) { set(8); fl[2] = st.baselineShift->multiplier; }
+                if (st.textGeometricTransform) { set(9); fl[3] = st.textGeometricTransform->scaleX; fl[4] = st.textGeometricTransform->skewX; }
+                if (st.background.Specified()) { set(10); in[10] = jint(st.background.argb); }
+                if (st.textDecoration) { set(11); in[8] = jint(*st.textDecoration); }
+                if (st.shadow) {
+                    set(12);
+                    in[11] = jint(st.shadow->color.argb);
+                    fl[5] = st.shadow->offset.x;
+                    fl[6] = st.shadow->offset.y;
+                    fl[7] = st.shadow->blurRadius;
+                }
+                in[2] = mask;
+                out.ints.insert(out.ints.end(), in.begin(), in.end());
+                out.floats.insert(out.floats.end(), fl.begin(), fl.end());
+                out.strings.push_back(st.fontFeatureSettings.value_or(""));
+            }
+            return out;
+        }
+        kiln::text::AnnotatedString To(std::string text) const {
+            kiln::text::AnnotatedStringBuilder b;
+            b.Append(text);
+            const std::size_t n = std::min({ ints.size() / kInts, floats.size() / kFloats, strings.size() });
+            for (std::size_t i = 0; i < n; ++i) {
+                const jint* in = &ints[i * kInts];
+                const jfloat* fl = &floats[i * kFloats];
+                const int mask = in[2];
+                auto has = [&](int id) { return (mask & (1 << id)) != 0; };
+                auto unit = [](jint type, float v) {
+                    kiln::text::TextUnit u;
+                    if (type == 1) { u.type = kiln::text::TextUnit::Type::Sp; u.value = v; }
+                    else if (type == 2) { u.type = kiln::text::TextUnit::Type::Em; u.value = v; }
+                    return u;
+                };
+                kiln::text::SpanStyle st;
+                if (has(1)) st.color = kiln::ui::Color(std::uint32_t(in[9]));
+                if (has(2)) st.fontSize = unit(in[3], fl[0]);
+                if (has(3)) st.fontWeight = kiln::text::FontWeight{ in[5] };
+                if (has(4)) st.fontStyle = in[6] == 1 ? kiln::text::FontStyle::Italic : kiln::text::FontStyle::Normal;
+                if (has(5)) st.fontSynthesis = SynthesisOf(in[7]);
+                if (has(6)) st.fontFeatureSettings = strings[i];
+                if (has(7)) st.letterSpacing = unit(in[4], fl[1]);
+                if (has(8)) st.baselineShift = kiln::text::BaselineShift{ fl[2] };
+                if (has(9)) st.textGeometricTransform = kiln::text::TextGeometricTransform{ fl[3], fl[4] };
+                if (has(10)) st.background = kiln::ui::Color(std::uint32_t(in[10]));
+                if (has(11)) st.textDecoration = kiln::text::TextDecoration(in[8] & 3);
+                if (has(12)) st.shadow = kiln::text::Shadow{ kiln::ui::Color(std::uint32_t(in[11])), { fl[5], fl[6] }, fl[7] };
+                b.AddStyle(std::move(st), in[0], in[1]);
+            }
+            return b.ToAnnotatedString();
         }
     };
 
@@ -339,6 +425,8 @@ namespace {
             static jmethodID hasClip = env->GetMethodID(vc, "clipboardHasText", "()Z");
             static jmethodID clipAll = env->GetMethodID(vc, "getClipboardClip", "()[Ljava/lang/String;");
             static jmethodID clipMeta = env->GetMethodID(vc, "getClipboardMetadata", "()[Ljava/lang/String;");
+            static jmethodID setStyled = env->GetMethodID(vc, "setClipboardStyledText", "(Ljava/lang/String;[I[F[Ljava/lang/String;)V");
+            static jmethodID getStyled = env->GetMethodID(vc, "getClipboardStyledText", "()[Ljava/lang/Object;");
             static jmethodID readContent = env->GetMethodID(vc, "readContent", "(Ljava/lang/String;)[B");
             static jmethodID releasePermission = env->GetMethodID(vc, "releaseContentPermission", "(I)V");
             static jmethodID haptic = env->GetMethodID(vc, "performHaptic", "(I)V");
@@ -364,6 +452,37 @@ namespace {
                 jstring s = e->NewString(reinterpret_cast<const jchar*>(u.data()), jsize(u.size()));
                 e->CallVoidMethod(g_Host->view, setClip, s);
                 e->DeleteLocalRef(s);
+            };
+            clip.setAnnotatedText = [](const kiln::text::AnnotatedString& text) {
+                JNIEnv* e = MainEnv();
+                const ClipSpans spans = ClipSpans::From(text);
+                jstring js = JavaString(e, kiln::foundation::ToUtf16(text.Text()));
+                jintArray ji = e->NewIntArray(jsize(spans.ints.size()));
+                e->SetIntArrayRegion(ji, 0, jsize(spans.ints.size()), spans.ints.data());
+                jfloatArray jf = e->NewFloatArray(jsize(spans.floats.size()));
+                e->SetFloatArrayRegion(jf, 0, jsize(spans.floats.size()), spans.floats.data());
+                jobjectArray jstrs = JavaStrings(e, spans.strings);
+                e->CallVoidMethod(g_Host->view, setStyled, js, ji, jf, jstrs);
+                for (jobject o : { (jobject)js, (jobject)ji, (jobject)jf, (jobject)jstrs }) e->DeleteLocalRef(o);
+            };
+            clip.getAnnotatedText = []() -> std::optional<kiln::text::AnnotatedString> {
+                JNIEnv* e = MainEnv();
+                auto r = static_cast<jobjectArray>(e->CallObjectMethod(g_Host->view, getStyled));
+                if (!r) return std::nullopt;
+                auto js = static_cast<jstring>(e->GetObjectArrayElement(r, 0));
+                auto ji = static_cast<jintArray>(e->GetObjectArrayElement(r, 1));
+                auto jf = static_cast<jfloatArray>(e->GetObjectArrayElement(r, 2));
+                auto jstrs = static_cast<jobjectArray>(e->GetObjectArrayElement(r, 3));
+                std::u16string u(std::size_t(e->GetStringLength(js)), u'\0');
+                e->GetStringRegion(js, 0, jsize(u.size()), reinterpret_cast<jchar*>(u.data()));
+                ClipSpans spans;
+                spans.ints.resize(std::size_t(e->GetArrayLength(ji)));
+                e->GetIntArrayRegion(ji, 0, jsize(spans.ints.size()), spans.ints.data());
+                spans.floats.resize(std::size_t(e->GetArrayLength(jf)));
+                e->GetFloatArrayRegion(jf, 0, jsize(spans.floats.size()), spans.floats.data());
+                for (auto& str : StringsFromJava(e, jstrs)) spans.strings.push_back(str.value_or(""));
+                for (jobject o : { (jobject)r, (jobject)js, (jobject)ji, (jobject)jf, (jobject)jstrs }) e->DeleteLocalRef(o);
+                return spans.To(kiln::foundation::ToUtf8(u));
             };
             clip.getText = []() -> std::optional<std::string> {
                 JNIEnv* e = MainEnv();

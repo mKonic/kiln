@@ -985,7 +985,26 @@ namespace kiln::ui {
 
     void Owner::SetClipboardText(const std::string& text) {
         if (m_Clipboard.setText) m_Clipboard.setText(text);
-        else m_LocalClip = text;
+        else { m_LocalClip = text; m_LocalStyledClip.reset(); }
+    }
+    void Owner::SetClipboardAnnotatedText(const text::AnnotatedString& text) {
+        if (m_Clipboard.setAnnotatedText) { m_Clipboard.setAnnotatedText(text); return; }
+        if (m_Clipboard.setText) { m_Clipboard.setText(text.Text()); return; }
+        // convertToCharSequence keeps the span styles only.
+        text::AnnotatedStringBuilder b;
+        b.Append(text.Text());
+        for (const auto& r : text.SpanStyles()) b.AddStyle(r.item, r.start, r.end);
+        m_LocalClip = text.Text();
+        m_LocalStyledClip = b.ToAnnotatedString();
+    }
+    std::optional<text::AnnotatedString> Owner::ClipboardAnnotatedText() const {
+        if (m_Clipboard.getAnnotatedText) return m_Clipboard.getAnnotatedText();
+        if (m_Clipboard.getText) {
+            const auto t = m_Clipboard.getText();
+            return t ? std::optional<text::AnnotatedString>(*t) : std::nullopt;
+        }
+        if (m_LocalStyledClip) return m_LocalStyledClip;
+        return m_LocalClip ? std::optional<text::AnnotatedString>(*m_LocalClip) : std::nullopt;
     }
     std::optional<std::string> Owner::ClipboardText() const {
         return m_Clipboard.getText ? m_Clipboard.getText() : m_LocalClip;

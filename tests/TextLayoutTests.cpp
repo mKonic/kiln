@@ -444,7 +444,13 @@ namespace {
     };
     void TwoTexts() {
         foundation::Column(ui::Modifier{}, [] {
-            foundation::BasicText("Hello world", {}, TextStyle(Sp(20)));
+            // "world" in bold: a copy carries its style.
+            text::AnnotatedStringBuilder b;
+            b.Append("Hello ");
+            text::SpanStyle bold;
+            bold.fontWeight = text::FontWeight::Bold();
+            b.WithStyle(bold, [&] { b.Append("world"); });
+            foundation::BasicText(b.ToAnnotatedString(), {}, TextStyle(Sp(20)));
             foundation::BasicText("Second line", {}, TextStyle(Sp(20)));
         });
     }
@@ -491,6 +497,13 @@ TEST(SelectionLongPressSelectsWordsAcrossTextsAndCopies) {
     CHECK(tests::ClickToolbar(h.owner, ui::TextToolbarItemId::Copy));
     h.Pump();
     CHECK(h.owner.ClipboardText() == std::optional<std::string>("world\nSecond"));
+    const auto styled = h.owner.ClipboardAnnotatedText();
+    const auto spans = styled ? styled->SpanStyles() : std::vector<text::Range<text::SpanStyle>>{};
+    CHECK(spans.size() == 1);
+    if (spans.size() == 1) {
+        const auto& r = spans[0];
+        CHECK(r.start == 0 && r.end == 5 && r.item.fontWeight == std::optional(text::FontWeight::Bold()));
+    }
     CHECK(state->SelectedTexts().empty());
     CHECK(!h.owner.TextToolbarShown());
     CHECK(h.Handles().empty());

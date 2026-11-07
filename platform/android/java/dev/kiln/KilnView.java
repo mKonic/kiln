@@ -623,6 +623,20 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
         if (cm != null) cm.setPrimaryClip(android.content.ClipData.newPlainText("plain text", text));
     }
 
+    /** ClipboardManager.setText(AnnotatedString): the span styles as Compose encodes them. */
+    void setClipboardStyledText(String text, int[] ints, float[] floats, String[] strings) {
+        android.content.ClipboardManager cm = clipboard();
+        if (cm != null) cm.setPrimaryClip(android.content.ClipData.newPlainText("plain text", KilnClipSpans.encode(text, ints, floats, strings)));
+    }
+
+    /** ClipboardManager.getText: {text, ints, floats, strings} (KilnClipSpans), or null. */
+    Object[] getClipboardStyledText() {
+        android.content.ClipboardManager cm = clipboard();
+        android.content.ClipData clip = cm != null ? cm.getPrimaryClip() : null;
+        if (clip == null || clip.getItemCount() == 0) return null;
+        return KilnClipSpans.decode(clip.getItemAt(0).getText());
+    }
+
     String getClipboardText() {
         android.content.ClipboardManager cm = clipboard();
         android.content.ClipData clip = cm != null ? cm.getPrimaryClip() : null;

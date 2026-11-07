@@ -764,7 +764,7 @@ namespace kiln::foundation {
 
             void Copy() {
                 const auto t = GetSelectedText();
-                if (t && !t->Empty() && owner) owner->SetClipboardText(t->Text());
+                if (t && !t->Empty() && owner) owner->SetClipboardAnnotatedText(*t);
             }
 
             void ShowSelectionToolbar() {
