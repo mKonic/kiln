@@ -10,7 +10,7 @@
 namespace kiln::material3::tokens {
 
     namespace CheckboxTokens {
-        inline constexpr foundation::CornerShape ContainerShape = foundation::CornerShape{ ui::Dp(2.0f), ui::Dp(2.0f), ui::Dp(2.0f), ui::Dp(2.0f) };
+        inline constexpr ShapeValue ContainerShape = ShapeValue{ false, foundation::CornerSize{ 2.0f, 0.0f, 0.0f }, foundation::CornerSize{ 2.0f, 0.0f, 0.0f }, foundation::CornerSize{ 2.0f, 0.0f, 0.0f }, foundation::CornerSize{ 2.0f, 0.0f, 0.0f } };
         inline constexpr ui::Dp ContainerSize = ui::Dp(18.0f);
         inline constexpr ColorToken FocusIndicatorColor = ColorSchemeKeyTokens::Secondary;
         inline constexpr ui::Dp IconSize = ui::Dp(18.0f);

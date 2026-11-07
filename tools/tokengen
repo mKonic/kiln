@@ -13,7 +13,8 @@ added here instead of being dropped.
   Color(red =, green =, blue =)  ui::Color
   FontWeight.X / FontFamily.X    text::FontWeight, FontFamilyToken (a generic family)
   CubicBezierEasing(a, b, c, d)  CubicBezierEasing (ToEasing() builds the curve)
-  RoundedCornerShape, CircleShape, RectangleShape, CornerSize    foundation::CornerShape, ui::Dp
+  RoundedCornerShape, CircleShape, RectangleShape   ShapeValue (ToShape() builds the shape)
+  CornerSize(N.dp)               foundation::CornerSize
 TypographyTokens.kt (a class of TextStyles over DefaultTextStyle) becomes a class with the same
 members.
 """
@@ -92,20 +93,21 @@ class Translator:
             return f"FontFamilyToken{{ text::FontFamily::Kind::{m.group(1)} }}", "FontFamilyToken"
         m = re.fullmatch(r"RoundedCornerShape\((-?[\d.]+)\.dp\)", e)
         if m:
-            d = f"ui::Dp({fnum(m.group(1))})"
-            return f"foundation::CornerShape{{ {d}, {d}, {d}, {d} }}", "foundation::CornerShape"
+            d = f"foundation::CornerSize{{ {fnum(m.group(1))}, 0.0f, 0.0f }}"
+            return f"ShapeValue{{ false, {d}, {d}, {d}, {d} }}", "ShapeValue"
         m = re.fullmatch(r"RoundedCornerShape\(topStart = ([\d.]+)\.dp, topEnd = ([\d.]+)\.dp, "
                          r"bottomEnd = ([\d.]+)\.dp, bottomStart = ([\d.]+)\.dp\)", e)
         if m:
-            d = ", ".join(f"ui::Dp({fnum(x)})" for x in m.groups())
-            return f"foundation::CornerShape{{ {d} }}", "foundation::CornerShape"
-        if e == "CircleShape":
-            return "foundation::CornerShape{ ui::Dp(0.0f), ui::Dp(0.0f), ui::Dp(0.0f), ui::Dp(0.0f), 50.0f }", "foundation::CornerShape"
+            d = ", ".join(f"foundation::CornerSize{{ {fnum(x)}, 0.0f, 0.0f }}" for x in m.groups())
+            return f"ShapeValue{{ false, {d} }}", "ShapeValue"
+        if e == "CircleShape":          # RoundedCornerShape(50)
+            d = "foundation::CornerSize{ 0.0f, 0.0f, 50.0f }"
+            return f"ShapeValue{{ false, {d}, {d}, {d}, {d} }}", "ShapeValue"
         if e == "RectangleShape":
-            return "foundation::CornerShape{}", "foundation::CornerShape"
+            return "ShapeValue{ true }", "ShapeValue"
         m = re.fullmatch(r"CornerSize\((-?[\d.]+)\.dp\)", e)
         if m:
-            return f"ui::Dp({fnum(m.group(1))})", "ui::Dp"
+            return f"foundation::CornerSize{{ {fnum(m.group(1))}, 0.0f, 0.0f }}", "foundation::CornerSize"
         m = re.fullmatch(r"(\w+)\.(\w+)", e)
         if m and m.group(1) in self.objects:
             if m.group(1) != owner:

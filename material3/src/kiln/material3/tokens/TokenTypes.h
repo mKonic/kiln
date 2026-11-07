@@ -6,7 +6,7 @@
 // motion scheme).
 
 #include "kiln/animation/Easing.h"
-#include "kiln/foundation/Layouts.h"
+#include "kiln/foundation/Shapes.h"
 #include "kiln/text/TextStyle.h"
 #include "kiln/ui/Geometry.h"
 
@@ -34,6 +34,18 @@ namespace kiln::material3::tokens {
         text::FontFamily::Kind kind = text::FontFamily::Kind::Default;
         text::FontFamily Resolve() const { return text::FontFamily{ kind }; }
         constexpr bool operator==(const FontFamilyToken&) const = default;
+    };
+
+    // A shape token's value: RectangleShape, or a RoundedCornerShape of four corner sizes
+    // (CircleShape is RoundedCornerShape(50%)). ToShape builds the shape.
+    struct ShapeValue {
+        bool rectangle = false;
+        foundation::CornerSize topStart, topEnd, bottomEnd, bottomStart;
+        foundation::ShapePtr ToShape() const {
+            if (rectangle) return foundation::RectangleShape();
+            return foundation::RoundedCorner(topStart, topEnd, bottomEnd, bottomStart);
+        }
+        constexpr bool operator==(const ShapeValue&) const = default;
     };
 
     // CubicBezierEasing(a, b, c, d) as a constant; ToEasing builds the curve.

@@ -8,30 +8,30 @@
 namespace kiln::material3::tokens {
 
     namespace ShapeTokens {
-        inline constexpr foundation::CornerShape CornerExtraExtraLarge = foundation::CornerShape{ ui::Dp(48.0f), ui::Dp(48.0f), ui::Dp(48.0f), ui::Dp(48.0f) };
-        inline constexpr foundation::CornerShape CornerExtraLarge = foundation::CornerShape{ ui::Dp(28.0f), ui::Dp(28.0f), ui::Dp(28.0f), ui::Dp(28.0f) };
-        inline constexpr foundation::CornerShape CornerExtraLargeIncreased = foundation::CornerShape{ ui::Dp(32.0f), ui::Dp(32.0f), ui::Dp(32.0f), ui::Dp(32.0f) };
-        inline constexpr foundation::CornerShape CornerExtraLargeTop = foundation::CornerShape{ ui::Dp(28.0f), ui::Dp(28.0f), ui::Dp(0.0f), ui::Dp(0.0f) };
-        inline constexpr foundation::CornerShape CornerExtraSmall = foundation::CornerShape{ ui::Dp(4.0f), ui::Dp(4.0f), ui::Dp(4.0f), ui::Dp(4.0f) };
-        inline constexpr foundation::CornerShape CornerExtraSmallTop = foundation::CornerShape{ ui::Dp(4.0f), ui::Dp(4.0f), ui::Dp(0.0f), ui::Dp(0.0f) };
-        inline constexpr foundation::CornerShape CornerFull = foundation::CornerShape{ ui::Dp(0.0f), ui::Dp(0.0f), ui::Dp(0.0f), ui::Dp(0.0f), 50.0f };
-        inline constexpr foundation::CornerShape CornerLarge = foundation::CornerShape{ ui::Dp(16.0f), ui::Dp(16.0f), ui::Dp(16.0f), ui::Dp(16.0f) };
-        inline constexpr foundation::CornerShape CornerLargeEnd = foundation::CornerShape{ ui::Dp(0.0f), ui::Dp(16.0f), ui::Dp(16.0f), ui::Dp(0.0f) };
-        inline constexpr foundation::CornerShape CornerLargeIncreased = foundation::CornerShape{ ui::Dp(20.0f), ui::Dp(20.0f), ui::Dp(20.0f), ui::Dp(20.0f) };
-        inline constexpr foundation::CornerShape CornerLargeStart = foundation::CornerShape{ ui::Dp(16.0f), ui::Dp(0.0f), ui::Dp(0.0f), ui::Dp(16.0f) };
-        inline constexpr foundation::CornerShape CornerLargeTop = foundation::CornerShape{ ui::Dp(16.0f), ui::Dp(16.0f), ui::Dp(0.0f), ui::Dp(0.0f) };
-        inline constexpr foundation::CornerShape CornerMedium = foundation::CornerShape{ ui::Dp(12.0f), ui::Dp(12.0f), ui::Dp(12.0f), ui::Dp(12.0f) };
-        inline constexpr foundation::CornerShape CornerNone = foundation::CornerShape{};
-        inline constexpr foundation::CornerShape CornerSmall = foundation::CornerShape{ ui::Dp(8.0f), ui::Dp(8.0f), ui::Dp(8.0f), ui::Dp(8.0f) };
-        inline constexpr ui::Dp CornerValueExtraExtraLarge = ui::Dp(48.0f);
-        inline constexpr ui::Dp CornerValueExtraLarge = ui::Dp(28.0f);
-        inline constexpr ui::Dp CornerValueExtraLargeIncreased = ui::Dp(32.0f);
-        inline constexpr ui::Dp CornerValueExtraSmall = ui::Dp(4.0f);
-        inline constexpr ui::Dp CornerValueLarge = ui::Dp(16.0f);
-        inline constexpr ui::Dp CornerValueLargeIncreased = ui::Dp(20.0f);
-        inline constexpr ui::Dp CornerValueMedium = ui::Dp(12.0f);
-        inline constexpr ui::Dp CornerValueNone = ui::Dp(0.0f);
-        inline constexpr ui::Dp CornerValueSmall = ui::Dp(8.0f);
+        inline constexpr ShapeValue CornerExtraExtraLarge = ShapeValue{ false, foundation::CornerSize{ 48.0f, 0.0f, 0.0f }, foundation::CornerSize{ 48.0f, 0.0f, 0.0f }, foundation::CornerSize{ 48.0f, 0.0f, 0.0f }, foundation::CornerSize{ 48.0f, 0.0f, 0.0f } };
+        inline constexpr ShapeValue CornerExtraLarge = ShapeValue{ false, foundation::CornerSize{ 28.0f, 0.0f, 0.0f }, foundation::CornerSize{ 28.0f, 0.0f, 0.0f }, foundation::CornerSize{ 28.0f, 0.0f, 0.0f }, foundation::CornerSize{ 28.0f, 0.0f, 0.0f } };
+        inline constexpr ShapeValue CornerExtraLargeIncreased = ShapeValue{ false, foundation::CornerSize{ 32.0f, 0.0f, 0.0f }, foundation::CornerSize{ 32.0f, 0.0f, 0.0f }, foundation::CornerSize{ 32.0f, 0.0f, 0.0f }, foundation::CornerSize{ 32.0f, 0.0f, 0.0f } };
+        inline constexpr ShapeValue CornerExtraLargeTop = ShapeValue{ false, foundation::CornerSize{ 28.0f, 0.0f, 0.0f }, foundation::CornerSize{ 28.0f, 0.0f, 0.0f }, foundation::CornerSize{ 0.0f, 0.0f, 0.0f }, foundation::CornerSize{ 0.0f, 0.0f, 0.0f } };
+        inline constexpr ShapeValue CornerExtraSmall = ShapeValue{ false, foundation::CornerSize{ 4.0f, 0.0f, 0.0f }, foundation::CornerSize{ 4.0f, 0.0f, 0.0f }, foundation::CornerSize{ 4.0f, 0.0f, 0.0f }, foundation::CornerSize{ 4.0f, 0.0f, 0.0f } };
+        inline constexpr ShapeValue CornerExtraSmallTop = ShapeValue{ false, foundation::CornerSize{ 4.0f, 0.0f, 0.0f }, foundation::CornerSize{ 4.0f, 0.0f, 0.0f }, foundation::CornerSize{ 0.0f, 0.0f, 0.0f }, foundation::CornerSize{ 0.0f, 0.0f, 0.0f } };
+        inline constexpr ShapeValue CornerFull = ShapeValue{ false, foundation::CornerSize{ 0.0f, 0.0f, 50.0f }, foundation::CornerSize{ 0.0f, 0.0f, 50.0f }, foundation::CornerSize{ 0.0f, 0.0f, 50.0f }, foundation::CornerSize{ 0.0f, 0.0f, 50.0f } };
+        inline constexpr ShapeValue CornerLarge = ShapeValue{ false, foundation::CornerSize{ 16.0f, 0.0f, 0.0f }, foundation::CornerSize{ 16.0f, 0.0f, 0.0f }, foundation::CornerSize{ 16.0f, 0.0f, 0.0f }, foundation::CornerSize{ 16.0f, 0.0f, 0.0f } };
+        inline constexpr ShapeValue CornerLargeEnd = ShapeValue{ false, foundation::CornerSize{ 0.0f, 0.0f, 0.0f }, foundation::CornerSize{ 16.0f, 0.0f, 0.0f }, foundation::CornerSize{ 16.0f, 0.0f, 0.0f }, foundation::CornerSize{ 0.0f, 0.0f, 0.0f } };
+        inline constexpr ShapeValue CornerLargeIncreased = ShapeValue{ false, foundation::CornerSize{ 20.0f, 0.0f, 0.0f }, foundation::CornerSize{ 20.0f, 0.0f, 0.0f }, foundation::CornerSize{ 20.0f, 0.0f, 0.0f }, foundation::CornerSize{ 20.0f, 0.0f, 0.0f } };
+        inline constexpr ShapeValue CornerLargeStart = ShapeValue{ false, foundation::CornerSize{ 16.0f, 0.0f, 0.0f }, foundation::CornerSize{ 0.0f, 0.0f, 0.0f }, foundation::CornerSize{ 0.0f, 0.0f, 0.0f }, foundation::CornerSize{ 16.0f, 0.0f, 0.0f } };
+        inline constexpr ShapeValue CornerLargeTop = ShapeValue{ false, foundation::CornerSize{ 16.0f, 0.0f, 0.0f }, foundation::CornerSize{ 16.0f, 0.0f, 0.0f }, foundation::CornerSize{ 0.0f, 0.0f, 0.0f }, foundation::CornerSize{ 0.0f, 0.0f, 0.0f } };
+        inline constexpr ShapeValue CornerMedium = ShapeValue{ false, foundation::CornerSize{ 12.0f, 0.0f, 0.0f }, foundation::CornerSize{ 12.0f, 0.0f, 0.0f }, foundation::CornerSize{ 12.0f, 0.0f, 0.0f }, foundation::CornerSize{ 12.0f, 0.0f, 0.0f } };
+        inline constexpr ShapeValue CornerNone = ShapeValue{ true };
+        inline constexpr ShapeValue CornerSmall = ShapeValue{ false, foundation::CornerSize{ 8.0f, 0.0f, 0.0f }, foundation::CornerSize{ 8.0f, 0.0f, 0.0f }, foundation::CornerSize{ 8.0f, 0.0f, 0.0f }, foundation::CornerSize{ 8.0f, 0.0f, 0.0f } };
+        inline constexpr foundation::CornerSize CornerValueExtraExtraLarge = foundation::CornerSize{ 48.0f, 0.0f, 0.0f };
+        inline constexpr foundation::CornerSize CornerValueExtraLarge = foundation::CornerSize{ 28.0f, 0.0f, 0.0f };
+        inline constexpr foundation::CornerSize CornerValueExtraLargeIncreased = foundation::CornerSize{ 32.0f, 0.0f, 0.0f };
+        inline constexpr foundation::CornerSize CornerValueExtraSmall = foundation::CornerSize{ 4.0f, 0.0f, 0.0f };
+        inline constexpr foundation::CornerSize CornerValueLarge = foundation::CornerSize{ 16.0f, 0.0f, 0.0f };
+        inline constexpr foundation::CornerSize CornerValueLargeIncreased = foundation::CornerSize{ 20.0f, 0.0f, 0.0f };
+        inline constexpr foundation::CornerSize CornerValueMedium = foundation::CornerSize{ 12.0f, 0.0f, 0.0f };
+        inline constexpr foundation::CornerSize CornerValueNone = foundation::CornerSize{ 0.0f, 0.0f, 0.0f };
+        inline constexpr foundation::CornerSize CornerValueSmall = foundation::CornerSize{ 8.0f, 0.0f, 0.0f };
     }
 
 }

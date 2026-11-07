@@ -14,7 +14,7 @@ namespace kiln::material3::tokens {
     namespace PrimaryNavigationTabTokens {
         inline constexpr ColorToken ActiveIndicatorColor = ColorSchemeKeyTokens::Primary;
         inline constexpr ui::Dp ActiveIndicatorHeight = ui::Dp(3.0f);
-        inline constexpr foundation::CornerShape ActiveIndicatorShape = foundation::CornerShape{ ui::Dp(3.0f), ui::Dp(3.0f), ui::Dp(3.0f), ui::Dp(3.0f) };
+        inline constexpr ShapeValue ActiveIndicatorShape = ShapeValue{ false, foundation::CornerSize{ 3.0f, 0.0f, 0.0f }, foundation::CornerSize{ 3.0f, 0.0f, 0.0f }, foundation::CornerSize{ 3.0f, 0.0f, 0.0f }, foundation::CornerSize{ 3.0f, 0.0f, 0.0f } };
         inline constexpr ColorToken ContainerColor = ColorSchemeKeyTokens::Surface;
         inline constexpr ui::Dp ContainerElevation = ElevationTokens::Level0;
         inline constexpr ui::Dp ContainerHeight = ui::Dp(48.0f);

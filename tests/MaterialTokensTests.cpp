@@ -14,8 +14,10 @@ static_assert(FilledButtonTokens::ContainerColor == ColorSchemeKeyTokens::Primar
 static_assert(ColorSchemeKeyTokens::Primary.id == 25);
 static_assert(FilledButtonTokens::DisabledContainerOpacity == 0.1f);
 static_assert(ColorLightTokens::Primary.argb == 0xFF6750A4u);   // PaletteTokens.Primary40
-static_assert(ShapeTokens::CornerExtraLargeTop.topStart.value == 28.0f && ShapeTokens::CornerExtraLargeTop.bottomEnd.value == 0.0f);
-static_assert(ShapeTokens::CornerFull.percent == 50.0f);          // CircleShape
+static_assert(ShapeTokens::CornerExtraLargeTop.topStart.dp == 28.0f && ShapeTokens::CornerExtraLargeTop.bottomEnd.dp == 0.0f);
+static_assert(ShapeTokens::CornerFull.topStart.percent == 50.0f);   // CircleShape
+static_assert(ShapeTokens::CornerNone.rectangle);                   // RectangleShape
+static_assert(ShapeTokens::CornerValueSmall.dp == 8.0f);
 static_assert(MotionTokens::DurationMedium2 == 300.0);
 static_assert(MotionTokens::EasingEmphasizedCubicBezier == CubicBezierEasing{ 0.2f, 0.0f, 0.0f, 1.0f });
 
