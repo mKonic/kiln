@@ -181,12 +181,14 @@ namespace kiln::ui {
     }
 
     void DrawScope::DrawRect(Color color, Offset p, Size s) {
+        if (!m_Target.quads) return;   // a headless draw (tests): nothing to record
         if (color.Alpha() * m_State.alpha <= 0) return;
         ApplyTransform();
         m_Target.quads->FillRect({ p.x, p.y, s.width, s.height }, Scaled(ToRgba(color), m_State.alpha));
     }
 
     void DrawScope::DrawRoundRect(Color color, Offset p, Size s, float r) {
+        if (!m_Target.quads) return;   // a headless draw (tests): nothing to record
         if (color.Alpha() * m_State.alpha <= 0) return;
         ApplyTransform();
         m_Target.quads->FillRect({ p.x, p.y, s.width, s.height }, Scaled(ToRgba(color), m_State.alpha), r);
@@ -195,6 +197,7 @@ namespace kiln::ui {
     void DrawScope::DrawParagraph(const ParagraphData& para, Offset p, Color color) { DrawParagraph(para, p, color, {}); }
 
     void DrawScope::DrawParagraph(const ParagraphData& para, Offset p, Color color, std::span<const Color> runColors) {
+        if (!m_Target.quads) return;   // a headless draw (tests): nothing to record
         ApplyTransform();
         for (const GlyphQuad& g : para.glyphs) {
             Color c = color;
@@ -274,6 +277,7 @@ namespace kiln::ui {
     }
 
     void DrawScope::PathCoverage(const gfx::Path& path, const gfx::Stroke* stroke, Rgba tint, const void* paint, int filterRow) {
+        if (!m_Target.quads) return;   // a headless draw (tests): nothing to record
         float ox = 0, oy = 0;
         const auto* e = static_cast<const PathCache::Entry*>(PathMask(path, stroke, ox, oy));
         if (!e) return;

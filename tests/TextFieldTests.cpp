@@ -5,6 +5,7 @@
 #include "kiln/foundation/Focus.h"
 #include "kiln/foundation/Layouts.h"
 #include "kiln/foundation/content/ReceiveContent.h"
+#include "kiln/ui/Draw.h"
 #include "kiln/ui/Pointer.h"
 
 #include <chrono>
@@ -252,11 +253,18 @@ namespace {
             host.hideKeyboard = [this] { ++hides; };
             owner.SetTextInputHost(host);
         }
+        bool draw = false;   // draw each pump (nothing is rendered: draw-driven work runs)
         void Pump(ui::IntSize size = { 120, 300 }) {
             for (int i = 0; i < 3; ++i) {
                 rt::Dispatcher::Main().RunPending();
                 comp.Recompose();
                 owner.MeasureAndLayout(size);
+                if (draw) {
+                    ui::DrawTarget target;
+                    target.viewportWidth = float(size.width);
+                    target.viewportHeight = float(size.height);
+                    owner.Draw(target);
+                }
             }
         }
         void Key(int keyCode, std::uint32_t meta = 0) {
@@ -704,4 +712,37 @@ TEST(DoubleTapAndMouseDragSelect) {
     SendPointer(h, PointerType::Mouse, PointerEventType::Release, 52, 10, false, 0);
     CHECK(state.Selection() == TextRange(1, 5));
     CHECK(FieldHandles(h).empty());
+}
+
+TEST(MagnifierFollowsTheDraggedHandle) {
+    FieldHarness h;
+    h.owner.Config().longPressTimeoutMillis = 40;
+    int creates = 0, dismisses = 0;
+    std::vector<Offset> shown;
+    ui::Owner::MagnifierHost mag;
+    mag.create = [&](const ui::Owner::MagnifierConfig& c) { ++creates; CHECK(c.useTextDefault); return creates; };
+    mag.show = [&](int, Offset src, Offset, float) { shown.push_back(src); };
+    mag.dismiss = [&](int) { ++dismisses; };
+    mag.destroy = [](int) {};
+    mag.size = [](int) { return ui::IntSize{ 100, 48 }; };
+    h.owner.SetMagnifierHost(mag);
+    h.draw = true;
+    TextFieldState state("hello big world");
+    h.comp.SetContent([&] { Column(Modifier{}, [&] { BasicTextField(state, {}, Style20()); }); });
+    h.Pump({ 300, 300 });
+    using ui::PointerEventType;
+    using ui::PointerType;
+    // A long press selects "big"; the drag shows the magnifier on the line's centre (y 12.5).
+    SendPointer(h, PointerType::Touch, PointerEventType::Press, 75, 10, true);
+    WaitMs(h, 80);
+    SendPointer(h, PointerType::Touch, PointerEventType::Move, 110, 10, true);
+    SendPointer(h, PointerType::Touch, PointerEventType::Move, 125, 10, true);
+    CHECK_EQ(creates, 1);
+    CHECK(!shown.empty());
+    if (!shown.empty()) {
+        CHECK_NEAR(shown.back().y, 12.5f, 0.01f);
+        CHECK(shown.back().x > 100 && shown.back().x <= 150);
+    }
+    SendPointer(h, PointerType::Touch, PointerEventType::Release, 125, 10, false);
+    CHECK(dismisses >= 1);
 }

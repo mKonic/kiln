@@ -673,6 +673,62 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
         return d != null && d.hasMimeType("text/*");
     }
 
+    // --- magnifier (PlatformMagnifierFactoryApi29Impl) -------------------------------------
+    // The magnifier copies from the SurfaceView kiln draws into (the window has a hole there).
+    private final android.util.SparseArray<android.widget.Magnifier> magnifiers = new android.util.SparseArray<>();
+    private int nextMagnifier = 1;
+
+    int createMagnifier(boolean useTextDefault, float width, float height, float cornerRadius, float elevation, float initialZoom,
+                        boolean clippingEnabled) {
+        android.widget.Magnifier m;
+        if (useTextDefault) {
+            m = new android.widget.Magnifier(surfaceView);
+        } else {
+            android.widget.Magnifier.Builder b = new android.widget.Magnifier.Builder(surfaceView);
+            if (!Float.isNaN(width) && !Float.isNaN(height)) b.setSize(Math.round(width), Math.round(height));
+            if (!Float.isNaN(cornerRadius)) b.setCornerRadius(cornerRadius);
+            if (!Float.isNaN(elevation)) b.setElevation(elevation);
+            if (!Float.isNaN(initialZoom)) b.setInitialZoom(initialZoom);
+            b.setClippingEnabled(clippingEnabled);
+            m = b.build();
+        }
+        final int handle = nextMagnifier++;
+        magnifiers.put(handle, m);
+        return handle;
+    }
+
+    void showMagnifier(int handle, float sx, float sy, float mx, float my, float zoom) {
+        android.widget.Magnifier m = magnifiers.get(handle);
+        if (m == null) return;
+        if (!Float.isNaN(zoom)) m.setZoom(zoom);
+        // Root pixels to the SurfaceView's.
+        final float ox = surfaceView.getLeft(), oy = surfaceView.getTop();
+        if (!Float.isNaN(mx) && !Float.isNaN(my)) m.show(sx - ox, sy - oy, mx - ox, my - oy);
+        else m.show(sx - ox, sy - oy);
+    }
+
+    void updateMagnifierContent(int handle) {
+        android.widget.Magnifier m = magnifiers.get(handle);
+        if (m != null) m.update();
+    }
+
+    void dismissMagnifier(int handle) {
+        android.widget.Magnifier m = magnifiers.get(handle);
+        if (m != null) m.dismiss();
+    }
+
+    void destroyMagnifier(int handle) {
+        android.widget.Magnifier m = magnifiers.get(handle);
+        if (m == null) return;
+        m.dismiss();
+        magnifiers.remove(handle);
+    }
+
+    int[] magnifierSize(int handle) {
+        android.widget.Magnifier m = magnifiers.get(handle);
+        return m == null ? new int[] { 0, 0 } : new int[] { m.getWidth(), m.getHeight() };
+    }
+
     /** PlatformHapticFeedback: View.performHapticFeedback(HapticFeedbackConstants.*). */
     void performHaptic(int constant) {
         performHapticFeedback(constant);

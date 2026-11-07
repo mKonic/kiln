@@ -18,6 +18,8 @@
 #include "kiln/ui/Semantics.h"
 
 #include <algorithm>
+#include <cmath>
+#include <functional>
 #include <array>
 #include <map>
 #include <optional>
@@ -284,6 +286,29 @@ namespace kiln::ui {
         void SetSystemBarsAppearance(bool lightStatusBars, bool lightNavigationBars) {
             if (m_BarsAppearance) m_BarsAppearance(lightStatusBars, lightNavigationBars);
         }
+        // Magnifier (android.widget.Magnifier, API 28): created per user, shown over a source
+        // point in root pixels (and optionally centred at another), its content refreshed after
+        // each frame that changed what it shows.
+        struct MagnifierConfig {
+            bool useTextDefault = false;   // the platform's text magnifier (Magnifier(view))
+            float widthPx = NAN, heightPx = NAN, cornerRadiusPx = NAN, elevationPx = NAN, initialZoom = NAN;
+            bool clippingEnabled = true;
+            bool operator==(const MagnifierConfig& o) const {
+                auto same = [](float a, float b) { return a == b || (a != a && b != b); };
+                return useTextDefault == o.useTextDefault && same(widthPx, o.widthPx) && same(heightPx, o.heightPx) &&
+                       same(cornerRadiusPx, o.cornerRadiusPx) && same(elevationPx, o.elevationPx) && same(initialZoom, o.initialZoom) &&
+                       clippingEnabled == o.clippingEnabled;
+            }
+        };
+        struct MagnifierHost {
+            std::function<int(const MagnifierConfig&)> create;                          // a handle (> 0)
+            std::function<void(int, Offset source, Offset magnifierCenter, float zoom)> show;   // NaN centre / zoom: default
+            std::function<void(int)> updateContent, dismiss, destroy;
+            std::function<IntSize(int)> size;
+            bool canUpdateZoom = true;                                                  // API 29+
+        };
+        void SetMagnifierHost(MagnifierHost host) { m_Magnifier = std::move(host); }
+        const MagnifierHost& Magnifier() const { return m_Magnifier; }
         // HapticFeedback (View.performHapticFeedback with HapticFeedbackConstants).
         void SetHapticHost(std::function<void(int)> fn) { m_Haptic = std::move(fn); }
         void PerformHapticFeedback(int constant) { if (m_Haptic) m_Haptic(constant); }
@@ -399,6 +424,7 @@ namespace kiln::ui {
         std::function<void(int)> m_Haptic;
         std::function<void(bool, bool)> m_BarsAppearance;
         ClipboardHost m_Clipboard;
+        MagnifierHost m_Magnifier;
         ContentHost m_Content;
         std::optional<std::string> m_LocalClip;   // without a host (tests): an in-process clipboard
         TextToolbarHost m_ToolbarHost;

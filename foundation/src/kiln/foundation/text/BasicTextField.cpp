@@ -6,6 +6,7 @@
 #include "kiln/foundation/Gestures.h"
 #include "kiln/foundation/Hover.h"
 #include "kiln/foundation/Layouts.h"
+#include "kiln/foundation/Magnifier.h"
 #include "kiln/foundation/Semantics.h"
 #include "kiln/foundation/text/BasicText.h"
 #include "kiln/foundation/text/handwriting/StylusHandwriting.h"
@@ -655,8 +656,10 @@ namespace kiln::foundation {
             Orientation orientation = Orientation::Vertical;
             // Identity of the field's rebuilt parts (a rebuild invalidates measurement).
             TransformedTextFieldState* transformed = nullptr;
+            bool isTouchDragInProgress = false;
             bool operator==(const CoreParams& o) const {
-                return field == o.field && isFocused == o.isFocused && isDragHovered == o.isDragHovered && cursorBrush == o.cursorBrush &&
+                return field == o.field && isFocused == o.isFocused && isDragHovered == o.isDragHovered &&
+                       isTouchDragInProgress == o.isTouchDragInProgress && cursorBrush == o.cursorBrush &&
                        selectionBackground == o.selectionBackground && writeable == o.writeable && scrollState == o.scrollState &&
                        orientation == o.orientation && transformed == o.transformed;
             }
@@ -681,6 +684,7 @@ namespace kiln::foundation {
             void OnDetach() override {
                 StopObserving();
                 if (m_Cursor) m_Cursor->CancelAndHide();
+                m_Magnifier.Detach();
             }
             void OnParamsChanged() {
                 const CoreParams& prev = m_Previous;
@@ -694,7 +698,9 @@ namespace kiln::foundation {
                     StartCursorJob();
                 }
                 if (prev.transformed != params.transformed || prev.scrollState != params.scrollState || prev.field != params.field) InvalidateMeasure();
-                if (!(prev.cursorBrush == params.cursorBrush) || prev.selectionBackground != params.selectionBackground) InvalidateDraw();
+                if (!(prev.cursorBrush == params.cursorBrush) || prev.selectionBackground != params.selectionBackground ||
+                    prev.isFocused != params.isFocused || prev.isTouchDragInProgress != params.isTouchDragInProgress)
+                    InvalidateDraw();
                 m_Previous = params;
             }
 
@@ -814,7 +820,43 @@ namespace kiln::foundation {
                     DrawTextLayout(s, *layout, layout->LayoutInput().style);
                 }
                 s.Restore();
+                DrawMagnifier(s);
             }
+
+            // textFieldMagnifierNode (TextFieldMagnifierNodeImpl28): visible while the field is
+            // focused, drag-hovered or touch-dragged; centred on the dragged handle's line.
+            void DrawMagnifier(ContentDrawScope& s) {
+                const bool visible = params.isFocused || params.isDragHovered || params.isTouchDragInProgress;
+                ui::Owner* owner = OwnerOf(*this);
+                if (!visible || !owner || !owner->Magnifier().create) { m_Magnifier.Detach(); return; }
+                Field& f = *params.field;
+                const Offset anchor = selection::PositionInRoot(selection::Coordinates{ Owner(), this, AliveToken() });
+                m_Magnifier.Update([&f](ui::IntSize size) { return MagnifierCenter(f, size); }, owner, anchor, s);
+            }
+            // calculateSelectionMagnifierCenterAndroid
+            static Offset MagnifierCenter(Field& f, ui::IntSize magnifierSize) {
+                constexpr Offset kUnspecified{ NAN, NAN };
+                TextFieldSelectionState& sel = *f.selection;
+                const Offset drag = sel.HandleDragPosition();
+                const TextFieldCharSequence visual = f.transformed->VisualText();
+                if (std::isnan(drag.x) || visual.text.empty()) return kUnspecified;
+                const auto handle = sel.DraggingHandle();
+                if (!handle) return kUnspecified;
+                const int textOffset = *handle == TextFieldHandle::SelectionEnd ? visual.selection.end : visual.selection.start;
+                const auto layout = f.layout->LayoutResult();
+                if (!layout) return kUnspecified;
+                const int line = layout->LineForOffset(textOffset);
+                const float a = layout->LineLeft(line), b = layout->LineRight(line);
+                const float centerX = std::clamp(drag.x, std::min(a, b), std::max(a, b));
+                // Dragged too far from the text: hidden (Editor's rule).
+                if (magnifierSize.width != 0 && std::abs(drag.x - centerX) > float(magnifierSize.width) / 2) return kUnspecified;
+                const float top = layout->LineTop(line), bottom = layout->LineBottom(line);
+                Offset offset{ centerX, (bottom - top) / 2 + top };
+                const auto& coords = f.layout->textLayoutNodeCoordinates;
+                if (coords && coords->IsAttached()) offset = CoerceIn(offset, selection::VisibleBounds(*coords));
+                return f.layout->FromTextLayoutToCore(offset);
+            }
+            SelectionMagnifier m_Magnifier;
 
             void DrawHighlight(ContentDrawScope& s, const std::pair<TextHighlightType, TextRange>& highlight, const text::TextLayoutResult& layout) {
                 const auto& [type, range] = highlight;
@@ -982,8 +1024,9 @@ namespace kiln::foundation {
             const int maxLines = singleLine ? 1 : options.lineLimits.maxHeightInLines;
             Modifier size = Modifier().With<SizeNode>(SizeParams{ options.textStyle, minLines, maxLines, singleLine, singleLine, fl.layout.get() });
             size = ClipToBounds(std::move(size));
+            const bool touchDrag = fl.selection->DirectDragGestureInitiator() == TextFieldSelectionState::InputType::Touch;
             size = size.With<CoreNode>(CoreParams{ field, isWindowAndTextFieldFocused, false, options.cursorBrush, selectionBackground, writeable,
-                                                    &scrollState, orientation, fl.transformed.get() });
+                                                    &scrollState, orientation, fl.transformed.get(), touchDrag });
             // The handles show while the field and its window are focused and the last pointer
             // was a finger.
             const bool showHandles = options.enabled && isWindowAndTextFieldFocused && fl.selection->IsDirectTouchInteraction();

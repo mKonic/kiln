@@ -2,6 +2,7 @@
 // SelectionModifierNode.kt, SelectionHandles.kt, AndroidSelectionHandles.android.kt).
 
 #include "kiln/foundation/text/Selection.h"
+#include "kiln/foundation/Magnifier.h"
 
 #include "kiln/foundation/Compose.h"
 #include "kiln/foundation/Draw.h"
@@ -1099,6 +1100,61 @@ namespace kiln::foundation {
 
     namespace {
         using namespace selection;
+        // selectionMagnifier (Android): while a handle is dragged in touch mode, the text magnifier
+        // over the dragged anchor's line (calculateSelectionMagnifierCenterAndroid).
+        Offset MagnifierCenter(SelectionManager& m, ui::IntSize magnifierSize) {
+            constexpr Offset kUnspecified{ NAN, NAN };
+            const auto sel = m.selection.Get();
+            const auto handle = m.draggingHandle.Get();
+            if (!sel || !handle) return kUnspecified;
+            const AnchorInfo& anchor = *handle == Handle::SelectionStart ? sel->start : sel->end;
+            selection::Selectable* selectable = m.AnchorSelectable(anchor);
+            const auto drag = m.currentDragPosition.Get();
+            if (!selectable || !m.container || !drag) return kUnspecified;
+            const auto coords = selectable->GetLayoutCoordinates();
+            if (!coords) return kUnspecified;
+            const int offset = anchor.offset;
+            if (offset > selectable->GetLastVisibleOffset()) return kUnspecified;
+            // The x tracks the drag itself, within the line's bounds.
+            const float dragX = LocalPositionOf(*coords, *m.container, *drag).x;
+            const auto lineRange = selectable->GetRangeOfLineContaining(offset);
+            float x;
+            if (lineRange.first == lineRange.second) {
+                x = selectable->GetLineLeft(offset);   // empty text
+            } else {
+                const float a = selectable->GetLineLeft(lineRange.first), b = selectable->GetLineRight(lineRange.second - 1);
+                x = std::clamp(dragX, std::min(a, b), std::max(a, b));
+            }
+            if (x == -1) return kUnspecified;
+            // Dragged too far past the text (Editor's rule).
+            if (magnifierSize.width != 0 && std::abs(dragX - x) > float(magnifierSize.width) / 2) return kUnspecified;
+            const float centerY = selectable->GetCenterYForOffset(offset);
+            if (centerY == -1) return kUnspecified;
+            return LocalPositionOf(*m.container, *coords, { x, centerY });
+        }
+        struct MagnifierParams_ { std::shared_ptr<SelectionManager> manager; bool operator==(const MagnifierParams_&) const = default; };
+        struct SelectionMagnifierNode final : ModifierNode, DrawModifier, ui::GlobalPositionAwareModifier {
+            MagnifierParams_ params;
+            explicit SelectionMagnifierNode(MagnifierParams_ p) : params(std::move(p)) {}
+            DrawModifier* AsDraw() override { return this; }
+            ui::GlobalPositionAwareModifier* AsGlobalPositionAware() override { return this; }
+            void OnParamsChanged() { InvalidateDraw(); }
+            void OnDetach() override { m_Magnifier.Detach(); }
+            void OnGloballyPositioned() override { InvalidateDraw(); }
+            void Draw(ContentDrawScope& d) override {
+                d.DrawContent();
+                SelectionManager& m = *params.manager;
+                ui::Owner* owner = Owner() ? Owner()->GetOwner() : nullptr;
+                // shouldShowMagnifier
+                const bool show = m.draggingHandle.Get().has_value() && m.touchMode.Get() && !m.IsTriviallyCollapsedSelection();
+                if (!show || !owner || !owner->Magnifier().create) { m_Magnifier.Detach(); return; }
+                const Offset anchor = PositionInRoot(Coordinates{ Owner(), this, AliveToken() });
+                m_Magnifier.Update([&m](ui::IntSize size) { return MagnifierCenter(m, size); }, owner, anchor, d);
+            }
+            SelectionMagnifier m_Magnifier;
+        };
+
+        using namespace selection;
 
         // The container's onGloballyPositioned: its inner space is the manager's coordinates.
         struct PositionedParams {
@@ -1229,6 +1285,7 @@ namespace kiln::foundation {
         });
         auto mouse = m->mouseObserver;
         mod = PointerInput(std::move(mod), rt::Keys(m, 3), [mouse](PointerInputScope& s) { return AwaitSelectionGestures(s, mouse, nullptr); });
+        mod = mod.With<SelectionMagnifierNode>(MagnifierParams_{ manager });
 
         auto handleObservers = c->Remember<std::shared_ptr<std::pair<std::shared_ptr<TextDragObserver>, std::shared_ptr<TextDragObserver>>>>([manager] {
             return std::make_shared<std::pair<std::shared_ptr<TextDragObserver>, std::shared_ptr<TextDragObserver>>>(

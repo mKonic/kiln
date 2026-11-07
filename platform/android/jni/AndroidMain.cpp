@@ -341,6 +341,36 @@ namespace {
             owner.SetContentHost(std::move(content));
             owner.SetClipboardHost(std::move(clip));
             owner.SetHapticHost([](int constant) { MainEnv()->CallVoidMethod(g_Host->view, haptic, jint(constant)); });
+            {
+                jclass mc = env->GetObjectClass(view);
+                static jmethodID mCreate = env->GetMethodID(mc, "createMagnifier", "(ZFFFFFZ)I");
+                static jmethodID mShow = env->GetMethodID(mc, "showMagnifier", "(IFFFFF)V");
+                static jmethodID mUpdate = env->GetMethodID(mc, "updateMagnifierContent", "(I)V");
+                static jmethodID mDismiss = env->GetMethodID(mc, "dismissMagnifier", "(I)V");
+                static jmethodID mDestroy = env->GetMethodID(mc, "destroyMagnifier", "(I)V");
+                static jmethodID mSize = env->GetMethodID(mc, "magnifierSize", "(I)[I");
+                env->DeleteLocalRef(mc);
+                kiln::ui::Owner::MagnifierHost mag;
+                mag.create = [](const kiln::ui::Owner::MagnifierConfig& c) {
+                    return int(MainEnv()->CallIntMethod(g_Host->view, mCreate, jboolean(c.useTextDefault), c.widthPx, c.heightPx, c.cornerRadiusPx,
+                                                        c.elevationPx, c.initialZoom, jboolean(c.clippingEnabled)));
+                };
+                mag.show = [](int h, kiln::ui::Offset src, kiln::ui::Offset center, float zoom) {
+                    MainEnv()->CallVoidMethod(g_Host->view, mShow, jint(h), src.x, src.y, center.x, center.y, zoom);
+                };
+                mag.updateContent = [](int h) { MainEnv()->CallVoidMethod(g_Host->view, mUpdate, jint(h)); };
+                mag.dismiss = [](int h) { MainEnv()->CallVoidMethod(g_Host->view, mDismiss, jint(h)); };
+                mag.destroy = [](int h) { MainEnv()->CallVoidMethod(g_Host->view, mDestroy, jint(h)); };
+                mag.size = [](int h) -> kiln::ui::IntSize {
+                    JNIEnv* e = MainEnv();
+                    auto a = static_cast<jintArray>(e->CallObjectMethod(g_Host->view, mSize, jint(h)));
+                    jint v[2] = { 0, 0 };
+                    e->GetIntArrayRegion(a, 0, 2, v);
+                    e->DeleteLocalRef(a);
+                    return { int(v[0]), int(v[1]) };
+                };
+                owner.SetMagnifierHost(std::move(mag));
+            }
             kiln::ui::Owner::TextToolbarHost bar;
             bar.show = [](kiln::ui::Rect r, unsigned items) {
                 MainEnv()->CallVoidMethod(g_Host->view, showBar, jint(std::floor(r.left)), jint(std::floor(r.top)), jint(std::ceil(r.right)),
