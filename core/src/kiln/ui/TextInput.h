@@ -6,11 +6,24 @@
 
 #include <cstdint>
 #include <functional>
+#include <array>
 #include <string>
+#include <vector>
+
+#include "kiln/text/AnnotatedString.h"
 
 namespace kiln::ui {
 
-    enum class KeyboardType : std::uint8_t { Text, Ascii, Number, Phone, Uri, Email, Password, NumberPassword, Decimal, PasswordVisible };
+    // KeyboardType: the keyboard an IME shows (EditorInfo.inputType classes and variations).
+    enum class KeyboardType : std::uint8_t {
+        Text, Ascii, Number, Phone, Uri, Email, Password, NumberPassword, Decimal, PasswordVisible,
+        PostalAddress, PersonName, EmailSubject, ShortMessage, LongMessage, Filter, Phonetic, DateTime, Date, Time,
+        NumberSigned, DecimalSigned, DecimalPassword, NumberPasswordSigned, DecimalPasswordSigned,
+    };
+    inline bool IsPasswordKeyboard(KeyboardType t) {
+        return t == KeyboardType::Password || t == KeyboardType::PasswordVisible || t == KeyboardType::NumberPassword ||
+               t == KeyboardType::DecimalPassword || t == KeyboardType::NumberPasswordSigned || t == KeyboardType::DecimalPasswordSigned;
+    }
     enum class ImeAction : std::uint8_t { Default, None, Go, Search, Send, Previous, Next, Done };
     enum class Capitalization : std::uint8_t { None, Characters, Words, Sentences };
 
@@ -20,41 +33,80 @@ namespace kiln::ui {
         Capitalization capitalization = Capitalization::None;
         bool autoCorrect = true;
         bool singleLine = false;
+        std::vector<std::string> hintLocales;   // BCP 47 tags (EditorInfo.hintLocales)
     };
 
+    // The field's visual text as the IME sees it; selection and composition are min / max.
     struct TextInputSnapshot {
         std::u16string text;
         int selStart = 0, selEnd = 0;
         int compStart = -1, compEnd = -1;
     };
 
-    // Implemented by a text field while it holds the session.
+    // CursorAnchorInfo (CursorAnchorInfoBuilder): positions in the text layout node, which
+    // `matrix` (row-major 3x3) maps to the root view; the host adds the view's screen position.
+    struct CursorAnchorInfo {
+        static constexpr int kHasVisibleRegion = 1, kHasInvisibleRegion = 2, kIsRtl = 4;
+        std::array<float, 9> matrix{ 1, 0, 0, 0, 1, 0, 0, 0, 1 };
+        int selStart = 0, selEnd = 0;
+        bool hasInsertionMarker = false;
+        float markerX = 0, markerTop = 0, markerBaseline = 0, markerBottom = 0;
+        int markerFlags = 0;
+        int composingStart = -1;
+        std::u16string composingText;
+        struct CharacterBounds {
+            int index = 0;
+            float left = 0, top = 0, right = 0, bottom = 0;
+            int flags = 0;
+            bool operator==(const CharacterBounds&) const = default;
+        };
+        std::vector<CharacterBounds> characterBounds;
+        bool hasEditorBounds = false;
+        std::array<float, 4> editorBounds{};               // editor and handwriting bounds
+        std::vector<std::array<float, 4>> visibleLineBounds;
+        bool operator==(const CursorAnchorInfo&) const = default;
+    };
+
+    // Implemented by a text field while it holds the session (StatelessInputConnection's
+    // TextInputSession). Edits between BeginBatchEdit and the outermost EndBatchEdit apply together.
     class TextInputSession {
     public:
         virtual ~TextInputSession() = default;
         virtual ImeOptions Options() const = 0;
         virtual TextInputSnapshot Snapshot() const = 0;
-        virtual void CommitText(std::u16string_view text, int newCursorPosition) = 0;
-        virtual void SetComposingText(std::u16string_view text, int newCursorPosition) = 0;
+        virtual bool BeginBatchEdit() { return true; }
+        // False once the outermost batch ended.
+        virtual bool EndBatchEdit() { return false; }
+        virtual void CommitText(std::u16string_view text, int newCursorPosition, bool isTextSuggestionSelected = false) = 0;
+        // `annotations`: the IME's composing spans (underline, colours, style), null for none.
+        virtual void SetComposingText(std::u16string_view text, int newCursorPosition,
+                                      const std::vector<text::Range<text::SpanStyle>>* annotations = nullptr,
+                                      bool isTextSuggestionSelected = false) = 0;
         virtual void SetComposingRegion(int start, int end) = 0;
         virtual void FinishComposingText() = 0;
         virtual void DeleteSurroundingText(int before, int after) = 0;
         virtual void DeleteSurroundingTextInCodePoints(int before, int after) = 0;
         virtual void SetSelection(int start, int end) = 0;
         virtual void PerformImeAction(ImeAction action) = 0;
-        // Caret rectangle in window pixels (CursorAnchorInfo insertion marker): x, top, baseline, bottom.
-        struct Caret { float x = 0, top = 0, baseline = 0, bottom = 0; bool valid = false; };
-        virtual Caret CaretRect() const { return {}; }
+        // The IME moved the selection itself: the pointer is no longer what drives the field.
+        virtual void UpdateDirectTouchInteraction(bool) {}
+        // InputConnection.requestCursorUpdates: CURSOR_UPDATE_IMMEDIATE (1), _MONITOR (2) and the
+        // filters (editor bounds 4, character bounds 8, insertion marker 16, visible line bounds
+        // 32), which the host fills in for API levels without them.
+        virtual void RequestCursorUpdates(int) {}
     };
 
     // Host side (the Android view / dev window).
     struct TextInputHost {
         std::function<void(const ImeOptions&, const TextInputSnapshot&)> start;   // restartInput + show keyboard
         std::function<void()> stop;                                               // hide keyboard + restartInput
-        std::function<void(const TextInputSnapshot&)> updateSelection;           // InputMethodManager.updateSelection
+        // The field changed without a restart: updateExtractedText for a monitoring IME, and
+        // updateSelection when the selection or composition moved.
+        std::function<void(const TextInputSnapshot&, bool selectionChanged)> update;
         std::function<void()> restartInput;                                       // content changed under a composition
         std::function<void()> showKeyboard;                                       // SoftwareKeyboardController.show
         std::function<void()> hideKeyboard;                                       // SoftwareKeyboardController.hide
+        std::function<void(const CursorAnchorInfo&)> cursorAnchorInfo;            // InputMethodManager.updateCursorAnchorInfo
     };
 
 }

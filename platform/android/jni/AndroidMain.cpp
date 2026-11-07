@@ -20,6 +20,7 @@ namespace kiln::android { void InstallImageDecoder(); void InstallAssetReader(JN
 #include <hearth/Log.h>
 #include <hearth/surface/AndroidSurface.h>
 
+#include <android/api-level.h>
 #include <android/choreographer.h>
 #include <android/looper.h>
 #include <sys/eventfd.h>
@@ -669,8 +670,21 @@ namespace {
 
     // EditorInfo.update(imeOptions) (TextInputServiceAndroid:528-682).
     void MapEditorInfo(const kiln::ui::ImeOptions& o, int& inputType, int& imeOptions) {
+        // EditorInfo.update (Compose's EditorInfo.android.kt).
+        using A = kiln::ui::ImeAction;
+        switch (o.imeAction) {
+            case A::Default: imeOptions = o.singleLine ? 6 : 0; break;   // DONE / UNSPECIFIED
+            case A::None: imeOptions = 1; break;
+            case A::Go: imeOptions = 2; break;
+            case A::Search: imeOptions = 3; break;
+            case A::Send: imeOptions = 4; break;
+            case A::Next: imeOptions = 5; break;
+            case A::Done: imeOptions = 6; break;
+            case A::Previous: imeOptions = 7; break;
+        }
         using K = kiln::ui::KeyboardType;
-        constexpr int TEXT = 1, NUMBER = 2, PHONE = 3;
+        constexpr int TEXT = 1, NUMBER = 2, PHONE = 3, DATETIME = 4;
+        constexpr int NUMBER_SIGNED = 0x1000, NUMBER_DECIMAL = 0x2000, NUMBER_PASSWORD = 0x10;
         switch (o.keyboardType) {
             case K::Text: inputType = TEXT; break;
             case K::Ascii: inputType = TEXT; imeOptions |= int(0x80000000u); break;   // IME_FLAG_FORCE_ASCII
@@ -679,33 +693,36 @@ namespace {
             case K::Uri: inputType = TEXT | 0x10; break;
             case K::Email: inputType = TEXT | 0x20; break;
             case K::Password: inputType = TEXT | 0x80; break;
-            case K::NumberPassword: inputType = NUMBER | 0x10; break;
-            case K::Decimal: inputType = NUMBER | 0x2000; break;
+            case K::NumberPassword: inputType = NUMBER | NUMBER_PASSWORD; break;
+            case K::Decimal: inputType = NUMBER | NUMBER_DECIMAL; break;
             case K::PasswordVisible: inputType = TEXT | 0x90; break;
+            case K::PostalAddress: inputType = TEXT | 0x70; break;
+            case K::PersonName: inputType = TEXT | 0x60; break;
+            case K::EmailSubject: inputType = TEXT | 0x30; break;
+            case K::ShortMessage: inputType = TEXT | 0x40; break;
+            case K::LongMessage: inputType = TEXT | 0x50; break;
+            case K::Filter: inputType = TEXT | 0xB0; break;
+            case K::Phonetic: inputType = TEXT | 0xC0; break;
+            case K::DateTime: inputType = DATETIME; break;
+            case K::Date: inputType = DATETIME | 0x10; break;
+            case K::Time: inputType = DATETIME | 0x20; break;
+            case K::NumberSigned: inputType = NUMBER | NUMBER_SIGNED; break;
+            case K::DecimalSigned: inputType = NUMBER | NUMBER_DECIMAL | NUMBER_SIGNED; break;
+            case K::DecimalPassword: inputType = NUMBER | NUMBER_PASSWORD | NUMBER_DECIMAL; break;
+            case K::NumberPasswordSigned: inputType = NUMBER | NUMBER_PASSWORD | NUMBER_SIGNED; break;
+            case K::DecimalPasswordSigned: inputType = NUMBER | NUMBER_PASSWORD | NUMBER_DECIMAL | NUMBER_SIGNED; break;
         }
-        using A = kiln::ui::ImeAction;
-        int action = 0;
-        switch (o.imeAction) {
-            case A::Default: action = o.singleLine ? 6 : 0; break;   // DONE / UNSPECIFIED
-            case A::None: action = 1; break;
-            case A::Go: action = 2; break;
-            case A::Search: action = 3; break;
-            case A::Send: action = 4; break;
-            case A::Next: action = 5; break;
-            case A::Done: action = 6; break;
-            case A::Previous: action = 7; break;
+        if (!o.singleLine && (inputType & 0xF) == TEXT) {
+            inputType |= 0x20000;                                       // TYPE_TEXT_FLAG_MULTI_LINE
+            if (o.imeAction == A::Default) imeOptions |= 0x40000000;    // IME_FLAG_NO_ENTER_ACTION
         }
-        imeOptions |= action;
         if ((inputType & 0xF) == TEXT) {
-            if (!o.singleLine) {
-                inputType |= 0x20000;                                   // TYPE_TEXT_FLAG_MULTI_LINE
-                if (o.imeAction == A::Default) imeOptions |= 0x40000000; // IME_FLAG_NO_ENTER_ACTION
-            }
             using C = kiln::ui::Capitalization;
             if (o.capitalization == C::Characters) inputType |= 0x1000;
             else if (o.capitalization == C::Words) inputType |= 0x2000;
             else if (o.capitalization == C::Sentences) inputType |= 0x4000;
             if (o.autoCorrect) inputType |= 0x8000;
+            if (android_get_device_api_level() >= 37) inputType |= 0x200000;   // TYPE_TEXT_FLAG_ENABLE_TEXT_SUGGESTION_SELECTED
         }
         imeOptions |= 0x2000000;                                        // IME_FLAG_NO_FULLSCREEN
     }
@@ -718,9 +735,10 @@ namespace {
 
     void InstallTextInputHost(JNIEnv* env) {
         jclass cls = env->GetObjectClass(g_Host->view);
-        static jmethodID start = env->GetMethodID(cls, "startInput", "(IIZ)V");
+        static jmethodID start = env->GetMethodID(cls, "startInput", "(IIZLjava/lang/String;)V");
         static jmethodID stop = env->GetMethodID(cls, "stopInput", "()V");
-        static jmethodID update = env->GetMethodID(cls, "updateSelection", "(IIII)V");
+        static jmethodID update = env->GetMethodID(cls, "imeUpdate", "(IIIIZ)V");
+        static jmethodID anchor = env->GetMethodID(cls, "cursorAnchorInfo", "([FLjava/lang/String;)V");
         static jmethodID restart = env->GetMethodID(cls, "restartInputFromNative", "()V");
         static jmethodID show = env->GetMethodID(cls, "showKeyboard", "()V");
         static jmethodID hide = env->GetMethodID(cls, "hideKeyboard", "()V");
@@ -729,11 +747,33 @@ namespace {
         host.start = [](const kiln::ui::ImeOptions& o, const kiln::ui::TextInputSnapshot&) {
             int type = 0, opts = 0;
             MapEditorInfo(o, type, opts);
-            MainEnv()->CallVoidMethod(g_Host->view, start, type, opts, jboolean(o.singleLine));
+            std::string tags;
+            for (const auto& t : o.hintLocales) { if (!tags.empty()) tags += ','; tags += t; }
+            JNIEnv* e = MainEnv();
+            jstring jt = e->NewStringUTF(tags.c_str());
+            e->CallVoidMethod(g_Host->view, start, type, opts, jboolean(o.singleLine), jt);
+            e->DeleteLocalRef(jt);
         };
         host.stop = [] { MainEnv()->CallVoidMethod(g_Host->view, stop); };
-        host.updateSelection = [](const kiln::ui::TextInputSnapshot& s) {
-            MainEnv()->CallVoidMethod(g_Host->view, update, s.selStart, s.selEnd, s.compStart, s.compEnd);
+        host.update = [](const kiln::ui::TextInputSnapshot& s, bool selectionChanged) {
+            MainEnv()->CallVoidMethod(g_Host->view, update, s.selStart, s.selEnd, s.compStart, s.compEnd, jboolean(selectionChanged));
+        };
+        host.cursorAnchorInfo = [](const kiln::ui::CursorAnchorInfo& c) {
+            std::vector<jfloat> d(c.matrix.begin(), c.matrix.end());
+            d.insert(d.end(), { float(c.selStart), float(c.selEnd), c.hasInsertionMarker ? 1.0f : 0.0f, c.markerX, c.markerTop,
+                                c.markerBaseline, c.markerBottom, float(c.markerFlags), float(c.composingStart),
+                                float(c.characterBounds.size()) });
+            for (const auto& b : c.characterBounds) d.insert(d.end(), { float(b.index), b.left, b.top, b.right, b.bottom, float(b.flags) });
+            d.insert(d.end(), { c.hasEditorBounds ? 1.0f : 0.0f, c.editorBounds[0], c.editorBounds[1], c.editorBounds[2], c.editorBounds[3],
+                                float(c.visibleLineBounds.size()) });
+            for (const auto& l : c.visibleLineBounds) d.insert(d.end(), l.begin(), l.end());
+            JNIEnv* e = MainEnv();
+            jfloatArray a = e->NewFloatArray(jsize(d.size()));
+            e->SetFloatArrayRegion(a, 0, jsize(d.size()), d.data());
+            jstring t = e->NewString(reinterpret_cast<const jchar*>(c.composingText.data()), jsize(c.composingText.size()));
+            e->CallVoidMethod(g_Host->view, anchor, a, t);
+            e->DeleteLocalRef(a);
+            e->DeleteLocalRef(t);
         };
         host.restartInput = [] { MainEnv()->CallVoidMethod(g_Host->view, restart); };
         host.showKeyboard = [] { MainEnv()->CallVoidMethod(g_Host->view, show); };
@@ -752,8 +792,60 @@ namespace {
     // Every IME edit is followed by the frame that shows it.
     void AfterIme() { g_Host->app->RequestFrame(); }
 
-    void ImeCommitText(JNIEnv* env, jclass, jstring t, jint c) { if (auto* s = Session()) { s->CommitText(FromJava(env, t), c); AfterIme(); } }
-    void ImeSetComposingText(JNIEnv* env, jclass, jstring t, jint c) { if (auto* s = Session()) { s->SetComposingText(FromJava(env, t), c); AfterIme(); } }
+    jboolean ImeBeginBatchEdit(JNIEnv*, jclass) { auto* s = Session(); return s ? s->BeginBatchEdit() : false; }
+    jboolean ImeEndBatchEdit(JNIEnv*, jclass) {
+        auto* s = Session();
+        if (!s) return false;
+        const bool more = s->EndBatchEdit();
+        AfterIme();
+        return more;
+    }
+    void ImeCommitText(JNIEnv* env, jclass, jstring t, jint c, jboolean suggestion) {
+        if (auto* s = Session()) { s->CommitText(FromJava(env, t), c, suggestion); AfterIme(); }
+    }
+    // The composing spans from KilnInputConnection.annotations (kind, start, end, value quads).
+    void ImeSetComposingText(JNIEnv* env, jclass, jstring t, jint c, jintArray spans, jobjectArray families, jboolean suggestion) {
+        auto* s = Session();
+        if (!s) return;
+        std::vector<kiln::text::Range<kiln::text::SpanStyle>> annotations;
+        if (spans) {
+            const jsize n = env->GetArrayLength(spans);
+            std::vector<jint> v(static_cast<std::size_t>(n));
+            env->GetIntArrayRegion(spans, 0, n, v.data());
+            for (jsize i = 0; i + 3 < n; i += 4) {
+                kiln::text::SpanStyle st;
+                const int value = v[std::size_t(i + 3)];
+                switch (v[std::size_t(i)]) {
+                    case 1: st.background = kiln::ui::Color(std::uint32_t(value)); break;
+                    case 2: st.color = kiln::ui::Color(std::uint32_t(value)); break;
+                    case 3: st.textDecoration = kiln::text::TextDecoration::LineThrough; break;
+                    case 4: st.fontWeight = kiln::text::FontWeight::Bold(); break;
+                    case 5: st.fontStyle = kiln::text::FontStyle::Italic; break;
+                    case 6: st.fontWeight = kiln::text::FontWeight::Bold(); st.fontStyle = kiln::text::FontStyle::Italic; break;
+                    case 7: st.textDecoration = kiln::text::TextDecoration::Underline; break;
+                    case 8: {
+                        auto* js = static_cast<jstring>(env->GetObjectArrayElement(families, value));
+                        const char* chars = env->GetStringUTFChars(js, nullptr);
+                        const std::string name(chars);
+                        env->ReleaseStringUTFChars(js, chars);
+                        env->DeleteLocalRef(js);
+                        using F = kiln::text::FontFamily;
+                        if (name == "cursive") st.fontFamily = F::Cursive();
+                        else if (name == "monospace") st.fontFamily = F::Monospace();
+                        else if (name == "sans-serif") st.fontFamily = F::SansSerif();
+                        else if (name == "serif") st.fontFamily = F::Serif();
+                        else st.fontFamily = F{ F::Kind::SystemName, name, {} };
+                        break;
+                    }
+                    default: continue;
+                }
+                annotations.push_back({ st, v[std::size_t(i + 1)], v[std::size_t(i + 2)], {} });
+            }
+        }
+        s->SetComposingText(FromJava(env, t), c, spans ? &annotations : nullptr, suggestion);
+        AfterIme();
+    }
+    void ImeRequestCursorUpdates(JNIEnv*, jclass, jint mode) { if (auto* s = Session()) s->RequestCursorUpdates(mode); }
     void ImeSetComposingRegion(JNIEnv*, jclass, jint a, jint b) { if (auto* s = Session()) { s->SetComposingRegion(a, b); AfterIme(); } }
     void ImeFinishComposingText(JNIEnv*, jclass) { if (auto* s = Session()) { s->FinishComposingText(); AfterIme(); } }
     void ImeDeleteSurroundingText(JNIEnv*, jclass, jint b, jint a, jboolean cp) {
@@ -773,15 +865,6 @@ namespace {
         const std::u16string t = s ? s->Snapshot().text : std::u16string();
         return env->NewString(reinterpret_cast<const jchar*>(t.data()), jsize(t.size()));
     }
-    jfloatArray ImeGetCaret(JNIEnv* env, jclass) {
-        if (!g_Host) return {};
-        jfloat v[5] = { 0, 0, 0, 0, 0 };
-        if (auto* s = Session()) { auto c = s->CaretRect(); v[0] = c.x; v[1] = c.top; v[2] = c.baseline; v[3] = c.bottom; v[4] = c.valid ? 1.0f : 0.0f; }
-        jfloatArray a = env->NewFloatArray(5);
-        env->SetFloatArrayRegion(a, 0, 5, v);
-        return a;
-    }
-
     jintArray ImeGetSelection(JNIEnv* env, jclass) {
         if (!g_Host) return {};
         jint v[4] = { 0, 0, -1, -1 };
@@ -1164,8 +1247,11 @@ extern "C" JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void*) {
         { "insetsControlReady", "([I)V", reinterpret_cast<void*>(&InsetsControlReady) },
         { "insetsControlEnded", "()V", reinterpret_cast<void*>(&InsetsControlEnded) },
         { "setInsetsAnimation", "(IZ[IFFJ)V", reinterpret_cast<void*>(&SetInsetsAnimation) },
-        { "imeCommitText", "(Ljava/lang/String;I)V", reinterpret_cast<void*>(&ImeCommitText) },
-        { "imeSetComposingText", "(Ljava/lang/String;I)V", reinterpret_cast<void*>(&ImeSetComposingText) },
+        { "imeBeginBatchEdit", "()Z", reinterpret_cast<void*>(&ImeBeginBatchEdit) },
+        { "imeEndBatchEdit", "()Z", reinterpret_cast<void*>(&ImeEndBatchEdit) },
+        { "imeCommitText", "(Ljava/lang/String;IZ)V", reinterpret_cast<void*>(&ImeCommitText) },
+        { "imeSetComposingText", "(Ljava/lang/String;I[I[Ljava/lang/String;Z)V", reinterpret_cast<void*>(&ImeSetComposingText) },
+        { "imeRequestCursorUpdates", "(I)V", reinterpret_cast<void*>(&ImeRequestCursorUpdates) },
         { "imeSetComposingRegion", "(II)V", reinterpret_cast<void*>(&ImeSetComposingRegion) },
         { "imeFinishComposingText", "()V", reinterpret_cast<void*>(&ImeFinishComposingText) },
         { "imeDeleteSurroundingText", "(IIZ)V", reinterpret_cast<void*>(&ImeDeleteSurroundingText) },
@@ -1173,7 +1259,6 @@ extern "C" JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void*) {
         { "imePerformEditorAction", "(I)V", reinterpret_cast<void*>(&ImePerformEditorAction) },
         { "imeGetText", "()Ljava/lang/String;", reinterpret_cast<void*>(&ImeGetText) },
         { "imeGetSelection", "()[I", reinterpret_cast<void*>(&ImeGetSelection) },
-        { "imeGetCaret", "()[F", reinterpret_cast<void*>(&ImeGetCaret) },
         { "backEvent", "(ZFFFIJ)V", reinterpret_cast<void*>(&BackEventJni) },
         { "backCancelled", "()V", reinterpret_cast<void*>(&BackCancelled) },
         { "backInvoked", "()V", reinterpret_cast<void*>(&BackInvoked) },

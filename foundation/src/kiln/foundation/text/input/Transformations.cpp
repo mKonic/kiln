@@ -23,6 +23,7 @@ namespace kiln::foundation {
         out.keyboardType = keyboardType.value_or(ui::KeyboardType::Text);
         out.imeAction = imeAction.value_or(ui::ImeAction::Default);
         out.singleLine = singleLine;
+        out.hintLocales = hintLocales;
         return out;
     }
 

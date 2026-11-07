@@ -401,19 +401,13 @@ namespace kiln::ui {
         m_Input = nullptr;
         if (m_InputHost.stop) m_InputHost.stop();
     }
-    void Owner::NotifyTextInputChanged(TextInputSession& s, bool contentChanged) {
+    void Owner::NotifyTextInputUpdate(TextInputSession& s, bool restartIme, bool selectionChanged) {
         if (m_Input != &s) return;
-        const TextInputSnapshot snap = s.Snapshot();
-        // A content change under an active composition invalidates the IME's view of the text:
-        // restart (RecordingInputConnection / TextInputServiceAndroid.updateState rule).
-        if (contentChanged && snap.compStart >= 0 && m_InputHost.restartInput) { m_InputHost.restartInput(); return; }
-        if (m_InputHost.updateSelection) m_InputHost.updateSelection(snap);
+        if (restartIme) { if (m_InputHost.restartInput) m_InputHost.restartInput(); return; }
+        if (m_InputHost.update) m_InputHost.update(s.Snapshot(), selectionChanged);
     }
-
-    void Owner::NotifyTextInputUpdate(TextInputSession& s, bool restartIme) {
-        if (m_Input != &s) return;
-        if (restartIme && m_InputHost.restartInput) { m_InputHost.restartInput(); return; }
-        if (m_InputHost.updateSelection) m_InputHost.updateSelection(s.Snapshot());
+    void Owner::UpdateCursorAnchorInfo(TextInputSession& s, const CursorAnchorInfo& info) {
+        if (m_Input == &s && m_InputHost.cursorAnchorInfo) m_InputHost.cursorAnchorInfo(info);
     }
 
     // --- 2D search (TwoDimensionalFocusSearch.kt) -----------------------------------------------

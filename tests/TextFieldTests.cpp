@@ -385,3 +385,52 @@ TEST(TapFocusesAndPlacesTheCursor) {
     CHECK(state.Selection() == TextRange(8));
     CHECK_EQ(h.starts, 1);
 }
+
+TEST(ImeSessionBatchesEditsAndReportsState) {
+    FieldHarness h;
+    std::vector<std::pair<ui::TextInputSnapshot, bool>> updates;
+    std::vector<ui::CursorAnchorInfo> anchors;
+    ui::TextInputHost host;
+    host.start = [&](const ui::ImeOptions&, const ui::TextInputSnapshot&) { ++h.starts; };
+    host.update = [&](const ui::TextInputSnapshot& s, bool changed) { updates.push_back({ s, changed }); };
+    host.cursorAnchorInfo = [&](const ui::CursorAnchorInfo& c) { anchors.push_back(c); };
+    h.owner.SetTextInputHost(host);
+    TextFieldState state("ab");
+    std::shared_ptr<const text::TextLayoutResult> laidOut;
+    BasicTextFieldOptions o = Style20();
+    o.onTextLayout = [&](const text::TextLayoutResult& r) { laidOut = std::make_shared<text::TextLayoutResult>(r); };
+    h.comp.SetContent([&] { Column(Modifier{}, [&] { BasicTextField(state, {}, o); }); });
+    h.Pump({ 300, 300 });
+    h.owner.MoveFocus(ui::FocusDirection::Next);
+    h.Pump({ 300, 300 });
+    ui::TextInputSession* s = h.owner.ActiveTextInput();
+    CHECK(s != nullptr);
+    // Edits inside a batch apply together when it ends.
+    s->BeginBatchEdit();
+    s->CommitText(U("c"), 1);
+    s->SetComposingText(U("de"), 1);
+    CHECK(state.Peek().text == U("ab"));
+    CHECK(!s->EndBatchEdit());
+    CHECK(state.Peek().text == U("abcde"));
+    CHECK(!updates.empty() && updates.back().second);
+    CHECK(updates.back().first.compStart == 3 && updates.back().first.compEnd == 5);
+    // The composition draws underlined (DefaultComposingStyle).
+    h.Pump({ 300, 300 });
+    bool underlined = false;
+    for (const auto& r : laidOut->LayoutInput().text.SpanStyles())
+        if (r.start == 3 && r.end == 5 && r.item.textDecoration == text::TextDecoration::Underline) underlined = true;
+    CHECK(underlined);
+    // A selection-only change is reported as such; the IME sees min / max.
+    s->SetSelection(4, 1);
+    CHECK(updates.back().second && updates.back().first.selStart == 1 && updates.back().first.selEnd == 4);
+    // Cursor anchor info: the insertion marker at the cursor and the composing characters.
+    s->SetSelection(5, 5);
+    s->RequestCursorUpdates(1 | 16 | 8);
+    CHECK(!anchors.empty());
+    const ui::CursorAnchorInfo& a = anchors.back();
+    CHECK(a.hasInsertionMarker);
+    CHECK_NEAR(a.markerX, 50, 1e-3f);
+    CHECK_NEAR(a.markerBottom, 25, 1e-3f);
+    CHECK(a.composingStart == 3 && a.composingText == U("de") && a.characterBounds.size() == 2);
+    CHECK(!a.hasEditorBounds);
+}

@@ -35,15 +35,19 @@ namespace kiln::foundation {
             Field& field;
             ui::ImeOptions Options() const override;
             ui::TextInputSnapshot Snapshot() const override;
-            void CommitText(std::u16string_view t, int c) override;
-            void SetComposingText(std::u16string_view t, int c) override;
+            bool BeginBatchEdit() override;
+            bool EndBatchEdit() override;
+            void CommitText(std::u16string_view t, int c, bool suggestion) override;
+            void SetComposingText(std::u16string_view t, int c, const std::vector<text::Range<text::SpanStyle>>* annotations,
+                                  bool suggestion) override;
             void SetComposingRegion(int s, int e) override;
             void FinishComposingText() override;
             void DeleteSurroundingText(int b, int a) override;
             void DeleteSurroundingTextInCodePoints(int b, int a) override;
             void SetSelection(int s, int e) override;
             void PerformImeAction(ui::ImeAction a) override;
-            Caret CaretRect() const override;
+            void UpdateDirectTouchInteraction(bool direct) override;
+            void RequestCursorUpdates(int mode) override;
         };
 
         // CursorAnimationState: visible for 500 ms, hidden for 500 ms, restarting visible on
@@ -92,6 +96,14 @@ namespace kiln::foundation {
             bool nodeFocused = false;                      // focusableNode.focusState.isFocused
             bool windowFocused = true;                     // windowInfo.isWindowFocused
             bool inputSession = false;                     // inputSessionJob != null
+            // The selection and composition the IME last heard of (updateSelection on change).
+            TextRange imeSelection;
+            std::optional<TextRange> imeComposition;
+            // CursorAnchorInfoController
+            bool monitorEnabled = false;
+            bool includeInsertionMarker = false, includeCharacterBounds = false, includeEditorBounds = false, includeLineBounds = false;
+            std::optional<ui::CursorAnchorInfo> lastMonitored;
+            bool anchorCheckPosted = false;
             int imeListener = -1;
             std::weak_ptr<const char> stateAlive;
             // The core's cursor restarts and the decorator's semantics, by token.
@@ -128,7 +140,13 @@ namespace kiln::foundation {
                 ime = std::make_unique<ImeEditCommandScope>(*transformed);
                 stateAlive = s.AliveToken();
                 imeListener = s.AddNotifyImeListener([this](const TextFieldCharSequence&, const TextFieldCharSequence&, bool restartIme) {
-                    if (inputSession && owner) owner->NotifyTextInputUpdate(session, restartIme);
+                    if (inputSession && owner) {
+                        const TextFieldCharSequence visual = transformed->VisualText();
+                        const bool changed = visual.selection != imeSelection || visual.composition != imeComposition;
+                        imeSelection = visual.selection;
+                        imeComposition = visual.composition;
+                        owner->NotifyTextInputUpdate(session, restartIme, changed);
+                    }
                     for (auto it = changeObservers.begin(); it != changeObservers.end();) {
                         const int token = it->first;
                         it->second();
@@ -146,12 +164,114 @@ namespace kiln::foundation {
                 if (!fromTap && !keyboard.showKeyboardOnFocus.value_or(true)) return;
                 if (!owner) return;
                 inputSession = true;
+                const TextFieldCharSequence visual = transformed->VisualText();
+                imeSelection = visual.selection;
+                imeComposition = visual.composition;
+                monitorEnabled = false;
+                lastMonitored.reset();
                 owner->StartTextInput(session);   // replaces any session (and shows the keyboard)
             }
             void DisposeInputSession() {
                 if (inputSession && owner) owner->StopTextInput(session);
                 inputSession = false;
+                monitorEnabled = false;
             }
+
+            // --- CursorAnchorInfoController -----------------------------------------------
+            void RequestCursorUpdates(int mode) {
+                // The host resolved the filters for its API level (none before 33: the marker and
+                // character bounds; no filter on 33+: everything that level has).
+                const bool immediate = mode & 1, monitor = mode & 2;
+                const bool marker = mode & 16, chars = mode & 8, editor = mode & 4, lines = mode & 32;
+                includeInsertionMarker = marker;
+                includeCharacterBounds = chars;
+                includeEditorBounds = editor;
+                includeLineBounds = lines;
+                if (immediate && owner)
+                    if (const auto info = CalculateCursorAnchorInfo()) owner->UpdateCursorAnchorInfo(session, *info);
+                if (monitor && !monitorEnabled) lastMonitored = CalculateCursorAnchorInfo();   // snapshotFlow's first value is dropped
+                monitorEnabled = monitor;
+            }
+            // The monitor's snapshotFlow: after a layout or move, send what changed.
+            void ScheduleCursorAnchorCheck() {
+                if (!monitorEnabled || anchorCheckPosted) return;
+                anchorCheckPosted = true;
+                std::weak_ptr<char> weak = alive;
+                rt::Dispatcher::Main().Post([this, weak] {
+                    if (weak.expired()) return;
+                    anchorCheckPosted = false;
+                    if (!monitorEnabled || !owner) return;
+                    const auto info = CalculateCursorAnchorInfo();
+                    if (!info || info == lastMonitored) return;
+                    lastMonitored = info;
+                    owner->UpdateCursorAnchorInfo(session, *info);
+                });
+            }
+            std::optional<ui::CursorAnchorInfo> CalculateCursorAnchorInfo() const {
+                const auto& tl = layout->textLayoutNodeCoordinates;
+                const auto& core = layout->coreNodeCoordinates;
+                const auto& deco = layout->decoratorNodeCoordinates;
+                if (!tl || !tl->IsAttached() || !core || !core->IsAttached() || !deco || !deco->IsAttached()) return std::nullopt;
+                const auto result = layout->PeekLayoutResult();
+                if (!result) return std::nullopt;
+                const TextFieldCharSequence text = transformed->VisualText();
+                auto boundsIn = [&](const selection::Coordinates& c) {
+                    const Rect v = selection::VisibleBounds(c);
+                    const Offset o = selection::LocalPositionOf(*tl, c, {});
+                    return Rect{ v.left + o.x, v.top + o.y, v.right + o.x, v.bottom + o.y };
+                };
+                const Rect inner = boundsIn(*core), decoration = boundsIn(*deco);
+                ui::CursorAnchorInfo info;
+                info.matrix = tl->ToRoot();
+                info.selStart = text.selection.Min();
+                info.selEnd = text.selection.Max();
+                auto containsInclusive = [](const Rect& r, float x, float y) { return x >= r.left && x <= r.right && y >= r.top && y <= r.bottom; };
+                const text::TextLayoutResult& l = *result;
+                if (includeInsertionMarker && info.selStart >= 0) {
+                    const CursorRect c = l.Cursor(info.selStart);
+                    const float x = std::clamp(c.x, 0.0f, float(l.Size().width));
+                    const bool top = containsInclusive(inner, x, c.top), bottom = containsInclusive(inner, x, c.bottom);
+                    int flags = 0;
+                    if (top || bottom) flags |= ui::CursorAnchorInfo::kHasVisibleRegion;
+                    if (!top || !bottom) flags |= ui::CursorAnchorInfo::kHasInvisibleRegion;
+                    if (l.BidiRunDirection(info.selStart) == text::ResolvedTextDirection::Rtl) flags |= ui::CursorAnchorInfo::kIsRtl;
+                    info.hasInsertionMarker = true;
+                    // Compose passes the cursor's bottom as the baseline.
+                    info.markerX = x; info.markerTop = c.top; info.markerBaseline = c.bottom; info.markerBottom = c.bottom;
+                    info.markerFlags = flags;
+                }
+                if (includeCharacterBounds && text.composition) {
+                    const int start = text.composition->Min(), end = text.composition->Max();
+                    if (start >= 0 && start < end) {
+                        info.composingStart = start;
+                        info.composingText = text.text.substr(std::size_t(start), std::size_t(end - start));
+                        for (int i = start; i < end; ++i) {
+                            const RectF b = l.BoundingBox(i);
+                            const Rect r{ b.x, b.y, b.x + b.w, b.y + b.h };
+                            int flags = 0;
+                            if (inner.left < r.right && r.left < inner.right && inner.top < r.bottom && r.top < inner.bottom)
+                                flags |= ui::CursorAnchorInfo::kHasVisibleRegion;
+                            if (!containsInclusive(inner, r.left, r.top) || !containsInclusive(inner, r.right, r.bottom))
+                                flags |= ui::CursorAnchorInfo::kHasInvisibleRegion;
+                            if (l.BidiRunDirection(i) == text::ResolvedTextDirection::Rtl) flags |= ui::CursorAnchorInfo::kIsRtl;
+                            info.characterBounds.push_back({ i, r.left, r.top, r.right, r.bottom, flags });
+                        }
+                    }
+                }
+                if (includeEditorBounds) {
+                    info.hasEditorBounds = true;
+                    info.editorBounds = { decoration.left, decoration.top, decoration.right, decoration.bottom };
+                }
+                if (includeLineBounds && inner.right > inner.left && inner.bottom > inner.top) {
+                    const int last = std::max(0, l.LineCount() - 1);
+                    const int first = std::clamp(l.LineForVerticalPosition(inner.top), 0, last);
+                    const int lastVisible = std::clamp(l.LineForVerticalPosition(inner.bottom), 0, last);
+                    for (int i = first; i <= lastVisible; ++i)
+                        info.visibleLineBounds.push_back({ l.LineLeft(i), l.LineTop(i), l.LineRight(i), l.LineBottom(i) });
+                }
+                return info;
+            }
+            std::shared_ptr<char> alive = std::make_shared<char>(0);
 
             // onIsFocusedUpdated: with isTextFieldWaitWindowFocusForInputSessionEnabled the
             // session starts once both the field and its window have focus.
@@ -218,34 +338,27 @@ namespace kiln::foundation {
         ui::ImeOptions Session::Options() const { return field.keyboard.ToImeOptions(field.singleLine); }
         ui::TextInputSnapshot Session::Snapshot() const {
             const TextFieldCharSequence v = field.transformed->VisualText();
-            ui::TextInputSnapshot s{ v.text, v.selection.start, v.selection.end, -1, -1 };
+            ui::TextInputSnapshot s{ v.text, v.selection.Min(), v.selection.Max(), -1, -1 };
             if (v.composition) { s.compStart = v.composition->Min(); s.compEnd = v.composition->Max(); }
             return s;
         }
-        void Session::CommitText(std::u16string_view t, int c) { field.ime->CommitText(t, c); }
-        void Session::SetComposingText(std::u16string_view t, int c) { field.ime->SetComposingText(t, c); }
+        bool Session::BeginBatchEdit() { return field.ime->BeginBatchEdit(); }
+        bool Session::EndBatchEdit() { return field.ime->EndBatchEdit(); }
+        void Session::CommitText(std::u16string_view t, int c, bool suggestion) { field.ime->CommitText(t, c, suggestion); }
+        void Session::SetComposingText(std::u16string_view t, int c, const std::vector<text::Range<text::SpanStyle>>* annotations, bool suggestion) {
+            field.ime->SetComposingText(t, c, annotations, suggestion);
+        }
         void Session::SetComposingRegion(int s, int e) { field.ime->SetComposingRegion(s, e); }
         void Session::FinishComposingText() { field.ime->FinishComposingText(); }
         void Session::DeleteSurroundingText(int b, int a) { field.ime->DeleteSurroundingText(b, a); }
         void Session::DeleteSurroundingTextInCodePoints(int b, int a) { field.ime->DeleteSurroundingTextInCodePoints(b, a); }
-        void Session::SetSelection(int s, int e) { field.ime->SetSelection(s, e); }
-        void Session::PerformImeAction(ui::ImeAction a) { field.OnImeActionPerformed(a); }
-        Session::Caret Session::CaretRect() const {
-            // CursorAnchorInfo's insertion marker: the cursor in the text layout, to the window.
-            Caret c;
-            const auto layout = field.layout->PeekLayoutResult();
-            const auto& coords = field.layout->textLayoutNodeCoordinates;
-            if (!layout || !coords || !coords->IsAttached()) return c;
-            const int offset = std::clamp(field.transformed->VisualText().selection.end, 0, layout->LayoutInput().text.Length());
-            const CursorRect r = layout->Cursor(offset);
-            const int line = layout->LineForOffset(offset);
-            const Offset top = selection::PositionInRoot(*coords, { r.x, r.top });
-            const Offset bottom = selection::PositionInRoot(*coords, { r.x, r.bottom });
-            const Offset baseline = selection::PositionInRoot(*coords, { r.x, layout->LineBaseline(line) });
-            c.x = top.x; c.top = top.y; c.bottom = bottom.y; c.baseline = baseline.y;
-            c.valid = true;
-            return c;
+        void Session::SetSelection(int s, int e) {
+            field.ime->SetSelection(s, e);
+            field.selection->SetDirectTouchInteraction(false);
         }
+        void Session::PerformImeAction(ui::ImeAction a) { field.OnImeActionPerformed(a); }
+        void Session::UpdateDirectTouchInteraction(bool direct) { field.selection->SetDirectTouchInteraction(direct); }
+        void Session::RequestCursorUpdates(int mode) { field.RequestCursorUpdates(mode); }
 
         ui::Owner* OwnerOf(const ModifierNode& n) { return n.Owner() ? n.Owner()->GetOwner() : nullptr; }
 
@@ -294,6 +407,7 @@ namespace kiln::foundation {
             }
             void OnGloballyPositioned() override {
                 params.field->layout->decoratorNodeCoordinates = selection::Coordinates{ Owner(), this, AliveToken() };
+                params.field->ScheduleCursorAnchorCheck();
             }
 
             void ApplySemantics(ui::SemanticsConfiguration& c) override {
@@ -539,6 +653,7 @@ namespace kiln::foundation {
 
             void OnGloballyPositioned() override {
                 params.field->layout->coreNodeCoordinates = selection::Coordinates{ Owner(), this, AliveToken() };
+                params.field->ScheduleCursorAnchorCheck();
             }
 
             MeasureResult Measure(MeasureScope& s, Measurable& m, const Constraints& c) override {
@@ -688,6 +803,7 @@ namespace kiln::foundation {
             }
             void OnGloballyPositioned() override {
                 params.field->layout->textLayoutNodeCoordinates = selection::Coordinates{ Owner(), this, AliveToken() };
+                params.field->ScheduleCursorAnchorCheck();
             }
             MeasureResult Measure(MeasureScope& s, Measurable& m, const Constraints& c) override {
                 Field& f = *params.field;
@@ -699,6 +815,7 @@ namespace kiln::foundation {
                 Placeable& p = m.Measure(ui::Constraints::Fixed(size.width, size.height));
                 // A single line field's height follows its first line, so taller characters (an
                 // emoji, a tall script) are not cut.
+                f.ScheduleCursorAnchorCheck();
                 f.layout->SetHeightForSingleLineField(params.singleLine ? std::ceil(result->LineBottom(0)) / s.density : 0.0f);
                 return s.Layout(size.width, size.height, [&p](PlacementScope& ps) { ps.Place(p, 0, 0); },
                                 { { &FirstBaseline, int(std::lround(result->FirstBaseline())) }, { &LastBaseline, int(std::lround(result->LastBaseline())) } });

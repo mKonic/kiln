@@ -529,6 +529,7 @@ namespace kiln::foundation {
     }
 
     bool ImeEditCommandScope::EndBatchEdit() {
+        if (m_Depth == 0) return false;
         --m_Depth;
         if (m_Depth == 0 && !m_Commands.empty()) {
             auto commands = std::move(m_Commands);

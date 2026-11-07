@@ -42,8 +42,11 @@ final class KilnNative {
     static native void setInsetsAnimation(int type, boolean running, int[] sourceTarget, float fraction, float alpha, long durationMillis);
 
     // InputConnection -> the active native text input session.
-    static native void imeCommitText(String text, int newCursorPosition);
-    static native void imeSetComposingText(String text, int newCursorPosition);
+    static native boolean imeBeginBatchEdit();
+    static native boolean imeEndBatchEdit();
+    static native void imeCommitText(String text, int newCursorPosition, boolean suggestionSelected);
+    static native void imeSetComposingText(String text, int newCursorPosition, int[] spans, String[] families, boolean suggestionSelected);
+    static native void imeRequestCursorUpdates(int mode);
     static native void imeSetComposingRegion(int start, int end);
     static native void imeFinishComposingText();
     static native void imeDeleteSurroundingText(int before, int after, boolean codePoints);
@@ -51,7 +54,6 @@ final class KilnNative {
     static native void imePerformEditorAction(int action);
     static native String imeGetText();
     static native int[] imeGetSelection();
-    static native float[] imeGetCaret();
 
     // Back: started/progressed gesture events, cancel, completion.
     static native void backEvent(boolean started, float x, float y, float progress, int edge, long frameTimeMillis);

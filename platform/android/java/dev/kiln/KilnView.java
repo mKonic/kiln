@@ -448,20 +448,20 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
     // --- text input (called from native; spec 02 req. 12) -----------------------------------
     private boolean inputActive;
     private int inputType, imeOptions;
-    private boolean singleLine;
+    private String hintLocales = "";
     private KilnInputConnection connection;
-    private int batch;
-    private boolean selectionPending;
-    private int[] pendingSelection = new int[4];
+    // getExtractedText(GET_EXTRACTED_TEXT_MONITOR): the IME's token for updateExtractedText.
+    private boolean extractedTextMonitor;
+    private int extractedTextToken;
 
     private InputMethodManager imm() { return getContext().getSystemService(InputMethodManager.class); }
 
     /** A field took focus: new EditorInfo, then show the keyboard (coalesced restart + show). */
-    void startInput(int type, int options, boolean singleLine) {
+    void startInput(int type, int options, boolean singleLine, String hintLocales) {
         this.inputActive = true;
         this.inputType = type;
         this.imeOptions = options;
-        this.singleLine = singleLine;
+        this.hintLocales = hintLocales;
         requestOwnerFocus();
         imm().restartInput(this);
         imm().showSoftInput(this, 0);
@@ -480,48 +480,61 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
 
     void hideKeyboard() { imm().hideSoftInputFromWindow(getWindowToken(), 0); }
 
-    /** InputMethodManager.updateSelection, held back until the IME's batch edit ends. */
-    void updateSelection(int selStart, int selEnd, int compStart, int compEnd) {
-        pendingSelection[0] = selStart; pendingSelection[1] = selEnd;
-        pendingSelection[2] = compStart; pendingSelection[3] = compEnd;
-        if (batch > 0) { selectionPending = true; return; }
-        imm().updateSelection(this, selStart, selEnd, compStart, compEnd);
-        if (cursorMonitoring) sendCursorAnchorInfo();
+    /** The field changed without a restart (AndroidTextInputSession.collectImeNotifications). */
+    void imeUpdate(int selStart, int selEnd, int compStart, int compEnd, boolean selectionChanged) {
+        if (!inputActive) return;
+        if (extractedTextMonitor) {
+            imm().updateExtractedText(this, extractedTextToken,
+                    KilnInputConnection.extractedText(KilnNative.imeGetText(), new int[] { selStart, selEnd }));
+        }
+        if (selectionChanged) imm().updateSelection(this, selStart, selEnd, compStart, compEnd);
     }
 
-    private boolean cursorMonitoring;
-    void setCursorMonitoring(boolean on) { cursorMonitoring = on; }
+    void requestExtractedTextUpdates(int token) {
+        extractedTextMonitor = true;
+        extractedTextToken = token;
+    }
 
-    /** CursorAnchorInfo: selection, composing text and the caret, mapped to screen coordinates. */
-    void sendCursorAnchorInfo() {
+    /** ComposeInputMethodManager.sendKeyEvent (API 24+). */
+    void sendKeyEventFromInputMethod(KeyEvent e) { imm().dispatchKeyEventFromInputMethod(this, e); }
+
+    /**
+     * CursorAnchorInfoBuilder.build from native data: matrix[9], selStart, selEnd, hasMarker, x,
+     * top, baseline, bottom, markerFlags, composingStart, n, n x (index, l, t, r, b, flags),
+     * hasEditorBounds, l, t, r, b, lines, lines x (l, t, r, b). Positions are in the text layout,
+     * the matrix maps them to this view; the view's screen position is added here.
+     */
+    void cursorAnchorInfo(float[] d, String composingText) {
         if (!inputActive) return;
-        int[] sel = KilnNative.imeGetSelection();
-        float[] caret = KilnNative.imeGetCaret();
-        String text = KilnNative.imeGetText();
-        CursorAnchorInfo.Builder b = new CursorAnchorInfo.Builder();
-        b.setSelectionRange(sel[0], sel[1]);
-        if (sel[2] >= 0 && sel[3] <= text.length()) b.setComposingText(sel[2], text.substring(sel[2], sel[3]));
-        if (caret[4] != 0) b.setInsertionMarkerLocation(caret[0], caret[1], caret[2], caret[3], CursorAnchorInfo.FLAG_HAS_VISIBLE_REGION);
+        Matrix m = new Matrix();
+        m.setValues(java.util.Arrays.copyOf(d, 9));
         int[] loc = new int[2];
         getLocationOnScreen(loc);
-        Matrix m = new Matrix();
-        m.setTranslate(loc[0], loc[1]);
+        m.postTranslate(loc[0], loc[1]);
+        CursorAnchorInfo.Builder b = new CursorAnchorInfo.Builder();
         b.setMatrix(m);
+        int i = 9;
+        b.setSelectionRange((int) d[i], (int) d[i + 1]);
+        i += 2;
+        if (d[i] != 0) b.setInsertionMarkerLocation(d[i + 1], d[i + 2], d[i + 3], d[i + 4], (int) d[i + 5]);
+        i += 6;
+        final int composingStart = (int) d[i++];
+        if (composingStart >= 0) b.setComposingText(composingStart, composingText);
+        final int chars = (int) d[i++];
+        for (int k = 0; k < chars; k++, i += 6) b.addCharacterBounds((int) d[i], d[i + 1], d[i + 2], d[i + 3], d[i + 4], (int) d[i + 5]);
+        if (d[i] != 0 && android.os.Build.VERSION.SDK_INT >= 33) {
+            android.graphics.RectF r = new android.graphics.RectF(d[i + 1], d[i + 2], d[i + 3], d[i + 4]);
+            b.setEditorBoundsInfo(new android.view.inputmethod.EditorBoundsInfo.Builder()
+                    .setEditorBounds(r).setHandwritingBounds(r).build());
+        }
+        i += 5;
+        final int lines = (int) d[i++];
+        for (int k = 0; k < lines; k++, i += 4)
+            if (android.os.Build.VERSION.SDK_INT >= 34) b.addVisibleLineBounds(d[i], d[i + 1], d[i + 2], d[i + 3]);
         imm().updateCursorAnchorInfo(this, b.build());
     }
 
-    void beginBatch() { batch++; }
-    void endBatch() {
-        if (batch > 0) batch--;
-        if (batch == 0 && selectionPending) {
-            selectionPending = false;
-            imm().updateSelection(this, pendingSelection[0], pendingSelection[1], pendingSelection[2], pendingSelection[3]);
-            if (cursorMonitoring) sendCursorAnchorInfo();
-        }
-    }
-
     boolean isCurrentConnection(KilnInputConnection c) { return c == connection && inputActive; }
-    boolean isSingleLineInput() { return singleLine; }
 
     // --- accessibility (spec 01) --------------------------------------------------------------
     private final KilnAccessibility accessibility = new KilnAccessibility(this);
@@ -705,13 +718,16 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
         if (!inputActive) return null;
         out.inputType = inputType;
         out.imeOptions = imeOptions;
+        // EditorInfo.update
+        if (!hintLocales.isEmpty()) out.hintLocales = android.os.LocaleList.forLanguageTags(hintLocales);
         int[] sel = KilnNative.imeGetSelection();
         out.initialSelStart = sel[0];
         out.initialSelEnd = sel[1];
-        if (android.os.Build.VERSION.SDK_INT >= 30) out.setInitialSurroundingText(KilnNative.imeGetText());
+        out.setInitialSurroundingText(KilnNative.imeGetText());
         if (connection != null) connection.closeConnection();
+        extractedTextMonitor = false;
+        extractedTextToken = 0;
         connection = new KilnInputConnection(this);
-        batch = 0;
         return connection;
     }
 
@@ -849,13 +865,13 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
     protected void onFocusChanged(boolean gainFocus, int direction, Rect previouslyFocusedRect) {
         super.onFocusChanged(gainFocus, direction, previouslyFocusedRect);
         KilnNative.hostFocusChanged(gainFocus);
-    }
+    }   // the SurfaceView child never sees touches
 
     @Override
     public void onWindowFocusChanged(boolean hasWindowFocus) {
         super.onWindowFocusChanged(hasWindowFocus);
         KilnNative.windowFocusChanged(hasWindowFocus);
-    }   // the SurfaceView child never sees touches
+    }
 
     private final ContentObserver animationScaleObserver;
 

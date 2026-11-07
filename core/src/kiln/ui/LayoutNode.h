@@ -326,11 +326,10 @@ namespace kiln::ui {
         void SetTextInputHost(TextInputHost host) { m_InputHost = std::move(host); }
         void StartTextInput(TextInputSession& session);
         void StopTextInput(TextInputSession& session);
-        // The field's state changed outside the IME (programmatic edit, key, gesture).
-        void NotifyTextInputChanged(TextInputSession& session, bool contentChanged);
         // The field's value changed (TextFieldState.NotifyImeListener): restart the IME's
-        // connection when its content changed under a composition, else update the selection.
-        void NotifyTextInputUpdate(TextInputSession& session, bool restartIme);
+        // connection when asked, else report the new state (and whether the selection moved).
+        void NotifyTextInputUpdate(TextInputSession& session, bool restartIme, bool selectionChanged);
+        void UpdateCursorAnchorInfo(TextInputSession& session, const CursorAnchorInfo& info);
         TextInputSession* ActiveTextInput() const { return m_Input; }
         // SoftwareKeyboardController: show or hide the keyboard without ending the session.
         void ShowSoftKeyboard() { if (m_InputHost.showKeyboard) m_InputHost.showKeyboard(); }
