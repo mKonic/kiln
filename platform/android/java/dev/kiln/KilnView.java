@@ -111,15 +111,11 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
 
     // --- accessibility services (rememberAccessibilityServiceState's listeners) -----------------
     private AccessibilityManager accessibilityManager;
-    private final AccessibilityManager.AccessibilityStateChangeListener a11yStateListener = enabled -> pushAccessibilityServices();
-    private final AccessibilityManager.TouchExplorationStateChangeListener touchExplorationListener = enabled -> pushAccessibilityServices();
     private Object a11yServicesListener;   // AccessibilityServicesStateChangeListener (API 33)
 
     private void registerAccessibilityServiceListeners() {
         accessibilityManager = getContext().getSystemService(AccessibilityManager.class);
         if (accessibilityManager == null) return;
-        accessibilityManager.addAccessibilityStateChangeListener(a11yStateListener);
-        accessibilityManager.addTouchExplorationStateChangeListener(touchExplorationListener);
         if (android.os.Build.VERSION.SDK_INT >= 33) {
             AccessibilityManager.AccessibilityServicesStateChangeListener l = am -> pushAccessibilityServices();
             accessibilityManager.addAccessibilityServicesStateChangeListener(l);
@@ -130,8 +126,6 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
 
     private void unregisterAccessibilityServiceListeners() {
         if (accessibilityManager == null) return;
-        accessibilityManager.removeAccessibilityStateChangeListener(a11yStateListener);
-        accessibilityManager.removeTouchExplorationStateChangeListener(touchExplorationListener);
         if (android.os.Build.VERSION.SDK_INT >= 33 && a11yServicesListener != null)
             accessibilityManager.removeAccessibilityServicesStateChangeListener(
                     (AccessibilityManager.AccessibilityServicesStateChangeListener) a11yServicesListener);
@@ -986,6 +980,17 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
         else if (android.os.Build.VERSION.SDK_INT >= 33) setPreferKeepClearRects(rects);
     }
 
+    // --- activity results (the activity's registry; none outside a KilnActivity) ---------------
+    private KilnActivityResults activityResults() {
+        return getContext() instanceof KilnActivity ? ((KilnActivity) getContext()).activityResults : null;
+    }
+    void activityResultRegister(String key) { KilnActivityResults r = activityResults(); if (r != null) r.register(key); }
+    void activityResultUnregister(String key) { KilnActivityResults r = activityResults(); if (r != null) r.unregister(key); }
+    boolean activityResultLaunch(String key, Object[] intent) { KilnActivityResults r = activityResults(); return r != null && r.launch(key, intent); }
+    boolean checkSelfPermissionFromNative(String permission) {
+        return getContext().checkSelfPermission(permission) == android.content.pm.PackageManager.PERMISSION_GRANTED;
+    }
+
     // keepScreenOn / sensitiveContent counts reached zero or one.
     void setKeepScreenOnFromNative(boolean on) { setKeepScreenOn(on); }
     void setContentSensitiveFromNative(boolean sensitive) {
@@ -1183,8 +1188,8 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
         return am == null || am.isRequestFromAccessibilityTool();
     }
 
-    private final AccessibilityManager.AccessibilityStateChangeListener a11yStateListener = on -> accessibility.updateEnabled();
-    private final AccessibilityManager.TouchExplorationStateChangeListener touchExplorationListener = on -> accessibility.updateEnabled();
+    private final AccessibilityManager.AccessibilityStateChangeListener a11yStateListener = on -> { accessibility.updateEnabled(); pushAccessibilityServices(); };
+    private final AccessibilityManager.TouchExplorationStateChangeListener touchExplorationListener = on -> { accessibility.updateEnabled(); pushAccessibilityServices(); };
     private float lastDownX = Float.NaN, lastDownY = Float.NaN;
 
     // canScrollHorizontally / Vertically at the last press (AndroidComposeView): the scroll

@@ -95,6 +95,8 @@ final class KilnNative {
     static native void scrollCaptureImageRequest(int request, int left, int top, int right, int bottom);
     static native void scrollCaptureCancel(int request);
     static native void scrollCaptureEnd(int request);
+    /** An activity result for a native launcher key (the intent as KilnActivityResults passes it). */
+    static native void activityResult(String key, int resultCode, Object[] data);
     static native boolean dragEvent(int action, float x, float y, String[] mimeTypes, String label, String[] items, boolean local, boolean result);
     static native boolean a11yFlushBounds();
     static native boolean a11yCanScroll(boolean vertical, int direction, float x, float y);

@@ -59,6 +59,7 @@ namespace {
 
     void ArmTimer();
     void InstallTextInputHost(JNIEnv* env);
+    jobjectArray JavaIntent(JNIEnv* env, const kiln::ui::Intent& i);
     // A String[] (null entries kept) as UTF-8.
     std::vector<std::optional<std::string>> StringsFromJava(JNIEnv* env, jobjectArray a) {
         std::vector<std::optional<std::string>> out;
@@ -468,6 +469,36 @@ namespace {
                 owner.SetRecommendedTimeoutHost([](int original, int flags) {
                     return std::int64_t(MainEnv()->CallIntMethod(g_Host->view, timeout, jint(original), jint(flags)));
                 });
+                {
+                    jclass avc = env->GetObjectClass(view);
+                    static jmethodID arRegister = env->GetMethodID(avc, "activityResultRegister", "(Ljava/lang/String;)V");
+                    static jmethodID arUnregister = env->GetMethodID(avc, "activityResultUnregister", "(Ljava/lang/String;)V");
+                    static jmethodID arLaunch = env->GetMethodID(avc, "activityResultLaunch", "(Ljava/lang/String;[Ljava/lang/Object;)Z");
+                    static jmethodID arCheck = env->GetMethodID(avc, "checkSelfPermissionFromNative", "(Ljava/lang/String;)Z");
+                    env->DeleteLocalRef(avc);
+                    auto withKey = [](const std::string& k, auto&& fn) {
+                        JNIEnv* e = MainEnv();
+                        jstring js = JavaString(e, kiln::foundation::ToUtf16(k));
+                        auto r = fn(e, js);
+                        e->DeleteLocalRef(js);
+                        return r;
+                    };
+                    kiln::ui::ActivityResultHost ar;
+                    ar.registerKey = [withKey](const std::string& k) { withKey(k, [](JNIEnv* e, jstring js) { e->CallVoidMethod(g_Host->view, arRegister, js); return 0; }); };
+                    ar.unregister = [withKey](const std::string& k) { withKey(k, [](JNIEnv* e, jstring js) { e->CallVoidMethod(g_Host->view, arUnregister, js); return 0; }); };
+                    ar.launch = [withKey](const std::string& k, const kiln::ui::Intent& intent) {
+                        return withKey(k, [&](JNIEnv* e, jstring js) {
+                            jobjectArray ji = JavaIntent(e, intent);
+                            const bool ok = e->CallBooleanMethod(g_Host->view, arLaunch, js, ji);
+                            e->DeleteLocalRef(ji);
+                            return ok;
+                        });
+                    };
+                    ar.checkSelfPermission = [withKey](const std::string& p) {
+                        return withKey(p, [](JNIEnv* e, jstring js) { return bool(e->CallBooleanMethod(g_Host->view, arCheck, js)); });
+                    };
+                    owner.ActivityResults().SetHost(std::move(ar));
+                }
                 owner.SetScreenHost([](bool on) { MainEnv()->CallVoidMethod(g_Host->view, keepOn, jboolean(on)); },
                                     [](bool s) { MainEnv()->CallVoidMethod(g_Host->view, sensitive, jboolean(s)); });
                 owner.SetAutofillHost(std::move(af));
@@ -1604,7 +1635,7 @@ namespace {
     void A11yCheckSemantics(JNIEnv*, jclass) { if (g_Host) A11y().CheckForSemanticsChanges(); }
 
     // A Bundle as {String[] keys, int[] kinds, Object[] values}: kind 0 String, 1 boolean and 2 int
-    // (their text), 3 String[], 4 byte[] (null allowed).
+    // (their text), 3 String[], 4 byte[] (null allowed), 5 Uri (its text), 6 int[], 7 long (text).
     jobjectArray JavaBundle(JNIEnv* env, const kiln::ui::Bundle& b) {
         jclass oc = env->FindClass("java/lang/Object");
         jclass sc = env->FindClass("java/lang/String");
@@ -1630,6 +1661,14 @@ namespace {
                     jv = a;
                 }
             }
+            else if (const auto* u = std::get_if<kiln::ui::BundleUri>(&v)) { kinds.push_back(5); jv = JavaString(env, kiln::foundation::ToUtf16(u->uri)); }
+            else if (const auto* ints = std::get_if<std::vector<std::int32_t>>(&v)) {
+                kinds.push_back(6);
+                jintArray a = env->NewIntArray(jsize(ints->size()));
+                env->SetIntArrayRegion(a, 0, jsize(ints->size()), reinterpret_cast<const jint*>(ints->data()));
+                jv = a;
+            }
+            else if (const auto* l = std::get_if<std::int64_t>(&v)) { kinds.push_back(7); jv = env->NewStringUTF(std::to_string(*l).c_str()); }
             if (jv) {
                 env->SetObjectArrayElement(values, i, jv);
                 env->DeleteLocalRef(jv);
@@ -1682,6 +1721,17 @@ namespace {
                     out.Put(*ks[i], std::move(bytes));
                     break;
                 }
+                case 5: if (v) out.Put(*ks[i], kiln::ui::BundleUri{ text(v) }); break;
+                case 6: {
+                    std::vector<std::int32_t> ints;
+                    if (v) {
+                        ints.resize(std::size_t(env->GetArrayLength(static_cast<jintArray>(v))));
+                        env->GetIntArrayRegion(static_cast<jintArray>(v), 0, jsize(ints.size()), reinterpret_cast<jint*>(ints.data()));
+                    }
+                    out.Put(*ks[i], std::move(ints));
+                    break;
+                }
+                case 7: if (v) out.Put(*ks[i], std::int64_t(std::stoll(text(v)))); break;
                 default: break;
             }
             if (v) env->DeleteLocalRef(v);
@@ -1841,6 +1891,70 @@ namespace {
         if (!g_Host) return;
         // NonCancellable: the end runs to completion even if a request is cancelled.
         g_ScrollCaptureJobs[request] = kiln::rt::Launch(kiln::rt::Dispatcher::Main(), ScrollCaptureEndTask(request));
+        g_Host->app->RequestFrame();
+    }
+
+    // Intents as KilnActivityResults passes them: {action, data, type, String[] categories,
+    // packageName, className, flags (text), extras bundle arrays, String[] clip URIs}.
+    jobjectArray JavaIntent(JNIEnv* env, const kiln::ui::Intent& i) {
+        jclass oc = env->FindClass("java/lang/Object");
+        jobjectArray out = env->NewObjectArray(9, oc, nullptr);
+        env->DeleteLocalRef(oc);
+        auto set = [&](int k, jobject o) { env->SetObjectArrayElement(out, k, o); if (o) env->DeleteLocalRef(o); };
+        auto str = [&](const std::string& s) -> jobject { return JavaString(env, kiln::foundation::ToUtf16(s)); };
+        set(0, i.action.empty() ? nullptr : str(i.action));
+        set(1, i.data ? str(*i.data) : nullptr);
+        set(2, i.type ? str(*i.type) : nullptr);
+        set(3, JavaStrings(env, i.categories));
+        set(4, str(i.packageName));
+        set(5, str(i.className));
+        set(6, env->NewStringUTF(std::to_string(i.flags).c_str()));
+        set(7, JavaBundle(env, i.extras));
+        set(8, JavaStrings(env, i.clipUris));
+        return out;
+    }
+
+    std::optional<kiln::ui::Intent> IntentFromJava(JNIEnv* env, jobjectArray a) {
+        if (!a) return std::nullopt;
+        auto str = [&](int k) -> std::optional<std::string> {
+            auto s = static_cast<jstring>(env->GetObjectArrayElement(a, k));
+            if (!s) return std::nullopt;
+            const char* c = env->GetStringUTFChars(s, nullptr);
+            std::string r(c);
+            env->ReleaseStringUTFChars(s, c);
+            env->DeleteLocalRef(s);
+            return r;
+        };
+        auto strs = [&](int k) {
+            std::vector<std::string> out;
+            auto arr = static_cast<jobjectArray>(env->GetObjectArrayElement(a, k));
+            if (arr) {
+                for (auto& s : StringsFromJava(env, arr)) if (s) out.push_back(*s);
+                env->DeleteLocalRef(arr);
+            }
+            return out;
+        };
+        kiln::ui::Intent i;
+        i.action = str(0).value_or("");
+        i.data = str(1);
+        i.type = str(2);
+        i.categories = strs(3);
+        i.packageName = str(4).value_or("");
+        i.className = str(5).value_or("");
+        i.flags = std::stoi(str(6).value_or("0"));
+        auto extras = static_cast<jobjectArray>(env->GetObjectArrayElement(a, 7));
+        i.extras = BundleFromJava(env, extras);
+        if (extras) env->DeleteLocalRef(extras);
+        i.clipUris = strs(8);
+        return i;
+    }
+
+    void ActivityResultFromJava(JNIEnv* env, jclass, jstring key, jint resultCode, jobjectArray data) {
+        if (!g_Host) return;
+        const char* c = env->GetStringUTFChars(key, nullptr);
+        const std::string k(c);
+        env->ReleaseStringUTFChars(key, c);
+        g_Host->app->GetOwner().ActivityResults().DispatchActivityResult(k, { resultCode, IntentFromJava(env, data) });
         g_Host->app->RequestFrame();
     }
 
@@ -2124,6 +2238,7 @@ extern "C" JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void*) {
         { "scrollCaptureImageRequest", "(IIIII)V", reinterpret_cast<void*>(&ScrollCaptureImageRequest) },
         { "scrollCaptureCancel", "(I)V", reinterpret_cast<void*>(&ScrollCaptureCancel) },
         { "scrollCaptureEnd", "(I)V", reinterpret_cast<void*>(&ScrollCaptureEnd) },
+        { "activityResult", "(Ljava/lang/String;I[Ljava/lang/Object;)V", reinterpret_cast<void*>(&ActivityResultFromJava) },
         { "dragEvent", "(IFF[Ljava/lang/String;Ljava/lang/String;[Ljava/lang/String;ZZ)Z", reinterpret_cast<void*>(&DragEvent) },
         { "credentialResult", "(ILjava/lang/String;[Ljava/lang/Object;)V", reinterpret_cast<void*>(&CredentialResult) },
         { "credentialError", "(ILjava/lang/String;Ljava/lang/String;)V", reinterpret_cast<void*>(&CredentialError) },

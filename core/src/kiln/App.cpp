@@ -187,6 +187,7 @@ namespace kiln {
         ui::Owner* owner = &m_Owner;
         m_Composition->SetContent([registry, dir, nested, tv, sound, insets, windowInfo, haptics, owner, a11yManager, content = std::move(content)] {
             auto* c = rt::Composition::Current();
+            c->Provide(ui::LocalActivityResultRegistry, &owner->ActivityResults(), [c, registry, dir, nested, tv, sound, insets, windowInfo, haptics, owner, a11yManager, content] {
             c->Provide(ui::LocalAccessibilityManager, a11yManager, [c, registry, dir, nested, tv, sound, insets, windowInfo, haptics, owner, content] {
             c->Provide(ui::LocalHapticFeedback, haptics, [c, registry, dir, nested, tv, sound, insets, windowInfo, owner, content] {
             c->Provide(ui::LocalScrollCaptureInProgress, owner->ScrollCaptureInProgress(), [c, registry, dir, nested, tv, sound, insets, windowInfo, content] {
@@ -200,6 +201,7 @@ namespace kiln {
                         });
                     });
                 });
+            });
             });
             });
             });

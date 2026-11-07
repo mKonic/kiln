@@ -7,6 +7,7 @@
 #include <kiln/foundation/text/BasicSecureTextField.h>
 #include <kiln/foundation/Semantics.h>
 #include <kiln/foundation/draganddrop/DragAndDrop.h>
+#include <kiln/foundation/activity/ActivityResult.h>
 #include <kiln/graphics/PathEffect.h>
 #include <kiln/foundation/MeshGradient.h>
 #include <kiln/foundation/Gestures.h>
@@ -200,6 +201,15 @@ namespace {
                     return std::optional(d);
                 }),
                 Alignment::Center(), false, [] { BasicText("Drag me", Padding(Modifier{}, 12_dp, 8_dp), { 16, kOnSurface }); });
+            // Opens the system document picker; the picked URI shows below.
+            auto& pickedUri = kiln::rt::RememberSaveableState(std::string("none"));
+            auto openDocument = RememberLauncherForActivityResult<std::vector<std::string>, contracts::UriResult>(
+                std::make_shared<contracts::OpenDocument>(),
+                [&pickedUri](const contracts::UriResult& uri) { pickedUri.Set(uri.value_or("cancelled")); });
+            Box(Clickable(Background(Padding(Modifier{}, 16_dp, 0_dp), kPrimaryContainer, CornerShape::Pill()),
+                          [openDocument] { openDocument.Launch({ "*/*" }); }),
+                Alignment::Center(), false, [] { BasicText("Pick a document", Padding(Modifier{}, 24_dp, 10_dp), { 14, kOnSurface }); });
+            BasicText("Picked: " + pickedUri.Get(), Padding(Modifier{}, 16_dp, 0_dp), { 14, kVariant });
             // A password field: the last typed character shows briefly when the setting allows.
             auto& password = RememberTextFieldState("");
             Box(Background(Padding(FillMax(Modifier{}, Axis::Horizontal), 16_dp, 0_dp), kContainer, CornerShape::Rounded(12_dp)),

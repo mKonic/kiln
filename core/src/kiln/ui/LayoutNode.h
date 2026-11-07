@@ -18,6 +18,7 @@
 #include "kiln/ui/Autofill.h"
 #include "kiln/ui/DragAndDrop.h"
 #include "kiln/ui/ScrollCapture.h"
+#include "kiln/ui/ActivityResult.h"
 #include "kiln/ui/Insets.h"
 #include "kiln/ui/Locals.h"
 #include "kiln/ui/Semantics.h"
@@ -382,6 +383,7 @@ namespace kiln::ui {
         }
         // A scope over `target` with this owner's density and direction (for an offscreen draw).
         void DrawWith(const DrawTarget& target, const std::function<void(DrawScope&)>& draw);
+        ActivityResultRegistry& ActivityResults() { return m_ActivityResults; }
         ScrollCapture& ScrollCaptureManager() {
             if (!m_ScrollCapture) m_ScrollCapture = std::make_unique<ui::ScrollCapture>(*this);
             return *m_ScrollCapture;
@@ -536,6 +538,7 @@ namespace kiln::ui {
         OffscreenRenderer m_Offscreen;
         rt::State<bool> m_ScrollCaptureInProgress{ false };
         std::unique_ptr<ui::ScrollCapture> m_ScrollCapture;
+        ActivityResultRegistry m_ActivityResults;
         int m_KeepScreenOnCount = 0, m_SensitiveCount = 0;
         std::function<void(int, const std::vector<IntRect>&)> m_ViewRectsHost;
         std::function<std::int64_t(int, int)> m_TimeoutHost;

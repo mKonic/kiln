@@ -17,8 +17,16 @@
 
 namespace kiln::ui {
 
-    // The Bundle values the credential APIs use (a null byte array is an empty optional).
-    using BundleValue = std::variant<std::string, bool, std::int32_t, std::vector<std::string>, std::optional<std::vector<std::uint8_t>>>;
+    // A Uri (Parcelable) in a Bundle or an Intent's extras.
+    struct BundleUri {
+        std::string uri;
+        bool operator==(const BundleUri&) const = default;
+    };
+    // The Bundle values kiln passes to and from the platform (a null byte array is an empty
+    // optional): strings, booleans, ints, string lists / arrays, byte arrays, URIs, int arrays
+    // and longs.
+    using BundleValue = std::variant<std::string, bool, std::int32_t, std::vector<std::string>, std::optional<std::vector<std::uint8_t>>, BundleUri,
+                                     std::vector<std::int32_t>, std::int64_t>;
 
     struct Bundle {
         std::vector<std::pair<std::string, BundleValue>> entries;

@@ -17,11 +17,14 @@ public class KilnActivity extends Activity {
     // One registry per root ("SaveableStateRegistry:<id>", DisposableSaveableStateRegistry.android.kt).
     private static final String SAVED_STATE_KEY = "SaveableStateRegistry:kiln";
     private KilnView view;
+    // The activity result registry: restored before the content registers its launchers.
+    final KilnActivityResults activityResults = new KilnActivityResults(this);
 
     @Override
     protected void onSaveInstanceState(Bundle outState) {
         super.onSaveInstanceState(outState);
         outState.putByteArray(SAVED_STATE_KEY, view.saveState());
+        activityResults.onSaveInstanceState(outState);
     }
 
     @Override
@@ -36,6 +39,7 @@ public class KilnActivity extends Activity {
         window.setNavigationBarColor(Color.TRANSPARENT);
         window.setNavigationBarContrastEnforced(false);
 
+        activityResults.onRestoreInstanceState(savedInstanceState);
         byte[] saved = savedInstanceState != null ? savedInstanceState.getByteArray(SAVED_STATE_KEY) : null;
         view = new KilnView(this, saved);
         setContentView(view);
@@ -71,6 +75,18 @@ public class KilnActivity extends Activity {
         view.release();
         KilnNative.destroy();
         super.onDestroy();
+    }
+
+    @Override
+    @SuppressWarnings("deprecation")
+    protected void onActivityResult(int requestCode, int resultCode, android.content.Intent data) {
+        if (!activityResults.dispatchResult(requestCode, resultCode, data)) super.onActivityResult(requestCode, resultCode, data);
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        if (!activityResults.dispatchPermissionsResult(requestCode, permissions, grantResults))
+            super.onRequestPermissionsResult(requestCode, permissions, grantResults);
     }
 
     @Override

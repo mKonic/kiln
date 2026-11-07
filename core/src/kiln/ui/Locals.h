@@ -64,6 +64,10 @@ namespace kiln::ui {
         return s.enabled && ((touchExploration && s.touchExploration) || (switchAccess && s.switchAccess) || (voiceAccess && s.voiceAccess));
     }
 
+    // LocalActivityResultRegistryOwner's registry (the host's), for activity result launchers.
+    class ActivityResultRegistry;
+    inline rt::Local<ActivityResultRegistry*> LocalActivityResultRegistry{ nullptr };
+
     // LocalScrollCaptureInProgress: a long screenshot is being taken.
     inline rt::Local<bool> LocalScrollCaptureInProgress{ false };
 
