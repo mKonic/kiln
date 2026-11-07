@@ -19,6 +19,7 @@
 #include "kiln/ui/DragAndDrop.h"
 #include "kiln/ui/ScrollCapture.h"
 #include "kiln/ui/Insets.h"
+#include "kiln/ui/Locals.h"
 #include "kiln/ui/Semantics.h"
 
 #include <algorithm>
@@ -405,6 +406,14 @@ namespace kiln::ui {
             if (auto it = m_ViewRects.find(kind); it != m_ViewRects.end()) for (const auto& [k, r] : it->second) out.push_back(r);
             return out;
         }
+        // AccessibilityManager: the recommended timeout (getRecommendedTimeoutMillis with
+        // FLAG_CONTENT_ICONS 1 / TEXT 2 / CONTROLS 4) and the services' state (observable).
+        void SetRecommendedTimeoutHost(std::function<std::int64_t(int originalTimeout, int uiContentFlags)> host) { m_TimeoutHost = std::move(host); }
+        std::int64_t RecommendedTimeoutMillis(int originalTimeout, int flags) const {
+            return m_TimeoutHost ? m_TimeoutHost(originalTimeout, flags) : originalTimeout;
+        }
+        AccessibilityServiceState AccessibilityServices() const { return m_A11yServices.Get(); }
+        void SetAccessibilityServices(AccessibilityServiceState s) { m_A11yServices.Set(s); }
         // keepScreenOn / sensitiveContent counts (AndroidComposeView): the host view keeps the
         // screen on while any node asks, and is marked sensitive (API 35) while any node is.
         void SetScreenHost(std::function<void(bool)> keepScreenOn, std::function<void(bool)> contentSensitive) {
@@ -529,6 +538,8 @@ namespace kiln::ui {
         std::unique_ptr<ui::ScrollCapture> m_ScrollCapture;
         int m_KeepScreenOnCount = 0, m_SensitiveCount = 0;
         std::function<void(int, const std::vector<IntRect>&)> m_ViewRectsHost;
+        std::function<std::int64_t(int, int)> m_TimeoutHost;
+        rt::State<AccessibilityServiceState> m_A11yServices{ AccessibilityServiceState{} };
         std::map<int, std::vector<std::pair<const void*, IntRect>>> m_ViewRects;
         friend class FocusTargetNode;
         friend class AccessibilityDelegate;

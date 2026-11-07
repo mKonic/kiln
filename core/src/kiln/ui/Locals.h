@@ -6,6 +6,7 @@
 #include "kiln/ui/Geometry.h"
 #include "kiln/ui/NestedScroll.h"
 
+#include <cstdint>
 #include <memory>
 
 namespace kiln::ui {
@@ -39,6 +40,29 @@ namespace kiln::ui {
         virtual void PlayClickSound() = 0;
     };
     inline rt::Local<std::shared_ptr<SoundEffect>> LocalSoundEffect{ nullptr };
+
+    // The accessibility services that are on (AccessibilityManager and its listeners).
+    struct AccessibilityServiceState {
+        bool enabled = false, touchExploration = false, switchAccess = false, voiceAccess = false;
+        bool operator==(const AccessibilityServiceState&) const = default;
+    };
+    // AccessibilityManager / LocalAccessibilityManager.
+    class AccessibilityManager {
+    public:
+        virtual ~AccessibilityManager() = default;
+        // calculateRecommendedTimeoutMillis: the user's preferred time for content to stay up
+        // (INT64_MAX: until dismissed).
+        virtual std::int64_t CalculateRecommendedTimeoutMillis(std::int64_t originalTimeoutMillis, bool containsIcons = false,
+                                                               bool containsText = false, bool containsControls = false) const = 0;
+        // The services now (observable).
+        virtual AccessibilityServiceState ServiceState() const = 0;
+    };
+    inline rt::Local<std::shared_ptr<const AccessibilityManager>> LocalAccessibilityManager{ nullptr };
+    // rememberAccessibilityServiceState: an accessibility service the caller cares about is on.
+    inline bool AccessibilityServiceOn(const AccessibilityServiceState& s, bool touchExploration = true, bool switchAccess = true,
+                                       bool voiceAccess = true) {
+        return s.enabled && ((touchExploration && s.touchExploration) || (switchAccess && s.switchAccess) || (voiceAccess && s.voiceAccess));
+    }
 
     // LocalScrollCaptureInProgress: a long screenshot is being taken.
     inline rt::Local<bool> LocalScrollCaptureInProgress{ false };

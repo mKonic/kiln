@@ -83,6 +83,7 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
             unregisterPasswordObserver = () -> context.getContentResolver().unregisterContentObserver(o);
         }
         pushPasswordVisibility();
+        registerAccessibilityServiceListeners();
         pushViewConfiguration();
         installInsets();
     }
@@ -108,8 +109,60 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
         KilnNative.setPasswordVisibility((touch ? 1 : 0) | (physical ? 2 : 0));
     }
 
+    // --- accessibility services (rememberAccessibilityServiceState's listeners) -----------------
+    private AccessibilityManager accessibilityManager;
+    private final AccessibilityManager.AccessibilityStateChangeListener a11yStateListener = enabled -> pushAccessibilityServices();
+    private final AccessibilityManager.TouchExplorationStateChangeListener touchExplorationListener = enabled -> pushAccessibilityServices();
+    private Object a11yServicesListener;   // AccessibilityServicesStateChangeListener (API 33)
+
+    private void registerAccessibilityServiceListeners() {
+        accessibilityManager = getContext().getSystemService(AccessibilityManager.class);
+        if (accessibilityManager == null) return;
+        accessibilityManager.addAccessibilityStateChangeListener(a11yStateListener);
+        accessibilityManager.addTouchExplorationStateChangeListener(touchExplorationListener);
+        if (android.os.Build.VERSION.SDK_INT >= 33) {
+            AccessibilityManager.AccessibilityServicesStateChangeListener l = am -> pushAccessibilityServices();
+            accessibilityManager.addAccessibilityServicesStateChangeListener(l);
+            a11yServicesListener = l;
+        }
+        pushAccessibilityServices();
+    }
+
+    private void unregisterAccessibilityServiceListeners() {
+        if (accessibilityManager == null) return;
+        accessibilityManager.removeAccessibilityStateChangeListener(a11yStateListener);
+        accessibilityManager.removeTouchExplorationStateChangeListener(touchExplorationListener);
+        if (android.os.Build.VERSION.SDK_INT >= 33 && a11yServicesListener != null)
+            accessibilityManager.removeAccessibilityServicesStateChangeListener(
+                    (AccessibilityManager.AccessibilityServicesStateChangeListener) a11yServicesListener);
+    }
+
+    // switchAccessEnabled / voiceAccessEnabled: an enabled generic-feedback service whose
+    // settings activity names it.
+    private boolean serviceEnabled(String activityName) {
+        for (android.accessibilityservice.AccessibilityServiceInfo info :
+                accessibilityManager.getEnabledAccessibilityServiceList(android.accessibilityservice.AccessibilityServiceInfo.FEEDBACK_GENERIC)) {
+            String s = info.getSettingsActivityName();
+            if (s != null && s.toLowerCase(java.util.Locale.ROOT).contains(activityName.toLowerCase(java.util.Locale.ROOT))) return true;
+        }
+        return false;
+    }
+
+    private void pushAccessibilityServices() {
+        AccessibilityManager am = accessibilityManager;
+        boolean sdk33 = android.os.Build.VERSION.SDK_INT >= 33;
+        KilnNative.setAccessibilityServices(am.isEnabled(), am.isTouchExplorationEnabled(),
+                sdk33 && serviceEnabled("SwitchAccess"), sdk33 && serviceEnabled("VoiceAccess"));
+    }
+
+    /** AccessibilityManager.getRecommendedTimeoutMillis. */
+    int recommendedTimeoutMillis(int originalTimeout, int uiContentFlags) {
+        return accessibilityManager != null ? accessibilityManager.getRecommendedTimeoutMillis(originalTimeout, uiContentFlags) : originalTimeout;
+    }
+
     /** The activity is going: settings observers and the text services stop. */
     void release() {
+        unregisterAccessibilityServiceListeners();
         getContext().getContentResolver().unregisterContentObserver(animationScaleObserver);
         if (unregisterPasswordObserver != null) unregisterPasswordObserver.run();
         unregisterPasswordObserver = null;

@@ -22,6 +22,7 @@ final class KilnNative {
     static native void setAnimationScale(float scale);
     /** The show-passwords setting: bit 1 touch input, bit 2 physical keyboards. */
     static native void setPasswordVisibility(int bits);
+    static native void setAccessibilityServices(boolean enabled, boolean touchExploration, boolean switchAccess, boolean voiceAccess);
     static native void setLayoutDirection(boolean rtl);
     static native void touchEvent(int action, int actionIndex, long eventTime, int[] ids, float[] xy,
                                   int[] toolTypes, int buttons, int metaState, int classification, float hscroll, float vscroll,

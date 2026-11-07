@@ -464,6 +464,10 @@ namespace {
                     e->CallVoidMethod(g_Host->view, viewRects, jint(kind), a);
                     e->DeleteLocalRef(a);
                 });
+                static jmethodID timeout = env->GetMethodID(env->GetObjectClass(view), "recommendedTimeoutMillis", "(II)I");
+                owner.SetRecommendedTimeoutHost([](int original, int flags) {
+                    return std::int64_t(MainEnv()->CallIntMethod(g_Host->view, timeout, jint(original), jint(flags)));
+                });
                 owner.SetScreenHost([](bool on) { MainEnv()->CallVoidMethod(g_Host->view, keepOn, jboolean(on)); },
                                     [](bool s) { MainEnv()->CallVoidMethod(g_Host->view, sensitive, jboolean(s)); });
                 owner.SetAutofillHost(std::move(af));
@@ -834,6 +838,12 @@ namespace {
     void SetFontWeightAdjustment(JNIEnv*, jclass, jint adjustment) {
         if (!g_Host) return;
         g_Host->app->SetFontWeightAdjustment(adjustment);
+    }
+
+    void SetAccessibilityServices(JNIEnv*, jclass, jboolean enabled, jboolean touch, jboolean switchAccess, jboolean voice) {
+        if (!g_Host) return;
+        g_Host->app->GetOwner().SetAccessibilityServices({ bool(enabled), bool(touch), bool(switchAccess), bool(voice) });
+        g_Host->app->RequestFrame();
     }
 
     void SetPasswordVisibility(JNIEnv*, jclass, jint bits) {
@@ -2059,6 +2069,7 @@ extern "C" JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void*) {
         { "classifierResult", "(IZIII[Ljava/lang/String;Z)V", reinterpret_cast<void*>(&ClassifierResult) },
         { "setAnimationScale", "(F)V", reinterpret_cast<void*>(&SetAnimationScale) },
         { "setPasswordVisibility", "(I)V", reinterpret_cast<void*>(&SetPasswordVisibility) },
+        { "setAccessibilityServices", "(ZZZZ)V", reinterpret_cast<void*>(&SetAccessibilityServices) },
         { "setLayoutDirection", "(Z)V", reinterpret_cast<void*>(&SetLayoutDirection) },
         { "touchEvent", "(IIJ[I[F[IIIIFF[J[F[F)V", reinterpret_cast<void*>(&TouchEvent) },
         { "keyEvent", "(IIIIIJI)Z", reinterpret_cast<void*>(&KeyEvent) },

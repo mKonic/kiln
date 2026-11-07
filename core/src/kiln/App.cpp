@@ -164,6 +164,19 @@ namespace kiln {
             void PerformHapticFeedback(ui::HapticFeedbackType type) override { owner->PerformHapticFeedback(int(type)); }
         };
         std::shared_ptr<ui::HapticFeedback> haptics = std::make_shared<HostHaptics>(&m_Owner);
+        // AndroidAccessibilityManager.
+        struct HostA11yManager final : ui::AccessibilityManager {
+            ui::Owner* owner;
+            explicit HostA11yManager(ui::Owner* o) : owner(o) {}
+            std::int64_t CalculateRecommendedTimeoutMillis(std::int64_t original, bool icons, bool text, bool controls) const override {
+                if (original >= INT32_MAX) return original;
+                const int flags = (icons ? 1 : 0) | (text ? 2 : 0) | (controls ? 4 : 0);
+                const std::int64_t r = owner->RecommendedTimeoutMillis(int(original), flags);
+                return r == INT32_MAX ? INT64_MAX : r;
+            }
+            ui::AccessibilityServiceState ServiceState() const override { return owner->AccessibilityServices(); }
+        };
+        std::shared_ptr<const ui::AccessibilityManager> a11yManager = std::make_shared<HostA11yManager>(&m_Owner);
         ui::WindowInsetsHolder* insets = &m_Owner.Insets();
         struct HostWindowInfo final : ui::WindowInfo {
             ui::Owner* owner;
@@ -172,8 +185,9 @@ namespace kiln {
         };
         std::shared_ptr<const ui::WindowInfo> windowInfo = std::make_shared<HostWindowInfo>(&m_Owner);
         ui::Owner* owner = &m_Owner;
-        m_Composition->SetContent([registry, dir, nested, tv, sound, insets, windowInfo, haptics, owner, content = std::move(content)] {
+        m_Composition->SetContent([registry, dir, nested, tv, sound, insets, windowInfo, haptics, owner, a11yManager, content = std::move(content)] {
             auto* c = rt::Composition::Current();
+            c->Provide(ui::LocalAccessibilityManager, a11yManager, [c, registry, dir, nested, tv, sound, insets, windowInfo, haptics, owner, content] {
             c->Provide(ui::LocalHapticFeedback, haptics, [c, registry, dir, nested, tv, sound, insets, windowInfo, owner, content] {
             c->Provide(ui::LocalScrollCaptureInProgress, owner->ScrollCaptureInProgress(), [c, registry, dir, nested, tv, sound, insets, windowInfo, content] {
             c->Provide(ui::LocalWindowInfo, windowInfo.get(), [c, registry, dir, nested, tv, sound, insets, content] {
@@ -186,6 +200,7 @@ namespace kiln {
                         });
                     });
                 });
+            });
             });
             });
             });
