@@ -99,6 +99,11 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
             if (!any) return;
         }
         currentInsets = insets;
+        // Flutter's TextInputPlugin: when the keyboard hides, restart the input so keyboards that
+        // cache state (Samsung Keyboard) start fresh.
+        final boolean imeVisible = insets.isVisible(WindowInsets.Type.ime());
+        if (imeWasVisible && !imeVisible && inputActive) imm().restartInput(this);
+        imeWasVisible = imeVisible;
         int[] data = new int[TYPES.length * 9 + 1 + rects.size() * 4];
         for (int i = 0; i < TYPES.length; i++) {
             android.graphics.Insets cur, max;
@@ -452,6 +457,7 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
     private int inputType, imeOptions;
     private String hintLocales = "";
     private boolean acceptsContent;
+    private boolean imeWasVisible;
     private boolean stylusHandwriting;
 
     /** ComposeInputMethodManagerImplApi34.startStylusHandwriting. */
