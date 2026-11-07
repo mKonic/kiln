@@ -41,8 +41,13 @@ namespace kiln::ui {
         std::uint32_t unicode = 0;
         int repeatCount = 0;
         std::int64_t uptimeMillis = 0;
+        // Where it came from: the IME (KeyEvent.FLAG_SOFT_KEYBOARD), a physical alphabetic
+        // keyboard (isFromHardwareSource), any keyboard source (InputDevice.SOURCE_KEYBOARD).
+        bool fromSoftKeyboard = false, fromHardwareSource = false, fromKeyboardSource = true;
         bool Shift() const { return metaState & kMetaShift; }
         bool Ctrl() const { return metaState & kMetaCtrl; }
+        bool Alt() const { return metaState & kMetaAlt; }
+        bool Meta() const { return metaState & kMetaMeta; }
     };
 
     class KeyInputModifier {

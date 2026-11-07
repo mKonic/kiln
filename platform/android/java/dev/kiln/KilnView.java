@@ -57,6 +57,7 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
         DisplayMetrics metrics = getResources().getDisplayMetrics();
         KilnNative.create(this, text, context.getAssets(), metrics.density, getResources().getConfiguration().fontScale, savedState);
         KilnNative.setFontWeightAdjustment(fontWeightAdjustment(getResources().getConfiguration()));
+        KilnNative.windowFocusChanged(hasWindowFocus());
 
         // ANIMATOR_DURATION_SCALE, observed for changes (WindowRecomposer:95-135).
         animationScaleObserver = new ContentObserver(new Handler(Looper.getMainLooper())) {
@@ -475,6 +476,10 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
 
     void restartInputFromNative() { if (inputActive) imm().restartInput(this); }
 
+    void showKeyboard() { if (inputActive) imm().showSoftInput(this, 0); }
+
+    void hideKeyboard() { imm().hideSoftInputFromWindow(getWindowToken(), 0); }
+
     /** InputMethodManager.updateSelection, held back until the IME's batch edit ends. */
     void updateSelection(int selStart, int selEnd, int compStart, int compEnd) {
         pendingSelection[0] = selStart; pendingSelection[1] = selEnd;
@@ -743,11 +748,23 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
         super.onDetachedFromWindow();
     }
 
+    /** 1: from the IME (FLAG_SOFT_KEYBOARD); 2: a physical alphabetic keyboard
+     *  (isFromHardwareSource); 4: a keyboard source. */
+    private static int keySource(KeyEvent e) {
+        int s = 0;
+        final boolean soft = (e.getFlags() & KeyEvent.FLAG_SOFT_KEYBOARD) != 0;
+        if (soft) s |= 1;
+        android.view.InputDevice d = e.getDevice();
+        if (d != null && !d.isVirtual() && d.getKeyboardType() == android.view.InputDevice.KEYBOARD_TYPE_ALPHABETIC && !soft) s |= 2;
+        if (e.isFromSource(InputDevice.SOURCE_KEYBOARD)) s |= 4;
+        return s;
+    }
+
     // Keys before the IME (dispatchKeyEventPreIme): onInterceptKeyBeforeSoftKeyboard, when focused.
     @Override
     public boolean dispatchKeyEventPreIme(KeyEvent e) {
         if (isFocused() && KilnNative.keyEventPreIme(e.getAction(), e.getKeyCode(), e.getMetaState(), e.getUnicodeChar(),
-                e.getRepeatCount(), e.getEventTime())) return true;
+                e.getRepeatCount(), e.getEventTime(), keySource(e))) return true;
         return super.dispatchKeyEventPreIme(e);
     }
 
@@ -755,7 +772,7 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
     public boolean dispatchKeyEvent(KeyEvent e) {
         if (back.onKey(e)) return true;
         if (KilnNative.keyEvent(e.getAction(), e.getKeyCode(), e.getMetaState(), e.getUnicodeChar(),
-                e.getRepeatCount(), e.getEventTime())) return true;
+                e.getRepeatCount(), e.getEventTime(), keySource(e))) return true;
         return super.dispatchKeyEvent(e);
     }
 
@@ -832,6 +849,12 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
     protected void onFocusChanged(boolean gainFocus, int direction, Rect previouslyFocusedRect) {
         super.onFocusChanged(gainFocus, direction, previouslyFocusedRect);
         KilnNative.hostFocusChanged(gainFocus);
+    }
+
+    @Override
+    public void onWindowFocusChanged(boolean hasWindowFocus) {
+        super.onWindowFocusChanged(hasWindowFocus);
+        KilnNative.windowFocusChanged(hasWindowFocus);
     }   // the SurfaceView child never sees touches
 
     private final ContentObserver animationScaleObserver;

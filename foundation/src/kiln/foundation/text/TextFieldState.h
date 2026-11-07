@@ -120,6 +120,8 @@ namespace kiln::foundation {
 
         // Incremented on every change (lets the platform session detect external edits).
         std::uint64_t Version() const { return m_Version; }
+        // Expires when the state is destroyed (holders that may outlive it).
+        std::weak_ptr<const char> AliveToken() const { return m_Alive; }
 
         // Saver: text, selection and the undo history.
         struct Saved { std::u16string text; TextRange selection; TextUndoManager::Saved undo; };
@@ -147,6 +149,7 @@ namespace kiln::foundation {
         std::vector<std::pair<int, NotifyImeListener>> m_ImeListeners;
         int m_NextListener = 0;
         std::uint64_t m_Version = 0;
+        std::shared_ptr<const char> m_Alive = std::make_shared<const char>(0);
     };
 
     // rememberTextFieldState: the text, selection and undo history survive re-creation.

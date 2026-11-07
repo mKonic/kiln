@@ -22,8 +22,8 @@ final class KilnNative {
     static native void touchEvent(int action, int actionIndex, long eventTime, int[] ids, float[] xy,
                                   int[] toolTypes, int buttons, int metaState, int classification, float hscroll, float vscroll,
                                   long[] historyTimes, float[] historyXy, float[] pan);
-    static native boolean keyEvent(int action, int keyCode, int metaState, int unicode, int repeatCount, long eventTime);
-    static native boolean keyEventPreIme(int action, int keyCode, int metaState, int unicode, int repeatCount, long eventTime);
+    static native boolean keyEvent(int action, int keyCode, int metaState, int unicode, int repeatCount, long eventTime, int source);
+    static native boolean keyEventPreIme(int action, int keyCode, int metaState, int unicode, int repeatCount, long eventTime, int source);
     static native boolean rotary(float verticalPixels, float horizontalPixels, long eventTime, int deviceId);
     static native boolean indirectPointer(int action, int actionIndex, long eventTime, int[] ids, float[] xy,
                                           float[] pressures, long[] historyTimes, float[] historyXy, int axis);
@@ -35,6 +35,7 @@ final class KilnNative {
     static native boolean hostRequestFocus(int direction, boolean hasRect, float left, float top, float right,
                                            float bottom, boolean hostHasFocus);
     static native void hostFocusChanged(boolean focused);
+    static native void windowFocusChanged(boolean focused);
     static native void setWindowInsets(int[] data);
     static native void insetsControlReady(int[] hiddenShownCurrent);
     static native void insetsControlEnded();

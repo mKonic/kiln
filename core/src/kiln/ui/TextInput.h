@@ -53,6 +53,8 @@ namespace kiln::ui {
         std::function<void()> stop;                                               // hide keyboard + restartInput
         std::function<void(const TextInputSnapshot&)> updateSelection;           // InputMethodManager.updateSelection
         std::function<void()> restartInput;                                       // content changed under a composition
+        std::function<void()> showKeyboard;                                       // SoftwareKeyboardController.show
+        std::function<void()> hideKeyboard;                                       // SoftwareKeyboardController.hide
     };
 
 }

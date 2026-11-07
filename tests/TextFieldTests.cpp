@@ -1,7 +1,10 @@
 #include "Check.h"
+#include "FakeText.h"
 
 #include "kiln/foundation/text/BasicTextField.h"
 #include "kiln/foundation/Focus.h"
+#include "kiln/foundation/Layouts.h"
+#include "kiln/ui/Pointer.h"
 
 using namespace kiln;
 using namespace kiln::foundation;
@@ -185,9 +188,9 @@ TEST(FocusStartsAndStopsTheInputSession) {
     host.stop = [&] { ++stops; };
     owner.SetTextInputHost(host);
     TextFieldState state("hi");
-    TextFieldOptions opt;
-    opt.ime.keyboardType = ui::KeyboardType::Email;
-    opt.ime.singleLine = true;
+    BasicTextFieldOptions opt;
+    opt.keyboardOptions.keyboardType = ui::KeyboardType::Email;
+    opt.lineLimits = TextFieldLineLimits::SingleLine();
     comp.SetContent([&] { Column(Modifier{}, [&] { BasicTextField(state, {}, opt); }); });
     comp.Recompose();
     owner.MeasureAndLayout({ 200, 100 });
@@ -226,4 +229,159 @@ TEST(HardwareKeysTypeAndCombineDeadKeys) {
     CHECK(state.Peek().text == U("a\xC3\xA9x"));
     type(0x1B);                 // a control character is not typed
     CHECK(state.Peek().text == U("a\xC3\xA9x"));
+}
+
+namespace {
+    // A field over the monospace FakeText: 10 px per character and 25 px lines at 20 sp.
+    struct FieldHarness {
+        test::FakeText backend;
+        ui::Owner owner;
+        rt::Composition comp{ owner.Root(), rt::Dispatcher::Main() };
+        std::int64_t t = 1000;
+        int starts = 0, stops = 0, hides = 0;
+        FieldHarness() {
+            owner.SetDensity({ 1, 1 });
+            owner.SetText(&backend);
+            ui::TextInputHost host;
+            host.start = [this](const ui::ImeOptions&, const ui::TextInputSnapshot&) { ++starts; };
+            host.stop = [this] { ++stops; };
+            host.hideKeyboard = [this] { ++hides; };
+            owner.SetTextInputHost(host);
+        }
+        void Pump(ui::IntSize size = { 120, 300 }) {
+            for (int i = 0; i < 3; ++i) {
+                rt::Dispatcher::Main().RunPending();
+                comp.Recompose();
+                owner.MeasureAndLayout(size);
+            }
+        }
+        void Key(int keyCode, std::uint32_t meta = 0) {
+            ui::KeyEvent d{ keyCode, ui::KeyEventType::KeyDown, meta };
+            d.fromHardwareSource = true;
+            owner.DispatchKeyEvent(d);
+            ui::KeyEvent u{ keyCode, ui::KeyEventType::KeyUp, meta };
+            owner.DispatchKeyEvent(u);
+            Pump();
+        }
+        void Tap(float x, float y) {
+            for (const bool down : { true, false }) {
+                ui::RawPointerEvent e;
+                e.type = down ? ui::PointerEventType::Press : ui::PointerEventType::Release;
+                e.uptimeMillis = t += 16;
+                e.pointers.push_back({ 1, { x, y }, down, ui::PointerType::Touch, {} });
+                owner.ProcessPointer(e);
+                Pump();
+            }
+        }
+    };
+    BasicTextFieldOptions Style20(BasicTextFieldOptions o = {}) {
+        o.textStyle = text::TextStyle(text::Sp(20));
+        return o;
+    }
+}
+
+TEST(TextFieldSizesByLineLimitsAndMinWidth) {
+    FieldHarness h;
+    TextFieldState single(""), multi("one");
+    ui::IntSize singleSize, multiSize;
+    BasicTextFieldOptions s = Style20();
+    s.lineLimits = TextFieldLineLimits::SingleLine();
+    BasicTextFieldOptions m = Style20();
+    m.lineLimits = TextFieldLineLimits::MultiLine(2, 3);
+    h.comp.SetContent([&] {
+        Column(Modifier{}, [&] {
+            BasicTextField(single, OnSizeChanged(Modifier{}, [&](ui::IntSize z) { singleSize = z; }), s);
+            BasicTextField(multi, OnSizeChanged(Modifier{}, [&](ui::IntSize z) { multiSize = z; }), m);
+        });
+    });
+    h.Pump();
+    // An empty field is 10 "H" wide and one line (its first line's bottom) tall.
+    CHECK_EQ(singleSize.width, 100);
+    CHECK_EQ(singleSize.height, 25);
+    // minLines 2: two lines tall with one line of text; maxLines 3 caps five lines.
+    CHECK_EQ(multiSize.height, 50);
+    multi.SetTextAndPlaceCursorAtEnd("1\n2\n3\n4\n5");
+    h.Pump();
+    CHECK_EQ(multiSize.height, 75);
+}
+
+TEST(SingleLineFieldScrollsToKeepTheCursorVisible) {
+    FieldHarness h;
+    TextFieldState state("abcdefghijklmnopqrst");   // 200 px in a 120 px column
+    ScrollState scroll;
+    BasicTextFieldOptions o = Style20();
+    o.lineLimits = TextFieldLineLimits::SingleLine();
+    o.scrollState = &scroll;
+    h.comp.SetContent([&] { Column(Modifier{}, [&] { BasicTextField(state, {}, o); }); });
+    h.Pump();
+    CHECK_EQ(scroll.MaxValue(), 80);
+    CHECK_EQ(scroll.Value(), 0);   // not focused: the cursor is not followed
+    h.owner.MoveFocus(ui::FocusDirection::Next);
+    h.Pump();
+    CHECK_EQ(h.starts, 1);
+    CHECK_EQ(scroll.Value(), 80);  // the cursor at the end comes into view
+    h.Key(ui::keys::MoveHome);
+    CHECK(state.Selection() == TextRange(0));
+    CHECK_EQ(scroll.Value(), 0);
+}
+
+TEST(TextFieldKeysMoveByWordDeleteAndUndo) {
+    FieldHarness h;
+    TextFieldState state("hello big world");
+    h.comp.SetContent([&] { Column(Modifier{}, [&] { BasicTextField(state, {}, Style20()); }); });
+    h.Pump({ 300, 300 });
+    h.owner.MoveFocus(ui::FocusDirection::Next);
+    h.Pump({ 300, 300 });
+    h.Key(ui::keys::DpadLeft, ui::kMetaCtrl);
+    CHECK(state.Selection() == TextRange(10));
+    h.Key(ui::keys::DpadLeft, ui::kMetaCtrl | ui::kMetaShift);
+    CHECK(state.Selection() == TextRange(10, 6));
+    h.Key(ui::keys::Del);
+    CHECK(state.Peek().text == U("hello world"));
+    h.Key(54, ui::kMetaCtrl);   // Ctrl+Z
+    CHECK(state.Peek().text == U("hello big world"));
+    h.Key(54, ui::kMetaCtrl | ui::kMetaShift);   // Ctrl+Shift+Z
+    CHECK(state.Peek().text == U("hello world"));
+}
+
+TEST(ImeActionsRunTheHandlerOrTheDefault) {
+    FieldHarness h;
+    TextFieldState a("a"), b("b");
+    int handled = 0;
+    BasicTextFieldOptions first = Style20();
+    first.lineLimits = TextFieldLineLimits::SingleLine();
+    first.keyboardOptions.imeAction = ui::ImeAction::Next;
+    BasicTextFieldOptions second = first;
+    second.keyboardOptions.imeAction = ui::ImeAction::Done;
+    second.onKeyboardAction = [&](std::function<void()> performDefault) { ++handled; performDefault(); };
+    h.comp.SetContent([&] {
+        Column(Modifier{}, [&] {
+            BasicTextField(a, {}, first);
+            BasicTextField(b, {}, second);
+        });
+    });
+    h.Pump();
+    h.owner.MoveFocus(ui::FocusDirection::Next);
+    h.Pump();
+    CHECK(h.owner.ActiveTextInput() != nullptr);
+    h.owner.ActiveTextInput()->PerformImeAction(ui::ImeAction::Next);   // the default: focus moves on
+    h.Pump();
+    CHECK_EQ(h.starts, 2);
+    h.Key(ui::keys::Enter);   // a single line field submits on Enter: the handler, then Done hides
+    CHECK_EQ(handled, 1);
+    CHECK_EQ(h.hides, 1);
+    CHECK(b.Peek().text == U("b"));
+}
+
+TEST(TapFocusesAndPlacesTheCursor) {
+    FieldHarness h;
+    TextFieldState state("hello world");
+    h.comp.SetContent([&] { Column(Modifier{}, [&] { BasicTextField(state, {}, Style20()); }); });
+    h.Pump({ 300, 300 });
+    h.Tap(42, 10);   // focuses (the session starts on focus) and places the cursor at 4
+    CHECK_EQ(h.starts, 1);
+    CHECK(state.Selection() == TextRange(4));
+    h.Tap(78, 10);
+    CHECK(state.Selection() == TextRange(8));
+    CHECK_EQ(h.starts, 1);
 }

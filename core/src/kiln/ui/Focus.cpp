@@ -410,6 +410,12 @@ namespace kiln::ui {
         if (m_InputHost.updateSelection) m_InputHost.updateSelection(snap);
     }
 
+    void Owner::NotifyTextInputUpdate(TextInputSession& s, bool restartIme) {
+        if (m_Input != &s) return;
+        if (restartIme && m_InputHost.restartInput) { m_InputHost.restartInput(); return; }
+        if (m_InputHost.updateSelection) m_InputHost.updateSelection(s.Snapshot());
+    }
+
     // --- 2D search (TwoDimensionalFocusSearch.kt) -----------------------------------------------
 
     namespace {

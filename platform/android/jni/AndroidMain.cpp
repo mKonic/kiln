@@ -457,7 +457,7 @@ namespace {
         ArmTimer();
     }
 
-    jboolean KeyEvent(JNIEnv*, jclass, jint action, jint keyCode, jint metaState, jint unicode, jint repeat, jlong time) {
+    jboolean KeyEvent(JNIEnv*, jclass, jint action, jint keyCode, jint metaState, jint unicode, jint repeat, jlong time, jint source) {
         if (!g_Host) return {};
         kiln::ui::KeyEvent e;
         e.keyCode = keyCode;
@@ -467,12 +467,15 @@ namespace {
         e.unicode = std::uint32_t(unicode);
         e.repeatCount = repeat;
         e.uptimeMillis = time;
+        e.fromSoftKeyboard = source & 1;
+        e.fromHardwareSource = source & 2;
+        e.fromKeyboardSource = source & 4;
         const bool handled = g_Host->app->ProcessKey(e);
         ArmTimer();
         return handled;
     }
 
-    jboolean KeyEventPreIme(JNIEnv*, jclass, jint action, jint keyCode, jint metaState, jint unicode, jint repeat, jlong time) {
+    jboolean KeyEventPreIme(JNIEnv*, jclass, jint action, jint keyCode, jint metaState, jint unicode, jint repeat, jlong time, jint source) {
         if (!g_Host) return {};
         kiln::ui::KeyEvent e;
         e.keyCode = keyCode;
@@ -482,6 +485,9 @@ namespace {
         e.unicode = std::uint32_t(unicode);
         e.repeatCount = repeat;
         e.uptimeMillis = time;
+        e.fromSoftKeyboard = source & 1;
+        e.fromHardwareSource = source & 2;
+        e.fromKeyboardSource = source & 4;
         const bool handled = g_Host->app->ProcessKeyPreIme(e);
         ArmTimer();
         return handled;
@@ -654,6 +660,11 @@ namespace {
         g_Host->app->GetOwner().OnHostFocusChanged(focused);
     }
 
+    void WindowFocusChanged(JNIEnv*, jclass, jboolean focused) {
+        if (!g_Host) return;
+        g_Host->app->GetOwner().SetWindowFocused(focused);
+    }
+
     // --- text input --------------------------------------------------------------------------
 
     // EditorInfo.update(imeOptions) (TextInputServiceAndroid:528-682).
@@ -711,6 +722,8 @@ namespace {
         static jmethodID stop = env->GetMethodID(cls, "stopInput", "()V");
         static jmethodID update = env->GetMethodID(cls, "updateSelection", "(IIII)V");
         static jmethodID restart = env->GetMethodID(cls, "restartInputFromNative", "()V");
+        static jmethodID show = env->GetMethodID(cls, "showKeyboard", "()V");
+        static jmethodID hide = env->GetMethodID(cls, "hideKeyboard", "()V");
         env->DeleteLocalRef(cls);
         kiln::ui::TextInputHost host;
         host.start = [](const kiln::ui::ImeOptions& o, const kiln::ui::TextInputSnapshot&) {
@@ -723,6 +736,8 @@ namespace {
             MainEnv()->CallVoidMethod(g_Host->view, update, s.selStart, s.selEnd, s.compStart, s.compEnd);
         };
         host.restartInput = [] { MainEnv()->CallVoidMethod(g_Host->view, restart); };
+        host.showKeyboard = [] { MainEnv()->CallVoidMethod(g_Host->view, show); };
+        host.hideKeyboard = [] { MainEnv()->CallVoidMethod(g_Host->view, hide); };
         g_Host->app->GetOwner().SetTextInputHost(host);
     }
 
@@ -1133,8 +1148,8 @@ extern "C" JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void*) {
         { "setAnimationScale", "(F)V", reinterpret_cast<void*>(&SetAnimationScale) },
         { "setLayoutDirection", "(Z)V", reinterpret_cast<void*>(&SetLayoutDirection) },
         { "touchEvent", "(IIJ[I[F[IIIIFF[J[F[F)V", reinterpret_cast<void*>(&TouchEvent) },
-        { "keyEvent", "(IIIIIJ)Z", reinterpret_cast<void*>(&KeyEvent) },
-        { "keyEventPreIme", "(IIIIIJ)Z", reinterpret_cast<void*>(&KeyEventPreIme) },
+        { "keyEvent", "(IIIIIJI)Z", reinterpret_cast<void*>(&KeyEvent) },
+        { "keyEventPreIme", "(IIIIIJI)Z", reinterpret_cast<void*>(&KeyEventPreIme) },
         { "rotary", "(FFJI)Z", reinterpret_cast<void*>(&Rotary) },
         { "indirectPointer", "(IIJ[I[F[F[J[FI)Z", reinterpret_cast<void*>(&IndirectPointer) },
         { "indirectFling", "(Z)V", reinterpret_cast<void*>(&IndirectFling) },
@@ -1144,6 +1159,7 @@ extern "C" JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void*) {
         { "isBetterFocusCandidate", "(I[F[F[F)Z", reinterpret_cast<void*>(&IsBetterFocusCandidate) },
         { "hostRequestFocus", "(IZFFFFZ)Z", reinterpret_cast<void*>(&HostRequestFocus) },
         { "hostFocusChanged", "(Z)V", reinterpret_cast<void*>(&HostFocusChanged) },
+        { "windowFocusChanged", "(Z)V", reinterpret_cast<void*>(&WindowFocusChanged) },
         { "setWindowInsets", "([I)V", reinterpret_cast<void*>(&SetWindowInsets) },
         { "insetsControlReady", "([I)V", reinterpret_cast<void*>(&InsetsControlReady) },
         { "insetsControlEnded", "()V", reinterpret_cast<void*>(&InsetsControlEnded) },

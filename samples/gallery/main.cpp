@@ -175,9 +175,9 @@ namespace {
             auto& field = RememberTextFieldState("Edit me");
             Box(Background(Padding(FillMax(Modifier{}, Axis::Horizontal), 16_dp, 0_dp), kContainer, CornerShape::Rounded(12_dp)),
                 Alignment::CenterStart(), false, [&] {
-                TextFieldOptions opt;
-                opt.style = { 16, kOnSurface };
-                opt.ime.singleLine = true;
+                BasicTextFieldOptions opt;
+                opt.textStyle = { 16, kOnSurface };
+                opt.lineLimits = TextFieldLineLimits::SingleLine();
                 BasicTextField(field, Padding(FillMax(Modifier{}, Axis::Horizontal), 16_dp, 16_dp), opt);
             });
             BasicText("Field text: " + field.TextUtf8(), Padding(Modifier{}, 16_dp, 0_dp), { 14, kVariant });

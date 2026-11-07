@@ -1,25 +1,38 @@
 #include "kiln/foundation/text/BasicTextField.h"
 
-#include <optional>
-
 #include "kiln/TextBackend.h"
 #include "kiln/foundation/Focus.h"
 #include "kiln/foundation/Gestures.h"
+#include "kiln/foundation/Hover.h"
+#include "kiln/foundation/Layouts.h"
 #include "kiln/foundation/Semantics.h"
+#include "kiln/foundation/text/BasicText.h"
+#include "kiln/foundation/text/input/TextFieldKeys.h"
+#include "kiln/foundation/text/input/TextFieldSelectionState.h"
+#include "kiln/foundation/text/input/TextLayoutState.h"
+#include "kiln/ui/LayoutNode.h"
+#include "kiln/ui/Locals.h"
 
 #include <cmath>
+#include <map>
+#include <stdexcept>
 
 namespace kiln::foundation {
 
     namespace {
 
-        struct FieldCore;
+        constexpr float kDefaultCursorThicknessDp = 2;
+        // TextFieldDelegate: the minimum width is 10 characters of "H".
+        constexpr const char* kEmptyTextReplacement = "HHHHHHHHHH";
 
-        // The IME's handle on the field.
+        struct Field;
+
+        // The IME's handle on the field (platformSpecificTextInputSession): its edits run through
+        // ImeEditCommandScope on the transformed state; the state's IME listener reports back.
         class Session final : public ui::TextInputSession {
         public:
-            explicit Session(FieldCore& c) : core(c) {}
-            FieldCore& core;
+            explicit Session(Field& f) : field(f) {}
+            Field& field;
             ui::ImeOptions Options() const override;
             ui::TextInputSnapshot Snapshot() const override;
             void CommitText(std::u16string_view t, int c) override;
@@ -33,319 +46,762 @@ namespace kiln::foundation {
             Caret CaretRect() const override;
         };
 
-        // Shared between the field's modifiers (remembered per call site).
-        // DeadKeyCombiner (Android): a dead key's accent waits for the next typed character and
-        // combines with it (KeyCharacterMap.getDeadChar), falling back to that character.
-        struct DeadKeyCombiner {
-            static constexpr std::uint32_t kCombiningAccent = 0x80000000u, kAccentMask = 0x7FFFFFFFu;
-            std::optional<int> deadKey;
-            std::optional<char32_t> Consume(std::uint32_t codePoint, const ui::Owner* owner) {
-                if (codePoint & kCombiningAccent) { deadKey = int(codePoint & kAccentMask); return std::nullopt; }
-                if (deadKey) {
-                    const int accent = *deadKey;
-                    deadKey.reset();
-                    const int combined = owner ? owner->DeadChar(accent, int(codePoint)) : 0;
-                    return combined != 0 ? char32_t(combined) : char32_t(codePoint);
+        // CursorAnimationState: visible for 500 ms, hidden for 500 ms, restarting visible on
+        // every change of the text or selection while focused.
+        struct CursorAnimation {
+            rt::State<float> alpha{ 0.0f };
+            rt::Job job;
+            void SnapToVisibleAndAnimate() {
+                job.Cancel();
+                alpha.Set(1.0f);
+                job = rt::Launch(rt::Dispatcher::Main(), Run(this));
+            }
+            void CancelAndHide() {
+                job.Cancel();
+                if (alpha.Peek() != 0.0f) alpha.Set(0.0f);
+            }
+            static rt::Task<> Run(CursorAnimation* self) {
+                for (;;) {
+                    co_await rt::Delay(500);
+                    self->alpha.Set(0.0f);
+                    co_await rt::Delay(500);
+                    self->alpha.Set(1.0f);
                 }
-                return char32_t(codePoint);
             }
         };
-        // KeyEvent.isTypedEvent: a key down whose character is not an ISO control.
-        bool IsTyped(std::uint32_t u) {
-            if (u & DeadKeyCombiner::kCombiningAccent) return true;
-            return u != 0 && !(u <= 0x1F || (u >= 0x7F && u <= 0x9F));
-        }
 
-        struct FieldCore {
-            DeadKeyCombiner deadKeys;
+        // What the field's modifiers share; remembered per call site, rebuilt (transformed state,
+        // layout state, selection state) when the state or its transformations change.
+        struct Field {
             TextFieldState* state = nullptr;
+            bool singleLine = false;
+            CodepointTransformationPtr codepoint;
+            OutputTransformationPtr output;
             std::unique_ptr<TransformedTextFieldState> transformed;
+            std::unique_ptr<TextLayoutState> layout;
+            std::unique_ptr<TextFieldSelectionState> selection;
             std::unique_ptr<ImeEditCommandScope> ime;
-            void Bind(TextFieldState& s) {
-                if (state == &s && transformed) return;
-                state = &s;
-                transformed = std::make_unique<TransformedTextFieldState>(s);
-                ime = std::make_unique<ImeEditCommandScope>(*transformed);
-            }
-            // Keyboard edits (TextFieldKeyEventHandler): the selection, else the code point
-            // before / after the cursor.
-            void Backspace() {
-                transformed->EditUntransformedTextAsUser([](TextFieldBuffer& b) {
-                    TextRange sel = b.Selection();
-                    if (sel.Collapsed()) {
-                        int at = sel.start;
-                        if (at == 0) return;
-                        int from = at - 1;
-                        if (from > 0 && b.CharAt(from) >= 0xDC00 && b.CharAt(from) < 0xE000 && b.CharAt(from - 1) >= 0xD800 && b.CharAt(from - 1) < 0xDC00) --from;
-                        sel = { from, at };
-                    }
-                    b.Delete(sel.Min(), sel.Max());
-                    b.SetSelectionCoerced(sel.Min());
-                });
-            }
-            void DeleteForward() {
-                transformed->EditUntransformedTextAsUser([](TextFieldBuffer& b) {
-                    TextRange sel = b.Selection();
-                    if (sel.Collapsed()) {
-                        const int at = sel.start;
-                        if (at >= b.Length()) return;
-                        int to = at + 1;
-                        if (to < b.Length() && b.CharAt(at) >= 0xD800 && b.CharAt(at) < 0xDC00 && b.CharAt(to) >= 0xDC00 && b.CharAt(to) < 0xE000) ++to;
-                        sel = { at, to };
-                    }
-                    b.Delete(sel.Min(), sel.Max());
-                    b.SetSelectionCoerced(sel.Min());
-                });
-            }
-            void MoveCursor(int delta, bool extend) {
-                transformed->EditUntransformedTextAsUser([&](TextFieldBuffer& b) {
-                    const TextRange sel = b.Selection();
-                    int end = sel.end;
-                    for (int i = 0; i < std::abs(delta); ++i) {
-                        if (delta < 0 && end > 0) {
-                            --end;
-                            if (end > 0 && b.CharAt(end) >= 0xDC00 && b.CharAt(end) < 0xE000 && b.CharAt(end - 1) >= 0xD800 && b.CharAt(end - 1) < 0xDC00) --end;
-                        } else if (delta > 0 && end < b.Length()) {
-                            ++end;
-                            if (end < b.Length() && b.CharAt(end - 1) >= 0xD800 && b.CharAt(end - 1) < 0xDC00 && b.CharAt(end) >= 0xDC00 && b.CharAt(end) < 0xE000) ++end;
-                        }
-                    }
-                    if (extend) b.SetSelection({ sel.start, end });
-                    else b.SetSelection(TextRange(end));
-                });
-            }
-            void Insert(std::u16string_view t) { transformed->ReplaceSelectedText(t, true); }
-            TextFieldOptions options;
-            ui::Owner* owner = nullptr;
-            bool focused = false;
+            TextFieldKeyEventHandler keys;
             Session session{ *this };
-            rt::State<std::int64_t> blinkEpoch{ 0 };   // bumped on edits: caret shows solid
-            TextBackend* text = nullptr;
-            std::int64_t handle = 0;                   // current paragraph (for offsets)
-            ui::FocusRequester requester;
-            ui::LayoutNode* node = nullptr;   // the field's layout node (for its window position)
 
-            void AfterImeEdit() { if (owner) owner->NotifyTextInputChanged(session, false); blinkEpoch.Set(blinkEpoch.Peek() + 1); }
-            void AfterLocalEdit(bool content) { if (owner) owner->NotifyTextInputChanged(session, content); blinkEpoch.Set(blinkEpoch.Peek() + 1); }
+            BasicTextFieldOptions options;
+            KeyboardOptions keyboard;                      // resolved (the input transformation's under)
+            std::shared_ptr<MutableInteractionSource> interaction;
+            ui::FocusRequester requester;
+            ui::Owner* owner = nullptr;
+            bool nodeFocused = false;                      // focusableNode.focusState.isFocused
+            bool windowFocused = true;                     // windowInfo.isWindowFocused
+            bool inputSession = false;                     // inputSessionJob != null
+            int imeListener = -1;
+            std::weak_ptr<const char> stateAlive;
+            // The core's cursor restarts and the decorator's semantics, by token.
+            std::map<int, std::function<void()>> changeObservers;
+            int nextObserver = 0;
+            int Observe(std::function<void()> fn) { changeObservers.emplace(nextObserver, std::move(fn)); return nextObserver++; }
+
+            ~Field() { DisposeInputSession(); RemoveListener(); }
+
+            bool IsFocused() const { return nodeFocused && windowFocused; }
+            bool Editable() const { return options.enabled && !options.readOnly; }
+
+            void Bind(TextFieldState& s, bool single, const CodepointTransformationPtr& cp, const OutputTransformationPtr& out,
+                      const InputTransformationPtr& input) {
+                if (transformed && state == &s && singleLine == single && codepoint == cp && output == out) return;
+                const bool hadSession = inputSession;
+                DisposeInputSession();
+                RemoveListener();
+                state = &s;
+                singleLine = single;
+                codepoint = cp;
+                output = out;
+                if (codepoint == nullptr) {
+                    // isBasicTextFieldOutputTransformationOnlyEnabled: a single line field turns
+                    // line breaks into spaces after the given output transformation.
+                    OutputTransformationPtr applied = singleLine ? SingleLineOutputTransformation(output) : output;
+                    transformed = std::make_unique<TransformedTextFieldState>(s, input, nullptr, applied);
+                } else {
+                    transformed = std::make_unique<TransformedTextFieldState>(s, input, codepoint, output);
+                }
+                layout = std::make_unique<TextLayoutState>();
+                selection = std::make_unique<TextFieldSelectionState>(*transformed, *layout);
+                selection->owner = owner;
+                ime = std::make_unique<ImeEditCommandScope>(*transformed);
+                stateAlive = s.AliveToken();
+                imeListener = s.AddNotifyImeListener([this](const TextFieldCharSequence&, const TextFieldCharSequence&, bool restartIme) {
+                    if (inputSession && owner) owner->NotifyTextInputUpdate(session, restartIme);
+                    for (auto it = changeObservers.begin(); it != changeObservers.end();) {
+                        const int token = it->first;
+                        it->second();
+                        it = changeObservers.upper_bound(token);   // an observer may remove itself
+                    }
+                });
+                if (hadSession && Editable()) StartInputSession(false);
+            }
+            void RemoveListener() {
+                if (imeListener >= 0 && state && !stateAlive.expired()) state->RemoveNotifyImeListener(imeListener);
+                imeListener = -1;
+            }
+
+            void StartInputSession(bool fromTap) {
+                if (!fromTap && !keyboard.showKeyboardOnFocus.value_or(true)) return;
+                if (!owner) return;
+                inputSession = true;
+                owner->StartTextInput(session);   // replaces any session (and shows the keyboard)
+            }
+            void DisposeInputSession() {
+                if (inputSession && owner) owner->StopTextInput(session);
+                inputSession = false;
+            }
+
+            // onIsFocusedUpdated: with isTextFieldWaitWindowFocusForInputSessionEnabled the
+            // session starts once both the field and its window have focus.
+            void OnIsFocusedUpdated() {
+                selection->isWindowAndTextFieldFocused = IsFocused();
+                if (IsFocused() && Editable() && !inputSession) StartInputSession(false);
+            }
+
+            void OnFocusChange(bool focused) {
+                if (focused == nodeFocused) return;
+                nodeFocused = focused;
+                if (focused) {
+                    // applyCurrentInputMode
+                    if (owner && owner->GetInputMode() != ui::InputMode::Touch) selection->SetDirectTouchInteraction(false);
+                } else {
+                    DisposeInputSession();
+                    // Only losing focus (not window focus) commits the composition.
+                    transformed->EditUntransformedTextAsUser([](TextFieldBuffer& b) { b.CommitComposition(); });
+                    // Deselect when losing focus, even when read-only.
+                    transformed->CollapseSelectionToMax();
+                }
+                OnIsFocusedUpdated();
+            }
+
+            void RequestFocus() { requester.RequestFocus(); }
+            void ShowKeyboard() {
+                if (inputSession) { if (owner) owner->ShowSoftKeyboard(); }
+                else StartInputSession(true);
+            }
+
+            bool DefaultKeyboardAction(ui::ImeAction a) {
+                switch (a) {
+                    case ui::ImeAction::Next: if (owner) owner->MoveFocus(ui::FocusDirection::Next); return true;
+                    case ui::ImeAction::Previous: if (owner) owner->MoveFocus(ui::FocusDirection::Previous); return true;
+                    case ui::ImeAction::Done: if (owner) owner->HideSoftKeyboard(); return true;
+                    default: return false;
+                }
+            }
+            bool OnImeActionPerformed(ui::ImeAction a) {
+                if (a == ui::ImeAction::None || a == ui::ImeAction::Default || !options.onKeyboardAction) return DefaultKeyboardAction(a);
+                options.onKeyboardAction([this, a] { DefaultKeyboardAction(a); });
+                return true;
+            }
+            ui::ImeAction ImeActionOrDefault() const { return keyboard.imeAction.value_or(ui::ImeAction::Default); }
+
+            // decoratorNodeCoordinates.localBoundingBoxOf(textLayoutNodeCoordinates).height
+            float VisibleTextLayoutHeight() const { return layout->VisibleTextLayoutRectInDecorator().Height(); }
+
+            TextFieldKeyEventHandler::Callbacks KeyCallbacks() {
+                TextFieldKeyEventHandler::Callbacks cb;
+                cb.clipboard = [this](KeyCommand c, bool hardware) {
+                    if (c == KeyCommand::Copy) selection->Copy(false);
+                    else if (c == KeyCommand::Cut) selection->Cut();
+                    else if (c == KeyCommand::Paste) selection->Paste(hardware);
+                };
+                cb.onSubmit = [this] { return OnImeActionPerformed(ImeActionOrDefault()); };
+                cb.deselect = [this] { selection->Deselect(); };
+                cb.showKeyboard = [this] { ShowKeyboard(); };
+                cb.endDirectTouchInteraction = [this] { selection->SetDirectTouchInteraction(false); };
+                return cb;
+            }
         };
 
-        ui::ImeOptions Session::Options() const { return core.options.ime; }
+        ui::ImeOptions Session::Options() const { return field.keyboard.ToImeOptions(field.singleLine); }
         ui::TextInputSnapshot Session::Snapshot() const {
-            const TextFieldCharSequence& v = core.state->Peek();
+            const TextFieldCharSequence v = field.transformed->VisualText();
             ui::TextInputSnapshot s{ v.text, v.selection.start, v.selection.end, -1, -1 };
             if (v.composition) { s.compStart = v.composition->Min(); s.compEnd = v.composition->Max(); }
             return s;
         }
-        void Session::CommitText(std::u16string_view t, int c) { core.ime->CommitText(t, c); core.AfterImeEdit(); }
-        void Session::SetComposingText(std::u16string_view t, int c) { core.ime->SetComposingText(t, c); core.AfterImeEdit(); }
-        void Session::SetComposingRegion(int s, int e) { core.ime->SetComposingRegion(s, e); core.AfterImeEdit(); }
-        void Session::FinishComposingText() { core.ime->FinishComposingText(); core.AfterImeEdit(); }
-        void Session::DeleteSurroundingText(int b, int a) { core.ime->DeleteSurroundingText(b, a); core.AfterImeEdit(); }
-        void Session::DeleteSurroundingTextInCodePoints(int b, int a) { core.ime->DeleteSurroundingTextInCodePoints(b, a); core.AfterImeEdit(); }
-        void Session::SetSelection(int s, int e) { core.ime->SetSelection(s, e); core.AfterImeEdit(); }
+        void Session::CommitText(std::u16string_view t, int c) { field.ime->CommitText(t, c); }
+        void Session::SetComposingText(std::u16string_view t, int c) { field.ime->SetComposingText(t, c); }
+        void Session::SetComposingRegion(int s, int e) { field.ime->SetComposingRegion(s, e); }
+        void Session::FinishComposingText() { field.ime->FinishComposingText(); }
+        void Session::DeleteSurroundingText(int b, int a) { field.ime->DeleteSurroundingText(b, a); }
+        void Session::DeleteSurroundingTextInCodePoints(int b, int a) { field.ime->DeleteSurroundingTextInCodePoints(b, a); }
+        void Session::SetSelection(int s, int e) { field.ime->SetSelection(s, e); }
+        void Session::PerformImeAction(ui::ImeAction a) { field.OnImeActionPerformed(a); }
         Session::Caret Session::CaretRect() const {
+            // CursorAnchorInfo's insertion marker: the cursor in the text layout, to the window.
             Caret c;
-            if (!core.text || !core.handle || !core.node) return c;
-            const auto r = core.text->GetCursorRect(core.handle, core.state->Peek().selection.end);
-            // Through layer transforms (textLayoutCoordinates.localToRoot).
-            const ui::Rect box = core.node->RectInRoot(ui::Rect{ r.x, r.top, r.x, r.bottom });
-            c.x = box.left; c.top = box.top; c.bottom = box.bottom;
-            c.baseline = c.bottom - (r.bottom - r.top) * 0.2f;   // approximate until line metrics are exposed
+            const auto layout = field.layout->PeekLayoutResult();
+            const auto& coords = field.layout->textLayoutNodeCoordinates;
+            if (!layout || !coords || !coords->IsAttached()) return c;
+            const int offset = std::clamp(field.transformed->VisualText().selection.end, 0, layout->LayoutInput().text.Length());
+            const CursorRect r = layout->Cursor(offset);
+            const int line = layout->LineForOffset(offset);
+            const Offset top = selection::PositionInRoot(*coords, { r.x, r.top });
+            const Offset bottom = selection::PositionInRoot(*coords, { r.x, r.bottom });
+            const Offset baseline = selection::PositionInRoot(*coords, { r.x, layout->LineBaseline(line) });
+            c.x = top.x; c.top = top.y; c.bottom = bottom.y; c.baseline = baseline.y;
             c.valid = true;
             return c;
         }
 
-        void Session::PerformImeAction(ui::ImeAction a) {
-            if (core.options.onImeAction) core.options.onImeAction(a);
-        }
+        ui::Owner* OwnerOf(const ModifierNode& n) { return n.Owner() ? n.Owner()->GetOwner() : nullptr; }
 
-        // Layout + draw of the field's text, selection, composition underline and caret.
-        struct FieldParams { std::shared_ptr<FieldCore> core; bool operator==(const FieldParams& o) const { return core == o.core; } };
-        struct FieldNode final : ModifierNode, LayoutModifier, DrawModifier {
-            FieldParams params;
-            ParagraphData paragraph;
-            std::u16string laidOut;
-            int laidOutWidth = -1;
-            int laidOutGeneration = 0;
-            bool laidOutEmpty = false;
-            float lineHeight = 0;
+        // --- TextFieldDecoratorModifier -----------------------------------------------------
+        // The node part of the decorator: the coordinates, the attach / detach of the session,
+        // and the semantics (the focus, key, pointer and scroll parts are their own modifiers in
+        // the same chain).
+        struct DecoratorParams {
+            std::shared_ptr<Field> field;
+            bool enabled = true, readOnly = false, isPassword = false;
+            ui::ImeAction imeAction = ui::ImeAction::Default;
+            InputTransformationPtr filter;
+            bool operator==(const DecoratorParams&) const = default;
+        };
+        struct DecoratorNode final : ModifierNode, ui::SemanticsModifier, ui::GlobalPositionAwareModifier {
+            DecoratorParams params;
+            explicit DecoratorNode(DecoratorParams p) : params(std::move(p)) {}
+            ui::SemanticsModifier* AsSemantics() override { return this; }
+            ui::GlobalPositionAwareModifier* AsGlobalPositionAware() override { return this; }
 
-            explicit FieldNode(FieldParams p) : params(std::move(p)) {}
-            ~FieldNode() override { Release(); }
-            void OnParamsChanged() { InvalidateMeasure(); }
+            void OnAttach() override {
+                Field& f = *params.field;
+                f.owner = OwnerOf(*this);
+                f.selection->owner = f.owner;
+                Observe();
+            }
+            void OnDetach() override {
+                Field& f = *params.field;
+                f.DisposeInputSession();
+                Unobserve();
+            }
+            void OnParamsChanged() {
+                Unobserve();
+                Observe();
+                InvalidateSemantics();
+            }
+            void Observe() {
+                Field& f = *params.field;
+                auto alive = AliveToken();
+                m_Observer = f.Observe([this, alive] { if (!alive.expired()) InvalidateSemantics(); });
+                m_ObservedField = params.field;
+            }
+            void Unobserve() {
+                if (auto f = m_ObservedField.lock()) f->changeObservers.erase(m_Observer);
+                m_Observer = -1;
+            }
+            void OnGloballyPositioned() override {
+                params.field->layout->decoratorNodeCoordinates = selection::Coordinates{ Owner(), this, AliveToken() };
+            }
+
+            void ApplySemantics(ui::SemanticsConfiguration& c) override {
+                Field& f = *params.field;
+                TransformedTextFieldState& state = *f.transformed;
+                c.mergeDescendants = true;   // shouldMergeDescendantSemantics
+                // Only password fields announce their untransformed value as the editable text.
+                const TextFieldCharSequence text = params.isPassword ? state.UntransformedText() : state.VisualText();
+                c.editableText = ToUtf8(text.text);
+                c.textSelection = std::make_pair(text.selection.start, text.selection.end);
+                if (!params.enabled) c.disabled = true;
+                if (params.isPassword) c.password = true;
+                const bool editable = params.enabled && !params.readOnly;
+                c.isEditable = editable;
+                auto field = params.field;
+                std::weak_ptr<Field> weak = field;
+                c.getTextLayoutResult = [weak]() -> std::shared_ptr<const text::TextLayoutResult> {
+                    auto f = weak.lock();
+                    return f ? f->layout->PeekLayoutResult() : nullptr;
+                };
+                if (editable) {
+                    c.setText = [weak](const std::string& t) {
+                        auto f = weak.lock();
+                        if (!f || !f->Editable()) return false;
+                        f->transformed->ReplaceAll(ToUtf16(t));
+                        return true;
+                    };
+                    c.insertTextAtCursor = [weak](const std::string& t) {
+                        auto f = weak.lock();
+                        if (!f || !f->Editable()) return false;
+                        // Finish composing first: the IME may have set a composition.
+                        f->transformed->ReplaceSelectedText(ToUtf16(t), true);
+                        return true;
+                    };
+                }
+                const bool enabled = params.enabled;
+                c.setSelection = [weak, enabled](int start, int end, bool relativeToOriginal) {
+                    auto f = weak.lock();
+                    if (!f) return false;
+                    // Traversal mode (relativeToOriginal) selects in the original text, TalkBack's
+                    // selection is in the transformed text.
+                    const TextFieldCharSequence t = relativeToOriginal ? f->transformed->UntransformedText() : f->transformed->VisualText();
+                    if (!enabled || std::min(start, end) < 0 || std::max(start, end) > t.Length()) return false;
+                    if (start == t.selection.start && end == t.selection.end) return true;
+                    f->selection->UpdateTextToolbarState(relativeToOriginal || start == end ? TextToolbarState::None : TextToolbarState::Selection);
+                    if (relativeToOriginal) f->transformed->SelectUntransformedCharsIn(TextRange(start, end));
+                    else f->transformed->SelectCharsIn(TextRange(start, end));
+                    return true;
+                };
+                const ui::ImeAction action = params.imeAction;
+                // EditorInfo.IME_ACTION_*
+                static constexpr int kEditorAction[] = { 0, 1, 2, 3, 4, 7, 5, 6 };
+                c.imeAction = kEditorAction[int(action)];
+                c.onImeAction = [weak, action] {
+                    if (auto f = weak.lock()) f->OnImeActionPerformed(action);
+                    return true;
+                };
+                const bool readOnly = params.readOnly;
+                c.onClick = [weak, readOnly] {
+                    // Still provided when disabled, as the documentation asks.
+                    auto f = weak.lock();
+                    if (!f) return true;
+                    if (!f->IsFocused()) f->RequestFocus();
+                    else if (!readOnly && f->owner) f->owner->ShowSoftKeyboard();
+                    return true;
+                };
+                c.onLongClick = [weak] {
+                    auto f = weak.lock();
+                    if (!f) return true;
+                    if (!f->IsFocused()) f->RequestFocus();
+                    f->selection->UpdateTextToolbarState(TextToolbarState::Selection);
+                    return true;
+                };
+                if (!text.selection.Collapsed() && !params.isPassword) {
+                    c.copyText = [weak] { if (auto f = weak.lock()) f->selection->Copy(); return true; };
+                    if (editable) c.cutText = [weak] { if (auto f = weak.lock()) f->selection->Cut(); return true; };
+                }
+                if (editable) c.pasteText = [weak] { if (auto f = weak.lock()) f->selection->Paste(); return true; };
+                if (params.filter) params.filter->ApplySemantics(c);
+            }
+
+        private:
+            int m_Observer = -1;
+            std::weak_ptr<Field> m_ObservedField;
+        };
+
+        // --- TextFieldSizeConstrainerNode (textFieldSize) -----------------------------------
+        struct SizeParams {
+            TextStyle style;
+            int minLines = 1, maxLines = 1;
+            bool useSingleLineHeightProvider = false, unboundedWidth = false;
+            TextLayoutState* provider = nullptr;
+            bool operator==(const SizeParams&) const = default;
+        };
+        struct SizeNode final : ModifierNode, LayoutModifier {
+            SizeParams params;
+            explicit SizeNode(SizeParams p) : params(std::move(p)) {}
+            LayoutModifier* AsLayout() override { return this; }
+            void OnParamsChanged() { m_Dirty = true; InvalidateMeasure(); }
+
+            void ComputeDefaultSizeIfNeeded(const ui::Density& d, ui::LayoutDirection dir) {
+                ui::Owner* owner = OwnerOf(*this);
+                TextBackend* backend = owner ? owner->Text() : nullptr;
+                const int generation = owner ? owner->FontGeneration() : 0;
+                if (generation != m_Generation || !(d == m_Density) || dir != m_Direction) {
+                    m_Generation = generation;
+                    m_Density = d;
+                    m_Direction = dir;
+                    m_Dirty = true;
+                }
+                if (!m_Dirty || !backend) return;
+                const int lines = params.minLines == 1 && (params.maxLines == 1 || params.maxLines == INT_MAX) ? 1 : 3;
+                // paragraphForDefaultText: Ltr keeps the legacy behaviour.
+                TextStyle style = text::ResolveDefaults(params.style, dir);
+                style.paragraph.textDirection = text::TextDirection::Ltr;
+                std::string s;
+                for (int i = 0; i < lines; ++i) { if (i) s += '\n'; s += kEmptyTextReplacement; }
+                text::ParagraphConstraints pc;
+                pc.maxLines = lines;
+                const text::MultiParagraph p(backend, text::AnnotatedString(s), style, d, dir, pc);
+                if (lines == 1) {
+                    m_MinLinesHeight = int(std::ceil(p.Height()));
+                    m_MaxLinesHeight = params.maxLines == 1 ? m_MinLinesHeight : ui::Constraints::Infinity;
+                } else {
+                    const float first = p.LineHeight(0), second = p.LineHeight(1), third = p.LineHeight(2);
+                    m_MinLinesHeight = HeightFromThreeLines(first, second, third, params.minLines);
+                    m_MaxLinesHeight = HeightFromThreeLines(first, second, third, params.maxLines);
+                }
+                m_MinWidth = int(std::ceil(text::MeasureIntrinsics(backend, text::AnnotatedString(s), style, d, dir).maxWidth));
+                m_Dirty = false;
+            }
+            static int HeightFromThreeLines(float top, float middle, float bottom, int limit) {
+                if (limit == 1) return int(std::ceil(top + bottom - middle));
+                if (limit == INT_MAX) return ui::Constraints::Infinity;
+                return int(std::ceil(top + middle * float(std::max(0, limit - 2)) + bottom * float(std::min(1, limit - 1))));
+            }
+
+            MeasureResult Measure(MeasureScope& s, Measurable& m, const Constraints& c) override {
+                ComputeDefaultSizeIfNeeded(s, s.Direction());
+                Constraints computed;
+                if (params.useSingleLineHeightProvider) {
+                    const float height = params.provider->HeightForSingleLineField();
+                    const int heightPx = s.RoundToPx(Dp(height));
+                    const int maxWidth = params.unboundedWidth ? ui::Constraints::Infinity : c.maxWidth;
+                    computed = { std::min(m_MinWidth, maxWidth), maxWidth, height == 0 ? m_MinLinesHeight : heightPx,
+                                 height == 0 ? m_MaxLinesHeight : heightPx };
+                } else {
+                    computed = { m_MinWidth, ui::Constraints::Infinity, std::clamp(m_MinLinesHeight, c.minHeight, c.maxHeight),
+                                 std::clamp(m_MaxLinesHeight, c.minHeight, c.maxHeight) };
+                }
+                Placeable& p = m.Measure(c.Constrain(computed));
+                return s.Layout(p.Width(), p.Height(), [&p](PlacementScope& ps) { ps.PlaceRelative(p, 0, 0); });
+            }
+            int MinIntrinsicHeight(MeasureScope& s, Measurable& m, int width) override {
+                ComputeDefaultSizeIfNeeded(s, s.Direction());
+                if (m_MinLinesHeight == m_MaxLinesHeight) return m_MinLinesHeight;
+                return std::clamp(LayoutModifier::MinIntrinsicHeight(s, m, width), m_MinLinesHeight, std::max(m_MinLinesHeight, m_MaxLinesHeight));
+            }
+            int MaxIntrinsicHeight(MeasureScope& s, Measurable& m, int width) override {
+                ComputeDefaultSizeIfNeeded(s, s.Direction());
+                if (m_MinLinesHeight == m_MaxLinesHeight) return m_MaxLinesHeight;
+                return std::clamp(LayoutModifier::MaxIntrinsicHeight(s, m, width), m_MinLinesHeight, std::max(m_MinLinesHeight, m_MaxLinesHeight));
+            }
+
+            bool m_Dirty = true;
+            int m_MinWidth = -1, m_MinLinesHeight = -1, m_MaxLinesHeight = -1;
+            int m_Generation = -1;
+            ui::Density m_Density{ -1, -1 };
+            ui::LayoutDirection m_Direction = ui::LayoutDirection::Ltr;
+        };
+
+        // --- TextFieldCoreModifier ----------------------------------------------------------
+        struct CoreParams {
+            std::shared_ptr<Field> field;
+            bool isFocused = false, isDragHovered = false;
+            gfx::Brush cursorBrush;
+            Color selectionBackground;
+            bool writeable = true;
+            ScrollState* scrollState = nullptr;
+            Orientation orientation = Orientation::Vertical;
+            // Identity of the field's rebuilt parts (a rebuild invalidates measurement).
+            TransformedTextFieldState* transformed = nullptr;
+            bool operator==(const CoreParams& o) const {
+                return field == o.field && isFocused == o.isFocused && isDragHovered == o.isDragHovered && cursorBrush == o.cursorBrush &&
+                       selectionBackground == o.selectionBackground && writeable == o.writeable && scrollState == o.scrollState &&
+                       orientation == o.orientation && transformed == o.transformed;
+            }
+        };
+        bool IsSpecified(const gfx::Brush& b) { return !(b.kind == gfx::Brush::Kind::Solid && (b.colors.empty() || !b.colors.front().Specified())); }
+
+        struct CoreNode final : ModifierNode, LayoutModifier, DrawModifier, ui::GlobalPositionAwareModifier {
+            CoreParams params;
+            explicit CoreNode(CoreParams p) : params(std::move(p)), m_Previous(params) {}
             LayoutModifier* AsLayout() override { return this; }
             DrawModifier* AsDraw() override { return this; }
+            ui::GlobalPositionAwareModifier* AsGlobalPositionAware() override { return this; }
 
-            void Release() {
-                if (paragraph.handle && params.core->text) params.core->text->Release(paragraph.handle);
-                paragraph = {};
+            bool ShowCursor() const { return params.writeable && (params.isFocused || params.isDragHovered) && IsSpecified(params.cursorBrush); }
+
+            void OnAttach() override {
+                // The field may toggle the inner text field in and out of composition: start the
+                // cursor right away when already focused.
+                params.field->selection->isWindowAndTextFieldFocused = params.isFocused;
+                if (params.isFocused && ShowCursor()) StartCursorJob();
             }
-            void Relayout(const std::u16string& text, int width, const ui::Density& density, ui::LayoutDirection dir) {
-                FieldCore& c = *params.core;
-                if (!c.text) return;
-                const int generation = c.owner ? c.owner->FontGeneration() : 0;
-                if (text == laidOut && width == laidOutWidth && paragraph.handle && generation == laidOutGeneration) return;
-                laidOutGeneration = generation;
-                Release();
-                laidOut = text;
-                laidOutWidth = width;
-                laidOutEmpty = text.empty();
-                // An empty field still needs a line's height for the caret.
-                const std::string utf8 = text.empty() ? std::string(" ") : ToUtf8(text);
-                const float w = c.options.ime.singleLine || width == Constraints::Infinity ? 0.0f : float(width);
-                text::ParagraphConstraints pc;
-                pc.width = w > 0 ? w : INFINITY;
-                paragraph = c.text->Layout(text::BuildParagraphRequest(text::AnnotatedString(utf8), text::ResolveDefaults(c.options.style, dir), density, pc));
-                if (laidOutEmpty) paragraph.glyphs.clear();
-                c.handle = paragraph.handle;
+            void OnDetach() override {
+                StopObserving();
+                if (m_Cursor) m_Cursor->CancelAndHide();
+            }
+            void OnParamsChanged() {
+                const CoreParams& prev = m_Previous;
+                const bool previousShowCursor = prev.writeable && (prev.isFocused || prev.isDragHovered) && IsSpecified(prev.cursorBrush);
+                const bool wasFocused = prev.isFocused;
+                params.field->selection->isWindowAndTextFieldFocused = params.isFocused;
+                if (!ShowCursor()) {
+                    StopObserving();
+                    if (m_Cursor) m_Cursor->CancelAndHide();
+                } else if (!wasFocused || prev.transformed != params.transformed || !previousShowCursor) {
+                    StartCursorJob();
+                }
+                if (prev.transformed != params.transformed || prev.scrollState != params.scrollState || prev.field != params.field) InvalidateMeasure();
+                if (!(prev.cursorBrush == params.cursorBrush) || prev.selectionBackground != params.selectionBackground) InvalidateDraw();
+                m_Previous = params;
             }
 
-            MeasureResult Measure(MeasureScope& s, Measurable&, const Constraints& con) override {
-                FieldCore& c = *params.core;
-                if (Owner() && Owner()->GetOwner()) { c.owner = Owner()->GetOwner(); c.text = c.owner->Text(); c.node = Owner(); }
-                const TextFieldCharSequence& v = c.state->Value();   // subscribes measure to edits
-                Relayout(v.text, con.maxWidth, s, s.Direction());
-                // Sizing (spec 04 req. 14) is simplified: width = text (min 1 caret), height = text.
-                const int caret = s.RoundToPx(Dp(2));
-                const int w = con.ConstrainWidth(laidOutEmpty ? caret : int(std::ceil(paragraph.width)) + caret);
-                const int h = con.ConstrainHeight(int(std::ceil(paragraph.height)));
-                return s.Layout(w, h);
+            void StartCursorJob() {
+                if (!m_Cursor) {
+                    m_Cursor = std::make_unique<CursorAnimation>();
+                    InvalidateDraw();   // draw did not read the alpha before
+                }
+                StopObserving();
+                // Restart the animation whenever the text or the cursor changes (and now).
+                auto alive = AliveToken();
+                Field& f = *params.field;
+                m_Observer = f.Observe([this, alive] { if (!alive.expired() && m_Cursor) m_Cursor->SnapToVisibleAndAnimate(); });
+                m_ObservedField = params.field;
+                if (params.isFocused) m_Cursor->SnapToVisibleAndAnimate();
+            }
+            void StopObserving() {
+                if (auto f = m_ObservedField.lock()) f->changeObservers.erase(m_Observer);
+                m_Observer = -1;
+            }
+
+            void OnGloballyPositioned() override {
+                params.field->layout->coreNodeCoordinates = selection::Coordinates{ Owner(), this, AliveToken() };
+            }
+
+            MeasureResult Measure(MeasureScope& s, Measurable& m, const Constraints& c) override {
+                Field& f = *params.field;
+                const bool vertical = params.orientation == Orientation::Vertical;
+                Constraints child = c;
+                if (vertical) child.maxHeight = ui::Constraints::Infinity;
+                else child.maxWidth = ui::Constraints::Infinity;
+                Placeable& p = m.Measure(child);
+                const int width = vertical ? p.Width() : std::min(p.Width(), c.maxWidth);
+                const int height = vertical ? std::min(p.Height(), c.maxHeight) : p.Height();
+                const TextRange selection = f.transformed->VisualText().selection;
+                const ui::LayoutDirection dir = s.Direction();
+                const ui::Density density = s;
+                return s.Layout(width, height, [this, &p, width, height, vertical, selection, dir, density](PlacementScope& ps) {
+                    // Bring the cursor back into view after the layout.
+                    UpdateScrollState(vertical ? height : width, vertical ? p.Height() : p.Width(), selection, dir, density);
+                    const int scroll = params.scrollState->Value();
+                    if (vertical) ps.PlaceRelative(p, 0, -scroll);
+                    else ps.PlaceRelative(p, -scroll, 0);
+                });
+            }
+
+            int CalculateOffsetToFollow(TextRange curr, int containerSize, int textLayoutSize) const {
+                if (!m_PreviousSelection || curr.end != m_PreviousSelection->end) return curr.end;
+                if (curr.start != m_PreviousSelection->start) return curr.start;
+                if (textLayoutSize != m_PreviousTextLayoutSize || containerSize != m_PreviousContainerSize) return curr.Min();
+                return -1;
+            }
+
+            void UpdateScrollState(int containerSize, int textLayoutSize, TextRange currSelection, ui::LayoutDirection dir, const ui::Density& density) {
+                Field& f = *params.field;
+                ScrollState& scroll = *params.scrollState;
+                scroll.SetBounds(textLayoutSize - containerSize, containerSize);
+                const int offsetToFollow = CalculateOffsetToFollow(currSelection, containerSize, textLayoutSize);
+                if (offsetToFollow < 0 || !ShowCursor()) return;
+                const auto layout = f.layout->PeekLayoutResult();
+                if (!layout) return;
+                const Rect raw = f.selection->GetCursorRectInLayout(*layout, std::clamp(offsetToFollow, 0, layout->LayoutInput().text.Length()));
+                // getCursorRectInScroller
+                const float thickness = float(density.RoundToPx(Dp(kDefaultCursorThicknessDp)));
+                const bool rtl = dir == ui::LayoutDirection::Rtl;
+                Rect cursor = raw;
+                cursor.left = rtl ? float(textLayoutSize) - raw.right : raw.left;
+                cursor.right = std::min(rtl ? float(textLayoutSize) - raw.right + thickness : raw.left + thickness, float(textLayoutSize));
+                const bool shouldBringIntoView = cursor.left != m_PreviousCursorRect.left || cursor.top != m_PreviousCursorRect.top ||
+                                                 textLayoutSize != m_PreviousTextLayoutSize;
+                if (!shouldBringIntoView && containerSize == m_PreviousContainerSize) return;
+                const bool vertical = params.orientation == Orientation::Vertical;
+                const float start = vertical ? cursor.top : cursor.left, end = vertical ? cursor.bottom : cursor.right;
+                const float startVisible = float(scroll.Value()), endVisible = startVisible + float(containerSize);
+                float difference = 0;
+                if (end > endVisible) difference = end - endVisible;   // the bottom / end of the cursor
+                else if (start < startVisible && end - start > float(containerSize)) difference = end - endVisible;   // too tall: its end
+                else if (start < startVisible && end - start <= float(containerSize)) difference = start - startVisible;
+                m_PreviousSelection = currSelection;
+                m_PreviousCursorRect = cursor;
+                m_PreviousContainerSize = containerSize;
+                m_PreviousTextLayoutSize = textLayoutSize;
+                // roundToNext; scrollBy respects the max value set above.
+                const float target = std::isnan(difference) || std::isinf(difference) ? difference
+                                     : difference > 0 ? std::ceil(difference) : std::floor(difference);
+                const float scrolled = scroll.ConsumeScrollDelta(target);
+                if (!shouldBringIntoView) return;
+                Rect bring = raw;
+                if (currSelection.Collapsed() && raw.Width() <= 0 && std::abs(target - scrolled) >= 1) bring.right = raw.right + 1;
+                // The cursor rect from the text layout: bringIntoView handles RTL itself.
+                std::weak_ptr<Field> weak = params.field;
+                rt::Dispatcher::Main().Post([weak, bring] {
+                    if (auto fl = weak.lock()) fl->layout->bringIntoViewRequester.BringIntoView(bring);
+                });
             }
 
             void Draw(ContentDrawScope& s) override {
-                FieldCore& c = *params.core;
-                const TextFieldCharSequence& v = c.state->Value();
-                if (!c.text || !paragraph.handle) { s.DrawContent(); return; }
-                // Selection highlight.
-                if (c.focused && !v.selection.Collapsed())
-                    for (const RectF& r : c.text->GetSelectionRects(paragraph.handle, v.selection.Min(), v.selection.Max()))
-                        s.DrawRect(c.options.selectionColor, { r.x, r.y }, { r.w, r.h });
-                const Color textColor = c.options.style.span.color.Specified() ? c.options.style.span.color : Color(0xFF000000u);
-                s.DrawParagraph(paragraph, {}, textColor);
-                // Composition underline.
-                if (v.composition) {
-                    const auto a = c.text->GetCursorRect(paragraph.handle, v.composition->Min());
-                    const auto b = c.text->GetCursorRect(paragraph.handle, v.composition->Max());
-                    if (a.top == b.top) s.DrawRect(textColor, { a.x, a.bottom - s.ToPx(Dp(1.5f)) }, { b.x - a.x, s.ToPx(Dp(1)) });
-                }
-                // Caret: solid for 500 ms after an edit or focus, then blinking 500/500 (TextFieldCursor).
-                if (!c.focused) m_Blink.Cancel();
-                if (c.focused && v.selection.Collapsed()) {
-                    const bool visible = BlinkVisible();
-                    if (visible) {
-                        const auto r = c.text->GetCursorRect(paragraph.handle, v.selection.end);
-                        const float width = std::floor(s.ToPx(Dp(2)));
-                        const float x = std::clamp(r.x - width / 2, 0.0f, std::max(0.0f, s.GetSize().width - width));
-                        s.DrawRect(c.options.cursorColor, { x, r.top }, { width, r.bottom - r.top });
-                    }
-                }
                 s.DrawContent();
+                Field& f = *params.field;
+                const TextFieldCharSequence value = f.transformed->VisualText();
+                const auto layout = f.layout->LayoutResult();
+                if (!layout) return;
+                // The text layout node is placed under the scroll: draw in its space.
+                const Offset origin = f.layout->FromTextLayoutToCore({});
+                s.Save();
+                s.Translate(origin);
+                if (value.highlight) DrawHighlight(s, *value.highlight, *layout);
+                if (value.selection.Collapsed()) {
+                    DrawTextLayout(s, *layout, layout->LayoutInput().style);
+                    if (value.ShouldShowSelection()) DrawCursor(s);
+                } else {
+                    if (value.ShouldShowSelection()) {
+                        for (const RectF& r : layout->SelectionRects(value.selection.Min(), value.selection.Max()))
+                            s.DrawRect(params.selectionBackground, { r.x, r.y }, { r.w, r.h });
+                    }
+                    DrawTextLayout(s, *layout, layout->LayoutInput().style);
+                }
+                s.Restore();
             }
 
-            bool BlinkVisible();
-            void OnDetach() override { m_Blink.Cancel(); }
-            rt::State<bool> m_BlinkOn{ true };
-            rt::Job m_Blink;
-            std::int64_t m_BlinkEpoch = -1;
+            void DrawHighlight(ContentDrawScope& s, const std::pair<TextHighlightType, TextRange>& highlight, const text::TextLayoutResult& layout) {
+                const auto& [type, range] = highlight;
+                if (range.Collapsed()) return;
+                Color color = params.selectionBackground;
+                if (type == TextHighlightType::HandwritingDeletePreview) {
+                    // The text's colour at 20 % opacity.
+                    const text::SpanStyle& span = layout.LayoutInput().style.span;
+                    Color text = span.color.Specified() ? span.color : Color(0xFF000000u);
+                    if (span.brush && span.brush->kind == gfx::Brush::Kind::Solid && !span.brush->colors.empty()) text = span.brush->colors.front();
+                    color = text.WithAlpha(text.Alpha() * 0.2f);
+                }
+                for (const RectF& r : layout.SelectionRects(range.Min(), range.Max())) s.DrawRect(color, { r.x, r.y }, { r.w, r.h });
+            }
+
+            void DrawCursor(ContentDrawScope& s) {
+                // Alpha is read first so the draw observes it.
+                const float alpha = m_Cursor ? m_Cursor->alpha.Get() : 0.0f;
+                if (alpha == 0 || !ShowCursor()) return;
+                const Rect r = params.field->selection->GetCursorRect();
+                s.DrawRect(params.cursorBrush, { r.left, r.top }, { r.Width(), r.Height() }, alpha);
+            }
+
+            CoreParams m_Previous;
+            std::unique_ptr<CursorAnimation> m_Cursor;
+            int m_Observer = -1;
+            std::weak_ptr<Field> m_ObservedField;
+            std::optional<TextRange> m_PreviousSelection;
+            Rect m_PreviousCursorRect{ -1, -1, -1, -1 };
+            int m_PreviousTextLayoutSize = 0, m_PreviousContainerSize = 0;
         };
 
-        rt::Task<> Blink(FieldNode* node) {
-            for (;;) {
-                node->m_BlinkOn.Set(true);
-                co_await rt::Delay(500);
-                node->m_BlinkOn.Set(false);
-                co_await rt::Delay(500);
+        // --- TextFieldTextLayoutModifier ----------------------------------------------------
+        struct TextLayoutParams {
+            std::shared_ptr<Field> field;
+            TransformedTextFieldState* transformed = nullptr;
+            TextStyle style;
+            bool singleLine = false;
+            bool isKeyboardTypePhone = false;
+            bool operator==(const TextLayoutParams&) const = default;
+        };
+        struct TextLayoutNode final : ModifierNode, LayoutModifier, ui::GlobalPositionAwareModifier {
+            TextLayoutParams params;
+            explicit TextLayoutNode(TextLayoutParams p) : params(std::move(p)) { Update(); }
+            LayoutModifier* AsLayout() override { return this; }
+            ui::GlobalPositionAwareModifier* AsGlobalPositionAware() override { return this; }
+            void OnParamsChanged() { Update(); InvalidateMeasure(); }
+            void Update() {
+                Field& f = *params.field;
+                f.layout->UpdateNonMeasureInputs(*f.transformed, params.style, params.singleLine, !params.singleLine, params.isKeyboardTypePhone);
             }
-        }
+            void OnGloballyPositioned() override {
+                params.field->layout->textLayoutNodeCoordinates = selection::Coordinates{ Owner(), this, AliveToken() };
+            }
+            MeasureResult Measure(MeasureScope& s, Measurable& m, const Constraints& c) override {
+                Field& f = *params.field;
+                ui::Owner* owner = OwnerOf(*this);
+                f.selection->density = s.density;
+                const auto result = f.layout->LayoutWithNewMeasureInputs(owner ? owner->Text() : nullptr, s, s.Direction(),
+                                                                         owner ? owner->FontGeneration() : 0, c);
+                const ui::IntSize size = result->Size();
+                Placeable& p = m.Measure(ui::Constraints::Fixed(size.width, size.height));
+                // A single line field's height follows its first line, so taller characters (an
+                // emoji, a tall script) are not cut.
+                f.layout->SetHeightForSingleLineField(params.singleLine ? std::ceil(result->LineBottom(0)) / s.density : 0.0f);
+                return s.Layout(size.width, size.height, [&p](PlacementScope& ps) { ps.Place(p, 0, 0); },
+                                { { &FirstBaseline, int(std::lround(result->FirstBaseline())) }, { &LastBaseline, int(std::lround(result->LastBaseline())) } });
+            }
+        };
 
-        // The caret restarts solid on focus and on every edit (cursorAlpha animation restart).
-        bool FieldNode::BlinkVisible() {
-            FieldCore& c = *params.core;
-            const std::int64_t epoch = c.blinkEpoch.Get();
-            if (epoch != m_BlinkEpoch || !m_Blink.Active()) {
-                m_BlinkEpoch = epoch;
-                m_Blink = rt::Launch(rt::Dispatcher::Main(), Blink(this));
-            }
-            return m_BlinkOn.Get();
-        }
+        bool IsDragGestureInProgress() { return false; }   // directDragGestureInitiator (selection gestures)
     }
 
-    void BasicTextField(TextFieldState& state, const Modifier& modifier, TextFieldOptions options, rt::Key key) {
+    void BasicTextField(TextFieldState& state, const Modifier& modifier, BasicTextFieldOptions options, rt::Key key) {
         auto& comp = *rt::Composition::Current();
-        auto& core = comp.Remember<std::shared_ptr<FieldCore>>([] { return std::make_shared<FieldCore>(); }, {}, key);
-        core->Bind(state);
-        core->options = options;
-        // Restart the caret blink whenever the field is focused or edited.
-        auto c = core;
+        if (options.lineLimits.minHeightInLines <= 0 || options.lineLimits.maxHeightInLines <= 0)
+            throw std::invalid_argument("both minLines and maxLines must be greater than zero");
+        if (options.lineLimits.minHeightInLines > options.lineLimits.maxHeightInLines)
+            throw std::invalid_argument("minLines must be less than or equal to maxLines");
+        const bool singleLine = options.lineLimits == TextFieldLineLimits::SingleLine();
+        const ui::LayoutDirection layoutDirection = comp.Read(ui::LocalLayoutDirection);
+        auto interaction = options.interactionSource ? options.interactionSource : RememberInteractionSource(key);
+        ScrollState& scrollState = options.scrollState ? *options.scrollState : RememberScrollState(0);
+        const Orientation orientation = singleLine ? Orientation::Horizontal : Orientation::Vertical;
 
-        Modifier m = FocusRequesterModifier(modifier, core->requester);
-        m = Focusable(std::move(m), options.enabled ? ui::Focusability::Always : ui::Focusability::Never, [c](ui::FocusState s) {
-            const bool now = ui::IsFocused(s);
-            if (now == c->focused) return;
-            c->focused = now;
-            if (!c->owner) return;
-            if (now) c->owner->StartTextInput(c->session);
-            else {
-                c->ime->FinishComposingText();
-                c->owner->StopTextInput(c->session);
-            }
-            c->blinkEpoch.Set(c->blinkEpoch.Peek() + 1);
+        auto& field = comp.Remember<std::shared_ptr<Field>>([] { return std::make_shared<Field>(); }, {}, key);
+        Field& f = *field;
+        f.Bind(state, singleLine, options.codepointTransformation, options.outputTransformation, options.inputTransformation);
+        // InputTransformation.keyboardOptions under the field's own.
+        KeyboardOptions resolved = options.keyboardOptions;
+        if (options.inputTransformation)
+            if (const auto k = options.inputTransformation->KeyboardOptions()) resolved = resolved.FillUnspecifiedValuesWith(*k);
+        const bool sessionChanged = f.keyboard != resolved || f.Editable() != (options.enabled && !options.readOnly);
+        f.interaction = interaction;
+        f.selection->interactionSource = interaction;
+        // SideEffect: properties that are not observable.
+        f.transformed->Update(options.inputTransformation);
+        f.options = options;
+        f.keyboard = resolved;
+        f.selection->Update(f.owner, f.selection->density, options.enabled, options.readOnly, options.isPassword);
+        f.layout->onTextLayout = options.onTextLayout;
+        if (sessionChanged) {
+            if (f.Editable() && (f.IsFocused() || f.inputSession)) f.StartInputSession(false);   // replaces the old session
+            else if (!f.Editable()) f.DisposeInputSession();
+        }
+
+        const bool writeable = options.enabled && !options.readOnly;
+        const Color selectionBackground = comp.Read(LocalTextSelectionColors).backgroundColor;
+
+        Modifier m = FocusRequesterModifier(modifier, f.requester);
+        DecoratorParams dp{ field, options.enabled, options.readOnly, options.isPassword, resolved.imeAction.value_or(ui::ImeAction::Default),
+                            options.inputTransformation };
+        m = m.With<DecoratorNode>(dp);
+        m = FocusPropertiesMod(std::move(m), [field](ui::FocusProperties& p) { p.focusRect = field->selection->GetFocusRect(); });
+        m = Focusable(std::move(m), options.enabled ? ui::Focusability::Always : ui::Focusability::Never,
+                      [field](ui::FocusState s) { field->OnFocusChange(ui::IsFocused(s)); }, options.enabled ? interaction : nullptr);
+        m = OnKeyEvent(
+            std::move(m),
+            [field](const ui::KeyEvent& e) {
+                Field& fl = *field;
+                return fl.keys.OnKeyEvent(e, *fl.transformed, fl.layout->PeekLayoutResult(), fl.VisibleTextLayoutHeight(), fl.Editable(),
+                                          fl.singleLine, fl.owner, fl.KeyCallbacks());
+            },
+            [field](const ui::KeyEvent& e) { return field->keys.OnPreKeyEvent(e, *field->transformed, field->KeyCallbacks()); });
+        const auto keys = rt::Keys(reinterpret_cast<std::uintptr_t>(field.get()), reinterpret_cast<std::uintptr_t>(f.selection.get()),
+                                   reinterpret_cast<std::uintptr_t>(interaction.get()));
+        m = PointerInput(std::move(m), keys, [field](PointerInputScope& s) { return field->selection->DetectDirectTouchInteraction(s); });
+        m = PointerInput(std::move(m), keys, [field](PointerInputScope& s) {
+            return field->selection->DetectTextFieldTapGestures(
+                s, [field] { if (!field->selection->isWindowAndTextFieldFocused) field->RequestFocus(); }, [field] { field->ShowKeyboard(); });
         });
-        m = OnKeyEvent(std::move(m), [c](const ui::KeyEvent& e) {
-            if (e.type != ui::KeyEventType::KeyDown || !c->focused) return false;
-            switch (e.keyCode) {
-                case ui::keys::Del: c->Backspace(); c->AfterLocalEdit(true); return true;
-                case 112: c->DeleteForward(); c->AfterLocalEdit(true); return true;   // KEYCODE_FORWARD_DEL
-                case ui::keys::DpadLeft: c->MoveCursor(-1, e.Shift()); c->AfterLocalEdit(false); return true;
-                case ui::keys::DpadRight: c->MoveCursor(1, e.Shift()); c->AfterLocalEdit(false); return true;
-                case ui::keys::Enter: case ui::keys::NumpadEnter:
-                    if (c->options.ime.singleLine) { if (c->options.onImeAction) c->options.onImeAction(c->options.ime.imeAction); return true; }
-                    c->Insert(u"\n"); c->AfterLocalEdit(true); return true;
-                default: break;
+        // ScrollableDefaults.reverseDirection: horizontal scrolling reverses in RTL.
+        ScrollableOptions so;
+        so.enabled = options.enabled && !IsDragGestureInProgress();
+        so.reverseDirection = orientation == Orientation::Horizontal && layoutDirection == ui::LayoutDirection::Rtl;
+        m = Scrollable(std::move(m), scrollState, orientation, so);
+        m = PointerHoverIcon(std::move(m), PointerIcon::Text);
+
+        auto inner = [field, &scrollState, orientation, writeable, selectionBackground, singleLine, options, interaction] {
+            auto& c = *rt::Composition::Current();
+            Field& fl = *field;
+            const bool isFocused = interaction->IsFocused();
+            const bool windowFocused = ui::IsWindowFocused(c.Read(ui::LocalWindowInfo));
+            const bool isWindowAndTextFieldFocused = isFocused && windowFocused;
+            if (fl.windowFocused != windowFocused) {
+                fl.windowFocused = windowFocused;
+                fl.OnIsFocusedUpdated();
             }
-            if (IsTyped(e.unicode) && !e.Ctrl()) {
-                const std::optional<char32_t> typed = c->deadKeys.Consume(e.unicode, c->owner);
-                if (!typed) return true;   // a dead key: wait for the next character
-                std::u16string t;
-                char32_t cp = *typed;
-                if (cp >= 0x10000) { cp -= 0x10000; t.push_back(char16_t(0xD800 + (cp >> 10))); t.push_back(char16_t(0xDC00 + (cp & 0x3FF))); }
-                else t.push_back(char16_t(cp));
-                c->Insert(t);
-                c->AfterLocalEdit(true);
-                return true;
-            }
-            return false;
-        });
-        m = PointerInput(std::move(m), rt::Keys(reinterpret_cast<std::uintptr_t>(c.get())), [c](PointerInputScope& s) {
-            TapCallbacks cb;
-            cb.onTap = [c](Offset p) {
-                if (!c->text || !c->handle) return;
-                // Focus (the focus callback starts input and shows the keyboard), or re-show the
-                // keyboard if already focused.
-                if (!c->focused) c->requester.RequestFocus();
-                const int offset = c->text->GetOffsetForPosition(c->handle, p.x, p.y);
-                c->transformed->PlaceCursorBeforeCharAt(offset);
-                c->AfterLocalEdit(false);
-                if (c->focused && c->owner) c->owner->StartTextInput(c->session);
-            };
-            return DetectTapGestures(s, cb);
-        });
-        // Text field semantics (spec 04 req. 7): editable text, focus, set text, selection.
-        const TextFieldCharSequence& val = state.Value();
-        const bool password = options.ime.keyboardType == ui::KeyboardType::Password || options.ime.keyboardType == ui::KeyboardType::NumberPassword;
-        m = Semantics(std::move(m), [c, text = ToUtf8(val.text), sel = val.selection, password](SemanticsConfiguration& cfg) {
-            cfg.editableText = text;
-            cfg.password = password;
-            cfg.focused = c->focused;
-            cfg.textSelection = std::make_pair(sel.start, sel.end);
-            cfg.setText = [c](const std::string& t) { c->transformed->ReplaceAll(ToUtf16(t)); c->AfterLocalEdit(true); return true; };
-            cfg.requestFocus = [c] { return c->requester.RequestFocus(); };
-            cfg.onClick = [c] { if (!c->focused) c->requester.RequestFocus(); else if (c->owner) c->owner->StartTextInput(c->session); return true; };
-        }, true);
-        m = m.With<FieldNode>(FieldParams{ c });
-        Layout(m, std::make_shared<LambdaMeasurePolicy>([](MeasureScope& s, std::span<Measurable* const>, const Constraints& con) {
-            return s.Layout(con.minWidth, con.minHeight);
-        }), {}, key);
+            const int minLines = singleLine ? 1 : options.lineLimits.minHeightInLines;
+            const int maxLines = singleLine ? 1 : options.lineLimits.maxHeightInLines;
+            Modifier size = Modifier().With<SizeNode>(SizeParams{ options.textStyle, minLines, maxLines, singleLine, singleLine, fl.layout.get() });
+            size = ClipToBounds(std::move(size));
+            size = size.With<CoreNode>(CoreParams{ field, isWindowAndTextFieldFocused, false, options.cursorBrush, selectionBackground, writeable,
+                                                    &scrollState, orientation, fl.transformed.get() });
+            Box(size, Alignment::TopStart(), true, [field, singleLine, options] {
+                Field& fi = *field;
+                Modifier layout = Modifier().With<TextLayoutNode>(
+                    TextLayoutParams{ field, fi.transformed.get(), options.textStyle, singleLine,
+                                      fi.keyboard.keyboardType == ui::KeyboardType::Phone });
+                layout = BringIntoViewRequesterMod(std::move(layout), fi.layout->bringIntoViewRequester);
+                Box(layout);
+            });
+        };
+        Box(m, Alignment::TopStart(), true, [options, inner] {
+            if (options.decorator) options.decorator(inner);
+            else inner();
+        }, key);
     }
 
 }

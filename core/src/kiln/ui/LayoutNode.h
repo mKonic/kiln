@@ -328,7 +328,16 @@ namespace kiln::ui {
         void StopTextInput(TextInputSession& session);
         // The field's state changed outside the IME (programmatic edit, key, gesture).
         void NotifyTextInputChanged(TextInputSession& session, bool contentChanged);
+        // The field's value changed (TextFieldState.NotifyImeListener): restart the IME's
+        // connection when its content changed under a composition, else update the selection.
+        void NotifyTextInputUpdate(TextInputSession& session, bool restartIme);
         TextInputSession* ActiveTextInput() const { return m_Input; }
+        // SoftwareKeyboardController: show or hide the keyboard without ending the session.
+        void ShowSoftKeyboard() { if (m_InputHost.showKeyboard) m_InputHost.showKeyboard(); }
+        void HideSoftKeyboard() { if (m_InputHost.hideKeyboard) m_InputHost.hideKeyboard(); }
+        // WindowInfo.isWindowFocused (observable).
+        bool IsWindowFocused() const { return m_WindowFocused.Get(); }
+        void SetWindowFocused(bool focused) { m_WindowFocused.Set(focused); }
 
         WindowInsetsHolder& Insets() { return m_Insets; }
 
@@ -433,6 +442,7 @@ namespace kiln::ui {
         bool m_FocusTargetLost = false;   // the focused node went away: every state changes
         bool m_FocusCaptured = false;
         rt::State<InputMode> m_InputMode{ InputMode::Touch };
+        rt::State<bool> m_WindowFocused{ true };
         std::function<bool()> m_RequestHostFocus;
         std::function<void(Rect)> m_RequestRectangle;
         std::vector<int> m_KeysDown;

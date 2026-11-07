@@ -1,25 +1,47 @@
 #pragma once
 
-// BasicTextField (spec 04): the node Android sees as a text editor. Focus starts a platform text
-// input session (EditorInfo from the options, an InputConnection editing this state); taps place
-// the cursor; hardware keys edit; the caret is 2 dp wide and blinks 500/500 ms while focused.
-// Not yet: selection gestures and handles, magnifier, undo, text toolbar, autofill, semantics.
+// BasicTextField (spec 04; Compose's state-based BasicTextField): an editable text over a
+// TextFieldState. The decorator (focus, the IME session, semantics, keys, taps), the core (cursor,
+// selection highlight, scrolling to keep the cursor in view) and the text layout follow Compose's
+// TextFieldDecoratorModifier, TextFieldCoreModifier and TextFieldTextLayoutModifier. The cursor is
+// 2 dp wide and blinks 500/500 ms while focused; line limits and the 10-character minimum width
+// size the field like Compose.
 
 #include "kiln/foundation/Compose.h"
+#include "kiln/foundation/Interaction.h"
+#include "kiln/foundation/Scroll.h"
 #include "kiln/foundation/text/TextFieldState.h"
+#include "kiln/foundation/text/input/Transformations.h"
+#include "kiln/graphics/Brush.h"
 #include "kiln/ui/TextInput.h"
+
+#include <functional>
+#include <memory>
 
 namespace kiln::foundation {
 
-    struct TextFieldOptions {
-        TextStyle style;
-        ui::ImeOptions ime;
-        Color cursorColor{ 0xFF6750A4u };
-        Color selectionColor{ 0x666750A4u };   // primary @ 0.4 (TextSelectionColors)
-        std::function<void(ui::ImeAction)> onImeAction;
+    struct BasicTextFieldOptions {
         bool enabled = true;
+        bool readOnly = false;
+        InputTransformationPtr inputTransformation;
+        TextStyle textStyle;
+        foundation::KeyboardOptions keyboardOptions;
+        // KeyboardActionHandler: the IME action (or Enter in a single line field); call
+        // performDefaultAction for the default (Next / Previous move focus, Done hides the keyboard).
+        std::function<void(std::function<void()> performDefaultAction)> onKeyboardAction;
+        TextFieldLineLimits lineLimits = TextFieldLineLimits::MultiLine();
+        std::function<void(const text::TextLayoutResult&)> onTextLayout;
+        std::shared_ptr<MutableInteractionSource> interactionSource;
+        gfx::Brush cursorBrush = gfx::Brush::SolidColor(Color(0xFF000000u));
+        OutputTransformationPtr outputTransformation;
+        // TextFieldDecorator: draws around the text and calls innerTextField exactly once.
+        std::function<void(const std::function<void()>& innerTextField)> decorator;
+        ScrollState* scrollState = nullptr;   // null: remembered by the field
+        // Internal (BasicSecureTextField): a codepoint transformation and password semantics.
+        CodepointTransformationPtr codepointTransformation;
+        bool isPassword = false;
     };
 
-    void BasicTextField(TextFieldState& state, const Modifier& modifier = {}, TextFieldOptions options = {}, rt::Key key = {});
+    void BasicTextField(TextFieldState& state, const Modifier& modifier = {}, BasicTextFieldOptions options = {}, rt::Key key = {});
 
 }
