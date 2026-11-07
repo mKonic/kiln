@@ -49,6 +49,8 @@ namespace kiln::foundation {
         struct IconParams {
             PointerIcon icon;
             bool overrideDescendants;
+            bool stylus = false;   // stylusHoverIcon: stylus and eraser; otherwise mouse
+            std::optional<DpTouchBoundsExpansion> expansion;
             bool operator==(const IconParams&) const = default;
         };
 
@@ -58,8 +60,21 @@ namespace kiln::foundation {
             ui::PointerInputModifier* AsPointerInput() override { return this; }
             void OnParamsChanged() { if (m_Hovered) Request(); }
             void OnDetach() override { Release(); }
+            // isRelevantPointerType
+            bool Relevant(const PointerEvent& e) const {
+                for (const auto& c : e.changes) {
+                    const bool stylus = c.type == ui::PointerType::Stylus || c.type == ui::PointerType::Eraser;
+                    if (params.stylus ? stylus : c.type == ui::PointerType::Mouse) return true;
+                }
+                return false;
+            }
+            std::optional<std::array<float, 4>> TouchBoundsExpansion(const ui::Density& d, ui::LayoutDirection dir) const override {
+                if (!params.expansion) return std::nullopt;
+                return params.expansion->Resolve(d, dir);
+            }
             void OnPointerEvent(PointerEvent& e, PointerEventPass pass, ui::IntSize) override {
                 if (pass != PointerEventPass::Main) return;
+                if (!Relevant(e)) return;
                 if (e.type == PointerEventType::Enter || (e.type == PointerEventType::Move && !m_Hovered)) Request();
                 else if (e.type == PointerEventType::Exit) Release();
             }
@@ -88,7 +103,10 @@ namespace kiln::foundation {
     }
 
     Modifier PointerHoverIcon(Modifier m, PointerIcon icon, bool overrideDescendants) {
-        return m.With<IconNode>(IconParams{ icon, overrideDescendants });
+        return m.With<IconNode>(IconParams{ icon, overrideDescendants, false, std::nullopt });
+    }
+    Modifier StylusHoverIcon(Modifier m, PointerIcon icon, bool overrideDescendants, std::optional<DpTouchBoundsExpansion> expansion) {
+        return m.With<IconNode>(IconParams{ icon, overrideDescendants, true, expansion });
     }
 
 }

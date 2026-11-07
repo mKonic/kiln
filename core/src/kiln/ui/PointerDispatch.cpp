@@ -37,7 +37,7 @@ namespace kiln::ui {
         };
     }
 
-    void Owner::HitTest(LayoutNode& n, const Mat3& parentInner, Offset p, bool touch, std::vector<HitEntry>& path,
+    void Owner::HitTest(LayoutNode& n, const Mat3& parentInner, Offset p, PointerType type, std::vector<HitEntry>& path,
                         std::vector<HitEntry>& near, float& nearDistance, std::vector<HitEntry>& ancestors) {
         if (!n.IsPlaced() && &n != m_Root.get()) return;
         std::vector<LayoutNode::HitStep> steps;
@@ -56,6 +56,18 @@ namespace kiln::ui {
                 continue;
             }
             ancestors.push_back({ &n, step.mod, inBounds });
+            const bool touch = type == PointerType::Touch;
+            if ((type == PointerType::Stylus || type == PointerType::Eraser) && !inBounds && mapped) {
+                // isInExpandedTouchBounds: below any direct hit, recorded like a near hit at 0.
+                if (const auto e = step.mod->TouchBoundsExpansion(m_Density, m_Direction)) {
+                    const Rect expanded{ -(*e)[0], -(*e)[1], bounds.right + (*e)[2], bounds.bottom + (*e)[3] };
+                    if (local.x >= expanded.left && local.x < expanded.right && local.y >= expanded.top && local.y < expanded.bottom &&
+                        (0 < nearDistance || (nearDistance == 0 && !near.empty() && near.back().node == &n))) {
+                        nearDistance = 0;
+                        near = ancestors;
+                    }
+                }
+            }
             if (touch && !inBounds && mapped) {
                 const float minPx = m_Density.ToPx(m_Config.minimumTouchTargetSize);
                 const float ex = std::max(0.0f, (minPx - bounds.Width()) / 2), ey = std::max(0.0f, (minPx - bounds.Height()) / 2);
@@ -80,7 +92,7 @@ namespace kiln::ui {
         });
         for (auto it = order.rbegin(); it != order.rend(); ++it) {
             const std::size_t before = path.size();
-            HitTest(**it, inner, p, touch, path, near, nearDistance, ancestors);
+            HitTest(**it, inner, p, type, path, near, nearDistance, ancestors);
             if (path.size() > before) break;
         }
         // No child hit: the path ends at this node's last modifier the point is inside.
@@ -123,7 +135,7 @@ namespace kiln::ui {
             if (rp.type == PointerType::Touch || rp.down || wasDown || it == m_Pointers.end()) continue;
             std::vector<HitEntry> path, near, ancestors;
             float nearDistance = INFINITY;
-            if (raw.type != PointerEventType::Exit) HitTest(*m_Root, kIdentity3, rp.position, false, path, near, nearDistance, ancestors);
+            if (raw.type != PointerEventType::Exit) HitTest(*m_Root, kIdentity3, rp.position, rp.type, path, near, nearDistance, ancestors);
             auto has = [](const std::vector<HitEntry>& v, const HitEntry& e) {
                 return std::any_of(v.begin(), v.end(), [&](const HitEntry& x) { return x.mod == e.mod; });
             };
@@ -140,7 +152,7 @@ namespace kiln::ui {
                 const bool fresh = it == m_Pointers.end();
                 std::vector<HitEntry> path, near, ancestors;
                 float nearDistance = INFINITY;
-                HitTest(*m_Root, kIdentity3, rp.position, rp.type == PointerType::Touch, path, near, nearDistance, ancestors);
+                HitTest(*m_Root, kIdentity3, rp.position, rp.type, path, near, nearDistance, ancestors);
                 if (path.empty()) path = near;
                 Tracked& t = m_Pointers[rp.id];
                 // A new pointer's previous position is its current one (no movement on the down).

@@ -59,10 +59,30 @@ namespace kiln::foundation {
 
     using PointerInputHandler = std::function<rt::Task<>(PointerInputScope&)>;
 
+    // DpTouchBoundsExpansion: how far a stylus or eraser reaches past a node's bounds and still
+    // hits it (start / end follow the layout direction unless absolute).
+    struct DpTouchBoundsExpansion {
+        Dp start{ 0 }, top{ 0 }, end{ 0 }, bottom{ 0 };
+        bool absolute = false;
+        bool operator==(const DpTouchBoundsExpansion& o) const {
+            return start.value == o.start.value && top.value == o.top.value && end.value == o.end.value && bottom.value == o.bottom.value &&
+                   absolute == o.absolute;
+        }
+        std::array<float, 4> Resolve(const Density& d, LayoutDirection dir) const {
+            const bool rtl = dir == LayoutDirection::Rtl && !absolute;
+            return { d.ToPx(rtl ? end : start), d.ToPx(top), d.ToPx(rtl ? start : end), d.ToPx(bottom) };
+        }
+    };
+
     // The handler starts on the first event and restarts when cancelled or when keys change.
     Modifier PointerInput(Modifier m, rt::Keys keys, PointerInputHandler handler);
+    Modifier PointerInput(Modifier m, rt::Keys keys, PointerInputHandler handler, DpTouchBoundsExpansion touchBoundsExpansion);
 
     // --- awaitEachGesture building blocks (AwaitPointerEventScope extensions) ----------------
+
+    // awaitAllPointersUp (the end of awaitEachGesture): returns at once when no pointer is down in
+    // the current event, else waits (final pass) until every pointer is up.
+    rt::Task<> AwaitAllPointersUp(PointerInputScope& scope);
 
     // awaitFirstDown: the next event where every change went down.
     rt::Task<std::optional<PointerInputChange>> AwaitFirstDown(PointerInputScope& scope, bool requireUnconsumed = true,

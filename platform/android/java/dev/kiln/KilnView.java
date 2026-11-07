@@ -238,7 +238,8 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
         ViewConfiguration vc = ViewConfiguration.get(getContext());
         KilnNative.setViewConfiguration(ViewConfiguration.getLongPressTimeout(),
                 ViewConfiguration.getDoubleTapTimeout(), vc.getScaledTouchSlop(),
-                vc.getScaledMaximumFlingVelocity(), vc.getScaledMinimumFlingVelocity());
+                vc.getScaledMaximumFlingVelocity(), vc.getScaledMinimumFlingVelocity(),
+                android.os.Build.VERSION.SDK_INT >= 34 ? vc.getScaledHandwritingSlop() : 2f);
     }
 
     private int[] ids = new int[4];
@@ -450,6 +451,12 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
     private int inputType, imeOptions;
     private String hintLocales = "";
     private boolean acceptsContent;
+    private boolean stylusHandwriting;
+
+    /** ComposeInputMethodManagerImplApi34.startStylusHandwriting. */
+    void startStylusHandwriting() {
+        if (inputActive && android.os.Build.VERSION.SDK_INT >= 34) imm().startStylusHandwriting(this);
+    }
     // InputContentInfo whose URI permission the keyboard granted, by handle, until released.
     private final android.util.SparseArray<android.view.inputmethod.InputContentInfo> contentPermissions = new android.util.SparseArray<>();
     private int nextContentPermission = 1;
@@ -486,8 +493,9 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
     private InputMethodManager imm() { return getContext().getSystemService(InputMethodManager.class); }
 
     /** A field took focus: new EditorInfo, then show the keyboard (coalesced restart + show). */
-    void startInput(int type, int options, boolean singleLine, String hintLocales, boolean acceptsContent) {
+    void startInput(int type, int options, boolean singleLine, String hintLocales, boolean acceptsContent, boolean stylusHandwriting) {
         this.inputActive = true;
+        this.stylusHandwriting = stylusHandwriting;
         this.acceptsContent = acceptsContent;
         this.inputType = type;
         this.imeOptions = options;
@@ -791,6 +799,10 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
         out.initialSelEnd = sel[1];
         out.setInitialSurroundingText(KilnNative.imeGetText());
         if (acceptsContent) out.contentMimeTypes = new String[] { "*/*", "image/*", "video/*" };
+        // EditorInfoCompat.setStylusHandwritingEnabled: the platform flag on 35+, the extras key always.
+        if (android.os.Build.VERSION.SDK_INT >= 35) out.setStylusHandwritingEnabled(stylusHandwriting);
+        if (out.extras == null) out.extras = new android.os.Bundle();
+        out.extras.putBoolean("androidx.core.view.inputmethod.EditorInfoCompat.STYLUS_HANDWRITING_ENABLED", stylusHandwriting);
         if (connection != null) connection.closeConnection();
         extractedTextMonitor = false;
         extractedTextToken = 0;

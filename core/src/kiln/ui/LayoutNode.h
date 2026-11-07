@@ -345,6 +345,9 @@ namespace kiln::ui {
         // connection when asked, else report the new state (and whether the selection moved).
         void NotifyTextInputUpdate(TextInputSession& session, bool restartIme, bool selectionChanged);
         void UpdateCursorAnchorInfo(TextInputSession& session, const CursorAnchorInfo& info);
+        void StartStylusHandwriting(TextInputSession& session) {
+            if (m_Input == &session && m_InputHost.startStylusHandwriting) m_InputHost.startStylusHandwriting();
+        }
         TextInputSession* ActiveTextInput() const { return m_Input; }
         // SoftwareKeyboardController: show or hide the keyboard without ending the session.
         void ShowSoftKeyboard() { if (m_InputHost.showKeyboard) m_InputHost.showKeyboard(); }
@@ -427,7 +430,7 @@ namespace kiln::ui {
         std::vector<FocusTargetNode*> SortedChildren(const FocusTargetNode& t) const;
         FocusTargetNode* ActiveChild(const FocusTargetNode& t) const;
         struct HitEntry { LayoutNode* node; PointerInputModifier* mod; bool inBounds = true; };
-        void HitTest(LayoutNode& n, const LayoutNode::Mat3& parentInner, Offset p, bool touch, std::vector<HitEntry>& path,
+        void HitTest(LayoutNode& n, const LayoutNode::Mat3& parentInner, Offset p, PointerType type, std::vector<HitEntry>& path,
                      std::vector<HitEntry>& near, float& nearDistance, std::vector<HitEntry>& ancestors);
         void RequestFullRemeasure();
 

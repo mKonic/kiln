@@ -15,8 +15,9 @@ namespace kiln::foundation {
         struct PointerParams {
             rt::Keys keys;
             std::shared_ptr<PointerInputHandler> handler;
+            std::optional<DpTouchBoundsExpansion> expansion;
             // Equal keys keep the running coroutine; the handler object is refreshed regardless.
-            bool operator==(const PointerParams& o) const { return keys == o.keys && handler == o.handler; }
+            bool operator==(const PointerParams& o) const { return keys == o.keys && handler == o.handler && expansion == o.expansion; }
         };
 
         class PointerInputNode final : public ModifierNode, public PointerInputModifier, public PointerInputScope {
@@ -48,6 +49,10 @@ namespace kiln::foundation {
                 h.resume();
             }
             void OnCancelPointerInput() override { Restart(false); }
+            std::optional<std::array<float, 4>> TouchBoundsExpansion(const Density& d, LayoutDirection dir) const override {
+                if (!params.expansion) return std::nullopt;
+                return params.expansion->Resolve(d, dir);
+            }
 
             const ViewConfiguration& Config() const override {
                 static const ViewConfiguration fallback;
@@ -117,7 +122,11 @@ namespace kiln::foundation {
         // The handler is stored behind a shared_ptr so the element compares by keys only; a new
         // lambda with the same keys keeps the running gesture (pointerInput(key) semantics).
         auto h = std::make_shared<PointerInputHandler>(std::move(handler));
-        return m.With<PointerInputNode>(PointerParams{ std::move(keys), std::move(h) });
+        return m.With<PointerInputNode>(PointerParams{ std::move(keys), std::move(h), std::nullopt });
+    }
+    Modifier PointerInput(Modifier m, rt::Keys keys, PointerInputHandler handler, DpTouchBoundsExpansion expansion) {
+        auto h = std::make_shared<PointerInputHandler>(std::move(handler));
+        return m.With<PointerInputNode>(PointerParams{ std::move(keys), std::move(h), expansion });
     }
 
     // --- TapGestureDetector.kt:125-260, 386-457 -----------------------------------------------
@@ -186,6 +195,11 @@ namespace kiln::foundation {
                 if (AllUp(*e)) co_return;
             }
         }
+    }
+
+    rt::Task<> AwaitAllPointersUp(PointerInputScope& s) {
+        if (AllUp(s.CurrentEvent())) co_return;
+        co_await AwaitAllUp(s);
     }
 
     rt::Task<> DetectTapGestures(PointerInputScope& s, TapCallbacks cb) {

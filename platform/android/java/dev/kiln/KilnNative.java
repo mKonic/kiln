@@ -85,7 +85,7 @@ final class KilnNative {
     static native void ccTranslationResponses(int[] ids, String[] texts);
     static native void ccTranslation(int mode);
     static native void setViewConfiguration(long longPressTimeout, long doubleTapTimeout, float touchSlop,
-                                            float maxFling, float minFling);
+                                            float maxFling, float minFling, float handwritingSlop);
     static native void surfaceCreated(Surface surface);
     static native void surfaceChanged(int width, int height);
     static native void surfaceDestroyed();

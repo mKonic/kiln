@@ -792,7 +792,8 @@ namespace {
 
     void InstallTextInputHost(JNIEnv* env) {
         jclass cls = env->GetObjectClass(g_Host->view);
-        static jmethodID start = env->GetMethodID(cls, "startInput", "(IIZLjava/lang/String;Z)V");
+        static jmethodID start = env->GetMethodID(cls, "startInput", "(IIZLjava/lang/String;ZZ)V");
+        static jmethodID handwriting = env->GetMethodID(cls, "startStylusHandwriting", "()V");
         static jmethodID stop = env->GetMethodID(cls, "stopInput", "()V");
         static jmethodID update = env->GetMethodID(cls, "imeUpdate", "(IIIIZ)V");
         static jmethodID anchor = env->GetMethodID(cls, "cursorAnchorInfo", "([FLjava/lang/String;)V");
@@ -808,7 +809,7 @@ namespace {
             for (const auto& t : o.hintLocales) { if (!tags.empty()) tags += ','; tags += t; }
             JNIEnv* e = MainEnv();
             jstring jt = e->NewStringUTF(tags.c_str());
-            e->CallVoidMethod(g_Host->view, start, type, opts, jboolean(o.singleLine), jt, jboolean(o.acceptsContent));
+            e->CallVoidMethod(g_Host->view, start, type, opts, jboolean(o.singleLine), jt, jboolean(o.acceptsContent), jboolean(o.stylusHandwriting));
             e->DeleteLocalRef(jt);
         };
         host.stop = [] { MainEnv()->CallVoidMethod(g_Host->view, stop); };
@@ -835,6 +836,8 @@ namespace {
         host.restartInput = [] { MainEnv()->CallVoidMethod(g_Host->view, restart); };
         host.showKeyboard = [] { MainEnv()->CallVoidMethod(g_Host->view, show); };
         host.hideKeyboard = [] { MainEnv()->CallVoidMethod(g_Host->view, hide); };
+        host.startStylusHandwriting = [] { MainEnv()->CallVoidMethod(g_Host->view, handwriting); };
+        kiln::ui::SetStylusHandwritingSupported(android_get_device_api_level() >= 34);
         g_Host->app->GetOwner().SetTextInputHost(host);
     }
 
@@ -1230,7 +1233,7 @@ namespace {
     }
 
     void SetViewConfiguration(JNIEnv*, jclass, jlong longPress, jlong doubleTap, jfloat touchSlop,
-                              jfloat maxFling, jfloat minFling) {
+                              jfloat maxFling, jfloat minFling, jfloat handwritingSlop) {
         if (!g_Host) return;
         auto& c = g_Host->app->GetOwner().Config();
         c.longPressTimeoutMillis = longPress;
@@ -1238,6 +1241,7 @@ namespace {
         c.touchSlop = touchSlop;
         c.maximumFlingVelocity = maxFling;
         c.minimumFlingVelocity = minFling;
+        c.handwritingSlop = handwritingSlop;
     }
 
     void SurfaceCreated(JNIEnv* env, jclass, jobject surface) {
@@ -1353,7 +1357,7 @@ extern "C" JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void*) {
         { "ccTranslationRequests", "([I)[Ljava/lang/String;", reinterpret_cast<void*>(&CcTranslationRequests) },
         { "ccTranslationResponses", "([I[Ljava/lang/String;)V", reinterpret_cast<void*>(&CcTranslationResponses) },
         { "ccTranslation", "(I)V", reinterpret_cast<void*>(&CcTranslation) },
-        { "setViewConfiguration", "(JJFFF)V", reinterpret_cast<void*>(&SetViewConfiguration) },
+        { "setViewConfiguration", "(JJFFFF)V", reinterpret_cast<void*>(&SetViewConfiguration) },
         { "surfaceCreated", "(Landroid/view/Surface;)V", reinterpret_cast<void*>(&SurfaceCreated) },
         { "surfaceChanged", "(II)V", reinterpret_cast<void*>(&SurfaceChanged) },
         { "surfaceDestroyed", "()V", reinterpret_cast<void*>(&SurfaceDestroyed) },

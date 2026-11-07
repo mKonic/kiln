@@ -479,3 +479,47 @@ TEST(ContentReceiversTakeKeyboardContentAndPastes) {
     CHECK(inner.size() == 2 && outer.size() == 1 && outer[0] == "mixed");
     CHECK(state.Peek().text == U("hi"));
 }
+
+TEST(StylusStrokeNearAFieldStartsHandwriting) {
+    ui::SetStylusHandwritingSupported(true);
+    FieldHarness h;
+    int handwriting = 0;
+    bool editorFlag = false;
+    ui::TextInputHost host;
+    host.start = [&](const ui::ImeOptions& o, const ui::TextInputSnapshot&) { ++h.starts; editorFlag = o.stylusHandwriting; };
+    host.startStylusHandwriting = [&] { ++handwriting; };
+    h.owner.SetTextInputHost(host);
+    TextFieldState state("");
+    h.comp.SetContent([&] {
+        Column(Modifier{}, [&] {
+            Box(SizeMod(Modifier{}, Dp(100), Dp(60)));
+            BasicTextField(state, {}, Style20());   // y 60..85
+        });
+    });
+    h.Pump({ 300, 300 });
+    auto send = [&](ui::PointerType type, ui::PointerEventType kind, float x, float y, bool down) {
+        ui::RawPointerEvent e;
+        e.type = kind;
+        e.uptimeMillis = h.t += 16;
+        e.pointers.push_back({ 1, { x, y }, down, type, {} });
+        h.owner.ProcessPointer(e);
+        h.Pump({ 300, 300 });
+    };
+    // A finger in the expansion above the field is not near enough (no direct hit).
+    send(ui::PointerType::Touch, ui::PointerEventType::Press, 20, 30, true);
+    send(ui::PointerType::Touch, ui::PointerEventType::Move, 40, 30, true);
+    send(ui::PointerType::Touch, ui::PointerEventType::Release, 40, 30, false);
+    CHECK_EQ(h.starts, 0);
+    // A stylus 30 px above the field (inside its 40 dp expansion) moving past the slop.
+    send(ui::PointerType::Stylus, ui::PointerEventType::Press, 20, 30, true);
+    send(ui::PointerType::Stylus, ui::PointerEventType::Move, 30, 30, true);
+    CHECK_EQ(h.starts, 1);   // focused: the session started
+    CHECK(editorFlag);
+    CHECK_EQ(handwriting, 0);   // after the session's first frame
+    rt::Dispatcher::Main().RunFrame(1'000'000);
+    h.Pump({ 300, 300 });
+    CHECK_EQ(handwriting, 1);
+    send(ui::PointerType::Stylus, ui::PointerEventType::Release, 60, 30, false);
+    CHECK(state.Peek().text.empty());
+    ui::SetStylusHandwritingSupported(false);
+}

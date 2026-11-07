@@ -8,6 +8,7 @@
 #include "kiln/foundation/Layouts.h"
 #include "kiln/foundation/Semantics.h"
 #include "kiln/foundation/text/BasicText.h"
+#include "kiln/foundation/text/handwriting/StylusHandwriting.h"
 #include "kiln/foundation/text/input/TextFieldKeys.h"
 #include "kiln/foundation/text/input/TextFieldSelectionState.h"
 #include "kiln/foundation/text/input/TextLayoutState.h"
@@ -101,6 +102,23 @@ namespace kiln::foundation {
             bool inputSession = false;                     // inputSessionJob != null
             const ModifierNode* decoratorNode = nullptr;   // for the receiveContent modifier local
             bool acceptsContent = false;                   // a receiver was around when the session started
+            // stylusHandwritingTrigger (replay 1): set by a handwriting stroke, replayed to each
+            // session after its first frame, cleared when the session goes.
+            bool handwritingPending = false;
+            rt::Job handwritingJob;
+            void TriggerStylusHandwriting() {
+                handwritingPending = true;
+                if (inputSession) StartHandwritingAfterFrame();
+            }
+            void StartHandwritingAfterFrame() {
+                handwritingJob.Cancel();
+                handwritingJob = rt::Launch(rt::Dispatcher::Main(), StartHandwriting(this, alive));
+            }
+            static rt::Task<> StartHandwriting(Field* f, std::weak_ptr<char> weak) {
+                co_await rt::NextFrame{};
+                if (weak.expired() || !f->inputSession || !f->handwritingPending || !f->owner) co_return;
+                f->owner->StartStylusHandwriting(f->session);
+            }
             ReceiveContentConfiguration* ReceiveContent() const { return decoratorNode ? FindReceiveContentConfiguration(*decoratorNode) : nullptr; }
             // The selection and composition the IME last heard of (updateSelection on change).
             TextRange imeSelection;
@@ -178,11 +196,14 @@ namespace kiln::foundation {
                 monitorEnabled = false;
                 lastMonitored.reset();
                 owner->StartTextInput(session);   // replaces any session (and shows the keyboard)
+                if (handwritingPending) StartHandwritingAfterFrame();
             }
             void DisposeInputSession() {
                 if (inputSession && owner) owner->StopTextInput(session);
                 inputSession = false;
                 monitorEnabled = false;
+                handwritingPending = false;   // resetReplayCache
+                handwritingJob.Cancel();
             }
 
             // --- CursorAnchorInfoController -----------------------------------------------
@@ -346,6 +367,8 @@ namespace kiln::foundation {
         ui::ImeOptions Session::Options() const {
             ui::ImeOptions o = field.keyboard.ToImeOptions(field.singleLine);
             o.acceptsContent = field.acceptsContent;
+            // shouldEnableStylusHandwriting
+            o.stylusHandwriting = ui::IsStylusHandwritingSupported() && !ui::IsPasswordKeyboard(o.keyboardType);
             return o;
         }
         bool Session::CommitContent(const ui::ClipEntry& clip, const ui::ClipMetadata& metadata, const std::optional<std::string>& linkUri,
@@ -884,6 +907,15 @@ namespace kiln::foundation {
         Modifier m = FocusRequesterModifier(modifier, f.requester);
         DecoratorParams dp{ field, options.enabled, options.readOnly, options.isPassword, resolved.imeAction.value_or(ui::ImeAction::Default),
                             options.inputTransformation };
+        // stylusHandwriting: a stroke on or near the field focuses it and starts handwriting
+        // (password fields only focus).
+        const ui::KeyboardType kt = resolved.keyboardType.value_or(ui::KeyboardType::Text);
+        const bool handwritingEnabled = !options.isPassword && kt != ui::KeyboardType::Password && kt != ui::KeyboardType::NumberPassword;
+        StylusHandwritingCallbacks hw;
+        hw.isFocused = [field] { return field->nodeFocused; };
+        hw.requestFocus = [field] { field->RequestFocus(); };
+        hw.onHandwritingSlopExceeded = [field, handwritingEnabled] { if (handwritingEnabled) field->TriggerStylusHandwriting(); };
+        m = StylusHandwriting(std::move(m), options.enabled, ui::IsStylusHandwritingSupported(), handwritingEnabled, std::move(hw));
         m = m.With<DecoratorNode>(dp);
         m = FocusPropertiesMod(std::move(m), [field](ui::FocusProperties& p) { p.focusRect = field->selection->GetFocusRect(); });
         m = Focusable(std::move(m), options.enabled ? ui::Focusability::Always : ui::Focusability::Never,

@@ -38,6 +38,8 @@ namespace kiln::ui {
         // A receiveContent modifier is around the field: the keyboard may commit any content
         // (EditorInfo content MIME types */*, image/*, video/*).
         bool acceptsContent = false;
+        // EditorInfoCompat.setStylusHandwritingEnabled (shouldEnableStylusHandwriting).
+        bool stylusHandwriting = false;
     };
 
     // The field's visual text as the IME sees it; selection and composition are min / max.
@@ -103,6 +105,11 @@ namespace kiln::ui {
         virtual bool CommitContent(const ClipEntry&, const ClipMetadata&, const std::optional<std::string>& /*linkUri*/, int /*permission*/) { return false; }
     };
 
+    // isStylusHandwritingSupported: process-wide (Android 14 / API 34 and later); the host sets it.
+    inline bool& StylusHandwritingSupportedFlag() { static bool supported = false; return supported; }
+    inline bool IsStylusHandwritingSupported() { return StylusHandwritingSupportedFlag(); }
+    inline void SetStylusHandwritingSupported(bool supported) { StylusHandwritingSupportedFlag() = supported; }
+
     // Host side (the Android view / dev window).
     struct TextInputHost {
         std::function<void(const ImeOptions&, const TextInputSnapshot&)> start;   // restartInput + show keyboard
@@ -114,6 +121,7 @@ namespace kiln::ui {
         std::function<void()> showKeyboard;                                       // SoftwareKeyboardController.show
         std::function<void()> hideKeyboard;                                       // SoftwareKeyboardController.hide
         std::function<void(const CursorAnchorInfo&)> cursorAnchorInfo;            // InputMethodManager.updateCursorAnchorInfo
+        std::function<void()> startStylusHandwriting;                             // InputMethodManager.startStylusHandwriting
     };
 
 }

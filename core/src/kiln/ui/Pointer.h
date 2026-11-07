@@ -7,7 +7,9 @@
 
 #include "kiln/ui/Geometry.h"
 
+#include <array>
 #include <cstdint>
+#include <optional>
 #include <memory>
 #include <vector>
 
@@ -147,6 +149,10 @@ namespace kiln::ui {
         virtual ~PointerInputModifier() = default;
         virtual void OnPointerEvent(PointerEvent& event, PointerEventPass pass, IntSize bounds) = 0;
         virtual void OnCancelPointerInput() = 0;
+        // touchBoundsExpansion: how far past its bounds a stylus or eraser still hits it (left,
+        // top, right, bottom px, already resolved for the layout direction); a direct hit on
+        // anything else wins.
+        virtual std::optional<std::array<float, 4>> TouchBoundsExpansion(const Density&, LayoutDirection) const { return std::nullopt; }
         // Children's hit areas grow to this size (minimum touch target) when true.
         virtual bool InterceptOutOfBoundsChildEvents() const { return false; }
     };
@@ -158,6 +164,7 @@ namespace kiln::ui {
         std::int64_t doubleTapMinTimeMillis = 40;
         std::int64_t tapTimeoutMillis = 100;         // ViewConfiguration.getTapTimeout (TapIndicationDelay)
         float touchSlop = 8;                         // px; the host sets the scaled value
+        float handwritingSlop = 2;                   // px; ViewConfiguration.getScaledHandwritingSlop (API 34)
         Dp minimumTouchTargetSize{ 48 };
         float maximumFlingVelocity = 8000;           // px/s
         float minimumFlingVelocity = 50;             // px/s
