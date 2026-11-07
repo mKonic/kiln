@@ -7,6 +7,25 @@
 
 namespace kiln::ui {
 
+    bool SemanticsConfiguration::ContainsImportantForAccessibility() const {
+        return !contentDescription.empty() || !text.empty() || editableText || stateDescription || paneTitle || hintText ||
+               error || role != Role::None || heading || disabled || password || isPasswordObfuscated || textEntryKey ||
+               isDialog || isPopup || imeAction || selected || toggleableState || focused || progressBarRangeInfo ||
+               liveRegion || selectableGroup || textSelection || horizontalScrollAxisRange || verticalScrollAxisRange ||
+               collectionInfo || collectionItemInfo || onClick || onLongClick || setText || insertTextAtCursor ||
+               setSelection || requestFocus || setProgress || onImeAction || copyText || cutText || pasteText || expand ||
+               collapse || dismiss || setTextSubstitution || showTextSubstitution || clearTextSubstitution ||
+               !customActions.empty() || getTextLayoutResult || scrollBy || scrollToIndex || scrollViewportLength ||
+               pageUp || pageDown || pageLeft || pageRight;
+    }
+
+    namespace {
+        template <class T> void Fill(std::optional<T>& into, const std::optional<T>& from) { if (!into) into = from; }
+        template <class F> void Fill(std::function<F>& into, const std::function<F>& from) { if (!into) into = from; }
+        template <class T> void Take(std::optional<T>& into, const std::optional<T>& from) { if (from) into = from; }
+        template <class F> void Take(std::function<F>& into, const std::function<F>& from) { if (from) into = from; }
+    }
+
     void SemanticsConfiguration::Merge(const SemanticsConfiguration& c) {
         contentDescription.insert(contentDescription.end(), c.contentDescription.begin(), c.contentDescription.end());
         const int base = int(text.size());
@@ -15,23 +34,172 @@ namespace kiln::ui {
             span.textIndex += base;
             textSpans.push_back(std::move(span));
         }
-        if (!editableText) editableText = c.editableText;
-        if (!stateDescription) stateDescription = c.stateDescription;
-        if (!selected) selected = c.selected;
-        if (!collectionItemInfo) collectionItemInfo = c.collectionItemInfo;
-        if (!toggleableState) toggleableState = c.toggleableState;
-        if (role == Role::None) role = c.role;
+        customActions.insert(customActions.end(), c.customActions.begin(), c.customActions.end());
+        // Parent value, else the child's. Role, testTag, traversalIndex, the hidden flags, shape
+        // and pane title never take the child's.
+        Fill(editableText, c.editableText);
+        Fill(stateDescription, c.stateDescription);
+        Fill(hintText, c.hintText);
+        Fill(error, c.error);
+        Fill(textSubstitution, c.textSubstitution);
+        Fill(isShowingTextSubstitution, c.isShowingTextSubstitution);
+        Fill(isPasswordObfuscated, c.isPasswordObfuscated);
+        Fill(isSensitiveData, c.isSensitiveData);
+        Fill(isEditable, c.isEditable);
+        Fill(maxTextLength, c.maxTextLength);
+        Fill(imeAction, c.imeAction);
+        Fill(selected, c.selected);
+        Fill(toggleableState, c.toggleableState);
+        Fill(focused, c.focused);
+        Fill(progressBarRangeInfo, c.progressBarRangeInfo);
+        Fill(liveRegion, c.liveRegion);
+        Fill(testTagsAsResourceId, c.testTagsAsResourceId);
+        Fill(accessibilityClassName, c.accessibilityClassName);
+        Fill(textSelection, c.textSelection);
+        Fill(horizontalScrollAxisRange, c.horizontalScrollAxisRange);
+        Fill(verticalScrollAxisRange, c.verticalScrollAxisRange);
+        Fill(collectionInfo, c.collectionInfo);
+        Fill(collectionItemInfo, c.collectionItemInfo);
         heading = heading || c.heading;
         disabled = disabled || c.disabled;
+        password = password || c.password;
+        textEntryKey = textEntryKey || c.textEntryKey;
+        selectableGroup = selectableGroup || c.selectableGroup;
+        isTraversalGroup = isTraversalGroup || c.isTraversalGroup;
+        // Actions: the parent's label and action, else the child's.
+        Fill(onClick, c.onClick); Fill(onClickLabel, c.onClickLabel);
+        Fill(onLongClick, c.onLongClick); Fill(onLongClickLabel, c.onLongClickLabel);
+        Fill(setText, c.setText); Fill(insertTextAtCursor, c.insertTextAtCursor); Fill(setSelection, c.setSelection);
+        Fill(requestFocus, c.requestFocus); Fill(setProgress, c.setProgress);
+        Fill(onImeAction, c.onImeAction); Fill(onImeActionLabel, c.onImeActionLabel);
+        Fill(copyText, c.copyText); Fill(cutText, c.cutText); Fill(pasteText, c.pasteText);
+        Fill(expand, c.expand); Fill(expandLabel, c.expandLabel);
+        Fill(collapse, c.collapse); Fill(collapseLabel, c.collapseLabel);
+        Fill(dismiss, c.dismiss); Fill(dismissLabel, c.dismissLabel);
+        Fill(setTextSubstitution, c.setTextSubstitution); Fill(showTextSubstitution, c.showTextSubstitution);
+        Fill(clearTextSubstitution, c.clearTextSubstitution);
+        Fill(getTextLayoutResult, c.getTextLayoutResult);
+        Fill(scrollBy, c.scrollBy); Fill(scrollToIndex, c.scrollToIndex);
+        Fill(scrollViewportLength, c.scrollViewportLength); Fill(scrollViewportPadding, c.scrollViewportPadding);
+        Fill(pageUp, c.pageUp); Fill(pageDown, c.pageDown); Fill(pageLeft, c.pageLeft); Fill(pageRight, c.pageRight);
+    }
+
+    void SemanticsConfiguration::Overlay(const SemanticsConfiguration& o) {
+        mergeDescendants = mergeDescendants || o.mergeDescendants;
+        isTraversalGroup = isTraversalGroup || o.isTraversalGroup;
+        if (!o.contentDescription.empty()) contentDescription = o.contentDescription;
+        if (!o.text.empty()) { text = o.text; textSpans = o.textSpans; }
+        else if (!o.textSpans.empty()) textSpans = o.textSpans;
+        if (!o.customActions.empty()) customActions = o.customActions;
+        Take(editableText, o.editableText); Take(stateDescription, o.stateDescription); Take(paneTitle, o.paneTitle);
+        Take(testTag, o.testTag); Take(hintText, o.hintText); Take(error, o.error);
+        Take(textSubstitution, o.textSubstitution); Take(isShowingTextSubstitution, o.isShowingTextSubstitution);
+        if (o.role != Role::None) role = o.role;
+        heading = heading || o.heading;
+        disabled = disabled || o.disabled;
+        password = password || o.password;
+        textEntryKey = textEntryKey || o.textEntryKey;
+        isDialog = isDialog || o.isDialog;
+        isPopup = isPopup || o.isPopup;
+        hideFromAccessibility = hideFromAccessibility || o.hideFromAccessibility;
+        invisibleToUser = invisibleToUser || o.invisibleToUser;
+        selectableGroup = selectableGroup || o.selectableGroup;
+        Take(isPasswordObfuscated, o.isPasswordObfuscated); Take(isSensitiveData, o.isSensitiveData);
+        Take(isEditable, o.isEditable); Take(maxTextLength, o.maxTextLength); Take(imeAction, o.imeAction);
+        Take(selected, o.selected); Take(toggleableState, o.toggleableState); Take(focused, o.focused);
+        Take(progressBarRangeInfo, o.progressBarRangeInfo); Take(liveRegion, o.liveRegion);
+        Take(traversalIndex, o.traversalIndex); Take(testTagsAsResourceId, o.testTagsAsResourceId);
+        Take(accessibilityClassName, o.accessibilityClassName);
+        if (o.shape) shape = o.shape;
+        Take(textSelection, o.textSelection);
+        Take(horizontalScrollAxisRange, o.horizontalScrollAxisRange); Take(verticalScrollAxisRange, o.verticalScrollAxisRange);
+        Take(collectionInfo, o.collectionInfo); Take(collectionItemInfo, o.collectionItemInfo);
+        Take(onClick, o.onClick); Take(onClickLabel, o.onClickLabel);
+        Take(onLongClick, o.onLongClick); Take(onLongClickLabel, o.onLongClickLabel);
+        Take(setText, o.setText); Take(insertTextAtCursor, o.insertTextAtCursor); Take(setSelection, o.setSelection);
+        Take(requestFocus, o.requestFocus); Take(setProgress, o.setProgress);
+        Take(onImeAction, o.onImeAction); Take(onImeActionLabel, o.onImeActionLabel);
+        Take(copyText, o.copyText); Take(cutText, o.cutText); Take(pasteText, o.pasteText);
+        Take(expand, o.expand); Take(expandLabel, o.expandLabel);
+        Take(collapse, o.collapse); Take(collapseLabel, o.collapseLabel);
+        Take(dismiss, o.dismiss); Take(dismissLabel, o.dismissLabel);
+        Take(setTextSubstitution, o.setTextSubstitution); Take(showTextSubstitution, o.showTextSubstitution);
+        Take(clearTextSubstitution, o.clearTextSubstitution);
+        Take(getTextLayoutResult, o.getTextLayoutResult);
+        Take(scrollBy, o.scrollBy); Take(scrollToIndex, o.scrollToIndex);
+        Take(scrollViewportLength, o.scrollViewportLength); Take(scrollViewportPadding, o.scrollViewportPadding);
+        Take(pageUp, o.pageUp); Take(pageDown, o.pageDown); Take(pageLeft, o.pageLeft); Take(pageRight, o.pageRight);
+    }
+
+    bool SemanticsConfiguration::Equivalent(const SemanticsConfiguration& o) const {
+        auto spansEq = [](const std::vector<TextSpanSemantics>& a, const std::vector<TextSpanSemantics>& b) {
+            if (a.size() != b.size()) return false;
+            for (std::size_t i = 0; i < a.size(); ++i)
+                if (a[i].kind != b[i].kind || a[i].textIndex != b[i].textIndex || a[i].start != b[i].start ||
+                    a[i].end != b[i].end || a[i].value != b[i].value || bool(a[i].onClick) != bool(b[i].onClick)) return false;
+            return true;
+        };
+        auto actionsEq = [](const std::vector<CustomAccessibilityAction>& a, const std::vector<CustomAccessibilityAction>& b) {
+            if (a.size() != b.size()) return false;
+            for (std::size_t i = 0; i < a.size(); ++i) if (a[i].label != b[i].label || bool(a[i].action) != bool(b[i].action)) return false;
+            return true;
+        };
+        auto rangeEq = [](const std::optional<ScrollAxisRange>& a, const std::optional<ScrollAxisRange>& b) {
+            return bool(a) == bool(b) && (!a || a->reverseScrolling == b->reverseScrolling);
+        };
+        return mergeDescendants == o.mergeDescendants && clearAndSet == o.clearAndSet && isTraversalGroup == o.isTraversalGroup &&
+               contentDescription == o.contentDescription && text == o.text && spansEq(textSpans, o.textSpans) &&
+               editableText == o.editableText && stateDescription == o.stateDescription && paneTitle == o.paneTitle &&
+               testTag == o.testTag && hintText == o.hintText && error == o.error && textSubstitution == o.textSubstitution &&
+               isShowingTextSubstitution == o.isShowingTextSubstitution && role == o.role && heading == o.heading &&
+               disabled == o.disabled && password == o.password && isPasswordObfuscated == o.isPasswordObfuscated &&
+               textEntryKey == o.textEntryKey && isDialog == o.isDialog && isPopup == o.isPopup &&
+               hideFromAccessibility == o.hideFromAccessibility && invisibleToUser == o.invisibleToUser &&
+               isSensitiveData == o.isSensitiveData && isEditable == o.isEditable && maxTextLength == o.maxTextLength &&
+               imeAction == o.imeAction && selected == o.selected && toggleableState == o.toggleableState &&
+               focused == o.focused && progressBarRangeInfo == o.progressBarRangeInfo && liveRegion == o.liveRegion &&
+               traversalIndex == o.traversalIndex && testTagsAsResourceId == o.testTagsAsResourceId &&
+               accessibilityClassName == o.accessibilityClassName && shape == o.shape && selectableGroup == o.selectableGroup &&
+               textSelection == o.textSelection && rangeEq(horizontalScrollAxisRange, o.horizontalScrollAxisRange) &&
+               rangeEq(verticalScrollAxisRange, o.verticalScrollAxisRange) && collectionInfo == o.collectionInfo &&
+               collectionItemInfo == o.collectionItemInfo && bool(onClick) == bool(o.onClick) && onClickLabel == o.onClickLabel &&
+               bool(onLongClick) == bool(o.onLongClick) && onLongClickLabel == o.onLongClickLabel &&
+               bool(setText) == bool(o.setText) && bool(insertTextAtCursor) == bool(o.insertTextAtCursor) &&
+               bool(setSelection) == bool(o.setSelection) && bool(requestFocus) == bool(o.requestFocus) &&
+               bool(setProgress) == bool(o.setProgress) && bool(onImeAction) == bool(o.onImeAction) &&
+               onImeActionLabel == o.onImeActionLabel && bool(copyText) == bool(o.copyText) && bool(cutText) == bool(o.cutText) &&
+               bool(pasteText) == bool(o.pasteText) && bool(expand) == bool(o.expand) && expandLabel == o.expandLabel &&
+               bool(collapse) == bool(o.collapse) && collapseLabel == o.collapseLabel && bool(dismiss) == bool(o.dismiss) &&
+               dismissLabel == o.dismissLabel && bool(setTextSubstitution) == bool(o.setTextSubstitution) &&
+               bool(showTextSubstitution) == bool(o.showTextSubstitution) && bool(clearTextSubstitution) == bool(o.clearTextSubstitution) &&
+               actionsEq(customActions, o.customActions) && bool(getTextLayoutResult) == bool(o.getTextLayoutResult) &&
+               bool(scrollBy) == bool(o.scrollBy) && bool(scrollToIndex) == bool(o.scrollToIndex) &&
+               bool(scrollViewportLength) == bool(o.scrollViewportLength) && bool(scrollViewportPadding) == bool(o.scrollViewportPadding) &&
+               bool(pageUp) == bool(o.pageUp) && bool(pageDown) == bool(o.pageDown) && bool(pageLeft) == bool(o.pageLeft) &&
+               bool(pageRight) == bool(o.pageRight);
+    }
+
+    bool CalculateSemanticsConfiguration(LayoutNode& n, SemanticsConfiguration& out) {
+        // Tail to head: modifiers further out replace what inner ones set, and a clearing one
+        // drops what the inner ones set (LayoutNode.calculateSemanticsConfiguration).
+        const auto mods = n.ModifierNodes();
+        bool any = false;
+        for (auto it = mods.rbegin(); it != mods.rend(); ++it) {
+            auto* s = const_cast<ModifierNode*>(*it)->AsSemantics();
+            if (!s) continue;
+            any = true;
+            SemanticsConfiguration mine;
+            s->ApplySemantics(mine);
+            if (mine.clearAndSet) { out = SemanticsConfiguration{}; out.clearAndSet = true; }
+            out.Overlay(mine);
+        }
+        return any;
     }
 
     namespace {
         // A node's own configuration from its modifiers (leftmost wins for single values).
         bool OwnConfig(LayoutNode& n, SemanticsConfiguration& out) {
-            bool any = false;
-            for (const ModifierNode* m : n.ModifierNodes())
-                if (auto* s = const_cast<ModifierNode*>(m)->AsSemantics()) { s->ApplySemantics(out); any = true; }
-            return any && (out.HasContent() || out.mergeDescendants || out.isTraversalGroup);
+            return CalculateSemanticsConfiguration(n, out) && (out.HasContent() || out.mergeDescendants || out.isTraversalGroup);
         }
         // findCoordinatorToGetBounds: the space of the outermost semantics modifier that is
         // important for bounds (a merging one first when the node merges), else the node's inner
@@ -156,84 +324,6 @@ namespace kiln::ui {
         Region unaccounted{ { Round(root.boundsInRoot) } };
         KeepUncovered(root, unaccounted);
         return root;
-    }
-
-
-    namespace {
-        std::vector<const SemanticsNode*> SelectableChildren(const SemanticsNode& group) {
-            std::vector<const SemanticsNode*> out;
-            for (const auto& c : group.children) if (c.config.selected) out.push_back(&c);
-            return out;
-        }
-        // calculateIfHorizontallyStacked: summed center distances, x against y.
-        bool HorizontallyStacked(const std::vector<const SemanticsNode*>& items) {
-            if (items.size() < 2) return true;
-            float dx = 0, dy = 0;
-            for (std::size_t i = 1; i < items.size(); ++i) {
-                const Rect& a = items[i - 1]->boundsInRoot;
-                const Rect& b = items[i]->boundsInRoot;
-                dx += std::abs((a.left + a.right) / 2 - (b.left + b.right) / 2);
-                dy += std::abs((a.top + a.bottom) / 2 - (b.top + b.bottom) / 2);
-            }
-            return dy < dx;
-        }
-    }
-
-    std::optional<std::pair<int, int>> ResolveCollectionInfo(const SemanticsNode& node) {
-        if (node.config.collectionInfo) return node.config.collectionInfo;
-        if (!node.config.selectableGroup) return std::nullopt;
-        const auto items = SelectableChildren(node);
-        if (items.empty()) return std::nullopt;
-        const int n = int(items.size());
-        return HorizontallyStacked(items) ? std::pair{ 1, n } : std::pair{ n, 1 };
-    }
-
-    std::optional<CollectionItemInfo> ResolveCollectionItemInfo(const SemanticsNode& node, const SemanticsNode* parent) {
-        if (node.config.collectionItemInfo) return node.config.collectionItemInfo;
-        if (!parent || !parent->config.selectableGroup || !node.config.selected) return std::nullopt;
-        if (const auto& ci = parent->config.collectionInfo; ci && (ci->first < 0 || ci->second < 0)) return std::nullopt;
-        const auto items = SelectableChildren(*parent);
-        int index = 0;
-        for (const auto* c : items) { if (c == &node) break; ++index; }
-        CollectionItemInfo info;
-        if (HorizontallyStacked(items)) info.columnIndex = index; else info.rowIndex = index;
-        return info;
-    }
-
-    std::vector<ScrollEvent> ScrollEventTracker::Collect(const SemanticsNode& root, Owner& owner) {
-        std::vector<ScrollEvent> out;
-        std::unordered_map<int, Old> now;
-        std::function<void(const SemanticsNode&)> visit = [&](const SemanticsNode& n) {
-            const auto& c = n.config;
-            if (c.horizontalScrollAxisRange || c.verticalScrollAxisRange) {
-                Old cur;
-                if (const auto& r = c.horizontalScrollAxisRange; r && r->value) cur.x = r->value();
-                if (const auto& r = c.verticalScrollAxisRange; r && r->value) cur.y = r->value();
-                const auto it = m_Old.find(n.id);
-                const Offset delta = owner.TakeScrollDelta(n.id);
-                if (it != m_Old.end()) {
-                    const bool moved = (cur.x && it->second.x && *cur.x != *it->second.x) ||
-                                       (cur.y && it->second.y && *cur.y != *it->second.y);
-                    if (moved) {
-                        ScrollEvent e;
-                        e.id = n.id;
-                        auto range = [](const ScrollAxisRange& r) {
-                            return std::pair{ int(r.value()), int(r.maxValue ? r.maxValue() : 0) };
-                        };
-                        if (cur.x) e.x = range(*c.horizontalScrollAxisRange);
-                        if (cur.y) e.y = range(*c.verticalScrollAxisRange);
-                        e.deltaX = int(std::lround(delta.x));
-                        e.deltaY = int(std::lround(delta.y));
-                        out.push_back(e);
-                    }
-                }
-                now[n.id] = cur;
-            }
-            for (const auto& ch : n.children) visit(ch);
-        };
-        visit(root);
-        m_Old = std::move(now);
-        return out;
     }
 
 }

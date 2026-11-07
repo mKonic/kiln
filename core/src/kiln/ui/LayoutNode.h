@@ -31,6 +31,7 @@ namespace kiln { class TextBackend; }
 namespace kiln::ui {
 
     class Owner;
+    class AccessibilityDelegate;
 
     class LayoutNode final : public rt::TreeNode {
     public:
@@ -59,6 +60,7 @@ namespace kiln::ui {
         IntSize Size() const;
         IntOffset Position() const { return m_Position; }
         float ZIndex() const { return m_ZIndex; }
+        int PlaceOrder() const { return m_PlaceOrder; }
         bool IsPlaced() const { return m_Placed; }
         Offset PositionInRoot() const;
         // Expires when the node is destroyed.
@@ -172,6 +174,7 @@ namespace kiln::ui {
         IntOffset m_Position;
         float m_ZIndex = 0;
         int m_PlaceOrder = 0;
+        IntSize m_ReportedSize{ -1, -1 };   // the size last told to NotifyLayoutChange
         int m_NextPlaceOrder = 0;   // for children, reset each layout of this node
         int m_SemanticsId = 0;
 
@@ -189,6 +192,7 @@ namespace kiln::ui {
         Density GetDensity() const { return m_Density; }
         void SetDirection(LayoutDirection d) { m_Direction = d; RequestFullRemeasure(); }
         LayoutDirection Direction() const { return m_Direction; }
+        IntSize WindowSize() const { return m_Window; }
         void SetText(TextBackend* text) { m_Text = text; }
         // Fonts arrived (downloadable fonts): text lays out again.
         void OnFontsChanged() { ++m_FontGeneration; RequestFullRemeasure(); }
@@ -330,16 +334,20 @@ namespace kiln::ui {
 
         // Semantics: rebuilt on demand from the layout tree. Changes bump the version and notify.
         SemanticsNode BuildSemanticsTree();
-        void InvalidateSemantics() { ++m_SemanticsVersion; if (m_OnSemanticsChanged) m_OnSemanticsChanged(); }
+        void InvalidateSemantics();
+        // The accessibility delegate (made on first use). The host hears of semantics changes
+        // (`layout` false) and layout changes (true) while a service listens.
+        AccessibilityDelegate& Accessibility();
+        void SetOnAccessibilityChange(std::function<void(bool layout)> fn) { m_OnAccessibilityChange = std::move(fn); }
+        // onLayoutChange: a node was placed somewhere else or at another size.
+        void NotifyLayoutChange(LayoutNode& node);
         std::uint64_t SemanticsVersion() const { return m_SemanticsVersion; }
         void SetOnSemanticsChanged(std::function<void()> fn) { m_OnSemanticsChanged = std::move(fn); }
         LayoutNode* FindBySemanticsId(int id);
         int NextSemanticsId() { return ++m_LastSemanticsId; }
-        // dispatchOnScrollChanged: a scrollable consumed `delta` (pointer coordinates) itself.
-        // Kept per semantics id, in the direction of ACTION_SCROLL_FORWARD (down; the layout end),
-        // for the host's next TYPE_VIEW_SCROLLED; TakeScrollDelta returns and clears it.
+        // dispatchOnScrollChanged: a scrollable consumed `delta` (pointer coordinates) itself
+        // (for TYPE_VIEW_SCROLLED's scroll deltas).
         void DispatchOnScrollChanged(LayoutNode& node, Offset delta);
-        Offset TakeScrollDelta(int semanticsId);
         const ViewConfiguration& Config() const { return m_Config; }
         bool NeedsMeasureOrLayout() const { return !m_MeasureDirty.empty() || !m_LayoutDirty.empty(); }
 
@@ -371,6 +379,7 @@ namespace kiln::ui {
         Rect m_ToolbarRect;
         bool m_ToolbarShown = false, m_ToolbarActive = false;
         friend class FocusTargetNode;
+        friend class AccessibilityDelegate;
         LayoutNode* NodeOf(const FocusTargetNode& t) const;
         FocusTargetNode* FocusParent(const FocusTargetNode& t) const;
         std::vector<FocusTargetNode*> FocusChildren(const FocusTargetNode& t) const;
@@ -432,8 +441,9 @@ namespace kiln::ui {
         WindowInsetsHolder m_Insets;
         std::uint64_t m_SemanticsVersion = 0;
         std::function<void()> m_OnSemanticsChanged;
+        std::unique_ptr<AccessibilityDelegate> m_Accessibility;
+        std::function<void(bool)> m_OnAccessibilityChange;
         int m_LastSemanticsId = 0;
-        std::unordered_map<int, Offset> m_ScrollDeltas;
     };
 
 }

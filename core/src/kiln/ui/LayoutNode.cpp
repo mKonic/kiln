@@ -1,4 +1,5 @@
 #include "kiln/ui/LayoutNode.h"
+#include "kiln/ui/Accessibility.h"
 #include "kiln/ui/InsetsRulers.h"
 
 #include <cmath>
@@ -129,8 +130,14 @@ namespace kiln::ui {
                 node.m_Placed = true;
                 node.m_PlacedThisPass = true;
                 if (moved) node.InvalidateDraw();
+                if (Owner* o = node.GetOwner(); o && (moved || node.Size() != node.m_ReportedSize)) {
+                    node.m_ReportedSize = node.Size();
+                    o->NotifyLayoutChange(node);
+                }
                 node.LayoutIfNeeded();
             } else {
+                if (position != p)
+                    if (Owner* o = node.GetOwner()) o->NotifyLayoutChange(node);
                 position = p;
                 // A layout modifier's zIndex adds to the node's (Modifier.zIndex).
                 if (zIndex != z) { zIndex = z; node.UpdateZIndex(); }
@@ -915,24 +922,30 @@ namespace kiln::ui {
     }
 
     void Owner::DispatchOnScrollChanged(LayoutNode& node, Offset delta) {
-        if ((delta.x == 0 && delta.y == 0) || node.SemanticsId() == 0) return;
-        // LTR negates both axes, RTL only y (a forward scroll moves content against the finger).
-        const Offset forward = m_Direction == LayoutDirection::Rtl ? Offset{ delta.x, -delta.y } : Offset{ -delta.x, -delta.y };
-        Offset& d = m_ScrollDeltas[node.SemanticsId()];
-        d = d + forward;
+        if (m_Accessibility) m_Accessibility->OnScrollChanged(node, delta);
     }
 
-    Offset Owner::TakeScrollDelta(int semanticsId) {
-        auto it = m_ScrollDeltas.find(semanticsId);
-        if (it == m_ScrollDeltas.end()) return {};
-        const Offset d = it->second;
-        m_ScrollDeltas.erase(it);
-        return d;
+    void Owner::InvalidateSemantics() {
+        ++m_SemanticsVersion;
+        if (m_OnSemanticsChanged) m_OnSemanticsChanged();
+        if (m_Accessibility) {
+            m_Accessibility->OnSemanticsChange();
+            if (m_Accessibility->Enabled() && m_OnAccessibilityChange) m_OnAccessibilityChange(false);
+        }
+    }
+
+    AccessibilityDelegate& Owner::Accessibility() {
+        if (!m_Accessibility) m_Accessibility = std::make_unique<AccessibilityDelegate>(*this);
+        return *m_Accessibility;
+    }
+
+    void Owner::NotifyLayoutChange(LayoutNode& node) {
+        if (!m_Accessibility) return;
+        if (m_Accessibility->OnLayoutChange(node) && m_OnAccessibilityChange) m_OnAccessibilityChange(true);
     }
 
     void Owner::Forget(LayoutNode& n) {
         m_PositionAware.erase(&n);
-        m_ScrollDeltas.erase(n.SemanticsId());
         m_FocusInvalid.erase(&n);
         if (m_ActiveFocus && NodeOf(*m_ActiveFocus) == &n) { m_ActiveFocus = nullptr; m_FocusCaptured = false; m_FocusTargetLost = true; }
         m_MeasureDirty.erase(&n);

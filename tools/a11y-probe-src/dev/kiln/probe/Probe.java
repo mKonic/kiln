@@ -73,7 +73,7 @@ public final class Probe extends Instrumentation {
             if (root == null) Thread.sleep(50);
         }
         if (root == null) { out.append("no active window\n"); return; }
-        if (verb.equals("dump")) { dump(root, 0); return; }
+        if (verb.equals("dump") || verb.equals("vdump")) { verbose = verb.equals("vdump"); dump(root, 0); return; }
         if (verb.equals("scroll") || verb.equals("scrollback")) {
             // The n-th scrollable node in pre-order (0 when no argument).
             java.util.List<AccessibilityNodeInfo> list = new java.util.ArrayList<>();
@@ -86,15 +86,41 @@ public final class Probe extends Instrumentation {
             return;
         }
         String find = arg, value = null;
-        if (verb.equals("settext")) { find = arg.substring(0, arg.indexOf('=')); value = arg.substring(arg.indexOf('=') + 1); }
+        if (verb.equals("settext") || verb.equals("action")) { find = arg.substring(0, arg.indexOf('=')); value = arg.substring(arg.indexOf('=') + 1); }
         AccessibilityNodeInfo n = findByText(root, find);
         if (n == null) { out.append("not found: ").append(find).append('\n'); return; }
         boolean ok;
         switch (verb) {
-            case "click": ok = n.performAction(AccessibilityNodeInfo.ACTION_CLICK); break;
-            case "longclick": ok = n.performAction(AccessibilityNodeInfo.ACTION_LONG_CLICK); break;
+            // Like TalkBack on the unmerged tree: the nearest clickable node at or above the match.
+            case "click": ok = clickableAt(n, false).performAction(AccessibilityNodeInfo.ACTION_CLICK); break;
+            case "longclick": ok = clickableAt(n, true).performAction(AccessibilityNodeInfo.ACTION_LONG_CLICK); break;
             case "focus": ok = n.performAction(AccessibilityNodeInfo.ACTION_FOCUS); break;
             case "a11yfocus": ok = n.performAction(AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS); break;
+            case "show": ok = n.performAction(android.R.id.accessibilityActionShowOnScreen); break;
+            case "word": case "char": case "line": case "para": {
+                Bundle a = new Bundle();
+                int g = verb.equals("word") ? AccessibilityNodeInfo.MOVEMENT_GRANULARITY_WORD : verb.equals("char") ? AccessibilityNodeInfo.MOVEMENT_GRANULARITY_CHARACTER
+                        : verb.equals("line") ? AccessibilityNodeInfo.MOVEMENT_GRANULARITY_LINE : AccessibilityNodeInfo.MOVEMENT_GRANULARITY_PARAGRAPH;
+                a.putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_MOVEMENT_GRANULARITY_INT, g);
+                ok = n.performAction(AccessibilityNodeInfo.ACTION_NEXT_AT_MOVEMENT_GRANULARITY, a);
+                break;
+            }
+            case "chars": {
+                // The first five character locations (extra data).
+                Bundle a = new Bundle();
+                a.putInt(AccessibilityNodeInfo.EXTRA_DATA_TEXT_CHARACTER_LOCATION_ARG_START_INDEX, 0);
+                a.putInt(AccessibilityNodeInfo.EXTRA_DATA_TEXT_CHARACTER_LOCATION_ARG_LENGTH, 5);
+                ok = n.refreshWithExtraData(AccessibilityNodeInfo.EXTRA_DATA_TEXT_CHARACTER_LOCATION_KEY, a);
+                android.os.Parcelable[] rects = n.getExtras().getParcelableArray(AccessibilityNodeInfo.EXTRA_DATA_TEXT_CHARACTER_LOCATION_KEY, android.graphics.RectF.class);
+                out.append("  rects=").append(rects == null ? "null" : java.util.Arrays.toString(rects)).append('\n');
+                break;
+            }
+            case "action": {
+                ok = false;
+                for (AccessibilityNodeInfo.AccessibilityAction a : n.getActionList())
+                    if (a.getLabel() != null && a.getLabel().toString().equals(value)) ok = n.performAction(a.getId());
+                break;
+            }
             case "settext": {
                 Bundle a = new Bundle();
                 a.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, value);
@@ -104,6 +130,12 @@ public final class Probe extends Instrumentation {
             default: out.append("unknown verb ").append(verb).append('\n'); return;
         }
         out.append("  ").append(verb).append(" -> ").append(ok).append('\n');
+    }
+
+    private static AccessibilityNodeInfo clickableAt(AccessibilityNodeInfo n, boolean longClick) {
+        for (AccessibilityNodeInfo at = n; at != null; at = at.getParent())
+            if (longClick ? at.isLongClickable() : at.isClickable()) return at;
+        return n;
     }
 
     private void scrollables(AccessibilityNodeInfo n, java.util.List<AccessibilityNodeInfo> out) {
@@ -121,6 +153,38 @@ public final class Probe extends Instrumentation {
             if (r != null) return r;
         }
         return null;
+    }
+
+    private boolean verbose;
+
+    private static String actionName(int id) {
+        switch (id) {
+            case AccessibilityNodeInfo.ACTION_CLICK: return "click";
+            case AccessibilityNodeInfo.ACTION_LONG_CLICK: return "longclick";
+            case AccessibilityNodeInfo.ACTION_FOCUS: return "focus";
+            case AccessibilityNodeInfo.ACTION_CLEAR_FOCUS: return "clearfocus";
+            case AccessibilityNodeInfo.ACTION_SCROLL_FORWARD: return "fwd";
+            case AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD: return "back";
+            case AccessibilityNodeInfo.ACTION_SET_SELECTION: return "setsel";
+            case AccessibilityNodeInfo.ACTION_NEXT_AT_MOVEMENT_GRANULARITY: return "next";
+            case AccessibilityNodeInfo.ACTION_PREVIOUS_AT_MOVEMENT_GRANULARITY: return "prev";
+            case AccessibilityNodeInfo.ACTION_SET_TEXT: return "settext";
+            case AccessibilityNodeInfo.ACTION_COPY: return "copy";
+            case AccessibilityNodeInfo.ACTION_PASTE: return "paste";
+            case AccessibilityNodeInfo.ACTION_EXPAND: return "expand";
+            case AccessibilityNodeInfo.ACTION_COLLAPSE: return "collapse";
+            case AccessibilityNodeInfo.ACTION_DISMISS: return "dismiss";
+            default:
+                if (id == android.R.id.accessibilityActionScrollDown) return "down";
+                if (id == android.R.id.accessibilityActionScrollUp) return "up";
+                if (id == android.R.id.accessibilityActionScrollLeft) return "left";
+                if (id == android.R.id.accessibilityActionScrollRight) return "right";
+                if (id == android.R.id.accessibilityActionSetProgress) return "setprogress";
+                if (id == android.R.id.accessibilityActionShowOnScreen) return "show";
+                if (id == android.R.id.accessibilityActionPageLeft) return "pageleft";
+                if (id == android.R.id.accessibilityActionPageRight) return "pageright";
+                return "0x" + Integer.toHexString(id);
+        }
     }
 
     private void dump(AccessibilityNodeInfo n, int depth) {
@@ -141,6 +205,21 @@ public final class Probe extends Instrumentation {
         if (!n.isVisibleToUser()) out.append(" invisible");
         if (n.isScrollable()) out.append(" scrollable");
         if (n.getCollectionInfo() != null) out.append(" collection=").append(n.getCollectionInfo().getRowCount()).append('x').append(n.getCollectionInfo().getColumnCount());
+        if (n.isScreenReaderFocusable()) out.append(" srf");
+        if (n.isCheckable()) out.append(n.isChecked() ? " checked" : " unchecked");
+        if (n.getStateDescription() != null) out.append(" state=\"").append(n.getStateDescription()).append('"');
+        if (n.getRangeInfo() != null) out.append(" range=").append(n.getRangeInfo().getCurrent());
+        if (verbose) {
+            StringBuilder acts = new StringBuilder();
+            for (AccessibilityNodeInfo.AccessibilityAction a : n.getActionList()) {
+                if (a.getId() == AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS || a.getId() == AccessibilityNodeInfo.ACTION_CLEAR_ACCESSIBILITY_FOCUS) continue;
+                if (acts.length() > 0) acts.append(',');
+                acts.append(a.getLabel() != null ? a.getLabel() : actionName(a.getId()));
+            }
+            if (acts.length() > 0) out.append(" actions=[").append(acts).append(']');
+            AccessibilityNodeInfo before = n.getTraversalBefore();
+            if (before != null) out.append(" before=\"").append(before.getText() != null ? before.getText() : before.getContentDescription()).append('"');
+        }
         out.append('\n');
         for (int i = 0; i < n.getChildCount(); i++) dump(n.getChild(i), depth + 1);
     }

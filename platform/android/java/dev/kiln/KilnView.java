@@ -346,6 +346,7 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
 
     @Override
     public boolean dispatchTouchEvent(MotionEvent e) {
+        if (e.getActionMasked() == MotionEvent.ACTION_DOWN) { lastDownX = e.getX(); lastDownY = e.getY(); }
         if (pendingHoverExit != null) {
             final MotionEvent last = pendingHoverExit;
             final boolean sameDevice = last.getSource() == e.getSource() && last.getToolType(0) == e.getToolType(0);
@@ -657,35 +658,37 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
     boolean nsPreFling(float vx, float vy) { return nestedScrolling.preFling(vx, vy); }
     boolean nsFling(float vx, float vy, boolean consumed) { return nestedScrolling.fling(vx, vy, consumed); }
     void nsStop() { nestedScrolling.stopAll(); }
-    private boolean contentChangePosted;
 
     @Override
     public AccessibilityNodeProvider getAccessibilityNodeProvider() { return accessibility; }
 
-    /** Native semantics changed: one content-changed event per 100 ms while a service listens. */
-    void onSemanticsChanged() {
+    /** Native: semantics (false) or layout (true) changed while a service listens. */
+    void onAccessibilityChange(boolean layout) { accessibility.onChange(layout); }
+
+    boolean isTouchExplorationOn() { return accessibility.isTouchExplorationEnabled(); }
+
+    /** AccessibilityManager.isRequestFromAccessibilityTool (API 34); before: every service is a tool. */
+    boolean isRequestFromAccessibilityTool() {
+        if (android.os.Build.VERSION.SDK_INT < 34) return true;
         AccessibilityManager am = getContext().getSystemService(AccessibilityManager.class);
-        if (am == null || !am.isEnabled() || contentChangePosted) return;
-        contentChangePosted = true;
-        postDelayed(() -> {
-            contentChangePosted = false;
-            // Services can go away during the delay; sending with accessibility off throws.
-            if (!am.isEnabled()) return;
-            AccessibilityEvent e = AccessibilityEvent.obtain(AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED);
-            e.setContentChangeTypes(AccessibilityEvent.CONTENT_CHANGE_TYPE_SUBTREE);
-            e.setPackageName(getContext().getPackageName());
-            e.setSource(this);
-            if (getParent() != null) getParent().requestSendAccessibilityEvent(this, e);
-            accessibility.sendScrollEvents();
-        }, 100);
+        return am == null || am.isRequestFromAccessibilityTool();
     }
+
+    private final AccessibilityManager.AccessibilityStateChangeListener a11yStateListener = on -> accessibility.updateEnabled();
+    private final AccessibilityManager.TouchExplorationStateChangeListener touchExplorationListener = on -> accessibility.updateEnabled();
+    private float lastDownX = Float.NaN, lastDownY = Float.NaN;
+
+    // canScrollHorizontally / Vertically at the last press (AndroidComposeView): the scroll
+    // containers there, from their semantics.
+    @Override
+    public boolean canScrollHorizontally(int direction) { return accessibility.canScroll(false, direction, lastDownX, lastDownY); }
+    @Override
+    public boolean canScrollVertically(int direction) { return accessibility.canScroll(true, direction, lastDownX, lastDownY); }
 
     @Override
     public boolean dispatchHoverEvent(MotionEvent e) {
         flushHoverExit(false);
-        AccessibilityManager am = getContext().getSystemService(AccessibilityManager.class);
-        if (am != null && am.isTouchExplorationEnabled()
-                && accessibility.onHover(e.getActionMasked(), e.getX(), e.getY())) return true;
+        if (accessibility.isTouchExplorationEnabled() && accessibility.onHover(e.getActionMasked(), e.getX(), e.getY())) return true;
         return super.dispatchHoverEvent(e);
     }
 
@@ -718,12 +721,23 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
         super.onAttachedToWindow();
         back.onAttached();
         KilnNative.setLayoutDirection(getLayoutDirection() == LAYOUT_DIRECTION_RTL);
+        AccessibilityManager am = getContext().getSystemService(AccessibilityManager.class);
+        if (am != null) {
+            am.addAccessibilityStateChangeListener(a11yStateListener);
+            am.addTouchExplorationStateChangeListener(touchExplorationListener);
+        }
+        accessibility.updateEnabled();
     }
 
     @Override
     protected void onDetachedFromWindow() {
         back.onDetached();
         flushHoverExit(true);
+        AccessibilityManager am = getContext().getSystemService(AccessibilityManager.class);
+        if (am != null) {
+            am.removeAccessibilityStateChangeListener(a11yStateListener);
+            am.removeTouchExplorationStateChangeListener(touchExplorationListener);
+        }
         super.onDetachedFromWindow();
     }
 

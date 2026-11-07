@@ -58,15 +58,19 @@ final class KilnNative {
     static native void backInvoked();
 
     // Semantics for KilnAccessibility.
-    static native int[] semNode(int id);
-    static native int[] semScrollEvents();
-    static native String[] semStrings(int id);
-    /** Text spans: [kind (0 URL, 1 clickable, 2 TTS), start, end]* on the node's text. */
-    static native int[] semSpans(int id);
-    static native String semSpanValue(int id, int index);
-    static native void semSpanClick(int id, int index);
-    static native boolean semAction(int id, int action, String argument);
-    static native int semHitTest(float x, float y);
+    static native void a11ySetEnabled(boolean enabled, String localeTag);
+    static native int[] a11yNodeInfo(int id);
+    static native String[] a11yStrings();
+    static native int[] a11yTakeEvents();
+    static native boolean a11yPerformAction(int id, int action, int granularity, boolean extend, int selStart, int selEnd,
+                                            String text, boolean hasProgress, float progress);
+    static native int[] a11yExtraData(int id, String key, int start, int length);
+    static native void a11ySpanClick(int id, int index);
+    static native boolean a11yHover(int action, float x, float y);
+    static native int a11yFindFocus(boolean accessibility);
+    static native void a11yCheckSemantics();
+    static native boolean a11yFlushBounds();
+    static native boolean a11yCanScroll(boolean vertical, int direction, float x, float y);
     static native void setViewConfiguration(long longPressTimeout, long doubleTapTimeout, float touchSlop,
                                             float maxFling, float minFling);
     static native void surfaceCreated(Surface surface);

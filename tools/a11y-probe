@@ -5,7 +5,8 @@
 #
 #   tools/a11y-probe "dump; click:Tap me; settext:Edit me=hello; wait:300; dump"
 #
-# Verbs: dump, click:<text>, longclick:<text>, focus:<text>, a11yfocus:<text>,
+# Verbs: dump, vdump (with actions and traversal), show:<text>, word:/char:/line:/para:<text> (next
+# at that granularity), chars:<text> (character locations), action:<text>=<label> (custom), click:<text>, longclick:<text>, focus:<text>, a11yfocus:<text>,
 # settext:<text>=<value>, wait:<ms>, scroll:<n> / scrollback:<n> (the n-th scrollable node), clip (the
 # clipboard's text). <text> matches a node's text or content description.
 set -euo pipefail

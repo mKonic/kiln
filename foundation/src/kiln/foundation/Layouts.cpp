@@ -584,6 +584,7 @@ namespace kiln::foundation {
             explicit LayerNode(GraphicsLayerParams p) : params(p) {}
             void OnParamsChanged() { InvalidateDraw(); InvalidateSemantics(); }
             bool ClipsChildren() const override { return params.clip; }
+            float LayerAlpha() const override { return params.alpha; }
             // translate(t) * translate(pivot) * rotate * scale * translate(-pivot).
             bool LayerTransform(Size size, gfx::Matrix& out) const override {
                 if (params.translationX == 0 && params.translationY == 0 && params.rotationZ == 0 && params.scaleX == 1 && params.scaleY == 1)

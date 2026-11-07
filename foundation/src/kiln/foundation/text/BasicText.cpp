@@ -101,11 +101,18 @@ namespace kiln::foundation {
             }
         };
 
-        struct TextNode final : ModifierNode, LayoutModifier, DrawModifier, ui::GlobalPositionAwareModifier {
+        struct TextNode final : ModifierNode, LayoutModifier, DrawModifier, ui::GlobalPositionAwareModifier, ui::SemanticsModifier {
             TextParams params;
             explicit TextNode(TextParams p) : params(std::move(p)), m_Previous(params) {}
             LayoutModifier* AsLayout() override { return this; }
             DrawModifier* AsDraw() override { return this; }
+            ui::SemanticsModifier* AsSemantics() override { return this; }
+            // TextAnnotatedStringNode's getTextLayoutResult: the layout last measured.
+            void ApplySemantics(ui::SemanticsConfiguration& c) override {
+                c.getTextLayoutResult = [this, alive = AliveToken()]() -> std::shared_ptr<const TextLayoutResult> {
+                    return alive.expired() ? nullptr : m_Drawn;
+                };
+            }
             ui::GlobalPositionAwareModifier* AsGlobalPositionAware() override { return params.selection ? this : nullptr; }
 
             void OnAttach() override { if (params.selection) params.selection->OnPlaced(Backend(), Owner(), this); }

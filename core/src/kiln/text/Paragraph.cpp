@@ -39,6 +39,35 @@ namespace kiln {
         return Layout(r);
     }
 
+    int TextBackend::SimpleWordBreak(std::u16string_view t, int offset, bool following) {
+        const int n = int(t.size());
+        auto kind = [&](int i) {
+            const char16_t c = t[std::size_t(i)];
+            if (c == u' ' || c == u'\t' || c == 0xA0 || (c >= 0x2000 && c <= 0x200A) || c == 0x3000) return 1;
+            if (c == u'\n' || c == u'\r') return 2;
+            if ((c >= u'0' && c <= u'9') || (c >= u'a' && c <= u'z') || (c >= u'A' && c <= u'Z') || c == u'_' ||
+                (c >= 0xC0 && c != 0xD7 && c != 0xF7 && !(c >= 0x2000 && c <= 0x2BFF) && !(c >= 0x3000 && c <= 0x303F) &&
+                 !(c >= 0xFF00 && c <= 0xFF20)))
+                return 0;
+            return 3;
+        };
+        auto boundary = [&](int i) {
+            if (i <= 0 || i >= n) return true;
+            if (t[std::size_t(i)] >= 0xDC00 && t[std::size_t(i)] < 0xE000 && t[std::size_t(i) - 1] >= 0xD800 && t[std::size_t(i) - 1] < 0xDC00) return false;
+            if (t[std::size_t(i) - 1] == u'\r' && t[std::size_t(i)] == u'\n') return false;
+            const int a = kind(i - 1), b = kind(i);
+            return a != b || a >= 2;
+        };
+        if (following) {
+            if (offset >= n) return -1;
+            for (int i = std::max(offset, -1) + 1; i <= n; ++i) if (boundary(i)) return i;
+            return -1;
+        }
+        if (offset <= 0) return -1;
+        for (int i = std::min(offset, n + 1) - 1; i >= 0; --i) if (boundary(i)) return i;
+        return -1;
+    }
+
     int TextBackend::SurrogateCharacterBreak(std::u16string_view t, int offset, bool following) {
         const int n = int(t.size());
         auto high = [&](int i) { return i >= 0 && i < n && t[std::size_t(i)] >= 0xD800 && t[std::size_t(i)] <= 0xDBFF; };

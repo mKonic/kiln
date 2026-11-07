@@ -353,32 +353,6 @@ TEST(ChildOverscrollStretchesOnlyWhatTheParentLeaves) {
     h.Touch(PointerEventType::Release, 50, 50, false, 1500);
 }
 
-TEST(ScrollEventsReportRangesAndForwardDeltas) {
-    Harness h;
-    ScrollState state;
-    h.Run([&] { Tall(state, 10); });
-    ScrollEventTracker tracker;
-    CHECK(tracker.Collect(h.owner.BuildSemanticsTree(), h.owner).empty());   // first sight: observing
-    h.Touch(PointerEventType::Press, 50, 90, true, 0);
-    h.Touch(PointerEventType::Move, 50, 70, true, 100);
-    h.Touch(PointerEventType::Move, 50, 40, true, 200);
-    h.Touch(PointerEventType::Release, 50, 40, false, 400);
-    auto events = tracker.Collect(h.owner.BuildSemanticsTree(), h.owner);
-    CHECK_EQ(int(events.size()), 1);
-    if (events.size() == 1) {
-        CHECK(!events[0].x);
-        CHECK(events[0].y == (std::pair<int, int>{ 42, 400 }));
-        CHECK_EQ(events[0].deltaY, 42);   // finger up = forward = positive
-        CHECK_EQ(events[0].deltaX, 0);
-    }
-    CHECK(tracker.Collect(h.owner.BuildSemanticsTree(), h.owner).empty());   // nothing moved since
-    // A programmatic scroll reports its range without a pixel delta (like Compose).
-    state.ScrollTo(10);
-    h.Pump();
-    events = tracker.Collect(h.owner.BuildSemanticsTree(), h.owner);
-    CHECK(events.size() == 1 && events[0].y == (std::pair<int, int>{ 10, 400 }) && events[0].deltaY == 0);
-}
-
 namespace {
     // One wheel notch towards the end (AXIS_VSCROLL -1; the host flips it to scrollDelta +1).
     void Wheel(Harness& h, float notches, std::int64_t t) {

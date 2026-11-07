@@ -6,6 +6,8 @@ namespace kiln::android { void InstallImageDecoder(); void InstallAssetReader(JN
 #include "kiln/foundation/text/TextFieldState.h"
 #include "kiln/text/AnnotatedString.h"
 #include "kiln/ui/Back.h"
+#include "kiln/ui/Accessibility.h"
+#include <cstring>
 
 #include <climits>
 #include <cmath>
@@ -190,9 +192,28 @@ namespace {
         InstallTextInputHost(env);
         {
             jclass vc = env->GetObjectClass(view);
-            static jmethodID onSem = env->GetMethodID(vc, "onSemanticsChanged", "()V");
+            static jmethodID onA11y = env->GetMethodID(vc, "onAccessibilityChange", "(Z)V");
+            static jmethodID touchExploration = env->GetMethodID(vc, "isTouchExplorationOn", "()Z");
+            static jmethodID fromTool = env->GetMethodID(vc, "isRequestFromAccessibilityTool", "()Z");
+            static jmethodID requestRect = env->GetMethodID(vc, "requestRectangle", "(IIII)V");
+            static jmethodID invalidate = env->GetMethodID(vc, "invalidate", "()V");
+            static jmethodID focusFromTouch = env->GetMethodID(vc, "requestFocusFromTouch", "()Z");
             env->DeleteLocalRef(vc);
-            g_Host->app->GetOwner().SetOnSemanticsChanged([] { MainEnv()->CallVoidMethod(g_Host->view, onSem); });
+            auto& owner = g_Host->app->GetOwner();
+            owner.SetOnAccessibilityChange([](bool layout) { MainEnv()->CallVoidMethod(g_Host->view, onA11y, jboolean(layout)); });
+            kiln::ui::AccessibilityHost host;
+            host.touchExplorationEnabled = [] { return bool(MainEnv()->CallBooleanMethod(g_Host->view, touchExploration)); };
+            host.requestFromAccessibilityTool = [] { return bool(MainEnv()->CallBooleanMethod(g_Host->view, fromTool)); };
+            host.requestRectangleOnScreen = [](const kiln::ui::IntRect& r) {
+                MainEnv()->CallVoidMethod(g_Host->view, requestRect, jint(r.left), jint(r.top), jint(r.right), jint(r.bottom));
+                return true;
+            };
+            host.invalidate = [] { MainEnv()->CallVoidMethod(g_Host->view, invalidate); };
+            host.requestFocusFromTouch = [] { MainEnv()->CallBooleanMethod(g_Host->view, focusFromTouch); };
+            host.uptimeMillis = [] {
+                return std::int64_t(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count());
+            };
+            owner.Accessibility().SetHost(std::move(host));
             static jmethodID setBack = env->GetMethodID(env->GetObjectClass(view), "setBackEnabled", "(Z)V");
             auto& back = kiln::ui::BackDispatcher::Main();
             back.onHasEnabledChanged = [](bool on) { MainEnv()->CallVoidMethod(g_Host->view, setBack, jboolean(on)); };
@@ -784,251 +805,190 @@ namespace {
         AfterInput();
     }
 
-    // --- semantics -------------------------------------------------------------------------
+    // --- accessibility (spec 01: the delegate's node info, actions and events) ------------------
 
-    struct SemCache {
-        std::uint64_t version = ~0ull;
-        kiln::ui::SemanticsNode root;
-        std::unordered_map<int, const kiln::ui::SemanticsNode*> byId;
-        std::unordered_map<int, int> parent;
-    };
-    SemCache g_Sem;
-
-    void IndexSem(const kiln::ui::SemanticsNode& n, int parent) {
-        g_Sem.byId[n.id] = &n;
-        g_Sem.parent[n.id] = parent;
-        for (const auto& c : n.children) IndexSem(c, n.id);
+    // Strings of the last call that returned an int[] referring to them.
+    std::vector<std::optional<std::string>> g_A11yStrings;
+    int A11yString(const std::optional<std::string>& s) {
+        if (!s) return -1;
+        g_A11yStrings.push_back(s);
+        return int(g_A11yStrings.size()) - 1;
     }
-    const kiln::ui::SemanticsNode* SemFind(int id) {
-        auto& owner = g_Host->app->GetOwner();
-        if (g_Sem.version != owner.SemanticsVersion()) {
-            g_Sem.version = owner.SemanticsVersion();
-            g_Sem.root = owner.BuildSemanticsTree();
-            g_Sem.byId.clear();
-            g_Sem.parent.clear();
-            IndexSem(g_Sem.root, -1);
-        }
-        auto it = g_Sem.byId.find(id);
-        return it == g_Sem.byId.end() ? nullptr : it->second;
-    }
-    std::string Join(const std::vector<std::string>& v) {
-        std::string out;
-        for (const auto& s : v) { if (!out.empty()) out += ' '; out += s; }
-        return out;
-    }
-
-    jintArray SemNode(JNIEnv* env, jclass, jint id) {
-        if (!g_Host) return {};
-        std::vector<jint> d(11, 0);
-        if (const auto* n = SemFind(id)) {
-            const auto& c = n->config;
-            d[0] = 1;
-            d[1] = g_Sem.parent.count(id) ? g_Sem.parent[id] : -1;
-            if (c.textSelection) { d[2] = c.textSelection->first; d[3] = c.textSelection->second; }
-            int f = 0;
-            if (c.onClick) f |= 1;
-            if (c.focused) { f |= 2; if (*c.focused) f |= 4; }
-            if (c.editableText) f |= 8;
-            if (c.heading) f |= 16;
-            if (c.disabled) f |= 32;
-            if (c.password) f |= 64;
-            if (c.selected) { f |= 128; if (*c.selected) f |= 256; }
-            if (c.toggleableState) { f |= 512; if (*c.toggleableState == 1) f |= 1024; }
-            if (c.onLongClick) f |= 2048;
-            d[4] = f;
-            d[5] = jint(c.role);
-            d[6] = jint(n->boundsInRoot.left); d[7] = jint(n->boundsInRoot.top);
-            d[8] = jint(n->boundsInRoot.right); d[9] = jint(n->boundsInRoot.bottom);
-            d[10] = jint(n->children.size());
-            for (const auto& ch : n->children) d.push_back(ch.id);
-            // After the children: scroll flags, collection rows, collection columns.
-            int sf = 0;
-            auto axis = [&](const std::optional<kiln::ui::ScrollAxisRange>& r, int present, int fwd, int back, int scrollable) {
-                if (!r || !c.scrollBy) return;
-                sf |= present;
-                const float v = r->value ? r->value() : 0, max = r->maxValue ? r->maxValue() : 0;
-                if (max > 0) sf |= scrollable;
-                // canScrollForward / canScrollBackward (reverseScrolling swaps them).
-                if ((v < max && !r->reverseScrolling) || (v > 0 && r->reverseScrolling)) sf |= fwd;
-                if ((v > 0 && !r->reverseScrolling) || (v < max && r->reverseScrolling)) sf |= back;
-            };
-            axis(c.horizontalScrollAxisRange, 1, 4, 8, 256);
-            axis(c.verticalScrollAxisRange, 2, 16, 32, 256);
-            const auto collection = kiln::ui::ResolveCollectionInfo(*n);
-            const auto item = kiln::ui::ResolveCollectionItemInfo(*n, d[1] == -1 ? nullptr : SemFind(d[1]));
-            if (collection) sf |= 512;
-            if (c.pageUp) sf |= 1024;
-            if (c.pageDown) sf |= 2048;
-            if (c.pageLeft) sf |= 4096;
-            if (c.pageRight) sf |= 8192;
-            if (item) sf |= 16384;
-            d.push_back(sf);
-            d.push_back(collection ? collection->first : 0);
-            d.push_back(collection ? collection->second : 0);
-            // Then the item's row index, row span, column index, column span.
-            d.push_back(item ? item->rowIndex : 0);
-            d.push_back(item ? item->rowSpan : 0);
-            d.push_back(item ? item->columnIndex : 0);
-            d.push_back(item ? item->columnSpan : 0);
-        }
+    jintArray IntArray(JNIEnv* env, const std::vector<jint>& d) {
         jintArray a = env->NewIntArray(jsize(d.size()));
         env->SetIntArrayRegion(a, 0, jsize(d.size()), d.data());
         return a;
     }
+    jint FloatBits(float f) { jint i; std::memcpy(&i, &f, sizeof(i)); return i; }
+    kiln::ui::AccessibilityDelegate& A11y() { return g_Host->app->GetOwner().Accessibility(); }
 
-    // Scroll containers that moved since the last call: id, flags (1 x, 2 y), scrollX, maxScrollX,
-    // scrollY, maxScrollY, deltaX, deltaY each.
-    kiln::ui::ScrollEventTracker g_ScrollEvents;
-    jintArray SemScrollEvents(JNIEnv* env, jclass) {
-        std::vector<jint> d;
-        if (g_Host) {
-            if (const auto* root = SemFind(-1)) {
-                for (const auto& e : g_ScrollEvents.Collect(*root, g_Host->app->GetOwner())) {
-                    d.push_back(e.id);
-                    d.push_back((e.x ? 1 : 0) | (e.y ? 2 : 0));
-                    d.push_back(e.x ? e.x->first : 0); d.push_back(e.x ? e.x->second : 0);
-                    d.push_back(e.y ? e.y->first : 0); d.push_back(e.y ? e.y->second : 0);
-                    d.push_back(e.deltaX); d.push_back(e.deltaY);
-                }
-            }
-        }
-        jintArray a = env->NewIntArray(jsize(d.size()));
-        env->SetIntArrayRegion(a, 0, jsize(d.size()), d.data());
-        return a;
-    }
-
-    // Text spans on the joined text: [kind, start, end] per span (UTF-16; entries joined by ' ').
-    jintArray SemSpans(JNIEnv* env, jclass, jint id) {
-        std::vector<jint> d;
-        if (g_Host)
-            if (const auto* n = SemFind(id)) {
-                const auto& c = n->config;
-                std::vector<int> base(c.text.size(), 0);
-                for (std::size_t i = 1; i < c.text.size(); ++i)
-                    base[i] = base[i - 1] + kiln::text::Utf16Length(c.text[i - 1]) + 1;
-                for (const auto& span : c.textSpans) {
-                    if (span.textIndex < 0 || std::size_t(span.textIndex) >= base.size()) { d.insert(d.end(), { -1, 0, 0 }); continue; }
-                    const int b = base[std::size_t(span.textIndex)];
-                    d.insert(d.end(), { jint(span.kind), b + span.start, b + span.end });
-                }
-            }
-        jintArray a = env->NewIntArray(jsize(d.size()));
-        env->SetIntArrayRegion(a, 0, jsize(d.size()), d.data());
-        return a;
-    }
-
-    jstring SemSpanValue(JNIEnv* env, jclass, jint id, jint index) {
-        std::string v;
-        if (g_Host)
-            if (const auto* n = SemFind(id); n && index >= 0 && std::size_t(index) < n->config.textSpans.size())
-                v = n->config.textSpans[std::size_t(index)].value;
-        const std::u16string u = kiln::foundation::ToUtf16(v);
-        return env->NewString(reinterpret_cast<const jchar*>(u.data()), jsize(u.size()));
-    }
-
-    void SemSpanClick(JNIEnv*, jclass, jint id, jint index) {
+    void A11ySetEnabled(JNIEnv* env, jclass, jboolean enabled, jstring locale) {
         if (!g_Host) return;
-        if (const auto* n = SemFind(id); n && index >= 0 && std::size_t(index) < n->config.textSpans.size())
-            if (auto fn = n->config.textSpans[std::size_t(index)].onClick) fn();
-        g_Host->app->RequestFrame();
+        A11y().SetStrings(kiln::ui::a11y::Strings::ForLocale(kiln::foundation::ToUtf8(FromJava(env, locale))));
+        A11y().SetEnabled(enabled);
     }
 
-    jobjectArray SemStrings(JNIEnv* env, jclass, jint id) {
-        if (!g_Host) return {};
-        std::string v[6];
-        if (const auto* n = SemFind(id)) {
-            const auto& c = n->config;
-            v[0] = Join(c.text);
-            v[1] = Join(c.contentDescription);
-            v[2] = c.editableText.value_or("");
-            v[3] = c.stateDescription.value_or("");
-            v[4] = c.paneTitle.value_or("");
-            v[5] = c.onClickLabel.value_or("");
+    // Node info: see KilnAccessibility.createAccessibilityNodeInfo for the layout.
+    jintArray A11yNodeInfo(JNIEnv* env, jclass, jint id) {
+        g_A11yStrings.clear();
+        std::vector<jint> d;
+        if (!g_Host) return IntArray(env, d);
+        const auto info = A11y().CreateNodeInfo(id);
+        if (!info) { d.push_back(0); return IntArray(env, d); }
+        d.push_back(1);
+        d.push_back(info->parent);
+        d.insert(d.end(), { info->boundsInRoot.left, info->boundsInRoot.top, info->boundsInRoot.right, info->boundsInRoot.bottom });
+        int f = 0;
+        auto bit = [&](bool on, int b) { if (on) f |= b; };
+        bit(info->importantForAccessibility, 1); bit(info->accessibilityFocused, 2); bit(info->checkable, 4);
+        bit(info->selected, 8); bit(info->heading, 16); bit(info->textEntryKey, 32); bit(info->password, 64);
+        bit(info->editable, 128); bit(info->enabled, 256); bit(info->focusable, 512); bit(info->focused, 1024);
+        bit(info->visibleToUser, 2048); bit(info->clickable, 4096); bit(info->longClickable, 8192);
+        bit(info->scrollable, 16384); bit(info->screenReaderFocusable, 32768); bit(info->contentInvalid, 65536);
+        bit(info->dataSensitive, 131072); bit(info->checked.has_value(), 262144); bit(info->checked.value_or(false), 524288);
+        d.push_back(f);
+        d.insert(d.end(), { info->drawingOrder, info->maxTextLength, info->liveRegion, info->movementGranularities });
+        d.push_back(info->textSelection ? info->textSelection->first : INT_MIN);
+        d.push_back(info->textSelection ? info->textSelection->second : INT_MIN);
+        d.push_back(info->traversalBefore);
+        d.push_back(info->traversalAfter);
+        d.push_back(info->collectionInfo ? info->collectionInfo->first : INT_MIN);
+        d.push_back(info->collectionInfo ? info->collectionInfo->second : INT_MIN);
+        const auto& item = info->collectionItemInfo;
+        d.push_back(item ? item->rowIndex : INT_MIN);
+        d.insert(d.end(), { item ? item->rowSpan : 0, item ? item->columnIndex : 0, item ? item->columnSpan : 0, item && item->selected ? 1 : 0 });
+        d.push_back(info->rangeInfo ? 1 : 0);
+        d.push_back(FloatBits(info->rangeInfo ? info->rangeInfo->min : 0));
+        d.push_back(FloatBits(info->rangeInfo ? info->rangeInfo->max : 0));
+        d.push_back(FloatBits(info->rangeInfo ? info->rangeInfo->current : 0));
+        // Strings 0-8: className, roleDescription, text, contentDescription, stateDescription,
+        // hintText, error, paneTitle, viewIdResourceName.
+        g_A11yStrings = { info->className, info->roleDescription, info->text, info->contentDescription, info->stateDescription,
+                          info->hintText, info->error, info->paneTitle, info->viewIdResourceName };
+        d.push_back(int(info->children.size()));
+        d.insert(d.end(), info->children.begin(), info->children.end());
+        d.push_back(int(info->actions.size()));
+        for (const auto& a : info->actions) { d.push_back(a.id); d.push_back(A11yString(a.label)); }
+        d.push_back(int(info->textSpans.size()));
+        for (std::size_t i = 0; i < info->textSpans.size(); ++i) {
+            const auto& s = info->textSpans[i];
+            d.insert(d.end(), { jint(s.kind), s.start, s.end, A11yString(s.value) });
         }
+        d.push_back(int(info->extraDataKeys.size()));
+        for (const auto& k : info->extraDataKeys) d.push_back(A11yString(k));
+        return IntArray(env, d);
+    }
+
+    jobjectArray A11yStrings(JNIEnv* env, jclass) {
         jclass str = env->FindClass("java/lang/String");
-        jobjectArray out = env->NewObjectArray(6, str, nullptr);
-        for (int i = 0; i < 6; ++i) {
-            const std::u16string u = kiln::foundation::ToUtf16(v[i]);
+        jobjectArray out = env->NewObjectArray(jsize(g_A11yStrings.size()), str, nullptr);
+        for (std::size_t i = 0; i < g_A11yStrings.size(); ++i) {
+            if (!g_A11yStrings[i]) continue;
+            const std::u16string u = kiln::foundation::ToUtf16(*g_A11yStrings[i]);
             jstring js = env->NewString(reinterpret_cast<const jchar*>(u.data()), jsize(u.size()));
-            env->SetObjectArrayElement(out, i, js);
+            env->SetObjectArrayElement(out, jsize(i), js);
             env->DeleteLocalRef(js);
         }
         env->DeleteLocalRef(str);
         return out;
     }
 
-    jboolean SemAction(JNIEnv* env, jclass, jint id, jint action, jstring arg) {
-        if (!g_Host) return {};
-        const auto* n = SemFind(id);
-        if (!n) return false;
-        const auto& c = n->config;
-        bool ok = false;
-        switch (action) {
-            case 0: ok = c.onClick && c.onClick(); break;
-            case 1: ok = c.onLongClick && c.onLongClick(); break;
-            case 2: ok = c.requestFocus && c.requestFocus(); break;
-            case 3: ok = c.setText && c.setText(kiln::foundation::ToUtf8(FromJava(env, arg))); break;
-            case 5: {
-                // Page actions: arg u d l r.
-                const std::string dir = kiln::foundation::ToUtf8(FromJava(env, arg));
-                const char k = dir.empty() ? ' ' : dir[0];
-                const auto& f = k == 'u' ? c.pageUp : k == 'd' ? c.pageDown : k == 'l' ? c.pageLeft : c.pageRight;
-                ok = f && f();
-                break;
-            }
-            case 4: {
-                // Scroll actions: arg is f(orward) b(ackward) u d l r. The amount is the viewport
-                // (GetScrollViewportLength, else the node's size), signed like Compose's delegate.
-                if (!c.scrollBy) break;
-                const std::string dir = kiln::foundation::ToUtf8(FromJava(env, arg));
-                const char k = dir.empty() ? 'f' : dir[0];
-                const bool fwd = k == 'f', back = k == 'b';
-                auto canScroll = [](const kiln::ui::ScrollAxisRange& r, float amount) {
-                    const float v = r.value ? r.value() : 0, max = r.maxValue ? r.maxValue() : 0;
-                    return (amount < 0 && v > 0) || (amount > 0 && v < max);
-                };
-                const auto& b = n->boundsInRoot;
-                if (const auto& r = c.horizontalScrollAxisRange; r && (k == 'l' || k == 'r' || fwd || back)) {
-                    float amount = c.scrollViewportLength ? c.scrollViewportLength() : b.right - b.left;
-                    if (k == 'l' || back) amount = -amount;
-                    if (r->reverseScrolling) amount = -amount;
-                    if (canScroll(*r, amount)) {
-                        // A pageable node pages instead (PageLeft / PageRight).
-                        if (c.pageLeft || c.pageRight) ok = amount > 0 ? (c.pageRight && c.pageRight()) : (c.pageLeft && c.pageLeft());
-                        else ok = c.scrollBy(amount, 0);
-                        break;
-                    }
-                }
-                if (const auto& r = c.verticalScrollAxisRange; r && (k == 'u' || k == 'd' || fwd || back)) {
-                    float amount = c.scrollViewportLength ? c.scrollViewportLength() : b.bottom - b.top;
-                    if (k == 'u' || back) amount = -amount;
-                    if (r->reverseScrolling) amount = -amount;
-                    if (canScroll(*r, amount)) {
-                        if (c.pageUp || c.pageDown) ok = amount > 0 ? (c.pageDown && c.pageDown()) : (c.pageUp && c.pageUp());
-                        else ok = c.scrollBy(0, amount);
-                    }
-                }
-                break;
-            }
-            default: break;
+    // Events: per event type, id, contentChangeTypes, flags (1 password, 2 sensitive), fromIndex,
+    // toIndex, itemCount, addedCount, removedCount, scrollX, maxScrollX, scrollY, maxScrollY,
+    // deltaX, deltaY, action, granularity (INT_MIN: unset), className, contentDescription,
+    // beforeText (string indices), text count, text indices.
+    jintArray A11yTakeEvents(JNIEnv* env, jclass) {
+        g_A11yStrings.clear();
+        std::vector<jint> d;
+        if (!g_Host) return IntArray(env, d);
+        auto opt = [](const std::optional<int>& v) { return v ? jint(*v) : jint(INT_MIN); };
+        for (const auto& e : A11y().TakeEvents()) {
+            d.insert(d.end(), { e.type, e.id, opt(e.contentChangeTypes), (e.password ? 1 : 0) | (e.dataSensitive ? 2 : 0),
+                                opt(e.fromIndex), opt(e.toIndex), opt(e.itemCount), opt(e.addedCount), opt(e.removedCount),
+                                opt(e.scrollX), opt(e.maxScrollX), opt(e.scrollY), opt(e.maxScrollY), e.scrollDeltaX, e.scrollDeltaY,
+                                opt(e.action), opt(e.movementGranularity) });
+            d.push_back(A11yString(e.className));
+            d.push_back(A11yString(e.contentDescription));
+            d.push_back(A11yString(e.beforeText));
+            d.push_back(int(e.text.size()));
+            for (const auto& t : e.text) d.push_back(A11yString(t));
         }
+        return IntArray(env, d);
+    }
+
+    jboolean A11yPerformAction(JNIEnv* env, jclass, jint id, jint action, jint granularity, jboolean extend, jint selStart,
+                               jint selEnd, jstring text, jboolean hasProgress, jfloat progress) {
+        if (!g_Host) return false;
+        kiln::ui::AccessibilityActionArgs args;
+        if (granularity != INT_MIN) args.granularity = granularity;
+        args.extendSelection = extend;
+        if (selStart != INT_MIN) args.selectionStart = selStart;
+        if (selEnd != INT_MIN) args.selectionEnd = selEnd;
+        if (text) args.text = kiln::foundation::ToUtf8(FromJava(env, text));
+        if (hasProgress) args.progress = progress;
+        const bool ok = A11y().PerformAction(id, action, args);
         g_Host->app->RequestFrame();
         return ok;
     }
 
-    jint SemHitTest(JNIEnv*, jclass, jfloat x, jfloat y) {
-        if (!g_Host) return {};
-        SemFind(-1);
-        // Deepest node whose bounds contain the point, last child first (drawn on top).
-        std::function<int(const kiln::ui::SemanticsNode&)> hit = [&](const kiln::ui::SemanticsNode& n) -> int {
-            for (auto it = n.children.rbegin(); it != n.children.rend(); ++it) {
-                if (!it->boundsInRoot.Contains({ x, y })) continue;
-                const int deeper = hit(*it);
-                return deeper != INT_MIN ? deeper : it->id;
+    // Extra data: [kind, ...] — 0 none; 1 int: value; 2 string: (strings[0]); 3 character
+    // locations: count, (present, l, t, r, b) each; 4 shape: type (INT_MIN unset), has rect,
+    // l, t, r, b, corner count, corners (float bits), region count, (l, t, r, b) each. Pixels in
+    // root coordinates.
+    jintArray A11yExtraData(JNIEnv* env, jclass, jint id, jstring key, jint start, jint length) {
+        g_A11yStrings.clear();
+        std::vector<jint> d;
+        if (!g_Host) return IntArray(env, d);
+        kiln::ui::AccessibilityActionArgs args;
+        if (start != INT_MIN) args.characterStart = start;
+        if (length != INT_MIN) args.characterLength = length;
+        const auto x = A11y().ExtraData(id, kiln::foundation::ToUtf8(FromJava(env, key)), args);
+        if (x.intValue) { d = { 1, *x.intValue }; }
+        else if (x.stringValue) { d = { 2 }; A11yString(x.stringValue); }
+        else if (!x.rects.empty()) {
+            d = { 3, jint(x.rects.size()) };
+            for (const auto& r : x.rects)
+                d.insert(d.end(), { r ? 1 : 0, FloatBits(r ? r->left : 0), FloatBits(r ? r->top : 0), FloatBits(r ? r->right : 0), FloatBits(r ? r->bottom : 0) });
+        } else if (x.shapeType || x.shapeRect || !x.shapeCorners.empty() || !x.shapeRegion.empty()) {
+            d = { 4, x.shapeType ? *x.shapeType : INT_MIN, x.shapeRect ? 1 : 0 };
+            const auto r = x.shapeRect.value_or(kiln::ui::Rect{});
+            d.insert(d.end(), { jint(std::floor(r.left)), jint(std::floor(r.top)), jint(std::ceil(r.right)), jint(std::ceil(r.bottom)) });
+            d.push_back(int(x.shapeCorners.size()));
+            for (float c : x.shapeCorners) d.push_back(FloatBits(c));
+            d.push_back(int(x.shapeRegion.size()));
+            for (const auto& q : x.shapeRegion) d.insert(d.end(), { jint(std::floor(q.left)), jint(std::floor(q.top)), jint(std::ceil(q.right)), jint(std::ceil(q.bottom)) });
+        } else {
+            d = { 0 };
+        }
+        return IntArray(env, d);
+    }
+
+    void A11ySpanClick(JNIEnv*, jclass, jint id, jint index) {
+        if (!g_Host) return;
+        if (const auto* n = A11y().Find(id)) {
+            int k = 0;
+            for (const auto& s : n->config.textSpans) {
+                if (s.textIndex != 0) continue;
+                if (k++ == index) { if (s.onClick) s.onClick(); break; }
             }
-            return INT_MIN;
-        };
-        return hit(g_Sem.root);
+        }
+        g_Host->app->RequestFrame();
+    }
+
+    jboolean A11yHover(JNIEnv*, jclass, jint action, jfloat x, jfloat y) {
+        return g_Host && A11y().DispatchHover(action, x, y);
+    }
+    jint A11yFindFocus(JNIEnv*, jclass, jboolean accessibility) {
+        return g_Host ? A11y().FindFocus(accessibility) : jint(INT_MIN);
+    }
+    void A11yCheckSemantics(JNIEnv*, jclass) { if (g_Host) A11y().CheckForSemanticsChanges(); }
+    jboolean A11yFlushBounds(JNIEnv*, jclass) {
+        if (!g_Host) return false;
+        A11y().FlushBoundsUpdates();
+        return A11y().HasPendingBoundsUpdates();
+    }
+    jboolean A11yCanScroll(JNIEnv*, jclass, jboolean vertical, jint direction, jfloat x, jfloat y) {
+        return g_Host && A11y().CanScroll(vertical, direction, { x, y });
     }
 
     void SetViewConfiguration(JNIEnv*, jclass, jlong longPress, jlong doubleTap, jfloat touchSlop,
@@ -1062,7 +1022,7 @@ namespace {
         ALooper_removeFd(looper, g_Host->eventFd);
         ALooper_removeFd(looper, g_Host->timerFd);
         g_Host->visible = false;
-        g_Sem = {};
+        g_A11yStrings.clear();
         if (g_Host->window) { SurfaceDestroyed(env, nullptr); }
         g_Host->app.reset();
         kiln::ui::BackDispatcher::Main().onHasEnabledChanged = nullptr;
@@ -1131,14 +1091,18 @@ extern "C" JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void*) {
         { "backEvent", "(ZFFFIJ)V", reinterpret_cast<void*>(&BackEventJni) },
         { "backCancelled", "()V", reinterpret_cast<void*>(&BackCancelled) },
         { "backInvoked", "()V", reinterpret_cast<void*>(&BackInvoked) },
-        { "semNode", "(I)[I", reinterpret_cast<void*>(&SemNode) },
-        { "semScrollEvents", "()[I", reinterpret_cast<void*>(&SemScrollEvents) },
-        { "semStrings", "(I)[Ljava/lang/String;", reinterpret_cast<void*>(&SemStrings) },
-        { "semSpans", "(I)[I", reinterpret_cast<void*>(&SemSpans) },
-        { "semSpanValue", "(II)Ljava/lang/String;", reinterpret_cast<void*>(&SemSpanValue) },
-        { "semSpanClick", "(II)V", reinterpret_cast<void*>(&SemSpanClick) },
-        { "semAction", "(IILjava/lang/String;)Z", reinterpret_cast<void*>(&SemAction) },
-        { "semHitTest", "(FF)I", reinterpret_cast<void*>(&SemHitTest) },
+        { "a11ySetEnabled", "(ZLjava/lang/String;)V", reinterpret_cast<void*>(&A11ySetEnabled) },
+        { "a11yNodeInfo", "(I)[I", reinterpret_cast<void*>(&A11yNodeInfo) },
+        { "a11yStrings", "()[Ljava/lang/String;", reinterpret_cast<void*>(&A11yStrings) },
+        { "a11yTakeEvents", "()[I", reinterpret_cast<void*>(&A11yTakeEvents) },
+        { "a11yPerformAction", "(IIIZIILjava/lang/String;ZF)Z", reinterpret_cast<void*>(&A11yPerformAction) },
+        { "a11yExtraData", "(ILjava/lang/String;II)[I", reinterpret_cast<void*>(&A11yExtraData) },
+        { "a11ySpanClick", "(II)V", reinterpret_cast<void*>(&A11ySpanClick) },
+        { "a11yHover", "(IFF)Z", reinterpret_cast<void*>(&A11yHover) },
+        { "a11yFindFocus", "(Z)I", reinterpret_cast<void*>(&A11yFindFocus) },
+        { "a11yCheckSemantics", "()V", reinterpret_cast<void*>(&A11yCheckSemantics) },
+        { "a11yFlushBounds", "()Z", reinterpret_cast<void*>(&A11yFlushBounds) },
+        { "a11yCanScroll", "(ZIFF)Z", reinterpret_cast<void*>(&A11yCanScroll) },
         { "setViewConfiguration", "(JJFFF)V", reinterpret_cast<void*>(&SetViewConfiguration) },
         { "surfaceCreated", "(Landroid/view/Surface;)V", reinterpret_cast<void*>(&SurfaceCreated) },
         { "surfaceChanged", "(II)V", reinterpret_cast<void*>(&SurfaceChanged) },

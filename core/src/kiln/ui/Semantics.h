@@ -9,10 +9,14 @@
 #include "kiln/ui/Modifier.h"
 
 #include <functional>
+#include <memory>
 #include <optional>
 #include <string>
 #include <unordered_map>
 #include <vector>
+
+namespace kiln::text { class TextLayoutResult; }
+namespace kiln::gfx { class Shape; }
 
 namespace kiln::ui {
 
@@ -42,9 +46,27 @@ namespace kiln::ui {
         std::function<void()> onClick;   // Clickable
     };
 
+    // ProgressBarRangeInfo: `current` within [start, end]; steps > 0 for a discrete range.
+    struct ProgressBarRangeInfo {
+        float current = 0, start = 0, end = 1;
+        int steps = 0;
+        bool indeterminate = false;   // ProgressBarRangeInfo.Indeterminate
+        bool operator==(const ProgressBarRangeInfo&) const = default;
+        static ProgressBarRangeInfo Indeterminate() { ProgressBarRangeInfo r; r.indeterminate = true; return r; }
+    };
+
+    enum class LiveRegionMode : std::uint8_t { Polite, Assertive };
+
+    struct CustomAccessibilityAction {
+        std::string label;
+        std::function<bool()> action;
+    };
+
+    // SemanticsConfiguration: the properties and actions of SemanticsProperties /
+    // SemanticsActions. Unset optionals and empty functions are absent keys; Unit keys are bools.
     struct SemanticsConfiguration {
-        bool mergeDescendants = false;
-        bool clearAndSet = false;
+        bool mergeDescendants = false;   // isMergingSemanticsOfDescendants
+        bool clearAndSet = false;        // isClearingSemantics
         bool isTraversalGroup = false;
         std::vector<std::string> contentDescription;   // merged by concatenation
         std::vector<std::string> text;
@@ -53,39 +75,88 @@ namespace kiln::ui {
         std::optional<std::string> stateDescription;
         std::optional<std::string> paneTitle;
         std::optional<std::string> testTag;
+        std::optional<std::string> hintText;
+        std::optional<std::string> error;
+        std::optional<std::string> textSubstitution;
+        std::optional<bool> isShowingTextSubstitution;
         Role role = Role::None;
         bool heading = false;
         bool disabled = false;
         bool password = false;
+        std::optional<bool> isPasswordObfuscated;
+        bool textEntryKey = false;
+        bool isDialog = false, isPopup = false;
+        bool hideFromAccessibility = false;
+        bool invisibleToUser = false;     // deprecated in Compose; read like hideFromAccessibility
+        std::optional<bool> isSensitiveData;
+        std::optional<bool> isEditable;
+        std::optional<int> maxTextLength;
+        std::optional<int> imeAction;                  // EditorInfo.IME_ACTION_*
         std::optional<bool> selected;
         std::optional<int> toggleableState;            // 0 off, 1 on, 2 indeterminate
         std::optional<bool> focused;                  // presence = focusable
-        std::function<bool()> onClick;
-        std::optional<std::string> onClickLabel;
-        std::optional<std::string> onLongClickLabel;
+        std::optional<ProgressBarRangeInfo> progressBarRangeInfo;
+        std::optional<LiveRegionMode> liveRegion;
+        std::optional<float> traversalIndex;          // never merged
+        std::optional<bool> testTagsAsResourceId;      // SemanticsPropertiesAndroid
+        std::optional<std::string> accessibilityClassName;
+        std::shared_ptr<const gfx::Shape> shape;       // the node's shape (extra data), never merged
         bool selectableGroup = false;
-        std::function<bool()> onLongClick;
-        std::function<bool(const std::string&)> setText;
-        std::function<bool()> requestFocus;
         std::optional<std::pair<int, int>> textSelection;
-        // Scrolling (not merged into ancestors, like Compose's unmerged config).
+        // Scrolling.
         std::optional<ScrollAxisRange> horizontalScrollAxisRange, verticalScrollAxisRange;
-        std::function<bool(float x, float y)> scrollBy;        // positive: further into the content
-        std::function<bool(int index)> scrollToIndex;
-        std::function<float()> scrollViewportLength;          // GetScrollViewportLength (minus padding)
         std::optional<std::pair<int, int>> collectionInfo;     // rows, columns; -1 = unknown (lazy)
         std::optional<CollectionItemInfo> collectionItemInfo;
+
+        // Actions (an empty function is an absent action).
+        std::function<bool()> onClick;
+        std::optional<std::string> onClickLabel;
+        std::function<bool()> onLongClick;
+        std::optional<std::string> onLongClickLabel;
+        std::function<bool(const std::string&)> setText;
+        std::function<bool(const std::string&)> insertTextAtCursor;
+        std::function<bool(int start, int end, bool relativeToOriginal)> setSelection;   // traversal mode
+        std::function<bool()> requestFocus;
+        std::function<bool(float)> setProgress;
+        std::function<bool()> onImeAction;
+        std::optional<std::string> onImeActionLabel;
+        std::function<bool()> copyText, cutText, pasteText;
+        std::function<bool()> expand, collapse, dismiss;
+        std::optional<std::string> expandLabel, collapseLabel, dismissLabel;
+        std::function<bool(const std::string&)> setTextSubstitution;
+        std::function<bool(bool)> showTextSubstitution;
+        std::function<bool()> clearTextSubstitution;
+        std::vector<CustomAccessibilityAction> customActions;   // merged by concatenation
+        // GetTextLayoutResult: the text's current layout (null: none yet).
+        std::function<std::shared_ptr<const text::TextLayoutResult>()> getTextLayoutResult;
+        std::function<bool(float x, float y)> scrollBy;        // positive: further into the content
+        std::function<bool(int index)> scrollToIndex;
+        // GetScrollViewportLength: the viewport minus content padding, and the padding before and
+        // after the content.
+        std::function<float()> scrollViewportLength;
+        std::function<std::pair<float, float>()> scrollViewportPadding;
         // Paging (pagers): scroll actions on a node that pages use these instead of scrollBy.
         std::function<bool()> pageUp, pageDown, pageLeft, pageRight;
 
         bool HasContent() const {
             return !contentDescription.empty() || !text.empty() || editableText || stateDescription || onClick ||
                    focused || role != Role::None || heading || selected || toggleableState || paneTitle ||
-                   scrollBy || collectionInfo || collectionItemInfo;
+                   scrollBy || collectionInfo || collectionItemInfo || progressBarRangeInfo || !customActions.empty() ||
+                   hintText || error || liveRegion;
         }
-        // Merge `child` into this (SemanticsConfiguration.mergeChild: lists concatenate, a
-        // parent's own value wins for single values).
+        // containsImportantForAccessibility: a property other than testTag, traversal index,
+        // traversal group, test-tag-as-id, shape and the sensitive / substitution flags.
+        bool ContainsImportantForAccessibility() const;
+        // Merge `child` into this (SemanticsConfiguration.mergeChild with each key's merge
+        // policy): content descriptions, text and custom actions concatenate; role, test tag,
+        // traversal index, hidden flags and shape keep the parent's; others take the parent's
+        // value, else the child's.
         void Merge(const SemanticsConfiguration& child);
+        // A semantics modifier further out on the same node (calculateSemanticsConfiguration
+        // applies tail to head): every key it sets replaces this one's.
+        void Overlay(const SemanticsConfiguration& outer);
+        // Same keys and values (actions compare by presence and label, like accessibilityEquals).
+        bool Equivalent(const SemanticsConfiguration& o) const;
     };
 
     class SemanticsModifier {
@@ -98,6 +169,9 @@ namespace kiln::ui {
 
     class LayoutNode;
 
+    // A layout node's own configuration from its semantics modifiers; false without any.
+    bool CalculateSemanticsConfiguration(LayoutNode& n, SemanticsConfiguration& out);
+
     struct SemanticsNode {
         int id = 0;                    // stable per layout node; -1 = the root (host view)
         LayoutNode* layout = nullptr;
@@ -108,27 +182,5 @@ namespace kiln::ui {
 
     class Owner;
 
-    // TYPE_VIEW_SCROLLED (scheduleScrollEventIfNeeded): scroll containers whose axis range value
-    // moved since the last Collect, with their ranges and the pixels they scrolled themselves.
-    // A container seen for the first time only starts being observed.
-    struct ScrollEvent {
-        int id = 0;
-        std::optional<std::pair<int, int>> x, y;   // value, max
-        int deltaX = 0, deltaY = 0;
-    };
-    class ScrollEventTracker {
-    public:
-        std::vector<ScrollEvent> Collect(const SemanticsNode& root, Owner& owner);
-    private:
-        struct Old { std::optional<float> x, y; };
-        std::unordered_map<int, Old> m_Old;
-    };
-
-    // What the host reports as collection (item) info (CollectionInfo.android.kt): the node's
-    // own, else from a selectableGroup of selectable children — the group is a collection of
-    // them, stacked horizontally or vertically by their centers, and each is an item at its
-    // place among them (not inside a lazy collection, which has its own).
-    std::optional<std::pair<int, int>> ResolveCollectionInfo(const SemanticsNode& node);
-    std::optional<CollectionItemInfo> ResolveCollectionItemInfo(const SemanticsNode& node, const SemanticsNode* parent);
 
 }

@@ -80,6 +80,9 @@ namespace kiln::ui {
         virtual bool LayerProjective(Size, float[9]) const { return false; }
         // A clipping layer's hit test inside its bounds (layer.isInLayer: the clip outline).
         virtual bool LayerClipContains(Size, Offset, LayoutDirection, const Density&) const { return true; }
+        // A layer's alpha (graphicsLayer alpha; 1 without a layer). At 0 its content is hidden
+        // from accessibility (NodeCoordinator.isTransparent).
+        virtual float LayerAlpha() const { return 1; }
     };
 
     // onGloballyPositioned (OnGloballyPositionedModifier): told after a layout pass when the

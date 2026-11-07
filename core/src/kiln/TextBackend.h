@@ -170,6 +170,11 @@ namespace kiln {
         // or after a UTF-16 offset (-1 when there is none). The default steps over surrogate pairs only.
         virtual int CharacterBreak(std::u16string_view text, int offset, bool following) { return SurrogateCharacterBreak(text, offset, following); }
         static int SurrogateCharacterBreak(std::u16string_view text, int offset, bool following);
+        // BreakIterator.getWordInstance preceding / following: the word boundary before or after
+        // a UTF-16 offset (-1 when there is none). The default splits runs of letters and digits,
+        // runs of spaces, and every other character.
+        virtual int WordBreak(std::u16string_view text, int offset, bool following) { return SimpleWordBreak(text, offset, following); }
+        static int SimpleWordBreak(std::u16string_view text, int offset, bool following);
     };
 
 }
