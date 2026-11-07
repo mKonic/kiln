@@ -60,3 +60,28 @@ TEST(GestureExclusionAndKeepClearRectsFollowTheirNodes) {
     CHECK(excluded.empty());
     CHECK((clear == std::vector<ui::IntRect>{ { 0, 40, 25, 90 } }));   // moved up
 }
+
+TEST(ConfigurationReadersRecomposeAndSecureFlagReachesTheHost) {
+    ui::Owner owner;
+    rt::Composition comp{ owner.Root(), rt::Dispatcher::Main() };
+    auto config = std::make_shared<rt::State<ui::Configuration>>(ui::Configuration{});
+    std::vector<bool> dark;
+    comp.SetContent([&] {
+        rt::Composition::Current()->Provide(ui::LocalConfiguration, config->Get(), [&] { dark.push_back(ui::IsSystemInDarkTheme()); });
+    });
+    comp.Recompose();
+    ui::Configuration night = config->Peek();
+    night.uiMode = ui::Configuration::kUiModeTypeNormal | ui::Configuration::kUiModeNightYes;
+    config->Set(night);
+    comp.Recompose();
+    CHECK(!dark.empty() && !dark.front() && dark.back());
+
+    std::vector<bool> host;
+    owner.SetFlagSecureHost([&](bool s) { host.push_back(s); });
+    owner.SetFlagSecure(true);
+    owner.SetFlagSecure(true);
+    CHECK((host == std::vector<bool>{ true }));
+    CHECK(ui::ShouldApplySecureFlag(ui::SecureFlagPolicy::Inherit, owner.FlagSecure()));
+    CHECK(!ui::ShouldApplySecureFlag(ui::SecureFlagPolicy::SecureOff, true));
+    CHECK(ui::ShouldApplySecureFlag(ui::SecureFlagPolicy::SecureOn, false));
+}

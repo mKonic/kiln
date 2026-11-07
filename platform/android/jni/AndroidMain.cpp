@@ -56,6 +56,8 @@ namespace {
     };
     Host* g_Host = nullptr;
     std::shared_ptr<void> g_LocalDragState;   // the local state of a drag this app started
+    std::optional<kiln::ui::Configuration> g_PendingConfiguration;
+    bool g_Pending24Hour = false;
 
     void ArmTimer();
     void InstallTextInputHost(JNIEnv* env);
@@ -354,6 +356,8 @@ namespace {
         services.nestedScrollParent = &g_NestedScrollParent;
         g_Host->app = std::make_unique<kiln::App>(services);
         g_Host->app->SetDensity(density, fontScale);
+        if (g_PendingConfiguration) g_Host->app->SetConfiguration(*g_PendingConfiguration);
+        g_Host->app->Set24HourFormat(g_Pending24Hour);
         g_Host->handle.impl = g_Host->app.get();
         env->GetJavaVM(&g_Host->vm);
         g_Host->view = env->NewGlobalRef(view);
@@ -498,6 +502,12 @@ namespace {
                         return withKey(p, [](JNIEnv* e, jstring js) { return bool(e->CallBooleanMethod(g_Host->view, arCheck, js)); });
                     };
                     owner.ActivityResults().SetHost(std::move(ar));
+                }
+                {
+                    jclass sc = env->GetObjectClass(view);
+                    static jmethodID setSecure = env->GetMethodID(sc, "setFlagSecureFromNative", "(Z)V");
+                    env->DeleteLocalRef(sc);
+                    owner.SetFlagSecureHost([](bool s) { MainEnv()->CallVoidMethod(g_Host->view, setSecure, jboolean(s)); });
                 }
                 owner.SetScreenHost([](bool on) { MainEnv()->CallVoidMethod(g_Host->view, keepOn, jboolean(on)); },
                                     [](bool s) { MainEnv()->CallVoidMethod(g_Host->view, sensitive, jboolean(s)); });
@@ -864,6 +874,34 @@ namespace {
     void TextToolbarDestroyed(JNIEnv*, jclass) {
         if (!g_Host) return;
         g_Host->app->GetOwner().OnTextToolbarDestroyed();
+    }
+
+    // Configuration as KilnView.pushConfiguration packs it; also before create, so the first
+    // composition sees the right locales and night mode.
+    void SetConfiguration(JNIEnv* env, jclass, jintArray values, jfloat fontScale, jobjectArray locales) {
+        kiln::ui::Configuration c;
+        jint v[15]{};
+        env->GetIntArrayRegion(values, 0, std::min<jsize>(15, env->GetArrayLength(values)), v);
+        c.fontScale = fontScale;
+        c.densityDpi = v[0]; c.fontWeightAdjustment = v[1]; c.uiMode = v[2];
+        c.screenWidthDp = v[3]; c.screenHeightDp = v[4]; c.smallestScreenWidthDp = v[5];
+        c.orientation = v[6]; c.screenLayout = v[7]; c.touchscreen = v[8]; c.keyboard = v[9];
+        c.keyboardHidden = v[10]; c.hardKeyboardHidden = v[11]; c.navigation = v[12];
+        c.navigationHidden = v[13]; c.colorMode = v[14];
+        for (auto& l : StringsFromJava(env, locales)) if (l && !l->empty()) c.locales.push_back(*l);
+        if (!c.locales.empty()) kiln::ui::SetPlatformLocaleList(c.locales);
+        g_PendingConfiguration = c;
+        if (g_Host) g_Host->app->SetConfiguration(std::move(c));
+    }
+
+    void Set24HourFormat(JNIEnv*, jclass, jboolean is24) {
+        g_Pending24Hour = is24;
+        if (g_Host) g_Host->app->Set24HourFormat(is24);
+    }
+
+    // The window's FLAG_SECURE as the host found it (set by the activity or the app).
+    void FlagSecureChanged(JNIEnv*, jclass, jboolean secure) {
+        if (g_Host) g_Host->app->GetOwner().SetFlagSecure(secure);
     }
 
     void SetFontWeightAdjustment(JNIEnv*, jclass, jint adjustment) {
@@ -2177,6 +2215,9 @@ extern "C" JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void*) {
         { "setVisible", "(Z)V", reinterpret_cast<void*>(&SetVisible) },
         { "setDensity", "(FF)V", reinterpret_cast<void*>(&SetDensity) },
         { "setFontWeightAdjustment", "(I)V", reinterpret_cast<void*>(&SetFontWeightAdjustment) },
+        { "setConfiguration", "([IF[Ljava/lang/String;)V", reinterpret_cast<void*>(&SetConfiguration) },
+        { "set24HourFormat", "(Z)V", reinterpret_cast<void*>(&Set24HourFormat) },
+        { "flagSecureChanged", "(Z)V", reinterpret_cast<void*>(&FlagSecureChanged) },
         { "fontsChanged", "()V", reinterpret_cast<void*>(&FontsChanged) },
         { "textToolbarItem", "(I)V", reinterpret_cast<void*>(&TextToolbarItem) },
         { "textToolbarDestroyed", "()V", reinterpret_cast<void*>(&TextToolbarDestroyed) },

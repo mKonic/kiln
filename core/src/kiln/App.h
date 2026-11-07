@@ -69,6 +69,11 @@ namespace kiln {
         }
         // The host view's layout direction (View.getLayoutDirection): layouts and LocalLayoutDirection.
         void SetLayoutDirection(ui::LayoutDirection d);
+        // Configuration (LocalConfiguration; its locales also become Locale.current) and the
+        // 24-hour time setting (LocalIs24HourFormat).
+        void SetConfiguration(ui::Configuration config);
+        const ui::Configuration& GetConfiguration() const { return m_Configuration->Peek(); }
+        void Set24HourFormat(bool is24Hour);
         // FEATURE_LEANBACK; set before SetContent.
         void SetTelevision(bool tv) { m_Television = tv; }
         // C++ content root: composed into the window's layout tree each frame it changes.
@@ -126,6 +131,8 @@ namespace kiln {
         ui::IndirectPointerAdapter m_IndirectAdapter;
         std::unique_ptr<rt::SaveableStateRegistry> m_Saveable = std::make_unique<rt::SaveableStateRegistry>();
         bool m_Television = false;
+        std::unique_ptr<rt::State<ui::Configuration>> m_Configuration = std::make_unique<rt::State<ui::Configuration>>(ui::Configuration{});
+        std::unique_ptr<rt::State<bool>> m_Is24Hour = std::make_unique<rt::State<bool>>(false);
         std::unique_ptr<rt::State<ui::LayoutDirection>> m_Direction = std::make_unique<rt::State<ui::LayoutDirection>>(ui::LayoutDirection::Ltr);
         std::unique_ptr<rt::Composition> m_Composition;
         kiln_app_callbacks m_Callbacks{};

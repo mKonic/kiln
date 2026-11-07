@@ -210,6 +210,22 @@ namespace {
                           [openDocument] { openDocument.Launch({ "*/*" }); }),
                 Alignment::Center(), false, [] { BasicText("Pick a document", Padding(Modifier{}, 24_dp, 10_dp), { 14, kOnSurface }); });
             BasicText("Picked: " + pickedUri.Get(), Padding(Modifier{}, 16_dp, 0_dp), { 14, kVariant });
+            // The configuration surface, and FLAG_SECURE on the window (screenshots come out black).
+            {
+                auto* c = kiln::rt::Composition::Current();
+                const auto& config = c->Read(LocalConfiguration);
+                BasicText(std::string("Dark theme: ") + (IsSystemInDarkTheme() ? "on" : "off") + ", 24-hour: " +
+                              (c->Read(LocalIs24HourFormat) ? "on" : "off") + ", locale: " +
+                              (config.locales.empty() ? std::string("?") : config.locales.front()),
+                          Padding(Modifier{}, 16_dp, 0_dp), { 14, kVariant });
+                kiln::ui::Window* window = c->Read(LocalWindow);
+                const bool secure = window && window->IsFlagSecure();
+                Box(Clickable(Background(Padding(Modifier{}, 16_dp, 0_dp), kPrimaryContainer, CornerShape::Pill()),
+                              [window, secure] { if (window) window->SetFlagSecure(!secure); }),
+                    Alignment::Center(), false, [secure] {
+                    BasicText(secure ? "Secure window: on" : "Secure window: off", Padding(Modifier{}, 24_dp, 10_dp), { 14, kOnSurface });
+                });
+            }
             // A password field: the last typed character shows briefly when the setting allows.
             auto& password = RememberTextFieldState("");
             Box(Background(Padding(FillMax(Modifier{}, Axis::Horizontal), 16_dp, 0_dp), kContainer, CornerShape::Rounded(12_dp)),

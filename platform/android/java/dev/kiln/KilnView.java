@@ -56,6 +56,8 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
         addView(surfaceView, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
 
         text = new KilnText(context);
+        pushConfiguration(getResources().getConfiguration());
+        push24HourFormat();
         DisplayMetrics metrics = getResources().getDisplayMetrics();
         KilnNative.create(this, text, context.getAssets(), metrics.density, getResources().getConfiguration().fontScale, savedState);
         KilnNative.setFontWeightAdjustment(fontWeightAdjustment(getResources().getConfiguration()));
@@ -1261,6 +1263,12 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
         }
         accessibility.updateEnabled();
         setViewTranslationCallback(accessibility.translationCallback);
+        getContext().registerReceiver(timeFormatReceiver,
+                new android.content.IntentFilter(android.content.Intent.ACTION_TIME_CHANGED), Context.RECEIVER_NOT_EXPORTED);
+        getContext().getContentResolver().registerContentObserver(
+                Settings.System.getUriFor(Settings.System.TIME_12_24), false, timeFormatObserver);
+        push24HourFormat();
+        pushFlagSecure();
     }
 
     @Override
@@ -1268,6 +1276,8 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
         back.onDetached();
         flushHoverExit(true);
         clearViewTranslationCallback();
+        getContext().unregisterReceiver(timeFormatReceiver);
+        getContext().getContentResolver().unregisterContentObserver(timeFormatObserver);
         AccessibilityManager am = getContext().getSystemService(AccessibilityManager.class);
         if (am != null) {
             am.removeAccessibilityStateChangeListener(a11yStateListener);
@@ -1418,7 +1428,47 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
         accessibility.onTranslationResponses(response);
     }
 
+    // LocalConfiguration (and Locale.current from its locales).
+    private static void pushConfiguration(Configuration c) {
+        android.os.LocaleList list = c.getLocales();
+        String[] locales = new String[list.size()];
+        for (int i = 0; i < locales.length; i++) locales[i] = list.get(i).toLanguageTag();
+        KilnNative.setConfiguration(new int[] {
+                c.densityDpi, fontWeightAdjustment(c), c.uiMode,
+                c.screenWidthDp, c.screenHeightDp, c.smallestScreenWidthDp,
+                c.orientation, c.screenLayout, c.touchscreen, c.keyboard,
+                c.keyboardHidden, c.hardKeyboardHidden, c.navigation, c.navigationHidden, c.colorMode,
+        }, c.fontScale, locales);
+    }
+
+    // DateFormat.is24HourFormat; the Settings app broadcasts ACTION_TIME_CHANGED when it flips,
+    // and the setting itself is observed for other writers.
+    private final ContentObserver timeFormatObserver = new ContentObserver(new Handler(Looper.getMainLooper())) {
+        @Override public void onChange(boolean selfChange) { push24HourFormat(); }
+    };
+    private void push24HourFormat() {
+        KilnNative.set24HourFormat(android.text.format.DateFormat.is24HourFormat(getContext()));
+    }
+    private final android.content.BroadcastReceiver timeFormatReceiver = new android.content.BroadcastReceiver() {
+        @Override public void onReceive(Context context, android.content.Intent intent) { push24HourFormat(); }
+    };
+
+    // FLAG_SECURE on the window: the native side asks, and reads the window's own flag on attach.
+    void setFlagSecureFromNative(boolean secure) {
+        android.view.Window w = getContext() instanceof android.app.Activity ? ((android.app.Activity) getContext()).getWindow() : null;
+        if (w == null) return;
+        if (secure) w.addFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE);
+        else w.clearFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE);
+    }
+    private void pushFlagSecure() {
+        android.view.ViewGroup.LayoutParams lp = getRootView().getLayoutParams();
+        if (lp instanceof android.view.WindowManager.LayoutParams)
+            KilnNative.flagSecureChanged((((android.view.WindowManager.LayoutParams) lp).flags
+                    & android.view.WindowManager.LayoutParams.FLAG_SECURE) != 0);
+    }
+
     void onHostConfigurationChanged(Configuration config) {
+        pushConfiguration(config);
         KilnNative.setDensity(getResources().getDisplayMetrics().density, config.fontScale);
         KilnNative.setFontWeightAdjustment(fontWeightAdjustment(config));
     }

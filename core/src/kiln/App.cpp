@@ -145,6 +145,19 @@ namespace kiln {
         RequestFrame();
     }
 
+    void App::SetConfiguration(ui::Configuration config) {
+        if (!config.locales.empty()) ui::SetPlatformLocaleList(config.locales);
+        if (m_Configuration->Peek() == config) return;
+        m_Configuration->Set(std::move(config));
+        RequestFrame();
+    }
+
+    void App::Set24HourFormat(bool is24Hour) {
+        if (m_Is24Hour->Peek() == is24Hour) return;
+        m_Is24Hour->Set(is24Hour);
+        RequestFrame();
+    }
+
     void App::SetContent(std::function<void()> content) {
         if (!m_Composition) m_Composition = std::make_unique<rt::Composition>(m_Owner.Root(), m_Dispatcher);
         rt::SaveableStateRegistry* registry = m_Saveable.get();
@@ -185,6 +198,23 @@ namespace kiln {
         };
         std::shared_ptr<const ui::WindowInfo> windowInfo = std::make_shared<HostWindowInfo>(&m_Owner);
         ui::Owner* owner = &m_Owner;
+        struct HostWindow final : ui::Window {
+            ui::Owner* owner;
+            explicit HostWindow(ui::Owner* o) : owner(o) {}
+            bool IsFlagSecure() const override { return owner->FlagSecure(); }
+            void SetFlagSecure(bool secure) override { owner->SetFlagSecure(secure); }
+        };
+        std::shared_ptr<ui::Window> window = std::make_shared<HostWindow>(&m_Owner);
+        rt::State<ui::Configuration>* config = m_Configuration.get();
+        rt::State<bool>* is24Hour = m_Is24Hour.get();
+        content = [config, is24Hour, window, content = std::move(content)] {
+            auto* c = rt::Composition::Current();
+            c->Provide(ui::LocalConfiguration, config->Get(), [c, is24Hour, window, content] {
+                c->Provide(ui::LocalIs24HourFormat, is24Hour->Get(), [c, window, content] {
+                    c->Provide(ui::LocalWindow, window.get(), content);
+                });
+            });
+        };
         m_Composition->SetContent([registry, dir, nested, tv, sound, insets, windowInfo, haptics, owner, a11yManager, content = std::move(content)] {
             auto* c = rt::Composition::Current();
             c->Provide(ui::LocalActivityResultRegistry, &owner->ActivityResults(), [c, registry, dir, nested, tv, sound, insets, windowInfo, haptics, owner, a11yManager, content] {

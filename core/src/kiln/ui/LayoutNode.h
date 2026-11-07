@@ -16,6 +16,7 @@
 #include "kiln/ui/TextInput.h"
 #include "kiln/ui/TextToolbar.h"
 #include "kiln/ui/Autofill.h"
+#include "kiln/ui/Configuration.h"
 #include "kiln/ui/DragAndDrop.h"
 #include "kiln/ui/ScrollCapture.h"
 #include "kiln/ui/ActivityResult.h"
@@ -418,6 +419,14 @@ namespace kiln::ui {
         void SetAccessibilityServices(AccessibilityServiceState s) { m_A11yServices.Set(s); }
         // keepScreenOn / sensitiveContent counts (AndroidComposeView): the host view keeps the
         // screen on while any node asks, and is marked sensitive (API 35) while any node is.
+        // The host window's FLAG_SECURE (LocalWindow): observable; the host applies changes.
+        bool FlagSecure() const { return m_FlagSecure.Get(); }
+        void SetFlagSecure(bool secure) {
+            if (m_FlagSecure.Peek() == secure) return;
+            m_FlagSecure.Set(secure);
+            if (m_FlagSecureHost) m_FlagSecureHost(secure);
+        }
+        void SetFlagSecureHost(std::function<void(bool)> host) { m_FlagSecureHost = std::move(host); }
         void SetScreenHost(std::function<void(bool)> keepScreenOn, std::function<void(bool)> contentSensitive) {
             m_KeepScreenOnHost = std::move(keepScreenOn);
             m_ContentSensitiveHost = std::move(contentSensitive);
@@ -543,6 +552,8 @@ namespace kiln::ui {
         std::function<void(int, const std::vector<IntRect>&)> m_ViewRectsHost;
         std::function<std::int64_t(int, int)> m_TimeoutHost;
         rt::State<AccessibilityServiceState> m_A11yServices{ AccessibilityServiceState{} };
+        rt::State<bool> m_FlagSecure{ false };
+        std::function<void(bool)> m_FlagSecureHost;
         std::map<int, std::vector<std::pair<const void*, IntRect>>> m_ViewRects;
         friend class FocusTargetNode;
         friend class AccessibilityDelegate;
