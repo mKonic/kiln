@@ -108,3 +108,35 @@ TEST(DialogBackRespectsDismissOnBackPress) {
     rt::Dispatcher::Main().RunPending();
     CHECK_EQ(alive, 0);
 }
+
+TEST(DialogContentIsDisposedBeforeItsWindowCloses) {
+    // The content's cleanup (a magnifier, the keyboard session) still reaches the window's hosts.
+    Owner owner;
+    rt::Composition comp{ owner.Root(), rt::Dispatcher::Main() };
+    std::vector<std::string> order;
+    struct OrderedDialog final : PlatformDialog {
+        std::vector<std::string>* order;
+        explicit OrderedDialog(std::vector<std::string>* o) : order(o) {}
+        ~OrderedDialog() override { order->push_back("window"); }
+        void Update(const DialogWindowProperties&) override {}
+    };
+    DialogHost host;
+    host.create = [&](Owner&, const DialogWindowProperties&, std::function<void()>) { return std::make_unique<OrderedDialog>(&order); };
+    owner.SetDialogHost(host);
+    auto shown = std::make_shared<rt::State<bool>>(true);
+    comp.SetContent([&] {
+        rt::Composition::Current()->Provide(LocalOwner, &owner, [&] {
+            if (shown->Get())
+                Dialog([] {}, {}, [&] {
+                    rt::Composition::Current()->DisposableEffect(rt::Keys(0), [&] {
+                        return std::function<void()>([&] { order.push_back("content"); });
+                    });
+                });
+        });
+    });
+    auto pump = [&] { rt::Composition::RecomposeAll(); rt::Dispatcher::Main().RunPending(); owner.MeasureAndLayout({ 1000, 2000 }); };
+    pump();
+    shown->Set(false);
+    pump();
+    CHECK((order == std::vector<std::string>{ "content", "window" }));
+}

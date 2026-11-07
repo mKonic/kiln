@@ -107,7 +107,11 @@ namespace kiln::foundation {
                 if (parent && parent->Dialogs().create)
                     state->window = parent->Dialogs().create(*state->owner, WindowProperties(state->properties, parent, density, direction),
                                                              [s = state.get()] { s->Dismiss(); });
-                return std::function<void()>([state] { state->window.reset(); });
+                // dispose: the content composition first, while the window's hosts still exist.
+                return std::function<void()>([state] {
+                    state->composition.reset();
+                    state->window.reset();
+                });
             });
 
             // updateParameters, then the content.
@@ -116,6 +120,7 @@ namespace kiln::foundation {
                 s.onDismissRequest = onDismissRequest;
                 s.properties = properties;
                 if (s.window) s.window->Update(WindowProperties(properties, parent, density, direction));
+                if (!s.composition) return;   // disposed
                 ui::Owner* owner = s.owner.get();
                 s.composition->SetParentContext(parentScope);
                 s.composition->SetContent([owner, st = &s, content] {

@@ -268,17 +268,29 @@ namespace {
             {
                 auto& dialogOpen = kiln::rt::RememberSaveableState(false);
                 auto& answer = kiln::rt::RememberSaveableState(std::string("none"));
+                auto& dialogName = RememberTextFieldState("Draft");
                 Box(Clickable(Background(Padding(Modifier{}, 16_dp, 0_dp), kPrimaryContainer, CornerShape::Pill()),
                               [&dialogOpen] { dialogOpen.Set(true); }),
                     Alignment::Center(), false, [] { BasicText("Open dialog", Padding(Modifier{}, 24_dp, 10_dp), { 14, kOnSurface }); });
                 if (dialogOpen.Get()) {
                     Dialog([&dialogOpen, &answer] { answer.Set("dismissed"); dialogOpen.Set(false); }, {}, [&] {
-                        Column(Padding(Background(Modifier{}, kContainer, CornerShape::Rounded(28_dp)), 24_dp, 24_dp), [&] {
-                            BasicText("Discard draft?", Padding(Modifier{}, 0_dp, 0_dp), { 24, kOnSurface });
-                            BasicText("The text you typed will be lost.", Padding(Modifier{}, 0_dp, 16_dp), { 14, kVariant });
+                        Column(Padding(Background(Width(Modifier{}, 300_dp), kContainer, CornerShape::Rounded(28_dp)), 24_dp, 24_dp), [&] {
+                            BasicText("Rename", Padding(Modifier{}, 0_dp, 0_dp), { 24, kOnSurface });
+                            // A field in the dialog window: it has its own keyboard session.
+                            Box(Background(Padding(FillMax(Modifier{}, Axis::Horizontal), 0_dp, 16_dp), kPrimaryContainer,
+                                           CornerShape::Rounded(8_dp)),
+                                Alignment::CenterStart(), false, [&] {
+                                BasicTextFieldOptions opt;
+                                opt.textStyle = { 16, kOnSurface };
+                                opt.lineLimits = TextFieldLineLimits::SingleLine();
+                                BasicTextField(dialogName, Padding(FillMax(Modifier{}, Axis::Horizontal), 12_dp, 12_dp), opt);
+                            });
                             Row(Modifier{}, Arrangement::SpacedBy(8_dp), AlignmentV::CenterVertically(), [&] {
-                                for (const char* choice : { "Cancel", "Discard" }) {
-                                    Box(Clickable(Modifier{}, [&dialogOpen, &answer, choice] { answer.Set(choice); dialogOpen.Set(false); }),
+                                for (const char* choice : { "Cancel", "Save" }) {
+                                    Box(Clickable(Modifier{}, [&dialogOpen, &answer, &dialogName, choice] {
+                                            answer.Set(std::string(choice) == "Save" ? dialogName.TextUtf8() : std::string(choice));
+                                            dialogOpen.Set(false);
+                                        }),
                                         Alignment::Center(), false, [choice] {
                                         BasicText(choice, Padding(Modifier{}, 12_dp, 10_dp), { 14, kPrimary });
                                     }, kiln::rt::Key(std::int64_t(std::hash<std::string>{}(choice))));
