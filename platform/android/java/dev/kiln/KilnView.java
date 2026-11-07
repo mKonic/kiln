@@ -36,12 +36,25 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
     private final SurfaceView surfaceView;
     private final KilnText text;
 
+    /** The window this view shows: 0 for the activity's, a dialog's id otherwise. */
+    final int windowId;
+    /** A dialog view's window (FLAG_SECURE goes there); null for the activity's view. */
+    android.view.Window hostWindow;
+    /** The dialog this view is the content of; null for the activity's view. */
+    KilnDialog dialog;
+
     public KilnView(Context context) { this(context, null); }
 
     /** savedState: the bytes from {@link #saveState()} of the previous instance, or null. */
-    public KilnView(Context context, byte[] savedState) {
+    public KilnView(Context context, byte[] savedState) { this(context, 0, null, savedState); }
+
+    /** A dialog window's view: its own owner on the native side, the app's services shared. */
+    KilnView(Context context, int windowId, KilnView parent) { this(context, windowId, parent, null); }
+
+    private KilnView(Context context, int windowId, KilnView parent, byte[] savedState) {
         super(context);
-        textServices = new KilnTextServices(context, new Handler(Looper.getMainLooper()));
+        this.windowId = windowId;
+        textServices = parent != null ? parent.textServices : new KilnTextServices(context, new Handler(Looper.getMainLooper()));
         setOnDragListener(dragListener);
         setFocusable(true);
         setFocusableInTouchMode(true);
@@ -53,15 +66,23 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
 
         surfaceView = new SurfaceView(context);
         surfaceView.getHolder().addCallback(this);
+        // A dialog window shows what is behind it where the content draws nothing.
+        if (windowId != 0) surfaceView.getHolder().setFormat(android.graphics.PixelFormat.TRANSLUCENT);
         addView(surfaceView, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
 
-        text = new KilnText(context);
+        text = parent != null ? parent.text : new KilnText(context);
+        if (windowId != 0) {
+            // The app-wide state (settings, configuration) comes from the activity's view.
+            KilnNative.windowFocusChanged(windowId, hasWindowFocus());
+            installInsets();
+            return;
+        }
         pushConfiguration(getResources().getConfiguration());
         push24HourFormat();
         DisplayMetrics metrics = getResources().getDisplayMetrics();
         KilnNative.create(this, text, context.getAssets(), metrics.density, getResources().getConfiguration().fontScale, savedState);
         KilnNative.setFontWeightAdjustment(fontWeightAdjustment(getResources().getConfiguration()));
-        KilnNative.windowFocusChanged(hasWindowFocus());
+        KilnNative.windowFocusChanged(windowId, hasWindowFocus());
 
         // ANIMATOR_DURATION_SCALE, observed for changes (WindowRecomposer:95-135).
         animationScaleObserver = new ContentObserver(new Handler(Looper.getMainLooper())) {
@@ -158,8 +179,9 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
 
     /** The activity is going: settings observers and the text services stop. */
     void release() {
+        if (windowId != 0) return;
         unregisterAccessibilityServiceListeners();
-        getContext().getContentResolver().unregisterContentObserver(animationScaleObserver);
+        if (animationScaleObserver != null) getContext().getContentResolver().unregisterContentObserver(animationScaleObserver);
         if (unregisterPasswordObserver != null) unregisterPasswordObserver.run();
         unregisterPasswordObserver = null;
         textServices.shutdown();
@@ -218,7 +240,7 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
         int o = TYPES.length * 9;
         data[o++] = rects.size();
         for (Rect r : rects) { data[o++] = r.left; data[o++] = r.top; data[o++] = r.right; data[o++] = r.bottom; }
-        KilnNative.setWindowInsets(data);
+        KilnNative.setWindowInsets(windowId, data);
     }
 
     private void sendAnimation(int typeMask, WindowInsetsAnimation a, android.graphics.Insets[] positions) {
@@ -229,8 +251,8 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
                 android.graphics.Insets s = positions[0], t = positions[1];
                 bounds = new int[] { s.left, s.top, s.right, s.bottom, t.left, t.top, t.right, t.bottom };
             }
-            if (a == null) KilnNative.setInsetsAnimation(i, false, null, 0, 1, 0);
-            else KilnNative.setInsetsAnimation(i, true, bounds, a.getInterpolatedFraction(), a.getAlpha(), a.getDurationMillis());
+            if (a == null) KilnNative.setInsetsAnimation(windowId, i, false, null, 0, 1, 0);
+            else KilnNative.setInsetsAnimation(windowId, i, true, bounds, a.getInterpolatedFraction(), a.getAlpha(), a.getDurationMillis());
         }
     }
 
@@ -311,14 +333,14 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
                 @Override public void onReady(android.view.WindowInsetsAnimationController controller, int types) {
                     insetsController = controller;
                     android.graphics.Insets h = controller.getHiddenStateInsets(), s = controller.getShownStateInsets(), cur = controller.getCurrentInsets();
-                    KilnNative.insetsControlReady(new int[] { h.left, h.top, h.right, h.bottom, s.left, s.top, s.right, s.bottom,
+                    KilnNative.insetsControlReady(windowId, new int[] { h.left, h.top, h.right, h.bottom, s.left, s.top, s.right, s.bottom,
                                                               cur.left, cur.top, cur.right, cur.bottom });
                 }
                 @Override public void onFinished(android.view.WindowInsetsAnimationController controller) { ended(); }
                 @Override public void onCancelled(android.view.WindowInsetsAnimationController controller) { ended(); }
                 private void ended() {
                     insetsController = null;
-                    KilnNative.insetsControlEnded();
+                    KilnNative.insetsControlEnded(windowId);
                 }
             });
         return true;
@@ -389,7 +411,7 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
                 pan[5 + 3 * h] = e.getHistoricalAxisValue(MotionEvent.AXIS_GESTURE_PINCH_SCALE_FACTOR, 0, h);
             }
         }
-        KilnNative.touchEvent(e.getActionMasked(), e.getActionIndex(), e.getEventTime(), idsN, xyN, toolsN,
+        KilnNative.touchEvent(windowId, e.getActionMasked(), e.getActionIndex(), e.getEventTime(), idsN, xyN, toolsN,
                 e.getButtonState(), e.getMetaState(), e.getClassification(),
                 e.getAxisValue(MotionEvent.AXIS_HSCROLL), e.getAxisValue(MotionEvent.AXIS_VSCROLL),
                 historyTimes, historyXy, pan);
@@ -397,7 +419,55 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
     }
 
     @Override
-    public boolean onTouchEvent(MotionEvent e) { return forward(e); }
+    public boolean onTouchEvent(MotionEvent e) {
+        // A dialog's view is its content's DialogLayout: a press outside the content is not
+        // this view's, so the dialog sees it (and dismisses on its release).
+        if (windowId != 0 && e.getActionMasked() == MotionEvent.ACTION_DOWN && !insideContent(e.getX(), e.getY())) return false;
+        return forward(e);
+    }
+
+    /** DialogLayout.isInsideContent. */
+    boolean insideContent(float x, float y) {
+        if (!Float.isFinite(x) || !Float.isFinite(y)) return false;
+        int[] b = KilnNative.windowContentBounds(windowId);
+        if (b == null) return true;
+        int rx = Math.round(x), ry = Math.round(y);
+        return rx >= b[0] && rx <= b[2] && ry >= b[1] && ry <= b[3];
+    }
+
+    @Override
+    protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
+        if (windowId == 0 || dialog == null) { super.onMeasure(widthMeasureSpec, heightMeasureSpec); return; }
+        // DialogLayout.internalOnMeasure: the content measured within the window's room; a
+        // full-width wrap-content dialog may use the height the system bars leave.
+        final int height = MeasureSpec.getSize(heightMeasureSpec);
+        final int heightMode = MeasureSpec.getMode(heightMeasureSpec);
+        final android.view.Window window = dialog.getWindow();
+        final boolean wrapHeight = window.getAttributes().height == android.view.ViewGroup.LayoutParams.WRAP_CONTENT;
+        int targetHeight = height;
+        if (heightMode == MeasureSpec.AT_MOST && !dialog.usesPlatformDefaultWidth() && wrapHeight) {
+            if (dialog.decorFitsSystemWindows) {
+                if (android.os.Build.VERSION.SDK_INT < 32) {
+                    android.view.WindowMetrics m = window.getWindowManager().getCurrentWindowMetrics();
+                    android.graphics.Insets bars = m.getWindowInsets().getInsets(WindowInsets.Type.systemBars());
+                    targetHeight = m.getBounds().height() - bars.top - bars.bottom;
+                }
+            } else {
+                targetHeight = height + 1;
+            }
+        }
+        int[] size = KilnNative.windowMeasure(windowId, widthMeasureSpec, MeasureSpec.makeMeasureSpec(targetHeight, heightMode));
+        int w = size != null ? size[0] : 0, h = size != null ? size[1] : 0;
+        if (heightMode == MeasureSpec.AT_MOST) h = Math.min(h, height);
+        setMeasuredDimension(w, h);
+        measureChildren(MeasureSpec.makeMeasureSpec(w, MeasureSpec.EXACTLY), MeasureSpec.makeMeasureSpec(h, MeasureSpec.EXACTLY));
+        // Taller than the window without fitting the system bars: drawn behind them.
+        if (!dialog.decorFitsSystemWindows && size != null && size[2] > height && wrapHeight) {
+            window.addFlags(android.view.WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS);
+            if (!dialog.usesPlatformDefaultWidth())
+                window.setLayout(android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.MATCH_PARENT);
+        }
+    }
 
     @Override
     public boolean onGenericMotionEvent(MotionEvent e) {
@@ -406,7 +476,7 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
         if (a == MotionEvent.ACTION_SCROLL && e.isFromSource(android.view.InputDevice.SOURCE_ROTARY_ENCODER)) {
             android.view.ViewConfiguration vc = android.view.ViewConfiguration.get(getContext());
             final float v = -e.getAxisValue(MotionEvent.AXIS_SCROLL);
-            if (KilnNative.rotary(v * vc.getScaledVerticalScrollFactor(), v * vc.getScaledHorizontalScrollFactor(),
+            if (KilnNative.rotary(windowId, v * vc.getScaledVerticalScrollFactor(), v * vc.getScaledHorizontalScrollFactor(),
                     e.getEventTime(), e.getDeviceId())) return true;
             return super.onGenericMotionEvent(e);
         }
@@ -498,7 +568,7 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
                 }
             }
         }
-        final boolean consumed = KilnNative.indirectPointer(a, e.getActionIndex(), e.getEventTime(), pids, pxy,
+        final boolean consumed = KilnNative.indirectPointer(windowId, a, e.getActionIndex(), e.getEventTime(), pids, pxy,
                 pressures, historyTimes, historyXy, axis);
         if (a == MotionEvent.ACTION_CANCEL) {
             navAxis = 0;
@@ -520,8 +590,8 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
                 @Override public boolean onDown(MotionEvent ev) { return true; }
                 @Override public boolean onFling(MotionEvent e1, MotionEvent e2, float vx, float vy) {
                     if (navIgnoreStream) return true;
-                    if (navAxis == 1 && Math.abs(vx) > Math.abs(vy)) KilnNative.indirectFling(vx > 0);
-                    else if (navAxis == 2 && Math.abs(vy) > Math.abs(vx)) KilnNative.indirectFling(vy > 0);
+                    if (navAxis == 1 && Math.abs(vx) > Math.abs(vy)) KilnNative.indirectFling(windowId, vx > 0);
+                    else if (navAxis == 2 && Math.abs(vy) > Math.abs(vx)) KilnNative.indirectFling(windowId, vy > 0);
                     return true;
                 }
             }, getHandler());
@@ -624,7 +694,7 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
         if (!inputActive) return;
         if (extractedTextMonitor) {
             imm().updateExtractedText(this, extractedTextToken,
-                    KilnInputConnection.extractedText(KilnNative.imeGetText(), new int[] { selStart, selEnd }));
+                    KilnInputConnection.extractedText(KilnNative.imeGetText(windowId), new int[] { selStart, selEnd }));
         }
         if (selectionChanged) imm().updateSelection(this, selStart, selEnd, compStart, compEnd);
     }
@@ -893,7 +963,7 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
         }
         currentDragEvent = event;
         try {
-            return KilnNative.dragEvent(event.getAction(), event.getX(), event.getY(), mimes, label, items,
+            return KilnNative.dragEvent(KilnView.this.windowId, event.getAction(), event.getX(), event.getY(), mimes, label, items,
                     event.getLocalState() == LOCAL_DRAG, event.getResult());
         } finally {
             currentDragEvent = null;
@@ -1137,7 +1207,7 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
                          : KilnTextServices.standardLabel(getContext(), toolbarIds[i]);
             android.view.MenuItem item = menu.add(toolbarGroups[i], itemId, orderId, title);
             item.setShowAsAction(android.view.MenuItem.SHOW_AS_ACTION_ALWAYS);
-            item.setOnMenuItemClickListener(m -> { KilnNative.textToolbarItem(position); return true; });
+            item.setOnMenuItemClickListener(m -> { KilnNative.textToolbarItem(windowId, position); return true; });
         }
         return true;
     }
@@ -1157,7 +1227,7 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
         @Override public void onDestroyActionMode(android.view.ActionMode mode) {
             if (mode != toolbarMode) return;   // finished by native
             toolbarMode = null;
-            KilnNative.textToolbarDestroyed();
+            KilnNative.textToolbarDestroyed(windowId);
         }
         @Override public void onGetContentRect(android.view.ActionMode mode, android.view.View view, Rect outRect) {
             outRect.set(toolbarRect);
@@ -1197,8 +1267,8 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
         return am == null || am.isRequestFromAccessibilityTool();
     }
 
-    private final AccessibilityManager.AccessibilityStateChangeListener a11yStateListener = on -> { accessibility.updateEnabled(); pushAccessibilityServices(); };
-    private final AccessibilityManager.TouchExplorationStateChangeListener touchExplorationListener = on -> { accessibility.updateEnabled(); pushAccessibilityServices(); };
+    private final AccessibilityManager.AccessibilityStateChangeListener a11yStateListener = on -> { accessibility.updateEnabled(); if (KilnView.this.windowId == 0) pushAccessibilityServices(); };
+    private final AccessibilityManager.TouchExplorationStateChangeListener touchExplorationListener = on -> { accessibility.updateEnabled(); if (KilnView.this.windowId == 0) pushAccessibilityServices(); };
     private float lastDownX = Float.NaN, lastDownY = Float.NaN;
 
     // canScrollHorizontally / Vertically at the last press (AndroidComposeView): the scroll
@@ -1225,10 +1295,10 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
         out.imeOptions = imeOptions;
         // EditorInfo.update
         if (!hintLocales.isEmpty()) out.hintLocales = android.os.LocaleList.forLanguageTags(hintLocales);
-        int[] sel = KilnNative.imeGetSelection();
+        int[] sel = KilnNative.imeGetSelection(windowId);
         out.initialSelStart = sel[0];
         out.initialSelEnd = sel[1];
-        out.setInitialSurroundingText(KilnNative.imeGetText());
+        out.setInitialSurroundingText(KilnNative.imeGetText(windowId));
         if (acceptsContent) out.contentMimeTypes = new String[] { "*/*", "image/*", "video/*" };
         // EditorInfoCompat.setStylusHandwritingEnabled: the platform flag on 35+, the extras key always.
         if (android.os.Build.VERSION.SDK_INT >= 35) out.setStylusHandwritingEnabled(stylusHandwriting);
@@ -1262,7 +1332,7 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
     protected void onAttachedToWindow() {
         super.onAttachedToWindow();
         back.onAttached();
-        KilnNative.setLayoutDirection(getLayoutDirection() == LAYOUT_DIRECTION_RTL);
+        if (windowId == 0) KilnNative.setLayoutDirection(getLayoutDirection() == LAYOUT_DIRECTION_RTL);
         AccessibilityManager am = getContext().getSystemService(AccessibilityManager.class);
         if (am != null) {
             am.addAccessibilityStateChangeListener(a11yStateListener);
@@ -1270,6 +1340,7 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
         }
         accessibility.updateEnabled();
         setViewTranslationCallback(accessibility.translationCallback);
+        if (windowId != 0) return;
         getContext().registerReceiver(timeFormatReceiver,
                 new android.content.IntentFilter(android.content.Intent.ACTION_TIME_CHANGED), Context.RECEIVER_NOT_EXPORTED);
         getContext().getContentResolver().registerContentObserver(
@@ -1283,8 +1354,10 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
         back.onDetached();
         flushHoverExit(true);
         clearViewTranslationCallback();
-        getContext().unregisterReceiver(timeFormatReceiver);
-        getContext().getContentResolver().unregisterContentObserver(timeFormatObserver);
+        if (windowId == 0) {
+            getContext().unregisterReceiver(timeFormatReceiver);
+            getContext().getContentResolver().unregisterContentObserver(timeFormatObserver);
+        }
         AccessibilityManager am = getContext().getSystemService(AccessibilityManager.class);
         if (am != null) {
             am.removeAccessibilityStateChangeListener(a11yStateListener);
@@ -1308,7 +1381,7 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
     // Keys before the IME (dispatchKeyEventPreIme): onInterceptKeyBeforeSoftKeyboard, when focused.
     @Override
     public boolean dispatchKeyEventPreIme(KeyEvent e) {
-        if (isFocused() && KilnNative.keyEventPreIme(e.getAction(), e.getKeyCode(), e.getMetaState(), e.getUnicodeChar(),
+        if (isFocused() && KilnNative.keyEventPreIme(windowId, e.getAction(), e.getKeyCode(), e.getMetaState(), e.getUnicodeChar(),
                 e.getRepeatCount(), e.getEventTime(), keySource(e))) return true;
         return super.dispatchKeyEventPreIme(e);
     }
@@ -1316,7 +1389,7 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
     @Override
     public boolean dispatchKeyEvent(KeyEvent e) {
         if (back.onKey(e)) return true;
-        if (KilnNative.keyEvent(e.getAction(), e.getKeyCode(), e.getMetaState(), e.getUnicodeChar(),
+        if (KilnNative.keyEvent(windowId, e.getAction(), e.getKeyCode(), e.getMetaState(), e.getUnicodeChar(),
                 e.getRepeatCount(), e.getEventTime(), keySource(e))) return true;
         return super.dispatchKeyEvent(e);
     }
@@ -1326,10 +1399,10 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
     // ViewRootImpl's scroll-into-view see it.
     @Override
     public void getFocusedRect(Rect r) {
-        float[] f = KilnNative.focusedRect();
+        float[] f = KilnNative.focusedRect(windowId);
         if (f != null) {
             r.set(Math.round(f[0]), Math.round(f[1]), Math.round(f[2]), Math.round(f[3]));
-        } else if (!KilnNative.hasFocusableContent()) {
+        } else if (!KilnNative.hasFocusableContent(windowId)) {
             r.set(Integer.MIN_VALUE, Integer.MIN_VALUE, Integer.MIN_VALUE, Integer.MIN_VALUE);
         } else {
             super.getFocusedRect(r);
@@ -1339,7 +1412,7 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
     // Nothing focusable inside: the view is not a stop for focus search.
     @Override
     public void addFocusables(java.util.ArrayList<android.view.View> views, int direction, int focusableMode) {
-        if (KilnNative.hasFocusableContent()) super.addFocusables(views, direction, focusableMode);
+        if (KilnNative.hasFocusableContent(windowId)) super.addFocusables(views, direction, focusableMode);
     }
 
     // Moving focus from a View (or from this one) compares the next View with the next kiln item.
@@ -1351,9 +1424,9 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
                 ? android.view.FocusFinder.getInstance().findNextFocus((android.view.ViewGroup) root, focused, direction) : null;
         if (nextView != null && !isDescendant(nextView)) nextView = null;
         float[] focusedBounds = null;
-        if (focused == this) focusedBounds = KilnNative.focusedRect();
+        if (focused == this) focusedBounds = KilnNative.focusedRect(windowId);
         if (focusedBounds == null) focusedBounds = rectRelativeToThis(focused);
-        float[] found = KilnNative.focusSearch(direction, focusedBounds[0], focusedBounds[1], focusedBounds[2], focusedBounds[3]);
+        float[] found = KilnNative.focusSearch(windowId, direction, focusedBounds[0], focusedBounds[1], focusedBounds[2], focusedBounds[3]);
         if (found[0] < 0) return focused;                                       // cancelled
         if (found[0] == 0) return nextView != null ? nextView : super.focusSearch(focused, direction);
         if (nextView == null) return this;
@@ -1380,7 +1453,7 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
     public boolean requestFocus(int direction, Rect previouslyFocusedRect) {
         if (isFocused()) return true;
         final Rect p = previouslyFocusedRect;
-        return KilnNative.hostRequestFocus(direction, p != null, p != null ? p.left : 0, p != null ? p.top : 0,
+        return KilnNative.hostRequestFocus(windowId, direction, p != null, p != null ? p.left : 0, p != null ? p.top : 0,
                 p != null ? p.right : 0, p != null ? p.bottom : 0, hasFocus());
     }
 
@@ -1393,16 +1466,16 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
     @Override
     protected void onFocusChanged(boolean gainFocus, int direction, Rect previouslyFocusedRect) {
         super.onFocusChanged(gainFocus, direction, previouslyFocusedRect);
-        KilnNative.hostFocusChanged(gainFocus);
+        KilnNative.hostFocusChanged(windowId, gainFocus);
     }   // the SurfaceView child never sees touches
 
     @Override
     public void onWindowFocusChanged(boolean hasWindowFocus) {
         super.onWindowFocusChanged(hasWindowFocus);
-        KilnNative.windowFocusChanged(hasWindowFocus);
+        KilnNative.windowFocusChanged(windowId, hasWindowFocus);
     }
 
-    private final ContentObserver animationScaleObserver;
+    private ContentObserver animationScaleObserver;   // the activity's view only
 
     // LocalLayoutDirection follows the view (locale, android:layoutDirection, RTL forced in
     // developer options).
@@ -1462,7 +1535,8 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
 
     // FLAG_SECURE on the window: the native side asks, and reads the window's own flag on attach.
     void setFlagSecureFromNative(boolean secure) {
-        android.view.Window w = getContext() instanceof android.app.Activity ? ((android.app.Activity) getContext()).getWindow() : null;
+        android.view.Window w = hostWindow != null ? hostWindow
+                : getContext() instanceof android.app.Activity ? ((android.app.Activity) getContext()).getWindow() : null;
         if (w == null) return;
         if (secure) w.addFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE);
         else w.clearFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE);
@@ -1482,16 +1556,16 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
 
     @Override
     public void surfaceCreated(SurfaceHolder holder) {
-        KilnNative.surfaceCreated(holder.getSurface());
+        KilnNative.surfaceCreated(windowId, holder.getSurface());
     }
 
     @Override
     public void surfaceChanged(SurfaceHolder holder, int format, int width, int height) {
-        KilnNative.surfaceChanged(width, height);
+        KilnNative.surfaceChanged(windowId, width, height);
     }
 
     @Override
     public void surfaceDestroyed(SurfaceHolder holder) {
-        KilnNative.surfaceDestroyed();
+        KilnNative.surfaceDestroyed(windowId);
     }
 }

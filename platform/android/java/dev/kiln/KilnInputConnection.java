@@ -43,29 +43,29 @@ final class KilnInputConnection implements InputConnection {
     @Override public boolean beginBatchEdit() {
         if (!live()) return false;
         batchDepth++;
-        return KilnNative.imeBeginBatchEdit();
+        return KilnNative.imeBeginBatchEdit(view.windowId);
     }
     @Override public boolean endBatchEdit() {
         if (!live() || batchDepth == 0) return false;
         batchDepth--;
-        return KilnNative.imeEndBatchEdit();
+        return KilnNative.imeEndBatchEdit(view.windowId);
     }
     @Override public void closeConnection() {
         if (closed) return;
         // The queued edits go with the connection.
-        while (batchDepth > 0) { batchDepth--; KilnNative.imeEndBatchEdit(); }
+        while (batchDepth > 0) { batchDepth--; KilnNative.imeEndBatchEdit(view.windowId); }
         closed = true;
     }
 
     @Override public boolean commitText(CharSequence text, int newCursorPosition) {
         if (!live()) return false;
         if (text == null) return true;
-        KilnNative.imeCommitText(text.toString(), newCursorPosition, false);
+        KilnNative.imeCommitText(view.windowId, text.toString(), newCursorPosition, false);
         return true;
     }
     @Override public boolean commitText(CharSequence text, int newCursorPosition, TextAttribute textAttribute) {
         if (!live()) return false;
-        KilnNative.imeCommitText(text.toString(), newCursorPosition, isTextSuggestionSelected(textAttribute));
+        KilnNative.imeCommitText(view.windowId, text.toString(), newCursorPosition, isTextSuggestionSelected(textAttribute));
         return true;
     }
     @Override public boolean setComposingText(CharSequence text, int newCursorPosition) {
@@ -73,29 +73,29 @@ final class KilnInputConnection implements InputConnection {
         if (text == null) return true;
         ArrayList<String> families = new ArrayList<>();
         int[] spans = text instanceof Spanned ? annotations((Spanned) text, families) : null;
-        KilnNative.imeSetComposingText(text.toString(), newCursorPosition, spans, families.toArray(new String[0]), false);
+        KilnNative.imeSetComposingText(view.windowId, text.toString(), newCursorPosition, spans, families.toArray(new String[0]), false);
         return true;
     }
     @Override public boolean setComposingText(CharSequence text, int newCursorPosition, TextAttribute textAttribute) {
         if (!live()) return false;
-        KilnNative.imeSetComposingText(text.toString(), newCursorPosition, null, new String[0], isTextSuggestionSelected(textAttribute));
+        KilnNative.imeSetComposingText(view.windowId, text.toString(), newCursorPosition, null, new String[0], isTextSuggestionSelected(textAttribute));
         return true;
     }
-    @Override public boolean setComposingRegion(int start, int end) { if (!live()) return false; KilnNative.imeSetComposingRegion(start, end); return true; }
-    @Override public boolean finishComposingText() { if (!live()) return false; KilnNative.imeFinishComposingText(); return true; }
+    @Override public boolean setComposingRegion(int start, int end) { if (!live()) return false; KilnNative.imeSetComposingRegion(view.windowId, start, end); return true; }
+    @Override public boolean finishComposingText() { if (!live()) return false; KilnNative.imeFinishComposingText(view.windowId); return true; }
     @Override public boolean deleteSurroundingText(int before, int after) {
         if (!live()) return false;
-        KilnNative.imeDeleteSurroundingText(before, after, false);
+        KilnNative.imeDeleteSurroundingText(view.windowId, before, after, false);
         return true;
     }
     @Override public boolean deleteSurroundingTextInCodePoints(int before, int after) {
         if (!live()) return false;
-        KilnNative.imeDeleteSurroundingText(before, after, true);
+        KilnNative.imeDeleteSurroundingText(view.windowId, before, after, true);
         return true;
     }
     @Override public boolean setSelection(int start, int end) {
         if (!live()) return false;
-        KilnNative.imeSetSelection(start, end);   // also ends the direct touch interaction
+        KilnNative.imeSetSelection(view.windowId, start, end);   // also ends the direct touch interaction
         return true;
     }
     @Override public boolean sendKeyEvent(KeyEvent event) {
@@ -105,13 +105,13 @@ final class KilnInputConnection implements InputConnection {
     }
     @Override public boolean performEditorAction(int editorAction) {
         if (!live()) return false;
-        KilnNative.imePerformEditorAction(editorAction);
+        KilnNative.imePerformEditorAction(view.windowId, editorAction);
         return true;
     }
     @Override public boolean performContextMenuAction(int id) {
         if (!live()) return false;
         if (id == android.R.id.selectAll) {
-            KilnNative.imeSetSelection(0, KilnNative.imeGetText().length());
+            KilnNative.imeSetSelection(view.windowId, 0, KilnNative.imeGetText(view.windowId).length());
         } else if (id == android.R.id.cut) {
             sendSynthesizedKeyEvent(KeyEvent.KEYCODE_CUT);
         } else if (id == android.R.id.copy) {
@@ -130,31 +130,31 @@ final class KilnInputConnection implements InputConnection {
     // --- reads -----------------------------------------------------------------------------
     @Override public CharSequence getTextBeforeCursor(int n, int flags) {
         if (!live()) return null;
-        String t = KilnNative.imeGetText();
-        int[] s = KilnNative.imeGetSelection();
+        String t = KilnNative.imeGetText(view.windowId);
+        int[] s = KilnNative.imeGetSelection(view.windowId);
         return t.substring(Math.max(0, s[0] - Math.max(0, n)), s[0]);
     }
     @Override public CharSequence getTextAfterCursor(int n, int flags) {
         if (!live()) return null;
-        String t = KilnNative.imeGetText();
-        int[] s = KilnNative.imeGetSelection();
+        String t = KilnNative.imeGetText(view.windowId);
+        int[] s = KilnNative.imeGetSelection(view.windowId);
         return t.substring(s[1], (int) Math.min(t.length(), (long) s[1] + Math.max(0, n)));
     }
     @Override public CharSequence getSelectedText(int flags) {
         if (!live()) return null;
-        String t = KilnNative.imeGetText();
-        int[] s = KilnNative.imeGetSelection();
+        String t = KilnNative.imeGetText(view.windowId);
+        int[] s = KilnNative.imeGetSelection(view.windowId);
         if (s[0] == s[1]) return null;
         return t.substring(s[0], s[1]);
     }
     @Override public int getCursorCapsMode(int reqModes) {
         if (!live()) return 0;
-        return TextUtils.getCapsMode(KilnNative.imeGetText(), KilnNative.imeGetSelection()[0], reqModes);
+        return TextUtils.getCapsMode(KilnNative.imeGetText(view.windowId), KilnNative.imeGetSelection(view.windowId)[0], reqModes);
     }
     @Override public ExtractedText getExtractedText(ExtractedTextRequest request, int flags) {
         if (!live()) return null;
         if ((flags & GET_EXTRACTED_TEXT_MONITOR) != 0) view.requestExtractedTextUpdates(request != null ? request.token : 0);
-        return extractedText(KilnNative.imeGetText(), KilnNative.imeGetSelection());
+        return extractedText(KilnNative.imeGetText(view.windowId), KilnNative.imeGetSelection(view.windowId));
     }
     /** TextFieldCharSequence.toExtractedText: the whole text, single line when it has no '\n'. */
     static ExtractedText extractedText(String text, int[] sel) {
@@ -172,7 +172,7 @@ final class KilnInputConnection implements InputConnection {
     // --- the rest ----------------------------------------------------------------------------
     @Override public boolean requestCursorUpdates(int cursorUpdateMode) {
         if (!live()) return false;
-        KilnNative.imeRequestCursorUpdates(resolveCursorUpdateFilters(cursorUpdateMode));
+        KilnNative.imeRequestCursorUpdates(view.windowId, resolveCursorUpdateFilters(cursorUpdateMode));
         return true;
     }
     /** CursorAnchorInfoController.requestUpdates: the filters an API level has, all when none. */
@@ -194,7 +194,7 @@ final class KilnInputConnection implements InputConnection {
             if (g != null) {
                 String insert = gesture instanceof android.view.inputmethod.InsertGesture
                         ? ((android.view.inputmethod.InsertGesture) gesture).getTextToInsert() : "";
-                result = KilnNative.imePerformHandwritingGesture(g, insert, gesture.getFallbackText());
+                result = KilnNative.imePerformHandwritingGesture(view.windowId, g, insert, gesture.getFallbackText());
             }
         }
         if (consumer == null) return;
@@ -206,8 +206,8 @@ final class KilnInputConnection implements InputConnection {
                                                        android.os.CancellationSignal cancellationSignal) {
         if (!live() || Build.VERSION.SDK_INT < 34) return false;
         float[] g = gestureData((android.view.inputmethod.HandwritingGesture) gesture);
-        if (g == null || !KilnNative.imePreviewHandwritingGesture(g)) return false;
-        if (cancellationSignal != null) cancellationSignal.setOnCancelListener(KilnNative::imeCancelHandwritingPreview);
+        if (g == null || !KilnNative.imePreviewHandwritingGesture(view.windowId, g)) return false;
+        if (cancellationSignal != null) cancellationSignal.setOnCancelListener(() -> KilnNative.imeCancelHandwritingPreview(view.windowId));
         return true;
     }
     /**
@@ -281,7 +281,7 @@ final class KilnInputConnection implements InputConnection {
         for (int i = 0; i < types.length; i++) types[i] = d.getMimeType(i);
         CharSequence label = d.getLabel();
         android.net.Uri link = info.getLinkUri();
-        return KilnNative.imeCommitContent(info.getContentUri().toString(), types, label != null ? label.toString() : "",
+        return KilnNative.imeCommitContent(view.windowId, info.getContentUri().toString(), types, label != null ? label.toString() : "",
                 link != null ? link.toString() : null, permission);
     }
 

@@ -34,6 +34,7 @@ namespace kiln {
     // Frame, configuration. The M0 frame runs drawing and submission on the calling thread.
     class App final : public AtlasSink {
     public:
+        struct Window;
         explicit App(HostServices services);
         ~App();
 
@@ -88,24 +89,24 @@ namespace kiln {
         // A key event from the host; false means the platform should handle it (e.g. Back).
         bool ProcessKey(const ui::KeyEvent& event);
         bool ProcessKeyPreIme(const ui::KeyEvent& event);
-        bool ProcessRotary(const ui::RotaryScrollEvent& event);
+        bool ProcessRotary(const ui::RotaryScrollEvent& event, Window* window = nullptr);
         // A touch-navigation pad sample (dispatchGenericMotionEvent, SOURCE_TOUCH_NAVIGATION):
         // returns whether a node on the focused path consumed it. A cancel ends the stream.
-        bool ProcessIndirectPointer(const ui::RawIndirectPointerEvent& event);
+        bool ProcessIndirectPointer(const ui::RawIndirectPointerEvent& event, Window* window = nullptr);
         // The host's navigation gesture detector saw a fling along the pad's axis: one focus step,
         // without wrapping.
-        void MoveFocusFromIndirectFling(bool next);
+        void MoveFocusFromIndirectFling(bool next, Window* window = nullptr);
         // View focus integration (AndroidComposeView). Directions are View.FOCUS_* values.
         // The focused item's rect, for View.getFocusedRect.
-        std::optional<ui::Rect> FocusedRect();
-        bool HasFocusableContent();
+        std::optional<ui::Rect> FocusedRect(Window* window = nullptr);
+        bool HasFocusableContent(Window* window = nullptr);
         // focusSearch from `focused` (view pixels): -1 cancelled, 0 nothing, 1 found (its rect
         // in `target`). Focus does not move.
-        int HostFocusSearch(int direction, ui::Rect focused, ui::Rect& target);
+        int HostFocusSearch(int direction, ui::Rect focused, ui::Rect& target, Window* window = nullptr);
         bool IsBetterFocusCandidate(int direction, ui::Rect proposed, ui::Rect current, ui::Rect focused);
         // View.requestFocus(direction, previouslyFocusedRect) reached the host view: focus an
         // item, first near the rect, then anywhere; a 1D search that wrapped back resets focus.
-        bool HostRequestFocus(int direction, const ui::Rect* previouslyFocused, bool hostHasFocus);
+        bool HostRequestFocus(int direction, const ui::Rect* previouslyFocused, bool hostHasFocus, Window* window = nullptr);
         float Density() const { return m_Density; }
         float FontScale() const { return m_FontScale; }
         TextBackend* Text() const { return m_Services.text; }
@@ -114,7 +115,6 @@ namespace kiln {
         // Extra windows (dialogs): an owner shown in its own platform window, laid out at that
         // window's size and drawn into its own presentation surface, every frame with the main
         // one. Input for it goes to its owner through the overloads below.
-        struct Window;
         Window* AddWindow(ui::Owner& owner);
         void RemoveWindow(Window* window);
         void WindowSurfaceCreated(Window* window, hearth::Surface& surface);
@@ -168,6 +168,8 @@ namespace kiln {
         bool m_SurfaceLost = false;
         std::vector<std::unique_ptr<Window>> m_Windows;
         void MeasureWindows();
+        void LayoutAll();
+        ui::Owner& OwnerFor(Window* window);
     };
 
 }

@@ -9,6 +9,7 @@
 #include <kiln/foundation/draganddrop/DragAndDrop.h>
 #include <kiln/foundation/activity/ActivityResult.h>
 #include <kiln/foundation/Popup.h>
+#include <kiln/foundation/Dialog.h>
 #include <kiln/graphics/PathEffect.h>
 #include <kiln/foundation/MeshGradient.h>
 #include <kiln/foundation/Gestures.h>
@@ -261,6 +262,32 @@ namespace {
                     }
                 });
                 BasicText("Menu picked: " + picked.Get(), Padding(Modifier{}, 16_dp, 0_dp), { 14, kVariant });
+            }
+            // A dialog in a window of its own: the app behind it dims; Back, Escape or a press
+            // outside the card dismisses it.
+            {
+                auto& dialogOpen = kiln::rt::RememberSaveableState(false);
+                auto& answer = kiln::rt::RememberSaveableState(std::string("none"));
+                Box(Clickable(Background(Padding(Modifier{}, 16_dp, 0_dp), kPrimaryContainer, CornerShape::Pill()),
+                              [&dialogOpen] { dialogOpen.Set(true); }),
+                    Alignment::Center(), false, [] { BasicText("Open dialog", Padding(Modifier{}, 24_dp, 10_dp), { 14, kOnSurface }); });
+                if (dialogOpen.Get()) {
+                    Dialog([&dialogOpen, &answer] { answer.Set("dismissed"); dialogOpen.Set(false); }, {}, [&] {
+                        Column(Padding(Background(Modifier{}, kContainer, CornerShape::Rounded(28_dp)), 24_dp, 24_dp), [&] {
+                            BasicText("Discard draft?", Padding(Modifier{}, 0_dp, 0_dp), { 24, kOnSurface });
+                            BasicText("The text you typed will be lost.", Padding(Modifier{}, 0_dp, 16_dp), { 14, kVariant });
+                            Row(Modifier{}, Arrangement::SpacedBy(8_dp), AlignmentV::CenterVertically(), [&] {
+                                for (const char* choice : { "Cancel", "Discard" }) {
+                                    Box(Clickable(Modifier{}, [&dialogOpen, &answer, choice] { answer.Set(choice); dialogOpen.Set(false); }),
+                                        Alignment::Center(), false, [choice] {
+                                        BasicText(choice, Padding(Modifier{}, 12_dp, 10_dp), { 14, kPrimary });
+                                    }, kiln::rt::Key(std::int64_t(std::hash<std::string>{}(choice))));
+                                }
+                            });
+                        });
+                    });
+                }
+                BasicText("Dialog answer: " + answer.Get(), Padding(Modifier{}, 16_dp, 0_dp), { 14, kVariant });
             }
             // A password field: the last typed character shows briefly when the setting allows.
             auto& password = RememberTextFieldState("");

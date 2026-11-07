@@ -22,6 +22,7 @@ final class KilnAutofill {
     private final Rect rect = new Rect();
 
     KilnAutofill(View view) { this.view = view; }
+    private int windowId() { return view instanceof KilnView ? ((KilnView) view).windowId : 0; }
 
     private AutofillManager manager() {
         if (manager == null) manager = view.getContext().getSystemService(AutofillManager.class);
@@ -80,7 +81,7 @@ final class KilnAutofill {
 
     /** populateViewStructure: the root (this view's structure), then each node under its parent. */
     void populate(ViewStructure root) {
-        Object[] data = KilnNative.autofillStructure();
+        Object[] data = KilnNative.autofillStructure(windowId());
         if (data == null) return;
         int[] ints = (int[]) data[0];
         String[] strs = (String[]) data[1];
@@ -160,11 +161,11 @@ final class KilnAutofill {
                         android.credentials.Credential c = response.getCredential();
                         Object[] data = KilnBundles.fromBundle(c.getData());
                         String type = c.getType();
-                        main.post(() -> KilnNative.credentialResult(id, type, data));
+                        main.post(() -> KilnNative.credentialResult(windowId(), id, type, data));
                     }
                     @Override public void onError(android.credentials.GetCredentialException e) {
                         String type = e.getType(), message = e.getMessage();
-                        main.post(() -> KilnNative.credentialError(id, type, message));
+                        main.post(() -> KilnNative.credentialError(windowId(), id, type, message));
                     }
                 });
     }
@@ -174,10 +175,10 @@ final class KilnAutofill {
         for (int i = 0; i < values.size(); ++i) {
             int id = values.keyAt(i);
             AutofillValue v = values.valueAt(i);
-            if (v.isText()) KilnNative.autofillPerform(id, 0, v.getTextValue().toString(), 0, 0);
-            else if (v.isToggle()) KilnNative.autofillPerform(id, 1, null, v.getToggleValue() ? 1 : 0, 0);
-            else if (v.isList()) KilnNative.autofillPerform(id, 2, null, v.getListValue(), 0);
-            else if (v.isDate()) KilnNative.autofillPerform(id, 3, null, 0, v.getDateValue());
+            if (v.isText()) KilnNative.autofillPerform(windowId(), id, 0, v.getTextValue().toString(), 0, 0);
+            else if (v.isToggle()) KilnNative.autofillPerform(windowId(), id, 1, null, v.getToggleValue() ? 1 : 0, 0);
+            else if (v.isList()) KilnNative.autofillPerform(windowId(), id, 2, null, v.getListValue(), 0);
+            else if (v.isDate()) KilnNative.autofillPerform(windowId(), id, 3, null, 0, v.getDateValue());
         }
     }
 }

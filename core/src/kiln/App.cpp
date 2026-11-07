@@ -64,29 +64,29 @@ namespace kiln {
         return handled;
     }
 
-    bool App::ProcessRotary(const ui::RotaryScrollEvent& event) {
+    bool App::ProcessRotary(const ui::RotaryScrollEvent& event, Window* window) {
         rt::Composition::RecomposeAll();
-        if (m_Width && m_Height) m_Owner.MeasureAndLayout({ int(m_Width), int(m_Height) });
-        const bool handled = m_Owner.DispatchRotaryEvent(event);
+        LayoutAll();
+        const bool handled = OwnerFor(window).DispatchRotaryEvent(event);
         m_Dispatcher.RunPending();
         return handled;
     }
 
-    bool App::ProcessIndirectPointer(const ui::RawIndirectPointerEvent& raw) {
+    bool App::ProcessIndirectPointer(const ui::RawIndirectPointerEvent& raw, Window* window) {
         rt::Composition::RecomposeAll();
-        if (m_Width && m_Height) m_Owner.MeasureAndLayout({ int(m_Width), int(m_Height) });
+        LayoutAll();
         ui::IndirectPointerEvent event;
         bool consumed = false;
-        if (m_IndirectAdapter.Convert(raw, event)) consumed = m_Owner.DispatchIndirectPointerEvent(event);
-        else m_Owner.DispatchIndirectPointerCancel();
+        if (m_IndirectAdapter.Convert(raw, event)) consumed = OwnerFor(window).DispatchIndirectPointerEvent(event);
+        else OwnerFor(window).DispatchIndirectPointerCancel();
         m_Dispatcher.RunPending();
         return consumed;
     }
 
-    void App::MoveFocusFromIndirectFling(bool next) {
+    void App::MoveFocusFromIndirectFling(bool next, Window* window) {
         rt::Composition::RecomposeAll();
-        if (m_Width && m_Height) m_Owner.MeasureAndLayout({ int(m_Width), int(m_Height) });
-        m_Owner.MoveFocus(next ? ui::FocusDirection::Next : ui::FocusDirection::Previous, false);
+        LayoutAll();
+        OwnerFor(window).MoveFocus(next ? ui::FocusDirection::Next : ui::FocusDirection::Previous, false);
         m_Dispatcher.RunPending();
     }
 
@@ -105,23 +105,23 @@ namespace kiln {
         }
     }
 
-    std::optional<ui::Rect> App::FocusedRect() {
-        if (m_Width && m_Height) m_Owner.MeasureAndLayout({ int(m_Width), int(m_Height) });
-        return m_Owner.FocusedRect();
+    std::optional<ui::Rect> App::FocusedRect(Window* window) {
+        LayoutAll();
+        return OwnerFor(window).FocusedRect();
     }
 
-    bool App::HasFocusableContent() {
+    bool App::HasFocusableContent(Window* window) {
         rt::Composition::RecomposeAll();
-        if (m_Width && m_Height) m_Owner.MeasureAndLayout({ int(m_Width), int(m_Height) });
-        return m_Owner.HasFocusableContent();
+        LayoutAll();
+        return OwnerFor(window).HasFocusableContent();
     }
 
-    int App::HostFocusSearch(int direction, ui::Rect focused, ui::Rect& target) {
-        if (m_Width && m_Height) m_Owner.MeasureAndLayout({ int(m_Width), int(m_Height) });
+    int App::HostFocusSearch(int direction, ui::Rect focused, ui::Rect& target, Window* window) {
+        LayoutAll();
         const auto d = ToFocusDirection(direction).value_or(ui::FocusDirection::Down);
         bool found = false;
-        const auto r = m_Owner.FocusSearch(d, &focused, [&](ui::FocusTargetNode& n) {
-            target = m_Owner.FocusRectOf(n);
+        const auto r = OwnerFor(window).FocusSearch(d, &focused, [&](ui::FocusTargetNode& n) {
+            target = OwnerFor(window).FocusRectOf(n);
             found = true;
             return true;
         });
@@ -134,16 +134,16 @@ namespace kiln {
         return ui::IsBetterFocusCandidate(proposed, current, focused, d);
     }
 
-    bool App::HostRequestFocus(int direction, const ui::Rect* previouslyFocused, bool hostHasFocus) {
+    bool App::HostRequestFocus(int direction, const ui::Rect* previouslyFocused, bool hostHasFocus, Window* window) {
         rt::Composition::RecomposeAll();
-        if (m_Width && m_Height) m_Owner.MeasureAndLayout({ int(m_Width), int(m_Height) });
+        LayoutAll();
         const auto d = ToFocusDirection(direction).value_or(ui::FocusDirection::Enter);
         auto request = [&](ui::FocusTargetNode& n) { return n.RequestFocus(d); };
-        bool done = m_Owner.FocusSearch(d, previouslyFocused, request).value_or(false);
-        if (!done) done = m_Owner.FocusSearch(d, nullptr, request).value_or(false);
+        bool done = OwnerFor(window).FocusSearch(d, previouslyFocused, request).value_or(false);
+        if (!done) done = OwnerFor(window).FocusSearch(d, nullptr, request).value_or(false);
         // FocusFinder wrapped back to this view with an item already focused (1D only).
         if (!done && hostHasFocus && (d == ui::FocusDirection::Next || d == ui::FocusDirection::Previous))
-            done = m_Owner.ResetFocus(d);
+            done = OwnerFor(window).ResetFocus(d);
         m_Dispatcher.RunPending();
         return done;
     }
@@ -441,6 +441,13 @@ namespace kiln {
 
     ui::IntSize App::WindowSize(const Window* window) const {
         return window ? ui::IntSize{ int(window->width), int(window->height) } : ui::IntSize{};
+    }
+
+    ui::Owner& App::OwnerFor(Window* window) { return window ? *window->owner : m_Owner; }
+
+    void App::LayoutAll() {
+        if (m_Width && m_Height) m_Owner.MeasureAndLayout({ int(m_Width), int(m_Height) });
+        MeasureWindows();
     }
 
     void App::MeasureWindows() {

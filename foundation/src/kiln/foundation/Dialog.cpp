@@ -52,8 +52,10 @@ namespace kiln::foundation {
                 composition = std::make_unique<rt::Composition>(owner->Root(), rt::Dispatcher::Main());
             }
             ~DialogState() {
-                window.reset();   // dismiss
+                // DialogWrapper.dispose: the content goes first, while its window's hosts still
+                // exist; then the window is dismissed.
                 composition.reset();
+                window.reset();
                 owner.reset();
             }
             void Dismiss() const { if (onDismissRequest) { auto f = onDismissRequest; f(); } }

@@ -55,12 +55,46 @@ namespace {
         jmethodID requestFocus = nullptr;
     };
     Host* g_Host = nullptr;
+
+    // A window kiln draws into: the activity's (id 0) or a dialog's, each with its own KilnView
+    // and owner.
+    struct Win {
+        int id = 0;
+        jobject view = nullptr;                    // global ref to its KilnView
+        kiln::ui::Owner* owner = nullptr;
+        kiln::App::Window* appWindow = nullptr;    // null for the main window
+        hearth::AndroidSurface surface;
+        ANativeWindow* nativeWindow = nullptr;
+    };
+    std::map<int, std::unique_ptr<Win>> g_Wins;
+    int g_NextWinId = 1;
+    Win* WinOf(jint id) {
+        auto it = g_Wins.find(int(id));
+        return it == g_Wins.end() ? nullptr : it->second.get();
+    }
+    // The window a per-window native was called for (its view's id): the owner and view the
+    // helpers below use until it returns.
+    Win* g_CurWin = nullptr;
+    struct WinScope {
+        Win* previous;
+        Win* w;
+        explicit WinScope(jint id) : previous(g_CurWin), w(WinOf(id)) { if (w) g_CurWin = w; }
+        ~WinScope() { g_CurWin = previous; }
+        WinScope(const WinScope&) = delete;
+        WinScope& operator=(const WinScope&) = delete;
+        explicit operator bool() const { return w != nullptr && g_Host; }
+    };
+    kiln::ui::Owner& CurOwner() { return g_CurWin ? *g_CurWin->owner : g_Host->app->GetOwner(); }
+    jobject CurView() { return g_CurWin ? g_CurWin->view : g_Host->view; }
+    kiln::App::Window* CurAppWin() { return g_CurWin ? g_CurWin->appWindow : nullptr; }
     std::shared_ptr<void> g_LocalDragState;   // the local state of a drag this app started
     std::optional<kiln::ui::Configuration> g_PendingConfiguration;
     bool g_Pending24Hour = false;
 
     void ArmTimer();
-    void InstallTextInputHost(JNIEnv* env);
+    struct Win;
+    void InstallTextInputHost(JNIEnv* env, Win* w);
+    void InstallOwnerHosts(JNIEnv* env, Win* w);
     jobjectArray JavaIntent(JNIEnv* env, const kiln::ui::Intent& i);
     // A String[] (null entries kept) as UTF-8.
     std::vector<std::optional<std::string>> StringsFromJava(JNIEnv* env, jobjectArray a) {
@@ -77,7 +111,7 @@ namespace {
         return out;
     }
     JNIEnv* MainEnv();
-    void SurfaceDestroyed(JNIEnv*, jclass);
+    void SurfaceDestroyed(JNIEnv*, jclass, jint);
 
     jstring JavaString(JNIEnv* env, const std::u16string& s) {
         return env->NewString(reinterpret_cast<const jchar*>(s.data()), jsize(s.size()));
@@ -333,38 +367,132 @@ namespace {
         __android_log_print(prio, "kiln", "%.*s", int(message.size()), message.data());
     }
 
-    void Create(JNIEnv* env, jclass, jobject view, jobject text, jobject assets, jfloat density, jfloat fontScale, jbyteArray saved) {
-        hearth::SetLogSink(&LogToLogcat);
-        kiln::android::InstallImageDecoder();
-        kiln::android::InstallAssetReader(env, assets);
-        g_Host = new Host();
-        g_Host->text = std::make_unique<kiln::android::AndroidText>(env, text);
-        kiln::foundation::SetUpperCaseFunction([](std::u16string_view t, const std::string& tag) {
-            return g_Host && g_Host->text ? g_Host->text->UpperCase(t, tag) : std::u16string(t);
-        });
-        {
-            jclass vc = env->GetObjectClass(view);
-            g_NestedScrollParent.start = env->GetMethodID(vc, "nsStart", "(IZ)Z");
-            g_NestedScrollParent.pre = env->GetMethodID(vc, "nsPreScroll", "(IIZ)[I");
-            g_NestedScrollParent.scroll = env->GetMethodID(vc, "nsScroll", "(IIIIZ)[I");
-            g_NestedScrollParent.preFling = env->GetMethodID(vc, "nsPreFling", "(FF)Z");
-            g_NestedScrollParent.fling = env->GetMethodID(vc, "nsFling", "(FFZ)Z");
-            g_NestedScrollParent.stop = env->GetMethodID(vc, "nsStop", "()V");
-            env->DeleteLocalRef(vc);
+    // --- dialog windows (KilnDialog) --------------------------------------------------------------
+
+    jclass g_DialogClass = nullptr;
+    jmethodID g_DialogOpen = nullptr, g_DialogUpdate = nullptr, g_DialogShow = nullptr, g_DialogDismissNative = nullptr;
+    jfieldID g_DialogView = nullptr;
+    jmethodID g_RequestLayout = nullptr;
+    std::map<int, std::function<void()>> g_DialogDismiss;
+
+    void CacheDialogClass(JNIEnv* env) {
+        if (g_DialogClass) return;
+        jclass c = env->FindClass("dev/kiln/KilnDialog");
+        g_DialogClass = static_cast<jclass>(env->NewGlobalRef(c));
+        env->DeleteLocalRef(c);
+        g_DialogOpen = env->GetStaticMethodID(g_DialogClass, "open", "(Ldev/kiln/KilnView;IZ)Ldev/kiln/KilnDialog;");
+        g_DialogUpdate = env->GetMethodID(g_DialogClass, "update", "(ZZZZZLjava/lang/String;FIIZ)V");
+        g_DialogShow = env->GetMethodID(g_DialogClass, "show", "()V");
+        g_DialogDismissNative = env->GetMethodID(g_DialogClass, "dismissFromNative", "()V");
+        g_DialogView = env->GetFieldID(g_DialogClass, "view", "Ldev/kiln/KilnView;");
+        jclass v = env->FindClass("android/view/View");
+        g_RequestLayout = env->GetMethodID(v, "requestLayout", "()V");
+        env->DeleteLocalRef(v);
+    }
+
+    void InstallOwnerHosts(JNIEnv* env, Win* w);
+
+    // DialogWrapper's native half: a window of its own (KilnView, owner, presentation surface)
+    // for a Dialog composable's content.
+    struct AndroidDialog final : kiln::ui::PlatformDialog {
+        int id = 0;
+        jobject dialog = nullptr;
+        Win* win = nullptr;
+
+        AndroidDialog(Win* parent, kiln::ui::Owner& content, const kiln::ui::DialogWindowProperties& p, std::function<void()> onDismiss) {
+            JNIEnv* e = MainEnv();
+            id = g_NextWinId++;
+            auto nw = std::make_unique<Win>();
+            nw->id = id;
+            nw->owner = &content;
+            nw->appWindow = g_Host->app->AddWindow(content);
+            win = nw.get();
+            g_Wins[id] = std::move(nw);
+            g_DialogDismiss[id] = std::move(onDismiss);
+            jobject d = e->CallStaticObjectMethod(g_DialogClass, g_DialogOpen, parent->view, jint(id), jboolean(p.decorFitsSystemWindows));
+            dialog = e->NewGlobalRef(d);
+            jobject v = e->GetObjectField(d, g_DialogView);
+            win->view = e->NewGlobalRef(v);
+            e->DeleteLocalRef(v);
+            e->DeleteLocalRef(d);
+            InstallOwnerHosts(e, win);
+            // The content's size moved: the window measures again.
+            content.SetOnContentSizeChanged([view = win->view](kiln::ui::IntSize) { MainEnv()->CallVoidMethod(view, g_RequestLayout); });
+            Update(p);
+            e->CallVoidMethod(dialog, g_DialogShow);
         }
-        kiln::HostServices services{ g_Host->text.get(), &PostFrame, nullptr };
-        services.nestedScrollParent = &g_NestedScrollParent;
-        g_Host->app = std::make_unique<kiln::App>(services);
-        g_Host->app->SetDensity(density, fontScale);
-        if (g_PendingConfiguration) g_Host->app->SetConfiguration(*g_PendingConfiguration);
-        g_Host->app->Set24HourFormat(g_Pending24Hour);
-        g_Host->handle.impl = g_Host->app.get();
-        env->GetJavaVM(&g_Host->vm);
-        g_Host->view = env->NewGlobalRef(view);
-        jclass viewClass = env->GetObjectClass(view);
-        g_Host->requestFocus = env->GetMethodID(viewClass, "requestOwnerFocus", "()Z");
-        env->DeleteLocalRef(viewClass);
-        InstallTextInputHost(env);
+
+        void Update(const kiln::ui::DialogWindowProperties& p) override {
+            JNIEnv* e = MainEnv();
+            jstring title = JavaString(e, kiln::foundation::ToUtf16(p.windowTitle));
+            e->CallVoidMethod(dialog, g_DialogUpdate, jboolean(p.dismissOnBackPress), jboolean(p.dismissOnClickOutside), jboolean(p.secure),
+                              jboolean(p.usePlatformDefaultWidth), jboolean(p.decorFitsSystemWindows), title, jfloat(p.scrimAlpha),
+                              jint(p.blurBehindRadiusPx), jint(p.backgroundBlurRadiusPx), jboolean(p.direction == kiln::ui::LayoutDirection::Rtl));
+            e->DeleteLocalRef(title);
+        }
+
+        ~AndroidDialog() override {
+            JNIEnv* e = MainEnv();
+            if (win) win->owner->SetOnContentSizeChanged(nullptr);
+            // Dismissing removes the window; its surface goes with it (SurfaceDestroyed).
+            if (dialog) e->CallVoidMethod(dialog, g_DialogDismissNative);
+            if (g_Host && g_Host->app && win && win->appWindow) g_Host->app->RemoveWindow(win->appWindow);
+            g_DialogDismiss.erase(id);
+            if (win && win->view) { e->DeleteGlobalRef(win->view); win->view = nullptr; }
+            if (dialog) e->DeleteGlobalRef(dialog);
+            if (g_CurWin == win) g_CurWin = nullptr;
+            g_Wins.erase(id);
+        }
+    };
+
+    void DialogDismissRequest(JNIEnv*, jclass, jint win) {
+        auto it = g_DialogDismiss.find(int(win));
+        if (it == g_DialogDismiss.end() || !it->second) return;
+        auto dismiss = it->second;
+        dismiss();
+        if (g_Host) g_Host->app->RequestFrame();
+    }
+
+    // DialogLayout.internalOnMeasure on the native side: the content within the specs' room.
+    jintArray WindowMeasure(JNIEnv* env, jclass, jint win, jint widthSpec, jint heightSpec) {
+        WinScope ws(win);
+        if (!ws || !ws.w->appWindow) return nullptr;
+        constexpr std::uint32_t kModeMask = 0xC0000000u, kExactly = 0x40000000u, kAtMost = 0x80000000u;
+        const std::uint32_t wm = std::uint32_t(widthSpec) & kModeMask, hm = std::uint32_t(heightSpec) & kModeMask;
+        const int ws_ = int(std::uint32_t(widthSpec) & ~kModeMask), hs = int(std::uint32_t(heightSpec) & ~kModeMask);
+        kiln::ui::Constraints c{ 0, wm == 0 ? kiln::ui::Constraints::Infinity : ws_, 0, hm == 0 ? kiln::ui::Constraints::Infinity : hs };
+        kiln::rt::Composition::RecomposeAll();
+        kiln::ui::Owner& o = *ws.w->owner;
+        o.SetContentConstraints(c);
+        const kiln::ui::IntSize content = o.MeasureContent(c);
+        const int width = wm == kExactly ? ws_ : wm == kAtMost ? std::min(ws_, content.width) : content.width;
+        const int height = hm == kExactly ? hs : hm == kAtMost ? std::min(hs, content.height) : content.height;
+        jintArray out = env->NewIntArray(3);
+        const jint v[3] = { width, height, content.height };
+        env->SetIntArrayRegion(out, 0, 3, v);
+        return out;
+    }
+
+    jintArray WindowContentBounds(JNIEnv* env, jclass, jint win) {
+        WinScope ws(win);
+        if (!ws) return nullptr;
+        const kiln::ui::IntRect r = ws.w->owner->ContentBounds();
+        jintArray out = env->NewIntArray(4);
+        const jint v[4] = { r.left, r.top, r.right, r.bottom };
+        env->SetIntArrayRegion(out, 0, 4, v);
+        return out;
+    }
+
+    // The owner's platform hosts, calling back into its window's view.
+    void InstallOwnerHosts(JNIEnv* env, Win* w) {
+        CacheDialogClass(env);
+        // Dialog composables in this window open dialog windows of their own.
+        w->owner->SetDialogHost({ [w](kiln::ui::Owner& content, const kiln::ui::DialogWindowProperties& p, std::function<void()> onDismiss)
+                                      -> std::unique_ptr<kiln::ui::PlatformDialog> {
+            return std::make_unique<AndroidDialog>(w, content, p, std::move(onDismiss));
+        } });
+        jobject view = w->view;
+        InstallTextInputHost(env, w);
         {
             jclass vc = env->GetObjectClass(view);
             static jmethodID onA11y = env->GetMethodID(vc, "onAccessibilityChange", "(Z)V");
@@ -374,17 +502,17 @@ namespace {
             static jmethodID invalidate = env->GetMethodID(vc, "invalidate", "()V");
             static jmethodID focusFromTouch = env->GetMethodID(vc, "requestFocusFromTouch", "()Z");
             env->DeleteLocalRef(vc);
-            auto& owner = g_Host->app->GetOwner();
-            owner.SetOnAccessibilityChange([](bool layout) { MainEnv()->CallVoidMethod(g_Host->view, onA11y, jboolean(layout)); });
+            auto& owner = (*w->owner);
+            owner.SetOnAccessibilityChange([w](bool layout) { MainEnv()->CallVoidMethod(w->view, onA11y, jboolean(layout)); });
             kiln::ui::AccessibilityHost host;
-            host.touchExplorationEnabled = [] { return bool(MainEnv()->CallBooleanMethod(g_Host->view, touchExploration)); };
-            host.requestFromAccessibilityTool = [] { return bool(MainEnv()->CallBooleanMethod(g_Host->view, fromTool)); };
-            host.requestRectangleOnScreen = [](const kiln::ui::IntRect& r) {
-                MainEnv()->CallVoidMethod(g_Host->view, requestRect, jint(r.left), jint(r.top), jint(r.right), jint(r.bottom));
+            host.touchExplorationEnabled = [w] { return bool(MainEnv()->CallBooleanMethod(w->view, touchExploration)); };
+            host.requestFromAccessibilityTool = [w] { return bool(MainEnv()->CallBooleanMethod(w->view, fromTool)); };
+            host.requestRectangleOnScreen = [w](const kiln::ui::IntRect& r) {
+                MainEnv()->CallVoidMethod(w->view, requestRect, jint(r.left), jint(r.top), jint(r.right), jint(r.bottom));
                 return true;
             };
-            host.invalidate = [] { MainEnv()->CallVoidMethod(g_Host->view, invalidate); };
-            host.requestFocusFromTouch = [] { MainEnv()->CallBooleanMethod(g_Host->view, focusFromTouch); };
+            host.invalidate = [w] { MainEnv()->CallVoidMethod(w->view, invalidate); };
+            host.requestFocusFromTouch = [w] { MainEnv()->CallBooleanMethod(w->view, focusFromTouch); };
             host.uptimeMillis = [] {
                 return std::int64_t(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count());
             };
@@ -401,22 +529,22 @@ namespace {
                 static jmethodID afRequest = env->GetMethodID(avc, "autofillRequest", "(IIIII)V");
                 env->DeleteLocalRef(avc);
                 kiln::ui::AutofillHost af;
-                af.notifyViewEntered = [](int id, kiln::ui::IntRect r) {
-                    MainEnv()->CallVoidMethod(g_Host->view, afEntered, jint(id), jint(r.left), jint(r.top), jint(r.right), jint(r.bottom));
+                af.notifyViewEntered = [w](int id, kiln::ui::IntRect r) {
+                    MainEnv()->CallVoidMethod(w->view, afEntered, jint(id), jint(r.left), jint(r.top), jint(r.right), jint(r.bottom));
                 };
-                af.notifyViewExited = [](int id) { MainEnv()->CallVoidMethod(g_Host->view, afExited, jint(id)); };
-                af.notifyValueChanged = [](int id, const kiln::ui::FillableData& d) {
+                af.notifyViewExited = [w](int id) { MainEnv()->CallVoidMethod(w->view, afExited, jint(id)); };
+                af.notifyValueChanged = [w](int id, const kiln::ui::FillableData& d) {
                     JNIEnv* e = MainEnv();
                     jstring js = d.kind == kiln::ui::FillableData::Kind::Text ? JavaString(e, kiln::foundation::ToUtf16(d.text)) : nullptr;
                     const jint i = d.kind == kiln::ui::FillableData::Kind::Toggle ? jint(d.toggle) : jint(d.listIndex);
-                    e->CallVoidMethod(g_Host->view, afValue, jint(id), jint(d.kind), js, i, jlong(d.dateMillis));
+                    e->CallVoidMethod(w->view, afValue, jint(id), jint(d.kind), js, i, jlong(d.dateMillis));
                     if (js) e->DeleteLocalRef(js);
                 };
-                af.notifyViewVisibilityChanged = [](int id, bool v) { MainEnv()->CallVoidMethod(g_Host->view, afVisible, jint(id), jboolean(v)); };
-                af.commit = [] { MainEnv()->CallVoidMethod(g_Host->view, afCommit); };
-                af.cancel = [] { MainEnv()->CallVoidMethod(g_Host->view, afCancel); };
-                af.requestAutofill = [](int id, kiln::ui::IntRect r) {
-                    MainEnv()->CallVoidMethod(g_Host->view, afRequest, jint(id), jint(r.left), jint(r.top), jint(r.right), jint(r.bottom));
+                af.notifyViewVisibilityChanged = [w](int id, bool v) { MainEnv()->CallVoidMethod(w->view, afVisible, jint(id), jboolean(v)); };
+                af.commit = [w] { MainEnv()->CallVoidMethod(w->view, afCommit); };
+                af.cancel = [w] { MainEnv()->CallVoidMethod(w->view, afCancel); };
+                af.requestAutofill = [w](int id, kiln::ui::IntRect r) {
+                    MainEnv()->CallVoidMethod(w->view, afRequest, jint(id), jint(r.left), jint(r.top), jint(r.right), jint(r.bottom));
                 };
                 af.credentialRequestsSupported = android_get_device_api_level() >= 34;
                 jclass svc = env->GetObjectClass(view);
@@ -428,7 +556,7 @@ namespace {
                 static jmethodID dragPermissions = env->GetMethodID(env->GetObjectClass(view), "requestDragPermissionsFromNative", "()Z");
                 (void)dragPermissions;
                 kiln::ui::DragAndDropHost dnd;
-                dnd.startDrag = [](const kiln::ui::DragAndDropTransferData& d, int w, int h, std::vector<std::uint8_t> rgba) {
+                dnd.startDrag = [w](const kiln::ui::DragAndDropTransferData& d, int width, int height, std::vector<std::uint8_t> rgba) {
                     JNIEnv* e = MainEnv();
                     std::vector<std::string> items;
                     for (const auto& it : d.clip.items) {
@@ -454,24 +582,24 @@ namespace {
                         e->SetByteArrayRegion(px, 0, jsize(rgba.size()), reinterpret_cast<const jbyte*>(rgba.data()));
                     }
                     g_LocalDragState = d.localState;
-                    const bool ok = e->CallBooleanMethod(g_Host->view, dragStart, label, jmimes, jitems, jint(d.flags), jint(w), jint(h), px);
+                    const bool ok = e->CallBooleanMethod(w->view, dragStart, label, jmimes, jitems, jint(d.flags), jint(width), jint(height), px);
                     for (jobject o : { (jobject)jitems, (jobject)jmimes, (jobject)label, (jobject)px }) if (o) e->DeleteLocalRef(o);
                     return ok;
                 };
                 owner.DragAndDrop().SetHost(std::move(dnd));
                 static jmethodID viewRects = env->GetMethodID(env->GetObjectClass(view), "setViewRectsFromNative", "(I[I)V");
-                owner.SetViewRectsHost([](int kind, const std::vector<kiln::ui::IntRect>& rects) {
+                owner.SetViewRectsHost([w](int kind, const std::vector<kiln::ui::IntRect>& rects) {
                     JNIEnv* e = MainEnv();
                     std::vector<jint> v;
                     for (const auto& r : rects) v.insert(v.end(), { r.left, r.top, r.right, r.bottom });
                     jintArray a = e->NewIntArray(jsize(v.size()));
                     e->SetIntArrayRegion(a, 0, jsize(v.size()), v.data());
-                    e->CallVoidMethod(g_Host->view, viewRects, jint(kind), a);
+                    e->CallVoidMethod(w->view, viewRects, jint(kind), a);
                     e->DeleteLocalRef(a);
                 });
                 static jmethodID timeout = env->GetMethodID(env->GetObjectClass(view), "recommendedTimeoutMillis", "(II)I");
-                owner.SetRecommendedTimeoutHost([](int original, int flags) {
-                    return std::int64_t(MainEnv()->CallIntMethod(g_Host->view, timeout, jint(original), jint(flags)));
+                owner.SetRecommendedTimeoutHost([w](int original, int flags) {
+                    return std::int64_t(MainEnv()->CallIntMethod(w->view, timeout, jint(original), jint(flags)));
                 });
                 {
                     jclass avc = env->GetObjectClass(view);
@@ -488,18 +616,18 @@ namespace {
                         return r;
                     };
                     kiln::ui::ActivityResultHost ar;
-                    ar.registerKey = [withKey](const std::string& k) { withKey(k, [](JNIEnv* e, jstring js) { e->CallVoidMethod(g_Host->view, arRegister, js); return 0; }); };
-                    ar.unregister = [withKey](const std::string& k) { withKey(k, [](JNIEnv* e, jstring js) { e->CallVoidMethod(g_Host->view, arUnregister, js); return 0; }); };
-                    ar.launch = [withKey](const std::string& k, const kiln::ui::Intent& intent) {
+                    ar.registerKey = [withKey, w](const std::string& k) { withKey(k, [w](JNIEnv* e, jstring js) { e->CallVoidMethod(w->view, arRegister, js); return 0; }); };
+                    ar.unregister = [withKey, w](const std::string& k) { withKey(k, [w](JNIEnv* e, jstring js) { e->CallVoidMethod(w->view, arUnregister, js); return 0; }); };
+                    ar.launch = [withKey, w](const std::string& k, const kiln::ui::Intent& intent) {
                         return withKey(k, [&](JNIEnv* e, jstring js) {
                             jobjectArray ji = JavaIntent(e, intent);
-                            const bool ok = e->CallBooleanMethod(g_Host->view, arLaunch, js, ji);
+                            const bool ok = e->CallBooleanMethod(w->view, arLaunch, js, ji);
                             e->DeleteLocalRef(ji);
                             return ok;
                         });
                     };
-                    ar.checkSelfPermission = [withKey](const std::string& p) {
-                        return withKey(p, [](JNIEnv* e, jstring js) { return bool(e->CallBooleanMethod(g_Host->view, arCheck, js)); });
+                    ar.checkSelfPermission = [withKey, w](const std::string& p) {
+                        return withKey(p, [w](JNIEnv* e, jstring js) { return bool(e->CallBooleanMethod(w->view, arCheck, js)); });
                     };
                     owner.ActivityResults().SetHost(std::move(ar));
                 }
@@ -507,23 +635,28 @@ namespace {
                     jclass sc = env->GetObjectClass(view);
                     static jmethodID setSecure = env->GetMethodID(sc, "setFlagSecureFromNative", "(Z)V");
                     env->DeleteLocalRef(sc);
-                    owner.SetFlagSecureHost([](bool s) { MainEnv()->CallVoidMethod(g_Host->view, setSecure, jboolean(s)); });
+                    owner.SetFlagSecureHost([w](bool s) { MainEnv()->CallVoidMethod(w->view, setSecure, jboolean(s)); });
                 }
-                owner.SetScreenHost([](bool on) { MainEnv()->CallVoidMethod(g_Host->view, keepOn, jboolean(on)); },
-                                    [](bool s) { MainEnv()->CallVoidMethod(g_Host->view, sensitive, jboolean(s)); });
+                owner.SetScreenHost([w](bool on) { MainEnv()->CallVoidMethod(w->view, keepOn, jboolean(on)); },
+                                    [w](bool s) { MainEnv()->CallVoidMethod(w->view, sensitive, jboolean(s)); });
                 owner.SetAutofillHost(std::move(af));
             }
             static jmethodID setBack = env->GetMethodID(env->GetObjectClass(view), "setBackEnabled", "(Z)V");
             auto& back = kiln::ui::BackDispatcher::Main();
-            back.onHasEnabledChanged = [](bool on) { MainEnv()->CallVoidMethod(g_Host->view, setBack, jboolean(on)); };
-            if (back.HasEnabledCallbacks()) back.onHasEnabledChanged(true);
+            // One dispatcher for every window: each window's view holds a back callback while any
+            // handler is enabled, so Back reaches it from whichever window has focus.
+            back.onHasEnabledChanged = [](bool on) {
+                for (auto& [id, win] : g_Wins)
+                    if (win->view) MainEnv()->CallVoidMethod(win->view, setBack, jboolean(on));
+            };
+            if (back.HasEnabledCallbacks()) env->CallVoidMethod(w->view, setBack, jboolean(true));
         }
         {
             jclass vc = env->GetObjectClass(view);
             static jmethodID requestRect = env->GetMethodID(vc, "requestRectangle", "(IIII)V");
             env->DeleteLocalRef(vc);
-            g_Host->app->GetOwner().SetRequestRectangleOnScreen([](kiln::ui::Rect r) {
-                MainEnv()->CallVoidMethod(g_Host->view, requestRect, jint(std::floor(r.left)), jint(std::floor(r.top)),
+            (*w->owner).SetRequestRectangleOnScreen([w](kiln::ui::Rect r) {
+                MainEnv()->CallVoidMethod(w->view, requestRect, jint(std::floor(r.left)), jint(std::floor(r.top)),
                                           jint(std::ceil(r.right)), jint(std::ceil(r.bottom)));
             });
         }
@@ -531,18 +664,18 @@ namespace {
             jclass vc = env->GetObjectClass(view);
             static jmethodID playSound = env->GetMethodID(vc, "playSound", "(I)V");
             env->DeleteLocalRef(vc);
-            g_Host->app->GetOwner().SetPlaySoundEffect([](int constant) { MainEnv()->CallVoidMethod(g_Host->view, playSound, jint(constant)); });
+            (*w->owner).SetPlaySoundEffect([w](int constant) { MainEnv()->CallVoidMethod(w->view, playSound, jint(constant)); });
         }
         {
             jclass vc = env->GetObjectClass(view);
             static jmethodID setIcon = env->GetMethodID(vc, "setPointerIconType", "(I)V");
             static jmethodID openUri = env->GetMethodID(vc, "openUri", "(Ljava/lang/String;)Z");
             env->DeleteLocalRef(vc);
-            g_Host->app->GetOwner().SetPointerIconHost([](int type) { MainEnv()->CallVoidMethod(g_Host->view, setIcon, jint(type)); });
-            g_Host->app->GetOwner().SetUriHandler([](const std::string& uri) {
+            (*w->owner).SetPointerIconHost([w](int type) { MainEnv()->CallVoidMethod(w->view, setIcon, jint(type)); });
+            (*w->owner).SetUriHandler([w](const std::string& uri) {
                 JNIEnv* e = MainEnv();
                 jstring s = e->NewStringUTF(uri.c_str());   // URIs are ASCII (percent-encoded)
-                const bool ok = e->CallBooleanMethod(g_Host->view, openUri, s);
+                const bool ok = e->CallBooleanMethod(w->view, openUri, s);
                 e->DeleteLocalRef(s);
                 return ok;
             });
@@ -574,16 +707,16 @@ namespace {
             static jmethodID luCan = env->GetMethodID(vc, "canLookUp", "(Ljava/lang/String;)Z");
             static jmethodID luStart = env->GetMethodID(vc, "lookUp", "(Ljava/lang/String;)V");
             env->DeleteLocalRef(vc);
-            auto& owner = g_Host->app->GetOwner();
+            auto& owner = (*w->owner);
             kiln::ui::Owner::ClipboardHost clip;
-            clip.setText = [](const std::string& text) {
+            clip.setText = [w](const std::string& text) {
                 JNIEnv* e = MainEnv();
                 const std::u16string u = kiln::foundation::ToUtf16(text);
                 jstring s = e->NewString(reinterpret_cast<const jchar*>(u.data()), jsize(u.size()));
-                e->CallVoidMethod(g_Host->view, setClip, s);
+                e->CallVoidMethod(w->view, setClip, s);
                 e->DeleteLocalRef(s);
             };
-            clip.setAnnotatedText = [](const kiln::text::AnnotatedString& text) {
+            clip.setAnnotatedText = [w](const kiln::text::AnnotatedString& text) {
                 JNIEnv* e = MainEnv();
                 const ClipSpans spans = ClipSpans::From(text);
                 jstring js = JavaString(e, kiln::foundation::ToUtf16(text.Text()));
@@ -592,12 +725,12 @@ namespace {
                 jfloatArray jf = e->NewFloatArray(jsize(spans.floats.size()));
                 e->SetFloatArrayRegion(jf, 0, jsize(spans.floats.size()), spans.floats.data());
                 jobjectArray jstrs = JavaStrings(e, spans.strings);
-                e->CallVoidMethod(g_Host->view, setStyled, js, ji, jf, jstrs);
+                e->CallVoidMethod(w->view, setStyled, js, ji, jf, jstrs);
                 for (jobject o : { (jobject)js, (jobject)ji, (jobject)jf, (jobject)jstrs }) e->DeleteLocalRef(o);
             };
-            clip.getAnnotatedText = []() -> std::optional<kiln::text::AnnotatedString> {
+            clip.getAnnotatedText = [w]() -> std::optional<kiln::text::AnnotatedString> {
                 JNIEnv* e = MainEnv();
-                auto r = static_cast<jobjectArray>(e->CallObjectMethod(g_Host->view, getStyled));
+                auto r = static_cast<jobjectArray>(e->CallObjectMethod(w->view, getStyled));
                 if (!r) return std::nullopt;
                 auto js = static_cast<jstring>(e->GetObjectArrayElement(r, 0));
                 auto ji = static_cast<jintArray>(e->GetObjectArrayElement(r, 1));
@@ -614,9 +747,9 @@ namespace {
                 for (jobject o : { (jobject)r, (jobject)js, (jobject)ji, (jobject)jf, (jobject)jstrs }) e->DeleteLocalRef(o);
                 return spans.To(kiln::foundation::ToUtf8(u));
             };
-            clip.getText = []() -> std::optional<std::string> {
+            clip.getText = [w]() -> std::optional<std::string> {
                 JNIEnv* e = MainEnv();
-                auto s = static_cast<jstring>(e->CallObjectMethod(g_Host->view, getClip));
+                auto s = static_cast<jstring>(e->CallObjectMethod(w->view, getClip));
                 if (!s) return std::nullopt;
                 std::u16string u(std::size_t(e->GetStringLength(s)), u'\0');
                 e->GetStringRegion(s, 0, jsize(u.size()), reinterpret_cast<jchar*>(u.data()));
@@ -624,10 +757,10 @@ namespace {
                 e->DeleteLocalRef(s);
                 return out;
             };
-            clip.hasText = [] { return bool(MainEnv()->CallBooleanMethod(g_Host->view, hasClip)); };
-            clip.getClip = []() -> std::optional<std::pair<kiln::ui::ClipEntry, kiln::ui::ClipMetadata>> {
+            clip.hasText = [w] { return bool(MainEnv()->CallBooleanMethod(w->view, hasClip)); };
+            clip.getClip = [w]() -> std::optional<std::pair<kiln::ui::ClipEntry, kiln::ui::ClipMetadata>> {
                 JNIEnv* e = MainEnv();
-                auto a = static_cast<jobjectArray>(e->CallObjectMethod(g_Host->view, clipAll));
+                auto a = static_cast<jobjectArray>(e->CallObjectMethod(w->view, clipAll));
                 if (!a) return std::nullopt;
                 const std::vector<std::optional<std::string>> v = StringsFromJava(e, a);
                 e->DeleteLocalRef(a);
@@ -639,9 +772,9 @@ namespace {
                 for (std::size_t k = std::size_t(2 + types); k + 2 < v.size(); k += 3) entry.items.push_back({ v[k], v[k + 1], v[k + 2] });
                 return std::pair{ std::move(entry), std::move(meta) };
             };
-            clip.getMetadata = []() -> std::optional<kiln::ui::ClipMetadata> {
+            clip.getMetadata = [w]() -> std::optional<kiln::ui::ClipMetadata> {
                 JNIEnv* e = MainEnv();
-                auto a = static_cast<jobjectArray>(e->CallObjectMethod(g_Host->view, clipMeta));
+                auto a = static_cast<jobjectArray>(e->CallObjectMethod(w->view, clipMeta));
                 if (!a) return std::nullopt;
                 const std::vector<std::optional<std::string>> v = StringsFromJava(e, a);
                 e->DeleteLocalRef(a);
@@ -651,10 +784,10 @@ namespace {
                 return meta;
             };
             kiln::ui::Owner::ContentHost content;
-            content.read = [](const std::string& uri) -> std::optional<std::vector<std::uint8_t>> {
+            content.read = [w](const std::string& uri) -> std::optional<std::vector<std::uint8_t>> {
                 JNIEnv* e = MainEnv();
                 jstring s = e->NewStringUTF(uri.c_str());
-                auto bytes = static_cast<jbyteArray>(e->CallObjectMethod(g_Host->view, readContent, s));
+                auto bytes = static_cast<jbyteArray>(e->CallObjectMethod(w->view, readContent, s));
                 e->DeleteLocalRef(s);
                 if (!bytes) return std::nullopt;
                 std::vector<std::uint8_t> out(static_cast<std::size_t>(e->GetArrayLength(bytes)));
@@ -662,10 +795,10 @@ namespace {
                 e->DeleteLocalRef(bytes);
                 return out;
             };
-            content.releasePermission = [](int handle) { MainEnv()->CallVoidMethod(g_Host->view, releasePermission, jint(handle)); };
+            content.releasePermission = [w](int handle) { MainEnv()->CallVoidMethod(w->view, releasePermission, jint(handle)); };
             owner.SetContentHost(std::move(content));
             owner.SetClipboardHost(std::move(clip));
-            owner.SetHapticHost([](int constant) { MainEnv()->CallVoidMethod(g_Host->view, haptic, jint(constant)); });
+            owner.SetHapticHost([w](int constant) { MainEnv()->CallVoidMethod(w->view, haptic, jint(constant)); });
             {
                 jclass mc = env->GetObjectClass(view);
                 static jmethodID mCreate = env->GetMethodID(mc, "createMagnifier", "(ZFFFFFZ)I");
@@ -676,19 +809,19 @@ namespace {
                 static jmethodID mSize = env->GetMethodID(mc, "magnifierSize", "(I)[I");
                 env->DeleteLocalRef(mc);
                 kiln::ui::Owner::MagnifierHost mag;
-                mag.create = [](const kiln::ui::Owner::MagnifierConfig& c) {
-                    return int(MainEnv()->CallIntMethod(g_Host->view, mCreate, jboolean(c.useTextDefault), c.widthPx, c.heightPx, c.cornerRadiusPx,
+                mag.create = [w](const kiln::ui::Owner::MagnifierConfig& c) {
+                    return int(MainEnv()->CallIntMethod(w->view, mCreate, jboolean(c.useTextDefault), c.widthPx, c.heightPx, c.cornerRadiusPx,
                                                         c.elevationPx, c.initialZoom, jboolean(c.clippingEnabled)));
                 };
-                mag.show = [](int h, kiln::ui::Offset src, kiln::ui::Offset center, float zoom) {
-                    MainEnv()->CallVoidMethod(g_Host->view, mShow, jint(h), src.x, src.y, center.x, center.y, zoom);
+                mag.show = [w](int h, kiln::ui::Offset src, kiln::ui::Offset center, float zoom) {
+                    MainEnv()->CallVoidMethod(w->view, mShow, jint(h), src.x, src.y, center.x, center.y, zoom);
                 };
-                mag.updateContent = [](int h) { MainEnv()->CallVoidMethod(g_Host->view, mUpdate, jint(h)); };
-                mag.dismiss = [](int h) { MainEnv()->CallVoidMethod(g_Host->view, mDismiss, jint(h)); };
-                mag.destroy = [](int h) { MainEnv()->CallVoidMethod(g_Host->view, mDestroy, jint(h)); };
-                mag.size = [](int h) -> kiln::ui::IntSize {
+                mag.updateContent = [w](int h) { MainEnv()->CallVoidMethod(w->view, mUpdate, jint(h)); };
+                mag.dismiss = [w](int h) { MainEnv()->CallVoidMethod(w->view, mDismiss, jint(h)); };
+                mag.destroy = [w](int h) { MainEnv()->CallVoidMethod(w->view, mDestroy, jint(h)); };
+                mag.size = [w](int h) -> kiln::ui::IntSize {
                     JNIEnv* e = MainEnv();
-                    auto a = static_cast<jintArray>(e->CallObjectMethod(g_Host->view, mSize, jint(h)));
+                    auto a = static_cast<jintArray>(e->CallObjectMethod(w->view, mSize, jint(h)));
                     jint v[2] = { 0, 0 };
                     e->GetIntArrayRegion(a, 0, 2, v);
                     e->DeleteLocalRef(a);
@@ -697,75 +830,75 @@ namespace {
                 owner.SetMagnifierHost(std::move(mag));
             }
             kiln::ui::Owner::TextToolbarHost bar;
-            bar.show = [](kiln::ui::Rect r, const std::vector<kiln::ui::TextToolbarEntry>& entries) {
+            bar.show = [w](kiln::ui::Rect r, const std::vector<kiln::ui::TextToolbarEntry>& entries) {
                 JNIEnv* e = MainEnv();
                 ToolbarArrays a(e, entries);
-                return bool(e->CallBooleanMethod(g_Host->view, showBar, jint(std::floor(r.left)), jint(std::floor(r.top)), jint(std::ceil(r.right)),
+                return bool(e->CallBooleanMethod(w->view, showBar, jint(std::floor(r.left)), jint(std::floor(r.top)), jint(std::ceil(r.right)),
                                                  jint(std::ceil(r.bottom)), a.kinds, a.ids, a.labels, a.groups, a.classifications, a.indexes));
             };
-            bar.update = [](const std::vector<kiln::ui::TextToolbarEntry>& entries) {
+            bar.update = [w](const std::vector<kiln::ui::TextToolbarEntry>& entries) {
                 JNIEnv* e = MainEnv();
                 ToolbarArrays a(e, entries);
-                e->CallVoidMethod(g_Host->view, updateBar, a.kinds, a.ids, a.labels, a.groups, a.classifications, a.indexes);
+                e->CallVoidMethod(w->view, updateBar, a.kinds, a.ids, a.labels, a.groups, a.classifications, a.indexes);
             };
-            bar.move = [](kiln::ui::Rect r) {
-                MainEnv()->CallVoidMethod(g_Host->view, moveBar, jint(std::floor(r.left)), jint(std::floor(r.top)), jint(std::ceil(r.right)),
+            bar.move = [w](kiln::ui::Rect r) {
+                MainEnv()->CallVoidMethod(w->view, moveBar, jint(std::floor(r.left)), jint(std::floor(r.top)), jint(std::ceil(r.right)),
                                           jint(std::ceil(r.bottom)));
             };
-            bar.hide = [] { MainEnv()->CallVoidMethod(g_Host->view, hideBar); };
+            bar.hide = [w] { MainEnv()->CallVoidMethod(w->view, hideBar); };
             owner.SetTextToolbarHost(std::move(bar));
             kiln::ui::TextClassifierHost tc;
-            tc.createSession = [](kiln::ui::SelectedTextType t) {
-                return int(MainEnv()->CallIntMethod(g_Host->view, tcCreate, jint(t == kiln::ui::SelectedTextType::EditableText ? 0 : 1)));
+            tc.createSession = [w](kiln::ui::SelectedTextType t) {
+                return int(MainEnv()->CallIntMethod(w->view, tcCreate, jint(t == kiln::ui::SelectedTextType::EditableText ? 0 : 1)));
             };
-            tc.destroySession = [](int id) { MainEnv()->CallVoidMethod(g_Host->view, tcDestroy, jint(id)); };
-            tc.suggestSelection = [](int session, const std::u16string& text, int start, int end, const std::vector<std::string>& locales, auto done) {
+            tc.destroySession = [w](int id) { MainEnv()->CallVoidMethod(w->view, tcDestroy, jint(id)); };
+            tc.suggestSelection = [w](int session, const std::u16string& text, int start, int end, const std::vector<std::string>& locales, auto done) {
                 const int request = PendingClassifier::Add([done = std::move(done)](const ClassifierReply& r) {
                     done(r.hasRange ? std::optional(std::pair{ r.start, r.end }) : std::nullopt, r.info);
                 });
                 JNIEnv* e = MainEnv();
                 jstring js = JavaString(e, text);
                 jobjectArray jl = JavaStrings(e, locales);
-                e->CallVoidMethod(g_Host->view, tcSuggest, jint(session), jint(request), js, jint(start), jint(end), jl);
+                e->CallVoidMethod(w->view, tcSuggest, jint(session), jint(request), js, jint(start), jint(end), jl);
                 e->DeleteLocalRef(js);
                 e->DeleteLocalRef(jl);
             };
-            tc.classifyText = [](int session, const std::u16string& text, int start, int end, const std::vector<std::string>& locales, auto done) {
+            tc.classifyText = [w](int session, const std::u16string& text, int start, int end, const std::vector<std::string>& locales, auto done) {
                 const int request = PendingClassifier::Add([done = std::move(done)](const ClassifierReply& r) { done(r.info); });
                 JNIEnv* e = MainEnv();
                 jstring js = JavaString(e, text);
                 jobjectArray jl = JavaStrings(e, locales);
-                e->CallVoidMethod(g_Host->view, tcClassify, jint(session), jint(request), js, jint(start), jint(end), jl);
+                e->CallVoidMethod(w->view, tcClassify, jint(session), jint(request), js, jint(start), jint(end), jl);
                 e->DeleteLocalRef(js);
                 e->DeleteLocalRef(jl);
             };
-            tc.releaseClassification = [](int handle) { MainEnv()->CallVoidMethod(g_Host->view, tcRelease, jint(handle)); };
-            tc.processTextActivities = [] {
+            tc.releaseClassification = [w](int handle) { MainEnv()->CallVoidMethod(w->view, tcRelease, jint(handle)); };
+            tc.processTextActivities = [w] {
                 JNIEnv* e = MainEnv();
-                auto a = static_cast<jobjectArray>(e->CallObjectMethod(g_Host->view, ptList));
+                auto a = static_cast<jobjectArray>(e->CallObjectMethod(w->view, ptList));
                 std::vector<std::string> out;
                 if (!a) return out;
                 for (auto& l : StringsFromJava(e, a)) out.push_back(l.value_or(""));
                 e->DeleteLocalRef(a);
                 return out;
             };
-            tc.processText = [](int index, bool editable, const std::u16string& selected) {
+            tc.processText = [w](int index, bool editable, const std::u16string& selected) {
                 JNIEnv* e = MainEnv();
                 jstring js = JavaString(e, selected);
-                e->CallVoidMethod(g_Host->view, ptStart, jint(index), jboolean(editable), js);
+                e->CallVoidMethod(w->view, ptStart, jint(index), jboolean(editable), js);
                 e->DeleteLocalRef(js);
             };
-            tc.canLookUp = [](const std::u16string& selected) {
+            tc.canLookUp = [w](const std::u16string& selected) {
                 JNIEnv* e = MainEnv();
                 jstring js = JavaString(e, selected);
-                const bool can = e->CallBooleanMethod(g_Host->view, luCan, js);
+                const bool can = e->CallBooleanMethod(w->view, luCan, js);
                 e->DeleteLocalRef(js);
                 return can;
             };
-            tc.lookUp = [](const std::u16string& selected) {
+            tc.lookUp = [w](const std::u16string& selected) {
                 JNIEnv* e = MainEnv();
                 jstring js = JavaString(e, selected);
-                e->CallVoidMethod(g_Host->view, luStart, js);
+                e->CallVoidMethod(w->view, luStart, js);
                 e->DeleteLocalRef(js);
             };
             owner.SetTextClassifierHost(std::move(tc));
@@ -811,33 +944,33 @@ namespace {
                     return ic;
                 };
                 kiln::ui::ContextMenuHost menu;
-                menu.standardLabel = [str](kiln::ui::TextToolbarItemId id) {
+                menu.standardLabel = [str, w](kiln::ui::TextToolbarItemId id) {
                     JNIEnv* e = MainEnv();
-                    return str(e, e->CallObjectMethod(g_Host->view, mLabel, jint(id)));
+                    return str(e, e->CallObjectMethod(w->view, mLabel, jint(id)));
                 };
-                menu.standardIcon = [icon](kiln::ui::TextToolbarItemId id, int size) {
+                menu.standardIcon = [icon, w](kiln::ui::TextToolbarItemId id, int size) {
                     JNIEnv* e = MainEnv();
-                    return icon(e, e->CallObjectMethod(g_Host->view, mIcon, jint(id), jint(size)));
+                    return icon(e, e->CallObjectMethod(w->view, mIcon, jint(id), jint(size)));
                 };
-                menu.themeIcon = [icon](int attr, int size) {
+                menu.themeIcon = [icon, w](int attr, int size) {
                     JNIEnv* e = MainEnv();
-                    return icon(e, e->CallObjectMethod(g_Host->view, mTheme, jint(attr), jint(size)));
+                    return icon(e, e->CallObjectMethod(w->view, mTheme, jint(attr), jint(size)));
                 };
-                menu.classificationLabel = [str](int handle, int index) {
+                menu.classificationLabel = [str, w](int handle, int index) {
                     JNIEnv* e = MainEnv();
-                    return str(e, e->CallObjectMethod(g_Host->view, mCLabel, jint(handle), jint(index)));
+                    return str(e, e->CallObjectMethod(w->view, mCLabel, jint(handle), jint(index)));
                 };
-                menu.classificationIcon = [icon](int handle, int index, int size) {
+                menu.classificationIcon = [icon, w](int handle, int index, int size) {
                     JNIEnv* e = MainEnv();
-                    return icon(e, e->CallObjectMethod(g_Host->view, mCIcon, jint(handle), jint(index), jint(size)));
+                    return icon(e, e->CallObjectMethod(w->view, mCIcon, jint(handle), jint(index), jint(size)));
                 };
-                menu.performClassification = [](int handle, int index) {
-                    MainEnv()->CallVoidMethod(g_Host->view, mPerform, jint(handle), jint(index));
+                menu.performClassification = [w](int handle, int index) {
+                    MainEnv()->CallVoidMethod(w->view, mPerform, jint(handle), jint(index));
                 };
-                menu.colors = [] {
+                menu.colors = [w] {
                     JNIEnv* e = MainEnv();
                     kiln::ui::ContextMenuHost::Colors c;
-                    auto a = static_cast<jintArray>(e->CallObjectMethod(g_Host->view, mColors));
+                    auto a = static_cast<jintArray>(e->CallObjectMethod(w->view, mColors));
                     if (!a) return c;
                     jint v[3]{};
                     e->GetIntArrayRegion(a, 0, 3, v);
@@ -853,15 +986,15 @@ namespace {
             static jmethodID setControlled = env->GetMethodID(env->GetObjectClass(view), "setControlledInsets", "(IIIIFF)V");
             static jmethodID finishControl = env->GetMethodID(env->GetObjectClass(view), "finishInsetsControl", "(Z)V");
             kiln::ui::InsetsControlHost control;
-            control.request = [](kiln::ui::InsetsType t) { return bool(MainEnv()->CallBooleanMethod(g_Host->view, requestControl, jint(t))); };
-            control.setInsetsAndAlpha = [](const kiln::ui::InsetsValue& v, float alpha, float progress) {
-                MainEnv()->CallVoidMethod(g_Host->view, setControlled, jint(v.left), jint(v.top), jint(v.right), jint(v.bottom), jfloat(alpha), jfloat(progress));
+            control.request = [w](kiln::ui::InsetsType t) { return bool(MainEnv()->CallBooleanMethod(w->view, requestControl, jint(t))); };
+            control.setInsetsAndAlpha = [w](const kiln::ui::InsetsValue& v, float alpha, float progress) {
+                MainEnv()->CallVoidMethod(w->view, setControlled, jint(v.left), jint(v.top), jint(v.right), jint(v.bottom), jfloat(alpha), jfloat(progress));
             };
-            control.finish = [](bool shown) { MainEnv()->CallVoidMethod(g_Host->view, finishControl, jboolean(shown)); };
+            control.finish = [w](bool shown) { MainEnv()->CallVoidMethod(w->view, finishControl, jboolean(shown)); };
             owner.Insets().SetControlHost(std::move(control));
             static jmethodID barsAppearance = env->GetMethodID(env->GetObjectClass(view), "setSystemBarsAppearance", "(ZZ)V");
-            owner.SetSystemBarsAppearanceHost([](bool lightStatus, bool lightNav) {
-                MainEnv()->CallVoidMethod(g_Host->view, barsAppearance, jboolean(lightStatus), jboolean(lightNav));
+            owner.SetSystemBarsAppearanceHost([w](bool lightStatus, bool lightNav) {
+                MainEnv()->CallVoidMethod(w->view, barsAppearance, jboolean(lightStatus), jboolean(lightNav));
             });
         }
         {
@@ -869,16 +1002,56 @@ namespace {
             static jclass kcmClass = reinterpret_cast<jclass>(env->NewGlobalRef(kcm));
             static jmethodID getDeadChar = env->GetStaticMethodID(kcm, "getDeadChar", "(II)I");
             env->DeleteLocalRef(kcm);
-            g_Host->app->GetOwner().SetDeadCharCombiner([](int accent, int c) {
+            (*w->owner).SetDeadCharCombiner([](int accent, int c) {
                 return int(MainEnv()->CallStaticIntMethod(kcmClass, getDeadChar, jint(accent), jint(c)));
             });
         }
         // Keys and the IME reach a View only while it holds platform focus.
-        g_Host->app->GetOwner().SetRequestHostFocus([] {
+        (*w->owner).SetRequestHostFocus([w] {
             JNIEnv* e = nullptr;
             g_Host->vm->GetEnv(reinterpret_cast<void**>(&e), JNI_VERSION_1_6);
-            return e && e->CallBooleanMethod(g_Host->view, g_Host->requestFocus);
+            return e && e->CallBooleanMethod(w->view, g_Host->requestFocus);
         });
+    }
+
+    void Create(JNIEnv* env, jclass, jobject view, jobject text, jobject assets, jfloat density, jfloat fontScale, jbyteArray saved) {
+        hearth::SetLogSink(&LogToLogcat);
+        kiln::android::InstallImageDecoder();
+        kiln::android::InstallAssetReader(env, assets);
+        g_Host = new Host();
+        g_Host->text = std::make_unique<kiln::android::AndroidText>(env, text);
+        kiln::foundation::SetUpperCaseFunction([](std::u16string_view t, const std::string& tag) {
+            return g_Host && g_Host->text ? g_Host->text->UpperCase(t, tag) : std::u16string(t);
+        });
+        {
+            jclass vc = env->GetObjectClass(view);
+            g_NestedScrollParent.start = env->GetMethodID(vc, "nsStart", "(IZ)Z");
+            g_NestedScrollParent.pre = env->GetMethodID(vc, "nsPreScroll", "(IIZ)[I");
+            g_NestedScrollParent.scroll = env->GetMethodID(vc, "nsScroll", "(IIIIZ)[I");
+            g_NestedScrollParent.preFling = env->GetMethodID(vc, "nsPreFling", "(FF)Z");
+            g_NestedScrollParent.fling = env->GetMethodID(vc, "nsFling", "(FFZ)Z");
+            g_NestedScrollParent.stop = env->GetMethodID(vc, "nsStop", "()V");
+            env->DeleteLocalRef(vc);
+        }
+        kiln::HostServices services{ g_Host->text.get(), &PostFrame, nullptr };
+        services.nestedScrollParent = &g_NestedScrollParent;
+        g_Host->app = std::make_unique<kiln::App>(services);
+        g_Host->app->SetDensity(density, fontScale);
+        if (g_PendingConfiguration) g_Host->app->SetConfiguration(*g_PendingConfiguration);
+        g_Host->app->Set24HourFormat(g_Pending24Hour);
+        g_Host->handle.impl = g_Host->app.get();
+        env->GetJavaVM(&g_Host->vm);
+        g_Host->view = env->NewGlobalRef(view);
+        jclass viewClass = env->GetObjectClass(view);
+        g_Host->requestFocus = env->GetMethodID(viewClass, "requestOwnerFocus", "()Z");
+        env->DeleteLocalRef(viewClass);
+        {
+            auto main = std::make_unique<Win>();
+            main->view = g_Host->view;
+            main->owner = &g_Host->app->GetOwner();
+            g_Wins[0] = std::move(main);
+            InstallOwnerHosts(env, g_Wins[0].get());
+        }
 
         // Posted work and timers wake the main looper (AndroidUiDispatcher's Handler half).
         g_Host->eventFd = eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC);
@@ -922,9 +1095,11 @@ namespace {
         g_Host->app->RequestFrame();
     }
 
-    void TextToolbarItem(JNIEnv*, jclass, jint item) {
+    void TextToolbarItem(JNIEnv*, jclass, jint win, jint item) {
+        WinScope ws(win);
+        if (!ws) return;
         if (!g_Host || item < 0) return;
-        g_Host->app->GetOwner().OnTextToolbarItem(std::size_t(item));
+        CurOwner().OnTextToolbarItem(std::size_t(item));
         g_Host->app->RequestFrame();
     }
 
@@ -951,9 +1126,11 @@ namespace {
         g_Host->app->RequestFrame();
     }
 
-    void TextToolbarDestroyed(JNIEnv*, jclass) {
+    void TextToolbarDestroyed(JNIEnv*, jclass, jint win) {
+        WinScope ws(win);
+        if (!ws) return;
         if (!g_Host) return;
-        g_Host->app->GetOwner().OnTextToolbarDestroyed();
+        CurOwner().OnTextToolbarDestroyed();
     }
 
     // Configuration as KilnView.pushConfiguration packs it; also before create, so the first
@@ -1019,9 +1196,11 @@ namespace {
 
     // MotionEvent -> RawPointerEvent (MotionEventAdapter, spec 02 req. 9). Positions arrive in
     // view pixels, which are surface pixels here (the SurfaceView fills the KilnView).
-    void TouchEvent(JNIEnv* env, jclass, jint action, jint actionIndex, jlong eventTime, jintArray ids,
+    void TouchEvent(JNIEnv* env, jclass, jint win, jint action, jint actionIndex, jlong eventTime, jintArray ids,
                     jfloatArray xy, jintArray tools, jint buttons, jint metaState, jint classification, jfloat hscroll, jfloat vscroll,
                     jlongArray historyTimes, jfloatArray historyXy, jfloatArray pan) {
+        WinScope ws(win);
+        if (!ws) return;
         if (!g_Host) return;
         enum { DOWN = 0, UP = 1, MOVE = 2, CANCEL = 3, POINTER_DOWN = 5, POINTER_UP = 6, HOVER_MOVE = 7,
                SCROLL = 8, HOVER_ENTER = 9, HOVER_EXIT = 10 };
@@ -1075,11 +1254,14 @@ namespace {
         } else {
             trackpad.Process(ev, action, classification, nullptr, 0);
         }
-        g_Host->app->ProcessPointer(ev);
+        if (auto* aw = CurAppWin()) g_Host->app->ProcessPointer(aw, ev);
+        else g_Host->app->ProcessPointer(ev);
         ArmTimer();
     }
 
-    jboolean KeyEvent(JNIEnv*, jclass, jint action, jint keyCode, jint metaState, jint unicode, jint repeat, jlong time, jint source) {
+    jboolean KeyEvent(JNIEnv*, jclass, jint win, jint action, jint keyCode, jint metaState, jint unicode, jint repeat, jlong time, jint source) {
+        WinScope ws(win);
+        if (!ws) return false;
         if (!g_Host) return {};
         kiln::ui::KeyEvent e;
         e.keyCode = keyCode;
@@ -1092,12 +1274,14 @@ namespace {
         e.fromSoftKeyboard = source & 1;
         e.fromHardwareSource = source & 2;
         e.fromKeyboardSource = source & 4;
-        const bool handled = g_Host->app->ProcessKey(e);
+        const bool handled = CurAppWin() ? g_Host->app->ProcessKey(CurAppWin(), e) : g_Host->app->ProcessKey(e);
         ArmTimer();
         return handled;
     }
 
-    jboolean KeyEventPreIme(JNIEnv*, jclass, jint action, jint keyCode, jint metaState, jint unicode, jint repeat, jlong time, jint source) {
+    jboolean KeyEventPreIme(JNIEnv*, jclass, jint win, jint action, jint keyCode, jint metaState, jint unicode, jint repeat, jlong time, jint source) {
+        WinScope ws(win);
+        if (!ws) return false;
         if (!g_Host) return {};
         kiln::ui::KeyEvent e;
         e.keyCode = keyCode;
@@ -1110,23 +1294,27 @@ namespace {
         e.fromSoftKeyboard = source & 1;
         e.fromHardwareSource = source & 2;
         e.fromKeyboardSource = source & 4;
-        const bool handled = g_Host->app->ProcessKeyPreIme(e);
+        const bool handled = CurAppWin() ? g_Host->app->ProcessKeyPreIme(CurAppWin(), e) : g_Host->app->ProcessKeyPreIme(e);
         ArmTimer();
         return handled;
     }
 
     // AndroidComposeView.handleRotaryEvent: pixels already scaled by the view configuration.
-    jboolean Rotary(JNIEnv*, jclass, jfloat vertical, jfloat horizontal, jlong time, jint deviceId) {
+    jboolean Rotary(JNIEnv*, jclass, jint win, jfloat vertical, jfloat horizontal, jlong time, jint deviceId) {
+        WinScope ws(win);
+        if (!ws) return false;
         if (!g_Host) return {};
-        const bool handled = g_Host->app->ProcessRotary({ vertical, horizontal, time, deviceId });
+        const bool handled = g_Host->app->ProcessRotary({ vertical, horizontal, time, deviceId }, CurAppWin());
         ArmTimer();
         return handled;
     }
 
     // Touch-navigation pads (AndroidComposeView.dispatchGenericMotionEvent): the MotionEvent's
     // pointers, pressures and batched samples, plus the pad's primary axis (0 none, 1 x, 2 y).
-    jboolean IndirectPointer(JNIEnv* env, jclass, jint action, jint actionIndex, jlong eventTime, jintArray ids,
+    jboolean IndirectPointer(JNIEnv* env, jclass, jint win, jint action, jint actionIndex, jlong eventTime, jintArray ids,
                              jfloatArray xy, jfloatArray pressures, jlongArray historyTimes, jfloatArray historyXy, jint axis) {
+        WinScope ws(win);
+        if (!ws) return false;
         if (!g_Host) return {};
         using kiln::ui::RawIndirectPointerEvent;
         using A = RawIndirectPointerEvent::Action;
@@ -1163,15 +1351,17 @@ namespace {
         env->ReleaseIntArrayElements(ids, id, JNI_ABORT);
         env->ReleaseFloatArrayElements(xy, p, JNI_ABORT);
         env->ReleaseFloatArrayElements(pressures, pr, JNI_ABORT);
-        const bool consumed = g_Host->app->ProcessIndirectPointer(ev);
+        const bool consumed = g_Host->app->ProcessIndirectPointer(ev, CurAppWin());
         ArmTimer();
         return consumed;
     }
 
     // View focus integration (AndroidComposeView getFocusedRect / focusSearch / requestFocus).
-    jfloatArray FocusedRect(JNIEnv* env, jclass) {
+    jfloatArray FocusedRect(JNIEnv* env, jclass, jint win) {
+        WinScope ws(win);
+        if (!ws) return nullptr;
         if (!g_Host) return nullptr;
-        const auto r = g_Host->app->FocusedRect();
+        const auto r = g_Host->app->FocusedRect(CurAppWin());
         if (!r) return nullptr;
         jfloatArray out = env->NewFloatArray(4);
         const jfloat v[4] = { r->left, r->top, r->right, r->bottom };
@@ -1179,12 +1369,16 @@ namespace {
         return out;
     }
 
-    jboolean HasFocusableContent(JNIEnv*, jclass) {
-        return g_Host && g_Host->app->HasFocusableContent();
+    jboolean HasFocusableContent(JNIEnv*, jclass, jint win) {
+        WinScope ws(win);
+        if (!ws) return false;
+        return g_Host && g_Host->app->HasFocusableContent(CurAppWin());
     }
 
     // [result (-1 cancelled, 0 none, 1 found), left, top, right, bottom of the target]
-    jfloatArray FocusSearch(JNIEnv* env, jclass, jint direction, jfloat l, jfloat t, jfloat r, jfloat b) {
+    jfloatArray FocusSearch(JNIEnv* env, jclass, jint win, jint direction, jfloat l, jfloat t, jfloat r, jfloat b) {
+        WinScope ws(win);
+        if (!ws) return nullptr;
         jfloat v[5] = { 0, 0, 0, 0, 0 };
         if (g_Host) {
             kiln::ui::Rect target{};
@@ -1206,27 +1400,33 @@ namespace {
         return g_Host->app->IsBetterFocusCandidate(direction, rect(proposed), rect(current), rect(focused));
     }
 
-    jboolean HostRequestFocus(JNIEnv*, jclass, jint direction, jboolean hasRect, jfloat l, jfloat t, jfloat r, jfloat b,
+    jboolean HostRequestFocus(JNIEnv*, jclass, jint win, jint direction, jboolean hasRect, jfloat l, jfloat t, jfloat r, jfloat b,
                               jboolean hostHasFocus) {
+        WinScope ws(win);
+        if (!ws) return false;
         if (!g_Host) return {};
         const kiln::ui::Rect prev{ l, t, r, b };
-        const bool done = g_Host->app->HostRequestFocus(direction, hasRect ? &prev : nullptr, hostHasFocus);
+        const bool done = g_Host->app->HostRequestFocus(direction, hasRect ? &prev : nullptr, hostHasFocus, CurAppWin());
         ArmTimer();
         return done;
     }
 
-    void IndirectFling(JNIEnv*, jclass, jboolean next) {
+    void IndirectFling(JNIEnv*, jclass, jint win, jboolean next) {
+        WinScope ws(win);
+        if (!ws) return;
         if (!g_Host) return;
-        g_Host->app->MoveFocusFromIndirectFling(next);
+        g_Host->app->MoveFocusFromIndirectFling(next, CurAppWin());
         ArmTimer();
     }
 
-    void SetWindowInsets(JNIEnv* env, jclass, jintArray data) {
+    void SetWindowInsets(JNIEnv* env, jclass, jint win, jintArray data) {
+        WinScope ws(win);
+        if (!ws) return;
         if (!g_Host) return;
         const jsize n = env->GetArrayLength(data);
         std::vector<jint> v(static_cast<std::size_t>(n));
         env->GetIntArrayRegion(data, 0, n, v.data());
-        auto& h = g_Host->app->GetOwner().Insets();
+        auto& h = CurOwner().Insets();
         constexpr std::size_t kTypes = std::size_t(kiln::ui::InsetsType::Count);
         if (v.size() < kTypes * 9 + 1) return;
         for (std::size_t i = 0; i < kTypes; ++i) {
@@ -1246,21 +1446,27 @@ namespace {
         h.SetHasInsets(true);
         g_Host->app->RequestFrame();
     }
-    void InsetsControlReady(JNIEnv* env, jclass, jintArray data) {
+    void InsetsControlReady(JNIEnv* env, jclass, jint win, jintArray data) {
+        WinScope ws(win);
+        if (!ws) return;
         if (!g_Host || env->GetArrayLength(data) < 12) return;
         jint v[12];
         env->GetIntArrayRegion(data, 0, 12, v);
-        g_Host->app->GetOwner().Insets().OnControlReady({ v[0], v[1], v[2], v[3] }, { v[4], v[5], v[6], v[7] }, { v[8], v[9], v[10], v[11] });
+        CurOwner().Insets().OnControlReady({ v[0], v[1], v[2], v[3] }, { v[4], v[5], v[6], v[7] }, { v[8], v[9], v[10], v[11] });
         g_Host->app->RequestFrame();
     }
-    void InsetsControlEnded(JNIEnv*, jclass) {
+    void InsetsControlEnded(JNIEnv*, jclass, jint win) {
+        WinScope ws(win);
+        if (!ws) return;
         if (!g_Host) return;
-        g_Host->app->GetOwner().Insets().OnControlEnded();
+        CurOwner().Insets().OnControlEnded();
         g_Host->app->RequestFrame();
     }
-    void SetInsetsAnimation(JNIEnv* env, jclass, jint type, jboolean running, jintArray bounds, jfloat fraction, jfloat alpha, jlong duration) {
+    void SetInsetsAnimation(JNIEnv* env, jclass, jint win, jint type, jboolean running, jintArray bounds, jfloat fraction, jfloat alpha, jlong duration) {
+        WinScope ws(win);
+        if (!ws) return;
         if (!g_Host || type < 0 || type >= jint(kiln::ui::InsetsType::Count)) return;
-        auto& h = g_Host->app->GetOwner().Insets();
+        auto& h = CurOwner().Insets();
         const auto t = kiln::ui::InsetsType(type);
         if (!running) { h.SetAnimation(t, std::nullopt); g_Host->app->RequestFrame(); return; }
         kiln::ui::InsetsAnimation a = h.Animation(t).value_or(kiln::ui::InsetsAnimation{});
@@ -1277,14 +1483,18 @@ namespace {
         g_Host->app->RequestFrame();
     }
 
-    void HostFocusChanged(JNIEnv*, jclass, jboolean focused) {
+    void HostFocusChanged(JNIEnv*, jclass, jint win, jboolean focused) {
+        WinScope ws(win);
+        if (!ws) return;
         if (!g_Host) return;
-        g_Host->app->GetOwner().OnHostFocusChanged(focused);
+        CurOwner().OnHostFocusChanged(focused);
     }
 
-    void WindowFocusChanged(JNIEnv*, jclass, jboolean focused) {
+    void WindowFocusChanged(JNIEnv*, jclass, jint win, jboolean focused) {
+        WinScope ws(win);
+        if (!ws) return;
         if (!g_Host) return;
-        g_Host->app->GetOwner().SetWindowFocused(focused);
+        CurOwner().SetWindowFocused(focused);
     }
 
     // --- text input --------------------------------------------------------------------------
@@ -1354,8 +1564,8 @@ namespace {
         return e;
     }
 
-    void InstallTextInputHost(JNIEnv* env) {
-        jclass cls = env->GetObjectClass(g_Host->view);
+    void InstallTextInputHost(JNIEnv* env, Win* w) {
+        jclass cls = env->GetObjectClass(w->view);
         static jmethodID start = env->GetMethodID(cls, "startInput", "(IIZLjava/lang/String;ZZ)V");
         static jmethodID handwriting = env->GetMethodID(cls, "startStylusHandwriting", "()V");
         static jmethodID stop = env->GetMethodID(cls, "stopInput", "()V");
@@ -1366,21 +1576,21 @@ namespace {
         static jmethodID hide = env->GetMethodID(cls, "hideKeyboard", "()V");
         env->DeleteLocalRef(cls);
         kiln::ui::TextInputHost host;
-        host.start = [](const kiln::ui::ImeOptions& o, const kiln::ui::TextInputSnapshot&) {
+        host.start = [w](const kiln::ui::ImeOptions& o, const kiln::ui::TextInputSnapshot&) {
             int type = 0, opts = 0;
             MapEditorInfo(o, type, opts);
             std::string tags;
             for (const auto& t : o.hintLocales) { if (!tags.empty()) tags += ','; tags += t; }
             JNIEnv* e = MainEnv();
             jstring jt = e->NewStringUTF(tags.c_str());
-            e->CallVoidMethod(g_Host->view, start, type, opts, jboolean(o.singleLine), jt, jboolean(o.acceptsContent), jboolean(o.stylusHandwriting));
+            e->CallVoidMethod(w->view, start, type, opts, jboolean(o.singleLine), jt, jboolean(o.acceptsContent), jboolean(o.stylusHandwriting));
             e->DeleteLocalRef(jt);
         };
-        host.stop = [] { MainEnv()->CallVoidMethod(g_Host->view, stop); };
-        host.update = [](const kiln::ui::TextInputSnapshot& s, bool selectionChanged) {
-            MainEnv()->CallVoidMethod(g_Host->view, update, s.selStart, s.selEnd, s.compStart, s.compEnd, jboolean(selectionChanged));
+        host.stop = [w] { MainEnv()->CallVoidMethod(w->view, stop); };
+        host.update = [w](const kiln::ui::TextInputSnapshot& s, bool selectionChanged) {
+            MainEnv()->CallVoidMethod(w->view, update, s.selStart, s.selEnd, s.compStart, s.compEnd, jboolean(selectionChanged));
         };
-        host.cursorAnchorInfo = [](const kiln::ui::CursorAnchorInfo& c) {
+        host.cursorAnchorInfo = [w](const kiln::ui::CursorAnchorInfo& c) {
             std::vector<jfloat> d(c.matrix.begin(), c.matrix.end());
             d.insert(d.end(), { float(c.selStart), float(c.selEnd), c.hasInsertionMarker ? 1.0f : 0.0f, c.markerX, c.markerTop,
                                 c.markerBaseline, c.markerBottom, float(c.markerFlags), float(c.composingStart),
@@ -1393,19 +1603,19 @@ namespace {
             jfloatArray a = e->NewFloatArray(jsize(d.size()));
             e->SetFloatArrayRegion(a, 0, jsize(d.size()), d.data());
             jstring t = e->NewString(reinterpret_cast<const jchar*>(c.composingText.data()), jsize(c.composingText.size()));
-            e->CallVoidMethod(g_Host->view, anchor, a, t);
+            e->CallVoidMethod(w->view, anchor, a, t);
             e->DeleteLocalRef(a);
             e->DeleteLocalRef(t);
         };
-        host.restartInput = [] { MainEnv()->CallVoidMethod(g_Host->view, restart); };
-        host.showKeyboard = [] { MainEnv()->CallVoidMethod(g_Host->view, show); };
-        host.hideKeyboard = [] { MainEnv()->CallVoidMethod(g_Host->view, hide); };
-        host.startStylusHandwriting = [] { MainEnv()->CallVoidMethod(g_Host->view, handwriting); };
+        host.restartInput = [w] { MainEnv()->CallVoidMethod(w->view, restart); };
+        host.showKeyboard = [w] { MainEnv()->CallVoidMethod(w->view, show); };
+        host.hideKeyboard = [w] { MainEnv()->CallVoidMethod(w->view, hide); };
+        host.startStylusHandwriting = [w] { MainEnv()->CallVoidMethod(w->view, handwriting); };
         kiln::ui::SetStylusHandwritingSupported(android_get_device_api_level() >= 34);
-        g_Host->app->GetOwner().SetTextInputHost(host);
+        (*w->owner).SetTextInputHost(host);
     }
 
-    kiln::ui::TextInputSession* Session() { return g_Host ? g_Host->app->GetOwner().ActiveTextInput() : nullptr; }
+    kiln::ui::TextInputSession* Session() { return g_Host ? CurOwner().ActiveTextInput() : nullptr; }
 
     std::u16string FromJava(JNIEnv* env, jstring s) {
         const jsize n = env->GetStringLength(s);
@@ -1416,19 +1626,27 @@ namespace {
     // Every IME edit is followed by the frame that shows it.
     void AfterIme() { g_Host->app->RequestFrame(); }
 
-    jboolean ImeBeginBatchEdit(JNIEnv*, jclass) { auto* s = Session(); return s ? s->BeginBatchEdit() : false; }
-    jboolean ImeEndBatchEdit(JNIEnv*, jclass) {
+    jboolean ImeBeginBatchEdit(JNIEnv*, jclass, jint win) {
+        WinScope ws(win);
+        if (!ws) return false; auto* s = Session(); return s ? s->BeginBatchEdit() : false; }
+    jboolean ImeEndBatchEdit(JNIEnv*, jclass, jint win) {
+        WinScope ws(win);
+        if (!ws) return false;
         auto* s = Session();
         if (!s) return false;
         const bool more = s->EndBatchEdit();
         AfterIme();
         return more;
     }
-    void ImeCommitText(JNIEnv* env, jclass, jstring t, jint c, jboolean suggestion) {
+    void ImeCommitText(JNIEnv* env, jclass, jint win, jstring t, jint c, jboolean suggestion) {
+        WinScope ws(win);
+        if (!ws) return;
         if (auto* s = Session()) { s->CommitText(FromJava(env, t), c, suggestion); AfterIme(); }
     }
     // The composing spans from KilnInputConnection.annotations (kind, start, end, value quads).
-    void ImeSetComposingText(JNIEnv* env, jclass, jstring t, jint c, jintArray spans, jobjectArray families, jboolean suggestion) {
+    void ImeSetComposingText(JNIEnv* env, jclass, jint win, jstring t, jint c, jintArray spans, jobjectArray families, jboolean suggestion) {
+        WinScope ws(win);
+        if (!ws) return;
         auto* s = Session();
         if (!s) return;
         std::vector<kiln::text::Range<kiln::text::SpanStyle>> annotations;
@@ -1469,7 +1687,9 @@ namespace {
         s->SetComposingText(FromJava(env, t), c, spans ? &annotations : nullptr, suggestion);
         AfterIme();
     }
-    void ImeRequestCursorUpdates(JNIEnv*, jclass, jint mode) { if (auto* s = Session()) s->RequestCursorUpdates(mode); }
+    void ImeRequestCursorUpdates(JNIEnv*, jclass, jint win, jint mode) {
+        WinScope ws(win);
+        if (!ws) return; if (auto* s = Session()) s->RequestCursorUpdates(mode); }
     kiln::ui::HandwritingGesture GestureFromJava(JNIEnv* env, jfloatArray a) {
         jfloat d[14] = {};
         env->GetFloatArrayRegion(a, 0, 14, d);
@@ -1483,7 +1703,9 @@ namespace {
         g.endPoint = { d[12], d[13] };
         return g;
     }
-    jint ImePerformHandwritingGesture(JNIEnv* env, jclass, jfloatArray data, jstring insert, jstring fallback) {
+    jint ImePerformHandwritingGesture(JNIEnv* env, jclass, jint win, jfloatArray data, jstring insert, jstring fallback) {
+        WinScope ws(win);
+        if (!ws) return 0;
         auto* s = Session();
         if (!s) return kiln::ui::HandwritingGesture::kResultFailed;
         kiln::ui::HandwritingGesture g = GestureFromJava(env, data);
@@ -1493,15 +1715,21 @@ namespace {
         AfterIme();
         return r;
     }
-    jboolean ImePreviewHandwritingGesture(JNIEnv* env, jclass, jfloatArray data) {
+    jboolean ImePreviewHandwritingGesture(JNIEnv* env, jclass, jint win, jfloatArray data) {
+        WinScope ws(win);
+        if (!ws) return false;
         auto* s = Session();
         if (!s) return false;
         const bool shown = s->PreviewHandwritingGesture(GestureFromJava(env, data));
         AfterIme();
         return shown;
     }
-    void ImeCancelHandwritingPreview(JNIEnv*, jclass) { if (auto* s = Session()) { s->CancelHandwritingPreview(); AfterIme(); } }
-    jboolean ImeCommitContent(JNIEnv* env, jclass, jstring uri, jobjectArray types, jstring label, jstring link, jint permission) {
+    void ImeCancelHandwritingPreview(JNIEnv*, jclass, jint win) {
+        WinScope ws(win);
+        if (!ws) return; if (auto* s = Session()) { s->CancelHandwritingPreview(); AfterIme(); } }
+    jboolean ImeCommitContent(JNIEnv* env, jclass, jint win, jstring uri, jobjectArray types, jstring label, jstring link, jint permission) {
+        WinScope ws(win);
+        if (!ws) return false;
         auto* s = Session();
         if (!s) return false;
         kiln::ui::ClipMetadata meta;
@@ -1514,26 +1742,40 @@ namespace {
         AfterIme();
         return taken;
     }
-    void ImeSetComposingRegion(JNIEnv*, jclass, jint a, jint b) { if (auto* s = Session()) { s->SetComposingRegion(a, b); AfterIme(); } }
-    void ImeFinishComposingText(JNIEnv*, jclass) { if (auto* s = Session()) { s->FinishComposingText(); AfterIme(); } }
-    void ImeDeleteSurroundingText(JNIEnv*, jclass, jint b, jint a, jboolean cp) {
+    void ImeSetComposingRegion(JNIEnv*, jclass, jint win, jint a, jint b) {
+        WinScope ws(win);
+        if (!ws) return; if (auto* s = Session()) { s->SetComposingRegion(a, b); AfterIme(); } }
+    void ImeFinishComposingText(JNIEnv*, jclass, jint win) {
+        WinScope ws(win);
+        if (!ws) return; if (auto* s = Session()) { s->FinishComposingText(); AfterIme(); } }
+    void ImeDeleteSurroundingText(JNIEnv*, jclass, jint win, jint b, jint a, jboolean cp) {
+        WinScope ws(win);
+        if (!ws) return;
         if (!g_Host) return;
         if (auto* s = Session()) { if (cp) s->DeleteSurroundingTextInCodePoints(b, a); else s->DeleteSurroundingText(b, a); AfterIme(); }
     }
-    void ImeSetSelection(JNIEnv*, jclass, jint a, jint b) { if (auto* s = Session()) { s->SetSelection(a, b); AfterIme(); } }
-    void ImePerformEditorAction(JNIEnv*, jclass, jint action) {
+    void ImeSetSelection(JNIEnv*, jclass, jint win, jint a, jint b) {
+        WinScope ws(win);
+        if (!ws) return; if (auto* s = Session()) { s->SetSelection(a, b); AfterIme(); } }
+    void ImePerformEditorAction(JNIEnv*, jclass, jint win, jint action) {
+        WinScope ws(win);
+        if (!ws) return;
         if (!g_Host) return;
         using A = kiln::ui::ImeAction;
         const A map[] = { A::Default, A::None, A::Go, A::Search, A::Send, A::Next, A::Done, A::Previous };
         if (auto* s = Session()) { s->PerformImeAction(action >= 0 && action < 8 ? map[action] : A::Default); AfterIme(); }
     }
-    jstring ImeGetText(JNIEnv* env, jclass) {
+    jstring ImeGetText(JNIEnv* env, jclass, jint win) {
+        WinScope ws(win);
+        if (!ws) return nullptr;
         if (!g_Host) return {};
         auto* s = Session();
         const std::u16string t = s ? s->Snapshot().text : std::u16string();
         return env->NewString(reinterpret_cast<const jchar*>(t.data()), jsize(t.size()));
     }
-    jintArray ImeGetSelection(JNIEnv* env, jclass) {
+    jintArray ImeGetSelection(JNIEnv* env, jclass, jint win) {
+        WinScope ws(win);
+        if (!ws) return nullptr;
         if (!g_Host) return {};
         jint v[4] = { 0, 0, -1, -1 };
         if (auto* s = Session()) { auto snap = s->Snapshot(); v[0] = snap.selStart; v[1] = snap.selEnd; v[2] = snap.compStart; v[3] = snap.compEnd; }
@@ -1589,16 +1831,20 @@ namespace {
         return a;
     }
     jint FloatBits(float f) { jint i; std::memcpy(&i, &f, sizeof(i)); return i; }
-    kiln::ui::AccessibilityDelegate& A11y() { return g_Host->app->GetOwner().Accessibility(); }
+    kiln::ui::AccessibilityDelegate& A11y() { return CurOwner().Accessibility(); }
 
-    void A11ySetEnabled(JNIEnv* env, jclass, jboolean enabled, jstring locale) {
+    void A11ySetEnabled(JNIEnv* env, jclass, jint win, jboolean enabled, jstring locale) {
+        WinScope ws(win);
+        if (!ws) return;
         if (!g_Host) return;
         A11y().SetStrings(kiln::ui::a11y::Strings::ForLocale(kiln::foundation::ToUtf8(FromJava(env, locale))));
         A11y().SetEnabled(enabled);
     }
 
     // Node info: see KilnAccessibility.createAccessibilityNodeInfo for the layout.
-    jintArray A11yNodeInfo(JNIEnv* env, jclass, jint id) {
+    jintArray A11yNodeInfo(JNIEnv* env, jclass, jint win, jint id) {
+        WinScope ws(win);
+        if (!ws) return nullptr;
         g_A11yStrings.clear();
         std::vector<jint> d;
         if (!g_Host) return IntArray(env, d);
@@ -1648,7 +1894,9 @@ namespace {
         return IntArray(env, d);
     }
 
-    jobjectArray A11yStrings(JNIEnv* env, jclass) {
+    jobjectArray A11yStrings(JNIEnv* env, jclass, jint win) {
+        WinScope ws(win);
+        if (!ws) return nullptr;
         jclass str = env->FindClass("java/lang/String");
         jobjectArray out = env->NewObjectArray(jsize(g_A11yStrings.size()), str, nullptr);
         for (std::size_t i = 0; i < g_A11yStrings.size(); ++i) {
@@ -1666,7 +1914,9 @@ namespace {
     // toIndex, itemCount, addedCount, removedCount, scrollX, maxScrollX, scrollY, maxScrollY,
     // deltaX, deltaY, action, granularity (INT_MIN: unset), className, contentDescription,
     // beforeText (string indices), text count, text indices.
-    jintArray A11yTakeEvents(JNIEnv* env, jclass) {
+    jintArray A11yTakeEvents(JNIEnv* env, jclass, jint win) {
+        WinScope ws(win);
+        if (!ws) return nullptr;
         g_A11yStrings.clear();
         std::vector<jint> d;
         if (!g_Host) return IntArray(env, d);
@@ -1685,8 +1935,10 @@ namespace {
         return IntArray(env, d);
     }
 
-    jboolean A11yPerformAction(JNIEnv* env, jclass, jint id, jint action, jint granularity, jboolean extend, jint selStart,
+    jboolean A11yPerformAction(JNIEnv* env, jclass, jint win, jint id, jint action, jint granularity, jboolean extend, jint selStart,
                                jint selEnd, jstring text, jboolean hasProgress, jfloat progress) {
+        WinScope ws(win);
+        if (!ws) return false;
         if (!g_Host) return false;
         kiln::ui::AccessibilityActionArgs args;
         if (granularity != INT_MIN) args.granularity = granularity;
@@ -1704,7 +1956,9 @@ namespace {
     // locations: count, (present, l, t, r, b) each; 4 shape: type (INT_MIN unset), has rect,
     // l, t, r, b, corner count, corners (float bits), region count, (l, t, r, b) each. Pixels in
     // root coordinates.
-    jintArray A11yExtraData(JNIEnv* env, jclass, jint id, jstring key, jint start, jint length) {
+    jintArray A11yExtraData(JNIEnv* env, jclass, jint win, jint id, jstring key, jint start, jint length) {
+        WinScope ws(win);
+        if (!ws) return nullptr;
         g_A11yStrings.clear();
         std::vector<jint> d;
         if (!g_Host) return IntArray(env, d);
@@ -1732,7 +1986,9 @@ namespace {
         return IntArray(env, d);
     }
 
-    void A11ySpanClick(JNIEnv*, jclass, jint id, jint index) {
+    void A11ySpanClick(JNIEnv*, jclass, jint win, jint id, jint index) {
+        WinScope ws(win);
+        if (!ws) return;
         if (!g_Host) return;
         if (const auto* n = A11y().Find(id)) {
             int k = 0;
@@ -1744,13 +2000,19 @@ namespace {
         g_Host->app->RequestFrame();
     }
 
-    jboolean A11yHover(JNIEnv*, jclass, jint action, jfloat x, jfloat y) {
+    jboolean A11yHover(JNIEnv*, jclass, jint win, jint action, jfloat x, jfloat y) {
+        WinScope ws(win);
+        if (!ws) return false;
         return g_Host && A11y().DispatchHover(action, x, y);
     }
-    jint A11yFindFocus(JNIEnv*, jclass, jboolean accessibility) {
+    jint A11yFindFocus(JNIEnv*, jclass, jint win, jboolean accessibility) {
+        WinScope ws(win);
+        if (!ws) return 0;
         return g_Host ? A11y().FindFocus(accessibility) : jint(INT_MIN);
     }
-    void A11yCheckSemantics(JNIEnv*, jclass) { if (g_Host) A11y().CheckForSemanticsChanges(); }
+    void A11yCheckSemantics(JNIEnv*, jclass, jint win) {
+        WinScope ws(win);
+        if (!ws) return; if (g_Host) A11y().CheckForSemanticsChanges(); }
 
     // A Bundle as {String[] keys, int[] kinds, Object[] values}: kind 0 String, 1 boolean and 2 int
     // (their text), 3 String[], 4 byte[] (null allowed), 5 Uri (its text), 6 int[], 7 long (text).
@@ -1889,9 +2151,11 @@ namespace {
     // -1, value kind or -1, toggle / list value, left, top, right, bottom, flags, max length or
     // -1), 5 strings (value text, hints joined by newlines, content description, text, class
     // name) and the date value.
-    jobjectArray AutofillStructure(JNIEnv* env, jclass) {
-        if (!g_Host || !g_Host->app->GetOwner().Autofill()) return nullptr;
-        const auto nodes = g_Host->app->GetOwner().Autofill()->Structure();
+    jobjectArray AutofillStructure(JNIEnv* env, jclass, jint win) {
+        WinScope ws(win);
+        if (!ws) return nullptr;
+        if (!g_Host || !CurOwner().Autofill()) return nullptr;
+        const auto nodes = CurOwner().Autofill()->Structure();
         std::vector<jint> ints;
         std::vector<jlong> dates;
         std::vector<std::optional<std::string>> strs;
@@ -2077,8 +2341,10 @@ namespace {
     }
 
     // OnDragListener.onDrag.
-    jboolean DragEvent(JNIEnv* env, jclass, jint action, jfloat x, jfloat y, jobjectArray mimes, jstring label, jobjectArray items, jboolean local,
+    jboolean DragEvent(JNIEnv* env, jclass, jint win, jint action, jfloat x, jfloat y, jobjectArray mimes, jstring label, jobjectArray items, jboolean local,
                        jboolean result) {
+        WinScope ws(win);
+        if (!ws) return false;
         if (!g_Host || action < 1 || action > 6) return JNI_FALSE;
         kiln::ui::DragAndDropEvent e;
         e.action = kiln::ui::DragAndDropEvent::Action(action);
@@ -2100,17 +2366,19 @@ namespace {
         }
         if (local) e.localState = g_LocalDragState;
         e.result = result;
-        static jmethodID permissions = env->GetMethodID(env->GetObjectClass(g_Host->view), "requestDragPermissionsFromNative", "()Z");
-        e.requestPermissions = [] { return bool(MainEnv()->CallBooleanMethod(g_Host->view, permissions)); };
-        const bool handled = g_Host->app->GetOwner().DragAndDrop().OnDrag(e);
+        static jmethodID permissions = env->GetMethodID(env->GetObjectClass(CurView()), "requestDragPermissionsFromNative", "()Z");
+        e.requestPermissions = [] { return bool(MainEnv()->CallBooleanMethod(CurView(), permissions)); };
+        const bool handled = CurOwner().DragAndDrop().OnDrag(e);
         if (e.action == kiln::ui::DragAndDropEvent::Action::Ended) g_LocalDragState.reset();
         g_Host->app->RequestFrame();
         return jboolean(handled);
     }
 
     // A pending credential request's outcome.
-    void CredentialResult(JNIEnv* env, jclass, jint id, jstring type, jobjectArray data) {
-        if (!g_Host || !g_Host->app->GetOwner().Autofill()) return;
+    void CredentialResult(JNIEnv* env, jclass, jint win, jint id, jstring type, jobjectArray data) {
+        WinScope ws(win);
+        if (!ws) return;
+        if (!g_Host || !CurOwner().Autofill()) return;
         kiln::ui::Credential c;
         if (type) {
             const char* t = env->GetStringUTFChars(type, nullptr);
@@ -2118,12 +2386,14 @@ namespace {
             env->ReleaseStringUTFChars(type, t);
         }
         c.data = BundleFromJava(env, data);
-        g_Host->app->GetOwner().Autofill()->OnCredentialResult(id, c);
+        CurOwner().Autofill()->OnCredentialResult(id, c);
         g_Host->app->RequestFrame();
     }
 
-    void CredentialError(JNIEnv* env, jclass, jint id, jstring type, jstring message) {
-        if (!g_Host || !g_Host->app->GetOwner().Autofill()) return;
+    void CredentialError(JNIEnv* env, jclass, jint win, jint id, jstring type, jstring message) {
+        WinScope ws(win);
+        if (!ws) return;
+        if (!g_Host || !CurOwner().Autofill()) return;
         auto str = [&](jstring s) {
             if (!s) return std::string();
             const char* c = env->GetStringUTFChars(s, nullptr);
@@ -2131,13 +2401,15 @@ namespace {
             env->ReleaseStringUTFChars(s, c);
             return r;
         };
-        g_Host->app->GetOwner().Autofill()->OnCredentialError(id, str(type), str(message));
+        CurOwner().Autofill()->OnCredentialError(id, str(type), str(message));
         g_Host->app->RequestFrame();
     }
 
     // performAutofill: one value (kind: 0 text, 1 toggle, 2 list, 3 date).
-    void AutofillPerform(JNIEnv* env, jclass, jint id, jint kind, jstring text, jint intValue, jlong date) {
-        if (!g_Host || !g_Host->app->GetOwner().Autofill()) return;
+    void AutofillPerform(JNIEnv* env, jclass, jint win, jint id, jint kind, jstring text, jint intValue, jlong date) {
+        WinScope ws(win);
+        if (!ws) return;
+        if (!g_Host || !CurOwner().Autofill()) return;
         kiln::ui::FillableData d;
         d.kind = kiln::ui::FillableData::Kind(std::clamp(int(kind), 0, 3));
         if (text) {
@@ -2148,15 +2420,19 @@ namespace {
         d.toggle = intValue != 0;
         d.listIndex = intValue;
         d.dateMillis = date;
-        g_Host->app->GetOwner().Autofill()->PerformAutofill(id, d);
+        CurOwner().Autofill()->PerformAutofill(id, d);
         g_Host->app->RequestFrame();
     }
-    jboolean A11yFlushBounds(JNIEnv*, jclass) {
+    jboolean A11yFlushBounds(JNIEnv*, jclass, jint win) {
+        WinScope ws(win);
+        if (!ws) return false;
         if (!g_Host) return false;
         A11y().FlushBoundsUpdates();
         return A11y().HasPendingBoundsUpdates();
     }
-    jboolean A11yCanScroll(JNIEnv*, jclass, jboolean vertical, jint direction, jfloat x, jfloat y) {
+    jboolean A11yCanScroll(JNIEnv*, jclass, jint win, jboolean vertical, jint direction, jfloat x, jfloat y) {
+        WinScope ws(win);
+        if (!ws) return false;
         return g_Host && A11y().CanScroll(vertical, direction, { x, y });
     }
 
@@ -2164,7 +2440,9 @@ namespace {
 
     kiln::ui::ContentCaptureManager& Capture() { return A11y().ContentCapture(); }
 
-    void CcStart(JNIEnv*, jclass) {
+    void CcStart(JNIEnv*, jclass, jint win) {
+        WinScope ws(win);
+        if (!ws) return;
         if (!g_Host) return;
         Capture().SetClock([] {
             return std::int64_t(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count());
@@ -2172,14 +2450,22 @@ namespace {
         Capture().SetEnabled(true);
         Capture().OnStart();
     }
-    void CcStop(JNIEnv*, jclass) { if (g_Host) Capture().OnStop(); }
-    void CcCheck(JNIEnv*, jclass) { if (g_Host) Capture().CheckForChanges(); }
-    void CcFlush(JNIEnv*, jclass) { if (g_Host) Capture().FlushBuffered(); }
+    void CcStop(JNIEnv*, jclass, jint win) {
+        WinScope ws(win);
+        if (!ws) return; if (g_Host) Capture().OnStop(); }
+    void CcCheck(JNIEnv*, jclass, jint win) {
+        WinScope ws(win);
+        if (!ws) return; if (g_Host) Capture().CheckForChanges(); }
+    void CcFlush(JNIEnv*, jclass, jint win) {
+        WinScope ws(win);
+        if (!ws) return; if (g_Host) Capture().FlushBuffered(); }
 
     // Per event: kind (0 appear, 1 disappear, 2 text, 3 flush), id, parent, index, has text
     // size, text size (float bits), left, top, width, height, timestamp (high, low), className,
     // text, contentDescription, testTag (string indices).
-    jintArray CcTakeEvents(JNIEnv* env, jclass) {
+    jintArray CcTakeEvents(JNIEnv* env, jclass, jint win) {
+        WinScope ws(win);
+        if (!ws) return nullptr;
         g_A11yStrings.clear();
         std::vector<jint> d;
         if (!g_Host) return IntArray(env, d);
@@ -2195,16 +2481,20 @@ namespace {
     }
 
     // The text to translate per id (null: none).
-    jobjectArray CcTranslationRequests(JNIEnv* env, jclass, jintArray ids) {
+    jobjectArray CcTranslationRequests(JNIEnv* env, jclass, jint win, jintArray ids) {
+        WinScope ws(win);
+        if (!ws) return nullptr;
         std::vector<int> v(std::size_t(env->GetArrayLength(ids)));
         env->GetIntArrayRegion(ids, 0, jsize(v.size()), v.data());
         g_A11yStrings.assign(v.size(), std::nullopt);
         if (g_Host)
             for (const auto& [id, text] : Capture().TranslationRequests(v))
                 for (std::size_t i = 0; i < v.size(); ++i) if (v[i] == id) g_A11yStrings[i] = text;
-        return A11yStrings(env, nullptr);
+        return A11yStrings(env, nullptr, win);
     }
-    void CcTranslationResponses(JNIEnv* env, jclass, jintArray ids, jobjectArray texts) {
+    void CcTranslationResponses(JNIEnv* env, jclass, jint win, jintArray ids, jobjectArray texts) {
+        WinScope ws(win);
+        if (!ws) return;
         if (!g_Host) return;
         std::vector<int> v(std::size_t(env->GetArrayLength(ids)));
         env->GetIntArrayRegion(ids, 0, jsize(v.size()), v.data());
@@ -2219,7 +2509,9 @@ namespace {
         g_Host->app->RequestFrame();
     }
     // 0 show, 1 hide, 2 clear.
-    void CcTranslation(JNIEnv*, jclass, jint mode) {
+    void CcTranslation(JNIEnv*, jclass, jint win, jint mode) {
+        WinScope ws(win);
+        if (!ws) return;
         if (!g_Host) return;
         if (mode == 0) Capture().OnShowTranslation();
         else if (mode == 1) Capture().OnHideTranslation();
@@ -2240,15 +2532,26 @@ namespace {
         c.handwritingGestureLineMargin = handwritingLineMargin;
     }
 
-    void SurfaceCreated(JNIEnv* env, jclass, jobject surface) {
+    void SurfaceCreated(JNIEnv* env, jclass, jint win, jobject surface) {
+        WinScope ws(win);
+        if (!ws) return;
         if (!g_Host) return;
+        if (Win* w = ws.w; w->appWindow) {
+            w->nativeWindow = ANativeWindow_fromSurface(env, surface);
+            w->surface.Reset(w->nativeWindow);
+            g_Host->app->WindowSurfaceCreated(w->appWindow, w->surface);
+            return;
+        }
         g_Host->window = ANativeWindow_fromSurface(env, surface);
         g_Host->surface.Reset(g_Host->window);
         g_Host->app->SurfaceCreated(g_Host->surface);
     }
 
-    void SurfaceChanged(JNIEnv*, jclass, jint width, jint height) {
+    void SurfaceChanged(JNIEnv*, jclass, jint win, jint width, jint height) {
+        WinScope ws(win);
+        if (!ws) return;
         if (!g_Host) return;
+        if (ws.w->appWindow) { g_Host->app->WindowSurfaceResized(ws.w->appWindow, std::uint32_t(width), std::uint32_t(height)); return; }
         g_Host->app->SurfaceResized(std::uint32_t(width), std::uint32_t(height));
     }
 
@@ -2261,7 +2564,7 @@ namespace {
         ALooper_removeFd(looper, g_Host->timerFd);
         g_Host->visible = false;
         g_A11yStrings.clear();
-        if (g_Host->window) { SurfaceDestroyed(env, nullptr); }
+        if (g_Host->window) { SurfaceDestroyed(env, nullptr, 0); }
         g_Host->app.reset();
         kiln::ui::BackDispatcher::Main().onHasEnabledChanged = nullptr;
         auto& d = kiln::rt::Dispatcher::Main();
@@ -2270,13 +2573,24 @@ namespace {
         g_Host->text.reset();
         close(g_Host->eventFd);
         close(g_Host->timerFd);
+        g_Wins.clear();
+        g_CurWin = nullptr;
         env->DeleteGlobalRef(g_Host->view);
         delete g_Host;
         g_Host = nullptr;
     }
 
-    void SurfaceDestroyed(JNIEnv*, jclass) {
+    void SurfaceDestroyed(JNIEnv*, jclass, jint win) {
+        WinScope ws(win);
+        if (!ws) return;
         if (!g_Host) return;
+        if (Win* w = ws.w; w->appWindow) {
+            if (g_Host->app) g_Host->app->WindowSurfaceDestroyed(w->appWindow);
+            w->surface.Reset(nullptr);
+            if (w->nativeWindow) ANativeWindow_release(w->nativeWindow);
+            w->nativeWindow = nullptr;
+            return;
+        }
         g_Host->app->SurfaceDestroyed();
         g_Host->surface.Reset(nullptr);
         if (g_Host->window) ANativeWindow_release(g_Host->window);
@@ -2299,84 +2613,87 @@ extern "C" JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void*) {
         { "set24HourFormat", "(Z)V", reinterpret_cast<void*>(&Set24HourFormat) },
         { "flagSecureChanged", "(Z)V", reinterpret_cast<void*>(&FlagSecureChanged) },
         { "fontsChanged", "()V", reinterpret_cast<void*>(&FontsChanged) },
-        { "textToolbarItem", "(I)V", reinterpret_cast<void*>(&TextToolbarItem) },
-        { "textToolbarDestroyed", "()V", reinterpret_cast<void*>(&TextToolbarDestroyed) },
+        { "textToolbarItem", "(II)V", reinterpret_cast<void*>(&TextToolbarItem) },
+        { "textToolbarDestroyed", "(I)V", reinterpret_cast<void*>(&TextToolbarDestroyed) },
         { "classifierResult", "(IZIII[Ljava/lang/String;Z)V", reinterpret_cast<void*>(&ClassifierResult) },
         { "setAnimationScale", "(F)V", reinterpret_cast<void*>(&SetAnimationScale) },
         { "setPasswordVisibility", "(I)V", reinterpret_cast<void*>(&SetPasswordVisibility) },
         { "setAccessibilityServices", "(ZZZZ)V", reinterpret_cast<void*>(&SetAccessibilityServices) },
         { "setLayoutDirection", "(Z)V", reinterpret_cast<void*>(&SetLayoutDirection) },
-        { "touchEvent", "(IIJ[I[F[IIIIFF[J[F[F)V", reinterpret_cast<void*>(&TouchEvent) },
-        { "keyEvent", "(IIIIIJI)Z", reinterpret_cast<void*>(&KeyEvent) },
-        { "keyEventPreIme", "(IIIIIJI)Z", reinterpret_cast<void*>(&KeyEventPreIme) },
-        { "rotary", "(FFJI)Z", reinterpret_cast<void*>(&Rotary) },
-        { "indirectPointer", "(IIJ[I[F[F[J[FI)Z", reinterpret_cast<void*>(&IndirectPointer) },
-        { "indirectFling", "(Z)V", reinterpret_cast<void*>(&IndirectFling) },
-        { "focusedRect", "()[F", reinterpret_cast<void*>(&FocusedRect) },
-        { "hasFocusableContent", "()Z", reinterpret_cast<void*>(&HasFocusableContent) },
-        { "focusSearch", "(IFFFF)[F", reinterpret_cast<void*>(&FocusSearch) },
+        { "touchEvent", "(IIIJ[I[F[IIIIFF[J[F[F)V", reinterpret_cast<void*>(&TouchEvent) },
+        { "keyEvent", "(IIIIIIJI)Z", reinterpret_cast<void*>(&KeyEvent) },
+        { "keyEventPreIme", "(IIIIIIJI)Z", reinterpret_cast<void*>(&KeyEventPreIme) },
+        { "rotary", "(IFFJI)Z", reinterpret_cast<void*>(&Rotary) },
+        { "indirectPointer", "(IIIJ[I[F[F[J[FI)Z", reinterpret_cast<void*>(&IndirectPointer) },
+        { "indirectFling", "(IZ)V", reinterpret_cast<void*>(&IndirectFling) },
+        { "focusedRect", "(I)[F", reinterpret_cast<void*>(&FocusedRect) },
+        { "hasFocusableContent", "(I)Z", reinterpret_cast<void*>(&HasFocusableContent) },
+        { "focusSearch", "(IIFFFF)[F", reinterpret_cast<void*>(&FocusSearch) },
         { "isBetterFocusCandidate", "(I[F[F[F)Z", reinterpret_cast<void*>(&IsBetterFocusCandidate) },
-        { "hostRequestFocus", "(IZFFFFZ)Z", reinterpret_cast<void*>(&HostRequestFocus) },
-        { "hostFocusChanged", "(Z)V", reinterpret_cast<void*>(&HostFocusChanged) },
-        { "windowFocusChanged", "(Z)V", reinterpret_cast<void*>(&WindowFocusChanged) },
-        { "setWindowInsets", "([I)V", reinterpret_cast<void*>(&SetWindowInsets) },
-        { "insetsControlReady", "([I)V", reinterpret_cast<void*>(&InsetsControlReady) },
-        { "insetsControlEnded", "()V", reinterpret_cast<void*>(&InsetsControlEnded) },
-        { "setInsetsAnimation", "(IZ[IFFJ)V", reinterpret_cast<void*>(&SetInsetsAnimation) },
-        { "imeBeginBatchEdit", "()Z", reinterpret_cast<void*>(&ImeBeginBatchEdit) },
-        { "imeEndBatchEdit", "()Z", reinterpret_cast<void*>(&ImeEndBatchEdit) },
-        { "imeCommitText", "(Ljava/lang/String;IZ)V", reinterpret_cast<void*>(&ImeCommitText) },
-        { "imeSetComposingText", "(Ljava/lang/String;I[I[Ljava/lang/String;Z)V", reinterpret_cast<void*>(&ImeSetComposingText) },
-        { "imeRequestCursorUpdates", "(I)V", reinterpret_cast<void*>(&ImeRequestCursorUpdates) },
-        { "imePerformHandwritingGesture", "([FLjava/lang/String;Ljava/lang/String;)I", reinterpret_cast<void*>(&ImePerformHandwritingGesture) },
-        { "imePreviewHandwritingGesture", "([F)Z", reinterpret_cast<void*>(&ImePreviewHandwritingGesture) },
-        { "imeCancelHandwritingPreview", "()V", reinterpret_cast<void*>(&ImeCancelHandwritingPreview) },
-        { "imeCommitContent", "(Ljava/lang/String;[Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;I)Z", reinterpret_cast<void*>(&ImeCommitContent) },
-        { "imeSetComposingRegion", "(II)V", reinterpret_cast<void*>(&ImeSetComposingRegion) },
-        { "imeFinishComposingText", "()V", reinterpret_cast<void*>(&ImeFinishComposingText) },
-        { "imeDeleteSurroundingText", "(IIZ)V", reinterpret_cast<void*>(&ImeDeleteSurroundingText) },
-        { "imeSetSelection", "(II)V", reinterpret_cast<void*>(&ImeSetSelection) },
-        { "imePerformEditorAction", "(I)V", reinterpret_cast<void*>(&ImePerformEditorAction) },
-        { "imeGetText", "()Ljava/lang/String;", reinterpret_cast<void*>(&ImeGetText) },
-        { "imeGetSelection", "()[I", reinterpret_cast<void*>(&ImeGetSelection) },
+        { "hostRequestFocus", "(IIZFFFFZ)Z", reinterpret_cast<void*>(&HostRequestFocus) },
+        { "hostFocusChanged", "(IZ)V", reinterpret_cast<void*>(&HostFocusChanged) },
+        { "windowFocusChanged", "(IZ)V", reinterpret_cast<void*>(&WindowFocusChanged) },
+        { "setWindowInsets", "(I[I)V", reinterpret_cast<void*>(&SetWindowInsets) },
+        { "insetsControlReady", "(I[I)V", reinterpret_cast<void*>(&InsetsControlReady) },
+        { "insetsControlEnded", "(I)V", reinterpret_cast<void*>(&InsetsControlEnded) },
+        { "setInsetsAnimation", "(IIZ[IFFJ)V", reinterpret_cast<void*>(&SetInsetsAnimation) },
+        { "imeBeginBatchEdit", "(I)Z", reinterpret_cast<void*>(&ImeBeginBatchEdit) },
+        { "imeEndBatchEdit", "(I)Z", reinterpret_cast<void*>(&ImeEndBatchEdit) },
+        { "imeCommitText", "(ILjava/lang/String;IZ)V", reinterpret_cast<void*>(&ImeCommitText) },
+        { "imeSetComposingText", "(ILjava/lang/String;I[I[Ljava/lang/String;Z)V", reinterpret_cast<void*>(&ImeSetComposingText) },
+        { "imeRequestCursorUpdates", "(II)V", reinterpret_cast<void*>(&ImeRequestCursorUpdates) },
+        { "imePerformHandwritingGesture", "(I[FLjava/lang/String;Ljava/lang/String;)I", reinterpret_cast<void*>(&ImePerformHandwritingGesture) },
+        { "imePreviewHandwritingGesture", "(I[F)Z", reinterpret_cast<void*>(&ImePreviewHandwritingGesture) },
+        { "imeCancelHandwritingPreview", "(I)V", reinterpret_cast<void*>(&ImeCancelHandwritingPreview) },
+        { "imeCommitContent", "(ILjava/lang/String;[Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;I)Z", reinterpret_cast<void*>(&ImeCommitContent) },
+        { "imeSetComposingRegion", "(III)V", reinterpret_cast<void*>(&ImeSetComposingRegion) },
+        { "imeFinishComposingText", "(I)V", reinterpret_cast<void*>(&ImeFinishComposingText) },
+        { "imeDeleteSurroundingText", "(IIIZ)V", reinterpret_cast<void*>(&ImeDeleteSurroundingText) },
+        { "imeSetSelection", "(III)V", reinterpret_cast<void*>(&ImeSetSelection) },
+        { "imePerformEditorAction", "(II)V", reinterpret_cast<void*>(&ImePerformEditorAction) },
+        { "imeGetText", "(I)Ljava/lang/String;", reinterpret_cast<void*>(&ImeGetText) },
+        { "imeGetSelection", "(I)[I", reinterpret_cast<void*>(&ImeGetSelection) },
         { "backEvent", "(ZFFFIJ)V", reinterpret_cast<void*>(&BackEventJni) },
         { "backCancelled", "()V", reinterpret_cast<void*>(&BackCancelled) },
         { "backInvoked", "()V", reinterpret_cast<void*>(&BackInvoked) },
-        { "a11ySetEnabled", "(ZLjava/lang/String;)V", reinterpret_cast<void*>(&A11ySetEnabled) },
-        { "a11yNodeInfo", "(I)[I", reinterpret_cast<void*>(&A11yNodeInfo) },
-        { "a11yStrings", "()[Ljava/lang/String;", reinterpret_cast<void*>(&A11yStrings) },
-        { "a11yTakeEvents", "()[I", reinterpret_cast<void*>(&A11yTakeEvents) },
-        { "a11yPerformAction", "(IIIZIILjava/lang/String;ZF)Z", reinterpret_cast<void*>(&A11yPerformAction) },
-        { "a11yExtraData", "(ILjava/lang/String;II)[I", reinterpret_cast<void*>(&A11yExtraData) },
-        { "a11ySpanClick", "(II)V", reinterpret_cast<void*>(&A11ySpanClick) },
-        { "a11yHover", "(IFF)Z", reinterpret_cast<void*>(&A11yHover) },
-        { "a11yFindFocus", "(Z)I", reinterpret_cast<void*>(&A11yFindFocus) },
-        { "a11yCheckSemantics", "()V", reinterpret_cast<void*>(&A11yCheckSemantics) },
-        { "autofillStructure", "()[Ljava/lang/Object;", reinterpret_cast<void*>(&AutofillStructure) },
-        { "autofillPerform", "(IILjava/lang/String;IJ)V", reinterpret_cast<void*>(&AutofillPerform) },
+        { "a11ySetEnabled", "(IZLjava/lang/String;)V", reinterpret_cast<void*>(&A11ySetEnabled) },
+        { "a11yNodeInfo", "(II)[I", reinterpret_cast<void*>(&A11yNodeInfo) },
+        { "a11yStrings", "(I)[Ljava/lang/String;", reinterpret_cast<void*>(&A11yStrings) },
+        { "a11yTakeEvents", "(I)[I", reinterpret_cast<void*>(&A11yTakeEvents) },
+        { "a11yPerformAction", "(IIIIZIILjava/lang/String;ZF)Z", reinterpret_cast<void*>(&A11yPerformAction) },
+        { "a11yExtraData", "(IILjava/lang/String;II)[I", reinterpret_cast<void*>(&A11yExtraData) },
+        { "a11ySpanClick", "(III)V", reinterpret_cast<void*>(&A11ySpanClick) },
+        { "a11yHover", "(IIFF)Z", reinterpret_cast<void*>(&A11yHover) },
+        { "a11yFindFocus", "(IZ)I", reinterpret_cast<void*>(&A11yFindFocus) },
+        { "a11yCheckSemantics", "(I)V", reinterpret_cast<void*>(&A11yCheckSemantics) },
+        { "autofillStructure", "(I)[Ljava/lang/Object;", reinterpret_cast<void*>(&AutofillStructure) },
+        { "autofillPerform", "(IIILjava/lang/String;IJ)V", reinterpret_cast<void*>(&AutofillPerform) },
         { "scrollCaptureSearch", "()[I", reinterpret_cast<void*>(&ScrollCaptureSearch) },
         { "scrollCaptureStart", "(IIIII)V", reinterpret_cast<void*>(&ScrollCaptureStart) },
         { "scrollCaptureImageRequest", "(IIIII)V", reinterpret_cast<void*>(&ScrollCaptureImageRequest) },
         { "scrollCaptureCancel", "(I)V", reinterpret_cast<void*>(&ScrollCaptureCancel) },
         { "scrollCaptureEnd", "(I)V", reinterpret_cast<void*>(&ScrollCaptureEnd) },
         { "activityResult", "(Ljava/lang/String;I[Ljava/lang/Object;)V", reinterpret_cast<void*>(&ActivityResultFromJava) },
-        { "dragEvent", "(IFF[Ljava/lang/String;Ljava/lang/String;[Ljava/lang/String;ZZ)Z", reinterpret_cast<void*>(&DragEvent) },
-        { "credentialResult", "(ILjava/lang/String;[Ljava/lang/Object;)V", reinterpret_cast<void*>(&CredentialResult) },
-        { "credentialError", "(ILjava/lang/String;Ljava/lang/String;)V", reinterpret_cast<void*>(&CredentialError) },
-        { "a11yFlushBounds", "()Z", reinterpret_cast<void*>(&A11yFlushBounds) },
-        { "a11yCanScroll", "(ZIFF)Z", reinterpret_cast<void*>(&A11yCanScroll) },
-        { "ccStart", "()V", reinterpret_cast<void*>(&CcStart) },
-        { "ccStop", "()V", reinterpret_cast<void*>(&CcStop) },
-        { "ccCheck", "()V", reinterpret_cast<void*>(&CcCheck) },
-        { "ccFlush", "()V", reinterpret_cast<void*>(&CcFlush) },
-        { "ccTakeEvents", "()[I", reinterpret_cast<void*>(&CcTakeEvents) },
-        { "ccTranslationRequests", "([I)[Ljava/lang/String;", reinterpret_cast<void*>(&CcTranslationRequests) },
-        { "ccTranslationResponses", "([I[Ljava/lang/String;)V", reinterpret_cast<void*>(&CcTranslationResponses) },
-        { "ccTranslation", "(I)V", reinterpret_cast<void*>(&CcTranslation) },
+        { "dialogDismissRequest", "(I)V", reinterpret_cast<void*>(&DialogDismissRequest) },
+        { "windowMeasure", "(III)[I", reinterpret_cast<void*>(&WindowMeasure) },
+        { "windowContentBounds", "(I)[I", reinterpret_cast<void*>(&WindowContentBounds) },
+        { "dragEvent", "(IIFF[Ljava/lang/String;Ljava/lang/String;[Ljava/lang/String;ZZ)Z", reinterpret_cast<void*>(&DragEvent) },
+        { "credentialResult", "(IILjava/lang/String;[Ljava/lang/Object;)V", reinterpret_cast<void*>(&CredentialResult) },
+        { "credentialError", "(IILjava/lang/String;Ljava/lang/String;)V", reinterpret_cast<void*>(&CredentialError) },
+        { "a11yFlushBounds", "(I)Z", reinterpret_cast<void*>(&A11yFlushBounds) },
+        { "a11yCanScroll", "(IZIFF)Z", reinterpret_cast<void*>(&A11yCanScroll) },
+        { "ccStart", "(I)V", reinterpret_cast<void*>(&CcStart) },
+        { "ccStop", "(I)V", reinterpret_cast<void*>(&CcStop) },
+        { "ccCheck", "(I)V", reinterpret_cast<void*>(&CcCheck) },
+        { "ccFlush", "(I)V", reinterpret_cast<void*>(&CcFlush) },
+        { "ccTakeEvents", "(I)[I", reinterpret_cast<void*>(&CcTakeEvents) },
+        { "ccTranslationRequests", "(I[I)[Ljava/lang/String;", reinterpret_cast<void*>(&CcTranslationRequests) },
+        { "ccTranslationResponses", "(I[I[Ljava/lang/String;)V", reinterpret_cast<void*>(&CcTranslationResponses) },
+        { "ccTranslation", "(II)V", reinterpret_cast<void*>(&CcTranslation) },
         { "setViewConfiguration", "(JJFFFFF)V", reinterpret_cast<void*>(&SetViewConfiguration) },
-        { "surfaceCreated", "(Landroid/view/Surface;)V", reinterpret_cast<void*>(&SurfaceCreated) },
-        { "surfaceChanged", "(II)V", reinterpret_cast<void*>(&SurfaceChanged) },
-        { "surfaceDestroyed", "()V", reinterpret_cast<void*>(&SurfaceDestroyed) },
+        { "surfaceCreated", "(ILandroid/view/Surface;)V", reinterpret_cast<void*>(&SurfaceCreated) },
+        { "surfaceChanged", "(III)V", reinterpret_cast<void*>(&SurfaceChanged) },
+        { "surfaceDestroyed", "(I)V", reinterpret_cast<void*>(&SurfaceDestroyed) },
         { "destroy", "()V", reinterpret_cast<void*>(&Destroy) },
         { "saveState", "()[B", reinterpret_cast<void*>(&SaveState) },
     };

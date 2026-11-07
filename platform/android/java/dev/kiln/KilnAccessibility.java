@@ -46,7 +46,7 @@ final class KilnAccessibility extends AccessibilityNodeProvider {
         boolean on = manager != null && manager.isEnabled();
         if (on == enabled) return;
         enabled = on;
-        KilnNative.a11ySetEnabled(on, Locale.getDefault().toLanguageTag());
+        KilnNative.a11ySetEnabled(view.windowId, on, Locale.getDefault().toLanguageTag());
         if (on) onChange(false);
     }
 
@@ -71,11 +71,11 @@ final class KilnAccessibility extends AccessibilityNodeProvider {
             checkPosted = false;
             if (!listening() || !view.isAttachedToWindow()) return;
             if (enabled) {
-                KilnNative.a11yCheckSemantics();
+                KilnNative.a11yCheckSemantics(view.windowId);
                 sendPendingEvents();
             }
             if (capture != null) {
-                KilnNative.ccCheck();
+                KilnNative.ccCheck(view.windowId);
                 sendCaptureEvents();
             }
             scheduleBoundsFlush();
@@ -87,23 +87,23 @@ final class KilnAccessibility extends AccessibilityNodeProvider {
         if (android.os.Build.VERSION.SDK_INT < 29) return;
         capture = view.getContentCaptureSession();
         if (capture == null) return;
-        KilnNative.ccStart();
+        KilnNative.ccStart(view.windowId);
         sendCaptureEvents();
     }
 
     /** The host stopped (onStop): everything disappears and the session ends. */
     void onHostStop() {
         if (capture == null) return;
-        KilnNative.ccStop();
+        KilnNative.ccStop(view.windowId);
         sendCaptureEvents();
         capture = null;
     }
 
     /** The buffered content capture events, applied to the session. */
     private void sendCaptureEvents() {
-        int[] d = KilnNative.ccTakeEvents();
+        int[] d = KilnNative.ccTakeEvents(view.windowId);
         if (d.length == 0 || capture == null) return;
-        String[] s = KilnNative.a11yStrings();
+        String[] s = KilnNative.a11yStrings(view.windowId);
         android.view.autofill.AutofillId root = view.getAutofillId();
         if (root == null) return;
         for (int at = 0; at + 16 <= d.length; at += 16) {
@@ -143,7 +143,7 @@ final class KilnAccessibility extends AccessibilityNodeProvider {
     void onCreateTranslationRequests(long[] virtualIds, java.util.function.Consumer<android.view.translation.ViewTranslationRequest> collector) {
         int[] ids = new int[virtualIds.length];
         for (int i = 0; i < ids.length; i++) ids[i] = (int) virtualIds[i];
-        String[] texts = KilnNative.ccTranslationRequests(ids);
+        String[] texts = KilnNative.ccTranslationRequests(view.windowId, ids);
         for (int i = 0; i < ids.length && i < texts.length; i++) {
             if (texts[i] == null) continue;
             android.view.translation.ViewTranslationRequest.Builder b =
@@ -166,16 +166,16 @@ final class KilnAccessibility extends AccessibilityNodeProvider {
                 CharSequence t = v == null ? null : v.getText();
                 texts[i] = t == null ? null : t.toString();
             }
-            KilnNative.ccTranslationResponses(ids, texts);
+            KilnNative.ccTranslationResponses(view.windowId, ids, texts);
         };
         if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) apply.run(); else view.post(apply);
     }
 
     /** ViewTranslationCallback: show (0), hide (1) or clear (2) the translated text. */
     final android.view.translation.ViewTranslationCallback translationCallback = new android.view.translation.ViewTranslationCallback() {
-        @Override public boolean onShowTranslation(View v) { KilnNative.ccTranslation(0); return true; }
-        @Override public boolean onHideTranslation(View v) { KilnNative.ccTranslation(1); return true; }
-        @Override public boolean onClearTranslation(View v) { KilnNative.ccTranslation(2); return true; }
+        @Override public boolean onShowTranslation(View v) { KilnNative.ccTranslation(view.windowId, 0); return true; }
+        @Override public boolean onHideTranslation(View v) { KilnNative.ccTranslation(view.windowId, 1); return true; }
+        @Override public boolean onClearTranslation(View v) { KilnNative.ccTranslation(view.windowId, 2); return true; }
     };
 
     /** boundsUpdatesEventLoop: subtree changes and scroll events, then 100 ms of quiet. */
@@ -189,12 +189,12 @@ final class KilnAccessibility extends AccessibilityNodeProvider {
             if (!listening() || !view.isAttachedToWindow()) return;
             boolean more = false;
             if (enabled) {
-                more = KilnNative.a11yFlushBounds();
+                more = KilnNative.a11yFlushBounds(view.windowId);
                 sendPendingEvents();
             }
             if (capture != null) {
                 // notifyContentCaptureChanges, then the change checker.
-                KilnNative.ccFlush();
+                KilnNative.ccFlush(view.windowId);
                 sendCaptureEvents();
                 postCheck();
             }
@@ -216,7 +216,7 @@ final class KilnAccessibility extends AccessibilityNodeProvider {
     }
 
     /** toAccessibilitySpannableString: URL, clickable and TTS spans on the text. */
-    private static CharSequence withSpans(final int id, String text, int[] d, int at, int count, String[] s) {
+    private CharSequence withSpans(final int id, String text, int[] d, int at, int count, String[] s) {
         if (count == 0) return text;
         SpannableString out = new SpannableString(text);
         int clickable = 0;
@@ -228,7 +228,7 @@ final class KilnAccessibility extends AccessibilityNodeProvider {
             Object span;
             if (kind == 0) span = new android.text.style.URLSpan(value);
             else if (kind == 1) span = new android.text.style.ClickableSpan() {
-                @Override public void onClick(View widget) { KilnNative.a11ySpanClick(id, spanIndex); }
+                @Override public void onClick(View widget) { KilnNative.a11ySpanClick(view.windowId, id, spanIndex); }
             };
             else span = new android.text.style.TtsSpan.VerbatimBuilder(value == null ? "" : value).build();
             out.setSpan(span, start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
@@ -239,12 +239,12 @@ final class KilnAccessibility extends AccessibilityNodeProvider {
     @Override
     public AccessibilityNodeInfo createAccessibilityNodeInfo(int virtualViewId) {
         final int id = virtualViewId == View.NO_ID ? -1 : virtualViewId;
-        int[] d = KilnNative.a11yNodeInfo(id);
+        int[] d = KilnNative.a11yNodeInfo(view.windowId, id);
         if (d.length == 0 || d[0] == 0) {
             // emptyNodeInfoOrNull.
             return enabled ? null : AccessibilityNodeInfo.obtain();
         }
-        String[] s = KilnNative.a11yStrings();
+        String[] s = KilnNative.a11yStrings(view.windowId);
         AccessibilityNodeInfo info;
         if (id == -1) {
             info = AccessibilityNodeInfo.obtain(view);
@@ -332,14 +332,14 @@ final class KilnAccessibility extends AccessibilityNodeProvider {
             start = args.getInt(AccessibilityNodeInfo.EXTRA_DATA_TEXT_CHARACTER_LOCATION_ARG_START_INDEX, -1);
             length = args.getInt(AccessibilityNodeInfo.EXTRA_DATA_TEXT_CHARACTER_LOCATION_ARG_LENGTH, -1);
         }
-        int[] d = KilnNative.a11yExtraData(virtualViewId == View.NO_ID ? -1 : virtualViewId, key, start, length);
+        int[] d = KilnNative.a11yExtraData(view.windowId, virtualViewId == View.NO_ID ? -1 : virtualViewId, key, start, length);
         if (d.length == 0) return;
         Bundle extras = info.getExtras();
         int[] loc = new int[2];
         view.getLocationOnScreen(loc);
         switch (d[0]) {
             case 1: extras.putInt(key, d[1]); break;
-            case 2: { String[] s = KilnNative.a11yStrings(); if (s.length > 0) extras.putCharSequence(key, s[0]); break; }
+            case 2: { String[] s = KilnNative.a11yStrings(view.windowId); if (s.length > 0) extras.putCharSequence(key, s[0]); break; }
             case 3: {
                 int n = d[1];
                 RectF[] rects = new RectF[n];
@@ -382,7 +382,7 @@ final class KilnAccessibility extends AccessibilityNodeProvider {
 
     @Override
     public AccessibilityNodeInfo findFocus(int focus) {
-        int id = KilnNative.a11yFindFocus(focus == AccessibilityNodeInfo.FOCUS_ACCESSIBILITY);
+        int id = KilnNative.a11yFindFocus(view.windowId, focus == AccessibilityNodeInfo.FOCUS_ACCESSIBILITY);
         if (id == INVALID) return null;
         return createAccessibilityNodeInfo(id);
     }
@@ -411,27 +411,27 @@ final class KilnAccessibility extends AccessibilityNodeProvider {
             selEnd = -1;
         }
         if (action == AccessibilityNodeInfo.ACTION_SET_TEXT && text == null) text = "";
-        boolean ok = KilnNative.a11yPerformAction(virtualViewId, action, granularity, extend, selStart, selEnd, text, hasProgress, progress);
+        boolean ok = KilnNative.a11yPerformAction(view.windowId, virtualViewId, action, granularity, extend, selStart, selEnd, text, hasProgress, progress);
         sendPendingEvents();
         return ok;
     }
 
     /** Explore by touch: the node under the finger (dispatchHoverEvent). */
     boolean onHover(int action, float x, float y) {
-        boolean handled = KilnNative.a11yHover(action, x, y);
+        boolean handled = KilnNative.a11yHover(view.windowId, action, x, y);
         sendPendingEvents();
         return handled;
     }
 
     boolean canScroll(boolean vertical, int direction, float x, float y) {
-        return KilnNative.a11yCanScroll(vertical, direction, x, y);
+        return KilnNative.a11yCanScroll(view.windowId, vertical, direction, x, y);
     }
 
     /** The events the delegate made (focus, clicks, property changes, scrolls, panes). */
     void sendPendingEvents() {
-        int[] d = KilnNative.a11yTakeEvents();
+        int[] d = KilnNative.a11yTakeEvents(view.windowId);
         if (d.length == 0) return;
-        String[] s = KilnNative.a11yStrings();
+        String[] s = KilnNative.a11yStrings(view.windowId);
         int at = 0;
         while (at < d.length) {
             AccessibilityEvent e = AccessibilityEvent.obtain(d[at]);
