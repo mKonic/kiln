@@ -4,6 +4,7 @@
 #include "kiln/foundation/Draw.h"
 #include "kiln/foundation/Layouts.h"
 #include "kiln/foundation/text/Selection.h"
+#include "kiln/foundation/text/HandlePopup.h"
 #include "kiln/ui/LayoutNode.h"
 
 #include <cmath>
@@ -80,52 +81,40 @@ namespace kiln::foundation {
 
     void TextFieldWithHandles(TextFieldSelectionState& selection, bool showHandles, bool showCursorHandle, std::function<void()> content) {
         TextFieldSelectionState* s = &selection;
-        // The content measures as if alone; the handle layer never changes the size.
+        // The content measures as if alone; the handle popups' anchors take no space.
         auto policy = std::make_shared<ui::LambdaMeasurePolicy>([](MeasureScope& ms, std::span<Measurable* const> children, const Constraints& c) {
             Placeable& p = children[0]->Measure(c);
-            Placeable* layer = children.size() > 1 ? &children[1]->Measure(Constraints::Fixed(p.Width(), p.Height())) : nullptr;
-            return ms.Layout(p.Width(), p.Height(), [&p, layer](PlacementScope& ps) {
+            std::vector<Placeable*> anchors;
+            for (std::size_t i = 1; i < children.size(); ++i) anchors.push_back(&children[i]->Measure(Constraints::Fixed(0, 0)));
+            return ms.Layout(p.Width(), p.Height(), [&p, anchors](PlacementScope& ps) {
                 ps.Place(p, 0, 0);
-                if (layer) ps.Place(*layer, 0, 0, 1);
+                for (Placeable* a : anchors) ps.Place(*a, 0, 0);
             });
         });
         Layout(Modifier{}, policy, [s, showHandles, showCursorHandle, content] {
             content();
-            // HandlePositionProvider: each handle's reference point at its position.
-            auto layerPolicy = std::make_shared<ui::LambdaMeasurePolicy>([s](MeasureScope& ms, std::span<Measurable* const> children, const Constraints& c) {
-                std::vector<std::pair<Placeable*, ui::IntOffset>> placed;
-                for (Measurable* child : children) {
-                    Placeable& p = child->Measure({ 0, Constraints::Infinity, 0, Constraints::Infinity });
-                    placed.emplace_back(&p, ui::IntOffset{});
-                }
-                // Children in order: the selection handles that show, then the cursor handle.
-                std::size_t i = 0;
-                auto place = [&](Offset inTextLayout, float referenceX) {
-                    if (i >= placed.size()) return;
-                    const Offset at = s->textLayoutState.FromTextLayoutToCore(inTextLayout);
-                    Placeable* p = placed[i].first;
-                    placed[i].second = { int(std::lround(at.x - referenceX * float(p->Width()))), int(std::lround(at.y)) };
-                    ++i;
-                };
-                for (bool start : { true, false }) {
-                    const TextFieldHandleState st = s->GetSelectionHandleState(start, true);
-                    if (!st.visible) continue;
-                    const bool left = IsLeft(start, st.direction, st.handlesCrossed);
-                    place(std::isnan(st.position.x) ? Offset{} : st.position, left ? 1.0f : 0.0f);   // TopRight / TopLeft
-                }
-                const TextFieldHandleState cursor = s->GetCursorHandleState(true);
-                if (cursor.visible) place(cursor.position, 0.5f);   // TopCenter
-                return ms.Layout(c.minWidth, c.minHeight, [placed](PlacementScope& ps) { for (auto& [p, o] : placed) ps.Place(*p, o.x, o.y); });
-            });
-            Layout(Modifier{}, layerPolicy, [s, showHandles, showCursorHandle] {
+            // Recomposes only when visibility (not the position) changes.
+            rt::Composition::Current()->Child([s, showHandles, showCursorHandle] {
                 if (!showHandles) return;
-                // Recomposes only when visibility (not the position) changes.
+                // Each handle in a popup at its position in the core node's coordinates.
                 for (bool start : { true, false }) {
                     const TextFieldHandleState st = s->GetSelectionHandleState(start, false);
-                    if (st.visible) Handle(*s, start ? Kind::Start : Kind::End, IsLeft(start, st.direction, st.handlesCrossed));
+                    if (!st.visible) continue;
+                    const bool left = IsLeft(start, st.direction, st.handlesCrossed);
+                    HandlePopup([s, start] {
+                        const TextFieldHandleState h = s->GetSelectionHandleState(start, true);
+                        if (std::isnan(h.position.x)) return h.position;
+                        return s->textLayoutState.FromTextLayoutToCore(h.position);
+                    }, left ? 1.0f : 0.0f, [s, start, left] { Handle(*s, start ? Kind::Start : Kind::End, left); },
+                    rt::Key(start ? 0x7e17 : 0x7e18));
                 }
-                if (showCursorHandle && s->GetCursorHandleState(false).visible) Handle(*s, Kind::Cursor, false);
-            }, rt::Key(0x7e17));
+                if (showCursorHandle && s->GetCursorHandleState(false).visible)
+                    HandlePopup([s] {
+                        const TextFieldHandleState h = s->GetCursorHandleState(true);
+                        if (std::isnan(h.position.x)) return h.position;
+                        return s->textLayoutState.FromTextLayoutToCore(h.position);
+                    }, 0.5f, [s] { Handle(*s, Kind::Cursor, false); }, rt::Key(0x7e19));
+            }, rt::Key(0x7e16));
         });
     }
 

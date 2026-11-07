@@ -2,6 +2,7 @@
 // SelectionModifierNode.kt, SelectionHandles.kt, AndroidSelectionHandles.android.kt).
 
 #include "kiln/foundation/text/Selection.h"
+#include "kiln/foundation/text/HandlePopup.h"
 #include "kiln/foundation/Magnifier.h"
 
 #include "kiln/foundation/Compose.h"
@@ -1142,12 +1143,6 @@ namespace kiln::foundation {
             }
         }
 
-        // Handle positions for placement (HandlePositionProvider): the last one is kept while
-        // the handle has none.
-        struct HandleLayer {
-            SelectionManager* manager;
-            std::optional<Offset> previous[2];
-        };
     }
 
     // --- SelectionState --------------------------------------------------------------------------
@@ -1407,39 +1402,26 @@ namespace kiln::foundation {
             return std::make_shared<std::pair<std::shared_ptr<TextDragObserver>, std::shared_ptr<TextDragObserver>>>(
                 std::make_shared<SelectionManager::HandleObserver>(manager, true), std::make_shared<SelectionManager::HandleObserver>(manager, false));
         });
-        auto layer = c->Remember<std::shared_ptr<HandleLayer>>([m] { return std::make_shared<HandleLayer>(HandleLayer{ m, {} }); });
-
-        Layout(mod, SimpleLayoutPolicy(), [content, m, registrarPtr = registrar, handleObservers, layer] {
+        Layout(mod, SimpleLayoutPolicy(), [content, m, registrarPtr = registrar, handleObservers] {
             rt::Composition::Current()->Provide(LocalSelectionRegistrar, registrarPtr, content);
-            // The handles (touch mode, focused, a selection that is not trivially collapsed),
-            // over the content, outside the container's size.
+            // The handles (touch mode, focused, a selection that is not trivially collapsed), each
+            // in its own popup at its position in the container. A scope of their own: selection
+            // changes do not recompose the content.
+            rt::Composition::Current()->Child([m, handleObservers] {
             const bool show = m->touchMode.Get() && m->hasFocus.Get() && m->selection.Get() && !m->IsTriviallyCollapsedSelection();
-            auto policy = std::make_shared<ui::LambdaMeasurePolicy>([layer](MeasureScope& s, std::span<Measurable* const> children, const Constraints& c) {
-                std::vector<std::pair<Placeable*, ui::IntOffset>> placed;
-                for (std::size_t i = 0; i < children.size() && i < 2; ++i) {
-                    Placeable& p = children[i]->Measure({ 0, Constraints::Infinity, 0, Constraints::Infinity });
-                    const bool isStart = i == 0;
-                    auto pos = isStart ? layer->manager->startHandlePosition.Get() : layer->manager->endHandlePosition.Get();
-                    if (pos) layer->previous[i] = pos;
-                    const Offset at = layer->previous[i].value_or(Offset{});
-                    const auto sel = layer->manager->selection.Peek();
-                    bool isLeft = false;
-                    if (sel) {
-                        const auto dir = isStart ? sel->start.direction : sel->end.direction;
-                        const bool ltr = (dir == ResolvedTextDirection::Ltr && !sel->handlesCrossed) || (dir == ResolvedTextDirection::Rtl && sel->handlesCrossed);
-                        isLeft = isStart ? ltr : !ltr;
-                    }
-                    // AbsoluteAlignment.TopRight for a left handle: its right edge at the point.
-                    placed.emplace_back(&p, ui::IntOffset{ RoundJava(at.x) - (isLeft ? p.Width() : 0), RoundJava(at.y) });
-                }
-                // As small as allowed: the layer never grows the container.
-                return s.Layout(c.minWidth, c.minHeight, [placed](PlacementScope& ps) { for (auto& [p, o] : placed) ps.Place(*p, o.x, o.y); });
-            });
-            Layout(ZIndex(Modifier{}, 1), policy, [m, handleObservers, show] {
-                if (!show) return;
-                SelectionHandle(*m, true, handleObservers->first);
-                SelectionHandle(*m, false, handleObservers->second);
-            }, rt::Key(0x5e1ec7));
+            if (!show) return;
+            const auto sel = m->selection.Get();
+            for (bool isStart : { true, false }) {
+                const ResolvedTextDirection dir = isStart ? sel->start.direction : sel->end.direction;
+                const bool ltr = (dir == ResolvedTextDirection::Ltr && !sel->handlesCrossed) || (dir == ResolvedTextDirection::Rtl && sel->handlesCrossed);
+                const bool isLeft = isStart ? ltr : !ltr;
+                auto observer = isStart ? handleObservers->first : handleObservers->second;
+                HandlePopup([m, isStart] {
+                    const auto p = isStart ? m->startHandlePosition.Get() : m->endHandlePosition.Get();
+                    return p ? *p : Offset{ NAN, NAN };
+                }, isLeft ? 1.0f : 0.0f, [m, isStart, observer] { SelectionHandle(*m, isStart, observer); }, rt::Key(isStart ? 0x5e1ec7 : 0x5e1ec8));
+            }
+            }, rt::Key(0x5e1ec6));
         });
 
         // Binds the state; on dispose the selection goes (manager.onRelease, hasFocus = false).

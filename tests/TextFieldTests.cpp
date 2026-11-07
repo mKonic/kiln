@@ -633,18 +633,21 @@ namespace {
         h.Pump({ 300, 300 });
     }
     // The field's handle layer: the second child of the content-with-handles layout.
-    std::vector<ui::LayoutNode*> FieldHandles(FieldHarness& h) {
-        std::vector<ui::LayoutNode*> out;
-        std::function<void(ui::LayoutNode*)> walk = [&](ui::LayoutNode* n) {
-            if (n->Children().size() == 2 && n->Children()[1]->ZIndex() == 1) {
-                for (auto* c : n->Children()[1]->Children()) out.push_back(c);
-                return;
-            }
-            for (auto* c : n->Children()) walk(c);
-        };
-        walk(&h.owner.Root());
+    // The handle popups: where each sits relative to its anchor (the layout it is called in).
+    struct HandleAt {
+        ui::IntOffset at;
+        ui::IntOffset Position() const { return at; }
+    };
+    std::vector<HandleAt> PopupHandles(ui::Owner& owner) {
+        std::vector<HandleAt> out;
+        for (ui::PopupLayer* l : owner.Popups()) {
+            const auto anchor = l->anchorBounds ? l->anchorBounds() : std::nullopt;
+            if (!l->bounds || !anchor) continue;
+            out.push_back({ { l->bounds->left - anchor->left, l->bounds->top - anchor->top } });
+        }
         return out;
     }
+    std::vector<HandleAt> FieldHandles(FieldHarness& h) { return PopupHandles(h.owner); }
 }
 
 TEST(LongPressSelectsAWordWithHandlesAndToolbar) {
@@ -672,9 +675,9 @@ TEST(LongPressSelectsAWordWithHandlesAndToolbar) {
     auto handles = FieldHandles(h);
     CHECK_EQ(int(handles.size()), 2);
     if (handles.size() == 2) {
-        CHECK_EQ(handles[0]->Position().x, 60 - 40);
-        CHECK_EQ(handles[0]->Position().y, 25);
-        CHECK_EQ(handles[1]->Position().x, 150);
+        CHECK_EQ(handles[0].Position().x, 60 - 40);
+        CHECK_EQ(handles[0].Position().y, 25);
+        CHECK_EQ(handles[1].Position().x, 150);
     }
     // Dragging the end handle back to "big"'s end (character drag with word acceleration).
     if (handles.size() == 2) {

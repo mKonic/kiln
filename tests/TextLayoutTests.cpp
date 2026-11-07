@@ -18,6 +18,23 @@ using namespace kiln;
 using namespace kiln::text;
 
 namespace {
+    // The handle popups: where each sits relative to its anchor (the layout it is called in).
+    struct HandleAt {
+        ui::IntOffset at;
+        ui::IntOffset Position() const { return at; }
+    };
+    std::vector<HandleAt> PopupHandles(ui::Owner& owner) {
+        std::vector<HandleAt> out;
+        for (ui::PopupLayer* l : owner.Popups()) {
+            const auto anchor = l->anchorBounds ? l->anchorBounds() : std::nullopt;
+            if (!l->bounds || !anchor) continue;
+            out.push_back({ { l->bounds->left - anchor->left, l->bounds->top - anchor->top } });
+        }
+        return out;
+    }
+}
+
+namespace {
     using kiln::test::FakeText;
 }
 
@@ -436,11 +453,7 @@ namespace {
             Pump();
         }
         // The container's handle layer (its last child) and the handles in it.
-        std::vector<ui::LayoutNode*> Handles() {
-            ui::LayoutNode* container = owner.Root().Children()[0];
-            ui::LayoutNode* layer = container->Children().back();
-            return layer->Children();
-        }
+        std::vector<HandleAt> Handles() { return PopupHandles(owner); }
     };
     void TwoTexts() {
         foundation::Column(ui::Modifier{}, [] {
@@ -488,10 +501,10 @@ TEST(SelectionLongPressSelectsWordsAcrossTextsAndCopies) {
     const auto handles = h.Handles();
     CHECK_EQ(int(handles.size()), 2);
     if (handles.size() == 2) {
-        CHECK_EQ(handles[0]->Position().x, 60 - 25);   // the start handle's point at x 60, left of it
-        CHECK_EQ(handles[0]->Position().y, 25);
-        CHECK_EQ(handles[1]->Position().x, 60);        // after "Second", on its line's bottom
-        CHECK_EQ(handles[1]->Position().y, 50);
+        CHECK_EQ(handles[0].Position().x, 60 - 25);   // the start handle's point at x 60, left of it
+        CHECK_EQ(handles[0].Position().y, 25);
+        CHECK_EQ(handles[1].Position().x, 60);        // after "Second", on its line's bottom
+        CHECK_EQ(handles[1].Position().y, 50);
     }
     // Copy: the texts joined by a line break; touch mode clears the selection.
     CHECK(tests::ClickToolbar(h.owner, ui::TextToolbarItemId::Copy));
