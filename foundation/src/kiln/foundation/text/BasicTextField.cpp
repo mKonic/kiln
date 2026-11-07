@@ -14,6 +14,7 @@
 #include "kiln/foundation/text/handwriting/StylusHandwriting.h"
 #include "kiln/foundation/text/input/HandwritingGestures.h"
 #include "kiln/foundation/text/input/TextFieldHandles.h"
+#include "kiln/foundation/text/contextmenu/TextContextMenuProvider.h"
 #include "kiln/foundation/text/input/TextFieldKeys.h"
 #include "kiln/foundation/text/input/TextFieldSelectionState.h"
 #include "kiln/foundation/text/input/TextLayoutState.h"
@@ -1174,9 +1175,18 @@ namespace kiln::foundation {
                 });
             });
         };
-        Box(m, Alignment::TopStart(), true, [options, inner] {
-            if (options.decorator) options.decorator(inner);
-            else inner();
+        Box(m, Alignment::TopStart(), true, [options, inner, field] {
+            // CommonContextMenuArea: a right click opens the dropdown menu.
+            std::weak_ptr<Field> weak = field;
+            ProvideDefaultPlatformTextContextMenuProviders([weak, enabled = options.enabled] {
+                if (!enabled) return Modifier{};
+                return ShowTextContextMenuOnSecondaryClick(Modifier{}, [weak](Offset) -> rt::Task<> {
+                    if (auto f = weak.lock()) co_await f->selection->OnPreShowContextMenu();
+                });
+            }, [options, inner] {
+                if (options.decorator) options.decorator(inner);
+                else inner();
+            });
         }, key);
     }
 

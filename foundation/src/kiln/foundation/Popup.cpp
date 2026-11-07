@@ -103,6 +103,14 @@ namespace kiln::foundation {
             const LayoutDirection direction = c.Read(ui::LocalLayoutDirection);
             rt::Scope* parentScope = c.CurrentScope();
 
+            // Before it is first shown: the layer has its properties when it is added.
+            if (!state->owner) {
+                state->layer.properties = properties;
+                state->layer.onDismissRequest = onDismissRequest;
+                state->layer.positionProvider = popupPositionProvider;
+                state->layer.direction = direction;
+            }
+
             // Back gestures dismiss a focusable popup (its window's OnBackInvoked overlay input).
             BackHandler(properties.focusable && properties.dismissOnBackPress, [state] {
                 if (state->layer.onDismissRequest) state->layer.onDismissRequest();

@@ -1,4 +1,7 @@
 #include "Check.h"
+#include "kiln/ui/Back.h"
+#include "kiln/foundation/contextmenu/ContextMenuUi.h"
+#include "kiln/ui/Semantics.h"
 #include "ToolbarHelpers.h"
 #include "FakeText.h"
 
@@ -261,7 +264,7 @@ namespace {
         void Pump(ui::IntSize size = { 120, 300 }) {
             for (int i = 0; i < 3; ++i) {
                 rt::Dispatcher::Main().RunPending();
-                comp.Recompose();
+                rt::Composition::RecomposeAll();
                 owner.MeasureAndLayout(size);
                 if (draw) {
                     ui::DrawTarget target;
@@ -632,7 +635,6 @@ namespace {
         h.t += ms;
         h.Pump({ 300, 300 });
     }
-    // The field's handle layer: the second child of the content-with-handles layout.
     // The handle popups: where each sits relative to its anchor (the layout it is called in).
     struct HandleAt {
         ui::IntOffset at;
@@ -978,4 +980,88 @@ TEST(MagnifierFollowsTheDraggedHandle) {
     }
     SendPointer(h, PointerType::Touch, PointerEventType::Release, 125, 10, false);
     CHECK(dismisses >= 1);
+}
+
+TEST(ContextMenuPopupFlipsToStayInTheWindow) {
+    // Fits after the point: starts there; else ends there; else against the far edge.
+    CHECK_EQ(AlignPopupAxis(10, 50, 100), 10);
+    CHECK_EQ(AlignPopupAxis(80, 50, 100), 30);
+    CHECK_EQ(AlignPopupAxis(40, 70, 100), 30);
+    CHECK_EQ(AlignPopupAxis(10, 120, 100), 0);
+    CHECK_EQ(AlignPopupAxis(80, 50, 100, false), 30);   // RTL: ends at the point when it fits before
+}
+
+TEST(RightClickOpensTheDropdownTextContextMenu) {
+    FieldHarness h;
+    ui::ContextMenuHost host;
+    host.standardLabel = [](ui::TextToolbarItemId id) {
+        switch (id) {
+            case ui::TextToolbarItemId::Cut: return std::string("Cut");
+            case ui::TextToolbarItemId::Copy: return std::string("Copy");
+            case ui::TextToolbarItemId::Paste: return std::string("Paste");
+            case ui::TextToolbarItemId::SelectAll: return std::string("Select all");
+            default: return std::string();
+        }
+    };
+    h.owner.SetContextMenuHost(host);
+    TextFieldState state("hello big world");
+    h.comp.SetContent([&] {
+        rt::Composition::Current()->Provide(ui::LocalOwner, &h.owner, [&] { Column(Modifier{}, [&] { BasicTextField(state, {}, Style20()); }); });
+    });
+    h.Pump({ 300, 300 });
+    using ui::PointerEventType;
+    using ui::PointerType;
+    // A right click: a focusable popup at the click with the field's items.
+    SendPointer(h, PointerType::Mouse, PointerEventType::Press, 75, 10, true, ui::PointerButtons::Secondary);
+    SendPointer(h, PointerType::Mouse, PointerEventType::Release, 75, 10, false, 0);
+    CHECK_EQ(int(h.owner.Popups().size()), 1);
+    if (h.owner.Popups().size() != 1) return;
+    CHECK(h.owner.Popups()[0]->properties.focusable);
+    const auto b = *h.owner.Popups()[0]->bounds;
+    CHECK_EQ(b.left, 75);
+    CHECK_EQ(b.top, 10);
+    CHECK_EQ(b.right - b.left, 112);   // ContainerWidthMin
+    // The items: Select all is there (the field has text); clicking it selects and closes.
+    std::vector<std::string> labels;
+    std::function<void(ui::LayoutNode*)> walk = [&](ui::LayoutNode* n) {
+        ui::SemanticsConfiguration cfg;
+        if (ui::CalculateSemanticsConfiguration(*n, cfg) && cfg.onClickLabel) labels.push_back(*cfg.onClickLabel);
+        for (auto* c : n->Children()) walk(c);
+    };
+    walk(h.owner.Popups()[0]->node);
+    CHECK(std::find(labels.begin(), labels.end(), "Select all") != labels.end());
+    CHECK(std::find(labels.begin(), labels.end(), "Paste") == labels.end());   // empty clipboard
+    // The last item (Select all) is the bottom 48 dp row above the 8 dp padding.
+    const float x = float(b.left) + 30, y = float(b.bottom) - 8 - 24;
+    SendPointer(h, PointerType::Mouse, PointerEventType::Press, x, y, true, ui::PointerButtons::Primary);
+    SendPointer(h, PointerType::Mouse, PointerEventType::Release, x, y, false, 0);
+    CHECK(state.Selection() == TextRange(0, 15));
+    CHECK(h.owner.Popups().empty());
+}
+
+TEST(RightClickOpensTheMenuOfAPaddedSingleLineField) {
+    FieldHarness h;
+    ui::ContextMenuHost host;
+    host.standardLabel = [](ui::TextToolbarItemId id) { return id == ui::TextToolbarItemId::SelectAll ? std::string("Select all") : std::string("X"); };
+    h.owner.SetContextMenuHost(host);
+    TextFieldState state("Edit me");
+    h.comp.SetContent([&] {
+        rt::Composition::Current()->Provide(ui::LocalOwner, &h.owner, [&] {
+            Column(Modifier{}, [&] {
+                Box(Padding(FillMax(Modifier{}, Axis::Horizontal), 16_dp, 0_dp), Alignment::CenterStart(), false, [&] {
+                    BasicTextFieldOptions opt = Style20();
+                    opt.lineLimits = TextFieldLineLimits::SingleLine();
+                    BasicTextField(state, Padding(FillMax(Modifier{}, Axis::Horizontal), 16_dp, 16_dp), opt);
+                });
+            });
+        });
+    });
+    h.Pump({ 300, 300 });
+    SendPointer(h, ui::PointerType::Mouse, ui::PointerEventType::Press, 100, 30, true, ui::PointerButtons::Secondary);
+    SendPointer(h, ui::PointerType::Mouse, ui::PointerEventType::Release, 100, 30, false, 0);
+    CHECK_EQ(int(h.owner.Popups().size()), 1);
+    // Back (the window's back callback, not a key) dismisses the menu.
+    CHECK(ui::BackDispatcher::Main().Completed());
+    h.Pump({ 300, 300 });
+    CHECK(h.owner.Popups().empty());
 }

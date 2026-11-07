@@ -324,6 +324,110 @@ final class KilnTextServices {
         }
     }
 
+    // --- the dropdown menu (DefaultTextContextMenuDropdownProvider) -----------------------------
+
+    /** ContextMenuIcons: the action mode drawable attribute of a standard item; 0 for none. */
+    static int standardIconAttr(int id) {
+        switch (id) {
+            case 1: return android.R.attr.actionModeCutDrawable;
+            case 2: return android.R.attr.actionModeCopyDrawable;
+            case 3: return android.R.attr.actionModePasteDrawable;
+            case 4: return android.R.attr.actionModeSelectAllDrawable;
+            case 6: return Build.VERSION.SDK_INT >= 37 ? Resources.getSystem().getIdentifier("actionModeLookUpDrawable", "attr", "android") : 0;
+            default: return 0;
+        }
+    }
+
+    /** IconBox: the drawable a theme attribute names, drawn `size` px square; null for none. */
+    int[] themeIcon(int attr, int size) {
+        if (attr == 0) return null;
+        android.content.res.TypedArray a = context.obtainStyledAttributes(new int[] { attr });
+        int res = a.getResourceId(0, -1);
+        a.recycle();
+        if (res == -1) return null;
+        return pixels(context.getDrawable(res), size);
+    }
+
+    /** A drawable as {width, height, ARGB...} (non-premultiplied), fitted in a square of `size`. */
+    static int[] pixels(Drawable d, int size) {
+        if (d == null || size <= 0) return null;
+        int iw = d.getIntrinsicWidth(), ih = d.getIntrinsicHeight();
+        int w = size, h = size;
+        if (iw > 0 && ih > 0) {   // ContentScale.Fit
+            float s = Math.min(size / (float) iw, size / (float) ih);
+            w = Math.max(1, Math.round(iw * s));
+            h = Math.max(1, Math.round(ih * s));
+        }
+        android.graphics.Bitmap b = android.graphics.Bitmap.createBitmap(w, h, android.graphics.Bitmap.Config.ARGB_8888);
+        android.graphics.Canvas canvas = new android.graphics.Canvas(b);
+        d.setBounds(0, 0, w, h);
+        d.draw(canvas);
+        int[] out = new int[2 + w * h];
+        out[0] = w;
+        out[1] = h;
+        b.getPixels(out, 2, w, 0, 0, w, h);
+        b.recycle();
+        return out;
+    }
+
+    /** A classification item's title (the action's, or the legacy label for index -1). */
+    String classificationLabel(int handle, int index) {
+        Classification c = classifications.get(handle);
+        if (c == null) return "";
+        if (index < 0) { CharSequence l = c.classification.getLabel(); return l != null ? l.toString() : ""; }
+        List<RemoteAction> actions = c.classification.getActions();
+        return index < actions.size() ? actions.get(index).getTitle().toString() : "";
+    }
+
+    /** A classification item's icon (the preloaded action icon, or the legacy icon), drawn. */
+    @SuppressWarnings("deprecation")
+    int[] classificationIcon(int handle, int index, int size) {
+        Classification c = classifications.get(handle);
+        if (c == null) return null;
+        Drawable d = index < 0 ? c.classification.getIcon() : (index < c.icons.length ? c.icons[index] : null);
+        if (d == null) return null;
+        // IconBox draws it stretched over the 24 dp box.
+        android.graphics.Bitmap b = android.graphics.Bitmap.createBitmap(size, size, android.graphics.Bitmap.Config.ARGB_8888);
+        Drawable copy = d.getConstantState() != null ? d.getConstantState().newDrawable().mutate() : d;
+        copy.setBounds(0, 0, size, size);
+        copy.draw(new android.graphics.Canvas(b));
+        int[] out = new int[2 + size * size];
+        out[0] = size;
+        out[1] = size;
+        b.getPixels(out, 2, size, 0, 0, size, size);
+        b.recycle();
+        return out;
+    }
+
+    /** A classification item clicked in the dropdown: its action's PendingIntent (or the legacy intent). */
+    @SuppressWarnings("deprecation")
+    void performClassification(int handle, int index) {
+        Classification c = classifications.get(handle);
+        if (c == null) return;
+        if (index < 0) {
+            TextClassification tc = c.classification;
+            if (tc.getIntent() == null) return;
+            sendPendingIntent(PendingIntent.getActivity(context, tc.getText().hashCode(), tc.getIntent(),
+                    PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE));
+            return;
+        }
+        List<RemoteAction> actions = c.classification.getActions();
+        if (index < actions.size()) sendPendingIntent(actions.get(index).getActionIntent());
+    }
+
+    /** computeContextMenuColors: {background, enabled text, disabled text}; 0 for the default. */
+    int[] contextMenuColors() {
+        android.content.res.TypedArray a = context.obtainStyledAttributes(android.R.style.Widget_PopupMenu, new int[] { android.R.attr.colorBackground });
+        int background = a.getColor(0, 0);
+        a.recycle();
+        a = context.obtainStyledAttributes(android.R.style.TextAppearance_Widget_PopupMenu_Large, new int[] { android.R.attr.textColorPrimary });
+        android.content.res.ColorStateList list = a.getColorStateList(0);
+        a.recycle();
+        int enabled = list != null ? list.getColorForState(new int[] { android.R.attr.state_enabled }, 0) : 0;
+        int disabled = list != null ? list.getColorForState(new int[] { -android.R.attr.state_enabled }, 0) : 0;
+        return new int[] { background, enabled, disabled };
+    }
+
     /** The platform string for a standard item (TextContextMenuItems' strings). */
     static String standardLabel(Context context, int id) {
         Resources r = context.getResources();

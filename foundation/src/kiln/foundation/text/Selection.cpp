@@ -10,6 +10,7 @@
 #include "kiln/foundation/Gestures.h"
 #include "kiln/foundation/text/PlatformSelectionBehaviors.h"
 #include "kiln/foundation/text/contextmenu/TextContextMenu.h"
+#include "kiln/foundation/text/contextmenu/TextContextMenuProvider.h"
 #include "kiln/foundation/text/input/TextFieldBuffer.h"
 #include "kiln/runtime/Saveable.h"
 #include "kiln/text/Savers.h"
@@ -1403,6 +1404,14 @@ namespace kiln::foundation {
                 std::make_shared<SelectionManager::HandleObserver>(manager, true), std::make_shared<SelectionManager::HandleObserver>(manager, false));
         });
         Layout(mod, SimpleLayoutPolicy(), [content, m, registrarPtr = registrar, handleObservers] {
+          // ContextMenuArea (contextMenuAreaModifier's secondary click; the toolbar handler is on
+          // the container): a right click opens the dropdown menu.
+          ProvideDefaultPlatformTextContextMenuProviders([m] {
+              return ShowTextContextMenuOnSecondaryClick(Modifier{}, [m, alive = std::weak_ptr<char>(m->alive)](Offset) -> rt::Task<> {
+                  if (alive.expired() || !m->behaviors) co_return;
+                  if (const auto ts = m->GetContextTextAndSelection()) co_await m->behaviors->OnShowContextMenu(ts->first, ts->second);
+              });
+          }, [content, m, registrarPtr, handleObservers] {
             rt::Composition::Current()->Provide(LocalSelectionRegistrar, registrarPtr, content);
             // The handles (touch mode, focused, a selection that is not trivially collapsed), each
             // in its own popup at its position in the container. A scope of their own: selection
@@ -1422,6 +1431,7 @@ namespace kiln::foundation {
                 }, isLeft ? 1.0f : 0.0f, [m, isStart, observer] { SelectionHandle(*m, isStart, observer); }, rt::Key(isStart ? 0x5e1ec7 : 0x5e1ec8));
             }
             }, rt::Key(0x5e1ec6));
+          });
         });
 
         // Binds the state; on dispose the selection goes (manager.onRelease, hasFocus = false).

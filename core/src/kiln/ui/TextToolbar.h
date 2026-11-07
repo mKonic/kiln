@@ -56,6 +56,29 @@ namespace kiln::ui {
 
     enum class SelectedTextType : std::uint8_t { EditableText, StaticText };
 
+    // An icon the host drew (a theme drawable or a classification action's icon) as RGBA,
+    // premultiplied, tightly packed.
+    struct HostIcon {
+        int width = 0, height = 0;
+        std::vector<std::uint8_t> rgba;
+    };
+
+    // What the dropdown text context menu needs from the platform (DefaultTextContextMenuDropdown):
+    // the standard items' strings and action mode icons, a custom item's icon (its leadingIcon
+    // theme attribute), the classification items' titles, icons and actions, and the popup menu
+    // theme's colours (Widget.PopupMenu's colorBackground, TextAppearance.Widget.PopupMenu.Large's
+    // textColorPrimary enabled / disabled; 0 for the default).
+    struct ContextMenuHost {
+        std::function<std::string(TextToolbarItemId)> standardLabel;
+        std::function<std::optional<HostIcon>(TextToolbarItemId, int sizePx)> standardIcon;
+        std::function<std::optional<HostIcon>(int themeAttr, int sizePx)> themeIcon;
+        std::function<std::string(int classification, int index)> classificationLabel;
+        std::function<std::optional<HostIcon>(int classification, int index, int sizePx)> classificationIcon;
+        std::function<void(int classification, int index)> performClassification;
+        struct Colors { std::uint32_t background = 0, text = 0, disabledText = 0; };
+        std::function<Colors()> colors;
+    };
+
     // PlatformSelectionBehaviorsImpl's platform calls. Requests run off the main thread with
     // Compose's timeouts (300 ms to create the session, 200 ms to classify); `done` runs once,
     // on the main thread, with nothing after a timeout or a failure.

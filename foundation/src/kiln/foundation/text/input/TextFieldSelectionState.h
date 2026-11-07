@@ -97,6 +97,8 @@ namespace kiln::foundation {
         bool IsPasteAllowed() const { return Editable(); }
         // ClipboardPasteState: what the clipboard held when the toolbar last showed.
         void UpdateClipboardEntry();
+        // CommonContextMenuArea's onPreShowContextMenu: the clipboard entry, then classification.
+        rt::Task<> OnPreShowContextMenu();
         bool CanShowPasteMenuItem() const;
         bool CanShowAutofillMenuItem() const;
         void Autofill() { if (requestAutofill) requestAutofill(); }

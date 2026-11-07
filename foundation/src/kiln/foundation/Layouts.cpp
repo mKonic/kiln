@@ -579,10 +579,31 @@ namespace kiln::foundation {
             for (int i = 0; i < 9; ++i) out[i] = float(h[i]);
         }
 
+        // The layer's properties: fixed, or a block run at draw time whose reads are observed
+        // (graphicsLayer { }): a change redraws the layer without recomposing.
+        struct LayerSpec : GraphicsLayerParams {
+            std::shared_ptr<const std::function<void(GraphicsLayerParams&)>> block;
+            bool operator==(const LayerSpec& o) const {
+                return block == o.block && (block || static_cast<const GraphicsLayerParams&>(*this) == o);
+            }
+        };
         struct LayerNode final : ModifierNode, DrawModifier {
-            GraphicsLayerParams params;
-            explicit LayerNode(GraphicsLayerParams p) : params(p) {}
-            void OnParamsChanged() { InvalidateDraw(); InvalidateSemantics(); }
+            LayerSpec params;
+            explicit LayerNode(LayerSpec p) : params(std::move(p)) { Resolve(); }
+            void OnParamsChanged() { Resolve(); InvalidateDraw(); InvalidateSemantics(); }
+            void OnDetach() override { m_Watch.Unsubscribe(); }
+            struct Watch final : rt::Subscriber {
+                LayerNode* node = nullptr;
+                void OnStateChanged() override { node->Resolve(); node->InvalidateDraw(); node->InvalidateSemantics(); }
+            };
+            Watch m_Watch;
+            void Resolve() {
+                if (!params.block) return;
+                m_Watch.node = this;
+                GraphicsLayerParams p;
+                rt::Observation::Track(m_Watch, [&] { (*params.block)(p); });
+                static_cast<GraphicsLayerParams&>(params) = p;
+            }
             bool ClipsChildren() const override { return params.clip; }
             float LayerAlpha() const override { return params.alpha; }
             // translate(t) * translate(pivot) * rotate * scale * translate(-pivot).
@@ -762,7 +783,17 @@ namespace kiln::foundation {
         };
     }
 
-    Modifier GraphicsLayer(Modifier m, GraphicsLayerParams p) { return m.With<LayerNode>(p); }
+    Modifier GraphicsLayer(Modifier m, GraphicsLayerParams p) {
+        LayerSpec spec;
+        static_cast<GraphicsLayerParams&>(spec) = p;
+        return m.With<LayerNode>(spec);
+    }
+
+    Modifier GraphicsLayer(Modifier m, std::function<void(GraphicsLayerParams&)> block) {
+        LayerSpec spec;
+        spec.block = std::make_shared<const std::function<void(GraphicsLayerParams&)>>(std::move(block));
+        return m.With<LayerNode>(spec);
+    }
     void GraphicsLayerMatrix(const GraphicsLayerParams& p, Size size, float out[9]) { LayerMatrix3D(p, size, out); }
     Modifier Blur(Modifier m, Dp radiusX, Dp radiusY, BlurredEdgeTreatment e) {
         // Modifier.blur: zero radii still clip with a bounded treatment.

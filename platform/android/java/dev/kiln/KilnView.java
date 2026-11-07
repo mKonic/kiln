@@ -1110,6 +1110,13 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
     void processText(int index, boolean editable, String selected) { textServices.processText(index, editable, selected); }
     boolean canLookUp(String selected) { return textServices.canLookUp(selected); }
     void lookUp(String selected) { textServices.lookUp(selected); }
+    String menuStandardLabel(int id) { return KilnTextServices.standardLabel(getContext(), id); }
+    int[] menuStandardIcon(int id, int size) { return textServices.themeIcon(KilnTextServices.standardIconAttr(id), size); }
+    int[] menuThemeIcon(int attr, int size) { return textServices.themeIcon(attr, size); }
+    String menuClassificationLabel(int handle, int index) { return textServices.classificationLabel(handle, index); }
+    int[] menuClassificationIcon(int handle, int index, int size) { return textServices.classificationIcon(handle, index, size); }
+    void menuPerformClassification(int handle, int index) { textServices.performClassification(handle, index); }
+    int[] menuColors() { return textServices.contextMenuColors(); }
 
     // updateMenuItems: false when the data did not change.
     private boolean fillToolbar(android.view.Menu menu) {

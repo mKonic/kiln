@@ -203,3 +203,25 @@ TEST(GraphicsLayerMatrixRotatesInPerspective) {
     GraphicsLayerMatrix(q, size, h);
     CHECK(std::abs(MapH(h, { 0, 0 }).x - (-100 + 10)) < 0.01f);
 }
+
+TEST(GraphicsLayerBlockReadsStateWithoutRecomposing) {
+    Harness h;
+    rt::State<float> angle{ 0.0f };
+    LayoutNode* inner = nullptr;
+    int compositions = 0;
+    h.Run([&] {
+        ++compositions;
+        Box(GraphicsLayer(SizeMod(Modifier{}, 40_dp, 20_dp), [&](GraphicsLayerParams& p) { p.rotationZ = angle.Get(); }),
+            Alignment::TopStart(), false, [&] { Box(Capture(SizeMod(Modifier{}, 40_dp, 20_dp), inner)); });
+    });
+    CHECK(inner != nullptr);
+    const Rect before = inner->BoundsInRoot();
+    CHECK(std::abs(before.Width() - 40) < 0.5f);
+    angle.Set(90);
+    rt::Observation::ApplyChanges();
+    h.composition.Recompose();
+    h.owner.MeasureAndLayout({ 100, 100 });
+    CHECK_EQ(compositions, 1);   // the block re-ran, the content did not recompose
+    const Rect after = inner->BoundsInRoot();
+    CHECK(std::abs(after.Width() - 20) < 0.5f && std::abs(after.Height() - 40) < 0.5f);
+}

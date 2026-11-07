@@ -769,6 +769,86 @@ namespace {
                 e->DeleteLocalRef(js);
             };
             owner.SetTextClassifierHost(std::move(tc));
+            {
+                jclass mc = env->GetObjectClass(view);
+                static jmethodID mLabel = env->GetMethodID(mc, "menuStandardLabel", "(I)Ljava/lang/String;");
+                static jmethodID mIcon = env->GetMethodID(mc, "menuStandardIcon", "(II)[I");
+                static jmethodID mTheme = env->GetMethodID(mc, "menuThemeIcon", "(II)[I");
+                static jmethodID mCLabel = env->GetMethodID(mc, "menuClassificationLabel", "(II)Ljava/lang/String;");
+                static jmethodID mCIcon = env->GetMethodID(mc, "menuClassificationIcon", "(III)[I");
+                static jmethodID mPerform = env->GetMethodID(mc, "menuPerformClassification", "(II)V");
+                static jmethodID mColors = env->GetMethodID(mc, "menuColors", "()[I");
+                env->DeleteLocalRef(mc);
+                auto str = [](JNIEnv* e, jobject o) {
+                    std::string out;
+                    if (!o) return out;
+                    const char* c = e->GetStringUTFChars(static_cast<jstring>(o), nullptr);
+                    out = c;
+                    e->ReleaseStringUTFChars(static_cast<jstring>(o), c);
+                    e->DeleteLocalRef(o);
+                    return out;
+                };
+                // {width, height, ARGB...} straight alpha -> premultiplied RGBA.
+                auto icon = [](JNIEnv* e, jobject o) -> std::optional<kiln::ui::HostIcon> {
+                    if (!o) return std::nullopt;
+                    auto a = static_cast<jintArray>(o);
+                    const jsize n = e->GetArrayLength(a);
+                    std::vector<jint> v(static_cast<std::size_t>(n));
+                    e->GetIntArrayRegion(a, 0, n, v.data());
+                    e->DeleteLocalRef(o);
+                    if (n < 2 || v[0] <= 0 || v[1] <= 0 || n < 2 + v[0] * v[1]) return std::nullopt;
+                    kiln::ui::HostIcon ic{ v[0], v[1], {} };
+                    ic.rgba.resize(std::size_t(ic.width) * ic.height * 4);
+                    for (int i = 0; i < ic.width * ic.height; ++i) {
+                        const std::uint32_t p = std::uint32_t(v[std::size_t(2 + i)]);
+                        const std::uint32_t al = p >> 24;
+                        auto pm = [al](std::uint32_t c) { return std::uint8_t((c * al + 127) / 255); };
+                        ic.rgba[std::size_t(i) * 4 + 0] = pm((p >> 16) & 0xFF);
+                        ic.rgba[std::size_t(i) * 4 + 1] = pm((p >> 8) & 0xFF);
+                        ic.rgba[std::size_t(i) * 4 + 2] = pm(p & 0xFF);
+                        ic.rgba[std::size_t(i) * 4 + 3] = std::uint8_t(al);
+                    }
+                    return ic;
+                };
+                kiln::ui::ContextMenuHost menu;
+                menu.standardLabel = [str](kiln::ui::TextToolbarItemId id) {
+                    JNIEnv* e = MainEnv();
+                    return str(e, e->CallObjectMethod(g_Host->view, mLabel, jint(id)));
+                };
+                menu.standardIcon = [icon](kiln::ui::TextToolbarItemId id, int size) {
+                    JNIEnv* e = MainEnv();
+                    return icon(e, e->CallObjectMethod(g_Host->view, mIcon, jint(id), jint(size)));
+                };
+                menu.themeIcon = [icon](int attr, int size) {
+                    JNIEnv* e = MainEnv();
+                    return icon(e, e->CallObjectMethod(g_Host->view, mTheme, jint(attr), jint(size)));
+                };
+                menu.classificationLabel = [str](int handle, int index) {
+                    JNIEnv* e = MainEnv();
+                    return str(e, e->CallObjectMethod(g_Host->view, mCLabel, jint(handle), jint(index)));
+                };
+                menu.classificationIcon = [icon](int handle, int index, int size) {
+                    JNIEnv* e = MainEnv();
+                    return icon(e, e->CallObjectMethod(g_Host->view, mCIcon, jint(handle), jint(index), jint(size)));
+                };
+                menu.performClassification = [](int handle, int index) {
+                    MainEnv()->CallVoidMethod(g_Host->view, mPerform, jint(handle), jint(index));
+                };
+                menu.colors = [] {
+                    JNIEnv* e = MainEnv();
+                    kiln::ui::ContextMenuHost::Colors c;
+                    auto a = static_cast<jintArray>(e->CallObjectMethod(g_Host->view, mColors));
+                    if (!a) return c;
+                    jint v[3]{};
+                    e->GetIntArrayRegion(a, 0, 3, v);
+                    e->DeleteLocalRef(a);
+                    c.background = std::uint32_t(v[0]);
+                    c.text = std::uint32_t(v[1]);
+                    c.disabledText = std::uint32_t(v[2]);
+                    return c;
+                };
+                owner.SetContextMenuHost(std::move(menu));
+            }
             static jmethodID requestControl = env->GetMethodID(env->GetObjectClass(view), "requestInsetsControl", "(I)Z");
             static jmethodID setControlled = env->GetMethodID(env->GetObjectClass(view), "setControlledInsets", "(IIIIFF)V");
             static jmethodID finishControl = env->GetMethodID(env->GetObjectClass(view), "finishInsetsControl", "(Z)V");

@@ -223,6 +223,9 @@ namespace kiln::foundation {
         bool operator==(const GraphicsLayerParams&) const = default;
     };
     Modifier GraphicsLayer(Modifier m, GraphicsLayerParams p);
+    // graphicsLayer { }: the block sets the properties; state it reads is observed, so an
+    // animated value redraws the layer without recomposing the caller.
+    Modifier GraphicsLayer(Modifier m, std::function<void(GraphicsLayerParams&)> block);
     // The layer's full matrix (row-major 3x3, projective with rotationX/Y) for a layer of `size`.
     void GraphicsLayerMatrix(const GraphicsLayerParams& p, Size size, float out[9]);
     inline Modifier Rotate(Modifier m, float degrees) { GraphicsLayerParams p; p.rotationZ = degrees; return GraphicsLayer(std::move(m), p); }

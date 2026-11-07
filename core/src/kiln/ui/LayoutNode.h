@@ -451,6 +451,8 @@ namespace kiln::ui {
             ApplyFlagSecure();
         }
         void SetFlagSecureHost(std::function<void(bool)> host) { m_FlagSecureHost = std::move(host); }
+        void SetContextMenuHost(ContextMenuHost host) { m_ContextMenuHost = std::move(host); }
+        const ContextMenuHost& ContextMenu() const { return m_ContextMenuHost; }
         // A popup with SecureFlagPolicy::SecureOn is showing: the shared surface goes secure.
         void ApplyFlagSecure() {
             bool popupSecure = false;
@@ -587,6 +589,7 @@ namespace kiln::ui {
         rt::State<bool> m_FlagSecure{ false };
         std::function<void(bool)> m_FlagSecureHost;
         bool m_AppliedSecure = false;
+        ContextMenuHost m_ContextMenuHost;
         PopupLayer* m_PopupBackTracking = nullptr;
         // The top focusable popup takes the key focus: the focus under it is parked there.
         void SyncPopupFocus();

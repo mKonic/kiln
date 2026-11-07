@@ -86,6 +86,11 @@ namespace kiln::ui {
 
     // The window's insets (WindowInsetsHolder.current: the host view's), for composables that
     // ask whether bars are visible or read insets directly.
+    // LocalOwner: the owner of the window the content is in (what LocalView / LocalContext give
+    // Compose content: the platform services behind it).
+    class Owner;
+    inline rt::Local<Owner*> LocalOwner{ nullptr };
+
     class WindowInsetsHolder;
     inline rt::Local<WindowInsetsHolder*> LocalWindowInsets{ nullptr };
 

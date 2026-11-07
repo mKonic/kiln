@@ -841,6 +841,13 @@ namespace kiln::foundation {
         });
     }
 
+    rt::Task<> TextFieldSelectionState::OnPreShowContextMenu() {
+        UpdateClipboardEntry();
+        if (!platformSelectionBehaviors) co_return;
+        const TextFieldCharSequence v = textFieldState.VisualText();
+        co_await platformSelectionBehaviors->OnShowContextMenu(v.text, v.selection);
+    }
+
     void TextFieldSelectionState::ShowTextToolbar() {
         if (toolbarHandler) toolbarHandler->Show();
     }

@@ -207,12 +207,14 @@ namespace kiln {
         std::shared_ptr<ui::Window> window = std::make_shared<HostWindow>(&m_Owner);
         rt::State<ui::Configuration>* config = m_Configuration.get();
         rt::State<bool>* is24Hour = m_Is24Hour.get();
-        content = [config, is24Hour, window, content = std::move(content)] {
+        content = [config, is24Hour, window, owner, content = std::move(content)] {
             auto* c = rt::Composition::Current();
+            c->Provide(ui::LocalOwner, owner, [c, config, is24Hour, window, content] {
             c->Provide(ui::LocalConfiguration, config->Get(), [c, is24Hour, window, content] {
                 c->Provide(ui::LocalIs24HourFormat, is24Hour->Get(), [c, window, content] {
                     c->Provide(ui::LocalWindow, window.get(), content);
                 });
+            });
             });
         };
         m_Composition->SetContent([registry, dir, nested, tv, sound, insets, windowInfo, haptics, owner, a11yManager, content = std::move(content)] {

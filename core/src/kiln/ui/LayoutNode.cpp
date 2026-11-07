@@ -918,6 +918,8 @@ namespace kiln::ui {
         m_Popups.push_back(layer);
         UpdatePopupChildren();
         SyncPopupFocus();
+        // A focusable popup window takes the key focus: the host view has to have it.
+        if (layer->properties.focusable && m_RequestHostFocus) m_RequestHostFocus();
     }
 
     void Owner::SyncPopupFocus() {
@@ -965,6 +967,8 @@ namespace kiln::ui {
             }
         }
         SyncPopupFocus();
+        // The top focusable popup has the key focus: the host view has to have it.
+        if (layer && layer->properties.focusable && TopFocusablePopup() == layer && m_RequestHostFocus) m_RequestHostFocus();
     }
 
     PopupLayer* Owner::TopFocusablePopup() const {

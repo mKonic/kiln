@@ -40,6 +40,10 @@ namespace kiln::foundation {
         rt::Task<std::optional<TextRange>> SuggestSelectionForLongPressOrDoubleClick(std::u16string text, TextRange selection);
         // Classifies the selection before the toolbar shows, unless the kept result is for it.
         rt::Task<> OnShowSelectionToolbar(std::u16string text, TextRange selection);
+        // onShowContextMenu: the same, before the dropdown menu shows (the click is not used).
+        rt::Task<> OnShowContextMenu(std::u16string text, TextRange selection, std::optional<Offset> = std::nullopt) {
+            return OnShowSelectionToolbar(std::move(text), selection);
+        }
 
         // addSmartSelectionTextContextMenuItems: the primary action (or the legacy assist item)
         // before `child`'s items, the other actions after (all when the kept result is for this

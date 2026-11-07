@@ -317,12 +317,14 @@ namespace {
             {
                 auto& angle = RememberState(0.0f);
                 c.LaunchedEffect({}, [&angle] { return Spin(angle); });
-                GraphicsLayerParams spin;
-                spin.rotationZ = angle.Get();
-                spin.clip = true;
-                spin.shape = CornerShape::Rounded(12_dp);
-                Box(Padding(Modifier{}, 32_dp, 8_dp), Alignment::TopStart(), false, [&] {
-                    Box(Background(GraphicsLayer(SizeMod(Modifier{}, 120_dp, 64_dp), spin), kPrimaryContainer),
+                // Read in the layer block: the spin redraws the card without recomposing the gallery.
+                auto* anglePtr = &angle;
+                Box(Padding(Modifier{}, 32_dp, 8_dp), Alignment::TopStart(), false, [&, anglePtr] {
+                    Box(Background(GraphicsLayer(SizeMod(Modifier{}, 120_dp, 64_dp), [anglePtr](GraphicsLayerParams& spin) {
+                            spin.rotationZ = anglePtr->Get();
+                            spin.clip = true;
+                            spin.shape = CornerShape::Rounded(12_dp);
+                        }), kPrimaryContainer),
                         Alignment::Center(), false, [&] {
                         BasicText("Rotated", {}, { 18, kOnSurface });
                     });
