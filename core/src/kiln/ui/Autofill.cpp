@@ -16,8 +16,9 @@ namespace kiln::ui {
             return bool(c.onFillData);
         }
         bool IsRelatedToAutoCommit(const SemanticsConfiguration& c) { return c.contentType.has_value(); }
-        bool IsRelatedToAutofill(const SemanticsConfiguration& c) {
-            return bool(c.onFillData) || c.contentType.has_value() || c.contentDataType.has_value();
+        bool IsRelatedToAutofill(const SemanticsConfiguration& c, bool credentialRequests) {
+            return bool(c.onFillData) || c.contentType.has_value() || c.contentDataType.has_value() ||
+                   (credentialRequests && c.credentialRequest);
         }
         IntRect ToIntRect(const Rect& r) {
             return { int(std::lround(r.left)), int(std::lround(r.top)), int(std::lround(r.right)), int(std::lround(r.bottom)) };
@@ -154,6 +155,7 @@ namespace kiln::ui {
         AccessibilityDelegate& a11y = m_Owner.Accessibility();
         const auto& nodes = a11y.Nodes();
         std::vector<AutofillStructureNode> out;
+        m_CredentialRequests.clear();
         auto populate = [&](const AccessibilityNode& n, int parentIndex) {
             AutofillStructureNode s;
             s.id = n.id;
@@ -202,6 +204,10 @@ namespace kiln::ui {
                 s.maxTextLength = c.maxTextLength;
                 s.passwordInputType = isPassword;
             }
+            if (m_Host.credentialRequestsSupported && c.credentialRequest) {
+                s.credentialRequest = c.credentialRequest;
+                m_CredentialRequests[n.id] = c.credentialRequest;
+            }
             out.push_back(std::move(s));
             return int(out.size()) - 1;
         };
@@ -217,7 +223,7 @@ namespace kiln::ui {
                 const auto it = nodes.find(childId);
                 if (it == nodes.end() || it->second.fake) continue;
                 const AccessibilityNode& child = it->second;
-                if (!IsRelatedToAutofill(child.config)) {
+                if (!IsRelatedToAutofill(child.config, m_Host.credentialRequestsSupported)) {
                     stack.push_back({ &child, parentIndex });
                     continue;
                 }
@@ -225,6 +231,20 @@ namespace kiln::ui {
             }
         }
         return out;
+    }
+
+    void AutofillManager::OnCredentialResult(int id, const Credential& credential) {
+        const auto it = m_CredentialRequests.find(id);
+        if (it == m_CredentialRequests.end()) return;
+        const auto request = it->second;   // the callback may rebuild the structure
+        if (request->onResult) request->onResult(credential);
+    }
+
+    void AutofillManager::OnCredentialError(int id, const std::string& type, const std::string& message) {
+        const auto it = m_CredentialRequests.find(id);
+        if (it == m_CredentialRequests.end()) return;
+        const auto request = it->second;
+        if (request->onError) request->onError(type, message);
     }
 
     void AutofillManager::PerformAutofill(int id, const FillableData& value) {

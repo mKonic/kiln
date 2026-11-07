@@ -5,6 +5,7 @@
 #include <cmath>
 #include <kiln/foundation/Compose.h>
 #include <kiln/foundation/text/BasicSecureTextField.h>
+#include <kiln/foundation/Semantics.h>
 #include <kiln/graphics/PathEffect.h>
 #include <kiln/foundation/MeshGradient.h>
 #include <kiln/foundation/Gestures.h>
@@ -195,7 +196,16 @@ namespace {
                 Alignment::CenterStart(), false, [&] {
                 BasicSecureTextFieldOptions opt;
                 opt.textStyle = { 16, kOnSurface };
-                BasicSecureTextField(password, Padding(FillMax(Modifier{}, Axis::Horizontal), 16_dp, 16_dp), opt);
+                // Credential Manager offers saved passwords for it (Android 15+).
+                static const auto credentialRequest = [] {
+                    auto r = std::make_shared<kiln::ui::CredentialRequestData>();
+                    r->options = { kiln::ui::GetPasswordOption() };
+                    return r;
+                }();
+                BasicSecureTextField(password,
+                                     Semantics(Padding(FillMax(Modifier{}, Axis::Horizontal), 16_dp, 16_dp),
+                                               [](kiln::ui::SemanticsConfiguration& c) { c.credentialRequest = credentialRequest; }),
+                                     opt);
             });
             auto& taps = kiln::rt::RememberSaveableState(0);
             auto& pressed = RememberState(false);

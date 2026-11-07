@@ -6,6 +6,7 @@
 #include "kiln/foundation/text/BasicSecureTextField.h"
 #include "kiln/foundation/Focus.h"
 #include "kiln/foundation/Layouts.h"
+#include "kiln/foundation/Semantics.h"
 #include "kiln/foundation/content/ReceiveContent.h"
 #include "kiln/foundation/text/contextmenu/TextContextMenu.h"
 #include "kiln/ui/Draw.h"
@@ -882,6 +883,42 @@ TEST(FieldAutofillNotifiesFillsAndDescribesItself) {
     h.Pump({ 300, 300 });
     CHECK(std::find(log.begin(), log.end(), "invisible") != log.end());
     CHECK(std::find(log.begin(), log.end(), "commit") != log.end());
+}
+
+TEST(CredentialRequestsReachTheStructureAndTheirCallback) {
+    FieldHarness h;
+    ui::AutofillHost host;
+    host.credentialRequestsSupported = true;
+    h.owner.SetAutofillHost(host);
+    std::string received;
+    auto request = std::make_shared<ui::CredentialRequestData>();
+    request->options = { ui::GetPasswordOption(), ui::GetPublicKeyCredentialOption("{\"challenge\":\"x\"}") };
+    request->onResult = [&](const ui::Credential& c) {
+        const std::string* id = c.data.GetString(ui::credentials::kBundleKeyId);
+        received = c.type + " " + (id ? *id : "");
+    };
+    h.comp.SetContent([&] {
+        Column(Modifier{}, [&] {
+            Box(SizeMod(Semantics(Modifier{}, [request](ui::SemanticsConfiguration& c) { c.credentialRequest = request; }), Dp(50), Dp(20)));
+        });
+    });
+    h.Pump({ 300, 300 });
+    const auto structure = h.owner.Autofill()->Structure();
+    const ui::AutofillStructureNode* node = nullptr;
+    for (const auto& n : structure) if (n.credentialRequest) node = &n;
+    CHECK(node != nullptr);
+    if (node) {
+        // androidx.credentials' bundles: the password option's allowed ids and priority.
+        const auto& password = node->credentialRequest->options[0];
+        CHECK(password.type == "android.credentials.TYPE_PASSWORD_CREDENTIAL");
+        const auto* priority = password.requestData.Get(ui::credentials::kBundleKeyTypePriorityValue);
+        CHECK(priority && std::get<std::int32_t>(*priority) == 1000);
+        ui::Credential c;
+        c.type = ui::credentials::kTypePasswordCredential;
+        c.data.Put(ui::credentials::kBundleKeyId, std::string("me"));
+        h.owner.Autofill()->OnCredentialResult(node->id, c);
+    }
+    CHECK(received == "android.credentials.TYPE_PASSWORD_CREDENTIAL me");
 }
 
 TEST(DoubleTapAndMouseDragSelect) {

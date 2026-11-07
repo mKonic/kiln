@@ -6,6 +6,7 @@
 // into AccessibilityNodeInfo (spec 01 req. 5).
 
 #include "kiln/ui/Geometry.h"
+#include "kiln/ui/Credentials.h"
 #include "kiln/ui/Modifier.h"
 
 #include <functional>
@@ -126,6 +127,9 @@ namespace kiln::ui {
         std::optional<int> contentDataType;
         std::optional<FillableData> fillableData;
         std::optional<std::string> inputText;
+        // CredentialRequest (API 34+): a Credential Manager request for this node; merging keeps
+        // the parent's.
+        std::shared_ptr<const CredentialRequestData> credentialRequest;
         // Scrolling.
         std::optional<ScrollAxisRange> horizontalScrollAxisRange, verticalScrollAxisRange;
         std::optional<std::pair<int, int>> collectionInfo;     // rows, columns; -1 = unknown (lazy)

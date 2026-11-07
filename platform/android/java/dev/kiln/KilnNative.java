@@ -84,6 +84,9 @@ final class KilnNative {
     static native Object[] autofillStructure();
     /** One autofilled value; kind 0 text, 1 toggle, 2 list, 3 date. */
     static native void autofillPerform(int id, int kind, String text, int intValue, long date);
+    /** A pending credential request's credential (its data as KilnAutofill's bundle arrays). */
+    static native void credentialResult(int id, String type, Object[] data);
+    static native void credentialError(int id, String type, String message);
     static native boolean a11yFlushBounds();
     static native boolean a11yCanScroll(boolean vertical, int direction, float x, float y);
     // Content capture and translation.

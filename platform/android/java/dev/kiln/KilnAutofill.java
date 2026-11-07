@@ -85,6 +85,7 @@ final class KilnAutofill {
         int[] ints = (int[]) data[0];
         String[] strs = (String[]) data[1];
         long[] dates = (long[]) data[2];
+        Object[] requests = data.length > 3 ? (Object[]) data[3] : null;
         int n = ints.length / INTS;
         if (n == 0) return;
         AutofillId rootId = view.getAutofillId();
@@ -102,6 +103,8 @@ final class KilnAutofill {
             }
             structures[i] = s;
             populateNode(s, ints, i * INTS, strs, i * STRINGS, dates[i], rootId, packageName);
+            if (Build.VERSION.SDK_INT >= 35 && requests != null && requests[i] != null)
+                setPendingCredentialRequest(s, ints[i * INTS], (Object[]) requests[i]);
         }
     }
 
@@ -137,6 +140,83 @@ final class KilnAutofill {
             if (Build.VERSION.SDK_INT >= 28 && maxLength >= 0) s.setMaxTextLength(maxLength);
             if ((flags & 2048) != 0) s.setInputType(InputType.TYPE_CLASS_TEXT | EditorInfo.TYPE_TEXT_VARIATION_PASSWORD);
         }
+    }
+
+    // --- Credential Manager requests (AutofillApi35Helper.setPendingCredentialRequest) ----------
+
+    private final android.os.Handler main = new android.os.Handler(android.os.Looper.getMainLooper());
+
+    private void setPendingCredentialRequest(ViewStructure s, int id, Object[] request) {
+        android.credentials.GetCredentialRequest.Builder b = new android.credentials.GetCredentialRequest.Builder(toBundle((Object[]) request[0]));
+        for (Object o : (Object[]) request[1]) {
+            Object[] opt = (Object[]) o;
+            b.addCredentialOption(new android.credentials.CredentialOption.Builder(
+                    (String) opt[0], toBundle((Object[]) opt[1]), toBundle((Object[]) opt[2]))
+                    .setIsSystemProviderRequired("true".equals(opt[3])).build());
+        }
+        s.setPendingCredentialRequest(b.build(),
+                new android.os.OutcomeReceiver<android.credentials.GetCredentialResponse, android.credentials.GetCredentialException>() {
+                    @Override public void onResult(android.credentials.GetCredentialResponse response) {
+                        android.credentials.Credential c = response.getCredential();
+                        Object[] data = fromBundle(c.getData());
+                        String type = c.getType();
+                        main.post(() -> KilnNative.credentialResult(id, type, data));
+                    }
+                    @Override public void onError(android.credentials.GetCredentialException e) {
+                        String type = e.getType(), message = e.getMessage();
+                        main.post(() -> KilnNative.credentialError(id, type, message));
+                    }
+                });
+    }
+
+    /** Native's bundle arrays {String[] keys, int[] kinds, Object[] values} as a Bundle. */
+    private static android.os.Bundle toBundle(Object[] arrays) {
+        android.os.Bundle b = new android.os.Bundle();
+        String[] keys = (String[]) arrays[0];
+        int[] kinds = (int[]) arrays[1];
+        Object[] values = (Object[]) arrays[2];
+        for (int i = 0; i < keys.length; ++i) {
+            Object v = values[i];
+            switch (kinds[i]) {
+                case 0: b.putString(keys[i], (String) v); break;
+                case 1: b.putBoolean(keys[i], "true".equals(v)); break;
+                case 2: b.putInt(keys[i], Integer.parseInt((String) v)); break;
+                case 3: b.putStringArrayList(keys[i], new java.util.ArrayList<>(java.util.Arrays.asList((String[]) v))); break;
+                case 4: b.putByteArray(keys[i], (byte[]) v); break;
+                default: break;
+            }
+        }
+        return b;
+    }
+
+    /** A Bundle's String, boolean, int, String list and byte[] values as native's arrays. */
+    @SuppressWarnings("deprecation")
+    private static Object[] fromBundle(android.os.Bundle b) {
+        java.util.ArrayList<String> keys = new java.util.ArrayList<>();
+        java.util.ArrayList<Integer> kinds = new java.util.ArrayList<>();
+        java.util.ArrayList<Object> values = new java.util.ArrayList<>();
+        for (String k : b.keySet()) {
+            Object v = b.get(k);
+            int kind;
+            Object out;
+            if (v instanceof String) { kind = 0; out = v; }
+            else if (v instanceof Boolean) { kind = 1; out = v.toString(); }
+            else if (v instanceof Integer) { kind = 2; out = v.toString(); }
+            else if (v instanceof java.util.ArrayList) {
+                java.util.ArrayList<?> list = (java.util.ArrayList<?>) v;
+                String[] strs = new String[list.size()];
+                for (int i = 0; i < strs.length; ++i) strs[i] = String.valueOf(list.get(i));
+                kind = 3;
+                out = strs;
+            } else if (v instanceof byte[]) { kind = 4; out = v; }
+            else continue;
+            keys.add(k);
+            kinds.add(kind);
+            values.add(out);
+        }
+        int[] k = new int[kinds.size()];
+        for (int i = 0; i < k.length; ++i) k[i] = kinds.get(i);
+        return new Object[] { keys.toArray(new String[0]), k, values.toArray() };
     }
 
     /** performAutofill. */

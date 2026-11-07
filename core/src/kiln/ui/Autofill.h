@@ -31,6 +31,8 @@ namespace kiln::ui {
         std::function<void()> commit;
         std::function<void()> cancel;
         std::function<void(int id, IntRect bounds)> requestAutofill;
+        // CredentialRequest nodes are autofill nodes (API 34+).
+        bool credentialRequestsSupported = false;
     };
 
     // One ViewStructure node (ViewStructure.populate).
@@ -51,6 +53,7 @@ namespace kiln::ui {
         std::optional<std::string> className;
         std::optional<int> maxTextLength;
         bool passwordInputType = false;        // TYPE_CLASS_TEXT | TYPE_TEXT_VARIATION_PASSWORD
+        std::shared_ptr<const CredentialRequestData> credentialRequest;   // setPendingCredentialRequest
     };
 
     class AutofillManager {
@@ -69,6 +72,9 @@ namespace kiln::ui {
         std::vector<AutofillStructureNode> Structure();
         // performAutofill: one value for the node with this semantics id.
         void PerformAutofill(int id, const FillableData& value);
+        // The pending credential request's outcome for the node (from the last Structure()).
+        void OnCredentialResult(int id, const Credential& credential);
+        void OnCredentialError(int id, const std::string& type, const std::string& message);
 
     private:
         struct Snapshot {
@@ -87,6 +93,7 @@ namespace kiln::ui {
         std::unordered_map<int, Snapshot> m_Snapshots;
         std::uint64_t m_SyncedVersion = ~0ull;
         std::set<int> m_CurrentlyDisplayedIds;
+        std::unordered_map<int, std::shared_ptr<const CredentialRequestData>> m_CredentialRequests;
         bool m_PendingAutofillCommit = false;
     };
 

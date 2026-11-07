@@ -412,6 +412,7 @@ namespace {
                 af.requestAutofill = [](int id, kiln::ui::IntRect r) {
                     MainEnv()->CallVoidMethod(g_Host->view, afRequest, jint(id), jint(r.left), jint(r.top), jint(r.right), jint(r.bottom));
                 };
+                af.credentialRequestsSupported = android_get_device_api_level() >= 34;
                 owner.SetAutofillHost(std::move(af));
             }
             static jmethodID setBack = env->GetMethodID(env->GetObjectClass(view), "setBackEnabled", "(Z)V");
@@ -1539,6 +1540,120 @@ namespace {
     }
     void A11yCheckSemantics(JNIEnv*, jclass) { if (g_Host) A11y().CheckForSemanticsChanges(); }
 
+    // A Bundle as {String[] keys, int[] kinds, Object[] values}: kind 0 String, 1 boolean and 2 int
+    // (their text), 3 String[], 4 byte[] (null allowed).
+    jobjectArray JavaBundle(JNIEnv* env, const kiln::ui::Bundle& b) {
+        jclass oc = env->FindClass("java/lang/Object");
+        jclass sc = env->FindClass("java/lang/String");
+        const jsize n = jsize(b.entries.size());
+        jobjectArray keys = env->NewObjectArray(n, sc, nullptr);
+        jobjectArray values = env->NewObjectArray(n, oc, nullptr);
+        std::vector<jint> kinds;
+        for (jsize i = 0; i < n; ++i) {
+            const auto& [k, v] = b.entries[std::size_t(i)];
+            jstring jk = JavaString(env, kiln::foundation::ToUtf16(k));
+            env->SetObjectArrayElement(keys, i, jk);
+            env->DeleteLocalRef(jk);
+            jobject jv = nullptr;
+            if (const auto* str = std::get_if<std::string>(&v)) { kinds.push_back(0); jv = JavaString(env, kiln::foundation::ToUtf16(*str)); }
+            else if (const auto* bo = std::get_if<bool>(&v)) { kinds.push_back(1); jv = env->NewStringUTF(*bo ? "true" : "false"); }
+            else if (const auto* in = std::get_if<std::int32_t>(&v)) { kinds.push_back(2); jv = env->NewStringUTF(std::to_string(*in).c_str()); }
+            else if (const auto* list = std::get_if<std::vector<std::string>>(&v)) { kinds.push_back(3); jv = JavaStrings(env, *list); }
+            else if (const auto* bytes = std::get_if<std::optional<std::vector<std::uint8_t>>>(&v)) {
+                kinds.push_back(4);
+                if (*bytes) {
+                    jbyteArray a = env->NewByteArray(jsize((*bytes)->size()));
+                    env->SetByteArrayRegion(a, 0, jsize((*bytes)->size()), reinterpret_cast<const jbyte*>((*bytes)->data()));
+                    jv = a;
+                }
+            }
+            if (jv) {
+                env->SetObjectArrayElement(values, i, jv);
+                env->DeleteLocalRef(jv);
+            }
+        }
+        jintArray jkinds = env->NewIntArray(n);
+        env->SetIntArrayRegion(jkinds, 0, n, kinds.data());
+        jobjectArray out = env->NewObjectArray(3, oc, nullptr);
+        env->SetObjectArrayElement(out, 0, keys);
+        env->SetObjectArrayElement(out, 1, jkinds);
+        env->SetObjectArrayElement(out, 2, values);
+        for (jobject o : { (jobject)keys, (jobject)jkinds, (jobject)values, (jobject)oc, (jobject)sc }) env->DeleteLocalRef(o);
+        return out;
+    }
+
+    kiln::ui::Bundle BundleFromJava(JNIEnv* env, jobjectArray b) {
+        kiln::ui::Bundle out;
+        if (!b) return out;
+        auto keys = static_cast<jobjectArray>(env->GetObjectArrayElement(b, 0));
+        auto kinds = static_cast<jintArray>(env->GetObjectArrayElement(b, 1));
+        auto values = static_cast<jobjectArray>(env->GetObjectArrayElement(b, 2));
+        const auto ks = StringsFromJava(env, keys);
+        std::vector<jint> kd(std::size_t(env->GetArrayLength(kinds)));
+        env->GetIntArrayRegion(kinds, 0, jsize(kd.size()), kd.data());
+        auto text = [&](jobject o) {
+            const char* c = env->GetStringUTFChars(static_cast<jstring>(o), nullptr);
+            std::string r(c);
+            env->ReleaseStringUTFChars(static_cast<jstring>(o), c);
+            return r;
+        };
+        for (std::size_t i = 0; i < ks.size() && i < kd.size(); ++i) {
+            if (!ks[i]) continue;
+            jobject v = env->GetObjectArrayElement(values, jsize(i));
+            switch (kd[i]) {
+                case 0: if (v) out.Put(*ks[i], text(v)); break;
+                case 1: if (v) out.Put(*ks[i], text(v) == "true"); break;
+                case 2: if (v) out.Put(*ks[i], std::int32_t(std::stol(text(v)))); break;
+                case 3: {
+                    std::vector<std::string> list;
+                    if (v) for (auto& e : StringsFromJava(env, static_cast<jobjectArray>(v))) list.push_back(e.value_or(""));
+                    out.Put(*ks[i], std::move(list));
+                    break;
+                }
+                case 4: {
+                    std::optional<std::vector<std::uint8_t>> bytes;
+                    if (v) {
+                        bytes.emplace(std::size_t(env->GetArrayLength(static_cast<jbyteArray>(v))));
+                        env->GetByteArrayRegion(static_cast<jbyteArray>(v), 0, jsize(bytes->size()), reinterpret_cast<jbyte*>(bytes->data()));
+                    }
+                    out.Put(*ks[i], std::move(bytes));
+                    break;
+                }
+                default: break;
+            }
+            if (v) env->DeleteLocalRef(v);
+        }
+        for (jobject o : { (jobject)keys, (jobject)kinds, (jobject)values }) env->DeleteLocalRef(o);
+        return out;
+    }
+
+    // A GetCredentialRequest as {data bundle, Object[] options}; an option is {type, request
+    // bundle, candidate query bundle, "true" / "false" for isSystemProviderRequired}.
+    jobjectArray JavaCredentialRequest(JNIEnv* env, const kiln::ui::CredentialRequestData& r) {
+        jclass oc = env->FindClass("java/lang/Object");
+        jobjectArray options = env->NewObjectArray(jsize(r.options.size()), oc, nullptr);
+        for (std::size_t i = 0; i < r.options.size(); ++i) {
+            const auto& o = r.options[i];
+            jobjectArray jo = env->NewObjectArray(4, oc, nullptr);
+            jstring type = JavaString(env, kiln::foundation::ToUtf16(o.type));
+            jobjectArray rq = JavaBundle(env, o.requestData), cq = JavaBundle(env, o.candidateQueryData);
+            jstring sys = env->NewStringUTF(o.isSystemProviderRequired ? "true" : "false");
+            env->SetObjectArrayElement(jo, 0, type);
+            env->SetObjectArrayElement(jo, 1, rq);
+            env->SetObjectArrayElement(jo, 2, cq);
+            env->SetObjectArrayElement(jo, 3, sys);
+            for (jobject x : { (jobject)type, (jobject)rq, (jobject)cq, (jobject)sys }) env->DeleteLocalRef(x);
+            env->SetObjectArrayElement(options, jsize(i), jo);
+            env->DeleteLocalRef(jo);
+        }
+        jobjectArray out = env->NewObjectArray(2, oc, nullptr);
+        jobjectArray data = JavaBundle(env, r.data);
+        env->SetObjectArrayElement(out, 0, data);
+        env->SetObjectArrayElement(out, 1, options);
+        for (jobject x : { (jobject)data, (jobject)options, (jobject)oc }) env->DeleteLocalRef(x);
+        return out;
+    }
+
     // populateViewStructure as flat arrays: 11 ints per node (id, parent index, autofill type or
     // -1, value kind or -1, toggle / list value, left, top, right, bottom, flags, max length or
     // -1), 5 strings (value text, hints joined by newlines, content description, text, class
@@ -1575,7 +1690,17 @@ namespace {
             strs.push_back(n.className);
         }
         jclass oc = env->FindClass("java/lang/Object");
-        jobjectArray out = env->NewObjectArray(3, oc, nullptr);
+        jobjectArray out = env->NewObjectArray(4, oc, nullptr);
+        // The credential requests, one per node (null without one).
+        jobjectArray requests = env->NewObjectArray(jsize(nodes.size()), oc, nullptr);
+        for (std::size_t i = 0; i < nodes.size(); ++i) {
+            if (!nodes[i].credentialRequest) continue;
+            jobjectArray r = JavaCredentialRequest(env, *nodes[i].credentialRequest);
+            env->SetObjectArrayElement(requests, jsize(i), r);
+            env->DeleteLocalRef(r);
+        }
+        env->SetObjectArrayElement(out, 3, requests);
+        env->DeleteLocalRef(requests);
         env->DeleteLocalRef(oc);
         jintArray ji = env->NewIntArray(jsize(ints.size()));
         env->SetIntArrayRegion(ji, 0, jsize(ints.size()), ints.data());
@@ -1595,6 +1720,33 @@ namespace {
         env->SetObjectArrayElement(out, 2, jl);
         for (jobject o : { (jobject)ji, (jobject)js, (jobject)jl }) env->DeleteLocalRef(o);
         return out;
+    }
+
+    // A pending credential request's outcome.
+    void CredentialResult(JNIEnv* env, jclass, jint id, jstring type, jobjectArray data) {
+        if (!g_Host || !g_Host->app->GetOwner().Autofill()) return;
+        kiln::ui::Credential c;
+        if (type) {
+            const char* t = env->GetStringUTFChars(type, nullptr);
+            c.type = t;
+            env->ReleaseStringUTFChars(type, t);
+        }
+        c.data = BundleFromJava(env, data);
+        g_Host->app->GetOwner().Autofill()->OnCredentialResult(id, c);
+        g_Host->app->RequestFrame();
+    }
+
+    void CredentialError(JNIEnv* env, jclass, jint id, jstring type, jstring message) {
+        if (!g_Host || !g_Host->app->GetOwner().Autofill()) return;
+        auto str = [&](jstring s) {
+            if (!s) return std::string();
+            const char* c = env->GetStringUTFChars(s, nullptr);
+            std::string r(c);
+            env->ReleaseStringUTFChars(s, c);
+            return r;
+        };
+        g_Host->app->GetOwner().Autofill()->OnCredentialError(id, str(type), str(message));
+        g_Host->app->RequestFrame();
     }
 
     // performAutofill: one value (kind: 0 text, 1 toggle, 2 list, 3 date).
@@ -1812,6 +1964,8 @@ extern "C" JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void*) {
         { "a11yCheckSemantics", "()V", reinterpret_cast<void*>(&A11yCheckSemantics) },
         { "autofillStructure", "()[Ljava/lang/Object;", reinterpret_cast<void*>(&AutofillStructure) },
         { "autofillPerform", "(IILjava/lang/String;IJ)V", reinterpret_cast<void*>(&AutofillPerform) },
+        { "credentialResult", "(ILjava/lang/String;[Ljava/lang/Object;)V", reinterpret_cast<void*>(&CredentialResult) },
+        { "credentialError", "(ILjava/lang/String;Ljava/lang/String;)V", reinterpret_cast<void*>(&CredentialError) },
         { "a11yFlushBounds", "()Z", reinterpret_cast<void*>(&A11yFlushBounds) },
         { "a11yCanScroll", "(ZIFF)Z", reinterpret_cast<void*>(&A11yCanScroll) },
         { "ccStart", "()V", reinterpret_cast<void*>(&CcStart) },

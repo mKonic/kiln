@@ -121,6 +121,7 @@ namespace kiln::ui {
         Take(collectionInfo, o.collectionInfo); Take(collectionItemInfo, o.collectionItemInfo);
         Take(contentType, o.contentType); Take(contentDataType, o.contentDataType);
         Take(fillableData, o.fillableData); Take(inputText, o.inputText); Take(onFillData, o.onFillData);
+        if (o.credentialRequest) credentialRequest = o.credentialRequest;
         Take(onClick, o.onClick); Take(onClickLabel, o.onClickLabel);
         Take(onLongClick, o.onLongClick); Take(onLongClickLabel, o.onLongClickLabel);
         Take(setText, o.setText); Take(insertTextAtCursor, o.insertTextAtCursor); Take(setSelection, o.setSelection);
@@ -184,7 +185,8 @@ namespace kiln::ui {
                bool(scrollViewportLength) == bool(o.scrollViewportLength) && bool(scrollViewportPadding) == bool(o.scrollViewportPadding) &&
                bool(pageUp) == bool(o.pageUp) && bool(pageDown) == bool(o.pageDown) && bool(pageLeft) == bool(o.pageLeft) &&
                bool(pageRight) == bool(o.pageRight) && contentType == o.contentType && contentDataType == o.contentDataType &&
-               fillableData == o.fillableData && inputText == o.inputText && bool(onFillData) == bool(o.onFillData);
+               fillableData == o.fillableData && inputText == o.inputText && bool(onFillData) == bool(o.onFillData) &&
+               credentialRequest == o.credentialRequest;
     }
 
     FillableData FillableData::FromText(std::u16string_view text) {
