@@ -37,6 +37,8 @@ namespace kiln::foundation {
         // together to fit the min dimension.
         gfx::Outline CreateOutline(Size size, ui::LayoutDirection dir, const ui::Density& d) const final;
         virtual gfx::Outline CreateOutline(Size size, float ts, float te, float be, float bs, ui::LayoutDirection dir) const = 0;
+        // CornerBasedShape.copy: the same kind of shape with other corners.
+        virtual std::shared_ptr<const CornerBasedShape> Copy(CornerSize ts, CornerSize te, CornerSize be, CornerSize bs) const = 0;
         CornerSize topStart, topEnd, bottomEnd, bottomStart;
     };
 
@@ -46,6 +48,7 @@ namespace kiln::foundation {
         bool absolute = false;   // AbsoluteRoundedCornerShape: no RTL mirroring
         gfx::Outline CreateOutline(Size size, float ts, float te, float be, float bs, ui::LayoutDirection dir) const override;
         bool Equals(const gfx::Shape& o) const override;
+        std::shared_ptr<const CornerBasedShape> Copy(CornerSize ts, CornerSize te, CornerSize be, CornerSize bs) const override;
     };
 
     class CutCornerShape final : public CornerBasedShape {
@@ -54,6 +57,7 @@ namespace kiln::foundation {
         bool absolute = false;
         gfx::Outline CreateOutline(Size size, float ts, float te, float be, float bs, ui::LayoutDirection dir) const override;
         bool Equals(const gfx::Shape& o) const override;
+        std::shared_ptr<const CornerBasedShape> Copy(CornerSize ts, CornerSize te, CornerSize be, CornerSize bs) const override;
     };
 
     class RectangleShapeImpl final : public gfx::Shape {

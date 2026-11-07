@@ -176,4 +176,18 @@ namespace kiln::ui {
         bool operator==(const Color&) const = default;
     };
 
+    // Color.compositeOver: this colour drawn over `background` (sRGB, straight alpha), packed
+    // like Compose's UncheckedColor (each component * 255 + 0.5, truncated).
+    inline Color CompositeOver(Color foreground, Color background) {
+        auto ch = [](Color c, int shift) { return float((c.argb >> shift) & 0xff) / 255.0f; };
+        const float fgA = ch(foreground, 24), bgA = ch(background, 24);
+        const float a = fgA + (bgA * (1.0f - fgA));
+        auto comp = [&](int shift) {
+            const float fgC = ch(foreground, shift), bgC = ch(background, shift);
+            return a == 0.0f ? 0.0f : ((fgC * fgA) + ((bgC * bgA) * (1.0f - fgA))) / a;
+        };
+        auto pack = [](float v) { return std::uint32_t(int(v * 255.0f + 0.5f)); };
+        return Color((pack(a) << 24) | (pack(comp(16)) << 16) | (pack(comp(8)) << 8) | pack(comp(0)));
+    }
+
 }

@@ -45,6 +45,10 @@ namespace kiln::material3::tokens {
             if (rectangle) return foundation::RectangleShape();
             return foundation::RoundedCorner(topStart, topEnd, bottomEnd, bottomStart);
         }
+        // The RoundedCornerShape (for CornerBasedShape slots; not for RectangleShape).
+        std::shared_ptr<const foundation::CornerBasedShape> ToCornerBasedShape() const {
+            return std::make_shared<foundation::RoundedCornerShape>(topStart, topEnd, bottomEnd, bottomStart);
+        }
         constexpr bool operator==(const ShapeValue&) const = default;
     };
 

@@ -53,6 +53,18 @@ namespace kiln::foundation {
 
     ShapePtr RoundedCorner(CornerSize a) { return std::make_shared<RoundedCornerShape>(a, a, a, a); }
     ShapePtr RoundedCorner(CornerSize ts, CornerSize te, CornerSize be, CornerSize bs) { return std::make_shared<RoundedCornerShape>(ts, te, be, bs); }
+    std::shared_ptr<const CornerBasedShape> RoundedCornerShape::Copy(CornerSize ts, CornerSize te, CornerSize be, CornerSize bs) const {
+        auto s = std::make_shared<RoundedCornerShape>(ts, te, be, bs);
+        s->absolute = absolute;
+        return s;
+    }
+
+    std::shared_ptr<const CornerBasedShape> CutCornerShape::Copy(CornerSize ts, CornerSize te, CornerSize be, CornerSize bs) const {
+        auto s = std::make_shared<CutCornerShape>(ts, te, be, bs);
+        s->absolute = absolute;
+        return s;
+    }
+
     ShapePtr AbsoluteRoundedCorner(CornerSize tl, CornerSize tr, CornerSize br, CornerSize bl) {
         auto s = std::make_shared<RoundedCornerShape>(tl, tr, br, bl);
         s->absolute = true;
