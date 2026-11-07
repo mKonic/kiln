@@ -2,3 +2,4 @@ PLAN.md
 CHANGELOG.md
 design/
 build/
+__pycache__/
