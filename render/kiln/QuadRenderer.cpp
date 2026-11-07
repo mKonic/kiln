@@ -97,6 +97,7 @@ namespace kiln {
             vl.stepMode = VertexStepMode::Vertex;
             vl.attributes.push_back({ 0, Format::RG32_SFLOAT, 0 });
             vl.attributes.push_back({ 1, Format::RGBA32_SFLOAT, 8 });
+            vl.attributes.push_back({ 2, Format::RGBA32_SFLOAT, 24 });
             tri.vertexBuffers.push_back(vl);
             tri.pushConstantSize = 80;   // viewport, origin, clip (rect, radii, inverse, enabled)
             tri.topology = PrimitiveTopology::TriangleList;

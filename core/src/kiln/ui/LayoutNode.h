@@ -253,6 +253,11 @@ namespace kiln::ui {
         // Measures dirty nodes (root with the window size) and places what moved.
         void MeasureAndLayout(IntSize window);
         void Draw(const DrawTarget& target);
+        // The window's light for elevation shadows (the host sets it from the display and the
+        // window's place on it); unset, the framework light over a window at the display's
+        // top-left the size of this one.
+        void SetShadowLight(std::optional<gfx::ShadowLight> light) { m_ShadowLight = light; }
+        gfx::ShadowLight ShadowLight() const;
 
         // Pointer input: hit test on press, dispatch in three passes along the kept path.
         void ProcessPointer(const RawPointerEvent& event);
@@ -669,6 +674,7 @@ namespace kiln::ui {
         std::function<void()> m_RequestFrame;
         std::set<LayoutNode*, ByDepth> m_MeasureDirty, m_LayoutDirty;
         IntSize m_Window;
+        std::optional<gfx::ShadowLight> m_ShadowLight;
         ViewConfiguration m_Config;
         struct Tracked { std::vector<HitEntry> path; Offset position; bool pressed = false; std::int64_t uptime = 0; PointerType type{}; };
         std::map<std::int64_t, Tracked> m_Pointers;

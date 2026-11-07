@@ -48,6 +48,8 @@ final class KilnNative {
                                            float bottom, boolean hostHasFocus);
     static native void hostFocusChanged(int win, boolean focused);
     static native void windowFocusChanged(int win, boolean focused);
+    /** The window's light for elevation shadows (HardwareRenderer.setLightSourceGeometry / Alpha). */
+    static native void setShadowLight(int win, float x, float y, float z, float radius, float ambientAlpha, float spotAlpha);
     static native void setWindowInsets(int win, int[] data);
     static native void insetsControlReady(int win, int[] hiddenShownCurrent);
     static native void insetsControlEnded(int win);

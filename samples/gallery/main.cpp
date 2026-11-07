@@ -264,6 +264,20 @@ namespace {
                 });
                 BasicText("Menu picked: " + picked.Get(), Padding(Modifier{}, 16_dp, 0_dp), { 14, kVariant });
             }
+            // Elevation shadows under the window's light (Modifier.shadow): a card at 6 dp, a circle
+            // at 12 dp and a translucent card at 8 dp, whose shadow shows through it.
+            Row(Padding(Modifier{}, 16_dp, 16_dp), Arrangement::SpacedBy(24_dp), AlignmentV::CenterVertically(), [] {
+                Box(Background(ShadowMod(SizeMod(Modifier{}, 96_dp, 64_dp), 6_dp, RoundedCorner(12_dp)), Color(0xFFFFFFFFu)),
+                    Alignment::Center(), false, [] { BasicText("6 dp", {}, { 14, kOnSurface }); });
+                Box(Background(ShadowMod(SizeMod(Modifier{}, 56_dp, 56_dp), 12_dp, CircleShape()), kPrimaryContainer));
+                GraphicsLayerParams p;
+                p.alpha = 0.6f;
+                p.shadowElevation = 8 * 2.625f;
+                p.clip = true;
+                p.clipShape = RoundedCorner(12_dp);
+                Box(Background(GraphicsLayer(SizeMod(Modifier{}, 96_dp, 64_dp), p), Color(0xFFFFFFFFu)),
+                    Alignment::Center(), false, [] { BasicText("alpha 0.6", {}, { 14, kOnSurface }); });
+            });
             // The platform's Material You colours as a dynamic colour scheme (baseline when the
             // platform has none): primary, secondary, tertiary, surface container.
             {

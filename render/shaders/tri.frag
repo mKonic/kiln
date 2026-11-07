@@ -1,5 +1,6 @@
 #version 450
 layout(location = 0) in vec4 vColor;
+layout(location = 1) in vec4 vShadow;
 layout(location = 0) out vec4 outColor;
 
 layout(push_constant) uniform Push {
@@ -30,4 +31,26 @@ float clipCoverage() {
     return clamp(0.5 - d / px, 0.0, 1.0);
 }
 
-void main() { outColor = vColor * clipCoverage(); }
+// Skia's shadow falloff texture (ShadowRRectOp create_falloff_texture): 128 A8 texels of
+// exp(-4 d^2) - 0.018, d = 1 - i / 127, sampled with linear filtering and clamped edges.
+float falloffTexel(int i) {
+    float d = 1.0 - float(i) / 127.0;
+    return floor((exp(-4.0 * d * d) - 0.018) * 255.0 + 0.5) / 255.0;
+}
+float falloff(float u) {
+    float t = u * 128.0 - 0.5;
+    float i0 = floor(t);
+    float f = t - i0;
+    int a = int(clamp(i0, 0.0, 127.0)), b = int(clamp(i0 + 1.0, 0.0, 127.0));
+    return mix(falloffTexel(a), falloffTexel(b), f);
+}
+
+void main() {
+    vec4 color = vColor;
+    if (vShadow.w > 0.5) {
+        // GrRRectShadowGeoProc: d = length(shadowParams.xy), uv.x = shadowParams.z * (1 - d).
+        float d = length(vShadow.xy);
+        color *= falloff(vShadow.z * (1.0 - d));
+    }
+    outColor = color * clipCoverage();
+}

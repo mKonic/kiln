@@ -102,7 +102,9 @@ namespace kiln {
         // of `intensity` (a gradient paint) there; Compose's sigma = radius / 2.
         void DrawProgressiveBlur(const RectF& rect, const RectF& uv, const AtlasPage& page, float stepU, float stepV, float maxRadius,
                                  bool decal, const Paint& intensity);
-        struct Vertex { float x, y; float r, g, b, a; };
+        // shadow: GrRRectShadowGeoProc's (offset x, y, distance correction) with mode 1, which
+        // scales the colour by the shadow falloff; mode 0 draws the colour as is.
+        struct Vertex { float x, y; float r, g, b, a; float sx = 0, sy = 0, sz = 0, mode = 0; };
         void DrawTriangles(const Vertex* vertices, std::size_t count);
 
         // Offscreen layers: quads submitted between BeginLayer and EndLayer render into a target

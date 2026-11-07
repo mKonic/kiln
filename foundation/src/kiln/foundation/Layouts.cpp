@@ -583,8 +583,10 @@ namespace kiln::foundation {
         // (graphicsLayer { }): a change redraws the layer without recomposing.
         struct LayerSpec : GraphicsLayerParams {
             std::shared_ptr<const std::function<void(GraphicsLayerParams&)>> block;
+            // Modifier.shadow: the elevation in dp, made px with the layer's density at draw.
+            float shadowElevationDp = 0;
             bool operator==(const LayerSpec& o) const {
-                return block == o.block && (block || static_cast<const GraphicsLayerParams&>(*this) == o);
+                return block == o.block && shadowElevationDp == o.shadowElevationDp && (block || static_cast<const GraphicsLayerParams&>(*this) == o);
             }
         };
         struct LayerNode final : ModifierNode, DrawModifier {
@@ -652,6 +654,7 @@ namespace kiln::foundation {
                                      rr->topLeft.x == rr->topLeft.y))
                         clipPath = outline->ToPath();   // non-uniform corners: no SDF fast path
                 }
+                if (ShadowElevationPx(s) > 0) DrawElevationShadow(s, size);
                 if (params.renderEffect || params.progressiveBlur) {
                     DrawBlurred(s, size, clipPath ? &*clipPath : nullptr, outline ? &*outline : nullptr);
                     s.Restore();
@@ -668,6 +671,30 @@ namespace kiln::foundation {
                 s.Restore();
             }
             const gfx::ColorFilter* Filter() const { return params.colorFilter ? &*params.colorFilter : nullptr; }
+            // The RenderNode's shadow (HWUI draws it before the node's content): the outline
+            // GraphicsLayer.configureOutlineAndClip gives it, a round rect on whole pixels or a
+            // path, with the layer's alpha as both node and outline alpha.
+            void DrawElevationShadow(ContentDrawScope& s, Size size) {
+                gfx::Outline o;
+                if (params.clipShape) o = params.clipShape->CreateOutline(size, s.Direction(), s);
+                else o.value = gfx::RoundRect::Uniform({ 0, 0, size.width, size.height }, CornerRadiusPx(params.shape, size, s));
+                auto whole = [](Rect r) {
+                    auto round = [](float v) { return std::floor(v + 0.5f); };   // fastRoundToInt
+                    return Rect{ round(r.left), round(r.top), round(r.right), round(r.bottom) };
+                };
+                if (auto* r = std::get_if<Rect>(&o.value)) {
+                    o.value = whole(*r);
+                } else if (auto* rr = std::get_if<gfx::RoundRect>(&o.value)) {
+                    const bool simple = rr->topLeft == rr->topRight && rr->topLeft == rr->bottomRight && rr->topLeft == rr->bottomLeft &&
+                                        rr->topLeft.x == rr->topLeft.y;
+                    if (simple) o.value = gfx::RoundRect::Uniform(whole(rr->rect), rr->topLeft.x);   // setRoundRect
+                    else o.value = o.ToPath();                                                    // setPath
+                }
+                s.DrawShadow(o, ShadowElevationPx(s), params.ambientShadowColor, params.spotShadowColor, params.alpha * params.alpha);
+            }
+            float ShadowElevationPx(const Density& d) const {
+                return params.shadowElevationDp > 0 ? d.ToPx(Dp(params.shadowElevationDp)) : params.shadowElevation;
+            }
             void ClipToShape(ContentDrawScope& s, Size size, const gfx::Outline* outline) {
                 if (outline) {
                     if (auto* r = std::get_if<Rect>(&outline->value)) s.ClipRect(*r);
@@ -795,6 +822,19 @@ namespace kiln::foundation {
         return m.With<LayerNode>(spec);
     }
     void GraphicsLayerMatrix(const GraphicsLayerParams& p, Size size, float out[9]) { LayerMatrix3D(p, size, out); }
+
+    Modifier ShadowMod(Modifier m, Dp elevation, std::shared_ptr<const gfx::Shape> shape, std::optional<bool> clip, Color ambientColor, Color spotColor) {
+        const bool doClip = clip.value_or(elevation.value > 0);
+        if (!(elevation.value > 0 || doClip)) return m;
+        // ShadowGraphicsLayerElement
+        LayerSpec spec;
+        spec.shadowElevationDp = std::max(elevation.value, 0.0f);
+        spec.clipShape = shape ? std::move(shape) : RectangleShape();
+        spec.clip = doClip;
+        spec.ambientShadowColor = ambientColor;
+        spec.spotShadowColor = spotColor;
+        return m.With<LayerNode>(spec);
+    }
     Modifier Blur(Modifier m, Dp radiusX, Dp radiusY, BlurredEdgeTreatment e) {
         // Modifier.blur: zero radii still clip with a bounded treatment.
         if (!((radiusX.value > 0 && radiusY.value > 0) || e.clip)) return m;

@@ -1328,9 +1328,47 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
     /** From native when the first handler becomes enabled or the last one disabled. */
     void setBackEnabled(boolean enabled) { back.setEnabled(enabled); }
 
+    // ThreadedRenderer's light for this window (elevation shadows): over the display's horizontal
+    // centre, raised with the display's size, with the theme's shadow alphas.
+    private float lastLightX = Float.NaN, lastLightY = Float.NaN, lastLightZ = Float.NaN;
+    private void pushShadowLight() {
+        android.content.res.Resources sys = android.content.res.Resources.getSystem();
+        float density = getResources().getDisplayMetrics().density;
+        float lightY = systemDimen(sys, "light_y", 0f * density);
+        float lightZ = systemDimen(sys, "light_z", 500f * density);
+        float lightRadius = systemDimen(sys, "light_radius", 800f * density);
+        android.content.res.TypedArray a = getContext().obtainStyledAttributes(
+                new int[] { android.R.attr.ambientShadowAlpha, android.R.attr.spotShadowAlpha });
+        float ambient = a.getFloat(0, 0), spot = a.getFloat(1, 0);
+        a.recycle();
+        android.util.DisplayMetrics dm = new android.util.DisplayMetrics();
+        if (getDisplay() == null) return;
+        getDisplay().getRealMetrics(dm);
+        int[] at = new int[2];
+        getRootView().getLocationOnScreen(at);   // the window's left / top on the display
+        float x = dm.widthPixels / 2f - at[0];
+        float y = lightY - at[1];
+        float zRatio = Math.min(dm.widthPixels, dm.heightPixels) / (450f * dm.density);
+        float z = lightZ * ((zRatio + 2) / 3f);
+        if (x == lastLightX && y == lastLightY && z == lastLightZ) return;
+        lastLightX = x; lastLightY = y; lastLightZ = z;
+        KilnNative.setShadowLight(windowId, x, y, z, lightRadius, ambient, spot);
+    }
+    private static float systemDimen(android.content.res.Resources sys, String name, float fallback) {
+        int id = sys.getIdentifier(name, "dimen", "android");
+        return id != 0 ? sys.getDimension(id) : fallback;
+    }
+
+    @Override
+    protected void onLayout(boolean changed, int left, int top, int right, int bottom) {
+        super.onLayout(changed, left, top, right, bottom);
+        pushShadowLight();
+    }
+
     @Override
     protected void onAttachedToWindow() {
         super.onAttachedToWindow();
+        pushShadowLight();
         back.onAttached();
         if (windowId == 0) KilnNative.setLayoutDirection(getLayoutDirection() == LAYOUT_DIRECTION_RTL);
         AccessibilityManager am = getContext().getSystemService(AccessibilityManager.class);

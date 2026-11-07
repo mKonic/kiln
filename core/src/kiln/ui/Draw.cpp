@@ -388,6 +388,155 @@ namespace kiln::ui {
         m_Target.quads->DrawTriangles(out.data(), out.size());
     }
 
+    namespace {
+        // HWUI multiplyAlpha: SkColorSetA(color, alpha * SkColorGetA(color)).
+        Color ShadowMultiplyAlpha(Color c, float alpha) {
+            const std::uint32_t a = std::uint32_t(alpha * float((c.argb >> 24) & 0xff));
+            return Color(((a & 0xff) << 24) | (c.argb & 0xFFFFFFu));
+        }
+        // SkRRect's view of the outline: a rect, a circle, a simple circular round rect, or none
+        // of these (another shape the analytic path cannot draw).
+        struct ShadowRRect { Rect rect; float radius = 0; bool isRect = false, isOval = false, ok = false; };
+        ShadowRRect ClassifyOutline(const gfx::Outline& o) {
+            ShadowRRect r;
+            if (const auto* rect = std::get_if<Rect>(&o.value)) {
+                r.rect = *rect;
+                r.isRect = r.ok = true;
+                return r;
+            }
+            const auto* rr = std::get_if<gfx::RoundRect>(&o.value);
+            if (!rr) return r;
+            r.rect = rr->rect;
+            const Offset rad = rr->topLeft;
+            const bool equal = rr->topRight == rad && rr->bottomRight == rad && rr->bottomLeft == rad;
+            if (!equal) return r;
+            float xr = rad.x, yr = rad.y;
+            // SkRRect::setRectXY: radii scaled down to fit, square corners for a zero radius.
+            const float w = r.rect.Width(), h = r.rect.Height();
+            if (w < xr + xr || h < yr + yr) {
+                const float scale = std::min(w / (xr + xr), h / (yr + yr));
+                xr = std::min(xr * scale, w / 2);
+                yr = std::min(yr * scale, h / 2);
+            }
+            if (xr <= 0 || yr <= 0) {
+                r.isRect = r.ok = true;
+                return r;
+            }
+            if (std::fabs(xr - yr) > 1.0f / 4096) return r;   // IsNearlySimpleCircular
+            r.radius = xr;
+            r.isOval = xr >= w / 2 && yr >= h / 2;
+            // drawFastShadow handles ovals only when they are circles.
+            r.ok = !r.isOval || std::fabs(w - h) <= 1.0f / 4096;
+            return r;
+        }
+    }
+
+    void DrawScope::DrawShadow(const gfx::Outline& outline, float elevation, Color ambientColor, Color spotColor, float casterAlpha) {
+        if (!m_Target.quads) return;
+        const gfx::ShadowLight& light = m_Target.shadowLight;
+        // EndReorderBarrierDrawable::drawShadow
+        if (casterAlpha <= 0.0f) return;
+        const float ambientAlpha = (light.ambientAlpha / 255.f) * casterAlpha;
+        const float spotAlpha = (light.spotAlpha / 255.f) * casterAlpha;
+        const Color ambient = ShadowMultiplyAlpha(ambientColor, ambientAlpha);
+        const Color spot = ShadowMultiplyAlpha(spotColor, spotAlpha);
+        const bool transparent = casterAlpha < 1.0f;
+        const float occluderHeight = elevation;   // zParams (0, 0, z)
+
+        // SurfaceDrawContext::drawFastShadow: rects, circles and simple circular round rects under
+        // a similarity that keeps rects axis-aligned.
+        const gfx::Matrix& m = m_State.m;
+        const bool rectStaysRect = (m.b == 0 && m.c == 0) || (m.a == 0 && m.d == 0);
+        const float sx2 = m.a * m.a + m.b * m.b, sy2 = m.c * m.c + m.d * m.d;
+        const bool similarity = std::fabs(sx2 - sy2) <= 1e-4f * std::max(sx2, 1.0f) && std::fabs(m.a * m.c + m.b * m.d) <= 1e-4f * std::max(sx2, 1.0f);
+        const ShadowRRect rr = ClassifyOutline(outline);
+        if (!rectStaysRect || !similarity || !rr.ok) return;   // general paths: SkShadowTessellator (not yet)
+        if (rr.rect.Empty()) return;
+        const float stateAlpha = m_State.alpha;
+
+        // The light in device space; 1/scale of the matrix.
+        const Offset devLight{ light.x, light.y };
+        const bool scaleTranslate = m.b == 0 && m.c == 0;
+        const float devToSrcScale = scaleTranslate ? 1.0f / std::fabs(m.a) : 1.0f / std::sqrt(m.a * m.a + m.c * m.c);
+        auto mapRect = [&](Rect r) {
+            const Offset p0 = m.Map({ r.left, r.top }), p1 = m.Map({ r.right, r.bottom });
+            return Rect{ std::min(p0.x, p1.x), std::min(p0.y, p1.y), std::max(p0.x, p1.x), std::max(p0.y, p1.y) };
+        };
+        const float matrixFactor = std::fabs(m.a + m.c);   // viewMatrix[kMScaleX] + viewMatrix[kMSkewX]
+        std::vector<gfx::ShadowVertex> verts;
+        auto emit = [&](Color color, Rect srcRect, float srcRadius, bool oval, float blurWidth, float insetWidth) {
+            // ShadowRRectOp::Make
+            const float scaledRadius = std::fabs(srcRadius * matrixFactor);
+            const float scaledInsetWidth = std::fabs(insetWidth * matrixFactor);
+            if (scaledInsetWidth <= 0) return;
+            const Rgba c = Scaled(ToRgba(color), stateAlpha);
+            const float rgba[4] = { c.r, c.g, c.b, c.a };
+            gfx::AppendShadowRRect(verts, rgba, mapRect(srcRect), scaledRadius, oval, blurWidth, scaledInsetWidth);
+        };
+
+        if (((ambient.argb >> 24) & 0xff) > 0) {
+            float devSpaceInsetWidth = gfx::ShadowMetrics::AmbientBlurRadius(occluderHeight);
+            const float umbraRecipAlpha = gfx::ShadowMetrics::AmbientRecipAlpha(occluderHeight);
+            const float devSpaceAmbientBlur = devSpaceInsetWidth * umbraRecipAlpha;
+            // Outset to the border of the penumbra.
+            const float ambientPathOutset = devSpaceInsetWidth * devToSrcScale;
+            const Rect outsetRect{ rr.rect.left - ambientPathOutset, rr.rect.top - ambientPathOutset, rr.rect.right + ambientPathOutset,
+                                   rr.rect.bottom + ambientPathOutset };
+            const float outsetRad = rr.isOval ? outsetRect.Width() / 2 : rr.radius + ambientPathOutset;
+            if (transparent) devSpaceInsetWidth = outsetRect.Width();   // a large inset forces a fill
+            emit(ambient, outsetRect, outsetRad, rr.isOval, devSpaceAmbientBlur, devSpaceInsetWidth);
+        }
+
+        if (((spot.argb >> 24) & 0xff) > 0) {
+            float devSpaceSpotBlur, spotScale;
+            Offset spotOffset;
+            gfx::ShadowMetrics::GetSpotParams(occluderHeight, devLight.x, devLight.y, light.z, light.radius, &devSpaceSpotBlur, &spotScale, &spotOffset);
+            const float srcSpaceSpotBlur = devSpaceSpotBlur * devToSrcScale;
+            // The translate under the scale, mapped back into source space.
+            spotOffset.x += spotScale * m.e;
+            spotOffset.y += spotScale * m.f;
+            const float det = m.a * m.d - m.b * m.c;
+            if (det == 0) return;
+            {
+                // ctmInverse->mapPoint(spotOffset)
+                const float x = spotOffset.x - m.e, y = spotOffset.y - m.f;
+                spotOffset = { (m.d * x - m.c * y) / det, (-m.b * x + m.a * y) / det };
+            }
+            // The transformed shadow rrect (scale about the origin, then the offset).
+            const Rect shadowRect{ rr.rect.left * spotScale + spotOffset.x, rr.rect.top * spotScale + spotOffset.y,
+                                   rr.rect.right * spotScale + spotOffset.x, rr.rect.bottom * spotScale + spotOffset.y };
+            const float spotRadius = rr.isRect ? 0.0f : (rr.isOval ? shadowRect.Width() / 2 : rr.radius * spotScale);
+            const float blurOutset = srcSpaceSpotBlur;
+            float insetWidth = blurOutset;
+            if (transparent) {
+                insetWidth += shadowRect.Width();
+            } else {
+                float maxOffset;
+                if (rr.isRect) {
+                    maxOffset = std::max(std::max(std::fabs(shadowRect.left - rr.rect.left), std::fabs(shadowRect.top - rr.rect.top)),
+                                         std::max(std::fabs(shadowRect.right - rr.rect.right), std::fabs(shadowRect.bottom - rr.rect.bottom)));
+                } else {
+                    const float dr = spotRadius - rr.radius;
+                    const Offset ul{ shadowRect.left - rr.rect.left + dr, shadowRect.top - rr.rect.top + dr };
+                    const Offset lr{ shadowRect.right - rr.rect.right - dr, shadowRect.bottom - rr.rect.bottom - dr };
+                    maxOffset = std::sqrt(std::max(ul.x * ul.x + ul.y * ul.y, lr.x * lr.x + lr.y * lr.y)) + dr;
+                }
+                insetWidth += std::max(blurOutset, maxOffset);
+            }
+            const Rect outsetRect{ shadowRect.left - blurOutset, shadowRect.top - blurOutset, shadowRect.right + blurOutset,
+                                   shadowRect.bottom + blurOutset };
+            const float outsetRad = rr.isOval ? outsetRect.Width() / 2 : spotRadius + blurOutset;
+            emit(spot, outsetRect, outsetRad, rr.isOval, 2.0f * devSpaceSpotBlur, insetWidth);
+        }
+
+        if (verts.empty()) return;
+        std::vector<QuadRenderer::Vertex> out;
+        out.reserve(verts.size());
+        for (const gfx::ShadowVertex& v : verts) out.push_back({ v.x, v.y, v.r, v.g, v.b, v.a, v.px, v.py, v.pz, 1.0f });
+        ApplyClip();
+        m_Target.quads->DrawTriangles(out.data(), out.size());
+    }
+
     void DrawScope::BeginLayer(Rect bounds, float alpha, const gfx::Path* clipPath, gfx::BlendMode blend, const gfx::ColorFilter* colorFilter) {
         BeginLayerImpl(bounds, alpha, clipPath, false, blend, colorFilter);
     }

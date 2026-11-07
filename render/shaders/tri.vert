@@ -3,6 +3,7 @@
 // pixels, colours premultiplied.
 layout(location = 0) in vec2 iPos;
 layout(location = 1) in vec4 iColor;
+layout(location = 2) in vec4 iShadow;   // shadow params (x, y, z) and mode (w)
 
 layout(push_constant) uniform Push {
     vec2 viewport; vec2 origin;      // target size and its device origin
@@ -13,8 +14,10 @@ layout(push_constant) uniform Push {
 } pc;
 
 layout(location = 0) out vec4 vColor;
+layout(location = 1) out vec4 vShadow;
 
 void main() {
     vColor = iColor;
+    vShadow = iShadow;
     gl_Position = vec4((iPos - pc.origin) / pc.viewport * 2.0 - 1.0, 0.0, 1.0);
 }

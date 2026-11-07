@@ -1332,14 +1332,23 @@ namespace kiln::ui {
             std::erase_if(t.path, [&](const HitEntry& e) { return e.mod == m; });
     }
 
+    gfx::ShadowLight Owner::ShadowLight() const {
+        if (m_ShadowLight) return *m_ShadowLight;
+        return gfx::ShadowLight::Framework(m_Density.density, float(m_Window.width), float(m_Window.height), 0, 0);
+    }
+
     void Owner::DrawWith(const DrawTarget& target, const std::function<void(DrawScope&)>& draw) {
-        ContentDrawScope scope(m_Density, m_Direction, target);
+        DrawTarget t = target;
+        t.shadowLight = ShadowLight();
+        ContentDrawScope scope(m_Density, m_Direction, t);
         draw(scope);
         scope.Finish();
     }
 
     void Owner::Draw(const DrawTarget& target) {
-        ContentDrawScope scope(m_Density, m_Direction, target);
+        DrawTarget t = target;
+        t.shadowLight = ShadowLight();
+        ContentDrawScope scope(m_Density, m_Direction, t);
         m_Root->Draw(scope);
         scope.Finish();
     }

@@ -8,6 +8,8 @@
 #include "kiln/graphics/ColorFilter.h"
 #include "kiln/graphics/Image.h"
 #include "kiln/graphics/Path.h"
+#include "kiln/graphics/Shadow.h"
+#include "kiln/graphics/Shape.h"
 #include "kiln/graphics/Vertices.h"
 #include "kiln/ui/Geometry.h"
 
@@ -29,6 +31,7 @@ namespace kiln::ui {
         ImageCache* images = nullptr;
         FilterTable* filters = nullptr;
         float viewportWidth = 0, viewportHeight = 0;
+        gfx::ShadowLight shadowLight;   // the window's light for elevation shadows
     };
 
     // Corner radii of a clip: top-left, top-right, bottom-right, bottom-left.
@@ -63,6 +66,12 @@ namespace kiln::ui {
         // drawVertices: triangles with per-vertex colours (or `color` when the vertices have
         // none), under the current transform and clip.
         void DrawVertices(const gfx::Vertices& vertices, Color color = Color(0xff000000), float alpha = 1);
+
+        // An elevation shadow of `outline` (local) raised `elevation` px under the window's light
+        // (HWUI EndReorderBarrierDrawable::drawShadow through SkShadowUtils): ambient and spot
+        // shadows tinted by the colours and the theme's alphas, scaled by `casterAlpha` (a
+        // translucent caster also shadows the area under itself).
+        void DrawShadow(const gfx::Outline& outline, float elevation, Color ambientColor, Color spotColor, float casterAlpha = 1);
 
         // Transform (affine, local -> device). Each call composes onto the current one.
         void Translate(Offset o);

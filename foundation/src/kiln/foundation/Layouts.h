@@ -216,6 +216,10 @@ namespace kiln::foundation {
         // other than the default makes the layer offscreen (GraphicsLayer requiresCompositingLayer).
         gfx::BlendMode blendMode = gfx::BlendMode::SrcOver;
         std::optional<gfx::ColorFilter> colorFilter;
+        // Elevation shadow (px) under the window's light, its outline the layer's shape, tinted
+        // by the ambient and spot colours (DefaultShadowColor: black).
+        float shadowElevation = 0;
+        Color ambientShadowColor = Color(0xFF000000u), spotShadowColor = Color(0xFF000000u);
         float originX = 0.5f, originY = 0.5f; // transform origin (pivot) as a fraction of the size
         bool clip = false;
         CornerShape shape;
@@ -228,6 +232,10 @@ namespace kiln::foundation {
     Modifier GraphicsLayer(Modifier m, std::function<void(GraphicsLayerParams&)> block);
     // The layer's full matrix (row-major 3x3, projective with rotationX/Y) for a layer of `size`.
     void GraphicsLayerMatrix(const GraphicsLayerParams& p, Size size, float out[9]);
+    // Modifier.shadow(elevation, shape = RectangleShape, clip = elevation > 0, ambientColor,
+    // spotColor): a graphics layer casting an elevation shadow of `shape` (and clipping to it).
+    Modifier ShadowMod(Modifier m, Dp elevation, std::shared_ptr<const gfx::Shape> shape = nullptr, std::optional<bool> clip = std::nullopt,
+                    Color ambientColor = Color(0xFF000000u), Color spotColor = Color(0xFF000000u));
     inline Modifier Rotate(Modifier m, float degrees) { GraphicsLayerParams p; p.rotationZ = degrees; return GraphicsLayer(std::move(m), p); }
     inline Modifier Alpha(Modifier m, float a) { GraphicsLayerParams p; p.alpha = a; return GraphicsLayer(std::move(m), p); }
     // Modifier.blur's edge treatment: Rectangle clips the blurred image to the bounds, a shape to

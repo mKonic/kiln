@@ -1497,6 +1497,18 @@ namespace {
         CurOwner().OnHostFocusChanged(focused);
     }
 
+    void SetShadowLight(JNIEnv*, jclass, jint win, jfloat x, jfloat y, jfloat z, jfloat radius, jfloat ambientAlpha, jfloat spotAlpha) {
+        WinScope ws(win);
+        if (!ws) return;
+        kiln::gfx::ShadowLight l;
+        l.x = x; l.y = y; l.z = z; l.radius = radius;
+        // android_view_ThreadedRenderer_setLightAlpha
+        l.ambientAlpha = std::uint8_t(255 * ambientAlpha);
+        l.spotAlpha = std::uint8_t(255 * spotAlpha);
+        CurOwner().SetShadowLight(l);
+        if (g_Host) g_Host->app->RequestFrame();
+    }
+
     void WindowFocusChanged(JNIEnv*, jclass, jint win, jboolean focused) {
         WinScope ws(win);
         if (!ws) return;
@@ -2640,6 +2652,7 @@ extern "C" JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void*) {
         { "hostRequestFocus", "(IIZFFFFZ)Z", reinterpret_cast<void*>(&HostRequestFocus) },
         { "hostFocusChanged", "(IZ)V", reinterpret_cast<void*>(&HostFocusChanged) },
         { "windowFocusChanged", "(IZ)V", reinterpret_cast<void*>(&WindowFocusChanged) },
+        { "setShadowLight", "(IFFFFFF)V", reinterpret_cast<void*>(&SetShadowLight) },
         { "setWindowInsets", "(I[I)V", reinterpret_cast<void*>(&SetWindowInsets) },
         { "insetsControlReady", "(I[I)V", reinterpret_cast<void*>(&InsetsControlReady) },
         { "insetsControlEnded", "(I)V", reinterpret_cast<void*>(&InsetsControlEnded) },

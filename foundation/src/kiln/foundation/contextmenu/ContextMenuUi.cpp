@@ -1,4 +1,5 @@
 #include "kiln/foundation/contextmenu/ContextMenuUi.h"
+#include "kiln/foundation/Shapes.h"
 
 #include "kiln/foundation/Gestures.h"
 #include "kiln/foundation/Scroll.h"
@@ -66,9 +67,9 @@ namespace kiln::foundation {
         ContextMenuScope scope;
         builder(scope);
         auto& scroll = RememberScrollState();
-        // ContextMenuColumn: rounded 4 dp container (its 3 dp shadow comes with elevation shadows),
-        // as wide as its widest item, scrolling when taller than the window.
-        Modifier m = Clip(modifier, CornerShape::Rounded(Dp(ContextMenuSpec::CornerRadiusDp)));
+        // ContextMenuColumn: a 3 dp shadow of the rounded 4 dp container (which clips to it), as
+        // wide as its widest item, scrolling when taller than the window.
+        Modifier m = ShadowMod(modifier, Dp(ContextMenuSpec::MenuContainerElevationDp), RoundedCorner(Dp(ContextMenuSpec::CornerRadiusDp)));
         m = Background(std::move(m), colors.backgroundColor);
         m = Width(std::move(m), IntrinsicSize::Max);
         m = Padding(std::move(m), 0_dp, Dp(ContextMenuSpec::VerticalPaddingDp));
