@@ -15,6 +15,8 @@ namespace kiln::ui { class Owner; }
 
 namespace kiln::foundation {
 
+    class ReceiveContentConfiguration;
+
     enum class TextToolbarState : std::uint8_t { None, Cursor, Selection };
 
     class TextFieldSelectionState {
@@ -35,6 +37,8 @@ namespace kiln::foundation {
         void SetDirectTouchInteraction(bool v) { if (m_DirectTouch.Peek() != v) m_DirectTouch.Set(v); }
         bool showCursorHandle = false;
         std::shared_ptr<MutableInteractionSource> interactionSource;
+        // The receiveContent modifiers around the field (pastes go through them first).
+        std::function<ReceiveContentConfiguration*()> receiveContentConfiguration;
 
         void Update(ui::Owner* owner, float density, bool enabled, bool readOnly, bool isPassword);
 

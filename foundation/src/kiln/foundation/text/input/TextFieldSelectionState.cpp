@@ -1,5 +1,6 @@
 #include "kiln/foundation/text/input/TextFieldSelectionState.h"
 
+#include "kiln/foundation/content/ReceiveContent.h"
 #include "kiln/ui/LayoutNode.h"
 
 #include <cmath>
@@ -153,11 +154,21 @@ namespace kiln::foundation {
     }
 
     void TextFieldSelectionState::Paste(bool isFromHardwareSource) {
-        // pasteAsPlainText (receiveContent is not ported yet).
         if (!IsPasteAllowed() || !owner) return;
-        const auto text = owner->ClipboardText();
-        if (!text) return;
-        textFieldState.ReplaceSelectedText(ToUtf16(*text), false, TextFieldEditUndoBehavior::NeverMerge, true, isFromHardwareSource);
+        ReceiveContentConfiguration* config = receiveContentConfiguration ? receiveContentConfiguration() : nullptr;
+        auto clip = config ? owner->ClipboardClip() : std::nullopt;
+        if (!config || !clip) {
+            // pasteAsPlainText
+            const auto text = owner->ClipboardText();
+            if (!text) return;
+            textFieldState.ReplaceSelectedText(ToUtf16(*text), false, TextFieldEditUndoBehavior::NeverMerge, true, isFromHardwareSource);
+            return;
+        }
+        auto content = std::make_shared<TransferableContent>(std::move(clip->first), std::move(clip->second), TransferableContent::Source::Clipboard);
+        const TransferableContentPtr remaining = config->Listener().OnReceive(content);
+        if (!remaining) return;
+        if (const auto text = remaining->ReadPlainText())
+            textFieldState.ReplaceSelectedText(ToUtf16(*text), false, TextFieldEditUndoBehavior::NeverMerge, true, isFromHardwareSource);
     }
 
     bool TextFieldSelectionState::CanShowSelectAllMenuItem() const {

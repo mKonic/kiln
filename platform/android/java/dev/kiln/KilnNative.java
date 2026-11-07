@@ -47,6 +47,7 @@ final class KilnNative {
     static native void imeCommitText(String text, int newCursorPosition, boolean suggestionSelected);
     static native void imeSetComposingText(String text, int newCursorPosition, int[] spans, String[] families, boolean suggestionSelected);
     static native void imeRequestCursorUpdates(int mode);
+    static native boolean imeCommitContent(String uri, String[] mimeTypes, String label, String linkUri, int permission);
     static native void imeSetComposingRegion(int start, int end);
     static native void imeFinishComposingText();
     static native void imeDeleteSurroundingText(int before, int after, boolean codePoints);

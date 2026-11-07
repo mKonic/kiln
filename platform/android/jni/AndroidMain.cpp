@@ -56,6 +56,20 @@ namespace {
 
     void ArmTimer();
     void InstallTextInputHost(JNIEnv* env);
+    // A String[] (null entries kept) as UTF-8.
+    std::vector<std::optional<std::string>> StringsFromJava(JNIEnv* env, jobjectArray a) {
+        std::vector<std::optional<std::string>> out;
+        const jsize n = env->GetArrayLength(a);
+        for (jsize i = 0; i < n; ++i) {
+            auto js = static_cast<jstring>(env->GetObjectArrayElement(a, i));
+            if (!js) { out.emplace_back(); continue; }
+            const char* c = env->GetStringUTFChars(js, nullptr);
+            out.emplace_back(std::string(c));
+            env->ReleaseStringUTFChars(js, c);
+            env->DeleteLocalRef(js);
+        }
+        return out;
+    }
     JNIEnv* MainEnv();
     void SurfaceDestroyed(JNIEnv*, jclass);
 
@@ -258,6 +272,10 @@ namespace {
             static jmethodID setClip = env->GetMethodID(vc, "setClipboardText", "(Ljava/lang/String;)V");
             static jmethodID getClip = env->GetMethodID(vc, "getClipboardText", "()Ljava/lang/String;");
             static jmethodID hasClip = env->GetMethodID(vc, "clipboardHasText", "()Z");
+            static jmethodID clipAll = env->GetMethodID(vc, "getClipboardClip", "()[Ljava/lang/String;");
+            static jmethodID clipMeta = env->GetMethodID(vc, "getClipboardMetadata", "()[Ljava/lang/String;");
+            static jmethodID readContent = env->GetMethodID(vc, "readContent", "(Ljava/lang/String;)[B");
+            static jmethodID releasePermission = env->GetMethodID(vc, "releaseContentPermission", "(I)V");
             static jmethodID haptic = env->GetMethodID(vc, "performHaptic", "(I)V");
             static jmethodID showBar = env->GetMethodID(vc, "showTextToolbar", "(IIIII)V");
             static jmethodID hideBar = env->GetMethodID(vc, "hideTextToolbar", "()V");
@@ -282,6 +300,45 @@ namespace {
                 return out;
             };
             clip.hasText = [] { return bool(MainEnv()->CallBooleanMethod(g_Host->view, hasClip)); };
+            clip.getClip = []() -> std::optional<std::pair<kiln::ui::ClipEntry, kiln::ui::ClipMetadata>> {
+                JNIEnv* e = MainEnv();
+                auto a = static_cast<jobjectArray>(e->CallObjectMethod(g_Host->view, clipAll));
+                if (!a) return std::nullopt;
+                const std::vector<std::optional<std::string>> v = StringsFromJava(e, a);
+                e->DeleteLocalRef(a);
+                kiln::ui::ClipMetadata meta;
+                meta.label = v[0].value_or("");
+                const int types = std::stoi(v[1].value_or("0"));
+                for (int i = 0; i < types; ++i) meta.mimeTypes.push_back(v[std::size_t(2 + i)].value_or(""));
+                kiln::ui::ClipEntry entry;
+                for (std::size_t k = std::size_t(2 + types); k + 2 < v.size(); k += 3) entry.items.push_back({ v[k], v[k + 1], v[k + 2] });
+                return std::pair{ std::move(entry), std::move(meta) };
+            };
+            clip.getMetadata = []() -> std::optional<kiln::ui::ClipMetadata> {
+                JNIEnv* e = MainEnv();
+                auto a = static_cast<jobjectArray>(e->CallObjectMethod(g_Host->view, clipMeta));
+                if (!a) return std::nullopt;
+                const std::vector<std::optional<std::string>> v = StringsFromJava(e, a);
+                e->DeleteLocalRef(a);
+                kiln::ui::ClipMetadata meta;
+                meta.label = v[0].value_or("");
+                for (std::size_t i = 1; i < v.size(); ++i) meta.mimeTypes.push_back(v[i].value_or(""));
+                return meta;
+            };
+            kiln::ui::Owner::ContentHost content;
+            content.read = [](const std::string& uri) -> std::optional<std::vector<std::uint8_t>> {
+                JNIEnv* e = MainEnv();
+                jstring s = e->NewStringUTF(uri.c_str());
+                auto bytes = static_cast<jbyteArray>(e->CallObjectMethod(g_Host->view, readContent, s));
+                e->DeleteLocalRef(s);
+                if (!bytes) return std::nullopt;
+                std::vector<std::uint8_t> out(static_cast<std::size_t>(e->GetArrayLength(bytes)));
+                e->GetByteArrayRegion(bytes, 0, jsize(out.size()), reinterpret_cast<jbyte*>(out.data()));
+                e->DeleteLocalRef(bytes);
+                return out;
+            };
+            content.releasePermission = [](int handle) { MainEnv()->CallVoidMethod(g_Host->view, releasePermission, jint(handle)); };
+            owner.SetContentHost(std::move(content));
             owner.SetClipboardHost(std::move(clip));
             owner.SetHapticHost([](int constant) { MainEnv()->CallVoidMethod(g_Host->view, haptic, jint(constant)); });
             kiln::ui::Owner::TextToolbarHost bar;
@@ -735,7 +792,7 @@ namespace {
 
     void InstallTextInputHost(JNIEnv* env) {
         jclass cls = env->GetObjectClass(g_Host->view);
-        static jmethodID start = env->GetMethodID(cls, "startInput", "(IIZLjava/lang/String;)V");
+        static jmethodID start = env->GetMethodID(cls, "startInput", "(IIZLjava/lang/String;Z)V");
         static jmethodID stop = env->GetMethodID(cls, "stopInput", "()V");
         static jmethodID update = env->GetMethodID(cls, "imeUpdate", "(IIIIZ)V");
         static jmethodID anchor = env->GetMethodID(cls, "cursorAnchorInfo", "([FLjava/lang/String;)V");
@@ -751,7 +808,7 @@ namespace {
             for (const auto& t : o.hintLocales) { if (!tags.empty()) tags += ','; tags += t; }
             JNIEnv* e = MainEnv();
             jstring jt = e->NewStringUTF(tags.c_str());
-            e->CallVoidMethod(g_Host->view, start, type, opts, jboolean(o.singleLine), jt);
+            e->CallVoidMethod(g_Host->view, start, type, opts, jboolean(o.singleLine), jt, jboolean(o.acceptsContent));
             e->DeleteLocalRef(jt);
         };
         host.stop = [] { MainEnv()->CallVoidMethod(g_Host->view, stop); };
@@ -846,6 +903,19 @@ namespace {
         AfterIme();
     }
     void ImeRequestCursorUpdates(JNIEnv*, jclass, jint mode) { if (auto* s = Session()) s->RequestCursorUpdates(mode); }
+    jboolean ImeCommitContent(JNIEnv* env, jclass, jstring uri, jobjectArray types, jstring label, jstring link, jint permission) {
+        auto* s = Session();
+        if (!s) return false;
+        kiln::ui::ClipMetadata meta;
+        meta.label = kiln::foundation::ToUtf8(FromJava(env, label));
+        for (const auto& t : StringsFromJava(env, types)) meta.mimeTypes.push_back(t.value_or(""));
+        kiln::ui::ClipEntry entry{ { kiln::ui::ClipItem{ std::nullopt, std::nullopt, kiln::foundation::ToUtf8(FromJava(env, uri)) } } };
+        std::optional<std::string> linkUri;
+        if (link) linkUri = kiln::foundation::ToUtf8(FromJava(env, link));
+        const bool taken = s->CommitContent(entry, meta, linkUri, permission);
+        AfterIme();
+        return taken;
+    }
     void ImeSetComposingRegion(JNIEnv*, jclass, jint a, jint b) { if (auto* s = Session()) { s->SetComposingRegion(a, b); AfterIme(); } }
     void ImeFinishComposingText(JNIEnv*, jclass) { if (auto* s = Session()) { s->FinishComposingText(); AfterIme(); } }
     void ImeDeleteSurroundingText(JNIEnv*, jclass, jint b, jint a, jboolean cp) {
@@ -1252,6 +1322,7 @@ extern "C" JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void*) {
         { "imeCommitText", "(Ljava/lang/String;IZ)V", reinterpret_cast<void*>(&ImeCommitText) },
         { "imeSetComposingText", "(Ljava/lang/String;I[I[Ljava/lang/String;Z)V", reinterpret_cast<void*>(&ImeSetComposingText) },
         { "imeRequestCursorUpdates", "(I)V", reinterpret_cast<void*>(&ImeRequestCursorUpdates) },
+        { "imeCommitContent", "(Ljava/lang/String;[Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;I)Z", reinterpret_cast<void*>(&ImeCommitContent) },
         { "imeSetComposingRegion", "(II)V", reinterpret_cast<void*>(&ImeSetComposingRegion) },
         { "imeFinishComposingText", "()V", reinterpret_cast<void*>(&ImeFinishComposingText) },
         { "imeDeleteSurroundingText", "(IIZ)V", reinterpret_cast<void*>(&ImeDeleteSurroundingText) },

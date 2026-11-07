@@ -2,6 +2,7 @@
 
 #include "kiln/TextBackend.h"
 #include "kiln/foundation/Focus.h"
+#include "kiln/foundation/content/ReceiveContent.h"
 #include "kiln/foundation/Gestures.h"
 #include "kiln/foundation/Hover.h"
 #include "kiln/foundation/Layouts.h"
@@ -48,6 +49,8 @@ namespace kiln::foundation {
             void PerformImeAction(ui::ImeAction a) override;
             void UpdateDirectTouchInteraction(bool direct) override;
             void RequestCursorUpdates(int mode) override;
+            bool CommitContent(const ui::ClipEntry& clip, const ui::ClipMetadata& metadata, const std::optional<std::string>& linkUri,
+                               int permission) override;
         };
 
         // CursorAnimationState: visible for 500 ms, hidden for 500 ms, restarting visible on
@@ -96,6 +99,9 @@ namespace kiln::foundation {
             bool nodeFocused = false;                      // focusableNode.focusState.isFocused
             bool windowFocused = true;                     // windowInfo.isWindowFocused
             bool inputSession = false;                     // inputSessionJob != null
+            const ModifierNode* decoratorNode = nullptr;   // for the receiveContent modifier local
+            bool acceptsContent = false;                   // a receiver was around when the session started
+            ReceiveContentConfiguration* ReceiveContent() const { return decoratorNode ? FindReceiveContentConfiguration(*decoratorNode) : nullptr; }
             // The selection and composition the IME last heard of (updateSelection on change).
             TextRange imeSelection;
             std::optional<TextRange> imeComposition;
@@ -137,6 +143,7 @@ namespace kiln::foundation {
                 layout = std::make_unique<TextLayoutState>();
                 selection = std::make_unique<TextFieldSelectionState>(*transformed, *layout);
                 selection->owner = owner;
+                selection->receiveContentConfiguration = [this] { return ReceiveContent(); };
                 ime = std::make_unique<ImeEditCommandScope>(*transformed);
                 stateAlive = s.AliveToken();
                 imeListener = s.AddNotifyImeListener([this](const TextFieldCharSequence&, const TextFieldCharSequence&, bool restartIme) {
@@ -167,6 +174,7 @@ namespace kiln::foundation {
                 const TextFieldCharSequence visual = transformed->VisualText();
                 imeSelection = visual.selection;
                 imeComposition = visual.composition;
+                acceptsContent = ReceiveContent() != nullptr;
                 monitorEnabled = false;
                 lastMonitored.reset();
                 owner->StartTextInput(session);   // replaces any session (and shows the keyboard)
@@ -335,7 +343,17 @@ namespace kiln::foundation {
             }
         };
 
-        ui::ImeOptions Session::Options() const { return field.keyboard.ToImeOptions(field.singleLine); }
+        ui::ImeOptions Session::Options() const {
+            ui::ImeOptions o = field.keyboard.ToImeOptions(field.singleLine);
+            o.acceptsContent = field.acceptsContent;
+            return o;
+        }
+        bool Session::CommitContent(const ui::ClipEntry& clip, const ui::ClipMetadata& metadata, const std::optional<std::string>& linkUri,
+                                    int permission) {
+            ReceiveContentConfiguration* c = field.ReceiveContent();
+            if (!c) return false;
+            return c->OnCommitContent(std::make_shared<TransferableContent>(clip, metadata, TransferableContent::Source::Keyboard, linkUri, permission));
+        }
         ui::TextInputSnapshot Session::Snapshot() const {
             const TextFieldCharSequence v = field.transformed->VisualText();
             ui::TextInputSnapshot s{ v.text, v.selection.Min(), v.selection.Max(), -1, -1 };
@@ -383,11 +401,13 @@ namespace kiln::foundation {
                 Field& f = *params.field;
                 f.owner = OwnerOf(*this);
                 f.selection->owner = f.owner;
+                f.decoratorNode = this;
                 Observe();
             }
             void OnDetach() override {
                 Field& f = *params.field;
                 f.DisposeInputSession();
+                if (f.decoratorNode == this) f.decoratorNode = nullptr;
                 Unobserve();
             }
             void OnParamsChanged() {

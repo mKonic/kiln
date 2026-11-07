@@ -993,6 +993,17 @@ namespace kiln::ui {
     bool Owner::ClipboardHasText() const {
         return m_Clipboard.hasText ? m_Clipboard.hasText() : m_LocalClip.has_value();
     }
+    std::optional<std::pair<ClipEntry, ClipMetadata>> Owner::ClipboardClip() const {
+        if (m_Clipboard.getClip) return m_Clipboard.getClip();
+        const auto text = ClipboardText();
+        if (!text) return std::nullopt;
+        return std::pair{ ClipEntry{ { ClipItem{ *text, std::nullopt, std::nullopt } } }, ClipMetadata{ "plain text", { "text/plain" } } };
+    }
+    std::optional<ClipMetadata> Owner::ClipboardMetadata() const {
+        if (m_Clipboard.getMetadata) return m_Clipboard.getMetadata();
+        if (!ClipboardHasText()) return std::nullopt;
+        return ClipMetadata{ "plain text", { "text/plain" } };
+    }
 
     unsigned Owner::TextToolbarItems() const {
         const auto& a = m_ToolbarActions;

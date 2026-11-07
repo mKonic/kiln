@@ -449,6 +449,35 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
     private boolean inputActive;
     private int inputType, imeOptions;
     private String hintLocales = "";
+    private boolean acceptsContent;
+    // InputContentInfo whose URI permission the keyboard granted, by handle, until released.
+    private final android.util.SparseArray<android.view.inputmethod.InputContentInfo> contentPermissions = new android.util.SparseArray<>();
+    private int nextContentPermission = 1;
+
+    boolean acceptsContent() { return acceptsContent; }
+
+    int holdContentPermission(android.view.inputmethod.InputContentInfo info) {
+        final int handle = nextContentPermission++;
+        contentPermissions.put(handle, info);
+        return handle;
+    }
+
+    void releaseContentPermission(int handle) {
+        android.view.inputmethod.InputContentInfo info = contentPermissions.get(handle);
+        if (info == null) return;
+        contentPermissions.remove(handle);
+        info.releasePermission();
+    }
+
+    /** ContentResolver.openInputStream: the bytes behind a content URI, or null. */
+    byte[] readContent(String uri) {
+        try (java.io.InputStream in = getContext().getContentResolver().openInputStream(android.net.Uri.parse(uri))) {
+            if (in == null) return null;
+            return in.readAllBytes();
+        } catch (Exception e) {
+            return null;
+        }
+    }
     private KilnInputConnection connection;
     // getExtractedText(GET_EXTRACTED_TEXT_MONITOR): the IME's token for updateExtractedText.
     private boolean extractedTextMonitor;
@@ -457,8 +486,9 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
     private InputMethodManager imm() { return getContext().getSystemService(InputMethodManager.class); }
 
     /** A field took focus: new EditorInfo, then show the keyboard (coalesced restart + show). */
-    void startInput(int type, int options, boolean singleLine, String hintLocales) {
+    void startInput(int type, int options, boolean singleLine, String hintLocales, boolean acceptsContent) {
         this.inputActive = true;
+        this.acceptsContent = acceptsContent;
         this.inputType = type;
         this.imeOptions = options;
         this.hintLocales = hintLocales;
@@ -583,6 +613,42 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
         if (clip == null || clip.getItemCount() == 0) return null;
         CharSequence t = clip.getItemAt(0).getText();
         return t != null ? t.toString() : null;
+    }
+
+    /**
+     * The whole primary clip for the receiveContent modifiers: its label and MIME types, then
+     * (text, html, uri) per item; null without a clip.
+     */
+    String[] getClipboardClip() {
+        android.content.ClipboardManager cm = clipboard();
+        android.content.ClipData clip = cm != null ? cm.getPrimaryClip() : null;
+        if (clip == null) return null;
+        android.content.ClipDescription d = clip.getDescription();
+        final int types = d.getMimeTypeCount();
+        String[] out = new String[2 + types + clip.getItemCount() * 3];
+        CharSequence label = d.getLabel();
+        out[0] = label != null ? label.toString() : "";
+        out[1] = Integer.toString(types);
+        for (int i = 0; i < types; i++) out[2 + i] = d.getMimeType(i);
+        for (int i = 0, k = 2 + types; i < clip.getItemCount(); i++, k += 3) {
+            android.content.ClipData.Item item = clip.getItemAt(i);
+            out[k] = item.getText() != null ? item.getText().toString() : null;
+            out[k + 1] = item.getHtmlText();
+            out[k + 2] = item.getUri() != null ? item.getUri().toString() : null;
+        }
+        return out;
+    }
+
+    /** The primary clip's label and MIME types, without reading it. */
+    String[] getClipboardMetadata() {
+        android.content.ClipboardManager cm = clipboard();
+        android.content.ClipDescription d = cm != null ? cm.getPrimaryClipDescription() : null;
+        if (d == null) return null;
+        String[] out = new String[1 + d.getMimeTypeCount()];
+        CharSequence label = d.getLabel();
+        out[0] = label != null ? label.toString() : "";
+        for (int i = 0; i < d.getMimeTypeCount(); i++) out[1 + i] = d.getMimeType(i);
+        return out;
     }
 
     /** From the clip's description only: reading the clip itself shows the "pasted" toast. */
@@ -724,6 +790,7 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
         out.initialSelStart = sel[0];
         out.initialSelEnd = sel[1];
         out.setInitialSurroundingText(KilnNative.imeGetText());
+        if (acceptsContent) out.contentMimeTypes = new String[] { "*/*", "image/*", "video/*" };
         if (connection != null) connection.closeConnection();
         extractedTextMonitor = false;
         extractedTextToken = 0;

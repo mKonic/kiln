@@ -192,8 +192,29 @@ final class KilnInputConnection implements InputConnection {
     // InputConnectionCompat's wrapper hands its own commands on; nothing else is handled.
     @Override public boolean performPrivateCommand(String action, Bundle data) { return true; }
     @Override public Handler getHandler() { return null; }
-    // receiveContent is not ported: no content is accepted (the terminal connection's answer).
-    @Override public boolean commitContent(InputContentInfo inputContentInfo, int flags, Bundle opts) { return false; }
+    /**
+     * commitContent (InputConnectionCompat's listener): with the read permission granted, the
+     * content goes to the receiveContent modifiers around the field as a one-item clip.
+     */
+    @Override public boolean commitContent(InputContentInfo info, int flags, Bundle opts) {
+        if (!live() || !view.acceptsContent()) return false;
+        int permission = 0;
+        if ((flags & INPUT_CONTENT_GRANT_READ_URI_PERMISSION) != 0) {
+            try {
+                info.requestPermission();
+            } catch (Exception e) {
+                return false;   // can't insert content from the IME: requestPermission() failed
+            }
+            permission = view.holdContentPermission(info);
+        }
+        android.content.ClipDescription d = info.getDescription();
+        String[] types = new String[d.getMimeTypeCount()];
+        for (int i = 0; i < types.length; i++) types[i] = d.getMimeType(i);
+        CharSequence label = d.getLabel();
+        android.net.Uri link = info.getLinkUri();
+        return KilnNative.imeCommitContent(info.getContentUri().toString(), types, label != null ? label.toString() : "",
+                link != null ? link.toString() : null, permission);
+    }
 
     private static boolean isTextSuggestionSelected(TextAttribute a) {
         return a != null && Build.VERSION.SDK_INT >= 37 && a.isTextSuggestionSelected();

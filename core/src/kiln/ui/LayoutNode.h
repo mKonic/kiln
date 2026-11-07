@@ -12,6 +12,7 @@
 #include "kiln/ui/Pointer.h"
 #include "kiln/ui/Focus.h"
 #include "kiln/ui/IndirectPointer.h"
+#include "kiln/ui/Clip.h"
 #include "kiln/ui/TextInput.h"
 #include "kiln/ui/Insets.h"
 #include "kiln/ui/Semantics.h"
@@ -291,11 +292,25 @@ namespace kiln::ui {
             std::function<void(const std::string&)> setText;
             std::function<std::optional<std::string>()> getText;
             std::function<bool()> hasText;   // without reading it (no "pasted" toast)
+            std::function<std::optional<std::pair<ClipEntry, ClipMetadata>>()> getClip;   // the whole primary clip
+            std::function<std::optional<ClipMetadata>()> getMetadata;                      // its description only
         };
         void SetClipboardHost(ClipboardHost host) { m_Clipboard = std::move(host); }
         void SetClipboardText(const std::string& text);
         std::optional<std::string> ClipboardText() const;
         bool ClipboardHasText() const;
+        // Clipboard.getClipEntry with its metadata (text items only without a host).
+        std::optional<std::pair<ClipEntry, ClipMetadata>> ClipboardClip() const;
+        std::optional<ClipMetadata> ClipboardMetadata() const;
+        // Content URIs from clips and the keyboard (ContentResolver.openInputStream), and the
+        // read permission a keyboard granted with commitContent (InputContentInfo, by handle).
+        struct ContentHost {
+            std::function<std::optional<std::vector<std::uint8_t>>(const std::string& uri)> read;
+            std::function<void(int handle)> releasePermission;
+        };
+        void SetContentHost(ContentHost host) { m_Content = std::move(host); }
+        std::optional<std::vector<std::uint8_t>> ReadContent(const std::string& uri) const { return m_Content.read ? m_Content.read(uri) : std::nullopt; }
+        void ReleaseContentPermission(int handle) const { if (m_Content.releasePermission && handle > 0) m_Content.releasePermission(handle); }
         // TextToolbar (AndroidTextToolbar): a floating ActionMode over a rect in root pixels with
         // the actions that are set (copy, paste, cut, select all). The host calls
         // OnTextToolbarItem when one is tapped (it then closes) and OnTextToolbarDestroyed when
@@ -381,6 +396,7 @@ namespace kiln::ui {
         std::function<void(int)> m_Haptic;
         std::function<void(bool, bool)> m_BarsAppearance;
         ClipboardHost m_Clipboard;
+        ContentHost m_Content;
         std::optional<std::string> m_LocalClip;   // without a host (tests): an in-process clipboard
         TextToolbarHost m_ToolbarHost;
         TextToolbarActions m_ToolbarActions;

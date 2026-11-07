@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "kiln/text/AnnotatedString.h"
+#include "kiln/ui/Clip.h"
 
 namespace kiln::ui {
 
@@ -34,6 +35,9 @@ namespace kiln::ui {
         bool autoCorrect = true;
         bool singleLine = false;
         std::vector<std::string> hintLocales;   // BCP 47 tags (EditorInfo.hintLocales)
+        // A receiveContent modifier is around the field: the keyboard may commit any content
+        // (EditorInfo content MIME types */*, image/*, video/*).
+        bool acceptsContent = false;
     };
 
     // The field's visual text as the IME sees it; selection and composition are min / max.
@@ -94,6 +98,9 @@ namespace kiln::ui {
         // filters (editor bounds 4, character bounds 8, insertion marker 16, visible line bounds
         // 32), which the host fills in for API levels without them.
         virtual void RequestCursorUpdates(int) {}
+        // InputConnection.commitContent (Source.Keyboard): true when a receiver took any of it.
+        // `permission` is the host's handle on the granted URI permission (0: none).
+        virtual bool CommitContent(const ClipEntry&, const ClipMetadata&, const std::optional<std::string>& /*linkUri*/, int /*permission*/) { return false; }
     };
 
     // Host side (the Android view / dev window).

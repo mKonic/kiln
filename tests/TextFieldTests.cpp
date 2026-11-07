@@ -4,6 +4,7 @@
 #include "kiln/foundation/text/BasicTextField.h"
 #include "kiln/foundation/Focus.h"
 #include "kiln/foundation/Layouts.h"
+#include "kiln/foundation/content/ReceiveContent.h"
 #include "kiln/ui/Pointer.h"
 
 using namespace kiln;
@@ -433,4 +434,48 @@ TEST(ImeSessionBatchesEditsAndReportsState) {
     CHECK_NEAR(a.markerBottom, 25, 1e-3f);
     CHECK(a.composingStart == 3 && a.composingText == U("de") && a.characterBounds.size() == 2);
     CHECK(!a.hasEditorBounds);
+}
+
+TEST(ContentReceiversTakeKeyboardContentAndPastes) {
+    CHECK(ui::ClipMetadata::CompareMimeTypes("image/png", "image/*"));
+    CHECK(ui::ClipMetadata::CompareMimeTypes("image/png", "*/*"));
+    CHECK(!ui::ClipMetadata::CompareMimeTypes("image/*", "image/png"));   // wildcards on the desired side only
+    FieldHarness h;
+    bool sawAccepts = false;
+    ui::TextInputHost host;
+    host.start = [&](const ui::ImeOptions& o, const ui::TextInputSnapshot&) { ++h.starts; sawAccepts = o.acceptsContent; };
+    h.owner.SetTextInputHost(host);
+    std::vector<std::string> outer, inner;
+    // The inner receiver takes images; the outer one sees what is left.
+    auto innerListener = ReceiveContentListenerOf([&](TransferableContentPtr c) {
+        inner.push_back(c->clipMetadata.label);
+        return c->Consume([](const ui::ClipItem& i) { return i.uri.has_value(); }, c);
+    });
+    auto outerListener = ReceiveContentListenerOf([&](TransferableContentPtr c) { outer.push_back(c->clipMetadata.label); return c; });
+    TextFieldState state("");
+    h.comp.SetContent([&] {
+        Column(ContentReceiver(Modifier{}, outerListener), [&] {
+            BasicTextField(state, ContentReceiver(Modifier{}, innerListener), Style20());
+        });
+    });
+    h.Pump({ 300, 300 });
+    h.owner.MoveFocus(ui::FocusDirection::Next);
+    h.Pump({ 300, 300 });
+    CHECK(sawAccepts);   // EditorInfo gets the content MIME types
+    ui::TextInputSession* s = h.owner.ActiveTextInput();
+    // A GIF from the keyboard: the inner receiver takes it, nothing reaches the outer one.
+    CHECK(s->CommitContent(ui::ClipEntry{ { ui::ClipItem{ std::nullopt, std::nullopt, "content://gif/1" } } },
+                           ui::ClipMetadata{ "gif", { "image/gif" } }, std::nullopt, 0));
+    CHECK(inner.size() == 1 && outer.empty());
+    // A pasted clip with an image and text: the image goes, the text is inserted.
+    ui::Owner::ClipboardHost clip;
+    clip.getText = [] { return std::optional<std::string>("hi"); };
+    clip.getClip = [] {
+        return std::optional(std::pair{ ui::ClipEntry{ { ui::ClipItem{ std::nullopt, std::nullopt, "content://img/2" }, ui::ClipItem{ "hi", std::nullopt, std::nullopt } } },
+                                        ui::ClipMetadata{ "mixed", { "image/png", "text/plain" } } });
+    };
+    h.owner.SetClipboardHost(clip);
+    h.Key(50, ui::kMetaCtrl);   // Ctrl+V
+    CHECK(inner.size() == 2 && outer.size() == 1 && outer[0] == "mixed");
+    CHECK(state.Peek().text == U("hi"));
 }
