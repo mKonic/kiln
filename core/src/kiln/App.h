@@ -55,6 +55,8 @@ namespace kiln {
         void SurfaceResized(std::uint32_t width, std::uint32_t height);
         void SurfaceDestroyed();
         void Frame(double timeSeconds);
+        // Owner::RenderToPixels: a one-off draw into an offscreen target, read back as RGBA.
+        std::vector<std::uint8_t> RenderToPixels(int width, int height, const std::function<void(ui::DrawScope&)>& draw);
 
         void SetDensity(float density, float fontScale) {
             m_Density = density;

@@ -129,6 +129,7 @@ namespace kiln::ui {
         // A lazy layout that can compose items past its bounds for a focus search.
         virtual BeyondBoundsLayout* AsBeyondBoundsLayout() { return nullptr; }
         virtual GlobalPositionAwareModifier* AsGlobalPositionAware() { return nullptr; }
+        virtual class DragAndDropNode* AsDragAndDrop() { return nullptr; }
         // Expires when the node is destroyed (for callbacks that may outlive it).
         std::weak_ptr<const char> AliveToken() const { return m_Alive; }
         // Semantics changed (call from Update when semantic params change).

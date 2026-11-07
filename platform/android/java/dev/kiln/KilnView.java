@@ -42,6 +42,7 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
     public KilnView(Context context, byte[] savedState) {
         super(context);
         textServices = new KilnTextServices(context, new Handler(Looper.getMainLooper()));
+        setOnDragListener(dragListener);
         setFocusable(true);
         setFocusableInTouchMode(true);
         setDefaultFocusHighlightEnabled(false);
@@ -786,6 +787,69 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
         android.widget.Magnifier m = magnifiers.get(handle);
         return m == null ? new int[] { 0, 0 } : new int[] { m.getWidth(), m.getHeight() };
     }
+
+    // --- drag and drop (AndroidComposeView.startDrag and its OnDragListener) --------------------
+    private static final Object LOCAL_DRAG = new Object();   // our drags' local state token
+    private android.view.DragEvent currentDragEvent;
+
+    /** startDragAndDrop with native's clip (3 strings per item: text, html, uri) and shadow. */
+    boolean startDragFromNative(String label, String[] mimeTypes, String[] items, int flags, int width, int height, byte[] rgba) {
+        if (items.length < 3) return false;
+        android.content.ClipData clip = null;
+        for (int i = 0; i + 2 < items.length; i += 3) {
+            android.content.ClipData.Item item = items[i + 2] != null
+                    ? new android.content.ClipData.Item(android.net.Uri.parse(items[i + 2]))
+                    : items[i + 1] != null ? new android.content.ClipData.Item(items[i], items[i + 1])
+                    : new android.content.ClipData.Item(items[i]);
+            if (clip == null) clip = new android.content.ClipData(label, mimeTypes, item);
+            else clip.addItem(item);
+        }
+        final android.graphics.Bitmap shadow = rgba != null && rgba.length == width * height * 4
+                ? android.graphics.Bitmap.createBitmap(width, height, android.graphics.Bitmap.Config.ARGB_8888) : null;
+        if (shadow != null) shadow.copyPixelsFromBuffer(java.nio.ByteBuffer.wrap(rgba));
+        final int w = width, h = height;
+        android.view.View.DragShadowBuilder builder = new android.view.View.DragShadowBuilder() {
+            @Override public void onProvideShadowMetrics(android.graphics.Point size, android.graphics.Point touch) {
+                size.set(w, h);
+                touch.set(w / 2, h / 2);
+            }
+            @Override public void onDrawShadow(android.graphics.Canvas canvas) {
+                if (shadow != null) canvas.drawBitmap(shadow, 0, 0, null);
+            }
+        };
+        return startDragAndDrop(clip, builder, LOCAL_DRAG, flags);
+    }
+
+    /** Activity.requestDragAndDropPermissions for the drop being delivered. */
+    boolean requestDragPermissionsFromNative() {
+        if (currentDragEvent == null || !(getContext() instanceof android.app.Activity)) return false;
+        return ((android.app.Activity) getContext()).requestDragAndDropPermissions(currentDragEvent) != null;
+    }
+
+    private final android.view.View.OnDragListener dragListener = (v, event) -> {
+        android.content.ClipDescription d = event.getClipDescription();
+        String[] mimes = new String[d != null ? d.getMimeTypeCount() : 0];
+        for (int i = 0; i < mimes.length; ++i) mimes[i] = d.getMimeType(i);
+        String[] items = null;
+        String label = d != null && d.getLabel() != null ? d.getLabel().toString() : "";
+        android.content.ClipData clip = event.getAction() == android.view.DragEvent.ACTION_DROP ? event.getClipData() : null;
+        if (clip != null) {
+            items = new String[clip.getItemCount() * 3];
+            for (int i = 0; i < clip.getItemCount(); ++i) {
+                android.content.ClipData.Item it = clip.getItemAt(i);
+                items[i * 3] = it.getText() != null ? it.getText().toString() : null;
+                items[i * 3 + 1] = it.getHtmlText();
+                items[i * 3 + 2] = it.getUri() != null ? it.getUri().toString() : null;
+            }
+        }
+        currentDragEvent = event;
+        try {
+            return KilnNative.dragEvent(event.getAction(), event.getX(), event.getY(), mimes, label, items,
+                    event.getLocalState() == LOCAL_DRAG, event.getResult());
+        } finally {
+            currentDragEvent = null;
+        }
+    };
 
     // keepScreenOn / sensitiveContent counts reached zero or one.
     void setKeepScreenOnFromNative(boolean on) { setKeepScreenOn(on); }

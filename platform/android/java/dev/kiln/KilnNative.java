@@ -87,6 +87,8 @@ final class KilnNative {
     /** A pending credential request's credential (its data as KilnAutofill's bundle arrays). */
     static native void credentialResult(int id, String type, Object[] data);
     static native void credentialError(int id, String type, String message);
+    /** OnDragListener.onDrag; items (3 per clip item) on a drop only; local: one of our drags. */
+    static native boolean dragEvent(int action, float x, float y, String[] mimeTypes, String label, String[] items, boolean local, boolean result);
     static native boolean a11yFlushBounds();
     static native boolean a11yCanScroll(boolean vertical, int direction, float x, float y);
     // Content capture and translation.

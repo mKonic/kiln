@@ -6,6 +6,7 @@
 
 #include "kiln/foundation/Compose.h"
 #include "kiln/ui/Clip.h"
+#include "kiln/ui/DragAndDrop.h"
 
 #include <functional>
 #include <memory>
@@ -47,6 +48,12 @@ namespace kiln::foundation {
         std::optional<std::string> ReadPlainText() const;
     };
     using TransferableContentPtr = std::shared_ptr<const TransferableContent>;
+
+    // dragAndDropRequestPermission: asks the platform for access to a drop's content URIs.
+    bool ClipContainsContentUri(const ui::ClipEntry& clip);
+    void DragAndDropRequestPermission(const ui::DragAndDropEvent& e);
+    // DragAndDropEvent.toTransferableContent.
+    TransferableContentPtr TransferableContentOf(const ui::DragAndDropEvent& e);
 
     class ReceiveContentListener {
     public:

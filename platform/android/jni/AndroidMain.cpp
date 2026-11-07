@@ -55,6 +55,7 @@ namespace {
         jmethodID requestFocus = nullptr;
     };
     Host* g_Host = nullptr;
+    std::shared_ptr<void> g_LocalDragState;   // the local state of a drag this app started
 
     void ArmTimer();
     void InstallTextInputHost(JNIEnv* env);
@@ -417,6 +418,42 @@ namespace {
                 static jmethodID keepOn = env->GetMethodID(svc, "setKeepScreenOnFromNative", "(Z)V");
                 static jmethodID sensitive = env->GetMethodID(svc, "setContentSensitiveFromNative", "(Z)V");
                 env->DeleteLocalRef(svc);
+                static jmethodID dragStart = env->GetMethodID(env->GetObjectClass(view), "startDragFromNative",
+                                                              "(Ljava/lang/String;[Ljava/lang/String;[Ljava/lang/String;III[B)Z");
+                static jmethodID dragPermissions = env->GetMethodID(env->GetObjectClass(view), "requestDragPermissionsFromNative", "()Z");
+                (void)dragPermissions;
+                kiln::ui::DragAndDropHost dnd;
+                dnd.startDrag = [](const kiln::ui::DragAndDropTransferData& d, int w, int h, std::vector<std::uint8_t> rgba) {
+                    JNIEnv* e = MainEnv();
+                    std::vector<std::string> items;
+                    for (const auto& it : d.clip.items) {
+                        items.push_back(it.text.value_or(""));
+                        items.push_back(it.htmlText.value_or(""));
+                        items.push_back(it.uri.value_or(""));
+                    }
+                    jobjectArray jitems = JavaStrings(e, items);
+                    // Absent parts are null.
+                    for (std::size_t i = 0; i < d.clip.items.size(); ++i) {
+                        const auto& it = d.clip.items[i];
+                        if (!it.text) e->SetObjectArrayElement(jitems, jsize(i * 3), nullptr);
+                        if (!it.htmlText) e->SetObjectArrayElement(jitems, jsize(i * 3 + 1), nullptr);
+                        if (!it.uri) e->SetObjectArrayElement(jitems, jsize(i * 3 + 2), nullptr);
+                    }
+                    std::vector<std::string> mimes = d.metadata.mimeTypes;
+                    if (mimes.empty()) mimes.push_back(d.clip.items.empty() || d.clip.items[0].text ? "text/plain" : "*/*");
+                    jobjectArray jmimes = JavaStrings(e, mimes);
+                    jstring label = JavaString(e, kiln::foundation::ToUtf16(d.metadata.label));
+                    jbyteArray px = nullptr;
+                    if (!rgba.empty()) {
+                        px = e->NewByteArray(jsize(rgba.size()));
+                        e->SetByteArrayRegion(px, 0, jsize(rgba.size()), reinterpret_cast<const jbyte*>(rgba.data()));
+                    }
+                    g_LocalDragState = d.localState;
+                    const bool ok = e->CallBooleanMethod(g_Host->view, dragStart, label, jmimes, jitems, jint(d.flags), jint(w), jint(h), px);
+                    for (jobject o : { (jobject)jitems, (jobject)jmimes, (jobject)label, (jobject)px }) if (o) e->DeleteLocalRef(o);
+                    return ok;
+                };
+                owner.DragAndDrop().SetHost(std::move(dnd));
                 owner.SetScreenHost([](bool on) { MainEnv()->CallVoidMethod(g_Host->view, keepOn, jboolean(on)); },
                                     [](bool s) { MainEnv()->CallVoidMethod(g_Host->view, sensitive, jboolean(s)); });
                 owner.SetAutofillHost(std::move(af));
@@ -1728,6 +1765,38 @@ namespace {
         return out;
     }
 
+    // OnDragListener.onDrag.
+    jboolean DragEvent(JNIEnv* env, jclass, jint action, jfloat x, jfloat y, jobjectArray mimes, jstring label, jobjectArray items, jboolean local,
+                       jboolean result) {
+        if (!g_Host || action < 1 || action > 6) return JNI_FALSE;
+        kiln::ui::DragAndDropEvent e;
+        e.action = kiln::ui::DragAndDropEvent::Action(action);
+        e.positionInRoot = { x, y };
+        for (auto& m : StringsFromJava(env, mimes)) if (m) e.mimeTypes.push_back(*m);
+        if (items) {
+            const auto parts = StringsFromJava(env, items);
+            kiln::ui::ClipEntry clip;
+            for (std::size_t i = 0; i + 2 < parts.size(); i += 3) clip.items.push_back({ parts[i], parts[i + 1], parts[i + 2] });
+            e.clip = std::move(clip);
+            kiln::ui::ClipMetadata meta;
+            if (label) {
+                const char* c = env->GetStringUTFChars(label, nullptr);
+                meta.label = c;
+                env->ReleaseStringUTFChars(label, c);
+            }
+            meta.mimeTypes = e.mimeTypes;
+            e.metadata = std::move(meta);
+        }
+        if (local) e.localState = g_LocalDragState;
+        e.result = result;
+        static jmethodID permissions = env->GetMethodID(env->GetObjectClass(g_Host->view), "requestDragPermissionsFromNative", "()Z");
+        e.requestPermissions = [] { return bool(MainEnv()->CallBooleanMethod(g_Host->view, permissions)); };
+        const bool handled = g_Host->app->GetOwner().DragAndDrop().OnDrag(e);
+        if (e.action == kiln::ui::DragAndDropEvent::Action::Ended) g_LocalDragState.reset();
+        g_Host->app->RequestFrame();
+        return jboolean(handled);
+    }
+
     // A pending credential request's outcome.
     void CredentialResult(JNIEnv* env, jclass, jint id, jstring type, jobjectArray data) {
         if (!g_Host || !g_Host->app->GetOwner().Autofill()) return;
@@ -1970,6 +2039,7 @@ extern "C" JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void*) {
         { "a11yCheckSemantics", "()V", reinterpret_cast<void*>(&A11yCheckSemantics) },
         { "autofillStructure", "()[Ljava/lang/Object;", reinterpret_cast<void*>(&AutofillStructure) },
         { "autofillPerform", "(IILjava/lang/String;IJ)V", reinterpret_cast<void*>(&AutofillPerform) },
+        { "dragEvent", "(IFF[Ljava/lang/String;Ljava/lang/String;[Ljava/lang/String;ZZ)Z", reinterpret_cast<void*>(&DragEvent) },
         { "credentialResult", "(ILjava/lang/String;[Ljava/lang/Object;)V", reinterpret_cast<void*>(&CredentialResult) },
         { "credentialError", "(ILjava/lang/String;Ljava/lang/String;)V", reinterpret_cast<void*>(&CredentialError) },
         { "a11yFlushBounds", "()Z", reinterpret_cast<void*>(&A11yFlushBounds) },

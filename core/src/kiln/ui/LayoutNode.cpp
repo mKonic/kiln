@@ -775,6 +775,24 @@ namespace kiln::ui {
         step(0);
     }
 
+    bool LayoutNode::DrawAfter(const DrawModifier* after, ContentDrawScope& scope) {
+        for (std::size_t index = 0; index < m_Coordinators.size(); ++index) {
+            Coordinator& c = *m_Coordinators[index];
+            const auto it = std::find(c.draws.begin(), c.draws.end(), after);
+            if (it == c.draws.end()) continue;
+            const ui::Size size{ float(c.Width()), float(c.Height()) };
+            std::function<void(std::size_t)> step = [&](std::size_t d) {
+                if (d == c.draws.size()) { DrawWrapped(index, scope); return; }
+                scope.SetSize(size);
+                scope.SetContent([&, d] { step(d + 1); });
+                c.draws[d]->Draw(scope);
+            };
+            step(std::size_t(it - c.draws.begin()) + 1);
+            return true;
+        }
+        return false;
+    }
+
     void LayoutNode::DrawWrapped(std::size_t index, ContentDrawScope& scope) {
         if (index + 1 < m_Coordinators.size()) {
             const IntOffset p = m_Coordinators[index + 1]->position;
@@ -1098,6 +1116,12 @@ namespace kiln::ui {
     void Owner::ForgetPointerModifier(PointerInputModifier* m) {
         for (auto& [id, t] : m_Pointers)
             std::erase_if(t.path, [&](const HitEntry& e) { return e.mod == m; });
+    }
+
+    void Owner::DrawWith(const DrawTarget& target, const std::function<void(DrawScope&)>& draw) {
+        ContentDrawScope scope(m_Density, m_Direction, target);
+        draw(scope);
+        scope.Finish();
     }
 
     void Owner::Draw(const DrawTarget& target) {

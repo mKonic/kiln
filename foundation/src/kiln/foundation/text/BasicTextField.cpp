@@ -480,9 +480,58 @@ namespace kiln::foundation {
             Color autofillHighlightColor = Color(0x4DFFEB3Bu);
             bool operator==(const DecoratorParams&) const = default;
         };
-        struct DecoratorNode final : ModifierNode, ui::SemanticsModifier, ui::GlobalPositionAwareModifier, DrawModifier {
+        // textFieldDragAndDropNode's target: text (or, with a receiveContent around, anything)
+        // dropped at the cursor the drag moves.
+        struct FieldDropTarget final : ui::DragAndDropTarget {
+            std::shared_ptr<Field> field;
+            std::uint64_t enter = 0;
+            void EmitDragExit() {
+                if (enter && field->interaction) field->interaction->End(Interaction::Kind::DragAndDropHover, enter);
+                enter = 0;
+            }
+            void OnEntered(const ui::DragAndDropEvent&) override {
+                if (field->interaction) enter = field->interaction->Start(Interaction::Kind::DragAndDropHover);
+                if (auto* c = field->ReceiveContent()) c->Listener().OnDragEnter();
+            }
+            void OnMoved(const ui::DragAndDropEvent& e) override {
+                const Offset positionOnTextField = field->layout->FromWindowToDecoration(e.positionInRoot);
+                const int cursor = field->layout->GetOffsetForPosition(positionOnTextField);
+                if (cursor >= 0) field->transformed->SelectCharsIn(TextRange(cursor));
+                field->selection->UpdateHandleDragging(TextFieldHandle::Cursor, positionOnTextField);
+            }
+            bool OnDrop(const ui::DragAndDropEvent& e) override {
+                if (field->ReceiveContent()) DragAndDropRequestPermission(e);
+                EmitDragExit();
+                field->selection->ClearHandleDragging();
+                auto content = TransferableContentOf(e);
+                std::optional<std::string> plainText = content->ReadPlainText();
+                if (auto* c = field->ReceiveContent()) {
+                    const TransferableContentPtr remaining = c->Listener().OnReceive(content);
+                    plainText = remaining ? remaining->ReadPlainText() : std::nullopt;
+                }
+                if (plainText) field->transformed->ReplaceSelectedText(ToUtf16(*plainText));
+                return true;
+            }
+            void OnExited(const ui::DragAndDropEvent&) override {
+                EmitDragExit();
+                field->selection->ClearHandleDragging();
+                if (auto* c = field->ReceiveContent()) c->Listener().OnDragExit();
+            }
+            void OnEnded(const ui::DragAndDropEvent&) override { EmitDragExit(); }
+        };
+
+        struct DecoratorNode final : ui::DragAndDropNode, ui::SemanticsModifier, ui::GlobalPositionAwareModifier, DrawModifier {
             DecoratorParams params;
-            explicit DecoratorNode(DecoratorParams p) : params(std::move(p)) {}
+            FieldDropTarget m_DropTarget;
+            explicit DecoratorNode(DecoratorParams p) : params(std::move(p)) {
+                // hintMediaTypes: any type with a receiver around, text otherwise.
+                onDropTargetValidate = [this](const ui::DragAndDropEvent& e) -> ui::DragAndDropTarget* {
+                    m_DropTarget.field = params.field;
+                    if (params.field->ReceiveContent()) return &m_DropTarget;
+                    ui::ClipMetadata meta{ "", e.mimeTypes };
+                    return meta.HasMimeType("text/*") ? &m_DropTarget : nullptr;
+                };
+            }
             DrawModifier* AsDraw() override { return this; }
             // The autofill highlight over the content (and any background the decoration drew).
             void Draw(ContentDrawScope& s) override {
@@ -494,7 +543,7 @@ namespace kiln::foundation {
 
             void OnAttach() override {
                 Field& f = *params.field;
-                f.owner = OwnerOf(*this);
+                f.owner = DragAndDropNode::OwnerOf();
                 f.selection->owner = f.owner;
                 f.decoratorNode = this;
                 f.UpdateBehaviors(f.options.textStyle.span.localeList);
@@ -507,6 +556,7 @@ namespace kiln::foundation {
                 Observe();
             }
             void OnDetach() override {
+                DragAndDropNode::OnDetach();
                 Field& f = *params.field;
                 f.DisposeInputSession();
                 f.selection->StopToolbarAndHandlesVisibilityObserver();
@@ -1108,7 +1158,7 @@ namespace kiln::foundation {
             Modifier size = Modifier().With<SizeNode>(SizeParams{ options.textStyle, minLines, maxLines, singleLine, singleLine, fl.layout.get() });
             size = ClipToBounds(std::move(size));
             const bool touchDrag = fl.selection->DirectDragGestureInitiator() == TextFieldSelectionState::InputType::Touch;
-            size = size.With<CoreNode>(CoreParams{ field, isWindowAndTextFieldFocused, false, options.cursorBrush, selectionBackground, writeable,
+            size = size.With<CoreNode>(CoreParams{ field, isWindowAndTextFieldFocused, interaction->IsDragAndDropHovered(), options.cursorBrush, selectionBackground, writeable,
                                                     &scrollState, orientation, fl.transformed.get(), touchDrag });
             // The handles show while the field and its window are focused and the last pointer
             // was a finger.

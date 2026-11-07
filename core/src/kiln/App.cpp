@@ -16,6 +16,7 @@ namespace kiln {
         m_Dispatcher.requestFrame = [this] { RequestFrame(); };
         m_Owner.SetText(m_Services.text);
         m_Owner.SetRequestFrame([this] { RequestFrame(); });
+        m_Owner.SetOffscreenRenderer([this](int w, int h, const std::function<void(ui::DrawScope&)>& draw) { return RenderToPixels(w, h, draw); });
         // Any state write schedules a frame, like Compose's global apply observer (14 §Recomposer).
         rt::Observation::SetChangeListener([this] { RequestFrame(); });
     }
@@ -281,6 +282,52 @@ namespace kiln {
     void App::UploadPage(std::uint32_t index, const void* rgba, std::uint32_t stride, std::uint32_t x,
                          std::uint32_t y, std::uint32_t w, std::uint32_t h) {
         if (index < m_Pages.size() && m_Pages[index]) m_Pages[index]->Upload(rgba, stride, x, y, w, h);
+    }
+
+    std::vector<std::uint8_t> App::RenderToPixels(int width, int height, const std::function<void(ui::DrawScope&)>& draw) {
+        std::vector<std::uint8_t> out;
+        if (!m_Device || m_SurfaceLost || !m_Quads) return out;
+        RenderTargetDesc d;
+        d.width = std::uint32_t(width);
+        d.height = std::uint32_t(height);
+        d.colorFormats = { m_Device->SwapchainFormat() };
+        d.debugName = "kiln.offscreen";
+        auto rt = m_Device->CreateRenderTarget(d);
+        if (!rt) return out;
+        // The frame's caches are reused: everything is synced before the immediate submit, and
+        // the next frame starts them over.
+        m_Quads->Begin(std::uint32_t(width), std::uint32_t(height));
+        m_Quads->SetClearColor(0, 0, 0, 0);
+        if (!m_Paths) m_Paths = std::make_unique<PathCache>(*m_Device);
+        if (!m_Gradients) { m_Gradients = std::make_unique<GradientRamps>(*m_Device); m_Quads->SetRampTexture(m_Gradients->Texture()); }
+        if (!m_Images) m_Images = std::make_unique<ImageCache>(*m_Device, *m_Quads);
+        if (!m_Filters) { m_Filters = std::make_unique<FilterTable>(*m_Device); m_Quads->SetFilterTexture(m_Filters->Texture()); }
+        if (m_Services.text) m_Services.text->SyncAtlas(*this);
+        m_Owner.DrawWith({ m_Quads.get(), [this](std::uint32_t i) { return Page(i); }, m_Paths.get(), m_Gradients.get(), m_Images.get(), m_Filters.get(),
+                           float(width), float(height) },
+                         draw);
+        if (m_Services.text) m_Services.text->SyncAtlas(*this);
+        m_Paths->Sync();
+        m_Gradients->Sync();
+        m_Filters->Sync();
+        m_Device->SubmitImmediate([&](CommandList& cmd) {
+            m_Quads->RenderLayers(cmd);
+            RenderPassDesc pass;
+            pass.target = rt.get();
+            pass.clearColor = { 0, 0, 0, 0 };
+            cmd.BeginRenderPass(pass);
+            m_Quads->Flush(cmd);
+            cmd.EndRenderPass();
+        });
+        const std::size_t bytes = std::size_t(width) * std::size_t(height) * 4;
+        out.resize(bytes);
+        rt->ReadPixels(out.data(), bytes);
+        // The swapchain may be BGRA: hand out RGBA.
+        const Format f = m_Device->SwapchainFormat();
+        if (f == Format::BGRA8_UNORM || f == Format::BGRA8_SRGB)
+            for (std::size_t i = 0; i < bytes; i += 4) std::swap(out[i], out[i + 2]);
+        RequestFrame();   // the frame's renderer state was used
+        return out;
     }
 
     void App::Frame(double timeSeconds) {

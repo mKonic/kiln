@@ -6,6 +6,7 @@
 #include <kiln/foundation/Compose.h>
 #include <kiln/foundation/text/BasicSecureTextField.h>
 #include <kiln/foundation/Semantics.h>
+#include <kiln/foundation/draganddrop/DragAndDrop.h>
 #include <kiln/graphics/PathEffect.h>
 #include <kiln/foundation/MeshGradient.h>
 #include <kiln/foundation/Gestures.h>
@@ -190,6 +191,15 @@ namespace {
                 BasicTextField(field, Padding(FillMax(Modifier{}, Axis::Horizontal), 16_dp, 16_dp), opt);
             });
             BasicText("Field text: " + field.TextUtf8(), Padding(Modifier{}, 16_dp, 0_dp), { 14, kVariant });
+            // Long press "Drag me" and drop it on a field: the text goes in at the drop point.
+            Box(DragAndDropSource(Background(Padding(Modifier{}, 16_dp, 0_dp), kContainer, CornerShape::Rounded(8_dp)), [](Offset) {
+                    kiln::ui::DragAndDropTransferData d;
+                    d.clip.items.push_back({ std::string(" dropped "), std::nullopt, std::nullopt });
+                    d.metadata = { "kiln", { "text/plain" } };
+                    d.flags = 256;   // View.DRAG_FLAG_GLOBAL: other apps may take it
+                    return std::optional(d);
+                }),
+                Alignment::Center(), false, [] { BasicText("Drag me", Padding(Modifier{}, 12_dp, 8_dp), { 16, kOnSurface }); });
             // A password field: the last typed character shows briefly when the setting allows.
             auto& password = RememberTextFieldState("");
             Box(Background(Padding(FillMax(Modifier{}, Axis::Horizontal), 16_dp, 0_dp), kContainer, CornerShape::Rounded(12_dp)),

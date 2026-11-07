@@ -20,7 +20,7 @@ namespace kiln::foundation {
     using ui::Offset;
 
     struct Interaction {
-        enum class Kind : std::uint8_t { Press, Hover, Focus, Drag };
+        enum class Kind : std::uint8_t { Press, Hover, Focus, Drag, DragAndDropHover };
         enum class Phase : std::uint8_t { Start, End, Cancel };   // Press Release = End
         Kind kind;
         Phase phase;
@@ -40,6 +40,8 @@ namespace kiln::foundation {
         bool IsHovered() const { return m_Count[1].Get() > 0; }
         bool IsFocused() const { return m_Count[2].Get() > 0; }
         bool IsDragged() const { return m_Count[3].Get() > 0; }
+        // collectIsDragAndDropHoveredAsState: a drag and drop session is over the component.
+        bool IsDragAndDropHovered() const { return m_Count[4].Get() > 0; }
 
         // Every event, in order (indications that need positions and ends, like the ripple).
         std::uint64_t Subscribe(std::function<void(const Interaction&)> fn);
@@ -47,7 +49,7 @@ namespace kiln::foundation {
 
     private:
         void Emit(const Interaction& i);
-        rt::State<int> m_Count[4] = { rt::State<int>(0), rt::State<int>(0), rt::State<int>(0), rt::State<int>(0) };
+        rt::State<int> m_Count[5] = { rt::State<int>(0), rt::State<int>(0), rt::State<int>(0), rt::State<int>(0), rt::State<int>(0) };
         std::vector<std::pair<std::uint64_t, Interaction::Kind>> m_Active;
         std::vector<std::pair<std::uint64_t, std::function<void(const Interaction&)>>> m_Subscribers;
         std::uint64_t m_NextId = 1, m_NextToken = 1;

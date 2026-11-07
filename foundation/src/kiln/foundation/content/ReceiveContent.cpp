@@ -3,6 +3,7 @@
 #include "kiln/ui/LayoutNode.h"
 
 #include <algorithm>
+#include <cctype>
 
 namespace kiln::foundation {
 
@@ -38,6 +39,25 @@ namespace kiln::foundation {
         return l;
     }
 
+    bool ClipContainsContentUri(const ui::ClipEntry& clip) {
+        for (const auto& item : clip.items) {
+            if (!item.uri) continue;
+            const std::string& u = *item.uri;
+            if (u.size() >= 8 && std::equal(u.begin(), u.begin() + 8, "content:", [](char a, char b) { return std::tolower(a) == b; })) return true;
+        }
+        return false;
+    }
+
+    void DragAndDropRequestPermission(const ui::DragAndDropEvent& e) {
+        if (!e.clip || !ClipContainsContentUri(*e.clip)) return;
+        if (e.requestPermissions) e.requestPermissions();
+    }
+
+    TransferableContentPtr TransferableContentOf(const ui::DragAndDropEvent& e) {
+        return std::make_shared<TransferableContent>(e.clip.value_or(ui::ClipEntry{}), e.metadata.value_or(ui::ClipMetadata{}),
+                                                     TransferableContent::Source::DragAndDrop);
+    }
+
     namespace {
         class Provider {
         public:
@@ -51,9 +71,30 @@ namespace kiln::foundation {
         };
         // ReceiveContentNode with its DynamicReceiveContentConfiguration: this receiver first,
         // then the ones further out with what is left.
-        struct ReceiveContentNode final : ModifierNode, Provider, ReceiveContentConfiguration, ReceiveContentListener {
+        // ReceiveContentDragAndDropNode's target: drags go to the configuration's listener.
+        struct ReceiveDropTarget final : ui::DragAndDropTarget {
+            ReceiveContentConfiguration* configuration = nullptr;
+            ui::ModifierNode* node = nullptr;
+            void OnStarted(const ui::DragAndDropEvent&) override { configuration->Listener().OnDragStart(); }
+            void OnEnded(const ui::DragAndDropEvent&) override { configuration->Listener().OnDragEnd(); }
+            void OnEntered(const ui::DragAndDropEvent&) override { configuration->Listener().OnDragEnter(); }
+            void OnExited(const ui::DragAndDropEvent&) override { configuration->Listener().OnDragExit(); }
+            bool OnDrop(const ui::DragAndDropEvent& e) override {
+                DragAndDropRequestPermission(e);
+                auto original = TransferableContentOf(e);
+                const TransferableContentPtr remaining = configuration->Listener().OnReceive(original);
+                return original != remaining;
+            }
+        };
+
+        struct ReceiveContentNode final : ui::DragAndDropNode, Provider, ReceiveContentConfiguration, ReceiveContentListener {
             ReceiveParams params;
-            explicit ReceiveContentNode(ReceiveParams p) : params(std::move(p)) {}
+            explicit ReceiveContentNode(ReceiveParams p) : params(std::move(p)) {
+                m_DropTarget.configuration = this;
+                m_DropTarget.node = this;
+                onDropTargetValidate = [this](const ui::DragAndDropEvent&) -> ui::DragAndDropTarget* { return &m_DropTarget; };
+            }
+            ReceiveDropTarget m_DropTarget;
             void OnParamsChanged() {}
             ReceiveContentConfiguration* Configuration() override { return this; }
             ReceiveContentListener& Listener() override { return *this; }

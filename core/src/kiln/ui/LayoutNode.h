@@ -16,6 +16,7 @@
 #include "kiln/ui/TextInput.h"
 #include "kiln/ui/TextToolbar.h"
 #include "kiln/ui/Autofill.h"
+#include "kiln/ui/DragAndDrop.h"
 #include "kiln/ui/Insets.h"
 #include "kiln/ui/Semantics.h"
 
@@ -117,6 +118,10 @@ namespace kiln::ui {
 
         // Draws this node and its subtree with scope translated to the node's top-left.
         void Draw(ContentDrawScope& scope);
+        // What `after` (one of this node's draw modifiers) draws as its content, into `scope` in
+        // that modifier's space: the rest of the chain and the children (a one-off redraw, such
+        // as a drag shadow; reads are not observed). False if `after` is not here.
+        bool DrawAfter(const DrawModifier* after, ContentDrawScope& scope);
 
         Measurable& AsMeasurable();
         // Stable id for semantics / accessibility virtual views.
@@ -366,6 +371,15 @@ namespace kiln::ui {
         const std::vector<TextToolbarEntry>& TextToolbarEntries() const { return m_ToolbarEntries; }
         void OnTextToolbarItem(std::size_t index);
         void OnTextToolbarDestroyed();
+        // Draws `draw` into a width x height RGBA image (premultiplied, tightly packed) off screen;
+        // blocking, for one-off images such as a drag shadow. Empty without a renderer.
+        using OffscreenRenderer = std::function<std::vector<std::uint8_t>(int width, int height, const std::function<void(DrawScope&)>& draw)>;
+        void SetOffscreenRenderer(OffscreenRenderer r) { m_Offscreen = std::move(r); }
+        std::vector<std::uint8_t> RenderToPixels(int width, int height, const std::function<void(DrawScope&)>& draw) const {
+            return m_Offscreen && width > 0 && height > 0 ? m_Offscreen(width, height, draw) : std::vector<std::uint8_t>{};
+        }
+        // A scope over `target` with this owner's density and direction (for an offscreen draw).
+        void DrawWith(const DrawTarget& target, const std::function<void(DrawScope&)>& draw);
         // keepScreenOn / sensitiveContent counts (AndroidComposeView): the host view keeps the
         // screen on while any node asks, and is marked sensitive (API 35) while any node is.
         void SetScreenHost(std::function<void(bool)> keepScreenOn, std::function<void(bool)> contentSensitive) {
@@ -419,6 +433,11 @@ namespace kiln::ui {
         // The accessibility delegate (made on first use). The host hears of semantics changes
         // (`layout` false) and layout changes (true) while a service listens.
         AccessibilityDelegate& Accessibility();
+        // Drag and drop (AndroidDragAndDropManager); the host's drag listener calls OnDrag.
+        DragAndDropManager& DragAndDrop() {
+            if (!m_DragAndDrop) m_DragAndDrop = std::make_unique<DragAndDropManager>(*this);
+            return *m_DragAndDrop;
+        }
         // Autofill (AndroidAutofillManager); none until the host sets one (autofill unsupported).
         void SetAutofillHost(AutofillHost host);
         AutofillManager* Autofill() const { return m_Autofill.get(); }
@@ -480,6 +499,7 @@ namespace kiln::ui {
         TextClassifierHost m_Classifier;
         rt::State<int> m_PasswordVisibility{ 3 };
         std::function<void(bool)> m_KeepScreenOnHost, m_ContentSensitiveHost;
+        OffscreenRenderer m_Offscreen;
         int m_KeepScreenOnCount = 0, m_SensitiveCount = 0;
         friend class FocusTargetNode;
         friend class AccessibilityDelegate;
@@ -545,6 +565,7 @@ namespace kiln::ui {
         WindowInsetsHolder m_Insets;
         std::uint64_t m_SemanticsVersion = 0;
         std::unique_ptr<AutofillManager> m_Autofill;
+        std::unique_ptr<DragAndDropManager> m_DragAndDrop;
         std::function<void()> m_OnSemanticsChanged;
         std::unique_ptr<AccessibilityDelegate> m_Accessibility;
         std::function<void(bool)> m_OnAccessibilityChange;
