@@ -9,6 +9,7 @@
 
 #include "kiln/foundation/Layouts.h"
 #include "kiln/foundation/Focus.h"
+#include "kiln/foundation/Gestures.h"
 #include "kiln/runtime/State.h"
 #include "kiln/text/Paragraph.h"
 #include "kiln/ui/Locals.h"
@@ -233,6 +234,30 @@ namespace kiln::foundation {
         Modifier SelectionGestures(Modifier m, std::shared_ptr<SelectionRegistrar> registrar, std::int64_t selectableId,
                                    std::function<std::optional<Coordinates>()> coordinates);
         // isCopyKeyEvent (Android key mapping): Ctrl+C, Ctrl+Insert or the Copy key.
+        // TextDragObserver / MouseSelectionObserver.
+        class TextDragObserver {
+        public:
+            virtual ~TextDragObserver() = default;
+            virtual void OnDown(Offset) {}
+            virtual void OnUp() {}
+            virtual void OnStart(Offset startPoint, Adjustment adjustment) = 0;
+            virtual void OnDrag(Offset delta) = 0;
+            virtual void OnStop() = 0;
+            virtual void OnCancel() = 0;
+        };
+        class MouseSelectionObserver {
+        public:
+            virtual ~MouseSelectionObserver() = default;
+            virtual bool OnExtend(Offset downPosition) = 0;
+            virtual bool OnExtendDrag(Offset dragPosition) = 0;
+            virtual bool OnStart(Offset downPosition, Adjustment adjustment, int clickCount) = 0;
+            virtual bool OnDrag(Offset dragPosition, Adjustment adjustment) = 0;
+            virtual void OnDragDone() = 0;
+        };
+        // awaitSelectionGestures: mouse clicks (with their count) and drags, touch long-press drags
+        // and double / triple taps.
+        rt::Task<> AwaitSelectionGestures(PointerInputScope& s, std::shared_ptr<MouseSelectionObserver> mouse, std::shared_ptr<TextDragObserver> drag);
+
         bool IsCopyKeyEvent(const ui::KeyEvent& e);
 
         class SelectionManager;

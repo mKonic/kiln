@@ -47,27 +47,6 @@ namespace kiln::foundation {
             };
         }
 
-        // TextDragObserver / MouseSelectionObserver.
-        class TextDragObserver {
-        public:
-            virtual ~TextDragObserver() = default;
-            virtual void OnDown(Offset) {}
-            virtual void OnUp() {}
-            virtual void OnStart(Offset startPoint, Adjustment adjustment) = 0;
-            virtual void OnDrag(Offset delta) = 0;
-            virtual void OnStop() = 0;
-            virtual void OnCancel() = 0;
-        };
-        class MouseSelectionObserver {
-        public:
-            virtual ~MouseSelectionObserver() = default;
-            virtual bool OnExtend(Offset downPosition) = 0;
-            virtual bool OnExtendDrag(Offset dragPosition) = 0;
-            virtual bool OnStart(Offset downPosition, Adjustment adjustment, int clickCount) = 0;
-            virtual bool OnDrag(Offset dragPosition, Adjustment adjustment) = 0;
-            virtual void OnDragDone() = 0;
-        };
-
         namespace {
             // ClicksCounter: presses close in time and space count up.
             struct ClicksCounter {

@@ -10,6 +10,7 @@
 #include "kiln/foundation/text/BasicText.h"
 #include "kiln/foundation/text/handwriting/StylusHandwriting.h"
 #include "kiln/foundation/text/input/HandwritingGestures.h"
+#include "kiln/foundation/text/input/TextFieldHandles.h"
 #include "kiln/foundation/text/input/TextFieldKeys.h"
 #include "kiln/foundation/text/input/TextFieldSelectionState.h"
 #include "kiln/foundation/text/input/TextLayoutState.h"
@@ -177,6 +178,7 @@ namespace kiln::foundation {
                         imeComposition = visual.composition;
                         owner->NotifyTextInputUpdate(session, restartIme, changed);
                     }
+                    selection->OnContentChanged();
                     for (auto it = changeObservers.begin(); it != changeObservers.end();) {
                         const int token = it->first;
                         it->second();
@@ -311,7 +313,12 @@ namespace kiln::foundation {
             // session starts once both the field and its window have focus.
             void OnIsFocusedUpdated() {
                 selection->isWindowAndTextFieldFocused = IsFocused();
-                if (IsFocused() && Editable() && !inputSession) StartInputSession(false);
+                if (IsFocused()) {
+                    if (Editable() && !inputSession) StartInputSession(false);
+                    selection->StartToolbarAndHandlesVisibilityObserver();
+                } else {
+                    selection->StopToolbarAndHandlesVisibilityObserver();
+                }
             }
 
             void OnFocusChange(bool focused) {
@@ -444,6 +451,7 @@ namespace kiln::foundation {
             void OnDetach() override {
                 Field& f = *params.field;
                 f.DisposeInputSession();
+                f.selection->StopToolbarAndHandlesVisibilityObserver();
                 if (f.decoratorNode == this) f.decoratorNode = nullptr;
                 Unobserve();
             }
@@ -861,6 +869,7 @@ namespace kiln::foundation {
             void OnGloballyPositioned() override {
                 params.field->layout->textLayoutNodeCoordinates = selection::Coordinates{ Owner(), this, AliveToken() };
                 params.field->ScheduleCursorAnchorCheck();
+                params.field->selection->OnContentChanged();
             }
             MeasureResult Measure(MeasureScope& s, Measurable& m, const Constraints& c) override {
                 Field& f = *params.field;
@@ -949,6 +958,9 @@ namespace kiln::foundation {
             return field->selection->DetectTextFieldTapGestures(
                 s, [field] { if (!field->selection->isWindowAndTextFieldFocused) field->RequestFocus(); }, [field] { field->ShowKeyboard(); });
         });
+        m = PointerInput(std::move(m), keys, [field](PointerInputScope& s) {
+            return field->selection->TextFieldSelectionGestures(s, [field] { if (!field->selection->isWindowAndTextFieldFocused) field->RequestFocus(); });
+        });
         // ScrollableDefaults.reverseDirection: horizontal scrolling reverses in RTL.
         ScrollableOptions so;
         so.enabled = options.enabled && !IsDragGestureInProgress();
@@ -972,13 +984,18 @@ namespace kiln::foundation {
             size = ClipToBounds(std::move(size));
             size = size.With<CoreNode>(CoreParams{ field, isWindowAndTextFieldFocused, false, options.cursorBrush, selectionBackground, writeable,
                                                     &scrollState, orientation, fl.transformed.get() });
-            Box(size, Alignment::TopStart(), true, [field, singleLine, options] {
-                Field& fi = *field;
-                Modifier layout = Modifier().With<TextLayoutNode>(
-                    TextLayoutParams{ field, fi.transformed.get(), options.textStyle, singleLine,
-                                      fi.keyboard.keyboardType == ui::KeyboardType::Phone });
-                layout = BringIntoViewRequesterMod(std::move(layout), fi.layout->bringIntoViewRequester);
-                Box(layout);
+            // The handles show while the field and its window are focused and the last pointer
+            // was a finger.
+            const bool showHandles = options.enabled && isWindowAndTextFieldFocused && fl.selection->IsDirectTouchInteraction();
+            TextFieldWithHandles(*fl.selection, showHandles, !options.readOnly, [field, singleLine, options, size] {
+                Box(size, Alignment::TopStart(), true, [field, singleLine, options] {
+                    Field& fi = *field;
+                    Modifier layout = Modifier().With<TextLayoutNode>(
+                        TextLayoutParams{ field, fi.transformed.get(), options.textStyle, singleLine,
+                                          fi.keyboard.keyboardType == ui::KeyboardType::Phone });
+                    layout = BringIntoViewRequesterMod(std::move(layout), fi.layout->bringIntoViewRequester);
+                    Box(layout);
+                });
             });
         };
         Box(m, Alignment::TopStart(), true, [options, inner] {

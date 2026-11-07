@@ -7,6 +7,9 @@
 #include "kiln/foundation/content/ReceiveContent.h"
 #include "kiln/ui/Pointer.h"
 
+#include <chrono>
+#include <thread>
+
 using namespace kiln;
 using namespace kiln::foundation;
 
@@ -600,4 +603,105 @@ TEST(HandwritingGesturesEditTheField) {
     CHECK_EQ(s->PerformHandwritingGesture(miss), G::kResultFailed);
     miss.fallbackText = u"!";
     CHECK_EQ(s->PerformHandwritingGesture(miss), G::kResultFallback);
+}
+
+namespace {
+    void SendPointer(FieldHarness& h, ui::PointerType type, ui::PointerEventType kind, float x, float y, bool down, std::uint32_t buttons = 0) {
+        ui::RawPointerEvent e;
+        e.type = kind;
+        e.uptimeMillis = h.t += 16;
+        e.buttons = buttons;
+        e.pointers.push_back({ 1, { x, y }, down, type, {} });
+        h.owner.ProcessPointer(e);
+        h.Pump({ 300, 300 });
+    }
+    void WaitMs(FieldHarness& h, int ms) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(ms));
+        h.t += ms;
+        h.Pump({ 300, 300 });
+    }
+    // The field's handle layer: the second child of the content-with-handles layout.
+    std::vector<ui::LayoutNode*> FieldHandles(FieldHarness& h) {
+        std::vector<ui::LayoutNode*> out;
+        std::function<void(ui::LayoutNode*)> walk = [&](ui::LayoutNode* n) {
+            if (n->Children().size() == 2 && n->Children()[1]->ZIndex() == 1) {
+                for (auto* c : n->Children()[1]->Children()) out.push_back(c);
+                return;
+            }
+            for (auto* c : n->Children()) walk(c);
+        };
+        walk(&h.owner.Root());
+        return out;
+    }
+}
+
+TEST(LongPressSelectsAWordWithHandlesAndToolbar) {
+    FieldHarness h;
+    h.owner.Config().longPressTimeoutMillis = 40;
+    TextFieldState state("hello big world");
+    h.comp.SetContent([&] { Column(Modifier{}, [&] { BasicTextField(state, {}, Style20()); }); });
+    h.Pump({ 300, 300 });
+    using ui::PointerEventType;
+    using ui::PointerType;
+    // Long press on "big": the word selected; focus (and the toolbar) wait for the release.
+    SendPointer(h, PointerType::Touch, PointerEventType::Press, 75, 10, true);
+    WaitMs(h, 80);
+    CHECK(state.Selection() == TextRange(6, 9));
+    CHECK_EQ(h.starts, 0);
+    // Dragging extends by words.
+    SendPointer(h, PointerType::Touch, PointerEventType::Move, 110, 10, true);
+    SendPointer(h, PointerType::Touch, PointerEventType::Move, 125, 10, true);
+    CHECK(state.Selection() == TextRange(6, 15));
+    SendPointer(h, PointerType::Touch, PointerEventType::Release, 125, 10, false);
+    CHECK_EQ(h.starts, 1);
+    CHECK(h.owner.TextToolbarShown());
+    CHECK_EQ(h.owner.TextToolbarItems(), unsigned(ui::Owner::kToolbarCopy | ui::Owner::kToolbarCut | ui::Owner::kToolbarSelectAll));
+    // Two handles at the ends: the start handle's point at x 60 (left of it), the end at 150.
+    auto handles = FieldHandles(h);
+    CHECK_EQ(int(handles.size()), 2);
+    if (handles.size() == 2) {
+        CHECK_EQ(handles[0]->Position().x, 60 - 40);
+        CHECK_EQ(handles[0]->Position().y, 25);
+        CHECK_EQ(handles[1]->Position().x, 150);
+    }
+    // Dragging the end handle back to "big"'s end (character drag with word acceleration).
+    if (handles.size() == 2) {
+        const float x = 150 + 5, y = 25 + 10;
+        SendPointer(h, PointerType::Touch, PointerEventType::Press, x, y, true);
+        SendPointer(h, PointerType::Touch, PointerEventType::Move, x - 20, y, true);
+        SendPointer(h, PointerType::Touch, PointerEventType::Move, x - 60, y, true);
+        CHECK(!h.owner.TextToolbarShown());   // hidden while a handle is dragged
+        SendPointer(h, PointerType::Touch, PointerEventType::Release, x - 60, y, false);
+        CHECK(state.Selection().start == 6 && state.Selection().end < 15);
+        CHECK(h.owner.TextToolbarShown());
+    }
+    // Cut from the toolbar.
+    h.owner.OnTextToolbarItem(ui::Owner::kToolbarCut);
+    h.Pump({ 300, 300 });
+    CHECK(h.owner.ClipboardText().has_value());
+    CHECK(state.Peek().text.size() < 15);
+    CHECK(!h.owner.TextToolbarShown());
+}
+
+TEST(DoubleTapAndMouseDragSelect) {
+    FieldHarness h;
+    TextFieldState state("hello big world");
+    h.comp.SetContent([&] { Column(Modifier{}, [&] { BasicTextField(state, {}, Style20()); }); });
+    h.Pump({ 300, 300 });
+    using ui::PointerEventType;
+    using ui::PointerType;
+    // Double tap on "world" selects it.
+    SendPointer(h, PointerType::Touch, PointerEventType::Press, 125, 10, true);
+    SendPointer(h, PointerType::Touch, PointerEventType::Release, 125, 10, false);
+    SendPointer(h, PointerType::Touch, PointerEventType::Press, 125, 10, true);
+    SendPointer(h, PointerType::Touch, PointerEventType::Release, 125, 10, false);
+    CHECK(state.Selection() == TextRange(10, 15));
+    // A mouse drag selects characters; no handles for a mouse.
+    WaitMs(h, 400);
+    SendPointer(h, PointerType::Mouse, PointerEventType::Press, 10, 10, true, 1);
+    SendPointer(h, PointerType::Mouse, PointerEventType::Move, 30, 10, true, 1);
+    SendPointer(h, PointerType::Mouse, PointerEventType::Move, 52, 10, true, 1);
+    SendPointer(h, PointerType::Mouse, PointerEventType::Release, 52, 10, false, 0);
+    CHECK(state.Selection() == TextRange(1, 5));
+    CHECK(FieldHandles(h).empty());
 }
