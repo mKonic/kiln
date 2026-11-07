@@ -41,6 +41,7 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
     /** savedState: the bytes from {@link #saveState()} of the previous instance, or null. */
     public KilnView(Context context, byte[] savedState) {
         super(context);
+        textServices = new KilnTextServices(context, new Handler(Looper.getMainLooper()));
         setFocusable(true);
         setFocusableInTouchMode(true);
         setDefaultFocusHighlightEnabled(false);
@@ -734,21 +735,48 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
         performHapticFeedback(constant);
     }
 
-    // AndroidTextContextMenuToolbarProvider: a floating ActionMode over the content rect, items
-    // in the order cut, copy, paste, select all (bits 4, 1, 2, 8), always shown as actions.
+    // AndroidTextContextMenuToolbarProvider: a floating ActionMode over the content rect with
+    // native's entries (kind 0: an item with a standard id 1..6 or a label; kind 1: a
+    // classification action). A separator starts a new group; every item shows as an action.
     private android.view.ActionMode toolbarMode;
     private final Rect toolbarRect = new Rect();
-    private int toolbarItems;
+    private int[] toolbarKinds = new int[0], toolbarIds = new int[0], toolbarGroups = new int[0], toolbarClassifications = new int[0],
+            toolbarIndexes = new int[0];
+    private String[] toolbarLabels = new String[0];
+    private boolean toolbarDataChanged;
+    KilnTextServices textServices;
 
-    void showTextToolbar(int left, int top, int right, int bottom, int items) {
+    private void setToolbarEntries(int[] kinds, int[] ids, String[] labels, int[] groups, int[] classifications, int[] indexes) {
+        toolbarKinds = kinds;
+        toolbarIds = ids;
+        toolbarLabels = labels;
+        toolbarGroups = groups;
+        toolbarClassifications = classifications;
+        toolbarIndexes = indexes;
+        toolbarDataChanged = true;
+    }
+
+    boolean showTextToolbar(int left, int top, int right, int bottom, int[] kinds, int[] ids, String[] labels, int[] groups,
+                            int[] classifications, int[] indexes) {
         toolbarRect.set(left, top, right, bottom);
-        toolbarItems = items;
-        if (toolbarMode == null) {
-            toolbarMode = startActionMode(toolbarCallback, android.view.ActionMode.TYPE_FLOATING);
-        } else {
-            toolbarMode.invalidate();
-            toolbarMode.invalidateContentRect();
+        setToolbarEntries(kinds, ids, labels, groups, classifications, indexes);
+        if (toolbarMode != null) {
+            android.view.ActionMode previous = toolbarMode;
+            toolbarMode = null;
+            previous.finish();
         }
+        toolbarMode = startActionMode(toolbarCallback, android.view.ActionMode.TYPE_FLOATING);
+        return toolbarMode != null;
+    }
+
+    void updateTextToolbar(int[] kinds, int[] ids, String[] labels, int[] groups, int[] classifications, int[] indexes) {
+        setToolbarEntries(kinds, ids, labels, groups, classifications, indexes);
+        if (toolbarMode != null) toolbarMode.invalidate();
+    }
+
+    void moveTextToolbar(int left, int top, int right, int bottom) {
+        toolbarRect.set(left, top, right, bottom);
+        if (toolbarMode != null) toolbarMode.invalidateContentRect();
     }
 
     void hideTextToolbar() {
@@ -757,38 +785,60 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
         if (mode != null) mode.finish();
     }
 
-    private static final int[][] TOOLBAR_ITEMS = {
-        { 4, android.R.id.cut, android.R.string.cut },
-        { 1, android.R.id.copy, android.R.string.copy },
-        { 2, android.R.id.paste, android.R.string.paste },
-        { 8, android.R.id.selectAll, android.R.string.selectAll },
-    };
+    // The text services native calls (PlatformSelectionBehaviors, ProcessText, LookUpText).
+    int createClassifierSession(int type) { return textServices.createSession(type); }
+    void destroyClassifierSession(int id) { textServices.destroySession(id); }
+    void suggestSelection(int session, int request, String text, int start, int end, String[] locales) {
+        textServices.suggestSelection(session, request, text, start, end, locales);
+    }
+    void classifyText(int session, int request, String text, int start, int end, String[] locales) {
+        textServices.classifyText(session, request, text, start, end, locales);
+    }
+    void releaseClassification(int handle) { textServices.releaseClassification(handle); }
+    String[] processTextActivities() { return textServices.processTextActivities(); }
+    void processText(int index, boolean editable, String selected) { textServices.processText(index, editable, selected); }
+    boolean canLookUp(String selected) { return textServices.canLookUp(selected); }
+    void lookUp(String selected) { textServices.lookUp(selected); }
 
-    private void fillToolbar(android.view.Menu menu) {
+    // updateMenuItems: false when the data did not change.
+    private boolean fillToolbar(android.view.Menu menu) {
+        if (!toolbarDataChanged) return false;
+        toolbarDataChanged = false;
         menu.clear();
         int order = 1;
-        for (int[] item : TOOLBAR_ITEMS) {
-            if ((toolbarItems & item[0]) == 0) continue;
-            menu.add(1, item[1], order++, item[2]).setShowAsAction(android.view.MenuItem.SHOW_AS_ACTION_ALWAYS);
+        for (int i = 0; i < toolbarKinds.length; ++i) {
+            final int position = i;
+            final int orderId = order++;
+            if (toolbarKinds[i] == 1) {
+                if (textServices != null) textServices.addClassificationItem(menu, orderId, toolbarClassifications[i], toolbarIndexes[i]);
+                continue;
+            }
+            int itemId = KilnTextServices.standardItemId(toolbarIds[i]);
+            if (itemId == 0) itemId = orderId;
+            String title = toolbarLabels[i] != null && !toolbarLabels[i].isEmpty() ? toolbarLabels[i]
+                         : KilnTextServices.standardLabel(getContext(), toolbarIds[i]);
+            android.view.MenuItem item = menu.add(toolbarGroups[i], itemId, orderId, title);
+            item.setShowAsAction(android.view.MenuItem.SHOW_AS_ACTION_ALWAYS);
+            item.setOnMenuItemClickListener(m -> { KilnNative.textToolbarItem(position); return true; });
         }
+        return true;
     }
 
     private final android.view.ActionMode.Callback2 toolbarCallback = new android.view.ActionMode.Callback2() {
         @Override public boolean onCreateActionMode(android.view.ActionMode mode, android.view.Menu menu) {
+            toolbarDataChanged = true;
             fillToolbar(menu);
             return menu.size() > 0;
         }
         @Override public boolean onPrepareActionMode(android.view.ActionMode mode, android.view.Menu menu) {
-            fillToolbar(menu);
-            return true;
+            return fillToolbar(menu);
         }
         @Override public boolean onActionItemClicked(android.view.ActionMode mode, android.view.MenuItem item) {
-            for (int[] i : TOOLBAR_ITEMS)
-                if (i[1] == item.getItemId()) { KilnNative.textToolbarItem(i[0]); return true; }
             return false;
         }
         @Override public void onDestroyActionMode(android.view.ActionMode mode) {
-            if (mode == toolbarMode) toolbarMode = null;
+            if (mode != toolbarMode) return;   // finished by native
+            toolbarMode = null;
             KilnNative.textToolbarDestroyed();
         }
         @Override public void onGetContentRect(android.view.ActionMode mode, android.view.View view, Rect outRect) {

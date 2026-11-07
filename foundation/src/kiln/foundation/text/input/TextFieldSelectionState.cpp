@@ -1,6 +1,8 @@
 #include "kiln/foundation/text/input/TextFieldSelectionState.h"
 
 #include "kiln/foundation/content/ReceiveContent.h"
+#include "kiln/foundation/text/PlatformSelectionBehaviors.h"
+#include "kiln/foundation/text/contextmenu/TextContextMenu.h"
 #include "kiln/ui/LayoutNode.h"
 
 #include <cmath>
@@ -186,7 +188,7 @@ namespace kiln::foundation {
         HideTextToolbar();
     }
 
-    TextFieldSelectionState::~TextFieldSelectionState() { HideTextToolbar(); }
+    TextFieldSelectionState::~TextFieldSelectionState() { m_SuggestJob.Cancel(); }
 
     rt::Task<> TextFieldSelectionState::DetectDirectTouchInteraction(PointerInputScope& scope) {
         for (;;) {
@@ -400,14 +402,16 @@ namespace kiln::foundation {
     }
 
     void TextFieldSelectionState::MaybeSuggestSelectionRange() {
-        if (!suggestSelection) return;
+        if (!platformSelectionBehaviors) return;
         const TextFieldCharSequence v = textFieldState.VisualText();
         if (v.text.empty() || v.selection.Collapsed()) return;
-        const auto suggested = suggestSelection(v.text, v.selection);
-        // Only while the text and selection stay what the suggestion was made for.
-        const TextFieldCharSequence now = textFieldState.VisualText();
-        if (!isPassword && suggested && now.text == v.text && now.selection == v.selection && *suggested != now.selection)
-            textFieldState.SelectCharsIn(*suggested);
+        m_SuggestJob = rt::Launch(rt::Dispatcher::Main(), [](TextFieldSelectionState* self, TextFieldCharSequence v) -> rt::Task<> {
+            const auto suggested = co_await self->platformSelectionBehaviors->SuggestSelectionForLongPressOrDoubleClick(v.text, v.selection);
+            // Only while the text and selection stay what the suggestion was made for.
+            const TextFieldCharSequence now = self->textFieldState.VisualText();
+            if (!self->isPassword && suggested && now.text == v.text && now.selection == v.selection && *suggested != now.selection)
+                self->textFieldState.SelectCharsIn(*suggested);
+        }(this, v));
     }
 
     // --- selection gestures (TextFieldTextDragObserver, TextFieldMouseSelectionObserver) -------
@@ -724,9 +728,14 @@ namespace kiln::foundation {
             if (weak.expired()) return;
             m_UpdatePosted = false;
             if (!m_Observing) return;
-            // observeTextToolbarVisibility
-            if (const auto rect = DerivedVisibleContentBounds()) ShowTextToolbar(*rect);
-            else HideTextToolbar();
+            // observeTextToolbarVisibility: show or hide as bounds come and go; the toolbar reads
+            // the bounds itself.
+            if (DerivedVisibleContentBounds()) {
+                ShowTextToolbar();
+                if (toolbarHandler) toolbarHandler->InvalidateContentBounds();
+            } else {
+                HideTextToolbar();
+            }
         });
     }
 
@@ -774,29 +783,70 @@ namespace kiln::foundation {
         return { left, std::min(startTop, endTop), left == right ? right + 1 : right, std::max(start.y, end.y) };
     }
 
+    void TextFieldSelectionState::UpdateClipboardEntry() {
+        bool hasClip = false, hasText = false;
+        if (owner) {
+            const auto meta = owner->ClipboardMetadata();
+            hasClip = meta.has_value();
+            hasText = hasClip && meta->HasMimeType("text/*");
+        }
+        m_PasteHasClip.Set(hasClip);
+        m_PasteHasText.Set(hasText);
+    }
+
     bool TextFieldSelectionState::CanShowPasteMenuItem() const {
         if (!IsPasteAllowed() || !owner) return false;
         // Without a receiver a text item is needed; with one any clip will do.
-        if (owner->ClipboardHasText()) return true;
-        return receiveContentConfiguration && receiveContentConfiguration() && owner->ClipboardMetadata().has_value();
+        if (m_PasteHasText.Get()) return true;
+        return receiveContentConfiguration && receiveContentConfiguration() && m_PasteHasClip.Get();
     }
 
-    void TextFieldSelectionState::ShowTextToolbar(const Rect& rect) {
-        if (!owner) return;
-        // menuItem: the action, then the toolbar state it leaves.
-        ui::Owner::TextToolbarActions a;
-        if (IsCopyAllowed()) a.copy = [this] { Copy(); UpdateTextToolbarState(TextToolbarState::None); };
-        if (CanShowPasteMenuItem()) a.paste = [this] { Paste(); UpdateTextToolbarState(TextToolbarState::None); };
-        if (IsCutAllowed()) a.cut = [this] { Cut(); UpdateTextToolbarState(TextToolbarState::None); };
-        if (CanShowSelectAllMenuItem()) a.selectAll = [this] { SelectAll(); UpdateTextToolbarState(TextToolbarState::Selection); };
-        owner->ShowTextToolbar(rect, std::move(a));
-        m_ToolbarShown = true;
+    bool TextFieldSelectionState::CanShowAutofillMenuItem() const {
+        return Editable() && textFieldState.VisualText().selection.Collapsed();
+    }
+
+    bool TextFieldSelectionState::CanShowLookUpMenuItem() const {
+        if (!IsCopyAllowed()) return false;
+        const TextFieldCharSequence v = textFieldState.VisualText();
+        return CanShowLookUp(owner, v.text.substr(std::size_t(v.selection.Min()), std::size_t(v.selection.Length())));
+    }
+
+    void TextFieldSelectionState::LookUp() {
+        const TextFieldCharSequence v = textFieldState.VisualText();
+        StartLookUpActivity(owner, v.text.substr(std::size_t(v.selection.Min()), std::size_t(v.selection.Length())));
+    }
+
+    void TextFieldSelectionState::AddTextContextMenuComponents(TextContextMenuBuilderScope& scope) {
+        // textFieldItem: the action, closing unless told not to, then the toolbar state it leaves.
+        auto item = [this](TextContextMenuBuilderScope& sc, TextContextMenuKey key, bool enabled, std::function<void()> onClick,
+                           TextToolbarState desired = TextToolbarState::None, std::function<bool()> closePredicate = {}) {
+            if (!enabled) return;
+            sc.Item(key, {}, [this, onClick, desired, closePredicate](TextContextMenuSession& session) {
+                onClick();
+                if (!closePredicate || closePredicate()) session.Close();
+                UpdateTextToolbarState(desired);
+            });
+        };
+        const TextFieldCharSequence v = textFieldState.VisualText();
+        AddPlatformTextContextMenuItems(scope, owner, Editable(), &v.text, v.selection, platformSelectionBehaviors, [&](TextContextMenuBuilderScope& sc) {
+            sc.Separator();
+            item(sc, TextContextMenuKeys::Cut, IsCutAllowed(), [this] { Cut(); });
+            item(sc, TextContextMenuKeys::Copy, IsCopyAllowed(), [this] { Copy(m_TextToolbarShown.Peek()); });
+            item(sc, TextContextMenuKeys::Paste, CanShowPasteMenuItem(), [this] { Paste(); });
+            item(sc, TextContextMenuKeys::LookUp, CanShowLookUpMenuItem(), [this] { LookUp(); });
+            item(sc, TextContextMenuKeys::SelectAll, CanShowSelectAllMenuItem(), [this] { SelectAll(); }, TextToolbarState::Selection,
+                 [this] { return !m_TextToolbarShown.Peek(); });
+            // Autofill comes with the autofill request (requestAutofillAction).
+            if (requestAutofill) item(sc, TextContextMenuKeys::Autofill, CanShowAutofillMenuItem(), [this] { Autofill(); });
+            sc.Separator();
+        });
+    }
+
+    void TextFieldSelectionState::ShowTextToolbar() {
+        if (toolbarHandler) toolbarHandler->Show();
     }
 
     void TextFieldSelectionState::HideTextToolbar() {
-        if (!m_ToolbarShown) return;
-        m_ToolbarShown = false;
-        if (owner && owner->TextToolbarShown()) owner->HideTextToolbar();
+        if (toolbarHandler) toolbarHandler->Hide();
     }
-
 }

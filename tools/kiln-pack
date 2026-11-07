@@ -39,6 +39,17 @@ cat > "$STAGING/AndroidManifest.xml" <<XML
           package="$PACKAGE" android:versionCode="1" android:versionName="1.0">
     <uses-feature android:name="android.hardware.vulkan.version" android:version="0x00401000"
                   android:required="true" />
+    <!-- The text toolbar's PROCESS_TEXT activities and Look Up. -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.PROCESS_TEXT" />
+            <data android:mimeType="text/plain" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.LOOK_UP_TEXT" />
+            <data android:mimeType="text/plain" />
+        </intent>
+    </queries>
     <application android:label="$LABEL" android:supportsRtl="true" android:hasCode="true" android:extractNativeLibs="false"
                  android:enableOnBackInvokedCallback="true"
                  android:theme="@android:style/Theme.DeviceDefault.NoActionBar">

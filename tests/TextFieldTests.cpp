@@ -1,10 +1,12 @@
 #include "Check.h"
+#include "ToolbarHelpers.h"
 #include "FakeText.h"
 
 #include "kiln/foundation/text/BasicTextField.h"
 #include "kiln/foundation/Focus.h"
 #include "kiln/foundation/Layouts.h"
 #include "kiln/foundation/content/ReceiveContent.h"
+#include "kiln/foundation/text/contextmenu/TextContextMenu.h"
 #include "kiln/ui/Draw.h"
 #include "kiln/ui/Pointer.h"
 
@@ -663,7 +665,7 @@ TEST(LongPressSelectsAWordWithHandlesAndToolbar) {
     SendPointer(h, PointerType::Touch, PointerEventType::Release, 125, 10, false);
     CHECK_EQ(h.starts, 1);
     CHECK(h.owner.TextToolbarShown());
-    CHECK_EQ(h.owner.TextToolbarItems(), unsigned(ui::Owner::kToolbarCopy | ui::Owner::kToolbarCut | ui::Owner::kToolbarSelectAll));
+    CHECK((tests::ToolbarIds(h.owner) == std::vector{ ui::TextToolbarItemId::Cut, ui::TextToolbarItemId::Copy, ui::TextToolbarItemId::SelectAll }));
     // Two handles at the ends: the start handle's point at x 60 (left of it), the end at 150.
     auto handles = FieldHandles(h);
     CHECK_EQ(int(handles.size()), 2);
@@ -684,10 +686,83 @@ TEST(LongPressSelectsAWordWithHandlesAndToolbar) {
         CHECK(h.owner.TextToolbarShown());
     }
     // Cut from the toolbar.
-    h.owner.OnTextToolbarItem(ui::Owner::kToolbarCut);
+    CHECK(tests::ClickToolbar(h.owner, ui::TextToolbarItemId::Cut));
     h.Pump({ 300, 300 });
     CHECK(h.owner.ClipboardText().has_value());
     CHECK(state.Peek().text.size() < 15);
+    CHECK(!h.owner.TextToolbarShown());
+}
+
+TEST(TextContextMenuBuilderTidiesAndFilters) {
+    TextContextMenuBuilderScope b;
+    auto noop = [](TextContextMenuSession&) {};
+    b.Separator();
+    b.Item(TextContextMenuKeys::Cut, {}, noop);
+    b.Separator();
+    b.Separator();
+    b.Item(TextContextMenuKeys::Copy, {}, noop);
+    b.Item(TextContextMenuKeys::Paste, {}, noop);
+    b.Separator();
+    b.AddFilter([](const TextContextMenuComponent& c) { return KeyOf(c) != std::optional(TextContextMenuKeys::Copy); });
+    const auto entries = ToolbarEntriesOf(b.Build());
+    CHECK_EQ(int(entries.size()), 2);
+    if (entries.size() == 2) {
+        CHECK(entries[0].id == ui::TextToolbarItemId::Cut && entries[0].group == 1);
+        CHECK(entries[1].id == ui::TextToolbarItemId::Paste && entries[1].group == 2);
+    }
+}
+
+TEST(SmartSelectionGrowsTheWordAndLeadsTheToolbar) {
+    FieldHarness h;
+    h.owner.Config().longPressTimeoutMillis = 40;
+    int classified = 0, released = 0, processed = -1;
+    std::u16string processedText;
+    ui::TextClassifierHost host;
+    host.createSession = [](ui::SelectedTextType t) { return t == ui::SelectedTextType::EditableText ? 1 : 2; };
+    // The classifier sees an address in the whole text, with two actions.
+    host.suggestSelection = [](int, const std::u16string& text, int, int, const std::vector<std::string>&, auto done) {
+        done(std::pair{ 0, int(text.size()) }, ui::TextClassificationInfo{ 7, { "Map", "Share" }, false });
+    };
+    host.classifyText = [&](int, const std::u16string&, int, int, const std::vector<std::string>&, auto done) {
+        ++classified;
+        done(ui::TextClassificationInfo{ 8, { "Other" }, false });
+    };
+    host.releaseClassification = [&](int) { ++released; };
+    host.processTextActivities = [] { return std::vector<std::string>{ "Translate" }; };
+    host.processText = [&](int index, bool, const std::u16string& t) { processed = index; processedText = t; };
+    h.owner.SetTextClassifierHost(host);
+    TextFieldState state("hello big world");
+    // A component from further out comes after the field's own.
+    h.comp.SetContent([&] {
+        Column(AppendTextContextMenuComponents(Modifier{}, [](TextContextMenuBuilderScope& b) { b.Item({ &b, 1 }, "Mine", [](TextContextMenuSession&) {}); }),
+               [&] { BasicTextField(state, {}, Style20()); });
+    });
+    h.Pump({ 300, 300 });
+    using ui::PointerEventType;
+    using ui::PointerType;
+    SendPointer(h, PointerType::Touch, PointerEventType::Press, 75, 10, true);
+    WaitMs(h, 80);
+    SendPointer(h, PointerType::Touch, PointerEventType::Release, 75, 10, false);
+    h.Pump({ 300, 300 });
+    // The suggestion replaced "big"; its classification was kept, so showing classified nothing.
+    CHECK(state.Selection() == TextRange(0, 15));
+    CHECK_EQ(classified, 0);
+    CHECK(h.owner.TextToolbarShown());
+    const auto& e = h.owner.TextToolbarEntries();
+    using Kind = ui::TextToolbarEntry::Kind;
+    CHECK_EQ(int(e.size()), 6);
+    if (e.size() == 6) {
+        CHECK(e[0].kind == Kind::Classification && e[0].classification == 7 && e[0].index == 0);
+        CHECK(e[1].id == ui::TextToolbarItemId::Cut && e[2].id == ui::TextToolbarItemId::Copy);   // all selected: no Select all
+        CHECK(e[3].kind == Kind::Classification && e[3].index == 1);
+        CHECK(e[4].label == "Translate" && e[4].group > e[3].group);
+        CHECK(e[5].label == "Mine");
+    }
+    // Process text: the selected text to the activity; the toolbar closes.
+    if (e.size() == 6) h.owner.OnTextToolbarItem(4);
+    h.Pump({ 300, 300 });
+    CHECK_EQ(processed, 0);
+    CHECK(processedText == U("hello big world"));
     CHECK(!h.owner.TextToolbarShown());
 }
 

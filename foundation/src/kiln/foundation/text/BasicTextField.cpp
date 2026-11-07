@@ -9,6 +9,8 @@
 #include "kiln/foundation/Magnifier.h"
 #include "kiln/foundation/Semantics.h"
 #include "kiln/foundation/text/BasicText.h"
+#include "kiln/foundation/text/PlatformSelectionBehaviors.h"
+#include "kiln/foundation/text/contextmenu/TextContextMenu.h"
 #include "kiln/foundation/text/handwriting/StylusHandwriting.h"
 #include "kiln/foundation/text/input/HandwritingGestures.h"
 #include "kiln/foundation/text/input/TextFieldHandles.h"
@@ -94,7 +96,13 @@ namespace kiln::foundation {
             OutputTransformationPtr output;
             std::unique_ptr<TransformedTextFieldState> transformed;
             std::unique_ptr<TextLayoutState> layout;
+            // rememberPlatformSelectionBehaviors(EditableText, the style's locales): outlives
+            // the selection state that uses it.
+            std::unique_ptr<PlatformSelectionBehaviors> behaviors;
             std::unique_ptr<TextFieldSelectionState> selection;
+            // The core node's TextContextMenuToolbarHandlerNode (the selection state's
+            // ToolbarRequester).
+            TextContextMenuToolbarHandler toolbar;
             std::unique_ptr<ImeEditCommandScope> ime;
             TextFieldKeyEventHandler keys;
             Session session{ *this };
@@ -125,6 +133,23 @@ namespace kiln::foundation {
                 co_await rt::NextFrame{};
                 if (weak.expired() || !f->inputSession || !f->handwritingPending || !f->owner) co_return;
                 f->owner->StartStylusHandwriting(f->session);
+            }
+            // The toolbar handler's onShow: the clipboard's state, the selection classified.
+            static rt::Task<> OnToolbarShow(Field* f, std::weak_ptr<char> weak) {
+                f->selection->UpdateClipboardEntry();
+                if (f->behaviors) {
+                    const TextFieldCharSequence v = f->transformed->VisualText();
+                    co_await f->behaviors->OnShowSelectionToolbar(v.text, v.selection);
+                    if (weak.expired()) co_return;
+                }
+                f->selection->SetTextToolbarShown(true);
+            }
+            void UpdateBehaviors(const std::optional<std::string>& localeList) {
+                std::vector<std::string> locales = SplitLocaleList(localeList);
+                if (behaviors && behaviors->GetOwner() == owner && behaviors->Locales() == locales) return;
+                if (selection) selection->platformSelectionBehaviors = nullptr;
+                behaviors = PlatformSelectionBehaviors::Create(owner, ui::SelectedTextType::EditableText, std::move(locales));
+                if (selection) selection->platformSelectionBehaviors = behaviors.get();
             }
             ReceiveContentConfiguration* ReceiveContent() const { return decoratorNode ? FindReceiveContentConfiguration(*decoratorNode) : nullptr; }
             // The selection and composition the IME last heard of (updateSelection on change).
@@ -169,6 +194,11 @@ namespace kiln::foundation {
                 selection = std::make_unique<TextFieldSelectionState>(*transformed, *layout);
                 selection->owner = owner;
                 selection->receiveContentConfiguration = [this] { return ReceiveContent(); };
+                selection->platformSelectionBehaviors = behaviors.get();
+                selection->toolbarHandler = &toolbar;
+                toolbar.onShow = [this] { return OnToolbarShow(this, alive); };
+                toolbar.onHide = [this] { selection->SetTextToolbarShown(false); };
+                toolbar.computeContentBounds = [this]() -> std::optional<Rect> { return selection->DerivedVisibleContentBounds().value_or(Rect{}); };
                 ime = std::make_unique<ImeEditCommandScope>(*transformed);
                 stateAlive = s.AliveToken();
                 imeListener = s.AddNotifyImeListener([this](const TextFieldCharSequence&, const TextFieldCharSequence&, bool restartIme) {
@@ -447,6 +477,7 @@ namespace kiln::foundation {
                 f.owner = OwnerOf(*this);
                 f.selection->owner = f.owner;
                 f.decoratorNode = this;
+                f.UpdateBehaviors(f.options.textStyle.span.localeList);
                 Observe();
             }
             void OnDetach() override {
@@ -680,8 +711,10 @@ namespace kiln::foundation {
                 // cursor right away when already focused.
                 params.field->selection->isWindowAndTextFieldFocused = params.isFocused;
                 if (params.isFocused && ShowCursor()) StartCursorJob();
+                params.field->toolbar.Attach(OwnerOf(*this), this);
             }
             void OnDetach() override {
+                params.field->toolbar.Detach();
                 StopObserving();
                 if (m_Cursor) m_Cursor->CancelAndHide();
                 m_Magnifier.Detach();
@@ -960,6 +993,7 @@ namespace kiln::foundation {
         f.options = options;
         f.keyboard = resolved;
         f.selection->Update(f.owner, f.selection->density, options.enabled, options.readOnly, options.isPassword);
+        if (f.owner) f.UpdateBehaviors(options.textStyle.span.localeList);
         f.layout->onTextLayout = options.onTextLayout;
         if (sessionChanged) {
             if (f.Editable() && (f.IsFocused() || f.inputSession)) f.StartInputSession(false);   // replaces the old session
@@ -1009,6 +1043,7 @@ namespace kiln::foundation {
         so.reverseDirection = orientation == Orientation::Horizontal && layoutDirection == ui::LayoutDirection::Rtl;
         m = Scrollable(std::move(m), scrollState, orientation, so);
         m = PointerHoverIcon(std::move(m), PointerIcon::Text);
+        m = AppendTextContextMenuComponents(std::move(m), [field](TextContextMenuBuilderScope& scope) { field->selection->AddTextContextMenuComponents(scope); });
 
         auto inner = [field, &scrollState, orientation, writeable, selectionBackground, singleLine, options, interaction] {
             auto& c = *rt::Composition::Current();

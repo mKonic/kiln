@@ -1005,29 +1005,71 @@ namespace kiln::ui {
         return ClipMetadata{ "plain text", { "text/plain" } };
     }
 
-    unsigned Owner::TextToolbarItems() const {
-        const auto& a = m_ToolbarActions;
-        return (a.copy ? kToolbarCopy : 0u) | (a.paste ? kToolbarPaste : 0u) | (a.cut ? kToolbarCut : 0u) | (a.selectAll ? kToolbarSelectAll : 0u);
+    void Owner::ToolbarObserver::OnStateChanged() {
+        // onDataChange invalidates the menu; onPositionChange invalidates the content rect.
+        if (!owner->m_ToolbarClient) return;
+        if (bounds) owner->ReadToolbarBounds();
+        else owner->ReadToolbarEntries();
     }
-    void Owner::ShowTextToolbar(Rect rect, TextToolbarActions actions) {
-        m_ToolbarRect = rect;
-        m_ToolbarActions = std::move(actions);
-        m_ToolbarShown = true;
-        m_ToolbarActive = true;
-        if (m_ToolbarHost.show) m_ToolbarHost.show(rect, TextToolbarItems());
+    void Owner::ReadToolbarEntries() {
+        std::vector<TextToolbarEntry> entries;
+        TextToolbarClient* client = m_ToolbarClient;
+        rt::Observation::Track(m_ToolbarDataObserver, [&] { entries = client->Entries(); });
+        if (entries == m_ToolbarEntries) return;   // updateMenuItems: the same data changes nothing
+        m_ToolbarEntries = std::move(entries);
+        if (m_ToolbarHost.update) m_ToolbarHost.update(m_ToolbarEntries);
     }
-    void Owner::HideTextToolbar() {
-        m_ToolbarShown = false;
-        m_ToolbarActions = {};
-        if (m_ToolbarActive && m_ToolbarHost.hide) m_ToolbarHost.hide();
-        m_ToolbarActive = false;
+    void Owner::ReadToolbarBounds() {
+        Rect r;
+        TextToolbarClient* client = m_ToolbarClient;
+        rt::Observation::Track(m_ToolbarBoundsObserver, [&] { r = client->ContentBounds(); });
+        if (r.left == m_ToolbarRect.left && r.top == m_ToolbarRect.top && r.right == m_ToolbarRect.right && r.bottom == m_ToolbarRect.bottom) return;
+        m_ToolbarRect = r;
+        if (m_ToolbarHost.move) m_ToolbarHost.move(r);
     }
-    void Owner::OnTextToolbarItem(unsigned item) {
-        // The action runs, then the mode finishes (TextActionModeCallback.onActionItemClicked).
-        const auto actions = m_ToolbarActions;
-        const std::function<void()>* fn = item == kToolbarCopy ? &actions.copy : item == kToolbarPaste ? &actions.paste
-                                        : item == kToolbarCut ? &actions.cut : item == kToolbarSelectAll ? &actions.selectAll : nullptr;
-        if (fn && *fn) (*fn)();
+    void Owner::ShowTextToolbar(TextToolbarClient* client) {
+        if (!client) return;
+        if (m_ToolbarClient == client) return;
+        if (TextToolbarClient* previous = m_ToolbarClient) {
+            // mutate cancels the previous session: its mode finishes and its handler hears.
+            HideTextToolbar(previous);
+            previous->OnClosed();
+        }
+        m_ToolbarClient = client;
+        m_ToolbarDataObserver.owner = m_ToolbarBoundsObserver.owner = this;
+        m_ToolbarBoundsObserver.bounds = true;
+        rt::Observation::Track(m_ToolbarDataObserver, [&] { m_ToolbarEntries = client->Entries(); });
+        rt::Observation::Track(m_ToolbarBoundsObserver, [&] { m_ToolbarRect = client->ContentBounds(); });
+        // onCreateActionMode: no items, no mode; the session ends at once.
+        const bool started = m_ToolbarHost.show ? m_ToolbarHost.show(m_ToolbarRect, m_ToolbarEntries) : !m_ToolbarEntries.empty();
+        if (!started) {
+            m_ToolbarClient = nullptr;
+            m_ToolbarEntries.clear();
+            m_ToolbarDataObserver.Unsubscribe();
+            m_ToolbarBoundsObserver.Unsubscribe();
+            client->OnClosed();
+        }
+    }
+    void Owner::HideTextToolbar(TextToolbarClient* client) {
+        if (!client || client != m_ToolbarClient) return;
+        m_ToolbarClient = nullptr;
+        m_ToolbarEntries.clear();
+        m_ToolbarDataObserver.Unsubscribe();
+        m_ToolbarBoundsObserver.Unsubscribe();
+        if (m_ToolbarHost.hide) m_ToolbarHost.hide();
+    }
+    void Owner::OnTextToolbarItem(std::size_t index) {
+        if (m_ToolbarClient && index < m_ToolbarEntries.size()) m_ToolbarClient->OnEntryClicked(index);
+    }
+    void Owner::OnTextToolbarDestroyed() {
+        // onDestroyActionMode: the session closes.
+        TextToolbarClient* client = m_ToolbarClient;
+        if (!client) return;
+        m_ToolbarClient = nullptr;
+        m_ToolbarEntries.clear();
+        m_ToolbarDataObserver.Unsubscribe();
+        m_ToolbarBoundsObserver.Unsubscribe();
+        client->OnClosed();
     }
 
     void Owner::ForgetPointerModifier(PointerInputModifier* m) {

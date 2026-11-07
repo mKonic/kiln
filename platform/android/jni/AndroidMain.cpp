@@ -12,6 +12,7 @@ namespace kiln::android { void InstallImageDecoder(); void InstallAssetReader(JN
 #include <climits>
 #include <cmath>
 #include <functional>
+#include <map>
 #include <unordered_map>
 
 #include "kiln/App.h"
@@ -72,6 +73,70 @@ namespace {
     }
     JNIEnv* MainEnv();
     void SurfaceDestroyed(JNIEnv*, jclass);
+
+    jstring JavaString(JNIEnv* env, const std::u16string& s) {
+        return env->NewString(reinterpret_cast<const jchar*>(s.data()), jsize(s.size()));
+    }
+    jobjectArray JavaStrings(JNIEnv* env, const std::vector<std::string>& v) {
+        jclass sc = env->FindClass("java/lang/String");
+        jobjectArray a = env->NewObjectArray(jsize(v.size()), sc, nullptr);
+        env->DeleteLocalRef(sc);
+        for (std::size_t i = 0; i < v.size(); ++i) {
+            jstring js = JavaString(env, kiln::foundation::ToUtf16(v[i]));
+            env->SetObjectArrayElement(a, jsize(i), js);
+            env->DeleteLocalRef(js);
+        }
+        return a;
+    }
+
+    // The text toolbar's entries as the parallel arrays KilnView takes.
+    struct ToolbarArrays {
+        JNIEnv* env;
+        jintArray kinds, ids, groups, classifications, indexes;
+        jobjectArray labels;
+        ToolbarArrays(JNIEnv* e, const std::vector<kiln::ui::TextToolbarEntry>& entries) : env(e) {
+            const jsize n = jsize(entries.size());
+            std::vector<jint> k(entries.size()), i(entries.size()), g(entries.size()), c(entries.size()), x(entries.size());
+            std::vector<std::string> l(entries.size());
+            for (std::size_t j = 0; j < entries.size(); ++j) {
+                const auto& en = entries[j];
+                k[j] = en.kind == kiln::ui::TextToolbarEntry::Kind::Classification ? 1 : 0;
+                i[j] = jint(en.id);
+                g[j] = en.group;
+                c[j] = en.classification;
+                x[j] = en.index;
+                l[j] = en.label;
+            }
+            auto make = [&](const std::vector<jint>& v) {
+                jintArray a = e->NewIntArray(n);
+                e->SetIntArrayRegion(a, 0, n, v.data());
+                return a;
+            };
+            kinds = make(k); ids = make(i); groups = make(g); classifications = make(c); indexes = make(x);
+            labels = JavaStrings(e, l);
+        }
+        ~ToolbarArrays() {
+            for (jobject o : { (jobject)kinds, (jobject)ids, (jobject)groups, (jobject)classifications, (jobject)indexes, (jobject)labels }) env->DeleteLocalRef(o);
+        }
+    };
+
+    // Classifier requests waiting for KilnNative.classifierResult.
+    struct ClassifierReply {
+        bool hasRange = false;
+        int start = 0, end = 0;
+        std::optional<kiln::ui::TextClassificationInfo> info;
+    };
+    struct PendingClassifier {
+        static std::map<int, std::function<void(const ClassifierReply&)>>& Map() {
+            static std::map<int, std::function<void(const ClassifierReply&)>> m;
+            return m;
+        }
+        static int Add(std::function<void(const ClassifierReply&)> fn) {
+            static int last = 0;
+            Map()[++last] = std::move(fn);
+            return last;
+        }
+    };
 
     // NestedScrollInteropConnection's View side: KilnView's NestedScrollingChildHelper port.
     struct ViewNestedScrollParent final : kiln::ui::HostNestedScrollParent {
@@ -277,8 +342,19 @@ namespace {
             static jmethodID readContent = env->GetMethodID(vc, "readContent", "(Ljava/lang/String;)[B");
             static jmethodID releasePermission = env->GetMethodID(vc, "releaseContentPermission", "(I)V");
             static jmethodID haptic = env->GetMethodID(vc, "performHaptic", "(I)V");
-            static jmethodID showBar = env->GetMethodID(vc, "showTextToolbar", "(IIIII)V");
+            static jmethodID showBar = env->GetMethodID(vc, "showTextToolbar", "(IIII[I[I[Ljava/lang/String;[I[I[I)Z");
+            static jmethodID updateBar = env->GetMethodID(vc, "updateTextToolbar", "([I[I[Ljava/lang/String;[I[I[I)V");
+            static jmethodID moveBar = env->GetMethodID(vc, "moveTextToolbar", "(IIII)V");
             static jmethodID hideBar = env->GetMethodID(vc, "hideTextToolbar", "()V");
+            static jmethodID tcCreate = env->GetMethodID(vc, "createClassifierSession", "(I)I");
+            static jmethodID tcDestroy = env->GetMethodID(vc, "destroyClassifierSession", "(I)V");
+            static jmethodID tcSuggest = env->GetMethodID(vc, "suggestSelection", "(IILjava/lang/String;II[Ljava/lang/String;)V");
+            static jmethodID tcClassify = env->GetMethodID(vc, "classifyText", "(IILjava/lang/String;II[Ljava/lang/String;)V");
+            static jmethodID tcRelease = env->GetMethodID(vc, "releaseClassification", "(I)V");
+            static jmethodID ptList = env->GetMethodID(vc, "processTextActivities", "()[Ljava/lang/String;");
+            static jmethodID ptStart = env->GetMethodID(vc, "processText", "(IZLjava/lang/String;)V");
+            static jmethodID luCan = env->GetMethodID(vc, "canLookUp", "(Ljava/lang/String;)Z");
+            static jmethodID luStart = env->GetMethodID(vc, "lookUp", "(Ljava/lang/String;)V");
             env->DeleteLocalRef(vc);
             auto& owner = g_Host->app->GetOwner();
             kiln::ui::Owner::ClipboardHost clip;
@@ -372,12 +448,78 @@ namespace {
                 owner.SetMagnifierHost(std::move(mag));
             }
             kiln::ui::Owner::TextToolbarHost bar;
-            bar.show = [](kiln::ui::Rect r, unsigned items) {
-                MainEnv()->CallVoidMethod(g_Host->view, showBar, jint(std::floor(r.left)), jint(std::floor(r.top)), jint(std::ceil(r.right)),
-                                          jint(std::ceil(r.bottom)), jint(items));
+            bar.show = [](kiln::ui::Rect r, const std::vector<kiln::ui::TextToolbarEntry>& entries) {
+                JNIEnv* e = MainEnv();
+                ToolbarArrays a(e, entries);
+                return bool(e->CallBooleanMethod(g_Host->view, showBar, jint(std::floor(r.left)), jint(std::floor(r.top)), jint(std::ceil(r.right)),
+                                                 jint(std::ceil(r.bottom)), a.kinds, a.ids, a.labels, a.groups, a.classifications, a.indexes));
+            };
+            bar.update = [](const std::vector<kiln::ui::TextToolbarEntry>& entries) {
+                JNIEnv* e = MainEnv();
+                ToolbarArrays a(e, entries);
+                e->CallVoidMethod(g_Host->view, updateBar, a.kinds, a.ids, a.labels, a.groups, a.classifications, a.indexes);
+            };
+            bar.move = [](kiln::ui::Rect r) {
+                MainEnv()->CallVoidMethod(g_Host->view, moveBar, jint(std::floor(r.left)), jint(std::floor(r.top)), jint(std::ceil(r.right)),
+                                          jint(std::ceil(r.bottom)));
             };
             bar.hide = [] { MainEnv()->CallVoidMethod(g_Host->view, hideBar); };
             owner.SetTextToolbarHost(std::move(bar));
+            kiln::ui::TextClassifierHost tc;
+            tc.createSession = [](kiln::ui::SelectedTextType t) {
+                return int(MainEnv()->CallIntMethod(g_Host->view, tcCreate, jint(t == kiln::ui::SelectedTextType::EditableText ? 0 : 1)));
+            };
+            tc.destroySession = [](int id) { MainEnv()->CallVoidMethod(g_Host->view, tcDestroy, jint(id)); };
+            tc.suggestSelection = [](int session, const std::u16string& text, int start, int end, const std::vector<std::string>& locales, auto done) {
+                const int request = PendingClassifier::Add([done = std::move(done)](const ClassifierReply& r) {
+                    done(r.hasRange ? std::optional(std::pair{ r.start, r.end }) : std::nullopt, r.info);
+                });
+                JNIEnv* e = MainEnv();
+                jstring js = JavaString(e, text);
+                jobjectArray jl = JavaStrings(e, locales);
+                e->CallVoidMethod(g_Host->view, tcSuggest, jint(session), jint(request), js, jint(start), jint(end), jl);
+                e->DeleteLocalRef(js);
+                e->DeleteLocalRef(jl);
+            };
+            tc.classifyText = [](int session, const std::u16string& text, int start, int end, const std::vector<std::string>& locales, auto done) {
+                const int request = PendingClassifier::Add([done = std::move(done)](const ClassifierReply& r) { done(r.info); });
+                JNIEnv* e = MainEnv();
+                jstring js = JavaString(e, text);
+                jobjectArray jl = JavaStrings(e, locales);
+                e->CallVoidMethod(g_Host->view, tcClassify, jint(session), jint(request), js, jint(start), jint(end), jl);
+                e->DeleteLocalRef(js);
+                e->DeleteLocalRef(jl);
+            };
+            tc.releaseClassification = [](int handle) { MainEnv()->CallVoidMethod(g_Host->view, tcRelease, jint(handle)); };
+            tc.processTextActivities = [] {
+                JNIEnv* e = MainEnv();
+                auto a = static_cast<jobjectArray>(e->CallObjectMethod(g_Host->view, ptList));
+                std::vector<std::string> out;
+                if (!a) return out;
+                for (auto& l : StringsFromJava(e, a)) out.push_back(l.value_or(""));
+                e->DeleteLocalRef(a);
+                return out;
+            };
+            tc.processText = [](int index, bool editable, const std::u16string& selected) {
+                JNIEnv* e = MainEnv();
+                jstring js = JavaString(e, selected);
+                e->CallVoidMethod(g_Host->view, ptStart, jint(index), jboolean(editable), js);
+                e->DeleteLocalRef(js);
+            };
+            tc.canLookUp = [](const std::u16string& selected) {
+                JNIEnv* e = MainEnv();
+                jstring js = JavaString(e, selected);
+                const bool can = e->CallBooleanMethod(g_Host->view, luCan, js);
+                e->DeleteLocalRef(js);
+                return can;
+            };
+            tc.lookUp = [](const std::u16string& selected) {
+                JNIEnv* e = MainEnv();
+                jstring js = JavaString(e, selected);
+                e->CallVoidMethod(g_Host->view, luStart, js);
+                e->DeleteLocalRef(js);
+            };
+            owner.SetTextClassifierHost(std::move(tc));
             static jmethodID requestControl = env->GetMethodID(env->GetObjectClass(view), "requestInsetsControl", "(I)Z");
             static jmethodID setControlled = env->GetMethodID(env->GetObjectClass(view), "setControlledInsets", "(IIIIFF)V");
             static jmethodID finishControl = env->GetMethodID(env->GetObjectClass(view), "finishInsetsControl", "(Z)V");
@@ -452,8 +594,31 @@ namespace {
     }
 
     void TextToolbarItem(JNIEnv*, jclass, jint item) {
+        if (!g_Host || item < 0) return;
+        g_Host->app->GetOwner().OnTextToolbarItem(std::size_t(item));
+        g_Host->app->RequestFrame();
+    }
+
+    void ClassifierResult(JNIEnv* env, jclass, jint request, jboolean hasRange, jint start, jint end, jint handle, jobjectArray actions,
+                          jboolean legacy) {
+        auto& map = PendingClassifier::Map();
+        auto it = map.find(request);
+        if (it == map.end()) return;
+        auto fn = std::move(it->second);
+        map.erase(it);
+        ClassifierReply r;
+        r.hasRange = hasRange;
+        r.start = start;
+        r.end = end;
+        if (handle != 0) {
+            kiln::ui::TextClassificationInfo info;
+            info.handle = handle;
+            if (actions) for (auto& a : StringsFromJava(env, actions)) info.actions.push_back(a.value_or(""));
+            info.legacyAssistItem = legacy;
+            r.info = std::move(info);
+        }
         if (!g_Host) return;
-        g_Host->app->GetOwner().OnTextToolbarItem(unsigned(item));
+        fn(r);
         g_Host->app->RequestFrame();
     }
 
@@ -1364,6 +1529,7 @@ extern "C" JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void*) {
         { "fontsChanged", "()V", reinterpret_cast<void*>(&FontsChanged) },
         { "textToolbarItem", "(I)V", reinterpret_cast<void*>(&TextToolbarItem) },
         { "textToolbarDestroyed", "()V", reinterpret_cast<void*>(&TextToolbarDestroyed) },
+        { "classifierResult", "(IZIII[Ljava/lang/String;Z)V", reinterpret_cast<void*>(&ClassifierResult) },
         { "setAnimationScale", "(F)V", reinterpret_cast<void*>(&SetAnimationScale) },
         { "setLayoutDirection", "(Z)V", reinterpret_cast<void*>(&SetLayoutDirection) },
         { "touchEvent", "(IIJ[I[F[IIIIFF[J[F[F)V", reinterpret_cast<void*>(&TouchEvent) },

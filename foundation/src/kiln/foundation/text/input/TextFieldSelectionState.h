@@ -19,6 +19,9 @@ namespace kiln::ui { class Owner; }
 namespace kiln::foundation {
 
     class ReceiveContentConfiguration;
+    class PlatformSelectionBehaviors;
+    class TextContextMenuToolbarHandler;
+    class TextContextMenuBuilderScope;
 
     enum class TextToolbarState : std::uint8_t { None, Cursor, Selection };
     enum class TextFieldHandle : std::uint8_t { Cursor, SelectionStart, SelectionEnd };
@@ -64,9 +67,12 @@ namespace kiln::foundation {
         std::shared_ptr<MutableInteractionSource> interactionSource;
         // The receiveContent modifiers around the field (pastes go through them first).
         std::function<ReceiveContentConfiguration*()> receiveContentConfiguration;
-        // TextClassifier's suggestion after a long press or double click selected something
-        // (PlatformSelectionBehaviors); null for none.
-        std::function<std::optional<TextRange>(const std::u16string& text, TextRange selection)> suggestSelection;
+        // Smart selection (null: none), and the toolbar handler the core node keeps
+        // (ToolbarRequester).
+        PlatformSelectionBehaviors* platformSelectionBehaviors = nullptr;
+        TextContextMenuToolbarHandler* toolbarHandler = nullptr;
+        // requestAutofillAction (null: no Autofill item).
+        std::function<void()> requestAutofill;
 
         void Update(ui::Owner* owner, float density, bool enabled, bool readOnly, bool isPassword);
 
@@ -89,7 +95,18 @@ namespace kiln::foundation {
         bool IsCutAllowed() const;
         bool IsCopyAllowed() const;
         bool IsPasteAllowed() const { return Editable(); }
+        // ClipboardPasteState: what the clipboard held when the toolbar last showed.
+        void UpdateClipboardEntry();
         bool CanShowPasteMenuItem() const;
+        bool CanShowAutofillMenuItem() const;
+        void Autofill() { if (requestAutofill) requestAutofill(); }
+        bool CanShowLookUpMenuItem() const;
+        void LookUp();
+        // Whether the toolbar is up (TextContextMenuToolbarHandlerNode's onShow / onHide).
+        bool TextToolbarShown() const { return m_TextToolbarShown.Get(); }
+        void SetTextToolbarShown(bool v) { if (m_TextToolbarShown.Peek() != v) m_TextToolbarShown.Set(v); }
+        // addBasicTextFieldTextContextMenuComponents' builder.
+        void AddTextContextMenuComponents(TextContextMenuBuilderScope& scope);
         void Cut();
         void Copy(bool cancelSelection = true);
         void Paste(bool isFromHardwareSource = false);
@@ -118,6 +135,8 @@ namespace kiln::foundation {
         void StopToolbarAndHandlesVisibilityObserver();
         // Something the toolbar's bounds read changed (the text, a layout, a move).
         void OnContentChanged();
+        // The toolbar's content bounds in the root (null: the toolbar hides).
+        std::optional<Rect> DerivedVisibleContentBounds() const;
 
         // Internal (the gesture observers).
         void UpdateHandleDragging(TextFieldHandle handle, Offset position);
@@ -136,12 +155,11 @@ namespace kiln::foundation {
         Rect CalculateCursorRect(const text::TextLayoutResult& layout, const TextFieldCharSequence& visual) const;
         Rect CalculateSelectionRect(const text::TextLayoutResult& layout, const TextFieldCharSequence& visual) const;
         TextRange GetTextFieldSelection(int rawStart, int rawEnd, std::optional<TextRange> previous, bool isStartHandle, selection::Adjustment a);
-        std::optional<Rect> DerivedVisibleContentBounds() const;
         Rect GetContentRect() const;
         Offset CurrentTextLayoutPositionInWindow() const;
         bool IsCursorHandleInVisibleBounds() const;
         void ScheduleToolbarUpdate();
-        void ShowTextToolbar(const Rect& rect);
+        void ShowTextToolbar();
         void HideTextToolbar();
 
         rt::State<bool> m_DirectTouch{ true };
@@ -161,7 +179,9 @@ namespace kiln::foundation {
         bool m_Observing = false;
         bool m_UpdatePosted = false;
         std::optional<std::u16string> m_ObservedText;
-        bool m_ToolbarShown = false;
+        rt::State<bool> m_TextToolbarShown{ false };
+        rt::State<bool> m_PasteHasText{ false }, m_PasteHasClip{ false };
+        rt::Job m_SuggestJob;
         std::shared_ptr<char> m_Alive = std::make_shared<char>(0);
     };
 

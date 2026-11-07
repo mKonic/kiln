@@ -1,4 +1,5 @@
 #include "Check.h"
+#include "ToolbarHelpers.h"
 #include "FakeText.h"
 
 #include "kiln/foundation/Compose.h"
@@ -475,7 +476,7 @@ TEST(SelectionLongPressSelectsWordsAcrossTextsAndCopies) {
     h.Send(PointerType::Touch, PointerEventType::Release, 45, 35, false);
     // Released: the toolbar with Copy and Select all over the selection.
     CHECK(h.owner.TextToolbarShown());
-    CHECK_EQ(h.owner.TextToolbarItems(), unsigned(ui::Owner::kToolbarCopy | ui::Owner::kToolbarSelectAll));
+    CHECK((tests::ToolbarIds(h.owner) == std::vector{ ui::TextToolbarItemId::Copy, ui::TextToolbarItemId::SelectAll }));
     CHECK(h.owner.TextToolbarRect().top >= 0 && h.owner.TextToolbarRect().bottom > 50);
     // Two handles, at the ends of the selection.
     const auto handles = h.Handles();
@@ -487,7 +488,7 @@ TEST(SelectionLongPressSelectsWordsAcrossTextsAndCopies) {
         CHECK_EQ(handles[1]->Position().y, 50);
     }
     // Copy: the texts joined by a line break; touch mode clears the selection.
-    h.owner.OnTextToolbarItem(ui::Owner::kToolbarCopy);
+    CHECK(tests::ClickToolbar(h.owner, ui::TextToolbarItemId::Copy));
     h.Pump();
     CHECK(h.owner.ClipboardText() == std::optional<std::string>("world\nSecond"));
     CHECK(state->SelectedTexts().empty());

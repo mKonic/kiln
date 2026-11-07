@@ -7,6 +7,9 @@
 #include "kiln/foundation/Compose.h"
 #include "kiln/foundation/Draw.h"
 #include "kiln/foundation/Gestures.h"
+#include "kiln/foundation/text/PlatformSelectionBehaviors.h"
+#include "kiln/foundation/text/contextmenu/TextContextMenu.h"
+#include "kiln/foundation/text/input/TextFieldBuffer.h"
 #include "kiln/runtime/Saveable.h"
 #include "kiln/text/Savers.h"
 
@@ -304,8 +307,21 @@ namespace kiln::foundation {
 
         class SelectionManager {
         public:
-            explicit SelectionManager(std::shared_ptr<SelectionRegistrar> r) : registrar(std::move(r)) { Install(); }
+            explicit SelectionManager(std::shared_ptr<SelectionRegistrar> r) : registrar(std::move(r)) {
+                Install();
+                toolbar.computeContentBounds = [this] { return ContentRect(); };
+                toolbar.onShow = [this] { return OnToolbarShow(this, alive); };
+            }
+            static rt::Task<> OnToolbarShow(SelectionManager* m, std::weak_ptr<char>) {
+                if (!m->behaviors) co_return;
+                if (const auto ts = m->GetContextTextAndSelection()) co_await m->behaviors->OnShowSelectionToolbar(ts->first, ts->second);
+            }
+            void EnsureBehaviors() {
+                if (!behaviors && owner) behaviors = PlatformSelectionBehaviors::Create(owner, ui::SelectedTextType::StaticText, {});
+            }
             ~SelectionManager() {
+                alive.reset();
+                suggestJob.Cancel();
                 UnpinAll();
                 registrar->onPositionChange = {};
                 registrar->onSelectionUpdateStart = {};
@@ -332,6 +348,12 @@ namespace kiln::foundation {
             std::optional<Offset> previousPositionInWindow;
             std::map<std::int64_t, std::shared_ptr<ui::PinnableContainer>> pinned;
             std::shared_ptr<DefaultMouseObserver> mouseObserver;
+            // rememberPlatformSelectionBehaviors(StaticText), the toolbar handler of
+            // contextMenuAreaModifier, and the suggestion in flight.
+            std::unique_ptr<PlatformSelectionBehaviors> behaviors;
+            TextContextMenuToolbarHandler toolbar;
+            rt::Job suggestJob;
+            std::shared_ptr<char> alive = std::make_shared<char>(0);
 
             // selection's setter.
             void SetSelection(std::optional<Selection> value) {
@@ -456,7 +478,7 @@ namespace kiln::foundation {
                     draggingHandle.Set(std::nullopt);
                     currentDragPosition.Set(std::nullopt);
                     previousSelectionLayout.reset();
-                    // suggestSelectionForLongPressOrDoubleClick: smart selection is in M8.
+                    if (isLongPressOrClickSelection && IsNonEmptySelection()) SuggestSelectionForLongPressOrDoubleClick();
                     isLongPressOrClickSelection = false;
                 };
                 registrar->onSelectableChange = [this](std::int64_t id) {
@@ -788,26 +810,107 @@ namespace kiln::foundation {
                 return root;
             }
 
-            // The text toolbar (new context menu): Copy, then Select all, each when it applies.
+            // The new context menu: the toolbar shows once while there is a content rect; it
+            // follows the rect itself.
             void UpdateSelectionToolbar() {
-                if (!hasFocus.Peek() || !owner) return;
-                const auto rect = showToolbar && TouchMode() ? ContentRect() : std::nullopt;
-                ui::Owner::TextToolbarActions actions;
-                if (rect) {
-                    if (IsNonEmptySelection())
-                        actions.copy = [this] {
-                            Copy();
-                            if (TouchMode()) OnRelease();
-                            owner->HideTextToolbar();
-                        };
-                    if (!IsEntireContainerSelected())
-                        actions.selectAll = [this] {
-                            SelectAll();
-                            if (!showToolbar || !TouchMode()) owner->HideTextToolbar();
-                        };
+                if (!hasFocus.Peek()) return;
+                if (showToolbar && TouchMode() && ContentRect()) {
+                    toolbar.Show();
+                    toolbar.InvalidateContentBounds();
+                } else {
+                    toolbar.Hide();
                 }
-                if (rect && (actions.copy || actions.selectAll)) owner->ShowTextToolbar(*rect, std::move(actions));
-                else if (owner->TextToolbarShown()) owner->HideTextToolbar();
+            }
+
+            // getContextTextAndSelection: the selected selectables' text (each selection joined
+            // by a line break, the first's text before it and the last's after it) and the
+            // selection in it.
+            std::optional<std::pair<std::u16string, TextRange>> GetContextTextAndSelection() {
+                if (!selection.Peek() || registrar->subselections.Peek().empty()) return std::nullopt;
+                std::u16string text;
+                int start = -1, end = -1;
+                ForEachSelectableWithSelection([&](const Selectable&, const AnnotatedString& t, int s0, int e0, bool last) {
+                    const int lo = std::min(s0, e0), hi = std::max(s0, e0);
+                    if (start == -1) {
+                        start = lo;
+                        text += ToUtf16(t.SubSequence(0, lo).Text());
+                    }
+                    text += ToUtf16(t.SubSequence(lo, hi).Text());
+                    if (!last) {
+                        text += u'\n';
+                    } else {
+                        end = int(text.size());
+                        text += ToUtf16(t.SubSequence(hi, t.Length()).Text());
+                    }
+                    return true;
+                });
+                if (start == -1 || end == -1) return std::nullopt;
+                return std::pair{ std::move(text), TextRange(start, end) };
+            }
+
+            // addSelectionContainerTextContextMenuComponents
+            void AddTextContextMenuComponents(TextContextMenuBuilderScope& scope) {
+                auto item = [](TextContextMenuBuilderScope& sc, TextContextMenuKey key, bool enabled, std::function<void()> onClick,
+                               std::function<bool()> closePredicate = {}) {
+                    if (!enabled) return;
+                    sc.Item(key, {}, [onClick, closePredicate](TextContextMenuSession& session) {
+                        onClick();
+                        if (!closePredicate || closePredicate()) session.Close();
+                    });
+                };
+                const auto ts = GetContextTextAndSelection();
+                AddPlatformTextContextMenuItems(scope, owner, false, ts ? &ts->first : nullptr, ts ? std::optional<TextRange>(ts->second) : std::nullopt,
+                                                behaviors.get(), [&](TextContextMenuBuilderScope& sc) {
+                    sc.Separator();
+                    item(sc, TextContextMenuKeys::Copy, IsNonEmptySelection(), [this] {
+                        Copy();
+                        if (TouchMode()) OnRelease();
+                    });
+                    item(sc, TextContextMenuKeys::LookUp, CanShowLookUpMenuItem(), [this] { LookUp(); });
+                    item(sc, TextContextMenuKeys::SelectAll, !IsEntireContainerSelected(), [this] { SelectAll(); },
+                         [this] { return !showToolbar || !TouchMode(); });
+                    sc.Separator();
+                });
+            }
+            bool CanShowLookUpMenuItem() {
+                if (!IsNonEmptySelection()) return false;
+                const auto t = GetSelectedText();
+                return t && CanShowLookUp(owner, ToUtf16(t->Text()));
+            }
+            void LookUp() {
+                if (const auto t = GetSelectedText()) StartLookUpActivity(owner, ToUtf16(t->Text()));
+            }
+
+            // suggestSelectionForLongPressOrDoubleClick: the selection grows to what the
+            // classifier suggests, while the selectable and its text stay.
+            void SuggestSelectionForLongPressOrDoubleClick() {
+                if (!behaviors) return;
+                std::optional<AnnotatedString> textInSelectable;
+                TextRange selectionInSelectable;
+                std::int64_t targetId = kInvalidSelectableId;
+                ForEachSelectableWithSelection([&](const Selectable& s, const AnnotatedString& t, int s0, int e0, bool last) {
+                    if (last) {
+                        textInSelectable = t;
+                        selectionInSelectable = TextRange(s0, e0);
+                        targetId = s.selectableId;
+                    }
+                    return false;
+                });
+                if (!textInSelectable || targetId == kInvalidSelectableId || textInSelectable->Length() == 0) return;
+                suggestJob = rt::Launch(rt::Dispatcher::Main(), Suggest(this, alive, *textInSelectable, selectionInSelectable, targetId));
+            }
+            static rt::Task<> Suggest(SelectionManager* m, std::weak_ptr<char> weak, AnnotatedString text, TextRange range, std::int64_t id) {
+                const auto suggested = co_await m->behaviors->SuggestSelectionForLongPressOrDoubleClick(ToUtf16(text.Text()), range);
+                if (weak.expired() || !suggested || *suggested == range) co_return;
+                Selectable* selectable = m->registrar->Find(id);
+                if (!selectable || selectable->GetText().Text() != text.Text()) co_return;
+                const auto layout = selectable->layoutCallback ? selectable->layoutCallback() : nullptr;
+                if (!layout) co_return;
+                const Selection next{ AnchorInfo{ layout->BidiRunDirection(suggested->start), suggested->start, id },
+                                      AnchorInfo{ layout->BidiRunDirection(suggested->end), suggested->end, id }, false };
+                m->registrar->subselections.Set(SubSelections{ { id, next } });
+                m->OnSelectionChange(next);
+                m->previousSelectionLayout.reset();
             }
 
             void OnRelease() {
@@ -1154,6 +1257,15 @@ namespace kiln::foundation {
             SelectionMagnifier m_Magnifier;
         };
 
+        // Where the toolbar handler sits (it collects the menu from here up).
+        struct ToolbarAnchorNode final : ModifierNode {
+            MagnifierParams_ params;
+            explicit ToolbarAnchorNode(MagnifierParams_ p) : params(std::move(p)) {}
+            void OnParamsChanged() {}
+            void OnAttach() override { params.manager->toolbar.Attach(Owner() ? Owner()->GetOwner() : nullptr, this); }
+            void OnDetach() override { params.manager->toolbar.Detach(); }
+        };
+
         using namespace selection;
 
         // The container's onGloballyPositioned: its inner space is the manager's coordinates.
@@ -1266,6 +1378,7 @@ namespace kiln::foundation {
         auto onPositioned = c->Remember<std::shared_ptr<std::function<void(const Coordinates&)>>>([m = manager] {
             return std::make_shared<std::function<void(const Coordinates&)>>([m](const Coordinates& co) {
                 if (!m->owner) m->owner = co.node->GetOwner();
+                m->EnsureBehaviors();
                 m->SetContainerCoordinates(co);
             });
         });
@@ -1286,6 +1399,9 @@ namespace kiln::foundation {
         auto mouse = m->mouseObserver;
         mod = PointerInput(std::move(mod), rt::Keys(m, 3), [mouse](PointerInputScope& s) { return AwaitSelectionGestures(s, mouse, nullptr); });
         mod = mod.With<SelectionMagnifierNode>(MagnifierParams_{ manager });
+        mod = AppendTextContextMenuComponents(std::move(mod), [m](TextContextMenuBuilderScope& scope) { m->AddTextContextMenuComponents(scope); });
+        // contextMenuAreaModifier's toolbar handler, under the components.
+        mod = mod.With<ToolbarAnchorNode>(MagnifierParams_{ manager });
 
         auto handleObservers = c->Remember<std::shared_ptr<std::pair<std::shared_ptr<TextDragObserver>, std::shared_ptr<TextDragObserver>>>>([manager] {
             return std::make_shared<std::pair<std::shared_ptr<TextDragObserver>, std::shared_ptr<TextDragObserver>>>(
@@ -1333,7 +1449,7 @@ namespace kiln::foundation {
                 m->onSelectionChangeUser = {};
                 m->OnRelease();
                 m->hasFocus.Set(false);
-                if (m->owner && m->owner->TextToolbarShown()) m->owner->HideTextToolbar();
+                m->toolbar.Hide();
                 if (state.m_Manager == m.get()) {
                     state.m_Manager = nullptr;
                     state.m_Selection.Set(std::nullopt);

@@ -147,7 +147,7 @@ namespace {
                 SelectionContainer(Modifier{}, [] {
                     Column(Padding(Modifier{}, 16_dp, 4_dp), [] {
                         BasicText("Selection runs across these texts: from the first sentence", {}, { 16, kOnSurface });
-                        BasicText("into the second one, and copies them on separate lines.", {}, { 16, kOnSurface });
+                        BasicText("into the second one, and copies them on separate lines. Smart selection: call 650-253-0000.", {}, { 16, kOnSurface });
                         DisableSelection([] { BasicText("This line is not selectable.", {}, { 14, kVariant }); });
                     });
                 });

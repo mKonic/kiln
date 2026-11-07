@@ -17,6 +17,8 @@ final class KilnNative {
     static native void fontsChanged();
     static native void textToolbarItem(int item);
     static native void textToolbarDestroyed();
+    /** A suggestSelection / classifyText request's result (handle 0: no classification). */
+    static native void classifierResult(int request, boolean hasRange, int start, int end, int handle, String[] actions, boolean legacyAssist);
     static native void setAnimationScale(float scale);
     static native void setLayoutDirection(boolean rtl);
     static native void touchEvent(int action, int actionIndex, long eventTime, int[] ids, float[] xy,

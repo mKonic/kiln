@@ -14,6 +14,7 @@
 #include "kiln/ui/IndirectPointer.h"
 #include "kiln/ui/Clip.h"
 #include "kiln/ui/TextInput.h"
+#include "kiln/ui/TextToolbar.h"
 #include "kiln/ui/Insets.h"
 #include "kiln/ui/Semantics.h"
 
@@ -336,24 +337,29 @@ namespace kiln::ui {
         void SetContentHost(ContentHost host) { m_Content = std::move(host); }
         std::optional<std::vector<std::uint8_t>> ReadContent(const std::string& uri) const { return m_Content.read ? m_Content.read(uri) : std::nullopt; }
         void ReleaseContentPermission(int handle) const { if (m_Content.releasePermission && handle > 0) m_Content.releasePermission(handle); }
-        // TextToolbar (AndroidTextToolbar): a floating ActionMode over a rect in root pixels with
-        // the actions that are set (copy, paste, cut, select all). The host calls
-        // OnTextToolbarItem when one is tapped (it then closes) and OnTextToolbarDestroyed when
-        // the action mode ends; the status stays Shown until HideTextToolbar, like Compose.
-        struct TextToolbarActions { std::function<void()> copy, paste, cut, selectAll; };
-        enum TextToolbarItem : unsigned { kToolbarCopy = 1, kToolbarPaste = 2, kToolbarCut = 4, kToolbarSelectAll = 8 };
+        // The text toolbar (AndroidTextContextMenuToolbarProvider): one floating ActionMode for one
+        // client at a time; showing another client's ends the previous session (MutatorMutex).
+        // The host starts the mode (false: nothing to show), updates its menu, moves it and
+        // finishes it; it calls OnTextToolbarItem for a click and OnTextToolbarDestroyed when
+        // the mode ends by itself.
         struct TextToolbarHost {
-            std::function<void(Rect, unsigned items)> show;   // starts the action mode, or updates it
+            std::function<bool(Rect, const std::vector<TextToolbarEntry>&)> show;
+            std::function<void(const std::vector<TextToolbarEntry>&)> update;
+            std::function<void(Rect)> move;
             std::function<void()> hide;
         };
         void SetTextToolbarHost(TextToolbarHost host) { m_ToolbarHost = std::move(host); }
-        void ShowTextToolbar(Rect rect, TextToolbarActions actions);
-        void HideTextToolbar();
-        bool TextToolbarShown() const { return m_ToolbarShown; }
+        void ShowTextToolbar(TextToolbarClient* client);
+        // Finishes the mode if `client` has it (no OnClosed: the client ended it).
+        void HideTextToolbar(TextToolbarClient* client);
+        bool TextToolbarShown() const { return m_ToolbarClient != nullptr; }
+        TextToolbarClient* CurrentTextToolbarClient() const { return m_ToolbarClient; }
         Rect TextToolbarRect() const { return m_ToolbarRect; }
-        unsigned TextToolbarItems() const;
-        void OnTextToolbarItem(unsigned item);
-        void OnTextToolbarDestroyed() { m_ToolbarActive = false; }
+        const std::vector<TextToolbarEntry>& TextToolbarEntries() const { return m_ToolbarEntries; }
+        void OnTextToolbarItem(std::size_t index);
+        void OnTextToolbarDestroyed();
+        void SetTextClassifierHost(TextClassifierHost host) { m_Classifier = std::move(host); }
+        const TextClassifierHost& TextClassifier() const { return m_Classifier; }
         void PlaySoundEffect(int constant) { if (m_PlaySound) m_PlaySound(constant); }
         // KeyCharacterMap.getDeadChar: the character a dead key's accent makes with `c`, or 0.
         void SetDeadCharCombiner(std::function<int(int accent, int c)> fn) { m_DeadChar = std::move(fn); }
@@ -428,9 +434,20 @@ namespace kiln::ui {
         ContentHost m_Content;
         std::optional<std::string> m_LocalClip;   // without a host (tests): an in-process clipboard
         TextToolbarHost m_ToolbarHost;
-        TextToolbarActions m_ToolbarActions;
+        TextToolbarClient* m_ToolbarClient = nullptr;
         Rect m_ToolbarRect;
-        bool m_ToolbarShown = false, m_ToolbarActive = false;
+        std::vector<TextToolbarEntry> m_ToolbarEntries;
+        // The provider's snapshot observer: entries and bounds, each re-read when what it read
+        // changed.
+        struct ToolbarObserver final : rt::Subscriber {
+            Owner* owner = nullptr;
+            bool bounds = false;
+            void OnStateChanged() override;
+        };
+        ToolbarObserver m_ToolbarDataObserver, m_ToolbarBoundsObserver;
+        void ReadToolbarEntries();
+        void ReadToolbarBounds();
+        TextClassifierHost m_Classifier;
         friend class FocusTargetNode;
         friend class AccessibilityDelegate;
         LayoutNode* NodeOf(const FocusTargetNode& t) const;
