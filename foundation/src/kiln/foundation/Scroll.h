@@ -48,6 +48,8 @@ namespace kiln::foundation {
             return ++m_ScrollToken;
         }
         bool IsCurrentScroll(std::uint64_t token) const { return token == m_ScrollToken; }
+        // Expires when the state is destroyed (a detaching scrollable may outlive it).
+        std::weak_ptr<const char> AliveToken() const { return m_Alive; }
         void EndScroll(std::uint64_t token) {
             if (token != m_ScrollToken) return;
             m_Stop = nullptr;
@@ -59,6 +61,7 @@ namespace kiln::foundation {
         rt::State<bool> m_InProgress{ false };
         std::function<void()> m_Stop;
         std::uint64_t m_ScrollToken = 0;
+        std::shared_ptr<const char> m_Alive = std::make_shared<const char>(0);
     };
 
     // Ends a BeginScroll when the coroutine frame holding it goes away (cancelled jobs included),
@@ -66,8 +69,9 @@ namespace kiln::foundation {
     struct ScrollSession {
         ScrollableState& state;
         std::uint64_t token;
-        ScrollSession(ScrollableState& s, std::function<void()> stop) : state(s), token(s.BeginScroll(std::move(stop))) {}
-        ~ScrollSession() { state.EndScroll(token); }
+        std::weak_ptr<const char> alive;
+        ScrollSession(ScrollableState& s, std::function<void()> stop) : state(s), token(s.BeginScroll(std::move(stop))), alive(s.AliveToken()) {}
+        ~ScrollSession() { if (!alive.expired()) state.EndScroll(token); }
         bool Current() const { return state.IsCurrentScroll(token); }
         ScrollSession(const ScrollSession&) = delete;
         ScrollSession& operator=(const ScrollSession&) = delete;

@@ -509,8 +509,8 @@ TEST(FocusRestorerSurvivesRecreation) {
 }
 
 TEST(IndirectPointerDragsScrollAndDraggable) {
+    ScrollState scroll;   // outlives the harness, which detaches the scrollable using it
     Harness h;
-    ScrollState scroll;
     float dragged = 0;
     int clicks = 0;
     FocusRequester inList, inDrag;

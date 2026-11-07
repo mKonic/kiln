@@ -60,6 +60,7 @@ namespace kiln::foundation {
     class ScrollingLogic final : public NestedScrollConnection {
     public:
         ScrollableState* state = nullptr;
+        std::weak_ptr<const char> stateAlive;
         Orientation orientation = Orientation::Vertical;
         bool reverse = false;
         NestedScrollNode* node = nullptr;
@@ -108,7 +109,7 @@ namespace kiln::foundation {
         bool Flinging() const { return m_Flinging; }
         void StopFling() {
             m_FlingJob.Cancel();
-            if (m_Flinging) { m_Flinging = false; state->EndScroll(m_Token); }
+            if (m_Flinging) { m_Flinging = false; if (!stateAlive.expired()) state->EndScroll(m_Token); }
         }
 
         void StartFling(Offset velocity) {
@@ -684,6 +685,7 @@ namespace kiln::foundation {
         std::shared_ptr<ScrollingLogic> logic = std::make_shared<ScrollingLogic>();
         if (auto* c = rt::Composition::Current()) logic = c->Remember<std::shared_ptr<ScrollingLogic>>([&] { return logic; });
         logic->state = &state;
+        logic->stateAlive = state.AliveToken();
         logic->orientation = o;
         logic->reverse = opt.reverseDirection;
         logic->overscroll = opt.overscroll;
