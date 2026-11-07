@@ -727,12 +727,14 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
             am.addTouchExplorationStateChangeListener(touchExplorationListener);
         }
         accessibility.updateEnabled();
+        setViewTranslationCallback(accessibility.translationCallback);
     }
 
     @Override
     protected void onDetachedFromWindow() {
         back.onDetached();
         flushHoverExit(true);
+        clearViewTranslationCallback();
         AccessibilityManager am = getContext().getSystemService(AccessibilityManager.class);
         if (am != null) {
             am.removeAccessibilityStateChangeListener(a11yStateListener);
@@ -850,8 +852,20 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
     /** rememberSaveable values, serialised (DisposableSaveableStateRegistry's bundle entry). */
     public byte[] saveState() { return KilnNative.saveState(); }
 
-    void onHostStart() { KilnNative.setVisible(true); }
-    void onHostStop() { KilnNative.setVisible(false); }
+    void onHostStart() { KilnNative.setVisible(true); accessibility.onHostStart(); }
+    void onHostStop() { accessibility.onHostStop(); KilnNative.setVisible(false); }
+
+    // Translation of the virtual text views (API 31+).
+    @Override
+    public void onCreateVirtualViewTranslationRequests(long[] virtualIds, int[] supportedFormats,
+            java.util.function.Consumer<android.view.translation.ViewTranslationRequest> requestsCollector) {
+        accessibility.onCreateTranslationRequests(virtualIds, requestsCollector);
+    }
+
+    @Override
+    public void onVirtualViewTranslationResponses(android.util.LongSparseArray<android.view.translation.ViewTranslationResponse> response) {
+        accessibility.onTranslationResponses(response);
+    }
 
     void onHostConfigurationChanged(Configuration config) {
         KilnNative.setDensity(getResources().getDisplayMetrics().density, config.fontScale);

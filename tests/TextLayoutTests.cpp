@@ -6,6 +6,7 @@
 #include "kiln/ui/Focus.h"
 #include "kiln/ui/Semantics.h"
 #include "kiln/ui/Pointer.h"
+#include "kiln/ui/Accessibility.h"
 
 #include <algorithm>
 #include <cmath>
@@ -761,4 +762,63 @@ TEST(SelectionGesturesSurviveParentRecomposition) {
     h.Wait(80);
     h.Send(PointerType::Touch, PointerEventType::Release, 75, 10, false);
     CHECK(state->SelectedTexts().size() == 1 && state->SelectedTexts()[0].Text() == "world");
+}
+
+TEST(TranslationShowsTheSubstitutedTextAndContentCaptureSeesIt) {
+    FakeText backend;
+    ui::Owner owner;
+    owner.SetDensity({ 2, 1.5f });
+    owner.SetText(&backend);
+    rt::Composition comp(owner.Root(), rt::Dispatcher::Main());
+    std::shared_ptr<const TextLayoutResult> last;
+    foundation::BasicTextOptions options;
+    options.onTextLayout = [&](const TextLayoutResult& r) { last = std::make_shared<TextLayoutResult>(r); };
+    comp.SetContent([&] { foundation::BasicText("Hello", {}, TextStyle(Sp(10)), options); });
+    comp.Recompose();
+    owner.MeasureAndLayout({ 300, 100 });
+    auto& a11y = owner.Accessibility();
+    auto& cc = a11y.ContentCapture();
+    cc.SetEnabled(true);
+    cc.OnStart();
+    auto events = cc.TakeEvents();
+    const auto appeared = std::find_if(events.begin(), events.end(), [](const ui::ContentCaptureEvent& e) {
+        return e.kind == ui::ContentCaptureEvent::Kind::Appear && e.text == std::optional<std::string>("Hello");
+    });
+    CHECK(appeared != events.end());
+    if (appeared != events.end()) {
+        CHECK(appeared->className == std::optional<std::string>("android.widget.TextView"));
+        CHECK(appeared->textSizePx && std::abs(*appeared->textSizePx - 30) < 1e-3f);   // 10sp at 2x and 1.5 font scale
+    }
+    CHECK(!events.empty() && events.back().kind == ui::ContentCaptureEvent::Kind::Flush);
+    cc.CheckForChanges();   // the first copy: the text counts as new
+    cc.TakeEvents();
+
+    // A translation arrives and is shown: the text lays out the substitution.
+    int id = ui::a11y::kInvalidId;
+    for (const auto& [k, n] : a11y.Nodes()) if (!n.config.text.empty()) id = k;
+    const auto requests = cc.TranslationRequests({ id });
+    CHECK(requests.size() == 1 && requests[0].second == "Hello");
+    cc.TranslationResponses({ { id, "Hallo Welt" } });
+    cc.OnShowTranslation();
+    comp.Recompose();
+    owner.MeasureAndLayout({ 300, 100 });
+    CHECK(last && last->LayoutInput().text.Text() == "Hallo Welt");
+    const auto* node = a11y.Find(id);
+    CHECK(node && node->config.textSubstitution == std::optional<std::string>("Hallo Welt") &&
+          node->config.isShowingTextSubstitution == std::optional(true));
+    const auto info = a11y.CreateNodeInfo(id);
+    CHECK(info && info->text == std::optional<std::string>("Hallo Welt"));   // the shown text
+    cc.OnHideTranslation();
+    owner.MeasureAndLayout({ 300, 100 });
+    CHECK(last && last->LayoutInput().text.Text() == "Hello");
+    cc.OnClearTranslation();
+    CHECK(a11y.Find(id) && !a11y.Find(id)->config.textSubstitution);
+    // The text changing sends its new text.
+    cc.CheckForChanges();
+    cc.TakeEvents();
+    cc.OnStop();
+    events = cc.TakeEvents();
+    CHECK(std::any_of(events.begin(), events.end(), [&](const ui::ContentCaptureEvent& e) {
+        return e.kind == ui::ContentCaptureEvent::Kind::Disappear && e.id == id;
+    }));
 }

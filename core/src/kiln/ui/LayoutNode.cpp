@@ -930,7 +930,7 @@ namespace kiln::ui {
         if (m_OnSemanticsChanged) m_OnSemanticsChanged();
         if (m_Accessibility) {
             m_Accessibility->OnSemanticsChange();
-            if (m_Accessibility->Enabled() && m_OnAccessibilityChange) m_OnAccessibilityChange(false);
+            if (m_Accessibility->Listening() && m_OnAccessibilityChange) m_OnAccessibilityChange(false);
         }
     }
 

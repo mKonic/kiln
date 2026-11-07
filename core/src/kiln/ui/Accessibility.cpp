@@ -295,7 +295,10 @@ namespace kiln::ui {
         };
     }
 
-    AccessibilityDelegate::AccessibilityDelegate(Owner& owner) : m_Owner(owner) {}
+    AccessibilityDelegate::AccessibilityDelegate(Owner& owner)
+        : m_Owner(owner), m_ContentCapture(std::make_unique<ContentCaptureManager>(*this)) {}
+
+    bool AccessibilityDelegate::Listening() const { return m_Enabled || m_ContentCapture->Enabled(); }
     AccessibilityDelegate::~AccessibilityDelegate() = default;
 
     void AccessibilityDelegate::SetEnabled(bool enabled) {
@@ -1405,7 +1408,8 @@ namespace kiln::ui {
 
     bool AccessibilityDelegate::OnLayoutChange(LayoutNode& node) {
         m_Invalid = true;
-        if (!m_Enabled) return false;
+        // Content capture flushes after layout changes too (its boundsUpdatesEventLoop).
+        if (!m_Enabled) return m_ContentCapture->Enabled();
         const bool first = m_SubtreeChangedLayoutNodes.empty();
         NotifySubtreeChanged(&node);
         return first && !m_SubtreeChangedLayoutNodes.empty();
@@ -1880,6 +1884,191 @@ namespace kiln::ui {
             int startLine = previousPageEndY > 0 ? layout.LineForVerticalPosition(previousPageEndY) : 0;
             if (end == n && startLine < line) startLine += 1;
             return Range(LineEdge(layout, startLine, true), end);
+        }
+    }
+
+
+    // --- content capture and translation ------------------------------------------------------
+
+    std::optional<ContentCaptureEvent> ContentCaptureManager::ToViewStructure(const AccessibilityNode& node, int index) {
+        const auto& c = node.config;
+        if (c.password) return std::nullopt;
+        ContentCaptureEvent e;
+        e.kind = ContentCaptureEvent::Kind::Appear;
+        e.id = node.id;
+        e.parent = node.parent;   // the root: kInvalidId (the view)
+        e.index = index;
+        e.timestamp = Now();
+        if (c.testTag) e.testTag = c.testTag;
+        if (c.isTraversalGroup) e.className = "android.widget.ViewGroup";
+        if (!c.text.empty()) { e.className = "android.widget.TextView"; e.text = Join(c.text, "\n"); }
+        if (c.editableText) { e.className = "android.widget.EditText"; e.text = c.editableText; }
+        if (!c.contentDescription.empty()) e.contentDescription = Join(c.contentDescription, "\n");
+        if (const char* cls = LegacyClassName(c.role)) e.className = cls;
+        if (c.getTextLayoutResult)
+            if (const auto layout = c.getTextLayoutResult()) {
+                const auto& in = layout->LayoutInput();
+                const auto& size = in.style.span.fontSize;
+                if (size.IsSp()) e.textSizePx = size.value * in.density.density * in.density.fontScale;
+            }
+        // boundsInParent: against the parent's bounds coordinator.
+        Rect b = node.boundsInRoot;
+        if (const AccessibilityNode* p = m_Delegate.FindAnyNode(node.parent); p && p->id != kHostViewId)
+            b = b.Translate({ -p->unclippedBoundsInRoot.left, -p->unclippedBoundsInRoot.top });
+        e.left = int(b.left);
+        e.top = int(b.top);
+        e.width = int(b.Width());
+        e.height = int(b.Height());
+        return e;
+    }
+
+    void ContentCaptureManager::UpdateTranslationOnAppeared(const AccessibilityNode& node) {
+        const auto& c = node.config;
+        if (!m_ShowTranslated && c.isShowingTextSubstitution == std::optional(true)) {
+            if (c.showTextSubstitution) c.showTextSubstitution(false);
+        } else if (m_ShowTranslated && c.isShowingTextSubstitution == std::optional(false)) {
+            if (c.showTextSubstitution) c.showTextSubstitution(true);
+        }
+    }
+
+    void ContentCaptureManager::Appeared(int index, const AccessibilityNode& node) {
+        if (!m_Enabled) return;
+        UpdateTranslationOnAppeared(node);
+        if (auto e = ToViewStructure(node, index)) m_Buffered.push_back(std::move(*e));
+        const auto& nodes = m_Delegate.Nodes();
+        int i = 0;
+        for (int k : node.replacedChildren) {
+            auto it = nodes.find(k);
+            if (it == nodes.end()) continue;
+            Appeared(i++, it->second);
+        }
+    }
+
+    void ContentCaptureManager::Disappeared(const AccessibilityNode& node) {
+        if (!m_Enabled) return;
+        ContentCaptureEvent e;
+        e.kind = ContentCaptureEvent::Kind::Disappear;
+        e.id = node.id;
+        e.timestamp = Now();
+        m_Buffered.push_back(e);
+        for (int k : node.replacedChildren)
+            if (const AccessibilityNode* c = m_Delegate.FindAnyNode(k)) Disappeared(*c);
+    }
+
+    void ContentCaptureManager::OnStart() {
+        if (const AccessibilityNode* root = m_Delegate.FindAnyNode(kHostViewId)) Appeared(-1, *root);
+        FlushBuffered();
+    }
+
+    void ContentCaptureManager::OnStop() {
+        if (const AccessibilityNode* root = m_Delegate.FindAnyNode(kHostViewId)) Disappeared(*root);
+        FlushBuffered();
+        m_Enabled = false;
+    }
+
+    void ContentCaptureManager::FlushBuffered() {
+        if (m_Buffered.empty()) return;
+        for (auto& e : m_Buffered) m_Events.push_back(std::move(e));
+        m_Buffered.clear();
+        ContentCaptureEvent flush;
+        flush.kind = ContentCaptureEvent::Kind::Flush;
+        m_Events.push_back(flush);
+    }
+
+    void ContentCaptureManager::SendAppearEvents(const AccessibilityNode& node, const Copy& old) {
+        const auto& nodes = m_Delegate.Nodes();
+        int i = 0;
+        for (int k : node.replacedChildren) {
+            auto it = nodes.find(k);
+            if (it == nodes.end()) continue;
+            if (!old.children.count(k)) Appeared(i, it->second);
+            ++i;
+        }
+        for (int k : node.replacedChildren) {
+            auto cur = nodes.find(k);
+            auto prev = m_Previous.find(k);
+            if (cur != nodes.end() && prev != m_Previous.end()) SendAppearEvents(cur->second, prev->second);
+        }
+    }
+
+    void ContentCaptureManager::UpdateCopy() {
+        const auto& nodes = m_Delegate.Nodes();
+        auto copy = [&](const AccessibilityNode& n) {
+            Copy c;
+            c.config = n.config;
+            for (int k : n.replacedChildren) if (nodes.count(k)) c.children.insert(k);
+            return c;
+        };
+        m_Previous.clear();
+        for (const auto& [id, n] : nodes) m_Previous[id] = copy(n);
+        if (const AccessibilityNode* root = m_Delegate.FindAnyNode(kHostViewId)) m_PreviousRoot = copy(*root);
+    }
+
+    void ContentCaptureManager::CheckForChanges() {
+        if (!m_Enabled) return;
+        const auto& nodes = m_Delegate.Nodes();
+        // sendContentCaptureDisappearEvents.
+        for (const auto& [id, copy] : m_Previous)
+            if (!nodes.count(id)) {
+                ContentCaptureEvent e;
+                e.kind = ContentCaptureEvent::Kind::Disappear;
+                e.id = id;
+                e.timestamp = Now();
+                m_Buffered.push_back(e);
+            }
+        if (const AccessibilityNode* root = m_Delegate.FindAnyNode(kHostViewId)) SendAppearEvents(*root, m_PreviousRoot);
+        // checkForContentCapturePropertyChanges: the first text, sent right away.
+        for (const auto& [id, n] : nodes) {
+            if (n.config.text.empty()) continue;
+            auto prev = m_Previous.find(id);
+            const std::string now = n.config.text.front();
+            if (prev != m_Previous.end()) {
+                const auto& old = prev->second.config.text;
+                if (!old.empty() && old.front() == now) continue;
+            }
+            ContentCaptureEvent e;
+            e.kind = ContentCaptureEvent::Kind::TextChanged;
+            e.id = id;
+            e.text = now;
+            m_Events.push_back(std::move(e));
+        }
+        UpdateCopy();
+    }
+
+    void ContentCaptureManager::OnShowTranslation() {
+        m_ShowTranslated = true;
+        for (const auto& [id, n] : m_Delegate.Nodes())
+            if (n.config.isShowingTextSubstitution == std::optional(false) && n.config.showTextSubstitution) n.config.showTextSubstitution(true);
+    }
+
+    void ContentCaptureManager::OnHideTranslation() {
+        m_ShowTranslated = false;
+        for (const auto& [id, n] : m_Delegate.Nodes())
+            if (n.config.isShowingTextSubstitution == std::optional(true) && n.config.showTextSubstitution) n.config.showTextSubstitution(false);
+    }
+
+    void ContentCaptureManager::OnClearTranslation() {
+        m_ShowTranslated = false;
+        for (const auto& [id, n] : m_Delegate.Nodes())
+            if (n.config.isShowingTextSubstitution && n.config.clearTextSubstitution) n.config.clearTextSubstitution();
+    }
+
+    std::vector<std::pair<int, std::string>> ContentCaptureManager::TranslationRequests(const std::vector<int>& ids) {
+        std::vector<std::pair<int, std::string>> out;
+        const auto& nodes = m_Delegate.Nodes();
+        for (int id : ids) {
+            auto it = nodes.find(id);
+            if (it == nodes.end() || it->second.config.text.empty()) continue;
+            out.emplace_back(id, Join(it->second.config.text, "\n"));
+        }
+        return out;
+    }
+
+    void ContentCaptureManager::TranslationResponses(const std::vector<std::pair<int, std::string>>& responses) {
+        for (const auto& [id, text] : responses) {
+            const auto& nodes = m_Delegate.Nodes();
+            auto it = nodes.find(id);
+            if (it != nodes.end() && it->second.config.setTextSubstitution) it->second.config.setTextSubstitution(text);
         }
     }
 

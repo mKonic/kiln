@@ -22,6 +22,7 @@ namespace kiln::ui {
 
     class Owner;
     class LayoutNode;
+    class ContentCaptureManager;
 
     namespace a11y {
         constexpr int kHostViewId = -1;          // AccessibilityNodeProvider.HOST_VIEW_ID
@@ -192,6 +193,8 @@ namespace kiln::ui {
         // Whether a service listens (isEnabled): no events are made otherwise.
         void SetEnabled(bool enabled);
         bool Enabled() const { return m_Enabled; }
+        // A service or a content capture session listens: the host is told of changes.
+        bool Listening() const;
 
         // currentSemanticsNodes: rebuilt after a semantics or layout change.
         const std::unordered_map<int, AccessibilityNode>& Nodes();
@@ -222,6 +225,10 @@ namespace kiln::ui {
         void FlushBoundsUpdates();
         // Events made since the last call.
         std::vector<AccessibilityEvent> TakeEvents() { return std::exchange(m_Events, {}); }
+
+        // Any semantics node of the last rebuild (shown or not).
+        const AccessibilityNode* FindAnyNode(int id) { Nodes(); return FindAny(id); }
+        ContentCaptureManager& ContentCapture() { return *m_ContentCapture; }
 
         // The traversal order (setTraversalValues): before / after per node.
         const std::unordered_map<int, int>& TraversalBefore() { Nodes(); return m_IdToBefore; }
@@ -296,6 +303,64 @@ namespace kiln::ui {
         std::unordered_set<LayoutNode*> m_SubtreeChangedSet;
         std::vector<std::weak_ptr<const char>> m_SubtreeChangedAlive;
         std::vector<AccessibilityEvent> m_Events;
+        std::unique_ptr<ContentCaptureManager> m_ContentCapture;
+    };
+
+    // Content capture and translation (AndroidContentCaptureManager): the visible semantics
+    // nodes as virtual view structures for the session, appearing and disappearing as the tree
+    // changes, text changes, and showing translated text.
+    struct ContentCaptureEvent {
+        enum class Kind : std::uint8_t { Appear, Disappear, TextChanged, Flush };
+        Kind kind = Kind::Appear;
+        int id = 0;
+        int parent = a11y::kInvalidId;    // Appear: the parent's id (kInvalidId: the view itself)
+        int index = -1;                   // Appear: among the parent's visible children
+        std::optional<std::string> className, text, contentDescription, testTag;
+        std::optional<float> textSizePx;
+        int left = 0, top = 0, width = 0, height = 0;   // in the parent
+        std::int64_t timestamp = 0;
+    };
+
+    class ContentCaptureManager {
+    public:
+        explicit ContentCaptureManager(AccessibilityDelegate& delegate) : m_Delegate(delegate) {}
+        // A session exists (the view's content capture session; false without a service).
+        void SetEnabled(bool enabled) { m_Enabled = enabled; }
+        bool Enabled() const { return m_Enabled; }
+        void SetClock(std::function<std::int64_t()> currentTimeMillis) { m_Clock = std::move(currentTimeMillis); }
+        // Lifecycle onStart / onStop: the whole tree appears / disappears.
+        void OnStart();
+        void OnStop();
+        // contentCaptureChangeChecker: disappeared nodes, appeared ones, text changes.
+        void CheckForChanges();
+        // notifyContentCaptureChanges: the buffered appear / disappear events, then a flush.
+        void FlushBuffered();
+        bool HasBuffered() const { return !m_Buffered.empty(); }
+        std::vector<ContentCaptureEvent> TakeEvents() { return std::exchange(m_Events, {}); }
+        // ViewTranslationCallback and the translation requests / responses (Android 12+).
+        void OnShowTranslation();
+        void OnHideTranslation();
+        void OnClearTranslation();
+        std::vector<std::pair<int, std::string>> TranslationRequests(const std::vector<int>& ids);
+        void TranslationResponses(const std::vector<std::pair<int, std::string>>& responses);
+
+    private:
+        struct Copy { SemanticsConfiguration config; std::unordered_set<int> children; };
+        void Appeared(int index, const AccessibilityNode& node);
+        void Disappeared(const AccessibilityNode& node);
+        void SendAppearEvents(const AccessibilityNode& node, const Copy& old);
+        void UpdateCopy();
+        void UpdateTranslationOnAppeared(const AccessibilityNode& node);
+        std::optional<ContentCaptureEvent> ToViewStructure(const AccessibilityNode& node, int index);
+        std::int64_t Now() const { return m_Clock ? m_Clock() : 0; }
+
+        AccessibilityDelegate& m_Delegate;
+        std::function<std::int64_t()> m_Clock;
+        bool m_Enabled = false;
+        bool m_ShowTranslated = false;
+        std::unordered_map<int, Copy> m_Previous;
+        Copy m_PreviousRoot;
+        std::vector<ContentCaptureEvent> m_Buffered, m_Events;
     };
 
     // Text segment iterators for granularity movement (AccessibilityIterators): [start, end) of

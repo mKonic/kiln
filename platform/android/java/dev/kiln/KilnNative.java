@@ -71,6 +71,15 @@ final class KilnNative {
     static native void a11yCheckSemantics();
     static native boolean a11yFlushBounds();
     static native boolean a11yCanScroll(boolean vertical, int direction, float x, float y);
+    // Content capture and translation.
+    static native void ccStart();
+    static native void ccStop();
+    static native void ccCheck();
+    static native void ccFlush();
+    static native int[] ccTakeEvents();
+    static native String[] ccTranslationRequests(int[] ids);
+    static native void ccTranslationResponses(int[] ids, String[] texts);
+    static native void ccTranslation(int mode);
     static native void setViewConfiguration(long longPressTimeout, long doubleTapTimeout, float touchSlop,
                                             float maxFling, float minFling);
     static native void surfaceCreated(Surface surface);

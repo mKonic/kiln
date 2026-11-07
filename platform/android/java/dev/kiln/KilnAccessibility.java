@@ -31,6 +31,8 @@ final class KilnAccessibility extends AccessibilityNodeProvider {
     private final KilnView view;
     private final AccessibilityManager manager;
     private boolean enabled;
+    // Content capture (API 29+): the view's session between the host's start and stop.
+    private android.view.contentcapture.ContentCaptureSession capture;
     private boolean checkPosted, boundsPosted;
     private long lastBoundsFlush;
 
@@ -52,21 +54,129 @@ final class KilnAccessibility extends AccessibilityNodeProvider {
 
     boolean isTouchExplorationEnabled() { return enabled && manager.isTouchExplorationEnabled(); }
 
+    private boolean listening() { return enabled || capture != null; }
+
     /** Native: semantics (false) or layout (true) changed. */
     void onChange(boolean layout) {
-        if (!enabled) return;
-        if (!checkPosted) {
-            checkPosted = true;
-            view.post(() -> {
-                checkPosted = false;
-                if (!enabled || !view.isAttachedToWindow()) return;
-                KilnNative.a11yCheckSemantics();
-                sendPendingEvents();
-                scheduleBoundsFlush();
-            });
-        }
+        if (!listening()) return;
+        postCheck();
         if (layout) scheduleBoundsFlush();
     }
+
+    /** semanticsChangeChecker / contentCaptureChangeChecker on the next loop. */
+    private void postCheck() {
+        if (checkPosted) return;
+        checkPosted = true;
+        view.post(() -> {
+            checkPosted = false;
+            if (!listening() || !view.isAttachedToWindow()) return;
+            if (enabled) {
+                KilnNative.a11yCheckSemantics();
+                sendPendingEvents();
+            }
+            if (capture != null) {
+                KilnNative.ccCheck();
+                sendCaptureEvents();
+            }
+            scheduleBoundsFlush();
+        });
+    }
+
+    /** The host started (onStart): a content capture session sees the whole tree appear. */
+    void onHostStart() {
+        if (android.os.Build.VERSION.SDK_INT < 29) return;
+        capture = view.getContentCaptureSession();
+        if (capture == null) return;
+        KilnNative.ccStart();
+        sendCaptureEvents();
+    }
+
+    /** The host stopped (onStop): everything disappears and the session ends. */
+    void onHostStop() {
+        if (capture == null) return;
+        KilnNative.ccStop();
+        sendCaptureEvents();
+        capture = null;
+    }
+
+    /** The buffered content capture events, applied to the session. */
+    private void sendCaptureEvents() {
+        int[] d = KilnNative.ccTakeEvents();
+        if (d.length == 0 || capture == null) return;
+        String[] s = KilnNative.a11yStrings();
+        android.view.autofill.AutofillId root = view.getAutofillId();
+        if (root == null) return;
+        for (int at = 0; at + 16 <= d.length; at += 16) {
+            final int kind = d[at], id = d[at + 1], parent = d[at + 2];
+            switch (kind) {
+                case 0: {
+                    android.view.autofill.AutofillId parentId = parent == INVALID ? root : capture.newAutofillId(root, parent);
+                    android.view.ViewStructure st = capture.newVirtualViewStructure(parentId, id);
+                    Bundle extras = st.getExtras();
+                    if (extras != null) {
+                        extras.putLong("android.view.contentcapture.EventTimestamp", ((long) d[at + 10] << 32) | (d[at + 11] & 0xffffffffL));
+                        extras.putInt("android.view.ViewStructure.extra.EXTRA_VIEW_NODE_INDEX", d[at + 3]);
+                    }
+                    String cls = str(s, d[at + 12]), text = str(s, d[at + 13]), cd = str(s, d[at + 14]), tag = str(s, d[at + 15]);
+                    if (tag != null) st.setId(id, null, null, tag);
+                    if (cls != null) st.setClassName(cls);
+                    if (text != null) st.setText(text);
+                    if (cd != null) st.setContentDescription(cd);
+                    if (d[at + 4] != 0) st.setTextStyle(Float.intBitsToFloat(d[at + 5]), 0, 0, 0);
+                    st.setDimens(d[at + 6], d[at + 7], 0, 0, d[at + 8], d[at + 9]);
+                    capture.notifyViewAppeared(st);
+                    break;
+                }
+                case 1: capture.notifyViewDisappeared(capture.newAutofillId(root, id)); break;
+                case 2: capture.notifyViewTextChanged(capture.newAutofillId(root, id), str(s, d[at + 13])); break;
+                default:
+                    // flush (ContentCaptureSessionCompat.flush before API 36).
+                    if (android.os.Build.VERSION.SDK_INT >= 36) capture.flush();
+                    else capture.notifyViewsDisappeared(root, new long[] { Long.MIN_VALUE });
+                    break;
+            }
+        }
+    }
+
+    // --- translation (API 31+) ----------------------------------------------------------------
+
+    void onCreateTranslationRequests(long[] virtualIds, java.util.function.Consumer<android.view.translation.ViewTranslationRequest> collector) {
+        int[] ids = new int[virtualIds.length];
+        for (int i = 0; i < ids.length; i++) ids[i] = (int) virtualIds[i];
+        String[] texts = KilnNative.ccTranslationRequests(ids);
+        for (int i = 0; i < ids.length && i < texts.length; i++) {
+            if (texts[i] == null) continue;
+            android.view.translation.ViewTranslationRequest.Builder b =
+                    new android.view.translation.ViewTranslationRequest.Builder(view.getAutofillId(), virtualIds[i]);
+            b.setValue(android.view.translation.ViewTranslationRequest.ID_TEXT,
+                    android.view.translation.TranslationRequestValue.forText(texts[i]));
+            collector.accept(b.build());
+        }
+    }
+
+    void onTranslationResponses(android.util.LongSparseArray<android.view.translation.ViewTranslationResponse> response) {
+        Runnable apply = () -> {
+            int n = response.size();
+            int[] ids = new int[n];
+            String[] texts = new String[n];
+            for (int i = 0; i < n; i++) {
+                ids[i] = (int) response.keyAt(i);
+                android.view.translation.ViewTranslationResponse r = response.valueAt(i);
+                android.view.translation.TranslationResponseValue v = r == null ? null : r.getValue(android.view.translation.ViewTranslationRequest.ID_TEXT);
+                CharSequence t = v == null ? null : v.getText();
+                texts[i] = t == null ? null : t.toString();
+            }
+            KilnNative.ccTranslationResponses(ids, texts);
+        };
+        if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) apply.run(); else view.post(apply);
+    }
+
+    /** ViewTranslationCallback: show (0), hide (1) or clear (2) the translated text. */
+    final android.view.translation.ViewTranslationCallback translationCallback = new android.view.translation.ViewTranslationCallback() {
+        @Override public boolean onShowTranslation(View v) { KilnNative.ccTranslation(0); return true; }
+        @Override public boolean onHideTranslation(View v) { KilnNative.ccTranslation(1); return true; }
+        @Override public boolean onClearTranslation(View v) { KilnNative.ccTranslation(2); return true; }
+    };
 
     /** boundsUpdatesEventLoop: subtree changes and scroll events, then 100 ms of quiet. */
     private void scheduleBoundsFlush() {
@@ -76,9 +186,18 @@ final class KilnAccessibility extends AccessibilityNodeProvider {
         view.postDelayed(() -> {
             boundsPosted = false;
             lastBoundsFlush = SystemClock.uptimeMillis();
-            if (!enabled || !view.isAttachedToWindow()) return;
-            boolean more = KilnNative.a11yFlushBounds();
-            sendPendingEvents();
+            if (!listening() || !view.isAttachedToWindow()) return;
+            boolean more = false;
+            if (enabled) {
+                more = KilnNative.a11yFlushBounds();
+                sendPendingEvents();
+            }
+            if (capture != null) {
+                // notifyContentCaptureChanges, then the change checker.
+                KilnNative.ccFlush();
+                sendCaptureEvents();
+                postCheck();
+            }
             if (more) scheduleBoundsFlush();
         }, wait);
     }

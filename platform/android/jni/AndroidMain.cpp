@@ -991,6 +991,73 @@ namespace {
         return g_Host && A11y().CanScroll(vertical, direction, { x, y });
     }
 
+    // --- content capture and translation ------------------------------------------------------
+
+    kiln::ui::ContentCaptureManager& Capture() { return A11y().ContentCapture(); }
+
+    void CcStart(JNIEnv*, jclass) {
+        if (!g_Host) return;
+        Capture().SetClock([] {
+            return std::int64_t(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count());
+        });
+        Capture().SetEnabled(true);
+        Capture().OnStart();
+    }
+    void CcStop(JNIEnv*, jclass) { if (g_Host) Capture().OnStop(); }
+    void CcCheck(JNIEnv*, jclass) { if (g_Host) Capture().CheckForChanges(); }
+    void CcFlush(JNIEnv*, jclass) { if (g_Host) Capture().FlushBuffered(); }
+
+    // Per event: kind (0 appear, 1 disappear, 2 text, 3 flush), id, parent, index, has text
+    // size, text size (float bits), left, top, width, height, timestamp (high, low), className,
+    // text, contentDescription, testTag (string indices).
+    jintArray CcTakeEvents(JNIEnv* env, jclass) {
+        g_A11yStrings.clear();
+        std::vector<jint> d;
+        if (!g_Host) return IntArray(env, d);
+        for (const auto& e : Capture().TakeEvents()) {
+            d.insert(d.end(), { jint(e.kind), e.id, e.parent, e.index, e.textSizePx ? 1 : 0, FloatBits(e.textSizePx.value_or(0)),
+                                e.left, e.top, e.width, e.height, jint(e.timestamp >> 32), jint(e.timestamp & 0xffffffff) });
+            d.push_back(A11yString(e.className));
+            d.push_back(A11yString(e.text));
+            d.push_back(A11yString(e.contentDescription));
+            d.push_back(A11yString(e.testTag));
+        }
+        return IntArray(env, d);
+    }
+
+    // The text to translate per id (null: none).
+    jobjectArray CcTranslationRequests(JNIEnv* env, jclass, jintArray ids) {
+        std::vector<int> v(std::size_t(env->GetArrayLength(ids)));
+        env->GetIntArrayRegion(ids, 0, jsize(v.size()), v.data());
+        g_A11yStrings.assign(v.size(), std::nullopt);
+        if (g_Host)
+            for (const auto& [id, text] : Capture().TranslationRequests(v))
+                for (std::size_t i = 0; i < v.size(); ++i) if (v[i] == id) g_A11yStrings[i] = text;
+        return A11yStrings(env, nullptr);
+    }
+    void CcTranslationResponses(JNIEnv* env, jclass, jintArray ids, jobjectArray texts) {
+        if (!g_Host) return;
+        std::vector<int> v(std::size_t(env->GetArrayLength(ids)));
+        env->GetIntArrayRegion(ids, 0, jsize(v.size()), v.data());
+        std::vector<std::pair<int, std::string>> r;
+        for (std::size_t i = 0; i < v.size(); ++i) {
+            auto t = static_cast<jstring>(env->GetObjectArrayElement(texts, jsize(i)));
+            if (!t) continue;
+            r.emplace_back(v[i], kiln::foundation::ToUtf8(FromJava(env, t)));
+            env->DeleteLocalRef(t);
+        }
+        Capture().TranslationResponses(r);
+        g_Host->app->RequestFrame();
+    }
+    // 0 show, 1 hide, 2 clear.
+    void CcTranslation(JNIEnv*, jclass, jint mode) {
+        if (!g_Host) return;
+        if (mode == 0) Capture().OnShowTranslation();
+        else if (mode == 1) Capture().OnHideTranslation();
+        else Capture().OnClearTranslation();
+        g_Host->app->RequestFrame();
+    }
+
     void SetViewConfiguration(JNIEnv*, jclass, jlong longPress, jlong doubleTap, jfloat touchSlop,
                               jfloat maxFling, jfloat minFling) {
         if (!g_Host) return;
@@ -1103,6 +1170,14 @@ extern "C" JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void*) {
         { "a11yCheckSemantics", "()V", reinterpret_cast<void*>(&A11yCheckSemantics) },
         { "a11yFlushBounds", "()Z", reinterpret_cast<void*>(&A11yFlushBounds) },
         { "a11yCanScroll", "(ZIFF)Z", reinterpret_cast<void*>(&A11yCanScroll) },
+        { "ccStart", "()V", reinterpret_cast<void*>(&CcStart) },
+        { "ccStop", "()V", reinterpret_cast<void*>(&CcStop) },
+        { "ccCheck", "()V", reinterpret_cast<void*>(&CcCheck) },
+        { "ccFlush", "()V", reinterpret_cast<void*>(&CcFlush) },
+        { "ccTakeEvents", "()[I", reinterpret_cast<void*>(&CcTakeEvents) },
+        { "ccTranslationRequests", "([I)[Ljava/lang/String;", reinterpret_cast<void*>(&CcTranslationRequests) },
+        { "ccTranslationResponses", "([I[Ljava/lang/String;)V", reinterpret_cast<void*>(&CcTranslationResponses) },
+        { "ccTranslation", "(I)V", reinterpret_cast<void*>(&CcTranslation) },
         { "setViewConfiguration", "(JJFFF)V", reinterpret_cast<void*>(&SetViewConfiguration) },
         { "surfaceCreated", "(Landroid/view/Surface;)V", reinterpret_cast<void*>(&SurfaceCreated) },
         { "surfaceChanged", "(II)V", reinterpret_cast<void*>(&SurfaceChanged) },

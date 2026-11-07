@@ -107,11 +107,49 @@ namespace kiln::foundation {
             LayoutModifier* AsLayout() override { return this; }
             DrawModifier* AsDraw() override { return this; }
             ui::SemanticsModifier* AsSemantics() override { return this; }
-            // TextAnnotatedStringNode's getTextLayoutResult: the layout last measured.
+            // TextAnnotatedStringNode.applySemantics: the layout last measured, and the text
+            // substitution translation shows in place of the text.
             void ApplySemantics(ui::SemanticsConfiguration& c) override {
-                c.getTextLayoutResult = [this, alive = AliveToken()]() -> std::shared_ptr<const TextLayoutResult> {
+                auto alive = AliveToken();
+                c.getTextLayoutResult = [this, alive]() -> std::shared_ptr<const TextLayoutResult> {
                     return alive.expired() ? nullptr : m_Drawn;
                 };
+                if (m_Substitution) {
+                    c.textSubstitution = m_Substitution->text;
+                    c.isShowingTextSubstitution = m_Substitution->showing;
+                }
+                c.setTextSubstitution = [this, alive](const std::string& t) {
+                    if (alive.expired()) return false;
+                    if (m_Substitution) {
+                        if (m_Substitution->text == t) return true;
+                        m_Substitution->text = t;
+                    } else {
+                        m_Substitution = Substitution{ t, false };
+                    }
+                    InvalidateForTranslate();
+                    return true;
+                };
+                c.showTextSubstitution = [this, alive](bool show) {
+                    if (alive.expired() || !m_Substitution) return false;
+                    m_Substitution->showing = show;
+                    InvalidateForTranslate();
+                    return true;
+                };
+                c.clearTextSubstitution = [this, alive] {
+                    if (alive.expired()) return false;
+                    m_Substitution.reset();
+                    InvalidateForTranslate();
+                    return true;
+                };
+            }
+            struct Substitution { std::string text; bool showing = false; };
+            std::optional<Substitution> m_Substitution;
+            void InvalidateForTranslate() {
+                m_Layouts.clear();
+                m_Intrinsics.reset();
+                InvalidateSemantics();
+                InvalidateMeasure();
+                InvalidateDraw();
             }
             ui::GlobalPositionAwareModifier* AsGlobalPositionAware() override { return params.selection ? this : nullptr; }
 
@@ -129,6 +167,7 @@ namespace kiln::foundation {
                         if (m_Drawn) params.selection->UpdateTextLayout(m_Drawn);
                     }
                 }
+                if (params.text.Text() != m_Previous.text.Text()) m_Substitution.reset();
                 if (!params.SameLayout(m_Previous)) {
                     m_Layouts.clear();
                     m_Intrinsics.reset();
@@ -158,12 +197,14 @@ namespace kiln::foundation {
                     if (key.minWidth == c.minWidth && key.maxWidth == c.maxWidth && key.minHeight == c.minHeight && key.maxHeight == c.maxHeight)
                         return result;
                 text::TextLayoutInput in;
-                in.text = params.text;
+                // A shown substitution is plain text without inline content.
+                const bool substituted = m_Substitution && m_Substitution->showing;
+                in.text = substituted ? AnnotatedString(m_Substitution->text) : params.text;
                 in.style = params.style;
                 in.maxLines = params.options.maxLines;
                 in.softWrap = params.options.softWrap;
                 in.overflow = params.options.overflow;
-                in.placeholders = params.placeholders;
+                if (!substituted) in.placeholders = params.placeholders;
                 in.density = d;
                 in.layoutDirection = dir;
                 in.constraints = c;
