@@ -40,6 +40,7 @@ namespace kiln::android {
         m_WordBoundary = env->GetMethodID(cls, "wordBoundary", "(II)J");
         m_CharacterBreak = env->GetMethodID(cls, "characterBreak", "(Ljava/lang/String;IZ)I");
         m_WordBreak = env->GetMethodID(cls, "wordBreak", "(Ljava/lang/String;IZ)I");
+        m_UpperCase = env->GetMethodID(cls, "upperCase", "(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;");
         m_IsRtl = env->GetMethodID(cls, "isRtlCharAt", "(II)Z");
         m_Release = env->GetMethodID(cls, "release", "(I)V");
         m_PageCount = env->GetMethodID(cls, "pageCount", "()I");
@@ -288,6 +289,19 @@ namespace kiln::android {
         const int r = env->CallIntMethod(m_Text, m_WordBreak, s, jint(offset), jboolean(following));
         env->DeleteLocalRef(s);
         return r;
+    }
+
+    std::u16string AndroidText::UpperCase(std::u16string_view text, const std::string& localeTag) {
+        JNIEnv* env = Env(m_Vm);
+        jstring s = env->NewString(reinterpret_cast<const jchar*>(text.data()), jsize(text.size()));
+        jstring tag = env->NewStringUTF(localeTag.c_str());
+        auto r = static_cast<jstring>(env->CallObjectMethod(m_Text, m_UpperCase, s, tag));
+        std::u16string out(std::size_t(env->GetStringLength(r)), u'\0');
+        env->GetStringRegion(r, 0, jsize(out.size()), reinterpret_cast<jchar*>(out.data()));
+        env->DeleteLocalRef(s);
+        env->DeleteLocalRef(tag);
+        env->DeleteLocalRef(r);
+        return out;
     }
 
     bool AndroidText::IsRtlCharAt(std::int64_t handle, int offset) {

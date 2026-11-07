@@ -63,16 +63,42 @@ namespace kiln::foundation {
     }
 
     TextFieldState& RememberTextFieldState(std::string_view initialText) {
+        // TextFieldState.Saver: text, selection and the undo history (staging, undo and redo
+        // operations, each index, pre/post text, selections and time).
+        auto saveOp = [](rt::SavedValue::List& l, const TextUndoOperation& op) {
+            l.insert(l.end(), { op.index, ToUtf8(op.preText), ToUtf8(op.postText), op.preSelection.start, op.preSelection.end,
+                                op.postSelection.start, op.postSelection.end, op.timeInMillis, op.canMerge ? 1 : 0 });
+        };
         auto saver = rt::ListSaver<std::shared_ptr<TextFieldState>>(
-            [](const std::shared_ptr<TextFieldState>& s) {
-                const auto& v = s->Peek();
-                return rt::SavedValue::List{ ToUtf8(v.text), v.selection.start, v.selection.end };
+            [saveOp](const std::shared_ptr<TextFieldState>& s) {
+                const auto saved = s->Save();
+                rt::SavedValue::List l{ ToUtf8(saved.text), saved.selection.start, saved.selection.end,
+                                        saved.undo.staging ? 1 : 0, int(saved.undo.undo.size()), int(saved.undo.redo.size()) };
+                if (saved.undo.staging) saveOp(l, *saved.undo.staging);
+                for (const auto& op : saved.undo.undo) saveOp(l, op);
+                for (const auto& op : saved.undo.redo) saveOp(l, op);
+                return l;
             },
             [](const rt::SavedValue::List& l) -> std::optional<std::shared_ptr<TextFieldState>> {
                 const auto* text = l.empty() ? nullptr : std::get_if<std::string>(&l[0].v);
                 if (!text) return std::nullopt;
                 auto s = std::make_shared<TextFieldState>(*text);
-                s->SetSelection(IntAt(l, 1), IntAt(l, 2));
+                TextFieldState::Saved saved{ ToUtf16(*text), { IntAt(l, 1), IntAt(l, 2) }, {} };
+                std::size_t i = 6;
+                auto readOp = [&]() -> std::optional<TextUndoOperation> {
+                    if (i + 9 > l.size()) return std::nullopt;
+                    auto str = [&](std::size_t k) { const auto* v = std::get_if<std::string>(&l[k].v); return v ? ToUtf16(*v) : std::u16string(); };
+                    TextUndoOperation op{ IntAt(l, i), str(i + 1), str(i + 2), { IntAt(l, i + 3), IntAt(l, i + 4) },
+                                          { IntAt(l, i + 5), IntAt(l, i + 6) }, std::int64_t(NumberAt(l, i + 7)), IntAt(l, i + 8) != 0 };
+                    i += 9;
+                    return op;
+                };
+                if (l.size() >= 6) {
+                    if (IntAt(l, 3)) saved.undo.staging = readOp();
+                    for (int k = 0, n = IntAt(l, 4); k < n; ++k) if (auto op = readOp()) saved.undo.undo.push_back(*op);
+                    for (int k = 0, n = IntAt(l, 5); k < n; ++k) if (auto op = readOp()) saved.undo.redo.push_back(*op);
+                }
+                s->Restore(saved);
                 return s;
             });
         const std::string initial(initialText);

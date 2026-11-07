@@ -25,6 +25,7 @@ namespace kiln::android {
         void Release(std::int64_t handle) override;
         int CharacterBreak(std::u16string_view text, int offset, bool following) override;
         int WordBreak(std::u16string_view text, int offset, bool following) override;
+        std::u16string UpperCase(std::u16string_view text, const std::string& localeTag);
 
     private:
         // Java arguments for a request: text, ints, floats, strings (local refs).
@@ -37,7 +38,7 @@ namespace kiln::android {
         jclass m_StringClass = nullptr;
         jmethodID m_StringCtor;
         jmethodID m_Layout, m_Intrinsics, m_Horizontal, m_CursorRect, m_OffsetFor, m_BoundingBox, m_SelectionRects,
-            m_WordBoundary, m_IsRtl, m_Release, m_CharacterBreak, m_WordBreak, m_PageCount, m_PageBitmap, m_PageIsNew, m_TakeDirtyRows;
+            m_WordBoundary, m_IsRtl, m_Release, m_CharacterBreak, m_WordBreak, m_UpperCase, m_PageCount, m_PageBitmap, m_PageIsNew, m_TakeDirtyRows;
         bool m_Pending = false;   // a layout ran since the last sync
     };
 

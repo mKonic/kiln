@@ -809,6 +809,12 @@ final class KilnText {
         return r == BreakIterator.DONE ? -1 : r;
     }
 
+    /** String.toUpperCase for a locale tag (the default locale when empty): AllCaps. */
+    String upperCase(String text, String localeTag) {
+        Locale locale = localeTag == null || localeTag.isEmpty() ? Locale.getDefault() : Locale.forLanguageTag(localeTag);
+        return text.toUpperCase(locale);
+    }
+
     /** BreakIterator.getWordInstance (the default locale) preceding / following; -1 at the ends. */
     int wordBreak(String text, int offset, boolean following) {
         BreakIterator it = BreakIterator.getWordInstance(Locale.getDefault());

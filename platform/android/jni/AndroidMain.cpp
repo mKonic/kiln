@@ -169,6 +169,9 @@ namespace {
         kiln::android::InstallAssetReader(env, assets);
         g_Host = new Host();
         g_Host->text = std::make_unique<kiln::android::AndroidText>(env, text);
+        kiln::foundation::SetUpperCaseFunction([](std::u16string_view t, const std::string& tag) {
+            return g_Host && g_Host->text ? g_Host->text->UpperCase(t, tag) : std::u16string(t);
+        });
         {
             jclass vc = env->GetObjectClass(view);
             g_NestedScrollParent.start = env->GetMethodID(vc, "nsStart", "(IZ)Z");

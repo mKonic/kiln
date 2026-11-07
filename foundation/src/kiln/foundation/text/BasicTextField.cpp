@@ -59,6 +59,62 @@ namespace kiln::foundation {
         struct FieldCore {
             DeadKeyCombiner deadKeys;
             TextFieldState* state = nullptr;
+            std::unique_ptr<TransformedTextFieldState> transformed;
+            std::unique_ptr<ImeEditCommandScope> ime;
+            void Bind(TextFieldState& s) {
+                if (state == &s && transformed) return;
+                state = &s;
+                transformed = std::make_unique<TransformedTextFieldState>(s);
+                ime = std::make_unique<ImeEditCommandScope>(*transformed);
+            }
+            // Keyboard edits (TextFieldKeyEventHandler): the selection, else the code point
+            // before / after the cursor.
+            void Backspace() {
+                transformed->EditUntransformedTextAsUser([](TextFieldBuffer& b) {
+                    TextRange sel = b.Selection();
+                    if (sel.Collapsed()) {
+                        int at = sel.start;
+                        if (at == 0) return;
+                        int from = at - 1;
+                        if (from > 0 && b.CharAt(from) >= 0xDC00 && b.CharAt(from) < 0xE000 && b.CharAt(from - 1) >= 0xD800 && b.CharAt(from - 1) < 0xDC00) --from;
+                        sel = { from, at };
+                    }
+                    b.Delete(sel.Min(), sel.Max());
+                    b.SetSelectionCoerced(sel.Min());
+                });
+            }
+            void DeleteForward() {
+                transformed->EditUntransformedTextAsUser([](TextFieldBuffer& b) {
+                    TextRange sel = b.Selection();
+                    if (sel.Collapsed()) {
+                        const int at = sel.start;
+                        if (at >= b.Length()) return;
+                        int to = at + 1;
+                        if (to < b.Length() && b.CharAt(at) >= 0xD800 && b.CharAt(at) < 0xDC00 && b.CharAt(to) >= 0xDC00 && b.CharAt(to) < 0xE000) ++to;
+                        sel = { at, to };
+                    }
+                    b.Delete(sel.Min(), sel.Max());
+                    b.SetSelectionCoerced(sel.Min());
+                });
+            }
+            void MoveCursor(int delta, bool extend) {
+                transformed->EditUntransformedTextAsUser([&](TextFieldBuffer& b) {
+                    const TextRange sel = b.Selection();
+                    int end = sel.end;
+                    for (int i = 0; i < std::abs(delta); ++i) {
+                        if (delta < 0 && end > 0) {
+                            --end;
+                            if (end > 0 && b.CharAt(end) >= 0xDC00 && b.CharAt(end) < 0xE000 && b.CharAt(end - 1) >= 0xD800 && b.CharAt(end - 1) < 0xDC00) --end;
+                        } else if (delta > 0 && end < b.Length()) {
+                            ++end;
+                            if (end < b.Length() && b.CharAt(end - 1) >= 0xD800 && b.CharAt(end - 1) < 0xDC00 && b.CharAt(end) >= 0xDC00 && b.CharAt(end) < 0xE000) ++end;
+                        }
+                    }
+                    if (extend) b.SetSelection({ sel.start, end });
+                    else b.SetSelection(TextRange(end));
+                });
+            }
+            void Insert(std::u16string_view t) { transformed->ReplaceSelectedText(t, true); }
             TextFieldOptions options;
             ui::Owner* owner = nullptr;
             bool focused = false;
@@ -75,18 +131,18 @@ namespace kiln::foundation {
 
         ui::ImeOptions Session::Options() const { return core.options.ime; }
         ui::TextInputSnapshot Session::Snapshot() const {
-            const TextFieldValue& v = core.state->Peek();
+            const TextFieldCharSequence& v = core.state->Peek();
             ui::TextInputSnapshot s{ v.text, v.selection.start, v.selection.end, -1, -1 };
             if (v.composition) { s.compStart = v.composition->Min(); s.compEnd = v.composition->Max(); }
             return s;
         }
-        void Session::CommitText(std::u16string_view t, int c) { core.state->CommitText(t, c); core.AfterImeEdit(); }
-        void Session::SetComposingText(std::u16string_view t, int c) { core.state->SetComposingText(t, c); core.AfterImeEdit(); }
-        void Session::SetComposingRegion(int s, int e) { core.state->SetComposingRegion(s, e); core.AfterImeEdit(); }
-        void Session::FinishComposingText() { core.state->FinishComposingText(); core.AfterImeEdit(); }
-        void Session::DeleteSurroundingText(int b, int a) { core.state->DeleteSurroundingText(b, a); core.AfterImeEdit(); }
-        void Session::DeleteSurroundingTextInCodePoints(int b, int a) { core.state->DeleteSurroundingTextInCodePoints(b, a); core.AfterImeEdit(); }
-        void Session::SetSelection(int s, int e) { core.state->SetSelection(s, e); core.AfterImeEdit(); }
+        void Session::CommitText(std::u16string_view t, int c) { core.ime->CommitText(t, c); core.AfterImeEdit(); }
+        void Session::SetComposingText(std::u16string_view t, int c) { core.ime->SetComposingText(t, c); core.AfterImeEdit(); }
+        void Session::SetComposingRegion(int s, int e) { core.ime->SetComposingRegion(s, e); core.AfterImeEdit(); }
+        void Session::FinishComposingText() { core.ime->FinishComposingText(); core.AfterImeEdit(); }
+        void Session::DeleteSurroundingText(int b, int a) { core.ime->DeleteSurroundingText(b, a); core.AfterImeEdit(); }
+        void Session::DeleteSurroundingTextInCodePoints(int b, int a) { core.ime->DeleteSurroundingTextInCodePoints(b, a); core.AfterImeEdit(); }
+        void Session::SetSelection(int s, int e) { core.ime->SetSelection(s, e); core.AfterImeEdit(); }
         Session::Caret Session::CaretRect() const {
             Caret c;
             if (!core.text || !core.handle || !core.node) return c;
@@ -147,7 +203,7 @@ namespace kiln::foundation {
             MeasureResult Measure(MeasureScope& s, Measurable&, const Constraints& con) override {
                 FieldCore& c = *params.core;
                 if (Owner() && Owner()->GetOwner()) { c.owner = Owner()->GetOwner(); c.text = c.owner->Text(); c.node = Owner(); }
-                const TextFieldValue& v = c.state->Value();   // subscribes measure to edits
+                const TextFieldCharSequence& v = c.state->Value();   // subscribes measure to edits
                 Relayout(v.text, con.maxWidth, s, s.Direction());
                 // Sizing (spec 04 req. 14) is simplified: width = text (min 1 caret), height = text.
                 const int caret = s.RoundToPx(Dp(2));
@@ -158,7 +214,7 @@ namespace kiln::foundation {
 
             void Draw(ContentDrawScope& s) override {
                 FieldCore& c = *params.core;
-                const TextFieldValue& v = c.state->Value();
+                const TextFieldCharSequence& v = c.state->Value();
                 if (!c.text || !paragraph.handle) { s.DrawContent(); return; }
                 // Selection highlight.
                 if (c.focused && !v.selection.Collapsed())
@@ -217,7 +273,7 @@ namespace kiln::foundation {
     void BasicTextField(TextFieldState& state, const Modifier& modifier, TextFieldOptions options, rt::Key key) {
         auto& comp = *rt::Composition::Current();
         auto& core = comp.Remember<std::shared_ptr<FieldCore>>([] { return std::make_shared<FieldCore>(); }, {}, key);
-        core->state = &state;
+        core->Bind(state);
         core->options = options;
         // Restart the caret blink whenever the field is focused or edited.
         auto c = core;
@@ -230,22 +286,21 @@ namespace kiln::foundation {
             if (!c->owner) return;
             if (now) c->owner->StartTextInput(c->session);
             else {
-                c->state->FinishComposingText();
+                c->ime->FinishComposingText();
                 c->owner->StopTextInput(c->session);
             }
             c->blinkEpoch.Set(c->blinkEpoch.Peek() + 1);
         });
         m = OnKeyEvent(std::move(m), [c](const ui::KeyEvent& e) {
             if (e.type != ui::KeyEventType::KeyDown || !c->focused) return false;
-            TextFieldState& st = *c->state;
             switch (e.keyCode) {
-                case ui::keys::Del: st.Backspace(); c->AfterLocalEdit(true); return true;
-                case 112: st.DeleteForward(); c->AfterLocalEdit(true); return true;   // KEYCODE_FORWARD_DEL
-                case ui::keys::DpadLeft: st.MoveCursor(-1, e.Shift()); c->AfterLocalEdit(false); return true;
-                case ui::keys::DpadRight: st.MoveCursor(1, e.Shift()); c->AfterLocalEdit(false); return true;
+                case ui::keys::Del: c->Backspace(); c->AfterLocalEdit(true); return true;
+                case 112: c->DeleteForward(); c->AfterLocalEdit(true); return true;   // KEYCODE_FORWARD_DEL
+                case ui::keys::DpadLeft: c->MoveCursor(-1, e.Shift()); c->AfterLocalEdit(false); return true;
+                case ui::keys::DpadRight: c->MoveCursor(1, e.Shift()); c->AfterLocalEdit(false); return true;
                 case ui::keys::Enter: case ui::keys::NumpadEnter:
                     if (c->options.ime.singleLine) { if (c->options.onImeAction) c->options.onImeAction(c->options.ime.imeAction); return true; }
-                    st.InsertFromKeyboard(u"\n"); c->AfterLocalEdit(true); return true;
+                    c->Insert(u"\n"); c->AfterLocalEdit(true); return true;
                 default: break;
             }
             if (IsTyped(e.unicode) && !e.Ctrl()) {
@@ -255,7 +310,7 @@ namespace kiln::foundation {
                 char32_t cp = *typed;
                 if (cp >= 0x10000) { cp -= 0x10000; t.push_back(char16_t(0xD800 + (cp >> 10))); t.push_back(char16_t(0xDC00 + (cp & 0x3FF))); }
                 else t.push_back(char16_t(cp));
-                st.InsertFromKeyboard(t);
+                c->Insert(t);
                 c->AfterLocalEdit(true);
                 return true;
             }
@@ -269,21 +324,21 @@ namespace kiln::foundation {
                 // keyboard if already focused.
                 if (!c->focused) c->requester.RequestFocus();
                 const int offset = c->text->GetOffsetForPosition(c->handle, p.x, p.y);
-                c->state->SetSelection(offset, offset);
+                c->transformed->PlaceCursorBeforeCharAt(offset);
                 c->AfterLocalEdit(false);
                 if (c->focused && c->owner) c->owner->StartTextInput(c->session);
             };
             return DetectTapGestures(s, cb);
         });
         // Text field semantics (spec 04 req. 7): editable text, focus, set text, selection.
-        const TextFieldValue& val = state.Value();
+        const TextFieldCharSequence& val = state.Value();
         const bool password = options.ime.keyboardType == ui::KeyboardType::Password || options.ime.keyboardType == ui::KeyboardType::NumberPassword;
         m = Semantics(std::move(m), [c, text = ToUtf8(val.text), sel = val.selection, password](SemanticsConfiguration& cfg) {
             cfg.editableText = text;
             cfg.password = password;
             cfg.focused = c->focused;
             cfg.textSelection = std::make_pair(sel.start, sel.end);
-            cfg.setText = [c](const std::string& t) { c->state->SetText(t); c->AfterLocalEdit(true); return true; };
+            cfg.setText = [c](const std::string& t) { c->transformed->ReplaceAll(ToUtf16(t)); c->AfterLocalEdit(true); return true; };
             cfg.requestFocus = [c] { return c->requester.RequestFocus(); };
             cfg.onClick = [c] { if (!c->focused) c->requester.RequestFocus(); else if (c->owner) c->owner->StartTextInput(c->session); return true; };
         }, true);

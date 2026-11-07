@@ -174,8 +174,8 @@ TEST(RememberedStatesSurviveRecreation) {
         scroll->SetBounds(500, 100);
         scroll->ScrollTo(120);
         list->ConsumeScrollDelta(0);   // nothing laid out: the position below is what is saved
-        field->SetText("hello world");
-        field->SetSelection(0, 5);
+        field->SetTextAndPlaceCursorAtEnd("hello world");
+        field->Edit([](TextFieldBuffer& b) { b.SetSelection({ 0, 5 }); });
         saved = a.Save();
     }
     Root b(saved);
@@ -192,6 +192,9 @@ TEST(RememberedStatesSurviveRecreation) {
     CHECK_EQ(pager->CurrentPage(), 2);
     CHECK(std::abs(pager->CurrentPageOffsetFraction() - 0.25f) < 1e-6f);
     CHECK_EQ(pager->PageCount(), 10);
-    CHECK_EQ(field->Text(), std::string("hello world"));
+    CHECK_EQ(field->TextUtf8(), std::string("hello world"));
     CHECK(field->Peek().selection.start == 0 && field->Peek().selection.end == 5);
+    CHECK(field->CanUndo());   // the history survives too
+    field->Undo();
+    CHECK_EQ(field->TextUtf8(), std::string("hello"));
 }

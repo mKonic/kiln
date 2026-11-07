@@ -180,7 +180,7 @@ namespace {
                 opt.ime.singleLine = true;
                 BasicTextField(field, Padding(FillMax(Modifier{}, Axis::Horizontal), 16_dp, 16_dp), opt);
             });
-            BasicText("Field text: " + field.Text(), Padding(Modifier{}, 16_dp, 0_dp), { 14, kVariant });
+            BasicText("Field text: " + field.TextUtf8(), Padding(Modifier{}, 16_dp, 0_dp), { 14, kVariant });
             auto& taps = kiln::rt::RememberSaveableState(0);
             auto& pressed = RememberState(false);
             Row(Padding(Modifier{}, 16_dp, 0_dp), Arrangement::SpacedBy(16_dp), AlignmentV::CenterVertically(), [&] {
