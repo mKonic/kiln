@@ -79,6 +79,7 @@ namespace kiln::ui {
             std::string selected = "Selected", notSelected = "Not selected";
             std::string templatePercent = "%1$d percent.";
             std::string inProgress = "In progress", stateEmpty = "Empty", tab = "Tab", switchRole = "Switch";
+            std::string locale;   // the tag they were read for (formats numbers in its digits)
             // The table generated from Compose's values-* resources: `tag` like "de", "pt-BR".
             static Strings ForLocale(const std::string& tag);
         };

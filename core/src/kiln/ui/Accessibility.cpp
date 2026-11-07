@@ -1,4 +1,5 @@
 #include "kiln/ui/Accessibility.h"
+#include "kiln/text/LocaleFormat.h"
 
 #include "kiln/graphics/Shape.h"
 #include "kiln/text/AnnotatedString.h"
@@ -648,9 +649,9 @@ namespace kiln::ui {
                     const float span = r->end - r->start;
                     const float progress = std::clamp(span == 0 ? 0.0f : (r->current - r->start) / span, 0.0f, 1.0f);
                     const int percent = progress == 0 ? 0 : progress == 1 ? 100 : std::clamp(RoundI(progress * 100), 1, 99);
-                    std::string t = m_Strings.templatePercent;
-                    if (auto at = t.find("%1$d"); at != std::string::npos) t.replace(at, 4, std::to_string(percent));
-                    state = t;
+                    // getString(R.string.template_percent, percent): String.format in the locale.
+                    const text::FormatArg arg = std::int64_t(percent);
+                    state = text::FormatJava(m_Strings.templatePercent, std::span(&arg, 1), m_Strings.locale);
                 }
             } else if (!state) {
                 state = m_Strings.inProgress;
