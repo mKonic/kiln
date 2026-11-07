@@ -17,6 +17,7 @@
 #include "kiln/ui/TextToolbar.h"
 #include "kiln/ui/Autofill.h"
 #include "kiln/ui/Configuration.h"
+#include "kiln/ui/Popup.h"
 #include "kiln/ui/DragAndDrop.h"
 #include "kiln/ui/ScrollCapture.h"
 #include "kiln/ui/ActivityResult.h"
@@ -201,7 +202,27 @@ namespace kiln::ui {
         Owner();
         ~Owner();
 
-        LayoutNode& Root() { return *m_Root; }
+        // The content root (what the window's composition fills).
+        LayoutNode& Root() { return *m_ContentRoot; }
+        // The window root above it: the content root, then each shown popup on top.
+        LayoutNode& WindowRoot() { return *m_Root; }
+
+        // Popups (PopupLayout windows) in show order; the last is on top. The layer's node is the
+        // caller's and stays theirs; the owner places it and routes input to it.
+        void AddPopup(PopupLayer* layer);
+        void RemovePopup(PopupLayer* layer);
+        // Properties, provider or anchor changed: measured and placed again.
+        void UpdatePopup(PopupLayer* layer);
+        const std::vector<PopupLayer*>& Popups() const { return m_Popups; }
+        // The topmost focusable popup (it has the key focus), if any. Observable.
+        PopupLayer* TopFocusablePopup() const;
+        // The popup whose node contains `n`, if any.
+        PopupLayer* PopupOf(const LayoutNode& n) const;
+        // getWindowVisibleDisplayFrame (clipping) or the whole window, window pixels.
+        IntRect PopupDisplayBounds(bool clippingEnabled) const;
+        // The window's (or a popup's) window focus: the content's window loses it to a focusable
+        // popup above it; a popup has it while it is the top focusable one.
+        bool IsContentWindowFocused() const { return IsWindowFocused() && !TopFocusablePopup(); }
         void SetDensity(Density d) { m_Density = d; RequestFullRemeasure(); }
         Density GetDensity() const { return m_Density; }
         void SetDirection(LayoutDirection d) { m_Direction = d; RequestFullRemeasure(); }
@@ -398,6 +419,9 @@ namespace kiln::ui {
         void SetViewRectsHost(std::function<void(int kind, const std::vector<IntRect>& rects)> host) { m_ViewRectsHost = std::move(host); }
         void ReplaceViewRect(int kind, const void* key, std::optional<IntRect> rect) {
             auto& list = m_ViewRects[kind];
+            if (rect && rect->Empty()) rect.reset();
+            const auto same = std::find_if(list.begin(), list.end(), [&](const auto& e) { return e.first == key; });
+            if ((same == list.end() && !rect) || (same != list.end() && rect && same->second == *rect)) return;
             std::erase_if(list, [&](const auto& e) { return e.first == key; });
             if (rect && !rect->Empty()) list.emplace_back(key, *rect);
             std::vector<IntRect> rects;
@@ -424,9 +448,17 @@ namespace kiln::ui {
         void SetFlagSecure(bool secure) {
             if (m_FlagSecure.Peek() == secure) return;
             m_FlagSecure.Set(secure);
-            if (m_FlagSecureHost) m_FlagSecureHost(secure);
+            ApplyFlagSecure();
         }
         void SetFlagSecureHost(std::function<void(bool)> host) { m_FlagSecureHost = std::move(host); }
+        // A popup with SecureFlagPolicy::SecureOn is showing: the shared surface goes secure.
+        void ApplyFlagSecure() {
+            bool popupSecure = false;
+            for (PopupLayer* l : m_Popups) popupSecure = popupSecure || l->properties.securePolicy == SecureFlagPolicy::SecureOn;
+            const bool secure = m_FlagSecure.Peek() || popupSecure;
+            if (secure != m_AppliedSecure && m_FlagSecureHost) m_FlagSecureHost(secure);
+            m_AppliedSecure = secure;
+        }
         void SetScreenHost(std::function<void(bool)> keepScreenOn, std::function<void(bool)> contentSensitive) {
             m_KeepScreenOnHost = std::move(keepScreenOn);
             m_ContentSensitiveHost = std::move(contentSensitive);
@@ -554,6 +586,17 @@ namespace kiln::ui {
         rt::State<AccessibilityServiceState> m_A11yServices{ AccessibilityServiceState{} };
         rt::State<bool> m_FlagSecure{ false };
         std::function<void(bool)> m_FlagSecureHost;
+        bool m_AppliedSecure = false;
+        PopupLayer* m_PopupBackTracking = nullptr;
+        // The top focusable popup takes the key focus: the focus under it is parked there.
+        void SyncPopupFocus();
+        std::vector<PopupLayer*> m_Popups;
+        rt::State<int> m_PopupsVersion{ 0 };
+        void UpdatePopupChildren();
+        // Where focus search starts: the top focusable popup, else the content.
+        LayoutNode& FocusScopeRoot() const;
+        void ForgetFocusTarget(const FocusTargetNode* t);
+        void PlacePopups();
         std::map<int, std::vector<std::pair<const void*, IntRect>>> m_ViewRects;
         friend class FocusTargetNode;
         friend class AccessibilityDelegate;
@@ -582,6 +625,9 @@ namespace kiln::ui {
         struct HitEntry { LayoutNode* node; PointerInputModifier* mod; bool inBounds = true; };
         void HitTest(LayoutNode& n, const LayoutNode::Mat3& parentInner, Offset p, PointerType type, std::vector<HitEntry>& path,
                      std::vector<HitEntry>& near, float& nearDistance, std::vector<HitEntry>& ancestors);
+        // Hit testing with the popups' rules (see Popup.h); `press` lets outside presses dismiss.
+        void HitTestWindow(Offset p, PointerType type, bool press, std::vector<HitEntry>& path,
+                           std::vector<HitEntry>& near, float& nearDistance, std::vector<HitEntry>& ancestors);
         void RequestFullRemeasure();
 
         std::function<void(int)> m_PlaySound;
@@ -594,6 +640,7 @@ namespace kiln::ui {
         void UpdatePointerIcon();
         std::function<int(int, int)> m_DeadChar;
         std::unique_ptr<LayoutNode> m_Root;
+        std::unique_ptr<LayoutNode> m_ContentRoot;
         Density m_Density;
         LayoutDirection m_Direction = LayoutDirection::Ltr;
         TextBackend* m_Text = nullptr;

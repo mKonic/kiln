@@ -115,6 +115,30 @@ namespace kiln::ui {
         }
     }
 
+    // The window's layers top down (see Popup.h): a pointer inside a popup reaches only that
+    // popup; outside, a press asks it to dismiss (dismissOnClickOutside), a focusable popup keeps
+    // the pointer from everything under it (it is touch modal), and a non-focusable one lets it
+    // through (ACTION_OUTSIDE). Dismissals run after the hit test, the topmost first.
+    void Owner::HitTestWindow(Offset p, PointerType type, bool press, std::vector<HitEntry>& path,
+                              std::vector<HitEntry>& near, float& nearDistance, std::vector<HitEntry>& ancestors) {
+        std::vector<std::function<void()>> dismissals;
+        bool blocked = false;
+        for (auto it = m_Popups.rbegin(); it != m_Popups.rend(); ++it) {
+            PopupLayer& l = **it;
+            if (!l.node || !l.bounds) continue;
+            const IntRect& b = *l.bounds;
+            if (p.x >= b.left && p.x < b.right && p.y >= b.top && p.y < b.bottom) {
+                HitTest(*l.node, kIdentity3, p, type, path, near, nearDistance, ancestors);
+                blocked = true;
+                break;
+            }
+            if (press && l.properties.dismissOnClickOutside && l.onDismissRequest) dismissals.push_back(l.onDismissRequest);
+            if (l.properties.focusable) { blocked = true; break; }
+        }
+        if (!blocked) HitTest(*m_ContentRoot, kIdentity3, p, type, path, near, nearDistance, ancestors);
+        for (auto& d : dismissals) d();
+    }
+
     void Owner::ProcessPointer(const RawPointerEvent& raw) {
         if (raw.cancel) {
             std::unordered_set<PointerInputModifier*> seen;
@@ -135,7 +159,7 @@ namespace kiln::ui {
             if (rp.type == PointerType::Touch || rp.down || wasDown || it == m_Pointers.end()) continue;
             std::vector<HitEntry> path, near, ancestors;
             float nearDistance = INFINITY;
-            if (raw.type != PointerEventType::Exit) HitTest(*m_Root, kIdentity3, rp.position, rp.type, path, near, nearDistance, ancestors);
+            if (raw.type != PointerEventType::Exit) HitTestWindow(rp.position, rp.type, false, path, near, nearDistance, ancestors);
             auto has = [](const std::vector<HitEntry>& v, const HitEntry& e) {
                 return std::any_of(v.begin(), v.end(), [&](const HitEntry& x) { return x.mod == e.mod; });
             };
@@ -152,7 +176,7 @@ namespace kiln::ui {
                 const bool fresh = it == m_Pointers.end();
                 std::vector<HitEntry> path, near, ancestors;
                 float nearDistance = INFINITY;
-                HitTest(*m_Root, kIdentity3, rp.position, rp.type, path, near, nearDistance, ancestors);
+                HitTestWindow(rp.position, rp.type, rp.down && !wasDown, path, near, nearDistance, ancestors);
                 if (path.empty()) path = near;
                 Tracked& t = m_Pointers[rp.id];
                 // A new pointer's previous position is its current one (no movement on the down).

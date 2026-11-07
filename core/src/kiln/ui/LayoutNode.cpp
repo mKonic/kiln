@@ -818,45 +818,206 @@ namespace kiln::ui {
     // --- Owner --------------------------------------------------------------------------------
 
     namespace {
-        // RootMeasurePolicy (ui/layout/RootMeasurePolicy.kt): children get the window's
-        // constraints as they are and sit at the origin.
-        struct RootMeasurePolicy final : MeasurePolicy {
-            const WindowInsetsHolder* insets = nullptr;
+        // Children get the constraints as they are and sit at the origin (RootMeasurePolicy).
+        MeasureResult StackAtOrigin(MeasureScope& s, std::span<Measurable* const> ch, const Constraints& c) {
+            if (ch.empty()) return s.Layout(c.minWidth, c.minHeight);
+            std::vector<Placeable*> ps;
+            int w = 0, h = 0;
+            for (Measurable* m : ch) {
+                Placeable& p = m->Measure(c);
+                w = std::max(w, p.Width());
+                h = std::max(h, p.Height());
+                ps.push_back(&p);
+            }
+            return s.Layout(c.ConstrainWidth(w), c.ConstrainHeight(h), [ps](PlacementScope& place) {
+                for (Placeable* p : ps) place.PlaceRelative(*p, 0, 0);
+            });
+        }
+
+        // The content root: RootMeasurePolicy (ui/layout/RootMeasurePolicy.kt).
+        struct ContentRootPolicy final : MeasurePolicy {
             MeasureResult Measure(MeasureScope& s, std::span<Measurable* const> ch, const Constraints& c) override {
-                MeasureResult r = Children(s, ch, c);
+                return StackAtOrigin(s, ch, c);
+            }
+        };
+
+        // The window root: the content root with the window's constraints, then each popup
+        // measured up to the display bounds (PopupLayout.internalOnMeasure) and placed where its
+        // provider says (updatePosition), kept inside the display unless clipping is off
+        // (Gravity.applyDisplay without FLAG_LAYOUT_NO_LIMITS). A popup whose anchor is not
+        // placed is not placed either (hidden until it can be positioned).
+        struct WindowRootPolicy final : MeasurePolicy {
+            const WindowInsetsHolder* insets = nullptr;
+            Owner* owner = nullptr;
+            MeasureResult Measure(MeasureScope& s, std::span<Measurable* const> ch, const Constraints& c) override {
+                std::vector<Placeable*> ps;
+                std::vector<PopupLayer*> layers;
+                for (std::size_t i = 0; i < ch.size(); ++i) {
+                    if (i == 0) { ps.push_back(&ch[0]->Measure(c)); layers.push_back(nullptr); continue; }
+                    PopupLayer* l = i - 1 < owner->Popups().size() ? owner->Popups()[i - 1] : nullptr;
+                    const IntRect d = owner->PopupDisplayBounds(!l || l->properties.clippingEnabled);
+                    ps.push_back(&ch[i]->Measure(Constraints{ 0, std::max(0, d.right - d.left), 0, std::max(0, d.bottom - d.top) }));
+                    layers.push_back(l);
+                }
+                MeasureResult r = s.Layout(c.minWidth, c.minHeight, [ps, layers, o = owner](PlacementScope& place) {
+                    for (std::size_t i = 0; i < ps.size(); ++i) {
+                        if (!layers[i]) { place.PlaceRelative(*ps[i], 0, 0); continue; }
+                        PopupLayer& l = *layers[i];
+                        const IntSize size{ ps[i]->Width(), ps[i]->Height() };
+                        const auto anchor = l.anchorBounds ? l.anchorBounds() : std::nullopt;
+                        if (!anchor || !l.positionProvider) { l.bounds.reset(); continue; }
+                        const IntRect d = o->PopupDisplayBounds(l.properties.clippingEnabled);
+                        IntOffset pos = l.positionProvider->CalculatePosition(*anchor, { d.right - d.left, d.bottom - d.top }, l.direction, size);
+                        if (l.properties.clippingEnabled) {
+                            pos.x = std::max(d.left, std::min(pos.x, d.right - size.width));
+                            pos.y = std::max(d.top, std::min(pos.y, d.bottom - size.height));
+                        }
+                        place.Place(*ps[i], pos.x, pos.y);
+                        l.bounds = IntRect{ pos.x, pos.y, pos.x + size.width, pos.y + size.height };
+                    }
+                });
                 // The window insets as rulers for every layout (WindowInsetsRulersProvider).
                 if (insets)
                     r.rulers = [h = insets, w = r.width, hh = r.height](RulerScope& scope) { ProvideWindowInsetsRulers(scope, *h, w, hh); };
                 return r;
             }
-            MeasureResult Children(MeasureScope& s, std::span<Measurable* const> ch, const Constraints& c) {
-                if (ch.empty()) return s.Layout(c.minWidth, c.minHeight);
-                std::vector<Placeable*> ps;
-                int w = 0, h = 0;
-                for (Measurable* m : ch) {
-                    Placeable& p = m->Measure(c);
-                    w = std::max(w, p.Width());
-                    h = std::max(h, p.Height());
-                    ps.push_back(&p);
-                }
-                return s.Layout(c.ConstrainWidth(w), c.ConstrainHeight(h), [ps](PlacementScope& place) {
-                    for (Placeable* p : ps) place.PlaceRelative(*p, 0, 0);
-                });
-            }
         };
     }
 
-    Owner::Owner() : m_Root(std::make_unique<LayoutNode>()) {
+    Owner::Owner() : m_Root(std::make_unique<LayoutNode>()), m_ContentRoot(std::make_unique<LayoutNode>()) {
         m_RootFocus.m_IsRoot = true;
         m_RootFocus.focusability = Focusability::Never;
-        auto root = std::make_shared<RootMeasurePolicy>();
+        auto root = std::make_shared<WindowRootPolicy>();
         root->insets = &m_Insets;
+        root->owner = this;
         m_Root->SetMeasurePolicy(std::move(root));
+        m_ContentRoot->SetMeasurePolicy(std::make_shared<ContentRootPolicy>());
         m_Root->Attach(*this, 0);
+        m_Root->SetChildren({ m_ContentRoot.get() });
     }
 
     Owner::~Owner() {
+        m_Popups.clear();
+        m_Root->SetChildren({ m_ContentRoot.get() });
         m_Root->Detach();
+    }
+
+    // --- popups ---------------------------------------------------------------------------------
+
+    void Owner::UpdatePopupChildren() {
+        std::vector<rt::TreeNode*> children{ m_ContentRoot.get() };
+        for (PopupLayer* l : m_Popups) if (l->node) children.push_back(l->node);
+        m_Root->SetChildren(std::move(children));
+        m_Root->RequestRemeasure();
+        m_PopupsVersion.Set(m_PopupsVersion.Peek() + 1);
+        ApplyFlagSecure();
+    }
+
+    void Owner::AddPopup(PopupLayer* layer) {
+        if (std::find(m_Popups.begin(), m_Popups.end(), layer) != m_Popups.end()) return;
+        m_Popups.push_back(layer);
+        UpdatePopupChildren();
+        SyncPopupFocus();
+    }
+
+    void Owner::SyncPopupFocus() {
+        PopupLayer* top = TopFocusablePopup();
+        if (!top || !m_ActiveFocus) return;
+        if (PopupOf(*NodeOf(*m_ActiveFocus)) == top) return;
+        // The window under it loses the key focus, not its focused item: no focus events.
+        if (!top->parkedFocus) top->parkedFocus = m_ActiveFocus;
+        m_ActiveFocus = nullptr;
+        m_FocusCaptured = false;
+        DispatchFocusEvents();
+    }
+
+    void Owner::RemovePopup(PopupLayer* layer) {
+        const auto it = std::find(m_Popups.begin(), m_Popups.end(), layer);
+        if (it == m_Popups.end()) return;
+        m_Popups.erase(it);
+        if (layer->properties.excludeFromSystemGesture) ReplaceViewRect(0, layer, std::nullopt);
+        FocusTargetNode* parked = layer->parkedFocus;
+        layer->parkedFocus = nullptr;
+        layer->bounds.reset();
+        // The window under it gets the key focus back, its focused item still focused.
+        const bool focusInside = m_ActiveFocus && layer->node && NodeOf(*m_ActiveFocus) &&
+                                 [&] { for (LayoutNode* n = NodeOf(*m_ActiveFocus); n; n = n->m_Parent) if (n == layer->node) return true; return false; }();
+        UpdatePopupChildren();
+        if (parked && (!m_ActiveFocus || focusInside)) {
+            m_ActiveFocus = parked;
+            m_FocusCaptured = false;
+            DispatchFocusEvents();
+        }
+    }
+
+    void Owner::UpdatePopup(PopupLayer* layer) {
+        if (layer && layer->node) layer->node->RequestRemeasure();
+        m_Root->RequestRemeasure();
+        m_PopupsVersion.Set(m_PopupsVersion.Peek() + 1);
+        ApplyFlagSecure();
+        // No longer focusable: the focus it parked comes back.
+        if (layer && !layer->properties.focusable && layer->parkedFocus) {
+            FocusTargetNode* parked = layer->parkedFocus;
+            layer->parkedFocus = nullptr;
+            if (!m_ActiveFocus || PopupOf(*NodeOf(*m_ActiveFocus)) == layer) {
+                m_ActiveFocus = parked;
+                DispatchFocusEvents();
+            }
+        }
+        SyncPopupFocus();
+    }
+
+    PopupLayer* Owner::TopFocusablePopup() const {
+        (void)m_PopupsVersion.Get();
+        for (auto it = m_Popups.rbegin(); it != m_Popups.rend(); ++it)
+            if ((*it)->properties.focusable) return *it;
+        return nullptr;
+    }
+
+    PopupLayer* Owner::PopupOf(const LayoutNode& n) const {
+        for (const LayoutNode* p = &n; p; p = p->m_Parent)
+            for (PopupLayer* l : m_Popups) if (l->node == p) return l;
+        return nullptr;
+    }
+
+    IntRect Owner::PopupDisplayBounds(bool clippingEnabled) const {
+        IntRect r{ 0, 0, m_Window.width, m_Window.height };
+        if (!clippingEnabled) return r;
+        // The visible display frame: the window less the system bars and the keyboard.
+        InsetsValue in;
+        for (InsetsType t : { InsetsType::StatusBars, InsetsType::NavigationBars, InsetsType::CaptionBar, InsetsType::Ime })
+            in = in.Union(m_Insets.Get(t));
+        return { in.left, in.top, std::max(in.left, r.right - in.right), std::max(in.top, r.bottom - in.bottom) };
+    }
+
+    LayoutNode& Owner::FocusScopeRoot() const {
+        if (PopupLayer* l = TopFocusablePopup(); l && l->node) return *l->node;
+        return *m_ContentRoot;
+    }
+
+    void Owner::ForgetFocusTarget(const FocusTargetNode* t) {
+        for (PopupLayer* l : m_Popups) if (l->parkedFocus == t) l->parkedFocus = nullptr;
+    }
+
+    // A popup's anchor moved without the window root being laid out (a scroll, say): place the
+    // popups again (PopupLayout.updateParentBounds from onGloballyPositioned).
+    void Owner::PlacePopups() {
+        for (PopupLayer* l : m_Popups) {
+            if (!l->node) continue;
+            const auto anchor = l->anchorBounds ? l->anchorBounds() : std::nullopt;
+            bool stale = anchor.has_value() != l->bounds.has_value();
+            if (!stale && anchor && l->positionProvider) {
+                const IntRect d = PopupDisplayBounds(l->properties.clippingEnabled);
+                const IntSize size = l->node->Size();
+                IntOffset pos = l->positionProvider->CalculatePosition(*anchor, { d.right - d.left, d.bottom - d.top }, l->direction, size);
+                if (l->properties.clippingEnabled) {
+                    pos.x = std::max(d.left, std::min(pos.x, d.right - size.width));
+                    pos.y = std::max(d.top, std::min(pos.y, d.bottom - size.height));
+                }
+                stale = pos.x != l->bounds->left || pos.y != l->bounds->top;
+            }
+            if (stale) { m_Root->RequestRelayout(); break; }
+        }
     }
 
     void Owner::OnMeasureRequested(LayoutNode& n) {
@@ -918,6 +1079,18 @@ namespace kiln::ui {
             m_LaidOut = false;
             DispatchGloballyPositioned();
         }
+        if (!m_Popups.empty()) {
+            PlacePopups();
+            while (!m_LayoutDirty.empty()) {
+                LayoutNode* n = *m_LayoutDirty.begin();
+                m_LayoutDirty.erase(m_LayoutDirty.begin());
+                if (n->m_Placed || n == m_Root.get()) n->LayoutIfNeeded();
+                m_LaidOut = true;
+            }
+            if (m_LaidOut) { m_LaidOut = false; DispatchGloballyPositioned(); }
+            for (PopupLayer* l : m_Popups)
+                if (l->properties.excludeFromSystemGesture) ReplaceViewRect(0, l, l->bounds);
+        }
         // onBarrierPositionChanged: a barrier that now covers the focused target takes focus away.
         if (!m_Barriers.empty() && m_ActiveFocus && IsOccludedByInteractionBarrier(*m_ActiveFocus)) ClearFocus(true);
         if (m_Autofill) m_Autofill->OnEndApplyChanges();
@@ -970,6 +1143,8 @@ namespace kiln::ui {
         m_PositionAware.erase(&n);
         m_FocusInvalid.erase(&n);
         if (m_ActiveFocus && NodeOf(*m_ActiveFocus) == &n) { m_ActiveFocus = nullptr; m_FocusCaptured = false; m_FocusTargetLost = true; }
+        for (PopupLayer* l : m_Popups)
+            if (l->parkedFocus && NodeOf(*l->parkedFocus) == &n) l->parkedFocus = nullptr;
         m_MeasureDirty.erase(&n);
         m_LayoutDirty.erase(&n);
         for (auto& [id, t] : m_Pointers)

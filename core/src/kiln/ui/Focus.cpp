@@ -23,8 +23,9 @@ namespace kiln::ui {
     }
     void FocusTargetNode::OnDetach() {
         // A focused node going away clears focus (FocusTargetNode.onDetach); the owner forgets it.
-        if (auto* n = Owner(); n && n->GetOwner() && n->GetOwner()->ActiveFocus() == this) {
-            n->GetOwner()->ClearFocus(true);
+        if (auto* n = Owner(); n && n->GetOwner()) {
+            if (n->GetOwner()->ActiveFocus() == this) n->GetOwner()->ClearFocus(true);
+            n->GetOwner()->ForgetFocusTarget(this);
         }
     }
     FocusRequester* FocusProperties::Cancel() {
@@ -95,7 +96,9 @@ namespace kiln::ui {
 
     std::vector<FocusTargetNode*> Owner::FocusChildren(const FocusTargetNode& t) const {
         std::vector<FocusTargetNode*> out;
-        if (t.m_IsRoot) { FirstTargets(*m_Root, out); return out; }
+        // The window that has the key focus: the top focusable popup, else the content (a
+        // non-focusable popup's window never takes focus).
+        if (t.m_IsRoot) { FirstTargets(FocusScopeRoot(), out); return out; }
         LayoutNode* n = NodeOf(t);
         if (!n) return out;
         // A later target in the same chain is the only child; else the first targets below.
@@ -125,10 +128,20 @@ namespace kiln::ui {
     }
 
     FocusState Owner::StateOf(const FocusTargetNode& t) const {
-        if (!m_ActiveFocus) return FocusState::Inactive;
-        if (&t == m_ActiveFocus) return m_FocusCaptured ? FocusState::Captured : FocusState::Active;
-        for (FocusTargetNode* p = FocusParent(*m_ActiveFocus); p; p = FocusParent(*p))
-            if (p == &t) return FocusState::ActiveParent;
+        auto relation = [&](const FocusTargetNode* active, bool captured) {
+            if (!active) return FocusState::Inactive;
+            if (&t == active) return captured ? FocusState::Captured : FocusState::Active;
+            for (FocusTargetNode* p = FocusParent(*active); p; p = FocusParent(*p))
+                if (p == &t) return FocusState::ActiveParent;
+            return FocusState::Inactive;
+        };
+        const FocusState s = relation(m_ActiveFocus, m_FocusCaptured);
+        if (s != FocusState::Inactive) return s;
+        // A window under a focusable popup keeps its focused item (its own focus owner does). The
+        // root belongs to the window with the key focus: search starts there afresh.
+        if (t.m_IsRoot) return s;
+        for (PopupLayer* l : m_Popups)
+            if (const FocusState p = relation(l->parkedFocus, false); p != FocusState::Inactive) return p;
         return FocusState::Inactive;
     }
 
@@ -855,6 +868,24 @@ namespace kiln::ui {
             m_KeysDown.erase(it);
         }
         if (m_InputMode.Peek() != InputMode::Keyboard && e.keyCode != keys::Back) m_InputMode.Set(InputMode::Keyboard);
+        // PopupLayout.dispatchKeyEvent: Back / Escape dismiss the focused popup window (tracked
+        // from the down, dismissed on its up).
+        if (PopupLayer* popup = TopFocusablePopup(); popup && popup->properties.dismissOnBackPress &&
+                                                      (e.keyCode == keys::Back || e.keyCode == keys::Escape)) {
+            if (e.type == KeyEventType::KeyDown) {
+                if (e.repeatCount == 0) m_PopupBackTracking = popup;
+                return true;
+            }
+            if (e.type == KeyEventType::KeyUp) {
+                const bool tracked = m_PopupBackTracking == popup;
+                m_PopupBackTracking = nullptr;
+                if (tracked && popup->onDismissRequest) {
+                    auto dismiss = popup->onDismissRequest;
+                    dismiss();
+                }
+                return true;
+            }
+        }
 
         const std::vector<KeyInputModifier*> path = FocusedPath(&ModifierNode::AsKeyInput);
         for (KeyInputModifier* k : path) if (k->OnPreKeyEvent(e)) return true;

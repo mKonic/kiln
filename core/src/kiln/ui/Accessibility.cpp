@@ -334,7 +334,7 @@ namespace kiln::ui {
         Tree tree{ m_Owner, {}, {} };
         tree.minTouch = m_Owner.GetDensity().ToPx(m_Owner.Config().minimumTouchTargetSize);
         m_Nodes.clear();
-        tree.Add(m_Owner.Root(), kHostViewId, kInvalidId);
+        tree.Add(m_Owner.WindowRoot(), kHostViewId, kInvalidId);
         auto& all = tree.all;
         // Touch bounds (onClick nodes grow to the minimum touch target).
         for (auto& [id, a] : all) {
@@ -1401,7 +1401,7 @@ namespace kiln::ui {
     }
 
     namespace {
-        int SemanticsIdOf(Owner& owner, LayoutNode& n) { return &n == &owner.Root() ? kHostViewId : n.SemanticsId(); }
+        int SemanticsIdOf(Owner& owner, LayoutNode& n) { return &n == &owner.WindowRoot() ? kHostViewId : n.SemanticsId(); }
     }
 
     void AccessibilityDelegate::OnSemanticsChange() { m_Invalid = true; }
@@ -1463,7 +1463,7 @@ namespace kiln::ui {
     }
 
     void AccessibilityDelegate::SendSubtreeChangeEvents(LayoutNode& layout, std::unordered_set<int>& sent) {
-        if (!layout.GetOwner() && &layout != &m_Owner.Root()) return;
+        if (!layout.GetOwner() && &layout != &m_Owner.WindowRoot()) return;
         // The node's semantics node (or its closest), then its closest merging ancestor.
         LayoutNode* sem = &layout;
         while (sem && sem->Parent() && !HasSemantics(*sem)) sem = sem->Parent();

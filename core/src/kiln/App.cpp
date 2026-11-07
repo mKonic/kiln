@@ -194,7 +194,7 @@ namespace kiln {
         struct HostWindowInfo final : ui::WindowInfo {
             ui::Owner* owner;
             explicit HostWindowInfo(ui::Owner* o) : owner(o) {}
-            bool IsWindowFocused() const override { return owner->IsWindowFocused(); }
+            bool IsWindowFocused() const override { return owner->IsContentWindowFocused(); }
         };
         std::shared_ptr<const ui::WindowInfo> windowInfo = std::make_shared<HostWindowInfo>(&m_Owner);
         ui::Owner* owner = &m_Owner;

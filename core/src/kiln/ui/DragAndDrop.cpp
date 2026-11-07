@@ -199,7 +199,7 @@ namespace kiln::ui {
     protected:
         std::vector<DragAndDropNode*> Children() const override {
             std::vector<DragAndDropNode*> out;
-            CollectBelow(m_RootOwner.Root(), 0, out);
+            CollectBelow(m_RootOwner.WindowRoot(), 0, out);
             return out;
         }
         bool Attached() const override { return true; }

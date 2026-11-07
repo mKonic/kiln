@@ -8,6 +8,7 @@
 #include <kiln/foundation/Semantics.h>
 #include <kiln/foundation/draganddrop/DragAndDrop.h>
 #include <kiln/foundation/activity/ActivityResult.h>
+#include <kiln/foundation/Popup.h>
 #include <kiln/graphics/PathEffect.h>
 #include <kiln/foundation/MeshGradient.h>
 #include <kiln/foundation/Gestures.h>
@@ -225,6 +226,41 @@ namespace {
                     Alignment::Center(), false, [secure] {
                     BasicText(secure ? "Secure window: on" : "Secure window: off", Padding(Modifier{}, 24_dp, 10_dp), { 14, kOnSurface });
                 });
+            }
+            // A popup menu under its button: focusable, so it takes key focus and the content under
+            // it gets no touches; a press outside or Back dismisses it.
+            {
+                auto& menuOpen = kiln::rt::RememberSaveableState(false);
+                auto& picked = kiln::rt::RememberSaveableState(std::string("nothing"));
+                Box(Clickable(Background(Padding(Modifier{}, 16_dp, 0_dp), kPrimaryContainer, CornerShape::Pill()),
+                              [&menuOpen] { menuOpen.Set(true); }),
+                    Alignment::Center(), false, [&] {
+                    BasicText("Open menu", Padding(Modifier{}, 24_dp, 10_dp), { 14, kOnSurface });
+                    if (menuOpen.Get()) {
+                        PopupProperties props;
+                        props.focusable = true;
+                        // Below the button, its start edges lined up.
+                        struct Below final : kiln::ui::PopupPositionProvider {
+                            kiln::ui::IntOffset CalculatePosition(kiln::ui::IntRect a, kiln::ui::IntSize, LayoutDirection,
+                                                                  kiln::ui::IntSize) const override { return { a.left, a.bottom + 16 }; }
+                        };
+                        static const auto below = std::make_shared<const Below>();
+                        Popup(below, [&menuOpen] { menuOpen.Set(false); }, props, [&] {
+                            Column(Background(Width(Modifier{}, 180_dp), kContainer, CornerShape::Rounded(12_dp)), [&] {
+                                for (const char* item : { "Copy", "Share", "Delete" }) {
+                                    Box(Clickable(FillMax(Modifier{}, Axis::Horizontal), [&menuOpen, &picked, item] {
+                                            picked.Set(item);
+                                            menuOpen.Set(false);
+                                        }),
+                                        Alignment::CenterStart(), false, [item] {
+                                        BasicText(item, Padding(Modifier{}, 16_dp, 12_dp), { 16, kOnSurface });
+                                    }, kiln::rt::Key(std::int64_t(std::hash<std::string>{}(item))));
+                                }
+                            });
+                        });
+                    }
+                });
+                BasicText("Menu picked: " + picked.Get(), Padding(Modifier{}, 16_dp, 0_dp), { 14, kVariant });
             }
             // A password field: the last typed character shows briefly when the setting allows.
             auto& password = RememberTextFieldState("");
