@@ -157,6 +157,12 @@ namespace kiln {
             void PlayClickSound() override { owner->PlaySoundEffect(0); }
         };
         std::shared_ptr<ui::SoundEffect> sound = std::make_shared<HostSound>(&m_Owner);
+        struct HostHaptics final : ui::HapticFeedback {
+            ui::Owner* owner;
+            explicit HostHaptics(ui::Owner* o) : owner(o) {}
+            void PerformHapticFeedback(ui::HapticFeedbackType type) override { owner->PerformHapticFeedback(int(type)); }
+        };
+        std::shared_ptr<ui::HapticFeedback> haptics = std::make_shared<HostHaptics>(&m_Owner);
         ui::WindowInsetsHolder* insets = &m_Owner.Insets();
         struct HostWindowInfo final : ui::WindowInfo {
             ui::Owner* owner;
@@ -164,8 +170,9 @@ namespace kiln {
             bool IsWindowFocused() const override { return owner->IsWindowFocused(); }
         };
         std::shared_ptr<const ui::WindowInfo> windowInfo = std::make_shared<HostWindowInfo>(&m_Owner);
-        m_Composition->SetContent([registry, dir, nested, tv, sound, insets, windowInfo, content = std::move(content)] {
+        m_Composition->SetContent([registry, dir, nested, tv, sound, insets, windowInfo, haptics, content = std::move(content)] {
             auto* c = rt::Composition::Current();
+            c->Provide(ui::LocalHapticFeedback, haptics, [c, registry, dir, nested, tv, sound, insets, windowInfo, content] {
             c->Provide(ui::LocalWindowInfo, windowInfo.get(), [c, registry, dir, nested, tv, sound, insets, content] {
             c->Provide(ui::LocalWindowInsets, insets, [c, registry, dir, nested, tv, sound, content] {
             c->Provide(ui::LocalLayoutDirection, dir->Get(), [c, registry, nested, tv, sound, content] {
@@ -176,6 +183,7 @@ namespace kiln {
                         });
                     });
                 });
+            });
             });
             });
             });

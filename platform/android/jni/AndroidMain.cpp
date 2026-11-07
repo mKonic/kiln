@@ -413,6 +413,12 @@ namespace {
                     MainEnv()->CallVoidMethod(g_Host->view, afRequest, jint(id), jint(r.left), jint(r.top), jint(r.right), jint(r.bottom));
                 };
                 af.credentialRequestsSupported = android_get_device_api_level() >= 34;
+                jclass svc = env->GetObjectClass(view);
+                static jmethodID keepOn = env->GetMethodID(svc, "setKeepScreenOnFromNative", "(Z)V");
+                static jmethodID sensitive = env->GetMethodID(svc, "setContentSensitiveFromNative", "(Z)V");
+                env->DeleteLocalRef(svc);
+                owner.SetScreenHost([](bool on) { MainEnv()->CallVoidMethod(g_Host->view, keepOn, jboolean(on)); },
+                                    [](bool s) { MainEnv()->CallVoidMethod(g_Host->view, sensitive, jboolean(s)); });
                 owner.SetAutofillHost(std::move(af));
             }
             static jmethodID setBack = env->GetMethodID(env->GetObjectClass(view), "setBackEnabled", "(Z)V");

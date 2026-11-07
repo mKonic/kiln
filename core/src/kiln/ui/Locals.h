@@ -40,6 +40,19 @@ namespace kiln::ui {
     };
     inline rt::Local<std::shared_ptr<SoundEffect>> LocalSoundEffect{ nullptr };
 
+    // HapticFeedbackType: the platform's HapticFeedbackConstants (HapticFeedbackConstantsCompat).
+    enum class HapticFeedbackType : int {
+        Confirm = 16, ContextClick = 6, GestureEnd = 13, GestureThresholdActivate = 23, KeyboardTap = 3, LongPress = 0,
+        Reject = 17, SegmentFrequentTick = 27, SegmentTick = 26, TextHandleMove = 9, ToggleOff = 22, ToggleOn = 21, VirtualKey = 1,
+    };
+    // HapticFeedback / LocalHapticFeedback (PlatformHapticFeedback on the host view).
+    class HapticFeedback {
+    public:
+        virtual ~HapticFeedback() = default;
+        virtual void PerformHapticFeedback(HapticFeedbackType type) = 0;
+    };
+    inline rt::Local<std::shared_ptr<HapticFeedback>> LocalHapticFeedback{ nullptr };
+
     // The window's insets (WindowInsetsHolder.current: the host view's), for composables that
     // ask whether bars are visible or read insets directly.
     class WindowInsetsHolder;

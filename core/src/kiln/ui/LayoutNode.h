@@ -366,6 +366,18 @@ namespace kiln::ui {
         const std::vector<TextToolbarEntry>& TextToolbarEntries() const { return m_ToolbarEntries; }
         void OnTextToolbarItem(std::size_t index);
         void OnTextToolbarDestroyed();
+        // keepScreenOn / sensitiveContent counts (AndroidComposeView): the host view keeps the
+        // screen on while any node asks, and is marked sensitive (API 35) while any node is.
+        void SetScreenHost(std::function<void(bool)> keepScreenOn, std::function<void(bool)> contentSensitive) {
+            m_KeepScreenOnHost = std::move(keepScreenOn);
+            m_ContentSensitiveHost = std::move(contentSensitive);
+        }
+        void IncrementKeepScreenOnCount() { if (++m_KeepScreenOnCount == 1 && m_KeepScreenOnHost) m_KeepScreenOnHost(true); }
+        void DecrementKeepScreenOnCount() { if (--m_KeepScreenOnCount == 0 && m_KeepScreenOnHost) m_KeepScreenOnHost(false); }
+        void IncrementSensitiveComponentCount() { if (m_SensitiveCount++ == 0 && m_ContentSensitiveHost) m_ContentSensitiveHost(true); }
+        void DecrementSensitiveComponentCount() { if (m_SensitiveCount-- == 1 && m_ContentSensitiveHost) m_ContentSensitiveHost(false); }
+        int KeepScreenOnCount() const { return m_KeepScreenOnCount; }
+        int SensitiveComponentCount() const { return m_SensitiveCount; }
         // The show-passwords setting (Settings.System.TEXT_SHOW_PASSWORD; ShowSecretsSetting from
         // API 37): bit 1 for touch input, bit 2 for physical keyboards. Observable.
         int PasswordVisibility() const { return m_PasswordVisibility.Get(); }
@@ -467,6 +479,8 @@ namespace kiln::ui {
         void ReadToolbarBounds();
         TextClassifierHost m_Classifier;
         rt::State<int> m_PasswordVisibility{ 3 };
+        std::function<void(bool)> m_KeepScreenOnHost, m_ContentSensitiveHost;
+        int m_KeepScreenOnCount = 0, m_SensitiveCount = 0;
         friend class FocusTargetNode;
         friend class AccessibilityDelegate;
         LayoutNode* NodeOf(const FocusTargetNode& t) const;

@@ -787,8 +787,25 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
         return m == null ? new int[] { 0, 0 } : new int[] { m.getWidth(), m.getHeight() };
     }
 
+    // keepScreenOn / sensitiveContent counts reached zero or one.
+    void setKeepScreenOnFromNative(boolean on) { setKeepScreenOn(on); }
+    void setContentSensitiveFromNative(boolean sensitive) {
+        if (android.os.Build.VERSION.SDK_INT >= 35)
+            setContentSensitivity(sensitive ? CONTENT_SENSITIVITY_SENSITIVE : CONTENT_SENSITIVITY_AUTO);
+    }
+
     /** PlatformHapticFeedback: View.performHapticFeedback(HapticFeedbackConstants.*). */
     void performHaptic(int constant) {
+        // HapticFeedbackConstantsCompat.getFeedbackConstantOrFallback (minSdk 31: the API 34 set).
+        if (constant < 0) return;   // NO_HAPTICS
+        if (android.os.Build.VERSION.SDK_INT < 34) {
+            switch (constant) {
+                case 25: constant = 0; break;                       // DRAG_START -> LONG_PRESS
+                case 21: case 26: case 23: constant = 6; break;     // TOGGLE_ON, SEGMENT_TICK, GESTURE_THRESHOLD_ACTIVATE -> CONTEXT_CLICK
+                case 22: case 27: case 24: constant = 4; break;     // TOGGLE_OFF, SEGMENT_FREQUENT_TICK, GESTURE_THRESHOLD_DEACTIVATE -> CLOCK_TICK
+                default: break;
+            }
+        }
         performHapticFeedback(constant);
     }
 
