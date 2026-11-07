@@ -1,0 +1,3 @@
+material-color-utilities C++ (cpp/, tests left out) from https://github.com/material-foundation/material-color-utilities
+at commit bd811e4ca2ab94c4ce3cadc89c19b1820b9704b3. compat/ holds kiln's stand-ins for the two Abseil names it uses.
+Patched: cpp/temperature/temperature_cache.h includes <optional> (it uses std::optional without it).
