@@ -454,6 +454,16 @@ namespace {
                     return ok;
                 };
                 owner.DragAndDrop().SetHost(std::move(dnd));
+                static jmethodID viewRects = env->GetMethodID(env->GetObjectClass(view), "setViewRectsFromNative", "(I[I)V");
+                owner.SetViewRectsHost([](int kind, const std::vector<kiln::ui::IntRect>& rects) {
+                    JNIEnv* e = MainEnv();
+                    std::vector<jint> v;
+                    for (const auto& r : rects) v.insert(v.end(), { r.left, r.top, r.right, r.bottom });
+                    jintArray a = e->NewIntArray(jsize(v.size()));
+                    e->SetIntArrayRegion(a, 0, jsize(v.size()), v.data());
+                    e->CallVoidMethod(g_Host->view, viewRects, jint(kind), a);
+                    e->DeleteLocalRef(a);
+                });
                 owner.SetScreenHost([](bool on) { MainEnv()->CallVoidMethod(g_Host->view, keepOn, jboolean(on)); },
                                     [](bool s) { MainEnv()->CallVoidMethod(g_Host->view, sensitive, jboolean(s)); });
                 owner.SetAutofillHost(std::move(af));

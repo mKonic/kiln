@@ -2,6 +2,7 @@
 
 #include "kiln/ui/LayoutNode.h"
 
+#include <cmath>
 #include <stdexcept>
 
 namespace kiln::foundation {
@@ -52,6 +53,49 @@ namespace kiln::foundation {
             ui::Owner* m_Owner = nullptr;
             bool m_Counted = false;
         };
+    }
+
+    namespace {
+        // RectListNode.
+        struct RectListParams {
+            int kind = 0;
+            std::shared_ptr<const std::function<Rect(ui::Size)>> rect;
+            bool operator==(const RectListParams&) const = default;
+        };
+        struct RectListNode final : ModifierNode, ui::GlobalPositionAwareModifier {
+            RectListParams params;
+            explicit RectListNode(RectListParams p) : params(std::move(p)) {}
+            // The rect provider changed: recompute once the chain is rebuilt.
+            void OnParamsChanged() {
+                rt::Dispatcher::Main().Post([this, alive = AliveToken()] { if (!alive.expired()) OnGloballyPositioned(); });
+            }
+            ui::GlobalPositionAwareModifier* AsGlobalPositionAware() override { return this; }
+            void OnGloballyPositioned() override {
+                LayoutNode* n = Owner();
+                ui::Owner* o = OwnerOf(*this);
+                if (!n || !o || !n->IsPlaced()) return;
+                ui::Size size;
+                n->SpaceToRoot(this, &size);
+                const Rect local = params.rect && *params.rect ? (*params.rect)(size) : Rect{ 0, 0, size.width, size.height };
+                // calcBounds: the bounding box of the rect's corners in the root.
+                const Rect r = n->RectInRoot(local, this);
+                const ui::IntRect ir{ int(std::lround(r.left)), int(std::lround(r.top)), int(std::lround(r.right)), int(std::lround(r.bottom)) };
+                m_Owner = o;
+                o->ReplaceViewRect(params.kind, this, ir);
+            }
+            void OnDetach() override {
+                if (m_Owner) m_Owner->ReplaceViewRect(params.kind, this, std::nullopt);
+                m_Owner = nullptr;
+            }
+            ui::Owner* m_Owner = nullptr;
+        };
+    }
+
+    Modifier SystemGestureExclusion(Modifier m, std::function<Rect(ui::Size)> rect) {
+        return m.With<RectListNode>(RectListParams{ 0, rect ? std::make_shared<const std::function<Rect(ui::Size)>>(std::move(rect)) : nullptr });
+    }
+    Modifier PreferKeepClear(Modifier m, std::function<Rect(ui::Size)> rect) {
+        return m.With<RectListNode>(RectListParams{ 1, rect ? std::make_shared<const std::function<Rect(ui::Size)>>(std::move(rect)) : nullptr });
     }
 
     Modifier KeepScreenOn(Modifier m) { return m.With<KeepScreenOnNode>(KeepParams{}); }

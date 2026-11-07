@@ -9,6 +9,10 @@
 namespace kiln::foundation {
 
     Modifier KeepScreenOn(Modifier m);
+    // systemGestureExclusion (API 29) / preferKeepClear (API 33): the node's bounds, or the rect
+    // `rect` gives for its size (in its own space), kept clear of system gestures / overlays.
+    Modifier SystemGestureExclusion(Modifier m, std::function<Rect(ui::Size)> rect = {});
+    Modifier PreferKeepClear(Modifier m, std::function<Rect(ui::Size)> rect = {});
     Modifier SensitiveContent(Modifier m, bool isContentSensitive = true);
 
 }

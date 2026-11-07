@@ -36,3 +36,27 @@ TEST(KeepScreenOnAndSensitiveContentCountNodes) {
     CHECK_EQ(owner.KeepScreenOnCount(), 0);
     CHECK_EQ(owner.SensitiveComponentCount(), 0);
 }
+
+TEST(GestureExclusionAndKeepClearRectsFollowTheirNodes) {
+    ui::Owner owner;
+    owner.SetDensity({ 1, 1 });
+    rt::Composition comp{ owner.Root(), rt::Dispatcher::Main() };
+    std::vector<ui::IntRect> excluded, clear;
+    owner.SetViewRectsHost([&](int kind, const std::vector<ui::IntRect>& r) { (kind == 0 ? excluded : clear) = r; });
+    auto shown = std::make_shared<rt::State<bool>>(true);
+    comp.SetContent([&] {
+        Column(Modifier{}, [&] {
+            Box(SizeMod(Modifier{}, Dp(100), Dp(40)));
+            if (shown->Get()) Box(SystemGestureExclusion(SizeMod(Modifier{}, Dp(30), Dp(20))));
+            Box(PreferKeepClear(SizeMod(Modifier{}, Dp(50), Dp(50)), [](ui::Size s) { return Rect{ 0, 0, s.width / 2, s.height }; }));
+        });
+    });
+    auto pump = [&] { comp.Recompose(); owner.MeasureAndLayout({ 200, 200 }); };
+    pump();
+    CHECK((excluded == std::vector<ui::IntRect>{ { 0, 40, 30, 60 } }));
+    CHECK((clear == std::vector<ui::IntRect>{ { 0, 60, 25, 110 } }));
+    shown->Set(false);
+    pump();
+    CHECK(excluded.empty());
+    CHECK((clear == std::vector<ui::IntRect>{ { 0, 40, 25, 90 } }));   // moved up
+}

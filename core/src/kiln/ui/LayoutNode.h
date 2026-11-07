@@ -389,6 +389,22 @@ namespace kiln::ui {
         // animations, lazy lists drop sticky headers (LocalScrollCaptureInProgress). Observable.
         bool ScrollCaptureInProgress() const { return m_ScrollCaptureInProgress.Get(); }
         void SetScrollCaptureInProgress(bool v) { if (m_ScrollCaptureInProgress.Peek() != v) m_ScrollCaptureInProgress.Set(v); }
+        // RectListNode: rects in root pixels that nodes give the host view (kind 0:
+        // systemGestureExclusionRects, 1: preferKeepClearRects). The host gets the whole list.
+        void SetViewRectsHost(std::function<void(int kind, const std::vector<IntRect>& rects)> host) { m_ViewRectsHost = std::move(host); }
+        void ReplaceViewRect(int kind, const void* key, std::optional<IntRect> rect) {
+            auto& list = m_ViewRects[kind];
+            std::erase_if(list, [&](const auto& e) { return e.first == key; });
+            if (rect && !rect->Empty()) list.emplace_back(key, *rect);
+            std::vector<IntRect> rects;
+            for (const auto& [k, r] : list) rects.push_back(r);
+            if (m_ViewRectsHost) m_ViewRectsHost(kind, rects);
+        }
+        std::vector<IntRect> ViewRects(int kind) const {
+            std::vector<IntRect> out;
+            if (auto it = m_ViewRects.find(kind); it != m_ViewRects.end()) for (const auto& [k, r] : it->second) out.push_back(r);
+            return out;
+        }
         // keepScreenOn / sensitiveContent counts (AndroidComposeView): the host view keeps the
         // screen on while any node asks, and is marked sensitive (API 35) while any node is.
         void SetScreenHost(std::function<void(bool)> keepScreenOn, std::function<void(bool)> contentSensitive) {
@@ -512,6 +528,8 @@ namespace kiln::ui {
         rt::State<bool> m_ScrollCaptureInProgress{ false };
         std::unique_ptr<ui::ScrollCapture> m_ScrollCapture;
         int m_KeepScreenOnCount = 0, m_SensitiveCount = 0;
+        std::function<void(int, const std::vector<IntRect>&)> m_ViewRectsHost;
+        std::map<int, std::vector<std::pair<const void*, IntRect>>> m_ViewRects;
         friend class FocusTargetNode;
         friend class AccessibilityDelegate;
         LayoutNode* NodeOf(const FocusTargetNode& t) const;

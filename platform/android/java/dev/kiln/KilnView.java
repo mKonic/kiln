@@ -925,6 +925,14 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
         ((Runnable) r[0]).run();
     }
 
+    /** RectListNode: kind 0 systemGestureExclusionRects, 1 preferKeepClearRects (4 ints each). */
+    void setViewRectsFromNative(int kind, int[] v) {
+        java.util.ArrayList<Rect> rects = new java.util.ArrayList<>();
+        for (int i = 0; i + 3 < v.length; i += 4) rects.add(new Rect(v[i], v[i + 1], v[i + 2], v[i + 3]));
+        if (kind == 0) setSystemGestureExclusionRects(rects);
+        else if (android.os.Build.VERSION.SDK_INT >= 33) setPreferKeepClearRects(rects);
+    }
+
     // keepScreenOn / sensitiveContent counts reached zero or one.
     void setKeepScreenOnFromNative(boolean on) { setKeepScreenOn(on); }
     void setContentSensitiveFromNative(boolean sensitive) {
