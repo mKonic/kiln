@@ -63,7 +63,7 @@ namespace kiln::foundation {
         };
         struct Cache {
             std::u16string visualText;
-            std::vector<PlacedSpan> annotations;
+            std::vector<text::Range<text::Annotation>> annotations;
             std::optional<TextRange> composition;
             text::TextStyle style;
             bool singleLine = false, softWrap = false;

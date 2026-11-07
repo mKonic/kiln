@@ -811,6 +811,22 @@ TEST(SecureFieldMasksAndRevealsTheLastTypedCharacter) {
     CHECK(shown == "\u2022\u2022\u2022\u2022");
 }
 
+TEST(FieldLaysOutItsTextStyles) {
+    FieldHarness h;
+    TextFieldState state("hello");
+    state.Edit([](TextFieldBuffer& b) {
+        text::SpanStyle s;
+        s.fontWeight = text::FontWeight::Bold();
+        b.AddStyle(s, 1, 3);
+    });
+    std::vector<text::Range<text::SpanStyle>> laidOut;
+    BasicTextFieldOptions o = Style20();
+    o.onTextLayout = [&](const text::TextLayoutResult& r) { laidOut = r.LayoutInput().text.SpanStyles(); };
+    h.comp.SetContent([&] { Column(Modifier{}, [&] { BasicTextField(state, {}, o); }); });
+    h.Pump({ 300, 300 });
+    CHECK(laidOut.size() == 1 && laidOut[0].start == 1 && laidOut[0].end == 3);
+}
+
 TEST(DoubleTapAndMouseDragSelect) {
     FieldHarness h;
     TextFieldState state("hello big world");

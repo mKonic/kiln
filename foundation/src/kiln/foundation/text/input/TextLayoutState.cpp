@@ -18,8 +18,11 @@ namespace kiln::foundation {
                                                                                               const ui::Constraints& constraints) {
         const NonMeasureInputs& in = *m_Inputs;
         const TextFieldCharSequence visual = in.state->VisualText();
-        // Styled text (TextStyleBuffer) is not ported yet: the composing spans only.
-        const std::vector<PlacedSpan>& annotations = visual.composingAnnotations;
+        // The composing spans, then the text's styles.
+        std::vector<text::Range<text::Annotation>> annotations;
+        for (const PlacedSpan& a : visual.composingAnnotations) annotations.push_back({ a.item, a.start, a.end, a.tag });
+        if (visual.textFieldTextStyles)
+            for (auto& r : visual.textFieldTextStyles->Buffer().GetAllStyles()) annotations.push_back(std::move(r));
         Cache& c = m_Cache;
         if (!(c.result && c.visualText == visual.text && c.annotations == annotations && c.composition == visual.composition &&
               c.singleLine == in.singleLine && c.softWrap == in.softWrap && c.direction == direction && c.density == density &&
@@ -32,10 +35,7 @@ namespace kiln::foundation {
             text::TextStyle style = in.style;
             if (in.isKeyboardTypePhone) style.paragraph.textDirection = text::TextDirection::Ltr;
             text::TextLayoutInput li;
-            std::vector<text::Range<text::Annotation>> spans;
-            spans.reserve(annotations.size());
-            for (const PlacedSpan& a : annotations) spans.push_back({ a.item, a.start, a.end, a.tag });
-            li.text = text::AnnotatedString(ToUtf8(visual.text), std::move(spans));
+            li.text = text::AnnotatedString(ToUtf8(visual.text), annotations);
             li.style = style;
             li.softWrap = in.softWrap;
             li.maxLines = in.singleLine ? 1 : 0x7fffffff;

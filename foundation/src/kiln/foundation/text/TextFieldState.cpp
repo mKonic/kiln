@@ -204,14 +204,19 @@ namespace kiln::foundation {
         }
     }
 
+    namespace {
+        bool SameStyles(const TextStyleBuffer* a, const TextStyleBuffer* b) { return a == b || (a && b && *a == *b); }
+    }
+
     void TextFieldState::CommitEdit(TextFieldBuffer& next) {
         const bool textChanged = next.Changes().ChangeCount() > 0;
         const bool selectionChanged = next.Selection() != m_Main.Selection();
+        const bool styleChanged = !SameStyles(next.StyleBuffer(), m_Main.StyleBuffer());
         std::optional<bool> valueTextChanged;
         if (!textChanged) valueTextChanged = false;
         else if (m_OnTextChanged) valueTextChanged = HasTextChanged(m_Value.Peek(), next.AsCharSequence(), next.Changes());
         if (textChanged) RecordEditForUndo(m_Value.Peek(), next.ToTextFieldCharSequence(), next.Changes(), TextFieldEditUndoBehavior::NeverMerge);
-        SyncMainBufferToTemporaryBuffer(next, textChanged, selectionChanged, valueTextChanged);
+        SyncMainBufferToTemporaryBuffer(next, textChanged, selectionChanged, styleChanged, valueTextChanged);
     }
 
     void TextFieldState::EditAsUser(const InputTransformation* input, const std::function<void(TextFieldBuffer&)>& block,
@@ -241,14 +246,14 @@ namespace kiln::foundation {
                 before.composingAnnotations != composing) {
                 UpdateValueAndNotifyListeners(before,
                                               TextFieldCharSequence(m_Main.AsCharSequence(), m_Main.Selection(), m_Main.Composition(),
-                                                                    m_Main.Highlight(), composing),
+                                                                    m_Main.Highlight(), composing, before.textFieldTextStyles),
                                               restartIme, false);
             }
             return;
         }
         const bool contentMayHaveChanged = m_Main.Changes().ChangeCount() != 0;
         const TextFieldCharSequence after(m_Main.AsCharSequence(), m_Main.Selection(), m_Main.Composition(), m_Main.Highlight(),
-                                          FinalizeComposing(m_Main.Composition(), m_Main.ComposingAnnotations()));
+                                          FinalizeComposing(m_Main.Composition(), m_Main.ComposingAnnotations()), m_Main.GetTextFieldTextStyles());
         if (!input) {
             RecordEditForUndo(before, after, m_Main.Changes(), undo);
             std::optional<bool> changed;
@@ -262,7 +267,9 @@ namespace kiln::foundation {
         input->TransformInput(filtered);
         const bool textChangedByFilter = filtered.AsCharSequence() != after.text;
         const bool selectionChangedByFilter = filtered.Selection() != after.selection;
-        const bool changedByFilter = textChangedByFilter || selectionChangedByFilter;
+        const bool styleChangedByFilter =
+            !SameStyles(filtered.StyleBuffer(), after.textFieldTextStyles ? &after.textFieldTextStyles->Buffer() : nullptr);
+        const bool changedByFilter = textChangedByFilter || selectionChangedByFilter || styleChangedByFilter;
         const TextFieldCharSequence post = changedByFilter ? filtered.ToTextFieldCharSequence()
                                                            : filtered.ToTextFieldCharSequence(filtered.Selection(), after.composition);
         RecordEditForUndo(before, post, filtered.Changes(), undo);
@@ -270,13 +277,15 @@ namespace kiln::foundation {
         if (!contentMayHaveChanged && !textChangedByFilter) valueTextChanged = false;
         else if (!contentMayHaveChanged && textChangedByFilter) valueTextChanged = true;
         else if (m_OnTextChanged) valueTextChanged = HasTextChanged(before, post.text, filtered.Changes());
-        if (changedByFilter) SyncMainBufferToTemporaryBuffer(filtered, textChangedByFilter, selectionChangedByFilter, valueTextChanged);
+        if (changedByFilter) SyncMainBufferToTemporaryBuffer(filtered, textChangedByFilter, selectionChangedByFilter, styleChangedByFilter, valueTextChanged);
         else UpdateValueAndNotifyListeners(before, post, restartIme, valueTextChanged);
     }
 
-    void TextFieldState::SyncMainBufferToTemporaryBuffer(TextFieldBuffer& temp, bool textChanged, bool selectionChanged, std::optional<bool> valueTextChanged) {
+    void TextFieldState::SyncMainBufferToTemporaryBuffer(TextFieldBuffer& temp, bool textChanged, bool selectionChanged, bool styleChanged,
+                                                         std::optional<bool> valueTextChanged) {
         const TextFieldCharSequence oldValue = m_Main.ToTextFieldCharSequence();
-        if (textChanged) m_Main = TextFieldBuffer(TextFieldCharSequence(temp.AsCharSequence(), temp.Selection()));
+        if (textChanged || styleChanged)
+            m_Main = TextFieldBuffer(TextFieldCharSequence(temp.AsCharSequence(), temp.Selection(), std::nullopt, std::nullopt, {}, temp.GetTextFieldTextStyles()));
         else if (selectionChanged) m_Main.SetSelection(temp.Selection());
         if (textChanged || selectionChanged || oldValue.composition != temp.Composition()) m_Main.CommitComposition();
         UpdateValueAndNotifyListeners(oldValue, m_Main.ToTextFieldCharSequence(), true, valueTextChanged);
@@ -319,11 +328,11 @@ namespace kiln::foundation {
     }
 
     TextFieldState::Saved TextFieldState::Save() const {
-        return { m_Value.Peek().text, m_Value.Peek().selection, m_Undo.Save() };
+        return { m_Value.Peek().text, m_Value.Peek().selection, m_Undo.Save(), m_Value.Peek().textFieldTextStyles };
     }
     void TextFieldState::Restore(const Saved& s) {
-        m_Main = TextFieldBuffer(TextFieldCharSequence(s.text, s.selection));
-        m_Value.Set(TextFieldCharSequence(s.text, s.selection));
+        m_Main = TextFieldBuffer(TextFieldCharSequence(s.text, s.selection, std::nullopt, std::nullopt, {}, s.styles));
+        m_Value.Set(TextFieldCharSequence(s.text, s.selection, std::nullopt, std::nullopt, {}, s.styles));
         m_Undo.Restore(s.undo);
         ++m_Version;
     }
@@ -357,10 +366,9 @@ namespace kiln::foundation {
         auto raw = std::make_shared<OutputRaw>();
         raw->source = m_State.Value();
         TextFieldBuffer buffer(raw->source, nullptr, std::nullopt, &raw->mapping);
-        buffer.canCallAddStyle = true;
         m_Output->TransformOutput(buffer);
-        buffer.canCallAddStyle = false;
-        if (buffer.Changes().ChangeCount() != 0 || !buffer.OutputAnnotations().empty()) raw->buffer = std::move(buffer);
+        // Styles an output transformation adds count as changes.
+        if (buffer.Changes().ChangeCount() != 0) raw->buffer = std::move(buffer);
         return raw;
     }
 

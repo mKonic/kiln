@@ -175,7 +175,12 @@ TEST(RememberedStatesSurviveRecreation) {
         scroll->ScrollTo(120);
         list->ConsumeScrollDelta(0);   // nothing laid out: the position below is what is saved
         field->SetTextAndPlaceCursorAtEnd("hello world");
-        field->Edit([](TextFieldBuffer& b) { b.SetSelection({ 0, 5 }); });
+        field->Edit([](TextFieldBuffer& b) {
+            b.SetSelection({ 0, 5 });
+            kiln::text::SpanStyle bold;
+            bold.fontWeight = kiln::text::FontWeight::Bold();
+            b.AddStyle(bold, TextRange(6, 11), ExpandPolicy::AtBoth());
+        });
         saved = a.Save();
     }
     Root b(saved);
@@ -194,7 +199,16 @@ TEST(RememberedStatesSurviveRecreation) {
     CHECK_EQ(pager->PageCount(), 10);
     CHECK_EQ(field->TextUtf8(), std::string("hello world"));
     CHECK(field->Peek().selection.start == 0 && field->Peek().selection.end == 5);
+    // The styles too, with their expand policies.
+    const auto spans = field->SpanStyles(TextRange(0, 11));
+    CHECK(spans.size() == 1 && spans[0].start == 6 && spans[0].end == 11 && spans[0].item.fontWeight == std::optional(kiln::text::FontWeight::Bold()));
+    field->Edit([](TextFieldBuffer& b) {
+        const auto r = b.GetSpanStyles(TextRange(6, 11));
+        CHECK(r.size() == 1 && b.GetExpandPolicy(r[0]) == ExpandPolicy::AtBoth());
+    });
     CHECK(field->CanUndo());   // the history survives too
+    field->Undo();             // the style edit is a step of its own (its text did not change)
+    CHECK_EQ(field->TextUtf8(), std::string("hello world"));
     field->Undo();
     CHECK_EQ(field->TextUtf8(), std::string("hello"));
 }

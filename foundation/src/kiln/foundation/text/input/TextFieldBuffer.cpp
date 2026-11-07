@@ -48,8 +48,8 @@ namespace kiln::foundation {
 
     TextFieldCharSequence::TextFieldCharSequence(std::u16string t, TextRange sel, std::optional<TextRange> comp,
                                                  std::optional<std::pair<TextHighlightType, TextRange>> hl,
-                                                 std::vector<PlacedSpan> composing, std::vector<PlacedAnnotation> output)
-        : text(std::move(t)), composingAnnotations(std::move(composing)), outputAnnotations(std::move(output)) {
+                                                 std::vector<PlacedSpan> composing, std::shared_ptr<const TextFieldTextStyles> styles)
+        : text(std::move(t)), composingAnnotations(std::move(composing)), textFieldTextStyles(std::move(styles)) {
         const int n = int(text.size());
         selection = sel.CoerceIn(0, n);
         if (comp) composition = comp->CoerceIn(0, n);
@@ -69,7 +69,9 @@ namespace kiln::foundation {
     }
     bool TextFieldCharSequence::operator==(const TextFieldCharSequence& o) const {
         return selection == o.selection && composition == o.composition && highlight == o.highlight &&
-               composingAnnotations == o.composingAnnotations && text == o.text;
+               composingAnnotations == o.composingAnnotations && text == o.text &&
+               (textFieldTextStyles == o.textFieldTextStyles ||
+                (textFieldTextStyles && o.textFieldTextStyles && *textFieldTextStyles == *o.textFieldTextStyles));
     }
 
     // --- ChangeTracker ------------------------------------------------------------------------
@@ -216,7 +218,20 @@ namespace kiln::foundation {
           m_Selection(initial.selection), m_Composition(initial.composition),
           m_ComposingAnnotations(initial.composingAnnotations) {
         if (initialChanges) m_Changes = *initialChanges;
-        canCallAddStyle = offsetMapping != nullptr;
+        if (initial.textFieldTextStyles) m_Styles = std::make_unique<TextStyleBuffer>(initial.textFieldTextStyles->Buffer(), true);
+    }
+
+    TextFieldBuffer::TextFieldBuffer(const TextFieldBuffer& o)
+        : suggestionSelected(o.suggestionSelected), m_Text(o.m_Text), m_Original(o.m_Original), m_Changes(o.m_Changes), m_OffsetMapping(o.m_OffsetMapping),
+          m_Selection(o.m_Selection), m_Composition(o.m_Composition), m_ComposingAnnotations(o.m_ComposingAnnotations), m_Highlight(o.m_Highlight),
+          m_Styles(o.m_Styles ? std::make_unique<TextStyleBuffer>(*o.m_Styles, true) : nullptr) {}
+
+    TextFieldBuffer& TextFieldBuffer::operator=(const TextFieldBuffer& o) {
+        if (this != &o) {
+            TextFieldBuffer copy(o);
+            *this = std::move(copy);
+        }
+        return *this;
     }
 
     void TextFieldBuffer::SetSelection(TextRange r) {
@@ -270,6 +285,7 @@ namespace kiln::foundation {
         m_Changes.TrackChange(start, end, newLength, hardware);
         if (m_OffsetMapping) m_OffsetMapping->RecordEditOperation(start, end, newLength);
         m_Selection = AdjustTextRange(m_Selection, start, end, newLength);
+        if (m_Styles) m_Styles->ReplaceText(start, end, newLength);
     }
 
     void TextFieldBuffer::Replace(int start, int end, std::u16string_view text, bool hardware) {
@@ -296,16 +312,71 @@ namespace kiln::foundation {
         Replace(0, Length(), std::u16string(m_Original.text));
         SetSelection(m_Original.selection);
         m_Changes.ClearChanges();
+        if (m_Original.textFieldTextStyles) RequireStyleBuffer().SyncTo(m_Original.textFieldTextStyles->Buffer());
+        else if (m_Styles) m_Styles->Clear();
+    }
+
+    TextStyleBuffer& TextFieldBuffer::RequireStyleBuffer() {
+        if (!m_Styles) m_Styles = std::make_unique<TextStyleBuffer>();
+        return *m_Styles;
+    }
+
+    void TextFieldBuffer::RequireValidStyleRange(TextRange range) const {
+        if (range.Min() < 0 || range.Max() > Length()) throw std::out_of_range("style range outside the text");
+        if (range.Reversed()) throw std::invalid_argument("style range reversed");
+    }
+
+    // addAnnotationToBuffer: a style change is tracked as a change of its range.
+    template<typename T>
+    TrackedRange<T> TextFieldBuffer::AddAnnotationToBuffer(T style, TextRange range, ExpandPolicy policy) {
+        const int start = range.Min(), end = range.Max();
+        m_Changes.TrackChange(start, end, end - start, false);
+        TextStyleBuffer& b = RequireStyleBuffer();
+        const int handle = b.AddStyle(text::Annotation(std::move(style)), { start, end, policy.startExpands, policy.endExpands });
+        return { b.Id(), handle };
     }
 
     void TextFieldBuffer::AddStyle(text::SpanStyle style, int start, int end) {
-        if (!canCallAddStyle) throw std::logic_error("styles can be added only from an OutputTransformation");
-        m_OutputAnnotations.push_back({ text::Annotation(std::move(style)), start, end, {} });
+        const TextRange range(start, end);
+        RequireValidStyleRange(range);
+        AddAnnotationToBuffer(std::move(style), range, ExpandPolicy::AtEnd());
     }
 
     void TextFieldBuffer::AddStyle(text::ParagraphStyle style, int start, int end) {
-        if (!canCallAddStyle) throw std::logic_error("styles can be added only from an OutputTransformation");
-        m_OutputAnnotations.push_back({ text::Annotation(std::move(style)), start, end, {} });
+        const TextRange range(start, end);
+        RequireValidStyleRange(range);
+        AddAnnotationToBuffer(std::move(style), range, ExpandPolicy::AtEnd());
+    }
+
+    TrackedRange<text::SpanStyle> TextFieldBuffer::AddStyle(text::SpanStyle style, TextRange range, ExpandPolicy policy) {
+        RequireValidStyleRange(range);
+        return AddAnnotationToBuffer(std::move(style), range, policy);
+    }
+
+    TrackedRange<text::ParagraphStyle> TextFieldBuffer::AddStyle(text::ParagraphStyle style, TextRange range, ExpandPolicy policy) {
+        RequireValidStyleRange(range);
+        return AddAnnotationToBuffer(std::move(style), range, policy);
+    }
+
+    std::vector<TrackedRange<text::SpanStyle>> TextFieldBuffer::GetSpanStyles(TextRange range) const {
+        std::vector<TrackedRange<text::SpanStyle>> out;
+        if (!m_Styles) return out;
+        for (int h : m_Styles->GetStyles<text::SpanStyle>(std::clamp(range.Min(), 0, Length()), std::clamp(range.Max(), 0, Length())))
+            out.push_back({ m_Styles->Id(), h });
+        return out;
+    }
+
+    std::vector<TrackedRange<text::ParagraphStyle>> TextFieldBuffer::GetParagraphStyles(TextRange range) const {
+        std::vector<TrackedRange<text::ParagraphStyle>> out;
+        if (!m_Styles) return out;
+        for (int h : m_Styles->GetStyles<text::ParagraphStyle>(std::clamp(range.Min(), 0, Length()), std::clamp(range.Max(), 0, Length())))
+            out.push_back({ m_Styles->Id(), h });
+        return out;
+    }
+
+    std::shared_ptr<const TextFieldTextStyles> TextFieldBuffer::GetTextFieldTextStyles() const {
+        if (!m_Styles) return nullptr;
+        return std::make_shared<const TextFieldTextStyles>(m_Styles->ToImmutable(), Length());
     }
 
     TextFieldCharSequence TextFieldBuffer::ToTextFieldCharSequence() const {
@@ -313,7 +384,7 @@ namespace kiln::foundation {
     }
 
     TextFieldCharSequence TextFieldBuffer::ToTextFieldCharSequence(TextRange selection, std::optional<TextRange> composition) const {
-        return TextFieldCharSequence(m_Text, selection, composition, std::nullopt, m_ComposingAnnotations, m_OutputAnnotations);
+        return TextFieldCharSequence(m_Text, selection, composition, std::nullopt, m_ComposingAnnotations, GetTextFieldTextStyles());
     }
 
 }

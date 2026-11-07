@@ -6,6 +6,7 @@
 #include "kiln/foundation/Scroll.h"
 #include "kiln/foundation/text/TextFieldState.h"
 #include "kiln/runtime/Saveable.h"
+#include "kiln/text/Savers.h"
 
 #include <algorithm>
 
@@ -77,6 +78,23 @@ namespace kiln::foundation {
                 if (saved.undo.staging) saveOp(l, *saved.undo.staging);
                 for (const auto& op : saved.undo.undo) saveOp(l, op);
                 for (const auto& op : saved.undo.redo) saveOp(l, op);
+                // The styles (TextStyleBuffer.Saver): count, then kind (0 span, 1 paragraph),
+                // style, start, end, start / end expands each.
+                const auto infos = saved.styles ? saved.styles->Buffer().GetAllStyleInfo() : std::vector<TextStyleBuffer::StyleInfo>{};
+                l.push_back(int(infos.size()));
+                for (const auto& info : infos) {
+                    if (const auto* span = std::get_if<text::SpanStyle>(&info.item)) {
+                        l.push_back(0);
+                        l.push_back(text::SpanStyleSaver().save(*span));
+                    } else if (const auto* para = std::get_if<text::ParagraphStyle>(&info.item)) {
+                        l.push_back(1);
+                        l.push_back(text::ParagraphStyleSaver().save(*para));
+                    } else {
+                        l.push_back(-1);
+                        l.push_back(rt::SavedValue{});
+                    }
+                    l.insert(l.end(), { info.start, info.end, info.policy.startExpands ? 1 : 0, info.policy.endExpands ? 1 : 0 });
+                }
                 return l;
             },
             [](const rt::SavedValue::List& l) -> std::optional<std::shared_ptr<TextFieldState>> {
@@ -97,6 +115,18 @@ namespace kiln::foundation {
                     if (IntAt(l, 3)) saved.undo.staging = readOp();
                     for (int k = 0, n = IntAt(l, 4); k < n; ++k) if (auto op = readOp()) saved.undo.undo.push_back(*op);
                     for (int k = 0, n = IntAt(l, 5); k < n; ++k) if (auto op = readOp()) saved.undo.redo.push_back(*op);
+                }
+                if (i < l.size()) {
+                    TextStyleBuffer styles;
+                    const int n = IntAt(l, i++);
+                    for (int k = 0; k < n && i + 6 <= l.size(); ++k, i += 6) {
+                        const int kind = IntAt(l, i);
+                        std::optional<text::Annotation> item;
+                        if (kind == 0) { if (auto st = text::SpanStyleSaver().restore(l[i + 1])) item = text::Annotation(*st); }
+                        else if (kind == 1) { if (auto st = text::ParagraphStyleSaver().restore(l[i + 1])) item = text::Annotation(*st); }
+                        if (item) styles.AddStyle(*item, { IntAt(l, i + 2), IntAt(l, i + 3), IntAt(l, i + 4) != 0, IntAt(l, i + 5) != 0 });
+                    }
+                    if (!styles.Empty()) saved.styles = std::make_shared<const TextFieldTextStyles>(styles.ToImmutable(), int(saved.text.size()));
                 }
                 s->Restore(saved);
                 return s;

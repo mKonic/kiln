@@ -82,6 +82,15 @@ namespace kiln::foundation {
         std::string TextUtf8() const { return ToUtf8(Value().text); }
         TextRange Selection() const { return Value().selection; }
         std::optional<TextRange> Composition() const { return Value().composition; }
+        // textStyles: the text's styles (empty without any).
+        std::vector<text::Range<text::SpanStyle>> SpanStyles(TextRange range) const {
+            const auto& s = Value().textFieldTextStyles;
+            return s ? s->GetSpanStyles(range.Min(), range.Max()) : std::vector<text::Range<text::SpanStyle>>{};
+        }
+        std::vector<text::Range<text::ParagraphStyle>> ParagraphStyles(TextRange range) const {
+            const auto& s = Value().textFieldTextStyles;
+            return s ? s->GetParagraphStyles(range.Min(), range.Max()) : std::vector<text::Range<text::ParagraphStyle>>{};
+        }
 
         // edit { }: a programmatic edit (no input transformation; never merged for undo).
         void Edit(const std::function<void(TextFieldBuffer&)>& block);
@@ -124,7 +133,12 @@ namespace kiln::foundation {
         std::weak_ptr<const char> AliveToken() const { return m_Alive; }
 
         // Saver: text, selection and the undo history.
-        struct Saved { std::u16string text; TextRange selection; TextUndoManager::Saved undo; };
+        struct Saved {
+            std::u16string text;
+            TextRange selection;
+            TextUndoManager::Saved undo;
+            std::shared_ptr<const TextFieldTextStyles> styles;
+        };
         Saved Save() const;
         void Restore(const Saved& s);
 
@@ -135,7 +149,8 @@ namespace kiln::foundation {
         void CommitEditAsUser(const InputTransformation* inputTransformation, bool restartIme, TextFieldEditUndoBehavior undo);
         void UpdateValueAndNotifyListeners(const TextFieldCharSequence& oldValue, const TextFieldCharSequence& newValue,
                                            bool restartImeIfContentChanges, std::optional<bool> textChanged);
-        void SyncMainBufferToTemporaryBuffer(TextFieldBuffer& temp, bool textChanged, bool selectionChanged, std::optional<bool> valueTextChanged);
+        void SyncMainBufferToTemporaryBuffer(TextFieldBuffer& temp, bool textChanged, bool selectionChanged, bool styleChanged,
+                                             std::optional<bool> valueTextChanged);
         void RecordEditForUndo(const TextFieldCharSequence& pre, const TextFieldCharSequence& post, const ChangeList& changes, TextFieldEditUndoBehavior b);
 
         TextUndoManager m_Undo;

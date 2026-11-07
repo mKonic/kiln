@@ -6,9 +6,13 @@
 // that maps offsets across output and codepoint transformations. Text is UTF-16, the unit
 // Android's IME and Compose's offsets use.
 
+#include "kiln/foundation/text/input/TextStyleBuffer.h"
 #include "kiln/text/AnnotatedString.h"
 
+#include <memory>
+
 #include <optional>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -42,19 +46,19 @@ namespace kiln::foundation {
     using PlacedAnnotation = text::Range<text::Annotation>;
 
     // TextFieldCharSequence: text, selection and composition (both clamped into the text), a
-    // handwriting highlight, the IME's composing spans and an output transformation's styles.
+    // handwriting highlight, the IME's composing spans and the text's styles.
     struct TextFieldCharSequence {
         std::u16string text;
         TextRange selection;
         std::optional<TextRange> composition;
         std::optional<std::pair<TextHighlightType, TextRange>> highlight;
         std::vector<PlacedSpan> composingAnnotations;
-        std::vector<PlacedAnnotation> outputAnnotations;
+        std::shared_ptr<const TextFieldTextStyles> textFieldTextStyles;
 
         TextFieldCharSequence() = default;
         TextFieldCharSequence(std::u16string t, TextRange sel, std::optional<TextRange> comp = std::nullopt,
                               std::optional<std::pair<TextHighlightType, TextRange>> hl = std::nullopt,
-                              std::vector<PlacedSpan> composing = {}, std::vector<PlacedAnnotation> output = {});
+                              std::vector<PlacedSpan> composing = {}, std::shared_ptr<const TextFieldTextStyles> styles = nullptr);
         int Length() const { return int(text.size()); }
         bool ContentEquals(std::u16string_view other) const { return text == other; }
         bool ShouldShowSelection() const { return !highlight; }
@@ -115,6 +119,11 @@ namespace kiln::foundation {
         explicit TextFieldBuffer(TextFieldCharSequence initial, const ChangeTracker* initialChanges = nullptr,
                                  std::optional<TextFieldCharSequence> original = std::nullopt,
                                  OffsetMappingCalculator* offsetMapping = nullptr);
+        // A copy has its own styles (its tracked ranges are not the source's).
+        TextFieldBuffer(const TextFieldBuffer& o);
+        TextFieldBuffer& operator=(const TextFieldBuffer& o);
+        TextFieldBuffer(TextFieldBuffer&&) noexcept = default;
+        TextFieldBuffer& operator=(TextFieldBuffer&&) noexcept = default;
 
         int Length() const { return int(m_Text.size()); }
         const std::u16string& AsCharSequence() const { return m_Text; }
@@ -156,11 +165,39 @@ namespace kiln::foundation {
         void ClearHighlight() { m_Highlight.reset(); }
         bool suggestionSelected = false;
 
-        // OutputTransformation styles (only while an output transformation runs).
+        // Styles over the text (TextStyleBuffer): added ranges follow the edits. addStyle without a
+        // policy expands at the end; the TrackedRange variants can be read and changed later in
+        // this buffer.
         void AddStyle(text::SpanStyle style, int start, int end);
         void AddStyle(text::ParagraphStyle style, int start, int end);
-        bool canCallAddStyle = false;
-        const std::vector<PlacedAnnotation>& OutputAnnotations() const { return m_OutputAnnotations; }
+        TrackedRange<text::SpanStyle> AddStyle(text::SpanStyle style, TextRange range, ExpandPolicy policy);
+        TrackedRange<text::ParagraphStyle> AddStyle(text::ParagraphStyle style, TextRange range, ExpandPolicy policy);
+        std::vector<TrackedRange<text::SpanStyle>> GetSpanStyles(TextRange range) const;
+        std::vector<TrackedRange<text::ParagraphStyle>> GetParagraphStyles(TextRange range) const;
+        template<typename T> bool RemoveStyle(const TrackedRange<T>& r) { return m_Styles && m_Styles->RemoveStyle(r.creatorId, r.handle); }
+        template<typename T> bool IsValid(const TrackedRange<T>& r) const { return m_Styles && m_Styles->IsValid(r.creatorId, r.handle); }
+        template<typename T> TextRange GetTextRange(const TrackedRange<T>& r) const {
+            if (!IsValid(r)) return {};
+            const auto [s, e] = m_Styles->GetRange(r.handle);
+            return { s, e };
+        }
+        template<typename T> void SetTextRange(const TrackedRange<T>& r, TextRange range) {
+            RequireValidStyleRange(range);
+            if (range.Collapsed()) throw std::invalid_argument("TrackedRange's textRange cannot be collapsed");
+            if (IsValid(r)) m_Styles->SetRange(r.handle, range.start, range.end);
+        }
+        template<typename T> T GetStyle(const TrackedRange<T>& r) const {
+            if (!IsValid(r)) return T{};
+            const text::Annotation* a = m_Styles->GetItem(r.handle);
+            const T* t = a ? std::get_if<T>(a) : nullptr;
+            return t ? *t : T{};
+        }
+        template<typename T> void SetStyle(const TrackedRange<T>& r, T style) { if (IsValid(r)) m_Styles->SetItem(r.handle, text::Annotation(std::move(style))); }
+        template<typename T> ExpandPolicy GetExpandPolicy(const TrackedRange<T>& r) const { return IsValid(r) ? m_Styles->GetExpandPolicy(r.handle) : ExpandPolicy::InsideOnly(); }
+        template<typename T> void SetExpandPolicy(const TrackedRange<T>& r, ExpandPolicy p) { if (IsValid(r)) m_Styles->SetExpandPolicy(r.handle, p); }
+        const TextStyleBuffer* StyleBuffer() const { return m_Styles.get(); }
+        // getTextFieldTextStyles: a read-only copy (null without styles).
+        std::shared_ptr<const TextFieldTextStyles> GetTextFieldTextStyles() const;
 
         TextFieldCharSequence ToTextFieldCharSequence() const;
         TextFieldCharSequence ToTextFieldCharSequence(TextRange selection, std::optional<TextRange> composition) const;
@@ -176,7 +213,10 @@ namespace kiln::foundation {
         std::optional<TextRange> m_Composition;
         std::vector<PlacedSpan> m_ComposingAnnotations;
         std::optional<std::pair<TextHighlightType, TextRange>> m_Highlight;
-        std::vector<PlacedAnnotation> m_OutputAnnotations;
+        std::unique_ptr<TextStyleBuffer> m_Styles;
+        TextStyleBuffer& RequireStyleBuffer();
+        void RequireValidStyleRange(TextRange range) const;
+        template<typename T> TrackedRange<T> AddAnnotationToBuffer(T style, TextRange range, ExpandPolicy policy);
     };
 
     // findCommonPrefixAndSuffix: the differing middle of a and b, or false when equal.
