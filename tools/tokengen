@@ -1,0 +1,301 @@
+#!/usr/bin/env python3
+"""Generates kiln's Material 3 token tables from androidx material3's tokens/*.kt.
+
+usage: tools/tokengen <androidx-compose checkout> <output dir>
+
+Each Kotlin token object becomes a header of constexpr values in kiln::material3::tokens, named
+like the Kotlin file and keeping its `// VERSION:` line. Only the subset of Kotlin the token files
+use is understood; anything else stops the run with the file and line, so a new token form is
+added here instead of being dropped.
+
+  ColorToken / ShapeToken / TypographyToken / MotionSchemeToken   key ids (Kotlin value classes)
+  N.dp, N.sp                     ui::Dp, text::TextUnit
+  Color(red =, green =, blue =)  ui::Color
+  FontWeight.X / FontFamily.X    text::FontWeight, FontFamilyToken (a generic family)
+  CubicBezierEasing(a, b, c, d)  CubicBezierEasing (ToEasing() builds the curve)
+  RoundedCornerShape, CircleShape, RectangleShape, CornerSize    foundation::CornerShape, ui::Dp
+TypographyTokens.kt (a class of TextStyles over DefaultTextStyle) becomes a class with the same
+members.
+"""
+import os, re, sys
+
+TOKENS = "compose/material3/material3/src/commonMain/kotlin/androidx/compose/material3/tokens"
+
+KEY_TYPES = {"ColorToken", "ShapeToken", "TypographyToken", "MotionSchemeToken"}
+
+TYPE_MAP = {
+    "ColorToken": "ColorToken", "ShapeToken": "ShapeToken", "TypographyToken": "TypographyToken",
+    "MotionSchemeToken": "MotionSchemeToken",
+    "androidx.compose.ui.unit.Dp": "ui::Dp", "Dp": "ui::Dp",
+    "androidx.compose.ui.graphics.Color": "ui::Color", "Color": "ui::Color",
+    "androidx.compose.ui.unit.TextUnit": "text::TextUnit", "TextUnit": "text::TextUnit",
+    "androidx.compose.ui.text.font.FontFamily": "FontFamilyToken", "FontFamily": "FontFamilyToken",
+    "androidx.compose.ui.text.font.FontWeight": "text::FontWeight", "FontWeight": "text::FontWeight",
+    "CubicBezierEasing": "CubicBezierEasing",
+}
+
+
+class Fail(Exception):
+    pass
+
+
+def num(s):
+    """A Kotlin number literal as C++, with its type."""
+    s = s.strip()
+    if re.fullmatch(r"-?\d+(\.\d+)?f", s):
+        v = s[:-1]
+        return (v if "." in v else v + ".0") + "f", "float"
+    if re.fullmatch(r"-?\d+\.\d+", s):
+        return s, "double"
+    if re.fullmatch(r"-?\d+", s):
+        return s, "int"
+    return None, None
+
+
+def fnum(s):
+    v = float(s)
+    t = repr(v)
+    return (t if ("." in t or "e" in t) else t + ".0") + "f"
+
+
+class Translator:
+    def __init__(self, objects):
+        self.objects = objects      # every token object name, for X.Y references
+        self.deps = set()
+
+    def expr(self, e, owner):
+        """Translates a token expression; returns (C++ text, C++ type or None)."""
+        e = " ".join(e.split()).rstrip(",")
+        e = re.sub(r",\s*\)", ")", re.sub(r"\(\s+", "(", e))
+        m = re.fullmatch(r"(-?[\d.]+)\.dp", e)
+        if m:
+            return f"ui::Dp({fnum(m.group(1))})", "ui::Dp"
+        m = re.fullmatch(r"(-?[\d.]+)\.sp", e)
+        if m:
+            return f"text::Sp({fnum(m.group(1))})", "text::TextUnit"
+        m = re.fullmatch(r"Color\(red = (\d+), green = (\d+), blue = (\d+)\)", e)
+        if m:
+            r, g, b = (int(x) for x in m.groups())
+            return f"ui::Color(0xFF{r:02X}{g:02X}{b:02X}u)", "ui::Color"
+        m = re.fullmatch(r"(ColorToken|ShapeToken|TypographyToken|MotionSchemeToken)\((\d+)\)", e)
+        if m:
+            return f"{m.group(1)}{{ {m.group(2)} }}", m.group(1)
+        m = re.fullmatch(r"CubicBezierEasing\(([^,]+), ([^,]+), ([^,]+), ([^,]+)\)", e)
+        if m:
+            a = ", ".join(fnum(x.rstrip("f")) for x in m.groups())
+            return f"CubicBezierEasing{{ {a} }}", "CubicBezierEasing"
+        m = re.fullmatch(r"FontWeight\.(\w+)", e)
+        if m:
+            return f"text::FontWeight::{m.group(1)}()", "text::FontWeight"
+        m = re.fullmatch(r"FontFamily\.(SansSerif|Serif|Monospace|Cursive|Default)", e)
+        if m:
+            return f"FontFamilyToken{{ text::FontFamily::Kind::{m.group(1)} }}", "FontFamilyToken"
+        m = re.fullmatch(r"RoundedCornerShape\((-?[\d.]+)\.dp\)", e)
+        if m:
+            d = f"ui::Dp({fnum(m.group(1))})"
+            return f"foundation::CornerShape{{ {d}, {d}, {d}, {d} }}", "foundation::CornerShape"
+        m = re.fullmatch(r"RoundedCornerShape\(topStart = ([\d.]+)\.dp, topEnd = ([\d.]+)\.dp, "
+                         r"bottomEnd = ([\d.]+)\.dp, bottomStart = ([\d.]+)\.dp\)", e)
+        if m:
+            d = ", ".join(f"ui::Dp({fnum(x)})" for x in m.groups())
+            return f"foundation::CornerShape{{ {d} }}", "foundation::CornerShape"
+        if e == "CircleShape":
+            return "foundation::CornerShape{ ui::Dp(0.0f), ui::Dp(0.0f), ui::Dp(0.0f), ui::Dp(0.0f), 50.0f }", "foundation::CornerShape"
+        if e == "RectangleShape":
+            return "foundation::CornerShape{}", "foundation::CornerShape"
+        m = re.fullmatch(r"CornerSize\((-?[\d.]+)\.dp\)", e)
+        if m:
+            return f"ui::Dp({fnum(m.group(1))})", "ui::Dp"
+        m = re.fullmatch(r"(\w+)\.(\w+)", e)
+        if m and m.group(1) in self.objects:
+            if m.group(1) != owner:
+                self.deps.add(m.group(1))
+            return f"{m.group(1)}::{m.group(2)}", None
+        if re.fullmatch(r"[A-Z]\w*", e):        # a member of the same object
+            return e, None
+        v, t = num(e)
+        if v is not None:
+            return v, t
+        raise Fail(f"unknown expression: {e}")
+
+
+def strip_comments(s):
+    s = re.sub(r"/\*.*?\*/", "", s, flags=re.S)
+    return "\n".join(l for l in s.split("\n") if not l.strip().startswith("//"))
+
+
+def members(body):
+    """Splits an object body into declarations (joining continuation lines)."""
+    decls, cur, depth = [], [], 0
+    for line in body.split("\n"):
+        st = line.strip()
+        if not st or st.startswith("@"):
+            continue
+        starts = re.match(r"(inline val|const val|val)\b", st)
+        if starts and depth == 0 and cur and not cur[-1].rstrip().endswith("="):
+            # "inline val X: T" followed by "get() = ..." is one declaration
+            if not (len(cur) == 1 and re.match(r"inline val \w+:\s*[\w.]+$", cur[0].strip())) and \
+               not re.match(r"val \w+:\s*[\w.]+$", cur[-1].strip()):
+                decls.append(" ".join(cur))
+                cur = []
+        cur.append(st)
+        depth += st.count("(") - st.count(")")
+    if cur:
+        decls.append(" ".join(cur))
+    return decls
+
+
+def parse_object(path, tr):
+    src = open(path).read()
+    version = re.search(r"^//\s*(?:VERSION|Version):\s*(\S+)", src, re.M)
+    text = strip_comments(src)
+    m = re.search(r"internal object (\w+)\s*\{(.*)\}\s*$", text, re.S)
+    if not m:
+        raise Fail("no token object")
+    name, body = m.group(1), m.group(2)
+    out = []
+    for d in members(body):
+        mm = re.fullmatch(r"inline val (\w+):\s*([\w.]+)\s+get\(\) = (.+)", d)
+        if mm:
+            cname, ktype, e = mm.groups()
+            ctype = TYPE_MAP.get(ktype)
+            if not ctype:
+                raise Fail(f"unknown type {ktype} in: {d}")
+            v, _ = tr.expr(e, name)
+            out.append((cname, ctype, v))
+            continue
+        mm = re.fullmatch(r"(?:const )?val (\w+)(?::\s*([\w.]+))? = (.+)", d)
+        if mm:
+            cname, ktype, e = mm.groups()
+            v, t = tr.expr(e, name)
+            ctype = TYPE_MAP.get(ktype) if ktype else t
+            if ctype is None:
+                ctype = "auto"
+            out.append((cname, ctype, v))
+            continue
+        raise Fail(f"unknown declaration: {d}")
+    return name, (version.group(1) if version else None), out
+
+
+def header(src_file, version):
+    v = f" (VERSION: {version})" if version else " (no VERSION line)"
+    return [
+        "#pragma once",
+        "",
+        f"// Generated by tools/tokengen from androidx material3 tokens/{src_file}{v}.",
+        "// Do not edit: change the generator or the source and regenerate.",
+        "",
+    ]
+
+
+def write(path, lines):
+    with open(path, "w") as f:
+        f.write("\n".join(lines).rstrip() + "\n")
+
+
+def typography(path, tr, outdir):
+    """TypographyTokens.kt: TextStyles from TypeScaleTokens over DefaultTextStyle."""
+    text = strip_comments(open(path).read())
+    lhs = re.search(r"DefaultLineHeightStyle =\s*LineHeightStyle\(alignment = LineHeightStyle\.Alignment\.(\w+), "
+                    r"trim = LineHeightStyle\.Trim\.(\w+)\)", " ".join(text.split()))
+    if not lhs:
+        raise Fail("DefaultLineHeightStyle changed")
+    if "platformStyle = defaultPlatformTextStyle()" not in text:
+        raise Fail("DefaultTextStyle changed")
+    fields = {"fontWeight": "span.fontWeight", "fontSize": "span.fontSize",
+              "lineHeight": "paragraph.lineHeight", "letterSpacing": "span.letterSpacing"}
+    styles = []
+    for m in re.finditer(r"val (\w+): TextStyle\s+inline get\(\) =\s+DefaultTextStyle\.copy\((.*?)\)", text, re.S):
+        sets = []
+        for arg in [a.strip() for a in m.group(2).split(",") if a.strip()]:
+            k, e = (x.strip() for x in arg.split("=", 1))
+            if k == "fontFamily":
+                fm = re.fullmatch(r"fontFamily \?: (\w+\.\w+)", e)
+                if not fm:
+                    raise Fail(f"fontFamily form: {e}")
+                v, _ = tr.expr(fm.group(1), "TypographyTokens")
+                sets.append(f"s.span.fontFamily = m_FontFamily ? *m_FontFamily : {v}.Resolve();")
+            elif k in fields:
+                v, _ = tr.expr(e, "TypographyTokens")
+                sets.append(f"s.{fields[k]} = {v};")
+            else:
+                raise Fail(f"unknown TextStyle field {k}")
+        styles.append((m.group(1), sets))
+    if not styles:
+        raise Fail("no styles")
+    version = re.search(r"^//\s*VERSION:\s*(\S+)", open(path).read(), re.M)
+    align = {"Center": "text::LineHeightStyle::Center", "Top": "text::LineHeightStyle::Top",
+             "Bottom": "text::LineHeightStyle::Bottom", "Proportional": "text::LineHeightStyle::Proportional"}[lhs.group(1)]
+    lines = header("TypographyTokens.kt", version.group(1) if version else None)
+    lines += ['#include "kiln/material3/tokens/TokenTypes.h"']
+    lines += [f'#include "kiln/material3/tokens/{d}.h"' for d in sorted(tr.deps)]
+    lines += ["", "#include <optional>", "", "namespace kiln::material3::tokens {", "",
+              "    // DefaultLineHeightStyle",
+              f"    constexpr text::LineHeightStyle DefaultLineHeightStyle() {{ return {{ {align}, text::LineHeightStyle::Trim::{lhs.group(1) and lhs.group(2)} }}; }}",
+              "",
+              "    // DefaultTextStyle: TextStyle.Default with the platform style (includeFontPadding = false,",
+              "    // DefaultPlatformTextStyle.android.kt) and DefaultLineHeightStyle.",
+              "    inline text::TextStyle DefaultTextStyle() {",
+              "        text::TextStyle s;",
+              "        s.paragraph.includeFontPadding = false;",
+              "        s.paragraph.lineHeightStyle = DefaultLineHeightStyle();",
+              "        return s;",
+              "    }",
+              "",
+              "    class TypographyTokens {",
+              "    public:",
+              "        explicit TypographyTokens(std::optional<text::FontFamily> fontFamily = std::nullopt)",
+              "            : m_FontFamily(std::move(fontFamily)) {}"]
+    for name, sets in styles:
+        lines.append(f"        text::TextStyle {name}() const {{")
+        lines.append("            text::TextStyle s = DefaultTextStyle();")
+        lines += ["            " + x for x in sets]
+        lines.append("            return s;")
+        lines.append("        }")
+    lines += ["", "    private:", "        std::optional<text::FontFamily> m_FontFamily;", "    };", "", "}"]
+    write(os.path.join(outdir, "TypographyTokens.h"), lines)
+    return "TypographyTokens"
+
+
+def main():
+    if len(sys.argv) != 3:
+        print(__doc__, file=sys.stderr)
+        sys.exit(2)
+    src = os.path.join(sys.argv[1], TOKENS)
+    outdir = sys.argv[2]
+    os.makedirs(outdir, exist_ok=True)
+    files = sorted(f for f in os.listdir(src) if f.endswith(".kt"))
+    objects = set()
+    for f in files:
+        for m in re.finditer(r"internal (?:object|class) (\w+)", open(os.path.join(src, f)).read()):
+            objects.add(m.group(1))
+    written = []
+    for f in files:
+        path = os.path.join(src, f)
+        tr = Translator(objects)
+        try:
+            if f == "TypographyTokens.kt":
+                written.append(typography(path, tr, outdir))
+                continue
+            name, version, decls = parse_object(path, tr)
+        except Fail as e:
+            print(f"tokengen: {f}: {e}", file=sys.stderr)
+            sys.exit(1)
+        base = f[:-3]
+        lines = header(f, version)
+        lines.append('#include "kiln/material3/tokens/TokenTypes.h"')
+        lines += [f'#include "kiln/material3/tokens/{d}.h"' for d in sorted(tr.deps)]
+        lines += ["", "namespace kiln::material3::tokens {", "", f"    namespace {name} {{"]
+        for cname, ctype, v in decls:
+            lines.append(f"        inline constexpr {ctype} {cname} = {v};")
+        lines += ["    }", "", "}"]
+        write(os.path.join(outdir, base + ".h"), lines)
+        written.append(base)
+    # Every header in one translation unit: the tables compile together.
+    lines = ["// Generated by tools/tokengen: includes every token header so they are compiled.", ""]
+    lines += [f'#include "kiln/material3/tokens/{w}.h"' for w in sorted(written)]
+    write(os.path.join(outdir, "AllTokens.cpp"), lines)
+    print(f"tokengen: {len(written)} token files", file=sys.stderr)
+
+
+main()
