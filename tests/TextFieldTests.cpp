@@ -957,6 +957,8 @@ TEST(MagnifierFollowsTheDraggedHandle) {
     ui::Owner::MagnifierHost mag;
     mag.create = [&](const ui::Owner::MagnifierConfig& c) { ++creates; CHECK(c.useTextDefault); return creates; };
     mag.show = [&](int, Offset src, Offset, float) { shown.push_back(src); };
+    int contentUpdates = 0;
+    mag.updateContent = [&](int) { ++contentUpdates; };
     mag.dismiss = [&](int) { ++dismisses; };
     mag.destroy = [](int) {};
     mag.size = [](int) { return ui::IntSize{ 100, 48 }; };
@@ -978,6 +980,13 @@ TEST(MagnifierFollowsTheDraggedHandle) {
         CHECK_NEAR(shown.back().y, 12.5f, 0.01f);
         CHECK(shown.back().x > 100 && shown.back().x <= 150);
     }
+    // The magnifier copies the content again once the frame drawing the new selection is out.
+    CHECK_EQ(contentUpdates, 0);
+    for (std::int64_t f = 1; f <= 3; ++f) {
+        rt::Dispatcher::Main().RunFrame(f * 16'000'000);
+        h.Pump({ 300, 300 });
+    }
+    CHECK(contentUpdates >= 1);
     SendPointer(h, PointerType::Touch, PointerEventType::Release, 125, 10, false);
     CHECK(dismisses >= 1);
 }

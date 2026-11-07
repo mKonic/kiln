@@ -47,6 +47,8 @@ namespace kiln::foundation {
         ui::Density m_Density{ -1, -1 };
         ui::IntSize m_PreviousSize{ -1, -1 };
         bool m_ContentPosted = false;
+        bool m_ContentRequested = false;
+        rt::Job m_ContentJob;   // kept: a dropped Job cancels its task
         std::shared_ptr<char> m_Alive = std::make_shared<char>(0);
     };
 

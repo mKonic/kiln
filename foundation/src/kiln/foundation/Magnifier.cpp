@@ -77,14 +77,24 @@ namespace kiln::foundation {
     }
 
     void MagnifierController::ScheduleContentUpdate() {
-        // The draw signal: after the next frame the magnifier copies the new content.
-        if (m_ContentPosted || !m_Handle) return;
+        // The draw signal (updateContent from the node's draw in Compose): the magnifier copies
+        // the window's content once the frame with the change is presented. Frame waiters run
+        // as a frame starts, before its draw, so the copy waits for the frame after. Changes
+        // that come in meanwhile get another copy.
+        if (!m_Handle) return;
+        m_ContentRequested = true;
+        if (m_ContentPosted) return;
         m_ContentPosted = true;
-        rt::Launch(rt::Dispatcher::Main(), [](MagnifierController* self, std::weak_ptr<char> weak) -> rt::Task<> {
-            co_await rt::NextFrame{};
-            if (weak.expired()) co_return;
-            self->m_ContentPosted = false;
-            if (self->m_Handle && self->m_Owner && self->m_Owner->Magnifier().updateContent) self->m_Owner->Magnifier().updateContent(self->m_Handle);
+        m_ContentJob = rt::Launch(rt::Dispatcher::Main(), [](MagnifierController* self, std::weak_ptr<char> weak) -> rt::Task<> {
+            while (!weak.expired() && self->m_ContentRequested) {
+                self->m_ContentRequested = false;
+                co_await rt::NextFrame{};
+                if (weak.expired()) co_return;
+                co_await rt::NextFrame{};
+                if (weak.expired()) co_return;
+                if (self->m_Handle && self->m_Owner && self->m_Owner->Magnifier().updateContent) self->m_Owner->Magnifier().updateContent(self->m_Handle);
+            }
+            if (!weak.expired()) self->m_ContentPosted = false;
         }(this, m_Alive));
     }
 

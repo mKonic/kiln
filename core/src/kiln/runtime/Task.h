@@ -170,7 +170,8 @@ namespace kiln::rt {
     };
 
     // Starts `task` now (it runs until its first suspension) under a new Job.
-    Job Launch(Dispatcher& dispatcher, Task<> task);
+    // The Job must be kept: dropping it cancels the task.
+    [[nodiscard]] Job Launch(Dispatcher& dispatcher, Task<> task);
 
     namespace detail {
         template<typename P> std::shared_ptr<JobState> JobOf(std::coroutine_handle<P> h) { return h.promise().job; }
