@@ -365,6 +365,10 @@ namespace kiln::ui {
         const std::vector<TextToolbarEntry>& TextToolbarEntries() const { return m_ToolbarEntries; }
         void OnTextToolbarItem(std::size_t index);
         void OnTextToolbarDestroyed();
+        // The show-passwords setting (Settings.System.TEXT_SHOW_PASSWORD; ShowSecretsSetting from
+        // API 37): bit 1 for touch input, bit 2 for physical keyboards. Observable.
+        int PasswordVisibility() const { return m_PasswordVisibility.Get(); }
+        void SetPasswordVisibility(int bits) { m_PasswordVisibility.Set(bits); }
         void SetTextClassifierHost(TextClassifierHost host) { m_Classifier = std::move(host); }
         const TextClassifierHost& TextClassifier() const { return m_Classifier; }
         void PlaySoundEffect(int constant) { if (m_PlaySound) m_PlaySound(constant); }
@@ -456,6 +460,7 @@ namespace kiln::ui {
         void ReadToolbarEntries();
         void ReadToolbarBounds();
         TextClassifierHost m_Classifier;
+        rt::State<int> m_PasswordVisibility{ 3 };
         friend class FocusTargetNode;
         friend class AccessibilityDelegate;
         LayoutNode* NodeOf(const FocusTargetNode& t) const;

@@ -68,6 +68,7 @@ public class KilnActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        view.release();
         KilnNative.destroy();
         super.onDestroy();
     }

@@ -353,36 +353,53 @@ namespace kiln::foundation {
         }
     }
 
-    const std::optional<TransformedTextFieldState::Transformed>& TransformedTextFieldState::OutputTransformed() const {
-        if (!m_Output) { m_OutputCache.reset(); return m_OutputCache; }
-        const TextFieldCharSequence& value = m_State.Value();
-        if (m_OutputVersion == m_State.Version() && m_OutputAffinity == selectionWedgeAffinity) return m_OutputCache;
-        m_OutputVersion = m_State.Version();
-        m_OutputAffinity = selectionWedgeAffinity;
-        Transformed t;
-        TextFieldBuffer buffer(value, nullptr, std::nullopt, &t.mapping);
+    std::shared_ptr<const TransformedTextFieldState::OutputRaw> TransformedTextFieldState::ComputeOutputRaw() const {
+        auto raw = std::make_shared<OutputRaw>();
+        raw->source = m_State.Value();
+        TextFieldBuffer buffer(raw->source, nullptr, std::nullopt, &raw->mapping);
         buffer.canCallAddStyle = true;
         m_Output->TransformOutput(buffer);
         buffer.canCallAddStyle = false;
-        if (buffer.Changes().ChangeCount() == 0 && buffer.OutputAnnotations().empty()) { m_OutputCache.reset(); return m_OutputCache; }
-        t.text = buffer.ToTextFieldCharSequence(
+        if (buffer.Changes().ChangeCount() != 0 || !buffer.OutputAnnotations().empty()) raw->buffer = std::move(buffer);
+        return raw;
+    }
+
+    const std::optional<TransformedTextFieldState::Transformed>& TransformedTextFieldState::OutputTransformed() const {
+        if (!m_Output) { m_OutputCache.reset(); return m_OutputCache; }
+        const std::shared_ptr<const OutputRaw>& raw = m_OutputRaw.Get();
+        if (m_OutputFor == raw.get() && m_OutputAffinity == selectionWedgeAffinity) return m_OutputCache;
+        m_OutputFor = raw.get();
+        m_OutputAffinity = selectionWedgeAffinity;
+        if (!raw->buffer) { m_OutputCache.reset(); return m_OutputCache; }
+        const TextFieldCharSequence& value = raw->source;
+        Transformed t;
+        t.mapping = raw->mapping;
+        t.text = raw->buffer->ToTextFieldCharSequence(
             MapToTransformedWith(value.selection, t.mapping, &selectionWedgeAffinity),
             value.composition ? std::optional(MapToTransformedWith(*value.composition, t.mapping, &selectionWedgeAffinity)) : std::nullopt);
         m_OutputCache = std::move(t);
         return m_OutputCache;
     }
 
+    std::shared_ptr<const TransformedTextFieldState::CodepointRaw> TransformedTextFieldState::ComputeCodepointRaw() const {
+        auto raw = std::make_shared<CodepointRaw>();
+        raw->source = OutputText();
+        raw->visual = ToVisualText(raw->source.text, *m_Codepoint, raw->mapping);
+        return raw;
+    }
+
     const std::optional<TransformedTextFieldState::Transformed>& TransformedTextFieldState::CodepointTransformed() const {
         if (!m_Codepoint) { m_CodepointCache.reset(); return m_CodepointCache; }
-        const auto& out = OutputTransformed();
-        if (m_CodepointVersion == m_State.Version() && m_CodepointAffinity == selectionWedgeAffinity) return m_CodepointCache;
-        m_CodepointVersion = m_State.Version();
+        const std::shared_ptr<const CodepointRaw>& raw = m_CodepointRaw.Get();
+        if (m_CodepointFor == raw.get() && m_CodepointAffinity == selectionWedgeAffinity) return m_CodepointCache;
+        m_CodepointFor = raw.get();
         m_CodepointAffinity = selectionWedgeAffinity;
-        const TextFieldCharSequence& source = out ? out->text : m_State.Value();
+        if (!raw->visual) { m_CodepointCache.reset(); return m_CodepointCache; }
+        // The same text; its selection as the output affinity maps it now.
+        const TextFieldCharSequence source = OutputText();
         Transformed t;
-        auto visual = ToVisualText(source.text, *m_Codepoint, t.mapping);
-        if (!visual) { m_CodepointCache.reset(); return m_CodepointCache; }
-        t.text = TextFieldCharSequence(*visual, MapToTransformedWith(source.selection, t.mapping, &selectionWedgeAffinity),
+        t.mapping = raw->mapping;
+        t.text = TextFieldCharSequence(*raw->visual, MapToTransformedWith(source.selection, t.mapping, &selectionWedgeAffinity),
                                        source.composition ? std::optional(MapToTransformedWith(*source.composition, t.mapping, &selectionWedgeAffinity))
                                                           : std::nullopt);
         m_CodepointCache = std::move(t);

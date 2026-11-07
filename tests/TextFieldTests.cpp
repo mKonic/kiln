@@ -3,6 +3,7 @@
 #include "FakeText.h"
 
 #include "kiln/foundation/text/BasicTextField.h"
+#include "kiln/foundation/text/BasicSecureTextField.h"
 #include "kiln/foundation/Focus.h"
 #include "kiln/foundation/Layouts.h"
 #include "kiln/foundation/content/ReceiveContent.h"
@@ -764,6 +765,50 @@ TEST(SmartSelectionGrowsTheWordAndLeadsTheToolbar) {
     CHECK_EQ(processed, 0);
     CHECK(processedText == U("hello big world"));
     CHECK(!h.owner.TextToolbarShown());
+}
+
+TEST(SecureFieldMasksAndRevealsTheLastTypedCharacter) {
+    FieldHarness h;
+    TextFieldState state("");
+    std::string shown;
+    BasicSecureTextFieldOptions o;
+    o.textStyle = text::TextStyle(text::Sp(20));
+    o.onTextLayout = [&](const text::TextLayoutResult& r) { shown = r.LayoutInput().text.Text(); };
+    auto mode = std::make_shared<rt::State<TextObfuscationMode>>(TextObfuscationMode::System);
+    h.comp.SetContent([&] {
+        o.textObfuscationMode = mode->Get();
+        Column(Modifier{}, [&] { BasicSecureTextField(state, {}, o); });
+    });
+    h.Pump({ 300, 300 });
+    h.owner.MoveFocus(ui::FocusDirection::Next);
+    h.Pump({ 300, 300 });
+    ui::TextInputSession* s = h.owner.ActiveTextInput();
+    CHECK(s != nullptr);
+    if (!s) return;
+    // Typed on the screen keyboard: the last character shows, the earlier ones are masked.
+    s->CommitText(U("a"), 1);
+    s->CommitText(U("b"), 1);
+    h.Pump({ 300, 300 });
+    CHECK(shown == "\u2022b");
+    CHECK(state.Peek().text == U("ab"));
+    // 1.5 s later it is masked too.
+    WaitMs(h, 1600);
+    CHECK(shown == "\u2022\u2022");
+    // The setting off for screen keyboards: nothing shows.
+    h.owner.SetPasswordVisibility(2);
+    s->CommitText(U("c"), 1);
+    h.Pump({ 300, 300 });
+    CHECK(shown == "\u2022\u2022\u2022");
+    // RevealLastTyped ignores the setting; Hidden never reveals.
+    mode->Set(TextObfuscationMode::RevealLastTyped);
+    h.Pump({ 300, 300 });
+    s = h.owner.ActiveTextInput();
+    if (s) s->CommitText(U("d"), 1);
+    h.Pump({ 300, 300 });
+    CHECK(shown == "\u2022\u2022\u2022d");
+    mode->Set(TextObfuscationMode::Hidden);
+    h.Pump({ 300, 300 });
+    CHECK(shown == "\u2022\u2022\u2022\u2022");
 }
 
 TEST(DoubleTapAndMouseDragSelect) {

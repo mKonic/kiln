@@ -20,6 +20,8 @@ final class KilnNative {
     /** A suggestSelection / classifyText request's result (handle 0: no classification). */
     static native void classifierResult(int request, boolean hasRange, int start, int end, int handle, String[] actions, boolean legacyAssist);
     static native void setAnimationScale(float scale);
+    /** The show-passwords setting: bit 1 touch input, bit 2 physical keyboards. */
+    static native void setPasswordVisibility(int bits);
     static native void setLayoutDirection(boolean rtl);
     static native void touchEvent(int action, int actionIndex, long eventTime, int[] ids, float[] xy,
                                   int[] toolTypes, int buttons, int metaState, int classification, float hscroll, float vscroll,

@@ -78,6 +78,15 @@ final class KilnTextServices {
         this.main = main;
     }
 
+    /** Destroys the sessions and stops the background threads. */
+    void shutdown() {
+        int[] ids = new int[sessions.size()];
+        for (int i = 0; i < ids.length; ++i) ids[i] = sessions.keyAt(i);
+        for (int id : ids) destroySession(id);
+        classifications.clear();
+        io.shutdown();
+    }
+
     // --- TextClassifier sessions -----------------------------------------------------------------
 
     /** type 0: EditableText (WIDGET_TYPE_EDITTEXT), 1: StaticText (WIDGET_TYPE_TEXTVIEW). */

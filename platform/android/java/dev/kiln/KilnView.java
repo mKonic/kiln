@@ -68,8 +68,51 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
                 Settings.Global.getUriFor(Settings.Global.ANIMATOR_DURATION_SCALE), false,
                 animationScaleObserver);
         pushAnimationScale();
+        // The show-passwords setting for BasicSecureTextField (PasswordVisibilitySetting).
+        Handler main = new Handler(Looper.getMainLooper());
+        if (android.os.Build.VERSION.SDK_INT >= 37) {
+            unregisterPasswordObserver = android.text.ShowSecretsSetting.registerCallback(context,
+                    () -> main.post(this::pushPasswordVisibility));
+        } else {
+            ContentObserver o = new ContentObserver(main) {
+                @Override public void onChange(boolean selfChange) { pushPasswordVisibility(); }
+            };
+            context.getContentResolver().registerContentObserver(
+                    Settings.System.getUriFor(Settings.System.TEXT_SHOW_PASSWORD), false, o);
+            unregisterPasswordObserver = () -> context.getContentResolver().unregisterContentObserver(o);
+        }
+        pushPasswordVisibility();
         pushViewConfiguration();
         installInsets();
+    }
+
+    private Runnable unregisterPasswordObserver;
+
+    @SuppressWarnings("deprecation")
+    private void pushPasswordVisibility() {
+        boolean touch, physical;
+        if (android.os.Build.VERSION.SDK_INT >= 37) {
+            touch = android.text.ShowSecretsSetting.shouldShowTouchInput(getContext());
+            physical = android.text.ShowSecretsSetting.shouldShowPhysicalInput(getContext());
+        } else {
+            boolean show;
+            try {
+                show = Settings.System.getInt(getContext().getContentResolver(), Settings.System.TEXT_SHOW_PASSWORD) > 0;
+            } catch (Exception e) {
+                android.util.Log.w("BasicSecureTextField", "Failed to fetch show password setting, using value: true", e);
+                show = true;
+            }
+            touch = physical = show;
+        }
+        KilnNative.setPasswordVisibility((touch ? 1 : 0) | (physical ? 2 : 0));
+    }
+
+    /** The activity is going: settings observers and the text services stop. */
+    void release() {
+        getContext().getContentResolver().unregisterContentObserver(animationScaleObserver);
+        if (unregisterPasswordObserver != null) unregisterPasswordObserver.run();
+        unregisterPasswordObserver = null;
+        textServices.shutdown();
     }
 
     // --- window insets (spec 02 req. 15) ----------------------------------------------------

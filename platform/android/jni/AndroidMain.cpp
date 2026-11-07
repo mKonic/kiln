@@ -751,6 +751,12 @@ namespace {
         g_Host->app->SetFontWeightAdjustment(adjustment);
     }
 
+    void SetPasswordVisibility(JNIEnv*, jclass, jint bits) {
+        if (!g_Host) return;
+        g_Host->app->GetOwner().SetPasswordVisibility(bits);
+        g_Host->app->RequestFrame();
+    }
+
     void SetAnimationScale(JNIEnv*, jclass, jfloat scale) {
         if (!g_Host) return;
         g_Host->app->SetAnimationScale(scale);
@@ -1650,6 +1656,7 @@ extern "C" JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void*) {
         { "textToolbarDestroyed", "()V", reinterpret_cast<void*>(&TextToolbarDestroyed) },
         { "classifierResult", "(IZIII[Ljava/lang/String;Z)V", reinterpret_cast<void*>(&ClassifierResult) },
         { "setAnimationScale", "(F)V", reinterpret_cast<void*>(&SetAnimationScale) },
+        { "setPasswordVisibility", "(I)V", reinterpret_cast<void*>(&SetPasswordVisibility) },
         { "setLayoutDirection", "(Z)V", reinterpret_cast<void*>(&SetLayoutDirection) },
         { "touchEvent", "(IIJ[I[F[IIIIFF[J[F[F)V", reinterpret_cast<void*>(&TouchEvent) },
         { "keyEvent", "(IIIIIJI)Z", reinterpret_cast<void*>(&KeyEvent) },

@@ -4,6 +4,7 @@
 
 #include <cmath>
 #include <kiln/foundation/Compose.h>
+#include <kiln/foundation/text/BasicSecureTextField.h>
 #include <kiln/graphics/PathEffect.h>
 #include <kiln/foundation/MeshGradient.h>
 #include <kiln/foundation/Gestures.h>
@@ -188,6 +189,14 @@ namespace {
                 BasicTextField(field, Padding(FillMax(Modifier{}, Axis::Horizontal), 16_dp, 16_dp), opt);
             });
             BasicText("Field text: " + field.TextUtf8(), Padding(Modifier{}, 16_dp, 0_dp), { 14, kVariant });
+            // A password field: the last typed character shows briefly when the setting allows.
+            auto& password = RememberTextFieldState("");
+            Box(Background(Padding(FillMax(Modifier{}, Axis::Horizontal), 16_dp, 0_dp), kContainer, CornerShape::Rounded(12_dp)),
+                Alignment::CenterStart(), false, [&] {
+                BasicSecureTextFieldOptions opt;
+                opt.textStyle = { 16, kOnSurface };
+                BasicSecureTextField(password, Padding(FillMax(Modifier{}, Axis::Horizontal), 16_dp, 16_dp), opt);
+            });
             auto& taps = kiln::rt::RememberSaveableState(0);
             auto& pressed = RememberState(false);
             Row(Padding(Modifier{}, 16_dp, 0_dp), Arrangement::SpacedBy(16_dp), AlignmentV::CenterVertically(), [&] {

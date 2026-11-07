@@ -214,12 +214,31 @@ namespace kiln::foundation {
         const std::optional<Transformed>& OutputTransformed() const;
         const std::optional<Transformed>& CodepointTransformed() const;
 
+        // What a transformation made of the value, derived (derivedStateOf): it is redone when
+        // the value or any state the transformation read changes, and readers of the visual
+        // text hear about both. The selection is mapped per wedge affinity on top.
+        struct OutputRaw {
+            OffsetMappingCalculator mapping;
+            std::optional<TextFieldBuffer> buffer;   // null: nothing changed
+            TextFieldCharSequence source;
+        };
+        struct CodepointRaw {
+            OffsetMappingCalculator mapping;
+            std::optional<std::u16string> visual;     // null: nothing changed
+            TextFieldCharSequence source;
+        };
+        std::shared_ptr<const OutputRaw> ComputeOutputRaw() const;
+        std::shared_ptr<const CodepointRaw> ComputeCodepointRaw() const;
+
         TextFieldState& m_State;
         InputTransformationPtr m_Input;
         CodepointTransformationPtr m_Codepoint;
         OutputTransformationPtr m_Output;
+        mutable rt::Derived<std::shared_ptr<const OutputRaw>, rt::NeverEqual> m_OutputRaw{ [this] { return ComputeOutputRaw(); } };
+        mutable rt::Derived<std::shared_ptr<const CodepointRaw>, rt::NeverEqual> m_CodepointRaw{ [this] { return ComputeCodepointRaw(); } };
         mutable std::optional<Transformed> m_OutputCache, m_CodepointCache;
-        mutable std::uint64_t m_OutputVersion = ~0ull, m_CodepointVersion = ~0ull;
+        mutable const void* m_OutputFor = nullptr;
+        mutable const void* m_CodepointFor = nullptr;
         mutable SelectionWedgeAffinity m_OutputAffinity, m_CodepointAffinity;
     };
 
