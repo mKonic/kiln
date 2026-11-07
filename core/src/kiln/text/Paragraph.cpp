@@ -68,6 +68,47 @@ namespace kiln {
         return -1;
     }
 
+    int TextBackend::SimpleCharacterType(char32_t c) {
+        // Java's Character constants.
+        constexpr int UPPERCASE_LETTER = 1, LOWERCASE_LETTER = 2, OTHER_LETTER = 5, DECIMAL_DIGIT_NUMBER = 9, SPACE_SEPARATOR = 12,
+                      LINE_SEPARATOR = 13, PARAGRAPH_SEPARATOR = 14, CONTROL = 15, DASH_PUNCTUATION = 20, START_PUNCTUATION = 21,
+                      END_PUNCTUATION = 22, CONNECTOR_PUNCTUATION = 23, OTHER_PUNCTUATION = 24, MATH_SYMBOL = 25, CURRENCY_SYMBOL = 26,
+                      MODIFIER_SYMBOL = 27, INITIAL_QUOTE_PUNCTUATION = 29, FINAL_QUOTE_PUNCTUATION = 30, OTHER_SYMBOL = 28;
+        if (c < 0x20 || (c >= 0x7F && c < 0xA0)) return CONTROL;
+        if (c == ' ' || c == 0xA0 || c == 0x1680 || (c >= 0x2000 && c <= 0x200A) || c == 0x202F || c == 0x205F || c == 0x3000) return SPACE_SEPARATOR;
+        if (c == 0x2028) return LINE_SEPARATOR;
+        if (c == 0x2029) return PARAGRAPH_SEPARATOR;
+        if (c >= '0' && c <= '9') return DECIMAL_DIGIT_NUMBER;
+        if ((c >= 'A' && c <= 'Z') || (c >= 0xC0 && c <= 0xDE && c != 0xD7)) return UPPERCASE_LETTER;
+        if ((c >= 'a' && c <= 'z') || (c >= 0xDF && c <= 0xFF && c != 0xF7)) return LOWERCASE_LETTER;
+        switch (c) {
+            case '-': return DASH_PUNCTUATION;
+            case '(': case '[': case '{': return START_PUNCTUATION;
+            case ')': case ']': case '}': return END_PUNCTUATION;
+            case '_': return CONNECTOR_PUNCTUATION;
+            case '!': case '"': case '#': case '%': case '&': case '\'': case '*': case ',': case '.': case '/': case ':': case ';':
+            case '?': case '@': case '\\': case 0xA1: case 0xA7: case 0xB6: case 0xB7: case 0xBF: return OTHER_PUNCTUATION;
+            case '+': case '<': case '=': case '>': case '|': case '~': case 0xAC: case 0xB1: case 0xD7: case 0xF7: return MATH_SYMBOL;
+            case '$': case 0xA2: case 0xA3: case 0xA4: case 0xA5: return CURRENCY_SYMBOL;
+            case '^': case '`': case 0xA8: case 0xAF: case 0xB4: case 0xB8: return MODIFIER_SYMBOL;
+            case 0xAB: return INITIAL_QUOTE_PUNCTUATION;
+            case 0xBB: return FINAL_QUOTE_PUNCTUATION;
+            case 0xA6: case 0xA9: case 0xAE: case 0xB0: return OTHER_SYMBOL;
+            default: break;
+        }
+        if (c >= 0x2010 && c <= 0x2015) return DASH_PUNCTUATION;
+        if (c == 0x2018 || c == 0x201B || c == 0x201C || c == 0x201F || c == 0x2039) return INITIAL_QUOTE_PUNCTUATION;
+        if (c == 0x2019 || c == 0x201D || c == 0x203A) return FINAL_QUOTE_PUNCTUATION;
+        if (c == 0x201A || c == 0x201E || c == 0x2045) return START_PUNCTUATION;
+        if (c == 0x2046) return END_PUNCTUATION;
+        if (c == 0x203F || c == 0x2040 || c == 0x2054) return CONNECTOR_PUNCTUATION;
+        if ((c >= 0x2016 && c <= 0x2017) || (c >= 0x2020 && c <= 0x2027) || (c >= 0x2030 && c <= 0x2038) || (c >= 0x203B && c <= 0x203E) ||
+            (c >= 0x2041 && c <= 0x2043) || (c >= 0x2047 && c <= 0x2051) || c == 0x2053 || (c >= 0x2055 && c <= 0x205E) ||
+            (c >= 0x3001 && c <= 0x3003))
+            return OTHER_PUNCTUATION;
+        return OTHER_LETTER;
+    }
+
     int TextBackend::SurrogateCharacterBreak(std::u16string_view t, int offset, bool following) {
         const int n = int(t.size());
         auto high = [&](int i) { return i >= 0 && i < n && t[std::size_t(i)] >= 0xD800 && t[std::size_t(i)] <= 0xDBFF; };

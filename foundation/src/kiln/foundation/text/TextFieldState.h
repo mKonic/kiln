@@ -178,6 +178,8 @@ namespace kiln::foundation {
         TextFieldCharSequence OutputText() const;
         TextFieldCharSequence VisualText() const;
         bool IsTransformed() const { return m_Output || m_Codepoint; }
+        // outputText !== untransformedText: an output transformation changed the text.
+        bool IsOutputTransformed() const { return OutputTransformed().has_value(); }
         SelectionWedgeAffinity selectionWedgeAffinity;
 
         void PlaceCursorBeforeCharAt(int transformedOffset) { SelectCharsIn(TextRange(transformedOffset)); }

@@ -12,6 +12,7 @@
 
 #include "kiln/text/AnnotatedString.h"
 #include "kiln/ui/Clip.h"
+#include "kiln/ui/Geometry.h"
 
 namespace kiln::ui {
 
@@ -73,6 +74,21 @@ namespace kiln::ui {
         bool operator==(const CursorAnchorInfo&) const = default;
     };
 
+    // HandwritingGesture (android.view.inputmethod, API 34): a stylus gesture the keyboard asks the
+    // editor to perform. Areas and points are in root (view) pixels.
+    struct HandwritingGesture {
+        enum class Type : std::uint8_t { Select, Delete, SelectRange, DeleteRange, JoinOrSplit, Insert, RemoveSpace };
+        enum class Granularity : std::uint8_t { Character, Word };
+        static constexpr int kResultUnknown = 0, kResultSuccess = 1, kResultUnsupported = 2, kResultFailed = 3, kResultCancelled = 4,
+                             kResultFallback = 5;
+        Type type = Type::Select;
+        Granularity granularity = Granularity::Character;
+        Rect area, endArea;           // the (start) area, the range gestures' end area
+        Offset point, endPoint;       // join or split / insertion point; remove space start and end
+        std::u16string textToInsert;
+        std::optional<std::u16string> fallbackText;
+    };
+
     // Implemented by a text field while it holds the session (StatelessInputConnection's
     // TextInputSession). Edits between BeginBatchEdit and the outermost EndBatchEdit apply together.
     class TextInputSession {
@@ -102,6 +118,11 @@ namespace kiln::ui {
         virtual void RequestCursorUpdates(int) {}
         // InputConnection.commitContent (Source.Keyboard): true when a receiver took any of it.
         // `permission` is the host's handle on the granted URI permission (0: none).
+        // performHandwritingGesture: a kResult* code. previewHandwritingGesture: whether it showed a
+        // preview (select and delete gestures); the preview stays until cancelled or replaced.
+        virtual int PerformHandwritingGesture(const HandwritingGesture&) { return HandwritingGesture::kResultUnsupported; }
+        virtual bool PreviewHandwritingGesture(const HandwritingGesture&) { return false; }
+        virtual void CancelHandwritingPreview() {}
         virtual bool CommitContent(const ClipEntry&, const ClipMetadata&, const std::optional<std::string>& /*linkUri*/, int /*permission*/) { return false; }
     };
 

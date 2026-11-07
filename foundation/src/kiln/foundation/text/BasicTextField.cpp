@@ -9,6 +9,7 @@
 #include "kiln/foundation/Semantics.h"
 #include "kiln/foundation/text/BasicText.h"
 #include "kiln/foundation/text/handwriting/StylusHandwriting.h"
+#include "kiln/foundation/text/input/HandwritingGestures.h"
 #include "kiln/foundation/text/input/TextFieldKeys.h"
 #include "kiln/foundation/text/input/TextFieldSelectionState.h"
 #include "kiln/foundation/text/input/TextLayoutState.h"
@@ -52,6 +53,10 @@ namespace kiln::foundation {
             void RequestCursorUpdates(int mode) override;
             bool CommitContent(const ui::ClipEntry& clip, const ui::ClipMetadata& metadata, const std::optional<std::string>& linkUri,
                                int permission) override;
+            int PerformHandwritingGesture(const ui::HandwritingGesture& g) override;
+            bool PreviewHandwritingGesture(const ui::HandwritingGesture& g) override;
+            void CancelHandwritingPreview() override;
+            HandwritingGestureContext GestureContext() const;
         };
 
         // CursorAnimationState: visible for 500 ms, hidden for 500 ms, restarting visible on
@@ -398,6 +403,15 @@ namespace kiln::foundation {
             field.selection->SetDirectTouchInteraction(false);
         }
         void Session::PerformImeAction(ui::ImeAction a) { field.OnImeActionPerformed(a); }
+        HandwritingGestureContext Session::GestureContext() const {
+            ui::Owner* o = field.owner;
+            Field* f = &field;
+            return { *field.transformed, *field.layout, o ? o->Text() : nullptr, o ? o->Config().handwritingGestureLineMargin : 16.0f,
+                     [f] { f->selection->UpdateTextToolbarState(TextToolbarState::Selection); } };
+        }
+        int Session::PerformHandwritingGesture(const ui::HandwritingGesture& g) { return foundation::PerformHandwritingGesture(GestureContext(), g); }
+        bool Session::PreviewHandwritingGesture(const ui::HandwritingGesture& g) { return foundation::PreviewHandwritingGesture(GestureContext(), g); }
+        void Session::CancelHandwritingPreview() { foundation::CancelHandwritingPreview(*field.transformed); }
         void Session::UpdateDirectTouchInteraction(bool direct) { field.selection->SetDirectTouchInteraction(direct); }
         void Session::RequestCursorUpdates(int mode) { field.RequestCursorUpdates(mode); }
 

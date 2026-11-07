@@ -239,7 +239,8 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
         KilnNative.setViewConfiguration(ViewConfiguration.getLongPressTimeout(),
                 ViewConfiguration.getDoubleTapTimeout(), vc.getScaledTouchSlop(),
                 vc.getScaledMaximumFlingVelocity(), vc.getScaledMinimumFlingVelocity(),
-                android.os.Build.VERSION.SDK_INT >= 34 ? vc.getScaledHandwritingSlop() : 2f);
+                android.os.Build.VERSION.SDK_INT >= 34 ? vc.getScaledHandwritingSlop() : 2f,
+                android.os.Build.VERSION.SDK_INT >= 34 ? vc.getScaledHandwritingGestureLineMargin() : 16f);
     }
 
     private int[] ids = new int[4];
@@ -803,6 +804,17 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
         if (android.os.Build.VERSION.SDK_INT >= 35) out.setStylusHandwritingEnabled(stylusHandwriting);
         if (out.extras == null) out.extras = new android.os.Bundle();
         out.extras.putBoolean("androidx.core.view.inputmethod.EditorInfoCompat.STYLUS_HANDWRITING_ENABLED", stylusHandwriting);
+        if (stylusHandwriting && android.os.Build.VERSION.SDK_INT >= 34) {
+            // EditorInfoApi34.setHandwritingGestures
+            out.setSupportedHandwritingGestures(java.util.Arrays.asList(
+                    android.view.inputmethod.SelectGesture.class, android.view.inputmethod.DeleteGesture.class,
+                    android.view.inputmethod.SelectRangeGesture.class, android.view.inputmethod.DeleteRangeGesture.class,
+                    android.view.inputmethod.JoinOrSplitGesture.class, android.view.inputmethod.InsertGesture.class,
+                    android.view.inputmethod.RemoveSpaceGesture.class));
+            out.setSupportedHandwritingGesturePreviews(new java.util.HashSet<>(java.util.Arrays.asList(
+                    android.view.inputmethod.SelectGesture.class, android.view.inputmethod.DeleteGesture.class,
+                    android.view.inputmethod.SelectRangeGesture.class, android.view.inputmethod.DeleteRangeGesture.class)));
+        }
         if (connection != null) connection.closeConnection();
         extractedTextMonitor = false;
         extractedTextToken = 0;

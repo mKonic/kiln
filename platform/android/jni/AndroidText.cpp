@@ -40,6 +40,7 @@ namespace kiln::android {
         m_WordBoundary = env->GetMethodID(cls, "wordBoundary", "(II)J");
         m_CharacterBreak = env->GetMethodID(cls, "characterBreak", "(Ljava/lang/String;IZ)I");
         m_WordBreak = env->GetMethodID(cls, "wordBreak", "(Ljava/lang/String;IZ)I");
+        m_CharType = env->GetStaticMethodID(cls, "charType", "(I)I");
         m_UpperCase = env->GetMethodID(cls, "upperCase", "(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;");
         m_IsRtl = env->GetMethodID(cls, "isRtlCharAt", "(II)Z");
         m_Release = env->GetMethodID(cls, "release", "(I)V");
@@ -279,6 +280,15 @@ namespace kiln::android {
         jstring s = env->NewString(reinterpret_cast<const jchar*>(text.data()), jsize(text.size()));
         const int r = env->CallIntMethod(m_Text, m_CharacterBreak, s, jint(offset), jboolean(following));
         env->DeleteLocalRef(s);
+        return r;
+    }
+
+    int AndroidText::CharacterType(char32_t c) {
+        JNIEnv* env = Env(m_Vm);
+        if (!env) return TextBackend::CharacterType(c);
+        jclass cls = env->GetObjectClass(m_Text);
+        const int r = env->CallStaticIntMethod(cls, m_CharType, jint(c));
+        env->DeleteLocalRef(cls);
         return r;
     }
 

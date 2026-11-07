@@ -9,6 +9,7 @@
 #include "kiln/TextBackend.h"
 #include "kiln/text/AnnotatedString.h"
 
+#include <functional>
 #include <memory>
 #include <optional>
 #include <span>
@@ -52,6 +53,16 @@ namespace kiln::text {
     // resolveLineHeightInPx.
     float ResolveLineHeightPx(TextUnit lineHeight, float contextFontSizePx, const ui::Density& density);
 
+    // TextGranularity / TextInclusionStrategy (getRangeForRect): segments are grapheme clusters or
+    // words; a segment is in the range when its bounds and the rect pass the strategy.
+    enum class TextGranularity : std::uint8_t { Character, Word };
+    using TextInclusionStrategy = std::function<bool(const ui::Rect& textBounds, const ui::Rect& rect)>;
+    namespace inclusion {
+        TextInclusionStrategy AnyOverlap();
+        TextInclusionStrategy ContainsAll();
+        TextInclusionStrategy ContainsCenter();
+    }
+
     // One laid-out paragraph; releases its backend handle when destroyed.
     class Paragraph {
     public:
@@ -77,6 +88,8 @@ namespace kiln::text {
         std::vector<RectF> SelectionRects(int start, int end) const;
         std::pair<int, int> WordBoundary(int offset) const;
         bool IsRtlCharAt(int offset) const;
+        // getRangeForRect: the first to the last segment the rect includes, {0, 0} for none.
+        std::pair<int, int> RangeForRect(const ui::Rect& rect, TextGranularity granularity, const TextInclusionStrategy& inclusion) const;
 
     private:
         TextBackend* m_Backend;
@@ -137,6 +150,7 @@ namespace kiln::text {
         std::pair<int, int> WordBoundary(int offset) const;
         ResolvedTextDirection ParagraphDirection(int offset) const;
         ResolvedTextDirection BidiRunDirection(int offset) const;
+        std::pair<int, int> RangeForRect(const ui::Rect& rect, TextGranularity granularity, const TextInclusionStrategy& inclusion) const;
         // One per placeholder given: where it is, or none (ellipsized, cut off, past maxLines).
         const std::vector<std::optional<RectF>>& PlaceholderRects() const { return m_PlaceholderRects; }
 
@@ -196,6 +210,9 @@ namespace kiln::text {
         RectF BoundingBox(int offset) const { return m_Paragraphs->BoundingBox(offset); }
         std::vector<RectF> SelectionRects(int start, int end) const { return m_Paragraphs->SelectionRects(start, end); }
         std::pair<int, int> WordBoundary(int offset) const { return m_Paragraphs->WordBoundary(offset); }
+        std::pair<int, int> RangeForRect(const ui::Rect& rect, TextGranularity granularity, const TextInclusionStrategy& inclusion) const {
+            return m_Paragraphs->RangeForRect(rect, granularity, inclusion);
+        }
         ResolvedTextDirection ParagraphDirection(int offset) const { return m_Paragraphs->ParagraphDirection(offset); }
         ResolvedTextDirection BidiRunDirection(int offset) const { return m_Paragraphs->BidiRunDirection(offset); }
         const std::vector<std::optional<RectF>>& PlaceholderRects() const { return m_Paragraphs->PlaceholderRects(); }

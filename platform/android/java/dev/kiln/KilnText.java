@@ -816,6 +816,9 @@ final class KilnText {
     }
 
     /** BreakIterator.getWordInstance (the default locale) preceding / following; -1 at the ends. */
+    /** Character.getType for the handwriting gestures' whitespace and punctuation checks. */
+    static int charType(int codePoint) { return Character.getType(codePoint); }
+
     int wordBreak(String text, int offset, boolean following) {
         BreakIterator it = BreakIterator.getWordInstance(Locale.getDefault());
         it.setText(text);

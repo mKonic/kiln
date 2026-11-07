@@ -523,3 +523,81 @@ TEST(StylusStrokeNearAFieldStartsHandwriting) {
     CHECK(state.Peek().text.empty());
     ui::SetStylusHandwritingSupported(false);
 }
+
+TEST(RangeForRectFindsWordsAndCharacters) {
+    test::FakeText backend;
+    const ui::Density d{ 1, 1 };
+    text::TextLayoutInput in;
+    in.text = text::AnnotatedString("hello big world\nsecond line");
+    in.style = text::TextStyle(text::Sp(20));
+    in.density = d;
+    const text::TextLayoutResult l = text::LayoutText(&backend, in);
+    using text::TextGranularity;
+    // "big" is 60..90 px on the first line (10 px characters, 25 px lines).
+    CHECK(l.RangeForRect({ 58, 5, 95, 20 }, TextGranularity::Word, text::inclusion::ContainsCenter()) == std::pair(6, 9));
+    CHECK(l.RangeForRect({ 62, 5, 78, 20 }, TextGranularity::Character, text::inclusion::ContainsCenter()) == std::pair(6, 8));
+    // Two lines: "big world" on the first ("big" centred at 75), "line" (70..110) on the second.
+    CHECK(l.RangeForRect({ 65, 5, 300, 45 }, TextGranularity::Word, text::inclusion::ContainsCenter()) == std::pair(6, 27));
+    // Nothing on the second line has its centre in the rect: the range ends on the first.
+    CHECK(l.RangeForRect({ 100, 5, 300, 45 }, TextGranularity::Word, text::inclusion::ContainsCenter()) == std::pair(10, 15));
+    // Nothing under the rect.
+    CHECK(l.RangeForRect({ 0, 80, 50, 90 }, TextGranularity::Word, text::inclusion::ContainsCenter()) == std::pair(0, 0));
+}
+
+TEST(HandwritingGesturesEditTheField) {
+    FieldHarness h;
+    TextFieldState state("hello big world");
+    h.comp.SetContent([&] { Column(Modifier{}, [&] { BasicTextField(state, {}, Style20()); }); });
+    h.Pump({ 300, 300 });
+    h.owner.MoveFocus(ui::FocusDirection::Next);
+    h.Pump({ 300, 300 });
+    ui::TextInputSession* s = h.owner.ActiveTextInput();
+    using G = ui::HandwritingGesture;
+    // Preview then delete "big" by word: the space before it goes too.
+    G del;
+    del.type = G::Type::Delete;
+    del.granularity = G::Granularity::Word;
+    del.area = { 58, 2, 95, 22 };
+    CHECK(s->PreviewHandwritingGesture(del));
+    CHECK(state.Peek().highlight.has_value() && state.Peek().highlight->second == TextRange(6, 9));
+    CHECK_EQ(s->PerformHandwritingGesture(del), G::kResultSuccess);
+    CHECK(state.Peek().text == U("hello world"));
+    h.Pump({ 300, 300 });
+    // Select "world".
+    G sel;
+    sel.type = G::Type::Select;
+    sel.granularity = G::Granularity::Word;
+    sel.area = { 60, 2, 110, 22 };
+    CHECK_EQ(s->PerformHandwritingGesture(sel), G::kResultSuccess);
+    CHECK(state.Selection() == TextRange(6, 11));
+    // Split "hello" after "hel", then join it back.
+    G split;
+    split.type = G::Type::JoinOrSplit;
+    split.point = { 30, 12 };
+    CHECK_EQ(s->PerformHandwritingGesture(split), G::kResultSuccess);
+    CHECK(state.Peek().text == U("hel lo world"));
+    h.Pump({ 300, 300 });
+    CHECK_EQ(s->PerformHandwritingGesture(split), G::kResultSuccess);
+    CHECK(state.Peek().text == U("hello world"));
+    h.Pump({ 300, 300 });
+    // Insert at a point; remove the spaces between two points.
+    G ins;
+    ins.type = G::Type::Insert;
+    ins.point = { 50, 12 };
+    ins.textToInsert = u",";
+    CHECK_EQ(s->PerformHandwritingGesture(ins), G::kResultSuccess);
+    CHECK(state.Peek().text == U("hello, world"));
+    h.Pump({ 300, 300 });
+    G rm;
+    rm.type = G::Type::RemoveSpace;
+    rm.point = { 55, 12 };
+    rm.endPoint = { 75, 12 };
+    CHECK_EQ(s->PerformHandwritingGesture(rm), G::kResultSuccess);
+    CHECK(state.Peek().text == U("hello,world"));
+    // A gesture over nothing falls back to its text, or fails without one.
+    G miss = sel;
+    miss.area = { 0, 200, 10, 210 };
+    CHECK_EQ(s->PerformHandwritingGesture(miss), G::kResultFailed);
+    miss.fallbackText = u"!";
+    CHECK_EQ(s->PerformHandwritingGesture(miss), G::kResultFallback);
+}

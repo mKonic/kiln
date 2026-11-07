@@ -185,6 +185,75 @@ final class KilnInputConnection implements InputConnection {
         if (filters == 0) filters = marker | chars | editor | (Build.VERSION.SDK_INT >= 34 ? lines : 0);
         return modes | filters;
     }
+    // --- handwriting gestures (API 34) -------------------------------------------------------
+    @Override public void performHandwritingGesture(android.view.inputmethod.HandwritingGesture gesture,
+                                                    java.util.concurrent.Executor executor, java.util.function.IntConsumer consumer) {
+        int result = HANDWRITING_GESTURE_RESULT_UNSUPPORTED;
+        if (live() && Build.VERSION.SDK_INT >= 34) {
+            float[] g = gestureData(gesture);
+            if (g != null) {
+                String insert = gesture instanceof android.view.inputmethod.InsertGesture
+                        ? ((android.view.inputmethod.InsertGesture) gesture).getTextToInsert() : "";
+                result = KilnNative.imePerformHandwritingGesture(g, insert, gesture.getFallbackText());
+            }
+        }
+        if (consumer == null) return;
+        final int r = result;
+        if (executor != null) executor.execute(() -> consumer.accept(r));
+        else consumer.accept(r);
+    }
+    @Override public boolean previewHandwritingGesture(android.view.inputmethod.PreviewableHandwritingGesture gesture,
+                                                       android.os.CancellationSignal cancellationSignal) {
+        if (!live() || Build.VERSION.SDK_INT < 34) return false;
+        float[] g = gestureData((android.view.inputmethod.HandwritingGesture) gesture);
+        if (g == null || !KilnNative.imePreviewHandwritingGesture(g)) return false;
+        if (cancellationSignal != null) cancellationSignal.setOnCancelListener(KilnNative::imeCancelHandwritingPreview);
+        return true;
+    }
+    /**
+     * A gesture as (type, granularity, area l t r b, end area l t r b, point x y, end point x y)
+     * in view pixels; types: 0 select, 1 delete, 2 select range, 3 delete range, 4 join or split,
+     * 5 insert, 6 remove space; granularity 1 word, else character.
+     */
+    private float[] gestureData(android.view.inputmethod.HandwritingGesture g) {
+        if (Build.VERSION.SDK_INT < 34) return null;
+        int[] loc = new int[2];
+        view.getLocationOnScreen(loc);
+        float[] d = new float[14];
+        android.graphics.RectF a = null, b = null;
+        android.graphics.PointF p = null, q = null;
+        int granularity = 0;
+        if (g instanceof android.view.inputmethod.SelectGesture) {
+            d[0] = 0; a = ((android.view.inputmethod.SelectGesture) g).getSelectionArea();
+            granularity = ((android.view.inputmethod.SelectGesture) g).getGranularity();
+        } else if (g instanceof android.view.inputmethod.DeleteGesture) {
+            d[0] = 1; a = ((android.view.inputmethod.DeleteGesture) g).getDeletionArea();
+            granularity = ((android.view.inputmethod.DeleteGesture) g).getGranularity();
+        } else if (g instanceof android.view.inputmethod.SelectRangeGesture) {
+            android.view.inputmethod.SelectRangeGesture r = (android.view.inputmethod.SelectRangeGesture) g;
+            d[0] = 2; a = r.getSelectionStartArea(); b = r.getSelectionEndArea(); granularity = r.getGranularity();
+        } else if (g instanceof android.view.inputmethod.DeleteRangeGesture) {
+            android.view.inputmethod.DeleteRangeGesture r = (android.view.inputmethod.DeleteRangeGesture) g;
+            d[0] = 3; a = r.getDeletionStartArea(); b = r.getDeletionEndArea(); granularity = r.getGranularity();
+        } else if (g instanceof android.view.inputmethod.JoinOrSplitGesture) {
+            d[0] = 4; p = ((android.view.inputmethod.JoinOrSplitGesture) g).getJoinOrSplitPoint();
+        } else if (g instanceof android.view.inputmethod.InsertGesture) {
+            d[0] = 5; p = ((android.view.inputmethod.InsertGesture) g).getInsertionPoint();
+        } else if (g instanceof android.view.inputmethod.RemoveSpaceGesture) {
+            android.view.inputmethod.RemoveSpaceGesture r = (android.view.inputmethod.RemoveSpaceGesture) g;
+            d[0] = 6; p = r.getStartPoint(); q = r.getEndPoint();
+        } else {
+            return null;
+        }
+        d[1] = granularity == android.view.inputmethod.HandwritingGesture.GRANULARITY_WORD ? 1 : 0;
+        // Screen to view pixels.
+        if (a != null) { d[2] = a.left - loc[0]; d[3] = a.top - loc[1]; d[4] = a.right - loc[0]; d[5] = a.bottom - loc[1]; }
+        if (b != null) { d[6] = b.left - loc[0]; d[7] = b.top - loc[1]; d[8] = b.right - loc[0]; d[9] = b.bottom - loc[1]; }
+        if (p != null) { d[10] = p.x - loc[0]; d[11] = p.y - loc[1]; }
+        if (q != null) { d[12] = q.x - loc[0]; d[13] = q.y - loc[1]; }
+        return d;
+    }
+
     @Override public boolean commitCompletion(CompletionInfo text) { return false; }
     @Override public boolean commitCorrection(CorrectionInfo correctionInfo) { return true; }
     @Override public boolean clearMetaKeyStates(int states) { return false; }

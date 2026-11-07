@@ -906,6 +906,37 @@ namespace {
         AfterIme();
     }
     void ImeRequestCursorUpdates(JNIEnv*, jclass, jint mode) { if (auto* s = Session()) s->RequestCursorUpdates(mode); }
+    kiln::ui::HandwritingGesture GestureFromJava(JNIEnv* env, jfloatArray a) {
+        jfloat d[14] = {};
+        env->GetFloatArrayRegion(a, 0, 14, d);
+        using G = kiln::ui::HandwritingGesture;
+        G g;
+        g.type = G::Type(std::clamp(int(d[0]), 0, 6));
+        g.granularity = d[1] != 0 ? G::Granularity::Word : G::Granularity::Character;
+        g.area = { d[2], d[3], d[4], d[5] };
+        g.endArea = { d[6], d[7], d[8], d[9] };
+        g.point = { d[10], d[11] };
+        g.endPoint = { d[12], d[13] };
+        return g;
+    }
+    jint ImePerformHandwritingGesture(JNIEnv* env, jclass, jfloatArray data, jstring insert, jstring fallback) {
+        auto* s = Session();
+        if (!s) return kiln::ui::HandwritingGesture::kResultFailed;
+        kiln::ui::HandwritingGesture g = GestureFromJava(env, data);
+        if (insert) g.textToInsert = FromJava(env, insert);
+        if (fallback) g.fallbackText = FromJava(env, fallback);
+        const int r = s->PerformHandwritingGesture(g);
+        AfterIme();
+        return r;
+    }
+    jboolean ImePreviewHandwritingGesture(JNIEnv* env, jclass, jfloatArray data) {
+        auto* s = Session();
+        if (!s) return false;
+        const bool shown = s->PreviewHandwritingGesture(GestureFromJava(env, data));
+        AfterIme();
+        return shown;
+    }
+    void ImeCancelHandwritingPreview(JNIEnv*, jclass) { if (auto* s = Session()) { s->CancelHandwritingPreview(); AfterIme(); } }
     jboolean ImeCommitContent(JNIEnv* env, jclass, jstring uri, jobjectArray types, jstring label, jstring link, jint permission) {
         auto* s = Session();
         if (!s) return false;
@@ -1233,7 +1264,7 @@ namespace {
     }
 
     void SetViewConfiguration(JNIEnv*, jclass, jlong longPress, jlong doubleTap, jfloat touchSlop,
-                              jfloat maxFling, jfloat minFling, jfloat handwritingSlop) {
+                              jfloat maxFling, jfloat minFling, jfloat handwritingSlop, jfloat handwritingLineMargin) {
         if (!g_Host) return;
         auto& c = g_Host->app->GetOwner().Config();
         c.longPressTimeoutMillis = longPress;
@@ -1242,6 +1273,7 @@ namespace {
         c.maximumFlingVelocity = maxFling;
         c.minimumFlingVelocity = minFling;
         c.handwritingSlop = handwritingSlop;
+        c.handwritingGestureLineMargin = handwritingLineMargin;
     }
 
     void SurfaceCreated(JNIEnv* env, jclass, jobject surface) {
@@ -1326,6 +1358,9 @@ extern "C" JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void*) {
         { "imeCommitText", "(Ljava/lang/String;IZ)V", reinterpret_cast<void*>(&ImeCommitText) },
         { "imeSetComposingText", "(Ljava/lang/String;I[I[Ljava/lang/String;Z)V", reinterpret_cast<void*>(&ImeSetComposingText) },
         { "imeRequestCursorUpdates", "(I)V", reinterpret_cast<void*>(&ImeRequestCursorUpdates) },
+        { "imePerformHandwritingGesture", "([FLjava/lang/String;Ljava/lang/String;)I", reinterpret_cast<void*>(&ImePerformHandwritingGesture) },
+        { "imePreviewHandwritingGesture", "([F)Z", reinterpret_cast<void*>(&ImePreviewHandwritingGesture) },
+        { "imeCancelHandwritingPreview", "()V", reinterpret_cast<void*>(&ImeCancelHandwritingPreview) },
         { "imeCommitContent", "(Ljava/lang/String;[Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;I)Z", reinterpret_cast<void*>(&ImeCommitContent) },
         { "imeSetComposingRegion", "(II)V", reinterpret_cast<void*>(&ImeSetComposingRegion) },
         { "imeFinishComposingText", "()V", reinterpret_cast<void*>(&ImeFinishComposingText) },
@@ -1357,7 +1392,7 @@ extern "C" JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void*) {
         { "ccTranslationRequests", "([I)[Ljava/lang/String;", reinterpret_cast<void*>(&CcTranslationRequests) },
         { "ccTranslationResponses", "([I[Ljava/lang/String;)V", reinterpret_cast<void*>(&CcTranslationResponses) },
         { "ccTranslation", "(I)V", reinterpret_cast<void*>(&CcTranslation) },
-        { "setViewConfiguration", "(JJFFFF)V", reinterpret_cast<void*>(&SetViewConfiguration) },
+        { "setViewConfiguration", "(JJFFFFF)V", reinterpret_cast<void*>(&SetViewConfiguration) },
         { "surfaceCreated", "(Landroid/view/Surface;)V", reinterpret_cast<void*>(&SurfaceCreated) },
         { "surfaceChanged", "(II)V", reinterpret_cast<void*>(&SurfaceChanged) },
         { "surfaceDestroyed", "()V", reinterpret_cast<void*>(&SurfaceDestroyed) },

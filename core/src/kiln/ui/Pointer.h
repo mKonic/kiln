@@ -165,6 +165,7 @@ namespace kiln::ui {
         std::int64_t tapTimeoutMillis = 100;         // ViewConfiguration.getTapTimeout (TapIndicationDelay)
         float touchSlop = 8;                         // px; the host sets the scaled value
         float handwritingSlop = 2;                   // px; ViewConfiguration.getScaledHandwritingSlop (API 34)
+        float handwritingGestureLineMargin = 16;     // px; getScaledHandwritingGestureLineMargin (API 34)
         Dp minimumTouchTargetSize{ 48 };
         float maximumFlingVelocity = 8000;           // px/s
         float minimumFlingVelocity = 50;             // px/s

@@ -175,6 +175,11 @@ namespace kiln {
         // runs of spaces, and every other character.
         virtual int WordBreak(std::u16string_view text, int offset, bool following) { return SimpleWordBreak(text, offset, following); }
         static int SimpleWordBreak(std::u16string_view text, int offset, bool following);
+        // Character.getType: the Unicode general category of a code point (Java's constants:
+        // 12 SPACE_SEPARATOR, 13 LINE_SEPARATOR, 14 PARAGRAPH_SEPARATOR, 20-24 and 29-30
+        // punctuation). The default knows ASCII, Latin-1 and the General Punctuation block.
+        virtual int CharacterType(char32_t codePoint) { return SimpleCharacterType(codePoint); }
+        static int SimpleCharacterType(char32_t codePoint);
     };
 
 }
