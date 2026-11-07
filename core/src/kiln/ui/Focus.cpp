@@ -220,6 +220,7 @@ namespace kiln::ui {
         // AndroidComposeView.onFocusChanged: indirect pointer nodes that leave the focused path
         // lose their stream.
         auto before = FocusedPath(&ModifierNode::AsIndirectPointerInput);
+        FocusTargetNode* previous = m_ActiveFocus;
         m_ActiveFocus = t;
         m_FocusCaptured = false;
         if (!before.empty()) {
@@ -227,6 +228,8 @@ namespace kiln::ui {
             for (auto* n : before)
                 if (std::find(after.begin(), after.end(), n) == after.end()) n->OnCancelIndirectPointerInput();
         }
+        // FocusListener (the autofill manager): the focus targets' nodes.
+        if (m_Autofill && previous != t) m_Autofill->OnFocusChanged(previous ? NodeOf(*previous) : nullptr, t ? NodeOf(*t) : nullptr);
         DispatchFocusEvents();
     }
 

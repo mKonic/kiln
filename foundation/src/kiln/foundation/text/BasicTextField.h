@@ -42,6 +42,9 @@ namespace kiln::foundation {
         bool isPassword = false;
     };
 
+    // LocalAutofillHighlightColor: drawn over a field autofill filled until its text changes.
+    inline rt::Local<Color> LocalAutofillHighlightColor{ Color(0x4DFFEB3Bu) };
+
     void BasicTextField(TextFieldState& state, const Modifier& modifier = {}, BasicTextFieldOptions options = {}, rt::Key key = {});
 
 }

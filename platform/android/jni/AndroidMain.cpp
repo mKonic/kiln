@@ -383,6 +383,37 @@ namespace {
                 return std::int64_t(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count());
             };
             owner.Accessibility().SetHost(std::move(host));
+            // Autofill (PlatformAutofillManagerImpl): the view's AutofillManager.
+            {
+                jclass avc = env->GetObjectClass(view);
+                static jmethodID afEntered = env->GetMethodID(avc, "autofillNotifyEntered", "(IIIII)V");
+                static jmethodID afExited = env->GetMethodID(avc, "autofillNotifyExited", "(I)V");
+                static jmethodID afValue = env->GetMethodID(avc, "autofillNotifyValue", "(IILjava/lang/String;IJ)V");
+                static jmethodID afVisible = env->GetMethodID(avc, "autofillNotifyVisibility", "(IZ)V");
+                static jmethodID afCommit = env->GetMethodID(avc, "autofillCommit", "()V");
+                static jmethodID afCancel = env->GetMethodID(avc, "autofillCancel", "()V");
+                static jmethodID afRequest = env->GetMethodID(avc, "autofillRequest", "(IIIII)V");
+                env->DeleteLocalRef(avc);
+                kiln::ui::AutofillHost af;
+                af.notifyViewEntered = [](int id, kiln::ui::IntRect r) {
+                    MainEnv()->CallVoidMethod(g_Host->view, afEntered, jint(id), jint(r.left), jint(r.top), jint(r.right), jint(r.bottom));
+                };
+                af.notifyViewExited = [](int id) { MainEnv()->CallVoidMethod(g_Host->view, afExited, jint(id)); };
+                af.notifyValueChanged = [](int id, const kiln::ui::FillableData& d) {
+                    JNIEnv* e = MainEnv();
+                    jstring js = d.kind == kiln::ui::FillableData::Kind::Text ? JavaString(e, kiln::foundation::ToUtf16(d.text)) : nullptr;
+                    const jint i = d.kind == kiln::ui::FillableData::Kind::Toggle ? jint(d.toggle) : jint(d.listIndex);
+                    e->CallVoidMethod(g_Host->view, afValue, jint(id), jint(d.kind), js, i, jlong(d.dateMillis));
+                    if (js) e->DeleteLocalRef(js);
+                };
+                af.notifyViewVisibilityChanged = [](int id, bool v) { MainEnv()->CallVoidMethod(g_Host->view, afVisible, jint(id), jboolean(v)); };
+                af.commit = [] { MainEnv()->CallVoidMethod(g_Host->view, afCommit); };
+                af.cancel = [] { MainEnv()->CallVoidMethod(g_Host->view, afCancel); };
+                af.requestAutofill = [](int id, kiln::ui::IntRect r) {
+                    MainEnv()->CallVoidMethod(g_Host->view, afRequest, jint(id), jint(r.left), jint(r.top), jint(r.right), jint(r.bottom));
+                };
+                owner.SetAutofillHost(std::move(af));
+            }
             static jmethodID setBack = env->GetMethodID(env->GetObjectClass(view), "setBackEnabled", "(Z)V");
             auto& back = kiln::ui::BackDispatcher::Main();
             back.onHasEnabledChanged = [](bool on) { MainEnv()->CallVoidMethod(g_Host->view, setBack, jboolean(on)); };
@@ -1507,6 +1538,81 @@ namespace {
         return g_Host ? A11y().FindFocus(accessibility) : jint(INT_MIN);
     }
     void A11yCheckSemantics(JNIEnv*, jclass) { if (g_Host) A11y().CheckForSemanticsChanges(); }
+
+    // populateViewStructure as flat arrays: 11 ints per node (id, parent index, autofill type or
+    // -1, value kind or -1, toggle / list value, left, top, right, bottom, flags, max length or
+    // -1), 5 strings (value text, hints joined by newlines, content description, text, class
+    // name) and the date value.
+    jobjectArray AutofillStructure(JNIEnv* env, jclass) {
+        if (!g_Host || !g_Host->app->GetOwner().Autofill()) return nullptr;
+        const auto nodes = g_Host->app->GetOwner().Autofill()->Structure();
+        std::vector<jint> ints;
+        std::vector<jlong> dates;
+        std::vector<std::optional<std::string>> strs;
+        for (const auto& n : nodes) {
+            int flags = 0;
+            if (n.focused) flags |= 1 | (*n.focused ? 2 : 0);
+            if (n.enabled) flags |= 4;
+            if (n.clickable) flags |= 8;
+            if (n.longClickable) flags |= 16;
+            if (n.focusable) flags |= 32;
+            if (n.selected) flags |= 64 | (*n.selected ? 128 : 0);
+            if (n.checkable) flags |= 256;
+            if (n.checked) flags |= 512;
+            if (n.sensitive) flags |= 1024;
+            if (n.passwordInputType) flags |= 2048;
+            const auto& v = n.value;
+            ints.insert(ints.end(), { n.id, n.parent, n.autofillType.value_or(-1), v ? jint(v->kind) : -1,
+                                      v ? (v->kind == kiln::ui::FillableData::Kind::Toggle ? jint(v->toggle) : jint(v->listIndex)) : 0,
+                                      n.bounds.left, n.bounds.top, n.bounds.right, n.bounds.bottom, flags, n.maxTextLength.value_or(-1) });
+            dates.push_back(v ? jlong(v->dateMillis) : 0);
+            std::optional<std::string> hints;
+            for (const auto& hnt : n.hints) hints = hints ? *hints + "\n" + hnt : hnt;
+            strs.push_back(v && v->kind == kiln::ui::FillableData::Kind::Text ? std::optional(v->text) : std::nullopt);
+            strs.push_back(hints);
+            strs.push_back(n.contentDescription);
+            strs.push_back(n.text);
+            strs.push_back(n.className);
+        }
+        jclass oc = env->FindClass("java/lang/Object");
+        jobjectArray out = env->NewObjectArray(3, oc, nullptr);
+        env->DeleteLocalRef(oc);
+        jintArray ji = env->NewIntArray(jsize(ints.size()));
+        env->SetIntArrayRegion(ji, 0, jsize(ints.size()), ints.data());
+        jclass sc = env->FindClass("java/lang/String");
+        jobjectArray js = env->NewObjectArray(jsize(strs.size()), sc, nullptr);
+        env->DeleteLocalRef(sc);
+        for (std::size_t i = 0; i < strs.size(); ++i) {
+            if (!strs[i]) continue;
+            jstring t = JavaString(env, kiln::foundation::ToUtf16(*strs[i]));
+            env->SetObjectArrayElement(js, jsize(i), t);
+            env->DeleteLocalRef(t);
+        }
+        jlongArray jl = env->NewLongArray(jsize(dates.size()));
+        env->SetLongArrayRegion(jl, 0, jsize(dates.size()), dates.data());
+        env->SetObjectArrayElement(out, 0, ji);
+        env->SetObjectArrayElement(out, 1, js);
+        env->SetObjectArrayElement(out, 2, jl);
+        for (jobject o : { (jobject)ji, (jobject)js, (jobject)jl }) env->DeleteLocalRef(o);
+        return out;
+    }
+
+    // performAutofill: one value (kind: 0 text, 1 toggle, 2 list, 3 date).
+    void AutofillPerform(JNIEnv* env, jclass, jint id, jint kind, jstring text, jint intValue, jlong date) {
+        if (!g_Host || !g_Host->app->GetOwner().Autofill()) return;
+        kiln::ui::FillableData d;
+        d.kind = kiln::ui::FillableData::Kind(std::clamp(int(kind), 0, 3));
+        if (text) {
+            std::u16string u(std::size_t(env->GetStringLength(text)), u'\0');
+            env->GetStringRegion(text, 0, jsize(u.size()), reinterpret_cast<jchar*>(u.data()));
+            d.text = kiln::foundation::ToUtf8(u);
+        }
+        d.toggle = intValue != 0;
+        d.listIndex = intValue;
+        d.dateMillis = date;
+        g_Host->app->GetOwner().Autofill()->PerformAutofill(id, d);
+        g_Host->app->RequestFrame();
+    }
     jboolean A11yFlushBounds(JNIEnv*, jclass) {
         if (!g_Host) return false;
         A11y().FlushBoundsUpdates();
@@ -1704,6 +1810,8 @@ extern "C" JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void*) {
         { "a11yHover", "(IFF)Z", reinterpret_cast<void*>(&A11yHover) },
         { "a11yFindFocus", "(Z)I", reinterpret_cast<void*>(&A11yFindFocus) },
         { "a11yCheckSemantics", "()V", reinterpret_cast<void*>(&A11yCheckSemantics) },
+        { "autofillStructure", "()[Ljava/lang/Object;", reinterpret_cast<void*>(&AutofillStructure) },
+        { "autofillPerform", "(IILjava/lang/String;IJ)V", reinterpret_cast<void*>(&AutofillPerform) },
         { "a11yFlushBounds", "()Z", reinterpret_cast<void*>(&A11yFlushBounds) },
         { "a11yCanScroll", "(ZIFF)Z", reinterpret_cast<void*>(&A11yCanScroll) },
         { "ccStart", "()V", reinterpret_cast<void*>(&CcStart) },

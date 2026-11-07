@@ -17,6 +17,7 @@
 #include "kiln/foundation/text/input/TextFieldKeys.h"
 #include "kiln/foundation/text/input/TextFieldSelectionState.h"
 #include "kiln/foundation/text/input/TextLayoutState.h"
+#include "kiln/ui/ContentType.h"
 #include "kiln/ui/LayoutNode.h"
 #include "kiln/ui/Locals.h"
 
@@ -163,6 +164,13 @@ namespace kiln::foundation {
             int imeListener = -1;
             std::weak_ptr<const char> stateAlive;
             // The core's cursor restarts and the decorator's semantics, by token.
+            // autofillHighlightOn, and the text autofill set (the next change turns it off).
+            rt::State<bool> autofillHighlight{ false };
+            std::optional<std::u16string> autofillHighlightText;
+            void SetAutofillHighlight() {
+                autofillHighlightText = transformed->UntransformedText().text;
+                autofillHighlight.Set(true);
+            }
             std::map<int, std::function<void()>> changeObservers;
             int nextObserver = 0;
             int Observe(std::function<void()> fn) { changeObservers.emplace(nextObserver, std::move(fn)); return nextObserver++; }
@@ -210,6 +218,11 @@ namespace kiln::foundation {
                         owner->NotifyTextInputUpdate(session, restartIme, changed);
                     }
                     selection->OnContentChanged();
+                    // observeUntransformedTextChanges: the first change after a fill.
+                    if (autofillHighlightText && transformed->UntransformedText().text != *autofillHighlightText) {
+                        autofillHighlightText.reset();
+                        autofillHighlight.Set(false);
+                    }
                     for (auto it = changeObservers.begin(); it != changeObservers.end();) {
                         const int token = it->first;
                         it->second();
@@ -464,11 +477,18 @@ namespace kiln::foundation {
             bool enabled = true, readOnly = false, isPassword = false;
             ui::ImeAction imeAction = ui::ImeAction::Default;
             InputTransformationPtr filter;
+            Color autofillHighlightColor = Color(0x4DFFEB3Bu);
             bool operator==(const DecoratorParams&) const = default;
         };
-        struct DecoratorNode final : ModifierNode, ui::SemanticsModifier, ui::GlobalPositionAwareModifier {
+        struct DecoratorNode final : ModifierNode, ui::SemanticsModifier, ui::GlobalPositionAwareModifier, DrawModifier {
             DecoratorParams params;
             explicit DecoratorNode(DecoratorParams p) : params(std::move(p)) {}
+            DrawModifier* AsDraw() override { return this; }
+            // The autofill highlight over the content (and any background the decoration drew).
+            void Draw(ContentDrawScope& s) override {
+                s.DrawContent();
+                if (params.field->autofillHighlight.Get()) s.DrawRect(params.autofillHighlightColor, { 0, 0 }, s.GetSize());
+            }
             ui::SemanticsModifier* AsSemantics() override { return this; }
             ui::GlobalPositionAwareModifier* AsGlobalPositionAware() override { return this; }
 
@@ -478,13 +498,22 @@ namespace kiln::foundation {
                 f.selection->owner = f.owner;
                 f.decoratorNode = this;
                 f.UpdateBehaviors(f.options.textStyle.span.localeList);
+                // requestAutofillAction (the toolbar's Autofill item).
+                auto alive = AliveToken();
+                f.selection->requestAutofill = [this, alive] {
+                    if (alive.expired() || !Owner() || !Owner()->GetOwner()) return;
+                    Owner()->GetOwner()->RequestAutofill(*Owner());
+                };
                 Observe();
             }
             void OnDetach() override {
                 Field& f = *params.field;
                 f.DisposeInputSession();
                 f.selection->StopToolbarAndHandlesVisibilityObserver();
-                if (f.decoratorNode == this) f.decoratorNode = nullptr;
+                if (f.decoratorNode == this) {
+                    f.decoratorNode = nullptr;
+                    f.selection->requestAutofill = nullptr;
+                }
                 Unobserve();
             }
             void OnParamsChanged() {
@@ -521,6 +550,25 @@ namespace kiln::foundation {
                 c.isEditable = editable;
                 auto field = params.field;
                 std::weak_ptr<Field> weak = field;
+                // Password or not, inputText tells the untransformed text. The developer sets
+                // contentType; the field fills in the rest of autofill's semantics.
+                c.inputText = ToUtf8(state.UntransformedText().text);
+                c.contentDataType = ui::autofill::kTypeText;
+                c.fillableData = ui::FillableData::FromText(text.text);
+                c.onFillData = [weak, editable](const ui::FillableData& d) {
+                    auto f = weak.lock();
+                    if (!f || !editable) return false;
+                    if (d.kind == ui::FillableData::Kind::Text) f->transformed->ReplaceAll(ToUtf16(d.text));
+                    f->SetAutofillHighlight();
+                    return true;
+                };
+                switch (f.keyboard.keyboardType.value_or(ui::KeyboardType::Text)) {
+                    case ui::KeyboardType::Email: c.contentType = ui::ContentType::EmailAddress().hints; break;
+                    case ui::KeyboardType::Password:
+                    case ui::KeyboardType::NumberPassword: c.contentType = ui::ContentType::Password().hints; break;
+                    case ui::KeyboardType::Phone: c.contentType = ui::ContentType::PhoneNumber().hints; break;
+                    default: break;
+                }
                 c.getTextLayoutResult = [weak]() -> std::shared_ptr<const text::TextLayoutResult> {
                     auto f = weak.lock();
                     return f ? f->layout->PeekLayoutResult() : nullptr;
@@ -1005,7 +1053,7 @@ namespace kiln::foundation {
 
         Modifier m = FocusRequesterModifier(modifier, f.requester);
         DecoratorParams dp{ field, options.enabled, options.readOnly, options.isPassword, resolved.imeAction.value_or(ui::ImeAction::Default),
-                            options.inputTransformation };
+                            options.inputTransformation, comp.Read(LocalAutofillHighlightColor) };
         // stylusHandwriting: a stroke on or near the field focuses it and starts handwriting
         // (password fields only focus).
         const ui::KeyboardType kt = resolved.keyboardType.value_or(ui::KeyboardType::Text);

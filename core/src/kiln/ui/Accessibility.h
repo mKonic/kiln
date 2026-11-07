@@ -226,6 +226,8 @@ namespace kiln::ui {
         // Events made since the last call.
         std::vector<AccessibilityEvent> TakeEvents() { return std::exchange(m_Events, {}); }
 
+        // A node's configuration with its merged descendants' (mergedConfig).
+        SemanticsConfiguration MergedConfig(const AccessibilityNode& node) const;
         // Any semantics node of the last rebuild (shown or not).
         const AccessibilityNode* FindAnyNode(int id) { Nodes(); return FindAny(id); }
         ContentCaptureManager& ContentCapture() { return *m_ContentCapture; }
@@ -274,7 +276,6 @@ namespace kiln::ui {
         bool ScreenReaderFocusable(const AccessibilityNode& node);
         bool UnmergedLeaf(const AccessibilityNode& node) const;
         bool Enabled(const AccessibilityNode& node) const;   // SemanticsNode.enabled() (merged config)
-        SemanticsConfiguration MergedConfig(const AccessibilityNode& node) const;
 
         Owner& m_Owner;
         AccessibilityHost m_Host;

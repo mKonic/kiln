@@ -15,6 +15,7 @@
 #include "kiln/ui/Clip.h"
 #include "kiln/ui/TextInput.h"
 #include "kiln/ui/TextToolbar.h"
+#include "kiln/ui/Autofill.h"
 #include "kiln/ui/Insets.h"
 #include "kiln/ui/Semantics.h"
 
@@ -406,6 +407,11 @@ namespace kiln::ui {
         // The accessibility delegate (made on first use). The host hears of semantics changes
         // (`layout` false) and layout changes (true) while a service listens.
         AccessibilityDelegate& Accessibility();
+        // Autofill (AndroidAutofillManager); none until the host sets one (autofill unsupported).
+        void SetAutofillHost(AutofillHost host);
+        AutofillManager* Autofill() const { return m_Autofill.get(); }
+        // Owner.requestAutofill: shows the autofill UI for the node.
+        void RequestAutofill(LayoutNode& node);
         void SetOnAccessibilityChange(std::function<void(bool layout)> fn) { m_OnAccessibilityChange = std::move(fn); }
         // onLayoutChange: a node was placed somewhere else or at another size.
         void NotifyLayoutChange(LayoutNode& node);
@@ -524,6 +530,7 @@ namespace kiln::ui {
         TextInputSession* m_Input = nullptr;
         WindowInsetsHolder m_Insets;
         std::uint64_t m_SemanticsVersion = 0;
+        std::unique_ptr<AutofillManager> m_Autofill;
         std::function<void()> m_OnSemanticsChanged;
         std::unique_ptr<AccessibilityDelegate> m_Accessibility;
         std::function<void(bool)> m_OnAccessibilityChange;

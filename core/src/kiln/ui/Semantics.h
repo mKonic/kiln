@@ -62,6 +62,23 @@ namespace kiln::ui {
         std::function<bool()> action;
     };
 
+    // FillableData (AndroidFillableData over AutofillValue): what autofill fills or reads.
+    struct FillableData {
+        enum class Kind : std::uint8_t { Text, Toggle, List, Date };
+        Kind kind = Kind::Text;
+        std::string text;            // UTF-8
+        bool toggle = false;
+        int listIndex = 0;
+        std::int64_t dateMillis = 0;
+        bool operator==(const FillableData&) const = default;
+        // createFromText: trimmed to 5000 UTF-16 units without splitting a surrogate pair.
+        static FillableData FromText(std::u16string_view text);
+    };
+    // ContentDataType (View.AUTOFILL_TYPE_*).
+    namespace autofill {
+        inline constexpr int kTypeNone = 0, kTypeText = 1, kTypeToggle = 2, kTypeList = 3, kTypeDate = 4;
+    }
+
     // SemanticsConfiguration: the properties and actions of SemanticsProperties /
     // SemanticsActions. Unset optionals and empty functions are absent keys; Unit keys are bools.
     struct SemanticsConfiguration {
@@ -103,6 +120,12 @@ namespace kiln::ui {
         std::shared_ptr<const gfx::Shape> shape;       // the node's shape (extra data), never merged
         bool selectableGroup = false;
         std::optional<std::pair<int, int>> textSelection;
+        // Autofill: the content's hints (ContentType, View.AUTOFILL_HINT_*; `+` unions them), its
+        // data type, the value it holds and the untransformed input text.
+        std::optional<std::vector<std::string>> contentType;
+        std::optional<int> contentDataType;
+        std::optional<FillableData> fillableData;
+        std::optional<std::string> inputText;
         // Scrolling.
         std::optional<ScrollAxisRange> horizontalScrollAxisRange, verticalScrollAxisRange;
         std::optional<std::pair<int, int>> collectionInfo;     // rows, columns; -1 = unknown (lazy)
@@ -137,6 +160,8 @@ namespace kiln::ui {
         std::function<std::pair<float, float>()> scrollViewportPadding;
         // Paging (pagers): scroll actions on a node that pages use these instead of scrollBy.
         std::function<bool()> pageUp, pageDown, pageLeft, pageRight;
+        // OnFillData: autofill hands the node a value.
+        std::function<bool(const FillableData&)> onFillData;
 
         bool HasContent() const {
             return !contentDescription.empty() || !text.empty() || editableText || stateDescription || onClick ||

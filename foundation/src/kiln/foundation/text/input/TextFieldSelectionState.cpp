@@ -836,8 +836,7 @@ namespace kiln::foundation {
             item(sc, TextContextMenuKeys::LookUp, CanShowLookUpMenuItem(), [this] { LookUp(); });
             item(sc, TextContextMenuKeys::SelectAll, CanShowSelectAllMenuItem(), [this] { SelectAll(); }, TextToolbarState::Selection,
                  [this] { return !m_TextToolbarShown.Peek(); });
-            // Autofill comes with the autofill request (requestAutofillAction).
-            if (requestAutofill) item(sc, TextContextMenuKeys::Autofill, CanShowAutofillMenuItem(), [this] { Autofill(); });
+            item(sc, TextContextMenuKeys::Autofill, CanShowAutofillMenuItem() && owner && owner->Autofill(), [this] { Autofill(); });
             sc.Separator();
         });
     }

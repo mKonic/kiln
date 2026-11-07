@@ -60,6 +60,11 @@ namespace kiln::ui {
         Fill(verticalScrollAxisRange, c.verticalScrollAxisRange);
         Fill(collectionInfo, c.collectionInfo);
         Fill(collectionItemInfo, c.collectionItemInfo);
+        Fill(contentType, c.contentType);
+        Fill(contentDataType, c.contentDataType);
+        Fill(fillableData, c.fillableData);
+        Fill(inputText, c.inputText);
+        Fill(onFillData, c.onFillData);
         heading = heading || c.heading;
         disabled = disabled || c.disabled;
         password = password || c.password;
@@ -114,6 +119,8 @@ namespace kiln::ui {
         Take(textSelection, o.textSelection);
         Take(horizontalScrollAxisRange, o.horizontalScrollAxisRange); Take(verticalScrollAxisRange, o.verticalScrollAxisRange);
         Take(collectionInfo, o.collectionInfo); Take(collectionItemInfo, o.collectionItemInfo);
+        Take(contentType, o.contentType); Take(contentDataType, o.contentDataType);
+        Take(fillableData, o.fillableData); Take(inputText, o.inputText); Take(onFillData, o.onFillData);
         Take(onClick, o.onClick); Take(onClickLabel, o.onClickLabel);
         Take(onLongClick, o.onLongClick); Take(onLongClickLabel, o.onLongClickLabel);
         Take(setText, o.setText); Take(insertTextAtCursor, o.insertTextAtCursor); Take(setSelection, o.setSelection);
@@ -176,7 +183,34 @@ namespace kiln::ui {
                bool(scrollBy) == bool(o.scrollBy) && bool(scrollToIndex) == bool(o.scrollToIndex) &&
                bool(scrollViewportLength) == bool(o.scrollViewportLength) && bool(scrollViewportPadding) == bool(o.scrollViewportPadding) &&
                bool(pageUp) == bool(o.pageUp) && bool(pageDown) == bool(o.pageDown) && bool(pageLeft) == bool(o.pageLeft) &&
-               bool(pageRight) == bool(o.pageRight);
+               bool(pageRight) == bool(o.pageRight) && contentType == o.contentType && contentDataType == o.contentDataType &&
+               fillableData == o.fillableData && inputText == o.inputText && bool(onFillData) == bool(o.onFillData);
+    }
+
+    FillableData FillableData::FromText(std::u16string_view text) {
+        constexpr std::size_t kMax = 5000;   // MAX_AUTOFILL_TEXT_LENGTH
+        std::size_t n = text.size();
+        if (n > kMax) {
+            n = kMax;
+            // trimToSafeLength: do not break a surrogate pair.
+            if (text[kMax - 1] >= 0xD800 && text[kMax - 1] < 0xDC00 && text[kMax] >= 0xDC00 && text[kMax] < 0xE000) n = kMax - 1;
+        }
+        FillableData d;
+        d.kind = Kind::Text;
+        std::string out;
+        for (std::size_t i = 0; i < n; ++i) {
+            char32_t c = text[i];
+            if (c >= 0xD800 && c < 0xDC00 && i + 1 < n && text[i + 1] >= 0xDC00 && text[i + 1] < 0xE000) {
+                c = 0x10000 + ((c - 0xD800) << 10) + (text[i + 1] - 0xDC00);
+                ++i;
+            }
+            if (c < 0x80) out += char(c);
+            else if (c < 0x800) { out += char(0xC0 | (c >> 6)); out += char(0x80 | (c & 0x3F)); }
+            else if (c < 0x10000) { out += char(0xE0 | (c >> 12)); out += char(0x80 | ((c >> 6) & 0x3F)); out += char(0x80 | (c & 0x3F)); }
+            else { out += char(0xF0 | (c >> 18)); out += char(0x80 | ((c >> 12) & 0x3F)); out += char(0x80 | ((c >> 6) & 0x3F)); out += char(0x80 | (c & 0x3F)); }
+        }
+        d.text = std::move(out);
+        return d;
     }
 
     bool CalculateSemanticsConfiguration(LayoutNode& n, SemanticsConfiguration& out) {

@@ -902,6 +902,7 @@ namespace kiln::ui {
         }
         // onBarrierPositionChanged: a barrier that now covers the focused target takes focus away.
         if (!m_Barriers.empty() && m_ActiveFocus && IsOccludedByInteractionBarrier(*m_ActiveFocus)) ClearFocus(true);
+        if (m_Autofill) m_Autofill->OnEndApplyChanges();
     }
 
     std::vector<PointerInputModifier*> LayoutNode::PointerModifiers() const {
@@ -933,6 +934,9 @@ namespace kiln::ui {
             if (m_Accessibility->Listening() && m_OnAccessibilityChange) m_OnAccessibilityChange(false);
         }
     }
+
+    void Owner::SetAutofillHost(AutofillHost host) { m_Autofill = std::make_unique<AutofillManager>(*this, std::move(host)); }
+    void Owner::RequestAutofill(LayoutNode& node) { if (m_Autofill) m_Autofill->RequestAutofill(node); }
 
     AccessibilityDelegate& Owner::Accessibility() {
         if (!m_Accessibility) m_Accessibility = std::make_unique<AccessibilityDelegate>(*this);

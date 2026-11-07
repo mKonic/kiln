@@ -80,6 +80,10 @@ final class KilnNative {
     static native boolean a11yHover(int action, float x, float y);
     static native int a11yFindFocus(boolean accessibility);
     static native void a11yCheckSemantics();
+    /** Autofill's virtual structure: {int[] 11 per node, String[] 5 per node, long[] dates}. */
+    static native Object[] autofillStructure();
+    /** One autofilled value; kind 0 text, 1 toggle, 2 list, 3 date. */
+    static native void autofillPerform(int id, int kind, String text, int intValue, long date);
     static native boolean a11yFlushBounds();
     static native boolean a11yCanScroll(boolean vertical, int direction, float x, float y);
     // Content capture and translation.

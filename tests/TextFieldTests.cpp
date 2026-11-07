@@ -827,6 +827,63 @@ TEST(FieldLaysOutItsTextStyles) {
     CHECK(laidOut.size() == 1 && laidOut[0].start == 1 && laidOut[0].end == 3);
 }
 
+TEST(FieldAutofillNotifiesFillsAndDescribesItself) {
+    FieldHarness h;
+    h.draw = true;
+    std::vector<std::string> log;
+    ui::AutofillHost host;
+    host.notifyViewEntered = [&](int, ui::IntRect) { log.push_back("entered"); };
+    host.notifyViewExited = [&](int) { log.push_back("exited"); };
+    host.notifyValueChanged = [&](int, const ui::FillableData& d) { log.push_back("value " + d.text); };
+    host.notifyViewVisibilityChanged = [&](int, bool v) { log.push_back(v ? "visible" : "invisible"); };
+    host.commit = [&] { log.push_back("commit"); };
+    host.requestAutofill = [&](int, ui::IntRect) { log.push_back("request"); };
+    h.owner.SetAutofillHost(host);
+    TextFieldState state("ab");
+    BasicTextFieldOptions o = Style20();
+    o.keyboardOptions.keyboardType = ui::KeyboardType::Email;
+    auto shown = std::make_shared<rt::State<bool>>(true);
+    h.comp.SetContent([&] { Column(Modifier{}, [&] { if (shown->Get()) BasicTextField(state, {}, o); }); });
+    h.Pump({ 300, 300 });
+    // A field with a content type shows up for autofill.
+    CHECK(std::find(log.begin(), log.end(), "visible") != log.end());
+    log.clear();
+    h.owner.MoveFocus(ui::FocusDirection::Next);
+    h.Pump({ 300, 300 });
+    CHECK(std::find(log.begin(), log.end(), "entered") != log.end());
+    // Its structure: an EditText of type text, holding its text, hinted as an email address.
+    const auto structure = h.owner.Autofill()->Structure();
+    const ui::AutofillStructureNode* node = nullptr;
+    for (const auto& n : structure) if (n.autofillType == ui::autofill::kTypeText) node = &n;
+    CHECK(node != nullptr);
+    if (node) {
+        CHECK(node->className == std::optional<std::string>("android.widget.EditText"));
+        CHECK(node->value && node->value->text == "ab");
+        CHECK((node->hints == std::vector<std::string>{ "emailAddress" }));
+        CHECK(node->parent == 0);
+    }
+    // Typing reports the value.
+    log.clear();
+    if (auto* s = h.owner.ActiveTextInput()) s->CommitText(U("c"), 1);
+    h.Pump({ 300, 300 });
+    CHECK(std::find(log.begin(), log.end(), "value abc") != log.end());
+    // Autofill fills it and highlights it until the next edit.
+    if (node) {
+        ui::FillableData d;
+        d.text = "me@example.com";
+        h.owner.Autofill()->PerformAutofill(node->id, d);
+    }
+    h.Pump({ 300, 300 });
+    CHECK(state.Peek().text == U("me@example.com"));
+    // Leaving: the field goes and, with nothing with a content type left, the session commits.
+    log.clear();
+    shown->Set(false);
+    h.Pump({ 300, 300 });
+    h.Pump({ 300, 300 });
+    CHECK(std::find(log.begin(), log.end(), "invisible") != log.end());
+    CHECK(std::find(log.begin(), log.end(), "commit") != log.end());
+}
+
 TEST(DoubleTapAndMouseDragSelect) {
     FieldHarness h;
     TextFieldState state("hello big world");

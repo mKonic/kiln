@@ -842,6 +842,37 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
         if (mode != null) mode.finish();
     }
 
+    // --- autofill (AndroidComposeView's autofill overrides) --------------------------------------
+    private final KilnAutofill autofill = new KilnAutofill(this);
+    private boolean isDispatchingAutofillStructure;
+
+    void autofillNotifyEntered(int id, int l, int t, int r, int b) { autofill.notifyEntered(id, l, t, r, b); }
+    void autofillNotifyExited(int id) { autofill.notifyExited(id); }
+    void autofillNotifyValue(int id, int kind, String text, int intValue, long date) { autofill.notifyValue(id, kind, text, intValue, date); }
+    void autofillNotifyVisibility(int id, boolean visible) { autofill.notifyVisibility(id, visible); }
+    void autofillCommit() { autofill.commit(); }
+    void autofillCancel() { autofill.cancel(); }
+    void autofillRequest(int id, int l, int t, int r, int b) { autofill.request(id, l, t, r, b); }
+
+    @Override public void onProvideAutofillVirtualStructure(android.view.ViewStructure structure, int flags) {
+        if (structure != null && !isDispatchingAutofillStructure) autofill.populate(structure);
+    }
+
+    @Override public void dispatchProvideAutofillStructure(android.view.ViewStructure structure, int flags) {
+        // Hosted child views first; the framework stops traversal once virtual children exist.
+        isDispatchingAutofillStructure = true;
+        try {
+            super.dispatchProvideAutofillStructure(structure, flags);
+        } finally {
+            isDispatchingAutofillStructure = false;
+        }
+        autofill.populate(structure);
+    }
+
+    @Override public void autofill(android.util.SparseArray<android.view.autofill.AutofillValue> values) {
+        autofill.autofill(values);
+    }
+
     // The text services native calls (PlatformSelectionBehaviors, ProcessText, LookUpText).
     int createClassifierSession(int type) { return textServices.createSession(type); }
     void destroyClassifierSession(int id) { textServices.destroySession(id); }
