@@ -17,6 +17,7 @@
 #include "kiln/ui/TextToolbar.h"
 #include "kiln/ui/Autofill.h"
 #include "kiln/ui/DragAndDrop.h"
+#include "kiln/ui/ScrollCapture.h"
 #include "kiln/ui/Insets.h"
 #include "kiln/ui/Semantics.h"
 
@@ -380,6 +381,14 @@ namespace kiln::ui {
         }
         // A scope over `target` with this owner's density and direction (for an offscreen draw).
         void DrawWith(const DrawTarget& target, const std::function<void(DrawScope&)>& draw);
+        ScrollCapture& ScrollCaptureManager() {
+            if (!m_ScrollCapture) m_ScrollCapture = std::make_unique<ui::ScrollCapture>(*this);
+            return *m_ScrollCapture;
+        }
+        // A scroll capture (long screenshot) runs: scrollables skip nested scrolling and
+        // animations, lazy lists drop sticky headers (LocalScrollCaptureInProgress). Observable.
+        bool ScrollCaptureInProgress() const { return m_ScrollCaptureInProgress.Get(); }
+        void SetScrollCaptureInProgress(bool v) { if (m_ScrollCaptureInProgress.Peek() != v) m_ScrollCaptureInProgress.Set(v); }
         // keepScreenOn / sensitiveContent counts (AndroidComposeView): the host view keeps the
         // screen on while any node asks, and is marked sensitive (API 35) while any node is.
         void SetScreenHost(std::function<void(bool)> keepScreenOn, std::function<void(bool)> contentSensitive) {
@@ -500,6 +509,8 @@ namespace kiln::ui {
         rt::State<int> m_PasswordVisibility{ 3 };
         std::function<void(bool)> m_KeepScreenOnHost, m_ContentSensitiveHost;
         OffscreenRenderer m_Offscreen;
+        rt::State<bool> m_ScrollCaptureInProgress{ false };
+        std::unique_ptr<ui::ScrollCapture> m_ScrollCapture;
         int m_KeepScreenOnCount = 0, m_SensitiveCount = 0;
         friend class FocusTargetNode;
         friend class AccessibilityDelegate;

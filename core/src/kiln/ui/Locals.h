@@ -40,6 +40,9 @@ namespace kiln::ui {
     };
     inline rt::Local<std::shared_ptr<SoundEffect>> LocalSoundEffect{ nullptr };
 
+    // LocalScrollCaptureInProgress: a long screenshot is being taken.
+    inline rt::Local<bool> LocalScrollCaptureInProgress{ false };
+
     // HapticFeedbackType: the platform's HapticFeedbackConstants (HapticFeedbackConstantsCompat).
     enum class HapticFeedbackType : int {
         Confirm = 16, ContextClick = 6, GestureEnd = 13, GestureThresholdActivate = 23, KeyboardTap = 3, LongPress = 0,

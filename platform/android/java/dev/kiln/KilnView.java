@@ -851,6 +851,80 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
         }
     };
 
+    // --- scroll capture (AndroidComposeView.onScrollCaptureSearch, ComposeScrollCaptureCallback) --
+    private final android.util.SparseArray<Object[]> scrollCaptureRequests = new android.util.SparseArray<>();
+    private int lastScrollCaptureRequest;
+
+    @Override public void onScrollCaptureSearch(Rect localVisibleRect, android.graphics.Point windowOffset,
+                                                java.util.function.Consumer<android.view.ScrollCaptureTarget> targets) {
+        int[] c = KilnNative.scrollCaptureSearch();   // {id, left, top, right, bottom} in view pixels
+        if (c == null) return;
+        int[] location = new int[2];
+        getLocationInWindow(location);
+        final int id = c[0];
+        final Rect inView = new Rect(c[1], c[2], c[3], c[4]);
+        final Rect inWindow = new Rect(inView);
+        inWindow.offset(location[0], location[1]);
+        android.view.ScrollCaptureCallback callback = new android.view.ScrollCaptureCallback() {
+            @Override public void onScrollCaptureSearch(android.os.CancellationSignal signal, java.util.function.Consumer<Rect> onReady) {
+                onReady.accept(new Rect(inWindow));
+            }
+            @Override public void onScrollCaptureStart(android.view.ScrollCaptureSession session, android.os.CancellationSignal signal, Runnable onReady) {
+                KilnNative.scrollCaptureStart(id, inView.left, inView.top, inView.right, inView.bottom);
+                onReady.run();
+            }
+            @Override public void onScrollCaptureImageRequest(android.view.ScrollCaptureSession session, android.os.CancellationSignal signal,
+                                                              Rect captureArea, java.util.function.Consumer<Rect> onComplete) {
+                int request = ++lastScrollCaptureRequest;
+                scrollCaptureRequests.put(request, new Object[] { session, onComplete });
+                signal.setOnCancelListener(() -> {
+                    scrollCaptureRequests.remove(request);
+                    KilnNative.scrollCaptureCancel(request);
+                });
+                KilnNative.scrollCaptureImageRequest(request, captureArea.left, captureArea.top, captureArea.right, captureArea.bottom);
+            }
+            @Override public void onScrollCaptureEnd(Runnable onReady) {
+                int request = ++lastScrollCaptureRequest;
+                scrollCaptureRequests.put(request, new Object[] { onReady });
+                KilnNative.scrollCaptureEnd(request);
+            }
+        };
+        android.view.ScrollCaptureTarget target = new android.view.ScrollCaptureTarget(this, inView, new android.graphics.Point(inWindow.left, inWindow.top), callback);
+        target.setScrollBounds(inWindow);
+        targets.accept(target);
+    }
+
+    /** A strip native rendered: drawn into the session's surface, then the request completes. */
+    @SuppressWarnings("unchecked")
+    void scrollCaptureImageResult(int request, int left, int top, int right, int bottom, int width, int height, byte[] rgba) {
+        Object[] r = scrollCaptureRequests.get(request);
+        if (r == null) return;
+        scrollCaptureRequests.remove(request);
+        android.view.ScrollCaptureSession session = (android.view.ScrollCaptureSession) r[0];
+        java.util.function.Consumer<Rect> onComplete = (java.util.function.Consumer<Rect>) r[1];
+        if (rgba != null && width > 0 && height > 0 && rgba.length == width * height * 4) {
+            android.graphics.Bitmap bitmap = android.graphics.Bitmap.createBitmap(width, height, android.graphics.Bitmap.Config.ARGB_8888);
+            bitmap.copyPixelsFromBuffer(java.nio.ByteBuffer.wrap(rgba));
+            android.view.Surface surface = session.getSurface();
+            android.graphics.Canvas canvas = surface.lockHardwareCanvas();
+            try {
+                canvas.drawColor(android.graphics.Color.TRANSPARENT, android.graphics.PorterDuff.Mode.CLEAR);
+                canvas.drawBitmap(bitmap, 0, 0, null);
+            } finally {
+                surface.unlockCanvasAndPost(canvas);
+            }
+            bitmap.recycle();
+        }
+        onComplete.accept(new Rect(left, top, right, bottom));
+    }
+
+    void scrollCaptureEnded(int request) {
+        Object[] r = scrollCaptureRequests.get(request);
+        if (r == null) return;
+        scrollCaptureRequests.remove(request);
+        ((Runnable) r[0]).run();
+    }
+
     // keepScreenOn / sensitiveContent counts reached zero or one.
     void setKeepScreenOnFromNative(boolean on) { setKeepScreenOn(on); }
     void setContentSensitiveFromNative(boolean sensitive) {

@@ -84,7 +84,7 @@ namespace kiln::ui {
         Fill(setTextSubstitution, c.setTextSubstitution); Fill(showTextSubstitution, c.showTextSubstitution);
         Fill(clearTextSubstitution, c.clearTextSubstitution);
         Fill(getTextLayoutResult, c.getTextLayoutResult);
-        Fill(scrollBy, c.scrollBy); Fill(scrollToIndex, c.scrollToIndex);
+        Fill(scrollBy, c.scrollBy); Fill(scrollByOffset, c.scrollByOffset); Fill(scrollToIndex, c.scrollToIndex);
         Fill(scrollViewportLength, c.scrollViewportLength); Fill(scrollViewportPadding, c.scrollViewportPadding);
         Fill(pageUp, c.pageUp); Fill(pageDown, c.pageDown); Fill(pageLeft, c.pageLeft); Fill(pageRight, c.pageRight);
     }
@@ -134,7 +134,7 @@ namespace kiln::ui {
         Take(setTextSubstitution, o.setTextSubstitution); Take(showTextSubstitution, o.showTextSubstitution);
         Take(clearTextSubstitution, o.clearTextSubstitution);
         Take(getTextLayoutResult, o.getTextLayoutResult);
-        Take(scrollBy, o.scrollBy); Take(scrollToIndex, o.scrollToIndex);
+        Take(scrollBy, o.scrollBy); Take(scrollByOffset, o.scrollByOffset); Take(scrollToIndex, o.scrollToIndex);
         Take(scrollViewportLength, o.scrollViewportLength); Take(scrollViewportPadding, o.scrollViewportPadding);
         Take(pageUp, o.pageUp); Take(pageDown, o.pageDown); Take(pageLeft, o.pageLeft); Take(pageRight, o.pageRight);
     }
@@ -181,7 +181,7 @@ namespace kiln::ui {
                dismissLabel == o.dismissLabel && bool(setTextSubstitution) == bool(o.setTextSubstitution) &&
                bool(showTextSubstitution) == bool(o.showTextSubstitution) && bool(clearTextSubstitution) == bool(o.clearTextSubstitution) &&
                actionsEq(customActions, o.customActions) && bool(getTextLayoutResult) == bool(o.getTextLayoutResult) &&
-               bool(scrollBy) == bool(o.scrollBy) && bool(scrollToIndex) == bool(o.scrollToIndex) &&
+               bool(scrollBy) == bool(o.scrollBy) && bool(scrollByOffset) == bool(o.scrollByOffset) && bool(scrollToIndex) == bool(o.scrollToIndex) &&
                bool(scrollViewportLength) == bool(o.scrollViewportLength) && bool(scrollViewportPadding) == bool(o.scrollViewportPadding) &&
                bool(pageUp) == bool(o.pageUp) && bool(pageDown) == bool(o.pageDown) && bool(pageLeft) == bool(o.pageLeft) &&
                bool(pageRight) == bool(o.pageRight) && contentType == o.contentType && contentDataType == o.contentDataType &&

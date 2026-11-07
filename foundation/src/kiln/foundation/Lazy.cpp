@@ -196,6 +196,9 @@ namespace kiln::foundation {
     }
 
     struct LazyCore : std::enable_shared_from_this<LazyCore> {
+        // stickyHeadersEnabled: off while a scroll capture runs (the header would repeat in
+        // every captured tile).
+        bool stickyHeadersEnabled = true;
         // LazyLayoutPinnedItemList: keys of items pinned now (kept composed and laid out).
         std::map<std::uint64_t, rt::Key> pinned;
         std::shared_ptr<ui::PinnableContainer> parentPin;   // the item around this layout, if any
@@ -1426,7 +1429,7 @@ namespace kiln::foundation {
         // item, at the viewport start, pushed back by the next visible header; drawn on top.
         std::optional<MLine> sticking;
         int stickingOffset = 0;
-        if (const int header = StickyAtOrBefore(firstIndex); header >= 0) {
+        if (const int header = stickyHeadersEnabled ? StickyAtOrBefore(firstIndex) : -1; header >= 0) {
             const int headerLine = LineOf(header);
             int nextHeader = kNone;
             for (std::size_t i = 0; i < lines.size(); ++i)
@@ -1769,6 +1772,10 @@ namespace kiln::foundation {
             core->count = 0;
             for (const auto& iv : core->intervals) core->count += iv.count;
             ++core->version;   // item lambdas may capture new values: recompose visible items
+            if (const bool sticky = !comp.Read(ui::LocalScrollCaptureInProgress); sticky != core->stickyHeadersEnabled) {
+                core->stickyHeadersEnabled = sticky;
+                core->RequestRemeasure();
+            }
             ScrollableOptions so;
             so.enabled = userScrollEnabled;
             so.reverseDirection = !reverseLayout;   // ScrollableDefaults.reverseDirection

@@ -1,6 +1,6 @@
 #include "Check.h"
 
-#include "kiln/foundation/Layouts.h"
+#include "kiln/foundation/Compose.h"
 #include "kiln/foundation/ScreenModifiers.h"
 #include "kiln/ui/LayoutNode.h"
 

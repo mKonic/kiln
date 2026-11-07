@@ -679,6 +679,18 @@ namespace kiln::foundation {
 
     namespace {
         rt::Task<> SemanticsScrollBy(ScrollableState* state, float amount) { co_await AnimateScrollBy(*state, amount); }
+
+        // ScrollByOffset: what scroll capture drives. During a capture animations are off
+        // (DisableAnimationMotionDurationScale) and nested scrolling is skipped, so the delta
+        // goes to this state at once; otherwise it animates like ScrollBy.
+        rt::Task<Offset> SemanticsScrollByOffset(std::shared_ptr<ScrollingLogic> logic, std::weak_ptr<const char> alive, Offset offset,
+                                                 bool inCapture) {
+            const float amount = logic->Axis(offset);
+            if (amount == 0 || alive.expired() || !logic->state) co_return Offset{};
+            if (inCapture) co_return logic->Single(logic->state->ConsumeScrollDelta(amount));
+            const float consumed = co_await AnimateScrollBy(*logic->state, amount);
+            co_return logic->Single(consumed);
+        }
     }
 
     Modifier Scrollable(Modifier m, ScrollableState& state, Orientation o, ScrollableOptions opt) {
@@ -708,6 +720,10 @@ namespace kiln::foundation {
         });
         // SemanticsActions.ScrollBy (semanticsScrollBy): an animated scroll along our axis.
         m = Semantics(std::move(m), [logic, o](SemanticsConfiguration& c) {
+            c.scrollByOffset = [logic](Offset offset) {
+                ui::Owner* owner = logic->node && logic->node->Owner() ? logic->node->Owner()->GetOwner() : nullptr;
+                return SemanticsScrollByOffset(logic, logic->stateAlive, offset, owner && owner->ScrollCaptureInProgress());
+            };
             c.scrollBy = [logic, o](float x, float y) {
                 const float amount = o == Orientation::Vertical ? y : x;
                 if (amount == 0 || !logic->state) return false;

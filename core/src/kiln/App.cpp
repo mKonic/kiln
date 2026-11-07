@@ -171,9 +171,11 @@ namespace kiln {
             bool IsWindowFocused() const override { return owner->IsWindowFocused(); }
         };
         std::shared_ptr<const ui::WindowInfo> windowInfo = std::make_shared<HostWindowInfo>(&m_Owner);
-        m_Composition->SetContent([registry, dir, nested, tv, sound, insets, windowInfo, haptics, content = std::move(content)] {
+        ui::Owner* owner = &m_Owner;
+        m_Composition->SetContent([registry, dir, nested, tv, sound, insets, windowInfo, haptics, owner, content = std::move(content)] {
             auto* c = rt::Composition::Current();
-            c->Provide(ui::LocalHapticFeedback, haptics, [c, registry, dir, nested, tv, sound, insets, windowInfo, content] {
+            c->Provide(ui::LocalHapticFeedback, haptics, [c, registry, dir, nested, tv, sound, insets, windowInfo, owner, content] {
+            c->Provide(ui::LocalScrollCaptureInProgress, owner->ScrollCaptureInProgress(), [c, registry, dir, nested, tv, sound, insets, windowInfo, content] {
             c->Provide(ui::LocalWindowInfo, windowInfo.get(), [c, registry, dir, nested, tv, sound, insets, content] {
             c->Provide(ui::LocalWindowInsets, insets, [c, registry, dir, nested, tv, sound, content] {
             c->Provide(ui::LocalLayoutDirection, dir->Get(), [c, registry, nested, tv, sound, content] {
@@ -184,6 +186,7 @@ namespace kiln {
                         });
                     });
                 });
+            });
             });
             });
             });

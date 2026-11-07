@@ -8,6 +8,7 @@
 #include "kiln/ui/Geometry.h"
 #include "kiln/ui/Credentials.h"
 #include "kiln/ui/Modifier.h"
+#include "kiln/runtime/Task.h"
 
 #include <functional>
 #include <memory>
@@ -157,6 +158,8 @@ namespace kiln::ui {
         // GetTextLayoutResult: the text's current layout (null: none yet).
         std::function<std::shared_ptr<const text::TextLayoutResult>()> getTextLayoutResult;
         std::function<bool(float x, float y)> scrollBy;        // positive: further into the content
+        // ScrollByOffset (scroll capture): scrolls by the offset and returns what was consumed.
+        std::function<rt::Task<Offset>(Offset)> scrollByOffset;
         std::function<bool(int index)> scrollToIndex;
         // GetScrollViewportLength: the viewport minus content padding, and the padding before and
         // after the content.

@@ -1765,6 +1765,65 @@ namespace {
         return out;
     }
 
+    // Scroll capture: the requests in flight.
+    std::map<int, kiln::rt::Job> g_ScrollCaptureJobs;
+    kiln::ui::ScrollCapture::Candidate g_ScrollCaptureCandidate;
+
+    jintArray ScrollCaptureSearch(JNIEnv* env, jclass) {
+        if (!g_Host) return nullptr;
+        const auto c = g_Host->app->GetOwner().ScrollCaptureManager().Search();
+        if (!c) return nullptr;
+        g_ScrollCaptureCandidate = *c;
+        const jint v[5] = { c->id, c->viewportBounds.left, c->viewportBounds.top, c->viewportBounds.right, c->viewportBounds.bottom };
+        jintArray a = env->NewIntArray(5);
+        env->SetIntArrayRegion(a, 0, 5, v);
+        return a;
+    }
+
+    void ScrollCaptureStart(JNIEnv*, jclass, jint id, jint l, jint t, jint r, jint b) {
+        if (!g_Host) return;
+        kiln::ui::ScrollCapture::Candidate c{ id, g_ScrollCaptureCandidate.depth, { l, t, r, b } };
+        g_Host->app->GetOwner().ScrollCaptureManager().Start(c);
+        g_Host->app->RequestFrame();
+    }
+
+    kiln::rt::Task<> ScrollCaptureImageTask(int request, kiln::ui::IntRect area) {
+        const auto image = co_await g_Host->app->GetOwner().ScrollCaptureManager().ImageRequest(area);
+        static jmethodID result = MainEnv()->GetMethodID(MainEnv()->GetObjectClass(g_Host->view), "scrollCaptureImageResult", "(IIIIIII[B)V");
+        JNIEnv* e = MainEnv();
+        jbyteArray px = nullptr;
+        if (!image.rgba.empty()) {
+            px = e->NewByteArray(jsize(image.rgba.size()));
+            e->SetByteArrayRegion(px, 0, jsize(image.rgba.size()), reinterpret_cast<const jbyte*>(image.rgba.data()));
+        }
+        e->CallVoidMethod(g_Host->view, result, jint(request), jint(image.rect.left), jint(image.rect.top), jint(image.rect.right),
+                          jint(image.rect.bottom), jint(image.width), jint(image.height), px);
+        if (px) e->DeleteLocalRef(px);
+        kiln::rt::Dispatcher::Main().Post([request] { g_ScrollCaptureJobs.erase(request); });
+    }
+
+    void ScrollCaptureImageRequest(JNIEnv*, jclass, jint request, jint l, jint t, jint r, jint b) {
+        if (!g_Host) return;
+        g_ScrollCaptureJobs[request] = kiln::rt::Launch(kiln::rt::Dispatcher::Main(), ScrollCaptureImageTask(request, { l, t, r, b }));
+        g_Host->app->RequestFrame();
+    }
+
+    void ScrollCaptureCancel(JNIEnv*, jclass, jint request) { g_ScrollCaptureJobs.erase(request); }
+
+    kiln::rt::Task<> ScrollCaptureEndTask(int request) {
+        co_await g_Host->app->GetOwner().ScrollCaptureManager().End();
+        static jmethodID ended = MainEnv()->GetMethodID(MainEnv()->GetObjectClass(g_Host->view), "scrollCaptureEnded", "(I)V");
+        MainEnv()->CallVoidMethod(g_Host->view, ended, jint(request));
+        kiln::rt::Dispatcher::Main().Post([request] { g_ScrollCaptureJobs.erase(request); });
+    }
+
+    void ScrollCaptureEnd(JNIEnv*, jclass, jint request) {
+        if (!g_Host) return;
+        // NonCancellable: the end runs to completion even if a request is cancelled.
+        g_ScrollCaptureJobs[request] = kiln::rt::Launch(kiln::rt::Dispatcher::Main(), ScrollCaptureEndTask(request));
+        g_Host->app->RequestFrame();
+    }
+
     // OnDragListener.onDrag.
     jboolean DragEvent(JNIEnv* env, jclass, jint action, jfloat x, jfloat y, jobjectArray mimes, jstring label, jobjectArray items, jboolean local,
                        jboolean result) {
@@ -2039,6 +2098,11 @@ extern "C" JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void*) {
         { "a11yCheckSemantics", "()V", reinterpret_cast<void*>(&A11yCheckSemantics) },
         { "autofillStructure", "()[Ljava/lang/Object;", reinterpret_cast<void*>(&AutofillStructure) },
         { "autofillPerform", "(IILjava/lang/String;IJ)V", reinterpret_cast<void*>(&AutofillPerform) },
+        { "scrollCaptureSearch", "()[I", reinterpret_cast<void*>(&ScrollCaptureSearch) },
+        { "scrollCaptureStart", "(IIIII)V", reinterpret_cast<void*>(&ScrollCaptureStart) },
+        { "scrollCaptureImageRequest", "(IIIII)V", reinterpret_cast<void*>(&ScrollCaptureImageRequest) },
+        { "scrollCaptureCancel", "(I)V", reinterpret_cast<void*>(&ScrollCaptureCancel) },
+        { "scrollCaptureEnd", "(I)V", reinterpret_cast<void*>(&ScrollCaptureEnd) },
         { "dragEvent", "(IFF[Ljava/lang/String;Ljava/lang/String;[Ljava/lang/String;ZZ)Z", reinterpret_cast<void*>(&DragEvent) },
         { "credentialResult", "(ILjava/lang/String;[Ljava/lang/Object;)V", reinterpret_cast<void*>(&CredentialResult) },
         { "credentialError", "(ILjava/lang/String;Ljava/lang/String;)V", reinterpret_cast<void*>(&CredentialError) },
