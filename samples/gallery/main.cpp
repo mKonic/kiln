@@ -10,6 +10,7 @@
 #include <kiln/foundation/activity/ActivityResult.h>
 #include <kiln/foundation/Popup.h>
 #include <kiln/foundation/Dialog.h>
+#include <kiln/material3/DynamicColorScheme.h>
 #include <kiln/graphics/PathEffect.h>
 #include <kiln/foundation/MeshGradient.h>
 #include <kiln/foundation/Gestures.h>
@@ -262,6 +263,18 @@ namespace {
                     }
                 });
                 BasicText("Menu picked: " + picked.Get(), Padding(Modifier{}, 16_dp, 0_dp), { 14, kVariant });
+            }
+            // The platform's Material You colours as a dynamic colour scheme (baseline when the
+            // platform has none): primary, secondary, tertiary, surface container.
+            {
+                const bool dark = IsSystemInDarkTheme();
+                const auto dynamic = dark ? kiln::material3::DynamicDarkColorScheme() : kiln::material3::DynamicLightColorScheme();
+                const auto scheme = dynamic ? *dynamic : (dark ? kiln::material3::DarkColorScheme() : kiln::material3::LightColorScheme());
+                Row(Padding(Modifier{}, 16_dp, 0_dp), Arrangement::SpacedBy(8_dp), AlignmentV::CenterVertically(), [scheme, dynamic] {
+                    for (Color c : { scheme.primary, scheme.secondary, scheme.tertiary, scheme.surfaceContainerHighest })
+                        Box(Background(SizeMod(Modifier{}, 32_dp, 32_dp), c, CornerShape::Pill()));
+                    BasicText(dynamic ? "Dynamic colour" : "Baseline colour", {}, { 14, kVariant });
+                });
             }
             // A dialog in a window of its own: the app behind it dims; Back, Escape or a press
             // outside the card dismisses it.

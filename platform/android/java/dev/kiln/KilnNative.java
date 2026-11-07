@@ -13,8 +13,9 @@ final class KilnNative {
     static native void setDensity(float density, float fontScale);
     /** Configuration.fontWeightAdjustment (the bold text setting). */
     static native void setFontWeightAdjustment(int adjustment);
-    /** Configuration fields (see KilnView.pushConfiguration) and the locale list as BCP 47 tags. */
-    static native void setConfiguration(int[] values, float fontScale, String[] locales);
+    /** Configuration fields (see KilnView.pushConfiguration), the locale list as BCP 47 tags and the
+     *  platform's Material You colours (KilnSystemColors). */
+    static native void setConfiguration(int[] values, float fontScale, String[] locales, int[] systemPalette, int[] systemRoles);
     /** DateFormat.is24HourFormat. */
     static native void set24HourFormat(boolean is24Hour);
     /** The window's FLAG_SECURE. */

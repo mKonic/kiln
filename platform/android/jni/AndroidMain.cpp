@@ -1135,7 +1135,7 @@ namespace {
 
     // Configuration as KilnView.pushConfiguration packs it; also before create, so the first
     // composition sees the right locales and night mode.
-    void SetConfiguration(JNIEnv* env, jclass, jintArray values, jfloat fontScale, jobjectArray locales) {
+    void SetConfiguration(JNIEnv* env, jclass, jintArray values, jfloat fontScale, jobjectArray locales, jintArray palette, jintArray roles) {
         kiln::ui::Configuration c;
         jint v[15]{};
         env->GetIntArrayRegion(values, 0, std::min<jsize>(15, env->GetArrayLength(values)), v);
@@ -1147,6 +1147,13 @@ namespace {
         c.navigationHidden = v[13]; c.colorMode = v[14];
         for (auto& l : StringsFromJava(env, locales)) if (l && !l->empty()) c.locales.push_back(*l);
         if (!c.locales.empty()) kiln::ui::SetPlatformLocaleList(c.locales);
+        auto colors = [env](jintArray a, std::vector<std::uint32_t>& out) {
+            if (!a) return;
+            out.resize(std::size_t(env->GetArrayLength(a)));
+            if (!out.empty()) env->GetIntArrayRegion(a, 0, jsize(out.size()), reinterpret_cast<jint*>(out.data()));
+        };
+        colors(palette, c.systemPalette);
+        colors(roles, c.systemRoles);
         g_PendingConfiguration = c;
         if (g_Host) g_Host->app->SetConfiguration(std::move(c));
     }
@@ -2609,7 +2616,7 @@ extern "C" JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void*) {
         { "setVisible", "(Z)V", reinterpret_cast<void*>(&SetVisible) },
         { "setDensity", "(FF)V", reinterpret_cast<void*>(&SetDensity) },
         { "setFontWeightAdjustment", "(I)V", reinterpret_cast<void*>(&SetFontWeightAdjustment) },
-        { "setConfiguration", "([IF[Ljava/lang/String;)V", reinterpret_cast<void*>(&SetConfiguration) },
+        { "setConfiguration", "([IF[Ljava/lang/String;[I[I)V", reinterpret_cast<void*>(&SetConfiguration) },
         { "set24HourFormat", "(Z)V", reinterpret_cast<void*>(&Set24HourFormat) },
         { "flagSecureChanged", "(Z)V", reinterpret_cast<void*>(&FlagSecureChanged) },
         { "fontsChanged", "()V", reinterpret_cast<void*>(&FontsChanged) },

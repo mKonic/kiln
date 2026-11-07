@@ -1509,7 +1509,7 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
     }
 
     // LocalConfiguration (and Locale.current from its locales).
-    private static void pushConfiguration(Configuration c) {
+    private void pushConfiguration(Configuration c) {
         android.os.LocaleList list = c.getLocales();
         String[] locales = new String[list.size()];
         for (int i = 0; i < locales.length; i++) locales[i] = list.get(i).toLanguageTag();
@@ -1518,7 +1518,7 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
                 c.screenWidthDp, c.screenHeightDp, c.smallestScreenWidthDp,
                 c.orientation, c.screenLayout, c.touchscreen, c.keyboard,
                 c.keyboardHidden, c.hardKeyboardHidden, c.navigation, c.navigationHidden, c.colorMode,
-        }, c.fontScale, locales);
+        }, c.fontScale, locales, KilnSystemColors.palette(getContext()), KilnSystemColors.roles(getContext()));
     }
 
     // DateFormat.is24HourFormat; the Settings app broadcasts ACTION_TIME_CHANGED when it flips,
