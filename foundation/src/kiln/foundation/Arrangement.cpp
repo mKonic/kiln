@@ -45,6 +45,7 @@ namespace kiln::foundation {
 
     void Arrangement::Arrange(const Density& d, int total, std::span<const int> s, LayoutDirection dir,
                               std::span<int> out) const {
+        if (policy) { policy->Arrange(d, total, s, dir, out); return; }
         const bool rtl = dir == LayoutDirection::Rtl;
         switch (kind) {
             case Kind::Start: if (!rtl) PlaceLeftOrTop(s, out, false); else PlaceRightOrBottom(total, s, out, true); return;

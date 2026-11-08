@@ -7,6 +7,7 @@
 #include "kiln/material3/Badge.h"
 #include "kiln/material3/Checkbox.h"
 #include "kiln/material3/Card.h"
+#include "kiln/material3/Chip.h"
 #include "kiln/material3/Surface.h"
 #include "kiln/material3/RadioButton.h"
 #include "kiln/material3/Switch.h"
@@ -1306,6 +1307,221 @@ TEST(CardElevationFollowsDragAndLastInteractionAndSnapsOnDisable) {
     CHECK(elevation == 0_dp);
     enabled.Set(true); advance(30);
     CHECK(elevation == 3_dp);
+    source->End(Interaction::Kind::Focus, focus);
+    source->End(Interaction::Kind::Press, press);
+    source->End(Interaction::Kind::Hover, hover); advance(30);
+    CHECK(elevation == 1_dp);
+}
+
+TEST(ChipArrangementsPreserveCustomSpacingAndRtlPlacement) {
+    auto compact = FilterChipDefaults::horizontalArrangement(true, true);
+    CHECK(compact == FilterChipDefaults::horizontalArrangement(true, true));
+    CHECK(!(compact == FilterChipDefaults::horizontalArrangement(false, true)));
+    CHECK(compact.Spacing() == 4_dp);
+    const int sizes[] = { 18, 40, 18 };
+    int positions[3]{};
+    compact.Arrange({ 1, 1 }, 84, sizes, ui::LayoutDirection::Ltr, positions);
+    CHECK(positions[0] == 0 && positions[1] == 22 && positions[2] == 66);
+    compact.Arrange({ 1, 1 }, 84, sizes, ui::LayoutDirection::Rtl, positions);
+    CHECK(positions[0] == 66 && positions[1] == 22 && positions[2] == 0);
+    const int noLeading[] = { 0, 40, 18 };
+    FilterChipDefaults::horizontalArrangement(false, true).Arrange({ 1, 1 }, 70, noLeading, ui::LayoutDirection::Ltr, positions);
+    CHECK(positions[0] == 0 && positions[1] == 4 && positions[2] == 52);
+    compact.Arrange({ 1, 1 }, 0, {}, ui::LayoutDirection::Ltr, {});
+    CHECK(InputChipDefaults::contentPadding(true, true, false).start == 4_dp);
+    CHECK(InputChipDefaults::contentPadding(false, true, false).start == 8_dp);
+    CHECK(InputChipDefaults::contentPadding(false, false, true).end == 8_dp);
+}
+
+TEST(ChipDefaultsResolveColorsSelectionAndDisabledOverrides) {
+    Harness h;
+    h.Run([] { MaterialTheme([] {
+        const auto& scheme = MaterialTheme::colorScheme();
+        const auto assist = AssistChipDefaults::assistChipColors();
+        CHECK(assist.containerColor == Color::Transparent() && assist.labelColor == scheme.onSurface);
+        CHECK(assist.leadingIconContentColor == scheme.primary && assist.trailingIconContentColor == scheme.primary);
+        CHECK(assist.disabledLabelColor == scheme.onSurface.WithAlpha(0.38f));
+        CHECK(assist.Copy({}) == assist);
+        CHECK(AssistChipDefaults::elevatedAssistChipColors().containerColor == scheme.surfaceContainerLow);
+        CHECK(AssistChipDefaults::elevatedAssistChipColors().disabledContainerColor == scheme.onSurface.WithAlpha(0.12f));
+        CHECK(!SuggestionChipDefaults::suggestionChipColors().trailingIconContentColor.Specified());
+        CHECK(SuggestionChipDefaults::suggestionChipColors().leadingIconContentColor == scheme.primary);
+        const auto filter = FilterChipDefaults::filterChipColors();
+        CHECK(filter.ContainerColor(true, true) == scheme.secondaryContainer);
+        CHECK(filter.ContainerColor(false, true) == scheme.onSurface.WithAlpha(0.12f));
+        CHECK(filter.LabelColor(false, true) == scheme.onSurface.WithAlpha(0.38f));
+        CHECK(filter.Copy({}) == filter);
+        SelectableChipColors overrides;
+        overrides.selectedLeadingIconColor = Color(0xff123456);
+        CHECK(filter.Copy(overrides).LeadingIconContentColor(true, true) == Color(0xff123456));
+        CHECK(filter.Copy(overrides).LeadingIconContentColor(false, true) == filter.disabledLeadingIconColor);
+        CHECK(FilterChipDefaults::tonalFilterChipColors().leadingIconColor == scheme.onSurfaceVariant);
+        CHECK(FilterChipDefaults::filterChipBorder(true, true).width == 0_dp);
+        CHECK(InputChipDefaults::inputChipBorder(false, false).brush == gfx::Brush::SolidColor(scheme.onSurface.WithAlpha(0.12f)));
+        CHECK(AssistChipDefaults::assistChipElevation().draggedElevation == 8_dp);
+        CHECK(FilterChipDefaults::elevatedFilterChipElevation().elevation == 1_dp);
+        CHECK(InputChipDefaults::shapes() == FilterChipDefaults::shapes());
+    }); });
+}
+
+TEST(ActionChipsUseIntrinsicWidthTokenTypographyAndButtonSemantics) {
+    using Chip = void (*)(std::function<void()>, std::function<void()>, const ui::Modifier&, const ChipOptions&);
+    const Chip chips[] = { AssistChip, ElevatedAssistChip, SuggestionChip, ElevatedSuggestionChip };
+    for (int variant = 0; variant < 4; ++variant) {
+        Harness h;
+        Color label, leading, trailing;
+        text::TextStyle style;
+        int clicks = 0;
+        h.Run([&] { MaterialTheme([&] { Column({}, [&] {
+            ChipOptions options;
+            options.leadingIcon = [&] { leading = rt::Composition::Current()->Read(LocalContentColor); Box(SizeMod({}, 18_dp, 18_dp)); };
+            if (variant < 2) options.trailingIcon = [&] { trailing = rt::Composition::Current()->Read(LocalContentColor); Box(SizeMod({}, 18_dp, 18_dp)); };
+            chips[variant]([&] { ++clicks; }, [&] {
+                label = rt::Composition::Current()->Read(LocalContentColor);
+                style = rt::Composition::Current()->Read(LocalTextStyle());
+                Box(SizeMod({}, 40_dp, 20_dp));
+            }, {}, options);
+        }); }); });
+        auto* chip = h.owner.Root().Children()[0]->Children()[0];
+        CHECK_EQ(chip->Size().width, variant < 2 ? 108 : 90);
+        CHECK_EQ(chip->Size().height, 48);
+        CHECK(label == (variant < 2 ? LightColorScheme().onSurface : LightColorScheme().onSurfaceVariant));
+        CHECK(leading == LightColorScheme().primary);
+        if (variant < 2) CHECK(trailing == LightColorScheme().primary);
+        CHECK(style == Typography{}.labelLarge);
+        const auto tree = h.owner.BuildSemanticsTree();
+        CHECK(tree.children.size() == 1 && tree.children[0].config.role == ui::Role::Button);
+        CHECK(tree.children[0].config.onClick());
+        CHECK_EQ(clicks, 1);
+    }
+}
+
+TEST(SelectableChipsRetainExitIconsAndExposeSelectedCheckboxRoles) {
+    using Chip = void (*)(bool, std::function<void()>, std::function<void()>, const ui::Modifier&, const SelectableChipOptions&);
+    for (Chip chip : { FilterChip, ElevatedFilterChip, InputChip }) for (bool expressive : { false, true }) {
+        rt::State<bool> selected{ false };
+        Harness h;
+        Color leading;
+        h.Run([&] { MaterialTheme([&] { Column({}, [&] {
+            SelectableChipOptions options;
+            if (expressive) options.shapes = FilterChipDefaults::shapes();
+            if (selected.Get()) options.leadingIcon = [&] { leading = rt::Composition::Current()->Read(LocalContentColor); Box(SizeMod({}, 18_dp, 18_dp)); };
+            chip(selected.Get(), [&] { selected.Set(!selected.Peek()); }, [] { Box(SizeMod({}, 40_dp, 20_dp)); }, {}, options);
+        }); }); });
+        auto node = [&] { return h.owner.Root().Children()[0]->Children()[0]; };
+        const int collapsed = node()->Size().width;
+        CHECK_EQ(collapsed, chip == InputChip ? 64 : 72);
+        auto tree = h.owner.BuildSemanticsTree();
+        CHECK(tree.children.size() == 1 && tree.children[0].config.role == ui::Role::Checkbox && tree.children[0].config.selected == false);
+        CHECK(tree.children[0].config.onClick());
+        std::int64_t clock = 0;
+        auto advance = [&](int frames) {
+            for (int i = 0; i < frames; ++i) {
+                rt::Composition::RecomposeAll();
+                rt::Dispatcher::Main().RunFrame(clock += 16'000'000);
+                rt::Composition::RecomposeAll();
+                h.owner.MeasureAndLayout({ 300, 300 });
+            }
+        };
+        advance(130);
+        CHECK_EQ(node()->Size().width, (chip == InputChip ? 82 : 86) + (expressive ? 0 : 4));
+        CHECK(leading == (chip == InputChip ? LightColorScheme().primary : LightColorScheme().onSecondaryContainer));
+        CHECK(h.owner.BuildSemanticsTree().children[0].config.selected == true);
+        selected.Set(false); advance(2);
+        CHECK(node()->Size().width > collapsed);  // retain the last icon throughout its exit
+        selected.Set(true); advance(3);
+        selected.Set(false); advance(130);
+        CHECK_EQ(node()->Size().width, collapsed);
+        CHECK(h.owner.BuildSemanticsTree().children[0].config.selected == false);
+    }
+}
+
+TEST(ExpressiveChipShapesMorphOnPressAndKeepValueEqualShapeConfigurations) {
+    Harness h;
+    rt::State<bool> selected{ false };
+    auto source = std::make_shared<MutableInteractionSource>();
+    h.Run([&] { MaterialTheme([&] { Column({}, [&] {
+        SelectableChipOptions options;
+        options.interactionSource = source;
+        options.shapes = ChipShapes{ RoundedCorner(12_dp), RoundedCornerPercent(50), RoundedCorner(4_dp) };
+        FilterChip(selected.Get(), [] {}, [] { Box(SizeMod({}, 40_dp, 20_dp)); }, {}, options);
+    }); }); });
+    auto containsCorner = [&] {
+        auto* chip = h.owner.Root().Children()[0]->Children()[0];
+        for (const auto* modifier : chip->ModifierNodes()) if (modifier->ClipsChildren()) {
+            const auto bounds = chip->RectInRoot(std::nullopt, modifier);
+            return const_cast<ui::ModifierNode*>(modifier)->AsDraw()->LayerClipContains({ bounds.Width(), bounds.Height() }, { 3, 3 }, ui::LayoutDirection::Ltr, { 1, 1 });
+        }
+        return false;
+    };
+    CHECK(!containsCorner());
+    std::int64_t clock = 0;
+    auto advance = [&] {
+        for (int i = 0; i < 130; ++i) {
+            rt::Composition::RecomposeAll();
+            rt::Dispatcher::Main().RunFrame(clock += 16'000'000);
+            rt::Composition::RecomposeAll();
+            h.owner.MeasureAndLayout({ 300, 300 });
+        }
+    };
+    const auto press = source->Start(Interaction::Kind::Press); advance();
+    CHECK(containsCorner());
+    source->End(Interaction::Kind::Press, press);
+    selected.Set(true); advance();
+    CHECK(!containsCorner());
+    CHECK(h.owner.BuildSemanticsTree().children[0].config.selected == true);
+}
+
+TEST(InputChipAvatarTakesPrecedenceAndDisabledOpacityWithoutForcedSizing) {
+    Harness h;
+    int avatars = 0, icons = 0;
+    h.Run([&] { MaterialTheme([&] { Column({}, [&] {
+        SelectableChipOptions options;
+        options.enabled = false;
+        options.leadingIcon = [&] { ++icons; Box(SizeMod({}, 18_dp, 18_dp)); };
+        options.avatar = [&] { ++avatars; Box(SizeMod({}, 30_dp, 30_dp)); };
+        InputChip(true, [] {}, [] { Box(SizeMod({}, 40_dp, 20_dp)); }, {}, options);
+    }); }); });
+    auto* chip = h.owner.Root().Children()[0]->Children()[0];
+    CHECK_EQ(chip->Size().width, 94);  // 30 avatar + 40 label + 16 gaps + 8 padding
+    CHECK(avatars > 0 && icons == 0);
+    bool faded = false;
+    std::function<void(ui::LayoutNode*)> visit = [&](ui::LayoutNode* node) {
+        for (const auto* modifier : node->ModifierNodes())
+            if (auto* draw = const_cast<ui::ModifierNode*>(modifier)->AsDraw(); draw && draw->LayerAlpha() == 0.38f) faded = true;
+        for (auto* child : node->Children()) visit(child);
+    };
+    visit(chip);
+    CHECK(faded);
+    CHECK(h.owner.BuildSemanticsTree().children[0].config.disabled);
+}
+
+TEST(ChipElevationTracksLastInteractionsAcrossInterruptionAndDisabledSnap) {
+    Harness h;
+    rt::State<bool> enabled{ true };
+    auto source = std::make_shared<MutableInteractionSource>();
+    ui::Dp elevation;
+    h.Run([&] { elevation = ShadowElevation(ChipElevation{ 1_dp, 3_dp, 3_dp, 5_dp, 8_dp, 0_dp }, enabled.Get(), source); });
+    std::int64_t clock = 0;
+    auto advance = [&](int frames) {
+        for (int i = 0; i < frames; ++i) {
+            rt::Composition::RecomposeAll();
+            rt::Dispatcher::Main().RunFrame(clock += 16'000'000);
+            rt::Composition::RecomposeAll();
+        }
+    };
+    const auto hover = source->Start(Interaction::Kind::Hover); advance(30);
+    CHECK(elevation == 5_dp);
+    const auto press = source->Start(Interaction::Kind::Press); advance(3);
+    const auto focus = source->Start(Interaction::Kind::Focus); advance(30);
+    CHECK(elevation == 3_dp);
+    const auto drag = source->Start(Interaction::Kind::Drag); advance(30);
+    CHECK(elevation == 8_dp);
+    enabled.Set(false); advance(1);
+    CHECK(elevation == 0_dp);
+    enabled.Set(true); advance(30);
+    CHECK(elevation == 8_dp);
+    source->End(Interaction::Kind::Drag, drag);
     source->End(Interaction::Kind::Focus, focus);
     source->End(Interaction::Kind::Press, press);
     source->End(Interaction::Kind::Hover, hover); advance(30);

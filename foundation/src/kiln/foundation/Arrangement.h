@@ -6,10 +6,20 @@
 
 #include <optional>
 #include <span>
+#include <memory>
 
 namespace kiln::foundation {
 
     using namespace kiln::ui;
+
+    // Arrangement.Horizontal/Vertical are extensible interfaces in Compose. Custom policies
+    // supply positions and intrinsic spacing while retaining value equality for layout updates.
+    struct ArrangementPolicy {
+        virtual ~ArrangementPolicy() = default;
+        virtual Dp Spacing() const { return Dp(0); }
+        virtual void Arrange(const Density&, int total, std::span<const int> sizes, LayoutDirection, std::span<int> positions) const = 0;
+        virtual bool Equals(const ArrangementPolicy& other) const = 0;
+    };
 
     struct Arrangement {
         enum class Kind : std::uint8_t { Start, End, Center, SpaceEvenly, SpaceBetween, SpaceAround, Spaced,
@@ -19,12 +29,17 @@ namespace kiln::foundation {
         bool rtlMirror = true;             // Spaced: mirrors in RTL (Absolute.spacedBy does not)
         std::optional<float> alignBias;    // Spaced: where leftover space goes (-1 start .. 1 end)
         bool alignIsVertical = false;
+        std::shared_ptr<const ArrangementPolicy> policy;
 
         // Horizontal (Row): positions depend on direction. Vertical (Column): pass Ltr.
         void Arrange(const Density& d, int total, std::span<const int> sizes, LayoutDirection dir,
                      std::span<int> out) const;
-        Dp Spacing() const { return kind == Kind::Spaced ? space : Dp(0); }
-        bool operator==(const Arrangement&) const = default;
+        Dp Spacing() const { return policy ? policy->Spacing() : kind == Kind::Spaced ? space : Dp(0); }
+        bool operator==(const Arrangement& o) const {
+            if (policy || o.policy) return policy == o.policy || (policy && o.policy && policy->Equals(*o.policy));
+            return kind == o.kind && space == o.space && rtlMirror == o.rtlMirror && alignBias == o.alignBias && alignIsVertical == o.alignIsVertical;
+        }
+        static Arrangement Custom(std::shared_ptr<const ArrangementPolicy> p) { Arrangement a; a.policy = std::move(p); return a; }
 
         static Arrangement Start() { return { Kind::Start }; }
         static Arrangement End() { return { Kind::End }; }

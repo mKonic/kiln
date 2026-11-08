@@ -6,6 +6,7 @@
 #include <kiln/foundation/Semantics.h>
 #include <kiln/material3/Checkbox.h>
 #include <kiln/material3/Card.h>
+#include <kiln/material3/Chip.h>
 #include <kiln/material3/RadioButton.h>
 #include <kiln/material3/Switch.h>
 #include <kiln/material3/Badge.h>
@@ -73,6 +74,56 @@ namespace kiln::gallery {
                 m3::ToggleButton(on->Get(), change, {}, disabled, [] { m3::Text("Disabled toggle"); });
             });
             m3::Text(checked.Get() ? "Text toggles: on" : "Text toggles: off");
+        }
+
+        void Chips() {
+            auto* actions = &RememberState(0);
+            auto icon = [] { m3::Icon(m3::internal::Icons::Filled::Check(), std::nullopt, SizeMod({}, 18_dp, 18_dp)); };
+            FlowRow({}, Arrangement::SpacedBy(8_dp), Arrangement::SpacedBy(8_dp), AlignmentV::CenterVertically(), [=] {
+                auto click = [actions] { actions->Set(actions->Peek() + 1); };
+                m3::ChipOptions options;
+                options.leadingIcon = icon;
+                options.trailingIcon = [] { m3::Icon(m3::internal::Icons::Filled::Close(), std::nullopt, SizeMod({}, 18_dp, 18_dp)); };
+                m3::AssistChip(click, [] { m3::Text("Assist"); }, {}, options);
+                options.trailingIcon = {};
+                m3::ElevatedAssistChip(click, [] { m3::Text("Elevated assist"); }, {}, options);
+                m3::SuggestionChip(click, [] { m3::Text("Suggestion"); }, {}, options);
+                m3::ElevatedSuggestionChip(click, [] { m3::Text("Elevated suggestion"); });
+                options.enabled = false;
+                m3::AssistChip(click, [] { m3::Text("Disabled chip"); }, {}, options);
+            });
+            auto* selected = &RememberState(false);
+            FlowRow({}, Arrangement::SpacedBy(8_dp), Arrangement::SpacedBy(8_dp), AlignmentV::CenterVertically(), [=] {
+                auto click = [selected] { selected->Set(!selected->Peek()); };
+                m3::SelectableChipOptions options;
+                if (selected->Get()) options.leadingIcon = icon;
+                m3::FilterChip(selected->Get(), click, [] { m3::Text("Filter"); }, {}, options);
+                m3::ElevatedFilterChip(selected->Get(), click, [] { m3::Text("Elevated filter"); }, {}, options);
+                options.shapes = m3::FilterChipDefaults::shapes();
+                m3::FilterChip(selected->Get(), click, [] { m3::Text("Expressive filter"); }, {}, options);
+                options.enabled = false;
+                m3::FilterChip(true, [] {}, [] { m3::Text("Disabled filter"); }, {}, options);
+            });
+            auto* inputSelected = &RememberState(false);
+            FlowRow({}, Arrangement::SpacedBy(8_dp), Arrangement::SpacedBy(8_dp), AlignmentV::CenterVertically(), [=] {
+                auto click = [inputSelected] { inputSelected->Set(!inputSelected->Peek()); };
+                m3::SelectableChipOptions options;
+                options.leadingIcon = icon;
+                options.trailingIcon = [] { m3::Icon(m3::internal::Icons::Filled::Close(), std::nullopt, SizeMod({}, 18_dp, 18_dp)); };
+                m3::InputChip(inputSelected->Get(), click, [] { m3::Text("Input"); }, {}, options);
+                options.avatar = [] {
+                    Box(Background(SizeMod({}, 24_dp, 24_dp), m3::MaterialTheme::colorScheme().primaryContainer, CircleShape()), Alignment::Center(), false, [] {
+                        m3::TextOptions text;
+                        text.color = m3::MaterialTheme::colorScheme().onPrimaryContainer;
+                        text.style = m3::MaterialTheme::typography().labelSmall;
+                        m3::Text("K", {}, text);
+                    });
+                };
+                m3::InputChip(inputSelected->Get(), click, [] { m3::Text("Avatar input"); }, {}, options);
+                options.shapes = m3::InputChipDefaults::shapes();
+                m3::InputChip(inputSelected->Get(), click, [] { m3::Text("Expressive input"); }, {}, options);
+            });
+            m3::Text("Chip actions: " + std::to_string(actions->Get()));
         }
 
         void Cards() {
@@ -261,6 +312,9 @@ namespace kiln::gallery {
                         m3::TextButton([selection] { selection->Set(1); }, {}, {}, [] { m3::Text("Dark"); });
                         m3::TextButton([selection] { selection->Set(2); }, {}, {}, [] { m3::Text("Dynamic"); });
                     });
+                    m3::Text("Chips");
+                    Chips();
+                    m3::HorizontalDivider();
                     m3::Text("Cards");
                     Cards();
                     m3::HorizontalDivider();
