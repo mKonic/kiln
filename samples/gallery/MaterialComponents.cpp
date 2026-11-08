@@ -9,6 +9,7 @@
 #include <kiln/material3/IconButton.h>
 #include <kiln/material3/MaterialTheme.h>
 #include <kiln/material3/Surface.h>
+#include <kiln/material3/ToggleButton.h>
 #include <kiln/material3/Text.h>
 #include <kiln/material3/internal/Icons.h>
 
@@ -44,6 +45,26 @@ namespace kiln::gallery {
                 m3::BadgedBox([count] { m3::Badge({}, std::nullopt, std::nullopt, [count] { m3::Text(std::to_string(count->Get())); }); },
                               Padding({}, 8_dp, 16_dp), [] { m3::Icon(m3::internal::Icons::Filled::Check(), std::string("Clicks")); });
             });
+        }
+
+        void ToggleButtons() {
+            auto& checked = RememberState(false);
+            auto* on = &checked;
+            FlowRow({}, Arrangement::SpacedBy(8_dp), Arrangement::SpacedBy(8_dp), AlignmentV::CenterVertically(), [on] {
+                auto change = [on](bool value) { on->Set(value); };
+                m3::ToggleButtonOptions icon;
+                icon.icon = [] { m3::Icon(m3::internal::Icons::Filled::Check(), std::nullopt); };
+                m3::ToggleButton(on->Get(), change, {}, icon, [] { m3::Text("Filled toggle"); });
+                m3::ElevatedToggleButton(on->Get(), change, {}, {}, [] { m3::Text("Elevated toggle"); });
+                m3::ToggleButtonOptions medium;
+                medium.buttonSize = m3::ToggleButtonSize::Medium;
+                m3::FilledTonalToggleButton(on->Get(), change, {}, medium, [] { m3::Text("Tonal toggle"); });
+                m3::OutlinedToggleButton(on->Get(), change, {}, {}, [] { m3::Text("Outlined toggle"); });
+                m3::ToggleButtonOptions disabled;
+                disabled.enabled = false;
+                m3::ToggleButton(on->Get(), change, {}, disabled, [] { m3::Text("Disabled toggle"); });
+            });
+            m3::Text(checked.Get() ? "Text toggles: on" : "Text toggles: off");
         }
 
         void IconButtons() {
@@ -90,6 +111,9 @@ namespace kiln::gallery {
                         m3::TextButton([selection] { selection->Set(1); }, {}, {}, [] { m3::Text("Dark"); });
                         m3::TextButton([selection] { selection->Set(2); }, {}, {}, [] { m3::Text("Dynamic"); });
                     });
+                    m3::Text("Toggle buttons");
+                    ToggleButtons();
+                    m3::HorizontalDivider();
                     m3::Text("Material buttons");
                     Buttons();
                     m3::HorizontalDivider();

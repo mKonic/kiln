@@ -6,6 +6,7 @@
 #include "kiln/material3/Badge.h"
 #include "kiln/material3/Button.h"
 #include "kiln/material3/IconButton.h"
+#include "kiln/material3/ToggleButton.h"
 #include "kiln/material3/Ripple.h"
 #include "kiln/material3/MaterialShapes.h"
 #include "kiln/material3/Text.h"
@@ -364,6 +365,69 @@ TEST(ButtonElevationFollowsTheLastInteractionAndSnapsWhenDisabled) {
     rt::Composition::RecomposeAll();
     CHECK(elevation == 0_dp);
     source->End(Interaction::Kind::Hover, hover);
+}
+
+TEST(ToggleButtonsResolveSizeColorAndCheckboxSemantics) {
+    using Toggle = void (*)(bool, std::function<void(bool)>, const ui::Modifier&, const ToggleButtonOptions&, std::function<void()>);
+    for (Toggle toggle : { ToggleButton, ElevatedToggleButton, FilledTonalToggleButton, OutlinedToggleButton }) {
+        rt::State<bool> checked{ false };
+        Harness h;
+        text::TextStyle label;
+        h.Run([&] {
+            MaterialTheme([&] {
+                CHECK(ToggleButtonDefaults::colors().checkedContainerColor == MaterialTheme::colorScheme().primary);
+                CHECK(FilledTonalToggleButtonDefaults::colors().checkedContainerColor == MaterialTheme::colorScheme().secondary);
+                CHECK(!OutlinedToggleButtonDefaults::border(true, true));
+                CHECK(ToggleButtonDefaults::shapesFor(ToggleButtonSize::Medium).checkedShape->Equals(*MaterialTheme::shapes().large));
+                Column({}, [&] {
+                    ToggleButtonOptions options;
+                    options.buttonSize = ToggleButtonSize::Medium;
+                    options.icon = [] { Box(SizeMod({}, 24_dp, 24_dp)); };
+                    toggle(checked.Get(), [&](bool value) { checked.Set(value); }, {}, options, [&] {
+                        label = rt::Composition::Current()->Read(LocalTextStyle());
+                        Box(SizeMod({}, 10_dp, 10_dp));
+                    });
+                });
+            });
+        });
+        CHECK(label == Typography{}.titleMedium);
+        CHECK(h.owner.Root().Children()[0]->Children()[0]->Size().height >= 56);
+        const auto tree = h.owner.BuildSemanticsTree();
+        CHECK_EQ(tree.children.size(), std::size_t(1));
+        CHECK(tree.children[0].config.role == ui::Role::Checkbox);
+        CHECK_EQ(*tree.children[0].config.toggleableState, 0);
+        CHECK(tree.children[0].config.onClick());
+        rt::Composition::RecomposeAll();
+        h.owner.MeasureAndLayout({ 300, 300 });
+        CHECK(checked.Peek());
+        CHECK_EQ(*h.owner.BuildSemanticsTree().children[0].config.toggleableState, 1);
+    }
+}
+
+TEST(ToggleBorderAnimatesOutAndPreservesGradientBrushes) {
+    rt::State<bool> visible{ true };
+    Harness h;
+    std::optional<BorderStroke> border;
+    h.Run([&] {
+        MaterialTheme([&] {
+            border = material3::internal::AnimateBorderStrokeAsState(visible.Get()
+                ? std::optional(BorderStroke(4_dp, gfx::Brush::HorizontalGradient({ Color(0xffff0000), Color(0xff0000ff) })))
+                : std::nullopt);
+        });
+    });
+    CHECK(border && border->width == 4_dp && border->brush.kind == gfx::Brush::Kind::Linear);
+    visible.Set(false);
+    rt::Composition::RecomposeAll();
+    rt::Dispatcher::Main().RunFrame(0);
+    rt::Composition::RecomposeAll();
+    rt::Dispatcher::Main().RunFrame(32'000'000);
+    rt::Composition::RecomposeAll();
+    CHECK(border && border->width.value > 0 && border->width.value < 4);
+    for (std::int64_t ms = 48; ms <= 2000; ms += 16) {
+        rt::Dispatcher::Main().RunFrame(ms * 1'000'000);
+        rt::Composition::RecomposeAll();
+    }
+    CHECK(!border);
 }
 
 TEST(PrecisionPointerDevicesRequireAPhysicalKeyboardAndNonTabletMouse) {

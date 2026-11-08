@@ -7,7 +7,7 @@
 #include "kiln/material3/Ripple.h"
 #include "kiln/material3/Surface.h"
 #include "kiln/material3/internal/ChildParentSemantics.h"
-#include "kiln/material3/internal/Helpers.h"
+#include "kiln/material3/internal/InteractionShape.h"
 #include "kiln/material3/tokens/MotionSchemeKeyTokens.h"
 
 namespace kiln::material3 {
@@ -23,16 +23,8 @@ namespace kiln::material3 {
         }
 
         foundation::ShapePtr ShapeFor(const IconToggleButtonShapes& shapes, bool pressed, bool checked) {
-            const auto& target = pressed ? shapes.pressedShape : checked ? shapes.checkedShape : shapes.shape;
-            if (shapes.shape == shapes.pressedShape && shapes.shape == shapes.checkedShape) return target;
-            const auto rest = std::dynamic_pointer_cast<const foundation::CornerBasedShape>(shapes.shape);
-            const auto press = std::dynamic_pointer_cast<const foundation::CornerBasedShape>(shapes.pressedShape);
-            const auto check = std::dynamic_pointer_cast<const foundation::CornerBasedShape>(shapes.checkedShape);
-            if (!rest || !press || !check) return target;
-            const auto hash = std::hash<const void*>{};
-            const std::size_t key = (hash(rest.get()) * 31 + hash(press.get())) * 31 + hash(check.get());
-            return internal::RememberAnimatedShape(pressed ? press : checked ? check : rest,
-                                                    Value(tokens::MotionSchemeKeyTokens::DefaultEffects), key);
+            return internal::ShapeByInteraction(shapes.shape, shapes.pressedShape, shapes.checkedShape, pressed, checked,
+                                                 Value(tokens::MotionSchemeKeyTokens::DefaultEffects));
         }
 
         IconButtonColors Colors(Variant variant) {
