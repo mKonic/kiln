@@ -219,11 +219,13 @@ namespace kiln {
         rt::State<bool>* is24Hour = m_Is24Hour.get();
         content = [config, is24Hour, window, owner, content = std::move(content)] {
             auto* c = rt::Composition::Current();
-            c->Provide(ui::LocalOwner, owner, [c, config, is24Hour, window, content] {
+            c->Provide(ui::LocalOwner, owner, [c, config, is24Hour, window, owner, content] {
+            c->Provide(ui::LocalDensity, owner->ObservedDensity(), [c, config, is24Hour, window, content] {
             c->Provide(ui::LocalConfiguration, config->Get(), [c, is24Hour, window, content] {
                 c->Provide(ui::LocalIs24HourFormat, is24Hour->Get(), [c, window, content] {
                     c->Provide(ui::LocalWindow, window.get(), content);
                 });
+            });
             });
             });
         };

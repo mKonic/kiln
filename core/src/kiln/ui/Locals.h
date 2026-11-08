@@ -14,6 +14,8 @@ namespace kiln::ui {
     // LocalLayoutDirection: the host view's layout direction (RTL locales mirror layouts and
     // reverse horizontal gestures).
     inline rt::Local<LayoutDirection> LocalLayoutDirection{ LayoutDirection::Ltr };
+    // LocalDensity: the window's density (px per dp) and font scale.
+    inline rt::Local<Density> LocalDensity{ Density{} };
 
     // The host view's nested-scrolling parent (LocalView for rememberNestedScrollInteropConnection);
     // null when the host has none.

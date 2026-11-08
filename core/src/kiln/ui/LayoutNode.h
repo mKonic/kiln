@@ -239,8 +239,10 @@ namespace kiln::ui {
         // The window's (or a popup's) window focus: the content's window loses it to a focusable
         // popup above it; a popup has it while it is the top focusable one.
         bool IsContentWindowFocused() const { return IsWindowFocused() && !TopFocusablePopup(); }
-        void SetDensity(Density d) { m_Density = d; RequestFullRemeasure(); }
+        void SetDensity(Density d) { m_Density = d; m_ObservedDensity.Set(d); RequestFullRemeasure(); }
         Density GetDensity() const { return m_Density; }
+        // The density as observable state: LocalDensity provides it to compositions.
+        const Density& ObservedDensity() const { return m_ObservedDensity.Get(); }
         void SetDirection(LayoutDirection d) { m_Direction = d; RequestFullRemeasure(); }
         LayoutDirection Direction() const { return m_Direction; }
         IntSize WindowSize() const { return m_Window; }
@@ -671,6 +673,7 @@ namespace kiln::ui {
         std::unique_ptr<LayoutNode> m_Root;
         std::unique_ptr<LayoutNode> m_ContentRoot;
         Density m_Density;
+        rt::State<Density> m_ObservedDensity{ Density{} };
         LayoutDirection m_Direction = LayoutDirection::Ltr;
         TextBackend* m_Text = nullptr;
         std::function<void()> m_RequestFrame;
