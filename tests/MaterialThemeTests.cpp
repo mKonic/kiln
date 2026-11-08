@@ -5,6 +5,9 @@
 #include "kiln/foundation/text/Selection.h"
 #include "kiln/material3/MaterialTheme.h"
 #include "kiln/material3/Badge.h"
+#include "kiln/material3/Checkbox.h"
+#include "kiln/material3/RadioButton.h"
+#include "kiln/material3/Switch.h"
 #include "kiln/material3/Button.h"
 #include "kiln/material3/IconButton.h"
 #include "kiln/material3/FloatingActionButton.h"
@@ -942,6 +945,251 @@ TEST(FabMenusStartExpandedScrollWithinConstraintsAndHandOffKeyboardFocus) {
     CHECK(focus && focus->RequestFocus());
     CHECK(h.owner.DispatchKeyEvent({ .keyCode = ui::keys::Tab, .type = ui::KeyEventType::KeyDown }));
     CHECK(h.owner.ActiveFocus() && h.owner.ActiveFocus()->Owner() == items->Children()[0]);
+}
+
+TEST(SelectionControlColorsResolveEveryStateAndKeepUnspecifiedOverrides) {
+    Harness h;
+    h.Run([] {
+        MaterialTheme([] {
+            const auto& scheme = MaterialTheme::colorScheme();
+            const auto checkbox = CheckboxDefaults::colors();
+            CHECK(checkbox.checkedBoxColor == scheme.primary);
+            CHECK(checkbox.checkedCheckmarkColor == scheme.onPrimary);
+            CHECK(checkbox.uncheckedBoxColor == Color::Transparent());
+            CHECK(checkbox.uncheckedBorderColor == scheme.onSurfaceVariant);
+            CHECK(checkbox.disabledCheckedBoxColor == scheme.onSurface.WithAlpha(0.38f));
+            CHECK(checkbox.disabledUncheckedBorderColor == scheme.onSurface.WithAlpha(0.38f));
+            CHECK(checkbox.disabledCheckmarkColor == scheme.surface);
+            CHECK(checkbox.Copy({}) == checkbox);
+            CheckboxColors overrides;
+            overrides.disabledIndeterminateBorderColor = Color(0xff123456);
+            const auto copy = checkbox.Copy(overrides);
+            CHECK(copy.BorderColor(false, ToggleableState::Indeterminate) == Color(0xff123456));
+            CHECK(copy.BorderColor(false, ToggleableState::On) == checkbox.disabledBorderColor);
+            CHECK(copy.CheckmarkColor(false, ToggleableState::Off) == checkbox.disabledCheckmarkColor);
+            CHECK(copy.BoxColor(false, ToggleableState::Off) == Color::Transparent());
+            CHECK(copy.IndicatorColor(ToggleableState::Indeterminate) == scheme.primary);
+            CHECK(CheckboxDefaults::colors(Color(0xffabcdef)).checkedBorderColor == Color(0xffabcdef));
+            CHECK(CheckboxDefaults::colors(Color(0xffabcdef)).uncheckedBorderColor == checkbox.uncheckedBorderColor);
+            const auto radio = RadioButtonDefaults::colors();
+            CHECK(radio.selectedColor == scheme.primary && radio.unselectedColor == scheme.onSurfaceVariant);
+            CHECK(radio.RadioColor(false, true) == scheme.onSurface.WithAlpha(0.38f));
+            CHECK(radio.RadioColor(false, false) == scheme.onSurface.WithAlpha(0.38f));
+            CHECK(radio.Copy() == radio);
+            CHECK(radio.Copy(Color(0xff123456)).RadioColor(true, true) == Color(0xff123456));
+            const auto sw = SwitchDefaults::colors();
+            CHECK(sw.checkedThumbColor == scheme.onPrimary && sw.checkedTrackColor == scheme.primary);
+            CHECK(sw.uncheckedThumbColor == scheme.outline && sw.uncheckedTrackColor == scheme.surfaceContainerHighest);
+            CHECK(sw.checkedBorderColor == Color::Transparent() && sw.uncheckedBorderColor == scheme.outline);
+            CHECK(sw.disabledCheckedThumbColor == ui::CompositeOver(scheme.surface.WithAlpha(1), scheme.surface));
+            CHECK(sw.disabledCheckedTrackColor == ui::CompositeOver(scheme.onSurface.WithAlpha(0.12f), scheme.surface));
+            CHECK(sw.disabledUncheckedThumbColor == ui::CompositeOver(scheme.onSurface.WithAlpha(0.38f), scheme.surface));
+            CHECK(sw.Copy({}) == sw);
+            SwitchColors switchOverrides;
+            switchOverrides.disabledUncheckedIconColor = Color(0xff987654);
+            CHECK(sw.Copy(switchOverrides).IconColor(false, false) == Color(0xff987654));
+            CHECK(sw.ThumbColor(false, true) == sw.disabledCheckedThumbColor);
+            CHECK(sw.TrackColor(false, false) == sw.disabledUncheckedTrackColor);
+            CHECK(sw.BorderColor(false, false) == sw.disabledUncheckedBorderColor);
+        });
+    });
+}
+
+TEST(SelectionControlsReserveInputSpaceOnlyWithCallbacksAndKeepDisabledState) {
+    for (int kind = 0; kind < 3; ++kind) {
+        rt::State<bool> checked{ false };
+        Harness h;
+        auto control = [&](bool interactive, bool enabled) {
+            std::function<void(bool)> change;
+            if (interactive) change = [&](bool value) { checked.Set(value); };
+            if (kind == 0) Checkbox(checked.Get(), change, {}, { .enabled = enabled });
+            else if (kind == 1) {
+                std::function<void()> click;
+                if (interactive) click = [&] { checked.Set(true); };
+                RadioButton(checked.Get(), click, {}, { .enabled = enabled });
+            } else Switch(checked.Get(), change, {}, { .enabled = enabled });
+        };
+        h.Run([&] { MaterialTheme([&] { Column({}, [&] { control(true, true); control(false, true); control(true, false); }); }); });
+        const auto& children = h.owner.Root().Children()[0]->Children();
+        CHECK_EQ(children[0]->Size().width, kind == 2 ? 52 : 48);
+        CHECK_EQ(children[0]->Size().height, 48);
+        CHECK_EQ(children[1]->Size().width, kind == 2 ? 52 : 24);
+        CHECK_EQ(children[1]->Size().height, kind == 2 ? 32 : 24);
+        CHECK_EQ(children[2]->Size().height, 48);
+        auto tree = h.owner.BuildSemanticsTree();
+        CHECK_EQ(tree.children.size(), std::size_t(2));
+        CHECK(tree.children[0].config.role == (kind == 0 ? ui::Role::Checkbox : kind == 1 ? ui::Role::RadioButton : ui::Role::Switch));
+        CHECK(!tree.children[0].config.disabled && tree.children[1].config.disabled);
+        CHECK(tree.children[0].config.onClick());
+        rt::Composition::RecomposeAll();
+        h.owner.MeasureAndLayout({ 300, 300 });
+        CHECK(checked.Peek());
+        tree = h.owner.BuildSemanticsTree();
+        CHECK(kind == 1 ? tree.children[0].config.selected == true : tree.children[0].config.toggleableState == 1);
+        checked.Set(false);
+        rt::Composition::RecomposeAll();
+        h.owner.MeasureAndLayout({ 300, 300 });
+        // Compose retains the semantics action even when disabled; pointer input is gated.
+        const auto bounds = children[2]->InnerRectInRoot();
+        auto pointer = [&](ui::PointerEventType type, bool down, std::int64_t time) {
+            ui::RawPointerEvent event;
+            event.type = type;
+            event.uptimeMillis = time;
+            event.buttons = down ? 1 : 0;
+            event.pointers.push_back({ 1, { (bounds.left + bounds.right) / 2, (bounds.top + bounds.bottom) / 2 }, down, ui::PointerType::Mouse, {} });
+            h.owner.ProcessPointer(event);
+            rt::Dispatcher::Main().RunPending();
+        };
+        pointer(ui::PointerEventType::Press, true, 0);
+        pointer(ui::PointerEventType::Release, false, 50);
+        CHECK(!checked.Peek());
+    }
+}
+
+TEST(TriStateCheckboxKeepsIndeterminateSemanticsAcrossInterruptedMorphsAndStylingModes) {
+    const bool oldFlag = ComposeMaterial3Flags::isCheckboxStylingFixEnabled;
+    for (bool fixed : { false, true }) {
+        ComposeMaterial3Flags::isCheckboxStylingFixEnabled = fixed;
+        rt::State<ToggleableState> state{ ToggleableState::Indeterminate };
+        rt::State<bool> enabled{ true };
+        Harness h;
+        int clicks = 0;
+        h.Run([&] {
+            MaterialTheme([&] { Column({}, [&] {
+                CheckboxOptions options;
+                options.enabled = enabled.Get();
+                options.checkmarkStroke = gfx::Stroke{ 3, 4, gfx::StrokeCap::Round };
+                options.outlineStroke = gfx::Stroke{ 1 };
+                TriStateCheckbox(state.Get(), [&] { ++clicks; }, {}, options);
+                TriStateCheckbox(state.Get(), {}, {}, options);
+            }); });
+        });
+        auto& children = h.owner.Root().Children()[0]->Children();
+        CHECK_EQ(children[0]->Size().width, 48);
+        CHECK_EQ(children[1]->Size().width, fixed ? 18 : 24);
+        auto tree = h.owner.BuildSemanticsTree();
+        CHECK(tree.children.size() == 1 && tree.children[0].config.toggleableState == 2);
+        CHECK(tree.children[0].config.onClick() && clicks == 1);
+        std::int64_t clock = 0;
+        auto advance = [&](int frames) {
+            for (int i = 0; i < frames; ++i) {
+                rt::Composition::RecomposeAll();
+                rt::Dispatcher::Main().RunFrame(clock += 16'000'000);
+                rt::Composition::RecomposeAll();
+                h.owner.MeasureAndLayout({ 300, 300 });
+            }
+        };
+        state.Set(ToggleableState::On); advance(3);
+        state.Set(ToggleableState::Off); advance(3);
+        state.Set(ToggleableState::Indeterminate); enabled.Set(false); advance(130);
+        tree = h.owner.BuildSemanticsTree();
+        CHECK(tree.children[0].config.toggleableState == 2 && tree.children[0].config.disabled);
+        enabled.Set(true); advance(2);
+        CHECK(!h.owner.BuildSemanticsTree().children[0].config.disabled);
+    }
+    ComposeMaterial3Flags::isCheckboxStylingFixEnabled = oldFlag;
+}
+
+TEST(SwitchThumbAnimatesSelectionSnapsPressAndHandlesContentRtlAndSourceReplacement) {
+    for (auto direction : { ui::LayoutDirection::Ltr, ui::LayoutDirection::Rtl }) {
+        rt::State<bool> checked{ false }, content{ false }, enabled{ true }, attached{ true };
+        rt::State<int> version{ 0 };
+        auto source = std::make_shared<MutableInteractionSource>();
+        Harness h;
+        h.owner.SetDirection(direction);
+        Color iconColor;
+        int compositions = 0;
+        h.Run([&] {
+            ++compositions;
+            version.Get();
+            MaterialTheme([&] { Column({}, [&] {
+                if (!attached.Get()) return;
+                SwitchOptions options;
+                options.enabled = enabled.Get();
+                options.interactionSource = source;
+                if (content.Get()) options.thumbContent = [&] {
+                    iconColor = rt::Composition::Current()->Read(LocalContentColor);
+                    Box(SizeMod({}, 16_dp, 16_dp));
+                };
+                Switch(checked.Get(), [&](bool value) { checked.Set(value); }, {}, options);
+            }); });
+        });
+        auto thumb = [&] { return h.owner.Root().Children()[0]->Children()[0]->Children()[0]; };
+        auto left = [&] {
+            return int(thumb()->InnerRectInRoot().left - h.owner.Root().Children()[0]->Children()[0]->InnerRectInRoot().left);
+        };
+        CHECK_EQ(thumb()->Size().width, 16);
+        CHECK_EQ(left(), direction == ui::LayoutDirection::Ltr ? 8 : 28);
+        std::int64_t clock = 0;
+        auto advance = [&](int frames) {
+            for (int i = 0; i < frames; ++i) {
+                rt::Composition::RecomposeAll();
+                rt::Dispatcher::Main().RunFrame(clock += 16'000'000);
+                rt::Composition::RecomposeAll();
+                h.owner.MeasureAndLayout({ 300, 300 });
+            }
+        };
+        checked.Set(true); advance(3);
+        CHECK(thumb()->Size().width > 16 && thumb()->Size().width < 24);
+        const int before = compositions;
+        advance(130);
+        CHECK_EQ(compositions, before);  // thumb geometry is observed by layout, not composition
+        CHECK_EQ(thumb()->Size().width, 24);
+        CHECK_EQ(left(), direction == ui::LayoutDirection::Ltr ? 24 : 4);
+        const auto press = source->Start(Interaction::Kind::Press);
+        advance(2);
+        CHECK_EQ(thumb()->Size().width, 28);
+        CHECK_EQ(left(), direction == ui::LayoutDirection::Ltr ? 22 : 2);
+        source->Cancel(Interaction::Kind::Press, press); advance(130);
+        CHECK_EQ(thumb()->Size().width, 24);
+        checked.Set(false); content.Set(true); advance(130);
+        CHECK_EQ(thumb()->Size().width, 24);
+        CHECK_EQ(left(), direction == ui::LayoutDirection::Ltr ? 4 : 24);
+        CHECK(iconColor == LightColorScheme().surfaceContainerHighest);
+        enabled.Set(false); advance(2);
+        CHECK(iconColor == ui::CompositeOver(LightColorScheme().surfaceContainerHighest.WithAlpha(0.38f), LightColorScheme().surface));
+        auto oldSource = source;
+        source = std::make_shared<MutableInteractionSource>(); version.Set(1); advance(2);
+        oldSource->Start(Interaction::Kind::Press); advance(2);
+        CHECK_EQ(thumb()->Size().width, 24);
+        source->Start(Interaction::Kind::Press); advance(2);
+        CHECK_EQ(thumb()->Size().width, 28);
+        attached.Set(false); advance(3);
+        source->Start(Interaction::Kind::Press); advance(2);
+        CHECK(h.owner.Root().Children()[0]->Children().empty());
+    }
+}
+
+TEST(SwitchesSharingStateUpdateTogetherWhenThumbContentAlsoReadsIt) {
+    Harness h;
+    h.Run([&] {
+        MaterialTheme([&] {
+            auto* on = &RememberState(false);
+            Column({}, [on] {
+                auto change = [on](bool value) { on->Set(value); };
+                Switch(on->Get(), change);
+                SwitchOptions options;
+                options.thumbContent = [on] { on->Get(); Box(SizeMod({}, 16_dp, 16_dp)); };
+                Switch(on->Get(), change, {}, options);
+            });
+        });
+    });
+    auto& accessibility = h.owner.Accessibility();
+    accessibility.SetEnabled(true);
+    accessibility.CheckForSemanticsChanges();
+    accessibility.TakeEvents();
+    auto tree = h.owner.BuildSemanticsTree();
+    CHECK_EQ(tree.children.size(), std::size_t(2));
+    CHECK(tree.children[1].config.onClick());
+    for (int i = 0; i < 3; ++i) { rt::Composition::RecomposeAll(); h.owner.MeasureAndLayout({ 300, 300 }); }
+    tree = h.owner.BuildSemanticsTree();
+    CHECK(tree.children[0].config.toggleableState == 1);
+    CHECK(tree.children[1].config.toggleableState == 1);
+    accessibility.CheckForSemanticsChanges();
+    int checkedEvents = 0;
+    for (const auto& event : accessibility.TakeEvents())
+        if (event.contentChangeTypes == ui::a11y::Checked) ++checkedEvents;
+    CHECK_EQ(checkedEvents, 2);
 }
 
 TEST(BadgeDoesNotResizeItsAnchorAndUsesContentMinimumSize) {

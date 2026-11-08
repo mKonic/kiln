@@ -2,6 +2,11 @@
 
 #include <kiln/foundation/Compose.h>
 #include <kiln/foundation/Flow.h>
+#include <kiln/foundation/Gestures.h>
+#include <kiln/foundation/Semantics.h>
+#include <kiln/material3/Checkbox.h>
+#include <kiln/material3/RadioButton.h>
+#include <kiln/material3/Switch.h>
 #include <kiln/material3/Badge.h>
 #include <kiln/material3/Button.h>
 #include <kiln/material3/Divider.h>
@@ -67,6 +72,52 @@ namespace kiln::gallery {
                 m3::ToggleButton(on->Get(), change, {}, disabled, [] { m3::Text("Disabled toggle"); });
             });
             m3::Text(checked.Get() ? "Text toggles: on" : "Text toggles: off");
+        }
+
+        void SelectionControls() {
+            auto named = [](const char* label) {
+                return Semantics({}, [label](SemanticsConfiguration& config) { config.contentDescription = { label }; });
+            };
+            auto* checked = &RememberState(false);
+            auto* tri = &RememberState(m3::ToggleableState::Indeterminate);
+            m3::Text("Checkboxes");
+            FlowRow({}, Arrangement::SpacedBy(16_dp), Arrangement::SpacedBy(8_dp), AlignmentV::CenterVertically(), [=] {
+                m3::Checkbox(checked->Get(), [checked](bool value) { checked->Set(value); }, named("Checkbox"));
+                m3::TriStateCheckbox(tri->Get(), [tri] {
+                    tri->Set(tri->Peek() == m3::ToggleableState::Indeterminate ? m3::ToggleableState::On :
+                             tri->Peek() == m3::ToggleableState::On ? m3::ToggleableState::Off : m3::ToggleableState::Indeterminate);
+                }, named("Tri-state checkbox"));
+                m3::Checkbox(true, [](bool) {}, named("Disabled checked checkbox"), { .enabled = false });
+                m3::Checkbox(false, [](bool) {}, named("Disabled unchecked checkbox"), { .enabled = false });
+            });
+            m3::Text("Radio buttons");
+            auto* selected = &RememberState(0);
+            FlowRow(SelectableGroup({}), Arrangement::SpacedBy(16_dp), Arrangement::SpacedBy(8_dp), AlignmentV::CenterVertically(), [=] {
+                m3::RadioButton(selected->Get() == 0, [selected] { selected->Set(0); }, named("Radio first"));
+                m3::RadioButton(selected->Get() == 1, [selected] { selected->Set(1); }, named("Radio second"));
+                m3::RadioButton(true, [] {}, named("Disabled selected radio"), { .enabled = false });
+                m3::RadioButton(false, [] {}, named("Disabled unselected radio"), { .enabled = false });
+            });
+            m3::Text("Switches");
+            auto* on = &RememberState(false);
+            FlowRow({}, Arrangement::SpacedBy(16_dp), Arrangement::SpacedBy(8_dp), AlignmentV::CenterVertically(), [=] {
+                auto change = [on](bool value) { on->Set(value); };
+                m3::Switch(on->Get(), change, named("Switch"));
+                m3::SwitchOptions icon;
+                icon.thumbContent = [on] {
+                    m3::Icon(on->Get() ? m3::internal::Icons::Filled::Check() : m3::internal::Icons::Filled::Close(), std::nullopt,
+                             SizeMod({}, m3::SwitchDefaults::IconSize, m3::SwitchDefaults::IconSize));
+                };
+                m3::Switch(on->Get(), change, named("Icon switch"), icon);
+                m3::Switch(true, [](bool) {}, named("Disabled checked switch"), { .enabled = false });
+                m3::Switch(false, [](bool) {}, named("Disabled unchecked switch"), { .enabled = false });
+            });
+            m3::Text("Decorative controls");
+            Row({}, Arrangement::SpacedBy(24_dp), AlignmentV::CenterVertically(), [] {
+                m3::Checkbox(true, {});
+                m3::RadioButton(true, {});
+                m3::Switch(true, {});
+            });
         }
 
         void FabMenus() {
@@ -180,6 +231,8 @@ namespace kiln::gallery {
                         m3::TextButton([selection] { selection->Set(1); }, {}, {}, [] { m3::Text("Dark"); });
                         m3::TextButton([selection] { selection->Set(2); }, {}, {}, [] { m3::Text("Dynamic"); });
                     });
+                    SelectionControls();
+                    m3::HorizontalDivider();
                     m3::Text("FAB menus");
                     FabMenus();
                     m3::HorizontalDivider();

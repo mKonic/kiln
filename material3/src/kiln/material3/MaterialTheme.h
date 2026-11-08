@@ -86,6 +86,7 @@ namespace kiln::material3 {
     // ComposeMaterial3Flags
     namespace ComposeMaterial3Flags {
         inline bool isPrecisionPointerComponentSizingEnabled = false;
+        inline bool isCheckboxStylingFixEnabled = false;
     }
 
     // TextSelectionBackgroundOpacity (selection highlight: primary at this alpha).
