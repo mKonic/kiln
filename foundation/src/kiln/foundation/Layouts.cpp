@@ -546,7 +546,7 @@ namespace kiln::foundation {
         // RenderProperties::updateMatrix with rotationX/Y: translate(pivot + t) * camera * scale *
         // translate(-pivot), the camera being Sk3DView's (rotateX, rotateY, rotateZ(-rz)) seen from
         // z = -72 * cameraDistance through SkCamera3D::patchToMatrix. Row-major 3x3.
-        void LayerMatrix3D(const GraphicsLayerParams& p, Size size, float out[9]) {
+        void LayerMatrix3D(const GraphicsLayerParams& p, Size size, float out[9], std::array<float, 3>* zPlane = nullptr, float elevation = 0) {
             const double px = size.width * p.originX, py = size.height * p.originY;
             auto rot = [](double ax, double ay, double az, double deg, double r[9]) {
                 const double a = deg * 3.14159265358979323846 / 180.0, c = std::cos(a), s = std::sin(a), t = 1 - c;
@@ -577,6 +577,16 @@ namespace kiln::foundation {
             mul(tr, cam, h);
             mul(h, sc, h);
             for (int i = 0; i < 9; ++i) out[i] = float(h[i]);
+            if (zPlane) {
+                // RenderNode::applyViewPropertyTransforms(true): the full 3D matrix, not the
+                // camera homography. HWUI passes its z row to SkShadowUtils for tilted casters.
+                rot(0, 1, 0, p.rotationY, ry);
+                rot(0, 0, 1, p.rotationZ, rz);
+                mul(rx, ry, m);
+                mul(m, rz, m);
+                const float a = float(m[6] * p.scaleX), b = float(m[7] * p.scaleY);
+                *zPlane = { a, b, elevation - a * float(px) - b * float(py) };
+            }
         }
 
         // The layer's properties: fixed, or a block run at draw time whose reads are observed
@@ -674,7 +684,8 @@ namespace kiln::foundation {
             // The RenderNode's shadow (HWUI draws it before the node's content): the outline
             // GraphicsLayer.configureOutlineAndClip gives it, a round rect on whole pixels or a
             // path, with the layer's alpha as both node and outline alpha.
-            void DrawElevationShadow(ContentDrawScope& s, Size size) {
+            void DrawElevationShadow(ContentDrawScope& s, Size size, const gfx::ShadowProjection* projection = nullptr) {
+                if (params.scaleX == 0 || params.scaleY == 0) return;
                 gfx::Outline o;
                 if (params.clipShape) o = params.clipShape->CreateOutline(size, s.Direction(), s);
                 else o.value = gfx::RoundRect::Uniform({ 0, 0, size.width, size.height }, CornerRadiusPx(params.shape, size, s));
@@ -690,7 +701,7 @@ namespace kiln::foundation {
                     if (simple) o.value = gfx::RoundRect::Uniform(whole(rr->rect), rr->topLeft.x);   // setRoundRect
                     else o.value = o.ToPath();                                                    // setPath
                 }
-                s.DrawShadow(o, ShadowElevationPx(s), params.ambientShadowColor, params.spotShadowColor, params.alpha * params.alpha);
+                s.DrawShadow(o, ShadowElevationPx(s), params.ambientShadowColor, params.spotShadowColor, params.alpha * params.alpha, projection);
             }
             float ShadowElevationPx(const Density& d) const {
                 return params.shadowElevationDp > 0 ? d.ToPx(Dp(params.shadowElevationDp)) : params.shadowElevation;
@@ -784,6 +795,9 @@ namespace kiln::foundation {
             // is composited through the perspective matrix (it is planar, so this is the same image).
             void Draw3D(ContentDrawScope& s, Size size) {
                 s.Save();
+                gfx::ShadowProjection projection;
+                LayerMatrix3D(params, size, projection.matrix.data(), &projection.zPlane, ShadowElevationPx(s));
+                if (ShadowElevationPx(s) > 0) DrawElevationShadow(s, size, &projection);
                 // Without a clip, content overflowing the bounds is drawn too (a RenderNode projects
                 // its whole display list): the layer then covers everything visible.
                 constexpr float kAll = 1e6f;
@@ -802,9 +816,7 @@ namespace kiln::foundation {
                 if (clipPath) s.BeginLayer({ 0, 0, size.width, size.height }, 1, &*clipPath);
                 s.DrawContent();
                 if (clipPath) s.EndLayer();
-                float h[9];
-                LayerMatrix3D(params, size, h);
-                s.EndLayerProjective(h);
+                s.EndLayerProjective(projection.matrix.data());
                 s.Restore();
             }
         };

@@ -15,9 +15,14 @@ target_include_directories(clipper2 SYSTEM PUBLIC vendor/Clipper2/CPP/Clipper2Li
 
 # kiln_core: platform-independent; never includes JNI or Android headers.
 file(GLOB_RECURSE KILN_CORE_SOURCES CONFIGURE_DEPENDS core/src/*.cpp render/*.cpp)
+file(GLOB SKIA_SHADOW_SOURCES CONFIGURE_DEPENDS vendor/skia-shadow/src/*.cpp)
+add_library(skia_shadow STATIC ${SKIA_SHADOW_SOURCES})
+target_include_directories(skia_shadow PUBLIC vendor/skia-shadow/src)
+# Select Skia's curve subdivision, not its non-Ganesh control-polygon fallback.
+target_compile_definitions(skia_shadow PRIVATE SK_GANESH)
 add_library(kiln_core STATIC ${KILN_CORE_SOURCES})
 target_include_directories(kiln_core PUBLIC include core/src render)
-target_link_libraries(kiln_core PUBLIC hearth PRIVATE clipper2)
+target_link_libraries(kiln_core PUBLIC hearth PRIVATE clipper2 skia_shadow)
 target_compile_options(kiln_core PRIVATE -Wall -Wextra -Wno-missing-field-initializers)
 kiln_embed_shaders(kiln_core render/shaders)
 

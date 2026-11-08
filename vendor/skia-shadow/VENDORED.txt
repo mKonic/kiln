@@ -1,0 +1,40 @@
+Skia shadow geometry subset
+==========================
+
+Upstream: https://skia.googlesource.com/skia
+Revision: 765d2043b9674d376b414904d4b3dc21760874df
+License: BSD-style, in LICENSE.
+
+Copied files (only include paths/dependencies changed):
+  src/utils/SkShadowTessellator.{h,cpp}
+  src/utils/SkPolyUtils.{h,cpp}
+  src/core/SkTInternalLList.h
+  src/core/SkTDPQueue.h
+  src/core/SkDrawShadowInfo.{h,cpp}
+
+SkDrawShadowInfo omits GetLocalBounds, which is used by Skia's resource cache, not kiln.
+SK_GANESH selects the original curve-subdivision branch of the tessellator; no Ganesh
+renderer is linked.
+
+Extracted helpers:
+  SkCurves.{h,cpp}: GrPathUtils' quadratic/cubic point generators, the Wang's formula
+  pieces they use, SkConic subdivision/conversion/TransformW, and SkAutoConicToQuads.
+  Original files: src/gpu/ganesh/geometry/GrPathUtils.{h,cpp},
+  src/gpu/tessellate/WangsFormula.h, src/core/SkGeometry.{h,cpp}.
+  Vector arithmetic is expanded componentwise. Small-array storage uses std::vector.
+
+  skia_compat.h: the used portions of SkPoint/SkPointPriv/SkPoint3, SkRect/SkRectPriv,
+  SkMatrix (including perspective concatenation/mapping), SkPath::Iter, floating-point
+  and packed-colour helpers. Original files: include/core/Sk{Point,Point3,Rect,Matrix,Path}.h,
+  src/core/Sk{Point,Rect,Matrix,Path}.cpp, src/core/Sk{PointPriv,RectPriv,ColorData}.h,
+  include/private/SkFloatingPoint.h, include/core/SkScalar.h.
+  Skia containers/ref-counted meshes are replaced with STL storage and a small mesh
+  holder; non-movable intrusive-list grids are constructed in place, without relocation.
+  The path iterator tracks its current conic weight without forming a pointer before
+  the beginning of the weights array. Unused API and debug machinery are omitted.
+
+Integration outside this directory:
+  core/src/kiln/graphics/PathShadow.cpp adapts kiln paths/matrices and ports the
+  SkDevice::drawShadow blur fallback from src/utils/SkShadowUtils.cpp.
+  render/shaders/tri.frag ports SkGaussianColorFilter's Gaussian alpha-to-grayscale
+  effect from src/gpu/ganesh/GrFragmentProcessors.cpp.

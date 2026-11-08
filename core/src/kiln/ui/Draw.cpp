@@ -217,7 +217,7 @@ namespace kiln::ui {
         PathCoverage(path, stroke, Scaled(ToRgba(color), m_State.alpha), nullptr);
     }
 
-    const void* DrawScope::PathMask(const gfx::Path& path, const gfx::Stroke* stroke, float& outX, float& outY) {
+    const void* DrawScope::PathMask(const gfx::Path& path, const gfx::Stroke* stroke, float& outX, float& outY, const Rect* deviceVisible) {
         if (!m_Target.quads || !m_Target.paths || path.IsEmpty()) return nullptr;
         // Integer part of the translation is applied when drawing; the mask is built for the
         // scale and the quarter-pixel fraction so moving by whole pixels reuses it.
@@ -227,7 +227,8 @@ namespace kiln::ui {
         const gfx::Matrix m{ cur.a, cur.b, cur.c, cur.d, fx, fy };
         // Visible region relative to the integer origin; a mask clipped by it is position-keyed.
         // (A rotated clip is applied by the shader; only device-space clips shrink the mask.)
-        ui::Rect visible{ -ox, -oy, m_Target.viewportWidth - ox, m_Target.viewportHeight - oy };
+        ui::Rect visible = deviceVisible ? deviceVisible->Translate({ -ox, -oy })
+                                        : ui::Rect{ -ox, -oy, m_Target.viewportWidth - ox, m_Target.viewportHeight - oy };
         if (m_State.clip && m_State.clipInverse.b == 0 && m_State.clipInverse.c == 0 && m_State.clipInverse.a == 1 && m_State.clipInverse.d == 1)
             visible = visible.Intersect(m_State.clipRect.Translate({ -ox, -oy }));
         if (visible.Empty()) return nullptr;
@@ -431,8 +432,9 @@ namespace kiln::ui {
         }
     }
 
-    void DrawScope::DrawShadow(const gfx::Outline& outline, float elevation, Color ambientColor, Color spotColor, float casterAlpha) {
-        if (!m_Target.quads) return;
+    void DrawScope::DrawShadow(const gfx::Outline& outline, float elevation, Color ambientColor, Color spotColor, float casterAlpha,
+                               const gfx::ShadowProjection* projection) {
+        if (!m_Target.quads || !std::isfinite(elevation) || elevation <= 0 || !std::isfinite(casterAlpha)) return;
         const gfx::ShadowLight& light = m_Target.shadowLight;
         // EndReorderBarrierDrawable::drawShadow
         if (casterAlpha <= 0.0f) return;
@@ -450,8 +452,39 @@ namespace kiln::ui {
         const float sx2 = m.a * m.a + m.b * m.b, sy2 = m.c * m.c + m.d * m.d;
         const bool similarity = std::fabs(sx2 - sy2) <= 1e-4f * std::max(sx2, 1.0f) && std::fabs(m.a * m.c + m.b * m.d) <= 1e-4f * std::max(sx2, 1.0f);
         const ShadowRRect rr = ClassifyOutline(outline);
-        if (!rectStaysRect || !similarity || !rr.ok) return;   // general paths: SkShadowTessellator (not yet)
-        if (rr.rect.Empty()) return;
+        if (projection || !rectStaysRect || !similarity || !rr.ok) {
+            gfx::ShadowProjection dev;
+            if (projection) dev = *projection;
+            else dev.zPlane = { 0, 0, elevation };
+            const auto h = dev.matrix;
+            // Current affine transform * the optional local homography.
+            for (int j = 0; j < 3; ++j) {
+                dev.matrix[j] = m.a * h[j] + m.c * h[3 + j] + m.e * h[6 + j];
+                dev.matrix[3 + j] = m.b * h[j] + m.d * h[3 + j] + m.f * h[6 + j];
+            }
+            gfx::Path path;
+            // Outline.setRoundRect's native SkPath is clockwise (unlike Compose Path's default).
+            if (const auto* r = std::get_if<Rect>(&outline.value)) path.AddRect(*r, gfx::Path::Direction::Clockwise);
+            else if (const auto* r = std::get_if<gfx::RoundRect>(&outline.value)) path.AddRoundRect(*r, gfx::Path::Direction::Clockwise);
+            else path = std::get<gfx::Path>(outline.value);
+            auto draw = [&](Color color, const gfx::ShadowLight* source) {
+                if (color.Alpha() <= 0) return;
+                const gfx::PathShadow shadow = gfx::MakePathShadow(path, dev, source, transparent);
+                if (shadow.blurred) { DrawBlurredShadowPath(shadow, color); return; }
+                const Rgba c = Scaled(ToRgba(color), m_State.alpha);
+                std::vector<QuadRenderer::Vertex> out;
+                out.reserve(shadow.triangles.size());
+                for (const gfx::ShadowMeshVertex& v : shadow.triangles)
+                    out.push_back({ v.position.x, v.position.y, c.r, c.g, c.b, c.a, v.coverage, 0, 0, 2.0f });
+                if (out.empty()) return;
+                ApplyClip();
+                m_Target.quads->DrawTriangles(out.data(), out.size());
+            };
+            draw(ambient, nullptr);
+            draw(spot, &light);
+            return;
+        }
+        if (rr.rect.Empty() || !std::isfinite(sx2) || sx2 == 0) return;
         const float stateAlpha = m_State.alpha;
 
         // The light in device space; 1/scale of the matrix.
@@ -535,6 +568,61 @@ namespace kiln::ui {
         for (const gfx::ShadowVertex& v : verts) out.push_back({ v.x, v.y, v.r, v.g, v.b, v.a, v.px, v.py, v.pz, 1.0f });
         ApplyClip();
         m_Target.quads->DrawTriangles(out.data(), out.size());
+    }
+
+    void DrawScope::DrawBlurredShadowPath(const gfx::PathShadow& shadow, Color color) {
+        if (!m_Target.paths || !m_Target.quads || m_State.alpha <= 0) return;
+        gfx::Path path = shadow.blurPath;
+        if (shadow.strokeWidth > 0) {
+            // SkPaint::kStrokeAndFill_Style: fill the union once, not two translucent draws.
+            gfx::Stroke stroke;
+            stroke.width = shadow.strokeWidth;
+            gfx::Path edge;
+            for (const gfx::Polyline& c : gfx::StrokeToPolygons(path, stroke, {})) {
+                if (c.points.empty()) continue;
+                edge.MoveTo(c.points[0].x, c.points[0].y);
+                for (std::size_t i = 1; i < c.points.size(); ++i) edge.LineTo(c.points[i].x, c.points[i].y);
+                edge.Close();
+            }
+            gfx::Path filled;
+            if (!filled.Op(path, edge, gfx::PathOperation::Union)) return;
+            path = std::move(filled);
+        }
+        const float pad = std::ceil(3 * shadow.sigma) + 1;
+        const Rect bounds = path.Bounds();
+        // Keep sources just outside the viewport and clip: they can blur into visible pixels.
+        // The enclosing clip applies only when the finished shadow is composited.
+        Rect d{ std::floor(bounds.left - pad), std::floor(bounds.top - pad),
+                std::ceil(bounds.right + pad), std::ceil(bounds.bottom + pad) };
+        d = d.Intersect({ -pad, -pad, m_Target.viewportWidth + pad, m_Target.viewportHeight + pad });
+        if (d.Empty()) return;
+        const State saved = m_State;
+        m_State.m = {};
+        m_State.clip = false;
+        float ox = 0, oy = 0;
+        const auto* mask = static_cast<const PathCache::Entry*>(PathMask(path, nullptr, ox, oy, &d));
+        m_State = saved;
+        if (!mask) return;
+        QuadRenderer& q = *m_Target.quads;
+        q.SetTransform({});
+        q.SetClip({});
+        q.SetBlendMode(int(gfx::BlendMode::SrcOver));
+        const int x = int(d.left), y = int(d.top), w = int(d.Width()), h = int(d.Height());
+        q.BeginLayer(x, y, w, h);
+        q.DrawAtlas({ ox + float(mask->x), oy + float(mask->y), float(mask->w), float(mask->h) }, mask->uv, *mask->page,
+                    { 1, 1, 1, 1 }, QuadRenderer::Mode::TintedCoverage);
+        auto image = q.EndLayer();
+        const kiln::RectF rect{ d.left, d.top, d.Width(), d.Height() };
+        auto uv = [&] { return kiln::RectF{ 0, 0, d.Width() / image.page->Width(), d.Height() / image.page->Height() }; };
+        for (int pass = 0; pass < 2 && image.page && shadow.sigma > 0; ++pass) {
+            q.BeginLayer(x, y, w, h);
+            q.DrawBlur(rect, uv(), *image.page, 1, pass == 0 ? 1.0f / image.page->Width() : 0,
+                       pass == 1 ? 1.0f / image.page->Height() : 0, shadow.sigma, true);
+            image = q.EndLayer();
+        }
+        ApplyClip();
+        ApplyBlend(m_State.blend);
+        if (image.page) q.DrawAtlas(rect, uv(), *image.page, Scaled(ToRgba(color), m_State.alpha), QuadRenderer::Mode::TintedCoverage);
     }
 
     void DrawScope::BeginLayer(Rect bounds, float alpha, const gfx::Path* clipPath, gfx::BlendMode blend, const gfx::ColorFilter* colorFilter) {

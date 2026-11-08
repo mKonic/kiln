@@ -103,7 +103,8 @@ namespace kiln {
         void DrawProgressiveBlur(const RectF& rect, const RectF& uv, const AtlasPage& page, float stepU, float stepV, float maxRadius,
                                  bool decal, const Paint& intensity);
         // shadow: GrRRectShadowGeoProc's (offset x, y, distance correction) with mode 1, which
-        // scales the colour by the shadow falloff; mode 0 draws the colour as is.
+        // scales the colour by the shadow falloff. Mode 2 filters the interpolated sx coverage
+        // through SkGaussianColorFilter; mode 0 draws the colour as is.
         struct Vertex { float x, y; float r, g, b, a; float sx = 0, sy = 0, sz = 0, mode = 0; };
         void DrawTriangles(const Vertex* vertices, std::size_t count);
 

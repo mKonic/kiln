@@ -42,6 +42,26 @@ namespace {
                 kOnPrimary{ 0xFFFFFFFFu }, kOnSurface{ 0xFF1D1B20u }, kVariant{ 0xFF49454Fu },
                 kPrimaryContainer{ 0xFFEADDFFu }, kTertiary{ 0xFF7D5260u };
 
+    struct RingShadowShape final : kiln::gfx::Shape {
+        kiln::gfx::Outline CreateOutline(Size size, LayoutDirection, const Density&) const override {
+            kiln::gfx::Path path;
+            path.fillType = kiln::gfx::FillType::EvenOdd;
+            path.AddOval({ 0, 0, size.width, size.height });
+            path.AddOval({ size.width * 0.25f, size.height * 0.25f, size.width * 0.75f, size.height * 0.75f });
+            return { path };
+        }
+        bool Equals(const kiln::gfx::Shape& other) const override { return dynamic_cast<const RingShadowShape*>(&other) != nullptr; }
+    };
+    struct NotchedShadowShape final : kiln::gfx::Shape {
+        kiln::gfx::Outline CreateOutline(Size size, LayoutDirection, const Density&) const override {
+            kiln::gfx::Path path;
+            path.MoveTo(0, 0); path.LineTo(size.width, 0); path.LineTo(size.width * 0.55f, size.height * 0.5f);
+            path.LineTo(size.width, size.height); path.LineTo(0, size.height); path.Close();
+            return { path };
+        }
+        bool Equals(const kiln::gfx::Shape& other) const override { return dynamic_cast<const NotchedShadowShape*>(&other) != nullptr; }
+    };
+
     kiln::rt::Task<> Tick(kiln::rt::State<int>& seconds) {
         for (;;) {
             co_await kiln::rt::Delay(1000);
@@ -272,11 +292,25 @@ namespace {
                 Box(Background(ShadowMod(SizeMod(Modifier{}, 56_dp, 56_dp), 12_dp, CircleShape()), kPrimaryContainer));
                 GraphicsLayerParams p;
                 p.alpha = 0.6f;
-                p.shadowElevation = 8 * 2.625f;
+                p.shadowElevation = 8 * kiln::rt::Composition::Current()->Read(LocalConfiguration).densityDpi / 160.0f;
                 p.clip = true;
                 p.clipShape = RoundedCorner(12_dp);
                 Box(Background(GraphicsLayer(SizeMod(Modifier{}, 96_dp, 64_dp), p), Color(0xFFFFFFFFu)),
                     Alignment::Center(), false, [] { BasicText("alpha 0.6", {}, { 14, kOnSurface }); });
+            });
+            Row(Padding(Modifier{}, 16_dp, 24_dp), Arrangement::SpacedBy(24_dp), AlignmentV::CenterVertically(), [] {
+                const auto corners = RoundedCorner(CornerSize::Of(24_dp), CornerSize::Of(4_dp), CornerSize::Of(16_dp), CornerSize::Of(0_dp));
+                const auto notch = std::make_shared<const NotchedShadowShape>();
+                const auto ring = std::make_shared<const RingShadowShape>();
+                for (const ShapePtr& shape : { corners, ShapePtr(notch), ShapePtr(ring) })
+                    Box(Background(ShadowMod(SizeMod(Modifier{}, 64_dp, 64_dp), 8_dp, shape), Color(0xFFFFFFFFu), shape));
+                GraphicsLayerParams p;
+                p.rotationX = 18;
+                p.rotationY = -24;
+                p.shadowElevation = 12 * kiln::rt::Composition::Current()->Read(LocalConfiguration).densityDpi / 160.0f;
+                p.clip = true;
+                p.clipShape = RoundedCorner(12_dp);
+                Box(Background(GraphicsLayer(SizeMod(Modifier{}, 64_dp, 64_dp), p), kPrimaryContainer, CornerShape::Rounded(12_dp)));
             });
             // The platform's Material You colours as a dynamic colour scheme (baseline when the
             // platform has none): primary, secondary, tertiary, surface container.

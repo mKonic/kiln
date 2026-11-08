@@ -8,6 +8,7 @@
 #include "kiln/graphics/ColorFilter.h"
 #include "kiln/graphics/Image.h"
 #include "kiln/graphics/Path.h"
+#include "kiln/graphics/PathShadow.h"
 #include "kiln/graphics/Shadow.h"
 #include "kiln/graphics/Shape.h"
 #include "kiln/graphics/Vertices.h"
@@ -71,7 +72,10 @@ namespace kiln::ui {
         // (HWUI EndReorderBarrierDrawable::drawShadow through SkShadowUtils): ambient and spot
         // shadows tinted by the colours and the theme's alphas, scaled by `casterAlpha` (a
         // translucent caster also shadows the area under itself).
-        void DrawShadow(const gfx::Outline& outline, float elevation, Color ambientColor, Color spotColor, float casterAlpha = 1);
+        // `projection` adds a 3D layer's local homography and tilted z plane, before the
+        // current affine transform. Without it the caster is flat at `elevation`.
+        void DrawShadow(const gfx::Outline& outline, float elevation, Color ambientColor, Color spotColor, float casterAlpha = 1,
+                        const gfx::ShadowProjection* projection = nullptr);
 
         // Transform (affine, local -> device). Each call composes onto the current one.
         void Translate(Offset o);
@@ -140,7 +144,8 @@ namespace kiln::ui {
         void PathCoverage(const gfx::Path& path, const gfx::Stroke* stroke, kiln::Rgba tint, const void* paint, int filterRow = -1);
         int FilterRow(const gfx::ColorFilter* f);
         // The cached coverage mask of a path under the current transform; device origin in ox/oy.
-        const void* PathMask(const gfx::Path& path, const gfx::Stroke* stroke, float& ox, float& oy);
+        const void* PathMask(const gfx::Path& path, const gfx::Stroke* stroke, float& ox, float& oy, const Rect* deviceVisible = nullptr);
+        void DrawBlurredShadowPath(const gfx::PathShadow& shadow, Color color);
         LayoutDirection m_Dir;
         DrawTarget m_Target;
         State m_State;

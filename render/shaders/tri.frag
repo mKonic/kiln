@@ -47,7 +47,12 @@ float falloff(float u) {
 
 void main() {
     vec4 color = vColor;
-    if (vShadow.w > 0.5) {
+    if (vShadow.w > 1.5) {
+        // SkGaussianColorFilter (GrFragmentProcessors.cpp): filter the interpolated vertex
+        // alpha, then modulate the resulting grayscale by the premultiplied shadow tint.
+        float factor = 1.0 - vShadow.x;
+        color *= exp(-factor * factor * 4.0) - 0.018;
+    } else if (vShadow.w > 0.5) {
         // GrRRectShadowGeoProc: d = length(shadowParams.xy), uv.x = shadowParams.z * (1 - d).
         float d = length(vShadow.xy);
         color *= falloff(vShadow.z * (1.0 - d));
