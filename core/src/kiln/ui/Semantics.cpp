@@ -221,6 +221,7 @@ namespace kiln::ui {
         const auto mods = n.ModifierNodes();
         bool any = false;
         for (auto it = mods.rbegin(); it != mods.rend(); ++it) {
+            if (!n.IsModifierPlaced(*it)) continue;
             auto* s = const_cast<ModifierNode*>(*it)->AsSemantics();
             if (!s) continue;
             any = true;
@@ -243,6 +244,7 @@ namespace kiln::ui {
         Rect Bounds(LayoutNode& n, bool merging) {
             const ModifierNode* pick = nullptr;
             for (const ModifierNode* m : n.ModifierNodes()) {
+                if (!n.IsModifierPlaced(m)) continue;
                 auto* s = const_cast<ModifierNode*>(m)->AsSemantics();
                 if (!s || !s->IsImportantForBounds()) continue;
                 if (!merging) { pick = m; break; }

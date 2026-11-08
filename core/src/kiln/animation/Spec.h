@@ -39,6 +39,8 @@ namespace kiln::anim {
     // spring(dampingRatio = 1, stiffness = 1500, visibilityThreshold = 0.01 per component)
     SpecPtr Spring(float dampingRatio = spring::DampingRatioNoBouncy, float stiffness = spring::StiffnessMedium,
                    float visibilityThreshold = spring::DefaultDisplacementThreshold);
+    // Copy a spring with a type-specific threshold; non-spring specs pass through unchanged.
+    SpecPtr WithSpringVisibilityThreshold(SpecPtr spec, float visibilityThreshold);
     // tween(durationMillis = 300, delayMillis = 0, easing = FastOutSlowIn)
     SpecPtr Tween(int durationMillis = DefaultDurationMillis, int delayMillis = 0, Easing easing = FastOutSlowIn());
     SpecPtr Snap(int delayMillis = 0);

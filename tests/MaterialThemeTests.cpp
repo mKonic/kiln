@@ -1,11 +1,14 @@
 #include "Check.h"
 
 #include "kiln/foundation/Compose.h"
+#include "kiln/foundation/Semantics.h"
 #include "kiln/foundation/text/Selection.h"
 #include "kiln/material3/MaterialTheme.h"
 #include "kiln/material3/Badge.h"
 #include "kiln/material3/Button.h"
 #include "kiln/material3/IconButton.h"
+#include "kiln/material3/FloatingActionButton.h"
+#include "kiln/material3/FloatingActionButtonMenu.h"
 #include "kiln/material3/ToggleButton.h"
 #include "kiln/material3/Ripple.h"
 #include "kiln/material3/MaterialShapes.h"
@@ -18,6 +21,7 @@
 #include "kiln/material3/tokens/ShapeKeyTokens.h"
 #include "kiln/material3/tokens/TypographyKeyTokens.h"
 #include "kiln/ui/LayoutNode.h"
+#include "kiln/ui/Accessibility.h"
 
 using namespace kiln;
 using namespace kiln::foundation;
@@ -581,6 +585,363 @@ TEST(IconToggleVariantsExposeCheckboxStateAndHandlePresses) {
         mouse(ui::PointerEventType::Release, false, 150);
         CHECK(checked.Peek());
     }
+}
+
+TEST(FloatingActionButtonsResolveSizeStyleAndSemantics) {
+    using Fab = void (*)(std::function<void()>, const ui::Modifier&, const FloatingActionButtonOptions&, std::function<void()>);
+    const Fab fabs[] = { SmallFloatingActionButton, FloatingActionButton, MediumFloatingActionButton, LargeFloatingActionButton };
+    const int sizes[] = { 48, 56, 80, 96 };  // small's 40 dp visual still reserves 48 dp for input
+    for (int i = 0; i < 4; ++i) {
+        Harness h;
+        Color color;
+        text::TextStyle style;
+        int clicks = 0;
+        h.Run([&] {
+            MaterialTheme([&] {
+                CHECK(FloatingActionButtonDefaults::elevation().TonalElevation() == 6_dp);
+                CHECK(FloatingActionButtonDefaults::loweredElevation().hoveredElevation == 3_dp);
+                CHECK(FloatingActionButtonDefaults::bottomAppBarFabElevation().TonalElevation() == 0_dp);
+                Column({}, [&] {
+                    fabs[i]([&] { ++clicks; }, {}, {}, [&] {
+                        color = rt::Composition::Current()->Read(LocalContentColor);
+                        style = rt::Composition::Current()->Read(LocalTextStyle());
+                        Box(SizeMod({}, 24_dp, 24_dp));
+                    });
+                    fabs[i]([] {}, SizeIn({}, 10_dp, 10_dp, Dp::Unspecified(), Dp::Unspecified()), {}, [] { Box(SizeMod({}, 10_dp, 10_dp)); });
+                });
+            });
+        });
+        const auto* fab = h.owner.Root().Children()[0]->Children()[0];
+        CHECK_EQ(fab->Size().width, sizes[i]);
+        CHECK_EQ(fab->Size().height, sizes[i]);
+        CHECK(color == LightColorScheme().onPrimaryContainer);
+        CHECK(style == Typography{}.labelLarge);
+        const auto* constrained = h.owner.Root().Children()[0]->Children()[1];
+        CHECK_EQ(constrained->Size().width, i == 1 ? 48 : sizes[i]);
+        CHECK_EQ(constrained->Size().height, i == 1 ? 48 : sizes[i]);
+        auto tree = h.owner.BuildSemanticsTree();
+        CHECK(tree.children.size() == 2 && tree.children[0].config.role == ui::Role::Button);
+        CHECK(tree.children[0].config.onClick());
+        CHECK_EQ(clicks, 1);
+    }
+}
+
+TEST(ExtendedFloatingActionButtonsCollapseAndClearOnlyLabelSemantics) {
+    using Fab = void (*)(std::function<void()>, std::function<void()>, std::function<void()>, const ui::Modifier&, bool, const FloatingActionButtonOptions&);
+    const Fab fabs[] = { ExtendedFloatingActionButton, SmallExtendedFloatingActionButton, MediumExtendedFloatingActionButton, LargeExtendedFloatingActionButton };
+    const int sizes[] = { 56, 56, 80, 96 };
+    const text::TextStyle styles[] = { Typography{}.labelLarge, Typography{}.titleMedium, Typography{}.titleLarge, Typography{}.headlineSmall };
+    for (int i = 0; i < 4; ++i) {
+        rt::State<bool> expanded{ true };
+        Harness h;
+        text::TextStyle style;
+        h.Run([&] {
+            MaterialTheme([&] {
+                Column({}, [&] {
+                    fabs[i]([&] {
+                        style = rt::Composition::Current()->Read(LocalTextStyle());
+                        Box(Semantics(SizeMod({}, 120_dp, 20_dp), [](ui::SemanticsConfiguration& c) { c.contentDescription = { "Label" }; }));
+                    }, [] {
+                        Box(Semantics(SizeMod({}, 24_dp, 24_dp), [](ui::SemanticsConfiguration& c) { c.contentDescription = { "Create" }; }));
+                    }, [] {}, {}, expanded.Get(), {});
+                });
+            });
+        });
+        auto fab = [&]() { return h.owner.Root().Children()[0]->Children()[0]; };
+        const int fullWidth = fab()->Size().width;
+        CHECK(fullWidth > sizes[i]);
+        CHECK_EQ(fab()->Size().height, sizes[i]);
+        CHECK(style == styles[i]);
+        CHECK(h.owner.BuildSemanticsTree().children[0].config.contentDescription == std::vector<std::string>{ "Create" });
+        std::int64_t clock = 0;
+        auto settle = [&] {
+            for (int frame = 0; frame < 130; ++frame) {
+                rt::Composition::RecomposeAll();
+                rt::Dispatcher::Main().RunFrame(clock += 16'000'000);
+                rt::Composition::RecomposeAll();
+                h.owner.MeasureAndLayout({ 300, 300 });
+            }
+        };
+        expanded.Set(false);
+        settle();
+        CHECK_EQ(fab()->Size().width, sizes[i]);
+        CHECK_EQ(fab()->Size().height, sizes[i]);
+        CHECK(h.owner.BuildSemanticsTree().children[0].config.contentDescription == std::vector<std::string>{ "Create" });
+        expanded.Set(true);
+        settle();
+        CHECK_EQ(fab()->Size().width, fullWidth);
+    }
+}
+
+TEST(TextOnlyExtendedFabsUseTheirOwnMinimumsAndTypography) {
+    using Fab = void (*)(std::function<void()>, const ui::Modifier&, const FloatingActionButtonOptions&, std::function<void()>);
+    const Fab fabs[] = { ExtendedFloatingActionButton, SmallExtendedFloatingActionButton, MediumExtendedFloatingActionButton, LargeExtendedFloatingActionButton };
+    const int widths[] = { 80, 56, 80, 96 }, heights[] = { 56, 56, 80, 96 };
+    const text::TextStyle styles[] = { Typography{}.labelLarge, Typography{}.titleMedium, Typography{}.titleLarge, Typography{}.headlineSmall };
+    Harness h;
+    h.Run([&] {
+        MaterialTheme([&] {
+            Column({}, [&] {
+                for (int i = 0; i < 4; ++i) fabs[i]([] {}, {}, {}, [&, i] {
+                    CHECK(rt::Composition::Current()->Read(LocalTextStyle()) == styles[i]);
+                    Box(SizeMod({}, 10_dp, 10_dp));
+                });
+            });
+        });
+    });
+    for (int i = 0; i < 4; ++i) {
+        CHECK_EQ(h.owner.Root().Children()[0]->Children()[i]->Size().width, widths[i]);
+        CHECK_EQ(h.owner.Root().Children()[0]->Children()[i]->Size().height, heights[i]);
+    }
+}
+
+TEST(FabElevationKeepsEqualTargetAnimationsAndSnapsOnlyChangedTargets) {
+    auto source = std::make_shared<MutableInteractionSource>();
+    rt::State<int> sourceVersion{ 0 };
+    rt::State<FloatingActionButtonElevation> values{ { 1_dp, 6_dp, 6_dp, 8_dp } };
+    Harness h;
+    ui::Dp elevation;
+    h.Run([&] { sourceVersion.Get(); elevation = ShadowElevation(values.Get(), source); });
+    std::int64_t clock = 0;
+    auto advance = [&](int frames) {
+        for (int i = 0; i < frames; ++i) {
+            rt::Dispatcher::Main().RunFrame(clock += 16'000'000);
+            rt::Composition::RecomposeAll();
+        }
+    };
+    CHECK(elevation == 1_dp);
+    const auto press = source->Start(Interaction::Kind::Press);
+    advance(3);
+    CHECK(elevation.value > 1 && elevation.value < 6);
+    const auto focus = source->Start(Interaction::Kind::Focus);  // equal target; do not cancel the press animation
+    advance(25);
+    CHECK(elevation == 6_dp);
+    source->End(Interaction::Kind::Focus, focus);
+    source->End(Interaction::Kind::Press, press);
+    advance(25);
+    CHECK(elevation == 1_dp);
+    const auto hover = source->Start(Interaction::Kind::Hover);
+    advance(3);
+    CHECK(elevation.value > 1 && elevation.value < 8);
+    values.Set({ 2_dp, 6_dp, 6_dp, 8_dp });  // changing default must not interrupt hover
+    rt::Composition::RecomposeAll();
+    advance(25);
+    CHECK(elevation == 8_dp);
+    values.Set({ 2_dp, 6_dp, 6_dp, 9_dp });
+    rt::Composition::RecomposeAll();
+    rt::Composition::RecomposeAll();
+    CHECK(elevation == 9_dp);  // current interaction's changed configuration snaps
+    source->End(Interaction::Kind::Hover, hover);
+    advance(25);
+    CHECK(elevation == 2_dp);
+    auto oldSource = source;
+    source = std::make_shared<MutableInteractionSource>();
+    sourceVersion.Set(1);
+    rt::Composition::RecomposeAll();
+    oldSource->Start(Interaction::Kind::Press);
+    advance(25);
+    CHECK(elevation == 2_dp);
+    source->Start(Interaction::Kind::Hover);
+    advance(25);
+    CHECK(elevation == 9_dp);
+}
+
+TEST(FabVisibilityStartsHiddenInterruptsAndStopsPlacingAtZeroAlpha) {
+    rt::State<bool> visible{ false }, attached{ true };
+    Harness h;
+    int compositions = 0;
+    h.Run([&] {
+        ++compositions;
+        MaterialTheme([&] {
+            Column({}, [&] {
+                if (attached.Get()) FloatingActionButton([] {}, AnimateFloatingActionButton({}, visible.Get(), Alignment::BottomEnd(), 0.2f,
+                                                                                            anim::Tween(160), anim::Tween(160)), {}, [&] {
+                    Box(Semantics(SizeMod({}, 56_dp, 56_dp), [](ui::SemanticsConfiguration& c) { c.contentDescription = { "Animated child" }; }));
+                });
+            });
+        });
+    });
+    auto fab = [&]() { return h.owner.Root().Children()[0]->Children()[0]; };
+    CHECK_EQ(fab()->Size().width, 0);
+    CHECK(h.owner.BuildSemanticsTree().children.empty());
+    CHECK(!fab()->Children()[0]->IsPlaced());
+    std::int64_t clock = 0;
+    auto advance = [&](int frames) {
+        for (int i = 0; i < frames; ++i) {
+            rt::Composition::RecomposeAll();
+            rt::Dispatcher::Main().RunFrame(clock += 16'000'000);
+            h.owner.MeasureAndLayout({ 300, 300 });
+        }
+    };
+    visible.Set(true);
+    advance(4);
+    CHECK_EQ(fab()->Size().width, 56);
+    CHECK(fab()->Children()[0]->IsPlaced());
+    visible.Set(false);
+    advance(4);
+    CHECK_EQ(fab()->Size().width, 56);  // stays measured during fade-out
+    visible.Set(true);
+    advance(4);
+    const int afterUpdate = compositions;
+    advance(20);
+    CHECK_EQ(compositions, afterUpdate);  // animation reads invalidate measure/draw, not composition
+    CHECK_EQ(fab()->Size().width, 56);
+    h.owner.SetInputMode(ui::InputMode::Keyboard);
+    ui::FocusTargetNode* focus = nullptr;
+    for (const auto* node : fab()->ModifierNodes())
+        if (auto* target = const_cast<ui::ModifierNode*>(node)->AsFocusTarget()) focus = target;
+    CHECK(focus && focus->RequestFocus());
+    const int semanticsId = fab()->SemanticsId();
+    CHECK(h.owner.Accessibility().Nodes().contains(semanticsId));
+    visible.Set(false);
+    advance(20);
+    CHECK_EQ(fab()->Size().width, 0);
+    CHECK(h.owner.BuildSemanticsTree().children.empty());
+    CHECK(!h.owner.Accessibility().Nodes().contains(semanticsId));
+    h.owner.ClearFocus(true);
+    CHECK(!h.owner.MoveFocus(ui::FocusDirection::Next));
+    CHECK(!fab()->Children()[0]->IsPlaced());
+    visible.Set(true);
+    advance(4);
+    attached.Set(false);  // disposal during animation cancels both jobs
+    advance(20);
+    CHECK(h.owner.Root().Children()[0]->Children().empty());
+}
+
+TEST(ToggleFabsKeepTheirOriginalAllocationWhileContainerAndIconMorph) {
+    using namespace ToggleFloatingActionButtonDefaults;
+    for (auto direction : { ui::LayoutDirection::Ltr, ui::LayoutDirection::Rtl }) {
+        rt::State<bool> checked{ false };
+        Harness h;
+        h.owner.SetDirection(direction);
+        float progress = -1;
+        h.Run([&] {
+            MaterialTheme([&] {
+                CHECK(containerSizeMedium()(0) == 80_dp && containerSizeMedium()(1) == 56_dp);
+                CHECK(containerSizeLarge()(0) == 96_dp && containerSizeLarge()(1) == 56_dp);
+                CHECK(containerCornerRadius()(0) == 16_dp && containerCornerRadius()(1) == 28_dp);
+                CHECK(iconSizeLarge()(0) == 36_dp && iconSizeLarge()(1) == 20_dp);
+                CHECK(containerColor()(0) == MaterialTheme::colorScheme().primaryContainer);
+                CHECK(iconColor()(1) == MaterialTheme::colorScheme().onPrimary);
+                Column({}, [&] {
+                    ToggleFloatingActionButtonOptions options;
+                    options.containerSize = containerSizeMedium();
+                    options.containerCornerRadius = containerCornerRadiusMedium();
+                    ToggleFloatingActionButton(checked.Get(), [&](bool value) { checked.Set(value); }, {}, options, [&](const ToggleFloatingActionButtonScope& scope) {
+                        progress = scope.checkedProgress;
+                        Box(AnimateIcon({}, scope.checkedProgress, {}, iconSizeMedium()));
+                    });
+                });
+            });
+        });
+        auto outer = [&]() { return h.owner.Root().Children()[0]->Children()[0]; };
+        CHECK_EQ(outer()->Size().width, 80);
+        CHECK_EQ(outer()->Children()[0]->Size().width, 80);
+        auto tree = h.owner.BuildSemanticsTree();
+        CHECK(tree.children.size() == 1 && tree.children[0].config.toggleableState == 0);
+        CHECK(tree.children[0].config.onClick());
+        CHECK(checked.Peek());
+        for (std::int64_t ms = 0; ms < 2000; ms += 16) {
+            rt::Composition::RecomposeAll();
+            rt::Dispatcher::Main().RunFrame(ms * 1'000'000);
+            rt::Composition::RecomposeAll();
+            h.owner.MeasureAndLayout({ 300, 300 });
+        }
+        CHECK(progress == 1);
+        CHECK_EQ(outer()->Size().width, 80);
+        CHECK_EQ(outer()->Children()[0]->Size().width, 56);
+        CHECK_EQ(outer()->Children()[0]->Position().x, direction == ui::LayoutDirection::Ltr ? 24 : 0);
+        CHECK_EQ(outer()->Children()[0]->Children()[0]->Size().width, 20);
+        CHECK(h.owner.BuildSemanticsTree().children[0].config.toggleableState == 1);
+    }
+}
+
+TEST(FabMenusComposeItemsOnFirstExpandAndKeepThemAfterCollapse) {
+    rt::State<bool> expanded{ false };
+    Harness h;
+    int itemCompositions = 0;
+    h.Run([&] {
+        MaterialTheme([&] {
+            Column({}, [&] {
+                FloatingActionButtonMenu(expanded.Get(), [] { FloatingActionButton([] {}, {}, {}, [] { Box(SizeMod({}, 24_dp, 24_dp)); }); }, {}, AlignmentH::End(), [&](const FloatingActionButtonMenuScope& scope) {
+                    ++itemCompositions;
+                    for (int i = 0; i < 3; ++i) FloatingActionButtonMenuItem(scope, [] {}, [] { Box(SizeMod({}, 80_dp, 20_dp)); }, [] { Box(SizeMod({}, 24_dp, 24_dp)); });
+                });
+            });
+        });
+    });
+    CHECK_EQ(itemCompositions, 0);
+    auto menu = [&]() { return h.owner.Root().Children()[0]->Children()[0]; };
+    CHECK_EQ(menu()->Size().height, 72);  // 56 dp trigger + 16 dp bottom padding
+    std::int64_t clock = 0;
+    auto advance = [&](int frames) {
+        for (int i = 0; i < frames; ++i) {
+            rt::Composition::RecomposeAll();
+            rt::Dispatcher::Main().RunFrame(clock += 16'000'000);
+            rt::Composition::RecomposeAll();
+            h.owner.MeasureAndLayout({ 300, 300 });
+        }
+    };
+    expanded.Set(true);
+    advance(130);
+    CHECK(itemCompositions > 0);
+    CHECK_EQ(menu()->Children()[0]->Children().size(), std::size_t(3));
+    CHECK_EQ(menu()->Size().height, 256);  // 3*56 + 2*4 + trigger56 + bottom16 + gap8
+    auto* items = menu()->Children()[0];
+    CHECK_EQ(items->Children()[0]->Position().y, 0);
+    CHECK_EQ(items->Children()[1]->Position().y, 60);
+    CHECK_EQ(items->Children()[2]->Position().y, 120);
+    CHECK_EQ(menu()->Children()[1]->Position().y, 184);
+    expanded.Set(false);
+    advance(4);
+    expanded.Set(true);
+    advance(4);
+    expanded.Set(false);
+    advance(130);
+    CHECK_EQ(menu()->Children()[0]->Children().size(), std::size_t(3));
+    CHECK_EQ(menu()->Size().height, 72);
+    const auto tree = h.owner.BuildSemanticsTree();
+    CHECK(tree.children.size() == 1 && tree.children[0].config.role == ui::Role::Button);
+    expanded.Set(true);
+    advance(130);
+    CHECK_EQ(menu()->Size().height, 256);
+}
+
+TEST(FabMenusStartExpandedScrollWithinConstraintsAndHandOffKeyboardFocus) {
+    const auto originalSpring = anim::Spring(0.8f, 100, 0.01f);
+    const auto countSpring = anim::WithSpringVisibilityThreshold(originalSpring, 1);
+    const anim::Vec from{}, to{ 4, 0, 0, 0 }, velocity{};
+    CHECK(countSpring->ValueAt(32'000'000, from, to, velocity, 1) == originalSpring->ValueAt(32'000'000, from, to, velocity, 1));
+    CHECK(countSpring->DurationNanos(from, to, velocity, 1) < originalSpring->DurationNanos(from, to, velocity, 1));
+    const auto tween = anim::Tween(200);
+    CHECK(anim::WithSpringVisibilityThreshold(tween, 1) == tween);
+    Harness h;
+    h.owner.SetInputMode(ui::InputMode::Keyboard);
+    h.Run([&] {
+        MaterialTheme([&] {
+            Column({}, [&] {
+                FloatingActionButtonMenu(true, [] { FloatingActionButton([] {}, {}, {}, [] { Box(SizeMod({}, 24_dp, 24_dp)); }); },
+                                          SizeIn({}, Dp::Unspecified(), Dp::Unspecified(), Dp::Unspecified(), 160_dp), AlignmentH::Start(), [&](const FloatingActionButtonMenuScope& scope) {
+                    for (int i = 0; i < 4; ++i) FloatingActionButtonMenuItem(scope, [] {}, [] { Box(SizeMod({}, 80_dp, 20_dp)); }, [] { Box(SizeMod({}, 24_dp, 24_dp)); });
+                });
+            });
+        });
+    });
+    auto* menu = h.owner.Root().Children()[0]->Children()[0];
+    CHECK_EQ(menu->Size().height, 160);
+    auto* items = menu->Children()[0];
+    CHECK_EQ(items->Children().size(), std::size_t(4));
+    ui::SemanticsConfiguration config;
+    CHECK(ui::CalculateSemanticsConfiguration(*items, config));
+    CHECK(config.isTraversalGroup && config.traversalIndex == -0.9f);
+    CHECK(config.verticalScrollAxisRange && config.verticalScrollAxisRange->maxValue() > 0);
+    auto* trigger = menu->Children()[1]->Children()[0];
+    ui::FocusTargetNode* focus = nullptr;
+    for (const auto* node : trigger->ModifierNodes())
+        if (auto* target = const_cast<ui::ModifierNode*>(node)->AsFocusTarget()) focus = target;
+    CHECK(focus && focus->RequestFocus());
+    CHECK(h.owner.DispatchKeyEvent({ .keyCode = ui::keys::Tab, .type = ui::KeyEventType::KeyDown }));
+    CHECK(h.owner.ActiveFocus() && h.owner.ActiveFocus()->Owner() == items->Children()[0]);
 }
 
 TEST(BadgeDoesNotResizeItsAnchorAndUsesContentMinimumSize) {

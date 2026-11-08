@@ -118,6 +118,7 @@ namespace kiln::anim {
         class SpringSpec final : public AnimationSpec {
         public:
             SpringSpec(float d, float k, float t) : m_D(d), m_K(k), m_T(t) {}
+            SpecPtr WithThreshold(float t) const { return std::make_shared<SpringSpec>(m_D, m_K, t); }
             Vec ValueAt(std::int64_t n, const Vec& f, const Vec& to, const Vec& v0, int dims) const override {
                 Vec out{};
                 for (int i = 0; i < dims; ++i) out[i] = SpringStep(m_D, m_K, f[i], v0[i], to[i], double(n) / 1e9).value;
@@ -202,6 +203,10 @@ namespace kiln::anim {
     }
 
     SpecPtr Spring(float d, float k, float t) { return std::make_shared<SpringSpec>(d, k, t); }
+    SpecPtr WithSpringVisibilityThreshold(SpecPtr spec, float threshold) {
+        if (const auto* spring = dynamic_cast<const SpringSpec*>(spec.get())) return spring->WithThreshold(threshold);
+        return spec;
+    }
     namespace {
         // Timestamps of a keyframes spec: the keyframes, with 0 and the duration added when missing.
         struct Timeline {

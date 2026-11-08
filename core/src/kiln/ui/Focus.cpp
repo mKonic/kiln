@@ -158,7 +158,7 @@ namespace kiln::ui {
 
     bool Owner::Eligible(const FocusTargetNode& t) const {
         LayoutNode* n = NodeOf(t);
-        return n && n->m_Owner == this && (n->IsPlaced() || n == m_Root.get()) && !IsOccludedByInteractionBarrier(t);
+        return n && n->m_Owner == this && n->IsModifierPlaced(&t) && !IsOccludedByInteractionBarrier(t);
     }
 
     namespace {

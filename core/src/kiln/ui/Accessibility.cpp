@@ -63,7 +63,8 @@ namespace kiln::ui {
         IntRect RoundRect(const Rect& r) { return { RoundI(r.left), RoundI(r.top), RoundI(r.right), RoundI(r.bottom) }; }
 
         bool HasSemantics(LayoutNode& n) {
-            for (const ModifierNode* m : n.ModifierNodes()) if (const_cast<ModifierNode*>(m)->AsSemantics()) return true;
+            for (const ModifierNode* m : n.ModifierNodes())
+                if (n.IsModifierPlaced(m) && const_cast<ModifierNode*>(m)->AsSemantics()) return true;
             return false;
         }
         // zSortedChildrenList: by zIndex, then placement order.
@@ -143,6 +144,7 @@ namespace kiln::ui {
             const ModifierNode* BoundsModifier(LayoutNode& n, const SemanticsConfiguration& config) {
                 const ModifierNode* pick = nullptr;
                 for (const ModifierNode* m : n.ModifierNodes()) {
+                    if (!n.IsModifierPlaced(m)) continue;
                     auto* s = const_cast<ModifierNode*>(m)->AsSemantics();
                     if (!s || !s->IsImportantForBounds()) continue;
                     if (!config.mergeDescendants) return m;

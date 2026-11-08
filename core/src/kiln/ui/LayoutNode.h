@@ -77,6 +77,9 @@ namespace kiln::ui {
         float ZIndex() const { return m_ZIndex; }
         int PlaceOrder() const { return m_PlaceOrder; }
         bool IsPlaced() const { return m_Placed; }
+        // A modifier's coordinator may be unplaced even when the outer node is placed (a
+        // layout modifier can hide what it wraps). Null checks the innermost content.
+        bool IsModifierPlaced(const ModifierNode* at = nullptr) const;
         Offset PositionInRoot() const;
         // Expires when the node is destroyed.
         std::weak_ptr<const char> AliveToken() const { return m_Alive; }

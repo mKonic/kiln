@@ -7,6 +7,8 @@
 #include <kiln/material3/Divider.h>
 #include <kiln/material3/DynamicColorScheme.h>
 #include <kiln/material3/IconButton.h>
+#include <kiln/material3/FloatingActionButton.h>
+#include <kiln/material3/FloatingActionButtonMenu.h>
 #include <kiln/material3/MaterialTheme.h>
 #include <kiln/material3/Surface.h>
 #include <kiln/material3/ToggleButton.h>
@@ -67,6 +69,73 @@ namespace kiln::gallery {
             m3::Text(checked.Get() ? "Text toggles: on" : "Text toggles: off");
         }
 
+        void FabMenus() {
+            auto* expanded = &RememberState(false);
+            auto* selected = &RememberState(std::string("No menu action"));
+            m3::FloatingActionButtonMenu(expanded->Get(), [=] {
+                m3::ToggleFloatingActionButton(expanded->Get(), [expanded](bool value) { expanded->Set(value); }, {}, {}, [](const m3::ToggleFloatingActionButtonScope& scope) {
+                    m3::Icon(scope.checkedProgress < 0.5f ? m3::internal::Icons::Filled::Edit() : m3::internal::Icons::Filled::Close(),
+                             std::string("Toggle FAB menu"), m3::ToggleFloatingActionButtonDefaults::AnimateIcon({}, scope.checkedProgress));
+                });
+            }, SizeIn({}, Dp::Unspecified(), Dp::Unspecified(), Dp::Unspecified(), 320_dp), AlignmentH::End(), [=](const m3::FloatingActionButtonMenuScope& scope) {
+                const char* labels[] = { "Edit draft", "Schedule", "Choose date", "Keyboard" };
+                for (const auto* label : labels) m3::FloatingActionButtonMenuItem(scope, [=] {
+                    selected->Set(label);
+                    expanded->Set(false);
+                }, [label] { m3::Text(label); }, [] { m3::Icon(m3::internal::Icons::Filled::Check(), std::nullopt); });
+            });
+            m3::Text(selected->Get());
+            auto* checked = &RememberState(false);
+            FlowRow({}, Arrangement::SpacedBy(16_dp), Arrangement::SpacedBy(8_dp), AlignmentV::CenterVertically(), [checked] {
+                m3::ToggleFloatingActionButtonOptions medium;
+                medium.containerSize = m3::ToggleFloatingActionButtonDefaults::containerSizeMedium();
+                medium.containerCornerRadius = m3::ToggleFloatingActionButtonDefaults::containerCornerRadiusMedium();
+                m3::ToggleFloatingActionButton(checked->Get(), [checked](bool value) { checked->Set(value); }, {}, medium, [](const m3::ToggleFloatingActionButtonScope& scope) {
+                    m3::Icon(scope.checkedProgress < 0.5f ? m3::internal::Icons::Filled::Edit() : m3::internal::Icons::Filled::Close(), std::string("Medium toggle FAB"),
+                             m3::ToggleFloatingActionButtonDefaults::AnimateIcon({}, scope.checkedProgress, {}, m3::ToggleFloatingActionButtonDefaults::iconSizeMedium()));
+                });
+                m3::ToggleFloatingActionButtonOptions large;
+                large.containerSize = m3::ToggleFloatingActionButtonDefaults::containerSizeLarge();
+                large.containerCornerRadius = m3::ToggleFloatingActionButtonDefaults::containerCornerRadiusLarge();
+                m3::ToggleFloatingActionButton(checked->Get(), [checked](bool value) { checked->Set(value); }, {}, large, [](const m3::ToggleFloatingActionButtonScope& scope) {
+                    m3::Icon(scope.checkedProgress < 0.5f ? m3::internal::Icons::Filled::Edit() : m3::internal::Icons::Filled::Close(), std::string("Large toggle FAB"),
+                             m3::ToggleFloatingActionButtonDefaults::AnimateIcon({}, scope.checkedProgress, {}, m3::ToggleFloatingActionButtonDefaults::iconSizeLarge()));
+                });
+            });
+        }
+
+        void FloatingActionButtons() {
+            auto* expanded = &RememberState(true);
+            auto* visible = &RememberState(true);
+            auto* clicks = &RememberState(0);
+            auto click = [clicks] { clicks->Set(clicks->Peek() + 1); };
+            auto icon = [](const char* description, Dp size = 24_dp) {
+                return [description, size] { m3::Icon(m3::internal::Icons::Filled::Check(), std::string(description), SizeMod({}, size, size)); };
+            };
+            FlowRow({}, Arrangement::SpacedBy(16_dp), Arrangement::SpacedBy(16_dp), AlignmentV::CenterVertically(), [=] {
+                m3::SmallFloatingActionButton(click, {}, {}, icon("Small FAB"));
+                m3::FloatingActionButton(click, {}, {}, icon("Standard FAB"));
+                m3::MediumFloatingActionButton(click, {}, {}, icon("Medium FAB", m3::FloatingActionButtonDefaults::MediumIconSize));
+                m3::LargeFloatingActionButton(click, {}, {}, icon("Large FAB", m3::FloatingActionButtonDefaults::LargeIconSize));
+            });
+            FlowRow({}, Arrangement::SpacedBy(8_dp), Arrangement::SpacedBy(8_dp), AlignmentV::CenterVertically(), [=] {
+                m3::ExtendedFloatingActionButton(click, {}, {}, [] { m3::Text("Create"); });
+                m3::SmallExtendedFloatingActionButton(click, {}, {}, [] { m3::Text("Small"); });
+                m3::MediumExtendedFloatingActionButton(click, {}, {}, [] { m3::Text("Medium"); });
+                m3::LargeExtendedFloatingActionButton(click, {}, {}, [] { m3::Text("Large"); });
+            });
+            FlowRow({}, Arrangement::SpacedBy(8_dp), Arrangement::SpacedBy(8_dp), AlignmentV::CenterVertically(), [=] {
+                m3::ExtendedFloatingActionButton([] { m3::Text("Create"); }, icon("Expandable standard FAB"), click, {}, expanded->Get());
+                m3::SmallExtendedFloatingActionButton([] { m3::Text("Small"); }, icon("Expandable small FAB"), click, {}, expanded->Get());
+                m3::MediumExtendedFloatingActionButton([] { m3::Text("Medium"); }, icon("Expandable medium FAB", m3::FloatingActionButtonDefaults::MediumIconSize), click, {}, expanded->Get());
+                m3::LargeExtendedFloatingActionButton([] { m3::Text("Large"); }, icon("Expandable large FAB", m3::FloatingActionButtonDefaults::LargeIconSize), click, {}, expanded->Get());
+            });
+            m3::TextButton([expanded] { expanded->Set(!expanded->Peek()); }, {}, {}, [expanded] { m3::Text(expanded->Get() ? "Collapse FAB labels" : "Expand FAB labels"); });
+            m3::TextButton([visible] { visible->Set(!visible->Peek()); }, {}, {}, [visible] { m3::Text(visible->Get() ? "Hide animated FAB" : "Show animated FAB"); });
+            m3::FloatingActionButton(click, m3::AnimateFloatingActionButton({}, visible->Get(), Alignment::BottomEnd()), {}, icon("Animated FAB"));
+            m3::Text("FAB clicks: " + std::to_string(clicks->Get()));
+        }
+
         void IconButtons() {
             auto& checked = RememberState(false);
             auto* on = &checked;
@@ -111,6 +180,12 @@ namespace kiln::gallery {
                         m3::TextButton([selection] { selection->Set(1); }, {}, {}, [] { m3::Text("Dark"); });
                         m3::TextButton([selection] { selection->Set(2); }, {}, {}, [] { m3::Text("Dynamic"); });
                     });
+                    m3::Text("FAB menus");
+                    FabMenus();
+                    m3::HorizontalDivider();
+                    m3::Text("Floating action buttons");
+                    FloatingActionButtons();
+                    m3::HorizontalDivider();
                     m3::Text("Toggle buttons");
                     ToggleButtons();
                     m3::HorizontalDivider();

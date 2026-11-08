@@ -52,6 +52,7 @@ namespace kiln::ui {
         std::vector<std::pair<const RulerData*, std::vector<std::pair<LayoutNode*, std::weak_ptr<const char>>>>> rulerReaders;
         IntOffset position;                  // within the enclosing coordinator (0: in parent)
         float zIndex = 0;                    // as placed by the enclosing coordinator (or parent)
+        bool placed = false;                // enclosing layout modifier placed this coordinator
 
         // The list handed to the policy. It lives until the next measure, so a policy's placement
         // lambda may keep the span it was given (they usually do).
@@ -120,6 +121,7 @@ namespace kiln::ui {
         }
 
         void PlaceAt(IntOffset p, float z) override {
+            placed = true;
             if (index == 0) {
                 LayoutNode* parent = node.m_Parent;
                 const bool moved = !node.m_Placed || node.m_Position != p || zIndex != z;
@@ -244,12 +246,25 @@ namespace kiln::ui {
         }
     }
 
+    bool LayoutNode::IsModifierPlaced(const ModifierNode* at) const {
+        for (const LayoutNode* n = this; n && n->m_Parent; n = n->m_Parent)
+            if (!n->m_Placed) return false;
+        std::size_t ci = 0;
+        for (const auto& node : m_Nodes) {
+            if (ci > 0 && !m_Coordinators[ci]->placed) return false;
+            if (node.get() == at) return true;
+            if (node->AsLayout()) ++ci;
+        }
+        return !at && (ci == 0 || m_Coordinators[ci]->placed);
+    }
+
     void LayoutNode::HitSteps(const Mat3& parentInner, std::vector<HitStep>& out, Mat3& inner) const {
         Mat3 m = Mul3(parentInner, Translate3(float(m_Position.x), float(m_Position.y)));
         // Nodes up to and including a layout modifier sit in that modifier's coordinator.
         std::size_t ci = 0;
         auto sizeOf = [&](std::size_t i) { const auto& c = *m_Coordinators[i]; return ui::Size{ float(c.Width()), float(c.Height()) }; };
         for (const auto& node : m_Nodes) {
+            if (ci > 0 && !m_Coordinators[ci]->placed) break;
             const ui::Size size = sizeOf(ci);
             if (auto* p = node->AsPointerInput()) out.push_back({ p, m, size });
             if (const DrawModifier* d = node->AsDraw()) {
@@ -610,10 +625,15 @@ namespace kiln::ui {
         m_NextPlaceOrder = 0;
         const LayoutDirection dir = m_Owner ? m_Owner->Direction() : LayoutDirection::Ltr;
         for (LayoutNode* c : m_Children) c->m_PlacedThisPass = false;
+        const bool innerWasPlaced = m_Coordinators.back()->placed;
+        for (std::size_t i = 1; i < m_Coordinators.size(); ++i) m_Coordinators[i]->placed = false;
         m_InLayout = true;
         rt::Observation::Track(m_LayoutWatch, [&] {
             for (std::size_t i = 0; i < m_Coordinators.size(); ++i) {
                 auto& c = m_Coordinators[i];
+                // A modifier may deliberately skip its wrapped placeable (FAB visibility at
+                // zero alpha). Do not run stale inner placement results from an earlier frame.
+                if (i > 0 && !c->placed) break;
                 CaptureRulers(i);
                 PlacementScope scope(dir, c->Width());
                 scope.SetRulerLookup([this, i](const Ruler& r, float d) { return FindRulerValue(i, r, d); });
@@ -622,6 +642,7 @@ namespace kiln::ui {
             }
         });
         m_InLayout = false;
+        if (m_Owner && innerWasPlaced != m_Coordinators.back()->placed) m_Owner->InvalidateSemantics();
         // Children this pass did not place stop drawing and hit testing (markNodeAndSubtreeAsNotPlaced).
         for (LayoutNode* c : m_Children)
             if (!c->m_PlacedThisPass && c->m_Placed) { c->m_Placed = false; InvalidateDraw(); }
@@ -763,6 +784,7 @@ namespace kiln::ui {
 
     void LayoutNode::DrawCoordinator(std::size_t index, ContentDrawScope& scope) {
         Coordinator& c = *m_Coordinators[index];
+        if (index > 0 && !c.placed) return;
         const ui::Size size{ float(c.Width()), float(c.Height()) };
         // Draw modifiers nest: each one's DrawContent runs the next, the last draws the wrapped
         // content. Their reads subscribe this node's draw watcher.
