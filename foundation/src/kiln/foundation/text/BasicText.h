@@ -6,6 +6,7 @@
 // reports each layout to onTextLayout. Colour-only style changes redraw without a new layout.
 
 #include "kiln/foundation/Layouts.h"
+#include "kiln/foundation/text/TextAutoSize.h"
 #include "kiln/text/Paragraph.h"
 
 #include <climits>
@@ -38,6 +39,11 @@ namespace kiln::foundation {
         int maxLines = INT_MAX;
         int minLines = 1;
         std::map<std::string, InlineTextContent> inlineContent;
+        // ColorProducer: read when drawing, overriding the style's colour when specified (a
+        // colour animation redraws without recomposing or a new layout).
+        std::function<ui::Color()> color;
+        // The font size picked for the constraints (the style's own size is ignored).
+        TextAutoSizePtr autoSize;
     };
 
     void BasicText(const AnnotatedString& text, const Modifier& modifier = {}, TextStyle style = {},

@@ -91,12 +91,15 @@ namespace kiln::foundation {
             std::shared_ptr<SelectionController> selection;
             bool operator==(const TextParams& o) const {
                 // A callback is never equal: the node takes the new one (cheap, no relayout).
-                return !options.onTextLayout && !o.options.onTextLayout && links == o.links && selection == o.selection && placeholders == o.placeholders && text == o.text && style == o.style &&
+                return !options.onTextLayout && !o.options.onTextLayout && !options.color && !o.options.color && SameAutoSize(o) && links == o.links && selection == o.selection && placeholders == o.placeholders && text == o.text && style == o.style &&
                        options.overflow == o.options.overflow && options.softWrap == o.options.softWrap &&
                        options.maxLines == o.options.maxLines && options.minLines == o.options.minLines;
             }
+            bool SameAutoSize(const TextParams& o) const {
+                return options.autoSize == o.options.autoSize || (options.autoSize && o.options.autoSize && options.autoSize->Equals(*o.options.autoSize));
+            }
             bool SameLayout(const TextParams& o) const {
-                return text == o.text && placeholders == o.placeholders && style.HasSameLayoutAffectingAttributes(o.style) && options.overflow == o.options.overflow &&
+                return SameAutoSize(o) && text == o.text && placeholders == o.placeholders && style.HasSameLayoutAffectingAttributes(o.style) && options.overflow == o.options.overflow &&
                        options.softWrap == o.options.softWrap && options.maxLines == o.options.maxLines && options.minLines == o.options.minLines;
             }
         };
@@ -208,7 +211,43 @@ namespace kiln::foundation {
                 in.density = d;
                 in.layoutDirection = dir;
                 in.constraints = c;
-                auto result = std::make_shared<TextLayoutResult>(text::LayoutText(Backend(), std::move(in), &m_Intrinsics));
+                std::shared_ptr<TextLayoutResult> result;
+                if (params.options.autoSize) {
+                    // MultiParagraphLayoutCache.layoutWithConstraints: search the font size,
+                    // reusing the search's last layout when it was at that size.
+                    struct Scope final : TextAutoSizeLayoutScope {
+                        TextBackend* backend = nullptr;
+                        text::TextLayoutInput base;
+                        std::optional<TextLayoutResult> last;
+                        TextUnit Scaled(TextUnit f) const {
+                            const TextUnit own = base.style.span.fontSize;
+                            return f.IsEm() && own.IsSp() ? text::Sp(own.value * f.value) : f;
+                        }
+                        TextLayoutResult PerformLayout(const ui::Constraints& constraints, const AnnotatedString& t, TextUnit fontSize) override {
+                            text::TextLayoutInput i = base;
+                            i.text = t;
+                            i.constraints = constraints;
+                            i.style.span.fontSize = Scaled(fontSize);
+                            last = text::LayoutText(backend, std::move(i));
+                            return *last;
+                        }
+                        float ToPx(TextUnit u) const override {
+                            const TextUnit sp = Scaled(u);
+                            return sp.IsSp() ? SpToPx(sp.value) : 0;
+                        }
+                    } scope;
+                    static_cast<ui::Density&>(scope) = d;
+                    scope.backend = Backend();
+                    scope.base = in;
+                    const TextUnit optimal = scope.Scaled(params.options.autoSize->GetFontSize(scope, c, in.text));
+                    if (scope.last && scope.last->LayoutInput().style.span.fontSize == optimal && scope.last->LayoutInput().overflow == in.overflow &&
+                        scope.last->LayoutInput().constraints == c) {
+                        result = std::make_shared<TextLayoutResult>(std::move(*scope.last));
+                    } else {
+                        in.style.span.fontSize = optimal;
+                    }
+                }
+                if (!result) result = std::make_shared<TextLayoutResult>(text::LayoutText(Backend(), std::move(in), &m_Intrinsics));
                 if (m_Layouts.size() >= 4) m_Layouts.erase(m_Layouts.begin());
                 m_Layouts.emplace_back(c, result);
                 return result;
@@ -283,7 +322,15 @@ namespace kiln::foundation {
                         s.Save();
                         s.ClipRect({ 0, 0, s.GetSize().width, s.GetSize().height });
                     }
-                    DrawTextLayout(s, *m_Drawn, params.style);
+                    // overrideColor: the producer's colour when it gives one (a brush still wins).
+                    const ui::Color color = params.options.color && !params.style.span.brush ? params.options.color() : ui::Color::Unspecified();
+                    if (color.Specified()) {
+                        TextStyle style = params.style;
+                        style.span.color = color;
+                        DrawTextLayout(s, *m_Drawn, style);
+                    } else {
+                        DrawTextLayout(s, *m_Drawn, params.style);
+                    }
                     if (clip) s.Restore();
                 }
                 s.DrawContent();
