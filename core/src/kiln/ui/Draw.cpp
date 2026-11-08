@@ -387,6 +387,44 @@ namespace kiln::ui {
                                   QuadRenderer::Mode::MaskShader, gradient ? &paint : nullptr, FilterRow(filter));
     }
 
+    void DrawScope::DrawRipple(const Ripple& r) {
+        if (!m_Target.quads || !m_Target.filters || m_State.alpha <= 0 || !(r.radius > 0)) return;
+        // AnimatedRippleDrawable::draw, in its float arithmetic (in_noisePhase = phase * 0.001).
+        constexpr float kPi = 3.1415926535897932384626f, kRight = kPi * 0.0078125f, kLeft = kPi * -0.0078125f, kScale = 1.5f;
+        const float cx1 = float(0.01 * std::cos(kScale * 0.55)), cy1 = float(0.01 * std::sin(kScale * 0.55));
+        const float cx2 = float(-0.0066 * std::cos(kScale * 0.45)), cy2 = float(-0.0066 * std::sin(kScale * 0.45));
+        const float cx3 = float(-0.0066 * std::cos(kScale * 0.35)), cy3 = float(-0.0066 * std::sin(kScale * 0.35));
+        const float phase = r.turbulencePhase;
+        const float rotation1 = float(phase * kRight + 1.7 * kPi);
+        const float rotation2 = float(phase * kLeft + 2 * kPi);
+        const float rotation3 = float(phase * kRight + 2.75 * kPi);
+        const float data[12] = {
+            float(kScale * 0.5 + phase * cx1), float(kScale * 0.5 + phase * cy1),
+            float(kScale * 0.2 + phase * cx2), float(kScale * 0.2 + phase * cy2),
+            float(kScale + phase * cx3), float(kScale + phase * cy3),
+            std::cos(rotation1), std::sin(rotation1),
+            std::cos(rotation2), std::sin(rotation2),
+            std::cos(rotation3), std::sin(rotation3),
+        };
+        const int row = m_Target.filters->RowForData(data, std::size(data));
+        if (row < 0) return;
+        ApplyTransform();
+        QuadRenderer::Ripple q;
+        q.originX = r.origin.x; q.originY = r.origin.y;
+        q.touchX = r.touch.x; q.touchY = r.touch.y;
+        q.radius = r.radius;
+        q.progress = r.progress;
+        q.maxRadius = r.maxRadius;
+        q.width = r.resolution.width; q.height = r.resolution.height;
+        q.noisePhase = float(double(phase) * 0.001);
+        // layout(color) uniforms: straight sRGB components.
+        q.color = { ((r.color.argb >> 16) & 0xff) / 255.0f, ((r.color.argb >> 8) & 0xff) / 255.0f, (r.color.argb & 0xff) / 255.0f, r.color.Alpha() };
+        q.sparkleAlpha = r.sparkleColor.Alpha();
+        q.alpha = m_State.alpha;
+        q.dataRow = row;
+        m_Target.quads->DrawRipple(q);
+    }
+
     void DrawScope::DrawVertices(const gfx::Vertices& v, Color color, float alpha) {
         if (!m_Target.quads) return;
         const float a = alpha * m_State.alpha;

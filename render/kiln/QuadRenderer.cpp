@@ -138,7 +138,7 @@ namespace kiln {
             instance.paint2[1] = float(paint->tile);
             instance.paint2[2] = paint->rampV;
             instance.paint2[3] = 0;
-        } else {
+        } else if (instance.params[1] != float(Mode::Ripple)) {   // a ripple keeps its uniforms there
             for (int i = 0; i < 4; ++i) instance.paint[i] = instance.paint2[i] = 0;
         }
         instance.clip[0] = m_Clip.x0; instance.clip[1] = m_Clip.y0; instance.clip[2] = m_Clip.x1; instance.clip[3] = m_Clip.y1;
@@ -151,7 +151,8 @@ namespace kiln {
         instance.clipInv2[0] = ci.e; instance.clipInv2[1] = ci.f; instance.clipInv2[2] = m_Clip.enabled ? 1.0f : 0.0f; instance.clipInv2[3] = 0;
         const AtlasPage* dst = nullptr;
         // Stretch and blur passes composite layers themselves and never blend.
-        if (m_BlendMode != 3 && !mask && (instance.params[1] <= float(Mode::Color) || instance.params[1] == float(Mode::MaskShader))) {
+        if (m_BlendMode != 3 && !mask && (instance.params[1] <= float(Mode::Color) || instance.params[1] == float(Mode::MaskShader) ||
+                                               instance.params[1] == float(Mode::Ripple))) {
             dst = DestinationCopy(instance);
             instance.params[3] = float(m_BlendMode + 1);
         }
@@ -177,6 +178,18 @@ namespace kiln {
                                  bool nearest) {
         Push({ { r.x, r.y, r.w, r.h }, { uv.x, uv.y, uv.x + uv.w, uv.y + uv.h }, { c.r, c.g, c.b, c.a },
                { nearest ? 1.0f : 0.0f, float(mode), float(filterRow), 0 }, {}, {}, {}, {}, {}, {}, {}, {} }, &page, paint);
+    }
+
+    void QuadRenderer::DrawRipple(const Ripple& r) {
+        if (r.dataRow < 0 || !(r.radius > 0)) return;
+        const bool openMask = !Current().runs.empty() && (Current().runs.back().mask || Current().runs.back().dst || Current().runs.back().triangles ||
+                                                          Current().runs.back().filtered);
+        const AtlasPage* page = Current().runs.empty() || openMask ? nullptr : Current().runs.back().page;
+        Instance in{ { r.originX - r.radius, r.originY - r.radius, 2 * r.radius, 2 * r.radius },
+                     { r.originX, r.originY, r.touchX, r.touchY }, { r.color.r, r.color.g, r.color.b, r.color.a },
+                     { float(r.dataRow), float(Mode::Ripple), -1, 0 }, {}, {},
+                     { r.progress, r.maxRadius, r.width, r.height }, { r.noisePhase, r.sparkleAlpha, r.alpha, 0 }, {}, {}, {}, {} };
+        Push(in, page, nullptr);
     }
 
     Ref<BindGroup> QuadRenderer::GroupFor(const AtlasPage* page, const AtlasPage* dst) {

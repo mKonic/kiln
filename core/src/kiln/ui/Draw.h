@@ -61,6 +61,18 @@ namespace kiln::ui {
         // Bitmap shader alpha (R) and independent geometry coverage (G), filled with a brush.
         void DrawMaskShader(const gfx::ImageBitmap& mask, const gfx::Brush& brush, Offset origin, float alpha = 1,
                             const gfx::ColorFilter* colorFilter = nullptr);
+        // The platform press ripple (RippleDrawable's patterned style, drawn by HWUI's
+        // AnimatedRippleDrawable): RippleShader over an anti-aliased circle of `radius` around
+        // `origin`. maxRadius is the shader's in_maxRadius, resolution its in_resolution;
+        // turbulencePhase drives the noise and turbulence uniforms as HWUI derives them.
+        struct Ripple {
+            Offset origin, touch;
+            float radius = 0, progress = 0, maxRadius = 0;
+            Size resolution{ 1, 1 };
+            float turbulencePhase = 0;
+            Color color, sparkleColor{ 0x8dffffffu };
+        };
+        void DrawRipple(const Ripple& ripple);
         // Brush overloads; `alpha` multiplies the brush (gradient geometry is in scope coordinates).
         void DrawRect(const gfx::Brush& brush, Offset topLeft, Size size, float alpha = 1);
         void DrawRoundRect(const gfx::Brush& brush, Offset topLeft, Size size, float cornerRadius, float alpha = 1);

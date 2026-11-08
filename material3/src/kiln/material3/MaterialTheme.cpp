@@ -1,6 +1,7 @@
 #include "kiln/material3/MaterialTheme.h"
 
 #include "kiln/foundation/text/Selection.h"
+#include "kiln/material3/Ripple.h"
 #include "kiln/material3/tokens/TypographyTokens.h"
 
 #include <cmath>
@@ -40,8 +41,10 @@ namespace kiln::material3 {
         const foundation::TextSelectionColors selection{ primary, primary.WithAlpha(TextSelectionBackgroundOpacity) };
         const text::TextStyle body = theme.typography.bodyLarge;
         c.Provide(LocalMaterialTheme(), std::move(theme), [&c, selection, body, content = std::move(content)] {
-            c.Provide(foundation::LocalTextSelectionColors, selection, [body, content] {
-                EnsurePrecisionPointerListenersRegistered([body, content] { ProvideTextStyle(body, content); });
+            c.Provide(foundation::LocalIndication, Ripple(), [&c, selection, body, content] {
+                c.Provide(foundation::LocalTextSelectionColors, selection, [body, content] {
+                    EnsurePrecisionPointerListenersRegistered([body, content] { ProvideTextStyle(body, content); });
+                });
             });
         });
     }

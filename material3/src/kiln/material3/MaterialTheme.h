@@ -36,8 +36,8 @@ namespace kiln::material3 {
     };
 
     // MaterialTheme(colorScheme, motionScheme, shapes, typography, content): unset values keep
-    // the enclosing theme's. Provides the theme, text selection colours from primary and
-    // bodyLarge as the text style.
+    // the enclosing theme's. Provides the theme, ripple() as the indication, text selection
+    // colours from primary and bodyLarge as the text style.
     struct MaterialThemeArgs {
         std::optional<ColorScheme> colorScheme;
         std::optional<MotionSchemePtr> motionScheme;

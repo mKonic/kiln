@@ -35,7 +35,7 @@ void main() {
     mat2 m = mat2(iXform.x, iXform.y, iXform.z, iXform.w);
     // Grow solid shapes by one device pixel (in local units) so the anti-aliased edge has room.
     float scale = sqrt(max(abs(determinant(m)), 1e-8));
-    float grow = iParams.y == 0.0 ? 1.0 / scale : 0.0;
+    float grow = iParams.y == 0.0 || iParams.y == 7.0 ? 1.0 / scale : 0.0;
     vec2 pos = iRect.xy - grow + corner * (iRect.zw + 2.0 * grow);
     vHalf = iRect.zw * 0.5;
     vLocal = pos - (iRect.xy + vHalf);

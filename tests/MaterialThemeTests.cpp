@@ -3,6 +3,9 @@
 #include "kiln/foundation/Compose.h"
 #include "kiln/foundation/text/Selection.h"
 #include "kiln/material3/MaterialTheme.h"
+#include "kiln/material3/Ripple.h"
+#include "kiln/material3/ripple/Ripple.h"
+#include "kiln/material3/ripple/RippleHost.h"
 #include "kiln/material3/tokens/ColorSchemeKeyTokens.h"
 #include "kiln/material3/tokens/ShapeKeyTokens.h"
 #include "kiln/material3/tokens/TypographyKeyTokens.h"
@@ -131,4 +134,86 @@ TEST(MinimumInteractiveComponentSizeCentresSmallContent) {
     for (int i = 0; i < 3; ++i) { rt::Composition::RecomposeAll(); h.owner.MeasureAndLayout({ 300, 300 }); }
     box = h.owner.Root().Children()[0]->Children()[0];
     CHECK_EQ(box->Size().width, 20);
+}
+
+TEST(MaterialThemeProvidesTheRippleAsIndication) {
+    Harness h;
+    IndicationPtr inside, outside, offInside;
+    bool offAddsNothing = false, onAddsNode = false;
+    h.Run([&] {
+        auto& c = *rt::Composition::Current();
+        outside = c.Read(LocalIndication);
+        MaterialTheme([&] {
+            inside = c.Read(LocalIndication);
+            onAddsNode = !inside->Create(ui::Modifier{}, std::make_shared<MutableInteractionSource>()).Empty();
+            c.Provide(LocalRippleConfiguration, std::optional<RippleConfiguration>{}, [&] {
+                offInside = c.Read(LocalIndication);
+                offAddsNothing = offInside->Create(ui::Modifier{}, std::make_shared<MutableInteractionSource>()).Empty();
+            });
+        });
+    });
+    CHECK(!outside);
+    CHECK(inside && inside == Ripple());
+    CHECK(Ripple({ .bounded = false }) != Ripple());
+    // A null LocalRippleConfiguration keeps the indication but it adds no ripple node.
+    CHECK(offInside == inside);
+    CHECK(onAddsNode && offAddsNothing);
+    CHECK(std::fabs(ripple::RippleEndRadius({ 2, 1 }, true, { 30, 40 }) - 45) < 1e-4f);
+    CHECK(std::fabs(ripple::RippleEndRadius({ 2, 1 }, false, { 30, 40 }) - 25) < 1e-4f);
+}
+
+TEST(PressRipplesFollowThePlatformTimeline) {
+    using ripple::RippleDrawable;
+    RippleDrawable d(true);
+    d.SetRadius(40);
+    d.SetBounds(101, 60);
+    ui::DrawScope scope({}, ui::LayoutDirection::Ltr, {});
+    d.SetHotspot(10, 20);
+    d.SetPressedState(true);
+    d.Draw(scope, 1000);
+    CHECK(d.Sessions().size() == 1);
+    const auto& s = d.Sessions()[0];
+    CHECK(s.touchX == 10 && s.touchY == 20);
+    CHECK(s.originX == 50 && s.originY == 30);   // Rect.centerX() is an integer
+    CHECK(RippleDrawable::Progress(s, 1000) == 0);
+    CHECK(std::fabs(RippleDrawable::Progress(s, 1450) - 0.5f) < 1e-5f);
+    CHECK(RippleDrawable::NoisePhase(s, 1000) == 1000 && RippleDrawable::NoisePhase(s, 8000) == 1032);
+    // A release during the enter waits for it to finish, then runs 375 ms to 1.
+    d.SetPressedState(false);
+    d.Draw(scope, 1200);
+    CHECK(d.Sessions()[0].exitStart == 1450);
+    CHECK(std::fabs(RippleDrawable::Progress(d.Sessions()[0], 1637) - (0.5f + 0.5f * 187 / 375)) < 1e-5f);
+    d.Draw(scope, 1824);
+    CHECK(d.Sessions().size() == 1 && d.Animating());
+    d.Draw(scope, 1825);
+    CHECK(d.Sessions().empty() && !d.Animating());
+    // Pressed and released before a draw: the ripple still enters fully before exiting.
+    d.SetPressedState(true);
+    d.SetPressedState(false);
+    d.Draw(scope, 3000);
+    CHECK(d.Sessions().size() == 1 && d.Sessions()[0].exitStart == 3450);
+    // A bounds change moves running ripples' centre and radius.
+    d.SetRadius(12);
+    d.SetBounds(40, 40);
+    CHECK(d.Sessions()[0].originX == 20 && d.Sessions()[0].radius == 12 && d.Sessions()[0].width == 40);
+}
+
+TEST(RippleHostsArePooledFivePerWindow) {
+    struct Key final : ripple::RippleHostKey {
+        int resets = 0;
+        void OnResetRippleHostView() override { ++resets; }
+    };
+    ripple::RippleContainer container;
+    Key keys[6];
+    ripple::RippleHostView* hosts[6];
+    for (int i = 0; i < 6; ++i) hosts[i] = &container.GetRippleHostView(keys[i]);
+    CHECK(container.HostCount() == 5);
+    // The sixth takes the first host round-robin; its node loses it.
+    CHECK(hosts[5] == hosts[0] && keys[0].resets == 1);
+    CHECK(&container.GetRippleHostView(keys[5]) == hosts[5]);
+    // A disposed host is reused before any other.
+    container.DisposeRippleIfNeeded(keys[3]);
+    Key late;
+    CHECK(&container.GetRippleHostView(late) == hosts[3]);
+    CHECK(container.HostCount() == 5);
 }

@@ -1,5 +1,7 @@
 #include "kiln/Filters.h"
 
+#include <algorithm>
+
 namespace kiln {
 
     FilterTable::FilterTable(hearth::Device& device) : m_Data(std::size_t(kRows) * kCols * 4, 0.0f) {
@@ -14,6 +16,7 @@ namespace kiln {
     }
 
     void FilterTable::BeginFrame() {
+        m_NextData = 0;
         if (!m_Overflowed) return;
         m_Overflowed = false;
         m_Rows.clear();
@@ -25,7 +28,8 @@ namespace kiln {
         auto mix = [&](const void* p, std::size_t n) { auto* b = static_cast<const std::uint8_t*>(p); for (std::size_t i = 0; i < n; ++i) { h ^= b[i]; h *= 1099511628211ull; } };
         mix(&f.kind, 1); mix(&f.color, sizeof(f.color)); mix(&f.mode, 1); mix(f.matrix.data(), sizeof(f.matrix));
         if (auto it = m_Rows.find(h); it != m_Rows.end()) return it->second;
-        int row = m_Next < int(kRows) ? m_Next++ : (m_Overflowed = true, int(kRows) - 1);
+        constexpr int kFilterRows = int(kRows - kDataRows);
+        int row = m_Next < kFilterRows ? m_Next++ : (m_Overflowed = true, kFilterRows - 1);
         float* r = &m_Data[std::size_t(row) * kCols * 4];
         if (f.kind == gfx::ColorFilter::Kind::Matrix) {
             for (int i = 0; i < 4; ++i) {
@@ -43,6 +47,16 @@ namespace kiln {
             r[21] = float(f.mode);
         }
         m_Rows[h] = row;
+        m_Dirty = true;
+        return row;
+    }
+
+    int FilterTable::RowForData(const float* data, std::size_t count) {
+        if (m_NextData >= int(kDataRows) || count > kCols * 4) return -1;
+        const int row = int(kRows - kDataRows) + m_NextData++;
+        float* r = &m_Data[std::size_t(row) * kCols * 4];
+        std::fill(r, r + kCols * 4, 0.0f);
+        std::copy(data, data + count, r);
         m_Dirty = true;
         return row;
     }

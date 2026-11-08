@@ -146,6 +146,8 @@ namespace kiln::rt {
         void RunPending();
         // Resumes every NextFrame() waiter with the same frame time (animations step together).
         void RunFrame(std::int64_t frameTimeNanos);
+        // The frame time RunFrame last ran with (AnimationUtils.currentAnimationTimeMillis while drawing).
+        std::int64_t LastFrameTimeNanos() const { return m_LastFrameNanos; }
         bool HasFrameWaiters() const { return !m_FrameWaiters.empty(); }
         // Earliest timer deadline, if any (the host arms a wake-up for it).
         std::optional<Clock::time_point> NextTimer() const;
@@ -167,6 +169,7 @@ namespace kiln::rt {
         std::vector<FrameWaiter> m_FrameWaiters;
         std::vector<Timer> m_Timers;
         std::uint64_t m_NextId = 1;
+        std::int64_t m_LastFrameNanos = 0;
     };
 
     // Starts `task` now (it runs until its first suspension) under a new Job.

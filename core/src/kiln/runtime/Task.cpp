@@ -37,6 +37,7 @@ namespace kiln::rt {
     }
 
     void Dispatcher::RunFrame(std::int64_t frameTimeNanos) {
+        m_LastFrameNanos = frameTimeNanos;
         auto waiters = std::move(m_FrameWaiters);
         m_FrameWaiters.clear();
         for (auto& w : waiters) {

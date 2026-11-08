@@ -47,7 +47,7 @@ namespace kiln {
     // glyphs/images. One draw per run of quads sharing an atlas page, in submission order.
     class QuadRenderer {
     public:
-        enum class Mode : std::uint8_t { Solid = 0, TintedCoverage = 1, Color = 2, Stretch = 3, Blur = 4, ProgressiveBlur = 5, MaskShader = 6 };
+        enum class Mode : std::uint8_t { Solid = 0, TintedCoverage = 1, Color = 2, Stretch = 3, Blur = 4, ProgressiveBlur = 5, MaskShader = 6, Ripple = 7 };
 
         // A gradient paint instead of the flat colour: geometry in framebuffer pixels (linear
         // x0,y0,x1,y1; radial cx,cy,r; sweep cx,cy), the ramp row in the ramp texture.
@@ -102,6 +102,19 @@ namespace kiln {
         // of `intensity` (a gradient paint) there; Compose's sigma = radius / 2.
         void DrawProgressiveBlur(const RectF& rect, const RectF& uv, const AtlasPage& page, float stepU, float stepV, float maxRadius,
                                  bool decal, const Paint& intensity);
+        // RippleShader (frameworks/base RippleShader.java) filling the circle HWUI's drawRipple
+        // draws (AnimatedDrawables.h): centre `origin`, radius `radius`, local space. maxRadius,
+        // width and height are the shader's in_maxRadius and resolution; the colour is straight
+        // (not premultiplied); dataRow is a filter table data row holding in_tCircle1..3 and
+        // in_tRotation1..3.
+        struct Ripple {
+            float originX = 0, originY = 0, touchX = 0, touchY = 0, radius = 0;
+            float progress = 0, maxRadius = 0, width = 1, height = 1, noisePhase = 0;
+            Rgba color;
+            float sparkleAlpha = 0, alpha = 1;   // alpha: the paint's, over the shader's output
+            int dataRow = -1;
+        };
+        void DrawRipple(const Ripple& ripple);
         // shadow: GrRRectShadowGeoProc's (offset x, y, distance correction) with mode 1, which
         // scales the colour by the shadow falloff. Mode 2 filters the interpolated sx coverage
         // through SkGaussianColorFilter; mode 0 draws the colour as is.

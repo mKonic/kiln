@@ -162,6 +162,92 @@ vec4 applyFilter(vec4 c) {
 vec4 applyFilter(vec4 c) { return c; }
 #endif
 
+// --- press ripple: RippleShader (frameworks/base RippleShader.java, android-16.0.0_r2) -------
+// Uniforms: in_origin = vUvMin, in_touch = vUvMax, in_color = vColor (straight), in_progress,
+// in_maxRadius and the resolution in vPaint, in_noisePhase, in_sparkleColor.a and the paint's
+// alpha in vPaint2,
+// in_tCircle1..3 / in_tRotation1..3 in filter table row vParams.x. The sparkle colour is white.
+
+float rippleTriangleNoise(vec2 n) {
+    n = fract(n * vec2(5.3987, 5.4421));
+    n += dot(n.yx, n.xy + vec2(21.5351, 14.3137));
+    float xy = n.x * n.y;
+    return fract(xy * 95.4307) + fract(xy * 75.04961) - 1.0;
+}
+const float kRipplePi = 3.1415926535897932384626;
+float rippleThreshold(float v, float l, float h) { return step(l, v) * (1.0 - step(h, v)); }
+float rippleSparkles(vec2 uv, float t, float sparkleAlpha) {
+    float n = rippleTriangleNoise(uv);
+    float s = 0.0;
+    for (float i = 0.0; i < 4.0; i += 1.0) {
+        float l = i * 0.1;
+        float h = l + 0.05;
+        float o = sin(kRipplePi * (t + 0.35 * i));
+        s += rippleThreshold(n + o, l, h);
+    }
+    return clamp(s, 0.0, 1.0) * sparkleAlpha;
+}
+float rippleSoftCircle(vec2 uv, vec2 xy, float radius, float blur) {
+    float blurHalf = blur * 0.5;
+    float d = distance(uv, xy);
+    return 1.0 - smoothstep(1.0 - blurHalf, 1.0 + blurHalf, d / radius);
+}
+float rippleSoftRing(vec2 uv, vec2 xy, float radius, float progress, float blur) {
+    float thickness = 0.05 * radius;
+    float currentRadius = radius * progress;
+    float circleOuter = rippleSoftCircle(uv, xy, currentRadius + thickness, blur);
+    float circleInner = rippleSoftCircle(uv, xy, max(currentRadius - thickness, 0.0), blur);
+    return clamp(circleOuter - circleInner, 0.0, 1.0);
+}
+float rippleSubProgress(float start, float end, float progress) {
+    float sub = clamp(progress, start, end);
+    return (sub - start) / (end - start);
+}
+mat2 rippleRotate2d(vec2 rad) { return mat2(rad.x, -rad.y, rad.y, rad.x); }
+float rippleCircleGrid(vec2 resolution, vec2 coord, vec2 center, vec2 rotation, float cellDiameter) {
+    coord = rippleRotate2d(rotation) * (center - coord) + center;
+    coord = mod(coord, cellDiameter) / resolution;
+    float normalRadius = cellDiameter / resolution.y * 0.5;
+    float radius = 0.65 * normalRadius;
+    return rippleSoftCircle(coord, vec2(normalRadius), radius, radius * 50.0);
+}
+float rippleTurbulence(vec2 uv, vec4 t0, vec4 t1, vec4 t2) {
+    const vec2 scale = vec2(0.8);
+    uv = uv * scale;
+    float g1 = rippleCircleGrid(scale, uv, t0.xy, t1.zw, 0.17);
+    float g2 = rippleCircleGrid(scale, uv, t0.zw, t2.xy, 0.2);
+    float g3 = rippleCircleGrid(scale, uv, t1.xy, t2.zw, 0.275);
+    float v = (g1 * g1 + g2 - g3) * 0.5;
+    return clamp(0.45 + 0.8 * v, 0.0, 1.0);
+}
+vec4 rippleColor(vec2 p) {
+    int row = int(vParams.x + 0.5);
+    vec4 t0 = texelFetch(uFilters, ivec2(0, row), 0);   // tCircle1, tCircle2
+    vec4 t1 = texelFetch(uFilters, ivec2(1, row), 0);   // tCircle3, tRotation1
+    vec4 t2 = texelFetch(uFilters, ivec2(2, row), 0);   // tRotation2, tRotation3
+    float progress = vPaint.x, maxRadius = vPaint.y;
+    vec2 resolutionScale = 1.0 / vPaint.zw, noiseScale = 2.1 / vPaint.zw;
+    float noisePhase = vPaint2.x, sparkleA = vPaint2.y;
+    vec2 origin = vUvMin, touch = vUvMax;
+
+    float fadeIn = rippleSubProgress(0.0, 0.13, progress);
+    float scaleIn = rippleSubProgress(0.0, 1.0, progress);
+    float fadeOutNoise = rippleSubProgress(0.4, 0.5, progress);
+    float fadeOutRipple = rippleSubProgress(0.4, 1.0, progress);
+    vec2 center = mix(touch, origin, clamp(progress * 2.0, 0.0, 1.0));
+    float ring = rippleSoftRing(p, center, maxRadius, scaleIn, 1.0);
+    float alpha = min(fadeIn, 1.0 - fadeOutNoise);
+    vec2 uv = p * resolutionScale;
+    vec2 densityUv = uv - mod(uv, noiseScale);
+    float turb = rippleTurbulence(uv, t0, t1, t2);
+    float sparkleAlpha = rippleSparkles(densityUv, noisePhase, sparkleA) * ring * alpha * turb;
+    float fade = min(fadeIn, 1.0 - fadeOutRipple);
+    float waveAlpha = rippleSoftCircle(p, center, maxRadius * scaleIn, 1.0) * fade * vColor.a;
+    vec4 waveColor = vec4(vColor.rgb * waveAlpha, waveAlpha);
+    vec4 sparkleColor = vec4(vec3(sparkleA), sparkleA);
+    return mix(waveColor, sparkleColor, sparkleAlpha) * vPaint2.z;   // times the paint alpha
+}
+
 // --- stretch overscroll (HWUI StretchEffect.cpp, uInterpolationStrength 0.7) ----------------
 
 float stretchAxis(float inPos, float overscroll, float dim) {
@@ -282,11 +368,14 @@ void main() {
     // Skia order: source colour (paint or image texel times alpha), colour filter, coverage.
     vec4 src;
     float coverage;
-    if (mode == 6) {            // bitmap shader alpha and independent geometry coverage
+    if (mode == 7) {            // press ripple: the shader over HWUI's anti-aliased circle
+        src = rippleColor(vUvMin + vLocal);
+        coverage = aaCoverage(length(vLocal) - vHalf.x, vLocal);
+    } else if (mode == 6) {     // bitmap shader alpha and independent geometry coverage
         vec2 mask = texture(uAtlas, vUv).rg;
         src = applyFilter(paint() * mask.r);
         coverage = mask.g;
-    } else if (mode == 0) {            // solid rounded rect, analytic coverage
+    } else if (mode == 0) {     // solid rounded rect, analytic coverage
         src = applyFilter(paint());
         coverage = aaCoverage(roundedRectSdf(vLocal, vHalf, vParams.x), vLocal);
     } else if (mode == 1) {     // atlas coverage (text, path masks) filled with the paint

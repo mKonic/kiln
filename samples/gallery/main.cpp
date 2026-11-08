@@ -11,6 +11,8 @@
 #include <kiln/foundation/Popup.h>
 #include <kiln/foundation/Dialog.h>
 #include <kiln/material3/DynamicColorScheme.h>
+#include <kiln/material3/MaterialTheme.h>
+#include <kiln/material3/Ripple.h>
 #include <kiln/graphics/PathEffect.h>
 #include <kiln/foundation/MeshGradient.h>
 #include <kiln/foundation/Gestures.h>
@@ -359,6 +361,25 @@ namespace {
                         BasicText(kind == 0 ? "Clear" : kind == 1 ? "Src" : "Filter", {}, { 14, kOnSurface });
                     }, kiln::rt::Key(kind));
                 }
+            });
+            // Ripples (MaterialTheme's indication): a bounded card clipped to its shape, an
+            // unbounded 24 dp ripple, and a card whose focus shows the inset ring (Tab to it).
+            Row(Padding(Modifier{}, 16_dp, 8_dp), Arrangement::SpacedBy(16_dp), AlignmentV::CenterVertically(), [] {
+                const auto rounded = RoundedCorner(12_dp);
+                Box(Clickable(Background(Clip(SizeMod(Modifier{}, 96_dp, 64_dp), rounded), kPrimaryContainer), [] {}),
+                    Alignment::Center(), false, [] { BasicText("Bounded", {}, { 14, kOnSurface }); });
+                ClickableOptions unbounded;
+                unbounded.indication = kiln::material3::Ripple({ .bounded = false, .radius = 24_dp });
+                Box(Clickable(SizeMod(Modifier{}, 48_dp, 48_dp), [] {}, unbounded), Alignment::Center(), false, [] {
+                    Box(Background(SizeMod(Modifier{}, 20_dp, 20_dp), kPrimary, CornerShape::Pill()));
+                });
+                auto* c = kiln::rt::Composition::Current();
+                c->Provide(kiln::material3::LocalRippleThemeConfiguration, kiln::material3::RippleDefaults::InsetFocusRingThemeConfiguration(), [rounded] {
+                    ClickableOptions ring;
+                    ring.indication = kiln::material3::Ripple({ .focusRingShape = rounded });
+                    Box(Clickable(Background(Clip(SizeMod(Modifier{}, 96_dp, 64_dp), rounded), kContainer), [] {}, ring),
+                        Alignment::Center(), false, [] { BasicText("Focus ring", {}, { 14, kOnSurface }); });
+                });
             });
             // The platform's Material You colours as a dynamic colour scheme (baseline when the
             // platform has none): primary, secondary, tertiary, surface container.
@@ -869,5 +890,5 @@ namespace {
 }
 
 extern "C" void kiln_main(kiln_app* app) {
-    kiln::SetContent(app, [] { Gallery(); });
+    kiln::SetContent(app, [] { kiln::material3::MaterialTheme([] { Gallery(); }); });
 }
