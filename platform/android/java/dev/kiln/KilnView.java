@@ -312,6 +312,18 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
         requestApplyInsets();
     }
 
+    /** enableEdgeToEdge: modes 0 auto, 1 dark, 2 light (SystemBarStyle.auto / dark / light). */
+    void enableEdgeToEdge(int statusMode, int statusLight, int statusDark, int navMode, int navLight, int navDark) {
+        if (!(getContext() instanceof KilnActivity)) return;
+        ((KilnActivity) getContext()).enableEdgeToEdge(style(statusMode, statusLight, statusDark), style(navMode, navLight, navDark));
+    }
+
+    private static KilnEdgeToEdge.Style style(int mode, int light, int dark) {
+        if (mode == 1) return KilnEdgeToEdge.Style.dark(light);
+        if (mode == 2) return KilnEdgeToEdge.Style.light(light, dark);
+        return KilnEdgeToEdge.Style.auto(light, dark);
+    }
+
     /** WindowInsetsController appearance: dark status / navigation bar icons over light content. */
     void setSystemBarsAppearance(boolean lightStatus, boolean lightNavigation) {
         android.view.WindowInsetsController c = getWindowInsetsController();

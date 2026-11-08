@@ -996,6 +996,11 @@ namespace {
             owner.SetSystemBarsAppearanceHost([w](bool lightStatus, bool lightNav) {
                 MainEnv()->CallVoidMethod(w->view, barsAppearance, jboolean(lightStatus), jboolean(lightNav));
             });
+            static jmethodID edgeToEdge = env->GetMethodID(env->GetObjectClass(view), "enableEdgeToEdge", "(IIIIII)V");
+            owner.SetEdgeToEdgeHost([w](const kiln::ui::SystemBarStyle& status, const kiln::ui::SystemBarStyle& nav) {
+                MainEnv()->CallVoidMethod(w->view, edgeToEdge, jint(status.mode), jint(status.lightScrim.argb), jint(status.darkScrim.argb),
+                                          jint(nav.mode), jint(nav.lightScrim.argb), jint(nav.darkScrim.argb));
+            });
         }
         {
             jclass kcm = env->FindClass("android/view/KeyCharacterMap");

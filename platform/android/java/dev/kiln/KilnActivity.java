@@ -4,9 +4,7 @@ import android.app.Activity;
 import android.content.pm.ActivityInfo;
 import android.content.pm.PackageManager;
 import android.content.res.Configuration;
-import android.graphics.Color;
 import android.os.Bundle;
-import android.view.Window;
 
 /**
  * Hosts one kiln root. Platform-only (no androidx): the app's native library is named by
@@ -19,6 +17,10 @@ public class KilnActivity extends Activity {
     private KilnView view;
     // The activity result registry: restored before the content registers its launchers.
     final KilnActivityResults activityResults = new KilnActivityResults(this);
+    // enableEdgeToEdge's styles: the defaults until the app asks for others; re-applied when the
+    // configuration changes in-process (where Android would recreate the activity).
+    private KilnEdgeToEdge.Style statusBarStyle = KilnEdgeToEdge.defaultStatus();
+    private KilnEdgeToEdge.Style navigationBarStyle = KilnEdgeToEdge.defaultNavigation();
 
     @Override
     protected void onSaveInstanceState(Bundle outState) {
@@ -32,12 +34,8 @@ public class KilnActivity extends Activity {
         super.onCreate(savedInstanceState);
         System.loadLibrary(libraryName());
 
-        Window window = getWindow();
         // Edge to edge: kiln draws behind the system bars and reads insets itself.
-        window.setDecorFitsSystemWindows(false);
-        window.setStatusBarColor(Color.TRANSPARENT);
-        window.setNavigationBarColor(Color.TRANSPARENT);
-        window.setNavigationBarContrastEnforced(false);
+        KilnEdgeToEdge.enable(this, statusBarStyle, navigationBarStyle);
 
         activityResults.onRestoreInstanceState(savedInstanceState);
         byte[] saved = savedInstanceState != null ? savedInstanceState.getByteArray(SAVED_STATE_KEY) : null;
@@ -92,6 +90,14 @@ public class KilnActivity extends Activity {
     @Override
     public void onConfigurationChanged(Configuration newConfig) {
         super.onConfigurationChanged(newConfig);
+        KilnEdgeToEdge.enable(this, statusBarStyle, navigationBarStyle);
         view.onHostConfigurationChanged(newConfig);
+    }
+
+    /** enableEdgeToEdge(statusBarStyle, navigationBarStyle) from native code. */
+    void enableEdgeToEdge(KilnEdgeToEdge.Style status, KilnEdgeToEdge.Style navigation) {
+        statusBarStyle = status;
+        navigationBarStyle = navigation;
+        KilnEdgeToEdge.enable(this, status, navigation);
     }
 }

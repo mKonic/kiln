@@ -256,6 +256,20 @@ namespace {
                     BasicText(secure ? "Secure window: on" : "Secure window: off", Padding(Modifier{}, 24_dp, 10_dp), { 14, kOnSurface });
                 });
             }
+            // enableEdgeToEdge styles: the defaults (icons follow dark mode), or dark bars with a scrim.
+            {
+                auto& darkBars = kiln::rt::RememberSaveableState(false);
+                kiln::ui::Owner* owner = kiln::rt::Composition::Current()->Read(LocalOwner);
+                Box(Clickable(Background(Padding(Modifier{}, 16_dp, 0_dp), kPrimaryContainer, CornerShape::Pill()), [&darkBars, owner] {
+                        darkBars.Set(!darkBars.Peek());
+                        if (!owner) return;
+                        if (darkBars.Peek()) owner->EnableEdgeToEdge(kiln::ui::SystemBarStyle::Dark(Color(0x80000000u)), kiln::ui::SystemBarStyle::Dark(Color(0x80000000u)));
+                        else owner->EnableEdgeToEdge();
+                    }),
+                    Alignment::Center(), false, [&darkBars] {
+                    BasicText(darkBars.Get() ? "System bars: dark" : "System bars: auto", Padding(Modifier{}, 24_dp, 10_dp), { 14, kOnSurface });
+                });
+            }
             // A popup menu under its button: focusable, so it takes key focus and the content under
             // it gets no touches; a press outside or Back dismisses it.
             {

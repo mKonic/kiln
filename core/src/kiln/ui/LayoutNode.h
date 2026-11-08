@@ -11,6 +11,7 @@
 #include "kiln/graphics/shadow/ShadowContext.h"
 #include "kiln/ui/Layout.h"
 #include "kiln/ui/Pointer.h"
+#include "kiln/ui/SystemBars.h"
 #include "kiln/ui/Focus.h"
 #include "kiln/ui/IndirectPointer.h"
 #include "kiln/ui/Clip.h"
@@ -339,6 +340,13 @@ namespace kiln::ui {
         // System bar icons (WindowInsetsControllerCompat.isAppearanceLight*Bars): dark icons for
         // light content behind the bars.
         void SetSystemBarsAppearanceHost(std::function<void(bool lightStatusBars, bool lightNavigationBars)> fn) { m_BarsAppearance = std::move(fn); }
+        // enableEdgeToEdge(statusBarStyle, navigationBarStyle) (activity EdgeToEdge.kt): bar
+        // colours, contrast and icon appearance; the activity starts with the defaults.
+        void SetEdgeToEdgeHost(std::function<void(const SystemBarStyle&, const SystemBarStyle&)> fn) { m_EdgeToEdge = std::move(fn); }
+        void EnableEdgeToEdge(const SystemBarStyle& statusBarStyle = SystemBarStyle::DefaultStatus(),
+                              const SystemBarStyle& navigationBarStyle = SystemBarStyle::DefaultNavigation()) {
+            if (m_EdgeToEdge) m_EdgeToEdge(statusBarStyle, navigationBarStyle);
+        }
         void SetSystemBarsAppearance(bool lightStatusBars, bool lightNavigationBars) {
             if (m_BarsAppearance) m_BarsAppearance(lightStatusBars, lightNavigationBars);
         }
@@ -580,6 +588,7 @@ namespace kiln::ui {
         bool m_LaidOut = false;
         std::function<void(int)> m_Haptic;
         std::function<void(bool, bool)> m_BarsAppearance;
+        std::function<void(const SystemBarStyle&, const SystemBarStyle&)> m_EdgeToEdge;
         ClipboardHost m_Clipboard;
         MagnifierHost m_Magnifier;
         ContentHost m_Content;
