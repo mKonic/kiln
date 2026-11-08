@@ -4,6 +4,10 @@
 #include "kiln/foundation/text/Selection.h"
 #include "kiln/material3/MaterialTheme.h"
 #include "kiln/material3/Ripple.h"
+#include "kiln/material3/MaterialShapes.h"
+#include "kiln/material3/Text.h"
+#include "kiln/material3/internal/Helpers.h"
+#include "kiln/material3/internal/Icons.h"
 #include "kiln/material3/ripple/Ripple.h"
 #include "kiln/material3/ripple/RippleHost.h"
 #include "kiln/material3/tokens/ColorSchemeKeyTokens.h"
@@ -216,4 +220,53 @@ TEST(RippleHostsArePooledFivePerWindow) {
     Key late;
     CHECK(&container.GetRippleHostView(late) == hosts[3]);
     CHECK(container.HostCount() == 5);
+}
+
+TEST(MenuPositionsFollowTheCandidates) {
+    using namespace kiln::material3::internal;
+    const ui::Density d{ 2, 1 };
+    DropdownMenuPositionProvider below({ ui::Dp(0), ui::Dp(0) }, d);
+    // Below the anchor, start-aligned, when it fits inside the margins (16 px, 96 px).
+    const ui::IntSize window{ 1000, 2000 }, menu{ 300, 400 };
+    CHECK((below.CalculatePosition({ 100, 500, 300, 600 }, window, ui::LayoutDirection::Ltr, menu) == ui::IntOffset{ 100, 600 }));
+    CHECK(below.GetTransformOrigin().pivotFractionX == 0 + float(200 - 100) / 300 * 0 + 1.0f / 3 && below.GetTransformOrigin().pivotFractionY == 0);
+    // No room below: above the anchor; RTL aligns the ends.
+    CHECK((below.CalculatePosition({ 600, 1700, 900, 1800 }, window, ui::LayoutDirection::Rtl, menu) == ui::IntOffset{ 600, 1300 }));
+    // Wider than the window less the margins: centred.
+    CHECK(below.CalculatePosition({ 0, 0, 10, 10 }, window, ui::LayoutDirection::Ltr, { 990, 10 }).x == 5);
+    CHECK((CalculateTransformOrigin({ 0, 0, 10, 10 }, { 20, 20, 40, 40 }) == TransformOrigin{ 0, 0 }));
+}
+
+TEST(MaterialShapesAreNormalized) {
+    for (auto* shape : { &MaterialShapes::Circle, &MaterialShapes::Heart, &MaterialShapes::Puffy, &MaterialShapes::SoftBoom, &MaterialShapes::PixelTriangle,
+                         &MaterialShapes::Arch, &MaterialShapes::Oval, &MaterialShapes::Cookie12Sided }) {
+        const auto b = (*shape)().CalculateBounds();
+        CHECK(b[0] > -1e-3f && b[1] > -1e-3f && b[2] < 1 + 1e-3f && b[3] < 1 + 1e-3f);
+        CHECK(std::max(b[2] - b[0], b[3] - b[1]) > 0.999f);   // fills the unit square on one axis
+    }
+}
+
+TEST(IconsAndTextTakeTheContentColour) {
+    Harness h;
+    ui::LayoutNode* icon = nullptr;
+    h.Run([&] {
+        MaterialTheme([&] {
+            auto& c = *rt::Composition::Current();
+            c.Provide(LocalContentColor, Color(0xff112233), [&] {
+                Column(ui::Modifier{}, Arrangement::Top(), AlignmentH::Start(), [] {
+                    Icon(material3::internal::Icons::Filled::Check(), std::string("Done"));
+                    Text("Hi");
+                });
+            });
+        });
+    });
+    // The vector's 24 dp intrinsic size (density 1).
+    std::function<void(ui::LayoutNode*)> find = [&](ui::LayoutNode* n) {
+        if (n->Size().width == 24 && n->Size().height == 24) icon = n;
+        for (ui::LayoutNode* c : n->Children()) find(c);
+    };
+    find(&h.owner.Root());
+    CHECK(icon != nullptr);
+    CHECK(material3::internal::Icons::AutoMirrored::Filled::KeyboardArrowLeft()->autoMirror);
+    CHECK(material3::internal::Icons::Filled::Check()->root->children.size() == 1);
 }

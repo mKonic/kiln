@@ -13,6 +13,10 @@
 #include <kiln/material3/DynamicColorScheme.h>
 #include <kiln/material3/MaterialTheme.h>
 #include <kiln/material3/Ripple.h>
+#include <kiln/material3/Surface.h>
+#include <kiln/material3/Text.h>
+#include <kiln/material3/MaterialShapes.h>
+#include <kiln/material3/internal/Icons.h>
 #include <kiln/graphics/PathEffect.h>
 #include <kiln/foundation/MeshGradient.h>
 #include <kiln/foundation/Gestures.h>
@@ -381,6 +385,37 @@ namespace {
                         Alignment::Center(), false, [] { BasicText("Focus ring", {}, { 14, kOnSurface }); });
                 });
             });
+            // Material foundation: surfaces (tonal elevation 3 dp with a border, a clickable one
+            // at 2 dp shadow), the components' icons tinted by the content colour, and Material
+            // Expressive shapes.
+            {
+                namespace m3 = kiln::material3;
+                Row(Padding(Modifier{}, 16_dp, 8_dp), Arrangement::SpacedBy(12_dp), AlignmentV::CenterVertically(), [] {
+                    m3::SurfaceOptions tonal;
+                    tonal.shape = RoundedCorner(12_dp);
+                    tonal.tonalElevation = 3_dp;
+                    tonal.border = BorderStroke(1_dp, m3::MaterialTheme::colorScheme().outlineVariant);
+                    m3::Surface(SizeMod(Modifier{}, 72_dp, 56_dp), tonal, [] {
+                        Box(FillMax(Modifier{}, Axis::Both), Alignment::Center(), false, [] {
+                            m3::Icon(m3::internal::Icons::Filled::Edit(), std::string("Edit"));
+                        });
+                    });
+                    m3::SurfaceOptions raised;
+                    raised.shape = RoundedCorner(16_dp);
+                    raised.color = m3::MaterialTheme::colorScheme().primaryContainer;
+                    raised.shadowElevation = 2_dp;
+                    m3::Surface([] {}, SizeMod(Modifier{}, 72_dp, 56_dp), raised, [] {
+                        Box(FillMax(Modifier{}, Axis::Both), Alignment::Center(), false, [] {
+                            m3::Icon(m3::internal::Icons::Filled::DateRange(), std::string("Date"));
+                        });
+                    });
+                    for (const auto* shape : { &m3::MaterialShapes::Cookie9Sided(), &m3::MaterialShapes::Clover4Leaf(), &m3::MaterialShapes::Heart() })
+                        Box(Background(SizeMod(Modifier{}, 40_dp, 40_dp), m3::MaterialTheme::colorScheme().tertiary, ToShape(*shape)));
+                });
+                m3::TextOptions title;
+                title.style = m3::MaterialTheme::typography().titleMedium;
+                m3::Text("Material Text: titleMedium in the content colour", Padding(Modifier{}, 16_dp, 0_dp), title);
+            }
             // The platform's Material You colours as a dynamic colour scheme (baseline when the
             // platform has none): primary, secondary, tertiary, surface container.
             {
