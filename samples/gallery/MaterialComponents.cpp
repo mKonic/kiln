@@ -5,6 +5,7 @@
 #include <kiln/foundation/Gestures.h>
 #include <kiln/foundation/Semantics.h>
 #include <kiln/material3/Checkbox.h>
+#include <kiln/material3/Card.h>
 #include <kiln/material3/RadioButton.h>
 #include <kiln/material3/Switch.h>
 #include <kiln/material3/Badge.h>
@@ -72,6 +73,35 @@ namespace kiln::gallery {
                 m3::ToggleButton(on->Get(), change, {}, disabled, [] { m3::Text("Disabled toggle"); });
             });
             m3::Text(checked.Get() ? "Text toggles: on" : "Text toggles: off");
+        }
+
+        void Cards() {
+            auto* enabled = &RememberState(true);
+            auto* clicks = &RememberState(0);
+            auto body = [](const char* title) {
+                return [title] {
+                    Column(Padding({}, 16_dp), Arrangement::SpacedBy(8_dp), AlignmentH::Start(), [title] {
+                        m3::Text(title);
+                        m3::Text("Details");
+                    });
+                };
+            };
+            const auto size = SizeIn({}, 128_dp, Dp::Unspecified(), Dp::Unspecified(), Dp::Unspecified());
+            FlowRow({}, Arrangement::SpacedBy(12_dp), Arrangement::SpacedBy(12_dp), AlignmentV::Top(), [=] {
+                m3::Card(size, {}, body("Filled"));
+                m3::ElevatedCard(size, {}, body("Elevated"));
+                m3::OutlinedCard(size, {}, body("Outlined"));
+            });
+            FlowRow({}, Arrangement::SpacedBy(12_dp), Arrangement::SpacedBy(12_dp), AlignmentV::Top(), [=] {
+                auto click = [clicks] { clicks->Set(clicks->Peek() + 1); };
+                m3::CardOptions options;
+                options.enabled = enabled->Get();
+                m3::Card(click, size, options, body("Filled action"));
+                m3::ElevatedCard(click, size, options, body("Elevated action"));
+                m3::OutlinedCard(click, size, options, body("Outlined action"));
+            });
+            m3::TextButton([enabled] { enabled->Set(!enabled->Peek()); }, {}, {}, [enabled] { m3::Text(enabled->Get() ? "Disable cards" : "Enable cards"); });
+            m3::Text("Card clicks: " + std::to_string(clicks->Get()));
         }
 
         void SelectionControls() {
@@ -231,6 +261,9 @@ namespace kiln::gallery {
                         m3::TextButton([selection] { selection->Set(1); }, {}, {}, [] { m3::Text("Dark"); });
                         m3::TextButton([selection] { selection->Set(2); }, {}, {}, [] { m3::Text("Dynamic"); });
                     });
+                    m3::Text("Cards");
+                    Cards();
+                    m3::HorizontalDivider();
                     SelectionControls();
                     m3::HorizontalDivider();
                     m3::Text("FAB menus");

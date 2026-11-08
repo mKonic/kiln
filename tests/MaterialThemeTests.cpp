@@ -6,6 +6,8 @@
 #include "kiln/material3/MaterialTheme.h"
 #include "kiln/material3/Badge.h"
 #include "kiln/material3/Checkbox.h"
+#include "kiln/material3/Card.h"
+#include "kiln/material3/Surface.h"
 #include "kiln/material3/RadioButton.h"
 #include "kiln/material3/Switch.h"
 #include "kiln/material3/Button.h"
@@ -348,7 +350,7 @@ TEST(ButtonElevationFollowsTheLastInteractionAndSnapsWhenDisabled) {
     auto source = std::make_shared<MutableInteractionSource>();
     Harness h;
     ui::Dp elevation;
-    h.Run([&] { elevation = ShadowElevation({ 1_dp, 2_dp, 3_dp, 4_dp, 0_dp }, enabled.Get(), source); });
+    h.Run([&] { elevation = ShadowElevation(ButtonElevation{ 1_dp, 2_dp, 3_dp, 4_dp, 0_dp }, enabled.Get(), source); });
     std::int64_t clock = 0;
     auto settle = [&] {
         for (int i = 0; i < 26; ++i) {
@@ -1161,9 +1163,12 @@ TEST(SwitchThumbAnimatesSelectionSnapsPressAndHandlesContentRtlAndSourceReplacem
 }
 
 TEST(SwitchesSharingStateUpdateTogetherWhenThumbContentAlsoReadsIt) {
+    rt::State<bool> dark{ false };
     Harness h;
     h.Run([&] {
-        MaterialTheme([&] {
+        MaterialThemeArgs theme;
+        theme.colorScheme = dark.Get() ? DarkColorScheme() : LightColorScheme();
+        MaterialTheme(theme, [&] {
             auto* on = &RememberState(false);
             Column({}, [on] {
                 auto change = [on](bool value) { on->Set(value); };
@@ -1178,6 +1183,12 @@ TEST(SwitchesSharingStateUpdateTogetherWhenThumbContentAlsoReadsIt) {
     accessibility.SetEnabled(true);
     accessibility.CheckForSemanticsChanges();
     accessibility.TakeEvents();
+    const int firstId = h.owner.Root().Children()[0]->Children()[0]->SemanticsId();
+    dark.Set(true);
+    for (int i = 0; i < 3; ++i) { rt::Composition::RecomposeAll(); h.owner.MeasureAndLayout({ 300, 300 }); }
+    CHECK_EQ(h.owner.Root().Children()[0]->Children()[0]->SemanticsId(), firstId);
+    accessibility.CheckForSemanticsChanges();
+    accessibility.TakeEvents();
     auto tree = h.owner.BuildSemanticsTree();
     CHECK_EQ(tree.children.size(), std::size_t(2));
     CHECK(tree.children[1].config.onClick());
@@ -1190,6 +1201,115 @@ TEST(SwitchesSharingStateUpdateTogetherWhenThumbContentAlsoReadsIt) {
     for (const auto& event : accessibility.TakeEvents())
         if (event.contentChangeTypes == ui::a11y::Checked) ++checkedEvents;
     CHECK_EQ(checkedEvents, 2);
+}
+
+TEST(CardDefaultsResolveVariantColorsBordersAndCustomContent) {
+    Harness h;
+    h.Run([] { MaterialTheme([] {
+        const auto& scheme = MaterialTheme::colorScheme();
+        const auto filled = CardDefaults::cardColors(), elevated = CardDefaults::elevatedCardColors(), outlined = CardDefaults::outlinedCardColors();
+        CHECK(filled.containerColor == scheme.surfaceContainerHighest);
+        CHECK(filled.contentColor == scheme.onSurface && filled.disabledContentColor == scheme.onSurface.WithAlpha(0.38f));
+        CHECK(filled.disabledContainerColor == ui::CompositeOver(scheme.surfaceVariant.WithAlpha(0.38f), scheme.surfaceContainerHighest));
+        CHECK(elevated.containerColor == scheme.surfaceContainerLow && elevated.disabledContainerColor == scheme.surface);
+        CHECK(outlined.containerColor == scheme.surface && outlined.disabledContainerColor == scheme.surface);
+        CHECK(filled.Copy() == filled);
+        CHECK(CardDefaults::cardColors(scheme.primary).contentColor == scheme.onPrimary);
+        CHECK(CardDefaults::cardColors(scheme.primary).disabledContentColor == scheme.onPrimary.WithAlpha(0.38f));
+        const Color custom(0xff123456);
+        CHECK(CardDefaults::outlinedCardColors(scheme.primary, custom).contentColor == custom);
+        CHECK(CardDefaults::outlinedCardColors(scheme.primary, custom).disabledContentColor == scheme.onPrimary.WithAlpha(0.38f));
+        CHECK(CardDefaults::elevatedCardColors(scheme.primary, custom).disabledContentColor == custom.WithAlpha(0.38f));
+        CHECK(CardDefaults::outlinedCardBorder().width == 1_dp);
+        CHECK(CardDefaults::outlinedCardBorder().brush == gfx::Brush::SolidColor(scheme.outlineVariant));
+        CHECK(CardDefaults::outlinedCardBorder(false).brush == gfx::Brush::SolidColor(ui::CompositeOver(scheme.outline.WithAlpha(0.12f), scheme.surfaceContainerLow)));
+        CHECK(CardDefaults::cardElevation().defaultElevation == 0_dp && CardDefaults::cardElevation().draggedElevation == 6_dp);
+        CHECK(CardDefaults::elevatedCardElevation().defaultElevation == 1_dp && CardDefaults::elevatedCardElevation().draggedElevation == 8_dp);
+        CHECK(CardDefaults::outlinedCardElevation().hoveredElevation == 0_dp);
+        CHECK(CardDefaults::shape()->Equals(*MaterialTheme::shapes().medium));
+    }); });
+}
+
+TEST(CardsKeepColumnContentAndOnlyClickableFormsReserveInteractiveSpace) {
+    using Plain = void (*)(const ui::Modifier&, const CardOptions&, std::function<void()>);
+    using Clickable = void (*)(std::function<void()>, const ui::Modifier&, const CardOptions&, std::function<void()>);
+    const Plain plain[] = { Card, ElevatedCard, OutlinedCard };
+    const Clickable clickable[] = { Card, ElevatedCard, OutlinedCard };
+    for (int variant = 0; variant < 3; ++variant) {
+        Harness h;
+        Color content[3];
+        ui::Dp tonal[3];
+        text::TextStyle style;
+        int clicks = 0;
+        h.Run([&] { MaterialTheme([&] { Column({}, [&] {
+            for (int i = 0; i < 3; ++i) {
+                CardOptions options;
+                options.enabled = i == 1;  // the plain card ignores enabled
+                auto body = [&, i] {
+                    content[i] = rt::Composition::Current()->Read(LocalContentColor);
+                    tonal[i] = rt::Composition::Current()->Read(LocalAbsoluteTonalElevation);
+                    style = rt::Composition::Current()->Read(LocalTextStyle());
+                    Box(SizeMod({}, 10_dp, 10_dp));
+                    Box(SizeMod({}, 20_dp, 10_dp));
+                };
+                if (i == 0) plain[variant]({}, options, body);
+                else clickable[variant]([&] { ++clicks; }, {}, options, body);
+            }
+        }); }); });
+        const auto& cards = h.owner.Root().Children()[0]->Children();
+        CHECK_EQ(cards[0]->Size().width, 20);
+        CHECK_EQ(cards[0]->Size().height, 20);
+        CHECK_EQ(cards[1]->Size().width, 48);
+        CHECK_EQ(cards[1]->Size().height, 48);
+        CHECK_EQ(cards[2]->Size().height, 48);
+        CHECK(content[0] == LightColorScheme().onSurface && content[1] == content[0]);
+        CHECK(content[2] == LightColorScheme().onSurface.WithAlpha(0.38f));
+        CHECK(tonal[0] == 0_dp && tonal[1] == 0_dp);  // Card sets shadow, not tonal, elevation
+        CHECK(style == Typography{}.bodyLarge);
+        ui::SemanticsConfiguration config;
+        CHECK(ui::CalculateSemanticsConfiguration(*cards[0], config) && !config.onClick && !config.disabled);
+        CHECK(ui::CalculateSemanticsConfiguration(*cards[1], config) && config.onClick && !config.disabled);
+        CHECK(config.role == ui::Role::None);  // Surface doesn't force a Button role
+        CHECK(config.onClick());
+        CHECK_EQ(clicks, 1);
+        CHECK(ui::CalculateSemanticsConfiguration(*cards[2], config) && config.disabled);
+        const auto* column = cards[0]->Children()[0];
+        CHECK(column->Children().size() == 2 && column->Children()[1]->Position().y == 10);
+    }
+}
+
+TEST(CardElevationFollowsDragAndLastInteractionAndSnapsOnDisable) {
+    Harness h;
+    auto source = std::make_shared<MutableInteractionSource>();
+    rt::State<bool> enabled{ true };
+    ui::Dp elevation;
+    h.Run([&] { elevation = ShadowElevation(CardElevation{ 1_dp, 3_dp, 3_dp, 5_dp, 8_dp, 0_dp }, enabled.Get(), source); });
+    std::int64_t clock = 0;
+    auto advance = [&](int frames) {
+        for (int i = 0; i < frames; ++i) {
+            rt::Composition::RecomposeAll();
+            rt::Dispatcher::Main().RunFrame(clock += 16'000'000);
+            rt::Composition::RecomposeAll();
+        }
+    };
+    CHECK(elevation == 1_dp);
+    const auto hover = source->Start(Interaction::Kind::Hover); advance(30);
+    CHECK(elevation == 5_dp);
+    const auto drag = source->Start(Interaction::Kind::Drag); advance(30);
+    CHECK(elevation == 8_dp);
+    source->Cancel(Interaction::Kind::Drag, drag); advance(30);
+    CHECK(elevation == 5_dp);
+    const auto press = source->Start(Interaction::Kind::Press); advance(3);
+    const auto focus = source->Start(Interaction::Kind::Focus); advance(30);
+    CHECK(elevation == 3_dp);
+    enabled.Set(false); advance(1);
+    CHECK(elevation == 0_dp);
+    enabled.Set(true); advance(30);
+    CHECK(elevation == 3_dp);
+    source->End(Interaction::Kind::Focus, focus);
+    source->End(Interaction::Kind::Press, press);
+    source->End(Interaction::Kind::Hover, hover); advance(30);
+    CHECK(elevation == 1_dp);
 }
 
 TEST(BadgeDoesNotResizeItsAnchorAndUsesContentMinimumSize) {
