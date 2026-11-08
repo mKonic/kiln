@@ -4,6 +4,7 @@
 #include "kiln/graphics/PathIterator.h"
 #include "kiln/graphics/Vertices.h"
 #include "kiln/graphics/Rasterizer.h"
+#include "kiln/graphics/vector/ImageVector.h"
 
 #include <cmath>
 #include <numbers>
@@ -237,4 +238,35 @@ TEST(VerticesExpandToTriangleLists) {
     v.mode = gfx::VertexMode::Triangles;
     v.indices = { 3, 2, 1 };
     CHECK(v.TriangleList() == std::vector<std::uint32_t>({ 3, 2, 1 }));
+}
+
+TEST(VectorPathDataParsesLikeCompose) {
+    using namespace gfx::vector;
+    using K = PathNode::Kind;
+    // Commas and spaces are optional between numbers; '-' and a second '.' start a new number.
+    PathData n = ParsePathString("  M10,10h5l-2-.5.5.5zm1 2");
+    CHECK(n.size() == 6);
+    CHECK(n[0].kind == K::MoveTo && n[0].v[0] == 10 && n[0].v[1] == 10);
+    CHECK(n[1].kind == K::RelativeHorizontalTo && n[1].v[0] == 5);
+    CHECK(n[2].kind == K::RelativeLineTo && n[2].v[0] == -2 && n[2].v[1] == -0.5f);
+    CHECK(n[3].kind == K::RelativeLineTo && n[3].v[0] == 0.5f && n[3].v[1] == 0.5f);
+    CHECK(n[4].kind == K::Close && n[5].kind == K::RelativeMoveTo);
+    // A moveto's extra pairs are linetos; exponents belong to numbers.
+    n = ParsePathString("M1 2 3e1 4E-1");
+    CHECK(n.size() == 2 && n[1].kind == K::LineTo && n[1].v[0] == 30 && std::fabs(n[1].v[1] - 0.4f) < 1e-7f);
+    // An arc's flags may run into the next number.
+    n = ParsePathString("M0 0a5 5 0 104 0");
+    CHECK(n.size() == 2 && n[1].kind == K::RelativeArcTo && n[1].v[3] == 1 && n[1].v[4] == 0 && n[1].v[5] == 4 && n[1].v[6] == 0);
+    // The half circle arc becomes cubics ending where the arc ends.
+    Path p;
+    ToPath(n, p);
+    CHECK(std::fabs(p.Points().back().x - 4) < 1e-4f && std::fabs(p.Points().back().y) < 1e-4f);
+    // Reflective curves mirror the previous control point.
+    n = ParsePathString("M0 0C1 0 2 1 2 2S3 4 4 4");
+    Path q;
+    ToPath(n, q);
+    const auto& pts = q.Points();
+    CHECK(pts.size() == 7 && pts[4].x == 2 && pts[4].y == 3);
+    // The builder makes the same nodes.
+    CHECK(PathBuilder().MoveTo(10, 10).HorizontalLineToRelative(5).Nodes() == PathData(ParsePathString("M10 10h5")));
 }
