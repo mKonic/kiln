@@ -25,6 +25,7 @@
 #include <kiln/foundation/Pager.h>
 #include <kiln/foundation/Image.h>
 #include <kiln/foundation/Shapes.h>
+#include <kiln/foundation/Shadow.h>
 #include <kiln/foundation/PolygonShape.h>
 #include <kiln/graphics/shapes/Shapes.h>
 
@@ -311,6 +312,53 @@ namespace {
                 p.clip = true;
                 p.clipShape = RoundedCorner(12_dp);
                 Box(Background(GraphicsLayer(SizeMod(Modifier{}, 64_dp, 64_dp), p), kPrimaryContainer, CornerShape::Rounded(12_dp)));
+            });
+            // Painted shadows: bitmap-sized gradient, inner gradient, a path with a hole, and
+            // a block whose offset changes without recomposing the gallery.
+            Row(Padding(Modifier{}, 16_dp, 16_dp), Arrangement::SpacedBy(16_dp), AlignmentV::CenterVertically(), [] {
+                using PaintedShadow = kiln::gfx::shadow::Shadow;
+                const auto rounded = RoundedCorner(12_dp);
+                const auto gradient = kiln::gfx::Brush::HorizontalGradient({ Color(0xb36750a4), Color(0xb3e8618c) });
+                Box(Background(DropShadow(SizeMod(Modifier{}, 72_dp, 64_dp), rounded,
+                                          PaintedShadow(6_dp, gradient, 2_dp, { 0_dp, 4_dp })), Color(0xffffffff), rounded),
+                    Alignment::Center(), false, [] { BasicText("Drop", {}, { 14, kOnSurface }); });
+                Box(InnerShadow(Background(SizeMod(Modifier{}, 72_dp, 64_dp), Color(0xffffffff), rounded), rounded,
+                                PaintedShadow(6_dp, gradient, 2_dp, { 3_dp, 4_dp })),
+                    Alignment::Center(), false, [] { BasicText("Inner", {}, { 14, kOnSurface }); });
+                static const auto ring = std::make_shared<const RingShadowShape>();
+                Box(InnerShadow(Background(DropShadow(SizeMod(Modifier{}, 64_dp, 64_dp), ring,
+                                                       PaintedShadow(4_dp, Color(0x806750a4), 1_dp, { 0_dp, 3_dp })),
+                                           Color(0xffffffff), ring), ring, PaintedShadow(4_dp, Color(0x80000000), 1_dp, { 2_dp, 2_dp })));
+                auto& moved = RememberState(false);
+                Box(Clickable(Background(DropShadow(SizeMod(Modifier{}, 72_dp, 64_dp), rounded, [&moved](DropShadowScope& s) {
+                        s.radius = s.ToPx(6_dp);
+                        s.spread = s.ToPx(2_dp);
+                        s.offset = { s.ToPx(moved.Get() ? Dp(-6) : 6_dp), s.ToPx(4_dp) };
+                        s.color = Color(0x806750a4);
+                    }), Color(0xffffffff), rounded), [&moved] { moved.Set(!moved.Peek()); }),
+                    Alignment::Center(), false, [] { BasicText("Move", {}, { 14, kOnSurface }); });
+            });
+            // Painter blending keeps bitmap alpha separate from the circle's coverage: Clear
+            // removes the whole circle, Src leaves a soft ring, and an alpha-raising filter fills it.
+            Row(Padding(Modifier{}, 16_dp, 0_dp), Arrangement::SpacedBy(16_dp), AlignmentV::Top(), [] {
+                for (int kind = 0; kind < 3; ++kind) {
+                    Column(Modifier{}, Arrangement::SpacedBy(4_dp), AlignmentH::CenterHorizontally(), [kind] {
+                        GraphicsLayerParams layer;
+                        layer.compositingStrategy = CompositingStrategy::Offscreen;
+                        Canvas(GraphicsLayer(SizeMod(Modifier{}, 72_dp, 64_dp), layer), [kind](DrawScope& d) {
+                            d.DrawRect(kPrimary, {}, d.GetSize());
+                            kiln::gfx::shadow::Shadow shadow(6_dp, Color(0x80000000), 2_dp);
+                            shadow.blendMode = kind == 0 ? kiln::gfx::BlendMode::Clear : kiln::gfx::BlendMode::Src;
+                            InnerShadowPainter painter(CircleShape(), shadow);
+                            const auto filter = kiln::gfx::ColorFilter::ColorMatrix({ 0, 0, 0, 0, 64,
+                                                                                   0, 0, 0, 0, 192,
+                                                                                   0, 0, 0, 0, 192,
+                                                                                   0, 0, 0, 0, 255 });
+                            painter.Draw(d, d.GetSize(), 1, kind == 2 ? &filter : nullptr);
+                        });
+                        BasicText(kind == 0 ? "Clear" : kind == 1 ? "Src" : "Filter", {}, { 14, kOnSurface });
+                    }, kiln::rt::Key(kind));
+                }
             });
             // The platform's Material You colours as a dynamic colour scheme (baseline when the
             // platform has none): primary, secondary, tertiary, surface container.

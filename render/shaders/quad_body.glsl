@@ -282,7 +282,11 @@ void main() {
     // Skia order: source colour (paint or image texel times alpha), colour filter, coverage.
     vec4 src;
     float coverage;
-    if (mode == 0) {            // solid rounded rect, analytic coverage
+    if (mode == 6) {            // bitmap shader alpha and independent geometry coverage
+        vec2 mask = texture(uAtlas, vUv).rg;
+        src = applyFilter(paint() * mask.r);
+        coverage = mask.g;
+    } else if (mode == 0) {            // solid rounded rect, analytic coverage
         src = applyFilter(paint());
         coverage = aaCoverage(roundedRectSdf(vLocal, vHalf, vParams.x), vLocal);
     } else if (mode == 1) {     // atlas coverage (text, path masks) filled with the paint

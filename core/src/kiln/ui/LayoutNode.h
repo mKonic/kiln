@@ -8,6 +8,7 @@
 #include "kiln/runtime/Composition.h"
 #include "kiln/runtime/State.h"
 #include "kiln/ui/Draw.h"
+#include "kiln/graphics/shadow/ShadowContext.h"
 #include "kiln/ui/Layout.h"
 #include "kiln/ui/Pointer.h"
 #include "kiln/ui/Focus.h"
@@ -258,6 +259,7 @@ namespace kiln::ui {
         // top-left the size of this one.
         void SetShadowLight(std::optional<gfx::ShadowLight> light) { m_ShadowLight = light; }
         gfx::ShadowLight ShadowLight() const;
+        std::shared_ptr<gfx::shadow::ShadowContext> Shadows() const { return m_ShadowContext; }
 
         // Pointer input: hit test on press, dispatch in three passes along the kept path.
         void ProcessPointer(const RawPointerEvent& event);
@@ -675,6 +677,7 @@ namespace kiln::ui {
         std::set<LayoutNode*, ByDepth> m_MeasureDirty, m_LayoutDirty;
         IntSize m_Window;
         std::optional<gfx::ShadowLight> m_ShadowLight;
+        std::shared_ptr<gfx::shadow::ShadowContext> m_ShadowContext = std::make_shared<gfx::shadow::ShadowContext>();
         ViewConfiguration m_Config;
         struct Tracked { std::vector<HitEntry> path; Offset position; bool pressed = false; std::int64_t uptime = 0; PointerType type{}; };
         std::map<std::int64_t, Tracked> m_Pointers;

@@ -371,6 +371,22 @@ namespace kiln::ui {
                                   { a, a, a, a }, QuadRenderer::Mode::Color, nullptr, FilterRow(filter), quality == gfx::FilterQuality::None);
     }
 
+    void DrawScope::DrawMaskShader(const gfx::ImageBitmap& mask, const gfx::Brush& brush, Offset origin, float alpha,
+                                   const gfx::ColorFilter* filter) {
+        if (!m_Target.quads || !m_Target.images || !mask) return;
+        const AtlasPage* page = m_Target.images->PageFor(mask);
+        if (!page) return;
+        QuadRenderer::Paint paint;
+        Color solid;
+        float a;
+        const bool gradient = MakePaint(brush, alpha, &paint, solid, a);
+        if (a <= 0) return;
+        ApplyTransform();
+        m_Target.quads->DrawAtlas({ origin.x, origin.y, float(mask.Width()), float(mask.Height()) }, { 0, 0, 1, 1 }, *page,
+                                  gradient ? Rgba{ a, a, a, a } : Scaled(ToRgba(solid), a),
+                                  QuadRenderer::Mode::MaskShader, gradient ? &paint : nullptr, FilterRow(filter));
+    }
+
     void DrawScope::DrawVertices(const gfx::Vertices& v, Color color, float alpha) {
         if (!m_Target.quads) return;
         const float a = alpha * m_State.alpha;

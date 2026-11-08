@@ -58,6 +58,9 @@ namespace kiln::ui {
         // drawImage(image, srcOffset, srcSize, dstOffset, dstSize, alpha): src in image pixels.
         void DrawImage(const gfx::ImageBitmap& image, Rect src, Offset dstOffset, Size dstSize, float alpha = 1,
                        const gfx::ColorFilter* colorFilter = nullptr, gfx::FilterQuality quality = gfx::FilterQuality::Low);
+        // Bitmap shader alpha (R) and independent geometry coverage (G), filled with a brush.
+        void DrawMaskShader(const gfx::ImageBitmap& mask, const gfx::Brush& brush, Offset origin, float alpha = 1,
+                            const gfx::ColorFilter* colorFilter = nullptr);
         // Brush overloads; `alpha` multiplies the brush (gradient geometry is in scope coordinates).
         void DrawRect(const gfx::Brush& brush, Offset topLeft, Size size, float alpha = 1);
         void DrawRoundRect(const gfx::Brush& brush, Offset topLeft, Size size, float cornerRadius, float alpha = 1);

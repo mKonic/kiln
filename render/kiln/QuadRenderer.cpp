@@ -151,7 +151,7 @@ namespace kiln {
         instance.clipInv2[0] = ci.e; instance.clipInv2[1] = ci.f; instance.clipInv2[2] = m_Clip.enabled ? 1.0f : 0.0f; instance.clipInv2[3] = 0;
         const AtlasPage* dst = nullptr;
         // Stretch and blur passes composite layers themselves and never blend.
-        if (m_BlendMode != 3 && !mask && instance.params[1] <= float(Mode::Color)) {
+        if (m_BlendMode != 3 && !mask && (instance.params[1] <= float(Mode::Color) || instance.params[1] == float(Mode::MaskShader))) {
             dst = DestinationCopy(instance);
             instance.params[3] = float(m_BlendMode + 1);
         }

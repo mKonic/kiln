@@ -33,6 +33,12 @@ Extracted helpers:
   The path iterator tracks its current conic weight without forming a pointer before
   the beginning of the weights array. Unused API and debug machinery are omitted.
 
+  SkMaskBlur.{h,cpp}: A8-only scalar adaptation of SkMaskBlurFilter's PlanGauss
+  (same three running sums and 32-bit fixed-point normalization) and small_blur
+  (same Bessel factors, 8.8 products and per-axis rounding). The Gaussian scan
+  advances forward through a zero tail instead of processing from both ends.
+  Original files: src/core/SkMaskBlurFilter.cpp and src/core/SkGaussFilter.{h,cpp}.
+
 Integration outside this directory:
   core/src/kiln/graphics/PathShadow.cpp adapts kiln paths/matrices and ports the
   SkDevice::drawShadow blur fallback from src/utils/SkShadowUtils.cpp.

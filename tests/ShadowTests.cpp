@@ -3,6 +3,9 @@
 #include "kiln/graphics/Shadow.h"
 #include "kiln/graphics/PathShadow.h"
 #include "kiln/foundation/Layouts.h"
+#include "kiln/foundation/Shadow.h"
+#include "kiln/foundation/Compose.h"
+#include "kiln/foundation/Shapes.h"
 
 #include <algorithm>
 #include <limits>
@@ -196,4 +199,110 @@ TEST(PerspectiveShadowUsesNativeRoundRectWinding) {
     CHECK(!shadow.blurred && !shadow.triangles.empty());
     CHECK(FiniteShadow(shadow));
     CHECK(Covers(shadow, { 850, 1685 }));
+}
+
+TEST(PaintedShadowValuesFollowCompose) {
+    using namespace ui;
+    using shadow::Shadow;
+    const Shadow color(1_dp, Color(0xff00ffff), 2_dp, { 3_dp, 4_dp }, 0.5f, BlendMode::Dst);
+    const Shadow solid(1_dp, Brush::SolidColor(Color(0xff00ffff)), 2_dp, { 3_dp, 4_dp }, 0.5f, BlendMode::Dst);
+    CHECK(color == solid);
+    CHECK(!solid.brush);
+    CHECK(Shadow(1_dp, Color::Unspecified()).color == Color(0xff000000));
+    CHECK_EQ(Shadow(1_dp, Color{}, {}, {}, 2).alpha, 1.0f);
+    CHECK_EQ(Shadow(1_dp, Color{}, {}, {}, -1).alpha, 0.0f);
+    const Brush gradient = Brush::HorizontalGradient({ Color(0xffff0000), Color(0xff0000ff) });
+    const Shadow start(2_dp, gradient, 4_dp, { 6_dp, 8_dp }, 0.4f, BlendMode::Src);
+    const Shadow end(6_dp, gradient, 8_dp, { 10_dp, 12_dp }, 0.8f, BlendMode::Dst);
+    const Shadow middle = shadow::Lerp(start, end, 0.5f);
+    CHECK(middle.radius == 4_dp && middle.spread == 6_dp);
+    CHECK((middle.offset == DpOffset{ 8_dp, 10_dp }));
+    CHECK(std::fabs(middle.alpha - 0.6f) < 1e-6f);
+    CHECK(middle.blendMode == BlendMode::Dst);
+    CHECK(shadow::Lerp(start, end, -0.5f).radius == 0_dp);
+    CHECK(!shadow::Lerp(std::optional<Shadow>{}, std::optional<Shadow>{}, 0.5f));
+    const auto entering = shadow::Lerp(std::optional<Shadow>{}, std::optional<Shadow>{ color }, 0.5f);
+    CHECK(entering && entering->radius == color.radius && entering->offset == color.offset);
+    CHECK(entering && entering->color.Alpha() < color.color.Alpha());
+}
+
+namespace {
+    double MaskArea(const shadow::ShadowMask& mask) {
+        const auto& image = mask.image;
+        double sum = 0;
+        for (int i = 0; i < image.Width() * image.Height(); ++i) sum += double(image.Pixels()[i * 4]) * image.Pixels()[i * 4 + 1] / (255.0 * 255.0);
+        return sum;
+    }
+}
+
+TEST(PaintedShadowMasksKeepComposeGeometryAndShareOffsets) {
+    using namespace ui;
+    using shadow::Shadow;
+    shadow::ShadowContext context;
+    const auto shape = foundation::RectangleShape();
+    const Size size{ 40, 24 };
+    auto get = [&](const Shadow& shadow, bool inner = false, Density d = {}) {
+        return context.Obtain(shape, size, LayoutDirection::Ltr, d, shadow, inner);
+    };
+    Shadow s(0_dp, Color(0xff000000), 3_dp);
+    const auto drop = get(s);
+    CHECK(drop && drop->image.Width() == 46 && drop->image.Height() == 30);
+    CHECK(drop && std::fabs(MaskArea(*drop) - 46 * 30) < 0.01);
+    s.offset = { 4_dp, 2_dp };
+    s.color = Color(0xff00ffff);
+    CHECK(get(s) == drop);   // geometry cache ignores drop offset and tint
+    const auto inner = get(s, true);
+    s.offset = {};
+    const auto centred = get(s, true);
+    CHECK(inner && centred && inner != centred);
+    CHECK(centred && std::fabs(MaskArea(*centred) - (40 * 24 - 34 * 18)) < 0.01);
+    CHECK(get(s, false, Density{ 2, 1 }) != drop);
+    context.ClearCache();
+    CHECK(get(s) != drop);
+    for (float radius : { 0.1f, 1.0f, 2.0f, 8.0f, 240.0f }) {
+        const auto blurred = get(Shadow(Dp(radius)));
+        CHECK(blurred && MaskArea(*blurred) > 0 && MaskArea(*blurred) <= 40 * 24 + 1);
+    }
+    const auto ring = std::make_shared<GenericShape>([](Path& p, Size, LayoutDirection) {
+        p.fillType = FillType::EvenOdd;
+        p.AddRect({ 0, 0, 40, 24 }); p.AddRect({ 10, 6, 30, 18 });
+    });
+    const auto ringMask = context.Obtain(ring, size, LayoutDirection::Ltr, {}, Shadow(0_dp), false);
+    CHECK(ringMask && std::fabs(MaskArea(*ringMask) - (40 * 24 - 20 * 12)) < 0.01);
+    CHECK(!get(Shadow(Dp(std::numeric_limits<float>::infinity()))));
+}
+
+TEST(PaintedShadowBlocksReadLazilyWithoutRecomposition) {
+    using namespace ui;
+    using namespace foundation;
+    Owner owner;
+    rt::Dispatcher dispatcher;
+    rt::Composition composition(owner.Root(), dispatcher);
+    rt::State<float> offset{ 0 };
+    int compositions = 0, reads = 0;
+    composition.SetContent([&] {
+        ++compositions;
+        Spacer(DropShadow(SizeMod(Modifier{}, 40_dp, 24_dp), RectangleShape(), [&](DropShadowScope& s) {
+            ++reads;
+            s.radius = s.ToPx(2_dp);
+            s.offset = { offset.Get(), 0 };
+        }));
+    });
+    composition.Recompose();
+    owner.MeasureAndLayout({ 100, 100 });
+    CHECK_EQ(reads, 0);
+    owner.Draw({});
+    owner.Draw({});
+    CHECK_EQ(reads, 1);
+    offset.Set(8);
+    rt::Observation::ApplyChanges();
+    composition.Recompose();
+    CHECK_EQ(reads, 1);
+    owner.Draw({});
+    CHECK_EQ(reads, 2);
+    CHECK_EQ(compositions, 1);
+    owner.SetDensity({ 2, 1 });
+    owner.MeasureAndLayout({ 100, 100 });
+    owner.Draw({});
+    CHECK_EQ(reads, 3);
 }
