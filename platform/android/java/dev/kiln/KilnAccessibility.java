@@ -465,7 +465,21 @@ final class KilnAccessibility extends AccessibilityNodeProvider {
             int texts = d[at + 20];
             at += 21;
             for (int i = 0; i < texts; i++) e.getText().add(str(s, d[at++]));
-            if (enabled && view.getParent() != null) view.getParent().requestSendAccessibilityEvent(view, e);
+            // The manager updates its state before our state-change listener runs. A bounds
+            // flush queued while a service was connected can therefore see stale `enabled`.
+            android.view.ViewParent parent = view.getParent();
+            if (!enabled || manager == null || !manager.isEnabled() || parent == null) {
+                e.recycle();
+                continue;
+            }
+            try {
+                parent.requestSendAccessibilityEvent(view, e);
+            } catch (IllegalStateException ex) {
+                // The service can also disconnect between the check and the platform send.
+                // Do not hide unrelated dispatch failures while accessibility is still on.
+                if (manager.isEnabled()) throw ex;
+                e.recycle();
+            }
         }
     }
 }
