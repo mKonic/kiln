@@ -25,6 +25,10 @@ namespace kiln::ui {
         constexpr bool Specified() const { return !std::isnan(value); }
         static constexpr Dp Unspecified() { return Dp(NAN); }
     };
+    struct DpSize {
+        Dp width, height;
+        bool operator==(const DpSize&) const = default;
+    };
     struct DpOffset {
         Dp x, y;
         bool operator==(const DpOffset&) const = default;

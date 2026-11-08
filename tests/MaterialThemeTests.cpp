@@ -5,6 +5,7 @@
 #include "kiln/material3/MaterialTheme.h"
 #include "kiln/material3/Badge.h"
 #include "kiln/material3/Button.h"
+#include "kiln/material3/IconButton.h"
 #include "kiln/material3/Ripple.h"
 #include "kiln/material3/MaterialShapes.h"
 #include "kiln/material3/Text.h"
@@ -363,6 +364,87 @@ TEST(ButtonElevationFollowsTheLastInteractionAndSnapsWhenDisabled) {
     rt::Composition::RecomposeAll();
     CHECK(elevation == 0_dp);
     source->End(Interaction::Kind::Hover, hover);
+}
+
+TEST(IconButtonDefaultsFollowContentColorAndExpressiveWidths) {
+    Harness h;
+    h.Run([] {
+        MaterialTheme([] {
+            const Color content(0xff123456);
+            rt::Composition::Current()->Provide(LocalContentColor, content, [content] {
+                CHECK(IconButtonDefaults::iconButtonColors().contentColor == content);
+                CHECK(IconButtonDefaults::iconButtonColors().disabledContentColor == content.WithAlpha(0.38f));
+                CHECK(IconButtonDefaults::outlinedIconButtonBorder(true).brush == gfx::Brush::SolidColor(content));
+                CHECK(!IconButtonDefaults::outlinedIconToggleButtonBorder(true, true));
+                const auto colors = IconButtonDefaults::filledTonalIconToggleButtonColors();
+                const auto& scheme = MaterialTheme::colorScheme();
+                CHECK(colors.ContainerColor(true, false) == scheme.secondaryContainer);
+                CHECK(colors.ContainerColor(true, true) == scheme.secondary);
+                CHECK(colors.ContentColor(false, true) == colors.disabledContentColor);
+                CHECK(colors.Copy().checkedContentColor == colors.checkedContentColor);
+            });
+        });
+    });
+    CHECK((IconButtonDefaults::extraSmallContainerSize() == ui::DpSize{ 32_dp, 32_dp }));
+    CHECK((IconButtonDefaults::smallContainerSize(IconButtonWidthOption::Narrow) == ui::DpSize{ 32_dp, 40_dp }));
+    CHECK((IconButtonDefaults::smallContainerSize() == ui::DpSize{ 40_dp, 40_dp }));
+    CHECK((IconButtonDefaults::smallContainerSize(IconButtonWidthOption::Wide) == ui::DpSize{ 52_dp, 40_dp }));
+    CHECK((IconButtonDefaults::mediumContainerSize() == ui::DpSize{ 56_dp, 56_dp }));
+    CHECK((IconButtonDefaults::largeContainerSize() == ui::DpSize{ 96_dp, 96_dp }));
+    CHECK((IconButtonDefaults::extraLargeContainerSize() == ui::DpSize{ 136_dp, 136_dp }));
+}
+
+TEST(IconToggleVariantsExposeCheckboxStateAndHandlePresses) {
+    using Toggle = void (*)(bool, std::function<void(bool)>, const ui::Modifier&, const IconToggleButtonOptions&, std::function<void()>);
+    for (Toggle toggle : { IconToggleButton, FilledIconToggleButton, FilledTonalIconToggleButton, OutlinedIconToggleButton }) {
+        rt::State<bool> checked{ false }, enabled{ true };
+        auto source = std::make_shared<MutableInteractionSource>();
+        Harness h;
+        Color content;
+        h.Run([&] {
+            MaterialTheme([&] {
+                Column({}, [&] {
+                    IconToggleButtonOptions options;
+                    options.enabled = enabled.Get();
+                    options.interactionSource = source;
+                    toggle(checked.Get(), [&](bool value) { checked.Set(value); }, {}, options, [&] {
+                        content = rt::Composition::Current()->Read(LocalContentColor);
+                        Box(SizeMod({}, 24_dp, 24_dp));
+                    });
+                });
+            });
+        });
+        auto tree = h.owner.BuildSemanticsTree();
+        CHECK_EQ(tree.children.size(), std::size_t(1));
+        CHECK(tree.children[0].config.role == ui::Role::Checkbox);
+        CHECK_EQ(*tree.children[0].config.toggleableState, 0);
+        CHECK_EQ(h.owner.Root().Children()[0]->Children()[0]->Size().width, 48);
+        auto mouse = [&](ui::PointerEventType type, bool down, std::int64_t time) {
+            ui::RawPointerEvent event;
+            event.type = type;
+            event.uptimeMillis = time;
+            event.buttons = down ? 1 : 0;
+            event.pointers.push_back({ 1, { 24, 24 }, down, ui::PointerType::Mouse, {} });
+            h.owner.ProcessPointer(event);
+            rt::Dispatcher::Main().RunPending();
+        };
+        mouse(ui::PointerEventType::Press, true, 0);
+        CHECK(source->IsPressed());
+        mouse(ui::PointerEventType::Release, false, 50);
+        CHECK(checked.Peek() && !source->IsPressed());
+        rt::Composition::RecomposeAll();
+        h.owner.MeasureAndLayout({ 300, 300 });
+        CHECK_EQ(*h.owner.BuildSemanticsTree().children[0].config.toggleableState, 1);
+        enabled.Set(false);
+        rt::Composition::RecomposeAll();
+        h.owner.MeasureAndLayout({ 300, 300 });
+        CHECK(h.owner.BuildSemanticsTree().children[0].config.disabled);
+        const bool inheritsContent = toggle == IconToggleButton || toggle == OutlinedIconToggleButton;
+        CHECK(content == (inheritsContent ? Color(0xff000000) : LightColorScheme().onSurface).WithAlpha(0.38f));
+        mouse(ui::PointerEventType::Press, true, 100);
+        mouse(ui::PointerEventType::Release, false, 150);
+        CHECK(checked.Peek());
+    }
 }
 
 TEST(BadgeDoesNotResizeItsAnchorAndUsesContentMinimumSize) {
