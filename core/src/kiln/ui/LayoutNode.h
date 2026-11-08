@@ -14,6 +14,7 @@
 #include "kiln/ui/SystemBars.h"
 #include "kiln/ui/Focus.h"
 #include "kiln/ui/IndirectPointer.h"
+#include "kiln/ui/InputDevices.h"
 #include "kiln/ui/Clip.h"
 #include "kiln/ui/TextInput.h"
 #include "kiln/ui/TextToolbar.h"
@@ -267,6 +268,7 @@ namespace kiln::ui {
         // Pointer input: hit test on press, dispatch in three passes along the kept path.
         void ProcessPointer(const RawPointerEvent& event);
         ViewConfiguration& Config() { return m_Config; }
+        InputDevices& Devices() { return m_InputDevices; }
 
         // Focus (FocusOwnerImpl). Host hooks: ask the platform to focus the host view.
         FocusTargetNode* ActiveFocus() const { return m_ActiveFocus; }
@@ -691,6 +693,7 @@ namespace kiln::ui {
         std::optional<gfx::ShadowLight> m_ShadowLight;
         std::shared_ptr<gfx::shadow::ShadowContext> m_ShadowContext = std::make_shared<gfx::shadow::ShadowContext>();
         ViewConfiguration m_Config;
+        InputDevices m_InputDevices;
         struct Tracked { std::vector<HitEntry> path; Offset position; bool pressed = false; std::int64_t uptime = 0; PointerType type{}; };
         std::map<std::int64_t, Tracked> m_Pointers;
         FocusTargetNode m_RootFocus;

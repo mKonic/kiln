@@ -112,6 +112,8 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
     }
 
     private Runnable unregisterPasswordObserver;
+    private final KilnInputDevices inputDevices = new KilnInputDevices(this);
+    void setInputDeviceListenerEnabled(boolean enabled) { inputDevices.setEnabled(enabled); }
 
     @SuppressWarnings("deprecation")
     private void pushPasswordVisibility() {
@@ -179,6 +181,7 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
 
     /** The activity is going: settings observers and the text services stop. */
     void release() {
+        inputDevices.setEnabled(false);
         if (windowId != 0) return;
         unregisterAccessibilityServiceListeners();
         if (animationScaleObserver != null) getContext().getContentResolver().unregisterContentObserver(animationScaleObserver);
@@ -1382,6 +1385,7 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
         super.onAttachedToWindow();
         pushShadowLight();
         back.onAttached();
+        inputDevices.onAttached();
         if (windowId == 0) KilnNative.setLayoutDirection(getLayoutDirection() == LAYOUT_DIRECTION_RTL);
         AccessibilityManager am = getContext().getSystemService(AccessibilityManager.class);
         if (am != null) {
@@ -1402,6 +1406,7 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
     @Override
     protected void onDetachedFromWindow() {
         back.onDetached();
+        inputDevices.onDetached();
         flushHoverExit(true);
         clearViewTranslationCallback();
         if (windowId == 0) {

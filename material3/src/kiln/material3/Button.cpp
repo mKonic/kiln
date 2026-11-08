@@ -7,6 +7,7 @@
 #include "kiln/material3/Surface.h"
 #include "kiln/material3/Text.h"
 #include "kiln/material3/internal/Helpers.h"
+#include "kiln/material3/internal/PrecisionPointer.h"
 #include "kiln/material3/tokens/BaselineButtonTokens.h"
 #include "kiln/material3/tokens/ButtonLargeTokens.h"
 #include "kiln/material3/tokens/ButtonMediumTokens.h"
@@ -188,9 +189,7 @@ namespace kiln::material3 {
     namespace ButtonDefaults {
         namespace {
             const Dp ButtonVerticalPadding{ 8 }, TextButtonHorizontalPadding{ 12 };
-            // shouldUsePrecisionPointerComponentSizing: also needs a precision pointer in use, which
-            // the input device listener (not ported, off by default) would report.
-            bool PrecisionPointer() { return false; }
+            bool PrecisionPointer() { return internal::ShouldUsePrecisionPointerComponentSizing(); }
             Dp SmallVerticalPadding() { return PrecisionPointer() ? Dp(8) : Dp(10); }
             Dp IconSmallHorizontalPadding() { return PrecisionPointer() ? Dp(12) : ButtonSmallTokens::LeadingSpace; }
             PaddingValues SmallPadding(bool start, bool end) {

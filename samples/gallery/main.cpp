@@ -941,5 +941,6 @@ namespace {
 }
 
 extern "C" void kiln_main(kiln_app* app) {
+    kiln::material3::ComposeMaterial3Flags::isPrecisionPointerComponentSizingEnabled = true;
     kiln::SetContent(app, [] { kiln::material3::MaterialTheme([] { Gallery(); }); });
 }

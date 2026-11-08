@@ -366,6 +366,78 @@ TEST(ButtonElevationFollowsTheLastInteractionAndSnapsWhenDisabled) {
     source->End(Interaction::Kind::Hover, hover);
 }
 
+TEST(PrecisionPointerDevicesRequireAPhysicalKeyboardAndNonTabletMouse) {
+    using Device = ui::InputDeviceInfo;
+    std::vector<bool> listening;
+    ui::InputDevices devices;
+    devices.SetListenerHost([&](bool enabled) { listening.push_back(enabled); });
+    devices.AcquireListener();
+    devices.AcquireListener();
+    CHECK(listening == std::vector<bool>{ true });
+    devices.Update({ 1, false, Device::SourceKeyboard, Device::Alphabetic });
+    CHECK(!devices.HasKeyboardAndMouse());
+    devices.Update({ 2, true, Device::SourceMouse, 0 });
+    CHECK(!devices.HasKeyboardAndMouse());  // virtual mouse
+    devices.Update({ 2, false, Device::SourceMouse | Device::SourceStylus, 0 });
+    CHECK(!devices.HasKeyboardAndMouse());  // drawing tablet
+    devices.Update({ 2, false, Device::SourceMouse, 0 });
+    CHECK(devices.HasKeyboardAndMouse());
+    devices.Update({ 1, false, Device::SourceKeyboard, 1 });
+    CHECK(!devices.HasKeyboardAndMouse());  // non-alphabetic keypad
+    devices.Update({ 1, false, Device::SourceKeyboard, Device::Alphabetic });
+    CHECK(devices.HasKeyboardAndMouse());
+    devices.Remove(2);
+    CHECK(!devices.HasKeyboardAndMouse());
+    devices.Update({ 3, false, Device::SourceKeyboard | Device::SourceMouse, Device::Alphabetic });
+    CHECK(devices.HasKeyboardAndMouse());  // one combined device can supply both
+    devices.ReleaseListener();
+    CHECK(listening.size() == 1 && devices.HasKeyboardAndMouse());
+    devices.ReleaseListener();
+    CHECK((listening == std::vector<bool>{ true, false }));
+    CHECK(!devices.HasKeyboardAndMouse());
+    devices.Update({ 4, false, Device::SourceKeyboard | Device::SourceMouse, Device::Alphabetic });
+    CHECK(!devices.HasKeyboardAndMouse());  // callback after disposal
+}
+
+TEST(PrecisionPointerSizingRegistersOnlyOptedInThemeHierarchies) {
+    const bool oldFlag = ComposeMaterial3Flags::isPrecisionPointerComponentSizingEnabled;
+    ComposeMaterial3Flags::isPrecisionPointerComponentSizingEnabled = false;
+    rt::State<int> version{ 0 };
+    rt::State<bool> visible{ true };
+    std::vector<bool> listening;
+    Harness h;
+    h.owner.Devices().SetListenerHost([&](bool enabled) { listening.push_back(enabled); });
+    ui::Dp height;
+    h.Run([&] {
+        version.Get();
+        auto& c = *rt::Composition::Current();
+        c.Provide(ui::LocalOwner, &h.owner, [&] {
+            if (!visible.Get()) return;
+            MaterialTheme([&] { MaterialTheme([&] { height = ButtonDefaults::MinHeight(); }); });
+            MaterialTheme([] {});  // sibling hierarchy, same platform listener
+        });
+    });
+    CHECK(height == 40_dp && listening.empty());
+    ComposeMaterial3Flags::isPrecisionPointerComponentSizingEnabled = true;
+    version.Set(1);
+    rt::Composition::RecomposeAll();
+    CHECK_EQ(h.owner.Devices().ListenerCount(), 2);
+    CHECK(listening == std::vector<bool>{ true });
+    using Device = ui::InputDeviceInfo;
+    h.owner.Devices().Update({ 1, false, Device::SourceKeyboard, Device::Alphabetic });
+    h.owner.Devices().Update({ 2, false, Device::SourceMouse, 0 });
+    for (int i = 0; i < 3; ++i) rt::Composition::RecomposeAll();
+    CHECK(height == 36_dp);
+    h.owner.Devices().Remove(1);
+    for (int i = 0; i < 3; ++i) rt::Composition::RecomposeAll();
+    CHECK(height == 40_dp);
+    visible.Set(false);
+    rt::Composition::RecomposeAll();
+    CHECK_EQ(h.owner.Devices().ListenerCount(), 0);
+    CHECK((listening == std::vector<bool>{ true, false }));
+    ComposeMaterial3Flags::isPrecisionPointerComponentSizingEnabled = oldFlag;
+}
+
 TEST(IconButtonDefaultsFollowContentColorAndExpressiveWidths) {
     Harness h;
     h.Run([] {

@@ -2,6 +2,7 @@
 
 #include "kiln/foundation/text/Selection.h"
 #include "kiln/material3/Ripple.h"
+#include "kiln/material3/internal/PrecisionPointer.h"
 #include "kiln/material3/tokens/TypographyTokens.h"
 
 #include <cmath>
@@ -12,10 +13,6 @@ namespace kiln::material3 {
         rt::Composition& Comp() { return *rt::Composition::Current(); }
         // LocalUsingExpressiveTheme
         rt::Local<bool> LocalUsingExpressiveTheme{ false };
-
-        // EnsurePrecisionPointerListenersRegistered: with precision pointer sizing off (the
-        // default) it only runs the content.
-        void EnsurePrecisionPointerListenersRegistered(const std::function<void()>& content) { content(); }
     }
 
     const rt::Local<MaterialThemeValues>& LocalMaterialTheme() {
@@ -43,7 +40,7 @@ namespace kiln::material3 {
         c.Provide(LocalMaterialTheme(), std::move(theme), [&c, selection, body, content = std::move(content)] {
             c.Provide(foundation::LocalIndication, Ripple(), [&c, selection, body, content] {
                 c.Provide(foundation::LocalTextSelectionColors, selection, [body, content] {
-                    EnsurePrecisionPointerListenersRegistered([body, content] { ProvideTextStyle(body, content); });
+                    internal::EnsurePrecisionPointerListenersRegistered([body, content] { ProvideTextStyle(body, content); });
                 });
             });
         });

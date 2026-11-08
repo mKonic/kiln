@@ -495,6 +495,14 @@ namespace {
         InstallTextInputHost(env, w);
         {
             jclass vc = env->GetObjectClass(view);
+            static jmethodID listen = env->GetMethodID(vc, "setInputDeviceListenerEnabled", "(Z)V");
+            env->DeleteLocalRef(vc);
+            w->owner->Devices().SetListenerHost([w](bool enabled) {
+                MainEnv()->CallVoidMethod(w->view, listen, jboolean(enabled));
+            });
+        }
+        {
+            jclass vc = env->GetObjectClass(view);
             static jmethodID onA11y = env->GetMethodID(vc, "onAccessibilityChange", "(Z)V");
             static jmethodID touchExploration = env->GetMethodID(vc, "isTouchExplorationOn", "()Z");
             static jmethodID fromTool = env->GetMethodID(vc, "isRequestFromAccessibilityTool", "()Z");
@@ -1187,6 +1195,20 @@ namespace {
     void SetPasswordVisibility(JNIEnv*, jclass, jint bits) {
         if (!g_Host) return;
         g_Host->app->GetOwner().SetPasswordVisibility(bits);
+        g_Host->app->RequestFrame();
+    }
+
+    void UpdateInputDevice(JNIEnv*, jclass, jint win, jint id, jboolean isVirtual, jint sources, jint keyboardType) {
+        WinScope ws(win);
+        if (!ws || !g_Host->app) return;
+        CurOwner().Devices().Update({ int(id), bool(isVirtual), std::uint32_t(sources), int(keyboardType) });
+        g_Host->app->RequestFrame();
+    }
+
+    void ClearInputDevices(JNIEnv*, jclass, jint win) {
+        WinScope ws(win);
+        if (!ws || !g_Host->app) return;
+        CurOwner().Devices().Clear();
         g_Host->app->RequestFrame();
     }
 
@@ -2642,6 +2664,8 @@ extern "C" JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void*) {
         { "classifierResult", "(IZIII[Ljava/lang/String;Z)V", reinterpret_cast<void*>(&ClassifierResult) },
         { "setAnimationScale", "(F)V", reinterpret_cast<void*>(&SetAnimationScale) },
         { "setPasswordVisibility", "(I)V", reinterpret_cast<void*>(&SetPasswordVisibility) },
+        { "updateInputDevice", "(IIZII)V", reinterpret_cast<void*>(&UpdateInputDevice) },
+        { "clearInputDevices", "(I)V", reinterpret_cast<void*>(&ClearInputDevices) },
         { "setAccessibilityServices", "(ZZZZ)V", reinterpret_cast<void*>(&SetAccessibilityServices) },
         { "setLayoutDirection", "(Z)V", reinterpret_cast<void*>(&SetLayoutDirection) },
         { "touchEvent", "(IIIJ[I[F[IIIIFF[J[F[F)V", reinterpret_cast<void*>(&TouchEvent) },
