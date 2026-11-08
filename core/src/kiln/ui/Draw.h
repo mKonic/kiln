@@ -164,7 +164,13 @@ namespace kiln::ui {
     class ContentDrawScope : public DrawScope {
     public:
         using DrawScope::DrawScope;
-        void DrawContent() { if (m_Content) m_Content(); }
+        // The content sets the scope's size as it draws; this scope's own size comes back after.
+        void DrawContent() {
+            if (!m_Content) return;
+            const Size size = GetSize();
+            m_Content();
+            SetSize(size);
+        }
         void SetContent(std::function<void()> c) { m_Content = std::move(c); }
     private:
         std::function<void()> m_Content;
