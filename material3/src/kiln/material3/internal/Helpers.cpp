@@ -155,10 +155,11 @@ namespace kiln::material3::internal {
             [&] { return std::make_shared<AnimatedShape>(state); }, rt::Keys(std::hash<const void*>{}(state.get())));
     }
 
-    std::shared_ptr<const ShapeWithHorizontalCenterOptically> RememberAnimatedShape(std::shared_ptr<const CornerBasedShape> currentShape, anim::SpecPtr spec) {
+    std::shared_ptr<const ShapeWithHorizontalCenterOptically> RememberAnimatedShape(std::shared_ptr<const CornerBasedShape> currentShape, anim::SpecPtr spec,
+                                                                                    std::size_t key) {
         auto& c = *rt::Composition::Current();
         auto& state = c.Remember<std::shared_ptr<AnimatedShapeState>>([&] { return std::make_shared<AnimatedShapeState>(currentShape, spec); },
-                                                                     rt::Keys(std::hash<const void*>{}(spec.get())));
+                                                                     rt::Keys(std::hash<const void*>{}(spec.get()), key));
         // LaunchedEffect(currentShape, state): keyed by the shape's value, as Kotlin's equality.
         std::shared_ptr<AnimatedShapeState> s = state;
         c.LaunchedEffect(rt::Keys(CornerHash(currentShape), std::hash<const void*>{}(s.get())),

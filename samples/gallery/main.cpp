@@ -4,6 +4,7 @@
 
 #include <cmath>
 #include <kiln/foundation/Compose.h>
+#include <kiln/foundation/Flow.h>
 #include <kiln/foundation/text/BasicSecureTextField.h>
 #include <kiln/foundation/Semantics.h>
 #include <kiln/foundation/draganddrop/DragAndDrop.h>
@@ -14,6 +15,9 @@
 #include <kiln/material3/MaterialTheme.h>
 #include <kiln/material3/Ripple.h>
 #include <kiln/material3/Surface.h>
+#include <kiln/material3/Button.h>
+#include <kiln/material3/Badge.h>
+#include <kiln/material3/Divider.h>
 #include <kiln/material3/Text.h>
 #include <kiln/material3/MaterialShapes.h>
 #include <kiln/material3/internal/Icons.h>
@@ -429,6 +433,35 @@ namespace {
                 m3::TextOptions title;
                 title.style = m3::MaterialTheme::typography().titleMedium;
                 m3::Text("Material Text: titleMedium in the content colour", Padding(Modifier{}, 16_dp, 0_dp), title);
+            }
+            // Material buttons: the five variants, an Expressive button that morphs while pressed,
+            // and a badge.
+            {
+                namespace m3 = kiln::material3;
+                auto& clicks = RememberState(0);
+                auto* clicksPtr = &clicks;
+                FlowRow(Padding(Modifier{}, 16_dp, 8_dp), Arrangement::SpacedBy(8_dp), Arrangement::SpacedBy(8_dp), AlignmentV::CenterVertically(), [clicksPtr] {
+                    auto onClick = [clicksPtr] { clicksPtr->Set(clicksPtr->Peek() + 1); };
+                    m3::Button(onClick, {}, {}, [] { m3::Text("Filled"); });
+                    m3::ElevatedButton(onClick, {}, {}, [] { m3::Text("Elevated"); });
+                    m3::FilledTonalButton(onClick, {}, {}, [] { m3::Text("Tonal"); });
+                    m3::OutlinedButton(onClick, {}, {}, [] { m3::Text("Outlined"); });
+                    m3::TextButton(onClick, {}, {}, [] { m3::Text("Text"); });
+                    m3::ButtonOptions expressive;
+                    expressive.shapes = m3::ButtonDefaults::shapesFor(m3::ButtonDefaults::MediumContainerHeight);
+                    expressive.contentPadding = m3::ButtonDefaults::contentPaddingFor(m3::ButtonDefaults::MediumContainerHeight);
+                    m3::Button(onClick, Height(Modifier{}, m3::ButtonDefaults::MediumContainerHeight), expressive, [] {
+                        m3::TextOptions t;
+                        t.style = m3::ButtonDefaults::textStyleFor(m3::ButtonDefaults::MediumContainerHeight);
+                        m3::Text("Expressive", {}, t);
+                    });
+                    m3::ButtonOptions disabled;
+                    disabled.enabled = false;
+                    m3::Button(onClick, {}, disabled, [] { m3::Text("Disabled"); });
+                    m3::BadgedBox([clicksPtr] { m3::Badge({}, std::nullopt, std::nullopt, [clicksPtr] { m3::Text(std::to_string(clicksPtr->Get())); }); },
+                                  Padding(Modifier{}, 8_dp, 8_dp), [] { m3::Icon(m3::internal::Icons::Filled::Check(), std::string("Clicks")); });
+                }, {});
+                m3::HorizontalDivider(Padding(Modifier{}, 16_dp, 0_dp));
             }
             // The platform's Material You colours as a dynamic colour scheme (baseline when the
             // platform has none): primary, secondary, tertiary, surface container.

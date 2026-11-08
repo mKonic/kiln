@@ -59,8 +59,9 @@ namespace kiln::material3::internal {
     // rememberAnimatedShape(state): a shape whose outline is the state's current morph.
     std::shared_ptr<const ShapeWithHorizontalCenterOptically> RememberAnimatedShape(const std::shared_ptr<AnimatedShapeState>& state);
     // rememberAnimatedShape(currentShape, spec): animates to each new shape.
+    // `key` starts over with a new state when it changes (key(...) around the call).
     std::shared_ptr<const ShapeWithHorizontalCenterOptically> RememberAnimatedShape(std::shared_ptr<const foundation::CornerBasedShape> currentShape,
-                                                                                    anim::SpecPtr spec);
+                                                                                    anim::SpecPtr spec, std::size_t key = 0);
 
     // MenuPosition: candidate positions for a menu against its anchor and the window.
     namespace MenuPosition {

@@ -3,6 +3,8 @@
 #include "kiln/foundation/Compose.h"
 #include "kiln/foundation/text/Selection.h"
 #include "kiln/material3/MaterialTheme.h"
+#include "kiln/material3/Badge.h"
+#include "kiln/material3/Button.h"
 #include "kiln/material3/Ripple.h"
 #include "kiln/material3/MaterialShapes.h"
 #include "kiln/material3/Text.h"
@@ -269,4 +271,119 @@ TEST(IconsAndTextTakeTheContentColour) {
     CHECK(icon != nullptr);
     CHECK(material3::internal::Icons::AutoMirrored::Filled::KeyboardArrowLeft()->autoMirror);
     CHECK(material3::internal::Icons::Filled::Check()->root->children.size() == 1);
+}
+
+TEST(ButtonDefaultsFollowTheThemeAndExpressiveSizeThresholds) {
+    Harness h;
+    h.Run([&] {
+        MaterialTheme([&] {
+            const auto colors = ButtonDefaults::buttonColors();
+            const auto& scheme = MaterialTheme::colorScheme();
+            CHECK(colors.ContainerColor(true) == scheme.primary);
+            CHECK(colors.ContentColor(true) == scheme.onPrimary);
+            CHECK(colors.ContainerColor(false) == scheme.onSurface.WithAlpha(0.1f));
+            const auto copy = colors.Copy(Color::Unspecified(), Color(0xff123456));
+            CHECK(copy.containerColor == colors.containerColor && copy.contentColor == Color(0xff123456));
+            CHECK(ButtonDefaults::outlinedButtonColors().containerColor == Color::Transparent());
+            CHECK(ButtonDefaults::elevatedButtonElevation().defaultElevation == 1_dp);
+            CHECK(ButtonDefaults::elevatedButtonElevation().hoveredElevation == 3_dp);
+            CHECK(ButtonDefaults::iconSizeFor(39_dp) == ButtonDefaults::ExtraSmallIconSize);
+            CHECK(ButtonDefaults::iconSizeFor(40_dp) == ButtonDefaults::SmallIconSize);
+            CHECK(ButtonDefaults::iconSizeFor(56_dp) == ButtonDefaults::MediumIconSize);
+            CHECK(ButtonDefaults::textStyleFor(56_dp) == MaterialTheme::typography().titleMedium);
+            CHECK(ButtonDefaults::shapesFor(34_dp).pressedShape->Equals(*ButtonDefaults::extraSmallPressedShape()));
+            CHECK(ButtonDefaults::shapesFor(35_dp).pressedShape->Equals(*ButtonDefaults::pressedShape()));
+        });
+    });
+}
+
+TEST(ButtonsProvideLabelStyleAndKeepDisabledSemantics) {
+    rt::State<bool> enabled{ true };
+    Harness h;
+    Color contentColor;
+    text::TextStyle style;
+    int clicks = 0;
+    h.Run([&] {
+        MaterialTheme([&] {
+            Column({}, [&] {
+                ButtonOptions options;
+                options.enabled = enabled.Get();
+                Button([&] { ++clicks; }, {}, options, [&] {
+                    auto& c = *rt::Composition::Current();
+                    contentColor = c.Read(LocalContentColor);
+                    style = c.Read(LocalTextStyle());
+                    Box(SizeMod({}, 10_dp, 10_dp));
+                });
+            });
+        });
+    });
+    auto tree = h.owner.BuildSemanticsTree();
+    CHECK_EQ(tree.children.size(), std::size_t(1));
+    CHECK(tree.children[0].config.role == ui::Role::Button);
+    CHECK(!tree.children[0].config.disabled);
+    CHECK(tree.children[0].config.onClick && tree.children[0].config.onClick());
+    CHECK_EQ(clicks, 1);
+    CHECK(contentColor == LightColorScheme().onPrimary);
+    CHECK(style.span.fontSize == Typography{}.labelLarge.span.fontSize);
+    CHECK_EQ(h.owner.Root().Children()[0]->Children()[0]->Size().width, 58);
+    CHECK_EQ(h.owner.Root().Children()[0]->Children()[0]->Size().height, 48);
+    enabled.Set(false);
+    for (int i = 0; i < 3; ++i) { rt::Composition::RecomposeAll(); h.owner.MeasureAndLayout({ 300, 300 }); }
+    tree = h.owner.BuildSemanticsTree();
+    CHECK(tree.children[0].config.disabled);
+    CHECK(contentColor == LightColorScheme().onSurfaceVariant.WithAlpha(0.38f));
+}
+
+TEST(ButtonElevationFollowsTheLastInteractionAndSnapsWhenDisabled) {
+    rt::State<bool> enabled{ true };
+    auto source = std::make_shared<MutableInteractionSource>();
+    Harness h;
+    ui::Dp elevation;
+    h.Run([&] { elevation = ShadowElevation({ 1_dp, 2_dp, 3_dp, 4_dp, 0_dp }, enabled.Get(), source); });
+    std::int64_t clock = 0;
+    auto settle = [&] {
+        for (int i = 0; i < 26; ++i) {
+            clock += 16'000'000;
+            rt::Dispatcher::Main().RunFrame(clock);
+            rt::Composition::RecomposeAll();
+        }
+    };
+    CHECK(elevation == 1_dp);
+    const auto hover = source->Start(Interaction::Kind::Hover);
+    settle();
+    CHECK(elevation == 4_dp);
+    const auto press = source->Start(Interaction::Kind::Press);
+    settle();
+    CHECK(elevation == 2_dp);
+    source->Cancel(Interaction::Kind::Press, press);
+    settle();
+    CHECK(elevation == 4_dp);
+    enabled.Set(false);
+    rt::Composition::RecomposeAll();
+    rt::Composition::RecomposeAll();
+    CHECK(elevation == 0_dp);
+    source->End(Interaction::Kind::Hover, hover);
+}
+
+TEST(BadgeDoesNotResizeItsAnchorAndUsesContentMinimumSize) {
+    Harness h;
+    h.Run([&] {
+        MaterialTheme([&] {
+            Column({}, [] {
+                BadgedBox([] { Badge(); }, {}, [] { Box(SizeMod({}, 24_dp, 24_dp)); });
+                Badge({}, std::nullopt, std::nullopt, [] { Box(SizeMod({}, 20_dp, 10_dp)); });
+            });
+        });
+    });
+    const auto& children = h.owner.Root().Children()[0]->Children();
+    CHECK_EQ(children.size(), std::size_t(2));
+    CHECK_EQ(children[0]->Size().width, 24);
+    CHECK_EQ(children[0]->Size().height, 24);
+    const auto& badge = *children[0]->Children()[1];
+    CHECK_EQ(badge.Size().width, 6);
+    CHECK_EQ(badge.Size().height, 6);
+    CHECK_EQ(int(badge.InnerRectInRoot().left), 18);
+    CHECK_EQ(int(badge.InnerRectInRoot().top), 0);
+    CHECK_EQ(children[1]->Size().width, 28);  // 20 + 4 dp padding on each side
+    CHECK_EQ(children[1]->Size().height, 16);
 }
