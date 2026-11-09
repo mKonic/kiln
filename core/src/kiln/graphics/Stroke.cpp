@@ -94,6 +94,9 @@ namespace kiln::gfx {
             }
 
             void Contour(const Polyline& in, std::vector<Polyline>& out) const {
+                // SkPathStroker::finishContour caps only contours with drawing segments.
+                // A move alone is not a zero-length line; move+close deliberately is.
+                if (in.points.size() == 1 && !in.closed) return;
                 std::vector<Offset> pts;
                 for (const Offset& p : in.points)
                     if (pts.empty() || Dot(Sub(p, pts.back()), Sub(p, pts.back())) > 1e-6f) pts.push_back(p);

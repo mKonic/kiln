@@ -91,6 +91,26 @@ TEST(StrokeAreaMatchesWidthTimesLength) {
     CHECK(Near(Area(StrokeMask(line, {}, Matrix::Scale(2, 2))), 80, 0.5f));   // alpha quantisation adds ~0.3
 }
 
+TEST(MoveOnlyStrokeContoursDoNotBecomeCapsButZeroLengthSegmentsDo) {
+    for (auto cap : { StrokeCap::Butt, StrokeCap::Round, StrokeCap::Square }) {
+        const Stroke stroke{ 4, 4, cap };
+        Path move;
+        move.MoveTo(10, 10);
+        CHECK(StrokeToPolygons(move, stroke, {}).empty());
+        Path line;
+        line.MoveTo(0, 0); line.LineTo(20, 0);
+        const auto original = StrokeToPolygons(line, stroke, {});
+        line.MoveTo(100, 100); // the final track move must not leave a cap-sized dot
+        const auto trailing = StrokeToPolygons(line, stroke, {});
+        CHECK_EQ(trailing.size(), original.size());
+        Path zero;
+        zero.MoveTo(10, 10); zero.LineTo(10, 10);
+        CHECK(StrokeToPolygons(zero, stroke, {}).empty() == (cap == StrokeCap::Butt));
+        move.Close(); // Skia treats move+close as a zero-length line for non-butt caps
+        CHECK(StrokeToPolygons(move, stroke, {}).empty() == (cap == StrokeCap::Butt));
+    }
+}
+
 TEST(ClosedStrokeLeavesTheInsideEmpty) {
     Path sq;
     sq.AddRect({ 10, 10, 30, 30 });
