@@ -11,6 +11,9 @@
 #include "kiln/material3/ListItem.h"
 #include "kiln/material3/ProgressIndicator.h"
 #include "kiln/material3/LoadingIndicator.h"
+#include "kiln/material3/Slider.h"
+#include "kiln/runtime/Saveable.h"
+#include "kiln/foundation/Focus.h"
 #include "kiln/material3/internal/ProgressIndicator.h"
 #include "kiln/material3/WavyProgressIndicator.h"
 #include "kiln/material3/internal/WavyProgress.h"
@@ -2007,6 +2010,303 @@ TEST(WavyProgressComponentsSwitchBetweenUnknownAndKnownWithoutChangingSemanticsI
     CHECK(h.owner.BuildSemanticsTree().children[0].config.progressBarRangeInfo->current == 1);
     anim::SetDurationScale(1); advance(140);
     CHECK(WavyProgressIndicatorDefaults::indicatorAmplitude(0.1f) == 0 && WavyProgressIndicatorDefaults::indicatorAmplitude(0.5f) == 1 && WavyProgressIndicatorDefaults::indicatorAmplitude(0.95f) == 0);
+}
+
+TEST(SliderStatesSnapClampPreserveRawDragOffsetsAndKeepRangesOrdered) {
+    SliderState state(0.25f, 1);
+    CHECK_EQ(state.Value(), 0.25f); // the constructor, unlike subsequent writes, does not snap
+    state.SetValue(0.25f); CHECK_EQ(state.Value(), 0.0f); // first tick wins ties
+    state.SetValue(2); CHECK_EQ(state.Value(), 1.0f);
+    state.shouldAutoSnap = false;
+    state.SetValue(-2); CHECK_EQ(state.Value(), -2.0f); CHECK_EQ(state.CoercedValueAsFraction(), 0.0f);
+    state.SetValue(0.3f); CHECK_EQ(state.Value(), 0.3f);
+    state.UpdateDimensions(104, 44, 4, 44);
+    state.OnPress({ 52, 22 }); state.DispatchRawDelta(0);
+    CHECK_EQ(state.Value(), 0.5f); // gestures always snap, even while automatic setter snapping is off
+    state.DispatchRawDelta(200); CHECK_EQ(state.Value(), 1.0f);
+    state.DispatchRawDelta(-100); CHECK_EQ(state.Value(), 1.0f); // retain excess drag outside the track
+    state.DispatchRawDelta(-100); CHECK_EQ(state.Value(), 0.5f);
+    state.Configure(Orientation::Vertical, false, true);
+    state.UpdateDimensions(44, 104, 44, 4);
+    state.OnPress({ 22, 27 }); state.DispatchRawDelta(0);
+    CHECK_EQ(state.Value(), 0.5f);
+    RangeSliderState range(0.8f, 0.2f, 3);
+    CHECK_EQ(range.StartValue(), 0.2f); CHECK_EQ(range.EndValue(), 0.8f);
+    range.SetStartValue(0.3f); range.SetEndValue(0.7f);
+    CHECK_EQ(range.StartValue(), 0.25f); CHECK_EQ(range.EndValue(), 0.75f);
+    CHECK_EQ(range.StartSteps(), 2); CHECK_EQ(range.EndSteps(), 2);
+    range.UpdateDimensions(104, { 4, 44 }, { 4, 44 });
+    range.OnDrag(true, 1000); CHECK_EQ(range.StartValue(), range.EndValue());
+    range.OnDrag(false, -1000); CHECK_EQ(range.StartValue(), range.EndValue());
+    bool rejected = false;
+    try { SliderState invalid(0, -1); } catch (const std::invalid_argument&) { rejected = true; }
+    CHECK(rejected);
+    rejected = false;
+    try { RangeSliderState invalid(0, 1, 0, { 1, 0 }); } catch (const std::invalid_argument&) { rejected = true; }
+    CHECK(rejected);
+}
+
+TEST(SliderDefaultsResolveColorsAndKeepThumbAllocationWhilePressed) {
+    Harness h;
+    auto source = std::make_shared<MutableInteractionSource>();
+    h.Run([&] { MaterialTheme([&] {
+        const auto scheme = LightColorScheme();
+        const auto colors = SliderDefaults::colors();
+        CHECK(colors.ThumbColor(true) == scheme.primary);
+        CHECK(colors.TrackColor(true, true) == scheme.primary && colors.TrackColor(true, false) == scheme.secondaryContainer);
+        CHECK(colors.TickColor(true, true) == scheme.secondaryContainer && colors.TickColor(true, false) == scheme.primary);
+        CHECK(colors.ThumbColor(false) == ui::CompositeOver(scheme.onSurface.WithAlpha(0.38f), scheme.surface));
+        CHECK(colors.TrackColor(false, true) == scheme.onSurface.WithAlpha(0.38f));
+        CHECK(colors.TrackColor(false, false) == scheme.onSurface.WithAlpha(0.12f));
+        CHECK(colors.Copy({}) == colors);
+        CHECK(SliderDefaults::colors({ .inactiveTickColor = Color(0xff123456) }).TickColor(true, false) == Color(0xff123456));
+        Column({}, [&] { SliderDefaults::Thumb(source); });
+    }); });
+    auto thumb = [&] { return h.owner.Root().Children()[0]->Children()[0]; };
+    CHECK((thumb()->Size() == ui::IntSize{ 4, 44 }));
+    CHECK_EQ(thumb()->Children()[0]->Size().width, 4);
+    const auto press = source->Start(Interaction::Kind::Press);
+    rt::Composition::RecomposeAll(); h.owner.MeasureAndLayout({ 300, 300 });
+    CHECK((thumb()->Size() == ui::IntSize{ 4, 44 }));
+    CHECK_EQ(thumb()->Children()[0]->Size().width, 2);
+    source->End(Interaction::Kind::Press, press);
+}
+
+TEST(SlidersPlaceSteppedThumbsMatchRtlAndDrawOnlyTicksOutsideTheGap) {
+    for (bool rtl : { false, true }) {
+        SliderState state(0.25f, 3);
+        Harness h;
+        h.owner.SetDirection(rtl ? ui::LayoutDirection::Rtl : ui::LayoutDirection::Ltr);
+        std::vector<float> ticks;
+        std::vector<ui::Offset> stops;
+        h.Run([&] { MaterialTheme([&] {
+            rt::Composition::Current()->Provide(ui::LocalLayoutDirection, rtl ? ui::LayoutDirection::Rtl : ui::LayoutDirection::Ltr, [&] {
+                Column({}, [&] {
+                    SliderOptions o;
+                    o.track = [&](SliderState& s) {
+                        SliderTrackOptions track;
+                        track.drawTick = [&](ui::DrawScope&, ui::Offset position, Color) { ticks.push_back(position.x); };
+                        track.drawStopIndicator = std::function<void(ui::DrawScope&, ui::Offset)>([&](ui::DrawScope&, ui::Offset p) { stops.push_back(p); });
+                        SliderDefaults::Track(s, {}, track);
+                    };
+                    Slider(state, [&](float v) { state.SetValue(v); }, Width({}, 240_dp), o);
+                });
+            });
+        }); });
+        auto* slider = h.owner.Root().Children()[0]->Children()[0];
+        CHECK((slider->Size() == ui::IntSize{ 240, 48 }));
+        CHECK_EQ(state.ThumbWidth(), 4); CHECK_EQ(state.ThumbHeight(), 44);
+        const auto thumb = slider->Children()[0]->InnerRectInRoot();
+        CHECK_EQ(int(thumb.left - slider->InnerRectInRoot().left), rtl ? 173 : 63);
+        CHECK_EQ(int(thumb.top), 2);
+        h.owner.Draw({});
+        CHECK_EQ(stops.size(), std::size_t(1));
+        CHECK_EQ(ticks.size(), std::size_t(3));
+        CHECK_EQ(stops[0].x, rtl ? 8.0f : 228.0f);
+        const auto tree = h.owner.BuildSemanticsTree();
+        CHECK(tree.children.size() == 1 && tree.children[0].config.progressBarRangeInfo->steps == 3);
+        CHECK_EQ(tree.children[0].config.progressBarRangeInfo->current, 0.25f);
+    }
+}
+
+TEST(SliderSemanticsUsesSourceTieBreakingAndKeyboardHonorsOrientation) {
+    for (bool vertical : { false, true }) for (bool reverse : { false, true }) {
+        SliderState state(0, 1);
+        Harness h;
+        ui::FocusRequester focus;
+        int finished = 0;
+        h.owner.SetInputMode(ui::InputMode::Keyboard);
+        h.Run([&] { MaterialTheme([&] { Column({}, [&] {
+            auto m = FocusRequesterModifier({}, focus);
+            SliderOptions o; o.onValueChangeFinished = [&] { ++finished; };
+            if (vertical) VerticalSlider(state, [&](float v) { state.SetValue(v); }, SizeMod(m, 48_dp, 240_dp), o, !reverse);
+            else {
+                rt::Composition::Current()->Provide(ui::LocalLayoutDirection, reverse ? ui::LayoutDirection::Rtl : ui::LayoutDirection::Ltr, [&] {
+                    Slider(state, [&](float v) { state.SetValue(v); }, Width(m, 240_dp), o);
+                });
+            }
+        }); }); });
+        const auto config = h.owner.BuildSemanticsTree().children[0].config;
+        CHECK(config.setProgress(0.25f)); CHECK_EQ(state.Value(), 0.5f); CHECK_EQ(finished, 1);
+        CHECK(!config.setProgress(0.5f)); CHECK_EQ(finished, 1);
+        CHECK(focus.RequestFocus());
+        const int key = vertical ? ui::keys::DpadDown : ui::keys::DpadRight;
+        CHECK(h.owner.DispatchKeyEvent({ key, ui::KeyEventType::KeyDown }));
+        CHECK_EQ(state.Value(), reverse ? 0.0f : 1.0f);
+        CHECK(h.owner.DispatchKeyEvent({ key, ui::KeyEventType::KeyUp })); CHECK_EQ(finished, 2);
+        CHECK(!h.owner.DispatchKeyEvent({ vertical ? ui::keys::DpadRight : ui::keys::DpadDown, ui::KeyEventType::KeyDown }));
+    }
+}
+
+TEST(SliderTapCommitsOnReleaseAndDragReportsItsCompletion) {
+    SliderState state(0.25f);
+    Harness h;
+    auto source = std::make_shared<MutableInteractionSource>();
+    int finished = 0;
+    h.Run([&] { MaterialTheme([&] { Column({}, [&] {
+        Slider(state, [&](float v) { state.SetValue(v); }, Width({}, 240_dp), { .onValueChangeFinished = [&] { ++finished; }, .interactionSource = source });
+    }); }); });
+    auto touch = [&](ui::PointerEventType type, float x, bool down, std::int64_t time) {
+        ui::RawPointerEvent event;
+        event.type = type; event.uptimeMillis = time;
+        event.pointers.push_back({ 1, { x, 24 }, down, ui::PointerType::Touch, {} });
+        h.owner.ProcessPointer(event); rt::Dispatcher::Main().RunPending();
+        rt::Composition::RecomposeAll(); h.owner.MeasureAndLayout({ 300, 300 });
+    };
+    touch(ui::PointerEventType::Press, 180, true, 0);
+    CHECK_EQ(state.Value(), 0.25f); CHECK(source->IsPressed());
+    touch(ui::PointerEventType::Release, 180, false, 50);
+    CHECK(std::abs(state.Value() - 178.0f / 236) < 0.0001f);
+    CHECK_EQ(finished, 1); CHECK(!source->IsPressed());
+    touch(ui::PointerEventType::Press, 180, true, 1000);
+    touch(ui::PointerEventType::Move, 220, true, 1100);
+    CHECK(state.IsDragging() && source->IsDragged());
+    touch(ui::PointerEventType::Release, 220, false, 1200);
+    CHECK_EQ(finished, 2); CHECK(!state.IsDragging() && !source->IsDragged() && !source->IsPressed());
+}
+
+TEST(RangeSliderThumbsHaveSeparateSemanticsAndCannotCrossFromActionsOrKeys) {
+    RangeSliderState state(0.25f, 0.75f, 3);
+    Harness h;
+    h.owner.SetInputMode(ui::InputMode::Keyboard);
+    int finished = 0;
+    h.Run([&] { MaterialTheme([&] { Column({}, [&] {
+        RangeSlider(state, [&](SliderRange v) { state.SetStartValue(v.start); state.SetEndValue(v.endInclusive); }, Width({}, 240_dp), { .onValueChangeFinished = [&] { ++finished; } });
+    }); }); });
+    auto tree = h.owner.BuildSemanticsTree();
+    CHECK_EQ(tree.children.size(), std::size_t(2));
+    CHECK(!tree.children[0].config.contentDescription.empty() && tree.children[0].config.contentDescription != tree.children[1].config.contentDescription);
+    CHECK_EQ(tree.children[0].config.progressBarRangeInfo->end, 0.75f);
+    CHECK_EQ(tree.children[1].config.progressBarRangeInfo->start, 0.25f);
+    CHECK(tree.children[0].config.setProgress(1));
+    CHECK_EQ(state.StartValue(), 0.75f); CHECK_EQ(state.EndValue(), 0.75f); CHECK_EQ(finished, 1);
+    CHECK(tree.children[1].config.setProgress(1));
+    CHECK_EQ(state.EndValue(), 1.0f);
+    CHECK(h.owner.MoveFocus(ui::FocusDirection::Next));
+    CHECK(h.owner.DispatchKeyEvent({ ui::keys::MoveEnd, ui::KeyEventType::KeyDown }));
+    CHECK_EQ(state.StartValue(), state.EndValue());
+}
+
+TEST(RangeSliderOverlappingThumbsChooseDragDirectionAndCancelOnRemoval) {
+    for (bool rtl : { false, true }) {
+        RangeSliderState state(0.5f, 0.5f);
+        Harness h;
+        h.owner.SetDirection(rtl ? ui::LayoutDirection::Rtl : ui::LayoutDirection::Ltr);
+        rt::State<bool> attached{ true };
+        auto start = std::make_shared<MutableInteractionSource>(), end = std::make_shared<MutableInteractionSource>();
+        int finished = 0;
+        h.Run([&] { MaterialTheme([&] {
+            rt::Composition::Current()->Provide(ui::LocalLayoutDirection, rtl ? ui::LayoutDirection::Rtl : ui::LayoutDirection::Ltr, [&] {
+                Column({}, [&] {
+                    if (attached.Get()) RangeSlider(state, [&](SliderRange v) { state.SetStartValue(v.start); state.SetEndValue(v.endInclusive); }, Width({}, 240_dp),
+                        { .onValueChangeFinished = [&] { ++finished; }, .startThumbInteractionSource = start, .endThumbInteractionSource = end });
+                });
+            });
+        }); });
+        const float left = h.owner.Root().Children()[0]->Children()[0]->InnerRectInRoot().left;
+        auto touch = [&](ui::PointerEventType type, float x, bool down, std::int64_t time) {
+            ui::RawPointerEvent event; event.type = type; event.uptimeMillis = time;
+            event.pointers.push_back({ 1, { left + x, 24 }, down, ui::PointerType::Touch, {} });
+            h.owner.ProcessPointer(event); rt::Dispatcher::Main().RunPending();
+            rt::Composition::RecomposeAll(); h.owner.MeasureAndLayout({ 300, 300 });
+        };
+        touch(ui::PointerEventType::Press, 120, true, 0);
+        touch(ui::PointerEventType::Move, 80, true, 100);
+        CHECK(state.IsDragging());
+        CHECK(rtl ? state.StartValue() == 0.5f && state.EndValue() > 0.5f : state.StartValue() < 0.5f && state.EndValue() == 0.5f);
+        CHECK(!start->IsPressed() && !end->IsPressed());
+        CHECK(rtl ? end->IsDragged() : start->IsDragged());
+        attached.Set(false); rt::Composition::RecomposeAll(); h.owner.MeasureAndLayout({ 300, 300 });
+        CHECK(!state.IsDragging() && !start->IsDragged() && !end->IsDragged()); CHECK_EQ(finished, 1);
+    }
+}
+
+TEST(RemovingASliderDuringADragClearsInteractionsAndDraggingState) {
+    SliderState state(0.5f);
+    Harness h;
+    rt::State<bool> attached{ true };
+    auto source = std::make_shared<MutableInteractionSource>();
+    h.Run([&] { MaterialTheme([&] { Column({}, [&] {
+        if (attached.Get()) Slider(state, [&](float v) { state.SetValue(v); }, Width({}, 240_dp), { .interactionSource = source });
+    }); }); });
+    auto touch = [&](ui::PointerEventType type, float x, std::int64_t time) {
+        ui::RawPointerEvent event; event.type = type; event.uptimeMillis = time;
+        event.pointers.push_back({ 1, { x, 24 }, true, ui::PointerType::Touch, {} });
+        h.owner.ProcessPointer(event); rt::Dispatcher::Main().RunPending();
+        rt::Composition::RecomposeAll(); h.owner.MeasureAndLayout({ 300, 300 });
+    };
+    touch(ui::PointerEventType::Press, 120, 0);
+    touch(ui::PointerEventType::Move, 180, 100);
+    CHECK(state.IsDragging() && source->IsDragged());
+    attached.Set(false); rt::Composition::RecomposeAll(); h.owner.MeasureAndLayout({ 300, 300 });
+    CHECK(!state.IsDragging() && !source->IsDragged() && !source->IsPressed());
+}
+
+TEST(RememberedSliderStatesIgnoreNewInitialValuesAndRestoreThroughTheRegistry) {
+    rt::SaveableStateRegistry::Values saved;
+    rt::SaveableStateRegistry* registry = nullptr;
+    SliderState* single = nullptr;
+    RangeSliderState* range = nullptr;
+    float initial = 0.25f;
+    rt::State<int> version{ 0 };
+    auto content = [&] {
+        version.Get();
+        rt::Composition::Current()->Provide(rt::LocalSaveableStateRegistry, registry, [&] {
+            single = &RememberSliderState(initial, 3);
+            range = &RememberRangeSliderState(initial, 0.75f, 3);
+        });
+    };
+    for (int pass = 0; pass < 2; ++pass) {
+        rt::SaveableStateRegistry current(saved);
+        registry = &current;
+        Harness h;
+        h.Run(content);
+        CHECK(single && range);
+        CHECK_EQ(single->Value(), pass == 0 ? 0.25f : 1.0f);
+        CHECK_EQ(range->StartValue(), pass == 0 ? 0.25f : 0.5f);
+        CHECK_EQ(range->EndValue(), pass == 0 ? 0.75f : 1.0f);
+        CHECK_EQ(single->Steps(), 3); CHECK_EQ(range->Steps(), 3);
+        if (pass == 0) {
+            single->SetValue(1); range->SetStartValue(0.5f); range->SetEndValue(1);
+            initial = 0; version.Set(1); rt::Composition::RecomposeAll();
+            CHECK_EQ(single->Value(), 1.0f); CHECK_EQ(range->StartValue(), 0.5f);
+            saved = rt::SaveableStateRegistry::Deserialize(rt::SaveableStateRegistry::Serialize(current.PerformSave()));
+            CHECK_EQ(saved.size(), std::size_t(2));
+        }
+    }
+}
+
+TEST(DisabledSlidersKeepProgressSemanticsButRejectPointerKeyboardAndAccessibilityActions) {
+    SliderState state(-0.25f, 0, { -1, 1 });
+    Harness h;
+    rt::State<bool> enabled{ true };
+    ui::FocusRequester focus;
+    auto source = std::make_shared<MutableInteractionSource>();
+    h.owner.SetInputMode(ui::InputMode::Keyboard);
+    h.Run([&] { MaterialTheme([&] { Column({}, [&] {
+        Slider(state, [&](float v) { state.SetValue(v); }, FocusRequesterModifier(Width({}, 240_dp), focus), { .enabled = enabled.Get(), .interactionSource = source });
+    }); }); });
+    CHECK(focus.RequestFocus());
+    auto& accessibility = h.owner.Accessibility();
+    accessibility.SetEnabled(true); accessibility.CheckForSemanticsChanges();
+    auto tree = h.owner.BuildSemanticsTree();
+    CHECK(tree.children[0].config.stateDescription == "-0.25");
+    const int id = tree.children[0].id;
+    CHECK(accessibility.CreateNodeInfo(id)->className == "android.widget.SeekBar");
+    enabled.Set(false); rt::Composition::RecomposeAll(); h.owner.MeasureAndLayout({ 300, 300 });
+    tree = h.owner.BuildSemanticsTree();
+    CHECK(tree.children[0].config.disabled);
+    CHECK_EQ(tree.children[0].config.progressBarRangeInfo->current, -0.25f);
+    CHECK(!source->IsFocused());
+    CHECK(!h.owner.DispatchKeyEvent({ ui::keys::DpadRight, ui::KeyEventType::KeyDown }));
+    CHECK(!accessibility.PerformAction(id, ui::a11y::SetProgress, { .progress = 1.0f }));
+    ui::RawPointerEvent event;
+    event.type = ui::PointerEventType::Press; event.pointers.push_back({ 1, { 180, 24 }, true, ui::PointerType::Touch, {} });
+    h.owner.ProcessPointer(event);
+    event.type = ui::PointerEventType::Release; event.pointers[0].down = false;
+    h.owner.ProcessPointer(event);
+    CHECK_EQ(state.Value(), -0.25f);
+    CHECK(!source->IsPressed() && !source->IsDragged());
 }
 
 TEST(BadgeDoesNotResizeItsAnchorAndUsesContentMinimumSize) {

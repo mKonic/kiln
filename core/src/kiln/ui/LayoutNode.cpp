@@ -445,38 +445,49 @@ namespace kiln::ui {
         nodes.reserve(next.size());
         auto focusKind = [](ModifierNode& m) { return m.AsFocusTarget() || m.AsFocusEvent() || m.AsFocusProperties(); };
         bool focusChanged = false;
+        const auto reusable = [&](std::size_t i) {
+            return i < next.size() && i < m_Elements.size() && m_Nodes[i] && m_Elements[i]->Type() == next[i]->Type();
+        };
+        // Detach against the complete old chain. Focus removal walks that chain to cancel
+        // indirect input and notify listeners; moving reusable nodes first leaves null holes.
+        for (std::size_t i = 0; i < m_Nodes.size(); ++i) {
+            if (reusable(i)) continue;
+            auto& old = m_Nodes[i];
+            if (focusKind(*old)) focusChanged = true;
+            if (m_Owner) {
+                if (auto* p = old->AsPointerInput()) m_Owner->ForgetPointerModifier(p);
+                old->OnDetach();
+            }
+            old->m_Owner = nullptr;
+        }
+        for (std::size_t i = 0; i < next.size(); ++i) {
+            if (reusable(i) && !m_Elements[i]->Equals(*next[i])) {
+                next[i]->Update(*m_Nodes[i]);
+                updated = true;
+                if (focusKind(*m_Nodes[i])) focusChanged = true;
+            }
+        }
+        std::vector<ModifierNode*> attach;
         for (std::size_t i = 0; i < next.size(); ++i) {
             const ModifierElement& e = *next[i];
-            if (i < m_Elements.size() && m_Nodes[i] && m_Elements[i]->Type() == e.Type()) {
-                if (!m_Elements[i]->Equals(e)) {
-                    e.Update(*m_Nodes[i]);
-                    updated = true;
-                    if (focusKind(*m_Nodes[i])) focusChanged = true;
-                }
+            if (reusable(i)) {
                 nodes.push_back(std::move(m_Nodes[i]));
             } else {
                 structural = true;
                 auto n = e.Create();
                 if (focusKind(*n)) focusChanged = true;
                 n->m_Owner = this;
+                attach.push_back(n.get());
                 nodes.push_back(std::move(n));
-                if (m_Owner) nodes.back()->OnAttach();
             }
         }
-        for (auto& old : m_Nodes)
-            if (old) {
-                if (focusKind(*old)) focusChanged = true;
-                if (m_Owner) {
-                    if (auto* p = old->AsPointerInput()) m_Owner->ForgetPointerModifier(p);
-                    old->OnDetach();
-                }
-                old->m_Owner = nullptr;
-            }
         m_Nodes = std::move(nodes);
         m_Elements = next;
+        if (structural) RebuildChain();
+        // Attach only after the new chain and its coordinators are available to callbacks.
+        if (m_Owner) for (auto* node : attach) node->OnAttach();
         if (m_Owner && focusChanged) m_Owner->ScheduleFocusInvalidation(*this);
         if (m_Owner && (structural || updated)) m_Owner->TrackPositionAware(*this);
-        if (structural) RebuildChain();
         if (m_Owner && (structural || updated)) m_Owner->InvalidateSemantics();
         // Parent data may have changed: the parent measures with it.
         ParentData pd;

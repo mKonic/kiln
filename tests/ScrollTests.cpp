@@ -4,6 +4,7 @@
 #include "kiln/foundation/Scroll.h"
 #include "kiln/foundation/Gestures.h"
 #include "kiln/material3/ListItem.h"
+#include "kiln/material3/Slider.h"
 #include "kiln/material3/MaterialTheme.h"
 #include "kiln/material3/Surface.h"
 
@@ -168,6 +169,31 @@ TEST(DragOverLongClickableMaterialListItemsScrollsAndCancelsActions) {
             CHECK_EQ(clicks, 0);
             CHECK_EQ(longs, 0);
         }
+    }
+}
+
+TEST(SlidersDoNotStealAnAcceptedVerticalScrollWhenTheFingerMovesSideways) {
+    for (bool range : { false, true }) {
+        Harness h;
+        ScrollState scroll;
+        material3::SliderState single(0.5f);
+        material3::RangeSliderState pair(0.25f, 0.75f);
+        h.Run([&] { material3::MaterialTheme([&] {
+            Column(VerticalScroll(FillMax({}, Axis::Both), scroll), [&] {
+                if (range) material3::RangeSlider(pair, [&](material3::SliderRange v) { pair.SetStartValue(v.start); pair.SetEndValue(v.endInclusive); }, Width({}, 100_dp));
+                else material3::Slider(single, [&](float v) { single.SetValue(v); }, Width({}, 100_dp));
+                Box(SizeMod({}, 100_dp, 500_dp));
+            });
+        }); });
+        h.Touch(PointerEventType::Press, 50, 30, true, 0);
+        h.Touch(PointerEventType::Move, 50, 10, true, 100);
+        CHECK_EQ(scroll.Value(), 12);
+        h.Touch(PointerEventType::Move, 90, 5, true, 200);
+        h.Touch(PointerEventType::Move, 90, -10, true, 300);
+        h.Touch(PointerEventType::Release, 90, -10, false, 600);
+        CHECK_EQ(scroll.Value(), 32);
+        CHECK_EQ(single.Value(), 0.5f);
+        CHECK_EQ(pair.StartValue(), 0.25f); CHECK_EQ(pair.EndValue(), 0.75f);
     }
 }
 

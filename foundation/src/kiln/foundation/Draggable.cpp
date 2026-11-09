@@ -3,6 +3,7 @@
 #include "kiln/foundation/IndirectDrag.h"
 #include "kiln/ui/VelocityTracker.h"
 
+#include <algorithm>
 #include <cmath>
 
 namespace kiln::foundation {
@@ -79,6 +80,20 @@ namespace kiln::foundation {
                 const float slop = PointerSlop(s.Config(), e->changes[0].type);
                 float total = 0;
                 bool dragging = false;
+                // Coroutine cancellation (detach, disable or a changed gesture configuration)
+                // must dispose the active interaction just like DragGestureNode.onDetach.
+                struct Cleanup {
+                    std::shared_ptr<DragBox> box;
+                    DraggableState* state;
+                    std::shared_ptr<MutableInteractionSource> source;
+                    bool& active;
+                    ~Cleanup() {
+                        if (!active) return;
+                        state->SetDragging(false);
+                        if (source && box->interaction) source->Cancel(Interaction::Kind::Drag, box->interaction);
+                        box->interaction = 0;
+                    }
+                } cleanup{ box, box->state, o.interactionSource, dragging };
                 auto start = [&](Offset at) {
                     dragging = true;
                     box->state->SetDensity(s.GetDensity());
@@ -112,6 +127,13 @@ namespace kiln::foundation {
                             start(c->position);
                             apply(total - (total > 0 ? slop : -slop));   // the part past the slop
                             c->Consume();
+                        } else {
+                            // Ancestors run after us in Main. Before accumulating the next
+                            // move, notice a scroll/drag they accepted in this event's Final pass.
+                            auto final = co_await s.AwaitPointerEvent(PointerEventPass::Final);
+                            if (std::any_of(final->changes.begin(), final->changes.end(), [id](const PointerInputChange& change) {
+                                return change.id == id && change.IsConsumed();
+                            })) break;
                         }
                         continue;
                     }
@@ -138,7 +160,8 @@ namespace kiln::foundation {
         if (!box->indirect) WireIndirect(box);
         box->indirect->orientation = orientation;
         if (box->options.enabled) m = IndirectDrag(std::move(m), box->indirect);
-        return PointerInput(std::move(m), rt::Keys(reinterpret_cast<std::uintptr_t>(&state), int(orientation)),
+        return PointerInput(std::move(m), rt::Keys(reinterpret_cast<std::uintptr_t>(&state), int(orientation), box->options.enabled,
+                                                box->options.reverseDirection, std::uintptr_t(box->options.interactionSource.get())),
                             [box](PointerInputScope& s) { return DragLoop(s, box); });
     }
 

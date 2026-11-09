@@ -8,6 +8,7 @@
 #include <kiln/material3/Card.h>
 #include <kiln/material3/Chip.h>
 #include <kiln/material3/ListItem.h>
+#include <kiln/material3/Slider.h>
 #include <kiln/material3/ProgressIndicator.h>
 #include <kiln/material3/WavyProgressIndicator.h>
 #include <kiln/material3/LoadingIndicator.h>
@@ -78,6 +79,41 @@ namespace kiln::gallery {
                 m3::ToggleButton(on->Get(), change, {}, disabled, [] { m3::Text("Disabled toggle"); });
             });
             m3::Text(checked.Get() ? "Text toggles: on" : "Text toggles: off");
+        }
+
+        void Sliders() {
+            auto* continuous = &m3::RememberSliderState(0.35f);
+            auto* stepped = &m3::RememberSliderState(0.5f, 7);
+            auto* centered = &m3::RememberSliderState(0, 0, { -1, 1 });
+            auto* range = &m3::RememberRangeSliderState(0.25f, 0.75f, 3);
+            auto* down = &m3::RememberSliderState(0.35f);
+            auto* up = &m3::RememberSliderState(0.65f);
+            auto* enabled = &RememberState(true);
+            auto* finished = &RememberState(0);
+            const auto done = [finished] { finished->Set(finished->Peek() + 1); };
+            const auto named = [](const char* label) { return Semantics({}, [label](SemanticsConfiguration& c) { c.contentDescription = { label }; }); };
+            m3::SliderOptions options;
+            options.enabled = enabled->Get(); options.onValueChangeFinished = done;
+            m3::Text("Continuous");
+            m3::Slider(*continuous, [continuous](float value) { continuous->SetValue(value); }, FillMax(named("Continuous slider"), Axis::Horizontal), options);
+            m3::Text("Stepped");
+            m3::Slider(*stepped, [stepped](float value) { stepped->SetValue(value); }, FillMax(named("Stepped slider"), Axis::Horizontal), options);
+            m3::Text("Centered");
+            auto centeredOptions = options;
+            centeredOptions.track = [enabled](m3::SliderState& state) { m3::SliderDefaults::CenteredTrack(state, {}, { .enabled = enabled->Get() }); };
+            m3::Slider(*centered, [centered](float value) { centered->SetValue(value); }, FillMax(named("Centered slider"), Axis::Horizontal), centeredOptions);
+            m3::Text("Range");
+            m3::RangeSlider(*range, [range](m3::SliderRange value) { range->SetStartValue(value.start); range->SetEndValue(value.endInclusive); }, FillMax({}, Axis::Horizontal),
+                { .enabled = enabled->Get(), .onValueChangeFinished = done });
+            m3::Text("Vertical sliders");
+            Row({}, Arrangement::SpacedBy(32_dp), AlignmentV::Top(), [=] {
+                m3::VerticalSlider(*down, [down](float value) { down->SetValue(value); }, Height(named("Top to bottom slider"), 160_dp), options);
+                m3::VerticalSlider(*up, [up](float value) { up->SetValue(value); }, Height(named("Bottom to top slider"), 160_dp), options, false);
+            });
+            m3::TextButton([enabled] { enabled->Set(!enabled->Peek()); }, {}, {}, [enabled] { m3::Text(enabled->Get() ? "Disable sliders" : "Enable sliders"); });
+            m3::Text("Slider value: " + std::to_string(RoundJava(continuous->Value() * 100)) + "%");
+            m3::Text("Range: " + std::to_string(RoundJava(range->StartValue() * 100)) + "-" + std::to_string(RoundJava(range->EndValue() * 100)) + "%");
+            m3::Text("Slider changes finished: " + std::to_string(finished->Get()));
         }
 
         void ProgressIndicators() {
@@ -402,6 +438,9 @@ namespace kiln::gallery {
                         m3::TextButton([selection] { selection->Set(1); }, {}, {}, [] { m3::Text("Dark"); });
                         m3::TextButton([selection] { selection->Set(2); }, {}, {}, [] { m3::Text("Dynamic"); });
                     });
+                    m3::Text("Sliders");
+                    Sliders();
+                    m3::HorizontalDivider();
                     m3::Text("Progress indicators");
                     ProgressIndicators();
                     m3::HorizontalDivider();

@@ -107,7 +107,7 @@ public final class Probe extends Instrumentation {
             return;
         }
         String find = arg, value = null;
-        if (verb.equals("settext") || verb.equals("action")) { find = arg.substring(0, arg.indexOf('=')); value = arg.substring(arg.indexOf('=') + 1); }
+        if (verb.equals("settext") || verb.equals("setprogress") || verb.equals("action")) { find = arg.substring(0, arg.indexOf('=')); value = arg.substring(arg.indexOf('=') + 1); }
         AccessibilityNodeInfo n = findByText(root, find);
         if (n == null) { out.append("not found: ").append(find).append('\n'); return; }
         boolean ok;
@@ -140,6 +140,12 @@ public final class Probe extends Instrumentation {
                 ok = false;
                 for (AccessibilityNodeInfo.AccessibilityAction a : n.getActionList())
                     if (a.getLabel() != null && a.getLabel().toString().equals(value)) ok = n.performAction(a.getId());
+                break;
+            }
+            case "setprogress": {
+                Bundle a = new Bundle();
+                a.putFloat(AccessibilityNodeInfo.ACTION_ARGUMENT_PROGRESS_VALUE, Float.parseFloat(value));
+                ok = n.performAction(android.R.id.accessibilityActionSetProgress, a);
                 break;
             }
             case "settext": {
@@ -232,6 +238,7 @@ public final class Probe extends Instrumentation {
         if (n.isHeading()) out.append(" heading");
         if (!n.isVisibleToUser()) out.append(" invisible");
         if (n.isScrollable()) out.append(" scrollable");
+        if (!n.isEnabled()) out.append(" disabled");
         if (n.getCollectionInfo() != null) out.append(" collection=").append(n.getCollectionInfo().getRowCount()).append('x').append(n.getCollectionInfo().getColumnCount());
         if (n.isScreenReaderFocusable()) out.append(" srf");
         if (n.isCheckable()) out.append(n.isChecked() ? " checked" : " unchecked");
