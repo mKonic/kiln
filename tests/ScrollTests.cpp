@@ -3,6 +3,9 @@
 #include "kiln/foundation/Compose.h"
 #include "kiln/foundation/Scroll.h"
 #include "kiln/foundation/Gestures.h"
+#include "kiln/material3/ListItem.h"
+#include "kiln/material3/MaterialTheme.h"
+#include "kiln/material3/Surface.h"
 
 #include <cmath>
 
@@ -128,6 +131,44 @@ TEST(DragOverClickableChildrenScrollsAndCancelsTheClick) {
     h.Touch(PointerEventType::Release, 50, 40, false, 600);
     CHECK_EQ(state.Value(), 42);
     CHECK_EQ(clicks, 0);
+}
+
+TEST(DragOverLongClickableMaterialListItemsScrollsAndCancelsActions) {
+    for (bool longClickable : { false, true }) {
+        Harness h;
+        ScrollState state;
+        int clicks = 0, longs = 0;
+        h.Run([&] {
+            material3::MaterialTheme([&] {
+                Column(VerticalScroll(FillMax({}, Axis::Both), state), [&] {
+                    material3::Surface({}, {}, [&] {
+                        Column({}, [&] {
+                            for (int i = 0; i < 10; ++i) {
+                                material3::ListItemOptions options;
+                                if (longClickable) options.onLongClick = [&] { ++longs; };
+                                material3::ListItem([&] { ++clicks; }, {}, options, [] { Box(SizeMod({}, 40_dp, 20_dp)); });
+                            }
+                        });
+                    });
+                });
+            });
+        });
+        // Exercise frame-by-frame movement and recomposition after the delayed press starts,
+        // not only a single move that jumps past slop before the indication changes.
+        h.owner.Config().tapTimeoutMillis = 0;
+        for (int gesture = 0; gesture < 4; ++gesture) {
+            const auto start = std::int64_t(gesture) * 1000;
+            h.Touch(PointerEventType::Press, 50, 90, true, start);
+            for (int step = 1; step <= 25; ++step) {
+                h.Frames(1);
+                h.Touch(PointerEventType::Move, 50, 90 - float(step) * 2, true, start + step * 16);
+            }
+            h.Touch(PointerEventType::Release, 50, 40, false, start + 600);
+            CHECK_EQ(state.Value(), 42 * (gesture + 1));
+            CHECK_EQ(clicks, 0);
+            CHECK_EQ(longs, 0);
+        }
+    }
 }
 
 TEST(DragScrollsWhileContentRecomposesEveryFrame) {

@@ -8,6 +8,7 @@
 #include "kiln/material3/Checkbox.h"
 #include "kiln/material3/Card.h"
 #include "kiln/material3/Chip.h"
+#include "kiln/material3/ListItem.h"
 #include "kiln/material3/Surface.h"
 #include "kiln/material3/RadioButton.h"
 #include "kiln/material3/Switch.h"
@@ -1526,6 +1527,275 @@ TEST(ChipElevationTracksLastInteractionsAcrossInterruptionAndDisabledSnap) {
     source->End(Interaction::Kind::Press, press);
     source->End(Interaction::Kind::Hover, hover); advance(30);
     CHECK(elevation == 1_dp);
+}
+
+TEST(ListItemDefaultsResolveAllStatesAndSegmentOnlyOuterCorners) {
+    Harness h;
+    h.Run([] { MaterialTheme([] {
+        const auto scheme = LightColorScheme();
+        const auto colors = ListItemDefaults::colors();
+        CHECK(colors.ContainerColor(true, false, false) == scheme.surface);
+        CHECK(colors.ContentColor(true, false, false) == scheme.onSurface);
+        CHECK(colors.ContainerColor(true, true, false) == scheme.secondaryContainer);
+        CHECK(colors.ContentColor(true, true, false) == scheme.onSecondaryContainer);
+        CHECK(colors.ContainerColor(true, true, true) == scheme.tertiaryContainer);
+        CHECK(colors.LeadingContentColor(true, true, true) == scheme.onTertiaryContainer);
+        CHECK(colors.ContainerColor(false, true, true) == scheme.surface);
+        for (const auto color : { colors.ContentColor(false, true, true), colors.LeadingContentColor(false, true, true), colors.TrailingContentColor(false, true, true), colors.OverlineContentColor(false, true, true), colors.SupportingContentColor(false, true, true) })
+            CHECK(color == scheme.onSurface.WithAlpha(0.38f));
+        CHECK(colors.Copy({}) == colors);
+        CHECK(ListItemDefaults::colors({ .selectedContentColor = Color(0xFF123456) }).ContentColor(true, true, false) == Color(0xFF123456));
+        CHECK(ListItemDefaults::segmentedColors().containerColor == scheme.surface);
+        CHECK(ListItemDefaults::elevation() == (ListItemElevation{ 0_dp, 8_dp }));
+        const auto shapes = ListItemDefaults::shapes();
+        CHECK(shapes == ListItemDefaults::shapes());
+        CHECK(shapes.ShapeForInteraction(true, true, true, true, true) == shapes.pressedShape);
+        CHECK(shapes.ShapeForInteraction(true, false, true, true, true) == shapes.draggedShape);
+        CHECK(shapes.ShapeForInteraction(true, false, true, true, false) == shapes.selectedShape);
+        CHECK(shapes.ShapeForInteraction(false, false, true, true, false) == shapes.focusedShape);
+        CHECK(shapes.ShapeForInteraction(false, false, false, true, false) == shapes.hoveredShape);
+        for (int i = 0; i < 3; ++i) {
+            const auto segmented = ListItemDefaults::segmentedShapes(i, 3);
+            const auto base = std::dynamic_pointer_cast<const CornerBasedShape>(segmented.shape);
+            CHECK(base && base->topStart == CornerSize::Of(i == 0 ? 16_dp : 4_dp));
+            CHECK(base && base->bottomEnd == CornerSize::Of(i == 2 ? 16_dp : 4_dp));
+            CHECK(segmented.pressedShape == shapes.pressedShape);
+        }
+        const auto single = std::dynamic_pointer_cast<const CornerBasedShape>(ListItemDefaults::segmentedShapes(0, 1).shape);
+        CHECK(single && single->topEnd == CornerSize::Of(16_dp) && single->bottomStart == CornerSize::Of(16_dp));
+        CHECK(ListItemDefaults::segmentedShapes(0, 3, shapes.Copy(RectangleShape())).shape == RectangleShape());
+        const auto align = ListItemDefaults::verticalAlignment();
+        CHECK_EQ(align(20, 59), 20);
+        CHECK_EQ(align(20, 60), 0);
+    }); });
+}
+
+namespace {
+    ui::LayoutNode& ListTestLeaf(int width, int height, bool multiline = false) {
+        return Layout({}, std::make_shared<ui::LambdaMeasurePolicy>([=](ui::MeasureScope& s, std::span<ui::Measurable* const>, const ui::Constraints& c) {
+            return s.Layout(c.ConstrainWidth(width), c.ConstrainHeight(height), {},
+                            { { &ui::FirstBaseline, 10 }, { &ui::LastBaseline, multiline ? 30 : 10 } });
+        }));
+    }
+}
+
+TEST(ListItemsMatchClassicAndModernSlotOrderSizingAndRtl) {
+    for (bool legacy : { false, true }) for (bool rtl : { false, true }) for (int type = 1; type <= 4; ++type) {
+        Harness h;
+        h.owner.SetDirection(rtl ? ui::LayoutDirection::Rtl : ui::LayoutDirection::Ltr);
+        ui::LayoutNode *headline = nullptr, *leading = nullptr, *trailing = nullptr, *overline = nullptr, *supporting = nullptr;
+        const bool threeLine = type >= 3;
+        h.Run([&] { MaterialTheme([&] {
+            rt::Composition::Current()->Provide(ui::LocalLayoutDirection, rtl ? ui::LayoutDirection::Rtl : ui::LayoutDirection::Ltr, [&] {
+                Column({}, [&] {
+                    auto head = [&] { headline = &ListTestLeaf(40, 20); };
+                    auto lead = [&] { leading = &ListTestLeaf(24, 24); };
+                    auto trail = [&] { trailing = &ListTestLeaf(16, 16); };
+                    std::function<void()> over, support;
+                    if (type == 3) over = [&] { overline = &ListTestLeaf(30, 10); };
+                    if (type > 1) support = [&] { supporting = &ListTestLeaf(60, type == 4 ? 40 : 20, type == 4); };
+                    if (legacy) ListItem(head, {}, { .overlineContent = over, .supportingContent = support, .leadingContent = lead, .trailingContent = trail });
+                    else ListItem({}, { .leadingContent = lead, .trailingContent = trail, .overlineContent = over, .supportingContent = support }, head);
+                });
+            });
+        }); });
+        auto* list = h.owner.Root().Children()[0]->Children()[0];
+        CHECK_EQ(list->Size().width, 300);
+        CHECK_EQ(list->Size().height, type == 1 ? 56 : type == 2 ? 72 : 88);
+        const int gap = legacy ? 16 : 12;
+        CHECK_EQ(int(leading->InnerRectInRoot().left), rtl ? 260 : 16);
+        CHECK_EQ(int(trailing->InnerRectInRoot().left), rtl ? 16 : 268);
+        CHECK_EQ(int(headline->InnerRectInRoot().left), rtl ? 300 - 16 - 24 - gap - 40 : 16 + 24 + gap);
+        const int top = legacy ? (threeLine ? 12 : (list->Size().height - (type == 1 ? 20 : 40)) / 2) : (threeLine ? 10 : (list->Size().height - (type == 1 ? 20 : 40)) / 2);
+        CHECK_EQ(int(headline->InnerRectInRoot().top), top + (overline ? 10 : 0));
+        if (supporting) CHECK_EQ(int(supporting->InnerRectInRoot().top), top + (overline ? 10 : 0) + 20);
+        if (overline) CHECK_EQ(int(overline->InnerRectInRoot().top), top);
+        CHECK_EQ(int(leading->InnerRectInRoot().top), threeLine ? (legacy ? 12 : 10) : (list->Size().height - 24) / 2);
+        CHECK_EQ(list->AsMeasurable().MinIntrinsicWidth(300), 32 + 24 + 16 + gap * 2 + (supporting ? 60 : 40));
+        CHECK_EQ(list->AsMeasurable().MaxIntrinsicHeight(300), type == 1 ? 56 : type == 2 ? 72 : 88);
+    }
+}
+
+TEST(ListItemsPreserveEmptyAndMultipleNodeSlotBehavior) {
+    for (bool legacy : { false, true }) {
+        Harness h;
+        ui::LayoutNode *first = nullptr, *second = nullptr;
+        h.Run([&] { MaterialTheme([&] { Column({}, [&] {
+            auto headline = [&] { first = &ListTestLeaf(40, 20); second = &ListTestLeaf(60, 40); };
+            if (legacy) ListItem(headline, {}, { .overlineContent = [] {}, .supportingContent = [] {} });
+            else ListItem({}, { .overlineContent = [] {}, .supportingContent = [] {} }, headline);
+        }); }); });
+        auto* list = h.owner.Root().Children()[0]->Children()[0];
+        CHECK_EQ(list->Size().height, legacy ? 56 : 88); // modern decorators emit a Box even when empty
+        CHECK(first->IsPlaced());
+        CHECK(second->IsPlaced() == !legacy); // legacy firstOrNull, modern Box overlaps content
+        CHECK_EQ(list->AsMeasurable().MaxIntrinsicWidth(300), legacy ? 72 : 92);
+    }
+}
+
+TEST(ModernListItemsHonorExplicitMinimumHeightAndHeightCompatibilityFlag) {
+    for (bool fix : { false, true }) for (bool explicitMinimum : { false, true }) {
+        const bool old = ComposeMaterial3Flags::isExpressiveListItemHeightBasedOnTextLinesFixEnabled;
+        ComposeMaterial3Flags::isExpressiveListItemHeightBasedOnTextLinesFixEnabled = fix;
+        Harness h;
+        h.Run([&] { MaterialTheme([&] { Column({}, [&] {
+            ListItem(explicitMinimum ? SizeIn({}, Dp::Unspecified(), 30_dp, Dp::Unspecified(), Dp::Unspecified()) : Modifier{},
+                     { .overlineContent = [] { ListTestLeaf(20, 5); }, .supportingContent = [] { ListTestLeaf(20, 5); } }, [] { ListTestLeaf(40, 5); });
+        }); }); });
+        CHECK_EQ(h.owner.Root().Children()[0]->Children()[0]->Size().height, explicitMinimum ? 35 : fix ? 88 : 56);
+        ComposeMaterial3Flags::isExpressiveListItemHeightBasedOnTextLinesFixEnabled = old;
+    }
+}
+
+TEST(ModernListItemsExposeSelectionLongClickAndDisabledSemanticsWithoutButtonRole) {
+    for (int variant = 0; variant < 4; ++variant) for (bool segmented : { false, true }) {
+        Harness h;
+        rt::State<bool> enabled{ true }, selected{ false };
+        int clicks = 0, longs = 0;
+        ui::Dp childMinimum;
+        h.Run([&] { MaterialTheme([&] { Column({}, [&] {
+            ListItemOptions o;
+            o.enabled = enabled.Get();
+            o.trailingContent = [&] { childMinimum = rt::Composition::Current()->Read(LocalMinimumInteractiveComponentSize); };
+            o.onLongClick = [&] { ++longs; };
+            o.onLongClickLabel = "Select item";
+            auto content = [] { Box(SizeMod({}, 40_dp, 20_dp)); };
+            auto click = [&] { ++clicks; selected.Set(!selected.Peek()); };
+            std::function<void(bool)> change = [&](bool value) { ++clicks; selected.Set(value); };
+            const auto shapes = ListItemDefaults::segmentedShapes(0, 1);
+            if (segmented) {
+                if (variant == 0) SegmentedListItem(shapes, {}, o, content);
+                if (variant == 1) SegmentedListItem(click, shapes, {}, o, content);
+                if (variant == 2) SegmentedListItem(selected.Get(), std::function<void()>(click), shapes, {}, o, content);
+                if (variant == 3) SegmentedListItem(selected.Get(), change, shapes, {}, o, content);
+            } else {
+                if (variant == 0) ListItem({}, o, content);
+                if (variant == 1) ListItem(click, {}, o, content);
+                if (variant == 2) ListItem(selected.Get(), std::function<void()>(click), {}, o, content);
+                if (variant == 3) ListItem(selected.Get(), change, {}, o, content);
+            }
+        }); }); });
+        auto tree = h.owner.BuildSemanticsTree();
+        CHECK_EQ(tree.children.size(), std::size_t(1));
+        const auto& config = tree.children[0].config;
+        CHECK(childMinimum == 20_dp); // 48 - 16 external padding - 12 internal spacing
+        CHECK(!config.disabled);
+        CHECK(config.role == (variant == 2 ? ui::Role::RadioButton : variant == 3 ? ui::Role::Checkbox : ui::Role::None));
+        CHECK(bool(config.onClick) == (variant != 0));
+        if (variant != 0) {
+            CHECK(config.onLongClickLabel == "Select item");
+            CHECK(config.onLongClick());
+            CHECK_EQ(longs, 1);
+            CHECK(config.onClick());
+            CHECK_EQ(clicks, 1);
+        }
+        rt::Composition::RecomposeAll();
+        h.owner.MeasureAndLayout({ 300, 300 });
+        tree = h.owner.BuildSemanticsTree();
+        if (variant == 2) CHECK(tree.children[0].config.selected == true);
+        if (variant == 3) CHECK(tree.children[0].config.toggleableState == 1);
+        enabled.Set(false); rt::Composition::RecomposeAll();
+        h.owner.MeasureAndLayout({ 300, 300 });
+        CHECK(h.owner.BuildSemanticsTree().children[0].config.disabled);
+    }
+}
+
+TEST(ModernListColorsAndElevationAnimateAcrossInterruptedSelectionDragAndDisable) {
+    Harness h;
+    rt::State<bool> selected{ false }, enabled{ true };
+    auto source = std::make_shared<MutableInteractionSource>();
+    Color content, leading, trailing, overline, supporting;
+    text::TextStyle headStyle, leadStyle, trailStyle, overStyle, supportStyle;
+    int clicks = 0;
+    auto observe = [](Color& color, text::TextStyle& style) {
+        color = rt::Composition::Current()->Read(LocalContentColor);
+        style = rt::Composition::Current()->Read(LocalTextStyle());
+        ListTestLeaf(20, 10);
+    };
+    h.Run([&] { MaterialTheme([&] { Column({}, [&] {
+        ListItemOptions o;
+        o.enabled = enabled.Get();
+        o.interactionSource = source;
+        o.leadingContent = [&] { observe(leading, leadStyle); };
+        o.trailingContent = [&] { observe(trailing, trailStyle); };
+        o.overlineContent = [&] { observe(overline, overStyle); };
+        o.supportingContent = [&] { observe(supporting, supportStyle); };
+        ListItem(selected.Get(), std::function<void()>([&] { ++clicks; }), {}, o, [&] { observe(content, headStyle); });
+    }); }); });
+    const auto scheme = LightColorScheme();
+    CHECK(content == scheme.onSurface && leading == scheme.onSurfaceVariant);
+    CHECK(headStyle == Typography{}.bodyLarge && leadStyle == Typography{}.titleMedium);
+    CHECK(trailStyle == Typography{}.labelSmall && overStyle == Typography{}.labelSmall && supportStyle == Typography{}.bodyMedium);
+    auto* list = h.owner.Root().Children()[0]->Children()[0];
+    CHECK_EQ(list->ZIndex(), 0.0f);
+    std::int64_t clock = 0;
+    auto advance = [&](int frames) {
+        for (int i = 0; i < frames; ++i) {
+            rt::Composition::RecomposeAll();
+            rt::Dispatcher::Main().RunFrame(clock += 16'000'000);
+            rt::Composition::RecomposeAll();
+            h.owner.MeasureAndLayout({ 300, 300 });
+        }
+    };
+    selected.Set(true); advance(2);
+    CHECK(content != scheme.onSecondaryContainer); // selection does not snap
+    const auto drag = source->Start(Interaction::Kind::Drag); advance(130);
+    CHECK(content == scheme.onTertiaryContainer && leading == content && trailing == content && overline == content && supporting == content);
+    CHECK_EQ(list->ZIndex(), 1.0f);
+    enabled.Set(false); advance(2);
+    CHECK(content != scheme.onSurface.WithAlpha(0.38f)); // disabling animates too
+    advance(130);
+    CHECK(content == scheme.onSurface.WithAlpha(0.38f) && leading == content && trailing == content && overline == content && supporting == content);
+    CHECK_EQ(list->ZIndex(), 1.0f); // disabling doesn't remove the dragged elevation
+    const auto bounds = list->InnerRectInRoot();
+    auto mouse = [&](ui::PointerEventType type, bool down, std::int64_t time) {
+        ui::RawPointerEvent event;
+        event.type = type; event.uptimeMillis = time; event.buttons = down ? 1 : 0;
+        event.pointers.push_back({ 1, { (bounds.left + bounds.right) / 2, (bounds.top + bounds.bottom) / 2 }, down, ui::PointerType::Mouse, {} });
+        h.owner.ProcessPointer(event);
+        rt::Dispatcher::Main().RunPending();
+    };
+    mouse(ui::PointerEventType::Press, true, 0);
+    mouse(ui::PointerEventType::Release, false, 50);
+    CHECK_EQ(clicks, 0);
+    source->End(Interaction::Kind::Drag, drag); advance(130);
+    CHECK_EQ(list->ZIndex(), 0.0f);
+    enabled.Set(true); advance(130);
+    CHECK(content == scheme.onSecondaryContainer);
+}
+
+TEST(ModernListShapesKeepValueEqualConfigurationsWhileMorphing) {
+    Harness h;
+    auto source = std::make_shared<MutableInteractionSource>();
+    h.Run([&] { MaterialTheme([&] { Column({}, [&] {
+        ListItemOptions o;
+        o.interactionSource = source;
+        o.shapes = ListItemShapes{ RoundedCorner(16_dp), RoundedCorner(14_dp), RoundedCorner(4_dp), RoundedCorner(12_dp), RoundedCorner(10_dp), RoundedCorner(8_dp) };
+        ListItem([] {}, {}, o, [] { ListTestLeaf(40, 20); });
+    }); }); });
+    auto contains = [&] {
+        auto* list = h.owner.Root().Children()[0]->Children()[0];
+        for (const auto* modifier : list->ModifierNodes()) if (modifier->ClipsChildren()) {
+            const auto bounds = list->RectInRoot(std::nullopt, modifier);
+            return const_cast<ui::ModifierNode*>(modifier)->AsDraw()->LayerClipContains({ bounds.Width(), bounds.Height() }, { 3, 3 }, ui::LayoutDirection::Ltr, { 1, 1 });
+        }
+        return false;
+    };
+    CHECK(!contains());
+    std::int64_t clock = 0;
+    auto advance = [&](int frames) {
+        for (int i = 0; i < frames; ++i) {
+            rt::Composition::RecomposeAll();
+            rt::Dispatcher::Main().RunFrame(clock += 16'000'000);
+            rt::Composition::RecomposeAll();
+            h.owner.MeasureAndLayout({ 300, 300 });
+        }
+    };
+    const auto press = source->Start(Interaction::Kind::Press); advance(130);
+    CHECK(contains());
+    source->End(Interaction::Kind::Press, press); advance(2);
+    source->Start(Interaction::Kind::Press); advance(130);
+    CHECK(contains());
 }
 
 TEST(BadgeDoesNotResizeItsAnchorAndUsesContentMinimumSize) {

@@ -7,6 +7,7 @@
 #include <kiln/material3/Checkbox.h>
 #include <kiln/material3/Card.h>
 #include <kiln/material3/Chip.h>
+#include <kiln/material3/ListItem.h>
 #include <kiln/material3/RadioButton.h>
 #include <kiln/material3/Switch.h>
 #include <kiln/material3/Badge.h>
@@ -74,6 +75,56 @@ namespace kiln::gallery {
                 m3::ToggleButton(on->Get(), change, {}, disabled, [] { m3::Text("Disabled toggle"); });
             });
             m3::Text(checked.Get() ? "Text toggles: on" : "Text toggles: off");
+        }
+
+        void Lists() {
+            auto icon = [] { m3::Icon(m3::internal::Icons::Filled::Check(), std::nullopt, SizeMod({}, 20_dp, 20_dp)); };
+            auto meta = [] { m3::Text("Meta"); };
+            Column({}, [=] {
+                m3::ListItem([] { m3::Text("Classic one line"); }, {}, { .leadingContent = icon, .trailingContent = meta });
+                m3::ListItem([] { m3::Text("Classic two lines"); }, {}, {
+                    .supportingContent = [] { m3::Text("Supporting text"); }, .leadingContent = icon, .trailingContent = meta });
+                m3::ListItem([] { m3::Text("Classic three lines"); }, {}, {
+                    .overlineContent = [] { m3::Text("Overline"); }, .supportingContent = [] { m3::Text("Supporting text"); },
+                    .leadingContent = icon, .trailingContent = meta });
+            });
+            auto* clicks = &RememberState(0);
+            auto* longs = &RememberState(0);
+            auto* selected = &RememberState(false);
+            auto* checked = &RememberState(false);
+            Column({}, Arrangement::SpacedBy(2_dp), AlignmentH::Start(), [=] {
+                m3::ListItem({}, { .leadingContent = icon, .trailingContent = meta }, [] { m3::Text("Expressive plain"); });
+                m3::ListItemOptions action;
+                action.leadingContent = icon;
+                action.trailingContent = meta;
+                action.supportingContent = [] { m3::Text("Tap or long-press this item"); };
+                action.onLongClick = [longs] { longs->Set(longs->Peek() + 1); };
+                action.onLongClickLabel = "Select list item";
+                m3::ListItem([clicks] { clicks->Set(clicks->Peek() + 1); }, {}, action, [] { m3::Text("Expressive action"); });
+                m3::ListItemOptions radio;
+                radio.leadingContent = icon;
+                radio.trailingContent = [selected] { m3::RadioButton(selected->Get(), {}); };
+                m3::ListItem(selected->Get(), std::function<void()>([selected] { selected->Set(!selected->Peek()); }), {}, radio, [] { m3::Text("Expressive radio"); });
+                m3::ListItemOptions toggle;
+                toggle.leadingContent = icon;
+                toggle.trailingContent = [checked] { m3::Checkbox(checked->Get(), {}); };
+                m3::ListItem(checked->Get(), std::function<void(bool)>([checked](bool value) { checked->Set(value); }), {}, toggle, [] { m3::Text("Expressive checkbox"); });
+                m3::ListItem({}, { .enabled = false, .leadingContent = icon, .trailingContent = meta,
+                    .supportingContent = [] { m3::Text("Disabled content"); } }, [] { m3::Text("Disabled list item"); });
+            });
+            m3::Text("Segmented list");
+            Column({}, Arrangement::SpacedBy(m3::ListItemDefaults::SegmentedGap), AlignmentH::Start(), [=] {
+                m3::SegmentedListItem(m3::ListItemDefaults::segmentedShapes(0, 3), {}, {
+                    .leadingContent = icon, .overlineContent = [] { m3::Text("Overline"); },
+                    .supportingContent = [] { m3::Text("Supporting text wraps naturally with large fonts"); } }, [] { m3::Text("Segmented plain"); });
+                m3::SegmentedListItem([clicks] { clicks->Set(clicks->Peek() + 1); }, m3::ListItemDefaults::segmentedShapes(1, 3), {}, {
+                    .leadingContent = icon, .trailingContent = meta }, [] { m3::Text("Segmented action"); });
+                m3::SegmentedListItem(checked->Get(), std::function<void(bool)>([checked](bool value) { checked->Set(value); }),
+                    m3::ListItemDefaults::segmentedShapes(2, 3), {}, {
+                    .leadingContent = icon, .trailingContent = [checked] { m3::Checkbox(checked->Get(), {}); } }, [] { m3::Text("Segmented checkbox"); });
+            });
+            m3::Text("List actions: " + std::to_string(clicks->Get()));
+            m3::Text("List long clicks: " + std::to_string(longs->Get()));
         }
 
         void Chips() {
@@ -312,6 +363,9 @@ namespace kiln::gallery {
                         m3::TextButton([selection] { selection->Set(1); }, {}, {}, [] { m3::Text("Dark"); });
                         m3::TextButton([selection] { selection->Set(2); }, {}, {}, [] { m3::Text("Dynamic"); });
                     });
+                    m3::Text("Lists");
+                    Lists();
+                    m3::HorizontalDivider();
                     m3::Text("Chips");
                     Chips();
                     m3::HorizontalDivider();
