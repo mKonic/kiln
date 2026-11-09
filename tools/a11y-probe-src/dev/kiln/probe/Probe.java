@@ -54,6 +54,27 @@ public final class Probe extends Instrumentation {
         String verb = c.contains(":") ? c.substring(0, c.indexOf(':')) : c;
         String arg = c.contains(":") ? c.substring(c.indexOf(':') + 1) : "";
         if (verb.equals("wait")) { Thread.sleep(Long.parseLong(arg)); return; }
+        if (verb.equals("swipe")) {
+            // Keep UiAutomation connected throughout the gesture and its resulting events.
+            String[] p = arg.split(",");
+            if (p.length != 5) throw new IllegalArgumentException("swipe:x1,y1,x2,y2,millis");
+            float x1 = Float.parseFloat(p[0]), y1 = Float.parseFloat(p[1]);
+            float x2 = Float.parseFloat(p[2]), y2 = Float.parseFloat(p[3]);
+            long duration = Long.parseLong(p[4]);
+            if (duration <= 0) throw new IllegalArgumentException("swipe duration must be positive");
+            long down = android.os.SystemClock.uptimeMillis();
+            boolean ok = touch(ua, down, down, android.view.MotionEvent.ACTION_DOWN, x1, y1);
+            for (long elapsed = 16; elapsed < duration; elapsed += 16) {
+                android.os.SystemClock.sleep(Math.max(0, down + elapsed - android.os.SystemClock.uptimeMillis()));
+                float f = (float) elapsed / duration;
+                ok &= touch(ua, down, android.os.SystemClock.uptimeMillis(), android.view.MotionEvent.ACTION_MOVE,
+                        x1 + (x2 - x1) * f, y1 + (y2 - y1) * f);
+            }
+            android.os.SystemClock.sleep(Math.max(0, down + duration - android.os.SystemClock.uptimeMillis()));
+            ok &= touch(ua, down, android.os.SystemClock.uptimeMillis(), android.view.MotionEvent.ACTION_UP, x2, y2);
+            out.append("  swipe -> ").append(ok).append('\n');
+            return;
+        }
         if (verb.equals("clip")) {
             // The primary clip's text, read with the shell's background-clipboard permission.
             ua.adoptShellPermissionIdentity("android.permission.READ_CLIPBOARD_IN_BACKGROUND");
@@ -130,6 +151,13 @@ public final class Probe extends Instrumentation {
             default: out.append("unknown verb ").append(verb).append('\n'); return;
         }
         out.append("  ").append(verb).append(" -> ").append(ok).append('\n');
+    }
+
+    private static boolean touch(UiAutomation ua, long down, long time, int action, float x, float y) {
+        android.view.MotionEvent event = android.view.MotionEvent.obtain(down, time, action, x, y, 0);
+        event.setSource(android.view.InputDevice.SOURCE_TOUCHSCREEN);
+        try { return ua.injectInputEvent(event, true); }
+        finally { event.recycle(); }
     }
 
     private static AccessibilityNodeInfo clickableAt(AccessibilityNodeInfo n, boolean longClick) {

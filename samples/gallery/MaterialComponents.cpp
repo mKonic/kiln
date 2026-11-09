@@ -8,6 +8,9 @@
 #include <kiln/material3/Card.h>
 #include <kiln/material3/Chip.h>
 #include <kiln/material3/ListItem.h>
+#include <kiln/material3/ProgressIndicator.h>
+#include <kiln/material3/WavyProgressIndicator.h>
+#include <kiln/material3/LoadingIndicator.h>
 #include <kiln/material3/RadioButton.h>
 #include <kiln/material3/Switch.h>
 #include <kiln/material3/Badge.h>
@@ -75,6 +78,42 @@ namespace kiln::gallery {
                 m3::ToggleButton(on->Get(), change, {}, disabled, [] { m3::Text("Disabled toggle"); });
             });
             m3::Text(checked.Get() ? "Text toggles: on" : "Text toggles: off");
+        }
+
+        void ProgressIndicators() {
+            auto* progress = &RememberState(0.35f);
+            auto* unknown = &RememberState(true);
+            auto named = [](const char* label) { return Semantics({}, [label](SemanticsConfiguration& c) { c.contentDescription = { label }; }); };
+            const auto value = [progress] { return progress->Get(); };
+            const auto changing = [=] { return unknown->Get() ? NAN : progress->Get(); };
+            m3::Text("Linear progress");
+            Column({}, Arrangement::SpacedBy(24_dp), AlignmentH::Start(), [=] {
+                m3::LinearProgressIndicator(value, named("Linear progress"));
+                m3::LinearProgressIndicator(named("Indeterminate linear progress"));
+                m3::LinearWavyProgressIndicator(value, named("Wavy linear progress"));
+                m3::LinearWavyProgressIndicator(named("Indeterminate wavy linear progress"));
+                m3::LinearWavyProgressIndicator(changing, named("Handoff linear progress"));
+            });
+            m3::Text("Circular progress");
+            FlowRow({}, Arrangement::SpacedBy(16_dp), Arrangement::SpacedBy(16_dp), AlignmentV::CenterVertically(), [=] {
+                m3::CircularProgressIndicator(value, named("Circular progress"));
+                m3::CircularProgressIndicator(named("Indeterminate circular progress"));
+                m3::CircularWavyProgressIndicator(value, named("Wavy circular progress"));
+                m3::CircularWavyProgressIndicator(named("Indeterminate wavy circular progress"));
+                m3::CircularWavyProgressIndicator(changing, named("Handoff circular progress"));
+            });
+            m3::Text("Loading indicators");
+            FlowRow({}, Arrangement::SpacedBy(16_dp), Arrangement::SpacedBy(16_dp), AlignmentV::CenterVertically(), [=] {
+                m3::LoadingIndicator(value, named("Determinate loading"));
+                m3::ContainedLoadingIndicator(value, named("Determinate contained loading"));
+                m3::LoadingIndicator(named("Loading"));
+                m3::ContainedLoadingIndicator(named("Contained loading"));
+            });
+            FlowRow({}, Arrangement::SpacedBy(8_dp), Arrangement::SpacedBy(8_dp), AlignmentV::CenterVertically(), [=] {
+                m3::TextButton([progress] { progress->Set(progress->Peek() >= 0.99f ? 0.0f : std::min(1.0f, progress->Peek() + 0.15f)); }, {}, {}, [] { m3::Text("Advance progress"); });
+                m3::TextButton([unknown] { unknown->Set(!unknown->Peek()); }, {}, {}, [unknown] { m3::Text(unknown->Get() ? "Make progress known" : "Make progress unknown"); });
+            });
+            m3::Text("Progress: " + std::to_string(RoundJava(progress->Get() * 100)) + "%");
         }
 
         void Lists() {
@@ -363,6 +402,9 @@ namespace kiln::gallery {
                         m3::TextButton([selection] { selection->Set(1); }, {}, {}, [] { m3::Text("Dark"); });
                         m3::TextButton([selection] { selection->Set(2); }, {}, {}, [] { m3::Text("Dynamic"); });
                     });
+                    m3::Text("Progress indicators");
+                    ProgressIndicators();
+                    m3::HorizontalDivider();
                     m3::Text("Lists");
                     Lists();
                     m3::HorizontalDivider();

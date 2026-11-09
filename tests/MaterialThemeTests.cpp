@@ -9,6 +9,11 @@
 #include "kiln/material3/Card.h"
 #include "kiln/material3/Chip.h"
 #include "kiln/material3/ListItem.h"
+#include "kiln/material3/ProgressIndicator.h"
+#include "kiln/material3/LoadingIndicator.h"
+#include "kiln/material3/internal/ProgressIndicator.h"
+#include "kiln/material3/WavyProgressIndicator.h"
+#include "kiln/material3/internal/WavyProgress.h"
 #include "kiln/material3/Surface.h"
 #include "kiln/material3/RadioButton.h"
 #include "kiln/material3/Switch.h"
@@ -1796,6 +1801,212 @@ TEST(ModernListShapesKeepValueEqualConfigurationsWhileMorphing) {
     source->End(Interaction::Kind::Press, press); advance(2);
     source->Start(Interaction::Kind::Press); advance(130);
     CHECK(contains());
+}
+
+TEST(ProgressIndicatorsClampValuesKeepVisualSizeAndExpandLinearSemantics) {
+    for (float value : { -1.0f, 0.5f, 2.0f, NAN, INFINITY }) {
+        Harness h;
+        auto progress = [&] { return value; };
+        int stopDraws = 0;
+        ui::Size stopScope;
+        h.Run([&] { MaterialTheme([&] { Column(Padding({}, 20_dp), Arrangement::SpacedBy(20_dp), AlignmentH::Start(), [&] {
+            LinearProgressIndicator(progress, {}, { .drawStopIndicator = std::function<void(ui::DrawScope&)>([&](ui::DrawScope& s) { ++stopDraws; stopScope = s.GetSize(); }) });
+            CircularProgressIndicator(progress);
+            LinearProgressIndicator();
+            CircularProgressIndicator();
+        }); }); });
+        const auto& nodes = h.owner.Root().Children()[0]->Children();
+        CHECK_EQ(nodes.size(), std::size_t(4));
+        CHECK((nodes[0]->Size() == ui::IntSize{ 240, 4 }));
+        CHECK((nodes[1]->Size() == ui::IntSize{ 40, 40 }));
+        const auto tree = h.owner.BuildSemanticsTree();
+        CHECK_EQ(tree.children.size(), std::size_t(4));
+        const float coerced = std::isnan(value) ? 0 : std::clamp(value, 0.0f, 1.0f);
+        CHECK(tree.children[0].config.progressBarRangeInfo->current == coerced);
+        CHECK(tree.children[1].config.progressBarRangeInfo->current == coerced);
+        CHECK(tree.children[2].config.progressBarRangeInfo->indeterminate);
+        CHECK(tree.children[3].config.progressBarRangeInfo->indeterminate);
+        CHECK_EQ(int(tree.children[0].boundsInRoot.Height()), 24);
+        CHECK_EQ(int(tree.children[0].boundsInRoot.top), 10);
+        h.owner.Draw({});
+        CHECK_EQ(stopDraws, 1);
+        CHECK((stopScope == ui::Size{ 240, 4 }));
+    }
+}
+
+TEST(ProgressIndicatorDefaultsAndIndeterminateMotionFollowSourceTimings) {
+    Harness h;
+    h.Run([] { MaterialTheme([] {
+        const auto scheme = LightColorScheme();
+        CHECK(ProgressIndicatorDefaults::linearColor() == scheme.primary);
+        CHECK(ProgressIndicatorDefaults::circularColor() == scheme.primary);
+        CHECK(ProgressIndicatorDefaults::linearTrackColor() == scheme.secondaryContainer);
+        CHECK(ProgressIndicatorDefaults::circularDeterminateTrackColor() == scheme.secondaryContainer);
+        CHECK(ProgressIndicatorDefaults::circularIndeterminateTrackColor() == Color::Transparent());
+    }); });
+    auto linear = [](int ms) { return material3::internal::LinearProgressMotionAt(std::int64_t(ms) * 1'000'000); };
+    const auto zero = linear(0), early = linear(250), middle = linear(1000), late = linear(1500);
+    CHECK(zero.firstHead == 0 && zero.firstTail == 0 && zero.secondHead == 0 && zero.secondTail == 0);
+    CHECK(early.firstHead > 0 && early.firstTail == 0 && early.secondHead == 0 && early.secondTail == 0);
+    CHECK(middle.firstHead == 1 && middle.firstTail > 0 && middle.firstTail < 1 && middle.secondHead > 0 && middle.secondTail > 0);
+    CHECK(late.firstHead == 1 && late.firstTail == 1 && late.secondHead == 1 && late.secondTail < 1);
+    CHECK(linear(1751).firstHead < 0.01f && linear(1751).firstTail == 0);
+    const auto start = material3::internal::CircularProgressMotionAt(0);
+    const auto half = material3::internal::CircularProgressMotionAt(3'000'000'000);
+    CHECK(start.globalRotation == 0 && start.additionalRotation == 0 && start.progress == 0.1f);
+    CHECK(half.globalRotation == 540 && half.additionalRotation == 180 && half.progress == 0.87f);
+    const auto spring = ProgressIndicatorDefaults::progressAnimationSpec();
+    CHECK(spring->DurationNanos({}, { 1, 0, 0, 0 }, {}, 1) > anim::Spring(1, 50)->DurationNanos({}, { 1, 0, 0, 0 }, {}, 1));
+}
+
+TEST(LoadingIndicatorsUseSquareActiveContentAndProgressSemanticsForBothContainers) {
+    for (bool contained : { false, true }) for (bool indeterminate : { false, true }) {
+        Harness h;
+        rt::State<float> progress{ 0.5f };
+        h.Run([&] { MaterialTheme([&] { Column({}, [&] {
+            if (contained) {
+                if (indeterminate) ContainedLoadingIndicator(SizeMod({}, 80_dp, 48_dp));
+                else ContainedLoadingIndicator([&] { return progress.Get(); }, SizeMod({}, 80_dp, 48_dp));
+            } else {
+                if (indeterminate) LoadingIndicator(SizeMod({}, 80_dp, 48_dp));
+                else LoadingIndicator([&] { return progress.Get(); }, SizeMod({}, 80_dp, 48_dp));
+            }
+        }); }); });
+        auto* indicator = h.owner.Root().Children()[0]->Children()[0];
+        CHECK((indicator->Size() == ui::IntSize{ 80, 48 }));
+        CHECK((indicator->Children()[0]->Size() == ui::IntSize{ 48, 48 }));
+        CHECK_EQ(int(indicator->Children()[0]->InnerRectInRoot().left), 16);
+        auto tree = h.owner.BuildSemanticsTree();
+        CHECK_EQ(tree.children.size(), std::size_t(1));
+        CHECK(tree.children[0].config.progressBarRangeInfo->indeterminate == indeterminate);
+        if (!indeterminate) CHECK(tree.children[0].config.progressBarRangeInfo->current == 0.5f);
+        for (int frame = 0; frame < 100; ++frame) {
+            rt::Dispatcher::Main().RunFrame(std::int64_t(frame) * 16'000'000);
+            rt::Composition::RecomposeAll();
+            h.owner.MeasureAndLayout({ 300, 300 });
+            h.owner.Draw({});
+        }
+        if (!indeterminate) {
+            progress.Set(1); rt::Composition::RecomposeAll(); h.owner.MeasureAndLayout({ 300, 300 }); h.owner.Draw({});
+            CHECK(h.owner.BuildSemanticsTree().children[0].config.progressBarRangeInfo->current == 1);
+        }
+    }
+    CHECK_EQ(LoadingIndicatorDefaults::indeterminateIndicatorPolygons().size(), std::size_t(7));
+    CHECK_EQ(LoadingIndicatorDefaults::determinateIndicatorPolygons().size(), std::size_t(2));
+    bool rejected = false;
+    try {
+        Harness h;
+        h.Run([] { MaterialTheme([] { LoadingIndicator({}, { .polygons = std::vector<gfx::shapes::RoundedPolygon>{} }); }); });
+    } catch (const std::invalid_argument&) { rejected = true; }
+    CHECK(rejected);
+}
+
+TEST(WavyProgressGeometryCachesCurvesCapsGapsAndMotion) {
+    const gfx::Stroke stroke{ 4, 4, gfx::StrokeCap::Round };
+    material3::internal::LinearWavyDrawingCache linear;
+    const float half[] = { 0, 0.5f };
+    linear.Update({ 240, 10 }, 40, half, 0, 0, 4, stroke, stroke);
+    CHECK_EQ(linear.capWidth, 2.0f);
+    CHECK_EQ(linear.progress.size(), std::size_t(1));
+    CHECK_EQ(linear.progress[0].Bounds().left, 2.0f);
+    CHECK_EQ(linear.progress[0].Bounds().right, 120.0f);
+    CHECK_EQ(linear.track.Points()[1].x, 128.0f); // the later move-only contour has no stroke
+    CHECK_EQ(linear.track.Bounds().right, 238.0f);
+    linear.Update({ 240, 10 }, 40, half, 1, 0, 4, stroke, stroke);
+    const auto hash = linear.progress[0].Hash();
+    CHECK(std::find(linear.progress[0].Verbs().begin(), linear.progress[0].Verbs().end(), gfx::Path::Verb::Quad) != linear.progress[0].Verbs().end());
+    linear.Update({ 240, 10 }, 40, half, 1, 0.25f, 4, stroke, stroke);
+    CHECK(linear.progress[0].Hash() != hash);
+    const float indeterminate[] = { 0.5f, 0.9f, 0.1f, 0.3f };
+    linear.Update({ 240, 10 }, 20, indeterminate, 1, 0.25f, 4, stroke, stroke);
+    CHECK_EQ(linear.progress.size(), std::size_t(2));
+    CHECK(!linear.progress[0].IsEmpty() && !linear.progress[1].IsEmpty() && !linear.track.IsEmpty());
+    linear.Update({ 240, 10 }, 0, half, 0, 0, 4, stroke, stroke); // flat paths need no wavelength
+    bool rejected = false;
+    try { linear.Update({ 240, 10 }, 0, half, 1, 0, 4, stroke, stroke); } catch (const std::invalid_argument&) { rejected = true; }
+    CHECK(rejected);
+
+    material3::internal::CircularWavyDrawingCache circular;
+    CHECK_EQ(circular.VertexCount({ 48, 48 }, 15, 4), 9);
+    CHECK_EQ(circular.VertexCount({ 48, 48 }, 15, 8), 8);
+    CHECK_EQ(circular.VertexCount({ 48, 48 }, 100, 4), 5);
+    circular.Update({ 48, 48 }, 15, 0.4f, 1, 0, 4, stroke, stroke, true);
+    const auto progress = circular.progress.Hash(), track = circular.track.Hash();
+    CHECK(!circular.progress.IsEmpty() && !circular.track.IsEmpty());
+    circular.Update({ 48, 48 }, 15, 0.4f, 1, 0.25f, 4, stroke, stroke, true);
+    CHECK(circular.progress.Hash() != progress && circular.track.Hash() == track);
+    circular.Update({ 48, 48 }, 15, 0.4f, 0.5f, 0.25f, 4, stroke, stroke, true);
+    CHECK(!circular.progress.IsEmpty());
+    circular.Update({ 48, 48 }, 15, 1, 0, 0, 4, stroke, stroke, false);
+    CHECK(circular.track.IsEmpty() && !circular.progress.IsEmpty());
+    circular.Update({ 48, 48 }, 15, 0, 0, 0, 4, stroke, stroke, false);
+    CHECK(circular.progress.IsEmpty() && !circular.track.IsEmpty());
+}
+
+TEST(WavyProgressHandoffsExitLinearSegmentsAndRotateCircularProgressToTheStart) {
+    for (float start : { 0.0f, 300.0f, 800.0f, 1600.0f }) {
+        material3::internal::WavyProgressState linear;
+        linear.StartIndeterminate();
+        linear.Step(start, NAN);
+        linear.Step(0, 0.6f);
+        CHECK(linear.indeterminate);
+        CHECK(linear.drawSecondLine == (start > 650));
+        for (int i = 0; i < 100 && linear.indeterminate; ++i) linear.Step(16, 0.6f);
+        CHECK(!linear.indeterminate && linear.handoff && linear.EndProgress(0.6f) == 0);
+        linear.Step(250, 0.6f);
+        CHECK(std::abs(linear.EndProgress(0.6f) - 0.3f) < 0.0001f);
+        linear.Step(250, 0.6f);
+        CHECK(!linear.handoff && linear.EndProgress(0.6f) == 0.6f);
+        linear.Step(16, NAN);
+        CHECK(linear.indeterminate && linear.handoffFraction == 1);
+    }
+    material3::internal::WavyProgressState circular;
+    circular.circular = true;
+    circular.StartIndeterminate(); circular.Step(1200, NAN);
+    const float rotation = circular.Rotation(), sweep = circular.EndProgress(NAN);
+    circular.Step(0, 0.6f);
+    CHECK(circular.handoff && !circular.indeterminate);
+    CHECK(circular.handoffStartSweep == sweep);
+    CHECK(circular.handoffStartRotation == std::fmod(rotation, 360.0f));
+    circular.Step(150, 0.6f);
+    CHECK(circular.handoffFraction > 0 && circular.handoffFraction < 1);
+    circular.Step(600, 0.6f);
+    CHECK(!circular.handoff && circular.Rotation() == 0 && circular.EndProgress(0.6f) == 0.6f);
+}
+
+TEST(WavyProgressComponentsSwitchBetweenUnknownAndKnownWithoutChangingSemanticsIdentity) {
+    Harness h;
+    rt::State<float> progress{ NAN };
+    h.Run([&] { MaterialTheme([&] { Column(Padding({}, 20_dp), Arrangement::SpacedBy(20_dp), AlignmentH::Start(), [&] {
+        LinearWavyProgressIndicator([&] { return progress.Get(); });
+        CircularWavyProgressIndicator([&] { return progress.Get(); });
+    }); }); });
+    auto tree = h.owner.BuildSemanticsTree();
+    CHECK_EQ(tree.children.size(), std::size_t(2));
+    const auto id = tree.children[0].id;
+    CHECK(tree.children[0].config.progressBarRangeInfo->indeterminate && tree.children[1].config.progressBarRangeInfo->indeterminate);
+    CHECK_EQ(int(tree.children[0].boundsInRoot.Height()), 30);
+    std::int64_t clock = 0;
+    auto advance = [&](int frames) {
+        for (int i = 0; i < frames; ++i) {
+            rt::Dispatcher::Main().RunFrame(clock += 16'000'000);
+            rt::Composition::RecomposeAll();
+            h.owner.MeasureAndLayout({ 300, 300 });
+            h.owner.Draw({});
+        }
+    };
+    advance(60);
+    progress.Set(0.6f); advance(140);
+    tree = h.owner.BuildSemanticsTree();
+    CHECK(tree.children[0].id == id && tree.children[0].config.progressBarRangeInfo->current == 0.6f);
+    CHECK(!tree.children[1].config.progressBarRangeInfo->indeterminate && tree.children[1].config.progressBarRangeInfo->current == 0.6f);
+    progress.Set(INFINITY); advance(40);
+    CHECK(h.owner.BuildSemanticsTree().children[0].config.progressBarRangeInfo->indeterminate);
+    anim::SetDurationScale(0); advance(2);
+    progress.Set(1); advance(2);
+    CHECK(h.owner.BuildSemanticsTree().children[0].config.progressBarRangeInfo->current == 1);
+    anim::SetDurationScale(1); advance(140);
+    CHECK(WavyProgressIndicatorDefaults::indicatorAmplitude(0.1f) == 0 && WavyProgressIndicatorDefaults::indicatorAmplitude(0.5f) == 1 && WavyProgressIndicatorDefaults::indicatorAmplitude(0.95f) == 0);
 }
 
 TEST(BadgeDoesNotResizeItsAnchorAndUsesContentMinimumSize) {
