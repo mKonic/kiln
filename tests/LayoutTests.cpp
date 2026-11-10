@@ -248,3 +248,40 @@ TEST(ProvidedLayoutDirectionAppliesToItsSubtree) {
         CHECK_EQ(innerX, inner == LayoutDirection::Rtl ? 90.f : 0.f);
     }
 }
+
+TEST(MultiContentLayoutGroupsChildrenByContent) {
+    // Layout(contents): the policy sees each content's children apart; the nodes are the
+    // layout's children, and the empty contents stay as empty groups.
+    struct Policy final : MultiContentMeasurePolicy {
+        std::vector<std::size_t> sizes;
+        MeasureResult Measure(MeasureScope& s, const std::vector<std::vector<Measurable*>>& contents, const Constraints& c) override {
+            sizes.clear();
+            std::vector<Placeable*> placed;
+            int x = 0;
+            for (const auto& group : contents) {
+                sizes.push_back(group.size());
+                for (Measurable* m : group) placed.push_back(&m->Measure(c.CopyMaxDimensions()));
+            }
+            return s.Layout(c.maxWidth, c.maxHeight, [placed, x](PlacementScope& p) mutable {
+                for (Placeable* pl : placed) { p.Place(*pl, x, 0); x += pl->Width(); }
+            });
+        }
+    };
+    Harness h;
+    auto policy = std::make_shared<Policy>();
+    rt::State<bool> third{ false };
+    LayoutNode *a = nullptr, *c = nullptr;
+    h.Run([&] {
+        Layout(Modifier{}, { [&] { Box(Capture(SizeMod(Modifier{}, Dp(10), Dp(10)), a)); Box(SizeMod(Modifier{}, Dp(20), Dp(10))); },
+                             [] {},
+                             [&] { if (third.Get()) Box(Capture(SizeMod(Modifier{}, Dp(5), Dp(5)), c)); } },
+               policy);
+    });
+    CHECK((policy->sizes == std::vector<std::size_t>{ 2, 0, 0 }));
+    third.Set(true);
+    h.composition.Recompose();
+    h.owner.MeasureAndLayout({ 100, 100 });
+    CHECK((policy->sizes == std::vector<std::size_t>{ 2, 0, 1 }));
+    CHECK(a && c && a->Parent() == c->Parent());
+    CHECK(c && int(c->PositionInRoot().x) == 30);   // after the first content's two
+}

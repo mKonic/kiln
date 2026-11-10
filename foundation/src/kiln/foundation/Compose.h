@@ -8,6 +8,7 @@
 #include "kiln/foundation/text/BasicText.h"
 
 #include <string>
+#include <vector>
 
 namespace kiln::foundation {
 
@@ -16,6 +17,18 @@ namespace kiln::foundation {
     // A raw layout: the base of everything below.
     LayoutNode& Layout(const Modifier& modifier, std::shared_ptr<MeasurePolicy> policy,
                        std::function<void()> content = {}, Key key = {});
+
+    // MultiContentMeasurePolicy: measures the children of each content separately (in the
+    // order of the contents).
+    class MultiContentMeasurePolicy {
+    public:
+        virtual ~MultiContentMeasurePolicy() = default;
+        virtual MeasureResult Measure(MeasureScope& scope, const std::vector<std::vector<Measurable*>>& contents, const Constraints& c) = 0;
+    };
+    // Layout(contents, modifier, measurePolicy): each content's nodes are this layout's children,
+    // handed to the policy grouped by content.
+    LayoutNode& Layout(const Modifier& modifier, std::vector<std::function<void()>> contents, std::shared_ptr<MultiContentMeasurePolicy> policy,
+                       Key key = {});
 
     void Box(const Modifier& modifier = {}, Alignment contentAlignment = Alignment::TopStart(),
              bool propagateMinConstraints = false, std::function<void()> content = {}, Key key = {});
