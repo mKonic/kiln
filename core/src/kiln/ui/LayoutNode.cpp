@@ -463,6 +463,15 @@ namespace kiln::ui {
         return RectInRoot(std::nullopt);
     }
 
+    std::vector<LayoutNode*> LayoutNode::ZSortedChildren() const {
+        std::vector<LayoutNode*> v(Children().begin(), Children().end());
+        std::stable_sort(v.begin(), v.end(), [](const LayoutNode* a, const LayoutNode* b) {
+            if (a->ZIndex() != b->ZIndex()) return a->ZIndex() < b->ZIndex();
+            return a->PlaceOrder() < b->PlaceOrder();
+        });
+        return v;
+    }
+
     Offset LayoutNode::PositionInRoot() const {
         Offset o;
         for (const LayoutNode* n = this; n; n = n->m_Parent) {

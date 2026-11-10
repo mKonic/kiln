@@ -257,7 +257,7 @@ namespace kiln::ui {
         }
         // Collects descendants' content into `into` (stopping at nodes that merge their own).
         void MergeDescendants(LayoutNode& n, SemanticsConfiguration& into) {
-            for (LayoutNode* c : n.Children()) {
+            for (LayoutNode* c : n.ZSortedChildren()) {
                 if (!c->IsPlaced()) continue;
                 SemanticsConfiguration cc;
                 const bool has = OwnConfig(*c, cc);
@@ -280,7 +280,7 @@ namespace kiln::ui {
         // findOneLayerOfMergingSemanticsNodes: a merging node's children are the merging nodes
         // below it (a clickable row's button), not stopping at nodes that only add content.
         void BuildMergingChildren(LayoutNode& n, const Rect& clip, std::vector<SemanticsNode>& out) {
-            for (LayoutNode* c : n.Children()) {
+            for (LayoutNode* c : n.ZSortedChildren()) {
                 if (!c->IsPlaced()) continue;
                 SemanticsConfiguration cc;
                 const bool has = OwnConfig(*c, cc);
@@ -304,14 +304,14 @@ namespace kiln::ui {
                 node.config = cfg;
                 if (!cfg.clearAndSet) {
                     if (cfg.mergeDescendants) BuildMergingChildren(n, inner, node.children);
-                    else for (LayoutNode* c : n.Children()) Build(*c, inner, node.children);
+                    else for (LayoutNode* c : n.ZSortedChildren()) Build(*c, inner, node.children);
                 }
                 out.push_back(std::move(node));
                 return;
             }
             // clearAndSetSemantics {} with nothing set: no node, and nothing from below.
             if (cfg.clearAndSet) return;
-            for (LayoutNode* c : n.Children()) Build(*c, inner, out);
+            for (LayoutNode* c : n.ZSortedChildren()) Build(*c, inner, out);
         }
 
         // Integer region as disjoint rectangles (SemanticsRegion, enough for intersect/difference).

@@ -67,15 +67,7 @@ namespace kiln::ui {
                 if (n.IsModifierPlaced(m) && const_cast<ModifierNode*>(m)->AsSemantics()) return true;
             return false;
         }
-        // zSortedChildrenList: by zIndex, then placement order.
-        std::vector<LayoutNode*> ZSorted(LayoutNode& n) {
-            std::vector<LayoutNode*> v(n.Children().begin(), n.Children().end());
-            std::stable_sort(v.begin(), v.end(), [](const LayoutNode* a, const LayoutNode* b) {
-                if (a->ZIndex() != b->ZIndex()) return a->ZIndex() < b->ZIndex();
-                return a->PlaceOrder() < b->PlaceOrder();
-            });
-            return v;
-        }
+        std::vector<LayoutNode*> ZSorted(LayoutNode& n) { return n.ZSortedChildren(); }
         bool IsPlacedNode(const LayoutNode& n) { return n.IsPlaced() || !n.Parent(); }
 
         // SemanticsRegion: an integer region as disjoint rectangles.

@@ -143,6 +143,26 @@ TEST(SemanticsVersionBumpsOnChangeAndIdsStayStable) {
     CHECK(h.owner.FindBySemanticsId(id) != nullptr);
 }
 
+TEST(ZIndexDecidesWhichSiblingCoversTheOther) {
+    // zSortedChildren: a sibling placed first but with a higher zIndex draws on top, so it is
+    // the one left uncovered (a scaffold's FAB over its bottom bar).
+    Harness h;
+    h.Run([&] {
+        Box(Modifier{}, Alignment::TopStart(), false, [&] {
+            Box(Label(ZIndex(SizeMod({}, Dp(50), Dp(50)), 1), "top"));
+            Box(Label(SizeMod({}, Dp(60), Dp(60)), "below"));
+        });
+    });
+    const SemanticsNode root = h.owner.BuildSemanticsTree();
+    std::vector<std::string> kept;
+    std::function<void(const SemanticsNode&)> walk = [&](const SemanticsNode& n) {
+        for (const auto& t : n.config.text) kept.push_back(t);
+        for (const auto& c : n.children) walk(c);
+    };
+    walk(root);
+    CHECK((kept == std::vector<std::string>{ "below", "top" }));   // drawing order
+}
+
 TEST(ClippedAndCoveredNodesAreDropped) {
     Harness h;
     h.Run([&] {

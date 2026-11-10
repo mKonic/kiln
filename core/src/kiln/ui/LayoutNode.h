@@ -80,6 +80,8 @@ namespace kiln::ui {
         float ZIndex() const;
         void SetZIndexFromChildren(bool fromChildren) { m_ZIndexFromChildren = fromChildren; }
         int PlaceOrder() const { return m_PlaceOrder; }
+        // zSortedChildren: by zIndex, then placement order (how they draw, last on top).
+        std::vector<LayoutNode*> ZSortedChildren() const;
         bool IsPlaced() const { return m_Placed; }
         // A modifier's coordinator may be unplaced even when the outer node is placed (a
         // layout modifier can hide what it wraps). Null checks the innermost content.
