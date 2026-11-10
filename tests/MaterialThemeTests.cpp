@@ -1,7 +1,6 @@
 #include "Check.h"
 
 #include <map>
-#include <thread>
 
 #include "kiln/foundation/Compose.h"
 #include "kiln/foundation/Semantics.h"
@@ -60,6 +59,24 @@ namespace {
         // Compose's tests check to 0.5 dp: density 2 resolves that; `window` is in pixels.
         explicit Harness(float density = 1, ui::IntSize size = { 300, 300 }) : window(size) { owner.SetDensity({ density, 1 }); }
         void Layout() { owner.MeasureAndLayout(window); }
+        // mainClock.advanceTimeBy with autoAdvance off: moves the dispatcher's time and the frame
+        // clock forward in 16 ms frames, running timers, frames, recomposition and layout.
+        std::int64_t frameNanos = 0;
+        void AdvanceTimeBy(std::int64_t ms) {
+            auto& d = rt::Dispatcher::Main();
+            std::int64_t done = 0;
+            do {
+                const std::int64_t step = std::min<std::int64_t>(16, ms - done);
+                done += step;
+                d.AdvanceTimeBy(std::chrono::milliseconds(step));
+                frameNanos += step * 1'000'000;
+                d.RunPending();
+                d.RunFrame(frameNanos);
+                rt::Composition::RecomposeAll();
+                Layout();
+                d.RunPending();
+            } while (done < ms);
+        }
         void Run(std::function<void()> content) {
             // LocalDensity, as App provides it (vector painters size themselves with it).
             composition.SetContent([this, content = std::move(content)] {
@@ -273,6 +290,102 @@ TEST(MenuPositionsFollowTheCandidates) {
     // Wider than the window less the margins: centred.
     CHECK(below.CalculatePosition({ 0, 0, 10, 10 }, window, ui::LayoutDirection::Ltr, { 990, 10 }).x == 5);
     CHECK((CalculateTransformOrigin({ 0, 0, 10, 10 }, { 20, 20, 40, 40 }) == TransformOrigin{ 0, 0 }));
+}
+
+// Ported from Compose's MenuPositionTest (a 500 x 1000 window, a 50 px anchor at 100, 100 and a
+// 100 x 200 menu). Its two checks that build AnchorAlignmentOffsetPosition and
+// WindowAlignmentMarginPosition directly are left out: kiln keeps only the named positions.
+namespace {
+    using kiln::material3::internal::DropdownMenuPositionProvider;
+    using AnchorPos = kiln::material3::internal::MenuAnchorPosition;
+    namespace MenuPos = kiln::material3::internal::MenuPosition;
+    constexpr ui::IntSize MenuWindow{ 500, 1000 }, MenuSize{ 100, 200 };
+    constexpr ui::IntRect MenuAnchorBounds{ 100, 100, 150, 150 };
+    ui::IntRect At(int x, int y, int w, int h) { return { x, y, x + w, y + h }; }
+    std::unique_ptr<DropdownMenuPositionProvider> Provider(int offsetX, int offsetY, const AnchorPos& anchor, std::optional<int> horizontalMargin = {},
+                                          std::optional<int> verticalMargin = {}, std::function<void(ui::IntRect, ui::IntRect)> callback = {}) {
+        auto p = std::make_unique<DropdownMenuPositionProvider>(ui::DpOffset{ ui::Dp(float(offsetX)), ui::Dp(float(offsetY)) }, ui::Density{ 1, 1 },
+                                                                anchor, std::move(callback));
+        if (horizontalMargin) p->horizontalMargin = *horizontalMargin;
+        if (verticalMargin) p->verticalMargin = *verticalMargin;
+        return p;
+    }
+}
+
+TEST(MenuHorizontalPositionsAlignToTheAnchorInBothDirections) {
+    const auto x = [](const MenuPos::Horizontal& f, ui::LayoutDirection dir) { return f(MenuAnchorBounds, MenuWindow, MenuSize.width, dir); };
+    const auto ltr = ui::LayoutDirection::Ltr, rtl = ui::LayoutDirection::Rtl;
+    CHECK_EQ(x(MenuPos::startToAnchorStart, ltr), 100);
+    CHECK_EQ(x(MenuPos::endToAnchorEnd, ltr), 150 - 100);
+    CHECK_EQ(x(MenuPos::startToAnchorEnd, ltr), 150);
+    CHECK_EQ(x(MenuPos::endToAnchorStart, ltr), 100 - 100);
+    CHECK_EQ(x(MenuPos::startToAnchorStart, rtl), 150 - 100);
+    CHECK_EQ(x(MenuPos::endToAnchorEnd, rtl), 100);
+    CHECK_EQ(x(MenuPos::startToAnchorEnd, rtl), 100 - 100);
+    CHECK_EQ(x(MenuPos::endToAnchorStart, rtl), 150);
+    // Window alignment is absolute.
+    for (auto dir : { ltr, rtl }) {
+        CHECK_EQ(x(MenuPos::leftToWindowLeft, dir), 0);
+        CHECK_EQ(x(MenuPos::rightToWindowRight, dir), 500 - 100);
+    }
+    // The content offset moves toward the end.
+    CHECK_EQ(Provider(10, 0, AnchorPos::Below())->CalculatePosition(MenuAnchorBounds, MenuWindow, ltr, MenuSize).x, 100 + 10);
+    CHECK_EQ(Provider(10, 0, AnchorPos::Below())->CalculatePosition(MenuAnchorBounds, MenuWindow, rtl, MenuSize).x, 150 - 100 - 10);
+}
+
+TEST(MenuVerticalPositionsAlignToTheAnchorOrTheWindow) {
+    const auto y = [](const MenuPos::Vertical& f) { return f(MenuAnchorBounds, MenuWindow, MenuSize.height); };
+    CHECK_EQ(y(MenuPos::topToAnchorBottom), 150);
+    CHECK_EQ(y(MenuPos::bottomToAnchorTop), 100 - 200);
+    CHECK_EQ(y(MenuPos::topToAnchorTop), 100);
+    CHECK_EQ(y(MenuPos::bottomToAnchorBottom), 150 - 200);
+    CHECK_EQ(y(MenuPos::centerToAnchorTop), 100 - 100);
+    CHECK_EQ(y(MenuPos::topToWindowTop), 0);
+    CHECK_EQ(y(MenuPos::bottomToWindowBottom), 1000 - 200);
+    CHECK_EQ(Provider(0, 10, AnchorPos::Below())->CalculatePosition(MenuAnchorBounds, MenuWindow, ui::LayoutDirection::Ltr, MenuSize).y, 150 + 10);
+}
+
+TEST(MenuKeepsItsMarginsAndCentresWhenTheyDoNotFit) {
+    const auto ltr = ui::LayoutDirection::Ltr;
+    // Horizontally: an anchor off the left edge puts a Start menu at the margin, unless two
+    // margins and the menu exceed the window.
+    CHECK_EQ(Provider(0, 0, AnchorPos::Start(), 150)->CalculatePosition(At(-100, 0, 50, 50), MenuWindow, ltr, MenuSize).x, 150);
+    CHECK_EQ(Provider(0, 0, AnchorPos::Start(), 220)->CalculatePosition(At(-100, 0, 50, 50), MenuWindow, ltr, MenuSize).x, (500 - 100) / 2);
+    // Vertically the same, for an anchor above the window.
+    CHECK_EQ(Provider(0, 0, AnchorPos::Below(), {}, 150)->CalculatePosition(At(0, -200, 50, 50), MenuWindow, ltr, MenuSize).y, 150);
+    CHECK_EQ(Provider(0, 0, AnchorPos::Below(), {}, 450)->CalculatePosition(At(0, -200, 50, 50), MenuWindow, ltr, MenuSize).y, (1000 - 200) / 2);
+}
+
+TEST(MenuPositionProviderPlacesBelowAboveAndWithinTheWindow) {
+    using internal::MenuVerticalMargin;
+    using internal::MenuHorizontalMargin;
+    const auto ltr = ui::LayoutDirection::Ltr, rtl = ui::LayoutDirection::Rtl;
+    // Below the anchor's bottom start, offset.
+    auto below = Provider(20, 40, AnchorPos::Below(), 0);
+    CHECK((below->CalculatePosition(At(100, 200, 10, 20), MenuWindow, ltr, { 50, 80 }) == ui::IntOffset{ 100 + 20, 200 + 20 + 40 }));
+    CHECK((below->CalculatePosition(At(100, 200, 10, 20), MenuWindow, rtl, { 50, 80 }) == ui::IntOffset{ 100 + 10 - 50 - 20, 200 + 20 + 40 }));
+    // Near the bottom end: above the anchor, end-aligned.
+    auto up = Provider(20, -40, AnchorPos::Below(), 0);
+    CHECK((up->CalculatePosition(At(450, 950, 10, 20), MenuWindow, ltr, { 150, 80 }) == ui::IntOffset{ 450 + 10 - 150 + 20, 950 - 80 - 40 }));
+    CHECK((up->CalculatePosition(At(50, 950, 10, 20), MenuWindow, rtl, { 150, 80 }) == ui::IntOffset{ 50 - 20, 950 - 80 - 40 }));
+    // Too tall for either side: at the top margin.
+    const int vMargin = int(MenuVerticalMargin.value), hMargin = int(MenuHorizontalMargin.value);
+    CHECK_EQ(Provider(0, 0, AnchorPos::Below())->CalculatePosition(At(0, 0, 50, 20), MenuWindow, ltr, { 150, 500 }).y, vMargin);
+    // A partly visible anchor: inside both margins.
+    CHECK((Provider(0, 0, AnchorPos::Below())->CalculatePosition(At(-25, -10, 50, 20), MenuWindow, ltr, { 150, 500 }) == ui::IntOffset{ hMargin, vMargin }));
+    CHECK((Provider(0, 0, AnchorPos::Below())->CalculatePosition(At(525, -10, 50, 20), MenuWindow, rtl, { 150, 500 }) ==
+           ui::IntOffset{ 500 - hMargin - 150, vMargin }));
+    // Custom candidates.
+    AnchorPos custom;
+    custom.xCandidates = [](const internal::MenuPositionScope& s) { return std::vector<int>{ s.anchorBounds.right }; };
+    custom.yCandidates = [](const internal::MenuPositionScope& s) { return std::vector<int>{ s.anchorBounds.bottom }; };
+    CHECK((Provider(0, 0, custom)->CalculatePosition(At(250, 500, 10, 20), MenuWindow, ltr, { 50, 25 }) == ui::IntOffset{ 260, 520 }));
+    // The callback gets the anchor and the menu's bounds.
+    ui::IntRect parent{}, menu{};
+    Provider(20, 40, AnchorPos::Below(), {}, {}, [&](ui::IntRect p, ui::IntRect m) { parent = p; menu = m; })
+        ->CalculatePosition(At(100, 200, 10, 20), MenuWindow, ltr, { 50, 80 });
+    CHECK((parent == At(100, 200, 10, 20)));
+    CHECK((menu == At(120, 260, 50, 80)));
 }
 
 TEST(MaterialShapesAreNormalized) {
@@ -2817,7 +2930,7 @@ TEST(TooltipStatesShareAMutexAndEndTheirShowOnDismissCancelOrTimeout) {
     TooltipState brief = MakeTooltipState(false, false, mutex);
     rt::Job timed = rt::Launch(d, brief.Show());
     CHECK(brief.IsVisible());
-    std::this_thread::sleep_for(std::chrono::milliseconds(BasicTooltipDefaults::TooltipDuration + 50));
+    d.AdvanceTimeBy(std::chrono::milliseconds(BasicTooltipDefaults::TooltipDuration));
     d.RunPending();
     d.RunPending();
     CHECK(!brief.IsVisible());
@@ -2875,7 +2988,7 @@ TEST(TooltipBoxShowsOnLongPressWithoutClickingTheAnchorAndDismissesOutside) {
     CHECK(!state->IsVisible());
     // A long press shows the tooltip below the anchor, and lifting does not click.
     Touch(h, t, ui::PointerEventType::Press, 20, 20, true);
-    std::this_thread::sleep_for(std::chrono::milliseconds(80));
+    rt::Dispatcher::Main().AdvanceTimeBy(std::chrono::milliseconds(80));
     t += 80;
     Touch(h, t, ui::PointerEventType::Move, 20, 20, true);
     CHECK(state->IsVisible());
@@ -3669,4 +3782,362 @@ TEST(ButtonGroupWidensAPressedItemIntoItsNeighboursAndSharesWeight) {
     Frames(h, nanos, 90);
     CHECK_EQ(pressedGroup->Children()[1]->Size().width, 60);
     CHECK_EQ(pressedGroup->Children()[0]->Size().width, 60);
+}
+
+// Ported from Compose's TooltipTest: show, advance the clock (mainClock.advanceTimeBy) and
+// measure. Its trackpad cases send mouse events, as Compose's do; kiln has no trackpad type.
+namespace {
+    constexpr std::int64_t TooltipFadeInDuration = 300, TooltipFadeOutDuration = 300;
+    // rule.setMaterialContent: the theme and the owner popups attach to. The Box stands for
+    // the test activity's wrap-content ComposeView: content is not stretched to the window.
+    void Themed(Harness& h, std::function<void()> content) {
+        h.Run([&h, content = std::move(content)] {
+            rt::Composition::Current()->Provide(ui::LocalOwner, &h.owner, [&] {
+                MaterialTheme({}, [&] { Box({}, Alignment::TopStart(), false, content); });
+            });
+        });
+    }
+    // getUnclippedBoundsInRoot inside a popup: kiln's popup bounds are in the window, Compose's
+    // in the popup, so they are taken from the container's corner.
+    std::optional<ui::Rect> InPopup(Harness& h, const std::string& tag) {
+        const auto b = BoundsDp(h, tag), c = BoundsDp(h, "Container");
+        if (!b || !c) return std::nullopt;
+        return ui::Rect{ b->left - c->left, b->top - c->top, b->right - c->left, b->bottom - c->top };
+    }
+    std::shared_ptr<const ui::PopupPositionProvider> Above() {
+        return TooltipDefaults::rememberTooltipPositionProvider(TooltipAnchorPosition::Above);
+    }
+    void Anchor(ui::Modifier m = {}) { Box(SizeMod(std::move(m), 24_dp, 24_dp), Alignment::TopStart(), false, {}); }
+    void PlainTooltipTest(const TooltipState& state, ui::Modifier modifier = {}, std::function<void()> content = [] {}) {
+        TooltipBox(Above(), [modifier, content](const TooltipScope& scope) { PlainTooltip(scope, Tag(modifier, "Container"), {}, content); },
+                   state, {}, {}, [] { Anchor(); });
+    }
+    void RichTooltipTest(const TooltipState& state, ui::Modifier modifier = {}, std::function<void()> text = [] {},
+                         std::function<void()> title = {}, std::function<void()> action = {}) {
+        TooltipBox(Above(), [=](const TooltipScope& scope) {
+            RichTooltipOptions o; o.title = title; o.action = action;
+            RichTooltip(scope, Tag(modifier, "Container"), o, text);
+        }, state, {}, {}, [] { Anchor(); });
+    }
+    // scope.launch { state.show() }
+    rt::Job ShowTooltip(Harness& h, const TooltipState& state) {
+        rt::Job job = rt::Launch(rt::Dispatcher::Main(), state.Show());
+        h.AdvanceTimeBy(0);
+        return job;
+    }
+    bool Near(float a, float b) { return std::abs(a - b) <= 0.5f; }
+}
+
+TEST(TooltipsWithoutContentKeepTheirMinimumSize) {
+    for (bool rich : { false, true }) {
+        PhoneHarness h;
+        std::optional<TooltipState> state;
+        Themed(h, [&] {
+            state = RememberTooltipState(false, rich);
+            if (rich) RichTooltipTest(*state); else PlainTooltipTest(*state);
+        });
+        rt::Job show = ShowTooltip(h, *state);
+        h.AdvanceTimeBy(TooltipFadeInDuration);
+        const auto b = BoundsDp(h, "Container");
+        CHECK(b && Near(b->Height(), 24) && Near(b->Width(), 40));
+        state->Dismiss();
+    }
+}
+
+TEST(TooltipsTakeACustomSize) {
+    for (bool rich : { false, true }) {
+        PhoneHarness h;
+        std::optional<TooltipState> state;
+        Themed(h, [&] {
+            state = RememberTooltipState(false, rich);
+            const auto m = SizeMod({}, 100_dp, 100_dp);
+            if (rich) RichTooltipTest(*state, m); else PlainTooltipTest(*state, m);
+        });
+        rt::Job show = ShowTooltip(h, *state);
+        h.AdvanceTimeBy(TooltipFadeInDuration);
+        const auto b = BoundsDp(h, "Container");
+        CHECK(b && Near(b->Height(), 100) && Near(b->Width(), 100));
+        state->Dismiss();
+    }
+}
+
+TEST(PlainTooltipPadsItsContent) {
+    PhoneHarness h;
+    std::optional<TooltipState> state;
+    Themed(h, [&] {
+        state = RememberTooltipState();
+        PlainTooltipTest(*state, {}, [] { Text("Test", Tag({}, "TextTag")); });
+    });
+    rt::Job show = ShowTooltip(h, *state);
+    h.AdvanceTimeBy(TooltipFadeInDuration);
+    const auto b = InPopup(h, "TextTag");
+    CHECK(b && Near(b->left, 8) && Near(b->top, 4));
+}
+
+TEST(RichTooltipPlacesTitleTextAndActionByTheirBaselines) {
+    PhoneHarness h;
+    std::optional<TooltipState> state;
+    Themed(h, [&] {
+        state = RememberTooltipState(false, true);
+        RichTooltipTest(*state, {}, [] { Text("Text", Tag({}, "TextTag")); }, [] { Text("Subhead", Tag({}, "SubheadTag")); },
+                        [] { Text("Action", Tag({}, "ActionTag")); });
+    });
+    rt::Job show = ShowTooltip(h, *state);
+    h.AdvanceTimeBy(TooltipFadeInDuration);
+    // getFirstBaselinePosition: FakeText puts a line's baseline at 0.8 of its height.
+    const auto baseline = [&](const char* tag) {
+        const auto* n = FindTagged(h, tag);
+        CHECK(n != nullptr);
+        if (!n) return 0.0f;
+        const float d = h.owner.GetDensity().density;
+        return std::round(n->Size().height * 0.8f) / d;
+    };
+    const auto subhead = InPopup(h, "SubheadTag"), text = InPopup(h, "TextTag"), action = InPopup(h, "ActionTag");
+    CHECK(subhead && text && action);
+    if (!subhead || !text || !action) return;
+    CHECK(Near(subhead->left, 16));
+    CHECK(Near(subhead->top, 28 - baseline("SubheadTag")));
+    CHECK(Near(text->left, 16));
+    CHECK(Near(text->top, subhead->bottom + 24 - baseline("TextTag")));
+    CHECK(Near(action->left, 16));
+    CHECK(Near(action->top, text->bottom + 16));
+}
+
+TEST(TooltipsHideAfterTheirDurationUnlessPersistent) {
+    // Plain, and rich without an action: shown, then gone after TooltipDuration.
+    for (bool rich : { false, true }) {
+        PhoneHarness h;
+        std::optional<TooltipState> state;
+        Themed(h, [&] {
+            state = RememberTooltipState(false, false);
+            if (rich) RichTooltipTest(*state, {}, [] { Text("Text"); }, [] { Text("Subhead"); });
+            else PlainTooltipTest(*state, {}, [] { Text("Test"); });
+        });
+        CHECK(!state->IsVisible());
+        rt::Job show = ShowTooltip(h, *state);
+        h.AdvanceTimeBy(TooltipFadeInDuration);
+        CHECK(state->IsVisible());
+        h.AdvanceTimeBy(BasicTooltipDefaults::TooltipDuration);
+        CHECK(!state->IsVisible());
+    }
+    // A persistent rich tooltip stays until its action dismisses it.
+    PhoneHarness h;
+    std::int64_t t = 1000;
+    std::optional<TooltipState> state;
+    Themed(h, [&] {
+        state = RememberTooltipState(false, true);
+        RichTooltipTest(*state, {}, [] { Text("Text"); }, [] { Text("Subhead"); },
+                        [&] { TextButton([&] { state->Dismiss(); }, Tag({}, "ActionTag"), {}, [] { Text("Action"); }); });
+    });
+    rt::Job show = ShowTooltip(h, *state);
+    h.AdvanceTimeBy(TooltipFadeInDuration);
+    CHECK(state->IsVisible());
+    h.AdvanceTimeBy(BasicTooltipDefaults::TooltipDuration);
+    CHECK(state->IsVisible());
+    Press(h, t, "ActionTag", true);
+    h.AdvanceTimeBy(TooltipFadeOutDuration);
+    CHECK(!state->IsVisible());
+}
+
+TEST(PlainTooltipLongPressShowsItUntilTheFingerLifts) {
+    // A long click shows it, and it is gone once the timeout runs out.
+    {
+        PhoneHarness h;
+        std::int64_t t = 1000;
+        std::optional<TooltipState> state;
+        Themed(h, [&] { state = RememberTooltipState(); Box(Tag({}, "tooltip"), Alignment::TopStart(), false, [&] {
+            PlainTooltipTest(*state, {}, [] { Text("Test"); }); }); });
+        bool changedToVisible = false;
+        Press(h, t, "tooltip", false);
+        for (int i = 0; i < 10; ++i) { h.AdvanceTimeBy(50); changedToVisible |= state->IsVisible(); }
+        Press(h, t, "tooltip", true);
+        CHECK(changedToVisible);
+        h.AdvanceTimeBy(TooltipFadeInDuration + TooltipFadeOutDuration + 500 + BasicTooltipDefaults::TooltipDuration);
+        CHECK(!state->IsVisible());
+    }
+    // Held for 10 s, it stays the whole time.
+    PhoneHarness h;
+    std::int64_t t = 1000;
+    std::optional<TooltipState> state;
+    Themed(h, [&] { state = RememberTooltipState(); Box(Tag({}, "tooltip"), Alignment::TopStart(), false, [&] {
+        PlainTooltipTest(*state, {}, [] { Text("Test"); }); }); });
+    std::int64_t hiddenAt = -1, elapsed = 0;
+    Press(h, t, "tooltip", false);
+    for (; elapsed < 10'000; elapsed += 100) {
+        h.AdvanceTimeBy(100);
+        if (elapsed > 500 && !state->IsVisible() && hiddenAt < 0) hiddenAt = elapsed;
+    }
+    CHECK(state->IsVisible());
+    CHECK_EQ(hiddenAt, -1);
+    const auto b = BoundsDp(h, "tooltip");
+    if (b) Touch(h, t += 10'000, ui::PointerEventType::Release, (b->left + b->right), (b->top + b->bottom), false);
+    h.AdvanceTimeBy(TooltipFadeOutDuration);
+    CHECK(!state->IsVisible());
+}
+
+TEST(TooltipInitiallyVisibleShows) {
+    PhoneHarness h;
+    std::optional<TooltipState> state;
+    Themed(h, [&] {
+        state = RememberTooltipState(true);
+        Column({}, Arrangement::Top(), AlignmentH::Start(), [&] {
+            Box(Focusable(SizeMod({}, 30_dp, 30_dp)), Alignment::TopStart(), false, {});
+            TooltipBox(Above(), [](const TooltipScope& s) { PlainTooltip(s, {}, {}, [] {}); }, *state, {}, {},
+                       [] { Box(Focusable(SizeMod({}, 30_dp, 30_dp)), Alignment::TopStart(), false, {}); });
+        });
+    });
+    h.AdvanceTimeBy(0);
+    CHECK(state->IsVisible());
+}
+
+TEST(TooltipKeyboardFocusShowsItAndLosingFocusOrEscapeHidesIt) {
+    struct Setup { PhoneHarness h; std::optional<TooltipState> state; ui::FocusRequester anchor, outside; };
+    const auto setup = [](Setup& s, bool persistent, bool withTooltip) {
+        Themed(s.h, [&s, persistent, withTooltip] {
+            s.state = RememberTooltipState(false, persistent);
+            Column({}, Arrangement::Top(), AlignmentH::Start(), [&] {
+                TooltipBox(Above(), [withTooltip](const TooltipScope& sc) { if (withTooltip) PlainTooltip(sc, {}, {}, [] {}); }, *s.state, {}, {},
+                           [&] { Box(Focusable(FocusRequesterModifier(Tag(SizeMod({}, 30_dp, 30_dp), "Anchor"), s.anchor)), Alignment::TopStart(), false, {}); });
+                Box(Focusable(FocusRequesterModifier(SizeMod({}, 30_dp, 30_dp), s.outside)), Alignment::TopStart(), false, {});
+            });
+        });
+    };
+    // Focus shows it; focus moving away dismisses it.
+    {
+        Setup s; setup(s, false, true);
+        CHECK(!s.state->IsVisible());
+        s.anchor.RequestFocus();
+        s.h.AdvanceTimeBy(0);
+        CHECK(s.state->IsVisible());
+        s.outside.RequestFocus();
+        s.h.AdvanceTimeBy(0);
+        CHECK(!s.state->IsVisible());
+    }
+    // Escape dismisses it.
+    {
+        Setup s; setup(s, false, true);
+        s.anchor.RequestFocus();
+        s.h.AdvanceTimeBy(0);
+        CHECK(s.state->IsVisible());
+        s.h.owner.DispatchKeyEvent(ui::KeyEvent{ ui::keys::Escape, ui::KeyEventType::KeyDown, 0 });
+        s.h.owner.DispatchKeyEvent(ui::KeyEvent{ ui::keys::Escape, ui::KeyEventType::KeyUp, 0 });
+        s.h.AdvanceTimeBy(0);
+        CHECK(!s.state->IsVisible());
+    }
+    // A persistent one: focus shows it, losing focus hides it, and it still shows from code.
+    Setup s; setup(s, true, false);
+    s.anchor.RequestFocus();
+    s.h.AdvanceTimeBy(0);
+    CHECK(s.state->IsVisible());
+    s.outside.RequestFocus();
+    s.h.AdvanceTimeBy(0);
+    CHECK(!s.state->IsVisible());
+    rt::Job show = ShowTooltip(s.h, *s.state);
+    CHECK(s.state->IsVisible());
+}
+
+TEST(TooltipFlipsBelowItsAnchorAtTheTopOfTheWindow) {
+    PhoneHarness h;
+    std::shared_ptr<const ui::PopupPositionProvider> provider;
+    Themed(h, [&] { provider = Above(); });
+    const ui::IntRect anchor{ 0, 0, 10, 20 };
+    const ui::IntSize popup{ 500, 500 };
+    const auto at = provider->CalculatePosition(anchor, { 500, 1000 }, ui::LayoutDirection::Ltr, popup);
+    CHECK(at.y > anchor.bottom);
+}
+
+TEST(TooltipScopeReportsItsAnchorBounds) {
+    PhoneHarness h;
+    std::optional<ui::Rect> anchorBounds;
+    Themed(h, [&] {
+        TooltipBox(Above(), [&](const TooltipScope& scope) {
+            // Asked while the tooltip is laid out, as Compose's layout modifier does.
+            PlainTooltip(scope, OnSizeChanged({}, [&scope, &anchorBounds](IntSize) {
+                if (auto coordinates = scope.ObtainAnchorBounds()) anchorBounds = coordinates->BoundsInRoot();   // the window's root
+            }), {}, [] {});
+        }, RememberTooltipState(true, true), {}, {}, [] { Anchor(Tag({}, "Anchor")); });
+    });
+    h.AdvanceTimeBy(0);
+    const auto expected = BoundsDp(h, "Anchor");
+    CHECK(anchorBounds && expected);
+    if (anchorBounds && expected) {
+        const float d = h.owner.GetDensity().density;
+        CHECK_EQ(anchorBounds->left, std::round(expected->left * d));
+        CHECK_EQ(anchorBounds->top, std::round(expected->top * d));
+        CHECK_EQ(anchorBounds->right, std::round(expected->right * d));
+        CHECK_EQ(anchorBounds->bottom, std::round(expected->bottom * d));
+    }
+}
+
+TEST(TooltipsShareTheGlobalMutexUnlessGivenTheirOwn) {
+    for (bool own : { false, true }) {
+        PhoneHarness h;
+        std::optional<TooltipState> top, bottom;
+        Themed(h, [&] {
+            // Remembered: kiln recomposes this lambda where Compose would skip it, and a new mutex
+            // makes a new state.
+            auto& c = *rt::Composition::Current();
+            const auto mutex = [&c] { return c.Remember<std::shared_ptr<MutatorMutex>>([] { return std::make_shared<MutatorMutex>(); }); };
+            top = own ? RememberTooltipState(false, true, mutex()) : RememberTooltipState(false, true);
+            bottom = own ? RememberTooltipState(false, true, mutex()) : RememberTooltipState(false, true);
+            for (const auto* state : { &*top, &*bottom })
+                TooltipBox(Above(), [](const TooltipScope& s) {
+                    RichTooltipOptions o;
+                    o.title = [] { Text("Subhead"); };
+                    o.action = [] { TextButton([] {}, {}, {}, [] { Text("Action"); }); };
+                    RichTooltip(s, {}, o, [] { Text("Text"); });
+                }, *state, {}, {}, [] {});
+        });
+        rt::Job a = ShowTooltip(h, *top), b = ShowTooltip(h, *bottom);
+        CHECK_EQ(top->IsVisible(), own);
+        CHECK(bottom->IsVisible());
+        top->Dismiss(); bottom->Dismiss();
+    }
+}
+
+TEST(TooltipMouseHoverShowsItUntilTheMouseLeavesUnlessPersistent) {
+    for (bool persistent : { false, true }) {
+        PhoneHarness h;
+        std::optional<TooltipState> state;
+        Themed(h, [&] {
+            state = RememberTooltipState(false, persistent);
+            TooltipBox(Above(), [](const TooltipScope&) {}, *state, {}, {}, [] { Anchor(Tag({}, "Anchor")); });
+        });
+        CHECK(!state->IsVisible());
+        const auto mouse = [&](ui::PointerEventType type, float x, float y) {
+            ui::RawPointerEvent e;
+            e.type = type;
+            e.uptimeMillis = 1000;
+            e.pointers.push_back({ 7, { x, y }, false, ui::PointerType::Mouse, {} });
+            h.owner.ProcessPointer(e);
+            h.AdvanceTimeBy(0);
+        };
+        mouse(ui::PointerEventType::Enter, 24, 24);   // the anchor's centre, in pixels
+        h.AdvanceTimeBy(TooltipFadeInDuration);
+        CHECK(state->IsVisible());
+        // Still up past the timeout while hovered.
+        h.AdvanceTimeBy(BasicTooltipDefaults::TooltipDuration);
+        CHECK(state->IsVisible());
+        mouse(ui::PointerEventType::Move, 200, 200);
+        h.AdvanceTimeBy(TooltipFadeOutDuration);
+        CHECK_EQ(state->IsVisible(), persistent);
+        state->Dismiss();
+    }
+}
+
+TEST(TooltipAnchorKeepsItsClickAndOffersALongClick) {
+    PhoneHarness h;
+    Themed(h, [&] {
+        TooltipBox(Above(), [](const TooltipScope& s) { PlainTooltip(s, Tag({}, "Container"), {}, [] { Text("Tooltip"); }); },
+                   RememberTooltipState(), {}, {}, [] { IconButton([] {}, Tag({}, "Anchor"), {}, [] { Anchor(); }); });
+    });
+    const auto tree = h.owner.BuildSemanticsTree();
+    const auto* n = FindSemantics(tree, "Anchor");
+    CHECK(n && n->config.onClick && n->config.onLongClick);
+}
+
+TEST(FullWidthTooltipCaretFollowsTheAnchor) {
+    CHECK_EQ(internal::CaretX(1080, 1080, { 135, 0, 185, 0 }), 160.0f);
+    CHECK_EQ(internal::CaretX(1080, 1080, { 515.5f, 0, 565.5f, 0 }), 540.5f);
+    CHECK_EQ(internal::CaretX(1080, 1080, { 920.88f, 0, 970.88f, 0 }), 945.88f);
 }
