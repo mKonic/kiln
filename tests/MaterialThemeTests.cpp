@@ -19,6 +19,8 @@
 #include "kiln/material3/SplitButton.h"
 #include "kiln/material3/Tooltip.h"
 #include "kiln/material3/Scaffold.h"
+#include "kiln/material3/NavigationBar.h"
+#include "kiln/material3/NavigationRail.h"
 #include "kiln/material3/Menu.h"
 #include "kiln/material3/ButtonGroup.h"
 #include "kiln/runtime/Saveable.h"
@@ -4320,4 +4322,453 @@ TEST(ScaffoldBodyRecomposesOnlyWhenItsPaddingChanges) {
     const auto fab = BoundsDp(h, "fab");
     CHECK(fab && Near(fab->Width(), 80));
     CHECK_EQ(compositions, settled);
+}
+
+// Ported from Compose's NavigationBarTest (412 dp wide, density 2). Its colour checks read
+// LocalContentColor inside the icon and label, as Compose's do.
+namespace {
+    const ui::SemanticsNode* ParentOf(const ui::SemanticsNode& n, const ui::SemanticsNode* child) {
+        for (const auto& c : n.children) {
+            if (&c == child) return &n;
+            if (const auto* r = ParentOf(c, child)) return r;
+        }
+        return nullptr;
+    }
+    void NavIcon(ui::Modifier m = {}, std::optional<std::string> description = std::nullopt) {
+        Icon(internal::Icons::Filled::Edit(), description, std::move(m));
+    }
+    NavigationBarItemOptions Labelled(std::string text, bool alwaysShowLabel = true, ui::Modifier labelModifier = {}) {
+        NavigationBarItemOptions o;
+        o.label = [text, labelModifier] { Text(text, labelModifier); };
+        o.alwaysShowLabel = alwaysShowLabel;
+        return o;
+    }
+}
+
+TEST(NavigationBarItemsAreSelectableTabsInASelectableGroup) {
+    for (bool enabled : { true, false }) {
+        PhoneHarness h;
+        Themed(h, [&] {
+            NavigationBar({}, {}, [&] {
+                auto o = Labelled("ItemText");
+                o.enabled = enabled;
+                NavigationBarItem(true, [] {}, [] { NavIcon(); }, Tag({}, "item"), o);
+            });
+        });
+        const auto tree = h.owner.BuildSemanticsTree();
+        const auto* item = FindSemantics(tree, "item");
+        CHECK(item != nullptr);
+        if (!item) continue;
+        CHECK(item->config.role == ui::Role::Tab);
+        CHECK(item->config.selected == std::optional<bool>(true));
+        CHECK_EQ(item->config.disabled, !enabled);
+        CHECK(bool(item->config.onClick));
+        if (enabled) {
+            const auto* parent = ParentOf(tree, item);
+            CHECK(parent && parent->config.selectableGroup);
+        }
+    }
+}
+
+TEST(NavigationBarItemDropsTheIconDescriptionWhileItsLabelShows) {
+    PhoneHarness h;
+    Themed(h, [&] {
+        NavigationBar({}, {}, [&] {
+            NavigationBarItem(true, [] {}, [] { NavIcon({}, "Favorite"); }, Tag({}, "item1"), Labelled("Favorite", false));
+            NavigationBarItem(false, [] {}, [] { NavIcon({}, "Favorite"); }, Tag({}, "item2"), Labelled("Favorite", false));
+            NavigationBarItem(false, [] {}, [] { NavIcon({}, "Favorite"); }, Tag({}, "item3"), {});
+        });
+    });
+    const auto tree = h.owner.BuildSemanticsTree();
+    const auto *a = FindSemantics(tree, "item1"), *b = FindSemantics(tree, "item2"), *c = FindSemantics(tree, "item3");
+    CHECK(a && b && c);
+    if (!a || !b || !c) return;
+    CHECK(a->config.contentDescription.empty());
+    CHECK(b->config.contentDescription == std::vector<std::string>{ "Favorite" });
+    CHECK(c->config.contentDescription == std::vector<std::string>{ "Favorite" });
+}
+
+TEST(NavigationBarFillsTheWidthAndPadsByItsInsets) {
+    {
+        PhoneHarness h;
+        Themed(h, [&] {
+            NavigationBarOptions o;
+            o.windowInsets = WindowInsets{};
+            NavigationBar(Tag({}, "bar"), o, [&] {
+                int i = 0;
+                for (const char* item : { "Songs", "Artists", "Playlists" })
+                    NavigationBarItem(i++ == 0, [] {}, [] { NavIcon(); }, {}, Labelled(item));
+            });
+        });
+        const auto b = BoundsDp(h, "bar");
+        CHECK(b && Near(b->Width(), 412) && Near(b->Height(), 80));
+    }
+    PhoneHarness h;
+    Themed(h, [&] {
+        NavigationBarOptions o;
+        o.windowInsets = WindowInsets::Fixed(17_dp, 17_dp, 17_dp, 17_dp);
+        NavigationBar({}, o, [] { Box(Tag(FillMax({}, Axis::Both), "content"), Alignment::TopStart(), false, {}); });
+    });
+    const auto b = BoundsDp(h, "content");
+    CHECK(b && Near(b->left, 17) && Near(b->top, 17));
+}
+
+TEST(NavigationBarItemsShareTheWidth) {
+    PhoneHarness h;
+    Themed(h, [&] {
+        NavigationBar({}, {}, [&] {
+            for (int i = 0; i < 4; ++i)
+                NavigationBarItem(i == 0, [] {}, [] { NavIcon(); }, Tag({}, "item" + std::to_string(i)), Labelled("Item " + std::to_string(i)));
+        });
+    });
+    const float expectedWidth = (412 - 8 * 3) / 4.0f;
+    for (int i = 0; i < 4; ++i) {
+        const auto b = BoundsDp(h, "item" + std::to_string(i));
+        CHECK(b.has_value());
+        if (!b) continue;
+        CHECK(std::abs(b->Width() - expectedWidth) <= 0.5f);
+        CHECK(std::abs(b->Height() - 80) <= 0.5f);
+        CHECK(std::abs(b->left - (expectedWidth + 8) * float(i)) <= 0.5f);
+    }
+}
+
+TEST(NavigationBarItemColoursFollowSelection) {
+    PhoneHarness h;
+    std::vector<Color> seen;
+    const auto record = [&] { seen.push_back(rt::Composition::Current()->Read(LocalContentColor)); };
+    Themed(h, [&] {
+        const auto custom = NavigationBarItemDefaults::colors(Color(0xFFFF0000u), Color::Unspecified(), Color::Unspecified(), Color::Unspecified(),
+                                                              Color(0xFF00FF00u));
+        NavigationBar({}, {}, [&] {
+            NavigationBarItemOptions o;
+            o.label = record;
+            NavigationBarItem(true, [] {}, record, {}, o);
+            NavigationBarItem(false, [] {}, record, {}, o);
+            o.colors = custom;
+            NavigationBarItem(true, [] {}, record, {}, o);
+            NavigationBarItem(false, [] {}, record, {}, o);
+        });
+    });
+    const auto& s = LightColorScheme();
+    CHECK(seen.size() >= 8);
+    if (seen.size() < 8) return;
+    // icon, label for each item, in order.
+    CHECK(seen[0] == s.onSecondaryContainer && seen[1] == s.secondary);
+    CHECK(seen[2] == s.onSurfaceVariant && seen[3] == s.onSurfaceVariant);
+    CHECK(seen[4] == Color(0xFFFF0000u) && seen[5] == s.secondary);
+    CHECK(seen[6] == s.onSurfaceVariant && seen[7] == Color(0xFF00FF00u));
+}
+
+TEST(NavigationBarItemPlacesItsIconAndLabel) {
+    // Selected with a label: the icon 16 dp from the top, centred; the label 4 + 4 dp below it.
+    const auto place = [](bool selected, bool alwaysShow, bool label, std::optional<float> height) {
+        PhoneHarness h;
+        Themed(h, [&] {
+            NavigationBarOptions bar;
+            bar.windowInsets = WindowInsets{};
+            NavigationBar(height ? Height({}, ui::Dp(*height)) : ui::Modifier{}, bar, [&] {
+                NavigationBarItemOptions o;
+                if (label) o = Labelled("ItemText", alwaysShow, Tag({}, "label"));
+                NavigationBarItem(selected, [] {}, [] { NavIcon(Tag({}, "icon")); }, Tag({}, "item"), o);
+            });
+        });
+        h.AdvanceTimeBy(1000);
+        return std::tuple{ BoundsDp(h, "item"), BoundsDp(h, "icon"), BoundsDp(h, "label"), Displayed(h, "label") };
+    };
+    {
+        auto [item, icon, label, shown] = place(true, true, true, std::nullopt);
+        CHECK(item && icon && label);
+        if (item && icon && label) {
+            CHECK(Near(icon->left, item->left + (item->Width() - icon->Width()) / 2));
+            CHECK(Near(icon->top, item->top + 16));
+            CHECK(Near(label->top, icon->bottom + 4 + 4));
+        }
+    }
+    {
+        // Unselected, label only when selected: no label, the icon centred.
+        auto [item, icon, label, shown] = place(false, false, true, std::nullopt);
+        CHECK(!shown);
+        CHECK(item && icon && Near(icon->top, item->top + (item->Height() - icon->Height()) / 2));
+    }
+    {
+        // No label: the icon centred.
+        auto [item, icon, label, shown] = place(false, true, false, std::nullopt);
+        CHECK(item && icon && Near(icon->top, item->top + (item->Height() - icon->Height()) / 2));
+        CHECK(item && icon && Near(icon->left, item->left + (item->Width() - icon->Width()) / 2));
+    }
+    {
+        // A 64 dp bar takes the difference out of the padding above and below.
+        auto [item, icon, label, shown] = place(true, true, true, 64.0f);
+        CHECK(item && icon && label);
+        if (item && icon && label) {
+            CHECK(Near(icon->top, item->top + 16 - (80 - 64) / 2.0f));
+            CHECK(Near(label->top, icon->bottom + 4 + 4));
+        }
+    }
+}
+
+TEST(NavigationBarGrowsForLongLabels) {
+    PhoneHarness h;
+    Themed(h, [&] {
+        NavigationBar(Tag({}, "bar"), {}, [&] {
+            for (int i = 0; i < 4; ++i) NavigationBarItem(i == 0, [] {}, [] { NavIcon(); }, {}, Labelled("Long\nLabel\nMultiple\nLines"));
+        });
+    });
+    const auto b = BoundsDp(h, "bar");
+    CHECK(b && b->Height() > 80);
+}
+
+TEST(NavigationBarSelectsAClickedItemButNotADisabledOne) {
+    PhoneHarness h;
+    std::int64_t t = 1000;
+    rt::State<int> selected{ 0 };
+    int disabledClicks = 0;
+    Themed(h, [&] {
+        NavigationBar({}, {}, [&] {
+            int i = 0;
+            for (const char* item : { "Songs", "Artists", "Playlists" }) {
+                const int index = i++;
+                NavigationBarItem(selected.Get() == index, [&, index] { selected.Set(index); }, [] { NavIcon(); }, Tag({}, item), Labelled(item));
+            }
+            auto off = Labelled("Off");
+            off.enabled = false;
+            NavigationBarItem(true, [&] { ++disabledClicks; }, [] { NavIcon(); }, Tag({}, "off"), off);
+        });
+    });
+    const auto isSelected = [&](const char* tag) {
+        const auto tree = h.owner.BuildSemanticsTree();
+        const auto* n = FindSemantics(tree, tag);
+        return n && n->config.selected == std::optional<bool>(true);
+    };
+    CHECK(isSelected("Songs") && !isSelected("Artists") && !isSelected("Playlists"));
+    Press(h, t, "Playlists", true);
+    h.AdvanceTimeBy(16);
+    CHECK(!isSelected("Songs") && !isSelected("Artists") && isSelected("Playlists"));
+    Press(h, t, "off", true);
+    CHECK_EQ(disabledClicks, 0);
+}
+
+TEST(NavigationBarItemKeepsItsMinimumIntrinsicWidth) {
+    PhoneHarness h;
+    Themed(h, [&] {
+        Row(Tag(Width({}, IntrinsicSize::Min), "row"), Arrangement::Start(), AlignmentV::Top(), [&] {
+            NavigationBarItem(true, [] {}, [] { NavIcon(SizeMod({}, 24_dp, 24_dp)); }, {}, {});
+        });
+    });
+    const auto b = BoundsDp(h, "row");
+    CHECK(b && Near(b->Width(), 24 + 44 * 2));
+}
+
+TEST(ScaffoldOverlayFabSitsAboveTheBottomBar) {
+    // Slots stack by their content's zIndex (the FAB's 4 over the bottom bar's 3), not by the
+    // order they were subcomposed in.
+    PhoneHarness h;
+    std::int64_t t = 1000;
+    int fabClicks = 0, barClicks = 0;
+    InBox(h, 200, 300, [&] {
+        ScaffoldOptions o;
+        o.floatingActionButtonPosition = FabPosition::EndOverlay;
+        o.contentWindowInsets = WindowInsets{};
+        o.bottomBar = [&] { Box(Clickable(Height(FillMax({}, Axis::Horizontal), 80_dp), [&] { ++barClicks; }), Alignment::TopStart(), false, {}); };
+        o.floatingActionButton = [&] { FloatingActionButton([&] { ++fabClicks; }, Tag({}, "fab"), {}, [] { Text("Fab"); }); };
+        Scaffold({}, o, [](const PaddingValues&) {});
+    });
+    const auto fab = BoundsDp(h, "fab");
+    CHECK(fab && fab->bottom > 300 - 80);   // overlapping the bar
+    Press(h, t, "fab", true);
+    CHECK_EQ(fabClicks, 1);
+    CHECK_EQ(barClicks, 0);
+}
+
+// Ported from Compose's NavigationRailTest.
+namespace {
+    NavigationRailItemOptions RailLabelled(std::string text, bool alwaysShowLabel = true, ui::Modifier labelModifier = {}) {
+        NavigationRailItemOptions o;
+        o.label = [text, labelModifier] { Text(text, labelModifier); };
+        o.alwaysShowLabel = alwaysShowLabel;
+        return o;
+    }
+    NavigationRailOptions NoInsets() {
+        NavigationRailOptions o;
+        o.windowInsets = WindowInsets{};
+        return o;
+    }
+}
+
+TEST(NavigationRailItemsAreSelectableTabsInATraversalGroup) {
+    for (bool enabled : { true, false }) {
+        PhoneHarness h;
+        Themed(h, [&] {
+            NavigationRail({}, {}, [&] {
+                auto o = RailLabelled("ItemText");
+                o.enabled = enabled;
+                NavigationRailItem(true, [] {}, [] { NavIcon(); }, Tag({}, "item"), o);
+            });
+        });
+        const auto tree = h.owner.BuildSemanticsTree();
+        const auto* item = FindSemantics(tree, "item");
+        CHECK(item != nullptr);
+        if (!item) continue;
+        CHECK(item->config.role == ui::Role::Tab);
+        CHECK(item->config.selected == std::optional<bool>(true));
+        CHECK_EQ(item->config.disabled, !enabled);
+        CHECK(bool(item->config.onClick));
+        if (enabled) {
+            const auto* parent = ParentOf(tree, item);
+            CHECK(parent && parent->config.selectableGroup && parent->config.isTraversalGroup);
+        }
+    }
+}
+
+TEST(NavigationRailItemDropsTheIconDescriptionWhileItsLabelShows) {
+    PhoneHarness h;
+    Themed(h, [&] {
+        NavigationRail({}, {}, [&] {
+            NavigationRailItem(true, [] {}, [] { NavIcon({}, "Favorite"); }, Tag({}, "item1"), RailLabelled("Favorite", false));
+            NavigationRailItem(false, [] {}, [] { NavIcon({}, "Favorite"); }, Tag({}, "item2"), RailLabelled("Favorite", false));
+            NavigationRailItem(false, [] {}, [] { NavIcon({}, "Favorite"); }, Tag({}, "item3"), {});
+        });
+    });
+    const auto tree = h.owner.BuildSemanticsTree();
+    const auto *a = FindSemantics(tree, "item1"), *b = FindSemantics(tree, "item2"), *c = FindSemantics(tree, "item3");
+    CHECK(a && b && c);
+    if (!a || !b || !c) return;
+    CHECK(a->config.contentDescription.empty());
+    CHECK(b->config.contentDescription == std::vector<std::string>{ "Favorite" });
+    CHECK(c->config.contentDescription == std::vector<std::string>{ "Favorite" });
+}
+
+TEST(NavigationRailIsItsItemsWideAndPadsByItsInsets) {
+    {
+        PhoneHarness h;
+        Themed(h, [&] {
+            NavigationRail(Tag({}, "rail"), {}, [&] {
+                int i = 0;
+                for (const char* item : { "Home", "Search", "Settings" })
+                    NavigationRailItem(i++ == 0, [] {}, [] { NavIcon(); }, {}, RailLabelled(item));
+            });
+        });
+        const auto b = BoundsDp(h, "rail");
+        CHECK(b && Near(b->Width(), 80));
+    }
+    PhoneHarness h;
+    Themed(h, [&] {
+        NavigationRailOptions o;
+        o.windowInsets = WindowInsets::Fixed(13_dp, 13_dp, 13_dp, 13_dp);
+        NavigationRail({}, o, [] { Box(Tag(FillMax({}, Axis::Both), "content"), Alignment::TopStart(), false, {}); });
+    });
+    const auto b = BoundsDp(h, "content");
+    CHECK(b && Near(b->top, 13 + 4) && Near(b->left, 13));
+}
+
+TEST(NavigationRailItemsStackWithPadding) {
+    PhoneHarness h;
+    Themed(h, [&] {
+        NavigationRail({}, NoInsets(), [&] {
+            for (int i = 0; i < 4; ++i)
+                NavigationRailItem(i == 0, [] {}, [] { NavIcon(); }, Tag({}, "item" + std::to_string(i)), RailLabelled("Item " + std::to_string(i)));
+        });
+    });
+    for (int i = 0; i < 4; ++i) {
+        const auto b = BoundsDp(h, "item" + std::to_string(i));
+        CHECK(b.has_value());
+        if (!b) continue;
+        CHECK(Near(b->Width(), 80) && Near(b->Height(), 56));
+        // The items above and the padding above each of them (the first included).
+        CHECK(Near(b->top, 56.0f * float(i) + 4.0f * float(i + 1)));
+    }
+}
+
+TEST(NavigationRailItemGrowsForALongLabel) {
+    PhoneHarness h;
+    Themed(h, [&] {
+        NavigationRail({}, {}, [&] { NavigationRailItem(true, [] {}, [] { NavIcon(); }, Tag({}, "item"), RailLabelled("Long\nLabel\nMultiple\nLines")); });
+    });
+    const auto b = BoundsDp(h, "item");
+    CHECK(b && b->Height() > 56);
+}
+
+TEST(NavigationRailItemPlacesItsIconAndLabel) {
+    const auto place = [](bool selected, bool alwaysShow, bool label) {
+        PhoneHarness h;
+        Themed(h, [&] {
+            NavigationRail({}, NoInsets(), [&] {
+                NavigationRailItemOptions o;
+                if (label) o = RailLabelled("ItemText", alwaysShow, Tag({}, "label"));
+                NavigationRailItem(selected, [] {}, [] { NavIcon(Tag({}, "icon")); }, Tag({}, "item"), o);
+            });
+        });
+        h.AdvanceTimeBy(1000);
+        return std::tuple{ BoundsDp(h, "item"), BoundsDp(h, "icon"), BoundsDp(h, "label"), Displayed(h, "label") };
+    };
+    {
+        // Selected with a label: the icon 4 dp below the item's top, the label 4 dp above its bottom.
+        auto [item, icon, label, shown] = place(true, true, true);
+        CHECK(item && icon && label);
+        if (item && icon && label) {
+            CHECK(Near(label->bottom, item->bottom - 4));
+            CHECK(Near(icon->left, (item->Width() - icon->Width()) / 2));
+            CHECK(Near(icon->top, item->top + 4));
+        }
+    }
+    {
+        // Unselected, label only when selected: no label, the icon centred.
+        auto [item, icon, label, shown] = place(false, false, true);
+        CHECK(!shown);
+        CHECK(item && icon && Near(icon->left, (item->Width() - icon->Width()) / 2));
+        CHECK(item && icon && Near(icon->top, 4 + (item->Height() - icon->Height()) / 2));
+    }
+    {
+        // No label: the icon centred.
+        auto [item, icon, label, shown] = place(false, true, false);
+        CHECK(item && icon && Near(icon->left, (item->Width() - icon->Width()) / 2));
+        CHECK(item && icon && Near(icon->top, 4 + (item->Height() - icon->Height()) / 2));
+    }
+}
+
+TEST(NavigationRailSelectsAClickedItemButNotADisabledOne) {
+    PhoneHarness h;
+    std::int64_t t = 1000;
+    rt::State<int> selected{ 0 };
+    int disabledClicks = 0;
+    Themed(h, [&] {
+        NavigationRail({}, {}, [&] {
+            int i = 0;
+            for (const char* item : { "Home", "Search", "Settings" }) {
+                const int index = i++;
+                NavigationRailItem(selected.Get() == index, [&, index] { selected.Set(index); }, [] { NavIcon(); }, Tag({}, item), RailLabelled(item));
+            }
+            auto off = RailLabelled("Off");
+            off.enabled = false;
+            NavigationRailItem(true, [&] { ++disabledClicks; }, [] { NavIcon(); }, Tag({}, "off"), off);
+        });
+    });
+    const auto isSelected = [&](const char* tag) {
+        const auto tree = h.owner.BuildSemanticsTree();
+        const auto* n = FindSemantics(tree, tag);
+        return n && n->config.selected == std::optional<bool>(true);
+    };
+    CHECK(isSelected("Home") && !isSelected("Search") && !isSelected("Settings"));
+    Press(h, t, "Settings", true);
+    h.AdvanceTimeBy(16);
+    CHECK(!isSelected("Home") && !isSelected("Search") && isSelected("Settings"));
+    Press(h, t, "off", true);
+    CHECK_EQ(disabledClicks, 0);
+}
+
+TEST(NavigationItemColoursFadeTheGivenUnselectedColoursWhenDisabled) {
+    PhoneHarness h;
+    const Color icon(0xFF00FF00u), text(0xFF0000FFu);
+    std::optional<NavigationRailItemColors> rail;
+    std::optional<NavigationBarItemColors> bar;
+    Themed(h, [&] {
+        rail = NavigationRailItemDefaults::colors(Color::Unspecified(), Color::Unspecified(), Color::Unspecified(), icon, text);
+        bar = NavigationBarItemDefaults::colors(Color::Unspecified(), Color::Unspecified(), Color::Unspecified(), icon, text);
+    });
+    CHECK(rail && bar);
+    if (!rail || !bar) return;
+    const auto& s = LightColorScheme();
+    CHECK(rail->selectedIconColor == s.onSecondaryContainer && rail->unselectedIconColor == icon);
+    CHECK(rail->IconColor(true, false) == icon.WithAlpha(DisabledAlpha) && rail->TextColor(false, false) == text.WithAlpha(DisabledAlpha));
+    CHECK(bar->IconColor(true, false) == icon.WithAlpha(DisabledAlpha) && bar->TextColor(false, false) == text.WithAlpha(DisabledAlpha));
 }

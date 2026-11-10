@@ -21,6 +21,9 @@
 #include <kiln/material3/Tooltip.h>
 #include <kiln/material3/Menu.h>
 #include <kiln/material3/ButtonGroup.h>
+#include <kiln/material3/NavigationBar.h>
+#include <kiln/material3/NavigationRail.h>
+#include <kiln/material3/Scaffold.h>
 #include <kiln/material3/ProgressIndicator.h>
 #include <kiln/material3/WavyProgressIndicator.h>
 #include <kiln/material3/LoadingIndicator.h>
@@ -293,6 +296,70 @@ namespace kiln::gallery {
             m3::Text("Group clicks: " + std::to_string(clicks->Get()));
             m3::Text("Group styles: " + std::to_string(styles->Get()));
             m3::Text("Connected size: " + std::to_string(size->Get()));
+        }
+
+        void Navigation() {
+            auto* tab = &RememberState(0);
+            auto* labelled = &RememberState(0);
+            auto* fab = &RememberState(2);
+            const char* tabs[] = { "Home", "Search", "Library" };
+            const char* positions[] = { "Start", "Center", "End", "EndOverlay" };
+            const auto navIcon = [] { m3::Icon(m3::internal::Icons::Filled::Edit(), std::nullopt); };
+            m3::ScaffoldOptions o;
+            o.floatingActionButtonPosition = m3::FabPosition(fab->Get());
+            o.contentWindowInsets = WindowInsets{};
+            o.topBar = [] {
+                m3::Surface(FillMax({}, Axis::Horizontal), { .color = m3::MaterialTheme::colorScheme().primaryContainer }, [] {
+                    Box(Padding(Height(FillMax({}, Axis::Horizontal), 64_dp), 16_dp), Alignment::CenterStart(), false, [] { m3::Text("Top bar"); });
+                });
+            };
+            o.bottomBar = [=] {
+                m3::NavigationBarOptions bar;
+                bar.windowInsets = WindowInsets{};
+                m3::NavigationBar({}, bar, [=] {
+                    for (int i = 0; i < 3; ++i)
+                        m3::NavigationBarItem(tab->Get() == i, [=] { tab->Set(i); }, navIcon, {}, { .label = [=] { m3::Text(tabs[i]); } });
+                });
+            };
+            o.floatingActionButton = [] {
+                m3::FloatingActionButton([] {}, {}, {}, [] { m3::Icon(m3::internal::Icons::Filled::Edit(), "Compose"); });
+            };
+            m3::Scaffold(Height(FillMax({}, Axis::Horizontal), 360_dp), o, [=](const PaddingValues& padding) {
+                Box(Padding(FillMax({}, Axis::Both), padding), Alignment::Center(), false, [=] { m3::Text(std::string("Showing: ") + tabs[tab->Get()]); });
+            });
+            m3::TextButton([fab] { fab->Set((fab->Peek() + 1) % 4); }, {}, {}, [=] { m3::Text(std::string("FAB: ") + positions[fab->Get()]); });
+            m3::Text("Labels when selected");
+            const char* mail[] = { "Mail", "Chat", "Rooms", "Meet" };
+            m3::NavigationBarOptions bar;
+            bar.windowInsets = WindowInsets{};
+            m3::NavigationBar({}, bar, [=] {
+                for (int i = 0; i < 4; ++i)
+                    m3::NavigationBarItem(labelled->Get() == i, [=] { labelled->Set(i); },
+                                          [=] { m3::Icon(m3::internal::Icons::Filled::Edit(), mail[i]); }, {},
+                                          { .label = [=] { m3::Text(mail[i]); }, .alwaysShowLabel = false });
+            });
+            m3::Text(std::string("Selected: ") + mail[labelled->Get()]);
+
+            auto* railItem = &RememberState(0);
+            auto* railLabels = &RememberState(true);
+            const char* rail[] = { "Inbox", "Starred", "Sent", "Drafts" };
+            Row(Height({}, 360_dp), Arrangement::Start(), AlignmentV::Top(), [=] {
+                m3::NavigationRailOptions options;
+                options.windowInsets = WindowInsets{};
+                options.header = [] {
+                    m3::FloatingActionButton([] {}, {}, {}, [] { m3::Icon(m3::internal::Icons::Filled::Edit(), "Compose"); });
+                };
+                m3::NavigationRail({}, options, [=] {
+                    for (int i = 0; i < 4; ++i)
+                        m3::NavigationRailItem(railItem->Get() == i, [=] { railItem->Set(i); }, [=] { m3::Icon(m3::internal::Icons::Filled::Edit(), rail[i]); },
+                                               {}, { .label = [=] { m3::Text(rail[i]); }, .alwaysShowLabel = railLabels->Get() });
+                });
+                Column(Padding({}, 16_dp), [=] {
+                    m3::Text(std::string("Rail: ") + rail[railItem->Get()]);
+                    m3::TextButton([railLabels] { railLabels->Set(!railLabels->Peek()); }, {}, {},
+                                   [railLabels] { m3::Text(railLabels->Get() ? "Rail labels: always" : "Rail labels: selected"); });
+                });
+            });
         }
 
         void Sliders() {
@@ -638,7 +705,7 @@ namespace kiln::gallery {
         struct Section { const char* key; const char* title; void (*content)(); };
         const std::vector<Section>& Sections() {
             static const std::vector<Section> sections{
-                { "segmented", "Segmented buttons", SegmentedButtons }, { "split", "Split buttons", SplitButtons },
+                { "navigation", "Navigation bars and rails", Navigation }, { "segmented", "Segmented buttons", SegmentedButtons }, { "split", "Split buttons", SplitButtons },
                 { "tooltips", "Tooltips", Tooltips }, { "menus", "Menus", Menus }, { "groups", "Button groups", ButtonGroups },
                 { "sliders", "Sliders", Sliders }, { "progress", "Progress indicators", ProgressIndicators }, { "lists", "Lists", Lists },
                 { "chips", "Chips", Chips }, { "cards", "Cards", Cards }, { "selection", "", SelectionControls },

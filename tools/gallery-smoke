@@ -18,6 +18,10 @@ PACKAGE = 'dev.kiln.gallery'
 
 # Each runs on its own gallery section. {p} is the run's screenshot prefix.
 COMPONENTS = {
+    'navigation': '''expect:Showing: Home; tap:Search; expect:Showing: Search; shot:{p}-navigation; tap:FAB: End;
+        expect:FAB: EndOverlay; shot:{p}-navigation-overlay; reach:Labels when selected; tap:Chat; expect:Selected: Chat;
+        shot:{p}-navigation-labels; reach:Rail: Inbox; tap:Sent; expect:Rail: Sent; tap:Rail labels: always;
+        expect:Rail labels: selected; shot:{p}-navigation-rail''',
     'segmented': '''expect:Single selection: 0; tap:Week; expect:Single selection: 1; tap:Bike; expect:Multiple selection: 3;
         tap:Walk; expect:Multiple selection: 2; shot:{p}-segmented; reach:Disable segments; tap:Disable segments;
         expect:Enable segments; tap:Day; expect:Single selection: 1; shot:{p}-segmented-disabled''',
