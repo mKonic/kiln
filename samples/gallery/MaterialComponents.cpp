@@ -23,6 +23,8 @@
 #include <kiln/material3/ButtonGroup.h>
 #include <kiln/material3/NavigationBar.h>
 #include <kiln/material3/NavigationRail.h>
+#include <kiln/foundation/Lazy.h>
+#include <kiln/material3/AppBar.h>
 #include <kiln/material3/ShortNavigationBar.h>
 #include <kiln/material3/Tab.h>
 #include <kiln/material3/TabRow.h>
@@ -424,6 +426,56 @@ namespace kiln::gallery {
             });
         }
 
+        void AppBars() {
+            const auto icon = [](const char* description) {
+                return [description] { m3::IconButton([] {}, {}, {}, [description] { m3::Icon(m3::internal::Icons::Filled::Edit(), description); }); };
+            };
+            m3::TopAppBarOptions small;
+            small.navigationIcon = icon("Menu");
+            small.actions = icon("Search");
+            small.windowInsets = WindowInsets{};
+            m3::TopAppBar([] { m3::Text("Small top app bar"); }, {}, small);
+            m3::TopAppBarOptions centered = small;
+            centered.subtitle = [] { m3::Text("With a subtitle"); };
+            m3::CenterAlignedTopAppBar([] { m3::Text("Centered"); }, {}, centered);
+
+            // A large bar collapsing with the list and a bottom bar hiding with it.
+            auto& list = RememberLazyListState();
+            const auto top = m3::TopAppBarDefaults::exitUntilCollapsedScrollBehavior();
+            const auto bottom = m3::BottomAppBarDefaults::exitAlwaysScrollBehavior();
+            // Reported as text so a test can read it.
+            m3::Text("Top bar collapsed: " + std::to_string(RoundJava(top->State().CollapsedFraction() * 100)) + "%");
+            m3::ScaffoldOptions o;
+            o.contentWindowInsets = WindowInsets{};
+            o.topBar = [=] {
+                m3::TwoRowsTopAppBarOptions bar;
+                bar.navigationIcon = icon("Back");
+                bar.actions = icon("Archive");
+                bar.windowInsets = WindowInsets{};
+                bar.scrollBehavior = top;
+                m3::LargeTopAppBar([] { m3::Text("Inbox"); }, {}, bar);
+            };
+            o.bottomBar = [=] {
+                m3::BottomAppBarOptions bar;
+                bar.windowInsets = WindowInsets{};
+                bar.scrollBehavior = bottom;
+                m3::BottomAppBar([=] { icon("Check")(); icon("Edit")(); }, {}, [] {
+                    m3::FloatingActionButton([] {}, {}, { .containerColor = m3::BottomAppBarDefaults::bottomAppBarFabColor(),
+                                                          .elevation = m3::FloatingActionButtonDefaults::bottomAppBarFabElevation() },
+                                             [] { m3::Icon(m3::internal::Icons::Filled::Edit(), "Compose"); });
+                }, bar);
+            };
+            Box(NestedScroll(NestedScroll(Height(FillMax({}, Axis::Horizontal), 420_dp), top->NestedScrollConnection()), bottom->NestedScrollConnection()),
+                Alignment::TopStart(), false, [&] {
+                    m3::Scaffold({}, o, [lp = &list](const PaddingValues& padding) {
+                        auto& list = *lp;
+                        LazyColumn(FillMax({}, Axis::Both), list, [](LazyListScope& s) {
+                            s.Items(30, [](int i) { m3::Text("Message " + std::to_string(i + 1), Padding(FillMax({}, Axis::Horizontal), 16_dp)); });
+                        }, { .contentPadding = padding });
+                    });
+                });
+        }
+
         void Tabs() {
             auto* primary = &RememberState(0);
             auto* secondary = &RememberState(0);
@@ -800,7 +852,7 @@ namespace kiln::gallery {
         struct Section { const char* key; const char* title; void (*content)(); };
         const std::vector<Section>& Sections() {
             static const std::vector<Section> sections{
-                { "navigation", "Navigation bars and rails", Navigation }, { "tabs", "Tabs", Tabs }, { "segmented", "Segmented buttons", SegmentedButtons }, { "split", "Split buttons", SplitButtons },
+                { "navigation", "Navigation bars and rails", Navigation }, { "tabs", "Tabs", Tabs }, { "appbars", "App bars", AppBars }, { "segmented", "Segmented buttons", SegmentedButtons }, { "split", "Split buttons", SplitButtons },
                 { "tooltips", "Tooltips", Tooltips }, { "menus", "Menus", Menus }, { "groups", "Button groups", ButtonGroups },
                 { "sliders", "Sliders", Sliders }, { "progress", "Progress indicators", ProgressIndicators }, { "lists", "Lists", Lists },
                 { "chips", "Chips", Chips }, { "cards", "Cards", Cards }, { "selection", "", SelectionControls },

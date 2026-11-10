@@ -29,6 +29,8 @@ COMPONENTS = {
     'tabs': '''expect:Primary: Flights; tap:Explore; expect:Primary: Explore; tap:Audio; expect:Secondary: Audio;
         tap:Sent; shot:{p}-tabs; tap:Topic 3; expect:Scrolled to: Topic 3; wait:800; tap:Topic 4; expect:Scrolled to: Topic 4;
         wait:800; shot:{p}-tabs-scrolled''',
+    'appbars': '''expect:Small top app bar; expect:With a subtitle; reach:Top bar collapsed: 0%; expect:Message 2;
+        shot:{p}-appbars; swipeon:Message 3=0,-400,1500; wait:800; expect:Top bar collapsed: 100%; reject:Check; shot:{p}-appbars-collapsed''',
     'segmented': '''expect:Single selection: 0; tap:Week; expect:Single selection: 1; tap:Bike; expect:Multiple selection: 3;
         tap:Walk; expect:Multiple selection: 2; shot:{p}-segmented; reach:Disable segments; tap:Disable segments;
         expect:Enable segments; tap:Day; expect:Single selection: 1; shot:{p}-segmented-disabled''',

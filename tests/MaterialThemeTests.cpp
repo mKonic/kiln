@@ -22,6 +22,8 @@
 #include "kiln/material3/NavigationBar.h"
 #include "kiln/material3/NavigationRail.h"
 #include "kiln/material3/ShortNavigationBar.h"
+#include "kiln/foundation/Lazy.h"
+#include "kiln/material3/AppBar.h"
 #include "kiln/material3/Divider.h"
 #include "kiln/material3/Tab.h"
 #include "kiln/material3/TabRow.h"
@@ -50,6 +52,7 @@
 #include "kiln/material3/ripple/RippleHost.h"
 #include "kiln/material3/tokens/ColorSchemeKeyTokens.h"
 #include "kiln/material3/tokens/ShapeKeyTokens.h"
+#include "kiln/material3/tokens/AppBarSmallTokens.h"
 #include "kiln/material3/tokens/TypographyKeyTokens.h"
 #include "kiln/ui/LayoutNode.h"
 #include "kiln/ui/Accessibility.h"
@@ -5799,4 +5802,986 @@ TEST(TabGrowsWithTheFontScale) {
     });
     const auto b = BoundsDp(h, "box");
     CHECK(b && b->Height() >= 90);
+}
+
+// Ported from Compose's AppBarTest (412 x 800 dp, density 2). Colour checks read the content
+// colours the slots get; the container colour, a drawn colour, is checked through the state
+// that picks it (kiln's tests take no screenshots).
+namespace {
+    void FakeIcon(ui::Modifier m) {
+        IconButton([] {}, Semantics(std::move(m), [](ui::SemanticsConfiguration&) {}, true), {}, [] { NavIcon(); });
+    }
+    // The bar with the usual tags: navigation icon, title, actions.
+    TopAppBarOptions TaggedBar(bool navigation = true, bool actions = true) {
+        TopAppBarOptions o;
+        if (navigation) o.navigationIcon = [] { FakeIcon(Tag({}, "navigationIcon")); };
+        if (actions) o.actions = [] { FakeIcon(Tag({}, "actions")); };
+        return o;
+    }
+    std::function<void()> TitleText(std::string text = "Title") { return [text] { Text(text, Tag({}, "title")); }; }
+    // assertSmallDefaultPositioning / assertSmallPositioningWithoutNavigation.
+    void CheckSmallPositioning(Harness& h, bool navigation, bool centered) {
+        const auto bar = BoundsDp(h, "topAppBar"), title = BoundsDp(h, "title"), actions = BoundsDp(h, "actions");
+        CHECK(bar && title && actions);
+        if (!bar || !title || !actions) return;
+        const auto subtitle = BoundsDp(h, "subtitle");
+        const float subtitleHeight = subtitle ? subtitle->Height() : 0;
+        const float padding = (64 - 48) / 2.0f;
+        if (navigation) {
+            const auto nav = BoundsDp(h, "navigationIcon");
+            CHECK(nav && Near(nav->left, 4) && Near(nav->top, bar->bottom - padding - 48));
+        }
+        CHECK(Near(title->top, (bar->Height() - title->Height() - subtitleHeight) / 2));
+        if (centered) {
+            CHECK(Near(title->left, (bar->Width() - title->Width()) / 2));
+            if (subtitle) CHECK(Near(subtitle->left, (bar->Width() - subtitle->Width()) / 2));
+        } else {
+            CHECK(Near(title->left, navigation ? 4 + 48 + 4 : 4 + 12));
+        }
+        CHECK(Near(actions->left, bar->Width() - 4 - 48));
+        if (navigation) CHECK(Near(actions->top, bar->bottom - padding - 48));
+    }
+}
+
+TEST(TopAppBarsFillTheWidthAt64Dp) {
+    for (bool centered : { false, true }) {
+        PhoneHarness h;
+        Themed(h, [&] {
+            Box(Tag({}, "box"), Alignment::TopStart(), false, [&] {
+                TopAppBarOptions o;
+                o.windowInsets = WindowInsets{};
+                if (centered) CenterAlignedTopAppBar([] { Text("Title"); }, {}, o);
+                else TopAppBar([] { Text("Title"); }, {}, o);
+            });
+        });
+        const auto b = BoundsDp(h, "box");
+        CHECK(b && Near(b->Height(), 64) && Near(b->Width(), 412));
+        CHECK(Displayed(h, "Title"));
+    }
+}
+
+TEST(TopAppBarShowsItsSubtitle) {
+    PhoneHarness h;
+    Themed(h, [&] {
+        TopAppBarOptions o;
+        o.subtitle = [] { Text("Subtitle"); };
+        TopAppBar([] { Text("Title"); }, {}, o);
+    });
+    CHECK(Displayed(h, "Subtitle"));
+}
+
+TEST(TopAppBarPlacesItsSlots) {
+    struct Case { bool navigation, centered, subtitle, twoActions; };
+    for (const Case k : { Case{ true, false, false, false }, Case{ false, false, false, false }, Case{ true, true, true, false },
+                          Case{ true, true, true, true }, Case{ true, true, false, false }, Case{ false, true, false, false } }) {
+        PhoneHarness h;
+        Themed(h, [&] {
+            Box(Tag({}, "topAppBar"), Alignment::TopStart(), false, [&] {
+                TopAppBarOptions o = TaggedBar(k.navigation);
+                o.windowInsets = WindowInsets{};
+                if (k.twoActions) o.actions = [] { FakeIcon({}); FakeIcon(Tag({}, "actions")); };
+                if (k.subtitle) {
+                    o.subtitle = [] { Text("Subtitle", Tag({}, "subtitle")); };
+                    o.titleHorizontalAlignment = AlignmentH::CenterHorizontally();
+                    TopAppBar(TitleText(), {}, o);
+                } else if (k.centered) {
+                    CenterAlignedTopAppBar(TitleText(), {}, o);
+                } else {
+                    TopAppBar(TitleText(), {}, o);
+                }
+            });
+        });
+        CheckSmallPositioning(h, k.navigation, k.centered);
+    }
+}
+
+TEST(TopAppBarTextStylesAndColours) {
+    for (bool centered : { false, true }) {
+        PhoneHarness h;
+        text::TextStyle titleStyle, subtitleStyle, expectedTitle, expectedSubtitle;
+        Color nav, title, actions;
+        TopAppBarColors colors{};
+        Themed(h, [&] {
+            expectedTitle = Value(tokens::AppBarSmallTokens::TitleFont);
+            expectedSubtitle = Value(tokens::TypographyKeyTokens::LabelMedium);
+            colors = TopAppBarDefaults::topAppBarColors();
+            TopAppBarOptions o;
+            o.navigationIcon = [&] { nav = rt::Composition::Current()->Read(LocalContentColor); };
+            o.actions = [&] { actions = rt::Composition::Current()->Read(LocalContentColor); };
+            o.subtitle = [&] { subtitleStyle = rt::Composition::Current()->Read(LocalTextStyle()); };
+            const auto t = [&] {
+                titleStyle = rt::Composition::Current()->Read(LocalTextStyle());
+                title = rt::Composition::Current()->Read(LocalContentColor);
+            };
+            if (centered) CenterAlignedTopAppBar(t, {}, o);
+            else TopAppBar(t, {}, o);
+        });
+        CHECK(titleStyle == expectedTitle);
+        CHECK(subtitleStyle == expectedSubtitle);
+        CHECK(nav == colors.navigationIconContentColor && title == colors.titleContentColor && actions == colors.actionIconContentColor);
+    }
+}
+
+TEST(TopAppBarSubtitleTakesItsColour) {
+    PhoneHarness h;
+    Color title, subtitle;
+    Themed(h, [&] {
+        TopAppBarOptions o;
+        o.colors = TopAppBarDefaults::topAppBarColors(Color::Unspecified(), Color::Unspecified(), Color::Unspecified(), Color(0xFFFF0000u),
+                                                      Color::Unspecified(), Color(0xFF00FF00u));
+        o.subtitle = [&] { subtitle = rt::Composition::Current()->Read(LocalContentColor); };
+        TopAppBar([&] { title = rt::Composition::Current()->Read(LocalContentColor); }, {}, o);
+    });
+    CHECK(title == Color(0xFFFF0000u) && subtitle == Color(0xFF00FF00u));
+}
+
+TEST(PinnedTopAppBarCountsTheScrolledContent) {
+    // smallTopAppBar_scrolledContentColor: content scrolled under the bar turns it to the
+    // scrolled container colour (read here as the overlapped fraction that picks it).
+    PhoneHarness h;
+    std::shared_ptr<TopAppBarScrollBehavior> behavior;
+    TopAppBarColors colors{};
+    Themed(h, [&] {
+        behavior = TopAppBarDefaults::pinnedScrollBehavior();
+        colors = TopAppBarDefaults::topAppBarColors();
+        TopAppBarOptions o;
+        o.scrollBehavior = behavior;
+        TopAppBar(TitleText(), Tag({}, "topAppBar"), o);
+    });
+    CHECK(behavior->State().OverlappedFraction() == 0.0f);
+    behavior->State().SetContentOffset(-100);
+    h.AdvanceTimeBy(1000);
+    CHECK(behavior->State().OverlappedFraction() > 0.01f);
+    CHECK(colors.ContainerColor(1) == colors.scrolledContainerColor);
+}
+
+TEST(TopAppBarShrinksByItsHeightOffset) {
+    PhoneHarness h;
+    std::shared_ptr<TopAppBarScrollBehavior> behavior;
+    Themed(h, [&] {
+        behavior = TopAppBarDefaults::enterAlwaysScrollBehavior();
+        TopAppBarOptions o;
+        o.scrollBehavior = behavior;
+        o.windowInsets = WindowInsets{};
+        TopAppBar(TitleText(), Tag({}, "topAppBar"), o);
+    });
+    behavior->State().SetHeightOffset(-40);   // 20 dp
+    behavior->State().SetContentOffset(-40);
+    h.AdvanceTimeBy(16);
+    const auto b = BoundsDp(h, "topAppBar");
+    CHECK(b && Near(b->Height(), 64 - 20));
+}
+
+TEST(TopAppBarCustomAndTooSmallHeights) {
+    {
+        PhoneHarness h;
+        std::shared_ptr<TopAppBarScrollBehavior> behavior;
+        Themed(h, [&] {
+            behavior = TopAppBarDefaults::enterAlwaysScrollBehavior();
+            TopAppBarOptions o;
+            o.scrollBehavior = behavior;
+            o.windowInsets = WindowInsets{};
+            o.expandedHeight = 50_dp;
+            TopAppBar(TitleText(), Tag({}, "topAppBar"), o);
+        });
+        CHECK_EQ(behavior->State().HeightOffsetLimit(), -100.0f);
+        const auto b = BoundsDp(h, "topAppBar");
+        CHECK(b && Near(b->Height(), 50));
+    }
+    // A zero height still fits the title and subtitle.
+    PhoneHarness h;
+    std::shared_ptr<TopAppBarScrollBehavior> behavior;
+    Themed(h, [&] {
+        behavior = TopAppBarDefaults::enterAlwaysScrollBehavior();
+        TopAppBarOptions o;
+        o.scrollBehavior = behavior;
+        o.windowInsets = WindowInsets{};
+        o.expandedHeight = 0_dp;
+        o.subtitle = [] { Text("Subtitle", Tag({}, "subtitle")); };
+        TopAppBar(TitleText(), Tag({}, "topAppBar"), o);
+    });
+    const auto title = BoundsDp(h, "title"), subtitle = BoundsDp(h, "subtitle"), bar = BoundsDp(h, "topAppBar");
+    CHECK(title && subtitle && bar);
+    if (title && subtitle && bar) {
+        const float total = title->Height() + subtitle->Height();
+        CHECK_EQ(behavior->State().HeightOffsetLimit(), -total * 2);
+        CHECK(Near(bar->Height(), total));
+    }
+}
+
+TEST(TopAppBarLongTitlesStayClearOfTheIcons) {
+    {
+        PhoneHarness h;
+        Themed(h, [&] {
+            TopAppBarOptions o;
+            o.actions = [] { Row(Tag({}, "actions"), [] { Text("Action"); }); };
+            TopAppBar([] { Text("This is a very long title that should be truncated", Tag({}, "title"), { .maxLines = 1 }); }, Tag({}, "topAppBar"), o);
+        });
+        const auto bar = BoundsDp(h, "topAppBar"), title = BoundsDp(h, "title"), actions = BoundsDp(h, "actions");
+        CHECK(bar && title && actions && title->right <= actions->left + 0.01f && title->Width() < bar->Width());
+    }
+    for (bool navigation : { false, true }) {
+        PhoneHarness h;
+        Themed(h, [&] {
+            TopAppBarOptions o = TaggedBar(navigation, !navigation);
+            CenterAlignedTopAppBar([] { Text("This is a very very very very long title", Tag({}, "title"),
+                                             { .overflow = text::TextOverflow::Ellipsis, .maxLines = 1 }); },
+                                   {}, o);
+        });
+        const auto title = BoundsDp(h, "title");
+        if (navigation) {
+            const auto nav = BoundsDp(h, "navigationIcon");
+            CHECK(title && nav && title->left > nav->right);
+        } else {
+            const auto actions = BoundsDp(h, "actions");
+            CHECK(title && actions && title->right < actions->left);
+        }
+    }
+}
+
+TEST(CenterAlignedTopAppBarPadsByItsInsets) {
+    PhoneHarness h;
+    Themed(h, [&] {
+        Box(Tag({}, "topAppBar"), Alignment::TopStart(), false, [] {
+            TopAppBarOptions o = TaggedBar();
+            o.windowInsets = WindowInsets::Fixed(10_dp, 10_dp, 10_dp, 10_dp);
+            CenterAlignedTopAppBar(TitleText(), {}, o);
+        });
+    });
+    const auto bar = BoundsDp(h, "topAppBar"), nav = BoundsDp(h, "navigationIcon");
+    CHECK(bar && nav && Near(nav->left, 4 + 10) && Near(nav->top, bar->bottom - 8 - 10 - 48));
+}
+
+TEST(CenterAlignedTopAppBarMeasuresWithAMinimumWidth) {
+    PhoneHarness h;
+    ui::IntSize size{};
+    Themed(h, [&] {
+        CenterAlignedTopAppBar([] { Text("Title"); }, LayoutMod({}, [&](ui::MeasureScope& s, ui::Measurable& m, const ui::Constraints& c) {
+            ui::Placeable& p = m.Measure(ui::Constraints{ c.maxWidth, c.maxWidth, c.minHeight, c.maxHeight });
+            size = { p.Width(), p.Height() };
+            return s.Layout(p.Width(), p.Height(), [&p](ui::PlacementScope& place) { place.Place(p, 0, 0); });
+        }));
+    });
+    CHECK(size.width > 0 && size.height > 0);
+}
+
+// AppBarTest: medium and large (and flexible) bars.
+namespace {
+    // getUnclippedBoundsInRoot (dp): where the tag sits, not clipped by the layouts around it.
+    std::optional<ui::Rect> UnclippedBoundsDp(Harness& h, const std::string& tag) {
+        const auto* n = FindTagged(h, tag);
+        if (!n) return std::nullopt;
+        const ui::Rect r = TagRectInRoot(*n, tag);
+        const float d = h.owner.GetDensity().density;
+        return ui::Rect{ r.left / d, r.top / d, r.right / d, r.bottom / d };
+    }
+    // onAllNodesWithTag(tag, useUnmergedTree = true): placed layout nodes, in tree order.
+    void AllTagged(const ui::LayoutNode& n, const std::string& tag, std::vector<const ui::LayoutNode*>& out) {
+        if (!n.IsPlaced() && n.Parent()) return;
+        ui::SemanticsConfiguration c;
+        if (ui::CalculateSemanticsConfiguration(const_cast<ui::LayoutNode&>(n), c) && c.testTag == tag) out.push_back(&n);
+        for (const auto* child : n.Children()) AllTagged(*child, tag, out);
+    }
+    std::vector<ui::Rect> AllTaggedBoundsDp(Harness& h, const std::string& tag) {
+        std::vector<const ui::LayoutNode*> nodes;
+        AllTagged(h.owner.Root(), tag, nodes);
+        std::vector<ui::Rect> out;
+        const float d = h.owner.GetDensity().density;
+        for (const auto* n : nodes) {
+            const ui::Rect r = TagRectInRoot(*n, tag);
+            out.push_back({ r.left / d, r.top / d, r.right / d, r.bottom / d });
+        }
+        return out;
+    }
+    // onAllNodesWithTag(tag) (merged): the semantics nodes, covered or not.
+    int CountMerged(Harness& h, const std::string& tag) {
+        const auto tree = h.owner.BuildSemanticsTree(false);
+        int n = 0;
+        std::function<void(const ui::SemanticsNode&)> walk = [&](const ui::SemanticsNode& s) {
+            if (s.config.testTag == tag) ++n;
+            for (const auto& c : s.children) walk(c);
+        };
+        walk(tree);
+        return n;
+    }
+    enum class TwoRow : std::uint8_t { Medium, MediumFlexible, Large, LargeFlexible };
+    void TwoRowBar(TwoRow kind, std::function<void()> title, const ui::Modifier& m, const TwoRowsTopAppBarOptions& o) {
+        switch (kind) {
+            case TwoRow::Medium: MediumTopAppBar(std::move(title), m, o); break;
+            case TwoRow::MediumFlexible: MediumFlexibleTopAppBar(std::move(title), m, o); break;
+            case TwoRow::Large: LargeTopAppBar(std::move(title), m, o); break;
+            case TwoRow::LargeFlexible: LargeFlexibleTopAppBar(std::move(title), m, o); break;
+        }
+    }
+    float ExpandedHeight(TwoRow kind) { return kind == TwoRow::Medium || kind == TwoRow::MediumFlexible ? 112 : kind == TwoRow::Large ? 152 : 120; }
+}
+
+TEST(TwoRowTopAppBarsFillTheWidth) {
+    for (auto kind : { TwoRow::Medium, TwoRow::Large }) {
+        PhoneHarness h;
+        Themed(h, [&] {
+            Box(Tag({}, "box"), Alignment::TopStart(), false, [&] {
+                TwoRowsTopAppBarOptions o;
+                o.windowInsets = WindowInsets{};
+                TwoRowBar(kind, [] { Text("Title"); }, {}, o);
+            });
+        });
+        const auto b = BoundsDp(h, "box");
+        CHECK(b && Near(b->Height(), ExpandedHeight(kind)) && Near(b->Width(), 412));
+    }
+}
+
+TEST(TwoRowTopAppBarsPlaceTheirSlotsExpanded) {
+    // assertMediumOrLargeDefaultPositioning: the icons and the small title in the top row, the
+    // large title's baseline 24 (medium) or 28 (large) dp above the bottom.
+    struct Case { TwoRow kind; float collapsed, expanded, bottomPadding; bool custom; };
+    for (const Case k : { Case{ TwoRow::Medium, 64, 112, 24, false }, Case{ TwoRow::Medium, 36, 112, 24, true },
+                          Case{ TwoRow::Large, 64, 152, 28, false }, Case{ TwoRow::Large, 36, 152, 28, true } }) {
+        PhoneHarness h;
+        Themed(h, [&] {
+            Box(Tag({}, "topAppBar"), Alignment::TopStart(), false, [&] {
+                TwoRowsTopAppBarOptions o;
+                o.navigationIcon = [] { FakeIcon(Tag({}, "navigationIcon")); };
+                o.actions = [] { FakeIcon(Tag({}, "actions")); };
+                o.windowInsets = WindowInsets{};
+                if (k.custom) {
+                    o.collapsedHeight = ui::Dp(k.collapsed);
+                    o.expandedHeight = ui::Dp(k.expanded);
+                }
+                TwoRowBar(k.kind, TitleText(), {}, o);
+            });
+        });
+        const auto bar = BoundsDp(h, "topAppBar");
+        const auto titles = AllTaggedBoundsDp(h, "title");
+        CHECK(bar && titles.size() == 2);
+        if (!bar || titles.size() != 2) continue;
+        CHECK(Near(bar->Height(), k.expanded));
+        const float topRowBottom = bar->top + k.collapsed, padding = (k.collapsed - 48) / 2;
+        // Unclipped: a 36 dp top row leaves the 48 dp icons overflowing it.
+        const auto nav = UnclippedBoundsDp(h, "navigationIcon"), actions = UnclippedBoundsDp(h, "actions");
+        CHECK(nav && Near(nav->left, 4) && Near(nav->top, topRowBottom - padding - 48));
+        CHECK(actions && Near(actions->left, bar->Width() - 4 - 48) && Near(actions->top, topRowBottom - padding - 48));
+        CHECK(Near(titles[0].left, 4 + 48 + 4) && Near(titles[0].top, (topRowBottom - titles[0].Height()) / 2));
+        CHECK(Near(titles[1].left, 16));
+        // The bottom title's baseline (0.8 of a fake text line down) from the bottom. In the
+        // default medium bar the test font's title is too tall for its 24 dp padding in the 48 dp
+        // row: the padding shrinks to fit it, and the title sits at the row's top.
+        const float baselineFromBottom = bar->bottom - (titles[1].top + 0.8f * titles[1].Height());
+        if (k.kind == TwoRow::Medium && !k.custom) CHECK(baselineFromBottom < k.bottomPadding && Near(titles[1].top, bar->top + 64));
+        else CHECK(Near(baselineFromBottom, k.bottomPadding));
+    }
+}
+
+TEST(FlexibleTopAppBarsFitTheirTextWhenTooShort) {
+    for (auto kind : { TwoRow::MediumFlexible, TwoRow::LargeFlexible }) {
+        {
+            // Expanded no taller than collapsed: the bottom row still fits the title and subtitle.
+            PhoneHarness h;
+            std::shared_ptr<TopAppBarScrollBehavior> behavior;
+            Themed(h, [&] {
+                behavior = TopAppBarDefaults::enterAlwaysScrollBehavior();
+                Box(Tag({}, "topAppBar"), Alignment::TopStart(), false, [&] {
+                    TwoRowsTopAppBarOptions o;
+                    o.subtitle = [] { Text("Subtitle", Tag({}, "subtitle")); };
+                    o.collapsedHeight = 64_dp;
+                    o.expandedHeight = 64_dp;
+                    o.scrollBehavior = behavior;
+                    o.windowInsets = WindowInsets{};
+                    TwoRowBar(kind, TitleText(), {}, o);
+                });
+            });
+            const auto titles = AllTaggedBoundsDp(h, "title"), subtitles = AllTaggedBoundsDp(h, "subtitle");
+            const auto bar = BoundsDp(h, "topAppBar");
+            CHECK(bar && titles.size() == 2 && subtitles.size() == 2);
+            if (bar && titles.size() == 2 && subtitles.size() == 2) {
+                const float textHeight = titles[1].Height() + subtitles[1].Height();
+                CHECK_EQ(behavior->State().HeightOffsetLimit(), -textHeight * 2);
+                CHECK(Near(bar->Height(), 64 + textHeight));
+            }
+        }
+        // Collapsed to nothing: the top row keeps its text's height.
+        PhoneHarness h;
+        std::shared_ptr<TopAppBarScrollBehavior> behavior;
+        const float expanded = kind == TwoRow::MediumFlexible ? 136 : 152;
+        Themed(h, [&] {
+            behavior = TopAppBarDefaults::enterAlwaysScrollBehavior();
+            Box(Tag({}, "topAppBar"), Alignment::TopStart(), false, [&] {
+                TwoRowsTopAppBarOptions o;
+                o.subtitle = [] { Text("Subtitle", Tag({}, "subtitle")); };
+                o.collapsedHeight = 0_dp;
+                o.expandedHeight = ui::Dp(expanded);
+                o.scrollBehavior = behavior;
+                o.windowInsets = WindowInsets{};
+                TwoRowBar(kind, TitleText(), {}, o);
+            });
+        });
+        behavior->State().SetHeightOffset(-expanded * 2);
+        behavior->State().SetContentOffset(-expanded * 2);
+        h.AdvanceTimeBy(16);
+        const auto titles = AllTaggedBoundsDp(h, "title"), subtitles = AllTaggedBoundsDp(h, "subtitle");
+        const auto bar = BoundsDp(h, "topAppBar");
+        CHECK(bar && titles.size() == 2 && subtitles.size() == 2);
+        if (bar && titles.size() == 2 && subtitles.size() == 2) {
+            CHECK_EQ(behavior->State().HeightOffsetLimit(), -expanded * 2);
+            CHECK(Near(bar->Height(), titles[0].Height() + subtitles[0].Height()));
+        }
+    }
+}
+
+TEST(TwoRowTopAppBarsCollapseWithTheScroll) {
+    // assertMediumOrLargeScrolledHeight, with 13 dp insets all round.
+    struct Case { TwoRow kind; float maxHeight, minHeight; bool custom; };
+    for (const Case k : { Case{ TwoRow::Medium, 112, 64, false }, Case{ TwoRow::Medium, 120, 40, true }, Case{ TwoRow::Large, 152, 64, false },
+                          Case{ TwoRow::Large, 168, 40, true } }) {
+        PhoneHarness h;
+        std::shared_ptr<TopAppBarScrollBehavior> behavior;
+        Themed(h, [&] {
+            behavior = TopAppBarDefaults::exitUntilCollapsedScrollBehavior();
+            Box(Tag({}, "topAppBar"), Alignment::TopStart(), false, [&] {
+                TwoRowsTopAppBarOptions o;
+                o.navigationIcon = [] { FakeIcon(Tag({}, "navigationIcon")); };
+                o.actions = [] { FakeIcon(Tag({}, "actions")); };
+                o.windowInsets = WindowInsets::Fixed(13_dp, 13_dp, 13_dp, 13_dp);
+                o.scrollBehavior = behavior;
+                if (k.custom) {
+                    o.collapsedHeight = ui::Dp(k.minHeight);
+                    o.expandedHeight = ui::Dp(k.maxHeight);
+                }
+                TwoRowBar(k.kind, TitleText(), {}, o);
+            });
+        });
+        const float full = (k.maxHeight - k.minHeight) * 2, partial = full / 3;
+        behavior->State().SetHeightOffset(-partial);
+        behavior->State().SetContentOffset(-partial);
+        h.AdvanceTimeBy(16);
+        auto bar = BoundsDp(h, "topAppBar");
+        CHECK(bar && Near(bar->Height(), k.maxHeight - partial / 2 + 26));
+        behavior->State().SetHeightOffset(-full);
+        behavior->State().SetContentOffset(-full - partial);
+        h.AdvanceTimeBy(16);
+        bar = BoundsDp(h, "topAppBar");
+        CHECK(bar && Near(bar->Height(), k.minHeight + 26));
+    }
+}
+
+TEST(TwoRowTopAppBarsHideTheBottomTitleWhenCollapsed) {
+    // assertMediumOrLargeScrolledColors without the pixels: the title's colour, and the bottom
+    // title gone once collapsed.
+    for (auto kind : { TwoRow::Medium, TwoRow::MediumFlexible, TwoRow::Large, TwoRow::LargeFlexible }) {
+        PhoneHarness h;
+        std::shared_ptr<TopAppBarScrollBehavior> behavior;
+        std::vector<Color> seen;
+        Themed(h, [&] {
+            behavior = TopAppBarDefaults::exitUntilCollapsedScrollBehavior();
+            TwoRowsTopAppBarOptions o;
+            o.scrollBehavior = behavior;
+            o.windowInsets = WindowInsets{};
+            TwoRowBar(kind, [&] { seen.push_back(rt::Composition::Current()->Read(LocalContentColor)); Text("Title", Tag({}, "title")); },
+                      Tag({}, "topAppBar"), o);
+        });
+        CHECK(seen.size() >= 2);
+        CHECK(Displayed(h, "title"));
+        const float full = (ExpandedHeight(kind) - 64) * 2;
+        behavior->State().SetHeightOffset(-full);
+        behavior->State().SetContentOffset(-full);
+        h.AdvanceTimeBy(16);
+        CHECK_EQ(behavior->State().CollapsedFraction(), 1.0f);
+        const auto titles = AllTaggedBoundsDp(h, "title");
+        CHECK(titles.size() == 2 && titles[1].Height() >= 0);
+        // The bottom row has no height left.
+        const auto bar = BoundsDp(h, "topAppBar");
+        CHECK(bar && Near(bar->Height(), 64));
+    }
+}
+
+TEST(TopAppBarColorsTakePositionalArguments) {
+    PhoneHarness h;
+    TopAppBarColors c{};
+    Themed(h, [&] {
+        c = TopAppBarDefaults::topAppBarColors(Color(0xFF0000FFu), Color(0xFF00FF00u), Color(0xFFFF0000u), Color(0xFFFFFF00u), Color(0xFF00FFFFu),
+                                               Color(0xFFFF00FFu));
+    });
+    CHECK(c.containerColor == Color(0xFF0000FFu) && c.scrolledContainerColor == Color(0xFF00FF00u));
+    CHECK(c.navigationIconContentColor == Color(0xFFFF0000u) && c.titleContentColor == Color(0xFFFFFF00u));
+    CHECK(c.actionIconContentColor == Color(0xFF00FFFFu) && c.subtitleContentColor == Color(0xFFFF00FFu));
+}
+
+TEST(TwoRowTopAppBarsExposeOneTitle) {
+    // assertMediumOrLargeScrolledSemantics: two title nodes laid out, one in the semantics tree,
+    // expanded, a third collapsed and fully collapsed.
+    for (auto kind : { TwoRow::Medium, TwoRow::MediumFlexible, TwoRow::Large, TwoRow::LargeFlexible }) {
+        const bool subtitle = kind == TwoRow::MediumFlexible || kind == TwoRow::LargeFlexible;
+        PhoneHarness h;
+        std::shared_ptr<TopAppBarScrollBehavior> behavior;
+        Themed(h, [&] {
+            behavior = TopAppBarDefaults::exitUntilCollapsedScrollBehavior();
+            TwoRowsTopAppBarOptions o;
+            o.scrollBehavior = behavior;
+            if (subtitle) o.subtitle = [] { Text("Subtitle", Tag({}, "subtitle")); };
+            TwoRowBar(kind, TitleText(), Tag({}, "topAppBar"), o);
+        });
+        const float full = (kind == TwoRow::Medium || kind == TwoRow::MediumFlexible ? 112 - 64 : 152 - 64) * 2.0f;
+        for (float offset : { 0.0f, full / 3, full }) {
+            behavior->State().SetHeightOffset(-offset);
+            behavior->State().SetContentOffset(-offset);
+            h.AdvanceTimeBy(16);
+            CHECK_EQ(AllTaggedBoundsDp(h, "title").size(), std::size_t(2));
+            CHECK_EQ(CountMerged(h, "title"), 1);
+            if (subtitle) {
+                CHECK_EQ(AllTaggedBoundsDp(h, "subtitle").size(), std::size_t(2));
+                CHECK_EQ(CountMerged(h, "subtitle"), 1);
+            }
+        }
+    }
+}
+
+// AppBarTest: scroll behaviours, drags, intrinsics, restoration.
+namespace {
+    // A finger from (x0, y0) to (x1, y1) in `steps` moves, `stepMs` apart (px), then up.
+    void Swipe(Harness& h, std::int64_t& t, float x0, float y0, float x1, float y1, int steps = 10, std::int64_t stepMs = 10, bool release = true) {
+        Touch(h, t, ui::PointerEventType::Press, x0, y0, true);
+        for (int i = 1; i <= steps; ++i) {
+            const float f = float(i) / float(steps);
+            t += stepMs - 16;   // Touch adds 16
+            Touch(h, t, ui::PointerEventType::Move, x0 + (x1 - x0) * f, y0 + (y1 - y0) * f, true);
+        }
+        if (release) Touch(h, t, ui::PointerEventType::Release, x1, y1, false);
+    }
+    // MultiPageContent: two pages side by side in a lazy row, each a lazy column of 50 items.
+    void MultiPageContent(std::shared_ptr<TopAppBarScrollBehavior> behavior, LazyListState& state, std::vector<std::unique_ptr<LazyListState>>& pages) {
+        ScaffoldOptions o;
+        o.topBar = [behavior] {
+            TopAppBarOptions bar;
+            bar.scrollBehavior = behavior;
+            TopAppBar([] { Text("Title"); }, Tag({}, "topAppBar"), bar);
+        };
+        Scaffold(NestedScroll({}, behavior->NestedScrollConnection()), o, [&](const PaddingValues& padding) {
+            LazyRow(Tag(FillMax({}, Axis::Both), "lazyList"), state, [&, padding](LazyListScope& s) {
+                s.Items(2, [&, padding](int page) {
+                    // fillParentMaxSize: the window.
+                    LazyColumn(SizeMod({}, 412_dp, 800_dp), *pages[std::size_t(page)], [page](LazyListScope& c) {
+                        c.Items(50, [page](int i) { Text("Item #" + std::to_string(page) + " x " + std::to_string(i), FillMax({}, Axis::Horizontal)); });
+                    }, { .contentPadding = padding });
+                });
+            });
+        });
+    }
+}
+
+TEST(TopAppBarBehavioursLetContentScrollSideways) {
+    for (int kind = 0; kind < 3; ++kind) {
+        PhoneHarness h;
+        std::int64_t t = 1000;
+        LazyListState state;
+        std::vector<std::unique_ptr<LazyListState>> pages;
+        pages.push_back(std::make_unique<LazyListState>());
+        pages.push_back(std::make_unique<LazyListState>());
+        Themed(h, [&] {
+            const auto behavior = kind == 0 ? TopAppBarDefaults::enterAlwaysScrollBehavior()
+                                : kind == 1 ? TopAppBarDefaults::exitUntilCollapsedScrollBehavior()
+                                            : TopAppBarDefaults::pinnedScrollBehavior();
+            MultiPageContent(behavior, state, pages);
+        });
+        // swipeLeft / swipeRight across the middle.
+        Swipe(h, t, 780, 800, 40, 800);
+        h.AdvanceTimeBy(2000);
+        CHECK_EQ(state.FirstVisibleItemIndex(), 1);
+        Swipe(h, t, 40, 800, 780, 800);
+        h.AdvanceTimeBy(2000);
+        CHECK_EQ(state.FirstVisibleItemIndex(), 0);
+    }
+}
+
+TEST(TopAppBarDrags) {
+    {
+        // Pinned: dragging the bar does nothing.
+        PhoneHarness h;
+        std::int64_t t = 1000;
+        Themed(h, [&] {
+            TopAppBarOptions o;
+            o.scrollBehavior = TopAppBarDefaults::pinnedScrollBehavior();
+            o.windowInsets = WindowInsets{};
+            TopAppBar([] { Text("Title"); }, Tag({}, "topAppBar"), o);
+        });
+        Swipe(h, t, 10, 64, 10, 0, 10, 10, false);
+        h.AdvanceTimeBy(1000);
+        const auto b = BoundsDp(h, "topAppBar");
+        CHECK(b && Near(b->Height(), 64));
+    }
+    {
+        // A medium bar dragged all the way up collapses to the small height.
+        PhoneHarness h;
+        std::int64_t t = 1000;
+        Themed(h, [&] {
+            TwoRowsTopAppBarOptions o;
+            o.scrollBehavior = TopAppBarDefaults::exitUntilCollapsedScrollBehavior();
+            o.windowInsets = WindowInsets{};
+            MediumTopAppBar([] { Text("Title"); }, Tag({}, "topAppBar"), o);
+        });
+        auto b = BoundsDp(h, "topAppBar");
+        CHECK(b && Near(b->Height(), 112));
+        Swipe(h, t, 10, 224 - 20, 10, 0, 10, 10, false);
+        h.AdvanceTimeBy(1000);
+        b = BoundsDp(h, "topAppBar");
+        CHECK(b && Near(b->Height(), 64));
+    }
+}
+
+TEST(LargeTopAppBarSnapsAfterADrag) {
+    {
+        PhoneHarness h;
+        std::int64_t t = 1000;
+        Themed(h, [&] {
+            TwoRowsTopAppBarOptions o;
+            o.scrollBehavior = TopAppBarDefaults::exitUntilCollapsedScrollBehavior();
+            o.windowInsets = WindowInsets{};
+            LargeTopAppBar([] { Text("Title"); }, Tag({}, "topAppBar"), o);
+        });
+        auto b = BoundsDp(h, "topAppBar");
+        CHECK(b && Near(b->Height(), 152));
+        // A little: back to expanded.
+        Swipe(h, t, 10, 304 - 20, 10, 304 - 40, 4, 50);
+        h.AdvanceTimeBy(2000);
+        b = BoundsDp(h, "topAppBar");
+        CHECK(b && Near(b->Height(), 152));
+        // Most of the way: on to collapsed.
+        Swipe(h, t, 10, 304 - 20, 10, 40, 10, 50);
+        h.AdvanceTimeBy(2000);
+        b = BoundsDp(h, "topAppBar");
+        CHECK(b && Near(b->Height(), 64));
+    }
+    // No snap: it stays where the drag left it.
+    PhoneHarness h;
+    std::int64_t t = 1000;
+    Themed(h, [&] {
+        TwoRowsTopAppBarOptions o;
+        o.scrollBehavior = TopAppBarDefaults::exitUntilCollapsedScrollBehavior(nullptr, {}, anim::SpecPtr(nullptr));
+        o.windowInsets = WindowInsets{};
+        LargeTopAppBar([] { Text("Title"); }, Tag({}, "topAppBar"), o);
+    });
+    Swipe(h, t, 100, 304 - 20, 100, 304 - 100, 8, 50);
+    h.AdvanceTimeBy(2000);
+    const auto b = BoundsDp(h, "topAppBar");
+    CHECK(b && b->Height() < 152 && b->Height() > 64);
+}
+
+TEST(EnterAlwaysTopAppBarMovesTheContentWithIt) {
+    // Collapsed by a long swipe up, the bar comes back with a slow swipe down of its height, and
+    // the content moves down with it.
+    PhoneHarness h;
+    std::int64_t t = 1000;
+    LazyListState state;
+    std::shared_ptr<TopAppBarScrollBehavior> behavior;
+    Themed(h, [&] {
+        behavior = TopAppBarDefaults::enterAlwaysScrollBehavior();
+        ScaffoldOptions o;
+        o.contentWindowInsets = WindowInsets{};
+        o.topBar = [&] {
+            TopAppBarOptions bar;
+            bar.scrollBehavior = behavior;
+            bar.windowInsets = WindowInsets{};
+            TopAppBar([] { Text("Title"); }, {}, bar);
+        };
+        Scaffold(FillMax({}, Axis::Both), o, [&](const PaddingValues& padding) {
+            LazyColumn(Tag(Padding(NestedScroll(FillMax({}, Axis::Both), behavior->NestedScrollConnection()), padding), "lazyList"), state,
+                       [](LazyListScope& s) {
+                           s.Items(100, [](int i) { Text("Item " + std::to_string(i), Padding(Height(FillMax({}, Axis::Horizontal), 40_dp), 16_dp, 0_dp)); });
+                       });
+        });
+    });
+    Swipe(h, t, 400, 1600 * 0.8f, 400, 1600 - 1000, 10, 20);
+    h.AdvanceTimeBy(3000);
+    CHECK(behavior->State().CollapsedFraction() == 1.0f);
+    const auto info = state.LayoutInfo();
+    CHECK(!info.visibleItemsInfo.empty());
+    if (info.visibleItemsInfo.empty()) return;
+    const std::string tracked = "Item " + std::to_string(info.visibleItemsInfo.front().index + 2);
+    const auto before = BoundsDp(h, tracked);
+    // swipeDown(durationMillis = 2000) by the bar's height.
+    Swipe(h, t, 400, 1600 * 0.2f, 400, 1600 * 0.2f + 128, 40, 50);
+    h.AdvanceTimeBy(3000);
+    const auto after = BoundsDp(h, tracked);
+    CHECK(before && after && Near(after->top, before->top + 64));
+}
+
+TEST(TopAppBarStateRestores) {
+    rt::SaveableStateRegistry::Values saved;
+    for (int pass = 0; pass < 2; ++pass) {
+        rt::SaveableStateRegistry registry(saved);
+        std::shared_ptr<TopAppBarState> state;
+        Harness h;
+        h.Run([&] { rt::Composition::Current()->Provide(rt::LocalSaveableStateRegistry, &registry, [&] { state = RememberTopAppBarState(); }); });
+        CHECK(state != nullptr);
+        if (!state) return;
+        if (pass == 0) {
+            state->SetHeightOffsetLimit(-350);
+            state->SetHeightOffset(-300);
+            state->SetContentOffset(-550);
+            saved = rt::SaveableStateRegistry::Deserialize(rt::SaveableStateRegistry::Serialize(registry.PerformSave()));
+        } else {
+            CHECK_EQ(state->HeightOffsetLimit(), -350.0f);
+            CHECK_EQ(state->HeightOffset(), -300.0f);
+            CHECK_EQ(state->ContentOffset(), -550.0f);
+        }
+    }
+}
+
+TEST(TopAppBarIntrinsicSizes) {
+    PhoneHarness h;
+    std::shared_ptr<TopAppBarScrollBehavior> behavior;
+    Themed(h, [&] {
+        behavior = TopAppBarDefaults::enterAlwaysScrollBehavior();
+        Column({}, [&] {
+            for (auto size : { IntrinsicSize::Min, IntrinsicSize::Max }) {
+                Row(Tag(Height({}, size), size == IntrinsicSize::Min ? "row0" : "row1"), [&] {
+                    TopAppBarOptions o;
+                    o.expandedHeight = 50_dp;
+                    o.scrollBehavior = behavior;
+                    o.windowInsets = WindowInsets{};
+                    TopAppBar([] { Text("Title"); }, {}, o);
+                });
+            }
+            for (auto size : { IntrinsicSize::Min, IntrinsicSize::Max }) {
+                const bool first = size == IntrinsicSize::Min;
+                Row(Tag(Width({}, size), first ? "wrow0" : "wrow1"), [&, first] {
+                    TopAppBarOptions o;
+                    o.navigationIcon = [first] { FakeIcon(first ? Tag({}, "navigationIcon") : ui::Modifier{}); };
+                    o.actions = [first] { FakeIcon(first ? Tag({}, "actions") : ui::Modifier{}); };
+                    o.expandedHeight = 50_dp;
+                    o.scrollBehavior = behavior;
+                    o.windowInsets = WindowInsets{};
+                    TopAppBar([first] { Text("Title", first ? Tag({}, "title") : ui::Modifier{}); }, FillMax({}, Axis::Horizontal), o);
+                });
+            }
+        });
+    });
+    CHECK_EQ(behavior->State().HeightOffsetLimit(), -100.0f);
+    for (const char* row : { "row0", "row1" }) {
+        const auto b = BoundsDp(h, row);
+        CHECK(b && Near(b->Height(), 50));
+    }
+    const auto nav = BoundsDp(h, "navigationIcon"), title = BoundsDp(h, "title"), actions = BoundsDp(h, "actions");
+    CHECK(nav && title && actions);
+    if (!nav || !title || !actions) return;
+    const float intrinsic = 16 + nav->Width() + title->Width() + actions->Width();
+    for (const char* row : { "wrow0", "wrow1" }) {
+        const auto b = BoundsDp(h, row);
+        CHECK(b && std::abs(b->Width() - intrinsic) <= 1);
+    }
+}
+
+TEST(CustomTwoRowsTopAppBar) {
+    {
+        // Expanded: the collapsed and expanded titles each where a medium bar puts them.
+        PhoneHarness h;
+        Themed(h, [&] {
+            Box(Tag({}, "topAppBar"), Alignment::TopStart(), false, [] {
+                TwoRowsTopAppBarOptions o;
+                o.navigationIcon = [] { FakeIcon(Tag({}, "navigationIcon")); };
+                o.actions = [] { FakeIcon(Tag({}, "actions")); };
+                o.collapsedHeight = 36_dp;
+                o.expandedHeight = 112_dp;
+                o.windowInsets = WindowInsets{};
+                TwoRowsTopAppBar([](bool expanded) { Text(expanded ? "Expanded Title" : "Collapsed Title", Tag({}, "title")); }, {}, {}, o);
+            });
+        });
+        const auto bar = BoundsDp(h, "topAppBar");
+        const auto titles = AllTaggedBoundsDp(h, "title");
+        CHECK(bar && titles.size() == 2 && Near(bar->Height(), 112));
+        if (bar && titles.size() == 2) {
+            CHECK(Near(titles[0].left, 4 + 48 + 4) && Near(titles[0].top, (bar->top + 36 - titles[0].Height()) / 2));
+            CHECK(Near(titles[1].left, 16));
+        }
+        const auto nav = UnclippedBoundsDp(h, "navigationIcon");
+        CHECK(nav && Near(nav->left, 4) && Near(nav->top, 36 - (36 - 48) / 2.0f - 48));
+    }
+    // Scrolled: from 120 dp to 40 dp, with 13 dp insets.
+    PhoneHarness h;
+    std::shared_ptr<TopAppBarScrollBehavior> behavior;
+    Themed(h, [&] {
+        behavior = TopAppBarDefaults::exitUntilCollapsedScrollBehavior();
+        Box(Tag({}, "topAppBar"), Alignment::TopStart(), false, [&] {
+            TwoRowsTopAppBarOptions o;
+            o.collapsedHeight = 40_dp;
+            o.expandedHeight = 120_dp;
+            o.windowInsets = WindowInsets::Fixed(13_dp, 13_dp, 13_dp, 13_dp);
+            o.scrollBehavior = behavior;
+            TwoRowsTopAppBar([](bool expanded) { Text(expanded ? "Expanded Title" : "Collapsed Title", Tag({}, "title")); }, {}, {}, o);
+        });
+    });
+    const float full = 80 * 2, partial = full / 3;
+    behavior->State().SetHeightOffset(-partial);
+    h.AdvanceTimeBy(16);
+    auto bar = BoundsDp(h, "topAppBar");
+    CHECK(bar && Near(bar->Height(), 120 - partial / 2 + 26));
+    behavior->State().SetHeightOffset(-full);
+    h.AdvanceTimeBy(16);
+    bar = BoundsDp(h, "topAppBar");
+    CHECK(bar && Near(bar->Height(), 40 + 26));
+}
+
+TEST(TopAppBarContentPaddingUnderAStatusBar) {
+    // The parent pads by the status bar; the bar adds its content padding to its height.
+    PhoneHarness h;
+    h.owner.Insets().Set(ui::InsetsType::StatusBars, ui::InsetsValue{ 0, 20, 0, 0 });
+    Themed(h, [&] {
+        Column(WindowInsetsPadding(FillMax({}, Axis::Both), WindowInsets::StatusBars()), [] {
+            TopAppBarOptions o;
+            o.contentPadding = PaddingValues{ 0_dp, 20_dp, 0_dp, 0_dp };
+            TopAppBar([] { Text("Title"); }, Tag({}, "topAppBar"), o);
+            Box(Tag(WindowInsetsPadding(Height(FillMax({}, Axis::Horizontal), 40_dp), WindowInsets::StatusBars()), "box"), Alignment::Center(), false,
+                [] { Text("Sibling Box"); });
+        });
+    });
+    const auto bar = BoundsDp(h, "topAppBar"), box = BoundsDp(h, "box");
+    CHECK(bar && Near(bar->top, 10) && Near(bar->Height(), 64 + 20));
+    CHECK(box && Near(box->Height(), 40) && Near(box->top, 20 + 64 + 10));
+}
+
+// AppBarTest: bottom app bars.
+namespace {
+    void BarFab(ui::Modifier m = {}) {
+        FloatingActionButtonOptions o;
+        o.containerColor = BottomAppBarDefaults::bottomAppBarFabColor();
+        o.elevation = FloatingActionButtonDefaults::bottomAppBarFabElevation();
+        FloatingActionButton([] {}, std::move(m), o, [] { NavIcon({}, "Localized description"); });
+    }
+}
+
+TEST(BottomAppBarHeights) {
+    const auto measure = [](std::function<void()> bar) {
+        PhoneHarness h;
+        Themed(h, [&] { Box(Tag({}, "box"), Alignment::TopStart(), false, bar); });
+        return BoundsDp(h, "box");
+    };
+    BottomAppBarOptions none;
+    none.windowInsets = WindowInsets{};
+    auto b = measure([&] { BottomAppBar([] {}, {}, [] { BarFab(); }, none); });
+    CHECK(b && Near(b->Height(), 80) && Near(b->Width(), 412));
+    b = measure([&] { BottomAppBar({}, none, [] {}); });
+    CHECK(b && Near(b->Height(), 80) && Near(b->Width(), 412));
+    FlexibleBottomAppBarOptions flexible;
+    flexible.windowInsets = WindowInsets{};
+    flexible.horizontalArrangement = BottomAppBarDefaults::FlexibleFixedHorizontalArrangement();
+    b = measure([&] { FlexibleBottomAppBar({}, flexible, [] {}); });
+    CHECK(b && Near(b->Height(), 64) && Near(b->Width(), 412));
+    flexible.expandedHeight = 128_dp;
+    b = measure([&] { FlexibleBottomAppBar({}, flexible, [] {}); });
+    CHECK(b && Near(b->Height(), 128));
+    BottomAppBarOptions inset;
+    inset.windowInsets = WindowInsets::Fixed(10_dp, 10_dp, 10_dp, 10_dp);
+    b = measure([&] { BottomAppBar([] {}, {}, [] { BarFab(); }, inset); });
+    CHECK(b && std::abs(b->Height() - 100) <= 1);
+}
+
+TEST(BottomAppBarKeepsItsFabWhenActionsOverflow) {
+    PhoneHarness h;
+    Themed(h, [&] {
+        BottomAppBar([] { for (int i = 0; i < 20; ++i) FakeIcon({}); }, {}, [] { BarFab(Tag({}, "FAB")); });
+    });
+    CHECK(Displayed(h, "FAB"));
+}
+
+TEST(BottomAppBarPlacesItsContent) {
+    for (bool customPadding : { false, true }) {
+        PhoneHarness h;
+        Themed(h, [&] {
+            BottomAppBarOptions o;
+            o.windowInsets = WindowInsets{};
+            if (customPadding) o.contentPadding = PaddingValues{ 3_dp, 5_dp, 0_dp, 0_dp };
+            BottomAppBar(Tag({}, "bar"), o, [] { FakeIcon(Tag({}, "icon")); });
+        });
+        const auto bar = BoundsDp(h, "bar"), icon = BoundsDp(h, "icon");
+        CHECK(bar && icon);
+        if (!bar || !icon) continue;
+        const float top = customPadding ? 5 : 4;
+        CHECK(Near(icon->left, customPadding ? 3 : 4));
+        CHECK(Near(icon->top, top + (bar->bottom - top - 48) / 2));
+    }
+    // The FAB 16 dp from the end, 12 dp from the top.
+    PhoneHarness h;
+    Themed(h, [&] { BottomAppBar([] {}, Tag({}, "bar"), [] { BarFab(Tag({}, "FAB")); }); });
+    const auto bar = BoundsDp(h, "bar"), fab = BoundsDp(h, "FAB");
+    CHECK(bar && fab && Near(fab->left, bar->Width() - 16 - fab->Width()) && Near(fab->top, bar->top + 12));
+}
+
+TEST(ExitAlwaysBottomAppBarInAScaffold) {
+    for (bool scrolled : { false, true }) {
+        PhoneHarness h;
+        std::shared_ptr<BottomAppBarScrollBehavior> behavior;
+        Themed(h, [&] {
+            behavior = BottomAppBarDefaults::exitAlwaysScrollBehavior();
+            ScaffoldOptions o;
+            o.contentWindowInsets = WindowInsets{};
+            o.bottomBar = [&] {
+                BottomAppBarOptions bar;
+                bar.windowInsets = WindowInsets{};
+                bar.scrollBehavior = behavior;
+                BottomAppBar(Tag({}, "bottomAppBar"), bar, [] {});
+            };
+            o.floatingActionButton = [] { FloatingActionButton([] {}, Tag(OffsetMod({}, 0_dp, 4_dp), "FAB"), {}, [] {}); };
+            o.floatingActionButtonPosition = FabPosition::EndOverlay;
+            Scaffold(NestedScroll(FillMax({}, Axis::Both), behavior->NestedScrollConnection()), o, [](const PaddingValues&) {});
+        });
+        if (scrolled) {
+            behavior->State().SetHeightOffset(-40);
+            behavior->State().SetContentOffset(-40);
+            h.AdvanceTimeBy(16);
+            const auto bar = BoundsDp(h, "bottomAppBar");
+            CHECK(bar && Near(bar->Height(), 80 - 20));
+        }
+        const auto bar = BoundsDp(h, "bottomAppBar"), fab = BoundsDp(h, "FAB");
+        CHECK(bar && fab && Near(fab->left, bar->Width() - 16 - fab->Width()) && Near(fab->top, 800 - 12 - fab->Height()));
+    }
+}
+
+TEST(ExitAlwaysBottomAppBarLetsContentScrollSideways) {
+    PhoneHarness h;
+    std::int64_t t = 1000;
+    LazyListState state;
+    std::vector<std::unique_ptr<LazyListState>> pages;
+    pages.push_back(std::make_unique<LazyListState>());
+    pages.push_back(std::make_unique<LazyListState>());
+    Themed(h, [&] {
+        const auto behavior = BottomAppBarDefaults::exitAlwaysScrollBehavior();
+        ScaffoldOptions o;
+        o.bottomBar = [behavior] {
+            BottomAppBarOptions bar;
+            bar.scrollBehavior = behavior;
+            BottomAppBar(Tag({}, "bottomAppBar"), bar, [] {});
+        };
+        Scaffold(NestedScroll({}, behavior->NestedScrollConnection()), o, [&](const PaddingValues& padding) {
+            LazyRow(FillMax({}, Axis::Both), state, [&, padding](LazyListScope& s) {
+                s.Items(2, [&, padding](int page) {
+                    LazyColumn(SizeMod({}, 412_dp, 800_dp), *pages[std::size_t(page)], [page](LazyListScope& c) {
+                        c.Items(50, [page](int i) { Text("Item #" + std::to_string(page) + " x " + std::to_string(i), FillMax({}, Axis::Horizontal)); });
+                    }, { .contentPadding = padding });
+                });
+            });
+        });
+    });
+    Swipe(h, t, 780, 800, 40, 800);
+    h.AdvanceTimeBy(2000);
+    CHECK_EQ(state.FirstVisibleItemIndex(), 1);
+    Swipe(h, t, 40, 800, 780, 800);
+    h.AdvanceTimeBy(2000);
+    CHECK_EQ(state.FirstVisibleItemIndex(), 0);
+}
+
+TEST(ExitAlwaysBottomAppBarHandlesAnOutOfRangeOffset) {
+    PhoneHarness h;
+    Themed(h, [&] {
+        const auto behavior = BottomAppBarDefaults::exitAlwaysScrollBehavior();
+        behavior->State().SetHeightOffset(-1000);
+        ScaffoldOptions o;
+        o.bottomBar = [behavior] {
+            BottomAppBarOptions bar;
+            bar.scrollBehavior = behavior;
+            BottomAppBar(Tag({}, "bottomAppBar"), bar, [] {});
+        };
+        Scaffold(NestedScroll({}, behavior->NestedScrollConnection()), o, [](const PaddingValues& p) { Box(Padding({}, p), Alignment::TopStart(), false, {}); });
+    });
+    h.AdvanceTimeBy(16);
+    const auto bar = UnclippedBoundsDp(h, "bottomAppBar");
+    CHECK(bar && Near(bar->Height(), 0));
 }
