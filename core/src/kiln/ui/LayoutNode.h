@@ -117,6 +117,8 @@ namespace kiln::ui {
         // The space the children are placed in -> root, and its bounds in root (bounding box).
         Mat3 InnerToRoot() const;
         Rect InnerRectInRoot() const;
+        // The size of that space (the innermost coordinator's).
+        IntSize InnerSize() const;
         // A point through a local -> root matrix, and back (nullopt behind the camera).
         static Offset MapPoint(const Mat3& toRoot, Offset local);
         static std::optional<Offset> UnmapPoint(const Mat3& toRoot, Offset root);

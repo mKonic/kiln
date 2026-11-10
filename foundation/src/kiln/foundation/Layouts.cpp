@@ -902,6 +902,18 @@ namespace kiln::foundation {
         if (!IsAttached()) return {};
         return ui::LayoutNode::MapPoint(m_Node->SpaceToRoot(m_At), {});
     }
+    Offset LayoutCoordinates::PositionInParent() const {
+        if (!IsAttached()) return {};
+        const Offset root = PositionInRoot();
+        const ui::LayoutNode* parent = m_Node->Parent();
+        if (!parent) return root;
+        return ui::LayoutNode::UnmapPoint(parent->InnerToRoot(), root).value_or(Offset{});
+    }
+    IntSize LayoutCoordinates::ParentSize() const {
+        if (!IsAttached()) return {};
+        const ui::LayoutNode* parent = m_Node->Parent();
+        return parent ? parent->InnerSize() : IntSize{};
+    }
     Rect LayoutCoordinates::BoundsInRoot() const {
         if (!IsAttached()) return {};
         ui::Size size;

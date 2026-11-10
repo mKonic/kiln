@@ -101,6 +101,10 @@ namespace kiln::foundation {
         IntSize GetSize() const;
         Offset PositionInRoot() const;
         Rect BoundsInRoot() const;
+        // positionInParent / parentLayoutCoordinates.size: in the parent layout's content space
+        // (where it places its children; the root's own position and the window without one).
+        Offset PositionInParent() const;
+        IntSize ParentSize() const;
         bool operator==(const LayoutCoordinates& o) const { return m_Node == o.m_Node && m_At == o.m_At; }
 
     private:
