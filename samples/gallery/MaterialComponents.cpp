@@ -23,6 +23,7 @@
 #include <kiln/material3/ButtonGroup.h>
 #include <kiln/material3/NavigationBar.h>
 #include <kiln/material3/NavigationRail.h>
+#include <kiln/material3/ShortNavigationBar.h>
 #include <kiln/material3/Scaffold.h>
 #include <kiln/material3/ProgressIndicator.h>
 #include <kiln/material3/WavyProgressIndicator.h>
@@ -339,6 +340,22 @@ namespace kiln::gallery {
                                           { .label = [=] { m3::Text(mail[i]); }, .alwaysShowLabel = false });
             });
             m3::Text(std::string("Selected: ") + mail[labelled->Get()]);
+
+            auto* shortItem = &RememberState(0);
+            const char* shortTabs[] = { "Feed", "Saved", "Shop", "You" };
+            for (auto arrangement : { m3::ShortNavigationBarArrangement::EqualWeight, m3::ShortNavigationBarArrangement::Centered }) {
+                const bool centered = arrangement == m3::ShortNavigationBarArrangement::Centered;
+                m3::Text(centered ? "Short bar, centered" : "Short bar");
+                m3::ShortNavigationBarOptions options;
+                options.windowInsets = WindowInsets{};
+                options.arrangement = arrangement;
+                m3::ShortNavigationBar({}, options, [=] {
+                    for (int i = 0; i < (centered ? 3 : 4); ++i)
+                        m3::ShortNavigationBarItem(shortItem->Get() == i, [=] { shortItem->Set(i); }, navIcon, [=] { m3::Text(shortTabs[i]); }, {},
+                                                   { .iconPosition = centered ? m3::NavigationItemIconPosition::Start : m3::NavigationItemIconPosition::Top });
+                });
+            }
+            m3::Text(std::string("Short: ") + shortTabs[shortItem->Get()]);
 
             auto* railItem = &RememberState(0);
             auto* railLabels = &RememberState(true);

@@ -21,6 +21,7 @@
 #include "kiln/material3/Scaffold.h"
 #include "kiln/material3/NavigationBar.h"
 #include "kiln/material3/NavigationRail.h"
+#include "kiln/material3/ShortNavigationBar.h"
 #include "kiln/material3/Menu.h"
 #include "kiln/material3/ButtonGroup.h"
 #include "kiln/runtime/Saveable.h"
@@ -3228,7 +3229,7 @@ namespace {
     // owner and destroyed after it.
     struct WithFakeText { test::FakeText text; };
     struct PhoneHarness : WithFakeText, Harness {
-        PhoneHarness() : Harness(2, { 824, 1600 }) { owner.SetText(&text); }
+        explicit PhoneHarness(ui::IntSize size = { 824, 1600 }) : Harness(2, size) { owner.SetText(&text); }
     };
 
     // Four 75 dp buttons that widen while pressed; the widths 200 ms after pressing one.
@@ -4771,4 +4772,213 @@ TEST(NavigationItemColoursFadeTheGivenUnselectedColoursWhenDisabled) {
     CHECK(rail->selectedIconColor == s.onSecondaryContainer && rail->unselectedIconColor == icon);
     CHECK(rail->IconColor(true, false) == icon.WithAlpha(DisabledAlpha) && rail->TextColor(false, false) == text.WithAlpha(DisabledAlpha));
     CHECK(bar->IconColor(true, false) == icon.WithAlpha(DisabledAlpha) && bar->TextColor(false, false) == text.WithAlpha(DisabledAlpha));
+}
+
+// Ported from Compose's ShortNavigationBarTest. The centred arrangements use a 1000 dp window, as
+// Compose's simulated 1000 dp screen.
+namespace {
+    void ShortItem(int index, NavigationItemIconPosition position = NavigationItemIconPosition::Top, std::string label = "") {
+        ShortNavigationBarItemOptions o;
+        o.iconPosition = position;
+        const std::string text = label.empty() ? "Item " + std::to_string(index) : label;
+        ShortNavigationBarItem(index == 0, [] {}, [] { NavIcon(); }, [text] { Text(text); }, Tag({}, "item" + std::to_string(index)), o);
+    }
+}
+
+TEST(ShortNavigationBarIsASelectableGroupOfTabs) {
+    for (bool enabled : { true, false }) {
+        PhoneHarness h;
+        Themed(h, [&] {
+            ShortNavigationBar({}, {}, [&] {
+                ShortNavigationBarItemOptions o;
+                o.enabled = enabled;
+                ShortNavigationBarItem(true, [] {}, [] { NavIcon(); }, [] { Text("ItemText"); }, Tag({}, "item"), o);
+            });
+        });
+        const auto tree = h.owner.BuildSemanticsTree();
+        const auto* item = FindSemantics(tree, "item");
+        CHECK(item != nullptr);
+        if (!item) continue;
+        CHECK(item->config.role == ui::Role::Tab);
+        CHECK(item->config.selected == std::optional<bool>(true));
+        CHECK_EQ(item->config.disabled, !enabled);
+        CHECK(bool(item->config.onClick));
+        if (enabled) {
+            const auto* parent = ParentOf(tree, item);
+            CHECK(parent && parent->config.selectableGroup);
+        }
+    }
+}
+
+TEST(ShortNavigationBarFillsTheWidthAndPadsByItsInsets) {
+    {
+        PhoneHarness h;
+        Themed(h, [&] {
+            ShortNavigationBarOptions o;
+            o.windowInsets = WindowInsets{};
+            ShortNavigationBar(Tag({}, "bar"), o, [] { for (int i = 0; i < 3; ++i) ShortItem(i); });
+        });
+        const auto b = BoundsDp(h, "bar");
+        CHECK(b && Near(b->Width(), 412) && Near(b->Height(), 64));
+    }
+    PhoneHarness h;
+    Themed(h, [&] {
+        ShortNavigationBarOptions o;
+        o.windowInsets = WindowInsets::Fixed(17_dp, 17_dp, 17_dp, 17_dp);
+        ShortNavigationBar({}, o, [] { Box(Tag(FillMax({}, Axis::Both), "content"), Alignment::TopStart(), false, {}); });
+    });
+    const auto b = BoundsDp(h, "content");
+    CHECK(b && Near(b->left, 17) && Near(b->top, 17));
+}
+
+TEST(ShortNavigationBarEqualWeightItemsShareTheWidth) {
+    PhoneHarness h;
+    Themed(h, [&] {
+        ShortNavigationBarOptions o;
+        o.windowInsets = WindowInsets{};
+        ShortNavigationBar({}, o, [] { for (int i = 0; i < 4; ++i) ShortItem(i); });
+    });
+    for (int i = 0; i < 4; ++i) {
+        const auto b = BoundsDp(h, "item" + std::to_string(i));
+        CHECK(b.has_value());
+        if (!b) continue;
+        CHECK(std::abs(b->Width() - 103) <= 0.5f && std::abs(b->Height() - 64) <= 0.5f);
+        CHECK(std::abs(b->left - 103.0f * float(i)) <= 0.5f);
+    }
+}
+
+TEST(ShortNavigationBarCentresItsItemsByCount) {
+    // 3 items take 60% of the width, 4 70%, 5 80%, 6 90%, centred.
+    for (int count = 3; count <= 6; ++count) {
+        PhoneHarness h({ 2000, 400 });
+        Themed(h, [&] {
+            ShortNavigationBarOptions o;
+            o.windowInsets = WindowInsets{};
+            o.arrangement = ShortNavigationBarArrangement::Centered;
+            ShortNavigationBar(Tag({}, "bar"), o, [&] { for (int i = 0; i < count; ++i) ShortItem(i, NavigationItemIconPosition::Start); });
+        });
+        const auto bar = BoundsDp(h, "bar");
+        CHECK(bar.has_value());
+        if (!bar) continue;
+        const float space = float(10 * (count + 3)) / 100, padding = (1 - space) / 2 * 1000;
+        const float expectedWidth = std::floor(2000 * space / float(count)) / 2;   // px, truncated
+        for (int i = 0; i < count; ++i) {
+            const auto b = BoundsDp(h, "item" + std::to_string(i));
+            CHECK(b.has_value());
+            if (!b) continue;
+            CHECK(std::abs(b->Width() - expectedWidth) <= 0.5f);
+            CHECK(std::abs(b->left - bar->left - (expectedWidth * float(i) + padding)) <= 0.5f);
+        }
+    }
+}
+
+TEST(ShortNavigationBarGrowsForLongLabels) {
+    for (auto arrangement : { ShortNavigationBarArrangement::EqualWeight, ShortNavigationBarArrangement::Centered }) {
+        PhoneHarness h;
+        Themed(h, [&] {
+            ShortNavigationBarOptions o;
+            o.arrangement = arrangement;
+            const auto position = arrangement == ShortNavigationBarArrangement::Centered ? NavigationItemIconPosition::Start : NavigationItemIconPosition::Top;
+            ShortNavigationBar(Tag({}, "bar"), o, [&] { for (int i = 0; i < 4; ++i) ShortItem(i, position, "Long\nLabel\nMultiple\nLines"); });
+        });
+        const auto b = BoundsDp(h, "bar");
+        CHECK(b && b->Height() > 64);
+    }
+}
+
+TEST(ShortNavigationBarItemColours) {
+    PhoneHarness h;
+    std::vector<Color> seen;
+    const auto record = [&] { seen.push_back(rt::Composition::Current()->Read(LocalContentColor)); };
+    const Color red(0xFFFF0000u), blue(0xFF0000FFu), green(0xFF00FF00u), white(0xFFFFFFFFu), gray(0xFF888888u), black(0xFF000000u);
+    Themed(h, [&] {
+        const auto custom = ShortNavigationBarItemDefaults::colors().Copy(red, blue, blue, Color::Unspecified(), green, white, gray, black);
+        const auto partial = ShortNavigationBarItemDefaults::colors(red, Color::Unspecified(), Color::Unspecified(), Color::Unspecified(),
+                                                                    Color::Unspecified(), green);
+        ShortNavigationBar({}, {}, [&] {
+            ShortNavigationBarItemOptions o;
+            o.colors = custom;
+            ShortNavigationBarItem(true, [] {}, record, record, {}, o);
+            ShortNavigationBarItem(false, [] {}, record, record, {}, o);
+            o.enabled = false;
+            ShortNavigationBarItem(false, [] {}, record, record, {}, o);
+            o.enabled = true;
+            o.colors = partial;
+            ShortNavigationBarItem(true, [] {}, record, record, {}, o);
+            ShortNavigationBarItem(false, [] {}, record, record, {}, o);
+        });
+    });
+    const auto& s = LightColorScheme();
+    CHECK(seen.size() >= 10);
+    if (seen.size() < 10) return;
+    CHECK(seen[0] == red && seen[1] == blue);
+    CHECK(seen[2] == green && seen[3] == white);
+    CHECK(seen[4] == gray && seen[5] == black);
+    CHECK(seen[6] == red && seen[7] == s.secondary);
+    CHECK(seen[8] == s.onSurfaceVariant && seen[9] == green);
+}
+
+TEST(ShortNavigationBarItemDisabledTakesNoClicks) {
+    PhoneHarness h;
+    std::int64_t t = 1000;
+    int clicks = 0;
+    Themed(h, [&] {
+        ShortNavigationBarItemOptions o;
+        o.enabled = false;
+        ShortNavigationBarItem(true, [&] { ++clicks; }, [] { NavIcon(); }, [] { Text("ItemText"); }, Tag({}, "item"), o);
+    });
+    Press(h, t, "item", true);
+    CHECK_EQ(clicks, 0);
+}
+
+TEST(ShortNavigationBarItemKeepsTheIconDescriptionWithoutALabel) {
+    PhoneHarness h;
+    Themed(h, [&] { ShortNavigationBarItem(false, [] {}, [] { NavIcon({}, "Favorite"); }, {}, Tag({}, "item"), {}); });
+    const auto tree = h.owner.BuildSemanticsTree();
+    const auto* n = FindSemantics(tree, "item");
+    CHECK(n && n->config.contentDescription == std::vector<std::string>{ "Favorite" });
+}
+
+TEST(ShortNavigationBarItemPlacesItsIconAndLabel) {
+    {
+        // Icon on top: the icon 4 + 6 dp below the item's top, the label 4 + 4 dp below the icon.
+        PhoneHarness h;
+        Themed(h, [&] {
+            ShortNavigationBarItem(true, [] {}, [] { NavIcon(Tag({}, "icon")); }, [] { Text("ItemText", Tag({}, "label")); }, Tag({}, "item"), {});
+        });
+        const auto item = BoundsDp(h, "item"), icon = BoundsDp(h, "icon"), label = BoundsDp(h, "label");
+        CHECK(item && icon && label);
+        if (item && icon && label) {
+            CHECK(item->Width() >= 48 && item->Height() >= 48);
+            CHECK(Near(icon->left, (item->Width() - icon->Width()) / 2));
+            CHECK(Near(icon->top, item->top + 4 + 6));
+            CHECK(Near(label->top, icon->bottom + 4 + 4));
+        }
+    }
+    {
+        // Icon at the start: 16 dp in, the label 4 dp after it, both centred vertically.
+        PhoneHarness h;
+        Themed(h, [&] {
+            ShortNavigationBarItemOptions o;
+            o.iconPosition = NavigationItemIconPosition::Start;
+            ShortNavigationBarItem(true, [] {}, [] { NavIcon(Tag({}, "icon")); }, [] { Text("ItemText", Tag({}, "label")); }, Tag({}, "item"), o);
+        });
+        const auto item = BoundsDp(h, "item"), icon = BoundsDp(h, "icon"), label = BoundsDp(h, "label");
+        CHECK(item && icon && label);
+        if (item && icon && label) {
+            CHECK(std::abs(item->Width() - (16 + icon->Width() + 4 + label->Width() + 16)) <= 1);
+            CHECK(Near(item->Height(), 48));
+            CHECK(Near(icon->left, item->left + 16));
+            CHECK(Near(icon->top, (item->Height() - icon->Height()) / 2));
+            CHECK(Near(label->left, item->left + 16 + icon->Width() + 4));
+            CHECK(Near(label->top, (item->Height() - label->Height()) / 2));
+        }
+    }
+    {
+        // No label: the icon centred.
+        PhoneHarness h;
+        Themed(h, [&] { ShortNavigationBarItem(false, [] {}, [] { NavIcon(Tag({}, "icon")); }, {}, Tag({}, "item"), {}); });
+        const auto item = BoundsDp(h, "item"), icon = BoundsDp(h, "icon");
+        CHECK(item && icon && Near(icon->left, (item->Width() - icon->Width()) / 2) && Near(icon->top, (item->Height() - icon->Height()) / 2));
+    }
 }
