@@ -1113,6 +1113,7 @@ namespace kiln::ui {
         if (!m_FocusInvalid.empty() || m_FocusTargetLost || m_ActiveFocus) InvalidateFocusNodes();
         if (window != m_Window) {
             m_Window = window;
+            m_ObservedWindow.Set(window);
             m_Root->RequestRemeasure();
         }
         // Shallowest first. A node whose size changed makes its parent remeasure, which the

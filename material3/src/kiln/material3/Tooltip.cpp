@@ -443,7 +443,7 @@ namespace kiln::material3 {
         }
         IntSize WindowContainerSize() {
             const Owner* owner = rt::Composition::Current()->Read(LocalOwner);
-            return owner ? owner->WindowSize() : IntSize{};
+            return owner ? owner->ObservedWindowSize() : IntSize{};
         }
         std::shared_ptr<const PopupPositionProvider> RememberLegacy(LegacyTooltipPositionProvider::Kind kind, Dp spacing) {
             const int px = RoundToPx(spacing);

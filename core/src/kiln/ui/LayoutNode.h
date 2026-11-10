@@ -251,6 +251,9 @@ namespace kiln::ui {
         void SetDirection(LayoutDirection d) { m_Direction = d; RequestFullRemeasure(); }
         LayoutDirection Direction() const { return m_Direction; }
         IntSize WindowSize() const { return m_Window; }
+        // The window size as observable state (LocalWindowInfo.containerSize): compositions
+        // that read it recompose when the window resizes.
+        const IntSize& ObservedWindowSize() const { return m_ObservedWindow.Get(); }
         void SetText(TextBackend* text) { m_Text = text; }
         // Fonts arrived (downloadable fonts): text lays out again.
         void OnFontsChanged() { ++m_FontGeneration; RequestFullRemeasure(); }
@@ -688,6 +691,7 @@ namespace kiln::ui {
         std::unique_ptr<LayoutNode> m_ContentRoot;
         Density m_Density;
         rt::State<Density> m_ObservedDensity{ Density{} };
+        rt::State<IntSize> m_ObservedWindow{ IntSize{} };
         LayoutDirection m_Direction = LayoutDirection::Ltr;
         TextBackend* m_Text = nullptr;
         std::function<void()> m_RequestFrame;
