@@ -509,6 +509,15 @@ namespace kiln::ui {
         InvalidateDraw();
     }
 
+    float LayoutNode::ZIndex() const {
+        if (!m_ZIndexFromChildren) return m_ZIndex;
+        float z = m_ZIndex;
+        bool any = false;
+        for (const LayoutNode* ch : m_Children)
+            if (ch->m_Placed) { z = any ? std::max(z, ch->ZIndex()) : ch->ZIndex(); any = true; }
+        return z;
+    }
+
     // The node's draw order among its siblings: the sum of every placement zIndex in its chain.
     void LayoutNode::UpdateZIndex() {
         float sum = 0;
@@ -852,7 +861,8 @@ namespace kiln::ui {
         std::vector<LayoutNode*> order;
         for (LayoutNode* ch : m_Children) if (ch->m_Placed) order.push_back(ch);
         std::stable_sort(order.begin(), order.end(), [](const LayoutNode* a, const LayoutNode* b) {
-            return a->m_ZIndex != b->m_ZIndex ? a->m_ZIndex < b->m_ZIndex : a->m_PlaceOrder < b->m_PlaceOrder;
+            const float za = a->ZIndex(), zb = b->ZIndex();
+            return za != zb ? za < zb : a->m_PlaceOrder < b->m_PlaceOrder;
         });
         for (LayoutNode* ch : order) {
             const Offset p{ float(ch->m_Position.x), float(ch->m_Position.y) };

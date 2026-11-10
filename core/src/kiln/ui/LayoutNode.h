@@ -74,7 +74,11 @@ namespace kiln::ui {
         // Measured size and position of the node's outer bounds in its parent's content.
         IntSize Size() const;
         IntOffset Position() const { return m_Position; }
-        float ZIndex() const { return m_ZIndex; }
+        // Draw, hit-test and focus order among siblings. A pass-through node (a subcompose slot's
+        // holder) takes its placed children's highest, so slots stack by their content's zIndex
+        // as Compose's direct children do.
+        float ZIndex() const;
+        void SetZIndexFromChildren(bool fromChildren) { m_ZIndexFromChildren = fromChildren; }
         int PlaceOrder() const { return m_PlaceOrder; }
         bool IsPlaced() const { return m_Placed; }
         // A modifier's coordinator may be unplaced even when the outer node is placed (a
@@ -205,6 +209,7 @@ namespace kiln::ui {
         int m_NextPlaceOrder = 0;   // for children, reset each layout of this node
         int m_SemanticsId = 0;
         std::optional<LayoutDirection> m_LocalDirection;
+        bool m_ZIndexFromChildren = false;
 
         Watcher m_MeasureWatch{ *this, 0 }, m_LayoutWatch{ *this, 1 }, m_DrawWatch{ *this, 2 };
     };

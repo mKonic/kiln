@@ -207,7 +207,7 @@ namespace kiln::ui {
             if (!focusBranch || !barrierBranch) continue;
             // The barrier's branch draws later (zIndex, then placement order).
             auto before = [](const LayoutNode* x, const LayoutNode* y) {
-                return x->m_ZIndex != y->m_ZIndex ? x->m_ZIndex < y->m_ZIndex : x->m_PlaceOrder < y->m_PlaceOrder;
+                return x->ZIndex() != y->ZIndex() ? x->ZIndex() < y->ZIndex() : x->m_PlaceOrder < y->m_PlaceOrder;
             };
             if (before(focusBranch, barrierBranch)) return true;
         }

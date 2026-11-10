@@ -99,6 +99,7 @@ namespace kiln::foundation {
                 auto policy = std::make_shared<HolderPolicy>();
                 policy->state = &st;
                 slot.holder->SetMeasurePolicy(policy);
+                slot.holder->SetZIndexFromChildren(true);
                 if (st.node) {
                     std::vector<LayoutNode*> children(st.node->Children().begin(), st.node->Children().end());
                     children.push_back(slot.holder.get());
