@@ -1,4 +1,5 @@
 #include "kiln/foundation/Compose.h"
+#include "kiln/ui/Locals.h"
 
 
 #include <cmath>
@@ -7,10 +8,15 @@
 
 namespace kiln::foundation {
 
+    void TakeLocalLayoutDirection(ui::LayoutNode& n) {
+        const auto* provided = rt::Composition::Current()->ReadIfProvided(ui::LocalLayoutDirection);
+        n.SetLayoutDirection(provided ? std::optional<ui::LayoutDirection>(*provided) : std::nullopt);
+    }
+
     LayoutNode& Layout(const Modifier& modifier, std::shared_ptr<MeasurePolicy> policy, std::function<void()> content, Key key) {
         auto* c = rt::Composition::Current();
         return c->Node<LayoutNode>([] { return std::make_unique<LayoutNode>(); },
-                                   [&](LayoutNode& n) { n.SetModifier(modifier); n.SetMeasurePolicy(policy); },
+                                   [&](LayoutNode& n) { n.SetModifier(modifier); TakeLocalLayoutDirection(n); n.SetMeasurePolicy(policy); },
                                    std::move(content), key);
     }
 
@@ -23,6 +29,7 @@ namespace kiln::foundation {
             c->Node<LayoutNode>([] { return std::make_unique<LayoutNode>(); },
                                 [&](LayoutNode& n) {
                                     n.SetModifier(modifier);
+                                    TakeLocalLayoutDirection(n);
                                     if (auto* cur = dynamic_cast<P*>(n.Policy().get()); !cur || !(*cur == next))
                                         n.SetMeasurePolicy(std::make_shared<P>(next));
                                 },

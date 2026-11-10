@@ -15,6 +15,11 @@
 
 namespace kiln::foundation {
 
+    // Gives `n` the LocalLayoutDirection provided where it is composed, if any (layouts call
+    // this when they create or update their node; without one it follows the window).
+    void TakeLocalLayoutDirection(ui::LayoutNode& n);
+
+
     using namespace kiln::ui;
 
     // --- measure policies ---------------------------------------------------------------------

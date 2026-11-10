@@ -1,4 +1,5 @@
 #include "kiln/foundation/Flow.h"
+#include "kiln/foundation/Layouts.h"
 
 #include <cmath>
 #include <optional>
@@ -175,6 +176,7 @@ namespace kiln::foundation {
         c->Node<LayoutNode>([] { return std::make_unique<LayoutNode>(); },
                             [&](LayoutNode& n) {
                                 n.SetModifier(modifier);
+                                TakeLocalLayoutDirection(n);
                                 if (auto* cur = dynamic_cast<FlowPolicy*>(n.Policy().get()); !cur || !(*cur == next))
                                     n.SetMeasurePolicy(std::make_shared<FlowPolicy>(next));
                             }, std::move(content), key);
@@ -187,6 +189,7 @@ namespace kiln::foundation {
         c->Node<LayoutNode>([] { return std::make_unique<LayoutNode>(); },
                             [&](LayoutNode& n) {
                                 n.SetModifier(modifier);
+                                TakeLocalLayoutDirection(n);
                                 if (auto* cur = dynamic_cast<FlowPolicy*>(n.Policy().get()); !cur || !(*cur == next))
                                     n.SetMeasurePolicy(std::make_shared<FlowPolicy>(next));
                             }, std::move(content), key);

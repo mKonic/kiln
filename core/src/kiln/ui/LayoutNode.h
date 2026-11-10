@@ -138,6 +138,11 @@ namespace kiln::ui {
         Measurable& AsMeasurable();
         // Stable id for semantics / accessibility virtual views.
         int SemanticsId() const { return m_SemanticsId; }
+        // The direction this node measures and places with: the LocalLayoutDirection it was
+        // composed under when one was provided (a subtree can differ from the window), else the
+        // window's.
+        LayoutDirection GetLayoutDirection() const;
+        void SetLayoutDirection(std::optional<LayoutDirection> direction);
 
     private:
         friend class Owner;
@@ -199,6 +204,7 @@ namespace kiln::ui {
         IntSize m_ReportedSize{ -1, -1 };   // the size last told to NotifyLayoutChange
         int m_NextPlaceOrder = 0;   // for children, reset each layout of this node
         int m_SemanticsId = 0;
+        std::optional<LayoutDirection> m_LocalDirection;
 
         Watcher m_MeasureWatch{ *this, 0 }, m_LayoutWatch{ *this, 1 }, m_DrawWatch{ *this, 2 };
     };

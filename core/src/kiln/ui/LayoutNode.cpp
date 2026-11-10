@@ -191,7 +191,18 @@ namespace kiln::ui {
     }
 
     MeasureScope LayoutNode::Scope() const {
-        return MeasureScope(m_Owner ? m_Owner->GetDensity() : Density{}, m_Owner ? m_Owner->Direction() : LayoutDirection::Ltr);
+        return MeasureScope(m_Owner ? m_Owner->GetDensity() : Density{}, GetLayoutDirection());
+    }
+
+    LayoutDirection LayoutNode::GetLayoutDirection() const {
+        if (m_LocalDirection) return *m_LocalDirection;
+        return m_Owner ? m_Owner->Direction() : LayoutDirection::Ltr;
+    }
+
+    void LayoutNode::SetLayoutDirection(std::optional<LayoutDirection> direction) {
+        if (direction == m_LocalDirection) return;
+        m_LocalDirection = direction;
+        RequestRemeasure();
     }
 
     Measurable& LayoutNode::AsMeasurable() { return *m_Coordinators.front(); }
@@ -634,7 +645,7 @@ namespace kiln::ui {
         m_LayoutDirty = false;
         if (m_Owner) m_Owner->m_LayoutDirty.erase(this);
         m_NextPlaceOrder = 0;
-        const LayoutDirection dir = m_Owner ? m_Owner->Direction() : LayoutDirection::Ltr;
+        const LayoutDirection dir = GetLayoutDirection();
         for (LayoutNode* c : m_Children) c->m_PlacedThisPass = false;
         const bool innerWasPlaced = m_Coordinators.back()->placed;
         for (std::size_t i = 1; i < m_Coordinators.size(); ++i) m_Coordinators[i]->placed = false;
@@ -687,7 +698,7 @@ namespace kiln::ui {
         std::vector<std::pair<const RulerData*, float>> values;
         if (c.result.rulers) {
             const Density d = m_Owner ? m_Owner->GetDensity() : Density{};
-            RulerScope scope(d, m_Owner ? m_Owner->Direction() : LayoutDirection::Ltr, c.Width(),
+            RulerScope scope(d, GetLayoutDirection(), c.Width(),
                              [this, index](Offset p) { return MapPoint(CoordinatorToRoot(index), p); });
             c.result.rulers(scope);
             values = scope.Values();
@@ -790,7 +801,10 @@ namespace kiln::ui {
 
     void LayoutNode::Draw(ContentDrawScope& scope) {
         if (!m_Placed && m_Parent) return;
+        const LayoutDirection outer = scope.Direction();
+        scope.SetDirection(GetLayoutDirection());
         DrawCoordinator(0, scope);
+        scope.SetDirection(outer);
     }
 
     void LayoutNode::DrawCoordinator(std::size_t index, ContentDrawScope& scope) {

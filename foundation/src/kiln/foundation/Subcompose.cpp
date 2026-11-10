@@ -114,6 +114,7 @@ namespace kiln::foundation {
             comp.Node<LayoutNode>([] { return std::make_unique<LayoutNode>(); },
                                   [&](LayoutNode& n) {
                                       n.SetModifier(modifier);
+                                      TakeLocalLayoutDirection(n);
                                       n.SetMeasureManagedChildren(true);
                                       st->node = &n;
                                       if (!dynamic_cast<Policy*>(n.Policy().get())) {

@@ -47,6 +47,8 @@ namespace kiln::ui {
 
         Size GetSize() const { return m_Size; }
         LayoutDirection Direction() const { return m_Dir; }
+        // Each layout node draws with its own direction (a subtree can differ from the window).
+        void SetDirection(LayoutDirection dir) { m_Dir = dir; }
 
         void DrawRect(Color color, Offset topLeft, Size size);
         void DrawRoundRect(Color color, Offset topLeft, Size size, float cornerRadius);

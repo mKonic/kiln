@@ -1724,7 +1724,7 @@ namespace kiln::foundation {
                 if (!core || core->count <= 0 || !core->HasVisible() || !Owner()) return block(false);
                 using FD = ui::FocusDirection;
                 const bool vertical = core->vertical;
-                const bool rtl = Owner()->GetOwner() && Owner()->GetOwner()->Direction() == LayoutDirection::Rtl;
+                const bool rtl = Owner()->GetLayoutDirection() == LayoutDirection::Rtl;
                 const bool reverse = params.reverse;
                 bool opposite = false, forward = true;
                 switch (d) {
@@ -1812,6 +1812,7 @@ namespace kiln::foundation {
             comp.Node<LayoutNode>([] { return std::make_unique<LayoutNode>(); },
                                   [&](LayoutNode& n) {
                                       n.SetModifier(m);
+                                      TakeLocalLayoutDirection(n);
                                       auto* policy = dynamic_cast<LazyPolicy*>(n.Policy().get());
                                       n.SetMeasureManagedChildren(true);
                                       if (!policy) {

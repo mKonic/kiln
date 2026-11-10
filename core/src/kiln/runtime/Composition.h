@@ -214,6 +214,21 @@ namespace kiln::rt {
             return local.Default();
         }
 
+        // The value provided above this point, or null where only the default applies.
+        template<typename T>
+        const T* ReadIfProvided(const Local<T>& local) {
+            for (Scope* start = m_Current; start;) {
+                Scope* last = nullptr;
+                for (Scope* s = start; s; s = s->m_Parent) {
+                    if (const StateObject* p = s->FindLocal(&local))
+                        return &static_cast<const State<T, NeverEqual>*>(p)->Get();
+                    last = s;
+                }
+                start = last ? last->m_Composition.m_ParentContext : nullptr;
+            }
+            return nullptr;
+        }
+
         // For compositions created during measure (SubcomposeLayout, lazy items): the scope whose
         // Locals the content sees. It must outlive this composition.
         void SetParentContext(Scope* scope) { m_ParentContext = scope; }

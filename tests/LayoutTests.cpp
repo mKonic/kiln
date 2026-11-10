@@ -225,3 +225,26 @@ TEST(GraphicsLayerBlockReadsStateWithoutRecomposing) {
     const Rect after = inner->BoundsInRoot();
     CHECK(std::abs(after.Width() - 20) < 0.5f && std::abs(after.Height() - 40) < 0.5f);
 }
+
+TEST(ProvidedLayoutDirectionAppliesToItsSubtree) {
+    // An RTL window with an LTR subtree (and the reverse): rows place by the direction they
+    // are composed under, not the window's.
+    for (auto window : { LayoutDirection::Rtl, LayoutDirection::Ltr }) {
+        const auto inner = window == LayoutDirection::Rtl ? LayoutDirection::Ltr : LayoutDirection::Rtl;
+        Harness h(window);
+        h.Run([&] {
+            Column(Modifier{}, [&] {
+                Row(Width(Modifier{}, Dp(100)), [&] { Box(SizeMod(Modifier{}, Dp(10), Dp(10))); });
+                rt::Composition::Current()->Provide(ui::LocalLayoutDirection, inner, [&] {
+                    Row(Width(Modifier{}, Dp(100)), [&] { Box(SizeMod(Modifier{}, Dp(10), Dp(10))); });
+                });
+            });
+        });
+        const LayoutNode* column = h.owner.Root().Children()[0];
+        const LayoutNode* outerFirst = column->Children()[0]->Children()[0];
+        const LayoutNode* innerFirst = column->Children()[1]->Children()[0];
+        const float outerX = outerFirst->BoundsInRoot().left, innerX = innerFirst->BoundsInRoot().left;
+        CHECK_EQ(outerX, window == LayoutDirection::Rtl ? 90.f : 0.f);
+        CHECK_EQ(innerX, inner == LayoutDirection::Rtl ? 90.f : 0.f);
+    }
+}

@@ -204,7 +204,7 @@ namespace kiln::foundation {
             if (owner) {
                 c.holder = &owner->Insets();
                 c.density = owner->GetDensity();
-                c.direction = owner->Direction();
+                c.direction = n.Owner()->GetLayoutDirection();
             }
             return c;
         }
