@@ -558,7 +558,10 @@ namespace kiln::ui {
         WindowInsetsHolder& Insets() { return m_Insets; }
 
         // Semantics: rebuilt on demand from the layout tree. Changes bump the version and notify.
-        SemanticsNode BuildSemanticsTree();
+        // uncoveredOnly: the accessibility view (getAllUncoveredSemanticsNodes), each node clipped to
+        // what is not covered, covered and scrolled-away ones dropped. False: every placed node
+        // (SemanticsOwner.rootSemanticsNode, what Compose's test finders search).
+        SemanticsNode BuildSemanticsTree(bool uncoveredOnly = true);
         void InvalidateSemantics();
         // The accessibility delegate (made on first use). The host hears of semantics changes
         // (`layout` false) and layout changes (true) while a service listens.

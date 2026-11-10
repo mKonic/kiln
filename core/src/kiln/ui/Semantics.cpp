@@ -367,12 +367,13 @@ namespace kiln::ui {
         }
     }
 
-    SemanticsNode Owner::BuildSemanticsTree() {
+    SemanticsNode Owner::BuildSemanticsTree(bool uncoveredOnly) {
         SemanticsNode root;
         root.id = -1;
         root.layout = m_Root.get();
         root.boundsInRoot = { 0, 0, float(m_Window.width), float(m_Window.height) };
         for (LayoutNode* c : m_Root->Children()) Build(*c, root.boundsInRoot, root.children);
+        if (!uncoveredOnly) return root;
         Region unaccounted{ { Round(root.boundsInRoot) } };
         KeepUncovered(root, unaccounted);
         return root;
