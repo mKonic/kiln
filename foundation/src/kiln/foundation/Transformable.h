@@ -10,14 +10,13 @@
 
 #include "kiln/animation/Animatable.h"
 #include "kiln/foundation/Gestures.h"
+#include "kiln/foundation/MutatorMutex.h"
 
 #include <cmath>
 #include <cstdint>
 #include <functional>
 
 namespace kiln::foundation {
-
-    enum class MutatePriority : std::uint8_t { Default, UserInput, PreventUserInput };
 
     // Offset::Unspecified for a centroid: no particular point.
     inline constexpr Offset kUnspecifiedCentroid{ NAN, NAN };

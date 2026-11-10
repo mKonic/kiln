@@ -131,23 +131,38 @@ namespace kiln::foundation {
 
     // --- TapGestureDetector.kt:125-260, 386-457 -----------------------------------------------
 
+    rt::Task<std::optional<PointerInputChange>> WaitForUpOrCancellation(PointerInputScope& s, PointerEventPass pass) {
+        auto r = co_await WaitForUpOrCancellationWithTimeout(s, -1, pass);
+        co_return std::move(r.up);
+    }
+
+    rt::Task<UpOrCancellation> WaitForUpOrCancellationWithTimeout(PointerInputScope& s, std::int64_t timeoutMillis, PointerEventPass pass) {
+        using Clock = rt::Dispatcher::Clock;
+        const auto deadline = Clock::now() + std::chrono::milliseconds(std::max<std::int64_t>(timeoutMillis, 0));
+        // Each wait gets the time left, so the timeout covers the whole call (withTimeout).
+        const auto remaining = [&]() -> std::int64_t {
+            if (timeoutMillis < 0) return -1;
+            return std::max<std::int64_t>(0, std::chrono::duration_cast<std::chrono::milliseconds>(deadline - Clock::now()).count());
+        };
+        for (;;) {
+            auto e = co_await s.AwaitPointerEventWithTimeout(remaining(), pass);
+            if (!e) co_return UpOrCancellation{ std::nullopt, true };
+            bool allUp = true;
+            for (const auto& c : e->changes) if (!c.ChangedToUp()) allUp = false;
+            if (allUp) co_return UpOrCancellation{ e->changes[0], false };
+            for (const auto& c : e->changes)
+                if (c.IsConsumed() || c.IsOutOfBounds(s.Size())) co_return UpOrCancellation{};
+            // The Final pass of the same event comes after `pass`: position consumed there cancels.
+            auto check = co_await s.AwaitPointerEventWithTimeout(remaining(), PointerEventPass::Final);
+            if (!check) co_return UpOrCancellation{ std::nullopt, true };
+            for (const auto& c : check->changes) if (c.IsConsumed()) co_return UpOrCancellation{};
+        }
+    }
+
     namespace {
         bool AllUp(const PointerEvent& e) {
             for (const auto& c : e.changes) if (c.pressed) return false;
             return true;
-        }
-        // waitForUpOrCancellation: null when consumed by someone else or out of bounds.
-        rt::Task<std::optional<PointerInputChange>> WaitForUpOrCancellation(PointerInputScope& s) {
-            for (;;) {
-                auto e = co_await s.AwaitPointerEvent(PointerEventPass::Main);
-                bool allUp = true;
-                for (const auto& c : e->changes) if (!c.ChangedToUp()) allUp = false;
-                if (allUp) co_return e->changes[0];
-                for (const auto& c : e->changes)
-                    if (c.IsConsumed() || c.IsOutOfBounds(s.Size())) co_return std::nullopt;
-                auto check = co_await s.AwaitPointerEvent(PointerEventPass::Final);
-                for (const auto& c : check->changes) if (c.IsConsumed()) co_return std::nullopt;
-            }
         }
         enum class LongPress { Success, Released, Canceled };
         struct LongPressResult { LongPress kind; std::optional<PointerInputChange> up; };
@@ -500,6 +515,19 @@ namespace kiln::foundation {
                 longKeyJobs.clear();      // ~Job cancels
                 doubleKeys.clear();
             }
+            // disposeInteractions (Clickable.kt): the node left the tree, was disabled or got
+            // another source, so nothing will end what the old source still shows.
+            void DisposeInteractions() {
+                delayJob.Cancel();
+                indirectDelayJob.Cancel();
+                if (source) {
+                    if (press) source->Cancel(Interaction::Kind::Press, press);
+                    if (indirectPress) source->Cancel(Interaction::Kind::Press, indirectPress);
+                    if (hover) source->End(Interaction::Kind::Hover, hover);
+                }
+                press = indirectPress = hover = 0;
+                ResetKeyPresses();
+            }
             // Indirect pointer (CombinedClickableNode): the press, and the long / double click
             // state of that stream.
             struct IndirectDown { Offset position; };
@@ -558,7 +586,7 @@ namespace kiln::foundation {
             void OnParamsChanged() {}
             ui::IndirectPointerInputModifier* AsIndirectPointerInput() override { return this; }
             void OnAttach() override { params.st->config = Config(); }
-            void OnDetach() override { Cancel(); }
+            void OnDetach() override { Cancel(); params.st->DisposeInteractions(); }
 
             void OnIndirectPointerEvent(ui::IndirectPointerEvent& e, PointerEventPass pass) override {
                 ClickState& st = *params.st;
@@ -744,7 +772,10 @@ namespace kiln::foundation {
                 if (auto* c = rt::Composition::Current()) indication = c->Read(LocalIndication);
                 if (!indication) indication = DefaultDebugIndication();
             }
-            if (o.interactionSource) st->source = o.interactionSource;
+            if (o.interactionSource && st->source != o.interactionSource) {
+                st->DisposeInteractions();
+                st->source = o.interactionSource;
+            }
             else if (indication && !st->source) st->source = std::make_shared<MutableInteractionSource>();
             const std::optional<Role> role = o.role;
             const std::optional<std::string> label = o.onClickLabel;

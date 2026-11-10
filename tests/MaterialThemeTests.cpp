@@ -1,5 +1,8 @@
 #include "Check.h"
 
+#include <map>
+#include <thread>
+
 #include "kiln/foundation/Compose.h"
 #include "kiln/foundation/Semantics.h"
 #include "kiln/foundation/text/Selection.h"
@@ -12,6 +15,11 @@
 #include "kiln/material3/ProgressIndicator.h"
 #include "kiln/material3/LoadingIndicator.h"
 #include "kiln/material3/Slider.h"
+#include "kiln/material3/SegmentedButton.h"
+#include "kiln/material3/SplitButton.h"
+#include "kiln/material3/Tooltip.h"
+#include "kiln/material3/Menu.h"
+#include "kiln/material3/ButtonGroup.h"
 #include "kiln/runtime/Saveable.h"
 #include "kiln/foundation/Focus.h"
 #include "kiln/material3/internal/ProgressIndicator.h"
@@ -37,6 +45,7 @@
 #include "kiln/material3/tokens/TypographyKeyTokens.h"
 #include "kiln/ui/LayoutNode.h"
 #include "kiln/ui/Accessibility.h"
+#include "FakeText.h"
 
 using namespace kiln;
 using namespace kiln::foundation;
@@ -47,12 +56,18 @@ namespace {
     struct Harness {
         ui::Owner owner;
         rt::Composition composition{ owner.Root(), rt::Dispatcher::Main() };
-        Harness() { owner.SetDensity({ 1, 1 }); }
+        ui::IntSize window{ 300, 300 };   // pixels
+        // Compose's tests check to 0.5 dp: density 2 resolves that; `window` is in pixels.
+        explicit Harness(float density = 1, ui::IntSize size = { 300, 300 }) : window(size) { owner.SetDensity({ density, 1 }); }
+        void Layout() { owner.MeasureAndLayout(window); }
         void Run(std::function<void()> content) {
-            composition.SetContent(std::move(content));
+            // LocalDensity, as App provides it (vector painters size themselves with it).
+            composition.SetContent([this, content = std::move(content)] {
+                rt::Composition::Current()->Provide(ui::LocalDensity, owner.GetDensity(), content);
+            });
             for (int i = 0; i < 3; ++i) {
                 rt::Composition::RecomposeAll();
-                owner.MeasureAndLayout({ 300, 300 });
+                owner.MeasureAndLayout(window);
                 rt::Dispatcher::Main().RunPending();
             }
         }
@@ -2309,6 +2324,391 @@ TEST(DisabledSlidersKeepProgressSemanticsButRejectPointerKeyboardAndAccessibilit
     CHECK(!source->IsPressed() && !source->IsDragged());
 }
 
+TEST(SegmentedButtonDefaultsResolveEveryColorStateAndOnlyRoundTheOuterCorners) {
+    Harness h;
+    h.Run([&] { MaterialTheme([&] {
+        const auto scheme = LightColorScheme();
+        const auto colors = SegmentedButtonDefaults::colors();
+        CHECK(colors.ContainerColor(true, true) == scheme.secondaryContainer);
+        CHECK(colors.ContainerColor(false, true) == scheme.secondaryContainer);
+        CHECK(colors.ContainerColor(true, false) == Color::Transparent());
+        CHECK(colors.ContainerColor(false, false) == Color::Transparent());
+        CHECK(colors.ContentColor(true, true) == scheme.onSecondaryContainer);
+        CHECK(colors.ContentColor(true, false) == scheme.onSurface);
+        CHECK(colors.ContentColor(false, true) == scheme.onSurface.WithAlpha(0.38f));
+        CHECK(colors.ContentColor(false, false) == scheme.onSurface.WithAlpha(0.38f));
+        CHECK(colors.BorderColor(true, true) == scheme.outline);
+        CHECK(colors.BorderColor(true, false) == scheme.outline);
+        CHECK(colors.BorderColor(false, true) == scheme.outline.WithAlpha(0.12f));
+        CHECK(colors.BorderColor(false, false) == scheme.outline.WithAlpha(0.12f));
+        const auto custom = SegmentedButtonDefaults::colors({ .activeBorderColor = Color(0xFF123456u), .disabledInactiveContentColor = Color(0xFF654321u) });
+        CHECK(custom.activeBorderColor == Color(0xFF123456u));
+        CHECK(custom.disabledInactiveContentColor == Color(0xFF654321u));
+        CHECK(custom.activeContainerColor == colors.activeContainerColor);
+        CHECK(custom.Copy({}) == custom);
+        CHECK(SegmentedButtonDefaults::borderStroke(scheme.outline).width == 1_dp);
+        const auto base = SegmentedButtonDefaults::baseShape();
+        CHECK(SegmentedButtonDefaults::itemShape(0, 1)->Equals(*base));
+        for (bool rtl : { false, true }) {
+            const auto first = SegmentedButtonDefaults::itemShape(0, 3)->CreateOutline({ 100, 40 }, rtl ? ui::LayoutDirection::Rtl : ui::LayoutDirection::Ltr, { 1, 1 });
+            const auto* corners = std::get_if<gfx::RoundRect>(&first.value);
+            CHECK(corners != nullptr);
+            if (corners) {
+                CHECK_EQ(corners->topLeft.x, rtl ? 0.0f : 20.0f);
+                CHECK_EQ(corners->topRight.x, rtl ? 20.0f : 0.0f);
+            }
+        }
+        CHECK(SegmentedButtonDefaults::itemShape(1, 3)->Equals(*RectangleShape()));
+        const auto cut = std::dynamic_pointer_cast<const CornerBasedShape>(CutCorner(6_dp));
+        const auto last = std::dynamic_pointer_cast<const CornerBasedShape>(SegmentedButtonDefaults::itemShape(2, 3, cut));
+        CHECK(last && last->topStart == CornerSize{} && last->topEnd == CornerSize::Of(6_dp));
+    }); });
+}
+
+TEST(SegmentedButtonRowsKeepEqualWeightsOnePixelOverlapAndSourceSlotPlacement) {
+    for (bool rtl : { false, true }) for (bool customPadding : { false, true }) {
+        Harness h;
+        h.owner.SetDirection(rtl ? ui::LayoutDirection::Rtl : ui::LayoutDirection::Ltr);
+        ui::LayoutNode *label = nullptr, *icon = nullptr;
+        Color content;
+        text::TextStyle style;
+        h.Run([&] { MaterialTheme([&] { Column({}, [&] {
+            MultiChoiceSegmentedButtonRow({}, [&] {
+                SegmentedButtonOptions o;
+                if (customPadding) o.contentPadding = PaddingValues{ 24_dp, 24_dp, 24_dp, 24_dp };
+                o.icon = std::function<void()>([&] { icon = &ListTestLeaf(18, 18); ListTestLeaf(10, 10); });
+                SegmentedButton(false, [](bool) {}, SegmentedButtonDefaults::itemShape(0, 2), [&] {
+                    content = rt::Composition::Current()->Read(LocalContentColor);
+                    style = rt::Composition::Current()->Read(LocalTextStyle());
+                    label = &ListTestLeaf(60, 20); ListTestLeaf(30, 10);
+                }, {}, o);
+                SegmentedButton(false, [](bool) {}, SegmentedButtonDefaults::itemShape(1, 2), [] { ListTestLeaf(30, 20); });
+            });
+        }); }); });
+        auto* row = h.owner.Root().Children()[0]->Children()[0];
+        const int expectedWidth = customPadding ? 267 : 219;
+        CHECK_EQ(row->Size().width, expectedWidth);
+        CHECK_EQ(row->Size().height, customPadding ? 68 : 48);
+        const auto& buttons = row->Children();
+        CHECK_EQ(buttons.size(), std::size_t(2));
+        CHECK_EQ(buttons[0]->Size().width, buttons[1]->Size().width);
+        CHECK_EQ(std::abs(int(buttons[1]->InnerRectInRoot().left - buttons[0]->InnerRectInRoot().left)), buttons[0]->Size().width - 1);
+        CHECK_EQ(int(label->InnerRectInRoot().left - icon->InnerRectInRoot().left), 26);
+        CHECK_EQ(label->Size().height, 20);
+        CHECK(content == LightColorScheme().onSurface && style == Typography{}.labelLarge);
+    }
+}
+
+TEST(SegmentedButtonsExposeSingleAndMultiChoiceStateAndRejectDisabledActions) {
+    for (bool single : { false, true }) {
+        rt::State<bool> selected{ false }, enabled{ true };
+        Harness h;
+        ui::FocusRequester focus;
+        auto source = std::make_shared<MutableInteractionSource>();
+        h.owner.SetInputMode(ui::InputMode::Keyboard);
+        h.Run([&] { MaterialTheme([&] { Column({}, [&] {
+            auto content = [&] {
+                SegmentedButtonOptions o; o.enabled = enabled.Get(); o.interactionSource = source;
+                const auto m = FocusRequesterModifier({}, focus);
+                if (single) SegmentedButton(selected.Get(), [&] { selected.Set(true); }, SegmentedButtonDefaults::itemShape(0, 1), [] { Text("Day"); }, m, o);
+                else SegmentedButton(selected.Get(), [&](bool v) { selected.Set(v); }, SegmentedButtonDefaults::itemShape(0, 1), [] { Text("Day"); }, m, o);
+            };
+            if (single) SingleChoiceSegmentedButtonRow({}, content); else MultiChoiceSegmentedButtonRow({}, content);
+        }); }); });
+        auto tree = h.owner.BuildSemanticsTree();
+        if (single) CHECK(tree.children[0].config.selectableGroup);
+        auto button = [&] {
+            auto root = h.owner.BuildSemanticsTree();
+            return single ? root.children[0].children[0] : root.children[0];
+        };
+        CHECK(button().config.role == (single ? ui::Role::RadioButton : ui::Role::None));
+        CHECK(single ? button().config.selected == false : button().config.toggleableState == 0);
+        CHECK(button().config.onClick());
+        rt::Composition::RecomposeAll(); h.owner.MeasureAndLayout({ 300, 300 });
+        CHECK(single ? button().config.selected == true : button().config.toggleableState == 1);
+        CHECK(focus.RequestFocus());
+        CHECK(h.owner.DispatchKeyEvent({ ui::keys::Space, ui::KeyEventType::KeyDown }));
+        CHECK(h.owner.DispatchKeyEvent({ ui::keys::Space, ui::KeyEventType::KeyUp }));
+        rt::Composition::RecomposeAll(); h.owner.MeasureAndLayout({ 300, 300 });
+        CHECK_EQ(selected.Peek(), single);
+        enabled.Set(false); rt::Composition::RecomposeAll(); h.owner.MeasureAndLayout({ 300, 300 });
+        CHECK(button().config.disabled && !source->IsFocused());
+        auto& a11y = h.owner.Accessibility(); a11y.SetEnabled(true); a11y.CheckForSemanticsChanges();
+        CHECK(!a11y.PerformAction(button().id, ui::a11y::Click));
+        CHECK(!h.owner.DispatchKeyEvent({ ui::keys::Space, ui::KeyEventType::KeyDown }));
+    }
+}
+
+TEST(SegmentedButtonLabelMotionKeepsAllocationAndInteractionsRaiseTheBorder) {
+    rt::State<bool> active{ false };
+    Harness h;
+    auto source = std::make_shared<MutableInteractionSource>();
+    ui::LayoutNode* label = nullptr;
+    h.Run([&] { MaterialTheme([&] { Column({}, [&] {
+        MultiChoiceSegmentedButtonRow({}, [&] {
+            SegmentedButtonOptions o; o.interactionSource = source;
+            o.icon = std::function<void()>([&] { if (active.Get()) ListTestLeaf(18, 18); });
+            SegmentedButton(active.Get(), [&](bool v) { active.Set(v); }, SegmentedButtonDefaults::itemShape(0, 1), [&] { label = &ListTestLeaf(40, 20); }, {}, o);
+        });
+    }); }); });
+    auto* row = h.owner.Root().Children()[0]->Children()[0];
+    auto* button = row->Children()[0];
+    const auto allocation = row->Size();
+    const float collapsedX = label->InnerRectInRoot().left;
+    CHECK_EQ(button->ZIndex(), 0.0f);
+    const auto hover = source->Start(Interaction::Kind::Hover);
+    rt::Composition::RecomposeAll(); h.owner.MeasureAndLayout({ 300, 300 });
+    CHECK_EQ(button->ZIndex(), 0.0f);
+    const auto focus = source->Start(Interaction::Kind::Focus), press = source->Start(Interaction::Kind::Press);
+    rt::Composition::RecomposeAll(); h.owner.MeasureAndLayout({ 300, 300 });
+    CHECK_EQ(button->ZIndex(), 2.0f);
+    active.Set(true);
+    std::int64_t clock = 0;
+    auto advance = [&](int frames) {
+        for (int i = 0; i < frames; ++i) {
+            rt::Composition::RecomposeAll(); rt::Dispatcher::Main().RunFrame(clock += 16'000'000);
+            rt::Composition::RecomposeAll(); h.owner.MeasureAndLayout({ 300, 300 });
+        }
+    };
+    advance(3);
+    CHECK(label->InnerRectInRoot().left > collapsedX && label->InnerRectInRoot().left < collapsedX + 13);
+    advance(130);
+    CHECK_EQ(label->InnerRectInRoot().left, collapsedX + 13);
+    CHECK(row->Size() == allocation);
+    CHECK_EQ(button->ZIndex(), 7.0f);
+    source->Cancel(Interaction::Kind::Press, press); source->End(Interaction::Kind::Focus, focus); source->End(Interaction::Kind::Hover, hover);
+    rt::Composition::RecomposeAll(); h.owner.MeasureAndLayout({ 300, 300 });
+    CHECK_EQ(button->ZIndex(), 5.0f);
+    active.Set(false); advance(3); active.Set(true); advance(3); active.Set(false); advance(130);
+    CHECK_EQ(label->InnerRectInRoot().left, collapsedX);
+    CHECK(row->Size() == allocation && button->ZIndex() == 0.0f);
+}
+
+TEST(SegmentedButtonCustomSlotsKeepWideIconsEmptyLabelsAndMinimumSizes) {
+    for (bool rtl : { false, true }) for (int kind = 0; kind < 3; ++kind) {
+        Harness h;
+        h.owner.SetDirection(rtl ? ui::LayoutDirection::Rtl : ui::LayoutDirection::Ltr);
+        ui::LayoutNode *icon = nullptr, *label = nullptr;
+        h.Run([&] { MaterialTheme([&] { Column({}, [&] {
+            MultiChoiceSegmentedButtonRow({}, [&] {
+                SegmentedButtonOptions o;
+                o.icon = std::function<void()>([&] { if (kind == 0) icon = &ListTestLeaf(30, 18); });
+                SegmentedButton(false, [](bool) {}, SegmentedButtonDefaults::itemShape(0, 1), [&] {
+                    if (kind != 2) label = &ListTestLeaf(40, 20);
+                }, {}, o);
+            });
+        }); }); });
+        auto* row = h.owner.Root().Children()[0]->Children()[0];
+        CHECK_EQ(row->Size().width, kind == 0 ? 102 : kind == 1 ? 90 : 58);
+        CHECK_EQ(row->Size().height, 48);
+        if (kind == 0) CHECK_EQ(label->InnerRectInRoot().left - icon->InnerRectInRoot().left, 26.0f);
+        if (kind == 1) CHECK_EQ(label->InnerRectInRoot().left - row->InnerRectInRoot().left, 25.0f);
+    }
+}
+
+TEST(SegmentedButtonIconsCrossfadeOrEnterWithoutAnExitAndCancelOnDisposal) {
+    for (bool crossfade : { false, true }) {
+        rt::State<bool> active{ false }, attached{ true };
+        Harness h;
+        h.Run([&] { MaterialTheme([&] { Column({}, [&] {
+            if (!attached.Get()) return;
+            MultiChoiceSegmentedButtonRow({}, [&] {
+                SegmentedButtonOptions o;
+                o.icon = std::function<void()>([&] {
+                    // The toggleable merges its descendants' semantics, so the icons are told apart by size.
+                    const auto named = [](const char* name) { Box(SizeMod({}, 18_dp, name[0] == 'a' ? 18_dp : 17_dp)); };
+                    std::function<void()> inactive;
+                    if (crossfade) inactive = [=] { named("inactive icon"); };
+                    SegmentedButtonDefaults::Icon(active.Get(), [=] { named("active icon"); }, inactive);
+                });
+                SegmentedButton(active.Get(), [&](bool value) { active.Set(value); }, SegmentedButtonDefaults::itemShape(0, 1), [] { ListTestLeaf(40, 20); }, {}, o);
+            });
+        }); }); });
+        std::int64_t clock = 0;
+        auto advance = [&](int frames) {
+            for (int i = 0; i < frames; ++i) {
+                rt::Composition::RecomposeAll(); rt::Dispatcher::Main().RunFrame(clock += 16'000'000);
+                rt::Composition::RecomposeAll(); h.owner.MeasureAndLayout({ 300, 300 });
+            }
+        };
+        auto count = [&](const char* name) {
+            int result = 0;
+            // Inside AnimatedVisibility the active icon is stretched to the label's 20px height.
+            const bool activeIcon = name[0] == 'a';
+            std::function<void(ui::LayoutNode&)> visit = [&](ui::LayoutNode& n) {
+                if (n.Children().empty() && n.Size().width == 18 && (n.Size().height == 17) != activeIcon) ++result;
+                for (auto* child : n.Children()) visit(*child);
+            };
+            visit(h.owner.Root()); return result;
+        };
+        CHECK_EQ(count("active icon"), 0);
+        CHECK_EQ(count("inactive icon"), crossfade ? 1 : 0);
+        const auto size = h.owner.Root().Children()[0]->Children()[0]->Size();
+        active.Set(true); advance(3);
+        CHECK_EQ(count("active icon"), 1);
+        if (crossfade) CHECK_EQ(count("inactive icon"), 1);
+        advance(130);
+        CHECK_EQ(count("inactive icon"), 0);
+        CHECK(h.owner.Root().Children()[0]->Children()[0]->Size() == size);
+        active.Set(false); advance(3);
+        CHECK_EQ(count("active icon"), crossfade ? 1 : 0);
+        active.Set(true); advance(3); attached.Set(false); advance(130);
+        CHECK(h.owner.Root().Children()[0]->Children().empty());
+    }
+}
+
+TEST(SegmentedButtonTouchSelectionAndSourceReplacementCleanUpInteractions) {
+    rt::State<int> selected{ 0 }, version{ 0 };
+    rt::State<bool> attached{ true };
+    auto source = std::make_shared<MutableInteractionSource>();
+    Harness h;
+    h.Run([&] { version.Get(); MaterialTheme([&] { Column({}, [&] {
+        if (!attached.Get()) return;
+        SingleChoiceSegmentedButtonRow({}, [&] {
+            for (int i = 0; i < 2; ++i) SegmentedButton(selected.Get() == i, [&, i] { selected.Set(i); },
+                SegmentedButtonDefaults::itemShape(i, 2), [] { ListTestLeaf(40, 20); }, {}, { .interactionSource = i == 1 ? source : nullptr });
+        });
+    }); }); });
+    auto button = [&] { return h.owner.Root().Children()[0]->Children()[0]->Children()[1]; };
+    const auto bounds = button()->InnerRectInRoot();
+    auto pointer = [&](ui::PointerEventType type, bool down, std::int64_t time) {
+        ui::RawPointerEvent event; event.type = type; event.uptimeMillis = time; event.buttons = down ? 1 : 0;
+        event.pointers.push_back({ 1, { (bounds.left + bounds.right) / 2, (bounds.top + bounds.bottom) / 2 }, down, ui::PointerType::Mouse, {} });
+        h.owner.ProcessPointer(event); rt::Dispatcher::Main().RunPending();
+        rt::Composition::RecomposeAll(); h.owner.MeasureAndLayout({ 300, 300 });
+    };
+    pointer(ui::PointerEventType::Press, true, 0);
+    CHECK(source->IsPressed() && button()->ZIndex() == 1);
+    pointer(ui::PointerEventType::Release, false, 50);
+    CHECK(!source->IsPressed() && selected.Peek() == 1 && button()->ZIndex() == 5);
+    auto old = source;
+    source = std::make_shared<MutableInteractionSource>(); version.Set(1);
+    rt::Composition::RecomposeAll(); h.owner.MeasureAndLayout({ 300, 300 });
+    old->Start(Interaction::Kind::Press);
+    rt::Composition::RecomposeAll(); h.owner.MeasureAndLayout({ 300, 300 });
+    CHECK_EQ(button()->ZIndex(), 5.0f);
+    pointer(ui::PointerEventType::Press, true, 100);
+    CHECK(source->IsPressed());
+    attached.Set(false); rt::Composition::RecomposeAll(); h.owner.MeasureAndLayout({ 300, 300 });
+    CHECK(!source->IsPressed() && h.owner.Root().Children()[0]->Children().empty());
+}
+
+TEST(SplitButtonDefaultsPickShapesPaddingAndIconSizesByHeight) {
+    using namespace SplitButtonDefaults;
+    Harness h;
+    h.Run([] { MaterialTheme([] {
+    const float heights[] = { 32, 40, 56, 96, 136 };
+    const float inner[] = { 4, 4, 4, 8, 12 }, pressed[] = { 8, 12, 12, 20, 20 };
+    const float lead[][2] = { { 12, 10 }, { 16, 12 }, { 24, 24 }, { 48, 48 }, { 64, 64 } }, trail[] = { 13, 13, 15, 29, 43 };
+    const float icon[] = { 22, 22, 26, 38, 50 };
+    for (int i = 0; i < 5; ++i) {
+        const Dp h{ heights[i] };
+        const auto leading = leadingButtonShapesFor(h), trailing = trailingButtonShapesFor(h);
+        const auto l = std::dynamic_pointer_cast<const CornerBasedShape>(leading.shape);
+        const auto lp = std::dynamic_pointer_cast<const CornerBasedShape>(leading.pressedShape);
+        const auto t = std::dynamic_pointer_cast<const CornerBasedShape>(trailing.shape);
+        const auto tp = std::dynamic_pointer_cast<const CornerBasedShape>(trailing.pressedShape);
+        CHECK(l && lp && t && tp && !leading.checkedShape && trailing.checkedShape == CircleShape());
+        CHECK(l->topStart == OuterCornerSize() && l->bottomStart == OuterCornerSize() && l->topEnd == CornerSize::Of(Dp(inner[i])) && l->bottomEnd == l->topEnd);
+        CHECK(lp->topEnd == CornerSize::Of(Dp(pressed[i])) && lp->topStart == OuterCornerSize());
+        CHECK(t->topEnd == OuterCornerSize() && t->bottomEnd == OuterCornerSize() && t->topStart == CornerSize::Of(Dp(inner[i])) && t->bottomStart == t->topStart);
+        CHECK(tp->bottomStart == CornerSize::Of(Dp(pressed[i])));
+        // The same instances each time, so a morph in progress is not restarted by recomposition.
+        CHECK(leadingButtonShapesFor(h).shape == leading.shape && trailingButtonShapesFor(h).pressedShape == trailing.pressedShape);
+        CHECK(leadingButtonContentPaddingFor(h) == (PaddingValues{ Dp(lead[i][0]), 0_dp, Dp(lead[i][1]), 0_dp }));
+        CHECK(trailingButtonContentPaddingFor(h) == (PaddingValues{ Dp(trail[i]), 0_dp, Dp(trail[i]), 0_dp }));
+        CHECK_EQ(trailingButtonIconSizeFor(h).value, icon[i]);
+        CHECK_EQ(leadingButtonIconSizeFor(h).value, ButtonDefaults::iconSizeFor(h).value);
+    }
+    // Shapes change at the midpoints between heights, padding and icons at the heights themselves.
+    CHECK(leadingButtonShapesFor(36_dp).shape == leadingButtonShapesFor(32_dp).shape);
+    CHECK(leadingButtonShapesFor(37_dp).shape == leadingButtonShapesFor(40_dp).shape);
+    CHECK(leadingButtonContentPaddingFor(39_dp) == ExtraSmallLeadingButtonContentPadding);
+    CHECK(trailingButtonContentPaddingFor(200_dp) == ExtraLargeTrailingButtonContentPadding);
+    CHECK_EQ(Spacing.value, 2.0f);
+    }); });
+}
+
+TEST(SplitButtonLayoutGivesTheTrailingButtonItsWidthAndBothTheSameHeight) {
+    for (bool rtl : { false, true }) for (int kind = 0; kind < 3; ++kind) {
+        Harness h;
+        h.owner.SetDirection(rtl ? ui::LayoutDirection::Rtl : ui::LayoutDirection::Ltr);
+        ui::LayoutNode *label = nullptr, *icon = nullptr;
+        h.Run([&] { MaterialTheme([&] { Column({}, [&] {
+            // kind 0: natural size; 1: too narrow for both; 2: a tall leading button.
+            SplitButtonLayout([&] { SplitButtonDefaults::LeadingButton([] {}, {}, {}, [&] { label = &ListTestLeaf(kind == 1 ? 200 : 40, kind == 2 ? 60 : 20); }); },
+                              [&] { SplitButtonDefaults::TrailingButton(false, [](bool) {}, {}, {}, [&] { icon = &ListTestLeaf(22, 22); }); },
+                              kind == 1 ? Width({}, 100_dp) : Modifier{});
+        }); }); });
+        auto* layout = h.owner.Root().Children()[0]->Children()[0];
+        auto* leading = layout->Children()[0];
+        auto* trailing = layout->Children()[1];
+        const int height = kind == 2 ? 60 : 40;
+        CHECK_EQ(trailing->Size().width, 48);
+        CHECK_EQ(leading->Size().width, kind == 1 ? 50 : 68);
+        CHECK(leading->Size().height == height && trailing->Size().height == height);
+        // The whole control, not each button, gets the 48dp touch target.
+        CHECK_EQ(layout->Size().height, std::max(48, height));
+        CHECK_EQ(layout->Size().width, kind == 1 ? 100 : 118);
+        const auto l = leading->InnerRectInRoot(), t = trailing->InnerRectInRoot();
+        if (rtl) CHECK_EQ(l.left - t.right, 2.0f); else CHECK_EQ(t.left - l.right, 2.0f);
+        CHECK_EQ(l.top, t.top);
+        // The label sits after the 16dp leading space; the icon is optically centred towards
+        // the inner corner (0.11 * (4 - 20) rounds to 2px).
+        const auto text = label->InnerRectInRoot(), glyph = icon->InnerRectInRoot();
+        if (kind != 1) CHECK_EQ(rtl ? l.right - text.right : text.left - l.left, 16.0f);
+        // (The full outer corner is capped at half the height: 20px, or 30px when tall.)
+        CHECK_EQ(rtl ? t.right - glyph.right : glyph.left - t.left, kind == 2 ? 10.0f : 11.0f);
+    }
+}
+
+TEST(SplitButtonsClickToggleAndRecentreACheckedTrailingButton) {
+    using Maker = void (*)(bool, std::function<void(bool)>, const ui::Modifier&, const SplitButtonOptions&, std::function<void()>);
+    const Maker makers[] = { static_cast<Maker>(SplitButtonDefaults::TrailingButton), SplitButtonDefaults::TonalTrailingButton,
+                             SplitButtonDefaults::OutlinedTrailingButton, SplitButtonDefaults::ElevatedTrailingButton };
+    for (int variant = 0; variant < 4; ++variant) {
+        rt::State<bool> checked{ false }, enabled{ true };
+        int clicks = 0;
+        ui::LayoutNode* icon = nullptr;
+        Harness h;
+        h.Run([&] { MaterialTheme([&] { Column({}, [&] {
+            const SplitButtonOptions o{ .enabled = enabled.Get() };
+            const auto click = [&] { ++clicks; };
+            const auto label = [] { ListTestLeaf(40, 20); };
+            SplitButtonLayout([&, o, click, label] {
+                if (variant == 0) SplitButtonDefaults::LeadingButton(click, {}, o, label);
+                else if (variant == 1) SplitButtonDefaults::TonalLeadingButton(click, {}, o, label);
+                else if (variant == 2) SplitButtonDefaults::OutlinedLeadingButton(click, {}, o, label);
+                else SplitButtonDefaults::ElevatedLeadingButton(click, {}, o, label);
+            }, [&, o] { makers[variant](checked.Get(), [&](bool value) { checked.Set(value); }, {}, o, [&] { icon = &ListTestLeaf(22, 22); }); });
+        }); }); });
+        std::int64_t clock = 0;
+        auto advance = [&](int frames) {
+            for (int i = 0; i < frames; ++i) {
+                rt::Composition::RecomposeAll(); rt::Dispatcher::Main().RunFrame(clock += 16'000'000);
+                rt::Composition::RecomposeAll(); h.owner.MeasureAndLayout({ 300, 300 });
+            }
+        };
+        auto tree = h.owner.BuildSemanticsTree();
+        CHECK_EQ(tree.children.size(), std::size_t(2));
+        CHECK(tree.children[0].config.role == ui::Role::Button && !tree.children[0].config.toggleableState);
+        CHECK(tree.children[1].config.role == ui::Role::Button && *tree.children[1].config.toggleableState == 0);
+        const float restX = icon->InnerRectInRoot().left;
+        const auto size = h.owner.Root().Children()[0]->Children()[0]->Size();
+        CHECK(tree.children[0].config.onClick() && clicks == 1);
+        CHECK(tree.children[1].config.onClick());
+        advance(60);
+        CHECK(checked.Peek());
+        CHECK_EQ(*h.owner.BuildSemanticsTree().children[1].config.toggleableState, 1);
+        // A circle has equal corners, so the icon returns to the geometric centre.
+        CHECK_EQ(icon->InnerRectInRoot().left, restX + 2);
+        CHECK(h.owner.Root().Children()[0]->Children()[0]->Size() == size);
+        enabled.Set(false); advance(3);
+        tree = h.owner.BuildSemanticsTree();
+        CHECK(tree.children[0].config.disabled && tree.children[1].config.disabled);
+    }
+}
+
 TEST(BadgeDoesNotResizeItsAnchorAndUsesContentMinimumSize) {
     Harness h;
     h.Run([&] {
@@ -2330,4 +2730,943 @@ TEST(BadgeDoesNotResizeItsAnchorAndUsesContentMinimumSize) {
     CHECK_EQ(int(badge.InnerRectInRoot().top), 0);
     CHECK_EQ(children[1]->Size().width, 28);  // 20 + 4 dp padding on each side
     CHECK_EQ(children[1]->Size().height, 16);
+}
+
+namespace {
+    ui::IntOffset Place(const std::shared_ptr<const ui::PopupPositionProvider>& p, ui::IntRect anchor, ui::LayoutDirection dir = ui::LayoutDirection::Ltr) {
+        return p->CalculatePosition(anchor, { 300, 300 }, dir, { 60, 20 });
+    }
+}
+
+TEST(TooltipPositionProvidersPreferTheirSideAndFlipOrClampAtTheWindowEdges) {
+    Harness h;
+    std::map<int, std::shared_ptr<const ui::PopupPositionProvider>> p;
+    std::shared_ptr<const ui::PopupPositionProvider> rich;
+    h.owner.MeasureAndLayout({ 300, 300 });
+    h.Run([&] {
+        rt::Composition::Current()->Provide(ui::LocalOwner, &h.owner, [&] { MaterialTheme({}, [&] {
+            for (int i = 1; i <= 6; ++i) p[i] = TooltipDefaults::rememberTooltipPositionProvider(TooltipAnchorPosition(i), ui::Dp(4));
+            rich = TooltipDefaults::rememberRichTooltipPositionProvider();
+        }); });
+    });
+    using P = TooltipAnchorPosition;
+    const ui::IntRect mid{ 100, 100, 140, 140 };
+    // Above: centred, 4 px over the anchor; below it when it would leave the top.
+    CHECK(Place(p[int(P::Above)], mid) == ui::IntOffset(90, 76));
+    CHECK(Place(p[int(P::Above)], { 100, 0, 140, 40 }) == ui::IntOffset(90, 44));
+    CHECK(Place(p[int(P::Above)], { 0, 100, 20, 140 }) == ui::IntOffset(0, 76));   // clamped to the left edge
+    CHECK(Place(p[int(P::Below)], mid) == ui::IntOffset(90, 144));
+    CHECK(Place(p[int(P::Below)], { 100, 270, 140, 290 }) == ui::IntOffset(90, 246));
+    // Left / right: centred vertically, flipped when there is no room.
+    CHECK(Place(p[int(P::Left)], mid) == ui::IntOffset(36, 110));
+    CHECK(Place(p[int(P::Left)], { 10, 100, 50, 140 }) == ui::IntOffset(54, 110));
+    CHECK(Place(p[int(P::Right)], mid) == ui::IntOffset(144, 110));
+    CHECK(Place(p[int(P::Right)], { 250, 100, 290, 140 }) == ui::IntOffset(186, 110));
+    // Start / end follow the layout direction.
+    CHECK(Place(p[int(P::Start)], mid) == ui::IntOffset(36, 110));
+    CHECK(Place(p[int(P::Start)], mid, ui::LayoutDirection::Rtl) == ui::IntOffset(144, 110));
+    CHECK(Place(p[int(P::End)], mid, ui::LayoutDirection::Rtl) == ui::IntOffset(36, 110));
+    // The deprecated rich provider starts at the anchor and ends at it near the right edge.
+    CHECK(Place(rich, mid) == ui::IntOffset(100, 76));
+    CHECK(Place(rich, { 260, 100, 290, 140 }) == ui::IntOffset(230, 76));
+    // The caret sits mid-tooltip unless the tooltip is pushed against an edge.
+    CHECK_EQ(internal::CaretX(60, 300, { 100, 100, 140, 140 }), 30.0f);
+    CHECK_EQ(internal::CaretX(60, 300, { 0, 100, 20, 140 }), 10.0f);
+    CHECK_EQ(internal::CaretX(60, 300, { 280, 100, 300, 140 }), 50.0f);
+    CHECK_EQ(internal::CaretX(300, 300, { 100, 100, 140, 140 }), 120.0f);
+}
+
+TEST(TooltipStatesShareAMutexAndEndTheirShowOnDismissCancelOrTimeout) {
+    auto& d = rt::Dispatcher::Main();
+    auto mutex = std::make_shared<MutatorMutex>();
+    TooltipState a = MakeTooltipState(false, true, mutex), b = MakeTooltipState(false, true, mutex);
+    rt::Job showA = rt::Launch(d, a.Show());
+    CHECK(a.IsVisible());
+    CHECK(!showA.Done());
+    // Another show on the mutex hides this one and ends its show.
+    rt::Job showB = rt::Launch(d, b.Show());
+    CHECK(b.IsVisible());
+    CHECK(!a.IsVisible());
+    d.RunPending();
+    CHECK(showA.Done());
+    // Dismissing a persistent tooltip ends its show.
+    b.Dismiss();
+    CHECK(!b.IsVisible());
+    d.RunPending();
+    CHECK(showB.Done());
+    // A lower priority does not take over; the long-press show is not hidden when it ends.
+    rt::Job held = rt::Launch(d, a.Show(MutatePriority::PreventUserInput));
+    rt::Job refused = rt::Launch(d, b.Show());
+    CHECK(refused.Done());
+    CHECK(!b.IsVisible());
+    a.OnDispose();
+    d.RunPending();
+    CHECK(held.Done());
+    CHECK(a.IsVisible());
+    a.Dismiss();
+    CHECK(!a.IsVisible());
+    // Cancelling the caller runs the show's cleanup and frees the mutex.
+    rt::Job cancelled = rt::Launch(d, a.Show());
+    cancelled.Cancel();
+    CHECK(!a.IsVisible());
+    rt::Job after = rt::Launch(d, b.Show());
+    CHECK(b.IsVisible());
+    b.Dismiss();
+    d.RunPending();
+    // A non-persistent tooltip hides after TooltipDuration; hover (UserInput) keeps it up.
+    TooltipState brief = MakeTooltipState(false, false, mutex);
+    rt::Job timed = rt::Launch(d, brief.Show());
+    CHECK(brief.IsVisible());
+    std::this_thread::sleep_for(std::chrono::milliseconds(BasicTooltipDefaults::TooltipDuration + 50));
+    d.RunPending();
+    d.RunPending();
+    CHECK(!brief.IsVisible());
+    CHECK(timed.Done());
+    // The basic state has no transition: visibility flips at once and ends with the show.
+    TooltipState basic = internal::MakeBasicTooltipState(false, true, mutex);
+    rt::Job basicShow = rt::Launch(d, basic.Show(MutatePriority::PreventUserInput));
+    CHECK(basic.IsVisible());
+    basic.OnDispose();
+    CHECK(!basic.IsVisible());
+    d.RunPending();
+    CHECK(basicShow.Done());
+}
+
+namespace {
+    void Touch(Harness& h, std::int64_t& t, ui::PointerEventType kind, float x, float y, bool down) {
+        ui::RawPointerEvent e;
+        e.type = kind;
+        e.uptimeMillis = t += 16;
+        e.pointers.push_back({ 1, { x, y }, down, ui::PointerType::Touch, {} });
+        h.owner.ProcessPointer(e);
+        for (int i = 0; i < 3; ++i) {
+            rt::Dispatcher::Main().RunPending();
+            rt::Composition::RecomposeAll();
+            h.Layout();
+        }
+    }
+}
+
+TEST(TooltipBoxShowsOnLongPressWithoutClickingTheAnchorAndDismissesOutside) {
+    Harness h;
+    h.owner.Config().longPressTimeoutMillis = 40;
+    std::int64_t t = 1000;
+    h.owner.MeasureAndLayout({ 300, 300 });
+    int clicks = 0;
+    std::optional<TooltipState> state;
+    std::shared_ptr<const ui::PopupPositionProvider> provider;
+    h.Run([&] {
+        rt::Composition::Current()->Provide(ui::LocalOwner, &h.owner, [&] { MaterialTheme({}, [&] {
+            provider = TooltipDefaults::rememberTooltipPositionProvider(TooltipAnchorPosition::Below);
+            state = RememberTooltipState(false, true);
+            Box({}, Alignment::TopStart(), false, [&] { TooltipBox(
+                provider, [](const TooltipScope& scope) { PlainTooltip(scope, {}, {}, [] { Text("Tip"); }); }, *state, {}, {},
+                [&] { Box(Clickable(SizeMod(Modifier{}, ui::Dp(40), ui::Dp(40)), [&] { ++clicks; }), Alignment::TopStart(), false, {}); }); });
+        }); });
+    });
+    CHECK(h.owner.Popups().empty());
+    // The anchor offers the long press to accessibility services.
+    auto tree = h.owner.BuildSemanticsTree();
+    CHECK(tree.children.size() == 1 && tree.children[0].config.onLongClick && tree.children[0].config.onLongClickLabel);
+    // A short tap clicks the anchor.
+    Touch(h, t, ui::PointerEventType::Press, 20, 20, true);
+    Touch(h, t, ui::PointerEventType::Release, 20, 20, false);
+    CHECK_EQ(clicks, 1);
+    CHECK(!state->IsVisible());
+    // A long press shows the tooltip below the anchor, and lifting does not click.
+    Touch(h, t, ui::PointerEventType::Press, 20, 20, true);
+    std::this_thread::sleep_for(std::chrono::milliseconds(80));
+    t += 80;
+    Touch(h, t, ui::PointerEventType::Move, 20, 20, true);
+    CHECK(state->IsVisible());
+    CHECK_EQ(int(h.owner.Popups().size()), 1);
+    Touch(h, t, ui::PointerEventType::Release, 20, 20, false);
+    CHECK_EQ(clicks, 1);
+    CHECK(state->IsVisible());
+    if (h.owner.Popups().size() == 1 && h.owner.Popups()[0]->bounds) CHECK_EQ(h.owner.Popups()[0]->bounds->top, 44);
+    // A press outside dismisses it.
+    Touch(h, t, ui::PointerEventType::Press, 250, 250, true);
+    Touch(h, t, ui::PointerEventType::Release, 250, 250, false);
+    CHECK(!state->Transition().TargetState());
+    // The accessibility long click shows it again.
+    tree = h.owner.BuildSemanticsTree();
+    if (!tree.children.empty() && tree.children[0].config.onLongClick) CHECK(tree.children[0].config.onLongClick());
+    Touch(h, t, ui::PointerEventType::Move, 0, 0, false);
+    CHECK(state->Transition().TargetState());
+    state->Dismiss();
+}
+
+TEST(DropdownMenuOpensBelowItsAnchorClicksItemsAndDismissesOutside) {
+    Harness h;
+    std::int64_t t = 1000;
+    h.owner.MeasureAndLayout({ 300, 300 });
+    auto expanded = std::make_shared<rt::State<bool>>(false);
+    int clicked = -1, dismissed = 0;
+    h.Run([&] {
+        rt::Composition::Current()->Provide(ui::LocalOwner, &h.owner, [&] { MaterialTheme({}, [&] {
+            Box({}, Alignment::TopStart(), false, [&] {
+                Box(Padding(Modifier{}, PaddingValues{ ui::Dp(0), ui::Dp(60), ui::Dp(0), ui::Dp(0) }), Alignment::TopStart(), false, [&] {
+                    Box(SizeMod(Modifier{}, ui::Dp(40), ui::Dp(40)), Alignment::TopStart(), false, [&] {
+                        DropdownMenu(expanded->Get(), [&] { ++dismissed; expanded->Set(false); }, {}, {}, [&] {
+                            for (int i = 0; i < 2; ++i) DropdownMenuItem([] { Text("Item"); }, [&clicked, i] { clicked = i; }, {}, {});
+                        });
+                    });
+                });
+            });
+        }); });
+    });
+    CHECK(h.owner.Popups().empty());
+    expanded->Set(true);
+    Touch(h, t, ui::PointerEventType::Move, 0, 0, false);
+    CHECK_EQ(int(h.owner.Popups().size()), 1);
+    // Below the anchor at its start: 112 dp wide (the item minimum), 8 + 2 x 48 + 8 tall.
+    if (h.owner.Popups().size() == 1 && h.owner.Popups()[0]->bounds) {
+        const auto& b = *h.owner.Popups()[0]->bounds;
+        CHECK((b == ui::IntRect{ 0, 100, 112, 212 }));
+    }
+    Touch(h, t, ui::PointerEventType::Press, 25, 120, true);
+    Touch(h, t, ui::PointerEventType::Release, 25, 120, false);
+    CHECK_EQ(clicked, 0);
+    // A press outside asks to dismiss.
+    Touch(h, t, ui::PointerEventType::Press, 250, 280, true);
+    Touch(h, t, ui::PointerEventType::Release, 250, 280, false);
+    CHECK_EQ(dismissed, 1);
+    CHECK(!expanded->Peek());
+}
+
+TEST(MenuDefaultsShapeColourAndArrangeExpressiveItems) {
+    Harness h;
+    auto checked = std::make_shared<rt::State<bool>>(false);
+    auto selected = std::make_shared<rt::State<bool>>(false);
+    bool sameShapes = false, distinctShapes = false, groupsCached = false;
+    MenuItemColors copied{}, base{};
+    std::vector<int> ltr(3), rtl(3);
+    h.Run([&] {
+        MaterialTheme({}, [&] {
+            sameShapes = MenuDefaults::itemShape(0, 3) == MenuDefaults::itemShape(0, 3) && MenuDefaults::itemShape(0, 1) == MenuDefaults::itemShapes();
+            distinctShapes = MenuDefaults::itemShape(0, 3).shape != MenuDefaults::itemShape(2, 3).shape &&
+                             MenuDefaults::itemShape(1, 3).shape == MenuDefaults::middleItemShape();
+            groupsCached = MenuDefaults::groupShape(2, 3) == MenuDefaults::groupShape(2, 3) &&
+                           MenuDefaults::groupShape(0, 1).shape == MenuDefaults::standaloneGroupShape();
+            base = MenuDefaults::itemColors();
+            copied = base.Copy(Color(0xFFFF0000u));
+            const auto a = MenuDefaults::DropdownMenuItemHorizontalArrangement();
+            const int sizes[] = { 20, 50, 20 };
+            a.Arrange(ui::Density{ 1, 1 }, 200, sizes, ui::LayoutDirection::Ltr, ltr);
+            a.Arrange(ui::Density{ 1, 1 }, 200, sizes, ui::LayoutDirection::Rtl, rtl);
+            Column({}, Arrangement::Top(), AlignmentH::Start(), [&] {
+                CheckableDropdownMenuItem(checked->Get(), [checked](bool v) { checked->Set(v); }, [] { Text("Bold"); }, MenuDefaults::itemShape(0, 2), {}, {});
+                SelectableDropdownMenuItem(selected->Get(), [selected] { selected->Set(true); }, [] { Text("Left"); }, MenuDefaults::itemShape(1, 2), {}, {});
+            });
+        });
+    });
+    CHECK(sameShapes);
+    CHECK(distinctShapes);
+    CHECK(groupsCached);
+    CHECK(copied.textColor == Color(0xFFFF0000u));
+    CHECK(copied.leadingIconColor == base.leadingIconColor && copied.containerColor == Color::Transparent());
+    // Leading icon at the start, the text 8 dp after it, trailing content at the end; mirrored in RTL.
+    CHECK((ltr == std::vector{ 0, 28, 180 }));
+    CHECK((rtl == std::vector{ 180, 122, 0 }));
+    auto tree = h.owner.BuildSemanticsTree();
+    CHECK_EQ(tree.children.size(), std::size_t(2));
+    if (tree.children.size() == 2) {
+        CHECK(tree.children[0].config.role == ui::Role::Checkbox);
+        CHECK(tree.children[1].config.role == ui::Role::RadioButton);
+        CHECK(tree.children[0].config.onClick && tree.children[0].config.onClick());
+        CHECK(tree.children[1].config.onClick && tree.children[1].config.onClick());
+    }
+    CHECK(checked->Peek());
+    CHECK(selected->Peek());
+    // Items fill the width; the clickable surface keeps the minimum touch height.
+    const auto& column = *h.owner.Root().Children()[0];
+    if (!column.Children().empty()) CHECK_EQ(column.Children()[0]->Size().height, 48);   // the 44 dp row inside the 48 dp touch target
+}
+
+namespace {
+    void Frames(Harness& h, std::int64_t& nanos, int count) {
+        for (int i = 0; i < count; ++i) {
+            nanos += 16'000'000;
+            rt::Dispatcher::Main().RunFrame(nanos);
+            rt::Dispatcher::Main().RunPending();
+            rt::Composition::RecomposeAll();
+            h.Layout();
+        }
+    }
+    std::vector<int> ChildXs(const ui::LayoutNode& n) {
+        std::vector<int> xs;
+        for (auto* c : n.Children()) xs.push_back(int(c->PositionInRoot().x - n.PositionInRoot().x));
+        return xs;
+    }
+}
+
+TEST(ButtonGroupMovesWhatDoesNotFitIntoItsOverflowMenu) {
+    Harness h;
+    std::int64_t t = 1000;
+    h.owner.MeasureAndLayout({ 300, 300 });
+    auto width = std::make_shared<rt::State<int>>(300);
+    ButtonGroupMenuState* menu = nullptr;
+    int thirdClicks = 0;
+    h.Run([&] {
+        rt::Composition::Current()->Provide(ui::LocalOwner, &h.owner, [&] { MaterialTheme({}, [&] {
+            Box({}, Alignment::TopStart(), false, [&] {
+                ButtonGroup([&](ButtonGroupMenuState& m) { menu = &m; Box(SizeMod(Modifier{}, ui::Dp(30), ui::Dp(40))); },
+                            Width(Modifier{}, ui::Dp(float(width->Get()))), [&](ButtonGroupScope& scope) {
+                    for (int i = 0; i < 2; ++i)
+                        scope.CustomItem([] { Box(SizeMod(Modifier{}, ui::Dp(60), ui::Dp(40))); }, [](ButtonGroupMenuState&) {});
+                    scope.ClickableItem([&] { ++thirdClicks; }, "Third");
+                });
+            });
+        }); });
+    });
+    // Everything fits: 12 dp apart, no overflow indicator placed.
+    const ui::LayoutNode* group = h.owner.Root().Children()[0]->Children()[0];
+    CHECK_EQ(group->Children().size(), std::size_t(4));
+    auto xs = ChildXs(*group);
+    CHECK(xs.size() == 4 && xs[0] == 0 && xs[1] == 72 && xs[2] == 144);
+    CHECK(group->Children()[3]->IsPlaced() == false);
+    // 150 wide: the indicator takes 30, one 60 item fits, the indicator follows it.
+    width->Set(150);
+    Touch(h, t, ui::PointerEventType::Move, 299, 299, false);
+    group = h.owner.Root().Children()[0]->Children()[0];
+    CHECK(group->Children()[3]->IsPlaced());
+    xs = ChildXs(*group);
+    CHECK(xs.size() == 4 && xs[0] == 0 && xs[3] == 72);
+    CHECK(!group->Children()[1]->IsPlaced() && !group->Children()[2]->IsPlaced());
+    // The menu holds the rest; a clickable item clicks and closes it.
+    CHECK(menu != nullptr);
+    if (!menu) return;
+    menu->Show();
+    Touch(h, t, ui::PointerEventType::Move, 299, 299, false);
+    CHECK_EQ(int(h.owner.Popups().size()), 1);
+    if (h.owner.Popups().size() == 1 && h.owner.Popups()[0]->bounds) {
+        const auto b = *h.owner.Popups()[0]->bounds;
+        // Two items in the menu: the second custom one (no menu content) and "Third".
+        Touch(h, t, ui::PointerEventType::Press, float(b.left + 10), float(b.bottom - 20), true);
+        Touch(h, t, ui::PointerEventType::Release, float(b.left + 10), float(b.bottom - 20), false);
+    }
+    CHECK_EQ(thirdClicks, 1);
+    CHECK(!menu->IsShowing());
+}
+
+// Ported from Compose's ButtonGroupTest, with its numbers: density 2 resolves its 0.5 dp
+// tolerance, and the window is a 412 x 800 dp phone.
+namespace {
+    const ui::SemanticsNode* FindSemantics(const ui::SemanticsNode& n, const std::string& label) {
+        const auto has = [&](const std::vector<std::string>& v) { return std::find(v.begin(), v.end(), label) != v.end(); };
+        if (has(n.config.text) || has(n.config.contentDescription) || (n.config.testTag && *n.config.testTag == label)) return &n;
+        for (const auto& c : n.children)
+            if (const auto* r = FindSemantics(c, label)) return r;
+        return nullptr;
+    }
+    // onNodeWithText / onNodeWithTag(label).getUnclippedBoundsInRoot(), in dp; nullopt when the
+    // node is not shown.
+    // A tag alone does not make an accessibility node: tags are found on the layout nodes (the
+    // unmerged tree), placed ones only.
+    const ui::LayoutNode* FindTagged(const ui::LayoutNode& n, const std::string& tag) {
+        if (!n.IsPlaced() && n.Parent()) return nullptr;
+        ui::SemanticsConfiguration c;
+        if (ui::CalculateSemanticsConfiguration(const_cast<ui::LayoutNode&>(n), c) && c.testTag == tag) return &n;
+        for (const auto* child : n.Children())
+            if (const auto* r = FindTagged(*child, tag)) return r;
+        return nullptr;
+    }
+    // The content and every popup (Root() is the content root; popups are its siblings).
+    const ui::LayoutNode* FindTagged(Harness& h, const std::string& tag) {
+        if (const auto* r = FindTagged(h.owner.Root(), tag)) return r;
+        for (const ui::PopupLayer* p : h.owner.Popups())
+            if (p->node)
+                if (const auto* r = FindTagged(*p->node, tag)) return r;
+        return nullptr;
+    }
+    std::optional<ui::Rect> BoundsDp(Harness& h, const std::string& label) {
+        const ui::SemanticsNode tree = h.owner.BuildSemanticsTree();
+        const ui::SemanticsNode* n = FindSemantics(tree, label);
+        std::optional<ui::Rect> b;
+        if (n) b = n->boundsInRoot;
+        else if (const auto* tagged = FindTagged(h, label)) b = tagged->BoundsInRoot();
+        if (!b) return std::nullopt;
+        const float d = h.owner.GetDensity().density;
+        return ui::Rect{ b->left / d, b->top / d, b->right / d, b->bottom / d };
+    }
+    // isDisplayed: placed, and at least partly inside the window.
+    bool Displayed(Harness& h, const std::string& label) {
+        const auto b = BoundsDp(h, label);
+        const float d = h.owner.GetDensity().density;
+        return b && b->Width() > 0 && b->Height() > 0 && b->right > 0 && b->left < h.window.width / d && b->bottom > 0 && b->top < h.window.height / d;
+    }
+    ui::Modifier Tag(ui::Modifier m, std::string tag) {
+        return Semantics(std::move(m), [tag = std::move(tag)](ui::SemanticsConfiguration& c) { c.testTag = tag; });
+    }
+    void Press(Harness& h, std::int64_t& t, const std::string& label, bool release) {
+        const auto b = BoundsDp(h, label);
+        CHECK(b.has_value());
+        if (!b) return;
+        const float d = h.owner.GetDensity().density;
+        const float x = (b->left + b->right) / 2 * d, y = (b->top + b->bottom) / 2 * d;
+        Touch(h, t, ui::PointerEventType::Press, x, y, true);
+        if (release) Touch(h, t, ui::PointerEventType::Release, x, y, false);
+    }
+    // Text measures (monospace, half the font size per character): constructed before the
+    // owner and destroyed after it.
+    struct WithFakeText { test::FakeText text; };
+    struct PhoneHarness : WithFakeText, Harness {
+        PhoneHarness() : Harness(2, { 824, 1600 }) { owner.SetText(&text); }
+    };
+
+    // Four 75 dp buttons that widen while pressed; the widths 200 ms after pressing one.
+    std::vector<float> PressedWidths(float expandedRatio, int pressed) {
+        PhoneHarness h;
+        std::int64_t t = 1000, nanos = 0;
+        std::vector<std::shared_ptr<MutableInteractionSource>> sources;
+        for (int i = 0; i < 4; ++i) sources.push_back(std::make_shared<MutableInteractionSource>());
+        const std::vector<std::string> labels{ "A", "B", "C", "D" };
+        h.Run([&] { MaterialTheme({}, [&] { Box({}, Alignment::TopStart(), false, [&] {
+            ButtonGroupOptions o;
+            o.expandedRatio = expandedRatio;
+            ButtonGroup({}, {}, [&](ButtonGroupScope& scope) {
+                for (int i = 0; i < 4; ++i) {
+                    auto source = sources[i];
+                    const std::string label = labels[i];
+                    scope.CustomItem([&scope, source, label] {
+                        ButtonOptions b;
+                        b.interactionSource = source;
+                        Button([] {}, Tag(scope.AnimateWidth(Width({}, ui::Dp(75)), source), label), b, [label] { Text(label); });
+                    }, [](ButtonGroupMenuState&) {});
+                }
+            }, o);
+        }); }); });
+        Press(h, t, labels[pressed], false);
+        Frames(h, nanos, 1 + 13);   // a frame, then 200 ms
+        std::vector<float> widths;
+        for (const auto& l : labels) widths.push_back(BoundsDp(h, l) ? BoundsDp(h, l)->Width() : -1);
+        return widths;
+    }
+
+    // Items labelled 0..count-1 (or "Item i"), with an IconButton tagged overflowIndicator.
+    void NumberedGroup(int count, const ui::Modifier& modifier, std::string prefix = "") {
+        ButtonGroup([](ButtonGroupMenuState&) { IconButton([] {}, Tag({}, "overflowIndicator"), {}, [] {}); }, modifier,
+                    [=](ButtonGroupScope& scope) {
+            for (int i = 0; i < count; ++i) scope.ClickableItem([] {}, prefix + std::to_string(i));
+        });
+    }
+}
+
+TEST(ButtonGroupSpacesItems12DpApartWithNothingAroundThem) {   // default_positioning
+    PhoneHarness h;
+    h.Run([&] { MaterialTheme({}, [&] { Box({}, Alignment::TopStart(), false, [&] {
+        Box(Tag({}, "wrapper"), Alignment::TopStart(), false, [&] {
+            ButtonGroup({}, {}, [](ButtonGroupScope& scope) {
+                for (const char* l : { "A", "B", "C", "D" }) scope.ClickableItem([] {}, l);
+            });
+        });
+    }); }); });
+    const auto w = BoundsDp(h, "wrapper"), a = BoundsDp(h, "A"), b = BoundsDp(h, "B"), c = BoundsDp(h, "C"), d = BoundsDp(h, "D");
+    CHECK(w && a && b && c && d);
+    if (!(w && a && b && c && d)) return;
+    CHECK_NEAR(a->left - w->left, 0, 0.5);
+    CHECK_NEAR(b->left - a->right, 12, 0.5);
+    CHECK_NEAR(c->left - b->right, 12, 0.5);
+    CHECK_NEAR(d->left - c->right, 12, 0.5);
+    CHECK_NEAR(w->right - d->right, 0, 0.5);
+}
+
+TEST(ButtonGroupPressedItemTakesItsRatioFromItsNeighbours) {   // default_/customAnimateFraction_*Pressed_buttonSizing
+    for (const float ratio : { 0.15f, 0.3f }) {
+        for (int pressed = 0; pressed < 4; ++pressed) {
+            const auto widths = PressedWidths(ratio, pressed);
+            CHECK_EQ(widths.size(), std::size_t(4));
+            if (widths.size() != 4) continue;
+            // An end item takes it all from its one neighbour; a middle one half from each.
+            const bool edge = pressed == 0 || pressed == 3;
+            for (int i = 0; i < 4; ++i) {
+                float expected = 75;
+                if (i == pressed) expected = 75 + 75 * ratio;
+                else if (std::abs(i - pressed) == 1) expected = 75 - 75 * (edge ? ratio : ratio / 2);
+                CHECK_NEAR(widths[i], expected, 0.5);
+            }
+        }
+    }
+}
+
+TEST(ButtonGroupOverflowIndicatorShowsOnlyWhenItemsDoNotFit) {   // overflowIndicator_*
+    {
+        PhoneHarness h;
+        h.Run([&] { MaterialTheme({}, [&] { Box({}, Alignment::TopStart(), false, [&] { NumberedGroup(100, {}); }); }); });
+        CHECK(Displayed(h, "overflowIndicator"));
+    }
+    {
+        PhoneHarness h;
+        h.Run([&] { MaterialTheme({}, [&] { Box({}, Alignment::TopStart(), false, [&] { NumberedGroup(4, {}); }); }); });
+        CHECK(!Displayed(h, "overflowIndicator"));
+        CHECK(Displayed(h, "3"));
+    }
+    {   // fixed constraints (minWidth == maxWidth) from a 150 dp parent and fillMaxWidth
+        PhoneHarness h;
+        h.Run([&] { MaterialTheme({}, [&] { Box({}, Alignment::TopStart(), false, [&] {
+            Box(Width({}, ui::Dp(150)), Alignment::TopStart(), false, [&] { NumberedGroup(10, FillMax({}, Axis::Horizontal), "Item "); });
+        }); }); });
+        CHECK(Displayed(h, "overflowIndicator"));
+    }
+}
+
+TEST(ButtonGroupOverflowMenuShowsTheItemsThatDoNotFit) {   // overflowMenu_tooManyItems_exists
+    PhoneHarness h;
+    std::int64_t t = 1000;
+    h.owner.MeasureAndLayout(h.window);
+    h.Run([&] { rt::Composition::Current()->Provide(ui::LocalOwner, &h.owner, [&] { MaterialTheme({}, [&] {
+        Box({}, Alignment::TopStart(), false, [&] {
+            ButtonGroup([](ButtonGroupMenuState& menu) {
+                IconButton([&menu] { menu.IsShowing() ? menu.Dismiss() : menu.Show(); }, Tag({}, "overflowIndicator"), {}, [] {});
+            }, {}, [](ButtonGroupScope& scope) {
+                for (int i = 0; i < 10; ++i) {
+                    const std::string label = std::to_string(i);
+                    scope.CustomItem([label] { Button([] {}, {}, {}, [label] { Text(label); }); }, [label](ButtonGroupMenuState&) {
+                        DropdownMenuItem([label] { Text(label); }, [] {}, Tag({}, label + " MenuItem"), {});
+                    });
+                }
+            });
+        });
+    }); }); });
+    CHECK(!Displayed(h, "9 MenuItem"));
+    Press(h, t, "overflowIndicator", true);
+    CHECK(Displayed(h, "9 MenuItem"));
+}
+
+TEST(ButtonGroupScrollsWhenGivenHorizontalScroll) {   // horizontalScroll_handlingScroll_buttonDisplay
+    PhoneHarness h;
+    std::int64_t t = 1000;
+    h.Run([&] { MaterialTheme({}, [&] { Box({}, Alignment::TopStart(), false, [&] {
+        Box(Tag({}, "wrapper"), Alignment::TopStart(), false, [&] { NumberedGroup(10, HorizontalScroll({}, RememberScrollState())); });
+    }); }); });
+    CHECK(!Displayed(h, "9"));
+    const auto w = BoundsDp(h, "wrapper");
+    CHECK(w.has_value());
+    if (!w) return;
+    // swipe(center, center - 1500 px) over 100 ms
+    const float x = (w->left + w->right), y = (w->top + w->bottom);   // the centre, in pixels at density 2
+    Touch(h, t, ui::PointerEventType::Press, x, y, true);
+    for (int i = 1; i <= 6; ++i) Touch(h, t, ui::PointerEventType::Move, x - 1500.f * i / 6, y, true);
+    Touch(h, t, ui::PointerEventType::Release, x - 1500, y, false);
+    std::int64_t nanos = 0;
+    Frames(h, nanos, 120);   // let any fling settle
+    CHECK(Displayed(h, "9"));
+}
+
+TEST(ButtonGroupHorizontalArrangementPlacesTheItems) {   // horizontalArrangement_*_buttonGroupPositioning
+    const std::pair<Arrangement, float> cases[] = { { Arrangement::Start(), 1.f / 3 }, { Arrangement::Center(), 1.f / 2 }, { Arrangement::End(), 2.f / 3 } };
+    for (const auto& [arrangement, at] : cases) {
+        PhoneHarness h;
+        h.Run([&] { MaterialTheme({}, [&] { Box({}, Alignment::TopStart(), false, [&] {
+            ButtonGroupOptions o;
+            o.horizontalArrangement = arrangement;
+            ButtonGroup({}, FillMax({}, Axis::Horizontal), [](ButtonGroupScope& scope) {
+                for (int i = 0; i < 3; ++i) scope.ClickableItem([] {}, std::to_string(i));
+            }, o);
+        }); }); });
+        const auto first = BoundsDp(h, "0"), last = BoundsDp(h, "2");
+        CHECK(first && last);
+        if (first && last) CHECK(first->left <= 412 * at && 412 * at <= last->right);
+    }
+}
+
+TEST(ButtonGroupAlignsItemsVerticallyAndItemsCanOverrideIt) {   // buttonGroup_verticalAlignment_*, individualAlignment_*
+    const auto run = [](ui::AlignmentV group, std::optional<ui::AlignmentV> own, ui::Dp shortHeight, ui::Dp tallHeight) {
+        PhoneHarness h;
+        h.Run([&] { MaterialTheme({}, [&] { Box({}, Alignment::TopStart(), false, [&] {
+            ButtonGroupOptions o;
+            o.verticalAlignment = group;
+            ButtonGroup({}, {}, [&](ButtonGroupScope& scope) {
+                scope.CustomItem([&scope, own, shortHeight] {
+                    const ui::Modifier m = Height({}, shortHeight);
+                    Button([] {}, Tag(own ? scope.Align(m, *own) : m, "short"), {}, [] { Text("S"); });
+                }, [](ButtonGroupMenuState&) {});
+                scope.CustomItem([tallHeight] { Button([] {}, Tag(Height({}, tallHeight), "tall"), {}, [] { Text("T"); }); }, [](ButtonGroupMenuState&) {});
+            }, o);
+        }); }); });
+        return std::pair{ BoundsDp(h, "short").value_or(ui::Rect{}), BoundsDp(h, "tall").value_or(ui::Rect{}) };
+    };
+    auto [s, t] = run(ui::AlignmentV::Top(), std::nullopt, ui::Dp(48), ui::Dp(64));
+    CHECK_NEAR(s.top, t.top, 0.5);
+    std::tie(s, t) = run(ui::AlignmentV::CenterVertically(), std::nullopt, ui::Dp(48), ui::Dp(64));
+    CHECK_NEAR((s.top + s.bottom) / 2, (t.top + t.bottom) / 2, 0.5);
+    std::tie(s, t) = run(ui::AlignmentV::Bottom(), std::nullopt, ui::Dp(48), ui::Dp(64));
+    CHECK_NEAR(s.bottom, t.bottom, 0.5);
+    // Per item: the group is as tall as the 100 dp one.
+    std::tie(s, t) = run(ui::AlignmentV::Top(), ui::AlignmentV::Top(), ui::Dp(50), ui::Dp(100));
+    CHECK_NEAR(s.top, 0, 0.5);
+    CHECK_NEAR(t.top, 0, 0.5);
+    std::tie(s, t) = run(ui::AlignmentV::Top(), ui::AlignmentV::CenterVertically(), ui::Dp(50), ui::Dp(100));
+    CHECK_NEAR(s.top, 25, 0.5);
+    std::tie(s, t) = run(ui::AlignmentV::Top(), ui::AlignmentV::Bottom(), ui::Dp(50), ui::Dp(100));
+    CHECK_NEAR(s.top, 50, 0.5);
+    std::tie(s, t) = run(ui::AlignmentV::Bottom(), ui::AlignmentV::Top(), ui::Dp(50), ui::Dp(100));
+    CHECK_NEAR(s.top, 0, 0.5);
+    CHECK_NEAR(t.top, 0, 0.5);
+}
+
+TEST(ButtonGroupNeighboursGiveWayNoFurtherThanTheirCompressionLimit) {   // widthAnimation_*PaddingLimit, asymmetricPadding_*
+    // Two weighted buttons in 100 dp, 10 dp limits: B gives min(ratio x 50, 10) dp.
+    const auto pair = [](std::optional<float> ratio) {
+        PhoneHarness h;
+        std::int64_t t = 1000, nanos = 0;
+        auto a = std::make_shared<MutableInteractionSource>(), b = std::make_shared<MutableInteractionSource>();
+        h.Run([&] { MaterialTheme({}, [&] { Box({}, Alignment::TopStart(), false, [&] { Box(Width({}, ui::Dp(100)), Alignment::TopStart(), false, [&] {
+            ButtonGroupOptions o;
+            if (ratio) o.expandedRatio = *ratio;
+            o.horizontalArrangement = Arrangement::SpacedBy(ui::Dp(0));
+            ButtonGroup({}, {}, [&](ButtonGroupScope& scope) {
+                for (auto& [source, label] : { std::pair{ a, std::string("A") }, std::pair{ b, std::string("B") } }) {
+                    scope.CustomItem([&scope, source, label] {
+                        ButtonOptions opts;
+                        opts.interactionSource = source;
+                        opts.contentPadding = PaddingValues{ ui::Dp(10), ui::Dp(0), ui::Dp(10), ui::Dp(0) };
+                        Button([] {}, Tag(scope.AnimateWidth(scope.Weight({}, 1), source, ui::Dp(10)), label), opts, [label] { Text(label); });
+                    }, [](ButtonGroupMenuState&) {});
+                }
+            }, o);
+        }); }); }); });
+        Press(h, t, "A", false);
+        Frames(h, nanos, 1 + 13);
+        return BoundsDp(h, "B").value_or(ui::Rect{}).Width();
+    };
+    CHECK_NEAR(pair(1.f), 40, 0.5);
+    CHECK_NEAR(pair(std::nullopt), 42.5, 0.5);
+    // Pressing the middle of three 100 dp buttons (ratio 0.5: 25 dp from each side), whose
+    // outer neighbours stop at 10 dp.
+    for (const bool rtl : { false, true }) {
+        PhoneHarness h;
+        std::int64_t t = 1000, nanos = 0;
+        std::vector<std::shared_ptr<MutableInteractionSource>> sources;
+        for (int i = 0; i < 3; ++i) sources.push_back(std::make_shared<MutableInteractionSource>());
+        h.Run([&] { rt::Composition::Current()->Provide(ui::LocalLayoutDirection, rtl ? ui::LayoutDirection::Rtl : ui::LayoutDirection::Ltr, [&] {
+            MaterialTheme({}, [&] { Box({}, Alignment::TopStart(), false, [&] {
+                ButtonGroupOptions o;
+                o.expandedRatio = 0.5f;
+                o.horizontalArrangement = Arrangement::SpacedBy(ui::Dp(0));
+                ButtonGroup({}, {}, [&](ButtonGroupScope& scope) {
+                    for (int i = 0; i < 3; ++i) {
+                        auto source = sources[i];
+                        const std::string label = std::string(1, char('A' + i));
+                        const std::optional<ui::Dp> limit = i == 1 ? std::nullopt : std::optional(ui::Dp(10));
+                        scope.CustomItem([&scope, source, label, limit] {
+                            ButtonOptions opts;
+                            opts.interactionSource = source;
+                            if (limit) opts.contentPadding = PaddingValues{ ui::Dp(40), ui::Dp(0), ui::Dp(10), ui::Dp(0) };
+                            Button([] {}, Tag(scope.AnimateWidth(Width({}, ui::Dp(100)), source, limit), label), opts, [label] { Text(label); });
+                        }, [](ButtonGroupMenuState&) {});
+                    }
+                }, o);
+            }); });
+        }); });
+        Press(h, t, "B", false);
+        Frames(h, nanos, 1 + 13);
+        CHECK_NEAR(BoundsDp(h, "A").value_or(ui::Rect{}).Width(), 90, 1);
+        CHECK_NEAR(BoundsDp(h, "C").value_or(ui::Rect{}).Width(), 90, 1);
+        CHECK_NEAR(BoundsDp(h, "B").value_or(ui::Rect{}).Width(), 120, 1);
+    }
+}
+
+// Ported from Compose's SplitButtonTest.
+TEST(SplitButtonVariantsShowTheirContentAndExposeButtonSemantics) {   // *SplitButton_contentDisplay, *Semantics
+    using Leading = void (*)(SplitButtonDefaults::Content, const ui::Modifier&, const SplitButtonOptions&, SplitButtonDefaults::Content);
+    using Trailing = void (*)(bool, std::function<void(bool)>, const ui::Modifier&, const SplitButtonOptions&, SplitButtonDefaults::Content);
+    const std::pair<Leading, Trailing> variants[] = {
+        { SplitButtonDefaults::LeadingButton, static_cast<Trailing>(SplitButtonDefaults::TrailingButton) },
+        { SplitButtonDefaults::TonalLeadingButton, SplitButtonDefaults::TonalTrailingButton },
+        { SplitButtonDefaults::ElevatedLeadingButton, SplitButtonDefaults::ElevatedTrailingButton },
+        { SplitButtonDefaults::OutlinedLeadingButton, SplitButtonDefaults::OutlinedTrailingButton },
+    };
+    for (const bool enabled : { true, false }) {
+        for (const auto& [leading, trailing] : variants) {
+            PhoneHarness h;
+            h.Run([&] { MaterialTheme({}, [&] { Box({}, Alignment::TopStart(), false, [&] {
+                SplitButtonOptions o;
+                o.enabled = enabled;
+                SplitButtonLayout([&] {
+                    leading([] {}, Tag({}, "leadingButton"), o, [] {
+                        Icon(material3::internal::Icons::Filled::Check(), std::string("Leading Icon"));
+                        Spacer(SizeMod({}, ButtonDefaults::IconSpacing, ButtonDefaults::IconSpacing));
+                        Text("My Button");
+                    });
+                }, [&] {
+                    trailing(false, [](bool) {}, Tag(SizeMod({}, ui::Dp(34), ui::Dp(34)), "trailingButton"), o, [] {
+                        Icon(material3::internal::Icons::Filled::Check(), std::string("Trailing Icon"));
+                    });
+                });
+            }); }); });
+            CHECK(Displayed(h, "My Button"));
+            const ui::SemanticsNode tree = h.owner.BuildSemanticsTree();
+            const auto* lead = FindSemantics(tree, "leadingButton");
+            const auto* trail = FindSemantics(tree, "trailingButton");
+            CHECK(lead && trail);
+            if (!lead || !trail) continue;
+            CHECK(lead->config.role == ui::Role::Button && trail->config.role == ui::Role::Button);
+            CHECK(lead->config.onClick != nullptr && trail->config.onClick != nullptr);
+            CHECK_EQ(lead->config.disabled, !enabled);
+            CHECK_EQ(trail->config.disabled, !enabled);
+            // The icons merge into their buttons; each still lays out where it is shown.
+            CHECK(Displayed(h, "Leading Icon") || FindTagged(h, "Leading Icon") != nullptr || (lead->config.contentDescription.size() == 1));
+            CHECK((trail->config.contentDescription == std::vector<std::string>{ "Trailing Icon" }));
+        }
+    }
+}
+
+TEST(SplitButtonTrailingButtonTogglesWhenClicked) {   // filledSplitButton_trailingButtonChecked
+    PhoneHarness h;
+    std::int64_t t = 1000;
+    h.Run([&] { MaterialTheme({}, [&] { Box({}, Alignment::TopStart(), false, [&] {
+        auto& checked = RememberState(false);
+        SplitButtonLayout([] { SplitButtonDefaults::LeadingButton([] {}, {}, {}, [] { Text("My Button"); }); }, [&checked] {
+            SplitButtonDefaults::TrailingButton(checked.Get(), [&checked](bool) { checked.Set(!checked.Peek()); }, Tag({}, "trailingButton"), {},
+                                                [] { Icon(material3::internal::Icons::Filled::Check(), std::string("Trailing Icon")); });
+        });
+    }); }); });
+    const auto state = [&] {
+        const ui::SemanticsNode tree = h.owner.BuildSemanticsTree();
+        const auto* n = FindSemantics(tree, "trailingButton");
+        return n && n->config.toggleableState && n->config.role == ui::Role::Button && !n->config.disabled ? int(*n->config.toggleableState) : -1;
+    };
+    CHECK_EQ(state(), 0);
+    Press(h, t, "trailingButton", true);
+    CHECK_EQ(state(), 1);
+}
+
+TEST(SplitButtonSizesPadTheirLeadingContentLikeTheTokens) {   // filledSplitButton_*_positioning
+    using namespace SplitButtonDefaults;
+    struct Case { Dp height; float start, between, end; };
+    const Case cases[] = { { ExtraSmallContainerHeight, 12, 4, 10 }, { SmallContainerHeight, 16, 8, 12 }, { MediumContainerHeight, 24, 8, 24 },
+                           { LargeContainerHeight, 48, 12, 48 }, { ExtraLargeContainerHeight, 64, 16, 64 } };
+    for (const Case& c : cases) {
+        PhoneHarness h;
+        h.Run([&] { MaterialTheme({}, [&] { Box({}, Alignment::TopStart(), false, [&] {
+            SplitButtonLayout([&] {
+                SplitButtonOptions o;
+                o.shapes = leadingButtonShapesFor(c.height);
+                o.contentPadding = leadingButtonContentPaddingFor(c.height);
+                LeadingButton([] {}, Tag(SizeIn({}, Dp::Unspecified(), c.height, Dp::Unspecified(), Dp::Unspecified()), "leadingButton"), o, [&] {
+                    Icon(material3::internal::Icons::Filled::Check(), std::string("Leading Icon"), Tag({}, "leadingIcon"));
+                    Spacer(SizeMod({}, ButtonDefaults::iconSpacingFor(c.height), ButtonDefaults::iconSpacingFor(c.height)));
+                    Text("My Button", Tag({}, "text"));
+                });
+            }, [&] {
+                SplitButtonOptions o;
+                o.shapes = trailingButtonShapesFor(c.height);
+                o.contentPadding = trailingButtonContentPaddingFor(c.height);
+                TrailingButton(false, [](bool) {}, SizeIn({}, Dp::Unspecified(), c.height, Dp::Unspecified(), Dp::Unspecified()), o,
+                               [] { Icon(material3::internal::Icons::Filled::Check(), std::string("Trailing Icon")); });
+            });
+        }); }); });
+        const auto button = BoundsDp(h, "leadingButton"), icon = BoundsDp(h, "leadingIcon"), text = BoundsDp(h, "text");
+        CHECK(button && icon && text);
+        if (!(button && icon && text)) continue;
+        CHECK_NEAR(icon->left - button->left, c.start, 0.5);
+        CHECK_NEAR(text->left - icon->right, c.between, 0.5);
+        CHECK_NEAR(button->right - text->right, c.end, 0.5);
+    }
+}
+
+TEST(SplitButtonHeightsMatchAndStandaloneButtonsDoNotStretch) {   // *_doesNotStretchHeight, splitButton_*Height*
+    const auto height = [](Harness& h, const char* tag) { return BoundsDp(h, tag).value_or(ui::Rect{}).Height(); };
+    {
+        PhoneHarness h;
+        h.Run([&] { MaterialTheme({}, [&] { Box({}, Alignment::TopStart(), false, [&] { Box(Height({}, ui::Dp(200)), Alignment::TopStart(), false, [&] {
+            Column({}, Arrangement::Top(), AlignmentH::Start(), [] {
+                SplitButtonDefaults::LeadingButton([] {}, Tag({}, "leadingButton"), {}, [] { Text("Label"); });
+                SplitButtonDefaults::TrailingButton([] {}, Tag({}, "trailingButton"), {}, [] { Icon(material3::internal::Icons::Filled::Check(), std::nullopt); });
+            });
+        }); }); }); });
+        CHECK_NEAR(height(h, "leadingButton"), 40, 0.5);
+        CHECK_NEAR(height(h, "trailingButton"), 40, 0.5);
+    }
+    // A forced layout height, or either button 100 dp tall: both buttons take it.
+    for (int which = 0; which < 3; ++which) {
+        PhoneHarness h;
+        h.Run([&] { MaterialTheme({}, [&] { Box({}, Alignment::TopStart(), false, [&] {
+            const ui::Modifier tall = Height({}, ui::Dp(100));
+            SplitButtonLayout([&] { SplitButtonDefaults::LeadingButton([] {}, Tag(which == 1 ? tall : Modifier{}, "leadingButton"), {}, [] { Text("Label"); }); },
+                              [&] { SplitButtonDefaults::TrailingButton([] {}, Tag(which == 2 ? tall : Modifier{}, "trailingButton"), {},
+                                                                        [] { Icon(material3::internal::Icons::Filled::Check(), std::nullopt); }); },
+                              which == 0 ? tall : Modifier{});
+        }); }); });
+        CHECK_NEAR(height(h, "leadingButton"), 100, 0.5);
+        CHECK_NEAR(height(h, "trailingButton"), 100, 0.5);
+    }
+}
+
+TEST(SplitButtonFillMaxWidthLeadingButtonInAHorizontalScrollDoesNotCrash) {   // splitButton_leadingFillMaxWidth_horizontalScroll_noCrash
+    PhoneHarness h;
+    h.Run([&] { MaterialTheme({}, [&] {
+        Row(HorizontalScroll({}, RememberScrollState()), Arrangement::Start(), AlignmentV::Top(), [] {
+            SplitButtonLayout([] { SplitButtonDefaults::LeadingButton([] {}, FillMax({}, Axis::Horizontal), {}, [] { Text("Label"); }); },
+                              [] { SplitButtonDefaults::TrailingButton(false, [](bool) {}, {}, {}, [] { Icon(material3::internal::Icons::Filled::Check(), std::string("Trailing Icon")); }); });
+        });
+    }); });
+    CHECK(Displayed(h, "Label"));
+}
+
+// Ported from Compose's MenuTest.
+namespace {
+    // A 20 px anchor whose menu holds `content`, shown while `expanded`.
+    void MenuAnchor(PhoneHarness& h, rt::State<bool>& expanded, std::function<void()> content, DropdownMenuOptions options = {}) {
+        h.Run([&h, &expanded, content = std::move(content), options] {
+            rt::Composition::Current()->Provide(ui::LocalOwner, &h.owner, [&] { MaterialTheme({}, [&] {
+                Box({}, Alignment::TopStart(), false, [&] {
+                    Box(SizeMod({}, ui::Dp(10), ui::Dp(10)), Alignment::TopStart(), false, [&] {
+                        DropdownMenu(expanded.Get(), [] {}, {}, options, content);
+                    });
+                });
+            }); });
+        });
+    }
+}
+
+TEST(DropdownMenuShowsAndHidesWithExpanded) {   // menu_canBeTriggered
+    PhoneHarness h;
+    h.owner.MeasureAndLayout(h.window);
+    rt::State<bool> expanded{ false };
+    std::int64_t nanos = 0;
+    MenuAnchor(h, expanded, [] { DropdownMenuItem([] { Text("Option 1"); }, [] {}, Tag({}, "MenuContent"), {}); });
+    CHECK(FindTagged(h, "MenuContent") == nullptr);
+    for (int round = 0; round < 2; ++round) {
+        expanded.Set(true);
+        Frames(h, nanos, 2 + 19);   // two frames, then 300 ms
+        CHECK(FindTagged(h, "MenuContent") != nullptr);
+        if (round == 1) break;
+        expanded.Set(false);
+        Frames(h, nanos, 2 + 19 + 1);
+        CHECK(FindTagged(h, "MenuContent") == nullptr);
+    }
+}
+
+TEST(DropdownMenuIsAsWideAsItsWidestItemAndPadsVertically) {   // menu_hasExpectedSize
+    PhoneHarness h;
+    h.owner.MeasureAndLayout(h.window);
+    rt::State<bool> expanded{ true };
+    std::int64_t nanos = 0;
+    // 70 px and 130 px squares at density 2.
+    MenuAnchor(h, expanded, [] {
+        Box(Tag(SizeMod({}, ui::Dp(35), ui::Dp(35)), "MenuContent1"));
+        Box(Tag(SizeMod({}, ui::Dp(65), ui::Dp(65)), "MenuContent2"));
+    });
+    Frames(h, nanos, 20);
+    CHECK(FindTagged(h, "MenuContent1") && FindTagged(h, "MenuContent2"));
+    CHECK_EQ(int(h.owner.Popups().size()), 1);
+    if (h.owner.Popups().size() != 1 || !h.owner.Popups()[0]->bounds) return;
+    const auto b = *h.owner.Popups()[0]->bounds;
+    CHECK_EQ(b.right - b.left, 130);
+    CHECK_EQ(b.bottom - b.top, 2 * 16 + 200);   // DropdownMenuVerticalPadding (8 dp) above and below
+}
+
+TEST(DropdownMenuScrollsItsContent) {   // menu_scrolledContent
+    PhoneHarness h;
+    h.owner.MeasureAndLayout(h.window);
+    rt::State<bool> expanded{ true };
+    std::int64_t nanos = 0;
+    ScrollState* scroll = nullptr;
+    h.Run([&] {
+        rt::Composition::Current()->Provide(ui::LocalOwner, &h.owner, [&] { MaterialTheme({}, [&] {
+            Box({}, Alignment::TopStart(), false, [&] {
+                Box(SizeMod({}, ui::Dp(10), ui::Dp(10)), Alignment::TopStart(), false, [&] {
+                    scroll = &RememberScrollState();
+                    DropdownMenuOptions o;
+                    o.scrollState = scroll;
+                    DropdownMenu(true, [] {}, {}, o, [] {
+                        for (int i = 1; i <= 100; ++i) Box(Tag(SizeMod({}, ui::Dp(35), ui::Dp(35)), "MenuContent " + std::to_string(i)));
+                    });
+                    rt::Composition::Current()->LaunchedEffect(rt::Keys(0), [&]() -> rt::Task<> { scroll->ScrollTo(scroll->MaxValue()); co_return; });
+                });
+            });
+        }); });
+    });
+    Frames(h, nanos, 20);
+    CHECK(scroll && scroll->MaxValue() > 0 && scroll->Value() == scroll->MaxValue());
+    CHECK(!Displayed(h, "MenuContent 1"));
+    CHECK(Displayed(h, "MenuContent 100"));
+}
+
+TEST(DropdownMenuItemClicksAndPlacesItsTrailingIconAtTheEnd) {   // dropdownMenuItem_onClick, _noLeadingIcon_trailingIconPosition
+    PhoneHarness h;
+    std::int64_t t = 1000;
+    bool clicked = false;
+    float selectablePadding = 0;
+    h.Run([&] { MaterialTheme({}, [&] { Box({}, Alignment::TopStart(), false, [&] {
+        selectablePadding = MenuDefaults::DropdownMenuSelectableItemContentPadding().start.value;
+        Column({}, Arrangement::Top(), AlignmentH::Start(), [&] {
+            DropdownMenuItem([] { Box(SizeMod({}, ui::Dp(40), ui::Dp(40))); }, [&] { clicked = true; }, Tag({}, "ClickItem"), {});
+            DropdownMenuItemOptions o;
+            o.trailingIcon = [] { Box(Tag(SizeMod({}, ui::Dp(20), ui::Dp(20)), "TrailingIcon")); };
+            DropdownMenuItem([] { Box(Tag(SizeMod({}, ui::Dp(40), ui::Dp(40)), "Text")); }, [] {}, Tag({}, "MenuItem"), o);
+        });
+    }); }); });
+    Press(h, t, "ClickItem", true);
+    CHECK(clicked);
+    const auto item = BoundsDp(h, "MenuItem"), text = BoundsDp(h, "Text"), icon = BoundsDp(h, "TrailingIcon");
+    CHECK(item && text && icon);
+    if (!(item && text && icon)) return;
+    CHECK(text->left < icon->left);
+    // Compose: right edge minus the selectable items' start padding and 4 dp, within 2.
+    CHECK_NEAR(icon->right, item->right - selectablePadding - 4, 2);
+}
+
+TEST(ExpressiveDropdownMenuItemKeepsItsTrailingContentWithLongText) {   // expressiveDropdownMenuItem_longText_doesNotClipTrailingContent
+    PhoneHarness h;
+    h.Run([&] { MaterialTheme({}, [&] { Box({}, Alignment::TopStart(), false, [&] {
+        Box(Width({}, ui::Dp(200)), Alignment::TopStart(), false, [&] {
+            MenuItemOptions o;
+            o.leadingIcon = [] { Box(Tag(SizeMod({}, ui::Dp(24), ui::Dp(24)), "LeadingIcon")); };
+            o.trailingContent = [] { Box(Tag(SizeMod({}, ui::Dp(24), ui::Dp(24)), "TrailingContent")); };
+            DropdownMenuItem([] {}, [] { Box(Tag(SizeMod({}, ui::Dp(400), ui::Dp(20)), "Text")); }, RectangleShape(), Tag({}, "MenuItem"), o);
+        });
+    }); }); });
+    const auto item = BoundsDp(h, "MenuItem"), text = BoundsDp(h, "Text"), trailing = BoundsDp(h, "TrailingContent");
+    CHECK(item && text && trailing);
+    if (!(item && text && trailing)) return;
+    CHECK_NEAR(trailing->Width(), 24, 0.5);
+    CHECK(trailing->right <= item->right + 0.01f);
+    CHECK(text->right <= trailing->left + 0.01f);
+}
+
+TEST(ButtonGroupWidensAPressedItemIntoItsNeighboursAndSharesWeight) {
+    Harness h;
+    std::int64_t nanos = 0;
+    std::vector<std::shared_ptr<MutableInteractionSource>> sources;
+    for (int i = 0; i < 3; ++i) sources.push_back(std::make_shared<MutableInteractionSource>());
+    h.Run([&] {
+        MaterialTheme({}, [&] {
+            Column({}, Arrangement::Top(), AlignmentH::Start(), [&] {
+                ButtonGroup({}, {}, [&](ButtonGroupScope& scope) {
+                    for (int i = 0; i < 3; ++i) {
+                        auto source = sources[i];
+                        scope.CustomItem([&scope, source] { Box(scope.AnimateWidth(SizeMod(Modifier{}, ui::Dp(60), ui::Dp(40)), source)); },
+                                         [](ButtonGroupMenuState&) {});
+                    }
+                });
+                // Weighted items share what the unweighted one leaves (300 - 60 - 12 - 12).
+                ButtonGroup({}, FillMax(Modifier{}, Axis::Horizontal), [&](ButtonGroupScope& scope) {
+                    scope.CustomItem([] { Box(SizeMod(Modifier{}, ui::Dp(60), ui::Dp(40))); }, [](ButtonGroupMenuState&) {});
+                    scope.CustomItem([&scope] { Box(scope.Weight(Modifier{}, 1)); }, [](ButtonGroupMenuState&) {});
+                    scope.CustomItem([&scope] { Box(scope.Weight(Modifier{}, 2)); }, [](ButtonGroupMenuState&) {});
+                });
+            });
+        });
+    });
+    const auto* column = h.owner.Root().Children()[0];
+    const auto* pressedGroup = column->Children()[0];
+    const auto* weighted = column->Children()[1];
+    CHECK_EQ(weighted->Children()[1]->Size().width, 72);
+    CHECK_EQ(weighted->Children()[2]->Size().width, 144);
+    // Pressing the middle one: it grows by 0.15 x 60 / 2 (rounded) from each side.
+    const auto id = sources[1]->Start(Interaction::Kind::Press);
+    Frames(h, nanos, 60);
+    CHECK_EQ(pressedGroup->Children()[0]->Size().width, 55);
+    CHECK_EQ(pressedGroup->Children()[1]->Size().width, 70);
+    CHECK_EQ(pressedGroup->Children()[2]->Size().width, 55);
+    auto xs = ChildXs(*pressedGroup);
+    CHECK(xs.size() >= 3 && xs[1] == 67 && xs[2] == 149);
+    // Released: back to 60 each.
+    sources[1]->End(Interaction::Kind::Press, id);
+    Frames(h, nanos, 90);
+    CHECK_EQ(pressedGroup->Children()[1]->Size().width, 60);
+    CHECK_EQ(pressedGroup->Children()[0]->Size().width, 60);
 }

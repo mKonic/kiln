@@ -1,5 +1,6 @@
 #include "MaterialComponents.h"
 
+#include <kiln/foundation/Animate.h>
 #include <kiln/foundation/Compose.h>
 #include <kiln/foundation/Flow.h>
 #include <kiln/foundation/Gestures.h>
@@ -9,6 +10,11 @@
 #include <kiln/material3/Chip.h>
 #include <kiln/material3/ListItem.h>
 #include <kiln/material3/Slider.h>
+#include <kiln/material3/SegmentedButton.h>
+#include <kiln/material3/SplitButton.h>
+#include <kiln/material3/Tooltip.h>
+#include <kiln/material3/Menu.h>
+#include <kiln/material3/ButtonGroup.h>
 #include <kiln/material3/ProgressIndicator.h>
 #include <kiln/material3/WavyProgressIndicator.h>
 #include <kiln/material3/LoadingIndicator.h>
@@ -79,6 +85,208 @@ namespace kiln::gallery {
                 m3::ToggleButton(on->Get(), change, {}, disabled, [] { m3::Text("Disabled toggle"); });
             });
             m3::Text(checked.Get() ? "Text toggles: on" : "Text toggles: off");
+        }
+
+        void SegmentedButtons() {
+            auto* choice = &RememberState(0);
+            auto* checked = &RememberState(1);
+            auto* enabled = &RememberState(true);
+            m3::Text("Single choice");
+            m3::SingleChoiceSegmentedButtonRow({}, [=] {
+                const char* labels[] = { "Day", "Week", "Month" };
+                for (int i = 0; i < 3; ++i) m3::SegmentedButton(choice->Get() == i, [=] { choice->Set(i); },
+                    m3::SegmentedButtonDefaults::itemShape(i, 3), [=] { m3::Text(labels[i]); }, {}, { .enabled = enabled->Get() });
+            });
+            m3::Text("Multiple choice");
+            m3::MultiChoiceSegmentedButtonRow({}, [=] {
+                const char* labels[] = { "Walk", "Bike", "Bus" };
+                for (int i = 0; i < 3; ++i) m3::SegmentedButton(bool(checked->Get() & (1 << i)), [=](bool value) {
+                    checked->Set(value ? checked->Peek() | (1 << i) : checked->Peek() & ~(1 << i));
+                }, m3::SegmentedButtonDefaults::itemShape(i, 3), [=] { m3::Text(labels[i]); }, {}, { .enabled = enabled->Get() });
+            });
+            m3::Text("Custom icons");
+            m3::SingleChoiceSegmentedButtonRow({}, [=] {
+                for (int i = 0; i < 2; ++i) {
+                    m3::SegmentedButtonOptions o; o.enabled = enabled->Get();
+                    o.icon = std::function<void()>([=] {
+                        m3::SegmentedButtonDefaults::Icon(choice->Get() == i, m3::SegmentedButtonDefaults::ActiveIcon,
+                            [] { m3::Icon(m3::internal::Icons::Filled::Edit(), std::nullopt, SizeMod({}, 18_dp, 18_dp)); });
+                    });
+                    m3::SegmentedButton(choice->Get() == i, [=] { choice->Set(i); }, m3::SegmentedButtonDefaults::itemShape(i, 2),
+                        [=] { m3::Text(i == 0 ? "Draft" : "Final"); }, {}, o);
+                }
+            });
+            m3::Text("Label only");
+            m3::SingleChoiceSegmentedButtonRow({}, [=] {
+                for (int i = 0; i < 2; ++i) {
+                    m3::SegmentedButtonOptions o; o.enabled = enabled->Get(); o.icon = std::function<void()>{};
+                    m3::SegmentedButton(choice->Get() == i, [=] { choice->Set(i); }, m3::SegmentedButtonDefaults::itemShape(i, 2),
+                        [=] { m3::Text(i == 0 ? "Open" : "Closed"); }, {}, o);
+                }
+            });
+            m3::TextButton([=] { enabled->Set(!enabled->Peek()); }, {}, {}, [=] { m3::Text(enabled->Get() ? "Disable segments" : "Enable segments"); });
+            m3::Text("Single selection: " + std::to_string(choice->Get()));
+            m3::Text("Multiple selection: " + std::to_string(checked->Get()));
+        }
+
+        void SplitButtons() {
+            namespace sb = m3::SplitButtonDefaults;
+            auto* open = &RememberState(0);
+            auto* clicks = &RememberState(0);
+            auto* enabled = &RememberState(true);
+            const char* names[] = { "Filled", "Tonal", "Outlined", "Elevated" };
+            FlowRow({}, Arrangement::SpacedBy(12_dp), Arrangement::SpacedBy(8_dp), AlignmentV::CenterVertically(), [=] {
+                for (int i = 0; i < 4; ++i) {
+                    const m3::SplitButtonOptions o{ .enabled = enabled->Get() };
+                    const bool checked = open->Get() & (1 << i);
+                    const auto click = [=] { clicks->Set(clicks->Peek() + 1); };
+                    const auto toggle = [=](bool value) { open->Set(value ? open->Peek() | (1 << i) : open->Peek() & ~(1 << i)); };
+                    const auto label = [=] {
+                        m3::Icon(m3::internal::Icons::Filled::Edit(), std::nullopt, SizeMod({}, sb::LeadingIconSize, sb::LeadingIconSize));
+                        Spacer(Width({}, m3::ButtonDefaults::IconSpacing));
+                        m3::Text(names[i]);
+                    };
+                    const auto arrow = [=] {
+                        const float turn = AnimateFloatAsState(checked ? 180.0f : 0.0f);
+                        GraphicsLayerParams layer; layer.rotationZ = turn;
+                        m3::Icon(m3::internal::Icons::Filled::ArrowDropDown(), std::string(names[i]) + " options",
+                                 GraphicsLayer(SizeMod({}, sb::TrailingIconSize, sb::TrailingIconSize), layer));
+                    };
+                    m3::SplitButtonLayout([=] {
+                        if (i == 0) sb::LeadingButton(click, {}, o, label);
+                        else if (i == 1) sb::TonalLeadingButton(click, {}, o, label);
+                        else if (i == 2) sb::OutlinedLeadingButton(click, {}, o, label);
+                        else sb::ElevatedLeadingButton(click, {}, o, label);
+                    }, [=] {
+                        if (i == 0) sb::TrailingButton(checked, toggle, {}, o, arrow);
+                        else if (i == 1) sb::TonalTrailingButton(checked, toggle, {}, o, arrow);
+                        else if (i == 2) sb::OutlinedTrailingButton(checked, toggle, {}, o, arrow);
+                        else sb::ElevatedTrailingButton(checked, toggle, {}, o, arrow);
+                    });
+                }
+            });
+            m3::TextButton([=] { enabled->Set(!enabled->Peek()); }, {}, {}, [=] { m3::Text(enabled->Get() ? "Disable split buttons" : "Enable split buttons"); });
+            m3::Text("Split clicks: " + std::to_string(clicks->Get()));
+            m3::Text("Split open: " + std::to_string(open->Get()));
+        }
+
+        void Tooltips() {
+            auto& c = *rt::Composition::Current();
+            auto* actions = &RememberState(0);
+            auto* job = &c.Remember<std::shared_ptr<rt::Job>>([] { return std::make_shared<rt::Job>(); });
+            const auto plain = m3::RememberTooltipState();
+            const auto below = m3::RememberTooltipState(false, true);
+            const auto rich = m3::RememberTooltipState(false, true);
+            const auto icon = [](const char* description) {
+                return [description] { m3::Icon(m3::internal::Icons::Filled::Check(), std::string(description)); };
+            };
+            FlowRow({}, Arrangement::SpacedBy(8_dp), Arrangement::SpacedBy(8_dp), AlignmentV::CenterVertically(), [=] {
+                m3::TooltipBox(
+                    m3::TooltipDefaults::rememberTooltipPositionProvider(m3::TooltipAnchorPosition::Above),
+                    [](const m3::TooltipScope& scope) {
+                        m3::PlainTooltip(scope, {}, { .caretShape = m3::TooltipDefaults::caretShape() }, [] { m3::Text("Add to favorites"); });
+                    },
+                    plain, {}, {}, [=] { m3::IconButton([] {}, {}, {}, icon("Plain tooltip anchor")); });
+                m3::TooltipBox(
+                    m3::TooltipDefaults::rememberTooltipPositionProvider(m3::TooltipAnchorPosition::Below),
+                    [](const m3::TooltipScope& scope) { m3::PlainTooltip(scope, {}, {}, [] { m3::Text("Shown below"); }); },
+                    below, {}, {}, [=] { m3::OutlinedIconButton([] {}, {}, {}, icon("Below tooltip anchor")); });
+                m3::TooltipBox(
+                    m3::TooltipDefaults::rememberTooltipPositionProvider(m3::TooltipAnchorPosition::Above),
+                    [=](const m3::TooltipScope& scope) {
+                        m3::RichTooltipOptions o;
+                        o.title = [] { m3::Text("Camera settings"); };
+                        o.action = [=] {
+                            m3::TextButton([=] { actions->Set(actions->Peek() + 1); rich.Dismiss(); }, {}, {}, [] { m3::Text("Learn more"); });
+                        };
+                        o.caretShape = m3::TooltipDefaults::caretShape();
+                        m3::RichTooltip(scope, {}, o, [] { m3::Text("Rich tooltips explain a control and can offer one action."); });
+                    },
+                    rich, {}, { .hasAction = true }, [=] { m3::FilledTonalIconButton([] {}, {}, {}, icon("Rich tooltip anchor")); });
+                m3::TextButton([=] { **job = rt::Launch(rt::Dispatcher::Main(), plain.Show()); }, {}, {}, [] { m3::Text("Show plain tooltip"); });
+            });
+            m3::Text("Tooltip actions: " + std::to_string(actions->Get()));
+            m3::Text(std::string("Tooltips shown: ") + (plain.IsVisible() ? "plain " : "") + (below.IsVisible() ? "below " : "") +
+                     (rich.IsVisible() ? "rich" : ""));
+        }
+
+        void Menus() {
+            namespace Icons = m3::internal::Icons;
+            namespace md = m3::MenuDefaults;
+            auto* classic = &RememberState(false);
+            auto* expressive = &RememberState(false);
+            auto* choice = &RememberState(std::string("none"));
+            auto* styles = &RememberState(0);
+            auto* align = &RememberState(0);
+            const auto icon = [](const Icons::ImageVectorPtr& v) { return [&v] { m3::Icon(v, std::nullopt); }; };
+            FlowRow({}, Arrangement::SpacedBy(8_dp), Arrangement::SpacedBy(8_dp), AlignmentV::CenterVertically(), [=] {
+                Box({}, Alignment::TopStart(), false, [=] {
+                    m3::OutlinedButton([=] { classic->Set(true); }, {}, {}, [] { m3::Text("Classic menu"); });
+                    m3::DropdownMenu(classic->Get(), [=] { classic->Set(false); }, {}, {}, [=] {
+                        const auto pick = [=](const char* name) { return [=] { choice->Set(name); classic->Set(false); }; };
+                        m3::DropdownMenuItem([] { m3::Text("Edit"); }, pick("Edit"), {}, { .leadingIcon = icon(Icons::Filled::Edit()) });
+                        m3::DropdownMenuItem([] { m3::Text("Schedule"); }, pick("Schedule"), {},
+                                             { .leadingIcon = icon(Icons::Filled::Schedule()), .trailingIcon = [] { m3::Text("Ctrl+S"); } });
+                        m3::HorizontalDivider();
+                        m3::DropdownMenuItem([] { m3::Text("Archive"); }, pick("Archive"), {}, { .enabled = false });
+                    });
+                });
+                Box({}, Alignment::TopStart(), false, [=] {
+                    m3::OutlinedButton([=] { expressive->Set(true); }, {}, {}, [] { m3::Text("Expressive menu"); });
+                    m3::DropdownMenuPopup(expressive->Get(), [=] { expressive->Set(false); }, {},
+                                          md::rememberDropdownMenuPopupPositionProvider(m3::MenuAnchorPosition::Below()), [=] {
+                        const char* names[] = { "Bold", "Italic" };
+                        m3::DropdownMenuGroup(md::groupShape(0, 2), {}, {}, [=] {
+                            for (int i = 0; i < 2; ++i) {
+                                const bool on = styles->Get() & (1 << i);
+                                m3::CheckableDropdownMenuItem(on, [=](bool v) { styles->Set(v ? styles->Peek() | (1 << i) : styles->Peek() & ~(1 << i)); },
+                                                              [=] { m3::Text(names[i]); }, md::itemShape(i, 2), {},
+                                                              { .selectedLeadingIcon = icon(Icons::Filled::Check()) });
+                            }
+                        });
+                        Spacer(Height({}, md::GroupSpacing));
+                        const char* sides[] = { "Left", "Right" };
+                        m3::DropdownMenuGroup(md::groupShape(1, 2), {}, {}, [=] {
+                            for (int i = 0; i < 2; ++i) {
+                                m3::SelectableDropdownMenuItem(align->Get() == i, [=] { align->Set(i); }, [=] { m3::Text(sides[i]); }, md::itemShape(i, 2), {},
+                                                               { .selectedLeadingIcon = icon(Icons::Filled::Check()) });
+                            }
+                        });
+                    });
+                });
+            });
+            m3::Text("Menu choice: " + choice->Get());
+            m3::Text("Menu styles: " + std::to_string(styles->Get()));
+            m3::Text(std::string("Menu align: ") + (align->Get() == 0 ? "left" : "right"));
+        }
+
+        void ButtonGroups() {
+            namespace bg = m3::ButtonGroupDefaults;
+            auto* clicks = &RememberState(0);
+            auto* styles = &RememberState(0);
+            auto* size = &RememberState(0);
+            m3::ButtonGroup([](m3::ButtonGroupMenuState& menu) { bg::OverflowIndicator(menu); }, FillMax({}, Axis::Horizontal),
+                            [=](m3::ButtonGroupScope& scope) {
+                const char* toggles[] = { "Mute", "Pin", "Star" };
+                for (int i = 0; i < 3; ++i) {
+                    scope.ToggleableItem(styles->Get() & (1 << i), toggles[i],
+                                         [=](bool v) { styles->Set(v ? styles->Peek() | (1 << i) : styles->Peek() & ~(1 << i)); });
+                }
+                const char* actions[] = { "Share", "Print", "Copy" };
+                for (const char* action : actions) scope.ClickableItem([=] { clicks->Set(clicks->Peek() + 1); }, action);
+            });
+            Row(FillMax({}, Axis::Horizontal), Arrangement::SpacedBy(bg::ConnectedSpaceBetween), AlignmentV::CenterVertically(), [=] {
+                const char* sizes[] = { "Small", "Medium", "Large" };
+                for (int i = 0; i < 3; ++i) {
+                    m3::ToggleButtonOptions o;
+                    o.shapes = i == 0 ? bg::connectedLeadingButtonShapes() : i == 2 ? bg::connectedTrailingButtonShapes() : bg::connectedMiddleButtonShapes();
+                    const Modifier m = Semantics(Weight({}, 1), [](SemanticsConfiguration& c) { c.role = Role::RadioButton; });
+                    m3::ToggleButton(size->Get() == i, [=](bool) { size->Set(i); }, m, o, [=] { m3::Text(sizes[i]); });
+                }
+            });
+            m3::Text("Group clicks: " + std::to_string(clicks->Get()));
+            m3::Text("Group styles: " + std::to_string(styles->Get()));
+            m3::Text("Connected size: " + std::to_string(size->Get()));
         }
 
         void Sliders() {
@@ -438,6 +646,21 @@ namespace kiln::gallery {
                         m3::TextButton([selection] { selection->Set(1); }, {}, {}, [] { m3::Text("Dark"); });
                         m3::TextButton([selection] { selection->Set(2); }, {}, {}, [] { m3::Text("Dynamic"); });
                     });
+                    m3::Text("Segmented buttons");
+                    SegmentedButtons();
+                    m3::HorizontalDivider();
+                    m3::Text("Split buttons");
+                    SplitButtons();
+                    m3::HorizontalDivider();
+                    m3::Text("Tooltips");
+                    Tooltips();
+                    m3::HorizontalDivider();
+                    m3::Text("Menus");
+                    Menus();
+                    m3::HorizontalDivider();
+                    m3::Text("Button groups");
+                    ButtonGroups();
+                    m3::HorizontalDivider();
                     m3::Text("Sliders");
                     Sliders();
                     m3::HorizontalDivider();

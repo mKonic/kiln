@@ -80,6 +80,28 @@ namespace kiln::foundation {
     Modifier OffsetMod(Modifier m, std::function<IntOffset(const Density&)> offset, bool rtlAware = true);
     // onSizeChanged: called after measuring when the size differs from the last one (and the first time).
     Modifier OnSizeChanged(Modifier m, std::function<void(IntSize)> onSizeChanged);
+    // LayoutCoordinates as onGloballyPositioned hands them over: a live view of the space the
+    // modifier sits in (read when asked, so a stored copy follows later moves). Popups share the
+    // window's root, so root positions stand in for positionOnScreen.
+    class LayoutCoordinates {
+    public:
+        LayoutCoordinates() = default;
+        LayoutCoordinates(const ui::LayoutNode* node, const ui::ModifierNode* at, std::weak_ptr<const char> alive)
+            : m_Node(node), m_At(at), m_Alive(std::move(alive)) {}
+        bool IsAttached() const;
+        IntSize GetSize() const;
+        Offset PositionInRoot() const;
+        Rect BoundsInRoot() const;
+        bool operator==(const LayoutCoordinates& o) const { return m_Node == o.m_Node && m_At == o.m_At; }
+
+    private:
+        const ui::LayoutNode* m_Node = nullptr;
+        const ui::ModifierNode* m_At = nullptr;
+        std::weak_ptr<const char> m_Alive;
+    };
+    // onGloballyPositioned: called after a layout pass when the space it sits in moved, changed
+    // its transform or its size (and the first time).
+    Modifier OnGloballyPositioned(Modifier m, std::function<void(const LayoutCoordinates&)> onGloballyPositioned);
     Modifier AspectRatio(Modifier m, float ratio, bool matchHeightConstraintsFirst = false);
 
     // Parent data

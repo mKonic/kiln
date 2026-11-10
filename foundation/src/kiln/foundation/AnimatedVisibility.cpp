@@ -135,9 +135,14 @@ namespace kiln::foundation {
             if (exiting) return exit.parts.scale ? exit.parts.scale->scale : 1.0f;
             return enter.parts.scale ? enter.parts.scale->scale : 1.0f;
         }, [&](const Transition<bool>::Segment&) { return specFor(&EnterExitParts::scale); }, rt::Key("scale"));
-        const float slideP = AnimateFloat<bool>(t, [](bool s) { return s ? 1.0f : 0.0f; },
+        // A part the running direction does not have stays at rest, so it cannot keep the
+        // transition (and the content) alive: ExitTransition.None removes the content at once.
+        auto progress = [&](auto part) {
+            return [&, part](bool s) { return s || !((exiting ? exit.parts : enter.parts).*part) ? 1.0f : 0.0f; };
+        };
+        const float slideP = AnimateFloat<bool>(t, progress(&EnterExitParts::slide),
                                                 [&](const Transition<bool>::Segment&) { return specFor(&EnterExitParts::slide); }, rt::Key("slide"));
-        const float sizeP = AnimateFloat<bool>(t, [](bool s) { return s ? 1.0f : 0.0f; },
+        const float sizeP = AnimateFloat<bool>(t, progress(&EnterExitParts::changeSize),
                                                [&](const Transition<bool>::Segment&) { return specFor(&EnterExitParts::changeSize); }, rt::Key("size"));
 
         if (!(t.CurrentState() || t.TargetState() || t.IsRunning())) return;   // gone: not composed
@@ -160,7 +165,9 @@ namespace kiln::foundation {
                 return IntOffset{ int(std::lround(float(o.x) * (1 - slideP))), int(std::lround(float(o.y) * (1 - slideP))) };
             };
         }
-        Box(EnterExitLayout(GraphicsLayer(modifier, layer), std::move(p)), Alignment::TopStart(), false, std::move(content), key);
+        // AnimatedEnterExitMeasurePolicy measures the content with the incoming constraints,
+        // minimums included (a fixed-height parent stretches the content rather than top-aligning it).
+        Box(EnterExitLayout(GraphicsLayer(modifier, layer), std::move(p)), Alignment::TopStart(), true, std::move(content), key);
     }
 
     void Crossfade(rt::Key target, const Modifier& modifier, std::function<void(rt::Key)> content, anim::SpecPtr spec, rt::Key key) {

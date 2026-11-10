@@ -322,6 +322,13 @@ namespace kiln::foundation {
                 Placeable& p = m.Measure(w);
                 return s.Layout(p.Width(), p.Height(), [&p](PlacementScope& place) { place.PlaceRelative(p, 0, 0); });
             }
+            // Size.kt:1191-1221: intrinsics are coerced to the minimum as well.
+            int MinW(MeasureScope& s) const { return params.minW.Specified() ? s.RoundToPx(params.minW) : 0; }
+            int MinH(MeasureScope& s) const { return params.minH.Specified() ? s.RoundToPx(params.minH) : 0; }
+            int MinIntrinsicWidth(MeasureScope& s, Measurable& m, int height) override { return std::max(m.MinIntrinsicWidth(height), MinW(s)); }
+            int MaxIntrinsicWidth(MeasureScope& s, Measurable& m, int height) override { return std::max(m.MaxIntrinsicWidth(height), MinW(s)); }
+            int MinIntrinsicHeight(MeasureScope& s, Measurable& m, int width) override { return std::max(m.MinIntrinsicHeight(width), MinH(s)); }
+            int MaxIntrinsicHeight(MeasureScope& s, Measurable& m, int width) override { return std::max(m.MaxIntrinsicHeight(width), MinH(s)); }
         };
 
         // ZIndexNode (ZIndexModifier.kt): places its content with a zIndex, which adds to the
@@ -870,6 +877,42 @@ namespace kiln::foundation {
         return m.With<OffsetPxNode>(OffsetPxParams{ std::move(offset), rtlAware });
     }
     Modifier OnSizeChanged(Modifier m, std::function<void(IntSize)> f) { return m.With<SizeChangedNode>(SizeChangedParams{ std::move(f) }); }
+
+    bool LayoutCoordinates::IsAttached() const { return m_Node && !m_Alive.expired() && m_Node->IsPlaced(); }
+    IntSize LayoutCoordinates::GetSize() const {
+        if (!IsAttached()) return {};
+        ui::Size size;
+        m_Node->SpaceToRoot(m_At, &size);
+        return { int(std::lround(size.width)), int(std::lround(size.height)) };
+    }
+    Offset LayoutCoordinates::PositionInRoot() const {
+        if (!IsAttached()) return {};
+        return ui::LayoutNode::MapPoint(m_Node->SpaceToRoot(m_At), {});
+    }
+    Rect LayoutCoordinates::BoundsInRoot() const {
+        if (!IsAttached()) return {};
+        ui::Size size;
+        m_Node->SpaceToRoot(m_At, &size);
+        return m_Node->RectInRoot(Rect{ 0, 0, size.width, size.height }, m_At);
+    }
+    namespace {
+        struct GloballyPositionedParams {
+            std::function<void(const LayoutCoordinates&)> callback;
+            bool operator==(const GloballyPositionedParams&) const { return false; }
+        };
+        struct GloballyPositionedNode final : ModifierNode, ui::GlobalPositionAwareModifier {
+            GloballyPositionedParams params;
+            explicit GloballyPositionedNode(GloballyPositionedParams p) : params(std::move(p)) {}
+            void OnParamsChanged() {}
+            ui::GlobalPositionAwareModifier* AsGlobalPositionAware() override { return this; }
+            void OnGloballyPositioned() override {
+                if (Owner() && params.callback) params.callback(LayoutCoordinates(Owner(), this, AliveToken()));
+            }
+        };
+    }
+    Modifier OnGloballyPositioned(Modifier m, std::function<void(const LayoutCoordinates&)> f) {
+        return m.With<GloballyPositionedNode>(GloballyPositionedParams{ std::move(f) });
+    }
     Modifier AspectRatio(Modifier m, float ratio, bool heightFirst) { return m.With<AspectNode>(AspectParams{ ratio, heightFirst }); }
     Modifier Weight(Modifier m, float w, bool fill) { return m.With<ParentDataNode>(ParentParams{ 0, w, fill, 0, 0 }); }
     Modifier AlignInRow(Modifier m, AlignmentV a) { return m.With<ParentDataNode>(ParentParams{ 1, 0, true, a.bias, 0 }); }

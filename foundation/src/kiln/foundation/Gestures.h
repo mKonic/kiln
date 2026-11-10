@@ -96,6 +96,18 @@ namespace kiln::foundation {
     // consumed a move (nullopt).
     rt::Task<std::optional<PointerInputChange>> DragPointer(PointerInputScope& scope, std::int64_t pointerId,
                                                             std::function<void(PointerInputChange&)> onDrag);
+    // waitForUpOrCancellation(pass): the up once every pointer lifted, nullopt when a change was
+    // consumed (on `pass`, or its position on the Final pass) or left the bounds.
+    rt::Task<std::optional<PointerInputChange>> WaitForUpOrCancellation(PointerInputScope& scope,
+                                                                        PointerEventPass pass = PointerEventPass::Main);
+    // withTimeout(millis) { waitForUpOrCancellation(pass) }: timedOut when neither came in time
+    // (millis < 0: no timeout).
+    struct UpOrCancellation {
+        std::optional<PointerInputChange> up;
+        bool timedOut = false;
+    };
+    rt::Task<UpOrCancellation> WaitForUpOrCancellationWithTimeout(PointerInputScope& scope, std::int64_t timeoutMillis,
+                                                                  PointerEventPass pass = PointerEventPass::Main);
     // awaitLongPressOrCancellation: the pressed change once the long-press timeout passes (or a
     // deep press), nullopt when it lifted, was consumed or left the bounds first.
     rt::Task<std::optional<PointerInputChange>> AwaitLongPressOrCancellation(PointerInputScope& scope, std::int64_t pointerId);
