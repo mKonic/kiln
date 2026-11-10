@@ -276,6 +276,18 @@ namespace kiln::ui {
             for (const ModifierNode* m : n.ModifierNodes()) if (m->ClipsChildren()) return true;
             return false;
         }
+        void Build(LayoutNode& n, const Rect& clip, std::vector<SemanticsNode>& out);
+        // findOneLayerOfMergingSemanticsNodes: a merging node's children are the merging nodes
+        // below it (a clickable row's button), not stopping at nodes that only add content.
+        void BuildMergingChildren(LayoutNode& n, const Rect& clip, std::vector<SemanticsNode>& out) {
+            for (LayoutNode* c : n.Children()) {
+                if (!c->IsPlaced()) continue;
+                SemanticsConfiguration cc;
+                const bool has = OwnConfig(*c, cc);
+                if (has && cc.mergeDescendants) Build(*c, clip, out);
+                else if (!cc.clearAndSet) BuildMergingChildren(*c, Clips(*c) ? Intersect(clip, c->BoundsInRoot()) : clip, out);
+            }
+        }
         // `clip`: the ancestors' clip in root coordinates; bounds are clipped by it
         // (SemanticsNode.boundsInRoot uses the clipped coordinator bounds).
         void Build(LayoutNode& n, const Rect& clip, std::vector<SemanticsNode>& out) {
@@ -290,8 +302,10 @@ namespace kiln::ui {
                 node.boundsInRoot = Intersect(bounds, clip);
                 if (cfg.mergeDescendants && !cfg.clearAndSet) MergeDescendants(n, cfg);
                 node.config = cfg;
-                if (!cfg.mergeDescendants && !cfg.clearAndSet)
-                    for (LayoutNode* c : n.Children()) Build(*c, inner, node.children);
+                if (!cfg.clearAndSet) {
+                    if (cfg.mergeDescendants) BuildMergingChildren(n, inner, node.children);
+                    else for (LayoutNode* c : n.Children()) Build(*c, inner, node.children);
+                }
                 out.push_back(std::move(node));
                 return;
             }

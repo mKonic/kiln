@@ -64,6 +64,29 @@ TEST(ClickableMergesDescendants) {
     CHECK(bool(button.config.onClick));
     CHECK(button.config.onClick());
     CHECK_EQ(clicks, 1);
+    // A clickable row holding a button: the button stays its own child node, below any
+    // wrapper; the row merges the rest.
+    int inner = 0;
+    h.Run([&] {
+        Row(Clickable({}, [&] { ++clicks; }), [&] {
+            Box(Label(SizeMod({}, Dp(10), Dp(10)), "Row"));
+            Box(Modifier{}, Alignment::TopStart(), false, [&] {
+                Box(Label(Clickable(SizeMod({}, Dp(10), Dp(10)), [&] { ++inner; }), "Inner"));
+            });
+        });
+    });
+    const SemanticsNode nested = h.owner.BuildSemanticsTree();
+    CHECK_EQ(int(nested.children.size()), 1);
+    if (nested.children.size() == 1) {
+        const auto& row = nested.children[0];
+        CHECK(row.config.text == std::vector<std::string>{ "Row" });
+        CHECK_EQ(int(row.children.size()), 1);
+        if (row.children.size() == 1) {
+            CHECK(row.children[0].config.text == std::vector<std::string>{ "Inner" });
+            CHECK(row.children[0].config.onClick && row.children[0].config.onClick());
+            CHECK_EQ(inner, 1);
+        }
+    }
 }
 
 TEST(ClearAndSetReplacesDescendants) {
