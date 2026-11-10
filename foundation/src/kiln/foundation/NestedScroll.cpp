@@ -59,14 +59,14 @@ namespace kiln::foundation {
                 return ToOffset(dx, dy, consumed, available);
             }
             // View flings happen in the pre phase: a parent that pre-flings or flings takes it all.
-            Offset OnPreFling(Offset available) override {
-                if (!m_Host) return {};
-                if (m_Host->PreFling(-available.x, -available.y)) return available;
-                return m_Host->Fling(-available.x, -available.y, true) ? available : Offset{};
+            rt::Task<Offset> OnPreFling(Offset available) override {
+                if (!m_Host) co_return Offset{};
+                if (m_Host->PreFling(-available.x, -available.y)) co_return available;
+                co_return m_Host->Fling(-available.x, -available.y, true) ? available : Offset{};
             }
-            Offset OnPostFling(Offset, Offset) override {
+            rt::Task<Offset> OnPostFling(Offset, Offset) override {
                 if (m_Host) m_Host->StopAll();
-                return {};
+                co_return Offset{};
             }
         private:
             ui::HostNestedScrollParent* m_Host;

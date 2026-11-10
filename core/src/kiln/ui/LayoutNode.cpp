@@ -11,6 +11,40 @@ namespace kiln::ui {
 
     // --- ModifierNode ---------------------------------------------------------------------
 
+    namespace {
+        // The ancestors with a connection, nearest first, each with its node's alive token.
+        struct Link { NestedScrollConnection* connection; std::weak_ptr<const char> alive; };
+        std::vector<Link> Ancestors(NestedScrollNode* first) {
+            std::vector<Link> chain;
+            for (NestedScrollNode* n = first; n; n = n->NestedParent())
+                if (n->connection) chain.push_back({ n->connection, n->AliveToken() });
+            return chain;
+        }
+    }
+
+    rt::Task<Offset> NestedScrollNode::DispatchPreFling(Offset v) {
+        const auto chain = Ancestors(Parent());
+        Offset consumed;
+        for (auto it = chain.rbegin(); it != chain.rend(); ++it) {
+            if (it->alive.expired()) continue;
+            consumed = consumed + co_await it->connection->OnPreFling(v - consumed);
+        }
+        co_return consumed;
+    }
+
+    rt::Task<Offset> NestedScrollNode::DispatchPostFling(Offset consumed, Offset available) {
+        const auto chain = Ancestors(Parent());
+        Offset total;
+        for (const Link& link : chain) {
+            if (link.alive.expired()) continue;
+            const Offset own = co_await link.connection->OnPostFling(consumed, available);
+            total = total + own;
+            consumed = consumed + own;
+            available = available - own;
+        }
+        co_return total;
+    }
+
     NestedScrollNode* NestedScrollNode::Parent() const {
         // The nearest nested-scroll node before this one in the chain, else in an ancestor.
         LayoutNode* n = Owner();

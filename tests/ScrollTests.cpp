@@ -650,3 +650,35 @@ TEST(BringIntoViewSeesLayerTransforms) {
     h.Frames(60);
     CHECK_EQ(state.Value(), 150);   // the drawn bottom (250) at the viewport's bottom (100)
 }
+
+TEST(ScrollWaitsForAParentsPostFling) {
+    // onPostFling suspends: the parent animates (here, a 300 ms wait) and answers with the
+    // velocity it used; the child's fling (and its scroll in progress) lasts until it answers.
+    struct Parent final : NestedScrollConnection {
+        bool started = false, finished = false;
+        rt::Task<Offset> OnPostFling(Offset, Offset available) override {
+            started = true;
+            co_await rt::Delay(300);
+            finished = true;
+            co_return available;
+        }
+    };
+    Harness h;
+    ScrollState state;
+    auto parent = std::make_shared<Parent>();
+    h.Run([&] {
+        Box(NestedScroll(FillMax(Modifier{}, Axis::Both), parent), Alignment::TopStart(), false, [&] { Tall(state, 3); });
+    });
+    // A fling to the end: the parent hears of what is left (nothing, here) afterwards.
+    h.Touch(PointerEventType::Press, 50, 95, true, 0);
+    for (int i = 1; i <= 6; ++i) h.Touch(PointerEventType::Move, 50, 95.0f - 15 * i, true, 10 * i);
+    h.Touch(PointerEventType::Release, 50, 5, false, 70);
+    h.Frames(200);
+    CHECK(parent->started && !parent->finished);
+    CHECK(state.IsScrollInProgress());
+    rt::Dispatcher::Main().AdvanceTimeBy(std::chrono::milliseconds(400));
+    h.d.RunPending();
+    h.Frames(2);
+    CHECK(parent->finished);
+    CHECK(!state.IsScrollInProgress());
+}

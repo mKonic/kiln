@@ -326,8 +326,8 @@ namespace kiln::foundation {
 
             Offset OnPreScroll(Offset available, ui::NestedScrollSource) override { return Scroll(available, HideMotion(available)); }
             Offset OnPostScroll(Offset, Offset available, ui::NestedScrollSource) override { return Scroll(available, ShowMotion(available)); }
-            Offset OnPreFling(Offset available) override { return Fling(available, HideMotion(available), false); }
-            Offset OnPostFling(Offset, Offset available) override { return Fling(available, ShowMotion(available), true); }
+            rt::Task<Offset> OnPreFling(Offset available) override { co_return Fling(available, HideMotion(available), false); }
+            rt::Task<Offset> OnPostFling(Offset, Offset available) override { co_return Fling(available, ShowMotion(available), true); }
 
             Offset Scroll(Offset available, float amount) {
                 m_Job.Cancel();

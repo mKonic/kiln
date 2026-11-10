@@ -4,6 +4,7 @@
 // delta to its ancestors before consuming (pre-scroll, outermost first), consumes, then offers
 // the rest after (post-scroll, nearest first). Flings go through the same chain.
 
+#include "kiln/runtime/Task.h"
 #include "kiln/ui/Modifier.h"
 
 namespace kiln::ui {
@@ -28,8 +29,10 @@ namespace kiln::ui {
         virtual ~NestedScrollConnection() = default;
         virtual Offset OnPreScroll(Offset, NestedScrollSource) { return {}; }
         virtual Offset OnPostScroll(Offset /*consumed*/, Offset /*available*/, NestedScrollSource) { return {}; }
-        virtual Offset OnPreFling(Offset /*available*/) { return {}; }
-        virtual Offset OnPostFling(Offset /*consumed*/, Offset /*available*/) { return {}; }
+        // Flings suspend (onPreFling / onPostFling): a connection may animate before answering
+        // with the velocity it consumed.
+        virtual rt::Task<Offset> OnPreFling(Offset /*available*/) { co_return Offset{}; }
+        virtual rt::Task<Offset> OnPostFling(Offset /*consumed*/, Offset /*available*/) { co_return Offset{}; }
     };
 
     // A nested-scroll node in a modifier chain. Its connection (may be null) participates when a
@@ -43,8 +46,11 @@ namespace kiln::ui {
         Offset DispatchPostScroll(Offset consumed, Offset available, NestedScrollSource s) {
             auto* p = Parent(); return p ? p->PostScroll(consumed, available, s) : Offset{};
         }
-        Offset DispatchPreFling(Offset v) { auto* p = Parent(); return p ? p->PreFling(v) : Offset{}; }
-        Offset DispatchPostFling(Offset consumed, Offset available) { auto* p = Parent(); return p ? p->PostFling(consumed, available) : Offset{}; }
+        // The ancestors' fling, before (outermost first) and after (nearest first) this node's
+        // own. Ancestors detached while an earlier one runs are skipped.
+        rt::Task<Offset> DispatchPreFling(Offset v);
+        rt::Task<Offset> DispatchPostFling(Offset consumed, Offset available);
+        NestedScrollNode* NestedParent() const { return Parent(); }
 
     private:
         NestedScrollNode* Parent() const;
@@ -56,15 +62,6 @@ namespace kiln::ui {
         Offset PostScroll(Offset consumed, Offset available, NestedScrollSource s) {
             const Offset own = connection ? connection->OnPostScroll(consumed, available, s) : Offset{};
             return own + DispatchPostScroll(consumed + own, available - own, s);
-        }
-        Offset PreFling(Offset v) {
-            const Offset parent = DispatchPreFling(v);
-            const Offset own = connection ? connection->OnPreFling(v - parent) : Offset{};
-            return parent + own;
-        }
-        Offset PostFling(Offset consumed, Offset available) {
-            const Offset own = connection ? connection->OnPostFling(consumed, available) : Offset{};
-            return own + DispatchPostFling(consumed + own, available - own);
         }
     };
 

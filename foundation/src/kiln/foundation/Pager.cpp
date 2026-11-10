@@ -203,7 +203,7 @@ namespace kiln::foundation {
                 if (source == NestedScrollSource::SideEffect || !st->GestureInProgress()) return OnOrientation(available);
                 return {};
             }
-            Offset OnPostFling(Offset, Offset available) override { return OnOrientation(available); }
+            rt::Task<Offset> OnPostFling(Offset, Offset available) override { co_return OnOrientation(available); }
         private:
             PagerState* st;
             Orientation orientation;

@@ -248,8 +248,12 @@ TEST(PageNestedScrollConnectionSettlesThePagerFirst) {
     // Settled: nothing more is taken; a child's fling leftovers never reach the pager.
     CHECK_EQ(connection->OnPreScroll({ 50, 0 }, NestedScrollSource::UserInput).x, 0.0f);
     CHECK_EQ(connection->OnPostScroll({}, { 20, 5 }, NestedScrollSource::SideEffect).x, 20.0f);
-    CHECK_EQ(connection->OnPostFling({}, { 900, 40 }).x, 900.0f);
-    CHECK_EQ(connection->OnPostFling({}, { 900, 40 }).y, 0.0f);
+    Offset consumed{ -1, -1 };
+    const auto post = [&]() -> rt::Task<> { consumed = co_await connection->OnPostFling({}, { 900, 40 }); };
+    rt::Job job = rt::Launch(rt::Dispatcher::Main(), post());
+    rt::Dispatcher::Main().RunPending();
+    CHECK_EQ(consumed.x, 900.0f);
+    CHECK_EQ(consumed.y, 0.0f);
 }
 
 TEST(PagerBringIntoViewLandsOnWholePages) {

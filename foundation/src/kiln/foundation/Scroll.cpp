@@ -100,10 +100,11 @@ namespace kiln::foundation {
             if (state->IsScrollInProgress()) return {};
             return Single(Reverse(state->ConsumeScrollDelta(Reverse(Axis(available)))));
         }
-        Offset OnPostFling(Offset, Offset available) override {
-            if (m_Flinging) return {};
+        // A child's leftover fling: fling it here, in this node's own (cancellable) job.
+        rt::Task<Offset> OnPostFling(Offset, Offset available) override {
+            if (m_Flinging) co_return Offset{};
             StartFling(available);
-            return available;
+            co_return available;
         }
 
         bool Flinging() const { return m_Flinging; }
@@ -123,7 +124,7 @@ namespace kiln::foundation {
             // The stretch may take the velocity to relax (applyToFling's first half).
             const Offset relaxed = overscroll ? overscroll->ConsumePreFling(velocity) : Offset{};
             velocity = velocity - relaxed;
-            const Offset pre = node ? node->DispatchPreFling(velocity) : Offset{};
+            const Offset pre = node ? co_await node->DispatchPreFling(velocity) : Offset{};
             const Offset available = velocity - pre;
             float remaining = Axis(available);
             if (flingBehavior) {
@@ -145,7 +146,7 @@ namespace kiln::foundation {
                 remaining = r.reason == anim::EndReason::Interrupted ? a.Velocity()[0] : 0.0f;
             }
             Offset left = Single(remaining);
-            if (node) left = left - node->DispatchPostFling(available - Single(remaining), Single(remaining));
+            if (node) left = left - co_await node->DispatchPostFling(available - Single(remaining), Single(remaining));
             // Whatever is left hits the edge (applyToFling's second half; also releases a pull).
             if (overscroll) overscroll->AbsorbPostFling(left);
             m_Flinging = false;
