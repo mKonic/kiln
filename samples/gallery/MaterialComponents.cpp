@@ -24,6 +24,8 @@
 #include <kiln/material3/NavigationBar.h>
 #include <kiln/material3/NavigationRail.h>
 #include <kiln/material3/ShortNavigationBar.h>
+#include <kiln/material3/Tab.h>
+#include <kiln/material3/TabRow.h>
 #include <kiln/material3/WideNavigationRail.h>
 #include <kiln/material3/Scaffold.h>
 #include <kiln/material3/ProgressIndicator.h>
@@ -422,6 +424,39 @@ namespace kiln::gallery {
             });
         }
 
+        void Tabs() {
+            auto* primary = &RememberState(0);
+            auto* secondary = &RememberState(0);
+            auto* scrolling = &RememberState(0);
+            const char* titles[] = { "Flights", "Trips", "Explore" };
+            m3::Text("Primary tabs");
+            m3::PrimaryTabRow(primary->Get(), {}, {}, [=] {
+                for (int i = 0; i < 3; ++i) m3::Tab(primary->Get() == i, [=] { primary->Set(i); }, {}, [=] { m3::Text(titles[i]); }, nullptr);
+            });
+            m3::Text(std::string("Primary: ") + titles[primary->Get()]);
+            m3::Text("Secondary tabs with icons");
+            const char* sections[] = { "Video", "Photos", "Audio" };
+            m3::SecondaryTabRow(secondary->Get(), {}, {}, [=] {
+                for (int i = 0; i < 3; ++i)
+                    m3::Tab(secondary->Get() == i, [=] { secondary->Set(i); }, {}, [=] { m3::Text(sections[i]); },
+                            [] { m3::Icon(m3::internal::Icons::Filled::Edit(), std::nullopt); });
+            });
+            m3::Text(std::string("Secondary: ") + sections[secondary->Get()]);
+            m3::Text("Leading icon tabs");
+            auto* leading = &RememberState(0);
+            m3::SecondaryTabRow(leading->Get(), {}, {}, [=] {
+                for (int i = 0; i < 2; ++i)
+                    m3::LeadingIconTab(leading->Get() == i, [=] { leading->Set(i); }, [=] { m3::Text(i == 0 ? "Inbox" : "Sent"); },
+                                       [] { m3::Icon(m3::internal::Icons::Filled::Edit(), std::nullopt); }, {});
+            });
+            m3::Text("Scrollable tabs");
+            m3::PrimaryScrollableTabRow(scrolling->Get(), {}, {}, [=] {
+                for (int i = 0; i < 10; ++i)
+                    m3::Tab(scrolling->Get() == i, [=] { scrolling->Set(i); }, {}, [=] { m3::Text("Topic " + std::to_string(i + 1)); }, nullptr);
+            });
+            m3::Text("Scrolled to: Topic " + std::to_string(scrolling->Get() + 1));
+        }
+
         void Sliders() {
             auto* continuous = &m3::RememberSliderState(0.35f);
             auto* stepped = &m3::RememberSliderState(0.5f, 7);
@@ -765,7 +800,7 @@ namespace kiln::gallery {
         struct Section { const char* key; const char* title; void (*content)(); };
         const std::vector<Section>& Sections() {
             static const std::vector<Section> sections{
-                { "navigation", "Navigation bars and rails", Navigation }, { "segmented", "Segmented buttons", SegmentedButtons }, { "split", "Split buttons", SplitButtons },
+                { "navigation", "Navigation bars and rails", Navigation }, { "tabs", "Tabs", Tabs }, { "segmented", "Segmented buttons", SegmentedButtons }, { "split", "Split buttons", SplitButtons },
                 { "tooltips", "Tooltips", Tooltips }, { "menus", "Menus", Menus }, { "groups", "Button groups", ButtonGroups },
                 { "sliders", "Sliders", Sliders }, { "progress", "Progress indicators", ProgressIndicators }, { "lists", "Lists", Lists },
                 { "chips", "Chips", Chips }, { "cards", "Cards", Cards }, { "selection", "", SelectionControls },

@@ -22,6 +22,9 @@
 #include "kiln/material3/NavigationBar.h"
 #include "kiln/material3/NavigationRail.h"
 #include "kiln/material3/ShortNavigationBar.h"
+#include "kiln/material3/Divider.h"
+#include "kiln/material3/Tab.h"
+#include "kiln/material3/TabRow.h"
 #include "kiln/material3/WideNavigationRail.h"
 #include "kiln/material3/Menu.h"
 #include "kiln/material3/ButtonGroup.h"
@@ -3198,6 +3201,18 @@ namespace {
             if (const auto* r = FindTagged(*child, tag)) return r;
         return nullptr;
     }
+    // A tagged node's bounds where the tag sits in its modifiers: what wraps it (a layout
+    // modifier's offset, for instance) moves them.
+    ui::Rect TagRectInRoot(const ui::LayoutNode& n, const std::string& tag) {
+        for (const auto* m : n.ModifierNodes()) {
+            auto* sem = const_cast<ui::ModifierNode*>(m)->AsSemantics();
+            if (!sem) continue;
+            ui::SemanticsConfiguration c;
+            sem->ApplySemantics(c);
+            if (c.testTag == tag) return n.RectInRoot(std::nullopt, m);
+        }
+        return n.BoundsInRoot();
+    }
     // The content and every popup (Root() is the content root; popups are its siblings).
     const ui::LayoutNode* FindTagged(Harness& h, const std::string& tag) {
         if (const auto* r = FindTagged(h.owner.Root(), tag)) return r;
@@ -3211,7 +3226,7 @@ namespace {
         const ui::SemanticsNode* n = FindSemantics(tree, label);
         std::optional<ui::Rect> b;
         if (n) b = n->boundsInRoot;
-        else if (const auto* tagged = FindTagged(h, label)) b = tagged->BoundsInRoot();
+        else if (const auto* tagged = FindTagged(h, label)) b = TagRectInRoot(*tagged, label);
         // Then the dialog windows (full-window, at the origin).
         for (ui::Owner* dialog : h.dialogs) {
             if (b) break;
@@ -5448,4 +5463,340 @@ TEST(ModalWideNavigationRailHiddenOnCollapseSwipesAway) {
     h.AdvanceTimeBy(1000);
     CHECK(state->TargetValue() == WideNavigationRailValue::Collapsed);
     CHECK(!BoundsDp(h, "rail"));
+}
+
+// Ported from Compose's TabTest (412 dp wide, density 2).
+namespace {
+    std::vector<const ui::SemanticsNode*> Selectables(const ui::SemanticsNode& tree) {
+        std::vector<const ui::SemanticsNode*> out;
+        std::function<void(const ui::SemanticsNode&)> walk = [&](const ui::SemanticsNode& n) {
+            if (n.config.selected) out.push_back(&n);
+            for (const auto& c : n.children) walk(c);
+        };
+        walk(tree);
+        return out;
+    }
+    // onAllNodes(isSelectable()): every placed tab, scrolled out of view or not.
+    std::vector<bool> SelectedStates(Harness& h) {
+        const auto tree = h.owner.BuildSemanticsTree(false);
+        std::vector<bool> out;
+        for (const auto* n : Selectables(tree)) out.push_back(*n->config.selected);
+        return out;
+    }
+    void PressSelectable(Harness& h, std::int64_t& t, std::size_t index) {
+        const auto tree = h.owner.BuildSemanticsTree();
+        const auto nodes = Selectables(tree);
+        CHECK(index < nodes.size());
+        if (index >= nodes.size()) return;
+        const auto b = nodes[index]->boundsInRoot;
+        Touch(h, t, ui::PointerEventType::Press, (b.left + b.right) / 2, (b.top + b.bottom) / 2, true);
+        Touch(h, t, ui::PointerEventType::Release, (b.left + b.right) / 2, (b.top + b.bottom) / 2, false);
+        h.AdvanceTimeBy(1000);
+    }
+    // An indicator 1 dp tall, the selected tab's width, tagged "indicator".
+    std::function<void(TabIndicatorScope&)> RedIndicator(const rt::State<int>& state) {
+        return [&state](TabIndicatorScope& s) {
+            Box(Tag(Background(Height(FillMax(s.TabIndicatorOffset({}, state.Get()), Axis::Horizontal), 1_dp), Color(0xFFFF0000u)), "indicator"),
+                Alignment::TopStart(), false, {});
+        };
+    }
+    void TextTabs(rt::State<int>& state, std::vector<std::string> titles, bool scrollable, bool leadingIcon = false) {
+        const auto tabs = [&state, titles, leadingIcon] {
+            for (std::size_t i = 0; i < titles.size(); ++i) {
+                const int index = int(i);
+                const std::string title = titles[i];
+                if (leadingIcon)
+                    LeadingIconTab(state.Get() == index, [&state, index] { state.Set(index); }, [title] { Text(title); }, [] { NavIcon(); }, {});
+                else
+                    Tab(state.Get() == index, [&state, index] { state.Set(index); }, {}, [title] { Text(title); }, {});
+            }
+        };
+        if (scrollable) SecondaryScrollableTabRow(state.Get(), {}, {}, tabs);
+        else PrimaryTabRow(state.Get(), {}, {}, tabs);
+    }
+}
+
+TEST(TabsAreSelectableTabsInASelectableGroup) {
+    for (bool leading : { false, true }) {
+        for (bool enabled : { true, false }) {
+            PhoneHarness h;
+            Themed(h, [&] {
+                TabOptions o;
+                o.enabled = enabled;
+                const auto tab = [&] {
+                    if (leading) LeadingIconTab(true, [] {}, [] { Text("Text"); }, [] { NavIcon(); }, Tag({}, "tab"), o);
+                    else Tab(true, [] {}, Tag({}, "tab"), [] { Text("Text"); }, {}, o);
+                };
+                if (enabled) SecondaryTabRow(0, {}, {}, tab);
+                else Box({}, Alignment::TopStart(), false, tab);
+            });
+            const auto tree = h.owner.BuildSemanticsTree();
+            const auto* tab = FindSemantics(tree, "tab");
+            CHECK(tab != nullptr);
+            if (!tab) continue;
+            CHECK(tab->config.role == ui::Role::Tab);
+            CHECK(tab->config.selected == std::optional<bool>(true));
+            CHECK_EQ(tab->config.disabled, !enabled);
+            CHECK(bool(tab->config.onClick));
+            if (enabled) {
+                const auto* parent = ParentOf(tree, tab);
+                CHECK(parent && parent->config.selectableGroup);
+            }
+        }
+    }
+}
+
+TEST(TabHeights) {
+    const auto height = [](std::function<void()> tab) {
+        PhoneHarness h;
+        Themed(h, [&] { Box(Tag({}, "box"), Alignment::TopStart(), false, tab); });
+        const auto b = BoundsDp(h, "box");
+        return b ? b->Height() : -1.0f;
+    };
+    CHECK(Near(height([] { Tab(true, [] {}, {}, [] { Text("Text"); }, {}); }), 48));
+    CHECK(Near(height([] { Tab(true, [] {}, {}, nullptr, [] { NavIcon(); }); }), 48));
+    CHECK(Near(height([] { Tab(true, [] {}, {}, [] { Text("Text and Icon"); }, [] { NavIcon(); }); }), 72));
+    CHECK(Near(height([] { LeadingIconTab(true, [] {}, [] { Text("Text"); }, [] { NavIcon(); }, {}); }), 48));
+}
+
+TEST(TabRowIndicatorFollowsTheSelectedTab) {
+    for (bool rtl : { false, true }) {
+        for (bool scrollable : { false, true }) {
+            PhoneHarness h;
+            std::int64_t t = 1000;
+            rt::State<int> state{ 0 };
+            Themed(h, [&] {
+                const auto row = [&] {
+                    Box(Tag({}, "tabRow"), Alignment::TopStart(), false, [&] {
+                        const auto tabs = [&] {
+                            for (int i = 0; i < 2; ++i)
+                                Tab(state.Get() == i, [&state, i] { state.Set(i); }, {}, [i] { Text("TAB " + std::to_string(i + 1)); }, {});
+                        };
+                        if (scrollable) {
+                            ScrollableTabRowOptions o;
+                            o.indicator = RedIndicator(state);
+                            SecondaryScrollableTabRow(state.Get(), {}, o, tabs);
+                        } else {
+                            TabRowOptions o;
+                            o.indicator = RedIndicator(state);
+                            SecondaryTabRow(state.Get(), {}, o, tabs);
+                        }
+                    });
+                };
+                if (rtl) rt::Composition::Current()->Provide(ui::LocalLayoutDirection, ui::LayoutDirection::Rtl, row);
+                else row();
+            });
+            const auto expectAt = [&](float left) {
+                const auto row = BoundsDp(h, "tabRow");
+                const auto ind = BoundsDp(h, "indicator");
+                CHECK(row && ind);
+                if (!row || !ind) return;
+                CHECK(std::abs(ind->left - left) <= 1);
+                CHECK(Near(ind->top, row->Height() - 1));
+            };
+            const float width = BoundsDp(h, "tabRow") ? BoundsDp(h, "tabRow")->Width() : 0;
+            // Fixed: halves of the row; scrollable: 52 dp in, then 90 dp tabs.
+            if (!scrollable) expectAt(rtl ? width / 2 : 0);
+            else expectAt(rtl ? width - 52 - 90 : 52);
+            PressSelectable(h, t, 1);
+            if (!scrollable) expectAt(rtl ? 0 : width / 2);
+            else expectAt(rtl ? width - 52 - 90 - 90 : 52 + 90);
+        }
+    }
+}
+
+TEST(TabRowIndicatorKeepsItsHeight) {
+    PhoneHarness h;
+    rt::State<int> state{ 1 };
+    Themed(h, [&] {
+        Box(FillMax({}, Axis::Both), Alignment::TopStart(), true, [&] {
+            TabRowOptions o;
+            o.indicator = RedIndicator(state);
+            PrimaryTabRow(1, {}, o, [] { for (int i = 0; i < 2; ++i) Tab(i == 1, [] {}, {}, [i] { Text("TAB " + std::to_string(i + 1)); }, {}); });
+        });
+    });
+    const auto b = BoundsDp(h, "indicator");
+    CHECK(b && Near(b->Height(), 1));
+}
+
+TEST(TabRowDividerSitsAtTheBottom) {
+    for (bool scrollable : { false, true }) {
+        PhoneHarness h;
+        Themed(h, [&] {
+            Box(Tag({}, "tabRow"), Alignment::TopStart(), false, [&] {
+                const auto tabs = [] { for (int i = 0; i < 2; ++i) Tab(i == 0, [] {}, Height({}, 100_dp), [i] { Text("TAB " + std::to_string(i + 1)); }, {}); };
+                const auto divider = [] { HorizontalDivider(Tag({}, "divider")); };
+                if (scrollable) {
+                    ScrollableTabRowOptions o;
+                    o.divider = divider;
+                    SecondaryScrollableTabRow(0, Height({}, 100_dp), o, tabs);
+                } else {
+                    TabRowOptions o;
+                    o.divider = divider;
+                    SecondaryTabRow(0, Height({}, 100_dp), o, tabs);
+                }
+            });
+        });
+        const auto row = BoundsDp(h, "tabRow"), divider = BoundsDp(h, "divider");
+        CHECK(row && divider);
+        if (row && divider) CHECK(Near(divider->left, 0) && Near(divider->top, row->Height() - 1) && Near(divider->Height(), 1));
+    }
+}
+
+TEST(TabPlacesItsTextAndIcon) {
+    {
+        // One line, and two: centred vertically.
+        for (const char* title : { "TAB", "Two line \n text" }) {
+            PhoneHarness h;
+            Themed(h, [&] { SecondaryTabRow(0, Tag({}, "tabRow"), {}, [&] { Tab(true, [] {}, {}, [&] { Text(title, Tag({}, "text")); }, {}); }); });
+            const auto row = BoundsDp(h, "tabRow"), text = BoundsDp(h, "text");
+            CHECK(row && text && Near(text->top, (row->Height() - text->Height()) / 2));
+        }
+    }
+    {
+        // With an icon: the baseline 14 dp above the 3 dp indicator.
+        PhoneHarness h;
+        Themed(h, [&] { SecondaryTabRow(0, Tag({}, "tabRow"), {}, [] { Tab(true, [] {}, {}, [] { Text("TAB", Tag({}, "text")); }, [] { NavIcon(); }); }); });
+        const auto row = BoundsDp(h, "tabRow"), text = BoundsDp(h, "text");
+        CHECK(row && text);
+        if (row && text) CHECK(Near(text->top + 0.8f * text->Height(), row->Height() - 14 - 3));
+    }
+    {
+        // A leading icon: 8 dp before the text, the pair centred.
+        PhoneHarness h;
+        Themed(h, [&] {
+            SecondaryTabRow(0, Tag({}, "tabRow"), {}, [] { LeadingIconTab(true, [] {}, [] { Text("TAB", Tag({}, "text")); }, [] { NavIcon(Tag({}, "icon")); }, {}); });
+        });
+        const auto row = BoundsDp(h, "tabRow"), text = BoundsDp(h, "text"), icon = BoundsDp(h, "icon");
+        CHECK(row && text && icon);
+        if (row && text && icon) {
+            CHECK(Near(text->left, icon->right + 8));
+            CHECK(Near(icon->left, (row->Width() - icon->Width() - text->Width() - 8) / 2));
+        }
+    }
+}
+
+TEST(TabRowsSelectANewTab) {
+    for (int kind = 0; kind < 3; ++kind) {
+        PhoneHarness h;
+        std::int64_t t = 1000;
+        rt::State<int> state{ 0 };
+        const bool scrollable = kind == 2;
+        const int count = scrollable ? 10 : 3;
+        std::vector<std::string> titles;
+        for (int i = 0; i < count; ++i) titles.push_back(i == 2 && !scrollable ? "Tab 3 with lots of text" : "Tab " + std::to_string(i + 1));
+        Themed(h, [&] { TextTabs(state, titles, scrollable, kind == 1); });
+        auto states = SelectedStates(h);
+        CHECK_EQ(states.size(), std::size_t(count));
+        std::vector<bool> expected(std::size_t(count), false);
+        expected[0] = true;
+        CHECK(states == expected);
+        const std::size_t pick = scrollable ? 1 : 2;
+        PressSelectable(h, t, pick);
+        expected[0] = false;
+        expected[pick] = true;
+        CHECK(SelectedStates(h) == expected);
+    }
+}
+
+TEST(ScrollableTabRowScrollsToAnOffScreenSelectedTab) {
+    PhoneHarness h;
+    rt::State<int> state{ 9 };
+    std::vector<std::string> titles;
+    for (int i = 0; i < 10; ++i) titles.push_back("Tab " + std::to_string(i + 1));
+    Themed(h, [&] {
+        SecondaryScrollableTabRow(state.Get(), {}, {}, [&] {
+            for (int i = 0; i < 10; ++i) Tab(state.Get() == i, [&state, i] { state.Set(i); }, Tag({}, "tab" + std::to_string(i)), [&titles, i] { Text(titles[std::size_t(i)]); }, {});
+        });
+    });
+    h.AdvanceTimeBy(1000);
+    CHECK((SelectedStates(h).size() == 10 && SelectedStates(h)[9]));
+    CHECK(Displayed(h, "tab9"));
+}
+
+TEST(TabRowIndicatorAnimatesItsWidth) {
+    PhoneHarness h;
+    std::int64_t t = 1000;
+    rt::State<int> state{ 0 };
+    Themed(h, [&] {
+        ScrollableTabRowOptions o;
+        o.indicator = [&state](TabIndicatorScope& s) { TabRowDefaults::SecondaryIndicator(Tag(s.TabIndicatorOffset({}, state.Get(), false), "indicator")); };
+        SecondaryScrollableTabRow(state.Get(), {}, o, [&] {
+            const char* titles[] = { "TAB 1", "TAB 2", "TAB 3 WITH LOTS OF TEXT" };
+            for (int i = 0; i < 3; ++i) Tab(state.Get() == i, [&state, i] { state.Set(i); }, {}, [&titles, i] { Text(titles[i]); }, {});
+        });
+    });
+    const auto initial = BoundsDp(h, "indicator");
+    CHECK(initial.has_value());
+    // Select the third, wider tab and look 50 ms in.
+    const auto tree = h.owner.BuildSemanticsTree();
+    const auto nodes = Selectables(tree);
+    CHECK_EQ(nodes.size(), std::size_t(3));
+    if (nodes.size() < 3 || !initial) return;
+    const auto b = nodes[2]->boundsInRoot;
+    Touch(h, t, ui::PointerEventType::Press, (b.left + b.right) / 2, (b.top + b.bottom) / 2, true);
+    Touch(h, t, ui::PointerEventType::Release, (b.left + b.right) / 2, (b.top + b.bottom) / 2, false);
+    h.AdvanceTimeBy(50);
+    const auto mid = BoundsDp(h, "indicator");
+    h.AdvanceTimeBy(1000);
+    const auto final = BoundsDp(h, "indicator");
+    CHECK(mid && final);
+    if (mid && final) CHECK(initial->Width() < mid->Width() && mid->Width() < final->Width());
+}
+
+TEST(DisabledTabsTakeNoClicks) {
+    for (bool leading : { false, true }) {
+        PhoneHarness h;
+        std::int64_t t = 1000;
+        int clicks = 0;
+        Themed(h, [&] {
+            TabOptions o;
+            o.enabled = false;
+            if (leading) LeadingIconTab(true, [&] { ++clicks; }, [] { Text("Text"); }, [] { NavIcon(); }, Tag({}, "tab"), o);
+            else Tab(true, [&] { ++clicks; }, Tag({}, "tab"), [] { Text("Text"); }, {}, o);
+        });
+        Press(h, t, "tab", true);
+        CHECK_EQ(clicks, 0);
+    }
+}
+
+TEST(TabRowsRespectTheirLayoutHeight) {
+    for (bool scrollable : { false, true }) {
+        PhoneHarness h;
+        rt::State<float> height{ 0 };
+        rt::State<int> state{ 0 };
+        Themed(h, [&] {
+            Column(Tag(SizeIn({}, Dp::Unspecified(), Dp::Unspecified(), Dp::Unspecified(), ui::Dp(height.Get())), "Tabs"), [&] {
+                TextTabs(state, { "Tab 1", "Tab 2", "Tab 3" }, scrollable);
+            });
+        });
+        auto b = BoundsDp(h, "Tabs");
+        CHECK(b && Near(b->Height(), 0));
+        height.Set(40);
+        h.AdvanceTimeBy(16);
+        b = BoundsDp(h, "Tabs");
+        CHECK(b && Near(b->Height(), 40));
+    }
+}
+
+TEST(TabRowWithoutTabsHasNoHeight) {
+    PhoneHarness h;
+    Themed(h, [&] { SecondaryTabRow(0, Tag({}, "tabRow"), {}, [] {}); });
+    const auto b = BoundsDp(h, "tabRow");
+    CHECK(b && Near(b->Height(), 0));
+}
+
+TEST(TabGrowsWithTheFontScale) {
+    // A 10 sp label with an icon outgrows the 72 dp tab at a large font scale. (Compose's test
+    // uses 10; past the last table a scale's linear converter is cached among the tables, so a
+    // scale this large would bend every later lookup between 2 and 10, as it does in Compose.)
+    PhoneHarness h;
+    h.owner.SetDensity({ 2, 3 });
+    Themed(h, [&] {
+        Box(Tag({}, "box"), Alignment::TopStart(), false, [] {
+            Tab(true, [] {}, {}, [] { Text("Text", {}, { .fontSize = text::Sp(10) }); }, [] { NavIcon(); });
+        });
+    });
+    const auto b = BoundsDp(h, "box");
+    CHECK(b && b->Height() >= 90);
 }
