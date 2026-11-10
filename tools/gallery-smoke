@@ -31,6 +31,9 @@ COMPONENTS = {
         wait:800; shot:{p}-tabs-scrolled''',
     'appbars': '''expect:Small top app bar; expect:With a subtitle; reach:Top bar collapsed: 0%; expect:Message 2;
         shot:{p}-appbars; swipeon:Message 3=0,-400,1500; wait:800; expect:Top bar collapsed: 100%; reject:Check; shot:{p}-appbars-collapsed''',
+    'toolbars': '''reach:Toolbar expanded: yes; expect:Row 2; expect:More; shot:{p}-toolbars; swipeon:Row 3=0,-300,1500; wait:800;
+        expect:Toolbar expanded: no; reject:More; shot:{p}-toolbars-collapsed; reach:Toolbar with FAB expanded: yes; expect:Archive;
+        tap:Toggle toolbar; wait:800; expect:Toolbar with FAB expanded: no; reject:Archive; shot:{p}-toolbars-fab''',
     'segmented': '''expect:Single selection: 0; tap:Week; expect:Single selection: 1; tap:Bike; expect:Multiple selection: 3;
         tap:Walk; expect:Multiple selection: 2; shot:{p}-segmented; reach:Disable segments; tap:Disable segments;
         expect:Enable segments; tap:Day; expect:Single selection: 1; shot:{p}-segmented-disabled''',

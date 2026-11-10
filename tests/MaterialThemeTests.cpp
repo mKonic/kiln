@@ -24,6 +24,8 @@
 #include "kiln/material3/ShortNavigationBar.h"
 #include "kiln/foundation/Lazy.h"
 #include "kiln/material3/AppBar.h"
+#include "kiln/material3/FloatingToolbar.h"
+#include "kiln/material3/internal/GetString.h"
 #include "kiln/material3/Divider.h"
 #include "kiln/material3/Tab.h"
 #include "kiln/material3/TabRow.h"
@@ -3229,7 +3231,20 @@ namespace {
         const ui::SemanticsNode* n = FindSemantics(tree, label);
         std::optional<ui::Rect> b;
         if (n) b = n->boundsInRoot;
-        else if (const auto* tagged = FindTagged(h, label)) b = TagRectInRoot(*tagged, label);
+        else if (const auto* tagged = FindTagged(h, label)) {
+            // Clipped by the ancestors that clip, as semantics bounds are (isDisplayed).
+            ui::Rect r = TagRectInRoot(*tagged, label);
+            for (const ui::LayoutNode* a = tagged->Parent(); a; a = a->Parent()) {
+                bool clips = false;
+                for (const ui::ModifierNode* m : a->ModifierNodes()) clips |= m->ClipsChildren();
+                if (!clips) continue;
+                const ui::Rect c = a->BoundsInRoot();
+                r = ui::Rect{ std::max(r.left, c.left), std::max(r.top, c.top), std::min(r.right, c.right), std::min(r.bottom, c.bottom) };
+                if (r.right < r.left) r.right = r.left;
+                if (r.bottom < r.top) r.bottom = r.top;
+            }
+            b = r;
+        }
         // Then the dialog windows (full-window, at the origin).
         for (ui::Owner* dialog : h.dialogs) {
             if (b) break;
@@ -6784,4 +6799,357 @@ TEST(ExitAlwaysBottomAppBarHandlesAnOutOfRangeOffset) {
     h.AdvanceTimeBy(16);
     const auto bar = UnclippedBoundsDp(h, "bottomAppBar");
     CHECK(bar && Near(bar->Height(), 0));
+}
+
+// FloatingToolbarTest.
+namespace {
+    void ToolbarFab() {
+        FloatingToolbarDefaults::StandardFloatingActionButton([] {}, Tag({}, "floatingActionButton"), {}, [] { NavIcon({}, "Localized description"); });
+    }
+    void ToolbarIcon(ui::Modifier m = {}) { IconButton([] {}, std::move(m), {}, [] { NavIcon({}, "Localized description"); }); }
+    void ToolbarContent() {
+        ToolbarIcon();
+        ToolbarIcon();
+        ToolbarIcon();
+        ToolbarIcon(Tag({}, "floatingToolbarContentLastItem"));
+    }
+    // setMaterialContentForSizeAssertions: the toolbar's own size, unconstrained by the window.
+    std::optional<ui::Rect> ToolbarSize(std::function<void()> toolbar) {
+        PhoneHarness h;
+        Themed(h, [&] { Box(Tag({}, "sized"), Alignment::TopStart(), false, toolbar); });
+        h.AdvanceTimeBy(1000);
+        return BoundsDp(h, "sized");
+    }
+}
+
+TEST(FloatingToolbarScrolledPositioning) {
+    // The limit is the toolbar's size plus how far it sits from its parent's exit edge; an offset
+    // moves it towards that edge.
+    for (bool vertical : { false, true }) {
+        for (bool custom : { false, true }) {
+            PhoneHarness h;
+            std::shared_ptr<FloatingToolbarScrollBehavior> behavior;
+            Themed(h, [&] {
+                const auto dir = vertical ? FloatingToolbarExitDirection::End : FloatingToolbarExitDirection::Bottom;
+                if (custom)
+                    behavior = FloatingToolbarDefaults::exitAlwaysScrollBehavior(dir, std::make_shared<FloatingToolbarState>(-FLT_MAX, 0.0f, 0.0f),
+                                                                                 anim::Spring(), std::make_shared<anim::SplineDecay>(2.0f));
+                else
+                    behavior = FloatingToolbarDefaults::exitAlwaysScrollBehavior(dir);
+                FloatingToolbarOptions o;
+                o.scrollBehavior = behavior;
+                o.shape = RectangleShape();
+                const auto content = [] { IconButton([] {}, Tag(SizeMod({}, 48_dp, 48_dp), "icon"), {}, [] { NavIcon({}, "Localized description"); }); };
+                // setMaterialContent's Surface: a parent the size of the toolbar.
+                Box({}, Alignment::TopStart(), false, [=] {
+                    if (vertical) VerticalFloatingToolbar(false, OffsetMod(Tag({}, "floatingToolbar"), Dp(-16), 0_dp), o, content);
+                    else HorizontalFloatingToolbar(false, OffsetMod(Tag({}, "floatingToolbar"), 0_dp, Dp(-16)), o, content);
+                });
+            });
+            CHECK_EQ(behavior->State().OffsetLimit(), -(64.0f + 16.0f) * 2);
+            const auto before = UnclippedBoundsDp(h, "icon");
+            behavior->State().SetOffset(-40);
+            behavior->State().SetContentOffset(-40);
+            h.AdvanceTimeBy(16);
+            const auto after = UnclippedBoundsDp(h, "icon");
+            CHECK(before && after);
+            if (!before || !after) continue;
+            if (vertical) CHECK(Near(after->left, before->left + 20) && Near(after->top, before->top));
+            else CHECK(Near(after->top, before->top + 20) && Near(after->left, before->left));
+        }
+    }
+}
+
+TEST(FloatingToolbarInteractiveSizeDoesNotResizeToolbar) {
+    const auto b = ToolbarSize([] {
+        FloatingToolbarOptions o;
+        o.collapsedShadowElevation = 5_dp;
+        HorizontalFloatingToolbar(false, {}, o, [] {
+            for (const char* text : { "Long Text", "Y", "M3", "M", "W", "D" }) Box(MinimumInteractiveComponentSize({}), Alignment::TopStart(), false, [text] { Text(text); });
+        });
+    });
+    CHECK(b && Near(b->Height(), 64));
+}
+
+TEST(FloatingToolbarCustomContentPadding) {
+    for (bool vertical : { false, true }) {
+        PhoneHarness h;
+        Themed(h, [&] {
+            FloatingToolbarOptions o;
+            o.contentPadding = PaddingValues{ 20_dp, 20_dp, 20_dp, 20_dp };
+            const auto content = [] { ToolbarIcon(Tag({}, "child")); };
+            if (vertical) VerticalFloatingToolbar(false, Tag({}, "floatingToolbar"), o, content);
+            else HorizontalFloatingToolbar(false, Tag({}, "floatingToolbar"), o, content);
+        });
+        // onChild(): the content's touch target.
+        const auto child = UnclippedBoundsDp(h, "child");
+        CHECK(child && Near(vertical ? child->left : child->top, 20));
+    }
+}
+
+TEST(FloatingToolbarLeadingAndTrailingContentShowOnlyExpanded) {
+    // Padding 8 on each side; a 48 dp icon button for each of leading and trailing content shown.
+    for (bool vertical : { false, true }) {
+        for (int which = 0; which < 3; ++which) {   // trailing, leading, both
+            for (bool expanded : { true, false }) {
+                const auto b = ToolbarSize([&] {
+                    FloatingToolbarOptions o;
+                    if (which != 1) o.trailingContent = [] { ToolbarIcon(); };
+                    if (which != 0) o.leadingContent = [] { ToolbarIcon(); };
+                    if (vertical) VerticalFloatingToolbar(expanded, {}, o, [] {});
+                    else HorizontalFloatingToolbar(expanded, {}, o, [] {});
+                });
+                CHECK(b.has_value());
+                if (!b) continue;
+                const float along = vertical ? b->Height() : b->Width(), across = vertical ? b->Width() : b->Height();
+                const int shown = expanded ? (which == 2 ? 2 : 1) : 0;
+                CHECK(Near(along, 16 + 48.0f * float(shown)));
+                if (expanded) CHECK(Near(across, 16 + 48));
+            }
+        }
+    }
+}
+
+TEST(FloatingToolbarStateRestores) {
+    rt::SaveableStateRegistry::Values saved;
+    for (int pass = 0; pass < 2; ++pass) {
+        rt::SaveableStateRegistry registry(saved);
+        std::shared_ptr<FloatingToolbarState> state;
+        Harness h;
+        h.Run([&] { rt::Composition::Current()->Provide(rt::LocalSaveableStateRegistry, &registry, [&] { state = RememberFloatingToolbarState(); }); });
+        CHECK(state != nullptr);
+        if (!state) return;
+        if (pass == 0) {
+            state->SetOffsetLimit(-350);
+            state->SetOffset(-300);
+            state->SetContentOffset(-550);
+            saved = rt::SaveableStateRegistry::Deserialize(rt::SaveableStateRegistry::Serialize(registry.PerformSave()));
+        } else {
+            CHECK_EQ(state->OffsetLimit(), -350.0f);
+            CHECK_EQ(state->Offset(), -300.0f);
+            CHECK_EQ(state->ContentOffset(), -550.0f);
+        }
+    }
+}
+
+TEST(FloatingToolbarWithFabExpands) {
+    // Collapsed: the large FAB and no toolbar; expanded: the toolbar unrolls and the FAB shrinks.
+    // The component keeps its size: the widest toolbar, the gap and the small FAB.
+    for (bool vertical : { false, true }) {
+        PhoneHarness h;
+        rt::State<bool> expanded(false);
+        Themed(h, [&] {
+            if (vertical) VerticalFloatingToolbar(expanded.Get(), ToolbarFab, Tag({}, "floatingToolbar"), {}, ToolbarContent);
+            else HorizontalFloatingToolbar(expanded.Get(), ToolbarFab, Tag({}, "floatingToolbar"), {}, ToolbarContent);
+        });
+        const float component = 80 + 48 * 4;
+        auto fab = BoundsDp(h, "floatingActionButton");
+        CHECK(fab && Near(fab->Width(), 80) && Near(fab->Height(), 80));
+        CHECK(!Displayed(h, "floatingToolbarContentLastItem"));
+        auto bar = BoundsDp(h, "floatingToolbar");
+        CHECK(bar && Near(vertical ? bar->Height() : bar->Width(), component));
+        expanded.Set(true);
+        h.AdvanceTimeBy(2000);
+        fab = BoundsDp(h, "floatingActionButton");
+        CHECK(fab && Near(fab->Width(), 56) && Near(fab->Height(), 56));
+        CHECK(Displayed(h, "floatingToolbarContentLastItem"));
+        bar = BoundsDp(h, "floatingToolbar");
+        CHECK(bar && Near(vertical ? bar->Height() : bar->Width(), component));
+    }
+}
+
+TEST(FloatingToolbarWithFabContentPadding) {
+    for (bool vertical : { false, true }) {
+        for (int padding : { -1, vertical ? 64 : 48 }) {   // -1: the default
+            PhoneHarness h;
+            Themed(h, [&] {
+                FloatingToolbarWithFabOptions o;
+                o.shape = RectangleShape();
+                if (padding >= 0) {
+                    const Dp p{ float(padding) };
+                    o.contentPadding = vertical ? PaddingValues{ 0_dp, p, 0_dp, p } : PaddingValues{ p, 0_dp, p, 0_dp };
+                }
+                if (vertical) VerticalFloatingToolbar(true, ToolbarFab, Tag({}, "floatingToolbar"), o, ToolbarContent);
+                else HorizontalFloatingToolbar(true, ToolbarFab, Tag({}, "floatingToolbar"), o, ToolbarContent);
+            });
+            h.AdvanceTimeBy(1000);
+            const float pad = padding < 0 ? 16 : float(padding) * 2;
+            const auto bar = BoundsDp(h, "floatingToolbar");
+            CHECK(bar && Near(vertical ? bar->Height() : bar->Width(), pad + 56 + 48 * 4 + 8));
+        }
+    }
+}
+
+namespace {
+    // VerticalNestedScrollTestContent: an 80 dp header over a lazy list of 100 rows.
+    void VerticalNestedScrollTestContent(bool* expanded, bool enabled, bool initialValue, bool reverseLayout) {
+        ui::Modifier m = FillMax({}, Axis::Both);
+        if (enabled)
+            m = FloatingToolbarDefaults::FloatingToolbarVerticalNestedScroll(std::move(m), initialValue, [expanded] { *expanded = true; },
+                                                                             [expanded] { *expanded = false; }, FloatingToolbarDefaults::ScrollDistanceThreshold,
+                                                                             FloatingToolbarDefaults::ScrollDistanceThreshold, reverseLayout);
+        Column(m, [reverseLayout] {
+            Box(Height(FillMax({}, Axis::Horizontal), 80_dp));
+            LazyColumn(Tag(Weight(FillMax({}, Axis::Horizontal), 1), "mainLayout"), RememberLazyListState(), [](LazyListScope& s) {
+                s.Items(100, [](int i) {
+                    Box(Height(FillMax({}, Axis::Horizontal), 60_dp), Alignment::TopStart(), false, [i] { Text(std::to_string(i)); });
+                    Spacer(Height({}, 8_dp));
+                });
+            }, { .reverseLayout = reverseLayout });
+        });
+    }
+    // performTouchInput { swipeUp / swipeDown(startY, endY) } on the main layout: 200 ms, in its
+    // local dp.
+    void SwipeMain(Harness& h, std::int64_t& t, float fromY, float toY) {
+        const auto b = BoundsDp(h, "mainLayout");
+        CHECK(b.has_value());
+        if (!b) return;
+        const float x = (b->left + b->right) / 2 * 2;
+        Swipe(h, t, x, (b->top + fromY) * 2, x, (b->top + toY) * 2, 10, 20);
+        h.AdvanceTimeBy(2000);
+    }
+}
+
+TEST(FloatingToolbarVerticalNestedScrollFollowsSwipes) {
+    // Each case: two swipes on the list (up: bottom to centre; down: top to centre) and the
+    // expansion after each.
+    struct Case { bool enabled, initial, reverse, upFirst, after1, after2; };
+    for (const Case k : { Case{ true, true, false, true, false, true },     // verticalSwipesUpdateValue
+                          Case{ true, true, true, false, false, true },     // reversed: down scrolls forward
+                          Case{ false, true, true, true, true, true },      // disableScrollInterception
+                          Case{ true, false, false, true, false, true } }) { // falseInitialValue
+        PhoneHarness h;
+        std::int64_t t = 1000;
+        bool expanded = k.initial;
+        Themed(h, [&] { VerticalNestedScrollTestContent(&expanded, k.enabled, k.initial, k.reverse); });
+        const auto b = BoundsDp(h, "mainLayout");
+        CHECK(b.has_value());
+        if (!b) continue;
+        const float bottom = b->Height() - 0.5f, centre = b->Height() / 2, top = 0.5f;
+        const auto up = [&] { SwipeMain(h, t, bottom, centre); };
+        const auto down = [&] { SwipeMain(h, t, top, centre); };
+        if (k.upFirst) up(); else down();
+        CHECK_EQ(expanded, k.after1);
+        if (k.upFirst) down(); else up();
+        CHECK_EQ(expanded, k.after2);
+    }
+}
+
+TEST(FloatingToolbarVerticalNestedScrollThreshold) {
+    // Less than the threshold keeps it; more collapses (thresholds in dp; the test's custom one
+    // only scales the swipes, as in Compose's).
+    for (float threshold : { 40.0f, 100.0f }) {
+        PhoneHarness h;
+        std::int64_t t = 1000;
+        bool expanded = true;
+        Themed(h, [&] { VerticalNestedScrollTestContent(&expanded, true, true, false); });
+        const auto b = BoundsDp(h, "mainLayout");
+        CHECK(b.has_value());
+        if (!b) continue;
+        const float bottom = b->Height() - 0.5f;
+        SwipeMain(h, t, bottom, bottom - threshold / 4);
+        CHECK_EQ(expanded, true);
+        SwipeMain(h, t, bottom, bottom - (threshold == 40 ? threshold * 2 : threshold));
+        CHECK_EQ(expanded, false);
+    }
+}
+
+TEST(FloatingToolbarScrollBehaviorHidesIt) {
+    for (bool vertical : { true, false }) {
+        PhoneHarness h;
+        std::int64_t t = 1000;
+        Themed(h, [&] {
+            const auto behavior = FloatingToolbarDefaults::exitAlwaysScrollBehavior(FloatingToolbarExitDirection::End);
+            Scaffold(Tag(NestedScroll({}, behavior->NestedScrollConnection()), "mainLayout"), {}, [&, behavior](const PaddingValues& padding) {
+                Box(Padding({}, padding), Alignment::TopStart(), false, [&, behavior] {
+                    Column(Tag(VerticalScroll(FillMax({}, Axis::Horizontal), RememberScrollState()), "Content"), [] {
+                        Box(Height(FillMax({}, Axis::Horizontal), 3000_dp));
+                    });
+                    FloatingToolbarWithFabOptions o;
+                    o.scrollBehavior = behavior;
+                    if (vertical)
+                        VerticalFloatingToolbar(true, ToolbarFab, OffsetMod(AlignInBox({}, Alignment::CenterEnd()), Dp(-16), 0_dp), o, ToolbarContent);
+                    else
+                        HorizontalFloatingToolbar(true, ToolbarFab, OffsetMod(AlignInBox({}, Alignment::BottomCenter()), 0_dp, Dp(-16)), o, ToolbarContent);
+                });
+            });
+        });
+        h.AdvanceTimeBy(1000);
+        CHECK(Displayed(h, "floatingActionButton"));
+        CHECK(Displayed(h, "floatingToolbarContentLastItem"));
+        const auto content = BoundsDp(h, "Content");
+        CHECK(content.has_value());
+        if (!content) continue;
+        // swipeUp(bottom, bottom - 1000) in px.
+        const float x = (content->left + content->right), y = content->bottom * 2 - 1;
+        Swipe(h, t, x, y, x, y - 1000, 10, 20);
+        h.AdvanceTimeBy(3000);
+        CHECK(!Displayed(h, "floatingActionButton"));
+        CHECK(!Displayed(h, "floatingToolbarContentLastItem"));
+    }
+}
+
+TEST(FloatingToolbarOffersToCollapseOrExpand) {
+    // The main content (or the FAB) carries one custom action: collapse while expanded, expand
+    // while collapsed.
+    for (bool vertical : { false, true }) {
+        for (bool fab : { false, true }) {
+            for (bool expanded : { true, false }) {
+                PhoneHarness h;
+                std::string label;
+                Themed(h, [&] {
+                    label = GetString(expanded ? Strings::FloatingToolbarCollapse : Strings::FloatingToolbarExpand);
+                    if (fab) {
+                        if (vertical) VerticalFloatingToolbar(expanded, ToolbarFab, Tag({}, "floatingToolbar"), {}, ToolbarContent);
+                        else HorizontalFloatingToolbar(expanded, ToolbarFab, Tag({}, "floatingToolbar"), {}, ToolbarContent);
+                        return;
+                    }
+                    FloatingToolbarOptions o;
+                    o.leadingContent = [] { ToolbarIcon(); };
+                    o.trailingContent = [] { ToolbarIcon(); };
+                    const auto content = [] { ToolbarIcon(Tag({}, "floatingToolbarMainContentTestTag")); };
+                    if (vertical) VerticalFloatingToolbar(expanded, Tag({}, "floatingToolbar"), o, content);
+                    else HorizontalFloatingToolbar(expanded, Tag({}, "floatingToolbar"), o, content);
+                });
+                const auto tree = h.owner.BuildSemanticsTree();
+                const auto* node = FindSemantics(tree, fab ? "floatingActionButton" : "floatingToolbarMainContentTestTag");
+                CHECK(node != nullptr);
+                if (!node) continue;
+                CHECK_EQ(node->config.customActions.size(), std::size_t(1));
+                if (!node->config.customActions.empty()) CHECK_EQ(node->config.customActions[0].label, label);
+            }
+        }
+    }
+}
+
+TEST(FloatingToolbarAccessibilityActionCollapsesIt) {
+    PhoneHarness h;
+    std::string expandLabel;
+    Themed(h, [&] {
+        expandLabel = GetString(Strings::FloatingToolbarExpand);
+        HorizontalFloatingToolbar(true, ToolbarFab, Tag({}, "floatingToolbar"), {}, ToolbarContent);
+    });
+    h.AdvanceTimeBy(1000);
+    CHECK(Displayed(h, "floatingToolbarContentLastItem"));
+    {
+        const auto tree = h.owner.BuildSemanticsTree();
+        const auto* node = FindSemantics(tree, "floatingActionButton");
+        CHECK(node && !node->config.customActions.empty());
+        if (node && !node->config.customActions.empty()) CHECK(node->config.customActions[0].action());
+    }
+    h.AdvanceTimeBy(2000);
+    CHECK(!Displayed(h, "floatingToolbarContentLastItem"));
+    const auto tree = h.owner.BuildSemanticsTree();
+    const auto* node = FindSemantics(tree, "floatingActionButton");
+    CHECK(node && !node->config.customActions.empty() && node->config.customActions[0].label == expandLabel);
+}
+
+TEST(FloatingToolbarCustomSizeDoesNotCrash) {
+    PhoneHarness h;
+    Themed(h, [&] {
+        HorizontalFloatingToolbar(true, [] {}, Height({}, 40_dp), {}, [] {});
+        VerticalFloatingToolbar(true, [] {}, Width({}, 40_dp), {}, [] {});
+    });
+    h.AdvanceTimeBy(1000);
+    CHECK(true);
 }

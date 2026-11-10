@@ -25,6 +25,7 @@
 #include <kiln/material3/NavigationRail.h>
 #include <kiln/foundation/Lazy.h>
 #include <kiln/material3/AppBar.h>
+#include <kiln/material3/FloatingToolbar.h>
 #include <kiln/material3/ShortNavigationBar.h>
 #include <kiln/material3/Tab.h>
 #include <kiln/material3/TabRow.h>
@@ -476,6 +477,49 @@ namespace kiln::gallery {
                 });
         }
 
+        void FloatingToolbars() {
+            const auto icon = [](const char* description) {
+                m3::IconButton([] {}, {}, {}, [description] { m3::Icon(m3::internal::Icons::Filled::Edit(), description); });
+            };
+            // Expands as the list scrolls back, collapses as it scrolls on (Compose's
+            // ExpandableHorizontalFloatingToolbarSample).
+            auto* expanded = &RememberState(true);
+            // Reported as text so a test can read it.
+            m3::Text(std::string("Toolbar expanded: ") + (expanded->Get() ? "yes" : "no"));
+            Box(Height(FillMax({}, Axis::Horizontal), 360_dp), Alignment::TopStart(), false, [=] {
+                const auto nested = m3::FloatingToolbarDefaults::FloatingToolbarVerticalNestedScroll(
+                    FillMax({}, Axis::Both), expanded->Get(), [=] { expanded->Set(true); }, [=] { expanded->Set(false); });
+                LazyColumn(nested, RememberLazyListState(), [](LazyListScope& s) {
+                    s.Items(30, [](int i) { m3::Text("Row " + std::to_string(i + 1), Padding(FillMax({}, Axis::Horizontal), 16_dp)); });
+                });
+                m3::FloatingToolbarOptions o;
+                o.colors = m3::FloatingToolbarDefaults::vibrantFloatingToolbarColors();
+                o.leadingContent = [=] { icon("Back"); };
+                o.trailingContent = [=] { icon("More"); };
+                m3::HorizontalFloatingToolbar(expanded->Get(), OffsetMod(AlignInBox({}, Alignment::BottomCenter()), 0_dp, Dp(-16)), o,
+                                              [=] { icon("Share"); icon("Favorite"); });
+            });
+
+            // Beside a FAB, sliding off the bottom as the list scrolls on.
+            const auto behavior = m3::FloatingToolbarDefaults::exitAlwaysScrollBehavior(m3::FloatingToolbarExitDirection::Bottom);
+            auto* withFab = &RememberState(true);
+            m3::Text(std::string("Toolbar with FAB expanded: ") + (withFab->Get() ? "yes" : "no"));
+            Box(NestedScroll(Height(FillMax({}, Axis::Horizontal), 360_dp), behavior->NestedScrollConnection()), Alignment::TopStart(), false, [=] {
+                LazyColumn(FillMax({}, Axis::Both), RememberLazyListState(), [](LazyListScope& s) {
+                    s.Items(30, [](int i) { m3::Text("Note " + std::to_string(i + 1), Padding(FillMax({}, Axis::Horizontal), 16_dp)); });
+                });
+                m3::FloatingToolbarWithFabOptions o;
+                o.scrollBehavior = behavior;
+                m3::HorizontalFloatingToolbar(
+                    withFab->Get(),
+                    [=] {
+                        m3::FloatingToolbarDefaults::StandardFloatingActionButton([=] { withFab->Set(!withFab->Get()); }, {}, {},
+                                                                                [] { m3::Icon(m3::internal::Icons::Filled::Edit(), "Toggle toolbar"); });
+                    },
+                    OffsetMod(AlignInBox({}, Alignment::BottomEnd()), Dp(-16), Dp(-16)), o, [=] { icon("Archive"); icon("Label"); icon("Delete"); });
+            });
+        }
+
         void Tabs() {
             auto* primary = &RememberState(0);
             auto* secondary = &RememberState(0);
@@ -852,7 +896,7 @@ namespace kiln::gallery {
         struct Section { const char* key; const char* title; void (*content)(); };
         const std::vector<Section>& Sections() {
             static const std::vector<Section> sections{
-                { "navigation", "Navigation bars and rails", Navigation }, { "tabs", "Tabs", Tabs }, { "appbars", "App bars", AppBars }, { "segmented", "Segmented buttons", SegmentedButtons }, { "split", "Split buttons", SplitButtons },
+                { "navigation", "Navigation bars and rails", Navigation }, { "tabs", "Tabs", Tabs }, { "appbars", "App bars", AppBars }, { "toolbars", "Floating toolbars", FloatingToolbars }, { "segmented", "Segmented buttons", SegmentedButtons }, { "split", "Split buttons", SplitButtons },
                 { "tooltips", "Tooltips", Tooltips }, { "menus", "Menus", Menus }, { "groups", "Button groups", ButtonGroups },
                 { "sliders", "Sliders", Sliders }, { "progress", "Progress indicators", ProgressIndicators }, { "lists", "Lists", Lists },
                 { "chips", "Chips", Chips }, { "cards", "Cards", Cards }, { "selection", "", SelectionControls },
