@@ -6,6 +6,7 @@
 
 #include "kiln/foundation/Arrangement.h"
 #include "kiln/foundation/Insets.h"
+#include "kiln/ui/Configuration.h"
 #include "kiln/material3/NavigationItem.h"
 #include "kiln/runtime/Task.h"
 
@@ -85,6 +86,33 @@ namespace kiln::material3 {
         foundation::PaddingValues contentPadding = WideNavigationRailDefaults::ContentPadding;
     };
     void WideNavigationRail(const ui::Modifier& modifier, const WideNavigationRailOptions& options, std::function<void()> content);
+
+    // The expanded modal rail's window.
+    struct ModalWideNavigationRailProperties {
+        ui::SecureFlagPolicy securePolicy = ui::SecureFlagPolicy::Inherit;
+        bool shouldDismissOnBackPress = true;   // back (with its predictive animation) collapses the rail
+        bool operator==(const ModalWideNavigationRailProperties&) const = default;
+    };
+
+    struct ModalWideNavigationRailOptions {
+        std::shared_ptr<WideNavigationRailState> state;   // unset: RememberWideNavigationRailState()
+        // true: slides in from offscreen and hides when collapsed; false: stays as a collapsed rail.
+        bool hideOnCollapse = false;
+        foundation::ShapePtr collapsedShape;   // unset: modalCollapsedShape
+        foundation::ShapePtr expandedShape;    // unset: modalExpandedShape
+        std::optional<WideNavigationRailColors> colors;
+        std::function<void()> header;
+        ui::Dp expandedHeaderTopPadding{ 0 };   // aligns the header between the two states
+        std::optional<foundation::WindowInsets> windowInsets;
+        foundation::Arrangement arrangement = WideNavigationRailDefaults::arrangement();
+        ModalWideNavigationRailProperties expandedProperties;
+        foundation::PaddingValues contentPadding = WideNavigationRailDefaults::ContentPadding;
+    };
+    // Collapsed, a wide navigation rail (or nothing, with hideOnCollapse). Expanded, it opens in a
+    // window above the app with a scrim that collapses it on a tap; the layout behind is unchanged.
+    // Unlike Compose, the content is not movable content: moving between the collapsed rail and
+    // the window composes it anew.
+    void ModalWideNavigationRail(const ui::Modifier& modifier, const ModalWideNavigationRailOptions& options, std::function<void()> content);
 
     struct WideNavigationRailItemOptions {
         bool enabled = true;

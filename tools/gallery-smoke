@@ -22,7 +22,9 @@ COMPONENTS = {
         expect:FAB: EndOverlay; shot:{p}-navigation-overlay; reach:Labels when selected; tap:Chat; expect:Selected: Chat;
         shot:{p}-navigation-labels; reach:Short: Feed; tap:You; expect:Short: You;
         shot:{p}-navigation-short; reach:Wide: Home; tap:Photos; expect:Wide: Photos;
-        tap:Expand rail; expect:Collapse rail; shot:{p}-navigation-wide; reach:Rail: Inbox; tap:Sent; expect:Rail: Sent; tap:Rail labels: always;
+        tap:Expand rail; expect:Collapse rail; shot:{p}-navigation-wide; reach:Modal: Mail; tap:Open modal rail;
+        expect:Close modal rail; tap:Tasks; shot:{p}-navigation-modal; back; expect:Open modal rail; expect:Modal: Tasks;
+        reach:Rail: Inbox; tap:Sent; expect:Rail: Sent; tap:Rail labels: always;
         expect:Rail labels: selected; shot:{p}-navigation-rail''',
     'segmented': '''expect:Single selection: 0; tap:Week; expect:Single selection: 1; tap:Bike; expect:Multiple selection: 3;
         tap:Walk; expect:Multiple selection: 2; shot:{p}-segmented; reach:Disable segments; tap:Disable segments;

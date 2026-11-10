@@ -379,6 +379,27 @@ namespace kiln::gallery {
                 Box(Padding({}, 16_dp), Alignment::TopStart(), false, [=] { m3::Text(std::string("Wide: ") + wide[wideItem->Get()]); });
             });
 
+            auto* modalItem = &RememberState(0);
+            const auto modalState = m3::RememberWideNavigationRailState();
+            auto& modalJob = rt::Composition::Current()->Remember<std::shared_ptr<rt::Job>>([] { return std::make_shared<rt::Job>(); });
+            const auto modalJobHolder = modalJob;
+            const bool modalExpanded = modalState->TargetValue() == m3::WideNavigationRailValue::Expanded;
+            const char* modal[] = { "Mail", "Notes", "Tasks" };
+            Row(Height({}, 360_dp), Arrangement::Start(), AlignmentV::Top(), [=] {
+                m3::ModalWideNavigationRailOptions options;
+                options.state = modalState;
+                options.windowInsets = WindowInsets{};
+                options.header = [=] {
+                    m3::TextButton([=] { *modalJobHolder = rt::Launch(rt::Dispatcher::Main(), modalState->Toggle()); }, {}, {},
+                                   [=] { m3::Text(modalExpanded ? "Close modal rail" : "Open modal rail"); });
+                };
+                m3::ModalWideNavigationRail({}, options, [=] {
+                    for (int i = 0; i < 3; ++i)
+                        m3::WideNavigationRailItem(modalItem->Get() == i, [=] { modalItem->Set(i); }, navIcon, [=] { m3::Text(modal[i]); }, modalExpanded, {}, {});
+                });
+                Box(Padding({}, 16_dp), Alignment::TopStart(), false, [=] { m3::Text(std::string("Modal: ") + modal[modalItem->Get()]); });
+            });
+
             auto* railItem = &RememberState(0);
             auto* railLabels = &RememberState(true);
             const char* rail[] = { "Inbox", "Starred", "Sent", "Drafts" };

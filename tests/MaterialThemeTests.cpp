@@ -63,8 +63,16 @@ namespace {
         rt::Composition composition{ owner.Root(), rt::Dispatcher::Main() };
         ui::IntSize window{ 300, 300 };   // pixels
         // Compose's tests check to 0.5 dp: density 2 resolves that; `window` is in pixels.
+        // Owners of open dialog windows (see ModalHarness), laid out full-window with the main one.
+        std::vector<ui::Owner*> dialogs;
         explicit Harness(float density = 1, ui::IntSize size = { 300, 300 }) : window(size) { owner.SetDensity({ density, 1 }); }
-        void Layout() { owner.MeasureAndLayout(window); }
+        void Layout() {
+            owner.MeasureAndLayout(window);
+            for (ui::Owner* d : dialogs) {
+                d->SetContentConstraints(ui::Constraints{ 0, window.width, 0, window.height });
+                d->MeasureAndLayout(window);
+            }
+        }
         // mainClock.advanceTimeBy with autoAdvance off: moves the dispatcher's time and the frame
         // clock forward in 16 ms frames, running timers, frames, recomposition and layout.
         std::int64_t frameNanos = 0;
@@ -3204,6 +3212,12 @@ namespace {
         std::optional<ui::Rect> b;
         if (n) b = n->boundsInRoot;
         else if (const auto* tagged = FindTagged(h, label)) b = tagged->BoundsInRoot();
+        // Then the dialog windows (full-window, at the origin).
+        for (ui::Owner* dialog : h.dialogs) {
+            if (b) break;
+            const ui::SemanticsNode dt = dialog->BuildSemanticsTree();
+            if (const auto* dn = FindSemantics(dt, label)) b = dn->boundsInRoot;
+        }
         if (!b) return std::nullopt;
         const float d = h.owner.GetDensity().density;
         return ui::Rect{ b->left / d, b->top / d, b->right / d, b->bottom / d };
@@ -5244,4 +5258,194 @@ TEST(WideNavigationRailPlacesItsHeaderAtTheTop) {
         else if (arrangement == Arrangement::Center()) CHECK(Near(item->top, (rail->Height() - item->Height()) / 2));
         else CHECK(Near(item->top, rail->Height() - item->Height()));
     }
+}
+
+// Ported from Compose's ModalWideNavigationRailTest. The expanded rail opens a dialog window: the
+// harness records its owner and lays it out over the whole window.
+namespace {
+    struct ModalHarness : PhoneHarness {
+        struct Window final : ui::PlatformDialog {
+            ModalHarness* h;
+            ui::Owner* o;
+            Window(ModalHarness* h, ui::Owner* o) : h(h), o(o) { h->dialogs.push_back(o); }
+            ~Window() override { std::erase(h->dialogs, o); }
+            void Update(const ui::DialogWindowProperties&) override {}
+        };
+        ui::DialogHost host;
+        ModalHarness() {
+            host.create = [this](ui::Owner& o, const ui::DialogWindowProperties&, std::function<void()>) { return std::make_unique<Window>(this, &o); };
+            owner.SetDialogHost(host);
+        }
+        ~ModalHarness() {
+            composition.SetContent([] {});
+            composition.Recompose();
+        }
+    };
+    void ModalRail(ModalHarness& h, std::shared_ptr<WideNavigationRailState>& state, WideNavigationRailValue initial, bool hide,
+                   std::function<void()> header = {}) {
+        Themed(h, [&, initial, hide, header] {
+            state = RememberWideNavigationRailState(initial);
+            ModalWideNavigationRailOptions o;
+            o.state = state;
+            o.hideOnCollapse = hide;
+            o.header = header;
+            const bool expanded = state->TargetValue() == WideNavigationRailValue::Expanded;
+            ModalWideNavigationRail(Tag({}, "rail"), o, [expanded, hide] {
+                WideNavigationRailItem(true, [] {}, [] { NavIcon(); }, [] { Text("ItemText"); }, hide || expanded, Tag({}, "item"), {});
+            });
+        });
+        h.AdvanceTimeBy(1000);
+    }
+    // performSemanticsAction(OnClick) on the node described as `description`, in any window.
+    bool ClickDescribed(Harness& h, const std::string& description) {
+        std::vector<ui::Owner*> owners{ &h.owner };
+        owners.insert(owners.end(), h.dialogs.begin(), h.dialogs.end());
+        for (ui::Owner* o : owners) {
+            const ui::SemanticsNode tree = o->BuildSemanticsTree();
+            std::function<const ui::SemanticsNode*(const ui::SemanticsNode&)> find = [&](const ui::SemanticsNode& n) -> const ui::SemanticsNode* {
+                if (n.config.contentDescription == std::vector<std::string>{ description }) return &n;
+                for (const auto& c : n.children) if (const auto* r = find(c)) return r;
+                return nullptr;
+            };
+            if (const auto* n = find(tree)) {
+                if (!n->config.onClick) return false;
+                n->config.onClick();
+                return true;
+            }
+        }
+        return false;
+    }
+    const ui::SemanticsNode* FindIn(const ui::SemanticsNode& n, const std::function<bool(const ui::SemanticsNode&)>& pred) {
+        if (pred(n)) return &n;
+        for (const auto& c : n.children) if (const auto* r = FindIn(c, pred)) return r;
+        return nullptr;
+    }
+}
+
+TEST(ModalWideNavigationRailItemsAreASelectableGroup) {
+    ModalHarness h;
+    std::shared_ptr<WideNavigationRailState> state;
+    ModalRail(h, state, WideNavigationRailValue::Collapsed, false);
+    const auto tree = h.owner.BuildSemanticsTree();
+    const auto* item = FindSemantics(tree, "item");
+    CHECK(item != nullptr);
+    if (!item) return;
+    const auto* parent = ParentOf(tree, item);
+    CHECK(parent && parent->config.selectableGroup);
+}
+
+TEST(ModalWideNavigationRailExpandsIntoAWindowAndCollapses) {
+    ModalHarness h;
+    std::int64_t t = 1000;
+    std::shared_ptr<WideNavigationRailState> state;
+    std::vector<rt::Job> jobs;
+    ModalRail(h, state, WideNavigationRailValue::Collapsed, false,
+              [&] { Button([&] { jobs.push_back(rt::Launch(rt::Dispatcher::Main(), state->Toggle())); }, Tag({}, "header"), {}, [] {}); });
+    CHECK(h.dialogs.empty());
+    auto rail = BoundsDp(h, "rail");
+    CHECK(rail && Near(rail->Width(), 96));
+    Press(h, t, "header", true);
+    h.AdvanceTimeBy(1000);
+    CHECK(state->TargetValue() == WideNavigationRailValue::Expanded);
+    CHECK_EQ(h.dialogs.size(), std::size_t(1));
+    // The expanded rail (the item's parent, in the window) is the expanded minimum wide.
+    if (!h.dialogs.empty()) {
+        const auto tree = h.dialogs[0]->BuildSemanticsTree();
+        const auto* item = FindSemantics(tree, "item");
+        const auto* parent = item ? ParentOf(tree, item) : nullptr;
+        CHECK(parent && Near(parent->boundsInRoot.Width() / 2, 220));
+    }
+    // The collapsed rail behind keeps its width.
+    rail = BoundsDp(h, "rail");
+    CHECK(rail && Near(rail->Width(), 96));
+    jobs.push_back(rt::Launch(rt::Dispatcher::Main(), state->Toggle()));
+    h.AdvanceTimeBy(1000);
+    CHECK(state->TargetValue() == WideNavigationRailValue::Collapsed);
+    CHECK(h.dialogs.empty());
+    rail = BoundsDp(h, "rail");
+    CHECK(rail && Near(rail->Width(), 96));
+}
+
+TEST(ModalWideNavigationRailScrimCollapsesIt) {
+    for (bool hide : { false, true }) {
+        ModalHarness h;
+        std::shared_ptr<WideNavigationRailState> state;
+        ModalRail(h, state, WideNavigationRailValue::Expanded, hide);
+        CHECK(state->TargetValue() == WideNavigationRailValue::Expanded);
+        CHECK(ClickDescribed(h, "Close rail"));
+        h.AdvanceTimeBy(1000);
+        CHECK(state->TargetValue() == WideNavigationRailValue::Collapsed);
+        CHECK(h.dialogs.empty());
+        if (hide) CHECK(!BoundsDp(h, "item"));
+        else {
+            const auto rail = BoundsDp(h, "rail");
+            CHECK(rail && Near(rail->Width(), 96));
+        }
+    }
+}
+
+TEST(ModalWideNavigationRailHasAPaneTitle) {
+    ModalHarness h;
+    std::shared_ptr<WideNavigationRailState> state;
+    ModalRail(h, state, WideNavigationRailValue::Expanded, false);
+    CHECK_EQ(h.dialogs.size(), std::size_t(1));
+    if (h.dialogs.empty()) return;
+    const auto tree = h.dialogs[0]->BuildSemanticsTree();
+    const auto* pane = FindIn(tree, [](const ui::SemanticsNode& n) { return n.config.paneTitle == std::optional<std::string>("Navigation rail"); });
+    CHECK(pane != nullptr);
+    CHECK(pane && FindIn(*pane, [](const ui::SemanticsNode& n) { return n.config.testTag == "item"; }));
+}
+
+TEST(ModalWideNavigationRailHiddenOnCollapseSlidesInAndOut) {
+    {
+        ModalHarness h;
+        std::shared_ptr<WideNavigationRailState> state;
+        std::vector<rt::Job> jobs;
+        ModalRail(h, state, WideNavigationRailValue::Collapsed, true);
+        CHECK(!BoundsDp(h, "rail"));
+        jobs.push_back(rt::Launch(rt::Dispatcher::Main(), state->Expand()));
+        h.AdvanceTimeBy(1000);
+        CHECK(state->TargetValue() == WideNavigationRailValue::Expanded);
+        const auto rail = BoundsDp(h, "rail");
+        CHECK(rail && Near(rail->left, 0) && rail->Width() > 0);
+    }
+    ModalHarness h;
+    std::shared_ptr<WideNavigationRailState> state;
+    std::vector<rt::Job> jobs;
+    ModalRail(h, state, WideNavigationRailValue::Expanded, true);
+    CHECK(BoundsDp(h, "rail").has_value());
+    jobs.push_back(rt::Launch(rt::Dispatcher::Main(), state->Collapse()));
+    h.AdvanceTimeBy(1000);
+    CHECK(state->TargetValue() == WideNavigationRailValue::Collapsed);
+    CHECK(!BoundsDp(h, "rail"));
+}
+
+TEST(ModalWideNavigationRailHiddenOnCollapseSwipesAway) {
+    ModalHarness h;
+    std::int64_t t = 1000;
+    std::shared_ptr<WideNavigationRailState> state;
+    ModalRail(h, state, WideNavigationRailValue::Expanded, true);
+    const auto rail = BoundsDp(h, "rail");
+    CHECK(rail.has_value() && !h.dialogs.empty());
+    if (!rail || h.dialogs.empty()) return;
+    // swipeLeft: across the rail, right to left, in the window.
+    ui::Owner& window = *h.dialogs[0];
+    const float y = (rail->top + rail->bottom) / 2 * 2;
+    const float from = (rail->right - 1) * 2, to = rail->left * 2;
+    const auto touch = [&](ui::PointerEventType type, float x, bool down) {
+        ui::RawPointerEvent e;
+        e.type = type;
+        e.uptimeMillis = t += 10;
+        e.pointers.push_back({ 1, { x, y }, down, ui::PointerType::Touch, {} });
+        window.ProcessPointer(e);
+        rt::Dispatcher::Main().RunPending();
+        rt::Composition::RecomposeAll();
+        h.Layout();
+    };
+    touch(ui::PointerEventType::Press, from, true);
+    for (int i = 1; i <= 10; ++i) touch(ui::PointerEventType::Move, from + (to - from) * float(i) / 10, true);
+    touch(ui::PointerEventType::Release, to, false);
+    h.AdvanceTimeBy(1000);
+    CHECK(state->TargetValue() == WideNavigationRailValue::Collapsed);
+    CHECK(!BoundsDp(h, "rail"));
 }

@@ -6,6 +6,7 @@
 #include "kiln/material3/MaterialTheme.h"
 #include "kiln/material3/Surface.h"
 #include "kiln/material3/internal/ChildParentSemantics.h"
+#include "kiln/material3/internal/CoroutineScope.h"
 #include "kiln/material3/internal/GetString.h"
 #include "kiln/material3/tokens/ElevationTokens.h"
 #include "kiln/material3/tokens/MotionSchemeKeyTokens.h"
@@ -171,15 +172,6 @@ namespace kiln::material3 {
     // --- BasicTooltipBox ---------------------------------------------------------------------
 
     namespace {
-        // rememberCoroutineScope: launched tasks end when the composable leaves.
-        struct Launcher {
-            std::vector<rt::Job> jobs;
-            void Launch(rt::Task<> task) {
-                std::erase_if(jobs, [](const rt::Job& j) { return j.Done(); });
-                jobs.push_back(rt::Launch(rt::Dispatcher::Main(), std::move(task)));
-            }
-        };
-
         rt::Task<> Run(TooltipState state, MutatePriority priority) { co_await state.Show(priority); }
 
         // The long press's progress, which the show waits on (the isLongPressed StateFlow).
@@ -271,7 +263,7 @@ namespace kiln::material3 {
                              const TooltipState& state, const Modifier& modifier, const TooltipBoxOptions& options,
                              std::function<void()> content) {
             auto& c = *rt::Composition::Current();
-            auto& scope = c.Remember<std::shared_ptr<Launcher>>([] { return std::make_shared<Launcher>(); });
+            auto scope = internal::RememberCoroutineScope();
             auto& forceFocusableForKeyboardNav = c.Remember<std::shared_ptr<rt::State<bool>>>([] { return std::make_shared<rt::State<bool>>(false); });
             auto& receivedKeyboardFocus = c.Remember<std::shared_ptr<rt::State<bool>>>([] { return std::make_shared<rt::State<bool>>(false); });
             // Touch exploration or switch access users reach a tooltip action through focus.
