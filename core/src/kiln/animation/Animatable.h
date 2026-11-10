@@ -32,7 +32,8 @@ namespace kiln::anim {
         const Vec& Value() const { return m_Value.Get(); }
         float Float() const { return m_Value.Get()[0]; }
         const Vec& Velocity() const { return m_Velocity; }
-        const Vec& Target() const { return m_Target; }
+        // The value the running (or last) animation heads for; reading it subscribes too.
+        const Vec& Target() const { return m_Target.Get(); }
         bool IsRunning() const { return m_Running.Get(); }
         int Dims() const { return m_Dims; }
 
@@ -56,7 +57,7 @@ namespace kiln::anim {
         rt::State<Vec, rt::NeverEqual> m_Value;
         rt::State<bool> m_Running{ false };
         Vec m_Velocity{};
-        Vec m_Target{};
+        rt::State<Vec> m_Target;
         int m_Dims;
         std::uint64_t m_Generation = 0;
         std::optional<Vec> m_Lower, m_Upper;

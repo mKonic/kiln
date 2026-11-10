@@ -24,7 +24,7 @@ namespace kiln::anim {
         ++m_Generation;
         bool c;
         m_Value.Set(Clamp(value, c));
-        m_Target = m_Value.Peek();
+        m_Target.Set(m_Value.Peek());
         m_Velocity = {};
         m_Running.Set(false);
     }
@@ -40,7 +40,7 @@ namespace kiln::anim {
         const std::uint64_t gen = ++m_Generation;
         const float from = m_Value.Peek()[0];
         const std::int64_t duration = decay->DurationNanos(from, v0);
-        m_Target = { decay->TargetValue(from, v0), 0, 0, 0 };
+        m_Target.Set({ decay->TargetValue(from, v0), 0, 0, 0 });
         m_Running.Set(true);
         std::int64_t start = -1;
         for (;;) {
@@ -50,7 +50,7 @@ namespace kiln::anim {
             // Flings ignore the animator duration scale (DefaultFlingBehavior runs with scale 1).
             const std::int64_t play = frame - start;
             const bool done = play >= duration;
-            float value = done ? m_Target[0] : decay->ValueAt(play, from, v0);
+            float value = done ? m_Target.Peek()[0] : decay->ValueAt(play, from, v0);
             float velocity = done ? 0.0f : decay->VelocityAt(play, from, v0);
             bool clamped;
             Vec v = Clamp({ value, 0, 0, 0 }, clamped);
@@ -71,7 +71,7 @@ namespace kiln::anim {
         const std::uint64_t gen = ++m_Generation;
         const Vec from = m_Value.Peek();
         const Vec v0 = initialVelocity.value_or(m_Velocity);
-        m_Target = target;
+        m_Target.Set(target);
         m_Running.Set(true);
         const std::int64_t duration = spec->DurationNanos(from, target, v0, m_Dims);
         std::int64_t start = -1;
