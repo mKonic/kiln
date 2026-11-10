@@ -22,6 +22,7 @@
 #include "kiln/material3/NavigationBar.h"
 #include "kiln/material3/NavigationRail.h"
 #include "kiln/material3/ShortNavigationBar.h"
+#include "kiln/material3/WideNavigationRail.h"
 #include "kiln/material3/Menu.h"
 #include "kiln/material3/ButtonGroup.h"
 #include "kiln/runtime/Saveable.h"
@@ -4980,5 +4981,267 @@ TEST(ShortNavigationBarItemPlacesItsIconAndLabel) {
         Themed(h, [&] { ShortNavigationBarItem(false, [] {}, [] { NavIcon(Tag({}, "icon")); }, {}, Tag({}, "item"), {}); });
         const auto item = BoundsDp(h, "item"), icon = BoundsDp(h, "icon");
         CHECK(item && icon && Near(icon->left, (item->Width() - icon->Width()) / 2) && Near(icon->top, (item->Height() - icon->Height()) / 2));
+    }
+}
+
+// Ported from Compose's WideNavigationRailTest (the window is 412 x 800 dp).
+namespace {
+    void WideItem(int index, bool expanded, int selected = 0, std::function<void()> onClick = [] {}) {
+        WideNavigationRailItem(selected == index, std::move(onClick), [] { NavIcon(); }, [index] { Text("Item " + std::to_string(index)); }, expanded,
+                               Tag({}, "item" + std::to_string(index)), {});
+    }
+    WideNavigationRailOptions WideRail(WideNavigationRailValue value = WideNavigationRailValue::Collapsed) {
+        WideNavigationRailOptions o;
+        o.state = RememberWideNavigationRailState(value);
+        return o;
+    }
+}
+
+TEST(WideNavigationRailIsASelectableTraversalGroup) {
+    PhoneHarness h;
+    Themed(h, [&] { WideNavigationRail({}, {}, [] { WideItem(0, false); }); });
+    const auto tree = h.owner.BuildSemanticsTree();
+    const auto* item = FindSemantics(tree, "item0");
+    CHECK(item != nullptr);
+    if (!item) return;
+    const auto* parent = ParentOf(tree, item);
+    CHECK(parent && parent->config.selectableGroup && parent->config.isTraversalGroup);
+}
+
+TEST(WideNavigationRailSizes) {
+    {
+        PhoneHarness h;
+        Themed(h, [&] { WideNavigationRail(Tag({}, "rail"), WideRail(), [] { for (int i = 0; i < 3; ++i) WideItem(i, false); }); });
+        const auto b = BoundsDp(h, "rail");
+        CHECK(b && Near(b->Width(), 96) && Near(b->Height(), 800));
+    }
+    {
+        PhoneHarness h;
+        Themed(h, [&] {
+            WideNavigationRail(Tag({}, "rail"), WideRail(WideNavigationRailValue::Expanded), [] { for (int i = 0; i < 3; ++i) WideItem(i, true); });
+        });
+        const auto b = BoundsDp(h, "rail");
+        CHECK(b && Near(b->Width(), 220) && Near(b->Height(), 800));
+    }
+    PhoneHarness h;
+    Themed(h, [&] {
+        auto o = WideRail(WideNavigationRailValue::Expanded);
+        o.header = [] { Spacer(Width({}, 400_dp)); };
+        WideNavigationRail(Tag({}, "rail"), o, [] { for (int i = 0; i < 3; ++i) WideItem(i, true); });
+    });
+    const auto b = BoundsDp(h, "rail");
+    CHECK(b && Near(b->Width(), 360));
+}
+
+TEST(WideNavigationRailTogglesBetweenCollapsedAndExpanded) {
+    for (auto initial : { WideNavigationRailValue::Collapsed, WideNavigationRailValue::Expanded }) {
+        PhoneHarness h;
+        std::int64_t t = 1000;
+        std::vector<rt::Job> jobs;
+        Themed(h, [&] {
+            auto o = WideRail(initial);
+            const auto state = o.state;
+            o.header = [&, state] { Button([&, state] { jobs.push_back(rt::Launch(rt::Dispatcher::Main(), state->Toggle())); }, Tag({}, "header"), {}, [] {}); };
+            WideNavigationRail(Tag({}, "rail"), o, [] {});
+        });
+        const bool expanded = initial == WideNavigationRailValue::Expanded;
+        auto b = BoundsDp(h, "rail");
+        CHECK(b && Near(b->Width(), expanded ? 220 : 96));
+        Press(h, t, "header", true);
+        h.AdvanceTimeBy(1000);
+        b = BoundsDp(h, "rail");
+        CHECK(b && Near(b->Width(), expanded ? 96 : 220));
+    }
+}
+
+TEST(WideNavigationRailPadsByItsInsetsAndContentPadding) {
+    {
+        PhoneHarness h;
+        Themed(h, [&] {
+            WideNavigationRailOptions o;
+            o.windowInsets = WindowInsets::Fixed(13_dp, 13_dp, 13_dp, 13_dp);
+            WideNavigationRail({}, o, [] { Box(Tag(FillMax({}, Axis::Both), "content"), Alignment::TopStart(), false, {}); });
+        });
+        const auto b = BoundsDp(h, "content");
+        CHECK(b && Near(b->top, 13 + 44) && Near(b->left, 13));
+    }
+    PhoneHarness h;
+    Themed(h, [&] {
+        WideNavigationRailOptions o;
+        o.windowInsets = WindowInsets{};
+        o.contentPadding = { 10_dp, 10_dp, 10_dp, 10_dp };
+        WideNavigationRail({}, o, [] { Box(Tag(FillMax({}, Axis::Both), "content"), Alignment::TopStart(), false, {}); });
+    });
+    const auto b = BoundsDp(h, "content");
+    CHECK(b && Near(b->top, 10) && Near(b->left, 10));
+}
+
+TEST(WideNavigationRailItemColours) {
+    PhoneHarness h;
+    std::vector<Color> seen;
+    const auto record = [&] { seen.push_back(rt::Composition::Current()->Read(LocalContentColor)); };
+    const Color red(0xFFFF0000u), blue(0xFF0000FFu), green(0xFF00FF00u), white(0xFFFFFFFFu), gray(0xFF888888u), black(0xFF000000u);
+    Themed(h, [&] {
+        const auto custom = WideNavigationRailItemDefaults::colors().Copy(red, blue, blue, Color::Unspecified(), green, white, gray, black);
+        const auto partial = WideNavigationRailItemDefaults::colors(red, Color::Unspecified(), Color::Unspecified(), Color::Unspecified(),
+                                                                    Color::Unspecified(), green);
+        WideNavigationRail({}, {}, [&] {
+            WideNavigationRailItemOptions o;
+            o.colors = custom;
+            WideNavigationRailItem(true, [] {}, record, record, false, {}, o);
+            WideNavigationRailItem(false, [] {}, record, record, false, {}, o);
+            o.enabled = false;
+            WideNavigationRailItem(false, [] {}, record, record, false, {}, o);
+            o.enabled = true;
+            o.colors = partial;
+            WideNavigationRailItem(true, [] {}, record, record, false, {}, o);
+            WideNavigationRailItem(false, [] {}, record, record, false, {}, o);
+        });
+    });
+    const auto& s = LightColorScheme();
+    CHECK(seen.size() >= 10);
+    if (seen.size() < 10) return;
+    CHECK(seen[0] == red && seen[1] == blue);
+    CHECK(seen[2] == green && seen[3] == white);
+    CHECK(seen[4] == gray && seen[5] == black);
+    CHECK(seen[6] == red && seen[7] == s.secondary);
+    CHECK(seen[8] == s.onSurfaceVariant && seen[9] == green);
+}
+
+TEST(WideNavigationRailSelectsAClickedItemButNotADisabledOne) {
+    PhoneHarness h;
+    std::int64_t t = 1000;
+    rt::State<int> selected{ 0 };
+    int disabledClicks = 0;
+    Themed(h, [&] {
+        WideNavigationRail({}, {}, [&] {
+            for (int i = 0; i < 3; ++i) WideItem(i, false, selected.Get(), [&, i] { selected.Set(i); });
+            WideNavigationRailItemOptions off;
+            off.enabled = false;
+            WideNavigationRailItem(true, [&] { ++disabledClicks; }, [] { NavIcon(); }, [] { Text("Off"); }, false, Tag({}, "off"), off);
+        });
+    });
+    const auto isSelected = [&](const char* tag) {
+        const auto tree = h.owner.BuildSemanticsTree();
+        const auto* n = FindSemantics(tree, tag);
+        return n && n->config.selected == std::optional<bool>(true);
+    };
+    const auto off = [&] {
+        const auto tree = h.owner.BuildSemanticsTree();
+        const auto* n = FindSemantics(tree, "off");
+        return n && n->config.role == ui::Role::Tab && n->config.disabled && bool(n->config.onClick);
+    };
+    CHECK(off());
+    CHECK(isSelected("item0") && !isSelected("item1") && !isSelected("item2"));
+    Press(h, t, "item2", true);
+    h.AdvanceTimeBy(16);
+    CHECK(!isSelected("item0") && !isSelected("item1") && isSelected("item2"));
+    Press(h, t, "off", true);
+    CHECK_EQ(disabledClicks, 0);
+}
+
+TEST(WideNavigationRailItemGrowsForLongLabels) {
+    for (auto position : { NavigationItemIconPosition::Top, NavigationItemIconPosition::Start }) {
+        PhoneHarness h;
+        Themed(h, [&] {
+            WideNavigationRailItemOptions o;
+            o.iconPosition = position;
+            WideNavigationRailItem(true, [] {}, [] { NavIcon(); }, [] { Text("Long\nLabel\nMultiple\nLines"); }, false, Tag({}, "item"), o);
+        });
+        const auto b = BoundsDp(h, "item");
+        CHECK(b && b->Height() > (position == NavigationItemIconPosition::Top ? 64 : 48));
+    }
+}
+
+TEST(WideNavigationRailItemPlacesItsIconAndLabel) {
+    const auto place = [](bool expanded, bool label, bool custom = false,
+                          PaddingValues collapsed = WideNavigationRailItemDefaults::IndicatorCollapsedPadding,
+                          PaddingValues expandedPadding = WideNavigationRailItemDefaults::IndicatorExpandedPadding) {
+        PhoneHarness h;
+        Themed(h, [&] {
+            WideNavigationRailItemOptions o;
+            if (custom) o.indicatorPadding = WideNavigationRailItemDefaults::indicatorPadding(expanded, collapsed, expandedPadding);
+            WideNavigationRailItem(true, [] {}, [] { NavIcon(Tag({}, "icon")); },
+                                   label ? std::function<void()>([] { Text("Label", Tag({}, "label")); }) : std::function<void()>{}, expanded,
+                                   Tag({}, "item"), o);
+        });
+        return std::tuple{ BoundsDp(h, "item"), BoundsDp(h, "icon"), BoundsDp(h, "label") };
+    };
+    {
+        // No label: a 16 dp indicator padding around the icon, and 20 dp either side.
+        auto [item, icon, label] = place(false, false);
+        CHECK(item && icon);
+        if (item && icon) {
+            CHECK(Near(item->Width(), 16 + icon->Width() + 16 + 40) && Near(item->Height(), 16 + icon->Height() + 16));
+            CHECK(Near(icon->left, (item->Width() - icon->Width()) / 2) && Near(icon->top, (item->Height() - icon->Height()) / 2));
+        }
+    }
+    {
+        // Icon on top: 20 + 16 dp in from either side, 4 dp below the top, the label 4 + 4 dp below.
+        auto [item, icon, label] = place(false, true);
+        CHECK(item && icon && label);
+        if (item && icon && label) {
+            CHECK(Near(icon->left - item->left, 36) && Near(item->right - icon->right, 36));
+            CHECK(Near(icon->top - item->top, 4) && Near(label->top - icon->bottom, 8));
+        }
+    }
+    {
+        // Icon at the start: 20 + 16 dp in, 16 dp from the top and bottom, the label 8 dp after it
+        // and 16 dp from the end.
+        auto [item, icon, label] = place(true, true);
+        CHECK(item && icon && label);
+        if (item && icon && label) {
+            CHECK(Near(icon->left - item->left, 36) && Near(icon->top - item->top, 16) && Near(item->bottom - icon->bottom, 16));
+            CHECK(Near(item->right - label->right, 16) && Near(label->left - icon->right, 8));
+        }
+    }
+    {
+        // Custom padding, icon on top.
+        auto [item, icon, label] = place(false, true, true, PaddingValues{ 5_dp, 3_dp, 5_dp, 3_dp });
+        CHECK(item && icon && label);
+        if (item && icon && label) {
+            CHECK(Near(icon->left - item->left, 25) && Near(item->right - icon->right, 25));
+            CHECK(Near(icon->top - item->top, 3) && Near(label->top - icon->bottom, 4 + 3));
+        }
+    }
+    {
+        // Custom padding, icon at the start.
+        auto [item, icon, label] = place(true, true, true, WideNavigationRailItemDefaults::IndicatorCollapsedPadding,
+                                         PaddingValues{ 3_dp, 13_dp, 3_dp, 13_dp });
+        CHECK(item && icon && label);
+        if (item && icon && label) {
+            CHECK(Near(icon->left - item->left, 23) && Near(icon->top - item->top, 13));
+            CHECK(Near(item->right - label->right, 3) && Near(item->bottom - icon->bottom, 13));
+        }
+    }
+}
+
+TEST(WideNavigationRailItemKeepsTheIconDescriptionWithoutALabel) {
+    PhoneHarness h;
+    Themed(h, [&] { WideNavigationRailItem(false, [] {}, [] { NavIcon({}, "Favorite"); }, {}, false, Tag({}, "item"), {}); });
+    const auto tree = h.owner.BuildSemanticsTree();
+    const auto* n = FindSemantics(tree, "item");
+    CHECK(n && n->config.contentDescription == std::vector<std::string>{ "Favorite" });
+}
+
+TEST(WideNavigationRailPlacesItsHeaderAtTheTop) {
+    for (auto arrangement : { Arrangement::Top(), Arrangement::Center(), Arrangement::Bottom() }) {
+        PhoneHarness h;
+        Themed(h, [&] {
+            WideNavigationRailOptions o;
+            o.arrangement = arrangement;
+            o.windowInsets = WindowInsets{};
+            o.header = [] { Box(Tag(SizeMod({}, 10_dp, 10_dp), "header"), Alignment::TopStart(), false, {}); };
+            WideNavigationRail(Tag({}, "rail"), o, [] {
+                WideNavigationRailItem(true, [] {}, [] { NavIcon(); }, [] { Text("ItemText"); }, false, Tag({}, "item"), {});
+            });
+        });
+        const auto rail = BoundsDp(h, "rail"), header = BoundsDp(h, "header"), item = BoundsDp(h, "item");
+        CHECK(rail && header && item);
+        if (!rail || !header || !item) continue;
+        CHECK(Near(header->top, 44) && Near(header->left, 0));
+        if (arrangement == Arrangement::Top()) CHECK(Near(item->top, 44 + header->Height() + 40));
+        else if (arrangement == Arrangement::Center()) CHECK(Near(item->top, (rail->Height() - item->Height()) / 2));
+        else CHECK(Near(item->top, rail->Height() - item->Height()));
     }
 }

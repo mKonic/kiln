@@ -8,11 +8,12 @@ namespace kiln::material3::internal {
         }
     }
 
-    std::shared_ptr<anim::Animatable> AnimatedProgress(bool on, anim::SpecPtr spec, rt::Key key) {
+    std::shared_ptr<anim::Animatable> AnimatedFloat(float target, anim::SpecPtr spec, rt::Key key) {
         auto& c = *rt::Composition::Current();
-        auto value = c.Remember<std::shared_ptr<anim::Animatable>>([on] { return std::make_shared<anim::Animatable>(on ? 1.0f : 0.0f); }, {}, key);
-        c.LaunchedEffect(rt::Keys(on), [value, on, spec]() -> rt::Task<> { return AnimateTo(value, on ? 1.0f : 0.0f, spec); }, key);
+        auto value = c.Remember<std::shared_ptr<anim::Animatable>>([target] { return std::make_shared<anim::Animatable>(target); }, {}, key);
+        c.LaunchedEffect(rt::Keys(target), [value, target, spec]() -> rt::Task<> { return AnimateTo(value, target, spec); }, key);
         return value;
     }
+    std::shared_ptr<anim::Animatable> AnimatedProgress(bool on, anim::SpecPtr spec, rt::Key key) { return AnimatedFloat(on ? 1.0f : 0.0f, std::move(spec), key); }
 
 }

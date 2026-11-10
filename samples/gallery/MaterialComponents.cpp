@@ -24,6 +24,7 @@
 #include <kiln/material3/NavigationBar.h>
 #include <kiln/material3/NavigationRail.h>
 #include <kiln/material3/ShortNavigationBar.h>
+#include <kiln/material3/WideNavigationRail.h>
 #include <kiln/material3/Scaffold.h>
 #include <kiln/material3/ProgressIndicator.h>
 #include <kiln/material3/WavyProgressIndicator.h>
@@ -356,6 +357,27 @@ namespace kiln::gallery {
                 });
             }
             m3::Text(std::string("Short: ") + shortTabs[shortItem->Get()]);
+
+            auto* wideItem = &RememberState(0);
+            const auto wideState = m3::RememberWideNavigationRailState();
+            auto& toggleJob = rt::Composition::Current()->Remember<std::shared_ptr<rt::Job>>([] { return std::make_shared<rt::Job>(); });
+            const auto jobHolder = toggleJob;
+            const bool wideExpanded = wideState->TargetValue() == m3::WideNavigationRailValue::Expanded;
+            const char* wide[] = { "Home", "Photos", "Shared", "Trash" };
+            Row(Height({}, 400_dp), Arrangement::Start(), AlignmentV::Top(), [=] {
+                m3::WideNavigationRailOptions options;
+                options.state = wideState;
+                options.windowInsets = WindowInsets{};
+                options.header = [=] {
+                    m3::TextButton([=] { *jobHolder = rt::Launch(rt::Dispatcher::Main(), wideState->Toggle()); }, {}, {},
+                                   [=] { m3::Text(wideExpanded ? "Collapse rail" : "Expand rail"); });
+                };
+                m3::WideNavigationRail({}, options, [=] {
+                    for (int i = 0; i < 4; ++i)
+                        m3::WideNavigationRailItem(wideItem->Get() == i, [=] { wideItem->Set(i); }, navIcon, [=] { m3::Text(wide[i]); }, wideExpanded, {}, {});
+                });
+                Box(Padding({}, 16_dp), Alignment::TopStart(), false, [=] { m3::Text(std::string("Wide: ") + wide[wideItem->Get()]); });
+            });
 
             auto* railItem = &RememberState(0);
             auto* railLabels = &RememberState(true);

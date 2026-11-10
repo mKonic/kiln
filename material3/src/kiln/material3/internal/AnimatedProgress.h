@@ -11,5 +11,7 @@
 namespace kiln::material3::internal {
 
     std::shared_ptr<anim::Animatable> AnimatedProgress(bool on, anim::SpecPtr spec, rt::Key key = {});
+    // animateFloatAsState / animateDpAsState (in dp) for any target, read the same way.
+    std::shared_ptr<anim::Animatable> AnimatedFloat(float target, anim::SpecPtr spec, rt::Key key = {});
 
 }
