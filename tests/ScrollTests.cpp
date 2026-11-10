@@ -56,6 +56,29 @@ TEST(DragScrollsByFingerMinusSlop) {
     CHECK_EQ(state.Value(), 42);
 }
 
+TEST(MovesBetweenFramesAllScroll) {
+    // A slow frame: several MotionEvents arrive before the main loop runs again. Each one's
+    // movement scrolls (Compose resumes awaitPointerEvent within the dispatch).
+    Harness h;
+    ScrollState state;
+    h.Run([&] { Tall(state, 10); });
+    const auto send = [&](PointerEventType type, float y, bool down, std::int64_t t) {
+        RawPointerEvent e;
+        e.type = type;
+        e.uptimeMillis = t;
+        e.pointers.push_back({ 1, { 50, y }, down, PointerType::Touch, {} });
+        h.owner.ProcessPointer(e);
+    };
+    send(PointerEventType::Press, 90, true, 0);
+    send(PointerEventType::Move, 80, true, 100);
+    send(PointerEventType::Move, 70, true, 200);   // 20 up: 12 past slop
+    send(PointerEventType::Move, 50, true, 300);
+    send(PointerEventType::Move, 40, true, 400);   // 30 more
+    h.d.RunPending();
+    h.Pump();
+    CHECK_EQ(state.Value(), 42);
+}
+
 TEST(FlingContinuesAndStopsAtTheEdge) {
     Harness h;
     ScrollState state;
