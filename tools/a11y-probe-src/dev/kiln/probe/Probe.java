@@ -38,9 +38,15 @@ public final class Probe extends Instrumentation {
                 c = c.trim();
                 if (c.isEmpty()) continue;
                 out.append("> ").append(c).append('\n');
-                run(ua, c);
-                try { ua.waitForIdle(150, 2000); } catch (Exception ignored) {}
+                long started = android.os.SystemClock.uptimeMillis();
+                try { run(ua, c); }
+                finally { out.append("  (").append(android.os.SystemClock.uptimeMillis() - started).append(" ms)\n"); }
+                // Short: animating content (progress indicators) never idles; expect: and reject: poll.
+                try { ua.waitForIdle(100, 300); } catch (Exception ignored) {}
             }
+        } catch (AssertionError t) {
+            out.append("FAILED ").append(t.getMessage()).append('\n');
+            dumpTo(ua);
         } catch (Throwable t) {
             out.append("error: ").append(t).append('\n');
         }
@@ -48,6 +54,13 @@ public final class Probe extends Instrumentation {
         Bundle b = new Bundle();
         b.putString(Instrumentation.REPORT_KEY_STREAMRESULT, out.toString());
         finish(0, b);
+    }
+
+    private void dumpTo(UiAutomation ua) {
+        AccessibilityNodeInfo root = ua.getRootInActiveWindow();
+        out.append("> dump (at failure)\n");
+        verbose = false;
+        dump(root, 0);
     }
 
     private void run(UiAutomation ua, String c) throws Exception {
@@ -73,6 +86,29 @@ public final class Probe extends Instrumentation {
             android.os.SystemClock.sleep(Math.max(0, down + duration - android.os.SystemClock.uptimeMillis()));
             ok &= touch(ua, down, android.os.SystemClock.uptimeMillis(), android.view.MotionEvent.ACTION_UP, x2, y2);
             out.append("  swipe -> ").append(ok).append('\n');
+            return;
+        }
+        if (verb.equals("back")) { out.append("  back -> ").append(ua.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK)).append('\n'); return; }
+        if (verb.equals("shot")) {
+            // shot:<name>: a screenshot into this package's external files (tools/a11y-probe pulls them).
+            android.graphics.Bitmap bitmap = ua.takeScreenshot();
+            if (bitmap == null) throw new IllegalStateException("screenshot failed");
+            java.io.File file = new java.io.File(getContext().getExternalFilesDir(null), arg + ".png");
+            try (java.io.FileOutputStream f = new java.io.FileOutputStream(file)) { bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, f); }
+            out.append("  shot -> ").append(file).append('\n');
+            return;
+        }
+        if (verb.equals("expect") || verb.equals("reject")) {
+            // Waits (up to 3 s) for a visible node with that text or description to appear / go away.
+            boolean want = verb.equals("expect"), seen = !want;
+            for (long end = android.os.SystemClock.uptimeMillis() + 3000; ; Thread.sleep(50)) {
+                AccessibilityNodeInfo r = ua.getRootInActiveWindow();
+                AccessibilityNodeInfo found = r == null ? null : findByText(r, arg);
+                seen = found != null && found.isVisibleToUser();
+                if (seen == want || android.os.SystemClock.uptimeMillis() > end) break;
+            }
+            if (seen != want) throw new AssertionError((want ? "missing: " : "unexpected: ") + arg);
+            out.append("  ").append(verb).append(" -> true\n");
             return;
         }
         if (verb.equals("clip")) {
@@ -107,15 +143,71 @@ public final class Probe extends Instrumentation {
             return;
         }
         String find = arg, value = null;
-        if (verb.equals("settext") || verb.equals("setprogress") || verb.equals("action")) { find = arg.substring(0, arg.indexOf('=')); value = arg.substring(arg.indexOf('=') + 1); }
+        if ((verb.equals("press") && arg.contains("=")) || verb.equals("settext") || verb.equals("setprogress") || verb.equals("action")) { find = arg.substring(0, arg.indexOf('=')); value = arg.substring(arg.indexOf('=') + 1); }
         AccessibilityNodeInfo n = findByText(root, find);
-        if (n == null) { out.append("not found: ").append(find).append('\n'); return; }
+        // The tree changes under us (a popup closing, a recomposition): wait for the node as
+        // expect: does before giving up (reach: then scrolls for it).
+        for (long end = android.os.SystemClock.uptimeMillis() + (verb.equals("reach") ? 500 : 3000);
+             n == null && android.os.SystemClock.uptimeMillis() < end; ) {
+            Thread.sleep(50);
+            AccessibilityNodeInfo r = ua.getRootInActiveWindow();
+            if (r != null) { root = r; n = findByText(root, find); }
+        }
+        if (n == null && verb.equals("reach")) {
+            // Scrolls the first scrollable forward until the node exists.
+            java.util.List<AccessibilityNodeInfo> list = new java.util.ArrayList<>();
+            scrollables(root, list);
+            for (int i = 0; i < 40 && n == null && !list.isEmpty() && list.get(0).performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD); i++) {
+                try { ua.waitForIdle(100, 1000); } catch (Exception ignored) {}
+                root = ua.getRootInActiveWindow();
+                n = findByText(root, find);
+            }
+        }
+        if (n == null) throw new AssertionError("not found: " + find);
         boolean ok;
         switch (verb) {
+            case "reach": {
+                // Into the upper half of the screen, so popups below it have room.
+                ok = n.performAction(android.R.id.accessibilityActionShowOnScreen);
+                try { ua.waitForIdle(100, 1000); } catch (Exception ignored) {}
+                Rect r = new Rect(), screen = new Rect();
+                root.getBoundsInScreen(screen);
+                int lastY = Integer.MIN_VALUE;
+                for (int attempt = 0; attempt < 3; attempt++) {
+                    n.refresh();
+                    n.getBoundsInScreen(r);
+                    // Done when in the upper half, or when the content no longer moves (its end).
+                    if (r.centerY() <= screen.centerY() || r.centerY() == lastY) break;
+                    lastY = r.centerY();
+                    long down = android.os.SystemClock.uptimeMillis();
+                    int x = screen.centerX(), from = r.centerY(), to = screen.top + screen.height() / 4;
+                    // A slow drag (no fling), long enough to pass touch slop.
+                    touch(ua, down, down, android.view.MotionEvent.ACTION_DOWN, x, from);
+                    for (int i = 1; i <= 30; i++) {
+                        android.os.SystemClock.sleep(16);
+                        touch(ua, down, android.os.SystemClock.uptimeMillis(), android.view.MotionEvent.ACTION_MOVE, x, from + (to - from) * i / 30f);
+                    }
+                    android.os.SystemClock.sleep(200);
+                    touch(ua, down, android.os.SystemClock.uptimeMillis(), android.view.MotionEvent.ACTION_UP, x, to);
+                    try { ua.waitForIdle(100, 300); } catch (Exception ignored) {}
+                }
+                break;
+            }
+            case "tap": case "press": {
+                // A real touch at the node's centre (press holds it for `=ms`, default 800).
+                Rect r = new Rect();
+                n.getBoundsInScreen(r);
+                long hold = verb.equals("tap") ? 50 : value == null ? 800 : Long.parseLong(value);
+                long down = android.os.SystemClock.uptimeMillis();
+                ok = touch(ua, down, down, android.view.MotionEvent.ACTION_DOWN, r.exactCenterX(), r.exactCenterY());
+                android.os.SystemClock.sleep(hold);
+                ok &= touch(ua, down, android.os.SystemClock.uptimeMillis(), android.view.MotionEvent.ACTION_UP, r.exactCenterX(), r.exactCenterY());
+                break;
+            }
             // Like TalkBack on the unmerged tree: the nearest clickable node at or above the match.
             case "click": ok = clickableAt(n, false).performAction(AccessibilityNodeInfo.ACTION_CLICK); break;
             case "longclick": ok = clickableAt(n, true).performAction(AccessibilityNodeInfo.ACTION_LONG_CLICK); break;
-            case "focus": ok = n.performAction(AccessibilityNodeInfo.ACTION_FOCUS); break;
+            case "focus": ok = focusableAt(n).performAction(AccessibilityNodeInfo.ACTION_FOCUS); break;
             case "a11yfocus": ok = n.performAction(AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS); break;
             case "show": ok = n.performAction(android.R.id.accessibilityActionShowOnScreen); break;
             case "word": case "char": case "line": case "para": {
@@ -160,15 +252,32 @@ public final class Probe extends Instrumentation {
     }
 
     private static boolean touch(UiAutomation ua, long down, long time, int action, float x, float y) {
-        android.view.MotionEvent event = android.view.MotionEvent.obtain(down, time, action, x, y, 0);
-        event.setSource(android.view.InputDevice.SOURCE_TOUCHSCREEN);
-        try { return ua.injectInputEvent(event, true); }
+        // A finger: the short obtain() leaves the tool type unknown, which touch-only gestures
+        // (a tooltip's long press, for one) ignore, as Compose's do.
+        android.view.MotionEvent.PointerProperties props = new android.view.MotionEvent.PointerProperties();
+        props.id = 0;
+        props.toolType = android.view.MotionEvent.TOOL_TYPE_FINGER;
+        android.view.MotionEvent.PointerCoords coords = new android.view.MotionEvent.PointerCoords();
+        coords.x = x;
+        coords.y = y;
+        coords.pressure = 1;
+        coords.size = 1;
+        android.view.MotionEvent event = android.view.MotionEvent.obtain(down, time, action, 1,
+            new android.view.MotionEvent.PointerProperties[] { props }, new android.view.MotionEvent.PointerCoords[] { coords },
+            0, 0, 1, 1, 0, 0, android.view.InputDevice.SOURCE_TOUCHSCREEN, 0);
+        // Waiting for each move to be dispatched paces a drag at hundreds of ms per event.
+        try { return ua.injectInputEvent(event, action != android.view.MotionEvent.ACTION_MOVE); }
         finally { event.recycle(); }
     }
 
     private static AccessibilityNodeInfo clickableAt(AccessibilityNodeInfo n, boolean longClick) {
         for (AccessibilityNodeInfo at = n; at != null; at = at.getParent())
             if (longClick ? at.isLongClickable() : at.isClickable()) return at;
+        return n;
+    }
+
+    private static AccessibilityNodeInfo focusableAt(AccessibilityNodeInfo n) {
+        for (AccessibilityNodeInfo at = n; at != null; at = at.getParent()) if (at.isFocusable()) return at;
         return n;
     }
 

@@ -1,5 +1,11 @@
 #include "MaterialComponents.h"
 
+#include <cstdlib>
+#include <vector>
+#if defined(__ANDROID__)
+#include <sys/system_properties.h>
+#endif
+
 #include <kiln/foundation/Animate.h>
 #include <kiln/foundation/Compose.h>
 #include <kiln/foundation/Flow.h>
@@ -628,7 +634,34 @@ namespace kiln::gallery {
         }
     }
 
-    void MaterialComponents() {
+    namespace {
+        struct Section { const char* key; const char* title; void (*content)(); };
+        const std::vector<Section>& Sections() {
+            static const std::vector<Section> sections{
+                { "segmented", "Segmented buttons", SegmentedButtons }, { "split", "Split buttons", SplitButtons },
+                { "tooltips", "Tooltips", Tooltips }, { "menus", "Menus", Menus }, { "groups", "Button groups", ButtonGroups },
+                { "sliders", "Sliders", Sliders }, { "progress", "Progress indicators", ProgressIndicators }, { "lists", "Lists", Lists },
+                { "chips", "Chips", Chips }, { "cards", "Cards", Cards }, { "selection", "", SelectionControls },
+                { "fabmenus", "FAB menus", FabMenus }, { "fabs", "Floating action buttons", FloatingActionButtons },
+                { "toggles", "Toggle buttons", ToggleButtons }, { "buttons", "Material buttons", Buttons },
+                { "iconbuttons", "Icon buttons", IconButtons },
+            };
+            return sections;
+        }
+    }
+
+    std::string RequestedSection() {
+#if defined(__ANDROID__)
+        char value[PROP_VALUE_MAX] = {};
+        __system_property_get("debug.kiln.gallery.section", value);
+        return value;
+#else
+        const char* value = std::getenv("KILN_GALLERY_SECTION");
+        return value ? value : "";
+#endif
+    }
+
+    void MaterialComponents(const std::string& only) {
         auto& theme = RememberState(0);
         const bool dark = IsSystemInDarkTheme();
         m3::MaterialThemeArgs args;
@@ -638,60 +671,23 @@ namespace kiln::gallery {
             args.colorScheme = dynamic.value_or(dark ? m3::DarkColorScheme() : m3::LightColorScheme());
         } else args.colorScheme = m3::LightColorScheme();
         auto* selection = &theme;
-        m3::MaterialTheme(args, [selection] {
-            m3::Surface(FillMax({}, Axis::Horizontal), {}, [selection] {
-                Column(Padding({}, 16_dp), Arrangement::SpacedBy(8_dp), AlignmentH::Start(), [selection] {
+        m3::MaterialTheme(args, [selection, only] {
+            m3::Surface(FillMax({}, Axis::Horizontal), {}, [selection, only] {
+                Column(Padding({}, 16_dp), Arrangement::SpacedBy(8_dp), AlignmentH::Start(), [selection, only] {
                     FlowRow({}, Arrangement::SpacedBy(8_dp), Arrangement::SpacedBy(8_dp), AlignmentV::CenterVertically(), [selection] {
                         m3::TextButton([selection] { selection->Set(0); }, {}, {}, [] { m3::Text("Light"); });
                         m3::TextButton([selection] { selection->Set(1); }, {}, {}, [] { m3::Text("Dark"); });
                         m3::TextButton([selection] { selection->Set(2); }, {}, {}, [] { m3::Text("Dynamic"); });
                     });
-                    m3::Text("Segmented buttons");
-                    SegmentedButtons();
-                    m3::HorizontalDivider();
-                    m3::Text("Split buttons");
-                    SplitButtons();
-                    m3::HorizontalDivider();
-                    m3::Text("Tooltips");
-                    Tooltips();
-                    m3::HorizontalDivider();
-                    m3::Text("Menus");
-                    Menus();
-                    m3::HorizontalDivider();
-                    m3::Text("Button groups");
-                    ButtonGroups();
-                    m3::HorizontalDivider();
-                    m3::Text("Sliders");
-                    Sliders();
-                    m3::HorizontalDivider();
-                    m3::Text("Progress indicators");
-                    ProgressIndicators();
-                    m3::HorizontalDivider();
-                    m3::Text("Lists");
-                    Lists();
-                    m3::HorizontalDivider();
-                    m3::Text("Chips");
-                    Chips();
-                    m3::HorizontalDivider();
-                    m3::Text("Cards");
-                    Cards();
-                    m3::HorizontalDivider();
-                    SelectionControls();
-                    m3::HorizontalDivider();
-                    m3::Text("FAB menus");
-                    FabMenus();
-                    m3::HorizontalDivider();
-                    m3::Text("Floating action buttons");
-                    FloatingActionButtons();
-                    m3::HorizontalDivider();
-                    m3::Text("Toggle buttons");
-                    ToggleButtons();
-                    m3::HorizontalDivider();
-                    m3::Text("Material buttons");
-                    Buttons();
-                    m3::HorizontalDivider();
-                    m3::Text("Icon buttons");
-                    IconButtons();
+                    // The sections, or only the one named (tools/gallery-smoke tests one at a time).
+                    bool first = true;
+                    for (const auto& section : Sections()) {
+                        if (!only.empty() && only != section.key) continue;
+                        if (!first) m3::HorizontalDivider();
+                        first = false;
+                        if (*section.title) m3::Text(section.title);
+                        section.content();
+                    }
                 });
             });
         });

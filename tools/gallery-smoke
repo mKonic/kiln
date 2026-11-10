@@ -1,0 +1,94 @@
+#!/usr/bin/env python3
+"""gallery-smoke [component...]: drives the installed gallery's Material components on a device
+with real touches and accessibility actions, one probe run per section (launched alone), and saves screenshots to
+look at. Behaviour belongs in kiln_tests (tools/device-test); this checks what only the device
+shows: real input, popups in real windows, accessibility, fonts, and how it looks.
+
+Launches: font scale 1.0 left-to-right and 2.0 right-to-left, each in the Light, Dark and Dynamic
+themes. Needs $ANDROID_SERIAL; restores the font scale and the app's locales afterwards."""
+import os
+from pathlib import Path
+import subprocess
+import sys
+import time
+
+ROOT = Path(__file__).resolve().parent.parent
+OUT = ROOT / 'build' / 'smoke'
+PACKAGE = 'dev.kiln.gallery'
+
+# Each runs on its own gallery section. {p} is the run's screenshot prefix.
+COMPONENTS = {
+    'segmented': '''expect:Single selection: 0; tap:Week; expect:Single selection: 1; tap:Bike; expect:Multiple selection: 3;
+        tap:Walk; expect:Multiple selection: 2; shot:{p}-segmented; reach:Disable segments; tap:Disable segments;
+        expect:Enable segments; tap:Day; expect:Single selection: 1; shot:{p}-segmented-disabled''',
+    'split': '''reach:Filled options; shot:{p}-split; tap:Filled; tap:Filled options; click:Tonal options; click:Elevated options;
+        shot:{p}-split-changed; expect:Split open: 11; expect:Split clicks: 1; click:Disable split buttons;
+        expect:Enable split buttons; tap:Filled; expect:Split clicks: 1; shot:{p}-split-disabled''',
+    'tooltips': '''reach:Plain tooltip anchor; press:Plain tooltip anchor=800; expect:Add to favorites;
+        press:Below tooltip anchor=800; expect:Shown below; shot:{p}-tooltip-below; reject:Add to favorites;
+        tap:Tooltips; reject:Shown below;
+        longclick:Rich tooltip anchor; expect:Camera settings; shot:{p}-tooltip-rich; click:Learn more;
+        expect:Tooltip actions: 1; reject:Camera settings; click:Show plain tooltip; expect:Add to favorites''',
+    'menus': '''reach:Classic menu; tap:Classic menu; expect:Schedule; expect:Archive; shot:{p}-menu-classic;
+        tap:Schedule; expect:Menu choice: Schedule; reject:Archive;
+        tap:Expressive menu; expect:Italic; tap:Bold; tap:Right; expect:Menu styles: 1; shot:{p}-menu-expressive;
+        back; reject:Italic; expect:Menu align: right''',
+    'groups': '''reach:Connected size: 0; tap:Mute; expect:Group styles: 1; tap:{more}; expect:Copy;
+        shot:{p}-group-overflow; tap:Copy; expect:Group clicks: 1; reject:Copy; tap:Large;
+        expect:Connected size: 2; shot:{p}-groups''',
+}
+LAUNCHES = (('1.0', 'ltr', ''), ('2.0', 'rtl', 'ar'))
+# Labels the framework translates, per launch locale.
+STRINGS = {'': {'more': 'More options'}, 'ar': {'more': 'خيارات إضافية'}}
+THEMES = ('Light', 'Dark', 'Dynamic')
+
+
+def adb(*args):
+    return subprocess.run(['adb', *args], check=True, capture_output=True, text=True, timeout=120).stdout.strip()
+
+
+def main():
+    if 'ANDROID_SERIAL' not in os.environ:
+        sys.exit('set ANDROID_SERIAL to the device to test on')
+    names = sys.argv[1:] or list(COMPONENTS)
+    unknown = [n for n in names if n not in COMPONENTS]
+    if unknown:
+        sys.exit('unknown components: ' + ', '.join(unknown) + ' (have ' + ', '.join(COMPONENTS) + ')')
+    OUT.mkdir(parents=True, exist_ok=True)
+    env = dict(os.environ, PROBE_SHOTS=str(OUT))
+    old_scale = adb('shell', 'settings', 'get', 'system', 'font_scale')
+    failures = []
+    try:
+        for scale, direction, locale in LAUNCHES:
+            adb('shell', 'settings', 'put', 'system', 'font_scale', scale)
+            adb('shell', 'cmd', 'locale', 'set-app-locales', PACKAGE, '--locales', locale)
+            for theme in THEMES:
+                for name in names:
+                    # The section alone (debug.kiln.gallery.section), so the tree stays small.
+                    prefix = f'{scale}-{direction}-{theme.lower()}-{name}'
+                    steps = f'wait:1000; tap:{theme}; wait:300; ' + ' '.join(COMPONENTS[name].split()).format(p=prefix, **STRINGS[locale])
+                    adb('shell', 'setprop', 'debug.kiln.gallery.section', name)
+                    adb('shell', 'am', 'force-stop', PACKAGE)
+                    adb('shell', 'am', 'start', '-W', '-n', f'{PACKAGE}/dev.kiln.KilnActivity')
+                    started = time.monotonic()
+                    try:
+                        run = subprocess.run([str(ROOT / 'tools/a11y-probe'), steps], env=env, capture_output=True, text=True, timeout=180)
+                        log, ok = run.stdout + run.stderr, run.returncode == 0
+                    except subprocess.TimeoutExpired as e:
+                        log, ok = f'{e.stdout or ""}\nTIMED OUT after 180 s\n', False
+                    (OUT / f'{prefix}.txt').write_text(log)
+                    failed = next((l for l in log.splitlines() if l.startswith(('FAILED ', 'error:', 'TIMED OUT'))), None)
+                    if not ok or failed:
+                        failures.append(f'{prefix}: {failed or "probe failed"}')
+                    print(f'{prefix}: {"FAILED " + (failed or "") if not ok or failed else "ok"} ({time.monotonic() - started:.0f} s)', flush=True)
+    finally:
+        adb('shell', 'settings', 'put', 'system', 'font_scale', old_scale if old_scale not in ('', 'null') else '1.0')
+        adb('shell', 'cmd', 'locale', 'set-app-locales', PACKAGE, '--locales', '')
+        adb('shell', 'setprop', 'debug.kiln.gallery.section', "''")
+        adb('shell', 'am', 'force-stop', PACKAGE)
+    total = len(LAUNCHES) * len(THEMES) * len(names)
+    print(f'{total - len(failures)} of {total} runs passed; logs and screenshots in {OUT}')
+    sys.exit(1 if failures else 0)
+
+
+main()

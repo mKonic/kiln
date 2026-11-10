@@ -106,6 +106,13 @@ namespace {
         c.LaunchedEffect(kiln::rt::Keys(0), [&seconds] { return Tick(seconds); });
 
         auto& scroll = RememberScrollState();
+        // One Material section alone (for tools/gallery-smoke): nothing else in the tree.
+        static const std::string section = kiln::gallery::RequestedSection();
+        if (!section.empty()) {
+            Column(VerticalScroll(SafeDrawingPadding(Background(FillMax(Modifier{}, Axis::Both), kSurface)), scroll), Arrangement::Top(), AlignmentH::Start(),
+                   [] { kiln::gallery::MaterialComponents(section); });
+            return;
+        }
         // Edge to edge: the background fills the window, content stays inside the safe area and
         // above the keyboard.
         Column(VerticalScroll(ImeNestedScroll(SafeDrawingPadding(Background(FillMax(Modifier{}, Axis::Both), kSurface))), scroll), Arrangement::SpacedBy(16_dp), AlignmentH::Start(), [&] {

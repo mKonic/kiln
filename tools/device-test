@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# device-test [filter...] : builds kiln_tests for the device's ABI, pushes it to
+# /data/local/tmp and runs the cases whose names contain a filter (all without one).
+# Uses $ANDROID_SERIAL; KILN_ABI overrides the ABI read from the device.
+set -euo pipefail
+source "$(dirname "${BASH_SOURCE[0]}")/android-env.sh"
+: "${ANDROID_SERIAL:?set ANDROID_SERIAL to the device to test on}"
+abi="${KILN_ABI:-$(adb shell getprop ro.product.cpu.abi | tr -d '\r')}"
+dir="$KILN_ROOT/build/android/$abi"
+[ -f "$dir/build.ninja" ] || "$KILN_ROOT/tools/build-android.sh" "$abi" >/dev/null
+cmake --build "$dir" --target kiln_tests >/dev/null
+strip="$(ls "$NDK"/toolchains/llvm/prebuilt/*/bin/llvm-strip | head -1)"
+"$strip" -o "$dir/kiln_tests.stripped" "$dir/kiln_tests"
+adb push -q "$dir/kiln_tests.stripped" /data/local/tmp/kiln_tests >/dev/null
+args=""
+for f in "$@"; do args+=" '${f//\'/}'"; done
+exec adb shell "cd /data/local/tmp && chmod 755 kiln_tests && ./kiln_tests$args"
