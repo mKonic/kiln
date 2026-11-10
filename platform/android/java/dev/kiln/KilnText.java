@@ -487,8 +487,17 @@ final class KilnText {
     private void shapeLine(Built b, StaticLayout layout, char[] chars, int line, int start, int end, float baseline,
                            ArrayList<float[]> glyphs, ArrayList<float[]> segments) {
         final boolean paraRtl = layout.getParagraphDirection(line) == Layout.DIR_RIGHT_TO_LEFT;
-        Bidi bidi = new Bidi(chars, start, null, 0, end - start,
+        // Levels are resolved over the whole paragraph, then cut to the line (UAX #9 L1): a
+        // neutral at a wrapped line's end takes its direction from the text after it, not from
+        // the paragraph's.
+        int ps = start, pe = start;
+        while (ps > 0 && chars[ps - 1] != '\n') ps--;
+        while (pe < chars.length && chars[pe] != '\n') pe++;
+        if (pe < chars.length) pe++;   // the paragraph separator belongs to its paragraph
+        pe = Math.max(pe, end);
+        Bidi paragraph = new Bidi(chars, ps, null, 0, pe - ps,
                 paraRtl ? Bidi.DIRECTION_RIGHT_TO_LEFT : Bidi.DIRECTION_LEFT_TO_RIGHT);
+        Bidi bidi = paragraph.createLineBidi(start - ps, end - ps);
         final int nBidi = bidi.getRunCount();
         Integer[] order = new Integer[nBidi];
         byte[] levels = new byte[nBidi];
