@@ -40,6 +40,7 @@ namespace kiln::foundation {
                 if (off >= box->state->MaxPosition() || off <= box->state->MinPosition())
                     o.overscroll->AbsorbPostFling(box->Single(available - left));
             }
+            if (o.afterFling) co_await o.afterFling();
         }
     }
 

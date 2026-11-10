@@ -78,8 +78,10 @@ namespace kiln::foundation {
         }
     }
 
-    void Dialog(std::function<void()> onDismissRequest, DialogProperties properties, std::function<void()> content, Key key) {
-        rt::Composition::Current()->Child([onDismissRequest, properties, content] {
+    namespace {
+        void DialogImpl(std::function<void()> onDismissRequest, DialogProperties properties, std::function<rt::Task<>(BackProgress&)> onBack,
+                        std::function<void()> content, Key key) {
+        rt::Composition::Current()->Child([onDismissRequest, properties, onBack, content] {
             auto& c = *rt::Composition::Current();
             ui::Owner* parent = c.Read(ui::LocalOwner);
             auto& state = c.Remember<std::shared_ptr<DialogState>>([] { return std::make_shared<DialogState>(); });
@@ -100,7 +102,8 @@ namespace kiln::foundation {
 
             // The dialog window's own back callback (onBackPressedDispatcher.addCallback): before
             // the content's, so handlers inside the dialog go first; it holds Back while shown.
-            BackHandler(true, [state] { if (state->properties.dismissOnBackPress) state->Dismiss(); });
+            if (onBack) PredictiveBackHandler(true, onBack);
+            else BackHandler(true, [state] { if (state->properties.dismissOnBackPress) state->Dismiss(); });
 
             // show / dismiss.
             c.DisposableEffect(rt::Keys(state.get()), [state, parent, density, direction] {
@@ -140,6 +143,15 @@ namespace kiln::foundation {
                 s.composition->Recompose();
             });
         }, key);
+        }
+    }
+
+    void Dialog(std::function<void()> onDismissRequest, DialogProperties properties, std::function<void()> content, Key key) {
+        DialogImpl(std::move(onDismissRequest), std::move(properties), {}, std::move(content), key);
+    }
+    void Dialog(std::function<void()> onDismissRequest, DialogProperties properties, std::function<rt::Task<>(BackProgress&)> onBack,
+                std::function<void()> content, Key key) {
+        DialogImpl(std::move(onDismissRequest), std::move(properties), std::move(onBack), std::move(content), key);
     }
 
 }
