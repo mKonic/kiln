@@ -309,6 +309,8 @@ namespace kiln::ui {
                 out.push_back(std::move(node));
                 return;
             }
+            // clearAndSetSemantics {} with nothing set: no node, and nothing from below.
+            if (cfg.clearAndSet) return;
             for (LayoutNode* c : n.Children()) Build(*c, inner, out);
         }
 

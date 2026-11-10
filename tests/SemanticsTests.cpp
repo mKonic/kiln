@@ -102,6 +102,19 @@ TEST(ClearAndSetReplacesDescendants) {
     CHECK(root.children[0].config.text.empty());
 }
 
+TEST(EmptyClearAndSetHidesDescendants) {
+    // clearAndSetSemantics {} sets nothing: there is no node, and nothing below shows either
+    // (a medium app bar hides its collapsed title row this way).
+    Harness h;
+    h.Run([&] {
+        Box(ClearAndSetSemantics({}, [](SemanticsConfiguration&) {}), Alignment::TopStart(), false, [&] {
+            Box(Label(SizeMod({}, Dp(10), Dp(10)), "hidden"));
+        });
+    });
+    CHECK_EQ(Count(h.owner.BuildSemanticsTree()), 1);   // the root alone
+    CHECK_EQ(Count(h.owner.BuildSemanticsTree(false)), 1);
+}
+
 TEST(SemanticsVersionBumpsOnChangeAndIdsStayStable) {
     Harness h;
     rt::State<std::string> label("one");
