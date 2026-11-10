@@ -6,6 +6,7 @@
 // consumption without padding, size modifiers and visibility queries.
 
 #include "kiln/foundation/Layouts.h"
+#include "kiln/runtime/State.h"
 #include "kiln/ui/Insets.h"
 
 #include <functional>
@@ -58,6 +59,9 @@ namespace kiln::foundation {
         static WindowInsets Fixed(int left, int top, int right, int bottom);
         static WindowInsets Fixed(Dp left, Dp top, Dp right, Dp bottom);
         static WindowInsets FromPadding(PaddingValues p);   // PaddingValues.asInsets
+        // Whatever `state` holds when read (material3's MutableWindowInsets): layouts that read
+        // it follow its changes.
+        static WindowInsets FromState(std::shared_ptr<const rt::State<WindowInsets>> state);
 
         // The window's insets by type.
         static WindowInsets CaptionBar();

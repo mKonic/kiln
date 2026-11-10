@@ -143,3 +143,28 @@ TEST(PrecomposedSlotsAreClaimedByMeasureOrDisposed) {
     h.Frame();
     CHECK_EQ(a.PlaceablesCount(), 1);
 }
+
+TEST(SlotContentMeasuresWithTheOwnersDensityAndResizesTheLayout) {
+    // A new slot's content is measured attached: 10 dp is 20 px at density 2 from the first
+    // frame. A slot that recomposes on its own and changes size measures the layout again.
+    Harness h;
+    h.owner.SetDensity({ 2, 1 });
+    rt::State<int> side(10);
+    h.Run([&] {
+        rt::Composition::Current()->Provide(ui::LocalDensity, h.owner.GetDensity(), [&] {
+            Box(Modifier{}, Alignment::TopStart(), false, [&] {
+                BoxWithConstraints(Modifier{}, [&](const BoxWithConstraintsScope&) {
+                    Box(SizeMod(Modifier{}, Dp(float(side.Get())), Dp(float(side.Get()))));
+                });
+            });
+        });
+    });
+    const LayoutNode* bwc = h.owner.Root().Children()[0]->Children()[0];
+    const LayoutNode* box = bwc->Children()[0]->Children()[0];
+    CHECK_EQ(bwc->Size().width, 20);
+    CHECK(box->IsPlaced());
+    side.Set(30);
+    h.Frame();
+    CHECK_EQ(bwc->Children()[0]->Children()[0]->Size().width, 60);
+    CHECK_EQ(bwc->Size().width, 60);
+}

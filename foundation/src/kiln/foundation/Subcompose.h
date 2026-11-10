@@ -23,6 +23,10 @@ namespace kiln::foundation {
         explicit SubcomposeMeasureScope(const MeasureScope& s) : MeasureScope(s) {}
         // Composes `content` for `slotId` (once per measure) and returns its root layouts.
         virtual std::vector<Measurable*> Subcompose(rt::Key slotId, std::function<void()> content) = 0;
+        // Content kept by identity, as Compose compares a slot's content lambda: the slot
+        // recomposes only when `content` is another object or something it read changed. State
+        // it reads (set before this call) stands in for arguments that change.
+        virtual std::vector<Measurable*> Subcompose(rt::Key slotId, const std::shared_ptr<const std::function<void()>>& content) = 0;
     };
 
     using SubcomposeMeasure = std::function<MeasureResult(SubcomposeMeasureScope&, const Constraints&)>;
