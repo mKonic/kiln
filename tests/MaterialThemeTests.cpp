@@ -4,6 +4,7 @@
 
 #include "kiln/foundation/Compose.h"
 #include "kiln/foundation/Semantics.h"
+#include "kiln/foundation/Subcompose.h"
 #include "kiln/foundation/text/Selection.h"
 #include "kiln/material3/MaterialTheme.h"
 #include "kiln/material3/Badge.h"
@@ -17,6 +18,7 @@
 #include "kiln/material3/SegmentedButton.h"
 #include "kiln/material3/SplitButton.h"
 #include "kiln/material3/Tooltip.h"
+#include "kiln/material3/Scaffold.h"
 #include "kiln/material3/Menu.h"
 #include "kiln/material3/ButtonGroup.h"
 #include "kiln/runtime/Saveable.h"
@@ -4140,4 +4142,182 @@ TEST(FullWidthTooltipCaretFollowsTheAnchor) {
     CHECK_EQ(internal::CaretX(1080, 1080, { 135, 0, 185, 0 }), 160.0f);
     CHECK_EQ(internal::CaretX(1080, 1080, { 515.5f, 0, 565.5f, 0 }), 540.5f);
     CHECK_EQ(internal::CaretX(1080, 1080, { 920.88f, 0, 970.88f, 0 }), 945.88f);
+}
+
+// Ported from Compose's ScaffoldTest (bounds in dp, within its 0.5 dp rounding error). Left out:
+// the shadow pixel check, the lookahead regression (kiln has no lookahead) and the
+// no-recomposition case as written: kiln's padding is a value, so the body recomposes when the
+// padding changes, and only then (checked below with a FAB that changes size instead).
+namespace {
+    constexpr float FabSpacingDp = 16;
+    // Box(Modifier.requiredSize(w, h)) { Scaffold(...) } at the window's corner.
+    void InBox(PhoneHarness& h, float w, float hgt, std::function<void()> content, bool rtl = false) {
+        Themed(h, [=] {
+            auto inner = [=] { Box(RequiredSize({}, ui::Dp(w), ui::Dp(hgt)), Alignment::TopStart(), false, content); };
+            if (rtl) rt::Composition::Current()->Provide(ui::LocalLayoutDirection, ui::LayoutDirection::Rtl, inner);
+            else inner();
+        });
+    }
+    ScaffoldOptions Insets(float left, float top, float right, float bottom) {
+        ScaffoldOptions o;
+        o.contentWindowInsets = WindowInsets::Fixed(ui::Dp(left), ui::Dp(top), ui::Dp(right), ui::Dp(bottom));
+        return o;
+    }
+    void Fab() { FloatingActionButton([] {}, Tag({}, "fab"), {}, [] { Text("Fab"); }); }
+}
+
+TEST(ScaffoldContentFillsItAndStacks) {
+    PhoneHarness h;
+    InBox(h, 100, 100, [] {
+        Scaffold(Tag({}, "scaffold"), {}, [](const PaddingValues&) { Text("One", Tag({}, "one")); Text("Two", Tag({}, "two")); });
+    });
+    const auto scaffold = BoundsDp(h, "scaffold"), one = BoundsDp(h, "one"), two = BoundsDp(h, "two");
+    CHECK(scaffold && Near(scaffold->Width(), 100) && Near(scaffold->Height(), 100));
+    CHECK(one && two && one->left == two->left && one->top == two->top);
+}
+
+TEST(ScaffoldBarsOverlapTheContentAndSetItsPadding) {
+    PhoneHarness h;
+    PaddingValues inner;
+    InBox(h, 200, 300, [&] {
+        ScaffoldOptions o;
+        o.topBar = [] { Box(Tag(Height(FillMax({}, Axis::Horizontal), 50_dp), "top"), Alignment::TopStart(), false, {}); };
+        o.bottomBar = [] { Box(Tag(Height(FillMax({}, Axis::Horizontal), 100_dp), "bottom"), Alignment::TopStart(), false, {}); };
+        Scaffold(Tag({}, "scaffold"), o, [&](const PaddingValues& p) {
+            inner = p;
+            Box(Tag(FillMax({}, Axis::Both), "content"), Alignment::TopStart(), false, {});
+        });
+    });
+    const auto scaffold = BoundsDp(h, "scaffold"), top = BoundsDp(h, "top"), bottom = BoundsDp(h, "bottom"), content = BoundsDp(h, "content");
+    CHECK(scaffold && top && bottom && content);
+    if (!scaffold || !top || !bottom || !content) return;
+    // The content takes the whole scaffold, under both bars.
+    CHECK(top->top == content->top);
+    CHECK(bottom->bottom == content->bottom);
+    CHECK(Near(content->Width(), scaffold->Width()) && Near(content->Height(), scaffold->Height()));
+    CHECK(Near(inner.top.value, top->Height()));
+    CHECK(Near(inner.bottom.value, bottom->Height()));
+}
+
+TEST(ScaffoldPaddingTakesTheInsetsWhereThereIsNoBar) {
+    const auto padding = [](ScaffoldOptions o, bool consumeAbove = false) {
+        PhoneHarness h;
+        PaddingValues inner;
+        InBox(h, 10, 40, [&] {
+            const auto scaffold = [&] { Scaffold({}, o, [&](const PaddingValues& p) { inner = p; Box(RequiredSize({}, 10_dp, 10_dp), Alignment::TopStart(), false, {}); }); };
+            if (consumeAbove) Box(WindowInsetsPadding({}, WindowInsets::Fixed(0_dp, 10_dp, 0_dp, 10_dp)), Alignment::TopStart(), false, scaffold);
+            else scaffold();
+        });
+        h.AdvanceTimeBy(0);
+        return std::pair{ inner.top.value, inner.bottom.value };
+    };
+    // A top bar replaces the top inset; the bottom keeps its inset.
+    auto withTop = Insets(0, 5, 0, 3);
+    withTop.topBar = [] { Box(RequiredSize({}, 10_dp, 10_dp), Alignment::TopStart(), false, {}); };
+    auto [t1, b1] = padding(withTop);
+    CHECK(Near(t1, 10) && Near(b1, 3));
+    // Without bars: the insets.
+    auto [t2, b2] = padding(Insets(0, 15, 0, 10));
+    CHECK(Near(t2, 15) && Near(b2, 10));
+    // Insets a parent consumed are left out.
+    auto [t3, b3] = padding(Insets(0, 15, 0, 15), true);
+    CHECK(Near(t3, 5) && Near(b3, 5));
+    // A collapsed top bar still replaces the inset.
+    auto collapsed = Insets(0, 5, 0, 3);
+    collapsed.topBar = [] { Box(Height(FillMax({}, Axis::Horizontal), 0_dp), Alignment::TopStart(), false, {}); };
+    auto [t4, b4] = padding(collapsed);
+    CHECK(Near(t4, 0) && Near(b4, 3));
+    // A bottom bar replaces the bottom inset.
+    auto withBottom = Insets(0, 5, 0, 3);
+    withBottom.bottomBar = [] { Box(RequiredSize({}, 10_dp, 10_dp), Alignment::TopStart(), false, {}); };
+    auto [t5, b5] = padding(withBottom);
+    CHECK(Near(t5, 5) && Near(b5, 10));
+}
+
+TEST(ScaffoldSnackbarAndFabKeepClearOfTheInsets) {
+    // Bottom insets: the snackbar host and the FAB end 3 dp above the bottom.
+    {
+        PhoneHarness h;
+        auto o = Insets(0, 5, 0, 3);
+        o.snackbarHost = [] { Box(Tag(SizeMod({}, 8_dp, 6_dp), "snackbar"), Alignment::TopStart(), false, {}); };
+        InBox(h, 10, 40, [&] { Scaffold({}, o, [](const PaddingValues&) {}); });
+        const auto b = BoundsDp(h, "snackbar");
+        CHECK(b && std::abs(40 - b->bottom - 3) < 1);
+    }
+    {
+        // (Compose checks this in a 10 x 20 dp box the FAB cannot fit, one-sidedly; here it fits.)
+        PhoneHarness h;
+        auto o = Insets(0, 5, 0, 3);
+        o.floatingActionButton = [] { Fab(); };
+        InBox(h, 100, 200, [&] { Scaffold({}, o, [](const PaddingValues&) {}); });
+        const auto b = BoundsDp(h, "fab");
+        CHECK(b && Near(200 - b->bottom, 3 + FabSpacingDp));
+    }
+    // Horizontal insets shift the centred snackbar by half their difference.
+    {
+        PhoneHarness h;
+        auto o = Insets(10, 0, 15, 0);
+        o.snackbarHost = [] { Box(Tag(SizeMod({}, 40_dp, 20_dp), "snackbar"), Alignment::TopStart(), false, {}); };
+        InBox(h, 100, 100, [&] { Scaffold({}, o, [](const PaddingValues&) {}); });
+        const auto b = BoundsDp(h, "snackbar");
+        CHECK(b && Near(50 - (b->left + b->right) / 2, (15 - 10) / 2.0f));
+    }
+    // The FAB keeps the inset on its side: End, Start in RTL (landscape), Center.
+    const auto fabAt = [](FabPosition position, float left, float right, float w, bool rtl) {
+        PhoneHarness h;
+        auto o = Insets(left, 0, right, 0);
+        o.floatingActionButtonPosition = position;
+        o.floatingActionButton = [] { Fab(); };
+        InBox(h, w, 100, [&] { Scaffold({}, o, [](const PaddingValues&) { Box(RequiredSize({}, 20_dp, 20_dp), Alignment::TopStart(), false, {}); }); }, rtl);
+        return BoundsDp(h, "fab").value_or(ui::Rect{});
+    };
+    const auto end = fabAt(FabPosition::End, 10, 15, 100, false);
+    CHECK(Near(100 - (end.right + FabSpacingDp), 15));
+    const auto startRtl = fabAt(FabPosition::Start, 15, 10, 160, true);
+    CHECK(Near(160 - (startRtl.right + FabSpacingDp), 10));
+    const auto center = fabAt(FabPosition::Center, 15, 5, 100, false);
+    CHECK(Near(50 - (center.left + center.right) / 2, (5 - 15) / 2.0f));
+}
+
+TEST(ScaffoldPlacesTheFabAtItsPosition) {
+    for (auto position : { FabPosition::Start, FabPosition::Center, FabPosition::End }) {
+        PhoneHarness h;
+        ScaffoldOptions o;
+        o.contentWindowInsets = WindowInsets{};
+        o.floatingActionButtonPosition = position;
+        o.floatingActionButton = [] { Fab(); };
+        InBox(h, 200, 200, [&] {
+            Scaffold({}, o, [](const PaddingValues& p) { Box(Padding(RequiredSize({}, 10_dp, 10_dp), p), Alignment::TopStart(), false, {}); });
+        });
+        const auto b = BoundsDp(h, "fab");
+        CHECK(b.has_value());
+        if (!b) continue;
+        const float expectedX = position == FabPosition::Start ? FabSpacingDp : position == FabPosition::Center ? (200 - b->Width()) / 2 : 200 - b->Width() - FabSpacingDp;
+        CHECK(std::abs(b->left - expectedX) <= 0.5f);
+        CHECK(std::abs(b->top - (200 - b->Height() - FabSpacingDp)) <= 0.5f);
+    }
+}
+
+TEST(ScaffoldBodyRecomposesOnlyWhenItsPaddingChanges) {
+    PhoneHarness h;
+    rt::State<bool> big{ false };
+    int compositions = 0;
+    InBox(h, 200, 300, [&] {
+        ScaffoldOptions o;
+        o.topBar = [] { Box(Height(FillMax({}, Axis::Horizontal), 50_dp), Alignment::TopStart(), false, {}); };
+        o.floatingActionButton = [&] { Box(Tag(SizeMod({}, big.Get() ? 80_dp : 40_dp, 40_dp), "fab"), Alignment::TopStart(), false, {}); };
+        Scaffold({}, o, [&](const PaddingValues& p) {
+            ++compositions;
+            Box(Padding(FillMax({}, Axis::Both), p), Alignment::TopStart(), false, {});
+        });
+    });
+    h.AdvanceTimeBy(0);
+    const int settled = compositions;
+    CHECK(settled >= 1);
+    // The FAB grows: the scaffold measures again, the padding is the same, the body stays.
+    big.Set(true);
+    h.AdvanceTimeBy(16);
+    const auto fab = BoundsDp(h, "fab");
+    CHECK(fab && Near(fab->Width(), 80));
+    CHECK_EQ(compositions, settled);
 }
