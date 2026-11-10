@@ -427,6 +427,18 @@ namespace kiln::foundation {
             }
         };
 
+        struct LayoutBlockParams {
+            LayoutModifierMeasure measure;
+            bool operator==(const LayoutBlockParams&) const { return false; }   // lambdas never compare equal
+        };
+        struct LayoutBlockNode final : ModifierNode, LayoutModifier {
+            LayoutBlockParams params;
+            explicit LayoutBlockNode(LayoutBlockParams p) : params(std::move(p)) {}
+            void OnParamsChanged() { InvalidateMeasure(); }
+            LayoutModifier* AsLayout() override { return this; }
+            MeasureResult Measure(MeasureScope& s, Measurable& m, const Constraints& c) override { return params.measure(s, m, c); }
+        };
+
         struct SizeChangedParams {
             std::function<void(IntSize)> callback;
             bool operator==(const SizeChangedParams&) const { return false; }
@@ -876,6 +888,7 @@ namespace kiln::foundation {
     Modifier OffsetMod(Modifier m, std::function<IntOffset(const Density&)> offset, bool rtlAware) {
         return m.With<OffsetPxNode>(OffsetPxParams{ std::move(offset), rtlAware });
     }
+    Modifier LayoutMod(Modifier m, LayoutModifierMeasure measure) { return m.With<LayoutBlockNode>(LayoutBlockParams{ std::move(measure) }); }
     Modifier OnSizeChanged(Modifier m, std::function<void(IntSize)> f) { return m.With<SizeChangedNode>(SizeChangedParams{ std::move(f) }); }
 
     bool LayoutCoordinates::IsAttached() const { return m_Node && !m_Alive.expired() && m_Node->IsPlaced(); }

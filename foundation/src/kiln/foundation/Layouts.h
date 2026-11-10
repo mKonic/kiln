@@ -83,6 +83,10 @@ namespace kiln::foundation {
     // offset { IntOffset }: evaluated at placement, so state it reads re-places without
     // recomposing (the form for offsets that change every frame).
     Modifier OffsetMod(Modifier m, std::function<IntOffset(const Density&)> offset, bool rtlAware = true);
+    // Modifier.layout { measurable, constraints -> }: measures and places what it wraps itself.
+    // State read in the block remeasures it.
+    using LayoutModifierMeasure = std::function<MeasureResult(MeasureScope&, Measurable&, const Constraints&)>;
+    Modifier LayoutMod(Modifier m, LayoutModifierMeasure measure);
     // onSizeChanged: called after measuring when the size differs from the last one (and the first time).
     Modifier OnSizeChanged(Modifier m, std::function<void(IntSize)> onSizeChanged);
     // LayoutCoordinates as onGloballyPositioned hands them over: a live view of the space the
