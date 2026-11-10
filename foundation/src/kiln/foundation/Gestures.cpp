@@ -78,7 +78,7 @@ namespace kiln::foundation {
                 // with nullopt unless an event came first (which removes the timer).
                 std::function<void()> removeTimer;
                 if (timeout >= 0) {
-                    job->dispatcher->AddTimer(rt::Dispatcher::Clock::now() + std::chrono::milliseconds(timeout), h, job);
+                    job->dispatcher->AddTimer(job->dispatcher->Now() + std::chrono::milliseconds(timeout), h, job);
                     removeTimer = std::move(job->unregister);
                 }
                 job->unregister = [this, removeTimer = std::move(removeTimer)] {
@@ -137,12 +137,12 @@ namespace kiln::foundation {
     }
 
     rt::Task<UpOrCancellation> WaitForUpOrCancellationWithTimeout(PointerInputScope& s, std::int64_t timeoutMillis, PointerEventPass pass) {
-        using Clock = rt::Dispatcher::Clock;
-        const auto deadline = Clock::now() + std::chrono::milliseconds(std::max<std::int64_t>(timeoutMillis, 0));
+        auto& dispatcher = rt::Dispatcher::Main();
+        const auto deadline = dispatcher.Now() + std::chrono::milliseconds(std::max<std::int64_t>(timeoutMillis, 0));
         // Each wait gets the time left, so the timeout covers the whole call (withTimeout).
         const auto remaining = [&]() -> std::int64_t {
             if (timeoutMillis < 0) return -1;
-            return std::max<std::int64_t>(0, std::chrono::duration_cast<std::chrono::milliseconds>(deadline - Clock::now()).count());
+            return std::max<std::int64_t>(0, std::chrono::duration_cast<std::chrono::milliseconds>(deadline - dispatcher.Now()).count());
         };
         for (;;) {
             auto e = co_await s.AwaitPointerEventWithTimeout(remaining(), pass);

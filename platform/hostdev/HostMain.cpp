@@ -107,7 +107,7 @@ int main() {
     while (!glfwWindowShouldClose(window)) {
         if (g_FrameRequested) glfwPollEvents();
         else if (auto next = app.Dispatcher().NextTimer()) {
-            const double wait = std::chrono::duration<double>(*next - kiln::rt::Dispatcher::Clock::now()).count();
+            const double wait = std::chrono::duration<double>(*next - app.Dispatcher().Now()).count();
             glfwWaitEventsTimeout(wait > 0 ? wait : 0.0);
         } else glfwWaitEvents();
         app.RunIdle();

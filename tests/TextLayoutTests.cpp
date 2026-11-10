@@ -413,7 +413,6 @@ TEST(DownloadableFontsQueryTheProviderAndRelayoutOnArrival) {
 
 #include "kiln/foundation/text/Selection.h"
 
-#include <thread>
 
 namespace {
     // Two texts in a SelectionContainer: "Hello world" at y 0..25 and "Second line" at 25..50,
@@ -448,7 +447,7 @@ namespace {
             Pump();
         }
         void Wait(int ms) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(ms));
+            rt::Dispatcher::Main().AdvanceTimeBy(std::chrono::milliseconds(ms));
             t += ms;
             Pump();
         }

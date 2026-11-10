@@ -5,7 +5,6 @@
 #include "kiln/ui/LayoutNode.h"
 
 #include <chrono>
-#include <thread>
 
 using namespace kiln;
 using namespace kiln::foundation;
@@ -73,7 +72,7 @@ TEST(DragAndDropSourceStartsAndTargetsReceive) {
         pump();
     };
     send(ui::PointerEventType::Press, true);
-    std::this_thread::sleep_for(std::chrono::milliseconds(80));
+    rt::Dispatcher::Main().AdvanceTimeBy(std::chrono::milliseconds(80));
     pump();
     CHECK_EQ(started, 1);
     CHECK_EQ(shadowW, 50);

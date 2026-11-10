@@ -335,7 +335,7 @@ namespace {
         itimerspec spec{};
         if (auto next = g_Host->app->Dispatcher().NextTimer()) {
             auto ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
-                *next - kiln::rt::Dispatcher::Clock::now()).count();
+                *next - g_Host->app->Dispatcher().Now()).count();
             if (ns < 1) ns = 1;
             spec.it_value.tv_sec = ns / 1000000000;
             spec.it_value.tv_nsec = ns % 1000000000;

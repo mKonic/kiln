@@ -16,7 +16,6 @@
 #include "kiln/ui/Pointer.h"
 
 #include <chrono>
-#include <thread>
 
 using namespace kiln;
 using namespace kiln::foundation;
@@ -631,7 +630,7 @@ namespace {
         h.Pump({ 300, 300 });
     }
     void WaitMs(FieldHarness& h, int ms) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(ms));
+        rt::Dispatcher::Main().AdvanceTimeBy(std::chrono::milliseconds(ms));
         h.t += ms;
         h.Pump({ 300, 300 });
     }

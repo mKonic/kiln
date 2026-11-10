@@ -12,7 +12,6 @@ using namespace kiln::foundation;
 using namespace kiln::ui;
 
 #include <chrono>
-#include <thread>
 
 namespace {
     struct Harness {
@@ -106,7 +105,7 @@ TEST(ClickableKeyLongPressAndDoubleClick) {
     h.Key(keys::Tab);
     CHECK(h.owner.ActiveFocus() != nullptr);
     auto wait = [](int ms) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(ms));
+        rt::Dispatcher::Main().AdvanceTimeBy(std::chrono::milliseconds(ms));
         rt::Dispatcher::Main().RunPending();
     };
     auto send = [&](KeyEventType type) { KeyEvent e{ keys::Enter, type, 0 }; h.owner.DispatchKeyEvent(e); };

@@ -57,14 +57,14 @@ namespace kiln::material3 {
         rt::Task<> RunMorphs(std::shared_ptr<AnimationState> state, std::shared_ptr<const Sequence> sequence) {
             const auto spec = anim::Spring(0.6f, 200, 0.1f);
             for (;;) {
-                const auto start = rt::Dispatcher::Clock::now();
+                const auto start = rt::Dispatcher::Main().Now();
                 const auto result = co_await state->morph.AnimateTo(1, spec);
                 if (result.reason == anim::EndReason::Finished) {
                     state->index.Set((state->index.Peek() + 1) % sequence->morphs.size());
                     state->morph.SnapTo(0);
                     state->rotationTarget.Set(std::fmod(state->rotationTarget.Peek() + 90, 360.0f));
                 }
-                const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(rt::Dispatcher::Clock::now() - start).count();
+                const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(rt::Dispatcher::Main().Now() - start).count();
                 if (elapsed < 650) co_await rt::Delay(650 - elapsed);
             }
         }

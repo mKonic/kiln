@@ -21,7 +21,7 @@ namespace kiln::rt {
             m_Queue.clear();
             for (auto& fn : queue) fn();
         }
-        const auto now = Clock::now();
+        const auto now = Now();
         std::vector<Timer> due;
         for (auto it = m_Timers.begin(); it != m_Timers.end();) {
             if (it->at <= now) { due.push_back(*it); it = m_Timers.erase(it); }

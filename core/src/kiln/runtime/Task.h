@@ -151,6 +151,11 @@ namespace kiln::rt {
         bool HasFrameWaiters() const { return !m_FrameWaiters.empty(); }
         // Earliest timer deadline, if any (the host arms a wake-up for it).
         std::optional<Clock::time_point> NextTimer() const;
+        // This dispatcher's time: the clock plus whatever a test advanced it by. Timers are due by it.
+        Clock::time_point Now() const { return Clock::now() + m_Advanced; }
+        // Tests: moves Now() forward without waiting (Compose's mainClock.advanceTimeBy). Due
+        // timers run at the next RunPending.
+        void AdvanceTimeBy(std::chrono::milliseconds ms) { m_Advanced += ms; }
 
         // Host hooks: request a frame when someone waits for one, wake when work is posted.
         std::function<void()> requestFrame;
@@ -170,6 +175,7 @@ namespace kiln::rt {
         std::vector<Timer> m_Timers;
         std::uint64_t m_NextId = 1;
         std::int64_t m_LastFrameNanos = 0;
+        Clock::duration m_Advanced{};
     };
 
     // Starts `task` now (it runs until its first suspension) under a new Job.
@@ -198,7 +204,7 @@ namespace kiln::rt {
         bool await_ready() const noexcept { return ms.count() <= 0; }
         template<typename P> void await_suspend(std::coroutine_handle<P> h) {
             auto job = detail::JobOf(h);
-            job->dispatcher->AddTimer(Dispatcher::Clock::now() + ms, h, job);
+            job->dispatcher->AddTimer(job->dispatcher->Now() + ms, h, job);
         }
         void await_resume() const noexcept {}
     };
@@ -208,7 +214,7 @@ namespace kiln::rt {
         bool await_ready() const noexcept { return false; }
         template<typename P> void await_suspend(std::coroutine_handle<P> h) {
             auto job = detail::JobOf(h);
-            job->dispatcher->AddTimer(Dispatcher::Clock::now(), h, job);
+            job->dispatcher->AddTimer(job->dispatcher->Now(), h, job);
         }
         void await_resume() const noexcept {}
     };
