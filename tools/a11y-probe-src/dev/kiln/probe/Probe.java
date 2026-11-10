@@ -143,7 +143,7 @@ public final class Probe extends Instrumentation {
             return;
         }
         String find = arg, value = null;
-        if ((verb.equals("press") && arg.contains("=")) || verb.equals("settext") || verb.equals("setprogress") || verb.equals("action")) { find = arg.substring(0, arg.indexOf('=')); value = arg.substring(arg.indexOf('=') + 1); }
+        if ((verb.equals("press") && arg.contains("=")) || verb.equals("swipeon") || verb.equals("settext") || verb.equals("setprogress") || verb.equals("action")) { find = arg.substring(0, arg.indexOf('=')); value = arg.substring(arg.indexOf('=') + 1); }
         AccessibilityNodeInfo n = findByText(root, find);
         // The tree changes under us (a popup closing, a recomposition): wait for the node as
         // expect: does before giving up (reach: then scrolls for it).
@@ -191,6 +191,28 @@ public final class Probe extends Instrumentation {
                     touch(ua, down, android.os.SystemClock.uptimeMillis(), android.view.MotionEvent.ACTION_UP, x, to);
                     try { ua.waitForIdle(100, 300); } catch (Exception ignored) {}
                 }
+                break;
+            }
+            case "swipeon": {
+                // swipeon:<label>=dx,dy,millis: a drag from the node's centre by (dx, dy) dp,
+                // released where it ends (scrolls what is under it, through nested scroll).
+                String[] p = value.split(",");
+                if (p.length != 3) throw new IllegalArgumentException("swipeon:label=dx,dy,millis");
+                float density = getContext().getResources().getDisplayMetrics().density;
+                Rect r = new Rect();
+                n.getBoundsInScreen(r);
+                float x1 = r.exactCenterX(), y1 = r.exactCenterY();
+                float x2 = x1 + Float.parseFloat(p[0]) * density, y2 = y1 + Float.parseFloat(p[1]) * density;
+                long duration = Long.parseLong(p[2]);
+                long down = android.os.SystemClock.uptimeMillis();
+                ok = touch(ua, down, down, android.view.MotionEvent.ACTION_DOWN, x1, y1);
+                for (long elapsed = 16; elapsed < duration; elapsed += 16) {
+                    android.os.SystemClock.sleep(Math.max(0, down + elapsed - android.os.SystemClock.uptimeMillis()));
+                    float f = (float) elapsed / duration;
+                    ok &= touch(ua, down, android.os.SystemClock.uptimeMillis(), android.view.MotionEvent.ACTION_MOVE, x1 + (x2 - x1) * f, y1 + (y2 - y1) * f);
+                }
+                android.os.SystemClock.sleep(Math.max(0, down + duration - android.os.SystemClock.uptimeMillis()));
+                ok &= touch(ua, down, android.os.SystemClock.uptimeMillis(), android.view.MotionEvent.ACTION_UP, x2, y2);
                 break;
             }
             case "tap": case "press": {
