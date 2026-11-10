@@ -107,8 +107,8 @@ namespace kiln::ui {
         if (c.ChangedToDownIgnoreConsumed()) Reset();
         // Batched samples first (VelocityTracker.addPointerInputChange uses the history).
         if (!c.ChangedToUpIgnoreConsumed())
-            for (const HistoricalChange& h : c.historical) AddPosition(h.uptimeMillis, h.position + offset);
-        if (!c.ChangedToUpIgnoreConsumed()) AddPosition(c.uptimeMillis, c.position + offset);
+            for (const HistoricalChange& h : c.historical) AddPosition(h.uptimeMillis, h.originalEventPosition + offset);
+        if (!c.ChangedToUpIgnoreConsumed()) AddPosition(c.uptimeMillis, c.originalEventPosition + offset);
         if (c.ChangedToUpIgnoreConsumed() && c.uptimeMillis - m_LastMove > 40) Reset();
         m_LastMove = c.uptimeMillis;
     }

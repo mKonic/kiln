@@ -201,7 +201,7 @@ namespace kiln::ui {
             PointerInputChange c;
             c.id = id;
             c.uptimeMillis = raw.uptimeMillis;
-            for (const auto& r : raw.pointers) if (r.id == id) c.position = toLocal(r.position);
+            for (const auto& r : raw.pointers) if (r.id == id) { c.position = toLocal(r.position); c.originalEventPosition = r.position; }
             c.previousPosition = toLocal(t.position);
             c.type = t.type;
             c.consumed = std::make_shared<bool>(false);
@@ -251,6 +251,7 @@ namespace kiln::ui {
                 c.id = id;
                 c.uptimeMillis = raw.uptimeMillis;
                 c.position = toLocal(rp->position);
+                c.originalEventPosition = rp->position;
                 c.pressed = rp->down;
                 c.previousUptimeMillis = t.uptime;
                 c.previousPosition = toLocal(t.position);
@@ -259,7 +260,7 @@ namespace kiln::ui {
                 c.scrollDelta = rp->scrollDelta;
                 c.panOffset = rp->panOffset;
                 c.scaleFactor = rp->scaleFactor;
-                for (const HistoricalChange& h : rp->historical) c.historical.push_back({ h.uptimeMillis, toLocal(h.position), h.panOffset, h.scaleFactor });
+                for (const HistoricalChange& h : rp->historical) c.historical.push_back({ h.uptimeMillis, toLocal(h.position), h.panOffset, h.scaleFactor, h.position });
                 c.consumed = consumed[id];
                 ev.changes.push_back(c);
             }

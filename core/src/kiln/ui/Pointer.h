@@ -25,7 +25,13 @@ namespace kiln::ui {
                                                  ScaleStart, ScaleChange, ScaleEnd };
 
     // A sample batched into an event before its current position (MotionEvent history).
-    struct HistoricalChange { std::int64_t uptimeMillis = 0; Offset position; Offset panOffset; float scaleFactor = 1; };
+    struct HistoricalChange {
+        std::int64_t uptimeMillis = 0;
+        Offset position;
+        Offset panOffset;
+        float scaleFactor = 1;
+        Offset originalEventPosition;   // in the window, as the event came (velocity tracking)
+    };
 
     // PointerKeyboardModifiers: the MotionEvent's meta state (KeyEvent.META_* bits).
     struct PointerKeyboardModifiers {
@@ -47,6 +53,9 @@ namespace kiln::ui {
         std::vector<HistoricalChange> historical;   // oldest first, local coordinates
         std::int64_t uptimeMillis = 0;
         Offset position;                 // local to the receiving node
+        // The position in the window, as the event came: unlike `position` it does not shift when
+        // the receiving node moves under the pointer (what velocity tracking fits a curve to).
+        Offset originalEventPosition;
         bool pressed = false;
         std::int64_t previousUptimeMillis = 0;
         Offset previousPosition;

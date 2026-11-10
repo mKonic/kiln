@@ -134,6 +134,39 @@ TEST(DragCrossesSlopThenFollowsAndReportsVelocity) {
     CHECK(std::abs(velocity.x - 1000.0f) < 1.0f);
 }
 
+TEST(DragVelocityFollowsTheFingerWhenTheNodeMovesWithIt) {
+    // The node is offset by the drag, so its local positions barely change; the velocity comes
+    // from the positions in the window (originalEventPosition), as Compose's tracker uses.
+    Harness h;
+    h.owner.Config().touchSlop = 8;
+    rt::State<float> dragged{ 0 };
+    VelocityTracker tracker;
+    Offset velocity;
+    h.Run([&] {
+        Box(FillMax(Modifier{}, Axis::Both), Alignment::TopStart(), false, [&] {
+            Box(PointerInput(OffsetMod(SizeMod(Modifier{}, Dp(100), Dp(100)), [&](const Density&) { return IntOffset{ int(dragged.Get()), 0 }; }),
+                             rt::Keys(1), [&](PointerInputScope& s) {
+                DragCallbacks cb;
+                cb.onDrag = [&](const PointerInputChange& c, Offset d) { dragged.Set(dragged.Peek() + d.x); tracker.AddPointerInputChange(c); };
+                cb.onDragEnd = [&](const PointerInputChange& up) { tracker.AddPointerInputChange(up); velocity = tracker.CalculateVelocity(); };
+                return DetectDragGestures(s, std::nullopt, cb);
+            }));
+        });
+    });
+    // Each event lays out again, so the node follows the finger before the next one.
+    const auto touch = [&](PointerEventType type, float x, bool down, std::int64_t t) {
+        h.Touch(type, x, 50, down, t);
+        h.composition.Recompose();
+        h.owner.MeasureAndLayout({ 100, 100 });
+    };
+    touch(PointerEventType::Press, 95, true, 0);
+    for (int i = 1; i <= 8; ++i) touch(PointerEventType::Move, 95.0f - 10 * i, true, 10 * i);
+    touch(PointerEventType::Release, 15, false, 85);
+    CHECK(dragged.Peek() < -60);
+    // 10 px every 10 ms, leftwards.
+    CHECK(std::abs(velocity.x + 1000.0f) < 1.0f);
+}
+
 namespace {
     // Taps (down + up) with mouse type so no touch-target expansion applies.
     void Tap(Harness& h, float x, float y, std::int64_t t) {
