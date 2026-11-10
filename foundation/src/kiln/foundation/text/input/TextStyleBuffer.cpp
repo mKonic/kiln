@@ -1,6 +1,7 @@
 #include "kiln/foundation/text/input/TextStyleBuffer.h"
 
 #include <algorithm>
+#include <atomic>
 #include <climits>
 #include <stdexcept>
 
@@ -14,6 +15,11 @@ namespace kiln::foundation {
         bool Intersect(int lStart, int lEnd, int rStart, int rEnd) {
             return (((lStart == lEnd) || (rStart == rEnd)) && (lStart == rStart)) || ((lStart < rEnd) && (rStart < lEnd));
         }
+    }
+
+    std::uint64_t TextStyleBuffer::NewId() {
+        static std::atomic<std::uint64_t> next{ 1 };
+        return next.fetch_add(1, std::memory_order_relaxed);
     }
 
     TextStyleBuffer::TextStyleBuffer(const TextStyleBuffer& source, bool mutableBuffer)
@@ -51,7 +57,7 @@ namespace kiln::foundation {
         return id;
     }
 
-    bool TextStyleBuffer::RemoveStyle(const void* creatorId, int handle) {
+    bool TextStyleBuffer::RemoveStyle(std::uint64_t creatorId, int handle) {
         RequireMutable();
         if (creatorId != Id()) return false;
         const auto it = std::find_if(m_Entries.begin(), m_Entries.end(), [&](const Entry& e) { return e.id == handle; });

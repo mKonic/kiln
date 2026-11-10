@@ -32,7 +32,7 @@ namespace kiln::foundation {
     // TrackedRange: a style added to a TextFieldBuffer, valid in that buffer only.
     template<typename T>
     struct TrackedRange {
-        const void* creatorId = nullptr;
+        std::uint64_t creatorId = 0;   // the creating buffer's Id()
         int handle = 0;
         bool operator==(const TrackedRange&) const = default;
     };
@@ -51,14 +51,14 @@ namespace kiln::foundation {
         TextStyleBuffer(const TextStyleBuffer&) = delete;
         TextStyleBuffer& operator=(const TextStyleBuffer&) = delete;
 
-        const void* Id() const { return &m_Id; }
+        std::uint64_t Id() const { return m_Id; }
         std::shared_ptr<const TextStyleBuffer> ToImmutable() const { return std::make_shared<const TextStyleBuffer>(*this, false); }
         void SyncTo(const TextStyleBuffer& other);
         bool Empty() const { return m_Entries.empty(); }
 
         // addStyle: null handle for an empty range.
         int AddStyle(text::Annotation style, Interval interval);
-        bool RemoveStyle(const void* creatorId, int handle);
+        bool RemoveStyle(std::uint64_t creatorId, int handle);
         // getStyles / getImmutableStyles: the styles of one kind overlapping [start, end).
         template<typename R> std::vector<int> GetStyles(int start, int end) const;
         template<typename R> std::vector<text::Range<R>> GetImmutableStyles(int start, int end) const;
@@ -67,7 +67,7 @@ namespace kiln::foundation {
         struct StyleInfo { text::Annotation item; int start, end; ExpandPolicy policy; };
         std::vector<StyleInfo> GetAllStyleInfo() const;
 
-        bool IsValid(const void* creatorId, int handle) const { return creatorId == Id() && Find(handle) != nullptr; }
+        bool IsValid(std::uint64_t creatorId, int handle) const { return creatorId == Id() && Find(handle) != nullptr; }
         // setRange: a non-empty range; the expand policy stays.
         void SetRange(int handle, int start, int end);
         std::pair<int, int> GetRange(int handle) const;
@@ -111,7 +111,9 @@ namespace kiln::foundation {
         int m_NextId = 1;
         int m_GapStart = 0, m_GapEnd = 1000;
         bool m_Mutable = true;
-        char m_Id = 0;   // its address is the identity
+        // Unique for the process: an address could be reused by the next buffer.
+        std::uint64_t m_Id = NewId();
+        static std::uint64_t NewId();
     };
 
     template<typename R>
