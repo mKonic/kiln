@@ -8,6 +8,7 @@
 #include "samples/CheckboxSamples.h"
 #include "samples/ChipSamples.h"
 #include "samples/Common.h"
+#include "samples/ExposedDropdownMenuSamples.h"
 #include "samples/FloatingActionButtonSamples.h"
 #include "samples/IconButtonSamples.h"
 #include "samples/LoadingIndicatorSamples.h"
@@ -212,9 +213,9 @@ namespace catalog {
                 { "GroupedMenuSample", "Menus examples", true, samples::GroupedMenuSample },
                 { "MenuWithCascadingMenusSample", "Menus examples", true, samples::MenuWithCascadingMenusSample },
                 { "MenuWithScrollStateSample", "Menus examples", false, samples::MenuWithScrollStateSample },
-                { "ExposedDropdownMenuSample", "Menus examples", true, nullptr },
-                { "EditableExposedDropdownMenuSample", "Menus examples", false, nullptr },
-                { "MultiAutocompleteExposedDropdownMenuSample", "Menus examples", false, nullptr },
+                { "ExposedDropdownMenuSample", "Menus examples", true, samples::ExposedDropdownMenuSample },
+                { "EditableExposedDropdownMenuSample", "Menus examples", false, samples::EditableExposedDropdownMenuSample },
+                { "MultiAutocompleteExposedDropdownMenuSample", "Menus examples", false, samples::MultiAutocompleteExposedDropdownMenuSample },
             } },
             { 21, "Navigation bar", "Navigation bars offer a persistent and convenient way to switch between primary destinations in an app.", true, {
                 { "ShortNavigationBarSample", "Navigation bar examples", true, nullptr },
