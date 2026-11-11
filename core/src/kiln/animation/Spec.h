@@ -10,6 +10,7 @@
 #include <cstdint>
 #include <memory>
 #include <limits>
+#include <optional>
 #include <vector>
 
 namespace kiln::anim {
@@ -48,6 +49,8 @@ namespace kiln::anim {
     // tween(durationMillis = 300, delayMillis = 0, easing = FastOutSlowIn)
     SpecPtr Tween(int durationMillis = DefaultDurationMillis, int delayMillis = 0, Easing easing = FastOutSlowIn());
     SpecPtr Snap(int delayMillis = 0);
+    // A tween's easing; nullopt for other specs.
+    std::optional<Easing> TweenEasing(const SpecPtr& spec);
     // InterruptionAwareAnimationSpec: `animation` normally, `interruption` when it starts while
     // an animation is already running (Animatable.animateTo, animate*AsState, Transition).
     class InterruptionAwareSpec final : public AnimationSpec {

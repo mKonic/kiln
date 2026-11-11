@@ -32,6 +32,11 @@ target_include_directories(kiln_foundation PUBLIC foundation/src)
 target_link_libraries(kiln_foundation PUBLIC kiln_core)
 target_compile_options(kiln_foundation PRIVATE -Wall -Wextra -Wno-missing-field-initializers)
 
+# navigation3: header-only (templates over the key type).
+add_library(kiln_navigation3 INTERFACE)
+target_include_directories(kiln_navigation3 INTERFACE navigation3/src)
+target_link_libraries(kiln_navigation3 INTERFACE kiln_foundation)
+
 file(GLOB_RECURSE MCU_SOURCES CONFIGURE_DEPENDS vendor/material-color-utilities/cpp/*.cc)
 add_library(mcu STATIC ${MCU_SOURCES})
 target_include_directories(mcu PUBLIC vendor/material-color-utilities PRIVATE vendor/material-color-utilities/compat)
@@ -39,7 +44,7 @@ target_include_directories(mcu PUBLIC vendor/material-color-utilities PRIVATE ve
 file(GLOB_RECURSE KILN_MATERIAL3_SOURCES CONFIGURE_DEPENDS material3/src/*.cpp)
 add_library(kiln_material3 STATIC ${KILN_MATERIAL3_SOURCES})
 target_include_directories(kiln_material3 PUBLIC material3/src)
-target_link_libraries(kiln_material3 PUBLIC kiln_foundation PRIVATE mcu)
+target_link_libraries(kiln_material3 PUBLIC kiln_foundation kiln_navigation3 PRIVATE mcu)
 target_compile_options(kiln_material3 PRIVATE -Wall -Wextra -Wno-missing-field-initializers)
 
 if(ANDROID)

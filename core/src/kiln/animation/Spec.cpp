@@ -159,6 +159,7 @@ namespace kiln::anim {
                 return out;
             }
             std::int64_t DurationNanos(const Vec&, const Vec&, const Vec&, int) const override { return m_Delay + m_Dur; }
+            const Easing& GetEasing() const { return m_E; }
         private:
             std::int64_t m_Dur, m_Delay;
             Easing m_E;
@@ -449,6 +450,10 @@ namespace kiln::anim {
     SpecPtr Repeatable(int it, SpecPtr s, RepeatMode m, std::int64_t off) { return std::make_shared<RepeatableSpec>(it, std::move(s), m, off); }
 
     SpecPtr Tween(int d, int delay, Easing e) { return std::make_shared<TweenSpec>(d, delay, std::move(e)); }
+    std::optional<Easing> TweenEasing(const SpecPtr& spec) {
+        if (const auto* t = dynamic_cast<const TweenSpec*>(spec.get())) return t->GetEasing();
+        return std::nullopt;
+    }
     SpecPtr Snap(int delay) { return std::make_shared<SnapSpec>(delay); }
     SpecPtr InfiniteRepeatable(SpecPtr s, RepeatMode m, std::int64_t off) { return std::make_shared<InfiniteSpec>(std::move(s), m, off); }
 
