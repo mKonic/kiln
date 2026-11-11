@@ -34,6 +34,7 @@
 #include "kiln/material3/BottomSheet.h"
 #include "kiln/material3/BottomSheetScaffold.h"
 #include "kiln/material3/ModalBottomSheet.h"
+#include "kiln/material3/NavigationDrawer.h"
 #include "kiln/ui/Back.h"
 #include "kiln/material3/internal/GetString.h"
 #include "kiln/material3/Divider.h"
@@ -10315,4 +10316,449 @@ TEST(BottomSheetScaffoldTakesTheThemesMotionScheme) {
     h.AdvanceTimeBy(100);
     const auto& s = *scaffold->bottomSheetState;
     CHECK(s.showMotionSpec == scheme->spatial && s.anchoredDraggableMotionSpec == scheme->spatial && s.hideMotionSpec == scheme->effects);
+}
+
+// Ported from Compose's ModalNavigationDrawerTest, DismissibleNavigationDrawerTest,
+// PermanentNavigationDrawerTest and NavigationDrawerItemTest (412 x 800 dp, density 2). The
+// modal and dismissible drawers share most cases; each runs for both.
+namespace {
+    enum class DrawerKind { Modal, Dismissible };
+    // A drawer of `kind` with `sheet` inside its sheet and `body` as the screen content.
+    void Drawer(DrawerKind kind, std::shared_ptr<DrawerState> state, std::function<void()> sheet, std::function<void()> body = [] {},
+                ui::Modifier sheetModifier = {}, DrawerSheetOptions sheetOptions = {}, bool sheetWithState = false, ui::Modifier modifier = {}) {
+        const auto drawerContent = [=] {
+            if (kind == DrawerKind::Modal) ModalDrawerSheet(sheetModifier, sheetOptions, sheet, sheetWithState ? state : nullptr);
+            else DismissibleDrawerSheet(sheetModifier, sheetOptions, sheet, sheetWithState ? state : nullptr);
+        };
+        if (kind == DrawerKind::Modal) ModalNavigationDrawer(drawerContent, modifier, { .drawerState = state }, body);
+        else DismissibleNavigationDrawer(drawerContent, modifier, { .drawerState = state }, body);
+    }
+    // assertIsDisplayed: placed, and some of it on the screen.
+    bool OnScreen(Harness& h, const std::string& tag) {
+        const auto b = UnclippedBoundsDp(h, tag);
+        return b && b->Width() > 0 && b->right > 0 && b->left < 412 && b->bottom > 0 && b->top < 800;
+    }
+    void FullBox(const std::string& tag) { Box(Tag(FillMax({}, Axis::Both), tag)); }
+    // The drawer's pane (the node with the navigation menu title).
+    const ui::SemanticsNode* DrawerPane(const ui::SemanticsNode& n, const std::string& title) {
+        if (n.config.paneTitle == title) return &n;
+        for (const auto& c : n.children)
+            if (const auto* r = DrawerPane(c, title)) return r;
+        return nullptr;
+    }
+}
+
+TEST(NavigationDrawerOffsets) {
+    for (DrawerKind kind : { DrawerKind::Modal, DrawerKind::Dismissible }) {
+        {
+            // Open: the sheet's content starts at the edge, 360 dp wide.
+            PhoneHarness h;
+            Themed(h, [&] { Drawer(kind, RememberDrawerState(DrawerValue::Open), [] { FullBox("content"); }); });
+            h.AdvanceTimeBy(300);
+            const auto b = UnclippedBoundsDp(h, "content");
+            CHECK(b && Near(b->left, 0) && Near(b->Width(), 360));
+        }
+        {
+            // Closed: the modal sheet is off screen; the dismissible drawer's screen content sits at the edge.
+            PhoneHarness h;
+            Themed(h, [&] { Drawer(kind, RememberDrawerState(DrawerValue::Closed), [] { FullBox("content"); }, [] { FullBox("ScreenContent"); }); });
+            h.AdvanceTimeBy(300);
+            CHECK(!OnScreen(h, "content"));
+            if (kind == DrawerKind::Dismissible) CHECK(Near(UnclippedBoundsDp(h, "ScreenContent")->left, 0));
+        }
+        for (bool open : { true, false }) {
+            // A narrower sheet (200 dp).
+            PhoneHarness h;
+            std::shared_ptr<DrawerState> state;
+            Themed(h, [&] {
+                state = RememberDrawerState(open ? DrawerValue::Open : DrawerValue::Closed);
+                Box(FillMax({}, Axis::Both), Alignment::TopStart(), false, [&] { Drawer(kind, state, [] { FullBox("content"); }, [] {}, Width({}, 200_dp)); });
+            });
+            h.AdvanceTimeBy(300);
+            if (open) CHECK(Near(UnclippedBoundsDp(h, "content")->left, 0));
+            else CHECK(Within(state->CurrentOffset(), -400, 1));
+        }
+        for (bool open : { true, false }) {
+            // A wider sheet than the tokens' (380 dp) at density 0.5, so it fits.
+            PhoneHarness h;
+            std::shared_ptr<DrawerState> state;
+            Themed(h, [&] {
+                rt::Composition::Current()->Provide(ui::LocalDensity, ui::Density{ 0.5f }, [&] {
+                    state = RememberDrawerState(open ? DrawerValue::Open : DrawerValue::Closed);
+                    Drawer(kind, state, [] { FullBox("content"); }, [] {}, Width({}, 380_dp));
+                });
+            });
+            h.AdvanceTimeBy(300);
+            if (open) {
+                const auto* n = FindTagged(h, "content");
+                CHECK(n && Near(TagRectInRoot(*n, "content").left, 0));
+            } else CHECK(Within(state->CurrentOffset(), -190, 1));
+        }
+    }
+}
+
+TEST(NavigationDrawerSheetsRespectTheirInsets) {
+    for (int kind = 0; kind < 3; ++kind) {
+        PhoneHarness h;
+        const float inset = kind == 0 ? 10 : kind == 1 ? 7 : 13;
+        Themed(h, [&] {
+            DrawerSheetOptions o;
+            o.windowInsets = WindowInsets::Fixed(Dp(inset), Dp(inset), Dp(inset), Dp(inset));
+            if (kind == 2) PermanentNavigationDrawer([o] { PermanentDrawerSheet({}, o, [] { FullBox("content"); }); }, {}, [] {});
+            else Drawer(kind == 0 ? DrawerKind::Modal : DrawerKind::Dismissible, RememberDrawerState(DrawerValue::Open), [] { FullBox("content"); }, [] {}, {}, o);
+        });
+        h.AdvanceTimeBy(300);
+        const auto b = UnclippedBoundsDp(h, "content");
+        CHECK(b && Near(b->left, inset) && Near(b->top, inset));
+    }
+}
+
+TEST(NavigationDrawerHasAPaneTitle) {
+    for (int kind = 0; kind < 3; ++kind) {
+        PhoneHarness h;
+        std::string title;
+        Themed(h, [&] {
+            title = GetString(Strings::NavigationMenu);
+            if (kind == 2) PermanentNavigationDrawer([] { PermanentDrawerSheet(Tag({}, "navigationDrawerTag"), {}, [] { Box(FillMax({}, Axis::Both)); }); }, {}, [] {});
+            else Drawer(kind == 0 ? DrawerKind::Modal : DrawerKind::Dismissible, RememberDrawerState(DrawerValue::Open), [] { Box(FillMax({}, Axis::Both)); });
+        });
+        h.AdvanceTimeBy(300);
+        const auto tree = h.owner.BuildSemanticsTree();
+        CHECK(!title.empty() && DrawerPane(tree, title) != nullptr);
+    }
+}
+
+TEST(NavigationDrawerOpenCloseAnimateAndSnap) {
+    for (DrawerKind kind : { DrawerKind::Modal, DrawerKind::Dismissible }) {
+        for (int how = 0; how < 3; ++how) {   // open/close, animateTo, snapTo
+            PhoneHarness h;
+            std::shared_ptr<DrawerState> state;
+            std::vector<rt::Job> jobs;
+            Themed(h, [&] {
+                state = RememberDrawerState(DrawerValue::Closed);
+                Drawer(kind, state, [] { FullBox("drawer"); }, [] { FullBox("ScreenContent"); });
+            });
+            h.AdvanceTimeBy(300);
+            CHECK(!OnScreen(h, "drawer") && state->CurrentValue() == DrawerValue::Closed);
+            const auto go = [&](DrawerValue v) {
+                if (how == 0) jobs.push_back(rt::Launch(rt::Dispatcher::Main(), v == DrawerValue::Open ? state->Open() : state->Close()));
+                else if (how == 1) jobs.push_back(rt::Launch(rt::Dispatcher::Main(), state->AnimateTo(v, anim::Tween())));
+                else jobs.push_back(rt::Launch(rt::Dispatcher::Main(), state->SnapTo(v)));
+                h.AdvanceTimeBy(1000);
+            };
+            go(DrawerValue::Open);
+            CHECK(state->CurrentValue() == DrawerValue::Open && Near(UnclippedBoundsDp(h, "drawer")->left, 0));
+            if (kind == DrawerKind::Dismissible) CHECK(Near(UnclippedBoundsDp(h, "ScreenContent")->left, 360));
+            go(DrawerValue::Closed);
+            CHECK(state->CurrentValue() == DrawerValue::Closed && !OnScreen(h, "drawer"));
+            if (kind == DrawerKind::Dismissible) CHECK(Near(UnclippedBoundsDp(h, "ScreenContent")->left, 0));
+        }
+    }
+}
+
+TEST(NavigationDrawerClicksGoToWhatShows) {
+    for (DrawerKind kind : { DrawerKind::Modal, DrawerKind::Dismissible }) {
+        PhoneHarness h;
+        int drawerClicks = 0, bodyClicks = 0;
+        std::shared_ptr<DrawerState> state;
+        std::vector<rt::Job> jobs;
+        Themed(h, [&] {
+            state = RememberDrawerState(DrawerValue::Closed);
+            Drawer(kind, state, [&] { Box(Clickable(FillMax({}, Axis::Both), [&] { ++drawerClicks; })); },
+                   [&] { Box(Clickable(Tag(FillMax({}, Axis::Both), "body"), [&] { ++bodyClicks; })); });
+        });
+        h.AdvanceTimeBy(300);
+        std::int64_t t = 1000;
+        Touch(h, t, ui::PointerEventType::Press, 412, 800, true);
+        Touch(h, t, ui::PointerEventType::Release, 412, 800, false);
+        h.AdvanceTimeBy(300);
+        CHECK(drawerClicks == 0 && bodyClicks == 1);
+        jobs.push_back(rt::Launch(rt::Dispatcher::Main(), state->Open()));
+        h.AdvanceTimeBy(1000);
+        // click(centerLeft) of the screen: on the open drawer.
+        Touch(h, t, ui::PointerEventType::Press, 1, 800, true);
+        Touch(h, t, ui::PointerEventType::Release, 1, 800, false);
+        h.AdvanceTimeBy(300);
+        CHECK(drawerClicks == 1 && bodyClicks == 1);
+    }
+}
+
+TEST(NavigationDrawerOpensAndClosesBySwiping) {
+    for (DrawerKind kind : { DrawerKind::Modal, DrawerKind::Dismissible }) {
+        for (bool rtl : { false, true }) {
+            PhoneHarness h;
+            std::int64_t t = 1000;
+            std::shared_ptr<DrawerState> state;
+            Themed(h, [&] {
+                rt::Composition::Current()->Provide(ui::LocalLayoutDirection, rtl ? ui::LayoutDirection::Rtl : ui::LayoutDirection::Ltr, [&] {
+                    state = RememberDrawerState(DrawerValue::Closed);
+                    Drawer(kind, state, [] { Box(FillMax({}, Axis::Both)); }, [] { Box(FillMax({}, Axis::Both)); });
+                });
+            });
+            h.AdvanceTimeBy(300);
+            // swipeRight / swipeLeft across the screen (px), towards the drawer's side to open.
+            const auto swipe = [&](bool right) {
+                if (right) Swipe(h, t, 10, 800, 814, 800, 10, 20);
+                else Swipe(h, t, 814, 800, 10, 800, 10, 20);
+                h.AdvanceTimeBy(1000);
+            };
+            swipe(!rtl);
+            CHECK(state->CurrentValue() == DrawerValue::Open);
+            swipe(rtl);
+            CHECK(state->CurrentValue() == DrawerValue::Closed);
+        }
+    }
+}
+
+TEST(NavigationDrawerCurrentValueUpdatesOnRelease) {
+    PhoneHarness h;
+    std::int64_t t = 1000;
+    std::shared_ptr<DrawerState> state;
+    Themed(h, [&] {
+        state = RememberDrawerState(DrawerValue::Closed);
+        Drawer(DrawerKind::Modal, state, [] { Box(FillMax({}, Axis::Both)); }, [] { Box(FillMax({}, Axis::Both)); });
+    });
+    h.AdvanceTimeBy(300);
+    Swipe(h, t, 10, 800, 814, 800, 10, 20);
+    h.AdvanceTimeBy(1000);
+    CHECK(state->CurrentValue() == DrawerValue::Open);
+    // down(center); moveTo(centerLeft): still open until the finger lifts.
+    Swipe(h, t, 412, 800, 0, 800, 10, 20, false);
+    CHECK(state->CurrentValue() == DrawerValue::Open);
+    Touch(h, t, ui::PointerEventType::Release, 0, 800, false);
+    h.AdvanceTimeBy(500);
+    CHECK(state->CurrentValue() == DrawerValue::Closed);
+}
+
+TEST(NavigationDrawerRespectsConfirmStateChange) {
+    for (DrawerKind kind : { DrawerKind::Modal, DrawerKind::Dismissible }) {
+        PhoneHarness h;
+        std::int64_t t = 1000;
+        std::shared_ptr<DrawerState> state;
+        std::string title;
+        Themed(h, [&] {
+            title = GetString(Strings::NavigationMenu);
+            state = RememberDrawerState(DrawerValue::Open, [](DrawerValue v) { return v != DrawerValue::Closed; });
+            Drawer(kind, state, [] { Box(FillMax({}, Axis::Both)); }, [] { Box(FillMax({}, Axis::Both)); });
+        });
+        h.AdvanceTimeBy(300);
+        Swipe(h, t, 814, 800, 10, 800, 10, 20);
+        h.AdvanceTimeBy(1000);
+        CHECK(state->CurrentValue() == DrawerValue::Open);
+        const auto tree = h.owner.BuildSemanticsTree();
+        const auto* pane = DrawerPane(tree, title);
+        CHECK(pane && pane->config.dismiss);
+        if (pane && pane->config.dismiss) pane->config.dismiss();
+        h.AdvanceTimeBy(1000);
+        CHECK(state->CurrentValue() == DrawerValue::Open);
+    }
+}
+
+TEST(NavigationDrawerDismissActionOnlyWhenOpen) {
+    for (DrawerKind kind : { DrawerKind::Modal, DrawerKind::Dismissible }) {
+        PhoneHarness h;
+        std::shared_ptr<DrawerState> state;
+        std::string title;
+        std::vector<rt::Job> jobs;
+        Themed(h, [&] {
+            title = GetString(Strings::NavigationMenu);
+            state = RememberDrawerState(DrawerValue::Closed);
+            Drawer(kind, state, [] { Box(FillMax({}, Axis::Both)); });
+        });
+        h.AdvanceTimeBy(300);
+        const auto pane = [&] {
+            const auto tree = h.owner.BuildSemanticsTree();
+            const auto* p = DrawerPane(tree, title);
+            return p ? std::optional<ui::SemanticsConfiguration>(p->config) : std::nullopt;
+        };
+        // The closed drawer's pane is not placed, so it has no dismiss action to offer.
+        auto p = pane();
+        CHECK(!p || !p->dismiss);
+        jobs.push_back(rt::Launch(rt::Dispatcher::Main(), state->Open()));
+        h.AdvanceTimeBy(1000);
+        p = pane();
+        CHECK(p && p->dismiss);
+        if (p && p->dismiss) p->dismiss();
+        h.AdvanceTimeBy(1000);
+        p = pane();
+        CHECK(state->CurrentValue() == DrawerValue::Closed && (!p || !p->dismiss));
+    }
+}
+
+TEST(ModalNavigationDrawerScrimIsInTheTreeOnlyWhenOpen) {
+    PhoneHarness h;
+    std::string closeDrawer;
+    Themed(h, [&] {
+        closeDrawer = GetString(Strings::CloseDrawer);
+        Drawer(DrawerKind::Modal, RememberDrawerState(DrawerValue::Open), [] { FullBox("drawer"); }, [] { FullBox("body"); });
+    });
+    h.AdvanceTimeBy(300);
+    CHECK(Near(UnclippedBoundsDp(h, "drawer")->left, 0));
+    auto tree = h.owner.BuildSemanticsTree();
+    const auto* scrim = FindSemantics(tree, closeDrawer);
+    CHECK(scrim && scrim->config.onClick);
+    if (scrim && scrim->config.onClick) scrim->config.onClick();
+    h.AdvanceTimeBy(1000);
+    CHECK(!OnScreen(h, "drawer"));
+    tree = h.owner.BuildSemanticsTree();
+    const auto* gone = FindSemantics(tree, closeDrawer);
+    CHECK(!gone || !gone->config.onClick);
+}
+
+TEST(ModalNavigationDrawerContainerIsOffScreenWhenClosed) {
+    PhoneHarness h;
+    std::shared_ptr<DrawerState> state;
+    Themed(h, [&] {
+        state = RememberDrawerState(DrawerValue::Closed);
+        ModalNavigationDrawer([] { ModalDrawerSheet(Tag({}, "sheet"), {}, [] { Box(FillMax({}, Axis::Both)); }); }, {}, { .drawerState = state },
+                              [] { Box(FillMax({}, Axis::Both)); });
+    });
+    h.AdvanceTimeBy(300);
+    // The container sits a full drawer width before the edge.
+    CHECK(Within(state->CurrentOffset(), -720, 1));
+}
+
+TEST(NavigationDrawerFocusesItsContentWhenOpened) {
+    for (DrawerKind kind : { DrawerKind::Modal, DrawerKind::Dismissible }) {
+        PhoneHarness h;
+        h.owner.SetInputMode(ui::InputMode::Keyboard);
+        std::shared_ptr<DrawerState> state;
+        auto inDrawer = std::make_shared<MutableInteractionSource>();
+        auto inBody = std::make_shared<MutableInteractionSource>();
+        ui::FocusRequester bodyFocus;
+        std::vector<rt::Job> jobs;
+        Themed(h, [&] {
+            state = RememberDrawerState(DrawerValue::Closed);
+            Drawer(kind, state, [&] { Button([] {}, {}, { .interactionSource = inDrawer }, [] {}); },
+                   [&] { Button([&] { jobs.push_back(rt::Launch(rt::Dispatcher::Main(), state->Open())); }, FocusRequesterModifier({}, bodyFocus),
+                                { .interactionSource = inBody }, [] {}); });
+        });
+        h.AdvanceTimeBy(300);
+        CHECK(bodyFocus.RequestFocus());
+        h.AdvanceTimeBy(100);
+        CHECK(inBody->IsFocused());
+        jobs.push_back(rt::Launch(rt::Dispatcher::Main(), state->Open()));
+        h.AdvanceTimeBy(1000);
+        CHECK(state->CurrentValue() == DrawerValue::Open);
+        CHECK(inDrawer->IsFocused());
+    }
+}
+
+TEST(ModalNavigationDrawerBackClosesItWhileOpening) {
+    for (bool duringOpen : { true, false }) {
+        PhoneHarness h;
+        bool backPressed = false;
+        std::shared_ptr<DrawerState> state;
+        std::vector<rt::Job> jobs;
+        Themed(h, [&] {
+            state = RememberDrawerState(duringOpen ? DrawerValue::Closed : DrawerValue::Open);
+            BackHandler(true, [&] { backPressed = true; });
+            Drawer(DrawerKind::Modal, state, [] { Box(FillMax({}, Axis::Both)); }, [] {}, {}, {}, true);
+        });
+        h.AdvanceTimeBy(300);
+        CHECK(state->CurrentValue() == state->TargetValue() && !state->IsAnimationRunning());
+        jobs.push_back(rt::Launch(rt::Dispatcher::Main(), duringOpen ? state->Open() : state->Close()));
+        h.AdvanceTimeBy(16);
+        CHECK(state->IsAnimationRunning());
+        CHECK(state->TargetValue() == (duringOpen ? DrawerValue::Open : DrawerValue::Closed));
+        ui::BackDispatcher::Main().Completed();
+        h.AdvanceTimeBy(1000);
+        // The drawer takes Back while it opens; while it closes, Back goes past it.
+        CHECK(state->CurrentValue() == DrawerValue::Closed && state->TargetValue() == DrawerValue::Closed && !state->IsAnimationRunning());
+        CHECK(backPressed == !duringOpen);
+    }
+}
+
+TEST(PermanentNavigationDrawerLayout) {
+    for (bool rtl : { false, true }) {
+        PhoneHarness h;
+        Themed(h, [&] {
+            rt::Composition::Current()->Provide(ui::LocalLayoutDirection, rtl ? ui::LayoutDirection::Rtl : ui::LayoutDirection::Ltr, [] {
+                PermanentNavigationDrawer([] { PermanentDrawerSheet({}, {}, [] { FullBox("content"); }); }, {}, [] {});
+            });
+        });
+        h.AdvanceTimeBy(300);
+        const auto b = UnclippedBoundsDp(h, "content");
+        CHECK(b && Near(b->left, rtl ? 412 - 360 : 0) && Near(b->Width(), 360));
+    }
+    PhoneHarness h;
+    Themed(h, [] { PermanentNavigationDrawer([] { PermanentDrawerSheet(Width({}, 260_dp), {}, [] { FullBox("content"); }); }, {}, [] {}); });
+    h.AdvanceTimeBy(300);
+    CHECK(Near(UnclippedBoundsDp(h, "content")->Width(), 260));
+}
+
+TEST(NavigationDrawerItemSizesAndPaddings) {
+    {
+        PhoneHarness h;
+        Themed(h, [] {
+            Column(Width({}, 264_dp), [] { NavigationDrawerItem([] {}, true, [] {}, Tag({}, "item"), { .icon = [] {} }); });
+        });
+        h.AdvanceTimeBy(300);
+        const auto b = UnclippedBoundsDp(h, "item");
+        CHECK(b && Near(b->Width(), 264) && Near(b->Height(), 56));
+    }
+    {
+        PhoneHarness h;
+        Themed(h, [] {
+            Column(Width({}, 264_dp), [] { NavigationDrawerItem([] { Text("Multi \nline \nlabel \nis \ntall"); }, true, [] {}, Tag({}, "item"), { .icon = [] {} }); });
+        });
+        h.AdvanceTimeBy(300);
+        const auto b = UnclippedBoundsDp(h, "item");
+        CHECK(b && Near(b->Width(), 264) && b->Height() > 56);
+    }
+    {
+        PhoneHarness h;
+        Themed(h, [] {
+            Column(Width({}, 264_dp), [] {
+                NavigationDrawerItemOptions o;
+                o.icon = [] { Icon(internal::Icons::Filled::Edit(), std::nullopt, Tag({}, "icon")); };
+                o.badge = [] { Text("Badge", Tag({}, "badge")); };
+                NavigationDrawerItem([] { Text("Label", Tag({}, "label")); }, true, [] {}, Tag({}, "item"), o);
+            });
+        });
+        h.AdvanceTimeBy(300);
+        const auto icon = UnclippedBoundsDp(h, "icon"), label = UnclippedBoundsDp(h, "label"), badge = UnclippedBoundsDp(h, "badge");
+        CHECK(icon && label && badge);
+        if (!icon || !label || !badge) return;
+        CHECK(Near(icon->left, 16) && label->left - icon->right - 12 < 0.5f && Near(264 - badge->right, 24));
+    }
+    {
+        PhoneHarness h;
+        Themed(h, [] { Column(Width({}, 264_dp), [] { NavigationDrawerItem([] { Text("Label", Tag({}, "label")); }, true, [] {}, Tag({}, "item")); }); });
+        h.AdvanceTimeBy(300);
+        CHECK(Near(UnclippedBoundsDp(h, "label")->left, 16));
+    }
+}
+
+TEST(NavigationDrawerItemSemantics) {
+    PhoneHarness h;
+    Themed(h, [] {
+        PermanentNavigationDrawer([] {
+            NavigationDrawerItem([] { Text("Selected item"); }, true, [] {}, {}, { .icon = [] { Icon(internal::Icons::Filled::Edit(), std::nullopt); } });
+            NavigationDrawerItem([] { Text("Other item"); }, false, [] {}, {}, { .icon = [] { Icon(internal::Icons::Filled::Edit(), std::nullopt); } });
+        }, {}, [] {});
+    });
+    h.AdvanceTimeBy(300);
+    // The second item gets no width beside the first (as in Compose); the full tree keeps it.
+    const auto tree = h.owner.BuildSemanticsTree(false);
+    const auto* selected = FindSemantics(tree, "Selected item");
+    const auto* other = FindSemantics(tree, "Other item");
+    CHECK(selected && selected->config.role == ui::Role::Tab && selected->config.selected == true && selected->config.onClick);
+    CHECK(other && other->config.role == ui::Role::Tab && other->config.selected == false && other->config.onClick);
+}
+
+TEST(DrawerStateSavedAndRestored) {
+    rt::SaveableStateRegistry::Values saved;
+    for (int pass = 0; pass < 2; ++pass) {
+        rt::SaveableStateRegistry registry(saved);
+        std::shared_ptr<DrawerState> state;
+        Harness h;
+        h.Run([&] {
+            rt::Composition::Current()->Provide(rt::LocalSaveableStateRegistry, &registry, [&] {
+                state = RememberDrawerState(pass == 0 ? DrawerValue::Open : DrawerValue::Closed);
+            });
+        });
+        CHECK(state && state->CurrentValue() == DrawerValue::Open);
+        if (pass == 0) saved = rt::SaveableStateRegistry::Deserialize(rt::SaveableStateRegistry::Serialize(registry.PerformSave()));
+    }
 }
