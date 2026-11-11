@@ -117,6 +117,7 @@ namespace kiln::foundation {
             bool nodeFocused = false;                      // focusableNode.focusState.isFocused
             bool windowFocused = true;                     // windowInfo.isWindowFocused
             bool inputSession = false;                     // inputSessionJob != null
+            bool textInputBlocked = false;                 // under BlockPlatformTextInput
             const ModifierNode* decoratorNode = nullptr;   // for the receiveContent modifier local
             bool acceptsContent = false;                   // a receiver was around when the session started
             // stylusHandwritingTrigger (replay 1): set by a handwriting stroke, replayed to each
@@ -238,6 +239,7 @@ namespace kiln::foundation {
             }
 
             void StartInputSession(bool fromTap) {
+                if (textInputBlocked) return;   // the interceptor never starts the request
                 if (!fromTap && !keyboard.showKeyboardOnFocus.value_or(true)) return;
                 if (!owner) return;
                 inputSession = true;
@@ -1086,6 +1088,9 @@ namespace kiln::foundation {
             if (const auto k = options.inputTransformation->KeyboardOptions()) resolved = resolved.FillUnspecifiedValuesWith(*k);
         const bool sessionChanged = f.keyboard != resolved || f.Editable() != (options.enabled && !options.readOnly);
         f.interaction = interaction;
+        const bool blocked = comp.Read(LocalPlatformTextInputBlocked);
+        if (blocked && !f.textInputBlocked) f.DisposeInputSession();
+        f.textInputBlocked = blocked;
         f.selection->interactionSource = interaction;
         // SideEffect: properties that are not observable.
         f.transformed->Update(options.inputTransformation);

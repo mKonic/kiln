@@ -47,4 +47,11 @@ namespace kiln::foundation {
 
     void BasicTextField(TextFieldState& state, const Modifier& modifier = {}, BasicTextFieldOptions options = {}, rt::Key key = {});
 
+    // InterceptPlatformTextInput with an interceptor that never lets a request through: text
+    // fields inside start no input session and show no keyboard (hardware keys still edit them).
+    inline rt::Local<bool> LocalPlatformTextInputBlocked{ false };
+    inline void BlockPlatformTextInput(std::function<void()> content) {
+        rt::Composition::Current()->Provide(LocalPlatformTextInputBlocked, true, std::move(content));
+    }
+
 }
