@@ -39,7 +39,6 @@ namespace kiln::material3 {
             co_await state->Hide();
         }
         rt::Task<> PartialExpandSheet(std::shared_ptr<SheetState> state) { co_await state->PartialExpand(); }
-        rt::Task<> ShowSheet(std::shared_ptr<SheetState> state) { co_await state->Show(); }
         rt::Task<> AnimateAlpha(std::shared_ptr<anim::Animatable> a, float target, anim::SpecPtr spec) {
             co_await a->AnimateTo(anim::Vec{ target, 0, 0, 0 }, std::move(spec));
         }

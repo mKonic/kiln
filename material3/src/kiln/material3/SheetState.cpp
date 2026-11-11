@@ -142,7 +142,7 @@ namespace kiln::material3 {
                     if (delta < 0 && source == ui::NestedScrollSource::UserInput) return { 0, state->Anchored().DispatchRawDelta(delta) };
                     return {};
                 }
-                ui::Offset OnPostScroll(ui::Offset consumed, ui::Offset available, ui::NestedScrollSource source) override {
+                ui::Offset OnPostScroll(ui::Offset, ui::Offset available, ui::NestedScrollSource source) override {
                     const float delta = available.y;
                     if (source == ui::NestedScrollSource::UserInput && delta != 0) return { 0, state->Anchored().DispatchRawDelta(delta) };
                     return {};
