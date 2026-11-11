@@ -8,7 +8,10 @@
 
 #include "kiln/animation/Animatable.h"
 #include "kiln/foundation/Interaction.h"
+#include "kiln/foundation/Border.h"
+#include "kiln/foundation/Scroll.h"
 #include "kiln/foundation/Shapes.h"
+#include "kiln/foundation/Transition.h"
 #include "kiln/runtime/State.h"
 #include "kiln/ui/Popup.h"
 
@@ -100,6 +103,13 @@ namespace kiln::material3::internal {
     TransformOrigin CalculateTransformOrigin(IntRect anchorBounds, IntRect menuBounds);
 
     inline constexpr Dp MenuVerticalMargin{ 48 }, MenuHorizontalMargin{ 8 };
+
+    // DropdownMenuContent: the menu's surface, scaling and fading in from `transformOrigin`
+    // with its expanded state, its content in a scrolling column.
+    void DropdownMenuContent(const ui::Modifier& modifier, foundation::MutableTransitionState<bool>& expandedState,
+                             std::function<TransformOrigin()> transformOrigin, foundation::ScrollState& scrollState, foundation::ShapePtr shape,
+                             ui::Color containerColor, ui::Dp tonalElevation, ui::Dp shadowElevation, std::optional<foundation::BorderStroke> border,
+                             std::function<void()> content);
 
     // DropdownMenuPositionProvider: the first candidate that fits within the margins; failing
     // all, centred (when wider than the window less margins) or clamped. Remembers the

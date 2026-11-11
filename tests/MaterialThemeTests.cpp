@@ -28,6 +28,8 @@
 #include "kiln/material3/Scrollbar.h"
 #include "kiln/material3/Snackbar.h"
 #include "kiln/material3/TextField.h"
+#include "kiln/material3/ExposedDropdownMenu.h"
+#include "kiln/ui/Back.h"
 #include "kiln/material3/internal/GetString.h"
 #include "kiln/material3/Divider.h"
 #include "kiln/material3/Tab.h"
@@ -8795,4 +8797,137 @@ TEST(SecureTextFieldsExposeTheTextBeforeObfuscation) {
         const auto* n = FindSemantics(tree, "TextField");
         CHECK(n && n->config.editableText == std::optional<std::string>("password"));
     }
+}
+
+// ExposedDropdownMenuTest
+TEST(ExposedDropdownMenuPositionProvider) {
+    // Below the anchor; else against the window (top inset included) within the margins.
+    const ui::Density d{ 1, 1 };
+    const auto p = internal::MakeExposedDropdownMenuPositionProvider(d, 50);
+    const ui::IntSize anchor{ 200, 100 }, popup{ 200, 340 }, window{ 500, 500 };
+    const auto at = [&](int y) { return p->CalculatePosition(ui::IntRect{ 0, y, anchor.width, y + anchor.height }, window, ui::LayoutDirection::Ltr, popup); };
+    CHECK((at(0) == ui::IntOffset{ 0, 100 }));
+    CHECK((at(-150) == ui::IntOffset{ 0, 48 }));
+    CHECK((at(100) == ui::IntOffset{ 0, 200 }));
+    CHECK((at(600) == ui::IntOffset{ 0, 500 + 50 - 48 - 340 }));
+    // Taller than the window less its margins: centred.
+    const auto q = internal::MakeExposedDropdownMenuPositionProvider(d, 0);
+    const auto pos = q->CalculatePosition(ui::IntRect{ 0, 50, 200, 100 }, { 500, 200 }, ui::LayoutDirection::Ltr, { 200, 300 });
+    CHECK_EQ(pos.y, (200 - 300) / 2);
+}
+
+namespace {
+    // ExposedDropdownMenuForTest: a text field anchoring a one-item menu, centred in the window.
+    struct EdmTest {
+        std::shared_ptr<rt::State<bool>> expanded = std::make_shared<rt::State<bool>>(false);
+        foundation::TextFieldState state;
+        void Compose(PhoneHarness& h, bool editable = false, bool enabled = true, ui::Modifier fieldModifier = {}) {
+            Themed(h, [this, editable, enabled, fieldModifier] {
+                Box(FillMax({}, Axis::Both), Alignment::Center(), false, [this, editable, enabled, fieldModifier] {
+                    const bool open = expanded->Get();
+                    auto e = expanded;
+                    ExposedDropdownMenuBox(open, [e](bool v) { e->Set(v); }, {}, [this, editable, enabled, fieldModifier, open, e](const ExposedDropdownMenuBoxScope& scope) {
+                        TextFieldOptions o;
+                        o.lineLimits = foundation::TextFieldLineLimits::SingleLine();
+                        o.readOnly = !editable;
+                        o.label = [](const TextFieldLabelScope&) { Text("Label"); };
+                        o.trailingIcon = [open] { Box(Tag({}, "trailing"), Alignment::TopStart(), false, [open] { ExposedDropdownMenuDefaults::TrailingIcon(open); }); };
+                        o.colors = ExposedDropdownMenuDefaults::textFieldColors();
+                        TextField(state, Tag(scope.MenuAnchor(fieldModifier, editable ? ExposedDropdownMenuAnchorType::PrimaryEditable
+                                                                                      : ExposedDropdownMenuAnchorType::PrimaryNotEditable, enabled), "field"), o);
+                        ExposedDropdownMenu(scope, open, [e] { e->Set(false); }, Tag({}, "menu"), {}, [this, e] {
+                            DropdownMenuItem([] { Text("Option 1"); }, [this, e] {
+                                state.SetTextAndPlaceCursorAtEnd("Option 1");
+                                e->Set(false);
+                            }, Tag({}, "item"), {});
+                        });
+                    });
+                });
+            });
+            h.AdvanceTimeBy(300);
+        }
+        bool Open(PhoneHarness& h) { return FindTagged(h, "item") != nullptr; }
+    };
+}
+
+TEST(ExposedDropdownMenuOpensOnClickAndClosesOutside) {
+    PhoneHarness h;
+    EdmTest t;
+    t.Compose(h);
+    CHECK(!t.Open(h));
+    std::int64_t time = 0;
+    Press(h, time, "field", true);
+    h.AdvanceTimeBy(500);
+    CHECK(t.Open(h));
+    // A click outside, past the field's corner.
+    const auto f = BoundsDp(h, "field");
+    CHECK(f.has_value());
+    if (!f) return;
+    Touch(h, time, ui::PointerEventType::Press, (f->right + 1) * 2, (f->top - 30) * 2, true);
+    Touch(h, time, ui::PointerEventType::Release, (f->right + 1) * 2, (f->top - 30) * 2, false);
+    h.AdvanceTimeBy(500);
+    CHECK(!t.Open(h));
+}
+
+TEST(ExposedDropdownMenuClosesOnFieldClickAndBack) {
+    for (bool back : { false, true }) {
+        for (bool editable : { false, true }) {
+            PhoneHarness h;
+            EdmTest t;
+            t.expanded->Set(true);
+            t.Compose(h, editable);
+            CHECK(t.Open(h));
+            if (back) {
+                CHECK(ui::BackDispatcher::Main().Completed());
+            } else {
+                std::int64_t time = 0;
+                Press(h, time, "field", true);
+            }
+            h.AdvanceTimeBy(500);
+            CHECK(!t.Open(h));
+            if (!back) break;   // the field click case once
+        }
+    }
+}
+
+TEST(ExposedDropdownMenuDisabledAnchorDoesNotOpen) {
+    for (bool editable : { false, true }) {
+        PhoneHarness h;
+        EdmTest t;
+        t.Compose(h, editable, false);
+        std::int64_t time = 0;
+        Press(h, time, "field", true);
+        h.AdvanceTimeBy(500);
+        CHECK(!t.Open(h));
+    }
+}
+
+TEST(ExposedDropdownMenuMatchesTheFieldWidth) {
+    PhoneHarness h;
+    EdmTest t;
+    t.expanded->Set(true);
+    t.Compose(h, false, true, FillMax({}, Axis::Horizontal, 0.98f));
+    const auto f = UnclippedBoundsDp(h, "field"), m = UnclippedBoundsDp(h, "menu");
+    CHECK(f && m && Near(m->Width(), f->Width()));
+}
+
+TEST(ExposedDropdownMenuChoosesAnItem) {
+    PhoneHarness h;
+    EdmTest t;
+    t.expanded->Set(true);
+    t.Compose(h);
+    std::int64_t time = 0;
+    Press(h, time, "item", true);
+    h.AdvanceTimeBy(500);
+    CHECK(!t.Open(h));
+    CHECK_EQ(t.state.TextUtf8(), std::string("Option 1"));
+}
+
+TEST(ExposedDropdownMenuAnchorIsADropdownList) {
+    PhoneHarness h;
+    EdmTest t;
+    t.Compose(h);
+    const auto tree = h.owner.BuildSemanticsTree();
+    const auto* n = FindSemantics(tree, "field");
+    CHECK(n && n->config.role == ui::Role::DropdownList);
 }

@@ -81,31 +81,15 @@ namespace kiln::material3 {
                                                    [alphaSpec](const auto&) { return alphaSpec; });
             return { scale, alpha };
         }
-        Modifier MenuLayer(Modifier m, MenuAnimation a, std::shared_ptr<const DropdownMenuPopupPositionProvider> provider) {
-            return GraphicsLayer(std::move(m), [a, provider](GraphicsLayerParams& p) {
+        Modifier MenuLayer(Modifier m, MenuAnimation a, std::function<internal::TransformOrigin()> transformOrigin) {
+            return GraphicsLayer(std::move(m), [a, transformOrigin](GraphicsLayerParams& p) {
                 p.scaleX = a.scale;
                 p.scaleY = a.scale;
                 p.alpha = a.alpha;
-                const auto origin = provider->GetTransformOrigin();
+                const auto origin = transformOrigin();
                 p.originX = origin.pivotFractionX;
                 p.originY = origin.pivotFractionY;
             });
-        }
-
-        void DropdownMenuContent(const Modifier& modifier, MutableTransitionState<bool>& expandedState,
-                                 std::shared_ptr<const DropdownMenuPopupPositionProvider> provider, ScrollState& scrollState, ShapePtr shape,
-                                 Color containerColor, Dp tonalElevation, Dp shadowElevation, std::optional<BorderStroke> border,
-                                 std::function<void()> content) {
-            const MenuAnimation a = AnimateMenu(expandedState);
-            SurfaceOptions surface;
-            surface.shape = std::move(shape);
-            surface.color = containerColor;
-            surface.tonalElevation = tonalElevation;
-            surface.shadowElevation = shadowElevation;
-            surface.border = std::move(border);
-            const Modifier column = VerticalScroll(Width(Padding(modifier, Dp(0), DropdownMenuVerticalPadding), IntrinsicSize::Max), scrollState);
-            Surface(MenuLayer({}, a, std::move(provider)), surface,
-                    [column, content = std::move(content)] { Column(column, Arrangement::Top(), AlignmentH::Start(), content); });
         }
 
         void ProvideContentColor(Color color, std::function<void()> content) {
@@ -415,6 +399,22 @@ namespace kiln::material3 {
 
     // --- DropdownMenu --------------------------------------------------------------------------
 
+void internal::DropdownMenuContent(const Modifier& modifier, MutableTransitionState<bool>& expandedState,
+                                   std::function<TransformOrigin()> transformOrigin, ScrollState& scrollState, ShapePtr shape,
+                             Color containerColor, Dp tonalElevation, Dp shadowElevation, std::optional<BorderStroke> border,
+                             std::function<void()> content) {
+        const MenuAnimation a = AnimateMenu(expandedState);
+        SurfaceOptions surface;
+        surface.shape = std::move(shape);
+        surface.color = containerColor;
+        surface.tonalElevation = tonalElevation;
+        surface.shadowElevation = shadowElevation;
+        surface.border = std::move(border);
+        const Modifier column = VerticalScroll(Width(Padding(modifier, Dp(0), DropdownMenuVerticalPadding), IntrinsicSize::Max), scrollState);
+        Surface(MenuLayer({}, a, std::move(transformOrigin)), surface,
+                [column, content = std::move(content)] { Column(column, Arrangement::Top(), AlignmentH::Start(), content); });
+    }
+
     void DropdownMenu(bool expanded, std::function<void()> onDismissRequest, const Modifier& modifier, const DropdownMenuOptions& o,
                       std::function<void()> content) {
         auto& c = *rt::Composition::Current();
@@ -439,7 +439,8 @@ namespace kiln::material3 {
         auto* scroll = &scrollState;
         Popup(provider, std::move(onDismissRequest), o.properties ? *o.properties : MenuDefaults::DefaultMenuProperties(),
               [=, content = std::move(content)] {
-                  DropdownMenuContent(modifier, *state, provider, *scroll, shape, containerColor, tonal, shadow, border, content);
+                  internal::DropdownMenuContent(modifier, *state, [provider] { return provider->GetTransformOrigin(); }, *scroll, shape, containerColor,
+                                                tonal, shadow, border, content);
               });
     }
 
@@ -455,7 +456,7 @@ namespace kiln::material3 {
         Popup(provider, std::move(onDismissRequest), properties ? *properties : MenuDefaults::DefaultMenuProperties(),
               [=, content = std::move(content)] {
                   const MenuAnimation a = AnimateMenu(*state);
-                  Column(MenuLayer(Width(modifier, IntrinsicSize::Max), a, provider), Arrangement::Top(), AlignmentH::Start(), content);
+                  Column(MenuLayer(Width(modifier, IntrinsicSize::Max), a, [provider] { return provider->GetTransformOrigin(); }), Arrangement::Top(), AlignmentH::Start(), content);
               });
     }
 
