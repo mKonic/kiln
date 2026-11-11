@@ -42,6 +42,8 @@
 #include "kiln/material3/DatePicker.h"
 #include "kiln/material3/DateRangePicker.h"
 #include "kiln/material3/ScrollField.h"
+#include "kiln/material3/TimePicker.h"
+#include "kiln/material3/internal/TimePickerInternal.h"
 #include "kiln/material3/internal/GetString.h"
 #include "kiln/text/DateFormat.h"
 #include "kiln/text/LocaleFormat.h"
@@ -12915,5 +12917,720 @@ TEST(ScrollFieldItemSpacing) {
         const ui::Rect a = zero->BoundsInRoot(), b = one->BoundsInRoot();
         const float d = h.owner.GetDensity().density;
         CHECK(std::abs(((b.top + b.bottom) / 2 - (a.top + a.bottom) / 2) / d - height.value) < 0.5f);
+    }
+}
+
+// --- TimePicker (TimePickerTest.kt, TimePickerSizeTest.kt) ------------------------------------------
+
+namespace {
+    using Sel = TimePickerSelectionMode;
+    using material3::internal::AnalogTimePickerState;
+
+    std::string TimeString(material3::Strings id, int n) {
+        const text::FormatArg a[] = { std::int64_t(n) };
+        return text::FormatJava(PickerString(id), std::span<const text::FormatArg>(a), "en-US");
+    }
+    // contentDescriptionForValue
+    std::string TimeDescription(Sel selection, bool is24Hour, int n) {
+        return TimeString(selection == Sel::Minute ? material3::Strings::TimePickerMinuteSuffix
+                          : is24Hour             ? material3::Strings::TimePicker24HourSuffix
+                                                 : material3::Strings::TimePickerHourSuffix, n);
+    }
+    bool HasDescription(const ui::SemanticsNode& n, const std::string& d) {
+        return std::find(n.config.contentDescription.begin(), n.config.contentDescription.end(), d) != n.config.contentDescription.end();
+    }
+    // onNodeWithTimeValue: the first node described as the value.
+    std::optional<ui::SemanticsNode> TimeValue(PickerQuery& q, int number, Sel selection, bool is24Hour = false) {
+        const std::string d = TimeDescription(selection, is24Hour, number);
+        return q.Find([&d](const ui::SemanticsNode& n) { return HasDescription(n, d); });
+    }
+    void AllNodes(const ui::SemanticsNode& n, const std::function<bool(const ui::SemanticsNode&)>& pred, std::vector<const ui::SemanticsNode*>& out) {
+        if (pred(n)) out.push_back(&n);
+        for (const auto& c : n.children) AllNodes(c, pred, out);
+    }
+    const ui::SemanticsNode* ParentOf(const ui::SemanticsNode& n, int id) {
+        for (const auto& c : n.children) {
+            if (c.id == id) return &n;
+            if (const auto* p = ParentOf(c, id)) return p;
+        }
+        return nullptr;
+    }
+    // A hardware key; digits and letters type their character.
+    void TimeKey(Harness& h, int keyCode, std::uint32_t unicode = 0) {
+        h.owner.DispatchKeyEvent({ keyCode, ui::KeyEventType::KeyDown, 0, unicode });
+        h.owner.DispatchKeyEvent({ keyCode, ui::KeyEventType::KeyUp, 0, unicode });
+        h.AdvanceTimeBy(100);
+    }
+    void TypeKeys(Harness& h, const std::string& keys) {
+        for (char ch : keys) {
+            if (ch >= '0' && ch <= '9') TimeKey(h, 7 + (ch - '0'), std::uint32_t(ch));
+            else if (ch >= 'A' && ch <= 'Z') TimeKey(h, 29 + (ch - 'A'), std::uint32_t(ch - 'A' + 'a'));
+            else TimeKey(h, 0, std::uint32_t(ch));
+        }
+    }
+    constexpr int KeyBackspace = 67, KeyForwardDelete = 112;
+    bool Selected(const std::optional<ui::SemanticsNode>& n) { return n && n->config.selected == true; }
+    // The hour or minute field (an editable text, possibly hidden).
+    std::optional<ui::SemanticsNode> TimeField(PickerQuery& q, const std::string& description) {
+        return q.Find([&](const ui::SemanticsNode& n) { return n.config.editableText.has_value() && DescriptionContains(n, description); });
+    }
+}
+
+TEST(TimePickerLayoutTypeFollowsTheScreen) {
+    // timePicker_vertical_layout, timePicker_horizontal_layout
+    for (bool landscape : { false, true }) {
+        PhoneHarness h;
+        std::optional<TimePickerLayoutType> type;
+        Themed(h, [&type, landscape] {
+            ui::Configuration config;
+            config.screenWidthDp = landscape ? 800 : 500;
+            config.screenHeightDp = landscape ? 500 : 800;
+            rt::Composition::Current()->Provide(ui::LocalConfiguration, config, [&type] { type = TimePickerDefaults::layoutType(); });
+        });
+        CHECK(type == (landscape ? TimePickerLayoutType::Horizontal : TimePickerLayoutType::Vertical));
+    }
+}
+
+TEST(TimePickerStateBasics) {
+    // state_setHour_updatesIsPm, analogState_setHour_updatesIsPm
+    auto state = MakeTimePickerState(8, 0, false);
+    state->SetHour(20);
+    CHECK(IsPm(*state));
+    auto inner = MakeTimePickerState(8, 0, false);
+    AnalogTimePickerState analog(*inner);
+    analog.SetHour(20);
+    CHECK(IsPm(analog));
+    // state_12h_hourInitializationMatches, state_24h_hourInitializationMatches
+    for (bool is24 : { false, true })
+        for (int hour = 0; hour < 24; ++hour) CHECK(MakeTimePickerState(hour, 0, is24)->Hour() == hour);
+    // clockFace_12Hour_initAtNoon
+    auto noon = MakeTimePickerState(12, 0, false);
+    CHECK(IsPm(*noon) && noon->Hour() == 12);
+    // Out of range values throw.
+    bool threw = false;
+    try { MakeTimePickerState(24, 0, true); } catch (const std::invalid_argument&) { threw = true; }
+    CHECK(threw);
+    threw = false;
+    try { MakeTimePickerState(0, 60, true); } catch (const std::invalid_argument&) { threw = true; }
+    CHECK(threw);
+    // Inputs: invalid values are kept as input only.
+    auto s = MakeTimePickerState(10, 30, false);
+    s->SetHourInput(15);
+    CHECK(s->HourInput() == 15 && s->Hour() == 10 && !IsHourInputValid(*s));
+    s->SetHourInput(11);
+    CHECK(s->Hour() == 11 && IsHourInputValid(*s));
+    s->SetMinuteInput(75);
+    CHECK(s->MinuteInput() == 75 && s->Minute() == 30 && !IsMinuteInputValid(*s) && !IsInputValid(*s));
+}
+
+TEST(TimePickerStateRestores) {
+    // state_restoresTimePickerState
+    rt::SaveableStateRegistry::Values saved;
+    for (int pass = 0; pass < 2; ++pass) {
+        rt::SaveableStateRegistry current(saved);
+        rt::SaveableStateRegistry* registry = &current;
+        std::shared_ptr<TimePickerState> state;
+        PhoneHarness h;
+        Themed(h, [&state, registry] {
+            rt::Composition::Current()->Provide(rt::LocalSaveableStateRegistry, registry, [&] { state = RememberTimePickerState(14, 54, true); });
+        });
+        if (pass == 0) {
+            state->SetSelection(Sel::Minute);
+            saved = rt::SaveableStateRegistry::Deserialize(rt::SaveableStateRegistry::Serialize(current.PerformSave()));
+        } else {
+            CHECK(state->Hour() == 14 && state->Minute() == 54 && state->Is24Hour() && state->Selection() == Sel::Minute);
+        }
+    }
+    // timePickerState_format_12h/24h_fromConfig: the platform setting.
+    for (bool is24 : { false, true }) {
+        std::shared_ptr<TimePickerState> state;
+        PhoneHarness h;
+        Themed(h, [&state, is24] {
+            rt::Composition::Current()->Provide(ui::LocalIs24HourFormat, is24, [&state] { state = RememberTimePickerState(); });
+        });
+        CHECK(state->Is24Hour() == is24);
+    }
+}
+
+TEST(TimePickerSelectsOnTheDial) {
+    {   // timePicker_initialState
+        auto state = MakeTimePickerState(14, 23, false);
+        PhoneHarness h;
+        PickerContent(h, [state] { TimePicker(*state); });
+        PickerQuery q{ h };
+        CHECK(Selected(TimeValue(q, 2, Sel::Hour)));
+        CHECK(TimeValue(q, 23, Sel::Minute));
+        CHECK(q.Text("AM"));
+        CHECK(Selected(q.Text("PM")));
+    }
+    {   // timePicker_switchToMinutes
+        auto state = MakeTimePickerState(14, 23, false);
+        PhoneHarness h;
+        PickerContent(h, [state] { TimePicker(*state); });
+        PickerQuery q{ h };
+        q.Click(TimeValue(q, 23, Sel::Minute));
+        CHECK(state->Selection() == Sel::Minute);
+    }
+    {   // timePicker_selectHour
+        auto state = MakeTimePickerState(14, 23, false);
+        PhoneHarness h;
+        PickerContent(h, [state] { TimePicker(*state); });
+        PickerQuery q{ h };
+        q.Click(TimeValue(q, 6, Sel::Hour));
+        CHECK(state->Hour() == 18);
+        CHECK(q.Text("06"));
+        if (state->Selection() == Sel::Hour) q.Click(q.Text("23"));
+        CHECK(Selected(q.Text("23")));
+    }
+    {   // timePicker_selectHour_a11y: in keyboard mode, no switch to minutes
+        auto state = MakeTimePickerState(14, 23, false);
+        PhoneHarness h;
+        h.owner.SetInputMode(ui::InputMode::Keyboard);
+        PickerContent(h, [state] { TimePicker(*state); });
+        PickerQuery q{ h };
+        const auto nine = TimeValue(q, 9, Sel::Hour);
+        CHECK(nine && nine->config.onClick);
+        if (nine && nine->config.onClick) nine->config.onClick();
+        h.AdvanceTimeBy(1000);
+        CHECK(state->Hour() == 21);
+        CHECK(Selected(q.Text("09")));
+    }
+    {   // timePicker_switchToAM
+        auto state = MakeTimePickerState(14, 23, false);
+        PhoneHarness h;
+        PickerContent(h, [state] { TimePicker(*state); });
+        PickerQuery q{ h };
+        q.Click(q.Text("AM"));
+        CHECK(state->Hour() == 2);
+    }
+    {   // timePicker_dragging: from 12 to 3 o'clock
+        auto state = MakeTimePickerState(0, 23, false);
+        PhoneHarness h;
+        PickerContent(h, [state] { TimePicker(*state); });
+        PickerQuery q{ h };
+        std::vector<const ui::SemanticsNode*> groups;
+        const ui::SemanticsNode tree = h.owner.BuildSemanticsTree();
+        AllNodes(tree, [](const ui::SemanticsNode& n) { return n.config.selectableGroup; }, groups);
+        CHECK(!groups.empty());
+        if (!groups.empty()) {
+            const ui::Rect b = groups.back()->boundsInRoot;
+            std::int64_t t = 40000;
+            Touch(h, t, ui::PointerEventType::Press, (b.left + b.right) / 2, b.top + 1, true);
+            Touch(h, t, ui::PointerEventType::Move, b.right - 1, (b.top + b.bottom) / 2, true);
+            Touch(h, t, ui::PointerEventType::Release, b.right - 1, (b.top + b.bottom) / 2, false);
+            h.AdvanceTimeBy(1000);
+        }
+        CHECK(state->Hour() == 3);
+    }
+    {   // timePicker_userOverride_updates
+        auto state = MakeTimePickerState(14, 0, true);
+        PhoneHarness h;
+        PickerContent(h, [state] { TimePicker(*state); });
+        PickerQuery q{ h };
+        CHECK(Selected(q.Text("14")));
+        state->SetHour(20);
+        h.AdvanceTimeBy(500);
+        CHECK(Selected(q.Text("20")));
+        // The old hour on the dial is no longer under the selector.
+        std::vector<const ui::SemanticsNode*> fourteen;
+        const ui::SemanticsNode tree = h.owner.BuildSemanticsTree();
+        const std::string d = TimeDescription(Sel::Hour, true, 14);
+        AllNodes(tree, [&d](const ui::SemanticsNode& n) { return HasDescription(n, d) && n.config.focused.has_value(); }, fourteen);
+        CHECK(fourteen.size() == 1 && fourteen[0]->config.selected == false);
+    }
+    {   // timePicker_selectHour_toggleAmPm_selectMinute_updatesClockFace
+        auto state = MakeTimePickerState(10, 0, false);
+        PhoneHarness h;
+        PickerContent(h, [state] { TimePicker(*state); });
+        PickerQuery q{ h };
+        q.Click(q.Text("PM"));
+        CHECK(state->Hour() == 22);
+        q.Click(TimeValue(q, 6, Sel::Hour));
+        CHECK(state->Hour() == 18);
+        if (state->Selection() == Sel::Hour) q.Click(q.Text("00"));
+        CHECK(state->Selection() == Sel::Minute);
+        q.Click(q.Text("AM"));
+        CHECK(state->Hour() == 6);
+        q.Click(TimeValue(q, 30, Sel::Minute));
+        CHECK(state->Minute() == 30);
+        std::vector<const ui::SemanticsNode*> zero;
+        const ui::SemanticsNode tree = h.owner.BuildSemanticsTree();
+        const std::string d = TimeDescription(Sel::Minute, false, 0);
+        AllNodes(tree, [&d](const ui::SemanticsNode& n) { return HasDescription(n, d) && n.config.focused.has_value(); }, zero);
+        CHECK(!zero.empty() && zero[0]->config.selected == false);
+    }
+}
+
+TEST(TimePickerSemantics) {
+    {   // timePicker_toggle_semantics
+        auto state = MakeTimePickerState(14, 23, false);
+        PhoneHarness h;
+        PickerContent(h, [state] { TimePicker(*state); });
+        PickerQuery q{ h };
+        const auto toggle = q.Described(PickerString(material3::Strings::TimePickerPeriodToggle));
+        CHECK(toggle && toggle->children.size() == 2);
+        if (toggle)
+            for (const auto& c : toggle->children) CHECK(c.config.selected.has_value() && c.config.onClick);
+    }
+    {   // timePicker_display_semantics
+        auto state = MakeTimePickerState(14, 23, false);
+        PhoneHarness h;
+        PickerContent(h, [state] { TimePicker(*state); });
+        PickerQuery q{ h };
+        const auto minute = q.Described(PickerString(material3::Strings::TimePickerMinuteSelection));
+        CHECK(minute && minute->config.selected == false && minute->config.role == ui::Role::RadioButton && minute->config.onClick);
+        const auto hour = q.Described(PickerString(material3::Strings::TimePickerHourSelection));
+        CHECK(hour && hour->config.selected == true && hour->config.role == ui::Role::RadioButton && hour->config.onClick);
+    }
+    {   // timePicker_clockFace_hour_semantics: the dial's other 11 hours are siblings
+        auto state = MakeTimePickerState(14, 23, false);
+        PhoneHarness h;
+        PickerContent(h, [state] { TimePicker(*state); });
+        const ui::SemanticsNode tree = h.owner.BuildSemanticsTree();
+        std::vector<const ui::SemanticsNode*> two;
+        const std::string d = TimeDescription(Sel::Hour, false, 2);
+        AllNodes(tree, [&d](const ui::SemanticsNode& n) { return HasDescription(n, d); }, two);
+        CHECK(!two.empty());
+        if (!two.empty()) {
+            const auto* parent = ParentOf(tree, two.back()->id);
+            CHECK(parent && parent->children.size() == 12);
+            if (parent)
+                for (const auto& c : parent->children) CHECK(DescriptionContains(c, "o'clock"));
+        }
+    }
+    {   // timePicker_clockFace_selected_semantics: 24 hours, 14 on the inner ring
+        auto state = MakeTimePickerState(14, 23, true);
+        PhoneHarness h;
+        PickerContent(h, [state] { TimePicker(*state); });
+        const ui::SemanticsNode tree = h.owner.BuildSemanticsTree();
+        std::vector<const ui::SemanticsNode*> fourteen;
+        AllNodes(tree, [](const ui::SemanticsNode& n) { return TextContains(n, "14") && n.config.focused.has_value(); }, fourteen);
+        // The dial's numbers clear their text (they are described instead): the display's.
+        CHECK(fourteen.size() == 1);
+        for (const auto* n : fourteen) CHECK(n->config.selected == true);
+    }
+    {   // timePicker_clockFace_minutes_semantics
+        auto state = MakeTimePickerState(14, 23, false);
+        PhoneHarness h;
+        PickerContent(h, [state] { TimePicker(*state); });
+        PickerQuery q{ h };
+        q.Click(q.Text("23"));
+        const ui::SemanticsNode tree = h.owner.BuildSemanticsTree();
+        std::vector<const ui::SemanticsNode*> fiftyFive;
+        const std::string d = TimeDescription(Sel::Minute, false, 55);
+        AllNodes(tree, [&d](const ui::SemanticsNode& n) { return HasDescription(n, d); }, fiftyFive);
+        CHECK(fiftyFive.size() == 1);
+        if (!fiftyFive.empty()) {
+            const auto* parent = ParentOf(tree, fiftyFive[0]->id);
+            CHECK(parent && parent->children.size() == 12);
+            if (parent)
+                for (const auto& c : parent->children) CHECK(DescriptionContains(c, "minutes"));
+        }
+    }
+}
+
+TEST(TimePickerClockFaceEveryValue) {
+    for (bool is24 : { false, true }) {
+        // clockFace_24Hour_everyValue, clockFace_12Hour_everyValue (and the traversal indexes)
+        auto inner = MakeTimePickerState(is24 ? 10 : 0, is24 ? 23 : 0, is24);
+        auto state = std::make_shared<AnalogTimePickerState>(*inner);
+        PhoneHarness h;
+        PickerContent(h, [state] { material3::internal::ClockFace({}, state, TimePickerDefaults::colors(), true); });
+        PickerQuery q{ h };
+        for (int number = 0; number < (is24 ? 24 : 12); ++number) {
+            const int shown = !is24 && number == 0 ? 12 : number;
+            const auto node = TimeValue(q, shown, Sel::Hour, is24);
+            if (!is24) CHECK(node && node->config.traversalIndex == float(number + 1));
+            q.Click(node);
+            state->SetSelection(Sel::Hour);
+            h.AdvanceTimeBy(500);
+            CHECK(state->Hour() == number);
+            CHECK(Selected(TimeValue(q, shown, Sel::Hour, is24)));
+        }
+    }
+    for (bool is24 : { false, true }) {
+        // clockFace_24HourMinutes_everyValue, clockFace_12HourMinutes_everyValue
+        auto inner = MakeTimePickerState(10, 23, is24);
+        auto state = std::make_shared<AnalogTimePickerState>(*inner);
+        state->SetSelection(Sel::Minute);
+        PhoneHarness h;
+        PickerContent(h, [state] { material3::internal::ClockFace({}, state, TimePickerDefaults::colors(), true); });
+        PickerQuery q{ h };
+        for (int number = 0; number < 11; ++number) {
+            q.Click(TimeValue(q, number * 5, Sel::Minute, is24));
+            CHECK(state->Minute() == number * 5);
+        }
+    }
+}
+
+TEST(TimePickerClockFaceKeyboard) {
+    // clockFace_24Hour_everyValue_byKeyboard, clockFace_12Hour_everyValue_byKeyboard
+    for (bool is24 : { false, true }) {
+        auto inner = MakeTimePickerState(0, is24 ? 23 : 0, is24);
+        auto state = std::make_shared<AnalogTimePickerState>(*inner);
+        state->isDialFocusable.Set(true);
+        PhoneHarness h;
+        h.owner.SetInputMode(ui::InputMode::Keyboard);
+        PickerContent(h, [state] { material3::internal::ClockFace({}, state, TimePickerDefaults::colors(), false); });
+        Keys k{ PickerQuery{ h } };
+        k.Press(ui::keys::Tab);
+        for (int number = 0; number < (is24 ? 24 : 12); ++number) {
+            const int shown = !is24 && number == 0 ? 12 : number;
+            const auto node = TimeValue(k.q, shown, Sel::Hour, is24);
+            CHECK(node && node->config.focused == true);
+            k.Press(ui::keys::Enter);
+            state->SetSelection(Sel::Hour);
+            state->isDialFocusable.Set(true);
+            h.AdvanceTimeBy(100);
+            CHECK(state->Hour() == number);
+            const auto after = TimeValue(k.q, shown, Sel::Hour, is24);
+            CHECK(Selected(after));
+            if (after && after->config.requestFocus) after->config.requestFocus();
+            h.AdvanceTimeBy(100);
+            k.Press(ui::keys::DpadRight);
+        }
+    }
+}
+
+TEST(TimeInputTypesTheTime) {
+    const std::string forHour = PickerString(material3::Strings::TimePickerHourTextField);
+    const std::string forMinutes = PickerString(material3::Strings::TimePickerMinuteTextField);
+    auto content = [](std::shared_ptr<TimePickerState> state, bool vibrant = false) {
+        return [state, vibrant] {
+            TimeInputOptions o;
+            if (vibrant) o.shapes = TimePickerDefaults::shapes();
+            TimeInput(*state, {}, o);
+        };
+    };
+    {   // timeInput_semantics
+        auto state = MakeTimePickerState(14, 23, true);
+        PhoneHarness h;
+        PickerContent(h, content(state));
+        PickerQuery q{ h };
+        const auto hour = FieldWithText(q, "14");
+        CHECK(hour && hour->config.focused == true && DescriptionContains(*hour, forHour) && hour->config.imeAction == 5);   // EditorInfo.IME_ACTION_NEXT
+        std::vector<const ui::SemanticsNode*> minutes;
+        const ui::SemanticsNode tree = h.owner.BuildSemanticsTree();
+        AllNodes(tree, [](const ui::SemanticsNode& n) { return TextContains(n, "23") && n.config.selected.has_value(); }, minutes);
+        CHECK(minutes.size() == 1 && minutes[0]->config.selected == false);
+        q.Click(q.Text("23"));
+        const auto minute = FieldWithText(q, "23");
+        CHECK(minute && DescriptionContains(*minute, forMinutes));
+    }
+    {   // timeInput_userOverride_updates
+        auto state = MakeTimePickerState(14, 0, true);
+        PhoneHarness h;
+        PickerContent(h, content(state));
+        PickerQuery q{ h };
+        CHECK(FieldWithText(q, "14"));
+        state->SetHour(20);
+        state->SetMinute(12);
+        h.AdvanceTimeBy(500);
+        CHECK(FieldWithText(q, "20"));
+        CHECK(q.Text("12"));
+    }
+    {   // timeInput_revertedInput_userOverride_stillUpdates
+        auto state = MakeTimePickerState(14, 0, true);
+        PhoneHarness h;
+        PickerContent(h, content(state));
+        PickerQuery q{ h };
+        TypeKeys(h, "A");
+        CHECK(FieldWithText(q, "14"));
+        state->SetHour(20);
+        state->SetMinute(12);
+        h.AdvanceTimeBy(500);
+        CHECK(FieldWithText(q, "20"));
+        CHECK(q.Text("12"));
+    }
+    for (bool vibrant : { false, true }) {
+        {   // timeInput_keyboardInput_valid: 04, then on to the minutes
+            auto state = MakeTimePickerState(10, 23, false);
+            PhoneHarness h;
+            PickerContent(h, content(state, vibrant));
+            TypeKeys(h, "04");
+            CHECK(state->Selection() == Sel::Minute);
+            TypeKeys(h, "52");
+            CHECK(state->Minute() == 52 && state->Hour() == 4);
+        }
+        {   // timeInput_keyboardInput_switchAmPm
+            auto state = MakeTimePickerState(10, 23, false);
+            PhoneHarness h;
+            PickerContent(h, content(state, vibrant));
+            PickerQuery q{ h };
+            q.Click(q.Text("PM"));
+            CHECK(state->Hour() == 22);
+        }
+        {   // timeInput_keyboardInput_maintainsPm
+            auto state = MakeTimePickerState(23, 23, false);
+            PhoneHarness h;
+            PickerContent(h, content(state, vibrant));
+            TypeKeys(h, "4");
+            CHECK(IsPm(*state) && state->Hour() == 16);
+        }
+    }
+    {   // timeInput_keyboardInput_outOfRange: only the first 4
+        auto state = MakeTimePickerState(10, 23, false);
+        PhoneHarness h;
+        PickerContent(h, content(state));
+        TypeKeys(h, "44");
+        CHECK(state->Hour() == 4);
+    }
+    {   // timeInput_keyboardInput_Nan
+        auto state = MakeTimePickerState(10, 23, false);
+        PhoneHarness h;
+        PickerContent(h, content(state));
+        TypeKeys(h, "ABC.,");
+        CHECK(state->Hour() == 10);
+    }
+    {   // timeInput_input12_maintainsAm, timeInput_input12_resultsIn12
+        for (int start : { 10, 14 }) {
+            auto state = MakeTimePickerState(start, 0, false);
+            PhoneHarness h;
+            PickerContent(h, content(state));
+            TypeKeys(h, "12");
+            CHECK(IsPm(*state) == (start == 14) && state->Hour() == (start == 14 ? 12 : 0));
+        }
+    }
+    {   // timeInput_deleting_maintainsPm
+        auto state = MakeTimePickerState(23, 23, false);
+        PhoneHarness h;
+        PickerContent(h, content(state));
+        TimeKey(h, KeyForwardDelete);
+        TimeKey(h, KeyForwardDelete);
+        CHECK(IsPm(*state));
+    }
+    {   // timeInput_24Hour_noAmPm_Toggle
+        auto state = MakeTimePickerState(22, 23, true);
+        PhoneHarness h;
+        PickerContent(h, content(state));
+        PickerQuery q{ h };
+        CHECK(!q.Text("PM") && !q.Text("AM"));
+    }
+    {   // timeInput_24Hour_writePmHour, ..._24HourStartingPm_writePmHour, _writeNoon, _writeMidnight
+        const std::tuple<int, const char*, int> cases[] = { { 10, "22", 22 }, { 20, "22", 22 }, { 10, "12", 12 }, { 10, "00", 0 } };
+        for (const auto& [start, typed, expected] : cases) {
+            auto state = MakeTimePickerState(start, 23, true);
+            PhoneHarness h;
+            PickerContent(h, content(state));
+            TypeKeys(h, typed);
+            CHECK(state->Hour() == expected);
+        }
+    }
+    {   // timeInput_writeMinute_updatesCurrentAngle
+        auto inner = MakeTimePickerState(10, 0, true);
+        auto state = std::make_shared<AnalogTimePickerState>(*inner);
+        PhoneHarness h;
+        PickerContent(h, content(state));
+        TypeKeys(h, "12");
+        TypeKeys(h, "45");
+        CHECK(std::abs(state->CurrentAngle() - float(std::numbers::pi)) < 0.0001f);
+    }
+    {   // timeInput_showsError_forInvalidHour
+        auto state = MakeTimePickerState(10, 0, true);
+        PhoneHarness h;
+        PickerContent(h, content(state));
+        TypeKeys(h, "27");
+        CHECK(!IsHourInputValid(*state));
+        state->SetSelection(Sel::Hour);
+        h.AdvanceTimeBy(100);
+        TimeKey(h, KeyBackspace);
+        TimeKey(h, KeyBackspace);
+        TypeKeys(h, "12");
+        CHECK(IsHourInputValid(*state));
+    }
+    {   // timeInput_showsError_forInvalidMinute
+        auto state = MakeTimePickerState(10, 0, true);
+        state->SetSelection(Sel::Minute);
+        PhoneHarness h;
+        PickerContent(h, content(state));
+        TypeKeys(h, "99");
+        CHECK(!IsMinuteInputValid(*state));
+        TimeKey(h, KeyBackspace);
+        TimeKey(h, KeyBackspace);
+        TypeKeys(h, "12");
+        CHECK(IsMinuteInputValid(*state));
+    }
+    {   // timeInput_invalidHour_showsErrorAndTriggersLiveRegion, timeInput_maintainFocus_invalidInput
+        auto state = MakeTimePickerState(10, 30, true);
+        PhoneHarness h;
+        PickerContent(h, content(state));
+        PickerQuery q{ h };
+        const auto field = TimeField(q, forHour);
+        CHECK(field && field->config.setText);
+        if (field && field->config.setText) field->config.setText("25");
+        h.AdvanceTimeBy(500);
+        const auto error = q.Text(PickerString(material3::Strings::TimePicker24HourError));
+        CHECK(error && error->config.liveRegion == ui::LiveRegionMode::Polite);
+        CHECK(state->Selection() == Sel::Hour);
+    }
+    {   // timeInput_updateFocus_validInput: a digit at the end of a full valid hour
+        auto state = MakeTimePickerState(10, 0, true);
+        PhoneHarness h;
+        PickerContent(h, content(state));
+        PickerQuery q{ h };
+        const auto field = TimeField(q, forHour);
+        if (field && field->config.setText) field->config.setText("12");
+        h.AdvanceTimeBy(500);
+        TypeKeys(h, "0");
+        CHECK(state->Selection() == Sel::Minute);
+    }
+    {   // vibrantTimeInput_24Hour_invalidHour_showsErrorText (and the minute, 12-hour AM and PM forms)
+        struct Case { int hour; bool is24; Sel field; const char* typed; material3::Strings error; bool pm; };
+        const Case cases[] = { { 10, true, Sel::Hour, "24", material3::Strings::TimePicker24HourError, false },
+                               { 10, true, Sel::Minute, "60", material3::Strings::TimePickerMinuteError, false },
+                               { 10, false, Sel::Hour, "13", material3::Strings::TimePickerHourError, false },
+                               { 22, false, Sel::Hour, "13", material3::Strings::TimePickerHourError, true } };
+        for (const auto& c : cases) {
+            auto state = MakeTimePickerState(c.hour, 0, c.is24);
+            state->SetSelection(c.field);
+            PhoneHarness h;
+            PickerContent(h, content(state, true));
+            PickerQuery q{ h };
+            TypeKeys(h, c.typed);
+            CHECK((c.field == Sel::Hour ? !IsHourInputValid(*state) : !IsMinuteInputValid(*state)));
+            CHECK(state->Selection() == c.field && IsPm(*state) == c.pm);
+            CHECK(q.Text(PickerString(c.error)));
+        }
+    }
+    {   // timeInput_12Hour_validHour_autoAdvancesFocus: 0, 1 stay; 3 goes on to the minutes
+        auto state = MakeTimePickerState(8, 0, false);
+        PhoneHarness h;
+        PickerContent(h, content(state));
+        TypeKeys(h, "013");
+        CHECK(IsHourInputValid(*state) && state->Selection() == Sel::Minute && state->Minute() == 3);
+    }
+    {   // timeInput_12Hour_delete_doesNotAdvanceFocus
+        auto state = MakeTimePickerState(8, 0, false);
+        PhoneHarness h;
+        PickerContent(h, content(state));
+        TimeKey(h, KeyForwardDelete);
+        CHECK(state->Selection() == Sel::Hour);
+    }
+    {   // timeInput_12Hour_singleDigit2To9_autoAdvancesFocus, _singleDigitOne_doesNotAutoAdvanceFocus,
+        // timeInput_24Hour_singleDigit_doesNotAutoAdvanceFocus
+        const std::tuple<bool, const char*, int, Sel> cases[] = { { false, "4", 4, Sel::Minute }, { false, "1", 1, Sel::Hour }, { true, "4", 4, Sel::Hour } };
+        for (const auto& [is24, typed, hour, selection] : cases) {
+            auto state = MakeTimePickerState(10, 0, is24);
+            PhoneHarness h;
+            PickerContent(h, content(state));
+            TypeKeys(h, typed);
+            CHECK(state->Hour() == hour && IsHourInputValid(*state) && state->Selection() == selection);
+        }
+    }
+}
+
+TEST(TimeScrollFollowsTheState) {
+    auto content = [](std::shared_ptr<TimePickerState> state, std::function<void()> toggle = {}) {
+        return [state, toggle] {
+            TimeScrollOptions o;
+            o.toggle = toggle;
+            TimeScroll(*state, TimePickerDefaults::shapes(), {}, o);
+        };
+    };
+    auto stateOf = [](PickerQuery& q, const std::string& description) -> std::optional<std::string> {
+        const auto n = q.Find([&](const ui::SemanticsNode& s) { return s.config.progressBarRangeInfo.has_value() && HasDescription(s, description); });
+        return n ? n->config.stateDescription : std::nullopt;
+    };
+    const std::string hourDescription = PickerString(material3::Strings::TimePickerHourSelection);
+    const std::string minuteDescription = PickerString(material3::Strings::TimePickerMinuteSelection);
+    {   // timeScroll_userOverride_updates
+        auto state = MakeTimePickerState(11, 30, false);
+        PhoneHarness h;
+        PickerContent(h, content(state));
+        PickerQuery q{ h };
+        CHECK(stateOf(q, hourDescription) == TimeString(material3::Strings::TimePickerHourSuffix, 11));
+        state->SetHour(6);
+        state->SetMinute(21);
+        h.AdvanceTimeBy(1000);
+        CHECK(stateOf(q, hourDescription) == TimeString(material3::Strings::TimePickerHourSuffix, 6));
+        CHECK(stateOf(q, minuteDescription) == TimeString(material3::Strings::TimePickerMinuteSuffix, 21));
+    }
+    {   // timeScroll_12hour_semanticsStateDescription
+        auto state = MakeTimePickerState(12, 30, false);
+        PhoneHarness h;
+        PickerContent(h, content(state));
+        PickerQuery q{ h };
+        CHECK(stateOf(q, hourDescription) == TimeString(material3::Strings::TimePickerHourSuffix, 12));
+        CHECK(stateOf(q, minuteDescription) == TimeString(material3::Strings::TimePickerMinuteSuffix, 30));
+        CHECK(state->Hour() == 12 && state->Minute() == 30);
+    }
+    {   // timeScroll_24hour_semanticsStateDescription
+        auto state = MakeTimePickerState(0, 5, true);
+        PhoneHarness h;
+        PickerContent(h, content(state));
+        PickerQuery q{ h };
+        CHECK(stateOf(q, hourDescription) == TimeString(material3::Strings::TimePicker24HourSuffix, 0));
+        CHECK(stateOf(q, minuteDescription) == TimeString(material3::Strings::TimePickerMinuteSuffix, 5));
+    }
+    {   // Scrolling a wheel sets the time (keeping PM).
+        auto state = MakeTimePickerState(14, 30, false);
+        PhoneHarness h;
+        PickerContent(h, content(state));
+        PickerQuery q{ h };
+        const auto hour = q.Find([&](const ui::SemanticsNode& s) { return s.config.progressBarRangeInfo.has_value() && HasDescription(s, hourDescription); });
+        CHECK(hour && hour->config.setProgress);
+        if (hour && hour->config.setProgress) hour->config.setProgress(hour->config.progressBarRangeInfo->current + 1);
+        h.AdvanceTimeBy(2000);
+        CHECK(state->Hour() == 15);
+    }
+    for (bool input : { false, true }) {
+        // timeScroll_withToggle_largeFont, timeInput_withToggle_largeFont
+        auto state = MakeTimePickerState(10, 30, false);
+        PhoneHarness h;
+        h.owner.SetDensity({ 2, 2 });
+        PickerContent(h, input ? std::function<void()>([state] {
+                                     TimeInputOptions o;
+                                     o.shapes = TimePickerDefaults::shapes();
+                                     o.toggle = [] { Text("Toggle"); };
+                                     TimeInput(*state, {}, o);
+                                 })
+                               : std::function<void()>(content(state, [] { Text("Toggle"); })));
+        PickerQuery q{ h };
+        const auto am = q.Text("AM"), pm = q.Text("PM");
+        CHECK(Selected(am) && pm && pm->config.selected == false);
+        // The toggle's column is at least a touch target wide.
+        const ui::SemanticsNode tree = h.owner.BuildSemanticsTree();
+        const auto* column = am ? ParentOf(tree, am->id) : nullptr;
+        CHECK(column && column->boundsInRoot.Width() >= 48 * 2 - 0.5f);
+        q.Click(pm);
+        CHECK(Selected(q.Text("PM")) && q.Text("AM")->config.selected == false);
+        CHECK(state->Hour() == 22);
+    }
+}
+
+TEST(TimePickerClockFaceSizes) {
+    // TimePickerSizeTest: clockFace_size_resizesCorrectly and clockFace_24Hour_everyValue in each box.
+    const std::pair<Dp, Dp> configs[] = { { Dp(384), Dp(256) }, { Dp(350), Dp(238) }, { Dp(300), Dp(200) } };
+    for (const auto& [box, expected] : configs) {
+        auto inner = MakeTimePickerState(10, 23, false);
+        auto state = std::make_shared<AnalogTimePickerState>(*inner);
+        ui::IntSize size;
+        PhoneHarness h;
+        PickerContent(h, [state, box, &size] {
+            Box(SizeIn({}, Dp(0), Dp(0), box, box), Alignment::TopStart(), false, [state, &size] {
+                ui::Modifier m = OnSizeChanged({}, [&size](ui::IntSize s) { size = s; });
+                material3::internal::ClockFace(material3::internal::ClockFaceSizeModifier(m), state, TimePickerDefaults::colors(), true);
+            });
+        });
+        CHECK(std::abs(float(size.width) / 2 - expected.value) < 0.5f && size.width == size.height);
+    }
+    for (const auto& [box, expected] : configs) {
+        (void)expected;
+        auto inner = MakeTimePickerState(10, 23, true);
+        auto state = std::make_shared<AnalogTimePickerState>(*inner);
+        PhoneHarness h;
+        PickerContent(h, [state, box] {
+            Box(SizeMod({}, box, box), Alignment::TopStart(), false, [state] {
+                material3::internal::ClockFace({}, state, TimePickerDefaults::colors(), true);
+            });
+        });
+        PickerQuery q{ h };
+        for (int number = 0; number < 24; ++number) {
+            q.Click(TimeValue(q, number, Sel::Hour, true));
+            state->SetSelection(Sel::Hour);
+            h.AdvanceTimeBy(500);
+            CHECK(state->Hour() == number);
+            CHECK(Selected(TimeValue(q, number, Sel::Hour, true)));
+        }
     }
 }

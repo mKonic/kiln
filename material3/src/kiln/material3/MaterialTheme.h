@@ -91,6 +91,7 @@ namespace kiln::material3 {
         inline bool isSnackbarStylingFixEnabled = false;
         inline bool isBottomSheetPartiallyExpandedDeterministicEnabled = true;
         inline bool isModalBottomSheetStateRestorationFixEnabled = true;
+        inline bool isUpdatedTimepickerToggleEnabled = true;
     }
 
     // TextSelectionBackgroundOpacity (selection highlight: primary at this alpha).
