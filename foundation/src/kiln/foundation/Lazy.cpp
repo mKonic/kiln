@@ -83,13 +83,43 @@ namespace kiln::foundation {
     // --- the measure-time core ------------------------------------------------------------------
 
     namespace {
-        // Holder node of one item: lays its children out like a Box at the origin.
+        // How an item's top-level children share its holder: one after another along the main
+        // axis, each aligned across it (LazyListMeasuredItem, MeasuredPage), or all at the
+        // origin (LazyGridMeasuredItem, LazyStaggeredGridMeasuredItem).
+        struct HolderLayout {
+            bool stack = false, vertical = true, reverse = false;
+            AlignmentH horizontal = AlignmentH::Start();
+            AlignmentV verticalAlign = AlignmentV::Top();
+        };
+        // Holder node of one item.
         struct HolderPolicy final : MeasurePolicy {
+            std::function<HolderLayout()> layout;
             MeasureResult Measure(MeasureScope& s, std::span<Measurable* const> ch, const Constraints& c) override {
+                const HolderLayout l = layout ? layout() : HolderLayout{};
                 std::vector<Placeable*> ps;
-                int w = c.minWidth, h = c.minHeight;
-                for (Measurable* m : ch) { Placeable& p = m->Measure(c); w = std::max(w, p.Width()); h = std::max(h, p.Height()); ps.push_back(&p); }
-                return s.Layout(w, h, [ps](PlacementScope& place) { for (Placeable* p : ps) place.PlaceRelative(*p, 0, 0); });
+                int main = 0, cross = 0;
+                for (Measurable* m : ch) {
+                    Placeable& p = m->Measure(c);
+                    const int pm = l.vertical ? p.Height() : p.Width(), pc = l.vertical ? p.Width() : p.Height();
+                    main = l.stack ? main + pm : std::max(main, pm);
+                    cross = std::max(cross, pc);
+                    ps.push_back(&p);
+                }
+                const int w = c.ConstrainWidth(l.vertical ? cross : main), h = c.ConstrainHeight(l.vertical ? main : cross);
+                if (!l.stack) return s.Layout(w, h, [ps](PlacementScope& place) { for (Placeable* p : ps) place.PlaceRelative(*p, 0, 0); });
+                const LayoutDirection dir = s.Direction();
+                return s.Layout(w, h, [ps, l, w, h, dir](PlacementScope& place) {
+                    int offset = 0;
+                    for (Placeable* p : ps) {
+                        const int pm = l.vertical ? p->Height() : p->Width();
+                        // reverseLayout mirrors each child within the item (MeasuredItem.place).
+                        const int at = l.reverse ? (l.vertical ? h : w) - offset - pm : offset;
+                        // Place, not PlaceRelative: the cross alignment already resolved the direction.
+                        if (l.vertical) place.Place(*p, l.horizontal.Align(p->Width(), w, dir), at);
+                        else place.PlaceRelative(*p, at, l.verticalAlign.Align(p->Height(), h));
+                        offset += pm;
+                    }
+                });
             }
         };
         // LazyLayoutPinnableItem: an item's pin. Pinning it pins the item around the layout too.
@@ -379,7 +409,12 @@ namespace kiln::foundation {
             Slot& slot = slots[key.value];
             if (!slot.holder) {
                 slot.holder = std::make_unique<LayoutNode>();
-                slot.holder->SetMeasurePolicy(std::make_shared<HolderPolicy>());
+                auto policy = std::make_shared<HolderPolicy>();
+                // The core owns the slots, so it outlives their holders.
+                policy->layout = [this] {
+                    return HolderLayout{ !grid && !staggered, vertical, reverse, horizontalAlignment, verticalAlignment };
+                };
+                slot.holder->SetMeasurePolicy(policy);
                 slot.composition = std::make_unique<rt::Composition>(*slot.holder, d);
                 if (holder) slot.registry = holder->Open(SaveKey(key.value));
             }
@@ -1871,8 +1906,9 @@ namespace kiln::foundation {
                 core.listState = &state;
                 core.gridState = nullptr;
                 core.contentPadding = options.contentPadding;
-                core.mainSpacing = options.arrangement.Spacing();
-                core.mainArrangement = options.arrangement;
+                const Arrangement arrangement = options.arrangement.value_or(options.reverseLayout ? Arrangement::Bottom() : Arrangement::Top());
+                core.mainSpacing = arrangement.Spacing();
+                core.mainArrangement = arrangement;
                 core.reverse = options.reverseLayout;
                 core.horizontalAlignment = options.horizontalAlignment;
                 core.verticalAlignment = options.verticalAlignment;

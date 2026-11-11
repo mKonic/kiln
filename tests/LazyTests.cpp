@@ -792,3 +792,42 @@ TEST(LazyListItemsFillTheirParent) {
     CHECK((sizes[1] == IntSize{ 45, 10 }));
     CHECK((sizes[2] == IntSize{ 10, 23 }));   // 90 * 0.25 = 22.5, rounded half up
 }
+
+// LazyListMeasuredItem / LazyGridMeasuredItem: an item's top-level children follow one
+// another in a list (each aligned across it, mirrored with reverseLayout) and overlap in a grid.
+TEST(LazyItemsStackTheirChildrenInListsOnly) {
+    Harness h;
+    LazyListState list;
+    LazyGridState grid;
+    rt::State<bool> reverse(false);
+    Offset a, b, c, d;
+    h.Run([&] {
+        Row(FillMax(Modifier{}, Axis::Both), Arrangement::Start(), AlignmentV::Top(), [&] {
+            LazyListOptions o;
+            o.horizontalAlignment = AlignmentH::CenterHorizontally();
+            o.reverseLayout = reverse.Get();
+            LazyColumn(SizeMod(Modifier{}, Dp(50), Dp(100)), list, [&](LazyListScope& s) {
+                s.Item([&] {
+                    Box(OnGloballyPositioned(SizeMod(Modifier{}, Dp(10), Dp(10)), [&](const LayoutCoordinates& l) { a = l.PositionInRoot(); }));
+                    Box(OnGloballyPositioned(SizeMod(Modifier{}, Dp(30), Dp(20)), [&](const LayoutCoordinates& l) { b = l.PositionInRoot(); }));
+                });
+            }, o);
+            LazyVerticalGrid(SizeMod(Modifier{}, Dp(50), Dp(100)), GridCells::Fixed(1), grid, [&](LazyGridScope& s) {
+                s.Item([&] {
+                    Box(OnGloballyPositioned(SizeMod(Modifier{}, Dp(10), Dp(10)), [&](const LayoutCoordinates& l) { c = l.PositionInRoot(); }));
+                    Box(OnGloballyPositioned(SizeMod(Modifier{}, Dp(30), Dp(20)), [&](const LayoutCoordinates& l) { d = l.PositionInRoot(); }));
+                });
+            });
+        });
+    });
+    CHECK_EQ(int(a.y), 0);
+    CHECK_EQ(int(b.y), 10);
+    CHECK_EQ(int(a.x), 20);   // centred in the 50 px column
+    CHECK_EQ(int(b.x), 10);
+    CHECK_EQ(int(c.y), 0);
+    CHECK_EQ(int(d.y), 0);
+    reverse.Set(true);
+    h.Pump();
+    CHECK_EQ(int(a.y), 90);   // item at the bottom, its first child last
+    CHECK_EQ(int(b.y), 70);
+}

@@ -264,8 +264,8 @@ namespace kiln::foundation {
         PaddingValues contentPadding;
         // verticalArrangement (LazyColumn) / horizontalArrangement (LazyRow): its spacing goes
         // between items; the whole arrangement applies when the items do not fill the viewport.
-        // Compose's default for reverseLayout is Bottom (End).
-        Arrangement arrangement = Arrangement::Top();
+        // Unset: Top (Start), or Bottom (End) with reverseLayout, as Compose's defaults.
+        std::optional<Arrangement> arrangement;
         bool reverseLayout = false;   // item 0 at the bottom (end); scrolling reversed
         OverscrollParam overscrollEffect;   // unset: rememberOverscrollEffect(); null: none
         FlingBehavior flingBehavior;        // null: the platform decay (RememberSnapFlingBehavior snaps)
