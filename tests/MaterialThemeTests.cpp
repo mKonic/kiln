@@ -43,6 +43,7 @@
 #include "kiln/material3/DateRangePicker.h"
 #include "kiln/material3/ScrollField.h"
 #include "kiln/material3/TimePicker.h"
+#include "kiln/material3/TimePickerDialog.h"
 #include "kiln/material3/internal/TimePickerInternal.h"
 #include "kiln/material3/internal/GetString.h"
 #include "kiln/text/DateFormat.h"
@@ -13632,5 +13633,65 @@ TEST(TimePickerClockFaceSizes) {
             CHECK(state->Hour() == number);
             CHECK(Selected(TimeValue(q, number, Sel::Hour, true)));
         }
+    }
+}
+
+TEST(TimePickerDialogToggles) {
+    // timePicker_displayModeToggle_contentDescription, timePicker_scrollDisplayModeToggle_contentDescription
+    for (bool scroll : { false, true }) {
+        rt::State<TimePickerDisplayMode> mode{ scroll ? TimePickerDisplayMode::Scroll : TimePickerDisplayMode::Picker };
+        int clicks = 0;
+        PhoneHarness h;
+        PickerContent(h, [&mode, &clicks, scroll] {
+            if (scroll) TimePickerDialogDefaults::ScrollDisplayModeToggle([&clicks] { ++clicks; }, mode.Get());
+            else TimePickerDialogDefaults::DisplayModeToggle([&clicks] { ++clicks; }, mode.Get());
+        });
+        PickerQuery q{ h };
+        CHECK(q.Described(PickerString(material3::Strings::TimePickerToggleKeyboard)));
+        q.Click(q.Described(PickerString(material3::Strings::TimePickerToggleKeyboard)));
+        CHECK(clicks == 1);
+        mode.Set(TimePickerDisplayMode::Input);
+        h.AdvanceTimeBy(100);
+        CHECK(q.Described(PickerString(scroll ? material3::Strings::TimePickerToggleScroll : material3::Strings::TimePickerToggleTouch)));
+    }
+}
+
+TEST(TimePickerDialogLaysOutTheParts) {
+    for (bool vibrant : { false, true }) {
+        auto state = MakeTimePickerState(14, 23, false);
+        int confirmed = 0, dismissed = 0;
+        ModalHarness h;
+        Themed(h, [state, vibrant, &confirmed, &dismissed] {
+            TimePickerDialogOptions o;
+            o.dismissButton = [] { TextButton([] {}, {}, {}, [] { Text("Cancel"); }); };
+            o.modeToggleButton = [] { TimePickerDialogDefaults::DisplayModeToggle([] {}, TimePickerDisplayMode::Picker); };
+            auto confirm = [&confirmed] { TextButton([&confirmed] { ++confirmed; }, {}, {}, [] { Text("OK"); }); };
+            auto content = [state, vibrant] {
+                TimePickerOptions p;
+                if (vibrant) p.shapes = TimePickerDefaults::shapes();
+                TimePicker(*state, {}, p);
+            };
+            if (vibrant) VibrantTimePickerDialog([&dismissed] { ++dismissed; }, confirm, {}, o, content);
+            else TimePickerDialog([&dismissed] { ++dismissed; }, confirm, [] { TimePickerDialogDefaults::Title(TimePickerDisplayMode::Picker); }, {}, o, content);
+        });
+        h.AdvanceTimeBy(1000);
+        CHECK(!h.dialogs.empty());
+        if (h.dialogs.empty()) continue;
+        PickerQuery q{ h, h.dialogs.back() };
+        const auto title = q.Text(PickerString(material3::Strings::TimePickerDialogTitle));
+        const auto hour = q.Described(PickerString(material3::Strings::TimePickerHourSelection));
+        const auto ok = q.Clickable("OK"), cancel = q.Clickable("Cancel");
+        const auto toggle = q.Described(PickerString(material3::Strings::TimePickerToggleKeyboard));
+        CHECK(bool(title) == !vibrant);
+        CHECK(hour && ok && cancel && toggle);
+        if (!hour || !ok || !cancel || !toggle) continue;
+        // Title, then the picker, then the buttons: the toggle at the start, cancel before OK at the end.
+        if (title) CHECK(title->boundsInRoot.bottom <= hour->boundsInRoot.top);
+        CHECK(ok->boundsInRoot.top >= hour->boundsInRoot.bottom);
+        CHECK(toggle->boundsInRoot.right <= cancel->boundsInRoot.left && cancel->boundsInRoot.right <= ok->boundsInRoot.left);
+        // (The tap helper reaches the main window only.)
+        if (ok->config.onClick) ok->config.onClick();
+        h.AdvanceTimeBy(100);
+        CHECK(confirmed == 1 && dismissed == 0);
     }
 }
