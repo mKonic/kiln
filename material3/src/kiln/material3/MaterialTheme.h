@@ -88,6 +88,7 @@ namespace kiln::material3 {
         inline bool isPrecisionPointerComponentSizingEnabled = false;
         inline bool isCheckboxStylingFixEnabled = false;
         inline bool isExpressiveListItemHeightBasedOnTextLinesFixEnabled = true;
+        inline bool isSnackbarStylingFixEnabled = false;
     }
 
     // TextSelectionBackgroundOpacity (selection highlight: primary at this alpha).

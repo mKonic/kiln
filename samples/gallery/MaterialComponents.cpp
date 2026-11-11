@@ -27,6 +27,7 @@
 #include <kiln/material3/AppBar.h>
 #include <kiln/material3/FloatingToolbar.h>
 #include <kiln/material3/Scrollbar.h>
+#include <kiln/material3/Snackbar.h>
 #include <kiln/material3/ShortNavigationBar.h>
 #include <kiln/material3/Tab.h>
 #include <kiln/material3/TabRow.h>
@@ -551,6 +552,37 @@ namespace kiln::gallery {
                 });
         }
 
+        rt::Task<> ShowAndReport(m3::SnackbarHostState* host, m3::SnackbarVisuals visuals, rt::State<std::string>* result) {
+            const m3::SnackbarResult r = co_await host->ShowSnackbar(std::move(visuals));
+            result->Set(std::string(r == m3::SnackbarResult::ActionPerformed ? "action" : "dismissed"));
+        }
+
+        void Snackbars() {
+            auto& host = m3::RememberSnackbarHostState();
+            auto* result = &RememberState(std::string("none"));
+            auto jobs = rt::Composition::Current()->Remember<std::shared_ptr<std::vector<rt::Job>>>([] { return std::make_shared<std::vector<rt::Job>>(); });
+            const auto show = [&host, result, jobs](m3::SnackbarVisuals v) {
+                return [&host, result, jobs, v] { jobs->push_back(rt::Launch(rt::Dispatcher::Main(), ShowAndReport(&host, v, result))); };
+            };
+            // Reported as text so a test can read it.
+            m3::Text("Snackbar result: " + result->Get());
+            m3::TextButton(show({ "Message sent", std::nullopt, false, m3::SnackbarDuration::Short }), {}, {}, [] { m3::Text("Show message"); });
+            m3::TextButton(show({ "Photo deleted", std::string("Undo"), false, m3::SnackbarDuration::Long }), {}, {}, [] { m3::Text("Show with action"); });
+            m3::TextButton(show({ "Connection lost", std::nullopt, true, m3::SnackbarDuration::Indefinite }), {}, {}, [] { m3::Text("Show until closed"); });
+            // A snackbar whose long action sits on its own line.
+            m3::SnackbarOptions o;
+            o.actionOnNewLine = true;
+            o.action = [] {
+                // The colour Compose suggests for a snackbar's own action.
+                m3::ButtonOptions bo;
+                bo.colors = m3::ButtonDefaults::textButtonColors().Copy(Color::Unspecified(), m3::MaterialTheme::colorScheme().inversePrimary);
+                m3::TextButton([] {}, {}, bo, [] { m3::Text("Open the settings"); });
+            };
+            m3::Snackbar(Padding({}, 12_dp), o, [] { m3::Text("Sync is paused while offline"); });
+            // Where the host shows them.
+            Box(Height(FillMax({}, Axis::Horizontal), 160_dp), Alignment::BottomCenter(), false, [&host] { m3::SnackbarHost(host); });
+        }
+
         void Tabs() {
             auto* primary = &RememberState(0);
             auto* secondary = &RememberState(0);
@@ -927,7 +959,7 @@ namespace kiln::gallery {
         struct Section { const char* key; const char* title; void (*content)(); };
         const std::vector<Section>& Sections() {
             static const std::vector<Section> sections{
-                { "navigation", "Navigation bars and rails", Navigation }, { "tabs", "Tabs", Tabs }, { "appbars", "App bars", AppBars }, { "toolbars", "Floating toolbars", FloatingToolbars }, { "scrollbars", "Scrollbars", Scrollbars }, { "segmented", "Segmented buttons", SegmentedButtons }, { "split", "Split buttons", SplitButtons },
+                { "navigation", "Navigation bars and rails", Navigation }, { "tabs", "Tabs", Tabs }, { "appbars", "App bars", AppBars }, { "toolbars", "Floating toolbars", FloatingToolbars }, { "scrollbars", "Scrollbars", Scrollbars }, { "snackbars", "Snackbars", Snackbars }, { "segmented", "Segmented buttons", SegmentedButtons }, { "split", "Split buttons", SplitButtons },
                 { "tooltips", "Tooltips", Tooltips }, { "menus", "Menus", Menus }, { "groups", "Button groups", ButtonGroups },
                 { "sliders", "Sliders", Sliders }, { "progress", "Progress indicators", ProgressIndicators }, { "lists", "Lists", Lists },
                 { "chips", "Chips", Chips }, { "cards", "Cards", Cards }, { "selection", "", SelectionControls },

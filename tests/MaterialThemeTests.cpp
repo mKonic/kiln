@@ -26,6 +26,7 @@
 #include "kiln/material3/AppBar.h"
 #include "kiln/material3/FloatingToolbar.h"
 #include "kiln/material3/Scrollbar.h"
+#include "kiln/material3/Snackbar.h"
 #include "kiln/material3/internal/GetString.h"
 #include "kiln/material3/Divider.h"
 #include "kiln/material3/Tab.h"
@@ -7535,3 +7536,371 @@ TEST(TopAppBarScrolledColourFollowsTheScrollableState) {
         }
     }
 }
+
+// SnackbarTest, with the styling fix off (the default) and on.
+namespace {
+    const std::string kLongText = "Message is very long and long and long and long and long and long and long and long and long and long and long";
+    struct SnackbarFix {
+        bool previous;
+        explicit SnackbarFix(bool on) : previous(ComposeMaterial3Flags::isSnackbarStylingFixEnabled) { ComposeMaterial3Flags::isSnackbarStylingFixEnabled = on; }
+        ~SnackbarFix() { ComposeMaterial3Flags::isSnackbarStylingFixEnabled = previous; }
+    };
+    // setMaterialContentForSizeAssertions(parentMaxWidth): the snackbar under a width cap.
+    void SizedSnackbar(Harness& h, ui::Dp maxWidth, std::function<void()> snackbar) {
+        Themed(h, [&, maxWidth] {
+            Box(SizeIn({}, ui::Dp::Unspecified(), ui::Dp::Unspecified(), maxWidth, ui::Dp::Unspecified()), Alignment::TopStart(), false, [&] {
+                Box(Tag({}, "snackbar"), Alignment::TopStart(), false, snackbar);
+            });
+        });
+        h.AdvanceTimeBy(100);
+    }
+    // FakeText baselines: each line's at 0.8 of its height, from the text's top (dp).
+    float FirstBaselineDp(Harness& h, const std::string& tag, int lines = 1) {
+        const auto* n = FindTagged(h, tag);
+        CHECK(n != nullptr);
+        if (!n) return 0;
+        const float d = h.owner.GetDensity().density;
+        return std::round(n->Size().height / float(lines) * 0.8f) / d;
+    }
+    float LastBaselineDp(Harness& h, const std::string& tag, int lines) {
+        const auto* n = FindTagged(h, tag);
+        if (!n) return 0;
+        const float d = h.owner.GetDensity().density;
+        const float lineH = n->Size().height / float(lines);
+        return std::round(lineH * float(lines - 1) + lineH * 0.8f) / d;
+    }
+    struct FakeSnackbarData final : SnackbarData {
+        SnackbarVisuals visuals;
+        int actions = 0, dismissals = 0;
+        const SnackbarVisuals& Visuals() const override { return visuals; }
+        void PerformAction() override { ++actions; }
+        void Dismiss() override { ++dismissals; }
+    };
+}
+
+TEST(SnackbarActionsClick) {
+    for (bool fix : { false, true }) {
+        SnackbarFix flag(fix);
+        PhoneHarness h;
+        bool clicked = false;
+        Themed(h, [&] {
+            SnackbarOptions o;
+            o.action = [&] { TextButton([&] { clicked = true; }, {}, {}, [] { Text("UNDO"); }); };
+            Snackbar({}, o, [] { Text("Message"); });
+        });
+        CHECK(BoundsDp(h, "Message").has_value());
+        CHECK(!clicked);
+        std::int64_t t = 0;
+        Press(h, t, "UNDO", true);
+        CHECK(clicked);
+    }
+}
+
+TEST(SnackbarDataVersionProxiesItsParameters) {
+    for (bool fix : { false, true }) {
+        SnackbarFix flag(fix);
+        PhoneHarness h;
+        auto data = std::make_shared<FakeSnackbarData>();
+        data->visuals = { "Data message", "UNDO", false, SnackbarDuration::Short };
+        Themed(h, [&] { Snackbar(data); });
+        CHECK(BoundsDp(h, "Data message").has_value());
+        CHECK_EQ(data->actions, 0);
+        std::int64_t t = 0;
+        Press(h, t, "UNDO", true);
+        CHECK_EQ(data->actions, 1);
+    }
+}
+
+TEST(SnackbarDismissActionDismisses) {
+    for (bool fix : { false, true }) {
+        SnackbarFix flag(fix);
+        PhoneHarness h;
+        auto data = std::make_shared<FakeSnackbarData>();
+        data->visuals = { "Data message", std::nullopt, true, SnackbarDuration::Indefinite };
+        std::string description;
+        Themed(h, [&] {
+            description = GetString(Strings::SnackbarDismiss);
+            Snackbar(data);
+        });
+        CHECK_EQ(data->dismissals, 0);
+        CHECK(ClickDescribed(h, description));
+        CHECK_EQ(data->dismissals, 1);
+    }
+}
+
+TEST(SnackbarWithoutTextContent) {
+    for (bool fix : { false, true }) {
+        SnackbarFix flag(fix);
+        {
+            PhoneHarness h;
+            Themed(h, [] { Snackbar({}, {}, [] {}); });   // empty content does not crash
+        }
+        PhoneHarness h;
+        Themed(h, [] { Snackbar({}, {}, [] { Box(Tag(SizeMod({}, 20_dp, 20_dp), "content")); }); });
+        const auto content = BoundsDp(h, "content");
+        CHECK(content && Near(content->top, (48 - 20) / 2.0f));
+    }
+}
+
+TEST(SnackbarShortTextIsCentredInOneLine) {
+    for (bool fix : { false, true }) {
+        for (bool bigFont : { false, true }) {
+            SnackbarFix flag(fix);
+            PhoneHarness h;
+            SizedSnackbar(h, 300_dp, [bigFont] {
+                TextOptions to;
+                if (bigFont) to.fontSize = text::Sp(30);
+                Snackbar({}, {}, [to] { Text("Message", Tag({}, "text"), to); });
+            });
+            const auto bar = BoundsDp(h, "snackbar"), text = BoundsDp(h, "text");
+            CHECK(bar && text);
+            if (!bar || !text) continue;
+            CHECK(Near(bar->Width(), 300));
+            if (!bigFont) CHECK(std::abs(bar->Height() - 48) <= 1);
+            CHECK(FirstBaselineDp(h, "text") > 0);
+            // The text sits as far from the top as from the bottom.
+            CHECK(Near(text->top - bar->top, bar->bottom - text->bottom));
+        }
+    }
+}
+
+TEST(SnackbarShortTextAndButtonShareABaseline) {
+    for (bool fix : { false, true }) {
+        for (bool bigFont : { false, true }) {
+            SnackbarFix flag(fix);
+            PhoneHarness h;
+            SizedSnackbar(h, bigFont ? 400_dp : 300_dp, [bigFont] {
+                TextOptions to;
+                if (bigFont) to.fontSize = text::Sp(30);
+                SnackbarOptions o;
+                o.action = [to] { TextButton([] {}, Tag({}, "button"), {}, [to] { Text("Undo", Tag({}, "buttonText"), to); }); };
+                Snackbar({}, o, [to] { Text("Message", Tag({}, "text"), to); });
+            });
+            const auto bar = BoundsDp(h, "snackbar"), text = BoundsDp(h, "text"), label = BoundsDp(h, "buttonText");
+            CHECK(bar && text && label);
+            if (!bar || !text || !label) continue;
+            if (!bigFont) {
+                CHECK(Near(bar->Width(), 300));
+                CHECK(std::abs(bar->Height() - 48) <= 1);
+            }
+            // The button's baseline is its label's.
+            CHECK(Near(label->top + FirstBaselineDp(h, "buttonText"), text->top + FirstBaselineDp(h, "text")));
+        }
+    }
+}
+
+TEST(SnackbarLongTextTakesTwoLines) {
+    for (bool fix : { false, true }) {
+        for (bool button : { false, true }) {
+            SnackbarFix flag(fix);
+            PhoneHarness h;
+            SizedSnackbar(h, 300_dp, [button] {
+                SnackbarOptions o;
+                if (button) o.action = [] { TextButton([] {}, Tag({}, "button"), {}, [] { Text("Undo"); }); };
+                TextOptions to;
+                to.maxLines = 2;
+                Snackbar({}, o, [to] { Text(kLongText, Tag({}, "text"), to); });
+            });
+            const auto bar = BoundsDp(h, "snackbar"), text = BoundsDp(h, "text");
+            CHECK(bar && text);
+            if (!bar || !text) continue;
+            CHECK(Near(bar->Width(), 300));
+            CHECK(FirstBaselineDp(h, "text", 2) != LastBaselineDp(h, "text", 2));
+            if (fix) {
+                CHECK(std::abs(bar->Height() - (14 * 2 + text->Height())) <= 1);
+            } else {
+                CHECK(std::abs(bar->Height() - 68) <= 1);
+                if (button) CHECK(Near(text->top - bar->top, 30 - FirstBaselineDp(h, "text", 2)));
+            }
+            if (button) {
+                const auto b = BoundsDp(h, "button");
+                CHECK(b && Near(b->top + b->Height() / 2 - bar->top, bar->Height() / 2));
+            }
+        }
+    }
+}
+
+TEST(SnackbarActionOnItsOwnLine) {
+    for (bool fix : { false, true }) {
+        SnackbarFix flag(fix);
+        PhoneHarness h;
+        SizedSnackbar(h, 300_dp, [] {
+            SnackbarOptions o;
+            o.actionOnNewLine = true;
+            o.action = [] {
+                TextButton([] {}, Tag({}, "button"), {}, [] { Text("Undo", SizeIn({}, 48_dp, 48_dp, ui::Dp::Unspecified(), ui::Dp::Unspecified())); });
+            };
+            Snackbar({}, o, [] { Text("Message", Tag(SizeIn({}, 48_dp, 48_dp, ui::Dp::Unspecified(), ui::Dp::Unspecified()), "text")); });
+        });
+        const auto bar = BoundsDp(h, "snackbar"), text = BoundsDp(h, "text"), b = BoundsDp(h, "button");
+        CHECK(bar && text && b);
+        if (!bar || !text || !b) continue;
+        if (fix) {
+            CHECK(Near(text->top, 14));
+            CHECK(std::abs(b->top - (14 * 2 + text->Height())) <= 0.5f);
+            CHECK(std::abs(bar->Height() - (4 + b->top + b->Height())) <= 1);
+            CHECK(Near(bar->Width(), 8 + b->left + b->Width()));
+        } else {
+            // One BodyMedium line (20 sp) at the top of the 48 dp text: its baseline at 16.
+            const float first = 0.8f * 20, last = first;
+            CHECK(Near(text->top, 30 - first));
+            const float lastToBottom = std::max(18.0f, 48 - last);
+            CHECK(Near(b->top, lastToBottom + text->top + last));
+            CHECK(std::abs(bar->Height() - (2 + b->top + b->Height())) <= 1);
+            CHECK(Near(bar->Width(), 8 + b->left + b->Width()));
+        }
+    }
+}
+
+// SnackbarHostTest.
+TEST(SnackbarHostShowsPushedDataInOrder) {
+    PhoneHarness h;
+    SnackbarHostState host;
+    std::string shown;
+    Themed(h, [&] {
+        SnackbarHost(host, {}, [&](std::shared_ptr<SnackbarData> data) {
+            rt::Composition::Current()->LaunchedEffect(rt::Keys(std::int64_t(reinterpret_cast<std::uintptr_t>(data.get()))), [&shown, data]() -> rt::Task<> {
+                return [](std::string* shown, std::shared_ptr<SnackbarData> data) -> rt::Task<> {
+                    *shown += data->Visuals().message;
+                    data->Dismiss();
+                    co_return;
+                }(&shown, data);
+            });
+        });
+    });
+    std::vector<std::string> seen;
+    bool done = false;
+    rt::Job job = rt::Launch(rt::Dispatcher::Main(), [](SnackbarHostState* host, std::string* shown, std::vector<std::string>* seen, bool* done) -> rt::Task<> {
+        for (const char* m : { "1", "2", "3" }) {
+            co_await host->ShowSnackbar(m);
+            seen->push_back(*shown);
+        }
+        *done = true;
+    }(&host, &shown, &seen, &done));
+    h.AdvanceTimeBy(500);
+    CHECK(done);
+    CHECK((seen == std::vector<std::string>{ "1", "12", "123" }));
+}
+
+TEST(SnackbarHostQueueIsFirstInFirstOut) {
+    PhoneHarness h;
+    SnackbarHostState host;
+    std::string shown;
+    Themed(h, [&] {
+        SnackbarHost(host, {}, [&](std::shared_ptr<SnackbarData> data) {
+            rt::Composition::Current()->LaunchedEffect(rt::Keys(std::int64_t(reinterpret_cast<std::uintptr_t>(data.get()))), [&shown, data]() -> rt::Task<> {
+                return [](std::string* shown, std::shared_ptr<SnackbarData> data) -> rt::Task<> {
+                    *shown += data->Visuals().message;
+                    co_await rt::Delay(30);
+                    data->Dismiss();
+                }(&shown, data);
+            });
+        });
+    });
+    std::vector<rt::Job> jobs;
+    for (int i = 0; i < 10; ++i)
+        jobs.push_back(rt::Launch(rt::Dispatcher::Main(), [](SnackbarHostState* host, int i) -> rt::Task<> {
+            co_await rt::Delay(i * 10);
+            co_await host->ShowSnackbar(std::to_string(i));
+        }(&host, i)));
+    h.AdvanceTimeBy(3000);
+    for (const auto& j : jobs) CHECK(j.Done());
+    CHECK_EQ(shown, std::string("0123456789"));
+}
+
+TEST(SnackbarHostReturnsTheResult) {
+    PhoneHarness h;
+    SnackbarHostState host;
+    Themed(h, [&] { SnackbarHost(host); });
+    std::optional<SnackbarResult> first, second;
+    rt::Job job1 = rt::Launch(rt::Dispatcher::Main(), [](SnackbarHostState* host, std::optional<SnackbarResult>* r) -> rt::Task<> {
+        *r = co_await host->ShowSnackbar("1", std::string("press"));
+    }(&host, &first));
+    h.AdvanceTimeBy(500);
+    std::int64_t t = 0;
+    Press(h, t, "press", true);
+    h.AdvanceTimeBy(100);
+    CHECK(first == SnackbarResult::ActionPerformed);
+    rt::Job job2 = rt::Launch(rt::Dispatcher::Main(), [](SnackbarHostState* host, std::optional<SnackbarResult>* r) -> rt::Task<> {
+        *r = co_await host->ShowSnackbar("1");
+    }(&host, &second));
+    h.AdvanceTimeBy(5000);
+    CHECK(second == SnackbarResult::Dismissed);
+}
+
+TEST(SnackbarHostRespectsTheCallersLifetime) {
+    PhoneHarness h;
+    SnackbarHostState host;
+    Themed(h, [&] { SnackbarHost(host); });
+    bool resumed = false;
+    {
+        rt::Job job = rt::Launch(rt::Dispatcher::Main(), [](SnackbarHostState* host, bool* resumed) -> rt::Task<> {
+            co_await host->ShowSnackbar("1");
+            *resumed = true;   // the result never comes: the caller is gone
+        }(&host, &resumed));
+        h.AdvanceTimeBy(10);
+        CHECK(host.CurrentSnackbarData() != nullptr);
+    }
+    h.AdvanceTimeBy(5000);
+    CHECK(!resumed);
+    CHECK(host.CurrentSnackbarData() == nullptr);
+    // The queue moved on.
+    std::optional<SnackbarResult> next;
+    rt::Job job = rt::Launch(rt::Dispatcher::Main(), [](SnackbarHostState* host, std::optional<SnackbarResult>* r) -> rt::Task<> {
+        *r = co_await host->ShowSnackbar("2");
+    }(&host, &next));
+    h.AdvanceTimeBy(5000);
+    CHECK(next == SnackbarResult::Dismissed);
+}
+
+TEST(SnackbarHostSemantics) {
+    PhoneHarness h;
+    SnackbarHostState host;
+    std::string paneTitle;
+    Themed(h, [&] {
+        SnackbarHost(host);
+        paneTitle = GetString(Strings::SnackbarPaneTitle);
+    });
+    std::optional<SnackbarResult> result;
+    rt::Job job = rt::Launch(rt::Dispatcher::Main(), [](SnackbarHostState* host, std::optional<SnackbarResult>* r) -> rt::Task<> {
+        *r = co_await host->ShowSnackbar("1", std::string("press"));
+    }(&host, &result));
+    h.AdvanceTimeBy(500);
+    const auto tree = h.owner.BuildSemanticsTree();
+    std::function<const ui::SemanticsNode*(const ui::SemanticsNode&)> pane = [&](const ui::SemanticsNode& n) -> const ui::SemanticsNode* {
+        if (n.config.paneTitle) return &n;
+        for (const auto& c : n.children) if (const auto* r = pane(c)) return r;
+        return nullptr;
+    };
+    const auto* node = pane(tree);
+    CHECK(node != nullptr);
+    if (!node) return;
+    CHECK(node->config.paneTitle == paneTitle);
+    CHECK(node->config.liveRegion == ui::LiveRegionMode::Polite);
+    CHECK(bool(node->config.dismiss));
+    CHECK(FindSemantics(*node, "1") != nullptr);
+    if (node->config.dismiss) node->config.dismiss();
+    h.AdvanceTimeBy(100);
+    CHECK(result == SnackbarResult::Dismissed);
+}
+
+TEST(SnackbarDurationsFollowAccessibilitySettings) {
+    struct Manager final : ui::AccessibilityManager {
+        std::int64_t CalculateRecommendedTimeoutMillis(std::int64_t original, bool, bool, bool controls) const override {
+            if (original == INT64_MAX) return INT64_MAX;
+            return controls ? 10000 : 5000;
+        }
+        ui::AccessibilityServiceState ServiceState() const override { return {}; }
+    } manager;
+    using D = SnackbarDuration;
+    CHECK_EQ(internal::SnackbarDurationMillis(D::Indefinite, true, &manager), INT64_MAX);
+    CHECK_EQ(internal::SnackbarDurationMillis(D::Indefinite, false, &manager), INT64_MAX);
+    CHECK_EQ(internal::SnackbarDurationMillis(D::Long, true, &manager), std::int64_t(10000));
+    CHECK_EQ(internal::SnackbarDurationMillis(D::Long, false, &manager), std::int64_t(5000));
+    CHECK_EQ(internal::SnackbarDurationMillis(D::Short, true, &manager), std::int64_t(10000));
+    CHECK_EQ(internal::SnackbarDurationMillis(D::Short, false, &manager), std::int64_t(5000));
+    CHECK_EQ(internal::SnackbarDurationMillis(D::Indefinite, true, nullptr), INT64_MAX);
+    CHECK_EQ(internal::SnackbarDurationMillis(D::Long, false, nullptr), std::int64_t(10000));
+    CHECK_EQ(internal::SnackbarDurationMillis(D::Short, true, nullptr), std::int64_t(4000));
+}
+
