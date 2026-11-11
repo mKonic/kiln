@@ -39,6 +39,11 @@
 #include "kiln/material3/SwipeToDismissBox.h"
 #include "kiln/material3/PullToRefresh.h"
 #include "kiln/material3/Carousel.h"
+#include "kiln/material3/DatePicker.h"
+#include "kiln/material3/DateRangePicker.h"
+#include "kiln/material3/internal/GetString.h"
+#include "kiln/text/DateFormat.h"
+#include "kiln/text/LocaleFormat.h"
 #include "kiln/material3/internal/CarouselKeylines.h"
 #include "kiln/ui/Back.h"
 #include "kiln/material3/internal/GetString.h"
@@ -11905,5 +11910,862 @@ TEST(CarouselStateRestores) {
         } else {
             CHECK(state->CurrentItem() == 4);
         }
+    }
+}
+
+// --- DatePicker (DatePickerTest.kt) -----------------------------------------------------------------
+
+namespace {
+    std::string PickerString(material3::Strings id) { return std::string(material3::ResolveString(id, { "en-US" })); }
+    std::int64_t DayUtc(int year, int month, int day) { return text::UtcMillis({ year, month, day }); }
+
+    // The first node (pre-order) that matches, among those shown in the window.
+    const ui::SemanticsNode* FindNode(const ui::SemanticsNode& n, const std::function<bool(const ui::SemanticsNode&)>& pred, const ui::Rect& window) {
+        const ui::Rect& b = n.boundsInRoot;
+        const bool shown = n.id == -1 || (b.right > window.left && b.left < window.right && b.bottom > window.top && b.top < window.bottom && b.Width() > 0);
+        if (shown && pred(n)) return &n;
+        for (const auto& c : n.children)
+            if (const auto* r = FindNode(c, pred, window)) return r;
+        return nullptr;
+    }
+    bool TextContains(const ui::SemanticsNode& n, const std::string& s) {
+        for (const auto& t : n.config.text) if (t.find(s) != std::string::npos) return true;
+        return false;
+    }
+    bool DescriptionContains(const ui::SemanticsNode& n, const std::string& s) {
+        for (const auto& t : n.config.contentDescription) {
+            std::string lower = t, needle = s;
+            for (char& c : lower) c = char(std::tolower(static_cast<unsigned char>(c)));
+            for (char& c : needle) c = char(std::tolower(static_cast<unsigned char>(c)));
+            if (lower.find(needle) != std::string::npos) return true;
+        }
+        return false;
+    }
+    struct PickerQuery {
+        Harness& h;
+        ui::Owner* owner = nullptr;   // a dialog's; null: the main window
+        ui::Owner& O() { return owner ? *owner : h.owner; }
+        std::optional<ui::SemanticsNode> Find(const std::function<bool(const ui::SemanticsNode&)>& pred) {
+            const ui::SemanticsNode tree = O().BuildSemanticsTree();
+            const ui::Rect window{ 0, 0, float(h.window.width), float(h.window.height) };
+            if (const auto* n = FindNode(tree, pred, window)) return *n;
+            return std::nullopt;
+        }
+        // hasText(text, substring = true) and hasClickAction()
+        std::optional<ui::SemanticsNode> Clickable(const std::string& text) {
+            return Find([&](const ui::SemanticsNode& n) { return n.config.onClick && TextContains(n, text); });
+        }
+        std::optional<ui::SemanticsNode> Text(const std::string& text) {
+            return Find([&](const ui::SemanticsNode& n) {
+                return std::find(n.config.text.begin(), n.config.text.end(), text) != n.config.text.end();
+            });
+        }
+        std::optional<ui::SemanticsNode> Described(const std::string& label) {
+            return Find([&](const ui::SemanticsNode& n) { return DescriptionContains(n, label); });
+        }
+        bool Click(const std::optional<ui::SemanticsNode>& n) {
+            CHECK(n.has_value());
+            if (!n) return false;
+            std::int64_t t = 50000 + (tick += 1000);
+            const float x = (n->boundsInRoot.left + n->boundsInRoot.right) / 2, y = (n->boundsInRoot.top + n->boundsInRoot.bottom) / 2;
+            Touch(h, t, ui::PointerEventType::Press, x, y, true);
+            Touch(h, t, ui::PointerEventType::Release, x, y, false);
+            h.AdvanceTimeBy(1000);
+            return true;
+        }
+        std::int64_t tick = 0;
+    };
+
+    void PickerContent(Harness& h, std::function<void()> content) { Themed(h, std::move(content)); h.AdvanceTimeBy(500); }
+}
+
+TEST(DatePickerSelectsDates) {
+    {   // dateSelectionWithInitialDate
+        std::shared_ptr<DatePickerState> state;
+        PhoneHarness h;
+        PickerContent(h, [&state] {
+            state = RememberDatePickerState(DayUtc(2010, 5, 11), DayUtc(2010, 5, 1));
+            DatePicker(*state);
+        });
+        PickerQuery q{ h };
+        const auto day = q.Clickable("11");
+        CHECK(day && day->config.selected == true);
+        CHECK(q.Text("May 11, 2010"));
+    }
+    {   // dateSelection
+        std::shared_ptr<DatePickerState> state;
+        PhoneHarness h;
+        PickerContent(h, [&state] {
+            state = RememberDatePickerState(std::nullopt, DayUtc(2019, 1, 1));
+            DatePicker(*state);
+        });
+        PickerQuery q{ h };
+        const std::string headline = PickerString(material3::Strings::DatePickerHeadline);
+        CHECK(q.Text(headline));
+        CHECK(q.Clickable("27") && q.Clickable("27")->config.selected != true);
+        q.Click(q.Clickable("27"));
+        CHECK(state->SelectedDateMillis() == DayUtc(2019, 1, 27));
+        CHECK(!q.Text(headline) && q.Text("Jan 27, 2019"));
+        CHECK(q.Clickable("27") && q.Clickable("27")->config.selected == true);
+    }
+    {   // blockedDateSelection
+        std::shared_ptr<DatePickerState> state;
+        PhoneHarness h;
+        PickerContent(h, [&state] {
+            state = RememberDatePickerState(std::nullopt, DayUtc(2019, 1, 1), {}, DisplayMode::Picker,
+                                            MakeSelectableDates([](std::int64_t) { return false; }));
+            DatePicker(*state);
+        });
+        PickerQuery q{ h };
+        q.Click(q.Clickable("27"));
+        CHECK(!state->SelectedDateMillis());
+        CHECK(q.Text(PickerString(material3::Strings::DatePickerHeadline)));
+    }
+}
+
+TEST(DatePickerYears) {
+    const std::string navigate = PickerString(material3::Strings::DatePickerNavigateToYearDescription);
+    const auto yearText = [&](int year) {
+        std::vector<text::FormatArg> a{ std::to_string(year) };
+        return text::FormatJava(navigate, std::span<const text::FormatArg>(a), "en-US");
+    };
+    {   // blockedYearSelection
+        std::shared_ptr<DatePickerState> state;
+        PhoneHarness h;
+        PickerContent(h, [&state] {
+            state = RememberDatePickerState(std::nullopt, DayUtc(2019, 1, 1), {}, DisplayMode::Picker, MakeSelectableDates({}, [](int) { return false; }));
+            DatePicker(*state);
+        });
+        PickerQuery q{ h };
+        q.Click(q.Text("January 2019"));
+        for (int year = 2019; year <= 2031; ++year) {
+            const auto n = q.Find([&](const ui::SemanticsNode& s) { return TextContains(s, yearText(year)); });
+            CHECK(n && n->config.disabled);
+        }
+    }
+    {   // yearSelection
+        std::shared_ptr<DatePickerState> state;
+        PhoneHarness h;
+        PickerContent(h, [&state] {
+            state = RememberDatePickerState(std::nullopt, DayUtc(2019, 1, 1));
+            DatePicker(*state);
+        });
+        PickerQuery q{ h };
+        const auto year = [&](int y) { return q.Find([&](const ui::SemanticsNode& s) { return TextContains(s, yearText(y)); }); };
+        q.Click(q.Text("January 2019"));
+        CHECK(year(2019) && year(2019)->config.selected == true);
+        q.Click(year(2020));
+        q.Click(q.Clickable("15"));
+        CHECK(state->SelectedDateMillis() == DayUtc(2020, 1, 15));
+        // Reopened, the years show the last year picked.
+        q.Click(q.Text("January 2020"));
+        CHECK(year(2019) && year(2019)->config.selected != true);
+        CHECK(year(2020) && year(2020)->config.selected == true);
+    }
+    {   // yearRange
+        PhoneHarness h;
+        PickerContent(h, [] { DatePicker(*RememberDatePickerState(std::nullopt, DayUtc(2019, 1, 1), { 2018, 2023 })); });
+        PickerQuery q{ h };
+        q.Click(q.Text("January 2019"));
+        for (int y = 2018; y <= 2023; ++y) CHECK(q.Find([&](const ui::SemanticsNode& s) { return TextContains(s, yearText(y)); }));
+        CHECK(!q.Find([&](const ui::SemanticsNode& s) { return TextContains(s, yearText(2017)); }));
+        CHECK(!q.Find([&](const ui::SemanticsNode& s) { return TextContains(s, yearText(2024)); }));
+    }
+    {   // yearRange_minYearAfterCurrentYear
+        const int current = text::DateFormat().Today().year;
+        PhoneHarness h;
+        PickerContent(h, [current] { DatePicker(*RememberDatePickerState(std::nullopt, std::nullopt, { current + 1, current + 10 })); });
+        CHECK(PickerQuery{ h }.Text("January " + std::to_string(current + 1)));
+    }
+}
+
+TEST(DatePickerMonthsTraversal) {
+    {   // monthsTraversal
+        PhoneHarness h;
+        PickerContent(h, [] { DatePicker(*RememberDatePickerState(std::nullopt, DayUtc(2018, 1, 1))); });
+        PickerQuery q{ h };
+        CHECK(q.Text("January 2018"));
+        q.Click(q.Described("next"));
+        CHECK(q.Text("February 2018") && !q.Text("January 2018"));
+        q.Click(q.Described("previous"));
+        CHECK(q.Text("January 2018") && !q.Text("February 2018"));
+    }
+    {   // monthsTraversalAtRangeEdges
+        PhoneHarness h;
+        PickerContent(h, [] { DatePicker(*RememberDatePickerState(std::nullopt, DayUtc(2018, 1, 1), { 2018, 2018 })); });
+        PickerQuery q{ h };
+        CHECK(!q.Described("next")->config.disabled && q.Described("previous")->config.disabled);
+        for (int i = 0; i < 11; ++i) {
+            q.Click(q.Described("next"));
+            CHECK(!q.Described("previous")->config.disabled);
+        }
+        CHECK(q.Described("next")->config.disabled);
+        for (int i = 0; i < 11; ++i) {
+            q.Click(q.Described("previous"));
+            CHECK(!q.Described("next")->config.disabled);
+        }
+        CHECK(q.Described("previous")->config.disabled);
+    }
+    {   // monthsTraversalInitialAtEndEdge
+        std::shared_ptr<DatePickerState> state;
+        PhoneHarness h;
+        PickerContent(h, [&state] {
+            state = RememberDatePickerState(std::nullopt, DayUtc(2018, 12, 1), { 2018, 2018 });
+            DatePicker(*state);
+        });
+        PickerQuery q{ h };
+        CHECK(q.Described("next")->config.disabled && !q.Described("previous")->config.disabled);
+        state->SetDisplayedMonthMillis(DayUtc(2018, 1, 1));
+        h.AdvanceTimeBy(500);
+        CHECK(!q.Described("next")->config.disabled && q.Described("previous")->config.disabled);
+    }
+    {   // monthsTraversal_acrossYearBoundary, with a selectable-dates validator
+        PhoneHarness h;
+        PickerContent(h, [] {
+            DatePicker(*RememberDatePickerState(std::nullopt, DayUtc(2018, 12, 1), { 2018, 2019 }, DisplayMode::Picker,
+                                                MakeSelectableDates([](std::int64_t) { return false; }, [](int y) { return y == 2019; })));
+        });
+        PickerQuery q{ h };
+        CHECK(!q.Described("previous")->config.disabled && !q.Described("next")->config.disabled);
+        q.Click(q.Described("next"));
+        CHECK(q.Text("January 2019"));
+        q.Click(q.Described("previous"));
+        CHECK(q.Text("December 2018"));
+    }
+    {   // state_changeDisplayedMonth
+        std::shared_ptr<DatePickerState> state;
+        PhoneHarness h;
+        PickerContent(h, [&state] {
+            state = RememberDatePickerState(std::nullopt, DayUtc(2020, 1, 1));
+            DatePicker(*state);
+        });
+        PickerQuery q{ h };
+        CHECK(q.Text("January 2020"));
+        state->SetDisplayedMonthMillis(DayUtc(2020, 7, 1));
+        h.AdvanceTimeBy(500);
+        CHECK(q.Text("July 2020"));
+        q.Click(q.Described("next"));
+        CHECK(q.Text("August 2020"));
+        q.Click(q.Described("previous"));
+        CHECK(q.Text("July 2020"));
+    }
+    {   // datePicker_swipeLeft_goesToNextMonth
+        PhoneHarness h;
+        PickerContent(h, [] { DatePicker(*RememberDatePickerState(DayUtc(2018, 1, 1), std::nullopt, { 2016, 2019 })); });
+        PickerQuery q{ h };
+        CHECK(!q.Find([](const ui::SemanticsNode& n) { return TextContains(n, "Feb"); }));
+        std::int64_t t = 70000;
+        Swipe(h, t, 600, 800, 100, 800, 10, 20);
+        h.AdvanceTimeBy(2000);
+        CHECK(q.Find([](const ui::SemanticsNode& n) { return TextContains(n, "Feb"); }));
+    }
+}
+
+TEST(DatePickerSwitchesModes) {
+    const std::string toInput = PickerString(material3::Strings::DatePickerSwitchToInputMode);
+    const std::string toPicker = PickerString(material3::Strings::DatePickerSwitchToCalendarMode);
+    {   // switchToDateInput
+        PhoneHarness h;
+        PickerContent(h, [] { DatePicker(*RememberDatePickerState()); });
+        PickerQuery q{ h };
+        q.Click(q.Described(toInput));
+        CHECK(q.Text(PickerString(material3::Strings::DateInputLabel)) || q.Described(PickerString(material3::Strings::DateInputLabel)));
+        CHECK(!q.Described("next") && !q.Described("previous"));
+    }
+    {   // monthsTraversal_switchingDisplayModesPreservesNavigationState
+        PhoneHarness h;
+        PickerContent(h, [] { DatePicker(*RememberDatePickerState(std::nullopt, DayUtc(2018, 1, 1), { 2018, 2018 })); });
+        PickerQuery q{ h };
+        CHECK(q.Described("previous")->config.disabled && !q.Described("next")->config.disabled);
+        q.Click(q.Described(toInput));
+        q.Click(q.Described(toPicker));
+        CHECK(q.Described("previous") && q.Described("previous")->config.disabled && !q.Described("next")->config.disabled);
+    }
+}
+
+TEST(DatePickerStates) {
+    const material3::internal::CalendarModel model("en-US");
+    const std::int64_t april12 = 1649721600000;
+    {   // state_initWithoutRemember
+        DatePickerState s("en-US", april12, april12);
+        CHECK(s.SelectedDateMillis() == april12 && s.DisplayedMonthMillis() == model.GetMonth(2022, 4).startUtcTimeMillis && s.Locale() == "en-US");
+    }
+    {   // state_initWithSelectedDate (rounded to the start of the day), and a null month
+        std::shared_ptr<DatePickerState> a, b, c;
+        Harness h;
+        h.Run([&] {
+            a = RememberDatePickerState(april12 + 10000);
+            b = RememberDatePickerState(april12, std::nullopt);
+            c = RememberDatePickerState();
+        });
+        CHECK(a->SelectedDateMillis() == april12 && a->DisplayedMonthMillis() == model.GetMonth(2022, 4).startUtcTimeMillis);
+        // rememberDatePickerState's month defaults to the selection's.
+        CHECK(b->DisplayedMonthMillis() == model.GetMonth(2022, 4).startUtcTimeMillis);
+        CHECK(!c->SelectedDateMillis() && c->DisplayedMonthMillis() == model.GetMonth(model.Today()).startUtcTimeMillis);
+    }
+    {   // state_resetSelection
+        std::shared_ptr<DatePickerState> state;
+        PhoneHarness h;
+        PickerContent(h, [&state] {
+            state = RememberDatePickerState(1649721600000);
+            DatePicker(*state);
+        });
+        PickerQuery q{ h };
+        CHECK(q.Text("Apr 12, 2022"));
+        state->SetSelectedDateMillis(std::nullopt);
+        h.AdvanceTimeBy(100);
+        CHECK(!state->SelectedDateMillis() && !q.Text("Apr 12, 2022") && q.Text(PickerString(material3::Strings::DatePickerHeadline)));
+    }
+    {   // setSelection_outOfYearsBound, initialDateOutOfBounds, initialDisplayedMonthOutOfBounds
+        DatePickerState s("en-US", std::nullopt, std::nullopt, { 2000, 2050 });
+        s.SetSelectedDateMillis(DayUtc(1999, 5, 11));
+        CHECK(!s.SelectedDateMillis());
+        DatePickerState t("en-US", DayUtc(2051, 5, 11), std::nullopt, { 2000, 2050 });
+        CHECK(!t.SelectedDateMillis());
+        DatePickerState u("en-US", std::nullopt, DayUtc(1999, 1, 1), { 2000, 2050 });
+        CHECK(u.DisplayedMonthMillis() == model.GetMonth(model.Today()).startUtcTimeMillis);
+    }
+    {   // state_restoresDatePickerState
+        rt::SaveableStateRegistry::Values saved;
+        for (int pass = 0; pass < 2; ++pass) {
+            rt::SaveableStateRegistry current(saved);
+            rt::SaveableStateRegistry* registry = &current;
+            std::shared_ptr<DatePickerState> state;
+            Harness h;
+            h.Run([&state, registry] {
+                rt::Composition::Current()->Provide(rt::LocalSaveableStateRegistry, registry, [&] { state = RememberDatePickerState(); });
+            });
+            if (pass == 0) {
+                state->SetSelectedDateMillis(april12);
+                state->SetDisplayedMonthMillis(model.GetMonth(2022, 4).startUtcTimeMillis);
+                state->SetDisplayMode(DisplayMode::Input);
+                saved = rt::SaveableStateRegistry::Deserialize(rt::SaveableStateRegistry::Serialize(current.PerformSave()));
+            } else {
+                CHECK(state->SelectedDateMillis() == april12 && state->DisplayedMonthMillis() == model.GetMonth(2022, 4).startUtcTimeMillis);
+                CHECK(state->GetDisplayMode() == DisplayMode::Input);
+            }
+        }
+    }
+}
+
+TEST(DatePickerSemantics) {
+    // defaultSemantics
+    PhoneHarness h;
+    PickerContent(h, [] { DatePicker(*RememberDatePickerState(DayUtc(2010, 5, 11), DayUtc(2010, 5, 1))); });
+    PickerQuery q{ h };
+    const std::string full = "Tuesday, May 11, 2010";
+    CHECK(q.Described("next") && q.Described("next")->config.role == ui::Role::Button);
+    CHECK(q.Described("previous") && q.Described("previous")->config.role == ui::Role::Button);
+    const auto menu = q.Find([](const ui::SemanticsNode& n) { return TextContains(n, "May 2010") && n.config.onClick; });
+    CHECK(menu && menu->config.role == ui::Role::Button);
+    const auto day = q.Find([&](const ui::SemanticsNode& n) { return TextContains(n, full) && n.config.onClick; });
+    CHECK(day && day->config.role == ui::Role::Button);
+    std::vector<text::FormatArg> a{ full };
+    const std::string expected = text::FormatJava(PickerString(material3::Strings::DatePickerHeadlineDescription), std::span<const text::FormatArg>(a), "en-US");
+    const auto headline = q.Text("May 11, 2010");
+    CHECK(headline && headline->config.contentDescription == std::vector<std::string>{ expected });
+}
+
+// --- DateInput (DateInputTest.kt) -------------------------------------------------------------------
+
+namespace {
+    // onNodeWithText(...) for a field: its shown (transformed) text.
+    std::optional<ui::SemanticsNode> FieldWithText(PickerQuery& q, const std::string& text) {
+        return q.Find([&](const ui::SemanticsNode& n) { return n.config.editableText && *n.config.editableText == text; });
+    }
+    // performClick().performTextInput(text) on the field labelled `label`.
+    void TypeInto(Harness& h, PickerQuery& q, const std::string& label, const std::u16string& text) {
+        auto field = q.Find([&](const ui::SemanticsNode& n) { return n.config.editableText.has_value() && (TextContains(n, label) || DescriptionContains(n, label)); });
+        if (!field) field = q.Find([](const ui::SemanticsNode& n) { return n.config.editableText.has_value(); });
+        q.Click(field);
+        auto* session = h.owner.ActiveTextInput();
+        CHECK(session != nullptr);
+        if (!session) return;
+        session->CommitText(text, 1);
+        h.AdvanceTimeBy(500);
+    }
+}
+
+TEST(DateInputSelectsTypedDates) {
+    const std::string label = PickerString(material3::Strings::DateInputLabel);
+    {   // dateInput
+        std::shared_ptr<DatePickerState> state;
+        PhoneHarness h;
+        PickerContent(h, [&state] {
+            state = RememberDatePickerState(std::nullopt, DayUtc(2019, 1, 1), {}, DisplayMode::Input);
+            DatePicker(*state);
+        });
+        PickerQuery q{ h };
+        const std::string headline = PickerString(material3::Strings::DateInputHeadline);
+        CHECK(q.Text(headline));
+        TypeInto(h, q, label, u"01272019");
+        CHECK(state->SelectedDateMillis() == DayUtc(2019, 1, 27));
+        CHECK(!q.Text(headline) && q.Text("Jan 27, 2019"));
+    }
+    {   // dateInputWithInitialDate, and the initial focus (after its delay)
+        PhoneHarness h;
+        PickerContent(h, [] { DatePicker(*RememberDatePickerState(DayUtc(2010, 5, 11), std::nullopt, {}, DisplayMode::Input)); });
+        h.AdvanceTimeBy(1000);
+        PickerQuery q{ h };
+        const auto field = FieldWithText(q, "05/11/2010");
+        CHECK(field && q.Text("May 11, 2010"));
+        CHECK(field && field->config.focused == true);
+    }
+    {   // dateInput_noInitialFocusOnInputField
+        PhoneHarness h;
+        PickerContent(h, [] {
+            DatePickerOptions o;
+            o.focusRequester = static_cast<ui::FocusRequester*>(nullptr);
+            DatePicker(*RememberDatePickerState(DayUtc(2010, 5, 11), std::nullopt, {}, DisplayMode::Input), {}, o);
+        });
+        h.AdvanceTimeBy(1000);
+        PickerQuery q{ h };
+        const auto field = FieldWithText(q, "05/11/2010");
+        CHECK(field && field->config.focused != true);
+    }
+    {   // dateInputWithInitialDate_externalDateChange
+        std::shared_ptr<DatePickerState> state;
+        PhoneHarness h;
+        PickerContent(h, [&state] {
+            state = RememberDatePickerState(DayUtc(2010, 5, 11), std::nullopt, {}, DisplayMode::Input);
+            DatePicker(*state);
+        });
+        PickerQuery q{ h };
+        CHECK(q.Text("May 11, 2010") && FieldWithText(q, "05/11/2010"));
+        state->SetSelectedDateMillis(DayUtc(2024, 3, 7));
+        state->SetDisplayedMonthMillis(DayUtc(2024, 3, 7));
+        h.AdvanceTimeBy(500);
+        CHECK(!q.Text("May 11, 2010") && !FieldWithText(q, "05/11/2010") && FieldWithText(q, "03/07/2024"));
+    }
+    {   // dateInput_delimiterInsertedImmediately
+        PhoneHarness h;
+        PickerContent(h, [] { DatePicker(*RememberDatePickerState(std::nullopt, std::nullopt, {}, DisplayMode::Input)); });
+        PickerQuery q{ h };
+        TypeInto(h, q, label, u"01");
+        CHECK(FieldWithText(q, "01/"));
+        h.owner.ActiveTextInput()->CommitText(u"27", 1);
+        h.AdvanceTimeBy(500);
+        CHECK(FieldWithText(q, "01/27/"));
+        // Letters and text past the pattern are refused.
+        h.owner.ActiveTextInput()->CommitText(u"x", 1);
+        h.AdvanceTimeBy(100);
+        CHECK(FieldWithText(q, "01/27/"));
+    }
+}
+
+TEST(DateInputReportsErrors) {
+    const std::string label = PickerString(material3::Strings::DateInputLabel);
+    const auto format = [](material3::Strings id, std::vector<text::FormatArg> args) {
+        return text::FormatJava(PickerString(id), std::span<const text::FormatArg>(args), "en-US");
+    };
+    {   // inputDateNotAllowed
+        std::shared_ptr<DatePickerState> state;
+        PhoneHarness h;
+        PickerContent(h, [&state] {
+            state = RememberDatePickerState(std::nullopt, std::nullopt, {}, DisplayMode::Input, MakeSelectableDates([](std::int64_t) { return false; }));
+            DatePicker(*state);
+        });
+        PickerQuery q{ h };
+        TypeInto(h, q, label, u"02272020");
+        CHECK(!state->SelectedDateMillis());
+        const auto field = FieldWithText(q, "02/27/2020");
+        CHECK(field && field->config.error == format(material3::Strings::DateInputInvalidNotAllowed, { std::string("Feb 27, 2020") }));
+    }
+    {   // inputDateOutOfRange
+        std::shared_ptr<DatePickerState> state;
+        PhoneHarness h;
+        PickerContent(h, [&state] {
+            state = RememberDatePickerState(std::nullopt, std::nullopt, { 2018, 2023 }, DisplayMode::Input);
+            DatePicker(*state);
+        });
+        PickerQuery q{ h };
+        TypeInto(h, q, label, u"02272030");
+        CHECK(!state->SelectedDateMillis());
+        const auto field = FieldWithText(q, "02/27/2030");
+        CHECK(field && field->config.error == format(material3::Strings::DateInputInvalidYearRange, { std::string("2018"), std::string("2023") }));
+    }
+    {   // inputDateOutOfRange_withInitialDate
+        std::shared_ptr<DatePickerState> state;
+        PhoneHarness h;
+        PickerContent(h, [&state] {
+            state = RememberDatePickerState(DayUtc(2030, 2, 27), std::nullopt, {}, DisplayMode::Input, MakeSelectableDates([](std::int64_t) { return false; }));
+            DatePicker(*state);
+        });
+        PickerQuery q{ h };
+        CHECK(state->SelectedDateMillis() == 1898380800000);
+        const auto field = FieldWithText(q, "02/27/2030");
+        CHECK(field && field->config.error == format(material3::Strings::DateInputInvalidNotAllowed, { std::string("Feb 27, 2030") }));
+    }
+    {   // inputDateInvalidForPattern, and the height kept with the error text (heightUnchangedWithError)
+        std::shared_ptr<DatePickerState> state;
+        PhoneHarness h;
+        PickerContent(h, [&state] {
+            state = RememberDatePickerState(std::nullopt, std::nullopt, {}, DisplayMode::Input);
+            DatePicker(*state, Tag({}, "DateInput"));
+        });
+        PickerQuery q{ h };
+        const auto before = BoundsDp(h, "DateInput");
+        TypeInto(h, q, label, u"99272030");
+        CHECK(!state->SelectedDateMillis());
+        const auto field = FieldWithText(q, "99/27/2030");
+        CHECK(field && field->config.error == format(material3::Strings::DateInputInvalidForPattern, { std::string("MM/DD/YYYY") }));
+        const auto after = BoundsDp(h, "DateInput");
+        CHECK(before && after && std::abs(before->Height() - after->Height()) < 0.5f);
+    }
+}
+
+TEST(DateInputSwitchesToThePickerAndDescribesItsHeadline) {
+    {   // switchToDatePicker
+        PhoneHarness h;
+        PickerContent(h, [] { DatePicker(*RememberDatePickerState(std::nullopt, std::nullopt, {}, DisplayMode::Input)); });
+        PickerQuery q{ h };
+        q.Click(q.Described(PickerString(material3::Strings::DatePickerSwitchToCalendarMode)));
+        CHECK(q.Described("next") && q.Described("previous"));
+        CHECK(!q.Find([](const ui::SemanticsNode& n) { return n.config.editableText.has_value(); }));
+    }
+    {   // defaultSemantics
+        PhoneHarness h;
+        PickerContent(h, [] { DatePicker(*RememberDatePickerState(DayUtc(2010, 5, 11), std::nullopt, {}, DisplayMode::Input)); });
+        PickerQuery q{ h };
+        std::vector<text::FormatArg> a{ std::string("Tuesday, May 11, 2010") };
+        const std::string expected = text::FormatJava(PickerString(material3::Strings::DateInputHeadlineDescription), std::span<const text::FormatArg>(a), "en-US");
+        const auto headline = q.Text("May 11, 2010");
+        CHECK(headline && headline->config.contentDescription == std::vector<std::string>{ expected });
+    }
+}
+
+// --- DatePicker keyboard behaviour (DatePickerTest.kt) ----------------------------------------------
+
+namespace {
+    // DatePickerDialog { DatePicker } with OK and Cancel, January 2010 shown, the 11th selected.
+    void KeyboardDialog(ModalHarness& h, bool rtl, bool dialog = true) {
+        h.owner.SetInputMode(ui::InputMode::Keyboard);
+        Themed(h, [rtl, dialog] {
+            auto content = [dialog] {
+                auto state = RememberDatePickerState(DayUtc(2010, 1, 11), DayUtc(2010, 1, 1));
+                if (!dialog) { DatePicker(*state); return; }
+                DatePickerDialogOptions o;
+                o.dismissButton = [] { TextButton([] {}, {}, {}, [] { Text("Cancel"); }); };
+                DatePickerDialog([] {}, [] { TextButton([] {}, {}, {}, [] { Text("OK"); }); }, {}, o, [state] { DatePicker(*state); });
+            };
+            if (rtl) rt::Composition::Current()->Provide(ui::LocalLayoutDirection, LayoutDirection::Rtl, content);
+            else content();
+        });
+        h.AdvanceTimeBy(1000);
+        for (ui::Owner* d : h.dialogs) d->SetInputMode(ui::InputMode::Keyboard);
+    }
+    struct Keys {
+        PickerQuery q;
+        std::optional<ui::SemanticsNode> Node(const std::string& text) {
+            return q.Find([&](const ui::SemanticsNode& n) { return TextContains(n, text); });
+        }
+        bool Focused(const std::string& text) {
+            const auto n = Node(text);
+            return n && n->config.focused == true;
+        }
+        void Focus(const std::string& text) {
+            const auto n = Node(text);
+            CHECK(n && n->config.requestFocus);
+            if (n && n->config.requestFocus) n->config.requestFocus();
+            q.h.AdvanceTimeBy(100);
+        }
+        void Press(int key, bool shift = false) {
+            const std::uint32_t meta = shift ? ui::kMetaShift : 0;
+            q.O().DispatchKeyEvent({ .keyCode = key, .type = ui::KeyEventType::KeyDown, .metaState = meta });
+            q.O().DispatchKeyEvent({ .keyCode = key, .type = ui::KeyEventType::KeyUp, .metaState = meta });
+            q.h.AdvanceTimeBy(1000);
+        }
+    };
+}
+
+TEST(DatePickerDialogKeyboardOrder) {
+    {   // cancelAndOkButtons_keyboardBehavior
+        ModalHarness h;
+        KeyboardDialog(h, false);
+        CHECK(!h.dialogs.empty());
+        if (h.dialogs.empty()) return;
+        Keys k{ PickerQuery{ h, h.dialogs.back() } };
+        k.Focus("January 31, 2010");
+        k.Press(ui::keys::Tab);
+        CHECK(k.Focused("Cancel"));
+        k.Press(ui::keys::Tab);
+        CHECK(k.Focused("OK"));
+        k.Press(ui::keys::Tab, true);
+        CHECK(k.Focused("Cancel"));
+        k.Press(ui::keys::Tab, true);
+        CHECK(k.Focused("January 31, 2010"));
+    }
+    {   // lastDayOfMonth_keyboardBehavior
+        ModalHarness h;
+        KeyboardDialog(h, false);
+        Keys k{ PickerQuery{ h, h.dialogs.back() } };
+        k.Focus("January 31, 2010");
+        k.Press(ui::keys::Tab);
+        CHECK(k.Focused("Cancel"));
+        k.Press(ui::keys::Tab, true);
+        CHECK(k.Focused("January 31, 2010"));
+        k.Press(ui::keys::DpadRight);
+        CHECK(!k.q.Text("January 2010") && k.q.Text("February 2010"));
+        CHECK(k.Focused("February 1, 2010"));
+    }
+    {   // yearGrid_keyboardNavigation
+        ModalHarness h;
+        KeyboardDialog(h, false);
+        Keys k{ PickerQuery{ h, h.dialogs.back() } };
+        k.Focus("January 2010");
+        k.Press(ui::keys::Enter);
+        CHECK(k.Focused("Navigate to year 2010"));
+        k.Press(ui::keys::Tab);
+        CHECK(k.Focused("OK"));
+        k.Press(ui::keys::Tab, true);
+        k.Press(ui::keys::Tab, true);
+        CHECK(k.Focused("Navigate to year 2010"));
+        k.Press(ui::keys::Tab, true);
+        CHECK(k.Focused("January 2010"));
+    }
+}
+
+TEST(DatePickerArrowKeysMoveBetweenDaysAndMonths) {
+    for (bool rtl : { false, true }) {
+        const int forward = rtl ? ui::keys::DpadLeft : ui::keys::DpadRight, back = rtl ? ui::keys::DpadRight : ui::keys::DpadLeft;
+        {   // firstDayOfMonth_keyboardBehavior
+            ModalHarness h;
+            KeyboardDialog(h, rtl);
+            Keys k{ PickerQuery{ h, h.dialogs.back() } };
+            k.Focus("January 1, 2010");
+            k.Press(forward);
+            CHECK(k.Focused("January 2, 2010"));
+            k.Press(back);
+            CHECK(k.Focused("January 1, 2010"));
+            k.Press(back);
+            CHECK(!k.q.Text("January 2010") && k.q.Text("December 2009"));
+            CHECK(k.Focused("December 31, 2009"));
+        }
+        {   // lastDayOfMonth_keyboardBehavior_rtl's middle steps
+            ModalHarness h;
+            KeyboardDialog(h, rtl);
+            Keys k{ PickerQuery{ h, h.dialogs.back() } };
+            k.Focus("January 31, 2010");
+            k.Press(back);
+            CHECK(k.Focused("January 30, 2010"));
+            k.Press(forward);
+            CHECK(k.Focused("January 31, 2010"));
+        }
+        {   // calendar_keyboardBehavior: forward through the whole month
+            ModalHarness h;
+            KeyboardDialog(h, rtl, false);
+            Keys k{ PickerQuery{ h } };
+            k.Focus("January 1, 2010");
+            for (int day = 1; day <= 30; ++day) {
+                k.Press(forward);
+                CHECK(k.Focused("January " + std::to_string(day + 1) + ", 2010"));
+            }
+        }
+    }
+}
+
+// --- DateRangePicker (DateRangePickerTest.kt, DateRangeInputTest.kt) ---------------------------------
+
+namespace {
+    // The headline's description: "Start date: <date or none>, End date: <date or none>".
+    std::string RangeHeadline(PickerQuery& q) {
+        const auto n = q.Find([](const ui::SemanticsNode& s) {
+            return !s.config.contentDescription.empty() && s.config.contentDescription[0].rfind("Start date: ", 0) == 0;
+        });
+        return n ? n->config.contentDescription[0] : std::string();
+    }
+}
+
+TEST(DateRangePickerStates) {
+    const material3::internal::CalendarModel model("en-US");
+    const std::int64_t start = DayUtc(2022, 4, 12), end = DayUtc(2022, 4, 20);
+    {   // state_initWithoutRemember / initWithSelectedDates (rounded to midnight)
+        DateRangePickerState s("en-US", start + 10000, end + 10000);
+        CHECK(s.SelectedStartDateMillis() == start && s.SelectedEndDateMillis() == end);
+        CHECK(s.DisplayedMonthMillis() == model.GetMonth(model.Today()).startUtcTimeMillis);
+        std::shared_ptr<DateRangePickerState> r;
+        Harness h;
+        h.Run([&] { r = RememberDateRangePickerState(start, end); });
+        CHECK(r->DisplayedMonthMillis() == model.GetMonth(2022, 4).startUtcTimeMillis);
+    }
+    {   // an end only, an end before the start, equal dates
+        CHECK(!DateRangePickerState("en-US", std::nullopt, end).SelectedEndDateMillis());
+        DateRangePickerState backwards("en-US", end, start);
+        CHECK(!backwards.SelectedStartDateMillis() && !backwards.SelectedEndDateMillis());
+        DateRangePickerState same("en-US", start, start);
+        CHECK(same.SelectedStartDateMillis() == start && same.SelectedEndDateMillis() == start);
+    }
+    {   // out of the year range, at creation and when set
+        DateRangePickerState a("en-US", DayUtc(1999, 1, 1), end, std::nullopt, { 2000, 2050 });
+        CHECK(!a.SelectedStartDateMillis() && !a.SelectedEndDateMillis());
+        DateRangePickerState b("en-US", start, DayUtc(2051, 1, 1), std::nullopt, { 2000, 2050 });
+        CHECK(b.SelectedStartDateMillis() == start && !b.SelectedEndDateMillis());
+        b.SetSelection(DayUtc(1999, 5, 1), end);
+        CHECK(!b.SelectedStartDateMillis() && !b.SelectedEndDateMillis());
+        b.SetSelection(end, start);   // setSelection_endBeforeStart
+        CHECK(!b.SelectedStartDateMillis() && !b.SelectedEndDateMillis());
+    }
+    {   // state_restoresDatePickerState
+        rt::SaveableStateRegistry::Values saved;
+        for (int pass = 0; pass < 2; ++pass) {
+            rt::SaveableStateRegistry current(saved);
+            rt::SaveableStateRegistry* registry = &current;
+            std::shared_ptr<DateRangePickerState> state;
+            Harness h;
+            h.Run([&state, registry] {
+                rt::Composition::Current()->Provide(rt::LocalSaveableStateRegistry, registry, [&] { state = RememberDateRangePickerState(); });
+            });
+            if (pass == 0) {
+                state->SetSelection(start, end);
+                state->SetDisplayedMonthMillis(model.GetMonth(2022, 4).startUtcTimeMillis);
+                saved = rt::SaveableStateRegistry::Deserialize(rt::SaveableStateRegistry::Serialize(current.PerformSave()));
+            } else {
+                CHECK(state->SelectedStartDateMillis() == start && state->SelectedEndDateMillis() == end);
+                CHECK(state->DisplayedMonthMillis() == model.GetMonth(2022, 4).startUtcTimeMillis);
+            }
+        }
+    }
+}
+
+TEST(DateRangePickerSelectsRanges) {
+    {   // datesSelection
+        std::shared_ptr<DateRangePickerState> state;
+        PhoneHarness h;
+        PickerContent(h, [&state] {
+            state = RememberDateRangePickerState(std::nullopt, std::nullopt, DayUtc(2019, 1, 1));
+            DateRangePicker(*state);
+        });
+        PickerQuery q{ h };
+        CHECK(RangeHeadline(q) == "Start date: None selected, End date: None selected" || RangeHeadline(q).find("Start date: ") == 0);
+        CHECK(q.Clickable("10") && q.Clickable("10")->config.selected != true);
+        q.Click(q.Clickable("10"));
+        CHECK(state->SelectedStartDateMillis() == DayUtc(2019, 1, 10) && !state->SelectedEndDateMillis());
+        CHECK(RangeHeadline(q).find("Start date: Thursday, January 10, 2019, End date: ") == 0);
+        CHECK(q.Clickable("10") && q.Clickable("10")->config.selected == true);
+        q.Click(q.Clickable("14"));
+        CHECK(state->SelectedEndDateMillis() == DayUtc(2019, 1, 14));
+        CHECK(RangeHeadline(q) == "Start date: Thursday, January 10, 2019, End date: Monday, January 14, 2019");
+        // The days between read as in the range.
+        const auto mid = q.Clickable("January 12, 2019");
+        CHECK(mid && TextContains(*mid, PickerString(material3::Strings::DateRangePickerDayInRange)));
+    }
+    {   // dateSelectionStartReset, then dateSelection_sameDateForStartAndEnd
+        std::shared_ptr<DateRangePickerState> state;
+        PhoneHarness h;
+        PickerContent(h, [&state] {
+            state = RememberDateRangePickerState(std::nullopt, std::nullopt, DayUtc(2019, 3, 1));
+            DateRangePicker(*state);
+        });
+        PickerQuery q{ h };
+        q.Click(q.Clickable("March 15, 2019"));
+        CHECK(state->SelectedStartDateMillis() == DayUtc(2019, 3, 15) && !state->SelectedEndDateMillis());
+        q.Click(q.Clickable("March 12, 2019"));   // earlier: starts again
+        CHECK(state->SelectedStartDateMillis() == DayUtc(2019, 3, 12) && !state->SelectedEndDateMillis());
+        q.Click(q.Clickable("March 12, 2019"));   // the same day: a one-day range
+        CHECK(state->SelectedStartDateMillis() == DayUtc(2019, 3, 12) && state->SelectedEndDateMillis() == DayUtc(2019, 3, 12));
+        q.Click(q.Clickable("March 12, 2019"));   // a complete range: starts over
+        CHECK(state->SelectedStartDateMillis() == DayUtc(2019, 3, 12) && !state->SelectedEndDateMillis());
+    }
+    {   // selectableDates_updatedSelection
+        rt::State<bool> disabled{ false };
+        PhoneHarness h;
+        PickerContent(h, [&disabled] {
+            const bool off = disabled.Get();
+            DateRangePicker(*RememberDateRangePickerState(std::nullopt, std::nullopt, DayUtc(2019, 1, 1), {}, DisplayMode::Picker,
+                                                          MakeSelectableDates([off](std::int64_t) { return !off; })));
+        });
+        PickerQuery q{ h };
+        CHECK(q.Clickable("January 27, 2019") && !q.Clickable("January 27, 2019")->config.disabled);
+        disabled.Set(true);
+        h.AdvanceTimeBy(500);
+        CHECK(q.Clickable("January 27, 2019") && q.Clickable("January 27, 2019")->config.disabled);
+    }
+    {   // yearRange_minYearAfterCurrentYear
+        const int current = text::DateFormat().Today().year;
+        PhoneHarness h;
+        PickerContent(h, [current] { DateRangePicker(*RememberDateRangePickerState(std::nullopt, std::nullopt, std::nullopt, { current + 1, current + 10 })); });
+        CHECK(PickerQuery{ h }.Text("January " + std::to_string(current + 1)));
+    }
+}
+
+TEST(DateRangePickerTabLeavesTheDays) {
+    // dateRangePicker_keyboardNavigation
+    const int year = text::DateFormat().Today().year + 1;
+    PhoneHarness h;
+    h.owner.SetInputMode(ui::InputMode::Keyboard);
+    Themed(h, [year] {
+        Column(FillMax({}, Axis::Both), [year] {
+            Box(Focusable(Tag(SizeMod({}, 10_dp, 10_dp), "Above picker")));
+            DatePickerOptions o;
+            o.showModeToggle = false;
+            DateRangePicker(*RememberDateRangePickerState(std::nullopt, std::nullopt, std::nullopt, { year, year + 9 }), Weight(Tag({}, "picker"), 1), o);
+            Box(Focusable(Tag(SizeMod({}, 10_dp, 10_dp), "Below picker")));
+        });
+    });
+    h.AdvanceTimeBy(1000);
+    Keys k{ PickerQuery{ h } };
+    const auto focusedTag = [&](const std::string& tag) {
+        const auto n = k.q.Find([&](const ui::SemanticsNode& s) { return s.config.testTag == tag; });
+        return n && n->config.focused == true;
+    };
+    const std::string jan1 = "January 1, " + std::to_string(year);
+    const auto above = k.q.Find([](const ui::SemanticsNode& s) { return s.config.testTag == std::string("Above picker"); });
+    CHECK(above && above->config.requestFocus);
+    if (above && above->config.requestFocus) above->config.requestFocus();
+    h.AdvanceTimeBy(100);
+    k.Press(ui::keys::Tab);
+    CHECK(k.Focused(jan1));
+    k.Press(ui::keys::Tab);
+    CHECK(focusedTag("Below picker"));
+    k.Press(ui::keys::Tab, true);
+    CHECK(!focusedTag("Below picker") && !focusedTag("Above picker"));
+    k.Focus("February 18, " + std::to_string(year));
+    k.Press(ui::keys::Tab, true);
+    CHECK(focusedTag("Above picker"));
+}
+
+TEST(DateRangeInputSelectsRanges) {
+    const std::string startLabel = PickerString(material3::Strings::DateRangePickerStartHeadline);
+    const std::string endLabel = PickerString(material3::Strings::DateRangePickerEndHeadline);
+    {   // dateRangeInput
+        std::shared_ptr<DateRangePickerState> state;
+        PhoneHarness h;
+        PickerContent(h, [&state] {
+            state = RememberDateRangePickerState(std::nullopt, std::nullopt, DayUtc(2019, 1, 1), {}, DisplayMode::Input);
+            DateRangePicker(*state);
+        });
+        PickerQuery q{ h };
+        TypeInto(h, q, startLabel + ",", u"01272019");
+        TypeInto(h, q, endLabel + ",", u"05102020");
+        CHECK(state->SelectedStartDateMillis() == DayUtc(2019, 1, 27) && state->SelectedEndDateMillis() == DayUtc(2020, 5, 10));
+        CHECK(RangeHeadline(q) == "Start date: Sunday, January 27, 2019, End date: Sunday, May 10, 2020");
+    }
+    {   // dateRangeInputWithInitialDates
+        PhoneHarness h;
+        PickerContent(h, [] { DateRangePicker(*RememberDateRangePickerState(DayUtc(2010, 5, 11), DayUtc(2020, 10, 20), std::nullopt, {}, DisplayMode::Input)); });
+        PickerQuery q{ h };
+        CHECK(FieldWithText(q, "05/11/2010") && FieldWithText(q, "10/20/2020"));
+    }
+    {   // outOfOrderDateRange
+        std::shared_ptr<DateRangePickerState> state;
+        PhoneHarness h;
+        PickerContent(h, [&state] {
+            state = RememberDateRangePickerState(std::nullopt, std::nullopt, std::nullopt, { 2018, 2023 }, DisplayMode::Input);
+            DateRangePicker(*state);
+        });
+        PickerQuery q{ h };
+        TypeInto(h, q, startLabel + ",", u"01272020");
+        TypeInto(h, q, endLabel + ",", u"05102019");
+        CHECK(state->SelectedStartDateMillis() && !state->SelectedEndDateMillis());
+        const auto field = FieldWithText(q, "05/10/2019");
+        CHECK(field && field->config.error == PickerString(material3::Strings::DateRangeInputInvalidRangeInput));
+    }
+    {   // switchToDateRangePicker
+        PhoneHarness h;
+        PickerContent(h, [] { DateRangePicker(*RememberDateRangePickerState(std::nullopt, std::nullopt, std::nullopt, {}, DisplayMode::Input)); });
+        PickerQuery q{ h };
+        q.Click(q.Described(PickerString(material3::Strings::DatePickerSwitchToCalendarMode)));
+        CHECK(!q.Find([](const ui::SemanticsNode& n) { return n.config.editableText.has_value(); }));
+        CHECK(q.Find([](const ui::SemanticsNode& n) { return n.config.onClick && TextContains(n, ", 20"); }));
     }
 }

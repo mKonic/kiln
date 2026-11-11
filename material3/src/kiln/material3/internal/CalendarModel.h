@@ -48,6 +48,9 @@ namespace kiln::material3::internal {
     class CalendarModel {
     public:
         explicit CalendarModel(std::string locale);
+        // Pickers hold pointers to their state's model (copies in lambdas would dangle).
+        CalendarModel(const CalendarModel&) = delete;
+        CalendarModel& operator=(const CalendarModel&) = delete;
         const std::string& Locale() const { return m_Locale; }
 
         CalendarDate Today() const;
