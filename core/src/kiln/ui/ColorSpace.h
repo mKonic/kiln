@@ -14,4 +14,6 @@ namespace kiln::ui {
     Color FromOklab(const std::array<float, 4>& v);
     // lerp(Color, Color, fraction): in Oklab, the fraction clamped to [0, 1] (Color.kt).
     Color Lerp(Color start, Color stop, float fraction);
+    // Color.luminance: relative luminance of an sRGB colour (0 black .. 1 white).
+    float Luminance(Color c);
 }

@@ -15,8 +15,8 @@ namespace kiln::foundation {
         }
     }
 
-    void TransitionCore::Retarget(Child& c, const anim::Vec& target, anim::SpecPtr spec, bool snap) {
-        const bool interrupted = !c.finished && (m_Running.Peek() || m_Seeking);
+    void TransitionCore::Retarget(Child& c, const anim::Vec& target, anim::SpecPtr spec, bool snap, bool forced) {
+        const bool interrupted = !forced && !c.finished && (m_Running.Peek() || m_Seeking);
         c.start = c.value.Peek();
         c.startVelocity = c.velocity;
         c.target = target;

@@ -94,11 +94,7 @@ namespace kiln::material3::internal {
         static const MenuAnchorPosition& End();
     };
 
-    // TransformOrigin as fractions of the menu's size.
-    struct TransformOrigin {
-        float pivotFractionX = 0.5f, pivotFractionY = 0.5f;
-        bool operator==(const TransformOrigin&) const = default;
-    };
+    using foundation::TransformOrigin;
     // calculateTransformOrigin: where the menu meets its anchor.
     TransformOrigin CalculateTransformOrigin(IntRect anchorBounds, IntRect menuBounds);
 

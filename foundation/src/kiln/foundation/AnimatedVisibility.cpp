@@ -1,10 +1,14 @@
 #include "kiln/foundation/AnimatedVisibility.h"
 
 #include "kiln/foundation/Compose.h"
+#include "kiln/foundation/Draw.h"
 #include "kiln/ui/Locals.h"
+#include "kiln/ui/VelocityTracker.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
+#include <limits>
 #include <map>
 
 namespace kiln::foundation {
@@ -19,6 +23,7 @@ namespace kiln::foundation {
             if (!r.scale) r.scale = a.scale;
             if (!r.slide) r.slide = a.slide;
             if (!r.changeSize) r.changeSize = a.changeSize;
+            if (!r.veil) r.veil = a.veil;
             return r;
         }
         // Size and offset animations use a 1 px visibility threshold (EnterExitTransition.kt:1615,
@@ -58,6 +63,368 @@ namespace kiln::foundation {
     }
     ExitTransition ShrinkHorizontally(anim::SpecPtr s, AlignmentH a, bool clip, std::function<int(int)> f) {
         return ShrinkOut(std::move(s), Alignment{ a.bias, 0 }, clip, [f](IntSize sz) { return IntSize{ f(sz.width), sz.height }; });
+    }
+
+    EnterTransition UnveilIn(anim::SpecPtr spec, Color initialColor, bool matchParentSize) {
+        EnterTransition t;
+        t.parts.veil = EnterExitParts::Veil{ initialColor, initialColor.WithAlpha(0), std::move(spec), matchParentSize };
+        return t;
+    }
+    ExitTransition VeilOut(anim::SpecPtr spec, Color targetColor, bool matchParentSize) {
+        ExitTransition t;
+        t.parts.veil = EnterExitParts::Veil{ targetColor.WithAlpha(0), targetColor, std::move(spec), matchParentSize };
+        return t;
+    }
+
+    void TransformScope::Reset() {
+        m_Alpha.Set(1);
+        m_AlphaMutated.Set(false);
+        m_Scale.Set(1);
+        m_ScaleMutated.Set(false);
+        m_Offset = {};
+        m_OffsetMutated = false;
+        m_Origin.Set(TransformOrigin::Center());
+        m_OriginMutated.Set(false);
+        m_Veil.Set(Color::Transparent());
+        m_VeilMutated.Set(false);
+    }
+
+    std::shared_ptr<MutableContentTransform> MakeMutableContentTransform(bool initialVeilMatchParentSize, bool targetVeilMatchParentSize,
+                                                                         std::function<ui::Offset()> initialOffsetVelocityProvider,
+                                                                         std::function<ui::Offset()> targetOffsetVelocityProvider,
+                                                                         std::function<void(MutableContentTransform&)> block) {
+        auto t = std::make_shared<MutableContentTransform>();
+        t->initialTransform->veilMatchParentSize = initialVeilMatchParentSize;
+        t->initialTransform->offsetVelocityProvider = std::move(initialOffsetVelocityProvider);
+        t->targetTransform->veilMatchParentSize = targetVeilMatchParentSize;
+        t->targetTransform->offsetVelocityProvider = std::move(targetOffsetVelocityProvider);
+        if (block) block(*t);
+        return t;
+    }
+
+    namespace {
+        // --- SharedMutableTransformState (DeferredEnterExitTransition.kt) ----------------------
+
+        enum class EnterExitState : std::uint8_t { PreEnter, Visible, PostExit };
+
+        enum class MutationPhase : std::uint8_t { Idle, MutatingPendingCatchUp, MutatingCatchingUp, Mutating, Handoff };
+
+        anim::Vec OklabVec(Color c) { const auto v = ui::ToOklab(c); return { v[0], v[1], v[2], v[3] }; }
+        Color FromVec(const anim::Vec& v) { return ui::FromOklab({ v[0], v[1], v[2], v[3] }); }
+        std::int64_t NowMillis() {
+            return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
+        }
+
+        class SharedMutableTransformState {
+        public:
+            rt::State<MutationPhase> mutationPhase{ MutationPhase::Idle };
+            TransformScope transformScope;
+            std::shared_ptr<MutableTransform> mutableData, lastMutableData;
+
+            bool IsMutating() const {
+                const MutationPhase p = mutationPhase.Peek();
+                return p == MutationPhase::MutatingPendingCatchUp || p == MutationPhase::MutatingCatchingUp || p == MutationPhase::Mutating;
+            }
+            bool IsHandoffActive() const { return mutationPhase.Peek() == MutationPhase::Handoff; }
+
+            void SetMutableData(std::shared_ptr<MutableTransform> v) {
+                if (v) lastMutableData = v;
+                mutableData = std::move(v);
+            }
+
+            void UpdateMutationState(bool isMutating, bool isSettled) {
+                const MutationPhase current = mutationPhase.Peek();
+                if (isMutating) {
+                    if (current == MutationPhase::Idle || current == MutationPhase::Handoff) {
+                        transformScope.Reset();
+                        mutationPhase.Set(isSettled ? MutationPhase::Mutating : MutationPhase::MutatingPendingCatchUp);
+                        m_ScaleTracker.Reset();
+                        m_OffsetTracker.Reset();
+                        m_ProgressTracker.Reset();
+                        m_LastScaleMillis = m_LastSlideMillis = m_LastProgressMillis = std::numeric_limits<std::int64_t>::min();
+                        scaleHandoffVelocity.reset();
+                        slideHandoffVelocity.reset();
+                        sharedElementProgressHandoffVelocity = 0;
+                    }
+                } else if (IsMutating()) {
+                    mutationPhase.Set(MutationPhase::Handoff);
+                    CalculateHandoffVelocities();
+                }
+            }
+
+            float ResolveSharedElementProgress() {
+                if (!mutableData || !mutableData->sharedElementProgressProvider) return 0;
+                const float progress = std::clamp(mutableData->sharedElementProgressProvider(), 0.0f, 1.0f);
+                if (IsMutating()) Track(m_ProgressTracker, m_LastProgressMillis, { progress, 0 });
+                return progress;
+            }
+
+            // The values last shown, and those the transition had when the phase began.
+            Color lastVeil = Color::Transparent();
+            float lastAlpha = 1, lastScale = 1;
+            TransformOrigin lastTransformOrigin;
+            IntOffset lastSlide{};
+            float activeTransitionAlpha = 1, activeTransitionScale = 1;
+            IntOffset activeTransitionSlide{};
+            Color activeTransitionVeil = Color::Transparent();
+            TransformOrigin activeTransitionTransformOrigin;
+            float initialManualAlpha = 1, initialManualScale = 1;
+            IntOffset initialManualSlide{};
+            Color initialManualVeil = Color::Transparent();
+            TransformOrigin initialManualTransformOrigin;
+            anim::Animatable catchUpAlpha{ 1.0f }, catchUpScale{ 1.0f };
+            anim::Animatable catchUpSlide{ anim::Vec{}, 2 }, catchUpVeil{ OklabVec(Color::Transparent()), 4 };
+            anim::Animatable catchUpTransformOrigin{ anim::Vec{ 0.5f, 0.5f, 0, 0 }, 2 };
+            std::optional<float> scaleHandoffVelocity;
+            std::optional<ui::Offset> slideHandoffVelocity;
+            float sharedElementProgressHandoffVelocity = 0;
+            IntSize lastFullSize{};   // the content's size at the last layout
+
+            // startCatchUp: an interrupted transition catches up with the hand-set values with
+            // springs, the hand-set changes applied on top.
+            static rt::Task<> StartCatchUp(std::shared_ptr<SharedMutableTransformState> self) {
+                auto& s = *self;
+                const float initialAlpha = s.activeTransitionAlpha, initialScale = s.activeTransitionScale;
+                const IntOffset initialSlide = s.activeTransitionSlide;
+                const Color initialVeil = s.activeTransitionVeil;
+                const TransformOrigin initialOrigin = s.activeTransitionTransformOrigin;
+                s.initialManualAlpha = s.transformScope.Alpha();
+                s.initialManualScale = s.transformScope.Scale();
+                s.initialManualSlide = s.transformScope.Offset();
+                s.initialManualVeil = s.transformScope.VeilMutated() ? s.transformScope.Veil() : initialVeil.WithAlpha(0);
+                s.initialManualTransformOrigin = s.transformScope.GetTransformOrigin();
+                s.catchUpAlpha.SnapTo(initialAlpha);
+                s.catchUpScale.SnapTo(initialScale);
+                s.catchUpSlide.SnapTo(anim::Vec{ float(initialSlide.x), float(initialSlide.y), 0, 0 });
+                s.catchUpVeil.SnapTo(OklabVec(initialVeil));
+                s.catchUpTransformOrigin.SnapTo(anim::Vec{ initialOrigin.pivotFractionX, initialOrigin.pivotFractionY, 0, 0 });
+                if (s.mutationPhase.Peek() != MutationPhase::MutatingPendingCatchUp) co_return;
+                s.mutationPhase.Set(MutationPhase::MutatingCatchingUp);
+                std::vector<rt::Job> jobs;
+                auto run = [](anim::Animatable* a, anim::Vec to) -> rt::Task<> { co_await a->AnimateTo(to); };
+                if (initialAlpha != s.initialManualAlpha) jobs.push_back(rt::Launch(rt::Dispatcher::Main(), run(&s.catchUpAlpha, { s.initialManualAlpha, 0, 0, 0 })));
+                if (initialScale != s.initialManualScale) jobs.push_back(rt::Launch(rt::Dispatcher::Main(), run(&s.catchUpScale, { s.initialManualScale, 0, 0, 0 })));
+                if (!(initialSlide == s.initialManualSlide))
+                    jobs.push_back(rt::Launch(rt::Dispatcher::Main(), run(&s.catchUpSlide, { float(s.initialManualSlide.x), float(s.initialManualSlide.y), 0, 0 })));
+                if (!(initialVeil == s.initialManualVeil)) jobs.push_back(rt::Launch(rt::Dispatcher::Main(), run(&s.catchUpVeil, OklabVec(s.initialManualVeil))));
+                if (!(initialOrigin == s.initialManualTransformOrigin))
+                    jobs.push_back(rt::Launch(rt::Dispatcher::Main(), run(&s.catchUpTransformOrigin,
+                                                                           { s.initialManualTransformOrigin.pivotFractionX, s.initialManualTransformOrigin.pivotFractionY, 0, 0 })));
+                // coroutineScope { launch ... }: wait for every catch-up.
+                while (std::any_of(jobs.begin(), jobs.end(), [](const rt::Job& j) { return !j.Done(); })) co_await rt::NextFrame();
+                if (s.mutationPhase.Peek() == MutationPhase::MutatingCatchingUp) s.mutationPhase.Set(MutationPhase::Mutating);
+            }
+
+            bool HasBlock() const { return lastMutableData && lastMutableData->block; }
+            std::optional<Color> VeilHandoffValue() const { return IsHandoffActive() ? std::optional(lastVeil) : std::nullopt; }
+            std::optional<float> AlphaHandoffValue() const { return IsHandoffActive() ? std::optional(lastAlpha) : std::nullopt; }
+            std::optional<float> ScaleHandoffValue() const { return IsHandoffActive() ? std::optional(lastScale) : std::nullopt; }
+            std::optional<TransformOrigin> TransformOriginHandoffValue() const {
+                return IsHandoffActive() ? std::optional(lastTransformOrigin) : std::nullopt;
+            }
+            std::optional<IntOffset> SlideHandoffValue() const { return IsHandoffActive() ? std::optional(lastSlide) : std::nullopt; }
+
+            void EvaluateTransformBlock(IntSize fullSize) {
+                if (IsMutating() && mutableData && mutableData->block) mutableData->block(transformScope, fullSize);
+            }
+
+            float CombinedAlpha(float transitionValue) {
+                activeTransitionAlpha = transitionValue;
+                const MutationPhase p = mutationPhase.Get();
+                float combined = transitionValue;
+                if (p == MutationPhase::MutatingCatchingUp && catchUpAlpha.IsRunning())
+                    combined = catchUpAlpha.Float() + (transformScope.Alpha() - initialManualAlpha);
+                else if (p == MutationPhase::MutatingCatchingUp || p == MutationPhase::Mutating) combined = transformScope.Alpha();
+                if (IsMutating()) lastAlpha = combined;
+                return combined;
+            }
+
+            float CombinedScale(float transitionValue) {
+                activeTransitionScale = transitionValue;
+                const bool mutated = IsMutating() && transformScope.ScaleMutated();
+                const MutationPhase p = mutationPhase.Get();
+                float combined = transitionValue;
+                if (p == MutationPhase::MutatingCatchingUp && catchUpScale.IsRunning())
+                    combined = catchUpScale.Float() + (transformScope.Scale() - initialManualScale);
+                else if (p == MutationPhase::MutatingCatchingUp || p == MutationPhase::Mutating) combined = transformScope.Scale();
+                if (IsMutating()) {
+                    lastScale = combined;
+                    if (mutated) Track(m_ScaleTracker, m_LastScaleMillis, { combined, 0 });
+                }
+                return combined;
+            }
+
+            TransformOrigin CombinedTransformOrigin(TransformOrigin transitionValue) {
+                activeTransitionTransformOrigin = transitionValue;
+                const MutationPhase p = mutationPhase.Get();
+                TransformOrigin combined = transitionValue;
+                if (p == MutationPhase::MutatingCatchingUp && catchUpTransformOrigin.IsRunning()) {
+                    const anim::Vec& v = catchUpTransformOrigin.Value();
+                    combined = { v[0], v[1] };
+                } else if (p == MutationPhase::MutatingCatchingUp || p == MutationPhase::Mutating) {
+                    combined = transformScope.GetTransformOrigin();
+                }
+                if (IsMutating()) lastTransformOrigin = combined;
+                return combined;
+            }
+
+            IntOffset CombinedSlide(IntOffset transitionValue, IntSize fullSize) {
+                lastFullSize = fullSize;
+                EvaluateTransformBlock(fullSize);
+                activeTransitionSlide = transitionValue;
+                const bool mutated = IsMutating() && transformScope.OffsetMutated();
+                const MutationPhase p = mutationPhase.Get();
+                IntOffset combined = transitionValue;
+                if (p == MutationPhase::MutatingCatchingUp && catchUpSlide.IsRunning()) {
+                    const anim::Vec& v = catchUpSlide.Value();
+                    const IntOffset o = transformScope.Offset();
+                    combined = { int(std::lround(v[0])) + (o.x - initialManualSlide.x), int(std::lround(v[1])) + (o.y - initialManualSlide.y) };
+                } else if (p == MutationPhase::MutatingCatchingUp || p == MutationPhase::Mutating) {
+                    combined = transformScope.Offset();
+                }
+                if (IsMutating()) {
+                    lastSlide = combined;
+                    if (mutated) Track(m_OffsetTracker, m_LastSlideMillis, { float(combined.x), float(combined.y) });
+                }
+                return combined;
+            }
+
+            Color CombinedVeil(Color transitionValue) {
+                activeTransitionVeil = transitionValue;
+                const Color targetVeil = transformScope.VeilMutated() ? transformScope.Veil() : transitionValue.WithAlpha(0);
+                const MutationPhase p = mutationPhase.Get();
+                Color combined = transitionValue;
+                if (p == MutationPhase::MutatingCatchingUp && catchUpVeil.IsRunning()) combined = FromVec(catchUpVeil.Value());
+                else if (p == MutationPhase::MutatingCatchingUp || p == MutationPhase::Mutating) combined = targetVeil;
+                if (IsMutating()) lastVeil = combined;
+                return combined;
+            }
+
+            void Clear() {
+                if (mutationPhase.Peek() != MutationPhase::Idle) mutationPhase.Set(MutationPhase::Idle);
+                transformScope.Reset();
+                lastVeil = Color::Transparent();
+                lastAlpha = 1;
+                lastScale = 1;
+                lastTransformOrigin = TransformOrigin::Center();
+                lastSlide = {};
+                m_ScaleTracker.Reset();
+                m_OffsetTracker.Reset();
+                m_ProgressTracker.Reset();
+                m_LastScaleMillis = m_LastSlideMillis = m_LastProgressMillis = std::numeric_limits<std::int64_t>::min();
+                scaleHandoffVelocity.reset();
+                slideHandoffVelocity.reset();
+                sharedElementProgressHandoffVelocity = 0;
+                lastMutableData.reset();
+                mutableData.reset();
+            }
+
+            // getHandoffExit / getHandoffEnter: transitions that hold (exit) or start from (enter)
+            // the last hand-set values of the properties the phase set.
+            ExitTransition HandoffExit() const {
+                ExitTransition t;
+                if (!HasBlock() || !IsHandoffActive()) return t;
+                if (transformScope.ScaleMutated()) t = t + ScaleOut(DefaultEnterExitSpring(), lastScale);
+                if (transformScope.AlphaMutated()) t = t + FadeOut(DefaultEnterExitSpring(), lastAlpha);
+                if (transformScope.OffsetMutated()) { const IntOffset o = lastSlide; t = t + SlideOut([o](IntSize) { return o; }); }
+                if (transformScope.VeilMutated()) t = t + VeilOut(DefaultEnterExitSpring(), lastVeil, lastMutableData->veilMatchParentSize);
+                return t;
+            }
+            EnterTransition HandoffEnter() const {
+                EnterTransition t;
+                if (!HasBlock() || !IsHandoffActive()) return t;
+                if (transformScope.ScaleMutated()) t = t + ScaleIn(DefaultEnterExitSpring(), lastScale);
+                if (transformScope.AlphaMutated()) t = t + FadeIn(DefaultEnterExitSpring(), lastAlpha);
+                if (transformScope.OffsetMutated()) { const IntOffset o = lastSlide; t = t + SlideIn([o](IntSize) { return o; }); }
+                if (transformScope.VeilMutated()) {
+                    EnterTransition v;
+                    v.parts.veil = EnterExitParts::Veil{ lastVeil, lastVeil.WithAlpha(0), DefaultEnterExitSpring(), lastMutableData->veilMatchParentSize };
+                    t = t + v;
+                }
+                return t;
+            }
+
+        private:
+            void CalculateHandoffVelocities() {
+                const float sv = m_ScaleTracker.CalculateVelocity().x;
+                scaleHandoffVelocity = std::isnan(sv) ? 0.0f : sv;
+                std::optional<ui::Offset> v;
+                if (lastMutableData && lastMutableData->offsetVelocityProvider) v = lastMutableData->offsetVelocityProvider();
+                if (v && !std::isnan(v->x) && !std::isnan(v->y)) {
+                    slideHandoffVelocity = *v;
+                } else {
+                    const ui::Offset t = m_OffsetTracker.CalculateVelocity();
+                    slideHandoffVelocity = ui::Offset{ std::isnan(t.x) ? 0.0f : t.x, std::isnan(t.y) ? 0.0f : t.y };
+                }
+                const float pv = m_ProgressTracker.CalculateVelocity().x;
+                sharedElementProgressHandoffVelocity = std::isnan(pv) ? 0.0f : pv;
+            }
+            static void Track(ui::VelocityTracker& tracker, std::int64_t& last, ui::Offset value) {
+                const std::int64_t now = NowMillis();
+                if (now <= last) return;
+                last = now;
+                tracker.AddPosition(now, value);
+            }
+            ui::VelocityTracker m_ScaleTracker, m_OffsetTracker, m_ProgressTracker;
+            std::int64_t m_LastScaleMillis = std::numeric_limits<std::int64_t>::min(), m_LastSlideMillis = m_LastScaleMillis,
+                         m_LastProgressMillis = m_LastScaleMillis;
+        };
+
+        // EnterExitTransitionTracker: keeps the shared state in step with the transition.
+        struct EnterExitTracker {
+            std::shared_ptr<SharedMutableTransformState> state = std::make_shared<SharedMutableTransformState>();
+            bool wasMutating = false;
+            std::optional<EnterExitState> lastTarget;
+            bool startCatchUp = false;
+            bool hasBeenVisible = false;
+            // The enter / exit in use: kept from before a target change so an interrupted
+            // animation still knows its ends (trackActiveEnter / trackActiveExit).
+            std::optional<EnterTransition> activeEnter;
+            std::optional<ExitTransition> activeExit;
+
+            void TrackActive(const EnterTransition& enter, const ExitTransition& exit, EnterExitState current, EnterExitState target) {
+                if (!activeEnter) activeEnter = enter;
+                if (!activeExit) activeExit = exit;
+                const bool settledVisible = current == target && current == EnterExitState::Visible;
+                if (settledVisible) {
+                    activeEnter = EnterTransition{};
+                    activeExit = ExitTransition{};
+                    return;
+                }
+                if (target != EnterExitState::PostExit) {
+                    // Properties the deferred phase set stay tracked even when the enter has
+                    // none, so an interruption does not snap them.
+                    activeEnter = *activeEnter + (state->HandoffEnter() + enter);
+                }
+                if (target != EnterExitState::Visible) {
+                    // Exiting again after coming back: the previous exit's parts first animate
+                    // to rest, unless hand-set values are being applied on top of them.
+                    ExitTransition neutral = *activeExit;
+                    if (!state->IsMutating()) {
+                        auto& np = neutral.parts;
+                        if (np.fade) np.fade->first = 1;
+                        if (np.scale) np.scale->scale = 1;
+                        if (np.slide) np.slide->offset = [](IntSize) { return IntOffset{}; };
+                        if (np.changeSize) np.changeSize->size = [](IntSize full) { return full; };
+                        if (np.veil) np.veil->targetColor = np.veil->initialColor;
+                    }
+                    activeExit = neutral + state->HandoffExit() + exit;
+                }
+            }
+
+            void Update(std::shared_ptr<MutableTransform> data, std::optional<EnterExitState> pending, EnterExitState current, EnterExitState target) {
+                state->SetMutableData(std::move(data));
+                const bool isMutating = pending.has_value() && state->mutableData != nullptr;
+                const bool isSettled = current == target;
+                state->UpdateMutationState(isMutating, isSettled);
+                const bool cleanup = lastTarget && ((isSettled && !isMutating) || (*lastTarget != target && !isMutating && !wasMutating));
+                if (cleanup) state->Clear();
+                if (!isMutating) startCatchUp = false;
+                else if (!wasMutating) startCatchUp = !isSettled;
+                lastTarget = target;
+                wasMutating = isMutating;
+            }
+        };
     }
 
     namespace {
@@ -116,59 +483,151 @@ namespace kiln::foundation {
     }
 
     void AnimatedEnterExit(Transition<bool>& t, const Modifier& modifier, std::function<void()> content,
-                           const EnterTransition& enter, const ExitTransition& exit, rt::Key key) {
-        const bool exiting = !t.TargetState();
-        auto specFor = [&](auto part) -> anim::SpecPtr {
-            // Entering uses the enter part's spec, exiting the exit part's.
-            if (!exiting) { auto& e = enter.parts.*part; return e ? e->spec : DefaultEnterExitSpring(); }
-            auto& x = exit.parts.*part; return x ? x->spec : DefaultEnterExitSpring();
+                           const EnterTransition& enterArg, const ExitTransition& exitArg, rt::Key key,
+                           std::shared_ptr<MutableTransform> mutableTransform, bool forceVisible) {
+        auto& c = *rt::Composition::Current();
+        auto& tracker = c.Remember<std::shared_ptr<EnterExitTracker>>([] { return std::make_shared<EnterExitTracker>(); }, {}, key);
+        // targetEnterExit: where each of the transition's states puts this content.
+        const std::optional<bool> pending = t.PendingTargetState();
+        const bool pendingVisible = pending && *pending;
+        if (t.CurrentState() || pendingVisible) tracker->hasBeenVisible = true;
+        const auto stateOf = [&](bool visible) {
+            if (visible) return EnterExitState::Visible;
+            if (pendingVisible) return EnterExitState::PreEnter;
+            return tracker->hasBeenVisible ? EnterExitState::PostExit : EnterExitState::PreEnter;
         };
+        const EnterExitState current = stateOf(t.CurrentState()), target = stateOf(t.TargetState());
+        const std::optional<EnterExitState> pendingState = pending ? std::optional(stateOf(*pending)) : std::nullopt;
+        tracker->Update(mutableTransform, pendingState, current, target);
+        auto state = tracker->state;
+        if (tracker->startCatchUp) c.LaunchedEffect({}, [state] { return SharedMutableTransformState::StartCatchUp(state); }, key);
+
+        tracker->TrackActive(enterArg, exitArg, current, target);
+        const EnterTransition& enter = *tracker->activeEnter;
+        const ExitTransition& exit = *tracker->activeExit;
+        const auto specFor = [&](auto part, anim::SpecPtr fallback) -> anim::SpecPtr {
+            if (current == EnterExitState::PreEnter && target == EnterExitState::Visible) { auto& e = enter.parts.*part; return e && e->spec ? e->spec : fallback; }
+            if (current == EnterExitState::Visible && target == EnterExitState::PostExit) { auto& x = exit.parts.*part; return x && x->spec ? x->spec : fallback; }
+            return fallback;
+        };
+        // Values by enter/exit state: rest when visible, the enter's before entering, the exit's
+        // after exiting.
+        const auto byState = [&](bool s, auto visibleValue, auto preEnter, auto postExit) {
+            const EnterExitState e = stateOf(s);
+            return e == EnterExitState::Visible ? visibleValue : e == EnterExitState::PreEnter ? preEnter : postExit;
+        };
+        using Seg = Transition<bool>::Segment;
         const float alpha = AnimateFloat<bool>(t, [&](bool s) {
-            if (s) return 1.0f;
-            if (exiting) return exit.parts.fade ? exit.parts.fade->first : 1.0f;
-            return enter.parts.fade ? enter.parts.fade->first : 1.0f;
-        }, [&](const Transition<bool>::Segment&) {
-            const auto& f = exiting ? exit.parts.fade : enter.parts.fade;
-            return f ? f->second : DefaultEnterExitSpring();
-        }, rt::Key("alpha"));
+            return byState(s, 1.0f, enter.parts.fade ? enter.parts.fade->first : 1.0f, exit.parts.fade ? exit.parts.fade->first : 1.0f);
+        }, [&](const Seg&) {
+            const auto& f = (current == EnterExitState::Visible && target == EnterExitState::PostExit) ? exit.parts.fade : enter.parts.fade;
+            const bool directional = (current == EnterExitState::PreEnter && target == EnterExitState::Visible) ||
+                                     (current == EnterExitState::Visible && target == EnterExitState::PostExit);
+            return directional && f ? f->second : DefaultEnterExitSpring();
+        }, rt::Key("alpha"), state->AlphaHandoffValue() ? std::optional(anim::Vec{ *state->AlphaHandoffValue(), 0, 0, 0 }) : std::nullopt);
         const float scale = AnimateFloat<bool>(t, [&](bool s) {
-            if (s) return 1.0f;
-            if (exiting) return exit.parts.scale ? exit.parts.scale->scale : 1.0f;
-            return enter.parts.scale ? enter.parts.scale->scale : 1.0f;
-        }, [&](const Transition<bool>::Segment&) { return specFor(&EnterExitParts::scale); }, rt::Key("scale"));
-        // A part the running direction does not have stays at rest, so it cannot keep the
-        // transition (and the content) alive: ExitTransition.None removes the content at once.
-        auto progress = [&](auto part) {
-            return [&, part](bool s) { return s || !((exiting ? exit.parts : enter.parts).*part) ? 1.0f : 0.0f; };
+            return byState(s, 1.0f, enter.parts.scale ? enter.parts.scale->scale : 1.0f, exit.parts.scale ? exit.parts.scale->scale : 1.0f);
+        }, [&](const Seg&) { return specFor(&EnterExitParts::scale, anim::Spring(1.0f, anim::spring::StiffnessMediumLow, 0.002f)); }, rt::Key("scale"),
+            state->ScaleHandoffValue() ? std::optional(anim::Vec{ *state->ScaleHandoffValue(), 0, 0, 0 }) : std::nullopt,
+            state->scaleHandoffVelocity ? std::optional(anim::Vec{ *state->scaleHandoffVelocity, 0, 0, 0 }) : std::nullopt);
+        // The scale's pivot: if only one side scales, both use its origin.
+        const auto originOf = [](const std::optional<EnterExitParts::Scale>& sc) {
+            return sc ? std::optional(TransformOrigin{ sc->originX, sc->originY }) : std::nullopt;
         };
-        const float slideP = AnimateFloat<bool>(t, progress(&EnterExitParts::slide),
-                                                [&](const Transition<bool>::Segment&) { return specFor(&EnterExitParts::slide); }, rt::Key("slide"));
-        const float sizeP = AnimateFloat<bool>(t, progress(&EnterExitParts::changeSize),
-                                               [&](const Transition<bool>::Segment&) { return specFor(&EnterExitParts::changeSize); }, rt::Key("size"));
+        const std::optional<TransformOrigin> enterOrigin = originOf(enter.parts.scale), exitOrigin = originOf(exit.parts.scale);
+        const bool animateScale = enter.parts.scale || exit.parts.scale || (state->HasBlock() && state->transformScope.ScaleMutated()) || state->lastScale != 1;
+        const TransformOrigin whenVisible = current == EnterExitState::PreEnter ? enterOrigin.value_or(exitOrigin.value_or(TransformOrigin::Center()))
+                                                                               : exitOrigin.value_or(enterOrigin.value_or(TransformOrigin::Center()));
+        const anim::Vec originV = detail::AnimateChild<bool>(t, 2, [&](const bool& s) {
+            if (!animateScale) return anim::Vec{ 0.5f, 0.5f, 0, 0 };
+            const TransformOrigin o = byState(s, whenVisible, enterOrigin.value_or(exitOrigin.value_or(TransformOrigin::Center())),
+                                              exitOrigin.value_or(TransformOrigin::Center()));
+            return anim::Vec{ o.pivotFractionX, o.pivotFractionY, 0, 0 };
+        }, [](const Seg&) { return anim::Spring(); }, rt::Key("origin"),
+            state->TransformOriginHandoffValue()
+                ? std::optional(anim::Vec{ state->TransformOriginHandoffValue()->pivotFractionX, state->TransformOriginHandoffValue()->pivotFractionY, 0, 0 })
+                : std::nullopt);
+        const TransformOrigin origin{ originV[0], originV[1] };
+        const anim::Vec veilV = detail::AnimateChild<bool>(t, 4, [&](const bool& s) {
+            const Color visible = enter.parts.veil ? enter.parts.veil->targetColor : exit.parts.veil ? exit.parts.veil->initialColor : Color::Transparent();
+            return OklabVec(byState(s, visible, enter.parts.veil ? enter.parts.veil->initialColor : Color::Transparent(),
+                                    exit.parts.veil ? exit.parts.veil->targetColor : Color::Transparent()));
+        }, [&](const Seg&) { return specFor(&EnterExitParts::veil, DefaultEnterExitSpring()); }, rt::Key("veil"),
+            state->VeilHandoffValue() ? std::optional(OklabVec(*state->VeilHandoffValue())) : std::nullopt);
+        const Color veil = FromVec(veilV);
+        // Slide and size run as a 0..1 progress towards the side's own offset and size; a part
+        // the moving side does not have stays at rest, so it cannot keep the content alive
+        // (ExitTransition.None removes the content at once).
+        const auto progressOf = [&](auto part) {
+            return [&, part](bool s) { return byState(s, 1.0f, (enter.parts.*part) ? 0.0f : 1.0f, (exit.parts.*part) ? 0.0f : 1.0f); };
+        };
+        const auto slideSpec = anim::Spring(1.0f, anim::spring::StiffnessMediumLow, 0.001f);
+        const float slideP = AnimateFloat<bool>(t, progressOf(&EnterExitParts::slide), [&](const Seg&) { return specFor(&EnterExitParts::slide, slideSpec); },
+                                                rt::Key("slide"));
+        // A hand-off of a hand-set offset: from the last offset to the side's target offset.
+        const std::optional<IntOffset> slideHandoff = state->SlideHandoffValue();
+        float slideHandoffVelocity = 0;
+        const float slideHandoffP = AnimateFloat<bool>(t, [&](bool) { return slideHandoff ? 1.0f : 0.0f; },
+                                                       [&](const Seg&) { return specFor(&EnterExitParts::slide, slideSpec); }, rt::Key("slideHandoff"),
+                                                       slideHandoff ? std::optional(anim::Vec{}) : std::nullopt,
+                                                       slideHandoff ? std::optional(anim::Vec{ slideHandoffVelocity, 0, 0, 0 }) : std::nullopt);
+        const float sizeP = AnimateFloat<bool>(t, progressOf(&EnterExitParts::changeSize),
+                                               [&](const Seg&) { return specFor(&EnterExitParts::changeSize, SizeSpring()); }, rt::Key("size"));
 
-        if (!(t.CurrentState() || t.TargetState() || t.IsRunning())) return;   // gone: not composed
+        // Gone unless visible somewhere, held, or pending to show.
+        if (!(forceVisible || t.CurrentState() || t.TargetState() || pendingVisible || t.IsRunning())) return;
 
-        const auto& change = exiting ? exit.parts.changeSize : enter.parts.changeSize;
-        const auto& slide = exiting ? exit.parts.slide : enter.parts.slide;
-        const auto& sc = exiting ? exit.parts.scale : enter.parts.scale;
-        GraphicsLayerParams layer;
-        layer.alpha = alpha;
-        layer.scaleX = layer.scaleY = scale;
-        if (sc) { layer.originX = sc->originX; layer.originY = sc->originY; }
-        layer.clip = change && change->clip;
+        const bool towardsExit = target == EnterExitState::PostExit;
+        const auto& change = towardsExit ? exit.parts.changeSize : enter.parts.changeSize;
+        const auto& slide = towardsExit ? exit.parts.slide : enter.parts.slide;
         EnterExitParams p;
         p.alignment = change ? change->alignment : Alignment::TopStart();
         if (change) { auto f = change->size; p.sizeAt = [f, sizeP](IntSize full) { return Lerp(f(full), full, sizeP); }; }
-        if (slide) {
+        std::function<IntOffset(IntSize)> slideOffset;
+        if (slideHandoff) {
+            const IntOffset from = *slideHandoff;
+            auto to = slide ? slide->offset : std::function<IntOffset(IntSize)>();
+            const bool visibleTarget = target == EnterExitState::Visible;
+            slideOffset = [from, to, visibleTarget, slideHandoffP](IntSize full) {
+                const IntOffset end = visibleTarget || !to ? IntOffset{} : to(full);
+                return IntOffset{ int(std::lround(float(from.x) + float(end.x - from.x) * slideHandoffP)),
+                                  int(std::lround(float(from.y) + float(end.y - from.y) * slideHandoffP)) };
+            };
+        } else if (slide) {
             auto f = slide->offset;
-            p.slideAt = [f, slideP](IntSize full) {
+            slideOffset = [f, slideP](IntSize full) {
                 const IntOffset o = f(full);
                 return IntOffset{ int(std::lround(float(o.x) * (1 - slideP))), int(std::lround(float(o.y) * (1 - slideP))) };
             };
         }
+        // combinedSlide runs the hand-set block in layout, then the layer reads its values.
+        p.slideAt = [slideOffset, state](IntSize full) { return state->CombinedSlide(slideOffset ? slideOffset(full) : IntOffset{}, full); };
+
+        const bool clip = change && change->clip;
+        const auto& veilPart = enter.parts.veil ? enter.parts.veil : exit.parts.veil;
+        const bool veilMatchParent = veilPart ? veilPart->matchParentSize : (state->mutableData && state->mutableData->veilMatchParentSize);
+        const auto drawVeil = [state, veil](ui::ContentDrawScope& d) {
+            d.DrawContent();
+            const Color v = state->CombinedVeil(veil);
+            if (v.Alpha() != 0) d.DrawRect(v, {}, d.GetSize());
+        };
+        // [veil (matching the parent)] clip, the layout with the slide, then the layer (alpha,
+        // scale and pivot follow the slid content) and [the veil under the transforms].
+        Modifier m = modifier;
+        if (veilMatchParent) m = DrawWithContent(std::move(m), drawVeil);
+        if (clip) m = ClipToBounds(std::move(m));
+        m = EnterExitLayout(std::move(m), std::move(p));
+        m = GraphicsLayer(std::move(m), [state, alpha, scale, origin](GraphicsLayerParams& l) {
+            l.alpha = state->CombinedAlpha(alpha);
+            l.scaleX = l.scaleY = state->CombinedScale(scale);
+            const TransformOrigin o = state->CombinedTransformOrigin(origin);
+            l.originX = o.pivotFractionX;
+            l.originY = o.pivotFractionY;
+        });
+        if (!veilMatchParent) m = DrawWithContent(std::move(m), drawVeil);
         // AnimatedEnterExitMeasurePolicy measures the content with the incoming constraints,
         // minimums included (a fixed-height parent stretches the content rather than top-aligning it).
-        Box(EnterExitLayout(GraphicsLayer(modifier, layer), std::move(p)), Alignment::TopStart(), true, std::move(content), key);
+        Box(m, Alignment::TopStart(), true, std::move(content), key);
     }
 
     void Crossfade(rt::Key target, const Modifier& modifier, std::function<void(rt::Key)> content, anim::SpecPtr spec, rt::Key key) {
@@ -282,62 +741,168 @@ namespace kiln::foundation {
         return {};
     }
 
+    namespace {
+        // MaxInterruptionRetention: the latest interrupted contents stay composed to finish
+        // their exits; older ones go.
+        constexpr int MaxInterruptionRetention = 3;
+
+        rt::Key StateKey(std::uint64_t v) {
+            rt::Key k = rt::Key::Positional();
+            k.value = v;
+            return k;
+        }
+
+        // A scope like `root` seen as going from `initial` to `target` (PendingAnimatedContentTransitionScope).
+        std::shared_ptr<AnimatedContentTransitionScope> ScopeFor(const AnimatedContentTransitionScope& root, std::uint64_t initial, std::uint64_t target) {
+            auto s = std::make_shared<AnimatedContentTransitionScope>(root);
+            s->initialState = StateKey(initial);
+            s->targetState = StateKey(target);
+            return s;
+        }
+
+        using Spec = std::function<ContentTransform(AnimatedContentTransitionScope&)>;
+        using MutableSpec = std::function<std::shared_ptr<MutableContentTransform>(AnimatedContentTransitionScope&)>;
+
+        void AnimatedContentImpl(Transition<std::uint64_t>& t, const Modifier& modifier, std::function<void(rt::Key)> content, Spec transitionSpec,
+                                 Alignment alignment, MutableSpec mutableTransformSpec, rt::Key key) {
+            auto& c = *rt::Composition::Current();
+            if (!transitionSpec) transitionSpec = [](AnimatedContentTransitionScope&) { return DefaultContentTransform(); };
+            const std::uint64_t current = t.CurrentState(), target = t.TargetState();
+            const std::optional<std::uint64_t> pending = t.PendingTargetState();
+            const auto segment = t.CurrentSegment();
+            auto& root = c.Remember<std::shared_ptr<AnimatedContentTransitionScope>>(
+                [] { return std::make_shared<AnimatedContentTransitionScope>(); }, {}, key);
+            auto& visible = c.Remember<std::vector<std::uint64_t>>([&] { return std::vector<std::uint64_t>{ current }; }, {}, key);
+            if (std::find(visible.begin(), visible.end(), current) == visible.end()) visible = { current };
+            if (current == target && !pending) {
+                // Settled: only the current content.
+                visible = { current };
+                root->contentAlignment = alignment;
+                root->layoutDirection = c.Read(ui::LocalLayoutDirection);
+            }
+            if (pending && *pending != current && *pending != target) {
+                if (std::find(visible.begin(), visible.end(), *pending) == visible.end()) visible.push_back(*pending);
+            }
+            // The target goes last (drawn on top unless a zIndex says otherwise).
+            if (current != target) {
+                std::erase(visible, target);
+                visible.push_back(target);
+            }
+            root->initialState = StateKey(segment.initialState);
+            root->targetState = StateKey(segment.targetState);
+
+            // The pending phase's scope and hand-set transforms, made once per pending target.
+            struct PendingData {
+                std::optional<std::uint64_t> pending;
+                std::uint64_t target = 0;
+                std::shared_ptr<AnimatedContentTransitionScope> scope;
+                std::shared_ptr<MutableContentTransform> transform;
+            };
+            auto& pd = c.Remember<PendingData>([] { return PendingData{}; }, {}, key);
+            if (pd.pending != pending || (pending && pd.target != target)) {
+                pd.pending = pending;
+                pd.target = target;
+                pd.scope = pending ? ScopeFor(*root, target, *pending) : nullptr;
+                pd.transform = nullptr;
+                if (pending) pd.transform = target != *pending && mutableTransformSpec ? mutableTransformSpec(*pd.scope) : MakeMutableContentTransform();
+            }
+            auto pendingScope = pd.scope;
+            auto mutableData = pd.transform;
+            const bool deferred = t.IsDeferred();
+
+            // The container's size follows the segment's (or the pending phase's) size transform.
+            struct ContainerCache { std::uint64_t from = 0, to = 0; AnimatedContentTransitionScope* scope = nullptr; bool valid = false; ContentTransform transform; };
+            auto& cc = c.Remember<ContainerCache>([] { return ContainerCache{}; }, {}, key);
+            if (!cc.valid || cc.from != segment.initialState || cc.to != segment.targetState || cc.scope != pendingScope.get()) {
+                cc.transform = transitionSpec(pendingScope ? *pendingScope : *root);
+                cc = { segment.initialState, segment.targetState, pendingScope.get(), true, cc.transform };
+            }
+            const ContentTransform containerTransform = cc.transform;
+            auto sizes = root->sizes;
+            Modifier m = modifier;
+            if (containerTransform.sizeTransform) {
+                const anim::SpecPtr spec = containerTransform.sizeTransform->spec ? containerTransform.sizeTransform->spec(sizes->container, sizes->target)
+                                                                                 : anim::Spring(1.0f, anim::spring::StiffnessMediumLow, 0.5f);
+                if (containerTransform.sizeTransform->clip) m = ClipToBounds(std::move(m));
+                m = AnimateContentSize(std::move(m), spec);
+            }
+            m = OnSizeChanged(std::move(m), [sizes](IntSize s) { sizes->container = s; });
+
+            // AnimatedContentMeasurePolicy: the target measured first; the size of everything
+            // but a pending content, each content placed at the alignment (left to right).
+            auto policy = std::make_shared<ui::LambdaMeasurePolicy>([alignment](ui::MeasureScope& s, std::span<ui::Measurable* const> children,
+                                                                                const ui::Constraints& cs) {
+                std::vector<ui::Placeable*> placed(children.size(), nullptr);
+                std::vector<char> isPending(children.size(), 0);
+                for (std::size_t i = 0; i < children.size(); ++i) {
+                    const std::string* tag = LayoutIdOf(*children[i]);
+                    if (tag && *tag == "target") placed[i] = &children[i]->Measure(cs);
+                    isPending[i] = tag && *tag == "pending";
+                }
+                for (std::size_t i = 0; i < children.size(); ++i)
+                    if (!placed[i]) placed[i] = &children[i]->Measure(cs);
+                int w = 0, h = 0;
+                for (std::size_t i = 0; i < children.size(); ++i) {
+                    if (isPending[i]) continue;
+                    w = std::max(w, placed[i]->Width());
+                    h = std::max(h, placed[i]->Height());
+                }
+                return s.Layout(w, h, [placed, alignment, w, h](ui::PlacementScope& p) {
+                    for (ui::Placeable* pl : placed) {
+                        const IntOffset o = alignment.Align(IntSize{ pl->Width(), pl->Height() }, IntSize{ w, h }, ui::LayoutDirection::Ltr);
+                        p.Place(*pl, o.x, o.y);
+                    }
+                });
+            });
+            const std::vector<std::uint64_t> order = visible;
+            Layout(m, policy, [&c, &t, order, content, transitionSpec, root, pendingScope, mutableData, pending, target, current, deferred, sizes] {
+                for (std::size_t index = 0; index < order.size(); ++index) {
+                    const std::uint64_t k = order[index];
+                    c.Child([&t, k, index, order, content, transitionSpec, root, pendingScope, mutableData, pending, target, current, deferred, sizes] {
+                        const auto seg = t.CurrentSegment();
+                        auto& cc = *rt::Composition::Current();
+                        const bool isPendingContent = pending && k == *pending;
+                        // The enter spec, chosen when the content's pending role changes.
+                        struct Cached { std::optional<bool> roleKey; ContentTransform spec; std::optional<std::pair<bool, bool>> exitKey; ExitTransition exit; };
+                        auto& cached = cc.Remember<Cached>([] { return Cached{}; });
+                        if (cached.roleKey != isPendingContent) {
+                            cached.roleKey = isPendingContent;
+                            if (isPendingContent && pendingScope) cached.spec = transitionSpec(*pendingScope);
+                            else if (k != seg.initialState && k != seg.targetState) cached.spec = transitionSpec(*ScopeFor(*root, seg.initialState, k));
+                            else cached.spec = transitionSpec(*root);
+                        }
+                        const std::pair<bool, bool> exitKey{ seg.targetState == k, isPendingContent };
+                        if (cached.exitKey != exitKey) {
+                            cached.exitKey = exitKey;
+                            if (seg.targetState == k || (isPendingContent && pendingScope)) cached.exit = ExitTransition{};
+                            else if (k != seg.initialState && k != seg.targetState) cached.exit = transitionSpec(*ScopeFor(*root, k, seg.initialState)).exit;
+                            else cached.exit = transitionSpec(*root).exit;
+                        }
+                        auto& visibility = CreateChildTransition<bool, std::uint64_t>(t, [k](const std::uint64_t& s) { return s == k; });
+                        std::shared_ptr<MutableTransform> transform;
+                        if (mutableData) transform = isPendingContent ? mutableData->targetTransform : k == target ? mutableData->initialTransform : nullptr;
+                        const bool forceVisible = deferred && int(index) >= int(order.size()) - MaxInterruptionRetention;
+                        const char* role = k == target ? "target" : isPendingContent && k != current ? "pending" : "other";
+                        Modifier im = LayoutId(ZIndex(Modifier{}, cached.spec.targetContentZIndex), role);
+                        if (k == target) im = OnSizeChanged(std::move(im), [sizes](IntSize s) { sizes->target = s; });
+                        AnimatedEnterExit(visibility, im, [content, k] { content(StateKey(k)); }, cached.spec.enter, cached.exit, {}, transform, forceVisible);
+                    }, rt::Key(std::int64_t(k)));
+                }
+            });
+        }
+    }
+
     void AnimatedContent(rt::Key target, const Modifier& modifier, std::function<void(rt::Key)> content,
                          std::function<ContentTransform(AnimatedContentTransitionScope&)> transitionSpec,
                          Alignment alignment, rt::Key key) {
-        auto& c = *rt::Composition::Current();
         auto& t = UpdateTransition<std::uint64_t>(target.value, key);
-        auto& items = c.Remember<std::vector<std::uint64_t>>([&] { return std::vector<std::uint64_t>{ target.value }; }, {}, key);
-        if (std::find(items.begin(), items.end(), target.value) == items.end()) items.push_back(target.value);
-        if (!t.IsRunning() && t.CurrentState() == t.TargetState()) items = { target.value };
+        AnimatedContentImpl(t, modifier, std::move(content), std::move(transitionSpec), alignment, {}, key);
+    }
 
-        auto& scope = c.Remember<std::shared_ptr<AnimatedContentTransitionScope>>(
-            [] { return std::make_shared<AnimatedContentTransitionScope>(); }, {}, key);
-        scope->initialState = rt::Key::Positional();
-        scope->initialState.value = t.CurrentState();
-        scope->targetState = rt::Key::Positional();
-        scope->targetState.value = t.TargetState();
-        scope->contentAlignment = alignment;
-        scope->layoutDirection = c.Read(ui::LocalLayoutDirection);
-        // The transitionSpec runs once per segment (initial -> target).
-        struct Cached { std::uint64_t from = 0, to = 0; bool valid = false; ContentTransform transform; };
-        auto& cached = c.Remember<Cached>([] { return Cached{}; }, {}, key);
-        if (!cached.valid || cached.from != t.CurrentState() || cached.to != t.TargetState()) {
-            cached.transform = transitionSpec ? transitionSpec(*scope) : DefaultContentTransform();
-            cached.from = t.CurrentState();
-            cached.to = t.TargetState();
-            cached.valid = true;
-        }
-        const ContentTransform& tr = cached.transform;
-        // Each content keeps the zIndex it was given when it became the target.
-        auto& zIndex = c.Remember<std::map<std::uint64_t, float>>([] { return std::map<std::uint64_t, float>{}; }, {}, key);
-        zIndex[t.TargetState()] = tr.targetContentZIndex;
-        std::erase_if(zIndex, [&](const auto& e) { return std::find(items.begin(), items.end(), e.first) == items.end(); });
-
-        auto sizes = scope->sizes;
-        Modifier m = modifier;
-        if (tr.sizeTransform) {
-            const anim::SpecPtr spec = tr.sizeTransform->spec ? tr.sizeTransform->spec(sizes->container, sizes->target)
-                                                               : anim::Spring(1.0f, anim::spring::StiffnessMediumLow, 0.5f);
-            if (tr.sizeTransform->clip) m = ClipToBounds(std::move(m));
-            m = AnimateContentSize(std::move(m), spec);
-        }
-        m = OnSizeChanged(std::move(m), [sizes](IntSize s) { sizes->container = s; });
-        const std::uint64_t targetKey = t.TargetState();
-        Box(m, alignment, false, [&c, &t, &items, &zIndex, content, &tr, sizes, targetKey] {
-            for (std::uint64_t k : items) {
-                const float z = zIndex.count(k) ? zIndex[k] : 0.0f;
-                c.Child([&t, content, k, &tr, sizes, targetKey, z] {
-                    // Each content is visible while it is the target (a child transition).
-                    auto& visibility = CreateChildTransition<bool, std::uint64_t>(t, [k](const std::uint64_t& s) { return s == k; });
-                    Modifier im = ZIndex(Modifier{}, z);
-                    if (k == targetKey) im = OnSizeChanged(std::move(im), [sizes](IntSize s) { sizes->target = s; });
-                    rt::Key itemKey = rt::Key::Positional();
-                    itemKey.value = k;
-                    AnimatedEnterExit(visibility, im, [content, itemKey] { content(itemKey); }, tr.enter, tr.exit);
-                }, rt::Key(std::int64_t(k)));
-            }
-        }, key);
+    void DeferredAnimatedContent(Transition<std::uint64_t>& transition, const Modifier& modifier, std::function<void(rt::Key)> content,
+                                 std::function<ContentTransform(AnimatedContentTransitionScope&)> transitionSpec, Alignment alignment,
+                                 std::function<std::shared_ptr<MutableContentTransform>(AnimatedContentTransitionScope&)> mutableTransformSpec, rt::Key key) {
+        AnimatedContentImpl(transition, modifier, std::move(content), std::move(transitionSpec), alignment, std::move(mutableTransformSpec), key);
     }
 
     void AnimatedContent(rt::Key target, const Modifier& modifier, std::function<void(rt::Key)> content,

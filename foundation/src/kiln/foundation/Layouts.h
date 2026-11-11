@@ -239,6 +239,13 @@ namespace kiln::foundation {
         }
     };
 
+    // TransformOrigin: a pivot as fractions of a layer's size.
+    struct TransformOrigin {
+        float pivotFractionX = 0.5f, pivotFractionY = 0.5f;
+        static constexpr TransformOrigin Center() { return {}; }
+        bool operator==(const TransformOrigin&) const = default;
+    };
+
     struct GraphicsLayerParams {
         float alpha = 1, scaleX = 1, scaleY = 1, translationX = 0, translationY = 0;
         float rotationZ = 0;                  // degrees, clockwise

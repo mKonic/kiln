@@ -26,6 +26,10 @@ namespace kiln::foundation {
         std::optional<Slide> slide;
         struct ChangeSize { Alignment alignment; std::function<IntSize(IntSize)> size; bool clip = true; anim::SpecPtr spec; };
         std::optional<ChangeSize> changeSize;
+        // A scrim over the content (VeilConfig); with matchParentSize it is drawn apart from the
+        // other transforms.
+        struct Veil { ui::Color initialColor, targetColor; anim::SpecPtr spec; bool matchParentSize = false; };
+        std::optional<Veil> veil;
     };
 
     // EnterTransition / ExitTransition: combine with + (the right one wins per kind).
@@ -62,6 +66,76 @@ namespace kiln::foundation {
     ExitTransition ShrinkHorizontally(anim::SpecPtr spec = DefaultEnterExitSpring(), AlignmentH shrinkTowards = AlignmentH::End(),
                                       bool clip = true, std::function<int(int)> targetWidth = [](int) { return 0; });
 
+    // unveilIn: a scrim (Black at 50% by default) that clears as the content enters; veilOut:
+    // one that darkens over the content as it exits.
+    EnterTransition UnveilIn(anim::SpecPtr spec = DefaultEnterExitSpring(), ui::Color initialColor = ui::Color(0x80000000u), bool matchParentSize = false);
+    ExitTransition VeilOut(anim::SpecPtr spec = DefaultEnterExitSpring(), ui::Color targetColor = ui::Color(0x80000000u), bool matchParentSize = false);
+
+    // --- The deferred phase (DeferredEnterExitTransition.kt) ------------------------------------
+
+    // TransformScope: what a deferred phase sets by hand on the content each frame. A property it
+    // does not set stays at rest (alpha 1, scale 1, no offset, centred origin, no veil).
+    class TransformScope {
+    public:
+        float Alpha() const { return m_Alpha.Get(); }
+        void SetAlpha(float v) { m_Alpha.Set(v); m_AlphaMutated.Set(true); }
+        float Scale() const { return m_Scale.Get(); }
+        void SetScale(float v) { m_Scale.Set(v); m_ScaleMutated.Set(true); }
+        TransformOrigin GetTransformOrigin() const { return m_Origin.Get(); }
+        void SetTransformOrigin(TransformOrigin v) { m_Origin.Set(v); m_OriginMutated.Set(true); }
+        IntOffset Offset() const { return m_Offset; }
+        void SetOffset(IntOffset v) { m_Offset = v; m_OffsetMutated = true; }
+        ui::Color Veil() const { return m_Veil.Get(); }
+        void SetVeil(ui::Color v) { m_Veil.Set(v); m_VeilMutated.Set(true); }
+
+        // internal
+        bool AlphaMutated() const { return m_AlphaMutated.Get(); }
+        bool ScaleMutated() const { return m_ScaleMutated.Get(); }
+        bool OriginMutated() const { return m_OriginMutated.Get(); }
+        bool OffsetMutated() const { return m_OffsetMutated; }
+        bool VeilMutated() const { return m_VeilMutated.Get(); }
+        void Reset();
+
+    private:
+        rt::State<float> m_Alpha{ 1 }, m_Scale{ 1 };
+        rt::State<TransformOrigin> m_Origin{ TransformOrigin::Center() };
+        rt::State<ui::Color> m_Veil{ ui::Color::Transparent() };
+        rt::State<bool> m_AlphaMutated{ false }, m_ScaleMutated{ false }, m_OriginMutated{ false }, m_VeilMutated{ false };
+        IntOffset m_Offset{};
+        bool m_OffsetMutated = false;
+    };
+
+    // MutableTransform: the hand-set transform of one content during a deferred phase. The block
+    // runs in layout each frame (read gesture state there); its values are handed to the
+    // automatic transition when the phase ends. offsetVelocityProvider (px/s), read once then:
+    // unset, the velocity is tracked from the offsets set.
+    struct MutableTransform {
+        bool veilMatchParentSize = false;
+        std::function<ui::Offset()> offsetVelocityProvider;
+        std::function<void(TransformScope&, IntSize fullSize)> block;
+        std::function<float()> sharedElementProgressProvider;
+        void Update(std::function<void(TransformScope&, IntSize fullSize)> b) { block = std::move(b); }
+        void Clear() { block = {}; veilMatchParentSize = false; offsetVelocityProvider = {}; sharedElementProgressProvider = {}; }
+    };
+
+    // MutableContentTransform: the exiting (initial) and entering (target) contents' transforms
+    // for DeferredAnimatedContent's deferred phase.
+    struct MutableContentTransform {
+        std::shared_ptr<MutableTransform> initialTransform = std::make_shared<MutableTransform>();
+        std::shared_ptr<MutableTransform> targetTransform = std::make_shared<MutableTransform>();
+        void InitialContentTransform(std::function<void(TransformScope&, IntSize)> block) { initialTransform->Update(std::move(block)); }
+        void TargetContentTransform(std::function<void(TransformScope&, IntSize)> block) { targetTransform->Update(std::move(block)); }
+        // Shared elements' interpolation progress during the phase (0..1).
+        void SharedElementProgress(std::function<float()> progress) {
+            initialTransform->sharedElementProgressProvider = progress;
+            targetTransform->sharedElementProgressProvider = std::move(progress);
+        }
+    };
+    std::shared_ptr<MutableContentTransform> MakeMutableContentTransform(bool initialVeilMatchParentSize = false, bool targetVeilMatchParentSize = false,
+                                                                         std::function<ui::Offset()> initialOffsetVelocityProvider = {},
+                                                                         std::function<ui::Offset()> targetOffsetVelocityProvider = {},
+                                                                         std::function<void(MutableContentTransform&)> block = {});
+
     void AnimatedVisibility(bool visible, const Modifier& modifier, std::function<void()> content,
                             EnterTransition enter = FadeIn() + ExpandIn(), ExitTransition exit = ShrinkOut() + FadeOut(), rt::Key key = {});
 
@@ -86,8 +160,11 @@ namespace kiln::foundation {
 
     // AnimatedEnterExit: content that enters while `visibility` goes to true and exits (then
     // leaves the composition) while it goes to false.
+    // In a deferred phase (the transition has a pending target) mutableTransform moves the
+    // content by hand; forceVisible keeps it composed after its exit (interrupted content).
     void AnimatedEnterExit(Transition<bool>& visibility, const Modifier& modifier, std::function<void()> content,
-                           const EnterTransition& enter, const ExitTransition& exit, rt::Key key = {});
+                           const EnterTransition& enter, const ExitTransition& exit, rt::Key key = {},
+                           std::shared_ptr<MutableTransform> mutableTransform = nullptr, bool forceVisible = false);
 
     // Transition.AnimatedVisibility(visible): visibility derived from a parent transition's
     // state, animated on the parent's clock (a child transition).
@@ -149,6 +226,17 @@ namespace kiln::foundation {
     void AnimatedContent(rt::Key target, const Modifier& modifier, std::function<void(rt::Key)> content,
                          std::function<ContentTransform()> transform = DefaultContentTransform,
                          Alignment contentAlignment = Alignment::TopStart(), rt::Key key = {});
+    // DeferredAnimatedContent: AnimatedContent over a deferred transition of content keys
+    // (RememberDeferredTransition of a DeferredTransitionState<std::uint64_t>). While a target is
+    // pending its content composes before entering, and mutableTransformSpec (seeing the
+    // current target as initial and the pending one as target) moves the leaving and entering
+    // contents by hand; when the automatic transition starts, the hand-set values are handed
+    // to transitionSpec's animations. Up to three interrupted contents stay composed.
+    void DeferredAnimatedContent(Transition<std::uint64_t>& transition, const Modifier& modifier, std::function<void(rt::Key)> content,
+                                 std::function<ContentTransform(AnimatedContentTransitionScope&)> transitionSpec = {},
+                                 Alignment contentAlignment = Alignment::TopStart(),
+                                 std::function<std::shared_ptr<MutableContentTransform>(AnimatedContentTransitionScope&)> mutableTransformSpec = {},
+                                 rt::Key key = {});
     // animateContentSize(spring): the size follows content size changes with an animation.
     Modifier AnimateContentSize(Modifier m, anim::SpecPtr spec = anim::Spring(1.0f, anim::spring::StiffnessMediumLow, 0.5f));
 

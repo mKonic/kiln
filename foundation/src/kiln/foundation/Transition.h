@@ -33,12 +33,15 @@ namespace kiln::foundation {
             int dims = 1;
             std::int64_t duration = 0;
             bool finished = true;
+            // The forced initial value last restarted from (a deferred phase's hand-off).
+            std::optional<anim::Vec> forcedFrom;
             explicit Child(anim::Vec v, int d) : value(v), start(v), target(v), dims(d) {}
             anim::Vec Current() const { return value.Peek(); }
         };
 
-        // Retargets a child (when its target value or the transition's target changed).
-        void Retarget(Child& c, const anim::Vec& target, anim::SpecPtr spec, bool snap);
+        // Retargets a child (when its target value or the transition's target changed). A child
+        // restarted from a forced value is not treated as interrupted.
+        void Retarget(Child& c, const anim::Vec& target, anim::SpecPtr spec, bool snap, bool forced = false);
         void Add(Child* c) { m_Children.push_back(c); }
         void Remove(Child* c) { std::erase(m_Children, c); }
 
@@ -85,6 +88,30 @@ namespace kiln::foundation {
         bool m_Running = false;
     };
 
+    // DeferredTransitionState: Defer holds a new target as pending (the transition keeps its
+    // target, so its content can be moved by hand, e.g. by a predictive back gesture) until
+    // AnimateTo starts the automatic transition, to that state or another.
+    template<typename S>
+    class DeferredTransitionState {
+    public:
+        explicit DeferredTransitionState(S initial) : m_Current(initial), m_Target(initial) {}
+        S CurrentState() const { return m_Current.Get(); }
+        S TargetState() const { return m_Target.Get(); }
+        std::optional<S> PendingTargetState() const { return m_Pending.Get(); }
+        void Defer(S target) {
+            std::optional<S> next;
+            if (!(m_Target.Peek() == target)) next = std::move(target);
+            if (!(m_Pending.Peek() == next)) m_Pending.Set(std::move(next));
+        }
+        void AnimateTo(S target) {
+            if (m_Pending.Peek()) m_Pending.Set(std::nullopt);
+            if (!(m_Target.Peek() == target)) m_Target.Set(std::move(target));
+        }
+        // internal
+        rt::State<S> m_Current, m_Target;
+        rt::State<std::optional<S>> m_Pending{ std::nullopt };
+    };
+
     template<typename S>
     class Transition {
     public:
@@ -98,6 +125,10 @@ namespace kiln::foundation {
 
         S CurrentState() const { return m_Current.Get(); }
         S TargetState() const { return m_Target.Get(); }
+        // Set while a deferred phase holds a new target (DeferredTransitionState, or a child of
+        // such a transition).
+        std::optional<S> PendingTargetState() const { return m_Pending.Get(); }
+        bool IsDeferred() const { return m_Deferred; }
         Segment CurrentSegment() const { return { m_Current.Peek(), m_Target.Peek() }; }
         bool IsRunning() const { return Core().RunningObserved(); }
         // A child transition runs its animations on its parent's clock.
@@ -121,6 +152,20 @@ namespace kiln::foundation {
             m_Core.Begin();
         }
         void Finish() { if (!(m_Current.Peek() == m_Target.Peek())) m_Current.Set(m_Target.Peek()); }
+
+        // updatePendingTarget: a deferred phase that ends going back to the current state starts
+        // from the pending state, so hand-moved content animates back (or settles at once).
+        void UpdatePendingTarget(std::optional<S> value, rt::State<S>* stateCurrent = nullptr) {
+            const std::optional<S> previous = m_Pending.Peek();
+            const bool cleared = previous && !value && m_Target.Peek() == m_Current.Peek();
+            if (!(previous == value)) m_Pending.Set(value);
+            if (cleared) {
+                m_Current.Set(*previous);
+                if (stateCurrent) stateCurrent->Set(*previous);
+                Core().Begin();
+            }
+        }
+        void MarkDeferred() { m_Deferred = true; }
         // snapTo: both states jump; children follow on their next composition.
         void SnapAll(const S& s) { m_Current.Set(s); m_Target.Set(s); m_Core.PauseClock(); m_SnapNext = true; }
         bool TakeSnap() { return std::exchange(m_SnapNext, false); }
@@ -128,6 +173,8 @@ namespace kiln::foundation {
 
     private:
         rt::State<S> m_Current, m_Target;
+        rt::State<std::optional<S>> m_Pending{ std::nullopt };
+        bool m_Deferred = false;
         TransitionCore m_Core;
         TransitionCore* m_Parent = nullptr;
         std::function<bool()> m_ParentSnap;
@@ -170,11 +217,33 @@ namespace kiln::foundation {
         return t;
     }
 
+    // rememberDeferredTransition(transitionState): follows the state's target and pending target.
+    template<typename S>
+    Transition<S>& RememberDeferredTransition(DeferredTransitionState<S>& state, rt::Key key = {}) {
+        auto& c = *rt::Composition::Current();
+        auto& t = c.RememberNew<Transition<S>>({}, key, state.CurrentState());
+        t.MarkDeferred();
+        t.UpdateTarget(state.TargetState());
+        t.UpdatePendingTarget(state.PendingTargetState(), &state.m_Current);
+        auto* tp = &t;
+        auto* sp = &state;
+        c.LaunchedEffect(rt::Keys(t.Core().Generation()), [tp, sp] {
+            return detail::DriveTransition(tp->Core(), [tp, sp] {
+                tp->Finish();
+                if (!(sp->m_Current.Peek() == tp->TargetState())) sp->m_Current.Set(tp->TargetState());
+            });
+        }, key);
+        return t;
+    }
+
     namespace detail {
         // A child animation of `t` towards valueOf(target) with specFor(segment).
+        // forcedInitial: restart from this value (with forcedVelocity) when it is new or the target
+        // changes (DeferredAnimation.animate's forcedInitialValue).
         template<typename S>
         const anim::Vec& AnimateChild(Transition<S>& t, int dims, const std::function<anim::Vec(const S&)>& valueOf,
-                                      const std::function<anim::SpecPtr(const typename Transition<S>::Segment&)>& specFor, rt::Key key) {
+                                      const std::function<anim::SpecPtr(const typename Transition<S>::Segment&)>& specFor, rt::Key key,
+                                      std::optional<anim::Vec> forcedInitial = std::nullopt, std::optional<anim::Vec> forcedVelocity = std::nullopt) {
             auto& c = *rt::Composition::Current();
             const anim::Vec initial = valueOf(t.CurrentState());
             auto& child = c.RememberNew<TransitionCore::Child>({}, key, initial, dims);
@@ -185,7 +254,16 @@ namespace kiln::foundation {
                 return std::function<void()>([core, cp] { core->Remove(cp); });
             }, key);
             const anim::Vec target = valueOf(t.TargetState());
-            if (!(target == child.target)) core->Retarget(child, target, specFor ? specFor(t.CurrentSegment()) : anim::Spring(), t.PeekSnap());
+            const bool newForced = forcedInitial && !(child.forcedFrom == forcedInitial);
+            if (!forcedInitial) child.forcedFrom.reset();
+            if (!(target == child.target) || newForced) {
+                if (forcedInitial) {
+                    child.value.Set(*forcedInitial);
+                    if (forcedVelocity) child.velocity = *forcedVelocity;
+                    child.forcedFrom = forcedInitial;
+                }
+                core->Retarget(child, target, specFor ? specFor(t.CurrentSegment()) : anim::Spring(), t.PeekSnap(), forcedInitial.has_value());
+            }
             return child.value.Get();
         }
     }
@@ -202,6 +280,9 @@ namespace kiln::foundation {
         auto* pp = &parent;
         child.AttachToParent(parent.Core(), [pp] { return pp->PeekSnap(); });
         child.SetStates(transform(parent.CurrentState()), transform(parent.TargetState()));
+        const std::optional<S> pending = parent.PendingTargetState();
+        child.UpdatePendingTarget(pending ? std::optional<T>(transform(*pending)) : std::nullopt);
+        if (parent.IsDeferred()) child.MarkDeferred();
         return child;
     }
 
@@ -247,10 +328,12 @@ namespace kiln::foundation {
         return AnimateValue<ui::IntSize, S>(t, converters::IntSize(), std::move(valueOf), std::move(spec), key);
     }
 
+    // forcedInitial / forcedVelocity: see detail::AnimateChild.
     template<typename S>
     float AnimateFloat(Transition<S>& t, std::function<float(const S&)> valueOf,
-                       std::function<anim::SpecPtr(const typename Transition<S>::Segment&)> spec = {}, rt::Key key = {}) {
-        return detail::AnimateChild<S>(t, 1, [&](const S& s) { return anim::Vec{ valueOf(s), 0, 0, 0 }; }, spec, key)[0];
+                       std::function<anim::SpecPtr(const typename Transition<S>::Segment&)> spec = {}, rt::Key key = {},
+                       std::optional<anim::Vec> forcedInitial = std::nullopt, std::optional<anim::Vec> forcedVelocity = std::nullopt) {
+        return detail::AnimateChild<S>(t, 1, [&](const S& s) { return anim::Vec{ valueOf(s), 0, 0, 0 }; }, spec, key, forcedInitial, forcedVelocity)[0];
     }
 
     // Colours interpolate in Oklab (ColorVectorConverter).

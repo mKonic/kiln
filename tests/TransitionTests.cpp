@@ -321,3 +321,93 @@ TEST(CombinedEnterExitTransitionsTakeTheRightHandPartOfAKind) {   // EnterTransi
     CHECK(exit.parts.fade && exit.parts.fade->first == 0.75f);
     CHECK(exit.parts.slide.has_value());
 }
+
+TEST(DeferredTransitionStateHoldsAPendingTargetUntilAnimateTo) {   // DeferredTransitionState
+    DeferredTransitionState<int> s(1);
+    s.Defer(2);
+    CHECK_EQ(s.TargetState(), 1);
+    CHECK(s.PendingTargetState() == std::optional<int>(2));
+    s.Defer(1);   // deferring to the target itself: nothing pending
+    CHECK(!s.PendingTargetState());
+    s.Defer(3);
+    s.AnimateTo(2);   // need not be the pending one
+    CHECK(!s.PendingTargetState());
+    CHECK_EQ(s.TargetState(), 2);
+}
+
+namespace {
+    // A page switcher whose deferred phase slides both pages by `progress` of their width.
+    struct DeferredPages {
+        LayoutHarness h;
+        DeferredTransitionState<std::uint64_t> state{ 1 };
+        rt::State<float> progress{ 0 };
+        DeferredPages() {
+            h.Run([this] {
+                Box(Modifier{}, Alignment::TopStart(), false, [this] {
+                    auto& t = RememberDeferredTransition(state);
+                    DeferredAnimatedContent(t, Modifier{}, [](rt::Key) { Box(SizeMod(Modifier{}, Dp(100), Dp(50))); },
+                        [](AnimatedContentTransitionScope&) {
+                            return Using(TogetherWith(SlideInHorizontally([](int w) { return w; }, anim::Tween(160, 0, anim::Linear())),
+                                                      SlideOutHorizontally([](int w) { return -w; }, anim::Tween(160, 0, anim::Linear()))),
+                                         std::nullopt);
+                        },
+                        Alignment::TopStart(), [this](AnimatedContentTransitionScope&) {
+                            return MakeMutableContentTransform(false, false, {}, {}, [this](MutableContentTransform& m) {
+                                m.InitialContentTransform([this](TransformScope& s, IntSize full) { s.SetOffset({ int(float(full.width) * progress.Get()), 0 }); });
+                                m.TargetContentTransform([this](TransformScope& s, IntSize full) {
+                                    s.SetOffset({ int(float(full.width) * (progress.Get() - 1)), 0 });
+                                });
+                            });
+                        });
+                });
+            });
+            h.Layout();
+        }
+        LayoutNode& Container() { return *h.owner.Root().Children()[0]->Children()[0]; }
+        float X(int child) { return Container().Children()[child]->Children()[0]->BoundsInRoot().left; }
+    };
+}
+
+TEST(DeferredAnimatedContentMovesBothPagesByHandThenAnimatesOn) {
+    DeferredPages p;
+    CHECK_EQ(int(p.Container().Children().size()), 1);
+    p.state.Defer(2);
+    p.progress.Set(0.25f);
+    p.h.Pump();
+    p.h.Layout();
+    CHECK_EQ(int(p.Container().Children().size()), 2);   // the pending page composes before entering
+    CHECK_EQ(p.X(0), 25.0f);
+    CHECK_EQ(p.X(1), -75.0f);
+    p.progress.Set(0.5f);   // read in layout
+    p.h.Pump();
+    p.h.Layout();
+    CHECK_EQ(p.X(0), 50.0f);
+    CHECK_EQ(p.X(1), -50.0f);
+    CHECK_EQ(p.state.TargetState(), std::uint64_t(1));
+    p.state.AnimateTo(2);
+    p.h.Pump();
+    p.h.Layout();
+    p.h.Step(2);
+    CHECK_EQ(int(p.Container().Children().size()), 2);
+    CHECK(p.X(1) > -50.0f && p.X(1) < 0.0f);   // the new page goes on from where the hand left it
+    p.h.Step(40);
+    CHECK_EQ(int(p.Container().Children().size()), 1);
+    CHECK_EQ(p.X(0), 0.0f);
+    CHECK_EQ(p.state.CurrentState(), std::uint64_t(2));
+}
+
+TEST(DeferredAnimatedContentReturnsWhenThePendingTargetIsDropped) {
+    DeferredPages p;
+    p.state.Defer(2);
+    p.progress.Set(0.5f);
+    p.h.Pump();
+    p.h.Layout();
+    CHECK_EQ(p.X(0), 50.0f);
+    p.state.AnimateTo(1);   // cancelled: back to the current page
+    p.h.Pump();
+    p.h.Layout();
+    p.h.Step(40);
+    CHECK_EQ(int(p.Container().Children().size()), 1);
+    CHECK_EQ(p.X(0), 0.0f);
+    CHECK_EQ(p.state.CurrentState(), std::uint64_t(1));
+}

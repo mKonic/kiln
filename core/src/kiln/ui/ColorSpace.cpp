@@ -43,4 +43,12 @@ namespace kiln::ui {
         return FromOklab({ a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t, a[3] + (b[3] - a[3]) * t });
     }
 
+
+    float Luminance(Color c) {
+        // The sRGB transfer function, then the Rec. 709 weights.
+        const auto eotf = [](double v) { return v <= 0.04045 ? v / 12.92 : std::pow((v + 0.055) / 1.055, 2.4); };
+        const double r = eotf(((c.argb >> 16) & 0xff) / 255.0), g = eotf(((c.argb >> 8) & 0xff) / 255.0), b = eotf((c.argb & 0xff) / 255.0);
+        return std::clamp(float(0.2126 * r + 0.7152 * g + 0.0722 * b), 0.0f, 1.0f);
+    }
+
 }

@@ -59,6 +59,7 @@
 #include "kiln/material3/WideNavigationRail.h"
 #include "kiln/material3/Menu.h"
 #include "kiln/material3/AppBarRow.h"
+#include "kiln/material3/NavigationTransitions.h"
 #include "kiln/material3/adaptive/NavigationSuiteScaffold.h"
 #include "kiln/material3/adaptive/WindowAdaptiveInfo.h"
 #include "kiln/material3/ButtonGroup.h"
@@ -14354,4 +14355,26 @@ TEST(DefaultTypographyEmphasizesNothingButTheFontFamilyFormDoes) {   // Typograp
     const Typography withFamily(text::FontFamily::SansSerif());
     CHECK(withFamily.displayLargeEmphasized.span.fontWeight == text::FontWeight::Medium());
     CHECK(withFamily.displayLarge.span.fontWeight == text::FontWeight::Normal());
+}
+
+TEST(NavigationTransitionsSlideFadeAndDampTheGesturesVerticalFollow) {   // NavigationTransitions.kt
+    namespace H = HorizontalSharedAxisNavigationTransitions;
+    const auto forward = H::forwardTransform(), backward = H::backwardTransform();
+    CHECK((forward.enter.parts.slide && forward.enter.parts.slide->offset({ 1000, 10 }) == ui::IntOffset{ 200, 0 }));
+    CHECK((forward.exit.parts.slide && forward.exit.parts.slide->offset({ 1000, 10 }) == ui::IntOffset{ -200, 0 }));
+    CHECK((backward.enter.parts.slide->offset({ 1000, 10 }) == ui::IntOffset{ -200, 0 }));
+    CHECK(backward.exit.parts.scale && backward.exit.parts.scale->scale == 1.0f);
+    CHECK_EQ(backward.targetContentZIndex, -10.0f);
+    const auto fade = FadeThroughNavigationTransitions::transform();
+    CHECK(fade.enter.parts.scale && fade.enter.parts.scale->scale == 0.8f);
+    CHECK(fade.exit.parts.scale && fade.exit.parts.scale->scale == 1.05f);
+    // 85% of 1000 px tall leaves 75 px a side; less the 8 px margin, 67 px at most.
+    CHECK_EQ(internal::CalculateDampedVerticalOffset(500, 1000, 0.85f, 8), 67.0f);
+    CHECK_EQ(internal::CalculateDampedVerticalOffset(-250, 1000, 0.85f, 8), -67.0f * 0.75f);
+    CHECK_EQ(internal::CalculateDampedVerticalOffset(100, 0, 0.85f, 8), 0.0f);
+    CHECK((internal::CalculateSlideOffset({ 1000, 1000 }, 0.5f, 0, 8, 0.75f) == ui::IntOffset{ 125, 0 }));   // towards the far edge
+    PhoneHarness h;
+    h.Run([&] { MaterialTheme({}, [&] {
+        CHECK_EQ(H::scrimColor(), MaterialTheme::colorScheme().scrim.WithAlpha(0.2f));   // a light scheme
+    }); });
 }
