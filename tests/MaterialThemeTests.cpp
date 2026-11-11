@@ -58,6 +58,7 @@
 #include "kiln/material3/TabRow.h"
 #include "kiln/material3/WideNavigationRail.h"
 #include "kiln/material3/Menu.h"
+#include "kiln/material3/AppBarRow.h"
 #include "kiln/material3/ButtonGroup.h"
 #include "kiln/runtime/Saveable.h"
 #include "kiln/foundation/Focus.h"
@@ -14028,4 +14029,105 @@ TEST(IconButtonColorsDeriveTheirDefaultsFromTheirArguments) {
     CHECK(standard.disabledContentColor == local.WithAlpha(0.38f));
     CHECK(toggle.checkedContentColor == onPrimary);                         // contentColorFor(checkedContainer)
     CHECK(toggle.contentColor == onSurface);                                // contentColorFor(surface)
+}
+
+namespace {
+    // An AppBarRow (or column) of `count` text items in a phone harness.
+    void TextItems(AppBarScope& scope, int count, const char* prefix = "Item ") {
+        for (int i = 0; i < count; ++i) {
+            const std::string label = prefix + std::to_string(i);
+            scope.ClickableItem([] {}, [label] { Text(label); }, label);
+        }
+    }
+}
+
+TEST(AppBarRowShowsItsItemsUpToMaxItemCount) {   // appbarRow_itemsDisplayed_noOverflow, appbarRow_maxCount_*
+    {
+        PhoneHarness h;
+        h.Run([&] { MaterialTheme({}, [&] { AppBarRow({}, [](AppBarMenuState&) {}, INT_MAX, [](AppBarScope& s) { TextItems(s, 2); }); }); });
+        CHECK(Displayed(h, "Item 0"));
+        CHECK(Displayed(h, "Item 1"));
+    }
+    {   // three items over a max of two: the last place goes to the (empty) indicator
+        PhoneHarness h;
+        h.Run([&] { MaterialTheme({}, [&] { AppBarRow({}, [](AppBarMenuState&) {}, 2, [](AppBarScope& s) { TextItems(s, 3); }); }); });
+        CHECK(Displayed(h, "Item 0"));
+        CHECK(!Displayed(h, "Item 1"));
+        CHECK(!Displayed(h, "Item 2"));
+    }
+    {   // as many items as the max: all show
+        PhoneHarness h;
+        h.Run([&] { MaterialTheme({}, [&] { AppBarRow({}, [](AppBarMenuState&) {}, 2, [](AppBarScope& s) { TextItems(s, 2); }); }); });
+        CHECK(Displayed(h, "Item 0"));
+        CHECK(Displayed(h, "Item 1"));
+    }
+}
+
+TEST(AppBarRowOverflowMenuOpensAndAnItemClickClosesIt) {   // appbarRow_itemsOverflow_*, appbarRow_overflowMenu_*
+    PhoneHarness h;
+    std::int64_t t = 1000;
+    h.owner.MeasureAndLayout(h.window);
+    int clicks = 0;
+    h.Run([&] { rt::Composition::Current()->Provide(ui::LocalOwner, &h.owner, [&] { MaterialTheme({}, [&] {
+        Box(FillMax({}, Axis::Both), Alignment::Center(), false, [&] {
+            AppBarRow(Width({}, ui::Dp(200)), [](AppBarMenuState& menu) {
+                IconButton([&menu] { menu.Show(); }, Tag({}, "overflowButton"), {}, [] { Text("O"); });
+            }, INT_MAX, [&](AppBarScope& scope) {
+                for (int i = 0; i < 10; ++i) {
+                    const std::string label = "Item " + std::to_string(i);
+                    scope.ClickableItem([&clicks] { ++clicks; }, [label] { Text(label); }, label);
+                }
+            });
+        });
+    }); }); });
+    CHECK(Displayed(h, "overflowButton"));
+    CHECK(!Displayed(h, "Item 9"));
+    Press(h, t, "overflowButton", true);
+    h.AdvanceTimeBy(500);
+    CHECK(Displayed(h, "Item 9"));   // in the menu
+    Press(h, t, "Item 9", true);
+    h.AdvanceTimeBy(500);
+    CHECK_EQ(clicks, 1);
+    CHECK(!Displayed(h, "Item 9"));   // the menu closed
+}
+
+TEST(AppBarRowItemsClickAndToggle) {   // appbarRow_clickableItem_onClickCalled, appbarRow_toggleableItem_*
+    PhoneHarness h;
+    std::int64_t t = 1000;
+    h.owner.MeasureAndLayout(h.window);
+    bool clicked = false;
+    auto checked = std::make_shared<rt::State<bool>>(false);
+    h.Run([&] { rt::Composition::Current()->Provide(ui::LocalOwner, &h.owner, [&] { MaterialTheme({}, [&] {
+        AppBarRow({}, [](AppBarMenuState&) {}, INT_MAX, [&](AppBarScope& scope) {
+            scope.ClickableItem([&clicked] { clicked = true; }, [] { Text("Clickable"); }, "Clickable Item");
+            scope.ToggleableItem(checked->Get(), [checked](bool c) { checked->Set(c); }, [] { Text("Toggleable"); }, "Toggleable Item");
+        });
+    }); }); });
+    Press(h, t, "Clickable", true);
+    CHECK(clicked);
+    Press(h, t, "Toggleable", true);
+    h.AdvanceTimeBy(100);
+    CHECK(checked->Peek());
+    Press(h, t, "Toggleable", true);
+    h.AdvanceTimeBy(100);
+    CHECK(!checked->Peek());
+}
+
+TEST(AppBarColumnStacksItsItemsAndOverflowsDownwards) {
+    PhoneHarness h;
+    h.Run([&] { MaterialTheme({}, [&] {
+        Box({}, Alignment::TopStart(), false, [&] {
+            AppBarColumn(Height({}, ui::Dp(150)), [](AppBarMenuState&) { IconButton([] {}, Tag({}, "overflow"), {}, [] { Text("O"); }); }, INT_MAX,
+                         [](AppBarScope& s) { TextItems(s, 10); });
+        });
+    }); });
+    // Items are 48 dp icon buttons: in 150 dp, two of them and then the 48 dp indicator.
+    const auto a = BoundsDp(h, "Item 0"), b = BoundsDp(h, "Item 1"), o = BoundsDp(h, "overflow");
+    CHECK(a.has_value());
+    CHECK(b.has_value());
+    CHECK(o.has_value());
+    if (!a || !b || !o) return;
+    CHECK(b->top >= a->bottom);
+    CHECK(o->top >= b->bottom);
+    CHECK(!Displayed(h, "Item 2"));
 }
