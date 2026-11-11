@@ -1,6 +1,7 @@
 #include "Check.h"
 
 #include <map>
+#include <set>
 
 #include "kiln/foundation/Compose.h"
 #include "kiln/foundation/Semantics.h"
@@ -30,6 +31,9 @@
 #include "kiln/material3/TextField.h"
 #include "kiln/material3/ExposedDropdownMenu.h"
 #include "kiln/material3/AlertDialog.h"
+#include "kiln/material3/BottomSheet.h"
+#include "kiln/material3/BottomSheetScaffold.h"
+#include "kiln/material3/ModalBottomSheet.h"
 #include "kiln/ui/Back.h"
 #include "kiln/material3/internal/GetString.h"
 #include "kiln/material3/Divider.h"
@@ -9029,4 +9033,1286 @@ TEST(AlertDialogPositioning) {
             CHECK(Near(dismiss.top - text.bottom, 24));
         }
     }
+}
+
+// Ported from Compose's SheetStateTest (the cases on the state alone) and BottomSheetTest.
+namespace {
+    std::shared_ptr<SheetState> MakeSheetState(bool skipPartiallyExpanded, bool skipHiddenState, SheetValue initial) {
+        return std::make_shared<SheetState>(SheetValues{ !skipHiddenState, !skipPartiallyExpanded }, [] { return 56.0f; }, [] { return 125.0f; },
+                                            initial);
+    }
+    foundation::DraggableAnchors<SheetValue> SheetAnchors(std::initializer_list<std::pair<SheetValue, float>> a) { return { a }; }
+    // A motion scheme whose spatial and effects specs are known.
+    struct CustomMotionScheme final : MotionScheme {
+        anim::SpecPtr spatial = anim::Tween(123), effects = anim::Tween(456);
+        anim::SpecPtr DefaultSpatialSpec() const override { return spatial; }
+        anim::SpecPtr FastSpatialSpec() const override { return spatial; }
+        anim::SpecPtr SlowSpatialSpec() const override { return spatial; }
+        anim::SpecPtr DefaultEffectsSpec() const override { return effects; }
+        anim::SpecPtr FastEffectsSpec() const override { return effects; }
+        anim::SpecPtr SlowEffectsSpec() const override { return effects; }
+    };
+}
+
+TEST(SheetStateRejectsAnInitialValueThatIsNotEnabled) {
+    bool threw = false;
+    try { MakeSheetState(true, false, SheetValue::PartiallyExpanded); } catch (const std::invalid_argument&) { threw = true; }
+    CHECK(threw);
+    threw = false;
+    try { MakeSheetState(false, true, SheetValue::Hidden); } catch (const std::invalid_argument&) { threw = true; }
+    CHECK(threw);
+}
+
+TEST(SheetStateValuesFollowTheAnchors) {
+    PhoneHarness h;
+    {
+        // currentValue is the settled value.
+        auto s = MakeSheetState(false, false, SheetValue::Hidden);
+        s->Anchored().UpdateAnchors(SheetAnchors({ { SheetValue::Hidden, 1000 }, { SheetValue::Expanded, 0 } }), SheetValue::Hidden);
+        CHECK(s->CurrentValue() == SheetValue::Hidden);
+        rt::Job job = rt::Launch(rt::Dispatcher::Main(), s->SnapTo(SheetValue::Expanded));
+        h.AdvanceTimeBy(16);
+        CHECK(s->CurrentValue() == SheetValue::Expanded && s->RequireOffset() == 0);
+    }
+    {
+        // Settled: the target is the current value.
+        auto s = MakeSheetState(false, false, SheetValue::Expanded);
+        s->Anchored().UpdateAnchors(SheetAnchors({ { SheetValue::Hidden, 1000 }, { SheetValue::Expanded, 0 } }), SheetValue::Expanded);
+        CHECK(s->CurrentValue() == SheetValue::Expanded && s->TargetValue() == SheetValue::Expanded);
+    }
+    {
+        // An anchor removed under the current value: the values stay.
+        auto s = MakeSheetState(false, false, SheetValue::PartiallyExpanded);
+        s->Anchored().UpdateAnchors(SheetAnchors({ { SheetValue::PartiallyExpanded, 500 }, { SheetValue::Expanded, 0 } }), SheetValue::PartiallyExpanded);
+        CHECK(s->CurrentValue() == SheetValue::PartiallyExpanded && s->TargetValue() == SheetValue::PartiallyExpanded);
+        CHECK(s->RequireOffset() == 500);
+        s->Anchored().UpdateAnchors(SheetAnchors({ { SheetValue::Expanded, 0 } }), s->Anchored().TargetValue());
+        CHECK(s->TargetValue() == SheetValue::PartiallyExpanded && s->CurrentValue() == SheetValue::PartiallyExpanded);
+    }
+}
+
+TEST(SheetStateWithNoPeekHeight) {
+    PhoneHarness h;
+    {
+        // PartiallyExpanded shares Hidden's offset: still visible, still the target, and it hides.
+        auto s = MakeSheetState(false, false, SheetValue::PartiallyExpanded);
+        s->Anchored().UpdateAnchors(
+            SheetAnchors({ { SheetValue::Hidden, 1000 }, { SheetValue::PartiallyExpanded, 1000 }, { SheetValue::Expanded, 0 } }), SheetValue::PartiallyExpanded);
+        CHECK(s->RequireOffset() == 1000 && s->CurrentValue() == SheetValue::PartiallyExpanded);
+        CHECK(s->IsVisible() && s->TargetValue() == SheetValue::PartiallyExpanded);
+        rt::Job job = rt::Launch(rt::Dispatcher::Main(), s->Hide());
+        h.AdvanceTimeBy(1000);
+        CHECK(!s->IsVisible() && s->TargetValue() == SheetValue::Hidden && s->CurrentValue() == SheetValue::Hidden);
+    }
+    auto s = MakeSheetState(false, false, SheetValue::Expanded);
+    s->Anchored().UpdateAnchors(
+        SheetAnchors({ { SheetValue::Hidden, 1000 }, { SheetValue::PartiallyExpanded, 1000 }, { SheetValue::Expanded, 0 } }), SheetValue::Expanded);
+    rt::Job job = rt::Launch(rt::Dispatcher::Main(), s->PartialExpand());
+    h.AdvanceTimeBy(1000);
+    CHECK(s->CurrentValue() == SheetValue::PartiallyExpanded && s->RequireOffset() == 1000 && s->TargetValue() == SheetValue::PartiallyExpanded);
+}
+
+TEST(SheetStateShowExpandHide) {
+    PhoneHarness h;
+    auto s = MakeSheetState(false, false, SheetValue::Hidden);
+    s->Anchored().UpdateAnchors(SheetAnchors({ { SheetValue::Hidden, 1000 }, { SheetValue::PartiallyExpanded, 500 }, { SheetValue::Expanded, 0 } }),
+                                SheetValue::Hidden);
+    std::vector<rt::Job> jobs;
+    jobs.push_back(rt::Launch(rt::Dispatcher::Main(), s->Show()));
+    h.AdvanceTimeBy(1000);
+    CHECK(s->CurrentValue() == SheetValue::PartiallyExpanded);
+    jobs.push_back(rt::Launch(rt::Dispatcher::Main(), s->Expand()));
+    h.AdvanceTimeBy(1000);
+    CHECK(s->CurrentValue() == SheetValue::Expanded);
+    jobs.push_back(rt::Launch(rt::Dispatcher::Main(), s->Hide()));
+    h.AdvanceTimeBy(1000);
+    CHECK(s->CurrentValue() == SheetValue::Hidden && !s->IsVisible());
+    // Values that are not enabled cannot be animated to.
+    auto noHide = MakeSheetState(true, true, SheetValue::Expanded);
+    const auto throws = [](rt::Task<> task, bool* threw) -> rt::Task<> {
+        try { co_await task; } catch (const std::logic_error&) { *threw = true; }
+    };
+    bool threw = false, threwPartial = false;
+    jobs.push_back(rt::Launch(rt::Dispatcher::Main(), throws(noHide->Hide(), &threw)));
+    jobs.push_back(rt::Launch(rt::Dispatcher::Main(), throws(noHide->PartialExpand(), &threwPartial)));
+    h.AdvanceTimeBy(16);
+    CHECK(threw && threwPartial);
+}
+
+TEST(SheetStateSettlesAtTheNewTargetWhenItsTargetIsRemoved) {
+    PhoneHarness h;
+    auto s = MakeSheetState(false, false, SheetValue::Hidden);
+    s->showMotionSpec = anim::Tween(300);
+    s->Anchored().UpdateAnchors(SheetAnchors({ { SheetValue::Hidden, 1000 }, { SheetValue::PartiallyExpanded, 500 }, { SheetValue::Expanded, 0 } }),
+                                SheetValue::Hidden);
+    rt::Job job = rt::Launch(rt::Dispatcher::Main(), s->Show());
+    h.AdvanceTimeBy(48);
+    s->Anchored().UpdateAnchors(SheetAnchors({ { SheetValue::Hidden, 1000 }, { SheetValue::Expanded, 0 } }), SheetValue::Expanded);
+    h.AdvanceTimeBy(1000);
+    CHECK(!std::isnan(s->Anchored().Offset()) && s->RequireOffset() == 0);
+    CHECK(s->CurrentValue() == SheetValue::Expanded && s->TargetValue() == SheetValue::Expanded);
+}
+
+TEST(BottomSheetFillsTheScreenWidth) {
+    PhoneHarness h;
+    int width = 0;
+    Themed(h, [&] {
+        BottomSheet({}, {}, [&] { Box(OnSizeChanged(Height(FillMax({}, Axis::Horizontal), 256_dp), [&](ui::IntSize s) { width = s.width; })); });
+    });
+    CHECK(width == 824);
+}
+
+TEST(BottomSheetPadsItsContentByItsInsets) {
+    PhoneHarness h;
+    Themed(h, [&] {
+        BottomSheetOptions o;
+        o.state = RememberBottomSheetState(SheetValue::Expanded);
+        o.dragHandle = nullptr;
+        o.contentWindowInsets = [] { return WindowInsets::Fixed(0_dp, 10_dp, 0_dp, 20_dp); };
+        BottomSheet(Tag({}, "sheet"), o, [] { Box(Tag(Height(FillMax({}, Axis::Horizontal), 256_dp), "content")); });
+    });
+    const auto sheet = UnclippedBoundsDp(h, "sheet"), content = UnclippedBoundsDp(h, "content");
+    CHECK(sheet && content);
+    if (!sheet || !content) return;
+    // The sheet (256 + 10 + 20 dp) rests against the bottom of the 800 dp window.
+    CHECK(Near(content->Height(), 256) && Near(sheet->Height(), 286));
+    CHECK(Near(content->top, 800 - 286 + 10) && Near(content->bottom, 800 - 20));
+}
+
+TEST(BottomSheetTakesTheThemesMotionScheme) {
+    PhoneHarness h;
+    auto scheme = std::make_shared<CustomMotionScheme>();
+    std::shared_ptr<SheetState> state;
+    Themed(h, [&] {
+        MaterialThemeArgs args;
+        args.motionScheme = scheme;
+        MaterialTheme(args, [&] {
+            state = RememberBottomSheetState(SheetValue::Hidden);
+            BottomSheetOptions o;
+            o.state = state;
+            BottomSheet({}, o, [] {});
+        });
+    });
+    CHECK(state->showMotionSpec == scheme->spatial && state->anchoredDraggableMotionSpec == scheme->spatial);
+    CHECK(state->hideMotionSpec == scheme->effects);
+}
+
+TEST(BottomSheetSmallSheetEscapesTheDampingAndHides) {
+    PhoneHarness h;
+    std::int64_t t = 1000;
+    std::shared_ptr<SheetState> state;
+    Themed(h, [&] {
+        const ui::Density d = rt::Composition::Current()->Read(ui::LocalDensity);
+        if (!state)
+            state = std::make_shared<SheetState>(SheetValues{}, [d] { return d.ToPx(BottomSheetDefaults::PositionalThreshold); },
+                                                 [d] { return d.ToPx(BottomSheetDefaults::VelocityThreshold); }, SheetValue::PartiallyExpanded);
+        Box(RequiredSize({}, 100_dp, 100_dp), Alignment::TopStart(), false, [&] {
+            BottomSheetOptions o;
+            o.state = state;
+            o.dragHandle = nullptr;
+            BottomSheet({}, o, [] { Box(Tag(FillMax({}, Axis::Both), "sheet")); });
+        });
+    });
+    CHECK(state->IsVisible());
+    // swipeDown: the node's top to its bottom in 200 ms.
+    const auto b = UnclippedBoundsDp(h, "sheet");
+    CHECK(b.has_value());
+    if (!b) return;
+    Swipe(h, t, (b->left + b->right), b->top * 2 + 1, (b->left + b->right), b->bottom * 2 - 1, 10, 20);
+    h.AdvanceTimeBy(2000);
+    CHECK(!state->IsVisible());
+}
+
+TEST(BottomSheetDragHandleActions) {
+    PhoneHarness h;
+    std::shared_ptr<SheetState> state;
+    std::string handle;
+    int dismissed = 0;
+    Themed(h, [&] {
+        handle = GetString(Strings::BottomSheetDragHandleDescription);
+        state = RememberBottomSheetState(SheetValue::PartiallyExpanded);
+        BottomSheetOptions o;
+        o.state = state;
+        o.onDismissRequest = [&] { ++dismissed; };
+        BottomSheet({}, o, [] { Box(Height(FillMax({}, Axis::Horizontal), 600_dp)); });
+    });
+    const auto actions = [&] { return h.owner.BuildSemanticsTree(); };
+    auto tree = actions();
+    auto* node = FindSemantics(tree, handle);
+    CHECK(node && node->config.expand && node->config.dismiss && !node->config.collapse);
+    if (!node || !node->config.expand) return;
+    node->config.expand();
+    h.AdvanceTimeBy(1000);
+    CHECK(state->CurrentValue() == SheetValue::Expanded);
+    tree = actions();
+    node = FindSemantics(tree, handle);
+    CHECK(node && node->config.collapse && !node->config.expand);
+    if (!node || !node->config.collapse) return;
+    node->config.collapse();
+    h.AdvanceTimeBy(1000);
+    CHECK(state->CurrentValue() == SheetValue::PartiallyExpanded);
+    tree = actions();
+    node = FindSemantics(tree, handle);
+    CHECK(node && node->config.dismiss);
+    if (!node || !node->config.dismiss) return;
+    node->config.dismiss();
+    h.AdvanceTimeBy(1000);
+    CHECK(state->CurrentValue() == SheetValue::Hidden && dismissed == 1);
+}
+
+// Ported from Compose's ModalBottomSheetTest, ModalBottomSheetDialogTest and the SheetStateTest
+// cases that use a modal sheet (the window is 412 x 800 dp, density 2).
+namespace {
+    // Sets a Material flag for one test.
+    struct FlagScope {
+        bool& flag;
+        bool saved;
+        FlagScope(bool& f, bool value) : flag(f), saved(f) { flag = value; }
+        ~FlagScope() { flag = saved; }
+    };
+    bool Within(float a, float b, float tolerance) { return std::abs(a - b) <= tolerance; }
+    std::shared_ptr<SheetState> NewSheetState(SheetValues enabled = {}, SheetValue initial = SheetValue::Hidden,
+                                              std::function<bool(SheetValue)> confirm = {}) {
+        const ui::Density d{ 2 };
+        return std::make_shared<SheetState>(enabled, [d] { return d.ToPx(BottomSheetDefaults::PositionalThreshold); },
+                                            [d] { return d.ToPx(BottomSheetDefaults::VelocityThreshold); }, initial, std::move(confirm));
+    }
+    // The sheet's window (the last dialog).
+    ui::Owner* SheetWindow(ModalHarness& h) { return h.dialogs.empty() ? nullptr : h.dialogs.back(); }
+    // A tagged node's bounds in its window, in dp.
+    std::optional<ui::Rect> WindowBoundsDp(ModalHarness& h, const std::string& tag) {
+        ui::Owner* w = SheetWindow(h);
+        if (!w) return std::nullopt;
+        const ui::LayoutNode* n = FindTagged(w->Root(), tag);
+        if (!n) return std::nullopt;
+        const ui::Rect r = TagRectInRoot(*n, tag);
+        return ui::Rect{ r.left / 2, r.top / 2, r.right / 2, r.bottom / 2 };
+    }
+    // A finger in the sheet's window (px), in `steps` moves `stepMs` apart.
+    void WindowSwipe(ModalHarness& h, std::int64_t& t, float x0, float y0, float x1, float y1, int steps = 10, std::int64_t stepMs = 20) {
+        ui::Owner* w = SheetWindow(h);
+        if (!w) return;
+        const auto touch = [&](ui::PointerEventType type, float x, float y, bool down) {
+            ui::RawPointerEvent e;
+            e.type = type;
+            e.uptimeMillis = t;
+            e.pointers.push_back({ 1, { x, y }, down, ui::PointerType::Touch, {} });
+            w->ProcessPointer(e);
+            rt::Dispatcher::Main().RunPending();
+            rt::Composition::RecomposeAll();
+            h.Layout();
+        };
+        touch(ui::PointerEventType::Press, x0, y0, true);
+        for (int i = 1; i <= steps; ++i) {
+            t += stepMs;
+            touch(ui::PointerEventType::Move, x0 + (x1 - x0) * float(i) / float(steps), y0 + (y1 - y0) * float(i) / float(steps), true);
+        }
+        touch(ui::PointerEventType::Release, x1, y1, false);
+    }
+    void WindowTap(ModalHarness& h, std::int64_t& t, float x, float y) { WindowSwipe(h, t, x, y, x, y, 0); }
+    bool PressBack(Harness& h) {
+        const bool taken = ui::BackDispatcher::Main().Completed();
+        h.AdvanceTimeBy(1000);
+        return taken;
+    }
+    // A modal sheet shown while `show` holds; dismissing it clears `show`.
+    void ShownSheet(ModalHarness& h, rt::State<bool>& show, std::shared_ptr<SheetState>& state, std::function<void(ModalBottomSheetOptions&)> options,
+                    std::function<void()> content, ui::Modifier modifier = {}) {
+        Themed(h, [&, options, content, modifier] {
+            if (!state) state = RememberBottomSheetState(SheetValue::Hidden);
+            if (!show.Get()) return;
+            ModalBottomSheetOptions o;
+            o.sheetState = state;
+            if (options) options(o);
+            ModalBottomSheet([&show] { show.Set(false); }, modifier, o, content);
+        });
+        h.AdvanceTimeBy(1000);
+    }
+}
+
+TEST(ModalBottomSheetScrimTapDismissesIt) {
+    for (bool dismissOnClickOutside : { true, false }) {
+        ModalHarness h;
+        std::int64_t t = 1000;
+        rt::State<bool> show{ true };
+        std::shared_ptr<SheetState> state = NewSheetState();
+        ShownSheet(h, show, state, [dismissOnClickOutside](ModalBottomSheetOptions& o) { o.properties.shouldDismissOnClickOutside = dismissOnClickOutside; },
+                   [] { Box(Tag(SizeMod({}, 256_dp, 256_dp), "sheet")); });
+        CHECK(state->IsVisible());
+        WindowTap(h, t, 0, 1600 / 4);
+        h.AdvanceTimeBy(1000);
+        if (dismissOnClickOutside) CHECK(!show.Get() && h.dialogs.empty());
+        else CHECK(state->IsVisible() && WindowBoundsDp(h, "sheet").has_value());
+    }
+}
+
+TEST(ModalBottomSheetScrimTapBesideAPaddedSheetDismissesIt) {
+    ModalHarness h;
+    std::int64_t t = 1000;
+    rt::State<bool> show{ true };
+    std::shared_ptr<SheetState> state = NewSheetState();
+    ShownSheet(h, show, state, {}, [] { Box(Tag(FillMax({}, Axis::Both), "sheet")); }, Padding({}, PaddingValues{ 0_dp, 400_dp, 0_dp, 0_dp }));
+    CHECK(state->IsVisible());
+    WindowTap(h, t, 0, 1600 / 2);
+    h.AdvanceTimeBy(1000);
+    CHECK(!show.Get() && h.dialogs.empty());
+}
+
+TEST(ModalBottomSheetSwipeDownDismissesIt) {
+    ModalHarness h;
+    std::int64_t t = 1000;
+    rt::State<bool> show{ true };
+    std::shared_ptr<SheetState> state = NewSheetState();
+    ShownSheet(h, show, state, {}, [] { Box(Tag(SizeMod({}, 256_dp, 256_dp), "sheet")); });
+    const auto b = WindowBoundsDp(h, "sheet");
+    CHECK(state->IsVisible() && b.has_value());
+    if (!b) return;
+    WindowSwipe(h, t, (b->left + b->right), b->top * 2 + 1, (b->left + b->right), b->bottom * 2 - 1);
+    h.AdvanceTimeBy(1000);
+    CHECK(!show.Get() && h.dialogs.empty());
+}
+
+TEST(ModalBottomSheetShowsAtTheRightHeight) {
+    {
+        // Legacy: content shorter than half the window shows expanded.
+        FlagScope flag(ComposeMaterial3Flags::isBottomSheetPartiallyExpandedDeterministicEnabled, false);
+        ModalHarness h;
+        rt::State<bool> show{ true };
+        std::shared_ptr<SheetState> state;
+        ShownSheet(h, show, state, [](ModalBottomSheetOptions& o) {
+            o.dragHandle = nullptr;
+            o.contentWindowInsets = [] { return WindowInsets{}; };
+        }, [] { Box(Tag(Height(FillMax({}, Axis::Horizontal), 256_dp), "sheet")); });
+        CHECK(state->CurrentValue() == SheetValue::Expanded);
+        const auto b = WindowBoundsDp(h, "sheet");
+        CHECK(b && Near(b->top, 800 - 256));
+    }
+    {
+        // Legacy: taller content rests at half the window.
+        FlagScope flag(ComposeMaterial3Flags::isBottomSheetPartiallyExpandedDeterministicEnabled, false);
+        ModalHarness h;
+        rt::State<bool> show{ true };
+        std::shared_ptr<SheetState> state;
+        ShownSheet(h, show, state, {}, [] { Box(Tag(FillMax({}, Axis::Both, 0.6f), "sheet")); });
+        CHECK(state->TargetValue() == SheetValue::PartiallyExpanded && Within(state->RequireOffset(), 800, 1));
+    }
+    {
+        // Short content rests at half its height, and expands to all of it.
+        ModalHarness h;
+        rt::State<bool> show{ true };
+        std::shared_ptr<SheetState> state;
+        std::vector<rt::Job> jobs;
+        ShownSheet(h, show, state, [](ModalBottomSheetOptions& o) {
+            o.dragHandle = nullptr;
+            o.contentWindowInsets = [] { return WindowInsets{}; };
+        }, [] { Box(Tag(FillMax(FillMax({}, Axis::Horizontal), Axis::Vertical, 0.4f), "sheet")); });
+        const float sheet = 1600 * 0.4f;
+        CHECK(state->CurrentValue() == SheetValue::PartiallyExpanded && Within(state->RequireOffset(), 1600 - sheet / 2, 1));
+        jobs.push_back(rt::Launch(rt::Dispatcher::Main(), state->Expand()));
+        h.AdvanceTimeBy(1000);
+        CHECK(state->CurrentValue() == SheetValue::Expanded && Within(state->RequireOffset(), 1600 - sheet, 1));
+    }
+    {
+        // Tall content rests at half the window.
+        ModalHarness h;
+        rt::State<bool> show{ true };
+        std::shared_ptr<SheetState> state;
+        ShownSheet(h, show, state, [](ModalBottomSheetOptions& o) {
+            o.dragHandle = nullptr;
+            o.contentWindowInsets = [] { return WindowInsets{}; };
+        }, [] { Box(Tag(FillMax(FillMax({}, Axis::Horizontal), Axis::Vertical, 2.0f), "sheet")); });
+        CHECK(state->CurrentValue() == SheetValue::PartiallyExpanded && Within(state->RequireOffset(), 800, 1));
+    }
+}
+
+TEST(ModalBottomSheetBackHidesIt) {
+    for (float fraction : { 0.4f, 0.6f }) {
+        ModalHarness h;
+        rt::State<bool> show{ true };
+        std::shared_ptr<SheetState> state = NewSheetState();
+        ShownSheet(h, show, state, {}, [fraction] { Box(Tag(FillMax({}, Axis::Vertical, fraction), "sheet")); });
+        CHECK(state->IsVisible());
+        CHECK(PressBack(h));
+        CHECK(!show.Get() && h.dialogs.empty());
+    }
+    // shouldDismissOnBackPress = false: Back does nothing (ModalBottomSheetDialogTest too).
+    ModalHarness h;
+    rt::State<bool> show{ true };
+    std::shared_ptr<SheetState> state;
+    int dismissed = 0;
+    Themed(h, [&] {
+        state = RememberBottomSheetState(SheetValue::Hidden);
+        ModalBottomSheetOptions o;
+        o.sheetState = state;
+        o.properties.shouldDismissOnBackPress = false;
+        ModalBottomSheet([&] { ++dismissed; }, {}, o, [] { Box(FillMax({}, Axis::Both)); });
+    });
+    h.AdvanceTimeBy(1000);
+    CHECK(state->IsVisible());
+    PressBack(h);
+    CHECK(state->IsVisible() && dismissed == 0);
+}
+
+TEST(ModalBottomSheetFollowsItsContentSize) {
+    // A short sheet (legacy state) stays expanded as its content grows and shrinks.
+    ModalHarness h;
+    rt::State<float> size{ 56 };
+    std::shared_ptr<SheetState> state;
+    Themed(h, [&] {
+        state = RememberModalBottomSheetState();
+        ModalBottomSheetOptions o;
+        o.sheetState = state;
+        o.dragHandle = nullptr;
+        o.contentWindowInsets = [] { return WindowInsets{}; };
+        ModalBottomSheet([] {}, {}, o, [&] { Box(Height(FillMax({}, Axis::Horizontal), Dp(size.Get()))); });
+    });
+    h.AdvanceTimeBy(1000);
+    for (float s : { 56.0f, 100.0f, 30.0f }) {
+        size.Set(s);
+        h.AdvanceTimeBy(1000);
+        CHECK(Within(state->RequireOffset(), (800 - s) * 2, 1));
+    }
+}
+
+TEST(ModalBottomSheetMaxWidth) {
+    ModalHarness h;
+    rt::State<float> maxWidth{ 0 };
+    Themed(h, [&] {
+        ModalBottomSheetOptions o;
+        o.sheetMaxWidth = Dp(maxWidth.Get());
+        ModalBottomSheet([] {}, {}, o, [] { Box(Tag(FillMax({}, Axis::Horizontal), "sheet")); });
+    });
+    h.AdvanceTimeBy(1000);
+    for (float dp : { 0.0f, 200.0f, 400.0f }) {
+        maxWidth.Set(dp);
+        h.AdvanceTimeBy(1000);
+        const auto b = WindowBoundsDp(h, "sheet");
+        CHECK(b && Near(b->Width(), std::min(dp, 412.0f)));
+    }
+}
+
+TEST(ModalBottomSheetEmptySheetShowsWithoutMoving) {
+    ModalHarness h;
+    std::shared_ptr<SheetState> state;
+    Themed(h, [&] {
+        state = RememberModalBottomSheetState();
+        ModalBottomSheetOptions o;
+        o.sheetState = state;
+        o.dragHandle = nullptr;
+        o.contentWindowInsets = [] { return WindowInsets{}; };
+        ModalBottomSheet([] {}, {}, o, [] {});
+    });
+    h.AdvanceTimeBy(1000);
+    CHECK(state->Anchored().CurrentValue() == SheetValue::Hidden);
+    const float hidden = state->RequireOffset();
+    rt::Job job = rt::Launch(rt::Dispatcher::Main(), state->Show());
+    h.AdvanceTimeBy(1000);
+    CHECK(state->Anchored().CurrentValue() == SheetValue::Expanded && state->RequireOffset() == hidden);
+}
+
+TEST(ModalBottomSheetNestedScroll) {
+    {
+        // A fling down from nested scroll hides the sheet and reports the dismissal once.
+        ModalHarness h;
+        int calls = 0;
+        auto dispatcher = std::make_shared<NestedScrollDispatcher>();
+        auto connection = std::make_shared<ui::NestedScrollConnection>();
+        std::shared_ptr<SheetState> state = NewSheetState(SheetValues{ true, false });
+        Themed(h, [&] {
+            ModalBottomSheetOptions o;
+            o.sheetState = state;
+            ModalBottomSheet([&] { ++calls; }, {}, o, [&] {
+                Column(Tag(NestedScroll({}, connection, dispatcher), "sheet"), Arrangement::Top(), AlignmentH::Start(), [] {
+                    for (int i = 0; i <= 50; ++i) Text(std::to_string(i));
+                });
+            });
+        });
+        h.AdvanceTimeBy(1000);
+        CHECK(state->CurrentValue() == SheetValue::Expanded);
+        const auto b = WindowBoundsDp(h, "sheet");
+        CHECK(b.has_value());
+        if (!b) return;
+        dispatcher->DispatchPostScroll({}, { 0, b->Height() * 2 / 2 }, ui::NestedScrollSource::UserInput);
+        rt::Job job = rt::Launch(rt::Dispatcher::Main(), [](std::shared_ptr<NestedScrollDispatcher> d) -> rt::Task<> {
+            co_await d->DispatchPostFling({}, { 0, 400 });
+        }(dispatcher));
+        h.AdvanceTimeBy(1000);
+        CHECK(!state->IsVisible() && calls == 1);
+    }
+    {
+        // With gestures off the sheet takes no part.
+        ModalHarness h;
+        auto dispatcher = std::make_shared<NestedScrollDispatcher>();
+        auto connection = std::make_shared<ui::NestedScrollConnection>();
+        std::shared_ptr<SheetState> state;
+        Themed(h, [&] {
+            state = RememberBottomSheetState(SheetValue::Hidden);
+            ModalBottomSheetOptions o;
+            o.sheetState = state;
+            o.sheetGesturesEnabled = false;
+            ModalBottomSheet([] {}, {}, o, [&] { Box(NestedScroll(RequiredSize({}, 412_dp, 300_dp), connection, dispatcher)); });
+        });
+        h.AdvanceTimeBy(1000);
+        std::vector<rt::Job> jobs;
+        jobs.push_back(rt::Launch(rt::Dispatcher::Main(), state->Expand()));
+        h.AdvanceTimeBy(1000);
+        CHECK(state->CurrentValue() == SheetValue::Expanded);
+        const float before = state->RequireOffset();
+        dispatcher->DispatchPreScroll({ 0, -600 }, ui::NestedScrollSource::UserInput);
+        h.AdvanceTimeBy(100);
+        CHECK(state->RequireOffset() == before);
+        jobs.push_back(rt::Launch(rt::Dispatcher::Main(), [](std::shared_ptr<NestedScrollDispatcher> d) -> rt::Task<> {
+            co_await d->DispatchPreFling({ 0, 1000 });
+        }(dispatcher)));
+        h.AdvanceTimeBy(1000);
+        CHECK(state->CurrentValue() == SheetValue::Expanded);
+    }
+}
+
+TEST(ModalBottomSheetDragHandleClick) {
+    ModalHarness h;
+    std::int64_t t = 1000;
+    rt::State<bool> show{ true };
+    std::shared_ptr<SheetState> state;
+    ShownSheet(h, show, state, [](ModalBottomSheetOptions& o) { o.dragHandle = [] { Box(Tag(SizeMod({}, 44_dp, 44_dp), "handle")); }; },
+               [] { Box(Tag(FillMax({}, Axis::Both), "sheet")); });
+    CHECK(state->CurrentValue() == SheetValue::PartiallyExpanded);
+    for (SheetValue expected : { SheetValue::Expanded, SheetValue::Hidden }) {
+        const auto b = WindowBoundsDp(h, "handle");
+        CHECK(b.has_value());
+        if (!b) return;
+        WindowTap(h, t, (b->left + b->right), (b->top + b->bottom));
+        h.AdvanceTimeBy(1000);
+        CHECK(state->CurrentValue() == expected);
+    }
+    CHECK(!show.Get() && h.dialogs.empty());
+}
+
+TEST(ModalBottomSheetRespectsConfirmValueChange) {
+    ModalHarness h;
+    std::int64_t t = 1000;
+    std::shared_ptr<SheetState> state;
+    std::vector<rt::Job> jobs;
+    Themed(h, [&] {
+        state = RememberBottomSheetState(SheetValue::Hidden, {}, [](SheetValue v) { return v != SheetValue::Hidden; });
+        ModalBottomSheetOptions o;
+        o.sheetState = state;
+        o.dragHandle = [] { Box(Tag(SizeMod({}, 44_dp, 44_dp), "handle")); };
+        ModalBottomSheet([] {}, {}, o, [] { Box(Tag(FillMax({}, Axis::Both), "sheet")); });
+    });
+    h.AdvanceTimeBy(1000);
+    CHECK(state->CurrentValue() == SheetValue::PartiallyExpanded);
+    const float offset = state->RequireOffset();
+    // A swipe down.
+    const auto b = WindowBoundsDp(h, "sheet");
+    CHECK(b.has_value());
+    if (!b) return;
+    WindowSwipe(h, t, 400, b->top * 2 + 1, 400, 1599);
+    h.AdvanceTimeBy(1000);
+    CHECK(state->CurrentValue() == SheetValue::PartiallyExpanded && state->RequireOffset() == offset);
+    // hide().
+    jobs.push_back(rt::Launch(rt::Dispatcher::Main(), state->Hide()));
+    h.AdvanceTimeBy(1000);
+    CHECK(state->CurrentValue() == SheetValue::PartiallyExpanded && state->RequireOffset() == offset);
+    // The handle's dismiss action.
+    const auto tree = SheetWindow(h)->BuildSemanticsTree();
+    const auto* handle = FindIn(tree, [](const ui::SemanticsNode& n) { return bool(n.config.dismiss) && !n.config.paneTitle; });
+    CHECK(handle != nullptr);
+    if (handle) handle->config.dismiss();
+    h.AdvanceTimeBy(1000);
+    CHECK(state->CurrentValue() == SheetValue::PartiallyExpanded && state->RequireOffset() == offset);
+}
+
+TEST(ModalBottomSheetAnchorsFollowItsContent) {
+    // The current value stays while it has an anchor; an empty sheet keeps only Hidden.
+    FlagScope flag(ComposeMaterial3Flags::isBottomSheetPartiallyExpandedDeterministicEnabled, false);
+    ModalHarness h;
+    rt::State<int> items{ 0 };
+    std::shared_ptr<SheetState> state;
+    std::vector<rt::Job> jobs;
+    Themed(h, [&] {
+        state = RememberBottomSheetState(SheetValue::Hidden);
+        ModalBottomSheetOptions o;
+        o.sheetState = state;
+        o.dragHandle = nullptr;
+        o.contentWindowInsets = [] { return WindowInsets{}; };
+        ModalBottomSheet([] {}, {}, o, [&] {
+            LazyListState& list = RememberLazyListState();
+            const int n = items.Get();
+            LazyColumn({}, list, [n](LazyListScope& s) { s.Items(n, [](int i) { ListItem([i] { Text(std::to_string(i)); }); }); });
+        });
+    });
+    h.AdvanceTimeBy(1000);
+    CHECK(state->CurrentValue() == SheetValue::Hidden);
+    items.Set(50);
+    h.AdvanceTimeBy(1000);
+    jobs.push_back(rt::Launch(rt::Dispatcher::Main(), state->Show()));
+    h.AdvanceTimeBy(1000);
+    CHECK(state->CurrentValue() == SheetValue::PartiallyExpanded);
+    items.Set(100);
+    h.AdvanceTimeBy(1000);
+    const auto all = [&] {
+        const auto& a = state->Anchored().Anchors();
+        return a.HasPositionFor(SheetValue::Hidden) && a.HasPositionFor(SheetValue::PartiallyExpanded) && a.HasPositionFor(SheetValue::Expanded);
+    };
+    CHECK(state->CurrentValue() == SheetValue::PartiallyExpanded && all());
+    jobs.push_back(rt::Launch(rt::Dispatcher::Main(), state->Expand()));
+    h.AdvanceTimeBy(1000);
+    CHECK(state->CurrentValue() == SheetValue::Expanded);
+    items.Set(50);
+    h.AdvanceTimeBy(1000);
+    CHECK(state->CurrentValue() == SheetValue::Expanded && all());
+    items.Set(0);
+    h.AdvanceTimeBy(1000);
+    const auto& a = state->Anchored().Anchors();
+    CHECK(state->CurrentValue() == SheetValue::Hidden && a.HasPositionFor(SheetValue::Hidden));
+    CHECK(!a.HasPositionFor(SheetValue::PartiallyExpanded) && !a.HasPositionFor(SheetValue::Expanded));
+}
+
+TEST(ModalBottomSheetMissingAnchorsFindTheClosest) {
+    FlagScope flag(ComposeMaterial3Flags::isBottomSheetPartiallyExpandedDeterministicEnabled, false);
+    {
+        // Hidden, then shown with short content: expanded.
+        ModalHarness h;
+        rt::State<bool> shortContent{ false };
+        std::shared_ptr<SheetState> state = NewSheetState();
+        std::vector<rt::Job> jobs;
+        Themed(h, [&] {
+            ModalBottomSheetOptions o;
+            o.sheetState = state;
+            o.dragHandle = nullptr;
+            ModalBottomSheet([] {}, {}, o, [&] {
+                if (shortContent.Get()) Box(Height(FillMax({}, Axis::Horizontal), 1_dp));
+                else Box(FillMax({}, Axis::Both));
+            });
+        });
+        h.AdvanceTimeBy(1000);
+        jobs.push_back(rt::Launch(rt::Dispatcher::Main(), state->Hide()));
+        h.AdvanceTimeBy(1000);
+        CHECK(state->CurrentValue() == SheetValue::Hidden);
+        shortContent.Set(true);
+        jobs.push_back(rt::Launch(rt::Dispatcher::Main(), state->Show()));
+        h.AdvanceTimeBy(1000);
+        CHECK(state->CurrentValue() == SheetValue::Expanded);
+    }
+    // Shown while empty: Expanded with no anchor, reconciled once there is content.
+    for (float fraction : { 0.4f, 0.6f }) {
+        ModalHarness h;
+        rt::State<bool> hasContent{ false };
+        std::shared_ptr<SheetState> state = NewSheetState();
+        std::vector<rt::Job> jobs;
+        Themed(h, [&] {
+            ModalBottomSheetOptions o;
+            o.sheetState = state;
+            o.dragHandle = nullptr;
+            o.contentWindowInsets = [] { return WindowInsets{}; };
+            ModalBottomSheet([] {}, {}, o, [&, fraction] {
+                if (hasContent.Get()) Box(FillMax({}, Axis::Vertical, fraction));
+                else Box(SizeMod({}, 0_dp, 0_dp));
+            });
+        });
+        h.AdvanceTimeBy(1000);
+        CHECK(state->CurrentValue() == SheetValue::Hidden);
+        CHECK(!state->Anchored().Anchors().HasPositionFor(SheetValue::PartiallyExpanded) &&
+              !state->Anchored().Anchors().HasPositionFor(SheetValue::Expanded));
+        jobs.push_back(rt::Launch(rt::Dispatcher::Main(), state->Show()));
+        h.AdvanceTimeBy(1000);
+        CHECK(state->IsVisible() && state->CurrentValue() == SheetValue::Expanded && state->TargetValue() == SheetValue::Expanded);
+        CHECK(state->RequireOffset() == 1600);
+        hasContent.Set(true);
+        h.AdvanceTimeBy(1000);
+        CHECK(state->CurrentValue() == SheetValue::Expanded && Within(state->RequireOffset(), 1600 * (1 - fraction), 1));
+    }
+}
+
+TEST(ModalBottomSheetNestedScrollMovesTheSheetWithinItsBounds) {
+    ModalHarness h;
+    std::int64_t t = 1000;
+    std::shared_ptr<SheetState> state;
+    ScrollState* scroll = nullptr;
+    Themed(h, [&] {
+        state = RememberBottomSheetState(SheetValue::Hidden);
+        ModalBottomSheetOptions o;
+        o.sheetState = state;
+        ModalBottomSheet([] {}, {}, o, [&] {
+            scroll = &RememberScrollState();
+            Column(VerticalScroll(Tag(FillMax({}, Axis::Horizontal), "sheet"), *scroll), Arrangement::Top(), AlignmentH::Start(), [] {
+                for (int i = 0; i < 30; ++i) Text(std::to_string(i), RequiredSize({}, Dp::Unspecified(), 50_dp));
+            });
+        });
+    });
+    h.AdvanceTimeBy(1000);
+    CHECK(scroll && scroll->Value() == 0 && state->CurrentValue() == SheetValue::PartiallyExpanded);
+    if (!scroll) return;
+    const auto swipe = [&](float fromY, float toY) {
+        WindowSwipe(h, t, 400, fromY, 400, toY);
+        h.AdvanceTimeBy(2000);
+    };
+    // Bounds of the visible part of the column, in px (swipeUp(startY = bottom, ...)).
+    const auto bounds = [&] {
+        auto b = WindowBoundsDp(h, "sheet");
+        ui::Rect r = b ? *b : ui::Rect{};
+        return ui::Rect{ r.left * 2, r.top * 2, r.right * 2, std::min(r.bottom * 2, 1599.0f) };
+    };
+    auto b = bounds();
+    swipe(b.bottom, b.bottom / 2);
+    CHECK(scroll->Value() == 0 && state->CurrentValue() == SheetValue::Expanded);
+    b = bounds();
+    swipe(b.bottom, b.top);
+    CHECK(scroll->Value() > 0 && state->CurrentValue() == SheetValue::Expanded);
+    b = bounds();
+    swipe(b.top, b.bottom);
+    CHECK(scroll->Value() == 0 && state->CurrentValue() == SheetValue::Expanded);
+    b = bounds();
+    swipe(b.top, b.bottom / 2);
+    CHECK(scroll->Value() == 0 && state->CurrentValue() == SheetValue::PartiallyExpanded);
+    b = bounds();
+    swipe(b.bottom / 2, b.bottom);
+    CHECK(scroll->Value() == 0 && state->CurrentValue() == SheetValue::Hidden);
+}
+
+TEST(ModalBottomSheetSettlesWhenItsPartialAnchorGoes) {
+    // Shrunk below half the window while animating to partially expanded (legacy state).
+    ModalHarness h;
+    rt::State<float> fraction{ 0.7f };
+    std::shared_ptr<SheetState> state;
+    Themed(h, [&] {
+        state = RememberModalBottomSheetState();
+        ModalBottomSheetOptions o;
+        o.sheetState = state;
+        ModalBottomSheet([] {}, {}, o, [&] { Box(FillMax(FillMax({}, Axis::Horizontal), Axis::Vertical, fraction.Get())); });
+    });
+    h.AdvanceTimeBy(1000);
+    CHECK(state->CurrentValue() == SheetValue::PartiallyExpanded);
+    rt::Job job = rt::Launch(rt::Dispatcher::Main(), state->PartialExpand());
+    fraction.Set(0.3f);
+    h.AdvanceTimeBy(1000);
+    CHECK(state->CurrentValue() == SheetValue::Expanded && state->TargetValue() == SheetValue::Expanded);
+    CHECK(!state->HasPartiallyExpandedState());
+}
+
+TEST(ModalBottomSheetWindowIsSecureWhenAsked) {
+    // ModalBottomSheetDialogTest dialog_showsContent, with the secure policy.
+    ModalHarness h;
+    std::optional<ui::DialogWindowProperties> seen;
+    h.host.create = [&](ui::Owner& o, const ui::DialogWindowProperties& p, std::function<void()>) {
+        seen = p;
+        return std::make_unique<ModalHarness::Window>(&h, &o);
+    };
+    h.owner.SetDialogHost(h.host);
+    Themed(h, [&] {
+        ModalBottomSheetOptions o;
+        o.properties.securePolicy = SecureFlagPolicy::SecureOn;
+        ModalBottomSheet([] {}, {}, o, [] { Box(FillMax({}, Axis::Both), ui::Alignment::TopStart(), false, [] { Text("BottomSheet Content"); }); });
+    });
+    h.AdvanceTimeBy(1000);
+    CHECK(seen && seen->secure);
+    CHECK(SheetWindow(h) && FindSemantics(SheetWindow(h)->BuildSemanticsTree(), "BottomSheet Content"));
+}
+
+// Ported from Compose's BottomSheetScaffoldTest (the screen is 412 x 800 dp, density 2).
+namespace {
+    constexpr float kRootHeight = 800, kSheetHeight = 256, kDragHandleSize = 44, kPeekHeight = 75;
+    // The drag handle's merged node (the only clickable in these scaffolds).
+    const ui::SemanticsNode* HandleNode(const ui::SemanticsNode& n) {
+        if (n.config.onClick) return &n;
+        for (const auto& c : n.children)
+            if (const auto* r = HandleNode(c)) return r;
+        return nullptr;
+    }
+    float TopDp(Harness& h, const std::string& tag) {
+        const auto b = UnclippedBoundsDp(h, tag);
+        return b ? b->top : NAN;
+    }
+    // A scaffold with `sheet` as its sheet content and a Text body.
+    void Scaffold(Harness& h, std::shared_ptr<SheetState>& state, std::function<SheetState*()> makeState, std::function<void()> sheet,
+                  std::function<void(BottomSheetScaffoldOptions&)> options = {}) {
+        Themed(h, [&, makeState, sheet, options] {
+            if (makeState) makeState();
+            BottomSheetScaffoldOptions o;
+            o.scaffoldState = RememberBottomSheetScaffoldState(state);
+            o.sheetPeekHeight = Dp(kPeekHeight);
+            if (options) options(o);
+            if (!state) state = o.scaffoldState->bottomSheetState;
+            BottomSheetScaffold(sheet, {}, o, [](const PaddingValues&) { Text("Content"); });
+        });
+        h.AdvanceTimeBy(1000);
+    }
+    std::function<SheetState*()> Remembered(std::shared_ptr<SheetState>& state, SheetValue initial, SheetValues enabled,
+                                           std::function<bool(SheetValue)> confirm = {}) {
+        return [&state, initial, enabled, confirm] {
+            state = RememberBottomSheetState(initial, enabled, confirm);
+            return state.get();
+        };
+    }
+    void FixedSheet() { Box(Tag(RequiredSize(FillMax({}, Axis::Horizontal), Dp::Unspecified(), Dp(kSheetHeight)), "sheet")); }
+    void TaggedHandle() { Box(Tag(SizeMod({}, Dp(kDragHandleSize), Dp(kDragHandleSize)), "handle")); }
+    // performClick: a tap at the tagged node's centre.
+    bool ClickTag(Harness& h, const std::string& tag) {
+        const auto b = UnclippedBoundsDp(h, tag);
+        if (!b) return false;
+        std::int64_t t = 5000;
+        const float x = b->left + b->right, y = b->top + b->bottom;   // centre, in px
+        Touch(h, t, ui::PointerEventType::Press, x, y, true);
+        Touch(h, t, ui::PointerEventType::Release, x, y, false);
+        return true;
+    }
+}
+
+TEST(BottomSheetScaffoldStateSavedAndRestored) {
+    rt::SaveableStateRegistry::Values saved;
+    for (int pass = 0; pass < 2; ++pass) {
+        rt::SaveableStateRegistry registry(saved);
+        std::shared_ptr<SheetState> state;
+        Harness h;
+        h.Run([&] {
+            rt::Composition::Current()->Provide(rt::LocalSaveableStateRegistry, &registry, [&] { state = RememberBottomSheetState(SheetValue::Expanded); });
+        });
+        CHECK(state && state->CurrentValue() == SheetValue::Expanded);
+        if (pass == 0) saved = rt::SaveableStateRegistry::Deserialize(rt::SaveableStateRegistry::Serialize(registry.PerformSave()));
+    }
+}
+
+TEST(BottomSheetScaffoldOffsetWhenCollapsed) {
+    PhoneHarness h;
+    std::shared_ptr<SheetState> state;
+    Scaffold(h, state, {}, [] { Box(Tag(FillMax({}, Axis::Both), "sheet")); }, [](BottomSheetScaffoldOptions& o) { o.sheetDragHandle = nullptr; });
+    CHECK(Near(TopDp(h, "sheet"), kRootHeight - kPeekHeight));
+}
+
+TEST(BottomSheetScaffoldOffsetWhenExpanded) {
+    PhoneHarness h;
+    std::shared_ptr<SheetState> state;
+    Scaffold(h, state, Remembered(state, SheetValue::Expanded, SheetValues{ false, true }),
+             [] { Box(RequiredSize(FillMax({}, Axis::Horizontal), Dp::Unspecified(), Dp(kSheetHeight))); },
+             [](BottomSheetScaffoldOptions& o) {
+                 o.sheetDragHandle = [] { Box(Tag(RequiredSize(FillMax({}, Axis::Horizontal), Dp::Unspecified(), Dp(kDragHandleSize)), "handle")); };
+             });
+    CHECK(Near(TopDp(h, "handle"), kRootHeight - (kSheetHeight + kDragHandleSize)));
+}
+
+TEST(BottomSheetScaffoldExpandAndCollapseActions) {
+    {
+        // Collapsed: Expand, no Collapse.
+        PhoneHarness h;
+        std::shared_ptr<SheetState> state;
+        Scaffold(h, state, {}, FixedSheet, [](BottomSheetScaffoldOptions& o) { o.sheetDragHandle = TaggedHandle; });
+        const auto tree = h.owner.BuildSemanticsTree();
+        const auto* handle = HandleNode(tree);
+        CHECK(handle && !handle->config.collapse && handle->config.expand);
+        if (!handle || !handle->config.expand) return;
+        handle->config.expand();
+        h.AdvanceTimeBy(1000);
+        CHECK(Near(TopDp(h, "handle"), kRootHeight - (kSheetHeight + kDragHandleSize)));
+    }
+    {
+        // Expanded: Collapse, no Expand.
+        PhoneHarness h;
+        std::shared_ptr<SheetState> state;
+        Scaffold(h, state, Remembered(state, SheetValue::Expanded, SheetValues{ false, true }), FixedSheet,
+                 [](BottomSheetScaffoldOptions& o) { o.sheetDragHandle = TaggedHandle; });
+        const auto tree = h.owner.BuildSemanticsTree();
+        const auto* handle = HandleNode(tree);
+        CHECK(handle && !handle->config.expand && handle->config.collapse);
+        if (!handle || !handle->config.collapse) return;
+        handle->config.collapse();
+        h.AdvanceTimeBy(1000);
+        CHECK(Near(TopDp(h, "handle"), kRootHeight - kPeekHeight));
+    }
+}
+
+TEST(BottomSheetScaffoldDismissActionWhenEnabled) {
+    PhoneHarness h;
+    std::shared_ptr<SheetState> state;
+    Scaffold(h, state, Remembered(state, SheetValue::PartiallyExpanded, SheetValues{ true, true }), FixedSheet,
+             [](BottomSheetScaffoldOptions& o) { o.sheetDragHandle = TaggedHandle; });
+    const auto tree = h.owner.BuildSemanticsTree();
+    const auto* handle = HandleNode(tree);
+    CHECK(handle && !handle->config.collapse && handle->config.dismiss && handle->config.expand);
+    if (!handle || !handle->config.dismiss) return;
+    handle->config.dismiss();
+    h.AdvanceTimeBy(1000);
+    CHECK(Near(TopDp(h, "handle"), kRootHeight));
+}
+
+TEST(BottomSheetScaffoldHideThrowsWithoutAHiddenState) {
+    PhoneHarness h;
+    std::shared_ptr<SheetState> state = NewSheetState(SheetValues{ false, true }, SheetValue::PartiallyExpanded);
+    Scaffold(h, state, {}, [] { Box(RequiredSize(FillMax({}, Axis::Horizontal), Dp::Unspecified(), Dp(kSheetHeight))); });
+    bool threw = false;
+    rt::Job job = rt::Launch(rt::Dispatcher::Main(), [](std::shared_ptr<SheetState> s, bool& threw) -> rt::Task<> {
+        try { co_await s->Hide(); } catch (const std::logic_error&) { threw = true; }
+    }(state, threw));
+    h.AdvanceTimeBy(100);
+    CHECK(threw);
+}
+
+TEST(BottomSheetScaffoldNoActionsWhenThePeekIsTheWholeSheet) {
+    PhoneHarness h;
+    std::shared_ptr<SheetState> state;
+    // The handle and the content add up to the peek height: one anchor, nothing to do.
+    Scaffold(h, state, {}, [] { Box(Tag(RequiredSize(FillMax({}, Axis::Horizontal), Dp::Unspecified(), Dp(kPeekHeight - kDragHandleSize)), "sheet")); },
+             [](BottomSheetScaffoldOptions& o) { o.sheetDragHandle = TaggedHandle; });
+    const auto tree = h.owner.BuildSemanticsTree();
+    const auto* handle = HandleNode(tree);
+    CHECK(state->Anchored().Anchors().Size() == 1);
+    CHECK(handle && !handle->config.expand && !handle->config.collapse);
+}
+
+TEST(BottomSheetScaffoldRevealAndConcealManually) {
+    PhoneHarness h;
+    std::shared_ptr<SheetState> state;
+    std::vector<rt::Job> jobs;
+    Scaffold(h, state, Remembered(state, SheetValue::PartiallyExpanded, SheetValues{ false, true }),
+             [] { Box(RequiredSize(FillMax({}, Axis::Horizontal), Dp::Unspecified(), Dp(kSheetHeight))); },
+             [](BottomSheetScaffoldOptions& o) {
+                 o.sheetDragHandle = [] { Box(Tag(RequiredSize(FillMax({}, Axis::Horizontal), Dp::Unspecified(), Dp(kDragHandleSize)), "handle")); };
+             });
+    CHECK(Near(TopDp(h, "handle"), kRootHeight - kPeekHeight));
+    jobs.push_back(rt::Launch(rt::Dispatcher::Main(), state->Expand()));
+    h.AdvanceTimeBy(1000);
+    CHECK(Near(TopDp(h, "handle"), kRootHeight - (kSheetHeight + kDragHandleSize)));
+    jobs.push_back(rt::Launch(rt::Dispatcher::Main(), state->PartialExpand()));
+    h.AdvanceTimeBy(1000);
+    CHECK(Near(TopDp(h, "handle"), kRootHeight - kPeekHeight));
+}
+
+TEST(BottomSheetScaffoldRevealBySwiping) {
+    // swipeUp / swipeDown over the sheet's visible part (px).
+    for (int variant = 0; variant < 3; ++variant) {   // 0 free, 1 confirm refuses Expanded, 2 gestures off
+        PhoneHarness h;
+        std::int64_t t = 1000;
+        std::shared_ptr<SheetState> state;
+        Scaffold(h, state,
+                 Remembered(state, SheetValue::PartiallyExpanded, SheetValues{ false, true },
+                            variant == 1 ? std::function<bool(SheetValue)>([](SheetValue v) { return v != SheetValue::Expanded; }) : nullptr),
+                 [] { Box(Tag(RequiredSize(FillMax({}, Axis::Horizontal), Dp::Unspecified(), 300_dp), "sheet")); },
+                 [variant](BottomSheetScaffoldOptions& o) {
+                     o.sheetDragHandle = variant == 0 ? std::function<void()>{} : o.sheetDragHandle;
+                     o.sheetSwipeEnabled = variant != 2;
+                 });
+        CHECK(state->CurrentValue() == SheetValue::PartiallyExpanded);
+        const auto b = UnclippedBoundsDp(h, "sheet");
+        CHECK(b.has_value());
+        if (!b) return;
+        const float top = b->top * 2, bottom = std::min(b->bottom * 2, 1599.0f);
+        Swipe(h, t, 412, bottom, 412, top, 10, 20);
+        h.AdvanceTimeBy(1000);
+        CHECK(state->CurrentValue() == (variant == 0 ? SheetValue::Expanded : SheetValue::PartiallyExpanded));
+        if (variant != 0) continue;
+        const auto e = UnclippedBoundsDp(h, "sheet");
+        if (!e) return;
+        Swipe(h, t, 412, e->top * 2, 412, std::min(e->bottom * 2, 1599.0f), 10, 20);
+        h.AdvanceTimeBy(1000);
+        CHECK(state->CurrentValue() == SheetValue::PartiallyExpanded);
+    }
+}
+
+TEST(BottomSheetScaffoldTopBarAboveTheContent) {
+    PhoneHarness h;
+    Themed(h, [&] {
+        BottomSheetScaffoldOptions o;
+        o.topBar = [] { Box(Tag(Height(FillMax({}, Axis::Horizontal), 50_dp), "bar")); };
+        BottomSheetScaffold([] { Box(RequiredSize({}, 10_dp, 10_dp)); }, {}, o,
+                            [](const PaddingValues&) { Box(Tag(Height(FillMax({}, Axis::Horizontal), 50_dp), "content")); });
+    });
+    h.AdvanceTimeBy(300);
+    const auto bar = UnclippedBoundsDp(h, "bar"), content = UnclippedBoundsDp(h, "content");
+    CHECK(bar && content && Near(bar->bottom, content->top));
+}
+
+TEST(BottomSheetScaffoldInnerPaddingIsThePeekHeight) {
+    PhoneHarness h;
+    PaddingValues inner;
+    Themed(h, [&] {
+        BottomSheetScaffoldOptions o;
+        o.sheetPeekHeight = Dp(kPeekHeight);
+        BottomSheetScaffold([] { Box(RequiredSize(FillMax({}, Axis::Horizontal), Dp::Unspecified(), 100_dp)); }, {}, o,
+                            [&](const PaddingValues& padding) { inner = padding; Text("body"); });
+    });
+    h.AdvanceTimeBy(300);
+    CHECK(inner.bottom == Dp(kPeekHeight));
+}
+
+TEST(BottomSheetScaffoldNestedScroll) {
+    PhoneHarness h;
+    std::int64_t t = 1000;
+    std::shared_ptr<SheetState> state;
+    std::shared_ptr<TopAppBarScrollBehavior> behavior;
+    ScrollState* sheetScroll = nullptr;
+    ScrollState* bodyScroll = nullptr;
+    Themed(h, [&] {
+        state = RememberBottomSheetState(SheetValue::PartiallyExpanded, SheetValues{ false, true });
+        behavior = TopAppBarDefaults::pinnedScrollBehavior();
+        BottomSheetScaffoldOptions o;
+        o.scaffoldState = RememberBottomSheetScaffoldState(state);
+        o.sheetPeekHeight = Dp(kPeekHeight);
+        o.topBar = [&] {
+            TopAppBarOptions bar;
+            bar.scrollBehavior = behavior;
+            TopAppBar([] { Text("Title"); }, Tag({}, "AppBar"), bar);
+        };
+        BottomSheetScaffold(
+            [&] {
+                sheetScroll = &RememberScrollState();
+                Column(VerticalScroll(Tag({}, "sheet"), *sheetScroll), Arrangement::Top(), AlignmentH::Start(), [] {
+                    for (int i = 0; i < 100; ++i) Text(std::to_string(i), RequiredSize({}, Dp::Unspecified(), 50_dp));
+                });
+            },
+            NestedScroll({}, behavior->NestedScrollConnection()), o,
+            [&](const PaddingValues&) {
+                bodyScroll = &RememberScrollState();
+                Column(VerticalScroll(Tag({}, "body"), *bodyScroll), Arrangement::Top(), AlignmentH::Start(), [] {
+                    for (int i = 0; i < 100; ++i) Text(std::to_string(i), RequiredSize({}, Dp::Unspecified(), 50_dp));
+                });
+            });
+    });
+    h.AdvanceTimeBy(1000);
+    CHECK(sheetScroll && bodyScroll && sheetScroll->Value() == 0 && state->CurrentValue() == SheetValue::PartiallyExpanded);
+    if (!sheetScroll || !bodyScroll) return;
+    // performTouchInput swipes at the node's centre, across its bounds (clipped to the screen), in px.
+    const auto swipeOn = [&](const std::string& tag, float fromFraction, float toFraction) {
+        const auto b = UnclippedBoundsDp(h, tag);
+        if (!b) return;
+        const float x = (b->left + b->right);   // centre, in px
+        const float top = b->top * 2, bottom = std::min(b->bottom * 2, 1599.0f);
+        Swipe(h, t, x, top + (bottom - top) * fromFraction, x, top + (bottom - top) * toFraction, 10, 20);
+        h.AdvanceTimeBy(1000);
+    };
+    // swipeUp(startY = bottom, endY = bottom / 2): the sheet expands, its content stays put.
+    {
+        const auto b = UnclippedBoundsDp(h, "sheet");
+        if (!b) return;
+        const float x = b->left + b->right, bottom = std::min(b->bottom * 2, 1599.0f);
+        Swipe(h, t, x, bottom, x, bottom / 2, 10, 20);
+        h.AdvanceTimeBy(1000);
+    }
+    CHECK(sheetScroll->Value() == 0 && state->CurrentValue() == SheetValue::Expanded);
+    CHECK(behavior->State().OverlappedFraction() == 0);
+    swipeOn("sheet", 0, 1);   // swipeDown(startY = top, endY = bottom)
+    CHECK(sheetScroll->Value() == 0 && state->CurrentValue() == SheetValue::PartiallyExpanded);
+    // The body scrolls (and the pinned bar notices) while the sheet stays.
+    {
+        const auto b = UnclippedBoundsDp(h, "body");
+        if (!b) return;
+        const float x = b->left + b->right, top = b->top * 2, bottom = std::min(b->bottom * 2, 1599.0f);
+        Swipe(h, t, x, bottom / 2, x, top, 10, 20);
+        h.AdvanceTimeBy(1000);
+    }
+    CHECK(sheetScroll->Value() == 0 && state->CurrentValue() == SheetValue::PartiallyExpanded);
+    CHECK(bodyScroll->Value() > 0 && behavior->State().OverlappedFraction() > 0);
+}
+
+TEST(BottomSheetScaffoldGesturesOffKeepTheSheetOutOfNestedScroll) {
+    PhoneHarness h;
+    std::int64_t t = 1000;
+    std::shared_ptr<SheetState> state;
+    ScrollState* scroll = nullptr;
+    std::vector<rt::Job> jobs;
+    Scaffold(h, state, Remembered(state, SheetValue::PartiallyExpanded, SheetValues{ false, true }),
+             [&] {
+                 scroll = &RememberScrollState();
+                 Column(VerticalScroll(Tag({}, "sheet"), *scroll), Arrangement::Top(), AlignmentH::Start(), [] {
+                     for (int i = 0; i < 100; ++i) Text(std::to_string(i), RequiredSize({}, Dp::Unspecified(), 50_dp));
+                 });
+             },
+             [](BottomSheetScaffoldOptions& o) { o.sheetSwipeEnabled = false; });
+    CHECK(scroll && scroll->Value() == 0 && state->CurrentValue() == SheetValue::PartiallyExpanded);
+    if (!scroll) return;
+    const auto swipe = [&](bool up) {
+        const auto b = UnclippedBoundsDp(h, "sheet");
+        if (!b) return;
+        const float x = b->left + b->right, top = b->top * 2, bottom = std::min(b->bottom * 2, 1599.0f);
+        if (up) Swipe(h, t, x, bottom, x, top, 10, 20);
+        else Swipe(h, t, x, top, x, bottom, 10, 20);
+        h.AdvanceTimeBy(1000);
+    };
+    swipe(true);
+    CHECK(scroll->Value() > 0 && state->CurrentValue() == SheetValue::PartiallyExpanded);
+    jobs.push_back(rt::Launch(rt::Dispatcher::Main(), [](std::shared_ptr<SheetState> s, ScrollState* sc) -> rt::Task<> {
+        co_await s->SnapTo(SheetValue::Expanded);
+        sc->ScrollTo(10);
+    }(state, scroll)));
+    h.AdvanceTimeBy(1000);
+    CHECK(scroll->Value() == 10 && state->CurrentValue() == SheetValue::Expanded);
+    swipe(false);
+    CHECK(scroll->Value() == 0 && state->CurrentValue() == SheetValue::Expanded);
+}
+
+TEST(BottomSheetScaffoldSheetMaxWidth) {
+    PhoneHarness h;
+    rt::State<float> maxWidth{ 0 };
+    std::shared_ptr<SheetState> state;
+    Scaffold(h, state, {}, [] { Box(Tag(FillMax({}, Axis::Both), "sheet")); }, [&](BottomSheetScaffoldOptions& o) {
+        o.sheetDragHandle = nullptr;
+        o.sheetMaxWidth = Dp(maxWidth.Get());
+    });
+    for (float dp : { 0.0f, 200.0f, 400.0f }) {
+        maxWidth.Set(dp);
+        h.AdvanceTimeBy(300);
+        const auto b = UnclippedBoundsDp(h, "sheet");
+        CHECK(b && Near(b->Width(), std::min(dp, 412.0f)));
+    }
+}
+
+TEST(BottomSheetScaffoldSlotsPositioned) {
+    PhoneHarness h;
+    auto hostState = std::make_shared<SnackbarHostState>();
+    std::string handleDescription;
+    Themed(h, [&] {
+        handleDescription = GetString(Strings::BottomSheetDragHandleDescription);
+        BottomSheetScaffoldOptions o;
+        o.sheetPeekHeight = Dp(kPeekHeight);
+        BottomSheetDefaults::DragHandleOptions handle;
+        handle.shape = RectangleShape();
+        o.sheetDragHandle = [handle] { BottomSheetDefaults::DragHandle({}, handle); };
+        o.topBar = [] { Box(Tag(Height(FillMax({}, Axis::Horizontal), 56_dp), "TopBar")); };
+        o.snackbarHost = [&](SnackbarHostState&) { SnackbarHost(*hostState, Tag({}, "snackbar")); };
+        BottomSheetScaffold([] { Box(Tag(FillMax(Height({}, Dp(kSheetHeight)), Axis::Horizontal), "sheet")); }, {}, o,
+                            [](const PaddingValues& padding) {
+                                Box(Padding({}, padding), Alignment::TopStart(), false, [] { Text("Scaffold Content", Tag({}, "ScaffoldContent")); });
+                            });
+    });
+    h.AdvanceTimeBy(1000);
+    // The handle (4 dp tall) has 22 dp above and below it.
+    const float tolerance = 0.75f;
+    CHECK(Within(TopDp(h, "sheet"), kRootHeight - kPeekHeight + 22 * 2 + 4, tolerance));
+    const auto bar = UnclippedBoundsDp(h, "TopBar");
+    CHECK(bar && Near(bar->top, 0) && Near(bar->Height(), 56) && Near(bar->Width(), 412));
+    CHECK(Near(TopDp(h, "ScaffoldContent"), 56));
+    // The snackbar host sits right above the peeking sheet.
+    const auto snack = UnclippedBoundsDp(h, "snackbar");
+    CHECK(snack && Within(snack->bottom, kRootHeight - kPeekHeight, 0.5f));
+    CHECK(BoundsDp(h, handleDescription).has_value());
+}
+
+TEST(BottomSheetScaffoldDragHandleClick) {
+    for (bool hiddenAllowed : { false, true }) {
+        PhoneHarness h;
+        std::shared_ptr<SheetState> state;
+        Scaffold(h, state, Remembered(state, SheetValue::PartiallyExpanded, SheetValues{ hiddenAllowed, true }), FixedSheet,
+                 [](BottomSheetScaffoldOptions& o) { o.sheetDragHandle = TaggedHandle; });
+        CHECK(state->CurrentValue() == SheetValue::PartiallyExpanded);
+        CHECK(ClickTag(h, "handle"));
+        h.AdvanceTimeBy(1000);
+        CHECK(state->CurrentValue() == SheetValue::Expanded);
+        CHECK(ClickTag(h, "handle"));
+        h.AdvanceTimeBy(1000);
+        CHECK(state->CurrentValue() == (hiddenAllowed ? SheetValue::Hidden : SheetValue::PartiallyExpanded));
+    }
+}
+
+TEST(BottomSheetScaffoldPeekHeightMatchingTheSheetHasOnlyTheExpandedAnchor) {
+    PhoneHarness h;
+    std::shared_ptr<SheetState> state = NewSheetState(SheetValues{ false, false }, SheetValue::Expanded);
+    Scaffold(h, state, {}, [] { Box(RequiredSize(FillMax({}, Axis::Horizontal), Dp::Unspecified(), Dp(kSheetHeight))); },
+             [](BottomSheetScaffoldOptions& o) { o.sheetDragHandle = nullptr; o.sheetPeekHeight = Dp(kSheetHeight); });
+    CHECK(state->Anchored().Anchors().Size() == 1 && state->HasExpandedState());
+}
+
+TEST(BottomSheetScaffoldSemanticsActionsAskConfirmValueChange) {
+    PhoneHarness h;
+    std::shared_ptr<SheetState> state;
+    std::set<SheetValue> asked;
+    std::string expandLabel, collapseLabel, dismissLabel;
+    Themed(h, [&] {
+        expandLabel = GetString(Strings::BottomSheetExpandDescription);
+        collapseLabel = GetString(Strings::BottomSheetPartialExpandDescription);
+        dismissLabel = GetString(Strings::BottomSheetDismissDescription);
+        state = RememberBottomSheetState(SheetValue::PartiallyExpanded, SheetValues{ true, true }, [&](SheetValue v) { asked.insert(v); return true; });
+        BottomSheetScaffoldOptions o;
+        o.scaffoldState = RememberBottomSheetScaffoldState(state);
+        BottomSheetScaffold([] { Box(RequiredSize(FillMax({}, Axis::Horizontal), Dp::Unspecified(), Dp(kSheetHeight))); }, {}, o,
+                            [](const PaddingValues&) { Text("Content"); });
+    });
+    h.AdvanceTimeBy(1000);
+    CHECK(state->CurrentValue() == SheetValue::PartiallyExpanded && asked.empty());
+    const auto act = [&](auto pick) {
+        const auto tree = h.owner.BuildSemanticsTree();
+        const auto* handle = HandleNode(tree);
+        if (!handle) return false;
+        const bool ok = pick(handle->config);
+        h.AdvanceTimeBy(1000);
+        return ok;
+    };
+    CHECK(act([&](const ui::SemanticsConfiguration& c) { return c.expand && c.expandLabel == expandLabel && c.expand(); }));
+    CHECK(asked == std::set<SheetValue>{ SheetValue::Expanded });
+    asked.clear();
+    CHECK(act([&](const ui::SemanticsConfiguration& c) { return c.collapse && c.collapseLabel == collapseLabel && c.collapse(); }));
+    CHECK(asked == std::set<SheetValue>{ SheetValue::PartiallyExpanded });
+    asked.clear();
+    CHECK(act([&](const ui::SemanticsConfiguration& c) { return c.dismiss && c.dismissLabel == dismissLabel && c.dismiss(); }));
+    CHECK(asked == std::set<SheetValue>{ SheetValue::Hidden });
+}
+
+TEST(BottomSheetScaffoldPeekHeightZero) {
+    const auto make = [](PhoneHarness& h, std::shared_ptr<SheetState>& state, SheetValue initial) {
+        Themed(h, [&, initial] {
+            if (!state) state = RememberBottomSheetState(initial, SheetValues{ true, true });
+            BottomSheetScaffoldOptions o;
+            o.scaffoldState = RememberBottomSheetScaffoldState(state);
+            o.sheetPeekHeight = 0_dp;   // the ambiguous anchor
+            BottomSheetScaffold([] { Box(Height(FillMax({}, Axis::Horizontal), 100_dp)); }, {}, o, [](const PaddingValues&) { Box(FillMax({}, Axis::Both)); });
+        });
+        h.AdvanceTimeBy(1000);
+    };
+    {
+        // Partially expanded at first, out of sight.
+        PhoneHarness h;
+        std::shared_ptr<SheetState> state = NewSheetState(SheetValues{ true, true }, SheetValue::PartiallyExpanded);
+        make(h, state, SheetValue::PartiallyExpanded);
+        CHECK(state->CurrentValue() == SheetValue::PartiallyExpanded && Near(state->RequireOffset(), 1600));
+    }
+    {
+        // Animates from expanded to partially expanded.
+        PhoneHarness h;
+        std::shared_ptr<SheetState> state;
+        make(h, state, SheetValue::Expanded);
+        CHECK(state->CurrentValue() == SheetValue::Expanded);
+        rt::Job job = rt::Launch(rt::Dispatcher::Main(), state->PartialExpand());
+        h.AdvanceTimeBy(1000);
+        CHECK(state->CurrentValue() == SheetValue::PartiallyExpanded && state->TargetValue() == SheetValue::PartiallyExpanded);
+    }
+    {
+        // Hides when asked.
+        PhoneHarness h;
+        std::shared_ptr<SheetState> state;
+        make(h, state, SheetValue::PartiallyExpanded);
+        CHECK(state->CurrentValue() == SheetValue::PartiallyExpanded);
+        rt::Job job = rt::Launch(rt::Dispatcher::Main(), state->Hide());
+        h.AdvanceTimeBy(1000);
+        CHECK(state->CurrentValue() == SheetValue::Hidden && !state->IsVisible());
+    }
+    {
+        // The ambiguous anchor goes once the sheet leaves it.
+        PhoneHarness h;
+        std::shared_ptr<SheetState> state;
+        make(h, state, SheetValue::PartiallyExpanded);
+        CHECK(state->CurrentValue() == SheetValue::PartiallyExpanded && state->HasPartiallyExpandedState());
+        rt::Job expand = rt::Launch(rt::Dispatcher::Main(), state->Expand());
+        h.AdvanceTimeBy(1000);
+        CHECK(state->CurrentValue() == SheetValue::Expanded && !state->HasPartiallyExpandedState());
+        rt::Job hide = rt::Launch(rt::Dispatcher::Main(), state->Hide());
+        h.AdvanceTimeBy(1000);
+        CHECK(state->CurrentValue() == SheetValue::Hidden);
+    }
+}
+
+TEST(BottomSheetScaffoldTakesTheThemesMotionScheme) {
+    PhoneHarness h;
+    auto scheme = std::make_shared<CustomMotionScheme>();
+    std::shared_ptr<BottomSheetScaffoldState> scaffold;
+    Themed(h, [&] {
+        MaterialThemeArgs args;
+        args.motionScheme = scheme;
+        MaterialTheme(args, [&] {
+            scaffold = RememberBottomSheetScaffoldState();
+            BottomSheetScaffoldOptions o;
+            o.scaffoldState = scaffold;
+            BottomSheetScaffold([] {}, {}, o, [](const PaddingValues&) {});
+        });
+    });
+    h.AdvanceTimeBy(100);
+    const auto& s = *scaffold->bottomSheetState;
+    CHECK(s.showMotionSpec == scheme->spatial && s.anchoredDraggableMotionSpec == scheme->spatial && s.hideMotionSpec == scheme->effects);
 }
