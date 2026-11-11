@@ -9,17 +9,24 @@ namespace catalog::Icons {
     using kiln::gfx::vector::ImageVectorPtr;
 
     namespace AutoMirrored { namespace Filled { const ImageVectorPtr& ArrowBack(); }}
+    namespace AutoMirrored { namespace Filled { const ImageVectorPtr& ArrowRight(); }}
     namespace AutoMirrored { namespace Filled { const ImageVectorPtr& KeyboardArrowRight(); }}
     namespace Filled { const ImageVectorPtr& Add(); }
+    namespace Filled { const ImageVectorPtr& ArrowDropDown(); }
     namespace Filled { const ImageVectorPtr& Check(); }
     namespace Filled { const ImageVectorPtr& Clear(); }
+    namespace Filled { const ImageVectorPtr& Done(); }
     namespace Filled { const ImageVectorPtr& Edit(); }
     namespace Filled { const ImageVectorPtr& Favorite(); }
+    namespace Filled { const ImageVectorPtr& Home(); }
     namespace Filled { const ImageVectorPtr& Lock(); }
     namespace Filled { const ImageVectorPtr& MoreVert(); }
+    namespace Filled { const ImageVectorPtr& Person(); }
     namespace Filled { const ImageVectorPtr& PushPin(); }
     namespace Filled { const ImageVectorPtr& Search(); }
+    namespace Filled { const ImageVectorPtr& Settings(); }
     namespace Filled { const ImageVectorPtr& Star(); }
+    namespace Filled { const ImageVectorPtr& Tune(); }
     namespace Outlined { const ImageVectorPtr& Lock(); }
     namespace Outlined { const ImageVectorPtr& PushPin(); }
 

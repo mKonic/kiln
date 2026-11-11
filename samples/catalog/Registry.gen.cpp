@@ -5,6 +5,7 @@
 #include "samples/ButtonSamples.h"
 #include "samples/CardSamples.h"
 #include "samples/CheckboxSamples.h"
+#include "samples/ChipSamples.h"
 #include "samples/Common.h"
 #include "samples/FloatingActionButtonSamples.h"
 #include "samples/IconButtonSamples.h"
@@ -94,22 +95,22 @@ namespace catalog {
                 { "TriStateCheckboxRoundedStrokesSample", "Checkboxes examples", false, samples::TriStateCheckboxRoundedStrokesSample },
             } },
             { 10, "Chips", "Chips allow users to enter information, make selections, filter content, or trigger actions.", true, {
-                { "AssistChipSample", "Chips examples", false, nullptr },
-                { "ElevatedAssistChipSample", "Chips examples", false, nullptr },
-                { "FilterChipSample", "Chips examples", false, nullptr },
-                { "FilterChipWithCornerMorphingSample", "Chips examples", true, nullptr },
-                { "ElevatedFilterChipSample", "Chips examples", false, nullptr },
-                { "ElevatedFilterChipWithCornerMorphingSample", "Chips examples", true, nullptr },
-                { "FilterChipWithLeadingIconSample", "Chips examples", false, nullptr },
-                { "FilterChipWithTrailingIconSample", "Chips examples", false, nullptr },
-                { "FilterChipWithCustomSpacingSample", "Chips examples", false, nullptr },
-                { "InputChipSample", "Chips examples", false, nullptr },
-                { "InputChipWithAvatarSample", "Chips examples", false, nullptr },
-                { "InputChipWithCornerMorphingSample", "Chips examples", true, nullptr },
-                { "SuggestionChipSample", "Chips examples", false, nullptr },
-                { "ElevatedSuggestionChipSample", "Chips examples", false, nullptr },
-                { "ChipGroupSingleLineSample", "Chips examples", false, nullptr },
-                { "ChipGroupReflowSample", "Chips examples", false, nullptr },
+                { "AssistChipSample", "Chips examples", false, samples::AssistChipSample },
+                { "ElevatedAssistChipSample", "Chips examples", false, samples::ElevatedAssistChipSample },
+                { "FilterChipSample", "Chips examples", false, samples::FilterChipSample },
+                { "FilterChipWithCornerMorphingSample", "Chips examples", true, samples::FilterChipWithCornerMorphingSample },
+                { "ElevatedFilterChipSample", "Chips examples", false, samples::ElevatedFilterChipSample },
+                { "ElevatedFilterChipWithCornerMorphingSample", "Chips examples", true, samples::ElevatedFilterChipWithCornerMorphingSample },
+                { "FilterChipWithLeadingIconSample", "Chips examples", false, samples::FilterChipWithLeadingIconSample },
+                { "FilterChipWithTrailingIconSample", "Chips examples", false, samples::FilterChipWithTrailingIconSample },
+                { "FilterChipWithCustomSpacingSample", "Chips examples", false, samples::FilterChipWithCustomSpacingSample },
+                { "InputChipSample", "Chips examples", false, samples::InputChipSample },
+                { "InputChipWithAvatarSample", "Chips examples", false, samples::InputChipWithAvatarSample },
+                { "InputChipWithCornerMorphingSample", "Chips examples", true, samples::InputChipWithCornerMorphingSample },
+                { "SuggestionChipSample", "Chips examples", false, samples::SuggestionChipSample },
+                { "ElevatedSuggestionChipSample", "Chips examples", false, samples::ElevatedSuggestionChipSample },
+                { "ChipGroupSingleLineSample", "Chips examples", false, samples::ChipGroupSingleLineSample },
+                { "ChipGroupReflowSample", "Chips examples", false, samples::ChipGroupReflowSample },
             } },
             { 11, "Date pickers", "Date pickers let users select a date or range of dates.", true, {
                 { "DatePickerSample", "Date picker examples", false, nullptr },
