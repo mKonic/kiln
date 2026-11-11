@@ -38,6 +38,8 @@
 #include "kiln/material3/SearchBar.h"
 #include "kiln/material3/SwipeToDismissBox.h"
 #include "kiln/material3/PullToRefresh.h"
+#include "kiln/material3/Carousel.h"
+#include "kiln/material3/internal/CarouselKeylines.h"
 #include "kiln/ui/Back.h"
 #include "kiln/material3/internal/GetString.h"
 #include "kiln/material3/Divider.h"
@@ -11647,5 +11649,261 @@ TEST(PullToRefreshIndicators) {
         CHECK(ClickTag(h, "indicator"));
         h.AdvanceTimeBy(300);
         CHECK(downs == 1);
+    }
+}
+
+// --- Carousel (CarouselTest.kt) ---------------------------------------------------------------------
+
+namespace {
+    // Item(index): a box filling the item, tagged with its index.
+    void CarouselTestItem(int index, std::function<void()> onClick = {}) {
+        ui::Modifier m = Tag(Background(FillMax({}, Axis::Both), Color(0xFF0000FFu)), "item" + std::to_string(index));
+        if (onClick) m = Clickable(std::move(m), std::move(onClick));
+        Box(m, Alignment::Center(), false, [index] { Text(std::to_string(index)); });
+    }
+    ui::Modifier CarouselSize(ui::Dp w = 412_dp, ui::Dp h = 221_dp) { return Tag(Height(Width({}, w), h), "carousel"); }
+
+    struct CarouselSetup {
+        int initialItem = 0, itemCount = 10;
+        bool vertical = false, userScrollEnabled = true, multiBrowseFling = false;
+        ui::Modifier modifier = CarouselSize();
+    };
+    // createCarousel: the multi-browse keylines (186 dp items) on the internal carousel.
+    void TestCarousel(std::shared_ptr<CarouselState>& out, CarouselSetup setup) {
+        const int count = setup.itemCount;
+        out = RememberCarouselState(setup.initialItem, [count] { return count; });
+        CarouselState* st = out.get();
+        const float density = rt::Composition::Current()->Read(ui::LocalDensity).density;
+        CarouselOptions o;
+        o.userScrollEnabled = setup.userScrollEnabled;
+        const auto fling = setup.multiBrowseFling ? CarouselDefaults::multiBrowseFlingBehavior(*out) : CarouselDefaults::singleAdvanceFlingBehavior(*out);
+        material3::internal::carousel::Carousel(*out, setup.vertical, [density, count](float available, float spacing) {
+            return material3::internal::carousel::MultiBrowseKeylineList(density, available, 186 * density, spacing, count, 40 * density, 56 * density);
+        }, o, fling, 2, setup.modifier, [](const CarouselItemScope&, int i) { CarouselTestItem(i); });
+        (void)st;
+    }
+    // swipeWithVelocity across the carousel (px per second).
+    void SwipeCarousel(Harness& h, float x0, float y0, float x1, float y1, float velocity) {
+        std::int64_t t = 9000;
+        const float distance = std::hypot(x1 - x0, y1 - y0);
+        const int steps = 20;
+        const std::int64_t stepMs = std::max<std::int64_t>(1, std::int64_t(distance / velocity * 1000 / steps));
+        Swipe(h, t, x0, y0, x1, y1, steps, stepMs);
+        h.AdvanceTimeBy(3000);
+    }
+    void SwipeLeft(Harness& h, float velocity = 1000) { SwipeCarousel(h, 823, 221, 0, 221, velocity); }
+}
+
+TEST(CarouselScrollUpdatesState) {
+    for (bool vertical : { false, true }) {
+        std::shared_ptr<CarouselState> state;
+        PhoneHarness h;
+        Themed(h, [&state, vertical] { TestCarousel(state, { .vertical = vertical }); });
+        CHECK(state->CurrentItem() == 0);
+        if (vertical) SwipeCarousel(h, 412, 440, 412, 0, 1000);
+        else SwipeLeft(h);
+        CHECK(state->CurrentItem() != 0);
+    }
+}
+
+TEST(CarouselStartsAtItsInitialItemAndSnaps) {
+    {
+        std::shared_ptr<CarouselState> state;
+        PhoneHarness h;
+        Themed(h, [&state] { TestCarousel(state, { .initialItem = 5 }); });
+        CHECK(state->CurrentItem() == 5);
+    }
+    {
+        std::shared_ptr<CarouselState> state;
+        PhoneHarness h;
+        Themed(h, [&state] { TestCarousel(state, {}); });
+        SwipeLeft(h);
+        CHECK(state->PagerState().CurrentPageOffsetFraction() == 0);
+    }
+    {   // userScrollEnabled = false.
+        std::shared_ptr<CarouselState> state;
+        PhoneHarness h;
+        Themed(h, [&state] { TestCarousel(state, { .userScrollEnabled = false }); });
+        SwipeLeft(h);
+        CHECK(state->CurrentItem() == 0);
+    }
+}
+
+TEST(UncontainedCarouselDoesNotSnap) {
+    std::shared_ptr<CarouselState> state;
+    PhoneHarness h;
+    Themed(h, [&state] {
+        state = RememberCarouselState([] { return 10; });
+        HorizontalUncontainedCarousel(*state, 150_dp, CarouselSize(), [](const CarouselItemScope&, int i) { CarouselTestItem(i); });
+    });
+    SwipeLeft(h);
+    CHECK(state->PagerState().CurrentPageOffsetFraction() != 0);
+}
+
+TEST(CarouselFlingsAdvanceOneItemOrAsFarAsTheDecayGoes) {
+    const auto visible = [](Harness& h) {
+        int n = 0;
+        for (int i = 0; i < 10; ++i) if (Displayed(h, "item" + std::to_string(i))) ++n;
+        return n;
+    };
+    {   // singleAdvanceFlingBehavior: capped at the item after the visible ones.
+        std::shared_ptr<CarouselState> state;
+        PhoneHarness h;
+        Themed(h, [&state] { TestCarousel(state, {}); });
+        SwipeLeft(h, 10000);
+        CHECK(state->CurrentItem() >= 1 && state->CurrentItem() < visible(h) + 1);
+    }
+    {   // multiBrowseFlingBehavior: not capped.
+        std::shared_ptr<CarouselState> state;
+        PhoneHarness h;
+        Themed(h, [&state] { TestCarousel(state, { .multiBrowseFling = true }); });
+        const int shown = visible(h);
+        SwipeLeft(h, 10000);
+        CHECK(state->CurrentItem() > shown);
+    }
+}
+
+TEST(CarouselMaxScrollOffsetCountsItemSpacingBetweenItems) {
+    namespace kc = material3::internal::carousel;
+    CarouselState state(0, 0, [] { return 10; });
+    const kc::Strategy strategy(kc::KeylineListOf(380, 0, kc::CarouselAlignment::Start, { { 10, true }, { 186 }, { 122 }, { 56 }, { 10, true } }),
+                                380, 8, 0, 0);
+    CHECK(kc::MaxScrollOffset(state.PagerState(), strategy) == 186.0f * 10 + 8.0f * 9 - 380);
+}
+
+TEST(CarouselItemSemanticsBoundsAreClippedByTheContainer) {
+    std::shared_ptr<CarouselState> state;
+    PhoneHarness h;
+    Themed(h, [&state] { TestCarousel(state, { .modifier = CarouselSize(300_dp, 300_dp) }); });
+    const auto c = BoundsDp(h, "carousel"), one = UnclippedBoundsDp(h, "item1");
+    CHECK(c && one);
+    if (!c || !one) return;
+    // Every item lays out at the large size, end to end; the container clips what lies past it
+    // (the bounds do not follow the mask).
+    const float item = one->Width(), container = c->Width();
+    for (int i : { 1, 2 }) {
+        const auto b = BoundsDp(h, "item" + std::to_string(i));
+        CHECK(b);
+        if (!b) continue;
+        const float expected = std::max(0.0f, std::min(item * float(i + 1), container) - item * float(i));
+        CHECK(std::abs(b->Width() - expected) <= 2);
+    }
+}
+
+TEST(CenteredHeroCarouselCentresItsFocalItem) {
+    const auto centred = [](Harness& h, int item) {
+        const auto c = BoundsDp(h, "carousel"), f = BoundsDp(h, "item" + std::to_string(item));
+        return c && f && std::abs((c->left + c->right) / 2 - (f->left + f->right) / 2) <= 1;
+    };
+    {   // A swipe moves on.
+        std::shared_ptr<CarouselState> state;
+        PhoneHarness h;
+        Themed(h, [&state] {
+            state = RememberCarouselState([] { return 10; });
+            HorizontalCenteredHeroCarousel(*state, CarouselSize(), [](const CarouselItemScope&, int i) { CarouselTestItem(i); });
+        });
+        SwipeLeft(h);
+        CHECK(state->CurrentItem() != 0);
+    }
+    {   // From item 5, the next focal item is snapped and centred.
+        std::shared_ptr<CarouselState> state;
+        PhoneHarness h;
+        Themed(h, [&state] {
+            state = RememberCarouselState(5, [] { return 10; });
+            HorizontalCenteredHeroCarousel(*state, CarouselSize(), [](const CarouselItemScope&, int i) { CarouselTestItem(i); });
+        });
+        CHECK(state->CurrentItem() == 5);
+        SwipeLeft(h);
+        CHECK(state->PagerState().CurrentPageOffsetFraction() == 0);
+        CHECK(centred(h, state->CurrentItem()));
+    }
+    {   // A single item is centred (it fills the carousel).
+        std::shared_ptr<CarouselState> state;
+        PhoneHarness h;
+        Themed(h, [&state] {
+            state = RememberCarouselState([] { return 1; });
+            HorizontalCenteredHeroCarousel(*state, CarouselSize(), [](const CarouselItemScope&, int i) { CarouselTestItem(i); });
+        });
+        CHECK(centred(h, 0));
+    }
+    {   // RTL.
+        std::shared_ptr<CarouselState> state;
+        PhoneHarness h;
+        Themed(h, [&state] {
+            state = RememberCarouselState(5, [] { return 10; });
+            rt::Composition::Current()->Provide(ui::LocalLayoutDirection, LayoutDirection::Rtl, [&] {
+                HorizontalCenteredHeroCarousel(*state, CarouselSize(), [](const CarouselItemScope&, int i) { CarouselTestItem(i); });
+            });
+        });
+        CHECK(centred(h, 5));
+    }
+}
+
+TEST(CenteredHeroCarouselHandlesNoItemsAndTinyContainers) {
+    {
+        std::shared_ptr<CarouselState> state;
+        PhoneHarness h;
+        Themed(h, [&state] {
+            state = RememberCarouselState([] { return 0; });
+            HorizontalCenteredHeroCarousel(*state, CarouselSize(), [](const CarouselItemScope&, int i) { CarouselTestItem(i); });
+        });
+        CHECK(!FindTagged(h, "item0"));
+    }
+    {
+        std::shared_ptr<CarouselState> state;
+        PhoneHarness h;
+        Themed(h, [&state] {
+            state = RememberCarouselState([] { return 10; });
+            HorizontalCenteredHeroCarousel(*state, CarouselSize(10_dp, 221_dp), [](const CarouselItemScope&, int i) { CarouselTestItem(i); });
+        });
+        h.AdvanceTimeBy(100);
+        CHECK(true);
+    }
+}
+
+TEST(CenteredHeroCarouselClicksReachTheMaskedItems) {
+    std::shared_ptr<CarouselState> state;
+    int clicked = -1;
+    PhoneHarness h;
+    Themed(h, [&state, &clicked] {
+        state = RememberCarouselState(5, [] { return 10; });
+        HorizontalCenteredHeroCarousel(*state, CarouselSize(), [&clicked](const CarouselItemScope&, int i) {
+            CarouselTestItem(i, [&clicked, i] { clicked = i; });
+        });
+    });
+    state->ScrollToItem(6);
+    h.AdvanceTimeBy(100);
+    CHECK(state->CurrentItem() == 6);
+    std::int64_t t = 20000;
+    Press(h, t, "item6", true);
+    h.AdvanceTimeBy(100);
+    CHECK(clicked == 6);
+    clicked = -1;
+    // Item 5 is masked to the small item before 6: (20 dp, 110 dp) is inside it only.
+    Touch(h, t, ui::PointerEventType::Press, 40, 220, true);
+    Touch(h, t, ui::PointerEventType::Release, 40, 220, false);
+    h.AdvanceTimeBy(100);
+    CHECK(clicked == 5);
+}
+
+TEST(CarouselStateRestores) {
+    rt::SaveableStateRegistry::Values saved;
+    for (int pass = 0; pass < 2; ++pass) {
+        rt::SaveableStateRegistry current(saved);
+        rt::SaveableStateRegistry* registry = &current;
+        std::shared_ptr<CarouselState> state;
+        PhoneHarness h;
+        Themed(h, [&state, registry] {
+            rt::Composition::Current()->Provide(rt::LocalSaveableStateRegistry, registry, [&] { TestCarousel(state, {}); });
+        });
+        if (pass == 0) {
+            CHECK(state->CurrentItem() == 0);
+            state->ScrollToItem(4);
+            h.AdvanceTimeBy(100);
+            CHECK(state->CurrentItem() == 4);
+            saved = rt::SaveableStateRegistry::Deserialize(rt::SaveableStateRegistry::Serialize(current.PerformSave()));
+        } else {
+            CHECK(state->CurrentItem() == 4);
+        }
     }
 }
