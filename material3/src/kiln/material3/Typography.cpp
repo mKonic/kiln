@@ -32,21 +32,21 @@ namespace kiln::material3 {
         labelLarge = t.LabelLarge();
         labelMedium = t.LabelMedium();
         labelSmall = t.LabelSmall();
-        displayLargeEmphasized = t.DisplayLargeEmphasized();
-        displayMediumEmphasized = t.DisplayMediumEmphasized();
-        displaySmallEmphasized = t.DisplaySmallEmphasized();
-        headlineLargeEmphasized = t.HeadlineLargeEmphasized();
-        headlineMediumEmphasized = t.HeadlineMediumEmphasized();
-        headlineSmallEmphasized = t.HeadlineSmallEmphasized();
-        titleLargeEmphasized = t.TitleLargeEmphasized();
-        titleMediumEmphasized = t.TitleMediumEmphasized();
-        titleSmallEmphasized = t.TitleSmallEmphasized();
-        bodyLargeEmphasized = t.BodyLargeEmphasized();
-        bodyMediumEmphasized = t.BodyMediumEmphasized();
-        bodySmallEmphasized = t.BodySmallEmphasized();
-        labelLargeEmphasized = t.LabelLargeEmphasized();
-        labelMediumEmphasized = t.LabelMediumEmphasized();
-        labelSmallEmphasized = t.LabelSmallEmphasized();
+        displayLargeEmphasized = displayLarge;
+        displayMediumEmphasized = displayMedium;
+        displaySmallEmphasized = displaySmall;
+        headlineLargeEmphasized = headlineLarge;
+        headlineMediumEmphasized = headlineMedium;
+        headlineSmallEmphasized = headlineSmall;
+        titleLargeEmphasized = titleLarge;
+        titleMediumEmphasized = titleMedium;
+        titleSmallEmphasized = titleSmall;
+        bodyLargeEmphasized = bodyLarge;
+        bodyMediumEmphasized = bodyMedium;
+        bodySmallEmphasized = bodySmall;
+        labelLargeEmphasized = labelLarge;
+        labelMediumEmphasized = labelMedium;
+        labelSmallEmphasized = labelSmall;
     }
 
     Typography::Typography(const text::FontFamily& fontFamily, const Overrides& o) {

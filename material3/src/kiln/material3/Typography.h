@@ -40,7 +40,8 @@ namespace kiln::material3 {
         text::TextStyle labelMediumEmphasized;
         text::TextStyle labelSmallEmphasized;
 
-        // Typography(): every style from the type scale tokens.
+        // Typography(): the type scale tokens, each emphasized style the same as its plain one
+        // (Kotlin resolves Compose's Typography() to the constructor without emphasized styles).
         Typography();
         // Typography(fontFamily, ...): the tokens' styles in `fontFamily`; a style given in
         // `overrides` replaces the token one, taking `fontFamily` when it names no family.

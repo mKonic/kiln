@@ -14346,3 +14346,12 @@ TEST(NavigationSuiteScaffoldHidesItsSuiteAndGivesTheContentItsSpace) {   // navi
     CHECK(Displayed(h, "item"));
     CHECK(std::abs(BoundsDp(h, "content")->Height() - shownHeight) < 0.5f);
 }
+
+TEST(DefaultTypographyEmphasizesNothingButTheFontFamilyFormDoes) {   // Typography() vs Typography(fontFamily)
+    const Typography plain;
+    CHECK(plain.displayLargeEmphasized == plain.displayLarge);
+    CHECK(plain.labelSmallEmphasized == plain.labelSmall);
+    const Typography withFamily(text::FontFamily::SansSerif());
+    CHECK(withFamily.displayLargeEmphasized.span.fontWeight == text::FontWeight::Medium());
+    CHECK(withFamily.displayLarge.span.fontWeight == text::FontWeight::Normal());
+}
