@@ -61,7 +61,7 @@ namespace kiln::rt {
             m_WaiterJob.reset();
             if (!job || job->cancelled) return;
             job->unregister = nullptr;
-            h.resume();
+            ResumeJob(job, h);
         }
 
         std::size_t m_Capacity;

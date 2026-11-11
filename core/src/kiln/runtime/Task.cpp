@@ -32,7 +32,7 @@ namespace kiln::rt {
             auto job = t.job.lock();
             if (!job || job->cancelled) continue;
             job->unregister = nullptr;
-            t.h.resume();
+            ResumeJob(job, t.h);
         }
     }
 
@@ -45,7 +45,7 @@ namespace kiln::rt {
             if (!job || job->cancelled) continue;
             job->unregister = nullptr;
             *w.out = frameTimeNanos;
-            w.h.resume();
+            ResumeJob(job, w.h);
         }
     }
 
@@ -74,10 +74,21 @@ namespace kiln::rt {
         if (wake) wake();
     }
 
+    void ResumeJob(const std::shared_ptr<JobState>& job, std::coroutine_handle<> h) {
+        if (!job) { h.resume(); return; }
+        ++job->resuming;
+        h.resume();
+        --job->resuming;
+        // Cancelled from inside the resume: the frames are no longer running.
+        if (job->cancelled && job->resuming == 0 && job->root) { job->root.destroy(); job->root = {}; }
+    }
+
     void Job::Cancel() {
         if (!m_State || m_State->cancelled) return;
         m_State->cancelled = true;
         if (m_State->unregister) { m_State->unregister(); m_State->unregister = nullptr; }
+        // Running (this cancel came from inside it): ResumeJob frees the frames when it returns.
+        if (m_State->resuming > 0) return;
         // Destroying the root frame destroys its locals, including any awaited child Task, which
         // destroys the child's frame in turn.
         if (m_State->root) { m_State->root.destroy(); m_State->root = {}; }
@@ -90,8 +101,8 @@ namespace kiln::rt {
         h.promise().job = state;
         state->root = h;
         Job job(state);
-        h.resume();
-        if (state->done) {   // completed synchronously: free the frame now
+        ResumeJob(state, h);
+        if (state->done && state->root) {   // completed synchronously: free the frame now
             state->root.destroy();
             state->root = {};
         }

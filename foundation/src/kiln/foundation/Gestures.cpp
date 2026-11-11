@@ -46,7 +46,7 @@ namespace kiln::foundation {
                 // seen by later passes and nodes.
                 m_Event = ev;
                 m_Current = ev;
-                h.resume();
+                rt::ResumeJob(m_JobState, h);
             }
             void OnCancelPointerInput() override { Restart(false); }
             std::optional<std::array<float, 4>> TouchBoundsExpansion(const Density& d, LayoutDirection dir) const override {

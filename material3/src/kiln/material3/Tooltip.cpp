@@ -62,7 +62,7 @@ namespace kiln::material3 {
                 if (run.h) {
                     rt::Dispatcher::Main().Post([h = run.h, job = run.job] {
                         auto j = job.lock();
-                        if (j && !j->cancelled) h.resume();
+                        if (j && !j->cancelled) rt::ResumeJob(j, h);
                     });
                 }
             }
@@ -184,7 +184,7 @@ namespace kiln::material3 {
                 if (v || !waiter) return;
                 rt::Dispatcher::Main().Post([h = std::exchange(waiter, {}), j = job] {
                     auto s = j.lock();
-                    if (s && !s->cancelled) h.resume();
+                    if (s && !s->cancelled) rt::ResumeJob(s, h);
                 });
             }
         };

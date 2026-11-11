@@ -30,7 +30,14 @@ namespace kiln::rt {
         bool done = false;
         std::function<void()> unregister;   // removes the current suspension from the dispatcher
         std::coroutine_handle<> root;
+        // Resumes of this job's coroutines in progress: a cancel while one runs (the coroutine
+        // cancelling itself through what it calls) frees the frames once it returns.
+        int resuming = 0;
     };
+
+    // Resumes a suspended coroutine of `job` (null: untracked); frames cancelled meanwhile are
+    // freed when it returns.
+    void ResumeJob(const std::shared_ptr<JobState>& job, std::coroutine_handle<> h);
 
     template<typename T = void> class Task;
 
