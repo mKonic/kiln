@@ -1936,12 +1936,12 @@ namespace kiln::foundation {
             core.contentPadding = config.contentPadding;
             core.mainSpacing = config.pageSpacing;
             core.mainArrangement.reset();
-            core.reverse = false;
+            core.reverse = config.reverseLayout;
             core.horizontalAlignment = config.horizontalAlignment;
             core.verticalAlignment = config.verticalAlignment;
             core.intervals.clear();
             core.intervals.push_back({ pageCount, std::move(content), std::move(key) });
-        }, std::move(config.flingBehavior), config.extraModifier, false, config.overscrollEffect, std::move(config.bringIntoViewSpec));
+        }, std::move(config.flingBehavior), config.extraModifier, config.reverseLayout, config.overscrollEffect, std::move(config.bringIntoViewSpec));
     }
 
     void LazyColumn(const Modifier& m, LazyListState& s, std::function<void(LazyListScope&)> content, LazyListOptions o, rt::Key key) {

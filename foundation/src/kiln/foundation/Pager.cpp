@@ -130,7 +130,9 @@ namespace kiln::foundation {
 
     namespace {
         // Records the finger's displacement of each gesture before the scrollable sees the up.
-        rt::Task<> PagerGestures(PointerInputScope& s, PagerState* st, bool vertical, bool rtl) {
+        // `flip`: the finger's direction is the scroll's opposite (RTL xor reverseLayout across,
+        // reverseLayout down).
+        rt::Task<> PagerGestures(PointerInputScope& s, PagerState* st, bool vertical, bool flip) {
             for (;;) {
                 auto e = co_await s.AwaitPointerEvent(PointerEventPass::Initial);
                 if (e->changes.empty() || !e->changes[0].ChangedToDownIgnoreConsumed()) continue;
@@ -145,8 +147,9 @@ namespace kiln::foundation {
                     if (!c) { st->SetGestureInProgress(false); break; }
                     if (c->ChangedToUpIgnoreConsumed()) {
                         const Offset d = c->position - down;
-                        // In scroll terms: RTL mirrors a horizontal pager's finger direction.
-                        st->SetGestureDelta(vertical ? d.y : (rtl ? -d.x : d.x));
+                        // In scroll terms (isScrollingForward's reverseScrollDirection).
+                        const float delta = vertical ? d.y : d.x;
+                        st->SetGestureDelta(flip ? -delta : delta);
                         st->SetGestureInProgress(false);
                         break;
                     }
@@ -192,8 +195,9 @@ namespace kiln::foundation {
                 const float next = current + space * (fraction > 0 ? -1.0f : 1.0f);
                 const float lo = fraction > 0 ? next : current, hi = fraction > 0 ? current : next;
                 const float coerced = std::clamp(Main(available), lo, hi);
-                const float consumed = orientation == Orientation::Horizontal && rtl ? st->ConsumeScrollDelta(coerced)
-                                                                                     : -st->ConsumeScrollDelta(-coerced);
+                // reverseLayout flips the sign across, as RTL does (ScrollableDefaults.reverseDirection).
+                const bool flip = orientation == Orientation::Horizontal && (rtl != st->ReverseLayout());
+                const float consumed = flip ? st->ConsumeScrollDelta(coerced) : -st->ConsumeScrollDelta(-coerced);
                 return orientation == Orientation::Horizontal ? Offset{ consumed, available.y } : Offset{ available.x, consumed };
             }
             // A child's fling leftover: Compose cancels the child's fling; here it is swallowed so
@@ -265,9 +269,11 @@ namespace kiln::foundation {
             config.bringIntoViewSpec = std::make_shared<PagerBringIntoView>(st, rtl && !vertical, CurrentBringIntoViewSpec());
             std::shared_ptr<NestedScrollConnection> connection = options.pageNestedScrollConnection;
             if (!connection) connection = PageNestedScrollConnection(state, vertical ? Orientation::Vertical : Orientation::Horizontal);
-            config.extraModifier = [st, vertical, rtl, connection](Modifier m) {
-                m = PointerInput(std::move(m), rt::Keys(reinterpret_cast<std::uintptr_t>(st), vertical, rtl, 7),
-                                 [st, vertical, rtl](PointerInputScope& s) { return PagerGestures(s, st, vertical, rtl); });
+            config.reverseLayout = options.reverseLayout;
+            const bool flip = vertical ? options.reverseLayout : rtl != options.reverseLayout;
+            config.extraModifier = [st, vertical, flip, connection](Modifier m) {
+                m = PointerInput(std::move(m), rt::Keys(reinterpret_cast<std::uintptr_t>(st), vertical, flip, 7),
+                                 [st, vertical, flip](PointerInputScope& s) { return PagerGestures(s, st, vertical, flip); });
                 return NestedScroll(std::move(m), connection);
             };
             const int count = state.PageCount();

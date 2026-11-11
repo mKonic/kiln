@@ -399,3 +399,39 @@ TEST(PagerScrollIndicatorCoercesToIntMax) {
     IndicatorPager(h, state, false, 100, o);
     CheckIndicator(state, std::numeric_limits<int>::max(), std::numeric_limits<int>::max(), 100);
 }
+
+TEST(PagerScrollIndicatorReverseLayout) {
+    for (bool vertical : { true, false }) {
+        Harness h;
+        PagerState state(0, 0, [] { return 4; });
+        PagerOptions o;
+        o.pageSize = PageSize::Fixed(Dp(50));
+        o.reverseLayout = true;
+        IndicatorPager(h, state, vertical, 100, o);
+        CheckIndicator(state, 100, 200, 100);
+    }
+}
+
+TEST(PagerReverseLayoutPagesTheOtherWay) {
+    // Page 0 at the end: dragging right (towards the start edge) brings the next page.
+    Harness h;
+    PagerState state(0, 0, [] { return 5; });
+    std::vector<int> placedLeft(5, -1);
+    h.Run([&] {
+        PagerOptions o;
+        o.reverseLayout = true;
+        o.pageSize = PageSize::Fixed(Dp(50));
+        HorizontalPager(FillMax(Modifier{}, Axis::Both), state, [&](int page) {
+            Box(OnGloballyPositioned(FillMax(Modifier{}, Axis::Both), [&, page](const LayoutCoordinates& c) { placedLeft[std::size_t(page)] = int(c.PositionInRoot().x); }));
+        }, o);
+    });
+    CHECK_EQ(placedLeft[0], 50);   // at the right edge of the 100 px pager
+    CHECK_EQ(placedLeft[1], 0);
+    std::int64_t t = 0;
+    h.Drag(10, 40, 4, 300, t);
+    h.Frames(60);
+    CHECK_EQ(state.CurrentPage(), 1);
+    h.Drag(90, -40, 4, 300, t);
+    h.Frames(60);
+    CHECK_EQ(state.CurrentPage(), 0);
+}

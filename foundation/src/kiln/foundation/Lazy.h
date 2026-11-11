@@ -102,6 +102,8 @@ namespace kiln::foundation {
         // The viewport along the scroll axis minus content padding (last measure).
         float ViewportLength() const { return m_ViewportLength; }
         float Density() const { return m_Density; }
+        // reverseLayout as the last measure had it.
+        bool ReverseLayout() const { return m_Axis.Peek().reverse; }
         // The last measure along the scroll axis (the pager's layout info): padding at the scroll
         // start and end, the whole viewport, the page size and spacing, reverseLayout.
         struct MeasuredAxis {
@@ -296,6 +298,7 @@ namespace kiln::foundation {
         // SnapPosition.position(layoutSize, pageSize, beforeContentPadding, afterContentPadding).
         std::function<int(int layout, int page, int before, int after)> snapPosition;
         std::shared_ptr<const BringIntoViewSpec> bringIntoViewSpec;
+        bool reverseLayout = false;
     };
     void LazyPagerLayout(bool vertical, const Modifier& modifier, LazyStateBase& state, int pageCount,
                          std::function<void(int page)> content, std::function<rt::Key(int)> key, LazyPagerConfig config, rt::Key compositionKey);

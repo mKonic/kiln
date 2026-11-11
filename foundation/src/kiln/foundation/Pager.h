@@ -98,6 +98,8 @@ namespace kiln::foundation {
         AlignmentV verticalAlignment = AlignmentV::CenterVertically();       // HorizontalPager
         AlignmentH horizontalAlignment = AlignmentH::CenterHorizontally();   // VerticalPager
         bool userScrollEnabled = true;
+        // Page 0 at the end (bottom, or the end edge); scrolling and paging go the other way.
+        bool reverseLayout = false;
         std::function<rt::Key(int page)> key;
         OverscrollParam overscrollEffect;   // unset: rememberOverscrollEffect(); null: none
         // Pages composed and laid out on each side beyond the visible ones (ready before they
