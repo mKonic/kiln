@@ -578,7 +578,7 @@ final class KilnText {
         }
         final float extra = justify && spaces > 0
                 ? Math.max(0, (layout.getParagraphRight(line) - layout.getParagraphLeft(line)) - natural) / spaces : 0;
-        float x = justify ? layout.getParagraphLeft(line) : layout.getLineLeft(line);
+        float x = justify ? layout.getParagraphLeft(line) : drawLineLeft(layout, line);
         for (ArrayList<Piece> pieces : visual) {
             for (Piece p : pieces) {
                 if (p.placeholder) { x += p.advance; continue; }
@@ -593,6 +593,34 @@ final class KilnText {
                 x += w;
             }
         }
+    }
+
+    // Where Layout.drawText starts the line, as its left edge. getLineLeft differs for centred
+    // and opposite lines: drawText starts those at a whole pixel from the integer extent
+    // (centred: `(left + right - ((int) extent & ~1)) >> 1`), getLineLeft at floor(left + (width - max) / 2).
+    private static float drawLineLeft(Layout layout, int line) {
+        final int dir = layout.getParagraphDirection(line);
+        final int left = layout.getParagraphLeft(line), right = layout.getParagraphRight(line);
+        // getLineMax is the leading margin plus the extent; the margin is what the paragraph
+        // edges are inset by.
+        final float extent = layout.getLineMax(line) - (dir == Layout.DIR_RIGHT_TO_LEFT ? layout.getWidth() - right : left);
+        final float signed = dir == Layout.DIR_RIGHT_TO_LEFT ? -extent : extent;   // TextLine measures RTL lines leftwards
+        Layout.Alignment align = layout.getParagraphAlignment(line);
+        if (align == null) align = Layout.Alignment.ALIGN_CENTER;
+        if (align == alignLeft && alignLeft != Layout.Alignment.ALIGN_NORMAL)
+            align = dir == Layout.DIR_LEFT_TO_RIGHT ? Layout.Alignment.ALIGN_NORMAL : Layout.Alignment.ALIGN_OPPOSITE;
+        else if (align == alignRight && alignRight != Layout.Alignment.ALIGN_OPPOSITE)
+            align = dir == Layout.DIR_LEFT_TO_RIGHT ? Layout.Alignment.ALIGN_OPPOSITE : Layout.Alignment.ALIGN_NORMAL;
+        final int x;   // drawText's origin: the line's left end for LTR, its right end for RTL
+        if (align == Layout.Alignment.ALIGN_NORMAL) {
+            if (dir == Layout.DIR_LEFT_TO_RIGHT) return left;
+            return right - extent;
+        } else if (align == Layout.Alignment.ALIGN_OPPOSITE) {
+            x = dir == Layout.DIR_LEFT_TO_RIGHT ? right - (int) signed : left - (int) signed;
+        } else {
+            x = (right + left - (((int) signed) & ~1)) >> 1;
+        }
+        return dir == Layout.DIR_LEFT_TO_RIGHT ? x : x - extent;
     }
 
     private void addGlyph(ArrayList<float[]> out, Font font, int glyph, float gx, float gy, TextPaint paint, Run run, int runIndex) {

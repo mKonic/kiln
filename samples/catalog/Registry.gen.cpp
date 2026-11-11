@@ -19,6 +19,7 @@
 #include "samples/Shared.h"
 #include "samples/SliderSamples.h"
 #include "samples/SwitchSamples.h"
+#include "samples/TabSamples.h"
 #include "samples/ToggleButtonSamples.h"
 #include "samples/TooltipSamples.h"
 
@@ -316,18 +317,18 @@ namespace catalog {
                 { "SwitchWithThumbIconSample", "Switch examples", false, samples::SwitchWithThumbIconSample },
             } },
             { 36, "Tabs", "Tabs organize content across different screens, data sets, and other interactions.", true, {
-                { "PrimaryTextTabs", "Tabs examples", false, nullptr },
-                { "PrimaryIconTabs", "Tabs examples", false, nullptr },
-                { "SecondaryTextTabs", "Tabs examples", false, nullptr },
-                { "SecondaryIconTabs", "Tabs examples", false, nullptr },
-                { "TextAndIconTabs", "Tabs examples", false, nullptr },
-                { "LeadingIconTabs", "Tabs examples", false, nullptr },
-                { "ScrollingPrimaryTextTabs", "Tabs examples", false, nullptr },
-                { "ScrollingSecondaryTextTabs", "Tabs examples", false, nullptr },
-                { "FancyTabs", "Tabs examples", false, nullptr },
-                { "FancyIndicatorTabs", "Tabs examples", false, nullptr },
-                { "FancyIndicatorContainerTabs", "Tabs examples", false, nullptr },
-                { "ScrollingFancyIndicatorContainerTabs", "Tabs examples", false, nullptr },
+                { "PrimaryTextTabs", "Tabs examples", false, samples::PrimaryTextTabs },
+                { "PrimaryIconTabs", "Tabs examples", false, samples::PrimaryIconTabs },
+                { "SecondaryTextTabs", "Tabs examples", false, samples::SecondaryTextTabs },
+                { "SecondaryIconTabs", "Tabs examples", false, samples::SecondaryIconTabs },
+                { "TextAndIconTabs", "Tabs examples", false, samples::TextAndIconTabs },
+                { "LeadingIconTabs", "Tabs examples", false, samples::LeadingIconTabs },
+                { "ScrollingPrimaryTextTabs", "Tabs examples", false, samples::ScrollingPrimaryTextTabs },
+                { "ScrollingSecondaryTextTabs", "Tabs examples", false, samples::ScrollingSecondaryTextTabs },
+                { "FancyTabs", "Tabs examples", false, samples::FancyTabs },
+                { "FancyIndicatorTabs", "Tabs examples", false, samples::FancyIndicatorTabs },
+                { "FancyIndicatorContainerTabs", "Tabs examples", false, samples::FancyIndicatorContainerTabs },
+                { "ScrollingFancyIndicatorContainerTabs", "Tabs examples", false, samples::ScrollingFancyIndicatorContainerTabs },
             } },
             { 37, "Text fields", "Text fields let users enter and edit text.", true, {
                 { "ExpressiveTextFieldSample", "Text fields examples", true, nullptr },

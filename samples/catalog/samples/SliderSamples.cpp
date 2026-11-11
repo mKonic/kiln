@@ -59,19 +59,19 @@ namespace catalog::samples {
 
         // The vertical samples: the slider jumps while dragged, otherwise animates to the value.
         void Vertical(m3::SliderRange range, bool centered) {
-            const LaunchScope coroutineScope = RememberCoroutineScope();
+            auto animateJob = Here().Remember<std::shared_ptr<kiln::rt::Job>>([] { return std::make_shared<kiln::rt::Job>(); });
             // Only allow multiples of 10. Excluding the endpoints of `valueRange`, there are 9 steps (10, 20, ..., 90).
             auto& sliderState = m3::RememberSliderState(0, 9, range);
             const kiln::anim::SpecPtr snapAnimationSpec = m3::MaterialTheme::motionScheme()->FastEffectsSpec();
             auto& currentValue = RememberSaveableState(sliderState.Value());
             sliderState.shouldAutoSnap = false;
             auto source = Source();
-            Padded([&, snapAnimationSpec, coroutineScope, source, centered] {
+            Padded([&, snapAnimationSpec, animateJob, source, centered] {
                 m3::Text(Format2(sliderState.Value()), AlignInColumn({}, AlignmentH::CenterHorizontally()));
                 Spacer(Height({}, 16_dp));
                 m3::SliderOptions o;
-                o.onValueChangeFinished = [&sliderState, &currentValue, snapAnimationSpec, coroutineScope] {
-                    coroutineScope.Launch(kiln::anim::Animate(sliderState.Value(), currentValue.Peek(), snapAnimationSpec,
+                o.onValueChangeFinished = [&sliderState, &currentValue, snapAnimationSpec, animateJob] {
+                    *animateJob = kiln::rt::Launch(kiln::rt::Dispatcher::Main(), kiln::anim::Animate(sliderState.Value(), currentValue.Peek(), snapAnimationSpec,
                                                               [&sliderState](float value, float) { sliderState.SetValue(value); }));
                 };
                 o.interactionSource = source;
@@ -85,11 +85,11 @@ namespace catalog::samples {
                     };
                 }
                 const auto r = sliderState.TrackRange();
-                m3::VerticalSlider(sliderState, [&sliderState, &currentValue, coroutineScope](float newValue) {
+                m3::VerticalSlider(sliderState, [&sliderState, &currentValue, animateJob](float newValue) {
                     currentValue.Set(newValue);
                     // only update the sliderState instantly if dragging
                     if (sliderState.IsDragging()) {
-                        *coroutineScope.job = {};   // animateJob?.cancel()
+                        animateJob->Cancel();
                         sliderState.SetValue(newValue);
                     }
                 }, ProgressSemantics(AlignInColumn(Height({}, 300_dp), AlignmentH::CenterHorizontally()), currentValue.Get(), r.start, r.endInclusive, sliderState.Steps()),
