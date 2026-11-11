@@ -1,5 +1,6 @@
 #include "Check.h"
 
+#include "kiln/material3/SplitButton.h"
 #include "kiln/material3/tokens/ColorLightTokens.h"
 #include "kiln/material3/tokens/FilledButtonTokens.h"
 #include "kiln/material3/tokens/MotionTokens.h"
@@ -35,4 +36,8 @@ TEST(TypographyTokensBuildTheirTextStyles) {
     const text::TextStyle serif = TypographyTokens(text::FontFamily::Serif()).TitleLarge();
     CHECK(serif.span.fontFamily == text::FontFamily::Serif());
     CHECK(serif.span.fontSize == text::Sp(22));
+}
+
+TEST(SplitButtonLeadingIconTakesTheSmallButtonIconSize) {   // SplitButtonDefaults.LeadingIconSize = ButtonSmallTokens.IconSize
+    CHECK(material3::SplitButtonDefaults::LeadingIconSize == ui::Dp(20));
 }

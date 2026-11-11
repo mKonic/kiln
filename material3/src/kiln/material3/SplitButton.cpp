@@ -7,6 +7,7 @@
 #include "kiln/material3/Surface.h"
 #include "kiln/material3/Text.h"
 #include "kiln/material3/internal/InteractionShape.h"
+#include "kiln/material3/tokens/ButtonSmallTokens.h"
 #include "kiln/material3/tokens/MotionSchemeKeyTokens.h"
 #include "kiln/material3/tokens/SplitButtonLargeTokens.h"
 #include "kiln/material3/tokens/SplitButtonMediumTokens.h"
@@ -128,7 +129,7 @@ namespace kiln::material3 {
     }
 
     namespace SplitButtonDefaults {
-        const Dp LeadingIconSize = ButtonDefaults::IconSize, TrailingIconSize = SplitButtonSmallTokens::TrailingIconSize,
+        const Dp LeadingIconSize = ButtonSmallTokens::IconSize, TrailingIconSize = SplitButtonSmallTokens::TrailingIconSize,
                  Spacing = SplitButtonSmallTokens::BetweenSpace;
         const CornerSize ExtraSmallInnerCornerSize = SplitButtonXSmallTokens::InnerCornerCornerSize,
                          SmallInnerCornerSize = SplitButtonSmallTokens::InnerCornerCornerSize,
