@@ -174,7 +174,7 @@ namespace kiln::ui {
             return !contentDescription.empty() || !text.empty() || editableText || stateDescription || onClick ||
                    focused || role != Role::None || heading || selected || toggleableState || paneTitle ||
                    scrollBy || collectionInfo || collectionItemInfo || progressBarRangeInfo || !customActions.empty() ||
-                   hintText || error || liveRegion;
+                   hintText || error || liveRegion || selectableGroup;
         }
         // containsImportantForAccessibility: a property other than testTag, traversal index,
         // traversal group, test-tag-as-id, shape and the sensitive / substitution flags.
