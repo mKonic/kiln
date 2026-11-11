@@ -18,7 +18,7 @@ namespace kiln::material3::internal {
         int WidthOrZero(const Placeable* p) { return p ? p->Width() : 0; }
         int HeightOrZero(const Placeable* p) { return p ? p->Height() : 0; }
         // subtractConstraintSafely
-        int SubtractSafely(int v, int n) { return v == Constraints::Infinity ? v : v - n; }
+        int SubtractSafely(int v, int n) { return v == Constraints::Infinity ? v : std::max(v - n, 0); }
         int CenterVertically(int size, int space) { return ui::AlignmentV::CenterVertically().Align(size, space); }
 
         class FilledPolicy final : public ui::MeasurePolicy {

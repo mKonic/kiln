@@ -8530,3 +8530,128 @@ TEST(TextFieldWithALabelInIntrinsicSizes) {
         CHECK(field && divider && Near(divider->Width(), field->Width()));
     }
 }
+
+TEST(TextFieldLabelStyle) {
+    // The label colour comes as the content colour; the style keeps no colour, unless only
+    // bodySmall has one, which then wins once the label is minimized.
+    for (bool bodySmallColour : { false, true }) {
+        PhoneHarness h;
+        foundation::TextFieldState state;
+        text::TextStyle style;
+        Color content;
+        Themed(h, [&] {
+            const auto field = [&] {
+                TextFieldOptions o;
+                TextFieldColors c = TextFieldDefaults::colors();
+                c.unfocusedLabelColor = Color(0xFF0000FFu);
+                c.focusedLabelColor = Color(0xFFFF0000u);
+                o.colors = c;
+                o.label = [&](const TextFieldLabelScope&) {
+                    style = rt::Composition::Current()->Read(LocalTextStyle());
+                    content = rt::Composition::Current()->Read(LocalContentColor);
+                };
+                TextField(state, Tag({}, "textField"), o);
+            };
+            if (bodySmallColour) {
+                Typography t = MaterialTheme::typography();
+                t.bodySmall.span.color = Color(0xFF00FF00u);
+                MaterialTheme({ .typography = t }, field);
+            } else {
+                field();
+            }
+        });
+        h.AdvanceTimeBy(300);
+        CHECK(content == Color(0xFF0000FFu));
+        CHECK(style.span.color == (bodySmallColour ? Color(0xFF0000FFu) : Color::Unspecified()));
+        std::int64_t t = 0;
+        Press(h, t, "textField", true);
+        h.AdvanceTimeBy(1000);
+        CHECK(content == Color(0xFFFF0000u));
+        CHECK(style.span.color == (bodySmallColour ? Color(0xFF00FF00u) : Color::Unspecified()));
+    }
+}
+
+TEST(TextFieldIntrinsicHeights) {
+    for (bool decorated : { false, true }) {
+        // An empty field, with or without decorations: its minimum height.
+        PhoneHarness h;
+        foundation::TextFieldState state;
+        Themed(h, [&] {
+            Box(Tag({}, "box"), Alignment::TopStart(), false, [&] {
+                Row(Height({}, foundation::IntrinsicSize::Min), [&] {
+                    TextFieldOptions o;
+                    if (decorated) {
+                        o.leadingIcon = [] { Icon(internal::Icons::Filled::Edit(), std::nullopt); };
+                        o.trailingIcon = [] { Icon(internal::Icons::Filled::Edit(), std::nullopt); };
+                        o.prefix = [] { Text("P"); };
+                        o.suffix = [] { Text("S"); };
+                    }
+                    TextField(state, {}, o);
+                    VerticalDivider();
+                });
+            });
+        });
+        const auto b = UnclippedBoundsDp(h, "box");
+        CHECK(b && Near(b->Height(), 56));
+    }
+    {
+        // A long input: as tall measured intrinsically as not.
+        PhoneHarness h;
+        std::string text;
+        for (int i = 0; i < 20; ++i) text += "Long text input. ";
+        foundation::TextFieldState a(text), b(text);
+        Themed(h, [&] {
+            const auto field = [](foundation::TextFieldState& s, const char* tag) {
+                TextFieldOptions o;
+                o.leadingIcon = [] { Icon(internal::Icons::Filled::Edit(), std::nullopt); };
+                o.trailingIcon = [] { Icon(internal::Icons::Filled::Edit(), std::nullopt); };
+                o.prefix = [] { Text("P"); };
+                o.suffix = [] { Text("S"); };
+                TextField(s, Tag({}, tag), o);
+            };
+            Row({}, [&] {
+                Box(Height(Width({}, 150_dp), foundation::IntrinsicSize::Min), Alignment::TopStart(), false, [&] { field(a, "intrinsic"); });
+                Box(Width({}, 150_dp), Alignment::TopStart(), false, [&] { field(b, "plain"); });
+            });
+        });
+        const auto i = UnclippedBoundsDp(h, "intrinsic"), p = UnclippedBoundsDp(h, "plain");
+        CHECK(i && p && i->Height() > 0 && Near(i->Height(), p->Height()));
+    }
+    {
+        // These do not crash.
+        PhoneHarness h;
+        foundation::TextFieldState s1, s2, s3("Hello, World");
+        Themed(h, [&] {
+            Box(Width({}, 200_dp), Alignment::TopStart(), false, [&] {
+                Box(Height({}, foundation::IntrinsicSize::Min), Alignment::TopStart(), false, [&] {
+                    TextFieldOptions o;
+                    o.trailingIcon = [] { Box(SizeMod({}, 20_dp, 20_dp)); };
+                    TextField(s1, Padding({}, 100_dp), o);
+                });
+            });
+            Column(HorizontalScroll(Height({}, foundation::IntrinsicSize::Min), RememberScrollState()), [&] {
+                TextFieldOptions o;
+                o.leadingIcon = [] { Text("Icon"); };
+                TextField(s2, {}, o);
+            });
+        });
+        h.AdvanceTimeBy(100);
+        CHECK(true);
+    }
+}
+
+TEST(TextFieldAffixesJoinTheTextForAccessibility) {
+    PhoneHarness h;
+    foundation::TextFieldState state("google");
+    Themed(h, [&] {
+        TextFieldOptions o;
+        o.prefix = [] { Text("www."); };
+        o.suffix = [] { Text(".com"); };
+        TextField(state, Tag({}, "TextField"), o);
+    });
+    h.AdvanceTimeBy(300);
+    const auto tree = h.owner.BuildSemanticsTree();
+    const auto* n = FindSemantics(tree, "TextField");
+    CHECK(n != nullptr);
+    if (n) CHECK((n->config.text == std::vector<std::string>{ "www.", "google", ".com" }));
+}
