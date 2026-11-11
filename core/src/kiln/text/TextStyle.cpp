@@ -1,4 +1,8 @@
 #include "kiln/text/TextStyle.h"
+#include "kiln/ui/ColorSpace.h"
+
+#include <algorithm>
+#include <cmath>
 
 namespace kiln::text {
 
@@ -88,6 +92,66 @@ namespace kiln::text {
         if (!p.textMotion) p.textMotion = TextMotion::Static;
         if (!p.includeFontPadding) p.includeFontPadding = false;
         return r;
+    }
+
+
+    namespace {
+        template<typename T> T Discrete(const T& a, const T& b, float t) { return t < 0.5f ? a : b; }
+        float LerpF(float a, float b, float t) { return a + (b - a) * t; }
+        // lerpTextUnitInheritable
+        TextUnit LerpUnit(TextUnit a, TextUnit b, float t) {
+            if (!a.IsSpecified() || !b.IsSpecified()) return Discrete(a, b, t);
+            return TextUnit{ LerpF(a.value, b.value, t), a.type };
+        }
+    }
+
+    TextStyle Lerp(const TextStyle& start, const TextStyle& stop, float t) {
+        const SpanStyle& a = start.span;
+        const SpanStyle& b = stop.span;
+        SpanStyle s;
+        // TextForegroundStyle: two colours interpolate; brushes and unspecified switch.
+        if (a.brush || b.brush || !a.color.Specified() || !b.color.Specified()) {
+            s.color = Discrete(a.color, b.color, t);
+            s.brush = Discrete(a.brush, b.brush, t);
+            s.alpha = Discrete(a.alpha, b.alpha, t);
+        } else {
+            s.color = ui::Lerp(a.color, b.color, t);
+        }
+        s.fontFamily = Discrete(a.fontFamily, b.fontFamily, t);
+        s.fontSize = LerpUnit(a.fontSize, b.fontSize, t);
+        const int wa = a.fontWeight.value_or(FontWeight{}).weight, wb = b.fontWeight.value_or(FontWeight{}).weight;
+        s.fontWeight = FontWeight{ std::clamp(wa + int(std::floor(double(wb - wa) * t + 0.5)), 1, 1000) };
+        s.fontStyle = Discrete(a.fontStyle, b.fontStyle, t);
+        s.fontSynthesis = Discrete(a.fontSynthesis, b.fontSynthesis, t);
+        s.fontFeatureSettings = Discrete(a.fontFeatureSettings, b.fontFeatureSettings, t);
+        s.letterSpacing = LerpUnit(a.letterSpacing, b.letterSpacing, t);
+        s.baselineShift = BaselineShift{ LerpF(a.baselineShift.value_or(BaselineShift{}).multiplier, b.baselineShift.value_or(BaselineShift{}).multiplier, t) };
+        const TextGeometricTransform ga = a.textGeometricTransform.value_or(TextGeometricTransform{}),
+                                     gb = b.textGeometricTransform.value_or(TextGeometricTransform{});
+        s.textGeometricTransform = TextGeometricTransform{ LerpF(ga.scaleX, gb.scaleX, t), LerpF(ga.skewX, gb.skewX, t) };
+        s.background = a.background.Specified() && b.background.Specified() ? ui::Lerp(a.background, b.background, t) : Discrete(a.background, b.background, t);
+        s.textDecoration = Discrete(a.textDecoration, b.textDecoration, t);
+        const Shadow sa = a.shadow.value_or(Shadow{}), sb = b.shadow.value_or(Shadow{});
+        Shadow sh;
+        sh.color = ui::Lerp(sa.color, sb.color, t);
+        sh.offset = { LerpF(sa.offset.x, sb.offset.x, t), LerpF(sa.offset.y, sb.offset.y, t) };
+        sh.blurRadius = LerpF(sa.blurRadius, sb.blurRadius, t);
+        s.shadow = sh;
+        s.drawStyle = Discrete(a.drawStyle, b.drawStyle, t);
+
+        const ParagraphStyle& pa = start.paragraph;
+        const ParagraphStyle& pb = stop.paragraph;
+        ParagraphStyle p;
+        p.textAlign = Discrete(pa.textAlign, pb.textAlign, t);
+        p.textDirection = Discrete(pa.textDirection, pb.textDirection, t);
+        p.lineHeight = LerpUnit(pa.lineHeight, pb.lineHeight, t);
+        const TextIndent ia = pa.textIndent.value_or(TextIndent{}), ib = pb.textIndent.value_or(TextIndent{});
+        p.textIndent = TextIndent{ LerpUnit(ia.firstLine, ib.firstLine, t), LerpUnit(ia.restLine, ib.restLine, t) };
+        p.lineHeightStyle = Discrete(pa.lineHeightStyle, pb.lineHeightStyle, t);
+        p.lineBreak = Discrete(pa.lineBreak, pb.lineBreak, t);
+        p.hyphens = Discrete(pa.hyphens, pb.hyphens, t);
+        p.textMotion = Discrete(pa.textMotion, pb.textMotion, t);
+        return { s, p };
     }
 
 }

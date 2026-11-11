@@ -96,3 +96,25 @@ TEST(ParagraphStylesNormalize) {
     CHECK(ranges[4].start == 12 && ranges[4].end == 14);
     for (const auto& r : ranges) CHECK(r.item.textDirection == TextDirection::Ltr);
 }
+
+TEST(TextStylesLerpLikeCompose) {
+    // lerp(TextStyle): sizes and colours interpolate, discrete values switch halfway.
+    text::TextStyle a(text::Sp(16), ui::Color(0xFF000000u)), b(text::Sp(12), ui::Color(0xFFFFFFFFu));
+    a.paragraph.lineHeight = text::Sp(24);
+    b.paragraph.lineHeight = text::Sp(16);
+    a.span.fontWeight = text::FontWeight{ 400 };
+    b.span.fontWeight = text::FontWeight{ 700 };
+    a.paragraph.textAlign = text::TextAlign::Start;
+    b.paragraph.textAlign = text::TextAlign::Center;
+    const text::TextStyle q = text::Lerp(a, b, 0.25f);
+    CHECK(std::abs(q.span.fontSize.value - 15) < 1e-4f && q.span.fontSize.IsSp());
+    CHECK(std::abs(q.paragraph.lineHeight.value - 22) < 1e-4f);
+    CHECK_EQ(q.span.fontWeight->weight, 475);
+    CHECK(q.paragraph.textAlign == text::TextAlign::Start);
+    CHECK(text::Lerp(a, b, 0.5f).paragraph.textAlign == text::TextAlign::Center);
+    // An unspecified size switches rather than interpolating.
+    text::TextStyle c = a;
+    c.span.fontSize = text::TextUnit::Unspecified();
+    CHECK(text::Lerp(a, c, 0.4f).span.fontSize == text::Sp(16));
+    CHECK(!text::Lerp(a, c, 0.6f).span.fontSize.IsSpecified());
+}

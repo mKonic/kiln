@@ -253,6 +253,10 @@ namespace kiln::text {
     };
 
     // resolveDefaults: unset fields become Compose's defaults for the layout direction.
+    // lerp(start, stop, fraction) (SpanStyle.kt / ParagraphStyle.kt): numbers interpolate (sizes
+    // only when both are given), everything else switches at the halfway point.
+    TextStyle Lerp(const TextStyle& start, const TextStyle& stop, float fraction);
+
     TextStyle ResolveDefaults(const TextStyle& style, LayoutDirection direction);
     // resolveTextDirection: Unspecified follows the layout direction; Content becomes
     // ContentOrLtr / ContentOrRtl.
