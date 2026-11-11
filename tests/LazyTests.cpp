@@ -770,3 +770,25 @@ TEST(LazyGridScrollIndicatorCountsLines) {
     h.Pump();
     CHECK_EQ(s->ScrollOffset(), 20 + 5);
 }
+
+// LazyItemScope.fillParentMax*: the list's size less its content padding, times the fraction.
+TEST(LazyListItemsFillTheirParent) {
+    Harness h;
+    LazyListState state;
+    std::vector<IntSize> sizes(4);
+    h.Run([&] {
+        LazyListOptions o;
+        o.contentPadding.top = Dp(10);
+        o.contentPadding.start = Dp(5);
+        o.contentPadding.end = Dp(5);
+        LazyColumn(FillMax({}, Axis::Both), state, [&](LazyListScope& s) {
+            s.Item([&] { Box(OnSizeChanged(FillParentMaxSize({}, 0.5f), [&](IntSize sz) { sizes[0] = sz; })); });
+            s.Item([&] { Box(OnSizeChanged(Height(FillParentMaxWidth({}, 0.5f), Dp(10)), [&](IntSize sz) { sizes[1] = sz; })); });
+            s.Item([&] { Box(OnSizeChanged(Width(FillParentMaxHeight({}, 0.25f), Dp(10)), [&](IntSize sz) { sizes[2] = sz; })); });
+        }, o);
+    });
+    // The window is 100 x 100.
+    CHECK((sizes[0] == IntSize{ 45, 45 }));
+    CHECK((sizes[1] == IntSize{ 45, 10 }));
+    CHECK((sizes[2] == IntSize{ 10, 23 }));   // 90 * 0.25 = 22.5, rounded half up
+}

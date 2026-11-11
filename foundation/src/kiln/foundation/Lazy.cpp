@@ -177,6 +177,8 @@ namespace kiln::foundation {
         };
 
         rt::Local<ItemAnim*> LocalItemAnim{ nullptr };
+        // LazyItemScopeImpl's max size: the layout's content constraints (less content padding).
+        rt::Local<const rt::State<IntSize>*> LocalItemParentSize{ nullptr };
     }
 
     Modifier AnimateItem(Modifier m, LazyItemAnimationSpecs specs) {
@@ -196,6 +198,8 @@ namespace kiln::foundation {
     }
 
     struct LazyCore : std::enable_shared_from_this<LazyCore> {
+        // setMaxSize: what fillParentMax* items fill (Infinity on an unbounded axis).
+        rt::State<IntSize> parentMaxSize{ IntSize{ Constraints::Infinity, Constraints::Infinity } };
         // stickyHeadersEnabled: off while a scroll capture runs (the header would repeat in
         // every captured tile).
         bool stickyHeadersEnabled = true;
@@ -390,10 +394,12 @@ namespace kiln::foundation {
                 std::shared_ptr<ui::PinnableContainer> pin = slot.pin;
                 slot.composition->SetContent([this, index, reg, anim, pin] {
                     auto* c = rt::Composition::Current();
-                    c->Provide(LocalItemAnim, anim, [this, index, reg, c, pin] {
-                        c->Provide(ui::LocalPinnableContainer, pin, [this, index, reg, c] {
-                            if (!reg) { Content(index); return; }
-                            c->Provide(rt::LocalSaveableStateRegistry, reg, [this, index] { Content(index); });
+                    c->Provide(LocalItemParentSize, static_cast<const rt::State<IntSize>*>(&parentMaxSize), [this, index, reg, c, anim, pin] {
+                        c->Provide(LocalItemAnim, anim, [this, index, reg, c, pin] {
+                            c->Provide(ui::LocalPinnableContainer, pin, [this, index, reg, c] {
+                                if (!reg) { Content(index); return; }
+                                c->Provide(rt::LocalSaveableStateRegistry, reg, [this, index] { Content(index); });
+                            });
                         });
                     });
                 });
@@ -1270,6 +1276,14 @@ namespace kiln::foundation {
         const int crossPad = crossBefore + s.RoundToPx(vertical ? contentPadding.end : contentPadding.bottom);
         const int spacing = s.RoundToPx(mainSpacing);
         const int crossAvailable = std::max(0, crossMax - crossPad);
+        {
+            // containerConstraints.offset(-padding): Infinity stays, others shrink to no less than 0.
+            const int padH = s.RoundToPx(contentPadding.start) + s.RoundToPx(contentPadding.end);
+            const int padV = s.RoundToPx(contentPadding.top) + s.RoundToPx(contentPadding.bottom);
+            const auto shrink = [](int max, int pad) { return max == Constraints::Infinity ? max : std::max(0, max - pad); };
+            const IntSize maxSize{ shrink(c.maxWidth, padH), shrink(c.maxHeight, padV) };
+            if (!(parentMaxSize.Peek() == maxSize)) parentMaxSize.Set(maxSize);
+        }
 
         // Grid slots: sizes and positions across (LazyGridSlots).
         std::vector<int> slotSizes{ crossAvailable }, slotPositions{ 0 };
@@ -2038,4 +2052,40 @@ namespace kiln::foundation {
     }
     int LazyStaggeredGridState::Indicator::ContentSize() const { return StaggeredContent(s->LayoutInfo()); }
     int LazyStaggeredGridState::Indicator::ViewportSize() const { return Viewport(s->LayoutInfo()); }
+}
+
+namespace kiln::foundation {
+    // ParentSizeNode: exact constraints of `fraction` of the lazy layout's size on the chosen axes.
+    namespace {
+        struct ParentSizeParams {
+            const rt::State<IntSize>* state;
+            float fraction;
+            bool width, height;
+            bool operator==(const ParentSizeParams&) const = default;
+        };
+        struct ParentSizeNode final : ModifierNode, LayoutModifier {
+            ParentSizeParams params;
+            explicit ParentSizeNode(ParentSizeParams p) : params(p) {}
+            void OnParamsChanged() { InvalidateMeasure(); }
+            LayoutModifier* AsLayout() override { return this; }
+            MeasureResult Measure(MeasureScope& s, Measurable& m, const Constraints& c) override {
+                const IntSize max = params.state ? params.state->Get() : IntSize{ Constraints::Infinity, Constraints::Infinity };
+                const auto scaled = [&](bool on, int v) {
+                    return on && v != Constraints::Infinity ? int(RoundJava(float(v) * params.fraction)) : Constraints::Infinity;
+                };
+                const int w = scaled(params.width, max.width), h = scaled(params.height, max.height);
+                Constraints child{ w != Constraints::Infinity ? w : c.minWidth, w != Constraints::Infinity ? w : c.maxWidth,
+                                   h != Constraints::Infinity ? h : c.minHeight, h != Constraints::Infinity ? h : c.maxHeight };
+                Placeable& p = m.Measure(child);
+                return s.Layout(p.Width(), p.Height(), [&p](PlacementScope& place) { place.Place(p, 0, 0); });
+            }
+        };
+        Modifier ParentSize(Modifier m, float fraction, bool width, bool height) {
+            const rt::State<IntSize>* state = rt::Composition::Current() ? rt::Composition::Current()->Read(LocalItemParentSize) : nullptr;
+            return m.With<ParentSizeNode>(ParentSizeParams{ state, fraction, width, height });
+        }
+    }
+    Modifier FillParentMaxSize(Modifier m, float fraction) { return ParentSize(std::move(m), fraction, true, true); }
+    Modifier FillParentMaxWidth(Modifier m, float fraction) { return ParentSize(std::move(m), fraction, true, false); }
+    Modifier FillParentMaxHeight(Modifier m, float fraction) { return ParentSize(std::move(m), fraction, false, true); }
 }

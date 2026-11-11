@@ -6374,9 +6374,8 @@ namespace {
         Scaffold(NestedScroll({}, behavior->NestedScrollConnection()), o, [&](const PaddingValues& padding) {
             LazyRow(Tag(FillMax({}, Axis::Both), "lazyList"), state, [&, padding](LazyListScope& s) {
                 s.Items(2, [&, padding](int page) {
-                    // fillParentMaxSize: the window.
-                    LazyColumn(SizeMod({}, 412_dp, 800_dp), *pages[std::size_t(page)], [page](LazyListScope& c) {
-                        c.Items(50, [page](int i) { Text("Item #" + std::to_string(page) + " x " + std::to_string(i), FillMax({}, Axis::Horizontal)); });
+                    LazyColumn(FillParentMaxSize({}), *pages[std::size_t(page)], [page](LazyListScope& c) {
+                        c.Items(50, [page](int i) { Text("Item #" + std::to_string(page) + " x " + std::to_string(i), FillParentMaxWidth({})); });
                     }, { .contentPadding = padding });
                 });
             });

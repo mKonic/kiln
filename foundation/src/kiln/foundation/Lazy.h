@@ -75,6 +75,13 @@ namespace kiln::foundation {
     };
     Modifier AnimateItem(Modifier m, LazyItemAnimationSpecs specs = {});
 
+    // LazyItemScope.fillParentMaxSize / Width / Height: call on a lazy list item's modifier
+    // while composing it. The item measures exactly `fraction` of the list's size (less its
+    // content padding) on those axes; an unbounded axis keeps the incoming constraints.
+    Modifier FillParentMaxSize(Modifier m, float fraction = 1);
+    Modifier FillParentMaxWidth(Modifier m, float fraction = 1);
+    Modifier FillParentMaxHeight(Modifier m, float fraction = 1);
+
     // The scroll position and programmatic scrolling shared by LazyListState and LazyGridState.
     class LazyStateBase : public ScrollableState {
     public:
