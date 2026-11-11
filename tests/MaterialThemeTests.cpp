@@ -27,6 +27,7 @@
 #include "kiln/material3/FloatingToolbar.h"
 #include "kiln/material3/Scrollbar.h"
 #include "kiln/material3/Snackbar.h"
+#include "kiln/material3/TextField.h"
 #include "kiln/material3/internal/GetString.h"
 #include "kiln/material3/Divider.h"
 #include "kiln/material3/Tab.h"
@@ -7904,3 +7905,399 @@ TEST(SnackbarDurationsFollowAccessibilitySettings) {
     CHECK_EQ(internal::SnackbarDurationMillis(D::Short, true, nullptr), std::int64_t(4000));
 }
 
+
+TEST(TextFieldDefaultSize) {
+    for (bool outlined : { false, true }) {
+        for (bool label : { false, true }) {
+            PhoneHarness h;
+            foundation::TextFieldState state;
+            Themed(h, [&] {
+                TextFieldOptions o;
+                if (label) o.label = [](const TextFieldLabelScope&) { Text("Label"); };
+                if (outlined) OutlinedTextField(state, Tag({}, "field"), o);
+                else TextField(state, Tag({}, "field"), o);
+            });
+            h.AdvanceTimeBy(500);
+            const auto b = UnclippedBoundsDp(h, "field");
+            CHECK(b && Near(b->Width(), 280) && Near(b->Height(), 56 + (outlined && label ? 8 : 0)));
+        }
+    }
+}
+
+// TextFieldTest (state-based overloads).
+namespace {
+    constexpr std::int64_t kTextFieldAnimationDuration = 75;
+    TextFieldOptions Labelled(const char* label = "Label") {
+        TextFieldOptions o;
+        o.label = [label](const TextFieldLabelScope&) { Text(label); };
+        return o;
+    }
+}
+
+TEST(TextFieldTakesTheSizeItIsGiven) {
+    {
+        PhoneHarness h;
+        foundation::TextFieldState state("input");
+        Themed(h, [&] { Box(Tag({}, "sized"), Alignment::TopStart(), false, [&] { TextField(state, Height({}, 20_dp)); }); });
+        const auto b = BoundsDp(h, "sized");
+        CHECK(b && Near(b->Height(), 20));
+    }
+    {
+        PhoneHarness h;
+        foundation::TextFieldState state("input");
+        Themed(h, [&] { Box(Tag({}, "sized"), Alignment::TopStart(), false, [&] { TextField(state, RequiredSize({}, 40_dp, ui::Dp::Unspecified())); }); });
+        const auto b = BoundsDp(h, "sized");
+        CHECK(b && Near(b->Width(), 40));
+    }
+    {
+        PhoneHarness h;
+        foundation::TextFieldState state;
+        Themed(h, [&] {
+            TextFieldOptions o;
+            o.textStyle = text::TextStyle(text::Sp(1));   // the smallest text
+            Box(Tag({}, "sized"), Alignment::TopStart(), false, [&] { TextField(state, {}, o); });
+        });
+        const auto b = BoundsDp(h, "sized");
+        CHECK(b && Near(b->Height(), 56));
+    }
+    {
+        PhoneHarness h;
+        foundation::TextFieldState state("input");
+        Themed(h, [&] { Box(Tag({}, "sized"), Alignment::TopStart(), false, [&] { TextField(state); }); });
+        const auto b = BoundsDp(h, "sized");
+        CHECK(b && Near(b->Width(), 280));
+    }
+}
+
+TEST(TextFieldHeightHoldsDuringTheFocusAnimation) {
+    for (int k = 0; k < 3; ++k) {
+        PhoneHarness h;
+        foundation::TextFieldState state;
+        Themed(h, [&, k] {
+            TextFieldOptions o = Labelled();
+            if (k == 2) o.supportingText = [] { Text("Supporting"); };
+            if (k == 1) {
+                // bodyLarge as large as displayLarge.
+                Typography t = MaterialTheme::typography();
+                t.bodyLarge = t.displayLarge;
+                MaterialTheme({ .typography = t }, [&] { TextField(state, Tag({}, "textField"), o); });
+            } else {
+                TextField(state, Tag({}, "textField"), o);
+            }
+        });
+        const auto initial = UnclippedBoundsDp(h, "textField");
+        CHECK(initial.has_value());
+        if (!initial) continue;
+        std::int64_t t = 0;
+        Press(h, t, "textField", true);
+        const float expected = k == 0 ? 56.0f : k == 2 ? 56.0f + 4 + 16 : initial->Height();
+        for (int i = 0; i <= 5; ++i) {
+            const auto b = UnclippedBoundsDp(h, "textField");
+            CHECK(b && std::abs(b->Height() - expected) <= (k == 1 ? 0.5f : 0.01f));
+            h.AdvanceTimeBy(kTextFieldAnimationDuration / 5);
+        }
+    }
+}
+
+TEST(TextFieldsTakeFocusOneAtATime) {
+    PhoneHarness h;
+    foundation::TextFieldState s1("input1"), s2("input2");
+    auto src1 = std::make_shared<foundation::MutableInteractionSource>(), src2 = std::make_shared<foundation::MutableInteractionSource>();
+    Themed(h, [&] {
+        Column({}, [&] {
+            TextFieldOptions a, b;
+            a.interactionSource = src1;
+            b.interactionSource = src2;
+            TextField(s1, Tag({}, "TextField1"), a);
+            TextField(s2, Tag({}, "TextField2"), b);
+        });
+    });
+    CHECK(!src1->IsFocused() && !src2->IsFocused());
+    std::int64_t t = 0;
+    Press(h, t, "TextField1", true);
+    h.AdvanceTimeBy(100);
+    CHECK(src1->IsFocused() && !src2->IsFocused());
+    Press(h, t, "TextField2", true);
+    h.AdvanceTimeBy(100);
+    CHECK(!src1->IsFocused() && src2->IsFocused());
+}
+
+TEST(TextFieldFocusesFromItsContainer) {
+    // A click at (2, 2): the container, outside the input area.
+    PhoneHarness h;
+    foundation::TextFieldState state("input");
+    auto source = std::make_shared<foundation::MutableInteractionSource>();
+    Themed(h, [&] {
+        TextFieldOptions o;
+        o.interactionSource = source;
+        TextField(state, Tag({}, "textField"), o);
+    });
+    const auto b = BoundsDp(h, "textField");
+    CHECK(b.has_value());
+    if (!b) return;
+    std::int64_t t = 0;
+    Touch(h, t, ui::PointerEventType::Press, b->left * 2 + 2, b->top * 2 + 2, true);
+    Touch(h, t, ui::PointerEventType::Release, b->left * 2 + 2, b->top * 2 + 2, false);
+    h.AdvanceTimeBy(100);
+    CHECK(source->IsFocused());
+}
+
+TEST(TextFieldLabelStartsInTheInputArea) {
+    // A 24 dp label: centred in a single line field, at the top padding otherwise; a Cutout
+    // label sits 8 dp lower (the room above for the outline).
+    struct Case { bool singleLine, cutout; ui::Dp height; float y; };
+    const Case cases[] = {
+        { true, false, ui::Dp::Unspecified(), (56 - 24) / 2.0f },
+        { true, true, ui::Dp::Unspecified(), (56 - 24) / 2.0f + 8 },
+        { false, false, ui::Dp::Unspecified(), 16 },
+        { false, true, ui::Dp::Unspecified(), 16 + 8 },
+        { false, false, 80_dp, 16 },
+        { false, true, 80_dp, 16 + 8 },
+    };
+    for (const auto& k : cases) {
+        PhoneHarness h;
+        foundation::TextFieldState state;
+        Themed(h, [&] {
+            TextFieldOptions o;
+            if (k.singleLine) o.lineLimits = foundation::TextFieldLineLimits::SingleLine();
+            if (k.cutout) o.labelPosition = TextFieldLabelPosition::Cutout();
+            o.label = [](const TextFieldLabelScope&) { Box(Tag(SizeMod({}, 24_dp, 24_dp), "label")); };
+            TextField(state, k.height.Specified() ? Height({}, k.height) : ui::Modifier{}, o);
+        });
+        h.AdvanceTimeBy(300);
+        const auto b = UnclippedBoundsDp(h, "label");
+        CHECK(b && std::abs(b->left - 16) <= 0.5f && std::abs(b->top - k.y) <= 0.5f);
+    }
+}
+
+TEST(TextFieldLabelMovesUpWhenFocused) {
+    for (bool cutout : { false, true }) {
+        PhoneHarness h;
+        foundation::TextFieldState state;
+        Themed(h, [&] {
+            TextFieldOptions o;
+            if (cutout) o.labelPosition = TextFieldLabelPosition::Cutout();
+            o.label = [](const TextFieldLabelScope&) { Box(Tag(SizeMod({}, 16_dp, 16_dp), "label")); };
+            TextField(state, Tag({}, "textField"), o);
+        });
+        std::int64_t t = 0;
+        Press(h, t, "textField", true);
+        h.AdvanceTimeBy(1000);
+        const auto b = UnclippedBoundsDp(h, "label");
+        CHECK(b && std::abs(b->left - 16) <= 0.5f);
+        // The top padding with a label (8), or into the outline above it.
+        if (cutout) CHECK(b && b->top < 8);
+        else CHECK(b && std::abs(b->top - 8) <= 0.5f);
+    }
+}
+
+TEST(TextFieldLabelMovesUpWithInput) {
+    for (bool cutout : { false, true }) {
+        PhoneHarness h;
+        foundation::TextFieldState state("input");
+        Themed(h, [&] {
+            TextFieldOptions o;
+            if (cutout) o.labelPosition = TextFieldLabelPosition::Cutout();
+            o.label = [](const TextFieldLabelScope&) { Box(Tag(SizeMod({}, 16_dp, 16_dp), "label")); };
+            TextField(state, {}, o);
+        });
+        h.AdvanceTimeBy(300);
+        const auto b = UnclippedBoundsDp(h, "label");
+        CHECK(b && std::abs(b->left - 16) <= 0.5f);
+        if (cutout) CHECK(b && b->top < 8);
+        else CHECK(b && std::abs(b->top - 8) <= 0.5f);
+    }
+}
+
+TEST(TextFieldLabelAbove) {
+    PhoneHarness h;
+    foundation::TextFieldState state;
+    Themed(h, [&] {
+        TextFieldOptions o;
+        o.labelPosition = TextFieldLabelPosition::Above();
+        o.label = [](const TextFieldLabelScope&) { Box(Tag(SizeMod({}, 16_dp, 16_dp), "label")); };
+        Box(Tag({}, "sized"), Alignment::TopStart(), false, [&] { TextField(state, {}, o); });
+    });
+    h.AdvanceTimeBy(300);
+    const auto field = BoundsDp(h, "sized"), label = UnclippedBoundsDp(h, "label");
+    CHECK(field && Near(field->Height(), 16 + 4 + 56));
+    CHECK(label && std::abs(label->left - 4) <= 0.5f && Near(label->top, 0));
+}
+
+TEST(TextFieldLabelCustomAlignment) {
+    for (bool cutout : { false, true }) {
+        PhoneHarness h;
+        foundation::TextFieldState state;
+        Themed(h, [&] {
+            TextFieldOptions o;
+            o.labelPosition = cutout ? TextFieldLabelPosition::Cutout(false, ui::AlignmentH::End(), ui::AlignmentH::CenterHorizontally())
+                                     : TextFieldLabelPosition::Inside(false, ui::AlignmentH::End(), ui::AlignmentH::CenterHorizontally());
+            o.label = [](const TextFieldLabelScope&) { Box(Tag(SizeMod({}, 16_dp, 16_dp), "label")); };
+            TextField(state, Tag({}, "textField"), o);
+        });
+        h.AdvanceTimeBy(300);
+        auto b = UnclippedBoundsDp(h, "label");
+        CHECK(b && std::abs(b->left - (280 - 16) / 2.0f) <= 0.5f);
+        std::int64_t t = 0;
+        Press(h, t, "textField", true);
+        h.AdvanceTimeBy(1000);
+        b = UnclippedBoundsDp(h, "label");
+        CHECK(b && std::abs(b->left - (280 - 16 - 16)) <= 0.5f);
+    }
+}
+
+TEST(TextFieldLabelScopeReportsItsProgress) {
+    PhoneHarness h;
+    foundation::TextFieldState state;
+    float progress = -1;
+    Themed(h, [&] {
+        TextFieldOptions o;
+        o.label = [&](const TextFieldLabelScope& scope) {
+            Box(GraphicsLayer({}, [&progress, scope](GraphicsLayerParams&) { progress = scope.LabelMinimizedProgress(); }));
+        };
+        TextField(state, Tag({}, "textField"), o);
+    });
+    h.AdvanceTimeBy(100);
+    h.owner.Draw({});
+    CHECK(progress == 0.0f);
+    std::int64_t t = 0;
+    Press(h, t, "textField", true);
+    h.AdvanceTimeBy(1000);
+    h.owner.Draw({});
+    CHECK(progress == 1.0f);
+}
+
+TEST(TextFieldPlaceholderPosition) {
+    // Focused, so the placeholder shows: below a minimized label, at the top padding without one;
+    // with a Cutout label, at the padding 8 dp lower.
+    struct Case { bool label, cutout; float y; };
+    const Case cases[] = { { true, false, 8 + 16 }, { true, true, 16 + 8 }, { false, false, 16 } };
+    for (const auto& k : cases) {
+        PhoneHarness h;
+        foundation::TextFieldState state;
+        Themed(h, [&] {
+            TextFieldOptions o;
+            if (k.label) o.label = [](const TextFieldLabelScope&) { Box(SizeMod({}, 16_dp, 16_dp)); };
+            if (k.cutout) o.labelPosition = TextFieldLabelPosition::Cutout();
+            o.placeholder = [] { Box(Tag(SizeMod({}, 24_dp, 24_dp), "placeholder")); };
+            TextField(state, Tag({}, "textField"), o);
+        });
+        std::int64_t t = 0;
+        Press(h, t, "textField", true);
+        h.AdvanceTimeBy(1000);
+        const auto b = UnclippedBoundsDp(h, "placeholder");
+        CHECK(b && std::abs(b->left - 16) <= 0.5f && std::abs(b->top - k.y) <= 0.5f);
+    }
+}
+
+TEST(TextFieldPlaceholderOnlyWhileEmpty) {
+    PhoneHarness h;
+    foundation::TextFieldState state("input");
+    bool composed = false;
+    Themed(h, [&] {
+        TextFieldOptions o;
+        o.placeholder = [&] { composed = true; Text("placeholder"); };
+        TextField(state, Tag({}, "textField"), o);
+    });
+    std::int64_t t = 0;
+    Press(h, t, "textField", true);
+    h.AdvanceTimeBy(1000);
+    CHECK(!composed);
+}
+
+TEST(TextFieldPlaceholderStyleAndColour) {
+    PhoneHarness h;
+    foundation::TextFieldState state;
+    std::vector<Color> colours;
+    text::TextStyle style, bodyLarge;
+    Themed(h, [&] {
+        TextFieldOptions o;
+        TextFieldColors c = TextFieldDefaults::colors();
+        c.focusedPlaceholderColor = Color(0xFFFF0000u);
+        c.unfocusedPlaceholderColor = Color(0xFF00FF00u);
+        o.colors = c;
+        bodyLarge = MaterialTheme::typography().bodyLarge;
+        o.placeholder = [&] {
+            style = rt::Composition::Current()->Read(LocalTextStyle());
+            colours.push_back(rt::Composition::Current()->Read(LocalContentColor));
+            Text("Placeholder");
+        };
+        TextField(state, Tag({}, "textField"), o);
+    });
+    std::int64_t t = 0;
+    Press(h, t, "textField", true);
+    h.AdvanceTimeBy(1000);
+    CHECK(!colours.empty() && colours.back() == Color(0xFFFF0000u));
+    CHECK(style == bodyLarge);
+}
+
+TEST(TextFieldSmallLabelAndPlaceholderCentreInTheirLines) {
+    PhoneHarness h;
+    foundation::TextFieldState state;
+    Themed(h, [&] {
+        TextFieldOptions o;
+        o.label = [](const TextFieldLabelScope&) { Box(Tag(SizeMod({}, 10_dp, 10_dp), "label")); };
+        o.placeholder = [] { Box(Tag(SizeMod({}, 20_dp, 20_dp), "placeholder")); };
+        TextField(state, Tag({}, "textField"), o);
+    });
+    std::int64_t t = 0;
+    Press(h, t, "textField", true);
+    h.AdvanceTimeBy(1000);
+    const auto l = UnclippedBoundsDp(h, "label"), p = UnclippedBoundsDp(h, "placeholder");
+    CHECK(l && std::abs(l->left - 16) <= 0.5f && std::abs(l->top - (8 + (16 - 10) / 2.0f)) <= 0.5f);
+    CHECK(p && std::abs(p->left - 16) <= 0.5f && std::abs(p->top - (8 + 16 + (24 - 20) / 2.0f)) <= 0.5f);
+}
+
+TEST(TextFieldIconsSizeAndPosition) {
+    // Default icons (24 dp, 12 dp from the edges), icon buttons (48 dp) and larger content,
+    // centred vertically.
+    struct Case { int kind; float height, size, inset; };
+    const Case cases[] = { { 0, 60, 24, 12 }, { 1, 80, 48, 0 }, { 2, 80, 70, 0 } };
+    for (const auto& k : cases) {
+        PhoneHarness h;
+        foundation::TextFieldState state("text");
+        Themed(h, [&] {
+            TextFieldOptions o;
+            const auto icon = [kind = k.kind](const char* tag) {
+                return [kind, tag] {
+                    if (kind == 0) Icon(internal::Icons::Filled::Edit(), std::nullopt, Tag({}, tag));
+                    else if (kind == 1) IconButton([] {}, Tag({}, tag), {}, [] { Icon(internal::Icons::Filled::Edit(), std::nullopt); });
+                    else Box(Tag(SizeMod({}, 70_dp, 70_dp), tag));
+                };
+            };
+            o.leadingIcon = icon("leading");
+            o.trailingIcon = icon("trailing");
+            TextField(state, SizeMod({}, 300_dp, ui::Dp(k.height)), o);
+        });
+        h.AdvanceTimeBy(300);
+        const auto l = UnclippedBoundsDp(h, "leading"), t = UnclippedBoundsDp(h, "trailing");
+        CHECK(l && Near(l->Width(), k.size) && Near(l->Height(), k.size));
+        CHECK(l && Near(l->left, k.inset) && Near(l->top, std::round((k.height * 2 - k.size * 2) / 2) / 2));
+        CHECK(t && Near(t->Width(), k.size) && Near(t->left, 300 - k.inset - k.size));
+        CHECK(t && Near(t->top, std::round((k.height * 2 - k.size * 2) / 2) / 2));
+    }
+}
+
+TEST(TextFieldAffixesAndPlaceholderWaitForTheLabel) {
+    // Shown with the label only once it is minimized: always, or Above; not while it can expand.
+    struct Case { TextFieldLabelPosition position; bool shown; };
+    const Case cases[] = { { TextFieldLabelPosition::Inside(false), false }, { TextFieldLabelPosition::Inside(true), true },
+                           { TextFieldLabelPosition::Above(), true } };
+    for (const auto& k : cases) {
+        PhoneHarness h;
+        foundation::TextFieldState state;
+        Themed(h, [&] {
+            TextFieldOptions o;
+            o.labelPosition = k.position;
+            o.label = [](const TextFieldLabelScope&) { Text("Label"); };
+            o.prefix = [] { Text("Prefix"); };
+            o.suffix = [] { Text("Suffix"); };
+            o.placeholder = [] { Text("Placeholder"); };
+            TextField(state, {}, o);
+        });
+        h.AdvanceTimeBy(300);
+        const auto tree = h.owner.BuildSemanticsTree();
+        CHECK(FindSemantics(tree, "Label") != nullptr);
+        for (const char* s : { "Prefix", "Suffix", "Placeholder" }) CHECK((FindSemantics(tree, s) != nullptr) == k.shown);
+    }
+}
