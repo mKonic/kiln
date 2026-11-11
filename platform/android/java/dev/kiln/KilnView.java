@@ -1254,6 +1254,16 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
         try { playSoundEffect(constant); } catch (RuntimeException ignored) {}
     }
 
+    // AudioManager.playSoundEffect (a negative volume: the default).
+    void playAudioEffect(int effect, float volume) {
+        try {
+            android.media.AudioManager audio = (android.media.AudioManager) getContext().getSystemService(android.content.Context.AUDIO_SERVICE);
+            if (audio == null) return;
+            if (volume < 0) audio.playSoundEffect(effect);
+            else audio.playSoundEffect(effect, volume);
+        } catch (RuntimeException ignored) {}
+    }
+
     void requestRectangle(int left, int top, int right, int bottom) {
         requestRectangleOnScreen(new Rect(left, top, right, bottom), false);
     }

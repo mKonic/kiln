@@ -1,5 +1,6 @@
 // JNI entry points for dev.kiln.KilnNative and the Choreographer-driven frame loop.
 #include "AndroidText.h"
+#include "AndroidDates.h"
 
 namespace kiln::android { void InstallImageDecoder(); void InstallAssetReader(JNIEnv* env, jobject assets); }
 
@@ -671,8 +672,10 @@ namespace {
         {
             jclass vc = env->GetObjectClass(view);
             static jmethodID playSound = env->GetMethodID(vc, "playSound", "(I)V");
+            static jmethodID playAudio = env->GetMethodID(vc, "playAudioEffect", "(IF)V");
             env->DeleteLocalRef(vc);
             (*w->owner).SetPlaySoundEffect([w](int constant) { MainEnv()->CallVoidMethod(w->view, playSound, jint(constant)); });
+            (*w->owner).SetPlayAudioEffect([w](int effect, float volume) { MainEnv()->CallVoidMethod(w->view, playAudio, jint(effect), jfloat(volume)); });
         }
         {
             jclass vc = env->GetObjectClass(view);
@@ -1031,6 +1034,7 @@ namespace {
         hearth::SetLogSink(&LogToLogcat);
         kiln::android::InstallImageDecoder();
         kiln::android::InstallAssetReader(env, assets);
+        kiln::android::InstallDateFormat(env);
         g_Host = new Host();
         g_Host->text = std::make_unique<kiln::android::AndroidText>(env, text);
         kiln::foundation::SetUpperCaseFunction([](std::u16string_view t, const std::string& tag) {
