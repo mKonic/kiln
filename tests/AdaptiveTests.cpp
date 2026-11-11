@@ -3,6 +3,8 @@
 #include "kiln/foundation/Compose.h"
 #include "kiln/material3/MaterialTheme.h"
 #include "kiln/material3/adaptive/ThreePaneScaffoldNavigator.h"
+#include "kiln/material3/adaptive/navigation3/SceneStrategies.h"
+#include "kiln/navigation3/NavDisplay.h"
 
 #include <chrono>
 
@@ -177,4 +179,56 @@ TEST(NavigatorSlidesTheDetailInAsTheListLeaves) {
     CHECK_EQ(detail.bounds.left, list.bounds.right);
     h.Frames(60);
     CHECK_EQ(detail.bounds.left, 0.0f);
+}
+
+namespace {
+    struct ListKey { bool operator==(const ListKey&) const = default; };
+    struct ItemKey { int index; bool operator==(const ItemKey&) const = default; };
+    using PaneRoute = std::variant<ListKey, ItemKey>;
+    std::string NavKeyToString(const ListKey&) { return "List"; }
+    std::string NavKeyToString(const ItemKey& k) { return "Item(" + std::to_string(k.index) + ")"; }
+
+    // A list-detail NavDisplay over [List, Item(1)] at `partitions` horizontal partitions.
+    struct ListDetailNav {
+        Harness h;
+        Probe list, detail;
+        kiln::navigation3::NavBackStack<PaneRoute>* stack = nullptr;
+        explicit ListDetailNav(ui::IntSize size, int partitions) : h(size) {
+            h.Run([this, partitions] {
+                MaterialTheme([this, partitions] {
+                    auto& s = kiln::navigation3::RememberNavBackStack<PaneRoute>(
+                        rt::Saver<PaneRoute>{ [](const PaneRoute&) { return rt::SavedValue(); }, [](const rt::SavedValue&) { return std::optional<PaneRoute>(); } },
+                        { ListKey{}, ItemKey{ 1 } });
+                    stack = &s;
+                    kiln::navigation3::NavDisplayOptions<PaneRoute> options;
+                    options.sceneStrategies = { adaptive::navigation3::RememberListDetailSceneStrategy<PaneRoute>(
+                        BackNavigationBehavior::PopUntilScaffoldValueChange, Directive(partitions)) };
+                    using Strategy = adaptive::navigation3::ListDetailSceneStrategy<PaneRoute>;
+                    kiln::navigation3::NavDisplay(s, kiln::navigation3::EntryProvider<PaneRoute>([this](kiln::navigation3::EntryProviderScope<PaneRoute>& p) {
+                        p.Entry<ListKey>([this](const ListKey&) { Box(list.Track()); }, Strategy::ListPane());
+                        p.Entry<ItemKey>([this](const ItemKey&) { Box(detail.Track()); }, Strategy::DetailPane());
+                    }), Modifier{}, options);
+                });
+            });
+            h.Frames(60);
+        }
+    };
+}
+
+TEST(ListDetailSceneShowsBothPanesWhenThereIsRoom) {
+    ListDetailNav nav({ 900, 600 }, 2);
+    CHECK_EQ(nav.list.bounds.left, 0.0f);
+    CHECK(nav.detail.bounds.left > nav.list.bounds.right);
+    CHECK_EQ(nav.detail.bounds.right, 900.0f);
+}
+
+TEST(ListDetailSceneFallsBackToOnePaneAndBackPops) {
+    ListDetailNav nav({ 400, 600 }, 1);
+    // One pane: the single-pane scene shows the detail; back pops to the list.
+    CHECK_EQ(nav.detail.bounds.left, 0.0f);
+    CHECK_EQ(nav.detail.bounds.right, 400.0f);
+    ui::BackDispatcher::Main().Completed();
+    nav.h.Frames(60);
+    CHECK_EQ(nav.stack->Size(), std::size_t(1));
+    CHECK_EQ(nav.list.bounds.right, 400.0f);
 }
