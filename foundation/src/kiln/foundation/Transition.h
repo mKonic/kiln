@@ -257,7 +257,7 @@ namespace kiln::foundation {
     template<typename S>
     ui::Color AnimateColor(Transition<S>& t, std::function<ui::Color(const S&)> valueOf,
                            std::function<anim::SpecPtr(const typename Transition<S>::Segment&)> spec = {}, rt::Key key = {}) {
-        const anim::Vec& v = detail::AnimateChild<S>(t, 4, [&](const S& s) {
+        const anim::Vec v = detail::AnimateChild<S>(t, 4, [&](const S& s) {
             const auto lab = ui::ToOklab(valueOf(s));
             return anim::Vec{ lab[0], lab[1], lab[2], lab[3] };
         }, spec, key);
