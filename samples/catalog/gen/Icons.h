@@ -59,6 +59,7 @@ namespace catalog::Icons {
     namespace Filled { const ImageVectorPtr& Lock(); }
     namespace Filled { const ImageVectorPtr& Map(); }
     namespace Filled { const ImageVectorPtr& Menu(); }
+    namespace Filled { const ImageVectorPtr& Mic(); }
     namespace Filled { const ImageVectorPtr& MoreVert(); }
     namespace Filled { const ImageVectorPtr& MusicNote(); }
     namespace Filled { const ImageVectorPtr& MusicOff(); }

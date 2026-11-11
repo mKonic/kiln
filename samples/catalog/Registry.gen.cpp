@@ -25,6 +25,7 @@
 #include "samples/ProgressIndicatorSamples.h"
 #include "samples/RadioButtonSamples.h"
 #include "samples/ScaffoldSamples.h"
+#include "samples/SearchBarSamples.h"
 #include "samples/SegmentedButtonSamples.h"
 #include "samples/Shared.h"
 #include "samples/SliderSamples.h"
@@ -282,9 +283,9 @@ namespace catalog {
                 { "UnitScrollFieldSample", "Scroll field examples", true, nullptr },
             } },
             { 29, "Search bars", "Search bars allow users to enter a keyword or phrase and get relevant information.", true, 0, {
-                { "SimpleSearchBarSample", "Search bar examples", false, nullptr },
-                { "FullScreenSearchBarScaffoldSample", "Search bar examples", true, nullptr },
-                { "DockedSearchBarScaffoldSample", "Search bar examples", true, nullptr },
+                { "SimpleSearchBarSample", "Search bar examples", false, samples::SimpleSearchBarSample },
+                { "FullScreenSearchBarScaffoldSample", "Search bar examples", true, samples::FullScreenSearchBarScaffoldSample },
+                { "DockedSearchBarScaffoldSample", "Search bar examples", true, samples::DockedSearchBarScaffoldSample },
             } },
             { 30, "Segmented Button", "Segmented buttons help people select options, switch views, or sort elements.", true, 0, {
                 { "SegmentedButtonSingleSelectSample", "Segmented Button examples", false, samples::SegmentedButtonSingleSelectSample },
