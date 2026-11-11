@@ -59,6 +59,7 @@
 #include "kiln/material3/WideNavigationRail.h"
 #include "kiln/material3/Menu.h"
 #include "kiln/material3/AppBarRow.h"
+#include "kiln/material3/adaptive/NavigationSuiteScaffold.h"
 #include "kiln/material3/adaptive/WindowAdaptiveInfo.h"
 #include "kiln/material3/ButtonGroup.h"
 #include "kiln/runtime/Saveable.h"
@@ -14263,4 +14264,85 @@ TEST(ButtonColorOverloadsKeepTheDefaultsTheyAreNotGiven) {   // ButtonDefaults.*
         CHECK(filled.containerColor == red);
         CHECK(filled.contentColor == ButtonDefaults::buttonColors().contentColor);
     }); });
+}
+
+TEST(NavigationSuiteTypeFollowsTheWindowSizeClass) {   // NavigationSuiteScaffoldTest
+    using adaptive::NavigationSuiteType;
+    using adaptive::WindowSizeClass;
+    namespace D = adaptive::NavigationSuiteScaffoldDefaults;
+    const auto type = [](int w, int h, bool tabletop = false) {
+        adaptive::WindowAdaptiveInfo info;
+        info.windowSizeClass = { w, h };
+        info.windowPosture.isTabletop = tabletop;
+        return std::pair{ D::navigationSuiteType(info), D::calculateFromAdaptiveInfo(info) };
+    };
+    const int mw = WindowSizeClass::WIDTH_DP_MEDIUM_LOWER_BOUND, ew = WindowSizeClass::WIDTH_DP_EXPANDED_LOWER_BOUND;
+    const int mh = WindowSizeClass::HEIGHT_DP_MEDIUM_LOWER_BOUND, eh = WindowSizeClass::HEIGHT_DP_EXPANDED_LOWER_BOUND;
+    CHECK(type(0, 0).first == NavigationSuiteType::ShortNavigationBarCompact);
+    CHECK(type(0, eh).first == NavigationSuiteType::ShortNavigationBarCompact);
+    CHECK(type(mw, 0).first == NavigationSuiteType::ShortNavigationBarMedium);
+    CHECK(type(mw, mh).first == NavigationSuiteType::WideNavigationRailCollapsed);
+    CHECK(type(ew, 0).first == NavigationSuiteType::ShortNavigationBarMedium);
+    CHECK(type(1600, eh).first == NavigationSuiteType::WideNavigationRailCollapsed);
+    CHECK(type(ew, eh, true).first == NavigationSuiteType::ShortNavigationBarMedium);
+    CHECK(type(0, eh).second == NavigationSuiteType::NavigationBar);
+    CHECK(type(mw, 0).second == NavigationSuiteType::NavigationBar);
+    CHECK(type(mw, mh).second == NavigationSuiteType::NavigationRail);
+    CHECK(type(ew, eh, true).second == NavigationSuiteType::NavigationBar);
+    CHECK(std::string(adaptive::ToString(NavigationSuiteType::WideNavigationRailExpanded)) == "WideNavigationRailExpanded");
+}
+
+TEST(NavigationSuiteScaffoldPlacesTheBarBelowAndTheRailBesideTheContent) {
+    using namespace adaptive;
+    for (const NavigationSuiteType type : { NavigationSuiteType::ShortNavigationBarCompact, NavigationSuiteType::WideNavigationRailCollapsed }) {
+        PhoneHarness h;
+        h.Run([&] { MaterialTheme({}, [&] {
+            NavigationSuiteScaffoldOptions o;
+            o.navigationSuiteType = type;
+            NavigationSuiteScaffold([type] {
+                NavigationSuiteItemOptions io;
+                io.navigationSuiteType = type;
+                NavigationSuiteItem(true, [] {}, [] { Text("I"); }, [] { Text("Songs"); }, Tag({}, "item"), io);
+            }, FillMax({}, Axis::Both), o, [] { Box(Tag(FillMax({}, Axis::Both), "content")); });
+        }); });
+        const auto item = BoundsDp(h, "item"), content = BoundsDp(h, "content");
+        CHECK(item.has_value() && content.has_value());
+        if (!item || !content) continue;
+        if (type == NavigationSuiteType::ShortNavigationBarCompact) {
+            CHECK(item->top >= content->bottom - 0.5f);   // the bar below the content
+            CHECK(std::abs(content->left) < 0.5f);
+        } else {
+            CHECK(item->right <= content->left + 0.5f);   // the rail at the start
+            CHECK(std::abs(content->top) < 0.5f);
+        }
+    }
+}
+
+TEST(NavigationSuiteScaffoldHidesItsSuiteAndGivesTheContentItsSpace) {   // navigationSuiteScaffold_hide/showNavigationSuite
+    using namespace adaptive;
+    PhoneHarness h;
+    std::shared_ptr<NavigationSuiteScaffoldState> state;
+    h.Run([&] { MaterialTheme({}, [&] {
+        state = RememberNavigationSuiteScaffoldState();
+        NavigationSuiteScaffoldOptions o;
+        o.navigationSuiteType = NavigationSuiteType::NavigationBar;
+        o.state = state;
+        NavigationSuiteScaffold([] {
+            NavigationSuiteItemOptions io;
+            io.navigationSuiteType = NavigationSuiteType::NavigationBar;
+            NavigationSuiteItem(true, [] {}, [] { Text("I"); }, [] { Text("Songs"); }, Tag({}, "item"), io);
+        }, FillMax({}, Axis::Both), o, [] { Box(Tag(FillMax({}, Axis::Both), "content")); });
+    }); });
+    CHECK(Displayed(h, "item"));
+    const float shownHeight = BoundsDp(h, "content")->Height();
+    rt::Job job = rt::Launch(rt::Dispatcher::Main(), state->SnapTo(NavigationSuiteScaffoldValue::Hidden));
+    h.AdvanceTimeBy(1000);
+    CHECK(state->CurrentValue() == NavigationSuiteScaffoldValue::Hidden);
+    CHECK(!Displayed(h, "item"));
+    CHECK(BoundsDp(h, "content")->Height() > shownHeight + 70);   // the 80 dp tall bar's space
+    job = rt::Launch(rt::Dispatcher::Main(), state->Show());
+    h.AdvanceTimeBy(1000);
+    CHECK(state->TargetValue() == NavigationSuiteScaffoldValue::Visible);
+    CHECK(Displayed(h, "item"));
+    CHECK(std::abs(BoundsDp(h, "content")->Height() - shownHeight) < 0.5f);
 }

@@ -26,6 +26,21 @@ namespace kiln::material3::adaptive {
         }
         bool operator==(const WindowSizeClass&) const = default;
 
+        // The deprecated windowWidthSizeClass / windowHeightSizeClass: Compact, Medium or
+        // Expanded by the lower bound this class reaches.
+        enum class WidthClass : std::uint8_t { Compact, Medium, Expanded };
+        enum class HeightClass : std::uint8_t { Compact, Medium, Expanded };
+        WidthClass WindowWidthSizeClass() const {
+            return minWidthDp >= WIDTH_DP_EXPANDED_LOWER_BOUND ? WidthClass::Expanded
+                   : minWidthDp >= WIDTH_DP_MEDIUM_LOWER_BOUND ? WidthClass::Medium
+                                                               : WidthClass::Compact;
+        }
+        HeightClass WindowHeightSizeClass() const {
+            return minHeightDp >= HEIGHT_DP_EXPANDED_LOWER_BOUND ? HeightClass::Expanded
+                   : minHeightDp >= HEIGHT_DP_MEDIUM_LOWER_BOUND ? HeightClass::Medium
+                                                                 : HeightClass::Compact;
+        }
+
         // computeFromDpSize: the largest supported breakpoint the size reaches on each axis
         // (Compact / Medium / Expanded wide; V2 adds Large and ExtraLarge).
         static WindowSizeClass ComputeFromDpSize(float widthDp, float heightDp, bool supportLargeAndXLargeWidth = false);

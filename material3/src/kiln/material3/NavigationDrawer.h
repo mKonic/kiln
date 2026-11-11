@@ -110,6 +110,12 @@ namespace kiln::material3 {
 
     namespace NavigationDrawerItemDefaults {
         NavigationDrawerItemColors colors();
+        // Unspecified arguments take the defaults; the badge colours default to the text ones.
+        NavigationDrawerItemColors colors(ui::Color selectedContainerColor, ui::Color unselectedContainerColor = ui::Color::Unspecified(),
+                                          ui::Color selectedIconColor = ui::Color::Unspecified(), ui::Color unselectedIconColor = ui::Color::Unspecified(),
+                                          ui::Color selectedTextColor = ui::Color::Unspecified(), ui::Color unselectedTextColor = ui::Color::Unspecified(),
+                                          ui::Color selectedBadgeColor = ui::Color::Unspecified(),
+                                          ui::Color unselectedBadgeColor = ui::Color::Unspecified());
         // Around each item in a drawer: 12 dp each side.
         inline const foundation::PaddingValues ItemPadding{ ui::Dp(12), ui::Dp(0), ui::Dp(12), ui::Dp(0) };
     }

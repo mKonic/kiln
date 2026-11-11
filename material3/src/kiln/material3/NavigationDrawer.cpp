@@ -452,6 +452,20 @@ namespace kiln::material3 {
             c.unselectedBadgeColor = c.unselectedTextColor;
             return c;
         }
+        NavigationDrawerItemColors colors(Color selectedContainer, Color unselectedContainer, Color selectedIcon, Color unselectedIcon, Color selectedText,
+                                          Color unselectedText, Color selectedBadge, Color unselectedBadge) {
+            NavigationDrawerItemColors c = colors();
+            auto set = [](Color& field, Color v) { if (v.Specified()) field = v; };
+            set(c.selectedContainerColor, selectedContainer);
+            set(c.unselectedContainerColor, unselectedContainer);
+            set(c.selectedIconColor, selectedIcon);
+            set(c.unselectedIconColor, unselectedIcon);
+            set(c.selectedTextColor, selectedText);
+            set(c.unselectedTextColor, unselectedText);
+            c.selectedBadgeColor = selectedBadge.Specified() ? selectedBadge : c.selectedTextColor;
+            c.unselectedBadgeColor = unselectedBadge.Specified() ? unselectedBadge : c.unselectedTextColor;
+            return c;
+        }
     }
 
     void NavigationDrawerItem(std::function<void()> label, bool selected, std::function<void()> onClick, const ui::Modifier& modifier,

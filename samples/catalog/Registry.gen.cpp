@@ -24,6 +24,7 @@
 #include "samples/MenuSamples.h"
 #include "samples/NavigationBarSamples.h"
 #include "samples/NavigationRailSamples.h"
+#include "samples/NavigationSuiteScaffoldSamples.h"
 #include "samples/ProgressIndicatorSamples.h"
 #include "samples/PullToRefreshSamples.h"
 #include "samples/RadioButtonSamples.h"
@@ -258,8 +259,8 @@ namespace catalog {
                 { "NavigationRailBottomAlignSample", "Navigation rail examples", false, samples::NavigationRailBottomAlignSample },
             } },
             { 24, "Navigation Suite Scaffold", "The Navigation Suite Scaffold wraps the provided content and places the adequate provided navigation component on the screen according to the current NavigationSuiteType. \n\nNote: this sample is better experienced in a resizable emulator or foldable device.", true, 0, {
-                { "NavigationSuiteScaffoldSample", "Navigation suite scaffold examples", true, nullptr },
-                { "NavigationSuiteScaffoldCustomConfigSample", "Navigation suite scaffold examples", true, nullptr },
+                { "NavigationSuiteScaffoldSample", "Navigation suite scaffold examples", true, samples::NavigationSuiteScaffoldSample },
+                { "NavigationSuiteScaffoldCustomConfigSample", "Navigation suite scaffold examples", true, samples::NavigationSuiteScaffoldCustomConfigSample },
             } },
             { 25, "Progress indicators", "Progress indicators express an unspecified wait time or display the length of a process.", true, 0, {
                 { "LinearProgressIndicatorSample", "Progress indicators examples", false, samples::LinearProgressIndicatorSample },
