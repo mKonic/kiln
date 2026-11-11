@@ -89,8 +89,9 @@ namespace kiln::foundation {
         int FirstVisibleItemIndex() const { return m_Index.Get(); }
         int FirstVisibleItemScrollOffset() const { return m_Offset.Get(); }
         float ConsumeScrollDelta(float delta) override;
-        bool CanScrollForward() const override { return m_CanForward; }
-        bool CanScrollBackward() const override { return m_Index.Peek() > 0 || m_Offset.Peek() > 0; }
+        // As of the last measure (observable, as Compose's canScrollForward / canScrollBackward).
+        bool CanScrollForward() const override { return m_CanForward.Get(); }
+        bool CanScrollBackward() const override { return m_CanBackward.Get(); }
         bool LaysOutOnScroll() const override { return true; }
         void ScrollToItem(int index, int offset = 0);
         // requestScrollToItem: the next measure starts at index/offset (by index, not key) without
@@ -125,7 +126,11 @@ namespace kiln::foundation {
         rt::State<int> m_Index, m_Offset;
         float m_PendingScroll = 0;
         float m_LastConsumed = 0;
-        bool m_CanForward = true;
+        rt::State<bool> m_CanForward{ true }, m_CanBackward{ false };
+        void SetCanScroll(bool forward) {
+            m_CanForward.Set(forward);
+            m_CanBackward.Set(m_Index.Peek() > 0 || m_Offset.Peek() > 0);
+        }
         rt::Key m_FirstKey = rt::Key::Positional();
         bool m_HasFirstKey = false;
         LayoutNode* m_Node = nullptr;   // the layout, for forced remeasure

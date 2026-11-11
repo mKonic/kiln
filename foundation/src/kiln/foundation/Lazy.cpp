@@ -479,8 +479,8 @@ namespace kiln::foundation {
 
     float LazyStateBase::ConsumeScrollDelta(float delta) {
         if (!m_Node) return 0;
-        if (delta < 0 && !CanScrollBackward()) return 0;
-        if (delta > 0 && !CanScrollForward()) return 0;
+        if (delta < 0 && !m_CanBackward.Peek()) return 0;
+        if (delta > 0 && !m_CanForward.Peek()) return 0;
         // The measure consumes the carried sub-pixel remainder too; report only this delta's part.
         const float carried = m_PendingScroll;
         m_PendingScroll += delta;
@@ -649,7 +649,7 @@ namespace kiln::foundation {
             st.m_Lines.clear();
             st.m_TotalItems = 0;
             st.m_LastConsumed = st.m_PendingScroll = 0;
-            st.m_CanForward = false;
+            st.SetCanScroll(false);
             st.OnMeasured();
             return s.Layout(c.minWidth, c.minHeight);
         }
@@ -1088,8 +1088,8 @@ namespace kiln::foundation {
         st.m_FirstKey = KeyOf(std::min(first, count - 1));
         st.m_HasFirstKey = true;
         st.m_LastConsumed = consumed;
-        st.m_CanForward = std::any_of(out.co.begin(), out.co.end(), [&](int v) { return v > viewport; }) ||
-                          std::all_of(out.ci.begin(), out.ci.end(), [&](int v) { return v < count - 1; });
+        st.SetCanScroll(std::any_of(out.co.begin(), out.co.end(), [&](int v) { return v > viewport; }) ||
+                        std::all_of(out.ci.begin(), out.ci.end(), [&](int v) { return v < count - 1; }));
         st.m_Lines.clear();
         for (int i : visible) st.m_Lines.push_back({ i, i, byIndex[i]->main, byIndex[i]->size });
         st.m_SlotsPerLine = lanes;
@@ -1573,7 +1573,7 @@ namespace kiln::foundation {
         st.m_HasFirstKey = true;
         st.m_LastConsumed = consumed;
         st.m_PendingScroll = remainder;
-        st.m_CanForward = !(lastLine == lineCount - 1 && end <= viewport);
+        st.SetCanScroll(!(lastLine == lineCount - 1 && end <= viewport));
         st.m_Density = s.density;
         st.m_SlotsPerLine = slotsPerLine;
         st.m_Spacing = spacing;

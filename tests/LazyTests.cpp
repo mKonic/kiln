@@ -831,3 +831,21 @@ TEST(LazyItemsStackTheirChildrenInListsOnly) {
     CHECK_EQ(int(a.y), 90);   // item at the bottom, its first child last
     CHECK_EQ(int(b.y), 70);
 }
+
+TEST(LazyStateCanScrollFlagsAreObservable) {   // canScrollForward / canScrollBackward are snapshot state
+    Harness h;
+    LazyListState state;
+    std::vector<std::pair<bool, bool>> seen;
+    h.Run([&] {
+        seen.emplace_back(state.CanScrollBackward(), state.CanScrollForward());
+        LazyColumn(FillMax(Modifier{}, Axis::Both), state, [&](LazyListScope& s) {
+            s.Items(10, [&](int) { Box(SizeMod(Modifier{}, Dp(100), Dp(30))); });
+        });
+    });
+    h.Pump();
+    CHECK(!seen.back().first && seen.back().second);   // at the start: only forward
+    state.ConsumeScrollDelta(1000);                     // 10 * 30 - 100: to the end
+    h.Pump();
+    h.Pump();
+    CHECK(seen.back().first && !seen.back().second);   // the reader recomposed with the new values
+}
