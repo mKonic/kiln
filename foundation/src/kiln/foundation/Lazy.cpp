@@ -608,9 +608,9 @@ namespace kiln::foundation {
         const int h = vertical ? c.ConstrainHeight(mainMax) : c.ConstrainHeight(crossMax == Constraints::Infinity ? crossPad : crossMax);
 
         if (count == 0 || lanes == 0) {
+            self.SetChildrenDuringMeasure({});   // detach before the slots free the nodes
             for (auto& [k, slot] : slots) DisposeSlot(k, slot);
             slots.clear();
-            self.SetChildrenDuringMeasure({});
             st.m_Lines.clear();
             st.m_TotalItems = 0;
             st.m_LastConsumed = st.m_PendingScroll = 0;
@@ -1372,9 +1372,9 @@ namespace kiln::foundation {
             st.m_Offset.Set(std::max(0, off));
         }
         if (count == 0) {
+            self.SetChildrenDuringMeasure({});   // detach before the slots free the nodes
             for (auto& [k, slot] : slots) DisposeSlot(k, slot);
             slots.clear();
-            self.SetChildrenDuringMeasure({});
             st.m_LastConsumed = st.m_PendingScroll = 0;
             st.m_Lines.clear();
             st.m_TotalItems = 0;
