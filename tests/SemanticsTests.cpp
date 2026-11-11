@@ -295,3 +295,26 @@ TEST(SemanticsBoundsComeFromTheSemanticsModifierSpace) {
         CHECK(b.left == 0 && b.top == 40 && b.right == 100 && b.bottom == 80);
     }
 }
+
+TEST(AClipAfterAnOffsetClipsWhereItWasMoved) {
+    // offset then clip (a sheet moved by its drag offset): the content is clipped at the moved
+    // rect, not at the node's unmoved bounds.
+    Harness h;
+    h.Run([&] {
+        Modifier moved = LayoutMod(SizeMod({}, Dp(100), Dp(50)), [](MeasureScope& s, Measurable& m, const Constraints& c) {
+            Placeable& p = m.Measure(c);
+            return s.Layout(p.Width(), p.Height(), [&p](PlacementScope& place) { place.Place(p, 0, 200); });
+        });
+        Box(Modifier{}, Alignment::TopStart(), false, [&] {
+            Box(ClipToBounds(moved), Alignment::TopStart(), false, [&] {
+                Box(Label(SizeMod({}, Dp(10), Dp(10)), "inside"));
+            });
+        });
+    });
+    const SemanticsNode root = h.owner.BuildSemanticsTree();
+    CHECK_EQ(int(root.children.size()), 1);
+    if (root.children.empty()) return;
+    CHECK_EQ(root.children[0].config.text[0], std::string("inside"));
+    CHECK_EQ(root.children[0].boundsInRoot.top, 200.f);
+    CHECK_EQ(root.children[0].boundsInRoot.bottom, 210.f);
+}

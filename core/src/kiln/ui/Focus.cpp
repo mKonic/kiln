@@ -162,16 +162,15 @@ namespace kiln::ui {
     }
 
     namespace {
-        // Bounds in root, cut by every ancestor that clips its children.
+        // Bounds in root, cut by every ancestor's clipping modifiers (each in its own space).
         Rect ClippedBoundsInRoot(const LayoutNode& n) {
             Rect r = n.BoundsInRoot();
-            for (const LayoutNode* p = n.Parent(); p; p = p->Parent()) {
-                bool clips = false;
-                for (const ModifierNode* m : p->ModifierNodes()) if (m->ClipsChildren()) { clips = true; break; }
-                if (!clips) continue;
-                const Rect c = p->BoundsInRoot();
-                r = { std::max(r.left, c.left), std::max(r.top, c.top), std::min(r.right, c.right), std::min(r.bottom, c.bottom) };
-            }
+            for (const LayoutNode* p = n.Parent(); p; p = p->Parent())
+                for (const ModifierNode* m : p->ModifierNodes()) {
+                    if (!m->ClipsChildren()) continue;
+                    const Rect c = p->RectInRoot(std::nullopt, m);
+                    r = { std::max(r.left, c.left), std::max(r.top, c.top), std::min(r.right, c.right), std::min(r.bottom, c.bottom) };
+                }
             return r;
         }
         int Depth(const LayoutNode* n) { int d = 0; for (; n; n = n->Parent()) ++d; return d; }

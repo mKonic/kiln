@@ -3240,15 +3240,14 @@ namespace {
         else if (const auto* tagged = FindTagged(h, label)) {
             // Clipped by the ancestors that clip, as semantics bounds are (isDisplayed).
             ui::Rect r = TagRectInRoot(*tagged, label);
-            for (const ui::LayoutNode* a = tagged->Parent(); a; a = a->Parent()) {
-                bool clips = false;
-                for (const ui::ModifierNode* m : a->ModifierNodes()) clips |= m->ClipsChildren();
-                if (!clips) continue;
-                const ui::Rect c = a->BoundsInRoot();
-                r = ui::Rect{ std::max(r.left, c.left), std::max(r.top, c.top), std::min(r.right, c.right), std::min(r.bottom, c.bottom) };
-                if (r.right < r.left) r.right = r.left;
-                if (r.bottom < r.top) r.bottom = r.top;
-            }
+            for (const ui::LayoutNode* a = tagged->Parent(); a; a = a->Parent())
+                for (const ui::ModifierNode* m : a->ModifierNodes()) {
+                    if (!m->ClipsChildren()) continue;
+                    const ui::Rect c = a->RectInRoot(std::nullopt, m);
+                    r = ui::Rect{ std::max(r.left, c.left), std::max(r.top, c.top), std::min(r.right, c.right), std::min(r.bottom, c.bottom) };
+                    if (r.right < r.left) r.right = r.left;
+                    if (r.bottom < r.top) r.bottom = r.top;
+                }
             b = r;
         }
         // Then the dialog windows (full-window, at the origin).

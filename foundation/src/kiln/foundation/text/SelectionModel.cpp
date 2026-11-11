@@ -35,7 +35,7 @@ namespace kiln::foundation::selection {
         Rect r = c.node->RectInRoot(std::nullopt, c.at);
         for (const ui::LayoutNode* n = c.node->Parent(); n; n = n->Parent())
             for (const ui::ModifierNode* m : n->ModifierNodes())
-                if (m->ClipsChildren()) { r = r.Intersect(n->RectInRoot(std::nullopt)); break; }
+                if (m->ClipsChildren()) r = r.Intersect(n->RectInRoot(std::nullopt, m));
         if (const ui::Owner* o = c.node->GetOwner()) {
             const ui::IntSize w = const_cast<ui::Owner*>(o)->Root().Size();
             r = r.Intersect({ 0, 0, float(w.width), float(w.height) });
