@@ -167,11 +167,14 @@ namespace kiln::foundation {
     std::shared_ptr<NestedScrollConnection> RememberNestedScrollInteropConnection();
 
     // verticalScroll / horizontalScroll: clip, scrollable, and a layout that measures the content
-    // unbounded on the scroll axis and offsets it by the scroll value.
+    // unbounded on the scroll axis and offsets it by the scroll value. A null flingBehavior is
+    // the platform default.
     Modifier VerticalScroll(Modifier m, ScrollState& state, bool enabled = true, bool reverseScrolling = false,
-                            std::optional<std::shared_ptr<OverscrollEffect>> overscrollEffect = std::nullopt);
+                            std::optional<std::shared_ptr<OverscrollEffect>> overscrollEffect = std::nullopt,
+                            FlingBehavior flingBehavior = {});
     Modifier HorizontalScroll(Modifier m, ScrollState& state, bool enabled = true, bool reverseScrolling = false,
-                              std::optional<std::shared_ptr<OverscrollEffect>> overscrollEffect = std::nullopt);
+                              std::optional<std::shared_ptr<OverscrollEffect>> overscrollEffect = std::nullopt,
+                              FlingBehavior flingBehavior = {});
 
     // rememberScrollState: the scroll position survives re-creation (ScrollState.Saver).
     ScrollState& RememberScrollState(int initial = 0);

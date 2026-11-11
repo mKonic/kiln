@@ -780,12 +780,13 @@ namespace kiln::foundation {
 
     namespace {
         Modifier ScrollModifier(Modifier m, ScrollState& state, bool vertical, bool enabled, bool reverseScrolling,
-                                OverscrollParam overscroll) {
+                                OverscrollParam overscroll, FlingBehavior flingBehavior) {
             // ScrollableDefaults.reverseDirection: dragging moves content with the finger, so the
             // drag delta is reversed unless reverseScrolling (RTL flips horizontal again; TODO when
             // the scrollable reads the layout direction).
             ScrollableOptions opt;
             opt.enabled = enabled;
+            opt.flingBehavior = std::move(flingBehavior);
             opt.reverseDirection = !reverseScrolling;
             // ScrollableDefaults.reverseDirection: RTL flips horizontal scrolling again.
             if (!vertical && rt::Composition::Current() &&
@@ -806,11 +807,11 @@ namespace kiln::foundation {
         }
     }
 
-    Modifier VerticalScroll(Modifier m, ScrollState& s, bool enabled, bool reverse, OverscrollParam o) {
-        return ScrollModifier(std::move(m), s, true, enabled, reverse, std::move(o));
+    Modifier VerticalScroll(Modifier m, ScrollState& s, bool enabled, bool reverse, OverscrollParam o, FlingBehavior f) {
+        return ScrollModifier(std::move(m), s, true, enabled, reverse, std::move(o), std::move(f));
     }
-    Modifier HorizontalScroll(Modifier m, ScrollState& s, bool enabled, bool reverse, OverscrollParam o) {
-        return ScrollModifier(std::move(m), s, false, enabled, reverse, std::move(o));
+    Modifier HorizontalScroll(Modifier m, ScrollState& s, bool enabled, bool reverse, OverscrollParam o, FlingBehavior f) {
+        return ScrollModifier(std::move(m), s, false, enabled, reverse, std::move(o), std::move(f));
     }
 
 }
