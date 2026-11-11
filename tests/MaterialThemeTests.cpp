@@ -8301,3 +8301,232 @@ TEST(TextFieldAffixesAndPlaceholderWaitForTheLabel) {
         for (const char* s : { "Prefix", "Suffix", "Placeholder" }) CHECK((FindSemantics(tree, s) != nullptr) == k.shown);
     }
 }
+
+TEST(TextFieldPrefixAndSuffixPosition) {
+    // 24 dp prefix and suffix in a 300 dp field: inside the padding, below a minimized label, and
+    // past 24 dp icons (12 dp from the edges).
+    struct Case { bool label, icons; float y, inset; };
+    const Case cases[] = { { true, false, 8 + 16, 16 }, { false, false, 16, 16 }, { false, true, 16, 16 + 12 + 24 } };
+    for (const auto& k : cases) {
+        PhoneHarness h;
+        foundation::TextFieldState state("text");
+        Themed(h, [&] {
+            TextFieldOptions o;
+            if (k.label) o.label = [](const TextFieldLabelScope&) { Box(SizeMod({}, 16_dp, 16_dp)); };
+            o.prefix = [] { Box(Tag(SizeMod({}, 24_dp, 24_dp), "prefix")); };
+            o.suffix = [] { Box(Tag(SizeMod({}, 24_dp, 24_dp), "suffix")); };
+            if (k.icons) {
+                o.leadingIcon = [] { Icon(internal::Icons::Filled::Edit(), std::nullopt); };
+                o.trailingIcon = [] { Icon(internal::Icons::Filled::Edit(), std::nullopt); };
+            }
+            TextField(state, Width({}, 300_dp), o);
+        });
+        h.AdvanceTimeBy(300);
+        const auto p = UnclippedBoundsDp(h, "prefix"), s = UnclippedBoundsDp(h, "suffix");
+        CHECK(p && std::abs(p->left - k.inset) <= 0.5f && std::abs(p->top - k.y) <= 0.5f);
+        CHECK(s && std::abs(s->left - (300 - k.inset - 24)) <= 0.5f && std::abs(s->top - k.y) <= 0.5f);
+    }
+}
+
+TEST(TextFieldLabelStartsPastTheLeadingIcon) {
+    for (bool icons : { true, false }) {
+        PhoneHarness h;
+        foundation::TextFieldState state;
+        Themed(h, [&] {
+            TextFieldOptions o;
+            o.label = [](const TextFieldLabelScope&) { Text("label", Tag({}, "label")); };
+            if (icons) {
+                o.leadingIcon = [] { Icon(internal::Icons::Filled::Edit(), std::nullopt); };
+                o.trailingIcon = [] { Icon(internal::Icons::Filled::Edit(), std::nullopt); };
+            }
+            TextField(state, {}, o);
+        });
+        h.AdvanceTimeBy(300);
+        const auto l = UnclippedBoundsDp(h, "label");
+        CHECK(l && std::abs(l->left - (icons ? 16 + 12 + 24 : 16)) <= 0.5f);
+    }
+}
+
+TEST(TextFieldIconColours) {
+    // onSurfaceVariant; an error colours the trailing icon only.
+    for (bool error : { false, true }) {
+        PhoneHarness h;
+        foundation::TextFieldState state;
+        Color leading, trailing, variant, errorColor;
+        Themed(h, [&] {
+            variant = MaterialTheme::colorScheme().onSurfaceVariant;
+            errorColor = MaterialTheme::colorScheme().error;
+            TextFieldOptions o;
+            o.isError = error;
+            o.leadingIcon = [&] { leading = rt::Composition::Current()->Read(LocalContentColor); };
+            o.trailingIcon = [&] { trailing = rt::Composition::Current()->Read(LocalContentColor); };
+            TextField(state, {}, o);
+        });
+        CHECK(leading == variant);
+        CHECK(trailing == (error ? errorColor : variant));
+    }
+}
+
+TEST(TextFieldSupportingText) {
+    {
+        // Below the field, 4 dp down, inside the padding.
+        PhoneHarness h;
+        foundation::TextFieldState state;
+        Themed(h, [&] {
+            TextFieldOptions o;
+            o.textStyle = text::TextStyle(text::Sp(1));
+            o.supportingText = [] { Box(Tag(SizeMod({}, 16_dp, 16_dp), "supporting")); };
+            TextField(state, {}, o);
+        });
+        const auto s = UnclippedBoundsDp(h, "supporting");
+        CHECK(s && std::abs(s->left - 16) <= 0.5f && std::abs(s->top - (56 + 4)) <= 0.5f);
+    }
+    {
+        // No wider than the field, and part of its size.
+        PhoneHarness h;
+        foundation::TextFieldState state;
+        Themed(h, [&] {
+            TextFieldOptions o;
+            o.supportingText = [] {
+                Text("Long long long long long long long long long long long long long long long long long long long long long long long long",
+                     Tag({}, "supporting"));
+            };
+            TextField(state, Tag({}, "textField"), o);
+        });
+        const auto f = UnclippedBoundsDp(h, "textField"), s = UnclippedBoundsDp(h, "supporting");
+        CHECK(f && s && s->Width() <= f->Width() && f->Height() > 56);
+    }
+    {
+        // Still shown under a tall input in a short field.
+        PhoneHarness h;
+        std::string lines;
+        for (int i = 0; i < 200; ++i) lines += "line " + std::to_string(i) + "\n";
+        foundation::TextFieldState state(lines);
+        Themed(h, [&] {
+            TextFieldOptions o;
+            o.supportingText = [] { Text("Supporting", Tag({}, "supporting")); };
+            TextField(state, SizeMod({}, 280_dp, 150_dp), o);
+        });
+        CHECK(Displayed(h, "supporting"));
+    }
+    {
+        // A click on it focuses the field.
+        PhoneHarness h;
+        foundation::TextFieldState state("input");
+        auto source = std::make_shared<foundation::MutableInteractionSource>();
+        Themed(h, [&] {
+            TextFieldOptions o;
+            o.interactionSource = source;
+            o.supportingText = [] { Text("Supporting"); };
+            TextField(state, {}, o);
+        });
+        std::int64_t t = 0;
+        Press(h, t, "Supporting", true);
+        h.AdvanceTimeBy(100);
+        CHECK(source->IsFocused());
+    }
+    for (bool error : { false, true }) {
+        // bodySmall, onSurfaceVariant (error when in error).
+        PhoneHarness h;
+        foundation::TextFieldState state;
+        text::TextStyle style, bodySmall;
+        Color colour, expected;
+        Themed(h, [&] {
+            bodySmall = MaterialTheme::typography().bodySmall;
+            expected = error ? MaterialTheme::colorScheme().error : MaterialTheme::colorScheme().onSurfaceVariant;
+            TextFieldOptions o;
+            o.isError = error;
+            o.supportingText = [&] {
+                style = rt::Composition::Current()->Read(LocalTextStyle());
+                colour = rt::Composition::Current()->Read(LocalContentColor);
+            };
+            TextField(state, {}, o);
+        });
+        CHECK(style == bodySmall);
+        CHECK(colour == expected);
+    }
+}
+
+namespace {
+    // outputTransformation = { insert(0, "prefix") }
+    struct PrefixOutput final : foundation::OutputTransformation {
+        void TransformOutput(foundation::TextFieldBuffer& b) const override { b.Insert(0, u"prefix"); }
+    };
+}
+
+TEST(TextFieldUsesTheTransformedText) {
+    // An empty state shown as "prefix": the label minimizes and no placeholder appears.
+    PhoneHarness h;
+    foundation::TextFieldState state;
+    bool placeholder = false;
+    Themed(h, [&] {
+        TextFieldOptions o;
+        o.outputTransformation = std::make_shared<PrefixOutput>();
+        o.label = [](const TextFieldLabelScope&) { Box(Tag(SizeMod({}, 16_dp, 16_dp), "label")); };
+        o.placeholder = [&] { placeholder = true; };
+        TextField(state, {}, o);
+    });
+    h.AdvanceTimeBy(300);
+    const auto l = UnclippedBoundsDp(h, "label");
+    CHECK(l && std::abs(l->top - 8) <= 0.5f);
+    CHECK(!placeholder);
+}
+
+TEST(TextFieldErrorSemantics) {
+    {
+        PhoneHarness h;
+        foundation::TextFieldState state("test");
+        std::string message;
+        Themed(h, [&] {
+            message = GetString(Strings::DefaultErrorMessage);
+            TextFieldOptions o;
+            o.isError = true;
+            TextField(state, Tag({}, "textField"), o);
+        });
+        const auto tree = h.owner.BuildSemanticsTree();
+        const auto* n = FindSemantics(tree, "textField");
+        CHECK(n && n->config.error == message);
+    }
+    {
+        // A message the caller sets wins.
+        PhoneHarness h;
+        foundation::TextFieldState state("test");
+        Themed(h, [&] {
+            TextFieldOptions o;
+            o.isError = true;
+            TextField(state, foundation::Semantics(Tag({}, "textField"), [](ui::SemanticsConfiguration& c) { c.error = "Special symbols not allowed"; }), o);
+        });
+        const auto tree = h.owner.BuildSemanticsTree();
+        const auto* n = FindSemantics(tree, "textField");
+        CHECK(n && n->config.error == std::string("Special symbols not allowed"));
+    }
+}
+
+TEST(TextFieldWithALabelInIntrinsicSizes) {
+    {
+        PhoneHarness h;
+        foundation::TextFieldState state;
+        Themed(h, [&] {
+            Box(Tag({}, "box"), Alignment::TopStart(), false, [&] {
+                Row(Height({}, foundation::IntrinsicSize::Min), [&] {
+                    VerticalDivider(Tag({}, "divider"), 10_dp);
+                    TextField(state, {}, Labelled());
+                });
+            });
+        });
+        const auto box = UnclippedBoundsDp(h, "box"), divider = UnclippedBoundsDp(h, "divider");
+        CHECK(box && divider && Near(divider->Height(), box->Height()));
+    }
+    {
+        PhoneHarness h;
+        foundation::TextFieldState state;
+        Themed(h, [&] {
+            Column(Width({}, foundation::IntrinsicSize::Min), [&] {
+                HorizontalDivider(Tag({}, "divider"), 10_dp);
+                TextField(state, Tag({}, "textField"), Labelled());
+            });
+        });
+        const auto field = UnclippedBoundsDp(h, "textField"), divider = UnclippedBoundsDp(h, "divider");
+        CHECK(field && divider && Near(divider->Width(), field->Width()));
+    }
+}
