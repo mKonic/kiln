@@ -324,7 +324,7 @@ namespace kiln::material3::adaptive {
         auto& c = *rt::Composition::Current();
         PaneExpansionState* result = nullptr;
         // The two branches are separate groups (Compose's if / else).
-        c.Child([&] {
+        c.Section([&] {
             if (mutableState) result = &RememberPaneExpansionState(keyProvider());
             else result = &c.RememberNew<PaneExpansionState>({}, rt::Key{});   // a stub
         }, rt::Key(mutableState ? 1 : 2));

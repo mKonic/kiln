@@ -230,8 +230,8 @@ namespace kiln::material3::adaptive {
     void ThreePaneScaffoldPredictiveBackHandler(ThreePaneScaffoldNavigator<T>& navigator, BackNavigationBehavior backBehavior) {
         auto& c = *rt::Composition::Current();
         auto* np = &navigator;
-        c.Child([&] {
-            foundation::PredictiveBackHandler(navigator.CanNavigateBack(backBehavior),
+        c.Child([np, backBehavior] {
+            foundation::PredictiveBackHandler(np->CanNavigateBack(backBehavior),
                                               [np, backBehavior](foundation::BackProgress& p) { return detail::HandleBack(np, backBehavior, &p); });
         }, rt::Key(std::int64_t(reinterpret_cast<std::uintptr_t>(np)) * 4 + int(backBehavior)));
     }
