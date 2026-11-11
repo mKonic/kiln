@@ -58,3 +58,28 @@ namespace catalog::samples {
     };
     inline LaunchScope RememberCoroutineScope(kiln::rt::Key key = {}) { return LaunchScope{ kiln::rt::RememberCoroutineScope(key) }; }
 }
+
+namespace catalog::samples {
+    // rememberSaveable { mutableStateListOf(...) } for ints and booleans.
+    template<typename T>
+        requires(std::is_same_v<T, int> || std::is_same_v<T, bool>)
+    kiln::rt::State<std::vector<T>>& RememberSaveableList(std::vector<T> initial, kiln::rt::Key key = {}) {
+        return RememberSaveableState(std::move(initial), kiln::rt::ListSaver<std::vector<T>>(
+            [](const std::vector<T>& v) {
+                kiln::rt::SavedValue::List l;
+                for (T x : v) l.push_back(kiln::rt::SavedValue(x));
+                return l;
+            },
+            [](const kiln::rt::SavedValue::List& l) -> std::optional<std::vector<T>> {
+                std::vector<T> v;
+                for (const auto& s : l) {
+                    if constexpr (std::is_same_v<T, bool>) {
+                        if (auto* b = std::get_if<bool>(&s.v)) v.push_back(*b);
+                    } else if (auto* i = std::get_if<std::int64_t>(&s.v)) {
+                        v.push_back(int(*i));
+                    }
+                }
+                return v;
+            }), key);
+    }
+}

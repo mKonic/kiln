@@ -2,22 +2,31 @@
 
 #include "Catalog.h"
 #include "samples/AlertDialogSamples.h"
+#include "samples/AppBarSamples.h"
 #include "samples/BadgeSamples.h"
+#include "samples/ButtonGroupSamples.h"
 #include "samples/ButtonSamples.h"
 #include "samples/CardSamples.h"
 #include "samples/CheckboxSamples.h"
 #include "samples/ChipSamples.h"
 #include "samples/Common.h"
+#include "samples/DrawerSamples.h"
 #include "samples/ExposedDropdownMenuSamples.h"
+#include "samples/FloatingActionButtonMenuSamples.h"
 #include "samples/FloatingActionButtonSamples.h"
+#include "samples/FloatingToolbarSamples.h"
 #include "samples/IconButtonSamples.h"
+#include "samples/ListSamples.h"
 #include "samples/LoadingIndicatorSamples.h"
 #include "samples/MenuSamples.h"
+#include "samples/NavigationBarSamples.h"
+#include "samples/NavigationRailSamples.h"
 #include "samples/ProgressIndicatorSamples.h"
 #include "samples/RadioButtonSamples.h"
 #include "samples/SegmentedButtonSamples.h"
 #include "samples/Shared.h"
 #include "samples/SliderSamples.h"
+#include "samples/SplitButtonSamples.h"
 #include "samples/SwitchSamples.h"
 #include "samples/TabSamples.h"
 #include "samples/TextFieldSamples.h"
@@ -41,15 +50,15 @@ namespace catalog {
                 { "NavigationBarItemWithBadge", "Badge examples", false, samples::NavigationBarItemWithBadge },
             } },
             { 3, "Bottom App Bar", "A bottom app bar displays navigation and key actions at the bottom of mobile screens.", true, 0, {
-                { "SimpleBottomAppBar", "Bottom app bar examples", false, nullptr },
-                { "BottomAppBarWithFAB", "Bottom app bar examples", false, nullptr },
-                { "BottomAppBarWithOverflow", "Bottom app bar examples", true, nullptr },
-                { "ExitAlwaysBottomAppBar", "Bottom app bar examples", false, nullptr },
-                { "ExitAlwaysBottomAppBarSpacedAround", "Bottom app bar examples", true, nullptr },
-                { "ExitAlwaysBottomAppBarSpacedBetween", "Bottom app bar examples", true, nullptr },
-                { "ExitAlwaysBottomAppBarSpacedEvenly", "Bottom app bar examples", true, nullptr },
-                { "ExitAlwaysBottomAppBarFixed", "Bottom app bar examples", true, nullptr },
-                { "ExitAlwaysBottomAppBarFixedVibrant", "Bottom app bar examples", true, nullptr },
+                { "SimpleBottomAppBar", "Bottom app bar examples", false, samples::SimpleBottomAppBar },
+                { "BottomAppBarWithFAB", "Bottom app bar examples", false, samples::BottomAppBarWithFAB },
+                { "BottomAppBarWithOverflow", "Bottom app bar examples", true, samples::BottomAppBarWithOverflow },
+                { "ExitAlwaysBottomAppBar", "Bottom app bar examples", false, samples::ExitAlwaysBottomAppBar },
+                { "ExitAlwaysBottomAppBarSpacedAround", "Bottom app bar examples", true, samples::ExitAlwaysBottomAppBarSpacedAround },
+                { "ExitAlwaysBottomAppBarSpacedBetween", "Bottom app bar examples", true, samples::ExitAlwaysBottomAppBarSpacedBetween },
+                { "ExitAlwaysBottomAppBarSpacedEvenly", "Bottom app bar examples", true, samples::ExitAlwaysBottomAppBarSpacedEvenly },
+                { "ExitAlwaysBottomAppBarFixed", "Bottom app bar examples", true, samples::ExitAlwaysBottomAppBarFixed },
+                { "ExitAlwaysBottomAppBarFixedVibrant", "Bottom app bar examples", true, samples::ExitAlwaysBottomAppBarFixedVibrant },
             } },
             { 4, "Bottom Sheet", "Bottom sheets are surfaces containing supplementary content, anchored to the bottom of the screen.", true, 0, {
                 { "ModalBottomSheetSample", "Bottom Sheet examples", false, nullptr },
@@ -76,11 +85,11 @@ namespace catalog {
                 { "XLargeButtonWithIconSample", "Button examples", true, samples::XLargeButtonWithIconSample },
             } },
             { 6, "Button Groups", "button groups is a container for material components that adds an animation on press", true, 0, {
-                { "ButtonGroupSample", "ButtonGroup examples", true, nullptr },
-                { "ButtonGroupWithCustomItemSample", "ButtonGroup examples", true, nullptr },
-                { "SingleSelectConnectedButtonGroupSample", "ButtonGroup examples", true, nullptr },
-                { "MultiSelectConnectedButtonGroupSample", "ButtonGroup examples", true, nullptr },
-                { "VerticalButtonGroupSample", "ButtonGroup examples", true, nullptr },
+                { "ButtonGroupSample", "ButtonGroup examples", true, samples::ButtonGroupSample },
+                { "ButtonGroupWithCustomItemSample", "ButtonGroup examples", true, samples::ButtonGroupWithCustomItemSample },
+                { "SingleSelectConnectedButtonGroupSample", "ButtonGroup examples", true, samples::SingleSelectConnectedButtonGroupSample },
+                { "MultiSelectConnectedButtonGroupSample", "ButtonGroup examples", true, samples::MultiSelectConnectedButtonGroupSample },
+                { "VerticalButtonGroupSample", "ButtonGroup examples", true, samples::VerticalButtonGroupSample },
             } },
             { 7, "Card", "Cards contain content and actions that relate information about a subject.", true, 0, {
                 { "CardSample", "Cards examples", false, samples::CardSample },
@@ -157,20 +166,20 @@ namespace catalog {
                 { "SmallFloatingActionButtonSample", "Floating action button examples", false, samples::SmallFloatingActionButtonSample },
             } },
             { 15, "FAB Menu", "The FAB Menu displays additional key actions on click of a FAB.", true, 0, {
-                { "FloatingActionButtonMenuSample", "FAB Menu examples", true, nullptr },
+                { "FloatingActionButtonMenuSample", "FAB Menu examples", true, samples::FloatingActionButtonMenuSample },
             } },
             { 16, "Floating Toolbar", "A floating toolbar displays key actions above the content.", true, 0, {
-                { "ExpandableHorizontalFloatingToolbarSample", "Floating toolbar examples", true, nullptr },
-                { "OverflowingHorizontalFloatingToolbarSample", "Floating toolbar examples", true, nullptr },
-                { "ScrollableHorizontalFloatingToolbarSample", "Floating toolbar examples", true, nullptr },
-                { "ExpandableVerticalFloatingToolbarSample", "Floating toolbar examples", true, nullptr },
-                { "OverflowingVerticalFloatingToolbarSample", "Floating toolbar examples", true, nullptr },
-                { "ScrollableVerticalFloatingToolbarSample", "Floating toolbar examples", true, nullptr },
-                { "HorizontalFloatingToolbarWithFabSample", "Floating toolbar examples", true, nullptr },
-                { "CenteredHorizontalFloatingToolbarWithFabSample", "Floating toolbar examples", true, nullptr },
-                { "HorizontalFloatingToolbarAsScaffoldFabSample", "Floating toolbar examples", true, nullptr },
-                { "VerticalFloatingToolbarWithFabSample", "Floating toolbar examples", true, nullptr },
-                { "CenteredVerticalFloatingToolbarWithFabSample", "Floating toolbar examples", true, nullptr },
+                { "ExpandableHorizontalFloatingToolbarSample", "Floating toolbar examples", true, samples::ExpandableHorizontalFloatingToolbarSample },
+                { "OverflowingHorizontalFloatingToolbarSample", "Floating toolbar examples", true, samples::OverflowingHorizontalFloatingToolbarSample },
+                { "ScrollableHorizontalFloatingToolbarSample", "Floating toolbar examples", true, samples::ScrollableHorizontalFloatingToolbarSample },
+                { "ExpandableVerticalFloatingToolbarSample", "Floating toolbar examples", true, samples::ExpandableVerticalFloatingToolbarSample },
+                { "OverflowingVerticalFloatingToolbarSample", "Floating toolbar examples", true, samples::OverflowingVerticalFloatingToolbarSample },
+                { "ScrollableVerticalFloatingToolbarSample", "Floating toolbar examples", true, samples::ScrollableVerticalFloatingToolbarSample },
+                { "HorizontalFloatingToolbarWithFabSample", "Floating toolbar examples", true, samples::HorizontalFloatingToolbarWithFabSample },
+                { "CenteredHorizontalFloatingToolbarWithFabSample", "Floating toolbar examples", true, samples::CenteredHorizontalFloatingToolbarWithFabSample },
+                { "HorizontalFloatingToolbarAsScaffoldFabSample", "Floating toolbar examples", true, samples::HorizontalFloatingToolbarAsScaffoldFabSample },
+                { "VerticalFloatingToolbarWithFabSample", "Floating toolbar examples", true, samples::VerticalFloatingToolbarWithFabSample },
+                { "CenteredVerticalFloatingToolbarWithFabSample", "Floating toolbar examples", true, samples::CenteredVerticalFloatingToolbarWithFabSample },
             } },
             { 17, "Icon buttons", "Icon buttons allow users to take actions and make choices with a single tap.", true, 0, {
                 { "IconButtonSample", "Icon button examples", false, samples::IconButtonSample },
@@ -188,20 +197,20 @@ namespace catalog {
                 { "LargeRoundUniformOutlinedIconButtonSample", "Icon button examples", true, samples::LargeRoundUniformOutlinedIconButtonSample },
             } },
             { 18, "Lists", "Lists are continuous, vertical indexes of text or images.", true, 0, {
-                { "StandardListItems", "List examples", true, nullptr },
-                { "SegmentedListItems", "List examples", true, nullptr },
-                { "ClickableListItemSample", "List examples", true, nullptr },
-                { "ClickableListItemWithClickableChildSample", "List examples", true, nullptr },
-                { "SingleSelectionListItemSample", "List examples", true, nullptr },
-                { "MultiSelectionListItemSample", "List examples", true, nullptr },
-                { "ListItemWithModeChangeOnLongClickSample", "List examples", true, nullptr },
-                { "SingleSelectionSegmentedListItemSample", "List examples", true, nullptr },
-                { "MultiSelectionSegmentedListItemSample", "List examples", true, nullptr },
-                { "SegmentedListItemWithExpansionSample", "List examples", true, nullptr },
-                { "LegacyOneLineListItem", "List examples", false, nullptr },
-                { "LegacyTwoLineListItem", "List examples", false, nullptr },
-                { "LegacyThreeLineListItemWithOverlineAndSupporting", "List examples", false, nullptr },
-                { "LegacyThreeLineListItemWithExtendedSupporting", "List examples", false, nullptr },
+                { "StandardListItems", "List examples", true, samples::StandardListItems },
+                { "SegmentedListItems", "List examples", true, samples::SegmentedListItems },
+                { "ClickableListItemSample", "List examples", true, samples::ClickableListItemSample },
+                { "ClickableListItemWithClickableChildSample", "List examples", true, samples::ClickableListItemWithClickableChildSample },
+                { "SingleSelectionListItemSample", "List examples", true, samples::SingleSelectionListItemSample },
+                { "MultiSelectionListItemSample", "List examples", true, samples::MultiSelectionListItemSample },
+                { "ListItemWithModeChangeOnLongClickSample", "List examples", true, samples::ListItemWithModeChangeOnLongClickSample },
+                { "SingleSelectionSegmentedListItemSample", "List examples", true, samples::SingleSelectionSegmentedListItemSample },
+                { "MultiSelectionSegmentedListItemSample", "List examples", true, samples::MultiSelectionSegmentedListItemSample },
+                { "SegmentedListItemWithExpansionSample", "List examples", true, samples::SegmentedListItemWithExpansionSample },
+                { "LegacyOneLineListItem", "List examples", false, samples::LegacyOneLineListItem },
+                { "LegacyTwoLineListItem", "List examples", false, samples::LegacyTwoLineListItem },
+                { "LegacyThreeLineListItemWithOverlineAndSupporting", "List examples", false, samples::LegacyThreeLineListItemWithOverlineAndSupporting },
+                { "LegacyThreeLineListItemWithExtendedSupporting", "List examples", false, samples::LegacyThreeLineListItemWithExtendedSupporting },
             } },
             { 19, "Loading indicators", "Loading indicators express an unspecified wait time or display the length of a loading process.", true, 0, {
                 { "LoadingIndicatorSample", "Loading indicators examples", true, samples::LoadingIndicatorSample },
@@ -220,24 +229,24 @@ namespace catalog {
                 { "MultiAutocompleteExposedDropdownMenuSample", "Menus examples", false, samples::MultiAutocompleteExposedDropdownMenuSample },
             } },
             { 21, "Navigation bar", "Navigation bars offer a persistent and convenient way to switch between primary destinations in an app.", true, 0, {
-                { "ShortNavigationBarSample", "Navigation bar examples", true, nullptr },
-                { "ShortNavigationBarWithHorizontalItemsSample", "Navigation bar examples", true, nullptr },
-                { "NavigationBarSample", "Navigation bar examples", false, nullptr },
+                { "ShortNavigationBarSample", "Navigation bar examples", true, samples::ShortNavigationBarSample },
+                { "ShortNavigationBarWithHorizontalItemsSample", "Navigation bar examples", true, samples::ShortNavigationBarWithHorizontalItemsSample },
+                { "NavigationBarSample", "Navigation bar examples", false, samples::NavigationBarSample },
             } },
             { 22, "Navigation drawer", "Navigation drawers provide ergonomic access to destinations in an app.", true, 0, {
-                { "ModalNavigationDrawerSample", "Navigation drawer examples", false, nullptr },
-                { "PermanentNavigationDrawerSample", "Navigation drawer examples", false, nullptr },
-                { "DismissibleNavigationDrawerSample", "Navigation drawer examples", false, nullptr },
+                { "ModalNavigationDrawerSample", "Navigation drawer examples", false, samples::ModalNavigationDrawerSample },
+                { "PermanentNavigationDrawerSample", "Navigation drawer examples", false, samples::PermanentNavigationDrawerSample },
+                { "DismissibleNavigationDrawerSample", "Navigation drawer examples", false, samples::DismissibleNavigationDrawerSample },
             } },
             { 23, "Navigation rail", "Navigation rails provide access to primary destinations in apps when using tablet and desktop screens.", true, 0, {
-                { "WideNavigationRailResponsiveSample", "Navigation rail examples", true, nullptr },
-                { "ModalWideNavigationRailSample", "Navigation rail examples", true, nullptr },
-                { "DismissibleModalWideNavigationRailSample", "Navigation rail examples", true, nullptr },
-                { "WideNavigationRailCollapsedSample", "Navigation rail examples", true, nullptr },
-                { "WideNavigationRailExpandedSample", "Navigation rail examples", true, nullptr },
-                { "WideNavigationRailArrangementsSample", "Navigation rail examples", true, nullptr },
-                { "NavigationRailSample", "Navigation rail examples", false, nullptr },
-                { "NavigationRailBottomAlignSample", "Navigation rail examples", false, nullptr },
+                { "WideNavigationRailResponsiveSample", "Navigation rail examples", true, samples::WideNavigationRailResponsiveSample },
+                { "ModalWideNavigationRailSample", "Navigation rail examples", true, samples::ModalWideNavigationRailSample },
+                { "DismissibleModalWideNavigationRailSample", "Navigation rail examples", true, samples::DismissibleModalWideNavigationRailSample },
+                { "WideNavigationRailCollapsedSample", "Navigation rail examples", true, samples::WideNavigationRailCollapsedSample },
+                { "WideNavigationRailExpandedSample", "Navigation rail examples", true, samples::WideNavigationRailExpandedSample },
+                { "WideNavigationRailArrangementsSample", "Navigation rail examples", true, samples::WideNavigationRailArrangementsSample },
+                { "NavigationRailSample", "Navigation rail examples", false, samples::NavigationRailSample },
+                { "NavigationRailBottomAlignSample", "Navigation rail examples", false, samples::NavigationRailBottomAlignSample },
             } },
             { 24, "Navigation Suite Scaffold", "The Navigation Suite Scaffold wraps the provided content and places the adequate provided navigation component on the screen according to the current NavigationSuiteType. \n\nNote: this sample is better experienced in a resizable emulator or foldable device.", true, 0, {
                 { "NavigationSuiteScaffoldSample", "Navigation suite scaffold examples", true, nullptr },
@@ -300,18 +309,18 @@ namespace catalog {
                 { "ScaffoldWithMultilineSnackbar", "Snackbars examples", false, nullptr },
             } },
             { 34, "Split Button", "Split buttons let user perform additional actions besides the main action", true, 0, {
-                { "FilledSplitButtonSample", "Split Button examples", true, nullptr },
-                { "SplitButtonWithUnCheckableTrailingButtonSample", "Split Button examples", true, nullptr },
-                { "SplitButtonWithDropdownMenuSample", "Split Button examples", true, nullptr },
-                { "TonalSplitButtonSample", "Split Button examples", true, nullptr },
-                { "ElevatedSplitButtonSample", "Split Button examples", true, nullptr },
-                { "OutlinedSplitButtonSample", "Split Button examples", true, nullptr },
-                { "SplitButtonWithTextSample", "Split Button examples", true, nullptr },
-                { "SplitButtonWithIconSample", "Split Button examples", true, nullptr },
-                { "XSmallFilledSplitButtonSample", "Split Button examples", true, nullptr },
-                { "MediumFilledSplitButtonSample", "Split Button examples", true, nullptr },
-                { "LargeFilledSplitButtonSample", "Split Button examples", true, nullptr },
-                { "ExtraLargeFilledSplitButtonSample", "Split Button examples", true, nullptr },
+                { "FilledSplitButtonSample", "Split Button examples", true, samples::FilledSplitButtonSample },
+                { "SplitButtonWithUnCheckableTrailingButtonSample", "Split Button examples", true, samples::SplitButtonWithUnCheckableTrailingButtonSample },
+                { "SplitButtonWithDropdownMenuSample", "Split Button examples", true, samples::SplitButtonWithDropdownMenuSample },
+                { "TonalSplitButtonSample", "Split Button examples", true, samples::TonalSplitButtonSample },
+                { "ElevatedSplitButtonSample", "Split Button examples", true, samples::ElevatedSplitButtonSample },
+                { "OutlinedSplitButtonSample", "Split Button examples", true, samples::OutlinedSplitButtonSample },
+                { "SplitButtonWithTextSample", "Split Button examples", true, samples::SplitButtonWithTextSample },
+                { "SplitButtonWithIconSample", "Split Button examples", true, samples::SplitButtonWithIconSample },
+                { "XSmallFilledSplitButtonSample", "Split Button examples", true, samples::XSmallFilledSplitButtonSample },
+                { "MediumFilledSplitButtonSample", "Split Button examples", true, samples::MediumFilledSplitButtonSample },
+                { "LargeFilledSplitButtonSample", "Split Button examples", true, samples::LargeFilledSplitButtonSample },
+                { "ExtraLargeFilledSplitButtonSample", "Split Button examples", true, samples::ExtraLargeFilledSplitButtonSample },
             } },
             { 35, "Switches", "Switches toggle the state of a single setting on or off.", true, 0, {
                 { "SwitchSample", "Switch examples", false, samples::SwitchSample },
@@ -400,23 +409,23 @@ namespace catalog {
                 { "RichTooltipWithCustomCaretSample", "Tooltips examples", false, samples::RichTooltipWithCustomCaretSample },
             } },
             { 40, "Top app bar", "Top app bars display information and actions at the top of a screen.", true, 0, {
-                { "SimpleTopAppBar", "Top app bar examples", false, nullptr },
-                { "SimpleTopAppBarWithAdaptiveActions", "Top app bar examples", false, nullptr },
-                { "SimpleTopAppBarWithSubtitle", "Top app bar examples", true, nullptr },
-                { "SimpleCenterAlignedTopAppBar", "Top app bar examples", false, nullptr },
-                { "SimpleTopAppBarWithSubtitleAndCenterAligned", "Top app bar examples", true, nullptr },
-                { "PinnedTopAppBar", "Top app bar examples", false, nullptr },
-                { "PinnedTopAppBarWithPreScrolledLazyColumn", "Top app bar examples", false, nullptr },
-                { "PinnedTopAppBarWithReversedLazyGrid", "Top app bar examples", false, nullptr },
-                { "EnterAlwaysTopAppBar", "Top app bar examples", true, nullptr },
-                { "EnterAlwaysTopAppBarWithReverseScrolling", "Top app bar examples", true, nullptr },
-                { "ExitUntilCollapsedMediumTopAppBar", "Top app bar examples", false, nullptr },
-                { "ExitUntilCollapsedMediumFlexibleTopAppBar", "Top app bar examples", false, nullptr },
-                { "MediumFlexibleTopAppBarWithSubtitleAndCenterAligned", "Top app bar examples", false, nullptr },
-                { "ExitUntilCollapsedLargeTopAppBar", "Top app bar examples", false, nullptr },
-                { "ExitUntilCollapsedLargeFlexibleTopAppBar", "Top app bar examples", true, nullptr },
-                { "LargeFlexibleTopAppBarWithSubtitleAndCenterAligned", "Top app bar examples", true, nullptr },
-                { "CustomTwoRowsTopAppBar", "Top app bar examples", true, nullptr },
+                { "SimpleTopAppBar", "Top app bar examples", false, samples::SimpleTopAppBar },
+                { "SimpleTopAppBarWithAdaptiveActions", "Top app bar examples", false, samples::SimpleTopAppBarWithAdaptiveActions },
+                { "SimpleTopAppBarWithSubtitle", "Top app bar examples", true, samples::SimpleTopAppBarWithSubtitle },
+                { "SimpleCenterAlignedTopAppBar", "Top app bar examples", false, samples::SimpleCenterAlignedTopAppBar },
+                { "SimpleTopAppBarWithSubtitleAndCenterAligned", "Top app bar examples", true, samples::SimpleTopAppBarWithSubtitleAndCenterAligned },
+                { "PinnedTopAppBar", "Top app bar examples", false, samples::PinnedTopAppBar },
+                { "PinnedTopAppBarWithPreScrolledLazyColumn", "Top app bar examples", false, samples::PinnedTopAppBarWithPreScrolledLazyColumn },
+                { "PinnedTopAppBarWithReversedLazyGrid", "Top app bar examples", false, samples::PinnedTopAppBarWithReversedLazyGrid },
+                { "EnterAlwaysTopAppBar", "Top app bar examples", true, samples::EnterAlwaysTopAppBar },
+                { "EnterAlwaysTopAppBarWithReverseScrolling", "Top app bar examples", true, samples::EnterAlwaysTopAppBarWithReverseScrolling },
+                { "ExitUntilCollapsedMediumTopAppBar", "Top app bar examples", false, samples::ExitUntilCollapsedMediumTopAppBar },
+                { "ExitUntilCollapsedMediumFlexibleTopAppBar", "Top app bar examples", false, samples::ExitUntilCollapsedMediumFlexibleTopAppBar },
+                { "MediumFlexibleTopAppBarWithSubtitleAndCenterAligned", "Top app bar examples", false, samples::MediumFlexibleTopAppBarWithSubtitleAndCenterAligned },
+                { "ExitUntilCollapsedLargeTopAppBar", "Top app bar examples", false, samples::ExitUntilCollapsedLargeTopAppBar },
+                { "ExitUntilCollapsedLargeFlexibleTopAppBar", "Top app bar examples", true, samples::ExitUntilCollapsedLargeFlexibleTopAppBar },
+                { "LargeFlexibleTopAppBarWithSubtitleAndCenterAligned", "Top app bar examples", true, samples::LargeFlexibleTopAppBarWithSubtitleAndCenterAligned },
+                { "CustomTwoRowsTopAppBar", "Top app bar examples", true, samples::CustomTwoRowsTopAppBar },
             } },
             { 41, "Transitions", "Transitions guide users between screens and navigation states, maintaining spatial context through expressive motion, including gesture-driven predictive back.", true, 0, {
                 { "HorizontalSharedAxisTransitionSample", "Transitions examples", false, nullptr },

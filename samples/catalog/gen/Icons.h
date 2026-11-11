@@ -9,19 +9,37 @@ namespace catalog::Icons {
     using kiln::gfx::vector::ImageVectorPtr;
 
     namespace AutoMirrored { namespace Filled { const ImageVectorPtr& ArrowBack(); }}
+    namespace AutoMirrored { namespace Filled { const ImageVectorPtr& ArrowForward(); }}
     namespace AutoMirrored { namespace Filled { const ImageVectorPtr& ArrowRight(); }}
     namespace AutoMirrored { namespace Filled { const ImageVectorPtr& FormatAlignLeft(); }}
     namespace AutoMirrored { namespace Filled { const ImageVectorPtr& FormatAlignRight(); }}
     namespace AutoMirrored { namespace Filled { const ImageVectorPtr& KeyboardArrowRight(); }}
+    namespace AutoMirrored { namespace Filled { const ImageVectorPtr& Label(); }}
+    namespace AutoMirrored { namespace Filled { const ImageVectorPtr& MenuOpen(); }}
+    namespace AutoMirrored { namespace Filled { const ImageVectorPtr& Message(); }}
     namespace AutoMirrored { namespace Filled { const ImageVectorPtr& TrendingUp(); }}
+    namespace Filled { const ImageVectorPtr& AccountCircle(); }
     namespace Filled { const ImageVectorPtr& Add(); }
     namespace Filled { const ImageVectorPtr& AddCircle(); }
+    namespace Filled { const ImageVectorPtr& Archive(); }
     namespace Filled { const ImageVectorPtr& ArrowDropDown(); }
+    namespace Filled { const ImageVectorPtr& ArrowUpward(); }
+    namespace Filled { const ImageVectorPtr& Attachment(); }
     namespace Filled { const ImageVectorPtr& BookmarkBorder(); }
+    namespace Filled { const ImageVectorPtr& Bookmarks(); }
+    namespace Filled { const ImageVectorPtr& CalendarMonth(); }
     namespace Filled { const ImageVectorPtr& Check(); }
     namespace Filled { const ImageVectorPtr& Clear(); }
+    namespace Filled { const ImageVectorPtr& Close(); }
+    namespace Filled { const ImageVectorPtr& Coffee(); }
+    namespace Filled { const ImageVectorPtr& Contacts(); }
+    namespace Filled { const ImageVectorPtr& Dashboard(); }
     namespace Filled { const ImageVectorPtr& Done(); }
+    namespace Filled { const ImageVectorPtr& Download(); }
     namespace Filled { const ImageVectorPtr& Edit(); }
+    namespace Filled { const ImageVectorPtr& Email(); }
+    namespace Filled { const ImageVectorPtr& ExpandLess(); }
+    namespace Filled { const ImageVectorPtr& ExpandMore(); }
     namespace Filled { const ImageVectorPtr& Favorite(); }
     namespace Filled { const ImageVectorPtr& FormatAlignCenter(); }
     namespace Filled { const ImageVectorPtr& FormatAlignJustify(); }
@@ -29,17 +47,33 @@ namespace catalog::Icons {
     namespace Filled { const ImageVectorPtr& FormatItalic(); }
     namespace Filled { const ImageVectorPtr& FormatLineSpacing(); }
     namespace Filled { const ImageVectorPtr& FormatUnderlined(); }
+    namespace Filled { const ImageVectorPtr& Group(); }
+    namespace Filled { const ImageVectorPtr& Headphones(); }
     namespace Filled { const ImageVectorPtr& Home(); }
+    namespace Filled { const ImageVectorPtr& Image(); }
     namespace Filled { const ImageVectorPtr& Info(); }
+    namespace Filled { const ImageVectorPtr& JoinFull(); }
+    namespace Filled { const ImageVectorPtr& Keyboard(); }
+    namespace Filled { const ImageVectorPtr& KeyboardArrowDown(); }
+    namespace Filled { const ImageVectorPtr& Laptop(); }
     namespace Filled { const ImageVectorPtr& Lock(); }
+    namespace Filled { const ImageVectorPtr& Map(); }
+    namespace Filled { const ImageVectorPtr& Menu(); }
     namespace Filled { const ImageVectorPtr& MoreVert(); }
     namespace Filled { const ImageVectorPtr& MusicNote(); }
     namespace Filled { const ImageVectorPtr& MusicOff(); }
+    namespace Filled { const ImageVectorPtr& Navigation(); }
+    namespace Filled { const ImageVectorPtr& Outbox(); }
+    namespace Filled { const ImageVectorPtr& People(); }
     namespace Filled { const ImageVectorPtr& Person(); }
     namespace Filled { const ImageVectorPtr& PushPin(); }
+    namespace Filled { const ImageVectorPtr& QrCode(); }
+    namespace Filled { const ImageVectorPtr& Radio(); }
     namespace Filled { const ImageVectorPtr& Refresh(); }
+    namespace Filled { const ImageVectorPtr& Restaurant(); }
     namespace Filled { const ImageVectorPtr& Search(); }
     namespace Filled { const ImageVectorPtr& Settings(); }
+    namespace Filled { const ImageVectorPtr& Snooze(); }
     namespace Filled { const ImageVectorPtr& Star(); }
     namespace Filled { const ImageVectorPtr& StarBorder(); }
     namespace Filled { const ImageVectorPtr& TagFaces(); }
@@ -48,16 +82,25 @@ namespace catalog::Icons {
     namespace Filled { const ImageVectorPtr& Tune(); }
     namespace Filled { const ImageVectorPtr& Visibility(); }
     namespace Filled { const ImageVectorPtr& VisibilityOff(); }
+    namespace Filled { const ImageVectorPtr& Work(); }
+    namespace Outlined { const ImageVectorPtr& Coffee(); }
     namespace Outlined { const ImageVectorPtr& Edit(); }
     namespace Outlined { const ImageVectorPtr& Email(); }
+    namespace Outlined { const ImageVectorPtr& FavoriteBorder(); }
     namespace Outlined { const ImageVectorPtr& FormatBold(); }
     namespace Outlined { const ImageVectorPtr& FormatItalic(); }
     namespace Outlined { const ImageVectorPtr& FormatUnderlined(); }
     namespace Outlined { const ImageVectorPtr& Home(); }
     namespace Outlined { const ImageVectorPtr& Info(); }
     namespace Outlined { const ImageVectorPtr& Lock(); }
+    namespace Outlined { const ImageVectorPtr& MarkEmailUnread(); }
     namespace Outlined { const ImageVectorPtr& MoreVert(); }
     namespace Outlined { const ImageVectorPtr& PushPin(); }
+    namespace Outlined { const ImageVectorPtr& Restaurant(); }
+    namespace Outlined { const ImageVectorPtr& Search(); }
     namespace Outlined { const ImageVectorPtr& Settings(); }
+    namespace Outlined { const ImageVectorPtr& Star(); }
+    namespace Outlined { const ImageVectorPtr& StarBorder(); }
+    namespace Outlined { const ImageVectorPtr& Work(); }
 
 }
