@@ -13995,10 +13995,11 @@ TEST(ProgressSemanticsCoercesAndMerges) {
 TEST(AnimateRunsTheSpecToItsTarget) {
     std::vector<float> values;
     bool done = false;
-    auto job = rt::Launch(rt::Dispatcher::Main(), [&]() -> rt::Task<> {
-        co_await anim::Animate(0, 10, anim::Tween(100), [&](float v, float) { values.push_back(v); });
-        done = true;
-    }());
+    // The state goes in as parameters: a coroutine lambda's captures die with its closure.
+    auto job = rt::Launch(rt::Dispatcher::Main(), [](std::vector<float>* out, bool* finished) -> rt::Task<> {
+        co_await anim::Animate(0, 10, anim::Tween(100), [out](float v, float) { out->push_back(v); });
+        *finished = true;
+    }(&values, &done));
     for (int i = 0; i < 20 && !done; ++i) rt::Dispatcher::Main().RunFrame((i + 1) * 16'000'000ll);
     CHECK(done);
     CHECK(values.size() > 3);
@@ -14245,9 +14246,9 @@ TEST(SnackbarHostShowsDerivedVisualsAsGiven) {   // a SnackbarVisuals implementa
             seenMessage = data->Visuals().message;
         });
     }); });
-    rt::Job job = rt::Launch(rt::Dispatcher::Main(), [&host]() -> rt::Task<> {
-        co_await host.ShowSnackbar(std::make_shared<const VisualsWithError>("Snackbar # 1", true));
-    }());
+    rt::Job job = rt::Launch(rt::Dispatcher::Main(), [](SnackbarHostState* host) -> rt::Task<> {
+        co_await host->ShowSnackbar(std::make_shared<const VisualsWithError>("Snackbar # 1", true));
+    }(&host));
     h.AdvanceTimeBy(100);
     CHECK(seenError.has_value() && *seenError);
     CHECK(seenMessage == "Snackbar # 1");
