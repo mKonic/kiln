@@ -468,6 +468,9 @@ namespace kiln::foundation {
         std::shared_ptr<OverscrollEffect> overscroll;
         PositionalThreshold positionalThreshold = anchored_draggable::DefaultPositionalThreshold;
         anim::SpecPtr snapAnimationSpec = anchored_draggable::SnapAnimationSpec();
+        // The release speed that settles at the next anchor however far the drag went (a state
+        // built with its own velocityThreshold); unset: 125 dp/s.
+        std::optional<Dp> velocityThreshold;
         // Runs once a release fling has settled, as a FlingBehavior that wraps the default one
         // and continues after it (not when the fling is cancelled).
         std::function<rt::Task<>()> afterFling;

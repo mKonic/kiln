@@ -72,7 +72,7 @@ namespace kiln::foundation {
             auto b = weak.lock();
             if (!b) return;
             b->state->EndUserDrag();
-            const float threshold = b->drag->LastDensity().ToPx(Dp(anchored_draggable::MinFlingVelocityDp));
+            const float threshold = b->drag->LastDensity().ToPx(b->options.velocityThreshold.value_or(Dp(anchored_draggable::MinFlingVelocityDp)));
             b->fling = rt::Launch(rt::Dispatcher::Main(), Fling(b, velocity, threshold));
         };
         return Draggable(std::move(m), drag, orientation, std::move(d));
