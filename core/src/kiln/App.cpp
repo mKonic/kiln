@@ -331,6 +331,15 @@ namespace kiln {
         RequestFrame();
     }
 
+    void App::ViewResized(Window* window, std::uint32_t width, std::uint32_t height) {
+        std::uint32_t& w = window ? window->width : m_Width;
+        std::uint32_t& h = window ? window->height : m_Height;
+        if (w == width && h == height) return;
+        w = width;
+        h = height;
+        RequestFrame();
+    }
+
     void App::SurfaceDestroyed() {
         if (m_Device && !m_SurfaceLost) {
             m_Device->OnSurfaceLost();

@@ -130,5 +130,7 @@ final class KilnNative {
     /** Where a dialog's content sits in its view: {left, top, right, bottom}. */
     static native int[] windowContentBounds(int win);
     static native void surfaceChanged(int win, int width, int height);
+    static native void viewSizeChanged(int win, int width, int height);
+    static native void setInputMode(int win, boolean touch);
     static native void surfaceDestroyed(int win);
 }

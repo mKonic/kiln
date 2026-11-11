@@ -54,6 +54,9 @@ namespace kiln {
 
         void SurfaceCreated(hearth::Surface& surface);
         void SurfaceResized(std::uint32_t width, std::uint32_t height);
+        // The host view's size from its own layout, which comes before the surface's (so focus
+        // the platform gives on a window's first layout finds laid-out content).
+        void ViewResized(Window* window, std::uint32_t width, std::uint32_t height);
         void SurfaceDestroyed();
         void Frame(double timeSeconds);
         // Owner::RenderToPixels: a one-off draw into an offscreen target, read back as RGBA.

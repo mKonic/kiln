@@ -1384,6 +1384,20 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
         return id != 0 ? sys.getDimension(id) : fallback;
     }
 
+    // The input mode follows the system's touch mode (focus rings and SystemDefined focusability).
+    private final android.view.ViewTreeObserver.OnTouchModeChangeListener touchModeListener = this::onTouchModeChanged;
+
+    private void onTouchModeChanged(boolean inTouchMode) {
+        KilnNative.setInputMode(windowId, inTouchMode);
+    }
+
+    // The size before the surface's arrives (the window's first focus comes after layout).
+    @Override
+    protected void onSizeChanged(int w, int h, int oldw, int oldh) {
+        super.onSizeChanged(w, h, oldw, oldh);
+        KilnNative.viewSizeChanged(windowId, w, h);
+    }
+
     @Override
     protected void onLayout(boolean changed, int left, int top, int right, int bottom) {
         super.onLayout(changed, left, top, right, bottom);
@@ -1395,6 +1409,8 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
         super.onAttachedToWindow();
         pushShadowLight();
         back.onAttached();
+        KilnNative.setInputMode(windowId, isInTouchMode());
+        getViewTreeObserver().addOnTouchModeChangeListener(touchModeListener);
         inputDevices.onAttached();
         if (windowId == 0) KilnNative.setLayoutDirection(getLayoutDirection() == LAYOUT_DIRECTION_RTL);
         AccessibilityManager am = getContext().getSystemService(AccessibilityManager.class);
@@ -1415,6 +1431,7 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
 
     @Override
     protected void onDetachedFromWindow() {
+        getViewTreeObserver().removeOnTouchModeChangeListener(touchModeListener);
         back.onDetached();
         inputDevices.onDetached();
         flushHoverExit(true);

@@ -2605,6 +2605,21 @@ namespace {
         g_Host->app->SurfaceResized(std::uint32_t(width), std::uint32_t(height));
     }
 
+    void ViewSizeChanged(JNIEnv*, jclass, jint win, jint width, jint height) {
+        WinScope ws(win);
+        if (!ws) return;
+        if (!g_Host) return;
+        g_Host->app->ViewResized(ws.w->appWindow, std::uint32_t(width), std::uint32_t(height));
+    }
+
+    void SetInputMode(JNIEnv*, jclass, jint win, jboolean touch) {
+        WinScope ws(win);
+        if (!ws) return;
+        if (!g_Host) return;
+        CurOwner().SetInputMode(touch ? kiln::ui::InputMode::Touch : kiln::ui::InputMode::Keyboard);
+        g_Host->app->RequestFrame();
+    }
+
     // Activity destroyed: dispose the composition and everything bound to the old view (Compose
     // disposes its composition with the activity; a new activity gets a fresh kiln_main).
     void Destroy(JNIEnv* env, jclass) {
@@ -2683,6 +2698,8 @@ extern "C" JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void*) {
         { "focusSearch", "(IIFFFF)[F", reinterpret_cast<void*>(&FocusSearch) },
         { "isBetterFocusCandidate", "(I[F[F[F)Z", reinterpret_cast<void*>(&IsBetterFocusCandidate) },
         { "hostRequestFocus", "(IIZFFFFZ)Z", reinterpret_cast<void*>(&HostRequestFocus) },
+        { "viewSizeChanged", "(III)V", reinterpret_cast<void*>(&ViewSizeChanged) },
+        { "setInputMode", "(IZ)V", reinterpret_cast<void*>(&SetInputMode) },
         { "hostFocusChanged", "(IZ)V", reinterpret_cast<void*>(&HostFocusChanged) },
         { "windowFocusChanged", "(IZ)V", reinterpret_cast<void*>(&WindowFocusChanged) },
         { "setShadowLight", "(IFFFFFF)V", reinterpret_cast<void*>(&SetShadowLight) },
