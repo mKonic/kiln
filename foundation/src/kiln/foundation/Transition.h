@@ -53,6 +53,7 @@ namespace kiln::foundation {
         // Seeking: children take their values at an explicit play time; no clock runs.
         void SetPlayTime(std::int64_t nanos);
         std::int64_t TotalDurationNanos() const;
+        static std::int64_t DurationOf(const Child& c);
         // Continue on the clock from the current play time (after seeking).
         void ResumeClock() { m_ResumeFrom = m_PlayTime; m_StartNanos = -1; if (!m_Running.Peek()) m_Running.Set(true); m_Generation.Set(m_Generation.Peek() + 1); }
         void PauseClock() { if (m_Running.Peek()) m_Running.Set(false); }
@@ -257,6 +258,17 @@ namespace kiln::foundation {
                 return std::function<void()>([core, cp] { core->Remove(cp); });
             }, key);
             const anim::Vec target = valueOf(t.TargetState());
+            // A seeking transition (SeekableTransitionState) is a function of its play time from
+            // the current state's value to the target's: the initial value follows the current
+            // state too (updateInitialAndTargetValue).
+            if (core->Seeking() && !forcedInitial && target == child.target && !(initial == child.start) && !(t.CurrentState() == t.TargetState())) {
+                child.start = initial;
+                child.startVelocity = {};
+                child.finished = false;
+                if (!child.spec) child.spec = specFor ? specFor(t.CurrentSegment()) : anim::Spring();
+                if (!child.spec) child.spec = anim::Spring();
+                child.duration = child.spec->DurationNanos(child.start, child.target, {}, child.dims);
+            }
             const bool newForced = forcedInitial && !(child.forcedFrom == forcedInitial);
             if (!forcedInitial) child.forcedFrom.reset();
             if (!(target == child.target) || newForced) {

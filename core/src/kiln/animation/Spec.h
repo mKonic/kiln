@@ -41,6 +41,10 @@ namespace kiln::anim {
                    float visibilityThreshold = spring::DefaultDisplacementThreshold);
     // Copy a spring with a type-specific threshold; non-spring specs pass through unchanged.
     SpecPtr WithSpringVisibilityThreshold(SpecPtr spec, float visibilityThreshold);
+    // A spec for a 0..1 progress that stands for `*scale` units (pixels): it runs in those units,
+    // so thresholds and durations are the unit spec's (an offset spring's 1 px threshold over the
+    // distance moved). A scale of 0 or less counts as 1.
+    SpecPtr ScaledSpec(SpecPtr spec, std::shared_ptr<const float> scale);
     // tween(durationMillis = 300, delayMillis = 0, easing = FastOutSlowIn)
     SpecPtr Tween(int durationMillis = DefaultDurationMillis, int delayMillis = 0, Easing easing = FastOutSlowIn());
     SpecPtr Snap(int delayMillis = 0);

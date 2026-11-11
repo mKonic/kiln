@@ -108,6 +108,9 @@ namespace kiln::ui {
         int MaxIntrinsicHeight(int w) override;
         const ParentData& GetParentData() const override { return node.m_ParentData; }
         void SetMeasuredSize(IntSize size, const Constraints& c) { SetMeasured(size, c); }
+        // Where the lookahead pass asked to place it (its position without the centring of a
+        // size outside its constraints).
+        IntOffset RequestedPosition() const { return position - ApparentToRealOffset(); }
     };
 
     struct LayoutNode::Coordinator final : Measurable, Placeable {
@@ -248,7 +251,8 @@ namespace kiln::ui {
                 }
                 node.LayoutIfNeeded();
             } else {
-                if (forceLookaheadOffset && la) p = la->position;
+                // At the lookahead offset (as asked: centring is this pass's own).
+                if (forceLookaheadOffset && la) p = la->RequestedPosition() + ApparentToRealOffset();
                 if (position != p) {
                     if (Owner* o = node.GetOwner()) o->NotifyLayoutChange(node);
                     if (placed) node.OnMoved();

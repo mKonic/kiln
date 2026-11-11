@@ -58,9 +58,15 @@ namespace kiln::foundation {
         PauseClock();
     }
 
+    // A running child's duration is its spec's now (a scaled spec's depends on a distance only
+    // layout knows, measured after the child retargeted).
+    std::int64_t TransitionCore::DurationOf(const Child& c) {
+        return c.finished || !c.spec ? c.duration : c.spec->DurationNanos(c.start, c.target, c.startVelocity, c.dims);
+    }
+
     std::int64_t TransitionCore::TotalDurationNanos() const {
         std::int64_t d = 0;
-        for (const Child* c : m_Children) d = std::max(d, c->duration);
+        for (const Child* c : m_Children) d = std::max(d, DurationOf(*c));
         return d;
     }
 
@@ -68,6 +74,7 @@ namespace kiln::foundation {
         m_PlayTime = t;
         for (Child* c : m_Children) {
             if (c->finished && c->Current() == c->target) continue;
+            c->duration = DurationOf(*c);
             if (t >= c->duration) { c->value.Set(c->target); c->velocity = {}; continue; }
             c->finished = false;
             c->value.Set(c->spec->ValueAt(t, c->start, c->target, c->startVelocity, c->dims));
@@ -83,6 +90,7 @@ namespace kiln::foundation {
         bool any = false;
         for (Child* c : m_Children) {
             if (c->finished) continue;
+            c->duration = DurationOf(*c);
             if (m_PlayTime >= c->duration) {
                 c->value.Set(c->target);
                 c->velocity = {};

@@ -203,6 +203,37 @@ namespace kiln::anim {
     }
 
     SpecPtr Spring(float d, float k, float t) { return std::make_shared<SpringSpec>(d, k, t); }
+    namespace {
+        class Scaled final : public AnimationSpec {
+        public:
+            Scaled(SpecPtr inner, std::shared_ptr<const float> scale) : m_Inner(std::move(inner)), m_Scale(std::move(scale)) {}
+            Vec ValueAt(std::int64_t t, const Vec& f, const Vec& to, const Vec& v0, int d) const override {
+                const float s = S();
+                return Div(m_Inner->ValueAt(t, Mul(f, s), Mul(to, s), Mul(v0, s), d), s);
+            }
+            Vec VelocityAt(std::int64_t t, const Vec& f, const Vec& to, const Vec& v0, int d) const override {
+                const float s = S();
+                return Div(m_Inner->VelocityAt(t, Mul(f, s), Mul(to, s), Mul(v0, s), d), s);
+            }
+            std::int64_t DurationNanos(const Vec& f, const Vec& to, const Vec& v0, int d) const override {
+                const float s = S();
+                return m_Inner->DurationNanos(Mul(f, s), Mul(to, s), Mul(v0, s), d);
+            }
+            bool Infinite() const override { return m_Inner->Infinite(); }
+        private:
+            float S() const { const float s = m_Scale ? *m_Scale : 1.0f; return s > 0 ? s : 1.0f; }
+            static Vec Mul(Vec v, float s) { for (float& x : v) x *= s; return v; }
+            static Vec Div(Vec v, float s) { for (float& x : v) x /= s; return v; }
+            SpecPtr m_Inner;
+            std::shared_ptr<const float> m_Scale;
+        };
+    }
+
+    SpecPtr ScaledSpec(SpecPtr spec, std::shared_ptr<const float> scale) {
+        if (!spec) return spec;
+        return std::make_shared<Scaled>(std::move(spec), std::move(scale));
+    }
+
     SpecPtr WithSpringVisibilityThreshold(SpecPtr spec, float threshold) {
         if (const auto* spring = dynamic_cast<const SpringSpec*>(spec.get())) return spring->WithThreshold(threshold);
         return spec;

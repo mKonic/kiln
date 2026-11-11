@@ -154,3 +154,27 @@ TEST(NavigatorShowsTheDetailThenGoesBack) {
     CHECK(navigator->ScaffoldValue().secondary.kind == PaneAdaptedValue::Kind::Expanded);
     CHECK(!navigator->CanNavigateBack());
 }
+
+TEST(NavigatorSlidesTheDetailInAsTheListLeaves) {
+    // One pane: the detail was composed hidden (no motion), so its enter slide only appears with
+    // the navigation; mid-way both panes are partly on screen, side by side.
+    Harness h(ui::IntSize{ 400, 600 });
+    Probe list, detail;
+    ThreePaneScaffoldNavigator<int>* navigator = nullptr;
+    h.Run([&] {
+        MaterialTheme([&] {
+            auto& n = RememberListDetailPaneScaffoldNavigator<int>(Directive(1));
+            navigator = &n;
+            ListDetailPaneScaffold(n.ScaffoldDirective(), n.ScaffoldState(),
+                [&](const ThreePaneScaffoldPaneScope& s) { AnimatedPane(s, [&] { Box(list.Track()); }); },
+                [&](const ThreePaneScaffoldPaneScope& s) { AnimatedPane(s, [&] { Box(detail.Track()); }); });
+        });
+    });
+    rt::Job job = rt::Launch(rt::Dispatcher::Main(), navigator->NavigateTo(ListDetailPaneScaffoldRole::Detail, 2));
+    h.Frames(8);
+    CHECK(list.bounds.left < -50.0f);
+    CHECK(detail.bounds.left > 50.0f && detail.bounds.left < 350.0f);
+    CHECK_EQ(detail.bounds.left, list.bounds.right);
+    h.Frames(60);
+    CHECK_EQ(detail.bounds.left, 0.0f);
+}

@@ -27,14 +27,18 @@ namespace kiln::foundation {
             return r;
         }
         // Size and offset animations use a 1 px visibility threshold (EnterExitTransition.kt:1615,
-        // :1822); here they run as a 0..1 progress, so the threshold is relative.
-        anim::SpecPtr SizeSpring() { return anim::Spring(1.0f, anim::spring::StiffnessMediumLow, 0.001f); }
+        // :1822). They run here as a 0..1 progress whose spec is scaled to the distance in pixels.
+        anim::SpecPtr SizeSpring() { return DefaultSpatialEnterExitSpring(); }
     }
 
     EnterTransition EnterTransition::operator+(const EnterTransition& o) const { return { Combine(parts, o.parts) }; }
     ExitTransition ExitTransition::operator+(const ExitTransition& o) const { return { Combine(parts, o.parts) }; }
 
     anim::SpecPtr DefaultEnterExitSpring() { return anim::Spring(1.0f, anim::spring::StiffnessMediumLow); }
+    anim::SpecPtr DefaultSpatialEnterExitSpring() {
+        static const anim::SpecPtr spec = anim::Spring(1.0f, anim::spring::StiffnessMediumLow, 1);
+        return spec;
+    }
 
     EnterTransition FadeIn(anim::SpecPtr s, float a) { EnterTransition t; t.parts.fade = { { a, std::move(s) } }; return t; }
     ExitTransition FadeOut(anim::SpecPtr s, float a) { ExitTransition t; t.parts.fade = { { a, std::move(s) } }; return t; }
@@ -381,6 +385,8 @@ namespace kiln::foundation {
             // animation still knows its ends (trackActiveEnter / trackActiveExit).
             std::optional<EnterTransition> activeEnter;
             std::optional<ExitTransition> activeExit;
+            // The distances (px) the slide and size progress stand for, measured by the layout.
+            std::shared_ptr<float> slideDistance = std::make_shared<float>(0), sizeDistance = std::make_shared<float>(0);
 
             void TrackActive(const EnterTransition& enter, const ExitTransition& exit, EnterExitState current, EnterExitState target) {
                 if (!activeEnter) activeEnter = enter;
@@ -434,6 +440,7 @@ namespace kiln::foundation {
             std::function<IntSize(IntSize)> sizeAt;     // null: full size
             std::function<IntOffset(IntSize)> slideAt;  // null: none
             Alignment alignment;
+            std::function<void(IntSize full)> measured;   // the main pass's full size
             bool operator==(const EnterExitParams&) const { return false; }   // new lambdas each frame
         };
         struct EnterExitNode final : ModifierNode, LayoutModifier {
@@ -453,6 +460,7 @@ namespace kiln::foundation {
                     return s.Layout(measured.width, measured.height, [&p](PlacementScope& place) { place.Place(p, 0, 0); });
                 }
                 const IntSize full = lookaheadSize.value_or(measured);
+                if (params.measured) params.measured(full);
                 const IntSize size = params.sizeAt ? c.Constrain(params.sizeAt(full)) : measured;
                 const IntOffset align = params.alignment.Align(full, size, s.Direction());
                 const IntOffset slide = params.slideAt ? params.slideAt(full) : IntOffset{};
@@ -593,18 +601,21 @@ namespace kiln::foundation {
         const auto progressOf = [&](auto part) {
             return [&, part](bool s) { return byState(s, 1.0f, (enter.parts.*part) ? 0.0f : 1.0f, (exit.parts.*part) ? 0.0f : 1.0f); };
         };
-        const auto slideSpec = anim::Spring(1.0f, anim::spring::StiffnessMediumLow, 0.001f);
-        const float slideP = AnimateFloat<bool>(t, progressOf(&EnterExitParts::slide), [&](const Seg&) { return specFor(&EnterExitParts::slide, slideSpec); },
+        const auto slideSpec = DefaultSpatialEnterExitSpring();
+        const std::shared_ptr<const float> slideDistance = tracker->slideDistance, sizeDistance = tracker->sizeDistance;
+        const float slideP = AnimateFloat<bool>(t, progressOf(&EnterExitParts::slide),
+                                                [&](const Seg&) { return anim::ScaledSpec(specFor(&EnterExitParts::slide, slideSpec), slideDistance); },
                                                 rt::Key("slide"));
         // A hand-off of a hand-set offset: from the last offset to the side's target offset.
         const std::optional<IntOffset> slideHandoff = state->SlideHandoffValue();
         float slideHandoffVelocity = 0;
         const float slideHandoffP = AnimateFloat<bool>(t, [&](bool) { return slideHandoff ? 1.0f : 0.0f; },
-                                                       [&](const Seg&) { return specFor(&EnterExitParts::slide, slideSpec); }, rt::Key("slideHandoff"),
+                                                       [&](const Seg&) { return anim::ScaledSpec(specFor(&EnterExitParts::slide, slideSpec), slideDistance); }, rt::Key("slideHandoff"),
                                                        slideHandoff ? std::optional(anim::Vec{}) : std::nullopt,
                                                        slideHandoff ? std::optional(anim::Vec{ slideHandoffVelocity, 0, 0, 0 }) : std::nullopt);
         const float sizeP = AnimateFloat<bool>(t, progressOf(&EnterExitParts::changeSize),
-                                               [&](const Seg&) { return specFor(&EnterExitParts::changeSize, SizeSpring()); }, rt::Key("size"));
+                                               [&](const Seg&) { return anim::ScaledSpec(specFor(&EnterExitParts::changeSize, SizeSpring()), sizeDistance); },
+                                               rt::Key("size"));
 
         // Gone unless visible somewhere, held, or pending to show.
         if (!(forceVisible || t.CurrentState() || t.TargetState() || pendingVisible || t.IsRunning())) return;
@@ -634,6 +645,28 @@ namespace kiln::foundation {
         }
         // combinedSlide runs the hand-set block in layout, then the layer reads its values.
         p.slideAt = [slideOffset, state](IntSize full) { return state->CombinedSlide(slideOffset ? slideOffset(full) : IntOffset{}, full); };
+        // The distances the progress values stand for, from the full size.
+        {
+            auto slideTo = slide ? slide->offset : std::function<IntOffset(IntSize)>();
+            auto sizeTo = change ? change->size : std::function<IntSize(IntSize)>();
+            const std::optional<IntOffset> handoffFrom = slideHandoff;
+            const bool visibleTarget = target == EnterExitState::Visible;
+            auto sd = tracker->slideDistance, zd = tracker->sizeDistance;
+            p.measured = [slideTo, sizeTo, handoffFrom, visibleTarget, sd, zd](IntSize full) {
+                IntOffset d{};
+                if (handoffFrom) {
+                    const IntOffset end = visibleTarget || !slideTo ? IntOffset{} : slideTo(full);
+                    d = IntOffset{ end.x - handoffFrom->x, end.y - handoffFrom->y };
+                } else if (slideTo) {
+                    d = slideTo(full);
+                }
+                *sd = float(std::max(std::abs(d.x), std::abs(d.y)));
+                if (sizeTo) {
+                    const IntSize s = sizeTo(full);
+                    *zd = float(std::max(std::abs(full.width - s.width), std::abs(full.height - s.height)));
+                }
+            };
+        }
 
         const bool clip = change && change->clip;
         const auto& veilPart = enter.parts.veil ? enter.parts.veil : exit.parts.veil;

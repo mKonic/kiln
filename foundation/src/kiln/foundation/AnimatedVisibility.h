@@ -43,27 +43,29 @@ namespace kiln::foundation {
     };
 
     anim::SpecPtr DefaultEnterExitSpring();
+    // spring(stiffness = MediumLow, visibilityThreshold = 1 px): slides' and size changes' default.
+    anim::SpecPtr DefaultSpatialEnterExitSpring();
     EnterTransition FadeIn(anim::SpecPtr spec = DefaultEnterExitSpring(), float initialAlpha = 0);
     ExitTransition FadeOut(anim::SpecPtr spec = DefaultEnterExitSpring(), float targetAlpha = 0);
     EnterTransition ScaleIn(anim::SpecPtr spec = DefaultEnterExitSpring(), float initialScale = 0, float originX = 0.5f, float originY = 0.5f);
     ExitTransition ScaleOut(anim::SpecPtr spec = DefaultEnterExitSpring(), float targetScale = 0, float originX = 0.5f, float originY = 0.5f);
-    EnterTransition SlideIn(std::function<IntOffset(IntSize)> initialOffset, anim::SpecPtr spec = DefaultEnterExitSpring());
-    ExitTransition SlideOut(std::function<IntOffset(IntSize)> targetOffset, anim::SpecPtr spec = DefaultEnterExitSpring());
-    EnterTransition SlideInVertically(std::function<int(int)> initialOffsetY = [](int h) { return -h / 2; }, anim::SpecPtr spec = DefaultEnterExitSpring());
-    ExitTransition SlideOutVertically(std::function<int(int)> targetOffsetY = [](int h) { return -h / 2; }, anim::SpecPtr spec = DefaultEnterExitSpring());
-    EnterTransition SlideInHorizontally(std::function<int(int)> initialOffsetX = [](int w) { return -w / 2; }, anim::SpecPtr spec = DefaultEnterExitSpring());
-    ExitTransition SlideOutHorizontally(std::function<int(int)> targetOffsetX = [](int w) { return -w / 2; }, anim::SpecPtr spec = DefaultEnterExitSpring());
-    EnterTransition ExpandIn(anim::SpecPtr spec = DefaultEnterExitSpring(), Alignment expandFrom = Alignment::BottomEnd(),
+    EnterTransition SlideIn(std::function<IntOffset(IntSize)> initialOffset, anim::SpecPtr spec = DefaultSpatialEnterExitSpring());
+    ExitTransition SlideOut(std::function<IntOffset(IntSize)> targetOffset, anim::SpecPtr spec = DefaultSpatialEnterExitSpring());
+    EnterTransition SlideInVertically(std::function<int(int)> initialOffsetY = [](int h) { return -h / 2; }, anim::SpecPtr spec = DefaultSpatialEnterExitSpring());
+    ExitTransition SlideOutVertically(std::function<int(int)> targetOffsetY = [](int h) { return -h / 2; }, anim::SpecPtr spec = DefaultSpatialEnterExitSpring());
+    EnterTransition SlideInHorizontally(std::function<int(int)> initialOffsetX = [](int w) { return -w / 2; }, anim::SpecPtr spec = DefaultSpatialEnterExitSpring());
+    ExitTransition SlideOutHorizontally(std::function<int(int)> targetOffsetX = [](int w) { return -w / 2; }, anim::SpecPtr spec = DefaultSpatialEnterExitSpring());
+    EnterTransition ExpandIn(anim::SpecPtr spec = DefaultSpatialEnterExitSpring(), Alignment expandFrom = Alignment::BottomEnd(),
                              bool clip = true, std::function<IntSize(IntSize)> initialSize = [](IntSize) { return IntSize{ 0, 0 }; });
-    ExitTransition ShrinkOut(anim::SpecPtr spec = DefaultEnterExitSpring(), Alignment shrinkTowards = Alignment::BottomEnd(),
+    ExitTransition ShrinkOut(anim::SpecPtr spec = DefaultSpatialEnterExitSpring(), Alignment shrinkTowards = Alignment::BottomEnd(),
                              bool clip = true, std::function<IntSize(IntSize)> targetSize = [](IntSize) { return IntSize{ 0, 0 }; });
-    EnterTransition ExpandVertically(anim::SpecPtr spec = DefaultEnterExitSpring(), AlignmentV expandFrom = AlignmentV::Bottom(),
+    EnterTransition ExpandVertically(anim::SpecPtr spec = DefaultSpatialEnterExitSpring(), AlignmentV expandFrom = AlignmentV::Bottom(),
                                      bool clip = true, std::function<int(int)> initialHeight = [](int) { return 0; });
-    ExitTransition ShrinkVertically(anim::SpecPtr spec = DefaultEnterExitSpring(), AlignmentV shrinkTowards = AlignmentV::Bottom(),
+    ExitTransition ShrinkVertically(anim::SpecPtr spec = DefaultSpatialEnterExitSpring(), AlignmentV shrinkTowards = AlignmentV::Bottom(),
                                     bool clip = true, std::function<int(int)> targetHeight = [](int) { return 0; });
-    EnterTransition ExpandHorizontally(anim::SpecPtr spec = DefaultEnterExitSpring(), AlignmentH expandFrom = AlignmentH::End(),
+    EnterTransition ExpandHorizontally(anim::SpecPtr spec = DefaultSpatialEnterExitSpring(), AlignmentH expandFrom = AlignmentH::End(),
                                        bool clip = true, std::function<int(int)> initialWidth = [](int) { return 0; });
-    ExitTransition ShrinkHorizontally(anim::SpecPtr spec = DefaultEnterExitSpring(), AlignmentH shrinkTowards = AlignmentH::End(),
+    ExitTransition ShrinkHorizontally(anim::SpecPtr spec = DefaultSpatialEnterExitSpring(), AlignmentH shrinkTowards = AlignmentH::End(),
                                       bool clip = true, std::function<int(int)> targetWidth = [](int) { return 0; });
 
     // unveilIn: a scrim (Black at 50% by default) that clears as the content enters; veilOut:
