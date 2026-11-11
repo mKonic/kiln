@@ -312,3 +312,12 @@ TEST(AnimatedVisibilityInRowExpandsAlongTheRowOnly) {
     CHECK_EQ(first->Size().width, 100);
     CHECK(state.IsIdle() && state.CurrentState());
 }
+
+TEST(CombinedEnterExitTransitionsTakeTheRightHandPartOfAKind) {   // EnterTransition.plus
+    const EnterTransition enter = FadeIn(anim::Tween(100), 0.25f) + FadeIn(anim::Tween(200), 0.5f) + ScaleIn();
+    CHECK(enter.parts.fade && enter.parts.fade->first == 0.5f);
+    CHECK(enter.parts.scale.has_value());
+    const ExitTransition exit = FadeOut(anim::Tween(100), 0.25f) + SlideOutHorizontally() + FadeOut(anim::Tween(100), 0.75f);
+    CHECK(exit.parts.fade && exit.parts.fade->first == 0.75f);
+    CHECK(exit.parts.slide.has_value());
+}

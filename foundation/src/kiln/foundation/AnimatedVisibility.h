@@ -28,7 +28,7 @@ namespace kiln::foundation {
         std::optional<ChangeSize> changeSize;
     };
 
-    // EnterTransition / ExitTransition: combine with + (the left one wins per kind).
+    // EnterTransition / ExitTransition: combine with + (the right one wins per kind).
     struct EnterTransition {
         EnterExitParts parts;
         EnterTransition operator+(const EnterTransition& o) const;

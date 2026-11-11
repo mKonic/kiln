@@ -12,12 +12,13 @@ namespace kiln::foundation {
     using namespace ui;
 
     namespace {
+        // EnterTransition.plus: per kind, the right-hand transition's part wins.
         EnterExitParts Combine(const EnterExitParts& a, const EnterExitParts& b) {
-            EnterExitParts r = a;
-            if (!r.fade) r.fade = b.fade;
-            if (!r.scale) r.scale = b.scale;
-            if (!r.slide) r.slide = b.slide;
-            if (!r.changeSize) r.changeSize = b.changeSize;
+            EnterExitParts r = b;
+            if (!r.fade) r.fade = a.fade;
+            if (!r.scale) r.scale = a.scale;
+            if (!r.slide) r.slide = a.slide;
+            if (!r.changeSize) r.changeSize = a.changeSize;
             return r;
         }
         // Size and offset animations use a 1 px visibility threshold (EnterExitTransition.kt:1615,
