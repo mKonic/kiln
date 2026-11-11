@@ -34,6 +34,8 @@ COMPONENTS = {
     'toolbars': '''reach:Toolbar expanded: yes; expect:Row 2; expect:More; shot:{p}-toolbars; swipeon:Row 3=0,-300,1500; wait:800;
         expect:Toolbar expanded: no; reject:More; shot:{p}-toolbars-collapsed; reach:Toolbar with FAB expanded: yes; expect:Archive;
         tap:Toggle toolbar; wait:800; expect:Toolbar with FAB expanded: no; reject:Archive; shot:{p}-toolbars-fab''',
+    'scrollbars': '''expect:Fading scrollbar; expect:Line 2; shot:{p}-scrollbars; swipeon:Line 4=0,-200,1500; shot:{p}-scrollbars-scrolling;
+        wait:1500; shot:{p}-scrollbars-faded; expect:Paragraph 1; expect:Tag 1''',
     'segmented': '''expect:Single selection: 0; tap:Week; expect:Single selection: 1; tap:Bike; expect:Multiple selection: 3;
         tap:Walk; expect:Multiple selection: 2; shot:{p}-segmented; reach:Disable segments; tap:Disable segments;
         expect:Enable segments; tap:Day; expect:Single selection: 1; shot:{p}-segmented-disabled''',

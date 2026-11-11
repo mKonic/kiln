@@ -693,6 +693,24 @@ namespace kiln::material3 {
             return RememberTopBehavior<EnterAlways>(std::move(state), std::move(canScroll), snap.value_or(snapAnimationSpec()),
                                                     fling.value_or(flingAnimationSpec()), std::move(isScrollingContentAtStart), false);
         }
+        namespace {
+            std::function<bool()> AtStart(foundation::ScrollableState& s) {
+                return [&s] {
+                    const foundation::ScrollIndicatorState* i = s.ScrollIndicator();
+                    return (i ? i->ScrollOffset() : 0) == 0;
+                };
+            }
+        }
+        std::shared_ptr<TopAppBarScrollBehavior> pinnedScrollBehavior(foundation::ScrollableState& scrollableState, std::shared_ptr<TopAppBarState> state,
+                                                                      std::function<bool()> canScroll) {
+            return pinnedScrollBehavior(std::move(state), std::move(canScroll), AtStart(scrollableState));
+        }
+        std::shared_ptr<TopAppBarScrollBehavior> enterAlwaysScrollBehavior(foundation::ScrollableState& scrollableState,
+                                                                           std::shared_ptr<TopAppBarState> state, std::function<bool()> canScroll,
+                                                                           std::optional<anim::SpecPtr> snap,
+                                                                           std::optional<std::shared_ptr<const anim::DecaySpec>> fling) {
+            return enterAlwaysScrollBehavior(std::move(state), std::move(canScroll), std::move(snap), std::move(fling), AtStart(scrollableState));
+        }
         std::shared_ptr<TopAppBarScrollBehavior> exitUntilCollapsedScrollBehavior(std::shared_ptr<TopAppBarState> state, std::function<bool()> canScroll,
                                                                                   std::optional<anim::SpecPtr> snap,
                                                                                   std::optional<std::shared_ptr<const anim::DecaySpec>> fling) {

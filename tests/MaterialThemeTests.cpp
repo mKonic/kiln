@@ -25,6 +25,7 @@
 #include "kiln/foundation/Lazy.h"
 #include "kiln/material3/AppBar.h"
 #include "kiln/material3/FloatingToolbar.h"
+#include "kiln/material3/Scrollbar.h"
 #include "kiln/material3/internal/GetString.h"
 #include "kiln/material3/Divider.h"
 #include "kiln/material3/Tab.h"
@@ -7152,4 +7153,386 @@ TEST(FloatingToolbarCustomSizeDoesNotCrash) {
     });
     h.AdvanceTimeBy(1000);
     CHECK(true);
+}
+
+// ScrollbarTest. Compose reads the scrollbar's pixels; these read what the node drew last (its
+// colours and rects). A 100 px container, 10 px thick, thumb red, track blue.
+namespace {
+    struct FakeIndicator final : foundation::ScrollIndicatorState {
+        rt::State<int> offset{ 0 }, content{ 200 }, viewport{ 100 };
+        int ScrollOffset() const override { return offset.Get(); }
+        int ContentSize() const override { return content.Get(); }
+        int ViewportSize() const override { return viewport.Get(); }
+    };
+    const ui::Color kThumb{ 0xFFFF0000u }, kTrack{ 0xFF0000FFu };
+    struct ScrollbarCase { foundation::Orientation orientation; bool rtl; };
+    constexpr ScrollbarCase kScrollbarCases[] = { { foundation::Orientation::Vertical, false }, { foundation::Orientation::Vertical, true },
+                                                  { foundation::Orientation::Horizontal, false }, { foundation::Orientation::Horizontal, true } };
+    NonInteractiveScrollbarOptions TestScrollbar() {
+        NonInteractiveScrollbarOptions o;
+        o.thumbColor = kThumb;
+        o.trackColor = kTrack;
+        o.thickness = 10_dp;
+        o.mainAxisTrackInset = 0_dp;
+        o.crossAxisTrackInset = 0_dp;
+        return o;
+    }
+    // ScrollbarTestContainer.
+    void ScrollbarContainer(Harness& h, const FakeIndicator& state, ScrollbarCase c, NonInteractiveScrollbarOptions o) {
+        h.Run([&state, c, o] {
+            rt::Composition::Current()->Provide(ui::LocalLayoutDirection, c.rtl ? ui::LayoutDirection::Rtl : ui::LayoutDirection::Ltr, [&] {
+                Box({}, Alignment::TopStart(), false, [&] {
+                    Box(NonInteractiveScrollbar(Tag(SizeMod({}, 100_dp, 100_dp), "container"), state, c.orientation, o));
+                });
+            });
+        });
+    }
+    // Frames of 16 ms, each drawn (the scrollbar reads its state while drawing).
+    void DrawFor(Harness& h, std::int64_t ms) {
+        h.owner.Draw({});
+        for (std::int64_t done = 0; done < ms;) {
+            const std::int64_t step = std::min<std::int64_t>(16, ms - done);
+            h.AdvanceTimeBy(step);
+            h.owner.Draw({});
+            done += step;
+        }
+    }
+    internal::ScrollbarFrame Frame(Harness& h) {
+        const auto* n = FindTagged(h, "container");
+        const auto f = n ? internal::LastScrollbarFrame(*n) : std::nullopt;
+        return f.value_or(internal::ScrollbarFrame{});
+    }
+    // computeScrollbarTestColors' sampling: the thumb starts at the visual start (the right of a
+    // horizontal RTL bar).
+    bool ThumbAtStart(const internal::ScrollbarFrame& f, ScrollbarCase c) {
+        if (c.orientation == foundation::Orientation::Vertical) return Near(f.thumb.top, 0);
+        return c.rtl ? Near(f.thumb.right, 100) : Near(f.thumb.left, 0);
+    }
+    bool ThumbAtEnd(const internal::ScrollbarFrame& f, ScrollbarCase c) {
+        if (c.orientation == foundation::Orientation::Vertical) return Near(f.thumb.bottom, 100);
+        return c.rtl ? Near(f.thumb.left, 0) : Near(f.thumb.right, 100);
+    }
+    float ThumbLength(const internal::ScrollbarFrame& f, ScrollbarCase c) {
+        return c.orientation == foundation::Orientation::Vertical ? f.thumb.Height() : f.thumb.Width();
+    }
+}
+
+TEST(ScrollbarFadesOutAfterScrolling) {
+    for (const auto c : kScrollbarCases) {
+        Harness h;
+        FakeIndicator state;
+        auto o = TestScrollbar();
+        o.fadeDelayMillis = 100;
+        o.fadeDurationMillis = 100;
+        ScrollbarContainer(h, state, c, o);
+        DrawFor(h, 0);
+        CHECK(!Frame(h).drawn);
+        state.offset.Set(10);
+        DrawFor(h, 20);
+        CHECK(Frame(h).drawn && Frame(h).thumbColor == kThumb && Frame(h).trackColor == kTrack);
+        // Past the delay and the fade.
+        DrawFor(h, 230);
+        CHECK(!Frame(h).drawn);
+    }
+}
+
+TEST(ScrollbarFadesOutAfterItsNodeIsRecreated) {
+    // ReusableContent re-attaches the same node; kiln has no reuse, so a key change recreates it.
+    for (const auto c : kScrollbarCases) {
+        Harness h;
+        FakeIndicator state;
+        rt::State<bool> key{ true };
+        auto o = TestScrollbar();
+        o.fadeDelayMillis = 100;
+        o.fadeDurationMillis = 100;
+        h.Run([&state, &key, c, o] {
+            rt::Composition::Current()->Provide(ui::LocalLayoutDirection, c.rtl ? ui::LayoutDirection::Rtl : ui::LayoutDirection::Ltr, [&] {
+                Box({}, Alignment::TopStart(), false, [&] {
+                    Box({}, Alignment::TopStart(), false, [&] {
+                        Box(NonInteractiveScrollbar(Tag(SizeMod({}, 100_dp, 100_dp), "container"), state, c.orientation, o));
+                    }, rt::Key(key.Get() ? 1 : 2));
+                });
+            });
+        });
+        DrawFor(h, 0);
+        key.Set(false);
+        DrawFor(h, 16);
+        state.offset.Set(10);
+        DrawFor(h, 20);
+        CHECK(Frame(h).drawn && Frame(h).thumbColor == kThumb && Frame(h).trackColor == kTrack);
+        DrawFor(h, 230);
+        CHECK(!Frame(h).drawn);
+    }
+}
+
+TEST(ScrollbarWaitsOutItsDelayWhenAnimationsAreOff) {
+    for (const auto c : kScrollbarCases) {
+        anim::SetDurationScale(0);
+        Harness h;
+        FakeIndicator state;
+        auto o = TestScrollbar();
+        o.fadeDelayMillis = 100;
+        o.fadeDurationMillis = 100;
+        ScrollbarContainer(h, state, c, o);
+        DrawFor(h, 0);
+        state.offset.Set(10);
+        // The delay is not an animation: still shown before it ends.
+        DrawFor(h, 50);
+        CHECK(Frame(h).drawn && Frame(h).thumbColor == kThumb);
+        // Then gone at once.
+        DrawFor(h, 120 + 16);
+        CHECK(!Frame(h).drawn);
+        anim::SetDurationScale(1);
+    }
+}
+
+TEST(ScrollbarFollowsTheScrollOffset) {
+    for (const auto c : kScrollbarCases) {
+        Harness h;
+        FakeIndicator state;
+        auto o = TestScrollbar();
+        o.isFadeEnabled = false;
+        ScrollbarContainer(h, state, c, o);
+        DrawFor(h, 0);
+        CHECK(Frame(h).drawn && Frame(h).thumbColor == kThumb && ThumbAtStart(Frame(h), c));
+        state.offset.Set(100);
+        DrawFor(h, 16);
+        CHECK(Frame(h).drawn && ThumbAtEnd(Frame(h), c));
+    }
+}
+
+TEST(ScrollbarHidesWhileTheContentFits) {
+    for (const auto c : kScrollbarCases) {
+        Harness h;
+        FakeIndicator state;
+        state.content.Set(100);
+        auto o = TestScrollbar();
+        o.isFadeEnabled = false;
+        ScrollbarContainer(h, state, c, o);
+        DrawFor(h, 0);
+        CHECK(!Frame(h).drawn);
+        state.viewport.Set(50);
+        DrawFor(h, 16);
+        CHECK(Frame(h).drawn && Frame(h).thumbColor == kThumb && Frame(h).trackColor == kTrack);
+        state.viewport.Set(150);
+        DrawFor(h, 16);
+        CHECK(!Frame(h).drawn);
+    }
+}
+
+TEST(ScrollbarThumbHasAMinimumLength) {
+    for (const auto c : kScrollbarCases) {
+        Harness h;
+        FakeIndicator state;
+        state.content.Set(1000);
+        auto o = TestScrollbar();
+        o.isFadeEnabled = false;
+        o.thumbMinLength = 30_dp;
+        ScrollbarContainer(h, state, c, o);
+        DrawFor(h, 0);
+        CHECK(Near(ThumbLength(Frame(h), c), 30));
+    }
+}
+
+TEST(ScrollbarThumbHasAMaximumLength) {
+    for (const auto c : kScrollbarCases) {
+        Harness h;
+        FakeIndicator state;
+        state.content.Set(110);
+        auto o = TestScrollbar();
+        o.isFadeEnabled = false;
+        o.thumbMaxLengthFraction = 0.5f;
+        ScrollbarContainer(h, state, c, o);
+        DrawFor(h, 0);
+        CHECK(Near(ThumbLength(Frame(h), c), 50));
+    }
+}
+
+TEST(ScrollbarHidesWhenTheTrackIsShorterThanTheThumb) {
+    for (const auto c : kScrollbarCases) {
+        Harness h;
+        FakeIndicator state;
+        auto o = TestScrollbar();
+        o.isFadeEnabled = false;
+        o.thumbMinLength = 150_dp;
+        ScrollbarContainer(h, state, c, o);
+        DrawFor(h, 0);
+        CHECK(!Frame(h).drawn);
+    }
+}
+
+TEST(ScrollbarTrackKeepsItsInsets) {
+    for (const auto c : kScrollbarCases) {
+        Harness h;
+        FakeIndicator state;
+        auto o = TestScrollbar();
+        o.isFadeEnabled = false;
+        o.mainAxisTrackInset = 10_dp;
+        o.crossAxisTrackInset = 5_dp;
+        o.thickness = 10_dp;
+        o.thumbColor = ui::Color::Transparent();
+        ScrollbarContainer(h, state, c, o);
+        DrawFor(h, 0);
+        const auto f = Frame(h);
+        CHECK(f.drawn && f.thumbColor == ui::Color::Transparent() && f.trackColor == kTrack);
+        ui::Rect expected;
+        if (c.orientation == foundation::Orientation::Vertical) {
+            const float left = c.rtl ? 5 : 100 - 5 - 10;
+            expected = { left, 10, left + 10, 90 };
+        } else {
+            expected = { 10, 100 - 5 - 10, 90, 95 };
+        }
+        CHECK(Near(f.track.left, expected.left) && Near(f.track.top, expected.top) && Near(f.track.right, expected.right)
+              && Near(f.track.bottom, expected.bottom));
+    }
+}
+
+TEST(ScrollbarModifiersCompareByTheirArguments) {
+    FakeIndicator state;
+    auto o = TestScrollbar();
+    o.thickness = 10_dp;
+    const auto a = NonInteractiveScrollbar({}, state, foundation::Orientation::Vertical, o);
+    const auto b = NonInteractiveScrollbar({}, state, foundation::Orientation::Vertical, o);
+    o.thickness = 5_dp;
+    const auto other = NonInteractiveScrollbar({}, state, foundation::Orientation::Vertical, o);
+    CHECK(a.Elements()[0]->Equals(*b.Elements()[0]));
+    CHECK(!a.Elements()[0]->Equals(*other.Elements()[0]));
+    o.thumbMaxLengthFraction = 1.5f;
+    bool threw = false;
+    try { (void)NonInteractiveScrollbar({}, state, foundation::Orientation::Vertical, o); } catch (const std::invalid_argument&) { threw = true; }
+    CHECK(threw);
+}
+
+// AppBarTest's changeColors cases: scroll behaviours given the content's scroll state turn the
+// bar to its scrolled colour while the content is away from its visual start (reverse layouts
+// start away from it). The colour is read as the overlapped fraction that picks it.
+namespace {
+    enum class ColourContent : std::uint8_t { LazyColumn, LazyGrid, Column };
+    struct ColourCase { const char* name; bool enterAlways; ColourContent content; bool reverse; bool preScrolled; };
+    bool ShowsScrolledColour(const TopAppBarScrollBehavior& b) { return b.State().OverlappedFraction() > 0.01f; }
+}
+
+TEST(TopAppBarScrolledColourFollowsTheScrollableState) {
+    using C = ColourContent;
+    const ColourCase cases[] = {
+        { "enterAlways scrolledLazyColumn", true, C::LazyColumn, false, false },
+        { "enterAlways reverseLayout scrolledLazyColumn", true, C::LazyColumn, true, false },
+        { "enterAlways reverseLayout preScrolledLazyColumn", true, C::LazyColumn, true, true },
+        { "pinned reverseLayout scrolledLazyColumn", false, C::LazyColumn, true, false },
+        { "pinned reverseLayout preScrolledLazyGrid", false, C::LazyGrid, true, true },
+        { "pinned reverseLayout scrolledLazyGrid", false, C::LazyGrid, true, false },
+        { "pinned scrolledLazyGrid", false, C::LazyGrid, false, false },
+        { "enterAlways scrolledLazyGrid", true, C::LazyGrid, false, false },
+        { "enterAlways reversedLayout scrolledLazyGrid", true, C::LazyGrid, true, false },
+        { "enterAlways reverseLayout preScrolledLazyGrid", true, C::LazyGrid, true, true },
+        { "enterAlways scrolledColumn", true, C::Column, false, false },
+        { "enterAlways reverseLayout scrolledColumn", true, C::Column, true, false },
+        { "enterAlways reverseLayout preScrolledColumn", true, C::Column, true, true },
+        { "pinned reverseLayout preScrolledLazyColumn", false, C::LazyColumn, true, true },
+        { "pinned scrolledLazyColumn", false, C::LazyColumn, false, false },
+        { "pinned preScrolledLazyColumn", false, C::LazyColumn, false, true },
+        { "pinned reverseLayout scrolledColumn", false, C::Column, true, false },
+        { "pinned scrolledColumn", false, C::Column, false, false },
+        { "pinned reverseLayout preScrolledColumn", false, C::Column, true, true },
+        { "pinned preScrolledColumn", false, C::Column, false, true },
+    };
+    for (const auto& k : cases) {
+        PhoneHarness h;
+        LazyListState list(k.preScrolled ? 30 : 0);
+        LazyGridState grid(k.preScrolled ? 30 : 0);
+        ScrollState column(k.preScrolled ? 2000 : 0);
+        foundation::ScrollableState& scrollable = k.content == C::LazyColumn ? static_cast<foundation::ScrollableState&>(list)
+                                                  : k.content == C::LazyGrid ? static_cast<foundation::ScrollableState&>(grid)
+                                                                             : static_cast<foundation::ScrollableState&>(column);
+        // The reverse grid that enterAlways scrolls both ways holds 100 dp cells.
+        const bool tallCells = k.enterAlways && k.content == C::LazyGrid && k.reverse && !k.preScrolled;
+        std::shared_ptr<TopAppBarScrollBehavior> behavior;
+        Themed(h, [&] {
+            behavior = k.enterAlways ? TopAppBarDefaults::enterAlwaysScrollBehavior(scrollable) : TopAppBarDefaults::pinnedScrollBehavior(scrollable);
+            ScaffoldOptions o;
+            o.topBar = [&] {
+                TopAppBarOptions bar;
+                bar.scrollBehavior = behavior;
+                bar.colors = TopAppBarDefaults::topAppBarColors(Color(0xFFFF0000u), Color(0xFF00FF00u));
+                Box(Tag({}, "topAppBar"), Alignment::TopStart(), false, [&, bar] { TopAppBar([] { Text("Title"); }, {}, bar); });
+            };
+            Scaffold(FillMax({}, Axis::Both), o, [&](const PaddingValues& padding) {
+                const ui::Modifier m = NestedScroll(Padding(Tag(FillMax({}, Axis::Both), "content"), padding), behavior->NestedScrollConnection());
+                switch (k.content) {
+                    case C::LazyColumn: {
+                        LazyListOptions lo;
+                        lo.reverseLayout = k.reverse;
+                        LazyColumn(m, list, [](LazyListScope& s) { s.Items(100, [](int i) { Text(std::to_string(i)); }); }, lo);
+                        break;
+                    }
+                    case C::LazyGrid: {
+                        LazyGridOptions go;
+                        go.reverseLayout = k.reverse;
+                        go.contentPadding = padding;
+                        const ui::Modifier gm = NestedScroll(Tag({}, "content"), behavior->NestedScrollConnection());
+                        LazyVerticalGrid(gm, GridCells::Adaptive(100_dp), grid, [tallCells](LazyGridScope& s) {
+                            s.Items(100, [tallCells](int) { Box(Height(FillMax({}, Axis::Horizontal), tallCells ? 100_dp : 50_dp)); });
+                        }, go);
+                        break;
+                    }
+                    case C::Column:
+                        Column(VerticalScroll(m, column, true, k.reverse), Arrangement::Bottom(), AlignmentH::Start(), [] {
+                            for (int i = 0; i < 50; ++i) Box(Height(FillMax({}, Axis::Horizontal), 80_dp), Alignment::TopStart(), false, [i] { Text(std::to_string(i)); });
+                        });
+                        break;
+                }
+            });
+        });
+        h.AdvanceTimeBy(500);
+        const auto content = BoundsDp(h, "content");
+        CHECK(content.has_value());
+        if (!content) continue;
+        // performTouchInput coordinates: px from the content's top.
+        const float x = content->left * 2 + 100, top = content->top * 2, height = content->Height() * 2;
+        std::int64_t t = 0;
+        // swipeUp/swipeDown: 200 ms unless given, moves every 10 ms.
+        const auto swipe = [&](float y0, float y1, int durationMs = 200) {
+            Swipe(h, t, x, top + y0, x, top + y1, durationMs / 10);
+            h.AdvanceTimeBy(3000);
+        };
+        const auto expect = [&](bool scrolled, const char* when) {
+            if (ShowsScrolledColour(*behavior) != scrolled) std::printf("  %s: %s expected the %s colour\n", k.name, when, scrolled ? "scrolled" : "container");
+            CHECK(ShowsScrolledColour(*behavior) == scrolled);
+        };
+        if (!k.reverse && !k.preScrolled) {
+            expect(false, "at first");
+            swipe(height - 200, height - 1000);
+            if (k.enterAlways) {
+                CHECK(Near(behavior->State().HeightOffset(), behavior->State().HeightOffsetLimit()));
+                swipe(height - 1000, height - 800);
+            }
+            expect(true, "scrolled");
+        } else if (!k.reverse) {
+            expect(true, "at first");
+            swipe(height - 200, height - 1000);
+            expect(true, "scrolled");
+        } else {
+            expect(true, "at first");
+            // Compose swipes 500 px here, short of the visual start on its test device; on this
+            // phone (412 x 800 dp at density 2) the content can be nearer, so the partial swipes
+            // take half of what is left (capped at Compose's 500 px), slowly enough not to fling.
+            const auto partial = [&](float distance) { return std::min(500.0f, distance / 2); };
+            if (tallCells) {
+                swipe(height - 1000, height - 1000 + partial(float(scrollable.ScrollIndicator()->ScrollOffset())), 600);
+                expect(true, "scrolled back a little");
+                const auto* i = scrollable.ScrollIndicator();
+                swipe(height - 500, height - 500 - partial(float(i->ContentSize() - i->ViewportSize() - i->ScrollOffset())), 600);
+                expect(true, "scrolled on");
+            } else {
+                swipe(0, partial(float(scrollable.ScrollIndicator()->ScrollOffset())), 600);
+                expect(true, "scrolled back a little");
+            }
+            const bool farther = !k.enterAlways && k.content == C::LazyGrid && !k.preScrolled;
+            swipe(500, height + (farther ? 2000 : 1000));
+            // Long reverse lists need more than one swipe to reach their visual start in Compose's
+            // dp; keep swiping as a longer finger would until the content stops.
+            for (int i = 0; i < 20 && scrollable.ScrollIndicator()->ScrollOffset() != 0; ++i) swipe(500, height + 1000);
+            expect(false, "back at the start");
+        }
+    }
 }

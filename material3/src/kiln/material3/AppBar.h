@@ -10,6 +10,7 @@
 #include "kiln/foundation/Arrangement.h"
 #include "kiln/foundation/Insets.h"
 #include "kiln/foundation/Layouts.h"
+#include "kiln/foundation/Scroll.h"
 #include "kiln/runtime/State.h"
 #include "kiln/ui/NestedScroll.h"
 
@@ -96,6 +97,16 @@ namespace kiln::material3 {
                                                                            std::optional<anim::SpecPtr> snapAnimationSpec = std::nullopt,
                                                                            std::optional<std::shared_ptr<const anim::DecaySpec>> flingAnimationSpec = std::nullopt,
                                                                            std::function<bool()> isScrollingContentAtStart = {});
+        // Overloads that tell whether the content is at its start from `scrollableState`'s scroll
+        // indicator (reverse layouts included); it must outlive the behaviour.
+        std::shared_ptr<TopAppBarScrollBehavior> pinnedScrollBehavior(foundation::ScrollableState& scrollableState,
+                                                                      std::shared_ptr<TopAppBarState> state = nullptr,
+                                                                      std::function<bool()> canScroll = {});
+        std::shared_ptr<TopAppBarScrollBehavior> enterAlwaysScrollBehavior(foundation::ScrollableState& scrollableState,
+                                                                           std::shared_ptr<TopAppBarState> state = nullptr,
+                                                                           std::function<bool()> canScroll = {},
+                                                                           std::optional<anim::SpecPtr> snapAnimationSpec = std::nullopt,
+                                                                           std::optional<std::shared_ptr<const anim::DecaySpec>> flingAnimationSpec = std::nullopt);
         // The bar collapses as content scrolls up and expands once the content is back at its top.
         std::shared_ptr<TopAppBarScrollBehavior> exitUntilCollapsedScrollBehavior(
             std::shared_ptr<TopAppBarState> state = nullptr, std::function<bool()> canScroll = {},

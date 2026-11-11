@@ -26,6 +26,7 @@
 #include <kiln/foundation/Lazy.h>
 #include <kiln/material3/AppBar.h>
 #include <kiln/material3/FloatingToolbar.h>
+#include <kiln/material3/Scrollbar.h>
 #include <kiln/material3/ShortNavigationBar.h>
 #include <kiln/material3/Tab.h>
 #include <kiln/material3/TabRow.h>
@@ -520,6 +521,36 @@ namespace kiln::gallery {
             });
         }
 
+        void Scrollbars() {
+            // A list whose scrollbar shows while it scrolls, then fades.
+            m3::Text("Fading scrollbar");
+            auto& list = RememberLazyListState();
+            LazyColumn(m3::NonInteractiveScrollbar(Height(FillMax({}, Axis::Horizontal), 280_dp), *list.ScrollIndicator(), Orientation::Vertical),
+                       list, [](LazyListScope& s) {
+                           s.Items(50, [](int i) { m3::Text("Line " + std::to_string(i + 1), Padding(FillMax({}, Axis::Horizontal), 12_dp)); });
+                       });
+            // A scrolled column whose scrollbar stays, on a visible track.
+            m3::Text("Always visible, with a track");
+            auto& column = RememberScrollState();
+            m3::NonInteractiveScrollbarOptions always;
+            always.isFadeEnabled = false;
+            always.trackColor = m3::MaterialTheme::colorScheme().surfaceContainerHighest;
+            // The scrollbar goes outside the scroll, or it would be drawn along the scrolled content.
+            Column(VerticalScroll(m3::NonInteractiveScrollbar(Height(FillMax({}, Axis::Horizontal), 200_dp), *column.ScrollIndicator(),
+                                                              Orientation::Vertical, always), column),
+                   Arrangement::Top(), AlignmentH::Start(), [] {
+                       for (int i = 0; i < 20; ++i) m3::Text("Paragraph " + std::to_string(i + 1), Padding(FillMax({}, Axis::Horizontal), 12_dp));
+                   });
+            // Along the bottom of a row.
+            m3::Text("Horizontal");
+            auto& row = RememberScrollState();
+            Row(HorizontalScroll(m3::NonInteractiveScrollbar(Height(FillMax({}, Axis::Horizontal), 64_dp), *row.ScrollIndicator(),
+                                                             Orientation::Horizontal, always), row),
+                Arrangement::Start(), AlignmentV::CenterVertically(), [] {
+                    for (int i = 0; i < 20; ++i) m3::Text("Tag " + std::to_string(i + 1), Padding({}, 16_dp));
+                });
+        }
+
         void Tabs() {
             auto* primary = &RememberState(0);
             auto* secondary = &RememberState(0);
@@ -896,7 +927,7 @@ namespace kiln::gallery {
         struct Section { const char* key; const char* title; void (*content)(); };
         const std::vector<Section>& Sections() {
             static const std::vector<Section> sections{
-                { "navigation", "Navigation bars and rails", Navigation }, { "tabs", "Tabs", Tabs }, { "appbars", "App bars", AppBars }, { "toolbars", "Floating toolbars", FloatingToolbars }, { "segmented", "Segmented buttons", SegmentedButtons }, { "split", "Split buttons", SplitButtons },
+                { "navigation", "Navigation bars and rails", Navigation }, { "tabs", "Tabs", Tabs }, { "appbars", "App bars", AppBars }, { "toolbars", "Floating toolbars", FloatingToolbars }, { "scrollbars", "Scrollbars", Scrollbars }, { "segmented", "Segmented buttons", SegmentedButtons }, { "split", "Split buttons", SplitButtons },
                 { "tooltips", "Tooltips", Tooltips }, { "menus", "Menus", Menus }, { "groups", "Button groups", ButtonGroups },
                 { "sliders", "Sliders", Sliders }, { "progress", "Progress indicators", ProgressIndicators }, { "lists", "Lists", Lists },
                 { "chips", "Chips", Chips }, { "cards", "Cards", Cards }, { "selection", "", SelectionControls },
