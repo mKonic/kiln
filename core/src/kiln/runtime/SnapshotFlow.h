@@ -19,20 +19,9 @@ namespace kiln::rt {
     public:
         explicit SnapshotFlow(std::function<T()> block) : m_Block(std::move(block)) {}
 
-        // Runs until the collecting job is cancelled.
-        Task<> Collect(std::function<void(const T&)> collector) const {
-            auto watcher = std::make_shared<Watcher>();
-            std::optional<T> last;
-            for (;;) {
-                std::optional<T> value;
-                Observation::Track(*watcher, [&] { value.emplace(m_Block()); });
-                if (!last || !(*last == *value)) {
-                    last = value;
-                    Observation::Untracked([&] { collector(*last); });
-                }
-                if (!co_await watcher->changed.Next()) co_return;
-            }
-        }
+        // Runs until the collecting job is cancelled. The task owns a copy of the block, so the
+        // flow object may go before it runs.
+        Task<> Collect(std::function<void(const T&)> collector) const { return Run(m_Block, std::move(collector)); }
 
     private:
         struct Watcher final : Subscriber, std::enable_shared_from_this<Watcher> {
@@ -44,6 +33,19 @@ namespace kiln::rt {
                 Dispatcher::Main().Post([weak] { if (auto w = weak.lock()) w->changed.TrySend(true); });
             }
         };
+        static Task<> Run(std::function<T()> block, std::function<void(const T&)> collector) {
+            auto watcher = std::make_shared<Watcher>();
+            std::optional<T> last;
+            for (;;) {
+                std::optional<T> value;
+                Observation::Track(*watcher, [&] { value.emplace(block()); });
+                if (!last || !(*last == *value)) {
+                    last = value;
+                    Observation::Untracked([&] { collector(*last); });
+                }
+                if (!co_await watcher->changed.Next()) co_return;
+            }
+        }
         std::function<T()> m_Block;
     };
 

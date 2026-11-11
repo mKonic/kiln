@@ -1,6 +1,7 @@
 #include "kiln/ui/LayoutNode.h"
 #include "kiln/ui/Accessibility.h"
 #include "kiln/ui/InsetsRulers.h"
+#include "kiln/ui/MyersDiff.h"
 
 #include <cmath>
 #include "kiln/ui/NestedScroll.h"
@@ -529,14 +530,32 @@ namespace kiln::ui {
         nodes.reserve(next.size());
         auto focusKind = [](ModifierNode& m) { return m.AsFocusTarget() || m.AsFocusEvent() || m.AsFocusProperties(); };
         bool focusChanged = false;
-        const auto reusable = [&](std::size_t i) {
-            return i < next.size() && i < m_Elements.size() && m_Nodes[i] && m_Elements[i]->Type() == next[i]->Type();
-        };
+        // NodeChain.updateFrom: which old node each new element keeps (-1: a new node). With
+        // equal lengths the chains match position by position up to the first change of type;
+        // from there (or from the start, when the lengths differ) a Myers diff matches nodes of
+        // the same type, so an element added or removed in the middle keeps the nodes around it.
+        const auto sameType = [&](std::size_t o, std::size_t n) { return m_Nodes[o] && m_Elements[o]->Type() == next[n]->Type(); };
+        std::vector<int> from(next.size(), -1);
+        std::size_t prefix = 0;
+        if (next.size() == m_Elements.size())
+            for (; prefix < next.size() && sameType(prefix, prefix); ++prefix) from[prefix] = int(prefix);
+        if (prefix < next.size() || prefix < m_Elements.size()) {
+            ExecuteDiff(int(m_Elements.size() - prefix), int(next.size() - prefix),
+                        [&](int o, int n) { return sameType(prefix + std::size_t(o), prefix + std::size_t(n)); },
+                        [&](int o, int n) { from[prefix + std::size_t(n)] = int(prefix) + o; });
+        }
+        std::vector<char> kept(m_Nodes.size(), 0);
+        for (std::size_t n = 0; n < next.size(); ++n) {
+            if (from[n] < 0) continue;
+            kept[std::size_t(from[n])] = 1;
+            if (from[n] != int(n)) structural = true;
+        }
         // Detach against the complete old chain. Focus removal walks that chain to cancel
         // indirect input and notify listeners; moving reusable nodes first leaves null holes.
         for (std::size_t i = 0; i < m_Nodes.size(); ++i) {
-            if (reusable(i)) continue;
+            if (kept[i]) continue;
             auto& old = m_Nodes[i];
+            if (!old) continue;
             if (focusKind(*old)) focusChanged = true;
             if (m_Owner) {
                 if (auto* p = old->AsPointerInput()) m_Owner->ForgetPointerModifier(p);
@@ -544,18 +563,20 @@ namespace kiln::ui {
             }
             old->m_Owner = nullptr;
         }
-        for (std::size_t i = 0; i < next.size(); ++i) {
-            if (reusable(i) && !m_Elements[i]->Equals(*next[i])) {
-                next[i]->Update(*m_Nodes[i]);
+        for (std::size_t n = 0; n < next.size(); ++n) {
+            if (from[n] < 0) continue;
+            const std::size_t o = std::size_t(from[n]);
+            if (!m_Elements[o]->Equals(*next[n])) {
+                next[n]->Update(*m_Nodes[o]);
                 updated = true;
-                if (focusKind(*m_Nodes[i])) focusChanged = true;
+                if (focusKind(*m_Nodes[o])) focusChanged = true;
             }
         }
         std::vector<ModifierNode*> attach;
         for (std::size_t i = 0; i < next.size(); ++i) {
             const ModifierElement& e = *next[i];
-            if (reusable(i)) {
-                nodes.push_back(std::move(m_Nodes[i]));
+            if (from[i] >= 0) {
+                nodes.push_back(std::move(m_Nodes[std::size_t(from[i])]));
             } else {
                 structural = true;
                 auto n = e.Create();

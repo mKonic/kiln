@@ -261,7 +261,9 @@ TEST(SnapshotFlowEmitsDistinctValuesAfterChangesApply) {
     Dispatcher& d = Dispatcher::Main();
     State<int> a(1), b(10);
     std::vector<int> seen;
-    Job job = Launch(d, SnapshotFlow<int>([&] { return a.Get() + b.Get(); }).Collect([&](const int& v) { seen.push_back(v); }));
+    // The flow object is gone before the task first runs (as when an effect returns it).
+    Task<> task = SnapshotFlow<int>([&] { return a.Get() + b.Get(); }).Collect([&](const int& v) { seen.push_back(v); });
+    Job job = Launch(d, std::move(task));
     d.RunPending();
     CHECK(seen == std::vector<int>{ 11 });
     a.Set(2);

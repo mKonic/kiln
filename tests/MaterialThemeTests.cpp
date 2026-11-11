@@ -14191,3 +14191,37 @@ TEST(CurrentWindowAdaptiveInfoFollowsTheWindowSize) {   // CurrentWindowAdaptive
     CHECK(adaptive::WindowSizeClass::ComputeFromDpSize(1700, 500, true) == (adaptive::WindowSizeClass{ 1600, 480 }));
     CHECK(adaptive::WindowSizeClass::ComputeFromDpSize(599.9f, 479.9f) == (adaptive::WindowSizeClass{ 0, 0 }));
 }
+
+TEST(TextFieldKeepsItsInputSessionWhenItsErrorStateChanges) {
+    PhoneHarness h;
+    int starts = 0, stops = 0;
+    ui::TextInputHost host;
+    host.start = [&starts](const ui::ImeOptions&, const ui::TextInputSnapshot&) { ++starts; };
+    host.stop = [&stops] { ++stops; };
+    h.owner.SetTextInputHost(host);
+    TextFieldState state;
+    auto error = std::make_shared<rt::State<bool>>(false);
+    ui::FocusRequester focus;
+    h.Run([&] { rt::Composition::Current()->Provide(ui::LocalOwner, &h.owner, [&] { MaterialTheme({}, [&] {
+        TextFieldOptions o;
+        o.lineLimits = TextFieldLineLimits::SingleLine();
+        const bool e = error->Get();
+        o.label = [e](const TextFieldLabelScope&) { Text(e ? "Username*" : "Username"); };
+        o.supportingText = [e] { Text(e ? "Too long" : ""); };
+        o.isError = e;
+        o.onKeyboardAction = [](std::function<void()>) {};
+        TextField(state, FocusRequesterModifier(Semantics({}, [e](ui::SemanticsConfiguration& c) {
+                                                    c.maxTextLength = 10;
+                                                    if (e) c.error = "Too long";
+                                                }), focus), o);
+    }); }); });
+    CHECK(focus.RequestFocus());
+    h.AdvanceTimeBy(32);
+    const int before = starts;
+    CHECK(before >= 1);
+    error->Set(true);
+    h.AdvanceTimeBy(32);
+    CHECK_EQ(starts, before);
+    CHECK_EQ(stops, 0);
+    CHECK(h.owner.ActiveTextInput() != nullptr);
+}

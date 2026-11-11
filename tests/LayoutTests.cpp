@@ -3,6 +3,7 @@
 
 #include <cmath>
 #include "kiln/foundation/Compose.h"
+#include "kiln/ui/MyersDiff.h"
 #include <cmath>
 
 using namespace kiln;
@@ -327,4 +328,79 @@ TEST(ProvidedLocalDensityMeasuresTheSubtree) {
     const auto& column = *owner.Root().Children()[0];
     CHECK_EQ(column.Children()[0]->Size().width, 200);
     CHECK_EQ(column.Children()[1]->Size().width, 50);
+}
+
+namespace {
+    // MyersDiffTests' executeListDiff: the kept (old, new) pairs.
+    std::vector<std::pair<int, int>> Kept(const std::string& a, const std::string& b) {
+        std::vector<std::pair<int, int>> out;
+        ExecuteDiff(int(a.size()), int(b.size()), [&](int o, int n) { return a[std::size_t(o)] == b[std::size_t(n)]; },
+                    [&](int o, int n) { out.emplace_back(o, n); });
+        return out;
+    }
+    // The longest common subsequence's length, to check the diff is minimal.
+    std::size_t Lcs(const std::string& a, const std::string& b) {
+        std::vector<std::vector<std::size_t>> t(a.size() + 1, std::vector<std::size_t>(b.size() + 1, 0));
+        for (std::size_t i = 1; i <= a.size(); ++i)
+            for (std::size_t j = 1; j <= b.size(); ++j)
+                t[i][j] = a[i - 1] == b[j - 1] ? t[i - 1][j - 1] + 1 : std::max(t[i - 1][j], t[i][j - 1]);
+        return t[a.size()][b.size()];
+    }
+}
+
+TEST(MyersDiffKeepsALongestCommonSubsequenceInOrder) {   // MyersDiffTests
+    using P = std::vector<std::pair<int, int>>;
+    CHECK(Kept("0000012", "123") == (P{ { 5, 0 }, { 6, 1 } }));                       // testDiffWithRemovesAtStart
+    CHECK(Kept("01234", "012") == (P{ { 0, 0 }, { 1, 1 }, { 2, 2 } }));               // testDiffWithRemovesAtEnd
+    CHECK(Kept("012", "123456789") == (P{ { 1, 0 }, { 2, 1 } }));                     // testDiffWithInsertsAtEnd
+    CHECK(Kept("0123456789A", "012346789A") ==                                         // testDiff
+          (P{ { 0, 0 }, { 1, 1 }, { 2, 2 }, { 3, 3 }, { 4, 4 }, { 6, 5 }, { 7, 6 }, { 8, 7 }, { 9, 8 }, { 10, 9 } }));
+    CHECK(Kept("aaaa", "bbbb").empty());
+    for (const auto& [a, b] : std::vector<std::pair<std::string, std::string>>{
+             { "ihfiwjfowijefoiwjfe", "ihfawwjwfowwijefwicwfe" }, { "", "abcde" }, { "abcde", "" }, { "abcd", "bcda" }, { "abc", "abccbacbac" } }) {
+        const auto kept = Kept(a, b);
+        CHECK_EQ(kept.size(), Lcs(a, b));
+        for (std::size_t i = 0; i < kept.size(); ++i) {
+            CHECK(a[std::size_t(kept[i].first)] == b[std::size_t(kept[i].second)]);
+            if (i) CHECK(kept[i].first > kept[i - 1].first && kept[i].second > kept[i - 1].second);
+        }
+    }
+}
+
+namespace {
+    // Counts attaches and detaches of one node type.
+    struct LifeParams { int* attaches; int* detaches; int tag; bool operator==(const LifeParams&) const = default; };
+    struct LifeNode final : ModifierNode {
+        LifeParams params;
+        explicit LifeNode(LifeParams p) : params(p) {}
+        void OnParamsChanged() {}
+        void OnAttach() override { ++*params.attaches; }
+        void OnDetach() override { ++*params.detaches; }
+    };
+    struct OtherParams { int tag; bool operator==(const OtherParams&) const = default; };
+    struct OtherNode final : ModifierNode {
+        OtherParams params;
+        explicit OtherNode(OtherParams p) : params(p) {}
+        void OnParamsChanged() {}
+    };
+}
+
+TEST(ModifierNodesSurviveAnElementInsertedOrRemovedBeforeThem) {   // NodeChain.updateFrom's structural diff
+    Harness h;
+    int attaches = 0, detaches = 0;
+    auto extra = std::make_shared<rt::State<bool>>(false);
+    h.Run([&] {
+        Modifier m;
+        if (extra->Get()) m = m.With<OtherNode>(OtherParams{ 1 });   // added in front, as TextField's error semantics
+        m = m.With<OtherNode>(OtherParams{ 2 }).With<LifeNode>(LifeParams{ &attaches, &detaches, 0 });
+        Box(m);
+    });
+    CHECK_EQ(attaches, 1);
+    for (const bool on : { true, false, true }) {
+        extra->Set(on);
+        rt::Observation::ApplyChanges();
+        h.composition.Recompose();
+        CHECK_EQ(attaches, 1);
+        CHECK_EQ(detaches, 0);
+    }
 }
