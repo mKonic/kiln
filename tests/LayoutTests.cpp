@@ -404,3 +404,10 @@ TEST(ModifierNodesSurviveAnElementInsertedOrRemovedBeforeThem) {   // NodeChain.
         CHECK_EQ(detaches, 0);
     }
 }
+
+TEST(DpComparesAndNegatesLikeCompose) {   // Dp.compareTo, Dp.unaryMinus
+    CHECK(ui::Dp(300) > ui::Dp(299.5f));
+    CHECK(ui::Dp(1) <= ui::Dp(1));
+    CHECK(!(ui::Dp::Unspecified() < ui::Dp(1)) && !(ui::Dp::Unspecified() > ui::Dp(1)));   // NaN orders with nothing
+    CHECK(-ui::Dp(6) == ui::Dp(-6));
+}

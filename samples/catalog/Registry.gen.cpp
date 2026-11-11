@@ -36,6 +36,7 @@
 #include "samples/SwitchSamples.h"
 #include "samples/TabSamples.h"
 #include "samples/TextFieldSamples.h"
+#include "samples/TimePickerSamples.h"
 #include "samples/ToggleButtonSamples.h"
 #include "samples/TooltipSamples.h"
 
@@ -378,14 +379,14 @@ namespace catalog {
                 { "TextArea", "Text fields examples", false, samples::TextArea },
             } },
             { 39, "Time Picker", "Time picker allows the user to choose time of day.", true, 0, {
-                { "TimePickerSample", "Time Picker examples", false, nullptr },
-                { "TimeInputSample", "Time Picker examples", false, nullptr },
-                { "TimePickerSwitchableSample", "Time Picker examples", false, nullptr },
-                { "VibrantTimePickerSample", "Time Picker examples", true, nullptr },
-                { "VibrantTimeInputSample", "Time Picker examples", true, nullptr },
-                { "VibrantTimePickerSwitchableSample", "Time Picker examples", true, nullptr },
-                { "VibrantTimePickerScrollSample", "Time Picker examples", true, nullptr },
-                { "UncontainedTimePickerSample", "Time Picker examples", true, nullptr },
+                { "TimePickerSample", "Time Picker examples", false, samples::TimePickerSample },
+                { "TimeInputSample", "Time Picker examples", false, samples::TimeInputSample },
+                { "TimePickerSwitchableSample", "Time Picker examples", false, samples::TimePickerSwitchableSample },
+                { "VibrantTimePickerSample", "Time Picker examples", true, samples::VibrantTimePickerSample },
+                { "VibrantTimeInputSample", "Time Picker examples", true, samples::VibrantTimeInputSample },
+                { "VibrantTimePickerSwitchableSample", "Time Picker examples", true, samples::VibrantTimePickerSwitchableSample },
+                { "VibrantTimePickerScrollSample", "Time Picker examples", true, samples::VibrantTimePickerScrollSample },
+                { "UncontainedTimePickerSample", "Time Picker examples", true, samples::UncontainedTimePickerSample },
             } },
             { 31, "ToggleButtons", "Toggle buttons provide a selectable button that animates on press.", true, 0, {
                 { "ToggleButtonSample", "ToggleButton examples", true, samples::ToggleButtonSample },

@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <climits>
 #include <cmath>
+#include <compare>
 #include <cstdint>
 
 namespace kiln::ui {
@@ -21,7 +22,9 @@ namespace kiln::ui {
         constexpr Dp operator-(Dp o) const { return Dp(value - o.value); }
         constexpr Dp operator*(float f) const { return Dp(value * f); }
         constexpr Dp operator/(float f) const { return Dp(value / f); }
+        constexpr Dp operator-() const { return Dp(-value); }
         constexpr bool operator==(const Dp&) const = default;
+        constexpr std::partial_ordering operator<=>(const Dp& o) const { return value <=> o.value; }
         constexpr bool Specified() const { return !std::isnan(value); }
         static constexpr Dp Unspecified() { return Dp(NAN); }
     };
