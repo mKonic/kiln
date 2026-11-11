@@ -17,6 +17,7 @@
 #include "samples/Shared.h"
 #include "samples/SliderSamples.h"
 #include "samples/SwitchSamples.h"
+#include "samples/TooltipSamples.h"
 
 namespace catalog {
 
@@ -379,19 +380,19 @@ namespace catalog {
                 { "XLargeToggleButtonWithIconSample", "ToggleButton examples", true, nullptr },
             } },
             { 38, "Tooltips", "Tooltips call user attention to an anchor component.", true, {
-                { "PlainTooltipSample", "Tooltips examples", false, nullptr },
-                { "PlainTooltipWithManualInvocationSample", "Tooltips examples", false, nullptr },
-                { "PlainTooltipWithCaret", "Tooltips examples", false, nullptr },
-                { "PlainTooltipWithCaretBelowAnchor", "Tooltips examples", false, nullptr },
-                { "PlainTooltipWithCaretLeftOfAnchor", "Tooltips examples", false, nullptr },
-                { "PlainTooltipWithCaretRightOfAnchor", "Tooltips examples", false, nullptr },
-                { "PlainTooltipWithCaretStartOfAnchor", "Tooltips examples", false, nullptr },
-                { "PlainTooltipWithCaretEndOfAnchor", "Tooltips examples", false, nullptr },
-                { "PlainTooltipWithCustomCaret", "Tooltips examples", false, nullptr },
-                { "RichTooltipSample", "Tooltips examples", false, nullptr },
-                { "RichTooltipWithManualInvocationSample", "Tooltips examples", false, nullptr },
-                { "RichTooltipWithCaretSample", "Tooltips examples", false, nullptr },
-                { "RichTooltipWithCustomCaretSample", "Tooltips examples", false, nullptr },
+                { "PlainTooltipSample", "Tooltips examples", false, samples::PlainTooltipSample },
+                { "PlainTooltipWithManualInvocationSample", "Tooltips examples", false, samples::PlainTooltipWithManualInvocationSample },
+                { "PlainTooltipWithCaret", "Tooltips examples", false, samples::PlainTooltipWithCaret },
+                { "PlainTooltipWithCaretBelowAnchor", "Tooltips examples", false, samples::PlainTooltipWithCaretBelowAnchor },
+                { "PlainTooltipWithCaretLeftOfAnchor", "Tooltips examples", false, samples::PlainTooltipWithCaretLeftOfAnchor },
+                { "PlainTooltipWithCaretRightOfAnchor", "Tooltips examples", false, samples::PlainTooltipWithCaretRightOfAnchor },
+                { "PlainTooltipWithCaretStartOfAnchor", "Tooltips examples", false, samples::PlainTooltipWithCaretStartOfAnchor },
+                { "PlainTooltipWithCaretEndOfAnchor", "Tooltips examples", false, samples::PlainTooltipWithCaretEndOfAnchor },
+                { "PlainTooltipWithCustomCaret", "Tooltips examples", false, samples::PlainTooltipWithCustomCaret },
+                { "RichTooltipSample", "Tooltips examples", false, samples::RichTooltipSample },
+                { "RichTooltipWithManualInvocationSample", "Tooltips examples", false, samples::RichTooltipWithManualInvocationSample },
+                { "RichTooltipWithCaretSample", "Tooltips examples", false, samples::RichTooltipWithCaretSample },
+                { "RichTooltipWithCustomCaretSample", "Tooltips examples", false, samples::RichTooltipWithCustomCaretSample },
             } },
             { 40, "Top app bar", "Top app bars display information and actions at the top of a screen.", true, {
                 { "SimpleTopAppBar", "Top app bar examples", false, nullptr },
