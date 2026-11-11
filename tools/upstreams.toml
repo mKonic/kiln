@@ -58,10 +58,20 @@ paths = ["compose/material3/adaptive/adaptive/src", "compose/material3/adaptive/
          "compose/material3/material3-adaptive-navigation-suite/src"]
 
 [[androidx.group]]
-name = "navigation"
-kiln = "navigation (planned)"
+name = "navigation3"
+kiln = "navigation3, foundation NavigationEvent (navigationevent's compose layer on kiln's back dispatcher)"
 paths = ["navigation3/navigation3-runtime/src", "navigation3/navigation3-ui/src",
-         "navigation/navigation-common/src", "navigation/navigation-runtime/src", "navigation/navigation-compose/src"]
+         "navigationevent/navigationevent/src", "navigationevent/navigationevent-compose/src"]
+
+[[androidx.group]]
+name = "navigation"
+kiln = "navigation-compose (planned)"
+paths = ["navigation/navigation-common/src", "navigation/navigation-runtime/src", "navigation/navigation-compose/src"]
+
+[[androidx.group]]
+name = "lifecycle"
+kiln = "none yet (navigation3's lifecycle caps; design/api-gaps.md)"
+paths = ["lifecycle/lifecycle-common/src", "lifecycle/lifecycle-runtime-compose/src"]
 
 [[androidx.group]]
 name = "catalog"
