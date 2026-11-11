@@ -260,7 +260,7 @@ namespace kiln::material3 {
         surface.shape = Value(FabMenuBaselineTokens::ListItemContainerShape);
         const auto animated = modifier.With<ItemAnimationNode>(AnimationParams{ progress, Value(MotionSchemeKeyTokens::FastSpatial), Value(MotionSchemeKeyTokens::FastEffects) });
         const auto style = MaterialTheme::typography().titleMedium;
-        c.Provide(LocalMinimumInteractiveComponentSize, Dp(0), [&] {
+        c.Provide(LocalMinimumInteractiveComponentSize, Dp(0), [=] {
             Surface(click, animated, surface, [=] {
                 auto row = ui::Modifier{}.With<WidthNode>(WidthParams{ progress, scope.horizontalAlignment });
                 row = SizeIn(row, FabMenuBaselineTokens::ListItemContainerHeight, FabMenuBaselineTokens::ListItemContainerHeight, Dp::Unspecified(), Dp::Unspecified());

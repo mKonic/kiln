@@ -234,7 +234,7 @@ namespace kiln::material3 {
                          : SizeIn(std::move(m), Dp::Unspecified(), FloatingToolbarDefaults::ContainerSize, Dp::Unspecified(), Dp::Unspecified());
             m = Padding(Background(std::move(m), p.colors.toolbarContainerColor, p.shape), p.contentPadding);
             auto body = [p, vertical, content = std::move(content)] {
-                rt::Composition::Current()->Provide(LocalContentColor, p.colors.toolbarContentColor, [&] {
+                rt::Composition::Current()->Provide(LocalContentColor, p.colors.toolbarContentColor, [=] {
                     const auto spec = FloatingToolbarDefaults::animationSpec();
                     if (p.leading) {
                         auto leading = p.leading;

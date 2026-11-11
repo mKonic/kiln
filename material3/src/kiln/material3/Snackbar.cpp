@@ -67,7 +67,7 @@ namespace kiln::material3 {
                         auto job = w->job.lock();
                         if (weak.expired() || !job || job->cancelled) return;
                         job->unregister = nullptr;
-                        w->h.resume();
+                        rt::ResumeJob(job, w->h);
                     });
                     return;
                 }
@@ -111,7 +111,7 @@ namespace kiln::material3 {
                 std::weak_ptr<rt::JobState> weak = job;
                 rt::Dispatcher::Main().Post([h, weak] {
                     auto job = weak.lock();
-                    if (job && !job->cancelled) h.resume();
+                    if (job && !job->cancelled) rt::ResumeJob(job, h);
                 });
             }
             SnackbarVisuals m_Visuals;
@@ -181,7 +181,7 @@ namespace kiln::material3 {
 
         void ProvideAction(const Slots& s) {
             auto& c = *rt::Composition::Current();
-            c.Provide(LocalContentColor, s.actionColor, [&] { c.Provide(LocalTextStyle(), s.actionTextStyle, s.action); });
+            c.Provide(LocalContentColor, s.actionColor, [=] { rt::Composition::Current()->Provide(LocalTextStyle(), s.actionTextStyle, s.action); });
         }
         void ProvideDismiss(const Slots& s) { rt::Composition::Current()->Provide(LocalContentColor, s.dismissActionColor, s.dismissAction); }
 
@@ -315,7 +315,7 @@ namespace kiln::material3 {
                  o.dismissActionContentColor.value_or(SnackbarDefaults::dismissActionContentColor()) };
         const bool newLine = o.actionOnNewLine;
         Surface(modifier, so, [s, newLine] {
-            rt::Composition::Current()->Provide(LocalTextStyle(), Value(T::SupportingTextFont), [&] {
+            rt::Composition::Current()->Provide(LocalTextStyle(), Value(T::SupportingTextFont), [=] {
                 const bool fix = ComposeMaterial3Flags::isSnackbarStylingFixEnabled;
                 if (newLine && s.action) {
                     if (fix) NewLineButtonSnackbar(s);

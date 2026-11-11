@@ -155,7 +155,7 @@ namespace kiln::material3 {
             const Modifier m = Padding(FillMax(modifier, Axis::Horizontal),
                                        o.supportingText ? DropdownMenuSelectableItemWithSupportTextPadding : DropdownMenuSelectableItemPadding);
             auto body = [=] {
-                ProvideTextStyle(MaterialTheme::typography().labelLarge, [&] {
+                ProvideTextStyle(MaterialTheme::typography().labelLarge, [=] {
                     const Modifier row = Padding(SizeIn({}, DropdownMenuItemDefaultMinWidth, SegmentedMenuTokens::Item, DropdownMenuItemDefaultMaxWidth,
                                                         Dp::Unspecified()),
                                                  contentPadding);
@@ -375,7 +375,7 @@ namespace kiln::material3 {
         Arrangement DropdownMenuItemHorizontalArrangement() { return ItemHorizontalArrangement(); }
 
         void DropdownMenuGroupLabel(const Modifier& modifier, std::function<void()> content, Alignment contentAlignment, PaddingValues padding) {
-            ProvideTextStyle(MaterialTheme::typography().labelLarge, [&] {
+            ProvideTextStyle(MaterialTheme::typography().labelLarge, [=] {
                 Box(Padding(SizeIn(modifier, DropdownMenuItemDefaultMinWidth, DropdownMenuGroupDefaultMinHeight, DropdownMenuItemDefaultMaxWidth,
                                    Dp::Unspecified()),
                             padding),
@@ -384,7 +384,7 @@ namespace kiln::material3 {
         }
         void DropdownMenuItemTrailingLabel(const Modifier& modifier, std::function<void()> content) {
             const PaddingValues padding = DropdownMenuItemTrailingLabelHorizontalPadding();
-            ProvideTextStyle(MaterialTheme::typography().labelLarge, [&] { Box(Padding(modifier, padding), Alignment::TopStart(), false, content); });
+            ProvideTextStyle(MaterialTheme::typography().labelLarge, [=] { Box(Padding(modifier, padding), Alignment::TopStart(), false, content); });
         }
 
         std::shared_ptr<const DropdownMenuPopupPositionProvider> rememberDropdownMenuPopupPositionProvider(const MenuAnchorPosition& anchorPosition,
@@ -493,7 +493,7 @@ void internal::DropdownMenuContent(const Modifier& modifier, MutableTransitionSt
                                      o.contentPadding);
         auto leading = o.leadingIcon, trailing = o.trailingIcon;
         Row(row, Arrangement::Start(), AlignmentV::CenterVertically(), [=] {
-            ProvideTextStyle(MaterialTheme::typography().labelLarge, [&] {
+            ProvideTextStyle(MaterialTheme::typography().labelLarge, [=] {
                 if (leading) {
                     ProvideContentColor(colors.LeadingIconColor(enabled), [&] {
                         Box(DefaultMinSize({}, ListTokens::ItemLeadingIconSize, Dp::Unspecified()), Alignment::TopStart(), false, leading);

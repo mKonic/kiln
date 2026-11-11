@@ -29,7 +29,7 @@ namespace kiln::material3::internal {
         // Decoration: the content colour and the text style merged over the current one.
         void Decoration(Color contentColor, const text::TextStyle* style, const std::function<void()>& content) {
             auto& c = *rt::Composition::Current();
-            c.Provide(LocalContentColor, contentColor, [&] {
+            c.Provide(LocalContentColor, contentColor, [=] {
                 if (style) ProvideTextStyle(*style, content);
                 else content();
             });

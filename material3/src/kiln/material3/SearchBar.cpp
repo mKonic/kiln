@@ -454,7 +454,7 @@ namespace kiln::material3 {
             const ShapePtr shape = o.shape ? o.shape : SearchBarDefaults::inputFieldShape();
             const TextFieldColors colors = p.colors;
             ScrollState* scroll = o.scrollState ? o.scrollState : &RememberScrollState();
-            c.Provide(LocalTextSelectionColors, colors.textSelectionColors, [&] {
+            c.Provide(LocalTextSelectionColors, colors.textSelectionColors, [=, &state] {
                 BasicTextFieldOptions b;
                 b.enabled = o.enabled;
                 b.readOnly = o.readOnly;

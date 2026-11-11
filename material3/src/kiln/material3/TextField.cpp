@@ -32,7 +32,7 @@ namespace kiln::material3 {
             merged.span.color = textColor;
             ScrollState* scroll = o.scrollState ? o.scrollState : &RememberScrollState();
 
-            c.Provide(LocalTextSelectionColors, colors.textSelectionColors, [&] {
+            c.Provide(LocalTextSelectionColors, colors.textSelectionColors, [=, &state] {
                 BasicTextFieldOptions b;
                 b.enabled = o.enabled;
                 b.readOnly = o.readOnly;
@@ -88,7 +88,7 @@ namespace kiln::material3 {
             text::TextStyle merged = style;
             merged.span.color = style.span.color.Specified() ? style.span.color : colors.TextColor(o.enabled, o.isError, source->IsFocused());
 
-            c.Provide(LocalTextSelectionColors, colors.textSelectionColors, [&] {
+            c.Provide(LocalTextSelectionColors, colors.textSelectionColors, [=, &state] {
                 BasicSecureTextFieldOptions b;
                 b.enabled = o.enabled;
                 b.textStyle = merged;

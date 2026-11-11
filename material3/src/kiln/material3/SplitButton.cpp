@@ -238,7 +238,7 @@ namespace kiln::material3 {
         });
         Layout(MinimumInteractiveComponentSize(modifier), policy, [leadingButton = std::move(leadingButton), trailingButton = std::move(trailingButton)] {
             // The minimum touch size is enforced on the whole layout instead of on each button.
-            rt::Composition::Current()->Provide(LocalMinimumInteractiveComponentSize, Dp(0), [&] {
+            rt::Composition::Current()->Provide(LocalMinimumInteractiveComponentSize, Dp(0), [=] {
                 Box({}, Alignment::Center(), true, leadingButton);
                 Box({}, Alignment::Center(), true, trailingButton);
             });

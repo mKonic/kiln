@@ -1,4 +1,5 @@
 #include "kiln/material3/AlertDialog.h"
+#include "kiln/material3/internal/AlertDialogInternal.h"
 
 #include "kiln/foundation/Compose.h"
 #include "kiln/foundation/Flow.h"
@@ -27,7 +28,7 @@ namespace kiln::material3 {
 
         // ProvideContentColorTextStyle
         void ProvideColorAndStyle(Color color, const text::TextStyle& style, const std::function<void()>& content) {
-            rt::Composition::Current()->Provide(LocalContentColor, color, [&] { ProvideTextStyle(style, content); });
+            rt::Composition::Current()->Provide(LocalContentColor, color, [=] { ProvideTextStyle(style, content); });
         }
 
         ui::LayoutDirection Flip(ui::LayoutDirection d) { return d == ui::LayoutDirection::Ltr ? ui::LayoutDirection::Rtl : ui::LayoutDirection::Ltr; }
@@ -37,7 +38,7 @@ namespace kiln::material3 {
         void AlertDialogFlowRow(Dp mainAxisSpacing, Dp crossAxisSpacing, std::function<void()> content) {
             auto& c = *rt::Composition::Current();
             const ui::LayoutDirection original = c.Read(ui::LocalLayoutDirection);
-            c.Provide(ui::LocalLayoutDirection, Flip(original), [&] {
+            c.Provide(ui::LocalLayoutDirection, Flip(original), [=] {
                 FlowRow({}, Arrangement::SpacedBy(mainAxisSpacing), Arrangement::SpacedBy(crossAxisSpacing), ui::AlignmentV::Top(),
                         [original, content] { rt::Composition::Current()->Provide(ui::LocalLayoutDirection, original, content); });
             });
@@ -60,7 +61,7 @@ namespace kiln::material3 {
                 Column(Padding({}, DialogPadding()), Arrangement::Top(), ui::AlignmentH::Start(), [p] {
                     auto& c = *rt::Composition::Current();
                     if (p.icon) {
-                        c.Provide(LocalContentColor, p.iconContentColor, [&] {
+                        c.Provide(LocalContentColor, p.iconContentColor, [=] {
                             Box(AlignInColumn(Padding({}, PaddingValues{ Dp(0), Dp(0), Dp(0), Dp(16) }), ui::AlignmentH::CenterHorizontally()),
                                 Alignment::TopStart(), false, p.icon);
                         });
@@ -134,6 +135,10 @@ namespace kiln::material3 {
             });
         };
         BasicAlertDialog(std::move(onDismissRequest), modifier, o.properties, [p] { AlertDialogContent({}, p); });
+    }
+
+    void internal::AlertDialogFlowRow(Dp mainAxisSpacing, Dp crossAxisSpacing, std::function<void()> content) {
+        kiln::material3::AlertDialogFlowRow(mainAxisSpacing, crossAxisSpacing, std::move(content));   // the file-local one
     }
 
 }
