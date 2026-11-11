@@ -74,6 +74,24 @@ vec4 paintRaw() {
 }
 
 // The fill colour: flat, or the gradient.
+// Skia's A8 text mask gamma (SkMaskGamma.cpp, SkTMaskGamma_build_correcting_lut, contrast 0):
+// the coverage that makes the colour, blended in gamma space, land where blending it in a
+// linear space of exponent `g` would. The table follows the colour's luminance
+// (SkComputeLuminance, quantised to 3 bits); `m` was rasterised for white with the same g, so
+// it is first taken back to the outline's coverage. g = 1: m unchanged.
+float textCoverage(float m, vec4 color, float g) {
+    if (g == 1.0 || m <= 0.0 || m >= 1.0) return m;
+    vec3 rgb = color.a > 0.0 ? color.rgb / color.a : vec3(0.0);
+    float lum = floor(dot(floor(rgb * 255.0 + 0.5), vec3(54.0, 183.0, 19.0)) / 256.0);
+    float q = floor(lum / 32.0);                                   // 3 bits, scaled back to 0..255
+    float src = (q * 32.0 + q * 4.0 + floor(q / 2.0)) / 255.0;
+    float dst = 1.0 - src;
+    float a = pow(m, g);                                           // the white table, undone
+    if (abs(src - dst) < 1.0 / 256.0) return a;
+    float linOut = pow(src, g) * a + (1.0 - a) * pow(dst, g);
+    return clamp((pow(linOut, 1.0 / g) - dst) / (src - dst), 0.0, 1.0);
+}
+
 vec4 paint() {
     if (int(vPaint2.x + 0.5) == 0) return vColor;
     return paintRaw() * vColor.a;
@@ -381,6 +399,9 @@ void main() {
     } else if (mode == 1) {     // atlas coverage (text, path masks) filled with the paint
         src = applyFilter(paint());
         coverage = texture(uAtlas, vUv).a;
+    } else if (mode == 8) {     // glyph coverage with the text colour's mask gamma
+        src = applyFilter(paint());
+        coverage = textCoverage(texture(uAtlas, vUv).a, vColor, vParams.x);
     } else {                    // atlas colour (emoji, images), premultiplied, alpha-modulated
         vec2 uv = vUv;
         if (vParams.x > 0.5) {  // FilterQuality.None: the nearest texel

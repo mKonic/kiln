@@ -199,16 +199,25 @@ namespace kiln::ui {
     void DrawScope::DrawParagraph(const ParagraphData& para, Offset p, Color color, std::span<const Color> runColors) {
         if (!m_Target.quads) return;   // a headless draw (tests): nothing to record
         ApplyTransform();
+        // TextMotion.Static (no subpixel positioning): Skia puts each glyph on a whole device
+        // pixel. Under a translation that is a whole-pixel shift of the glyph's quad; scaled or
+        // rotated text is drawn where it falls.
+        const gfx::Matrix& m = m_State.m;
+        const bool snap = m.a == 1 && m.d == 1 && m.b == 0 && m.c == 0;
         for (const GlyphQuad& g : para.glyphs) {
+            float x = p.x + g.rect.x, y = p.y + g.rect.y;
+            if (snap) {
+                x = std::floor(x + m.e + 0.5f) - m.e;
+                y = std::floor(y + m.f + 0.5f) - m.f;
+            }
             Color c = color;
             if (g.run >= 0 && std::size_t(g.run) < runColors.size() && runColors[std::size_t(g.run)].Specified()) c = runColors[std::size_t(g.run)];
             if (!c.Specified() || c.Alpha() * m_State.alpha <= 0) continue;
             const AtlasPage* page = m_Target.page ? m_Target.page(g.page) : nullptr;
             if (!page) continue;
             const Rgba tint = Scaled(ToRgba(c), m_State.alpha);
-            m_Target.quads->DrawAtlas({ p.x + g.rect.x, p.y + g.rect.y, g.rect.w, g.rect.h }, g.uv, *page,
-                                      g.color ? Rgba{ tint.a, tint.a, tint.a, tint.a } : tint,
-                                      g.color ? QuadRenderer::Mode::Color : QuadRenderer::Mode::TintedCoverage);
+            if (g.color) m_Target.quads->DrawAtlas({ x, y, g.rect.w, g.rect.h }, g.uv, *page, Rgba{ tint.a, tint.a, tint.a, tint.a }, QuadRenderer::Mode::Color);
+            else m_Target.quads->DrawGlyph({ x, y, g.rect.w, g.rect.h }, g.uv, *page, tint, para.maskGamma);
         }
     }
 

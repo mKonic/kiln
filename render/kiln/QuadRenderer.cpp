@@ -180,6 +180,11 @@ namespace kiln {
                { nearest ? 1.0f : 0.0f, float(mode), float(filterRow), 0 }, {}, {}, {}, {}, {}, {}, {}, {} }, &page, paint);
     }
 
+    void QuadRenderer::DrawGlyph(const RectF& r, const RectF& uv, const AtlasPage& page, Rgba c, float maskGamma) {
+        Push({ { r.x, r.y, r.w, r.h }, { uv.x, uv.y, uv.x + uv.w, uv.y + uv.h }, { c.r, c.g, c.b, c.a },
+               { maskGamma, float(Mode::TextCoverage), -1, 0 }, {}, {}, {}, {}, {}, {}, {}, {} }, &page, nullptr);
+    }
+
     void QuadRenderer::DrawRipple(const Ripple& r) {
         if (r.dataRow < 0 || !(r.radius > 0)) return;
         const bool openMask = !Current().runs.empty() && (Current().runs.back().mask || Current().runs.back().dst || Current().runs.back().triangles ||

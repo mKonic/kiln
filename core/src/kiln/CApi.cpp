@@ -1,5 +1,6 @@
 #include "kiln/App.h"
 
+#include <cmath>
 #include <kiln/kiln.hpp>
 
 using namespace kiln;
@@ -34,9 +35,10 @@ KILN_API void kiln_frame_draw_paragraph(kiln_frame* frame, const kiln_paragraph*
     for (const GlyphQuad& g : p->data.glyphs) {
         const AtlasPage* page = app.Page(g.page);
         if (!page) continue;
-        app.Quads().DrawAtlas({ x + g.rect.x, y + g.rect.y, g.rect.w, g.rect.h }, g.uv, *page,
-                              g.color ? Rgba{ tint.a, tint.a, tint.a, tint.a } : tint,
-                              g.color ? QuadRenderer::Mode::Color : QuadRenderer::Mode::TintedCoverage);
+        // Whole pixels, as DrawScope::DrawParagraph places glyphs.
+        const RectF rect{ std::floor(x + g.rect.x + 0.5f), std::floor(y + g.rect.y + 0.5f), g.rect.w, g.rect.h };
+        if (g.color) app.Quads().DrawAtlas(rect, g.uv, *page, Rgba{ tint.a, tint.a, tint.a, tint.a }, QuadRenderer::Mode::Color);
+        else app.Quads().DrawGlyph(rect, g.uv, *page, tint, p->data.maskGamma);
     }
 }
 

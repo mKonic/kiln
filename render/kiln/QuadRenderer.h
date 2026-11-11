@@ -47,7 +47,8 @@ namespace kiln {
     // glyphs/images. One draw per run of quads sharing an atlas page, in submission order.
     class QuadRenderer {
     public:
-        enum class Mode : std::uint8_t { Solid = 0, TintedCoverage = 1, Color = 2, Stretch = 3, Blur = 4, ProgressiveBlur = 5, MaskShader = 6, Ripple = 7 };
+        enum class Mode : std::uint8_t { Solid = 0, TintedCoverage = 1, Color = 2, Stretch = 3, Blur = 4, ProgressiveBlur = 5, MaskShader = 6, Ripple = 7,
+                                          TextCoverage = 8 };
 
         // A gradient paint instead of the flat colour: geometry in framebuffer pixels (linear
         // x0,y0,x1,y1; radial cx,cy,r; sweep cx,cy), the ramp row in the ramp texture.
@@ -68,6 +69,10 @@ namespace kiln {
         // nearest: Color mode samples the nearest texel instead of filtering (FilterQuality.None).
         void DrawAtlas(const RectF& rect, const RectF& uv, const AtlasPage& page, Rgba color, Mode mode,
                        const Paint* paint = nullptr, int filterRow = -1, bool nearest = false);
+        // A glyph mask tinted by the text colour, with Skia's A8 mask gamma for that colour's
+        // luminance (SkMaskGamma, contrast 0): dark text thins, light text thickens. maskGamma is
+        // the gamma the mask was already corrected with for white (1: raw coverage, no correction).
+        void DrawGlyph(const RectF& rect, const RectF& uv, const AtlasPage& page, Rgba color, float maskGamma);
         void SetFilterTexture(hearth::Ref<hearth::Texture> t) { m_Filters = std::move(t); m_Groups.clear(); }
         // The gradient ramp texture (bound next to every atlas page).
         // Drops the cached bind group of a page about to be destroyed.

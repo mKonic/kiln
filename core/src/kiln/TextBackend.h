@@ -117,6 +117,9 @@ namespace kiln {
         int lineCount = 0;
         float firstBaseline = 0, lastBaseline = 0;   // from the top (FirstBaseline / LastBaseline)
         bool didExceedMaxLines = false;
+        // The gamma the glyph masks were corrected with for white text (Android's Skia: 1.4);
+        // drawing redoes the correction for the actual colour. 1: raw coverage.
+        float maskGamma = 1;
         std::vector<GlyphQuad> glyphs;
         std::vector<LineData> lines;
         std::vector<RunSegment> segments;

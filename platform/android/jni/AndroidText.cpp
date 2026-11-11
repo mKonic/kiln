@@ -161,6 +161,9 @@ namespace kiln::android {
 
     ParagraphData AndroidText::Layout(const ParagraphRequest& request) {
         ParagraphData out;
+        // KilnText rasterises glyphs in white; the platform's Skia applies its A8 mask gamma
+        // (SK_GAMMA_EXPONENT 1.4, SK_GAMMA_CONTRAST 0 in the framework build) for that colour.
+        out.maskGamma = 1.4f;
         JNIEnv* env = Env(m_Vm);
         if (!env) return out;
         const auto t0 = std::chrono::steady_clock::now();
