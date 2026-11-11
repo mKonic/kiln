@@ -69,6 +69,15 @@ namespace kiln::foundation {
         if (m_Node) m_Node->RequestRemeasure();
     }
 
+    void PagerState::RequestScrollToPage(int page, float fraction) {
+        m_Index.Set(std::clamp(page, 0, std::max(0, PageCount() - 1)));
+        m_Offset.Set(0);
+        m_PendingFraction = std::clamp(fraction, -0.5f, 0.5f);
+        m_HasFirstKey = false;
+        m_PendingScroll = 0;
+        if (m_Node) m_Node->RequestRemeasure();
+    }
+
     rt::Task<> PagerState::AnimateScrollToPage(int page, float fraction, anim::SpecPtr spec) {
         if ((page == m_Current.Peek() && fraction == m_Fraction.Peek()) || PageCount() == 0) co_return;
         const int target = std::clamp(page, 0, PageCount() - 1);

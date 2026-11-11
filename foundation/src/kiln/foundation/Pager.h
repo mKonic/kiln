@@ -26,6 +26,9 @@ namespace kiln::foundation {
         int PageSpacing() const { return m_Spacing; }
 
         void ScrollToPage(int page, float pageOffsetFraction = 0);
+        // requestScrollToPage: the next measure starts at the page without stopping a scroll in
+        // progress.
+        void RequestScrollToPage(int page, float pageOffsetFraction = 0);
         rt::Task<> AnimateScrollToPage(int page, float pageOffsetFraction = 0, anim::SpecPtr spec = anim::Spring());
 
         float ConsumeScrollDelta(float delta) override;
