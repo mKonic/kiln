@@ -1,6 +1,7 @@
 #include "Check.h"
 
 #include "kiln/foundation/Compose.h"
+#include "kiln/foundation/Subcompose.h"
 
 using namespace kiln;
 using namespace kiln::foundation;
@@ -252,4 +253,43 @@ TEST(LookaheadScopeComesAndGoes) {
     h.Frame();
     CHECK_EQ(int(column->Children().size()), 4);
     CHECK(column->Children()[0]->IsOutMostLookaheadRoot());
+}
+
+TEST(SubcomposeInLookaheadKeepsApproachOnlySlotsUntilUnused) {
+    // Lookahead composes slot 1; the approach also wants slot 2 (an exiting item, say). Slot 2
+    // lives while the approach uses it and goes when it stops.
+    Harness h;
+    rt::State<bool> approachWantsTwo(true);
+    int composedTwo = 0, disposedTwo = 0;
+    LayoutNode* sub = nullptr;
+    h.Run([&] {
+        Box(Modifier{}, Alignment::TopStart(), false, [&] {
+            foundation::LookaheadScope([&](ui::LookaheadScope&) {
+                SubcomposeLayout(Modifier{}, [&](SubcomposeMeasureScope& s, const Constraints& c) {
+                    std::vector<Placeable*> ps;
+                    for (Measurable* m : s.Subcompose(rt::Key(1), [] { Box(SizeMod(Modifier{}, Dp(10), Dp(10))); })) ps.push_back(&m->Measure(c));
+                    if (!s.IsLookingAhead() && approachWantsTwo.Get())
+                        for (Measurable* m : s.Subcompose(rt::Key(2), [&] {
+                                 auto* comp = rt::Composition::Current();
+                                 comp->Remember<int>([&] { ++composedTwo; return 0; });
+                                 comp->DisposableEffect({}, [&] { return [&] { ++disposedTwo; }; });
+                                 Box(SizeMod(Modifier{}, Dp(20), Dp(20)));
+                             }))
+                            ps.push_back(&m->Measure(c));
+                    return s.Layout(50, 50, [ps](PlacementScope& place) { for (Placeable* p : ps) place.Place(*p, 0, 0); });
+                });
+            });
+        });
+        sub = nullptr;
+    });
+    sub = h.owner.Root().Children().front()->Children().front();
+    CHECK_EQ(composedTwo, 1);
+    CHECK_EQ(disposedTwo, 0);
+    CHECK_EQ(int(sub->Children().size()), 2);
+    h.Frame();
+    CHECK_EQ(composedTwo, 1);
+    approachWantsTwo.Set(false);
+    h.Frame();
+    CHECK_EQ(disposedTwo, 1);
+    CHECK_EQ(int(sub->Children().size()), 1);
 }

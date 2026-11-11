@@ -43,9 +43,18 @@ namespace kiln::foundation {
             State& m_State;
         };
 
+        // Which pass measures: outside a lookahead scope only Main; inside it, Lookahead then
+        // Approach (LayoutNodeSubcompositionsState's approach measure scope).
+        enum class Pass : std::uint8_t { Main, Lookahead, Approach };
+
         struct State {
             std::map<std::uint64_t, Slot> slots;
             std::vector<std::uint64_t> used;   // this measure, in order
+            // In a lookahead scope: the slots each pass used last. The approach pass reuses
+            // what lookahead composed and composes only what it alone needs; a slot goes when
+            // neither pass uses it.
+            std::vector<std::uint64_t> lookaheadUsed, approachUsed;
+            Pass pass = Pass::Main;
             rt::Scope* context = nullptr;
             SubcomposeMeasure measure;
             LayoutNode* node = nullptr;
@@ -56,26 +65,44 @@ namespace kiln::foundation {
                 for (auto& [k, s] : slots) s.composition.reset();
             }
 
+            bool UsedInLookahead(std::uint64_t id) const { return std::find(lookaheadUsed.begin(), lookaheadUsed.end(), id) != lookaheadUsed.end(); }
+
             MeasureResult Measure(const MeasureScope& ms, const Constraints& c) {
+                pass = ms.IsLookingAhead() ? Pass::Lookahead : (node && node->LookaheadRoot() ? Pass::Approach : Pass::Main);
                 used.clear();
                 Scope scope(ms, *this);
                 measuring = true;
                 MeasureResult r = measure ? measure(scope, c) : MeasureResult{ c.minWidth, c.minHeight, {} };
-                // Unused slots are disposed (precomposed ones wait); the used holders become the
-                // placed children, precomposed ones follow unplaced.
+                if (pass == Pass::Lookahead) lookaheadUsed = used;
+                else if (pass == Pass::Approach) approachUsed = used;
+                else lookaheadUsed.clear(), approachUsed.clear();
+                // Unused slots are disposed (precomposed ones wait): outside a scope after each
+                // measure, inside it after the approach (disposeUnusedSlotsInApproach). The used
+                // holders become the placed children; the ones the other pass keeps, then
+                // precomposed ones, follow unplaced.
                 std::set<std::uint64_t> keep(used.begin(), used.end());
-                for (auto it = slots.begin(); it != slots.end();) {
-                    if (keep.count(it->first) || it->second.precomposed) { ++it; continue; }
-                    it->second.composition.reset();
-                    it = slots.erase(it);
+                if (pass != Pass::Main) {
+                    keep.insert(lookaheadUsed.begin(), lookaheadUsed.end());
+                    keep.insert(approachUsed.begin(), approachUsed.end());
                 }
+                if (pass != Pass::Lookahead)
+                    for (auto it = slots.begin(); it != slots.end();) {
+                        if (keep.count(it->first) || it->second.precomposed) { ++it; continue; }
+                        it->second.composition.reset();
+                        it = slots.erase(it);
+                    }
                 std::vector<LayoutNode*> children;
                 for (std::uint64_t k : used) children.push_back(slots[k].holder.get());
                 const std::size_t placed = children.size();
+                for (std::uint64_t k : keep)
+                    if (std::find(used.begin(), used.end(), k) == used.end() && slots.count(k) && !slots[k].precomposed) children.push_back(slots[k].holder.get());
                 for (auto& [k, sl] : slots) if (sl.precomposed) children.push_back(sl.holder.get());
                 node->SetChildrenDuringMeasure(children);
                 std::vector<Placeable*> holders;
-                for (std::size_t i = 0; i < placed; ++i) holders.push_back(&children[i]->AsMeasurable().Measure(Constraints::Fixed(r.width, r.height)));
+                for (std::size_t i = 0; i < placed; ++i) {
+                    Measurable& m = pass == Pass::Lookahead ? children[i]->AsLookaheadMeasurable() : children[i]->AsMeasurable();
+                    holders.push_back(&m.Measure(Constraints::Fixed(r.width, r.height)));
+                }
                 measuring = false;
                 auto place = std::move(r.place);
                 r.place = [holders, place](PlacementScope& p) {
@@ -119,9 +146,14 @@ namespace kiln::foundation {
         }
 
         std::vector<Measurable*> Scope::Subcompose(rt::Key slotId, std::function<void()> content) {
+            // The approach pass takes what lookahead composed as it is.
+            if (m_State.pass == Pass::Approach && m_State.UsedInLookahead(slotId.value) && m_State.slots.count(slotId.value))
+                return Claim(slotId, m_State.slots[slotId.value]);
             return Claim(slotId, ComposeSlot(m_State, slotId.value, std::move(content)));
         }
         std::vector<Measurable*> Scope::Subcompose(rt::Key slotId, const std::shared_ptr<const std::function<void()>>& content) {
+            if (m_State.pass == Pass::Approach && m_State.UsedInLookahead(slotId.value) && m_State.slots.count(slotId.value))
+                return Claim(slotId, m_State.slots[slotId.value]);
             Slot& slot = SlotFor(m_State, slotId.value);
             if (slot.stable != content) {
                 slot.stable = content;
@@ -135,7 +167,11 @@ namespace kiln::foundation {
             st.used.push_back(slotId.value);
             slot.precomposed = false;
             std::vector<Measurable*> out;
-            for (LayoutNode* c : slot.holder->Children()) out.push_back(&c->AsMeasurable());
+            const bool approachOnly = st.pass == Pass::Approach && !st.UsedInLookahead(slotId.value);
+            for (LayoutNode* c : slot.holder->Children()) {
+                if (approachOnly) c->MarkDetachedFromParentLookaheadPass();
+                out.push_back(st.pass == Pass::Lookahead ? &c->AsLookaheadMeasurable() : &c->AsMeasurable());
+            }
             return out;
         }
 

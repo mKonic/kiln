@@ -84,7 +84,12 @@ namespace kiln::ui {
         LayoutNode* LookaheadRoot() const { return m_LookaheadRoot; }
         // The topmost node of a lookahead subtree: its main measure and placement run its
         // lookahead first.
-        bool IsOutMostLookaheadRoot() const { return m_LookaheadRoot && !m_Virtual && (!m_Parent || !m_Parent->m_LookaheadRoot); }
+        bool IsOutMostLookaheadRoot() const {
+            return m_LookaheadRoot && !m_Virtual && (!m_Parent || !m_Parent->m_LookaheadRoot || m_DetachedFromParentLookahead);
+        }
+        // markDetachedFromParentLookaheadPass: a node only the main pass measures (composed for
+        // an approach alone) runs its own lookahead, until a lookahead pass measures it again.
+        void MarkDetachedFromParentLookaheadPass() { m_DetachedFromParentLookahead = true; }
         Measurable& AsLookaheadMeasurable();
         // The lookahead pass's results, once it measured (placed) this node.
         std::optional<IntSize> LookaheadSize() const;
@@ -280,6 +285,7 @@ namespace kiln::ui {
         std::vector<rt::TreeNode*> m_Composed;   // as composed (virtual nodes not folded)
         std::vector<LayoutNode*> m_Virtuals;     // virtual nodes folded into this one
         LayoutNode* m_LookaheadRoot = nullptr;
+        bool m_DetachedFromParentLookahead = false;
         // The lookahead pass's state (LookaheadPassDelegate), while in a lookahead scope.
         struct LookaheadState {
             Constraints constraints;

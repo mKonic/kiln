@@ -1102,7 +1102,11 @@ namespace kiln::ui {
     }
 
     Placeable& LayoutNode::LookaheadDelegate::Measure(const Constraints& c) {
-        if (index == 0) return node.LookaheadMeasureNode(c);
+        if (index == 0) {
+            // Measured by its parent's lookahead: part of that pass again.
+            node.m_DetachedFromParentLookahead = false;
+            return node.LookaheadMeasureNode(c);
+        }
         return MeasureHere(c);
     }
 
