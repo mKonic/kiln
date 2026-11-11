@@ -10,6 +10,7 @@
 #include "samples/Common.h"
 #include "samples/FloatingActionButtonSamples.h"
 #include "samples/IconButtonSamples.h"
+#include "samples/ProgressIndicatorSamples.h"
 #include "samples/RadioButtonSamples.h"
 #include "samples/SegmentedButtonSamples.h"
 #include "samples/Shared.h"
@@ -235,14 +236,14 @@ namespace catalog {
                 { "NavigationSuiteScaffoldCustomConfigSample", "Navigation suite scaffold examples", true, nullptr },
             } },
             { 25, "Progress indicators", "Progress indicators express an unspecified wait time or display the length of a process.", true, {
-                { "LinearProgressIndicatorSample", "Progress indicators examples", false, nullptr },
-                { "LinearWavyProgressIndicatorSample", "Progress indicators examples", true, nullptr },
-                { "IndeterminateLinearProgressIndicatorSample", "Progress indicators examples", false, nullptr },
-                { "IndeterminateLinearWavyProgressIndicatorSample", "Progress indicators examples", true, nullptr },
-                { "CircularProgressIndicatorSample", "Progress indicators examples", false, nullptr },
-                { "CircularWavyProgressIndicatorSample", "Progress indicators examples", true, nullptr },
-                { "IndeterminateCircularProgressIndicatorSample", "Progress indicators examples", false, nullptr },
-                { "IndeterminateCircularWavyProgressIndicatorSample", "Progress indicators examples", true, nullptr },
+                { "LinearProgressIndicatorSample", "Progress indicators examples", false, samples::LinearProgressIndicatorSample },
+                { "LinearWavyProgressIndicatorSample", "Progress indicators examples", true, samples::LinearWavyProgressIndicatorSample },
+                { "IndeterminateLinearProgressIndicatorSample", "Progress indicators examples", false, samples::IndeterminateLinearProgressIndicatorSample },
+                { "IndeterminateLinearWavyProgressIndicatorSample", "Progress indicators examples", true, samples::IndeterminateLinearWavyProgressIndicatorSample },
+                { "CircularProgressIndicatorSample", "Progress indicators examples", false, samples::CircularProgressIndicatorSample },
+                { "CircularWavyProgressIndicatorSample", "Progress indicators examples", true, samples::CircularWavyProgressIndicatorSample },
+                { "IndeterminateCircularProgressIndicatorSample", "Progress indicators examples", false, samples::IndeterminateCircularProgressIndicatorSample },
+                { "IndeterminateCircularWavyProgressIndicatorSample", "Progress indicators examples", true, samples::IndeterminateCircularWavyProgressIndicatorSample },
             } },
             { 26, "Pull-to-Refresh Indicator", "Pull to refresh is a swipe gesture available at the beginning of lists, grid lists, and card collections where the most recent content appears ", true, {
                 { "PullToRefreshSample", "Pull-to-refresh examples", false, nullptr },
