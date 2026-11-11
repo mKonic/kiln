@@ -94,6 +94,7 @@ namespace kiln::ui {
             return { std::max(left, o.left), std::max(top, o.top), std::min(right, o.right), std::min(bottom, o.bottom) };
         }
         bool Empty() const { return right <= left || bottom <= top; }
+        bool operator==(const Rect&) const = default;
     };
 
     // Measurement constraints (androidx.compose.ui.unit.Constraints).

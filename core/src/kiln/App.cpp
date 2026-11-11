@@ -205,6 +205,7 @@ namespace kiln {
             ui::Owner* owner;
             explicit HostWindowInfo(ui::Owner* o) : owner(o) {}
             bool IsWindowFocused() const override { return owner->IsContentWindowFocused(); }
+            ui::IntSize ContainerSize() const override { return owner->ObservedWindowSize(); }
         };
         std::shared_ptr<const ui::WindowInfo> windowInfo = std::make_shared<HostWindowInfo>(&m_Owner);
         ui::Owner* owner = &m_Owner;

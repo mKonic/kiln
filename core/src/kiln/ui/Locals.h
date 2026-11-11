@@ -108,12 +108,14 @@ namespace kiln::ui {
     class WindowInsetsHolder;
     inline rt::Local<WindowInsetsHolder*> LocalWindowInsets{ nullptr };
 
-    // WindowInfo / LocalWindowInfo: whether the host window has input focus (observable). Null
-    // (no host) counts as focused.
+    // WindowInfo / LocalWindowInfo: whether the host window has input focus, and its size
+    // (observable). Null (no host) counts as focused.
     class WindowInfo {
     public:
         virtual ~WindowInfo() = default;
         virtual bool IsWindowFocused() const = 0;
+        // containerSize: the window's size in pixels; reading it recomposes on resize.
+        virtual IntSize ContainerSize() const = 0;
     };
     inline rt::Local<const WindowInfo*> LocalWindowInfo{ nullptr };
     inline bool IsWindowFocused(const WindowInfo* w) { return !w || w->IsWindowFocused(); }

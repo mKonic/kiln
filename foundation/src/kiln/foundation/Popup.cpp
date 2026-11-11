@@ -40,6 +40,8 @@ namespace kiln::foundation {
                 bool IsWindowFocused() const override {
                     return s->owner && s->owner->IsWindowFocused() && s->owner->TopFocusablePopup() == &s->layer;
                 }
+                // The window the popup shows over.
+                ui::IntSize ContainerSize() const override { return s->owner ? s->owner->ObservedWindowSize() : ui::IntSize{}; }
             } windowInfo;
 
             PopupState() {

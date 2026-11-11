@@ -59,6 +59,7 @@
 #include "kiln/material3/WideNavigationRail.h"
 #include "kiln/material3/Menu.h"
 #include "kiln/material3/AppBarRow.h"
+#include "kiln/material3/adaptive/WindowAdaptiveInfo.h"
 #include "kiln/material3/ButtonGroup.h"
 #include "kiln/runtime/Saveable.h"
 #include "kiln/foundation/Focus.h"
@@ -14130,4 +14131,63 @@ TEST(AppBarColumnStacksItsItemsAndOverflowsDownwards) {
     CHECK(b->top >= a->bottom);
     CHECK(o->top >= b->bottom);
     CHECK(!Displayed(h, "Item 2"));
+}
+
+TEST(CalculatePostureIsTabletopOnlyForAHalfOpenedHorizontalFold) {   // CalculatePostureTest
+    using adaptive::FoldingFeature;
+    const auto fold = [](bool separating, FoldingFeature::Orientation o, FoldingFeature::State s, ui::Rect bounds = {},
+                         FoldingFeature::OcclusionType occlusion = FoldingFeature::OcclusionType::None) {
+        FoldingFeature f;
+        f.isSeparating = separating;
+        f.orientation = o;
+        f.state = s;
+        f.bounds = bounds;
+        f.occlusionType = occlusion;
+        return f;
+    };
+    using O = FoldingFeature::Orientation;
+    using S = FoldingFeature::State;
+    CHECK(adaptive::CalculatePosture({ fold(false, O::Horizontal, S::HalfOpened) }).isTabletop);
+    CHECK(adaptive::CalculatePosture({ fold(true, O::Horizontal, S::HalfOpened) }).isTabletop);
+    CHECK(!adaptive::CalculatePosture({ fold(false, O::Vertical, S::HalfOpened) }).isTabletop);
+    CHECK(!adaptive::CalculatePosture({ fold(false, O::Horizontal, S::Flat) }).isTabletop);
+    // The hinge lists keep the order and pick by orientation, separation and occlusion.
+    const ui::Rect a{ 1, 0, 2, 10 }, b{ 3, 0, 4, 10 }, c{ 0, 5, 10, 6 };
+    const auto posture = adaptive::CalculatePosture({ fold(true, O::Vertical, S::Flat, a), fold(false, O::Vertical, S::Flat, b, FoldingFeature::OcclusionType::Full),
+                                                      fold(true, O::Horizontal, S::Flat, c) });
+    CHECK(posture.SeparatingVerticalHingeBounds() == std::vector<ui::Rect>{ a });
+    CHECK(posture.OccludingVerticalHingeBounds() == std::vector<ui::Rect>{ b });
+    CHECK(posture.AllVerticalHingeBounds() == (std::vector<ui::Rect>{ a, b }));
+    CHECK(posture.SeparatingHorizontalHingeBounds() == std::vector<ui::Rect>{ c });
+    CHECK(posture.AllHorizontalHingeBounds() == std::vector<ui::Rect>{ c });
+    CHECK(posture.hingeList[0].isFlat && posture.hingeList[1].isOccluding);
+}
+
+TEST(CurrentWindowAdaptiveInfoFollowsTheWindowSize) {   // CurrentWindowAdaptiveInfoTest
+    struct MockWindowInfo final : ui::WindowInfo {
+        rt::State<ui::IntSize> size{ ui::IntSize{ 400, 800 } };
+        bool IsWindowFocused() const override { return true; }
+        ui::IntSize ContainerSize() const override { return size.Get(); }
+    };
+    MockWindowInfo window;
+    Harness h;
+    adaptive::WindowAdaptiveInfo info, infoV2;
+    h.Run([&] {
+        rt::Composition::Current()->Provide(ui::LocalDensity, ui::Density{ 2, 1 }, [&] {
+            rt::Composition::Current()->Provide(ui::LocalWindowInfo, static_cast<const ui::WindowInfo*>(&window), [&] {
+                info = adaptive::CurrentWindowAdaptiveInfo();
+                infoV2 = adaptive::CurrentWindowAdaptiveInfoV2();
+            });
+        });
+    });
+    // 200 x 400 dp: compact.
+    CHECK(info.windowSizeClass == (adaptive::WindowSizeClass{ 0, 0 }));
+    CHECK(info.windowPosture == adaptive::Posture{});
+    // 1300 x 1000 dp: expanded (V1 tops out there) and large (V2), expanded height.
+    window.size.Set({ 2600, 2000 });
+    h.AdvanceTimeBy(16);
+    CHECK(info.windowSizeClass == (adaptive::WindowSizeClass{ 840, 900 }));
+    CHECK(infoV2.windowSizeClass == (adaptive::WindowSizeClass{ 1200, 900 }));
+    CHECK(adaptive::WindowSizeClass::ComputeFromDpSize(1700, 500, true) == (adaptive::WindowSizeClass{ 1600, 480 }));
+    CHECK(adaptive::WindowSizeClass::ComputeFromDpSize(599.9f, 479.9f) == (adaptive::WindowSizeClass{ 0, 0 }));
 }

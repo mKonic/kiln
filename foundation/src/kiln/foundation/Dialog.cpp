@@ -39,6 +39,7 @@ namespace kiln::foundation {
             struct WindowInfoImpl final : ui::WindowInfo {
                 const DialogState* s = nullptr;
                 bool IsWindowFocused() const override { return s->owner->IsContentWindowFocused(); }
+                ui::IntSize ContainerSize() const override { return s->owner->ObservedWindowSize(); }
             } windowInfo;
             struct WindowImpl final : ui::Window {
                 DialogState* s = nullptr;
