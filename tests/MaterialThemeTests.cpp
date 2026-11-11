@@ -36,6 +36,7 @@
 #include "kiln/material3/ModalBottomSheet.h"
 #include "kiln/material3/NavigationDrawer.h"
 #include "kiln/material3/SearchBar.h"
+#include "kiln/material3/SwipeToDismissBox.h"
 #include "kiln/ui/Back.h"
 #include "kiln/material3/internal/GetString.h"
 #include "kiln/material3/Divider.h"
@@ -11244,4 +11245,134 @@ TEST(AppBarWithSearchWidthLimits) {
         if (fill) CHECK(std::abs(b->Width() - 720) <= 1);
         else CHECK(b->Width() >= 360 - 0.5f);
     }
+}
+
+// Ported from Compose's SwipeToDismissTest (412 x 800 dp, density 2).
+namespace {
+    void Dismissible(std::shared_ptr<SwipeToDismissBoxState>& state, SwipeToDismissBoxValue initial, SwipeToDismissBoxOptions o = {},
+                     std::function<void()> background = [] {}, bool rtl = false, std::function<void()> content = {}) {
+        if (!content) content = [] { Box(Tag(FillMax({}, Axis::Both), "dismissContent")); };
+        rt::Composition::Current()->Provide(ui::LocalLayoutDirection, rtl ? ui::LayoutDirection::Rtl : ui::LayoutDirection::Ltr, [&state, initial, o, background, content] {
+            state = RememberSwipeToDismissBoxState(initial);
+            SwipeToDismissBox(state, background, Tag({}, "swipeDismiss"), o, content);
+        });
+    }
+}
+
+TEST(SwipeToDismissBoxStateSavedAndRestored) {
+    rt::SaveableStateRegistry::Values saved;
+    for (int pass = 0; pass < 2; ++pass) {
+        rt::SaveableStateRegistry registry(saved);
+        std::shared_ptr<SwipeToDismissBoxState> state;
+        Harness h;
+        h.Run([&] {
+            rt::Composition::Current()->Provide(rt::LocalSaveableStateRegistry, &registry, [&] { state = RememberSwipeToDismissBoxState(); });
+        });
+        if (pass == 0) {
+            rt::Job job = rt::Launch(rt::Dispatcher::Main(), state->SnapTo(SwipeToDismissBoxValue::StartToEnd));
+            h.AdvanceTimeBy(100);
+            CHECK(state->SettledValue() == SwipeToDismissBoxValue::StartToEnd);
+            saved = rt::SaveableStateRegistry::Deserialize(rt::SaveableStateRegistry::Serialize(registry.PerformSave()));
+        } else {
+            CHECK(state->SettledValue() == SwipeToDismissBoxValue::StartToEnd);
+        }
+    }
+}
+
+TEST(SwipeToDismissBoxOffsets) {
+    struct Case { SwipeToDismissBoxValue initial; bool rtl; float left; };
+    for (const Case c : { Case{ SwipeToDismissBoxValue::Settled, false, 0 }, Case{ SwipeToDismissBoxValue::StartToEnd, false, 412 },
+                          Case{ SwipeToDismissBoxValue::StartToEnd, true, -412 }, Case{ SwipeToDismissBoxValue::EndToStart, false, -412 },
+                          Case{ SwipeToDismissBoxValue::EndToStart, true, 412 } }) {
+        PhoneHarness h;
+        std::shared_ptr<SwipeToDismissBoxState> state;
+        Themed(h, [&] { Dismissible(state, c.initial, {}, [] {}, c.rtl); });
+        h.AdvanceTimeBy(300);
+        const auto b = UnclippedBoundsDp(h, "dismissContent");
+        CHECK(b && Near(b->left, c.left));
+    }
+}
+
+TEST(SwipeToDismissBoxBackgroundMatchesTheContent) {
+    PhoneHarness h;
+    std::shared_ptr<SwipeToDismissBoxState> state;
+    Themed(h, [&] {
+        Dismissible(state, SwipeToDismissBoxValue::Settled, {}, [] { Box(Tag(FillMax({}, Axis::Both), "background")); }, false,
+                    [] { Box(SizeMod({}, 100_dp, 100_dp)); });
+    });
+    h.AdvanceTimeBy(300);
+    const auto b = UnclippedBoundsDp(h, "background");
+    CHECK(b && Near(b->Width(), 100) && Near(b->Height(), 100));
+}
+
+TEST(SwipeToDismissBoxDismissesBySwiping) {
+    struct Case { bool toEnd, toStart, rtl, swipeRight; SwipeToDismissBoxValue expected; };
+    for (const Case c : { Case{ true, false, false, true, SwipeToDismissBoxValue::StartToEnd }, Case{ false, true, false, false, SwipeToDismissBoxValue::EndToStart },
+                          Case{ true, false, true, false, SwipeToDismissBoxValue::StartToEnd }, Case{ false, true, true, true, SwipeToDismissBoxValue::EndToStart } }) {
+        PhoneHarness h;
+        std::int64_t t = 1000;
+        std::shared_ptr<SwipeToDismissBoxState> state;
+        Themed(h, [&] {
+            SwipeToDismissBoxOptions o;
+            o.enableDismissFromStartToEnd = c.toEnd;
+            o.enableDismissFromEndToStart = c.toStart;
+            Dismissible(state, SwipeToDismissBoxValue::Settled, o, [] {}, c.rtl);
+        });
+        h.AdvanceTimeBy(300);
+        // swipeRight / swipeLeft across the box (px).
+        if (c.swipeRight) Swipe(h, t, 10, 800, 814, 800, 10, 20);
+        else Swipe(h, t, 814, 800, 10, 800, 10, 20);
+        h.AdvanceTimeBy(2000);
+        CHECK(state->CurrentValue() == c.expected);
+    }
+}
+
+TEST(SwipeToDismissBoxDisabledDirectionsAndGestures) {
+    for (bool gesturesOff : { false, true }) {
+        PhoneHarness h;
+        std::int64_t t = 1000;
+        std::shared_ptr<SwipeToDismissBoxState> state;
+        Themed(h, [&] {
+            SwipeToDismissBoxOptions o;
+            if (gesturesOff) o.gesturesEnabled = false;
+            else o.enableDismissFromStartToEnd = o.enableDismissFromEndToStart = false;
+            // Disabled directions start dismissed and settle back (the anchor is gone).
+            Dismissible(state, gesturesOff ? SwipeToDismissBoxValue::Settled : SwipeToDismissBoxValue::StartToEnd, o);
+        });
+        h.AdvanceTimeBy(300);
+        Swipe(h, t, 10, 800, 814, 800, 10, 20);
+        h.AdvanceTimeBy(2000);
+        CHECK(state->CurrentValue() == SwipeToDismissBoxValue::Settled);
+        Swipe(h, t, 814, 800, 10, 800, 10, 20);
+        h.AdvanceTimeBy(2000);
+        CHECK(state->CurrentValue() == SwipeToDismissBoxValue::Settled);
+        if (!gesturesOff) CHECK(state->Anchored().Anchors().Size() == 1);
+    }
+}
+
+TEST(SwipeToDismissBoxReportsAnchorsInALazyList) {
+    // b/297226562: an item composed after a dismissal still gets its anchors.
+    PhoneHarness h;
+    LazyListState* lazy = nullptr;
+    std::map<int, std::shared_ptr<SwipeToDismissBoxState>> composed;
+    Themed(h, [&] {
+        lazy = &RememberLazyListState();
+        LazyColumn({}, *lazy, [&](LazyListScope& s) {
+            s.Items(100, [&](int index) {
+                composed[index] = RememberSwipeToDismissBoxState();
+                const bool dismissed = composed[index]->CurrentValue() == SwipeToDismissBoxValue::EndToStart;
+                AnimatedVisibility(!dismissed, {}, [&, index] {
+                    SwipeToDismissBox(composed[index], [] {}, FillMax(Height({}, 48_dp), Axis::Horizontal), {}, [] {});
+                });
+            }, [](int i) { return rt::Key(i); });
+        });
+    });
+    h.AdvanceTimeBy(300);
+    const int visible = int(lazy->LayoutInfo().visibleItemsInfo.size());
+    CHECK(visible < 100 && int(composed.size()) == visible && !composed.count(visible));
+    rt::Job job = rt::Launch(rt::Dispatcher::Main(), composed[visible - 1]->Dismiss(SwipeToDismissBoxValue::EndToStart));
+    h.AdvanceTimeBy(3000);
+    CHECK(int(lazy->LayoutInfo().visibleItemsInfo.size()) == visible + 1);
+    const int newIndex = int(lazy->LayoutInfo().visibleItemsInfo.size()) - 1;
+    CHECK(composed.count(newIndex) && composed[newIndex]->Anchored().Anchors().Size() >= 1);
 }
