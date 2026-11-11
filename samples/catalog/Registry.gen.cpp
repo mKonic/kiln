@@ -8,6 +8,7 @@
 #include "samples/ButtonGroupSamples.h"
 #include "samples/ButtonSamples.h"
 #include "samples/CardSamples.h"
+#include "samples/CarouselSamples.h"
 #include "samples/CheckboxSamples.h"
 #include "samples/ChipSamples.h"
 #include "samples/Common.h"
@@ -104,12 +105,12 @@ namespace catalog {
                 { "ClickableOutlinedCardSample", "Cards examples", false, samples::ClickableOutlinedCardSample },
             } },
             { 8, "Carousel", "Carousels are stylized versions of lists that provide a unique viewing and behavior that suit large imagery and other visually rich content.", true, 0, {
-                { "HorizontalMultiBrowseCarouselSample", "Carousel examples", false, nullptr },
-                { "HorizontalUncontainedCarouselSample", "Carousel examples", false, nullptr },
-                { "HorizontalCenteredHeroCarouselSample", "Carousel examples", false, nullptr },
-                { "MultiAspectCarouselRowSample", "Carousel examples", false, nullptr },
-                { "FadingHorizontalMultiBrowseCarouselSample", "Carousel examples", false, nullptr },
-                { "CarouselWithShowAllButtonSample", "Carousel examples", false, nullptr },
+                { "HorizontalMultiBrowseCarouselSample", "Carousel examples", false, samples::HorizontalMultiBrowseCarouselSample },
+                { "HorizontalUncontainedCarouselSample", "Carousel examples", false, samples::HorizontalUncontainedCarouselSample },
+                { "HorizontalCenteredHeroCarouselSample", "Carousel examples", false, samples::HorizontalCenteredHeroCarouselSample },
+                { "MultiAspectCarouselRowSample", "Carousel examples", false, samples::MultiAspectCarouselRowSample },
+                { "FadingHorizontalMultiBrowseCarouselSample", "Carousel examples", false, samples::FadingHorizontalMultiBrowseCarouselSample },
+                { "CarouselWithShowAllButtonSample", "Carousel examples", false, samples::CarouselWithShowAllButtonSample },
             } },
             { 9, "Checkboxes", "Checkboxes allow the user to select one or more items from a set or turn an option on or off.", true, 0, {
                 { "CheckboxSample", "Checkboxes examples", false, samples::CheckboxSample },

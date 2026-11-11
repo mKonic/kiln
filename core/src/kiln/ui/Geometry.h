@@ -182,6 +182,18 @@ namespace kiln::ui {
         }
         static constexpr Color Transparent() { return Color(0); }
         static constexpr Color Unspecified() { return Color(0x00000001u); }   // sentinel
+        // Color.Black .. Color.Magenta.
+        static constexpr Color Black() { return Color(0xFF000000u); }
+        static constexpr Color DarkGray() { return Color(0xFF444444u); }
+        static constexpr Color Gray() { return Color(0xFF888888u); }
+        static constexpr Color LightGray() { return Color(0xFFCCCCCCu); }
+        static constexpr Color White() { return Color(0xFFFFFFFFu); }
+        static constexpr Color Red() { return Color(0xFFFF0000u); }
+        static constexpr Color Green() { return Color(0xFF00FF00u); }
+        static constexpr Color Blue() { return Color(0xFF0000FFu); }
+        static constexpr Color Yellow() { return Color(0xFFFFFF00u); }
+        static constexpr Color Cyan() { return Color(0xFF00FFFFu); }
+        static constexpr Color Magenta() { return Color(0xFFFF00FFu); }
         constexpr bool Specified() const { return argb != 0x00000001u; }
         bool operator==(const Color&) const = default;
     };

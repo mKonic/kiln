@@ -80,6 +80,8 @@ else()
                        ${CMAKE_SOURCE_DIR}/samples/gallery/assets $<TARGET_FILE_DIR:gallery>/assets)
     add_executable(catalog samples/catalog/main.cpp)
     target_link_libraries(catalog PRIVATE kiln_hostdev kiln_material3)
+    add_custom_command(TARGET catalog POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_directory
+                       ${CMAKE_SOURCE_DIR}/samples/catalog/assets $<TARGET_FILE_DIR:catalog>/assets)
 endif()
 target_sources(gallery PRIVATE samples/gallery/MaterialComponents.cpp)
 # The androidx material3 catalog: samples/catalog/gen-registry writes the registry and icons.
