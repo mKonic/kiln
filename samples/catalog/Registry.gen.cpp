@@ -40,6 +40,7 @@
 #include "samples/TimePickerSamples.h"
 #include "samples/ToggleButtonSamples.h"
 #include "samples/TooltipSamples.h"
+#include "samples/TypographySamples.h"
 
 namespace catalog {
 
@@ -440,8 +441,8 @@ namespace catalog {
                 { "FadeThroughTransitionSample", "Transitions examples", false, nullptr },
             } },
             { 42, "Typography", "The Material Design type scale includes a range of contrasting styles that support the needs of your product and its content.", true, 0, {
-                { "TypographySample", "Typography examples", false, nullptr },
-                { "TypographyCustomFontFamilySample", "Typography examples", false, nullptr },
+                { "TypographySample", "Typography examples", false, samples::TypographySample },
+                { "TypographyCustomFontFamilySample", "Typography examples", false, samples::TypographyCustomFontFamilySample },
             } },
         };
         return components;
