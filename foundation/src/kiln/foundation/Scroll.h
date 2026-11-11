@@ -164,7 +164,7 @@ namespace kiln::foundation {
     // rememberNestedScrollInteropConnection(): passes nested scroll on to the host view's
     // nested-scrolling parents (a CoordinatorLayout's app bar), in View pixels and signs. Use
     // it with NestedScroll around a scrollable. Without a host parent it consumes nothing.
-    std::shared_ptr<NestedScrollConnection> RememberNestedScrollInteropConnection();
+    std::shared_ptr<NestedScrollConnection> RememberNestedScrollInteropConnection(rt::Key key = {});
 
     // verticalScroll / horizontalScroll: clip, scrollable, and a layout that measures the content
     // unbounded on the scroll axis and offsets it by the scroll value. A null flingBehavior is
@@ -177,6 +177,6 @@ namespace kiln::foundation {
                               FlingBehavior flingBehavior = {});
 
     // rememberScrollState: the scroll position survives re-creation (ScrollState.Saver).
-    ScrollState& RememberScrollState(int initial = 0);
+    ScrollState& RememberScrollState(int initial = 0, rt::Key key = {});
 
 }

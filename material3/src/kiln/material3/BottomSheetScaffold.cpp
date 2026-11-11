@@ -23,21 +23,21 @@ namespace kiln::material3 {
     using ui::Dp;
 
     std::shared_ptr<BottomSheetScaffoldState> RememberBottomSheetScaffoldState(std::shared_ptr<SheetState> bottomSheetState,
-                                                                               std::shared_ptr<SnackbarHostState> snackbarHostState) {
+                                                                               std::shared_ptr<SnackbarHostState> snackbarHostState, rt::Key key) {
         auto& c = *rt::Composition::Current();
         if (!bottomSheetState)
-            bottomSheetState = RememberBottomSheetState(SheetValue::PartiallyExpanded, SheetValues{ false, true });
-        const auto ownHost = c.Remember<std::shared_ptr<SnackbarHostState>>([] { return std::make_shared<SnackbarHostState>(); });
+            bottomSheetState = RememberBottomSheetState(SheetValue::PartiallyExpanded, SheetValues{ false, true }, {}, key);
+        const auto ownHost = c.Remember<std::shared_ptr<SnackbarHostState>>([] { return std::make_shared<SnackbarHostState>(); }, {}, key);
         if (!snackbarHostState) snackbarHostState = ownHost;
         return c.Remember<std::shared_ptr<BottomSheetScaffoldState>>(
             [&] { return std::make_shared<BottomSheetScaffoldState>(BottomSheetScaffoldState{ bottomSheetState, snackbarHostState }); },
-            rt::Keys(bottomSheetState.get(), snackbarHostState.get()));
+            rt::Keys(bottomSheetState.get(), snackbarHostState.get()), key);
     }
 
     std::shared_ptr<SheetState> RememberStandardBottomSheetState(SheetValue initialValue, std::function<bool(SheetValue)> confirmValueChange,
-                                                                 bool skipHiddenState) {
+                                                                 bool skipHiddenState, rt::Key key) {
         return internal::RememberSheetState(SheetValues{ !skipHiddenState, true }, std::move(confirmValueChange), initialValue,
-                                            BottomSheetDefaults::PositionalThreshold, BottomSheetDefaults::VelocityThreshold, false);
+                                            BottomSheetDefaults::PositionalThreshold, BottomSheetDefaults::VelocityThreshold, false, key);
     }
 
     namespace {

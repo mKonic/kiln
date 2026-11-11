@@ -13695,3 +13695,52 @@ TEST(TimePickerDialogLaysOutTheParts) {
         CHECK(confirmed == 1 && dismissed == 0);
     }
 }
+
+TEST(TimePickerStatesRestoreToTheirOwnCalls) {
+    // Several rememberTimePickerState calls in one scope (one call site inside the helper) keep
+    // their own values when restored, even with another such call now ahead of them.
+    rt::SaveableStateRegistry::Values saved;
+    for (int pass = 0; pass < 2; ++pass) {
+        rt::SaveableStateRegistry current(saved);
+        rt::SaveableStateRegistry* registry = &current;
+        std::shared_ptr<TimePickerState> first, a, b, c;
+        PhoneHarness h;
+        Themed(h, [&, registry, pass] {
+            rt::Composition::Current()->Provide(rt::LocalSaveableStateRegistry, registry, [&, pass] {
+                if (pass == 1) first = RememberTimePickerState(18, 30, false);
+                a = RememberTimePickerState(14, 23, false);
+                b = RememberTimePickerState(9, 41, true);
+                c = RememberTimePickerState(7, 5, false);
+            });
+        });
+        if (pass == 0) {
+            a->SetMinute(24);
+            b->SetMinute(42);
+            c->SetMinute(6);
+            saved = rt::SaveableStateRegistry::Deserialize(rt::SaveableStateRegistry::Serialize(current.PerformSave()));
+        } else {
+            CHECK(first->Hour() == 18 && first->Minute() == 30);
+            CHECK(a->Hour() == 14 && a->Minute() == 24);
+            CHECK(b->Hour() == 9 && b->Minute() == 42 && b->Is24Hour());
+            CHECK(c->Hour() == 7 && c->Minute() == 6);
+        }
+    }
+}
+
+TEST(TimePickerStatesKeepTheirCallSites) {
+    // A state created under a condition ahead of others (a dialog's) does not take their slots:
+    // each call site has its own key.
+    rt::State<bool> open{ false };
+    std::shared_ptr<TimePickerState> dialog, a, b;
+    PhoneHarness h;
+    Themed(h, [&] {
+        if (open.Get()) dialog = RememberTimePickerState(18, 30, false);
+        a = RememberTimePickerState(14, 23, false);
+        b = RememberTimePickerState(9, 41, true);
+    });
+    const auto firstA = a, firstB = b;
+    open.Set(true);
+    h.AdvanceTimeBy(100);
+    CHECK(dialog && dialog->Hour() == 18 && dialog->Minute() == 30);
+    CHECK(a == firstA && b == firstB && a->Hour() == 14 && b->Hour() == 9);
+}

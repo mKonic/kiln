@@ -29,9 +29,9 @@ namespace kiln::foundation {
         if (m_InProgress.Peek()) m_InProgress.Set(false);
     }
 
-    TransformableState& RememberTransformableState(TransformableState::OnTransformation onTransformation) {
+    TransformableState& RememberTransformableState(TransformableState::OnTransformation onTransformation, rt::Key key) {
         auto& c = *rt::Composition::Current();
-        auto& s = c.RememberNew<TransformableState>({}, {}, onTransformation);
+        auto& s = c.RememberNew<TransformableState>({}, key, onTransformation);
         s.SetOnTransformation(std::move(onTransformation));
         return s;
     }

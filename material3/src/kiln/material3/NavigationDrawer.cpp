@@ -313,7 +313,7 @@ namespace kiln::material3 {
     rt::Task<> DrawerState::AnimateTo(DrawerValue target, anim::SpecPtr spec) { co_await m_Anchored.AnimateTo(target, std::move(spec)); }
     rt::Task<> DrawerState::SnapTo(DrawerValue target) { co_await m_Anchored.SnapTo(target); }
 
-    std::shared_ptr<DrawerState> RememberDrawerState(DrawerValue initialValue, std::function<bool(DrawerValue)> confirmStateChange) {
+    std::shared_ptr<DrawerState> RememberDrawerState(DrawerValue initialValue, std::function<bool(DrawerValue)> confirmStateChange, rt::Key key) {
         // DrawerState.Saver keeps the current value.
         rt::Saver<std::shared_ptr<DrawerState>> saver{
             [](const std::shared_ptr<DrawerState>& s) { return rt::SavedValue(double(int(s->CurrentValue()))); },
@@ -323,7 +323,7 @@ namespace kiln::material3 {
             }
         };
         return rt::RememberSaveable<std::shared_ptr<DrawerState>>([&] { return std::make_shared<DrawerState>(initialValue, confirmStateChange); }, saver,
-                                                                  rt::Keys());
+                                                                  rt::Keys(), key);
     }
 
     namespace DrawerDefaults {

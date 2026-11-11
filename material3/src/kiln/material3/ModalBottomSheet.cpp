@@ -48,9 +48,9 @@ namespace kiln::material3 {
         }
     }
 
-    std::shared_ptr<SheetState> RememberModalBottomSheetState(bool skipPartiallyExpanded, std::function<bool(SheetValue)> confirmValueChange) {
+    std::shared_ptr<SheetState> RememberModalBottomSheetState(bool skipPartiallyExpanded, std::function<bool(SheetValue)> confirmValueChange, rt::Key key) {
         return internal::RememberSheetState(SheetValues{ true, !skipPartiallyExpanded }, std::move(confirmValueChange), SheetValue::Hidden,
-                                            BottomSheetDefaults::PositionalThreshold, BottomSheetDefaults::VelocityThreshold, false);
+                                            BottomSheetDefaults::PositionalThreshold, BottomSheetDefaults::VelocityThreshold, false, key);
     }
 
     namespace internal {

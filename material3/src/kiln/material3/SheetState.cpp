@@ -70,8 +70,9 @@ namespace kiln::material3 {
     float SheetState::DragBy(float pixels) { return m_Anchored.DispatchRawDelta(pixels); }
 
     std::shared_ptr<SheetState> RememberBottomSheetState(SheetValue initialValue, SheetValues enabledValues,
-                                                         std::function<bool(SheetValue)> confirmValueChange) {
-        return internal::RememberSheetState(enabledValues, std::move(confirmValueChange), initialValue);
+                                                         std::function<bool(SheetValue)> confirmValueChange, rt::Key key) {
+        return internal::RememberSheetState(enabledValues, std::move(confirmValueChange), initialValue, BottomSheetDefaults::PositionalThreshold,
+                                            BottomSheetDefaults::VelocityThreshold, std::nullopt, key);
     }
 
     namespace BottomSheetDefaults {
@@ -99,7 +100,7 @@ namespace kiln::material3 {
 
         std::shared_ptr<SheetState> RememberSheetState(SheetValues enabledValues, std::function<bool(SheetValue)> confirmValueChange,
                                                        SheetValue initialValue, Dp positionalThreshold, Dp velocityThreshold,
-                                                       std::optional<bool> partiallyExpandedDeterministic) {
+                                                       std::optional<bool> partiallyExpandedDeterministic, rt::Key key) {
             auto& c = *rt::Composition::Current();
             const ui::Density density = c.Read(ui::LocalDensity);
             const bool deterministic =
@@ -118,7 +119,7 @@ namespace kiln::material3 {
             const int enabledKey = (enabledValues.hidden ? 1 : 0) | (enabledValues.partiallyExpanded ? 2 : 0);
             return rt::RememberSaveable<std::shared_ptr<SheetState>>(
                 [&] { return std::make_shared<SheetState>(enabledValues, positional, velocity, initialValue, confirmValueChange, deterministic); },
-                saver, rt::Keys(enabledKey, deterministic));
+                saver, rt::Keys(enabledKey, deterministic), key);
         }
 
         void DragHandleWithTooltip(const ui::Modifier& modifier, std::function<void()> content) {

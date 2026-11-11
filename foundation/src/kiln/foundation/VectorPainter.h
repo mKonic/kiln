@@ -38,6 +38,6 @@ namespace kiln::foundation {
     };
 
     // rememberVectorPainter(image): one painter per image and density.
-    std::shared_ptr<VectorPainter> RememberVectorPainter(const gfx::vector::ImageVectorPtr& image);
+    std::shared_ptr<VectorPainter> RememberVectorPainter(const gfx::vector::ImageVectorPtr& image, rt::Key key = {});
 
 }

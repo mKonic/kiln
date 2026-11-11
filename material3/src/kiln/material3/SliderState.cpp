@@ -104,7 +104,7 @@ namespace kiln::material3 {
         }
     }
 
-    SliderState& RememberSliderState(float value, int steps, SliderRange range) {
+    SliderState& RememberSliderState(float value, int steps, SliderRange range, rt::Key key) {
         rt::Saver<std::shared_ptr<SliderState>> saver{
             [](const std::shared_ptr<SliderState>& s) { return rt::SavedValue(double(s->Value())); },
             [=](const rt::SavedValue& saved) -> std::optional<std::shared_ptr<SliderState>> {
@@ -112,9 +112,9 @@ namespace kiln::material3 {
                 return std::nullopt;
             }
         };
-        return *rt::RememberSaveable<std::shared_ptr<SliderState>>([=] { return std::make_shared<SliderState>(value, steps, range); }, saver);
+        return *rt::RememberSaveable<std::shared_ptr<SliderState>>([=] { return std::make_shared<SliderState>(value, steps, range); }, saver, {}, key);
     }
-    RangeSliderState& RememberRangeSliderState(float start, float end, int steps, SliderRange range) {
+    RangeSliderState& RememberRangeSliderState(float start, float end, int steps, SliderRange range, rt::Key key) {
         auto saver = rt::ListSaver<std::shared_ptr<RangeSliderState>>(
             [](const std::shared_ptr<RangeSliderState>& s) { return rt::SavedValue::List{ double(s->StartValue()), double(s->EndValue()) }; },
             [=](const rt::SavedValue::List& saved) -> std::optional<std::shared_ptr<RangeSliderState>> {
@@ -123,6 +123,6 @@ namespace kiln::material3 {
                 if (!a || !b) return std::nullopt;
                 return std::make_shared<RangeSliderState>(float(*a), float(*b), steps, range);
             });
-        return *rt::RememberSaveable<std::shared_ptr<RangeSliderState>>([=] { return std::make_shared<RangeSliderState>(start, end, steps, range); }, saver);
+        return *rt::RememberSaveable<std::shared_ptr<RangeSliderState>>([=] { return std::make_shared<RangeSliderState>(start, end, steps, range); }, saver, {}, key);
     }
 }

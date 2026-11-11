@@ -18,7 +18,7 @@ namespace kiln::foundation {
 
         // A lazy state as [firstVisibleItemIndex, firstVisibleItemScrollOffset].
         template<typename S>
-        S& RememberLazy(int index, int offset) {
+        S& RememberLazy(int index, int offset, rt::Key key) {
             auto saver = rt::ListSaver<std::shared_ptr<S>>(
                 [](const std::shared_ptr<S>& s) {
                     return rt::SavedValue::List{ s->FirstVisibleItemIndex(), s->FirstVisibleItemScrollOffset() };
@@ -27,11 +27,11 @@ namespace kiln::foundation {
                     if (l.size() < 2) return std::nullopt;
                     return std::make_shared<S>(IntAt(l, 0), IntAt(l, 1));
                 });
-            return *rt::RememberSaveable<std::shared_ptr<S>>([&] { return std::make_shared<S>(index, offset); }, saver);
+            return *rt::RememberSaveable<std::shared_ptr<S>>([&] { return std::make_shared<S>(index, offset); }, saver, {}, key);
         }
     }
 
-    ScrollState& RememberScrollState(int initial) {
+    ScrollState& RememberScrollState(int initial, rt::Key key) {
         rt::Saver<std::shared_ptr<ScrollState>> saver{
             [](const std::shared_ptr<ScrollState>& s) { return rt::SavedValue(s->Value()); },
             [](const rt::SavedValue& v) -> std::optional<std::shared_ptr<ScrollState>> {
@@ -39,14 +39,14 @@ namespace kiln::foundation {
                 return std::nullopt;
             },
         };
-        return *rt::RememberSaveable<std::shared_ptr<ScrollState>>([&] { return std::make_shared<ScrollState>(initial); }, saver);
+        return *rt::RememberSaveable<std::shared_ptr<ScrollState>>([&] { return std::make_shared<ScrollState>(initial); }, saver, {}, key);
     }
 
-    LazyListState& RememberLazyListState(int i, int o) { return RememberLazy<LazyListState>(i, o); }
-    LazyGridState& RememberLazyGridState(int i, int o) { return RememberLazy<LazyGridState>(i, o); }
-    LazyStaggeredGridState& RememberLazyStaggeredGridState(int i, int o) { return RememberLazy<LazyStaggeredGridState>(i, o); }
+    LazyListState& RememberLazyListState(int i, int o, rt::Key key) { return RememberLazy<LazyListState>(i, o, key); }
+    LazyGridState& RememberLazyGridState(int i, int o, rt::Key key) { return RememberLazy<LazyGridState>(i, o, key); }
+    LazyStaggeredGridState& RememberLazyStaggeredGridState(int i, int o, rt::Key key) { return RememberLazy<LazyStaggeredGridState>(i, o, key); }
 
-    PagerState& RememberPagerState(int initialPage, float initialFraction, std::function<int()> pageCount) {
+    PagerState& RememberPagerState(int initialPage, float initialFraction, std::function<int()> pageCount, rt::Key key) {
         // [currentPage, currentPageOffsetFraction in -0.5..0.5, pageCount]; restored pages take
         // the page count lambda of the composition that restores them.
         auto saver = rt::ListSaver<std::shared_ptr<PagerState>>(
@@ -58,12 +58,12 @@ namespace kiln::foundation {
                 return std::make_shared<PagerState>(IntAt(l, 0), float(NumberAt(l, 1)), pageCount);
             });
         auto& s = rt::RememberSaveable<std::shared_ptr<PagerState>>(
-            [&] { return std::make_shared<PagerState>(initialPage, initialFraction, pageCount); }, saver);
+            [&] { return std::make_shared<PagerState>(initialPage, initialFraction, pageCount); }, saver, {}, key);
         s->SetPageCountProvider(std::move(pageCount));
         return *s;
     }
 
-    TextFieldState& RememberTextFieldState(std::string_view initialText, std::optional<TextRange> initialSelection) {
+    TextFieldState& RememberTextFieldState(std::string_view initialText, std::optional<TextRange> initialSelection, rt::Key key) {
         // TextFieldState.Saver: text, selection and the undo history (staging, undo and redo
         // operations, each index, pre/post text, selections and time).
         auto saveOp = [](rt::SavedValue::List& l, const TextUndoOperation& op) {
@@ -132,7 +132,7 @@ namespace kiln::foundation {
                 return s;
             });
         const std::string initial(initialText);
-        return *rt::RememberSaveable<std::shared_ptr<TextFieldState>>([&] { return std::make_shared<TextFieldState>(initial, initialSelection); }, saver);
+        return *rt::RememberSaveable<std::shared_ptr<TextFieldState>>([&] { return std::make_shared<TextFieldState>(initial, initialSelection); }, saver, {}, key);
     }
 
 }

@@ -156,21 +156,34 @@ TEST(AnnotatedStringSaverKeepsStylesAndAnnotations) {
     if (restored) CHECK(*restored == original);
 }
 
+namespace {
+    // The same content in both lives (a state's key is its call site, as in Compose); the
+    // restored values replace the initial ones.
+    struct Remembered {
+        kiln::foundation::ScrollState* scroll = nullptr;
+        kiln::foundation::LazyListState* list = nullptr;
+        kiln::foundation::PagerState* pager = nullptr;
+        kiln::foundation::TextFieldState* field = nullptr;
+    };
+    void RememberAll(Remembered& r, bool first) {
+        using namespace kiln::foundation;
+        r.scroll = &RememberScrollState();
+        r.list = &RememberLazyListState();
+        r.pager = first ? &RememberPagerState(2, 0.25f, [] { return 10; }, kiln::rt::Key("pager")) : &RememberPagerState(0, 0, [] { return 10; }, kiln::rt::Key("pager"));
+        r.field = &RememberTextFieldState(first ? "hello" : "");
+    }
+}
+
 TEST(RememberedStatesSurviveRecreation) {
     using namespace kiln::foundation;
     std::vector<std::uint8_t> saved;
     {
         Root a(saved);
-        ScrollState* scroll = nullptr;
-        LazyListState* list = nullptr;
-        PagerState* pager = nullptr;
-        TextFieldState* field = nullptr;
-        a.Run([&] {
-            scroll = &RememberScrollState();
-            list = &RememberLazyListState();
-            pager = &RememberPagerState(2, 0.25f, [] { return 10; });
-            field = &RememberTextFieldState("hello");
-        });
+        Remembered r;
+        a.Run([&] { RememberAll(r, true); });
+        ScrollState* scroll = r.scroll;
+        LazyListState* list = r.list;
+        TextFieldState* field = r.field;
         scroll->SetBounds(500, 100, 600, false);
         scroll->ScrollTo(120);
         list->ConsumeScrollDelta(0);   // nothing laid out: the position below is what is saved
@@ -184,15 +197,11 @@ TEST(RememberedStatesSurviveRecreation) {
         saved = a.Save();
     }
     Root b(saved);
-    ScrollState* scroll = nullptr;
-    PagerState* pager = nullptr;
-    TextFieldState* field = nullptr;
-    b.Run([&] {
-        scroll = &RememberScrollState();
-        RememberLazyListState();
-        pager = &RememberPagerState(0, 0, [] { return 10; });
-        field = &RememberTextFieldState();
-    });
+    Remembered r;
+    b.Run([&] { RememberAll(r, false); });
+    ScrollState* scroll = r.scroll;
+    PagerState* pager = r.pager;
+    TextFieldState* field = r.field;
     CHECK_EQ(scroll->Value(), 120);
     CHECK_EQ(pager->CurrentPage(), 2);
     CHECK(std::abs(pager->CurrentPageOffsetFraction() - 0.25f) < 1e-6f);

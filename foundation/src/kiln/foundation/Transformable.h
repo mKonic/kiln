@@ -67,7 +67,7 @@ namespace kiln::foundation {
     };
 
     // rememberTransformableState(onTransformation): the latest onTransformation is used.
-    TransformableState& RememberTransformableState(TransformableState::OnTransformation onTransformation);
+    TransformableState& RememberTransformableState(TransformableState::OnTransformation onTransformation, rt::Key key = {});
 
     // Modifier.transformable. canPan decides whether a pan delta may start or continue the
     // gesture (a parent can scroll otherwise); lockRotationOnZoomPan keeps rotation out once a

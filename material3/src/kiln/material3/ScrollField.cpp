@@ -47,14 +47,14 @@ namespace kiln::material3 {
 
     rt::Task<> ScrollFieldState::AnimateScrollToOption(int option) { co_await m_Pager->AnimateScrollToPage(TargetPage(option)); }
 
-    std::shared_ptr<ScrollFieldState> RememberScrollFieldState(int itemCount, int index) {
+    std::shared_ptr<ScrollFieldState> RememberScrollFieldState(int itemCount, int index, rt::Key key) {
         auto& c = *rt::Composition::Current();
         const int count = std::max(1, itemCount);
         // Around the middle of a long run of pages, on a page of `index`.
         const int initial = InfinitePageCount / 2 - (InfinitePageCount / 2 % count) + std::clamp(index, 0, count - 1);
-        auto& pager = RememberPagerState(initial, 0, [] { return InfinitePageCount; });
+        auto& pager = RememberPagerState(initial, 0, [] { return InfinitePageCount; }, key);
         return c.Remember<std::shared_ptr<ScrollFieldState>>([&] { return std::make_shared<ScrollFieldState>(pager, count); },
-                                                             rt::Keys(reinterpret_cast<std::uintptr_t>(&pager), count));
+                                                             rt::Keys(reinterpret_cast<std::uintptr_t>(&pager), count), key);
     }
 
     namespace ScrollFieldDefaults {
@@ -83,7 +83,6 @@ namespace kiln::material3 {
 
     void ScrollField(ScrollFieldState& state, std::optional<std::string> contentDescription, const ui::Modifier& modifier,
                      const ScrollFieldOptions& options) {
-        auto& c = *rt::Composition::Current();
         const ScrollFieldColors colors = options.colors.value_or(ScrollFieldDefaults::colors());
         auto source = options.interactionSource ? options.interactionSource : RememberInteractionSource();
         auto scope = internal::RememberCoroutineScope();

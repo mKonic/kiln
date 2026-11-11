@@ -29,7 +29,7 @@ namespace kiln::material3 {
         co_await m_Pager.AnimateScrollToPage(item, 0, std::move(spec));
     }
 
-    std::shared_ptr<CarouselState> RememberCarouselState(int initialItem, std::function<int()> itemCount) {
+    std::shared_ptr<CarouselState> RememberCarouselState(int initialItem, std::function<int()> itemCount, rt::Key key) {
         // [currentItem, currentItemOffsetFraction, itemCount] (CarouselState.Saver).
         auto saver = rt::ListSaver<std::shared_ptr<CarouselState>>(
             [](const std::shared_ptr<CarouselState>& s) {
@@ -41,7 +41,7 @@ namespace kiln::material3 {
                 return std::make_shared<CarouselState>(int(rt::SavedNumber(l[0]).value_or(0)), float(rt::SavedNumber(l[1]).value_or(0)), itemCount);
             });
         auto& s = rt::RememberSaveable<std::shared_ptr<CarouselState>>(
-            [&] { return std::make_shared<CarouselState>(initialItem, 0.0f, itemCount); }, saver);
+            [&] { return std::make_shared<CarouselState>(initialItem, 0.0f, itemCount); }, saver, {}, key);
         s->PagerState().SetPageCountProvider(std::move(itemCount));
         return s;
     }

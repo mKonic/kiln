@@ -408,7 +408,7 @@ namespace kiln::material3 {
         m_Offset.Set(limit <= 0 ? std::clamp(offset, limit, 0.0f) : 0.0f);
     }
 
-    std::shared_ptr<FloatingToolbarState> RememberFloatingToolbarState(float limit, float offset, float content) {
+    std::shared_ptr<FloatingToolbarState> RememberFloatingToolbarState(float limit, float offset, float content, rt::Key key) {
         rt::Saver<std::shared_ptr<FloatingToolbarState>> saver{
             [](const std::shared_ptr<FloatingToolbarState>& s) {
                 return rt::SavedValue(rt::SavedValue::List{ rt::SavedValue(double(s->OffsetLimit())), rt::SavedValue(double(s->Offset())),
@@ -423,7 +423,7 @@ namespace kiln::material3 {
             }
         };
         return rt::RememberSaveable<std::shared_ptr<FloatingToolbarState>>(
-            [=] { return std::make_shared<FloatingToolbarState>(limit, offset, content); }, saver);
+            [=] { return std::make_shared<FloatingToolbarState>(limit, offset, content); }, saver, {}, key);
     }
 
     namespace FloatingToolbarDefaults {

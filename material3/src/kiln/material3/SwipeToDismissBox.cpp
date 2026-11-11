@@ -41,7 +41,7 @@ namespace kiln::material3 {
     }
 
     std::shared_ptr<SwipeToDismissBoxState> RememberSwipeToDismissBoxState(SwipeToDismissBoxValue initialValue, std::function<float(float)> threshold,
-                                                                           std::function<bool(SwipeToDismissBoxValue)> confirm) {
+                                                                           std::function<bool(SwipeToDismissBoxValue)> confirm, rt::Key key) {
         if (!threshold) threshold = SwipeToDismissBoxDefaults::positionalThreshold();
         // SwipeToDismissBoxState.Saver keeps the current value.
         rt::Saver<std::shared_ptr<SwipeToDismissBoxState>> saver{
@@ -52,7 +52,7 @@ namespace kiln::material3 {
             }
         };
         return rt::RememberSaveable<std::shared_ptr<SwipeToDismissBoxState>>(
-            [&] { return std::make_shared<SwipeToDismissBoxState>(initialValue, threshold, confirm); }, saver, rt::Keys());
+            [&] { return std::make_shared<SwipeToDismissBoxState>(initialValue, threshold, confirm); }, saver, rt::Keys(), key);
     }
 
     void SwipeToDismissBox(std::shared_ptr<SwipeToDismissBoxState> state, std::function<void()> backgroundContent, const ui::Modifier& modifier,

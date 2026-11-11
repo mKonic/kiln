@@ -80,17 +80,17 @@ namespace kiln::material3 {
     // rememberSearchBarState. Unset specs: the motion scheme's slow spatial (expand) and default
     // spatial (collapse).
     std::shared_ptr<SearchBarState> RememberSearchBarState(SearchBarValue initialValue = SearchBarValue::Collapsed, anim::SpecPtr animationSpecForExpand = nullptr,
-                                                           anim::SpecPtr animationSpecForCollapse = nullptr);
+                                                           anim::SpecPtr animationSpecForCollapse = nullptr, rt::Key key = {});
     // For ExpandedFullScreenContainedSearchBar: fast spatial both ways, the content fading in and out.
     std::shared_ptr<SearchBarState> RememberContainedSearchBarState(SearchBarValue initialValue = SearchBarValue::Collapsed,
                                                                     anim::SpecPtr animationSpecForExpand = nullptr, anim::SpecPtr animationSpecForCollapse = nullptr,
                                                                     anim::SpecPtr animationSpecForContentFadeIn = nullptr,
-                                                                    anim::SpecPtr animationSpecForContentFadeOut = nullptr);
+                                                                    anim::SpecPtr animationSpecForContentFadeOut = nullptr, rt::Key key = {});
     // For ExpandedDockedSearchBarWithGap: default spatial to expand, fast spatial to collapse.
     std::shared_ptr<SearchBarState> RememberSearchBarWithGapState(SearchBarValue initialValue = SearchBarValue::Collapsed,
                                                                   anim::SpecPtr animationSpecForExpand = nullptr, anim::SpecPtr animationSpecForCollapse = nullptr,
                                                                   anim::SpecPtr animationSpecForContentFadeIn = nullptr,
-                                                                  anim::SpecPtr animationSpecForContentFadeOut = nullptr);
+                                                                  anim::SpecPtr animationSpecForContentFadeOut = nullptr, rt::Key key = {});
 
     // How far an AppBarWithSearch has scrolled away (0 shown .. scrollOffsetLimit hidden).
     class SearchBarScrollState {
@@ -107,7 +107,7 @@ namespace kiln::material3 {
         rt::State<float> m_Limit, m_ScrollOffset, m_ContentOffset;
     };
     std::shared_ptr<SearchBarScrollState> RememberSearchBarScrollState(float initialScrollOffsetLimit = -std::numeric_limits<float>::max(),
-                                                                       float initialScrollOffset = 0, float initialContentOffset = 0);
+                                                                       float initialScrollOffset = 0, float initialContentOffset = 0, rt::Key key = {});
 
     class SearchBarScrollBehavior {
     public:

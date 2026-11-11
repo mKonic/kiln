@@ -148,7 +148,7 @@ namespace kiln::material3 {
 
     namespace {
         std::shared_ptr<SearchBarState> RememberState(SearchBarValue initial, anim::SpecPtr expand, anim::SpecPtr collapse, anim::SpecPtr fadeIn,
-                                                      anim::SpecPtr fadeOut) {
+                                                      anim::SpecPtr fadeOut, rt::Key key) {
             // SearchBarState.Saver keeps both progress values.
             rt::Saver<std::shared_ptr<SearchBarState>> saver{
                 [](const std::shared_ptr<SearchBarState>& s) { return rt::SavedValue(rt::SavedValue::List{ double(s->Progress()), double(s->ContentProgress()) }); },
@@ -163,24 +163,24 @@ namespace kiln::material3 {
             return rt::RememberSaveable<std::shared_ptr<SearchBarState>>(
                 [&] { return std::make_shared<SearchBarState>(initial, expand, collapse, fadeIn, fadeOut); }, saver,
                 rt::Keys(int(initial), reinterpret_cast<std::uintptr_t>(expand.get()), reinterpret_cast<std::uintptr_t>(collapse.get()),
-                         reinterpret_cast<std::uintptr_t>(fadeIn.get()), reinterpret_cast<std::uintptr_t>(fadeOut.get())));
+                         reinterpret_cast<std::uintptr_t>(fadeIn.get()), reinterpret_cast<std::uintptr_t>(fadeOut.get())), key);
         }
     }
 
-    std::shared_ptr<SearchBarState> RememberSearchBarState(SearchBarValue initial, anim::SpecPtr expand, anim::SpecPtr collapse) {
+    std::shared_ptr<SearchBarState> RememberSearchBarState(SearchBarValue initial, anim::SpecPtr expand, anim::SpecPtr collapse, rt::Key key) {
         return RememberState(initial, expand ? expand : Value(MotionSchemeKeyTokens::SlowSpatial), collapse ? collapse : Value(MotionSchemeKeyTokens::DefaultSpatial),
-                             nullptr, nullptr);
+                             nullptr, nullptr, key);
     }
     std::shared_ptr<SearchBarState> RememberContainedSearchBarState(SearchBarValue initial, anim::SpecPtr expand, anim::SpecPtr collapse, anim::SpecPtr fadeIn,
-                                                                    anim::SpecPtr fadeOut) {
+                                                                    anim::SpecPtr fadeOut, rt::Key key) {
         return RememberState(initial, expand ? expand : Value(MotionSchemeKeyTokens::FastSpatial), collapse ? collapse : Value(MotionSchemeKeyTokens::FastSpatial),
-                             fadeIn ? fadeIn : internal::AnimationForContentFadeInSpec(), fadeOut ? fadeOut : internal::AnimationForContentFadeOutSpec());
+                             fadeIn ? fadeIn : internal::AnimationForContentFadeInSpec(), fadeOut ? fadeOut : internal::AnimationForContentFadeOutSpec(), key);
     }
     std::shared_ptr<SearchBarState> RememberSearchBarWithGapState(SearchBarValue initial, anim::SpecPtr expand, anim::SpecPtr collapse, anim::SpecPtr fadeIn,
-                                                                  anim::SpecPtr fadeOut) {
+                                                                  anim::SpecPtr fadeOut, rt::Key key) {
         return RememberState(initial, expand ? expand : Value(MotionSchemeKeyTokens::DefaultSpatial),
                              collapse ? collapse : Value(MotionSchemeKeyTokens::FastSpatial),
-                             fadeIn ? fadeIn : internal::AnimationForContentFadeInSpec(), fadeOut ? fadeOut : internal::AnimationForContentFadeOutSpec());
+                             fadeIn ? fadeIn : internal::AnimationForContentFadeInSpec(), fadeOut ? fadeOut : internal::AnimationForContentFadeOutSpec(), key);
     }
 
     // --- scrolling ------------------------------------------------------------------------------
@@ -193,7 +193,7 @@ namespace kiln::material3 {
         if (m_ScrollOffset.Peek() != v) m_ScrollOffset.Set(v);
     }
 
-    std::shared_ptr<SearchBarScrollState> RememberSearchBarScrollState(float limit, float offset, float contentOffset) {
+    std::shared_ptr<SearchBarScrollState> RememberSearchBarScrollState(float limit, float offset, float contentOffset, rt::Key key) {
         rt::Saver<std::shared_ptr<SearchBarScrollState>> saver{
             [](const std::shared_ptr<SearchBarScrollState>& s) {
                 return rt::SavedValue(rt::SavedValue::List{ double(s->ScrollOffsetLimit()), double(s->ScrollOffset()), double(s->ContentOffset()) });
@@ -207,7 +207,7 @@ namespace kiln::material3 {
             }
         };
         return rt::RememberSaveable<std::shared_ptr<SearchBarScrollState>>([&] { return std::make_shared<SearchBarScrollState>(limit, offset, contentOffset); },
-                                                                          saver, rt::Keys());
+                                                                          saver, rt::Keys(), key);
     }
 
     float SearchBarScrollBehavior::OverlappedFraction() const {

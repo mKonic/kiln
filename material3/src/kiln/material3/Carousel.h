@@ -44,9 +44,9 @@ namespace kiln::material3 {
 
     // rememberCarouselState: the current item and its offset survive re-creation; the count is
     // read from itemCount (refreshed every composition).
-    std::shared_ptr<CarouselState> RememberCarouselState(int initialItem, std::function<int()> itemCount);
-    inline std::shared_ptr<CarouselState> RememberCarouselState(std::function<int()> itemCount) {
-        return RememberCarouselState(0, std::move(itemCount));
+    std::shared_ptr<CarouselState> RememberCarouselState(int initialItem, std::function<int()> itemCount, rt::Key key = {});
+    inline std::shared_ptr<CarouselState> RememberCarouselState(std::function<int()> itemCount, rt::Key key = {}) {
+        return RememberCarouselState(0, std::move(itemCount), key);
     }
 
     // CarouselItemDrawInfo: an item's current size along the scroll axis, the smallest and

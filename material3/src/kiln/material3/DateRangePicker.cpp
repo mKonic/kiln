@@ -81,7 +81,7 @@ namespace kiln::material3 {
 
     std::shared_ptr<DateRangePickerState> RememberDateRangePickerState(std::optional<std::int64_t> start, std::optional<std::int64_t> end,
                                                                        std::optional<std::int64_t> displayed, IntRange yearRange, DisplayMode mode,
-                                                                       SelectableDatesPtr selectable) {
+                                                                       SelectableDatesPtr selectable, rt::Key key) {
         if (!displayed) displayed = start;
         const std::string locale = ui::PlatformLocale();
         if (!selectable) selectable = DatePickerDefaults::AllDates();
@@ -103,7 +103,7 @@ namespace kiln::material3 {
                                                               DisplayMode(int(rt::SavedNumber(l[5]).value_or(0))), selectable);
             });
         auto& s = rt::RememberSaveable<std::shared_ptr<DateRangePickerState>>(
-            [&] { return std::make_shared<DateRangePickerState>(locale, start, end, displayed, yearRange, mode, selectable); }, saver);
+            [&] { return std::make_shared<DateRangePickerState>(locale, start, end, displayed, yearRange, mode, selectable); }, saver, {}, key);
         s->SetSelectableDates(selectable);
         return s;
     }

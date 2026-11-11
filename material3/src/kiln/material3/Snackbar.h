@@ -5,6 +5,7 @@
 // their duration (as long as accessibility settings ask) and fades and scales them in and out.
 
 #include "kiln/foundation/Shapes.h"
+#include "kiln/runtime/Composition.h"
 #include "kiln/runtime/State.h"
 #include "kiln/runtime/Task.h"
 #include "kiln/ui/Modifier.h"
@@ -67,7 +68,7 @@ namespace kiln::material3 {
         std::unique_ptr<internal::SnackbarQueue> m_Queue;
     };
     // remember { SnackbarHostState() }
-    SnackbarHostState& RememberSnackbarHostState();
+    SnackbarHostState& RememberSnackbarHostState(rt::Key key = {});
 
     namespace SnackbarDefaults {
         foundation::ShapePtr shape();

@@ -51,7 +51,7 @@ namespace kiln::material3 {
 
     std::shared_ptr<PullToRefreshState> MakePullToRefreshState() { return std::make_shared<PullToRefreshStateImpl>(); }
 
-    std::shared_ptr<PullToRefreshState> RememberPullToRefreshState() {
+    std::shared_ptr<PullToRefreshState> RememberPullToRefreshState(rt::Key key) {
         rt::Saver<std::shared_ptr<PullToRefreshState>> saver{
             [](const std::shared_ptr<PullToRefreshState>& s) { return rt::SavedValue(double(s->DistanceFraction())); },
             [](const rt::SavedValue& saved) -> std::optional<std::shared_ptr<PullToRefreshState>> {
@@ -59,7 +59,7 @@ namespace kiln::material3 {
                 return std::nullopt;
             }
         };
-        return rt::RememberSaveable<std::shared_ptr<PullToRefreshState>>([] { return MakePullToRefreshState(); }, saver, rt::Keys());
+        return rt::RememberSaveable<std::shared_ptr<PullToRefreshState>>([] { return MakePullToRefreshState(); }, saver, rt::Keys(), key);
     }
 
     // --- the modifier ---------------------------------------------------------------------------

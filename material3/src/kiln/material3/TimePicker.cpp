@@ -147,7 +147,7 @@ namespace kiln::material3 {
         return std::make_shared<TimePickerStateImpl>(initialHour, initialMinute, is24Hour, initialSelection);
     }
 
-    std::shared_ptr<TimePickerState> RememberTimePickerState(int initialHour, int initialMinute, std::optional<bool> is24Hour) {
+    std::shared_ptr<TimePickerState> RememberTimePickerState(int initialHour, int initialMinute, std::optional<bool> is24Hour, rt::Key key) {
         auto& c = *rt::Composition::Current();
         const bool is24 = is24Hour.value_or(c.Read(ui::LocalIs24HourFormat));
         // [hour, minute, is24hour, selection].
@@ -161,7 +161,7 @@ namespace kiln::material3 {
                 return MakeTimePickerState(int(rt::SavedNumber(l[0]).value_or(0)), int(rt::SavedNumber(l[1]).value_or(0)),
                                            rt::SavedNumber(l[2]).value_or(0) != 0, selection);
             });
-        return rt::RememberSaveable<std::shared_ptr<TimePickerState>>([&] { return MakeTimePickerState(initialHour, initialMinute, is24); }, saver);
+        return rt::RememberSaveable<std::shared_ptr<TimePickerState>>([&] { return MakeTimePickerState(initialHour, initialMinute, is24); }, saver, {}, key);
     }
 
     namespace internal {

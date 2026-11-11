@@ -31,7 +31,7 @@ namespace kiln::material3 {
         virtual rt::Task<> Toggle() = 0;
         virtual rt::Task<> SnapTo(WideNavigationRailValue value) = 0;
     };
-    std::shared_ptr<WideNavigationRailState> RememberWideNavigationRailState(WideNavigationRailValue initialValue = WideNavigationRailValue::Collapsed);
+    std::shared_ptr<WideNavigationRailState> RememberWideNavigationRailState(WideNavigationRailValue initialValue = WideNavigationRailValue::Collapsed, rt::Key key = {});
 
     struct WideNavigationRailColors {
         ui::Color containerColor, contentColor, modalContainerColor, modalScrimColor, modalContentColor;

@@ -112,12 +112,12 @@ namespace kiln::foundation {
         co_return co_await node->DispatchPostFling(consumed, available);
     }
 
-    std::shared_ptr<NestedScrollConnection> RememberNestedScrollInteropConnection() {
+    std::shared_ptr<NestedScrollConnection> RememberNestedScrollInteropConnection(rt::Key key) {
         auto* c = rt::Composition::Current();
         ui::HostNestedScrollParent* host = c ? c->Read(ui::LocalHostNestedScrollParent) : nullptr;
         auto make = [host] { return std::shared_ptr<NestedScrollConnection>(std::make_shared<InteropConnection>(host)); };
         if (!c) return make();
-        return c->Remember<std::shared_ptr<NestedScrollConnection>>(make, rt::Keys(reinterpret_cast<std::uintptr_t>(host)));
+        return c->Remember<std::shared_ptr<NestedScrollConnection>>(make, rt::Keys(reinterpret_cast<std::uintptr_t>(host)), key);
     }
 
 }

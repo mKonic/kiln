@@ -96,8 +96,8 @@ namespace kiln::material3 {
         std::shared_ptr<const char> m_Alive = std::make_shared<const char>(0);
     };
 
-    SliderState& RememberSliderState(float value = 0, int steps = 0, SliderRange trackRange = {});
-    RangeSliderState& RememberRangeSliderState(float start = 0, float end = 1, int steps = 0, SliderRange trackRange = {});
+    SliderState& RememberSliderState(float value = 0, int steps = 0, SliderRange trackRange = {}, rt::Key key = {});
+    RangeSliderState& RememberRangeSliderState(float start = 0, float end = 1, int steps = 0, SliderRange trackRange = {}, rt::Key key = {});
 
     struct SliderColors {
         ui::Color thumbColor = ui::Color::Unspecified(), activeTrackColor = ui::Color::Unspecified(), activeTickColor = ui::Color::Unspecified();

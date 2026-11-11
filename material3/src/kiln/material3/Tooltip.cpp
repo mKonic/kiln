@@ -153,19 +153,19 @@ namespace kiln::material3 {
     TooltipState MakeTooltipState(bool initialIsVisible, bool isPersistent, std::shared_ptr<MutatorMutex> mutatorMutex) {
         return TooltipState(std::make_shared<TooltipCore>(initialIsVisible, isPersistent, std::move(mutatorMutex), false));
     }
-    TooltipState RememberTooltipState(bool initialIsVisible, bool isPersistent, std::shared_ptr<MutatorMutex> mutatorMutex) {
+    TooltipState RememberTooltipState(bool initialIsVisible, bool isPersistent, std::shared_ptr<MutatorMutex> mutatorMutex, rt::Key key) {
         auto& c = *rt::Composition::Current();
         return c.Remember<TooltipState>([&] { return MakeTooltipState(initialIsVisible, isPersistent, mutatorMutex); },
-                                        rt::Keys(isPersistent, mutatorMutex.get()));
+                                        rt::Keys(isPersistent, mutatorMutex.get()), key);
     }
     namespace internal {
         TooltipState MakeBasicTooltipState(bool initialIsVisible, bool isPersistent, std::shared_ptr<MutatorMutex> mutatorMutex) {
             return TooltipState(std::make_shared<TooltipCore>(initialIsVisible, isPersistent, std::move(mutatorMutex), true));
         }
-        TooltipState RememberBasicTooltipState(bool initialIsVisible, bool isPersistent, std::shared_ptr<MutatorMutex> mutatorMutex) {
+        TooltipState RememberBasicTooltipState(bool initialIsVisible, bool isPersistent, std::shared_ptr<MutatorMutex> mutatorMutex, rt::Key key) {
             auto& c = *rt::Composition::Current();
             return c.Remember<TooltipState>([&] { return MakeBasicTooltipState(initialIsVisible, isPersistent, mutatorMutex); },
-                                            rt::Keys(isPersistent, mutatorMutex.get()));
+                                            rt::Keys(isPersistent, mutatorMutex.get()), key);
         }
     }
 

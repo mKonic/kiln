@@ -145,8 +145,8 @@ namespace kiln::material3 {
         co_return co_await data->Result();
     }
 
-    SnackbarHostState& RememberSnackbarHostState() {
-        return *rt::Composition::Current()->Remember<std::shared_ptr<SnackbarHostState>>([] { return std::make_shared<SnackbarHostState>(); });
+    SnackbarHostState& RememberSnackbarHostState(rt::Key key) {
+        return *rt::Composition::Current()->Remember<std::shared_ptr<SnackbarHostState>>([] { return std::make_shared<SnackbarHostState>(); }, {}, key);
     }
 
     std::int64_t internal::SnackbarDurationMillis(SnackbarDuration duration, bool hasAction, const ui::AccessibilityManager* manager) {

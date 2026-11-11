@@ -330,8 +330,8 @@ namespace kiln::foundation {
 
     // rememberLazyListState / rememberLazyGridState / rememberLazyStaggeredGridState: the first
     // visible item and its offset survive re-creation.
-    LazyListState& RememberLazyListState(int firstVisibleItemIndex = 0, int firstVisibleItemScrollOffset = 0);
-    LazyGridState& RememberLazyGridState(int firstVisibleItemIndex = 0, int firstVisibleItemScrollOffset = 0);
-    LazyStaggeredGridState& RememberLazyStaggeredGridState(int firstVisibleItemIndex = 0, int firstVisibleItemScrollOffset = 0);
+    LazyListState& RememberLazyListState(int firstVisibleItemIndex = 0, int firstVisibleItemScrollOffset = 0, rt::Key key = {});
+    LazyGridState& RememberLazyGridState(int firstVisibleItemIndex = 0, int firstVisibleItemScrollOffset = 0, rt::Key key = {});
+    LazyStaggeredGridState& RememberLazyStaggeredGridState(int firstVisibleItemIndex = 0, int firstVisibleItemScrollOffset = 0, rt::Key key = {});
 
 }

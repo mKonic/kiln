@@ -53,7 +53,7 @@ namespace kiln::material3 {
     // rememberSwipeToDismissBoxState: the value survives re-creation. Null threshold: the default.
     std::shared_ptr<SwipeToDismissBoxState> RememberSwipeToDismissBoxState(SwipeToDismissBoxValue initialValue = SwipeToDismissBoxValue::Settled,
                                                                            std::function<float(float)> positionalThreshold = {},
-                                                                           std::function<bool(SwipeToDismissBoxValue)> confirmValueChange = {});
+                                                                           std::function<bool(SwipeToDismissBoxValue)> confirmValueChange = {}, rt::Key key = {});
 
     struct SwipeToDismissBoxOptions {
         bool enableDismissFromStartToEnd = true, enableDismissFromEndToStart = true;

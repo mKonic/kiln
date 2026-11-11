@@ -97,7 +97,7 @@ namespace kiln::material3 {
     std::shared_ptr<DatePickerState> RememberDatePickerState(std::optional<std::int64_t> initialSelectedDateMillis = std::nullopt,
                                                              std::optional<std::int64_t> initialDisplayedMonthMillis = std::nullopt,
                                                              IntRange yearRange = {}, DisplayMode initialDisplayMode = DisplayMode::Picker,
-                                                             SelectableDatesPtr selectableDates = nullptr);
+                                                             SelectableDatesPtr selectableDates = nullptr, rt::Key key = {});
 
     namespace DatePickerDefaults {
         DatePickerColors colors();

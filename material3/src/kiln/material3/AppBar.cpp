@@ -615,7 +615,7 @@ namespace kiln::material3 {
         return 1 - std::clamp(m_HeightOffsetLimit + std::abs(ContentOffset()), m_HeightOffsetLimit, 0.0f) / m_HeightOffsetLimit;
     }
 
-    std::shared_ptr<TopAppBarState> RememberTopAppBarState(float limit, float offset, float content) {
+    std::shared_ptr<TopAppBarState> RememberTopAppBarState(float limit, float offset, float content, rt::Key key) {
         rt::Saver<std::shared_ptr<TopAppBarState>> saver{
             [](const std::shared_ptr<TopAppBarState>& s) {
                 return rt::SavedValue(rt::SavedValue::List{ rt::SavedValue(double(s->HeightOffsetLimit())), rt::SavedValue(double(s->HeightOffset())),
@@ -629,7 +629,7 @@ namespace kiln::material3 {
                 return std::make_shared<TopAppBarState>(float(*a), float(*b), float(*c));
             }
         };
-        return rt::RememberSaveable<std::shared_ptr<TopAppBarState>>([=] { return std::make_shared<TopAppBarState>(limit, offset, content); }, saver);
+        return rt::RememberSaveable<std::shared_ptr<TopAppBarState>>([=] { return std::make_shared<TopAppBarState>(limit, offset, content); }, saver, {}, key);
     }
 
     TopAppBarColors TopAppBarColors::Copy(Color a, Color b, Color c, Color d, Color e, Color f) const {
@@ -648,7 +648,7 @@ namespace kiln::material3 {
         const float limit = HeightOffsetLimit();
         return limit != 0 ? HeightOffset() / limit : 0.0f;
     }
-    std::shared_ptr<BottomAppBarState> RememberBottomAppBarState(float limit, float offset, float content) {
+    std::shared_ptr<BottomAppBarState> RememberBottomAppBarState(float limit, float offset, float content, rt::Key key) {
         rt::Saver<std::shared_ptr<BottomAppBarState>> saver{
             [](const std::shared_ptr<BottomAppBarState>& s) {
                 return rt::SavedValue(rt::SavedValue::List{ rt::SavedValue(double(s->HeightOffsetLimit())), rt::SavedValue(double(s->HeightOffset())),
@@ -662,7 +662,7 @@ namespace kiln::material3 {
                 return std::make_shared<BottomAppBarState>(float(*a), float(*b), float(*c));
             }
         };
-        return rt::RememberSaveable<std::shared_ptr<BottomAppBarState>>([=] { return std::make_shared<BottomAppBarState>(limit, offset, content); }, saver);
+        return rt::RememberSaveable<std::shared_ptr<BottomAppBarState>>([=] { return std::make_shared<BottomAppBarState>(limit, offset, content); }, saver, {}, key);
     }
 
     // --- defaults ------------------------------------------------------------------------------

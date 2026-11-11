@@ -124,7 +124,7 @@ namespace kiln::foundation {
 
     // rememberPagerState: the current page and its offset fraction survive re-creation; the page
     // count is read from `pageCount` (refreshed every composition).
-    PagerState& RememberPagerState(int initialPage, float initialPageOffsetFraction, std::function<int()> pageCount);
-    inline PagerState& RememberPagerState(std::function<int()> pageCount) { return RememberPagerState(0, 0, std::move(pageCount)); }
+    PagerState& RememberPagerState(int initialPage, float initialPageOffsetFraction, std::function<int()> pageCount, rt::Key key = {});
+    inline PagerState& RememberPagerState(std::function<int()> pageCount, rt::Key key = {}) { return RememberPagerState(0, 0, std::move(pageCount), key); }
 
 }

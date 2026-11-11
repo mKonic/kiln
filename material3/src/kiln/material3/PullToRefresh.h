@@ -5,6 +5,7 @@
 // Expressive loading indicator) and spins while refreshing.
 
 #include "kiln/foundation/Shapes.h"
+#include "kiln/runtime/Composition.h"
 #include "kiln/runtime/Task.h"
 #include "kiln/ui/Geometry.h"
 #include "kiln/ui/Layout.h"
@@ -29,7 +30,7 @@ namespace kiln::material3 {
     // PullToRefreshState(): the default, animated with a spring.
     std::shared_ptr<PullToRefreshState> MakePullToRefreshState();
     // rememberPullToRefreshState: the fraction survives re-creation.
-    std::shared_ptr<PullToRefreshState> RememberPullToRefreshState();
+    std::shared_ptr<PullToRefreshState> RememberPullToRefreshState(rt::Key key = {});
 
     namespace PullToRefreshDefaults {
         extern const ui::Dp PositionalThreshold, IndicatorMaxDistance, Elevation, LoadingIndicatorElevation;

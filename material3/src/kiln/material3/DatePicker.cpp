@@ -106,7 +106,7 @@ namespace kiln::material3 {
     }
 
     std::shared_ptr<DatePickerState> RememberDatePickerState(std::optional<std::int64_t> initialSelected, std::optional<std::int64_t> initialDisplayed,
-                                                             IntRange yearRange, DisplayMode initialMode, SelectableDatesPtr selectableDates) {
+                                                             IntRange yearRange, DisplayMode initialMode, SelectableDatesPtr selectableDates, rt::Key key) {
         if (!initialDisplayed) initialDisplayed = initialSelected;
         const std::string locale = ui::PlatformLocale();
         if (!selectableDates) selectableDates = DatePickerDefaults::AllDates();
@@ -126,7 +126,7 @@ namespace kiln::material3 {
                 return std::make_shared<DatePickerState>(locale, sel, month, range, DisplayMode(int(rt::SavedNumber(l[4]).value_or(0))), selectableDates);
             });
         auto& s = rt::RememberSaveable<std::shared_ptr<DatePickerState>>(
-            [&] { return std::make_shared<DatePickerState>(locale, initialSelected, initialDisplayed, yearRange, initialMode, selectableDates); }, saver);
+            [&] { return std::make_shared<DatePickerState>(locale, initialSelected, initialDisplayed, yearRange, initialMode, selectableDates); }, saver, {}, key);
         // Follows the caller's selectable dates.
         s->SetSelectableDates(selectableDates);
         return s;
@@ -585,11 +585,6 @@ namespace kiln::material3 {
         }
 
         namespace {
-            std::u16string Utf16(const std::string& s) {
-                std::u16string out;
-                for (char c : s) out += char16_t(static_cast<unsigned char>(c));
-                return out;
-            }
             std::string Utf8(std::u16string_view s) {
                 std::string out;
                 for (char16_t c : s) out += c < 0x80 ? char(c) : '?';

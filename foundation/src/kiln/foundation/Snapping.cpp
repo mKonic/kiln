@@ -177,16 +177,16 @@ namespace kiln::foundation {
         return std::make_shared<GridProvider>(state, position);
     }
 
-    FlingBehavior RememberSnapFlingBehavior(LazyListState& state, SnapPosition position) {
+    FlingBehavior RememberSnapFlingBehavior(LazyListState& state, SnapPosition position, rt::Key key) {
         auto& c = *rt::Composition::Current();
         auto provider = c.Remember<std::shared_ptr<SnapLayoutInfoProvider>>([&] { return MakeSnapLayoutInfoProvider(state, position); },
-                                                                             rt::Keys(reinterpret_cast<std::uintptr_t>(&state), int(position.kind)));
+                                                                             rt::Keys(reinterpret_cast<std::uintptr_t>(&state), int(position.kind)), key);
         return Remember(state, provider);
     }
-    FlingBehavior RememberSnapFlingBehavior(LazyGridState& state, SnapPosition position) {
+    FlingBehavior RememberSnapFlingBehavior(LazyGridState& state, SnapPosition position, rt::Key key) {
         auto& c = *rt::Composition::Current();
         auto provider = c.Remember<std::shared_ptr<SnapLayoutInfoProvider>>([&] { return MakeSnapLayoutInfoProvider(state, position); },
-                                                                             rt::Keys(reinterpret_cast<std::uintptr_t>(&state), int(position.kind)));
+                                                                             rt::Keys(reinterpret_cast<std::uintptr_t>(&state), int(position.kind)), key);
         return Remember(state, provider);
     }
 

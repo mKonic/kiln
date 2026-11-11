@@ -51,7 +51,7 @@ namespace kiln::material3 {
     TooltipState MakeTooltipState(bool initialIsVisible = false, bool isPersistent = true,
                                   std::shared_ptr<foundation::MutatorMutex> mutatorMutex = BasicTooltipDefaults::GlobalMutatorMutex());
     TooltipState RememberTooltipState(bool initialIsVisible = false, bool isPersistent = false,
-                                      std::shared_ptr<foundation::MutatorMutex> mutatorMutex = BasicTooltipDefaults::GlobalMutatorMutex());
+                                      std::shared_ptr<foundation::MutatorMutex> mutatorMutex = BasicTooltipDefaults::GlobalMutatorMutex(), rt::Key key = {});
 
     enum class TooltipAnchorPosition : std::uint8_t { Above = 1, Below, Left, Right, Start, End };
 
@@ -144,7 +144,7 @@ namespace kiln::material3 {
                              std::function<void()> content);
         // rememberBasicTooltipState: visibility without a transition (Label's tooltips).
         TooltipState RememberBasicTooltipState(bool initialIsVisible = false, bool isPersistent = true,
-                                               std::shared_ptr<foundation::MutatorMutex> mutatorMutex = BasicTooltipDefaults::GlobalMutatorMutex());
+                                               std::shared_ptr<foundation::MutatorMutex> mutatorMutex = BasicTooltipDefaults::GlobalMutatorMutex(), rt::Key key = {});
         TooltipState MakeBasicTooltipState(bool initialIsVisible = false, bool isPersistent = true,
                                            std::shared_ptr<foundation::MutatorMutex> mutatorMutex = BasicTooltipDefaults::GlobalMutatorMutex());
         // PlainTooltipInternal: a plain tooltip that announces `tooltipText` as its pane title.

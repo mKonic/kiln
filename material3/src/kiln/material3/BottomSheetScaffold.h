@@ -25,13 +25,13 @@ namespace kiln::material3 {
     // rememberBottomSheetScaffoldState. null bottomSheetState: partially expanded, without a
     // hidden state; null snackbarHostState: a remembered one.
     std::shared_ptr<BottomSheetScaffoldState> RememberBottomSheetScaffoldState(std::shared_ptr<SheetState> bottomSheetState = nullptr,
-                                                                               std::shared_ptr<SnackbarHostState> snackbarHostState = nullptr);
+                                                                               std::shared_ptr<SnackbarHostState> snackbarHostState = nullptr, rt::Key key = {});
 
     // rememberStandardBottomSheetState (deprecated in Compose): with the legacy rule that drops
     // the partially expanded state when the sheet is shorter than half the screen.
     std::shared_ptr<SheetState> RememberStandardBottomSheetState(SheetValue initialValue = SheetValue::PartiallyExpanded,
                                                                  std::function<bool(SheetValue)> confirmValueChange = {},
-                                                                 bool skipHiddenState = true);
+                                                                 bool skipHiddenState = true, rt::Key key = {});
 
     struct BottomSheetScaffoldOptions {
         std::shared_ptr<BottomSheetScaffoldState> scaffoldState;   // null: RememberBottomSheetScaffoldState()

@@ -46,7 +46,7 @@ namespace kiln::material3 {
                                                                        std::optional<std::int64_t> initialSelectedEndDateMillis = std::nullopt,
                                                                        std::optional<std::int64_t> initialDisplayedMonthMillis = std::nullopt,
                                                                        IntRange yearRange = {}, DisplayMode initialDisplayMode = DisplayMode::Picker,
-                                                                       SelectableDatesPtr selectableDates = nullptr);
+                                                                       SelectableDatesPtr selectableDates = nullptr, rt::Key key = {});
 
     namespace DateRangePickerDefaults {
         // "Select dates" / "Enter dates".

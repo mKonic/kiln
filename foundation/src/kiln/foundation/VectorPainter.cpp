@@ -99,12 +99,12 @@ namespace kiln::foundation {
         s.Restore();
     }
 
-    std::shared_ptr<VectorPainter> RememberVectorPainter(const ImageVectorPtr& image) {
+    std::shared_ptr<VectorPainter> RememberVectorPainter(const ImageVectorPtr& image, rt::Key key) {
         rt::Composition* c = rt::Composition::Current();
         const ui::Density density = c ? c->Read(ui::LocalDensity) : ui::Density{};
         if (!c) return std::make_shared<VectorPainter>(image, density);
         return c->Remember<std::shared_ptr<VectorPainter>>([&] { return std::make_shared<VectorPainter>(image, density); },
-                                                           rt::Keys(image ? image->genId : -1, density.density));
+                                                           rt::Keys(image ? image->genId : -1, density.density), key);
     }
 
 }

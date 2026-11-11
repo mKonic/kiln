@@ -80,7 +80,7 @@ namespace kiln::material3 {
 
     // rememberBottomSheetState: the value survives re-creation (SheetState.Saver).
     std::shared_ptr<SheetState> RememberBottomSheetState(SheetValue initialValue, SheetValues enabledValues = {},
-                                                         std::function<bool(SheetValue)> confirmValueChange = {});
+                                                         std::function<bool(SheetValue)> confirmValueChange = {}, rt::Key key = {});
 
     namespace BottomSheetDefaults {
         foundation::ShapePtr HiddenShape();
@@ -107,7 +107,8 @@ namespace kiln::material3 {
                                                        SheetValue initialValue = SheetValue::Hidden,
                                                        ui::Dp positionalThreshold = BottomSheetDefaults::PositionalThreshold,
                                                        ui::Dp velocityThreshold = BottomSheetDefaults::VelocityThreshold,
-                                                       std::optional<bool> partiallyExpandedDeterministic = std::nullopt);   // unset: the flag
+                                                       std::optional<bool> partiallyExpandedDeterministic = std::nullopt,   // unset: the flag
+                                                       rt::Key key = {});
         // DragHandleWithTooltip: the handle centred across the sheet, with its description as a tooltip.
         void DragHandleWithTooltip(const ui::Modifier& modifier, std::function<void()> content);
         // ConsumeSwipeWithinBottomSheetBoundsNestedScrollConnection: content scrolled up drags the

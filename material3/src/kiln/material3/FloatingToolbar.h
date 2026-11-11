@@ -59,7 +59,7 @@ namespace kiln::material3 {
         rt::State<float> m_ContentOffset;
     };
     std::shared_ptr<FloatingToolbarState> RememberFloatingToolbarState(float initialOffsetLimit = -FLT_MAX, float initialOffset = 0,
-                                                                       float initialContentOffset = 0);
+                                                                       float initialContentOffset = 0, rt::Key key = {});
 
     // Connects a toolbar to the content's nested scroll (pass NestedScrollConnection() to
     // foundation::NestedScroll on a parent of the scrolling content, and the behaviour to the

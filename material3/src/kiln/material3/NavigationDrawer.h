@@ -53,7 +53,7 @@ namespace kiln::material3 {
     };
 
     // rememberDrawerState: the value survives re-creation (DrawerState.Saver).
-    std::shared_ptr<DrawerState> RememberDrawerState(DrawerValue initialValue, std::function<bool(DrawerValue)> confirmStateChange = {});
+    std::shared_ptr<DrawerState> RememberDrawerState(DrawerValue initialValue, std::function<bool(DrawerValue)> confirmStateChange = {}, rt::Key key = {});
 
     namespace DrawerDefaults {
         extern const ui::Dp ModalDrawerElevation, PermanentDrawerElevation, DismissibleDrawerElevation, MaximumDrawerWidth;

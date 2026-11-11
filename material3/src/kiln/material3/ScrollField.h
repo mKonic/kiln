@@ -37,7 +37,7 @@ namespace kiln::material3 {
     };
 
     // rememberScrollFieldState: starts on `index` (clamped to the items).
-    std::shared_ptr<ScrollFieldState> RememberScrollFieldState(int itemCount, int index = 0);
+    std::shared_ptr<ScrollFieldState> RememberScrollFieldState(int itemCount, int index = 0, rt::Key key = {});
 
     struct ScrollFieldColors {
         ui::Color containerColor, contentColor, selectedContentColor, disabledContainerColor, disabledContentColor,

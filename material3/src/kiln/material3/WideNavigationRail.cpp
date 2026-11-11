@@ -210,7 +210,7 @@ namespace kiln::material3 {
         }
     }
 
-    std::shared_ptr<WideNavigationRailState> RememberWideNavigationRailState(WideNavigationRailValue initialValue) {
+    std::shared_ptr<WideNavigationRailState> RememberWideNavigationRailState(WideNavigationRailValue initialValue, rt::Key key) {
         const anim::SpecPtr spec = Value(MotionSchemeKeyTokens::DefaultSpatial);
         rt::Saver<std::shared_ptr<WideNavigationRailState>> saver{
             [](const std::shared_ptr<WideNavigationRailState>& s) { return rt::SavedValue(double(s->TargetValue() == WideNavigationRailValue::Expanded)); },
@@ -220,7 +220,7 @@ namespace kiln::material3 {
                 return std::nullopt;
             }
         };
-        return rt::RememberSaveable<std::shared_ptr<WideNavigationRailState>>([=] { return std::make_shared<StateImpl>(initialValue, spec); }, saver);
+        return rt::RememberSaveable<std::shared_ptr<WideNavigationRailState>>([=] { return std::make_shared<StateImpl>(initialValue, spec); }, saver, {}, key);
     }
 
     WideNavigationRailColors WideNavigationRailColors::Copy(Color a, Color b, Color c, Color d, Color e) const {

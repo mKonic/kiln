@@ -50,7 +50,7 @@ namespace kiln::material3 {
     // rememberTimePickerState: the hour, minute, clock and selection survive re-creation;
     // is24Hour unset follows the platform setting.
     std::shared_ptr<TimePickerState> RememberTimePickerState(int initialHour = 0, int initialMinute = 0,
-                                                             std::optional<bool> is24Hour = std::nullopt);
+                                                             std::optional<bool> is24Hour = std::nullopt, rt::Key key = {});
 
     struct TimePickerColors {
         ui::Color clockDialColor, selectorColor, containerColor, periodSelectorBorderColor, clockDialSelectedContentColor,

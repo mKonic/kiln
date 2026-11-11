@@ -46,7 +46,7 @@ namespace kiln::foundation {
 
     // rememberSnapFlingBehavior(lazyListState, snapPosition): the platform spline decay and
     // spring(StiffnessMediumLow).
-    FlingBehavior RememberSnapFlingBehavior(LazyListState& state, SnapPosition position = SnapPosition::Center());
-    FlingBehavior RememberSnapFlingBehavior(LazyGridState& state, SnapPosition position = SnapPosition::Center());
+    FlingBehavior RememberSnapFlingBehavior(LazyListState& state, SnapPosition position = SnapPosition::Center(), rt::Key key = {});
+    FlingBehavior RememberSnapFlingBehavior(LazyGridState& state, SnapPosition position = SnapPosition::Center(), rt::Key key = {});
 
 }

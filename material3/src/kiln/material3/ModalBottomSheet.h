@@ -36,7 +36,7 @@ namespace kiln::material3 {
     // rememberModalBottomSheetState (deprecated in Compose): hidden, with the legacy partially
     // expanded height (half the window).
     std::shared_ptr<SheetState> RememberModalBottomSheetState(bool skipPartiallyExpanded = false,
-                                                              std::function<bool(SheetValue)> confirmValueChange = {});
+                                                              std::function<bool(SheetValue)> confirmValueChange = {}, rt::Key key = {});
 
     namespace internal {
         // SheetWindowInsets: the sheet's offset as a top inset (what lies above the sheet).

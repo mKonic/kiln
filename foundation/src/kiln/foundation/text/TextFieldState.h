@@ -9,6 +9,7 @@
 #include "kiln/foundation/text/input/TextFieldBuffer.h"
 #include "kiln/foundation/text/input/Transformations.h"
 #include "kiln/runtime/State.h"
+#include "kiln/runtime/Composition.h"
 
 #include <cstdint>
 #include <functional>
@@ -169,7 +170,7 @@ namespace kiln::foundation {
 
     // rememberTextFieldState: the text, selection and undo history survive re-creation. The
     // selection starts at the end unless given.
-    TextFieldState& RememberTextFieldState(std::string_view initialText = {}, std::optional<TextRange> initialSelection = std::nullopt);
+    TextFieldState& RememberTextFieldState(std::string_view initialText = {}, std::optional<TextRange> initialSelection = std::nullopt, rt::Key key = {});
 
     // --- the field's transformed view (TransformedTextFieldState) -----------------------------
 

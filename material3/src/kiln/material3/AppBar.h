@@ -48,7 +48,7 @@ namespace kiln::material3 {
         rt::State<float> m_ContentOffset;
     };
     std::shared_ptr<TopAppBarState> RememberTopAppBarState(float initialHeightOffsetLimit = -FLT_MAX, float initialHeightOffset = 0,
-                                                           float initialContentOffset = 0);
+                                                           float initialContentOffset = 0, rt::Key key = {});
 
     // Connects a top app bar to the content's nested scroll (pass NestedScrollConnection() to
     // foundation::NestedScroll on a parent of the scrolling content).
@@ -175,7 +175,7 @@ namespace kiln::material3 {
         rt::State<float> m_ContentOffset;
     };
     std::shared_ptr<BottomAppBarState> RememberBottomAppBarState(float initialHeightOffsetLimit = -FLT_MAX, float initialHeightOffset = 0,
-                                                                 float initialContentOffset = 0);
+                                                                 float initialContentOffset = 0, rt::Key key = {});
 
     class BottomAppBarScrollBehavior {
     public:
