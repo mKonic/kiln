@@ -12,6 +12,7 @@
 #include "samples/CheckboxSamples.h"
 #include "samples/ChipSamples.h"
 #include "samples/Common.h"
+#include "samples/DatePickerSamples.h"
 #include "samples/DrawerSamples.h"
 #include "samples/ExposedDropdownMenuSamples.h"
 #include "samples/FloatingActionButtonMenuSamples.h"
@@ -138,11 +139,11 @@ namespace catalog {
                 { "ChipGroupReflowSample", "Chips examples", false, samples::ChipGroupReflowSample },
             } },
             { 11, "Date pickers", "Date pickers let users select a date or range of dates.", true, 0, {
-                { "DatePickerSample", "Date picker examples", false, nullptr },
-                { "DatePickerDialogSample", "Date picker examples", false, nullptr },
-                { "DatePickerWithDateSelectableDatesSample", "Date picker examples", false, nullptr },
-                { "DateInputSample", "Date picker examples", false, nullptr },
-                { "DateRangePickerSample", "Date picker examples", false, nullptr },
+                { "DatePickerSample", "Date picker examples", false, samples::DatePickerSample },
+                { "DatePickerDialogSample", "Date picker examples", false, samples::DatePickerDialogSample },
+                { "DatePickerWithDateSelectableDatesSample", "Date picker examples", false, samples::DatePickerWithDateSelectableDatesSample },
+                { "DateInputSample", "Date picker examples", false, samples::DateInputSample },
+                { "DateRangePickerSample", "Date picker examples", false, samples::DateRangePickerSample },
             } },
             { 12, "Dialogs", "Dialogs provide important prompts in a user flow. They can require an action, communicate information, or help users accomplish a task.", true, 0, {
                 { "AlertDialogSample", "Dialog examples", false, samples::AlertDialogSample },
