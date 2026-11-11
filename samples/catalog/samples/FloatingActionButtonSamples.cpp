@@ -1,11 +1,11 @@
 // FloatingActionButtonSamples.kt
 #include "FloatingActionButtonSamples.h"
 #include "Common.h"
+#include "Shared.h"
 
 #include <kiln/foundation/Lazy.h>
 #include <kiln/material3/FloatingActionButton.h>
 #include <kiln/material3/Scaffold.h>
-#include <kiln/material3/Tooltip.h>
 
 namespace catalog::samples {
     namespace FD = m3::FloatingActionButtonDefaults;
@@ -15,20 +15,8 @@ namespace catalog::samples {
         using ExtendedFn = void (*)(std::function<void()>, std::function<void()>, std::function<void()>, const Modifier&, bool,
                                     const m3::FloatingActionButtonOptions&);
 
-        // A FAB should have a tooltip associated with it. `shown` false: the tooltip is empty.
-        void WithTooltip(std::function<void()> anchor, bool shown = true) {
-            m3::TooltipBox(m3::TooltipDefaults::rememberTooltipPositionProvider(m3::TooltipAnchorPosition::Above),
-                           [shown](const m3::TooltipScope& scope) {
-                               if (!shown) return;
-                               // TODO(b/496338253) upstream: the semantics make the tooltip text announced.
-                               m3::PlainTooltip(scope, Semantics({}, [](SemanticsConfiguration& c) {
-                                                    c.liveRegion = LiveRegionMode::Assertive;
-                                                    c.paneTitle = "Localized description";
-                                                }),
-                                                {}, [] { m3::Text("Localized description"); });
-                           },
-                           m3::RememberTooltipState(), {}, {}, std::move(anchor));
-        }
+        // A FAB should have a tooltip associated with it.
+        void WithTooltip(std::function<void()> anchor, bool shown = true) { PlainTooltipAbove("Localized description", std::move(anchor), shown); }
 
         void AddIcon(std::optional<Dp> size = std::nullopt, const char* description = "Localized description") {
             m3::Icon(Icons::Filled::Add(), std::string(description), size ? Size({}, *size) : Modifier{});

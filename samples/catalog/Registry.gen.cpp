@@ -7,7 +7,9 @@
 #include "samples/CheckboxSamples.h"
 #include "samples/Common.h"
 #include "samples/FloatingActionButtonSamples.h"
+#include "samples/IconButtonSamples.h"
 #include "samples/RadioButtonSamples.h"
+#include "samples/Shared.h"
 #include "samples/SwitchSamples.h"
 
 namespace catalog {
@@ -159,19 +161,19 @@ namespace catalog {
                 { "CenteredVerticalFloatingToolbarWithFabSample", "Floating toolbar examples", true, nullptr },
             } },
             { 17, "Icon buttons", "Icon buttons allow users to take actions and make choices with a single tap.", true, {
-                { "IconButtonSample", "Icon button examples", false, nullptr },
-                { "TintedIconButtonSample", "Icon button examples", false, nullptr },
-                { "IconToggleButtonSample", "Icon button examples", false, nullptr },
-                { "FilledIconButtonSample", "Icon button examples", false, nullptr },
-                { "FilledIconToggleButtonSample", "Icon button examples", false, nullptr },
-                { "FilledTonalIconButtonSample", "Icon button examples", false, nullptr },
-                { "FilledTonalIconToggleButtonSample", "Icon button examples", false, nullptr },
-                { "OutlinedIconButtonSample", "Icon button examples", false, nullptr },
-                { "OutlinedIconToggleButtonSample", "Icon button examples", false, nullptr },
-                { "OutlinedIconToggleButtonWithAnimatedShapeSample", "Icon button examples", false, nullptr },
-                { "XSmallNarrowSquareIconButtonsSample", "Icon button examples", true, nullptr },
-                { "MediumRoundWideIconButtonSample", "Icon button examples", true, nullptr },
-                { "LargeRoundUniformOutlinedIconButtonSample", "Icon button examples", true, nullptr },
+                { "IconButtonSample", "Icon button examples", false, samples::IconButtonSample },
+                { "TintedIconButtonSample", "Icon button examples", false, samples::TintedIconButtonSample },
+                { "IconToggleButtonSample", "Icon button examples", false, samples::IconToggleButtonSample },
+                { "FilledIconButtonSample", "Icon button examples", false, samples::FilledIconButtonSample },
+                { "FilledIconToggleButtonSample", "Icon button examples", false, samples::FilledIconToggleButtonSample },
+                { "FilledTonalIconButtonSample", "Icon button examples", false, samples::FilledTonalIconButtonSample },
+                { "FilledTonalIconToggleButtonSample", "Icon button examples", false, samples::FilledTonalIconToggleButtonSample },
+                { "OutlinedIconButtonSample", "Icon button examples", false, samples::OutlinedIconButtonSample },
+                { "OutlinedIconToggleButtonSample", "Icon button examples", false, samples::OutlinedIconToggleButtonSample },
+                { "OutlinedIconToggleButtonWithAnimatedShapeSample", "Icon button examples", false, samples::OutlinedIconToggleButtonWithAnimatedShapeSample },
+                { "XSmallNarrowSquareIconButtonsSample", "Icon button examples", true, samples::ExtraSmallNarrowSquareIconButtonsSample },
+                { "MediumRoundWideIconButtonSample", "Icon button examples", true, samples::MediumRoundWideIconButtonSample },
+                { "LargeRoundUniformOutlinedIconButtonSample", "Icon button examples", true, samples::LargeRoundUniformOutlinedIconButtonSample },
             } },
             { 18, "Lists", "Lists are continuous, vertical indexes of text or images.", true, {
                 { "StandardListItems", "List examples", true, nullptr },
