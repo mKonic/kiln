@@ -95,6 +95,46 @@ namespace kiln::material3 {
         IconToggleButtonColors filledTonalIconToggleButtonColors();
         IconToggleButtonColors outlinedIconToggleButtonColors();
         IconToggleButtonColors outlinedIconToggleButtonVibrantColors();
+        // The parameterised forms: Unspecified keeps the default; an unset optional takes the
+        // derived default Compose gives that parameter (contentColorFor(container), the content
+        // colour at the disabled opacity, or LocalContentColor).
+        using OptColor = std::optional<ui::Color>;
+        IconButtonColors iconButtonColors(ui::Color containerColor, OptColor contentColor = {}, ui::Color disabledContainerColor = ui::Color::Unspecified(),
+                                          OptColor disabledContentColor = {});
+        IconButtonColors iconButtonVibrantColors(ui::Color containerColor, ui::Color contentColor = ui::Color::Unspecified(),
+                                                 ui::Color disabledContainerColor = ui::Color::Unspecified(), OptColor disabledContentColor = {});
+        IconButtonColors filledIconButtonColors(ui::Color containerColor, OptColor contentColor = {}, ui::Color disabledContainerColor = ui::Color::Unspecified(),
+                                                ui::Color disabledContentColor = ui::Color::Unspecified());
+        IconButtonColors filledTonalIconButtonColors(ui::Color containerColor, OptColor contentColor = {},
+                                                     ui::Color disabledContainerColor = ui::Color::Unspecified(),
+                                                     ui::Color disabledContentColor = ui::Color::Unspecified());
+        IconButtonColors outlinedIconButtonColors(ui::Color containerColor, OptColor contentColor = {},
+                                                  ui::Color disabledContainerColor = ui::Color::Unspecified(), OptColor disabledContentColor = {});
+        IconButtonColors outlinedIconButtonVibrantColors(ui::Color containerColor, ui::Color contentColor = ui::Color::Unspecified(),
+                                                         ui::Color disabledContainerColor = ui::Color::Unspecified(), OptColor disabledContentColor = {});
+        IconToggleButtonColors iconToggleButtonColors(ui::Color containerColor, OptColor contentColor = {},
+                                                      ui::Color disabledContainerColor = ui::Color::Unspecified(), OptColor disabledContentColor = {},
+                                                      ui::Color checkedContainerColor = ui::Color::Unspecified(),
+                                                      ui::Color checkedContentColor = ui::Color::Unspecified());
+        IconToggleButtonColors iconToggleButtonVibrantColors(ui::Color containerColor, ui::Color contentColor = ui::Color::Unspecified(),
+                                                             ui::Color disabledContainerColor = ui::Color::Unspecified(), OptColor disabledContentColor = {},
+                                                             ui::Color checkedContainerColor = ui::Color::Unspecified(),
+                                                             ui::Color checkedContentColor = ui::Color::Unspecified());
+        IconToggleButtonColors filledIconToggleButtonColors(ui::Color containerColor, ui::Color contentColor = ui::Color::Unspecified(),
+                                                            ui::Color disabledContainerColor = ui::Color::Unspecified(),
+                                                            ui::Color disabledContentColor = ui::Color::Unspecified(),
+                                                            ui::Color checkedContainerColor = ui::Color::Unspecified(), OptColor checkedContentColor = {});
+        IconToggleButtonColors filledTonalIconToggleButtonColors(ui::Color containerColor, OptColor contentColor = {},
+                                                                 ui::Color disabledContainerColor = ui::Color::Unspecified(),
+                                                                 ui::Color disabledContentColor = ui::Color::Unspecified(),
+                                                                 ui::Color checkedContainerColor = ui::Color::Unspecified(), OptColor checkedContentColor = {});
+        IconToggleButtonColors outlinedIconToggleButtonColors(ui::Color containerColor, OptColor contentColor = {},
+                                                              ui::Color disabledContainerColor = ui::Color::Unspecified(), OptColor disabledContentColor = {},
+                                                              ui::Color checkedContainerColor = ui::Color::Unspecified(), OptColor checkedContentColor = {});
+        IconToggleButtonColors outlinedIconToggleButtonVibrantColors(ui::Color containerColor, ui::Color contentColor = ui::Color::Unspecified(),
+                                                                     ui::Color disabledContainerColor = ui::Color::Unspecified(),
+                                                                     OptColor disabledContentColor = {}, ui::Color checkedContainerColor = ui::Color::Unspecified(),
+                                                                     OptColor checkedContentColor = {});
         foundation::BorderStroke outlinedIconButtonBorder(bool enabled);
         foundation::BorderStroke outlinedIconButtonVibrantBorder(bool enabled);
         std::optional<foundation::BorderStroke> outlinedIconToggleButtonBorder(bool enabled, bool checked);

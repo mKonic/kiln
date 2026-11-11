@@ -173,4 +173,73 @@ namespace kiln::material3::IconButtonDefaults {
                          XLargeIconButtonTokens::WideLeadingSpace + XLargeIconButtonTokens::WideTrailingSpace);
     }
 
+
+    // --- parameterised colours ------------------------------------------------------------------
+
+    namespace {
+        // contentColor.copy(alpha = opacity), as Compose computes it: an Unspecified colour comes
+        // out as black at that alpha (a specified colour).
+        Color AtOpacity(Color c, float opacity) { return (c.Specified() ? c : Color(0xFF000000u)).WithAlpha(opacity); }
+    }
+
+    IconButtonColors iconButtonColors(Color container, OptColor content, Color disabledContainer, OptColor disabledContent) {
+        const Color c = content.value_or(LocalColor());
+        return iconButtonColors().Copy(container, c, disabledContainer, disabledContent.value_or(AtOpacity(c, StandardIconButtonTokens::DisabledOpacity)));
+    }
+    IconButtonColors iconButtonVibrantColors(Color container, Color content, Color disabledContainer, OptColor disabledContent) {
+        return iconButtonVibrantColors().Copy(container, content, disabledContainer,
+                                              disabledContent.value_or(AtOpacity(content, StandardIconButtonTokens::DisabledOpacity)));
+    }
+    IconButtonColors filledIconButtonColors(Color container, OptColor content, Color disabledContainer, Color disabledContent) {
+        return filledIconButtonColors().Copy(container, content.value_or(ContentColorFor(container)), disabledContainer, disabledContent);
+    }
+    IconButtonColors filledTonalIconButtonColors(Color container, OptColor content, Color disabledContainer, Color disabledContent) {
+        return filledTonalIconButtonColors().Copy(container, content.value_or(ContentColorFor(container)), disabledContainer, disabledContent);
+    }
+    IconButtonColors outlinedIconButtonColors(Color container, OptColor content, Color disabledContainer, OptColor disabledContent) {
+        const Color c = content.value_or(LocalColor());
+        return outlinedIconButtonColors().Copy(container, c, disabledContainer,
+                                               disabledContent.value_or(AtOpacity(c, OutlinedIconButtonTokens::DisabledOpacity)));
+    }
+    IconButtonColors outlinedIconButtonVibrantColors(Color container, Color content, Color disabledContainer, OptColor disabledContent) {
+        return outlinedIconButtonVibrantColors().Copy(container, content, disabledContainer,
+                                                      disabledContent.value_or(AtOpacity(content, OutlinedIconButtonTokens::DisabledOpacity)));
+    }
+    IconToggleButtonColors iconToggleButtonColors(Color container, OptColor content, Color disabledContainer, OptColor disabledContent,
+                                                  Color checkedContainer, Color checkedContent) {
+        const Color c = content.value_or(LocalColor());
+        return iconToggleButtonColors().Copy(container, c, disabledContainer,
+                                             disabledContent.value_or(AtOpacity(c, StandardIconButtonTokens::DisabledOpacity)), checkedContainer,
+                                             checkedContent);
+    }
+    IconToggleButtonColors iconToggleButtonVibrantColors(Color container, Color content, Color disabledContainer, OptColor disabledContent,
+                                                         Color checkedContainer, Color checkedContent) {
+        return iconToggleButtonVibrantColors().Copy(container, content, disabledContainer,
+                                                    disabledContent.value_or(AtOpacity(content, StandardIconButtonTokens::DisabledOpacity)),
+                                                    checkedContainer, checkedContent);
+    }
+    IconToggleButtonColors filledIconToggleButtonColors(Color container, Color content, Color disabledContainer, Color disabledContent,
+                                                        Color checkedContainer, OptColor checkedContent) {
+        return filledIconToggleButtonColors().Copy(container, content, disabledContainer, disabledContent, checkedContainer,
+                                                   checkedContent.value_or(ContentColorFor(checkedContainer)));
+    }
+    IconToggleButtonColors filledTonalIconToggleButtonColors(Color container, OptColor content, Color disabledContainer, Color disabledContent,
+                                                             Color checkedContainer, OptColor checkedContent) {
+        return filledTonalIconToggleButtonColors().Copy(container, content.value_or(ContentColorFor(container)), disabledContainer, disabledContent,
+                                                        checkedContainer, checkedContent.value_or(ContentColorFor(checkedContainer)));
+    }
+    IconToggleButtonColors outlinedIconToggleButtonColors(Color container, OptColor content, Color disabledContainer, OptColor disabledContent,
+                                                          Color checkedContainer, OptColor checkedContent) {
+        const Color c = content.value_or(LocalColor());
+        return outlinedIconToggleButtonColors().Copy(container, c, disabledContainer,
+                                                     disabledContent.value_or(AtOpacity(c, OutlinedIconButtonTokens::DisabledOpacity)),
+                                                     checkedContainer, checkedContent.value_or(ContentColorFor(checkedContainer)));
+    }
+    IconToggleButtonColors outlinedIconToggleButtonVibrantColors(Color container, Color content, Color disabledContainer, OptColor disabledContent,
+                                                                 Color checkedContainer, OptColor checkedContent) {
+        return outlinedIconToggleButtonVibrantColors().Copy(container, content, disabledContainer,
+                                                            disabledContent.value_or(AtOpacity(content, OutlinedIconButtonTokens::DisabledOpacity)),
+                                                            checkedContainer, checkedContent.value_or(ContentColorFor(checkedContainer)));
+    }
+
 }

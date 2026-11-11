@@ -14000,3 +14000,32 @@ TEST(AnimateRunsTheSpecToItsTarget) {
     if (!values.empty()) CHECK_EQ(values.back(), 10.0f);
     CHECK(std::is_sorted(values.begin(), values.end()));
 }
+
+// IconButtonDefaults' parameterised colours: unset arguments take Compose's derived defaults.
+TEST(IconButtonColorsDeriveTheirDefaultsFromTheirArguments) {
+    Harness h;
+    IconButtonColors filled, vibrant, standard;
+    IconToggleButtonColors toggle;
+    ui::Color onSurface, onPrimary, local;
+    h.Run([&] {
+        MaterialTheme({}, [&] {
+            const auto& cs = MaterialTheme::colorScheme();
+            onSurface = cs.onSurface;
+            onPrimary = cs.onPrimary;
+            rt::Composition::Current()->Provide(LocalContentColor, ui::Color(0xFF123456u), [&] {
+                local = rt::Composition::Current()->Read(LocalContentColor);
+                filled = IconButtonDefaults::filledIconButtonColors(cs.surfaceContainerLow);
+                vibrant = IconButtonDefaults::iconButtonVibrantColors(cs.primary);
+                standard = IconButtonDefaults::iconButtonColors(ui::Color::Transparent());
+                toggle = IconButtonDefaults::filledTonalIconToggleButtonColors(cs.surface, std::nullopt, ui::Color::Unspecified(),
+                                                                                ui::Color::Unspecified(), cs.primary);
+            });
+        });
+    });
+    CHECK(filled.contentColor == onSurface);                                // contentColorFor(container)
+    CHECK(vibrant.disabledContentColor == ui::Color(0x61000000u));          // Unspecified.copy(alpha = 0.38)
+    CHECK(standard.contentColor == local);                                  // LocalContentColor
+    CHECK(standard.disabledContentColor == local.WithAlpha(0.38f));
+    CHECK(toggle.checkedContentColor == onPrimary);                         // contentColorFor(checkedContainer)
+    CHECK(toggle.contentColor == onSurface);                                // contentColorFor(surface)
+}
