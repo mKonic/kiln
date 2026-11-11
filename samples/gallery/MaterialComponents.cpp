@@ -35,6 +35,9 @@
 #include <kiln/material3/ModalBottomSheet.h>
 #include <kiln/material3/NavigationDrawer.h>
 #include <kiln/material3/SearchBar.h>
+#include <kiln/material3/SwipeToDismissBox.h>
+#include <kiln/material3/PullToRefresh.h>
+#include <kiln/material3/Carousel.h>
 #include <kiln/material3/ShortNavigationBar.h>
 #include <kiln/material3/Tab.h>
 #include <kiln/material3/TabRow.h>
@@ -801,6 +804,80 @@ namespace kiln::gallery {
             });
         }
 
+        void SwipeRows() {
+            auto* swiped = &RememberState(std::string("none"));
+            auto* shown = &RememberState(std::vector<std::string>{ "Message from Ada", "Message from Grace", "Message from Alan" });
+            m3::Text("Swiped: " + swiped->Get());
+            for (const std::string& title : shown->Get()) {
+                // Keyed by title: a row's state stays with it as rows above are dismissed.
+                rt::Composition::Current()->Child([=] {
+                    auto state = m3::RememberSwipeToDismissBoxState();
+                    m3::SwipeToDismissBoxOptions o;
+                    o.onDismiss = [=](m3::SwipeToDismissBoxValue v) {
+                        swiped->Set(title + (v == m3::SwipeToDismissBoxValue::StartToEnd ? " archived" : " deleted"));
+                        auto rest = shown->Peek();
+                        std::erase(rest, title);
+                        shown->Set(std::move(rest));
+                    };
+                    // The background names what a release will do, on the side it is revealed from.
+                    m3::SwipeToDismissBox(state, [state] {
+                        const auto dir = state->DismissDirection();
+                        const auto& cs = m3::MaterialTheme::colorScheme();
+                        const Color bg = dir == m3::SwipeToDismissBoxValue::StartToEnd ? cs.tertiaryContainer
+                                       : dir == m3::SwipeToDismissBoxValue::EndToStart ? cs.errorContainer : Color::Transparent();
+                        Box(Padding(Background(FillMax({}, Axis::Both), bg), 16_dp, 0_dp),
+                            dir == m3::SwipeToDismissBoxValue::EndToStart ? Alignment::CenterEnd() : Alignment::CenterStart(), false, [dir] {
+                                if (dir != m3::SwipeToDismissBoxValue::Settled) m3::Text(dir == m3::SwipeToDismissBoxValue::StartToEnd ? "Archive" : "Delete");
+                            });
+                    }, {}, o, [title] { m3::ListItem([title] { m3::Text(title); }); });
+                }, rt::Key(std::string_view(title)));
+            }
+        }
+
+        rt::Task<> FinishRefresh(rt::State<bool>* refreshing, rt::State<int>* count) {
+            co_await rt::Delay(1500);
+            count->Set(count->Peek() + 1);
+            refreshing->Set(false);
+        }
+
+        void Refresh() {
+            auto* refreshing = &RememberState(false);
+            auto* count = &RememberState(0);
+            auto job = rt::Composition::Current()->Remember<std::shared_ptr<rt::Job>>([] { return std::make_shared<rt::Job>(); });
+            m3::Text("Refreshes: " + std::to_string(count->Get()) + (refreshing->Get() ? " (refreshing)" : ""));
+            auto& list = foundation::RememberLazyListState();
+            m3::PullToRefreshBox(refreshing->Get(), [=] {
+                refreshing->Set(true);
+                *job = rt::Launch(rt::Dispatcher::Main(), FinishRefresh(refreshing, count));
+            }, Height(FillMax({}, Axis::Horizontal), 320_dp), {}, [&list] {
+                LazyColumn(FillMax({}, Axis::Both), list, [](LazyListScope& s) {
+                    s.Items(30, [](int i) { m3::ListItem([i] { m3::Text("Update " + std::to_string(i + 1)); }); });
+                });
+            });
+        }
+
+        void CarouselPhoto(const m3::CarouselItemScope& scope, int i) {
+            const auto& cs = m3::MaterialTheme::colorScheme();
+            const Color colors[] = { cs.primaryContainer, cs.secondaryContainer, cs.tertiaryContainer, cs.errorContainer };
+            Box(Background(scope.MaskClip(FillMax({}, Axis::Both), m3::MaterialTheme::shapes().extraLarge), colors[i % 4]),
+                Alignment::Center(), false, [i] { m3::Text("Photo " + std::to_string(i + 1)); });
+        }
+
+        void Carousels() {
+            auto multi = m3::RememberCarouselState([] { return 10; });
+            m3::Text("Multi-browse item: " + std::to_string(multi->CurrentItem() + 1));
+            m3::CarouselOptions spaced;
+            spaced.itemSpacing = 8_dp;
+            spaced.contentPadding = { 16_dp, 0_dp, 16_dp, 0_dp };
+            m3::HorizontalMultiBrowseCarousel(*multi, 186_dp, Height(FillMax({}, Axis::Horizontal), 221_dp), CarouselPhoto, spaced);
+            auto hero = m3::RememberCarouselState([] { return 10; });
+            m3::Text("Hero item: " + std::to_string(hero->CurrentItem() + 1));
+            m3::HorizontalCenteredHeroCarousel(*hero, Height(FillMax({}, Axis::Horizontal), 221_dp), CarouselPhoto, spaced);
+            auto uncontained = m3::RememberCarouselState([] { return 10; });
+            m3::Text("Uncontained");
+            m3::HorizontalUncontainedCarousel(*uncontained, 240_dp, Height(FillMax({}, Axis::Horizontal), 221_dp), CarouselPhoto, spaced);
+        }
+
         void Tabs() {
             auto* primary = &RememberState(0);
             auto* secondary = &RememberState(0);
@@ -1177,7 +1254,7 @@ namespace kiln::gallery {
         struct Section { const char* key; const char* title; void (*content)(); };
         const std::vector<Section>& Sections() {
             static const std::vector<Section> sections{
-                { "navigation", "Navigation bars and rails", Navigation }, { "tabs", "Tabs", Tabs }, { "appbars", "App bars", AppBars }, { "toolbars", "Floating toolbars", FloatingToolbars }, { "scrollbars", "Scrollbars", Scrollbars }, { "snackbars", "Snackbars", Snackbars }, { "textfields", "Text fields", TextFields }, { "dialogs", "Dialogs", Dialogs }, { "sheets", "Bottom sheets", Sheets }, { "drawers", "Navigation drawers", Drawers }, { "search", "Search bars", Search }, { "segmented", "Segmented buttons", SegmentedButtons }, { "split", "Split buttons", SplitButtons },
+                { "navigation", "Navigation bars and rails", Navigation }, { "tabs", "Tabs", Tabs }, { "appbars", "App bars", AppBars }, { "toolbars", "Floating toolbars", FloatingToolbars }, { "scrollbars", "Scrollbars", Scrollbars }, { "snackbars", "Snackbars", Snackbars }, { "textfields", "Text fields", TextFields }, { "dialogs", "Dialogs", Dialogs }, { "sheets", "Bottom sheets", Sheets }, { "drawers", "Navigation drawers", Drawers }, { "search", "Search bars", Search }, { "swipe", "Swipe to dismiss", SwipeRows }, { "refresh", "Pull to refresh", Refresh }, { "carousel", "Carousels", Carousels }, { "segmented", "Segmented buttons", SegmentedButtons }, { "split", "Split buttons", SplitButtons },
                 { "tooltips", "Tooltips", Tooltips }, { "menus", "Menus", Menus }, { "groups", "Button groups", ButtonGroups },
                 { "sliders", "Sliders", Sliders }, { "progress", "Progress indicators", ProgressIndicators }, { "lists", "Lists", Lists },
                 { "chips", "Chips", Chips }, { "cards", "Cards", Cards }, { "selection", "", SelectionControls },

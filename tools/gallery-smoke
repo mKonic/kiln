@@ -56,6 +56,13 @@ COMPONENTS = {
     'search': '''expect:Searched: none; tap:Search fruit; wait:1500; expect:Banana; shot:{p}-search-fullscreen; tap:Banana; wait:1500;
         expect:Searched: Banana; reject:Cherry; tap:Search places; wait:1500; expect:Library; shot:{p}-search-docked; back; wait:800; back; wait:1500;
         reject:Library; expect:Searched: Banana''',
+    'swipe': '''expect:Swiped: none; expect:Message from Grace; shot:{p}-swipe; swipeon:Message from Ada={reveal},0,300; wait:1000;
+        expect:Swiped: Message from Ada archived; reject:Message from Ada; swipeon:Message from Grace={hide},0,300; wait:1000;
+        expect:Swiped: Message from Grace deleted; reject:Message from Grace; shot:{p}-swipe-dismissed''',
+    'refresh': '''expect:Refreshes: 0; swipeon:Update 2=0,700,600; wait:300; expect:Refreshes: 0 (refreshing); shot:{p}-refresh-refreshing;
+        wait:2500; expect:Refreshes: 1; reject:(refreshing); shot:{p}-refresh''',
+    'carousel': '''expect:Multi-browse item: 1; expect:Hero item: 1; shot:{p}-carousel; swipeon:Photo 1={hide},0,300; wait:1500;
+        reject:Multi-browse item: 1; shot:{p}-carousel-scrolled; reach:Uncontained; shot:{p}-carousel-uncontained''',
     'segmented': '''expect:Single selection: 0; tap:Week; expect:Single selection: 1; tap:Bike; expect:Multiple selection: 3;
         tap:Walk; expect:Multiple selection: 2; shot:{p}-segmented; reach:Disable segments; tap:Disable segments;
         expect:Enable segments; tap:Day; expect:Single selection: 1; shot:{p}-segmented-disabled''',
@@ -77,7 +84,8 @@ COMPONENTS = {
 }
 LAUNCHES = (('1.0', 'ltr', ''), ('2.0', 'rtl', 'ar'))
 # Labels the framework translates, per launch locale.
-STRINGS = {'': {'more': 'More options', 'dismiss': 'Dismiss', 'reveal': '250'}, 'ar': {'more': 'خيارات إضافية', 'dismiss': 'إغلاق', 'reveal': '-250'}}
+STRINGS = {'': {'more': 'More options', 'dismiss': 'Dismiss', 'reveal': '250', 'hide': '-250'},
+           'ar': {'more': 'خيارات إضافية', 'dismiss': 'إغلاق', 'reveal': '-250', 'hide': '250'}}
 THEMES = ('Light', 'Dark', 'Dynamic')
 
 
