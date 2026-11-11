@@ -688,10 +688,20 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
         this.hintLocales = hintLocales;
         requestOwnerFocus();
         imm().restartInput(this);
-        imm().showSoftInput(this, 0);
+        showSoftInputWhenFocused();
+    }
+
+    // The IME ignores a show for a window without focus (a field focused as its window opens):
+    // show it once the window has focus.
+    private boolean pendingShowSoftInput;
+
+    private void showSoftInputWhenFocused() {
+        if (hasWindowFocus()) imm().showSoftInput(this, 0);
+        else pendingShowSoftInput = true;
     }
 
     void stopInput() {
+        pendingShowSoftInput = false;
         if (!inputActive) return;
         inputActive = false;
         imm().hideSoftInputFromWindow(getWindowToken(), 0);
@@ -700,9 +710,9 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
 
     void restartInputFromNative() { if (inputActive) imm().restartInput(this); }
 
-    void showKeyboard() { if (inputActive) imm().showSoftInput(this, 0); }
+    void showKeyboard() { if (inputActive) showSoftInputWhenFocused(); }
 
-    void hideKeyboard() { imm().hideSoftInputFromWindow(getWindowToken(), 0); }
+    void hideKeyboard() { pendingShowSoftInput = false; imm().hideSoftInputFromWindow(getWindowToken(), 0); }
 
     /** The field changed without a restart (AndroidTextInputSession.collectImeNotifications). */
     void imeUpdate(int selStart, int selEnd, int compStart, int compEnd, boolean selectionChanged) {
@@ -1555,6 +1565,10 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
     public void onWindowFocusChanged(boolean hasWindowFocus) {
         super.onWindowFocusChanged(hasWindowFocus);
         KilnNative.windowFocusChanged(windowId, hasWindowFocus);
+        if (hasWindowFocus && pendingShowSoftInput) {
+            pendingShowSoftInput = false;
+            if (inputActive) imm().showSoftInput(this, 0);
+        }
     }
 
     private ContentObserver animationScaleObserver;   // the activity's view only

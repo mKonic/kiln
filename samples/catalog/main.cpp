@@ -418,15 +418,8 @@ namespace catalog {
         }
 
         void NavGraph() {
-            auto& stack = RememberState<std::vector<std::string>>([] {
-                // As maybeNavigate: an example opens over its component, over home.
-                std::vector<std::string> s{ "home" };
-                const std::string initial = InitialRoute();
-                const Parsed p = Parse(initial);
-                if (p.component > 0 && Find(p.component)) s.push_back("component/" + std::to_string(p.component));
-                if (p.example >= 0 && Find(p.component) && size_t(p.example) < Find(p.component)->examples.size()) s.push_back(initial);
-                return s;
-            }());
+            auto& stack = RememberState<std::vector<std::string>>({ "home" });
+            auto& initialLaunch = RememberState(true);
             auto& favorite = RememberState(InitialRoute());
             const Nav nav{ &stack };
             const auto onFavorite = [&favorite](const std::string& route) { favorite.Set(favorite.Peek() == route ? std::string() : route); };
@@ -441,6 +434,17 @@ namespace catalog {
                 else if (component) ComponentScreen(nav, *component, fav, onFavorite);
                 else Home(nav, fav, onFavorite);
             }, kiln::rt::Key(std::string_view(route)));
+            // maybeNavigate, on the first composition after home: an example opens over its
+            // component, over home.
+            if (initialLaunch.Peek()) {
+                initialLaunch.Set(false);
+                const std::string initial = InitialRoute();
+                const Parsed ip = Parse(initial);
+                std::vector<std::string> s{ "home" };
+                if (ip.component > 0 && Find(ip.component)) s.push_back("component/" + std::to_string(ip.component));
+                if (ip.example >= 0 && Find(ip.component) && size_t(ip.example) < Find(ip.component)->examples.size()) s.push_back(initial);
+                if (s.size() > 1) stack.Set(s);
+            }
         }
     }
 }

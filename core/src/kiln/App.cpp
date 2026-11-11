@@ -135,7 +135,8 @@ namespace kiln {
     }
 
     bool App::HostRequestFocus(int direction, const ui::Rect* previouslyFocused, bool hostHasFocus, Window* window) {
-        rt::Composition::RecomposeAll();
+        // As AndroidComposeView.requestFocus: the tree as composed (pending recompositions wait
+        // for the frame), laid out.
         LayoutAll();
         const auto d = ToFocusDirection(direction).value_or(ui::FocusDirection::Enter);
         auto request = [&](ui::FocusTargetNode& n) { return n.RequestFocus(d); };
