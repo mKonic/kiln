@@ -4,6 +4,7 @@
 #include "samples/AlertDialogSamples.h"
 #include "samples/AppBarSamples.h"
 #include "samples/BadgeSamples.h"
+#include "samples/BottomSheetSamples.h"
 #include "samples/ButtonGroupSamples.h"
 #include "samples/ButtonSamples.h"
 #include "samples/CardSamples.h"
@@ -23,6 +24,7 @@
 #include "samples/NavigationRailSamples.h"
 #include "samples/ProgressIndicatorSamples.h"
 #include "samples/RadioButtonSamples.h"
+#include "samples/ScaffoldSamples.h"
 #include "samples/SegmentedButtonSamples.h"
 #include "samples/Shared.h"
 #include "samples/SliderSamples.h"
@@ -61,9 +63,9 @@ namespace catalog {
                 { "ExitAlwaysBottomAppBarFixedVibrant", "Bottom app bar examples", true, samples::ExitAlwaysBottomAppBarFixedVibrant },
             } },
             { 4, "Bottom Sheet", "Bottom sheets are surfaces containing supplementary content, anchored to the bottom of the screen.", true, 0, {
-                { "ModalBottomSheetSample", "Bottom Sheet examples", false, nullptr },
-                { "SimpleBottomSheetScaffoldSample", "Bottom Sheet examples", false, nullptr },
-                { "BottomSheetScaffoldNestedScrollSample", "Bottom Sheet examples", false, nullptr },
+                { "ModalBottomSheetSample", "Bottom Sheet examples", false, samples::ModalBottomSheetSample },
+                { "SimpleBottomSheetScaffoldSample", "Bottom Sheet examples", false, samples::SimpleBottomSheetScaffoldSample },
+                { "BottomSheetScaffoldNestedScrollSample", "Bottom Sheet examples", false, samples::BottomSheetScaffoldNestedScrollSample },
             } },
             { 5, "Buttons", "Buttons help people initiate actions, from sending an email, to sharing a document, to liking a post.", true, 0, {
                 { "ButtonSample", "Button examples", false, samples::ButtonSample },
@@ -302,11 +304,11 @@ namespace catalog {
                 { "RangeSliderWithCustomComponents", "Sliders examples", false, samples::RangeSliderWithCustomComponents },
             } },
             { 33, "Snackbars", "Snackbars provide brief messages about app processes at the bottom of the screen.", true, 0, {
-                { "ScaffoldWithSimpleSnackbar", "Snackbars examples", false, nullptr },
-                { "ScaffoldWithIndefiniteSnackbar", "Snackbars examples", false, nullptr },
-                { "ScaffoldWithCustomSnackbar", "Snackbars examples", false, nullptr },
-                { "ScaffoldWithCoroutinesSnackbar", "Snackbars examples", false, nullptr },
-                { "ScaffoldWithMultilineSnackbar", "Snackbars examples", false, nullptr },
+                { "ScaffoldWithSimpleSnackbar", "Snackbars examples", false, samples::ScaffoldWithSimpleSnackbar },
+                { "ScaffoldWithIndefiniteSnackbar", "Snackbars examples", false, samples::ScaffoldWithIndefiniteSnackbar },
+                { "ScaffoldWithCustomSnackbar", "Snackbars examples", false, samples::ScaffoldWithCustomSnackbar },
+                { "ScaffoldWithCoroutinesSnackbar", "Snackbars examples", false, samples::ScaffoldWithCoroutinesSnackbar },
+                { "ScaffoldWithMultilineSnackbar", "Snackbars examples", false, samples::ScaffoldWithMultilineSnackbar },
             } },
             { 34, "Split Button", "Split buttons let user perform additional actions besides the main action", true, 0, {
                 { "FilledSplitButtonSample", "Split Button examples", true, samples::FilledSplitButtonSample },

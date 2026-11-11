@@ -2,6 +2,7 @@
 
 #include "kiln/runtime/Composition.h"
 #include "kiln/runtime/SnapshotFlow.h"
+#include "kiln/runtime/Channel.h"
 
 #include <map>
 #include <string>
@@ -282,4 +283,24 @@ TEST(SnapshotFlowEmitsDistinctValuesAfterChangesApply) {
     Observation::ApplyChanges();
     d.RunPending();
     CHECK(seen.size() == 2u);
+}
+
+TEST(ConflatedChannelKeepsOnlyTheLatestValue) {   // Channel(CONFLATED)
+    Dispatcher& d = Dispatcher::Main();
+    auto channel = Channel<int>::Conflated();
+    CHECK(channel->TrySend(1));
+    CHECK(channel->TrySend(2));   // replaces 1
+    std::vector<int> got;
+    Job job = Launch(d, [](Channel<int>* c, std::vector<int>* out) -> Task<> {
+        while (auto v = co_await c->Next()) out->push_back(*v);
+    }(channel.get(), &got));
+    d.RunPending();
+    CHECK(got == std::vector<int>{ 2 });
+    CHECK(channel->TrySend(3));
+    d.RunPending();
+    CHECK(got == (std::vector<int>{ 2, 3 }));
+    Channel<int> bounded(1);
+    CHECK(bounded.TrySend(1));
+    CHECK(!bounded.TrySend(2));   // the default fails when full
+    job.Cancel();
 }

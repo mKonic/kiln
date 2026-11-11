@@ -2,10 +2,12 @@
 
 // A buffered single-receiver channel for coroutines (kotlinx Channel(BUFFERED) as used by
 // PredictiveBackHandler): TrySend drops when the buffer is full, Close ends the stream after the
-// buffered values, and a cancelled receiver simply stops waiting.
+// buffered values, and a cancelled receiver simply stops waiting. Overflow::DropOldest makes
+// room instead (Channel(CONFLATED) is capacity 1 with DropOldest).
 
 #include "kiln/runtime/Task.h"
 
+#include <cstdint>
 #include <deque>
 #include <memory>
 #include <optional>
@@ -15,12 +17,21 @@ namespace kiln::rt {
     template<typename T>
     class Channel {
     public:
-        explicit Channel(std::size_t capacity = 64) : m_Capacity(capacity) {}
+        // What TrySend does when the buffer is full: fail (BufferOverflow.SUSPEND as trySend sees
+        // it), or drop the oldest value (DROP_OLDEST).
+        enum class Overflow : std::uint8_t { Fail, DropOldest };
+        explicit Channel(std::size_t capacity = 64, Overflow overflow = Overflow::Fail) : m_Capacity(capacity), m_Overflow(overflow) {}
+        // Channel(CONFLATED): only the latest unreceived value is kept.
+        static std::unique_ptr<Channel> Conflated() { return std::make_unique<Channel>(1, Overflow::DropOldest); }
         Channel(const Channel&) = delete;
         Channel& operator=(const Channel&) = delete;
 
         bool TrySend(T value) {
-            if (m_Closed || m_Buffer.size() >= m_Capacity) return false;
+            if (m_Closed) return false;
+            if (m_Buffer.size() >= m_Capacity) {
+                if (m_Overflow != Overflow::DropOldest || m_Buffer.empty()) return false;
+                m_Buffer.pop_front();
+            }
             m_Buffer.push_back(std::move(value));
             ResumeReceiver();
             return true;
@@ -65,6 +76,7 @@ namespace kiln::rt {
         }
 
         std::size_t m_Capacity;
+        Overflow m_Overflow;
         std::deque<T> m_Buffer;
         bool m_Closed = false;
         std::coroutine_handle<> m_Waiter;
