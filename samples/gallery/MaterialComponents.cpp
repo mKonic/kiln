@@ -33,6 +33,7 @@
 #include <kiln/material3/AlertDialog.h>
 #include <kiln/material3/BottomSheetScaffold.h>
 #include <kiln/material3/ModalBottomSheet.h>
+#include <kiln/material3/NavigationDrawer.h>
 #include <kiln/material3/ShortNavigationBar.h>
 #include <kiln/material3/Tab.h>
 #include <kiln/material3/TabRow.h>
@@ -709,6 +710,45 @@ namespace kiln::gallery {
             });
         }
 
+        rt::Task<> CloseDrawerThen(std::shared_ptr<m3::DrawerState> state) { co_await state->Close(); }
+        rt::Task<> OpenDrawer(std::shared_ptr<m3::DrawerState> state) { co_await state->Open(); }
+
+        void Drawers() {
+            auto modal = m3::RememberDrawerState(m3::DrawerValue::Closed);
+            auto dismissible = m3::RememberDrawerState(m3::DrawerValue::Closed);
+            auto* selected = &RememberState(std::string("Inbox"));
+            auto jobs = rt::Composition::Current()->Remember<std::shared_ptr<std::vector<rt::Job>>>([] { return std::make_shared<std::vector<rt::Job>>(); });
+            // Reported as text so a test can read it.
+            m3::Text(std::string("Drawer: ") + (modal->IsOpen() ? "open" : "closed") + ", selected: " + selected->Get());
+            const auto items = [=](std::shared_ptr<m3::DrawerState> state) {
+                return [=] {
+                    m3::Text("Mail", Padding({}, 28_dp, 16_dp));
+                    for (const char* item : { "Inbox", "Outbox", "Favorites" }) {
+                        m3::NavigationDrawerItemOptions o;
+                        o.icon = [] { m3::Icon(m3::internal::Icons::Filled::Edit(), std::nullopt); };
+                        if (std::string(item) == "Inbox") o.badge = [] { m3::Text("24"); };
+                        m3::NavigationDrawerItem([item] { m3::Text(item); }, selected->Get() == item, [=] {
+                            selected->Set(item);
+                            jobs->push_back(rt::Launch(rt::Dispatcher::Main(), CloseDrawerThen(state)));
+                        }, Padding({}, m3::NavigationDrawerItemDefaults::ItemPadding), o);
+                    }
+                };
+            };
+            Box(Height(FillMax({}, Axis::Horizontal), 420_dp), Alignment::TopStart(), false, [=] {
+                m3::ModalNavigationDrawer([=] { m3::ModalDrawerSheet({}, {}, items(modal), modal); }, {}, { .drawerState = modal }, [=] {
+                    Box(FillMax({}, Axis::Both), Alignment::Center(), false, [=] {
+                        m3::TextButton([=] { jobs->push_back(rt::Launch(rt::Dispatcher::Main(), OpenDrawer(modal))); }, {}, {}, [] { m3::Text("Open drawer"); });
+                    });
+                });
+            });
+            m3::Text(std::string("Dismissible: ") + (dismissible->IsOpen() ? "open" : "closed"));
+            Box(Height(FillMax({}, Axis::Horizontal), 360_dp), Alignment::TopStart(), false, [=] {
+                m3::DismissibleNavigationDrawer([=] { m3::DismissibleDrawerSheet({}, {}, items(dismissible), dismissible); }, {}, { .drawerState = dismissible }, [] {
+                    Box(FillMax({}, Axis::Both), Alignment::Center(), false, [] { m3::Text("Swipe to reveal"); });
+                });
+            });
+        }
+
         void Tabs() {
             auto* primary = &RememberState(0);
             auto* secondary = &RememberState(0);
@@ -1085,7 +1125,7 @@ namespace kiln::gallery {
         struct Section { const char* key; const char* title; void (*content)(); };
         const std::vector<Section>& Sections() {
             static const std::vector<Section> sections{
-                { "navigation", "Navigation bars and rails", Navigation }, { "tabs", "Tabs", Tabs }, { "appbars", "App bars", AppBars }, { "toolbars", "Floating toolbars", FloatingToolbars }, { "scrollbars", "Scrollbars", Scrollbars }, { "snackbars", "Snackbars", Snackbars }, { "textfields", "Text fields", TextFields }, { "dialogs", "Dialogs", Dialogs }, { "sheets", "Bottom sheets", Sheets }, { "segmented", "Segmented buttons", SegmentedButtons }, { "split", "Split buttons", SplitButtons },
+                { "navigation", "Navigation bars and rails", Navigation }, { "tabs", "Tabs", Tabs }, { "appbars", "App bars", AppBars }, { "toolbars", "Floating toolbars", FloatingToolbars }, { "scrollbars", "Scrollbars", Scrollbars }, { "snackbars", "Snackbars", Snackbars }, { "textfields", "Text fields", TextFields }, { "dialogs", "Dialogs", Dialogs }, { "sheets", "Bottom sheets", Sheets }, { "drawers", "Navigation drawers", Drawers }, { "segmented", "Segmented buttons", SegmentedButtons }, { "split", "Split buttons", SplitButtons },
                 { "tooltips", "Tooltips", Tooltips }, { "menus", "Menus", Menus }, { "groups", "Button groups", ButtonGroups },
                 { "sliders", "Sliders", Sliders }, { "progress", "Progress indicators", ProgressIndicators }, { "lists", "Lists", Lists },
                 { "chips", "Chips", Chips }, { "cards", "Cards", Cards }, { "selection", "", SelectionControls },
