@@ -23,6 +23,7 @@
 #include "samples/NavigationBarSamples.h"
 #include "samples/NavigationRailSamples.h"
 #include "samples/ProgressIndicatorSamples.h"
+#include "samples/PullToRefreshSamples.h"
 #include "samples/RadioButtonSamples.h"
 #include "samples/ScaffoldSamples.h"
 #include "samples/SearchBarSamples.h"
@@ -266,12 +267,12 @@ namespace catalog {
                 { "IndeterminateCircularWavyProgressIndicatorSample", "Progress indicators examples", true, samples::IndeterminateCircularWavyProgressIndicatorSample },
             } },
             { 26, "Pull-to-Refresh Indicator", "Pull to refresh is a swipe gesture available at the beginning of lists, grid lists, and card collections where the most recent content appears ", true, 0, {
-                { "PullToRefreshSample", "Pull-to-refresh examples", false, nullptr },
-                { "PullToRefreshWithLoadingIndicatorSample", "Pull-to-refresh examples", true, nullptr },
-                { "PullToRefreshScalingSample", "Pull-to-refresh examples", false, nullptr },
-                { "PullToRefreshSampleCustomState", "Pull-to-refresh examples", false, nullptr },
-                { "PullToRefreshViewModelSample", "Pull-to-refresh examples", false, nullptr },
-                { "PullToRefreshCustomIndicatorWithDefaultTransform", "Pull-to-refresh examples", false, nullptr },
+                { "PullToRefreshSample", "Pull-to-refresh examples", false, samples::PullToRefreshSample },
+                { "PullToRefreshWithLoadingIndicatorSample", "Pull-to-refresh examples", true, samples::PullToRefreshWithLoadingIndicatorSample },
+                { "PullToRefreshScalingSample", "Pull-to-refresh examples", false, samples::PullToRefreshScalingSample },
+                { "PullToRefreshSampleCustomState", "Pull-to-refresh examples", false, samples::PullToRefreshSampleCustomState },
+                { "PullToRefreshViewModelSample", "Pull-to-refresh examples", false, samples::PullToRefreshViewModelSample },
+                { "PullToRefreshCustomIndicatorWithDefaultTransform", "Pull-to-refresh examples", false, samples::PullToRefreshCustomIndicatorWithDefaultTransform },
             } },
             { 27, "Radio buttons", "Radio buttons allow the user to select one option from a set.", true, 0, {
                 { "RadioButtonSample", "Radio buttons examples", false, samples::RadioButtonSample },
