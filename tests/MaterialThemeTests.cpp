@@ -37,6 +37,7 @@
 #include "kiln/material3/NavigationDrawer.h"
 #include "kiln/material3/SearchBar.h"
 #include "kiln/material3/SwipeToDismissBox.h"
+#include "kiln/material3/PullToRefresh.h"
 #include "kiln/ui/Back.h"
 #include "kiln/material3/internal/GetString.h"
 #include "kiln/material3/Divider.h"
@@ -11375,4 +11376,276 @@ TEST(SwipeToDismissBoxReportsAnchorsInALazyList) {
     CHECK(int(lazy->LayoutInfo().visibleItemsInfo.size()) == visible + 1);
     const int newIndex = int(lazy->LayoutInfo().visibleItemsInfo.size()) - 1;
     CHECK(composed.count(newIndex) && composed[newIndex]->Anchored().Anchors().Size() >= 1);
+}
+
+// Ported from Compose's PullToRefreshStateImplTest, PullToRefreshBoxTest and
+// PullToRefreshIndicatorTest (412 x 800 dp, density 2). Not ported: the LoadingIndicator pixel
+// check (kiln has no pixel tests).
+namespace {
+    // A state without animations that records its snaps (the tests' anonymous states).
+    struct RecordingPullState final : PullToRefreshState {
+        rt::State<float> fraction{ 0 };
+        float DistanceFraction() const override { return fraction.Get(); }
+        bool IsAnimating() const override { return false; }
+        rt::Task<> AnimateToThreshold() override { co_return; }
+        rt::Task<> AnimateToHidden() override { co_return; }
+        rt::Task<> SnapTo(float target) override {
+            fraction.Set(target);
+            co_return;
+        }
+    };
+    // Its animations run side by side: animateToThreshold does not stop animateToHidden.
+    struct NonInterruptingPullState final : PullToRefreshState {
+        rt::State<float> fraction{ 0 };
+        rt::State<bool> animating{ false };
+        float DistanceFraction() const override { return fraction.Get(); }
+        bool IsAnimating() const override { return animating.Get(); }
+        rt::Task<> AnimateToThreshold() override { co_await AnimateTo(1, 100); }
+        rt::Task<> AnimateToHidden() override { co_await AnimateTo(0, 300); }
+        rt::Task<> SnapTo(float target) override {
+            fraction.Set(target);
+            co_return;
+        }
+        rt::Task<> AnimateTo(float target, int ms) {
+            animating.Set(true);
+            anim::Animatable a(fraction.Peek());
+            co_await a.AnimateTo(anim::Vec{ target, 0, 0, 0 }, anim::Tween(ms), std::nullopt, [this](const anim::Vec& v) { fraction.Set(v[0]); });
+            animating.Set(false);
+        }
+    };
+    void PullList(const std::string& tag = "PullRefresh") {
+        LazyColumn(Tag({}, tag), RememberLazyListState(), [](LazyListScope& s) { s.Items(100, [](int i) { Text("item " + std::to_string(i)); }); });
+    }
+    // swipeDown(startY = top, endY) on the box at the window's top (px), inside the list (as
+    // wide as its widest item).
+    void PullDown(Harness& h, float endY) {
+        std::int64_t t = 9000;
+        Swipe(h, t, 20, 1, 20, 1 + endY, 10, 20);
+        h.AdvanceTimeBy(2000);
+    }
+    float TouchSlop(Harness& h) { return h.owner.Config().touchSlop; }
+}
+
+TEST(PullToRefreshTriggersOnlyPastTheThreshold) {
+    PhoneHarness h;
+    int refreshCount = 0;
+    auto state = MakePullToRefreshState();
+    rt::State<bool> refreshing{ false };
+    Themed(h, [&] {
+        PullToRefreshBoxOptions o;
+        o.state = state;
+        PullToRefreshBox(refreshing.Get(), [&] {
+            refreshing.Set(true);
+            ++refreshCount;
+            refreshing.Set(false);
+        }, Tag({}, "PullRefresh"), o, [] { PullList("list"); });
+    });
+    h.AdvanceTimeBy(300);
+    const float threshold = 80 * 2;
+    // The pull counts half: twice the threshold reaches it.
+    PullDown(h, 2 * threshold + TouchSlop(h) - 1);
+    PullDown(h, 2 * threshold + TouchSlop(h));
+    CHECK(refreshCount == 0 && state->DistanceFraction() == 0);
+    PullDown(h, 2 * threshold + TouchSlop(h) + 1);
+    CHECK(refreshCount == 1 && state->DistanceFraction() == 0);
+}
+
+TEST(PullToRefreshProgressScalesWithThePull) {
+    struct Case { float pullThresholds; float expected, tolerance; int refreshes; };
+    for (const Case c : { Case{ 1, 0.5f, 0.001f, 0 }, Case{ 2, 1.0f, 0.001f, 0 }, Case{ 3, 1.5f, 0.1f, 1 }, Case{ 10, 2.0f, 0.001f, 1 } }) {
+        PhoneHarness h;
+        int refreshCount = 0;
+        auto state = std::make_shared<RecordingPullState>();
+        Themed(h, [&] {
+            PullToRefreshBoxOptions o;
+            o.state = state;
+            PullToRefreshBox(false, [&] { ++refreshCount; }, Tag({}, "PullRefresh"), o, [] { PullList("list"); });
+        });
+        h.AdvanceTimeBy(300);
+        PullDown(h, c.pullThresholds * 80 * 2 + TouchSlop(h));
+        CHECK(std::abs(state->DistanceFraction() - c.expected) <= c.tolerance);
+        CHECK(refreshCount == c.refreshes);
+    }
+}
+
+TEST(PullToRefreshStateRestores) {
+    rt::SaveableStateRegistry::Values saved;
+    for (int pass = 0; pass < 2; ++pass) {
+        rt::SaveableStateRegistry registry(saved);
+        std::shared_ptr<PullToRefreshState> state;
+        Harness h;
+        h.Run([&] { rt::Composition::Current()->Provide(rt::LocalSaveableStateRegistry, &registry, [&] { state = RememberPullToRefreshState(); }); });
+        if (pass == 0) {
+            rt::Job job = rt::Launch(rt::Dispatcher::Main(), state->SnapTo(0.5f));
+            saved = rt::SaveableStateRegistry::Deserialize(rt::SaveableStateRegistry::Serialize(registry.PerformSave()));
+        } else {
+            CHECK(state->DistanceFraction() == 0.5f);
+        }
+    }
+}
+
+TEST(PullToRefreshBoxStartsAtItsRefreshingFraction) {
+    for (bool refreshing : { true, false }) {
+        PhoneHarness h;
+        auto state = MakePullToRefreshState();
+        Themed(h, [&] {
+            PullToRefreshBoxOptions o;
+            o.state = state;
+            PullToRefreshBox(refreshing, [] {}, Tag({}, "PullToRefresh"), o, [] {});
+        });
+        h.AdvanceTimeBy(300);
+        CHECK(state->DistanceFraction() == (refreshing ? 1.0f : 0.0f));
+        // Hidden: nothing reports progress; refreshing: the spinner does.
+        const auto tree = h.owner.BuildSemanticsTree(false);
+        std::function<bool(const ui::SemanticsNode&)> hasProgress = [&](const ui::SemanticsNode& n) {
+            if (n.config.progressBarRangeInfo) return true;
+            for (const auto& c : n.children) if (hasProgress(c)) return true;
+            return false;
+        };
+        CHECK(hasProgress(tree) == refreshing);
+    }
+}
+
+TEST(PullToRefreshLoadingIndicatorShowsOnlyWhilePulledOrRefreshing) {
+    for (bool refreshing : { false, true }) {
+        PhoneHarness h;
+        auto state = MakePullToRefreshState();
+        Themed(h, [&] {
+            PullToRefreshBoxOptions o;
+            o.state = state;
+            o.indicator = [state, refreshing] { PullToRefreshDefaults::LoadingIndicator(state, refreshing); };
+            PullToRefreshBox(refreshing, [] {}, {}, o, [] {});
+        });
+        h.AdvanceTimeBy(300);
+        CHECK(state->DistanceFraction() == (refreshing ? 1.0f : 0.0f));
+        const auto tree = h.owner.BuildSemanticsTree(false);
+        std::function<bool(const ui::SemanticsNode&)> hasProgress = [&](const ui::SemanticsNode& n) {
+            if (n.config.progressBarRangeInfo) return true;
+            for (const auto& c : n.children) if (hasProgress(c)) return true;
+            return false;
+        };
+        CHECK(hasProgress(tree) == refreshing);
+    }
+}
+
+TEST(PullToRefreshBoxPulls) {
+    const auto pullToThreshold = [](Harness& h) { PullDown(h, 80 * 2 * 2 + 18 * 2); };   // swipeDownToThreshold: 18 dp of slop
+    {
+        // Already refreshing: a pull does nothing.
+        PhoneHarness h;
+        auto state = MakePullToRefreshState();
+        Themed(h, [&] { PullToRefreshBox(true, [] {}, {}, { .state = state }, [] { PullList("lazy"); }); });
+        h.AdvanceTimeBy(300);
+        pullToThreshold(h);
+        CHECK(state->DistanceFraction() == 1);
+    }
+    {
+        // Idle: the pull refreshes and the indicator stays at the threshold.
+        PhoneHarness h;
+        auto state = MakePullToRefreshState();
+        rt::State<bool> refreshing{ false };
+        Themed(h, [&] { PullToRefreshBox(refreshing.Get(), [&] { refreshing.Set(true); }, {}, { .state = state }, [] { PullList("lazy"); }); });
+        h.AdvanceTimeBy(300);
+        CHECK(state->DistanceFraction() == 0);
+        pullToThreshold(h);
+        CHECK(state->DistanceFraction() == 1);
+    }
+    {
+        // onRefresh leaves isRefreshing false: the indicator goes back.
+        PhoneHarness h;
+        auto state = MakePullToRefreshState();
+        int count = 0;
+        Themed(h, [&] { PullToRefreshBox(false, [&] { ++count; }, {}, { .state = state }, [] { PullList("lazy"); }); });
+        h.AdvanceTimeBy(300);
+        pullToThreshold(h);
+        CHECK(count == 1 && state->DistanceFraction() == 0);
+    }
+    {
+        // A state whose animations don't interrupt each other still ends at the threshold.
+        PhoneHarness h;
+        auto state = std::make_shared<NonInterruptingPullState>();
+        rt::State<bool> refreshing{ false };
+        Themed(h, [&] { PullToRefreshBox(refreshing.Get(), [&] { refreshing.Set(true); }, {}, { .state = state }, [] { PullList("lazy"); }); });
+        h.AdvanceTimeBy(300);
+        pullToThreshold(h);
+        CHECK(refreshing.Peek() && state->DistanceFraction() == 1);
+    }
+}
+
+TEST(PullToRefreshBoxTakesTheFlingOfItsPull) {
+    PhoneHarness h;
+    auto state = MakePullToRefreshState();
+    rt::State<bool> refreshing{ false };
+    float remainingVelocity = NAN;
+    Themed(h, [&] {
+        PullToRefreshBox(refreshing.Get(), [&] { refreshing.Set(true); }, {}, { .state = state }, [&] {
+            auto& scroll = RememberScrollState();
+            auto fling = [&](std::function<float(float)>, float velocity) -> rt::Task<float> {
+                remainingVelocity = velocity;
+                co_return velocity;
+            };
+            Column(VerticalScroll(FillMax({}, Axis::Horizontal), scroll, true, false, std::nullopt, fling), [] {
+                for (int i = 0; i < 50; ++i) Text("Lorem ipsum");
+            });
+        });
+    });
+    h.AdvanceTimeBy(300);
+    // A pull short of the threshold, in 100 ms.
+    std::int64_t t = 9000;
+    Swipe(h, t, 412, 1, 412, 1 + 80 * 2 / 2, 10, 10);
+    h.AdvanceTimeBy(2000);
+    CHECK(state->DistanceFraction() == 0);
+    CHECK(std::isnan(remainingVelocity) || remainingVelocity == 0);
+}
+
+TEST(PullToRefreshIndicators) {
+    for (bool refreshing : { true, false }) {
+        PhoneHarness h;
+        Themed(h, [&] {
+            Box(FillMax({}, Axis::Both), Alignment::TopStart(), false, [&] {
+                PullToRefreshDefaults::Indicator(RememberPullToRefreshState(), refreshing, Tag({}, "indicator"));
+            });
+        });
+        h.AdvanceTimeBy(300);
+        const auto b = UnclippedBoundsDp(h, "indicator");
+        CHECK(b && b->Width() > 0);
+    }
+    {
+        // The indicator follows the fraction: maxDistance at the threshold.
+        PhoneHarness h;
+        auto state = MakePullToRefreshState();
+        std::vector<rt::Job> jobs;
+        Themed(h, [&] {
+            Box(FillMax({}, Axis::Both), Alignment::TopStart(), false, [&] {
+                PullToRefreshDefaults::IndicatorOptions o;
+                o.maxDistance = 200_dp;
+                PullToRefreshDefaults::Indicator(state, true, Tag(SizeMod({}, 30_dp, 30_dp), "indicator"), o);
+            });
+        });
+        jobs.push_back(rt::Launch(rt::Dispatcher::Main(), state->AnimateToThreshold()));
+        h.AdvanceTimeBy(2000);
+        const auto childTop = [&] {
+            const auto* n = FindTagged(h, "indicator");
+            return n && !n->Children().empty() ? n->Children()[0]->BoundsInRoot().top / 2 : NAN;
+        };
+        CHECK(Near(childTop(), 200 - (30 + 16) / 2.0f));
+        jobs.push_back(rt::Launch(rt::Dispatcher::Main(), state->SnapTo(0.5f)));
+        h.AdvanceTimeBy(300);
+        CHECK(Near(childTop(), 100 - (30 + 16) / 2.0f));
+    }
+    {
+        // b/271777421: the indicator leaves touches to what is below it.
+        PhoneHarness h;
+        int downs = 0;
+        Themed(h, [&] {
+            Box({}, Alignment::TopStart(), false, [&] {
+                Box(Clickable(FillMax({}, Axis::Both), [&] { ++downs; }));
+                PullToRefreshDefaults::Indicator(RememberPullToRefreshState(), true, Tag({}, "indicator"));
+            });
+        });
+        h.AdvanceTimeBy(300);
+        CHECK(ClickTag(h, "indicator"));
+        h.AdvanceTimeBy(300);
+        CHECK(downs == 1);
+    }
 }
