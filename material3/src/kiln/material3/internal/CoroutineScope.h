@@ -20,7 +20,20 @@ namespace kiln::material3::internal {
     };
 
     inline std::shared_ptr<CoroutineScope> RememberCoroutineScope(rt::Key key = {}) {
-        return rt::Composition::Current()->Remember<std::shared_ptr<CoroutineScope>>([] { return std::make_shared<CoroutineScope>(); }, {}, key);
+        auto& c = *rt::Composition::Current();
+        auto scope = c.Remember<std::shared_ptr<CoroutineScope>>([] { return std::make_shared<CoroutineScope>(); }, {}, key);
+        // Cancel on leaving the composition, not only on destruction: a job may hold an owner of
+        // the scope.
+        std::weak_ptr<CoroutineScope> weak = scope;
+        c.DisposableEffect({}, [weak] {
+            return std::function<void()>([weak] {
+                if (auto s = weak.lock()) {
+                    auto jobs = std::move(s->jobs);
+                    s->jobs.clear();
+                }
+            });
+        }, key);
+        return scope;
     }
 
 }
