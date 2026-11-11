@@ -61,6 +61,7 @@
 #include "kiln/material3/AppBarRow.h"
 #include "kiln/material3/NavigationTransitions.h"
 #include "kiln/material3/adaptive/NavigationSuiteScaffold.h"
+#include "kiln/material3/adaptive/PaneScaffoldValue.h"
 #include "kiln/material3/adaptive/WindowAdaptiveInfo.h"
 #include "kiln/material3/ButtonGroup.h"
 #include "kiln/runtime/Saveable.h"
@@ -14377,4 +14378,76 @@ TEST(NavigationTransitionsSlideFadeAndDampTheGesturesVerticalFollow) {   // Navi
     h.Run([&] { MaterialTheme({}, [&] {
         CHECK_EQ(H::scrimColor(), MaterialTheme::colorScheme().scrim.WithAlpha(0.2f));   // a light scheme
     }); });
+}
+
+TEST(ThreePaneScaffoldValueExpandsByPriorityReflowsAndLevitates) {   // ThreePaneScaffoldValueTest
+    using namespace adaptive;
+    using R = ThreePaneScaffoldRole;
+    using V = PaneAdaptedValue;
+    const ThreePaneScaffoldAdaptStrategies hide{};
+    auto check = [](const ThreePaneScaffoldValue& v, V p, V s, V t) { CHECK(v.primary == p); CHECK(v.secondary == s); CHECK(v.tertiary == t); };
+    check(CalculateThreePaneScaffoldValue(1, hide, std::nullopt), V::Expanded(), V::Hidden(), V::Hidden());
+    check(CalculateThreePaneScaffoldValue(1, hide, R::Secondary), V::Hidden(), V::Expanded(), V::Hidden());
+    check(CalculateThreePaneScaffoldValue(2, hide, std::nullopt), V::Expanded(), V::Expanded(), V::Hidden());
+    check(CalculateThreePaneScaffoldValue(2, hide, R::Tertiary), V::Expanded(), V::Hidden(), V::Expanded());
+    // A long history: the latest destinations win.
+    check(CalculateThreePaneScaffoldValue(2, hide, std::vector{ R::Primary, R::Tertiary, R::Secondary, R::Primary, R::Tertiary }), V::Expanded(), V::Hidden(),
+          V::Expanded());
+    // Reflow with two stacked partitions.
+    check(CalculateThreePaneScaffoldValue(1, { AdaptStrategy::Hide(), AdaptStrategy::Reflow(R::Tertiary), AdaptStrategy::Hide() }, R::Secondary, 2),
+          V::Hidden(), V::Reflowed(R::Tertiary), V::Expanded());
+    check(CalculateThreePaneScaffoldValue(1, { AdaptStrategy::Hide(), AdaptStrategy::Hide(), AdaptStrategy::Reflow(R::Secondary) }, R::Secondary, 2),
+          V::Hidden(), V::Expanded(), V::Reflowed(R::Secondary));
+    check(CalculateThreePaneScaffoldValue(1, { AdaptStrategy::Hide(), AdaptStrategy::Hide(), AdaptStrategy::Reflow(R::Secondary) }, R::Primary, 2),
+          V::Expanded(), V::Hidden(), V::Hidden());
+    check(CalculateThreePaneScaffoldValue(1, { AdaptStrategy::Hide(), AdaptStrategy::Hide(), AdaptStrategy::Reflow(R::Secondary) },
+                                          std::vector{ R::Secondary, R::Primary, R::Tertiary }, 2),
+          V::Hidden(), V::Expanded(), V::Reflowed(R::Secondary));
+    // Levitation only for the current destination; a levitating anchor takes no reflow.
+    const auto levitateTop = AdaptStrategy::Levitate(ui::Alignment::TopCenter());
+    check(CalculateThreePaneScaffoldValue(1, { levitateTop, AdaptStrategy::Hide(), AdaptStrategy::Hide() }, R::Primary), V::Levitated(ui::Alignment::TopCenter()),
+          V::Expanded(), V::Hidden());
+    check(CalculateThreePaneScaffoldValue(1, { levitateTop, AdaptStrategy::Hide(), AdaptStrategy::Hide() }, R::Secondary), V::Hidden(), V::Expanded(), V::Hidden());
+    check(CalculateThreePaneScaffoldValue(1, { levitateTop, AdaptStrategy::Hide(), AdaptStrategy::Reflow(R::Primary) }, R::Secondary), V::Hidden(),
+          V::Expanded(), V::Hidden());
+    const auto two = CalculateThreePaneScaffoldValue(2, hide, std::nullopt);
+    CHECK_EQ(two.ExpandedCount(), 2);
+    CHECK((two.ExpansionStateKey().expandedPanes == std::pair{ R::Primary, R::Secondary }));
+    CHECK(!two.IsInteractable(R::Tertiary));
+}
+
+TEST(PaneScaffoldDirectiveFollowsTheSizeClassesAndPosture) {   // PaneScaffoldDirectiveTest
+    using namespace adaptive;
+    const auto directive = [](int w, int h, bool tabletop = false, std::vector<HingeInfo> hinges = {}) {
+        WindowAdaptiveInfo info;
+        info.windowSizeClass = { w, h };
+        info.windowPosture.isTabletop = tabletop;
+        info.windowPosture.hingeList = std::move(hinges);
+        return CalculatePaneScaffoldDirective(info);
+    };
+    const auto compact = directive(0, 0);
+    CHECK_EQ(compact.maxHorizontalPartitions, 1);
+    CHECK_EQ(compact.maxVerticalPartitions, 1);
+    CHECK(compact.horizontalPartitionSpacerSize == ui::Dp(0));
+    CHECK_EQ(directive(0, WindowSizeClass::HEIGHT_DP_EXPANDED_LOWER_BOUND).maxVerticalPartitions, 2);
+    const auto expanded = directive(WindowSizeClass::WIDTH_DP_EXPANDED_LOWER_BOUND, 480);
+    CHECK_EQ(expanded.maxHorizontalPartitions, 2);
+    CHECK(expanded.horizontalPartitionSpacerSize == ui::Dp(24));
+    const auto large = directive(1200, 480);
+    CHECK_EQ(large.maxHorizontalPartitions, 3);
+    CHECK(large.defaultPanePreferredWidth == ui::Dp(412));
+    CHECK_EQ(directive(WindowSizeClass::WIDTH_DP_EXPANDED_LOWER_BOUND, 480, true).maxVerticalPartitions, 2);
+    HingeInfo separating;
+    separating.bounds = { 10, 0, 20, 100 };
+    separating.isVertical = separating.isSeparating = true;
+    HingeInfo occluding = separating;
+    occluding.bounds = { 30, 0, 40, 100 };
+    occluding.isSeparating = false;
+    occluding.isOccluding = true;
+    CHECK((directive(840, 480, false, { separating, occluding }).excludedBounds == std::vector<ui::Rect>{ separating.bounds }));
+    WindowAdaptiveInfo medium;
+    medium.windowSizeClass = { WindowSizeClass::WIDTH_DP_MEDIUM_LOWER_BOUND, WindowSizeClass::HEIGHT_DP_EXPANDED_LOWER_BOUND };
+    const auto twoOnMedium = CalculatePaneScaffoldDirectiveWithTwoPanesOnMediumWidth(medium);
+    CHECK_EQ(twoOnMedium.maxHorizontalPartitions, 2);
+    CHECK_EQ(twoOnMedium.maxVerticalPartitions, 1);
 }
