@@ -23,8 +23,11 @@ namespace catalog::Icons {
     namespace Filled { const ImageVectorPtr& Home(); }
     namespace Filled { const ImageVectorPtr& Lock(); }
     namespace Filled { const ImageVectorPtr& MoreVert(); }
+    namespace Filled { const ImageVectorPtr& MusicNote(); }
+    namespace Filled { const ImageVectorPtr& MusicOff(); }
     namespace Filled { const ImageVectorPtr& Person(); }
     namespace Filled { const ImageVectorPtr& PushPin(); }
+    namespace Filled { const ImageVectorPtr& Refresh(); }
     namespace Filled { const ImageVectorPtr& Search(); }
     namespace Filled { const ImageVectorPtr& Settings(); }
     namespace Filled { const ImageVectorPtr& Star(); }

@@ -6,7 +6,8 @@ usage: tools/catalog-compare [--out DIR] [--wait SECONDS] ROUTE...
 
 Each ROUTE ("example/5/0", "component/5", "home"), optionally followed by steps run in both
 apps before the screenshot ("example/13/8@swipe:540,1800,540,600,400@wait:1500"; steps: tap:x,y,
-swipe:x1,y1,x2,y2,ms, drag:x1,y1,x2,y2,steps (no fling), longpress:x,y, text:abc, key:CODE, wait:ms), opens in the androidx material3 catalog
+swipe:x1,y1,x2,y2,ms, drag:x1,y1,x2,y2,steps (no fling), down:x,y / move:x,y (held through the
+screenshot), up:x,y, longpress:x,y, text:abc, key:CODE, wait:ms), opens in the androidx material3 catalog
 (dev.kiln.m3catalog, built from ~/dev/os/inspiration/m3-apps/catalog) and in kiln's
 (dev.kiln.catalog, samples/catalog). Writes <route>.png: Compose | kiln | difference, with
 the status bar cut off, and prints the share of pixels that differ (channel delta > 24).
@@ -32,6 +33,8 @@ def shot():
 
 
 def run_steps(steps):
+    """Runs the steps; returns a held pointer's position (a `down` without an `up`), if any."""
+    held = None
     for step in steps:
         verb, _, arg = step.partition(":")
         nums = arg.split(",") if arg else []
@@ -48,6 +51,15 @@ def run_steps(steps):
                 cmds.append(f"input motionevent MOVE {x1 + (x2 - x1) * i / n:.0f} {y1 + (y2 - y1) * i / n:.0f}")
             cmds += ["sleep 0.6", f"input motionevent UP {x2:.0f} {y2:.0f}"]
             adb("shell", "; ".join(cmds))
+        elif verb == "down":   # x,y: press and keep holding (released after the screenshot)
+            adb("shell", "input", "motionevent", "DOWN", *nums)
+            held = nums
+        elif verb == "move":
+            adb("shell", "input", "motionevent", "MOVE", *nums)
+            held = nums
+        elif verb == "up":
+            adb("shell", "input", "motionevent", "UP", *nums)
+            held = None
         elif verb == "longpress":
             adb("shell", "input", "swipe", nums[0], nums[1], nums[0], nums[1], "800")
         elif verb == "text":
@@ -56,6 +68,14 @@ def run_steps(steps):
             adb("shell", "input", "keyevent", arg)
         else:
             sys.exit(f"catalog-compare: unknown step {step}")
+    return held
+
+
+def shot_and_release(held):
+    image = shot()
+    if held:
+        adb("shell", "input", "motionevent", "UP", *held)
+    return image
 
 
 def capture(route, wait):
@@ -63,14 +83,12 @@ def capture(route, wait):
     adb("shell", "am", "force-stop", COMPOSE.split("/")[0])
     adb("shell", "am", "start", "-W", "-n", COMPOSE, "-e", "route", route)
     time.sleep(wait)
-    run_steps(steps)
-    compose = shot()
+    compose = shot_and_release(run_steps(steps))
     adb("shell", "am", "force-stop", KILN.split("/")[0])
     adb("shell", "setprop", "debug.kiln.catalog.route", route)
     adb("shell", "am", "start", "-W", "-n", KILN)
     time.sleep(wait)
-    run_steps(steps)
-    kiln = shot()
+    kiln = shot_and_release(run_steps(steps))
     return compose, kiln
 
 

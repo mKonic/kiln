@@ -10,10 +10,12 @@
 #include "samples/Common.h"
 #include "samples/FloatingActionButtonSamples.h"
 #include "samples/IconButtonSamples.h"
+#include "samples/LoadingIndicatorSamples.h"
 #include "samples/ProgressIndicatorSamples.h"
 #include "samples/RadioButtonSamples.h"
 #include "samples/SegmentedButtonSamples.h"
 #include "samples/Shared.h"
+#include "samples/SliderSamples.h"
 #include "samples/SwitchSamples.h"
 
 namespace catalog {
@@ -196,11 +198,11 @@ namespace catalog {
                 { "LegacyThreeLineListItemWithExtendedSupporting", "List examples", false, nullptr },
             } },
             { 19, "Loading indicators", "Loading indicators express an unspecified wait time or display the length of a loading process.", true, {
-                { "LoadingIndicatorSample", "Loading indicators examples", true, nullptr },
-                { "ContainedLoadingIndicatorSample", "Loading indicators examples", true, nullptr },
-                { "DeterminateLoadingIndicatorSample", "Loading indicators examples", true, nullptr },
-                { "DeterminateContainedLoadingIndicatorSample", "Loading indicators examples", true, nullptr },
-                { "LoadingIndicatorPullToRefreshSample", "Loading indicators examples", true, nullptr },
+                { "LoadingIndicatorSample", "Loading indicators examples", true, samples::LoadingIndicatorSample },
+                { "ContainedLoadingIndicatorSample", "Loading indicators examples", true, samples::ContainedLoadingIndicatorSample },
+                { "DeterminateLoadingIndicatorSample", "Loading indicators examples", true, samples::DeterminateLoadingIndicatorSample },
+                { "DeterminateContainedLoadingIndicatorSample", "Loading indicators examples", true, samples::DeterminateContainedLoadingIndicatorSample },
+                { "LoadingIndicatorPullToRefreshSample", "Loading indicators examples", true, samples::LoadingIndicatorPullToRefreshSample },
             } },
             { 20, "Menus", "Menus display a list of choices on temporary surfaces.", true, {
                 { "MenuSample", "Menus examples", false, nullptr },
@@ -272,17 +274,17 @@ namespace catalog {
                 { "SegmentedButtonMultiSelectSample", "Segmented Button examples", false, samples::SegmentedButtonMultiSelectSample },
             } },
             { 32, "Sliders", "Sliders allow users to make selections from a range of values.", true, {
-                { "SliderSample", "Sliders examples", false, nullptr },
-                { "StepsSliderSample", "Sliders examples", false, nullptr },
-                { "SliderWithCustomThumbSample", "Sliders examples", false, nullptr },
-                { "SliderWithCustomTrackAndThumbSample", "Sliders examples", false, nullptr },
-                { "SliderWithTrackIconsSample", "Sliders examples", true, nullptr },
-                { "CenteredSliderSample", "Sliders examples", true, nullptr },
-                { "VerticalSliderSample", "Sliders examples", true, nullptr },
-                { "VerticalCenteredSliderSample", "Sliders examples", true, nullptr },
-                { "RangeSliderSample", "Sliders examples", false, nullptr },
-                { "StepRangeSliderSample", "Sliders examples", false, nullptr },
-                { "RangeSliderWithCustomComponents", "Sliders examples", false, nullptr },
+                { "SliderSample", "Sliders examples", false, samples::SliderSample },
+                { "StepsSliderSample", "Sliders examples", false, samples::StepsSliderSample },
+                { "SliderWithCustomThumbSample", "Sliders examples", false, samples::SliderWithCustomThumbSample },
+                { "SliderWithCustomTrackAndThumbSample", "Sliders examples", false, samples::SliderWithCustomTrackAndThumbSample },
+                { "SliderWithTrackIconsSample", "Sliders examples", true, samples::SliderWithTrackIconsSample },
+                { "CenteredSliderSample", "Sliders examples", true, samples::CenteredSliderSample },
+                { "VerticalSliderSample", "Sliders examples", true, samples::VerticalSliderSample },
+                { "VerticalCenteredSliderSample", "Sliders examples", true, samples::VerticalCenteredSliderSample },
+                { "RangeSliderSample", "Sliders examples", false, samples::RangeSliderSample },
+                { "StepRangeSliderSample", "Sliders examples", false, samples::StepRangeSliderSample },
+                { "RangeSliderWithCustomComponents", "Sliders examples", false, samples::RangeSliderWithCustomComponents },
             } },
             { 33, "Snackbars", "Snackbars provide brief messages about app processes at the bottom of the screen.", true, {
                 { "ScaffoldWithSimpleSnackbar", "Snackbars examples", false, nullptr },

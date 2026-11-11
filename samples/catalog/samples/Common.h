@@ -47,3 +47,17 @@ namespace catalog::samples {
     // The current composition (for Read / Remember).
     inline kiln::rt::Composition& Here() { return *kiln::rt::Composition::Current(); }
 }
+
+#include <kiln/runtime/Task.h>
+
+namespace catalog::samples {
+    // rememberCoroutineScope().launch { ... }: the job lives with the call site; a new launch
+    // replaces (cancels) the previous one, as the samples launch one at a time.
+    struct LaunchScope {
+        std::shared_ptr<kiln::rt::Job> job = std::make_shared<kiln::rt::Job>();
+        void Launch(kiln::rt::Task<> task) const { *job = kiln::rt::Launch(kiln::rt::Dispatcher::Main(), std::move(task)); }
+    };
+    inline LaunchScope RememberCoroutineScope(kiln::rt::Key key = {}) {
+        return Here().Remember<LaunchScope>([] { return LaunchScope{}; }, {}, key);
+    }
+}
