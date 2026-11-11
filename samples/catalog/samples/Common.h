@@ -7,6 +7,8 @@
 
 #include <kiln/foundation/Compose.h>
 #include <kiln/foundation/Layouts.h>
+#include <kiln/foundation/Semantics.h>
+#include <kiln/runtime/Saveable.h>
 #include <kiln/material3/MaterialTheme.h>
 #include <kiln/material3/Text.h>
 #include <kiln/runtime/Composition.h>
@@ -17,6 +19,7 @@ namespace catalog::samples {
     namespace m3 = kiln::material3;
     using catalog::Icons::ImageVectorPtr;
     namespace Icons = catalog::Icons;
+    using kiln::rt::RememberSaveableState;
 
     // Modifier.size(size)
     inline Modifier Size(Modifier m, Dp size) { return SizeMod(std::move(m), size, size); }
@@ -34,4 +37,13 @@ namespace catalog::samples {
         o.style = style;
         m3::Text(text, modifier, o);
     }
+}
+
+namespace catalog::samples {
+    // Modifier.semantics { contentDescription = ... }
+    inline Modifier ContentDescription(Modifier m, std::string description) {
+        return Semantics(std::move(m), [description](SemanticsConfiguration& c) { c.contentDescription = { description }; });
+    }
+    // The current composition (for Read / Remember).
+    inline kiln::rt::Composition& Here() { return *kiln::rt::Composition::Current(); }
 }

@@ -82,8 +82,11 @@ out += [f'#include "samples/{os.path.basename(h)}"' for h in sorted(glob.glob(os
 out += ["", "namespace catalog {", "", "    const std::vector<Component>& Components() {",
         "        static const std::vector<Component> components = {"]
 total = done = 0
-for i, v in enumerate(order, 1):
+# nextId() runs as each `private val X = Component(...)` initialises: declaration order.
+ids = {v: i for i, v in enumerate(comps, 1)}
+for v in order:
     cm = comps[v]
+    i = ids[v]
     out.append(f"            {{ {i}, {c(cm['name'])}, {c(cm['description'])}, {'true' if cm['tint'] else 'false'}, {{")
     for e in lists.get(cm["examples"], []):
         total += 1

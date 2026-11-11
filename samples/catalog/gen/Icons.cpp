@@ -49,6 +49,24 @@ namespace catalog::Icons {
         return image;
     } }}
 
+    namespace Filled { const ImageVectorPtr& Check() {
+        static const ImageVectorPtr image = [] {
+            ImageVector::Builder b("Filled.Check", ui::Dp(24), ui::Dp(24), 24, 24, ui::Color::Unspecified(), gfx::BlendMode::SrcIn, false);
+            b.Path(PathBuilder()
+                       .MoveTo(9.0f, 16.17f)
+                       .LineTo(4.83f, 12.0f)
+                       .LineToRelative(-1.42f, 1.41f)
+                       .LineTo(9.0f, 19.0f)
+                       .LineTo(21.0f, 7.0f)
+                       .LineToRelative(-1.41f, -1.41f)
+                       .Close()
+                       .Nodes(), gfx::Brush::SolidColor(ui::Color(0xff000000)), 1.0f, std::nullopt, 1.0f, 1.0f,
+                   gfx::StrokeCap::Butt, gfx::StrokeJoin::Bevel, 1.0f, gfx::FillType::NonZero);
+            return b.Build();
+        }();
+        return image;
+    } }
+
     namespace Filled { const ImageVectorPtr& Clear() {
         static const ImageVectorPtr image = [] {
             ImageVector::Builder b("Filled.Clear", ui::Dp(24), ui::Dp(24), 24, 24, ui::Color::Unspecified(), gfx::BlendMode::SrcIn, false);
@@ -208,6 +226,28 @@ namespace catalog::Icons {
                        .ReflectiveCurveTo(7.01f, 5.0f, 9.5f, 5.0f)
                        .ReflectiveCurveTo(14.0f, 7.01f, 14.0f, 9.5f)
                        .ReflectiveCurveTo(11.99f, 14.0f, 9.5f, 14.0f)
+                       .Close()
+                       .Nodes(), gfx::Brush::SolidColor(ui::Color(0xff000000)), 1.0f, std::nullopt, 1.0f, 1.0f,
+                   gfx::StrokeCap::Butt, gfx::StrokeJoin::Bevel, 1.0f, gfx::FillType::NonZero);
+            return b.Build();
+        }();
+        return image;
+    } }
+
+    namespace Filled { const ImageVectorPtr& Star() {
+        static const ImageVectorPtr image = [] {
+            ImageVector::Builder b("Filled.Star", ui::Dp(24), ui::Dp(24), 24, 24, ui::Color::Unspecified(), gfx::BlendMode::SrcIn, false);
+            b.Path(PathBuilder()
+                       .MoveTo(12.0f, 17.27f)
+                       .LineTo(18.18f, 21.0f)
+                       .LineToRelative(-1.64f, -7.03f)
+                       .LineTo(22.0f, 9.24f)
+                       .LineToRelative(-7.19f, -0.61f)
+                       .LineTo(12.0f, 2.0f)
+                       .LineTo(9.19f, 8.63f)
+                       .LineTo(2.0f, 9.24f)
+                       .LineToRelative(5.46f, 4.73f)
+                       .LineTo(5.82f, 21.0f)
                        .Close()
                        .Nodes(), gfx::Brush::SolidColor(ui::Color(0xff000000)), 1.0f, std::nullopt, 1.0f, 1.0f,
                    gfx::StrokeCap::Butt, gfx::StrokeJoin::Bevel, 1.0f, gfx::FillType::NonZero);

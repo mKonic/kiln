@@ -10,12 +10,14 @@ namespace catalog::Icons {
 
     namespace AutoMirrored { namespace Filled { const ImageVectorPtr& ArrowBack(); }}
     namespace AutoMirrored { namespace Filled { const ImageVectorPtr& KeyboardArrowRight(); }}
+    namespace Filled { const ImageVectorPtr& Check(); }
     namespace Filled { const ImageVectorPtr& Clear(); }
     namespace Filled { const ImageVectorPtr& Edit(); }
     namespace Filled { const ImageVectorPtr& Favorite(); }
     namespace Filled { const ImageVectorPtr& MoreVert(); }
     namespace Filled { const ImageVectorPtr& PushPin(); }
     namespace Filled { const ImageVectorPtr& Search(); }
+    namespace Filled { const ImageVectorPtr& Star(); }
     namespace Outlined { const ImageVectorPtr& PushPin(); }
 
 }
