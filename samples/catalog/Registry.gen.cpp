@@ -28,6 +28,7 @@
 #include "samples/PullToRefreshSamples.h"
 #include "samples/RadioButtonSamples.h"
 #include "samples/ScaffoldSamples.h"
+#include "samples/ScrollFieldSamples.h"
 #include "samples/SearchBarSamples.h"
 #include "samples/SegmentedButtonSamples.h"
 #include "samples/Shared.h"
@@ -282,9 +283,9 @@ namespace catalog {
                 { "RadioGroupSample", "Radio buttons examples", false, samples::RadioGroupSample },
             } },
             { 28, "Scroll field", "Scroll field allows the user to select a value, e.g. time.", true, 0, {
-                { "ScrollFieldSample", "Scroll field examples", true, nullptr },
-                { "TimeScrollFieldSample", "Scroll field examples", true, nullptr },
-                { "UnitScrollFieldSample", "Scroll field examples", true, nullptr },
+                { "ScrollFieldSample", "Scroll field examples", true, samples::ScrollFieldSample },
+                { "TimeScrollFieldSample", "Scroll field examples", true, samples::TimeScrollFieldSample },
+                { "UnitScrollFieldSample", "Scroll field examples", true, samples::UnitScrollFieldSample },
             } },
             { 29, "Search bars", "Search bars allow users to enter a keyword or phrase and get relevant information.", true, 0, {
                 { "SimpleSearchBarSample", "Search bar examples", false, samples::SimpleSearchBarSample },
