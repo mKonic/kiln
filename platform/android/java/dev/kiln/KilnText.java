@@ -129,6 +129,7 @@ final class KilnText {
     KilnText(Context context) {
         this.context = context;
         glyphPaint.setColor(Color.WHITE);
+        glyphPaint.setHinting(Paint.HINTING_ON);
     }
 
     // --- request parsing ---------------------------------------------------------------------
@@ -143,6 +144,9 @@ final class KilnText {
         run.fakeBold = ints[io + 5] != 0;
         run.fakeItalic = ints[io + 6] != 0;
         TextPaint p = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+        // TextMotion.Static (setTextMotion): font hinting, no linear text, no subpixel positions.
+        p.setFlags(p.getFlags() & ~(Paint.LINEAR_TEXT_FLAG | Paint.SUBPIXEL_TEXT_FLAG));
+        p.setHinting(Paint.HINTING_ON);
         p.setTypeface(typeface(kind, strs[so], weight, italic, strs[so + 1]));
         p.setTextSize(floats[fo]);
         final float lsPx = floats[fo + 1], lsEm = floats[fo + 2];
@@ -477,6 +481,10 @@ final class KilnText {
         return lo;
     }
 
+    // Paint.TEXT_RUN_FLAG_LEFT_EDGE / RIGHT_EDGE (API 36): no letter spacing at a line's edges.
+    private static final int TEXT_RUN_FLAG_LEFT_EDGE = 0x2000, TEXT_RUN_FLAG_RIGHT_EDGE = 0x4000;
+    private static final boolean EDGE_FLAGS = android.os.Build.VERSION.SDK_INT >= 36;
+
     private static final class Piece { int run, start, end; boolean space, placeholder; PositionedGlyphs glyphs; float advance; }
 
     private static PlaceholderSpan placeholderAt(Built b, int offset) {
@@ -547,7 +555,18 @@ final class KilnText {
                 p.end = next;
                 p.space = space;
                 final TextPaint paint = ri >= 0 ? runs[ri].paint : b.basePaint;
+                // TextLine.calculateRunFlag / resolveRunFlagForSubSequence: no letter spacing on
+                // the line's visual left and right edges (API 36).
+                int edges = 0;
+                if (EDGE_FLAGS) {
+                    final boolean atRunStart = pos == rs, atRunEnd = next == re;
+                    if (v == 0 && (rtl ? atRunEnd : atRunStart)) edges |= TEXT_RUN_FLAG_LEFT_EDGE;
+                    if (v == nBidi - 1 && (rtl ? atRunStart : atRunEnd)) edges |= TEXT_RUN_FLAG_RIGHT_EDGE;
+                }
+                final int flags = paint.getFlags();
+                paint.setFlags((flags & ~(TEXT_RUN_FLAG_LEFT_EDGE | TEXT_RUN_FLAG_RIGHT_EDGE)) | edges);
                 p.glyphs = TextRunShaper.shapeTextRun(chars, pos, next - pos, start, end - start, 0, 0, rtl, paint);
+                paint.setFlags(flags);
                 p.advance = p.glyphs.getAdvance();
                 natural += p.advance;
                 if (space) spaces++;
