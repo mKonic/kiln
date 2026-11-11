@@ -942,6 +942,22 @@ namespace kiln::foundation {
     Modifier Weight(Modifier m, float w, bool fill) { return m.With<ParentDataNode>(ParentParams{ 0, w, fill, 0, 0 }); }
     Modifier AlignInRow(Modifier m, AlignmentV a) { return m.With<ParentDataNode>(ParentParams{ 1, 0, true, a.bias, 0 }); }
     Modifier AlignInColumn(Modifier m, AlignmentH a) { return m.With<ParentDataNode>(ParentParams{ 2, 0, true, a.bias, 0 }); }
+    namespace {
+        // LayoutIdElement / LayoutIdModifier.
+        struct LayoutIdParams { std::string id; bool operator==(const LayoutIdParams&) const = default; };
+        struct LayoutIdNode final : ModifierNode, ParentDataModifier {
+            LayoutIdParams params;
+            explicit LayoutIdNode(LayoutIdParams p) : params(std::move(p)) {}
+            void OnParamsChanged() { if (Owner() && Owner()->Parent()) Owner()->Parent()->RequestRemeasure(); }
+            ParentDataModifier* AsParentData() override { return this; }
+            void ModifyParentData(ParentData& d) const override { d.layoutId = params.id; }
+        };
+    }
+    Modifier LayoutId(Modifier m, std::string id) { return m.With<LayoutIdNode>(LayoutIdParams{ std::move(id) }); }
+    const std::string* LayoutIdOf(const Measurable& m) {
+        const auto& id = m.GetParentData().layoutId;
+        return id ? &*id : nullptr;
+    }
     Modifier AlignInBox(Modifier m, Alignment a) { return m.With<ParentDataNode>(ParentParams{ 3, 0, true, a.horizontal, a.vertical }); }
     Modifier MatchParentSize(Modifier m) { return m.With<ParentDataNode>(ParentParams{ 4, 0, true, 0, 0 }); }
     Modifier AlignBy(Modifier m, const AlignmentLine& line) { return m.With<ParentDataNode>(ParentParams{ 5, 0, true, 0, 0, &line }); }

@@ -15,6 +15,7 @@
 #include <functional>
 #include <memory>
 #include <optional>
+#include <string>
 #include <typeindex>
 #include <vector>
 
@@ -52,6 +53,7 @@ namespace kiln::ui {
         const AlignmentLine* alignBy = nullptr;   // Row/Column child: align on this line
         std::shared_ptr<const std::function<int(Placeable&)>> alignByBlock;   // ...or on this position
         std::optional<float> fillCrossAxisFraction;   // FlowRow/FlowColumn child: of its line's cross size
+        std::optional<std::string> layoutId;          // Modifier.layoutId: how a custom layout finds this child
         std::any extra;                   // other layouts' data
     };
 

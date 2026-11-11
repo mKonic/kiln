@@ -285,3 +285,28 @@ TEST(MultiContentLayoutGroupsChildrenByContent) {
     CHECK(a && c && a->Parent() == c->Parent());
     CHECK(c && int(c->PositionInRoot().x) == 30);   // after the first content's two
 }
+
+TEST(LayoutIdTagsChildrenForTheirParent) {
+    Owner owner;
+    rt::Composition composition{ owner.Root(), rt::Dispatcher::Main() };
+    owner.SetDensity({ 1, 1 });
+    std::vector<std::string> ids;
+    composition.SetContent([&] {
+        auto policy = std::make_shared<LambdaMeasurePolicy>([&](MeasureScope& s, std::span<Measurable* const> children, const Constraints&) {
+            ids.clear();
+            for (Measurable* m : children) {
+                const std::string* id = LayoutIdOf(*m);
+                ids.push_back(id ? *id : "-");
+            }
+            return s.Layout(0, 0, [](PlacementScope&) {});
+        });
+        Layout(Modifier{}, policy, [] {
+            Box(LayoutId(Modifier{}, "a"));
+            Box(Modifier{});
+            Box(Padding(LayoutId(Modifier{}, "c"), Dp(2)));
+        });
+    });
+    composition.Recompose();
+    owner.MeasureAndLayout({ 100, 100 });
+    CHECK((ids == std::vector<std::string>{ "a", "-", "c" }));
+}

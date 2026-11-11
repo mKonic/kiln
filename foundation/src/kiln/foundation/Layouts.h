@@ -127,6 +127,11 @@ namespace kiln::foundation {
     Modifier AlignInRow(Modifier m, AlignmentV a);
     Modifier AlignInColumn(Modifier m, AlignmentH a);
     Modifier AlignInBox(Modifier m, Alignment a);
+    // layoutId: tags a child for a custom layout's measure policy, which finds it with LayoutIdOf
+    // (Compose's Modifier.layoutId / Measurable.layoutId).
+    Modifier LayoutId(Modifier m, std::string id);
+    // The child's layoutId, or null.
+    const std::string* LayoutIdOf(const Measurable& m);
     // Row/Column child: align on an alignment line shared with the siblings that use it
     // (alignBy / alignByBaseline).
     Modifier AlignBy(Modifier m, const AlignmentLine& line);
