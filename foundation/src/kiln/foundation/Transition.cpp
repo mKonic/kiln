@@ -48,6 +48,16 @@ namespace kiln::foundation {
         m_Generation.Set(m_Generation.Peek() + 1);
     }
 
+    void TransitionCore::Complete() {
+        for (Child* c : m_Children) {
+            if (!(c->Current() == c->target)) c->value.Set(c->target);
+            c->velocity = {};
+            c->finished = true;
+        }
+        m_PlayTime = 0;
+        PauseClock();
+    }
+
     std::int64_t TransitionCore::TotalDurationNanos() const {
         std::int64_t d = 0;
         for (const Child* c : m_Children) d = std::max(d, c->duration);

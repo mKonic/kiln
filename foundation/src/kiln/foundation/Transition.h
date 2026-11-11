@@ -8,6 +8,7 @@
 
 #include "kiln/animation/Animatable.h"
 #include "kiln/foundation/Animate.h"
+#include "kiln/foundation/MutatorMutex.h"
 #include "kiln/animation/Spec.h"
 #include "kiln/runtime/Composition.h"
 #include "kiln/runtime/State.h"
@@ -55,6 +56,8 @@ namespace kiln::foundation {
         // Continue on the clock from the current play time (after seeking).
         void ResumeClock() { m_ResumeFrom = m_PlayTime; m_StartNanos = -1; if (!m_Running.Peek()) m_Running.Set(true); m_Generation.Set(m_Generation.Peek() + 1); }
         void PauseClock() { if (m_Running.Peek()) m_Running.Set(false); }
+        // onTransitionEnd: every child rests at its target, play time 0.
+        void Complete();
         // While seeking, retargets do not start the clock.
         void SetSeeking(bool s) { m_Seeking = s; if (s) PauseClock(); }
         bool Seeking() const { return m_Seeking; }
@@ -347,8 +350,11 @@ namespace kiln::foundation {
         return ui::FromOklab({ v[0], v[1], v[2], v[3] });
     }
 
-    // SeekableTransitionState: fraction 0..1 between currentState and targetState, set by
-    // SeekTo (a back gesture's progress), then AnimateTo finishes on the clock or goes back.
+    // SeekableTransitionState: the transition's play time follows `fraction` (0..1 of its total
+    // duration) between currentState and targetState. SeekTo sets it (a back gesture's
+    // progress); AnimateTo runs it to 1 on the clock (linearly over the remaining duration, or
+    // with `spec`), then the target becomes current. One mutation at a time: a new one stops the
+    // running one.
     template<typename S>
     class SeekableTransitionState {
     public:
@@ -357,57 +363,94 @@ namespace kiln::foundation {
         S TargetState() const { return m_Target.Get(); }
         float Fraction() const { return m_Fraction.Get(); }
 
-        // seekTo(fraction, targetState)
-        void SeekTo(float fraction, std::optional<S> target = std::nullopt) {
-            m_Seeking = true;
-            m_Fraction.Set(std::clamp(fraction, 0.0f, 1.0f));
-            if (m_Core) m_Core->SetSeeking(true);
-            if (target && !(*target == m_Target.Peek())) { m_Target.Set(*target); return; }   // children retarget on recomposition
-            Apply();
-        }
-        // animateTo(targetState): to the current target it completes from the seeked fraction;
-        // to the current state it goes back (the gesture was cancelled).
-        void AnimateTo(std::optional<S> target = std::nullopt) {
-            m_Seeking = false;
-            if (m_Core) m_Core->SetSeeking(false);
-            if (target && !(*target == m_Target.Peek())) { m_Target.Set(*target); return; }   // retarget with velocity
-            if (m_Core) m_Core->ResumeClock();
-        }
-        void SnapTo(S target) {
-            m_Seeking = false;
-            m_Current.Set(target);
-            m_Target.Set(target);
+        // snapTo: current and target become `target`, every value rests there.
+        rt::Task<> SnapTo(S target) {
+            if (m_Current.Peek() == target && m_Target.Peek() == target) co_return;
+            const std::uint64_t token = m_Mutex.Acquire(MutatePriority::Default, {});
             m_Fraction.Set(0);
+            m_Target.Set(target);
+            m_Current.Set(target);
             m_Snap = true;
+            m_Mutex.Release(token);
+        }
+        // seekTo(fraction, targetState): a new target restarts from its current state.
+        rt::Task<> SeekTo(float fraction, std::optional<S> target = std::nullopt) {
+            fraction = std::clamp(fraction, 0.0f, 1.0f);
+            const std::uint64_t token = m_Mutex.Acquire(MutatePriority::Default, {});
+            if (target && !(*target == m_Target.Peek())) {
+                m_Target.Set(*target);   // the children retarget on recomposition
+            } else if (m_Current.Peek() == m_Target.Peek()) {
+                m_Mutex.Release(token);
+                co_return;   // nothing to seek between
+            }
+            m_Fraction.Set(fraction);
+            Apply();
+            m_Mutex.Release(token);
+        }
+        // animateTo(targetState, animationSpec): to a new target, from its current state.
+        rt::Task<> AnimateTo(std::optional<S> target = std::nullopt, anim::SpecPtr spec = nullptr) {
+            const std::uint64_t token = m_Mutex.Acquire(MutatePriority::Default, {});
+            const S oldTarget = m_Target.Peek();
+            if (target && !(*target == oldTarget)) {
+                m_Fraction.Set(0);
+                m_Current.Set(oldTarget);
+                m_Target.Set(*target);
+                co_await rt::NextFrame();   // the composition retargets the children
+                if (!m_Mutex.IsHeld(token)) co_return;
+            }
+            if (!(m_Current.Peek() == m_Target.Peek())) {
+                const float start = m_Fraction.Peek();
+                std::int64_t last = -1, progress = 0;
+                while (m_Fraction.Peek() < 1) {
+                    const std::int64_t frame = co_await rt::NextFrame();
+                    if (!m_Mutex.IsHeld(token)) co_return;
+                    const float scale = anim::DurationScale();
+                    if (scale <= 0) { m_Fraction.Set(1); Apply(); break; }
+                    if (last < 0) { last = frame; continue; }
+                    progress += std::int64_t(double(frame - last) / scale);
+                    last = frame;
+                    const std::int64_t total = m_Core ? m_Core->TotalDurationNanos() : 0;
+                    float value;
+                    if (spec) {
+                        const std::int64_t d = spec->DurationNanos({ start }, { 1 }, {}, 1);
+                        value = progress >= d ? 1.0f : spec->ValueAt(progress, { start }, { 1 }, {}, 1)[0];
+                    } else {
+                        const std::int64_t d = std::int64_t(double(total) * (1.0 - start));
+                        value = d <= 0 || progress >= d ? 1.0f : start + (1 - start) * float(double(progress) / double(d));
+                    }
+                    m_Fraction.Set(std::isnan(value) ? 1.0f : std::clamp(value, 0.0f, 1.0f));
+                    Apply();
+                }
+                m_Current.Set(m_Target.Peek());
+                m_Fraction.Set(0);
+                if (m_Core) m_Core->Complete();
+                if (m_Transition) m_Transition->Finish();
+            }
+            m_Mutex.Release(token);
         }
         // internal
-        void Apply() { if (m_Core) m_Core->SetPlayTime(std::int64_t(double(m_Core->TotalDurationNanos()) * m_Fraction.Peek())); }
+        void Apply() { if (m_Core) m_Core->SetPlayTime(std::int64_t(double(m_Core->TotalDurationNanos()) * double(m_Fraction.Peek()))); }
         rt::State<S> m_Current, m_Target;
         rt::State<float> m_Fraction{ 0 };
-        bool m_Seeking = false, m_Snap = false;
+        bool m_Snap = false;
+        MutatorMutex m_Mutex;
         TransitionCore* m_Core = nullptr;
+        Transition<S>* m_Transition = nullptr;
     };
 
     template<typename S>
     Transition<S>& UpdateTransition(SeekableTransitionState<S>& state, rt::Key key = {}) {
         auto& c = *rt::Composition::Current();
         auto& t = c.RememberNew<Transition<S>>({}, key, state.CurrentState());
-        auto* tp = &t;
         auto* sp = &state;
         state.m_Core = &t.Core();
-        t.Core().SetSeeking(state.m_Seeking);
+        state.m_Transition = &t;
+        // The clock never runs by itself: the play time is the fraction's.
+        t.Core().SetSeeking(true);
         if (state.m_Snap) { state.m_Snap = false; t.SnapAll(state.TargetState()); }
         else t.UpdateTarget(state.TargetState());
-        // A new seek target: once the children have retargeted, apply the fraction.
-        if (state.m_Seeking) c.SideEffect([sp] { sp->Apply(); });
-        c.LaunchedEffect(rt::Keys(t.Core().Generation()), [tp, sp] {
-            return detail::DriveTransition(tp->Core(), [tp, sp] {
-                if (sp->m_Seeking) return;
-                tp->Finish();
-                sp->m_Current.Set(tp->TargetState());
-                sp->m_Fraction.Set(0);
-            });
-        }, key);
+        // Once the children have (re)targeted, they take the fraction's play time.
+        c.SideEffect([sp] { sp->Apply(); });
         return t;
     }
 

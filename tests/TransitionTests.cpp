@@ -156,27 +156,30 @@ TEST(SeekableTransitionFollowsTheGestureThenCompletesOrReturns) {
         value = AnimateFloat<bool>(t, [](bool s) { return s ? 100.0f : 0.0f; },
                                    [](const Transition<bool>::Segment&) { return anim::Tween(200, 0, anim::Linear()); });
     });
+    std::vector<rt::Job> jobs;
+    auto run = [&](rt::Task<> task) { jobs.push_back(rt::Launch(rt::Dispatcher::Main(), std::move(task))); rt::Dispatcher::Main().RunPending(); };
     // A back gesture: seek towards `true` with the finger.
-    state.SeekTo(0.25f, true);
+    run(state.SeekTo(0.25f, true));
     h.Pump();
     CHECK(Near(value, 25, 0.5f));
-    state.SeekTo(0.5f);
+    run(state.SeekTo(0.5f));
     h.Pump();
     CHECK(Near(value, 50, 0.5f));
     CHECK(!state.CurrentState());
-    // Released: finish on the clock from 50%.
-    state.AnimateTo();
-    h.Pump();
-    h.Frames(1);
+    // Released: finish on the clock from 50%, the fraction running linearly to 1.
+    run(state.AnimateTo());
+    h.Frames(2);
     CHECK(value >= 50);
+    CHECK(state.Fraction() > 0.5f);
     h.Frames(10);
     CHECK_EQ(value, 100.0f);
     CHECK(state.CurrentState());
+    CHECK_EQ(state.Fraction(), 0.0f);
     // Another gesture that is cancelled: back to where it started.
-    state.SeekTo(0.4f, false);
+    run(state.SeekTo(0.4f, false));
     h.Pump();
     CHECK(Near(value, 60, 0.5f));
-    state.AnimateTo(true);
+    run(state.AnimateTo(true));
     h.Pump();
     h.Frames(60);
     CHECK(Near(value, 100, 0.05f));
