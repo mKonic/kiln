@@ -212,4 +212,16 @@ namespace kiln::rt {
         }
     }
 
+
+    void SaveableStateProvider(SaveableStateHolder& holder, const std::string& key, std::function<void()> content) {
+        auto* c = Composition::Current();
+        SaveableStateHolder* h = &holder;
+        // key(key) { ... }: each key's content is its own group.
+        c->Child([c, h, key, content = std::move(content)] {
+            auto& registry = c->Remember<std::shared_ptr<SaveableStateRegistry>>([&] { return h->Open(key); });
+            c->DisposableEffect({}, [h, key] { return [h, key] { h->Close(key); }; });
+            c->Provide(LocalSaveableStateRegistry, registry.get(), content);
+        }, Key(std::string_view(key)));
+    }
+
 }

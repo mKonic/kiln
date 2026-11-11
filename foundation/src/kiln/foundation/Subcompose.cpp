@@ -85,19 +85,23 @@ namespace kiln::foundation {
                     keep.insert(lookaheadUsed.begin(), lookaheadUsed.end());
                     keep.insert(approachUsed.begin(), approachUsed.end());
                 }
-                if (pass != Pass::Lookahead)
-                    for (auto it = slots.begin(); it != slots.end();) {
-                        if (keep.count(it->first) || it->second.precomposed) { ++it; continue; }
-                        it->second.composition.reset();
-                        it = slots.erase(it);
-                    }
+                const bool disposes = pass != Pass::Lookahead;
+                const auto kept = [&](std::uint64_t k, const Slot& sl) { return !disposes || keep.count(k) || sl.precomposed; };
                 std::vector<LayoutNode*> children;
                 for (std::uint64_t k : used) children.push_back(slots[k].holder.get());
                 const std::size_t placed = children.size();
                 for (std::uint64_t k : keep)
                     if (std::find(used.begin(), used.end(), k) == used.end() && slots.count(k) && !slots[k].precomposed) children.push_back(slots[k].holder.get());
-                for (auto& [k, sl] : slots) if (sl.precomposed) children.push_back(sl.holder.get());
+                for (auto& [k, sl] : slots)
+                    if (sl.precomposed) children.push_back(sl.holder.get());
+                    else if (!disposes && !keep.count(k)) children.push_back(sl.holder.get());   // lookahead keeps what it does not use
+                // The holders leave the layout before their slots free them.
                 node->SetChildrenDuringMeasure(children);
+                for (auto it = slots.begin(); it != slots.end();) {
+                    if (kept(it->first, it->second)) { ++it; continue; }
+                    it->second.composition.reset();
+                    it = slots.erase(it);
+                }
                 std::vector<Placeable*> holders;
                 for (std::size_t i = 0; i < placed; ++i) {
                     Measurable& m = pass == Pass::Lookahead ? children[i]->AsLookaheadMeasurable() : children[i]->AsMeasurable();

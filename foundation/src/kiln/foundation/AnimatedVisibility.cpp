@@ -480,22 +480,26 @@ namespace kiln::foundation {
                 return s.Layout(hidden ? 0 : p.Width(), hidden ? 0 : p.Height(), [&p](PlacementScope& place) { place.Place(p, 0, 0); });
             }
         };
-        Modifier LookaheadHide(const Modifier& m, const Transition<bool>& t) { return Modifier(m).With<LookaheadHideNode>(LookaheadHideParams{ &t }); }
+
         IntSize Lerp(IntSize a, IntSize b, float t) {
             return { int(std::lround(float(a.width) + float(b.width - a.width) * t)), int(std::lround(float(a.height) + float(b.height - a.height) * t)) };
         }
     }
 
+    Modifier detail::LookaheadHide(const Modifier& m, const Transition<bool>& t) {
+        return Modifier(m).With<LookaheadHideNode>(LookaheadHideParams{ &t });
+    }
+
     void AnimatedVisibility(bool visible, const Modifier& modifier, std::function<void()> content,
                             EnterTransition enter, ExitTransition exit, rt::Key key) {
         auto& t = UpdateTransition(visible, key);
-        AnimatedEnterExit(t, LookaheadHide(modifier, t), std::move(content), enter, exit, key);
+        AnimatedEnterExit(t, detail::LookaheadHide(modifier, t), std::move(content), enter, exit, key);
     }
 
     void AnimatedVisibility(MutableTransitionState<bool>& state, const Modifier& modifier, std::function<void()> content,
                             EnterTransition enter, ExitTransition exit, rt::Key key) {
         auto& t = UpdateTransition(state, key);
-        AnimatedEnterExit(t, LookaheadHide(modifier, t), std::move(content), enter, exit, key);
+        AnimatedEnterExit(t, detail::LookaheadHide(modifier, t), std::move(content), enter, exit, key);
     }
     void AnimatedVisibilityInRow(bool visible, const Modifier& m, std::function<void()> content, EnterTransition enter, ExitTransition exit, rt::Key key) {
         AnimatedVisibility(visible, m, std::move(content), std::move(enter), std::move(exit), key);

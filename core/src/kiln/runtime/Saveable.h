@@ -161,6 +161,9 @@ namespace kiln::rt {
 
     // rememberSaveableStateHolder(): its values ride in the parent registry.
     SaveableStateHolder& RememberSaveableStateHolder(Key key = {});
+    // SaveableStateHolder.SaveableStateProvider(key, content): `content` saves into `key`'s
+    // registry; when it leaves the composition its values are kept for its return.
+    void SaveableStateProvider(SaveableStateHolder& holder, const std::string& key, std::function<void()> content);
 
     namespace detail {
         std::string SaveableKey(std::uint64_t compositeKey);   // base-36 like Compose

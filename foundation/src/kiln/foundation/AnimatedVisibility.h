@@ -166,6 +166,12 @@ namespace kiln::foundation {
                            const EnterTransition& enter, const ExitTransition& exit, rt::Key key = {},
                            std::shared_ptr<MutableTransform> mutableTransform = nullptr, bool forceVisible = false);
 
+    namespace detail {
+        // AnimatedVisibilityImpl's layout: in a lookahead pass, content on its way out takes no
+        // space (where the layout ends up) while the main pass animates it away.
+        Modifier LookaheadHide(const Modifier& m, const Transition<bool>& visibility);
+    }
+
     // Transition.AnimatedVisibility(visible): visibility derived from a parent transition's
     // state, animated on the parent's clock (a child transition).
     template<typename S>
@@ -173,7 +179,7 @@ namespace kiln::foundation {
                             std::function<void()> content, EnterTransition enter = FadeIn() + ExpandIn(),
                             ExitTransition exit = ShrinkOut() + FadeOut(), rt::Key key = {}) {
         auto& child = CreateChildTransition<bool, S>(transition, std::move(visible), key);
-        AnimatedEnterExit(child, modifier, std::move(content), enter, exit, key);
+        AnimatedEnterExit(child, detail::LookaheadHide(modifier, child), std::move(content), enter, exit, key);
     }
 
     // SizeTransform: how the container's size follows the content (clipped or not), with a spec

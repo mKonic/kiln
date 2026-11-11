@@ -45,4 +45,16 @@ namespace kiln::material3 {
         return text::FormatJava(raw, std::span(formatArgs.begin(), formatArgs.size()), locale);
     }
 
+    std::string GetString(Strings id, const std::vector<std::string>& locales) { return std::string(ResolveString(id, locales)); }
+
+    std::string GetString(Strings id, const std::vector<std::string>& locales, std::initializer_list<text::FormatArg> formatArgs) {
+        const std::string_view raw = ResolveString(id, locales);
+        return text::FormatJava(raw, std::span(formatArgs.begin(), formatArgs.size()), locales.empty() ? std::string() : locales.front());
+    }
+
+    std::vector<std::string> CurrentLocales() {
+        auto* c = rt::Composition::Current();
+        return c ? c->Read(ui::LocalConfiguration).locales : std::vector<std::string>{};
+    }
+
 }

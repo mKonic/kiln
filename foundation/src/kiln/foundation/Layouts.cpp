@@ -885,6 +885,8 @@ namespace kiln::foundation {
         spec.block = std::make_shared<const std::function<void(GraphicsLayerParams&)>>(std::move(block));
         return m.With<LayerNode>(spec);
     }
+
+    bool IsGraphicsLayerElement(const ui::ModifierElement& e) { return e.Type() == typeid(LayerNode); }
     void GraphicsLayerMatrix(const GraphicsLayerParams& p, Size size, float out[9]) { LayerMatrix3D(p, size, out); }
 
     Modifier ShadowMod(Modifier m, Dp elevation, std::shared_ptr<const gfx::Shape> shape, std::optional<bool> clip, Color ambientColor, Color spotColor) {

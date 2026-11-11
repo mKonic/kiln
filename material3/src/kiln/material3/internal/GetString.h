@@ -21,5 +21,11 @@ namespace kiln::material3 {
     std::string GetString(Strings id);
     // getString(string, formatArgs): String.format in LocalConfiguration's first locale.
     std::string GetString(Strings id, std::initializer_list<text::FormatArg> formatArgs);
+    // The same outside composition (semantics, drawing), with the locales a composition read
+    // (LocalConfiguration's, via CurrentLocales()).
+    std::string GetString(Strings id, const std::vector<std::string>& locales);
+    std::string GetString(Strings id, const std::vector<std::string>& locales, std::initializer_list<text::FormatArg> formatArgs);
+    // LocalConfiguration's locales in the current composition (none outside one).
+    std::vector<std::string> CurrentLocales();
 
 }
