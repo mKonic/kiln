@@ -29,6 +29,7 @@
 #include "kiln/material3/Snackbar.h"
 #include "kiln/material3/TextField.h"
 #include "kiln/material3/ExposedDropdownMenu.h"
+#include "kiln/material3/AlertDialog.h"
 #include "kiln/ui/Back.h"
 #include "kiln/material3/internal/GetString.h"
 #include "kiln/material3/Divider.h"
@@ -8930,4 +8931,103 @@ TEST(ExposedDropdownMenuAnchorIsADropdownList) {
     const auto tree = h.owner.BuildSemanticsTree();
     const auto* n = FindSemantics(tree, "field");
     CHECK(n && n->config.role == ui::Role::DropdownList);
+}
+
+// AlertDialogTest. Bounds come from where things land in the dialog window (dp), relative to
+// the dialog.
+namespace {
+    struct Placed {
+        std::map<std::string, ui::Rect> at;
+        ui::Modifier Track(ui::Modifier m, const std::string& name) {
+            return OnGloballyPositioned(std::move(m), [this, name](const foundation::LayoutCoordinates& c) {
+                const ui::Offset p = c.PositionInRoot();
+                at[name] = ui::Rect{ p.x / 2, p.y / 2, (p.x + float(c.GetSize().width)) / 2, (p.y + float(c.GetSize().height)) / 2 };
+            });
+        }
+        ui::Rect Rel(const std::string& name) {
+            const ui::Rect d = at["dialog"], r = at[name];
+            return { r.left - d.left, r.top - d.top, r.right - d.left, r.bottom - d.top };
+        }
+    };
+}
+
+TEST(AlertDialogTakesItsColours) {
+    ModalHarness h;
+    Color icon, title, text, button, primary;
+    Themed(h, [&] {
+        primary = MaterialTheme::colorScheme().primary;
+        AlertDialogOptions o;
+        o.icon = [&] { icon = rt::Composition::Current()->Read(LocalContentColor); };
+        o.title = [&] { title = rt::Composition::Current()->Read(LocalContentColor); };
+        o.text = [&] { text = rt::Composition::Current()->Read(LocalContentColor); };
+        o.containerColor = Color(0xFFFFFF00u);
+        o.iconContentColor = Color(0xFF00FF00u);
+        o.titleContentColor = Color(0xFFFF00FFu);
+        o.textContentColor = Color(0xFF444444u);
+        AlertDialog([] {}, [&] { TextButton([] {}, {}, {}, [&] { button = rt::Composition::Current()->Read(LocalContentColor); Text("Confirm"); }); }, {}, o);
+    });
+    h.AdvanceTimeBy(300);
+    CHECK(icon == Color(0xFF00FF00u) && title == Color(0xFFFF00FFu) && text == Color(0xFF444444u));
+    CHECK(button == primary);
+}
+
+TEST(AlertDialogWidths) {
+    struct Case { int kind; float expected; };   // 0 fill width, 1 basic fill width, 2 min, 3 basic min, 4 basic custom 150
+    for (int kind = 0; kind < 5; ++kind) {
+        ModalHarness h;
+        float width = 0;
+        Themed(h, [&, kind] {
+            const auto record = [&](ui::Modifier m) { return OnSizeChanged(std::move(m), [&](ui::IntSize s) { width = float(s.width) / 2; }); };
+            const std::string longText = "This area typically contains the supportive text which presents the details regarding the Dialog's purpose.";
+            if (kind == 0 || kind == 2) {
+                AlertDialogOptions o;
+                o.title = [] { Text("Title"); };
+                o.text = [kind, longText] { Text(kind == 0 ? longText : std::string("Short")); };
+                if (kind == 0) o.dismissButton = [] { TextButton([] {}, {}, {}, [] { Text("Dismiss"); }); };
+                AlertDialog([] {}, [] { TextButton([] {}, {}, {}, [] { Text("Confirm"); }); }, record(kind == 0 ? FillMax({}, Axis::Horizontal) : ui::Modifier{}), o);
+            } else {
+                BasicAlertDialog([] {}, kind == 4 ? Width({}, 150_dp) : ui::Modifier{}, {}, [&, kind, longText] {
+                    Surface(record(kind == 1 ? FillMax(WrapContent({}, Axis::Vertical), Axis::Horizontal) : ui::Modifier{}), {},
+                            [kind, longText] { Text(kind == 1 ? longText : std::string("Short")); });
+                });
+            }
+        });
+        h.AdvanceTimeBy(300);
+        // The platform dialog window keeps it off the screen's edges (checked on the emulator);
+        // here the 560 dp maximum and the window bound it.
+        if (kind <= 1) CHECK(width > 0 && width <= 560 && width <= 412);
+        else CHECK(Near(width, kind == 4 ? 150 : 280));
+    }
+}
+
+TEST(AlertDialogPositioning) {
+    for (bool withIcon : { true, false }) {
+        ModalHarness h;
+        Placed p;
+        Themed(h, [&, withIcon] {
+            AlertDialogOptions o;
+            if (withIcon) o.icon = [&] { Icon(internal::Icons::Filled::Edit(), std::nullopt, p.Track(SizeMod({}, 24_dp, 24_dp), "icon")); };
+            o.title = [&] { Text("Title", p.Track({}, "title")); };
+            o.text = [&] { Text("Text", p.Track({}, "text")); };
+            o.dismissButton = [&] { TextButton([] {}, p.Track({}, "dismiss"), {}, [] { Text("Dismiss"); }); };
+            AlertDialog([] {}, [&, withIcon] { if (withIcon) TextButton([] {}, p.Track({}, "confirm"), {}, [] { Text("Confirm"); }); }, p.Track({}, "dialog"), o);
+        });
+        h.AdvanceTimeBy(300);
+        const ui::Rect d = p.Rel("dialog"), title = p.Rel("title"), text = p.Rel("text"), dismiss = p.Rel("dismiss");
+        CHECK(Near(title.Height(), 32) && Near(text.Height(), 20));
+        CHECK(Near(text.left, 24) && Near(text.top, title.bottom + 16));
+        if (withIcon) {
+            const ui::Rect icon = p.Rel("icon"), confirm = p.Rel("confirm");
+            CHECK(Near(icon.left, (d.Width() - 24) / 2) && Near(icon.top, 24));
+            CHECK(Near(title.left, (d.Width() - title.Width()) / 2) && Near(title.top, icon.bottom + 16));
+            CHECK(Near(confirm.left, d.right - 24 - confirm.Width()) && Near(confirm.top, d.bottom - 24 - 48));
+            CHECK(Near(confirm.top - text.bottom, 24));
+            CHECK(Near(confirm.top, dismiss.top) && Near(confirm.bottom, dismiss.bottom));
+            CHECK(Near(confirm.left - 8, dismiss.right));
+        } else {
+            CHECK(Near(title.left, 24) && Near(title.top, 24));
+            CHECK(Near(dismiss.left, d.right - 24 - dismiss.Width()) && Near(dismiss.top, d.bottom - 24 - 48));
+            CHECK(Near(dismiss.top - text.bottom, 24));
+        }
+    }
 }

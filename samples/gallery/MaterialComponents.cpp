@@ -30,6 +30,7 @@
 #include <kiln/material3/Snackbar.h>
 #include <kiln/material3/TextField.h>
 #include <kiln/material3/ExposedDropdownMenu.h>
+#include <kiln/material3/AlertDialog.h>
 #include <kiln/material3/ShortNavigationBar.h>
 #include <kiln/material3/Tab.h>
 #include <kiln/material3/TabRow.h>
@@ -641,6 +642,23 @@ namespace kiln::gallery {
             m3::SecureTextField(password, Padding({}, 8_dp), secure);
         }
 
+        void Dialogs() {
+            auto* open = &RememberState(false);
+            auto* result = &RememberState(std::string("none"));
+            m3::Text("Dialog result: " + result->Get());
+            m3::TextButton([open] { open->Set(true); }, {}, {}, [] { m3::Text("Show alert dialog"); });
+            if (open->Get()) {
+                m3::AlertDialogOptions o;
+                o.icon = [] { m3::Icon(m3::internal::Icons::Filled::Edit(), std::nullopt); };
+                o.title = [] { m3::Text("Reset settings?"); };
+                o.text = [] { m3::Text("This will reset your app preferences back to their default settings."); };
+                o.dismissButton = [open, result] { m3::TextButton([open, result] { result->Set("dismissed"); open->Set(false); }, {}, {}, [] { m3::Text("Cancel"); }); };
+                m3::AlertDialog([open, result] { result->Set("outside"); open->Set(false); },
+                                [open, result] { m3::TextButton([open, result] { result->Set("confirmed"); open->Set(false); }, {}, {}, [] { m3::Text("Accept"); }); },
+                                {}, o);
+            }
+        }
+
         void Tabs() {
             auto* primary = &RememberState(0);
             auto* secondary = &RememberState(0);
@@ -1017,7 +1035,7 @@ namespace kiln::gallery {
         struct Section { const char* key; const char* title; void (*content)(); };
         const std::vector<Section>& Sections() {
             static const std::vector<Section> sections{
-                { "navigation", "Navigation bars and rails", Navigation }, { "tabs", "Tabs", Tabs }, { "appbars", "App bars", AppBars }, { "toolbars", "Floating toolbars", FloatingToolbars }, { "scrollbars", "Scrollbars", Scrollbars }, { "snackbars", "Snackbars", Snackbars }, { "textfields", "Text fields", TextFields }, { "segmented", "Segmented buttons", SegmentedButtons }, { "split", "Split buttons", SplitButtons },
+                { "navigation", "Navigation bars and rails", Navigation }, { "tabs", "Tabs", Tabs }, { "appbars", "App bars", AppBars }, { "toolbars", "Floating toolbars", FloatingToolbars }, { "scrollbars", "Scrollbars", Scrollbars }, { "snackbars", "Snackbars", Snackbars }, { "textfields", "Text fields", TextFields }, { "dialogs", "Dialogs", Dialogs }, { "segmented", "Segmented buttons", SegmentedButtons }, { "split", "Split buttons", SplitButtons },
                 { "tooltips", "Tooltips", Tooltips }, { "menus", "Menus", Menus }, { "groups", "Button groups", ButtonGroups },
                 { "sliders", "Sliders", Sliders }, { "progress", "Progress indicators", ProgressIndicators }, { "lists", "Lists", Lists },
                 { "chips", "Chips", Chips }, { "cards", "Cards", Cards }, { "selection", "", SelectionControls },
