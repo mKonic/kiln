@@ -32,6 +32,16 @@ def shot():
     return Image.open(io.BytesIO(adb("exec-out", "screencap", "-p"))).convert("RGB")
 
 
+def require_front(component):
+    """Fails unless `component`'s app is the resumed one (a crash would leave the other app's
+    screen behind, which compares as a perfect match)."""
+    package = component.split("/")[0]
+    top = adb("shell", "dumpsys", "activity", "activities").decode()
+    m = re.search(r"topResumedActivity=ActivityRecord\{\S+ \S+ (\S+)/", top)
+    if not m or m.group(1) != package:
+        raise RuntimeError(f"{package} is not in front (crashed?)")
+
+
 def run_steps(steps):
     """Runs the steps; returns a held pointer's position (a `down` without an `up`), if any."""
     held = None
@@ -83,17 +93,25 @@ def capture(route, wait):
     adb("shell", "am", "force-stop", COMPOSE.split("/")[0])
     adb("shell", "am", "start", "-W", "-n", COMPOSE, "-e", "route", route)
     time.sleep(wait)
+    require_front(COMPOSE)
     compose = shot_and_release(run_steps(steps))
+    require_front(COMPOSE)
     adb("shell", "am", "force-stop", KILN.split("/")[0])
     adb("shell", "setprop", "debug.kiln.catalog.route", route)
     adb("shell", "am", "start", "-W", "-n", KILN)
     time.sleep(wait)
+    require_front(KILN)
     kiln = shot_and_release(run_steps(steps))
+    require_front(KILN)
     return compose, kiln
 
 
 def compare(route, out, wait):
-    compose, kiln = capture(route, wait)
+    try:
+        compose, kiln = capture(route, wait)
+    except RuntimeError as e:
+        print(f"{route}\tFAILED: {e}")
+        return
     top = int(compose.height * 0.04)   # the status bar (clock) always differs
     compose = compose.crop((0, top, compose.width, compose.height))
     kiln = kiln.crop((0, top, kiln.width, kiln.height))

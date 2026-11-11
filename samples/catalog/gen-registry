@@ -58,7 +58,17 @@ for m in re.finditer(r"val (\w+Examples)\s*=", ex):
         items.append({"name": string(arg(args, "name")), "description": string(arg(args, "description") or '""'),
                       "expressive": (arg(args, "isExpressive") or "false") == "true",
                       "sample": lam.group(1) if lam else None})
-    lists[m.group(1)] = items
+    # A `.map { it.copy(content = { Box(Modifier.wrapContentWidth().width(N.dp)) { it.content() } }) }`
+    # after the list wraps every example (the text field samples get 280 dp).
+    _, after = call_body(ex, lo + len("listOf("))
+    width = 0
+    if re.match(r"\s*\.map\s*\{", ex[after:]):
+        wm = re.match(r"\s*\.map\s*\{(?:\s*//[^\n]*)*\s*it\.copy\(content = \{ Box\(Modifier\.wrapContentWidth\(\)\.width\((\d+)\.dp\)\) "
+                      r"\{ it\.content\(\) \} \}\)\s*\}", ex[after:])
+        if not wm:
+            sys.exit(f"gen-registry: {m.group(1)} maps its examples in a way this script does not know")
+        width = int(wm.group(1))
+    lists[m.group(1)] = {"items": items, "width": width}
 
 comps = {}
 for m in re.finditer(r"private val (\w+) =\s*Component\(", comp):
@@ -87,8 +97,9 @@ ids = {v: i for i, v in enumerate(comps, 1)}
 for v in order:
     cm = comps[v]
     i = ids[v]
-    out.append(f"            {{ {i}, {c(cm['name'])}, {c(cm['description'])}, {'true' if cm['tint'] else 'false'}, {{")
-    for e in lists.get(cm["examples"], []):
+    lst = lists.get(cm["examples"], {"items": [], "width": 0})
+    out.append(f"            {{ {i}, {c(cm['name'])}, {c(cm['description'])}, {'true' if cm['tint'] else 'false'}, {lst['width']}, {{")
+    for e in lst["items"]:
         total += 1
         fn = e["sample"] if e["sample"] in ported else None
         done += fn is not None

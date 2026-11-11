@@ -20,6 +20,7 @@
 #include "samples/SliderSamples.h"
 #include "samples/SwitchSamples.h"
 #include "samples/TabSamples.h"
+#include "samples/TextFieldSamples.h"
 #include "samples/ToggleButtonSamples.h"
 #include "samples/TooltipSamples.h"
 
@@ -27,7 +28,7 @@ namespace catalog {
 
     const std::vector<Component>& Components() {
         static const std::vector<Component> components = {
-            { 1, "Adaptive", "Adaptive scaffolds provides automatic layout adjustment on different window size classes and postures.\n\nNote: this sample is better experienced in a resizable emulator or foldable device.", true, {
+            { 1, "Adaptive", "Adaptive scaffolds provides automatic layout adjustment on different window size classes and postures.\n\nNote: this sample is better experienced in a resizable emulator or foldable device.", true, 0, {
                 { "ListDetailPaneScaffoldSample", "Adaptive examples", false, nullptr },
                 { "ListDetailPaneScaffoldSampleWithExtraPane", "Adaptive examples", false, nullptr },
                 { "ListDetailPaneScaffoldSampleWithExtraPaneLevitatedAsDialog", "Adaptive examples", false, nullptr },
@@ -36,10 +37,10 @@ namespace catalog {
                 { "ListDetailWithNavigation2Sample", "Adaptive examples", false, nullptr },
                 { "ListDetailWithNavigation3Sample", "Adaptive examples", false, nullptr },
             } },
-            { 2, "Badge", "A badge can contain dynamic information, such as the presence of a new notification or a number of pending requests. Badges can be icon only or contain a short text.", true, {
+            { 2, "Badge", "A badge can contain dynamic information, such as the presence of a new notification or a number of pending requests. Badges can be icon only or contain a short text.", true, 0, {
                 { "NavigationBarItemWithBadge", "Badge examples", false, samples::NavigationBarItemWithBadge },
             } },
-            { 3, "Bottom App Bar", "A bottom app bar displays navigation and key actions at the bottom of mobile screens.", true, {
+            { 3, "Bottom App Bar", "A bottom app bar displays navigation and key actions at the bottom of mobile screens.", true, 0, {
                 { "SimpleBottomAppBar", "Bottom app bar examples", false, nullptr },
                 { "BottomAppBarWithFAB", "Bottom app bar examples", false, nullptr },
                 { "BottomAppBarWithOverflow", "Bottom app bar examples", true, nullptr },
@@ -50,12 +51,12 @@ namespace catalog {
                 { "ExitAlwaysBottomAppBarFixed", "Bottom app bar examples", true, nullptr },
                 { "ExitAlwaysBottomAppBarFixedVibrant", "Bottom app bar examples", true, nullptr },
             } },
-            { 4, "Bottom Sheet", "Bottom sheets are surfaces containing supplementary content, anchored to the bottom of the screen.", true, {
+            { 4, "Bottom Sheet", "Bottom sheets are surfaces containing supplementary content, anchored to the bottom of the screen.", true, 0, {
                 { "ModalBottomSheetSample", "Bottom Sheet examples", false, nullptr },
                 { "SimpleBottomSheetScaffoldSample", "Bottom Sheet examples", false, nullptr },
                 { "BottomSheetScaffoldNestedScrollSample", "Bottom Sheet examples", false, nullptr },
             } },
-            { 5, "Buttons", "Buttons help people initiate actions, from sending an email, to sharing a document, to liking a post.", true, {
+            { 5, "Buttons", "Buttons help people initiate actions, from sending an email, to sharing a document, to liking a post.", true, 0, {
                 { "ButtonSample", "Button examples", false, samples::ButtonSample },
                 { "ButtonWithAnimatedShapeSample", "Button examples", true, samples::ButtonWithAnimatedShapeSample },
                 { "SquareButtonSample", "Button examples", true, samples::SquareButtonSample },
@@ -74,14 +75,14 @@ namespace catalog {
                 { "LargeButtonWithIconSample", "Button examples", true, samples::LargeButtonWithIconSample },
                 { "XLargeButtonWithIconSample", "Button examples", true, samples::XLargeButtonWithIconSample },
             } },
-            { 6, "Button Groups", "button groups is a container for material components that adds an animation on press", true, {
+            { 6, "Button Groups", "button groups is a container for material components that adds an animation on press", true, 0, {
                 { "ButtonGroupSample", "ButtonGroup examples", true, nullptr },
                 { "ButtonGroupWithCustomItemSample", "ButtonGroup examples", true, nullptr },
                 { "SingleSelectConnectedButtonGroupSample", "ButtonGroup examples", true, nullptr },
                 { "MultiSelectConnectedButtonGroupSample", "ButtonGroup examples", true, nullptr },
                 { "VerticalButtonGroupSample", "ButtonGroup examples", true, nullptr },
             } },
-            { 7, "Card", "Cards contain content and actions that relate information about a subject.", true, {
+            { 7, "Card", "Cards contain content and actions that relate information about a subject.", true, 0, {
                 { "CardSample", "Cards examples", false, samples::CardSample },
                 { "ClickableCardSample", "Cards examples", false, samples::ClickableCardSample },
                 { "ElevatedCardSample", "Cards examples", false, samples::ElevatedCardSample },
@@ -89,7 +90,7 @@ namespace catalog {
                 { "OutlinedCardSample", "Cards examples", false, samples::OutlinedCardSample },
                 { "ClickableOutlinedCardSample", "Cards examples", false, samples::ClickableOutlinedCardSample },
             } },
-            { 8, "Carousel", "Carousels are stylized versions of lists that provide a unique viewing and behavior that suit large imagery and other visually rich content.", true, {
+            { 8, "Carousel", "Carousels are stylized versions of lists that provide a unique viewing and behavior that suit large imagery and other visually rich content.", true, 0, {
                 { "HorizontalMultiBrowseCarouselSample", "Carousel examples", false, nullptr },
                 { "HorizontalUncontainedCarouselSample", "Carousel examples", false, nullptr },
                 { "HorizontalCenteredHeroCarouselSample", "Carousel examples", false, nullptr },
@@ -97,14 +98,14 @@ namespace catalog {
                 { "FadingHorizontalMultiBrowseCarouselSample", "Carousel examples", false, nullptr },
                 { "CarouselWithShowAllButtonSample", "Carousel examples", false, nullptr },
             } },
-            { 9, "Checkboxes", "Checkboxes allow the user to select one or more items from a set or turn an option on or off.", true, {
+            { 9, "Checkboxes", "Checkboxes allow the user to select one or more items from a set or turn an option on or off.", true, 0, {
                 { "CheckboxSample", "Checkboxes examples", false, samples::CheckboxSample },
                 { "CheckboxWithTextSample", "Checkboxes examples", false, samples::CheckboxWithTextSample },
                 { "CheckboxRoundedStrokesSample", "Checkboxes examples", false, samples::CheckboxRoundedStrokesSample },
                 { "TriStateCheckboxSample", "Checkboxes examples", false, samples::TriStateCheckboxSample },
                 { "TriStateCheckboxRoundedStrokesSample", "Checkboxes examples", false, samples::TriStateCheckboxRoundedStrokesSample },
             } },
-            { 10, "Chips", "Chips allow users to enter information, make selections, filter content, or trigger actions.", true, {
+            { 10, "Chips", "Chips allow users to enter information, make selections, filter content, or trigger actions.", true, 0, {
                 { "AssistChipSample", "Chips examples", false, samples::AssistChipSample },
                 { "ElevatedAssistChipSample", "Chips examples", false, samples::ElevatedAssistChipSample },
                 { "FilterChipSample", "Chips examples", false, samples::FilterChipSample },
@@ -122,19 +123,19 @@ namespace catalog {
                 { "ChipGroupSingleLineSample", "Chips examples", false, samples::ChipGroupSingleLineSample },
                 { "ChipGroupReflowSample", "Chips examples", false, samples::ChipGroupReflowSample },
             } },
-            { 11, "Date pickers", "Date pickers let users select a date or range of dates.", true, {
+            { 11, "Date pickers", "Date pickers let users select a date or range of dates.", true, 0, {
                 { "DatePickerSample", "Date picker examples", false, nullptr },
                 { "DatePickerDialogSample", "Date picker examples", false, nullptr },
                 { "DatePickerWithDateSelectableDatesSample", "Date picker examples", false, nullptr },
                 { "DateInputSample", "Date picker examples", false, nullptr },
                 { "DateRangePickerSample", "Date picker examples", false, nullptr },
             } },
-            { 12, "Dialogs", "Dialogs provide important prompts in a user flow. They can require an action, communicate information, or help users accomplish a task.", true, {
+            { 12, "Dialogs", "Dialogs provide important prompts in a user flow. They can require an action, communicate information, or help users accomplish a task.", true, 0, {
                 { "AlertDialogSample", "Dialog examples", false, samples::AlertDialogSample },
                 { "AlertDialogWithIconSample", "Dialog examples", false, samples::AlertDialogWithIconSample },
                 { "BasicAlertDialogSample", "Dialog examples", false, samples::BasicAlertDialogSample },
             } },
-            { 13, "Extended FAB", "Extended FABs help people take primary actions. They're wider than FABs to accommodate a text label and larger target area.", true, {
+            { 13, "Extended FAB", "Extended FABs help people take primary actions. They're wider than FABs to accommodate a text label and larger target area.", true, 0, {
                 { "ExtendedFloatingActionButtonSample", "Extended FAB examples", false, samples::ExtendedFloatingActionButtonSample },
                 { "SmallExtendedFloatingActionButtonSample", "Extended FAB examples", true, samples::SmallExtendedFloatingActionButtonSample },
                 { "MediumExtendedFloatingActionButtonSample", "Extended FAB examples", true, samples::MediumExtendedFloatingActionButtonSample },
@@ -148,17 +149,17 @@ namespace catalog {
                 { "MediumAnimatedExtendedFloatingActionButtonSample", "Extended FAB examples", true, samples::MediumAnimatedExtendedFloatingActionButtonSample },
                 { "LargeAnimatedExtendedFloatingActionButtonSample", "Extended FAB examples", true, samples::LargeAnimatedExtendedFloatingActionButtonSample },
             } },
-            { 14, "Floating action buttons", "The FAB represents the most important action on a screen. It puts key actions within reach.", true, {
+            { 14, "Floating action buttons", "The FAB represents the most important action on a screen. It puts key actions within reach.", true, 0, {
                 { "FloatingActionButtonSample", "Floating action button examples", false, samples::FloatingActionButtonSample },
                 { "LargeFloatingActionButtonSample", "Floating action button examples", false, samples::LargeFloatingActionButtonSample },
                 { "AnimatedFloatingActionButtonSample", "Floating action button examples", true, samples::AnimatedFloatingActionButtonSample },
                 { "MediumFloatingActionButtonSample", "Floating action button examples", true, samples::MediumFloatingActionButtonSample },
                 { "SmallFloatingActionButtonSample", "Floating action button examples", false, samples::SmallFloatingActionButtonSample },
             } },
-            { 15, "FAB Menu", "The FAB Menu displays additional key actions on click of a FAB.", true, {
+            { 15, "FAB Menu", "The FAB Menu displays additional key actions on click of a FAB.", true, 0, {
                 { "FloatingActionButtonMenuSample", "FAB Menu examples", true, nullptr },
             } },
-            { 16, "Floating Toolbar", "A floating toolbar displays key actions above the content.", true, {
+            { 16, "Floating Toolbar", "A floating toolbar displays key actions above the content.", true, 0, {
                 { "ExpandableHorizontalFloatingToolbarSample", "Floating toolbar examples", true, nullptr },
                 { "OverflowingHorizontalFloatingToolbarSample", "Floating toolbar examples", true, nullptr },
                 { "ScrollableHorizontalFloatingToolbarSample", "Floating toolbar examples", true, nullptr },
@@ -171,7 +172,7 @@ namespace catalog {
                 { "VerticalFloatingToolbarWithFabSample", "Floating toolbar examples", true, nullptr },
                 { "CenteredVerticalFloatingToolbarWithFabSample", "Floating toolbar examples", true, nullptr },
             } },
-            { 17, "Icon buttons", "Icon buttons allow users to take actions and make choices with a single tap.", true, {
+            { 17, "Icon buttons", "Icon buttons allow users to take actions and make choices with a single tap.", true, 0, {
                 { "IconButtonSample", "Icon button examples", false, samples::IconButtonSample },
                 { "TintedIconButtonSample", "Icon button examples", false, samples::TintedIconButtonSample },
                 { "IconToggleButtonSample", "Icon button examples", false, samples::IconToggleButtonSample },
@@ -186,7 +187,7 @@ namespace catalog {
                 { "MediumRoundWideIconButtonSample", "Icon button examples", true, samples::MediumRoundWideIconButtonSample },
                 { "LargeRoundUniformOutlinedIconButtonSample", "Icon button examples", true, samples::LargeRoundUniformOutlinedIconButtonSample },
             } },
-            { 18, "Lists", "Lists are continuous, vertical indexes of text or images.", true, {
+            { 18, "Lists", "Lists are continuous, vertical indexes of text or images.", true, 0, {
                 { "StandardListItems", "List examples", true, nullptr },
                 { "SegmentedListItems", "List examples", true, nullptr },
                 { "ClickableListItemSample", "List examples", true, nullptr },
@@ -202,14 +203,14 @@ namespace catalog {
                 { "LegacyThreeLineListItemWithOverlineAndSupporting", "List examples", false, nullptr },
                 { "LegacyThreeLineListItemWithExtendedSupporting", "List examples", false, nullptr },
             } },
-            { 19, "Loading indicators", "Loading indicators express an unspecified wait time or display the length of a loading process.", true, {
+            { 19, "Loading indicators", "Loading indicators express an unspecified wait time or display the length of a loading process.", true, 0, {
                 { "LoadingIndicatorSample", "Loading indicators examples", true, samples::LoadingIndicatorSample },
                 { "ContainedLoadingIndicatorSample", "Loading indicators examples", true, samples::ContainedLoadingIndicatorSample },
                 { "DeterminateLoadingIndicatorSample", "Loading indicators examples", true, samples::DeterminateLoadingIndicatorSample },
                 { "DeterminateContainedLoadingIndicatorSample", "Loading indicators examples", true, samples::DeterminateContainedLoadingIndicatorSample },
                 { "LoadingIndicatorPullToRefreshSample", "Loading indicators examples", true, samples::LoadingIndicatorPullToRefreshSample },
             } },
-            { 20, "Menus", "Menus display a list of choices on temporary surfaces.", true, {
+            { 20, "Menus", "Menus display a list of choices on temporary surfaces.", true, 0, {
                 { "MenuSample", "Menus examples", false, samples::MenuSample },
                 { "GroupedMenuSample", "Menus examples", true, samples::GroupedMenuSample },
                 { "MenuWithCascadingMenusSample", "Menus examples", true, samples::MenuWithCascadingMenusSample },
@@ -218,17 +219,17 @@ namespace catalog {
                 { "EditableExposedDropdownMenuSample", "Menus examples", false, samples::EditableExposedDropdownMenuSample },
                 { "MultiAutocompleteExposedDropdownMenuSample", "Menus examples", false, samples::MultiAutocompleteExposedDropdownMenuSample },
             } },
-            { 21, "Navigation bar", "Navigation bars offer a persistent and convenient way to switch between primary destinations in an app.", true, {
+            { 21, "Navigation bar", "Navigation bars offer a persistent and convenient way to switch between primary destinations in an app.", true, 0, {
                 { "ShortNavigationBarSample", "Navigation bar examples", true, nullptr },
                 { "ShortNavigationBarWithHorizontalItemsSample", "Navigation bar examples", true, nullptr },
                 { "NavigationBarSample", "Navigation bar examples", false, nullptr },
             } },
-            { 22, "Navigation drawer", "Navigation drawers provide ergonomic access to destinations in an app.", true, {
+            { 22, "Navigation drawer", "Navigation drawers provide ergonomic access to destinations in an app.", true, 0, {
                 { "ModalNavigationDrawerSample", "Navigation drawer examples", false, nullptr },
                 { "PermanentNavigationDrawerSample", "Navigation drawer examples", false, nullptr },
                 { "DismissibleNavigationDrawerSample", "Navigation drawer examples", false, nullptr },
             } },
-            { 23, "Navigation rail", "Navigation rails provide access to primary destinations in apps when using tablet and desktop screens.", true, {
+            { 23, "Navigation rail", "Navigation rails provide access to primary destinations in apps when using tablet and desktop screens.", true, 0, {
                 { "WideNavigationRailResponsiveSample", "Navigation rail examples", true, nullptr },
                 { "ModalWideNavigationRailSample", "Navigation rail examples", true, nullptr },
                 { "DismissibleModalWideNavigationRailSample", "Navigation rail examples", true, nullptr },
@@ -238,11 +239,11 @@ namespace catalog {
                 { "NavigationRailSample", "Navigation rail examples", false, nullptr },
                 { "NavigationRailBottomAlignSample", "Navigation rail examples", false, nullptr },
             } },
-            { 24, "Navigation Suite Scaffold", "The Navigation Suite Scaffold wraps the provided content and places the adequate provided navigation component on the screen according to the current NavigationSuiteType. \n\nNote: this sample is better experienced in a resizable emulator or foldable device.", true, {
+            { 24, "Navigation Suite Scaffold", "The Navigation Suite Scaffold wraps the provided content and places the adequate provided navigation component on the screen according to the current NavigationSuiteType. \n\nNote: this sample is better experienced in a resizable emulator or foldable device.", true, 0, {
                 { "NavigationSuiteScaffoldSample", "Navigation suite scaffold examples", true, nullptr },
                 { "NavigationSuiteScaffoldCustomConfigSample", "Navigation suite scaffold examples", true, nullptr },
             } },
-            { 25, "Progress indicators", "Progress indicators express an unspecified wait time or display the length of a process.", true, {
+            { 25, "Progress indicators", "Progress indicators express an unspecified wait time or display the length of a process.", true, 0, {
                 { "LinearProgressIndicatorSample", "Progress indicators examples", false, samples::LinearProgressIndicatorSample },
                 { "LinearWavyProgressIndicatorSample", "Progress indicators examples", true, samples::LinearWavyProgressIndicatorSample },
                 { "IndeterminateLinearProgressIndicatorSample", "Progress indicators examples", false, samples::IndeterminateLinearProgressIndicatorSample },
@@ -252,7 +253,7 @@ namespace catalog {
                 { "IndeterminateCircularProgressIndicatorSample", "Progress indicators examples", false, samples::IndeterminateCircularProgressIndicatorSample },
                 { "IndeterminateCircularWavyProgressIndicatorSample", "Progress indicators examples", true, samples::IndeterminateCircularWavyProgressIndicatorSample },
             } },
-            { 26, "Pull-to-Refresh Indicator", "Pull to refresh is a swipe gesture available at the beginning of lists, grid lists, and card collections where the most recent content appears ", true, {
+            { 26, "Pull-to-Refresh Indicator", "Pull to refresh is a swipe gesture available at the beginning of lists, grid lists, and card collections where the most recent content appears ", true, 0, {
                 { "PullToRefreshSample", "Pull-to-refresh examples", false, nullptr },
                 { "PullToRefreshWithLoadingIndicatorSample", "Pull-to-refresh examples", true, nullptr },
                 { "PullToRefreshScalingSample", "Pull-to-refresh examples", false, nullptr },
@@ -260,25 +261,25 @@ namespace catalog {
                 { "PullToRefreshViewModelSample", "Pull-to-refresh examples", false, nullptr },
                 { "PullToRefreshCustomIndicatorWithDefaultTransform", "Pull-to-refresh examples", false, nullptr },
             } },
-            { 27, "Radio buttons", "Radio buttons allow the user to select one option from a set.", true, {
+            { 27, "Radio buttons", "Radio buttons allow the user to select one option from a set.", true, 0, {
                 { "RadioButtonSample", "Radio buttons examples", false, samples::RadioButtonSample },
                 { "RadioGroupSample", "Radio buttons examples", false, samples::RadioGroupSample },
             } },
-            { 28, "Scroll field", "Scroll field allows the user to select a value, e.g. time.", true, {
+            { 28, "Scroll field", "Scroll field allows the user to select a value, e.g. time.", true, 0, {
                 { "ScrollFieldSample", "Scroll field examples", true, nullptr },
                 { "TimeScrollFieldSample", "Scroll field examples", true, nullptr },
                 { "UnitScrollFieldSample", "Scroll field examples", true, nullptr },
             } },
-            { 29, "Search bars", "Search bars allow users to enter a keyword or phrase and get relevant information.", true, {
+            { 29, "Search bars", "Search bars allow users to enter a keyword or phrase and get relevant information.", true, 0, {
                 { "SimpleSearchBarSample", "Search bar examples", false, nullptr },
                 { "FullScreenSearchBarScaffoldSample", "Search bar examples", true, nullptr },
                 { "DockedSearchBarScaffoldSample", "Search bar examples", true, nullptr },
             } },
-            { 30, "Segmented Button", "Segmented buttons help people select options, switch views, or sort elements.", true, {
+            { 30, "Segmented Button", "Segmented buttons help people select options, switch views, or sort elements.", true, 0, {
                 { "SegmentedButtonSingleSelectSample", "Segmented Button examples", false, samples::SegmentedButtonSingleSelectSample },
                 { "SegmentedButtonMultiSelectSample", "Segmented Button examples", false, samples::SegmentedButtonMultiSelectSample },
             } },
-            { 32, "Sliders", "Sliders allow users to make selections from a range of values.", true, {
+            { 32, "Sliders", "Sliders allow users to make selections from a range of values.", true, 0, {
                 { "SliderSample", "Sliders examples", false, samples::SliderSample },
                 { "StepsSliderSample", "Sliders examples", false, samples::StepsSliderSample },
                 { "SliderWithCustomThumbSample", "Sliders examples", false, samples::SliderWithCustomThumbSample },
@@ -291,14 +292,14 @@ namespace catalog {
                 { "StepRangeSliderSample", "Sliders examples", false, samples::StepRangeSliderSample },
                 { "RangeSliderWithCustomComponents", "Sliders examples", false, samples::RangeSliderWithCustomComponents },
             } },
-            { 33, "Snackbars", "Snackbars provide brief messages about app processes at the bottom of the screen.", true, {
+            { 33, "Snackbars", "Snackbars provide brief messages about app processes at the bottom of the screen.", true, 0, {
                 { "ScaffoldWithSimpleSnackbar", "Snackbars examples", false, nullptr },
                 { "ScaffoldWithIndefiniteSnackbar", "Snackbars examples", false, nullptr },
                 { "ScaffoldWithCustomSnackbar", "Snackbars examples", false, nullptr },
                 { "ScaffoldWithCoroutinesSnackbar", "Snackbars examples", false, nullptr },
                 { "ScaffoldWithMultilineSnackbar", "Snackbars examples", false, nullptr },
             } },
-            { 34, "Split Button", "Split buttons let user perform additional actions besides the main action", true, {
+            { 34, "Split Button", "Split buttons let user perform additional actions besides the main action", true, 0, {
                 { "FilledSplitButtonSample", "Split Button examples", true, nullptr },
                 { "SplitButtonWithUnCheckableTrailingButtonSample", "Split Button examples", true, nullptr },
                 { "SplitButtonWithDropdownMenuSample", "Split Button examples", true, nullptr },
@@ -312,11 +313,11 @@ namespace catalog {
                 { "LargeFilledSplitButtonSample", "Split Button examples", true, nullptr },
                 { "ExtraLargeFilledSplitButtonSample", "Split Button examples", true, nullptr },
             } },
-            { 35, "Switches", "Switches toggle the state of a single setting on or off.", true, {
+            { 35, "Switches", "Switches toggle the state of a single setting on or off.", true, 0, {
                 { "SwitchSample", "Switch examples", false, samples::SwitchSample },
                 { "SwitchWithThumbIconSample", "Switch examples", false, samples::SwitchWithThumbIconSample },
             } },
-            { 36, "Tabs", "Tabs organize content across different screens, data sets, and other interactions.", true, {
+            { 36, "Tabs", "Tabs organize content across different screens, data sets, and other interactions.", true, 0, {
                 { "PrimaryTextTabs", "Tabs examples", false, samples::PrimaryTextTabs },
                 { "PrimaryIconTabs", "Tabs examples", false, samples::PrimaryIconTabs },
                 { "SecondaryTextTabs", "Tabs examples", false, samples::SecondaryTextTabs },
@@ -330,38 +331,38 @@ namespace catalog {
                 { "FancyIndicatorContainerTabs", "Tabs examples", false, samples::FancyIndicatorContainerTabs },
                 { "ScrollingFancyIndicatorContainerTabs", "Tabs examples", false, samples::ScrollingFancyIndicatorContainerTabs },
             } },
-            { 37, "Text fields", "Text fields let users enter and edit text.", true, {
-                { "ExpressiveTextFieldSample", "Text fields examples", true, nullptr },
-                { "ExpressiveOutlinedTextFieldSample", "Text fields examples", true, nullptr },
-                { "ExpressiveTextFieldWithIcons", "Text fields examples", true, nullptr },
-                { "ExpressiveOutlinedTextFieldWithIcons", "Text fields examples", true, nullptr },
-                { "ExpressiveTextFieldWithPlaceholder", "Text fields examples", true, nullptr },
-                { "ExpressiveOutlinedTextFieldWithPlaceholder", "Text fields examples", true, nullptr },
-                { "ExpressiveTextFieldWithPrefixAndSuffix", "Text fields examples", true, nullptr },
-                { "ExpressiveOutlinedTextFieldWithPrefixAndSuffix", "Text fields examples", true, nullptr },
-                { "ExpressiveTextFieldWithSupportingText", "Text fields examples", true, nullptr },
-                { "ExpressiveOutlinedTextFieldWithSupportingText", "Text fields examples", true, nullptr },
-                { "ExpressiveTextFieldWithErrorState", "Text fields examples", true, nullptr },
-                { "ExpressiveOutlinedTextFieldWithErrorState", "Text fields examples", true, nullptr },
-                { "ExpressivePasswordTextField", "Text fields examples", true, nullptr },
-                { "ExpressiveOutlinedPasswordTextField", "Text fields examples", true, nullptr },
-                { "ExpressiveConnectedTextFieldsSample", "Text fields can be customized to group a small number of related text fields together, making content easier to digest.", true, nullptr },
-                { "SimpleTextFieldSample", "Text fields examples", false, nullptr },
-                { "TextFieldWithInitialValueAndSelection", "Text fields examples", false, nullptr },
-                { "SimpleOutlinedTextFieldSample", "Text fields examples", false, nullptr },
-                { "OutlinedTextFieldWithInitialValueAndSelection", "Text fields examples", false, nullptr },
-                { "TextFieldWithTransformations", "Text fields examples", false, nullptr },
-                { "TextFieldWithIcons", "Text fields examples", false, nullptr },
-                { "TextFieldWithPlaceholder", "Text fields examples", false, nullptr },
-                { "TextFieldWithPrefixAndSuffix", "Text fields examples", false, nullptr },
-                { "TextFieldWithErrorState", "Text fields examples", false, nullptr },
-                { "TextFieldWithSupportingText", "Text fields examples", false, nullptr },
-                { "DenseTextFieldContentPadding", "Text fields examples", false, nullptr },
-                { "PasswordTextField", "Text fields examples", false, nullptr },
-                { "TextFieldWithHideKeyboardOnImeAction", "Text fields examples", false, nullptr },
-                { "TextArea", "Text fields examples", false, nullptr },
+            { 37, "Text fields", "Text fields let users enter and edit text.", true, 280, {
+                { "ExpressiveTextFieldSample", "Text fields examples", true, samples::ExpressiveTextFieldSample },
+                { "ExpressiveOutlinedTextFieldSample", "Text fields examples", true, samples::ExpressiveOutlinedTextFieldSample },
+                { "ExpressiveTextFieldWithIcons", "Text fields examples", true, samples::ExpressiveTextFieldWithIcons },
+                { "ExpressiveOutlinedTextFieldWithIcons", "Text fields examples", true, samples::ExpressiveOutlinedTextFieldWithIcons },
+                { "ExpressiveTextFieldWithPlaceholder", "Text fields examples", true, samples::ExpressiveTextFieldWithPlaceholder },
+                { "ExpressiveOutlinedTextFieldWithPlaceholder", "Text fields examples", true, samples::ExpressiveOutlinedTextFieldWithPlaceholder },
+                { "ExpressiveTextFieldWithPrefixAndSuffix", "Text fields examples", true, samples::ExpressiveTextFieldWithPrefixAndSuffix },
+                { "ExpressiveOutlinedTextFieldWithPrefixAndSuffix", "Text fields examples", true, samples::ExpressiveOutlinedTextFieldWithPrefixAndSuffix },
+                { "ExpressiveTextFieldWithSupportingText", "Text fields examples", true, samples::ExpressiveTextFieldWithSupportingText },
+                { "ExpressiveOutlinedTextFieldWithSupportingText", "Text fields examples", true, samples::ExpressiveOutlinedTextFieldWithSupportingText },
+                { "ExpressiveTextFieldWithErrorState", "Text fields examples", true, samples::ExpressiveTextFieldWithErrorState },
+                { "ExpressiveOutlinedTextFieldWithErrorState", "Text fields examples", true, samples::ExpressiveOutlinedTextFieldWithErrorState },
+                { "ExpressivePasswordTextField", "Text fields examples", true, samples::ExpressivePasswordTextField },
+                { "ExpressiveOutlinedPasswordTextField", "Text fields examples", true, samples::ExpressiveOutlinedPasswordTextField },
+                { "ExpressiveConnectedTextFieldsSample", "Text fields can be customized to group a small number of related text fields together, making content easier to digest.", true, samples::ExpressiveConnectedTextFieldsSample },
+                { "SimpleTextFieldSample", "Text fields examples", false, samples::SimpleTextFieldSample },
+                { "TextFieldWithInitialValueAndSelection", "Text fields examples", false, samples::TextFieldWithInitialValueAndSelection },
+                { "SimpleOutlinedTextFieldSample", "Text fields examples", false, samples::SimpleOutlinedTextFieldSample },
+                { "OutlinedTextFieldWithInitialValueAndSelection", "Text fields examples", false, samples::OutlinedTextFieldWithInitialValueAndSelection },
+                { "TextFieldWithTransformations", "Text fields examples", false, samples::TextFieldWithTransformations },
+                { "TextFieldWithIcons", "Text fields examples", false, samples::TextFieldWithIcons },
+                { "TextFieldWithPlaceholder", "Text fields examples", false, samples::TextFieldWithPlaceholder },
+                { "TextFieldWithPrefixAndSuffix", "Text fields examples", false, samples::TextFieldWithPrefixAndSuffix },
+                { "TextFieldWithErrorState", "Text fields examples", false, samples::TextFieldWithErrorState },
+                { "TextFieldWithSupportingText", "Text fields examples", false, samples::TextFieldWithSupportingText },
+                { "DenseTextFieldContentPadding", "Text fields examples", false, samples::DenseTextFieldContentPadding },
+                { "PasswordTextField", "Text fields examples", false, samples::PasswordTextField },
+                { "TextFieldWithHideKeyboardOnImeAction", "Text fields examples", false, samples::TextFieldWithHideKeyboardOnImeAction },
+                { "TextArea", "Text fields examples", false, samples::TextArea },
             } },
-            { 39, "Time Picker", "Time picker allows the user to choose time of day.", true, {
+            { 39, "Time Picker", "Time picker allows the user to choose time of day.", true, 0, {
                 { "TimePickerSample", "Time Picker examples", false, nullptr },
                 { "TimeInputSample", "Time Picker examples", false, nullptr },
                 { "TimePickerSwitchableSample", "Time Picker examples", false, nullptr },
@@ -371,7 +372,7 @@ namespace catalog {
                 { "VibrantTimePickerScrollSample", "Time Picker examples", true, nullptr },
                 { "UncontainedTimePickerSample", "Time Picker examples", true, nullptr },
             } },
-            { 31, "ToggleButtons", "Toggle buttons provide a selectable button that animates on press.", true, {
+            { 31, "ToggleButtons", "Toggle buttons provide a selectable button that animates on press.", true, 0, {
                 { "ToggleButtonSample", "ToggleButton examples", true, samples::ToggleButtonSample },
                 { "ElevatedToggleButtonSample", "ToggleButton examples", true, samples::ElevatedToggleButtonSample },
                 { "FilledTonalToggleButtonSample", "ToggleButton examples", true, samples::FilledTonalToggleButtonSample },
@@ -383,7 +384,7 @@ namespace catalog {
                 { "LargeToggleButtonWithIconSample", "ToggleButton examples", true, samples::LargeToggleButtonWithIconSample },
                 { "XLargeToggleButtonWithIconSample", "ToggleButton examples", true, samples::XLargeToggleButtonWithIconSample },
             } },
-            { 38, "Tooltips", "Tooltips call user attention to an anchor component.", true, {
+            { 38, "Tooltips", "Tooltips call user attention to an anchor component.", true, 0, {
                 { "PlainTooltipSample", "Tooltips examples", false, samples::PlainTooltipSample },
                 { "PlainTooltipWithManualInvocationSample", "Tooltips examples", false, samples::PlainTooltipWithManualInvocationSample },
                 { "PlainTooltipWithCaret", "Tooltips examples", false, samples::PlainTooltipWithCaret },
@@ -398,7 +399,7 @@ namespace catalog {
                 { "RichTooltipWithCaretSample", "Tooltips examples", false, samples::RichTooltipWithCaretSample },
                 { "RichTooltipWithCustomCaretSample", "Tooltips examples", false, samples::RichTooltipWithCustomCaretSample },
             } },
-            { 40, "Top app bar", "Top app bars display information and actions at the top of a screen.", true, {
+            { 40, "Top app bar", "Top app bars display information and actions at the top of a screen.", true, 0, {
                 { "SimpleTopAppBar", "Top app bar examples", false, nullptr },
                 { "SimpleTopAppBarWithAdaptiveActions", "Top app bar examples", false, nullptr },
                 { "SimpleTopAppBarWithSubtitle", "Top app bar examples", true, nullptr },
@@ -417,11 +418,11 @@ namespace catalog {
                 { "LargeFlexibleTopAppBarWithSubtitleAndCenterAligned", "Top app bar examples", true, nullptr },
                 { "CustomTwoRowsTopAppBar", "Top app bar examples", true, nullptr },
             } },
-            { 41, "Transitions", "Transitions guide users between screens and navigation states, maintaining spatial context through expressive motion, including gesture-driven predictive back.", true, {
+            { 41, "Transitions", "Transitions guide users between screens and navigation states, maintaining spatial context through expressive motion, including gesture-driven predictive back.", true, 0, {
                 { "HorizontalSharedAxisTransitionSample", "Transitions examples", false, nullptr },
                 { "FadeThroughTransitionSample", "Transitions examples", false, nullptr },
             } },
-            { 42, "Typography", "The Material Design type scale includes a range of contrasting styles that support the needs of your product and its content.", true, {
+            { 42, "Typography", "The Material Design type scale includes a range of contrasting styles that support the needs of your product and its content.", true, 0, {
                 { "TypographySample", "Typography examples", false, nullptr },
                 { "TypographyCustomFontFamilySample", "Typography examples", false, nullptr },
             } },

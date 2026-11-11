@@ -389,10 +389,15 @@ namespace catalog {
             a.onBackClick = [nav] { nav.Back(); };
             a.favorite = favoriteRoute == route;
             a.onFavoriteClick = [onFavorite, route] { onFavorite(route); };
-            CatalogScaffold(a, [&example](const PaddingValues& padding) {
-                Box(Padding(ConsumeWindowInsets(FillMax({}, Axis::Both), WindowInsets::SafeDrawing()), padding), Alignment::Center(), false, [&example] {
-                    if (example.content) example.content();
-                    else m3::Text("Not ported to kiln yet");
+            const int width = component.exampleWidthDp;
+            CatalogScaffold(a, [&example, width](const PaddingValues& padding) {
+                Box(Padding(ConsumeWindowInsets(FillMax({}, Axis::Both), WindowInsets::SafeDrawing()), padding), Alignment::Center(), false, [&example, width] {
+                    const auto content = [&example] {
+                        if (example.content) example.content();
+                        else m3::Text("Not ported to kiln yet");
+                    };
+                    if (width > 0) Box(Width(WrapContent({}, Axis::Horizontal), Dp(float(width))), Alignment::TopStart(), false, content);
+                    else content();
                 });
             });
         }

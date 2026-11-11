@@ -21,6 +21,9 @@ namespace catalog {
         int id = 0;
         std::string name, description;
         bool tintIcon = true;
+        // Not 0: every example shows in a box this wide (Examples.kt wraps the text field
+        // samples in Box(Modifier.wrapContentWidth().width(280.dp))).
+        int exampleWidthDp = 0;
         std::vector<Example> examples;
         bool HasExpressiveExamples() const {
             for (const auto& e : examples)

@@ -46,6 +46,8 @@ namespace catalog::Icons {
     namespace Filled { const ImageVectorPtr& ThumbDown(); }
     namespace Filled { const ImageVectorPtr& ThumbUp(); }
     namespace Filled { const ImageVectorPtr& Tune(); }
+    namespace Filled { const ImageVectorPtr& Visibility(); }
+    namespace Filled { const ImageVectorPtr& VisibilityOff(); }
     namespace Outlined { const ImageVectorPtr& Edit(); }
     namespace Outlined { const ImageVectorPtr& Email(); }
     namespace Outlined { const ImageVectorPtr& FormatBold(); }
