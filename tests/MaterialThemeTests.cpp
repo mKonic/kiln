@@ -41,6 +41,7 @@
 #include "kiln/material3/Carousel.h"
 #include "kiln/material3/DatePicker.h"
 #include "kiln/material3/DateRangePicker.h"
+#include "kiln/material3/ScrollField.h"
 #include "kiln/material3/internal/GetString.h"
 #include "kiln/text/DateFormat.h"
 #include "kiln/text/LocaleFormat.h"
@@ -12767,5 +12768,152 @@ TEST(DateRangeInputSelectsRanges) {
         q.Click(q.Described(PickerString(material3::Strings::DatePickerSwitchToCalendarMode)));
         CHECK(!q.Find([](const ui::SemanticsNode& n) { return n.config.editableText.has_value(); }));
         CHECK(q.Find([](const ui::SemanticsNode& n) { return n.config.onClick && TextContains(n, ", 20"); }));
+    }
+}
+
+// --- ScrollField (ScrollFieldTest.kt) -------------------------------------------------------------
+
+namespace {
+    // onNodeWithText(text, useUnmergedTree = true): the placed layout node whose own semantics
+    // carry the text.
+    const ui::LayoutNode* LayoutWithText(const ui::LayoutNode& n, const std::string& text) {
+        if (!n.IsPlaced() && n.Parent()) return nullptr;
+        ui::SemanticsConfiguration c;
+        if (ui::CalculateSemanticsConfiguration(const_cast<ui::LayoutNode&>(n), c) &&
+            std::find(c.text.begin(), c.text.end(), text) != c.text.end())
+            return &n;
+        for (const auto* child : n.Children())
+            if (const auto* r = LayoutWithText(*child, text)) return r;
+        return nullptr;
+    }
+    std::optional<ui::SemanticsNode> FieldNode(PickerQuery& q) {
+        return q.Find([](const ui::SemanticsNode& n) { return n.config.progressBarRangeInfo.has_value(); });
+    }
+}
+
+TEST(ScrollFieldSelectsOptions) {
+    {   // scrollField_initialState, scrollField_rememberState_coercedIndex
+        std::shared_ptr<ScrollFieldState> state, high, low;
+        PhoneHarness h;
+        PickerContent(h, [&] {
+            state = RememberScrollFieldState(10, 3);
+            high = RememberScrollFieldState(10, 20);
+            low = RememberScrollFieldState(10, -5);
+            ScrollField(*state, std::nullopt);
+        });
+        PickerQuery q{ h };
+        CHECK(state->SelectedOption() == 3 && high->SelectedOption() == 9 && low->SelectedOption() == 0);
+        CHECK(FieldNode(q) && FieldNode(q)->config.stateDescription == "3");
+    }
+    {   // scrollField_selectOption: a tap on the next item
+        std::shared_ptr<ScrollFieldState> state;
+        PhoneHarness h;
+        PickerContent(h, [&state] {
+            state = RememberScrollFieldState(30, 0);
+            ScrollField(*state, std::nullopt);
+        });
+        PickerQuery q{ h };
+        const auto* one = LayoutWithText(h.owner.Root(), "01");
+        CHECK(one);
+        if (one) {
+            const ui::Rect r = one->BoundsInRoot();
+            std::int64_t t = 30000;
+            Touch(h, t, ui::PointerEventType::Press, (r.left + r.right) / 2, (r.top + r.bottom) / 2, true);
+            Touch(h, t, ui::PointerEventType::Release, (r.left + r.right) / 2, (r.top + r.bottom) / 2, false);
+            h.AdvanceTimeBy(2000);
+        }
+        CHECK(state->SelectedOption() == 1);
+        CHECK(FieldNode(q) && FieldNode(q)->config.stateDescription == "1");
+    }
+    {   // scrollField_setProgressSemantics, then scrollFieldState_targetOption
+        std::shared_ptr<ScrollFieldState> state;
+        PhoneHarness h;
+        PickerContent(h, [&state] {
+            state = RememberScrollFieldState(10, 3);
+            ScrollField(*state, std::nullopt);
+        });
+        PickerQuery q{ h };
+        const float initial = FieldNode(q)->config.progressBarRangeInfo->current;
+        FieldNode(q)->config.setProgress(initial + 1);
+        h.AdvanceTimeBy(2000);
+        CHECK(state->SelectedOption() == 4 && FieldNode(q)->config.stateDescription == "4");
+        FieldNode(q)->config.setProgress(initial);
+        h.AdvanceTimeBy(2000);
+        CHECK(state->SelectedOption() == 3 && FieldNode(q)->config.stateDescription == "3");
+        // The target updates as soon as the scroll starts.
+        FieldNode(q)->config.setProgress(initial + 1);
+        h.AdvanceTimeBy(32);
+        CHECK(state->TargetOption() == 4);
+        h.AdvanceTimeBy(2000);
+        CHECK(state->TargetOption() == 4 && state->SelectedOption() == 4);
+    }
+    {   // custom and content descriptions
+        PhoneHarness h;
+        PickerContent(h, [] {
+            ScrollFieldOptions o;
+            o.fieldAccessibilityDescription = [](int i) { return "Option " + std::to_string(i); };
+            ScrollField(*RememberScrollFieldState(10, 5), std::string("Test description"), {}, o);
+        });
+        PickerQuery q{ h };
+        CHECK(FieldNode(q) && FieldNode(q)->config.stateDescription == "Option 5");
+        CHECK(FieldNode(q)->config.contentDescription == std::vector<std::string>{ "Test description" });
+    }
+    {   // scrollField_keyboardNavigation
+        std::shared_ptr<ScrollFieldState> state;
+        PhoneHarness h;
+        h.owner.SetInputMode(ui::InputMode::Keyboard);
+        PickerContent(h, [&state] {
+            state = RememberScrollFieldState(10, 3);
+            ScrollField(*state, std::nullopt);
+        });
+        Keys k{ PickerQuery{ h } };
+        const auto field = FieldNode(k.q);
+        CHECK(field && field->config.requestFocus);
+        if (field && field->config.requestFocus) field->config.requestFocus();
+        h.AdvanceTimeBy(100);
+        CHECK(FieldNode(k.q)->config.focused == true);
+        k.Press(ui::keys::DpadDown);
+        CHECK(state->SelectedOption() == 4);
+        k.Press(ui::keys::DpadUp);
+        CHECK(state->SelectedOption() == 3);
+    }
+    {   // setSelectedOption, scrollToOption and animateScrollToOption (coerced)
+        std::shared_ptr<ScrollFieldState> state;
+        PhoneHarness h;
+        PickerContent(h, [&state] {
+            state = RememberScrollFieldState(10, 0);
+            ScrollField(*state, std::nullopt);
+        });
+        PickerQuery q{ h };
+        state->SetSelectedOption(5);
+        h.AdvanceTimeBy(100);
+        CHECK(state->SelectedOption() == 5 && FieldNode(q)->config.stateDescription == "5");
+        auto job = rt::Launch(rt::Dispatcher::Main(), state->ScrollToOption(20));
+        h.AdvanceTimeBy(100);
+        CHECK(state->SelectedOption() == 9);
+        job = rt::Launch(rt::Dispatcher::Main(), state->ScrollToOption(-5));
+        h.AdvanceTimeBy(100);
+        CHECK(state->SelectedOption() == 0);
+        job = rt::Launch(rt::Dispatcher::Main(), state->AnimateScrollToOption(20));
+        h.AdvanceTimeBy(2000);
+        CHECK(state->SelectedOption() == 9);
+    }
+}
+
+TEST(ScrollFieldItemSpacing) {
+    for (Dp height : { ScrollFieldDefaults::ItemHeight, Dp(80) }) {
+        PhoneHarness h;
+        PickerContent(h, [height] {
+            ScrollFieldOptions o;
+            o.itemHeight = height;
+            ScrollField(*RememberScrollFieldState(30, 0), std::nullopt, {}, o);
+        });
+        const auto* zero = LayoutWithText(h.owner.Root(), "00");
+        const auto* one = LayoutWithText(h.owner.Root(), "01");
+        CHECK(zero && one);
+        if (!zero || !one) continue;
+        const ui::Rect a = zero->BoundsInRoot(), b = one->BoundsInRoot();
+        const float d = h.owner.GetDensity().density;
+        CHECK(std::abs(((b.top + b.bottom) / 2 - (a.top + a.bottom) / 2) / d - height.value) < 0.5f);
     }
 }
