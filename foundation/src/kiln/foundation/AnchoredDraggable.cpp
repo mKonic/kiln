@@ -31,7 +31,7 @@ namespace kiln::foundation {
 
         rt::Task<> Fling(std::shared_ptr<AnchoredBox> box, float velocity, float threshold) {
             const auto& o = box->options;
-            float available = velocity;
+            float available = o.transformVelocity ? o.transformVelocity(velocity) : velocity;
             if (o.overscroll) available -= box->Axis(o.overscroll->ConsumePreFling(box->Single(velocity)));
             const float left = co_await box->state->Fling(available, threshold, o.positionalThreshold, o.snapAnimationSpec);
             if (o.overscroll) {

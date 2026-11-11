@@ -264,6 +264,9 @@ namespace kiln::foundation {
         bool clip = false;
         CornerShape shape;
         std::shared_ptr<const gfx::Shape> clipShape;   // overrides `shape` when set
+        // Read-only in a block: the layer's size (GraphicsLayerScope.size); a block reading it
+        // runs again when the size changes.
+        Size size;
         bool operator==(const GraphicsLayerParams&) const = default;
     };
     Modifier GraphicsLayer(Modifier m, GraphicsLayerParams p);

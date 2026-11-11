@@ -148,6 +148,18 @@ namespace kiln::foundation {
     // nestedScroll(connection): `connection` sees the scrolls and flings of scrollables inside
     // (before them: pre, after them: post) and may consume part of each.
     Modifier NestedScroll(Modifier m, std::shared_ptr<NestedScrollConnection> connection);
+    // NestedScrollDispatcher: sends a scroll that is not a scrollable's (a custom gesture) to
+    // the nested-scroll ancestors of the node it is attached to; it answers zero while detached.
+    class NestedScrollDispatcher {
+    public:
+        Offset DispatchPreScroll(Offset available, ui::NestedScrollSource source) const;
+        Offset DispatchPostScroll(Offset consumed, Offset available, ui::NestedScrollSource source) const;
+        rt::Task<Offset> DispatchPreFling(Offset available) const;
+        rt::Task<Offset> DispatchPostFling(Offset consumed, Offset available) const;
+        ui::NestedScrollNode* node = nullptr;   // internal: set while attached
+    };
+    // nestedScroll(connection, dispatcher)
+    Modifier NestedScroll(Modifier m, std::shared_ptr<NestedScrollConnection> connection, std::shared_ptr<NestedScrollDispatcher> dispatcher);
 
     // rememberNestedScrollInteropConnection(): passes nested scroll on to the host view's
     // nested-scrolling parents (a CoordinatorLayout's app bar), in View pixels and signs. Use

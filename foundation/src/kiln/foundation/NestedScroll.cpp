@@ -8,12 +8,29 @@ namespace kiln::foundation {
     namespace {
         struct NestedParams {
             std::shared_ptr<NestedScrollConnection> connection;
-            bool operator==(const NestedParams& o) const { return connection == o.connection; }
+            std::shared_ptr<NestedScrollDispatcher> dispatcher;
+            bool operator==(const NestedParams& o) const { return connection == o.connection && dispatcher == o.dispatcher; }
         };
         struct ConnectionNode final : ui::NestedScrollNode {
             NestedParams params;
+            std::shared_ptr<NestedScrollDispatcher> attached;
             explicit ConnectionNode(NestedParams p) : params(std::move(p)) { connection = params.connection.get(); }
-            void OnParamsChanged() { connection = params.connection.get(); }
+            void OnParamsChanged() {
+                connection = params.connection.get();
+                if (Owner()) Attach();
+            }
+            void OnAttach() override { Attach(); }
+            void OnDetach() override { Release(); }
+            void Attach() {
+                if (attached == params.dispatcher) return;
+                Release();
+                attached = params.dispatcher;
+                if (attached) attached->node = this;
+            }
+            void Release() {
+                if (attached && attached->node == this) attached->node = nullptr;
+                attached.reset();
+            }
         };
 
         // NestedScrollInteropConnection (NestedScrollInteropConnection.android.kt).
@@ -74,7 +91,25 @@ namespace kiln::foundation {
     }
 
     Modifier NestedScroll(Modifier m, std::shared_ptr<NestedScrollConnection> connection) {
-        return m.With<ConnectionNode>(NestedParams{ std::move(connection) });
+        return m.With<ConnectionNode>(NestedParams{ std::move(connection), nullptr });
+    }
+    Modifier NestedScroll(Modifier m, std::shared_ptr<NestedScrollConnection> connection, std::shared_ptr<NestedScrollDispatcher> dispatcher) {
+        return m.With<ConnectionNode>(NestedParams{ std::move(connection), std::move(dispatcher) });
+    }
+
+    Offset NestedScrollDispatcher::DispatchPreScroll(Offset available, ui::NestedScrollSource source) const {
+        return node ? node->DispatchPreScroll(available, source) : Offset{};
+    }
+    Offset NestedScrollDispatcher::DispatchPostScroll(Offset consumed, Offset available, ui::NestedScrollSource source) const {
+        return node ? node->DispatchPostScroll(consumed, available, source) : Offset{};
+    }
+    rt::Task<Offset> NestedScrollDispatcher::DispatchPreFling(Offset available) const {
+        if (!node) co_return Offset{};
+        co_return co_await node->DispatchPreFling(available);
+    }
+    rt::Task<Offset> NestedScrollDispatcher::DispatchPostFling(Offset consumed, Offset available) const {
+        if (!node) co_return Offset{};
+        co_return co_await node->DispatchPostFling(consumed, available);
     }
 
     std::shared_ptr<NestedScrollConnection> RememberNestedScrollInteropConnection() {

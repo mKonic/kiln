@@ -201,6 +201,16 @@ namespace kiln::foundation {
             op.spec = std::move(spec);
             co_await Run(std::move(target), std::move(op));
         }
+        // AnimateTo, answering the target it ended up animating to (the anchors may have
+        // changed it on the way); nullopt when another operation took over or `target` has no
+        // anchor.
+        rt::Task<std::optional<T>> AnimateToResolving(T target, anim::SpecPtr spec = anchored_draggable::SnapAnimationSpec()) {
+            Op op{ Op::Animate };
+            op.spec = std::move(spec);
+            std::optional<T> resolved;
+            co_await Run(std::move(target), std::move(op), &resolved);
+            co_return resolved;
+        }
         // Decays towards `target` when the fling would carry past it, otherwise tweens; returns
         // the velocity consumed.
         rt::Task<float> AnimateToWithDecay(T target, float velocity,
@@ -308,7 +318,7 @@ namespace kiln::foundation {
         }
 
         // anchoredDrag(targetValue) { ... } with the restart-on-new-anchors loop.
-        rt::Task<float> Run(T target, Op op) {
+        rt::Task<float> Run(T target, Op op, std::optional<T>* resolved = nullptr) {
             if (!m_Anchors.Peek().HasPositionFor(target)) {
                 if (Confirm(target)) { m_Settled.Set(target); m_Current.Set(target); }
                 co_return op.velocity;
@@ -323,7 +333,10 @@ namespace kiln::foundation {
                 const T latest = *m_DragTarget.Peek();
                 remaining = co_await Body(latest, op);
                 if (gen != m_Gen) co_return remaining;   // replaced; the new owner has the state
-                if (!m_Restart) break;
+                if (!m_Restart) {
+                    if (resolved) *resolved = latest;
+                    break;
+                }
             }
             m_Busy = false;
             if (Confirm(target)) {
@@ -458,6 +471,9 @@ namespace kiln::foundation {
         // Runs once a release fling has settled, as a FlingBehavior that wraps the default one
         // and continues after it (not when the fling is cancelled).
         std::function<rt::Task<>()> afterFling;
+        // The release velocity as the fling should see it (a FlingBehavior that adjusts the
+        // velocity before the default one: a sheet damps it near its floor).
+        std::function<float(float velocity)> transformVelocity;
     };
 
     Modifier AnchoredDraggable(Modifier m, AnchoredDragTarget& state, Orientation orientation, AnchoredDraggableOptions options = {});

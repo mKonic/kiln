@@ -12,7 +12,7 @@ namespace kiln::foundation {
 
     // The insets expression (Compose's WindowInsets implementations).
     struct WindowInsets::Node {
-        enum class Kind : std::uint8_t { Fixed, FixedDp, Padding, Types, Union, Add, Exclude, Only, State };
+        enum class Kind : std::uint8_t { Fixed, FixedDp, Padding, Types, Union, Add, Exclude, Only, State, Custom };
         enum class Variant : std::uint8_t { Current, IgnoringVisibility, AnimationSource, AnimationTarget };
         Kind kind = Kind::Fixed;
         int l = 0, t = 0, r = 0, b = 0;
@@ -23,6 +23,8 @@ namespace kiln::foundation {
         std::shared_ptr<const Node> first, second;
         WindowInsetsSides sides;
         std::shared_ptr<const rt::State<WindowInsets>> state;
+        std::shared_ptr<const WindowInsets::SideFunction> custom;
+        const void* identity = nullptr;
 
         bool operator==(const Node& o) const {
             if (kind != o.kind) return false;
@@ -33,6 +35,7 @@ namespace kiln::foundation {
                 case Kind::Types: return types == o.types && variant == o.variant;
                 case Kind::Only: return sides == o.sides && *first == *o.first;
                 case Kind::State: return state == o.state;
+                case Kind::Custom: return identity ? identity == o.identity : custom == o.custom;
                 default: return *first == *o.first && *second == *o.second;
             }
         }
@@ -83,6 +86,7 @@ namespace kiln::foundation {
                     return allowed ? first->Side(c, side) : 0;
                 }
                 case Kind::State: return state->Get().m_Node->Side(c, side);
+                case Kind::Custom: return (*custom)(c, side);
             }
             return 0;
         }
@@ -143,6 +147,13 @@ namespace kiln::foundation {
         auto n = std::make_shared<Node>();
         n->kind = Node::Kind::State;
         n->state = std::move(state);
+        return WindowInsets(n);
+    }
+    WindowInsets WindowInsets::FromFunction(SideFunction side, const void* identity) {
+        auto n = std::make_shared<Node>();
+        n->kind = Node::Kind::Custom;
+        n->custom = std::make_shared<const SideFunction>(std::move(side));
+        n->identity = identity;
         return WindowInsets(n);
     }
     WindowInsets WindowInsets::FromPadding(PaddingValues p) {

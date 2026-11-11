@@ -62,6 +62,11 @@ namespace kiln::foundation {
         // Whatever `state` holds when read (material3's MutableWindowInsets): layouts that read
         // it follow its changes.
         static WindowInsets FromState(std::shared_ptr<const rt::State<WindowInsets>> state);
+        // A WindowInsets implementation: `side` answers each side (0 left, 1 top, 2 right,
+        // 3 bottom) when read; state it reads is observed by the layouts that read it. Equal to
+        // another with the same non-null `identity` (its equals), else only to its copies.
+        using SideFunction = std::function<int(const InsetsContext& c, int side)>;
+        static WindowInsets FromFunction(SideFunction side, const void* identity = nullptr);
 
         // The window's insets by type.
         static WindowInsets CaptionBar();

@@ -632,13 +632,24 @@ namespace kiln::foundation {
                 if (!params.block) return;
                 m_Watch.node = this;
                 GraphicsLayerParams p;
+                p.size = m_Size;
                 rt::Observation::Track(m_Watch, [&] { (*params.block)(p); });
                 static_cast<GraphicsLayerParams&>(params) = p;
+                params.size = m_Size;
             }
+            // A block sees the size it is drawn at.
+            void SizeIs(Size size) const {
+                if (!params.block || size == m_Size) return;
+                auto* self = const_cast<LayerNode*>(this);
+                self->m_Size = size;
+                self->Resolve();
+            }
+            Size m_Size;
             bool ClipsChildren() const override { return params.clip; }
             float LayerAlpha() const override { return params.alpha; }
             // translate(t) * translate(pivot) * rotate * scale * translate(-pivot).
             bool LayerTransform(Size size, gfx::Matrix& out) const override {
+                SizeIs(size);
                 if (params.translationX == 0 && params.translationY == 0 && params.rotationZ == 0 && params.scaleX == 1 && params.scaleY == 1)
                     return false;
                 const float px = size.width * params.originX, py = size.height * params.originY;
@@ -649,12 +660,14 @@ namespace kiln::foundation {
                 return true;
             }
             bool LayerClipContains(Size size, Offset p, LayoutDirection dir, const Density& d) const override {
+                SizeIs(size);
                 if (!params.clip) return true;
                 if (params.clipShape) return params.clipShape->CreateOutline(size, dir, d).Contains(p);
                 const float r = CornerRadiusPx(params.shape, size, d);
                 return gfx::Outline{ gfx::RoundRect::Uniform({ 0, 0, size.width, size.height }, r) }.Contains(p);
             }
             bool LayerProjective(Size size, float out[9]) const override {
+                SizeIs(size);
                 if (params.rotationX == 0 && params.rotationY == 0) return false;
                 LayerMatrix3D(params, size, out);
                 return true;
@@ -662,6 +675,7 @@ namespace kiln::foundation {
             DrawModifier* AsDraw() override { return this; }
             void Draw(ContentDrawScope& s) override {
                 const Size size = s.GetSize();
+                SizeIs(size);
                 if ((params.rotationX != 0 || params.rotationY != 0) && params.alpha > 0) { Draw3D(s, size); return; }
                 s.Save();
                 // RenderNode order: translation, then rotation and scale about the pivot (scale first).
