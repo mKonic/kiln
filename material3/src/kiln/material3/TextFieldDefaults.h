@@ -26,6 +26,8 @@ namespace kiln::material3 {
                                                              ui::Dp bottom = ui::Dp(16));
         // The filled colours, with the current text selection colours.
         TextFieldColors colors();
+        // The Expressive tonal colours (surface-container fill, no indicator); for Inside labels.
+        TextFieldColors tonalColors();
         // The container: the background (animating between states) and the indicator line.
         void Container(bool enabled, bool isError, std::shared_ptr<foundation::MutableInteractionSource> interactionSource,
                        const ui::Modifier& modifier = {}, std::optional<TextFieldColors> colors = std::nullopt, foundation::ShapePtr shape = nullptr,
@@ -49,6 +51,8 @@ namespace kiln::material3 {
         foundation::PaddingValues contentPaddingWithoutLabel(ui::Dp start = ui::Dp(16), ui::Dp top = ui::Dp(16), ui::Dp end = ui::Dp(16),
                                                              ui::Dp bottom = ui::Dp(16));
         TextFieldColors colors();
+        // The Expressive tonal colours (outline-variant border); for Cutout labels.
+        TextFieldColors tonalColors();
         // The container: the outline (animating its colour and thickness) over the background.
         void Container(bool enabled, bool isError, std::shared_ptr<foundation::MutableInteractionSource> interactionSource,
                        const ui::Modifier& modifier = {}, std::optional<TextFieldColors> colors = std::nullopt, foundation::ShapePtr shape = nullptr,

@@ -5,6 +5,7 @@
 #include "kiln/foundation/Border.h"
 #include "kiln/foundation/Compose.h"
 #include "kiln/material3/MaterialTheme.h"
+#include "kiln/material3/tokens/ColorSchemeKeyTokens.h"
 #include "kiln/material3/tokens/FilledTextFieldTokens.h"
 #include "kiln/material3/tokens/MotionSchemeKeyTokens.h"
 #include "kiln/material3/tokens/OutlinedTextFieldTokens.h"
@@ -71,6 +72,47 @@ namespace kiln::material3 {
         c.disabledPrefixColor = Disabled(T::InputPrefixColor, T::DisabledInputOpacity);
         c.focusedSuffixColor = c.unfocusedSuffixColor = c.errorSuffixColor = Value(T::InputSuffixColor);
         c.disabledSuffixColor = Disabled(T::InputSuffixColor, T::DisabledInputOpacity);
+        return c;
+    }
+
+    // tonalTextFieldColors (no tokens yet: b/448727879).
+    TextFieldColors TextFieldDefaults::tonalColors() {
+        namespace ColorSchemeKeyTokens = tokens::ColorSchemeKeyTokens;
+        namespace T = tokens::FilledTextFieldTokens;
+        const Color onSurface = Value(ColorSchemeKeyTokens::OnSurface), onVariant = Value(ColorSchemeKeyTokens::OnSurfaceVariant),
+                    onBackground = Value(ColorSchemeKeyTokens::OnBackground), container = Value(ColorSchemeKeyTokens::SurfaceContainer),
+                    error = Value(ColorSchemeKeyTokens::Error);
+        TextFieldColors c{};
+        c.unfocusedContainerColor = container;
+        c.unfocusedIndicatorColor = Color::Transparent();
+        c.unfocusedTextColor = onSurface;
+        c.unfocusedLabelColor = c.unfocusedLeadingIconColor = c.unfocusedTrailingIconColor = onVariant;
+        c.unfocusedSupportingTextColor = onBackground;
+        c.unfocusedPlaceholderColor = c.unfocusedPrefixColor = c.unfocusedSuffixColor = onVariant;
+        c.focusedContainerColor = container;
+        c.focusedIndicatorColor = Color::Transparent();
+        c.focusedTextColor = onBackground;
+        c.focusedLabelColor = c.focusedLeadingIconColor = c.focusedTrailingIconColor = onVariant;
+        c.focusedSupportingTextColor = onBackground;
+        c.focusedPlaceholderColor = onVariant;
+        c.focusedPrefixColor = c.focusedSuffixColor = onBackground;
+        c.disabledContainerColor = container.WithAlpha(T::DisabledInputOpacity);
+        c.disabledIndicatorColor = Color::Transparent();
+        c.disabledTextColor = onSurface.WithAlpha(T::DisabledInputOpacity);
+        c.disabledLabelColor = onVariant.WithAlpha(T::DisabledLabelOpacity);
+        c.disabledLeadingIconColor = onVariant.WithAlpha(T::DisabledLeadingIconOpacity);
+        c.disabledTrailingIconColor = onVariant.WithAlpha(T::DisabledTrailingIconOpacity);
+        c.disabledSupportingTextColor = onBackground.WithAlpha(T::DisabledSupportingOpacity);
+        c.disabledPlaceholderColor = c.disabledPrefixColor = c.disabledSuffixColor = onVariant.WithAlpha(T::DisabledInputOpacity);
+        c.errorContainerColor = Value(ColorSchemeKeyTokens::ErrorContainer);
+        c.errorIndicatorColor = Color::Transparent();
+        c.errorTextColor = onBackground;
+        c.errorLabelColor = error;
+        c.errorLeadingIconColor = onVariant;
+        c.errorTrailingIconColor = c.errorCursorColor = c.errorSupportingTextColor = error;
+        c.errorPlaceholderColor = c.errorPrefixColor = c.errorSuffixColor = onVariant;
+        c.cursorColor = Value(ColorSchemeKeyTokens::Primary);
+        c.textSelectionColors = CurrentSelectionColors();
         return c;
     }
 
@@ -209,6 +251,42 @@ namespace kiln::material3 {
         c.disabledPrefixColor = Disabled(T::InputPrefixColor, T::DisabledInputOpacity);
         c.focusedSuffixColor = c.unfocusedSuffixColor = c.errorSuffixColor = Value(T::InputSuffixColor);
         c.disabledSuffixColor = Disabled(T::InputSuffixColor, T::DisabledInputOpacity);
+        return c;
+    }
+
+    // tonalOutlinedTextFieldColors (no tokens yet: b/448727879).
+    TextFieldColors OutlinedTextFieldDefaults::tonalColors() {
+        namespace ColorSchemeKeyTokens = tokens::ColorSchemeKeyTokens;
+        namespace T = tokens::OutlinedTextFieldTokens;
+        const Color onSurface = Value(ColorSchemeKeyTokens::OnSurface), onVariant = Value(ColorSchemeKeyTokens::OnSurfaceVariant),
+                    onBackground = Value(ColorSchemeKeyTokens::OnBackground), outline = Value(ColorSchemeKeyTokens::OutlineVariant),
+                    error = Value(ColorSchemeKeyTokens::Error);
+        TextFieldColors c{};
+        c.focusedContainerColor = c.unfocusedContainerColor = c.disabledContainerColor = c.errorContainerColor = Color::Transparent();
+        c.unfocusedIndicatorColor = c.focusedIndicatorColor = c.disabledIndicatorColor = outline;
+        c.unfocusedTextColor = onSurface;
+        c.unfocusedLabelColor = c.unfocusedLeadingIconColor = c.unfocusedTrailingIconColor = onVariant;
+        c.unfocusedSupportingTextColor = onBackground;
+        c.unfocusedPlaceholderColor = c.unfocusedPrefixColor = c.unfocusedSuffixColor = onVariant;
+        c.focusedTextColor = onBackground;
+        c.focusedLabelColor = c.focusedLeadingIconColor = c.focusedTrailingIconColor = onVariant;
+        c.focusedSupportingTextColor = onBackground;
+        c.focusedPlaceholderColor = onVariant;
+        c.focusedPrefixColor = c.focusedSuffixColor = onBackground;
+        c.disabledTextColor = onSurface.WithAlpha(T::DisabledInputOpacity);
+        c.disabledLabelColor = onVariant.WithAlpha(T::DisabledLabelOpacity);
+        c.disabledLeadingIconColor = onVariant.WithAlpha(T::DisabledLeadingIconOpacity);
+        c.disabledTrailingIconColor = onVariant.WithAlpha(T::DisabledTrailingIconOpacity);
+        c.disabledSupportingTextColor = onBackground.WithAlpha(T::DisabledSupportingOpacity);
+        c.disabledPlaceholderColor = c.disabledPrefixColor = c.disabledSuffixColor = onVariant.WithAlpha(T::DisabledInputOpacity);
+        c.errorIndicatorColor = error;
+        c.errorTextColor = onBackground;
+        c.errorLabelColor = error;
+        c.errorLeadingIconColor = onVariant;
+        c.errorTrailingIconColor = c.errorCursorColor = c.errorSupportingTextColor = error;
+        c.errorPlaceholderColor = c.errorPrefixColor = c.errorSuffixColor = onVariant;
+        c.cursorColor = Value(ColorSchemeKeyTokens::Primary);
+        c.textSelectionColors = CurrentSelectionColors();
         return c;
     }
 
