@@ -304,3 +304,64 @@ TEST(ConflatedChannelKeepsOnlyTheLatestValue) {   // Channel(CONFLATED)
     CHECK(!bounded.TrySend(2));   // the default fails when full
     job.Cancel();
 }
+
+// movableContentOf: content that moves from one parent to another keeps its state and nodes;
+// content no site calls any more is disposed.
+TEST(MovableContentMovesItsStateAndNodes) {
+    Node root("root");
+    Composition c(root);
+    State<bool> left(true), shown(true);
+    int* slot = nullptr;
+    int disposed = 0;
+    std::optional<MovableContent<>> movable;
+    c.SetContent([&] {
+        if (!movable) movable.emplace(std::function<void()>([&] {
+            slot = &c.Remember<int>([] { return 7; });
+            c.DisposableEffect(Keys(0), [&] { return std::function<void()>([&] { ++disposed; }); });
+            Emit(c, "content");
+        }));
+        Emit(c, "a", [&] { if (shown.Get() && left.Get()) (*movable)(); });
+        Emit(c, "b", [&] { if (shown.Get() && !left.Get()) (*movable)(); });
+    });
+    c.Recompose();
+    CHECK_EQ(root.Dump(), std::string("root(a(content),b)"));
+    int* before = slot;
+    *slot = 8;
+    TreeNode* node = static_cast<Node*>(root.children[0])->children[0];
+    left.Set(false);
+    c.Recompose();
+    CHECK_EQ(root.Dump(), std::string("root(a,b(content))"));
+    CHECK(slot == before);
+    CHECK_EQ(*slot, 8);
+    CHECK(static_cast<Node*>(root.children[1])->children[0] == node);
+    CHECK_EQ(disposed, 0);
+    shown.Set(false);
+    c.Recompose();
+    CHECK_EQ(root.Dump(), std::string("root(a,b)"));
+    CHECK_EQ(disposed, 1);
+}
+
+// A section keeps its own identity but its reads recompose the enclosing scope.
+TEST(SectionReadsRecomposeTheParent) {
+    Node root("root");
+    Composition c(root);
+    State<int> n(1);
+    int parentRuns = 0;
+    int* slot = nullptr;
+    c.SetContent([&] {
+        ++parentRuns;
+        int seen = 0;
+        c.Section([&] {
+            slot = &c.Remember<int>([] { return 9; });
+            seen = n.Get();
+        }, Key("section"));
+        Emit(c, "n" + std::to_string(seen));
+    });
+    c.Recompose();
+    int* before = slot;
+    n.Set(2);
+    c.Recompose();
+    CHECK_EQ(root.Dump(), std::string("root(n2)"));
+    CHECK_EQ(parentRuns, 2);
+    CHECK(slot == before);
+}

@@ -79,6 +79,8 @@ namespace kiln::rt {
 
     Composition::~Composition() {
         std::erase(t_All, this);
+        m_Destroying = true;
+        DisposeParked();
         if (m_RootScope) {
             for (Group& g : m_RootScope->m_Groups) Dispose(g);
             m_RootScope->m_Groups.clear();
@@ -183,7 +185,46 @@ namespace kiln::rt {
         RunChild(*g.scope, std::move(content), memo);
     }
 
+    void Composition::Section(const std::function<void()>& content, Key key) {
+        struct GroupTag {};
+        rt::Group& g = Take(Group::Kind::Scope, typeid(GroupTag), key);
+        if (!g.scope) g.scope = std::make_unique<Scope>(*this, m_Current, m_Current->m_Host, g.key.value);
+        Scope& scope = *g.scope;
+        Frame frame;
+        frame.scope = &scope;
+        frame.old = std::move(scope.m_Groups);
+        scope.m_Groups.clear();
+        scope.m_Groups.reserve(frame.old.size());
+        frame.used.assign(frame.old.size(), false);
+        m_Stack.push_back(std::move(frame));
+        Scope* outer = m_Current;
+        m_Current = &scope;
+        struct Restore {
+            Composition& c; Scope* s;
+            ~Restore() { c.m_Current = s; }
+        } restore{ *this, outer };
+        // Reads stay with the enclosing scope's observation.
+        scope.m_Invalid = false;
+        if (content) content();
+        Frame done = std::move(m_Stack.back());
+        m_Stack.pop_back();
+        for (std::size_t j = 0; j < done.old.size(); ++j)
+            if (!done.used[j]) Dispose(done.old[j]);
+        Scope* top = &scope;
+        while (top->m_Parent && top->m_Parent->m_Host == scope.m_Host) top = top->m_Parent;
+        m_ChildrenDirty.insert(top);
+    }
+
     void Composition::Dispose(Group& g) {
+        if (!m_Destroying && g.kind == Group::Kind::Scope && g.type == typeid(MovableHandle) && g.scope && g.slot &&
+            static_cast<MovableHandle*>(g.slot.get())->scope == g.scope.get()) {
+            Park(g);
+            return;
+        }
+        if (g.kind == Group::Kind::Scope && g.type == typeid(MovableHandle) && g.scope && g.slot) {
+            auto* h = static_cast<MovableHandle*>(g.slot.get());
+            if (h->scope == g.scope.get()) h->scope = nullptr;
+        }
         if (g.scope) {
             for (Group& child : g.scope->m_Groups) Dispose(child);
             g.scope->m_Groups.clear();
@@ -196,6 +237,76 @@ namespace kiln::rt {
             g.effect.reset();
         }
         if (g.slot) m_DeadSlots.push_back(std::move(g.slot));
+    }
+
+    // --- Movable content -----------------------------------------------------------------------
+
+    void Composition::Movable(const std::shared_ptr<MovableHandle>& handle, std::function<void()> content) {
+        Group& g = Take(Group::Kind::Scope, typeid(MovableHandle), Key(std::int64_t(reinterpret_cast<std::intptr_t>(handle.get()))));
+        bool adopted = false;
+        if (!g.scope && handle->placedPass != m_PassId) {
+            auto it = m_Parked.find(handle.get());
+            if (it != m_Parked.end()) {
+                Group parked = std::move(it->second);
+                m_Parked.erase(it);
+                g.scope = std::move(parked.scope);
+                TreeNode* oldHost = g.scope->m_Host;
+                Reparent(*g.scope, m_Current, oldHost, m_Current->m_Host);
+                adopted = true;
+            }
+        }
+        if (!g.scope) g.scope = std::make_unique<Scope>(*this, m_Current, m_Current->m_Host, g.key.value);
+        // A second call site in one recomposition gets state of its own.
+        if (handle->placedPass != m_PassId || handle->scope == g.scope.get()) {
+            handle->scope = g.scope.get();
+            handle->composition = this;
+            handle->placedPass = m_PassId;
+            g.slot = handle;
+        } else {
+            g.slot.reset();
+        }
+        Scope& scope = *g.scope;
+        if (adopted) scope.m_Invalid = true;
+        RunChild(scope, std::move(content), nullptr);
+        if (adopted) Repend(scope);
+    }
+
+    void Composition::Park(Group& g) {
+        auto* h = static_cast<MovableHandle*>(g.slot.get());
+        Scope& s = *g.scope;
+        s.m_Parent = nullptr;
+        Unpend(s);
+        m_Parked[h] = std::move(g);
+    }
+
+    void Composition::Reparent(Scope& scope, Scope* parent, TreeNode* oldHost, TreeNode* newHost) {
+        scope.m_Parent = parent;
+        if (scope.m_Host == oldHost) scope.m_Host = newHost;
+        scope.m_Depth = parent ? parent->m_Depth + 1 : 0;
+        for (Group& g : scope.m_Groups)
+            if (g.scope) Reparent(*g.scope, &scope, oldHost, newHost);
+    }
+
+    void Composition::Unpend(Scope& scope) {
+        m_Pending.erase(&scope);
+        m_ChildrenDirty.erase(&scope);
+        for (Group& g : scope.m_Groups)
+            if (g.scope) Unpend(*g.scope);
+    }
+
+    void Composition::Repend(Scope& scope) {
+        if (scope.m_Invalid) Invalidate(scope);
+        for (Group& g : scope.m_Groups)
+            if (g.scope) Repend(*g.scope);
+    }
+
+    void Composition::DisposeParked() {
+        auto parked = std::move(m_Parked);
+        m_Parked.clear();
+        for (auto& [h, g] : parked) {
+            h->scope = nullptr;
+            Dispose(g);
+        }
     }
 
     void Composition::SideEffect(std::function<void()> effect) {
@@ -259,6 +370,7 @@ namespace kiln::rt {
 
     bool Composition::Recompose() {
         bool recomposed = false;
+        ++m_PassId;
         // Apply until stable: a recomposition or a derived value can write state that other
         // scopes read. The bound stops a scope that writes what it reads from looping forever.
         for (int pass = 0; pass < 32; ++pass) {
@@ -280,6 +392,8 @@ namespace kiln::rt {
                 else m_Pending.erase(s);
             }
         }
+        // Movable content no call site adopted leaves now.
+        DisposeParked();
         ApplyNodeChanges();
         RunEffects();
         return recomposed;

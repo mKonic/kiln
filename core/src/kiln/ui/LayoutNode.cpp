@@ -783,7 +783,8 @@ namespace kiln::ui {
             c->m_FoldedParent = folded;
             if (c->m_Virtual) {
                 if (c->m_Parent != this) {
-                    if (c->m_Parent) std::erase(c->m_Parent->m_Virtuals, c);
+                    // Moved here from another parent (movable content).
+                    if (c->m_Parent) { std::erase(c->m_Parent->m_Virtuals, c); c->Detach(); }
                     c->m_Parent = this;
                     m_Virtuals.push_back(c);
                     if (m_Owner) c->Attach(*m_Owner, m_Depth + 1);
@@ -823,12 +824,18 @@ namespace kiln::ui {
         }
         if (next == m_Children) return;
         for (LayoutNode* old : m_Children)
-            if (std::find(next.begin(), next.end(), old) == next.end()) {
+            if (old->m_Parent == this && std::find(next.begin(), next.end(), old) == next.end()) {
                 old->Detach();
                 old->m_Parent = nullptr;
             }
         for (LayoutNode* c : next) {
             if (c->m_Parent != this) {
+                // Moved here from another parent (movable content): it leaves that one first.
+                if (c->m_Parent) {
+                    std::erase(c->m_Parent->m_Children, c);
+                    c->m_Parent->RequestRemeasure();
+                    c->Detach();
+                }
                 c->m_Parent = this;
                 if (m_Owner) c->Attach(*m_Owner, m_Depth + 1);
             }
@@ -841,7 +848,7 @@ namespace kiln::ui {
     void LayoutNode::SetChildrenDuringMeasure(std::vector<LayoutNode*> next) {
         if (next == m_Children) return;
         for (LayoutNode* old : m_Children)
-            if (std::find(next.begin(), next.end(), old) == next.end()) { old->Detach(); old->m_Parent = nullptr; }
+            if (old->m_Parent == this && std::find(next.begin(), next.end(), old) == next.end()) { old->Detach(); old->m_Parent = nullptr; }
         for (LayoutNode* c : next)
             if (c->m_Parent != this) { c->m_Parent = this; if (m_Owner) c->Attach(*m_Owner, m_Depth + 1); }
         m_Children = std::move(next);
