@@ -103,4 +103,11 @@ namespace kiln::anim {
         }
     }
 
+
+    rt::Task<> Animate(float initialValue, float targetValue, SpecPtr spec, std::function<void(float, float)> block, float initialVelocity) {
+        Animatable animatable(initialValue);
+        co_await animatable.AnimateTo(Vec{ targetValue, 0, 0, 0 }, std::move(spec), Vec{ initialVelocity, 0, 0, 0 },
+                                      [&animatable, &block](const Vec& v) { block(v[0], animatable.Velocity()[0]); });
+    }
+
 }

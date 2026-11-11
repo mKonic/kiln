@@ -63,4 +63,11 @@ namespace kiln::anim {
         std::optional<Vec> m_Lower, m_Upper;
     };
 
+
+    // animate(initialValue, targetValue, initialVelocity, animationSpec) { value, velocity -> }
+    // (SuspendAnimation.kt): runs the spec frame by frame, handing each value and its velocity
+    // to `block`; returns when it ends (or with the caller's cancellation).
+    rt::Task<> Animate(float initialValue, float targetValue, SpecPtr spec, std::function<void(float, float)> block,
+                       float initialVelocity = 0);
+
 }

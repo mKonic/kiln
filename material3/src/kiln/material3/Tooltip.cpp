@@ -35,6 +35,7 @@ namespace kiln::material3 {
                   mutex(mutex ? std::move(mutex) : BasicTooltipDefaults::GlobalMutatorMutex()) {}
 
             bool IsVisible() const {
+                if (label) return true;
                 return basic ? basicVisible.Get() : (transition.CurrentState() || transition.TargetState());
             }
             void SetShown() {
@@ -42,6 +43,7 @@ namespace kiln::material3 {
                 else transition.SetTargetState(true);
             }
             void Dismiss() {
+                if (label) return;
                 if (basic) {
                     basicVisible.Set(false);
                     return;
@@ -77,6 +79,7 @@ namespace kiln::material3 {
             MutableTransitionState<bool> transition;
             rt::State<bool> basicVisible;
             const bool persistent, basic;
+            bool label = false;   // LabelStateImpl: always visible; show and dismiss do nothing
             const std::shared_ptr<MutatorMutex> mutex;
             std::optional<Run> running;
             std::uint64_t nextRun = 0;
@@ -146,7 +149,10 @@ namespace kiln::material3 {
     MutableTransitionState<bool>& TooltipState::Transition() const { return m_Core->transition; }
     bool TooltipState::IsVisible() const { return m_Core->IsVisible(); }
     bool TooltipState::IsPersistent() const { return m_Core->persistent; }
-    rt::Task<> TooltipState::Show(MutatePriority priority) const { return ShowTask(m_Core, priority); }
+    namespace {
+        rt::Task<> NoShow() { co_return; }
+    }
+    rt::Task<> TooltipState::Show(MutatePriority priority) const { return m_Core->label ? NoShow() : ShowTask(m_Core, priority); }
     void TooltipState::Dismiss() const { m_Core->Dismiss(); }
     void TooltipState::OnDispose() const { m_Core->CancelShow(); }
 
@@ -161,6 +167,11 @@ namespace kiln::material3 {
     namespace internal {
         TooltipState MakeBasicTooltipState(bool initialIsVisible, bool isPersistent, std::shared_ptr<MutatorMutex> mutatorMutex) {
             return TooltipState(std::make_shared<TooltipCore>(initialIsVisible, isPersistent, std::move(mutatorMutex), true));
+        }
+        TooltipState MakeLabelState() {
+            auto core = std::make_shared<TooltipCore>(false, true, nullptr, false);
+            core->label = true;
+            return TooltipState(core);
         }
         TooltipState RememberBasicTooltipState(bool initialIsVisible, bool isPersistent, std::shared_ptr<MutatorMutex> mutatorMutex, rt::Key key) {
             auto& c = *rt::Composition::Current();
@@ -271,7 +282,9 @@ namespace kiln::material3 {
             const bool serviceOn = manager && AccessibilityServiceOn(manager->ServiceState(), true, true, false);
             const bool forceFocusable = options.hasAction && (serviceOn || forceFocusableForKeyboardNav->Get());
 
-            Box({}, Alignment::TopStart(), false, [&] {
+            // By value: the box recomposes alone when the visibility changes, after this returned.
+            Box({}, Alignment::TopStart(), false, [=, forceFocusableForKeyboardNav = forceFocusableForKeyboardNav,
+                                                   receivedKeyboardFocus = receivedKeyboardFocus] {
                 if (state.IsVisible()) {
                     // TooltipPopup
                     const std::string description = GetString(Strings::TooltipPaneDescription);
