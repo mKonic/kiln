@@ -65,6 +65,29 @@ namespace catalog::Icons {
         return image;
     } }}
 
+    namespace AutoMirrored { namespace Filled { const ImageVectorPtr& TrendingUp() {
+        static const ImageVectorPtr image = [] {
+            ImageVector::Builder b("AutoMirrored.Filled.TrendingUp", ui::Dp(24), ui::Dp(24), 24, 24, ui::Color::Unspecified(), gfx::BlendMode::SrcIn, true);
+            b.Path(PathBuilder()
+                       .MoveTo(16.0f, 6.0f)
+                       .LineToRelative(2.29f, 2.29f)
+                       .LineToRelative(-4.88f, 4.88f)
+                       .LineToRelative(-4.0f, -4.0f)
+                       .LineTo(2.0f, 16.59f)
+                       .LineTo(3.41f, 18.0f)
+                       .LineToRelative(6.0f, -6.0f)
+                       .LineToRelative(4.0f, 4.0f)
+                       .LineToRelative(6.3f, -6.29f)
+                       .LineTo(22.0f, 12.0f)
+                       .VerticalLineTo(6.0f)
+                       .Close()
+                       .Nodes(), gfx::Brush::SolidColor(ui::Color(0xff000000)), 1.0f, std::nullopt, 1.0f, 1.0f,
+                   gfx::StrokeCap::Butt, gfx::StrokeJoin::Bevel, 1.0f, gfx::FillType::NonZero);
+            return b.Build();
+        }();
+        return image;
+    } }}
+
     namespace Filled { const ImageVectorPtr& Add() {
         static const ImageVectorPtr image = [] {
             ImageVector::Builder b("Filled.Add", ui::Dp(24), ui::Dp(24), 24, 24, ui::Color::Unspecified(), gfx::BlendMode::SrcIn, false);
@@ -97,6 +120,33 @@ namespace catalog::Icons {
                        .MoveTo(7.0f, 10.0f)
                        .LineToRelative(5.0f, 5.0f)
                        .LineToRelative(5.0f, -5.0f)
+                       .Close()
+                       .Nodes(), gfx::Brush::SolidColor(ui::Color(0xff000000)), 1.0f, std::nullopt, 1.0f, 1.0f,
+                   gfx::StrokeCap::Butt, gfx::StrokeJoin::Bevel, 1.0f, gfx::FillType::NonZero);
+            return b.Build();
+        }();
+        return image;
+    } }
+
+    namespace Filled { const ImageVectorPtr& BookmarkBorder() {
+        static const ImageVectorPtr image = [] {
+            ImageVector::Builder b("Filled.BookmarkBorder", ui::Dp(24), ui::Dp(24), 24, 24, ui::Color::Unspecified(), gfx::BlendMode::SrcIn, false);
+            b.Path(PathBuilder()
+                       .MoveTo(17.0f, 3.0f)
+                       .LineTo(7.0f, 3.0f)
+                       .CurveToRelative(-1.1f, 0.0f, -1.99f, 0.9f, -1.99f, 2.0f)
+                       .LineTo(5.0f, 21.0f)
+                       .LineToRelative(7.0f, -3.0f)
+                       .LineToRelative(7.0f, 3.0f)
+                       .LineTo(19.0f, 5.0f)
+                       .CurveToRelative(0.0f, -1.1f, -0.9f, -2.0f, -2.0f, -2.0f)
+                       .Close()
+                       .MoveTo(17.0f, 18.0f)
+                       .LineToRelative(-5.0f, -2.18f)
+                       .LineTo(7.0f, 18.0f)
+                       .LineTo(7.0f, 5.0f)
+                       .HorizontalLineToRelative(10.0f)
+                       .VerticalLineToRelative(13.0f)
                        .Close()
                        .Nodes(), gfx::Brush::SolidColor(ui::Color(0xff000000)), 1.0f, std::nullopt, 1.0f, 1.0f,
                    gfx::StrokeCap::Butt, gfx::StrokeJoin::Bevel, 1.0f, gfx::FillType::NonZero);
@@ -466,6 +516,41 @@ namespace catalog::Icons {
                        .LineTo(2.0f, 9.24f)
                        .LineToRelative(5.46f, 4.73f)
                        .LineTo(5.82f, 21.0f)
+                       .Close()
+                       .Nodes(), gfx::Brush::SolidColor(ui::Color(0xff000000)), 1.0f, std::nullopt, 1.0f, 1.0f,
+                   gfx::StrokeCap::Butt, gfx::StrokeJoin::Bevel, 1.0f, gfx::FillType::NonZero);
+            return b.Build();
+        }();
+        return image;
+    } }
+
+    namespace Filled { const ImageVectorPtr& StarBorder() {
+        static const ImageVectorPtr image = [] {
+            ImageVector::Builder b("Filled.StarBorder", ui::Dp(24), ui::Dp(24), 24, 24, ui::Color::Unspecified(), gfx::BlendMode::SrcIn, false);
+            b.Path(PathBuilder()
+                       .MoveTo(22.0f, 9.24f)
+                       .LineToRelative(-7.19f, -0.62f)
+                       .LineTo(12.0f, 2.0f)
+                       .LineTo(9.19f, 8.63f)
+                       .LineTo(2.0f, 9.24f)
+                       .LineToRelative(5.46f, 4.73f)
+                       .LineTo(5.82f, 21.0f)
+                       .LineTo(12.0f, 17.27f)
+                       .LineTo(18.18f, 21.0f)
+                       .LineToRelative(-1.63f, -7.03f)
+                       .LineTo(22.0f, 9.24f)
+                       .Close()
+                       .MoveTo(12.0f, 15.4f)
+                       .LineToRelative(-3.76f, 2.27f)
+                       .LineToRelative(1.0f, -4.28f)
+                       .LineToRelative(-3.32f, -2.88f)
+                       .LineToRelative(4.38f, -0.38f)
+                       .LineTo(12.0f, 6.1f)
+                       .LineToRelative(1.71f, 4.04f)
+                       .LineToRelative(4.38f, 0.38f)
+                       .LineToRelative(-3.32f, 2.88f)
+                       .LineToRelative(1.0f, 4.28f)
+                       .LineTo(12.0f, 15.4f)
                        .Close()
                        .Nodes(), gfx::Brush::SolidColor(ui::Color(0xff000000)), 1.0f, std::nullopt, 1.0f, 1.0f,
                    gfx::StrokeCap::Butt, gfx::StrokeJoin::Bevel, 1.0f, gfx::FillType::NonZero);

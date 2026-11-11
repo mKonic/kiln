@@ -11,8 +11,10 @@ namespace catalog::Icons {
     namespace AutoMirrored { namespace Filled { const ImageVectorPtr& ArrowBack(); }}
     namespace AutoMirrored { namespace Filled { const ImageVectorPtr& ArrowRight(); }}
     namespace AutoMirrored { namespace Filled { const ImageVectorPtr& KeyboardArrowRight(); }}
+    namespace AutoMirrored { namespace Filled { const ImageVectorPtr& TrendingUp(); }}
     namespace Filled { const ImageVectorPtr& Add(); }
     namespace Filled { const ImageVectorPtr& ArrowDropDown(); }
+    namespace Filled { const ImageVectorPtr& BookmarkBorder(); }
     namespace Filled { const ImageVectorPtr& Check(); }
     namespace Filled { const ImageVectorPtr& Clear(); }
     namespace Filled { const ImageVectorPtr& Done(); }
@@ -26,6 +28,7 @@ namespace catalog::Icons {
     namespace Filled { const ImageVectorPtr& Search(); }
     namespace Filled { const ImageVectorPtr& Settings(); }
     namespace Filled { const ImageVectorPtr& Star(); }
+    namespace Filled { const ImageVectorPtr& StarBorder(); }
     namespace Filled { const ImageVectorPtr& Tune(); }
     namespace Outlined { const ImageVectorPtr& Lock(); }
     namespace Outlined { const ImageVectorPtr& PushPin(); }
