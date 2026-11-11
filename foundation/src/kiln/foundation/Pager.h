@@ -83,12 +83,16 @@ namespace kiln::foundation {
     // pager onto a page; leftovers after the gesture and children's flings never move the pager.
     std::shared_ptr<NestedScrollConnection> PageNestedScrollConnection(PagerState& state, Orientation orientation);
 
-    // PageSize: Fill takes the viewport (minus content padding), Fixed a given size.
+    // PageSize: Fill takes the viewport (minus content padding), Fixed a given size, Custom
+    // computes it from the available space and page spacing in pixels
+    // (calculateMainAxisPageSize, called on each measure).
     struct PageSize {
         bool fill = true;
         Dp size{ 0 };
+        std::function<int(const Density&, int availableSpace, int pageSpacing)> calculate;
         static PageSize Fill() { return {}; }
-        static PageSize Fixed(Dp d) { return { false, d }; }
+        static PageSize Fixed(Dp d) { return { false, d, {} }; }
+        static PageSize Custom(std::function<int(const Density&, int, int)> f) { return { false, Dp{ 0 }, std::move(f) }; }
     };
 
     struct PagerOptions {

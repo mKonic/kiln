@@ -152,7 +152,8 @@ namespace kiln::foundation {
         }
     }
 
-    int SnapPosition::Position(int layoutSize, int itemSize, int before, int after) const {
+    int SnapPosition::Position(int layoutSize, int itemSize, int before, int after, int index, int count) const {
+        if (custom) return custom(layoutSize, itemSize, before, after, index, count);
         const int available = layoutSize - before - after;
         switch (kind) {
             case Kind::Start: return 0;

@@ -10,13 +10,19 @@
 
 namespace kiln::foundation {
 
-    // Where an item rests: Start, Center or End of the viewport (between the content padding).
+    // Where an item rests: Start, Center or End of the viewport (between the content padding),
+    // or a custom offset that may depend on the item (a pager page's index and the page count).
     struct SnapPosition {
+        using Fn = std::function<int(int layoutSize, int itemSize, int beforeContentPadding, int afterContentPadding,
+                                     int itemIndex, int itemCount)>;
         enum class Kind : std::uint8_t { Start, Center, End } kind = Kind::Center;
-        static SnapPosition Start() { return { Kind::Start }; }
-        static SnapPosition Center() { return { Kind::Center }; }
-        static SnapPosition End() { return { Kind::End }; }
-        int Position(int layoutSize, int itemSize, int beforeContentPadding, int afterContentPadding) const;
+        Fn custom;
+        static SnapPosition Start() { return { Kind::Start, {} }; }
+        static SnapPosition Center() { return { Kind::Center, {} }; }
+        static SnapPosition End() { return { Kind::End, {} }; }
+        static SnapPosition Custom(Fn f) { return { Kind::Start, std::move(f) }; }
+        int Position(int layoutSize, int itemSize, int beforeContentPadding, int afterContentPadding,
+                     int itemIndex = 0, int itemCount = 0) const;
     };
 
     class SnapLayoutInfoProvider {

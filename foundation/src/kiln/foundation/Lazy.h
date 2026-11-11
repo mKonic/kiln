@@ -135,7 +135,9 @@ namespace kiln::foundation {
         // Pager: the fixed page size, and a scroll position given as a fraction of a page that
         // the next measure turns into pixels.
         int m_PageSize = 0;
-        int m_PageSnap = 0;   // where a page rests: its offset from the content start (SnapPosition)
+        // Where page `index` rests: its offset from the content start (SnapPosition).
+        std::function<int(int index)> m_PageSnapAt;
+        int PageSnap(int index) const { return m_PageSnapAt ? m_PageSnapAt(index) : 0; }
         std::optional<float> m_PendingFraction;
         float m_ViewportLength = 0;
         rt::State<MeasuredAxis> m_Axis{ MeasuredAxis{} };
@@ -295,8 +297,9 @@ namespace kiln::foundation {
         std::function<Modifier(Modifier)> extraModifier;   // gesture observers
         OverscrollParam overscrollEffect;
         int beyondViewportPageCount = 0;
-        // SnapPosition.position(layoutSize, pageSize, beforeContentPadding, afterContentPadding).
-        std::function<int(int layout, int page, int before, int after)> snapPosition;
+        // SnapPosition.position(layoutSize, pageSize, beforeContentPadding, afterContentPadding,
+        // itemIndex, itemCount).
+        std::function<int(int layout, int page, int before, int after, int index, int count)> snapPosition;
         std::shared_ptr<const BringIntoViewSpec> bringIntoViewSpec;
         bool reverseLayout = false;
     };

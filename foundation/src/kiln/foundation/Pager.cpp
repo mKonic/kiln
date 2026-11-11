@@ -18,11 +18,10 @@ namespace kiln::foundation {
     PagerState::PagerState(int currentPage, float fraction, std::function<int()> pageCount)
         : LazyStateBase(std::max(0, currentPage), 0), m_PageCountFn(std::move(pageCount)),
           m_Current(std::max(0, currentPage)), m_Settled(std::max(0, currentPage)) {
-        // ScrollPosition holds the fraction from the start: it reads back before the first layout.
-        if (fraction != 0) {
-            m_PendingFraction = std::clamp(fraction, -0.5f, 0.5f);
-            m_Fraction.Set(*m_PendingFraction);
-        }
+        // The first measure rests the page at its snap position, `fraction` pages past it; the
+        // fraction reads back before the first layout.
+        m_PendingFraction = std::clamp(fraction, -0.5f, 0.5f);
+        if (fraction != 0) m_Fraction.Set(*m_PendingFraction);
     }
 
     float PagerState::ConsumeScrollDelta(float delta) {
@@ -37,10 +36,10 @@ namespace kiln::foundation {
         float fraction = 0;
         if (!m_Lines.empty()) {
             const Line* best = &m_Lines.front();
-            for (const auto& l : m_Lines) if (std::abs(l.offset - m_PageSnap) < std::abs(best->offset - m_PageSnap)) best = &l;
+            for (const auto& l : m_Lines) if (std::abs(l.offset - PageSnap(l.first)) < std::abs(best->offset - PageSnap(best->first))) best = &l;
             current = best->first;
             const int withSpacing = m_PageSize + m_Spacing;
-            fraction = withSpacing == 0 ? 0.0f : std::clamp(float(m_PageSnap - best->offset) / float(withSpacing), -0.5f, 0.5f);
+            fraction = withSpacing == 0 ? 0.0f : std::clamp(float(PageSnap(best->first) - best->offset) / float(withSpacing), -0.5f, 0.5f);
         }
         if (m_Current.Peek() != current) m_Current.Set(current);
         if (m_Fraction.Peek() != fraction) m_Fraction.Set(fraction);
@@ -83,7 +82,7 @@ namespace kiln::foundation {
         const int visible = last - first + 1;
         if (((forward && target > last) || (!forward && target < first)) && std::abs(target - first) >= kMaxPagesForAnimateScroll)
             SnapToItem(forward ? std::max(target - visible, first) : std::min(target + visible, first), 0);
-        const float displacement = float(DistanceTo(target) - m_PageSnap) + fraction * float(m_PageSize + m_Spacing);
+        const float displacement = float(DistanceTo(target) - PageSnap(target)) + fraction * float(m_PageSize + m_Spacing);
         float previous = 0;
         co_await a.AnimateTo(anim::Vec{ displacement, 0, 0, 0 }, std::move(spec), {}, [&](const anim::Vec& v) {
             if (stopped) return;
@@ -104,7 +103,7 @@ namespace kiln::foundation {
         constexpr float inf = std::numeric_limits<float>::infinity();
         float lower = -inf, upper = inf;
         for (const auto& l : m_Lines) {
-            const float d = float(l.offset - m_PageSnap);   // calculateDistanceToDesiredSnapPosition
+            const float d = float(l.offset - PageSnap(l.first));   // calculateDistanceToDesiredSnapPosition
             if (d <= 0 && d > lower) lower = d;
             if (d >= 0 && d < upper) upper = d;
         }
@@ -255,7 +254,10 @@ namespace kiln::foundation {
             config.contentPadding = options.contentPadding;
             config.pageSpacing = options.pageSpacing;
             const PageSize ps = options.pageSize;
-            config.pageSize = [ps](const Density& d, int available, int) { return ps.fill ? available : d.RoundToPx(ps.size); };
+            config.pageSize = [ps](const Density& d, int available, int spacing) {
+                if (ps.calculate) return ps.calculate(d, available, spacing);
+                return ps.fill ? available : d.RoundToPx(ps.size);
+            };
             config.horizontalAlignment = options.horizontalAlignment;
             config.verticalAlignment = options.verticalAlignment;
             config.userScrollEnabled = options.userScrollEnabled;
@@ -263,7 +265,9 @@ namespace kiln::foundation {
             config.beyondViewportPageCount = options.beyondViewportPageCount;
             PagerState* st = &state;
             const SnapPosition snap = options.snapPosition;
-            config.snapPosition = [snap](int layout, int page, int before, int after) { return snap.Position(layout, page, before, after); };
+            config.snapPosition = [snap](int layout, int page, int before, int after, int index, int count) {
+                return snap.Position(layout, page, before, after, index, count);
+            };
             config.flingBehavior = options.flingBehavior ? options.flingBehavior : PagerFlingBehavior(state);
             const bool rtl = rt::Composition::Current() && rt::Composition::Current()->Read(ui::LocalLayoutDirection) == LayoutDirection::Rtl;
             config.bringIntoViewSpec = std::make_shared<PagerBringIntoView>(st, rtl && !vertical, CurrentBringIntoViewSpec());

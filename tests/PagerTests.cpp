@@ -207,6 +207,40 @@ TEST(PagerCenterSnapPosition) {
     CHECK_EQ(state.CurrentPageOffsetFraction(), 0.0f);
 }
 
+TEST(PagerStartsWithItsInitialPageAtTheSnapPosition) {
+    Harness h;
+    PagerState state(2, 0, [] { return 6; });
+    h.Run([&] {
+        PagerOptions o;
+        o.pageSize = PageSize::Fixed(Dp(60));
+        o.snapPosition = SnapPosition::Center();
+        HorizontalPager(FillMax(Modifier{}, Axis::Both), state, [](int) { Box(FillMax(Modifier{}, Axis::Both)); }, o);
+    });
+    CHECK_EQ(state.CurrentPage(), 2);
+    CHECK_EQ(state.CurrentPageOffsetFraction(), 0.0f);
+    CHECK_EQ(state.FirstVisiblePage(), 1);
+}
+
+TEST(PagerSnapPositionAndPageSizeMayDependOnThePage) {
+    // Pages rest 10 px further in for each page index; the size comes from the available space.
+    Harness h;
+    PagerState state(0, 0, [] { return 6; });
+    h.Run([&] {
+        PagerOptions o;
+        o.pageSize = PageSize::Custom([](const Density&, int available, int) { return available / 2; });
+        o.snapPosition = SnapPosition::Custom([](int, int, int, int, int index, int) { return index * 10; });
+        HorizontalPager(FillMax(Modifier{}, Axis::Both), state, [](int) { Box(FillMax(Modifier{}, Axis::Both)); }, o);
+    });
+    CHECK_EQ(state.PageSize(), 50);
+    state.ScrollToPage(3);
+    h.Pump();
+    CHECK_EQ(state.CurrentPage(), 3);
+    CHECK_EQ(state.CurrentPageOffsetFraction(), 0.0f);
+    // Page 3 rests 30 px in: page 2 shows its last 30 px before it (scrolled 20 px past).
+    CHECK_EQ(state.FirstVisiblePage(), 2);
+    CHECK_EQ(state.FirstVisiblePageOffset(), 20);
+}
+
 TEST(PagerSnapDistanceLimitsAFling) {
     auto flick = [](int pages) {
         Harness h;

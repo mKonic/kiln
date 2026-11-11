@@ -233,7 +233,7 @@ namespace kiln::foundation {
         GridCells cells;
         bool pager = false;
         int beyondCount = 0;   // pager: beyondViewportPageCount
-        std::function<int(int, int, int, int)> pageSnap;   // pager: SnapPosition
+        std::function<int(int, int, int, int, int, int)> pageSnap;   // pager: SnapPosition
         int stickingSize = 0;   // the header sticking to the start (stickingItemsCombinedSize)
         // Staggered grids: positions of the items measured so far (a prefix from item 0).
         bool staggered = false;
@@ -1298,7 +1298,9 @@ namespace kiln::foundation {
         // Pager pages: a fixed main-axis size (PageSize.Fill: the viewport minus padding).
         const int pagePx = pager && pageSize ? std::max(0, pageSize(s, std::max(0, mainMax - before - after), spacing)) : 0;
         st.m_PageSize = pagePx;
-        st.m_PageSnap = pager && pageSnap ? pageSnap(mainMax, pagePx, before, after) : 0;
+        if (pager && pageSnap)
+            st.m_PageSnapAt = [snap = pageSnap, mainMax, pagePx, before, after, n = count](int i) { return snap(mainMax, pagePx, before, after, i, n); };
+        else st.m_PageSnapAt = nullptr;
         const int crossSpacingPx = grid ? s.RoundToPx(crossArrangement.Spacing()) : 0;
 
         // One measured line: its cells and main-axis size.
@@ -1366,7 +1368,7 @@ namespace kiln::foundation {
             // The page rests at the snap position, `f` pages past it; earlier pages fill the gap.
             const float f = *st.m_PendingFraction;
             st.m_PendingFraction.reset();
-            int off = int(std::lround(f * float(pagePx + spacing))) - st.m_PageSnap;
+            int off = int(std::lround(f * float(pagePx + spacing))) - st.PageSnap(index);
             while (off < 0 && index > 0 && pagePx + spacing > 0) { --index; off += pagePx + spacing; }
             st.m_Index.Set(index);
             st.m_Offset.Set(std::max(0, off));
