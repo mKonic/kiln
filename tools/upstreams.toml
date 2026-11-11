@@ -1,0 +1,130 @@
+# The upstream sources kiln ports from, and the revision each port follows.
+# tools/upstream-sweep lists what changed upstream since `rev` in the paths kiln follows.
+# After porting the changes, record the new revision with `tools/upstream-sweep --mark NAME REV`.
+#
+# kind = "git":     log rev..origin/branch over the paths, in `checkout` (or a blobless clone
+#                   under ~/.cache/kiln-upstreams when there is none).
+# kind = "gitiles": compare each file at rev with `track` (a ref, or tag:GLOB for the newest
+#                   matching tag) over HTTP.
+
+[androidx]
+kind = "git"
+repo = "https://github.com/androidx/androidx.git"
+branch = "androidx-main"
+checkout = "~/dev/os/inspiration/androidx-compose"   # sparse: add new groups' paths to it
+rev = "6b5236195fc4a29252f0de76cb8c56b267509d19"      # 2026-11-05
+# The comparison catalog (~/dev/os/inspiration/m3-apps/catalog) builds the material3 catalog and
+# samples from this checkout and links: adaptive 1.4.0-SNAPSHOT, material3-adaptive-navigation-suite
+# and material3-window-size-class 1.6.0-SNAPSHOT, navigation3 1.3.0-SNAPSHOT, navigation-compose 2.9.5.
+
+[[androidx.group]]
+name = "runtime"
+kiln = "core/src/kiln/runtime"
+paths = ["compose/runtime/runtime/src/commonMain", "compose/runtime/runtime-saveable/src"]
+
+[[androidx.group]]
+name = "ui"
+kiln = "core/src/kiln/ui, core/src/kiln/text, core/src/kiln/graphics, platform/android"
+paths = ["compose/ui/ui/src", "compose/ui/ui-geometry/src", "compose/ui/ui-graphics/src",
+         "compose/ui/ui-text/src", "compose/ui/ui-unit/src", "core/core/src/main/java/androidx/core/view",
+         "activity/activity/src", "activity/activity-compose/src", "window/window-core/src"]
+
+[[androidx.group]]
+name = "animation"
+kiln = "core/src/kiln/animation"
+paths = ["compose/animation/animation-core/src", "compose/animation/animation/src"]
+
+[[androidx.group]]
+name = "foundation"
+kiln = "foundation"
+paths = ["compose/foundation/foundation/src", "compose/foundation/foundation-layout/src"]
+
+[[androidx.group]]
+name = "graphics-shapes"
+kiln = "core/src/kiln/graphics"
+paths = ["graphics/graphics-shapes/src"]
+
+[[androidx.group]]
+name = "material3"
+kiln = "material3 (tokens/ via tools/tokengen)"
+paths = ["compose/material3/material3/src", "compose/material3/material3-ripple/src",
+         "compose/material/material-ripple/src"]
+
+[[androidx.group]]
+name = "adaptive"
+kiln = "material3/src/kiln/material3/adaptive"
+paths = ["compose/material3/adaptive/adaptive/src", "compose/material3/adaptive/adaptive-layout/src",
+         "compose/material3/adaptive/adaptive-navigation/src", "compose/material3/adaptive/adaptive-navigation3/src",
+         "compose/material3/material3-adaptive-navigation-suite/src"]
+
+[[androidx.group]]
+name = "navigation"
+kiln = "navigation (planned)"
+paths = ["navigation3/navigation3-runtime/src", "navigation3/navigation3-ui/src",
+         "navigation/navigation-common/src", "navigation/navigation-runtime/src", "navigation/navigation-compose/src"]
+
+[[androidx.group]]
+name = "catalog"
+kiln = "samples/catalog"
+paths = ["compose/material3/material3/integration-tests/material3-catalog", "compose/material3/material3/samples",
+         "compose/material3/adaptive/samples", "compose/material3/material3-adaptive-navigation-suite/samples"]
+
+[material-color-utilities]
+kind = "git"
+repo = "https://github.com/material-foundation/material-color-utilities.git"
+branch = "main"
+checkout = "~/dev/os/inspiration/material-color-utilities"
+rev = "bd811e4ca2ab94c4ce3cadc89c19b1820b9704b3"      # 2026-10-19; vendored copy in vendor/material-color-utilities
+
+[[material-color-utilities.group]]
+name = "cpp"
+kiln = "vendor/material-color-utilities/cpp"
+paths = ["cpp"]
+
+[skia]
+kind = "git"
+repo = "https://skia.googlesource.com/skia"
+branch = "main"
+rev = "765d2043b9674d376b414904d4b3dc21760874df"      # vendor/skia-shadow/VENDORED.txt
+
+[[skia.group]]
+name = "shadow"
+kiln = "vendor/skia-shadow, core/src/kiln/graphics/PathShadow.cpp, render/shaders/tri.frag"
+paths = ["src/utils/SkShadowTessellator.h", "src/utils/SkShadowTessellator.cpp", "src/utils/SkPolyUtils.h",
+         "src/utils/SkPolyUtils.cpp", "src/core/SkTInternalLList.h", "src/core/SkTDPQueue.h",
+         "src/core/SkDrawShadowInfo.h", "src/core/SkDrawShadowInfo.cpp", "src/utils/SkShadowUtils.cpp",
+         "src/gpu/ganesh/geometry/GrPathUtils.h", "src/gpu/ganesh/geometry/GrPathUtils.cpp",
+         "src/gpu/tessellate/WangsFormula.h", "src/core/SkGeometry.h", "src/core/SkGeometry.cpp",
+         "src/core/SkMaskBlurFilter.cpp", "src/core/SkGaussFilter.h", "src/core/SkGaussFilter.cpp",
+         "src/gpu/ganesh/GrFragmentProcessors.cpp"]
+
+[clipper2]
+kind = "git"
+repo = "https://github.com/AngusJohnson/Clipper2.git"
+branch = "main"
+checkout = "vendor/Clipper2"                           # submodule: bump it to update
+rev = "21ebba05db8894f0c7217ad35ea518080f324946"
+
+[[clipper2.group]]
+name = "cpp"
+kiln = "vendor/Clipper2"
+paths = ["CPP/Clipper2Lib"]
+
+[aosp-frameworks-base]
+kind = "gitiles"
+repo = "https://android.googlesource.com/platform/frameworks/base"
+rev = "android-16.0.0_r2"
+track = "tag:android-1*"
+
+[[aosp-frameworks-base.group]]
+name = "ripple"
+kiln = "render/shaders/quad_body.glsl, material3/src/kiln/material3/ripple"
+paths = ["graphics/java/android/graphics/drawable/RippleShader.java",
+         "graphics/java/android/graphics/drawable/RippleDrawable.java",
+         "graphics/java/android/graphics/drawable/RippleAnimationSession.java"]
+
+[[aosp-frameworks-base.group]]
+name = "overscroll"
+kiln = "foundation/src/kiln/foundation/EdgeEffect.h, render/shaders/quad_body.glsl"
+paths = ["core/java/android/widget/EdgeEffect.java", "libs/hwui/effects/StretchEffect.cpp",
+         "libs/hwui/effects/StretchEffect.h"]

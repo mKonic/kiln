@@ -1,0 +1,143 @@
+#!/usr/bin/env python3
+"""List what changed upstream since the revision kiln's ports follow (tools/upstreams.toml).
+
+  upstream-sweep [NAME...]            commits per group since rev (git), changed files (gitiles)
+  upstream-sweep --fetch [NAME...]    fetch first
+  upstream-sweep --diff NAME [GROUP]  the full diff since rev
+  upstream-sweep --mark NAME REV      record REV as the revision the port now follows
+"""
+import argparse, base64, difflib, fnmatch, json, os, re, subprocess, sys, tomllib, urllib.request
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+MANIFEST = ROOT / "tools" / "upstreams.toml"
+CACHE = Path.home() / ".cache" / "kiln-upstreams"
+
+
+def git(cwd, *args, check=True):
+    return subprocess.run(["git", "-C", str(cwd), *args], capture_output=True, text=True, check=check).stdout
+
+
+def checkout_of(name, u, fetch):
+    if "checkout" in u:
+        path = Path(os.path.expanduser(u["checkout"]))
+        path = path if path.is_absolute() else ROOT / path
+    else:
+        path = CACHE / name
+        if not path.exists():
+            CACHE.mkdir(parents=True, exist_ok=True)
+            print(f"cloning {u['repo']} (blobless) into {path}", file=sys.stderr)
+            subprocess.run(["git", "clone", "-q", "--bare", "--filter=blob:none", "--single-branch",
+                            "-b", u["branch"], u["repo"], str(path)], check=True)
+            fetch = False
+    remote_ref = f"origin/{u['branch']}" if "checkout" in u else u["branch"]
+    if fetch:
+        if "checkout" in u:
+            git(path, "fetch", "-q", "origin", u["branch"])
+        else:
+            git(path, "fetch", "-q", "origin", f"+{u['branch']}:{u['branch']}")
+    return path, remote_ref
+
+
+def sweep_git(name, u, args):
+    path, ref = checkout_of(name, u, args.fetch)
+    head = git(path, "rev-parse", "--short", ref).strip()
+    print(f"== {name}: {u['rev'][:10]}..{ref} ({head})")
+    for g in u["group"]:
+        if args.group and g["name"] != args.group:
+            continue
+        rng = f"{u['rev']}..{ref}"
+        if args.diff:
+            sys.stdout.write(git(path, "diff", "--stat", u["rev"], ref, "--", *g["paths"]))
+            sys.stdout.write(git(path, "diff", u["rev"], ref, "--", *g["paths"]))
+            continue
+        log = git(path, "log", "--no-merges", "--format=%h %ad %s", "--date=short", rng, "--", *g["paths"]).splitlines()
+        print(f"  {g['name']} -> {g['kiln']}: {len(log)} commit(s)")
+        for line in log[:args.limit]:
+            print(f"    {line}")
+        if len(log) > args.limit:
+            print(f"    ... {len(log) - args.limit} more")
+
+
+def gitiles(url):
+    with urllib.request.urlopen(url, timeout=60) as r:
+        return r.read()
+
+
+def file_at(repo, rev, path):
+    """The file's lines at rev, or None when it does not exist there."""
+    try:
+        return base64.b64decode(gitiles(f"{repo}/+/{rev}/{path}?format=TEXT")).decode().splitlines(True)
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            return None
+        raise
+
+
+def newest_tag(repo, glob):
+    out = subprocess.run(["git", "ls-remote", "--tags", "--refs", repo], capture_output=True, text=True, check=True).stdout
+    tags = [l.split("refs/tags/")[1] for l in out.splitlines() if "refs/tags/" in l]
+    tags = [t for t in tags if fnmatch.fnmatch(t, glob)]
+    key = lambda t: [int(x) if x.isdigit() else x for x in re.split(r"(\d+)", t)]
+    return max(tags, key=key) if tags else None
+
+
+def sweep_gitiles(name, u, args):
+    track = u["track"]
+    if track.startswith("tag:"):
+        track = newest_tag(u["repo"], track[4:])
+    print(f"== {name}: {u['rev']}..{track}")
+    if track == u["rev"]:
+        print("  up to date")
+        return
+    for g in u["group"]:
+        if args.group and g["name"] != args.group:
+            continue
+        changed = []
+        for p in g["paths"]:
+            old, new = file_at(u["repo"], u["rev"], p), file_at(u["repo"], track, p)
+            if old != new:
+                changed.append(p if old and new else f"{p} ({'added' if new else 'removed'})")
+                if args.diff:
+                    sys.stdout.writelines(difflib.unified_diff(old or [], new or [], f"{u['rev']}/{p}", f"{track}/{p}"))
+        print(f"  {g['name']} -> {g['kiln']}: {len(changed)} changed file(s)")
+        for p in changed:
+            print(f"    {p}")
+
+
+def mark(name, rev):
+    lines = MANIFEST.read_text().splitlines(True)
+    section = None
+    for i, line in enumerate(lines):
+        m = re.match(r"^\[([^\[\]]+)\]\s*$", line)
+        if m:
+            section = m.group(1)
+        if section == name and re.match(r"^rev\s*=", line):
+            lines[i] = re.sub(r'"[^"]*"', f'"{rev}"', line, count=1)
+            MANIFEST.write_text("".join(lines))
+            print(f"{name}: rev = {rev}")
+            return
+    sys.exit(f"no [{name}] rev in {MANIFEST}")
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("names", nargs="*")
+    ap.add_argument("--fetch", action="store_true")
+    ap.add_argument("--diff", action="store_true")
+    ap.add_argument("--group")
+    ap.add_argument("--limit", type=int, default=15, help="commits shown per group")
+    ap.add_argument("--mark", nargs=2, metavar=("NAME", "REV"))
+    args = ap.parse_args()
+    if args.mark:
+        return mark(*args.mark)
+    upstreams = tomllib.loads(MANIFEST.read_text())
+    for name in args.names or upstreams:
+        if name not in upstreams:
+            sys.exit(f"unknown upstream {name}; known: {', '.join(upstreams)}")
+        u = upstreams[name]
+        (sweep_git if u["kind"] == "git" else sweep_gitiles)(name, u, args)
+
+
+if __name__ == "__main__":
+    main()
