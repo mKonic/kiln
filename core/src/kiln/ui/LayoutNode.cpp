@@ -1037,7 +1037,30 @@ namespace kiln::ui {
         m_Root->SetChildren({ m_ContentRoot.get() });
     }
 
+    namespace {
+        // Outlives nothing: the owner detaches it when it goes.
+        struct OwnerKeyboardController final : SoftwareKeyboardController {
+            Owner* owner;
+            explicit OwnerKeyboardController(Owner* o) : owner(o) {}
+            void Show() override { if (owner) owner->ShowSoftKeyboard(); }
+            void Hide() override { if (owner) owner->HideSoftKeyboard(); }
+        };
+    }
+
+    std::shared_ptr<SoftwareKeyboardController> Owner::KeyboardController() {
+        if (!m_KeyboardController) m_KeyboardController = std::make_shared<OwnerKeyboardController>(this);
+        return m_KeyboardController;
+    }
+
+    std::shared_ptr<SoftwareKeyboardController> CurrentSoftwareKeyboardController() {
+        auto& c = *rt::Composition::Current();
+        if (auto provided = c.Read(LocalSoftwareKeyboardController)) return provided;
+        Owner* owner = c.Read(LocalOwner);
+        return owner ? owner->KeyboardController() : nullptr;
+    }
+
     Owner::~Owner() {
+        if (m_KeyboardController) static_cast<OwnerKeyboardController&>(*m_KeyboardController).owner = nullptr;
         m_Popups.clear();
         m_Root->SetChildren({ m_ContentRoot.get() });
         m_Root->Detach();

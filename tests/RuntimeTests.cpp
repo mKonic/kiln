@@ -1,6 +1,7 @@
 #include "Check.h"
 
 #include "kiln/runtime/Composition.h"
+#include "kiln/runtime/SnapshotFlow.h"
 
 #include <map>
 #include <string>
@@ -254,4 +255,29 @@ TEST(LaunchedEffectRestartsOnKeyChange) {
     c.Recompose();
     d.RunFrame(3);
     CHECK_EQ(ticks.Peek(), 2);   // removed with its group
+}
+
+TEST(SnapshotFlowEmitsDistinctValuesAfterChangesApply) {
+    Dispatcher& d = Dispatcher::Main();
+    State<int> a(1), b(10);
+    std::vector<int> seen;
+    Job job = Launch(d, SnapshotFlow<int>([&] { return a.Get() + b.Get(); }).Collect([&](const int& v) { seen.push_back(v); }));
+    d.RunPending();
+    CHECK(seen == std::vector<int>{ 11 });
+    a.Set(2);
+    d.RunPending();
+    CHECK(seen.size() == 1u);   // nothing until the change applies
+    Observation::ApplyChanges();
+    d.RunPending();
+    CHECK(seen == (std::vector<int>{ 11, 12 }));
+    a.Set(1);
+    b.Set(11);   // the same sum: not emitted again
+    Observation::ApplyChanges();
+    d.RunPending();
+    CHECK(seen == (std::vector<int>{ 11, 12 }));
+    job.Cancel();
+    a.Set(5);
+    Observation::ApplyChanges();
+    d.RunPending();
+    CHECK(seen.size() == 2u);
 }

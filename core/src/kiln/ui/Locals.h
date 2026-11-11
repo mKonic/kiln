@@ -93,6 +93,18 @@ namespace kiln::ui {
     class Owner;
     inline rt::Local<Owner*> LocalOwner{ nullptr };
 
+    // SoftwareKeyboardController: shows or hides the keyboard for the focused text field.
+    class SoftwareKeyboardController {
+    public:
+        virtual ~SoftwareKeyboardController() = default;
+        virtual void Show() = 0;
+        virtual void Hide() = 0;
+    };
+    // LocalSoftwareKeyboardController. Unprovided it is the owner's, as Compose computes its
+    // default from LocalOwner: read it with CurrentSoftwareKeyboardController().
+    inline rt::Local<std::shared_ptr<SoftwareKeyboardController>> LocalSoftwareKeyboardController{ nullptr };
+    std::shared_ptr<SoftwareKeyboardController> CurrentSoftwareKeyboardController();
+
     class WindowInsetsHolder;
     inline rt::Local<WindowInsetsHolder*> LocalWindowInsets{ nullptr };
 

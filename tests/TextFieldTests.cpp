@@ -1073,3 +1073,31 @@ TEST(RightClickOpensTheMenuOfAPaddedSingleLineField) {
     h.Pump({ 300, 300 });
     CHECK(h.owner.Popups().empty());
 }
+
+TEST(SoftwareKeyboardControllerDefaultsToTheOwnersAndCanBeProvided) {
+    FieldHarness h;
+    struct Counting final : ui::SoftwareKeyboardController {
+        int shows = 0, hides = 0;
+        void Show() override { ++shows; }
+        void Hide() override { ++hides; }
+    };
+    auto custom = std::make_shared<Counting>();
+    std::shared_ptr<ui::SoftwareKeyboardController> fromOwner, provided;
+    h.comp.SetContent([&] {
+        rt::Composition::Current()->Provide(ui::LocalOwner, &h.owner, [&] {
+            fromOwner = ui::CurrentSoftwareKeyboardController();
+            rt::Composition::Current()->Provide(ui::LocalSoftwareKeyboardController, std::shared_ptr<ui::SoftwareKeyboardController>(custom),
+                                                [&] { provided = ui::CurrentSoftwareKeyboardController(); });
+        });
+    });
+    h.Pump();
+    CHECK(fromOwner != nullptr);
+    if (!fromOwner) return;
+    fromOwner->Hide();
+    CHECK_EQ(h.hides, 1);
+    CHECK(provided == custom);
+    if (!provided) return;
+    provided->Hide();
+    CHECK_EQ(custom->hides, 1);
+    CHECK_EQ(h.hides, 1);
+}

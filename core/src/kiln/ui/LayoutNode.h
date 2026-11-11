@@ -564,6 +564,8 @@ namespace kiln::ui {
         // SoftwareKeyboardController: show or hide the keyboard without ending the session.
         void ShowSoftKeyboard() { if (m_InputHost.showKeyboard) m_InputHost.showKeyboard(); }
         void HideSoftKeyboard() { if (m_InputHost.hideKeyboard) m_InputHost.hideKeyboard(); }
+        // LocalSoftwareKeyboardController's default: Show / HideSoftKeyboard.
+        std::shared_ptr<SoftwareKeyboardController> KeyboardController();
         // WindowInfo.isWindowFocused (observable).
         bool IsWindowFocused() const { return m_WindowFocused.Get(); }
         void SetWindowFocused(bool focused) { m_WindowFocused.Set(focused); }
@@ -744,6 +746,7 @@ namespace kiln::ui {
         std::function<void(Rect)> m_RequestRectangle;
         std::vector<int> m_KeysDown;
         TextInputHost m_InputHost;
+        std::shared_ptr<SoftwareKeyboardController> m_KeyboardController;
         TextInputSession* m_Input = nullptr;
         WindowInsetsHolder m_Insets;
         std::uint64_t m_SemanticsVersion = 0;
