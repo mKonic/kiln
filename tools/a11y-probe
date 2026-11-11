@@ -41,7 +41,11 @@ XML
 fi
 files=/sdcard/Android/data/dev.kiln.probe/files
 adb shell rm -f "$files/*.png" 2>/dev/null || true
-result="$(adb shell am instrument -w -e cmd "'${1:-dump}'" dev.kiln.probe/.Probe)"
+# Single-quoted for the device's shell (a quote inside becomes '\'').
+steps="${1:-dump}"
+q="'"
+steps="${steps//$q/$q\\$q$q}"
+result="$(adb shell am instrument -w -e cmd "'$steps'" dev.kiln.probe/.Probe)"
 printf '%s\n' "$result"
 if adb shell ls "$files" 2>/dev/null | grep -q '\.png'; then
     mkdir -p "${PROBE_SHOTS:-$KILN_ROOT/build/shots}"
