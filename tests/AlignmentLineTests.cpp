@@ -157,3 +157,18 @@ TEST(ParentFollowsAMovedLineOfAnUnresizedChild) {
     h.owner.MeasureAndLayout({ 400, 400 });
     CHECK_EQ(Top(fixed), 5);
 }
+
+TEST(PaddingFromBaselineReadsTheBaselineOfItsContent) {
+    // The line comes from a child of the padded node: it is laid out early to read it.
+    Harness h;
+    LayoutNode* leaf = nullptr;
+    h.Run([&] {
+        Box(Modifier{}, Alignment::TopStart(), false, [&] {
+            Box(PaddingFromBaseline({}, Dp(50), Dp::Unspecified()), Alignment::TopStart(), false, [&] {
+                leaf = Leaf(Padding({}, PaddingValues{ Dp(0), Dp(4), Dp(0), Dp(0) }), 10, 40, 30);
+            });
+        });
+    });
+    // The baseline sits 34 into the box (its padding is part of the leaf): 16 above it.
+    CHECK_EQ(Top(leaf), 16);
+}

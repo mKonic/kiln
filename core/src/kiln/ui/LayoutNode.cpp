@@ -135,7 +135,20 @@ namespace kiln::ui {
         int GetHere(const AlignmentLine& line) {
             for (const auto& [l, v] : result.alignmentLines)
                 if (l == &line) return v;
-            node.LayoutIfNeeded();
+            if (node.m_InMeasure) {
+                // A modifier of this node reads a line of what it wraps while the node measures
+                // (paddingFrom): the outer results are not ready, so lay out from here only —
+                // this coordinator's placement places what it wraps (Compose lays children out
+                // for alignment-line queries the same way).
+                PlacementScope scope(node.GetLayoutDirection(), Width());
+                const std::size_t i = index;
+                LayoutNode* n = &node;
+                scope.SetRulerLookup([n, i](const Ruler& r, float d) { return n->FindRulerValue(i, r, d); });
+                if (node.m_Owner) scope.SetInsets(&node.m_Owner->Insets());
+                if (result.place) result.place(scope);
+            } else {
+                node.LayoutIfNeeded();
+            }
             if (mod) {
                 Coordinator* w = Next();
                 const int v = w->Get(line);
