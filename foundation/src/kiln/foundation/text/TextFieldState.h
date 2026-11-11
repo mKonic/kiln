@@ -167,8 +167,9 @@ namespace kiln::foundation {
         std::shared_ptr<const char> m_Alive = std::make_shared<const char>(0);
     };
 
-    // rememberTextFieldState: the text, selection and undo history survive re-creation.
-    TextFieldState& RememberTextFieldState(std::string_view initialText = {});
+    // rememberTextFieldState: the text, selection and undo history survive re-creation. The
+    // selection starts at the end unless given.
+    TextFieldState& RememberTextFieldState(std::string_view initialText = {}, std::optional<TextRange> initialSelection = std::nullopt);
 
     // --- the field's transformed view (TransformedTextFieldState) -----------------------------
 

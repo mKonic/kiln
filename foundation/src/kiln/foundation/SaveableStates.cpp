@@ -63,7 +63,7 @@ namespace kiln::foundation {
         return *s;
     }
 
-    TextFieldState& RememberTextFieldState(std::string_view initialText) {
+    TextFieldState& RememberTextFieldState(std::string_view initialText, std::optional<TextRange> initialSelection) {
         // TextFieldState.Saver: text, selection and the undo history (staging, undo and redo
         // operations, each index, pre/post text, selections and time).
         auto saveOp = [](rt::SavedValue::List& l, const TextUndoOperation& op) {
@@ -132,7 +132,7 @@ namespace kiln::foundation {
                 return s;
             });
         const std::string initial(initialText);
-        return *rt::RememberSaveable<std::shared_ptr<TextFieldState>>([&] { return std::make_shared<TextFieldState>(initial); }, saver);
+        return *rt::RememberSaveable<std::shared_ptr<TextFieldState>>([&] { return std::make_shared<TextFieldState>(initial, initialSelection); }, saver);
     }
 
 }
