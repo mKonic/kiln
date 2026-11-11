@@ -125,6 +125,7 @@ namespace kiln::foundation {
 
         rt::State<int> m_Index, m_Offset;
         float m_PendingScroll = 0;
+        bool m_HasLookaheadOccurred = false;   // measured in a lookahead pass (then the approach pass only follows it)
         float m_LastConsumed = 0;
         rt::State<bool> m_CanForward{ true }, m_CanBackward{ false };
         void SetCanScroll(bool forward) {

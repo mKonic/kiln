@@ -291,6 +291,38 @@ namespace kiln::foundation {
         std::vector<LazyInterval> intervals;
         std::uint64_t version = 0;
         std::map<std::uint64_t, Slot> slots;     // by item key value
+        // In a lookahead scope: the slots each pass used last (a slot stays while either does).
+        std::set<std::uint64_t> lookaheadKeys, approachKeys;
+        // Which pass measures, and the slots the other pass keeps.
+        struct PassInfo { bool lookingAhead = false, approach = false, inScope = false; };
+        PassInfo BeginPass(LayoutNode& self, const MeasureScope& s, LazyStateBase& st) {
+            PassInfo p;
+            p.inScope = self.LookaheadRoot() != nullptr;
+            p.lookingAhead = s.IsLookingAhead();
+            if (!p.inScope) { st.m_HasLookaheadOccurred = false; lookaheadKeys.clear(); approachKeys.clear(); }
+            // The lookahead pass scrolls and commits the state; the approach pass lays out from
+            // there without changing it (LazyListState.applyMeasureResult).
+            p.approach = !p.lookingAhead && p.inScope && st.m_HasLookaheadOccurred;
+            if (p.lookingAhead) st.m_HasLookaheadOccurred = true;
+            return p;
+        }
+        Measurable& MeasurableOf(LayoutNode& n, const PassInfo& p) { return p.lookingAhead ? n.AsLookaheadMeasurable() : n.AsMeasurable(); }
+        // Records the slots this pass used; returns those the other pass keeps (appended,
+        // unplaced, to `active`), or null outside a lookahead scope.
+        const std::set<std::uint64_t>* KeepForOtherPass(const PassInfo& p, const std::vector<const Slot*>& used, std::vector<LayoutNode*>& active) {
+            if (!p.inScope) return nullptr;
+            std::set<std::uint64_t> mine;
+            for (const auto& [k, sl] : slots)
+                if (std::find(used.begin(), used.end(), &sl) != used.end()) mine.insert(k);
+            (p.lookingAhead ? lookaheadKeys : approachKeys) = std::move(mine);
+            const std::set<std::uint64_t>& other = p.lookingAhead ? approachKeys : lookaheadKeys;
+            for (std::uint64_t k : other) {
+                auto it = slots.find(k);
+                if (it == slots.end() || !it->second.holder) continue;
+                if (std::find(active.begin(), active.end(), it->second.holder.get()) == active.end()) active.push_back(it->second.holder.get());
+            }
+            return &other;
+        }
         rt::Scope* context = nullptr;            // Locals the items see
         rt::SaveableStateHolder* holder = nullptr;   // keeps item state while items are off-screen
         int count = 0;
@@ -624,6 +656,7 @@ namespace kiln::foundation {
         using LI = StaggeredLaneInfo;
         LazyStateBase& st = *state;
         st.m_Node = &self;
+        const PassInfo pass = BeginPass(self, s, st);
         rt::Dispatcher& d = rt::Dispatcher::Main();
         const int mainMax = vertical ? c.maxHeight : c.maxWidth;
         const int crossMax = vertical ? c.maxWidth : c.maxHeight;
@@ -642,6 +675,7 @@ namespace kiln::foundation {
         const int w = vertical ? c.ConstrainWidth(crossMax == Constraints::Infinity ? crossPad : crossMax) : c.ConstrainWidth(mainMax);
         const int h = vertical ? c.ConstrainHeight(mainMax) : c.ConstrainHeight(crossMax == Constraints::Infinity ? crossPad : crossMax);
 
+        if ((count == 0 || lanes == 0) && pass.approach) return s.Layout(c.minWidth, c.minHeight);
         if (count == 0 || lanes == 0) {
             self.SetChildrenDuringMeasure({});   // detach before the slots free the nodes
             for (auto& [k, slot] : slots) DisposeSlot(k, slot);
@@ -673,7 +707,7 @@ namespace kiln::foundation {
             const int cw = size == 1 ? sizes[std::size_t(start)]
                                      : positions[std::size_t(start + size - 1)] + sizes[std::size_t(start + size - 1)] - positions[std::size_t(start)];
             const Constraints ic = vertical ? Constraints{ cw, cw, 0, Constraints::Infinity } : Constraints{ 0, Constraints::Infinity, cw, cw };
-            Placeable& p = sl.holder->AsMeasurable().Measure(ic);
+            Placeable& p = MeasurableOf(*sl.holder, pass).Measure(ic);
             const int mainSize = vertical ? p.Height() : p.Width();
             pool.push_back({ i, start, size, mainSize, mainSize + spacing, &p, ic });
             cache[key] = &pool.back();
@@ -748,8 +782,8 @@ namespace kiln::foundation {
         }
 
         // --- measure (LazyStaggeredGridMeasureContext.measure) ---
-        const float pending = st.m_PendingScroll;
-        st.m_PendingScroll = 0;
+        const float pending = pass.approach ? 0.0f : st.m_PendingScroll;
+        if (!pass.approach) st.m_PendingScroll = 0;
         const int wholeDelta = RoundJava(pending);
         struct Out {
             bool restart = false;
@@ -1054,14 +1088,17 @@ namespace kiln::foundation {
 
         // The scroll position and what was consumed (the requested scroll unless clamped).
         float consumed;
-        if (-out.scrollDelta == wholeDelta) { consumed = pending; st.m_PendingScroll = pending - float(wholeDelta); }
+        if (pass.approach) consumed = 0;
+        else if (-out.scrollDelta == wholeDelta) { consumed = pending; st.m_PendingScroll = pending - float(wholeDelta); }
         else { consumed = float(-out.scrollDelta); st.m_PendingScroll = 0; }
-        stagIndices = out.fi;
-        stagOffsets = out.fo;
+        if (!pass.approach) {
+            stagIndices = out.fi;
+            stagOffsets = out.fo;
+        }
         stagVisibleOffsets.clear();
         for (int i : visible) stagVisibleOffsets[i] = byIndex[i]->main;
 
-        AnimFrame af = AnimBegin(visible);
+        AnimFrame af = pass.lookingAhead ? AnimFrame{} : AnimBegin(visible);
         std::vector<LayoutNode*> nowActive;
         std::vector<const Slot*> used;
         auto use = [&](int i) { Slot& sl = slots[KeyOf(i).value]; nowActive.push_back(sl.holder.get()); used.push_back(&sl); };
@@ -1069,9 +1106,10 @@ namespace kiln::foundation {
         for (int i : extra) use(i);
         for (auto& [k, a] : af.disappearing) { Slot& sl = slots[k]; nowActive.push_back(sl.holder.get()); used.push_back(&sl); }
         for (auto& m : af.movingAway) { Slot& sl = Compose(m.index, d); nowActive.push_back(sl.holder.get()); used.push_back(&sl); }
+        const std::set<std::uint64_t>* kept = KeepForOtherPass(pass, used, nowActive);
         self.SetChildrenDuringMeasure(nowActive);
         for (auto it = slots.begin(); it != slots.end();) {
-            if (std::find(used.begin(), used.end(), &it->second) == used.end()) { DisposeSlot(it->first, it->second); it = slots.erase(it); }
+            if (std::find(used.begin(), used.end(), &it->second) == used.end() && !(kept && kept->count(it->first))) { DisposeSlot(it->first, it->second); it = slots.erase(it); }
             else ++it;
         }
 
@@ -1082,24 +1120,26 @@ namespace kiln::foundation {
         int firstOffset = std::numeric_limits<int>::max();
         for (int l = 0; l < lanes; ++l) if (out.fi[std::size_t(l)] == first) firstOffset = std::min(firstOffset, out.fo[std::size_t(l)]);
         if (firstOffset == std::numeric_limits<int>::max()) firstOffset = 0;
-        if ((st.m_Index.Peek() != first || st.m_Offset.Peek() != firstOffset) && self.GetOwner()) self.GetOwner()->InvalidateSemantics();
-        st.m_Index.Set(first);
-        st.m_Offset.Set(firstOffset);
-        st.m_FirstKey = KeyOf(std::min(first, count - 1));
-        st.m_HasFirstKey = true;
-        st.m_LastConsumed = consumed;
-        st.SetCanScroll(std::any_of(out.co.begin(), out.co.end(), [&](int v) { return v > viewport; }) ||
-                        std::all_of(out.ci.begin(), out.ci.end(), [&](int v) { return v < count - 1; }));
-        st.m_Lines.clear();
-        for (int i : visible) st.m_Lines.push_back({ i, i, byIndex[i]->main, byIndex[i]->size });
-        st.m_SlotsPerLine = lanes;
-        st.m_Spacing = spacing;
-        st.m_TotalItems = count;
-        st.m_ViewportLength = float(viewport);
-        st.m_Density = s.density;
-        st.OnMeasured();
+        if (!pass.approach) {
+            if ((st.m_Index.Peek() != first || st.m_Offset.Peek() != firstOffset) && self.GetOwner()) self.GetOwner()->InvalidateSemantics();
+            st.m_Index.Set(first);
+            st.m_Offset.Set(firstOffset);
+            st.m_FirstKey = KeyOf(std::min(first, count - 1));
+            st.m_HasFirstKey = true;
+            st.m_LastConsumed = consumed;
+            st.SetCanScroll(std::any_of(out.co.begin(), out.co.end(), [&](int v) { return v > viewport; }) ||
+                            std::all_of(out.ci.begin(), out.ci.end(), [&](int v) { return v < count - 1; }));
+            st.m_Lines.clear();
+            for (int i : visible) st.m_Lines.push_back({ i, i, byIndex[i]->main, byIndex[i]->size });
+            st.m_SlotsPerLine = lanes;
+            st.m_Spacing = spacing;
+            st.m_TotalItems = count;
+            st.m_ViewportLength = float(viewport);
+            st.m_Density = s.density;
+            st.OnMeasured();
+        }
 
-        if (stagState) {
+        if (stagState && !pass.approach) {
             LazyGridLayoutInfo info;
             for (int i : visible) {
                 const SItem& it = *byIndex[i];
@@ -1299,6 +1339,7 @@ namespace kiln::foundation {
         if (staggered) return MeasureStaggered(self, s, c);
         LazyStateBase& st = *state;
         st.m_Node = &self;
+        const PassInfo pass = BeginPass(self, s, st);
         rt::Dispatcher& d = rt::Dispatcher::Main();
         const int mainMax = vertical ? c.maxHeight : c.maxWidth;
         const int crossMax = vertical ? c.maxWidth : c.maxHeight;
@@ -1368,7 +1409,7 @@ namespace kiln::foundation {
                     ic = vertical ? Constraints{ 0, crossAvailable, 0, Constraints::Infinity }
                                   : Constraints{ 0, Constraints::Infinity, 0, crossAvailable };
                 }
-                Placeable& p = sl.holder->AsMeasurable().Measure(ic);
+                Placeable& p = MeasurableOf(*sl.holder, pass).Measure(ic);
                 ml.cells.push_back({ i, &sl, &p, crossPos, slot, ic });
                 ml.size = std::max(ml.size, vertical ? p.Height() : p.Width());
                 slot += span;
@@ -1398,7 +1439,7 @@ namespace kiln::foundation {
             const int found = IndexOfKey(st.m_FirstKey, index);
             if (found >= 0) index = found;
         }
-        if (pager && st.m_PendingFraction) {
+        if (pager && st.m_PendingFraction && !pass.approach) {
             // scrollToPage(page, fraction): fractions before the page start belong to the previous page.
             // The page rests at the snap position, `f` pages past it; earlier pages fill the gap.
             const float f = *st.m_PendingFraction;
@@ -1408,6 +1449,7 @@ namespace kiln::foundation {
             st.m_Index.Set(index);
             st.m_Offset.Set(std::max(0, off));
         }
+        if (count == 0 && pass.approach) return s.Layout(c.minWidth, c.minHeight);
         if (count == 0) {
             self.SetChildrenDuringMeasure({});   // detach before the slots free the nodes
             for (auto& [k, slot] : slots) DisposeSlot(k, slot);
@@ -1424,10 +1466,10 @@ namespace kiln::foundation {
         const int lineCount = LineCount();
         // Whole pixels are applied; the fraction waits for the next scroll (scrollToBeConsumed),
         // so many small deltas add up exactly.
-        const float delta = st.m_PendingScroll;
+        const float delta = pass.approach ? 0.0f : st.m_PendingScroll;
         const int wholeDelta = RoundJava(delta);
         float remainder = delta - float(wholeDelta);
-        st.m_PendingScroll = 0;
+        if (!pass.approach) st.m_PendingScroll = 0;
         // pos: where the first line's leading edge sits relative to the content start.
         int pos = -st.m_Offset.Peek() - wholeDelta;
 
@@ -1478,8 +1520,10 @@ namespace kiln::foundation {
             int p = pos;
             for (auto& l : lines) { offsets.push_back(p); p += l.size + spacing; }
         }
-        st.m_Lines.clear();
-        for (std::size_t i = 0; i < lines.size(); ++i) st.m_Lines.push_back({ lines[i].first, lines[i].last, offsets[i], lines[i].size });
+        if (!pass.approach) {
+            st.m_Lines.clear();
+            for (std::size_t i = 0; i < lines.size(); ++i) st.m_Lines.push_back({ lines[i].first, lines[i].last, offsets[i], lines[i].size });
+        }
 
         // Sticky header (StickToTopPlacement): the last header at or before the first visible
         // item, at the viewport start, pushed back by the next visible header; drawn on top.
@@ -1541,7 +1585,8 @@ namespace kiln::foundation {
         std::vector<int> placedIndices;
         for (auto& l : lines) for (auto& cell : l.cells) placedIndices.push_back(cell.index);
         if (sticking) for (auto& cell : sticking->cells) placedIndices.push_back(cell.index);
-        AnimFrame af = AnimBegin(placedIndices);
+        // Item animations run in the main (approach) pass; lookahead places at the targets.
+        AnimFrame af = pass.lookingAhead ? AnimFrame{} : AnimBegin(placedIndices);
         const bool animating = af.animating;
         auto& disappearing = af.disappearing;
         auto& movingAway = af.movingAway;
@@ -1555,9 +1600,10 @@ namespace kiln::foundation {
             for (auto& l : *extra) for (auto& cell : l.cells) { nowActive.push_back(cell.slot->holder.get()); used.push_back(cell.slot); }
         for (auto& [k, a] : disappearing) { Slot& sl = slots[k]; nowActive.push_back(sl.holder.get()); used.push_back(&sl); }
         for (auto& m : movingAway) { Slot& sl = Compose(m.index, d); nowActive.push_back(sl.holder.get()); used.push_back(&sl); }
+        const std::set<std::uint64_t>* kept = KeepForOtherPass(pass, used, nowActive);
         self.SetChildrenDuringMeasure(nowActive);
         for (auto it = slots.begin(); it != slots.end();) {
-            if (std::find(used.begin(), used.end(), &it->second) == used.end()) { DisposeSlot(it->first, it->second); it = slots.erase(it); }
+            if (std::find(used.begin(), used.end(), &it->second) == used.end() && !(kept && kept->count(it->first))) { DisposeSlot(it->first, it->second); it = slots.erase(it); }
             else ++it;
         }
         for (auto it = anims.begin(); it != anims.end();) {
@@ -1565,26 +1611,26 @@ namespace kiln::foundation {
             else ++it;
         }
 
-        if (st.m_Index.Peek() != firstIndex || st.m_Offset.Peek() != -pos)
-            if (self.GetOwner()) self.GetOwner()->InvalidateSemantics();   // bounds moved
-        st.m_Index.Set(firstIndex);
-        st.m_Offset.Set(-pos);
-        st.m_FirstKey = KeyOf(firstIndex);
-        st.m_HasFirstKey = true;
-        st.m_LastConsumed = consumed;
-        st.m_PendingScroll = remainder;
-        st.SetCanScroll(!(lastLine == lineCount - 1 && end <= viewport));
-        st.m_Density = s.density;
-        st.m_SlotsPerLine = slotsPerLine;
-        st.m_Spacing = spacing;
-        st.m_TotalItems = count;
-        st.m_ViewportLength = float(viewport);
-        (void)lastIndex;
-        {
+        if (!pass.approach) {
+            if (st.m_Index.Peek() != firstIndex || st.m_Offset.Peek() != -pos)
+                if (self.GetOwner()) self.GetOwner()->InvalidateSemantics();   // bounds moved
+            st.m_Index.Set(firstIndex);
+            st.m_Offset.Set(-pos);
+            st.m_FirstKey = KeyOf(firstIndex);
+            st.m_HasFirstKey = true;
+            st.m_LastConsumed = consumed;
+            st.m_PendingScroll = remainder;
+            st.SetCanScroll(!(lastLine == lineCount - 1 && end <= viewport));
+            st.m_Density = s.density;
+            st.m_SlotsPerLine = slotsPerLine;
+            st.m_Spacing = spacing;
+            st.m_TotalItems = count;
+            st.m_ViewportLength = float(viewport);
             const LazyStateBase::MeasuredAxis axis{ before, after, mainMax, pagePx, spacing, reverse };
             if (!(st.m_Axis.Peek() == axis)) st.m_Axis.Set(axis);
+            st.OnMeasured();
         }
-        st.OnMeasured();
+        (void)lastIndex;
 
         int cross = 0;
         if (grid) {
@@ -1645,7 +1691,9 @@ namespace kiln::foundation {
         // Layout info: offsets along the scroll direction from the content start (arranged
         // and reverse-aware, like Compose's).
         auto infoOffset = [&](int scr, int size) { return reverse ? mainMax - scr - size - before : scr - before; };
-        if (listState) {
+        if (pass.approach) {
+            // The layout info is the lookahead pass's.
+        } else if (listState) {
             LazyListLayoutInfo info;
             // The sticking header precedes the items it covers (its index is lower).
             if (sticking) info.visibleItemsInfo.push_back({ sticking->first, UserKey(sticking->first), infoOffset(stickingScreen, sticking->size), sticking->size });

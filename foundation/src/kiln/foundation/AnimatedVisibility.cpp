@@ -438,13 +438,22 @@ namespace kiln::foundation {
         };
         struct EnterExitNode final : ModifierNode, LayoutModifier {
             EnterExitParams params;
+            // In a lookahead scope, the size the lookahead pass measured: the full size the
+            // main pass animates toward.
+            std::optional<IntSize> lookaheadSize;
             explicit EnterExitNode(EnterExitParams p) : params(std::move(p)) {}
             void OnParamsChanged() { InvalidateMeasure(); }
+            void OnAttach() override { lookaheadSize.reset(); }
             LayoutModifier* AsLayout() override { return this; }
             MeasureResult Measure(MeasureScope& s, Measurable& m, const Constraints& c) override {
                 Placeable& p = m.Measure(c);
-                const IntSize full{ p.Width(), p.Height() };
-                const IntSize size = params.sizeAt ? c.Constrain(params.sizeAt(full)) : full;
+                const IntSize measured{ p.Width(), p.Height() };
+                if (s.IsLookingAhead()) {
+                    lookaheadSize = measured;
+                    return s.Layout(measured.width, measured.height, [&p](PlacementScope& place) { place.Place(p, 0, 0); });
+                }
+                const IntSize full = lookaheadSize.value_or(measured);
+                const IntSize size = params.sizeAt ? c.Constrain(params.sizeAt(full)) : measured;
                 const IntOffset align = params.alignment.Align(full, size, s.Direction());
                 const IntOffset slide = params.slideAt ? params.slideAt(full) : IntOffset{};
                 return s.Layout(size.width, size.height, [&p, align, slide](PlacementScope& place) {
@@ -453,6 +462,25 @@ namespace kiln::foundation {
             }
         };
         Modifier EnterExitLayout(Modifier m, EnterExitParams p) { return m.With<EnterExitNode>(std::move(p)); }
+
+        // AnimatedVisibilityImpl's layout: in lookahead, content on its way out takes no space
+        // (where the layout ends up), while the main pass animates it away.
+        struct LookaheadHideParams {
+            const Transition<bool>* transition;
+            bool operator==(const LookaheadHideParams&) const = default;
+        };
+        struct LookaheadHideNode final : ModifierNode, LayoutModifier {
+            LookaheadHideParams params;
+            explicit LookaheadHideNode(LookaheadHideParams p) : params(p) {}
+            void OnParamsChanged() { InvalidateMeasure(); }
+            LayoutModifier* AsLayout() override { return this; }
+            MeasureResult Measure(MeasureScope& s, Measurable& m, const Constraints& c) override {
+                Placeable& p = m.Measure(c);
+                const bool hidden = s.IsLookingAhead() && !params.transition->TargetState();
+                return s.Layout(hidden ? 0 : p.Width(), hidden ? 0 : p.Height(), [&p](PlacementScope& place) { place.Place(p, 0, 0); });
+            }
+        };
+        Modifier LookaheadHide(const Modifier& m, const Transition<bool>& t) { return Modifier(m).With<LookaheadHideNode>(LookaheadHideParams{ &t }); }
         IntSize Lerp(IntSize a, IntSize b, float t) {
             return { int(std::lround(float(a.width) + float(b.width - a.width) * t)), int(std::lround(float(a.height) + float(b.height - a.height) * t)) };
         }
@@ -461,13 +489,13 @@ namespace kiln::foundation {
     void AnimatedVisibility(bool visible, const Modifier& modifier, std::function<void()> content,
                             EnterTransition enter, ExitTransition exit, rt::Key key) {
         auto& t = UpdateTransition(visible, key);
-        AnimatedEnterExit(t, modifier, std::move(content), enter, exit, key);
+        AnimatedEnterExit(t, LookaheadHide(modifier, t), std::move(content), enter, exit, key);
     }
 
     void AnimatedVisibility(MutableTransitionState<bool>& state, const Modifier& modifier, std::function<void()> content,
                             EnterTransition enter, ExitTransition exit, rt::Key key) {
         auto& t = UpdateTransition(state, key);
-        AnimatedEnterExit(t, modifier, std::move(content), enter, exit, key);
+        AnimatedEnterExit(t, LookaheadHide(modifier, t), std::move(content), enter, exit, key);
     }
     void AnimatedVisibilityInRow(bool visible, const Modifier& m, std::function<void()> content, EnterTransition enter, ExitTransition exit, rt::Key key) {
         AnimatedVisibility(visible, m, std::move(content), std::move(enter), std::move(exit), key);
@@ -670,9 +698,21 @@ namespace kiln::foundation {
             void OnDetach() override { job.Cancel(); }
             LayoutModifier* AsLayout() override { return this; }
             static rt::Task<> Run(anim::Animatable* a, anim::Vec to, anim::SpecPtr spec) { co_await a->AnimateTo(to, spec); }
+            // In a lookahead scope: the lookahead pass's constraints (the main pass measures the
+            // content with them, so it does not relayout during the animation) and size (the
+            // target).
+            std::optional<Constraints> lookaheadConstraints;
+            std::optional<IntSize> lookaheadSize;
+            void OnAttach() override { lookaheadConstraints.reset(); lookaheadSize.reset(); }
             MeasureResult Measure(MeasureScope& s, Measurable& m, const Constraints& c) override {
-                Placeable& p = m.Measure(c);
-                const IntSize full{ p.Width(), p.Height() };
+                if (s.IsLookingAhead()) {
+                    lookaheadConstraints = c;
+                    Placeable& p = m.Measure(c);
+                    lookaheadSize = IntSize{ p.Width(), p.Height() };
+                    return s.Layout(p.Width(), p.Height(), [&p](PlacementScope& place) { place.PlaceRelative(p, 0, 0); });
+                }
+                Placeable& p = m.Measure(lookaheadConstraints.value_or(c));
+                const IntSize full = lookaheadSize.value_or(IntSize{ p.Width(), p.Height() });
                 if (!size) {
                     size = std::make_unique<anim::Animatable>(anim::Vec{ float(full.width), float(full.height), 0, 0 }, 2);
                     target = full;
@@ -842,10 +882,20 @@ namespace kiln::foundation {
                 for (std::size_t i = 0; i < children.size(); ++i)
                     if (!placed[i]) placed[i] = &children[i]->Measure(cs);
                 int w = 0, h = 0;
+                std::optional<std::size_t> target;
                 for (std::size_t i = 0; i < children.size(); ++i) {
-                    if (isPending[i]) continue;
-                    w = std::max(w, placed[i]->Width());
-                    h = std::max(h, placed[i]->Height());
+                    const std::string* tag = LayoutIdOf(*children[i]);
+                    if (tag && *tag == "target") target = i;
+                }
+                if (s.IsLookingAhead()) {
+                    // Lookahead: the container ends up the target's size.
+                    if (target) { w = placed[*target]->Width(); h = placed[*target]->Height(); }
+                } else {
+                    for (std::size_t i = 0; i < children.size(); ++i) {
+                        if (isPending[i]) continue;
+                        w = std::max(w, placed[i]->Width());
+                        h = std::max(h, placed[i]->Height());
+                    }
                 }
                 return s.Layout(w, h, [placed, alignment, w, h](ui::PlacementScope& p) {
                     for (ui::Placeable* pl : placed) {

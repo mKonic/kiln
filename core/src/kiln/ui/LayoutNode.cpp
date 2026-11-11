@@ -846,9 +846,10 @@ namespace kiln::ui {
 
     void LayoutNode::ForceRemeasure() {
         if (!m_Measured) { RequestRemeasure(); return; }
-        if (m_Lookahead && m_Lookahead->measured && !IsOutMostLookaheadRoot()) {
+        if (m_Lookahead && m_Lookahead->measured) {
+            // Both passes again (an outermost root's MeasureNode runs its lookahead itself).
             m_Lookahead->measureDirty = true;
-            LookaheadMeasureNode(m_Lookahead->constraints);
+            if (!IsOutMostLookaheadRoot()) LookaheadMeasureNode(m_Lookahead->constraints);
         }
         m_MeasureDirty = true;
         const IntSize before = Size();

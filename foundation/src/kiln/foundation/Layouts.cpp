@@ -470,7 +470,8 @@ namespace kiln::foundation {
             MeasureResult Measure(MeasureScope& s, Measurable& m, const Constraints& c) override {
                 Placeable& p = m.Measure(c);
                 const IntSize size{ p.Width(), p.Height() };
-                if (!last || *last != size) {
+                // onRemeasured: the main pass's size only.
+                if (!s.IsLookingAhead() && (!last || *last != size)) {
                     last = size;
                     if (params.callback) params.callback(size);
                 }

@@ -2,6 +2,7 @@
 
 #include "kiln/foundation/BringIntoView.h"
 #include "kiln/foundation/Focus.h"
+#include "kiln/foundation/Compose.h"
 #include "kiln/foundation/Lazy.h"
 #include "kiln/runtime/Saveable.h"
 #include <chrono>
@@ -848,4 +849,28 @@ TEST(LazyStateCanScrollFlagsAreObservable) {   // canScrollForward / canScrollBa
     h.Pump();
     h.Pump();
     CHECK(seen.back().first && !seen.back().second);   // the reader recomposed with the new values
+}
+
+TEST(LazyColumnInALookaheadScopeScrollsOnce) {
+    // The lookahead pass consumes the scroll; the approach pass lays out from there.
+    Harness h;
+    LazyListState state;
+    h.Run([&] {
+        foundation::LookaheadScope([&](ui::LookaheadScope&) {
+            LazyColumn(FillMax(Modifier{}, Axis::Both), state, [&](LazyListScope& s) {
+                s.Items(1000, [&](int) { Box(SizeMod(Modifier{}, Dp(100), Dp(30))); });
+            });
+        });
+    });
+    CHECK_EQ(state.ConsumeScrollDelta(95), 95.0f);
+    h.Pump();
+    CHECK_EQ(state.FirstVisibleItemIndex(), 3);
+    CHECK_EQ(state.FirstVisibleItemScrollOffset(), 5);
+    h.Pump();
+    CHECK_EQ(state.FirstVisibleItemIndex(), 3);
+    LayoutNode* list = h.owner.Root().Children().front();
+    // Placed where lookahead put them: item 3 at -5.
+    int top = 1000;
+    for (LayoutNode* c : list->Children()) if (c->IsPlaced()) top = std::min(top, c->Position().y);
+    CHECK_EQ(top, -5);
 }
