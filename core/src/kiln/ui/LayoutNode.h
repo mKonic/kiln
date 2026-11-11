@@ -365,6 +365,10 @@ namespace kiln::ui {
         void ReleasePointerIcon(const void* requester);
         int CurrentPointerIcon() const { return m_PointerIcon; }
         void SetPlaySoundEffect(std::function<void(int)> fn) { m_PlaySound = std::move(fn); }
+        // AudioManager.playSoundEffect(effect, volume) (AudioManager.FX_*: 9 is
+        // FX_KEYPRESS_INVALID); volume 0..1, or -1 for the default.
+        void SetPlayAudioEffect(std::function<void(int effect, float volume)> fn) { m_PlayAudio = std::move(fn); }
+        void PlayAudioEffect(int effect, float volume = -1) { if (m_PlayAudio) m_PlayAudio(effect, volume); }
         // System bar icons (WindowInsetsControllerCompat.isAppearanceLight*Bars): dark icons for
         // light content behind the bars.
         void SetSystemBarsAppearanceHost(std::function<void(bool lightStatusBars, bool lightNavigationBars)> fn) { m_BarsAppearance = std::move(fn); }
@@ -702,6 +706,8 @@ namespace kiln::ui {
         void RequestFullRemeasure();
 
         std::function<void(int)> m_PlaySound;
+
+        std::function<void(int, float)> m_PlayAudio;
         std::function<void(int)> m_PointerIconHost;
         int m_FontGeneration = 0;
         std::function<bool(const std::string&)> m_UriHandler;
