@@ -9,6 +9,7 @@
 
 #include "kiln/foundation/Interaction.h"
 #include "kiln/foundation/Scroll.h"
+#include "kiln/foundation/text/BasicSecureTextField.h"
 #include "kiln/foundation/text/BasicTextField.h"
 #include "kiln/material3/TextFieldColors.h"
 #include "kiln/material3/TextFieldDefaults.h"
@@ -43,5 +44,31 @@ namespace kiln::material3 {
 
     void TextField(foundation::TextFieldState& state, const ui::Modifier& modifier = {}, const TextFieldOptions& options = {});
     void OutlinedTextField(foundation::TextFieldState& state, const ui::Modifier& modifier = {}, const TextFieldOptions& options = {});
+
+    // SecureTextField.kt: a single line password field (BasicSecureTextField) with the same
+    // decorations. Unset options take the secure defaults (the password keyboard without
+    // autocorrect; obfuscation as the system does it, with U+2022).
+    struct SecureTextFieldOptions {
+        bool enabled = true;
+        std::optional<text::TextStyle> textStyle;
+        std::optional<TextFieldLabelPosition> labelPosition;
+        std::function<void(const TextFieldLabelScope&)> label;
+        std::function<void()> placeholder, leadingIcon, trailingIcon, prefix, suffix, supportingText;
+        bool isError = false;
+        foundation::InputTransformationPtr inputTransformation;
+        foundation::TextObfuscationMode textObfuscationMode = foundation::TextObfuscationMode::System;
+        char32_t textObfuscationCharacter = U'\u2022';
+        std::optional<foundation::KeyboardOptions> keyboardOptions;
+        std::function<void(std::function<void()> performDefaultAction)> onKeyboardAction;
+        std::function<void(const text::TextLayoutResult&)> onTextLayout;
+        foundation::ShapePtr shape;
+        std::optional<TextFieldColors> colors;
+        // Unset: SecureTextField pads for a label unless there is none or it is Above;
+        // OutlinedSecureTextField as OutlinedTextField does.
+        std::optional<foundation::PaddingValues> contentPadding;
+        std::shared_ptr<foundation::MutableInteractionSource> interactionSource;
+    };
+    void SecureTextField(foundation::TextFieldState& state, const ui::Modifier& modifier = {}, const SecureTextFieldOptions& options = {});
+    void OutlinedSecureTextField(foundation::TextFieldState& state, const ui::Modifier& modifier = {}, const SecureTextFieldOptions& options = {});
 
 }

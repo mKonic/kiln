@@ -71,4 +71,60 @@ namespace kiln::material3 {
         MaterialTextField(true, state, modifier, options);
     }
 
+    namespace {
+        void MaterialSecureTextField(bool outlined, TextFieldState& state, const ui::Modifier& modifier, const SecureTextFieldOptions& o) {
+            auto& c = *rt::Composition::Current();
+            auto source = o.interactionSource ? o.interactionSource
+                                              : c.Remember<std::shared_ptr<MutableInteractionSource>>([] { return std::make_shared<MutableInteractionSource>(); });
+            const TextFieldColors colors = o.colors ? *o.colors : outlined ? OutlinedTextFieldDefaults::colors() : TextFieldDefaults::colors();
+            const TextFieldLabelPosition labelPosition =
+                o.labelPosition.value_or(outlined ? TextFieldLabelPosition::Cutout() : TextFieldLabelPosition::Inside());
+            const PaddingValues contentPadding = o.contentPadding.value_or(
+                outlined ? internal::DefaultContentPadding(bool(o.label), labelPosition)
+                         : (!o.label || labelPosition.kind == TextFieldLabelPosition::Kind::Above ? TextFieldDefaults::contentPaddingWithoutLabel()
+                                                                                                  : TextFieldDefaults::contentPaddingWithLabel()));
+            const ShapePtr shape = o.shape ? o.shape : outlined ? OutlinedTextFieldDefaults::shape() : TextFieldDefaults::shape();
+            const text::TextStyle style = o.textStyle.value_or(c.Read(LocalTextStyle()));
+            text::TextStyle merged = style;
+            merged.span.color = style.span.color.Specified() ? style.span.color : colors.TextColor(o.enabled, o.isError, source->IsFocused());
+
+            c.Provide(LocalTextSelectionColors, colors.textSelectionColors, [&] {
+                BasicSecureTextFieldOptions b;
+                b.enabled = o.enabled;
+                b.textStyle = merged;
+                b.cursorBrush = gfx::Brush::SolidColor(colors.CursorColor(o.isError));
+                if (o.keyboardOptions) b.keyboardOptions = *o.keyboardOptions;
+                b.onKeyboardAction = o.onKeyboardAction;
+                b.onTextLayout = o.onTextLayout;
+                b.interactionSource = source;
+                b.inputTransformation = o.inputTransformation;
+                b.textObfuscationMode = o.textObfuscationMode;
+                b.textObfuscationCharacter = o.textObfuscationCharacter;
+                const bool enabled = o.enabled, isError = o.isError;
+                internal::DecorationBoxSlots slots{ o.label, o.placeholder, o.leadingIcon, o.trailingIcon, o.prefix, o.suffix, o.supportingText };
+                TextFieldState* st = &state;
+                // The decorator sees the state's text (no output transformation), single line.
+                b.decorator = [=](const std::function<void()>& inner) {
+                    internal::CommonDecorationBox(VisualText(*st, nullptr), inner, labelPosition, slots, true, enabled, isError, source, contentPadding, colors,
+                                                  [=] {
+                                                      if (outlined) OutlinedTextFieldDefaults::Container(enabled, isError, source, {}, colors, shape);
+                                                      else TextFieldDefaults::Container(enabled, isError, source, {}, colors, shape);
+                                                  });
+                };
+                ui::Modifier m = internal::TopPaddingForLabelCutout(modifier, bool(o.label), labelPosition);
+                m = internal::DefaultErrorSemantics(std::move(m), o.isError, GetString(Strings::DefaultErrorMessage));
+                m = DefaultMinSize(std::move(m), outlined ? OutlinedTextFieldDefaults::MinWidth : TextFieldDefaults::MinWidth,
+                                   outlined ? OutlinedTextFieldDefaults::MinHeight : TextFieldDefaults::MinHeight);
+                BasicSecureTextField(state, m, std::move(b));
+            });
+        }
+    }
+
+    void SecureTextField(TextFieldState& state, const ui::Modifier& modifier, const SecureTextFieldOptions& options) {
+        MaterialSecureTextField(false, state, modifier, options);
+    }
+    void OutlinedSecureTextField(TextFieldState& state, const ui::Modifier& modifier, const SecureTextFieldOptions& options) {
+        MaterialSecureTextField(true, state, modifier, options);
+    }
+
 }

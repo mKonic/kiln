@@ -8778,3 +8778,21 @@ TEST(OutlinedTextFieldLabelSizes) {
         for (const char* tag : { "Placeholder", "Prefix", "Suffix" }) CHECK(FindTagged(h, tag) == nullptr);
     }
 }
+
+// SecureTextFieldTest
+TEST(SecureTextFieldsExposeTheTextBeforeObfuscation) {
+    for (bool outlined : { false, true }) {
+        PhoneHarness h;
+        foundation::TextFieldState state("password");
+        Themed(h, [&] {
+            SecureTextFieldOptions o;
+            o.textObfuscationMode = foundation::TextObfuscationMode::Hidden;
+            if (outlined) OutlinedSecureTextField(state, Tag({}, "TextField"), o);
+            else SecureTextField(state, Tag({}, "TextField"), o);
+        });
+        h.AdvanceTimeBy(100);
+        const auto tree = h.owner.BuildSemanticsTree();
+        const auto* n = FindSemantics(tree, "TextField");
+        CHECK(n && n->config.editableText == std::optional<std::string>("password"));
+    }
+}
