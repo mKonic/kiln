@@ -45,6 +45,7 @@
 #include "kiln/material3/TimePicker.h"
 #include "kiln/material3/TimePickerDialog.h"
 #include "kiln/material3/internal/TimePickerInternal.h"
+#include "kiln/material3/internal/TextFieldDecoration.h"
 #include "kiln/material3/internal/GetString.h"
 #include "kiln/text/DateFormat.h"
 #include "kiln/text/LocaleFormat.h"
@@ -13743,4 +13744,188 @@ TEST(TimePickerStatesKeepTheirCallSites) {
     h.AdvanceTimeBy(100);
     CHECK(dialog && dialog->Hour() == 18 && dialog->Minute() == 30);
     CHECK(a == firstA && b == firstB && a->Hour() == 14 && b->Hour() == 9);
+}
+
+TEST(TextFieldLabelPositionEqualityAndDefaults) {
+    // TextFieldLabelPositionTest (the deprecated Attached form and toString have no kiln counterpart).
+    using P = TextFieldLabelPosition;
+    using A = ui::AlignmentH;
+    for (bool cutout : { false, true }) {
+        auto make = [cutout](bool always, A minimized, A expanded) { return cutout ? P::Cutout(always, minimized, expanded) : P::Inside(always, minimized, expanded); };
+        const P p1 = make(true, A::End(), A::CenterHorizontally()), p2 = make(true, A::End(), A::CenterHorizontally());
+        CHECK(p1 == p2);
+        CHECK(!(p1 == make(false, A::End(), A::CenterHorizontally())));
+        CHECK(!(p1 == make(true, A::Start(), A::CenterHorizontally())));
+        CHECK(!(p1 == make(true, A::End(), A::Start())));
+        CHECK(!(p1 == (cutout ? P::Inside(true, A::End(), A::CenterHorizontally()) : P::Cutout(true, A::End(), A::CenterHorizontally()))));
+    }
+    CHECK(P::Above(A::End()) == P::Above(A::End()));
+    CHECK(!(P::Above(A::End()) == P::Above(A::Start())));
+    // defaultValues
+    for (const P& p : { P::Inside(), P::Cutout() })
+        CHECK(!p.alwaysMinimized && p.minimizedAlignment == A::Start() && p.expandedAlignment == A::Start());
+    CHECK(P::Above().minimizedAlignment == A::Start());
+}
+
+// --- TextFieldDecoratorTest.kt ------------------------------------------------------------------------
+
+namespace {
+    struct UnitDensityHarness : WithFakeText, Harness {
+        UnitDensityHarness() : Harness(1, { 1000, 1000 }) { owner.SetText(&text); }
+    };
+    constexpr Dp DecoLabelHeight{ 40 }, InnerFieldHeight{ 50 }, InnerFieldWidth{ 100 };
+    constexpr Dp TextFieldPadding{ 16 }, WithLabelVerticalPadding{ 8 }, AboveLabelBottomPadding{ 4 };
+
+    struct Decorated { ui::IntSize size; ui::Offset inner; };
+    using LabelSlot = std::function<void(const TextFieldLabelScope&)>;
+
+    // assertSizeAndPosition: a 100 x 50 inner field in the decoration (focused).
+    Decorated Decorate(PaddingValues padding, bool singleLine, bool outlined, bool rtl, LabelSlot label,
+                       TextFieldLabelPosition position, std::function<void()> placeholder = {}, bool sizedInner = true) {
+        Decorated out;
+        ui::FocusRequester focus;
+        UnitDensityHarness h;
+        Themed(h, [&] {
+            rt::Composition::Current()->Provide(ui::LocalLayoutDirection, rtl ? LayoutDirection::Rtl : LayoutDirection::Ltr, [&] {
+                Box(OnSizeChanged({}, [&out](ui::IntSize s) { out.size = s; }), Alignment::TopStart(), false, [&] {
+                    auto source = RememberInteractionSource();
+                    auto& state = RememberTextFieldState(sizedInner ? "Text" : "");
+                    const TextFieldColors colors = outlined ? OutlinedTextFieldDefaults::colors() : TextFieldDefaults::colors();
+                    BasicTextFieldOptions b;
+                    b.lineLimits = singleLine ? TextFieldLineLimits::SingleLine() : TextFieldLineLimits::MultiLine();
+                    b.interactionSource = source;
+                    b.decorator = [&, source, colors](const std::function<void()>& inner) {
+                        std::function<void()> innerField = inner;
+                        if (sizedInner)
+                            innerField = [&out, inner] {
+                                Box(OnGloballyPositioned(SizeMod({}, InnerFieldWidth, InnerFieldHeight),
+                                                         [&out](const LayoutCoordinates& lc) { out.inner = lc.PositionInRoot(); }),
+                                    Alignment::TopStart(), false, inner);
+                            };
+                        material3::internal::DecorationBoxSlots slots;
+                        slots.label = label;
+                        slots.placeholder = placeholder;
+                        material3::internal::CommonDecorationBox(sizedInner ? "Text" : "", innerField, position, slots, singleLine, true, false, source,
+                                                                 padding, colors, [outlined, source, colors] {
+                                                                     if (outlined) OutlinedTextFieldDefaults::Container(true, false, source, {}, colors);
+                                                                     else TextFieldDefaults::Container(true, false, source, {}, colors);
+                                                                 });
+                    };
+                    BasicTextField(state, FocusRequesterModifier({}, focus), b);
+                });
+            });
+        });
+        focus.RequestFocus();
+        h.AdvanceTimeBy(1000);
+        return out;
+    }
+    LabelSlot DecoLabel() { return [](const TextFieldLabelScope&) { Text("Label", Height({}, DecoLabelHeight)); }; }
+    int Px(Dp d) { return int(std::lround(d.value)); }
+}
+
+TEST(TextFieldDecoratorPadding) {
+    using P = TextFieldLabelPosition;
+    struct Case {
+        const char* name;
+        bool outlined, singleLine, vertical, rtl, label;
+        PaddingValues padding;
+        Dp size, position;
+    };
+    const Dp T = TextFieldPadding, V = WithLabelVerticalPadding, L = DecoLabelHeight, H = InnerFieldHeight, W = InnerFieldWidth;
+    namespace O = OutlinedTextFieldDefaults;
+    namespace F = TextFieldDefaults;
+    const Case cases[] = {
+        { "outlined top multiLine", true, false, true, false, false, O::contentPaddingWithoutLabel(T, Dp(10)), Dp(10) + H + T, Dp(10) },
+        { "outlined top singleLine", true, true, true, false, false, O::contentPaddingWithoutLabel(T, Dp(10)), Dp(10) + H + T, (Dp(10) + T) / 2 },
+        { "outlined bottom multiLine", true, false, true, false, false, O::contentPaddingWithoutLabel(T, T, T, Dp(10)), T + H + Dp(10), T },
+        { "outlined bottom singleLine", true, true, true, false, false, O::contentPaddingWithoutLabel(T, T, T, Dp(10)), T + H + Dp(10), (Dp(10) + T) / 2 },
+        { "outlined start", true, true, false, false, false, O::contentPaddingWithoutLabel(Dp(10)), Dp(10) + W + T, Dp(10) },
+        { "outlined start rtl", true, true, false, true, false, O::contentPaddingWithoutLabel(Dp(10)), Dp(10) + W + T, T },
+        { "outlined end", true, true, false, false, false, O::contentPaddingWithoutLabel(T, T, Dp(20)), T + W + Dp(20), T },
+        { "outlined end rtl", true, true, false, true, false, O::contentPaddingWithoutLabel(T, T, Dp(20)), T + W + Dp(20), Dp(20) },
+        { "outlined top multiLine label", true, false, true, false, true, O::contentPaddingWithLabel(T, Dp(40)), Dp(40) + L + H + V, Dp(40) + L },
+        { "outlined top singleLine label", true, true, true, false, true, O::contentPaddingWithLabel(T, Dp(40)), Dp(40) + L + H + V, Dp(40) + L },
+        { "outlined bottom multiLine label", true, false, true, false, true, O::contentPaddingWithLabel(T, V, T, Dp(40)), V + L + H + Dp(40), V + L },
+        { "outlined bottom singleLine label", true, true, true, false, true, O::contentPaddingWithLabel(T, V, T, Dp(40)), V + L + H + Dp(40), V + L },
+        { "outlined start label", true, true, false, false, true, O::contentPaddingWithLabel(Dp(40)), Dp(40) + W + T, Dp(40) },
+        { "outlined end label", true, true, false, false, true, O::contentPaddingWithLabel(T, V, Dp(40)), T + W + Dp(40), T },
+        { "filled top singleLine", false, true, true, false, false, F::contentPaddingWithoutLabel(T, Dp(40)), Dp(40) + H + T, (Dp(40) + T) / 2 },
+        { "filled top singleLine label", false, true, true, false, true, F::contentPaddingWithLabel(T, T, Dp(40)), Dp(40) + L + H + V, Dp(40) + L },
+        { "filled bottom singleLine", false, true, true, false, false, F::contentPaddingWithoutLabel(T, T, T, Dp(40)), T + H + Dp(40), (Dp(40) + T) / 2 },
+        { "filled bottom singleLine label", false, true, true, false, true, F::contentPaddingWithLabel(T, T, V, Dp(40)), V + L + H + Dp(40), V + L },
+        { "filled top multiLine", false, false, true, false, false, F::contentPaddingWithoutLabel(T, Dp(40)), Dp(40) + H + T, Dp(40) },
+        { "filled top multiLine label", false, false, true, false, true, F::contentPaddingWithLabel(T, T, Dp(40)), Dp(40) + L + H + V, Dp(40) + L },
+        { "filled bottom multiLine", false, false, true, false, false, F::contentPaddingWithoutLabel(T, T, T, Dp(40)), T + H + Dp(40), T },
+        { "filled bottom multiLine label", false, false, true, false, true, F::contentPaddingWithLabel(T, T, V, Dp(40)), V + L + H + Dp(40), V + L },
+        { "filled start label", false, true, false, false, true, F::contentPaddingWithLabel(Dp(40)), Dp(40) + W + T, Dp(40) },
+        { "filled start label rtl", false, true, false, true, true, F::contentPaddingWithLabel(Dp(40)), Dp(40) + W + T, T },
+        { "filled start", false, true, false, false, false, F::contentPaddingWithoutLabel(Dp(40)), Dp(40) + W + T, Dp(40) },
+        { "filled start rtl", false, true, false, true, false, F::contentPaddingWithoutLabel(Dp(40)), Dp(40) + W + T, T },
+        { "filled end label", false, true, false, false, true, F::contentPaddingWithLabel(T, Dp(40)), T + W + Dp(40), T },
+        { "filled end label rtl", false, true, false, true, true, F::contentPaddingWithLabel(T, Dp(40)), T + W + Dp(40), Dp(40) },
+        { "filled end", false, true, false, false, false, F::contentPaddingWithoutLabel(T, T, Dp(40)), T + W + Dp(40), T },
+        { "filled end rtl", false, true, false, true, false, F::contentPaddingWithoutLabel(T, T, Dp(40)), T + W + Dp(40), Dp(40) },
+    };
+    for (const Case& c : cases) {
+        const Decorated d = Decorate(c.padding, c.singleLine, c.outlined, c.rtl, c.label ? DecoLabel() : LabelSlot{}, P::Inside());
+        const int size = c.vertical ? d.size.height : d.size.width;
+        const int position = int(std::lround(c.vertical ? d.inner.y : d.inner.x));
+        if (size != Px(c.size) || position != Px(c.position))
+            std::fprintf(stderr, "  %s: size %d (want %d), position %d (want %d)\n", c.name, size, Px(c.size), position, Px(c.position));
+        CHECK(size == Px(c.size) && position == Px(c.position));
+    }
+}
+
+TEST(TextFieldDecoratorLabels) {
+    using P = TextFieldLabelPosition;
+    const Dp T = TextFieldPadding, L = DecoLabelHeight, H = InnerFieldHeight;
+    // outlinedTextFieldBox_(singleLine_)innerTextLocation_withMultilineLabel: a tall label in the
+    // cutout pushes the field down by half its height.
+    for (bool singleLine : { false, true }) {
+        const Decorated d = Decorate(OutlinedTextFieldDefaults::contentPaddingWithoutLabel(), singleLine, true, false,
+                                     [](const TextFieldLabelScope&) { Box(SizeMod({}, Dp(10), DecoLabelHeight)); }, P::Cutout());
+        CHECK(d.size.height == Px(L / 2 + H + T) && int(std::lround(d.inner.y)) == Px(L / 2));
+    }
+    // textFieldBox_aboveLabel_measurement, outlinedTextFieldBox_aboveLabel_measurement
+    for (bool outlined : { false, true }) {
+        const PaddingValues padding = outlined ? OutlinedTextFieldDefaults::contentPaddingWithoutLabel() : TextFieldDefaults::contentPaddingWithoutLabel();
+        const Decorated d = Decorate(padding, true, outlined, false, DecoLabel(), P::Above());
+        CHECK(d.size.height == Px(L + AboveLabelBottomPadding + H + T * 2));
+        CHECK(int(std::lround(d.inner.y)) == Px(L + AboveLabelBottomPadding + T));
+    }
+    // textFieldBox_overridePadding_unfocusedState_withoutLabel_withPlaceholder
+    const Decorated p = Decorate(PaddingValues{ Dp(0), Dp(10), Dp(0), Dp(10) }, false, false, false, {}, P::Inside(),
+                                 [] { Spacer(SizeMod({}, Dp(50), Dp(50))); }, false);
+    CHECK(p.size.height == Px(Dp(50) + Dp(10) * 2));
+}
+
+TEST(TextFieldDecoratorDefaultContentPadding) {
+    // defaultContentPadding_textFieldDefaults / _outlinedTextFieldDefaults (kiln's is shared: a
+    // label pads only when Inside).
+    using P = TextFieldLabelPosition;
+    const PaddingValues with = TextFieldDefaults::contentPaddingWithLabel(), without = TextFieldDefaults::contentPaddingWithoutLabel();
+    auto eq = [](const PaddingValues& a, const PaddingValues& b) { return a.start == b.start && a.top == b.top && a.end == b.end && a.bottom == b.bottom; };
+    CHECK(eq(material3::internal::DefaultContentPadding(true, P::Inside()), with));
+    CHECK(eq(material3::internal::DefaultContentPadding(true, P::Cutout()), without));
+    CHECK(eq(material3::internal::DefaultContentPadding(true, P::Above()), without));
+    CHECK(eq(material3::internal::DefaultContentPadding(false, P::Inside()), without));
+}
+
+TEST(TextFieldDecoratorUnboundedWidth) {
+    // testTextFields_TextDecoration_noCrashConstraintsInfinity: a suffix in a horizontally
+    // scrolled, intrinsic-height column.
+    UnitDensityHarness h;
+    Themed(h, [] {
+        Column(HorizontalScroll(Height({}, IntrinsicSize::Min), RememberScrollState()), [] {
+            auto source = RememberInteractionSource();
+            material3::internal::DecorationBoxSlots slots;
+            slots.suffix = [] { Text("Rats"); };
+            const TextFieldColors colors = TextFieldDefaults::colors();
+            material3::internal::CommonDecorationBox("Hats", [] { Text("Cats"); }, TextFieldLabelPosition::Inside(), slots, true, true, false, source,
+                                                     TextFieldDefaults::contentPaddingWithoutLabel(), colors,
+                                                     [source, colors] { TextFieldDefaults::Container(true, false, source, {}, colors); });
+        });
+    });
+    h.AdvanceTimeBy(100);
+    CHECK(true);
 }
