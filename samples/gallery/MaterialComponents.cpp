@@ -29,6 +29,7 @@
 #include <kiln/material3/Scrollbar.h>
 #include <kiln/material3/Snackbar.h>
 #include <kiln/material3/TextField.h>
+#include <kiln/material3/ExposedDropdownMenu.h>
 #include <kiln/material3/ShortNavigationBar.h>
 #include <kiln/material3/Tab.h>
 #include <kiln/material3/TabRow.h>
@@ -592,6 +593,29 @@ namespace kiln::gallery {
             const auto icon = [](const char* description) {
                 return [description] { m3::Icon(m3::internal::Icons::Filled::Edit(), std::string(description)); };
             };
+            // A read-only field choosing from a menu.
+            auto& flavour = foundation::RememberTextFieldState("Vanilla");
+            auto* expanded = &RememberState(false);
+            m3::Text("Flavour: " + flavour.TextUtf8());
+            m3::ExposedDropdownMenuBox(expanded->Get(), [expanded](bool v) { expanded->Set(v); }, Padding({}, 8_dp),
+                                       [&flavour, expanded](const m3::ExposedDropdownMenuBoxScope& scope) {
+                m3::TextFieldOptions o;
+                o.readOnly = true;
+                o.lineLimits = foundation::TextFieldLineLimits::SingleLine();
+                o.label = [](const m3::TextFieldLabelScope&) { m3::Text("Flavour"); };
+                const bool open = expanded->Get();
+                o.trailingIcon = [open] { m3::ExposedDropdownMenuDefaults::TrailingIcon(open); };
+                o.colors = m3::ExposedDropdownMenuDefaults::textFieldColors();
+                m3::TextField(flavour, scope.MenuAnchor({}, m3::ExposedDropdownMenuAnchorType::PrimaryNotEditable), o);
+                m3::ExposedDropdownMenu(scope, open, [expanded] { expanded->Set(false); }, {}, {}, [&flavour, expanded] {
+                    for (const char* option : { "Vanilla", "Chocolate", "Mint" }) {
+                        m3::DropdownMenuItem([option] { m3::Text(option); }, [&flavour, expanded, option] {
+                            flavour.SetTextAndPlaceCursorAtEnd(option);
+                            expanded->Set(false);
+                        }, {}, { .contentPadding = m3::ExposedDropdownMenuDefaults::ItemContentPadding() });
+                    }
+                });
+            });
             // Reported as text so a test can read it.
             m3::Text("Name: " + (name.TextUtf8().empty() ? std::string("(empty)") : name.TextUtf8()));
             m3::TextFieldOptions filled;
