@@ -265,7 +265,10 @@ public final class Probe extends Instrumentation {
             case "settext": {
                 Bundle a = new Bundle();
                 a.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, value);
-                ok = n.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, a);
+                // A field found by its label or placeholder: the editable node that holds it.
+                AccessibilityNodeInfo field = n;
+                while (field != null && !field.isEditable()) field = field.getParent();
+                ok = (field != null ? field : n).performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, a);
                 break;
             }
             default: out.append("unknown verb ").append(verb).append('\n'); return;

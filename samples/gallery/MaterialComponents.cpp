@@ -28,6 +28,7 @@
 #include <kiln/material3/FloatingToolbar.h>
 #include <kiln/material3/Scrollbar.h>
 #include <kiln/material3/Snackbar.h>
+#include <kiln/material3/TextField.h>
 #include <kiln/material3/ShortNavigationBar.h>
 #include <kiln/material3/Tab.h>
 #include <kiln/material3/TabRow.h>
@@ -583,6 +584,39 @@ namespace kiln::gallery {
             Box(Height(FillMax({}, Axis::Horizontal), 160_dp), Alignment::BottomCenter(), false, [&host] { m3::SnackbarHost(host); });
         }
 
+        void TextFields() {
+            auto& name = foundation::RememberTextFieldState();
+            auto& email = foundation::RememberTextFieldState("me@example");
+            auto& price = foundation::RememberTextFieldState("12");
+            auto& password = foundation::RememberTextFieldState("secret");
+            const auto icon = [](const char* description) {
+                return [description] { m3::Icon(m3::internal::Icons::Filled::Edit(), std::string(description)); };
+            };
+            // Reported as text so a test can read it.
+            m3::Text("Name: " + (name.TextUtf8().empty() ? std::string("(empty)") : name.TextUtf8()));
+            m3::TextFieldOptions filled;
+            filled.label = [](const m3::TextFieldLabelScope&) { m3::Text("Name"); };
+            filled.placeholder = [] { m3::Text("Your full name"); };
+            filled.supportingText = [] { m3::Text("As on your ID"); };
+            filled.lineLimits = foundation::TextFieldLineLimits::SingleLine();
+            m3::TextField(name, Padding({}, 8_dp), filled);
+            m3::TextFieldOptions outlined;
+            outlined.label = [](const m3::TextFieldLabelScope&) { m3::Text("Email"); };
+            outlined.leadingIcon = icon("Email icon");
+            outlined.trailingIcon = icon("Clear email");
+            outlined.isError = true;
+            outlined.supportingText = [] { m3::Text("Enter a full address"); };
+            m3::OutlinedTextField(email, Padding({}, 8_dp), outlined);
+            m3::TextFieldOptions affixes;
+            affixes.label = [](const m3::TextFieldLabelScope&) { m3::Text("Price"); };
+            affixes.prefix = [] { m3::Text("$"); };
+            affixes.suffix = [] { m3::Text(".00"); };
+            m3::OutlinedTextField(price, Padding({}, 8_dp), affixes);
+            m3::SecureTextFieldOptions secure;
+            secure.label = [](const m3::TextFieldLabelScope&) { m3::Text("Password"); };
+            m3::SecureTextField(password, Padding({}, 8_dp), secure);
+        }
+
         void Tabs() {
             auto* primary = &RememberState(0);
             auto* secondary = &RememberState(0);
@@ -959,7 +993,7 @@ namespace kiln::gallery {
         struct Section { const char* key; const char* title; void (*content)(); };
         const std::vector<Section>& Sections() {
             static const std::vector<Section> sections{
-                { "navigation", "Navigation bars and rails", Navigation }, { "tabs", "Tabs", Tabs }, { "appbars", "App bars", AppBars }, { "toolbars", "Floating toolbars", FloatingToolbars }, { "scrollbars", "Scrollbars", Scrollbars }, { "snackbars", "Snackbars", Snackbars }, { "segmented", "Segmented buttons", SegmentedButtons }, { "split", "Split buttons", SplitButtons },
+                { "navigation", "Navigation bars and rails", Navigation }, { "tabs", "Tabs", Tabs }, { "appbars", "App bars", AppBars }, { "toolbars", "Floating toolbars", FloatingToolbars }, { "scrollbars", "Scrollbars", Scrollbars }, { "snackbars", "Snackbars", Snackbars }, { "textfields", "Text fields", TextFields }, { "segmented", "Segmented buttons", SegmentedButtons }, { "split", "Split buttons", SplitButtons },
                 { "tooltips", "Tooltips", Tooltips }, { "menus", "Menus", Menus }, { "groups", "Button groups", ButtonGroups },
                 { "sliders", "Sliders", Sliders }, { "progress", "Progress indicators", ProgressIndicators }, { "lists", "Lists", Lists },
                 { "chips", "Chips", Chips }, { "cards", "Cards", Cards }, { "selection", "", SelectionControls },

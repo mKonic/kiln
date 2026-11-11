@@ -7,7 +7,7 @@
 #
 # Verbs: dump, vdump (with actions and traversal), show:<text>, word:/char:/line:/para:<text> (next
 # at that granularity), chars:<text> (character locations), action:<text>=<label> (custom), click:<text>, longclick:<text>, focus:<text>, a11yfocus:<text>,
-# settext:<text>=<value>, setprogress:<text>=<float>, wait:<ms>, swipe:<x1,y1,x2,y2,ms>,
+# settext:<text>=<value> (the editable node holding <text>), setprogress:<text>=<float>, wait:<ms>, swipe:<x1,y1,x2,y2,ms>,
 # swipeon:<text>=<dx,dy,ms> (a drag from its centre, in dp),
 # scroll:<n> / scrollback:<n> (the n-th scrollable node), clip (the
 # clipboard's text). <text> matches a node's text or content description.

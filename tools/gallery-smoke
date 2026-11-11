@@ -39,6 +39,8 @@ COMPONENTS = {
     'snackbars': '''expect:Snackbar result: none; expect:Sync is paused while offline; tap:Show with action; wait:800; expect:Photo deleted;
         shot:{p}-snackbars; tap:Undo; wait:800; expect:Snackbar result: action; reject:Photo deleted; tap:Show until closed; wait:800;
         expect:Connection lost; shot:{p}-snackbars-indefinite; click:{dismiss}; wait:800; expect:Snackbar result: dismissed''',
+    'textfields': '''expect:Name: (empty); expect:Name; expect:Email; expect:Price; expect:Password; shot:{p}-textfields; tap:Name; wait:600;
+        settext:Name=Ada Lovelace; wait:600; expect:Name: Ada Lovelace; shot:{p}-textfields-typed''',
     'segmented': '''expect:Single selection: 0; tap:Week; expect:Single selection: 1; tap:Bike; expect:Multiple selection: 3;
         tap:Walk; expect:Multiple selection: 2; shot:{p}-segmented; reach:Disable segments; tap:Disable segments;
         expect:Enable segments; tap:Day; expect:Single selection: 1; shot:{p}-segmented-disabled''',
