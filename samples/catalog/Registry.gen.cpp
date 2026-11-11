@@ -6,6 +6,7 @@
 #include "samples/CardSamples.h"
 #include "samples/CheckboxSamples.h"
 #include "samples/Common.h"
+#include "samples/FloatingActionButtonSamples.h"
 #include "samples/RadioButtonSamples.h"
 #include "samples/SwitchSamples.h"
 
@@ -121,25 +122,25 @@ namespace catalog {
                 { "BasicAlertDialogSample", "Dialog examples", false, nullptr },
             } },
             { 13, "Extended FAB", "Extended FABs help people take primary actions. They're wider than FABs to accommodate a text label and larger target area.", true, {
-                { "ExtendedFloatingActionButtonSample", "Extended FAB examples", false, nullptr },
-                { "SmallExtendedFloatingActionButtonSample", "Extended FAB examples", true, nullptr },
-                { "MediumExtendedFloatingActionButtonSample", "Extended FAB examples", true, nullptr },
-                { "LargeExtendedFloatingActionButtonSample", "Extended FAB examples", true, nullptr },
-                { "ExtendedFloatingActionButtonTextSample", "Extended FAB examples", false, nullptr },
-                { "SmallExtendedFloatingActionButtonTextSample", "Extended FAB examples", true, nullptr },
-                { "MediumExtendedFloatingActionButtonTextSample", "Extended FAB examples", true, nullptr },
-                { "LargeExtendedFloatingActionButtonTextSample", "Extended FAB examples", true, nullptr },
-                { "AnimatedExtendedFloatingActionButtonSample", "Extended FAB examples", false, nullptr },
-                { "SmallAnimatedExtendedFloatingActionButtonSample", "Extended FAB examples", true, nullptr },
-                { "MediumAnimatedExtendedFloatingActionButtonSample", "Extended FAB examples", true, nullptr },
-                { "LargeAnimatedExtendedFloatingActionButtonSample", "Extended FAB examples", true, nullptr },
+                { "ExtendedFloatingActionButtonSample", "Extended FAB examples", false, samples::ExtendedFloatingActionButtonSample },
+                { "SmallExtendedFloatingActionButtonSample", "Extended FAB examples", true, samples::SmallExtendedFloatingActionButtonSample },
+                { "MediumExtendedFloatingActionButtonSample", "Extended FAB examples", true, samples::MediumExtendedFloatingActionButtonSample },
+                { "LargeExtendedFloatingActionButtonSample", "Extended FAB examples", true, samples::LargeExtendedFloatingActionButtonSample },
+                { "ExtendedFloatingActionButtonTextSample", "Extended FAB examples", false, samples::ExtendedFloatingActionButtonTextSample },
+                { "SmallExtendedFloatingActionButtonTextSample", "Extended FAB examples", true, samples::SmallExtendedFloatingActionButtonTextSample },
+                { "MediumExtendedFloatingActionButtonTextSample", "Extended FAB examples", true, samples::MediumExtendedFloatingActionButtonTextSample },
+                { "LargeExtendedFloatingActionButtonTextSample", "Extended FAB examples", true, samples::LargeExtendedFloatingActionButtonTextSample },
+                { "AnimatedExtendedFloatingActionButtonSample", "Extended FAB examples", false, samples::AnimatedExtendedFloatingActionButtonSample },
+                { "SmallAnimatedExtendedFloatingActionButtonSample", "Extended FAB examples", true, samples::SmallAnimatedExtendedFloatingActionButtonSample },
+                { "MediumAnimatedExtendedFloatingActionButtonSample", "Extended FAB examples", true, samples::MediumAnimatedExtendedFloatingActionButtonSample },
+                { "LargeAnimatedExtendedFloatingActionButtonSample", "Extended FAB examples", true, samples::LargeAnimatedExtendedFloatingActionButtonSample },
             } },
             { 14, "Floating action buttons", "The FAB represents the most important action on a screen. It puts key actions within reach.", true, {
-                { "FloatingActionButtonSample", "Floating action button examples", false, nullptr },
-                { "LargeFloatingActionButtonSample", "Floating action button examples", false, nullptr },
-                { "AnimatedFloatingActionButtonSample", "Floating action button examples", true, nullptr },
-                { "MediumFloatingActionButtonSample", "Floating action button examples", true, nullptr },
-                { "SmallFloatingActionButtonSample", "Floating action button examples", false, nullptr },
+                { "FloatingActionButtonSample", "Floating action button examples", false, samples::FloatingActionButtonSample },
+                { "LargeFloatingActionButtonSample", "Floating action button examples", false, samples::LargeFloatingActionButtonSample },
+                { "AnimatedFloatingActionButtonSample", "Floating action button examples", true, samples::AnimatedFloatingActionButtonSample },
+                { "MediumFloatingActionButtonSample", "Floating action button examples", true, samples::MediumFloatingActionButtonSample },
+                { "SmallFloatingActionButtonSample", "Floating action button examples", false, samples::SmallFloatingActionButtonSample },
             } },
             { 15, "FAB Menu", "The FAB Menu displays additional key actions on click of a FAB.", true, {
                 { "FloatingActionButtonMenuSample", "FAB Menu examples", true, nullptr },

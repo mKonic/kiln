@@ -4,7 +4,9 @@
 usage: tools/catalog-compare [--out DIR] [--wait SECONDS] ROUTE...
        tools/catalog-compare --all [--component ID]
 
-Each ROUTE ("example/5/0", "component/5", "home") opens in the androidx material3 catalog
+Each ROUTE ("example/5/0", "component/5", "home"), optionally followed by steps run in both
+apps before the screenshot ("example/13/8@swipe:540,1800,540,600,400@wait:1500"; steps: tap:x,y,
+swipe:x1,y1,x2,y2,ms, drag:x1,y1,x2,y2,steps (no fling), longpress:x,y, text:abc, key:CODE, wait:ms), opens in the androidx material3 catalog
 (dev.kiln.m3catalog, built from ~/dev/os/inspiration/m3-apps/catalog) and in kiln's
 (dev.kiln.catalog, samples/catalog). Writes <route>.png: Compose | kiln | difference, with
 the status bar cut off, and prints the share of pixels that differ (channel delta > 24).
@@ -29,15 +31,45 @@ def shot():
     return Image.open(io.BytesIO(adb("exec-out", "screencap", "-p"))).convert("RGB")
 
 
+def run_steps(steps):
+    for step in steps:
+        verb, _, arg = step.partition(":")
+        nums = arg.split(",") if arg else []
+        if verb == "wait":
+            time.sleep(float(arg) / 1000)
+        elif verb == "tap":
+            adb("shell", "input", "tap", *nums)
+        elif verb == "swipe":
+            adb("shell", "input", "swipe", *nums)
+        elif verb == "drag":   # x1,y1,x2,y2,steps: moves, then holds still before lifting (no fling)
+            x1, y1, x2, y2, n = (float(v) for v in nums)
+            cmds = [f"input motionevent DOWN {x1:.0f} {y1:.0f}"]
+            for i in range(1, int(n) + 1):
+                cmds.append(f"input motionevent MOVE {x1 + (x2 - x1) * i / n:.0f} {y1 + (y2 - y1) * i / n:.0f}")
+            cmds += ["sleep 0.6", f"input motionevent UP {x2:.0f} {y2:.0f}"]
+            adb("shell", "; ".join(cmds))
+        elif verb == "longpress":
+            adb("shell", "input", "swipe", nums[0], nums[1], nums[0], nums[1], "800")
+        elif verb == "text":
+            adb("shell", "input", "text", arg)
+        elif verb == "key":
+            adb("shell", "input", "keyevent", arg)
+        else:
+            sys.exit(f"catalog-compare: unknown step {step}")
+
+
 def capture(route, wait):
+    route, *steps = route.split("@")
     adb("shell", "am", "force-stop", COMPOSE.split("/")[0])
     adb("shell", "am", "start", "-W", "-n", COMPOSE, "-e", "route", route)
     time.sleep(wait)
+    run_steps(steps)
     compose = shot()
     adb("shell", "am", "force-stop", KILN.split("/")[0])
     adb("shell", "setprop", "debug.kiln.catalog.route", route)
     adb("shell", "am", "start", "-W", "-n", KILN)
     time.sleep(wait)
+    run_steps(steps)
     kiln = shot()
     return compose, kiln
 
@@ -56,7 +88,7 @@ def compare(route, out, wait):
     for i, im in enumerate((compose, kiln, overlay)):
         sheet.paste(im, (i * compose.width, 0))
     sheet = sheet.resize((sheet.width // 2, sheet.height // 2))
-    path = os.path.join(out, route.replace("/", "_") + ".png")
+    path = os.path.join(out, re.sub(r"[^\w.-]", "_", route) + ".png")
     sheet.save(path)
     print(f"{route}\t{share * 100:.2f}% differ\t{path}")
 

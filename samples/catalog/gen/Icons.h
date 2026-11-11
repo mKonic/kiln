@@ -10,6 +10,7 @@ namespace catalog::Icons {
 
     namespace AutoMirrored { namespace Filled { const ImageVectorPtr& ArrowBack(); }}
     namespace AutoMirrored { namespace Filled { const ImageVectorPtr& KeyboardArrowRight(); }}
+    namespace Filled { const ImageVectorPtr& Add(); }
     namespace Filled { const ImageVectorPtr& Check(); }
     namespace Filled { const ImageVectorPtr& Clear(); }
     namespace Filled { const ImageVectorPtr& Edit(); }

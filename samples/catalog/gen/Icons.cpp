@@ -49,6 +49,31 @@ namespace catalog::Icons {
         return image;
     } }}
 
+    namespace Filled { const ImageVectorPtr& Add() {
+        static const ImageVectorPtr image = [] {
+            ImageVector::Builder b("Filled.Add", ui::Dp(24), ui::Dp(24), 24, 24, ui::Color::Unspecified(), gfx::BlendMode::SrcIn, false);
+            b.Path(PathBuilder()
+                       .MoveTo(19.0f, 13.0f)
+                       .HorizontalLineToRelative(-6.0f)
+                       .VerticalLineToRelative(6.0f)
+                       .HorizontalLineToRelative(-2.0f)
+                       .VerticalLineToRelative(-6.0f)
+                       .HorizontalLineTo(5.0f)
+                       .VerticalLineToRelative(-2.0f)
+                       .HorizontalLineToRelative(6.0f)
+                       .VerticalLineTo(5.0f)
+                       .HorizontalLineToRelative(2.0f)
+                       .VerticalLineToRelative(6.0f)
+                       .HorizontalLineToRelative(6.0f)
+                       .VerticalLineToRelative(2.0f)
+                       .Close()
+                       .Nodes(), gfx::Brush::SolidColor(ui::Color(0xff000000)), 1.0f, std::nullopt, 1.0f, 1.0f,
+                   gfx::StrokeCap::Butt, gfx::StrokeJoin::Bevel, 1.0f, gfx::FillType::NonZero);
+            return b.Build();
+        }();
+        return image;
+    } }
+
     namespace Filled { const ImageVectorPtr& Check() {
         static const ImageVectorPtr image = [] {
             ImageVector::Builder b("Filled.Check", ui::Dp(24), ui::Dp(24), 24, 24, ui::Color::Unspecified(), gfx::BlendMode::SrcIn, false);
