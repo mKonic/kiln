@@ -720,3 +720,53 @@ TEST(StaggeredFarJumpThenScrollBackToTheStart) {
     for (const auto& it : items) if (it.column == 1 && it.offset.y == 0) lane1AtTop = true;
     CHECK(lane1AtTop);
 }
+
+// ScrollIndicatorState estimates: the visible items' average size stands for every item.
+TEST(LazyListScrollIndicatorEstimatesFromVisibleItems) {
+    for (bool reverse : { false, true }) {
+        Harness h;
+        LazyListState state;
+        h.Run([&, reverse] {
+            LazyListOptions o;
+            o.reverseLayout = reverse;
+            o.arrangement = Arrangement::SpacedBy(Dp(2));
+            Box({}, Alignment::TopStart(), false, [&, o] {
+                LazyColumn(Height(FillMax({}, Axis::Horizontal), Dp(50)), state, [](LazyListScope& s) {
+                    s.Items(20, [](int) { Box(Height(FillMax({}, Axis::Horizontal), Dp(10))); });
+                }, o);
+            });
+        });
+        const ScrollIndicatorState* s = state.ScrollIndicator();
+        CHECK(s != nullptr);
+        if (!s) continue;
+        // 20 items of 10 with 19 gaps of 2.
+        CHECK_EQ(s->ContentSize(), 20 * 10 + 19 * 2);
+        CHECK_EQ(s->ViewportSize(), 50);
+        CHECK_EQ(s->ScrollOffset(), reverse ? 238 - 50 : 0);
+        state.ScrollToItem(3, 4);
+        h.Pump();
+        // Each item with its gap: 12.
+        CHECK_EQ(s->ScrollOffset(), reverse ? 238 - 50 - (3 * 12 + 4) : 3 * 12 + 4);
+    }
+}
+
+TEST(LazyGridScrollIndicatorCountsLines) {
+    Harness h;
+    LazyGridState state;
+    h.Run([&] {
+        Box({}, Alignment::TopStart(), false, [&] {
+            LazyVerticalGrid(Height(FillMax({}, Axis::Horizontal), Dp(50)), GridCells::Fixed(3), state, [](LazyGridScope& s) {
+                s.Items(10, [](int) { Box(Height(FillMax({}, Axis::Horizontal), Dp(20))); });
+            });
+        });
+    });
+    const ScrollIndicatorState* s = state.ScrollIndicator();
+    CHECK(s != nullptr);
+    if (!s) return;
+    // 10 items in 3 columns: 4 lines of 20.
+    CHECK_EQ(s->ContentSize(), 80);
+    CHECK_EQ(s->ViewportSize(), 50);
+    state.ScrollToItem(3, 5);
+    h.Pump();
+    CHECK_EQ(s->ScrollOffset(), 20 + 5);
+}

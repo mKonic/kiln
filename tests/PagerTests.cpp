@@ -5,6 +5,7 @@
 #include "kiln/foundation/Pager.h"
 
 #include <cmath>
+#include <limits>
 #include <map>
 #include <set>
 
@@ -277,4 +278,124 @@ TEST(PagerBringIntoViewLandsOnWholePages) {
     CHECK_EQ(state.CurrentPage(), 2);
     CHECK_EQ(state.CurrentPageOffsetFraction(), 0.0f);
     CHECK(!state.IsScrollInProgress());
+}
+
+// PagerScrollIndicatorTest (density 1: px are dp).
+namespace {
+    void IndicatorPager(Harness& h, PagerState& state, bool vertical, int size, PagerOptions o = {}) {
+        h.Run([&, vertical, size, o] {
+            const auto content = [](int) { Box(FillMax(Modifier{}, Axis::Both)); };
+            if (vertical) VerticalPager(RequiredSize({}, Dp(float(size)), Dp(float(size))), state, content, o);
+            else HorizontalPager(RequiredSize({}, Dp(float(size)), Dp(float(size))), state, content, o);
+        });
+    }
+    void CheckIndicator(const PagerState& state, int offset, int content, int viewport) {
+        const ScrollIndicatorState* s = state.ScrollIndicator();
+        CHECK(s != nullptr);
+        if (!s) return;
+        CHECK_EQ(s->ScrollOffset(), offset);
+        CHECK_EQ(s->ContentSize(), content);
+        CHECK_EQ(s->ViewportSize(), viewport);
+    }
+}
+
+TEST(PagerScrollIndicatorEmptyPager) {
+    for (bool vertical : { true, false }) {
+        Harness h;
+        PagerState state(0, 0, [] { return 0; });
+        IndicatorPager(h, state, vertical, 100);
+        CheckIndicator(state, 0, 0, 100);
+    }
+}
+
+TEST(PagerScrollIndicatorFixedPagesThatFit) {
+    for (bool vertical : { true, false }) {
+        Harness h;
+        PagerState state(0, 0, [] { return 2; });
+        PagerOptions o;
+        o.pageSize = PageSize::Fixed(Dp(50));
+        IndicatorPager(h, state, vertical, 200, o);
+        CheckIndicator(state, 0, 100, 200);
+    }
+}
+
+TEST(PagerScrollIndicatorFillPages) {
+    for (bool vertical : { true, false }) {
+        Harness h;
+        PagerState state(0, 0, [] { return 2; });
+        IndicatorPager(h, state, vertical, 100);
+        CheckIndicator(state, 0, 200, 100);
+    }
+}
+
+TEST(PagerScrollIndicatorFixedPagesThatDoNotFit) {
+    for (bool vertical : { true, false }) {
+        Harness h;
+        PagerState state(0, 0, [] { return 4; });
+        PagerOptions o;
+        o.pageSize = PageSize::Fixed(Dp(50));
+        IndicatorPager(h, state, vertical, 100, o);
+        CheckIndicator(state, 0, 200, 100);
+    }
+}
+
+TEST(PagerScrollIndicatorPageSpacing) {
+    for (bool vertical : { true, false }) {
+        Harness h;
+        PagerState state(0, 0, [] { return 4; });
+        PagerOptions o;
+        o.pageSize = PageSize::Fixed(Dp(50));
+        o.pageSpacing = Dp(20);
+        IndicatorPager(h, state, vertical, 100, o);
+        CheckIndicator(state, 0, (50 + 20) * 4 - 20, 100);
+    }
+}
+
+TEST(PagerScrollIndicatorContentPadding) {
+    for (bool vertical : { true, false }) {
+        Harness h;
+        PagerState state(0, 0, [] { return 4; });
+        PagerOptions o;
+        o.pageSize = PageSize::Fixed(Dp(50));
+        if (vertical) { o.contentPadding.top = Dp(20); o.contentPadding.bottom = Dp(30); }
+        else { o.contentPadding.start = Dp(20); o.contentPadding.end = Dp(30); }
+        IndicatorPager(h, state, vertical, 100, o);
+        CheckIndicator(state, 0, 50 * 4 + 20 + 30, 100);
+    }
+}
+
+TEST(PagerScrollIndicatorFollowsScrollToPage) {
+    for (bool vertical : { true, false }) {
+        Harness h;
+        PagerState state(0, 0, [] { return 6; });
+        PagerOptions o;
+        o.pageSize = PageSize::Fixed(Dp(50));
+        IndicatorPager(h, state, vertical, 100, o);
+        state.ScrollToPage(3);
+        h.Pump();
+        CheckIndicator(state, 3 * 50, 300, 100);
+    }
+}
+
+TEST(PagerScrollIndicatorFollowsScrollBy) {
+    for (bool vertical : { true, false }) {
+        Harness h;
+        PagerState state(0, 0, [] { return 6; });
+        PagerOptions o;
+        o.pageSize = PageSize::Fixed(Dp(50));
+        IndicatorPager(h, state, vertical, 100, o);
+        state.ConsumeScrollDelta(70);
+        h.Pump();
+        CheckIndicator(state, 70, 300, 100);
+    }
+}
+
+TEST(PagerScrollIndicatorCoercesToIntMax) {
+    Harness h;
+    const int count = std::numeric_limits<int>::max();
+    PagerState state(count - 10, 0, [count] { return count; });
+    PagerOptions o;
+    o.pageSize = PageSize::Fixed(Dp(50));
+    IndicatorPager(h, state, false, 100, o);
+    CheckIndicator(state, std::numeric_limits<int>::max(), std::numeric_limits<int>::max(), 100);
 }

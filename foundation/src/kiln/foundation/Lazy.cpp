@@ -518,6 +518,8 @@ namespace kiln::foundation {
             float prev = 0;
             co_await a.AnimateTo(anim::Vec{ target, 0, 0, 0 }, anim::Spring(), anim::Vec{ velocity, 0, 0, 0 }, [&](const anim::Vec& vv) {
                 const float value = vv[0];
+                // The animation state's velocity carries into the next loop (stopping zeroes the Animatable's).
+                velocity = a.Velocity()[0];
                 if (stopped) return;
                 if (!Visible(index)) {
                     const float coerced = target > 0 ? std::min(value, target) : std::max(value, target);
@@ -544,7 +546,6 @@ namespace kiln::foundation {
                     a.Stop();
                 }
             });
-            velocity = a.Velocity()[0];
             running = nullptr;
             if (stopped) co_return;
             ++loops;
@@ -1078,6 +1079,8 @@ namespace kiln::foundation {
             info.beforeContentPadding = before;
             info.afterContentPadding = after;
             info.mainAxisItemSpacing = spacing;
+            info.reverseLayout = reverse;
+            info.maxSpan = lanes;
             if (!(stagState->m_Info.Peek() == info)) stagState->m_Info.Set(std::move(info));
         }
 
@@ -1323,6 +1326,8 @@ namespace kiln::foundation {
         };
 
         auto publishEmpty = [&] {
+            const LazyStateBase::MeasuredAxis axis{ before, after, mainMax, pagePx, spacing, reverse };
+            if (!(st.m_Axis.Peek() == axis)) st.m_Axis.Set(axis);
             if (listState) {
                 LazyListLayoutInfo info;
                 info.orientation = vertical ? Orientation::Vertical : Orientation::Horizontal;
@@ -1524,6 +1529,10 @@ namespace kiln::foundation {
         st.m_TotalItems = count;
         st.m_ViewportLength = float(viewport);
         (void)lastIndex;
+        {
+            const LazyStateBase::MeasuredAxis axis{ before, after, mainMax, pagePx, spacing, reverse };
+            if (!(st.m_Axis.Peek() == axis)) st.m_Axis.Set(axis);
+        }
         st.OnMeasured();
 
         int cross = 0;
@@ -1599,6 +1608,7 @@ namespace kiln::foundation {
             info.beforeContentPadding = before;
             info.afterContentPadding = after;
             info.mainAxisItemSpacing = spacing;
+            info.reverseLayout = reverse;
             if (!(listState->m_Info.Peek() == info)) listState->m_Info.Set(std::move(info));
         } else if (gridState) {
             LazyGridLayoutInfo info;
@@ -1624,6 +1634,8 @@ namespace kiln::foundation {
             info.beforeContentPadding = before;
             info.afterContentPadding = after;
             info.mainAxisItemSpacing = spacing;
+            info.reverseLayout = reverse;
+            info.maxSpan = slotsPerLine;
             if (!(gridState->m_Info.Peek() == info)) gridState->m_Info.Set(std::move(info));
         }
 
@@ -1933,4 +1945,97 @@ namespace kiln::foundation {
         LazyGrid(false, m, rows, s, std::move(content), o, key);
     }
 
+}
+
+namespace kiln::foundation {
+    // ScrollIndicatorState estimates (LazyListLayoutInfo.calculateContentSize and friends):
+    // the visible items' average size stands for every item.
+    namespace {
+        int MainSize(const LazyGridLayoutInfo& info, const LazyGridItemInfo& it) {
+            return info.orientation == Orientation::Vertical ? it.size.height : it.size.width;
+        }
+        int ListAverage(const LazyListLayoutInfo& info) {
+            if (info.visibleItemsInfo.empty()) return 0;
+            int sum = 0;
+            for (const auto& it : info.visibleItemsInfo) sum += it.size;
+            return sum / int(info.visibleItemsInfo.size()) + info.mainAxisItemSpacing;
+        }
+        int ListContent(const LazyListLayoutInfo& info) {
+            const int padding = info.beforeContentPadding + info.afterContentPadding;
+            if (info.totalItemsCount == 0) return padding;
+            return (ListAverage(info) - info.mainAxisItemSpacing) * info.totalItemsCount + (info.totalItemsCount - 1) * info.mainAxisItemSpacing + padding;
+        }
+        int Viewport(const auto& info) { return info.orientation == Orientation::Vertical ? info.viewportSize.height : info.viewportSize.width; }
+        int LineOf(const LazyGridLayoutInfo& info, const LazyGridItemInfo& it) { return info.orientation == Orientation::Vertical ? it.row : it.column; }
+        // visibleLinesAverageMainAxisSize: lines of consecutive items, sticky ones (line -1) skipped.
+        int GridLinesAverage(const LazyGridLayoutInfo& info) {
+            const auto& items = info.visibleItemsInfo;
+            if (items.empty()) return 0;
+            int total = 0, lines = 0;
+            std::size_t start = 0;
+            while (start < items.size()) {
+                const int line = LineOf(info, items[start]);
+                if (line == -1) { ++start; continue; }
+                int size = 0;
+                std::size_t end = start;
+                while (end < items.size() && LineOf(info, items[end]) == line) size = std::max(size, MainSize(info, items[end++]));
+                total += size;
+                ++lines;
+                start = end;
+            }
+            // Compose divides by the line count unguarded; all-sticky visible items would be 0 lines.
+            return (lines ? total / lines : 0) + info.mainAxisItemSpacing;
+        }
+        int GridContent(const LazyGridLayoutInfo& info) {
+            const int padding = info.beforeContentPadding + info.afterContentPadding;
+            if (info.totalItemsCount == 0) return padding;
+            const int lines = int(std::ceil(float(info.totalItemsCount) / float(std::max(1, info.maxSpan))));
+            return (GridLinesAverage(info) - info.mainAxisItemSpacing) * lines + (lines - 1) * info.mainAxisItemSpacing + padding;
+        }
+        int StaggeredAverage(const LazyGridLayoutInfo& info) {
+            if (info.visibleItemsInfo.empty()) return 0;
+            int sum = 0;
+            for (const auto& it : info.visibleItemsInfo) sum += MainSize(info, it);
+            return sum / int(info.visibleItemsInfo.size()) + info.mainAxisItemSpacing;
+        }
+        int StaggeredContent(const LazyGridLayoutInfo& info) {
+            const int padding = info.beforeContentPadding + info.afterContentPadding;
+            if (info.totalItemsCount == 0 || info.maxSpan <= 0) return padding;
+            return StaggeredAverage(info) * info.totalItemsCount / info.maxSpan - info.mainAxisItemSpacing + padding;
+        }
+    }
+
+    int LazyListState::Indicator::ScrollOffset() const {
+        const auto& info = s->LayoutInfo();
+        const int offset = ListAverage(info) * s->FirstVisibleItemIndex() + s->FirstVisibleItemScrollOffset();
+        return info.reverseLayout ? ListContent(info) - Viewport(info) - offset : offset;
+    }
+    int LazyListState::Indicator::ContentSize() const { return ListContent(s->LayoutInfo()); }
+    int LazyListState::Indicator::ViewportSize() const { return Viewport(s->LayoutInfo()); }
+
+    int LazyGridState::Indicator::ScrollOffset() const {
+        const auto& info = s->LayoutInfo();
+        const int first = s->FirstVisibleItemIndex();
+        int line = -1;
+        for (const auto& it : info.visibleItemsInfo) if (it.index == first) { line = LineOf(info, it); break; }
+        if (line == -1) {
+            // A sticky header first: the line before the first real one.
+            int firstValid = 0;
+            for (const auto& it : info.visibleItemsInfo) if (LineOf(info, it) != -1) { firstValid = LineOf(info, it); break; }
+            line = std::max(0, firstValid - 1);
+        }
+        const int offset = GridLinesAverage(info) * line + s->FirstVisibleItemScrollOffset();
+        return info.reverseLayout ? GridContent(info) - Viewport(info) - offset : offset;
+    }
+    int LazyGridState::Indicator::ContentSize() const { return GridContent(s->LayoutInfo()); }
+    int LazyGridState::Indicator::ViewportSize() const { return Viewport(s->LayoutInfo()); }
+
+    int LazyStaggeredGridState::Indicator::ScrollOffset() const {
+        const auto& info = s->LayoutInfo();
+        const int offset = info.totalItemsCount == 0 || info.maxSpan <= 0
+                               ? 0 : StaggeredAverage(info) * s->FirstVisibleItemIndex() / info.maxSpan + s->FirstVisibleItemScrollOffset();
+        return info.reverseLayout ? StaggeredContent(info) - Viewport(info) - offset : offset;
+    }
+    int LazyStaggeredGridState::Indicator::ContentSize() const { return StaggeredContent(s->LayoutInfo()); }
+    int LazyStaggeredGridState::Indicator::ViewportSize() const { return Viewport(s->LayoutInfo()); }
 }

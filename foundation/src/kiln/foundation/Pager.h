@@ -42,8 +42,17 @@ namespace kiln::foundation {
         int FirstVisiblePage() const { return m_Index.Peek(); }
         int FirstVisiblePageOffset() const { return m_Offset.Peek(); }
         bool LastScrolledForward() const { return m_LastForward; }
+        const ScrollIndicatorState* ScrollIndicator() const override { return &m_Indicator; }
 
     private:
+        struct Indicator final : ScrollIndicatorState {
+            const PagerState* s;
+            explicit Indicator(const PagerState* state) : s(state) {}
+            int ScrollOffset() const override;
+            int ContentSize() const override;
+            int ViewportSize() const override;
+        };
+        Indicator m_Indicator{ this };
         void OnMeasured() override;
         bool ScrollingForward(float velocity) const;
 

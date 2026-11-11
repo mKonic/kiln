@@ -21,14 +21,17 @@ namespace kiln::foundation {
                                            float velocity, anim::SpecPtr spec) {
             anim::Animatable a(0.0f);
             float consumedUpToNow = 0;
+            // The animation state's velocity: cancelling keeps it, stopping an Animatable does not.
+            float lastVelocity = velocity;
             co_await a.AnimateTo(anim::Vec{ target, 0, 0, 0 }, std::move(spec), anim::Vec{ velocity, 0, 0, 0 }, [&](const anim::Vec& v) {
                 const float real = CoerceToTarget(v[0], cancel);
                 const float delta = real - consumedUpToNow;
                 const float consumed = scrollBy(delta);
+                lastVelocity = a.Velocity()[0];
                 if (std::abs(delta - consumed) > 0.5f || real != v[0]) a.Stop();
                 consumedUpToNow += consumed;
             });
-            co_return Result{ target - consumedUpToNow, CoerceToTarget(a.Velocity()[0], velocity) };
+            co_return Result{ target - consumedUpToNow, CoerceToTarget(lastVelocity, velocity) };
         }
 
         // animateDecay: decay until targetOffset.
@@ -36,7 +39,9 @@ namespace kiln::foundation {
                                         std::shared_ptr<const anim::DecaySpec> decay) {
             anim::Animatable a(0.0f);
             float previous = 0;
+            float lastVelocity = velocity;
             co_await a.AnimateDecay(velocity, decay, [&](float value) {
+                lastVelocity = a.Velocity()[0];
                 auto consume = [&](float delta) {
                     const float consumed = scrollBy(delta);
                     if (std::abs(delta - consumed) > 0.5f) a.Stop();
@@ -51,7 +56,7 @@ namespace kiln::foundation {
                     previous = value;
                 }
             });
-            co_return Result{ target - previous, a.Velocity()[0] };
+            co_return Result{ target - previous, lastVelocity };
         }
 
         rt::Task<float> SnapFling(std::shared_ptr<SnapLayoutInfoProvider> provider, std::shared_ptr<const anim::DecaySpec> decay,

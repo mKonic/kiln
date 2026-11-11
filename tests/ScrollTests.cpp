@@ -705,3 +705,85 @@ TEST(ScrollWaitsForAParentsPostFling) {
     CHECK(parent->finished);
     CHECK(!state.IsScrollInProgress());
 }
+
+// ScrollTest's scrollIndicatorState cases: five 10 px cells in a scroller `size` long.
+namespace {
+    void Scroller(Harness& h, ScrollState& state, bool vertical, int size, bool reverse = false) {
+        h.Run([&, vertical, size, reverse] {
+            const auto cells = [vertical] { for (int i = 0; i < 5; ++i) Box(SizeMod({}, Dp(vertical ? 40 : 10), Dp(vertical ? 10 : 40)), Alignment::TopStart(), false, {}, rt::Key(i)); };
+            Box({}, Alignment::TopStart(), false, [&, vertical, size, reverse, cells] {
+                if (vertical) Column(VerticalScroll(SizeMod({}, Dp(40), Dp(float(size))), state, true, reverse), cells);
+                else Row(HorizontalScroll(SizeMod({}, Dp(float(size)), Dp(40)), state, true, reverse), cells);
+            });
+        });
+    }
+    void CheckIndicator(const ScrollState& state, int offset, int content, int viewport) {
+        const ScrollIndicatorState* s = state.ScrollIndicator();
+        CHECK(s != nullptr);
+        if (!s) return;
+        CHECK_EQ(s->ScrollOffset(), offset);
+        CHECK_EQ(s->ContentSize(), content);
+        CHECK_EQ(s->ViewportSize(), viewport);
+    }
+}
+
+TEST(ScrollIndicatorWhenContentFits) {
+    for (bool vertical : { true, false }) {
+        Harness h;
+        ScrollState state(0);
+        Scroller(h, state, vertical, 60);
+        // The scroller passes its minimum on: the content fills the viewport.
+        CheckIndicator(state, 0, 60, 60);
+        state.ScrollTo(5);
+        h.Pump();
+        CheckIndicator(state, 0, 60, 60);
+    }
+}
+
+TEST(ScrollIndicatorWhenContentDoesNotFit) {
+    for (bool vertical : { true, false }) {
+        Harness h;
+        ScrollState state(0);
+        Scroller(h, state, vertical, 40);
+        CheckIndicator(state, 0, 50, 40);
+        state.ScrollTo(5);
+        h.Pump();
+        CheckIndicator(state, 5, 50, 40);
+    }
+}
+
+TEST(ScrollIndicatorReverseScrolling) {
+    for (bool vertical : { true, false }) {
+        Harness h;
+        ScrollState state(0);
+        Scroller(h, state, vertical, 40, true);
+        CheckIndicator(state, 10, 50, 40);
+    }
+}
+
+TEST(FlingIntoAnEdgeLeavesItsVelocityToParents) {
+    // DefaultFlingBehavior returns the velocity of the frame that hit the edge; nested scroll
+    // parents get it in onPostFling (an app bar zeroes its content offset on a downward one).
+    struct Recorder final : NestedScrollConnection {
+        float postFling = 0;
+        rt::Task<Offset> OnPostFling(Offset, Offset available) override { postFling = available.y; co_return Offset{}; }
+    };
+    Harness h;
+    ScrollState state;
+    auto recorder = std::make_shared<Recorder>();
+    h.Run([&] {
+        Box(NestedScroll(FillMax(Modifier{}, Axis::Both), recorder), Alignment::TopStart(), false, [&] {
+            Column(VerticalScroll(FillMax(Modifier{}, Axis::Both), state), [] { Box(SizeMod(Modifier{}, Dp(100), Dp(150))); });
+        });
+    });
+    state.ScrollTo(30);
+    h.Pump();
+    // A quick flick down: 20 px of scroll left, then the top.
+    std::int64_t t = 0;
+    h.Touch(PointerEventType::Press, 50, 20, true, t);
+    for (int i = 1; i <= 5; ++i) h.Touch(PointerEventType::Move, 50, 20 + 8.0f * float(i), true, t += 10);
+    h.Touch(PointerEventType::Release, 50, 60, false, t += 1);
+    h.Frames(60);
+    CHECK_EQ(state.Value(), 0);
+    CHECK(recorder->postFling > 100);
+}

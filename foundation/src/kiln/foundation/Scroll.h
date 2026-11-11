@@ -14,6 +14,18 @@
 
 namespace kiln::foundation {
 
+    // ScrollIndicatorState: what a scroll indicator (a scrollbar) draws, in pixels along the
+    // scroll axis. Lazy layouts estimate them from the visible items. Each is INT_MAX while
+    // unknown; reading them subscribes.
+    class ScrollIndicatorState {
+    public:
+        virtual ~ScrollIndicatorState() = default;
+        // From the visual start (top; left, or right in RTL), whatever reverseLayout/reverseScrolling.
+        virtual int ScrollOffset() const = 0;
+        virtual int ContentSize() const = 0;
+        virtual int ViewportSize() const = 0;
+    };
+
     class ScrollableState {
     public:
         virtual ~ScrollableState() = default;
@@ -25,6 +37,8 @@ namespace kiln::foundation {
         // True when ConsumeScrollDelta lays the content out itself (lazy layouts remeasure now);
         // otherwise placement catches up at the next layout pass.
         virtual bool LaysOutOnScroll() const { return false; }
+        // For a scroll indicator; null where the state has none.
+        virtual const ScrollIndicatorState* ScrollIndicator() const { return nullptr; }
 
         // Stops a running fling or programmatic scroll (stopScroll()).
         // The stopped scroll ends at its next frame; to everyone else it has ended now.
@@ -86,20 +100,33 @@ namespace kiln::foundation {
         explicit ScrollState(int initial = 0) : m_Value(initial) {}
         int Value() const { return m_Value.Get(); }
         int MaxValue() const { return m_Max.Get(); }
-        int ViewportSize() const { return m_Viewport; }
+        // Reading these subscribes (the last layout sets them).
+        int ViewportSize() const { return m_Viewport.Get(); }
+        int ContentSize() const { return m_Content.Get(); }
         float ConsumeScrollDelta(float delta) override;
         bool CanScrollForward() const override { return m_Value.Peek() < m_Max.Peek(); }
         bool CanScrollBackward() const override { return m_Value.Peek() > 0; }
         void ScrollTo(int value) { ConsumeScrollDelta(float(value - m_Value.Peek())); }
         rt::Task<> AnimateScrollTo(int value, anim::SpecPtr spec = anim::Spring());
 
+        const ScrollIndicatorState* ScrollIndicator() const override { return &m_Indicator; }
+
         // Set by the scroll layout.
-        void SetBounds(int maxValue, int viewport);
+        void SetBounds(int maxValue, int viewport, int contentSize, bool reverseScrolling);
 
     private:
+        struct Indicator final : ScrollIndicatorState {
+            const ScrollState* s;
+            explicit Indicator(const ScrollState* state) : s(state) {}
+            int ScrollOffset() const override { return s->m_Reverse ? s->MaxValue() - s->Value() : s->Value(); }
+            int ContentSize() const override { return s->ContentSize(); }
+            int ViewportSize() const override { return s->ViewportSize(); }
+        };
         rt::State<int> m_Value;
         rt::State<int> m_Max{ 1 << 30 };
-        int m_Viewport = 0;
+        rt::State<int> m_Viewport{ 0 }, m_Content{ 0 };
+        bool m_Reverse = false;
+        Indicator m_Indicator{ this };
         float m_Accumulator = 0;
     };
 

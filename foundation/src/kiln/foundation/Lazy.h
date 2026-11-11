@@ -35,6 +35,7 @@ namespace kiln::foundation {
         Orientation orientation = Orientation::Vertical;
         int beforeContentPadding = 0, afterContentPadding = 0;
         int mainAxisItemSpacing = 0;
+        bool reverseLayout = false;
         bool operator==(const LazyListLayoutInfo&) const = default;
     };
 
@@ -57,6 +58,8 @@ namespace kiln::foundation {
         Orientation orientation = Orientation::Vertical;
         int beforeContentPadding = 0, afterContentPadding = 0;
         int mainAxisItemSpacing = 0;
+        bool reverseLayout = false;
+        int maxSpan = 1;   // columns of a vertical grid, rows of a horizontal one (lanes when staggered)
         bool operator==(const LazyGridLayoutInfo&) const = default;
     };
 
@@ -92,6 +95,13 @@ namespace kiln::foundation {
         // The viewport along the scroll axis minus content padding (last measure).
         float ViewportLength() const { return m_ViewportLength; }
         float Density() const { return m_Density; }
+        // The last measure along the scroll axis (the pager's layout info): padding at the scroll
+        // start and end, the whole viewport, the page size and spacing, reverseLayout.
+        struct MeasuredAxis {
+            int before = 0, after = 0, viewport = 0, pageSize = 0, spacing = 0;
+            bool reverse = false;
+            bool operator==(const MeasuredAxis&) const = default;
+        };
 
     protected:
         friend struct LazyCore;
@@ -119,6 +129,7 @@ namespace kiln::foundation {
         int m_PageSnap = 0;   // where a page rests: its offset from the content start (SnapPosition)
         std::optional<float> m_PendingFraction;
         float m_ViewportLength = 0;
+        rt::State<MeasuredAxis> m_Axis{ MeasuredAxis{} };
     };
 
     class LazyListState final : public LazyStateBase {
@@ -126,18 +137,36 @@ namespace kiln::foundation {
         explicit LazyListState(int firstIndex = 0, int firstOffset = 0) : LazyStateBase(firstIndex, firstOffset) {}
         // Reading subscribes; updated by every measure.
         const LazyListLayoutInfo& LayoutInfo() const { return m_Info.Get(); }
+        const ScrollIndicatorState* ScrollIndicator() const override { return &m_Indicator; }
     private:
         friend struct LazyCore;
+        struct Indicator final : ScrollIndicatorState {
+            const LazyListState* s;
+            explicit Indicator(const LazyListState* state) : s(state) {}
+            int ScrollOffset() const override;
+            int ContentSize() const override;
+            int ViewportSize() const override;
+        };
         rt::State<LazyListLayoutInfo> m_Info{ LazyListLayoutInfo{} };
+        Indicator m_Indicator{ this };
     };
 
     class LazyGridState final : public LazyStateBase {
     public:
         explicit LazyGridState(int firstIndex = 0, int firstOffset = 0) : LazyStateBase(firstIndex, firstOffset) {}
         const LazyGridLayoutInfo& LayoutInfo() const { return m_Info.Get(); }
+        const ScrollIndicatorState* ScrollIndicator() const override { return &m_Indicator; }
     private:
         friend struct LazyCore;
+        struct Indicator final : ScrollIndicatorState {
+            const LazyGridState* s;
+            explicit Indicator(const LazyGridState* state) : s(state) {}
+            int ScrollOffset() const override;
+            int ContentSize() const override;
+            int ViewportSize() const override;
+        };
         rt::State<LazyGridLayoutInfo> m_Info{ LazyGridLayoutInfo{} };
+        Indicator m_Indicator{ this };
     };
 
     class LazyStaggeredGridState final : public LazyStateBase {
@@ -145,9 +174,18 @@ namespace kiln::foundation {
         explicit LazyStaggeredGridState(int firstIndex = 0, int firstOffset = 0) : LazyStateBase(firstIndex, firstOffset) {}
         // Items carry their lane in `column` (row is -1).
         const LazyGridLayoutInfo& LayoutInfo() const { return m_Info.Get(); }
+        const ScrollIndicatorState* ScrollIndicator() const override { return &m_Indicator; }
     private:
         friend struct LazyCore;
+        struct Indicator final : ScrollIndicatorState {
+            const LazyStaggeredGridState* s;
+            explicit Indicator(const LazyStaggeredGridState* state) : s(state) {}
+            int ScrollOffset() const override;
+            int ContentSize() const override;
+            int ViewportSize() const override;
+        };
         rt::State<LazyGridLayoutInfo> m_Info{ LazyGridLayoutInfo{} };
+        Indicator m_Indicator{ this };
     };
 
     struct LazyInterval {

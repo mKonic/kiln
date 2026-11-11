@@ -890,7 +890,7 @@ namespace kiln::foundation {
             void UpdateScrollState(int containerSize, int textLayoutSize, TextRange currSelection, ui::LayoutDirection dir, const ui::Density& density) {
                 Field& f = *params.field;
                 ScrollState& scroll = *params.scrollState;
-                scroll.SetBounds(textLayoutSize - containerSize, containerSize);
+                scroll.SetBounds(textLayoutSize - containerSize, containerSize, textLayoutSize, false);
                 const int offsetToFollow = CalculateOffsetToFollow(currSelection, containerSize, textLayoutSize);
                 if (offsetToFollow < 0 || !ShowCursor()) return;
                 const auto layout = f.layout->PeekLayoutResult();

@@ -327,3 +327,23 @@ namespace kiln::foundation {
     }
 
 }
+
+namespace kiln::foundation {
+    // ScrollIndicatorState (PagerLayoutInfo.calculateContentSize): pages are all one size.
+    namespace {
+        int PagerContent(const LazyStateBase::MeasuredAxis& a, int pageCount) {
+            const int padding = a.before + a.after;
+            if (pageCount == 0) return padding;
+            const long long total = (long long)a.pageSize * pageCount + (long long)(pageCount - 1) * a.spacing + padding;
+            return int(std::min<long long>(total, std::numeric_limits<int>::max()));
+        }
+    }
+    int PagerState::Indicator::ScrollOffset() const {
+        const auto& a = s->m_Axis.Get();
+        const long long total = (long long)(a.pageSize + a.spacing) * s->m_Index.Get() + s->m_Offset.Get();
+        const int offset = int(std::min<long long>(total, std::numeric_limits<int>::max()));
+        return a.reverse ? PagerContent(a, s->PageCount()) - a.viewport - offset : offset;
+    }
+    int PagerState::Indicator::ContentSize() const { return PagerContent(s->m_Axis.Get(), s->PageCount()); }
+    int PagerState::Indicator::ViewportSize() const { return s->m_Axis.Get().viewport; }
+}

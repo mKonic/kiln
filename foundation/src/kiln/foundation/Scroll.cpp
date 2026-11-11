@@ -29,8 +29,10 @@ namespace kiln::foundation {
         return changed ? consumed : delta;
     }
 
-    void ScrollState::SetBounds(int maxValue, int viewport) {
-        m_Viewport = viewport;
+    void ScrollState::SetBounds(int maxValue, int viewport, int contentSize, bool reverseScrolling) {
+        if (m_Viewport.Peek() != viewport) m_Viewport.Set(viewport);
+        if (m_Content.Peek() != contentSize) m_Content.Set(contentSize);
+        m_Reverse = reverseScrolling;
         m_Max.Set(std::max(0, maxValue));
         if (m_Value.Peek() > m_Max.Peek()) m_Value.Set(m_Max.Peek());
     }
@@ -136,14 +138,17 @@ namespace kiln::foundation {
             } else if (std::abs(remaining) > 1) {   // DefaultFlingBehavior: below 1 px/s the spline gives NaNs
                 anim::Animatable a(0.0f);
                 float last = 0;
+                // velocityLeft: the last frame's velocity (stopping the animation zeroes its own).
+                float velocityLeft = remaining;
                 auto decay = std::make_shared<anim::SplineDecay>(density.density, friction);
-                auto r = co_await a.AnimateDecay(remaining, decay, [&](float value) {
+                co_await a.AnimateDecay(remaining, decay, [&](float value) {
                     const float delta = value - last;
                     last = value;
                     const float consumed = Axis(Dispatch(Single(delta), NestedScrollSource::SideEffect));
+                    velocityLeft = a.Velocity()[0];
                     if (std::abs(delta - consumed) > 0.5f) a.Stop();   // hit an edge
                 });
-                remaining = r.reason == anim::EndReason::Interrupted ? a.Velocity()[0] : 0.0f;
+                remaining = velocityLeft;
             }
             Offset left = Single(remaining);
             if (node) left = left - co_await node->DispatchPostFling(available - Single(remaining), Single(remaining));
@@ -656,13 +661,14 @@ namespace kiln::foundation {
             MeasureResult Measure(MeasureScope& s, Measurable& m, const Constraints& c) override {
                 // checkScrollableContainerConstraints: an unbounded scroll axis is a programming error.
                 Constraints child = c;
-                if (params.vertical) { child.maxHeight = Constraints::Infinity; child.minHeight = 0; }
-                else { child.maxWidth = Constraints::Infinity; child.minWidth = 0; }
+                // The minimums pass through: content that fits fills the viewport (ScrollNode).
+                if (params.vertical) child.maxHeight = Constraints::Infinity;
+                else child.maxWidth = Constraints::Infinity;
                 Placeable& p = m.Measure(child);
                 const int w = std::min(p.Width(), c.maxWidth), h = std::min(p.Height(), c.maxHeight);
                 const int scrollHeight = p.Height() - h, scrollWidth = p.Width() - w;
                 const int side = params.vertical ? h : w;
-                params.state->SetBounds(params.vertical ? scrollHeight : scrollWidth, side);
+                params.state->SetBounds(params.vertical ? scrollHeight : scrollWidth, side, params.vertical ? p.Height() : p.Width(), params.reverse);
                 ScrollState* state = params.state;
                 const bool vertical = params.vertical, reverse = params.reverse;
                 return s.Layout(w, h, [this, &p, state, vertical, reverse, scrollHeight, scrollWidth](PlacementScope& place) {

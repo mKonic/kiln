@@ -171,7 +171,7 @@ TEST(RememberedStatesSurviveRecreation) {
             pager = &RememberPagerState(2, 0.25f, [] { return 10; });
             field = &RememberTextFieldState("hello");
         });
-        scroll->SetBounds(500, 100);
+        scroll->SetBounds(500, 100, 600, false);
         scroll->ScrollTo(120);
         list->ConsumeScrollDelta(0);   // nothing laid out: the position below is what is saved
         field->SetTextAndPlaceCursorAtEnd("hello world");
