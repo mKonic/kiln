@@ -14225,3 +14225,42 @@ TEST(TextFieldKeepsItsInputSessionWhenItsErrorStateChanges) {
     CHECK_EQ(stops, 0);
     CHECK(h.owner.ActiveTextInput() != nullptr);
 }
+
+TEST(SnackbarHostShowsDerivedVisualsAsGiven) {   // a SnackbarVisuals implementation reaches the host's snackbar
+    struct VisualsWithError final : SnackbarVisuals {
+        bool isError;
+        VisualsWithError(std::string message, bool error) : SnackbarVisuals(std::move(message), "OK", false, SnackbarDuration::Indefinite), isError(error) {}
+    };
+    PhoneHarness h;
+    SnackbarHostState host;
+    std::optional<bool> seenError;
+    std::string seenMessage;
+    h.Run([&] { MaterialTheme({}, [&] {
+        SnackbarHost(host, {}, [&](std::shared_ptr<SnackbarData> data) {
+            const auto* custom = dynamic_cast<const VisualsWithError*>(&data->Visuals());
+            seenError = custom ? std::optional<bool>(custom->isError) : std::nullopt;
+            seenMessage = data->Visuals().message;
+        });
+    }); });
+    rt::Job job = rt::Launch(rt::Dispatcher::Main(), [&host]() -> rt::Task<> {
+        co_await host.ShowSnackbar(std::make_shared<const VisualsWithError>("Snackbar # 1", true));
+    }());
+    h.AdvanceTimeBy(100);
+    CHECK(seenError.has_value() && *seenError);
+    CHECK(seenMessage == "Snackbar # 1");
+    job.Cancel();
+}
+
+TEST(ButtonColorOverloadsKeepTheDefaultsTheyAreNotGiven) {   // ButtonDefaults.*Colors(containerColor, ...) copy the defaults
+    PhoneHarness h;
+    h.Run([&] { MaterialTheme({}, [&] {
+        const Color red(0xFFFF0000u);
+        const ButtonColors text = ButtonDefaults::textButtonColors(), custom = ButtonDefaults::textButtonColors(Color::Unspecified(), red);
+        CHECK(custom.containerColor == text.containerColor);
+        CHECK(custom.contentColor == red);
+        CHECK(custom.disabledContentColor == text.disabledContentColor);
+        const ButtonColors filled = ButtonDefaults::buttonColors(red);
+        CHECK(filled.containerColor == red);
+        CHECK(filled.contentColor == ButtonDefaults::buttonColors().contentColor);
+    }); });
+}

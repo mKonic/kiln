@@ -268,6 +268,22 @@ namespace kiln::material3 {
                      FromToken(cs, TextButtonTokens::DisabledLabelColor).WithAlpha(TextButtonTokens::DisabledLabelOpacity) };
         }
 
+        ButtonColors buttonColors(Color containerColor, Color contentColor, Color disabledContainerColor, Color disabledContentColor) {
+            return buttonColors().Copy(containerColor, contentColor, disabledContainerColor, disabledContentColor);
+        }
+        ButtonColors elevatedButtonColors(Color containerColor, Color contentColor, Color disabledContainerColor, Color disabledContentColor) {
+            return elevatedButtonColors().Copy(containerColor, contentColor, disabledContainerColor, disabledContentColor);
+        }
+        ButtonColors filledTonalButtonColors(Color containerColor, Color contentColor, Color disabledContainerColor, Color disabledContentColor) {
+            return filledTonalButtonColors().Copy(containerColor, contentColor, disabledContainerColor, disabledContentColor);
+        }
+        ButtonColors outlinedButtonColors(Color containerColor, Color contentColor, Color disabledContainerColor, Color disabledContentColor) {
+            return outlinedButtonColors().Copy(containerColor, contentColor, disabledContainerColor, disabledContentColor);
+        }
+        ButtonColors textButtonColors(Color containerColor, Color contentColor, Color disabledContainerColor, Color disabledContentColor) {
+            return textButtonColors().Copy(containerColor, contentColor, disabledContainerColor, disabledContentColor);
+        }
+
         ButtonElevation buttonElevation() {
             return { FilledButtonTokens::ContainerElevation, FilledButtonTokens::PressedContainerElevation, FilledButtonTokens::FocusedContainerElevation,
                      FilledButtonTokens::HoveredContainerElevation, FilledButtonTokens::DisabledContainerElevation };

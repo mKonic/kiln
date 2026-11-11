@@ -95,6 +95,17 @@ namespace kiln::material3 {
         ButtonColors filledTonalButtonColors();
         ButtonColors outlinedButtonColors();
         ButtonColors textButtonColors();
+        // The defaults with the given colours; unspecified ones keep the default (copy).
+        ButtonColors buttonColors(Color containerColor, Color contentColor = Color::Unspecified(), Color disabledContainerColor = Color::Unspecified(),
+                                  Color disabledContentColor = Color::Unspecified());
+        ButtonColors elevatedButtonColors(Color containerColor, Color contentColor = Color::Unspecified(),
+                                          Color disabledContainerColor = Color::Unspecified(), Color disabledContentColor = Color::Unspecified());
+        ButtonColors filledTonalButtonColors(Color containerColor, Color contentColor = Color::Unspecified(),
+                                             Color disabledContainerColor = Color::Unspecified(), Color disabledContentColor = Color::Unspecified());
+        ButtonColors outlinedButtonColors(Color containerColor, Color contentColor = Color::Unspecified(),
+                                          Color disabledContainerColor = Color::Unspecified(), Color disabledContentColor = Color::Unspecified());
+        ButtonColors textButtonColors(Color containerColor, Color contentColor = Color::Unspecified(), Color disabledContainerColor = Color::Unspecified(),
+                                      Color disabledContentColor = Color::Unspecified());
 
         ButtonElevation buttonElevation();
         ButtonElevation elevatedButtonElevation();

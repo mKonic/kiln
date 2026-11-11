@@ -79,8 +79,8 @@ namespace kiln::material3 {
     namespace {
         class SnackbarDataImpl final : public SnackbarData {
         public:
-            explicit SnackbarDataImpl(SnackbarVisuals v) : m_Visuals(std::move(v)) {}
-            const SnackbarVisuals& Visuals() const override { return m_Visuals; }
+            explicit SnackbarDataImpl(std::shared_ptr<const SnackbarVisuals> v) : m_Visuals(std::move(v)) {}
+            const SnackbarVisuals& Visuals() const override { return *m_Visuals; }
             void PerformAction() override { Resolve(SnackbarResult::ActionPerformed); }
             void Dismiss() override { Resolve(SnackbarResult::Dismissed); }
 
@@ -114,7 +114,7 @@ namespace kiln::material3 {
                     if (job && !job->cancelled) rt::ResumeJob(job, h);
                 });
             }
-            SnackbarVisuals m_Visuals;
+            std::shared_ptr<const SnackbarVisuals> m_Visuals;
             std::optional<SnackbarResult> m_Result;
             std::coroutine_handle<> m_Waiter;
             std::weak_ptr<rt::JobState> m_Job;
@@ -131,6 +131,10 @@ namespace kiln::material3 {
     }
 
     rt::Task<SnackbarResult> SnackbarHostState::ShowSnackbar(SnackbarVisuals visuals) {
+        co_return co_await ShowSnackbar(std::make_shared<const SnackbarVisuals>(std::move(visuals)));
+    }
+
+    rt::Task<SnackbarResult> SnackbarHostState::ShowSnackbar(std::shared_ptr<const SnackbarVisuals> visuals) {
         co_await internal::SnackbarQueue::Lock{ m_Queue.get() };
         // finally { currentSnackbarData = null } and the lock's release, cancelled or not.
         struct Release {

@@ -23,12 +23,22 @@ namespace kiln::material3 {
     enum class SnackbarResult : std::uint8_t { Dismissed, ActionPerformed };
     enum class SnackbarDuration : std::uint8_t { Short, Long, Indefinite };
 
+    // SnackbarVisuals. Apps may derive their own (as Compose's interface is implemented) and
+    // show it by pointer; SnackbarData::Visuals() is then that object (dynamic_cast it back).
     struct SnackbarVisuals {
         std::string message;
         std::optional<std::string> actionLabel;
         // A close button: recommended with SnackbarDuration::Indefinite.
         bool withDismissAction = false;
         SnackbarDuration duration = SnackbarDuration::Short;
+
+        SnackbarVisuals() = default;
+        SnackbarVisuals(std::string message, std::optional<std::string> actionLabel = std::nullopt, bool withDismissAction = false,
+                        SnackbarDuration duration = SnackbarDuration::Short)
+            : message(std::move(message)), actionLabel(std::move(actionLabel)), withDismissAction(withDismissAction), duration(duration) {}
+        SnackbarVisuals(const SnackbarVisuals&) = default;
+        SnackbarVisuals& operator=(const SnackbarVisuals&) = default;
+        virtual ~SnackbarVisuals() = default;
         bool operator==(const SnackbarVisuals&) const = default;
     };
 
@@ -62,6 +72,7 @@ namespace kiln::material3 {
         rt::Task<SnackbarResult> ShowSnackbar(std::string message, std::optional<std::string> actionLabel = std::nullopt,
                                               bool withDismissAction = false, std::optional<SnackbarDuration> duration = std::nullopt);
         rt::Task<SnackbarResult> ShowSnackbar(SnackbarVisuals visuals);
+        rt::Task<SnackbarResult> ShowSnackbar(std::shared_ptr<const SnackbarVisuals> visuals);
 
     private:
         rt::State<std::shared_ptr<SnackbarData>> m_Current{ nullptr };
