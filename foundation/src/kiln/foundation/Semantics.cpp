@@ -1,3 +1,4 @@
+#include <algorithm>
 #include "kiln/foundation/Semantics.h"
 
 #include "kiln/runtime/Composition.h"
@@ -38,5 +39,14 @@ namespace kiln::foundation {
 
     Modifier Semantics(Modifier m, std::function<void(SemanticsConfiguration&)> p, bool merge) { return Make(std::move(m), std::move(p), merge, false); }
     Modifier ClearAndSetSemantics(Modifier m, std::function<void(SemanticsConfiguration&)> p) { return Make(std::move(m), std::move(p), false, true); }
+
+    Modifier ProgressSemantics(Modifier m, float value, float start, float end, int steps) {
+        return Semantics(std::move(m), [value, start, end, steps](SemanticsConfiguration& c) {
+            c.progressBarRangeInfo = ui::ProgressBarRangeInfo{ std::clamp(value, start, end), start, end, steps };
+        }, true);
+    }
+    Modifier ProgressSemantics(Modifier m) {
+        return Semantics(std::move(m), [](SemanticsConfiguration& c) { c.progressBarRangeInfo = ui::ProgressBarRangeInfo::Indeterminate(); }, true);
+    }
 
 }

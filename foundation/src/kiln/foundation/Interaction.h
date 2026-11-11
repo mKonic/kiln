@@ -68,5 +68,10 @@ namespace kiln::foundation {
     // DefaultDebugIndication: 30% black while pressed, 10% while hovered or focused.
     const IndicationPtr& DefaultDebugIndication();
     inline rt::Local<IndicationPtr> LocalIndication{ nullptr };   // null reads as DefaultDebugIndication
+    // Modifier.indication(interactionSource, indication): draws `source`'s interactions on this
+    // element (a component whose input lives elsewhere, such as a slider thumb). Null: nothing.
+    inline Modifier IndicationMod(Modifier m, std::shared_ptr<MutableInteractionSource> source, IndicationPtr indication) {
+        return indication && source ? indication->Create(std::move(m), std::move(source)) : m;
+    }
 
 }
