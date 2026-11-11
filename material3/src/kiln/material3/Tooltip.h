@@ -147,6 +147,8 @@ namespace kiln::material3 {
                                                std::shared_ptr<foundation::MutatorMutex> mutatorMutex = BasicTooltipDefaults::GlobalMutatorMutex(), rt::Key key = {});
         TooltipState MakeBasicTooltipState(bool initialIsVisible = false, bool isPersistent = true,
                                            std::shared_ptr<foundation::MutatorMutex> mutatorMutex = BasicTooltipDefaults::GlobalMutatorMutex());
+        // LabelStateImpl: a persistent label's state, always visible (show and dismiss do nothing).
+        TooltipState MakeLabelState();
         // PlainTooltipInternal: a plain tooltip that announces `tooltipText` as its pane title.
         void PlainTooltipInternal(const TooltipScope& scope, const std::string& tooltipText, const ui::Modifier& modifier,
                                   const PlainTooltipOptions& options, std::function<void()> content);

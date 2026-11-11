@@ -19,6 +19,7 @@
 #include "kiln/material3/SegmentedButton.h"
 #include "kiln/material3/SplitButton.h"
 #include "kiln/material3/Tooltip.h"
+#include "kiln/material3/Label.h"
 #include "kiln/material3/Scaffold.h"
 #include "kiln/material3/NavigationBar.h"
 #include "kiln/material3/NavigationRail.h"
@@ -13928,4 +13929,74 @@ TEST(TextFieldDecoratorUnboundedWidth) {
     });
     h.AdvanceTimeBy(100);
     CHECK(true);
+}
+
+// Label.kt: a persistent label always shows; otherwise it follows the content's interactions.
+TEST(LabelsShowWhilePressedOrAlwaysWhenPersistent) {
+    Harness h;
+    h.owner.MeasureAndLayout({ 300, 300 });
+    auto source = std::make_shared<foundation::MutableInteractionSource>();
+    rt::State<bool> persistent(false);
+    h.Run([&] {
+        rt::Composition::Current()->Provide(ui::LocalOwner, &h.owner, [&] { MaterialTheme({}, [&] {
+            LabelOptions o;
+            o.interactionSource = source;
+            o.isPersistent = persistent.Get();
+            Box(Padding({}, ui::Dp(100)), Alignment::TopStart(), false, [&] {
+                Label([](const TooltipScope& scope) { PlainTooltip(scope, {}, {}, [] { Text("42"); }); }, {}, o,
+                      [] { Box(SizeMod({}, ui::Dp(20), ui::Dp(20))); });
+            });
+        }); });
+    });
+    CHECK(h.owner.Popups().empty());
+    const auto press = source->Start(foundation::Interaction::Kind::Press);
+    h.AdvanceTimeBy(48);
+    CHECK_EQ(int(h.owner.Popups().size()), 1);
+    // A hover ending while pressed keeps it shown.
+    const auto hover = source->Start(foundation::Interaction::Kind::Hover);
+    h.AdvanceTimeBy(48);
+    source->End(foundation::Interaction::Kind::Hover, hover);
+    h.AdvanceTimeBy(48);
+    CHECK_EQ(int(h.owner.Popups().size()), 1);
+    source->End(foundation::Interaction::Kind::Press, press);
+    h.AdvanceTimeBy(48);
+    CHECK(h.owner.Popups().empty());
+    persistent.Set(true);
+    h.AdvanceTimeBy(48);
+    CHECK_EQ(int(h.owner.Popups().size()), 1);
+}
+
+// progressSemantics: the value coerced into its range, merged into one node.
+TEST(ProgressSemanticsCoercesAndMerges) {
+    Harness h;
+    h.Run([&] {
+        Column({}, Arrangement::Top(), AlignmentH::Start(), [] {
+            Box(foundation::ProgressSemantics(SizeMod({}, ui::Dp(10), ui::Dp(10)), 150, 0, 100, 9), Alignment::TopStart(), false,
+                [] { Text("child"); });
+            Box(foundation::ProgressSemantics(SizeMod({}, ui::Dp(10), ui::Dp(10))));
+        });
+    });
+    auto tree = h.owner.BuildSemanticsTree();
+    CHECK_EQ(int(tree.children.size()), 2);
+    if (tree.children.size() == 2) {
+        const auto& r = tree.children[0].config.progressBarRangeInfo;
+        CHECK(r && r->current == 100 && r->end == 100 && r->steps == 9 && !r->indeterminate);
+        CHECK(tree.children[0].config.mergeDescendants);
+        CHECK(tree.children[1].config.progressBarRangeInfo && tree.children[1].config.progressBarRangeInfo->indeterminate);
+    }
+}
+
+// animate(initial, target, spec) { value, velocity -> }: every frame's value, ending on the target.
+TEST(AnimateRunsTheSpecToItsTarget) {
+    std::vector<float> values;
+    bool done = false;
+    auto job = rt::Launch(rt::Dispatcher::Main(), [&]() -> rt::Task<> {
+        co_await anim::Animate(0, 10, anim::Tween(100), [&](float v, float) { values.push_back(v); });
+        done = true;
+    }());
+    for (int i = 0; i < 20 && !done; ++i) rt::Dispatcher::Main().RunFrame((i + 1) * 16'000'000ll);
+    CHECK(done);
+    CHECK(values.size() > 3);
+    if (!values.empty()) CHECK_EQ(values.back(), 10.0f);
+    CHECK(std::is_sorted(values.begin(), values.end()));
 }
