@@ -38,6 +38,12 @@
 #include <kiln/material3/SwipeToDismissBox.h>
 #include <kiln/material3/PullToRefresh.h>
 #include <kiln/material3/Carousel.h>
+#include <kiln/material3/DatePicker.h>
+#include <kiln/material3/DateRangePicker.h>
+#include <kiln/material3/ScrollField.h>
+#include <kiln/material3/TimePicker.h>
+#include <kiln/material3/TimePickerDialog.h>
+#include <kiln/text/DateFormat.h>
 #include <kiln/material3/ShortNavigationBar.h>
 #include <kiln/material3/Tab.h>
 #include <kiln/material3/TabRow.h>
@@ -878,6 +884,98 @@ namespace kiln::gallery {
             m3::HorizontalUncontainedCarousel(*uncontained, 240_dp, Height(FillMax({}, Axis::Horizontal), 221_dp), CarouselPhoto, spaced);
         }
 
+        std::string IsoDate(std::optional<std::int64_t> millis) {
+            if (!millis) return "none";
+            const text::CivilDate d = text::CivilFromUtcMillis(*millis);
+            char buffer[16];
+            std::snprintf(buffer, sizeof buffer, "%04d-%02d-%02d", d.year, d.month, d.day);
+            return buffer;
+        }
+        std::string ClockTime(const m3::TimePickerState& s) {
+            char buffer[8];
+            std::snprintf(buffer, sizeof buffer, "%02d:%02d", s.Hour(), s.Minute());
+            return buffer;
+        }
+
+        void DatePickers() {
+            const std::int64_t january15 = text::UtcMillis({ 2026, 1, 15 });
+            auto inline_ = m3::RememberDatePickerState(january15);
+            m3::Text("Inline date: " + IsoDate(inline_->SelectedDateMillis()));
+            m3::DatePicker(*inline_);
+            auto* open = &RememberState(0);   // 0 closed, 1 date, 2 range
+            auto* picked = &RememberState(std::string("none"));
+            m3::Text("Dialog date: " + picked->Get());
+            FlowRow({}, Arrangement::SpacedBy(8_dp), Arrangement::SpacedBy(8_dp), AlignmentV::CenterVertically(), [open] {
+                m3::TextButton([open] { open->Set(1); }, {}, {}, [] { m3::Text("Pick a date"); });
+                m3::TextButton([open] { open->Set(2); }, {}, {}, [] { m3::Text("Pick a range"); });
+            });
+            if (open->Get() == 1) {
+                auto state = m3::RememberDatePickerState(january15);
+                m3::DatePickerDialogOptions o;
+                o.dismissButton = [open] { m3::TextButton([open] { open->Set(0); }, {}, {}, [] { m3::Text("Cancel"); }); };
+                m3::DatePickerDialog([open] { open->Set(0); },
+                                     [open, picked, state] {
+                                         m3::TextButton([open, picked, state] { picked->Set(IsoDate(state->SelectedDateMillis())); open->Set(0); }, {}, {}, [] { m3::Text("OK"); });
+                                     },
+                                     {}, o, [state] { m3::DatePicker(*state); });
+            } else if (open->Get() == 2) {
+                auto state = m3::RememberDateRangePickerState(january15, text::UtcMillis({ 2026, 1, 20 }));
+                m3::DatePickerDialogOptions o;
+                o.dismissButton = [open] { m3::TextButton([open] { open->Set(0); }, {}, {}, [] { m3::Text("Cancel"); }); };
+                m3::DatePickerDialog([open] { open->Set(0); },
+                                     [open, picked, state] {
+                                         m3::TextButton([open, picked, state] {
+                                             picked->Set(IsoDate(state->SelectedStartDateMillis()) + " to " + IsoDate(state->SelectedEndDateMillis()));
+                                             open->Set(0);
+                                         }, {}, {}, [] { m3::Text("OK"); });
+                                     },
+                                     {}, o, [state] { m3::DateRangePicker(*state, Height({}, 500_dp)); });
+            }
+        }
+
+        void TimePickers() {
+            // The dialog first: the inline time input below holds focus (and the keyboard).
+            auto* open = &RememberState(false);
+            auto* picked = &RememberState(std::string("none"));
+            m3::Text("Dialog time: " + picked->Get());
+            m3::TextButton([open] { open->Set(true); }, {}, {}, [] { m3::Text("Pick a time"); });
+            if (open->Get()) {
+                auto state = m3::RememberTimePickerState(18, 30, false);
+                auto* mode = &RememberState(m3::TimePickerDisplayMode::Picker);
+                m3::TimePickerDialogOptions o;
+                o.dismissButton = [open] { m3::TextButton([open] { open->Set(false); }, {}, {}, [] { m3::Text("Cancel"); }); };
+                o.modeToggleButton = [mode] {
+                    m3::TimePickerDialogDefaults::DisplayModeToggle([mode] {
+                        mode->Set(mode->Peek() == m3::TimePickerDisplayMode::Picker ? m3::TimePickerDisplayMode::Input : m3::TimePickerDisplayMode::Picker);
+                    }, mode->Get());
+                };
+                m3::TimePickerDialog([open] { open->Set(false); },
+                                     [open, picked, state] {
+                                         m3::TextButton([open, picked, state] { picked->Set(ClockTime(*state)); open->Set(false); }, {}, {}, [] { m3::Text("OK"); });
+                                     },
+                                     [mode] { m3::TimePickerDialogDefaults::Title(mode->Get()); }, {}, o,
+                                     [mode, state] {
+                                         if (mode->Get() == m3::TimePickerDisplayMode::Picker) m3::TimePicker(*state);
+                                         else m3::TimeInput(*state);
+                                     });
+            }
+            auto clock = m3::RememberTimePickerState(14, 23, false);
+            m3::Text("Clock time: " + ClockTime(*clock));
+            m3::TimePicker(*clock);
+            auto input = m3::RememberTimePickerState(9, 41, true);
+            m3::Text("Typed time: " + ClockTime(*input));
+            m3::TimeInput(*input);
+            auto wheels = m3::RememberTimePickerState(7, 5, false);
+            m3::Text("Wheel time: " + ClockTime(*wheels));
+            m3::TimeScroll(*wheels, m3::TimePickerDefaults::shapes());
+        }
+
+        void ScrollFields() {
+            auto state = m3::RememberScrollFieldState(60, 15);
+            m3::Text("Scroll field: " + std::to_string(state->SelectedOption()));
+            m3::ScrollField(*state, std::string("Minutes"), SizeMod({}, 100_dp, m3::ScrollFieldDefaults::ScrollFieldHeight));
+        }
+
         void Tabs() {
             auto* primary = &RememberState(0);
             auto* secondary = &RememberState(0);
@@ -1254,7 +1352,7 @@ namespace kiln::gallery {
         struct Section { const char* key; const char* title; void (*content)(); };
         const std::vector<Section>& Sections() {
             static const std::vector<Section> sections{
-                { "navigation", "Navigation bars and rails", Navigation }, { "tabs", "Tabs", Tabs }, { "appbars", "App bars", AppBars }, { "toolbars", "Floating toolbars", FloatingToolbars }, { "scrollbars", "Scrollbars", Scrollbars }, { "snackbars", "Snackbars", Snackbars }, { "textfields", "Text fields", TextFields }, { "dialogs", "Dialogs", Dialogs }, { "sheets", "Bottom sheets", Sheets }, { "drawers", "Navigation drawers", Drawers }, { "search", "Search bars", Search }, { "swipe", "Swipe to dismiss", SwipeRows }, { "refresh", "Pull to refresh", Refresh }, { "carousel", "Carousels", Carousels }, { "segmented", "Segmented buttons", SegmentedButtons }, { "split", "Split buttons", SplitButtons },
+                { "navigation", "Navigation bars and rails", Navigation }, { "tabs", "Tabs", Tabs }, { "appbars", "App bars", AppBars }, { "toolbars", "Floating toolbars", FloatingToolbars }, { "scrollbars", "Scrollbars", Scrollbars }, { "snackbars", "Snackbars", Snackbars }, { "textfields", "Text fields", TextFields }, { "dialogs", "Dialogs", Dialogs }, { "sheets", "Bottom sheets", Sheets }, { "drawers", "Navigation drawers", Drawers }, { "search", "Search bars", Search }, { "swipe", "Swipe to dismiss", SwipeRows }, { "refresh", "Pull to refresh", Refresh }, { "carousel", "Carousels", Carousels }, { "datepickers", "Date pickers", DatePickers }, { "timepickers", "Time pickers", TimePickers }, { "scrollfield", "Scroll field", ScrollFields }, { "segmented", "Segmented buttons", SegmentedButtons }, { "split", "Split buttons", SplitButtons },
                 { "tooltips", "Tooltips", Tooltips }, { "menus", "Menus", Menus }, { "groups", "Button groups", ButtonGroups },
                 { "sliders", "Sliders", Sliders }, { "progress", "Progress indicators", ProgressIndicators }, { "lists", "Lists", Lists },
                 { "chips", "Chips", Chips }, { "cards", "Cards", Cards }, { "selection", "", SelectionControls },
