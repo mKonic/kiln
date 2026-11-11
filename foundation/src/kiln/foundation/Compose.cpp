@@ -11,6 +11,9 @@ namespace kiln::foundation {
     void TakeLocalLayoutDirection(ui::LayoutNode& n) {
         const auto* provided = rt::Composition::Current()->ReadIfProvided(ui::LocalLayoutDirection);
         n.SetLayoutDirection(provided ? std::optional<ui::LayoutDirection>(*provided) : std::nullopt);
+        // The density too (a subtree given its own LocalDensity measures and draws with it).
+        const auto* density = rt::Composition::Current()->ReadIfProvided(ui::LocalDensity);
+        n.SetLocalDensity(density ? std::optional<ui::Density>(*density) : std::nullopt);
     }
 
     LayoutNode& Layout(const Modifier& modifier, std::shared_ptr<MeasurePolicy> policy, std::function<void()> content, Key key) {

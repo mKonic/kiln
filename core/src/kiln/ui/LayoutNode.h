@@ -151,6 +151,10 @@ namespace kiln::ui {
         // window's.
         LayoutDirection GetLayoutDirection() const;
         void SetLayoutDirection(std::optional<LayoutDirection> direction);
+        // The density this node measures and draws with: LocalDensity where a composition
+        // provides one, else the owner's.
+        Density NodeDensity() const;
+        void SetLocalDensity(std::optional<Density> density);
 
     private:
         friend class Owner;
@@ -213,6 +217,7 @@ namespace kiln::ui {
         int m_NextPlaceOrder = 0;   // for children, reset each layout of this node
         int m_SemanticsId = 0;
         std::optional<LayoutDirection> m_LocalDirection;
+        std::optional<Density> m_LocalDensity;
         bool m_ZIndexFromChildren = false;
 
         Watcher m_MeasureWatch{ *this, 0 }, m_LayoutWatch{ *this, 1 }, m_DrawWatch{ *this, 2 };

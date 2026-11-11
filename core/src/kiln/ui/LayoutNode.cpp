@@ -238,7 +238,19 @@ namespace kiln::ui {
     }
 
     MeasureScope LayoutNode::Scope() const {
-        return MeasureScope(m_Owner ? m_Owner->GetDensity() : Density{}, GetLayoutDirection());
+        return MeasureScope(NodeDensity(), GetLayoutDirection());
+    }
+
+    Density LayoutNode::NodeDensity() const {
+        if (m_LocalDensity) return *m_LocalDensity;
+        return m_Owner ? m_Owner->GetDensity() : Density{};
+    }
+
+    void LayoutNode::SetLocalDensity(std::optional<Density> density) {
+        if (density == m_LocalDensity) return;
+        m_LocalDensity = density;
+        RequestRemeasure();
+        InvalidateDraw();
     }
 
     LayoutDirection LayoutNode::GetLayoutDirection() const {
@@ -767,7 +779,7 @@ namespace kiln::ui {
         Coordinator& c = *m_Coordinators[index];
         std::vector<std::pair<const RulerData*, float>> values;
         if (c.result.rulers) {
-            const Density d = m_Owner ? m_Owner->GetDensity() : Density{};
+            const Density d = NodeDensity();
             RulerScope scope(d, GetLayoutDirection(), c.Width(),
                              [this, index](Offset p) { return MapPoint(CoordinatorToRoot(index), p); });
             c.result.rulers(scope);
@@ -872,9 +884,12 @@ namespace kiln::ui {
     void LayoutNode::Draw(ContentDrawScope& scope) {
         if (!m_Placed && m_Parent) return;
         const LayoutDirection outer = scope.Direction();
+        const Density outerDensity = scope;
         scope.SetDirection(GetLayoutDirection());
+        static_cast<Density&>(scope) = NodeDensity();
         DrawCoordinator(0, scope);
         scope.SetDirection(outer);
+        static_cast<Density&>(scope) = outerDensity;
     }
 
     void LayoutNode::DrawCoordinator(std::size_t index, ContentDrawScope& scope) {

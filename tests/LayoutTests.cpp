@@ -310,3 +310,21 @@ TEST(LayoutIdTagsChildrenForTheirParent) {
     owner.MeasureAndLayout({ 100, 100 });
     CHECK((ids == std::vector<std::string>{ "a", "-", "c" }));
 }
+
+TEST(ProvidedLocalDensityMeasuresTheSubtree) {
+    // A subtree given its own LocalDensity converts dp with it, as Compose's layout nodes do.
+    Owner owner;
+    owner.SetDensity({ 2, 1 });
+    rt::Composition composition{ owner.Root(), rt::Dispatcher::Main() };
+    composition.SetContent([] {
+        Column(Modifier{}, [] {
+            Box(SizeMod({}, Dp(100), Dp(10)));
+            rt::Composition::Current()->Provide(LocalDensity, Density{ 0.5f }, [] { Box(SizeMod({}, Dp(100), Dp(10))); });
+        });
+    });
+    composition.Recompose();
+    owner.MeasureAndLayout({ 1000, 1000 });
+    const auto& column = *owner.Root().Children()[0];
+    CHECK_EQ(column.Children()[0]->Size().width, 200);
+    CHECK_EQ(column.Children()[1]->Size().width, 50);
+}
