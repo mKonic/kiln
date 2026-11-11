@@ -44,6 +44,10 @@ COMPONENTS = {
         settext:Name=Ada Lovelace; wait:600; expect:Name: Ada Lovelace; shot:{p}-textfields-typed''',
     'dialogs': '''expect:Dialog result: none; tap:Show alert dialog; wait:800; expect:Reset settings?; shot:{p}-dialogs; tap:Accept; wait:800;
         expect:Dialog result: confirmed; tap:Show alert dialog; wait:800; back; wait:800; expect:Dialog result: outside''',
+    'sheets': '''expect:Sheet result: none; tap:Show bottom sheet; wait:1000; expect:Share with; shot:{p}-sheets-modal; tap:Copy link;
+        wait:1000; expect:Sheet result: Copy link; reject:Share with; tap:Show bottom sheet; wait:1000; expect:Share with; back; wait:1000;
+        expect:Sheet result: dismissed; reject:Share with; reach:Standard sheet: peeking; expect:Nearby places; shot:{p}-sheets-standard;
+        swipeon:Nearby places=0,-500,400; wait:1000; expect:Standard sheet: expanded; expect:Station; shot:{p}-sheets-standard-expanded''',
     'segmented': '''expect:Single selection: 0; tap:Week; expect:Single selection: 1; tap:Bike; expect:Multiple selection: 3;
         tap:Walk; expect:Multiple selection: 2; shot:{p}-segmented; reach:Disable segments; tap:Disable segments;
         expect:Enable segments; tap:Day; expect:Single selection: 1; shot:{p}-segmented-disabled''',

@@ -31,6 +31,8 @@
 #include <kiln/material3/TextField.h>
 #include <kiln/material3/ExposedDropdownMenu.h>
 #include <kiln/material3/AlertDialog.h>
+#include <kiln/material3/BottomSheetScaffold.h>
+#include <kiln/material3/ModalBottomSheet.h>
 #include <kiln/material3/ShortNavigationBar.h>
 #include <kiln/material3/Tab.h>
 #include <kiln/material3/TabRow.h>
@@ -659,6 +661,54 @@ namespace kiln::gallery {
             }
         }
 
+        // Hides the modal sheet, then closes it (and reports why) once it is out of sight.
+        rt::Task<> HideSheetThen(std::shared_ptr<m3::SheetState> state, rt::State<bool>* open, rt::State<std::string>* result,
+                                 std::string why) {
+            co_await state->Hide();
+            if (!state->IsVisible()) {
+                result->Set(why);
+                open->Set(false);
+            }
+        }
+
+        void Sheets() {
+            auto* open = &RememberState(false);
+            auto* result = &RememberState(std::string("none"));
+            auto jobs = rt::Composition::Current()->Remember<std::shared_ptr<std::vector<rt::Job>>>([] { return std::make_shared<std::vector<rt::Job>>(); });
+            // Reported as text so a test can read it.
+            m3::Text("Sheet result: " + result->Get());
+            m3::TextButton([open] { open->Set(true); }, {}, {}, [] { m3::Text("Show bottom sheet"); });
+            if (open->Get()) {
+                auto state = m3::RememberBottomSheetState(m3::SheetValue::Hidden);
+                m3::ModalBottomSheetOptions o;
+                o.sheetState = state;
+                m3::ModalBottomSheet([open, result] { result->Set("dismissed"); open->Set(false); }, {}, o, [=] {
+                    m3::Text("Share with", Padding({}, 16_dp, 8_dp));
+                    for (const char* target : { "Copy link", "Messages", "Email" }) {
+                        m3::TextButton([=] { jobs->push_back(rt::Launch(rt::Dispatcher::Main(), HideSheetThen(state, open, result, target))); },
+                                       Padding({}, 8_dp, 0_dp), {}, [target] { m3::Text(target); });
+                    }
+                    for (int i = 1; i <= 12; ++i) m3::Text("Contact " + std::to_string(i), Padding({}, 16_dp, 12_dp));
+                });
+            }
+            // A standard sheet peeking over its screen.
+            auto sheet = m3::RememberBottomSheetState(m3::SheetValue::PartiallyExpanded, m3::SheetValues{ false, true });
+            m3::Text(std::string("Standard sheet: ") + (sheet->CurrentValue() == m3::SheetValue::Expanded ? "expanded" : "peeking"));
+            Box(Height(FillMax({}, Axis::Horizontal), 420_dp), Alignment::TopStart(), false, [sheet] {
+                m3::BottomSheetScaffoldOptions o;
+                o.scaffoldState = m3::RememberBottomSheetScaffoldState(sheet);
+                o.sheetPeekHeight = 128_dp;
+                m3::BottomSheetScaffold(
+                    [] {
+                        m3::Text("Nearby places", Padding({}, 16_dp, 8_dp));
+                        for (const char* place : { "Bakery", "Library", "Park", "Station" }) m3::Text(place, Padding({}, 16_dp, 12_dp));
+                    },
+                    {}, o, [](const PaddingValues& padding) {
+                        Box(Padding(FillMax({}, Axis::Both), padding), Alignment::Center(), false, [] { m3::Text("Map area"); });
+                    });
+            });
+        }
+
         void Tabs() {
             auto* primary = &RememberState(0);
             auto* secondary = &RememberState(0);
@@ -1035,7 +1085,7 @@ namespace kiln::gallery {
         struct Section { const char* key; const char* title; void (*content)(); };
         const std::vector<Section>& Sections() {
             static const std::vector<Section> sections{
-                { "navigation", "Navigation bars and rails", Navigation }, { "tabs", "Tabs", Tabs }, { "appbars", "App bars", AppBars }, { "toolbars", "Floating toolbars", FloatingToolbars }, { "scrollbars", "Scrollbars", Scrollbars }, { "snackbars", "Snackbars", Snackbars }, { "textfields", "Text fields", TextFields }, { "dialogs", "Dialogs", Dialogs }, { "segmented", "Segmented buttons", SegmentedButtons }, { "split", "Split buttons", SplitButtons },
+                { "navigation", "Navigation bars and rails", Navigation }, { "tabs", "Tabs", Tabs }, { "appbars", "App bars", AppBars }, { "toolbars", "Floating toolbars", FloatingToolbars }, { "scrollbars", "Scrollbars", Scrollbars }, { "snackbars", "Snackbars", Snackbars }, { "textfields", "Text fields", TextFields }, { "dialogs", "Dialogs", Dialogs }, { "sheets", "Bottom sheets", Sheets }, { "segmented", "Segmented buttons", SegmentedButtons }, { "split", "Split buttons", SplitButtons },
                 { "tooltips", "Tooltips", Tooltips }, { "menus", "Menus", Menus }, { "groups", "Button groups", ButtonGroups },
                 { "sliders", "Sliders", Sliders }, { "progress", "Progress indicators", ProgressIndicators }, { "lists", "Lists", Lists },
                 { "chips", "Chips", Chips }, { "cards", "Cards", Cards }, { "selection", "", SelectionControls },
