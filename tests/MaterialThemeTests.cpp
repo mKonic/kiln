@@ -8655,3 +8655,126 @@ TEST(TextFieldAffixesJoinTheTextForAccessibility) {
     CHECK(n != nullptr);
     if (n) CHECK((n->config.text == std::vector<std::string>{ "www.", "google", ".com" }));
 }
+
+// OutlinedTextFieldTest: the cases where it differs from the filled field.
+TEST(OutlinedTextFieldLabelStartsInTheInputArea) {
+    // The default Cutout label sits 8 dp lower than an Inside one (the room for the outline).
+    struct Case { bool singleLine, inside; float y; };
+    const Case cases[] = { { true, false, (56 - 24) / 2.0f + 8 }, { true, true, (56 - 24) / 2.0f }, { false, false, 16 + 8 }, { false, true, 16 } };
+    for (const auto& k : cases) {
+        PhoneHarness h;
+        foundation::TextFieldState state;
+        Themed(h, [&] {
+            TextFieldOptions o;
+            if (k.singleLine) o.lineLimits = foundation::TextFieldLineLimits::SingleLine();
+            if (k.inside) o.labelPosition = TextFieldLabelPosition::Inside();
+            o.label = [](const TextFieldLabelScope&) { Box(Tag(SizeMod({}, 24_dp, 24_dp), "label")); };
+            OutlinedTextField(state, {}, o);
+        });
+        h.AdvanceTimeBy(300);
+        const auto b = UnclippedBoundsDp(h, "label");
+        CHECK(b && std::abs(b->left - 16) <= 0.5f && std::abs(b->top - k.y) <= 0.5f);
+    }
+}
+
+TEST(OutlinedTextFieldMultiLineLabel) {
+    // A long label wraps within the padding.
+    for (bool inside : { false, true }) {
+        PhoneHarness h;
+        foundation::TextFieldState state;
+        Themed(h, [&] {
+            TextFieldOptions o;
+            if (inside) o.labelPosition = TextFieldLabelPosition::Inside();
+            o.label = [](const TextFieldLabelScope&) { Text("long long long long long long long long long long long long", Tag({}, "label")); };
+            OutlinedTextField(state, RequiredSize({}, 200_dp, ui::Dp::Unspecified()), o);
+        });
+        h.AdvanceTimeBy(300);
+        const auto b = UnclippedBoundsDp(h, "label");
+        CHECK(b && b->Height() > 0 && Near(b->Width(), 200 - 2 * 16));
+        CHECK(b && std::abs(b->left - 16) <= 0.5f && std::abs(b->top - (inside ? 16 : 16 + 8)) <= 0.5f);
+    }
+}
+
+TEST(OutlinedTextFieldLabelMovesIntoTheOutline) {
+    // Focused or filled: a Cutout label centres on the outline (8 dp down the extra top
+    // padding); an Inside one sits at the top padding.
+    for (int k = 0; k < 4; ++k) {
+        const bool inside = k & 1, input = k & 2;
+        PhoneHarness h;
+        foundation::TextFieldState state(input ? "input" : "");
+        Themed(h, [&] {
+            TextFieldOptions o;
+            if (inside) o.labelPosition = TextFieldLabelPosition::Inside();
+            o.label = [](const TextFieldLabelScope&) { Box(Tag(SizeMod({}, 16_dp, 16_dp), "label")); };
+            OutlinedTextField(state, Tag({}, "textField"), o);
+        });
+        std::int64_t t = 0;
+        if (!input) Press(h, t, "textField", true);
+        h.AdvanceTimeBy(1000);
+        const auto b = UnclippedBoundsDp(h, "label");
+        CHECK(b && std::abs(b->left - 16) <= 0.5f && std::abs(b->top - (inside ? 8 : 8 - 16 / 2.0f)) <= 0.5f);
+    }
+    for (bool inside : { false, true }) {
+        // A multi-line label too.
+        PhoneHarness h;
+        foundation::TextFieldState state;
+        Themed(h, [&] {
+            TextFieldOptions o;
+            if (inside) o.labelPosition = TextFieldLabelPosition::Inside();
+            o.label = [](const TextFieldLabelScope&) { Text("long long long long long long long long long long long long", Tag({}, "label")); };
+            OutlinedTextField(state, Tag(RequiredSize({}, 200_dp, ui::Dp::Unspecified()), "textField"), o);
+        });
+        std::int64_t t = 0;
+        Press(h, t, "textField", true);
+        h.AdvanceTimeBy(1000);
+        const auto b = UnclippedBoundsDp(h, "label");
+        CHECK(b && b->Height() > 0 && std::abs(b->Width() - (200 - 32)) <= 0.5f && std::abs(b->left - 16) <= 0.5f);
+        CHECK(b && std::abs(b->top - (inside ? 8 : 8 - b->Height() / 2)) <= 0.5f);
+    }
+}
+
+TEST(OutlinedTextFieldLabelSizes) {
+    {
+        // A tall label makes the unfocused field at least as tall.
+        PhoneHarness h;
+        foundation::TextFieldState state;
+        Themed(h, [&] {
+            TextFieldOptions o;
+            o.label = [](const TextFieldLabelScope&) { Box(SizeMod({}, 50_dp, 200_dp)); };
+            OutlinedTextField(state, Tag({}, "textField"), o);
+        });
+        h.AdvanceTimeBy(300);
+        const auto b = UnclippedBoundsDp(h, "textField");
+        CHECK(b && b->Height() >= 200);
+    }
+    {
+        // In the outline, the label is not squeezed by a trailing icon.
+        PhoneHarness h;
+        foundation::TextFieldState state;
+        Themed(h, [&] {
+            TextFieldOptions o;
+            o.label = [](const TextFieldLabelScope&) { Text("Label", Tag(Width({}, 65_dp), "label")); };
+            o.trailingIcon = [] { Icon(internal::Icons::Filled::Edit(), std::nullopt); };
+            OutlinedTextField(state, Tag(RequiredSize({}, 100_dp, ui::Dp::Unspecified()), "textField"), o);
+        });
+        std::int64_t t = 0;
+        Press(h, t, "textField", true);
+        h.AdvanceTimeBy(1000);
+        const auto b = UnclippedBoundsDp(h, "label");
+        CHECK(b && Near(b->Width(), 65));
+    }
+    {
+        // Zero-alpha slots are left out entirely.
+        PhoneHarness h;
+        foundation::TextFieldState state;
+        Themed(h, [&] {
+            TextFieldOptions o = Labelled();
+            o.placeholder = [] { Text("Placeholder", Tag({}, "Placeholder")); };
+            o.prefix = [] { Text("Prefix", Tag({}, "Prefix")); };
+            o.suffix = [] { Text("Suffix", Tag({}, "Suffix")); };
+            OutlinedTextField(state, {}, o);
+        });
+        h.AdvanceTimeBy(300);
+        for (const char* tag : { "Placeholder", "Prefix", "Suffix" }) CHECK(FindTagged(h, tag) == nullptr);
+    }
+}
