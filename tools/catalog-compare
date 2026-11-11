@@ -1,0 +1,97 @@
+#!/usr/bin/env python3
+"""Sets a kiln catalog screen beside the Compose one.
+
+usage: tools/catalog-compare [--out DIR] [--wait SECONDS] ROUTE...
+       tools/catalog-compare --all [--component ID]
+
+Each ROUTE ("example/5/0", "component/5", "home") opens in the androidx material3 catalog
+(dev.kiln.m3catalog, built from ~/dev/os/inspiration/m3-apps/catalog) and in kiln's
+(dev.kiln.catalog, samples/catalog). Writes <route>.png: Compose | kiln | difference, with
+the status bar cut off, and prints the share of pixels that differ (channel delta > 24).
+--all goes through every ported example (or one component's). Needs ANDROID_SERIAL.
+"""
+import argparse, io, os, re, subprocess, sys, time
+
+import numpy
+
+from PIL import Image, ImageChops
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+COMPOSE = "dev.kiln.m3catalog/.MainActivity"
+KILN = "dev.kiln.catalog/dev.kiln.KilnActivity"
+
+
+def adb(*args, **kw):
+    return subprocess.run(["adb", *args], check=True, capture_output=True, **kw).stdout
+
+
+def shot():
+    return Image.open(io.BytesIO(adb("exec-out", "screencap", "-p"))).convert("RGB")
+
+
+def capture(route, wait):
+    adb("shell", "am", "force-stop", COMPOSE.split("/")[0])
+    adb("shell", "am", "start", "-W", "-n", COMPOSE, "-e", "route", route)
+    time.sleep(wait)
+    compose = shot()
+    adb("shell", "am", "force-stop", KILN.split("/")[0])
+    adb("shell", "setprop", "debug.kiln.catalog.route", route)
+    adb("shell", "am", "start", "-W", "-n", KILN)
+    time.sleep(wait)
+    kiln = shot()
+    return compose, kiln
+
+
+def compare(route, out, wait):
+    compose, kiln = capture(route, wait)
+    top = int(compose.height * 0.04)   # the status bar (clock) always differs
+    compose = compose.crop((0, top, compose.width, compose.height))
+    kiln = kiln.crop((0, top, kiln.width, kiln.height))
+    diff = ImageChops.difference(compose, kiln)
+    mask = diff.convert("L").point(lambda v: 255 if v > 24 else 0)
+    share = float((numpy.asarray(mask) > 0).mean())
+    red = Image.new("RGB", compose.size, (255, 0, 0))
+    overlay = Image.composite(red, Image.blend(compose, Image.new("RGB", compose.size, (255, 255, 255)), 0.7), mask)
+    sheet = Image.new("RGB", (compose.width * 3, compose.height), "white")
+    for i, im in enumerate((compose, kiln, overlay)):
+        sheet.paste(im, (i * compose.width, 0))
+    sheet = sheet.resize((sheet.width // 2, sheet.height // 2))
+    path = os.path.join(out, route.replace("/", "_") + ".png")
+    sheet.save(path)
+    print(f"{route}\t{share * 100:.2f}% differ\t{path}")
+
+
+def ported_routes(component):
+    src = open(os.path.join(HERE, "..", "samples", "catalog", "Registry.gen.cpp")).read()
+    routes, cid = [], 0
+    for line in src.split("\n"):
+        m = re.match(r"\s*\{ (\d+), \"", line)
+        if m:
+            cid, index = int(m.group(1)), 0
+            continue
+        m = re.match(r"\s*\{ \"[^\"]*\", .*, (samples::\w+|nullptr) \},", line)
+        if m:
+            if m.group(1) != "nullptr" and component in (None, cid):
+                routes.append(f"example/{cid}/{index}")
+            index += 1
+    return routes
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("routes", nargs="*")
+    ap.add_argument("--all", action="store_true")
+    ap.add_argument("--component", type=int)
+    ap.add_argument("--wait", type=float, default=2.5)
+    ap.add_argument("--out", default=os.path.join(HERE, "..", "build", "compare"))
+    a = ap.parse_args()
+    if "ANDROID_SERIAL" not in os.environ:
+        sys.exit("catalog-compare: set ANDROID_SERIAL")
+    os.makedirs(a.out, exist_ok=True)
+    routes = a.routes + (ported_routes(a.component) if a.all else [])
+    for r in routes:
+        compare(r, a.out, a.wait)
+
+
+if __name__ == "__main__":
+    main()
