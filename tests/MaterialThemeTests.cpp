@@ -8985,7 +8985,7 @@ TEST(AlertDialogWidths) {
                 if (kind == 0) o.dismissButton = [] { TextButton([] {}, {}, {}, [] { Text("Dismiss"); }); };
                 AlertDialog([] {}, [] { TextButton([] {}, {}, {}, [] { Text("Confirm"); }); }, record(kind == 0 ? FillMax({}, Axis::Horizontal) : ui::Modifier{}), o);
             } else {
-                BasicAlertDialog([] {}, kind == 4 ? Width({}, 150_dp) : ui::Modifier{}, {}, [&, kind, longText] {
+                BasicAlertDialog([] {}, kind == 4 ? Width({}, 150_dp) : ui::Modifier{}, {}, [record, kind, longText] {
                     Surface(record(kind == 1 ? FillMax(WrapContent({}, Axis::Vertical), Axis::Horizontal) : ui::Modifier{}), {},
                             [kind, longText] { Text(kind == 1 ? longText : std::string("Short")); });
                 });
