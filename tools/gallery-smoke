@@ -53,6 +53,9 @@ COMPONENTS = {
         expect:Drawer: open, selected: Outbox; back; wait:1000; expect:Drawer: closed, selected: Outbox; swipeon:Dismissible: closed=0,-300,1500; wait:800;
         swipeon:Swipe to reveal={reveal},0,400; wait:1000; expect:Dismissible: open; shot:{p}-drawers-dismissible; back; wait:1000;
         expect:Dismissible: closed''',
+    'search': '''expect:Searched: none; tap:Search fruit; wait:1500; expect:Banana; shot:{p}-search-fullscreen; tap:Banana; wait:1500;
+        expect:Searched: Banana; reject:Cherry; tap:Search places; wait:1500; expect:Library; shot:{p}-search-docked; back; wait:800; back; wait:1500;
+        reject:Library; expect:Searched: Banana''',
     'segmented': '''expect:Single selection: 0; tap:Week; expect:Single selection: 1; tap:Bike; expect:Multiple selection: 3;
         tap:Walk; expect:Multiple selection: 2; shot:{p}-segmented; reach:Disable segments; tap:Disable segments;
         expect:Enable segments; tap:Day; expect:Single selection: 1; shot:{p}-segmented-disabled''',

@@ -34,6 +34,7 @@
 #include <kiln/material3/BottomSheetScaffold.h>
 #include <kiln/material3/ModalBottomSheet.h>
 #include <kiln/material3/NavigationDrawer.h>
+#include <kiln/material3/SearchBar.h>
 #include <kiln/material3/ShortNavigationBar.h>
 #include <kiln/material3/Tab.h>
 #include <kiln/material3/TabRow.h>
@@ -749,6 +750,57 @@ namespace kiln::gallery {
             });
         }
 
+        rt::Task<> CollapseSearch(std::shared_ptr<m3::SearchBarState> state) { co_await state->AnimateToCollapsed(); }
+
+        void Search() {
+            // Results sit on the bar's container (ListItemDefaults.colors(containerColor = Transparent)).
+            m3::LegacyListItemOptions row;
+            m3::ListItemColors transparent;
+            transparent.containerColor = Color::Transparent();
+            row.colors = m3::ListItemDefaults::colors(transparent);
+            auto* picked = &RememberState(std::string("none"));
+            auto jobs = rt::Composition::Current()->Remember<std::shared_ptr<std::vector<rt::Job>>>([] { return std::make_shared<std::vector<rt::Job>>(); });
+            // Reported as text so a test can read it.
+            m3::Text("Searched: " + picked->Get());
+            // A bar that expands to full screen.
+            auto fruitBar = m3::RememberSearchBarState();
+            auto& fruit = foundation::RememberTextFieldState();
+            const auto fruitField = [fruitBar, &fruit, picked] {
+                m3::SearchBarInputFieldOptions o;
+                o.placeholder = [] { m3::Text("Search fruit"); };
+                o.leadingIcon = [] { m3::Icon(m3::internal::Icons::Filled::Edit(), std::nullopt); };
+                m3::SearchBarDefaults::InputField(fruit, fruitBar, [picked](std::string q) { picked->Set(q.empty() ? std::string("(empty)") : q); }, {}, o);
+            };
+            m3::SearchBar(fruitBar, fruitField, Padding({}, 8_dp));
+            m3::ExpandedFullScreenSearchBar(fruitBar, fruitField, {}, {}, [=, &fruit] {
+                for (const char* item : { "Apple", "Banana", "Cherry", "Mango" }) {
+                    m3::ListItem([item] { m3::Text(item); }, Clickable({}, [=, &fruit] {
+                        fruit.SetTextAndPlaceCursorAtEnd(item);
+                        picked->Set(item);
+                        jobs->push_back(rt::Launch(rt::Dispatcher::Main(), CollapseSearch(fruitBar)));
+                    }), row);
+                }
+            });
+            // A docked bar: the results drop down below it.
+            auto placeBar = m3::RememberSearchBarState();
+            auto& place = foundation::RememberTextFieldState();
+            const auto placeField = [placeBar, &place, picked] {
+                m3::SearchBarInputFieldOptions o;
+                o.placeholder = [] { m3::Text("Search places"); };
+                m3::SearchBarDefaults::InputField(place, placeBar, [picked](std::string q) { picked->Set(q); }, {}, o);
+            };
+            m3::SearchBar(placeBar, placeField, Padding({}, 8_dp));
+            m3::ExpandedDockedSearchBar(placeBar, placeField, {}, {}, [=, &place] {
+                for (const char* item : { "Library", "Station", "Park" }) {
+                    m3::ListItem([item] { m3::Text(item); }, Clickable({}, [=, &place] {
+                        place.SetTextAndPlaceCursorAtEnd(item);
+                        picked->Set(item);
+                        jobs->push_back(rt::Launch(rt::Dispatcher::Main(), CollapseSearch(placeBar)));
+                    }), row);
+                }
+            });
+        }
+
         void Tabs() {
             auto* primary = &RememberState(0);
             auto* secondary = &RememberState(0);
@@ -1125,7 +1177,7 @@ namespace kiln::gallery {
         struct Section { const char* key; const char* title; void (*content)(); };
         const std::vector<Section>& Sections() {
             static const std::vector<Section> sections{
-                { "navigation", "Navigation bars and rails", Navigation }, { "tabs", "Tabs", Tabs }, { "appbars", "App bars", AppBars }, { "toolbars", "Floating toolbars", FloatingToolbars }, { "scrollbars", "Scrollbars", Scrollbars }, { "snackbars", "Snackbars", Snackbars }, { "textfields", "Text fields", TextFields }, { "dialogs", "Dialogs", Dialogs }, { "sheets", "Bottom sheets", Sheets }, { "drawers", "Navigation drawers", Drawers }, { "segmented", "Segmented buttons", SegmentedButtons }, { "split", "Split buttons", SplitButtons },
+                { "navigation", "Navigation bars and rails", Navigation }, { "tabs", "Tabs", Tabs }, { "appbars", "App bars", AppBars }, { "toolbars", "Floating toolbars", FloatingToolbars }, { "scrollbars", "Scrollbars", Scrollbars }, { "snackbars", "Snackbars", Snackbars }, { "textfields", "Text fields", TextFields }, { "dialogs", "Dialogs", Dialogs }, { "sheets", "Bottom sheets", Sheets }, { "drawers", "Navigation drawers", Drawers }, { "search", "Search bars", Search }, { "segmented", "Segmented buttons", SegmentedButtons }, { "split", "Split buttons", SplitButtons },
                 { "tooltips", "Tooltips", Tooltips }, { "menus", "Menus", Menus }, { "groups", "Button groups", ButtonGroups },
                 { "sliders", "Sliders", Sliders }, { "progress", "Progress indicators", ProgressIndicators }, { "lists", "Lists", Lists },
                 { "chips", "Chips", Chips }, { "cards", "Cards", Cards }, { "selection", "", SelectionControls },
