@@ -87,6 +87,34 @@ namespace kiln::ui {
     int LayoutModifier::MinIntrinsicHeight(MeasureScope& s, Measurable& w, int width) { return ThroughModifier(*this, s, w, Kind::MinHeight, width); }
     int LayoutModifier::MaxIntrinsicHeight(MeasureScope& s, Measurable& w, int width) { return ThroughModifier(*this, s, w, Kind::MaxHeight, width); }
 
+    MeasureResult ApproachLayoutModifier::Measure(MeasureScope& scope, Measurable& wrapped, const Constraints& c) {
+        Placeable& p = wrapped.Measure(c);
+        return scope.Layout(p.Width(), p.Height(), [&p](PlacementScope& s) { s.Place(p, 0, 0); });
+    }
+
+    namespace {
+        // NodeMeasuringIntrinsics with an ApproachMeasureBlock.
+        int ThroughApproach(ApproachLayoutModifier& mod, ApproachMeasureScope* s, Measurable& wrapped, Kind kind, int cross) {
+            if (!s) {
+                switch (kind) {
+                    case Kind::MinWidth: return wrapped.MinIntrinsicWidth(cross);
+                    case Kind::MaxWidth: return wrapped.MaxIntrinsicWidth(cross);
+                    case Kind::MinHeight: return wrapped.MinIntrinsicHeight(cross);
+                    case Kind::MaxHeight: return wrapped.MaxIntrinsicHeight(cross);
+                }
+            }
+            Measurable* one[] = { &wrapped };
+            return intrinsics::Measure(kind, cross, one, [&](std::span<Measurable* const> m, const Constraints& c) {
+                return mod.ApproachMeasure(*s, *m[0], c);
+            });
+        }
+    }
+
+    int ApproachLayoutModifier::MinApproachIntrinsicWidth(ApproachMeasureScope* s, Measurable& w, int h) { return ThroughApproach(*this, s, w, Kind::MinWidth, h); }
+    int ApproachLayoutModifier::MaxApproachIntrinsicWidth(ApproachMeasureScope* s, Measurable& w, int h) { return ThroughApproach(*this, s, w, Kind::MaxWidth, h); }
+    int ApproachLayoutModifier::MinApproachIntrinsicHeight(ApproachMeasureScope* s, Measurable& w, int width) { return ThroughApproach(*this, s, w, Kind::MinHeight, width); }
+    int ApproachLayoutModifier::MaxApproachIntrinsicHeight(ApproachMeasureScope* s, Measurable& w, int width) { return ThroughApproach(*this, s, w, Kind::MaxHeight, width); }
+
     namespace {
         // mergeRulerValues: the largest (or smallest) value among the rulers that have one.
         template<typename R>

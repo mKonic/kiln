@@ -87,31 +87,18 @@ namespace kiln::foundation {
     // State read in the block remeasures it.
     using LayoutModifierMeasure = std::function<MeasureResult(MeasureScope&, Measurable&, const Constraints&)>;
     Modifier LayoutMod(Modifier m, LayoutModifierMeasure measure);
+    // Modifier.approachLayout: an ApproachLayoutModifier from lambdas (see Layout.h). The
+    // placement check defaults to never in progress.
+    using ApproachMeasure = std::function<MeasureResult(ui::ApproachMeasureScope&, Measurable&, const Constraints&)>;
+    Modifier ApproachLayout(Modifier m, std::function<bool(IntSize lookaheadSize)> isMeasurementApproachInProgress,
+                            std::function<bool(PlacementScope&, const ui::LayoutCoordinates& lookaheadCoordinates)> isPlacementApproachInProgress,
+                            ApproachMeasure approachMeasure);
     // onSizeChanged: called after measuring when the size differs from the last one (and the first time).
     Modifier OnSizeChanged(Modifier m, std::function<void(IntSize)> onSizeChanged);
     // LayoutCoordinates as onGloballyPositioned hands them over: a live view of the space the
     // modifier sits in (read when asked, so a stored copy follows later moves). Popups share the
     // window's root, so root positions stand in for positionOnScreen.
-    class LayoutCoordinates {
-    public:
-        LayoutCoordinates() = default;
-        LayoutCoordinates(const ui::LayoutNode* node, const ui::ModifierNode* at, std::weak_ptr<const char> alive)
-            : m_Node(node), m_At(at), m_Alive(std::move(alive)) {}
-        bool IsAttached() const;
-        IntSize GetSize() const;
-        Offset PositionInRoot() const;
-        Rect BoundsInRoot() const;
-        // positionInParent / parentLayoutCoordinates.size: in the parent layout's content space
-        // (where it places its children; the root's own position and the window without one).
-        Offset PositionInParent() const;
-        IntSize ParentSize() const;
-        bool operator==(const LayoutCoordinates& o) const { return m_Node == o.m_Node && m_At == o.m_At; }
-
-    private:
-        const ui::LayoutNode* m_Node = nullptr;
-        const ui::ModifierNode* m_At = nullptr;
-        std::weak_ptr<const char> m_Alive;
-    };
+    using LayoutCoordinates = ui::LayoutCoordinates;
     // onGloballyPositioned: called after a layout pass when the space it sits in moved, changed
     // its transform or its size (and the first time).
     Modifier OnGloballyPositioned(Modifier m, std::function<void(const LayoutCoordinates&)> onGloballyPositioned);

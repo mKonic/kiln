@@ -57,9 +57,11 @@ namespace kiln::ui {
         std::any extra;                   // other layouts' data
     };
 
+    class ApproachLayoutModifier;
     class LayoutModifier {
     public:
         virtual ~LayoutModifier() = default;
+        virtual ApproachLayoutModifier* AsApproach() { return nullptr; }
         virtual MeasureResult Measure(MeasureScope& scope, Measurable& wrapped, const Constraints& c) = 0;
         // Defaults measure through the modifier with intrinsic stand-ins (Compose's
         // NodeMeasuringIntrinsics); modifiers that change size should override.

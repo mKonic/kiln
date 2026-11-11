@@ -24,6 +24,33 @@ namespace kiln::foundation {
     }
 
     namespace {
+        // LookaheadScopeImpl: the scope's coordinates are its parent's children space (or, at
+        // the root, its first child's).
+        struct LookaheadScopeImpl final : ui::LookaheadScope {
+            LayoutNode* node = nullptr;
+            ui::LayoutCoordinates LookaheadScopeCoordinates(const PlacementScope&) const override {
+                if (!node) return {};
+                if (const LayoutNode* p = node->Parent()) return p->InnerCoordinates();
+                return node->Children().empty() ? ui::LayoutCoordinates{} : node->Children().front()->OuterCoordinates();
+            }
+        };
+    }
+
+    void LookaheadScope(std::function<void(ui::LookaheadScope&)> content, Key key) {
+        auto* c = rt::Composition::Current();
+        auto& scope = c->Remember<std::shared_ptr<LookaheadScopeImpl>>([] { return std::make_shared<LookaheadScopeImpl>(); }, {}, key);
+        auto impl = scope;
+        c->Node<LayoutNode>([] {
+                                auto n = std::make_unique<LayoutNode>();
+                                n->SetVirtual(true);
+                                n->SetVirtualLookaheadRoot(true);
+                                return n;
+                            },
+                            [&](LayoutNode& n) { impl->node = &n; },
+                            [impl, content = std::move(content)] { if (content) content(*impl); }, key);
+    }
+
+    namespace {
         // A layout whose policy is a value type: keep the node's current policy if equal.
         template<typename P, typename... A>
         void ValueLayout(const Modifier& modifier, std::function<void()> content, Key key, A&&... args) {

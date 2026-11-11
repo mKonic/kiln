@@ -9,6 +9,8 @@
 #include "kiln/ui/Modifier.h"
 
 #include <functional>
+#include <memory>
+#include <optional>
 #include <span>
 #include <vector>
 
@@ -16,6 +18,48 @@ namespace kiln::ui {
 
     class PlacementScope;
     class WindowInsetsHolder;
+    class LayoutNode;
+
+    class ModifierNode;
+
+    // LayoutCoordinates: a space of a node. One of its coordinators (0: its outer bounds, the
+    // last: the space its children are placed in), in the main layout or in the lookahead one
+    // (LookaheadLayoutCoordinates: where the lookahead pass put it); or the space a modifier sits
+    // in (through the layers before it), as onGloballyPositioned hands it over. A view read when
+    // asked: a stored copy follows later moves. It does not keep the node alive; with an alive
+    // token it notices the node is gone.
+    struct LayoutCoordinates {
+        LayoutCoordinates() = default;
+        LayoutCoordinates(const LayoutNode* node, std::size_t coordinator, bool lookahead = false)
+            : node(node), coordinator(coordinator), lookahead(lookahead) {}
+        LayoutCoordinates(const LayoutNode* node, const ModifierNode* at, std::weak_ptr<const char> alive)
+            : node(node), at(at), alive(std::move(alive)), tracked(true) {}
+
+        const LayoutNode* node = nullptr;
+        std::size_t coordinator = 0;
+        bool lookahead = false;
+        const ModifierNode* at = nullptr;   // a modifier's space instead of a coordinator's
+        std::weak_ptr<const char> alive;
+        bool tracked = false;
+
+        // The node is there and placed.
+        bool IsAttached() const;
+        IntSize Size() const;
+        IntSize GetSize() const { return IsAttached() ? Size() : IntSize{}; }
+        Offset PositionInRoot() const;
+        Rect BoundsInRoot() const;
+        // positionInParent / parentLayoutCoordinates.size: in the parent layout's content space
+        // (where it places its children; the root's own position and the window without one).
+        Offset PositionInParent() const;
+        IntSize ParentSize() const;
+        // localPositionOf: `relativeToSource` in `source`'s space, in this one. Main coordinates
+        // map through every layer; lookahead ones add up lookahead offsets, and cross into main
+        // space at their lookahead root's parent (as LookaheadLayoutCoordinates does).
+        Offset LocalPositionOf(const LayoutCoordinates& source, Offset relativeToSource = {}) const;
+        bool operator==(const LayoutCoordinates& o) const {
+            return node == o.node && coordinator == o.coordinator && lookahead == o.lookahead && at == o.at;
+        }
+    };
 
     // Ruler (Ruler.kt): a line an ancestor's layout provides to its whole subtree, read during
     // placement. Vertical rulers are x positions, horizontal ones y positions. A ruler is its
@@ -169,12 +213,21 @@ namespace kiln::ui {
         // The window's insets (for WindowInsetsRulers.getAnimation), when attached.
         const WindowInsetsHolder* Insets() const { return m_Insets; }
         void SetInsets(const WindowInsetsHolder* h) { m_Insets = h; }
+        // PlacementScope.coordinates: the layout placing (its lookahead coordinates in the
+        // lookahead pass); null outside a node's placement.
+        const LayoutCoordinates* Coordinates() const { m_CoordinatesRead = true; return m_Coords ? &*m_Coords : nullptr; }
+        void SetCoordinates(LayoutCoordinates c) { m_Coords = c; }
+        // Whether the placement read Coordinates (it then reruns when the layout moves).
+        bool CoordinatesRead() const { return m_CoordinatesRead; }
+        bool IsLookingAhead() const { return m_Coords && m_Coords->lookahead; }
 
     private:
         LayoutDirection m_Dir;
         int m_ParentWidth;
         std::function<float(const Ruler&, float)> m_Lookup;
         const WindowInsetsHolder* m_Insets = nullptr;
+        std::optional<LayoutCoordinates> m_Coords;
+        mutable bool m_CoordinatesRead = false;
     };
 
     struct MeasureResult {
@@ -188,8 +241,11 @@ namespace kiln::ui {
 
     class MeasureScope : public Density {
     public:
-        MeasureScope(Density d, LayoutDirection dir) : Density(d), m_Dir(dir) {}
+        MeasureScope(Density d, LayoutDirection dir, bool lookingAhead = false) : Density(d), m_Dir(dir), m_LookingAhead(lookingAhead) {}
         LayoutDirection Direction() const { return m_Dir; }
+        // isLookingAhead: this measure is the lookahead pass of a LookaheadScope (it settles the
+        // destination layout; the main pass then approaches it).
+        bool IsLookingAhead() const { return m_LookingAhead; }
         MeasureResult Layout(int width, int height, std::function<void(PlacementScope&)> place = {},
                              std::vector<std::pair<const AlignmentLine*, int>> lines = {}) const {
             return { width, height, std::move(place), std::move(lines) };
@@ -201,6 +257,52 @@ namespace kiln::ui {
 
     private:
         LayoutDirection m_Dir;
+        bool m_LookingAhead = false;
+    };
+
+    // ApproachMeasureScope: the main pass of an approach modifier, with the lookahead pass's
+    // constraints and size for it (the destination it approaches).
+    class ApproachMeasureScope : public MeasureScope {
+    public:
+        ApproachMeasureScope(const MeasureScope& s, Constraints lookaheadConstraints, IntSize lookaheadSize)
+            : MeasureScope(s), lookaheadConstraints(lookaheadConstraints), lookaheadSize(lookaheadSize) {}
+        Constraints lookaheadConstraints;
+        IntSize lookaheadSize;
+    };
+
+    // ApproachLayoutModifierNode: in a LookaheadScope, measures like Measure (by default straight
+    // through) in the lookahead pass, and in the main pass approaches that result, typically
+    // animating from where it was. While neither IsMeasurementApproachInProgress nor
+    // IsPlacementApproachInProgress holds, the approach is complete: what it wraps is measured
+    // with the lookahead constraints and placed at its lookahead offset. Outside a lookahead
+    // scope, the node it is on becomes a lookahead root of its own.
+    class ApproachLayoutModifier : public LayoutModifier {
+    public:
+        virtual bool IsMeasurementApproachInProgress(IntSize lookaheadSize) = 0;
+        virtual bool IsPlacementApproachInProgress(PlacementScope&, const LayoutCoordinates& /*lookaheadCoordinates*/) { return false; }
+        MeasureResult Measure(MeasureScope& scope, Measurable& wrapped, const Constraints& c) override;
+        virtual MeasureResult ApproachMeasure(ApproachMeasureScope& scope, Measurable& wrapped, const Constraints& c) = 0;
+        // The approach pass's intrinsics: through ApproachMeasure once a lookahead measure
+        // happened (`scope` then carries its results), else those of what it wraps.
+        virtual int MinApproachIntrinsicWidth(ApproachMeasureScope* scope, Measurable& wrapped, int height);
+        virtual int MaxApproachIntrinsicWidth(ApproachMeasureScope* scope, Measurable& wrapped, int height);
+        virtual int MinApproachIntrinsicHeight(ApproachMeasureScope* scope, Measurable& wrapped, int width);
+        virtual int MaxApproachIntrinsicHeight(ApproachMeasureScope* scope, Measurable& wrapped, int width);
+        ApproachLayoutModifier* AsApproach() override { return this; }
+    };
+
+    // LookaheadScope: the scope a LookaheadScope composable (or an approach modifier's lookahead
+    // root) gives its content, for converting between lookahead and main coordinates.
+    class LookaheadScope {
+    public:
+        virtual ~LookaheadScope() = default;
+        // toLookaheadCoordinates: the same layout in lookahead space (itself when it has no
+        // lookahead result).
+        virtual LayoutCoordinates ToLookaheadCoordinates(const LayoutCoordinates& c) const;
+        // lookaheadScopeCoordinates: the scope's own coordinates (main space), during placement.
+        virtual LayoutCoordinates LookaheadScopeCoordinates(const PlacementScope& scope) const = 0;
+        // localLookaheadPositionOf: both converted to lookahead space, then localPositionOf.
+        Offset LocalLookaheadPositionOf(const LayoutCoordinates& self, const LayoutCoordinates& source, Offset relativeToSource = {}) const;
     };
 
     // A layout's measure policy (MeasurePolicy). Intrinsics default to measuring the policy

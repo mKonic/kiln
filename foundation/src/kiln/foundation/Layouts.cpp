@@ -439,6 +439,24 @@ namespace kiln::foundation {
             MeasureResult Measure(MeasureScope& s, Measurable& m, const Constraints& c) override { return params.measure(s, m, c); }
         };
 
+        struct ApproachParams {
+            std::function<bool(IntSize)> measuring;
+            std::function<bool(PlacementScope&, const ui::LayoutCoordinates&)> placing;
+            ApproachMeasure measure;
+            bool operator==(const ApproachParams&) const { return false; }
+        };
+        struct ApproachNode final : ModifierNode, ui::ApproachLayoutModifier {
+            ApproachParams params;
+            explicit ApproachNode(ApproachParams p) : params(std::move(p)) {}
+            void OnParamsChanged() { InvalidateMeasure(); }
+            LayoutModifier* AsLayout() override { return this; }
+            bool IsMeasurementApproachInProgress(IntSize lookaheadSize) override { return params.measuring(lookaheadSize); }
+            bool IsPlacementApproachInProgress(PlacementScope& s, const ui::LayoutCoordinates& c) override {
+                return params.placing && params.placing(s, c);
+            }
+            MeasureResult ApproachMeasure(ui::ApproachMeasureScope& s, Measurable& m, const Constraints& c) override { return params.measure(s, m, c); }
+        };
+
         struct SizeChangedParams {
             std::function<void(IntSize)> callback;
             bool operator==(const SizeChangedParams&) const { return false; }
@@ -903,37 +921,12 @@ namespace kiln::foundation {
         return m.With<OffsetPxNode>(OffsetPxParams{ std::move(offset), rtlAware });
     }
     Modifier LayoutMod(Modifier m, LayoutModifierMeasure measure) { return m.With<LayoutBlockNode>(LayoutBlockParams{ std::move(measure) }); }
+    Modifier ApproachLayout(Modifier m, std::function<bool(IntSize)> measuring, std::function<bool(PlacementScope&, const ui::LayoutCoordinates&)> placing,
+                            ApproachMeasure measure) {
+        return m.With<ApproachNode>(ApproachParams{ std::move(measuring), std::move(placing), std::move(measure) });
+    }
     Modifier OnSizeChanged(Modifier m, std::function<void(IntSize)> f) { return m.With<SizeChangedNode>(SizeChangedParams{ std::move(f) }); }
 
-    bool LayoutCoordinates::IsAttached() const { return m_Node && !m_Alive.expired() && m_Node->IsPlaced(); }
-    IntSize LayoutCoordinates::GetSize() const {
-        if (!IsAttached()) return {};
-        ui::Size size;
-        m_Node->SpaceToRoot(m_At, &size);
-        return { int(std::lround(size.width)), int(std::lround(size.height)) };
-    }
-    Offset LayoutCoordinates::PositionInRoot() const {
-        if (!IsAttached()) return {};
-        return ui::LayoutNode::MapPoint(m_Node->SpaceToRoot(m_At), {});
-    }
-    Offset LayoutCoordinates::PositionInParent() const {
-        if (!IsAttached()) return {};
-        const Offset root = PositionInRoot();
-        const ui::LayoutNode* parent = m_Node->Parent();
-        if (!parent) return root;
-        return ui::LayoutNode::UnmapPoint(parent->InnerToRoot(), root).value_or(Offset{});
-    }
-    IntSize LayoutCoordinates::ParentSize() const {
-        if (!IsAttached()) return {};
-        const ui::LayoutNode* parent = m_Node->Parent();
-        return parent ? parent->InnerSize() : IntSize{};
-    }
-    Rect LayoutCoordinates::BoundsInRoot() const {
-        if (!IsAttached()) return {};
-        ui::Size size;
-        m_Node->SpaceToRoot(m_At, &size);
-        return m_Node->RectInRoot(Rect{ 0, 0, size.width, size.height }, m_At);
-    }
     namespace {
         struct GloballyPositionedParams {
             std::function<void(const LayoutCoordinates&)> callback;

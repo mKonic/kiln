@@ -75,6 +75,41 @@ namespace kiln::ui {
 
     // --- Coordinators -------------------------------------------------------------------------
 
+    // A coordinator's lookahead pass (LookaheadDelegate): its own measure result, constraints
+    // and position, measuring and placing the lookahead delegates of what it wraps (or of the
+    // children's outer coordinators).
+    struct LayoutNode::LookaheadDelegate final : Measurable, Placeable {
+        LayoutNode& node;
+        std::size_t index;
+        MeasureResult result;
+        Constraints constraints;
+        bool measured = false;
+        IntOffset position;      // within the enclosing coordinator (0: in the parent)
+        bool placed = false;
+        std::vector<Measurable*> children;
+
+        LookaheadDelegate(LayoutNode& n, std::size_t i) : node(n), index(i) {}
+        LookaheadDelegate* Next() { return index + 1 < node.m_Coordinators.size() ? &node.La(index + 1) : nullptr; }
+        IntSize Size() const { return { Width(), Height() }; }
+        MeasureScope Scope() const { return MeasureScope(node.NodeDensity(), node.GetLayoutDirection(), true); }
+        std::vector<Measurable*> ChildMeasurables() {
+            std::vector<Measurable*> out;
+            out.reserve(node.m_Children.size());
+            for (LayoutNode* c : node.m_Children) out.push_back(&c->AsLookaheadMeasurable());
+            return out;
+        }
+        Placeable& Measure(const Constraints& c) override;
+        Placeable& MeasureHere(const Constraints& c);
+        int Get(const AlignmentLine& line) override;
+        void PlaceAt(IntOffset p, float z) override;
+        int MinIntrinsicWidth(int h) override;
+        int MaxIntrinsicWidth(int h) override;
+        int MinIntrinsicHeight(int w) override;
+        int MaxIntrinsicHeight(int w) override;
+        const ParentData& GetParentData() const override { return node.m_ParentData; }
+        void SetMeasuredSize(IntSize size, const Constraints& c) { SetMeasured(size, c); }
+    };
+
     struct LayoutNode::Coordinator final : Measurable, Placeable {
         LayoutNode& node;
         std::size_t index;
@@ -88,6 +123,12 @@ namespace kiln::ui {
         IntOffset position;                  // within the enclosing coordinator (0: in parent)
         float zIndex = 0;                    // as placed by the enclosing coordinator (or parent)
         bool placed = false;                // enclosing layout modifier placed this coordinator
+        // Lookahead: this coordinator's lookahead pass, and the approach pass's state (an approach
+        // modifier that is not approaching measures what it wraps with the lookahead constraints
+        // and places it at its lookahead offset).
+        std::unique_ptr<LookaheadDelegate> la;
+        bool forceLookaheadConstraints = false, forceLookaheadOffset = false, approachMeasureRequired = false;
+        bool InLookahead() const { return node.m_Lookahead && la && la->measured; }
 
         // The list handed to the policy. It lives until the next measure, so a policy's placement
         // lambda may keep the span it was given (they usually do).
@@ -106,12 +147,27 @@ namespace kiln::ui {
 
         Placeable& Measure(const Constraints& c) override {
             if (index == 0) return node.MeasureNode(c);
-            return MeasureHere(c);
+            return MeasureHere(forceLookaheadConstraints && la ? la->constraints : c);
         }
 
         Placeable& MeasureHere(const Constraints& c) {
             MeasureScope scope = node.Scope();
-            if (mod) {
+            ApproachLayoutModifier* approach = mod ? mod->AsApproach() : nullptr;
+            if (approach && InLookahead()) {
+                // LayoutModifierNodeCoordinator.measure in the approach pass.
+                const IntSize lookaheadSize = la->Size();
+                ApproachMeasureScope as(scope, la->constraints, lookaheadSize);
+                approachMeasureRequired = approach->IsMeasurementApproachInProgress(lookaheadSize) || !(c == la->constraints);
+                Coordinator* w = Next();
+                if (!approachMeasureRequired) w->forceLookaheadConstraints = true;
+                result = approach->ApproachMeasure(as, *w, c);
+                w->forceLookaheadConstraints = false;
+                const bool reachedLookaheadSize = result.width == la->Width() && result.height == la->Height();
+                if (!approachMeasureRequired && w->la && w->Width() == w->la->Width() && w->Height() == w->la->Height() && !reachedLookaheadSize) {
+                    result.width = la->Width();
+                    result.height = la->Height();
+                }
+            } else if (mod) {
                 result = mod->Measure(scope, *Next(), c);
             } else {
                 children = ChildMeasurables();
@@ -169,10 +225,16 @@ namespace kiln::ui {
         }
 
         void PlaceAt(IntOffset p, float z) override {
+            if (index == 0 && InLookahead() && (node.IsOutMostLookaheadRoot() || !node.m_Lookahead->placed)) {
+                // A lookahead root (or a node its parent did not place in lookahead) is placed in
+                // lookahead where the main pass places it, first.
+                la->PlaceAt(p, z);
+            }
             placed = true;
             if (index == 0) {
                 LayoutNode* parent = node.m_Parent;
                 const bool moved = !node.m_Placed || node.m_Position != p || zIndex != z;
+                if (node.m_Placed && node.m_Position != p) node.OnMoved();
                 node.m_Position = p;
                 zIndex = z;
                 node.UpdateZIndex();
@@ -186,8 +248,11 @@ namespace kiln::ui {
                 }
                 node.LayoutIfNeeded();
             } else {
-                if (position != p)
+                if (forceLookaheadOffset && la) p = la->position;
+                if (position != p) {
                     if (Owner* o = node.GetOwner()) o->NotifyLayoutChange(node);
+                    if (placed) node.OnMoved();
+                }
                 position = p;
                 // A layout modifier's zIndex adds to the node's (Modifier.zIndex).
                 if (zIndex != z) { zIndex = z; node.UpdateZIndex(); }
@@ -196,24 +261,44 @@ namespace kiln::ui {
 
         int MinIntrinsicWidth(int h) override {
             MeasureScope s = node.Scope();
+            if (mod && mod->AsApproach() && node.m_Lookahead) {
+                if (!InLookahead()) return mod->AsApproach()->MinApproachIntrinsicWidth(nullptr, *Next(), h);
+                ApproachMeasureScope as(s, la->constraints, la->Size());
+                return mod->AsApproach()->MinApproachIntrinsicWidth(&as, *Next(), h);
+            }
             if (mod) return mod->MinIntrinsicWidth(s, *Next(), h);
             auto ch = ChildMeasurables();
             return node.m_Policy ? node.m_Policy->MinIntrinsicWidth(s, ch, h) : 0;
         }
         int MaxIntrinsicWidth(int h) override {
             MeasureScope s = node.Scope();
+            if (mod && mod->AsApproach() && node.m_Lookahead) {
+                if (!InLookahead()) return mod->AsApproach()->MaxApproachIntrinsicWidth(nullptr, *Next(), h);
+                ApproachMeasureScope as(s, la->constraints, la->Size());
+                return mod->AsApproach()->MaxApproachIntrinsicWidth(&as, *Next(), h);
+            }
             if (mod) return mod->MaxIntrinsicWidth(s, *Next(), h);
             auto ch = ChildMeasurables();
             return node.m_Policy ? node.m_Policy->MaxIntrinsicWidth(s, ch, h) : 0;
         }
         int MinIntrinsicHeight(int w) override {
             MeasureScope s = node.Scope();
+            if (mod && mod->AsApproach() && node.m_Lookahead) {
+                if (!InLookahead()) return mod->AsApproach()->MinApproachIntrinsicHeight(nullptr, *Next(), w);
+                ApproachMeasureScope as(s, la->constraints, la->Size());
+                return mod->AsApproach()->MinApproachIntrinsicHeight(&as, *Next(), w);
+            }
             if (mod) return mod->MinIntrinsicHeight(s, *Next(), w);
             auto ch = ChildMeasurables();
             return node.m_Policy ? node.m_Policy->MinIntrinsicHeight(s, ch, w) : 0;
         }
         int MaxIntrinsicHeight(int w) override {
             MeasureScope s = node.Scope();
+            if (mod && mod->AsApproach() && node.m_Lookahead) {
+                if (!InLookahead()) return mod->AsApproach()->MaxApproachIntrinsicHeight(nullptr, *Next(), w);
+                ApproachMeasureScope as(s, la->constraints, la->Size());
+                return mod->AsApproach()->MaxApproachIntrinsicHeight(&as, *Next(), w);
+            }
             if (mod) return mod->MaxIntrinsicHeight(s, *Next(), w);
             auto ch = ChildMeasurables();
             return node.m_Policy ? node.m_Policy->MaxIntrinsicHeight(s, ch, w) : 0;
@@ -228,14 +313,19 @@ namespace kiln::ui {
     LayoutNode::~LayoutNode() {
         // Children may already be destroyed (the composition frees a removed subtree bottom-up),
         // so only unhook this node itself.
+        if (m_Virtual && m_Parent) std::erase(m_Parent->m_Virtuals, this);
         if (m_Owner) m_Owner->Forget(*this);
         for (auto& n : m_Nodes) if (n->m_Owner) { n->OnDetach(); n->m_Owner = nullptr; }
     }
 
     void LayoutNode::Watcher::OnStateChanged() {
-        if (phase == 0) node.RequestRemeasure();
-        else if (phase == 1) node.RequestRelayout();
-        else node.InvalidateDraw();
+        switch (phase) {
+            case 0: node.RequestMainRemeasure(); break;
+            case 1: node.RequestMainRelayout(); break;
+            case 3: node.RequestLookaheadRemeasure(); break;
+            case 4: node.RequestLookaheadRelayout(); break;
+            default: node.InvalidateDraw(); break;
+        }
     }
 
     MeasureScope LayoutNode::Scope() const {
@@ -266,6 +356,34 @@ namespace kiln::ui {
     }
 
     Measurable& LayoutNode::AsMeasurable() { return *m_Coordinators.front(); }
+    Measurable& LayoutNode::AsLookaheadMeasurable() { return La(0); }
+
+    LayoutNode::LookaheadDelegate& LayoutNode::La(std::size_t index) {
+        auto& c = *m_Coordinators[index];
+        if (!c.la) c.la = std::make_unique<LookaheadDelegate>(*this, index);
+        return *c.la;
+    }
+
+    std::optional<IntSize> LayoutNode::LookaheadSize() const {
+        const auto& la = m_Coordinators.front()->la;
+        if (!m_Lookahead || !la || !la->measured) return std::nullopt;
+        return la->Size();
+    }
+
+    std::optional<IntOffset> LayoutNode::LookaheadPosition() const {
+        if (!m_Lookahead || !m_Lookahead->placed) return std::nullopt;
+        return m_Lookahead->position;
+    }
+
+    LayoutCoordinates LayoutNode::CoordinatesOf(const ModifierNode* at) const {
+        std::size_t ci = 0;
+        if (at)
+            for (const auto& node : m_Nodes) {
+                if (node.get() == at) break;
+                if (node->AsLayout()) ++ci;
+            }
+        return { const_cast<LayoutNode*>(this), ci, false };
+    }
 
     IntSize LayoutNode::Size() const {
         const auto& c = *m_Coordinators.front();
@@ -638,13 +756,67 @@ namespace kiln::ui {
         m_Coordinators = std::move(chain);
         m_Measured = false;
         m_MeasureDirty = true;
+        if (m_Lookahead) { m_Lookahead->measured = false; m_Lookahead->measureDirty = m_Lookahead->layoutDirty = true; }
+        // An approach modifier may have come or gone: it makes a node outside a scope a root.
+        if (m_Owner) UpdateLookaheadRoot();
     }
 
     void LayoutNode::SetChildren(std::vector<rt::TreeNode*> children) {
         if (m_MeasureManaged) return;
+        m_Composed = std::move(children);
+        if (m_Virtual) {
+            if (m_Parent) m_Parent->Refold();
+            return;
+        }
+        Refold();
+    }
+
+    void LayoutNode::Fold(std::vector<rt::TreeNode*>& composed, LayoutNode* from, std::vector<LayoutNode*>& out) {
+        for (rt::TreeNode* t : composed) {
+            auto* c = static_cast<LayoutNode*>(t);
+            LayoutNode* folded = from == this ? nullptr : from;
+            const bool refolded = c->m_FoldedParent != folded;
+            c->m_FoldedParent = folded;
+            if (c->m_Virtual) {
+                if (c->m_Parent != this) {
+                    if (c->m_Parent) std::erase(c->m_Parent->m_Virtuals, c);
+                    c->m_Parent = this;
+                    m_Virtuals.push_back(c);
+                    if (m_Owner) c->Attach(*m_Owner, m_Depth + 1);
+                } else if (refolded && m_Owner) {
+                    c->UpdateLookaheadRoot();
+                }
+                Fold(c->m_Composed, c, out);
+            } else {
+                if (refolded && c->m_Parent == this && m_Owner) c->UpdateLookaheadRoot();
+                out.push_back(c);
+            }
+        }
+    }
+
+    void LayoutNode::Refold() {
         std::vector<LayoutNode*> next;
-        next.reserve(children.size());
-        for (auto* c : children) next.push_back(static_cast<LayoutNode*>(c));
+        next.reserve(m_Composed.size());
+        std::vector<LayoutNode*> virtualsBefore = m_Virtuals;
+        Fold(m_Composed, this, next);
+        // Virtual nodes no longer composed here leave.
+        for (LayoutNode* v : virtualsBefore) {
+            bool kept = false;
+            std::function<bool(const std::vector<rt::TreeNode*>&)> has = [&](const std::vector<rt::TreeNode*>& list) {
+                for (rt::TreeNode* t : list) {
+                    auto* c = static_cast<LayoutNode*>(t);
+                    if (c == v) return true;
+                    if (c->m_Virtual && has(c->m_Composed)) return true;
+                }
+                return false;
+            };
+            kept = has(m_Composed);
+            if (!kept) {
+                std::erase(m_Virtuals, v);
+                v->Detach();
+                v->m_Parent = nullptr;
+            }
+        }
         if (next == m_Children) return;
         for (LayoutNode* old : m_Children)
             if (std::find(next.begin(), next.end(), old) == next.end()) {
@@ -674,6 +846,10 @@ namespace kiln::ui {
 
     void LayoutNode::ForceRemeasure() {
         if (!m_Measured) { RequestRemeasure(); return; }
+        if (m_Lookahead && m_Lookahead->measured && !IsOutMostLookaheadRoot()) {
+            m_Lookahead->measureDirty = true;
+            LookaheadMeasureNode(m_Lookahead->constraints);
+        }
         m_MeasureDirty = true;
         const IntSize before = Size();
         MeasureNode(m_LastConstraints);
@@ -682,6 +858,13 @@ namespace kiln::ui {
     }
 
     void LayoutNode::Attach(Owner& owner, int depth) {
+        if (m_Virtual) {
+            // Takes no part in layout: only its lookahead root (for its folded children).
+            m_Owner = &owner;
+            m_Depth = depth;
+            UpdateLookaheadRoot();
+            return;
+        }
         if (m_Owner) owner.Forget(*this);
         const bool fresh = m_Owner == nullptr;
         m_Owner = &owner;
@@ -692,13 +875,17 @@ namespace kiln::ui {
             for (auto& n : m_Nodes)
                 if (n->AsFocusTarget() || n->AsFocusEvent()) { owner.ScheduleFocusInvalidation(*this); break; }
         owner.TrackPositionAware(*this);
+        for (LayoutNode* v : m_Virtuals) v->Attach(owner, depth + 1);
+        UpdateLookaheadRoot();
         for (LayoutNode* c : m_Children) c->Attach(owner, depth + 1);
         m_MeasureDirty = true;
         owner.OnMeasureRequested(*this);
     }
 
     void LayoutNode::Detach() {
+        if (m_Virtual) { m_Owner = nullptr; return; }
         for (LayoutNode* c : m_Children) c->Detach();
+        for (LayoutNode* v : m_Virtuals) v->Detach();
         if (m_Owner) {
             m_Owner->Forget(*this);
             for (auto& n : m_Nodes) n->OnDetach();
@@ -706,19 +893,75 @@ namespace kiln::ui {
         m_MeasureWatch.Unsubscribe();
         m_LayoutWatch.Unsubscribe();
         m_DrawWatch.Unsubscribe();
+        m_LookaheadMeasureWatch.Unsubscribe();
+        m_LookaheadLayoutWatch.Unsubscribe();
         m_Owner = nullptr;
         m_Placed = false;
+        if (m_Lookahead) { m_Lookahead->placed = false; m_Lookahead->measureDirty = m_Lookahead->layoutDirty = true; }
+    }
+
+    bool LayoutNode::HasApproachModifier() const {
+        for (const auto& c : m_Coordinators)
+            if (c->mod && c->mod->AsApproach()) return true;
+        return false;
+    }
+
+    void LayoutNode::UpdateLookaheadRoot() {
+        LayoutNode* root = nullptr;
+        if (m_IsVirtualLookaheadRoot) root = this;
+        else if (LayoutNode* f = FoldedParent()) root = f->m_LookaheadRoot;
+        if (!root && !m_Virtual && HasApproachModifier()) root = this;
+        if (root == m_LookaheadRoot) return;
+        m_LookaheadRoot = root;
+        if (root && !m_Virtual) {
+            if (!m_Lookahead) m_Lookahead = std::make_unique<LookaheadState>();
+        } else {
+            m_Lookahead.reset();
+            for (auto& c : m_Coordinators) c->la.reset();
+        }
+        if (!m_Virtual) RequestRemeasure();
+        // Down the composed tree (virtual nodes first hand it to their folded children).
+        if (m_Virtual || !m_MeasureManaged) {
+            for (rt::TreeNode* t : m_Composed) {
+                auto* c = static_cast<LayoutNode*>(t);
+                if (c->m_Owner) c->UpdateLookaheadRoot();
+            }
+        }
+        if (!m_Virtual && m_MeasureManaged)
+            for (LayoutNode* c : m_Children) if (c->m_Owner) c->UpdateLookaheadRoot();
     }
 
     void LayoutNode::RequestRemeasure() {
+        if (m_Lookahead) m_Lookahead->measureDirty = m_Lookahead->layoutDirty = true;
+        RequestMainRemeasure();
+    }
+
+    void LayoutNode::RequestRelayout() {
+        if (m_Lookahead) m_Lookahead->layoutDirty = true;
+        RequestMainRelayout();
+    }
+
+    void LayoutNode::RequestLookaheadRemeasure() { RequestRemeasure(); }
+    void LayoutNode::RequestLookaheadRelayout() { RequestRelayout(); }
+
+    void LayoutNode::RequestMainRemeasure() {
+        if (m_Virtual) return;
         m_MeasureDirty = true;
         m_LayoutDirty = true;
         if (m_Owner) m_Owner->OnMeasureRequested(*this);
     }
 
-    void LayoutNode::RequestRelayout() {
+    void LayoutNode::RequestMainRelayout() {
+        if (m_Virtual) return;
         m_LayoutDirty = true;
         if (m_Owner) m_Owner->OnLayoutRequested(*this);
+    }
+
+    void LayoutNode::OnMoved() {
+        if (!m_Owner || m_Owner->m_CoordinateReaders.empty()) return;
+        for (LayoutNode* reader : m_Owner->m_CoordinateReaders)
+            for (const LayoutNode* n = reader; n; n = n->m_Parent)
+                if (n == this) { reader->RequestRelayout(); break; }
     }
 
     void LayoutNode::InvalidateDraw() {
@@ -726,6 +969,8 @@ namespace kiln::ui {
     }
 
     Placeable& LayoutNode::MeasureNode(const Constraints& c) {
+        // MeasurePassDelegate.measure: the outermost lookahead root measures its lookahead first.
+        if (IsOutMostLookaheadRoot()) LookaheadMeasureNode(c);
         Coordinator& outer = *m_Coordinators.front();
         if (m_Measured && !m_MeasureDirty && c == m_LastConstraints) return outer;
         const IntSize before = Size();
@@ -745,6 +990,8 @@ namespace kiln::ui {
     }
 
     void LayoutNode::LayoutChain() {
+        // The main placement depends on the lookahead one (lookahead offsets).
+        if (m_Lookahead && m_Lookahead->placed) LookaheadLayoutIfNeeded();
         m_LayoutDirty = false;
         if (m_Owner) m_Owner->m_LayoutDirty.erase(this);
         m_NextPlaceOrder = 0;
@@ -753,6 +1000,7 @@ namespace kiln::ui {
         const bool innerWasPlaced = m_Coordinators.back()->placed;
         for (std::size_t i = 1; i < m_Coordinators.size(); ++i) m_Coordinators[i]->placed = false;
         m_InLayout = true;
+        bool readCoordinates = false;
         rt::Observation::Track(m_LayoutWatch, [&] {
             for (std::size_t i = 0; i < m_Coordinators.size(); ++i) {
                 auto& c = m_Coordinators[i];
@@ -763,16 +1011,298 @@ namespace kiln::ui {
                 PlacementScope scope(dir, c->Width());
                 scope.SetRulerLookup([this, i](const Ruler& r, float d) { return FindRulerValue(i, r, d); });
                 if (m_Owner) scope.SetInsets(&m_Owner->Insets());
+                scope.SetCoordinates({ this, i, false });
+                // LayoutModifierNodeCoordinator.onAfterPlaceAt: an approach that is complete
+                // places what it wraps at its lookahead offset.
+                Coordinator* next = i + 1 < m_Coordinators.size() ? m_Coordinators[i + 1].get() : nullptr;
+                ApproachLayoutModifier* approach = c->mod ? c->mod->AsApproach() : nullptr;
+                if (approach && next && c->InLookahead()) {
+                    const bool complete = !approach->IsPlacementApproachInProgress(scope, { this, i, true }) && !c->approachMeasureRequired &&
+                                          c->Width() == c->la->Width() && c->Height() == c->la->Height() && next->la &&
+                                          next->Width() == next->la->Width() && next->Height() == next->la->Height();
+                    next->forceLookaheadOffset = complete;
+                }
                 if (c->result.place) c->result.place(scope);
+                if (next) next->forceLookaheadOffset = false;
+                readCoordinates = readCoordinates || scope.CoordinatesRead();
             }
         });
         m_InLayout = false;
+        m_ReadsCoordinates = readCoordinates;
+        if (m_Owner) {
+            if (m_ReadsCoordinates) m_Owner->m_CoordinateReaders.insert(this);
+            else if (!m_Lookahead || !m_Lookahead->readsCoordinates) m_Owner->m_CoordinateReaders.erase(this);
+        }
         if (m_Owner && innerWasPlaced != m_Coordinators.back()->placed) m_Owner->InvalidateSemantics();
         // Children this pass did not place stop drawing and hit testing (markNodeAndSubtreeAsNotPlaced).
         for (LayoutNode* c : m_Children)
             if (!c->m_PlacedThisPass && c->m_Placed) { c->m_Placed = false; InvalidateDraw(); }
         InvalidateDraw();
         CheckLinesReadByParent();
+    }
+
+    // --- Lookahead -----------------------------------------------------------------------------
+
+    Placeable& LayoutNode::LookaheadMeasureNode(const Constraints& c) {
+        if (!m_Lookahead) m_Lookahead = std::make_unique<LookaheadState>();
+        LookaheadState& l = *m_Lookahead;
+        LookaheadDelegate& outer = La(0);
+        if (l.measured && !l.measureDirty && c == l.constraints) return outer;
+        l.inMeasure = true;
+        rt::Observation::Track(m_LookaheadMeasureWatch, [&] { outer.MeasureHere(c); });
+        l.inMeasure = false;
+        l.constraints = c;
+        l.measured = true;
+        l.measureDirty = false;
+        l.layoutDirty = true;
+        // The main pass follows (LookaheadPassDelegate.performMeasure marks it pending).
+        m_MeasureDirty = true;
+        m_LayoutDirty = true;
+        if (m_Owner) {
+            m_Owner->m_MeasureDirty.insert(this);
+            m_Owner->m_LayoutDirty.insert(this);
+        }
+        return outer;
+    }
+
+    void LayoutNode::LookaheadLayoutIfNeeded() {
+        if (m_Lookahead && m_Lookahead->layoutDirty) LookaheadLayoutChain();
+    }
+
+    void LayoutNode::LookaheadLayoutChain() {
+        LookaheadState& l = *m_Lookahead;
+        l.layoutDirty = false;
+        l.nextPlaceOrder = 0;
+        const LayoutDirection dir = GetLayoutDirection();
+        for (LayoutNode* c : m_Children) if (c->m_Lookahead) c->m_Lookahead->placedThisPass = false;
+        for (std::size_t i = 1; i < m_Coordinators.size(); ++i) if (m_Coordinators[i]->la) m_Coordinators[i]->la->placed = false;
+        bool readCoordinates = false;
+        rt::Observation::Track(m_LookaheadLayoutWatch, [&] {
+            for (std::size_t i = 0; i < m_Coordinators.size(); ++i) {
+                LookaheadDelegate& d = La(i);
+                if (!d.measured || (i > 0 && !d.placed)) break;
+                PlacementScope scope(dir, d.Width());
+                // Rulers: the main pass's values (Compose keeps lookahead ones apart).
+                scope.SetRulerLookup([this, i](const Ruler& r, float v) { return FindRulerValue(i, r, v); });
+                if (m_Owner) scope.SetInsets(&m_Owner->Insets());
+                scope.SetCoordinates({ this, i, true });
+                if (d.result.place) d.result.place(scope);
+                readCoordinates = readCoordinates || scope.CoordinatesRead();
+            }
+        });
+        l.readsCoordinates = readCoordinates;
+        if (m_Owner) {
+            if (readCoordinates) m_Owner->m_CoordinateReaders.insert(this);
+            else if (!m_ReadsCoordinates) m_Owner->m_CoordinateReaders.erase(this);
+        }
+        for (LayoutNode* c : m_Children)
+            if (c->m_Lookahead && !c->m_Lookahead->placedThisPass) c->m_Lookahead->placed = false;
+        // The main placement reads the lookahead one.
+        RequestMainRelayout();
+    }
+
+    Placeable& LayoutNode::LookaheadDelegate::Measure(const Constraints& c) {
+        if (index == 0) return node.LookaheadMeasureNode(c);
+        return MeasureHere(c);
+    }
+
+    Placeable& LayoutNode::LookaheadDelegate::MeasureHere(const Constraints& c) {
+        MeasureScope scope = Scope();
+        Coordinator& co = *node.m_Coordinators[index];
+        if (co.mod) {
+            result = co.mod->Measure(scope, *Next(), c);
+        } else {
+            children = ChildMeasurables();
+            result = node.m_Policy ? node.m_Policy->Measure(scope, children, c) : MeasureResult{ c.minWidth, c.minHeight, {} };
+        }
+        constraints = c;
+        measured = true;
+        SetMeasured({ result.width, result.height }, c);
+        return *this;
+    }
+
+    int LayoutNode::LookaheadDelegate::Get(const AlignmentLine& line) {
+        if (!measured) return AlignmentLine::Unspecified;
+        for (const auto& [l, v] : result.alignmentLines)
+            if (l == &line) return v;
+        if (node.m_Lookahead && node.m_Lookahead->inMeasure) {
+            PlacementScope scope(node.GetLayoutDirection(), Width());
+            const std::size_t i = index;
+            LayoutNode* n = &node;
+            scope.SetRulerLookup([n, i](const Ruler& r, float d) { return n->FindRulerValue(i, r, d); });
+            scope.SetCoordinates({ n, i, true });
+            if (result.place) result.place(scope);
+        } else {
+            node.LookaheadLayoutIfNeeded();
+        }
+        if (node.m_Coordinators[index]->mod) {
+            LookaheadDelegate* w = Next();
+            const int v = w->Get(line);
+            if (v == AlignmentLine::Unspecified) return v;
+            return v + (line.horizontal ? w->position.y : w->position.x);
+        }
+        int merged = AlignmentLine::Unspecified;
+        for (LayoutNode* c : node.m_Children) {
+            if (!c->m_Lookahead || !c->m_Lookahead->placed) continue;
+            const int v = c->La(0).Get(line);
+            if (v == AlignmentLine::Unspecified) continue;
+            const int at = v + (line.horizontal ? c->m_Lookahead->position.y : c->m_Lookahead->position.x);
+            merged = merged == AlignmentLine::Unspecified ? at : line.Combine(merged, at);
+        }
+        return merged;
+    }
+
+    void LayoutNode::LookaheadDelegate::PlaceAt(IntOffset p, float) {
+        placed = true;
+        if (index == 0) {
+            if (!node.m_Lookahead) node.m_Lookahead = std::make_unique<LookaheadState>();
+            LookaheadState& l = *node.m_Lookahead;
+            const bool moved = l.placed && l.position != p;
+            l.position = p;
+            l.placed = true;
+            l.placedThisPass = true;
+            if (LayoutNode* parent = node.m_Parent; parent && parent->m_Lookahead) l.placeOrder = parent->m_Lookahead->nextPlaceOrder++;
+            position = p;
+            if (moved) node.OnMoved();
+            node.LookaheadLayoutIfNeeded();
+        } else {
+            if (position != p) node.OnMoved();
+            position = p;
+        }
+    }
+
+    int LayoutNode::LookaheadDelegate::MinIntrinsicWidth(int h) {
+        MeasureScope s = Scope();
+        if (auto* m = node.m_Coordinators[index]->mod) return m->MinIntrinsicWidth(s, *Next(), h);
+        auto ch = ChildMeasurables();
+        return node.m_Policy ? node.m_Policy->MinIntrinsicWidth(s, ch, h) : 0;
+    }
+    int LayoutNode::LookaheadDelegate::MaxIntrinsicWidth(int h) {
+        MeasureScope s = Scope();
+        if (auto* m = node.m_Coordinators[index]->mod) return m->MaxIntrinsicWidth(s, *Next(), h);
+        auto ch = ChildMeasurables();
+        return node.m_Policy ? node.m_Policy->MaxIntrinsicWidth(s, ch, h) : 0;
+    }
+    int LayoutNode::LookaheadDelegate::MinIntrinsicHeight(int w) {
+        MeasureScope s = Scope();
+        if (auto* m = node.m_Coordinators[index]->mod) return m->MinIntrinsicHeight(s, *Next(), w);
+        auto ch = ChildMeasurables();
+        return node.m_Policy ? node.m_Policy->MinIntrinsicHeight(s, ch, w) : 0;
+    }
+    int LayoutNode::LookaheadDelegate::MaxIntrinsicHeight(int w) {
+        MeasureScope s = Scope();
+        if (auto* m = node.m_Coordinators[index]->mod) return m->MaxIntrinsicHeight(s, *Next(), w);
+        auto ch = ChildMeasurables();
+        return node.m_Policy ? node.m_Policy->MaxIntrinsicHeight(s, ch, w) : 0;
+    }
+
+    LayoutNode::LookaheadOffset LayoutNode::LookaheadOffsetOf(std::size_t coordinator) const {
+        IntOffset offset;
+        const LayoutNode* n = this;
+        std::size_t k = coordinator;
+        while (true) {
+            for (std::size_t i = k; i >= 1; --i) {
+                const auto& c = *n->m_Coordinators[i];
+                offset = offset + (c.la && c.la->measured ? c.la->position : c.position);
+            }
+            offset = offset + (n->m_Lookahead && n->m_Lookahead->placed ? n->m_Lookahead->position : n->m_Position);
+            if (n->IsOutMostLookaheadRoot() || !n->m_Parent || !n->m_LookaheadRoot) return { n, offset };
+            n = n->m_Parent;
+            k = n->m_Coordinators.size() - 1;
+        }
+    }
+
+    namespace {
+        Offset ToOffset(IntOffset p) { return { float(p.x), float(p.y) }; }
+    }
+
+    bool LayoutCoordinates::IsAttached() const {
+        return node && (!tracked || !alive.expired()) && node->GetOwner() && node->IsPlaced();
+    }
+
+    IntSize LayoutCoordinates::Size() const {
+        if (!node || (tracked && alive.expired())) return {};
+        if (at) {
+            ui::Size size;
+            node->SpaceToRoot(at, &size);
+            return { int(std::lround(size.width)), int(std::lround(size.height)) };
+        }
+        const auto& c = *node->m_Coordinators[coordinator];
+        if (lookahead && c.la && c.la->measured) return c.la->Size();
+        return { c.Width(), c.Height() };
+    }
+
+    namespace {
+        // The main space of coordinates -> root.
+        LayoutNode::Mat3 MainToRoot(const LayoutCoordinates& c) {
+            return c.at ? c.node->SpaceToRoot(c.at) : c.node->CoordinatorToRoot(c.coordinator);
+        }
+    }
+
+    Offset LayoutCoordinates::PositionInRoot() const {
+        if (!IsAttached()) return {};
+        return LayoutNode::MapPoint(MainToRoot(*this), {});
+    }
+    Offset LayoutCoordinates::PositionInParent() const {
+        if (!IsAttached()) return {};
+        const Offset root = PositionInRoot();
+        const LayoutNode* parent = node->Parent();
+        if (!parent) return root;
+        return LayoutNode::UnmapPoint(parent->InnerToRoot(), root).value_or(Offset{});
+    }
+    IntSize LayoutCoordinates::ParentSize() const {
+        if (!IsAttached()) return {};
+        const LayoutNode* parent = node->Parent();
+        return parent ? parent->InnerSize() : IntSize{};
+    }
+    Rect LayoutCoordinates::BoundsInRoot() const {
+        if (!IsAttached()) return {};
+        const IntSize size = Size();
+        if (at) return node->RectInRoot(Rect{ 0, 0, float(size.width), float(size.height) }, at);
+        const LayoutNode::Mat3 m = MainToRoot(*this);
+        const Offset corners[] = { { 0, 0 }, { float(size.width), 0 }, { 0, float(size.height) }, { float(size.width), float(size.height) } };
+        Rect r{ INFINITY, INFINITY, -INFINITY, -INFINITY };
+        for (Offset p : corners) {
+            const Offset q = LayoutNode::MapPoint(m, p);
+            r.left = std::min(r.left, q.x); r.top = std::min(r.top, q.y);
+            r.right = std::max(r.right, q.x); r.bottom = std::max(r.bottom, q.y);
+        }
+        return r;
+    }
+
+    Offset LayoutCoordinates::LocalPositionOf(const LayoutCoordinates& source, Offset rel) const {
+        if (!node || !source.node) return rel;
+        // A lookahead root's parent's children space (where lookahead offsets cross into main).
+        auto rootSpace = [](const LayoutNode* root) -> LayoutCoordinates {
+            return root->m_Parent ? root->m_Parent->InnerCoordinates() : root->OuterCoordinates();
+        };
+        if (!lookahead && !source.lookahead) {
+            const Offset inRoot = LayoutNode::MapPoint(MainToRoot(source), rel);
+            return LayoutNode::UnmapPoint(MainToRoot(*this), inRoot).value_or(Offset{});
+        }
+        if (lookahead && source.lookahead) {
+            const auto a = node->LookaheadOffsetOf(coordinator), b = source.node->LookaheadOffsetOf(source.coordinator);
+            if (a.root == b.root) return ToOffset(b.offset) + rel - ToOffset(a.offset);
+            return rootSpace(a.root).LocalPositionOf(rootSpace(b.root), ToOffset(b.offset) + rel) - ToOffset(a.offset);
+        }
+        if (lookahead) {
+            const auto a = node->LookaheadOffsetOf(coordinator);
+            return rootSpace(a.root).LocalPositionOf(source, rel) - ToOffset(a.offset);
+        }
+        const auto b = source.node->LookaheadOffsetOf(source.coordinator);
+        return LocalPositionOf(rootSpace(b.root), ToOffset(b.offset) + rel);
+    }
+
+    LayoutCoordinates LookaheadScope::ToLookaheadCoordinates(const LayoutCoordinates& c) const {
+        if (c.lookahead || !c.node) return c;
+        const std::size_t index = c.at ? c.node->CoordinatesOf(c.at).coordinator : c.coordinator;
+        const auto& co = *c.node->m_Coordinators[index];
+        if (c.node->m_Lookahead && co.la && co.la->measured) return { c.node, index, true };
+        return c;
+    }
+
+    Offset LookaheadScope::LocalLookaheadPositionOf(const LayoutCoordinates& self, const LayoutCoordinates& source, Offset rel) const {
+        return ToLookaheadCoordinates(self).LocalPositionOf(ToLookaheadCoordinates(source), rel);
     }
 
     LayoutNode::Mat3 LayoutNode::CoordinatorToRoot(std::size_t k) const {
@@ -1266,7 +1796,8 @@ namespace kiln::ui {
             m_LaidOut = true;
             LayoutNode* n = *m_MeasureDirty.begin();
             m_MeasureDirty.erase(m_MeasureDirty.begin());
-            if (!n->m_MeasureDirty) continue;
+            const bool lookaheadDirty = n->m_Lookahead && n->m_Lookahead->measureDirty;
+            if (!n->m_MeasureDirty && !lookaheadDirty) continue;
             if (n == m_Root.get()) {
                 n->MeasureNode(Constraints::Fixed(window.width, window.height));
                 n->m_Coordinators.front()->PlaceAt({ 0, 0 }, 0);
@@ -1277,10 +1808,17 @@ namespace kiln::ui {
                 if (n->m_Parent) n->m_Parent->RequestRemeasure();
                 continue;
             }
+            if (lookaheadDirty && !n->IsOutMostLookaheadRoot()) {
+                // doLookaheadRemeasure: a lookahead size change goes to the parent's lookahead.
+                if (!n->m_Lookahead->measured) { n->m_Parent->RequestLookaheadRemeasure(); continue; }
+                const IntSize lookaheadBefore = n->La(0).Size();
+                n->LookaheadMeasureNode(n->m_Lookahead->constraints);
+                if (n->La(0).Size() != lookaheadBefore) { n->m_Parent->RequestLookaheadRemeasure(); continue; }
+            }
             const IntSize before = n->Size();
             n->MeasureNode(n->m_LastConstraints);
-            if (n->Size() != before) n->m_Parent->RequestRemeasure();
-            else n->RequestRelayout();
+            if (n->Size() != before) n->m_Parent->RequestMainRemeasure();
+            else n->RequestMainRelayout();
         }
         while (!m_LayoutDirty.empty()) {
             LayoutNode* n = *m_LayoutDirty.begin();
@@ -1364,6 +1902,7 @@ namespace kiln::ui {
             if (l->parkedFocus && NodeOf(*l->parkedFocus) == &n) l->parkedFocus = nullptr;
         m_MeasureDirty.erase(&n);
         m_LayoutDirty.erase(&n);
+        m_CoordinateReaders.erase(&n);
         for (auto& [id, t] : m_Pointers)
             std::erase_if(t.path, [&](const HitEntry& e) { return e.node == &n; });
     }

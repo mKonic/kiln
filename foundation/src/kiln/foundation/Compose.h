@@ -30,6 +30,12 @@ namespace kiln::foundation {
     LayoutNode& Layout(const Modifier& modifier, std::vector<std::function<void()>> contents, std::shared_ptr<MultiContentMeasurePolicy> policy,
                        Key key = {});
 
+    // LookaheadScope (ui LookaheadScope.kt): its content is laid out twice, a lookahead pass that
+    // settles where everything ends up, then the main pass in which approach modifiers
+    // (ApproachLayout) move toward that. A virtual node: the content's layouts are the children
+    // of the enclosing layout, as if written there.
+    void LookaheadScope(std::function<void(ui::LookaheadScope&)> content, Key key = {});
+
     void Box(const Modifier& modifier = {}, Alignment contentAlignment = Alignment::TopStart(),
              bool propagateMinConstraints = false, std::function<void()> content = {}, Key key = {});
     void Row(const Modifier& modifier, Arrangement horizontal, AlignmentV vertical,

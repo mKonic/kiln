@@ -66,6 +66,40 @@ namespace kiln::ui {
         // Remeasurement.forceRemeasure: measure and place now with the last constraints.
         void ForceRemeasure();
 
+        // A virtual node (LayoutNode(isVirtual = true)) takes no part in layout: its children are
+        // folded into its parent's (they are the parent's children, in its place). Set before
+        // the node is attached.
+        void SetVirtual(bool v) { m_Virtual = v; }
+        bool IsVirtual() const { return m_Virtual; }
+        // The virtual node a child was folded from, else its parent.
+        LayoutNode* FoldedParent() const { return m_FoldedParent ? m_FoldedParent : m_Parent; }
+
+        // Lookahead (LookaheadScope.kt, LookaheadPassDelegate.kt). Inside a LookaheadScope every
+        // node is measured and placed twice: a lookahead pass (MeasureScope::IsLookingAhead)
+        // settles where everything ends up, then the main pass, in which approach modifiers
+        // move toward that. The scope's virtual node is the lookahead root of its subtree; a node
+        // with an approach modifier outside any scope is one of its own.
+        void SetVirtualLookaheadRoot(bool v) { m_IsVirtualLookaheadRoot = v; }
+        bool IsVirtualLookaheadRoot() const { return m_IsVirtualLookaheadRoot; }
+        LayoutNode* LookaheadRoot() const { return m_LookaheadRoot; }
+        // The topmost node of a lookahead subtree: its main measure and placement run its
+        // lookahead first.
+        bool IsOutMostLookaheadRoot() const { return m_LookaheadRoot && !m_Virtual && (!m_Parent || !m_Parent->m_LookaheadRoot); }
+        Measurable& AsLookaheadMeasurable();
+        // The lookahead pass's results, once it measured (placed) this node.
+        std::optional<IntSize> LookaheadSize() const;
+        std::optional<IntOffset> LookaheadPosition() const;
+        // Invalidate both passes (what the composition changed: modifiers, policy, children).
+        // RequestRemeasure / RequestRelayout do the same for nodes in a lookahead scope; reads
+        // in the main pass only invalidate the main pass.
+        void RequestLookaheadRemeasure();
+        void RequestLookaheadRelayout();
+        // This node's coordinates: its outer bounds, the space its children are placed in, or
+        // that of the coordinator a modifier sits in (null: the outer bounds).
+        LayoutCoordinates OuterCoordinates() const { return { const_cast<LayoutNode*>(this), 0, false }; }
+        LayoutCoordinates InnerCoordinates() const { return { const_cast<LayoutNode*>(this), m_Coordinators.size() - 1, false }; }
+        LayoutCoordinates CoordinatesOf(const ModifierNode* at) const;
+
         LayoutNode* Parent() const { return m_Parent; }
         const std::vector<LayoutNode*>& Children() const { return m_Children; }
         Owner* GetOwner() const { return m_Owner; }
@@ -101,6 +135,8 @@ namespace kiln::ui {
         struct HitStep { PointerInputModifier* mod = nullptr; Mat3 toRoot{}; ui::Size size; const DrawModifier* clip = nullptr; };   // mod null: a clip
         // `parentInner`: the parent's children space; `inner` receives this node's.
         void HitSteps(const Mat3& parentInner, std::vector<HitStep>& out, Mat3& inner) const;
+        // Coordinator `index`'s space (0: the outer bounds, the last: the children's) -> root.
+        Mat3 CoordinatorToRoot(std::size_t index) const;
         // The space and size a pointer modifier of this node receives events in.
         bool PointerSpace(const PointerInputModifier* mod, Mat3& toRoot, ui::Size& size) const;
         // The bounding box of this node's outer bounds in root coordinates, through every layer
@@ -160,7 +196,10 @@ namespace kiln::ui {
         friend class Owner;
         friend class ModifierNode;
         friend class NestedScrollNode;
+        friend struct LayoutCoordinates;
+        friend class LookaheadScope;
         struct Coordinator;
+        struct LookaheadDelegate;
         struct Watcher final : rt::Subscriber {
             LayoutNode& node; int phase;
             Watcher(LayoutNode& n, int p) : node(n), phase(p) {}
@@ -169,6 +208,23 @@ namespace kiln::ui {
 
         void Attach(Owner& owner, int depth);
         void Detach();
+        // Sets the children from the composed list, folding virtual nodes in.
+        void Refold();
+        void Fold(std::vector<rt::TreeNode*>& composed, LayoutNode* from, std::vector<LayoutNode*>& out);
+        // Recomputes the lookahead root here and below.
+        void UpdateLookaheadRoot();
+        bool HasApproachModifier() const;
+        // The main pass's own invalidations (reads in main measure / placement).
+        void RequestMainRemeasure();
+        void RequestMainRelayout();
+        Placeable& LookaheadMeasureNode(const Constraints& c);
+        void LookaheadLayoutChain();
+        void LookaheadLayoutIfNeeded();
+        LookaheadDelegate& La(std::size_t index);
+        // The node moved (in either pass): placements that read coordinates below it rerun.
+        void OnMoved();
+        struct LookaheadOffset { const LayoutNode* root; IntOffset offset; };   // in root's parent's inner space
+        LookaheadOffset LookaheadOffsetOf(std::size_t coordinator) const;
         std::vector<PointerInputModifier*> PointerModifiers() const;
         void RebuildChain();
         Placeable& MeasureNode(const Constraints& c);
@@ -203,7 +259,6 @@ namespace kiln::ui {
         bool m_LinesReadInMeasure = false, m_CheckingLines = false;
         void RecordLineRead(const AlignmentLine& line, int value);
         // Rulers: each coordinator's provided values and who read them.
-        Mat3 CoordinatorToRoot(std::size_t index) const;
         void CaptureRulers(std::size_t index);
         float FindRulerValue(std::size_t index, const Ruler& ruler, float defaultValue);
         void InvalidateRulerReaders(LayoutNode& definer, std::size_t index, const RulerData* ruler);
@@ -220,7 +275,24 @@ namespace kiln::ui {
         std::optional<Density> m_LocalDensity;
         bool m_ZIndexFromChildren = false;
 
+        bool m_Virtual = false, m_IsVirtualLookaheadRoot = false;
+        LayoutNode* m_FoldedParent = nullptr;
+        std::vector<rt::TreeNode*> m_Composed;   // as composed (virtual nodes not folded)
+        std::vector<LayoutNode*> m_Virtuals;     // virtual nodes folded into this one
+        LayoutNode* m_LookaheadRoot = nullptr;
+        // The lookahead pass's state (LookaheadPassDelegate), while in a lookahead scope.
+        struct LookaheadState {
+            Constraints constraints;
+            bool measured = false, measureDirty = true, layoutDirty = true, inMeasure = false;
+            bool placed = false, placedThisPass = false, readsCoordinates = false;
+            IntOffset position;
+            int placeOrder = 0, nextPlaceOrder = 0;
+        };
+        std::unique_ptr<LookaheadState> m_Lookahead;
+        bool m_ReadsCoordinates = false;   // a placement here read PlacementScope::Coordinates
+
         Watcher m_MeasureWatch{ *this, 0 }, m_LayoutWatch{ *this, 1 }, m_DrawWatch{ *this, 2 };
+        Watcher m_LookaheadMeasureWatch{ *this, 3 }, m_LookaheadLayoutWatch{ *this, 4 };
     };
 
     // The root of a window's layout tree (Compose's Owner / MeasureAndLayoutDelegate).
@@ -727,6 +799,7 @@ namespace kiln::ui {
         TextBackend* m_Text = nullptr;
         std::function<void()> m_RequestFrame;
         std::set<LayoutNode*, ByDepth> m_MeasureDirty, m_LayoutDirty;
+        std::set<LayoutNode*> m_CoordinateReaders;   // nodes whose placement read their coordinates
         IntSize m_Window;
         std::optional<gfx::ShadowLight> m_ShadowLight;
         std::shared_ptr<gfx::shadow::ShadowContext> m_ShadowContext = std::make_shared<gfx::shadow::ShadowContext>();
