@@ -25,7 +25,6 @@ namespace kiln::material3 {
             auto* c = rt::Composition::Current();
             return c ? c->Read(LocalTextSelectionColors) : kDefaultTextSelectionColors;
         }
-        std::shared_ptr<MutableInteractionSource> Source(std::shared_ptr<MutableInteractionSource> s) { return s; }
     }
 
     // --- filled ---------------------------------------------------------------------------------
