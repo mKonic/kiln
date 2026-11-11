@@ -11,12 +11,14 @@
 #include "samples/FloatingActionButtonSamples.h"
 #include "samples/IconButtonSamples.h"
 #include "samples/LoadingIndicatorSamples.h"
+#include "samples/MenuSamples.h"
 #include "samples/ProgressIndicatorSamples.h"
 #include "samples/RadioButtonSamples.h"
 #include "samples/SegmentedButtonSamples.h"
 #include "samples/Shared.h"
 #include "samples/SliderSamples.h"
 #include "samples/SwitchSamples.h"
+#include "samples/ToggleButtonSamples.h"
 #include "samples/TooltipSamples.h"
 
 namespace catalog {
@@ -206,10 +208,10 @@ namespace catalog {
                 { "LoadingIndicatorPullToRefreshSample", "Loading indicators examples", true, samples::LoadingIndicatorPullToRefreshSample },
             } },
             { 20, "Menus", "Menus display a list of choices on temporary surfaces.", true, {
-                { "MenuSample", "Menus examples", false, nullptr },
-                { "GroupedMenuSample", "Menus examples", true, nullptr },
-                { "MenuWithCascadingMenusSample", "Menus examples", true, nullptr },
-                { "MenuWithScrollStateSample", "Menus examples", false, nullptr },
+                { "MenuSample", "Menus examples", false, samples::MenuSample },
+                { "GroupedMenuSample", "Menus examples", true, samples::GroupedMenuSample },
+                { "MenuWithCascadingMenusSample", "Menus examples", true, samples::MenuWithCascadingMenusSample },
+                { "MenuWithScrollStateSample", "Menus examples", false, samples::MenuWithScrollStateSample },
                 { "ExposedDropdownMenuSample", "Menus examples", true, nullptr },
                 { "EditableExposedDropdownMenuSample", "Menus examples", false, nullptr },
                 { "MultiAutocompleteExposedDropdownMenuSample", "Menus examples", false, nullptr },
@@ -368,16 +370,16 @@ namespace catalog {
                 { "UncontainedTimePickerSample", "Time Picker examples", true, nullptr },
             } },
             { 31, "ToggleButtons", "Toggle buttons provide a selectable button that animates on press.", true, {
-                { "ToggleButtonSample", "ToggleButton examples", true, nullptr },
-                { "ElevatedToggleButtonSample", "ToggleButton examples", true, nullptr },
-                { "FilledTonalToggleButtonSample", "ToggleButton examples", true, nullptr },
-                { "OutlinedToggleButtonSample", "ToggleButton examples", true, nullptr },
-                { "ToggleButtonWithIconSample", "ToggleButton examples", true, nullptr },
-                { "ToggleButtonWithButtonSizeSample", "ToggleButton examples", true, nullptr },
-                { "XSmallToggleButtonWithIconSample", "ToggleButton examples", true, nullptr },
-                { "MediumToggleButtonWithIconSample", "ToggleButton examples", true, nullptr },
-                { "LargeToggleButtonWithIconSample", "ToggleButton examples", true, nullptr },
-                { "XLargeToggleButtonWithIconSample", "ToggleButton examples", true, nullptr },
+                { "ToggleButtonSample", "ToggleButton examples", true, samples::ToggleButtonSample },
+                { "ElevatedToggleButtonSample", "ToggleButton examples", true, samples::ElevatedToggleButtonSample },
+                { "FilledTonalToggleButtonSample", "ToggleButton examples", true, samples::FilledTonalToggleButtonSample },
+                { "OutlinedToggleButtonSample", "ToggleButton examples", true, samples::OutlinedToggleButtonSample },
+                { "ToggleButtonWithIconSample", "ToggleButton examples", true, samples::ToggleButtonWithIconSample },
+                { "ToggleButtonWithButtonSizeSample", "ToggleButton examples", true, samples::ToggleButtonWithButtonSizeSample },
+                { "XSmallToggleButtonWithIconSample", "ToggleButton examples", true, samples::XSmallToggleButtonWithIconSample },
+                { "MediumToggleButtonWithIconSample", "ToggleButton examples", true, samples::MediumToggleButtonWithIconSample },
+                { "LargeToggleButtonWithIconSample", "ToggleButton examples", true, samples::LargeToggleButtonWithIconSample },
+                { "XLargeToggleButtonWithIconSample", "ToggleButton examples", true, samples::XLargeToggleButtonWithIconSample },
             } },
             { 38, "Tooltips", "Tooltips call user attention to an anchor component.", true, {
                 { "PlainTooltipSample", "Tooltips examples", false, samples::PlainTooltipSample },

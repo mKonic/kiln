@@ -10,6 +10,8 @@ namespace catalog::Icons {
 
     namespace AutoMirrored { namespace Filled { const ImageVectorPtr& ArrowBack(); }}
     namespace AutoMirrored { namespace Filled { const ImageVectorPtr& ArrowRight(); }}
+    namespace AutoMirrored { namespace Filled { const ImageVectorPtr& FormatAlignLeft(); }}
+    namespace AutoMirrored { namespace Filled { const ImageVectorPtr& FormatAlignRight(); }}
     namespace AutoMirrored { namespace Filled { const ImageVectorPtr& KeyboardArrowRight(); }}
     namespace AutoMirrored { namespace Filled { const ImageVectorPtr& TrendingUp(); }}
     namespace Filled { const ImageVectorPtr& Add(); }
@@ -21,6 +23,12 @@ namespace catalog::Icons {
     namespace Filled { const ImageVectorPtr& Done(); }
     namespace Filled { const ImageVectorPtr& Edit(); }
     namespace Filled { const ImageVectorPtr& Favorite(); }
+    namespace Filled { const ImageVectorPtr& FormatAlignCenter(); }
+    namespace Filled { const ImageVectorPtr& FormatAlignJustify(); }
+    namespace Filled { const ImageVectorPtr& FormatBold(); }
+    namespace Filled { const ImageVectorPtr& FormatItalic(); }
+    namespace Filled { const ImageVectorPtr& FormatLineSpacing(); }
+    namespace Filled { const ImageVectorPtr& FormatUnderlined(); }
     namespace Filled { const ImageVectorPtr& Home(); }
     namespace Filled { const ImageVectorPtr& Info(); }
     namespace Filled { const ImageVectorPtr& Lock(); }
@@ -34,8 +42,20 @@ namespace catalog::Icons {
     namespace Filled { const ImageVectorPtr& Settings(); }
     namespace Filled { const ImageVectorPtr& Star(); }
     namespace Filled { const ImageVectorPtr& StarBorder(); }
+    namespace Filled { const ImageVectorPtr& TagFaces(); }
+    namespace Filled { const ImageVectorPtr& ThumbDown(); }
+    namespace Filled { const ImageVectorPtr& ThumbUp(); }
     namespace Filled { const ImageVectorPtr& Tune(); }
+    namespace Outlined { const ImageVectorPtr& Edit(); }
+    namespace Outlined { const ImageVectorPtr& Email(); }
+    namespace Outlined { const ImageVectorPtr& FormatBold(); }
+    namespace Outlined { const ImageVectorPtr& FormatItalic(); }
+    namespace Outlined { const ImageVectorPtr& FormatUnderlined(); }
+    namespace Outlined { const ImageVectorPtr& Home(); }
+    namespace Outlined { const ImageVectorPtr& Info(); }
     namespace Outlined { const ImageVectorPtr& Lock(); }
+    namespace Outlined { const ImageVectorPtr& MoreVert(); }
     namespace Outlined { const ImageVectorPtr& PushPin(); }
+    namespace Outlined { const ImageVectorPtr& Settings(); }
 
 }
