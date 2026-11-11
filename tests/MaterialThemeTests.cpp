@@ -7980,7 +7980,7 @@ TEST(TextFieldHeightHoldsDuringTheFocusAnimation) {
                 // bodyLarge as large as displayLarge.
                 Typography t = MaterialTheme::typography();
                 t.bodyLarge = t.displayLarge;
-                MaterialTheme({ .typography = t }, [&] { TextField(state, Tag({}, "textField"), o); });
+                MaterialTheme({ .typography = t }, [&state, o] { TextField(state, Tag({}, "textField"), o); });
             } else {
                 TextField(state, Tag({}, "textField"), o);
             }
