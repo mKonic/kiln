@@ -1663,16 +1663,24 @@ namespace kiln::foundation {
             auto it = anims.find(KeyOf(index).value);
             return it != anims.end() && it->second->has ? it->second : nullptr;
         };
-        for (std::size_t i = 0; i < lines.size(); ++i)
-            for (const auto& cell : lines[i].cells) placed.push_back({ cell.p, screen[i], cell.crossPos, animOf(cell.index), {} });
-        if ((!extraBefore.empty() || !extraAfter.empty()) && !offsets.empty()) {
-            auto toScreen = [&](int off, int size) { return reverse ? mainMax - (off + before) - size : off + before; };
+        // In index order, as Compose positions them: the items before the viewport, the visible
+        // ones, the items after (placement order is also the focus traversal order).
+        const bool extras = (!extraBefore.empty() || !extraAfter.empty()) && !offsets.empty();
+        auto toScreen = [&](int off, int size) { return reverse ? mainMax - (off + before) - size : off + before; };
+        if (extras) {
+            // extraBefore runs away from the viewport; place it from the farthest.
+            std::vector<Placed> beforeItems;
             int acc = offsets.front();
             for (const auto& l : extraBefore) {
                 acc -= l.size + spacing;
-                for (const auto& cell : l.cells) placed.push_back({ cell.p, toScreen(acc, l.size), cell.crossPos, nullptr, {} });
+                for (const auto& cell : l.cells) beforeItems.push_back({ cell.p, toScreen(acc, l.size), cell.crossPos, nullptr, {} });
             }
-            acc = offsets.back() + lines.back().size + spacing;
+            placed.insert(placed.end(), beforeItems.rbegin(), beforeItems.rend());
+        }
+        for (std::size_t i = 0; i < lines.size(); ++i)
+            for (const auto& cell : lines[i].cells) placed.push_back({ cell.p, screen[i], cell.crossPos, animOf(cell.index), {} });
+        if (extras) {
+            int acc = offsets.back() + lines.back().size + spacing;
             for (const auto& l : extraAfter) {
                 for (const auto& cell : l.cells) placed.push_back({ cell.p, toScreen(acc, l.size), cell.crossPos, nullptr, {} });
                 acc += l.size + spacing;
