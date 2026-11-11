@@ -29,6 +29,7 @@ namespace catalog::Icons {
     namespace Filled { const ImageVectorPtr& Bookmarks(); }
     namespace Filled { const ImageVectorPtr& CalendarMonth(); }
     namespace Filled { const ImageVectorPtr& Check(); }
+    namespace Filled { const ImageVectorPtr& CheckCircle(); }
     namespace Filled { const ImageVectorPtr& Clear(); }
     namespace Filled { const ImageVectorPtr& Close(); }
     namespace Filled { const ImageVectorPtr& Coffee(); }
@@ -84,6 +85,7 @@ namespace catalog::Icons {
     namespace Filled { const ImageVectorPtr& Visibility(); }
     namespace Filled { const ImageVectorPtr& VisibilityOff(); }
     namespace Filled { const ImageVectorPtr& Work(); }
+    namespace Outlined { const ImageVectorPtr& CheckCircle(); }
     namespace Outlined { const ImageVectorPtr& Coffee(); }
     namespace Outlined { const ImageVectorPtr& Edit(); }
     namespace Outlined { const ImageVectorPtr& Email(); }

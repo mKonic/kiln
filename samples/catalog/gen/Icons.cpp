@@ -631,6 +631,31 @@ namespace catalog::Icons {
         return image;
     } }
 
+    namespace Filled { const ImageVectorPtr& CheckCircle() {
+        static const ImageVectorPtr image = [] {
+            ImageVector::Builder b("Filled.CheckCircle", ui::Dp(24), ui::Dp(24), 24, 24, ui::Color::Unspecified(), gfx::BlendMode::SrcIn, false);
+            b.Path(PathBuilder()
+                       .MoveTo(12.0f, 2.0f)
+                       .CurveTo(6.48f, 2.0f, 2.0f, 6.48f, 2.0f, 12.0f)
+                       .ReflectiveCurveToRelative(4.48f, 10.0f, 10.0f, 10.0f)
+                       .ReflectiveCurveToRelative(10.0f, -4.48f, 10.0f, -10.0f)
+                       .ReflectiveCurveTo(17.52f, 2.0f, 12.0f, 2.0f)
+                       .Close()
+                       .MoveTo(10.0f, 17.0f)
+                       .LineToRelative(-5.0f, -5.0f)
+                       .LineToRelative(1.41f, -1.41f)
+                       .LineTo(10.0f, 14.17f)
+                       .LineToRelative(7.59f, -7.59f)
+                       .LineTo(19.0f, 8.0f)
+                       .LineToRelative(-9.0f, 9.0f)
+                       .Close()
+                       .Nodes(), gfx::Brush::SolidColor(ui::Color(0xff000000)), 1.0f, std::nullopt, 1.0f, 1.0f,
+                   gfx::StrokeCap::Butt, gfx::StrokeJoin::Bevel, 1.0f, gfx::FillType::NonZero);
+            return b.Build();
+        }();
+        return image;
+    } }
+
     namespace Filled { const ImageVectorPtr& Clear() {
         static const ImageVectorPtr image = [] {
             ImageVector::Builder b("Filled.Clear", ui::Dp(24), ui::Dp(24), 24, 24, ui::Color::Unspecified(), gfx::BlendMode::SrcIn, false);
@@ -2539,6 +2564,36 @@ namespace catalog::Icons {
                        .LineTo(10.0f, 4.0f)
                        .HorizontalLineToRelative(4.0f)
                        .VerticalLineToRelative(2.0f)
+                       .Close()
+                       .Nodes(), gfx::Brush::SolidColor(ui::Color(0xff000000)), 1.0f, std::nullopt, 1.0f, 1.0f,
+                   gfx::StrokeCap::Butt, gfx::StrokeJoin::Bevel, 1.0f, gfx::FillType::NonZero);
+            return b.Build();
+        }();
+        return image;
+    } }
+
+    namespace Outlined { const ImageVectorPtr& CheckCircle() {
+        static const ImageVectorPtr image = [] {
+            ImageVector::Builder b("Outlined.CheckCircle", ui::Dp(24), ui::Dp(24), 24, 24, ui::Color::Unspecified(), gfx::BlendMode::SrcIn, false);
+            b.Path(PathBuilder()
+                       .MoveTo(12.0f, 2.0f)
+                       .CurveTo(6.48f, 2.0f, 2.0f, 6.48f, 2.0f, 12.0f)
+                       .ReflectiveCurveToRelative(4.48f, 10.0f, 10.0f, 10.0f)
+                       .ReflectiveCurveToRelative(10.0f, -4.48f, 10.0f, -10.0f)
+                       .ReflectiveCurveTo(17.52f, 2.0f, 12.0f, 2.0f)
+                       .Close()
+                       .MoveTo(12.0f, 20.0f)
+                       .CurveToRelative(-4.41f, 0.0f, -8.0f, -3.59f, -8.0f, -8.0f)
+                       .ReflectiveCurveToRelative(3.59f, -8.0f, 8.0f, -8.0f)
+                       .ReflectiveCurveToRelative(8.0f, 3.59f, 8.0f, 8.0f)
+                       .ReflectiveCurveToRelative(-3.59f, 8.0f, -8.0f, 8.0f)
+                       .Close()
+                       .MoveTo(16.59f, 7.58f)
+                       .LineTo(10.0f, 14.17f)
+                       .LineToRelative(-2.59f, -2.58f)
+                       .LineTo(6.0f, 13.0f)
+                       .LineToRelative(4.0f, 4.0f)
+                       .LineToRelative(8.0f, -8.0f)
                        .Close()
                        .Nodes(), gfx::Brush::SolidColor(ui::Color(0xff000000)), 1.0f, std::nullopt, 1.0f, 1.0f,
                    gfx::StrokeCap::Butt, gfx::StrokeJoin::Bevel, 1.0f, gfx::FillType::NonZero);

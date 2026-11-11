@@ -38,6 +38,7 @@
 #include "samples/SwitchSamples.h"
 #include "samples/TabSamples.h"
 #include "samples/TextFieldSamples.h"
+#include "samples/ThreePaneScaffoldSamples.h"
 #include "samples/TimePickerSamples.h"
 #include "samples/ToggleButtonSamples.h"
 #include "samples/TooltipSamples.h"
@@ -49,11 +50,11 @@ namespace catalog {
     const std::vector<Component>& Components() {
         static const std::vector<Component> components = {
             { 1, "Adaptive", "Adaptive scaffolds provides automatic layout adjustment on different window size classes and postures.\n\nNote: this sample is better experienced in a resizable emulator or foldable device.", true, 0, {
-                { "ListDetailPaneScaffoldSample", "Adaptive examples", false, nullptr },
-                { "ListDetailPaneScaffoldSampleWithExtraPane", "Adaptive examples", false, nullptr },
-                { "ListDetailPaneScaffoldSampleWithExtraPaneLevitatedAsDialog", "Adaptive examples", false, nullptr },
-                { "SupportingPaneScaffoldSample", "Adaptive examples", false, nullptr },
-                { "SupportingPaneScaffoldSampleWithExtraPaneLevitatedAsBottomSheet", "Adaptive examples", false, nullptr },
+                { "ListDetailPaneScaffoldSample", "Adaptive examples", false, samples::ListDetailPaneScaffoldSample },
+                { "ListDetailPaneScaffoldSampleWithExtraPane", "Adaptive examples", false, samples::ListDetailPaneScaffoldSampleWithExtraPane },
+                { "ListDetailPaneScaffoldSampleWithExtraPaneLevitatedAsDialog", "Adaptive examples", false, samples::ListDetailPaneScaffoldSampleWithExtraPaneLevitatedAsDialog },
+                { "SupportingPaneScaffoldSample", "Adaptive examples", false, samples::SupportingPaneScaffoldSample },
+                { "SupportingPaneScaffoldSampleWithExtraPaneLevitatedAsBottomSheet", "Adaptive examples", false, samples::SupportingPaneScaffoldSampleWithExtraPaneLevitatedAsBottomSheet },
                 { "ListDetailWithNavigation2Sample", "Adaptive examples", false, nullptr },
                 { "ListDetailWithNavigation3Sample", "Adaptive examples", false, nullptr },
             } },
