@@ -35,6 +35,7 @@
 #include "kiln/material3/BottomSheetScaffold.h"
 #include "kiln/material3/ModalBottomSheet.h"
 #include "kiln/material3/NavigationDrawer.h"
+#include "kiln/material3/SearchBar.h"
 #include "kiln/ui/Back.h"
 #include "kiln/material3/internal/GetString.h"
 #include "kiln/material3/Divider.h"
@@ -10760,5 +10761,487 @@ TEST(DrawerStateSavedAndRestored) {
         });
         CHECK(state && state->CurrentValue() == DrawerValue::Open);
         if (pass == 0) saved = rt::SaveableStateRegistry::Deserialize(rt::SaveableStateRegistry::Serialize(registry.PerformSave()));
+    }
+}
+
+// Ported from Compose's SearchBarTest (412 x 800 dp, density 2). Its ignored case (the new bar
+// in touch mode, b/548075414) is ported too: kiln has no reason to skip it.
+namespace {
+    // onNodeWithText(...) for a text field: the node whose editable text it is.
+    const ui::SemanticsNode* FindEditable(const ui::SemanticsNode& n, const std::string& text) {
+        if (n.config.editableText == text) return &n;
+        for (const auto& c : n.children)
+            if (const auto* r = FindEditable(c, text)) return r;
+        return nullptr;
+    }
+    bool FieldFocused(ui::Owner& owner, const std::string& text) {
+        const auto tree = owner.BuildSemanticsTree(false);
+        const auto* n = FindEditable(tree, text);
+        return n && n->config.focused == true;
+    }
+    bool PerformImeAction(ui::Owner& owner, const std::string& text) {
+        const auto tree = owner.BuildSemanticsTree(false);
+        const auto* n = FindEditable(tree, text);
+        return n && n->config.onImeAction && n->config.onImeAction();
+    }
+    bool Exists(ui::Owner& owner, const std::string& tag) { return FindTagged(owner.Root(), tag) != nullptr; }
+    void TapAt(Harness& h, float xPx, float yPx) {
+        std::int64_t t = 7000;
+        Touch(h, t, ui::PointerEventType::Press, xPx, yPx, true);
+        Touch(h, t, ui::PointerEventType::Release, xPx, yPx, false);
+    }
+    void SearchField(TextFieldState& field, std::shared_ptr<SearchBarState> bar, ui::Modifier m = {}, std::function<void(std::string)> onSearch = {},
+                     std::function<void()> trailing = {}) {
+        SearchBarInputFieldOptions o;
+        o.placeholder = [] { Text("Search"); };
+        o.trailingIcon = std::move(trailing);
+        SearchBarDefaults::InputField(field, std::move(bar), onSearch ? std::move(onSearch) : [](std::string) {}, m, o);
+    }
+    void IconTag(std::function<void()> onClick) {
+        IconButton(std::move(onClick), Tag({}, "Icon"), {}, [] { Icon(internal::Icons::Filled::Edit(), std::nullopt); });
+    }
+    bool KeyPress(ui::Owner& owner, int keyCode, std::uint32_t unicode = 0) {
+        const bool a = owner.DispatchKeyEvent({ keyCode, ui::KeyEventType::KeyDown, 0, unicode });
+        const bool b = owner.DispatchKeyEvent({ keyCode, ui::KeyEventType::KeyUp, 0, unicode });
+        return a || b;
+    }
+}
+
+TEST(LegacySearchBarsExpandOnClickAndCollapseOnBack) {
+    for (bool docked : { false, true }) {
+        PhoneHarness h;
+        rt::State<bool> expanded{ false };
+        Themed(h, [&] {
+            Column(FillMax({}, Axis::Both), [&] {
+                Box(Focusable(SizeMod({}, 10_dp, 10_dp)));   // something to hold focus first
+                auto& field = RememberTextFieldState("Query");
+                const auto input = [&] {
+                    SearchBarDefaults::InputField(field, [](std::string) {}, expanded.Get(), [&](bool v) { expanded.Set(v); }, FillMax({}, Axis::Horizontal));
+                };
+                const auto content = [] { Button([] { ui::BackDispatcher::Main().Completed(); }, Tag({}, "Back"), {}, [] { Text("Content"); }); };
+                if (docked) DockedSearchBar(input, expanded.Get(), [&](bool v) { expanded.Set(v); }, Tag({}, "SearchBar"), {}, content);
+                else SearchBar(input, expanded.Get(), [&](bool v) { expanded.Set(v); }, Tag({}, "SearchBar"), {}, content);
+            });
+        });
+        h.AdvanceTimeBy(300);
+        CHECK(!Exists(h.owner, "Back"));
+        CHECK(ClickTag(h, "SearchBar"));
+        h.AdvanceTimeBy(1500);
+        CHECK(Exists(h.owner, "Back") && FieldFocused(h.owner, "Query"));
+        CHECK(ClickTag(h, "Back"));
+        h.AdvanceTimeBy(1500);
+        CHECK(!Exists(h.owner, "Back") && !FieldFocused(h.owner, "Query"));
+    }
+}
+
+TEST(SearchBarsDoNotOverwriteOtherComponentsFocus) {
+    for (int kind = 0; kind < 3; ++kind) {   // SearchBar, DockedSearchBar, the new SearchBar
+        ModalHarness h;
+        ui::FocusRequester sibling;
+        std::shared_ptr<SearchBarState> bar;
+        Themed(h, [&] {
+            Column(FillMax({}, Axis::Both), [&] {
+                auto& field = RememberTextFieldState("Query");
+                if (kind == 2) {
+                    bar = RememberSearchBarState();
+                    SearchBar(bar, [&, bar] { SearchField(field, bar, Tag({}, "Collapsed")); }, Tag({}, "SearchBar"));
+                    ExpandedFullScreenSearchBar(bar, [&, bar] { SearchField(field, bar, Tag({}, "Expanded")); }, {}, {}, [] {});
+                } else {
+                    const auto input = [&] { SearchBarDefaults::InputField(field, [](std::string) {}, false, [](bool) {}, FillMax({}, Axis::Horizontal)); };
+                    if (kind == 1) DockedSearchBar(input, false, [](bool) {}, Tag({}, "SearchBar"), {}, [] {});
+                    else SearchBar(input, false, [](bool) {}, Tag({}, "SearchBar"), {}, [] {});
+                }
+                auto& other = RememberTextFieldState();
+                TextField(other, Tag(FocusRequesterModifier({}, sibling), "SIBLING"));
+            });
+        });
+        h.AdvanceTimeBy(300);
+        CHECK(sibling.RequestFocus());
+        h.AdvanceTimeBy(100);
+        CHECK(ClickTag(h, "SearchBar"));
+        h.AdvanceTimeBy(1500);
+        if (kind == 2) CHECK(SheetWindow(h) && FieldFocused(*SheetWindow(h), "Query"));
+        else CHECK(FieldFocused(h.owner, "Query"));
+    }
+}
+
+TEST(SearchBarsRunOnSearchFromTheImeAction) {
+    for (int kind = 0; kind < 3; ++kind) {
+        ModalHarness h;
+        std::string captured;
+        std::shared_ptr<SearchBarState> bar;
+        rt::State<bool> expanded{ true };
+        Themed(h, [&] {
+            Box(FillMax({}, Axis::Both), Alignment::TopStart(), false, [&] {
+                auto& field = RememberTextFieldState("Query");
+                if (kind == 2) {
+                    bar = RememberSearchBarState();
+                    SearchBar(bar, [&, bar] { SearchField(field, bar, Tag({}, "Collapsed"), [&](std::string q) { captured = q; }); }, Tag({}, "SearchBar"));
+                    ExpandedFullScreenSearchBar(bar, [&, bar] { SearchField(field, bar, Tag({}, "Expanded"), [&](std::string q) { captured = q; }); }, {}, {},
+                                                [] { Text("Content"); });
+                } else {
+                    const auto input = [&] {
+                        SearchBarDefaults::InputField(field, [&](std::string q) { captured = q; }, expanded.Get(), [&](bool v) { expanded.Set(v); });
+                    };
+                    if (kind == 1) DockedSearchBar(input, expanded.Get(), [&](bool v) { expanded.Set(v); }, {}, {}, [] { Text("Content"); });
+                    else SearchBar(input, expanded.Get(), [&](bool v) { expanded.Set(v); }, {}, {}, [] { Text("Content"); });
+                }
+            });
+        });
+        h.AdvanceTimeBy(1000);
+        CHECK(PerformImeAction(h.owner, "Query"));
+        CHECK(captured == "Query");
+        if (kind != 2) continue;
+        captured.clear();
+        CHECK(ClickTag(h, "SearchBar"));
+        h.AdvanceTimeBy(1500);
+        CHECK(SheetWindow(h) && PerformImeAction(*SheetWindow(h), "Query"));
+        CHECK(captured == "Query");
+    }
+}
+
+TEST(SearchBarSizes) {
+    {
+        // Legacy, not expanded: the field plus the top padding.
+        PhoneHarness h;
+        Themed(h, [&] {
+            auto& field = RememberTextFieldState();
+            SearchBarInputFieldOptions o;
+            o.placeholder = [] { Text("Hint"); };
+            SearchBar([&, o] { SearchBarDefaults::InputField(field, [](std::string) {}, false, [](bool) {}, {}, o); }, false, [](bool) {}, Tag({}, "bar"), {},
+                      [] {});
+        });
+        h.AdvanceTimeBy(300);
+        const auto b = UnclippedBoundsDp(h, "bar");
+        CHECK(b && Near(b->Width(), 360) && Near(b->Height(), 56 + 8));
+    }
+    {
+        // Legacy, expanded: fills the space it has.
+        PhoneHarness h;
+        Themed(h, [&] {
+            Box(SizeMod({}, 325_dp, 500_dp), Alignment::TopStart(), false, [&] {
+                auto& field = RememberTextFieldState();
+                SearchBar([&] { SearchBarDefaults::InputField(field, [](std::string) {}, true, [](bool) {}); }, true, [](bool) {}, Tag({}, "bar"), {},
+                          [] { Text("Content"); });
+            });
+        });
+        h.AdvanceTimeBy(1500);
+        const auto b = UnclippedBoundsDp(h, "bar");
+        CHECK(b && Near(b->Width(), 325) && Near(b->Height(), 500));
+    }
+    for (bool expanded : { false, true }) {
+        // Docked: the field, then up to 240 dp of results.
+        PhoneHarness h;
+        Themed(h, [&] {
+            auto& field = RememberTextFieldState();
+            DockedSearchBar([&] { SearchBarDefaults::InputField(field, [](std::string) {}, expanded, [](bool) {}); }, expanded, [](bool) {}, Tag({}, "bar"), {},
+                            [] { Text("Content"); });
+        });
+        h.AdvanceTimeBy(1500);
+        const auto b = UnclippedBoundsDp(h, "bar");
+        CHECK(b && Near(b->Width(), 360) && Near(b->Height(), expanded ? 56 + 240 : 56));
+    }
+    {
+        // The new bar, collapsed.
+        PhoneHarness h;
+        Themed(h, [&] {
+            auto bar = RememberSearchBarState();
+            auto& field = RememberTextFieldState("Query");
+            SearchBar(bar, [&, bar] { SearchField(field, bar); }, Tag({}, "bar"));
+        });
+        h.AdvanceTimeBy(300);
+        const auto b = UnclippedBoundsDp(h, "bar");
+        CHECK(b && Near(b->Width(), 360) && Near(b->Height(), 56));
+    }
+}
+
+TEST(SearchBarUsesAndConsumesWindowInsets) {
+    // Pixels: the parent pads 10 px, the bar's own insets are 25 px.
+    for (bool appBar : { false, true }) {
+        PhoneHarness h;
+        WindowInsets childConsumed;
+        Themed(h, [&] {
+            Box(WindowInsetsPadding({}, WindowInsets::Fixed(0, 10, 0, 0)), Alignment::TopStart(), false, [&] {
+                auto& field = RememberTextFieldState();
+                if (appBar) {
+                    auto bar = RememberSearchBarState();
+                    AppBarWithSearchOptions o;
+                    o.windowInsets = WindowInsets::Fixed(0, 25, 0, 0);
+                    AppBarWithSearch(bar, [&, bar] {
+                        SearchField(field, bar, Tag({}, "input"));
+                        Box(OnConsumedWindowInsetsChanged({}, [&](const WindowInsets& w) { childConsumed = w; }));
+                    }, Tag({}, "bar"), o);
+                } else {
+                    ExpandableSearchBarOptions o;
+                    o.windowInsets = WindowInsets::Fixed(0, 25, 0, 0);
+                    SearchBar([&] { SearchBarDefaults::InputField(field, [](std::string) {}, true, [](bool) {}); }, true, [](bool) {}, Tag({}, "bar"), o,
+                              [&] { Box(OnConsumedWindowInsetsChanged({}, [&](const WindowInsets& w) { childConsumed = w; })); });
+                }
+            });
+        });
+        h.AdvanceTimeBy(1500);
+        const auto* n = FindTagged(h, "bar");
+        CHECK(n && Near(TagRectInRoot(*n, "bar").top, 10));
+        if (appBar) {
+            const auto* input = FindTagged(h, "input");
+            CHECK(input && Near(TagRectInRoot(*input, "input").top, 25 + 4 * 2));
+        }
+        const InsetsContext ctx{ nullptr, ui::Density{ 2 }, ui::LayoutDirection::Ltr };
+        CHECK(childConsumed.Top(ctx) == 25);
+    }
+}
+
+TEST(SearchBarsIconButtonsDoNotExpandTheBar) {
+    for (int kind = 0; kind < 3; ++kind) {
+        ModalHarness h;
+        bool iconClicked = false;
+        std::shared_ptr<SearchBarState> bar;
+        rt::State<bool> expanded{ false };
+        Themed(h, [&] {
+            Box(FillMax({}, Axis::Both), Alignment::TopStart(), false, [&] {
+                auto& field = RememberTextFieldState("Query");
+                const auto icon = [&] { IconTag([&] { iconClicked = true; }); };
+                if (kind == 2) {
+                    bar = RememberSearchBarState();
+                    SearchBar(bar, [&, icon] { SearchField(field, bar, Tag({}, "Collapsed"), {}, icon); }, Tag({}, "SearchBar"));
+                    ExpandedFullScreenSearchBar(bar, [&, bar] { SearchField(field, bar, Tag({}, "Expanded")); }, {}, {}, [] { Text("Content", Tag({}, "Content")); });
+                } else {
+                    SearchBarInputFieldOptions o;
+                    o.trailingIcon = icon;
+                    const auto input = [&, o] {
+                        SearchBarDefaults::InputField(field, [](std::string) {}, expanded.Get(), [&](bool v) { expanded.Set(v); }, FillMax({}, Axis::Horizontal), o);
+                    };
+                    const auto content = [] { Text("Content", Tag({}, "Content")); };
+                    if (kind == 1) DockedSearchBar(input, expanded.Get(), [&](bool v) { expanded.Set(v); }, Tag({}, "SearchBar"), {}, content);
+                    else SearchBar(input, expanded.Get(), [&](bool v) { expanded.Set(v); }, Tag({}, "SearchBar"), {}, content);
+                }
+            });
+        });
+        h.AdvanceTimeBy(300);
+        const auto contentShown = [&] { return Exists(h.owner, "Content") || (SheetWindow(h) && Exists(*SheetWindow(h), "Content")); };
+        CHECK(!contentShown());
+        CHECK(ClickTag(h, "Icon"));
+        h.AdvanceTimeBy(1500);
+        CHECK(iconClicked && !contentShown());
+        if (kind == 2) continue;
+        // A tap on the bar itself (left of the icon) expands it.
+        const auto b = UnclippedBoundsDp(h, "SearchBar");
+        if (!b) return;
+        TapAt(h, (b->left + 60) * 2, (b->top + 28) * 2);
+        h.AdvanceTimeBy(1500);
+        CHECK(contentShown());
+    }
+}
+
+TEST(NewSearchBarExpandsOnTapAndCollapsesOnBack) {
+    ModalHarness h;
+    std::shared_ptr<SearchBarState> bar;
+    Themed(h, [&] {
+        Box(FillMax({}, Axis::Both), Alignment::TopStart(), false, [&] {
+            bar = RememberSearchBarState();
+            auto& field = RememberTextFieldState("Query");
+            Box(Focusable(SizeMod({}, 10_dp, 10_dp)));
+            SearchBar(bar, [&, bar] { SearchField(field, bar, Tag({}, "Collapsed")); }, Tag({}, "SearchBar"));
+            ExpandedFullScreenSearchBar(bar, [&, bar] { SearchField(field, bar, Tag({}, "Expanded")); }, {}, {}, [] { Text("Content", Tag({}, "Content")); });
+        });
+    });
+    h.AdvanceTimeBy(300);
+    CHECK(!SheetWindow(h));
+    CHECK(ClickTag(h, "SearchBar"));
+    h.AdvanceTimeBy(1500);
+    CHECK(SheetWindow(h) && Exists(*SheetWindow(h), "Content") && FieldFocused(*SheetWindow(h), "Query"));
+    CHECK(bar->CurrentValue() == SearchBarValue::Expanded);
+    CHECK(PressBack(h));
+    h.AdvanceTimeBy(1500);
+    CHECK(!SheetWindow(h) && bar->CurrentValue() == SearchBarValue::Collapsed);
+    CHECK(!FieldFocused(h.owner, "Query"));
+}
+
+TEST(NewSearchBarExpansionWithAKeyboard) {
+    ModalHarness h;
+    h.owner.SetInputMode(ui::InputMode::Keyboard);
+    ui::FocusRequester focus;
+    std::shared_ptr<SearchBarState> bar;
+    TextFieldState* fieldState = nullptr;
+    Themed(h, [&] {
+        Box(FillMax({}, Axis::Both), Alignment::TopStart(), false, [&] {
+            bar = RememberSearchBarState();
+            auto& field = RememberTextFieldState();
+            fieldState = &field;
+            Box(Focusable(SizeMod({}, 10_dp, 10_dp)));
+            SearchBar(bar, [&, bar] { SearchField(field, bar, Tag(FocusRequesterModifier({}, focus), "Collapsed")); }, Tag({}, "SearchBar"));
+            ExpandedFullScreenSearchBar(bar, [&, bar] { SearchField(field, bar, Tag({}, "Expanded")); }, {}, {}, [] { Text("Content", Tag({}, "Content")); });
+        });
+    });
+    h.AdvanceTimeBy(300);
+    CHECK(focus.RequestFocus());
+    h.AdvanceTimeBy(100);
+    // Focused by keyboard: still collapsed.
+    CHECK(FieldFocused(h.owner, "") && !SheetWindow(h));
+    // Typing expands it.
+    CHECK(KeyPress(h.owner, 29, 'a'));
+    h.AdvanceTimeBy(1500);
+    CHECK(fieldState && fieldState->TextUtf8() == "a");
+    CHECK(SheetWindow(h) && Exists(*SheetWindow(h), "Content") && FieldFocused(*SheetWindow(h), "a"));
+    CHECK(PressBack(h));
+    h.AdvanceTimeBy(1500);
+    CHECK(bar->CurrentValue() == SearchBarValue::Collapsed && !SheetWindow(h));
+    // The collapsed field keeps focus; Down expands it again.
+    CHECK(FieldFocused(h.owner, "a"));
+    CHECK(KeyPress(h.owner, ui::keys::DpadDown));
+    h.AdvanceTimeBy(1500);
+    CHECK(SheetWindow(h) && Exists(*SheetWindow(h), "Content") && FieldFocused(*SheetWindow(h), "a"));
+}
+
+TEST(NewSearchBarResultsAreReachableWithDown) {
+    ModalHarness h;
+    h.owner.SetInputMode(ui::InputMode::Keyboard);
+    bool focused = false;
+    Themed(h, [&] {
+        Box(FillMax({}, Axis::Both), Alignment::TopStart(), false, [&] {
+            auto bar = RememberSearchBarState(SearchBarValue::Expanded);
+            auto& field = RememberTextFieldState();
+            ExpandedFullScreenSearchBar(bar, [&, bar] { SearchField(field, bar, Tag({}, "Expanded")); }, {}, {}, [&] {
+                Text("Content", Focusable({}, ui::Focusability::Always, [&](ui::FocusState s) { if (ui::IsFocused(s)) focused = true; }));
+            });
+        });
+    });
+    h.AdvanceTimeBy(1500);
+    ui::Owner* w = SheetWindow(h);
+    CHECK(w && FieldFocused(*w, ""));
+    if (!w) return;
+    w->SetInputMode(ui::InputMode::Keyboard);
+    KeyPress(*w, ui::keys::DpadDown);
+    h.AdvanceTimeBy(300);
+    CHECK(focused);
+}
+
+TEST(AppBarWithSearchScrollBehavior) {
+    for (int variant = 0; variant < 3; ++variant) {   // plain, reversed layout, scrolling switched off and on
+        PhoneHarness h;
+        std::int64_t t = 1000;
+        rt::State<bool> canScroll{ true };
+        Themed(h, [&] {
+            const bool reverse = variant == 1;
+            auto behavior = SearchBarDefaults::enterAlwaysSearchBarScrollBehavior(nullptr, variant == 2 ? std::function<bool()>([&] { return canScroll.Get(); })
+                                                                                                          : std::function<bool()>{},
+                                                                                  nullptr, nullptr, reverse);
+            auto bar = RememberSearchBarState();
+            auto& field = RememberTextFieldState();
+            ScaffoldOptions o;
+            o.topBar = [&, behavior, bar] {
+                AppBarWithSearchOptions a;
+                a.scrollBehavior = behavior;
+                a.navigationIcon = [] { IconButton([] {}, {}, {}, [] { Icon(internal::Icons::Filled::Edit(), std::string("Menu")); }); };
+                a.actions = [] { IconButton([] {}, {}, {}, [] { Icon(internal::Icons::Filled::Edit(), std::string("Account")); }); };
+                AppBarWithSearch(bar, [&field, bar] { SearchField(field, bar); }, Tag({}, "SearchBar"), a);
+            };
+            Scaffold(NestedScroll({}, behavior->NestedScrollConnection()), o, [reverse](const PaddingValues& padding) {
+                LazyColumn(Tag(FillMax({}, Axis::Both), "Scrollable"), RememberLazyListState(), [](LazyListScope& s) {
+                    s.Items(100, [](int i) { Box(Height(FillMax({}, Axis::Horizontal), 60_dp), Alignment::TopStart(), false, [i] { Text(std::to_string(i)); }); });
+                }, { .contentPadding = padding, .reverseLayout = reverse });
+            });
+        });
+        h.AdvanceTimeBy(300);
+        const auto shown = [&] {
+            const auto b = UnclippedBoundsDp(h, "SearchBar");
+            return b && b->Height() > 1;
+        };
+        // swipeUp / swipeDown over the list (px).
+        const auto swipe = [&](bool up) {
+            if (up) Swipe(h, t, 412, 1400, 412, 400, 10, 20);
+            else Swipe(h, t, 412, 400, 412, 1400, 10, 20);
+            h.AdvanceTimeBy(1000);
+        };
+        CHECK(shown());
+        if (variant == 1) {
+            swipe(false);   // a reversed list's pull down keeps the bar
+            CHECK(shown());
+        }
+        if (variant == 2) {
+            canScroll.Set(false);
+            h.AdvanceTimeBy(100);
+            swipe(true);
+            CHECK(shown());
+            canScroll.Set(true);
+            h.AdvanceTimeBy(100);
+        }
+        swipe(true);
+        CHECK(!shown());
+        if (variant == 2) {
+            canScroll.Set(false);
+            h.AdvanceTimeBy(100);
+            swipe(false);
+            CHECK(!shown());
+            canScroll.Set(true);
+            h.AdvanceTimeBy(100);
+        }
+        swipe(false);
+        CHECK(shown());
+    }
+}
+
+TEST(AppBarWithSearchScrollStateRestores) {
+    rt::SaveableStateRegistry::Values saved;
+    for (int pass = 0; pass < 2; ++pass) {
+        rt::SaveableStateRegistry registry(saved);
+        std::shared_ptr<SearchBarScrollBehavior> behavior;
+        Harness h;
+        h.Run([&] {
+            rt::Composition::Current()->Provide(rt::LocalSaveableStateRegistry, &registry, [&] { behavior = SearchBarDefaults::enterAlwaysSearchBarScrollBehavior(); });
+        });
+        CHECK(behavior != nullptr);
+        if (!behavior) return;
+        if (pass == 0) {
+            behavior->ScrollState()->SetScrollOffsetLimit(-350);
+            behavior->ScrollState()->SetScrollOffset(-300);
+            saved = rt::SaveableStateRegistry::Deserialize(rt::SaveableStateRegistry::Serialize(registry.PerformSave()));
+        } else {
+            CHECK_EQ(behavior->ScrollState()->ScrollOffsetLimit(), -350.0f);
+            CHECK_EQ(behavior->ScrollState()->ScrollOffset(), -300.0f);
+        }
+    }
+}
+
+TEST(AppBarWithSearchPadsBelowTheParentsInsets) {
+    // The parent handles a 10 dp status bar; the bar's content padding adds 20 dp on top.
+    PhoneHarness h;
+    h.owner.Insets().Set(ui::InsetsType::StatusBars, { 0, 20, 0, 0 });
+    Themed(h, [&] {
+        auto bar = RememberSearchBarState();
+        auto& field = RememberTextFieldState();
+        Column(WindowInsetsPadding(FillMax({}, Axis::Both), WindowInsets::StatusBars()), [&, bar] {
+            AppBarWithSearchOptions o;
+            o.contentPadding = PaddingValues{ Dp(0), 20_dp, Dp(0), Dp(0) };
+            AppBarWithSearch(bar, [&, bar] { SearchField(field, bar); }, Tag({}, "SearchBar"), o);
+            Box(WindowInsetsPadding(Tag(Height(FillMax({}, Axis::Horizontal), 40_dp), "BoxTestTag"), WindowInsets::StatusBars()), Alignment::Center(), false,
+                [] { Text("Sibling Box"); });
+        });
+    });
+    h.AdvanceTimeBy(300);
+    const float appBarHeight = 56 + 4 * 2;
+    const auto bar = UnclippedBoundsDp(h, "SearchBar");
+    CHECK(bar && Near(bar->top, 10) && bar->Height() >= appBarHeight + 20 - 0.5f);
+    const auto box = UnclippedBoundsDp(h, "BoxTestTag");
+    CHECK(box && Near(box->Height(), 40) && Near(box->top, 20 + appBarHeight + 10));
+}
+
+TEST(AppBarWithSearchWidthLimits) {
+    for (bool fill : { false, true }) {
+        // An 800 x 1800 dp window.
+        Harness h(2, { 1600, 3600 });
+        Themed(h, [&] {
+            auto bar = RememberSearchBarState();
+            auto& field = RememberTextFieldState();
+            AppBarWithSearch(bar, [&, bar] {
+                SearchField(field, bar, Tag(fill ? FillMax({}, Axis::Horizontal) : Width({}, Dp(internal::SearchBarMinWidth.value - 100)), "Collapsed"));
+            });
+        });
+        h.AdvanceTimeBy(300);
+        const auto b = UnclippedBoundsDp(h, "Collapsed");
+        CHECK(b.has_value());
+        if (!b) return;
+        if (fill) CHECK(std::abs(b->Width() - 720) <= 1);
+        else CHECK(b->Width() >= 360 - 0.5f);
     }
 }
