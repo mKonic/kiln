@@ -2665,7 +2665,10 @@ namespace {
 
 }
 
-extern "C" JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void*) {
+// kiln's registration of its natives. JNI_OnLoad below calls it; an app whose linker hides C
+// symbols (a Rust cdylib) defines its own exported JNI_OnLoad that calls this, which replaces
+// the weak one.
+extern "C" JNIEXPORT jint kiln_jni_onload(JavaVM* vm) {
     JNIEnv* env = nullptr;
     if (vm->GetEnv(reinterpret_cast<void**>(&env), JNI_VERSION_1_6) != JNI_OK) return JNI_ERR;
     jclass cls = env->FindClass("dev/kiln/KilnNative");
@@ -2771,3 +2774,5 @@ extern "C" JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void*) {
     if (env->RegisterNatives(cls, methods, sizeof(methods) / sizeof(methods[0])) != JNI_OK) return JNI_ERR;
     return JNI_VERSION_1_6;
 }
+
+extern "C" JNIEXPORT __attribute__((weak)) jint JNI_OnLoad(JavaVM* vm, void*) { return kiln_jni_onload(vm); }

@@ -425,3 +425,16 @@ pub fn animate_color(target: sys::kiln_color) -> sys::kiln_color { unsafe { sys:
 pub fn animated_visibility(visible: bool, modifier: Modifier, content: impl FnMut() + 'static) {
     unsafe { sys::kiln_animated_visibility(here(), visible, modifier.0, content.into_callback()) }
 }
+
+// --- Android --------------------------------------------------------------------------------
+
+/// The library's JNI entry: kiln registers its natives. A Rust cdylib exports only Rust symbols,
+/// so the C one is reached through this (it replaces kiln's weak JNI_OnLoad).
+#[cfg(target_os = "android")]
+#[no_mangle]
+pub extern "C" fn JNI_OnLoad(vm: *mut c_void, _reserved: *mut c_void) -> i32 {
+    extern "C" {
+        fn kiln_jni_onload(vm: *mut c_void) -> i32;
+    }
+    unsafe { kiln_jni_onload(vm) }
+}

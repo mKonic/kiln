@@ -1,0 +1,8 @@
+# Android: the NDK's clang links (minSdk 31), 16 KB pages.
+[target.x86_64-linux-android]
+linker = "/opt/android-ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/x86_64-linux-android31-clang"
+rustflags = ["-C", "link-arg=-Wl,-z,max-page-size=16384"]
+
+[target.aarch64-linux-android]
+linker = "/opt/android-ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android31-clang"
+rustflags = ["-C", "link-arg=-Wl,-z,max-page-size=16384"]

@@ -9,3 +9,8 @@ kiln-sys = { path = "../kiln-sys" }
 
 [[example]]
 name = "notes"
+
+# The same app as an Android library (KilnActivity loads it): `cargo build --example notes-lib --target x86_64-linux-android`.
+[[example]]
+name = "notes-lib"
+crate-type = ["cdylib"]

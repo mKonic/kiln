@@ -4,22 +4,52 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+/// The Android ABI for a Rust target, if it is one.
+fn android_abi(target: &str) -> Option<&'static str> {
+    match target {
+        "aarch64-linux-android" => Some("arm64-v8a"),
+        "x86_64-linux-android" => Some("x86_64"),
+        _ => None,
+    }
+}
+
 fn main() {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../..").canonicalize().unwrap();
-    let build = std::env::var("KILN_BUILD_DIR").map(PathBuf::from).unwrap_or_else(|_| root.join("build/host"));
+    let target = std::env::var("TARGET").unwrap();
     println!("cargo:rerun-if-env-changed=KILN_BUILD_DIR");
+    println!("cargo:rerun-if-env-changed=KILN_NDK");
     println!("cargo:rerun-if-changed={}", root.join("include/kiln/kiln.h").display());
     println!("cargo:rerun-if-changed={}", root.join("include/kiln/kiln_m3.h").display());
-
-    if !build.join("build.ninja").exists() {
-        run(Command::new("cmake").args(["-S"]).arg(&root).arg("-B").arg(&build).args(["-G", "Ninja"]));
+    // kiln's sources: CMake rebuilds what changed.
+    for dir in ["core/src", "render", "foundation/src", "material3/src", "platform"] {
+        println!("cargo:rerun-if-changed={}", root.join(dir).display());
     }
-    run(Command::new("cmake").arg("--build").arg(&build).args(["--target", "notes-c", "-j", "8"]));
-    link(&build);
+
+    let mut clang_args = vec![format!("-I{}", root.join("include").display())];
+    if let Some(abi) = android_abi(&target) {
+        // Android: kiln's NDK build for the ABI (tools/build-android.sh configures it).
+        let build = std::env::var("KILN_BUILD_DIR").map(PathBuf::from).unwrap_or_else(|_| root.join("build/android").join(abi));
+        if !build.join("build.ninja").exists() {
+            run(Command::new(root.join("tools/build-android.sh")).arg(abi));
+        }
+        run(Command::new("cmake").arg("--build").arg(&build)
+            .args(["--target", "kiln_android", "kiln_material3", "-j", "8"]));
+        link_android(&build);
+        let ndk = std::env::var("KILN_NDK").unwrap_or_else(|_| "/opt/android-ndk".into());
+        clang_args.push(format!("--target={target}31"));   // minSdk 31
+        clang_args.push(format!("--sysroot={ndk}/toolchains/llvm/prebuilt/linux-x86_64/sysroot"));
+    } else {
+        let build = std::env::var("KILN_BUILD_DIR").map(PathBuf::from).unwrap_or_else(|_| root.join("build/host"));
+        if !build.join("build.ninja").exists() {
+            run(Command::new("cmake").args(["-S"]).arg(&root).arg("-B").arg(&build).args(["-G", "Ninja"]));
+        }
+        run(Command::new("cmake").arg("--build").arg(&build).args(["--target", "notes-c", "-j", "8"]));
+        link(&build);
+    }
 
     let bindings = bindgen::Builder::default()
         .header("wrapper.h")
-        .clang_arg(format!("-I{}", root.join("include").display()))
+        .clang_args(clang_args)
         .allowlist_function("kiln_.*")
         .allowlist_type("kiln_.*")
         .allowlist_var("KILN_.*")
@@ -35,6 +65,24 @@ fn main() {
 fn run(cmd: &mut Command) {
     let status = cmd.status().expect("running cmake");
     assert!(status.success(), "{cmd:?} failed");
+}
+
+/// Android: the archives a kiln app links (as tools/build-aar merges them), whole where only
+/// Java reaches them, then libc++ and the platform libraries.
+fn link_android(build: &Path) {
+    println!("cargo:rustc-link-search=native={}", build.display());
+    for (name, whole) in [("kiln_android", true), ("kiln_material3", true), ("kiln_foundation", false), ("kiln_core", false),
+                          ("mcu", false), ("hearth", false), ("hearth_vulkan_deps", false), ("clipper2", false), ("skia_shadow", false)] {
+        println!("cargo:rerun-if-changed={}", build.join(format!("lib{name}.a")).display());
+        let kind = if whole { "static:+whole-archive,-bundle" } else { "static:-bundle" };
+        println!("cargo:rustc-link-lib={kind}={name}");
+    }
+    for lib in ["c++_static", "c++abi"] {
+        println!("cargo:rustc-link-lib=static:-bundle={lib}");
+    }
+    for lib in ["android", "jnigraphics", "log", "vulkan", "m"] {
+        println!("cargo:rustc-link-lib=dylib={lib}");
+    }
 }
 
 /// The libraries of the notes-c sample's link command, in order.
