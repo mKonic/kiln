@@ -338,8 +338,15 @@ namespace kiln::ui {
             const Offset d = m.Map(q);
             device = { std::min(device.left, d.x - pad), std::min(device.top, d.y - pad), std::max(device.right, d.x + pad), std::max(device.bottom, d.y + pad) };
         }
-        const bool clipped = device.left < visible.left || device.top < visible.top ||
-                             device.right > visible.right || device.bottom > visible.bottom;
+        bool clipped = device.left < visible.left || device.top < visible.top ||
+                       device.right > visible.right || device.bottom > visible.bottom;
+        // A mask that fits an atlas page is built whole, so a scrolled path half under the
+        // clip (or the screen edge) keeps hitting the cache; the quad's clip cuts what is drawn.
+        // Only larger ones are cut to what is visible, and keyed by position.
+        if (clipped && device.Width() <= float(PathCache::kPageSize - 4) && device.Height() <= float(PathCache::kPageSize - 4)) {
+            visible = { std::floor(device.left) - 1, std::floor(device.top) - 1, std::ceil(device.right) + 1, std::ceil(device.bottom) + 1 };
+            clipped = false;
+        }
         if (clipped) {
             const float pos[6] = { ox, oy, visible.left, visible.top, visible.right, visible.bottom };
             mix(pos, sizeof(pos));
