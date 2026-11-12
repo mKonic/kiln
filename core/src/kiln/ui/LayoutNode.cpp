@@ -197,9 +197,14 @@ namespace kiln::ui {
         bool measured = false;
         IntOffset position;      // within the enclosing coordinator (0: in the parent)
         bool placed = false;
+        bool motionFrame = false;   // placed under the motion frame of reference
         std::vector<Measurable*> children;
 
         LookaheadDelegate(LayoutNode& n, std::size_t i) : node(n), index(i) {}
+        void SetPlacedUnderMotionFrameOfReference(bool m) override {
+            motionFrame = m;
+            if (index == 0) { if (!node.m_Lookahead) node.m_Lookahead = std::make_unique<LookaheadState>(); node.m_Lookahead->motionFrame = m; }
+        }
         LookaheadDelegate* Next() { return index + 1 < node.m_Coordinators.size() ? &node.La(index + 1) : nullptr; }
         IntSize Size() const { return { Width(), Height() }; }
         MeasureScope Scope() const { return MeasureScope(node.NodeDensity(), node.GetLayoutDirection(), true); }
@@ -1369,11 +1374,15 @@ namespace kiln::ui {
         const LayoutNode* n = this;
         std::size_t k = coordinator;
         while (true) {
+            // Without the motion frame of reference, positions placed under it count as zero.
+            const bool ex = g_ExcludeMotionFrame;
             for (std::size_t i = k; i >= 1; --i) {
                 const auto& c = *n->m_Coordinators[i];
-                offset = offset + (c.la && c.la->measured ? c.la->position : c.position);
+                if (c.la && c.la->measured) { if (!(ex && c.la->motionFrame)) offset = offset + c.la->position; }
+                else if (!(ex && c.motionFrame)) offset = offset + c.position;
             }
-            offset = offset + (n->m_Lookahead && n->m_Lookahead->placed ? n->m_Lookahead->position : n->m_Position);
+            if (n->m_Lookahead && n->m_Lookahead->placed) { if (!(ex && n->m_Lookahead->motionFrame)) offset = offset + n->m_Lookahead->position; }
+            else if (!(ex && n->m_MotionFrame)) offset = offset + n->m_Position;
             if (n->IsOutMostLookaheadRoot() || !n->m_Parent || !n->m_LookaheadRoot) return { n, offset };
             n = n->m_Parent;
             k = n->m_Coordinators.size() - 1;

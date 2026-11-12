@@ -312,6 +312,7 @@ namespace kiln::ui {
             Constraints constraints;
             bool measured = false, measureDirty = true, layoutDirty = true, inMeasure = false;
             bool placed = false, placedThisPass = false, readsCoordinates = false;
+            bool motionFrame = false;
             IntOffset position;
             int placeOrder = 0, nextPlaceOrder = 0;
         };
