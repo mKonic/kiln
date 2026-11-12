@@ -120,6 +120,8 @@ namespace kiln::text {
         // AnnotationType markers, in Compose's order.
         enum Marker { kParagraph = 0, kSpan = 1, kVerbatimTts = 2, kUrl = 3, kLink = 4, kClickable = 5, kString = 6 };
 
+        // Bullets and draw annotations are not saved (AnnotatedStringSaver drops them).
+        bool Saveable(const Annotation& a) { return !std::holds_alternative<Bullet>(a) && !std::holds_alternative<DrawAnnotation>(a); }
         SavedValue SaveAnnotation(const Annotation& a) {
             if (const auto* p = std::get_if<ParagraphStyle>(&a)) return List{ int(kParagraph), SaveParagraph(*p) };
             if (const auto* s = std::get_if<SpanStyle>(&a)) return List{ int(kSpan), SaveSpan(*s) };
@@ -158,7 +160,8 @@ namespace kiln::text {
         return {
             [](const AnnotatedString& s) {
                 List ranges;
-                for (const auto& r : s.Annotations()) ranges.emplace_back(List{ SaveAnnotation(r.item), r.start, r.end, r.tag });
+                for (const auto& r : s.Annotations())
+                    if (Saveable(r.item)) ranges.emplace_back(List{ SaveAnnotation(r.item), r.start, r.end, r.tag });
                 return SavedValue(List{ s.Text(), ranges.empty() ? SavedValue() : SavedValue(std::move(ranges)) });
             },
             [](const SavedValue& v) -> std::optional<AnnotatedString> {

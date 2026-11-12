@@ -730,3 +730,51 @@ TEST(TextMeasurerCachesLayoutsByInput) {
     CHECK(measurer.Measure("y", style, kiln::text::TextOverflow::Clip, true, INT_MAX, {}, std::nullopt, std::nullopt, true).SharedParagraphs() !=
           measurer.Measure("y", style).SharedParagraphs());
 }
+
+TEST(BulletListsIndentAndDrawAnnotationsDraw) {
+    using namespace kiln::text;
+    // withBulletList / withBulletListItem: each item is a paragraph indented by the list's
+    // indentation (nested lists add theirs) with the list's bullet over it.
+    AnnotatedStringBuilder b;
+    b.WithBulletList([&](AnnotatedStringBuilder::BulletScope& list) {
+        list.WithBulletListItem([&](AnnotatedStringBuilder& item) { item.Append("one"); });
+        list.builder.WithBulletList(Em(1), Bullet::Default(), [&](AnnotatedStringBuilder::BulletScope& inner) {
+            inner.WithBulletListItem([&](AnnotatedStringBuilder& item) { item.Append("two"); });
+        });
+    });
+    const AnnotatedString text = b.ToAnnotatedString();
+    const auto bullets = text.Bullets();
+    CHECK(bullets.size() == 2 && bullets[0].start == 0 && bullets[0].end == 3 && bullets[1].start == 3 && bullets[1].end == 6);
+    const auto paragraphs = text.ParagraphStyles();
+    CHECK(std::any_of(paragraphs.begin(), paragraphs.end(), [](const auto& p) {
+        return p.start == 3 && p.item.textIndent && p.item.textIndent->firstLine == Em(2);
+    }));
+
+    // An indent smaller than the bullet and its padding grows by what is missing.
+    const ui::Density d{ 1, 1 };
+    TextStyle style = ResolveDefaults(TextStyle(Sp(20)), ui::LayoutDirection::Ltr);
+    AnnotatedStringBuilder tight;
+    Bullet wide;
+    wide.width = Sp(10);
+    wide.padding = Sp(6);
+    tight.AddBullet(wide, Sp(4), 0, 1);
+    tight.Append("x");
+    const auto r = BuildParagraphRequest(tight.ToAnnotatedString(), style, d, {});
+    CHECK_NEAR(r.indentFirstPx, 16, 1e-4f);
+    CHECK_NEAR(r.indentRestPx, 16, 1e-4f);
+
+    // Draw annotations draw behind and over their range, through drawText.
+    std::vector<std::string> order;
+    AnnotatedStringBuilder drawn;
+    drawn.Append("ab");
+    drawn.WithDrawAnnotation(MakeDrawAnnotation([&](DrawAnnotationScope& s) { order.push_back("behind " + std::to_string(s.start) + "-" + std::to_string(s.end)); },
+                                                [&](DrawAnnotationScope& s) { order.push_back("over " + std::to_string(s.textLayoutResult.LayoutInput().text.Length())); }),
+                             [&] { drawn.Append("cd"); });
+    const AnnotatedString annotated = drawn.ToAnnotatedString();
+    CHECK(annotated.HasDrawAnnotations(0, 4) && !annotated.HasDrawAnnotations(0, 2));
+    FakeText backend;
+    kiln::foundation::TextMeasurer measurer(&backend, d, ui::LayoutDirection::Ltr);
+    ui::ContentDrawScope scope(d, ui::LayoutDirection::Ltr, ui::DrawTarget{});
+    kiln::foundation::DrawText(scope, measurer, annotated);
+    CHECK(order == (std::vector<std::string>{ "behind 2-4", "over 4" }));
+}

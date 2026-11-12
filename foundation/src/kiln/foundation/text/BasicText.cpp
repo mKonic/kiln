@@ -324,6 +324,7 @@ namespace kiln::foundation {
                     }
                     // overrideColor: the producer's colour when it gives one (a brush still wins).
                     const ui::Color color = params.options.color && !params.style.span.brush ? params.options.color() : ui::Color::Unspecified();
+                    DrawAnnotationsBehind(s, *m_Drawn);
                     if (color.Specified()) {
                         TextStyle style = params.style;
                         style.span.color = color;
@@ -331,6 +332,7 @@ namespace kiln::foundation {
                     } else {
                         DrawTextLayout(s, *m_Drawn, params.style);
                     }
+                    DrawAnnotationsOver(s, *m_Drawn);
                     if (clip) s.Restore();
                 }
                 s.DrawContent();
@@ -365,6 +367,23 @@ namespace kiln::foundation {
         float BlurSigma(float radius) { return radius > 0 ? 0.57735f * radius + 0.5f : 0; }
     }
 
+    namespace {
+        // drawAnnotationsBehind / drawAnnotationsOver: each draw annotation over its range.
+        void DrawAnnotations(ui::DrawScope& s, const TextLayoutResult& layout, bool behind) {
+            const AnnotatedString& text = layout.LayoutInput().text;
+            const int length = text.Length();
+            for (const auto& r : text.GetDrawAnnotations(0, length)) {
+                const auto& block = behind ? r.item.drawBehind : r.item.drawOver;
+                const int start = std::clamp(r.start, 0, length), end = std::clamp(r.end, start, length);
+                if (!block || !*block || start >= end) continue;
+                text::DrawAnnotationScope scope{ s, layout, start, end };
+                (*block)(scope);
+            }
+        }
+    }
+    void DrawAnnotationsBehind(ui::DrawScope& s, const TextLayoutResult& layout) { DrawAnnotations(s, layout, true); }
+    void DrawAnnotationsOver(ui::DrawScope& s, const TextLayoutResult& layout) { DrawAnnotations(s, layout, false); }
+
     void DrawTextLayout(ui::DrawScope& s, const TextLayoutResult& layout, const TextStyle& style) {
         const SpanStyle& base = style.span;
         for (const auto& info : layout.Paragraphs().Paragraphs()) {
@@ -384,6 +403,31 @@ namespace kiln::foundation {
 
             std::vector<Color> colors(runs.size());
             for (std::size_t i = 0; i < runs.size(); ++i) colors[i] = RunColor(runs[i], base);
+
+            // Bullets before the first line of their list item (CustomBulletSpan.drawLeadingMargin),
+            // in the text's colour unless they have a brush.
+            for (const auto& b : layout.LayoutInput().text.Bullets()) {
+                if (b.start != info.startIndex || b.start >= b.end || d.lines.empty()) continue;
+                const ui::Density& dens = layout.LayoutInput().density;
+                const float fontPx = p.Request().base.sizePx;
+                const float w = text::BulletSizePx(b.item.width, fontPx, dens), h = text::BulletSizePx(b.item.height, fontPx, dens);
+                const float gap = text::BulletSizePx(b.item.padding, fontPx, dens);
+                if (std::isnan(w) || std::isnan(h) || std::isnan(gap)) continue;
+                const float xStart = std::max(0.0f, std::round(p.Request().indentFirstPx) - std::round(w + gap));
+                const LineData& l = d.lines[0];
+                const bool rtl = layout.Paragraphs().ParagraphDirection(info.startIndex) == text::ResolvedTextDirection::Rtl;
+                const float x = rtl ? p.Width() - xStart - w : xStart;
+                gfx::Path path;
+                if (b.item.shape) path = b.item.shape->CreateOutline({ w, h }, rtl ? ui::LayoutDirection::Rtl : ui::LayoutDirection::Ltr, dens).ToPath();
+                else path.AddRoundRect(gfx::RoundRect::Uniform({ 0, 0, w, h }, std::min(w, h) / 2));
+                const gfx::Brush brush = b.item.brush ? *b.item.brush : gfx::Brush::SolidColor(colors.empty() ? RunColor(SpanStyle{}, base) : colors[0]);
+                std::optional<gfx::Stroke> stroke;
+                if (b.item.drawStyle.stroke) { stroke.emplace(); stroke->width = b.item.drawStyle.width; stroke->miter = b.item.drawStyle.miter; }
+                s.Save();
+                s.Translate({ origin.x + x, origin.y + (l.top + l.bottom) / 2 - h / 2 });
+                s.DrawPath(path, brush, stroke ? &*stroke : nullptr, std::isnan(b.item.alpha) ? 1.0f : b.item.alpha);
+                s.Restore();
+            }
 
             // Shadows (blurred through a layer).
             for (std::size_t i = 0; i < runs.size(); ++i) {

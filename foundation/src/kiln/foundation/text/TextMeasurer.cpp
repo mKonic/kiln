@@ -77,7 +77,9 @@ namespace kiln::foundation {
         s.Translate(topLeft);
         const ui::IntSize size = layout.Size();
         if (layout.HasVisualOverflow() && layout.LayoutInput().overflow != text::TextOverflow::Visible) s.ClipRect({ 0, 0, float(size.width), float(size.height) });
+        DrawAnnotationsBehind(s, layout);
         DrawTextLayout(s, layout, style);
+        DrawAnnotationsOver(s, layout);
         s.Restore();
     }
 

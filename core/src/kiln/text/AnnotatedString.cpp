@@ -92,6 +92,11 @@ namespace kiln::text {
         return Collect<TtsAnnotation>(m_Annotations, start, end, false);
     }
 
+    std::vector<Range<DrawAnnotation>> AnnotatedString::GetDrawAnnotations(int start, int end) const {
+        return Collect<DrawAnnotation>(m_Annotations, start, end, false);
+    }
+    std::vector<Range<Bullet>> AnnotatedString::Bullets() const { return Collect<Bullet>(m_Annotations, 0, 0, true); }
+
     AnnotatedString AnnotatedString::SubSequence(int start, int end) const {
         start = std::clamp(start, 0, m_Length);
         end = std::clamp(end, start, m_Length);

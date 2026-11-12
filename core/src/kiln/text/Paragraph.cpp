@@ -344,6 +344,15 @@ namespace kiln::text {
             r.indentFirstPx = UnitPx(p.textIndent->firstLine, basePx, density);
             r.indentRestPx = UnitPx(p.textIndent->restLine, basePx, density);
         }
+        // setBulletSpans / CustomBulletSpan.getLeadingMargin: an indent too small for a bullet and
+        // its padding grows (every line) by what is missing.
+        const float indentPx = r.indentFirstPx;
+        for (const auto& b : text.Bullets()) {
+            const float w = BulletSizePx(b.item.width, basePx, density), gap = BulletSizePx(b.item.padding, basePx, density);
+            if (std::isnan(w) || std::isnan(gap)) continue;
+            const long diff = std::lround(indentPx) - std::lround(w + gap);
+            if (diff < 0) { r.indentFirstPx += float(-diff); r.indentRestPx += float(-diff); }
+        }
         const LineBreak lb = p.lineBreak.IsSpecified() ? p.lineBreak : LineBreak::Simple();
         r.breakStrategy = lb.strategy;
         r.breakStrictness = lb.strictness;
@@ -351,6 +360,13 @@ namespace kiln::text {
         r.hyphens = std::uint8_t(p.hyphens == Hyphens::Unspecified ? Hyphens::None : p.hyphens);
         r.includeFontPadding = p.includeFontPadding.value_or(false);
         return r;
+    }
+
+    float BulletSizePx(TextUnit size, float fontPx, const ui::Density& density) {
+        if (!size.IsSpecified()) return fontPx;
+        if (size.IsSp()) return density.SpToPx(size.value);
+        if (size.IsEm()) return size.value * fontPx;
+        return NAN;
     }
 
     // --- Paragraph ---------------------------------------------------------------------------

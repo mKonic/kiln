@@ -59,5 +59,8 @@ namespace kiln::foundation {
     // paragraph), underlines and strike-throughs. `style` is the current style: run colours
     // that the text's spans leave unset come from it.
     void DrawTextLayout(ui::DrawScope& scope, const TextLayoutResult& layout, const TextStyle& style);
+    // The text's draw annotations, behind and over it (BasicText and drawText draw both).
+    void DrawAnnotationsBehind(ui::DrawScope& scope, const TextLayoutResult& layout);
+    void DrawAnnotationsOver(ui::DrawScope& scope, const TextLayoutResult& layout);
 
 }

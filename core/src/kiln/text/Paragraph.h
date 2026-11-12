@@ -112,6 +112,9 @@ namespace kiln::text {
         float top = 0, bottom = 0;
     };
 
+    // resolveBulletTextUnitToPx: a bullet's size or padding in px (unspecified: the font size).
+    float BulletSizePx(TextUnit size, float fontPx, const ui::Density& density);
+
     class MultiParagraph {
     public:
         // `style` unresolved; each paragraph merges its ParagraphStyle and resolves.
