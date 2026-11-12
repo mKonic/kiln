@@ -365,3 +365,20 @@ TEST(SectionReadsRecomposeTheParent) {
     CHECK_EQ(parentRuns, 2);
     CHECK(slot == before);
 }
+
+// A tracked run nested in one of the same subscriber keeps the reads made before it.
+TEST(NestedObservationOfTheSameSubscriberKeepsItsReads) {
+    struct Counter : Subscriber { int changes = 0; void OnStateChanged() override { ++changes; } };
+    Counter s;
+    State<int> before(1), inside(1);
+    Observation::Track(s, [&] {
+        (void)before.Get();
+        Observation::Track(s, [&] { (void)inside.Get(); });
+    });
+    before.Set(2);
+    Observation::ApplyChanges();
+    CHECK_EQ(s.changes, 1);
+    inside.Set(2);
+    Observation::ApplyChanges();
+    CHECK_EQ(s.changes, 2);
+}

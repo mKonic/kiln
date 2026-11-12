@@ -38,6 +38,7 @@ namespace kiln::rt {
     private:
         friend class Observation;
         std::unordered_set<StateObject*> m_Reads;
+        int m_TrackDepth = 0;   // nested Track runs of this subscriber
     };
 
     // Common base of every observable value.

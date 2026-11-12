@@ -62,12 +62,15 @@ namespace kiln::rt {
 
     void Observation::Track(Subscriber& subscriber, const std::function<void()>& fn) {
         Registry& r = R();
-        Forget(&subscriber);
+        // Only the outermost run starts the reads over: a run nested in one of the same
+        // subscriber (directly or through another) adds to them (SnapshotStateObserver).
+        if (subscriber.m_TrackDepth == 0) Forget(&subscriber);
         Subscriber* outer = r.reader;
         const bool outerUntracked = r.untracked;
         r.reader = &subscriber;
         r.untracked = false;
-        struct Restore { Registry& r; Subscriber* o; bool u; ~Restore() { r.reader = o; r.untracked = u; } } restore{ r, outer, outerUntracked };
+        ++subscriber.m_TrackDepth;
+        struct Restore { Registry& r; Subscriber* o; bool u; Subscriber& s; ~Restore() { r.reader = o; r.untracked = u; --s.m_TrackDepth; } } restore{ r, outer, outerUntracked, subscriber };
         fn();
     }
 
