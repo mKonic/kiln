@@ -11040,9 +11040,9 @@ KILN_API void kiln_m3_checkbox(kiln_key key, bool checked, kiln_fn_bool on_check
         kiln::capi::InGroup(key, [&] { kiln::material3::Checkbox(a0, a1, a2, a3); });
     } KILN_CAPI_CATCH()
 }
-KILN_API void kiln_m3_tri_state_checkbox(kiln_key key, kiln_m3_toggleable_state state, kiln_fn on_click, const kiln_modifier* modifier, const kiln_m3_checkbox_options* options) {
+KILN_API void kiln_m3_tri_state_checkbox(kiln_key key, kiln_toggleable_state state, kiln_fn on_click, const kiln_modifier* modifier, const kiln_m3_checkbox_options* options) {
     KILN_CAPI_TRY {
-        auto&& a0 = kiln::material3::ToggleableState(state);
+        auto&& a0 = kiln::ui::ToggleableState(state);
         auto&& a1 = kiln::capi::Fn(on_click);
         auto&& a2 = kiln::capi::ToModifier(modifier);
         auto&& a3 = ToCpp(options);

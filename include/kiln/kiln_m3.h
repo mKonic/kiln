@@ -416,11 +416,6 @@ typedef enum kiln_m3_time_picker_selection_mode {
     KILN_M3_TIME_PICKER_SELECTION_MODE_HOUR = 0,
     KILN_M3_TIME_PICKER_SELECTION_MODE_MINUTE = 1,
 } kiln_m3_time_picker_selection_mode;
-typedef enum kiln_m3_toggleable_state {
-    KILN_M3_TOGGLEABLE_STATE_OFF = 0,
-    KILN_M3_TOGGLEABLE_STATE_ON = 1,
-    KILN_M3_TOGGLEABLE_STATE_INDETERMINATE = 2,
-} kiln_m3_toggleable_state;
 typedef enum kiln_m3_tooltip_anchor_position {
     KILN_M3_TOOLTIP_ANCHOR_POSITION_ABOVE = 1,
     KILN_M3_TOOLTIP_ANCHOR_POSITION_BELOW = 2,
@@ -480,6 +475,11 @@ typedef enum kiln_text_text_decoration {
     KILN_TEXT_TEXT_DECORATION_LINE_THROUGH = 2,
     KILN_TEXT_TEXT_DECORATION_BOTH = 3,
 } kiln_text_text_decoration;
+typedef enum kiln_toggleable_state {
+    KILN_TOGGLEABLE_STATE_OFF = 0,
+    KILN_TOGGLEABLE_STATE_ON = 1,
+    KILN_TOGGLEABLE_STATE_INDETERMINATE = 2,
+} kiln_toggleable_state;
 
 /* Callbacks */
 typedef struct kiln_m3_fn_app_bar_menu_state { void (*call)(void* user, kiln_m3_app_bar_menu_state* a0); void* user; void (*drop)(void* user); } kiln_m3_fn_app_bar_menu_state;
@@ -2863,7 +2863,7 @@ KILN_API kiln_m3_carousel_parallax_scroll_effect_state* kiln_m3_make_carousel_pa
 KILN_API const kiln_modifier* kiln_m3_carousel_parallax_scroll_effect(kiln_key key, const kiln_modifier* m, int32_t index, kiln_m3_carousel_parallax_scroll_effect_state* state, const kiln_shape* shape, const kiln_border_stroke* border);
 /* Checkbox.h */
 KILN_API void kiln_m3_checkbox(kiln_key key, bool checked, kiln_fn_bool on_checked_change, const kiln_modifier* modifier, const kiln_m3_checkbox_options* options);
-KILN_API void kiln_m3_tri_state_checkbox(kiln_key key, kiln_m3_toggleable_state state, kiln_fn on_click, const kiln_modifier* modifier, const kiln_m3_checkbox_options* options);
+KILN_API void kiln_m3_tri_state_checkbox(kiln_key key, kiln_toggleable_state state, kiln_fn on_click, const kiln_modifier* modifier, const kiln_m3_checkbox_options* options);
 KILN_API void kiln_m3_checkbox_defaults_colors(kiln_key key, kiln_m3_checkbox_colors* out);
 KILN_API void kiln_m3_checkbox_defaults_colors_overrides(kiln_key key, const kiln_m3_checkbox_colors* overrides, kiln_m3_checkbox_colors* out);
 KILN_API void kiln_m3_checkbox_defaults_colors_checked_color(kiln_key key, kiln_color checked_color, kiln_color unchecked_color, kiln_color checkmark_color, kiln_color disabled_checked_color, kiln_color disabled_unchecked_color, kiln_color disabled_indeterminate_color, kiln_m3_checkbox_colors* out);

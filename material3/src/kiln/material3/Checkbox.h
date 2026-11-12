@@ -4,11 +4,12 @@
 
 #include "kiln/foundation/Interaction.h"
 #include "kiln/graphics/Path.h"
+#include "kiln/ui/ToggleableState.h"
 
 #include <optional>
 
 namespace kiln::material3 {
-    enum class ToggleableState { Off = 0, On = 1, Indeterminate = 2 };
+    using ui::ToggleableState;
     struct CheckboxColors {
         ui::Color checkedCheckmarkColor = ui::Color::Unspecified();
         ui::Color uncheckedCheckmarkColor = ui::Color::Unspecified();

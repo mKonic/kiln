@@ -1122,7 +1122,7 @@ pub fn checkbox(checked: bool, on_checked_change: impl IntoCallback<sys::kiln_fn
     unsafe { sys::kiln_m3_checkbox(here(), checked, on_checked_change.into_callback(), modifier.raw(), options) }
 }
 #[track_caller]
-pub fn tri_state_checkbox(state: sys::kiln_m3_toggleable_state, on_click: impl IntoCallback<sys::kiln_fn>, modifier: Modifier, options: *const sys::kiln_m3_checkbox_options) {
+pub fn tri_state_checkbox(state: sys::kiln_toggleable_state, on_click: impl IntoCallback<sys::kiln_fn>, modifier: Modifier, options: *const sys::kiln_m3_checkbox_options) {
     unsafe { sys::kiln_m3_tri_state_checkbox(here(), state, on_click.into_callback(), modifier.raw(), options) }
 }
 #[track_caller]
