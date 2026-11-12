@@ -326,6 +326,12 @@ namespace kiln::rt {
         });
     }
 
+    namespace {
+        // A coroutine lambda keeps its captures in the closure, not in the coroutine frame: the
+        // closure has to outlive the task it starts. This frame holds it for the task's life.
+        Task<> HoldClosure(std::shared_ptr<std::function<Task<>()>> fn) { co_await (*fn)(); }
+    }
+
     void Composition::LaunchedEffect(Keys keys, std::function<Task<>()> task, Key key) {
         Group& g = Take(Group::Kind::Effect, typeid(LaunchedTag), key);
         if (!g.effect) g.effect = std::make_shared<Group::EffectState>();
@@ -334,9 +340,9 @@ namespace kiln::rt {
         g.effect->started = true;
         auto state = g.effect;
         Dispatcher* dispatcher = &m_Dispatcher;
-        m_Effects.push_back([state, dispatcher, task = std::move(task)] {
+        m_Effects.push_back([state, dispatcher, fn = std::make_shared<std::function<Task<>()>>(std::move(task))] {
             state->job.Cancel();
-            state->job = Launch(*dispatcher, task());
+            state->job = Launch(*dispatcher, HoldClosure(fn));
         });
     }
 
