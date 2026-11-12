@@ -1,0 +1,102 @@
+# tools/api-audit's triage: Compose names that kiln spells differently, and names that do not
+# apply to kiln. Keys are Compose names (case does not matter).
+
+# The androidx modules kiln follows (directories holding api/current.txt).
+modules = [
+    "compose/runtime/runtime",
+    "compose/runtime/runtime-saveable",
+    "compose/ui/ui-unit",
+    "compose/ui/ui-geometry",
+    "compose/ui/ui-graphics",
+    "compose/ui/ui-text",
+    "compose/ui/ui",
+    "compose/animation/animation-core",
+    "compose/animation/animation",
+    "compose/foundation/foundation-layout",
+    "compose/foundation/foundation",
+    "compose/material3/material3",
+    "compose/material3/material3-ripple",
+    "compose/material3/adaptive/adaptive",
+    "compose/material3/adaptive/adaptive-layout",
+    "compose/material3/adaptive/adaptive-navigation",
+    "compose/material3/adaptive/adaptive-navigation3",
+    "compose/material3/material3-adaptive-navigation-suite",
+    "navigation3/navigation3-runtime",
+    "navigation3/navigation3-ui",
+    "navigation/navigation-compose",
+    "navigationevent/navigationevent-compose",
+    "graphics/graphics-shapes",
+]
+
+[renamed]
+# Interactions: one Interaction struct with a Kind, and MutableInteractionSource's IsX().
+DragInteraction = "Interaction"
+FocusInteraction = "Interaction"
+HoverInteraction = "Interaction"
+PressInteraction = "Interaction"
+collectIsDraggedAsState = "IsDragged"
+collectIsFocusedAsState = "IsFocused"
+collectIsHoveredAsState = "IsHovered"
+collectIsPressedAsState = "IsPressed"
+# Size modifiers: FillMax / SizeIn / WrapContent take the axis.
+fillMaxHeight = "FillMax"
+fillMaxWidth = "FillMax"
+fillMaxSize = "FillMax"
+FontScaling = "Density"   # SpToPx / PxToSp
+TextUnitType = "TextUnit::Type"
+ModalBottomSheetDefaults = "ModalBottomSheetProperties"   # its only member: the default properties
+MultiChoiceSegmentedButtonRowScope = "MultiChoiceSegmentedButtonRow"
+SingleChoiceSegmentedButtonRowScope = "SingleChoiceSegmentedButtonRow"
+PaneScaffoldRole = "ThreePaneScaffoldRole"
+AnimatedPaneScope = "ThreePaneScaffoldPaneScope"
+PaneScaffoldPaneScope = "ThreePaneScaffoldPaneScope"
+ExtendedPaneScaffoldPaneScope = "ThreePaneScaffoldPaneScope"
+ExtendedPaneScaffoldScope = "ThreePaneScaffoldScope"
+PaneScaffoldHorizontalOrder = "ThreePaneScaffoldHorizontalOrder"
+PaneExpansionStateKeyProvider = "PaneExpansionStateKey"
+# Ripple: one Opacity struct for the press, hover and drag configurations.
+PressConfiguration = "RippleNodeConfiguration"
+HoverConfiguration = "RippleNodeConfiguration"
+DragConfiguration = "RippleNodeConfiguration"
+Factory = "BuildConvexCorner"   # graphics-shapes Feature.Factory
+# navigation3 deep links: one match struct, a decode function in place of a serializer.
+DeepLinkUri = "Uri"
+UriMatchResult = "DeepLinkMatch"
+WrappedMatchResult = "DeepLinkMatch"
+BackStackMatchResult = "BackStackMatch"
+emptyRequestExtras = "RequestExtras"
+requestExtras = "MakeRequestExtras"
+RequestExtrasScope = "RequestExtras"
+withBackStack = "WithBackStack"
+SceneDecoratorStrategyScope = "SceneDecoratorStrategy"
+ComposeNavigatorDestinationBuilder = "NavGraphBuilder"
+DialogNavigatorDestinationBuilder = "NavGraphBuilder"
+NavBackStackEntryInfo = "NavBackStackEntry"
+
+[skipped]
+rememberSerializable = "kotlinx.serialization: kiln saves through Saver"
+SaverScope = "canBeSaved: every SavedValue kiln holds can be saved"
+coerceAtLeast = "std::max on the ordered unit types"
+coerceAtMost = "std::min on the ordered unit types"
+MutableRect = "an allocation-free Rect for Kotlin: kiln's Rect is a value"
+MutablePoint = "an allocation-free Point for Kotlin: kiln's points are values"
+forEachIndexed = "Kotlin iteration helper: kiln exposes the container"
+forEachIndexedReversed = "Kotlin iteration helper: kiln exposes the container"
+forEachReversed = "Kotlin iteration helper: kiln exposes the container"
+NavKey = "keys are any copyable, comparable type"
+NavKeySerializer = "kotlinx.serialization: back stacks save through Saver"
+NavBackStackSerializer = "kotlinx.serialization: back stacks save through Saver"
+DeepLinkSerializer = "kotlinx.serialization: UriDeepLinkMatcher takes a decode function"
+invoke = "DeepLinkRequest(Intent): kiln has no Intent type; pass the uri and ActionExtra"
+LocalOwnersProvider = "lifecycle / ViewModel owners per entry: kiln has neither"
+LocalNavigationEventDispatcherOwner = "the dispatcher is per window (BackDispatcher::Main)"
+NavigationEventDispatcherOwnerHostDefaultKey = "the dispatcher is per window (BackDispatcher::Main)"
+rememberNavigationEventDispatcherOwner = "the dispatcher is per window (BackDispatcher::Main)"
+NavigationForwardHandler = "forward navigation: Android sends no forward events"
+
+[skipped_patterns]
+'Dsl$' = "Kotlin DSL markers"
+'^Experimental\w*Api$' = "opt-in annotations: kiln has no opt-in"
+'^Internal\w*Api$' = "opt-in annotations: kiln has no opt-in"
+'Flags$' = "Compose's own rollout flags"
+'^(get|set)(DisplayedMonth|SelectedDate|SelectedEndDate|SelectedStartDate)$' = "Java accessors (java.time) for DatePickerState"

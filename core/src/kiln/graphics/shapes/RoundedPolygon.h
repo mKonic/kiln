@@ -6,6 +6,8 @@
 #include "kiln/graphics/Path.h"
 #include "kiln/graphics/shapes/Cubic.h"
 
+#include <cassert>
+#include <cmath>
 #include <limits>
 #include <optional>
 #include <vector>
@@ -36,6 +38,22 @@ namespace kiln::gfx::shapes {
 
         static Feature Edge(std::vector<Cubic> c) { return { Kind::Edge, std::move(c) }; }
         static Feature Corner(std::vector<Cubic> c, bool convex) { return { convex ? Kind::ConvexCorner : Kind::ConcaveCorner, std::move(c) }; }
+
+        // Feature.Factory: features for a custom RoundedPolygon. The cubics must be continuous
+        // (each starts where the previous ends) and not empty.
+        static Feature BuildIgnorableFeature(std::vector<Cubic> c) { return Validated(Edge(std::move(c))); }
+        static Feature BuildEdge(const Cubic& c) { return Edge({ c }); }
+        static Feature BuildConvexCorner(std::vector<Cubic> c) { return Validated(Corner(std::move(c), true)); }
+        static Feature BuildConcaveCorner(std::vector<Cubic> c) { return Validated(Corner(std::move(c), false)); }
+
+    private:
+        static Feature Validated(Feature f) {
+            assert(!f.cubics.empty() && "Features need at least one cubic.");
+            for (std::size_t i = 1; i < f.cubics.size(); ++i)
+                assert(std::abs(f.cubics[i].Anchor0X() - f.cubics[i - 1].Anchor1X()) <= DistanceEpsilon &&
+                       std::abs(f.cubics[i].Anchor0Y() - f.cubics[i - 1].Anchor1Y()) <= DistanceEpsilon && "Feature must be continuous");
+            return f;
+        }
     };
 
     class RoundedPolygon {

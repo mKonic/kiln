@@ -2,6 +2,7 @@
 
 #include "kiln/foundation/Compose.h"
 #include "kiln/navigation3/NavDisplay.h"
+#include "kiln/navigation3/ResultEventBus.h"
 #include "kiln/runtime/Saveable.h"
 
 #include <chrono>
@@ -160,4 +161,48 @@ TEST(EntryKeepsItsStateWhenItMovesIntoAnotherScene) {
     h.Frames(60);
     CHECK_EQ(homeCreated, 1);
     CHECK(homeState && *homeState == 42);
+}
+
+TEST(ResultEventBusDeliversResultsToTheWaitingEntry) {
+    Harness h;
+    std::vector<int> received;
+    std::string latest;
+    std::shared_ptr<ResultEventBus> bus;
+    rt::State<bool> waiting(true);
+    h.Run([&] {
+        bus = RememberResultEventBus();
+        rt::Composition::Current()->Provide(LocalResultEventBus, bus, [&] {
+            if (waiting.Get()) ResultEffect<int>([&](const int& v) { received.push_back(v); });
+            latest = ConflateAsState<std::string>(bus, "name", std::string("none"));
+        });
+    });
+    CHECK_EQ(latest, std::string("none"));
+    bus->SendResult(1);
+    bus->SendResult(2);
+    bus->SendResult("name", std::any(std::string("ada")));
+    h.Pump();
+    CHECK_EQ(received.size(), std::size_t(2));
+    CHECK_EQ(received.back(), 2);
+    CHECK_EQ(latest, std::string("ada"));
+    // Sent while nobody waits: kept until an effect collects it.
+    waiting.Set(false);
+    h.Pump();
+    bus->SendResult(3);
+    h.Pump();
+    CHECK_EQ(received.size(), std::size_t(2));
+    waiting.Set(true);
+    h.Pump();
+    CHECK_EQ(received.size(), std::size_t(3));
+    CHECK_EQ(received.back(), 3);
+    // Removed results are dropped; the effect keeps waiting on the new channel.
+    waiting.Set(false);
+    h.Pump();
+    bus->SendResult(4);
+    bus->RemoveResult<int>();
+    waiting.Set(true);
+    h.Pump();
+    bus->SendResult(5);
+    h.Pump();
+    CHECK_EQ(received.size(), std::size_t(4));
+    CHECK_EQ(received.back(), 5);
 }

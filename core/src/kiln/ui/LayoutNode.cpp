@@ -1229,7 +1229,6 @@ namespace kiln::ui {
     }
 
     namespace {
-        Offset ToOffset(IntOffset p) { return { float(p.x), float(p.y) }; }
     }
 
     bool LayoutCoordinates::IsAttached() const {

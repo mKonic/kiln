@@ -85,12 +85,6 @@ namespace kiln::ui {
         };
     }
 
-    struct IntRect {
-        int left = 0, top = 0, right = 0, bottom = 0;
-        bool operator==(const IntRect&) const = default;
-        bool Empty() const { return right <= left || bottom <= top; }
-    };
-
     // A virtual view: Compose's unmerged SemanticsNode with the bounds of its uncovered part.
     struct AccessibilityNode {
         int id = 0;                       // the root is kHostViewId

@@ -27,6 +27,8 @@ namespace kiln::ui {
         constexpr std::partial_ordering operator<=>(const Dp& o) const { return value <=> o.value; }
         constexpr bool Specified() const { return !std::isnan(value); }
         static constexpr Dp Unspecified() { return Dp(NAN); }
+        // takeOrElse: this, or `fallback` when unspecified.
+        constexpr Dp TakeOrElse(Dp fallback) const { return Specified() ? *this : fallback; }
     };
     struct DpSize {
         Dp width, height;
@@ -35,6 +37,13 @@ namespace kiln::ui {
     struct DpOffset {
         Dp x, y;
         bool operator==(const DpOffset&) const = default;
+    };
+    struct DpRect {
+        Dp left, top, right, bottom;
+        Dp Width() const { return right - left; }
+        Dp Height() const { return bottom - top; }
+        DpSize GetSize() const { return { Width(), Height() }; }
+        bool operator==(const DpRect&) const = default;
     };
 
     constexpr Dp operator""_dp(long double v) { return Dp(float(v)); }
@@ -81,11 +90,25 @@ namespace kiln::ui {
         Offset operator+(Offset o) const { return { x + o.x, y + o.y }; }
         Offset operator-(Offset o) const { return { x - o.x, y - o.y }; }
         bool operator==(const Offset&) const = default;
+        static constexpr Offset Unspecified() { return { NAN, NAN }; }
+        bool Specified() const { return !std::isnan(x) && !std::isnan(y); }
+        Offset TakeOrElse(Offset fallback) const { return Specified() ? *this : fallback; }
     };
     struct Size {
         float width = 0, height = 0;
         float MinDimension() const { return std::min(width, height); }
         bool operator==(const Size&) const = default;
+        static constexpr Size Unspecified() { return { NAN, NAN }; }
+        bool Specified() const { return !std::isnan(width) && !std::isnan(height); }
+        Size TakeOrElse(Size fallback) const { return Specified() ? *this : fallback; }
+    };
+    struct IntRect {
+        int left = 0, top = 0, right = 0, bottom = 0;
+        int Width() const { return right - left; }
+        int Height() const { return bottom - top; }
+        IntSize GetSize() const { return { Width(), Height() }; }
+        bool operator==(const IntRect&) const = default;
+        bool Empty() const { return right <= left || bottom <= top; }
     };
     struct Rect {
         float left = 0, top = 0, right = 0, bottom = 0;
@@ -93,6 +116,7 @@ namespace kiln::ui {
         float Height() const { return bottom - top; }
         bool Contains(Offset p) const { return p.x >= left && p.x < right && p.y >= top && p.y < bottom; }
         Rect Translate(Offset o) const { return { left + o.x, top + o.y, right + o.x, bottom + o.y }; }
+        Size GetSize() const { return { Width(), Height() }; }
         Rect Intersect(const Rect& o) const {
             return { std::max(left, o.left), std::max(top, o.top), std::min(right, o.right), std::min(bottom, o.bottom) };
         }
@@ -130,8 +154,24 @@ namespace kiln::ui {
                      std::max(0, minHeight + vertical), add(maxHeight, vertical) };
         }
         Constraints CopyMaxDimensions() const { return { 0, maxWidth, 0, maxHeight }; }
+        // isSatisfiedBy: `s` fits within these bounds.
+        bool IsSatisfiedBy(IntSize s) const {
+            return s.width >= minWidth && s.width <= maxWidth && s.height >= minHeight && s.height <= maxHeight;
+        }
         bool operator==(const Constraints&) const = default;
     };
+
+    // Conversions between the integer and float types (toOffset, toSize, roundToIntSize, ...):
+    // To* truncates towards zero as Kotlin's toInt does, RoundTo* rounds as roundToInt.
+    inline Offset ToOffset(IntOffset o) { return { float(o.x), float(o.y) }; }
+    inline IntOffset RoundToIntOffset(Offset o) { return { RoundJava(o.x), RoundJava(o.y) }; }
+    inline Size ToSize(IntSize s) { return { float(s.width), float(s.height) }; }
+    inline IntSize ToIntSize(Size s) { return { int(s.width), int(s.height) }; }
+    inline IntSize RoundToIntSize(Size s) { return { RoundJava(s.width), RoundJava(s.height) }; }
+    inline Rect ToRect(Size s) { return { 0, 0, s.width, s.height }; }
+    inline Rect ToRect(const IntRect& r) { return { float(r.left), float(r.top), float(r.right), float(r.bottom) }; }
+    inline IntRect ToIntRect(IntSize s) { return { 0, 0, s.width, s.height }; }
+    inline IntRect RoundToIntRect(const Rect& r) { return { RoundJava(r.left), RoundJava(r.top), RoundJava(r.right), RoundJava(r.bottom) }; }
 
     // Alignment (androidx.compose.ui.Alignment): bias in [-1, 1], RTL mirrors horizontal bias.
     struct Alignment {

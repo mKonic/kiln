@@ -5,6 +5,8 @@
 // placeholders in the path or query ("detail/{id}?tab={tab}"). Not here: deep links by intent
 // action or mime type, and type-safe (serializable) routes.
 
+#include "kiln/Uri.h"
+
 #include <cstdint>
 #include <functional>
 #include <map>
@@ -43,20 +45,7 @@ namespace kiln::navigation {
     };
     NamedNavArgument NavArgumentOf(std::string name, NavType type, bool nullable = false, std::optional<NavValue> defaultValue = std::nullopt);
 
-    // NavUri: scheme://authority/path?query#fragment, with decoded query parameters.
-    class NavUri {
-    public:
-        explicit NavUri(std::string uri);
-        const std::string& ToString() const { return m_Uri; }
-        std::vector<std::string> PathSegments() const;
-        std::vector<std::string> QueryParameterNames() const;
-        std::vector<std::string> QueryParameters(const std::string& name) const;
-        std::optional<std::string> Query() const;
-        std::optional<std::string> Fragment() const;
-        static std::string Decode(const std::string& s);
-    private:
-        std::string m_Uri;
-    };
+    using NavUri = kiln::Uri;
 
     // NavDeepLink (uri pattern only): matches uris and extracts the arguments.
     class NavDeepLink {

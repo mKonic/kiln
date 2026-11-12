@@ -31,6 +31,7 @@ namespace kiln::text {
         bool IsSp() const { return type == Type::Sp; }
         bool IsEm() const { return type == Type::Em; }
         static constexpr TextUnit Unspecified() { return {}; }
+        TextUnit TakeOrElse(TextUnit fallback) const { return IsSpecified() ? *this : fallback; }
         bool operator==(const TextUnit& o) const { return type == o.type && (type == Type::Unspecified || value == o.value); }
     };
     constexpr TextUnit Sp(float v) { return { v, TextUnit::Type::Sp }; }
