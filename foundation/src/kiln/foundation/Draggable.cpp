@@ -10,6 +10,27 @@ namespace kiln::foundation {
 
     using namespace ui;
 
+    namespace {
+        // drag { }: the block runs holding the state's mutex; once a newer drag takes it, this
+        // block's dragBy does nothing.
+        template<typename Scope, typename Delta, typename State>
+        rt::Task<> RunDrag(State* state, MutatorMutex& mutex, std::function<rt::Task<>(const Scope&)> block, MutatePriority priority) {
+            auto stopped = std::make_shared<bool>(false);
+            const std::uint64_t token = mutex.Acquire(priority, [stopped] { *stopped = true; });
+            if (!token) co_return;
+            Scope scope{ [state, stopped](Delta d) { if (!*stopped) state->DispatchRawDelta(d); } };
+            co_await block(scope);
+            mutex.Release(token);
+        }
+    }
+
+    rt::Task<> DraggableState::Drag(std::function<rt::Task<>(const DragScope&)> block, MutatePriority priority) {
+        return RunDrag<DragScope, float>(this, m_Mutex, std::move(block), priority);
+    }
+    rt::Task<> Draggable2DState::Drag(std::function<rt::Task<>(const Drag2DScope&)> block, MutatePriority priority) {
+        return RunDrag<Drag2DScope, Offset>(this, m_Mutex, std::move(block), priority);
+    }
+
     DraggableState& RememberDraggableState(std::function<void(float)> onDelta, rt::Key key) {
         auto& c = *rt::Composition::Current();
         auto& s = c.RememberNew<DraggableState>({}, key, onDelta);
@@ -163,6 +184,131 @@ namespace kiln::foundation {
         return PointerInput(std::move(m), rt::Keys(reinterpret_cast<std::uintptr_t>(&state), int(orientation), box->options.enabled,
                                                 box->options.reverseDirection, std::uintptr_t(box->options.interactionSource.get())),
                             [box](PointerInputScope& s) { return DragLoop(s, box); });
+    }
+
+
+    // --- draggable2D ---------------------------------------------------------------------------
+
+    Draggable2DState& RememberDraggable2DState(std::function<void(Offset)> onDelta, rt::Key key) {
+        auto& c = *rt::Composition::Current();
+        auto& s = c.RememberNew<Draggable2DState>({}, key, onDelta);
+        s.SetOnDelta(std::move(onDelta));
+        return s;
+    }
+
+    rt::Task<> DetectDrag2D(PointerInputScope& s, std::shared_ptr<Drag2DCallbacks> cb) {
+        VelocityTracker tracker;
+        for (;;) {
+            auto e = co_await s.AwaitPointerEvent(PointerEventPass::Main);
+            if (e->changes.empty() || !e->changes[0].ChangedToDown()) continue;
+            if (cb->enabled && !cb->enabled()) continue;
+            const std::int64_t id = e->changes[0].id;
+            tracker.Reset();
+            tracker.AddPointerInputChange(e->changes[0]);
+            const float slop = PointerSlop(s.Config(), e->changes[0].type);
+            Offset total{};
+            bool dragging = false;
+            struct Cleanup {
+                std::shared_ptr<Drag2DCallbacks> cb;
+                bool& active;
+                ~Cleanup() { if (active && cb->onCancel) cb->onCancel(); }
+            } cleanup{ cb, dragging };
+            if (cb->startImmediately && cb->startImmediately()) {
+                dragging = true;
+                if (cb->onStart) cb->onStart(e->changes[0].position);
+                e->changes[0].Consume();
+            }
+            for (;;) {
+                auto m = co_await s.AwaitPointerEvent(PointerEventPass::Main);
+                PointerInputChange* c = nullptr;
+                for (auto& ch : m->changes) if (ch.id == id) c = &ch;
+                if (!c) break;
+                tracker.AddPointerInputChange(*c);
+                if (c->ChangedToUpIgnoreConsumed()) {
+                    if (dragging) {
+                        const auto& cfg = s.Config();
+                        const Offset v = tracker.CalculateVelocity({ cfg.maximumFlingVelocity, cfg.maximumFlingVelocity });
+                        dragging = false;
+                        if (cb->onStop) cb->onStop(v);
+                        c->Consume();
+                    }
+                    break;
+                }
+                if (!dragging) {
+                    if (c->IsConsumed()) break;
+                    total = total + c->PositionChangeIgnoreConsumed();
+                    const float distance = std::hypot(total.x, total.y);
+                    if (distance >= slop && distance > 0) {
+                        // awaitTouchSlopOrCancellation: the part past the slop, along the drag.
+                        const float scale = (distance - slop) / distance;
+                        dragging = true;
+                        if (cb->onStart) cb->onStart(c->position);
+                        if (cb->onDelta) cb->onDelta({ total.x * scale, total.y * scale });
+                        c->Consume();
+                    } else {
+                        auto final = co_await s.AwaitPointerEvent(PointerEventPass::Final);
+                        if (std::any_of(final->changes.begin(), final->changes.end(), [id](const PointerInputChange& change) {
+                                return change.id == id && change.IsConsumed();
+                            }))
+                            break;
+                    }
+                    continue;
+                }
+                if (c->IsConsumed()) {
+                    dragging = false;
+                    if (cb->onCancel) cb->onCancel();
+                    break;
+                }
+                if (cb->onDelta) cb->onDelta(c->PositionChange());
+                c->Consume();
+            }
+        }
+    }
+
+    Modifier Draggable2D(Modifier m, Draggable2DState& state, Draggable2DOptions options) {
+        struct Box2D {
+            Draggable2DState* state = nullptr;
+            Draggable2DOptions options;
+            std::uint64_t interaction = 0;
+            std::shared_ptr<Drag2DCallbacks> callbacks = std::make_shared<Drag2DCallbacks>();
+        };
+        auto box = std::make_shared<Box2D>();
+        if (auto* c = rt::Composition::Current()) box = c->Remember<std::shared_ptr<Box2D>>([&] { return box; });
+        box->state = &state;
+        box->options = std::move(options);
+        if (!box->callbacks->onStart) {
+            std::weak_ptr<Box2D> w = box;
+            auto& cb = *box->callbacks;
+            cb.enabled = [w] { auto b = w.lock(); return b && b->options.enabled; };
+            cb.startImmediately = [w] { auto b = w.lock(); return b && b->options.startDragImmediately; };
+            cb.onStart = [w](Offset at) {
+                auto b = w.lock();
+                if (!b) return;
+                b->state->SetDragging(true);
+                if (b->options.interactionSource) b->interaction = b->options.interactionSource->Start(Interaction::Kind::Drag, at);
+                if (b->options.onDragStarted) b->options.onDragStarted(at);
+            };
+            cb.onDelta = [w](Offset d) {
+                auto b = w.lock();
+                if (b) b->state->DispatchRawDelta(b->options.reverseDirection ? Offset{ -d.x, -d.y } : d);
+            };
+            auto end = [w](Offset velocity, bool cancelled) {
+                auto b = w.lock();
+                if (!b) return;
+                b->state->SetDragging(false);
+                if (b->options.interactionSource && b->interaction) {
+                    if (cancelled) b->options.interactionSource->Cancel(Interaction::Kind::Drag, b->interaction);
+                    else b->options.interactionSource->End(Interaction::Kind::Drag, b->interaction);
+                    b->interaction = 0;
+                }
+                if (b->options.onDragStopped) b->options.onDragStopped(b->options.reverseDirection ? Offset{ -velocity.x, -velocity.y } : velocity);
+            };
+            cb.onStop = [end](Offset v) { end(v, false); };
+            cb.onCancel = [end] { end({}, true); };
+        }
+        return PointerInput(std::move(m), rt::Keys(reinterpret_cast<std::uintptr_t>(&state), box->options.enabled, box->options.reverseDirection,
+                                                std::uintptr_t(box->options.interactionSource.get())),
+                            [box](PointerInputScope& s) { return DetectDrag2D(s, box->callbacks); });
     }
 
 }
