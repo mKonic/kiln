@@ -106,6 +106,7 @@ typedef uint64_t kiln_color;
 typedef struct kiln_opt_bool { bool set; bool value; } kiln_opt_bool;
 typedef struct kiln_opt_int { bool set; int32_t value; } kiln_opt_int;
 typedef struct kiln_opt_float { bool set; float value; } kiln_opt_float;
+typedef struct kiln_opt_i64 { bool set; int64_t value; } kiln_opt_i64;
 
 /* Alignment in a box: biases from -1 (start / top) to 1 (end / bottom). */
 typedef struct kiln_alignment { float horizontal, vertical; } kiln_alignment;
@@ -135,6 +136,9 @@ typedef struct kiln_arrangement {
 } kiln_arrangement;
 
 typedef struct kiln_padding { float start, top, end, bottom; } kiln_padding;
+typedef struct kiln_border_stroke { float width; kiln_color color; } kiln_border_stroke;
+typedef struct kiln_dp_size { float width, height; } kiln_dp_size;
+typedef struct kiln_dp_offset { float x, y; } kiln_dp_offset;
 
 /* ---------------------------------------------------------------------------------------------
  * Callbacks
@@ -312,6 +316,14 @@ KILN_API int32_t kiln_image_bitmap_width(const kiln_image_bitmap* bitmap);
 KILN_API int32_t kiln_image_bitmap_height(const kiln_image_bitmap* bitmap);
 KILN_API kiln_image_bitmap* kiln_image_bitmap_retain(kiln_image_bitmap* bitmap);
 KILN_API void kiln_image_bitmap_release(kiln_image_bitmap* bitmap);
+
+/* Vector images (icons): SVG path data in a viewport, filled black. Icons tint them. */
+typedef struct kiln_image_vector kiln_image_vector;
+KILN_API kiln_image_vector* kiln_image_vector_from_paths(float default_width_dp, float default_height_dp,
+                                                         float viewport_width, float viewport_height,
+                                                         const char* const* path_data, size_t path_count, bool auto_mirror);
+KILN_API kiln_image_vector* kiln_image_vector_retain(kiln_image_vector* vector);
+KILN_API void kiln_image_vector_release(kiln_image_vector* vector);
 
 /* ---------------------------------------------------------------------------------------------
  * Modifiers. Each call returns `m` followed by one element; m == NULL starts an empty chain.

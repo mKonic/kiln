@@ -1,0 +1,918 @@
+#!/usr/bin/env python3
+"""Generates the material3 C ABI from the material3 headers with libclang.
+
+Writes include/kiln/kiln_m3.h, material3/src/kiln/capi/M3CApi.gen.cpp (the glue) and
+material3/src/kiln/capi/M3CApi.skipped.txt (what could not be mapped, and why).
+
+  tools/gen-capi [--build build/host]
+
+Mapping (design/capi.md):
+- Functions become kiln_m3_<namespace>_<name>(kiln_key key, ...). Each runs in its own keyed group
+  inside content (directly outside it). Parameters the C side cannot express are left out when
+  they have a default; otherwise the function is skipped.
+- material3 structs with public fields become C structs starting with `size_t size`, with
+  kiln_m3_<name>_init(). They pass by pointer (NULL: the default) and come back through an `out`
+  pointer whose size the caller set, so they can grow.
+- Classes (states, scopes) become opaque handles with their public methods. A function that
+  returns one (rememberX) remembers the handle at its call; suspending methods take a `done`
+  callback.
+- std::function parameters become callback structs { call, user, drop }.
+- Enums become C enums.
+"""
+
+import argparse
+import glob
+import json
+import os
+import re
+import shlex
+import subprocess
+import sys
+from dataclasses import dataclass, field
+
+import clang.cindex as ci
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+M3_DIR = os.path.join(ROOT, 'material3/src/kiln/material3')
+SKIP_NAMESPACES = {'internal', 'detail', 'tokens', 'impl'}
+
+
+def snake(name):
+    s = re.sub(r'([A-Z]+)([A-Z][a-z])', r'\1_\2', name)
+    s = re.sub(r'([a-z0-9])([A-Z])', r'\1_\2', s)
+    return s.lower()
+
+
+def qualname(cursor):
+    parts = []
+    c = cursor
+    while c is not None and c.kind != ci.CursorKind.TRANSLATION_UNIT:
+        if c.spelling:
+            parts.append(c.spelling)
+        c = c.semantic_parent
+    return '::'.join(reversed(parts))
+
+
+C_RESERVED = {'auto', 'break', 'case', 'char', 'const', 'continue', 'default', 'do', 'double', 'else', 'enum', 'extern', 'float',
+              'for', 'goto', 'if', 'int', 'long', 'register', 'return', 'short', 'signed', 'sizeof', 'static', 'struct', 'switch',
+              'typedef', 'union', 'unsigned', 'void', 'volatile', 'while', 'bool', 'true', 'false', 'inline', 'restrict',
+              # names the glue uses
+              'key', 'self', 'out', 'done', 'r', 'h', 'c', 'cp', 'scope', 'out_handle', 'obj'}
+
+
+def field_name(n):
+    f = snake(n)
+    return f + '_value' if f == 'size' else f
+
+
+def has_default(param):
+    toks = [t.spelling for t in param.get_tokens()]
+    return '=' in toks
+
+
+def strip_ref(t):
+    if t.kind in (ci.TypeKind.LVALUEREFERENCE, ci.TypeKind.RVALUEREFERENCE):
+        return t.get_pointee(), True
+    return t, False
+
+
+def canon(t):
+    """Canonical spelling without const."""
+    s = t.get_canonical().spelling
+    return re.sub(r'^const ', '', s)
+
+
+def template_args(t):
+    t = t.get_canonical()
+    return [t.get_template_argument_type(i) for i in range(max(t.get_num_template_arguments(), 0))]
+
+
+class Unmappable(Exception):
+    pass
+
+
+@dataclass
+class Mapping:
+    c: str                      # C type of a parameter or field
+    to_cpp: object              # (expr) -> C++ expression
+    from_cpp: object = None     # (cpp_expr, out_lines) -> C expression; None: cannot return
+    by_out: bool = False        # a struct: returned through an out pointer
+    struct: object = None       # the Struct for by_out
+
+
+@dataclass
+class Struct:
+    qual: str
+    c: str
+    cursor: object
+    fields: list = field(default_factory=list)     # (name, Mapping, cpp_type_spelling)
+    omitted: list = field(default_factory=list)
+
+
+@dataclass
+class HandleClass:
+    qual: str
+    c: str
+    cursor: object
+
+
+@dataclass
+class EnumDecl:
+    qual: str
+    c: str
+    values: list
+
+
+@dataclass
+class Callback:
+    c: str
+    args: list      # (Mapping, cpp type spelling)
+    ret: object     # Mapping or None for void
+    ret_cpp: str
+    cpp_sig: str
+
+
+class Generator:
+    def __init__(self, tu):
+        self.tu = tu
+        self.structs = {}       # qual -> Struct
+        self.handles = {}       # qual -> HandleClass
+        self.enums = {}         # qual -> EnumDecl
+        self.callbacks = {}     # cpp canonical sig -> Callback
+        self.records = {}       # qual -> cursor (material3 records)
+        self.handle_quals = set()
+        self.skipped = []
+        self.header_funcs = []
+        self.glue_funcs = []
+        self.names = set()
+        self.struct_order = []
+        self.opt_structs = {}   # C name -> pointer type of its value
+
+    # --- discovery ---------------------------------------------------------------------------
+
+    def in_m3(self, cursor):
+        f = cursor.location.file
+        return f is not None and os.path.dirname(os.path.abspath(f.name)) == M3_DIR
+
+    def collect(self):
+        def walk(c, ns):
+            for ch in c.get_children():
+                if ch.kind == ci.CursorKind.NAMESPACE:
+                    walk(ch, ns + [ch.spelling])
+                elif ch.kind in (ci.CursorKind.STRUCT_DECL, ci.CursorKind.CLASS_DECL) and ch.is_definition():
+                    q = qualname(ch)
+                    if q.startswith('kiln::material3::'):
+                        self.records[q] = ch
+                        walk(ch, ns + [ch.spelling])
+        walk(self.tu.cursor, [])
+        # Records used through shared_ptr or a mutable reference are handles.
+        def scan_types(c):
+            for ch in c.walk_preorder():
+                if ch.kind in (ci.CursorKind.PARM_DECL, ci.CursorKind.FIELD_DECL):
+                    t = ch.type
+                    if t.kind == ci.TypeKind.LVALUEREFERENCE and not t.get_pointee().is_const_qualified():
+                        d = t.get_pointee().get_canonical().get_declaration()
+                        if d.kind != ci.CursorKind.NO_DECL_FOUND:
+                            self.handle_quals.add(qualname(d))
+                    s = canon(strip_ref(t)[0])
+                    m = re.match(r'std::shared_ptr<(?:const )?(kiln::material3::[\w:]+)>$', s)
+                    if m:
+                        self.handle_quals.add(m.group(1))
+        scan_types(self.tu.cursor)
+        # A record with public fields only, copyable, is a value struct wherever it appears;
+        # anything else (private state, methods over it) is a handle.
+        for q, cur in self.records.items():
+            if not self.public_fields(cur) or self.non_copyable(cur) or self.private_fields(cur):
+                self.handle_quals.add(q)
+            else:
+                self.handle_quals.discard(q)
+
+    def public_fields(self, cur):
+        out = []
+        default_public = cur.kind == ci.CursorKind.STRUCT_DECL
+        for ch in cur.get_children():
+            if ch.kind == ci.CursorKind.FIELD_DECL:
+                acc = ch.access_specifier
+                if acc == ci.AccessSpecifier.PUBLIC or (acc == ci.AccessSpecifier.INVALID and default_public):
+                    out.append(ch)
+        return out
+
+    def private_fields(self, cur):
+        default_public = cur.kind == ci.CursorKind.STRUCT_DECL
+        for ch in cur.get_children():
+            if ch.kind == ci.CursorKind.FIELD_DECL:
+                acc = ch.access_specifier
+                if acc in (ci.AccessSpecifier.PRIVATE, ci.AccessSpecifier.PROTECTED) or (acc == ci.AccessSpecifier.INVALID and not default_public):
+                    return True
+        return False
+
+    def non_copyable(self, cur):
+        for ch in cur.get_children():
+            if ch.kind == ci.CursorKind.CONSTRUCTOR and ch.is_copy_constructor():
+                if 'delete' in [t.spelling for t in ch.get_tokens()]:
+                    return True
+        return False
+
+    def default_constructible(self, cur):
+        ctors = [ch for ch in cur.get_children() if ch.kind == ci.CursorKind.CONSTRUCTOR]
+        if not ctors:
+            return True
+        for ch in ctors:
+            if ch.is_default_constructor():
+                return 'delete' not in [t.spelling for t in ch.get_tokens()]
+            args = list(ch.get_arguments())
+            if args and all(has_default(a) for a in args):
+                return True
+        return False
+
+    # --- names -------------------------------------------------------------------------------
+
+    def c_name_for(self, qual, prefix='kiln_m3_'):
+        parts = qual.split('::')
+        if parts[:2] == ['kiln', 'material3']:
+            parts = parts[2:]
+        else:
+            prefix = 'kiln_' + '_'.join(snake(p) for p in parts[1:-1]) + '_'
+            parts = parts[-1:]
+        return prefix + '_'.join(snake(p) for p in parts)
+
+    # --- types -------------------------------------------------------------------------------
+
+    def enum(self, t):
+        d = t.get_canonical().get_declaration()
+        q = qualname(d)
+        if q == 'kiln::text::TextOverflow':
+            return Mapping('kiln_text_overflow', lambda e: f'kiln::text::TextOverflow({e})', lambda e, o: f'kiln_text_overflow({e})')
+        if q == 'kiln::text::TextAlign':
+            return Mapping('kiln_text_align', lambda e: f'kiln::text::TextAlign({e})', lambda e, o: f'kiln_text_align({e})')
+        if any(p in SKIP_NAMESPACES for p in q.split('::')):
+            raise Unmappable(f'enum {q} is internal')
+        if q not in self.enums:
+            c = self.c_name_for(q)
+            values = [(ch.spelling, ch.enum_value) for ch in d.get_children() if ch.kind == ci.CursorKind.ENUM_CONSTANT_DECL]
+            self.enums[q] = EnumDecl(q, c, values)
+        c = self.enums[q].c
+        return Mapping(c, lambda e, q=q: f'{q}({e})', lambda e, o, c=c: f'{c}({e})')
+
+    def struct(self, q):
+        if q in self.structs:
+            return self.structs[q]
+        cur = self.records[q]
+        if not self.default_constructible(cur):
+            raise Unmappable(f'{q} is not default-constructible')
+        s = Struct(q, self.c_name_for(q), cur)
+        self.structs[q] = s     # before the fields: they may refer back
+        for f in self.public_fields(cur):
+            try:
+                m = self.map(f.type, f.spelling, field_=True)
+                s.fields.append((f.spelling, m, f.type.spelling))
+            except Unmappable as e:
+                s.omitted.append((f.spelling, str(e)))
+        self.struct_order.append(q)
+        return s
+
+    def handle(self, q):
+        if any(p in SKIP_NAMESPACES for p in q.split('::')):
+            raise Unmappable(f'{q} is internal')
+        if q not in self.handles:
+            self.handles[q] = HandleClass(q, self.c_name_for(q), self.records.get(q))
+        return self.handles[q]
+
+    def handle_mapping(self, q, kind):
+        h = self.handle(q)
+        c = h.c
+        # from_cpp: a handle for the duration of the callback, on the caller's stack.
+        def from_ref(e, out, c=c, kind=kind):
+            var = f'h{len(out)}'
+            out.append(f'auto* {var} = kiln::capi::NewTransient<{c}>();')
+            if kind in ('shared', 'shared_const'):
+                out.append(f'{var}->owner = std::const_pointer_cast<{q}>({e}); {var}->ptr = {var}->owner.get();')
+            else:
+                out.append(f'{var}->ptr = const_cast<{q}*>(&({e}));')
+            return var
+        if kind in ('shared', 'shared_const'):
+            return Mapping(f'{c}*', lambda e: f'({e} ? {e}->Shared() : nullptr)', from_ref)
+        return Mapping(f'{c}*', lambda e: f'*{e}->ptr', from_ref)
+
+    def callback(self, fn_type, name=''):
+        sig = canon(fn_type)
+        core = {
+            'std::function<void ()>': 'kiln_fn',
+            'std::function<void (bool)>': 'kiln_fn_bool',
+            'std::function<void (int)>': 'kiln_fn_int',
+            'std::function<void (float)>': 'kiln_fn_float',
+            'std::function<void (std::basic_string<char>)>': 'kiln_fn_str',
+            'std::function<void (const std::basic_string<char> &)>': 'kiln_fn_str',
+        }
+        if sig in core:
+            return Mapping(core[sig], lambda e: f'kiln::capi::Fn({e})', None)
+        if sig not in self.callbacks:
+            proto = template_args(fn_type)[0]
+            ret = proto.get_result()
+            args = []
+            names = []
+            for a in proto.argument_types():
+                base, _ = strip_ref(a)
+                m = self.map(a, '', arg_of_callback=True)
+                if m.from_cpp is None:
+                    raise Unmappable(f'callback argument {a.spelling}')
+                args.append((m, a.spelling))
+                names.append(self.type_word(base))
+            retm = None
+            if ret.kind != ci.TypeKind.VOID:
+                retm = self.map(ret, '')
+                if retm.by_out:
+                    raise Unmappable(f'callback returning a struct ({ret.spelling})')
+                names.append('to_' + self.type_word(ret))
+            c = 'kiln_m3_fn_' + ('_'.join(names) if names else 'void')
+            self.callbacks[sig] = Callback(c, args, retm, ret.spelling, sig)
+        cb = self.callbacks[sig]
+        return Mapping(cb.c, lambda e, cb=cb: f'ToCpp_{cb.c}({e})', None)
+
+    def guarded_from(self, im, e):
+        """An optional's value converted only when it is there (the conversion may need statements)."""
+        lines = []
+        expr = im.from_cpp(f'(*({e}))', lines)
+        body = ' '.join(lines)
+        return f'([&]() -> {im.c} {{ if (!({e})) return nullptr; {body} return {expr}; }}())'
+
+    def nested_optional(self, inner, name):
+        """optional<optional<X>>: unset, none, or a value (Compose's default / null / given)."""
+        x = template_args(inner)[0]
+        xm = self.map(x, name)
+        cpp_x = x.get_canonical().spelling
+        if xm.by_out:
+            ptr = f'const {xm.struct.c}*'
+            conv = lambda e: f'ToCpp({e})'
+        elif xm.c.endswith('*'):
+            ptr = xm.c
+            conv = xm.to_cpp
+        elif xm.c.startswith('kiln_') and not xm.c.startswith('kiln_fn'):
+            ptr = f'const {xm.c}*'
+            conv = lambda e, xm=xm: xm.to_cpp(f'(*{e})')
+        else:
+            raise Unmappable(f'nested optional of {cpp_x}')
+        c = 'kiln_m3_opt_' + self.type_word(x)
+        self.opt_structs[c] = ptr
+        self.names.add(c)
+        return Mapping(c, lambda e, conv=conv, cpp=cpp_x: f'({e}.set ? std::optional<std::optional<{cpp}>>({e}.value ? std::optional<{cpp}>({conv(e + ".value")}) : std::nullopt) : std::nullopt)', None)
+
+    def type_word(self, t):
+        k = canon(strip_ref(t)[0])
+        k = re.sub(r'std::basic_string<char>', 'string', k)
+        k = re.sub(r'std::shared_ptr<(const )?(.*)>', r'\2', k)
+        k = re.sub(r'std::optional<(.*)>', r'opt_\1', k)
+        k = k.split('::')[-1].replace(' ', '_')
+        return snake(k)
+
+    def map(self, t, name, field_=False, arg_of_callback=False):
+        base, is_ref = strip_ref(t)
+        k = canon(base)
+        if base.kind == ci.TypeKind.POINTER and k != 'const char *':
+            raise Unmappable(f'pointer {t.spelling}')
+        scalars = {'bool': 'bool', 'int': 'int32_t', 'float': 'float', 'double': 'double', 'long': 'int64_t',
+                   'long long': 'int64_t', 'unsigned int': 'uint32_t', 'unsigned long': 'uint64_t', 'unsigned char': 'uint8_t'}
+        if k in scalars:
+            c = scalars[k]
+            return Mapping(c, lambda e: f'{e}', lambda e, o: f'{c}({e})')
+        if k == 'const char *':
+            return Mapping('const char*', lambda e: f'({e} ? {e} : "")', lambda e, o: f'kiln::capi::TransientString({e})')
+        if k == 'std::basic_string<char>' or k == 'std::basic_string_view<char>':
+            return Mapping('const char*', lambda e: f'kiln::capi::ToString({e})', lambda e, o: f'kiln::capi::TransientString(std::string({e}))')
+        if k == 'kiln::ui::Dp':
+            return Mapping('float', lambda e: f'kiln::capi::ToDp({e})', lambda e, o: f'({e}).value')
+        if k == 'kiln::ui::Color':
+            return Mapping('kiln_color', lambda e: f'kiln::capi::ToColor({e})', lambda e, o: f'kiln::capi::FromColor({e})')
+        if k == 'kiln::ui::Modifier':
+            return Mapping('const kiln_modifier*', lambda e: f'kiln::capi::ToModifier({e})', lambda e, o: f'kiln::capi::NewModifier({e})')
+        if k == 'std::shared_ptr<const kiln::gfx::Shape>':
+            return Mapping('const kiln_shape*', lambda e: f'kiln::capi::ToShape({e})', lambda e, o: f'kiln::capi::TransientShape({e})')
+        if k == 'kiln::text::TextStyle':
+            return Mapping('const kiln_text_style*', lambda e: f'({e} ? {e}->style : kiln::text::TextStyle{{}})',
+                           lambda e, o: f'kiln::capi::TransientTextStyle({e})')
+        if k == 'std::shared_ptr<const kiln::anim::AnimationSpec>':
+            return Mapping('const kiln_anim_spec*', lambda e: f'({e} ? {e}->spec : nullptr)', lambda e, o: f'kiln::capi::TransientSpec({e})')
+        if k == 'kiln::foundation::PaddingValues':
+            return Mapping('kiln_padding', lambda e: f'kiln::capi::ToPadding({e})', lambda e, o: f'kiln::capi::FromPadding({e})')
+        if k == 'kiln::ui::Alignment':
+            return Mapping('kiln_alignment', lambda e: f'kiln::capi::ToAlignment({e})', lambda e, o: f'kiln_alignment{{ ({e}).horizontal, ({e}).vertical }}')
+        if k == 'kiln::ui::AlignmentH':
+            return Mapping('float', lambda e: f'kiln::ui::AlignmentH{{ {e} }}', lambda e, o: f'({e}).bias')
+        if k == 'kiln::ui::AlignmentV':
+            return Mapping('float', lambda e: f'kiln::ui::AlignmentV{{ {e} }}', lambda e, o: f'({e}).bias')
+        if k == 'kiln::foundation::Arrangement':
+            vertical = 'vertical' in name.lower()
+            return Mapping('kiln_arrangement', lambda e: f'kiln::capi::ToArrangement({e}, {str(vertical).lower()})', None)
+        if k == 'kiln::ui::DpSize':
+            return Mapping('kiln_dp_size', lambda e: f'kiln::ui::DpSize{{ kiln::ui::Dp({e}.width), kiln::ui::Dp({e}.height) }}',
+                           lambda e, o: f'kiln_dp_size{{ ({e}).width.value, ({e}).height.value }}')
+        if k == 'kiln::ui::DpOffset':
+            return Mapping('kiln_dp_offset', lambda e: f'kiln::ui::DpOffset{{ kiln::ui::Dp({e}.x), kiln::ui::Dp({e}.y) }}',
+                           lambda e, o: f'kiln_dp_offset{{ ({e}).x.value, ({e}).y.value }}')
+        if k == 'kiln::gfx::ImageBitmap':
+            return Mapping('const kiln_image_bitmap*', lambda e: f'({e} ? {e}->bitmap : kiln::gfx::ImageBitmap{{}})', None)
+        if k == 'std::shared_ptr<const kiln::gfx::vector::ImageVector>':
+            return Mapping('const kiln_image_vector*', lambda e: f'({e} ? {e}->vector : nullptr)', None)
+        if k == 'kiln::foundation::TextFieldState':
+            return Mapping('kiln_text_field_state*', lambda e: f'*{e}->state', None)
+        if k == 'kiln::foundation::ScrollState':
+            return Mapping('kiln_scroll_state*', lambda e: f'*{e}->state', None)
+        if k == 'kiln::foundation::LazyListState':
+            return Mapping('kiln_lazy_list_state*', lambda e: f'*{e}->state', None)
+        if k == 'kiln::foundation::BorderStroke':
+            return Mapping('kiln_border_stroke', lambda e: f'kiln::foundation::BorderStroke(kiln::ui::Dp({e}.width), kiln::capi::ToColor({e}.color))', None)
+        if k.startswith('std::function<'):
+            return self.callback(base, name)
+        m = re.match(r'std::optional<(.*)>$', k)
+        if m:
+            inner = template_args(base)[0]
+            ik = canon(inner)
+            opt_scalar = {'bool': ('kiln_opt_bool', 'bool'), 'int': ('kiln_opt_int', 'int32_t'), 'float': ('kiln_opt_float', 'float'),
+                          'long': ('kiln_opt_i64', 'int64_t'), 'long long': ('kiln_opt_i64', 'int64_t')}
+            if ik in opt_scalar:
+                c, _ = opt_scalar[ik]
+                cpp = inner.get_canonical().spelling
+                return Mapping(c, lambda e, cpp=cpp: f'({e}.set ? std::optional<{cpp}>({e}.value) : std::nullopt)',
+                               lambda e, o, c=c: f'{c}{{ ({e}).has_value(), ({e}).value_or({{}}) }}')
+            if ik == 'kiln::ui::Dp':
+                return Mapping('kiln_opt_float', lambda e: f'({e}.set ? std::optional<kiln::ui::Dp>(kiln::ui::Dp({e}.value)) : std::nullopt)',
+                               lambda e, o: f'kiln_opt_float{{ ({e}).has_value(), ({e}) ? ({e})->value : 0.0f }}')
+            if ik == 'kiln::ui::Color':
+                return Mapping('kiln_color', lambda e: f'({e} ? std::optional<kiln::ui::Color>(kiln::capi::ToColor({e})) : std::nullopt)',
+                               lambda e, o: f'(({e}) ? kiln::capi::FromColor(*({e})) : KILN_COLOR_UNSPECIFIED)')
+            if ik in ('std::basic_string<char>',):
+                return Mapping('const char*', lambda e: f'kiln::capi::ToOptString({e})',
+                               lambda e, o: f'(({e}) ? kiln::capi::TransientString(*({e})) : nullptr)')
+            if ik.startswith('std::optional<'):
+                return self.nested_optional(inner, name)
+            im = self.map(inner, name, field_=field_)
+            cpp_inner = inner.get_canonical().spelling
+            # Pointer-shaped inner types: NULL is nullopt.
+            if im.c.endswith('*'):
+                return Mapping(im.c, lambda e, im=im, cpp=cpp_inner: f'({e} ? std::optional<{cpp}>({im.to_cpp(e)}) : std::nullopt)',
+                               (lambda e, o, im=im: self.guarded_from(im, e)) if im.from_cpp else None)
+            if im.by_out:
+                st = im.struct
+                return Mapping(f'const {st.c}*', lambda e, st=st, cpp=cpp_inner: f'({e} ? std::optional<{cpp}>(ToCpp({e})) : std::nullopt)',
+                               lambda e, o, st=st: f'(({e}) ? FromCppTransient(*({e})) : nullptr)')
+            # Value types: a pointer, NULL is nullopt.
+            if im.c.startswith('kiln_') and not im.c.startswith('kiln_fn'):
+                return Mapping(f'const {im.c}*', lambda e, im=im, cpp=cpp_inner: f'({e} ? std::optional<{cpp}>({im.to_cpp("(*" + e + ")")}) : std::nullopt)', None)
+            raise Unmappable(f'optional {k}')
+        m = re.match(r'std::shared_ptr<(const )?(kiln::material3::[\w:]+)>$', k)
+        if m and m.group(2) in self.records and m.group(2) in self.handle_quals:
+            return self.handle_mapping(m.group(2), 'shared_const' if m.group(1) else 'shared')
+        d = base.get_canonical().get_declaration()
+        if d.kind == ci.CursorKind.ENUM_DECL:
+            return self.enum(base)
+        q = qualname(d) if d.kind != ci.CursorKind.NO_DECL_FOUND else ''
+        if q in self.records:
+            if any(p in SKIP_NAMESPACES for p in q.split('::')):
+                raise Unmappable(f'{q} is internal')
+            if q in self.handle_quals:
+                return self.handle_mapping(q, 'ref')
+            st = self.struct(q)
+            return Mapping(f'const {st.c}*', lambda e: f'ToCpp({e})', lambda e, o: f'FromCppTransient({e})', by_out=True, struct=st)
+        raise Unmappable(f'type {k}')
+
+    # --- functions ---------------------------------------------------------------------------
+
+    def unique(self, name, params):
+        if name not in self.names:
+            self.names.add(name)
+            return name
+        for p in params:
+            cand = f'{name}_{snake(p)}'
+            if cand not in self.names:
+                self.names.add(cand)
+                return cand
+        i = 2
+        while f'{name}_{i}' in self.names:
+            i += 1
+        self.names.add(f'{name}_{i}')
+        return f'{name}_{i}'
+
+    def emit_function(self, cur, owner=None):
+        """A free function (owner None) or a handle method."""
+        qual = qualname(cur)
+        params = list(cur.get_arguments())
+        c_params = []
+        cpp_args = []
+        prelude = []
+        key_param = None
+        names = []
+        for i, p in enumerate(params):
+            pname = p.spelling or f'arg{i}'
+            if canon(strip_ref(p.type)[0]) == 'kiln::rt::Key':
+                key_param = i
+                cpp_args.append('kiln::capi::ToKey(key)')
+                continue
+            try:
+                m = self.map(p.type, pname)
+            except Unmappable as e:
+                if has_default(p):
+                    break   # the rest take their defaults
+                self.skipped.append(f'{qual}: parameter {pname}: {e}')
+                return
+            cname = snake(pname)
+            if cname in C_RESERVED:
+                cname += '_'
+            c_params.append(f'{m.c} {cname}')
+            names.append(pname)
+            var = f'a{i}'
+            prelude.append(f'auto&& {var} = {m.to_cpp(cname)};')
+            cpp_args.append(f'std::forward<decltype({var})>({var})' if False else var)
+        ret = cur.result_type
+        ret_base, _ = strip_ref(ret)
+        is_task = canon(ret_base).startswith('kiln::rt::Task<')
+        retm = None
+        if ret.kind != ci.TypeKind.VOID and not is_task:
+            try:
+                retm = self.map(ret, '')
+            except Unmappable as e:
+                self.skipped.append(f'{qual}: result: {e}')
+                return
+            if retm.from_cpp is None:
+                self.skipped.append(f'{qual}: result {ret.spelling} cannot be returned')
+                return
+        if is_task and canon(ret_base) != 'kiln::rt::Task<void>':
+            self.skipped.append(f'{qual}: suspending with a result ({ret.spelling})')
+            return
+        # Names.
+        if owner is None:
+            ns = [p for p in qual.split('::')[2:-1]]
+            base = 'kiln_m3_' + '_'.join(snake(x) for x in ns + [cur.spelling])
+        else:
+            base = f'{owner.c}_{snake(cur.spelling)}'
+        cname = self.unique(base, names)
+        # Signature.
+        sig_params = []
+        if owner is None:
+            sig_params.append('kiln_key key')
+        else:
+            const = cur.is_const_method()
+            sig_params.append(f'{"const " if const else ""}{owner.c}* self')
+        sig_params += c_params
+        # rememberX: the handle is remembered at the call (other functions return a transient one).
+        handle_ret = retm is not None and retm.c.endswith('*') and retm.c.startswith('kiln_m3_') and not retm.c.startswith('const ') \
+            and cur.spelling.startswith('Remember') and owner is None
+        c_ret = 'void'
+        if retm is not None:
+            if retm.by_out:
+                sig_params.append(f'{retm.struct.c}* out')
+            else:
+                c_ret = retm.c
+        if is_task:
+            sig_params.append('kiln_fn done')
+        self.header_funcs.append((owner.c if owner else self.group_of(cur), f'KILN_API {c_ret} {cname}({", ".join(sig_params)});', cur))
+        # Body.
+        call = f'{self.call_target(cur, owner)}({", ".join(cpp_args)})'
+        body = []
+        if owner is not None:
+            body.append('if (!self) return {};' if c_ret != 'void' else 'if (!self) return;')
+        body += prelude
+        if is_task:
+            body.append(f'auto* obj = self->ptr;')
+            cap = ', '.join(['obj'] + [f'a{i}' for i in range(len(params)) if f'a{i}' in ' '.join(cpp_args)])
+            body = [b.replace('auto&& a', 'auto a') for b in body]
+            call_obj = call.replace('self->ptr->', 'obj->')
+            body.append(f'kiln::capi::LaunchIn(self->scope, [{cap}]() mutable {{ return {call_obj}; }}, done);')
+        elif retm is None:
+            if owner is None and key_param is None:
+                body.append(f'kiln::capi::InGroup(key, [&] {{ {call}; }});')
+            else:
+                body.append(f'{call};')
+        else:
+            cpp_ret = ret.get_canonical().spelling
+            store = 'std::optional<std::remove_cvref_t<decltype(' + call + ')>> r;'
+            if ret.kind == ci.TypeKind.LVALUEREFERENCE:
+                store = f'std::remove_reference_t<decltype({call})>* r = nullptr;'
+                assign = f'r = &{call};'
+                val = '(*r)'
+            else:
+                assign = f'r.emplace({call});'
+                val = '(*r)'
+            body.append(store)
+            if owner is None and key_param is None:
+                if handle_ret:
+                    body.append(f'{retm.c} out_handle = nullptr;')
+                    body.append('kiln::capi::InGroup(key, [&] {')
+                    body.append(f'    {assign}')
+                    body.append(self.remember_handle(retm, ret))
+                    body.append('});')
+                    body.append('return out_handle;')
+                    self.glue_funcs.append((cname, c_ret, sig_params, body))
+                    return
+                body.append(f'kiln::capi::InGroup(key, [&] {{ {assign} }});')
+            else:
+                body.append(assign)
+            if retm.by_out:
+                body.append(f'FromCpp({val}, out);')
+            else:
+                lines = []
+                expr = retm.from_cpp(val, lines)
+                body += lines
+                body.append(f'return {expr};')
+        self.glue_funcs.append((cname, c_ret, sig_params, body))
+
+    def remember_handle(self, retm, ret):
+        h = next(h for h in self.handles.values() if f'{h.c}*' == retm.c)
+        shared = canon(strip_ref(ret)[0]).startswith('std::shared_ptr<')
+        lines = ['    auto* cp = kiln::rt::Composition::Current();',
+                 '    if (!cp) throw std::logic_error("a remember call outside content");',
+                 '    auto& c = *cp;',
+                 '    auto scope = kiln::rt::RememberCoroutineScope();',
+                 f'    auto& h = c.Remember<{h.c}>([] {{ return {h.c}{{}}; }});']
+        if shared:
+            lines.append(f'    h.owner = std::const_pointer_cast<{h.qual}>(*r); h.ptr = h.owner.get();')
+        elif ret.kind == ci.TypeKind.LVALUEREFERENCE:
+            lines.append('    h.ptr = r;')
+        else:   # a copyable handle returned by value
+            lines.append(f'    h.owner = std::make_shared<{h.qual}>(std::move(*r)); h.ptr = h.owner.get();')
+        lines.append('    h.scope = scope;')
+        lines.append('    out_handle = &h;')
+        return '\n'.join(lines)
+
+    def call_target(self, cur, owner):
+        if owner is not None:
+            return f'self->ptr->{cur.spelling}'
+        return qualname(cur)
+
+    def group_of(self, cur):
+        return os.path.basename(cur.location.file.name)
+
+    def reserve_type_names(self):
+        for h in self.handles.values():
+            self.names.add(h.c)
+        for st in self.structs.values():
+            self.names.add(st.c)
+            self.names.add(st.c + '_init')
+        for e in self.enums.values():
+            self.names.add(e.c)
+        for cb in self.callbacks.values():
+            self.names.add(cb.c)
+
+    def emit_methods(self, h):
+        if h.cursor is None:
+            return
+        for ch in h.cursor.get_children():
+            if ch.kind != ci.CursorKind.CXX_METHOD or ch.access_specifier != ci.AccessSpecifier.PUBLIC:
+                continue
+            if ch.is_static_method() or ch.spelling.startswith('operator') or ch.is_deleted_method():
+                continue
+            if ch.is_virtual_method() and h.cursor.spelling.endswith('Scope'):
+                pass
+            self.emit_function(ch, owner=h)
+
+    def run(self):
+        self.collect()
+        funcs = []
+        def walk(c, ns):
+            for ch in c.get_children():
+                if ch.kind == ci.CursorKind.NAMESPACE:
+                    if ch.spelling in SKIP_NAMESPACES:
+                        continue
+                    walk(ch, ns + [ch.spelling])
+                elif ch.kind == ci.CursorKind.FUNCTION_DECL and ns[:2] == ['kiln', 'material3'] and self.in_m3(ch):
+                    if ch.spelling.startswith('operator'):
+                        continue
+                    funcs.append(ch)
+                elif ch.kind in (ci.CursorKind.STRUCT_DECL, ci.CursorKind.CLASS_DECL) and ch.is_definition() and ns[:2] == ['kiln', 'material3'] \
+                        and self.in_m3(ch):
+                    # Static methods (MaterialTheme::colorScheme()) are free functions.
+                    for m in ch.get_children():
+                        if m.kind == ci.CursorKind.CXX_METHOD and m.is_static_method() and m.access_specifier == ci.AccessSpecifier.PUBLIC \
+                                and not m.spelling.startswith('operator'):
+                            funcs.append(m)
+        walk(self.tu.cursor, [])
+        # Types first, so function names never take a type's name.
+        for f in funcs:
+            for p in list(f.get_arguments()) + []:
+                try:
+                    self.map(p.type, p.spelling)
+                except Unmappable:
+                    pass
+        self.reserve_type_names()
+        seen = set()
+        for f in funcs:
+            usr = f.get_usr()
+            if usr in seen:
+                continue
+            seen.add(usr)
+            self.emit_function(f)
+        done = set()
+        while True:
+            pending = [h for q, h in self.handles.items() if q not in done]
+            if not pending:
+                break
+            for h in pending:
+                done.add(h.qual)
+                self.emit_methods(h)
+
+    # --- output ------------------------------------------------------------------------------
+
+    def header(self):
+        out = ['/* Material 3 over the kiln C ABI. Generated by tools/gen-capi from the material3 headers: do not',
+               ' * edit. See kiln.h for the rules; in short, every function takes a kiln_key first and runs in',
+               ' * its own group, structs pass by pointer (NULL: the defaults) and come back through `out`',
+               ' * pointers whose `size` the caller set (use the _init functions), and handles returned by',
+               ' * kiln_m3_remember_* live as long as their call stays in the composition. */',
+               '#ifndef KILN_M3_H', '#define KILN_M3_H', '', '#include <kiln/kiln.h>', '',
+               '#ifdef __cplusplus', 'extern "C" {', '#endif', '']
+        out.append('/* Handles */')
+        for h in sorted(self.handles.values(), key=lambda h: h.c):
+            out.append(f'typedef struct {h.c} {h.c};')
+        out.append('')
+        out.append('/* Structs */')
+        for q in self.struct_order:
+            s = self.structs[q]
+            out.append(f'typedef struct {s.c} {s.c};')
+        out.append('')
+        out.append('/* Enums */')
+        for e in sorted(self.enums.values(), key=lambda e: e.c):
+            out.append(f'typedef enum {e.c} {{')
+            for n, v in e.values:
+                out.append(f'    {e.c.upper()}_{snake(n).upper()} = {v},')
+            out.append(f'}} {e.c};')
+        out.append('')
+        out.append('/* Callbacks */')
+        for cb in sorted(self.callbacks.values(), key=lambda c: c.c):
+            args = ''.join(f', {m.c} a{i}' for i, (m, _) in enumerate(cb.args))
+            r = cb.ret.c if cb.ret else 'void'
+            out.append(f'typedef struct {cb.c} {{ {r} (*call)(void* user{args}); void* user; void (*drop)(void* user); }} {cb.c};')
+        out.append('')
+        out.append('/* Nested optionals: set false keeps the default; set with value NULL is none. */')
+        for c, ptr in sorted(self.opt_structs.items()):
+            out.append(f'typedef struct {c} {{ bool set; {ptr} value; }} {c};')
+        out.append('')
+        out.append('/* Struct definitions */')
+        for q in self.struct_order:
+            s = self.structs[q]
+            out.append(f'struct {s.c} {{')
+            out.append('    size_t size;')
+            for n, m, _ in s.fields:
+                if m.c.startswith('const kiln_m3_') and m.by_out:
+                    out.append(f'    {m.c} {field_name(n)};   /* NULL: the default */')
+                else:
+                    out.append(f'    {m.c} {field_name(n)};')
+            out.append('};')
+            out.append(f'KILN_API void {s.c}_init({s.c}* s);')
+        out.append('')
+        out.append('/* Functions */')
+        group = None
+        for g, decl, _ in self.header_funcs:
+            if g != group:
+                out.append(f'/* {g} */')
+                group = g
+            out.append(decl)
+        out += ['', '#ifdef __cplusplus', '}', '#endif', '', '#endif', '']
+        return '\n'.join(out)
+
+    def glue(self, includes):
+        out = ['// Generated by tools/gen-capi from the material3 headers: do not edit.', '',
+               '#include "kiln/capi/CApiSupport.h"', '#include <kiln/kiln_m3.h>', '']
+        out += [f'#include "kiln/material3/{os.path.basename(h)}"' for h in includes]
+        out += ['', '#include <optional>', '#include <type_traits>', '']
+        for h in sorted(self.handles.values(), key=lambda h: h.c):
+            out.append(f'struct {h.c} : kiln::capi::Handle<{h.qual}> {{}};')
+        out += ['', 'namespace {', '']
+        # Struct converters: declarations, then definitions.
+        for q in self.struct_order:
+            s = self.structs[q]
+            out.append(f'[[maybe_unused]] {q} ToCpp(const {s.c}* c);')
+            out.append(f'[[maybe_unused]] void FromCpp(const {q}& v, {s.c}* out);')
+            out.append(f'[[maybe_unused]] const {s.c}* FromCppTransient(const {q}& v);')
+        for cb in self.callbacks.values():
+            out.append(f'[[maybe_unused]] {cb.cpp_sig} ToCpp_{cb.c}({cb.c} f);')
+        out.append('')
+        for cb in self.callbacks.values():
+            params = ', '.join(f'{t} x{i}' for i, (_, t) in enumerate(cb.args))
+            lines = []
+            cargs = ''.join(', ' + m.from_cpp(f'x{i}', lines) for i, (m, _) in enumerate(cb.args))
+            out.append(f'{cb.cpp_sig} ToCpp_{cb.c}({cb.c} f) {{')
+            out.append('    auto o = kiln::capi::Own(f);')
+            out.append('    if (!o) return {};')
+            out.append(f'    return [o]({params}) -> {cb.ret_cpp} {{')
+            out.append('        kiln::capi::CallbackScope scope;')
+            for l in lines:
+                out.append('        ' + l)
+            if cb.ret:
+                out.append(f'        auto r = o->f.call(o->f.user{cargs});')
+                out.append(f'        return {cb.ret.to_cpp("r")};')
+            else:
+                out.append(f'        o->f.call(o->f.user{cargs});')
+            out.append('    };')
+            out.append('}')
+        for q in self.struct_order:
+            s = self.structs[q]
+            out.append(f'{q} ToCpp(const {s.c}* in) {{')
+            out.append(f'    {q} v{{}};')
+            out.append('    if (!in) return v;')
+            out.append(f'    {s.c} c;')
+            out.append(f'    {s.c}_init(&c);')
+            out.append('    if (in->size > sizeof(size_t)) std::memcpy(reinterpret_cast<char*>(&c) + sizeof(size_t), reinterpret_cast<const char*>(in) + sizeof(size_t), std::min(in->size, sizeof(c)) - sizeof(size_t));')
+            for n, m, _ in s.fields:
+                f = field_name(n)
+                if m.c.startswith('kiln_m3_opt_'):
+                    out.append(f'    if (c.{f}.set) v.{n} = {m.to_cpp("c." + f)};')
+                elif m.c.endswith('*') or m.c.startswith('kiln_fn') or m.c.startswith('kiln_m3_fn'):
+                    cond = f'c.{f}' if m.c.endswith('*') else f'c.{f}.call'
+                    out.append(f'    if ({cond}) v.{n} = {m.to_cpp("c." + f)};')
+                else:
+                    out.append(f'    v.{n} = {m.to_cpp("c." + f)};')
+            out.append('    return v;')
+            out.append('}')
+            out.append(f'void FromCpp(const {q}& v, {s.c}* out) {{')
+            out.append('    (void)v;')
+            out.append('    if (!out) return;')
+            out.append(f'    {s.c} c{{}};')
+            out.append('    c.size = sizeof(c);')
+            for n, m, _ in s.fields:
+                f = field_name(n)
+                if m.from_cpp is None or m.c.startswith('kiln_fn') or m.c.startswith('kiln_m3_fn'):
+                    continue
+                lines = []
+                expr = m.from_cpp(f'v.{n}', lines)
+                for l in lines:
+                    out.append('    ' + l)
+                out.append(f'    c.{f} = {expr};')
+            out.append('    const size_t n = out->size < sizeof(size_t) ? sizeof(c) : std::min(out->size, sizeof(c));')
+            out.append('    std::memcpy(reinterpret_cast<char*>(out) + sizeof(size_t), reinterpret_cast<const char*>(&c) + sizeof(size_t), n - sizeof(size_t));')
+            out.append('    out->size = n;')
+            out.append('}')
+            out.append(f'const {s.c}* FromCppTransient(const {q}& v) {{')
+            out.append(f'    auto* c = kiln::capi::NewTransient<{s.c}>();')
+            out.append('    c->size = sizeof(*c);')
+            out.append('    FromCpp(v, c);')
+            out.append('    return c;')
+            out.append('}')
+        out += ['', '}', '']
+        for q in self.struct_order:
+            s = self.structs[q]
+            out.append(f'KILN_API void {s.c}_init({s.c}* s) {{')
+            out.append('    if (!s) return;')
+            out.append(f'    KILN_CAPI_TRY {{ s->size = sizeof(*s); FromCpp({q}{{}}, s); }} KILN_CAPI_CATCH()')
+            out.append('}')
+        out.append('')
+        for cname, c_ret, sig, body in self.glue_funcs:
+            out.append(f'KILN_API {c_ret} {cname}({", ".join(sig)}) {{')
+            out.append('    KILN_CAPI_TRY {')
+            for b in body:
+                for line in b.split('\n'):
+                    out.append('        ' + line)
+            out.append('    } KILN_CAPI_CATCH(' + ('' if c_ret == 'void' else '{}') + ')')
+            out.append('}')
+        out.append('')
+        return '\n'.join(out)
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument('--build', default=os.path.join(ROOT, 'build/host'))
+    args = ap.parse_args()
+    db = json.load(open(os.path.join(args.build, 'compile_commands.json')))
+    entry = next(e for e in db if '/material3/src/' in e['file'])
+    argv = shlex.split(entry['command'])[1:]
+    flags = []
+    skip = False
+    for a in argv:
+        if skip:
+            skip = False
+            continue
+        if a in ('-o', '-c'):
+            skip = True
+            continue
+        if a.startswith('-W') or a.endswith('.cpp') or a.startswith('-std='):
+            continue
+        flags.append(a)
+    resource = subprocess.run(['clang', '-print-resource-dir'], capture_output=True, text=True).stdout.strip()
+    flags += ['-x', 'c++', '-std=c++23', '-resource-dir', resource, '-I', os.path.join(ROOT, 'material3/src')]
+    headers = sorted(glob.glob(os.path.join(M3_DIR, '*.h')))
+    umbrella = '\n'.join(f'#include "{h}"' for h in headers) + '\n'
+    idx = ci.Index.create()
+    tu = idx.parse('kiln_m3_umbrella.cpp', args=flags, unsaved_files=[('kiln_m3_umbrella.cpp', umbrella)])
+    errors = [d for d in tu.diagnostics if d.severity >= ci.Diagnostic.Error]
+    if errors:
+        for d in errors[:10]:
+            print(d, file=sys.stderr)
+        sys.exit('parse errors')
+    g = Generator(tu)
+    g.run()
+    with open(os.path.join(ROOT, 'include/kiln/kiln_m3.h'), 'w') as f:
+        f.write(g.header())
+    os.makedirs(os.path.join(ROOT, 'material3/src/kiln/capi'), exist_ok=True)
+    with open(os.path.join(ROOT, 'material3/src/kiln/capi/M3CApi.gen.cpp'), 'w') as f:
+        f.write(g.glue(headers))
+    with open(os.path.join(ROOT, 'material3/src/kiln/capi/M3CApi.skipped.txt'), 'w') as f:
+        f.write('# Declarations tools/gen-capi could not map (generated).\n')
+        for s in sorted(set(g.skipped)):
+            f.write(s + '\n')
+        for q in g.struct_order:
+            for n, why in g.structs[q].omitted:
+                f.write(f'{q}::{n}: field left at its default: {why}\n')
+    print(f'{len(g.glue_funcs)} functions, {len(g.structs)} structs, {len(g.handles)} handles, {len(g.enums)} enums, '
+          f'{len(g.callbacks)} callback types; {len(set(g.skipped))} skipped')
+
+
+if __name__ == '__main__':
+    main()

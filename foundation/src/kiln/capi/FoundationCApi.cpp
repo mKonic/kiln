@@ -34,18 +34,6 @@ using namespace kiln;
 using namespace kiln::capi;
 namespace fd = kiln::foundation;
 
-// Refcounted handles.
-struct kiln_shape { std::atomic<int> refs{ 1 }; fd::ShapePtr shape; };
-struct kiln_text_style { std::atomic<int> refs{ 1 }; text::TextStyle style; };
-struct kiln_anim_spec { std::atomic<int> refs{ 1 }; anim::SpecPtr spec; };
-struct kiln_image_bitmap { std::atomic<int> refs{ 1 }; gfx::ImageBitmap bitmap; };
-
-// Remembered handles: the state and a scope for its suspending calls, cancelled when the call
-// leaves the composition (before the state is freed).
-struct kiln_scroll_state { fd::ScrollState* state; std::shared_ptr<rt::CoroutineScope> scope; };
-struct kiln_lazy_list_state { fd::LazyListState* state; std::shared_ptr<rt::CoroutineScope> scope; };
-struct kiln_pager_state { fd::PagerState* state; std::shared_ptr<rt::CoroutineScope> scope; };
-struct kiln_text_field_state { fd::TextFieldState* state; };
 struct kiln_lazy_scope { fd::LazyListScope* scope; };
 
 // A LaunchedEffect's next step.
@@ -70,6 +58,11 @@ namespace kiln::capi {
         struct Arena {
             int depth = 0;
             std::deque<kiln_modifier> modifiers;
+            std::vector<kiln_shape*> shapes;
+            std::vector<kiln_text_style*> styles;
+            std::vector<kiln_anim_spec*> specs;
+            std::deque<std::string> strings;
+            std::vector<std::shared_ptr<void>> values;
         };
         thread_local Arena t_Arena;
         thread_local std::string t_ReturnedString;
@@ -77,8 +70,81 @@ namespace kiln::capi {
 
     CallbackScope::CallbackScope() { ++t_Arena.depth; }
     CallbackScope::~CallbackScope() {
-        if (--t_Arena.depth == 0) t_Arena.modifiers.clear();
+        if (--t_Arena.depth == 0) {
+            t_Arena.modifiers.clear();
+            for (auto* h : t_Arena.shapes) Release(h);
+            for (auto* h : t_Arena.styles) Release(h);
+            for (auto* h : t_Arena.specs) Release(h);
+            t_Arena.shapes.clear();
+            t_Arena.styles.clear();
+            t_Arena.specs.clear();
+            t_Arena.strings.clear();
+            t_Arena.values.clear();
+        }
     }
+
+    kiln_shape* TransientShape(fd::ShapePtr shape) {
+        if (!shape) return nullptr;
+        auto* h = NewShape(std::move(shape));
+        t_Arena.shapes.push_back(h);
+        return h;
+    }
+    kiln_text_style* TransientTextStyle(text::TextStyle style) {
+        auto* h = NewTextStyle(std::move(style));
+        t_Arena.styles.push_back(h);
+        return h;
+    }
+    kiln_anim_spec* TransientSpec(anim::SpecPtr spec) {
+        if (!spec) return nullptr;
+        auto* h = new kiln_anim_spec;
+        h->spec = std::move(spec);
+        t_Arena.specs.push_back(h);
+        return h;
+    }
+
+    fd::Arrangement ToArrangement(const kiln_arrangement& a, bool vertical) {
+        switch (a.kind) {
+        case KILN_ARRANGE_END: return vertical ? fd::Arrangement::Bottom() : fd::Arrangement::End();
+        case KILN_ARRANGE_CENTER: return fd::Arrangement::Center();
+        case KILN_ARRANGE_SPACE_EVENLY: return fd::Arrangement::SpaceEvenly();
+        case KILN_ARRANGE_SPACE_BETWEEN: return fd::Arrangement::SpaceBetween();
+        case KILN_ARRANGE_SPACE_AROUND: return fd::Arrangement::SpaceAround();
+        case KILN_ARRANGE_SPACED_BY: {
+            const float bias = std::isnan(a.align_bias) ? -1.0f : a.align_bias;
+            return vertical ? fd::Arrangement::SpacedBy(ui::Dp(a.spacing), ui::AlignmentV{ bias })
+                            : fd::Arrangement::SpacedBy(ui::Dp(a.spacing), ui::AlignmentH{ bias });
+        }
+        case KILN_ARRANGE_START:
+        default: return vertical ? fd::Arrangement::Top() : fd::Arrangement::Start();
+        }
+    }
+    fd::PaddingValues ToPadding(const kiln_padding& p) { return { ui::Dp(p.start), ui::Dp(p.top), ui::Dp(p.end), ui::Dp(p.bottom) }; }
+    kiln_padding FromPadding(const fd::PaddingValues& p) { return { p.start.value, p.top.value, p.end.value, p.bottom.value }; }
+
+    const char* TransientString(std::string s) {
+        t_Arena.strings.push_back(std::move(s));
+        return t_Arena.strings.back().c_str();
+    }
+    void KeepTransient(std::shared_ptr<void> value) { t_Arena.values.push_back(std::move(value)); }
+
+    void InGroup(kiln_key key, const std::function<void()>& body) {
+        if (rt::Composition* c = rt::Composition::Current()) c->Section(body, ToKey(key));
+        else body();
+    }
+
+    void LaunchIn(const std::shared_ptr<rt::CoroutineScope>& scope, std::function<rt::Task<>()> task, kiln_fn done) {
+        auto onDone = Fn(done);
+        struct Finally {
+            std::function<void()> fn;
+            ~Finally() { if (fn) fn(); }
+        };
+        scope->Launch([](std::function<rt::Task<>()> task, std::function<void()> onDone) -> rt::Task<> {
+            Finally f{ std::move(onDone) };
+            co_await task();
+        }(std::move(task), std::move(onDone)));
+    }
+
+
 
     kiln_modifier* NewModifier(ui::Modifier m) {
         t_Arena.modifiers.push_back({ std::move(m) });
@@ -139,42 +205,7 @@ namespace {
         return *c;
     }
 
-    // The call's own group: `body` runs inside it (non-restartable, so it may return values).
-    template<typename F>
-    void InGroup(kiln_key key, F&& body) {
-        Current().Section(std::function<void()>(std::forward<F>(body)), ToKey(key));
-    }
 
-    fd::Arrangement ToArrangement(const kiln_arrangement& a, bool vertical) {
-        switch (a.kind) {
-        case KILN_ARRANGE_END: return vertical ? fd::Arrangement::Bottom() : fd::Arrangement::End();
-        case KILN_ARRANGE_CENTER: return fd::Arrangement::Center();
-        case KILN_ARRANGE_SPACE_EVENLY: return fd::Arrangement::SpaceEvenly();
-        case KILN_ARRANGE_SPACE_BETWEEN: return fd::Arrangement::SpaceBetween();
-        case KILN_ARRANGE_SPACE_AROUND: return fd::Arrangement::SpaceAround();
-        case KILN_ARRANGE_SPACED_BY: {
-            const float bias = std::isnan(a.align_bias) ? -1.0f : a.align_bias;
-            return vertical ? fd::Arrangement::SpacedBy(ui::Dp(a.spacing), ui::AlignmentV{ bias })
-                            : fd::Arrangement::SpacedBy(ui::Dp(a.spacing), ui::AlignmentH{ bias });
-        }
-        case KILN_ARRANGE_START:
-        default: return vertical ? fd::Arrangement::Top() : fd::Arrangement::Start();
-        }
-    }
-    fd::PaddingValues ToPadding(const kiln_padding& p) { return { ui::Dp(p.start), ui::Dp(p.top), ui::Dp(p.end), ui::Dp(p.bottom) }; }
-
-    // A suspending call: runs `task` in the handle's scope, then `done`.
-    void LaunchIn(const std::shared_ptr<rt::CoroutineScope>& scope, std::function<rt::Task<>()> task, kiln_fn done) {
-        auto onDone = Fn(done);
-        struct Finally {
-            std::function<void()> fn;
-            ~Finally() { if (fn) fn(); }
-        };
-        scope->Launch([](std::function<rt::Task<>()> task, std::function<void()> onDone) -> rt::Task<> {
-            Finally f{ std::move(onDone) };
-            co_await task();
-        }(std::move(task), std::move(onDone)));
-    }
 
     rt::Task<> RunTask(std::shared_ptr<Owned<kiln_fn_task>> start) {
         kiln_task t;
@@ -198,16 +229,6 @@ namespace {
                 step->f.call(step->f.user, &t, time);
             }
         }
-    }
-
-    template<typename T>
-    T* Retain(T* h) {
-        if (h) h->refs.fetch_add(1, std::memory_order_relaxed);
-        return h;
-    }
-    template<typename T>
-    void Release(T* h) {
-        if (h && h->refs.fetch_sub(1, std::memory_order_acq_rel) == 1) delete h;
     }
 
 }
@@ -243,36 +264,36 @@ namespace {
     template<> struct StateOf<kiln_state_i64> { using type = rt::State<std::int64_t>; };
     template<> struct StateOf<kiln_state_f64> { using type = rt::State<double>; };
     template<> struct StateOf<kiln_state_str> { using type = rt::State<std::string>; };
-    template<typename H> H* Handle(typename StateOf<H>::type& s) { return reinterpret_cast<H*>(&s); }
+    template<typename H> H* StateHandle(typename StateOf<H>::type& s) { return reinterpret_cast<H*>(&s); }
     template<typename H> typename StateOf<H>::type* Cell(H* h) { return reinterpret_cast<typename StateOf<H>::type*>(h); }
     template<typename H> const typename StateOf<H>::type* Cell(const H* h) { return reinterpret_cast<const typename StateOf<H>::type*>(h); }
 }
 
 KILN_API kiln_state_i64* kiln_remember_state_i64(kiln_key key, int64_t initial) {
-    TRY { return Handle<kiln_state_i64>(Current().RememberState<std::int64_t>(initial, ToKey(key))); } CATCH(nullptr)
+    TRY { return StateHandle<kiln_state_i64>(Current().RememberState<std::int64_t>(initial, ToKey(key))); } CATCH(nullptr)
 }
 KILN_API kiln_state_f64* kiln_remember_state_f64(kiln_key key, double initial) {
-    TRY { return Handle<kiln_state_f64>(Current().RememberState<double>(initial, ToKey(key))); } CATCH(nullptr)
+    TRY { return StateHandle<kiln_state_f64>(Current().RememberState<double>(initial, ToKey(key))); } CATCH(nullptr)
 }
 KILN_API kiln_state_str* kiln_remember_state_str(kiln_key key, const char* initial) {
-    TRY { return Handle<kiln_state_str>(Current().RememberState<std::string>(ToString(initial), ToKey(key))); } CATCH(nullptr)
+    TRY { return StateHandle<kiln_state_str>(Current().RememberState<std::string>(ToString(initial), ToKey(key))); } CATCH(nullptr)
 }
 KILN_API kiln_state_i64* kiln_remember_saveable_i64(kiln_key key, int64_t initial) {
     TRY {
         Current();
-        return Handle<kiln_state_i64>(rt::RememberSaveableState<std::int64_t>(initial, rt::AutoSaver<std::int64_t>(), ToKey(key)));
+        return StateHandle<kiln_state_i64>(rt::RememberSaveableState<std::int64_t>(initial, rt::AutoSaver<std::int64_t>(), ToKey(key)));
     } CATCH(nullptr)
 }
 KILN_API kiln_state_f64* kiln_remember_saveable_f64(kiln_key key, double initial) {
     TRY {
         Current();
-        return Handle<kiln_state_f64>(rt::RememberSaveableState<double>(initial, rt::AutoSaver<double>(), ToKey(key)));
+        return StateHandle<kiln_state_f64>(rt::RememberSaveableState<double>(initial, rt::AutoSaver<double>(), ToKey(key)));
     } CATCH(nullptr)
 }
 KILN_API kiln_state_str* kiln_remember_saveable_str(kiln_key key, const char* initial) {
     TRY {
         Current();
-        return Handle<kiln_state_str>(rt::RememberSaveableState<std::string>(ToString(initial), rt::AutoSaver<std::string>(), ToKey(key)));
+        return StateHandle<kiln_state_str>(rt::RememberSaveableState<std::string>(ToString(initial), rt::AutoSaver<std::string>(), ToKey(key)));
     } CATCH(nullptr)
 }
 
@@ -472,6 +493,20 @@ KILN_API int32_t kiln_image_bitmap_width(const kiln_image_bitmap* b) { return b 
 KILN_API int32_t kiln_image_bitmap_height(const kiln_image_bitmap* b) { return b ? b->bitmap.Height() : 0; }
 KILN_API kiln_image_bitmap* kiln_image_bitmap_retain(kiln_image_bitmap* b) { return Retain(b); }
 KILN_API void kiln_image_bitmap_release(kiln_image_bitmap* b) { Release(b); }
+
+KILN_API kiln_image_vector* kiln_image_vector_from_paths(float w, float h, float vw, float vh, const char* const* paths, size_t count,
+                                                         bool autoMirror) {
+    TRY {
+        gfx::vector::ImageVector::Builder b("", ui::Dp(w), ui::Dp(h), vw, vh, ui::Color::Unspecified(), gfx::BlendMode::SrcIn, autoMirror);
+        for (size_t i = 0; paths && i < count; ++i)
+            if (paths[i]) b.Path(gfx::vector::ParsePathString(paths[i]), gfx::Brush::SolidColor(ui::Color::Black()));
+        auto* v = new kiln_image_vector;
+        v->vector = b.Build();
+        return v;
+    } CATCH(nullptr)
+}
+KILN_API kiln_image_vector* kiln_image_vector_retain(kiln_image_vector* v) { return Retain(v); }
+KILN_API void kiln_image_vector_release(kiln_image_vector* v) { Release(v); }
 
 // --- Modifiers ----------------------------------------------------------------------------------
 

@@ -16,6 +16,8 @@ extern "C" {
     void capi_counter(void* user);
     void capi_list(void* user);
     int capi_handles_ok(void);
+    extern kiln_color capi_m3_primary, capi_m3_expected;
+    void capi_m3(void* user);
 }
 
 namespace {
@@ -64,6 +66,23 @@ namespace {
         std::string Text(const std::string& tag) {
             ui::SemanticsConfiguration c;
             return Find(owner.Root(), tag, &c) && !c.text.empty() ? c.text.front() : std::string();
+        }
+        // The text under a tagged node (a button's label).
+        std::string SubtreeText(const std::string& tag) {
+            const ui::LayoutNode* n = Find(owner.Root(), tag);
+            std::string out;
+            std::function<void(const ui::LayoutNode&)> walk = [&](const ui::LayoutNode& l) {
+                ui::SemanticsConfiguration c;
+                if (ui::CalculateSemanticsConfiguration(const_cast<ui::LayoutNode&>(l), c))
+                    for (const auto& t : c.text) out += t;
+                for (const auto* child : l.Children()) walk(*child);
+            };
+            if (n) walk(*n);
+            return out;
+        }
+        std::optional<int> Toggle(const std::string& tag) {
+            ui::SemanticsConfiguration c;
+            return Find(owner.Root(), tag, &c) ? c.toggleableState : std::nullopt;
         }
         bool Click(const std::string& tag) {
             ui::SemanticsConfiguration c;
@@ -114,4 +133,20 @@ TEST(CApiLazyColumnComposesOnlyVisibleItems) {
 
 TEST(CApiHandlesAndOptions) {
     CHECK(capi_handles_ok());
+}
+
+TEST(CApiMaterial3ThemeButtonAndCheckbox) {
+    Harness h;
+    h.Run(capi_m3);
+    // The theme took the dark scheme given to it.
+    CHECK(capi_m3_expected != KILN_COLOR_UNSPECIFIED);
+    CHECK_EQ(capi_m3_primary, capi_m3_expected);
+    CHECK_EQ(h.SubtreeText("button"), std::string("Clicked 0"));
+    CHECK(h.Click("button"));
+    h.Pump();
+    CHECK_EQ(h.SubtreeText("button"), std::string("Clicked 1"));
+    CHECK(h.Toggle("checkbox") == std::optional<int>(0));
+    CHECK(h.Click("checkbox"));
+    h.Pump();
+    CHECK(h.Toggle("checkbox") == std::optional<int>(1));
 }
