@@ -78,6 +78,17 @@ namespace kiln::foundation {
         virtual TextRange OriginalRange(int index) const = 0;
     };
 
+    // forEachChange: each change in order, as (range now, range before). Changes made in the block
+    // to text after the current one are visited too.
+    template<typename F> void ForEachChange(const ChangeList& changes, F&& block) {
+        for (int i = 0; i < changes.ChangeCount(); ++i) block(changes.Range(i), changes.OriginalRange(i));
+    }
+    // forEachChangeReversed: last to first; changes made in the block after the current one are
+    // not visited.
+    template<typename F> void ForEachChangeReversed(const ChangeList& changes, F&& block) {
+        for (int i = changes.ChangeCount() - 1; i >= 0; --i) block(changes.Range(i), changes.OriginalRange(i));
+    }
+
     class ChangeTracker final : public ChangeList {
     public:
         ChangeTracker() = default;

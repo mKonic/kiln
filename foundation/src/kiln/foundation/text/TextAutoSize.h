@@ -13,6 +13,12 @@ namespace kiln::foundation {
     using text::TextUnit;
 
     // TextAutoSizeLayoutScope: lays the text out at a font size (sp, or em of the style's size).
+    // TextAutoSizeDefaults: StepBased's bounds.
+    struct TextAutoSizeDefaults {
+        static constexpr TextUnit MinFontSize() { return text::Sp(12); }
+        static constexpr TextUnit MaxFontSize() { return text::Sp(112); }
+    };
+
     class TextAutoSizeLayoutScope : public ui::Density {
     public:
         virtual ~TextAutoSizeLayoutScope() = default;
@@ -30,7 +36,7 @@ namespace kiln::foundation {
 
         // TextAutoSize.StepBased (min 12 sp, max 112 sp, step 0.25 sp). A minimum above the
         // maximum takes the maximum; an unspecified, negative or too small step gives null.
-        static std::shared_ptr<const TextAutoSize> StepBased(TextUnit minFontSize = text::Sp(12), TextUnit maxFontSize = text::Sp(112),
+        static std::shared_ptr<const TextAutoSize> StepBased(TextUnit minFontSize = TextAutoSizeDefaults::MinFontSize(), TextUnit maxFontSize = TextAutoSizeDefaults::MaxFontSize(),
                                                              TextUnit stepSize = text::Sp(0.25f));
     };
     using TextAutoSizePtr = std::shared_ptr<const TextAutoSize>;

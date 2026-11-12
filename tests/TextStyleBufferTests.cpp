@@ -210,3 +210,15 @@ TEST(FieldStylesFollowTypingAndTrackedRangesChange) {
     });
     CHECK(state.SpanStyles(TextRange(0, 13)).empty());
 }
+
+TEST(ChangeListIteratesForwardAndBackward) {
+    TextFieldState state("hello world");
+    TextFieldBuffer b = ToTextFieldBuffer(state);
+    b.Replace(0, 1, std::u16string_view(u"J"));
+    b.Replace(6, 11, std::u16string_view(u"there"));
+    std::vector<int> forward, backward;
+    ForEachChange(b.Changes(), [&](TextRange r, TextRange) { forward.push_back(r.start); });
+    ForEachChangeReversed(b.Changes(), [&](TextRange r, TextRange) { backward.push_back(r.start); });
+    CHECK_EQ(forward.size(), std::size_t(2));
+    CHECK(forward == (std::vector<int>{ backward[1], backward[0] }));
+}

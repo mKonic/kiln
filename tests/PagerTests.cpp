@@ -113,6 +113,14 @@ TEST(PagerFixedPageSizeAndSpacing) {
         HorizontalPager(FillMax(Modifier{}, Axis::Both), state, [](int) { Box(FillMax(Modifier{}, Axis::Both)); }, o);
     });
     CHECK_EQ(state.PageSize(), 60);
+    // layoutInfo: pages 60 apart plus the 10 spacing, from the content start.
+    const PagerLayoutInfo& info = state.LayoutInfo();
+    CHECK_EQ(info.pageSize, 60);
+    CHECK_EQ(info.pageSpacing, 10);
+    CHECK(info.orientation == Orientation::Horizontal);
+    CHECK(info.visiblePagesInfo.size() >= 2);
+    CHECK_EQ(info.visiblePagesInfo[0].index, 0);
+    CHECK_EQ(info.visiblePagesInfo[1].offset, 70);
     rt::Job job = rt::Launch(rt::Dispatcher::Main(), state.AnimateScrollToPage(3));
     h.Frames(120);
     CHECK_EQ(state.CurrentPage(), 3);

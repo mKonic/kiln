@@ -292,4 +292,7 @@ namespace kiln::foundation {
     void ImeReplace(TextFieldBuffer& b, int start, int end, std::u16string_view text);
     void ImeDelete(TextFieldBuffer& b, int start, int end);
 
+    // toTextFieldBuffer: a buffer over the state's current value (for styling it outside an edit).
+    inline TextFieldBuffer ToTextFieldBuffer(const TextFieldState& state) { return TextFieldBuffer(state.Value()); }
+
 }

@@ -39,6 +39,26 @@ namespace kiln::foundation {
         bool operator==(const LazyListLayoutInfo&) const = default;
     };
 
+    // PageInfo / PagerLayoutInfo (PagerState.layoutInfo): the visible pages, offsets from the
+    // content start like LazyListLayoutInfo's. snapPosition is PagerState's.
+    struct PageInfo {
+        int index = 0;
+        rt::Key key = rt::Key::Positional();
+        int offset = 0;
+        bool operator==(const PageInfo&) const = default;
+    };
+    struct PagerLayoutInfoBase {
+        std::vector<PageInfo> visiblePagesInfo;
+        int pageSize = 0, pageSpacing = 0;
+        int viewportStartOffset = 0, viewportEndOffset = 0;
+        int beforeContentPadding = 0, afterContentPadding = 0;
+        IntSize viewportSize;
+        Orientation orientation = Orientation::Horizontal;
+        bool reverseLayout = false;
+        int beyondViewportPageCount = 0;
+        bool operator==(const PagerLayoutInfoBase&) const = default;
+    };
+
     // LazyGridItemInfo / LazyGridLayoutInfo: offset is (cross, main) for horizontal grids too,
     // in x/y terms like Compose (x across for a vertical grid).
     struct LazyGridItemInfo {
@@ -117,6 +137,8 @@ namespace kiln::foundation {
         friend struct LazyCore;
         // After each measure (the pager derives its current page here).
         virtual void OnMeasured() {}
+        // A pager's layout info after each (main) measure.
+        virtual void OnPagerLayout(PagerLayoutInfoBase) {}
         struct Line { int first, last, offset, size; };   // visible lines, items first..last
         int LastVisibleIndex() const { return m_Lines.empty() ? 0 : m_Lines.back().last; }
         int DistanceTo(int index, int targetOffset = 0) const;

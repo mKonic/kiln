@@ -31,6 +31,18 @@ namespace kiln::foundation {
 
     // calculateNewCurrentPage / currentPageOffsetFraction (PagerMeasure.kt): the page closest to
     // the snap position, and how far it is from it.
+    void PagerState::OnPagerLayout(PagerLayoutInfoBase info) {
+        const LayoutInfoData& cur = m_Info.Peek();
+        // Custom snap positions are functions: one counts as unchanged while the pages are.
+        if (static_cast<const PagerLayoutInfoBase&>(cur) == info && cur.snapPosition.kind == m_SnapPosition.kind &&
+            bool(cur.snapPosition.custom) == bool(m_SnapPosition.custom))
+            return;
+        LayoutInfoData next;
+        static_cast<PagerLayoutInfoBase&>(next) = std::move(info);
+        next.snapPosition = m_SnapPosition;
+        m_Info.Set(std::move(next));
+    }
+
     void PagerState::OnMeasured() {
         int current = m_Current.Peek();
         float fraction = 0;
@@ -274,6 +286,7 @@ namespace kiln::foundation {
             config.beyondViewportPageCount = options.beyondViewportPageCount;
             PagerState* st = &state;
             const SnapPosition snap = options.snapPosition;
+            state.SetSnapPosition(snap);
             config.snapPosition = [snap](int layout, int page, int before, int after, int index, int count) {
                 return snap.Position(layout, page, before, after, index, count);
             };

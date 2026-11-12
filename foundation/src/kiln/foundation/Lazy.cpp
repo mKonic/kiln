@@ -1736,6 +1736,20 @@ namespace kiln::foundation {
             info.reverseLayout = reverse;
             info.maxSpan = slotsPerLine;
             if (!(gridState->m_Info.Peek() == info)) gridState->m_Info.Set(std::move(info));
+        } else if (pager) {
+            PagerLayoutInfoBase info;
+            for (std::size_t i = 0; i < lines.size(); ++i) info.visiblePagesInfo.push_back({ lines[i].first, UserKey(lines[i].first), infoOffset(screen[i], lines[i].size) });
+            info.pageSize = pagePx;
+            info.pageSpacing = spacing;
+            info.viewportStartOffset = -before;
+            info.viewportEndOffset = mainMax - before;
+            info.beforeContentPadding = before;
+            info.afterContentPadding = after;
+            info.viewportSize = { w, h };
+            info.orientation = vertical ? Orientation::Vertical : Orientation::Horizontal;
+            info.reverseLayout = reverse;
+            info.beyondViewportPageCount = beyondCount;
+            st.OnPagerLayout(std::move(info));
         }
 
         // Placement, in drawing order (the sticking header last, on top).

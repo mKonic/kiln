@@ -42,7 +42,17 @@ namespace kiln::foundation {
         // tests replace it.
         std::function<std::int64_t()> clock;
 
+        // withoutVisualEffect / withoutEventHandling: a view of `inner` that dispatches its
+        // scroll and fling events but draws nothing (the visual goes elsewhere), or draws it but
+        // ignores events (another component feeds them).
+        static std::shared_ptr<OverscrollEffect> WithoutVisualEffect(std::shared_ptr<OverscrollEffect> inner);
+        static std::shared_ptr<OverscrollEffect> WithoutEventHandling(std::shared_ptr<OverscrollEffect> inner);
+        // The effect whose edges this one draws, or null when it draws nothing.
+        OverscrollEffect* Visual();
+
     private:
+        std::shared_ptr<OverscrollEffect> m_Inner;   // a wrapper: forwards to it
+        bool m_HandlesEvents = true, m_DrawsVisual = true;
         float PullTop(float dy), PullBottom(float dy), PullLeft(float dx), PullRight(float dx);
         void ReleaseAll();
         std::int64_t Now() const;

@@ -46,8 +46,18 @@ namespace kiln::foundation {
         int FirstVisiblePageOffset() const { return m_Offset.Peek(); }
         bool LastScrolledForward() const { return m_LastForward; }
         const ScrollIndicatorState* ScrollIndicator() const override { return &m_Indicator; }
+        // layoutInfo: the last measure's pages and geometry (observable).
+        struct LayoutInfoData : PagerLayoutInfoBase {
+            SnapPosition snapPosition = SnapPosition::Start();
+        };
+        const LayoutInfoData& LayoutInfo() const { return m_Info.Get(); }
+        // Internal: the Pager's snap position (reported in LayoutInfo).
+        void SetSnapPosition(SnapPosition p) { m_SnapPosition = std::move(p); }
 
     private:
+        void OnPagerLayout(PagerLayoutInfoBase info) override;
+        rt::State<LayoutInfoData, rt::NeverEqual> m_Info{ LayoutInfoData{} };
+        SnapPosition m_SnapPosition = SnapPosition::Start();
         struct Indicator final : ScrollIndicatorState {
             const PagerState* s;
             explicit Indicator(const PagerState* state) : s(state) {}
@@ -68,6 +78,8 @@ namespace kiln::foundation {
         bool m_LastForward = false;
         bool m_GestureInProgress = false;
     };
+
+    using PagerLayoutInfo = PagerState::LayoutInfoData;
 
     // PagerSnapDistance: where a fling may settle given the page it started from and the page a
     // natural decay would reach. AtMost(n): at most n pages from the start page.

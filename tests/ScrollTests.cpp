@@ -787,3 +787,20 @@ TEST(FlingIntoAnEdgeLeavesItsVelocityToParents) {
     CHECK_EQ(state.Value(), 0);
     CHECK(recorder->postFling > 100);
 }
+
+TEST(OverscrollWrappersSplitEventsFromTheVisual) {
+    auto inner = std::make_shared<OverscrollEffect>();
+    inner->UpdateSize({ 100, 200 });
+    auto events = OverscrollEffect::WithoutVisualEffect(inner);
+    auto visual = OverscrollEffect::WithoutEventHandling(inner);
+    auto none = [](Offset) { return Offset{ 0, 0 }; };
+    // Only the event-handling wrapper pulls the shared effect.
+    visual->ApplyToScroll({ 0, 40 }, NestedScrollSource::UserInput, none);
+    CHECK(!inner->IsInProgress());
+    events->ApplyToScroll({ 0, 40 }, NestedScrollSource::UserInput, none);
+    CHECK(inner->IsInProgress());
+    CHECK(visual->IsInProgress());
+    // Only the visual wrapper draws (the inner effect's edges).
+    CHECK(events->Visual() == nullptr);
+    CHECK(visual->Visual() == inner.get());
+}

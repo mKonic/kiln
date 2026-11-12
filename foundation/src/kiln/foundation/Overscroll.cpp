@@ -52,11 +52,30 @@ namespace kiln::foundation {
         if (animating) Invalidate();
     }
 
+    std::shared_ptr<OverscrollEffect> OverscrollEffect::WithoutVisualEffect(std::shared_ptr<OverscrollEffect> inner) {
+        auto w = std::make_shared<OverscrollEffect>();
+        w->m_Inner = std::move(inner);
+        w->m_DrawsVisual = false;
+        return w;
+    }
+    std::shared_ptr<OverscrollEffect> OverscrollEffect::WithoutEventHandling(std::shared_ptr<OverscrollEffect> inner) {
+        auto w = std::make_shared<OverscrollEffect>();
+        w->m_Inner = std::move(inner);
+        w->m_HandlesEvents = false;
+        return w;
+    }
+    OverscrollEffect* OverscrollEffect::Visual() {
+        if (!m_Inner) return this;
+        return m_DrawsVisual ? m_Inner->Visual() : nullptr;
+    }
+
     bool OverscrollEffect::IsInProgress() const {
+        if (m_Inner) return m_Inner->IsInProgress();
         return Stretched(m_Top) || Stretched(m_Bottom) || Stretched(m_Left) || Stretched(m_Right);
     }
 
     Offset OverscrollEffect::ApplyToScroll(Offset delta, NestedScrollSource source, const std::function<Offset(Offset)>& perform) {
+        if (m_Inner) return m_HandlesEvents ? m_Inner->ApplyToScroll(delta, source, perform) : perform(delta);
         if (m_Size.width <= 0 || m_Size.height <= 0) return perform(delta);
         if (!m_Cycle) {
             // A new scroll catches an active stretch where it is.
@@ -109,6 +128,7 @@ namespace kiln::foundation {
     }
 
     Offset OverscrollEffect::ConsumePreFling(Offset v) {
+        if (m_Inner) return m_HandlesEvents ? m_Inner->ConsumePreFling(v) : Offset{};
         if (m_Size.width <= 0 || m_Size.height <= 0) return {};
         const std::int64_t now = Now();
         auto absorbToRelax = [&](EdgeEffect& e, float velocity, float length) {
@@ -125,6 +145,7 @@ namespace kiln::foundation {
     }
 
     void OverscrollEffect::AbsorbPostFling(Offset left) {
+        if (m_Inner) { if (m_HandlesEvents) m_Inner->AbsorbPostFling(left); return; }
         m_Cycle = false;
         const std::int64_t now = Now();
         if (left.x > 0) m_Left.OnAbsorb(int(std::lround(left.x)), now);
@@ -185,6 +206,10 @@ namespace kiln::foundation {
 
     ui::Modifier Overscroll(ui::Modifier m, std::shared_ptr<OverscrollEffect> effect) {
         if (!effect) return m;
+        // A wrapper draws its inner effect (shared ownership keeps it alive), or nothing.
+        OverscrollEffect* visual = effect->Visual();
+        if (!visual) return m;
+        if (visual != effect.get()) effect = std::shared_ptr<OverscrollEffect>(effect, visual);
         return m.With<OverscrollNode>(OverscrollParams{ std::move(effect) });
     }
 
