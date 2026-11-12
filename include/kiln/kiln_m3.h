@@ -263,6 +263,11 @@ typedef enum kiln_capitalization {
     KILN_CAPITALIZATION_WORDS = 2,
     KILN_CAPITALIZATION_SENTENCES = 3,
 } kiln_capitalization;
+typedef enum kiln_font_loading_strategy {
+    KILN_FONT_LOADING_STRATEGY_BLOCKING = 0,
+    KILN_FONT_LOADING_STRATEGY_OPTIONAL_LOCAL = 1,
+    KILN_FONT_LOADING_STRATEGY_ASYNC = 2,
+} kiln_font_loading_strategy;
 typedef enum kiln_font_style {
     KILN_FONT_STYLE_NORMAL = 0,
     KILN_FONT_STYLE_ITALIC = 1,
@@ -446,6 +451,7 @@ typedef enum kiln_source {
     KILN_SOURCE_ASSET = 0,
     KILN_SOURCE_FILE = 1,
     KILN_SOURCE_DOWNLOADABLE = 2,
+    KILN_SOURCE_DEVICE = 3,
 } kiln_source;
 typedef enum kiln_stroke_cap {
     KILN_STROKE_CAP_BUTT = 0,
@@ -2298,6 +2304,7 @@ KILN_API void kiln_font_provider_init(kiln_font_provider* s);
 struct kiln_font {
     size_t size;
     kiln_source source;
+    kiln_font_loading_strategy loading_strategy;
     const char* path;
     const kiln_font_provider* provider;
     const kiln_font_weight* weight;

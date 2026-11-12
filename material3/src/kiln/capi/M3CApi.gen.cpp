@@ -7073,6 +7073,7 @@ kiln::text::Font ToCpp(const kiln_font* in) {
     kiln_font_init(&c);
     if (in->size > sizeof(size_t)) std::memcpy(reinterpret_cast<char*>(&c) + sizeof(size_t), reinterpret_cast<const char*>(in) + sizeof(size_t), std::min(in->size, sizeof(c)) - sizeof(size_t));
     v.source = kiln::text::Font::Source(c.source);
+    v.loadingStrategy = kiln::text::FontLoadingStrategy(c.loading_strategy);
     if (c.path) v.path = kiln::capi::ToString(c.path);
     if (c.provider) v.provider = ToCpp(c.provider);
     if (c.weight) v.weight = ToCpp(c.weight);
@@ -7086,6 +7087,7 @@ void FromCpp(const kiln::text::Font& v, kiln_font* out) {
     kiln_font c{};
     c.size = sizeof(c);
     c.source = kiln_source(v.source);
+    c.loading_strategy = kiln_font_loading_strategy(v.loadingStrategy);
     c.path = kiln::capi::TransientString(std::string(v.path));
     c.provider = FromCppTransient(v.provider);
     c.weight = FromCppTransient(v.weight);

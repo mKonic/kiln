@@ -39,6 +39,16 @@ namespace kiln {
         // What the platform fakes for a file (minikin computeFakery), which glyph drawing must
         // repeat: bold when asking 600+ from a font 200+ lighter, slant when it has none.
         bool fakeBold = false, fakeItalic = false;
+        // A FontFamily of fonts: this font's FontLoadingStrategy (0 Blocking, 1 OptionalLocal,
+        // 2 Async) and the matching fonts after it, tried in order (firstImmediatelyAvailable):
+        // a Blocking font ends the walk (the default typeface if it fails), an OptionalLocal one
+        // that is not installed and an async one still loading or failed go to the next; past
+        // the end, the default typeface. A finished async load lays text out again.
+        std::uint8_t strategy = 0;
+        std::vector<TextFontRequest> fallbacks;
+        // The default typeface past the end of the chain: the requested weight and slant.
+        int defaultWeight = 400;
+        bool defaultItalic = false;
         bool operator==(const TextFontRequest&) const = default;
     };
 

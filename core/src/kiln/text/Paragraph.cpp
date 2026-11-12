@@ -214,6 +214,44 @@ namespace kiln::text {
             return 0;
         }
 
+        // One font of a FontFamily's list as a request, with the weight and slant to synthesize.
+        TextFontRequest ResolveListFont(const Font& font, FontWeight weight, FontStyle style, FontSynthesis synthesis) {
+            TextFontRequest f;
+            switch (font.source) {
+                case Font::Source::Downloadable:
+                    f.kind = TextFontRequest::Kind::Downloadable;
+                    f.name = font.provider.authority + "\n" + font.provider.package + "\n" + font.path + "\n";
+                    for (std::size_t i = 0; i < font.provider.certificates.size(); ++i)
+                        f.name += (i ? "," : "") + font.provider.certificates[i];
+                    break;
+                case Font::Source::Device:
+                    f.kind = TextFontRequest::Kind::SystemName;
+                    f.name = font.path;
+                    break;
+                case Font::Source::Asset:
+                case Font::Source::File:
+                    f.kind = font.source == Font::Source::Asset ? TextFontRequest::Kind::Asset : TextFontRequest::Kind::File;
+                    f.name = font.path;
+                    break;
+            }
+            f.strategy = std::uint8_t(font.loadingStrategy);
+            // synthesizeTypeface: fake bold only from below 600 to 600+, fake slant when the
+            // slant differs; otherwise the font's own weight and slant.
+            const bool weightOn = synthesis == FontSynthesis::All || synthesis == FontSynthesis::Weight;
+            const bool styleOn = synthesis == FontSynthesis::All || synthesis == FontSynthesis::Style;
+            const bool synthWeight = weightOn && font.weight != weight && weight >= FontWeight::W600() && font.weight < FontWeight::W600();
+            const bool synthStyle = styleOn && style != font.style;
+            f.weight = synthWeight ? weight.weight : font.weight.weight;
+            f.italic = synthStyle ? style == FontStyle::Italic : font.style == FontStyle::Italic;
+            f.fakeBold = f.weight >= 600 && f.weight - font.weight.weight >= 200;
+            f.fakeItalic = f.italic && font.style != FontStyle::Italic;
+            // FontVariation.Settings(weight, style) is a font's default.
+            f.variationSettings = !font.variationSettings.empty()
+                ? font.variationSettings
+                : "'wght' " + std::to_string(font.weight.weight) + ", 'ital' " + (font.style == FontStyle::Italic ? "1" : "0");
+            return f;
+        }
+
         TextFontRequest ResolveFont(const SpanStyle& s, int weightAdjustment) {
             TextFontRequest f;
             // AndroidFontResolveInterceptor: the bold-text setting shifts every weight.
@@ -237,30 +275,15 @@ namespace kiln::text {
                 case FontFamily::Kind::Fonts: {
                     const auto matched = MatchFont(family.fonts, weight, style);
                     if (matched.empty()) break;   // default family
-                    const Font& font = matched.front();
-                    if (font.source == Font::Source::Downloadable) {
-                        f.kind = TextFontRequest::Kind::Downloadable;
-                        f.name = font.provider.authority + "\n" + font.provider.package + "\n" + font.path + "\n";
-                        for (std::size_t i = 0; i < font.provider.certificates.size(); ++i)
-                            f.name += (i ? "," : "") + font.provider.certificates[i];
-                    } else {
-                        f.kind = font.source == Font::Source::Asset ? TextFontRequest::Kind::Asset : TextFontRequest::Kind::File;
-                        f.name = font.path;
+                    // Each matched font in order (firstImmediatelyAvailable picks the first that
+                    // is ready, by its loading strategy).
+                    for (std::size_t i = 0; i < matched.size(); ++i) {
+                        TextFontRequest c = ResolveListFont(matched[i], weight, style, synthesis);
+                        if (i == 0) f = std::move(c);
+                        else f.fallbacks.push_back(std::move(c));
                     }
-                    // synthesizeTypeface: fake bold only from below 600 to 600+, fake slant when
-                    // the slant differs; otherwise the font's own weight and slant.
-                    const bool weightOn = synthesis == FontSynthesis::All || synthesis == FontSynthesis::Weight;
-                    const bool styleOn = synthesis == FontSynthesis::All || synthesis == FontSynthesis::Style;
-                    const bool synthWeight = weightOn && font.weight != weight && weight >= FontWeight::W600() && font.weight < FontWeight::W600();
-                    const bool synthStyle = styleOn && style != font.style;
-                    f.weight = synthWeight ? weight.weight : font.weight.weight;
-                    f.italic = synthStyle ? style == FontStyle::Italic : font.style == FontStyle::Italic;
-                    f.fakeBold = f.weight >= 600 && f.weight - font.weight.weight >= 200;
-                    f.fakeItalic = f.italic && font.style != FontStyle::Italic;
-                    // FontVariation.Settings(weight, style) is a font's default.
-                    f.variationSettings = !font.variationSettings.empty()
-                        ? font.variationSettings
-                        : "'wght' " + std::to_string(font.weight.weight) + ", 'ital' " + (font.style == FontStyle::Italic ? "1" : "0");
+                    f.defaultWeight = weight.weight;
+                    f.defaultItalic = style == FontStyle::Italic;
                     break;
                 }
             }

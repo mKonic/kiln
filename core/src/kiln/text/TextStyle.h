@@ -79,12 +79,23 @@ namespace kiln::text {
         static FontProvider GoogleFonts();
     };
 
-    // A font: a file (Font(asset/file, weight, style, variationSettings)), or a downloadable font
-    // (path is the provider query) that loads in the background; text uses the default family
-    // until it arrives, then lays out again.
+    // FontLoadingStrategy: how a font in a FontFamily's list resolves. Blocking loads it before
+    // the first layout (a failure draws the default typeface); OptionalLocal tries a font that
+    // may be installed and, when it is not, moves to the next font in the list; Async loads in
+    // the background while text uses the next font that is ready (or the default typeface),
+    // then lays out again; a failed async font is skipped from then on.
+    enum class FontLoadingStrategy : std::uint8_t { Blocking = 0, OptionalLocal = 1, Async = 2 };
+    // FontLoadingStrategy.toString: "Blocking", "Optional", "Async".
+    const char* ToString(FontLoadingStrategy s);
+
+    // A font: a file (Font(asset/file, weight, style, variationSettings)), an installed font by
+    // family name (Font(DeviceFontFamilyName)), or a downloadable font (path is the provider
+    // query). A FontFamily of several fonts tries the matching ones in order (loadingStrategy).
     struct Font {
-        enum class Source : std::uint8_t { Asset, File, Downloadable };
+        enum class Source : std::uint8_t { Asset, File, Downloadable, Device };
         Source source = Source::Asset;
+        // Files are Blocking; Device fonts OptionalLocal; downloadable ones Async.
+        FontLoadingStrategy loadingStrategy = FontLoadingStrategy::Blocking;
         std::string path;
         FontProvider provider;   // Downloadable
         FontWeight weight = FontWeight::Normal();
@@ -95,6 +106,9 @@ namespace kiln::text {
         // Font(GoogleFont(name, bestEffort), provider, weight, style).
         static Font Google(const std::string& name, FontWeight weight = FontWeight::Normal(), FontStyle style = FontStyle::Normal,
                            bool bestEffort = true, FontProvider provider = FontProvider::GoogleFonts());
+        // Font(DeviceFontFamilyName(name), weight, style, variationSettings): OptionalLocal.
+        static Font Device(std::string familyName, FontWeight weight = FontWeight::Normal(), FontStyle style = FontStyle::Normal,
+                           std::string variationSettings = {});
     };
 
     // FontFamily: a generic system family, a named system family, or a list of fonts.

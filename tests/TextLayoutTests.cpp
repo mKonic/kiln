@@ -833,3 +833,30 @@ TEST(BasicTextStyleProviderRelaysOutOnlyForLayoutAttributes) {
     b.SetPlatformStyle(PlatformTextStyle(true));
     CHECK(!a.HasSameLayoutAffectingAttributes(b) && b.GetPlatformStyle() && b.ToTextStyle().paragraph.IncludeFontPadding());
 }
+
+TEST(FontListCarriesLoadingStrategiesInOrder) {
+    // A Google font with a device font and a file after it, all bold: the request is the first
+    // with the others as its fallbacks, each with its strategy; past them, the requested weight.
+    const Font google = Font::Google("Lobster Two", FontWeight::Bold());
+    const Font device = Font::Device("sans-serif-condensed", FontWeight::Bold());
+    Font file;
+    file.path = "fonts/b.ttf";
+    file.weight = FontWeight::Bold();
+    Font light;   // not matched: another weight
+    light.path = "fonts/l.ttf";
+    light.weight = FontWeight::Light();
+    CHECK(google.loadingStrategy == FontLoadingStrategy::Async && device.loadingStrategy == FontLoadingStrategy::OptionalLocal &&
+          file.loadingStrategy == FontLoadingStrategy::Blocking);
+    CHECK(std::string(ToString(FontLoadingStrategy::OptionalLocal)) == "Optional");
+    TextStyle style = ResolveDefaults(TextStyle(Sp(14)), ui::LayoutDirection::Ltr);
+    style.span.fontFamily = FontFamily::Of({ light, google, device, file });
+    style.span.fontWeight = FontWeight::Bold();
+    const auto f = BuildParagraphRequest(AnnotatedString("x"), style, {}, {}).base.font;
+    CHECK(f.kind == TextFontRequest::Kind::Downloadable && f.strategy == 2 && f.fallbacks.size() == 2);
+    CHECK(f.fallbacks[0].kind == TextFontRequest::Kind::SystemName && f.fallbacks[0].name == "sans-serif-condensed" && f.fallbacks[0].strategy == 1);
+    CHECK(f.fallbacks[1].kind == TextFontRequest::Kind::Asset && f.fallbacks[1].name == "fonts/b.ttf" && f.fallbacks[1].strategy == 0);
+    CHECK(f.defaultWeight == 700 && !f.defaultItalic);
+    bool threw = false;
+    try { (void)Font::Device(""); } catch (const std::invalid_argument&) { threw = true; }
+    CHECK(threw);
+}

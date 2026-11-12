@@ -1,5 +1,7 @@
 #include "kiln/text/TextStyle.h"
 
+#include <stdexcept>
+
 // Downloadable font providers (ui-text-google-fonts GoogleFont.kt). The Google Play services
 // certificates are those of com_google_android_gms_fonts_certs (development and production keys).
 
@@ -15,6 +17,7 @@ namespace kiln::text {
     Font Font::Google(const std::string& name, FontWeight weight, FontStyle style, bool bestEffort, FontProvider provider) {
         Font f;
         f.source = Source::Downloadable;
+        f.loadingStrategy = FontLoadingStrategy::Async;
         // GoogleFontImpl.toFontRequest: the name is not encoded or quoted (per the provider spec).
         f.path = "name=" + name + "&weight=" + std::to_string(weight.weight) + "&italic=" +
                  (style == FontStyle::Italic ? "1" : "0") + "&besteffort=" + (bestEffort ? "true" : "false");
@@ -22,6 +25,28 @@ namespace kiln::text {
         f.weight = weight;
         f.style = style;
         return f;
+    }
+
+    Font Font::Device(std::string familyName, FontWeight weight, FontStyle style, std::string variationSettings) {
+        // DeviceFontFamilyName: a name must not be empty.
+        if (familyName.empty()) throw std::invalid_argument("name may not be empty");
+        Font f;
+        f.source = Source::Device;
+        f.loadingStrategy = FontLoadingStrategy::OptionalLocal;
+        f.path = std::move(familyName);
+        f.weight = weight;
+        f.style = style;
+        f.variationSettings = std::move(variationSettings);
+        return f;
+    }
+
+    const char* ToString(FontLoadingStrategy s) {
+        switch (s) {
+            case FontLoadingStrategy::Blocking: return "Blocking";
+            case FontLoadingStrategy::OptionalLocal: return "Optional";
+            case FontLoadingStrategy::Async: return "Async";
+        }
+        return "Invalid";
     }
 
 }

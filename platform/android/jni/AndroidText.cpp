@@ -20,7 +20,7 @@ namespace kiln::android {
 
     // Request and result layouts (mirror KilnText.java).
     namespace {
-        constexpr int kParagraphInts = 13, kRunInts = 8, kParagraphFloats = 6, kRunFloats = 6, kRunStrings = 4;
+        constexpr int kParagraphInts = 13, kRunInts = 8, kParagraphFloats = 6, kRunFloats = 6, kRunStrings = 5;
         constexpr int kHeader = 12, kGlyph = 11, kLine = 14, kSegment = 5, kMetrics = 4, kPlaceholder = 4;
         constexpr int kPlaceholderInts = 5, kPlaceholderFloats = 2;
     }
@@ -135,7 +135,23 @@ namespace kiln::android {
             fl[3] = run.baselineShift;
             fl[4] = run.scaleX;
             fl[5] = run.skewX;
-            const std::string* values[kRunStrings] = { &run.font.name, &run.font.variationSettings, &run.fontFeatureSettings, &run.localeList };
+            // A FontFamily's fallback chain (KilnText.resolveChain): the requested weight and
+            // slant, then each font's kind, strategy, weight, slant, fakery, name, variation.
+            std::string chain;
+            if (!run.font.fallbacks.empty()) {
+                chain = std::to_string(run.font.defaultWeight) + '\x1f' + (run.font.defaultItalic ? "1" : "0");
+                auto add = [&chain](const TextFontRequest& c) {
+                    chain += '\x1e';
+                    for (const std::string& v : { std::to_string(int(c.kind)), std::to_string(int(c.strategy)), std::to_string(c.weight),
+                                                  std::string(c.italic ? "1" : "0"), std::string(c.fakeBold ? "1" : "0"),
+                                                  std::string(c.fakeItalic ? "1" : "0"), c.name })
+                        chain += v + '\x1f';
+                    chain += c.variationSettings;
+                };
+                add(run.font);
+                for (const auto& c : run.font.fallbacks) add(c);
+            }
+            const std::string* values[kRunStrings] = { &run.font.name, &run.font.variationSettings, &run.fontFeatureSettings, &run.localeList, &chain };
             for (int k = 0; k < kRunStrings; ++k) {
                 jstring v = JavaString(env, m_StringClass, m_StringCtor, *values[k]);
                 env->SetObjectArrayElement(strs, i * kRunStrings + k, v);

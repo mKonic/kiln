@@ -47,7 +47,7 @@ final class KilnText {
     static final int PAGE_SIZE = 1024;
 
     // Request layout (mirrors AndroidText.cpp).
-    private static final int P_INTS = 13, R_INTS = 8, P_FLOATS = 6, R_FLOATS = 6, R_STRS = 4;
+    private static final int P_INTS = 13, R_INTS = 8, P_FLOATS = 6, R_FLOATS = 6, R_STRS = 5;
     // Result layout.
     private static final int HEADER = 12, GLYPH = 11, LINE = 14, SEGMENT = 5, METRICS = 4, PLACEHOLDER = 4;
     // After the runs: placeholder count, then [start, end, widthUnit, heightUnit, align] and
@@ -147,7 +147,14 @@ final class KilnText {
         // TextMotion.Static (setTextMotion): font hinting, no linear text, no subpixel positions.
         p.setFlags(p.getFlags() & ~(Paint.LINEAR_TEXT_FLAG | Paint.SUBPIXEL_TEXT_FLAG));
         p.setHinting(Paint.HINTING_ON);
-        p.setTypeface(typeface(kind, strs[so], weight, italic, strs[so + 1]));
+        if (strs[so + 4].isEmpty()) {
+            p.setTypeface(typeface(kind, strs[so], weight, italic, strs[so + 1]));
+        } else {
+            final Pick pick = resolveChain(strs[so + 4]);
+            p.setTypeface(pick.typeface);
+            run.fakeBold = pick.fakeBold;
+            run.fakeItalic = pick.fakeItalic;
+        }
         p.setTextSize(floats[fo]);
         final float lsPx = floats[fo + 1], lsEm = floats[fo + 2];
         if (!Float.isNaN(lsEm)) p.setLetterSpacing(lsEm);
@@ -184,13 +191,97 @@ final class KilnText {
             @Override public void onTypefaceRetrieved(Typeface typeface) {
                 downloaded.put(spec, typeface);
                 typefaces.clear();   // drop the fallbacks made while loading
+                chains.clear();
                 KilnNative.fontsChanged();
             }
             @Override public void onTypefaceRequestFailed(int reason) {
                 android.util.Log.w("kiln", "downloadable font failed (" + reason + "): " + parts[2]);
+                // A permanent failure: chains move on to their next font.
+                failedDownloads.add(spec);
+                chains.clear();
+                KilnNative.fontsChanged();
             }
         });
         return null;
+    }
+
+    /** A chain's resolved typeface and the fakery its glyphs need. */
+    private static final class Pick {
+        Typeface typeface;
+        boolean fakeBold, fakeItalic;
+    }
+    private final java.util.HashSet<String> failedDownloads = new java.util.HashSet<>();
+    // Chains resolved with nothing left to load, by their encoding.
+    private final HashMap<String, Pick> chains = new HashMap<>();
+
+    /** A font of a chain by itself, or null when it is not available (yet). */
+    private Typeface chainFont(int kind, String name, String variation) {
+        switch (kind) {
+            case 5: {
+                // PlatformTypefaces.optionalOnDeviceFontFamilyByName: a name the system does not
+                // know resolves to the default typeface, which counts as not installed.
+                Typeface t = Typeface.create(name, Typeface.NORMAL);
+                return t == Typeface.DEFAULT || t.equals(Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)) ? null : t;
+            }
+            case 6: case 7: {
+                Typeface.Builder b = kind == 6 ? new Typeface.Builder(context.getAssets(), name) : new Typeface.Builder(name);
+                if (!variation.isEmpty()) b.setFontVariationSettings(variation);
+                return b.build();
+            }
+            case 8: return downloaded.get(name);
+            default: return null;
+        }
+    }
+
+    /**
+     * FontListFontFamilyTypefaceAdapter (firstImmediatelyAvailable + AsyncFontListLoader): the
+     * first font of the chain that is ready. Blocking ends the walk (default typeface on
+     * failure); an OptionalLocal font that is missing and an Async one loading or failed go on to
+     * the next. Async fonts load one at a time in order; each arrival or failure lays out again.
+     */
+    private Pick resolveChain(String chain) {
+        Pick cached = chains.get(chain);
+        if (cached != null) return cached;
+        final String[] records = chain.split("\u001e", -1);
+        final String[] head = records[0].split("\u001f", -1);
+        final int defaultWeight = Math.max(1, Math.min(1000, Integer.parseInt(head[0])));
+        final boolean defaultItalic = head[1].equals("1");
+        boolean loading = false;
+        Pick pick = null;
+        for (int i = 1; i < records.length && pick == null; ++i) {
+            final String[] r = records[i].split("\u001f", -1);
+            final int kind = Integer.parseInt(r[0]), strategy = Integer.parseInt(r[1]);
+            final int weight = Math.max(1, Math.min(1000, Integer.parseInt(r[2])));
+            final boolean italic = r[3].equals("1");
+            final String name = r[6], variation = r[7];
+            Typeface base;
+            if (strategy == 2) {
+                base = downloaded.get(name);
+                if (base == null) {
+                    if (failedDownloads.contains(name)) continue;
+                    if (!loading) downloadable(name);   // the first one still to load
+                    loading = true;
+                    continue;
+                }
+            } else {
+                base = chainFont(kind, name, variation);
+                if (base == null && strategy == 1) continue;
+            }
+            pick = new Pick();
+            if (base == null) {
+                pick.typeface = Typeface.create(Typeface.DEFAULT, defaultWeight, defaultItalic);
+            } else {
+                pick.typeface = Typeface.create(base, weight, italic);
+                pick.fakeBold = r[4].equals("1");
+                pick.fakeItalic = r[5].equals("1");
+            }
+        }
+        if (pick == null) {
+            pick = new Pick();
+            pick.typeface = Typeface.create(Typeface.DEFAULT, defaultWeight, defaultItalic);
+        }
+        if (!loading) chains.put(chain, pick);
+        return pick;
     }
 
     private Typeface typeface(int kind, String name, int weight, boolean italic, String variation) {
