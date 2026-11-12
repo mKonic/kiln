@@ -5,6 +5,7 @@
 // Drawing during the draw pass (spec 03 §ui-graphics, DrawScope). M2 draws straight into the
 // frame's QuadRenderer with an accumulated translation; retained layers come with GraphicsLayer.
 
+#include "kiln/graphics/Brush.h"
 #include "kiln/graphics/ColorFilter.h"
 #include "kiln/graphics/Image.h"
 #include "kiln/graphics/Path.h"
@@ -40,6 +41,16 @@ namespace kiln::ui {
     // The intersection of two rounded rects in one space when it is itself a rounded rect (each
     // corner belongs to one of them, or is square where their straight edges cross).
     bool IntersectRoundedRects(const Rect& a, const ClipRadii& ra, const Rect& b, const ClipRadii& rb, Rect& out, ClipRadii& radii);
+
+    // DrawStyle: fill the shape, or stroke its outline (Fill / Stroke).
+    struct DrawStyle {
+        std::optional<gfx::Stroke> stroke;
+        static DrawStyle Fill() { return {}; }
+        static DrawStyle Stroke(gfx::Stroke s) { return { std::move(s) }; }
+        bool operator==(const DrawStyle&) const = default;
+    };
+    // PointMode (drawPoints).
+    enum class PointMode : std::uint8_t { Points, Lines, Polygon };
 
     class DrawScope;
     // A display list (a RenderNode's recording): commands replayed onto a scope, in the
@@ -98,6 +109,79 @@ namespace kiln::ui {
         // current affine transform. Without it the caster is flat at `elevation`.
         void DrawShadow(const gfx::Outline& outline, float elevation, Color ambientColor, Color spotColor, float casterAlpha = 1,
                         const gfx::ShadowProjection* projection = nullptr);
+
+        // --- DrawScope's shape calls (DrawScope.kt): a brush (or colour), the shape, then alpha,
+        // style (fill or stroke), colour filter and blend mode. A stroke of width 0 is a hairline.
+        void DrawLine(const gfx::Brush& brush, Offset start, Offset end, float strokeWidth = 0, gfx::StrokeCap cap = gfx::StrokeCap::Butt,
+                      std::shared_ptr<const gfx::PathEffect> pathEffect = nullptr, float alpha = 1, const gfx::ColorFilter* colorFilter = nullptr,
+                      gfx::BlendMode blendMode = gfx::BlendMode::SrcOver);
+        void DrawLine(Color color, Offset start, Offset end, float strokeWidth = 0, gfx::StrokeCap cap = gfx::StrokeCap::Butt,
+                      std::shared_ptr<const gfx::PathEffect> pathEffect = nullptr, float alpha = 1, const gfx::ColorFilter* colorFilter = nullptr,
+                      gfx::BlendMode blendMode = gfx::BlendMode::SrcOver) {
+            DrawLine(gfx::Brush::SolidColor(color), start, end, strokeWidth, cap, std::move(pathEffect), alpha, colorFilter, blendMode);
+        }
+        // radius < 0: half the smaller side; center unset: the scope's centre.
+        void DrawCircle(const gfx::Brush& brush, float radius = -1, std::optional<Offset> center = std::nullopt, float alpha = 1,
+                        const DrawStyle& style = DrawStyle::Fill(), const gfx::ColorFilter* colorFilter = nullptr,
+                        gfx::BlendMode blendMode = gfx::BlendMode::SrcOver);
+        void DrawCircle(Color color, float radius = -1, std::optional<Offset> center = std::nullopt, float alpha = 1,
+                        const DrawStyle& style = DrawStyle::Fill(), const gfx::ColorFilter* colorFilter = nullptr,
+                        gfx::BlendMode blendMode = gfx::BlendMode::SrcOver) {
+            DrawCircle(gfx::Brush::SolidColor(color), radius, center, alpha, style, colorFilter, blendMode);
+        }
+        // size unset: the rest of the scope from topLeft.
+        void DrawOval(const gfx::Brush& brush, Offset topLeft = {}, std::optional<Size> size = std::nullopt, float alpha = 1,
+                      const DrawStyle& style = DrawStyle::Fill(), const gfx::ColorFilter* colorFilter = nullptr,
+                      gfx::BlendMode blendMode = gfx::BlendMode::SrcOver);
+        void DrawOval(Color color, Offset topLeft = {}, std::optional<Size> size = std::nullopt, float alpha = 1,
+                      const DrawStyle& style = DrawStyle::Fill(), const gfx::ColorFilter* colorFilter = nullptr,
+                      gfx::BlendMode blendMode = gfx::BlendMode::SrcOver) {
+            DrawOval(gfx::Brush::SolidColor(color), topLeft, size, alpha, style, colorFilter, blendMode);
+        }
+        // Degrees clockwise from 3 o'clock; useCenter closes the arc through the oval's centre.
+        void DrawArc(const gfx::Brush& brush, float startAngle, float sweepAngle, bool useCenter, Offset topLeft = {},
+                     std::optional<Size> size = std::nullopt, float alpha = 1, const DrawStyle& style = DrawStyle::Fill(),
+                     const gfx::ColorFilter* colorFilter = nullptr, gfx::BlendMode blendMode = gfx::BlendMode::SrcOver);
+        void DrawArc(Color color, float startAngle, float sweepAngle, bool useCenter, Offset topLeft = {},
+                     std::optional<Size> size = std::nullopt, float alpha = 1, const DrawStyle& style = DrawStyle::Fill(),
+                     const gfx::ColorFilter* colorFilter = nullptr, gfx::BlendMode blendMode = gfx::BlendMode::SrcOver) {
+            DrawArc(gfx::Brush::SolidColor(color), startAngle, sweepAngle, useCenter, topLeft, size, alpha, style, colorFilter, blendMode);
+        }
+        // Points: a dot per point (round caps make it round); Lines: each pair a segment;
+        // Polygon: one line through them all.
+        void DrawPoints(const std::vector<Offset>& points, PointMode pointMode, const gfx::Brush& brush, float strokeWidth = 0,
+                        gfx::StrokeCap cap = gfx::StrokeCap::Butt, std::shared_ptr<const gfx::PathEffect> pathEffect = nullptr, float alpha = 1,
+                        const gfx::ColorFilter* colorFilter = nullptr, gfx::BlendMode blendMode = gfx::BlendMode::SrcOver);
+        void DrawPoints(const std::vector<Offset>& points, PointMode pointMode, Color color, float strokeWidth = 0,
+                        gfx::StrokeCap cap = gfx::StrokeCap::Butt, std::shared_ptr<const gfx::PathEffect> pathEffect = nullptr, float alpha = 1,
+                        const gfx::ColorFilter* colorFilter = nullptr, gfx::BlendMode blendMode = gfx::BlendMode::SrcOver) {
+            DrawPoints(points, pointMode, gfx::Brush::SolidColor(color), strokeWidth, cap, std::move(pathEffect), alpha, colorFilter, blendMode);
+        }
+        // drawRect / drawRoundRect / drawPath with a style (cornerRadius: x / y radii).
+        void DrawRect(const gfx::Brush& brush, Offset topLeft, std::optional<Size> size, float alpha, const DrawStyle& style,
+                      const gfx::ColorFilter* colorFilter = nullptr, gfx::BlendMode blendMode = gfx::BlendMode::SrcOver);
+        void DrawRoundRect(const gfx::Brush& brush, Offset topLeft, std::optional<Size> size, Offset cornerRadius, float alpha,
+                           const DrawStyle& style, const gfx::ColorFilter* colorFilter = nullptr, gfx::BlendMode blendMode = gfx::BlendMode::SrcOver);
+        void DrawPath(const gfx::Path& path, const gfx::Brush& brush, float alpha, const DrawStyle& style,
+                      const gfx::ColorFilter* colorFilter = nullptr, gfx::BlendMode blendMode = gfx::BlendMode::SrcOver);
+        // drawImage(image, topLeft): the whole image at its size.
+        void DrawImage(const gfx::ImageBitmap& image, Offset topLeft = {}, float alpha = 1);
+        // inset / clipPath / withTransform / rotateRad.
+        void Inset(float left, float top, float right, float bottom, const std::function<void(DrawScope&)>& draw) {
+            WithTransform([&](DrawScope& d) { d.Translate({ left, top }); d.m_Size = { d.m_Size.width - left - right, d.m_Size.height - top - bottom }; }, draw);
+        }
+        // Intersects the clip with a path (ClipOp.Intersect) through a masked layer, until the Restore.
+        void ClipPath(const gfx::Path& path);
+        void RotateRad(float radians, Offset pivot) { Rotate(radians * 57.29577951308232f, pivot); }
+        void Skew(float sx, float sy) { Concat(gfx::Matrix{ 1, sy, sx, 1, 0, 0 }); }
+        void WithTransform(const std::function<void(DrawScope&)>& transform, const std::function<void(DrawScope&)>& draw) {
+            Save();
+            const Size size = m_Size;
+            transform(*this);
+            draw(*this);
+            m_Size = size;
+            Restore();
+        }
 
         // Transform (affine, local -> device). Each call composes onto the current one.
         void Translate(Offset o);

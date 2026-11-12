@@ -425,6 +425,141 @@ namespace kiln::ui {
         return f && m_Target.filters ? m_Target.filters->RowFor(*f) : -1;
     }
 
+    namespace {
+        // A draw with a blend mode other than SrcOver runs between a Save / Restore.
+        template<typename F>
+        void WithBlend(DrawScope& d, gfx::BlendMode mode, F&& draw) {
+            if (mode == gfx::BlendMode::SrcOver) { draw(); return; }
+            d.Save();
+            d.SetBlendMode(mode);
+            draw();
+            d.Restore();
+        }
+        gfx::Stroke LineStroke(float width, gfx::StrokeCap cap, std::shared_ptr<const gfx::PathEffect> effect) {
+            gfx::Stroke s;
+            s.width = width;
+            s.cap = cap;
+            s.pathEffect = std::move(effect);
+            return s;
+        }
+    }
+
+    void DrawScope::DrawPath(const gfx::Path& path, const gfx::Brush& brush, float alpha, const DrawStyle& style, const gfx::ColorFilter* colorFilter,
+                             gfx::BlendMode blendMode) {
+        WithBlend(*this, blendMode, [&] { DrawPath(path, brush, style.stroke ? &*style.stroke : nullptr, alpha, colorFilter); });
+    }
+
+    void DrawScope::DrawLine(const gfx::Brush& brush, Offset start, Offset end, float strokeWidth, gfx::StrokeCap cap,
+                             std::shared_ptr<const gfx::PathEffect> pathEffect, float alpha, const gfx::ColorFilter* colorFilter, gfx::BlendMode blendMode) {
+        gfx::Path p;
+        p.MoveTo(start.x, start.y);
+        p.LineTo(end.x, end.y);
+        DrawPath(p, brush, alpha, DrawStyle::Stroke(LineStroke(strokeWidth, cap, std::move(pathEffect))), colorFilter, blendMode);
+    }
+
+    void DrawScope::DrawCircle(const gfx::Brush& brush, float radius, std::optional<Offset> center, float alpha, const DrawStyle& style,
+                               const gfx::ColorFilter* colorFilter, gfx::BlendMode blendMode) {
+        const float r = radius < 0 ? m_Size.MinDimension() / 2 : radius;
+        const Offset c = center.value_or(Offset{ m_Size.width / 2, m_Size.height / 2 });
+        gfx::Path p;
+        p.AddOval({ c.x - r, c.y - r, c.x + r, c.y + r });
+        DrawPath(p, brush, alpha, style, colorFilter, blendMode);
+    }
+
+    void DrawScope::DrawOval(const gfx::Brush& brush, Offset topLeft, std::optional<Size> size, float alpha, const DrawStyle& style,
+                             const gfx::ColorFilter* colorFilter, gfx::BlendMode blendMode) {
+        const Size s = size.value_or(Size{ m_Size.width - topLeft.x, m_Size.height - topLeft.y });
+        gfx::Path p;
+        p.AddOval({ topLeft.x, topLeft.y, topLeft.x + s.width, topLeft.y + s.height });
+        DrawPath(p, brush, alpha, style, colorFilter, blendMode);
+    }
+
+    void DrawScope::DrawArc(const gfx::Brush& brush, float startAngle, float sweepAngle, bool useCenter, Offset topLeft, std::optional<Size> size,
+                            float alpha, const DrawStyle& style, const gfx::ColorFilter* colorFilter, gfx::BlendMode blendMode) {
+        const Size s = size.value_or(Size{ m_Size.width - topLeft.x, m_Size.height - topLeft.y });
+        const Rect oval{ topLeft.x, topLeft.y, topLeft.x + s.width, topLeft.y + s.height };
+        gfx::Path p;
+        if (useCenter) {
+            // Canvas.drawArc with useCenter: a wedge from the centre.
+            p.MoveTo((oval.left + oval.right) / 2, (oval.top + oval.bottom) / 2);
+            p.ArcTo(oval, startAngle, sweepAngle, false);
+            p.Close();
+        } else {
+            p.AddArc(oval, startAngle, sweepAngle);
+        }
+        DrawPath(p, brush, alpha, style, colorFilter, blendMode);
+    }
+
+    void DrawScope::DrawPoints(const std::vector<Offset>& points, PointMode mode, const gfx::Brush& brush, float strokeWidth, gfx::StrokeCap cap,
+                               std::shared_ptr<const gfx::PathEffect> pathEffect, float alpha, const gfx::ColorFilter* colorFilter,
+                               gfx::BlendMode blendMode) {
+        if (points.empty()) return;
+        gfx::Path p;
+        const gfx::Stroke stroke = LineStroke(strokeWidth, cap, std::move(pathEffect));
+        switch (mode) {
+            case PointMode::Points:
+                // Each point a zero-length segment: the cap draws the dot (Butt draws nothing,
+                // as Canvas.drawPoints with a butt cap draws a square of the stroke width).
+                for (const Offset& pt : points) {
+                    if (cap == gfx::StrokeCap::Butt) {
+                        const float h = std::max(strokeWidth, 1.0f) / 2;
+                        p.AddRect({ pt.x - h, pt.y - h, pt.x + h, pt.y + h });
+                    } else {
+                        p.MoveTo(pt.x, pt.y);
+                        p.LineTo(pt.x, pt.y);
+                    }
+                }
+                if (cap == gfx::StrokeCap::Butt) { DrawPath(p, brush, alpha, DrawStyle::Fill(), colorFilter, blendMode); return; }
+                break;
+            case PointMode::Lines:
+                for (std::size_t i = 0; i + 1 < points.size(); i += 2) {
+                    p.MoveTo(points[i].x, points[i].y);
+                    p.LineTo(points[i + 1].x, points[i + 1].y);
+                }
+                break;
+            case PointMode::Polygon:
+                p.MoveTo(points[0].x, points[0].y);
+                for (std::size_t i = 1; i < points.size(); ++i) p.LineTo(points[i].x, points[i].y);
+                break;
+        }
+        DrawPath(p, brush, alpha, DrawStyle::Stroke(stroke), colorFilter, blendMode);
+    }
+
+    void DrawScope::DrawRect(const gfx::Brush& brush, Offset topLeft, std::optional<Size> size, float alpha, const DrawStyle& style,
+                             const gfx::ColorFilter* colorFilter, gfx::BlendMode blendMode) {
+        const Size s = size.value_or(Size{ m_Size.width - topLeft.x, m_Size.height - topLeft.y });
+        if (!style.stroke && !colorFilter) {
+            WithBlend(*this, blendMode, [&] { DrawRect(brush, topLeft, s, alpha); });
+            return;
+        }
+        gfx::Path p;
+        p.AddRect({ topLeft.x, topLeft.y, topLeft.x + s.width, topLeft.y + s.height });
+        DrawPath(p, brush, alpha, style, colorFilter, blendMode);
+    }
+
+    void DrawScope::DrawRoundRect(const gfx::Brush& brush, Offset topLeft, std::optional<Size> size, Offset cornerRadius, float alpha,
+                                  const DrawStyle& style, const gfx::ColorFilter* colorFilter, gfx::BlendMode blendMode) {
+        const Size s = size.value_or(Size{ m_Size.width - topLeft.x, m_Size.height - topLeft.y });
+        if (!style.stroke && !colorFilter && cornerRadius.x == cornerRadius.y) {
+            WithBlend(*this, blendMode, [&] { DrawRoundRect(brush, topLeft, s, cornerRadius.x, alpha); });
+            return;
+        }
+        gfx::Path p;
+        const Rect r{ topLeft.x, topLeft.y, topLeft.x + s.width, topLeft.y + s.height };
+        p.AddRoundRect({ r, cornerRadius, cornerRadius, cornerRadius, cornerRadius });
+        DrawPath(p, brush, alpha, style, colorFilter, blendMode);
+    }
+
+    void DrawScope::DrawImage(const gfx::ImageBitmap& image, Offset topLeft, float alpha) {
+        const float w = float(image.Width()), h = float(image.Height());
+        DrawImage(image, { 0, 0, w, h }, topLeft, { w, h }, alpha);
+    }
+
+    void DrawScope::ClipPath(const gfx::Path& path) {
+        if (m_Recording) { m_Recording->push_back([path](DrawScope& d) { d.ClipPath(path); }); return; }
+        BeginLayerImpl(path.Bounds(), 1, &path, true);
+    }
+
     void DrawScope::DrawPath(const gfx::Path& path, const gfx::Brush& b, const gfx::Stroke* stroke, float alpha, const gfx::ColorFilter* filter) {
         if (m_Recording) { m_Recording->push_back([path, b, st = Opt(stroke), alpha, f = Opt(filter)](DrawScope& d) { d.DrawPath(path, b, st ? &*st : nullptr, alpha, f ? &*f : nullptr); }); return; }
         QuadRenderer::Paint paint;

@@ -1213,22 +1213,43 @@ namespace kiln::foundation {
         return m.With<AlignBlockNode>(AlignBlockParams{ std::make_shared<const std::function<int(Placeable&)>>(std::move(block)) });
     }
 
+    namespace {
+        // ProgressiveBlurElement's layer block: the scope's spec, edges and alpha onto the layer.
+        void ApplyBlur(GraphicsLayerParams& p, BlurRadiusSpec spec, BlurredEdgeTreatment e, float alpha) {
+            p.alpha = alpha;
+            p.clip = e.clip;
+            p.clipShape = std::move(e.shape);
+            p.renderEffect.reset();
+            p.progressiveBlur.reset();
+            if (spec.kind == BlurRadiusSpec::Kind::Uniform) {
+                const Dp r = spec.stops.empty() ? Dp(0) : spec.stops[0].radius;
+                if (r.value > 0)
+                    p.renderEffect = RenderEffect{ RenderEffect::Kind::Blur, r.value, r.value, e.clip ? gfx::TileMode::Clamp : gfx::TileMode::Decal, true, nullptr };
+            } else {
+                p.progressiveBlur = std::move(spec);
+                p.progressiveBlurDecal = !e.clip;
+            }
+        }
+    }
+
+    Modifier Blur(Modifier m, std::function<void(BlurScope&)> block) {
+        rt::Composition* c = rt::Composition::Current();
+        const ui::Density density = c ? c->Read(ui::LocalDensity) : ui::Density{};
+        return GraphicsLayer(std::move(m), [block = std::move(block), density](GraphicsLayerParams& p) {
+            BlurScope scope;
+            static_cast<ui::Density&>(scope) = density;
+            scope.size = { Dp(p.size.width / density.density), Dp(p.size.height / density.density) };
+            if (block) block(scope);
+            ApplyBlur(p, std::move(scope.blurRadiusSpec), std::move(scope.edgeTreatment), scope.alpha);
+        });
+    }
+
     Modifier Blur(Modifier m, BlurRadiusSpec spec, BlurredEdgeTreatment e, float alpha) {
         GraphicsLayerParams p;
-        p.alpha = alpha;
-        p.clip = e.clip;
-        p.clipShape = std::move(e.shape);
-        if (spec.kind == BlurRadiusSpec::Kind::Uniform) {
-            // BlurUniform: the platform blur (HWUI's radius-to-sigma).
-            const Dp r = spec.stops.empty() ? Dp(0) : spec.stops[0].radius;
-            if (r.value > 0)
-                p.renderEffect = RenderEffect{ RenderEffect::Kind::Blur, r.value, r.value, e.clip ? gfx::TileMode::Clamp : gfx::TileMode::Decal, true, nullptr };
-        } else {
-            p.progressiveBlur = std::move(spec);
-            p.progressiveBlurDecal = !e.clip;
-        }
+        ApplyBlur(p, std::move(spec), std::move(e), alpha);
         return GraphicsLayer(std::move(m), p);
     }
+
 
     Modifier FillCrossAxisOfLine(Modifier m, float fraction) {
         return m.With<ParentDataNode>(ParentParams{ 6, std::clamp(fraction, 0.0f, 1.0f), true, 0, 0 });

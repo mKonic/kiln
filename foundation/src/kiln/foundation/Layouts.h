@@ -331,6 +331,16 @@ namespace kiln::foundation {
     Modifier Blur(Modifier m, Dp radiusX, Dp radiusY, BlurredEdgeTreatment edgeTreatment = BlurredEdgeTreatment::Rectangle());
     // Modifier.blur(blurRadiusSpec, edgeTreatment, alpha).
     Modifier Blur(Modifier m, BlurRadiusSpec spec, BlurredEdgeTreatment edgeTreatment = BlurredEdgeTreatment::Rectangle(), float alpha = 1);
+    // BlurScope: what a Modifier.blur { } block sets, run as a layer block (so animating the
+    // radius re-applies the effect without recording the content again); `size` is the layer's.
+    struct BlurScope : ui::Density {
+        ui::DpSize size;
+        BlurRadiusSpec blurRadiusSpec = BlurRadiusSpec::Uniform(Dp(0));
+        BlurredEdgeTreatment edgeTreatment = BlurredEdgeTreatment::Rectangle();
+        float alpha = 1;
+    };
+    // Modifier.blur(block).
+    Modifier Blur(Modifier m, std::function<void(BlurScope&)> block);
     inline Modifier Blur(Modifier m, Dp radius, BlurredEdgeTreatment edgeTreatment = BlurredEdgeTreatment::Rectangle()) {
         return Blur(std::move(m), radius, radius, std::move(edgeTreatment));
     }
