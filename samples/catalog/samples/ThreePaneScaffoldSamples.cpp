@@ -11,6 +11,8 @@
 #include <kiln/material3/IconButton.h>
 #include <kiln/material3/Scaffold.h>
 #include <kiln/material3/adaptive/ThreePaneScaffoldNavigator.h>
+#include <kiln/material3/adaptive/navigation3/SceneStrategies.h>
+#include <kiln/navigation3/NavDisplay.h>
 
 #include <memory>
 #include <optional>
@@ -300,6 +302,109 @@ namespace catalog::samples {
     void SupportingPaneScaffoldSampleWithExtraPaneLevitatedAsBottomSheet() {
         const LaunchScope scope = RememberCoroutineScope();
         Supporting(LevitateAsBottomSheet(), scope, true);
+    }
+
+
+    namespace {
+        struct HomeKey { bool operator==(const HomeKey&) const = default; };
+        struct ListKey { bool operator==(const ListKey&) const = default; };
+        struct DetailKey { int index; bool operator==(const DetailKey&) const = default; };
+        struct ExtraKey { int index; bool operator==(const ExtraKey&) const = default; };
+        using NavRoute = std::variant<HomeKey, ListKey, DetailKey, ExtraKey>;
+        std::string NavKeyToString(const HomeKey&) { return "HomeKey"; }
+        std::string NavKeyToString(const ListKey&) { return "ListKey"; }
+        std::string NavKeyToString(const DetailKey& k) { return "DetailKey(index=" + std::to_string(k.index) + ")"; }
+        std::string NavKeyToString(const ExtraKey& k) { return "ExtraKey(index=" + std::to_string(k.index) + ")"; }
+
+        // @Serializable: the alternative and its index.
+        kiln::rt::Saver<NavRoute> NavRouteSaver() {
+            return {
+                [](const NavRoute& r) {
+                    int index = 0;
+                    if (const auto* d = std::get_if<DetailKey>(&r)) index = d->index;
+                    if (const auto* e = std::get_if<ExtraKey>(&r)) index = e->index;
+                    return kiln::rt::SavedValue(kiln::rt::SavedValue::List{ int(r.index()), index });
+                },
+                [](const kiln::rt::SavedValue& s) -> std::optional<NavRoute> {
+                    const auto* l = std::get_if<kiln::rt::SavedValue::List>(&s.v);
+                    if (!l || l->size() != 2) return std::nullopt;
+                    const auto* kind = std::get_if<std::int64_t>(&(*l)[0].v);
+                    const auto* index = std::get_if<std::int64_t>(&(*l)[1].v);
+                    if (!kind || !index) return std::nullopt;
+                    switch (*kind) {
+                        case 0: return NavRoute(HomeKey{});
+                        case 1: return NavRoute(ListKey{});
+                        case 2: return NavRoute(DetailKey{ int(*index) });
+                        case 3: return NavRoute(ExtraKey{ int(*index) });
+                    }
+                    return std::nullopt;
+                },
+            };
+        }
+
+        void NavListPaneContent(const std::vector<std::string>& items, std::optional<int> selectedIndex, std::function<void(int)> onItemClick) {
+            Column(SelectableGroup({}), Arrangement::SpacedBy(8_dp), AlignmentH::Start(), [&items, selectedIndex, onItemClick] {
+                for (int index = 0; index < int(items.size()); ++index)
+                    ListCard(items[std::size_t(index)], selectedIndex && index == *selectedIndex, [onItemClick, index] { onItemClick(index); });
+            });
+        }
+
+        void NavDetailPaneContent(std::optional<std::string> selectedItem, std::function<void()> onShowExtra, std::function<void()> backButton = {}) {
+            const std::string title = selectedItem ? *selectedItem : "No item selected";
+            const std::string description = selectedItem ? "This is a description about " + *selectedItem + "." : "Select an item from the list.";
+            BasicScreen(title, backButton ? backButton : [] {}, m3::MaterialTheme::colorScheme().surfaceContainer, [description, selectedItem, onShowExtra] {
+                m3::Text(description);
+                if (selectedItem) m3::Button(onShowExtra, {}, {}, [] { m3::Text("Show extra"); });
+            });
+        }
+
+        void NavExtraPaneContent(const std::string& item, std::function<void()> backButton = {}) {
+            BasicScreen(item, backButton ? backButton : [] {}, m3::MaterialTheme::colorScheme().surfaceContainerHighest,
+                        [item] { m3::Text("This is extra content about " + item + "."); });
+        }
+    }
+
+    void ListDetailWithNavigation3Sample() {
+        namespace N = kiln::navigation3;
+        using Strategy = A::navigation3::ListDetailSceneStrategy<NavRoute>;
+        N::NavBackStack<NavRoute>& backStack = N::RememberNavBackStack<NavRoute>(NavRouteSaver(), { HomeKey{} });
+        const auto sceneStrategy = A::navigation3::RememberListDetailSceneStrategy<NavRoute>();
+        std::optional<int> selectedIndex;
+        if (const auto last = backStack.LastOrNull()) {
+            if (const auto* d = std::get_if<DetailKey>(&*last)) selectedIndex = d->index;
+            if (const auto* e = std::get_if<ExtraKey>(&*last)) selectedIndex = e->index;
+        }
+        N::NavBackStack<NavRoute>* stack = &backStack;
+        N::NavDisplayOptions<NavRoute> options;
+        options.sceneStrategies = { sceneStrategy };
+        N::NavDisplay(backStack, N::EntryProvider<NavRoute>([stack, selectedIndex](N::EntryProviderScope<NavRoute>& p) {
+            p.Entry<HomeKey>([stack](const HomeKey&) {
+                Box(FillMax({}, Axis::Both), Alignment::Center(), false, [stack] {
+                    m3::Button([stack] { if (!(stack->Last() == NavRoute(ListKey{}))) stack->Add(ListKey{}); }, {}, {}, [] { m3::Text("Go to list"); });
+                });
+            });
+            p.Entry<ListKey>([stack, selectedIndex](const ListKey&) {
+                NavListPaneContent(Items(), selectedIndex, [stack](int index) {
+                    const NavRoute dest = DetailKey{ index };
+                    if (!(stack->Last() == dest)) stack->Add(dest);
+                });
+            }, Strategy::ListPane({}, [](const A::ThreePaneScaffoldScope&) { NavDetailPaneContent(std::nullopt, [] {}); }));
+            p.Entry<DetailKey>([stack, selectedIndex](const DetailKey&) {
+                const bool inScene = Here().Read(A::navigation3::LocalListDetailSceneScope).has_value();
+                NavDetailPaneContent(selectedIndex ? std::optional<std::string>(Items()[std::size_t(*selectedIndex)]) : std::nullopt,
+                                     [stack, selectedIndex] {
+                                         const NavRoute dest = ExtraKey{ *selectedIndex };
+                                         if (!(stack->Last() == dest)) stack->Add(dest);
+                                     },
+                                     // Only show the back button in a single-pane context.
+                                     inScene ? std::function<void()>() : std::function<void()>([stack] { BackButton([stack] { stack->RemoveLast(); }, true); }));
+            }, Strategy::DetailPane());
+            p.Entry<ExtraKey>([stack, selectedIndex](const ExtraKey&) {
+                const bool inScene = Here().Read(A::navigation3::LocalListDetailSceneScope).has_value();
+                NavExtraPaneContent(ExtraItems()[std::size_t(*selectedIndex)],
+                                    inScene ? std::function<void()>() : std::function<void()>([stack] { BackButton([stack] { stack->RemoveLast(); }, true); }));
+            }, Strategy::ExtraPane());
+        }), FillMax({}, Axis::Both), options);
     }
 
 }

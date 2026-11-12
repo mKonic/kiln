@@ -6,4 +6,5 @@ namespace catalog::samples {
     void ListDetailPaneScaffoldSampleWithExtraPaneLevitatedAsDialog();
     void SupportingPaneScaffoldSample();
     void SupportingPaneScaffoldSampleWithExtraPaneLevitatedAsBottomSheet();
+    void ListDetailWithNavigation3Sample();
 }
