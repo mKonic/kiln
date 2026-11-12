@@ -119,17 +119,33 @@ namespace kiln::foundation {
             return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
         }
 
-        class SharedMutableTransformState {
+        class SharedMutableTransformState final : public detail::SharedTransformView {
         public:
+            float ActiveScale() const override { return transformScope.ScaleMutated() ? transformScope.Scale() : 1.0f; }
+            IntOffset ActiveOffset() const override { return transformScope.OffsetMutated() ? transformScope.Offset() : IntOffset{}; }
+            TransformOrigin ActiveTransformOrigin() const override { return transformScope.OriginMutated() ? transformScope.GetTransformOrigin() : TransformOrigin::Center(); }
+            float LastManualScale() const override { return lastManualScale; }
+            IntOffset LastManualSlide() const override { return lastManualSlide; }
+            TransformOrigin LastTransformOriginValue() const override { return lastTransformOrigin; }
+            std::optional<float> ScaleHandoffVelocityValue() const override { return scaleHandoffVelocity; }
+            std::optional<ui::Offset> SlideHandoffVelocityValue() const override { return slideHandoffVelocity; }
+            float SharedElementProgressHandoffVelocityValue() const override { return sharedElementProgressHandoffVelocity; }
+            float ResolveSharedElementProgressValue() override { return ResolveSharedElementProgress(); }
+            bool ObserveMutating() const override {
+                const MutationPhase p = mutationPhase.Get();
+                return p == MutationPhase::MutatingPendingCatchUp || p == MutationPhase::MutatingCatchingUp || p == MutationPhase::Mutating;
+            }
+            float lastManualScale = 1;
+            IntOffset lastManualSlide{};
             rt::State<MutationPhase> mutationPhase{ MutationPhase::Idle };
             TransformScope transformScope;
             std::shared_ptr<MutableTransform> mutableData, lastMutableData;
 
-            bool IsMutating() const {
+            bool IsMutating() const override {
                 const MutationPhase p = mutationPhase.Peek();
                 return p == MutationPhase::MutatingPendingCatchUp || p == MutationPhase::MutatingCatchingUp || p == MutationPhase::Mutating;
             }
-            bool IsHandoffActive() const { return mutationPhase.Peek() == MutationPhase::Handoff; }
+            bool IsHandoffActive() const override { return mutationPhase.Peek() == MutationPhase::Handoff; }
 
             void SetMutableData(std::shared_ptr<MutableTransform> v) {
                 if (v) lastMutableData = v;
@@ -253,6 +269,7 @@ namespace kiln::foundation {
                 else if (p == MutationPhase::MutatingCatchingUp || p == MutationPhase::Mutating) combined = transformScope.Scale();
                 if (IsMutating()) {
                     lastScale = combined;
+                    lastManualScale = mutated ? transformScope.Scale() : 1.0f;
                     if (mutated) Track(m_ScaleTracker, m_LastScaleMillis, { combined, 0 });
                 }
                 return combined;
@@ -288,6 +305,7 @@ namespace kiln::foundation {
                 }
                 if (IsMutating()) {
                     lastSlide = combined;
+                    lastManualSlide = mutated ? transformScope.Offset() : IntOffset{};
                     if (mutated) Track(m_OffsetTracker, m_LastSlideMillis, { float(combined.x), float(combined.y) });
                 }
                 return combined;
@@ -312,6 +330,8 @@ namespace kiln::foundation {
                 lastScale = 1;
                 lastTransformOrigin = TransformOrigin::Center();
                 lastSlide = {};
+                lastManualScale = 1;
+                lastManualSlide = {};
                 m_ScaleTracker.Reset();
                 m_OffsetTracker.Reset();
                 m_ProgressTracker.Reset();
@@ -601,6 +621,23 @@ namespace kiln::foundation {
         AnimatedVisibility(s, m, std::move(content), std::move(enter), std::move(exit), key);
     }
 
+    namespace {
+        // Provides the transform state (ModifierLocalSharedMutableTransformState) and records
+        // where the container is.
+        struct TransformStateParams {
+            std::shared_ptr<SharedMutableTransformState> state;
+            bool operator==(const TransformStateParams&) const = default;
+        };
+        struct TransformStateNode final : ui::ModifierNode, ui::LayoutAwareModifier {
+            TransformStateParams params;
+            explicit TransformStateNode(TransformStateParams p) : params(std::move(p)) {}
+            ui::LayoutAwareModifier* AsLayoutAware() override { return this; }
+            void OnAttach() override { Provide(detail::LocalSharedMutableTransformState, static_cast<detail::SharedTransformView*>(params.state.get())); }
+            void OnParamsChanged() { if (IsAttached()) OnAttach(); }
+            void OnPlaced(const ui::LayoutCoordinates& c) override { params.state->parentLayoutCoordinates = c; }
+        };
+    }
+
     void AnimatedEnterExit(Transition<bool>& t, const Modifier& modifier, std::function<void()> content,
                            const EnterTransition& enterArg, const ExitTransition& exitArg, rt::Key key,
                            std::shared_ptr<MutableTransform> mutableTransform, bool forceVisible) {
@@ -761,6 +798,8 @@ namespace kiln::foundation {
         if (veilMatchParent) m = DrawWithContent(std::move(m), drawVeil);
         if (clip) m = ClipToBounds(std::move(m));
         m = EnterExitLayout(std::move(m), std::move(p));
+        // A deferred phase shares its transform state with shared content inside.
+        if (mutableTransform) m = m.With<TransformStateNode>(TransformStateParams{ state });
         m = GraphicsLayer(std::move(m), [state, alpha, scale, origin](GraphicsLayerParams& l) {
             l.alpha = state->CombinedAlpha(alpha);
             l.scaleX = l.scaleY = state->CombinedScale(scale);

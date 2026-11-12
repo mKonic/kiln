@@ -21,6 +21,18 @@ namespace kiln::foundation {
         anim::Vec ToVec(const Rect& r) { return { r.left, r.top, r.right, r.bottom }; }
         Rect FromVec(const anim::Vec& v) { return { v[0], v[1], v[2], v[3] }; }
         Size SizeF(IntSize s) { return { float(s.width), float(s.height) }; }
+        // calculatePivot: the transform origin over the container's bounds in the scope.
+        Offset CalculatePivot(const LayoutCoordinates& parent, const LayoutCoordinates& root, TransformOrigin origin) {
+            const Rect b = root.LocalBoundingBoxOf(parent);
+            return { b.left + b.Width() * origin.pivotFractionX, b.top + b.Height() * origin.pivotFractionY };
+        }
+        // Offset.transform(pivot, scale, offset).
+        Offset TransformPoint(Offset p, Offset pivot, float scale, IntOffset offset) {
+            return { (p.x - pivot.x) * scale + pivot.x + float(offset.x), (p.y - pivot.y) * scale + pivot.y + float(offset.y) };
+        }
+        Rect Lerp(const Rect& a, const Rect& b, float t) {
+            return { a.left + (b.left - a.left) * t, a.top + (b.top - a.top) * t, a.right + (b.right - a.right) * t, a.bottom + (b.bottom - a.bottom) * t };
+        }
         // spring(StiffnessMediumLow, visibilityThreshold = Rect.VisibilityThreshold).
         anim::SpecPtr DefaultBoundsSpring() {
             static const anim::SpecPtr spec = anim::Spring(1.0f, anim::spring::StiffnessMediumLow, 1.0f);
@@ -344,12 +356,48 @@ namespace kiln::foundation {
         bool SharedElementEntry::ShouldRenderInPlace() const {
             return !sharedElement->BoundsTransformIsActive() || (!ShouldRenderInOverlay() && ShouldRenderAtAll());
         }
+        bool SharedElementEntry::ShouldApplyContainerTransform() const {
+            return userState->Config().deferredTransitionBehavior == DeferredTransitionBehavior::FollowContainer || !renderInOverlayDuringTransition;
+        }
+        bool SharedElementEntry::ShouldSeekDuringDeferredTransition() const {
+            return userState->Config().deferredTransitionBehavior == DeferredTransitionBehavior::SeekToTarget && renderInOverlayDuringTransition;
+        }
+        SharedTransformView* SharedElementEntry::ActiveMutableTransformState() {
+            if (!ShouldApplyContainerTransform() && !ShouldSeekDuringDeferredTransition()) return nullptr;
+            // Only a deferred transition (or a child of one) is moved by hand.
+            if (!boundsAnimation->GetTransition().IsDeferred()) return nullptr;
+            SharedTransformView* own = boundsProvider ? boundsProvider->ModifierLocalTransformState() : nullptr;
+            if (!own) return nullptr;
+            if (own->IsHandoffActive() && m_DeferredTransformState) return m_DeferredTransformState;
+            SharedTransformView* resolved = own;
+            if (IsDeferredEntering()) {
+                for (SharedElementEntry* e : sharedElement->EnabledEntries())
+                    if (e->IsDeferredExiting()) {
+                        if (SharedTransformView* x = e->boundsProvider ? e->boundsProvider->ModifierLocalTransformState() : nullptr) resolved = x;
+                        break;
+                    }
+            }
+            if (own->IsMutating()) m_DeferredTransformState = resolved;
+            else if (!own->IsHandoffActive()) m_DeferredTransformState = nullptr;
+            return resolved;
+        }
+
         void SharedElementEntry::DrawInOverlay(ContentDrawScope& s) {
             if (ShouldRenderInOverlay() && !layer) layer = layer::GraphicsContext::Default().CreateGraphicsLayer();
             if (!layer) return;
             const std::optional<Rect> current = sharedElement->State()->CurrentBounds();
             if (!current || !ShouldRenderInOverlay()) return;
             s.Save();
+            // A container moved by hand moves (and scales) its shared content with it.
+            SharedTransformView* t = ActiveMutableTransformState();
+            auto& root = sharedElement->scope.Root();
+            if (ShouldApplyContainerTransform() && t && t->IsMutating() && t->parentLayoutCoordinates && t->parentLayoutCoordinates->IsAttached() &&
+                root.root && root.root->IsAttached()) {
+                const IntOffset o = t->ActiveOffset();
+                const Offset pivot = CalculatePivot(*t->parentLayoutCoordinates, *root.root, t->ActiveTransformOrigin());
+                s.Translate({ float(o.x), float(o.y) });
+                s.Scale(t->ActiveScale(), t->ActiveScale(), pivot);
+            }
             if (clipPathInOverlay) {
                 const Rect b = clipPathInOverlay->Bounds();
                 s.BeginLayer(b, 1, &*clipPathInOverlay);
@@ -367,10 +415,12 @@ namespace kiln::foundation {
             (void)PendingTarget();
             (void)IsEnabled();
             (void)boundsAnimation->IsRunning();
+            if (SharedTransformView* t = const_cast<SharedElementEntry*>(this)->ActiveMutableTransformState()) (void)t->ObserveMutating();
         }
         void SharedElementEntry::UpdateTransitionActiveness() {
             const bool was = m_TransitionActive;
-            m_TransitionActive = IsEnabled() && sharedElement->FoundMatch() && boundsAnimation->IsRunning();
+            SharedTransformView* t = ActiveMutableTransformState();
+            m_TransitionActive = IsEnabled() && sharedElement->FoundMatch() && (boundsAnimation->IsRunning() || (t && t->IsMutating()));
             if (m_TransitionActive != was) sharedElement->scope.Root().OnNodeTransitionActivenessChanged(m_TransitionActive);
         }
         void SharedElementEntry::OnEntryRemoved() {
@@ -749,6 +799,8 @@ namespace kiln::foundation {
                     boundsBeforeDetached.reset();
                 }
                 ReleaseLayer();
+                resolvedTransformState = nullptr;
+                transformStateResolved = false;
                 Entry().SetParentState(nullptr);
                 Entry().boundsProvider = nullptr;
                 Entry().isAttached.Set(false);
@@ -768,6 +820,73 @@ namespace kiln::foundation {
                 return MakeRect(Root().root->LocalPositionOf(c, {}), SizeF(c.Size()));
             }
             std::optional<Rect> CalculateAlternativeTargetBounds(const Rect& r) const override { return Entry().CalculateTargetBounds(r); }
+            mutable SharedTransformView* resolvedTransformState = nullptr;
+            mutable bool transformStateResolved = false;
+            SharedTransformView* ModifierLocalTransformState() const override {
+                if (!IsAttached()) return nullptr;
+                if (!transformStateResolved) { resolvedTransformState = Current(foundation::detail::LocalSharedMutableTransformState); transformStateResolved = true; }
+                return resolvedTransformState;
+            }
+            bool IsSeeking() {
+                if (!Entry().ShouldSeekDuringDeferredTransition()) return false;
+                SharedTransformView* t = Entry().ActiveMutableTransformState();
+                return t && t->IsMutating();
+            }
+            std::optional<Rect> SeekBounds(const Rect& base) {
+                if (!IsSeeking()) return std::nullopt;
+                SharedTransformView* t = Entry().ActiveMutableTransformState();
+                const float progress = t ? t->ResolveSharedElementProgressValue() : 0.0f;
+                const auto& pending = Element().PendingTargetBounds();
+                if (progress > 0 && pending) return Lerp(base, *pending, progress);
+                return std::nullopt;
+            }
+            // updateDeferredHandoffValues: when a hand-moved phase hands off, the bounds
+            // animation starts from where the hand left them, with the hand's velocity.
+            void UpdateDeferredHandoffValues() {
+                const auto state = Element().State();
+                TargetData* target = state->Target();
+                const std::optional<Rect> current = state->CurrentBounds();
+                if (!target || !current) return;
+                SharedTransformView* m = Entry().ActiveMutableTransformState();
+                if (!m || !m->IsHandoffActive()) { Entry().hasHandoffOccurred = false; return; }
+                if (Entry().hasHandoffOccurred) return;
+                const Offset mfrDelta = target->currentMfrOffset.Peek() - target->initialMfrOffset.Peek();
+                if (!Entry().ShouldApplyContainerTransform()) {
+                    if (Entry().ShouldSeekDuringDeferredTransition()) {
+                        forcedHandoffBounds = Translate(*current, Offset{ -mfrDelta.x, -mfrDelta.y });
+                        const float pv = m->SharedElementProgressHandoffVelocityValue();
+                        const std::optional<Rect> base = Entry().boundsAnimation->Value();
+                        const auto& pending = Element().PendingTargetBounds();
+                        if (base && pending && pv != 0) {
+                            const Rect b = Translate(*base, mfrDelta);
+                            forcedHandoffVelocity = anim::Vec{ (pending->left - b.left) * pv, (pending->top - b.top) * pv, (pending->right - b.right) * pv,
+                                                               (pending->bottom - b.bottom) * pv };
+                        } else {
+                            forcedHandoffVelocity.reset();
+                        }
+                        Entry().hasHandoffOccurred = true;
+                    }
+                    return;
+                }
+                const auto& parent = m->parentLayoutCoordinates;
+                if (!parent || !parent->IsAttached() || !Root().root || !Root().root->IsAttached()) return;
+                const float manualScale = m->LastManualScale();
+                const Offset pivot = CalculatePivot(*parent, *Root().root, m->LastTransformOriginValue());
+                const Offset tl = TransformPoint(TopLeft(*current), pivot, manualScale, m->LastManualSlide());
+                const bool ownContainerMutating = Entry().boundsProvider && Entry().boundsProvider->ModifierLocalTransformState() == m;
+                const bool containerApplies = !Entry().ShouldRenderInOverlay() && ownContainerMutating;
+                const float scale = containerApplies ? 1.0f : manualScale;
+                forcedHandoffBounds = Translate(Rect{ tl.x, tl.y, tl.x + current->Width() * scale, tl.y + current->Height() * scale }, Offset{ -mfrDelta.x, -mfrDelta.y });
+                if (!containerApplies) {
+                    const float sv = m->ScaleHandoffVelocityValue().value_or(0.0f);
+                    const Offset ov = m->SlideHandoffVelocityValue().value_or(Offset{});
+                    forcedHandoffVelocity = anim::Vec{ (current->left - pivot.x) * sv + ov.x, (current->top - pivot.y) * sv + ov.y,
+                                                       (current->right - pivot.x) * sv + ov.x, (current->bottom - pivot.y) * sv + ov.y };
+                } else {
+                    forcedHandoffVelocity.reset();
+                }
+                Entry().hasHandoffOccurred = true;
+            }
 
             // The lookahead pass: straight through, then where it lands configures the match.
             ui::MeasureResult Measure(ui::MeasureScope& s, ui::Measurable& m, const ui::Constraints& c) override {
@@ -784,9 +903,12 @@ namespace kiln::foundation {
                        (Element().scope.IsTransitionActive() || Entry().IsDeferredEntering() || Entry().IsDeferredExiting());
             }
             ui::MeasureResult ApproachMeasure(ui::ApproachMeasureScope& s, ui::Measurable& m, const ui::Constraints& c) override {
+                UpdateDeferredHandoffValues();
                 std::optional<Rect> base = forcedHandoffBounds;
                 if (!base) base = Entry().boundsAnimation->Value();
+                if (!base && IsSeeking()) if (TargetData* t = Element().State()->Target()) base = t->TargetBounds();
                 if (!base) base = Element().TryInitializingCurrentBounds();
+                if (base) if (auto sought = SeekBounds(*base)) base = sought;
                 ui::Constraints resolved = c;
                 if (base) {
                     const int w = std::max(0, int(std::lround(base->Width()))), h = std::max(0, int(std::lround(base->Height())));
@@ -834,14 +956,26 @@ namespace kiln::foundation {
                 const std::optional<Rect> animated = Entry().boundsAnimation->Value();
                 const std::optional<ui::Offset> animatedTopLeft = animated ? std::optional(target.OffsetFromDirectManipulation(*animated)) : std::nullopt;
                 const Rect base = animatedTopLeft ? MakeRect(*animatedTopLeft, SizeOf(*animated)) : MakeRect(inScope, SizeF(c->Size()));
+                const std::optional<Rect> sought = SeekBounds(base);
                 ui::Offset topLeft;
                 if (Entry().boundsAnimation->Target() || removed) {
-                    topLeft = TopLeft(base);
-                    Element().State()->UpdateBounds(base);
+                    const Rect bounds = sought ? *sought : base;
+                    topLeft = TopLeft(bounds);
+                    Element().State()->UpdateBounds(bounds);
                 } else {
-                    topLeft = animatedTopLeft ? *animatedTopLeft : TopLeft(current);
+                    topLeft = sought ? TopLeft(*sought) : animatedTopLeft ? *animatedTopLeft : TopLeft(current);
                 }
-                const ui::Offset local = c->LocalPositionOf(root, topLeft);
+                // In place, a container moved by hand moves its shared content along.
+                ui::Offset finalTopLeft = topLeft;
+                SharedTransformView* mt = Entry().ActiveMutableTransformState();
+                if (Entry().ShouldApplyContainerTransform() && mt && mt->IsMutating()) {
+                    if (!Entry().boundsAnimation->IsRunning()) finalTopLeft = inScope;
+                    if (mt->parentLayoutCoordinates && mt->parentLayoutCoordinates->IsAttached() && root.IsAttached()) {
+                        const Offset pivot = CalculatePivot(*mt->parentLayoutCoordinates, root, mt->ActiveTransformOrigin());
+                        finalTopLeft = TransformPoint(topLeft, pivot, mt->ActiveScale(), mt->ActiveOffset());
+                    }
+                }
+                const ui::Offset local = c->LocalPositionOf(root, finalTopLeft);
                 place.Place(p, int(std::lround(local.x)), int(std::lround(local.y)));
             }
 

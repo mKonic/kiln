@@ -110,6 +110,34 @@ namespace kiln::foundation {
         bool m_OffsetMutated = false;
     };
 
+    namespace detail {
+        // The deferred phase's transform state as shared content inside it sees it
+        // (SharedMutableTransformState through ModifierLocalSharedMutableTransformState).
+        class SharedTransformView {
+        public:
+            virtual ~SharedTransformView() = default;
+            virtual bool IsMutating() const = 0;
+            virtual bool IsHandoffActive() const = 0;
+            // IsMutating, observed (a change re-runs what read it).
+            virtual bool ObserveMutating() const = 0;
+            // The hand-set values now (rest values for what the phase does not set).
+            virtual float ActiveScale() const = 0;
+            virtual IntOffset ActiveOffset() const = 0;
+            virtual TransformOrigin ActiveTransformOrigin() const = 0;
+            // The last hand-set values, and their velocities, for the hand-off.
+            virtual float LastManualScale() const = 0;
+            virtual IntOffset LastManualSlide() const = 0;
+            virtual TransformOrigin LastTransformOriginValue() const = 0;
+            virtual std::optional<float> ScaleHandoffVelocityValue() const = 0;
+            virtual std::optional<ui::Offset> SlideHandoffVelocityValue() const = 0;
+            virtual float SharedElementProgressHandoffVelocityValue() const = 0;
+            virtual float ResolveSharedElementProgressValue() = 0;
+            // Where the container's enter/exit layout is (its onPlaced coordinates).
+            std::optional<ui::LayoutCoordinates> parentLayoutCoordinates;
+        };
+        inline ui::ModifierLocal<SharedTransformView*> LocalSharedMutableTransformState{ [] { return static_cast<SharedTransformView*>(nullptr); } };
+    }
+
     // MutableTransform: the hand-set transform of one content during a deferred phase. The block
     // runs in layout each frame (read gesture state there); its values are handed to the
     // automatic transition when the phase ends. offsetVelocityProvider (px/s), read once then:

@@ -35,6 +35,8 @@ namespace kiln::foundation::detail {
         virtual ~BoundsProvider() = default;
         virtual std::optional<Rect> LastBoundsInSharedTransitionScope() const = 0;
         virtual std::optional<Rect> CalculateAlternativeTargetBounds(const Rect& targetBoundsBeforeDisposed) const = 0;
+        // The deferred phase's transform state around the place (null outside one).
+        virtual SharedTransformView* ModifierLocalTransformState() const { return nullptr; }
     };
 
     // The match's states (SharedTransitionStateMachine.State).
@@ -147,6 +149,12 @@ namespace kiln::foundation::detail {
         std::optional<bool> PendingTarget() const { return boundsAnimation->GetTransition().PendingTargetState(); }
         bool IsDeferredEntering() const { const auto p = PendingTarget(); return !Target() && p && *p; }
         bool IsDeferredExiting() const { const auto p = PendingTarget(); return Target() && p && !*p; }
+        bool ShouldApplyContainerTransform() const;
+        bool ShouldSeekDuringDeferredTransition() const;
+        // The transform state that moves this content in a deferred phase (its container's, or
+        // while entering, the exiting content's container's).
+        SharedTransformView* ActiveMutableTransformState();
+        bool hasHandoffOccurred = false;
         std::optional<Rect> CalculateTargetBounds(const Rect& previousTargetBoundsBeforeLosingTarget) const;
         bool ShouldRenderAtAll() const;
         bool ShouldRenderInOverlay() const;
@@ -160,6 +168,7 @@ namespace kiln::foundation::detail {
         rt::State<float> m_ZIndex;
         SharedElementEntry* m_Parent = nullptr;
         bool m_TransitionActive = false;
+        SharedTransformView* m_DeferredTransformState = nullptr;
     };
 
     class SharedElement {

@@ -586,3 +586,59 @@ TEST(SharedElementAnimatesBetweenItsTwoPlaces) {
     CHECK_EQ(bigNode->InnerRectInRoot().left, 100.0f);
     CHECK_EQ(bigNode->InnerRectInRoot().top, 200.0f);
 }
+
+TEST(SharedElementFollowsAContainerMovedByHand) {
+    // Page 1 has the element at the top left; page 2 has it 100 px down. While page 2 is pending
+    // and the pages are dragged by hand, the matched element moves with its container.
+    LayoutHarness h;
+    DeferredTransitionState<std::uint64_t> state{ 1 };
+    rt::State<float> progress{ 0 };
+    ui::LayoutNode* nodes[3] = {};
+    h.Run([&] {
+        SharedTransitionLayout(Modifier{}, [&](SharedTransitionScope& shared) {
+            auto& t = RememberDeferredTransition(state);
+            DeferredAnimatedContent(t, Modifier{}, [&](rt::Key k) {
+                auto* scope = rt::Composition::Current()->Read(LocalAnimatedVisibilityScope);
+                auto& s = shared.RememberSharedContentState(rt::Key("hero"));
+                const int page = k.value == 2 ? 2 : 1;
+                Box(SizeMod(Modifier{}, Dp(100), Dp(200)), Alignment::TopStart(), false, [&] {
+                    auto& n = Layout(shared.SharedElement(OffsetMod(SizeMod(Modifier{}, Dp(50), Dp(50)), Dp(0), Dp(page == 2 ? 100 : 0)), s, *scope),
+                                     std::make_shared<ui::LambdaMeasurePolicy>([](ui::MeasureScope& ms, std::span<ui::Measurable* const>, const ui::Constraints& c) {
+                                         return ms.Layout(c.minWidth, c.minHeight);
+                                     }));
+                    nodes[page] = &n;
+                });
+            }, [](AnimatedContentTransitionScope&) {
+                return Using(TogetherWith(SlideInHorizontally([](int w) { return w; }, anim::Tween(160, 0, anim::Linear())),
+                                          SlideOutHorizontally([](int w) { return -w; }, anim::Tween(160, 0, anim::Linear()))), std::nullopt);
+            }, Alignment::TopStart(), [&](AnimatedContentTransitionScope&) {
+                return MakeMutableContentTransform(false, false, {}, {}, [&](MutableContentTransform& m) {
+                    m.InitialContentTransform([&](TransformScope& s, IntSize full) { s.SetOffset({ -int(float(full.width) * progress.Get()), 0 }); });
+                    m.TargetContentTransform([&](TransformScope& s, IntSize full) { s.SetOffset({ int(float(full.width) * (1 - progress.Get())), 0 }); });
+                });
+            });
+        });
+    });
+    h.Layout();
+    CHECK(nodes[1] != nullptr);
+    state.Defer(2);
+    progress.Set(0.4f);
+    h.Pump();
+    h.Layout();
+    h.Step(2);
+    CHECK(nodes[2] != nullptr);
+    // The leaving page is dragged 40 px left; the element in it (the one shown) goes along.
+    CHECK_EQ(nodes[1]->InnerRectInRoot().left, -40.0f);
+    progress.Set(0.6f);
+    h.Pump();
+    h.Layout();
+    h.Step(1);
+    CHECK_EQ(nodes[1]->InnerRectInRoot().left, -60.0f);
+    state.AnimateTo(2);
+    h.Pump();
+    h.Layout();
+    h.Step(60);
+    CHECK_EQ(nodes[2]->InnerRectInRoot().left, 0.0f);
+    CHECK_EQ(nodes[2]->InnerRectInRoot().top, 100.0f);
+}
+
