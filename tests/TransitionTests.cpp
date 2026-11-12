@@ -446,3 +446,34 @@ TEST(AnimatedVisibilityScopeDrivesChildEnterExit) {
     CHECK_EQ(child->PositionInRoot().x, 0.0f);
     CHECK(seenCurrent == EnterExitState::Visible);
 }
+
+TEST(DeferredAnimatedVisibilityComposesThePendingContentAndMovesItByHand) {
+    LayoutHarness h;
+    DeferredTransitionState<bool> state(false);
+    rt::State<float> progress(0);
+    auto transform = std::make_shared<MutableTransform>();
+    transform->Update([&](TransformScope& s, IntSize full) { s.SetOffset({ 0, int(float(full.height) * (1 - progress.Get())) }); });
+    ui::LayoutNode* sheet = nullptr;
+    h.Run([&] {
+        Box(Modifier{}, Alignment::TopStart(), false, [&] {
+            auto& t = RememberDeferredTransition(state);
+            DeferredAnimatedVisibility<bool>(t, [](const bool& v) { return v; }, Modifier{}, [&] {
+                sheet = &Layout(SizeMod(Modifier{}, Dp(100), Dp(40)), std::make_shared<ui::LambdaMeasurePolicy>(
+                    [](ui::MeasureScope& s, std::span<ui::Measurable* const>, const ui::Constraints& c) { return s.Layout(c.minWidth, c.minHeight); }));
+            }, SlideInVertically([](int hgt) { return hgt; }, anim::Tween(160, 0, anim::Linear())), SlideOutVertically(), transform);
+        });
+    });
+    h.Layout();
+    CHECK(sheet == nullptr);
+    state.Defer(true);
+    progress.Set(0.5f);
+    h.Pump();
+    h.Layout();
+    CHECK(sheet != nullptr);
+    CHECK_EQ(sheet->BoundsInRoot().top, 20.0f);   // half way up, by hand
+    state.AnimateTo(true);
+    h.Pump();
+    h.Layout();
+    h.Step(40);
+    CHECK_EQ(sheet->BoundsInRoot().top, 0.0f);
+}

@@ -729,6 +729,11 @@ namespace kiln::foundation {
         }, key);
     }
 
+    anim::SpecPtr AnimatedContentDefaults::SizeAnimationSpec() {
+        static const anim::SpecPtr spec = anim::Spring(1.0f, anim::spring::StiffnessMediumLow, 1);
+        return spec;
+    }
+
     ContentTransform DefaultContentTransform() {
         ContentTransform t;
         t.enter = FadeIn(anim::Tween(220, 90)) + ScaleIn(anim::Tween(220, 90), 0.92f);
@@ -913,7 +918,7 @@ namespace kiln::foundation {
             Modifier m = modifier;
             if (containerTransform.sizeTransform) {
                 const anim::SpecPtr spec = containerTransform.sizeTransform->spec ? containerTransform.sizeTransform->spec(sizes->container, sizes->target)
-                                                                                 : anim::Spring(1.0f, anim::spring::StiffnessMediumLow, 0.5f);
+                                                                                 : AnimatedContentDefaults::SizeAnimationSpec();
                 if (containerTransform.sizeTransform->clip) m = ClipToBounds(std::move(m));
                 m = AnimateContentSize(std::move(m), spec);
             }

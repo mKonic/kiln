@@ -204,6 +204,17 @@ namespace kiln::foundation {
         AnimatedEnterExit(child, detail::LookaheadHide(modifier, child), std::move(content), enter, exit, key);
     }
 
+    // DeferredTransition.DeferredAnimatedVisibility(visible): as above on a deferred transition
+    // (RememberDeferredTransition); while a target is pending, mutableTransform moves the content.
+    template<typename S>
+    void DeferredAnimatedVisibility(Transition<S>& transition, std::function<bool(const S&)> visible, const Modifier& modifier,
+                                    std::function<void()> content, EnterTransition enter = FadeIn() + ExpandIn(),
+                                    ExitTransition exit = ShrinkOut() + FadeOut(), std::shared_ptr<MutableTransform> mutableTransform = nullptr,
+                                    rt::Key key = {}) {
+        auto& child = CreateChildTransition<bool, S>(transition, std::move(visible), key);
+        AnimatedEnterExit(child, detail::LookaheadHide(modifier, child), std::move(content), enter, exit, key, std::move(mutableTransform));
+    }
+
     // SizeTransform: how the container's size follows the content (clipped or not), with a spec
     // chosen from the initial and target sizes.
     struct SizeTransform {
@@ -246,6 +257,13 @@ namespace kiln::foundation {
     // AnimatedContent's default: fadeIn(tween(220, 90)) + scaleIn(0.92, tween(220, 90)) togetherWith
     // fadeOut(tween(90)) (the Material fade-through numbers).
     ContentTransform DefaultContentTransform();
+    // AnimatedContentDefaults: the size spec (spring(MediumLow, 1 px threshold)), SizeTransform
+    // and ContentTransform AnimatedContent uses when given none.
+    struct AnimatedContentDefaults {
+        static anim::SpecPtr SizeAnimationSpec();
+        static foundation::SizeTransform SizeTransform() { return {}; }
+        static foundation::ContentTransform ContentTransform() { return DefaultContentTransform(); }
+    };
     // AnimatedContent(targetState): content keyed by `target`; the old content leaves with the
     // exit while the new one enters, both stacked at contentAlignment.
     void AnimatedContent(rt::Key target, const Modifier& modifier, std::function<void(rt::Key)> content,
