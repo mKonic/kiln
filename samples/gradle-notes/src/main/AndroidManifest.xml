@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application android:label="Gradle notes" android:supportsRtl="true">
+        <!-- kiln's activity (declared by the AAR) loads libnotes.so. -->
+        <activity android:name="dev.kiln.KilnActivity" android:exported="true">
+            <meta-data android:name="dev.kiln.lib_name" android:value="notes" />
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

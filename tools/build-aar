@@ -1,0 +1,90 @@
+#!/usr/bin/env bash
+# build-aar [--out build/kiln.aar] [abi...]: kiln as an Android library for Gradle users.
+#
+# The AAR holds the Java host (classes.jar), a manifest declaring KilnActivity, and a Prefab
+# package "kiln" with the C / C++ headers and one static libkiln.a per ABI (64-bit only). An
+# app is one shared library linking libkiln.a whole (its JNI natives are only reached from
+# Java) and exporting kiln_main; KilnActivity loads it by the "dev.kiln.lib_name" meta-data.
+# samples/gradle-notes shows the Gradle and CMake side.
+set -euo pipefail
+source "$(dirname "${BASH_SOURCE[0]}")/android-env.sh"
+OUT="$KILN_ROOT/build/kiln.aar"
+ABIS=()
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --out) OUT="$2"; shift 2 ;;
+        *) ABIS+=("$1"); shift ;;
+    esac
+done
+[ ${#ABIS[@]} -gt 0 ] || ABIS=(arm64-v8a x86_64)
+VERSION="0.1.0"
+NDK_MAJOR="$(sed -n 's/^Pkg.Revision *= *\([0-9]*\).*/\1/p' "$NDK/source.properties")"
+# What a C app links, besides the platform libraries (the C ABI glue is in kiln_material3).
+ARCHIVES=(kiln_android kiln_material3 kiln_foundation kiln_core mcu hearth hearth_vulkan_deps clipper2 skia_shadow)
+
+STAGING="$KILN_ROOT/build/aar"
+rm -rf "$STAGING"; mkdir -p "$STAGING/classes" "$STAGING/prefab/modules/kiln/include"
+
+# Native: build, then merge the archives into one libkiln.a per ABI.
+"$KILN_ROOT/tools/build-android.sh" "${ABIS[@]}" >/dev/null
+for abi in "${ABIS[@]}"; do
+    dir="$KILN_ROOT/build/android/$abi"
+    libdir="$STAGING/prefab/modules/kiln/libs/android.$abi"
+    mkdir -p "$libdir"
+    {
+        echo "CREATE $libdir/libkiln.a"
+        for a in "${ARCHIVES[@]}"; do echo "ADDLIB $dir/lib$a.a"; done
+        echo "SAVE"; echo "END"
+    } | "$NDK_TOOLCHAIN/bin/llvm-ar" -M
+    "$NDK_TOOLCHAIN/bin/llvm-strip" --strip-debug "$libdir/libkiln.a"
+    cat > "$libdir/abi.json" <<JSON
+{ "abi": "$abi", "api": $ANDROID_MIN_SDK, "ndk": $NDK_MAJOR, "stl": "c++_static", "static": true }
+JSON
+done
+# The headers of the C ABI and kiln++ (kiln.hpp is the in-tree C++ API's entry: not shipped).
+mkdir -p "$STAGING/prefab/modules/kiln/include/kiln"
+cp "$KILN_ROOT"/include/kiln/{kiln.h,kiln_m3.h,kilnpp.hpp,kiln_m3.hpp} "$STAGING/prefab/modules/kiln/include/kiln/"
+cat > "$STAGING/prefab/prefab.json" <<JSON
+{ "schema_version": 2, "name": "kiln", "version": "$VERSION", "dependencies": [] }
+JSON
+# Platform libraries libkiln.a needs, and libc++ (static) so a C app links without a C++ driver.
+cat > "$STAGING/prefab/modules/kiln/module.json" <<JSON
+{ "export_libraries": ["-landroid", "-ljnigraphics", "-llog", "-lvulkan", "-lc++_static", "-lc++abi", "-lm"], "library_name": "libkiln" }
+JSON
+
+# Java host.
+mapfile -t SOURCES < <(find "$KILN_ROOT/platform/android/java" -name '*.java')
+javac --release 17 -nowarn -classpath "$ANDROID_JAR" -d "$STAGING/classes" "${SOURCES[@]}"
+(cd "$STAGING/classes" && jar --create --file "$STAGING/classes.jar" .)
+
+cat > "$STAGING/AndroidManifest.xml" <<XML
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="dev.kiln">
+    <uses-sdk android:minSdkVersion="$ANDROID_MIN_SDK" />
+    <uses-feature android:name="android.hardware.vulkan.version" android:version="0x00401000" android:required="true" />
+    <!-- The text toolbar's PROCESS_TEXT activities and Look Up. -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.PROCESS_TEXT" />
+            <data android:mimeType="text/plain" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.LOOK_UP_TEXT" />
+            <data android:mimeType="text/plain" />
+        </intent>
+    </queries>
+    <application android:enableOnBackInvokedCallback="true">
+        <!-- Apps add the dev.kiln.lib_name meta-data and their launcher intent filter. -->
+        <activity android:name="dev.kiln.KilnActivity"
+                  android:theme="@android:style/Theme.DeviceDefault.NoActionBar"
+                  android:windowSoftInputMode="adjustResize"
+                  android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|uiMode|density|fontScale|fontWeightAdjustment|keyboard|keyboardHidden|navigation|locale|layoutDirection|colorMode|touchscreen|grammaticalGender" />
+    </application>
+</manifest>
+XML
+: > "$STAGING/R.txt"
+
+mkdir -p "$(dirname "$OUT")"
+rm -f "$OUT"
+(cd "$STAGING" && zip -qr "$OUT" AndroidManifest.xml classes.jar R.txt prefab)
+echo "AAR: $OUT ($(du -h "$OUT" | cut -f1))"
