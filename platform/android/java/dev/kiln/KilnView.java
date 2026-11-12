@@ -631,6 +631,120 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
         return 0;
     }
 
+    // --- external surfaces (AndroidExternalSurface; called from native) -------------------------
+    // Each is a child SurfaceControl of the SurfaceView kiln draws into, layered below its buffer
+    // (Behind -2, MediaOverlay -1: kiln clears its frame over them, so this view's surface is
+    // translucent while any exist) or above it (OnTop +1), and scaled into its element's bounds.
+
+    private static final class ExternalSurface {
+        int left, top, right, bottom, fixedWidth, fixedHeight, zOrder;
+        boolean opaque, secure, visible;
+        android.view.SurfaceControl control;
+        android.view.Surface surface;
+        int width = -1, height = -1;
+    }
+    private final android.util.SparseArray<ExternalSurface> externals = new android.util.SparseArray<>();
+    private boolean kilnSurfaceValid;
+    private boolean translucentForExternals;
+
+    void externalSurface(int id, int left, int top, int right, int bottom, int fixedWidth, int fixedHeight, boolean opaque, int zOrder,
+                         boolean secure, boolean embedded, boolean visible) {
+        if (embedded) return;   // embedded surfaces are drawn by kiln itself
+        ExternalSurface e = externals.get(id);
+        if (e == null) {
+            e = new ExternalSurface();
+            externals.put(id, e);
+        } else if (e.control != null && e.opaque != opaque) {
+            destroyExternal(id, e);   // the format is fixed per surface
+        }
+        e.left = left; e.top = top; e.right = right; e.bottom = bottom;
+        e.fixedWidth = fixedWidth; e.fixedHeight = fixedHeight;
+        e.opaque = opaque; e.zOrder = zOrder; e.secure = secure; e.visible = visible;
+        updateSurfaceMode();
+        updateExternalSecure();
+        syncExternal(id, e);
+    }
+
+    void releaseExternalSurface(int id) {
+        ExternalSurface e = externals.get(id);
+        if (e == null) return;
+        destroyExternal(id, e);
+        externals.remove(id);
+        updateSurfaceMode();
+        updateExternalSecure();
+    }
+
+    /** This view's surface lets surfaces below it show through while there are any. */
+    private void updateSurfaceMode() {
+        if (windowId != 0) return;   // a dialog's surface is translucent already
+        boolean below = false;
+        for (int i = 0; i < externals.size(); ++i) if (externals.valueAt(i).zOrder != 2) below = true;
+        if (below == translucentForExternals) return;
+        translucentForExternals = below;
+        // RGB_565 is SurfaceView's own default (opaque); the change recreates the surface.
+        surfaceView.getHolder().setFormat(below ? android.graphics.PixelFormat.TRANSLUCENT : android.graphics.PixelFormat.RGB_565);
+    }
+
+    private static int layerOf(int zOrder) { return zOrder == 2 ? 1 : zOrder == 1 ? -1 : -2; }
+
+    private void syncExternal(int id, ExternalSurface e) {
+        if (!kilnSurfaceValid) return;
+        android.view.SurfaceControl parent = surfaceView.getSurfaceControl();
+        if (parent == null || !parent.isValid()) return;
+        final int w = e.right - e.left, h = e.bottom - e.top;
+        final int bw = e.fixedWidth > 0 ? e.fixedWidth : w, bh = e.fixedHeight > 0 ? e.fixedHeight : h;
+        if (bw <= 0 || bh <= 0) return;   // nothing to show yet
+        android.view.SurfaceControl.Transaction t = new android.view.SurfaceControl.Transaction();
+        final boolean created = e.control == null;
+        if (created) {
+            e.control = new android.view.SurfaceControl.Builder()
+                    .setName("kiln-external-" + id)
+                    .setParent(parent)
+                    .setBufferSize(bw, bh)
+                    .setFormat(e.opaque ? android.graphics.PixelFormat.OPAQUE : android.graphics.PixelFormat.TRANSLUCENT)
+                    .setOpaque(e.opaque)
+                    .build();
+            e.surface = new android.view.Surface(e.control);
+        } else if (bw != e.width || bh != e.height) {
+            t.setBufferSize(e.control, bw, bh);
+        }
+        t.setLayer(e.control, layerOf(e.zOrder));
+        t.setGeometry(e.control, null, new Rect(e.left, e.top, e.right, e.bottom), android.view.Surface.ROTATION_0);
+        t.setVisibility(e.control, e.visible && w > 0 && h > 0);
+        t.apply();
+        final boolean resized = !created && (bw != e.width || bh != e.height);
+        e.width = bw;
+        e.height = bh;
+        if (created) KilnNative.externalSurfaceCreated(windowId, id, e.surface, bw, bh);
+        else if (resized) KilnNative.externalSurfaceChanged(windowId, id, bw, bh);
+    }
+
+    private void destroyExternal(int id, ExternalSurface e) {
+        if (e.control == null) return;
+        KilnNative.externalSurfaceDestroyed(windowId, id);
+        e.surface.release();
+        new android.view.SurfaceControl.Transaction().reparent(e.control, null).apply();
+        e.control.release();
+        e.control = null;
+        e.surface = null;
+        e.width = e.height = -1;
+    }
+
+    /**
+     * A secure surface is left out of screenshots and recordings (SurfaceView.setSecure). The
+     * per-layer flag is not public API (SurfaceControl.Transaction.setSecure is a blocked hidden
+     * method), and SurfaceView's own flag covers only its buffer layer, not children; so while
+     * any secure external surface exists the window is FLAG_SECURE, which covers it (and the
+     * rest of the window: more is protected, never less).
+     */
+    private void updateExternalSecure() {
+        boolean secure = false;
+        for (int i = 0; i < externals.size(); ++i) if (externals.valueAt(i).secure) secure = true;
+        if (secure == externalFlagSecure) return;
+        externalFlagSecure = secure;
+        applyFlagSecure();
+    }
+
     // --- text input (called from native; spec 02 req. 12) -----------------------------------
     private boolean inputActive;
     private int inputType, imeOptions;
@@ -1735,11 +1849,17 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
     };
 
     // FLAG_SECURE on the window: the native side asks, and reads the window's own flag on attach.
+    // Secure external surfaces keep it set too (updateExternalSecure).
+    private boolean appFlagSecure, externalFlagSecure;
     void setFlagSecureFromNative(boolean secure) {
+        appFlagSecure = secure;
+        applyFlagSecure();
+    }
+    private void applyFlagSecure() {
         android.view.Window w = hostWindow != null ? hostWindow
                 : getContext() instanceof android.app.Activity ? ((android.app.Activity) getContext()).getWindow() : null;
         if (w == null) return;
-        if (secure) w.addFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE);
+        if (appFlagSecure || externalFlagSecure) w.addFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE);
         else w.clearFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE);
     }
     private void pushFlagSecure() {
@@ -1758,6 +1878,8 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
     @Override
     public void surfaceCreated(SurfaceHolder holder) {
         KilnNative.surfaceCreated(windowId, holder.getSurface());
+        kilnSurfaceValid = true;
+        for (int i = 0; i < externals.size(); ++i) syncExternal(externals.keyAt(i), externals.valueAt(i));
     }
 
     @Override
@@ -1767,6 +1889,9 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
 
     @Override
     public void surfaceDestroyed(SurfaceHolder holder) {
+        // External surfaces are children of this one: they go with it and come back after.
+        kilnSurfaceValid = false;
+        for (int i = 0; i < externals.size(); ++i) destroyExternal(externals.keyAt(i), externals.valueAt(i));
         KilnNative.surfaceDestroyed(windowId);
     }
 }

@@ -101,6 +101,7 @@ namespace {
     void ArmTimer();
     struct Win;
     void InstallTextInputHost(JNIEnv* env, Win* w);
+    void InstallExternalSurfaceHost(JNIEnv* env, Win* w);
     void InstallOwnerHosts(JNIEnv* env, Win* w);
     jobjectArray JavaIntent(JNIEnv* env, const kiln::ui::Intent& i);
     // A String[] (null entries kept) as UTF-8.
@@ -553,6 +554,7 @@ namespace {
         } });
         jobject view = w->view;
         InstallTextInputHost(env, w);
+        InstallExternalSurfaceHost(env, w);
         {
             // UiMediaScope's PackageManager features and dock state.
             jclass vc = env->GetObjectClass(view);
@@ -2739,6 +2741,56 @@ namespace {
         g_Host = nullptr;
     }
 
+    // --- external surfaces (AndroidExternalSurface): KilnView makes them -------------------------
+
+    // The ANativeWindow each live external surface was handed out as, by window and id.
+    std::map<std::pair<int, int>, ANativeWindow*> g_ExternalWindows;
+
+    void InstallExternalSurfaceHost(JNIEnv* env, Win* w) {
+        jclass cls = env->GetObjectClass(w->view);
+        static jmethodID place = env->GetMethodID(cls, "externalSurface", "(IIIIIIIZIZZZ)V");
+        static jmethodID release = env->GetMethodID(cls, "releaseExternalSurface", "(I)V");
+        env->DeleteLocalRef(cls);
+        auto push = [w](int id, const kiln::ui::ExternalSurfaceConfig& c) {
+            MainEnv()->CallVoidMethod(w->view, place, id, c.bounds.left, c.bounds.top, c.bounds.right, c.bounds.bottom, c.fixedSize.width,
+                                      c.fixedSize.height, jboolean(c.opaque), c.zOrder, jboolean(c.secure), jboolean(c.embedded), jboolean(c.visible));
+        };
+        kiln::ui::ExternalSurfaceHost host;
+        host.create = push;
+        host.update = push;
+        host.release = [w](int id) { MainEnv()->CallVoidMethod(w->view, release, id); };
+        w->owner->SetExternalSurfaceHost(std::move(host));
+    }
+
+    void ExternalSurfaceCreated(JNIEnv* env, jclass, jint win, jint id, jobject surface, jint width, jint height) {
+        WinScope ws(win);
+        if (!ws.w) return;
+        ANativeWindow* window = ANativeWindow_fromSurface(env, surface);   // our reference until destroyed
+        if (!window) return;
+        auto& slot = g_ExternalWindows[{ int(win), int(id) }];
+        if (slot) ANativeWindow_release(slot);
+        slot = window;
+        ws.w->owner->DispatchExternalSurfaceCreated(id, kiln::ui::PlatformSurface{ window }, width, height);
+        g_Host->app->RequestFrame();
+    }
+
+    void ExternalSurfaceChanged(JNIEnv*, jclass, jint win, jint id, jint width, jint height) {
+        WinScope ws(win);
+        auto it = g_ExternalWindows.find({ int(win), int(id) });
+        if (!ws.w || it == g_ExternalWindows.end()) return;
+        ws.w->owner->DispatchExternalSurfaceChanged(id, kiln::ui::PlatformSurface{ it->second }, width, height);
+    }
+
+    void ExternalSurfaceDestroyed(JNIEnv*, jclass, jint win, jint id) {
+        WinScope ws(win);
+        auto it = g_ExternalWindows.find({ int(win), int(id) });
+        if (it == g_ExternalWindows.end()) return;
+        ANativeWindow* window = it->second;
+        g_ExternalWindows.erase(it);
+        if (ws.w) ws.w->owner->DispatchExternalSurfaceDestroyed(id, kiln::ui::PlatformSurface{ window });
+        ANativeWindow_release(window);
+    }
+
     void SurfaceDestroyed(JNIEnv*, jclass, jint win) {
         WinScope ws(win);
         if (!ws) return;
@@ -2861,6 +2913,9 @@ extern "C" JNIEXPORT jint kiln_jni_onload(JavaVM* vm) {
         { "surfaceCreated", "(ILandroid/view/Surface;)V", reinterpret_cast<void*>(&SurfaceCreated) },
         { "surfaceChanged", "(III)V", reinterpret_cast<void*>(&SurfaceChanged) },
         { "surfaceDestroyed", "(I)V", reinterpret_cast<void*>(&SurfaceDestroyed) },
+        { "externalSurfaceCreated", "(IILandroid/view/Surface;II)V", reinterpret_cast<void*>(&ExternalSurfaceCreated) },
+        { "externalSurfaceChanged", "(IIII)V", reinterpret_cast<void*>(&ExternalSurfaceChanged) },
+        { "externalSurfaceDestroyed", "(II)V", reinterpret_cast<void*>(&ExternalSurfaceDestroyed) },
         { "destroy", "()V", reinterpret_cast<void*>(&Destroy) },
         { "saveState", "()[B", reinterpret_cast<void*>(&SaveState) },
     };

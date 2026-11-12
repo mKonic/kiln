@@ -133,4 +133,7 @@ final class KilnNative {
     static native void viewSizeChanged(int win, int width, int height);
     static native void setInputMode(int win, boolean touch);
     static native void surfaceDestroyed(int win);
+    static native void externalSurfaceCreated(int win, int id, android.view.Surface surface, int width, int height);
+    static native void externalSurfaceChanged(int win, int id, int width, int height);
+    static native void externalSurfaceDestroyed(int win, int id);
 }

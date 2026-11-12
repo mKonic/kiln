@@ -41,6 +41,10 @@
 #include <kiln/foundation/text/Selection.h>
 #include <kiln/runtime/Task.h>
 #include <kiln/runtime/Saveable.h>
+#include <kiln/foundation/AndroidExternalSurface.h>
+#if defined(__ANDROID__)
+#include <android/native_window.h>
+#endif
 
 using namespace kiln::foundation;
 using namespace kiln::ui;
@@ -77,6 +81,51 @@ namespace {
         }
     }
 
+    // AndroidExternalSurface sample (AndroidExternalSurfaceColors): the app fills the surface
+    // itself, here through the CPU, cycling colours until the surface goes.
+    kiln::rt::Task<> FillSurface(kiln::foundation::SurfaceCoroutineScope& scope, kiln::foundation::Surface surface, int width, int height,
+                                 std::uint32_t base) {
+#if defined(__ANDROID__)
+        auto* window = static_cast<ANativeWindow*>(surface.nativeWindow);
+        ANativeWindow_setBuffersGeometry(window, width, height, AHARDWAREBUFFER_FORMAT_R8G8B8A8_UNORM);
+        for (int frame = 0; scope.IsActive(); ++frame) {
+            ANativeWindow_Buffer buffer;
+            if (ANativeWindow_lock(window, &buffer, nullptr) == 0) {
+                // A band sweeping down over the base colour.
+                const int band = (frame * 4) % std::max(buffer.height, 1);
+                auto* px = static_cast<std::uint32_t*>(buffer.bits);
+                for (int y = 0; y < buffer.height; ++y) {
+                    const std::uint32_t c = std::abs(y - band) < 12 ? 0xFFFFFFFFu : base;
+                    for (int x = 0; x < buffer.width; ++x) px[y * buffer.stride + x] = c;
+                }
+                ANativeWindow_unlockAndPost(window);
+            }
+            co_await kiln::rt::Delay(16);
+        }
+#else
+        (void)scope; (void)surface; (void)width; (void)height; (void)base;
+        co_return;
+#endif
+    }
+    kiln::rt::Task<> FillRed(kiln::foundation::SurfaceCoroutineScope& s, kiln::foundation::Surface f, int w, int h) { return FillSurface(s, f, w, h, 0xFF2020C0u); }
+    kiln::rt::Task<> FillGreen(kiln::foundation::SurfaceCoroutineScope& s, kiln::foundation::Surface f, int w, int h) { return FillSurface(s, f, w, h, 0xFF20A020u); }
+
+    void ExternalSurfaceDemo() {
+        using namespace kiln::foundation;
+        Column(SafeDrawingPadding(Background(FillMax(Modifier{}, Axis::Both), kSurface)), Arrangement::SpacedBy(16_dp), AlignmentH::Start(), [] {
+            BasicText("Behind, with content over it", Padding(Modifier{}, 16_dp, 0_dp), { 16, kOnSurface });
+            Box(Padding(Height(FillMax(Modifier{}, Axis::Horizontal), 160_dp), 16_dp, 0_dp), Alignment::Center(), false, [] {
+                AndroidExternalSurface(FillMax(Modifier{}, Axis::Both), true, {}, AndroidExternalSurfaceZOrder::Behind, false,
+                                       [](AndroidExternalSurfaceScope& s) { s.OnSurface(&FillRed); });
+                Box(Background(Padding(Modifier{}, 8_dp), kPrimaryContainer, CornerShape::Rounded(8_dp)), Alignment::Center(), false,
+                    [] { BasicText("kiln over the surface", Padding(Modifier{}, 8_dp), { 16, kOnSurface }); });
+            });
+            BasicText("OnTop", Padding(Modifier{}, 16_dp, 0_dp), { 16, kOnSurface });
+            AndroidExternalSurface(Padding(Height(FillMax(Modifier{}, Axis::Horizontal), 120_dp), 16_dp, 0_dp), true, {},
+                                   AndroidExternalSurfaceZOrder::OnTop, false, [](AndroidExternalSurfaceScope& s) { s.OnSurface(&FillGreen); });
+        });
+    }
+
     // A coroutine must not be a capturing lambda: its frame would outlive the captures.
     kiln::rt::Task<> Spin(kiln::rt::State<float>& angle) {
         const std::int64_t start = co_await kiln::rt::NextFrame();
@@ -108,6 +157,10 @@ namespace {
         auto& scroll = RememberScrollState();
         // One Material section alone (for tools/gallery-smoke): nothing else in the tree.
         static const std::string section = kiln::gallery::RequestedSection();
+        if (section == "external-surface") {
+            ExternalSurfaceDemo();
+            return;
+        }
         if (!section.empty()) {
             Column(VerticalScroll(SafeDrawingPadding(Background(FillMax(Modifier{}, Axis::Both), kSurface)), scroll), Arrangement::Top(), AlignmentH::Start(),
                    [] { kiln::gallery::MaterialComponents(section); });
