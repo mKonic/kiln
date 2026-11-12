@@ -896,6 +896,15 @@ namespace kiln::foundation {
     bool IsGraphicsLayerElement(const ui::ModifierElement& e) { return e.Type() == typeid(LayerNode); }
     void GraphicsLayerMatrix(const GraphicsLayerParams& p, Size size, float out[9]) { LayerMatrix3D(p, size, out); }
 
+    void detail::DrawWithLayerParams(ui::ContentDrawScope& s, const GraphicsLayerParams& p, std::function<void()> content) {
+        LayerSpec spec;
+        static_cast<GraphicsLayerParams&>(spec) = p;
+        LayerNode node(std::move(spec));
+        std::function<void()> outer = s.SwapContent(std::move(content));
+        node.Draw(s);
+        s.SwapContent(std::move(outer));
+    }
+
     Modifier ShadowMod(Modifier m, Dp elevation, std::shared_ptr<const gfx::Shape> shape, std::optional<bool> clip, Color ambientColor, Color spotColor) {
         const bool doClip = clip.value_or(elevation.value > 0);
         if (!(elevation.value > 0 || doClip)) return m;

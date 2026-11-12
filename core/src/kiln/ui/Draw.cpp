@@ -16,10 +16,13 @@
 #include "kiln/TextBackend.h"
 
 #include <algorithm>
+#include <optional>
 
 namespace kiln::ui {
 
     namespace {
+        // A copy of an optional argument, for a recorded command.
+        template<typename T> std::optional<T> Opt(const T* p) { return p ? std::optional<T>(*p) : std::nullopt; }
         Rgba ToRgba(Color c) { return Rgba::FromArgb(c.argb); }
     }
 
@@ -41,7 +44,37 @@ namespace kiln::ui {
         QuadRenderer::Transform ToQuad(const gfx::Matrix& m) { return { m.a, m.b, m.c, m.d, m.e, m.f }; }
     }
 
-    void DrawScope::Concat(const gfx::Matrix& t) { m_State.m = Mul(m_State.m, t); }
+    void DrawScope::Concat(const gfx::Matrix& t) {
+        if (m_Recording) m_Recording->push_back([t](DrawScope& d) { d.Concat(t); });
+        m_State.m = Mul(m_State.m, t);
+    }
+
+    void DrawScope::BeginRecording(DisplayList& list) {
+        m_Recordings.push_back({ m_Recording, m_State, std::move(m_Stack) });
+        m_Recording = &list;
+        m_State = State{};
+        m_Stack.clear();
+    }
+
+    void DrawScope::EndRecording() {
+        if (m_Recordings.empty()) return;
+        Recording r = std::move(m_Recordings.back());
+        m_Recordings.pop_back();
+        m_Recording = r.list;
+        m_State = r.state;
+        m_Stack = std::move(r.stack);
+    }
+
+    void DrawScope::Record(std::function<void(DrawScope&)> op) {
+        if (m_Recording) m_Recording->push_back(std::move(op));
+        else op(*this);
+    }
+
+    void DrawScope::Replay(const DisplayList& list) {
+        Save();
+        for (const auto& op : list) op(*this);
+        Restore();
+    }
     void DrawScope::Translate(Offset o) { Concat(gfx::Matrix::Translate(o.x, o.y)); }
 
     void DrawScope::Scale(float sx, float sy, Offset pivot) {
@@ -121,6 +154,7 @@ namespace kiln::ui {
     }
 
     void DrawScope::ClipRect(Rect local, float radius) {
+        if (m_Recording) { m_Recording->push_back([local, radius](DrawScope& d) { d.ClipRect(local, radius); }); return; }
         const gfx::Matrix& m = m_State.m;
         // The new clip in its own space: device pixels when axis-aligned, else local.
         Rect r = local;
@@ -178,6 +212,11 @@ namespace kiln::ui {
     }
 
     void DrawScope::Restore() {
+        if (m_Recording) {
+            m_Recording->push_back([](DrawScope& d) { d.Restore(); });
+            if (!m_Stack.empty()) { m_State = m_Stack.back(); m_Stack.pop_back(); }
+            return;
+        }
         if (m_Stack.empty()) return;
         while (!m_Layers.empty() && m_Layers.back().forClip && m_State.clipLayers > m_Stack.back().clipLayers) EndLayerPlain(0, 0);
         m_State = m_Stack.back();
@@ -185,7 +224,7 @@ namespace kiln::ui {
         ApplyClip();
     }
 
-    void DrawScope::Finish() { while (!m_Layers.empty()) EndLayerPlain(0, 0); }
+    void DrawScope::Finish() { if (m_Recording) return; while (!m_Layers.empty()) EndLayerPlain(0, 0); }
 
     void DrawScope::ApplyClip() {
         if (!m_Target.quads) return;
@@ -201,6 +240,7 @@ namespace kiln::ui {
     }
 
     void DrawScope::DrawRect(Color color, Offset p, Size s) {
+        if (m_Recording) { m_Recording->push_back([=](DrawScope& d) { d.DrawRect(color, p, s); }); return; }
         if (!m_Target.quads) return;   // a headless draw (tests): nothing to record
         if (color.Alpha() * m_State.alpha <= 0) return;
         ApplyTransform();
@@ -208,6 +248,7 @@ namespace kiln::ui {
     }
 
     void DrawScope::DrawRoundRect(Color color, Offset p, Size s, float r) {
+        if (m_Recording) { m_Recording->push_back([=](DrawScope& d) { d.DrawRoundRect(color, p, s, r); }); return; }
         if (!m_Target.quads) return;   // a headless draw (tests): nothing to record
         if (color.Alpha() * m_State.alpha <= 0) return;
         ApplyTransform();
@@ -217,6 +258,13 @@ namespace kiln::ui {
     void DrawScope::DrawParagraph(const ParagraphData& para, Offset p, Color color) { DrawParagraph(para, p, color, {}); }
 
     void DrawScope::DrawParagraph(const ParagraphData& para, Offset p, Color color, std::span<const Color> runColors) {
+        if (m_Recording) {
+            auto copy = std::make_shared<ParagraphData>(para);
+            copy->handle = 0;   // the copy only draws
+            std::vector<Color> colors(runColors.begin(), runColors.end());
+            m_Recording->push_back([copy, p, color, colors](DrawScope& d) { d.DrawParagraph(*copy, p, color, colors); });
+            return;
+        }
         if (!m_Target.quads) return;   // a headless draw (tests): nothing to record
         ApplyTransform();
         // TextMotion.Static (no subpixel positioning): Skia puts each glyph on a whole device
@@ -242,6 +290,7 @@ namespace kiln::ui {
     }
 
     void DrawScope::DrawPath(const gfx::Path& path, Color color, const gfx::Stroke* stroke) {
+        if (m_Recording) { m_Recording->push_back([path, color, st = Opt(stroke)](DrawScope& d) { d.DrawPath(path, color, st ? &*st : nullptr); }); return; }
         if (color.Alpha() * m_State.alpha <= 0) return;
         PathCoverage(path, stroke, Scaled(ToRgba(color), m_State.alpha), nullptr);
     }
@@ -351,10 +400,12 @@ namespace kiln::ui {
     }
 
     void DrawScope::DrawRect(const gfx::Brush& b, Offset topLeft, Size size, float alpha) {
+        if (m_Recording) { m_Recording->push_back([=](DrawScope& d) { d.DrawRect(b, topLeft, size, alpha); }); return; }
         DrawRoundRect(b, topLeft, size, 0, alpha);
     }
 
     void DrawScope::DrawRoundRect(const gfx::Brush& b, Offset p, Size size, float r, float alpha) {
+        if (m_Recording) { m_Recording->push_back([=](DrawScope& d) { d.DrawRoundRect(b, p, size, r, alpha); }); return; }
         if (!m_Target.quads) return;
         QuadRenderer::Paint paint;
         Color solid;
@@ -375,6 +426,7 @@ namespace kiln::ui {
     }
 
     void DrawScope::DrawPath(const gfx::Path& path, const gfx::Brush& b, const gfx::Stroke* stroke, float alpha, const gfx::ColorFilter* filter) {
+        if (m_Recording) { m_Recording->push_back([path, b, st = Opt(stroke), alpha, f = Opt(filter)](DrawScope& d) { d.DrawPath(path, b, st ? &*st : nullptr, alpha, f ? &*f : nullptr); }); return; }
         QuadRenderer::Paint paint;
         Color solid;
         float a;
@@ -389,6 +441,7 @@ namespace kiln::ui {
 
     void DrawScope::DrawImage(const gfx::ImageBitmap& image, Rect src, Offset dst, Size size, float alpha, const gfx::ColorFilter* filter,
                               gfx::FilterQuality quality) {
+        if (m_Recording) { m_Recording->push_back([image, src, dst, size, alpha, f = Opt(filter), quality](DrawScope& d) { d.DrawImage(image, src, dst, size, alpha, f ? &*f : nullptr, quality); }); return; }
         if (!m_Target.quads || !m_Target.images || !image) return;
         const float a = alpha * m_State.alpha;
         if (a <= 0) return;
@@ -403,6 +456,7 @@ namespace kiln::ui {
 
     void DrawScope::DrawMaskShader(const gfx::ImageBitmap& mask, const gfx::Brush& brush, Offset origin, float alpha,
                                    const gfx::ColorFilter* filter) {
+        if (m_Recording) { m_Recording->push_back([mask, brush, origin, alpha, f = Opt(filter)](DrawScope& d) { d.DrawMaskShader(mask, brush, origin, alpha, f ? &*f : nullptr); }); return; }
         if (!m_Target.quads || !m_Target.images || !mask) return;
         const AtlasPage* page = m_Target.images->PageFor(mask);
         if (!page) return;
@@ -418,6 +472,7 @@ namespace kiln::ui {
     }
 
     void DrawScope::DrawRipple(const Ripple& r) {
+        if (m_Recording) { m_Recording->push_back([r](DrawScope& d) { d.DrawRipple(r); }); return; }
         if (!m_Target.quads || !m_Target.filters || m_State.alpha <= 0 || !(r.radius > 0)) return;
         // AnimatedRippleDrawable::draw, in its float arithmetic (in_noisePhase = phase * 0.001).
         constexpr float kPi = 3.1415926535897932384626f, kRight = kPi * 0.0078125f, kLeft = kPi * -0.0078125f, kScale = 1.5f;
@@ -456,6 +511,7 @@ namespace kiln::ui {
     }
 
     void DrawScope::DrawVertices(const gfx::Vertices& v, Color color, float alpha) {
+        if (m_Recording) { m_Recording->push_back([v, color, alpha](DrawScope& d) { d.DrawVertices(v, color, alpha); }); return; }
         if (!m_Target.quads) return;
         const float a = alpha * m_State.alpha;
         if (a <= 0) return;
@@ -518,6 +574,7 @@ namespace kiln::ui {
 
     void DrawScope::DrawShadow(const gfx::Outline& outline, float elevation, Color ambientColor, Color spotColor, float casterAlpha,
                                const gfx::ShadowProjection* projection) {
+        if (m_Recording) { m_Recording->push_back([outline, elevation, ambientColor, spotColor, casterAlpha, pr = Opt(projection)](DrawScope& d) { d.DrawShadow(outline, elevation, ambientColor, spotColor, casterAlpha, pr ? &*pr : nullptr); }); return; }
         if (!m_Target.quads || !std::isfinite(elevation) || elevation <= 0 || !std::isfinite(casterAlpha)) return;
         const gfx::ShadowLight& light = m_Target.shadowLight;
         // EndReorderBarrierDrawable::drawShadow
@@ -710,6 +767,7 @@ namespace kiln::ui {
     }
 
     void DrawScope::BeginLayer(Rect bounds, float alpha, const gfx::Path* clipPath, gfx::BlendMode blend, const gfx::ColorFilter* colorFilter) {
+        if (m_Recording) { m_Recording->push_back([bounds, alpha, cp = Opt(clipPath), blend, f = Opt(colorFilter)](DrawScope& d) { d.BeginLayer(bounds, alpha, cp ? &*cp : nullptr, blend, f ? &*f : nullptr); }); return; }
         BeginLayerImpl(bounds, alpha, clipPath, false, blend, colorFilter);
     }
 
@@ -754,6 +812,12 @@ namespace kiln::ui {
     }
 
     void DrawScope::EndLayerProjective(const float h[9]) {
+        if (m_Recording) {
+            std::array<float, 9> m;
+            std::copy(h, h + 9, m.begin());
+            m_Recording->push_back([m](DrawScope& d) { d.EndLayerProjective(m.data()); });
+            return;
+        }
         EndClipLayers();
         if (m_Layers.empty()) return;
         Layer l = m_Layers.back();
@@ -807,6 +871,7 @@ namespace kiln::ui {
     }
 
     void DrawScope::EndLayerEffects(const std::vector<LayerBlur>& blurs, Offset offset) {
+        if (m_Recording) { m_Recording->push_back([blurs, offset](DrawScope& d) { d.EndLayerEffects(blurs, offset); }); return; }
         EndClipLayers();
         if (m_Layers.empty()) return;
         Layer l = m_Layers.back();
@@ -846,6 +911,7 @@ namespace kiln::ui {
     }
 
     void DrawScope::EndLayerProgressiveBlur(float maxRadius, const gfx::Brush& intensity, bool decal) {
+        if (m_Recording) { m_Recording->push_back([=](DrawScope& d) { d.EndLayerProgressiveBlur(maxRadius, intensity, decal); }); return; }
         EndClipLayers();
         if (m_Layers.empty()) return;
         Layer l = m_Layers.back();
@@ -887,6 +953,7 @@ namespace kiln::ui {
     }
 
     void DrawScope::EndLayer(float stretchX, float stretchY) {
+        if (m_Recording) { m_Recording->push_back([=](DrawScope& d) { d.EndLayer(stretchX, stretchY); }); return; }
         EndClipLayers();
         EndLayerPlain(stretchX, stretchY);
     }

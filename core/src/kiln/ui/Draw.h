@@ -41,6 +41,11 @@ namespace kiln::ui {
     // corner belongs to one of them, or is square where their straight edges cross).
     bool IntersectRoundedRects(const Rect& a, const ClipRadii& ra, const Rect& b, const ClipRadii& rb, Rect& out, ClipRadii& radii);
 
+    class DrawScope;
+    // A display list (a RenderNode's recording): commands replayed onto a scope, in the
+    // coordinates of where the recording began.
+    using DisplayList = std::vector<std::function<void(DrawScope&)>>;
+
     class DrawScope : public Density {
     public:
         DrawScope(Density d, LayoutDirection dir, DrawTarget target) : Density(d), m_Dir(dir), m_Target(target) {}
@@ -102,10 +107,16 @@ namespace kiln::ui {
         void Rotate(float degrees, Offset pivot);
         void Concat(const gfx::Matrix& m);
         const gfx::Matrix& CurrentTransform() const { return m_State.m; }
-        void MultiplyAlpha(float a) { m_State.alpha *= a; }
+        void MultiplyAlpha(float a) {
+            if (m_Recording) m_Recording->push_back([a](DrawScope& d) { d.MultiplyAlpha(a); });
+            m_State.alpha *= a;
+        }
         // Blend mode of the draws that follow, until the Restore (DrawScope's blendMode argument).
         // Modes other than SrcOver read what is drawn below (a copy of it), so they cost a pass.
-        void SetBlendMode(gfx::BlendMode mode) { m_State.blend = mode; }
+        void SetBlendMode(gfx::BlendMode mode) {
+            if (m_Recording) m_Recording->push_back([mode](DrawScope& d) { d.SetBlendMode(mode); });
+            m_State.blend = mode;
+        }
         // Intersects the clip with a local rect, rounded by `radius` (local px). Clips that
         // combine into one rounded rect (per-corner radii) stay analytic; others (a rect cutting
         // into an outer rounded corner, clips in different rotations) clip through a masked layer
@@ -131,11 +142,25 @@ namespace kiln::ui {
         // each point is maxRadius (local px) times the alpha of `intensity` there (a linear or
         // radial gradient in local coordinates).
         void EndLayerProgressiveBlur(float maxRadius, const gfx::Brush& intensity, bool decal);
-        void Save() { m_Stack.push_back(m_State); }
+        void Save() {
+            if (m_Recording) m_Recording->push_back([](DrawScope& d) { d.Save(); });
+            m_Stack.push_back(m_State);
+        }
         void Restore();
         // Ends the layers that clips left open (the end of a frame).
         void Finish();
         void SetSize(Size s) { m_Size = s; }
+
+        // Recording (GraphicsLayer.record): until EndRecording, draws and state changes append to
+        // `list` instead of rasterizing, relative to a fresh state (identity transform, no clip,
+        // full alpha). Recordings nest.
+        void BeginRecording(DisplayList& list);
+        void EndRecording();
+        bool IsRecording() const { return m_Recording != nullptr; }
+        // Appends a command to the recording (or runs it now when not recording).
+        void Record(std::function<void(DrawScope&)> op);
+        // Replays a recording under the current transform, clip and alpha.
+        void Replay(const DisplayList& list);
 
     private:
         struct State {
@@ -175,6 +200,9 @@ namespace kiln::ui {
         void CompositeLayer(const Layer& l, const kiln::RectF& rect, const kiln::RectF& uv, const kiln::AtlasPage& page);
         void MaskLayer(const Layer& l);
         Size m_Size;
+        DisplayList* m_Recording = nullptr;
+        struct Recording { DisplayList* list; State state; std::vector<State> stack; };
+        std::vector<Recording> m_Recordings;
     };
 
     class ContentDrawScope : public DrawScope {
@@ -188,6 +216,8 @@ namespace kiln::ui {
             SetSize(size);
         }
         void SetContent(std::function<void()> c) { m_Content = std::move(c); }
+        // Sets the content and returns the one it replaces (to put back after).
+        std::function<void()> SwapContent(std::function<void()> c) { std::swap(m_Content, c); return c; }
     private:
         std::function<void()> m_Content;
     };

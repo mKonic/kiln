@@ -276,6 +276,11 @@ namespace kiln::foundation {
     // graphicsLayer { }: the block sets the properties; state it reads is observed, so an
     // animated value redraws the layer without recomposing the caller.
     Modifier GraphicsLayer(Modifier m, std::function<void(GraphicsLayerParams&)> block);
+    namespace detail {
+        // Draws `content` as a graphicsLayer with `p` would (at the scope's size); for
+        // layer::DrawLayer.
+        void DrawWithLayerParams(ui::ContentDrawScope& s, const GraphicsLayerParams& p, std::function<void()> content);
+    }
     // Whether an element is a graphicsLayer (GraphicsLayerElement).
     bool IsGraphicsLayerElement(const ui::ModifierElement& e);
     // The layer's full matrix (row-major 3x3, projective with rotationX/Y) for a layer of `size`.
