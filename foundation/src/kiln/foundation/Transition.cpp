@@ -1,5 +1,7 @@
 #include "kiln/foundation/Transition.h"
 
+#include "kiln/animation/Animation.h"
+
 #include <algorithm>
 #include <cmath>
 #include <limits>
@@ -118,7 +120,7 @@ namespace kiln::foundation {
     rt::Task<> RunInfinite(InfiniteTransition& t) {
         std::int64_t start = -1;
         for (;;) {
-            const std::int64_t now = co_await rt::NextFrame();
+            const std::int64_t now = co_await anim::WithInfiniteAnimationFrameNanos();
             if (start < 0) start = now;
             const float scale = anim::DurationScale();
             t.playTime.Set(scale <= 0 ? 0 : std::int64_t(double(now - start) / scale));

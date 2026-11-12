@@ -64,3 +64,27 @@ TEST(DeferredTargetAnimationSnapsThenAnimates) {
     CHECK_EQ(a.UpdateTarget(50.0f), 50.0f);
     CHECK(a.IsIdle());
 }
+
+TEST(InfiniteAnimationFramesGoThroughThePolicy) {
+    std::int64_t t = 0;
+    std::int64_t got = -1;
+    auto frame = [&]() -> rt::Task<> { got = co_await WithInfiniteAnimationFrameMillis(); };
+    // No policy: the next frame's time.
+    auto job = rt::Launch(rt::Dispatcher::Main(), frame());
+    Frames(1, t);
+    CHECK_EQ(got, std::int64_t(16));
+    // A policy sees each request and may run the frame block (here it counts and passes through).
+    struct Counting final : InfiniteAnimationPolicy {
+        int calls = 0;
+        rt::Task<std::int64_t> OnInfiniteOperation(std::function<rt::Task<std::int64_t>()> block) override {
+            ++calls;
+            co_return co_await block();
+        }
+    } policy;
+    SetInfiniteAnimationPolicy(&policy);
+    auto job2 = rt::Launch(rt::Dispatcher::Main(), frame());
+    Frames(1, t);
+    SetInfiniteAnimationPolicy(nullptr);
+    CHECK_EQ(policy.calls, 1);
+    CHECK_EQ(got, std::int64_t(32));
+}

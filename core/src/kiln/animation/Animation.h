@@ -127,6 +127,20 @@ namespace kiln::anim {
     // calculateTargetValue(initialValue, initialVelocity): where a decay ends.
     inline float CalculateTargetValue(const DecaySpec& decay, float initialValue, float initialVelocity) { return decay.TargetValue(initialValue, initialVelocity); }
 
+    // InfiniteAnimationPolicy (ui.platform): decides how animations that never end take frames
+    // (a test pauses them, so the UI can go idle). Compose finds it in the coroutine context; here
+    // the current policy is set for the thread (null: none, frames as usual).
+    class InfiniteAnimationPolicy {
+    public:
+        virtual ~InfiniteAnimationPolicy() = default;
+        virtual rt::Task<std::int64_t> OnInfiniteOperation(std::function<rt::Task<std::int64_t>()> block) = 0;
+    };
+    void SetInfiniteAnimationPolicy(InfiniteAnimationPolicy* policy);
+    InfiniteAnimationPolicy* CurrentInfiniteAnimationPolicy();
+    // withInfiniteAnimationFrameNanos / Millis: the next frame's time, through the policy.
+    rt::Task<std::int64_t> WithInfiniteAnimationFrameNanos();
+    rt::Task<std::int64_t> WithInfiniteAnimationFrameMillis();
+
     // DeferredTargetAnimation (one to four dimensions).
     class DeferredTargetAnimation {
     public:

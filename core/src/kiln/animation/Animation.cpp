@@ -50,6 +50,19 @@ namespace kiln::anim {
         co_await AnimationRunner::Run(state, animation, false, std::move(block));
     }
 
+    namespace {
+        thread_local InfiniteAnimationPolicy* g_InfinitePolicy = nullptr;
+        rt::Task<std::int64_t> NextFrameNanos() { co_return co_await rt::NextFrame{}; }
+    }
+    void SetInfiniteAnimationPolicy(InfiniteAnimationPolicy* policy) { g_InfinitePolicy = policy; }
+    InfiniteAnimationPolicy* CurrentInfiniteAnimationPolicy() { return g_InfinitePolicy; }
+
+    rt::Task<std::int64_t> WithInfiniteAnimationFrameNanos() {
+        if (InfiniteAnimationPolicy* p = g_InfinitePolicy) co_return co_await p->OnInfiniteOperation([] { return NextFrameNanos(); });
+        co_return co_await rt::NextFrame{};
+    }
+    rt::Task<std::int64_t> WithInfiniteAnimationFrameMillis() { co_return (co_await WithInfiniteAnimationFrameNanos()) / 1'000'000; }
+
     Vec DeferredTargetAnimation::UpdateTarget(Vec target, SpecPtr spec) {
         if (!m_Animatable) {
             m_Animatable = std::make_shared<Animatable>(target, m_Dims);
