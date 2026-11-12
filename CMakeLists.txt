@@ -13,6 +13,8 @@ include(cmake/Shaders.cmake)
 # Clipper2 (polygon booleans behind Path.op).
 add_library(clipper2 STATIC vendor/Clipper2/CPP/Clipper2Lib/src/clipper.engine.cpp)
 target_include_directories(clipper2 SYSTEM PUBLIC vendor/Clipper2/CPP/Clipper2Lib/include)
+# Z carries each point's source curve sample, so Path.op can give curves back.
+target_compile_definitions(clipper2 PUBLIC USINGZ)
 
 # kiln_core: platform-independent; never includes JNI or Android headers.
 file(GLOB_RECURSE KILN_CORE_SOURCES CONFIGURE_DEPENDS core/src/*.cpp render/*.cpp)

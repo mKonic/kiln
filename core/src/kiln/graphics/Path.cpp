@@ -382,29 +382,101 @@ namespace kiln::gfx {
     namespace {
         // Fixed point for the clipper: 1/1024 px.
         constexpr double kClipScale = 1024.0;
-        Clipper2Lib::Paths64 ToClipper(const Path& p, float tolerance) {
-            Clipper2Lib::Paths64 out;
-            for (const Polyline& poly : p.Flatten(Matrix{}, tolerance)) {
-                if (poly.points.size() < 3) continue;
-                Clipper2Lib::Path64 c;
-                c.reserve(poly.points.size());
-                for (const Offset& q : poly.points)
-                    c.emplace_back(std::int64_t(std::llround(double(q.x) * kClipScale)), std::int64_t(std::llround(double(q.y) * kClipScale)));
-                out.push_back(std::move(c));
-            }
-            return out;
+        Clipper2Lib::Point64 ClipPoint(Offset q, std::int64_t z) {
+            return Clipper2Lib::Point64(std::int64_t(std::llround(double(q.x) * kClipScale)), std::int64_t(std::llround(double(q.y) * kClipScale)), z);
         }
         Clipper2Lib::FillRule RuleOf(const Path& p) {
             return p.fillType == FillType::EvenOdd ? Clipper2Lib::FillRule::EvenOdd : Clipper2Lib::FillRule::NonZero;
+        }
+        // A curve the operands were flattened from: a quadratic (3 points) or cubic (4), sampled
+        // at t = i / n. A sample's clipper z is (segment + 1) << 32 | i; lines and intersections
+        // carry 0.
+        struct CurveSegment { int degree; Offset p[4]; int n; float weight = 1; bool conic = false; };
+        Offset Lerp2(Offset a, Offset b, float t) { return { a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t }; }
+        // The curve's polar form (blossom) at the given parameters, one per degree; a conic's in
+        // homogeneous coordinates (x w, y w, w), its weight in `w`.
+        Offset Blossom(const CurveSegment& c, const float* t, float* w = nullptr) {
+            if (c.conic) {
+                struct H { float x, y, w; };
+                auto lerp = [](H a, H b, float u) { return H{ a.x + (b.x - a.x) * u, a.y + (b.y - a.y) * u, a.w + (b.w - a.w) * u }; };
+                const H h0{ c.p[0].x, c.p[0].y, 1 }, h1{ c.p[1].x * c.weight, c.p[1].y * c.weight, c.weight }, h2{ c.p[2].x, c.p[2].y, 1 };
+                const H r = lerp(lerp(h0, h1, t[0]), lerp(h1, h2, t[0]), t[1]);
+                if (w) *w = r.w;
+                return { r.x / r.w, r.y / r.w };
+            }
+            Offset q[4] = { c.p[0], c.p[1], c.p[2], c.p[3] };
+            for (int level = 0; level < c.degree; ++level)
+                for (int k = 0; k < c.degree - level; ++k) q[k] = Lerp2(q[k], q[k + 1], t[level]);
+            if (w) *w = 1;
+            return q[0];
         }
     }
 
     bool Path::Op(const Path& a, const Path& b, PathOperation op, float tolerance) {
         using namespace Clipper2Lib;
+        std::vector<CurveSegment> curves;
+        // Flattens like Flatten, tagging curve samples (Skia's PathOps keeps curves; the clipper
+        // works on polygons, so runs of samples from one curve become that curve's piece again).
+        auto toClipper = [&](const Path& p) {
+            Paths64 out;
+            Path64 cur;
+            Offset last{};
+            std::size_t pi = 0, wi = 0;
+            auto flush = [&] { if (cur.size() >= 3) out.push_back(std::move(cur)); cur.clear(); };
+            auto curve = [&](int degree, const Offset* cp, float tol) {
+                CurveSegment c{ degree, { cp[0], cp[1], cp[2], degree == 3 ? cp[3] : cp[2] }, 1 };
+                float dd = Len({ cp[0].x - 2 * cp[1].x + cp[2].x, cp[0].y - 2 * cp[1].y + cp[2].y });
+                if (degree == 3) dd = std::max(dd, Len({ cp[1].x - 2 * cp[2].x + cp[3].x, cp[1].y - 2 * cp[2].y + cp[3].y }));
+                c.n = std::clamp(int(std::ceil(std::sqrt((degree == 3 ? 0.75f : 0.25f) * dd / tol))), 1, 500);
+                curves.push_back(c);
+                const std::int64_t id = std::int64_t(curves.size()) << 32;
+                for (int i = 1; i <= c.n; ++i) {
+                    const float t[3] = { float(i) / float(c.n), float(i) / float(c.n), float(i) / float(c.n) };
+                    cur.push_back(ClipPoint(Blossom(c, t), id | i));
+                }
+                last = c.p[degree];
+            };
+            for (Verb v : p.m_Verbs) {
+                switch (v) {
+                    case Verb::Move: flush(); last = p.m_Points[pi++]; cur.push_back(ClipPoint(last, 0)); break;
+                    case Verb::Line: last = p.m_Points[pi++]; cur.push_back(ClipPoint(last, 0)); break;
+                    case Verb::Quad: { const Offset cp[3] = { last, p.m_Points[pi], p.m_Points[pi + 1] }; pi += 2; curve(2, cp, tolerance); break; }
+                    case Verb::Cubic: { const Offset cp[4] = { last, p.m_Points[pi], p.m_Points[pi + 1], p.m_Points[pi + 2] }; pi += 3; curve(3, cp, tolerance); break; }
+                    case Verb::Conic: {
+                        const Offset cp[3] = { last, p.m_Points[pi], p.m_Points[pi + 1] };
+                        pi += 2;
+                        // Sampled as the conic itself, as finely as Flatten's quadratics would be.
+                        const float weight = p.m_Weights[wi++];
+                        std::vector<Offset> q;
+                        const int quads = ConicToQuadratics(cp, weight, tolerance * 0.5f, q);
+                        int samples = 0;
+                        Offset from = cp[0];
+                        for (int k = 0; k < quads; ++k) {
+                            const Offset q1 = q[std::size_t(2 * k + 1)], q2 = q[std::size_t(2 * k + 2)];
+                            const float dd = Len({ from.x - 2 * q1.x + q2.x, from.y - 2 * q1.y + q2.y });
+                            samples += std::clamp(int(std::ceil(std::sqrt(0.25f * dd / (tolerance * 0.5f)))), 1, 500);
+                            from = q2;
+                        }
+                        CurveSegment c{ 2, { cp[0], cp[1], cp[2], cp[2] }, std::clamp(samples, 1, 2000), weight, true };
+                        curves.push_back(c);
+                        const std::int64_t id = std::int64_t(curves.size()) << 32;
+                        for (int i = 1; i <= c.n; ++i) {
+                            const float t[2] = { float(i) / float(c.n), float(i) / float(c.n) };
+                            cur.push_back(ClipPoint(Blossom(c, t), id | i));
+                        }
+                        last = cp[2];
+                        break;
+                    }
+                    case Verb::Close: flush(); break;
+                }
+            }
+            flush();
+            return out;
+        };
         // Each operand resolved by its own fill type first, then combined (Skia keeps per-path fill
         // types too); both are then simple, so one rule serves the combination.
-        const Paths64 sa = Union(ToClipper(a, tolerance), RuleOf(a));
-        const Paths64 sb = Union(ToClipper(b, tolerance), RuleOf(b));
+        const Paths64 sa = Union(toClipper(a), RuleOf(a));
+        const Paths64 sb = Union(toClipper(b), RuleOf(b));
         Paths64 r;
         switch (op) {
             case PathOperation::Difference: r = BooleanOp(ClipType::Difference, FillRule::NonZero, sa, sb); break;
@@ -415,10 +487,101 @@ namespace kiln::gfx {
         }
         Reset();
         fillType = FillType::EvenOdd;
+        auto at = [](const Point64& q) { return Offset{ float(double(q.x) / kClipScale), float(double(q.y) / kClipScale) }; };
+        auto segOf = [](const Point64& q) { return q.z >> 32; };
+        auto sampleOf = [](const Point64& q) { return int(q.z & 0xffffffff); };
         for (const Path64& c : r) {
-            if (c.empty()) continue;
-            MoveTo(float(double(c[0].x) / kClipScale), float(double(c[0].y) / kClipScale));
-            for (std::size_t i = 1; i < c.size(); ++i) LineTo(float(double(c[i].x) / kClipScale), float(double(c[i].y) / kClipScale));
+            const std::size_t n = c.size();
+            if (n == 0) continue;
+            // Start where a run of one curve's samples cannot wrap around: at a vertex whose
+            // predecessor belongs elsewhere.
+            std::size_t start = 0;
+            for (std::size_t k = 0; k < n; ++k) {
+                const Point64& prev = c[(k + n - 1) % n];
+                if (segOf(c[k]) == 0 || segOf(prev) != segOf(c[k])) { start = k; break; }
+            }
+            auto pt = [&](std::size_t k) -> const Point64& { return c[(start + k) % n]; };
+            // Whether vertex k sits on curve cs at sample i (an endpoint shared with a neighbour
+            // carries the neighbour's tag).
+            auto onSample = [&](std::size_t k, const CurveSegment& cs, int i) {
+                if (i < 0 || i > cs.n) return false;
+                const float t[3] = { float(i) / float(cs.n), float(i) / float(cs.n), float(i) / float(cs.n) };
+                const Point64 q = ClipPoint(Blossom(cs, t), 0);
+                return q.x == pt(k).x && q.y == pt(k).y;
+            };
+            MoveTo(at(pt(0)).x, at(pt(0)).y);
+            // Vertices k..n (n: back at the start) are walked; each step emits a line or a curve.
+            auto vertex = [&](std::size_t k) -> const Point64& { return pt(k % n); };
+            std::size_t k = 0;
+            while (k < n) {
+                const Point64& next = vertex(k + 1);
+                const std::int64_t seg = k + 1 < n ? segOf(next) : 0;
+                if (k + 1 == n) break;   // Close draws the last edge
+                if (seg == 0) {
+                    LineTo(at(next).x, at(next).y);
+                    ++k;
+                    continue;
+                }
+                const CurveSegment& cs = curves[std::size_t(seg - 1)];
+                // The run of this curve's samples from k + 1, monotone in t.
+                std::size_t end = k + 1;
+                int dir = 0;
+                while (end + 1 < n && segOf(pt(end + 1)) == seg) {
+                    const int step = sampleOf(pt(end + 1)) - sampleOf(pt(end));
+                    const int d = step > 0 ? 1 : step < 0 ? -1 : 0;
+                    if (d == 0 || (dir != 0 && d != dir)) break;
+                    dir = d;
+                    ++end;
+                }
+                const int first = sampleOf(pt(k + 1));
+                if (dir == 0) dir = onSample(k, cs, first - 1) ? 1 : onSample(k, cs, first + 1) ? -1 : 0;
+                // An end of the run: the neighbouring sample itself, or an intersection on the chord
+                // to it (its parameter from where it falls along the chord).
+                auto extend = [&](std::size_t v, int sample, int step, float& t) {
+                    if (step == 0) return false;
+                    const int beyond = sample + step;
+                    if (onSample(v, cs, beyond)) { t = float(beyond) / float(cs.n); return true; }
+                    if (pt(v).z != 0 || beyond < 0 || beyond > cs.n) return false;
+                    const float ta[3] = { float(sample) / float(cs.n), float(sample) / float(cs.n), float(sample) / float(cs.n) };
+                    const float tb[3] = { float(beyond) / float(cs.n), float(beyond) / float(cs.n), float(beyond) / float(cs.n) };
+                    const Offset a0 = Blossom(cs, ta), b0 = Blossom(cs, tb), q = at(pt(v));
+                    const Offset d{ b0.x - a0.x, b0.y - a0.y };
+                    const float len2 = d.x * d.x + d.y * d.y;
+                    if (len2 <= 0) return false;
+                    const float f = ((q.x - a0.x) * d.x + (q.y - a0.y) * d.y) / len2;
+                    const float off = std::abs((q.x - a0.x) * d.y - (q.y - a0.y) * d.x) / std::sqrt(len2);
+                    if (f < 0 || f > 1 || off > 0.01f) return false;   // on the chord (fixed-point rounding aside)
+                    t = (float(sample) + float(step) * f) / float(cs.n);
+                    return true;
+                };
+                float t0 = float(first) / float(cs.n);
+                if (!extend(k, first, -dir, t0)) LineTo(at(pt(k + 1)).x, at(pt(k + 1)).y);   // entered the curve elsewhere
+                float t1 = float(sampleOf(pt(end))) / float(cs.n);
+                if (extend((end + 1) % n, sampleOf(pt(end)), dir, t1)) ++end;
+                if (t1 != t0) {
+                    const Offset e = at(vertex(end));
+                    const float u0 = t0, u1 = t1;
+                    if (cs.conic) {
+                        // The sub-conic: its homogeneous control point, the weight renormalised
+                        // so both ends weigh 1.
+                        float wa = 1, wm = 1, wc = 1;
+                        const float ta[2] = { u0, u0 }, tm[2] = { u0, u1 }, tc[2] = { u1, u1 };
+                        Blossom(cs, ta, &wa);
+                        const Offset c1 = Blossom(cs, tm, &wm);
+                        Blossom(cs, tc, &wc);
+                        ConicTo(c1.x, c1.y, e.x, e.y, wm / std::sqrt(wa * wc));
+                    } else if (cs.degree == 2) {
+                        const float tc[2] = { u0, u1 };
+                        const Offset c1 = Blossom(cs, tc);
+                        QuadraticTo(c1.x, c1.y, e.x, e.y);
+                    } else {
+                        const float ta[3] = { u0, u0, u1 }, tb[3] = { u0, u1, u1 };
+                        const Offset c1 = Blossom(cs, ta), c2 = Blossom(cs, tb);
+                        CubicTo(c1.x, c1.y, c2.x, c2.y, e.x, e.y);
+                    }
+                }
+                k = end;
+            }
             Close();
         }
         return true;

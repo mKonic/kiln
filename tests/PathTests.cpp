@@ -249,6 +249,31 @@ TEST(PathOpCombinesAreas) {
     CHECK(std::abs(holed - (10000 - 3.14159265f * 625)) < 20);
 }
 
+TEST(PathOpResultsKeepCurves) {
+    using Op = gfx::PathOperation;
+    using V = gfx::Path::Verb;
+    auto count = [](const gfx::Path& p, V v) { return std::count(p.Verbs().begin(), p.Verbs().end(), v); };
+    // A circle's right half: two quarter conics and the cut, as Skia's PathOps gives it.
+    gfx::Path circle;
+    circle.AddOval({ 0, 0, 100, 100 });
+    const gfx::Path half = gfx::Path::Combine(Op::Intersect, circle, Square(50, -10, 120, 110));
+    CHECK(count(half, V::Conic) == 2 && count(half, V::Line) == 1 && count(half, V::Quad) == 0);
+    CHECK(std::abs(CoveredArea(half) - 3.14159265f * 2500 / 2) < 20);
+    // A cut through the middle of a quarter arc ends the sub-conic exactly at the intersection.
+    const gfx::Path cut = gfx::Path::Combine(Op::Intersect, circle, Square(70, -10, 120, 110));
+    CHECK(count(cut, V::Conic) >= 2 && count(cut, V::Line) == 1);
+    for (const Offset q : cut.Points())
+        if (std::abs(q.x - 70) < 0.01f) CHECK(std::abs(std::hypot(q.x - 50, q.y - 50) - 50) < 0.02f);
+    // Two overlapping cubic blobs: the union has no more segments than the operands' curves
+    // (no flattening into hundreds of lines).
+    gfx::Path a, b;
+    a.MoveTo(0, 50); a.CubicTo(0, -10, 100, -10, 100, 50); a.CubicTo(100, 110, 0, 110, 0, 50); a.Close();
+    b.MoveTo(60, 50); b.CubicTo(60, -10, 160, -10, 160, 50); b.CubicTo(160, 110, 60, 110, 60, 50); b.Close();
+    const gfx::Path u = gfx::Path::Combine(Op::Union, a, b);
+    CHECK(count(u, V::Cubic) >= 4 && count(u, V::Line) <= 6);
+    CHECK(std::abs(CoveredArea(u) - CoveredArea(a) - CoveredArea(b) + CoveredArea(gfx::Path::Combine(Op::Intersect, a, b))) < 20);
+}
+
 TEST(VerticesExpandToTriangleLists) {
     gfx::Vertices v;
     v.positions = { { 0, 0 }, { 1, 0 }, { 1, 1 }, { 0, 1 } };
