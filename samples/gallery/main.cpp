@@ -302,7 +302,10 @@ namespace {
             ExternalSurfaceDemo();
             return;
         }
-        if (!section.empty()) {
+        // "effects": the gallery page without the Material section (layers, shadows, blur and
+        // 3D tilts near the top, for measuring them on a device).
+        static const bool effectsOnly = section == "effects";
+        if (!section.empty() && !effectsOnly) {
             Column(VerticalScroll(SafeDrawingPadding(Background(FillMax(Modifier{}, Axis::Both), kSurface)), scroll), Arrangement::Top(), AlignmentH::Start(),
                    [] { kiln::gallery::MaterialComponents(section); });
             return;
@@ -312,7 +315,7 @@ namespace {
         Column(VerticalScroll(ImeNestedScroll(SafeDrawingPadding(Background(FillMax(Modifier{}, Axis::Both), kSurface))), scroll), Arrangement::SpacedBy(16_dp), AlignmentH::Start(), [&] {
             Spacer(Height(Modifier{}, 8_dp));
             BasicText("kiln layout", Padding(Modifier{}, 16_dp, 0_dp), { 28, kOnSurface });
-            kiln::gallery::MaterialComponents();
+            if (!effectsOnly) kiln::gallery::MaterialComponents();
             {
                 using namespace kiln::text;
                 const AnnotatedString styled = BuildAnnotatedString([&](AnnotatedStringBuilder& b) {
