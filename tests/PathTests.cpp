@@ -5,6 +5,7 @@
 #include "kiln/graphics/Vertices.h"
 #include "kiln/graphics/Rasterizer.h"
 #include "kiln/graphics/vector/ImageVector.h"
+#include "kiln/graphics/PathGeometry.h"
 
 #include <cmath>
 #include <numbers>
@@ -319,4 +320,37 @@ TEST(RenderVectorGroupAppliesConfigsByName) {
     ImageVector::Builder same("v", ui::Dp(24), ui::Dp(24), 24, 24);
     RenderVectorGroup(same, *source->root);
     CHECK(*same.Build()->root == *source->root);
+}
+
+TEST(PathGeometryDirectionDivideReverseSvgAndHitTesting) {
+    using namespace gfx;
+    Path cw, ccw;
+    cw.AddRect({ 0, 0, 10, 10 }, Path::Direction::Clockwise);
+    ccw.AddRect({ 0, 0, 10, 10 }, Path::Direction::CounterClockwise);
+    CHECK(ComputeDirection(cw) == Path::Direction::Clockwise);
+    CHECK(ComputeDirection(ccw) == Path::Direction::CounterClockwise);
+    CHECK(ComputeDirection(Reverse(cw)) == Path::Direction::CounterClockwise);
+    Path two = cw;
+    two.AddOval({ 20, 20, 40, 40 });
+    two.MoveTo(100, 100);   // a lone move: no contour
+    CHECK(Divide(two).size() == 2u);
+    // SVG out as Compose writes it, and back in.
+    Path tri;
+    tri.MoveTo(0, 0);
+    tri.LineTo(10, 0);
+    tri.LineTo(5, 7.5f);
+    tri.Close();
+    CHECK(ToSvg(tri) == std::string("M0.0 0.0L10.0 0.0 5.0 7.5Z"));
+    Path back;
+    AddSvg(back, ToSvg(tri));
+    CHECK(ToSvg(back) == ToSvg(tri));
+    // Hit testing by fill type: the ring's hole is outside only with even-odd.
+    Path ring;
+    ring.AddOval({ 0, 0, 100, 100 });
+    ring.AddOval({ 25, 25, 75, 75 });
+    PathHitTester nonZero(ring);
+    CHECK(nonZero.Contains({ 10, 50 }) && nonZero.Contains({ 50, 50 }) && !nonZero.Contains({ 2, 2 }) && !nonZero.Contains({ 150, 50 }));
+    ring.fillType = FillType::EvenOdd;
+    PathHitTester evenOdd(ring);
+    CHECK(evenOdd.Contains({ 10, 50 }) && !evenOdd.Contains({ 50, 50 }));
 }

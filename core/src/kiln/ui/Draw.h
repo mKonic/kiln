@@ -49,6 +49,11 @@ namespace kiln::ui {
         static DrawStyle Stroke(gfx::Stroke s) { return { std::move(s) }; }
         bool operator==(const DrawStyle&) const = default;
     };
+    // DefaultAlpha (Paint.kt): fully opaque.
+    inline constexpr float DefaultAlpha = 1.0f;
+
+    // ClipOp: keep what is inside the clip (Intersect) or what is outside it (Difference).
+    enum class ClipOp : std::uint8_t { Difference, Intersect };
     // PointMode (drawPoints).
     enum class PointMode : std::uint8_t { Points, Lines, Polygon };
 
@@ -170,8 +175,16 @@ namespace kiln::ui {
         void Inset(float left, float top, float right, float bottom, const std::function<void(DrawScope&)>& draw) {
             WithTransform([&](DrawScope& d) { d.Translate({ left, top }); d.m_Size = { d.m_Size.width - left - right, d.m_Size.height - top - bottom }; }, draw);
         }
-        // Intersects the clip with a path (ClipOp.Intersect) through a masked layer, until the Restore.
-        void ClipPath(const gfx::Path& path);
+        // Clips to a path through a masked layer, until the Restore: inside it (Intersect) or
+        // outside it (Difference).
+        void ClipPath(const gfx::Path& path, ClipOp op = ClipOp::Intersect);
+        // clipRect(clipOp = Difference): everything but the rect.
+        void ClipRect(Rect local, ClipOp op) {
+            if (op == ClipOp::Intersect) { ClipRect(local); return; }
+            gfx::Path p;
+            p.AddRect(local);
+            ClipPath(p, op);
+        }
         void RotateRad(float radians, Offset pivot) { Rotate(radians * 57.29577951308232f, pivot); }
         void Skew(float sx, float sy) { Concat(gfx::Matrix{ 1, sy, sx, 1, 0, 0 }); }
         void WithTransform(const std::function<void(DrawScope&)>& transform, const std::function<void(DrawScope&)>& draw) {

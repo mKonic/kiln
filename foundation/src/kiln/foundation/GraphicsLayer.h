@@ -50,6 +50,9 @@ namespace kiln::foundation::layer {
         void SetRoundRectOutline(Offset topLeft = {}, ui::Size size = { -1, -1 }, float cornerRadius = 0);
         void SetPathOutline(gfx::Path path) { m_Outline = gfx::Outline{ std::move(path) }; }
 
+        // setOutsets: pixels the offscreen image reaches past the layer's bounds.
+        void SetOutsets(int left, int top, int right, int bottom) { outsetsPx = { std::max(0, left), std::max(0, top), std::max(0, right), std::max(0, bottom) }; }
+
         // The recording drawn into an image of the layer's size (toImageBitmap); blocking.
         gfx::ImageBitmap ToImageBitmap(const ui::Owner& owner) const;
 

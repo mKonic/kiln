@@ -66,3 +66,14 @@ TEST(BitmapPixelsArePremultiplied) {
     CHECK_EQ(int(img.Pixels()[6]), 30);
     CHECK(gfx::ImageBitmap::FromPixels(2, 2, px) == gfx::ImageBitmap{});   // too few bytes
 }
+
+TEST(PixelMapReadsStraightColours) {
+    // 2x1: opaque red, half-transparent white (straight alpha in, premultiplied inside).
+    const std::uint8_t rgba[] = { 255, 0, 0, 255, 255, 255, 255, 128 };
+    const kiln::gfx::ImageBitmap b = kiln::gfx::ImageBitmap::FromPixels(2, 1, rgba);
+    const kiln::gfx::PixelMap m = b.ToPixelMap();
+    CHECK(m.Width() == 2 && m.Height() == 1);
+    CHECK(m(0, 0) == kiln::ui::Color(0xFFFF0000u));
+    CHECK(m(1, 0).argb >> 24 == 128 && (m(1, 0).argb & 0xFF) >= 254);
+    CHECK(b.ToPixelMap(1, 0, 1, 1)(0, 0) == m(1, 0));
+}

@@ -742,7 +742,8 @@ namespace kiln::foundation {
                 const bool offscreen = clipPath || params.compositingStrategy == CompositingStrategy::Offscreen ||
                                        params.blendMode != gfx::BlendMode::SrcOver || params.colorFilter ||
                                        (params.compositingStrategy == CompositingStrategy::Auto && params.alpha < 1);
-                if (offscreen) s.BeginLayer({ 0, 0, size.width, size.height }, params.alpha, clipPath ? &*clipPath : nullptr, params.blendMode, Filter());
+                if (offscreen) s.BeginLayer(clipPath ? Rect{ 0, 0, size.width, size.height } : OutsetBounds(s, size), params.alpha, clipPath ? &*clipPath : nullptr,
+                                            params.blendMode, Filter());
                 else if (params.alpha < 1) s.MultiplyAlpha(params.alpha);   // ModulateAlpha
                 if (params.clip && !clipPath) ClipToShape(s, size, outline ? &*outline : nullptr);
                 s.DrawContent();
@@ -750,6 +751,13 @@ namespace kiln::foundation {
                 s.Restore();
             }
             const gfx::ColorFilter* Filter() const { return params.colorFilter ? &*params.colorFilter : nullptr; }
+            // The layer's bounds grown by its outsets (the offscreen image's extent).
+            Rect OutsetBounds(const ContentDrawScope& s, Size size) const {
+                const LayerOutsets& o = params.outsets;
+                const auto& px = params.outsetsPx;
+                return { -s.ToPx(o.left) - float(px[0]), -s.ToPx(o.top) - float(px[1]), size.width + s.ToPx(o.right) + float(px[2]),
+                         size.height + s.ToPx(o.bottom) + float(px[3]) };
+            }
             // The RenderNode's shadow (HWUI draws it before the node's content): the outline
             // GraphicsLayer.configureOutlineAndClip gives it, a round rect on whole pixels or a
             // path, with the layer's alpha as both node and outline alpha.
@@ -811,7 +819,8 @@ namespace kiln::foundation {
                 float alpha = params.alpha;
                 if (clipPath) { s.BeginLayer(bounds, alpha, clipPath, params.blendMode, Filter()); alpha = 1; }
                 else if (params.clip) ClipToShape(s, size, outline);
-                const Rect layer{ -marginX, -marginY, size.width + marginX, size.height + marginY };
+                const Rect out = OutsetBounds(s, size);
+                const Rect layer{ out.left - marginX, out.top - marginY, out.right + marginX, out.bottom + marginY };
                 if (clipPath) s.BeginLayer(layer, alpha);
                 else s.BeginLayer(layer, alpha, nullptr, params.blendMode, Filter());
                 s.DrawContent();
@@ -829,7 +838,7 @@ namespace kiln::foundation {
                 if (clipPath) { s.BeginLayer(bounds, alpha, clipPath, params.blendMode, Filter()); alpha = 1; }
                 else if (params.clip) ClipToShape(s, size, outline);
                 if (clipPath) s.BeginLayer(bounds, alpha);
-                else s.BeginLayer(bounds, alpha, nullptr, params.blendMode, Filter());
+                else s.BeginLayer(OutsetBounds(s, size), alpha, nullptr, params.blendMode, Filter());
                 s.DrawContent();
                 if (maxPx <= 0) {
                     s.EndLayer();

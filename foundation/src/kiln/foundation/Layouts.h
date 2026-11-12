@@ -263,6 +263,18 @@ namespace kiln::foundation {
         }
     };
 
+    // LayerOutsets: how far past its bounds a layer's offscreen image reaches (an offscreen
+    // layer, for alpha or a colour filter, clips to it). Clips, shadows and transforms ignore it.
+    struct LayerOutsets {
+        Dp left{ 0 }, top{ 0 }, right{ 0 }, bottom{ 0 };
+        static LayerOutsets All(Dp all) { return { all, all, all, all }; }
+        static LayerOutsets Symmetric(Dp vertical, Dp horizontal) { return { horizontal, vertical, horizontal, vertical }; }
+        static LayerOutsets Zero() { return {}; }
+        bool operator==(const LayerOutsets& o) const {
+            return left.value == o.left.value && top.value == o.top.value && right.value == o.right.value && bottom.value == o.bottom.value;
+        }
+    };
+
     // TransformOrigin: a pivot as fractions of a layer's size.
     struct TransformOrigin {
         float pivotFractionX = 0.5f, pivotFractionY = 0.5f;
@@ -298,6 +310,9 @@ namespace kiln::foundation {
         // Read-only in a block: the layer's size (GraphicsLayerScope.size); a block reading it
         // runs again when the size changes.
         Size size;
+        // outsets (GraphicsLayerScope.outsets), and a recorded layer's own (setOutsets, px).
+        LayerOutsets outsets;
+        std::array<int, 4> outsetsPx{};
         bool operator==(const GraphicsLayerParams&) const = default;
     };
     Modifier GraphicsLayer(Modifier m, GraphicsLayerParams p);

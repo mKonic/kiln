@@ -55,6 +55,40 @@ namespace kiln::foundation {
         virtual bool Equals(const Painter& other) const { return this == &other; }
     };
 
+    // ColorPainter: fills its area with a colour; no intrinsic size.
+    class ColorPainter final : public Painter {
+    public:
+        explicit ColorPainter(ui::Color color) : m_Color(color) {}
+        std::optional<Size> IntrinsicSize() const override { return std::nullopt; }
+        void Draw(DrawScope& scope, Size size, float alpha, const gfx::ColorFilter* colorFilter) override {
+            scope.DrawRect(gfx::Brush::SolidColor(m_Color), {}, size, alpha, ui::DrawStyle::Fill(), colorFilter);
+        }
+        bool Equals(const Painter& other) const override {
+            auto* o = dynamic_cast<const ColorPainter*>(&other);
+            return o && o->m_Color == m_Color;
+        }
+        ui::Color GetColor() const { return m_Color; }
+    private:
+        ui::Color m_Color;
+    };
+
+    // BrushPainter: fills its area with a brush; the intrinsic size is unspecified.
+    class BrushPainter final : public Painter {
+    public:
+        explicit BrushPainter(gfx::Brush brush) : m_Brush(std::move(brush)) {}
+        std::optional<Size> IntrinsicSize() const override { return std::nullopt; }
+        void Draw(DrawScope& scope, Size size, float alpha, const gfx::ColorFilter* colorFilter) override {
+            scope.DrawRect(m_Brush, {}, size, alpha, ui::DrawStyle::Fill(), colorFilter);
+        }
+        bool Equals(const Painter& other) const override {
+            auto* o = dynamic_cast<const BrushPainter*>(&other);
+            return o && o->m_Brush == m_Brush;
+        }
+        const gfx::Brush& GetBrush() const { return m_Brush; }
+    private:
+        gfx::Brush m_Brush;
+    };
+
     class BitmapPainter final : public Painter {
     public:
         explicit BitmapPainter(gfx::ImageBitmap image, gfx::FilterQuality quality = gfx::FilterQuality::Low)

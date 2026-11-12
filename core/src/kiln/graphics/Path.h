@@ -46,6 +46,7 @@ namespace kiln::gfx {
         Offset Map(Offset p) const { return { a * p.x + c * p.y + e, b * p.x + d * p.y + f }; }
         static Matrix Translate(float x, float y) { return { 1, 0, 0, 1, x, y }; }
         static Matrix Scale(float sx, float sy) { return { sx, 0, 0, sy, 0, 0 }; }
+        bool IsIdentity() const { return a == 1 && b == 0 && c == 0 && d == 1 && e == 0 && f == 0; }
         // Largest stretch of a unit vector (for flattening tolerance).
         float MaxScale() const;
     };

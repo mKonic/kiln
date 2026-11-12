@@ -1,5 +1,6 @@
 #include "kiln/graphics/Image.h"
 
+#include <algorithm>
 #include <atomic>
 
 namespace kiln::gfx {
@@ -33,6 +34,27 @@ namespace kiln::gfx {
         auto img = Decoder()(encoded);
         if (!img) return {};
         return FromPixels(img->width, img->height, img->rgba, img->premultiplied);
+    }
+
+    PixelMap ImageBitmap::ToPixelMap(int startX, int startY, int width, int height) const {
+        if (width < 0) width = Width() - startX;
+        if (height < 0) height = Height() - startY;
+        width = std::max(0, width);
+        height = std::max(0, height);
+        std::vector<ui::Color> out(std::size_t(width) * std::size_t(height), ui::Color::Transparent());
+        const std::uint8_t* px = Pixels();
+        for (int y = 0; px && y < height; ++y) {
+            for (int x = 0; x < width; ++x) {
+                const int sx = startX + x, sy = startY + y;
+                if (sx < 0 || sy < 0 || sx >= Width() || sy >= Height()) continue;
+                const std::uint8_t* p = px + (std::size_t(sy) * std::size_t(Width()) + std::size_t(sx)) * 4;
+                // Stored premultiplied: un-premultiply for the colour.
+                const unsigned a = p[3];
+                auto un = [a](unsigned c) { return a == 0 ? 0u : std::min(255u, (c * 255u + a / 2) / a); };
+                out[std::size_t(y) * std::size_t(width) + std::size_t(x)] = ui::Color((a << 24) | (un(p[0]) << 16) | (un(p[1]) << 8) | un(p[2]));
+            }
+        }
+        return PixelMap(std::move(out), width, height);
     }
 
 }

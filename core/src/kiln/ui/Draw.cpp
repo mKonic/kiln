@@ -555,9 +555,20 @@ namespace kiln::ui {
         DrawImage(image, { 0, 0, w, h }, topLeft, { w, h }, alpha);
     }
 
-    void DrawScope::ClipPath(const gfx::Path& path) {
-        if (m_Recording) { m_Recording->push_back([path](DrawScope& d) { d.ClipPath(path); }); return; }
-        BeginLayerImpl(path.Bounds(), 1, &path, true);
+    void DrawScope::ClipPath(const gfx::Path& path, ClipOp op) {
+        if (m_Recording) { m_Recording->push_back([path, op](DrawScope& d) { d.ClipPath(path, op); }); return; }
+        if (op == ClipOp::Intersect) {
+            BeginLayerImpl(path.Bounds(), 1, &path, true);
+            return;
+        }
+        // Difference: a mask of everything around the path, out to well past the scope.
+        constexpr float kFar = 1e4f;
+        const Rect far{ -kFar, -kFar, m_Size.width + kFar, m_Size.height + kFar };
+        gfx::Path around;
+        around.AddRect(far);
+        gfx::Path mask;
+        if (!mask.Op(around, path, gfx::PathOperation::Difference)) return;
+        BeginLayerImpl(far, 1, &mask, true);
     }
 
     void DrawScope::DrawPath(const gfx::Path& path, const gfx::Brush& b, const gfx::Stroke* stroke, float alpha, const gfx::ColorFilter* filter) {
