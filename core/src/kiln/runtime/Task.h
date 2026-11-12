@@ -159,10 +159,14 @@ namespace kiln::rt {
         // Earliest timer deadline, if any (the host arms a wake-up for it).
         std::optional<Clock::time_point> NextTimer() const;
         // This dispatcher's time: the clock plus whatever a test advanced it by. Timers are due by it.
-        Clock::time_point Now() const { return Clock::now() + m_Advanced; }
+        Clock::time_point Now() const { return (m_Virtual ? Clock::time_point{} : Clock::now()) + m_Advanced; }
         // Tests: moves Now() forward without waiting (Compose's mainClock.advanceTimeBy). Due
         // timers run at the next RunPending.
-        void AdvanceTimeBy(std::chrono::milliseconds ms) { m_Advanced += ms; }
+        void AdvanceTimeBy(Clock::duration d) { m_Advanced += d; }
+        // Virtual time: Now() moves only by AdvanceTimeBy (a host with a fixed frame clock keeps
+        // timers on the same time as frames, so a run is the same every time).
+        void SetVirtualTime(bool on) { m_Virtual = on; }
+        bool VirtualTime() const { return m_Virtual; }
 
         // Host hooks: request a frame when someone waits for one, wake when work is posted.
         std::function<void()> requestFrame;
@@ -183,6 +187,7 @@ namespace kiln::rt {
         std::uint64_t m_NextId = 1;
         std::int64_t m_LastFrameNanos = 0;
         Clock::duration m_Advanced{};
+        bool m_Virtual = false;
     };
 
     // Starts `task` now (it runs until its first suspension) under a new Job.

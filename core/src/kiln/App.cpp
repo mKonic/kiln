@@ -540,7 +540,13 @@ namespace kiln {
         m_Filters->Sync();
 
         CommandList* cmd = m_Device->BeginFrame();
-        if (!cmd) return;   // swapchain out of date; hearth rebuilds it, try next vsync
+        if (!cmd) {
+            // The swapchain was out of date (hearth rebuilds it): draw again next vsync. Nothing
+            // else may ask for that frame, and until one is presented a Wayland window is not
+            // even mapped.
+            if (!m_SurfaceLost) RequestFrame();
+            return;
+        }
         m_Quads->RenderLayers(*cmd);   // offscreen layers first, inner ones before outer
         RenderPassDesc pass;
         pass.clearColor = { m_Clear.r, m_Clear.g, m_Clear.b, m_Clear.a };

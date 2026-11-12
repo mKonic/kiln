@@ -9,7 +9,11 @@
 
 #include <GLFW/glfw3.h>
 
+#include <atomic>
 #include <chrono>
+#include <csignal>
+#include <execinfo.h>
+#include <memory>
 #include <cstdio>
 #include <cstdlib>
 
@@ -35,7 +39,12 @@ namespace {
     }
 
     bool g_FrameRequested = true;
-    void RequestFrame(void*) { g_FrameRequested = true; glfwPostEmptyEvent(); }
+    // One empty event until the loop wakes: on Wayland each is a wl_display.sync, and a burst
+    // of them (a frame posting hundreds of tasks) overflows the socket, which GLFW reports as
+    // the window closing.
+    std::atomic<bool> g_WakePending{ false };
+    void Wake() { if (!g_WakePending.exchange(true)) glfwPostEmptyEvent(); }
+    void RequestFrame(void*) { g_FrameRequested = true; Wake(); }
 }
 
 namespace kiln::hostdev { void InstallImageDecoder(); void InstallAssetReader(); }
@@ -45,7 +54,10 @@ int main() {
     kiln::hostdev::InstallAssetReader();
     if (!glfwInit()) { std::fprintf(stderr, "glfwInit failed\n"); return 1; }
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-    GLFWwindow* window = glfwCreateWindow(412, 915, "kiln", nullptr, nullptr);
+    // KILN_WINDOW=WxH: the window size (default 412x915).
+    int winW = 412, winH = 915;
+    if (const char* ws = std::getenv("KILN_WINDOW")) std::sscanf(ws, "%dx%d", &winW, &winH);
+    GLFWwindow* window = glfwCreateWindow(winW, winH, "kiln", nullptr, nullptr);
 
     float sx = 1, sy = 1;
     glfwGetWindowContentScale(window, &sx, &sy);
@@ -53,9 +65,11 @@ int main() {
     const float density = std::getenv("KILN_DENSITY") ? float(std::atof(std::getenv("KILN_DENSITY"))) : sx;
 
     auto text = kiln::hostdev::CreateHostText(density, 1.0f);
-    kiln::App app({ text.get(), &RequestFrame, nullptr });
+    // Owned here so it (and its swapchain) goes before the window's Wayland surface.
+    auto appOwner = std::make_unique<kiln::App>(kiln::HostServices{ text.get(), &RequestFrame, nullptr });
+    kiln::App& app = *appOwner;
     app.SetDensity(density, 1.0f);
-    app.Dispatcher().wake = [] { glfwPostEmptyEvent(); };
+    app.Dispatcher().wake = [] { Wake(); };
     kiln_app handle{ &app };
     kiln_main(&handle);
 
@@ -116,24 +130,53 @@ int main() {
         session->CommitText(text, 1);
     });
 
+    glfwSetWindowCloseCallback(window, [](GLFWwindow*) { std::fprintf(stderr, "kiln: the window was asked to close at %.3f s\n", glfwGetTime()); });
+
     hearth::GlfwSurface surface(window);
     app.SurfaceCreated(surface);
     int lastW = 0, lastH = 0;
+    // KILN_FIXED_FRAME_MS: frame n gets time n * ms, so animations land on the same frames in
+    // every run (golden renders).
+    const double fixedFrame = std::getenv("KILN_FIXED_FRAME_MS") ? std::atof(std::getenv("KILN_FIXED_FRAME_MS")) / 1000.0 : 0.0;
+    std::int64_t frameCount = 0;
+    const bool trace = std::getenv("KILN_TRACE_FRAMES") != nullptr;   // a line per frame (finding a hang)
+    // With tracing, SIGUSR1 prints where the main thread is (a hang inside a frame).
+    if (trace) std::signal(SIGUSR1, [](int) {
+        void* frames[64];
+        const int n = backtrace(frames, 64);
+        backtrace_symbols_fd(frames, n, 2);
+    });
+    // With a fixed frame clock the dispatcher runs on virtual time too: each frame advances it by
+    // one interval, and when only timers wait it jumps to the next one.
+    auto& dispatcher = app.Dispatcher();
+    if (fixedFrame > 0) dispatcher.SetVirtualTime(true);
+    const auto frameStep = std::chrono::duration_cast<kiln::rt::Dispatcher::Clock::duration>(std::chrono::duration<double>(fixedFrame));
     while (!glfwWindowShouldClose(window)) {
-        if (g_FrameRequested) glfwPollEvents();
-        else if (auto next = app.Dispatcher().NextTimer()) {
+        if (g_FrameRequested || (fixedFrame > 0 && app.FramePending())) glfwPollEvents();
+        else if (fixedFrame > 0 && dispatcher.NextTimer()) {
+            dispatcher.AdvanceTimeBy(*dispatcher.NextTimer() - dispatcher.Now());
+            glfwPollEvents();
+        } else if (auto next = app.Dispatcher().NextTimer()) {
             const double wait = std::chrono::duration<double>(*next - app.Dispatcher().Now()).count();
             glfwWaitEventsTimeout(wait > 0 ? wait : 0.0);
         } else glfwWaitEvents();
+        g_WakePending = false;
         app.RunIdle();
         int w = 0, h = 0;
         glfwGetFramebufferSize(window, &w, &h);
         if (w != lastW || h != lastH) { lastW = w; lastH = h; app.SurfaceResized(w, h); }
         if (g_FrameRequested || app.FramePending()) {
             g_FrameRequested = false;
-            app.Frame(glfwGetTime());
+            if (trace) std::fprintf(stderr, "kiln: frame %lld at %.3f s\n", static_cast<long long>(frameCount), glfwGetTime());
+            if (fixedFrame > 0) {
+                dispatcher.AdvanceTimeBy(frameStep);
+                ++frameCount;
+            }
+            app.Frame(fixedFrame > 0 ? std::chrono::duration<double>(dispatcher.Now().time_since_epoch()).count() : glfwGetTime());
         }
     }
+    g_App = nullptr;
+    appOwner.reset();
     glfwDestroyWindow(window);
     glfwTerminate();
 }

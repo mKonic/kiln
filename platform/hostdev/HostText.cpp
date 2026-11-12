@@ -2,6 +2,7 @@
 
 #include "kiln/text/AnnotatedString.h"
 
+#include <cstdio>
 #include <ft2build.h>
 #include FT_FREETYPE_H
 #include <hb-ft.h>
@@ -110,6 +111,12 @@ namespace kiln::hostdev {
                             lastSpace = std::size_t(-1);
                             x = req.indentRestPx;
                             for (std::size_t j = lineStart; j < i; ++j) x += glyphs[j].g.adv;
+                        } else if (x + glyphs[i].g.adv > width && c != ' ' && i > lineStart && glyphs[i].g.cluster != glyphs[i - 1].g.cluster) {
+                            // A word wider than the line breaks between characters (StaticLayout).
+                            lines.push_back({ lineStart, i });
+                            lineStart = i;
+                            lastSpace = std::size_t(-1);
+                            x = req.indentRestPx;
                         }
                         x += glyphs[i].g.adv;
                     }
@@ -117,8 +124,56 @@ namespace kiln::hostdev {
                 }
                 const int textLength = text::Utf16Length(utf8);
                 const bool exceeded = int(lines.size()) > req.maxLines;
-                if (exceeded) lines.resize(std::size_t(req.maxLines));
+                using Overflow = ParagraphRequest::Overflow;
+                const bool endEllipsis = req.overflow == Overflow::Ellipsis;
+                const bool lineEllipsis = req.overflow == Overflow::StartEllipsis || req.overflow == Overflow::MiddleEllipsis;
+                // Start and middle ellipsis apply to one line (TextUtils.ellipsize): the text stays whole.
+                if (exceeded && lineEllipsis && req.maxLines == 1) lines = { { 0, glyphs.size() } };
+                else if (exceeded) lines.resize(std::size_t(req.maxLines));
                 out.didExceedMaxLines = exceeded;
+                // The ellipsized line: glyphs [cut0, cut1) give way to "…" (drawn at cut0).
+                std::size_t cutLine = std::size_t(-1), cut0 = 0, cut1 = 0;
+                PG dots{};
+                if ((endEllipsis || (lineEllipsis && lines.size() == 1)) && !lines.empty() && !std::isinf(width)) {
+                    const std::size_t li = lines.size() - 1;
+                    const L& l = lines[li];
+                    const float indent = li == 0 ? req.indentFirstPx : req.indentRestPx;
+                    float lw = 0;
+                    for (std::size_t i = l.g0; i < l.g1; ++i) lw += glyphs[i].g.adv;
+                    if ((exceeded && endEllipsis) || lw + indent > width) {
+                        const std::size_t at = l.g1 > l.g0 ? l.g1 - 1 : l.g0;
+                        dots.run = at < glyphs.size() ? glyphs[at].run : 0;
+                        dots.px = at < glyphs.size() ? glyphs[at].px : basePx;
+                        const auto shaped = Shape(m_Main, "\xE2\x80\xA6", dots.px);
+                        if (!shaped.empty()) dots.g = shaped.front();
+                        else dots.skip = true;
+                        dots.g.adv = 0;
+                        for (const G& g : shaped) dots.g.adv += g.adv;
+                        const float budget = width - indent - dots.g.adv;
+                        float w = lw;
+                        cut0 = l.g0; cut1 = l.g1;
+                        if (req.overflow == Overflow::StartEllipsis) {
+                            while (cut1 > cut0 && w > budget) w -= glyphs[cut0++].g.adv;
+                            cut1 = cut0;   // removed: [l.g0, cut1)
+                            cut0 = l.g0;
+                        } else if (req.overflow == Overflow::MiddleEllipsis) {
+                            std::size_t mid = (l.g0 + l.g1) / 2;
+                            cut0 = cut1 = mid;
+                            bool right = true;
+                            while (w > budget && (cut0 > l.g0 || cut1 < l.g1)) {
+                                if ((right && cut1 < l.g1) || cut0 == l.g0) w -= glyphs[cut1++].g.adv;
+                                else w -= glyphs[--cut0].g.adv;
+                                right = !right;
+                            }
+                        } else {
+                            cut0 = l.g1;
+                            while (cut0 > l.g0 && w > budget) w -= glyphs[--cut0].g.adv;
+                            // Keep a trailing space out of the visible text.
+                            while (cut0 > l.g0 && utf8[glyphs[cut0 - 1].g.cluster] == ' ') --cut0;
+                        }
+                        cutLine = li;
+                    }
+                }
                 Para para;
                 para.text = utf8;
                 float y = 0;
@@ -145,8 +200,17 @@ namespace kiln::hostdev {
                     ld.end = l.g1 < glyphs.size() ? ByteToUtf16(utf8, glyphs[l.g1].g.cluster) : textLength;
                     if (li == 0) ld.start = 0;
                     ld.visibleEnd = ld.end;
+                    const bool cut = li == cutLine;
+                    auto u16At = [&](std::size_t g) { return g < glyphs.size() ? ByteToUtf16(utf8, glyphs[g].g.cluster) : textLength; };
+                    if (cut) {
+                        ld.ellipsisStart = u16At(cut0) - ld.start;
+                        ld.ellipsisCount = (endEllipsis ? textLength : u16At(cut1)) - u16At(cut0);
+                        if (ld.ellipsisCount == 0) ld.ellipsisCount = 1;   // the ellipsis shows: the line is ellipsized
+                    }
                     float lineWidth = 0;
-                    for (std::size_t i = l.g0; i < l.g1; ++i) lineWidth += glyphs[i].g.adv;
+                    for (std::size_t i = l.g0; i < l.g1; ++i)
+                        if (!cut || i < cut0 || i >= cut1) lineWidth += glyphs[i].g.adv;
+                    if (cut) lineWidth += dots.g.adv;
                     const float indent = li == 0 ? req.indentFirstPx : req.indentRestPx;
                     float x = indent;
                     const float avail = std::isinf(width) ? lineWidth + indent : width;
@@ -156,19 +220,21 @@ namespace kiln::hostdev {
                     ld.right = x + lineWidth;
                     out.width = std::max(out.width, lineWidth + indent);
                     int segRun = -1;
-                    for (std::size_t i = l.g0; i < l.g1; ++i) {
-                        const PG& pg = glyphs[i];
+                    for (std::size_t i = l.g0; i <= l.g1; ++i) {
+                        const bool dotsHere = cut && i == cut0;
+                        if (!dotsHere && (i == l.g1 || (cut && i > cut0 && i < cut1))) continue;
+                        const PG& pg = dotsHere ? dots : glyphs[i];
                         const auto& run = req.runs[std::size_t(pg.run)];
                         const float shift = run.baselineShift != 0 ? -metrics(pg.px).first * run.baselineShift : 0;
                         if (pg.run != segRun) { out.segments.push_back({ pg.run, int(li), x, x, shift }); segRun = pg.run; }
                         out.segments.back().right = x + pg.g.adv;
-                        para.stops.push_back({ pg.g.cluster, x, ld.top, ld.bottom, pg.g.adv });
+                        if (!dotsHere) para.stops.push_back({ pg.g.cluster, x, ld.top, ld.bottom, pg.g.adv });
                         if (pg.placeholder >= 0) {
                             const auto& p = req.placeholders[std::size_t(pg.placeholder)];
                             const float h = std::ceil(p.heightEm ? p.height * pg.px : p.height);
                             out.placeholderRects[std::size_t(pg.placeholder)] = RectF{ x, ld.baseline - h, pg.g.adv, h };
                         }
-                        if (utf8[pg.g.cluster] != '\n' && !pg.skip) {
+                        if ((dotsHere || utf8[pg.g.cluster] != '\n') && !pg.skip) {
                             const Slot sl = Rasterize(*pg.g.face, pg.g.id, pg.px);
                             if (!sl.empty) {
                                 GlyphQuad q;
