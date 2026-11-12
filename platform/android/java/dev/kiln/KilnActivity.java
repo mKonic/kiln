@@ -56,20 +56,39 @@ public class KilnActivity extends Activity {
         return "main";
     }
 
+    // The window's lifecycle (LocalLifecycleOwner), sent where androidx's ReportFragment sends
+    // it: ON_START / ON_RESUME after the activity's callback, the way down before it.
+    private static final int ON_START = 1, ON_RESUME = 2, ON_PAUSE = 3, ON_STOP = 4, ON_DESTROY = 5;
+
     @Override
     protected void onStart() {
         super.onStart();
         view.onHostStart();
+        KilnNative.lifecycleEvent(ON_START);
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        KilnNative.lifecycleEvent(ON_RESUME);
+    }
+
+    @Override
+    protected void onPause() {
+        KilnNative.lifecycleEvent(ON_PAUSE);
+        super.onPause();
     }
 
     @Override
     protected void onStop() {
+        KilnNative.lifecycleEvent(ON_STOP);
         view.onHostStop();
         super.onStop();
     }
 
     @Override
     protected void onDestroy() {
+        KilnNative.lifecycleEvent(ON_DESTROY);
         view.release();
         KilnNative.destroy();
         super.onDestroy();

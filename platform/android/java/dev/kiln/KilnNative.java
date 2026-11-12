@@ -9,6 +9,8 @@ final class KilnNative {
     static native void create(KilnView view, KilnText text, android.content.res.AssetManager assets, float density, float fontScale, byte[] savedState);
     static native byte[] saveState();
     static native void setVisible(boolean visible);
+    // Lifecycle.Event ordinal (ON_CREATE 0 ... ON_DESTROY 5) for the window's lifecycle.
+    static native void lifecycleEvent(int event);
     static native void destroy();
     static native void setDensity(float density, float fontScale);
     /** Configuration.fontWeightAdjustment (the bold text setting). */

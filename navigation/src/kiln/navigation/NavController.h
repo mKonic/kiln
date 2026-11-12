@@ -5,6 +5,7 @@
 // kept as a state only (kiln has no lifecycle owners): the host counts as RESUMED once a NavHost
 // sets it, and visible entries are those at least STARTED.
 
+#include "kiln/lifecycle/Lifecycle.h"
 #include "kiln/navigation/NavDestination.h"
 #include "kiln/runtime/Saveable.h"
 #include "kiln/runtime/State.h"
@@ -17,10 +18,12 @@
 
 namespace kiln::navigation {
 
-    enum class LifecycleState : std::uint8_t { Destroyed, Initialized, Created, Started, Resumed };
+    using LifecycleState = lifecycle::State;
 
-    // NavBackStackEntry: a destination on the back stack with its arguments.
-    class NavBackStackEntry {
+    // NavBackStackEntry: a destination on the back stack with its arguments, and a lifecycle
+    // owner (LocalLifecycleOwner within its content) at the lower of the host's state and the
+    // entry's max.
+    class NavBackStackEntry : public lifecycle::LifecycleOwner {
     public:
         NavBackStackEntry(NavDestination* destination, std::optional<NavArgs> arguments, LifecycleState host, std::string id);
         NavDestination* Destination() const { return m_Destination; }
@@ -31,7 +34,8 @@ namespace kiln::navigation {
         void SetMaxLifecycle(LifecycleState s) { m_Max = s; UpdateState(); }
         void SetHostLifecycleState(LifecycleState s) { m_Host = s; UpdateState(); }
         // The current state: the lower of the host's and the max (observable).
-        LifecycleState CurrentState() const { return m_Current.Get(); }
+        LifecycleState CurrentState() const { return m_Lifecycle.CurrentStateFlow().Get(); }
+        lifecycle::Lifecycle& GetLifecycle() override { return m_Lifecycle; }
         void UpdateState();
         // Arguments as strings and numbers (convenience for content).
         std::optional<std::string> GetString(const std::string& key) const;
@@ -43,7 +47,7 @@ namespace kiln::navigation {
         LifecycleState m_Host;
         LifecycleState m_Max = LifecycleState::Initialized;
         std::string m_Id;
-        rt::State<LifecycleState> m_Current{ LifecycleState::Initialized };
+        mutable lifecycle::LifecycleRegistry m_Lifecycle{ *this };
     };
     using EntryPtr = std::shared_ptr<NavBackStackEntry>;
 
@@ -193,8 +197,11 @@ namespace kiln::navigation {
         using OnDestinationChanged = std::function<void(NavController&, NavDestination&, const std::optional<NavArgs>&)>;
         void AddOnDestinationChangedListener(OnDestinationChanged listener);
 
-        // The host's lifecycle state (NavHost sets RESUMED).
+        // The host's lifecycle state.
         void SetHostLifecycleState(LifecycleState s);
+        // NavHostController.setLifecycleOwner: the host state follows `owner` (NavHost passes
+        // LocalLifecycleOwner); each event moves the entries with it.
+        void SetLifecycleOwner(std::shared_ptr<lifecycle::LifecycleOwner> owner);
         // Called with an entry's id when its state is cleared for good (the host frees what it
         // kept for it: NavViewModelStoreProvider.clear).
         std::function<void(const std::string& id)> onEntryCleared;
@@ -265,6 +272,8 @@ namespace kiln::navigation {
         std::function<void(const EntryPtr&)> m_AddHandler, m_PopHandler;
         std::vector<OnDestinationChanged> m_Listeners;
         LifecycleState m_HostLifecycle = LifecycleState::Created;
+        std::shared_ptr<lifecycle::LifecycleOwner> m_LifecycleOwner;
+        std::shared_ptr<lifecycle::LifecycleEventObserver> m_LifecycleObserver;
         int m_DispatchReentrant = 0;
         std::vector<EntryPtr> m_ToDispatch;
     };

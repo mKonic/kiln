@@ -135,6 +135,10 @@ int main() {
 
     hearth::GlfwSurface surface(window);
     app.SurfaceCreated(surface);
+    // A desktop window is RESUMED while open (Compose Desktop's window lifecycle, minus
+    // minimise and focus, which glfw here does not report as lifecycle).
+    app.HandleLifecycleEvent(kiln::lifecycle::Event::OnStart);
+    app.HandleLifecycleEvent(kiln::lifecycle::Event::OnResume);
     int lastW = 0, lastH = 0;
     // KILN_FIXED_FRAME_MS: frame n gets time n * ms, so animations land on the same frames in
     // every run (golden renders).
@@ -177,6 +181,9 @@ int main() {
         }
     }
     g_App = nullptr;
+    app.HandleLifecycleEvent(kiln::lifecycle::Event::OnPause);
+    app.HandleLifecycleEvent(kiln::lifecycle::Event::OnStop);
+    app.HandleLifecycleEvent(kiln::lifecycle::Event::OnDestroy);
     appOwner.reset();
     glfwDestroyWindow(window);
     glfwTerminate();

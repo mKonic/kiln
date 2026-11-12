@@ -1,6 +1,7 @@
 #include "kiln/navigation/NavHost.h"
 
 #include "kiln/foundation/Back.h"
+#include "kiln/lifecycle/LifecycleCompose.h"
 #include "kiln/runtime/Saveable.h"
 
 #include <algorithm>
@@ -182,9 +183,11 @@ namespace kiln::navigation {
             }
         };
 
-        // LocalOwnersProvider: the entry's saveable state, kept under its id.
+        // LocalOwnersProvider: the entry as LocalLifecycleOwner, and its saveable state, kept
+        // under its id.
         void LocalOwnersProvider(const EntryPtr& entry, rt::SaveableStateHolder& holder, std::function<void()> content) {
-            rt::SaveableStateProvider(holder, entry->Id(), std::move(content));
+            rt::Composition::Current()->Provide(lifecycle::LocalLifecycleOwner, lifecycle::LifecycleOwnerPtr(entry),
+                                                [&holder, entry, content = std::move(content)] { rt::SaveableStateProvider(holder, entry->Id(), content); });
         }
 
         struct HostBook {
@@ -198,8 +201,8 @@ namespace kiln::navigation {
         auto& c = *rt::Composition::Current();
         NavHostController* nc = &navController;
         c.Child([&c, nc, graph, modifier, options] {
-            // The host is resumed (the activity's lifecycle owner).
-            nc->SetHostLifecycleState(LifecycleState::Resumed);
+            // The entries follow the composition's lifecycle owner (the activity's, a scene's...).
+            nc->SetLifecycleOwner(lifecycle::CurrentLifecycleOwner());
             nc->SetGraph(graph);
             auto* composeNavigator = nc->Provider().Get<ComposeNavigator>();
             if (!composeNavigator) return;

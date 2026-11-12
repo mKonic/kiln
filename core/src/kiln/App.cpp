@@ -25,6 +25,8 @@ namespace kiln {
     App::App(HostServices services) : m_Services(services) {
         m_Dispatcher.requestFrame = [this] { RequestFrame(); };
         m_Owner.SetText(m_Services.text);
+        m_Lifecycle->registry.SetCurrentState(lifecycle::State::Created);
+        lifecycle::SetHostLifecycleOwner(m_Owner, m_Lifecycle);
         m_Owner.SetRequestFrame([this] { RequestFrame(); });
         m_Owner.SetOffscreenRenderer([this](int w, int h, const std::function<void(ui::DrawScope&)>& draw) { return RenderToPixels(w, h, draw); });
         // Any state write schedules a frame, like Compose's global apply observer (14 §Recomposer).
@@ -219,14 +221,17 @@ namespace kiln {
         std::shared_ptr<ui::Window> window = std::make_shared<HostWindow>(&m_Owner);
         rt::State<ui::Configuration>* config = m_Configuration.get();
         rt::State<bool>* is24Hour = m_Is24Hour.get();
-        content = [config, is24Hour, window, owner, content = std::move(content)] {
+        lifecycle::LifecycleOwnerPtr lifecycleOwner = m_Lifecycle;
+        content = [config, is24Hour, window, owner, lifecycleOwner, content = std::move(content)] {
             auto* c = rt::Composition::Current();
+            c->Provide(lifecycle::LocalLifecycleOwner, lifecycleOwner, [c, config, is24Hour, window, owner, content] {
             c->Provide(ui::LocalOwner, owner, [c, config, is24Hour, window, owner, content] {
             c->Provide(ui::LocalDensity, owner->ObservedDensity(), [c, config, is24Hour, window, content] {
             c->Provide(ui::LocalConfiguration, config->Get(), [c, is24Hour, window, content] {
                 c->Provide(ui::LocalIs24HourFormat, is24Hour->Get(), [c, window, content] {
                     c->Provide(ui::LocalWindow, window.get(), content);
                 });
+            });
             });
             });
             });

@@ -1193,6 +1193,11 @@ namespace {
         }
     }
 
+    void LifecycleEvent(JNIEnv*, jclass, jint event) {
+        if (!g_Host || !g_Host->app || event < 0 || event > int(kiln::lifecycle::Event::OnDestroy)) return;
+        g_Host->app->HandleLifecycleEvent(kiln::lifecycle::Event(event));
+    }
+
     void FontsChanged(JNIEnv*, jclass) {
         if (!g_Host) return;
         g_Host->app->GetOwner().OnFontsChanged();
@@ -2947,6 +2952,7 @@ extern "C" JNIEXPORT jint kiln_jni_onload(JavaVM* vm) {
     static const JNINativeMethod methods[] = {
         { "create", "(Ldev/kiln/KilnView;Ldev/kiln/KilnText;Landroid/content/res/AssetManager;FF[B)V", reinterpret_cast<void*>(&Create) },
         { "setVisible", "(Z)V", reinterpret_cast<void*>(&SetVisible) },
+        { "lifecycleEvent", "(I)V", reinterpret_cast<void*>(&LifecycleEvent) },
         { "setDensity", "(FF)V", reinterpret_cast<void*>(&SetDensity) },
         { "setFontWeightAdjustment", "(I)V", reinterpret_cast<void*>(&SetFontWeightAdjustment) },
         { "setConfiguration", "([IF[Ljava/lang/String;[I[I)V", reinterpret_cast<void*>(&SetConfiguration) },

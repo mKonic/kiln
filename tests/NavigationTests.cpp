@@ -1,6 +1,7 @@
 #include "Check.h"
 
 #include "kiln/foundation/Compose.h"
+#include "kiln/lifecycle/LifecycleCompose.h"
 #include "kiln/navigation/NavHost.h"
 #include "kiln/runtime/Saveable.h"
 
@@ -177,4 +178,46 @@ TEST(NavHostShowsTheCurrentEntryAndBackRestoresTheLastOne) {
     CHECK(Routes(*nav) == std::vector<std::string>{ "home" });
     CHECK(homeCounter && *homeCounter == 3);
     CHECK(!ui::BackDispatcher::Main().HasEnabledCallbacks());
+}
+
+TEST(NavHostEntriesAreLifecycleOwnersFollowingTheHost) {
+    Harness h;
+    struct HostOwner final : lifecycle::LifecycleOwner {
+        lifecycle::LifecycleRegistry registry{ *this };
+        lifecycle::Lifecycle& GetLifecycle() override { return registry; }
+    };
+    auto host = std::make_shared<HostOwner>();
+    host->registry.SetCurrentState(LifecycleState::Resumed);
+    NavHostController* nav = nullptr;
+    lifecycle::LifecycleOwnerPtr homeOwner;
+    std::vector<std::string> events;
+    h.Run([&] {
+        rt::Composition::Current()->Provide(lifecycle::LocalLifecycleOwner, lifecycle::LifecycleOwnerPtr(host), [&] {
+            auto& c = RememberNavController();
+            nav = &c;
+            NavHost(c, "home", [&](NavGraphBuilder& b) {
+                b.Composable("home", [&](const NavBackStackEntry&) {
+                    homeOwner = lifecycle::CurrentLifecycleOwner();
+                    lifecycle::LifecycleResumeEffect(rt::Keys(0), [&](lifecycle::LifecycleResumePauseEffectScope& s) {
+                        events.push_back("resume");
+                        return s.OnPauseOrDispose([&](lifecycle::LifecycleOwner&) { events.push_back("pause"); });
+                    });
+                });
+                b.Composable("detail", [&](const NavBackStackEntry&) {});
+            });
+        });
+    });
+    h.Frames(2);
+    auto entry = nav->CurrentBackStackEntry();
+    CHECK(homeOwner == lifecycle::LifecycleOwnerPtr(entry) && entry->CurrentState() == LifecycleState::Resumed);
+    CHECK(events == std::vector<std::string>{ "resume" });
+    // The host pausing pauses the entry (and its effects).
+    host->registry.HandleLifecycleEvent(lifecycle::Event::OnPause);
+    CHECK(entry->CurrentState() == LifecycleState::Started && events.back() == "pause");
+    host->registry.HandleLifecycleEvent(lifecycle::Event::OnResume);
+    // Navigating away drops home below RESUMED, then to CREATED once the transition ends.
+    nav->Navigate("detail");
+    h.Frames(60);
+    CHECK(entry->CurrentState() == LifecycleState::Created);
+    CHECK(events == (std::vector<std::string>{ "resume", "pause", "resume", "pause" }));
 }

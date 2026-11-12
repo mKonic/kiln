@@ -26,7 +26,9 @@ namespace kiln::navigation {
 
     void NavBackStackEntry::UpdateState() {
         const LifecycleState s = int(m_Host) < int(m_Max) ? m_Host : m_Max;
-        if (m_Current.Peek() != s) m_Current.Set(s);
+        // An entry that never got to CREATED has nothing to destroy.
+        if (m_Lifecycle.CurrentState() == LifecycleState::Initialized && s == LifecycleState::Destroyed) return;
+        m_Lifecycle.SetCurrentState(s);
     }
 
     std::optional<std::string> NavBackStackEntry::GetString(const std::string& key) const {
@@ -185,7 +187,20 @@ namespace kiln::navigation {
 
     NavController::NavController() { m_Provider.AddNavigator(std::make_shared<NavGraphNavigator>(m_Provider)); }
 
-    NavController::~NavController() = default;
+    NavController::~NavController() {
+        if (m_LifecycleOwner) m_LifecycleOwner->GetLifecycle().RemoveObserver(m_LifecycleObserver);
+    }
+
+    void NavController::SetLifecycleOwner(std::shared_ptr<lifecycle::LifecycleOwner> owner) {
+        if (owner == m_LifecycleOwner) return;
+        if (m_LifecycleOwner) m_LifecycleOwner->GetLifecycle().RemoveObserver(m_LifecycleObserver);
+        m_LifecycleOwner = std::move(owner);
+        if (!m_LifecycleObserver)
+            m_LifecycleObserver = lifecycle::MakeEventObserver([this](lifecycle::LifecycleOwner&, lifecycle::Event e) {
+                SetHostLifecycleState(lifecycle::TargetState(e));
+            });
+        if (m_LifecycleOwner) m_LifecycleOwner->GetLifecycle().AddObserver(m_LifecycleObserver);
+    }
 
     NavGraph& NavController::Graph() const {
         if (!m_Graph) throw std::logic_error("You must call setGraph() before calling getGraph()");

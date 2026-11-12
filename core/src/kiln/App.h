@@ -6,6 +6,7 @@
 #include "kiln/PathCache.h"
 #include "kiln/QuadRenderer.h"
 #include "kiln/TextBackend.h"
+#include "kiln/lifecycle/LifecycleCompose.h"
 #include "kiln/runtime/Composition.h"
 #include "kiln/runtime/Saveable.h"
 #include "kiln/runtime/Task.h"
@@ -86,6 +87,11 @@ namespace kiln {
         void RestoreState(std::span<const std::uint8_t> bytes);
         std::vector<std::uint8_t> SaveState() const;
         ui::Owner& GetOwner() { return m_Owner; }
+        // The window's lifecycle (LocalLifecycleOwner where content provides none): CREATED from
+        // construction; the host sends the activity's events (on desktop, RESUMED while the
+        // window is open, DESTROYED before the app goes).
+        void HandleLifecycleEvent(lifecycle::Event event) { m_Lifecycle->registry.HandleLifecycleEvent(event); }
+        lifecycle::Lifecycle& GetLifecycle() { return m_Lifecycle->registry; }
         // Input from the host, positions in surface pixels. Layout is brought up to date first
         // so hit testing sees what is on screen (AndroidComposeView.handleMotionEvent).
         void ProcessPointer(const ui::RawPointerEvent& event);
@@ -150,6 +156,11 @@ namespace kiln {
 
     private:
         HostServices m_Services;
+        struct HostLifecycleOwner final : lifecycle::LifecycleOwner {
+            lifecycle::LifecycleRegistry registry{ *this };
+            lifecycle::Lifecycle& GetLifecycle() override { return registry; }
+        };
+        std::shared_ptr<HostLifecycleOwner> m_Lifecycle = std::make_shared<HostLifecycleOwner>();
         ui::Owner m_Owner;
         ui::IndirectPointerAdapter m_IndirectAdapter;
         std::unique_ptr<rt::SaveableStateRegistry> m_Saveable = std::make_unique<rt::SaveableStateRegistry>();

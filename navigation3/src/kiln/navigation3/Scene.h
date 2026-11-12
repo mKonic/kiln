@@ -5,6 +5,7 @@
 
 #include "kiln/foundation/Dialog.h"
 #include "kiln/foundation/NavigationEvent.h"
+#include "kiln/lifecycle/LifecycleCompose.h"
 #include "kiln/navigation3/DecoratedNavEntries.h"
 
 #include <set>
@@ -139,7 +140,10 @@ namespace kiln::navigation3 {
         const NavEntries<T>& OverlaidEntries() const override { return m_Overlaid; }
         void Content() const override {
             NavEntry<T> entry = m_Entries.front();
-            foundation::Dialog(m_OnBack, m_Properties, [entry] { entry.Content(); });
+            const auto lifecycleOwner = lifecycle::RememberLifecycleOwner();
+            foundation::Dialog(m_OnBack, m_Properties, [entry, lifecycleOwner] {
+                rt::Composition::Current()->Provide(lifecycle::LocalLifecycleOwner, lifecycleOwner, [entry] { entry.Content(); });
+            });
         }
         bool Equals(const Scene<T>& other) const override {
             const auto& o = static_cast<const DialogScene&>(other);
@@ -219,6 +223,25 @@ namespace kiln::navigation3 {
                         (*movable)(std::function<void()>([entry] { entry.Content(); }));
                     }, rt::Key(contentKey));
                 });
+        }, {}, key);
+        return *decorator;
+    }
+
+    // BackStackAwareLifecycleNavEntryDecorator: each entry gets a lifecycle owner capped at
+    // RESUMED while on the back stack and at CREATED once popped (still animating out).
+    template<typename T>
+    NavEntryDecorator<T> RememberBackStackAwareLifecycleNavEntryDecorator(const NavEntries<T>& entries, rt::Key key = {}) {
+        auto& c = *rt::Composition::Current();
+        // rememberUpdatedState(entries)
+        auto& keys = c.Remember<std::shared_ptr<std::set<std::string>>>([] { return std::make_shared<std::set<std::string>>(); }, {}, key);
+        keys->clear();
+        for (const auto& e : entries) keys->insert(e.ContentKey());
+        auto& decorator = c.Remember<std::shared_ptr<NavEntryDecorator<T>>>([&] {
+            return std::make_shared<NavEntryDecorator<T>>([keys = keys](const NavEntry<T>& entry) {
+                const bool inBackStack = keys->contains(entry.ContentKey());
+                const auto owner = lifecycle::RememberLifecycleOwner(inBackStack ? lifecycle::State::Resumed : lifecycle::State::Created);
+                rt::Composition::Current()->Provide(lifecycle::LocalLifecycleOwner, owner, [entry] { entry.Content(); });
+            });
         }, {}, key);
         return *decorator;
     }

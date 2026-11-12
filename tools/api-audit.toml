@@ -26,6 +26,13 @@ modules = [
     "navigation/navigation-compose",
     "navigationevent/navigationevent-compose",
     "graphics/graphics-shapes",
+    "lifecycle/lifecycle-common",
+    "lifecycle/lifecycle-runtime",
+    "lifecycle/lifecycle-runtime-compose",
+    "lifecycle/lifecycle-viewmodel",
+    "lifecycle/lifecycle-viewmodel-compose",
+    "lifecycle/lifecycle-viewmodel-navigation3",
+    "lifecycle/lifecycle-viewmodel-savedstate",
 ]
 
 [renamed]

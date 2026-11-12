@@ -44,7 +44,7 @@ namespace kiln::navigation3 {
         {
             auto& currentOnBack = c.Remember<std::shared_ptr<std::function<void()>>>([] { return std::make_shared<std::function<void()>>(); }, {}, key);
             *currentOnBack = onBack;
-            const NavEntries<T> decorated = RememberDecoratedNavEntries(entries, { RememberSceneSetupNavEntryDecorator<T>() });
+            const NavEntries<T> decorated = RememberDecoratedNavEntries(entries, { RememberSceneSetupNavEntryDecorator<T>(), RememberBackStackAwareLifecycleNavEntryDecorator<T>(entries) });
             struct Cache {
                 std::vector<SceneStrategyPtr<T>> strategies;
                 NavEntries<T> entries;

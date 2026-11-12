@@ -1,6 +1,7 @@
 #include "Check.h"
 
 #include "kiln/foundation/Compose.h"
+#include "kiln/lifecycle/LifecycleCompose.h"
 #include "kiln/navigation3/NavDisplay.h"
 #include "kiln/navigation3/ResultEventBus.h"
 #include "kiln/runtime/Saveable.h"
@@ -205,4 +206,36 @@ TEST(ResultEventBusDeliversResultsToTheWaitingEntry) {
     h.Pump();
     CHECK_EQ(received.size(), std::size_t(4));
     CHECK_EQ(received.back(), 5);
+}
+
+TEST(NavDisplayEntriesResumeOnceSettledAndPoppedOnesStopAtCreated) {
+    Harness h;
+    NavBackStack<Route>* stack = nullptr;
+    lifecycle::LifecycleOwnerPtr home, detail;
+    h.Run([&] {
+        auto& s = RememberNavBackStack<Route>(rt::Saver<Route>{ [](const Route&) { return rt::SavedValue(); }, [](const rt::SavedValue&) { return std::optional<Route>(); } },
+                                            { Home{} });
+        stack = &s;
+        NavDisplay(s, EntryProvider<Route>([&](EntryProviderScope<Route>& p) {
+            p.Entry<Home>([&](const Home&) { home = lifecycle::CurrentLifecycleOwner(); Box(Modifier{}); });
+            p.Entry<Detail>([&](const Detail&) { detail = lifecycle::CurrentLifecycleOwner(); Box(Modifier{}); });
+        }));
+    });
+    h.Frames(2);
+    CHECK(home && home->GetLifecycle().CurrentState() == lifecycle::State::Resumed);
+    // Pushing: the new entry is STARTED while the transition runs, RESUMED once settled.
+    stack->Add(Detail{ 1 });
+    h.Frames(3);
+    CHECK(detail && detail->GetLifecycle().CurrentState() == lifecycle::State::Started);
+    CHECK(home->GetLifecycle().CurrentState() == lifecycle::State::Started);
+    h.Frames(60);
+    CHECK(detail->GetLifecycle().CurrentState() == lifecycle::State::Resumed);
+    // Popping: the popped entry is capped at CREATED while it animates out, then destroyed.
+    auto popped = detail;
+    stack->RemoveLast();
+    h.Frames(3);
+    CHECK(popped->GetLifecycle().CurrentState() == lifecycle::State::Created);
+    h.Frames(60);
+    CHECK(popped->GetLifecycle().CurrentState() == lifecycle::State::Destroyed);
+    CHECK(home->GetLifecycle().CurrentState() == lifecycle::State::Resumed);
 }

@@ -267,13 +267,21 @@ namespace kiln::navigation3 {
 
             foundation::DeferredAnimatedContent(
                 transition, modifier,
-                [bookRef](rt::Key k) {
+                [bookRef, transitionPtr = &transition, inPredictiveBack, overlaysRef = currentOverlays](rt::Key k) {
                     auto it = bookRef->sceneMap.find(k.value);
                     if (it == bookRef->sceneMap.end()) return;
                     const ScenePtr<T> s = it->second;
                     auto ex = bookRef->excluded.find(k.value);
                     auto excluded = ex == bookRef->excluded.end() ? std::make_shared<const std::set<std::string>>() : ex->second;
-                    rt::Composition::Current()->Provide(LocalEntriesToExcludeFromCurrentScene, excluded, [s] { s->Content(); });
+                    // The scene (and its entries) is RESUMED only once the transition has settled
+                    // with no overlay above it; STARTED meanwhile.
+                    const bool settled = transitionPtr->CurrentState() == transitionPtr->TargetState() && !inPredictiveBack;
+                    const auto sceneOwner = lifecycle::RememberLifecycleOwner(settled && overlaysRef->Get().empty() ? lifecycle::State::Resumed
+                                                                                                                    : lifecycle::State::Started);
+                    auto* cc = rt::Composition::Current();
+                    cc->Provide(lifecycle::LocalLifecycleOwner, sceneOwner, [cc, excluded, s] {
+                        cc->Provide(LocalEntriesToExcludeFromCurrentScene, excluded, [s] { s->Content(); });
+                    });
                 },
                 [contentTransform, targetZ, opts](AnimatedContentTransitionScope& scope) {
                     ContentTransform t = contentTransform(scope);
@@ -301,8 +309,13 @@ namespace kiln::navigation3 {
                 auto excluded = ex == book->excluded.end() ? std::make_shared<const std::set<std::string>>() : ex->second;
                 bool onBackStack = false;
                 for (const auto& o : overlayScenes) if (o->Key() == overlay->Key()) { onBackStack = true; break; }
-                c.Section([&c, overlay, excluded, onBackStack, list = currentOverlays] {
-                    c.Provide(LocalEntriesToExcludeFromCurrentScene, excluded, [overlay] { overlay->Content(); });
+                const bool topmost = !overlayScenes.empty() && overlayScenes.front()->Key() == overlay->Key();
+                c.Section([&c, overlay, excluded, onBackStack, topmost, list = currentOverlays] {
+                    // Only the topmost overlay is RESUMED.
+                    const auto overlayOwner = lifecycle::RememberLifecycleOwner(topmost ? lifecycle::State::Resumed : lifecycle::State::Started);
+                    c.Provide(lifecycle::LocalLifecycleOwner, overlayOwner, [&c, excluded, overlay] {
+                        c.Provide(LocalEntriesToExcludeFromCurrentScene, excluded, [overlay] { overlay->Content(); });
+                    });
                     // A popped overlay finishes onRemove before it leaves.
                     if (!onBackStack)
                         c.LaunchedEffect(rt::Keys(overlay->Key()), [overlay, list]() -> rt::Task<> { return [](OverlayScenePtr<T> o, std::shared_ptr<rt::StateList<OverlayScenePtr<T>>> l) -> rt::Task<> {
