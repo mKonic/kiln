@@ -91,7 +91,7 @@ else()
     add_custom_command(TARGET gallery POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_directory
                        ${CMAKE_SOURCE_DIR}/samples/gallery/assets $<TARGET_FILE_DIR:gallery>/assets)
     add_executable(catalog samples/catalog/main.cpp)
-    target_link_libraries(catalog PRIVATE kiln_hostdev kiln_material3)
+    target_link_libraries(catalog PRIVATE kiln_hostdev kiln_material3 kiln_navigation)
     add_custom_command(TARGET catalog POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_directory
                        ${CMAKE_SOURCE_DIR}/samples/catalog/assets $<TARGET_FILE_DIR:catalog>/assets)
 endif()

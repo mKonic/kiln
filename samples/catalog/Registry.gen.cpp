@@ -55,7 +55,7 @@ namespace catalog {
                 { "ListDetailPaneScaffoldSampleWithExtraPaneLevitatedAsDialog", "Adaptive examples", false, samples::ListDetailPaneScaffoldSampleWithExtraPaneLevitatedAsDialog },
                 { "SupportingPaneScaffoldSample", "Adaptive examples", false, samples::SupportingPaneScaffoldSample },
                 { "SupportingPaneScaffoldSampleWithExtraPaneLevitatedAsBottomSheet", "Adaptive examples", false, samples::SupportingPaneScaffoldSampleWithExtraPaneLevitatedAsBottomSheet },
-                { "ListDetailWithNavigation2Sample", "Adaptive examples", false, nullptr },
+                { "ListDetailWithNavigation2Sample", "Adaptive examples", false, samples::ListDetailWithNavigation2Sample },
                 { "ListDetailWithNavigation3Sample", "Adaptive examples", false, samples::ListDetailWithNavigation3Sample },
             } },
             { 2, "Badge", "A badge can contain dynamic information, such as the presence of a new notification or a number of pending requests. Badges can be icon only or contain a short text.", true, 0, {

@@ -9,10 +9,13 @@
 #include <kiln/material3/Card.h>
 #include <kiln/material3/DragHandle.h>
 #include <kiln/material3/IconButton.h>
+#include <kiln/material3/RadioButton.h>
 #include <kiln/material3/Scaffold.h>
 #include <kiln/material3/adaptive/ThreePaneScaffoldNavigator.h>
 #include <kiln/material3/adaptive/navigation3/SceneStrategies.h>
 #include <kiln/navigation3/NavDisplay.h>
+#include <kiln/navigation/NavHost.h>
+#include <kiln/foundation/Scroll.h>
 
 #include <memory>
 #include <optional>
@@ -405,6 +408,88 @@ namespace catalog::samples {
                                     inScene ? std::function<void()>() : std::function<void()>([stack] { BackButton([stack] { stack->RemoveLast(); }, true); }));
             }, Strategy::ExtraPane());
         }), FillMax({}, Axis::Both), options);
+    }
+
+
+    namespace {
+        void RadioButtonRow(bool selected, std::function<void()> onClick, const std::string& text) {
+            ClickableOptions click;
+            click.role = Role::RadioButton;
+            Row(Selectable({}, selected, onClick, click), Arrangement::Start(), AlignmentV::CenterVertically(), [selected, onClick, text] {
+                m3::RadioButton(selected, onClick);
+                m3::Text(text);
+            });
+        }
+    }
+
+    void ListDetailWithNavigation2Sample() {
+        namespace Nav = kiln::navigation;
+        const std::string welcomeRoute = "welcome";
+        const std::string listDetailRoute = "listdetail";
+        const LaunchScope coroutineScope = RememberCoroutineScope();
+        // `navController` handles navigation outside the ListDetailPaneScaffold, and
+        // `scaffoldNavigator` handles navigation within it.
+        Nav::NavHostController& navController = Nav::RememberNavController();
+        Navigator& scaffoldNavigator = A::RememberListDetailPaneScaffoldNavigator<NavItemData>(std::nullopt, A::ListDetailPaneScaffoldDefaults::adaptStrategies(),
+                                                                                                 true, std::nullopt, NavItemSaver());
+        // Back behavior can be customized based on the needs of the app.
+        auto& backBehaviorIndex = RememberSaveableState(0);
+        static const A::BackNavigationBehavior backBehaviors[] = {
+            A::BackNavigationBehavior::PopUntilScaffoldValueChange,
+            A::BackNavigationBehavior::PopUntilCurrentDestinationChange,
+            A::BackNavigationBehavior::PopUntilContentChange,
+            A::BackNavigationBehavior::PopLatest,
+        };
+        Nav::NavController* nc = &navController;
+        Navigator* sn = &scaffoldNavigator;
+        auto* indexState = &backBehaviorIndex;
+
+        Nav::NavHostOptions options;
+        options.enterTransition = [](Nav::NavTransitionScope&) -> std::optional<EnterTransition> { return SlideInHorizontally([](int w) { return w; }); };
+        options.exitTransition = [](Nav::NavTransitionScope&) -> std::optional<ExitTransition> { return SlideOutHorizontally([](int w) { return -w; }); };
+        options.popEnterTransition = [](Nav::NavTransitionScope&) -> std::optional<EnterTransition> { return SlideInHorizontally([](int w) { return -w; }); };
+        options.popExitTransition = [](Nav::NavTransitionScope&) -> std::optional<ExitTransition> { return SlideOutHorizontally([](int w) { return w; }); };
+        Nav::NavHost(navController, welcomeRoute, [=](Nav::NavGraphBuilder& b) {
+            b.Composable(welcomeRoute, [nc, indexState, listDetailRoute](const Nav::NavBackStackEntry&) {
+                m3::Scaffold(FillMax({}, Axis::Both), {}, [nc, indexState, listDetailRoute](const PaddingValues& paddingValues) {
+                    auto& scroll = RememberScrollState();
+                    Column(FillMax(Padding(Padding(VerticalScroll({}, scroll), paddingValues), 24_dp), Axis::Both), Arrangement::SpacedBy(16_dp), AlignmentH::Start(),
+                           [nc, indexState, listDetailRoute] {
+                        TextStyled("How should the scaffold handle back navigation?", m3::MaterialTheme::typography().headlineMedium);
+                        const int index = indexState->Get();
+                        RadioButtonRow(index == 0, [indexState] { indexState->Set(0); },
+                                       "PopUntilScaffoldValueChange - Back navigation forces a change in which pane(s) is/are shown.");
+                        RadioButtonRow(index == 1, [indexState] { indexState->Set(1); },
+                                       "PopUntilCurrentDestinationChange - Back navigation forces a change in which pane is currently considered \"active\".");
+                        RadioButtonRow(index == 2, [indexState] { indexState->Set(2); },
+                                       "PopUntilContentChange - Back navigation forces a change in the content of any pane or which pane(s) is/are shown.\n"
+                                       "Note: this may result in unintuitive behavior if the device size changes in the middle of the navigation.");
+                        RadioButtonRow(index == 3, [indexState] { indexState->Set(3); },
+                                       "PopLatest - No special back handling.\n"
+                                       "Note: this may result in unintuitive behavior if the device size changes in the middle of the navigation.");
+                        m3::Button([nc, listDetailRoute] { nc->Navigate(listDetailRoute); }, {}, {}, [] { m3::Text("Next"); });
+                    });
+                });
+            });
+            b.Composable(listDetailRoute, [sn, coroutineScope, indexState](const Nav::NavBackStackEntry&) {
+                const A::BackNavigationBehavior behavior = backBehaviors[indexState->Get()];
+                const auto destination = sn->CurrentDestination();
+                const std::optional<NavItemData> selectedItem = destination ? destination->contentKey : std::nullopt;
+                A::NavigableScaffoldOptions o;
+                o.defaultBackBehavior = behavior;
+                o.extraPane = [sn, selectedItem, coroutineScope, behavior](const ThreePaneScaffoldPaneScope& s) {
+                    A::AnimatedPane(s, [sn, selectedItem, coroutineScope, behavior] { ExtraPaneContent(ExtraItems(), selectedItem, *sn, coroutineScope, behavior); });
+                };
+                A::NavigableListDetailPaneScaffold(*sn,
+                    [sn, selectedItem, coroutineScope](const ThreePaneScaffoldPaneScope& s) {
+                        A::AnimatedPane(s, s.PreferredWidth({}, 200_dp), {}, [sn, selectedItem, coroutineScope] { ListPaneContent(Items(), selectedItem, *sn, coroutineScope); });
+                    },
+                    [sn, selectedItem, coroutineScope, behavior](const ThreePaneScaffoldPaneScope& s) {
+                        A::AnimatedPane(s, [sn, selectedItem, coroutineScope, behavior] { DetailPaneContent(Items(), selectedItem, *sn, coroutineScope, true, behavior); });
+                    },
+                    {}, o);
+            });
+        }, {}, options);
     }
 
 }
