@@ -1064,7 +1064,6 @@ namespace kiln::foundation {
             }
         };
 
-        bool IsDragGestureInProgress() { return false; }   // directDragGestureInitiator (selection gestures)
     }
 
     void BasicTextField(TextFieldState& state, const Modifier& modifier, BasicTextFieldOptions options, rt::Key key) {
@@ -1143,7 +1142,8 @@ namespace kiln::foundation {
         });
         // ScrollableDefaults.reverseDirection: horizontal scrolling reverses in RTL.
         ScrollableOptions so;
-        so.enabled = options.enabled && !IsDragGestureInProgress();
+        // Off while a touch drags the selection; a mouse drag still lets the wheel scroll.
+        so.enabled = options.enabled && field->selection->DirectDragGestureInitiator() != TextFieldSelectionState::InputType::Touch;
         so.reverseDirection = orientation == Orientation::Horizontal && layoutDirection == ui::LayoutDirection::Rtl;
         m = Scrollable(std::move(m), scrollState, orientation, so);
         m = PointerHoverIcon(std::move(m), PointerIcon::Text);
