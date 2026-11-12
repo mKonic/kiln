@@ -309,6 +309,11 @@ namespace kiln {
             desc.surface = &surface;
             desc.appName = "kiln";
             desc.engineName = "kiln";
+#ifdef __ANDROID__
+            // External surfaces below kiln's frame show through where content clears it; the
+            // view marks its surface opaque while there are none, which makes alpha moot.
+            desc.swapchainTransparent = true;
+#endif
             DeviceError error;
             m_Device = CreateDevice(desc, &error);
             if (!m_Device) {

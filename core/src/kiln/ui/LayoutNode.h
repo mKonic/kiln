@@ -26,6 +26,7 @@
 #include "kiln/ui/RectCallbacks.h"
 #include "kiln/ui/Window.h"
 #include "kiln/ui/DragAndDrop.h"
+#include "kiln/ui/ExternalSurface.h"
 #include "kiln/ui/ScrollCapture.h"
 #include "kiln/ui/ActivityResult.h"
 #include "kiln/ui/Insets.h"
@@ -670,6 +671,40 @@ namespace kiln::ui {
         // The platform took focus away from (or gave it back to) the host view.
         void OnHostFocusChanged(bool focused);
 
+        // External surfaces (AndroidExternalSurface): content adds them by client; the host
+        // creates them (now, or once it is set) and reports back by id.
+        void SetExternalSurfaceHost(ExternalSurfaceHost host) {
+            m_SurfaceHost = std::move(host);
+            if (m_SurfaceHost.create)
+                for (auto& [id, s] : m_ExternalSurfaces) m_SurfaceHost.create(id, s.config);
+        }
+        int AddExternalSurface(ExternalSurfaceClient* client, const ExternalSurfaceConfig& config) {
+            const int id = m_NextExternalSurface++;
+            m_ExternalSurfaces[id] = { client, config };
+            if (m_SurfaceHost.create) m_SurfaceHost.create(id, config);
+            return id;
+        }
+        void UpdateExternalSurface(int id, const ExternalSurfaceConfig& config) {
+            auto it = m_ExternalSurfaces.find(id);
+            if (it == m_ExternalSurfaces.end() || it->second.config == config) return;
+            it->second.config = config;
+            if (m_SurfaceHost.update) m_SurfaceHost.update(id, config);
+        }
+        void RemoveExternalSurface(int id) {
+            if (!m_ExternalSurfaces.erase(id)) return;
+            if (m_SurfaceHost.release) m_SurfaceHost.release(id);
+        }
+        // From the host (a surface it removed after RemoveExternalSurface is no longer known).
+        void DispatchExternalSurfaceCreated(int id, PlatformSurface surface, int width, int height) {
+            if (auto it = m_ExternalSurfaces.find(id); it != m_ExternalSurfaces.end()) it->second.client->OnSurfaceCreated(surface, width, height);
+        }
+        void DispatchExternalSurfaceChanged(int id, PlatformSurface surface, int width, int height) {
+            if (auto it = m_ExternalSurfaces.find(id); it != m_ExternalSurfaces.end()) it->second.client->OnSurfaceChanged(surface, width, height);
+        }
+        void DispatchExternalSurfaceDestroyed(int id, PlatformSurface surface) {
+            if (auto it = m_ExternalSurfaces.find(id); it != m_ExternalSurfaces.end()) it->second.client->OnSurfaceDestroyed(surface);
+        }
+
         // Text input: one active session at a time (TextInputServiceAndroid).
         void SetTextInputHost(TextInputHost host) { m_InputHost = std::move(host); }
         void StartTextInput(TextInputSession& session);
@@ -875,6 +910,13 @@ namespace kiln::ui {
         std::function<void(Rect)> m_RequestRectangle;
         std::vector<int> m_KeysDown;
         TextInputHost m_InputHost;
+        struct ExternalSurfaceEntry {
+            ExternalSurfaceClient* client = nullptr;
+            ExternalSurfaceConfig config;
+        };
+        ExternalSurfaceHost m_SurfaceHost;
+        std::map<int, ExternalSurfaceEntry> m_ExternalSurfaces;
+        int m_NextExternalSurface = 1;
         std::shared_ptr<SoftwareKeyboardController> m_KeyboardController;
         TextInputSession* m_Input = nullptr;
         WindowInsetsHolder m_Insets;
