@@ -14491,3 +14491,39 @@ TEST(ShortNavigationBarIconOnlyItemRespectsMaxIntrinsicWidth) {
     CHECK(std::abs(float(rowWidth) - expected) < 1);
     CHECK(item && std::abs(item->boundsInRoot.Width() - expected) < 1);
 }
+
+TEST(ModalBottomSheetWindowSetsBarIconsFromItsContent) {
+    // The sheet's window gets light bars (dark icons) for dark content, unless the properties say.
+    for (int variant = 0; variant < 3; ++variant) {
+        ui::Owner window;
+        window.SetDensity({ 1, 1 });
+        std::optional<std::pair<bool, bool>> applied;
+        struct NoWindow final : ui::PlatformDialog { void Update(const ui::DialogWindowProperties&) override {} };
+        ui::DialogHost dialogs;
+        dialogs.create = [&](ui::Owner& content, const ui::DialogWindowProperties&, std::function<void()>) -> std::unique_ptr<ui::PlatformDialog> {
+            content.SetSystemBarsAppearanceHost([&](bool s, bool n) { applied = std::pair(s, n); });
+            return std::make_unique<NoWindow>();
+        };
+        window.SetDialogHost(dialogs);
+        rt::Composition comp(window.Root(), rt::Dispatcher::Main());
+        comp.SetContent([&] {
+            rt::Composition::Current()->Provide(ui::LocalOwner, &window, [&] {
+                material3::ModalBottomSheetOptions o;
+                if (variant == 1) o.contentColor = ui::Color(0xFFFFFFFFu);   // light content (a dark sheet)
+                if (variant == 2) o.properties.isAppearanceLightStatusBars = false;
+                material3::ModalBottomSheet([] {}, ui::Modifier{}, o, [] {});
+            });
+        });
+        for (int i = 0; i < 3; ++i) {
+            rt::Dispatcher::Main().RunPending();
+            rt::Composition::RecomposeAll();
+            window.MeasureAndLayout({ 400, 800 });
+        }
+        CHECK(applied.has_value());
+        if (variant == 0) CHECK(applied == std::pair(true, true));
+        if (variant == 1) CHECK(applied == std::pair(false, false));
+        if (variant == 2) CHECK(applied == std::pair(false, true));
+        comp.SetContent([] {});
+        rt::Composition::RecomposeAll();
+    }
+}

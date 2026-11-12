@@ -214,8 +214,12 @@ namespace kiln::material3 {
             std::function<rt::Task<>(BackProgress&)> onBack;
             if (dismissOnBack) onBack = [back, onDismiss](BackProgress& events) { return BackStateHandler(events, back, onDismiss); };
             else onBack = [](BackProgress& events) { return HoldBack(events); };
+            // BasicEdgeToEdgeDialog's lightStatusBars / lightNavigationBars: from the content colour here.
+            const bool lightBars = Luminance(c.Read(LocalContentColor)) < 0.5f;
             Dialog(onDismiss, properties, onBack, [=] {
                 auto& cc = *rt::Composition::Current();
+                if (ui::Owner* window = cc.Read(ui::LocalOwner))
+                    cc.SideEffect([window, lightBars] { window->SetSystemBarsAppearance(lightBars, lightBars); });
                 const auto focus = cc.Remember<std::shared_ptr<ui::FocusRequester>>([] { return std::make_shared<ui::FocusRequester>(); });
                 ui::Modifier box = OnKeyEvent({}, [dismissOnBack, onDismiss](const ui::KeyEvent& e) {
                     // The dialog window's onKeyUp: Escape dismisses as Back does.

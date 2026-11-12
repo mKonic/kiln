@@ -14,6 +14,9 @@ namespace kiln::material3 {
         foundation::SecureFlagPolicy securePolicy = foundation::SecureFlagPolicy::Inherit;
         bool shouldDismissOnBackPress = true;
         bool shouldDismissOnClickOutside = true;
+        // The sheet window's system bar icons: dark for light bars. Unset: from the sheet's
+        // content colour (dark content means light bars).
+        std::optional<bool> isAppearanceLightStatusBars, isAppearanceLightNavigationBars;
         bool operator==(const ModalBottomSheetProperties&) const = default;
     };
 

@@ -481,7 +481,11 @@ namespace kiln::ui {
         void PlayAudioEffect(int effect, float volume = -1) { if (m_PlayAudio) m_PlayAudio(effect, volume); }
         // System bar icons (WindowInsetsControllerCompat.isAppearanceLight*Bars): dark icons for
         // light content behind the bars.
-        void SetSystemBarsAppearanceHost(std::function<void(bool lightStatusBars, bool lightNavigationBars)> fn) { m_BarsAppearance = std::move(fn); }
+        // A request made before the host exists is applied when it is set.
+        void SetSystemBarsAppearanceHost(std::function<void(bool lightStatusBars, bool lightNavigationBars)> fn) {
+            m_BarsAppearance = std::move(fn);
+            if (m_BarsAppearance && m_PendingBars) m_BarsAppearance(m_PendingBars->first, m_PendingBars->second);
+        }
         // enableEdgeToEdge(statusBarStyle, navigationBarStyle) (activity EdgeToEdge.kt): bar
         // colours, contrast and icon appearance; the activity starts with the defaults.
         void SetEdgeToEdgeHost(std::function<void(const SystemBarStyle&, const SystemBarStyle&)> fn) { m_EdgeToEdge = std::move(fn); }
@@ -490,6 +494,7 @@ namespace kiln::ui {
             if (m_EdgeToEdge) m_EdgeToEdge(statusBarStyle, navigationBarStyle);
         }
         void SetSystemBarsAppearance(bool lightStatusBars, bool lightNavigationBars) {
+            m_PendingBars = std::pair(lightStatusBars, lightNavigationBars);
             if (m_BarsAppearance) m_BarsAppearance(lightStatusBars, lightNavigationBars);
         }
         // Magnifier (android.widget.Magnifier, API 28): created per user, shown over a source
@@ -790,6 +795,7 @@ namespace kiln::ui {
         bool m_LaidOut = false;
         std::function<void(int)> m_Haptic;
         std::function<void(bool, bool)> m_BarsAppearance;
+        std::optional<std::pair<bool, bool>> m_PendingBars;   // the latest request (light status, light navigation)
         std::function<void(const SystemBarStyle&, const SystemBarStyle&)> m_EdgeToEdge;
         ClipboardHost m_Clipboard;
         std::map<std::string, std::shared_ptr<void>> m_Services;

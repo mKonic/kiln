@@ -104,7 +104,14 @@ namespace kiln::material3 {
         dialog.usePlatformDefaultWidth = false;
         dialog.decorFitsSystemWindows = false;
         dialog.scrimAlpha = 0;
+        // Color.isDark: not transparent and luminance at most 0.5.
+        const bool darkContent = !(contentColor == Color::Transparent()) && Luminance(contentColor) <= 0.5f;
+        const bool lightStatusBars = properties.isAppearanceLightStatusBars.value_or(darkContent);
+        const bool lightNavigationBars = properties.isAppearanceLightNavigationBars.value_or(darkContent);
         Dialog(settleToDismiss, dialog, [](BackProgress& events) { return HoldBack(events); }, [=] {
+            // updateParameters: the sheet window's bar icons follow its content.
+            if (ui::Owner* window = rt::Composition::Current()->Read(ui::LocalOwner))
+                rt::Composition::Current()->SideEffect([window, lightStatusBars, lightNavigationBars] { window->SetSystemBarsAppearance(lightStatusBars, lightNavigationBars); });
             ui::Modifier box = FillMax(ui::Modifier{}, Axis::Both);
             box = Semantics(std::move(box), [](ui::SemanticsConfiguration& s) { s.isTraversalGroup = true; });
             Box(box, ui::Alignment::TopStart(), false, [=] {
