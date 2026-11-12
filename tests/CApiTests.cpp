@@ -25,6 +25,10 @@ extern "C" {
     void capi_m3_dismiss_snackbar(void);
 }
 
+extern int kpp_effect_runs, kpp_disposals;
+extern std::string kpp_field_text;
+void kpp_content();
+
 namespace {
     struct WithFakeText { test::FakeText text; };
     struct Harness : WithFakeText {
@@ -167,4 +171,21 @@ TEST(CApiMaterial3SnackbarResultAndProvidedLocal) {
     capi_m3_dismiss_snackbar();
     h.Frames(30);
     CHECK_EQ(capi_snack_result, int(KILN_M3_SNACKBAR_RESULT_ACTION_PERFORMED));
+}
+
+TEST(KilnppLambdasStateEffectsAndMaterial3) {
+    kpp_effect_runs = kpp_disposals = 0;
+    Harness h;
+    h.composition.SetContent([] { kpp_content(); });
+    h.Pump();
+    CHECK_EQ(h.SubtreeText("kpp-button"), std::string("Taps 0"));
+    CHECK(h.Has("row 0") && h.Has("row 4") && !h.Has("row 49"));
+    CHECK_EQ(kpp_field_text, std::string("hello"));
+    CHECK(h.Click("kpp-button"));
+    h.Pump();
+    CHECK_EQ(h.SubtreeText("kpp-button"), std::string("Taps 1"));
+    CHECK_EQ(kpp_effect_runs, 1);
+    CHECK(h.Click("kpp-button"));
+    h.Pump();
+    CHECK_EQ(kpp_disposals, 1);
 }

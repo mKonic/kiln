@@ -104,7 +104,7 @@ target_sources(catalog PRIVATE samples/catalog/Registry.gen.cpp samples/catalog/
 enable_testing()
 file(GLOB KILN_TEST_SOURCES CONFIGURE_DEPENDS tests/*.cpp)
 # tests/capi: content written in C against include/kiln (the header must stay valid C).
-file(GLOB KILN_CAPI_TEST_SOURCES CONFIGURE_DEPENDS tests/capi/*.c)
+file(GLOB KILN_CAPI_TEST_SOURCES CONFIGURE_DEPENDS tests/capi/*.c tests/capi/*.cpp)
 set_source_files_properties(${KILN_CAPI_TEST_SOURCES} PROPERTIES COMPILE_OPTIONS "-Wall;-Wextra;-Wpedantic;-Werror")
 add_executable(kiln_tests ${KILN_TEST_SOURCES} ${KILN_CAPI_TEST_SOURCES})
 target_link_libraries(kiln_tests PRIVATE kiln_material3 kiln_navigation)
