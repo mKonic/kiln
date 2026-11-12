@@ -535,3 +535,54 @@ TEST(DeferredAnimationTargetsAValueKnownOnlyInLayout) {
     h.Step(20);
     CHECK_EQ((*anim->Value())[0], 100.0f);
 }
+
+#include "kiln/foundation/SharedTransition.h"
+
+TEST(SharedElementAnimatesBetweenItsTwoPlaces) {
+    LayoutHarness h;
+    rt::State<bool> detail(false);
+    ui::LayoutNode* smallNode = nullptr;
+    ui::LayoutNode* bigNode = nullptr;   // the shared element's layout in each place
+    bool sawActive = false;
+    h.Run([&] {
+        SharedTransitionLayout(Modifier{}, [&](SharedTransitionScope& shared) {
+            sawActive = sawActive || shared.IsTransitionActive();
+            AnimatedContent(rt::Key(std::int64_t(detail.Get() ? 2 : 1)), Modifier{}, [&](rt::Key k) {
+                auto* scope = rt::Composition::Current()->Read(LocalAnimatedVisibilityScope);
+                auto& state = shared.RememberSharedContentState(rt::Key("hero"));
+                const bool big = k == rt::Key(std::int64_t(2));
+                Box(Modifier{}, Alignment::TopStart(), false, [&] {
+                    // Small at the top left, or big further down; the content is measured at the
+                    // animated bounds (the layout itself keeps its size).
+                    auto& n = Layout(shared.SharedElement(OffsetMod(SizeMod(Modifier{}, Dp(big ? 200 : 50), Dp(big ? 100 : 50)), Dp(big ? 100 : 0),
+                                                                    Dp(big ? 200 : 0)),
+                                                          state, *scope, [](const ui::Rect&, const ui::Rect&) { return anim::Tween(160, 0, anim::Linear()); }),
+                                     std::make_shared<ui::LambdaMeasurePolicy>([](ui::MeasureScope& s, std::span<ui::Measurable* const>, const ui::Constraints& c) {
+                                         return s.Layout(c.minWidth, c.minHeight);
+                                     }));
+                    (big ? bigNode : smallNode) = &n;
+                });
+            }, [] { return ContentTransform{ FadeIn(anim::Tween(160, 0, anim::Linear())), FadeOut(anim::Tween(160, 0, anim::Linear())) }; });
+        });
+    });
+    h.Layout();
+    CHECK(smallNode && smallNode->InnerSize().width == 50);
+    detail.Set(true);
+    h.Pump();
+    h.Layout();
+    h.Step(5);
+    CHECK(bigNode != nullptr);
+    // Mid-flight the arriving element is between the two places, in size and position.
+    const IntSize mid = bigNode->InnerSize();
+    const ui::Rect at = bigNode->InnerRectInRoot();
+    CHECK(mid.width > 50 && mid.width < 200);
+    CHECK(mid.height > 50 && mid.height < 100);
+    CHECK(at.left > 0 && at.left < 100);
+    CHECK(at.top > 0 && at.top < 200);
+    CHECK(sawActive);
+    h.Step(40);
+    CHECK_EQ(bigNode->InnerSize().width, 200);
+    CHECK_EQ(bigNode->InnerSize().height, 100);
+    CHECK_EQ(bigNode->InnerRectInRoot().left, 100.0f);
+    CHECK_EQ(bigNode->InnerRectInRoot().top, 200.0f);
+}
