@@ -3,6 +3,7 @@ project(kiln LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_C_STANDARD 11)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
@@ -102,7 +103,10 @@ target_sources(catalog PRIVATE samples/catalog/Registry.gen.cpp samples/catalog/
 
 enable_testing()
 file(GLOB KILN_TEST_SOURCES CONFIGURE_DEPENDS tests/*.cpp)
-add_executable(kiln_tests ${KILN_TEST_SOURCES})
+# tests/capi: content written in C against include/kiln (the header must stay valid C).
+file(GLOB KILN_CAPI_TEST_SOURCES CONFIGURE_DEPENDS tests/capi/*.c)
+set_source_files_properties(${KILN_CAPI_TEST_SOURCES} PROPERTIES COMPILE_OPTIONS "-Wall;-Wextra;-Wpedantic;-Werror")
+add_executable(kiln_tests ${KILN_TEST_SOURCES} ${KILN_CAPI_TEST_SOURCES})
 target_link_libraries(kiln_tests PRIVATE kiln_material3 kiln_navigation)
 if(ANDROID)
     # Run on a device with tools/device-test (pushed to /data/local/tmp), which builds it.

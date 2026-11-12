@@ -1,15 +1,28 @@
-/* kiln C ABI.
+/* kiln C ABI: the app entry point, composition (keys, state, effects), modifiers, shapes, text
+ * styles and foundation's layouts, text, images, lazy lists and pagers. Material 3 is in
+ * kiln_m3.h. design/capi.md has the rules; in short:
  *
- * M0 surface: an app entry point, a per-frame callback with immediate drawing, and platform text
- * layout. It is the scaffold the text-path prototype runs on; M1-M2 replace the drawing calls
- * with the retained node tree, keeping the entry point and lifetime rules.
- *
- * Rules that hold for every kiln call: no C++ types or exceptions cross this boundary; structs
- * passed in start with a `size` field so they can grow; every handle has one owner, named in the
- * comment of the call that returns it. */
+ * - No C++ types or exceptions cross this boundary. A call that fails logs and does nothing.
+ * - Composable calls (layouts, components, remember, effects) are valid only inside a content
+ *   callback, on the main thread. Each takes a kiln_key first: KILN_HERE, or a key of your own in
+ *   loops. The call gets its own keyed group, so a call under a condition never takes another
+ *   call's remembered state.
+ * - Structs passed in start with `size_t size`. Options structs have `<name>_init(&o)`, which sets
+ *   `size` and kiln's defaults; a zeroed struct is not valid. A NULL options pointer means the
+ *   defaults.
+ * - Callbacks are kiln_fn* structs { call, user, drop }. kiln owns them from the call that takes
+ *   them and calls drop(user) once, when it no longer needs the callback. call == NULL: absent.
+ * - Strings are UTF-8 and copied. A string kiln returns stays valid until the next call that
+ *   returns a string on that thread.
+ * - kiln_modifier* is transient: valid until the content callback that made it returns.
+ *   kiln_shape*, kiln_text_style*, kiln_anim_spec* and kiln_image_bitmap* are refcounted: the
+ *   creating call returns one reference, `_release` drops it, and kiln keeps its own while it
+ *   uses one. Remembered state handles live as long as their call stays in the composition. */
 #ifndef KILN_H
 #define KILN_H
 
+#include <math.h>
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -22,6 +35,21 @@ extern "C" {
 #else
 #define KILN_API __attribute__((visibility("default")))
 #endif
+
+/* A struct literal in C and C++. */
+#ifdef __cplusplus
+#define KILN_LITERAL_(T) T
+#else
+#define KILN_LITERAL_(T) (T)
+#endif
+
+#define KILN_ABI_VERSION 1
+/* The ABI version this library implements; a newer header against an older library fails here. */
+KILN_API int kiln_abi_version(void);
+
+/* ---------------------------------------------------------------------------------------------
+ * App and frame (M0 immediate drawing; still the way to draw without a composition)
+ * ------------------------------------------------------------------------------------------- */
 
 typedef struct kiln_app kiln_app;            /* owned by kiln for the life of the process */
 typedef struct kiln_frame kiln_frame;        /* valid only inside on_frame */
@@ -46,7 +74,7 @@ KILN_API void kiln_app_request_frame(kiln_app* app);
 KILN_API float kiln_app_density(const kiln_app* app);
 KILN_API float kiln_app_font_scale(const kiln_app* app);
 
-/* Frame drawing (M0). Coordinates are framebuffer pixels, +y down; colours are 0xAARRGGBB. */
+/* Frame drawing. Coordinates are framebuffer pixels, +y down; colours are 0xAARRGGBB. */
 KILN_API void kiln_frame_size(const kiln_frame* frame, float* width, float* height);
 KILN_API void kiln_frame_clear(kiln_frame* frame, uint32_t argb);
 KILN_API void kiln_frame_fill_rect(kiln_frame* frame, float x, float y, float w, float h,
@@ -61,6 +89,448 @@ KILN_API float kiln_paragraph_width(const kiln_paragraph* paragraph);
 KILN_API float kiln_paragraph_height(const kiln_paragraph* paragraph);
 KILN_API int kiln_paragraph_line_count(const kiln_paragraph* paragraph);
 KILN_API void kiln_paragraph_free(kiln_paragraph* paragraph);
+
+/* ---------------------------------------------------------------------------------------------
+ * Values
+ * ------------------------------------------------------------------------------------------- */
+
+/* Colours: 0 is unspecified (the component's default), KILN_ARGB(0xAARRGGBB) otherwise. */
+typedef uint64_t kiln_color;
+#define KILN_COLOR_UNSPECIFIED ((kiln_color)0)
+#define KILN_ARGB(argb) ((kiln_color)(0x100000000ull | (uint32_t)(argb)))
+
+/* Dp and sp are floats; NaN where Compose has Dp.Unspecified / TextUnit.Unspecified. */
+#define KILN_DP_UNSPECIFIED ((float)NAN)
+#define KILN_SP_UNSPECIFIED ((float)NAN)
+
+typedef struct kiln_opt_bool { bool set; bool value; } kiln_opt_bool;
+typedef struct kiln_opt_int { bool set; int32_t value; } kiln_opt_int;
+typedef struct kiln_opt_float { bool set; float value; } kiln_opt_float;
+
+/* Alignment in a box: biases from -1 (start / top) to 1 (end / bottom). */
+typedef struct kiln_alignment { float horizontal, vertical; } kiln_alignment;
+#define KILN_ALIGN_TOP_START (KILN_LITERAL_(kiln_alignment){ -1, -1 })
+#define KILN_ALIGN_TOP_CENTER (KILN_LITERAL_(kiln_alignment){ 0, -1 })
+#define KILN_ALIGN_TOP_END (KILN_LITERAL_(kiln_alignment){ 1, -1 })
+#define KILN_ALIGN_CENTER_START (KILN_LITERAL_(kiln_alignment){ -1, 0 })
+#define KILN_ALIGN_CENTER (KILN_LITERAL_(kiln_alignment){ 0, 0 })
+#define KILN_ALIGN_CENTER_END (KILN_LITERAL_(kiln_alignment){ 1, 0 })
+#define KILN_ALIGN_BOTTOM_START (KILN_LITERAL_(kiln_alignment){ -1, 1 })
+#define KILN_ALIGN_BOTTOM_CENTER (KILN_LITERAL_(kiln_alignment){ 0, 1 })
+#define KILN_ALIGN_BOTTOM_END (KILN_LITERAL_(kiln_alignment){ 1, 1 })
+/* One-axis alignment (a Row's vertical, a Column's horizontal): a bias from -1 to 1. */
+#define KILN_ALIGN_START (-1.0f)
+#define KILN_ALIGN_MIDDLE 0.0f
+#define KILN_ALIGN_END 1.0f
+
+typedef enum kiln_arrangement_kind {
+    KILN_ARRANGE_START, KILN_ARRANGE_END, KILN_ARRANGE_CENTER, KILN_ARRANGE_SPACE_EVENLY,
+    KILN_ARRANGE_SPACE_BETWEEN, KILN_ARRANGE_SPACE_AROUND,
+    KILN_ARRANGE_SPACED_BY        /* `spacing` dp between children, then `align_bias` */
+} kiln_arrangement_kind;
+typedef struct kiln_arrangement {
+    kiln_arrangement_kind kind;
+    float spacing;       /* KILN_ARRANGE_SPACED_BY */
+    float align_bias;    /* KILN_ARRANGE_SPACED_BY: where leftover space goes; NaN: start */
+} kiln_arrangement;
+
+typedef struct kiln_padding { float start, top, end, bottom; } kiln_padding;
+
+/* ---------------------------------------------------------------------------------------------
+ * Callbacks
+ * ------------------------------------------------------------------------------------------- */
+
+typedef struct kiln_fn { void (*call)(void* user); void* user; void (*drop)(void* user); } kiln_fn;
+typedef struct kiln_fn_bool { void (*call)(void* user, bool value); void* user; void (*drop)(void* user); } kiln_fn_bool;
+typedef struct kiln_fn_int { void (*call)(void* user, int32_t value); void* user; void (*drop)(void* user); } kiln_fn_int;
+typedef struct kiln_fn_float { void (*call)(void* user, float value); void* user; void (*drop)(void* user); } kiln_fn_float;
+typedef struct kiln_fn_str { void (*call)(void* user, const char* utf8); void* user; void (*drop)(void* user); } kiln_fn_str;
+
+/* A callback made of a function and a pointer only (no drop). */
+#define KILN_FN(fn, user) (KILN_LITERAL_(kiln_fn){ (fn), (user), NULL })
+
+/* ---------------------------------------------------------------------------------------------
+ * Keys
+ * ------------------------------------------------------------------------------------------- */
+
+/* Where a composable call is, or an explicit identity. */
+typedef struct kiln_key { uint64_t value; bool explicit_key; } kiln_key;
+
+static inline uint64_t kiln_hash_str_(const char* s) {
+    uint64_t h = 0xcbf29ce484222325ull;   /* FNV-1a */
+    while (s && *s) { h ^= (unsigned char)*s++; h *= 0x100000001b3ull; }
+    return h;
+}
+/* The call site: file, line and column (0 where the language has none). */
+static inline kiln_key kiln_key_at(const char* file, uint32_t line, uint32_t column) {
+    kiln_key k = { (kiln_hash_str_(file) ^ ((uint64_t)line << 20) ^ column) | 1u, false };
+    return k;
+}
+static inline kiln_key kiln_key_int(int64_t v) {
+    kiln_key k = { (uint64_t)v * 0x9E3779B97F4A7C15ull + 1, true };
+    return k;
+}
+static inline kiln_key kiln_key_str(const char* s) { kiln_key k = { kiln_hash_str_(s) | 1u, true }; return k; }
+/* The key of a call at this line. Two calls on one line need kiln_key_int / _str. */
+#define KILN_HERE kiln_key_at(__FILE__, __LINE__, 0)
+
+/* ---------------------------------------------------------------------------------------------
+ * Content
+ * ------------------------------------------------------------------------------------------- */
+
+/* The app's declarative content, composed into the window. Replaces earlier content. */
+KILN_API void kiln_app_set_content(kiln_app* app, kiln_fn content);
+
+/* A keyed group around content (Compose's key(k) { }): calls inside get their own identity. */
+KILN_API void kiln_group(kiln_key key, kiln_fn content);
+
+/* ---------------------------------------------------------------------------------------------
+ * State. Reading a state inside content subscribes the calling group: setting it recomposes
+ * what read it. Setting is allowed from any callback on the main thread.
+ * ------------------------------------------------------------------------------------------- */
+
+typedef struct kiln_state_i64 kiln_state_i64;
+typedef struct kiln_state_f64 kiln_state_f64;
+typedef struct kiln_state_str kiln_state_str;
+
+/* remember { mutableStateOf(initial) }. The *_saveable forms survive the activity being
+ * recreated (rememberSaveable). */
+KILN_API kiln_state_i64* kiln_remember_state_i64(kiln_key key, int64_t initial);
+KILN_API kiln_state_f64* kiln_remember_state_f64(kiln_key key, double initial);
+KILN_API kiln_state_str* kiln_remember_state_str(kiln_key key, const char* initial);
+KILN_API kiln_state_i64* kiln_remember_saveable_i64(kiln_key key, int64_t initial);
+KILN_API kiln_state_f64* kiln_remember_saveable_f64(kiln_key key, double initial);
+KILN_API kiln_state_str* kiln_remember_saveable_str(kiln_key key, const char* initial);
+
+KILN_API int64_t kiln_state_i64_get(const kiln_state_i64* state);
+KILN_API void kiln_state_i64_set(kiln_state_i64* state, int64_t value);
+KILN_API double kiln_state_f64_get(const kiln_state_f64* state);
+KILN_API void kiln_state_f64_set(kiln_state_f64* state, double value);
+KILN_API const char* kiln_state_str_get(const kiln_state_str* state);
+KILN_API void kiln_state_str_set(kiln_state_str* state, const char* value);
+
+/* remember(keys) { init() }: a value of your own, made on first composition (and again when
+ * `keys` change), dropped with drop(value) when the call leaves or the keys change. Not
+ * observable; keep observable values in states. */
+typedef struct kiln_remember_init {
+    void* (*call)(void* user);
+    void* user;
+    void (*drop_value)(void* value);
+} kiln_remember_init;
+KILN_API void* kiln_remember(kiln_key key, const uint64_t* keys, size_t key_count, kiln_remember_init init);
+
+/* ---------------------------------------------------------------------------------------------
+ * Effects
+ * ------------------------------------------------------------------------------------------- */
+
+/* SideEffect: runs after every successful composition of this call. */
+KILN_API void kiln_side_effect(kiln_key key, kiln_fn effect);
+
+/* DisposableEffect(keys): effect runs when the call enters (and when keys change); the
+ * kiln_fn it returns runs when the call leaves (or before the effect runs again). */
+typedef struct kiln_fn_effect { kiln_fn (*call)(void* user); void* user; void (*drop)(void* user); } kiln_fn_effect;
+KILN_API void kiln_disposable_effect(kiln_key key, const uint64_t* keys, size_t key_count, kiln_fn_effect effect);
+
+/* LaunchedEffect(keys): an asynchronous task tied to the call, cancelled when the call leaves
+ * or keys change. `start` runs first; a step continues the task by asking for its next step
+ * with kiln_task_delay / kiln_task_next_frame before it returns. The task ends after a step
+ * that asks for none. A cancelled task's pending steps are dropped without being called. */
+typedef struct kiln_task kiln_task;
+typedef struct kiln_fn_task { void (*call)(void* user, kiln_task* task); void* user; void (*drop)(void* user); } kiln_fn_task;
+typedef struct kiln_fn_task_frame { void (*call)(void* user, kiln_task* task, int64_t frame_time_nanos); void* user; void (*drop)(void* user); } kiln_fn_task_frame;
+KILN_API void kiln_launched_effect(kiln_key key, const uint64_t* keys, size_t key_count, kiln_fn_task start);
+KILN_API void kiln_task_delay(kiln_task* task, int64_t millis, kiln_fn_task next);
+KILN_API void kiln_task_next_frame(kiln_task* task, kiln_fn_task_frame next);
+
+/* ---------------------------------------------------------------------------------------------
+ * Shapes, text styles, animation specs, images (refcounted)
+ * ------------------------------------------------------------------------------------------- */
+
+typedef struct kiln_shape kiln_shape;
+KILN_API kiln_shape* kiln_shape_rectangle(void);
+KILN_API kiln_shape* kiln_shape_circle(void);
+KILN_API kiln_shape* kiln_shape_rounded(float radius_dp);
+KILN_API kiln_shape* kiln_shape_rounded_percent(float percent);
+KILN_API kiln_shape* kiln_shape_rounded_corners(float top_start, float top_end, float bottom_end, float bottom_start);
+KILN_API kiln_shape* kiln_shape_cut(float size_dp);
+KILN_API kiln_shape* kiln_shape_cut_corners(float top_start, float top_end, float bottom_end, float bottom_start);
+KILN_API kiln_shape* kiln_shape_retain(kiln_shape* shape);
+KILN_API void kiln_shape_release(kiln_shape* shape);
+
+typedef enum kiln_text_align {
+    KILN_TEXT_ALIGN_UNSPECIFIED, KILN_TEXT_ALIGN_LEFT, KILN_TEXT_ALIGN_RIGHT, KILN_TEXT_ALIGN_CENTER,
+    KILN_TEXT_ALIGN_JUSTIFY, KILN_TEXT_ALIGN_START, KILN_TEXT_ALIGN_END
+} kiln_text_align;
+typedef enum kiln_text_overflow {
+    KILN_TEXT_OVERFLOW_CLIP, KILN_TEXT_OVERFLOW_ELLIPSIS, KILN_TEXT_OVERFLOW_VISIBLE,
+    KILN_TEXT_OVERFLOW_START_ELLIPSIS, KILN_TEXT_OVERFLOW_MIDDLE_ELLIPSIS
+} kiln_text_overflow;
+typedef enum kiln_text_decoration {
+    KILN_TEXT_DECORATION_UNSET, KILN_TEXT_DECORATION_NONE, KILN_TEXT_DECORATION_UNDERLINE,
+    KILN_TEXT_DECORATION_LINE_THROUGH
+} kiln_text_decoration;
+
+typedef struct kiln_text_style kiln_text_style;
+typedef struct kiln_text_style_options {
+    size_t size;
+    kiln_color color;
+    float font_size_sp;          /* NaN: unset */
+    int32_t font_weight;         /* 1..1000; 0: unset */
+    kiln_opt_bool italic;
+    float letter_spacing_sp;     /* NaN: unset */
+    float line_height_sp;        /* NaN: unset */
+    kiln_text_align text_align;
+    kiln_text_decoration decoration;
+    kiln_color background;
+} kiln_text_style_options;
+KILN_API void kiln_text_style_options_init(kiln_text_style_options* options);
+KILN_API kiln_text_style* kiln_text_style_new(const kiln_text_style_options* options);
+/* base.merge(other): other's set fields win. */
+KILN_API kiln_text_style* kiln_text_style_merge(const kiln_text_style* base, const kiln_text_style* other);
+KILN_API kiln_text_style* kiln_text_style_retain(kiln_text_style* style);
+KILN_API void kiln_text_style_release(kiln_text_style* style);
+
+typedef enum kiln_easing {
+    KILN_EASING_FAST_OUT_SLOW_IN, KILN_EASING_LINEAR_OUT_SLOW_IN, KILN_EASING_FAST_OUT_LINEAR_IN,
+    KILN_EASING_LINEAR
+} kiln_easing;
+typedef struct kiln_anim_spec kiln_anim_spec;
+/* spring(dampingRatio, stiffness): NaN takes Compose's default (no bounce, medium stiffness). */
+KILN_API kiln_anim_spec* kiln_anim_spring(float damping_ratio, float stiffness);
+KILN_API kiln_anim_spec* kiln_anim_tween(int32_t duration_millis, int32_t delay_millis, kiln_easing easing);
+KILN_API kiln_anim_spec* kiln_anim_spec_retain(kiln_anim_spec* spec);
+KILN_API void kiln_anim_spec_release(kiln_anim_spec* spec);
+
+typedef struct kiln_image_bitmap kiln_image_bitmap;
+/* PNG / JPEG / WebP bytes, or an app asset (assets/ in the APK, next to the binary on the
+ * host). NULL when it cannot be decoded. */
+KILN_API kiln_image_bitmap* kiln_image_bitmap_decode(const uint8_t* bytes, size_t length);
+KILN_API kiln_image_bitmap* kiln_image_bitmap_from_asset(const char* path);
+/* Unpremultiplied 0xAARRGGBB pixels, row by row. */
+KILN_API kiln_image_bitmap* kiln_image_bitmap_from_pixels(int32_t width, int32_t height, const uint32_t* argb);
+KILN_API int32_t kiln_image_bitmap_width(const kiln_image_bitmap* bitmap);
+KILN_API int32_t kiln_image_bitmap_height(const kiln_image_bitmap* bitmap);
+KILN_API kiln_image_bitmap* kiln_image_bitmap_retain(kiln_image_bitmap* bitmap);
+KILN_API void kiln_image_bitmap_release(kiln_image_bitmap* bitmap);
+
+/* ---------------------------------------------------------------------------------------------
+ * Modifiers. Each call returns `m` followed by one element; m == NULL starts an empty chain.
+ * ------------------------------------------------------------------------------------------- */
+
+typedef struct kiln_modifier kiln_modifier;
+typedef struct kiln_scroll_state kiln_scroll_state;
+
+KILN_API kiln_modifier* kiln_mod_then(kiln_modifier* m, const kiln_modifier* other);
+/* Size */
+KILN_API kiln_modifier* kiln_mod_padding(kiln_modifier* m, float start, float top, float end, float bottom);
+KILN_API kiln_modifier* kiln_mod_padding_all(kiln_modifier* m, float all);
+KILN_API kiln_modifier* kiln_mod_padding_hv(kiln_modifier* m, float horizontal, float vertical);
+KILN_API kiln_modifier* kiln_mod_size(kiln_modifier* m, float width, float height);
+KILN_API kiln_modifier* kiln_mod_width(kiln_modifier* m, float width);
+KILN_API kiln_modifier* kiln_mod_height(kiln_modifier* m, float height);
+KILN_API kiln_modifier* kiln_mod_size_in(kiln_modifier* m, float min_width, float min_height, float max_width, float max_height);
+KILN_API kiln_modifier* kiln_mod_required_size(kiln_modifier* m, float width, float height);
+KILN_API kiln_modifier* kiln_mod_default_min_size(kiln_modifier* m, float min_width, float min_height);
+KILN_API kiln_modifier* kiln_mod_fill_max_width(kiln_modifier* m, float fraction);
+KILN_API kiln_modifier* kiln_mod_fill_max_height(kiln_modifier* m, float fraction);
+KILN_API kiln_modifier* kiln_mod_fill_max_size(kiln_modifier* m, float fraction);
+KILN_API kiln_modifier* kiln_mod_wrap_content_size(kiln_modifier* m, kiln_alignment align);
+KILN_API kiln_modifier* kiln_mod_aspect_ratio(kiln_modifier* m, float ratio);
+KILN_API kiln_modifier* kiln_mod_offset(kiln_modifier* m, float x, float y);
+/* Parent data: weight in a Row / Column, alignment in a Box, Row (vertical bias) or Column
+ * (horizontal bias), matchParentSize in a Box. */
+KILN_API kiln_modifier* kiln_mod_weight(kiln_modifier* m, float weight, bool fill);
+KILN_API kiln_modifier* kiln_mod_align_in_box(kiln_modifier* m, kiln_alignment align);
+KILN_API kiln_modifier* kiln_mod_align_in_row(kiln_modifier* m, float vertical_bias);
+KILN_API kiln_modifier* kiln_mod_align_in_column(kiln_modifier* m, float horizontal_bias);
+KILN_API kiln_modifier* kiln_mod_match_parent_size(kiln_modifier* m);
+/* Window insets */
+KILN_API kiln_modifier* kiln_mod_safe_drawing_padding(kiln_modifier* m);
+KILN_API kiln_modifier* kiln_mod_system_bars_padding(kiln_modifier* m);
+KILN_API kiln_modifier* kiln_mod_ime_padding(kiln_modifier* m);
+/* Drawing. shape NULL: a rectangle. */
+KILN_API kiln_modifier* kiln_mod_background(kiln_modifier* m, kiln_color color, const kiln_shape* shape);
+KILN_API kiln_modifier* kiln_mod_border(kiln_modifier* m, float width, kiln_color color, const kiln_shape* shape);
+KILN_API kiln_modifier* kiln_mod_clip(kiln_modifier* m, const kiln_shape* shape);
+KILN_API kiln_modifier* kiln_mod_alpha(kiln_modifier* m, float alpha);
+KILN_API kiln_modifier* kiln_mod_rotate(kiln_modifier* m, float degrees);
+KILN_API kiln_modifier* kiln_mod_scale(kiln_modifier* m, float scale_x, float scale_y);
+KILN_API kiln_modifier* kiln_mod_shadow(kiln_modifier* m, float elevation, const kiln_shape* shape);
+KILN_API kiln_modifier* kiln_mod_z_index(kiln_modifier* m, float z_index);
+/* Input */
+KILN_API kiln_modifier* kiln_mod_clickable(kiln_modifier* m, bool enabled, kiln_fn on_click);
+KILN_API kiln_modifier* kiln_mod_toggleable(kiln_modifier* m, bool value, bool enabled, kiln_fn_bool on_value_change);
+KILN_API kiln_modifier* kiln_mod_selectable(kiln_modifier* m, bool selected, bool enabled, kiln_fn on_click);
+KILN_API kiln_modifier* kiln_mod_vertical_scroll(kiln_modifier* m, kiln_scroll_state* state, bool enabled);
+KILN_API kiln_modifier* kiln_mod_horizontal_scroll(kiln_modifier* m, kiln_scroll_state* state, bool enabled);
+/* Semantics */
+KILN_API kiln_modifier* kiln_mod_test_tag(kiln_modifier* m, const char* tag);
+KILN_API kiln_modifier* kiln_mod_content_description(kiln_modifier* m, const char* description);
+
+/* ---------------------------------------------------------------------------------------------
+ * Layouts
+ * ------------------------------------------------------------------------------------------- */
+
+typedef struct kiln_box_options {
+    size_t size;
+    kiln_alignment content_alignment;   /* top start */
+    bool propagate_min_constraints;     /* false */
+} kiln_box_options;
+KILN_API void kiln_box_options_init(kiln_box_options* options);
+KILN_API void kiln_box(kiln_key key, const kiln_modifier* modifier, const kiln_box_options* options, kiln_fn content);
+
+typedef struct kiln_row_options {
+    size_t size;
+    kiln_arrangement horizontal_arrangement;   /* start */
+    float vertical_alignment;                  /* KILN_ALIGN_START (top) */
+} kiln_row_options;
+KILN_API void kiln_row_options_init(kiln_row_options* options);
+KILN_API void kiln_row(kiln_key key, const kiln_modifier* modifier, const kiln_row_options* options, kiln_fn content);
+
+typedef struct kiln_column_options {
+    size_t size;
+    kiln_arrangement vertical_arrangement;     /* top */
+    float horizontal_alignment;                /* KILN_ALIGN_START */
+} kiln_column_options;
+KILN_API void kiln_column_options_init(kiln_column_options* options);
+KILN_API void kiln_column(kiln_key key, const kiln_modifier* modifier, const kiln_column_options* options, kiln_fn content);
+
+KILN_API void kiln_spacer(kiln_key key, const kiln_modifier* modifier);
+
+/* BoxWithConstraints: content gets the incoming constraints in dp (max may be INFINITY). */
+typedef struct kiln_constraints { float min_width, max_width, min_height, max_height; } kiln_constraints;
+typedef struct kiln_fn_constraints { void (*call)(void* user, const kiln_constraints* constraints); void* user; void (*drop)(void* user); } kiln_fn_constraints;
+KILN_API void kiln_box_with_constraints(kiln_key key, const kiln_modifier* modifier, const kiln_box_options* options,
+                                        kiln_fn_constraints content);
+
+/* ---------------------------------------------------------------------------------------------
+ * Text and images
+ * ------------------------------------------------------------------------------------------- */
+
+typedef struct kiln_text_options {
+    size_t size;
+    kiln_text_overflow overflow;   /* clip */
+    bool soft_wrap;                /* true */
+    int32_t max_lines;             /* INT32_MAX */
+    int32_t min_lines;             /* 1 */
+} kiln_text_options;
+KILN_API void kiln_text_options_init(kiln_text_options* options);
+/* BasicText. style NULL: the default style (no theme; Material's Text is kiln_m3_text). */
+KILN_API void kiln_basic_text(kiln_key key, const char* utf8, const kiln_modifier* modifier,
+                              const kiln_text_style* style, const kiln_text_options* options);
+
+typedef enum kiln_content_scale {
+    KILN_CONTENT_SCALE_FIT, KILN_CONTENT_SCALE_CROP, KILN_CONTENT_SCALE_FILL_HEIGHT,
+    KILN_CONTENT_SCALE_FILL_WIDTH, KILN_CONTENT_SCALE_INSIDE, KILN_CONTENT_SCALE_NONE,
+    KILN_CONTENT_SCALE_FILL_BOUNDS
+} kiln_content_scale;
+typedef struct kiln_image_options {
+    size_t size;
+    kiln_alignment alignment;          /* center */
+    kiln_content_scale content_scale;  /* fit */
+    float alpha;                       /* 1 */
+} kiln_image_options;
+KILN_API void kiln_image_options_init(kiln_image_options* options);
+/* content_description NULL: decorative. */
+KILN_API void kiln_image(kiln_key key, const kiln_image_bitmap* bitmap, const char* content_description,
+                         const kiln_modifier* modifier, const kiln_image_options* options);
+
+/* BasicTextField over a remembered text field state. */
+typedef struct kiln_text_field_state kiln_text_field_state;
+KILN_API kiln_text_field_state* kiln_remember_text_field_state(kiln_key key, const char* initial);
+KILN_API const char* kiln_text_field_state_text(const kiln_text_field_state* state);   /* observes */
+KILN_API void kiln_text_field_state_set_text(kiln_text_field_state* state, const char* text);
+typedef struct kiln_text_field_options {
+    size_t size;
+    bool enabled;                 /* true */
+    bool read_only;               /* false */
+    bool single_line;             /* false */
+    const kiln_text_style* text_style;   /* NULL: default */
+    kiln_color cursor_color;      /* unspecified: black */
+} kiln_text_field_options;
+KILN_API void kiln_text_field_options_init(kiln_text_field_options* options);
+KILN_API void kiln_basic_text_field(kiln_key key, kiln_text_field_state* state, const kiln_modifier* modifier,
+                                    const kiln_text_field_options* options);
+
+/* ---------------------------------------------------------------------------------------------
+ * Scrolling, lazy lists, pagers
+ * ------------------------------------------------------------------------------------------- */
+
+KILN_API kiln_scroll_state* kiln_remember_scroll_state(kiln_key key, int32_t initial);
+KILN_API int32_t kiln_scroll_state_value(const kiln_scroll_state* state);       /* px; observes */
+KILN_API int32_t kiln_scroll_state_max_value(const kiln_scroll_state* state);   /* px; observes */
+/* Suspending calls: `done` (optional) runs when the scroll finishes or is cancelled. */
+KILN_API void kiln_scroll_state_animate_to(kiln_scroll_state* state, int32_t value, kiln_fn done);
+KILN_API void kiln_scroll_state_scroll_to(kiln_scroll_state* state, int32_t value, kiln_fn done);
+
+typedef struct kiln_lazy_list_state kiln_lazy_list_state;
+KILN_API kiln_lazy_list_state* kiln_remember_lazy_list_state(kiln_key key, int32_t first_visible_item_index,
+                                                             int32_t first_visible_item_scroll_offset);
+KILN_API int32_t kiln_lazy_list_state_first_visible_item_index(const kiln_lazy_list_state* state);    /* observes */
+KILN_API int32_t kiln_lazy_list_state_first_visible_item_scroll_offset(const kiln_lazy_list_state* state);
+KILN_API bool kiln_lazy_list_state_can_scroll_forward(const kiln_lazy_list_state* state);
+KILN_API bool kiln_lazy_list_state_can_scroll_backward(const kiln_lazy_list_state* state);
+KILN_API void kiln_lazy_list_state_scroll_to_item(kiln_lazy_list_state* state, int32_t index, int32_t offset, kiln_fn done);
+KILN_API void kiln_lazy_list_state_animate_scroll_to_item(kiln_lazy_list_state* state, int32_t index, int32_t offset, kiln_fn done);
+
+/* The items of a lazy list, declared in its content callback. */
+typedef struct kiln_lazy_scope kiln_lazy_scope;
+typedef struct kiln_fn_lazy { void (*call)(void* user, kiln_lazy_scope* scope); void* user; void (*drop)(void* user); } kiln_fn_lazy;
+typedef struct kiln_fn_item_key { kiln_key (*call)(void* user, int32_t index); void* user; void (*drop)(void* user); } kiln_fn_item_key;
+KILN_API void kiln_lazy_item(kiln_lazy_scope* scope, const kiln_key* key, kiln_fn content);   /* key NULL: by position */
+/* item_key.call NULL: items keyed by position. */
+KILN_API void kiln_lazy_items(kiln_lazy_scope* scope, int32_t count, kiln_fn_int content, kiln_fn_item_key item_key);
+KILN_API void kiln_lazy_sticky_header(kiln_lazy_scope* scope, const kiln_key* key, kiln_fn_int content);
+
+typedef struct kiln_lazy_list_options {
+    size_t size;
+    kiln_padding content_padding;   /* 0 */
+    bool has_arrangement;           /* false: top / start (bottom / end when reversed) */
+    kiln_arrangement arrangement;
+    float alignment;                /* cross axis bias: KILN_ALIGN_START */
+    bool reverse_layout;            /* false */
+    bool user_scroll_enabled;       /* true */
+} kiln_lazy_list_options;
+KILN_API void kiln_lazy_list_options_init(kiln_lazy_list_options* options);
+/* state NULL: a remembered state at this call. */
+KILN_API void kiln_lazy_column(kiln_key key, const kiln_modifier* modifier, kiln_lazy_list_state* state,
+                               const kiln_lazy_list_options* options, kiln_fn_lazy content);
+KILN_API void kiln_lazy_row(kiln_key key, const kiln_modifier* modifier, kiln_lazy_list_state* state,
+                            const kiln_lazy_list_options* options, kiln_fn_lazy content);
+
+typedef struct kiln_pager_state kiln_pager_state;
+typedef struct kiln_fn_count { int32_t (*call)(void* user); void* user; void (*drop)(void* user); } kiln_fn_count;
+KILN_API kiln_pager_state* kiln_remember_pager_state(kiln_key key, int32_t initial_page, kiln_fn_count page_count);
+KILN_API int32_t kiln_pager_state_current_page(const kiln_pager_state* state);   /* observes */
+KILN_API int32_t kiln_pager_state_settled_page(const kiln_pager_state* state);
+KILN_API float kiln_pager_state_current_page_offset_fraction(const kiln_pager_state* state);
+KILN_API void kiln_pager_state_animate_scroll_to_page(kiln_pager_state* state, int32_t page, kiln_fn done);
+KILN_API void kiln_pager_state_scroll_to_page(kiln_pager_state* state, int32_t page, kiln_fn done);
+typedef struct kiln_pager_options {
+    size_t size;
+    kiln_padding content_padding;
+    float page_spacing;            /* 0 dp */
+    int32_t beyond_viewport_page_count;   /* 0 */
+    bool user_scroll_enabled;      /* true */
+    bool reverse_layout;           /* false */
+} kiln_pager_options;
+KILN_API void kiln_pager_options_init(kiln_pager_options* options);
+KILN_API void kiln_horizontal_pager(kiln_key key, const kiln_modifier* modifier, kiln_pager_state* state,
+                                    const kiln_pager_options* options, kiln_fn_int page);
+KILN_API void kiln_vertical_pager(kiln_key key, const kiln_modifier* modifier, kiln_pager_state* state,
+                                  const kiln_pager_options* options, kiln_fn_int page);
+
+/* ---------------------------------------------------------------------------------------------
+ * Animation
+ * ------------------------------------------------------------------------------------------- */
+
+/* animate*AsState: the animated value now, heading for `target`. spec NULL: the default spring. */
+KILN_API float kiln_animate_float(kiln_key key, float target, const kiln_anim_spec* spec);
+KILN_API float kiln_animate_dp(kiln_key key, float target, const kiln_anim_spec* spec);
+KILN_API kiln_color kiln_animate_color(kiln_key key, kiln_color target, const kiln_anim_spec* spec);
+
+/* AnimatedVisibility with Compose's default transitions (fade and expand / shrink). */
+KILN_API void kiln_animated_visibility(kiln_key key, bool visible, const kiln_modifier* modifier, kiln_fn content);
 
 #ifdef __cplusplus
 }
