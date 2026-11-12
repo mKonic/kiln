@@ -145,6 +145,8 @@ namespace kiln::ui {
             Rect clipRect;             // in clip space (device px when clipInverse is identity)
             ClipRadii clipRadii{};
             gfx::Matrix clipInverse;   // device -> clip space
+            // A plain device rect that clips as well (a rect cutting the rounded clip, say).
+            Rect clipOuter{ -1e9f, -1e9f, 1e9f, 1e9f };
             int clipLayers = 0;        // masked layers opened by clips
             gfx::BlendMode blend = gfx::BlendMode::SrcOver;
         };

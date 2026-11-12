@@ -59,7 +59,7 @@ namespace kiln {
         VertexBufferLayout layout;
         layout.stride = sizeof(Instance);
         layout.stepMode = VertexStepMode::Instance;
-        for (u32 i = 0; i < 12; ++i)
+        for (u32 i = 0; i < 13; ++i)
             layout.attributes.push_back({ i, Format::RGBA32_SFLOAT, i * 16 });
         desc.vertexBuffers.push_back(layout);
         desc.bindings.push_back({ 0, BindingType::SampledTexture, 1, StageBit(ShaderStage::Fragment) });
@@ -99,7 +99,7 @@ namespace kiln {
             vl.attributes.push_back({ 1, Format::RGBA32_SFLOAT, 8 });
             vl.attributes.push_back({ 2, Format::RGBA32_SFLOAT, 24 });
             tri.vertexBuffers.push_back(vl);
-            tri.pushConstantSize = 80;   // viewport, origin, clip (rect, radii, inverse, enabled)
+            tri.pushConstantSize = 96;   // viewport, origin, clip (rect, radii, inverse, enabled, outer rect)
             tri.topology = PrimitiveTopology::TriangleList;
             tri.blend = BlendMode::AlphaPremultiplied;
             tri.colorFormats = { device.SwapchainFormat() };
@@ -149,6 +149,7 @@ namespace kiln {
         const Transform& ci = m_Clip.inverse;
         instance.clipInv[0] = ci.a; instance.clipInv[1] = ci.b; instance.clipInv[2] = ci.c; instance.clipInv[3] = ci.d;
         instance.clipInv2[0] = ci.e; instance.clipInv2[1] = ci.f; instance.clipInv2[2] = m_Clip.enabled ? 1.0f : 0.0f; instance.clipInv2[3] = 0;
+        for (int i = 0; i < 4; ++i) instance.clipOuter[i] = m_Clip.outer[i];
         const AtlasPage* dst = nullptr;
         // Stretch and blur passes composite layers themselves and never blend.
         if (m_BlendMode != 3 && !mask && (instance.params[1] <= float(Mode::Color) || instance.params[1] == float(Mode::MaskShader) ||
@@ -391,11 +392,12 @@ namespace kiln {
         for (const Run& run : t.runs) {
             if (run.triangles) {
                 const Clip& c = run.clip;
-                const float tp[20] = { t.size[0], t.size[1], t.origin[0], t.origin[1],
+                const float tp[24] = { t.size[0], t.size[1], t.origin[0], t.origin[1],
                                        c.x0, c.y0, c.x1, c.y1,
                                        c.radii[0], c.radii[1], c.radii[2], c.radii[3],
                                        c.inverse.a, c.inverse.b, c.inverse.c, c.inverse.d,
-                                       c.inverse.e, c.inverse.f, c.enabled ? 1.0f : 0.0f, 0 };
+                                       c.inverse.e, c.inverse.f, c.enabled ? 1.0f : 0.0f, 0,
+                                       c.outer[0], c.outer[1], c.outer[2], c.outer[3] };
                 cmd.BindPipeline(m_TriPipeline);
                 cmd.SetViewport({ 0, 0, t.size[0], t.size[1], 0, 1 });
                 cmd.SetScissor(scissor);

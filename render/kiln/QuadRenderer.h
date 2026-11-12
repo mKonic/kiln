@@ -90,7 +90,10 @@ namespace kiln {
         void SetClearColor(float r, float g, float b, float a) { m_RootClear[0] = r; m_RootClear[1] = g; m_RootClear[2] = b; m_RootClear[3] = a; }
         // Clip applied to quads submitted after this call: a rounded rect (x0, y0, x1, y1, radius)
         // in the space `inverse` maps framebuffer pixels into (identity: framebuffer pixels).
-        struct Clip { float x0 = 0, y0 = 0, x1 = 0, y1 = 0; float radii[4] = {}; bool enabled = false; Transform inverse; };   // radii: TL, TR, BR, BL
+        struct Clip {
+            float x0 = 0, y0 = 0, x1 = 0, y1 = 0; float radii[4] = {}; bool enabled = false; Transform inverse;   // radii: TL, TR, BR, BL
+            float outer[4] = { -1e9f, -1e9f, 1e9f, 1e9f };   // a plain rect (device px) that also clips, while enabled
+        };
         void SetClip(const Clip& clip) { m_Clip = clip; }
         // Multiplies what the current target holds by the coverage in `page` (DstIn): masks an
         // offscreen layer to a path before it is composited.
@@ -140,7 +143,7 @@ namespace kiln {
 
     private:
         struct Instance { float rect[4]; float uv[4]; float color[4]; float params[4]; float clip[4]; float clipParams[4]; float paint[4]; float paint2[4];
-                         float xform[4]; float xform2[4]; float clipInv[4]; float clipInv2[4]; };
+                         float xform[4]; float xform2[4]; float clipInv[4]; float clipInv2[4]; float clipOuter[4]; };
         struct Run { const AtlasPage* page; std::uint32_t first, count; bool mask = false; bool filtered = false; const AtlasPage* dst = nullptr;
                      bool triangles = false; Clip clip{}; };   // triangles: first/count into m_TriVerts
 

@@ -91,7 +91,6 @@ namespace kiln::ui {
         out = a.Intersect(b);
         radii = {};
         if (out.Empty()) return true;
-        const float halfOut = std::min(out.Width(), out.Height()) / 2;
         const float halfA = std::min(a.Width(), a.Height()) / 2, halfB = std::min(b.Width(), b.Height()) / 2;
         for (int k = 0; k < 4; ++k) {
             const bool right = k == 1 || k == 2, bottom = k >= 2;
@@ -115,9 +114,10 @@ namespace kiln::ui {
                 // Straight edges of each crossing: square, unless a rounded corner cuts in.
                 if (!InsideRounded(p, a, ra) || !InsideRounded(p, b, rb)) return false;
             }
-            if (radii[k] > halfOut + 0.01f) return false;
         }
-        return true;
+        // Each side's two corners fit along it (the clip shader rounds each corner in its own box).
+        const float w = out.Width() + 0.01f, h = out.Height() + 0.01f;
+        return radii[0] + radii[1] <= w && radii[3] + radii[2] <= w && radii[0] + radii[3] <= h && radii[1] + radii[2] <= h;
     }
 
     void DrawScope::ClipRect(Rect local, float radius) {
@@ -152,8 +152,26 @@ namespace kiln::ui {
             if (RectInside(old.clipRect, Mul(inv, Inverse(old.clipInverse)), r, radii)) return;
             if (RectInside(r, Mul(old.clipInverse, Inverse(inv)), old.clipRect, old.clipRadii)) { set(r, radii, inv); return; }
         }
-        // Not one rounded rect: content renders into a layer masked to the new clip, which is
-        // composited under the old one.
+        // A plain device rect on either side: the rounded one stays the clip and the rect clips
+        // too, unless one is already there.
+        const bool noOuter = old.clipOuter.left <= -1e8f && old.clipOuter.right >= 1e8f && old.clipOuter.top <= -1e8f && old.clipOuter.bottom >= 1e8f;
+        const auto plainDevice = [](const Rect&, const ClipRadii& cr, const gfx::Matrix& ci) {
+            return cr[0] == 0 && cr[1] == 0 && cr[2] == 0 && cr[3] == 0 && SameMatrix(ci, {});
+        };
+        if (plainDevice(r, radii, inv)) {
+            m_State.clipOuter = old.clipOuter.Intersect(r);
+            ApplyClip();
+            return;
+        }
+        if (noOuter && plainDevice(old.clipRect, old.clipRadii, old.clipInverse)) {
+            const Rect outer = old.clipRect;
+            set(r, radii, inv);
+            m_State.clipOuter = outer;
+            ApplyClip();
+            return;
+        }
+        // Otherwise content renders into a layer masked to the new clip, which is composited
+        // under the old one.
         gfx::Path path;
         path.AddRoundRect(gfx::RoundRect::Uniform(local, radius));
         BeginLayerImpl(local, 1, &path, true);
@@ -177,6 +195,8 @@ namespace kiln::ui {
         c.x1 = m_State.clipRect.right; c.y1 = m_State.clipRect.bottom;
         for (int i = 0; i < 4; ++i) c.radii[i] = m_State.clipRadii[i];
         c.inverse = ToQuad(m_State.clipInverse);
+        c.outer[0] = m_State.clipOuter.left; c.outer[1] = m_State.clipOuter.top;
+        c.outer[2] = m_State.clipOuter.right; c.outer[3] = m_State.clipOuter.bottom;
         m_Target.quads->SetClip(c);
     }
 
@@ -240,6 +260,7 @@ namespace kiln::ui {
                                         : ui::Rect{ -ox, -oy, m_Target.viewportWidth - ox, m_Target.viewportHeight - oy };
         if (m_State.clip && m_State.clipInverse.b == 0 && m_State.clipInverse.c == 0 && m_State.clipInverse.a == 1 && m_State.clipInverse.d == 1)
             visible = visible.Intersect(m_State.clipRect.Translate({ -ox, -oy }));
+        if (m_State.clip) visible = visible.Intersect(m_State.clipOuter.Translate({ -ox, -oy }));
         if (visible.Empty()) return nullptr;
 
         std::uint64_t key = path.Hash();
@@ -714,6 +735,9 @@ namespace kiln::ui {
         if (m_State.clip && SameMatrix(m_State.clipInverse, {}))
             d = d.Intersect({ std::floor(m_State.clipRect.left), std::floor(m_State.clipRect.top),
                               std::ceil(m_State.clipRect.right), std::ceil(m_State.clipRect.bottom) });
+        if (m_State.clip)
+            d = d.Intersect({ std::floor(m_State.clipOuter.left), std::floor(m_State.clipOuter.top),
+                              std::ceil(m_State.clipOuter.right), std::ceil(m_State.clipOuter.bottom) });
         if (m_Target.quads && !d.Empty() && l.alpha > 0 && m_State.alpha > 0) {
             l.device = d;
             l.active = true;

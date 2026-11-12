@@ -9,12 +9,33 @@ layout(push_constant) uniform Push {
     vec4 clipRadii;
     vec4 clipInv;
     vec4 clipInv2;
+    vec4 clipOuter;
 } pc;
 
-float roundedRectSdf(vec2 p, vec2 half_, float r) {
-    r = min(r, min(half_.x, half_.y));
-    vec2 q = abs(p) - half_ + r;
-    return length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - r;
+// Coverage of a plain, pixel-aligned clip rect (framebuffer px) at a fragment centre.
+float outerCoverage(vec2 d, vec4 o) {
+    return clamp(min(min(d.x - o.x, o.z - d.x), min(d.y - o.y, o.w - d.y)) + 0.5, 0.0, 1.0);
+}
+
+// Signed distance to a rect (left, top, right, bottom) with per-corner radii (top-left,
+// top-right, bottom-right, bottom-left). Each corner rounds within its own box, so a radius may
+// pass half the rect while each side's radii fit (a strip cut from a rounded rect); otherwise
+// every radius clamps to half the shorter side.
+float clipSdf(vec2 p, vec4 rect, vec4 radii) {
+    vec2 size = rect.zw - rect.xy;
+    if (radii.x + radii.y > size.x || radii.w + radii.z > size.x || radii.x + radii.w > size.y || radii.y + radii.z > size.y)
+        radii = min(radii, vec4(max(min(size.x, size.y), 0.0) * 0.5));
+    vec2 e = max(rect.xy - p, p - rect.zw);
+    float box = length(max(e, 0.0)) + min(max(e.x, e.y), 0.0);
+    vec2 u;
+    float r;
+    if (p.x < rect.x + radii.x && p.y < rect.y + radii.x) { u = p - rect.xy; r = radii.x; }
+    else if (p.x > rect.z - radii.y && p.y < rect.y + radii.y) { u = vec2(rect.z - p.x, p.y - rect.y); r = radii.y; }
+    else if (p.x > rect.z - radii.z && p.y > rect.w - radii.z) { u = rect.zw - p; r = radii.z; }
+    else if (p.x < rect.x + radii.w && p.y > rect.w - radii.w) { u = vec2(p.x - rect.x, rect.w - p.y); r = radii.w; }
+    else return box;
+    vec2 v = r - u;
+    return max(length(max(v, 0.0)) + min(max(v.x, v.y), 0.0) - r, box);
 }
 
 // The same rounded-rect clip as the quads (quad_body.glsl clipCoverage).
@@ -22,13 +43,9 @@ float clipCoverage() {
     if (pc.clipInv2.z < 0.5) return 1.0;
     vec2 device = gl_FragCoord.xy + pc.origin;
     vec2 p = mat2(pc.clipInv.x, pc.clipInv.y, pc.clipInv.z, pc.clipInv.w) * device + pc.clipInv2.xy;
-    vec2 centre = (pc.clip.xy + pc.clip.zw) * 0.5;
-    vec2 half_ = max((pc.clip.zw - pc.clip.xy) * 0.5, vec2(0.0));
-    vec2 q = p - centre;
-    float r = q.x < 0.0 ? (q.y < 0.0 ? pc.clipRadii.x : pc.clipRadii.w) : (q.y < 0.0 ? pc.clipRadii.y : pc.clipRadii.z);
-    float d = roundedRectSdf(q, half_, r);
+    float d = clipSdf(p, pc.clip, pc.clipRadii);
     float px = max(length(fwidth(p)) * 0.70710678, 1e-5);
-    return clamp(0.5 - d / px, 0.0, 1.0);
+    return clamp(0.5 - d / px, 0.0, 1.0) * outerCoverage(device, pc.clipOuter);
 }
 
 // Skia's shadow falloff texture (ShadowRRectOp create_falloff_texture): 128 A8 texels of

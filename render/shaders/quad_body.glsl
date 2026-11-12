@@ -12,6 +12,7 @@ layout(location = 9) flat in vec4 vClipInv;
 layout(location = 10) flat in vec4 vClipInv2;
 layout(location = 11) flat in vec2 vUvMin;
 layout(location = 12) flat in vec2 vUvMax;
+layout(location = 13) flat in vec4 vClipOuter;
 
 layout(set = 0, binding = 0) uniform sampler2D uAtlas;
 layout(set = 0, binding = 1) uniform sampler2D uRamp;
@@ -38,15 +39,36 @@ float aaCoverage(float d, vec2 p) {
     return clamp(0.5 - d / px, 0.0, 1.0);
 }
 
+// Coverage of a plain, pixel-aligned clip rect (framebuffer px) at a fragment centre.
+float outerCoverage(vec2 d, vec4 o) {
+    return clamp(min(min(d.x - o.x, o.z - d.x), min(d.y - o.y, o.w - d.y)) + 0.5, 0.0, 1.0);
+}
+
+// Signed distance to a rect (left, top, right, bottom) with per-corner radii (top-left,
+// top-right, bottom-right, bottom-left). Each corner rounds within its own box, so a radius may
+// pass half the rect while each side's radii fit (a strip cut from a rounded rect); otherwise
+// every radius clamps to half the shorter side.
+float clipSdf(vec2 p, vec4 rect, vec4 radii) {
+    vec2 size = rect.zw - rect.xy;
+    if (radii.x + radii.y > size.x || radii.w + radii.z > size.x || radii.x + radii.w > size.y || radii.y + radii.z > size.y)
+        radii = min(radii, vec4(max(min(size.x, size.y), 0.0) * 0.5));
+    vec2 e = max(rect.xy - p, p - rect.zw);
+    float box = length(max(e, 0.0)) + min(max(e.x, e.y), 0.0);
+    vec2 u;
+    float r;
+    if (p.x < rect.x + radii.x && p.y < rect.y + radii.x) { u = p - rect.xy; r = radii.x; }
+    else if (p.x > rect.z - radii.y && p.y < rect.y + radii.y) { u = vec2(rect.z - p.x, p.y - rect.y); r = radii.y; }
+    else if (p.x > rect.z - radii.z && p.y > rect.w - radii.z) { u = rect.zw - p; r = radii.z; }
+    else if (p.x < rect.x + radii.w && p.y > rect.w - radii.w) { u = vec2(p.x - rect.x, rect.w - p.y); r = radii.w; }
+    else return box;
+    vec2 v = r - u;
+    return max(length(max(v, 0.0)) + min(max(v.x, v.y), 0.0) - r, box);
+}
+
 float clipCoverage() {
     if (vClipInv2.z < 0.5) return 1.0;
     vec2 p = mat2(vClipInv.x, vClipInv.y, vClipInv.z, vClipInv.w) * fragDevice() + vClipInv2.xy;
-    vec2 centre = (vClip.xy + vClip.zw) * 0.5;
-    vec2 half_ = max((vClip.zw - vClip.xy) * 0.5, vec2(0.0));
-    vec2 q = p - centre;
-    // Each quadrant rounds with its own corner radius (top-left, top-right, bottom-right, bottom-left).
-    float r = q.x < 0.0 ? (q.y < 0.0 ? vClipParams.x : vClipParams.w) : (q.y < 0.0 ? vClipParams.y : vClipParams.z);
-    return aaCoverage(roundedRectSdf(q, half_, r), p);
+    return aaCoverage(clipSdf(p, vClip, vClipParams), p) * outerCoverage(fragDevice(), vClipOuter);
 }
 
 // A gradient's ramp texel at this fragment (Skia tile modes), premultiplied; kind 0 has none.

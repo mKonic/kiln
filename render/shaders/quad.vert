@@ -13,6 +13,7 @@ layout(location = 8) in vec4 iXform;   // a, b, c, d
 layout(location = 9) in vec4 iXform2;  // e, f, then g, h: perspective (w = 1 + g x + h y; 0 = affine)
 layout(location = 10) in vec4 iClipInv;  // framebuffer -> clip space: a, b, c, d
 layout(location = 11) in vec4 iClipInv2; // e, f, clip enabled
+layout(location = 12) in vec4 iClipOuter; // a plain clip rect too (framebuffer px)
 
 layout(push_constant) uniform Push { vec2 viewport; vec2 origin; } pc;   // target size, its device origin
 
@@ -29,6 +30,7 @@ layout(location = 9) flat out vec4 vClipInv;
 layout(location = 10) flat out vec4 vClipInv2;
 layout(location = 11) flat out vec2 vUvMin;
 layout(location = 12) flat out vec2 vUvMax;
+layout(location = 13) flat out vec4 vClipOuter;
 
 void main() {
     vec2 corner = vec2(gl_VertexIndex & 1, (gl_VertexIndex >> 1) & 1);
@@ -48,6 +50,7 @@ void main() {
     vPaint2 = iPaint2;
     vClipInv = iClipInv;
     vClipInv2 = iClipInv2;
+    vClipOuter = iClipOuter;
     vUvMin = iUv.xy;
     vUvMax = iUv.zw;
     // A projective transform (a 3D-rotated layer) divides by w; handing w to the rasteriser
