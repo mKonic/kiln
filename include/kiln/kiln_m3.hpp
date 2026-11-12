@@ -350,6 +350,7 @@ namespace kpp::m3 {
         kiln_int_size end_thumb_size() const;
         void set_focused(bool start, bool value) const;
         bool is_focused(bool start) const;
+        size_t tick_fractions(float* items, size_t capacity) const;
     private:
         kiln_m3_range_slider_state* m_H;
     };
@@ -482,6 +483,7 @@ namespace kpp::m3 {
         kiln_orientation orientation() const;
         bool is_rtl() const;
         bool reverse_vertical_direction() const;
+        size_t tick_fractions(float* items, size_t capacity) const;
     private:
         kiln_m3_slider_state* m_H;
     };
@@ -525,6 +527,7 @@ namespace kpp::m3 {
         void snap_to(kiln_m3_swipe_to_dismiss_box_value target, kpp::Callback<kiln_fn> done = {}) const;
         void reset(kpp::Callback<kiln_fn> done = {}) const;
         void dismiss(kiln_m3_swipe_to_dismiss_box_value direction, kpp::Callback<kiln_fn> done = {}) const;
+        kiln_m3_fn_float_to_float positional_threshold() const;
     private:
         kiln_m3_swipe_to_dismiss_box_state* m_H;
     };
@@ -759,6 +762,7 @@ namespace kpp::m3 {
     inline kiln_int_size RangeSliderState::end_thumb_size() const { return kiln_m3_range_slider_state_end_thumb_size(m_H); }
     inline void RangeSliderState::set_focused(bool start, bool value) const { kiln_m3_range_slider_state_set_focused(m_H, start, value); }
     inline bool RangeSliderState::is_focused(bool start) const { return kiln_m3_range_slider_state_is_focused(m_H, start); }
+    inline size_t RangeSliderState::tick_fractions(float* items, size_t capacity) const { return kiln_m3_range_slider_state_tick_fractions(m_H, items, capacity); }
     inline int32_t ScrollFieldState::item_count() const { return kiln_m3_scroll_field_state_item_count(m_H); }
     inline int32_t ScrollFieldState::selected_option() const { return kiln_m3_scroll_field_state_selected_option(m_H); }
     inline void ScrollFieldState::set_selected_option(int32_t option) const { kiln_m3_scroll_field_state_set_selected_option(m_H, option); }
@@ -828,6 +832,7 @@ namespace kpp::m3 {
     inline kiln_orientation SliderState::orientation() const { return kiln_m3_slider_state_orientation(m_H); }
     inline bool SliderState::is_rtl() const { return kiln_m3_slider_state_is_rtl(m_H); }
     inline bool SliderState::reverse_vertical_direction() const { return kiln_m3_slider_state_reverse_vertical_direction(m_H); }
+    inline size_t SliderState::tick_fractions(float* items, size_t capacity) const { return kiln_m3_slider_state_tick_fractions(m_H, items, capacity); }
     inline kiln_m3_snackbar_visuals SnackbarData::visuals() const { kiln_m3_snackbar_visuals o; kiln_m3_snackbar_visuals_init(&o); kiln_m3_snackbar_data_visuals(m_H, &o); return o; }
     inline void SnackbarData::perform_action() const { kiln_m3_snackbar_data_perform_action(m_H); }
     inline void SnackbarData::dismiss() const { kiln_m3_snackbar_data_dismiss(m_H); }
@@ -844,6 +849,7 @@ namespace kpp::m3 {
     inline void SwipeToDismissBoxState::snap_to(kiln_m3_swipe_to_dismiss_box_value target, kpp::Callback<kiln_fn> done) const { kiln_m3_swipe_to_dismiss_box_state_snap_to(m_H, target, done.release()); }
     inline void SwipeToDismissBoxState::reset(kpp::Callback<kiln_fn> done) const { kiln_m3_swipe_to_dismiss_box_state_reset(m_H, done.release()); }
     inline void SwipeToDismissBoxState::dismiss(kiln_m3_swipe_to_dismiss_box_value direction, kpp::Callback<kiln_fn> done) const { kiln_m3_swipe_to_dismiss_box_state_dismiss(m_H, direction, done.release()); }
+    inline kiln_m3_fn_float_to_float SwipeToDismissBoxState::positional_threshold() const { return kiln_m3_swipe_to_dismiss_box_state_positional_threshold(m_H); }
     inline kpp::Modifier TabIndicatorScope::tab_indicator_offset(kpp::Modifier m, int32_t selected_tab_index, bool match_content_size) const { return kpp::Modifier(const_cast<kiln_modifier*>(kiln_m3_tab_indicator_scope_tab_indicator_offset(m_H, m, selected_tab_index, match_content_size))); }
     inline int32_t TimePickerState::minute() const { return kiln_m3_time_picker_state_minute(m_H); }
     inline void TimePickerState::set_minute(int32_t minute) const { kiln_m3_time_picker_state_set_minute(m_H, minute); }
@@ -1270,6 +1276,22 @@ namespace kpp::m3 {
     inline void floating_action_button_menu(bool expanded, kpp::Callback<kiln_fn> button, kpp::Modifier modifier, float horizontal_alignment, kpp::Callback<kiln_m3_fn_floating_action_button_menu_scope> content = {}, kpp::Key key = {}) { kiln_m3_floating_action_button_menu(key, expanded, button.release(), modifier, horizontal_alignment, content.release()); }
     inline void floating_action_button_menu_item(const kiln_m3_floating_action_button_menu_scope* scope_ = {}, kpp::Callback<kiln_fn> on_click = {}, kpp::Callback<kiln_fn> text = {}, kpp::Callback<kiln_fn> icon = {}, kpp::Modifier modifier = {}, const kiln_m3_floating_action_button_menu_item_options* options = {}, kpp::Key key = {}) { kiln_m3_floating_action_button_menu_item(key, scope_, on_click.release(), text.release(), icon.release(), modifier, options); }
     inline void toggle_floating_action_button(bool checked, kpp::Callback<kiln_fn_bool> on_checked_change = {}, kpp::Modifier modifier = {}, const kiln_m3_toggle_floating_action_button_options* options = {}, kpp::Callback<kiln_m3_fn_toggle_floating_action_button_scope> content = {}, kpp::Key key = {}) { kiln_m3_toggle_floating_action_button(key, checked, on_checked_change.release(), modifier, options, content.release()); }
+    inline kiln_m3_fn_float_to_color toggle_floating_action_button_defaults_container_color(kpp::Key key = {}) { return kiln_m3_toggle_floating_action_button_defaults_container_color(key); }
+    inline kiln_m3_fn_float_to_color toggle_floating_action_button_defaults_container_color_initial_color(kiln_color initial_color = {}, kiln_color final_color = {}, kpp::Key key = {}) { return kiln_m3_toggle_floating_action_button_defaults_container_color_initial_color(key, initial_color, final_color); }
+    inline kiln_m3_fn_float_to_dp toggle_floating_action_button_defaults_container_size(kpp::Key key = {}) { return kiln_m3_toggle_floating_action_button_defaults_container_size(key); }
+    inline kiln_m3_fn_float_to_dp toggle_floating_action_button_defaults_container_size_initial_size(float initial_size, float final_size, kpp::Key key = {}) { return kiln_m3_toggle_floating_action_button_defaults_container_size_initial_size(key, initial_size, final_size); }
+    inline kiln_m3_fn_float_to_dp toggle_floating_action_button_defaults_container_size_medium(kpp::Key key = {}) { return kiln_m3_toggle_floating_action_button_defaults_container_size_medium(key); }
+    inline kiln_m3_fn_float_to_dp toggle_floating_action_button_defaults_container_size_large(kpp::Key key = {}) { return kiln_m3_toggle_floating_action_button_defaults_container_size_large(key); }
+    inline kiln_m3_fn_float_to_dp toggle_floating_action_button_defaults_container_corner_radius(kpp::Key key = {}) { return kiln_m3_toggle_floating_action_button_defaults_container_corner_radius(key); }
+    inline kiln_m3_fn_float_to_dp toggle_floating_action_button_defaults_container_corner_radius_initial_size(float initial_size, float final_size, kpp::Key key = {}) { return kiln_m3_toggle_floating_action_button_defaults_container_corner_radius_initial_size(key, initial_size, final_size); }
+    inline kiln_m3_fn_float_to_dp toggle_floating_action_button_defaults_container_corner_radius_medium(kpp::Key key = {}) { return kiln_m3_toggle_floating_action_button_defaults_container_corner_radius_medium(key); }
+    inline kiln_m3_fn_float_to_dp toggle_floating_action_button_defaults_container_corner_radius_large(kpp::Key key = {}) { return kiln_m3_toggle_floating_action_button_defaults_container_corner_radius_large(key); }
+    inline kiln_m3_fn_float_to_color toggle_floating_action_button_defaults_icon_color(kpp::Key key = {}) { return kiln_m3_toggle_floating_action_button_defaults_icon_color(key); }
+    inline kiln_m3_fn_float_to_color toggle_floating_action_button_defaults_icon_color_initial_color(kiln_color initial_color = {}, kiln_color final_color = {}, kpp::Key key = {}) { return kiln_m3_toggle_floating_action_button_defaults_icon_color_initial_color(key, initial_color, final_color); }
+    inline kiln_m3_fn_float_to_dp toggle_floating_action_button_defaults_icon_size(kpp::Key key = {}) { return kiln_m3_toggle_floating_action_button_defaults_icon_size(key); }
+    inline kiln_m3_fn_float_to_dp toggle_floating_action_button_defaults_icon_size_initial_size(float initial_size, float final_size, kpp::Key key = {}) { return kiln_m3_toggle_floating_action_button_defaults_icon_size_initial_size(key, initial_size, final_size); }
+    inline kiln_m3_fn_float_to_dp toggle_floating_action_button_defaults_icon_size_medium(kpp::Key key = {}) { return kiln_m3_toggle_floating_action_button_defaults_icon_size_medium(key); }
+    inline kiln_m3_fn_float_to_dp toggle_floating_action_button_defaults_icon_size_large(kpp::Key key = {}) { return kiln_m3_toggle_floating_action_button_defaults_icon_size_large(key); }
     inline kpp::Modifier toggle_floating_action_button_defaults_animate_icon(kpp::Modifier modifier, float checked_progress, kpp::Callback<kiln_m3_fn_float_to_color> color = {}, kpp::Callback<kiln_m3_fn_float_to_dp> size = {}, kpp::Key key = {}) { return kpp::Modifier(const_cast<kiln_modifier*>(kiln_m3_toggle_floating_action_button_defaults_animate_icon(key, modifier, checked_progress, color.release(), size.release()))); }
     inline FloatingToolbarState remember_floating_toolbar_state(float initial_offset_limit, float initial_offset, float initial_content_offset, kpp::Key key = {}) { return FloatingToolbarState(kiln_m3_remember_floating_toolbar_state(key, initial_offset_limit, initial_offset, initial_content_offset)); }
     inline const kiln_shape* floating_toolbar_defaults_container_shape(kpp::Key key = {}) { return kiln_m3_floating_toolbar_defaults_container_shape(key); }
@@ -1321,6 +1343,7 @@ namespace kpp::m3 {
     inline kiln_color list_item_defaults_container_color(kpp::Key key = {}) { return kiln_m3_list_item_defaults_container_color(key); }
     inline kiln_color list_item_defaults_content_color(kpp::Key key = {}) { return kiln_m3_list_item_defaults_content_color(key); }
     inline kiln_padding list_item_defaults_content_padding(kpp::Key key = {}) { return kiln_m3_list_item_defaults_content_padding(key); }
+    inline kiln_m3_fn_int_int_to_int list_item_defaults_vertical_alignment(kpp::Key key = {}) { return kiln_m3_list_item_defaults_vertical_alignment(key); }
     inline kiln_m3_list_item_colors list_item_defaults_colors(kpp::Key key = {}) { kiln_m3_list_item_colors o; kiln_m3_list_item_colors_init(&o); kiln_m3_list_item_defaults_colors(key, &o); return o; }
     inline kiln_m3_list_item_colors list_item_defaults_colors_overrides(const kiln_m3_list_item_colors* overrides = {}, kpp::Key key = {}) { kiln_m3_list_item_colors o; kiln_m3_list_item_colors_init(&o); kiln_m3_list_item_defaults_colors_overrides(key, overrides, &o); return o; }
     inline kiln_m3_list_item_colors list_item_defaults_segmented_colors(kpp::Key key = {}) { kiln_m3_list_item_colors o; kiln_m3_list_item_colors_init(&o); kiln_m3_list_item_defaults_segmented_colors(key, &o); return o; }
@@ -1338,6 +1361,8 @@ namespace kpp::m3 {
     inline kiln_color loading_indicator_defaults_indicator_color(kpp::Key key = {}) { return kiln_m3_loading_indicator_defaults_indicator_color(key); }
     inline kiln_color loading_indicator_defaults_contained_indicator_color(kpp::Key key = {}) { return kiln_m3_loading_indicator_defaults_contained_indicator_color(key); }
     inline kiln_color loading_indicator_defaults_contained_container_color(kpp::Key key = {}) { return kiln_m3_loading_indicator_defaults_contained_container_color(key); }
+    inline size_t loading_indicator_defaults_indeterminate_indicator_polygons(const kiln_rounded_polygon** items, size_t capacity, kpp::Key key = {}) { return kiln_m3_loading_indicator_defaults_indeterminate_indicator_polygons(key, items, capacity); }
+    inline size_t loading_indicator_defaults_determinate_indicator_polygons(const kiln_rounded_polygon** items, size_t capacity, kpp::Key key = {}) { return kiln_m3_loading_indicator_defaults_determinate_indicator_polygons(key, items, capacity); }
     inline const kiln_rounded_polygon* material_shapes_circle(kpp::Key key = {}) { return kiln_m3_material_shapes_circle(key); }
     inline const kiln_rounded_polygon* material_shapes_square(kpp::Key key = {}) { return kiln_m3_material_shapes_square(key); }
     inline const kiln_rounded_polygon* material_shapes_slanted(kpp::Key key = {}) { return kiln_m3_material_shapes_slanted(key); }
@@ -1597,6 +1622,7 @@ namespace kpp::m3 {
     inline void surface_on_click(kpp::Callback<kiln_fn> on_click, kpp::Modifier modifier, const kiln_m3_surface_options* options, kpp::Callback<kiln_fn> content, bool enabled, kiln_interaction_source* interaction_source = {}, kpp::Key key = {}) { kiln_m3_surface_on_click(key, on_click.release(), modifier, options, content.release(), enabled, interaction_source); }
     inline void surface_selected(bool selected, kpp::Callback<kiln_fn> on_click, kpp::Modifier modifier, const kiln_m3_surface_options* options, kpp::Callback<kiln_fn> content, bool enabled, kiln_interaction_source* interaction_source = {}, kpp::Key key = {}) { kiln_m3_surface_selected(key, selected, on_click.release(), modifier, options, content.release(), enabled, interaction_source); }
     inline void surface_checked(bool checked, kpp::Callback<kiln_fn_bool> on_checked_change, kpp::Modifier modifier, const kiln_m3_surface_options* options, kpp::Callback<kiln_fn> content, bool enabled, kiln_interaction_source* interaction_source = {}, kpp::Key key = {}) { kiln_m3_surface_checked(key, checked, on_checked_change.release(), modifier, options, content.release(), enabled, interaction_source); }
+    inline kiln_m3_fn_float_to_float swipe_to_dismiss_box_defaults_positional_threshold(kpp::Key key = {}) { return kiln_m3_swipe_to_dismiss_box_defaults_positional_threshold(key); }
     inline SwipeToDismissBoxState remember_swipe_to_dismiss_box_state(kiln_m3_swipe_to_dismiss_box_value initial_value, kpp::Callback<kiln_m3_fn_float_to_float> positional_threshold = {}, kpp::Callback<kiln_m3_fn_swipe_to_dismiss_box_value_to_bool> confirm_value_change = {}, kpp::Key key = {}) { return SwipeToDismissBoxState(kiln_m3_remember_swipe_to_dismiss_box_state(key, initial_value, positional_threshold.release(), confirm_value_change.release())); }
     inline void swipe_to_dismiss_box(SwipeToDismissBoxState state, kpp::Callback<kiln_fn> background_content = {}, kpp::Modifier modifier = {}, const kiln_m3_swipe_to_dismiss_box_options* options = {}, kpp::Callback<kiln_fn> content = {}, kpp::Key key = {}) { kiln_m3_swipe_to_dismiss_box(key, state, background_content.release(), modifier, options, content.release()); }
     inline void switch_(bool checked, kpp::Callback<kiln_fn_bool> on_checked_change = {}, kpp::Modifier modifier = {}, const kiln_m3_switch_options* options = {}, kpp::Key key = {}) { kiln_m3_switch(key, checked, on_checked_change.release(), modifier, options); }

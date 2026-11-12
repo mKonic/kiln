@@ -109,6 +109,7 @@ class Mapping:
     from_cpp: object = None     # (cpp_expr, out_lines) -> C expression; None: cannot return
     by_out: bool = False        # a struct: returned through an out pointer
     struct: object = None       # the Struct for by_out
+    list_item: object = None    # a struct field holding a list: items pointer + count
 
 
 @dataclass
@@ -160,6 +161,7 @@ class Generator:
         self.opt_structs = {}   # C name -> pointer type of its value
         self.opaques = {}       # C name -> C++ type (opaque shared handles)
         self.base_sig = {}      # C name -> (param, C type) of its first overload
+        self.returned_callbacks = set()
 
     # --- discovery ---------------------------------------------------------------------------
 
@@ -351,7 +353,12 @@ class Generator:
             c = 'kiln_m3_fn_' + ('_'.join(names) if names else 'void')
             self.callbacks[sig] = Callback(c, args, retm, ret.spelling, sig)
         cb = self.callbacks[sig]
-        return Mapping(cb.c, lambda e, cb=cb: f'ToCpp_{cb.c}({e})', None)
+        # Returned (a C++ default to call or pass back): a callback struct kiln made.
+        convertible = all(m.to_cpp for m, _ in cb.args) and (cb.ret is None or cb.ret.from_cpp is not None) \
+            and not any(m.by_out or m.c.endswith('*') for m, _ in cb.args)
+        if convertible:
+            self.returned_callbacks.add(cb.c)
+        return Mapping(cb.c, lambda e, cb=cb: f'ToCpp_{cb.c}({e})', (lambda e, o, cb=cb: f'FromCpp_{cb.c}({e})') if convertible else None)
 
     def result_callback(self, t):
         """The `done` callback of a suspending call with a result: void(result)."""
@@ -419,6 +426,14 @@ class Generator:
     def map(self, t, name, field_=False, arg_of_callback=False):
         base, is_ref = strip_ref(t)
         k = canon(base)
+        if field_ and k.startswith('std::vector<'):
+            item = self.map(template_args(base)[0], name)
+            if item.by_out or item.c.startswith('kiln_fn') or item.c.startswith('kiln_m3_fn') or item.c.startswith('kiln_m3_opt'):
+                raise Unmappable(f'list of {k}')
+            ptr = f'{item.c} const*' if item.c.endswith('*') else f'const {item.c}*'
+            return Mapping(ptr, None, None, list_item=item)
+        if base.kind == ci.TypeKind.POINTER and canon(base.get_pointee()) == 'kiln::foundation::ScrollState':
+            return Mapping('kiln_scroll_state*', lambda e: f'({e} ? {e}->state : nullptr)', None)
         if base.kind == ci.TypeKind.POINTER and k != 'const char *':
             raise Unmappable(f'pointer {t.spelling}')
         scalars = {'bool': 'bool', 'int': 'int32_t', 'float': 'float', 'double': 'double', 'long': 'int64_t',
@@ -524,7 +539,13 @@ class Generator:
                                lambda e, o: f'(({e}) ? kiln::capi::TransientString(*({e})) : nullptr)')
             if ik.startswith('std::optional<'):
                 return self.nested_optional(inner, name)
+            if ik == 'std::function<void ()>':
+                # unset (the default) / none (a NULL call) / a callback
+                self.opt_structs['kiln_m3_opt_fn'] = 'kiln_fn'
+                return Mapping('kiln_m3_opt_fn', lambda e: f'({e}.set ? std::optional<std::function<void()>>(kiln::capi::Fn({e}.value)) : std::nullopt)', None)
             im = self.map(inner, name, field_=field_)
+            if im.list_item is not None:
+                raise Unmappable(f'optional list {k}')
             cpp_inner = inner.get_canonical().spelling
             # Pointer-shaped inner types: NULL is nullopt.
             if im.c.endswith('*'):
@@ -641,7 +662,18 @@ class Generator:
         ret_base, _ = strip_ref(ret)
         is_task = canon(ret_base).startswith('kiln::rt::Task<')
         retm = None
-        if ret.kind != ci.TypeKind.VOID and not is_task:
+        vec_item = None
+        if canon(ret_base).startswith('std::vector<') and not is_task:
+            # A list: written to the caller's array (up to capacity); the count comes back.
+            try:
+                vec_item = self.map(template_args(ret_base)[0], '')
+            except Unmappable as e:
+                self.skipped.append(f'{qual}: result: list of {e}')
+                return
+            if vec_item.from_cpp is None or vec_item.by_out:
+                self.skipped.append(f'{qual}: result: list of {ret.spelling}')
+                return
+        if ret.kind != ci.TypeKind.VOID and not is_task and vec_item is None:
             try:
                 retm = self.map(ret, '')
             except Unmappable as e:
@@ -686,6 +718,11 @@ class Generator:
                 c_ret = retm.c
         if is_task:
             sig_params.append(f'{task_cb.c if task_cb else "kiln_fn"} done')
+        if vec_item is not None:
+            item_c = vec_item.c if not vec_item.c.startswith('const ') else vec_item.c
+            sig_params.append(f'{item_c}* items')
+            sig_params.append('size_t capacity')
+            c_ret = 'size_t'
         self.header_funcs.append((owner.c if owner else self.group_of(cur), f'KILN_API {c_ret} {cname}({", ".join(sig_params)});', cur))
         # Body.
         call = f'{self.call_target(cur, owner)}({", ".join(cpp_args)})'
@@ -693,6 +730,18 @@ class Generator:
         if owner is not None:
             body.append('if (!self) return {};' if c_ret != 'void' else 'if (!self) return;')
         body += prelude
+        if vec_item is not None:
+            body.append(f'std::optional<std::remove_cvref_t<decltype({call})>> r;')
+            if owner is None and key_param is None:
+                body.append(f'kiln::capi::InGroup(key, [&] {{ r.emplace({call}); }});')
+            else:
+                body.append(f'r.emplace({call});')
+            lines = []
+            expr = vec_item.from_cpp('(*r)[i]', lines)
+            body.append(f'for (size_t i = 0; items && i < r->size() && i < capacity; ++i) {{ {" ".join(lines)} items[i] = {expr}; }}')
+            body.append('return r->size();')
+            self.glue_funcs.append((cname, c_ret, sig_params, body))
+            return
         if is_task:
             body.append(f'auto* obj = self->ptr;')
             cap = ', '.join(['obj'] + [f'a{i}' for i in range(len(params)) if f'a{i}' in ' '.join(cpp_args)])
@@ -950,6 +999,10 @@ class Generator:
             out.append(f'struct {s.c} {{')
             out.append('    size_t size;')
             for n, m, _ in s.fields:
+                if m.list_item is not None:
+                    out.append(f'    {m.c} {field_name(n)};   /* NULL: the default */')
+                    out.append(f'    size_t {field_name(n)}_count;')
+                    continue
                 if m.c.startswith('const kiln_m3_') and m.by_out:
                     out.append(f'    {m.c} {field_name(n)};   /* NULL: the default */')
                 else:
@@ -1144,6 +1197,28 @@ class Generator:
                     out.append('        ' + l)
             out.append('    };')
             out.append('}')
+        for cb in self.callbacks.values():
+            if cb.c not in self.returned_callbacks:
+                continue
+            # A C++ function as the C callback struct: call converts the C arguments in and the
+            # result out; drop frees it.
+            cparams = ''.join(f', {m.c} a{i}' for i, (m, _) in enumerate(cb.args))
+            cpp_args = ', '.join(m.to_cpp(f'a{i}') for i, (m, _) in enumerate(cb.args))
+            r = cb.ret.c if cb.ret else 'void'
+            out.append(f'[[maybe_unused]] {cb.c} FromCpp_{cb.c}({cb.cpp_sig} fn) {{')
+            out.append(f'    using F = {cb.cpp_sig};')
+            out.append(f'    {cb.c} c{{}};')
+            out.append('    if (!fn) return c;')
+            out.append('    c.user = new F(std::move(fn));')
+            if cb.ret:
+                lines = []
+                expr = cb.ret.from_cpp(f'(*static_cast<F*>(u))({cpp_args})', lines)
+                out.append(f'    c.call = [](void* u{cparams}) -> {r} {{ {" ".join(lines)} return {expr}; }};')
+            else:
+                out.append(f'    c.call = [](void* u{cparams}) {{ (*static_cast<F*>(u))({cpp_args}); }};')
+            out.append('    c.drop = [](void* u) { delete static_cast<F*>(u); };')
+            out.append('    return c;')
+            out.append('}')
         for q in self.struct_order:
             s = self.structs[q]
             out.append(f'{q} ToCpp(const {s.c}* in) {{')
@@ -1154,6 +1229,9 @@ class Generator:
             out.append('    if (in->size > sizeof(size_t)) std::memcpy(reinterpret_cast<char*>(&c) + sizeof(size_t), reinterpret_cast<const char*>(in) + sizeof(size_t), std::min(in->size, sizeof(c)) - sizeof(size_t));')
             for n, m, _ in s.fields:
                 f = field_name(n)
+                if m.list_item is not None:
+                    out.append(f'    if (c.{f}) {{ v.{n}.clear(); for (size_t i = 0; i < c.{f}_count; ++i) v.{n}.push_back({m.list_item.to_cpp(f"c.{f}[i]")}); }}')
+                    continue
                 if m.c.startswith('kiln_m3_opt_'):
                     out.append(f'    if (c.{f}.set) v.{n} = {m.to_cpp("c." + f)};')
                 elif m.c.endswith('*') or m.c.startswith('kiln_fn') or m.c.startswith('kiln_m3_fn'):

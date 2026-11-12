@@ -1,9 +1,9 @@
 # Declarations tools/gen-capi could not map (generated).
-kiln::material3::AppBarScope::Items: result: type std::vector<kiln::material3::internal::AppBarItem>
-kiln::material3::ButtonGroupScope::Items: result: type std::vector<std::shared_ptr<kiln::material3::internal::ButtonGroupItem>>
-kiln::material3::CarouselDefaults::multiBrowseFlingBehavior: result: callback argument std::function<float (float)>
-kiln::material3::CarouselDefaults::noSnapFlingBehavior: result: callback argument std::function<float (float)>
-kiln::material3::CarouselDefaults::singleAdvanceFlingBehavior: result: callback argument std::function<float (float)>
+kiln::material3::AppBarScope::Items: result: list of kiln::material3::internal::AppBarItem is internal
+kiln::material3::ButtonGroupScope::Items: result: list of type std::shared_ptr<kiln::material3::internal::ButtonGroupItem>
+kiln::material3::CarouselDefaults::multiBrowseFlingBehavior: result: type kiln::rt::Task<float>
+kiln::material3::CarouselDefaults::noSnapFlingBehavior: result: type kiln::rt::Task<float>
+kiln::material3::CarouselDefaults::singleAdvanceFlingBehavior: result: type kiln::rt::Task<float>
 kiln::material3::CarouselState::PagerState: result const foundation::PagerState & cannot be returned
 kiln::material3::CarouselState::PagerState: result foundation::PagerState & cannot be returned
 kiln::material3::DatePickerDefaults::YearAbbrMonthDaySkeleton: constant: pointer const char *const
@@ -19,9 +19,6 @@ kiln::material3::FromToken: parameter token: kiln::material3::tokens::MotionSche
 kiln::material3::FromToken: parameter token: kiln::material3::tokens::ShapeToken is internal
 kiln::material3::FromToken: parameter token: kiln::material3::tokens::TypographyToken is internal
 kiln::material3::HorizontalSharedAxisNavigationTransitions::predictiveBackTransform: parameter backEvent: callback returning a struct (kiln::ui::BackEvent)
-kiln::material3::ListItemDefaults::verticalAlignment: result ListItemVerticalAlignment cannot be returned
-kiln::material3::LoadingIndicatorDefaults::determinateIndicatorPolygons: result: type std::vector<kiln::gfx::shapes::RoundedPolygon>
-kiln::material3::LoadingIndicatorDefaults::indeterminateIndicatorPolygons: result: type std::vector<kiln::gfx::shapes::RoundedPolygon>
 kiln::material3::MakeCarouselParallaxScrollEffectState: parameter state: type kiln::foundation::LazyGridState
 kiln::material3::MenuDefaults::rememberDropdownMenuPopupPositionProvider: parameter dropdownMenuAnchorPosition: kiln::material3::internal::MenuAnchorPosition is internal
 kiln::material3::MinimumInteractiveLeftAlignmentLine: constant: type kiln::ui::AlignmentLine
@@ -29,31 +26,16 @@ kiln::material3::MinimumInteractiveTopAlignmentLine: constant: type kiln::ui::Al
 kiln::material3::NonInteractiveScrollbar: parameter state: type kiln::foundation::ScrollIndicatorState
 kiln::material3::ProgressIndicatorDefaults::DrawStopIndicator: parameter scope: type kiln::ui::DrawScope
 kiln::material3::RangeSliderState::AliveToken: result: type std::weak_ptr<const char>
-kiln::material3::RangeSliderState::TickFractions: result: type std::vector<float>
 kiln::material3::ScrollFieldState::Pager: result foundation::PagerState & cannot be returned
 kiln::material3::SheetState::Anchored: result: type kiln::foundation::AnchoredDraggableState<kiln::material3::SheetValue>
 kiln::material3::SliderDefaults::DrawStopIndicator: parameter arg0: type kiln::ui::DrawScope
 kiln::material3::SliderState::AliveToken: result: type std::weak_ptr<const char>
-kiln::material3::SliderState::TickFractions: result: type std::vector<float>
-kiln::material3::SwipeToDismissBoxDefaults::positionalThreshold: result std::function<float (float)> cannot be returned
 kiln::material3::SwipeToDismissBoxState::Anchored: result: type kiln::foundation::AnchoredDraggableState<kiln::material3::SwipeToDismissBoxValue>
-kiln::material3::SwipeToDismissBoxState::PositionalThreshold: result const std::function<float (float)> & cannot be returned
 kiln::material3::TabIndicatorScope::TabIndicatorLayout: parameter measure: type kiln::ui::MeasureScope
 kiln::material3::Text: parameter text: pointer const char *
 kiln::material3::ToggleButtonDefaults::contentPaddingFor: parameter size: kiln::material3::ToggleButtonSize is not default-constructible
 kiln::material3::ToggleButtonDefaults::shapesFor: parameter size: kiln::material3::ToggleButtonSize is not default-constructible
 kiln::material3::ToggleButtonDefaults::size: constant: kiln::material3::ToggleButtonSize is not default-constructible
-kiln::material3::ToggleFloatingActionButtonDefaults::containerColor: result std::function<ui::Color (float)> cannot be returned
-kiln::material3::ToggleFloatingActionButtonDefaults::containerCornerRadius: result std::function<ui::Dp (float)> cannot be returned
-kiln::material3::ToggleFloatingActionButtonDefaults::containerCornerRadiusLarge: result std::function<ui::Dp (float)> cannot be returned
-kiln::material3::ToggleFloatingActionButtonDefaults::containerCornerRadiusMedium: result std::function<ui::Dp (float)> cannot be returned
-kiln::material3::ToggleFloatingActionButtonDefaults::containerSize: result std::function<ui::Dp (float)> cannot be returned
-kiln::material3::ToggleFloatingActionButtonDefaults::containerSizeLarge: result std::function<ui::Dp (float)> cannot be returned
-kiln::material3::ToggleFloatingActionButtonDefaults::containerSizeMedium: result std::function<ui::Dp (float)> cannot be returned
-kiln::material3::ToggleFloatingActionButtonDefaults::iconColor: result std::function<ui::Color (float)> cannot be returned
-kiln::material3::ToggleFloatingActionButtonDefaults::iconSize: result std::function<ui::Dp (float)> cannot be returned
-kiln::material3::ToggleFloatingActionButtonDefaults::iconSizeLarge: result std::function<ui::Dp (float)> cannot be returned
-kiln::material3::ToggleFloatingActionButtonDefaults::iconSizeMedium: result std::function<ui::Dp (float)> cannot be returned
 kiln::material3::TooltipState::Transition: result: type kiln::foundation::MutableTransitionState<bool>
 kiln::material3::Value: parameter token: kiln::material3::tokens::ColorToken is internal
 kiln::material3::Value: parameter token: kiln::material3::tokens::MotionSchemeToken is internal
@@ -63,32 +45,20 @@ kiln::material3::WideNavigationRailItemDefaults::indicatorPadding: result: kiln:
 kiln::material3::kSystemPaletteFields: constant: type kiln::ui::Color kiln::material3::TonalPalette::*const[65]
 kiln::material3::kSystemRoleFields: constant: type kiln::ui::Color kiln::material3::ColorScheme::*const[43]
 kiln::material3::ToggleButtonOptions::buttonSize: field left at its default: kiln::material3::ToggleButtonSize is not default-constructible
-kiln::material3::CarouselOptions::flingBehavior: field left at its default: callback argument std::function<float (float)>
-kiln::foundation::KeyboardOptions::hintLocales: field left at its default: type std::vector<std::basic_string<char>>
+kiln::material3::CarouselOptions::flingBehavior: field left at its default: type kiln::rt::Task<float>
 kiln::material3::TextFieldOptions::onKeyboardAction: field left at its default: callback argument std::function<void ()>
 kiln::material3::TextFieldOptions::onTextLayout: field left at its default: type kiln::text::TextLayoutResult
-kiln::material3::TextFieldOptions::scrollState: field left at its default: pointer foundation::ScrollState *
 kiln::material3::SecureTextFieldOptions::textObfuscationCharacter: field left at its default: type char32_t
 kiln::material3::SecureTextFieldOptions::onKeyboardAction: field left at its default: callback argument std::function<void ()>
 kiln::material3::SecureTextFieldOptions::onTextLayout: field left at its default: type kiln::text::TextLayoutResult
-kiln::material3::DatePickerOptions::title: field left at its default: optional std::optional<std::function<void ()>>
-kiln::material3::DatePickerOptions::headline: field left at its default: optional std::optional<std::function<void ()>>
 kiln::material3::DatePickerOptions::focusRequester: field left at its default: pointer kiln::ui::FocusRequester *
-kiln::ui::Configuration::locales: field left at its default: type std::vector<std::basic_string<char>>
-kiln::ui::Configuration::systemPalette: field left at its default: type std::vector<unsigned int>
-kiln::ui::Configuration::systemRoles: field left at its default: type std::vector<unsigned int>
-kiln::material3::ExposedDropdownMenuOptions::scrollState: field left at its default: pointer foundation::ScrollState *
 kiln::material3::FloatingActionButtonMenuScope::state: field left at its default: type std::shared_ptr<kiln::material3::internal::FabMenuState>
-kiln::material3::LoadingIndicatorOptions::polygons: field left at its default: type std::vector<kiln::gfx::shapes::RoundedPolygon>
-kiln::material3::ContainedLoadingIndicatorOptions::polygons: field left at its default: type std::vector<kiln::gfx::shapes::RoundedPolygon>
-kiln::material3::DropdownMenuOptions::scrollState: field left at its default: pointer foundation::ScrollState *
+kiln::material3::LoadingIndicatorOptions::polygons: field left at its default: optional list std::optional<std::vector<kiln::gfx::shapes::RoundedPolygon>>
+kiln::material3::ContainedLoadingIndicatorOptions::polygons: field left at its default: optional list std::optional<std::vector<kiln::gfx::shapes::RoundedPolygon>>
 kiln::material3::LinearProgressIndicatorOptions::drawStopIndicator: field left at its default: type kiln::ui::DrawScope
-kiln::material3::SearchBarInputFieldOptions::scrollState: field left at its default: pointer foundation::ScrollState *
-kiln::material3::SegmentedButtonOptions::icon: field left at its default: optional std::optional<std::function<void ()>>
 kiln::material3::SliderTrackOptions::drawStopIndicator: field left at its default: type kiln::ui::DrawScope
 kiln::material3::SliderTrackOptions::drawTick: field left at its default: type kiln::ui::DrawScope
-kiln::material3::ScrollableTabRowOptions::scrollState: field left at its default: pointer foundation::ScrollState *
-kiln::text::FontFamily::fonts: field left at its default: type std::vector<kiln::text::Font>
+kiln::text::FontFamily::fonts: field left at its default: list of std::vector<kiln::text::Font>
 kiln::material3::TextOptions::inlineContent: field left at its default: type std::map<std::basic_string<char>, kiln::foundation::InlineTextContent>
 kiln::material3::TextOptions::onTextLayout: field left at its default: type kiln::text::TextLayoutResult
 kiln::material3::WideNavigationRailItemOptions::indicatorPadding: field left at its default: kiln::material3::internal::DynamicPaddingValues is not default-constructible
