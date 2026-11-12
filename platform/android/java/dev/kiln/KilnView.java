@@ -811,6 +811,15 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
     // --- accessibility (spec 01) --------------------------------------------------------------
     private final KilnAccessibility accessibility = new KilnAccessibility(this);
 
+    /** The display's highest refresh rate (preferredFrameRate's High category). */
+    float maxRefreshRate() {
+        android.view.Display d = null;
+        try { d = getContext().getDisplay(); } catch (UnsupportedOperationException e) { /* not a visual context */ }
+        float max = 60;
+        if (d != null) for (android.view.Display.Mode m : d.getSupportedModes()) max = Math.max(max, m.getRefreshRate());
+        return max;
+    }
+
     /** UiMediaScope's device features: microphone 1, camera 2, TV 4, automotive 8, docked 16. */
     int mediaFeatures() {
         android.content.pm.PackageManager pm = getContext().getPackageManager();

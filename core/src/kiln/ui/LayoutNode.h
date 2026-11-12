@@ -412,6 +412,10 @@ namespace kiln::ui {
         bool ClearFocus(bool force = false);
         // autoClearFocusBehavior (ComposeView's).
         void SetAutoClearFocusBehavior(AutoClearFocusBehavior b) { m_AutoClearFocus = b; }
+        // preferredFrameRate: content drawn in a frame votes (a rate in Hz, or a category as a
+        // negative value); the host reads the last frame's result after drawing.
+        void VoteFrameRate(float rateOrCategory);
+        const FrameRateVote& LastFrameRateVote() const { return m_LastFrameRate; }
         AutoClearFocusBehavior GetAutoClearFocusBehavior() const { return m_AutoClearFocus; }
         // wrapAround: 1D search (Next / Previous) starts over from the other end when it runs out.
         bool MoveFocus(FocusDirection direction, bool wrapAround = true);
@@ -854,6 +858,7 @@ namespace kiln::ui {
         ViewConfiguration m_Config;
         InputDevices m_InputDevices;
         AutoClearFocusBehavior m_AutoClearFocus = AutoClearFocusBehavior::Default;
+        FrameRateVote m_FrameRate, m_LastFrameRate;
         struct Tracked { std::vector<HitEntry> path; Offset position; bool pressed = false; std::int64_t uptime = 0; PointerType type{}; };
         std::map<std::int64_t, Tracked> m_Pointers;
         FocusTargetNode m_RootFocus;

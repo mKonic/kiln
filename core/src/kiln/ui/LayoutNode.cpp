@@ -2299,8 +2299,21 @@ namespace kiln::ui {
         DrawTarget t = target;
         t.shadowLight = ShadowLight();
         ContentDrawScope scope(m_Density, m_Direction, t);
+        m_FrameRate = {};
         m_Root->Draw(scope);
         scope.Finish();
+        m_LastFrameRate = m_FrameRate;
+    }
+
+    void Owner::VoteFrameRate(float v) {
+        if (v != v) return;   // Default: no preference
+        if (v >= 0) {
+            m_FrameRate.rate = std::max(m_FrameRate.rate, v);
+        } else {
+            // Categories are negative: High (-4) outranks Normal (-3), Normal outranks Low (-2).
+            const float c = m_FrameRate.category.value;
+            if (c != c || v < c) m_FrameRate.category = FrameRateCategory{ v };
+        }
     }
 
 }

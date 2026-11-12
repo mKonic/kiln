@@ -9,6 +9,7 @@
 
 #include <array>
 #include <cstdint>
+#include <limits>
 #include <optional>
 #include <memory>
 #include <vector>
@@ -155,6 +156,23 @@ namespace kiln::ui {
         int classification = 0;
         bool cancel = false;                 // ACTION_CANCEL: every path is cancelled
         bool fromCursorDevice = false;       // from a mouse or touchpad (MotionEvent source)
+    };
+
+    // FrameRateCategory: a frame rate by kind (View.REQUESTED_FRAME_RATE_CATEGORY_*): Normal for
+    // ordinary animation, High for smooth motion; Default leaves it to the platform.
+    struct FrameRateCategory {
+        float value = std::numeric_limits<float>::quiet_NaN();
+        static FrameRateCategory Default() { return {}; }
+        static FrameRateCategory Normal() { return { -3 }; }
+        static FrameRateCategory High() { return { -4 }; }
+        bool operator==(const FrameRateCategory& o) const { return value == o.value || (value != value && o.value != o.value); }
+    };
+    // The frame rate the content drawn in a frame asks for: the highest explicit rate (Hz, 0:
+    // none) and the highest category, as the platform's frame-rate voting combines them.
+    struct FrameRateVote {
+        float rate = 0;
+        FrameRateCategory category;
+        bool operator==(const FrameRateVote&) const = default;
     };
 
     // AutoClearFocusBehavior: whether a mouse or touchpad press outside the focused item

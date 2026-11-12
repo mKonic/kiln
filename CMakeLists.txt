@@ -58,7 +58,7 @@ target_compile_options(kiln_material3 PRIVATE -Wall -Wextra -Wno-missing-field-i
 if(ANDROID)
     file(GLOB KILN_ANDROID_SOURCES CONFIGURE_DEPENDS platform/android/jni/*.cpp)
     add_library(kiln_android STATIC ${KILN_ANDROID_SOURCES})
-    target_link_libraries(kiln_android PUBLIC kiln_foundation jnigraphics android log)
+    target_link_libraries(kiln_android PUBLIC kiln_foundation jnigraphics android nativewindow log)
     target_compile_options(kiln_android PRIVATE -Wall -Wextra -Wno-missing-field-initializers)
 
     # An app is one shared library linking kiln statically; KilnActivity loads it by the

@@ -5,6 +5,7 @@
 #include "kiln/foundation/Compose.h"
 #include "kiln/foundation/Layouts.h"
 #include "kiln/ui/MediaQuery.h"
+#include "kiln/foundation/FrameRate.h"
 
 using namespace kiln;
 using namespace kiln::foundation;
@@ -358,4 +359,26 @@ TEST(MediaQueryAnswersFromTheWindowAndDevices) {
     UiMediaScope::WindowPosture posture;
     posture.folds.push_back({ UiMediaScope::FoldState::HalfOpened, UiMediaScope::FoldOrientation::Horizontal });
     CHECK(posture.IsTabletop() && !posture.IsFlat());
+}
+
+TEST(PreferredFrameRateVotesFromWhatDraws) {
+    Harness h;
+    rt::State<bool> fast(false);
+    h.Run([&] {
+        Box(Modifier{}, Alignment::TopStart(), false, [&] {
+            Box(PreferredFrameRate(SizeMod(Modifier{}, Dp(10), Dp(10)), FrameRateCategory::Normal()));
+            Box(PreferredFrameRate(SizeMod(Modifier{}, Dp(10), Dp(10)), 30.0f));
+            if (fast.Get()) Box(PreferredFrameRate(SizeMod(Modifier{}, Dp(10), Dp(10)), FrameRateCategory::High()));
+        });
+    });
+    h.owner.Draw({});
+    CHECK(h.owner.LastFrameRateVote().rate == 30.0f && h.owner.LastFrameRateVote().category == FrameRateCategory::Normal());
+    fast.Set(true);
+    h.Pump();
+    h.owner.Draw({});
+    CHECK(h.owner.LastFrameRateVote().category == FrameRateCategory::High());
+    fast.Set(false);
+    h.Pump();
+    h.owner.Draw({});
+    CHECK(h.owner.LastFrameRateVote().category == FrameRateCategory::Normal());
 }

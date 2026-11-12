@@ -49,6 +49,10 @@ namespace {
         kiln_app handle{};
         hearth::AndroidSurface surface;
         ANativeWindow* window = nullptr;
+        // preferredFrameRate: the display's highest refresh rate (FrameRateCategory.High), and
+        // the rate last set on the window.
+        float maxRefreshRate = 60;
+        float appliedFrameRate = 0;
         bool visible = false;
         bool callbackPosted = false;
         int eventFd = -1, timerFd = -1;
@@ -353,12 +357,26 @@ namespace {
     };
     FrameStats g_FrameStats;
 
+    // The content's frame-rate vote, onto the surface (Surface.setFrameRate): an explicit rate
+    // as is, High as the display's top rate, Normal as 60 Hz; no vote clears it.
+    void ApplyFrameRate() {
+        const kiln::ui::FrameRateVote& v = g_Host->app->GetOwner().LastFrameRateVote();
+        float category = 0;
+        if (v.category == kiln::ui::FrameRateCategory::High()) category = g_Host->maxRefreshRate;
+        else if (v.category == kiln::ui::FrameRateCategory::Normal()) category = 60;
+        const float rate = std::max(v.rate, category);
+        if (rate == g_Host->appliedFrameRate || !g_Host->window) return;
+        g_Host->appliedFrameRate = rate;
+        ANativeWindow_setFrameRate(g_Host->window, rate, ANATIVEWINDOW_FRAME_RATE_COMPATIBILITY_DEFAULT);
+    }
+
     void OnVsync(int64_t frameTimeNanos, void*) {
         if (!g_Host) return;
         g_Host->callbackPosted = false;
         if (g_Host->visible && g_Host->window) {
             const auto t0 = std::chrono::steady_clock::now();
             g_Host->app->Frame(double(frameTimeNanos) * 1e-9);
+            ApplyFrameRate();
             if (g_FrameStats.enabled)
                 g_FrameStats.Add(std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count(), g_Host->app->Quads().ComputeStats());
         }
@@ -1148,6 +1166,10 @@ namespace {
             jmethodID isTv = env->GetMethodID(vc, "isTelevision", "()Z");
             env->DeleteLocalRef(vc);
             g_Host->app->SetTelevision(isTv && env->CallBooleanMethod(view, isTv));
+            jclass vc2 = env->GetObjectClass(view);
+            jmethodID maxRate = env->GetMethodID(vc2, "maxRefreshRate", "()F");
+            env->DeleteLocalRef(vc2);
+            if (maxRate) g_Host->maxRefreshRate = env->CallFloatMethod(view, maxRate);
         }
         {
             char v[PROP_VALUE_MAX] = {};
@@ -2655,6 +2677,7 @@ namespace {
             return;
         }
         g_Host->window = ANativeWindow_fromSurface(env, surface);
+        g_Host->appliedFrameRate = 0;   // a new surface has no frame rate set
         g_Host->surface.Reset(g_Host->window);
         g_Host->app->SurfaceCreated(g_Host->surface);
     }
