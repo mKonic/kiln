@@ -1,0 +1,11 @@
+[package]
+name = "kiln"
+version = "0.1.0"
+edition = "2021"
+description = "Safe Rust over the kiln C ABI: closures for callbacks, keys from the call site"
+
+[dependencies]
+kiln-sys = { path = "../kiln-sys" }
+
+[[example]]
+name = "notes"

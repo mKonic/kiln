@@ -101,6 +101,21 @@ int main() {
         g_App->ProcessKey(e);
     });
 
+    // Typed characters go to the focused text field, as an IME's commitText would.
+    glfwSetCharCallback(window, [](GLFWwindow*, unsigned int codepoint) {
+        kiln::ui::TextInputSession* session = g_App->GetOwner().ActiveTextInput();
+        if (!session) return;
+        std::u16string text;
+        if (codepoint >= 0x10000) {
+            codepoint -= 0x10000;
+            text += char16_t(0xD800 + (codepoint >> 10));
+            text += char16_t(0xDC00 + (codepoint & 0x3FF));
+        } else {
+            text += char16_t(codepoint);
+        }
+        session->CommitText(text, 1);
+    });
+
     hearth::GlfwSurface surface(window);
     app.SurfaceCreated(surface);
     int lastW = 0, lastH = 0;
