@@ -6,6 +6,8 @@
 // the coordinator of the next layout modifier after them (or the inner one).
 
 #include "kiln/runtime/Composition.h"
+#include <stdexcept>
+#include <typeinfo>
 #include "kiln/runtime/State.h"
 #include "kiln/ui/Draw.h"
 #include "kiln/graphics/shadow/ShadowContext.h"
@@ -176,6 +178,15 @@ namespace kiln::ui {
         void RequestRemeasure();
         void RequestRelayout();
         void InvalidateDraw();
+        // Collects the parent data from the chain again (invalidateParentData).
+        void UpdateParentData();
+
+        // Traversal of TraversableNodes by key (and, given, by the exact node type) for the
+        // free functions below.
+        static void TraverseAncestorsImpl(const ModifierNode& from, const void* key, const std::type_info* type,
+                                          const std::function<bool(ModifierNode&, TraversableNode&)>& block);
+        static void TraverseDescendantsImpl(const ModifierNode& from, const void* key, const std::type_info* type, bool childrenOnly,
+                                            const std::function<TraverseDescendantsAction(ModifierNode&, TraversableNode&)>& block);
 
         // Draws this node and its subtree with scope translated to the node's top-left.
         void Draw(ContentDrawScope& scope);
@@ -248,6 +259,9 @@ namespace kiln::ui {
         std::shared_ptr<MeasurePolicy> m_Policy;
         std::vector<std::shared_ptr<const ModifierElement>> m_Elements;
         std::vector<std::unique_ptr<ModifierNode>> m_Nodes;
+        bool m_HasLayoutAware = false;
+        void DispatchPlaced();
+        void DispatchRemeasured();
         std::vector<std::unique_ptr<Coordinator>> m_Coordinators;   // outer .. inner
         std::shared_ptr<const char> m_Alive = std::make_shared<const char>(0);
         ParentData m_ParentData;
@@ -836,5 +850,71 @@ namespace kiln::ui {
         std::function<void(bool)> m_OnAccessibilityChange;
         int m_LastSemanticsId = 0;
     };
+
+
+    // --- DelegatableNode helpers ------------------------------------------------------------
+
+    // currentValueOf (CompositionLocalConsumerModifierNode): a CompositionLocal's value where the
+    // node's layout was composed (its default outside a composition). Reads are observed.
+    template<typename T>
+    const T& CurrentValueOf(const ModifierNode& node, const rt::Local<T>& local) {
+        LayoutNode* n = node.Owner();
+        rt::Scope* scope = n ? n->ContentScope() : nullptr;
+        return scope ? rt::Composition::ReadFrom(scope, local) : local.Default();
+    }
+    // requireLayoutCoordinates / requireDensity / requireLayoutDirection.
+    inline LayoutCoordinates RequireLayoutCoordinates(const ModifierNode& node) {
+        if (!node.Owner()) throw std::logic_error("requireLayoutCoordinates: the node is not attached");
+        return node.Owner()->CoordinatesOf(&node);
+    }
+    inline Density RequireDensity(const ModifierNode& node) { return node.Owner() ? node.Owner()->NodeDensity() : Density{}; }
+    inline LayoutDirection RequireLayoutDirection(const ModifierNode& node) { return node.Owner() ? node.Owner()->GetLayoutDirection() : LayoutDirection::Ltr; }
+    // invalidateSubtree / invalidateDrawForSubtree / invalidateMeasurementForSubtree: the node's
+    // layout and everything below it.
+    void InvalidateSubtree(const ModifierNode& node);
+    void InvalidateDrawForSubtree(const ModifierNode& node);
+    void InvalidateMeasurementForSubtree(const ModifierNode& node);
+
+    // TraversableNode traversal. The typed forms match nodes of the same type and key as `self`;
+    // the keyed forms match any traversable node with `key`. Ancestors: the nodes before in the
+    // chain, then up the tree (nearest first); the block returns false to stop. Children: the
+    // nearest matches below (not past one). Descendants: all matches below, depth first, as the
+    // block's action says.
+    inline void TraverseAncestors(const ModifierNode& from, const void* key, const std::function<bool(TraversableNode&)>& block) {
+        LayoutNode::TraverseAncestorsImpl(from, key, nullptr, [&](ModifierNode&, TraversableNode& t) { return block(t); });
+    }
+    template<typename T>
+    void TraverseAncestors(const T& self, const std::function<bool(T&)>& block) {
+        LayoutNode::TraverseAncestorsImpl(self, self.TraverseKey(), &typeid(self), [&](ModifierNode& m, TraversableNode&) { return block(static_cast<T&>(m)); });
+    }
+    template<typename T>
+    T* FindNearestAncestor(const T& self) {
+        T* found = nullptr;
+        TraverseAncestors<T>(self, [&](T& t) { found = &t; return false; });
+        return found;
+    }
+    inline TraversableNode* FindNearestAncestor(const ModifierNode& from, const void* key) {
+        TraversableNode* found = nullptr;
+        TraverseAncestors(from, key, [&](TraversableNode& t) { found = &t; return false; });
+        return found;
+    }
+    inline void TraverseChildren(const ModifierNode& from, const void* key, const std::function<bool(TraversableNode&)>& block) {
+        LayoutNode::TraverseDescendantsImpl(from, key, nullptr, true, [&](ModifierNode&, TraversableNode& t) {
+            return block(t) ? TraverseDescendantsAction::ContinueTraversal : TraverseDescendantsAction::CancelTraversal;
+        });
+    }
+    template<typename T>
+    void TraverseChildren(const T& self, const std::function<bool(T&)>& block) {
+        LayoutNode::TraverseDescendantsImpl(self, self.TraverseKey(), &typeid(self), true, [&](ModifierNode& m, TraversableNode&) {
+            return block(static_cast<T&>(m)) ? TraverseDescendantsAction::ContinueTraversal : TraverseDescendantsAction::CancelTraversal;
+        });
+    }
+    inline void TraverseDescendants(const ModifierNode& from, const void* key, const std::function<TraverseDescendantsAction(TraversableNode&)>& block) {
+        LayoutNode::TraverseDescendantsImpl(from, key, nullptr, false, [&](ModifierNode&, TraversableNode& t) { return block(t); });
+    }
+    template<typename T>
+    void TraverseDescendants(const T& self, const std::function<TraverseDescendantsAction(T&)>& block) {
+        LayoutNode::TraverseDescendantsImpl(self, self.TraverseKey(), &typeid(self), false, [&](ModifierNode& m, TraversableNode&) { return block(static_cast<T&>(m)); });
+    }
 
 }

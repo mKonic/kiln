@@ -71,6 +71,117 @@ namespace kiln::ui {
     }
 
     void ModifierNode::InvalidateMeasure() { if (m_Owner) m_Owner->RequestRemeasure(); }
+    void ModifierNode::InvalidatePlacement() { if (m_Owner) m_Owner->RequestRelayout(); }
+    void ModifierNode::InvalidateParentData() { if (m_Owner) m_Owner->UpdateParentData(); }
+
+    bool ModifierNode::IsAttached() const { return m_Owner && m_Owner->GetOwner(); }
+
+    void ModifierNode::ObserveReads(const std::function<void()>& block) {
+        if (!m_ReadObserver) {
+            m_ReadObserver = std::make_unique<ReadObserver>();
+            m_ReadObserver->node = this;
+        }
+        rt::Observation::Track(*m_ReadObserver, block);
+    }
+
+    void ModifierNode::OnDetachedInternal() { if (m_ReadObserver) m_ReadObserver->Unsubscribe(); }
+
+    void ModifierNode::ProvideAny(const void* key, std::any value) {
+        for (auto& [k, cell] : m_ModifierLocals)
+            if (k == key) { cell->Set(std::move(value)); return; }
+        m_ModifierLocals.push_back({ key, std::make_unique<rt::State<std::any, rt::NeverEqual>>(std::move(value)) });
+    }
+
+    const std::any* ModifierNode::ProvidedHere(const void* key) const {
+        for (auto& [k, cell] : m_ModifierLocals)
+            if (k == key) return &cell->Get();
+        return nullptr;
+    }
+
+    const std::any* ModifierNode::FindModifierLocal(const void* key) const {
+        // The nodes before this one in its chain (nearest first), then each ancestor's chain.
+        LayoutNode* n = m_Owner;
+        if (!n) return nullptr;
+        bool before = false;
+        for (auto it = n->m_Nodes.rbegin(); it != n->m_Nodes.rend(); ++it) {
+            if (it->get() == this) { before = true; continue; }
+            if (!before) continue;
+            if (const std::any* v = (*it)->ProvidedHere(key)) return v;
+        }
+        for (LayoutNode* p = n->m_Parent; p; p = p->m_Parent)
+            for (auto it = p->m_Nodes.rbegin(); it != p->m_Nodes.rend(); ++it)
+                if (const std::any* v = (*it)->ProvidedHere(key)) return v;
+        return nullptr;
+    }
+
+    namespace {
+        void ForSubtree(LayoutNode& n, const std::function<void(LayoutNode&)>& f) {
+            f(n);
+            for (LayoutNode* c : n.Children()) ForSubtree(*c, f);
+        }
+    }
+    void InvalidateSubtree(const ModifierNode& node) {
+        if (LayoutNode* n = node.Owner()) ForSubtree(*n, [](LayoutNode& l) { l.RequestRemeasure(); l.RequestRelayout(); l.InvalidateDraw(); });
+    }
+    void InvalidateDrawForSubtree(const ModifierNode& node) {
+        if (LayoutNode* n = node.Owner()) ForSubtree(*n, [](LayoutNode& l) { l.InvalidateDraw(); });
+    }
+    void InvalidateMeasurementForSubtree(const ModifierNode& node) {
+        if (LayoutNode* n = node.Owner()) ForSubtree(*n, [](LayoutNode& l) { l.RequestRemeasure(); });
+    }
+
+    // --- traversal ---------------------------------------------------------------------------
+
+    namespace {
+        bool Matches(ModifierNode& n, const void* key, const std::type_info* type, TraversableNode*& out) {
+            TraversableNode* t = n.AsTraversable();
+            if (!t || t->TraverseKey() != key) return false;
+            if (type && typeid(n) != *type) return false;
+            out = t;
+            return true;
+        }
+    }
+
+    void LayoutNode::TraverseAncestorsImpl(const ModifierNode& from, const void* key, const std::type_info* type,
+                                           const std::function<bool(ModifierNode&, TraversableNode&)>& block) {
+        LayoutNode* n = from.m_Owner;
+        if (!n) return;
+        bool before = false;
+        TraversableNode* t = nullptr;
+        for (auto it = n->m_Nodes.rbegin(); it != n->m_Nodes.rend(); ++it) {
+            if (it->get() == &from) { before = true; continue; }
+            if (before && Matches(**it, key, type, t) && !block(**it, *t)) return;
+        }
+        for (LayoutNode* p = n->m_Parent; p; p = p->m_Parent)
+            for (auto it = p->m_Nodes.rbegin(); it != p->m_Nodes.rend(); ++it)
+                if (Matches(**it, key, type, t) && !block(**it, *t)) return;
+    }
+
+    void LayoutNode::TraverseDescendantsImpl(const ModifierNode& from, const void* key, const std::type_info* type, bool childrenOnly,
+                                             const std::function<TraverseDescendantsAction(ModifierNode&, TraversableNode&)>& block) {
+        LayoutNode* n = from.m_Owner;
+        if (!n) return;
+        // Depth first: the rest of this chain, then each child's chain and below it. A match
+        // ends its branch when only the nearest ones (children) are wanted, or when skipped.
+        bool cancelled = false;
+        std::function<void(LayoutNode*, std::size_t)> walk = [&](LayoutNode* node, std::size_t first) {
+            TraversableNode* t = nullptr;
+            for (std::size_t i = first; i < node->m_Nodes.size(); ++i) {
+                ModifierNode& m = *node->m_Nodes[i];
+                if (!Matches(m, key, type, t)) continue;
+                const TraverseDescendantsAction a = block(m, *t);
+                if (a == TraverseDescendantsAction::CancelTraversal) { cancelled = true; return; }
+                if (childrenOnly || a == TraverseDescendantsAction::SkipSubtreeAndContinueTraversal) return;
+            }
+            for (LayoutNode* c : node->m_Children) {
+                walk(c, 0);
+                if (cancelled) return;
+            }
+        };
+        std::size_t start = 0;
+        while (start < n->m_Nodes.size() && n->m_Nodes[start].get() != &from) ++start;
+        walk(n, start + 1);
+    }
     void ModifierNode::InvalidateDraw() { if (m_Owner) m_Owner->InvalidateDraw(); }
 
     // --- Coordinators -------------------------------------------------------------------------
@@ -250,6 +361,7 @@ namespace kiln::ui {
                     o->NotifyLayoutChange(node);
                 }
                 node.LayoutIfNeeded();
+                if (node.m_HasLayoutAware) node.DispatchPlaced();
             } else {
                 // At the lookahead offset (as asked: centring is this pass's own).
                 if (forceLookaheadOffset && la) p = la->RequestedPosition() + ApparentToRealOffset();
@@ -319,7 +431,7 @@ namespace kiln::ui {
         // so only unhook this node itself.
         if (m_Virtual && m_Parent) std::erase(m_Parent->m_Virtuals, this);
         if (m_Owner) m_Owner->Forget(*this);
-        for (auto& n : m_Nodes) if (n->m_Owner) { n->OnDetach(); n->m_Owner = nullptr; }
+        for (auto& n : m_Nodes) if (n->m_Owner) { n->OnDetach(); n->OnDetachedInternal(); n->m_Owner = nullptr; }
     }
 
     void LayoutNode::Watcher::OnStateChanged() {
@@ -683,6 +795,7 @@ namespace kiln::ui {
                 if (auto* p = old->AsPointerInput()) m_Owner->ForgetPointerModifier(p);
                 old->OnDetach();
             }
+            old->OnDetachedInternal();
             old->m_Owner = nullptr;
         }
         for (std::size_t n = 0; n < next.size(); ++n) {
@@ -712,17 +825,39 @@ namespace kiln::ui {
         m_Elements = next;
         if (structural) RebuildChain();
         // Attach only after the new chain and its coordinators are available to callbacks.
+        m_HasLayoutAware = false;
+        for (auto& n : m_Nodes) if (n->AsLayoutAware()) m_HasLayoutAware = true;
         if (m_Owner) for (auto* node : attach) node->OnAttach();
         if (m_Owner && focusChanged) m_Owner->ScheduleFocusInvalidation(*this);
         if (m_Owner && (structural || updated)) m_Owner->TrackPositionAware(*this);
         if (m_Owner && (structural || updated)) m_Owner->InvalidateSemantics();
         // Parent data may have changed: the parent measures with it.
+        UpdateParentData();
+        RequestRemeasure();
+        InvalidateDraw();
+    }
+
+    void LayoutNode::UpdateParentData() {
         ParentData pd;
         for (auto& n : m_Nodes) if (auto* p = n->AsParentData()) p->ModifyParentData(pd);
         m_ParentData = std::move(pd);
         if (m_Parent) m_Parent->RequestRemeasure();
-        RequestRemeasure();
-        InvalidateDraw();
+    }
+
+    void LayoutNode::DispatchPlaced() {
+        for (auto& n : m_Nodes)
+            if (auto* l = n->AsLayoutAware()) l->OnPlaced(CoordinatesOf(n.get()));
+    }
+
+    void LayoutNode::DispatchRemeasured() {
+        for (auto& n : m_Nodes) {
+            auto* l = n->AsLayoutAware();
+            if (!l) continue;
+            const IntSize size = CoordinatesOf(n.get()).Size();
+            if (size == l->lastMeasuredSize) continue;
+            l->lastMeasuredSize = size;
+            l->OnRemeasured(size);
+        }
     }
 
     float LayoutNode::ZIndex() const {
@@ -900,7 +1035,7 @@ namespace kiln::ui {
         for (LayoutNode* v : m_Virtuals) v->Detach();
         if (m_Owner) {
             m_Owner->Forget(*this);
-            for (auto& n : m_Nodes) n->OnDetach();
+            for (auto& n : m_Nodes) { n->OnDetach(); n->OnDetachedInternal(); }
         }
         m_MeasureWatch.Unsubscribe();
         m_LayoutWatch.Unsubscribe();
@@ -998,6 +1133,7 @@ namespace kiln::ui {
             m_Owner->m_LayoutDirty.insert(this);
         }
         if (before != Size()) InvalidateDraw();
+        if (m_HasLayoutAware) DispatchRemeasured();
         return outer;
     }
 

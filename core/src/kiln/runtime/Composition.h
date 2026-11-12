@@ -39,6 +39,10 @@ namespace kiln::rt {
         // and process restarts).
         std::uint64_t CompositeKeyHash() const { return m_CompositeKeyHash; }
         std::uint64_t m_CompositeKeyHash = 0;
+        // The scope of the node's content: where it was composed, for reading the
+        // CompositionLocals there (CompositionLocalConsumerModifierNode). Null outside a composition.
+        class Scope* ContentScope() const { return m_ContentScope; }
+        class Scope* m_ContentScope = nullptr;
     };
 
     // Identity of a call. Default-constructed at a call site it is that site's source location,
@@ -199,6 +203,7 @@ namespace kiln::rt {
                 g.node = make();
                 g.scope = std::make_unique<Scope>(*this, m_Current, g.node.get(), g.key.value);
                 g.node->m_CompositeKeyHash = NodeKeyHash(g);
+                g.node->m_ContentScope = g.scope.get();
             }
             auto& n = static_cast<N&>(*g.node);
             if (update) update(n);
@@ -215,10 +220,14 @@ namespace kiln::rt {
         void LaunchedEffect(Keys keys, std::function<Task<>()> task, Key key = {});
 
         template<typename T>
-        const T& Read(const Local<T>& local) {
+        const T& Read(const Local<T>& local) { return ReadFrom(m_Current, local); }
+
+        // The value of `local` at `scope` (a node's content scope, say).
+        template<typename T>
+        static const T& ReadFrom(Scope* scope, const Local<T>& local) {
             // Up this composition's scopes, then on through the parent context of measure-time
             // compositions (subcompose inherits the CompositionLocals where it was composed).
-            for (Scope* start = m_Current; start;) {
+            for (Scope* start = scope; start;) {
                 Scope* last = nullptr;
                 for (Scope* s = start; s; s = s->m_Parent) {
                     if (const StateObject* p = s->FindLocal(&local))

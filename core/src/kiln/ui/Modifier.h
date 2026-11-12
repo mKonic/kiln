@@ -9,6 +9,7 @@
 // type at the same index updates the node in place (only when the element differs), anything
 // else detaches the old node and creates a new one.
 
+#include "kiln/runtime/State.h"
 #include "kiln/ui/Geometry.h"
 
 #include <any>
@@ -106,6 +107,41 @@ namespace kiln::ui {
         virtual void ModifyParentData(ParentData& data) const = 0;
     };
 
+    struct LayoutCoordinates;
+
+    // LayoutAwareModifierNode: told after its node is placed, with the coordinates of where it
+    // sits in the chain (onPlaced), and when that space's measured size changes (onRemeasured).
+    class LayoutAwareModifier {
+    public:
+        virtual ~LayoutAwareModifier() = default;
+        virtual void OnPlaced(const LayoutCoordinates&) {}
+        virtual void OnRemeasured(IntSize) {}
+        IntSize lastMeasuredSize{ -1, -1 };
+    };
+
+    // TraversableNode: nodes that find each other by a key, up and down the tree
+    // (TraverseAncestors / TraverseChildren / TraverseDescendants in LayoutNode.h).
+    class TraversableNode {
+    public:
+        virtual ~TraversableNode() = default;
+        virtual const void* TraverseKey() const = 0;
+    };
+    enum class TraverseDescendantsAction : std::uint8_t { ContinueTraversal, SkipSubtreeAndContinueTraversal, CancelTraversal };
+
+    // ModifierLocal (modifierLocalOf / ProvidableModifierLocal): a value a node provides to the
+    // nodes after it in its chain and to its descendants' nodes; reading finds the nearest
+    // provider above the reader, else the default.
+    template<typename T>
+    class ModifierLocal {
+    public:
+        explicit ModifierLocal(std::function<T()> defaultFactory) : m_Default(std::move(defaultFactory)) {}
+        T Default() const { return m_Default(); }
+    private:
+        std::function<T()> m_Default;
+    };
+    template<typename T> using ProvidableModifierLocal = ModifierLocal<T>;
+    template<typename T> ModifierLocal<T> ModifierLocalOf(std::function<T()> defaultFactory) { return ModifierLocal<T>(std::move(defaultFactory)); }
+
     class ModifierNode {
     public:
         virtual ~ModifierNode() = default;
@@ -135,6 +171,28 @@ namespace kiln::ui {
         virtual BeyondBoundsLayout* AsBeyondBoundsLayout() { return nullptr; }
         virtual GlobalPositionAwareModifier* AsGlobalPositionAware() { return nullptr; }
         virtual class DragAndDropNode* AsDragAndDrop() { return nullptr; }
+        virtual LayoutAwareModifier* AsLayoutAware() { return nullptr; }
+        virtual TraversableNode* AsTraversable() { return nullptr; }
+
+        // isAttached: on a node that is in a window's tree.
+        bool IsAttached() const;
+
+        // ObserverModifierNode: observeReads runs `block` noting the state it reads; a change
+        // to any of it calls OnObservedReadsChanged once (after the frame's changes apply).
+        // Observe again from there to keep observing. Stops when the node detaches.
+        void ObserveReads(const std::function<void()>& block);
+        virtual void OnObservedReadsChanged() {}
+
+        // ModifierLocalModifierNode: provide(local, value) for the nodes after this one and
+        // below it; current(local) is the nearest value provided above this node (reads are
+        // observed). A node does not see what it provides itself.
+        template<typename T>
+        void Provide(const ModifierLocal<T>& local, T value) { ProvideAny(&local, std::any(std::move(value))); }
+        template<typename T>
+        T Current(const ModifierLocal<T>& local) const {
+            if (const std::any* v = FindModifierLocal(&local)) return std::any_cast<T>(*v);
+            return local.Default();
+        }
         // Expires when the node is destroyed (for callbacks that may outlive it).
         std::weak_ptr<const char> AliveToken() const { return m_Alive; }
         // Semantics changed (call from Update when semantic params change).
@@ -146,9 +204,22 @@ namespace kiln::ui {
         // Ask the owner to measure / place / draw again (call from Update when params change).
         void InvalidateMeasure();
         void InvalidateDraw();
+        // invalidatePlacement / invalidateParentData.
+        void InvalidatePlacement();
+        void InvalidateParentData();
 
     private:
         friend class LayoutNode;
+        void ProvideAny(const void* key, std::any value);
+        const std::any* FindModifierLocal(const void* key) const;
+        const std::any* ProvidedHere(const void* key) const;
+        void OnDetachedInternal();
+        struct ReadObserver final : rt::Subscriber {
+            ModifierNode* node = nullptr;
+            void OnStateChanged() override { Unsubscribe(); node->OnObservedReadsChanged(); }
+        };
+        std::unique_ptr<ReadObserver> m_ReadObserver;
+        std::vector<std::pair<const void*, std::unique_ptr<rt::State<std::any, rt::NeverEqual>>>> m_ModifierLocals;
         LayoutNode* m_Owner = nullptr;
         std::shared_ptr<const char> m_Alive = std::make_shared<const char>(0);
     };
