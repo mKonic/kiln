@@ -28,7 +28,23 @@ namespace kiln::ui {
         virtual ~PinnableContainer() = default;
         virtual void Pin() = 0;
         virtual void Release() = 0;
+
+        // PinnedHandle: one pin (pin() returns it); Release drops it, once.
+        class PinnedHandle {
+        public:
+            PinnedHandle() = default;
+            explicit PinnedHandle(std::shared_ptr<PinnableContainer> c) : m_Container(std::move(c)) { if (m_Container) m_Container->Pin(); }
+            PinnedHandle(PinnedHandle&& o) noexcept : m_Container(std::move(o.m_Container)) {}
+            PinnedHandle& operator=(PinnedHandle&& o) noexcept { if (this != &o) { Release(); m_Container = std::move(o.m_Container); } return *this; }
+            void Release() { if (auto c = std::exchange(m_Container, nullptr)) c->Release(); }
+        private:
+            std::shared_ptr<PinnableContainer> m_Container;
+        };
     };
+    // pin(): pins `container` until the handle is released (null container: an empty handle).
+    inline PinnableContainer::PinnedHandle PinHandle(std::shared_ptr<PinnableContainer> container) {
+        return PinnableContainer::PinnedHandle(std::move(container));
+    }
     // The pinnable container around this content (a lazy item), or null.
     inline rt::Local<std::shared_ptr<PinnableContainer>> LocalPinnableContainer{ nullptr };
 

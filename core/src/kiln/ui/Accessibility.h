@@ -158,6 +158,7 @@ namespace kiln::ui {
         std::optional<int> scrollX, maxScrollX, scrollY, maxScrollY;
         int scrollDeltaX = 0, scrollDeltaY = 0;
         std::optional<int> action, movementGranularity;
+        std::optional<int> textChangeTypes;   // TEXT_CHANGE_TYPE_* (API 37)
     };
 
     struct AccessibilityActionArgs {

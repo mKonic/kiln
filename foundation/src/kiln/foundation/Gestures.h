@@ -75,6 +75,43 @@ namespace kiln::foundation {
         }
     };
 
+    // SuspendingPointerInputModifierNode: the node behind PointerInput, for a node of one's own
+    // that handles pointer input with a coroutine (derive from it). The handler starts on the
+    // first event and restarts when the input is cancelled or the handler is reset.
+    class SuspendingPointerInputModifierNode : public ModifierNode, public PointerInputModifier, public PointerInputScope {
+    public:
+        explicit SuspendingPointerInputModifierNode(PointerInputHandler handler);
+        // pointerInputEventHandler: setting it cancels the running handler.
+        const PointerInputHandler& PointerInputEventHandler() const { return m_Handler; }
+        void SetPointerInputEventHandler(PointerInputHandler handler);
+        // resetPointerInputHandler: cancels the running handler; the next event starts it anew.
+        void ResetPointerInputHandler();
+
+        PointerInputModifier* AsPointerInput() override { return this; }
+        void OnDetach() override { Stop(); }
+        void OnPointerEvent(PointerEvent& ev, PointerEventPass pass, IntSize bounds) override;
+        void OnCancelPointerInput() override { Restart(false); }
+        const ViewConfiguration& Config() const override;
+        Density GetDensity() const override;
+        bool InScrollableContainer() const override;
+
+    protected:
+        void Suspend(std::coroutine_handle<> h, PointerEventPass pass, std::int64_t timeout, const std::shared_ptr<rt::JobState>& job) override;
+        std::optional<PointerEvent> TakeEvent() override;
+        // Replaces the handler without cancelling the one running (pointerInput's equal keys).
+        void SetHandlerKeepingRun(PointerInputHandler handler) { m_Handler = std::move(handler); }
+
+    private:
+        void Stop();
+        void Restart(bool start);
+        PointerInputHandler m_Handler;
+        rt::Job m_Job;
+        std::shared_ptr<rt::JobState> m_JobState;
+        std::coroutine_handle<> m_Waiter;
+        PointerEventPass m_WaitPass = PointerEventPass::Main;
+        std::optional<PointerEvent> m_Event;
+    };
+
     // The handler starts on the first event and restarts when cancelled or when keys change.
     Modifier PointerInput(Modifier m, rt::Keys keys, PointerInputHandler handler);
     Modifier PointerInput(Modifier m, rt::Keys keys, PointerInputHandler handler, DpTouchBoundsExpansion touchBoundsExpansion);

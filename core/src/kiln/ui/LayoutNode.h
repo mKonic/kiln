@@ -410,6 +410,9 @@ namespace kiln::ui {
         // invalidateFocusProperties: re-read the focus properties of `n`'s targets.
         void InvalidateFocusOf(LayoutNode& n) { ScheduleFocusInvalidation(n); }
         bool ClearFocus(bool force = false);
+        // autoClearFocusBehavior (ComposeView's).
+        void SetAutoClearFocusBehavior(AutoClearFocusBehavior b) { m_AutoClearFocus = b; }
+        AutoClearFocusBehavior GetAutoClearFocusBehavior() const { return m_AutoClearFocus; }
         // wrapAround: 1D search (Next / Previous) starts over from the other end when it runs out.
         bool MoveFocus(FocusDirection direction, bool wrapAround = true);
         // FocusOwner.focusSearch: offers the target a search from the focused item (or from
@@ -850,6 +853,7 @@ namespace kiln::ui {
         std::shared_ptr<gfx::shadow::ShadowContext> m_ShadowContext = std::make_shared<gfx::shadow::ShadowContext>();
         ViewConfiguration m_Config;
         InputDevices m_InputDevices;
+        AutoClearFocusBehavior m_AutoClearFocus = AutoClearFocusBehavior::Default;
         struct Tracked { std::vector<HitEntry> path; Offset position; bool pressed = false; std::int64_t uptime = 0; PointerType type{}; };
         std::map<std::int64_t, Tracked> m_Pointers;
         FocusTargetNode m_RootFocus;
@@ -897,6 +901,11 @@ namespace kiln::ui {
     // invalidateSubtree / invalidateDrawForSubtree / invalidateMeasurementForSubtree: the node's
     // layout and everything below it.
     void InvalidateSubtree(const ModifierNode& node);
+    // remeasureSync: measures and places the node's layout now, with its last constraints.
+    inline void RemeasureSync(const ModifierNode& node) { if (node.Owner()) node.Owner()->ForceRemeasure(); }
+    // invalidateRulers: the node's rulers are worked out again; layouts that read them place
+    // again. (kiln works rulers out when it places the node, so the node's placement re-runs.)
+    inline void InvalidateRulers(ModifierNode& node) { if (node.IsAttached()) node.InvalidatePlacement(); }
     void InvalidateDrawForSubtree(const ModifierNode& node);
     void InvalidateMeasurementForSubtree(const ModifierNode& node);
 

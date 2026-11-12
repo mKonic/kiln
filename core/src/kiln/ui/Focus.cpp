@@ -715,9 +715,11 @@ namespace kiln::ui {
 
     // --- beyond bounds (BeyondBoundsLayout.kt) --------------------------------------------------
 
-    BeyondBoundsLayout* Owner::BeyondBoundsParent(const FocusTargetNode& t) const {
-        // The nearest provider before the target in its chain, then up the ancestors.
-        LayoutNode* n = NodeOf(t);
+    BeyondBoundsLayout* Owner::BeyondBoundsParent(const FocusTargetNode& t) const { return FindNearestBeyondBoundsLayoutAncestor(t); }
+
+    BeyondBoundsLayout* FindNearestBeyondBoundsLayoutAncestor(const ModifierNode& t) {
+        // The nearest provider before the node in its chain, then up the ancestors.
+        LayoutNode* n = t.Owner();
         if (!n) return nullptr;
         bool before = false;
         const auto mods = n->ModifierNodes();
@@ -726,7 +728,7 @@ namespace kiln::ui {
             if (before)
                 if (auto* b = const_cast<ModifierNode*>(*it)->AsBeyondBoundsLayout()) return b;
         }
-        for (LayoutNode* a = n->m_Parent; a; a = a->m_Parent) {
+        for (LayoutNode* a = n->Parent(); a; a = a->Parent()) {
             const auto am = a->ModifierNodes();
             for (auto it = am.rbegin(); it != am.rend(); ++it)
                 if (auto* b = const_cast<ModifierNode*>(*it)->AsBeyondBoundsLayout()) return b;

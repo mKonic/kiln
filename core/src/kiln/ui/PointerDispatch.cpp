@@ -294,6 +294,22 @@ namespace kiln::ui {
         for (std::size_t r : roots) up(r);
         for (std::size_t r : roots) down(r, PointerEventPass::Final);
 
+        // Tap-to-clear focus, after the event was handled (so focus can move from A to B
+        // first): a cursor press outside the focused node's bounds clears focus.
+        if (raw.fromCursorDevice && m_AutoClearFocus == AutoClearFocusBehavior::CursorBased && m_ActiveFocus) {
+            std::optional<Offset> press;
+            for (const RawPointer& rp : raw.pointers) {
+                auto it = m_Pointers.find(rp.id);
+                if (rp.down && (it == m_Pointers.end() || !it->second.pressed)) press = rp.position;
+            }
+            if (press) {
+                if (LayoutNode* n = NodeOf(*m_ActiveFocus)) {
+                    const Rect b = n->CoordinatesOf(m_ActiveFocus).BoundsInRoot();
+                    if (!(press->x >= b.left && press->x < b.right && press->y >= b.top && press->y < b.bottom)) ClearFocus();
+                }
+            }
+        }
+
         // Commit this event as the previous state; drop pointers that lifted (touch) or left.
         for (const RawPointer& rp : raw.pointers) {
             Tracked& t = m_Pointers[rp.id];

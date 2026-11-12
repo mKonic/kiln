@@ -276,6 +276,16 @@ observeSnapshots = "Observation Track"
 Updater = "Node"
 SkippableUpdater = "Node"
 
+# ui
+PointerEventTimeoutCancellationException = "AwaitPointerEventWithTimeout"
+PointerInputEventHandler = "PointerInputHandler"
+PointerInputFilter = "PointerInputModifier"
+RemeasurementModifier = "ForceRemeasure"
+BeyondBoundsScope = "hasMoreContent"
+LocalUiMediaScope = "LocalUiMediaScope"
+computedMediaQuery = "ComputedMediaQuery"
+mediaQuery = "MediaQuery"
+
 [skipped]
 hasKeysMissingFrom = "kiln's configuration is a struct of typed fields; Equivalent compares them"
 DelegatingNode = "kiln nodes implement several capability interfaces themselves; nothing to delegate to"
@@ -478,6 +488,17 @@ HostDefaultProvider = "Android view tree host defaults"
 LocalHostDefaultProvider = "Android view tree host defaults"
 compositionLocalWithHostDefaultOf = "Android view tree host defaults"
 ViewTreeHostDefaultKey = "Android view tree host defaults"
+
+# ui
+dispatchDraw = "DelegatingNode delegates: kiln nodes are their own mixins"
+updateLayerBlock = "placeWithLayer: kiln places without layers; a graphicsLayer modifier carries the layer"
+DisposeOnDetachedFromWindow = "Android View hosting (ViewCompositionStrategy)"
+DisposeOnDetachedFromWindowOrReleasedFromPool = "Android View hosting (ViewCompositionStrategy)"
+DisposeOnLifecycleDestroyed = "Android View hosting (ViewCompositionStrategy)"
+DisposeOnViewTreeLifecycleDestroyed = "Android View hosting (ViewCompositionStrategy)"
+ComposeUiHost = "Android View hosting"
+ComposeUiSharedResources = "Android View hosting (shared Configuration resources)"
+UncaughtExceptionHandler = "test tooling (RootForTest)"
 
 [skipped_patterns]
 '^ViewCompositionStrategy::' = "Android View hosting"

@@ -1625,6 +1625,13 @@ namespace kiln::ui {
                         e.addedCount = newLen - end - start;
                         e.beforeText = o.editableText.value_or("");
                         e.text.push_back(trimmed);
+                        // setInputTextSuggestionTextChangeTypes: in composition, committed by the
+                        // IME, a transliteration suggestion picked.
+                        int types = 0;
+                        if (n.textCompositionRange) types |= 1;
+                        if (n.inputTextSuggestionState && n.inputTextSuggestionState->isCommittedByInputMethodEditor) types |= 2;
+                        if (n.inputTextSuggestionState && n.inputTextSuggestionState->isTransliterationSuggestionSelected) types |= 4;
+                        e.textChangeTypes = types;
                     }
                     e.className = "android.widget.EditText";
                     Send(e);

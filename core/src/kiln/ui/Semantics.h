@@ -95,6 +95,14 @@ namespace kiln::ui {
         std::function<std::optional<T>(const std::optional<T>& parent, const T& child)> mergePolicy;
     };
 
+    // InputTextSuggestionState: whether the text was committed by the IME (not set in code or by
+    // an accessibility service), and whether a transliteration suggestion is picked to replace it.
+    struct InputTextSuggestionState {
+        bool isCommittedByInputMethodEditor = false;
+        bool isTransliterationSuggestionSelected = false;
+        bool operator==(const InputTextSuggestionState&) const = default;
+    };
+
     struct SemanticsConfiguration {
         // Custom properties (SemanticsPropertyKey), by key identity.
         struct CustomValue {
@@ -164,6 +172,9 @@ namespace kiln::ui {
         std::shared_ptr<const gfx::Shape> shape;       // the node's shape (extra data), never merged
         bool selectableGroup = false;
         std::optional<std::pair<int, int>> textSelection;
+        // textCompositionRange: the IME's composing region, when there is one.
+        std::optional<std::pair<int, int>> textCompositionRange;
+        std::optional<InputTextSuggestionState> inputTextSuggestionState;
         // Autofill: the content's hints (ContentType, View.AUTOFILL_HINT_*; `+` unions them), its
         // data type, the value it holds and the untransformed input text.
         std::optional<std::vector<std::string>> contentType;

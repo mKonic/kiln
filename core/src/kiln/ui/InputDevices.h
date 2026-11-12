@@ -9,6 +9,7 @@
 #include <functional>
 #include <set>
 #include <utility>
+#include <vector>
 
 namespace kiln::ui {
 
@@ -44,12 +45,20 @@ namespace kiln::ui {
         bool HasKeyboardAndMouse() const { return m_HasBoth.Get(); }
         void Update(const InputDeviceInfo& device) {
             if (!m_Listeners) return;
+            // Every device as last reported (an empty source set: removed).
+            m_All.Update([&](std::vector<InputDeviceInfo>& all) {
+                std::erase_if(all, [&](const InputDeviceInfo& d) { return d.id == device.id; });
+                if (device.sources != 0 || device.keyboardType != 0) all.push_back(device);
+            });
             UpdatePresence(m_Keyboards, device.id, device.IsKeyboard());
             UpdatePresence(m_Mice, device.id, device.IsMouse());
             m_HasBoth.Set(!m_Keyboards.empty() && !m_Mice.empty());
         }
         void Remove(int id) { Update({ id }); }
+        // The devices attached (observable), while someone listens.
+        const std::vector<InputDeviceInfo>& All() const { return m_All.Get(); }
         void Clear() {
+            if (!m_All.Peek().empty()) m_All.Set({});
             m_Keyboards.clear();
             m_Mice.clear();
             m_HasBoth.Set(false);
@@ -63,6 +72,7 @@ namespace kiln::ui {
         std::function<void(bool)> m_Host;
         std::set<int> m_Keyboards, m_Mice;
         rt::State<bool> m_HasBoth{ false };
+        rt::State<std::vector<InputDeviceInfo>, rt::NeverEqual> m_All{ {} };
     };
 
 }

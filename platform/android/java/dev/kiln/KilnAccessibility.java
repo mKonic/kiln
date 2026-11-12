@@ -457,13 +457,14 @@ final class KilnAccessibility extends AccessibilityNodeProvider {
             }
             if (d[at + 15] != INVALID) e.setAction(d[at + 15]);
             if (d[at + 16] != INVALID) e.setMovementGranularity(d[at + 16]);
-            e.setClassName(str(s, d[at + 17]));
-            String cd = str(s, d[at + 18]);
+            if (d[at + 17] != INVALID && android.os.Build.VERSION.SDK_INT >= 37) e.setTextChangeTypes(e.getTextChangeTypes() | d[at + 17]);
+            e.setClassName(str(s, d[at + 18]));
+            String cd = str(s, d[at + 19]);
             if (cd != null) e.setContentDescription(cd);
-            String before = str(s, d[at + 19]);
+            String before = str(s, d[at + 20]);
             if (before != null) e.setBeforeText(before);
-            int texts = d[at + 20];
-            at += 21;
+            int texts = d[at + 21];
+            at += 22;
             for (int i = 0; i < texts; i++) e.getText().add(str(s, d[at++]));
             // The manager updates its state before our state-change listener runs. A bounds
             // flush queued while a service was connected can therefore see stale `enabled`.

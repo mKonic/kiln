@@ -6,6 +6,7 @@ namespace kiln::android { void InstallImageDecoder(); void InstallAssetReader(JN
 
 #include "kiln/foundation/text/TextFieldState.h"
 #include "kiln/text/AnnotatedString.h"
+#include "kiln/ui/MediaQuery.h"
 #include "kiln/ui/Back.h"
 #include "kiln/ui/Accessibility.h"
 #include <array>
@@ -533,6 +534,14 @@ namespace {
         } });
         jobject view = w->view;
         InstallTextInputHost(env, w);
+        {
+            // UiMediaScope's PackageManager features and dock state.
+            jclass vc = env->GetObjectClass(view);
+            static jmethodID features = env->GetMethodID(vc, "mediaFeatures", "()I");
+            env->DeleteLocalRef(vc);
+            const int f = env->CallIntMethod(view, features);
+            kiln::ui::MediaScopeOf(*w->owner).SetFeatures({ (f & 1) != 0, (f & 2) != 0, (f & 4) != 0, (f & 8) != 0, (f & 16) != 0 });
+        }
         {
             jclass vc = env->GetObjectClass(view);
             static jmethodID listen = env->GetMethodID(vc, "setInputDeviceListenerEnabled", "(Z)V");
@@ -1285,7 +1294,7 @@ namespace {
     // view pixels, which are surface pixels here (the SurfaceView fills the KilnView).
     void TouchEvent(JNIEnv* env, jclass, jint win, jint action, jint actionIndex, jlong eventTime, jintArray ids,
                     jfloatArray xy, jintArray tools, jint buttons, jint metaState, jint classification, jfloat hscroll, jfloat vscroll,
-                    jlongArray historyTimes, jfloatArray historyXy, jfloatArray pan) {
+                    jlongArray historyTimes, jfloatArray historyXy, jfloatArray pan, jint source) {
         WinScope ws(win);
         if (!ws) return;
         if (!g_Host) return;
@@ -1297,6 +1306,8 @@ namespace {
         ev.metaState = std::uint32_t(metaState);
         ev.classification = classification;
         ev.cancel = action == CANCEL;
+        // InputDevice.SOURCE_MOUSE / SOURCE_TOUCHPAD: a cursor-based device.
+        ev.fromCursorDevice = (source & 0x2002) == 0x2002 || (source & 0x100008) == 0x100008;
         const jsize n = env->GetArrayLength(ids);
         jint* id = env->GetIntArrayElements(ids, nullptr);
         jfloat* p = env->GetFloatArrayElements(xy, nullptr);
@@ -2011,7 +2022,7 @@ namespace {
 
     // Events: per event type, id, contentChangeTypes, flags (1 password, 2 sensitive), fromIndex,
     // toIndex, itemCount, addedCount, removedCount, scrollX, maxScrollX, scrollY, maxScrollY,
-    // deltaX, deltaY, action, granularity (INT_MIN: unset), className, contentDescription,
+    // deltaX, deltaY, action, granularity, textChangeTypes (INT_MIN: unset), className, contentDescription,
     // beforeText (string indices), text count, text indices.
     jintArray A11yTakeEvents(JNIEnv* env, jclass, jint win) {
         WinScope ws(win);
@@ -2024,7 +2035,7 @@ namespace {
             d.insert(d.end(), { e.type, e.id, opt(e.contentChangeTypes), (e.password ? 1 : 0) | (e.dataSensitive ? 2 : 0),
                                 opt(e.fromIndex), opt(e.toIndex), opt(e.itemCount), opt(e.addedCount), opt(e.removedCount),
                                 opt(e.scrollX), opt(e.maxScrollX), opt(e.scrollY), opt(e.maxScrollY), e.scrollDeltaX, e.scrollDeltaY,
-                                opt(e.action), opt(e.movementGranularity) });
+                                opt(e.action), opt(e.movementGranularity), opt(e.textChangeTypes) });
             d.push_back(A11yString(e.className));
             d.push_back(A11yString(e.contentDescription));
             d.push_back(A11yString(e.beforeText));
@@ -2740,7 +2751,7 @@ extern "C" JNIEXPORT jint kiln_jni_onload(JavaVM* vm) {
         { "clearInputDevices", "(I)V", reinterpret_cast<void*>(&ClearInputDevices) },
         { "setAccessibilityServices", "(ZZZZ)V", reinterpret_cast<void*>(&SetAccessibilityServices) },
         { "setLayoutDirection", "(Z)V", reinterpret_cast<void*>(&SetLayoutDirection) },
-        { "touchEvent", "(IIIJ[I[F[IIIIFF[J[F[F)V", reinterpret_cast<void*>(&TouchEvent) },
+        { "touchEvent", "(IIIJ[I[F[IIIIFF[J[F[FI)V", reinterpret_cast<void*>(&TouchEvent) },
         { "keyEvent", "(IIIIIIJI)Z", reinterpret_cast<void*>(&KeyEvent) },
         { "keyEventPreIme", "(IIIIIIJI)Z", reinterpret_cast<void*>(&KeyEventPreIme) },
         { "rotary", "(IFFJI)Z", reinterpret_cast<void*>(&Rotary) },

@@ -35,7 +35,7 @@ final class KilnNative {
     static native void setLayoutDirection(boolean rtl);
     static native void touchEvent(int win, int action, int actionIndex, long eventTime, int[] ids, float[] xy,
                                   int[] toolTypes, int buttons, int metaState, int classification, float hscroll, float vscroll,
-                                  long[] historyTimes, float[] historyXy, float[] pan);
+                                  long[] historyTimes, float[] historyXy, float[] pan, int source);
     static native boolean keyEvent(int win, int action, int keyCode, int metaState, int unicode, int repeatCount, long eventTime, int source);
     static native boolean keyEventPreIme(int win, int action, int keyCode, int metaState, int unicode, int repeatCount, long eventTime, int source);
     static native boolean rotary(int win, float verticalPixels, float horizontalPixels, long eventTime, int deviceId);

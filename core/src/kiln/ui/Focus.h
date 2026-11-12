@@ -159,6 +159,10 @@ namespace kiln::ui {
         virtual std::optional<bool> Layout(FocusDirection direction, const std::function<std::optional<bool>(bool hasMoreContent)>& block) = 0;
     };
 
+    // findNearestBeyondBoundsLayoutAncestor: the nearest beyond-bounds layout before the node in
+    // its chain, then up the ancestors (null: none).
+    BeyondBoundsLayout* FindNearestBeyondBoundsLayoutAncestor(const ModifierNode& node);
+
     // onFocusChanged / onFocusEvent: observes the first focus target at or after it.
     class FocusEventModifier {
     public:

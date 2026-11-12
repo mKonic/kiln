@@ -11,7 +11,7 @@ namespace kiln::ui {
         return !contentDescription.empty() || !text.empty() || editableText || stateDescription || paneTitle || hintText ||
                error || role != Role::None || heading || disabled || password || isPasswordObfuscated || textEntryKey ||
                isDialog || isPopup || imeAction || selected || toggleableState || focused || progressBarRangeInfo ||
-               liveRegion || selectableGroup || textSelection || horizontalScrollAxisRange || verticalScrollAxisRange ||
+               liveRegion || selectableGroup || textSelection || textCompositionRange || inputTextSuggestionState || horizontalScrollAxisRange || verticalScrollAxisRange ||
                collectionInfo || collectionItemInfo || onClick || onLongClick || setText || insertTextAtCursor ||
                setSelection || requestFocus || setProgress || onImeAction || copyText || cutText || pasteText || expand ||
                collapse || dismiss || setTextSubstitution || showTextSubstitution || clearTextSubstitution ||
@@ -56,6 +56,8 @@ namespace kiln::ui {
         Fill(testTagsAsResourceId, c.testTagsAsResourceId);
         Fill(accessibilityClassName, c.accessibilityClassName);
         Fill(textSelection, c.textSelection);
+        Fill(textCompositionRange, c.textCompositionRange);
+        Fill(inputTextSuggestionState, c.inputTextSuggestionState);
         Fill(horizontalScrollAxisRange, c.horizontalScrollAxisRange);
         Fill(verticalScrollAxisRange, c.verticalScrollAxisRange);
         Fill(collectionInfo, c.collectionInfo);
@@ -128,6 +130,7 @@ namespace kiln::ui {
         Take(accessibilityClassName, o.accessibilityClassName);
         if (o.shape) shape = o.shape;
         Take(textSelection, o.textSelection);
+        Take(textCompositionRange, o.textCompositionRange); Take(inputTextSuggestionState, o.inputTextSuggestionState);
         Take(horizontalScrollAxisRange, o.horizontalScrollAxisRange); Take(verticalScrollAxisRange, o.verticalScrollAxisRange);
         Take(collectionInfo, o.collectionInfo); Take(collectionItemInfo, o.collectionItemInfo);
         Take(contentType, o.contentType); Take(contentDataType, o.contentDataType);
@@ -177,6 +180,7 @@ namespace kiln::ui {
                textEntryKey == o.textEntryKey && isDialog == o.isDialog && isPopup == o.isPopup &&
                hideFromAccessibility == o.hideFromAccessibility && invisibleToUser == o.invisibleToUser &&
                isSensitiveData == o.isSensitiveData && isEditable == o.isEditable && maxTextLength == o.maxTextLength &&
+               textCompositionRange == o.textCompositionRange && inputTextSuggestionState == o.inputTextSuggestionState &&
                imeAction == o.imeAction && selected == o.selected && toggleableState == o.toggleableState &&
                focused == o.focused && progressBarRangeInfo == o.progressBarRangeInfo && liveRegion == o.liveRegion &&
                traversalIndex == o.traversalIndex && testTagsAsResourceId == o.testTagsAsResourceId &&

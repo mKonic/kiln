@@ -154,7 +154,12 @@ namespace kiln::ui {
         std::uint32_t metaState = 0;
         int classification = 0;
         bool cancel = false;                 // ACTION_CANCEL: every path is cancelled
+        bool fromCursorDevice = false;       // from a mouse or touchpad (MotionEvent source)
     };
+
+    // AutoClearFocusBehavior: whether a mouse or touchpad press outside the focused item
+    // clears focus (CursorBased, the default), or never (None). Stylus input never does.
+    enum class AutoClearFocusBehavior : std::uint8_t { None, CursorBased, Default = CursorBased };
 
     class PointerInputModifier {
     public:

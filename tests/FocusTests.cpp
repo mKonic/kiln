@@ -592,3 +592,31 @@ TEST(SaveRestoreFocusedChildAndFocusChildInBounds) {
     CHECK(RequestFocusForChildInRootBounds(*rowNode, 120, 10, 130, 20));
     CHECK_EQ(focused, std::string("c"));
 }
+
+TEST(CursorPressOutsideTheFocusedItemClearsFocus) {
+    Harness h;
+    std::string focused;
+    h.Run([&] { Grid(focused); });
+    auto press = [&](Offset at, bool cursor, PointerType type) {
+        RawPointerEvent down;
+        down.fromCursorDevice = cursor;
+        down.pointers.push_back({ 1, at, true, type });
+        h.owner.ProcessPointer(down);
+        RawPointerEvent up = down;
+        up.pointers[0].down = false;
+        h.owner.ProcessPointer(up);
+    };
+    h.Key(keys::Tab);   // focus "a"
+    CHECK_EQ(focused, std::string("a"));
+    CHECK(h.owner.ActiveFocus());
+    press({ 20, 20 }, true, PointerType::Mouse);    // inside "a": kept
+    CHECK(h.owner.ActiveFocus());
+    press({ 250, 250 }, false, PointerType::Touch);  // touch: kept
+    CHECK(h.owner.ActiveFocus());
+    h.owner.SetAutoClearFocusBehavior(AutoClearFocusBehavior::None);
+    press({ 250, 250 }, true, PointerType::Mouse);
+    CHECK(h.owner.ActiveFocus());
+    h.owner.SetAutoClearFocusBehavior(AutoClearFocusBehavior::CursorBased);
+    press({ 250, 250 }, true, PointerType::Mouse);   // outside with a mouse: cleared
+    CHECK(!h.owner.ActiveFocus());
+}

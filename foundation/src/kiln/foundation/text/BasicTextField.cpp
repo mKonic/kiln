@@ -599,6 +599,8 @@ namespace kiln::foundation {
                 const TextFieldCharSequence text = params.isPassword ? state.UntransformedText() : state.VisualText();
                 c.editableText = ToUtf8(text.text);
                 c.textSelection = std::make_pair(text.selection.start, text.selection.end);
+                if (const auto comp = state.State().Composition()) c.textCompositionRange = std::make_pair(comp->start, comp->end);
+                c.inputTextSuggestionState = ui::InputTextSuggestionState{ state.State().UserCommit(), state.State().SuggestionSelected() };
                 if (!params.enabled) c.disabled = true;
                 if (params.isPassword) c.password = true;
                 const bool editable = params.enabled && !params.readOnly;

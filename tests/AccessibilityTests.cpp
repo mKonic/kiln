@@ -430,3 +430,32 @@ TEST(AccessibilityStringsComeFromTheLocale) {
     const auto en = a11y::Strings::ForLocale("xx");
     CHECK_EQ(en.notSelected, std::string("Not selected"));
 }
+
+TEST(AccessibilityTextChangesCarryTheImeChangeTypes) {
+    Harness h;
+    rt::State<std::string> textState("ab");
+    rt::State<bool> composing(false);
+    auto* text = &textState;
+    auto* comp = &composing;
+    h.Run([&] {
+        const std::string t = text->Get();
+        const bool c = comp->Get();
+        Box(Semantics(SizeMod({}, Dp(50), Dp(20)), [t, c](SemanticsConfiguration& s) {
+            s.testTag = "field";
+            s.editableText = t;
+            s.setText = [](const std::string&) { return true; };
+            if (c) s.textCompositionRange = std::make_pair(2, 3);
+            s.inputTextSuggestionState = InputTextSuggestionState{ true, c };
+        }));
+    });
+    h.a11y.CheckForSemanticsChanges();
+    h.a11y.TakeEvents();
+    text->Set("abc");
+    comp->Set(true);
+    h.Pump();
+    h.a11y.CheckForSemanticsChanges();
+    bool found = false;
+    for (const auto& e : h.a11y.TakeEvents())
+        if (e.type == a11y::ViewTextChanged) { found = true; CHECK(e.textChangeTypes == std::optional<int>(1 | 2 | 4)); }
+    CHECK(found);
+}

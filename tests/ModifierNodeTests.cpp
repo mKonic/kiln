@@ -4,6 +4,7 @@
 
 #include "kiln/foundation/Compose.h"
 #include "kiln/foundation/Layouts.h"
+#include "kiln/ui/MediaQuery.h"
 
 using namespace kiln;
 using namespace kiln::foundation;
@@ -317,4 +318,44 @@ TEST(MotionFrameOfReferenceLeavesScrollingOut) {
     h.Pump();
     CHECK_EQ(root.LocalPositionOf(item, {}).y, 100.0f);         // 150 down, scrolled up 50
     CHECK_EQ(root.LocalPositionOf(item, {}, false).y, 150.0f);  // structural: without the scroll
+}
+
+TEST(MediaQueryAnswersFromTheWindowAndDevices) {
+    Harness h;
+    h.owner.SetDensity({ 2, 1 });
+    OwnerMediaScope& media = MediaScopeOf(h.owner);
+    float width = -1;
+    UiMediaScope::PointerPrecision precision{};
+    UiMediaScope::ViewingDistance distance{};
+    int computedRuns = 0;
+    bool wide = false;
+    h.Run([&] {
+        rt::Composition::Current()->Provide(LocalOwner, &h.owner, [&] {
+            width = MediaQuery<float>([](const UiMediaScope& m) { return m.WindowWidth().value; });
+            precision = MediaQuery<UiMediaScope::PointerPrecision>([](const UiMediaScope& m) { return m.GetPointerPrecision(); });
+            distance = MediaQuery<UiMediaScope::ViewingDistance>([](const UiMediaScope& m) { return m.GetViewingDistance(); });
+            auto& d = ComputedMediaQuery<bool>([&](const UiMediaScope& m) { ++computedRuns; return m.WindowWidth().value >= 100; });
+            wide = d.Get();
+        });
+    });
+    CHECK_EQ(width, 200.0f);   // 400 px at density 2
+    CHECK(wide);
+    CHECK(precision == UiMediaScope::PointerPrecision::None);
+    // Reading the pointer precision listens to the devices: a touchscreen, then a mouse.
+    CHECK(h.owner.Devices().ListenerCount() == 1);
+    h.owner.Devices().Update({ 3, false, 0x1002, 0 });
+    h.Pump();
+    CHECK(precision == UiMediaScope::PointerPrecision::Coarse);
+    h.owner.Devices().Update({ 4, false, 0x2002, 0 });
+    h.Pump();
+    CHECK(precision == UiMediaScope::PointerPrecision::Fine);
+    h.owner.Devices().Remove(4);
+    h.Pump();
+    CHECK(precision == UiMediaScope::PointerPrecision::Coarse);
+    media.SetFeatures({ .television = true });
+    h.Pump();
+    CHECK(distance == UiMediaScope::ViewingDistance::Far);
+    UiMediaScope::WindowPosture posture;
+    posture.folds.push_back({ UiMediaScope::FoldState::HalfOpened, UiMediaScope::FoldOrientation::Horizontal });
+    CHECK(posture.IsTabletop() && !posture.IsFlat());
 }

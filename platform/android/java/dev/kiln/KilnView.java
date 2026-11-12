@@ -429,7 +429,7 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
         KilnNative.touchEvent(windowId, e.getActionMasked(), e.getActionIndex(), e.getEventTime(), idsN, xyN, toolsN,
                 e.getButtonState(), e.getMetaState(), e.getClassification(),
                 e.getAxisValue(MotionEvent.AXIS_HSCROLL), e.getAxisValue(MotionEvent.AXIS_VSCROLL),
-                historyTimes, historyXy, pan);
+                historyTimes, historyXy, pan, e.getSource());
         return true;
     }
 
@@ -810,6 +810,21 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
 
     // --- accessibility (spec 01) --------------------------------------------------------------
     private final KilnAccessibility accessibility = new KilnAccessibility(this);
+
+    /** UiMediaScope's device features: microphone 1, camera 2, TV 4, automotive 8, docked 16. */
+    int mediaFeatures() {
+        android.content.pm.PackageManager pm = getContext().getPackageManager();
+        int f = 0;
+        if (pm.hasSystemFeature(android.content.pm.PackageManager.FEATURE_MICROPHONE)) f |= 1;
+        if (pm.hasSystemFeature(android.content.pm.PackageManager.FEATURE_CAMERA_ANY)) f |= 2;
+        if (pm.hasSystemFeature(android.content.pm.PackageManager.FEATURE_LEANBACK)) f |= 4;
+        if (pm.hasSystemFeature(android.content.pm.PackageManager.FEATURE_AUTOMOTIVE)) f |= 8;
+        // ACTION_DOCK_EVENT is sticky: registering no receiver returns the current dock state.
+        android.content.Intent dock = getContext().registerReceiver(null, new android.content.IntentFilter(android.content.Intent.ACTION_DOCK_EVENT));
+        if (dock != null && dock.getIntExtra(android.content.Intent.EXTRA_DOCK_STATE, android.content.Intent.EXTRA_DOCK_STATE_UNDOCKED)
+                != android.content.Intent.EXTRA_DOCK_STATE_UNDOCKED) f |= 16;
+        return f;
+    }
 
     /** PackageManager.FEATURE_LEANBACK: focus scrolling pivots on TVs. */
     boolean isTelevision() {

@@ -20,102 +20,104 @@ namespace kiln::foundation {
             bool operator==(const PointerParams& o) const { return keys == o.keys && handler == o.handler && expansion == o.expansion; }
         };
 
-        class PointerInputNode final : public ModifierNode, public PointerInputModifier, public PointerInputScope {
+        class PointerInputNode final : public SuspendingPointerInputModifierNode {
         public:
             PointerParams params;
-            explicit PointerInputNode(PointerParams p) : params(std::move(p)) {}
+            explicit PointerInputNode(PointerParams p) : SuspendingPointerInputModifierNode(*p.handler), params(std::move(p)) { m_StartedKeys = params.keys; }
             void OnParamsChanged() {
-                if (!(params.keys == m_StartedKeys)) Restart(false);
-            }
-            PointerInputModifier* AsPointerInput() override { return this; }
-            void OnDetach() override { Stop(); }
-
-            void OnPointerEvent(PointerEvent& ev, PointerEventPass pass, IntSize bounds) override {
-                m_Size = bounds;
-                if (!m_Job.Active()) Restart(true);
-                if (!m_Waiter || m_WaitPass != pass) return;
-                auto h = m_Waiter;
-                m_Waiter = nullptr;
-                // The event came first: drop the timeout's timer.
-                if (m_Job.Active() && m_JobState->unregister) {
-                    auto unregister = std::move(m_JobState->unregister);
-                    m_JobState->unregister = nullptr;
-                    unregister();
+                SetHandlerKeepingRun(*params.handler);
+                if (!(params.keys == m_StartedKeys)) {
+                    m_StartedKeys = params.keys;
+                    ResetPointerInputHandler();
                 }
-                // The copy shares the consumption flags with the dispatch, so Consume() on it is
-                // seen by later passes and nodes.
-                m_Event = ev;
-                m_Current = ev;
-                rt::ResumeJob(m_JobState, h);
             }
-            void OnCancelPointerInput() override { Restart(false); }
             std::optional<std::array<float, 4>> TouchBoundsExpansion(const Density& d, LayoutDirection dir) const override {
                 if (!params.expansion) return std::nullopt;
                 return params.expansion->Resolve(d, dir);
             }
-
-            const ViewConfiguration& Config() const override {
-                static const ViewConfiguration fallback;
-                return Owner() && Owner()->GetOwner() ? Owner()->GetOwner()->Config() : fallback;
-            }
-            Density GetDensity() const override {
-                return Owner() && Owner()->GetOwner() ? Owner()->GetOwner()->GetDensity() : Density{};
-            }
-            bool InScrollableContainer() const override {
-                for (const LayoutNode* n = Owner(); n; n = n->Parent())
-                    for (const ModifierNode* m : n->ModifierNodes())
-                        if (m->IsScrollableContainer()) return true;
-                return false;
-            }
-
-        protected:
-            void Suspend(std::coroutine_handle<> h, PointerEventPass pass, std::int64_t timeout,
-                         const std::shared_ptr<rt::JobState>& job) override {
-                m_Waiter = h;
-                m_WaitPass = pass;
-                m_JobState = job;
-                // A timeout is a dispatcher timer on the waiting coroutine itself: it resumes it
-                // with nullopt unless an event came first (which removes the timer).
-                std::function<void()> removeTimer;
-                if (timeout >= 0) {
-                    job->dispatcher->AddTimer(job->dispatcher->Now() + std::chrono::milliseconds(timeout), h, job);
-                    removeTimer = std::move(job->unregister);
-                }
-                job->unregister = [this, removeTimer = std::move(removeTimer)] {
-                    m_Waiter = nullptr;
-                    if (removeTimer) removeTimer();
-                };
-            }
-            std::optional<PointerEvent> TakeEvent() override {
-                // Still waiting: the timer resumed us.
-                if (m_Waiter) {
-                    m_Waiter = nullptr;
-                    return std::nullopt;
-                }
-                auto e = std::move(m_Event);
-                m_Event.reset();
-                return e;
-            }
-
         private:
-            void Stop() {
-                m_Waiter = nullptr;
-                m_Job.Cancel();
-            }
-            void Restart(bool start) {
-                Stop();
-                if (!start || !params.handler) return;
-                m_StartedKeys = params.keys;
-                m_Job = rt::Launch(rt::Dispatcher::Main(), (*params.handler)(*this));
-            }
-
-            rt::Job m_Job;
-            std::shared_ptr<rt::JobState> m_JobState;
             rt::Keys m_StartedKeys;
-            std::coroutine_handle<> m_Waiter;
-            PointerEventPass m_WaitPass = PointerEventPass::Main;
-            std::optional<PointerEvent> m_Event;
         };
+    }
+
+    SuspendingPointerInputModifierNode::SuspendingPointerInputModifierNode(PointerInputHandler handler) : m_Handler(std::move(handler)) {}
+
+    void SuspendingPointerInputModifierNode::SetPointerInputEventHandler(PointerInputHandler handler) {
+        m_Handler = std::move(handler);
+        ResetPointerInputHandler();
+    }
+
+    void SuspendingPointerInputModifierNode::ResetPointerInputHandler() { Stop(); }
+
+    void SuspendingPointerInputModifierNode::OnPointerEvent(PointerEvent& ev, PointerEventPass pass, IntSize bounds) {
+        m_Size = bounds;
+        if (!m_Job.Active()) Restart(true);
+        if (!m_Waiter || m_WaitPass != pass) return;
+        auto h = m_Waiter;
+        m_Waiter = nullptr;
+        // The event came first: drop the timeout's timer.
+        if (m_Job.Active() && m_JobState->unregister) {
+            auto unregister = std::move(m_JobState->unregister);
+            m_JobState->unregister = nullptr;
+            unregister();
+        }
+        // The copy shares the consumption flags with the dispatch, so Consume() on it is
+        // seen by later passes and nodes.
+        m_Event = ev;
+        m_Current = ev;
+        rt::ResumeJob(m_JobState, h);
+    }
+
+    const ViewConfiguration& SuspendingPointerInputModifierNode::Config() const {
+        static const ViewConfiguration fallback;
+        return Owner() && Owner()->GetOwner() ? Owner()->GetOwner()->Config() : fallback;
+    }
+    Density SuspendingPointerInputModifierNode::GetDensity() const {
+        return Owner() && Owner()->GetOwner() ? Owner()->GetOwner()->GetDensity() : Density{};
+    }
+    bool SuspendingPointerInputModifierNode::InScrollableContainer() const {
+        for (const LayoutNode* n = Owner(); n; n = n->Parent())
+            for (const ModifierNode* m : n->ModifierNodes())
+                if (m->IsScrollableContainer()) return true;
+        return false;
+    }
+
+    void SuspendingPointerInputModifierNode::Suspend(std::coroutine_handle<> h, PointerEventPass pass, std::int64_t timeout,
+                                                     const std::shared_ptr<rt::JobState>& job) {
+        m_Waiter = h;
+        m_WaitPass = pass;
+        m_JobState = job;
+        // A timeout is a dispatcher timer on the waiting coroutine itself: it resumes it
+        // with nullopt unless an event came first (which removes the timer).
+        std::function<void()> removeTimer;
+        if (timeout >= 0) {
+            job->dispatcher->AddTimer(job->dispatcher->Now() + std::chrono::milliseconds(timeout), h, job);
+            removeTimer = std::move(job->unregister);
+        }
+        job->unregister = [this, removeTimer = std::move(removeTimer)] {
+            m_Waiter = nullptr;
+            if (removeTimer) removeTimer();
+        };
+    }
+    std::optional<PointerEvent> SuspendingPointerInputModifierNode::TakeEvent() {
+        // Still waiting: the timer resumed us.
+        if (m_Waiter) {
+            m_Waiter = nullptr;
+            return std::nullopt;
+        }
+        auto e = std::move(m_Event);
+        m_Event.reset();
+        return e;
+    }
+
+    void SuspendingPointerInputModifierNode::Stop() {
+        m_Waiter = nullptr;
+        m_Job.Cancel();
+    }
+    void SuspendingPointerInputModifierNode::Restart(bool start) {
+        Stop();
+        if (!start || !m_Handler) return;
+        m_Job = rt::Launch(rt::Dispatcher::Main(), m_Handler(*this));
     }
 
     Modifier PointerInput(Modifier m, rt::Keys keys, PointerInputHandler handler) {
