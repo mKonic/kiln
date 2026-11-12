@@ -116,6 +116,8 @@ namespace kiln::ui {
         virtual ~LayoutAwareModifier() = default;
         virtual void OnPlaced(const LayoutCoordinates&) {}
         virtual void OnRemeasured(IntSize) {}
+        // UnplacedAwareModifierNode.onUnplaced: its layout (or an ancestor) stopped being placed.
+        virtual void OnUnplaced() {}
         IntSize lastMeasuredSize{ -1, -1 };
     };
 

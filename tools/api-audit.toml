@@ -203,6 +203,11 @@ VerticalAlignmentLine = "AlignmentLine"
 BiasAlignment = "Alignment"   # bias based
 LayoutIdParentData = "ParentData"   # layoutId
 nestedScrollModifierNode = "NestedScrollNode"
+UnplacedAwareModifierNode = "LayoutAwareModifier"   # OnUnplaced
+onVisibilityChangedNode = "OnVisibilityChanged"   # no delegation: the modifier
+calculateOuterBoundsInRoot = "BoundsInRoot"
+CacheDrawModifierNode = "CacheDrawModifierNode"
+DrawCacheModifier = "CacheDrawModifierNode"
 
 [skipped]
 DelegatingNode = "kiln nodes implement several capability interfaces themselves; nothing to delegate to"

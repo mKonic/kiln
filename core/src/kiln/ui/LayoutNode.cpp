@@ -849,6 +849,12 @@ namespace kiln::ui {
             if (auto* l = n->AsLayoutAware()) l->OnPlaced(CoordinatesOf(n.get()));
     }
 
+    void LayoutNode::DispatchUnplaced() {
+        if (m_HasLayoutAware)
+            for (auto& n : m_Nodes) if (auto* l = n->AsLayoutAware()) l->OnUnplaced();
+        for (LayoutNode* c : m_Children) c->DispatchUnplaced();
+    }
+
     void LayoutNode::DispatchRemeasured() {
         for (auto& n : m_Nodes) {
             auto* l = n->AsLayoutAware();
@@ -1184,7 +1190,7 @@ namespace kiln::ui {
         if (m_Owner && innerWasPlaced != m_Coordinators.back()->placed) m_Owner->InvalidateSemantics();
         // Children this pass did not place stop drawing and hit testing (markNodeAndSubtreeAsNotPlaced).
         for (LayoutNode* c : m_Children)
-            if (!c->m_PlacedThisPass && c->m_Placed) { c->m_Placed = false; InvalidateDraw(); }
+            if (!c->m_PlacedThisPass && c->m_Placed) { c->m_Placed = false; InvalidateDraw(); c->DispatchUnplaced(); }
         InvalidateDraw();
         CheckLinesReadByParent();
     }
@@ -1442,6 +1448,42 @@ namespace kiln::ui {
         }
         const auto b = source.node->LookaheadOffsetOf(source.coordinator);
         return LocalPositionOf(rootSpace(b.root), ToOffset(b.offset) + rel);
+    }
+
+    Rect LayoutCoordinates::LocalBoundingBoxOf(const LayoutCoordinates& source) const {
+        if (!IsAttached() || !source.IsAttached()) return {};
+        const IntSize s = source.Size();
+        const Offset corners[] = { { 0, 0 }, { float(s.width), 0 }, { 0, float(s.height) }, { float(s.width), float(s.height) } };
+        Rect r{ INFINITY, INFINITY, -INFINITY, -INFINITY };
+        for (Offset p : corners) {
+            const Offset q = LocalPositionOf(source, p);
+            r.left = std::min(r.left, q.x); r.top = std::min(r.top, q.y);
+            r.right = std::max(r.right, q.x); r.bottom = std::max(r.bottom, q.y);
+        }
+        return r;
+    }
+
+    Rect LayoutCoordinates::BoundsInWindow() const {
+        Rect r = BoundsInRoot();
+        const Owner* o = IsAttached() ? node->GetOwner() : nullptr;
+        if (!o) return r;
+        const IntSize w = o->WindowSize();
+        r.left = std::clamp(r.left, 0.0f, float(w.width)); r.right = std::clamp(r.right, 0.0f, float(w.width));
+        r.top = std::clamp(r.top, 0.0f, float(w.height)); r.bottom = std::clamp(r.bottom, 0.0f, float(w.height));
+        return r;
+    }
+
+    Rect LayoutCoordinates::BoundsInParent() const {
+        if (!IsAttached()) return {};
+        const LayoutNode* parent = node->Parent();
+        if (!parent) return BoundsInRoot();
+        return parent->InnerCoordinates().LocalBoundingBoxOf(*this);
+    }
+
+    LayoutCoordinates LayoutCoordinates::FindRootCoordinates() const {
+        const LayoutNode* n = node;
+        while (n && n->Parent()) n = n->Parent();
+        return n ? n->OuterCoordinates() : LayoutCoordinates{};
     }
 
     LayoutCoordinates LookaheadScope::ToLookaheadCoordinates(const LayoutCoordinates& c) const {
@@ -1996,6 +2038,8 @@ namespace kiln::ui {
         // onBarrierPositionChanged: a barrier that now covers the focused target takes focus away.
         if (!m_Barriers.empty() && m_ActiveFocus && IsOccludedByInteractionBarrier(*m_ActiveFocus)) ClearFocus(true);
         if (m_Autofill) m_Autofill->OnEndApplyChanges();
+        m_Rects.Dispatch(*this, m_LaidOutThisPass);
+        m_LaidOutThisPass = false;
         if (m_ContentConstraints && m_ContentRoot->Size() != m_LastContentSize) {
             m_LastContentSize = m_ContentRoot->Size();
             if (m_OnContentSizeChanged) m_OnContentSizeChanged(m_LastContentSize);
@@ -2066,6 +2110,7 @@ namespace kiln::ui {
     }
 
     void Owner::DispatchGloballyPositioned() {
+        m_LaidOutThisPass = true;
         // Parents first (OnPositionedDispatcher sorts by depth); callbacks may change the tree.
         std::vector<LayoutNode*> nodes(m_PositionAware.begin(), m_PositionAware.end());
         std::stable_sort(nodes.begin(), nodes.end(), [](const LayoutNode* a, const LayoutNode* b) { return a->Depth() < b->Depth(); });

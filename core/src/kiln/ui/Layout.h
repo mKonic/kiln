@@ -56,6 +56,16 @@ namespace kiln::ui {
         // map through every layer; lookahead ones add up lookahead offsets, and cross into main
         // space at their lookahead root's parent (as LookaheadLayoutCoordinates does).
         Offset LocalPositionOf(const LayoutCoordinates& source, Offset relativeToSource = {}) const;
+        // localBoundingBoxOf: `source`'s bounds (its corners mapped) in this space.
+        Rect LocalBoundingBoxOf(const LayoutCoordinates& source) const;
+        // positionInWindow / boundsInWindow: the root sits at the window's origin, so these are
+        // the root ones (bounds kept inside the window).
+        Offset PositionInWindow() const { return PositionInRoot(); }
+        Rect BoundsInWindow() const;
+        // boundsInParent: the bounding box in the parent layout's content space.
+        Rect BoundsInParent() const;
+        // findRootCoordinates: the window root's.
+        LayoutCoordinates FindRootCoordinates() const;
         bool operator==(const LayoutCoordinates& o) const {
             return node == o.node && coordinator == o.coordinator && lookahead == o.lookahead && at == o.at;
         }

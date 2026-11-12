@@ -241,3 +241,33 @@ TEST(DrawWithCacheRebuildsOnlyWhenItsInputsChange) {
     CHECK(builds > before);
     CHECK_EQ(seenWidth, 60.0f);
 }
+
+TEST(VisibilityBoundsAndDebouncedRectCallbacks) {
+    rt::Dispatcher::Main().SetVirtualTime(true);
+    Harness h;
+    rt::State<int> y(0);
+    std::vector<bool> visible;
+    std::vector<IntRect> rects;
+    LayoutBoundsHolder holder;
+    h.Run([&] {
+        Box(OffsetMod(Modifier{}, Dp(0), Dp(float(y.Get()))), Alignment::TopStart(), false, [&] {
+            Box(OnLayoutRectChanged(OnVisibilityChanged(LayoutBounds(SizeMod(Modifier{}, Dp(100), Dp(100)), holder),
+                                                        [&](bool v) { visible.push_back(v); }, 0, 0.5f),
+                                    [&](const RelativeLayoutBounds& b) { rects.push_back(b.BoundsInRoot()); }));
+        });
+    });
+    CHECK((visible == std::vector<bool>{ true }));
+    CHECK(holder.Bounds().has_value());
+    CHECK_EQ(holder.Bounds()->Height(), 100);
+    CHECK_EQ(int(rects.size()), 1);   // the first report is immediate
+    y.Set(350);   // a quarter inside the 400 px window: not more than half
+    h.Pump();
+    CHECK((visible == std::vector<bool>{ true, false }));
+    CHECK_EQ(holder.Bounds()->PositionInRoot().y, 350);
+    CHECK_EQ(int(rects.size()), 1);   // debounced (64 ms)
+    rt::Dispatcher::Main().AdvanceTimeBy(std::chrono::milliseconds(70));
+    h.Pump();
+    CHECK_EQ(int(rects.size()), 2);
+    CHECK_EQ(rects.back().top, 350);
+    rt::Dispatcher::Main().SetVirtualTime(false);
+}

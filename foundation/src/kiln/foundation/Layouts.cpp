@@ -1033,6 +1033,135 @@ namespace kiln::foundation {
             void Consume() { ObserveReads([this] { if (params.consumer) params.consumer(*this); }); }
         };
     }
+    namespace {
+        struct RectChangedParams {
+            std::function<void(const ui::RelativeLayoutBounds&)> callback;
+            std::int64_t throttle = 0, debounce = 64;
+            bool operator==(const RectChangedParams&) const { return false; }
+        };
+        struct RectChangedNode final : ModifierNode {
+            RectChangedParams params;
+            ui::RegistrationHandle handle;
+            explicit RectChangedNode(RectChangedParams p) : params(std::move(p)) {}
+            void Register() {
+                handle.Unregister();
+                auto alive = AliveToken();
+                handle = ui::RegisterOnLayoutRectChanged(*this, params.throttle, params.debounce, [this, alive](const ui::RelativeLayoutBounds& b) {
+                    if (!alive.expired() && params.callback) params.callback(b);
+                });
+            }
+            // The entry calls through the node, so a new callback needs no new registration
+            // (Compose re-registers when the element changes; its lambdas are usually the same).
+            std::int64_t registeredThrottle = -1, registeredDebounce = -1;
+            void OnAttach() override { Register(); registeredThrottle = params.throttle; registeredDebounce = params.debounce; }
+            void OnParamsChanged() {
+                if (!IsAttached() || (params.throttle == registeredThrottle && params.debounce == registeredDebounce)) return;
+                OnAttach();
+            }
+            void OnDetach() override { handle.Unregister(); }
+        };
+
+        struct BoundsParams {
+            LayoutBoundsHolder* holder = nullptr;
+            bool operator==(const BoundsParams&) const = default;
+        };
+        struct BoundsNode final : ModifierNode {
+            BoundsParams params;
+            ui::RegistrationHandle handle;
+            std::optional<ui::RelativeLayoutBounds> last;
+            explicit BoundsNode(BoundsParams p) : params(p) {}
+            void OnAttach() override {
+                handle.Unregister();
+                auto alive = AliveToken();
+                handle = ui::RegisterOnLayoutRectChanged(*this, 0, 0, [this, alive](const ui::RelativeLayoutBounds& b) {
+                    if (alive.expired()) return;
+                    last = b;
+                    params.holder->SetBounds(b);
+                });
+            }
+            void OnParamsChanged() { params.holder->SetBounds(last); }
+            void OnDetach() override { handle.Unregister(); params.holder->SetBounds(std::nullopt); }
+        };
+
+        struct VisibilityParams {
+            std::function<void(bool)> callback;
+            std::int64_t minDurationMs = 0;
+            float minFractionVisible = 1;
+            LayoutBoundsHolder* viewport = nullptr;
+            bool operator==(const VisibilityParams&) const { return false; }
+        };
+        // OnVisibilityChangedNode.
+        struct VisibilityNode final : ModifierNode, ui::LayoutAwareModifier {
+            VisibilityParams params;
+            ui::RegistrationHandle handle;
+            rt::Job job;
+            bool lastResult = false, lastReported = false;
+            std::optional<ui::RelativeLayoutBounds> lastBounds, lastViewport;
+            explicit VisibilityNode(VisibilityParams p) : params(std::move(p)) {}
+            ui::LayoutAwareModifier* AsLayoutAware() override { return this; }
+            void Check(const ui::RelativeLayoutBounds& bounds) {
+                lastBounds = bounds;
+                if (!lastViewport && params.viewport) return;
+                const float f = lastViewport ? bounds.FractionVisibleIn(*lastViewport) : bounds.FractionVisibleInWindow();
+                const bool now = f > params.minFractionVisible || f == 1.0f;
+                if (now == lastResult) return;
+                lastResult = now;
+                job.Cancel();
+                if (now == lastReported) return;
+                if (now && params.minDurationMs > 0) {
+                    auto alive = AliveToken();
+                    job = rt::Launch(rt::Dispatcher::Main(), [](VisibilityNode* self, std::weak_ptr<const char> alive, std::int64_t ms) -> rt::Task<> {
+                        co_await rt::Delay(ms);
+                        if (!alive.expired()) self->Trigger();
+                    }(this, alive, params.minDurationMs));
+                } else {
+                    Trigger();
+                }
+            }
+            void Trigger() {
+                job.Cancel();
+                lastReported = lastResult;
+                if (params.callback) params.callback(lastResult);
+            }
+            void ForceUpdate() { if (lastBounds) Check(*lastBounds); }
+            void FireExitIfNeeded() {
+                job.Cancel();
+                lastResult = false;
+                if (lastReported) Trigger();
+            }
+            void UpdateViewport() {
+                if (!params.viewport) {
+                    if (lastViewport) { lastViewport.reset(); ForceUpdate(); }
+                    return;
+                }
+                ObserveReads([this] {
+                    const auto v = params.viewport->Bounds();
+                    if (!(lastViewport == v)) { lastViewport = v; ForceUpdate(); }
+                });
+            }
+            void OnAttach() override {
+                handle.Unregister();
+                auto alive = AliveToken();
+                handle = ui::RegisterOnLayoutRectChanged(*this, 0, 0, [this, alive](const ui::RelativeLayoutBounds& b) {
+                    if (alive.expired()) return;
+                    if (params.viewport) lastViewport = params.viewport->Bounds();
+                    Check(b);
+                });
+                UpdateViewport();
+            }
+            void OnParamsChanged() { if (IsAttached()) { UpdateViewport(); ForceUpdate(); } }
+            void OnObservedReadsChanged() override { UpdateViewport(); }
+            void OnDetach() override { handle.Unregister(); FireExitIfNeeded(); }
+            void OnUnplaced() override { FireExitIfNeeded(); }
+        };
+    }
+    Modifier OnLayoutRectChanged(Modifier m, std::function<void(const ui::RelativeLayoutBounds&)> f, std::int64_t throttle, std::int64_t debounce) {
+        return m.With<RectChangedNode>(RectChangedParams{ std::move(f), throttle, debounce });
+    }
+    Modifier LayoutBounds(Modifier m, LayoutBoundsHolder& holder) { return m.With<BoundsNode>(BoundsParams{ &holder }); }
+    Modifier OnVisibilityChanged(Modifier m, std::function<void(bool)> f, std::int64_t minDurationMs, float minFraction, LayoutBoundsHolder* viewport) {
+        return m.With<VisibilityNode>(VisibilityParams{ std::move(f), minDurationMs, minFraction, viewport });
+    }
     Modifier OnPlaced(Modifier m, std::function<void(const LayoutCoordinates&)> f) { return m.With<PlacedNode>(PlacedParams{ std::move(f) }); }
     Modifier ModifierLocalConsumer(Modifier m, std::function<void(const ModifierNode&)> f) {
         return m.With<LocalConsumerNode>(LocalConsumerParams{ std::move(f) });

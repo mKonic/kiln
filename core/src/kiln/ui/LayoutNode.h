@@ -23,6 +23,7 @@
 #include "kiln/ui/Autofill.h"
 #include "kiln/ui/Configuration.h"
 #include "kiln/ui/Popup.h"
+#include "kiln/ui/RectCallbacks.h"
 #include "kiln/ui/Window.h"
 #include "kiln/ui/DragAndDrop.h"
 #include "kiln/ui/ScrollCapture.h"
@@ -262,6 +263,7 @@ namespace kiln::ui {
         bool m_HasLayoutAware = false;
         void DispatchPlaced();
         void DispatchRemeasured();
+        void DispatchUnplaced();
         std::vector<std::unique_ptr<Coordinator>> m_Coordinators;   // outer .. inner
         std::shared_ptr<const char> m_Alive = std::make_shared<const char>(0);
         ParentData m_ParentData;
@@ -514,6 +516,10 @@ namespace kiln::ui {
             std::function<void(const std::optional<ClipEntry>&)> setClip;
         };
         void SetClipboardHost(ClipboardHost host) { m_Clipboard = std::move(host); }
+        // Layout rect callbacks (onLayoutRectChanged, onVisibilityChanged).
+        RectRegistry& Rects() { return m_Rects; }
+        // Where the window is on screen (RelativeLayoutBounds.positionInScreen); the host sets it.
+        void SetScreenOffset(IntOffset o) { m_Rects.SetScreenOffset(o); }
         // A service object kept for the owner's lifetime under `tag` (the CompositionLocals'
         // owner-backed defaults).
         std::shared_ptr<void>& Service(const std::string& tag) { return m_Services[tag]; }
@@ -722,12 +728,14 @@ namespace kiln::ui {
         void TrackPositionAware(LayoutNode& n);
         void DispatchGloballyPositioned();
         std::set<LayoutNode*> m_PositionAware;
+        bool m_LaidOutThisPass = false;
         bool m_LaidOut = false;
         std::function<void(int)> m_Haptic;
         std::function<void(bool, bool)> m_BarsAppearance;
         std::function<void(const SystemBarStyle&, const SystemBarStyle&)> m_EdgeToEdge;
         ClipboardHost m_Clipboard;
         std::map<std::string, std::shared_ptr<void>> m_Services;
+        RectRegistry m_Rects;
         MagnifierHost m_Magnifier;
         ContentHost m_Content;
         std::optional<std::string> m_LocalClip;   // without a host (tests): an in-process clipboard

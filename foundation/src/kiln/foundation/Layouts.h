@@ -120,6 +120,25 @@ namespace kiln::foundation {
     template<typename T>
     Modifier ModifierLocalProvider(Modifier m, const ui::ModifierLocal<T>& key, std::function<T()> value);
     Modifier ModifierLocalConsumer(Modifier m, std::function<void(const ui::ModifierNode& scope)> consumer);
+    // onLayoutRectChanged: the layout's bounds in the window after it moves or resizes, at most
+    // once per throttle period and once changes have stopped for the debounce period.
+    Modifier OnLayoutRectChanged(Modifier m, std::function<void(const ui::RelativeLayoutBounds&)> callback, std::int64_t throttleMillis = 0,
+                                 std::int64_t debounceMillis = 64);
+    // LayoutBoundsHolder / layoutBounds: a layout's bounds as observable state (a viewport for
+    // onVisibilityChanged); null while it is not laid out.
+    class LayoutBoundsHolder {
+    public:
+        const std::optional<ui::RelativeLayoutBounds>& Bounds() const { return m_Bounds.Get(); }
+        void SetBounds(std::optional<ui::RelativeLayoutBounds> b) { if (!(m_Bounds.Peek() == b)) m_Bounds.Set(std::move(b)); }
+    private:
+        rt::State<std::optional<ui::RelativeLayoutBounds>> m_Bounds{ std::nullopt };
+    };
+    Modifier LayoutBounds(Modifier m, LayoutBoundsHolder& holder);
+    // onVisibilityChanged: true once more than minFractionVisible of the layout (or all of it)
+    // is inside the window, or inside `viewportBounds`'s layout, for minDurationMs; false when
+    // that stops (and when it leaves).
+    Modifier OnVisibilityChanged(Modifier m, std::function<void(bool visible)> callback, std::int64_t minDurationMs = 0,
+                                 float minFractionVisible = 1.0f, LayoutBoundsHolder* viewportBounds = nullptr);
     Modifier AspectRatio(Modifier m, float ratio, bool matchHeightConstraintsFirst = false);
 
     // Parent data
