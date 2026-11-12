@@ -4,8 +4,6 @@
 use crate::{here, sys, CStrBuf, IntoCallback, Modifier, TextFieldState};
 use std::ptr::null;
 
-crate::__kiln_callback!(sys::kiln_m3_fn_padding_values, (p: sys::kiln_padding) -> ());
-crate::__kiln_callback!(sys::kiln_m3_fn_color_scheme, (s: *mut sys::kiln_m3_color_scheme) -> ());
 
 /// MaterialTheme with the default (light) scheme, or `scheme` when given.
 #[track_caller]

@@ -23,6 +23,7 @@
 pub use kiln_sys as sys;
 
 pub mod m3;
+pub mod material3;
 
 use std::ffi::{c_void, CStr, CString};
 use std::panic::Location;
