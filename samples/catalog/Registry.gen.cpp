@@ -439,10 +439,6 @@ namespace catalog {
                 { "LargeFlexibleTopAppBarWithSubtitleAndCenterAligned", "Top app bar examples", true, samples::LargeFlexibleTopAppBarWithSubtitleAndCenterAligned },
                 { "CustomTwoRowsTopAppBar", "Top app bar examples", true, samples::CustomTwoRowsTopAppBar },
             } },
-            { 41, "Transitions", "Transitions guide users between screens and navigation states, maintaining spatial context through expressive motion, including gesture-driven predictive back.", true, 0, {
-                { "HorizontalSharedAxisTransitionSample", "Transitions examples", false, samples::HorizontalSharedAxisTransitionSample },
-                { "FadeThroughTransitionSample", "Transitions examples", false, samples::FadeThroughTransitionSample },
-            } },
             { 42, "Typography", "The Material Design type scale includes a range of contrasting styles that support the needs of your product and its content.", true, 0, {
                 { "TypographySample", "Typography examples", false, samples::TypographySample },
                 { "TypographyCustomFontFamilySample", "Typography examples", false, samples::TypographyCustomFontFamilySample },

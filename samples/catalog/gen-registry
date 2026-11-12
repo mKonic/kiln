@@ -75,7 +75,9 @@ for m in re.finditer(r"private val (\w+) =\s*Component\(", comp):
     args, _ = call_body(comp, m.end())
     comps[m.group(1)] = {"name": string(arg(args, "name")), "description": string(arg(args, "description")),
                          "examples": arg(args, "examples"), "tint": (arg(args, "tintIcon") or "true") == "true"}
-order = [x.strip() for x in re.search(r"val Components\s*=\s*listOf\((.*?)\)", comp, re.S).group(1).split(",") if x.strip()]
+# Line comments in the list hide entries (Components.kt comments out a component to hide it).
+listed = re.search(r"val Components\s*=\s*listOf\((.*?)\)", re.sub(r"//[^\n]*", "", comp), re.S).group(1)
+order = [x.strip() for x in listed.split(",") if x.strip()]
 
 ported = set()
 for h in glob.glob(os.path.join(here, "samples", "*.h")):
