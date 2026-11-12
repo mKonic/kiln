@@ -1,6 +1,7 @@
 #include "Check.h"
 #include "ToolbarHelpers.h"
 #include "FakeText.h"
+#include "kiln/foundation/text/TextMeasurer.h"
 
 #include "kiln/foundation/Compose.h"
 #include "kiln/foundation/Semantics.h"
@@ -708,4 +709,24 @@ TEST(TranslationShowsTheSubstitutedTextAndContentCaptureSeesIt) {
     CHECK(std::any_of(events.begin(), events.end(), [&](const ui::ContentCaptureEvent& e) {
         return e.kind == ui::ContentCaptureEvent::Kind::Disappear && e.id == id;
     }));
+}
+
+TEST(TextMeasurerCachesLayoutsByInput) {
+    FakeText backend;
+    kiln::foundation::TextMeasurer measurer(&backend, { 1, 1 }, kiln::ui::LayoutDirection::Ltr, 2);
+    const TextStyle style(Sp(10));
+    const auto a = measurer.Measure("hello world", style);
+    const auto b = measurer.Measure("hello world", style);
+    CHECK(a.SharedParagraphs() == b.SharedParagraphs());   // cached
+    kiln::ui::Constraints narrow;
+    narrow.maxWidth = 30;
+    const auto c = measurer.Measure("hello world", style, kiln::text::TextOverflow::Clip, true, INT_MAX, narrow);
+    CHECK(c.SharedParagraphs() != a.SharedParagraphs() && c.LineCount() > a.LineCount() && c.Size().width <= 30);
+    // Past the cache size the oldest goes.
+    measurer.Measure("x", style);
+    measurer.Measure("y", style);
+    CHECK(measurer.Measure("hello world", style).SharedParagraphs() != a.SharedParagraphs());
+    // skipCache lays out again.
+    CHECK(measurer.Measure("y", style, kiln::text::TextOverflow::Clip, true, INT_MAX, {}, std::nullopt, std::nullopt, true).SharedParagraphs() !=
+          measurer.Measure("y", style).SharedParagraphs());
 }
