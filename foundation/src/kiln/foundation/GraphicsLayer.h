@@ -9,6 +9,7 @@
 #include "kiln/foundation/Layouts.h"
 #include "kiln/runtime/Composition.h"
 #include "kiln/ui/Draw.h"
+#include "kiln/ui/LayoutNode.h"
 
 #include <memory>
 #include <optional>
@@ -84,6 +85,9 @@ namespace kiln::foundation::layer {
         static GraphicsContext& Default();
     };
     inline rt::Local<GraphicsContext*> LocalGraphicsContext{ &GraphicsContext::Default() };
+
+    // requireGraphicsContext: the GraphicsContext where the node's layout was composed.
+    inline GraphicsContext& RequireGraphicsContext(const ui::ModifierNode& node) { return *ui::CurrentValueOf(node, LocalGraphicsContext); }
 
     // rememberGraphicsLayer(): a layer from the current GraphicsContext, released when it
     // leaves the composition.

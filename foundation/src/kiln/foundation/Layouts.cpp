@@ -1008,6 +1008,35 @@ namespace kiln::foundation {
     Modifier OnGloballyPositioned(Modifier m, std::function<void(const LayoutCoordinates&)> f) {
         return m.With<GloballyPositionedNode>(GloballyPositionedParams{ std::move(f) });
     }
+    namespace {
+        struct PlacedParams {
+            std::function<void(const LayoutCoordinates&)> callback;
+            bool operator==(const PlacedParams&) const { return false; }
+        };
+        struct PlacedNode final : ModifierNode, ui::LayoutAwareModifier {
+            PlacedParams params;
+            explicit PlacedNode(PlacedParams p) : params(std::move(p)) {}
+            void OnParamsChanged() {}
+            ui::LayoutAwareModifier* AsLayoutAware() override { return this; }
+            void OnPlaced(const LayoutCoordinates& c) override { if (params.callback) params.callback(c); }
+        };
+        struct LocalConsumerParams {
+            std::function<void(const ModifierNode&)> consumer;
+            bool operator==(const LocalConsumerParams&) const { return false; }
+        };
+        struct LocalConsumerNode final : ModifierNode {
+            LocalConsumerParams params;
+            explicit LocalConsumerNode(LocalConsumerParams p) : params(std::move(p)) {}
+            void OnAttach() override { Consume(); }
+            void OnParamsChanged() { if (IsAttached()) Consume(); }
+            void OnObservedReadsChanged() override { Consume(); }
+            void Consume() { ObserveReads([this] { if (params.consumer) params.consumer(*this); }); }
+        };
+    }
+    Modifier OnPlaced(Modifier m, std::function<void(const LayoutCoordinates&)> f) { return m.With<PlacedNode>(PlacedParams{ std::move(f) }); }
+    Modifier ModifierLocalConsumer(Modifier m, std::function<void(const ModifierNode&)> f) {
+        return m.With<LocalConsumerNode>(LocalConsumerParams{ std::move(f) });
+    }
     Modifier AspectRatio(Modifier m, float ratio, bool heightFirst) { return m.With<AspectNode>(AspectParams{ ratio, heightFirst }); }
     Modifier Weight(Modifier m, float w, bool fill) { return m.With<ParentDataNode>(ParentParams{ 0, w, fill, 0, 0 }); }
     Modifier AlignInRow(Modifier m, AlignmentV a) { return m.With<ParentDataNode>(ParentParams{ 1, 0, true, a.bias, 0 }); }

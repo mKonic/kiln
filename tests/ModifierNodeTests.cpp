@@ -144,3 +144,22 @@ TEST(ObserveReadsCallsBackOncePerChange) {
     h.Pump();
     CHECK_EQ(p->observed, 2);   // observed again from the callback
 }
+
+TEST(ModifierLocalModifiersAndOnPlaced) {
+    Harness h;
+    rt::State<int> value(7);
+    std::vector<int> consumed;
+    int placed = 0;
+    h.Run([&] {
+        Box(ModifierLocalProvider<int>(Modifier{}, LocalDepth, [&] { return value.Get(); }), Alignment::TopStart(), false, [&] {
+            Box(OnPlaced(ModifierLocalConsumer(Modifier{}, [&](const ModifierNode& n) { consumed.push_back(n.Current(LocalDepth)); }),
+                         [&](const LayoutCoordinates& c) { ++placed; CHECK(c.IsAttached()); }));
+        });
+    });
+    CHECK(!consumed.empty());
+    CHECK_EQ(consumed.back(), 7);
+    CHECK(placed > 0);
+    value.Set(8);   // the provider provides anew, the consumer reads again
+    h.Pump();
+    CHECK_EQ(consumed.back(), 8);
+}

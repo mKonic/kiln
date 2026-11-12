@@ -111,6 +111,15 @@ namespace kiln::foundation {
     // onGloballyPositioned: called after a layout pass when the space it sits in moved, changed
     // its transform or its size (and the first time).
     Modifier OnGloballyPositioned(Modifier m, std::function<void(const LayoutCoordinates&)> onGloballyPositioned);
+    // onPlaced: called after the layout is placed, with the coordinates of where the modifier
+    // sits (before onGloballyPositioned, and also when only a parent moved it).
+    Modifier OnPlaced(Modifier m, std::function<void(const LayoutCoordinates&)> onPlaced);
+    // modifierLocalProvider(key) { value }: provides `value()` for the modifiers after it and
+    // below. modifierLocalConsumer { }: runs `consumer` with a node that reads them (Current),
+    // when attached and again when what it read changes.
+    template<typename T>
+    Modifier ModifierLocalProvider(Modifier m, const ui::ModifierLocal<T>& key, std::function<T()> value);
+    Modifier ModifierLocalConsumer(Modifier m, std::function<void(const ui::ModifierNode& scope)> consumer);
     Modifier AspectRatio(Modifier m, float ratio, bool matchHeightConstraintsFirst = false);
 
     // Parent data
@@ -309,5 +318,30 @@ namespace kiln::foundation {
     inline Modifier ClipToBounds(Modifier m) { GraphicsLayerParams p; p.clip = true; return GraphicsLayer(std::move(m), p); }
     inline Modifier Clip(Modifier m, std::shared_ptr<const gfx::Shape> shape) { GraphicsLayerParams p; p.clip = true; p.clipShape = std::move(shape); return GraphicsLayer(std::move(m), p); }
     inline Modifier Clip(Modifier m, CornerShape shape) { GraphicsLayerParams p; p.clip = true; p.shape = shape; return GraphicsLayer(std::move(m), p); }
+
+
+    namespace detail {
+        template<typename T>
+        struct LocalProviderParams {
+            const ui::ModifierLocal<T>* key = nullptr;
+            std::function<T()> value;
+            bool operator==(const LocalProviderParams&) const { return false; }
+        };
+        template<typename T>
+        struct LocalProviderNode final : ui::ModifierNode {
+            LocalProviderParams<T> params;
+            explicit LocalProviderNode(LocalProviderParams<T> p) : params(std::move(p)) {}
+            void OnAttach() override { Update(); }
+            void OnParamsChanged() { Update(); }
+            // The value is computed under observation: a state it reads provides anew.
+            void Update() { ObserveReads([this] { m_Value = params.value(); }); Provide(*params.key, m_Value); }
+            void OnObservedReadsChanged() override { Update(); }
+            T m_Value{};
+        };
+    }
+    template<typename T>
+    Modifier ModifierLocalProvider(Modifier m, const ui::ModifierLocal<T>& key, std::function<T()> value) {
+        return m.With<detail::LocalProviderNode<T>>(detail::LocalProviderParams<T>{ &key, std::move(value) });
+    }
 
 }
