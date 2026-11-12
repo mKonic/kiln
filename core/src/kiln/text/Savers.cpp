@@ -74,7 +74,7 @@ namespace kiln::text {
                 int(p.textDirection),
                 SaveUnit(p.lineHeight),
                 SaveOpt(p.textIndent, [](const TextIndent& t) { return SavedValue(List{ SaveUnit(t.firstLine), SaveUnit(t.restLine) }); }),
-                SaveOpt(p.includeFontPadding, [](bool b) { return SavedValue(b); }),   // PlatformParagraphStyle
+                SaveOpt(p.platformStyle, [](const PlatformParagraphStyle& s) { return SavedValue(List{ s.includeFontPadding, int(s.emojiSupportMatch) }); }),
                 SaveOpt(p.lineHeightStyle, [](const LineHeightStyle& s) {
                     return SavedValue(List{ double(s.alignment), int(s.trim), int(s.mode) });
                 }),
@@ -92,7 +92,10 @@ namespace kiln::text {
             p.textDirection = TextDirection(int(Num(l, 1)));
             p.lineHeight = RestoreUnit(l[2]);
             if (const List* t = AsList(l[3]); t && t->size() >= 2) p.textIndent = TextIndent{ RestoreUnit((*t)[0]), RestoreUnit((*t)[1]) };
-            if (const auto* b = std::get_if<bool>(&l[4].v)) p.includeFontPadding = *b;
+            if (const List* ps = AsList(l[4]); ps && ps->size() >= 2) {
+                const auto* pad = std::get_if<bool>(&(*ps)[0].v);
+                p.platformStyle = PlatformParagraphStyle{ pad && *pad, EmojiSupportMatch(int(Num(*ps, 1))) };
+            }
             if (const List* s = AsList(l[5]); s && s->size() >= 3)
                 p.lineHeightStyle = LineHeightStyle{ float(Num(*s, 0, -1)), LineHeightStyle::Trim(int(Num(*s, 1))), LineHeightStyle::Mode(int(Num(*s, 2))) };
             if (const List* b = AsList(l[6]); b && b->size() >= 3)

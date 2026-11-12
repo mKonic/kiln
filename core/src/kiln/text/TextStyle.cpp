@@ -30,13 +30,17 @@ namespace kiln::text {
         r.textDecoration = Or(o.textDecoration, textDecoration);
         r.shadow = Or(o.shadow, shadow);
         r.drawStyle = Or(o.drawStyle, drawStyle);
+        // mergePlatformStyle: the set one, or this one's merge with the other.
+        if (platformStyle) r.platformStyle = platformStyle->Merge(o.platformStyle ? &*o.platformStyle : nullptr);
+        else r.platformStyle = o.platformStyle;
         return r;
     }
 
     bool SpanStyle::HasSameLayoutAffectingAttributes(const SpanStyle& o) const {
         return fontSize == o.fontSize && fontWeight == o.fontWeight && fontStyle == o.fontStyle && fontSynthesis == o.fontSynthesis &&
                fontFamily == o.fontFamily && fontFeatureSettings == o.fontFeatureSettings && letterSpacing == o.letterSpacing &&
-               baselineShift == o.baselineShift && textGeometricTransform == o.textGeometricTransform && localeList == o.localeList;
+               baselineShift == o.baselineShift && textGeometricTransform == o.textGeometricTransform && localeList == o.localeList &&
+               platformStyle == o.platformStyle;
     }
 
     bool SpanStyle::operator==(const SpanStyle& o) const {
@@ -54,7 +58,8 @@ namespace kiln::text {
         if (o.lineBreak.IsSpecified()) r.lineBreak = o.lineBreak;
         if (o.hyphens != Hyphens::Unspecified) r.hyphens = o.hyphens;
         r.textMotion = Or(o.textMotion, textMotion);
-        r.includeFontPadding = Or(o.includeFontPadding, includeFontPadding);
+        if (platformStyle) r.platformStyle = platformStyle->Merge(o.platformStyle ? &*o.platformStyle : nullptr);
+        else r.platformStyle = o.platformStyle;
         return r;
     }
 
@@ -90,7 +95,6 @@ namespace kiln::text {
         if (!p.lineBreak.IsSpecified()) p.lineBreak = LineBreak::Simple();
         if (p.hyphens == Hyphens::Unspecified) p.hyphens = Hyphens::None;
         if (!p.textMotion) p.textMotion = TextMotion::Static;
-        if (!p.includeFontPadding) p.includeFontPadding = false;
         return r;
     }
 
@@ -138,6 +142,9 @@ namespace kiln::text {
         sh.blurRadius = LerpF(sa.blurRadius, sb.blurRadius, t);
         s.shadow = sh;
         s.drawStyle = Discrete(a.drawStyle, b.drawStyle, t);
+        // lerpPlatformStyle: null when both are, else the lerp of each (null as Default).
+        if (a.platformStyle || b.platformStyle)
+            s.platformStyle = Lerp(a.platformStyle.value_or(PlatformSpanStyle::Default()), b.platformStyle.value_or(PlatformSpanStyle::Default()), t);
 
         const ParagraphStyle& pa = start.paragraph;
         const ParagraphStyle& pb = stop.paragraph;
@@ -151,7 +158,16 @@ namespace kiln::text {
         p.lineBreak = Discrete(pa.lineBreak, pb.lineBreak, t);
         p.hyphens = Discrete(pa.hyphens, pb.hyphens, t);
         p.textMotion = Discrete(pa.textMotion, pb.textMotion, t);
+        if (pa.platformStyle || pb.platformStyle)
+            p.platformStyle = Lerp(pa.platformStyle.value_or(PlatformParagraphStyle::Default()), pb.platformStyle.value_or(PlatformParagraphStyle::Default()), t);
         return { s, p };
+    }
+
+    PlatformSpanStyle Lerp(const PlatformSpanStyle& start, const PlatformSpanStyle&, float) { return start; }
+    // Android's lerp: start when the paddings agree, else both fields switch halfway.
+    PlatformParagraphStyle Lerp(const PlatformParagraphStyle& start, const PlatformParagraphStyle& stop, float fraction) {
+        if (start.includeFontPadding == stop.includeFontPadding) return start;
+        return fraction < 0.5f ? start : stop;
     }
 
 }

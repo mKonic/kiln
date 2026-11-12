@@ -8,6 +8,7 @@
 #include "kiln/foundation/Layouts.h"
 #include "kiln/foundation/text/TextAutoSize.h"
 #include "kiln/text/Paragraph.h"
+#include "kiln/text/TextStyleScope.h"
 
 #include <climits>
 #include <functional>
@@ -44,6 +45,10 @@ namespace kiln::foundation {
         std::function<ui::Color()> color;
         // The font size picked for the constraints (the style's own size is ignored).
         TextAutoSizePtr autoSize;
+        // styleProvider (the BasicText(text, styleProvider) overloads): sets the style in place
+        // of `style`, run when measuring so the state it reads lays out again only when a
+        // layout attribute changes (a colour change only redraws).
+        std::function<void(text::TextStyleScope&)> styleProvider;
     };
 
     void BasicText(const AnnotatedString& text, const Modifier& modifier = {}, TextStyle style = {},
@@ -53,6 +58,15 @@ namespace kiln::foundation {
     inline void BasicText(const char* text, const Modifier& modifier = {}, TextStyle style = {},
                           BasicTextOptions options = {}, rt::Key key = {}) {
         BasicText(std::string(text), modifier, std::move(style), std::move(options), key);
+    }
+    // BasicText(text, styleProvider, ..): the style from a TextStyleScope block.
+    void BasicText(const AnnotatedString& text, std::function<void(text::TextStyleScope&)> styleProvider, const Modifier& modifier = {},
+                   BasicTextOptions options = {}, rt::Key key = {});
+    void BasicText(const std::string& text, std::function<void(text::TextStyleScope&)> styleProvider, const Modifier& modifier = {},
+                   BasicTextOptions options = {}, rt::Key key = {});
+    inline void BasicText(const char* text, std::function<void(text::TextStyleScope&)> styleProvider, const Modifier& modifier = {},
+                          BasicTextOptions options = {}, rt::Key key = {}) {
+        BasicText(std::string(text), std::move(styleProvider), modifier, std::move(options), key);
     }
 
     // Draws a laid-out text at the origin: backgrounds, shadows, glyphs (brushes masked to each

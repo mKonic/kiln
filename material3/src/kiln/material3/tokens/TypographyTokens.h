@@ -17,7 +17,7 @@ namespace kiln::material3::tokens {
     // DefaultPlatformTextStyle.android.kt) and DefaultLineHeightStyle.
     inline text::TextStyle DefaultTextStyle() {
         text::TextStyle s;
-        s.paragraph.includeFontPadding = false;
+        s.paragraph.platformStyle = text::PlatformParagraphStyle{ false };
         s.paragraph.lineHeightStyle = DefaultLineHeightStyle();
         return s;
     }

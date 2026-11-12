@@ -358,7 +358,7 @@ namespace kiln::text {
         r.breakStrictness = lb.strictness;
         r.wordBreak = lb.wordBreak;
         r.hyphens = std::uint8_t(p.hyphens == Hyphens::Unspecified ? Hyphens::None : p.hyphens);
-        r.includeFontPadding = p.includeFontPadding.value_or(false);
+        r.includeFontPadding = p.IncludeFontPadding();
         return r;
     }
 

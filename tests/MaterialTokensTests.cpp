@@ -29,7 +29,7 @@ TEST(TypographyTokensBuildTheirTextStyles) {
     CHECK(body.span.letterSpacing == text::Sp(0.5f));
     CHECK(body.span.fontWeight == text::FontWeight::Normal());
     CHECK(body.span.fontFamily == text::FontFamily::SansSerif());
-    CHECK(body.paragraph.includeFontPadding == false);
+    CHECK(!body.paragraph.IncludeFontPadding() && body.paragraph.platformStyle);
     CHECK(body.paragraph.lineHeightStyle.has_value() && body.paragraph.lineHeightStyle->alignment == text::LineHeightStyle::Center &&
           body.paragraph.lineHeightStyle->trim == text::LineHeightStyle::Trim::None);
     // A family passed in replaces the token's.

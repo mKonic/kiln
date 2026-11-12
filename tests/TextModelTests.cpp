@@ -30,7 +30,7 @@ TEST(TextStylesMergeAndResolve) {
     CHECK(r.paragraph.textAlign == TextAlign::Start);
     CHECK(r.paragraph.textDirection == TextDirection::Rtl);
     CHECK(r.paragraph.lineBreak == LineBreak::Simple());
-    CHECK(!*r.paragraph.includeFontPadding);
+    CHECK(!r.paragraph.IncludeFontPadding());
     ParagraphStyle content;
     content.textDirection = TextDirection::Content;
     CHECK(ResolveDefaults({ {}, content }, ui::LayoutDirection::Ltr).paragraph.textDirection == TextDirection::ContentOrLtr);

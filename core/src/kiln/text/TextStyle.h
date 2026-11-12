@@ -146,6 +146,42 @@ namespace kiln::text {
         bool operator==(const DrawStyle&) const = default;
     };
 
+    // EmojiSupportMatch: how much of the text EmojiCompat replaces with its own emoji (Default:
+    // what the system font cannot draw, All: every emoji it knows, None: nothing). It applies
+    // where EmojiCompat is configured; a kiln host draws the system font's emoji.
+    enum class EmojiSupportMatch : std::uint8_t { Default = 0, None = 1, All = 2 };
+
+    // PlatformSpanStyle: Android has no span-level platform options (it merges and lerps to
+    // itself; only its presence is compared).
+    struct PlatformSpanStyle {
+        PlatformSpanStyle Merge(const PlatformSpanStyle*) const { return *this; }
+        bool operator==(const PlatformSpanStyle&) const = default;
+        static PlatformSpanStyle Default() { return {}; }
+    };
+
+    // PlatformParagraphStyle: includeFontPadding (the font's extra top and bottom padding, off by
+    // default) and emojiSupportMatch. A merge takes the other style whole.
+    struct PlatformParagraphStyle {
+        bool includeFontPadding = false;
+        EmojiSupportMatch emojiSupportMatch = EmojiSupportMatch::Default;
+        PlatformParagraphStyle Merge(const PlatformParagraphStyle* other) const { return other ? *other : *this; }
+        bool operator==(const PlatformParagraphStyle&) const = default;
+        static PlatformParagraphStyle Default() { return {}; }
+    };
+    PlatformSpanStyle Lerp(const PlatformSpanStyle& start, const PlatformSpanStyle& stop, float fraction);
+    PlatformParagraphStyle Lerp(const PlatformParagraphStyle& start, const PlatformParagraphStyle& stop, float fraction);
+
+    // PlatformTextStyle: the span and paragraph platform styles of a TextStyle.
+    struct PlatformTextStyle {
+        std::optional<PlatformSpanStyle> spanStyle;
+        std::optional<PlatformParagraphStyle> paragraphStyle;
+        PlatformTextStyle(std::optional<PlatformSpanStyle> span, std::optional<PlatformParagraphStyle> paragraph)
+            : spanStyle(std::move(span)), paragraphStyle(std::move(paragraph)) {}
+        explicit PlatformTextStyle(bool includeFontPadding = false) : paragraphStyle(PlatformParagraphStyle{ includeFontPadding }) {}
+        explicit PlatformTextStyle(EmojiSupportMatch emoji) : paragraphStyle(PlatformParagraphStyle{ false, emoji }) {}
+        bool operator==(const PlatformTextStyle&) const = default;
+    };
+
     struct SpanStyle {
         Color color = Color::Unspecified();
         std::optional<gfx::Brush> brush;       // wins over color
@@ -164,6 +200,7 @@ namespace kiln::text {
         std::optional<TextDecoration> textDecoration;
         std::optional<Shadow> shadow;
         std::optional<DrawStyle> drawStyle;
+        std::optional<PlatformSpanStyle> platformStyle;
 
         // merge(other): other's set fields win. A color never replaces an existing brush.
         SpanStyle Merge(const SpanStyle& other) const;
@@ -219,7 +256,8 @@ namespace kiln::text {
         LineBreak lineBreak;
         Hyphens hyphens = Hyphens::Unspecified;
         std::optional<TextMotion> textMotion;
-        std::optional<bool> includeFontPadding;   // PlatformParagraphStyle (default false)
+        std::optional<PlatformParagraphStyle> platformStyle;
+        bool IncludeFontPadding() const { return platformStyle ? platformStyle->includeFontPadding : false; }
 
         ParagraphStyle Merge(const ParagraphStyle& other) const;
         bool operator==(const ParagraphStyle&) const = default;
@@ -239,6 +277,13 @@ namespace kiln::text {
         TextStyle Merge(const SpanStyle& other) const { return { span.Merge(other), paragraph }; }
         TextStyle Merge(const ParagraphStyle& other) const { return { span, paragraph.Merge(other) }; }
         bool operator==(const TextStyle&) const = default;
+        // TextStyle(platformStyle = ..) / platformStyle: the two halves' platform styles.
+        TextStyle(SpanStyle s, ParagraphStyle p, const PlatformTextStyle& platform) : TextStyle(std::move(s), std::move(p)) { SetPlatformStyle(platform); }
+        std::optional<PlatformTextStyle> PlatformStyle() const {
+            if (!span.platformStyle && !paragraph.platformStyle) return std::nullopt;
+            return PlatformTextStyle(span.platformStyle, paragraph.platformStyle);
+        }
+        void SetPlatformStyle(const PlatformTextStyle& p) { span.platformStyle = p.spanStyle; paragraph.platformStyle = p.paragraphStyle; }
         // Everything that changes layout is equal (only colours, decorations and the like differ).
         bool HasSameLayoutAffectingAttributes(const TextStyle& o) const {
             return paragraph == o.paragraph && span.HasSameLayoutAffectingAttributes(o.span);

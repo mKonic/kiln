@@ -91,7 +91,7 @@ namespace kiln::foundation {
             std::shared_ptr<SelectionController> selection;
             bool operator==(const TextParams& o) const {
                 // A callback is never equal: the node takes the new one (cheap, no relayout).
-                return !options.onTextLayout && !o.options.onTextLayout && !options.color && !o.options.color && SameAutoSize(o) && links == o.links && selection == o.selection && placeholders == o.placeholders && text == o.text && style == o.style &&
+                return !options.onTextLayout && !o.options.onTextLayout && !options.color && !o.options.color && !options.styleProvider && !o.options.styleProvider && SameAutoSize(o) && links == o.links && selection == o.selection && placeholders == o.placeholders && text == o.text && style == o.style &&
                        options.overflow == o.options.overflow && options.softWrap == o.options.softWrap &&
                        options.maxLines == o.options.maxLines && options.minLines == o.options.minLines;
             }
@@ -178,8 +178,46 @@ namespace kiln::foundation {
                     InvalidateMeasure();
                 }
                 if (!(params.style == m_Previous.style)) InvalidateDraw();
+                // updateStyle: a new provider is evaluated at the next measure.
+                if (params.options.styleProvider || m_Previous.options.styleProvider) {
+                    if (!params.options.styleProvider) m_StyleEvaluated = false;
+                    InvalidateMeasure();
+                }
                 m_Previous = params;
             }
+
+            // The style laid out and drawn: the provider's while there is one.
+            const TextStyle& Style() const { return params.options.styleProvider ? m_ResolvedStyle : params.style; }
+            // evaluateStyleProvider: run the provider; a layout attribute change drops the
+            // layouts, any change redraws.
+            void UpdateDynamicStyle() {
+                const auto& provider = params.options.styleProvider;
+                if (!provider) return;
+                bool layoutChanged = false, drawChanged = false;
+                if (!m_StyleEvaluated) {
+                    m_StyleScope.Reset();
+                    provider(m_StyleScope);
+                    m_StyleEvaluated = true;
+                    layoutChanged = drawChanged = true;
+                } else {
+                    m_EvaluationScope.Reset();
+                    provider(m_EvaluationScope);
+                    layoutChanged = !m_EvaluationScope.HasSameLayoutAffectingAttributes(m_StyleScope);
+                    drawChanged = !m_EvaluationScope.HasSameDrawAffectingAttributes(m_StyleScope);
+                    if (layoutChanged || drawChanged) m_StyleScope.CopyFrom(m_EvaluationScope);
+                }
+                if (!layoutChanged && !drawChanged) return;
+                m_ResolvedStyle = m_StyleScope.ToTextStyle();
+                if (layoutChanged) {
+                    m_Layouts.clear();
+                    m_Intrinsics.reset();
+                    m_LineHeights.reset();
+                }
+                InvalidateDraw();
+            }
+            text::ReusableTextStyleScope m_StyleScope, m_EvaluationScope;
+            TextStyle m_ResolvedStyle;
+            bool m_StyleEvaluated = false;
 
             TextBackend* Backend() const {
                 return Owner() && Owner()->GetOwner() ? Owner()->GetOwner()->Text() : nullptr;
@@ -203,7 +241,7 @@ namespace kiln::foundation {
                 // A shown substitution is plain text without inline content.
                 const bool substituted = m_Substitution && m_Substitution->showing;
                 in.text = substituted ? AnnotatedString(m_Substitution->text) : params.text;
-                in.style = params.style;
+                in.style = Style();
                 in.maxLines = params.options.maxLines;
                 in.softWrap = params.options.softWrap;
                 in.overflow = params.options.overflow;
@@ -257,7 +295,7 @@ namespace kiln::foundation {
             std::pair<float, float> LineHeights(const ui::Density& d, ui::LayoutDirection dir) {
                 if (!m_LineHeights) {
                     auto measure = [&](const char* s) {
-                        text::MultiParagraph mp(Backend(), AnnotatedString(s), params.style, d, dir, {});
+                        text::MultiParagraph mp(Backend(), AnnotatedString(s), Style(), d, dir, {});
                         return mp.Height();
                     };
                     m_LineHeights = std::pair{ measure("H"), measure("H\nH") };
@@ -284,6 +322,7 @@ namespace kiln::foundation {
             }
 
             MeasureResult Measure(MeasureScope& s, Measurable& m, const Constraints& in) override {
+                UpdateDynamicStyle();
                 const ui::Constraints c = HeightInLines(s, s.Direction(), in);
                 auto result = Layout(s, s.Direction(), c);
                 m_Drawn = result;
@@ -302,14 +341,17 @@ namespace kiln::foundation {
             }
 
             int MinIntrinsicWidth(MeasureScope& s, Measurable&, int) override {
+                UpdateDynamicStyle();
                 Layout(s, s.Direction(), {});
                 return int(std::ceil(m_Intrinsics ? m_Intrinsics->minWidth : 0));
             }
             int MaxIntrinsicWidth(MeasureScope& s, Measurable&, int) override {
+                UpdateDynamicStyle();
                 Layout(s, s.Direction(), {});
                 return int(std::ceil(m_Intrinsics ? m_Intrinsics->maxWidth : 0));
             }
             int MinIntrinsicHeight(MeasureScope& s, Measurable&, int w) override {
+                UpdateDynamicStyle();
                 return Layout(s, s.Direction(), { 0, w, 0, ui::Constraints::Infinity })->Size().height;
             }
             int MaxIntrinsicHeight(MeasureScope& s, Measurable& m, int w) override { return MinIntrinsicHeight(s, m, w); }
@@ -323,14 +365,15 @@ namespace kiln::foundation {
                         s.ClipRect({ 0, 0, s.GetSize().width, s.GetSize().height });
                     }
                     // overrideColor: the producer's colour when it gives one (a brush still wins).
-                    const ui::Color color = params.options.color && !params.style.span.brush ? params.options.color() : ui::Color::Unspecified();
+                    const TextStyle& current = Style();
+                    const ui::Color color = params.options.color && !current.span.brush ? params.options.color() : ui::Color::Unspecified();
                     DrawAnnotationsBehind(s, *m_Drawn);
                     if (color.Specified()) {
-                        TextStyle style = params.style;
+                        TextStyle style = current;
                         style.span.color = color;
                         DrawTextLayout(s, *m_Drawn, style);
                     } else {
-                        DrawTextLayout(s, *m_Drawn, params.style);
+                        DrawTextLayout(s, *m_Drawn, current);
                     }
                     DrawAnnotationsOver(s, *m_Drawn);
                     if (clip) s.Restore();
@@ -679,6 +722,17 @@ namespace kiln::foundation {
 
     void BasicText(const std::string& text, const Modifier& modifier, TextStyle style, BasicTextOptions options, rt::Key key) {
         BasicText(AnnotatedString(text), modifier, std::move(style), std::move(options), key);
+    }
+
+    void BasicText(const AnnotatedString& text, std::function<void(text::TextStyleScope&)> styleProvider, const Modifier& modifier, BasicTextOptions options,
+                   rt::Key key) {
+        options.styleProvider = std::move(styleProvider);
+        BasicText(text, modifier, TextStyle{}, std::move(options), key);
+    }
+
+    void BasicText(const std::string& text, std::function<void(text::TextStyleScope&)> styleProvider, const Modifier& modifier, BasicTextOptions options,
+                   rt::Key key) {
+        BasicText(AnnotatedString(text), std::move(styleProvider), modifier, std::move(options), key);
     }
 
 }

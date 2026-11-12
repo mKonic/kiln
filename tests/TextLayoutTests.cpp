@@ -778,3 +778,58 @@ TEST(BulletListsIndentAndDrawAnnotationsDraw) {
     kiln::foundation::DrawText(scope, measurer, annotated);
     CHECK(order == (std::vector<std::string>{ "behind 2-4", "over 4" }));
 }
+
+TEST(BasicTextStyleProviderRelaysOutOnlyForLayoutAttributes) {
+    FakeText backend;
+    ui::Owner owner;
+    owner.SetDensity({ 1, 1 });
+    owner.SetText(&backend);
+    rt::Composition comp(owner.Root(), rt::Dispatcher::Main());
+    rt::State<ui::Color> color{ ui::Color(0xFFFF0000u) };
+    rt::State<float> size{ 10 };
+    std::shared_ptr<TextLayoutResult> last;
+    int provided = 0;
+    foundation::BasicTextOptions options;
+    options.onTextLayout = [&](const TextLayoutResult& r) { last = std::make_shared<TextLayoutResult>(r); };
+    comp.SetContent([&] {
+        foundation::Column(ui::Modifier{}, [&] {
+            foundation::BasicText("hello", [&](TextStyleScope& s) {
+                ++provided;
+                s.SetColor(color.Get());
+                s.SetFontSize(Sp(size.Get()));
+            }, ui::Modifier{}, options);
+        });
+    });
+    comp.Recompose();
+    owner.MeasureAndLayout({ 300, 100 });
+    CHECK(last && last->LayoutInput().style.span.fontSize == Sp(10) && last->Size().width == 25);   // 5 px a char at 10
+    const auto first = last->SharedParagraphs();
+    // A colour read by the provider: measured again (the read is observed), same layout.
+    const int before = provided;
+    color.Set(ui::Color(0xFF0000FFu));
+    rt::Observation::ApplyChanges();
+    owner.MeasureAndLayout({ 300, 100 });
+    CHECK(provided > before && last->SharedParagraphs() == first);
+    // A font size: a new layout.
+    size.Set(20);
+    rt::Observation::ApplyChanges();
+    owner.MeasureAndLayout({ 300, 100 });
+    CHECK(last->SharedParagraphs() != first && last->LayoutInput().style.span.fontSize == Sp(20) && last->Size().width == 50);
+
+    // ReusableTextStyleScope: a colour clears the brush; the comparisons split layout from draw.
+    ReusableTextStyleScope a, b;
+    a.SetBrush(gfx::Brush::SolidColor(ui::Color(0xFF00FF00u)));
+    a.SetAlpha(0.5f);
+    a.SetColor(ui::Color(0xFF112233u));
+    CHECK(!a.GetBrush() && std::isnan(a.GetAlpha()) && a.GetColor() == ui::Color(0xFF112233u));
+    b.CopyFrom(a);
+    b.SetTextDecoration(TextDecoration::Underline);
+    CHECK(a.HasSameLayoutAffectingAttributes(b) && !a.HasSameDrawAffectingAttributes(b));
+    b.SetBackground(ui::Color(0xFF000000u));   // counts as layout here, as in Compose
+    CHECK(!a.HasSameLayoutAffectingAttributes(b));
+    b.Reset();
+    b.SetTextStyle(a.ToTextStyle());
+    CHECK(a.HasSameLayoutAffectingAttributes(b) && a.HasSameDrawAffectingAttributes(b) && b.HasSameDrawAffectingAttributes(a.ToTextStyle()));
+    b.SetPlatformStyle(PlatformTextStyle(true));
+    CHECK(!a.HasSameLayoutAffectingAttributes(b) && b.GetPlatformStyle() && b.ToTextStyle().paragraph.IncludeFontPadding());
+}
