@@ -861,7 +861,8 @@ namespace kiln::ui {
 
     void LayoutNode::DispatchPlaced() {
         for (auto& n : m_Nodes)
-            if (auto* l = n->AsLayoutAware()) l->OnPlaced(CoordinatesOf(n.get()));
+            // Tracked: a stored copy expires with the node instead of pointing at a stale space.
+            if (auto* l = n->AsLayoutAware()) l->OnPlaced(LayoutCoordinates(this, n.get(), n->AliveToken()));
     }
 
     void LayoutNode::DispatchUnplaced() {
@@ -1393,7 +1394,7 @@ namespace kiln::ui {
     }
 
     bool LayoutCoordinates::IsAttached() const {
-        return node && (!tracked || !alive.expired()) && node->GetOwner() && node->IsPlaced();
+        return node && (!tracked || !alive.expired()) && node->GetOwner() && node->IsPlaced() && (at || coordinator < node->m_Coordinators.size());
     }
 
     IntSize LayoutCoordinates::Size() const {
@@ -1403,6 +1404,7 @@ namespace kiln::ui {
             node->SpaceToRoot(at, &size);
             return { int(std::lround(size.width)), int(std::lround(size.height)) };
         }
+        if (coordinator >= node->m_Coordinators.size()) return {};
         const auto& c = *node->m_Coordinators[coordinator];
         if (lookahead && c.la && c.la->measured) return c.la->Size();
         return { c.Width(), c.Height() };

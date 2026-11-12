@@ -301,7 +301,14 @@ namespace kiln::foundation {
         using SpecFor = std::function<anim::SpecPtr(const typename Transition<S>::Segment&)>;
         using ValueOf = std::function<anim::Vec(const S&)>;
         DeferredAnimation(Transition<S>& t, int dims) : m_Transition(&t), m_Dims(dims) {}
-        ~DeferredAnimation() { if (m_Child && m_Core) m_Core->Remove(m_Child.get()); }
+        ~DeferredAnimation() { Detach(); }
+        // Leaves the transition's clock (its composition left; see CreateDeferredAnimation).
+        void Detach() {
+            if (m_Child && m_Core) m_Core->Remove(m_Child.get());
+            m_Core = nullptr;
+            m_Child.reset();
+            if (m_HasData.Peek()) m_HasData.Set(false);
+        }
         DeferredAnimation(const DeferredAnimation&) = delete;
         DeferredAnimation& operator=(const DeferredAnimation&) = delete;
 
@@ -344,6 +351,11 @@ namespace kiln::foundation {
         auto& a = c.Remember<std::shared_ptr<DeferredAnimation<S>>>([&] { return std::make_shared<DeferredAnimation<S>>(t, dims); }, rt::Keys(reinterpret_cast<std::uintptr_t>(&t)), key);
         a->Rebind(t);
         a->Update();
+        // Leave the clock while the transition is still there (the slots may outlive it).
+        std::weak_ptr<DeferredAnimation<S>> w = a;
+        c.DisposableEffect(rt::Keys(reinterpret_cast<std::uintptr_t>(a.get())), [w] {
+            return std::function<void()>([w] { if (auto p = w.lock()) p->Detach(); });
+        }, key);
         return *a;
     }
 

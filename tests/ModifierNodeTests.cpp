@@ -244,11 +244,11 @@ TEST(DrawWithCacheRebuildsOnlyWhenItsInputsChange) {
 
 TEST(VisibilityBoundsAndDebouncedRectCallbacks) {
     rt::Dispatcher::Main().SetVirtualTime(true);
-    Harness h;
-    rt::State<int> y(0);
+    LayoutBoundsHolder holder;   // before the harness: its teardown clears it
     std::vector<bool> visible;
     std::vector<IntRect> rects;
-    LayoutBoundsHolder holder;
+    Harness h;
+    rt::State<int> y(0);
     h.Run([&] {
         Box(OffsetMod(Modifier{}, Dp(0), Dp(float(y.Get()))), Alignment::TopStart(), false, [&] {
             Box(OnLayoutRectChanged(OnVisibilityChanged(LayoutBounds(SizeMod(Modifier{}, Dp(100), Dp(100)), holder),

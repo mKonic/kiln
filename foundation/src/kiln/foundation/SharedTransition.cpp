@@ -800,7 +800,6 @@ namespace kiln::foundation {
                 }
                 ReleaseLayer();
                 resolvedTransformState = nullptr;
-                transformStateResolved = false;
                 Entry().SetParentState(nullptr);
                 Entry().boundsProvider = nullptr;
                 Entry().isAttached.Set(false);
@@ -820,11 +819,11 @@ namespace kiln::foundation {
                 return MakeRect(Root().root->LocalPositionOf(c, {}), SizeF(c.Size()));
             }
             std::optional<Rect> CalculateAlternativeTargetBounds(const Rect& r) const override { return Entry().CalculateTargetBounds(r); }
+            // Kept once found (not while absent: the container may provide one later).
             mutable SharedTransformView* resolvedTransformState = nullptr;
-            mutable bool transformStateResolved = false;
             SharedTransformView* ModifierLocalTransformState() const override {
                 if (!IsAttached()) return nullptr;
-                if (!transformStateResolved) { resolvedTransformState = Current(foundation::detail::LocalSharedMutableTransformState); transformStateResolved = true; }
+                if (!resolvedTransformState) resolvedTransformState = Current(foundation::detail::LocalSharedMutableTransformState);
                 return resolvedTransformState;
             }
             bool IsSeeking() {

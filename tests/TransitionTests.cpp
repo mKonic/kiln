@@ -551,7 +551,7 @@ TEST(SharedElementAnimatesBetweenItsTwoPlaces) {
                 auto* scope = rt::Composition::Current()->Read(LocalAnimatedVisibilityScope);
                 auto& state = shared.RememberSharedContentState(rt::Key("hero"));
                 const bool big = k == rt::Key(std::int64_t(2));
-                Box(Modifier{}, Alignment::TopStart(), false, [&] {
+                Box(Modifier{}, Alignment::TopStart(), false, [&shared, &smallNode, &bigNode, scope, &state, big] {
                     // Small at the top left, or big further down; the content is measured at the
                     // animated bounds (the layout itself keeps its size).
                     auto& n = Layout(shared.SharedElement(OffsetMod(SizeMod(Modifier{}, Dp(big ? 200 : 50), Dp(big ? 100 : 50)), Dp(big ? 100 : 0),
@@ -601,7 +601,7 @@ TEST(SharedElementFollowsAContainerMovedByHand) {
                 auto* scope = rt::Composition::Current()->Read(LocalAnimatedVisibilityScope);
                 auto& s = shared.RememberSharedContentState(rt::Key("hero"));
                 const int page = k.value == 2 ? 2 : 1;
-                Box(SizeMod(Modifier{}, Dp(100), Dp(200)), Alignment::TopStart(), false, [&] {
+                Box(SizeMod(Modifier{}, Dp(100), Dp(200)), Alignment::TopStart(), false, [&shared, &nodes, scope, &s, page] {
                     auto& n = Layout(shared.SharedElement(OffsetMod(SizeMod(Modifier{}, Dp(50), Dp(50)), Dp(0), Dp(page == 2 ? 100 : 0)), s, *scope),
                                      std::make_shared<ui::LambdaMeasurePolicy>([](ui::MeasureScope& ms, std::span<ui::Measurable* const>, const ui::Constraints& c) {
                                          return ms.Layout(c.minWidth, c.minHeight);
