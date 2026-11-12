@@ -65,7 +65,7 @@ paths = ["navigation3/navigation3-runtime/src", "navigation3/navigation3-ui/src"
 
 [[androidx.group]]
 name = "navigation"
-kiln = "navigation-compose (planned)"
+kiln = "navigation (navigation-common, -runtime, -compose: string routes)"
 paths = ["navigation/navigation-common/src", "navigation/navigation-runtime/src", "navigation/navigation-compose/src"]
 
 [[androidx.group]]

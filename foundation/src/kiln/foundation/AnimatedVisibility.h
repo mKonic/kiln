@@ -245,6 +245,11 @@ namespace kiln::foundation {
                                  Alignment contentAlignment = Alignment::TopStart(),
                                  std::function<std::shared_ptr<MutableContentTransform>(AnimatedContentTransitionScope&)> mutableTransformSpec = {},
                                  rt::Key key = {});
+    // Transition.AnimatedContent(transitionSpec, contentAlignment, contentKey): contents keyed by
+    // the transition's states, animated on its clock (a seekable transition scrubs them).
+    void AnimatedContent(Transition<std::uint64_t>& transition, const Modifier& modifier, std::function<void(rt::Key)> content,
+                         std::function<ContentTransform(AnimatedContentTransitionScope&)> transitionSpec = {},
+                         Alignment contentAlignment = Alignment::TopStart(), rt::Key key = {});
     // animateContentSize(spring): the size follows content size changes with an animation.
     Modifier AnimateContentSize(Modifier m, anim::SpecPtr spec = anim::Spring(1.0f, anim::spring::StiffnessMediumLow, 0.5f));
 

@@ -992,6 +992,11 @@ namespace kiln::foundation {
         AnimatedContentImpl(transition, modifier, std::move(content), std::move(transitionSpec), alignment, std::move(mutableTransformSpec), key);
     }
 
+    void AnimatedContent(Transition<std::uint64_t>& transition, const Modifier& modifier, std::function<void(rt::Key)> content,
+                         std::function<ContentTransform(AnimatedContentTransitionScope&)> transitionSpec, Alignment alignment, rt::Key key) {
+        AnimatedContentImpl(transition, modifier, std::move(content), std::move(transitionSpec), alignment, {}, key);
+    }
+
     void AnimatedContent(rt::Key target, const Modifier& modifier, std::function<void(rt::Key)> content,
                          std::function<ContentTransform()> transformFn, Alignment alignment, rt::Key key) {
         std::function<ContentTransform(AnimatedContentTransitionScope&)> spec;
