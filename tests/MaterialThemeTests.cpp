@@ -14527,3 +14527,24 @@ TEST(ModalBottomSheetWindowSetsBarIconsFromItsContent) {
         rt::Composition::RecomposeAll();
     }
 }
+
+TEST(TextFieldFocusAnimationRecomposesOnlyTheLabel) {
+    // The decoration box reads its animated values in layout, draw and the label's own scope
+    // (CommonDecorationBox passes States down): the other slots do not follow each frame.
+    PhoneHarness h;
+    foundation::TextFieldState state;
+    int leading = 0, label = 0;
+    Themed(h, [&] {
+        TextFieldOptions o;
+        o.label = [&](const TextFieldLabelScope&) { ++label; Box(SizeMod({}, 16_dp, 16_dp)); };
+        o.leadingIcon = [&] { ++leading; Box(SizeMod({}, 24_dp, 24_dp)); };
+        TextField(state, Tag({}, "textField"), o);
+    });
+    h.AdvanceTimeBy(100);
+    const int leadingBefore = leading, labelBefore = label;
+    std::int64_t t = 0;
+    Press(h, t, "textField", true);
+    h.AdvanceTimeBy(1000);
+    CHECK(leading - leadingBefore <= 3);   // the focus change itself (each frame before: 14)
+    CHECK(label - labelBefore > 5);         // the label follows the animation
+}

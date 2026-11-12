@@ -102,55 +102,73 @@ namespace kiln::material3::internal {
         const anim::SpecPtr slowEffects = Value(tokens::MotionSchemeKeyTokens::SlowEffects);
         using Segment = Transition<InputPhase>::Segment;
 
-        // The animated values (read here: the label and placeholder recompose as they move).
-        const float labelProgress = slots.label ? AnimateFloat<InputPhase>(transition, [showExpandedLabel](const InputPhase& p) {
-            return p == InputPhase::UnfocusedEmpty ? (showExpandedLabel ? 0.0f : 1.0f) : 1.0f;
-        }, [fastSpatial](const Segment&) { return fastSpatial; }, rt::Key("LabelProgress")) : 1.0f;
-        const float placeholderAlpha = slots.placeholder ? AnimateFloat<InputPhase>(transition, [showExpandedLabel](const InputPhase& p) {
-            return p == InputPhase::Focused ? 1.0f : p == InputPhase::UnfocusedEmpty ? (showExpandedLabel ? 0.0f : 1.0f) : 0.0f;
-        }, [fastEffects, slowEffects](const Segment& s) {
-            if (s.IsTransitioningTo(InputPhase::Focused, InputPhase::UnfocusedEmpty)) return fastEffects;
-            if (s.IsTransitioningTo(InputPhase::UnfocusedEmpty, InputPhase::Focused) ||
-                s.IsTransitioningTo(InputPhase::UnfocusedNotEmpty, InputPhase::UnfocusedEmpty)) return slowEffects;
-            return fastEffects;
-        }, rt::Key("PlaceholderOpacity")) : 0.0f;
-        const float affixAlpha = (slots.prefix || slots.suffix) ? AnimateFloat<InputPhase>(transition, [showExpandedLabel](const InputPhase& p) {
-            return p == InputPhase::UnfocusedEmpty ? (showExpandedLabel ? 0.0f : 1.0f) : 1.0f;
-        }, [fastEffects](const Segment&) { return fastEffects; }, rt::Key("PrefixSuffixOpacity")) : 0.0f;
+        // The animated values as State: read by the layout, the fading layers and the label's
+        // own scope, so this box does not recompose on each frame of the focus animation.
+        std::optional<AnimatedFloat> labelProgressState, placeholderAlphaState, affixAlphaState;
+        if (slots.label)
+            labelProgressState = AnimateFloatState<InputPhase>(transition, [showExpandedLabel](const InputPhase& p) {
+                return p == InputPhase::UnfocusedEmpty ? (showExpandedLabel ? 0.0f : 1.0f) : 1.0f;
+            }, [fastSpatial](const Segment&) { return fastSpatial; }, rt::Key("LabelProgress"));
+        if (slots.placeholder)
+            placeholderAlphaState = AnimateFloatState<InputPhase>(transition, [showExpandedLabel](const InputPhase& p) {
+                return p == InputPhase::Focused ? 1.0f : p == InputPhase::UnfocusedEmpty ? (showExpandedLabel ? 0.0f : 1.0f) : 0.0f;
+            }, [fastEffects, slowEffects](const Segment& s) {
+                if (s.IsTransitioningTo(InputPhase::Focused, InputPhase::UnfocusedEmpty)) return fastEffects;
+                if (s.IsTransitioningTo(InputPhase::UnfocusedEmpty, InputPhase::Focused) ||
+                    s.IsTransitioningTo(InputPhase::UnfocusedNotEmpty, InputPhase::UnfocusedEmpty)) return slowEffects;
+                return fastEffects;
+            }, rt::Key("PlaceholderOpacity"));
+        if (slots.prefix || slots.suffix)
+            affixAlphaState = AnimateFloatState<InputPhase>(transition, [showExpandedLabel](const InputPhase& p) {
+                return p == InputPhase::UnfocusedEmpty ? (showExpandedLabel ? 0.0f : 1.0f) : 1.0f;
+            }, [fastEffects](const Segment&) { return fastEffects; }, rt::Key("PrefixSuffixOpacity"));
+        const std::function<float()> labelProgress = [labelProgressState] { return labelProgressState ? labelProgressState->Value() : 1.0f; };
+        const std::function<float()> placeholderAlpha = [placeholderAlphaState] { return placeholderAlphaState ? placeholderAlphaState->Value() : 0.0f; };
+        const std::function<float()> affixAlpha = [affixAlphaState] { return affixAlphaState ? affixAlphaState->Value() : 0.0f; };
 
-        // DecoratedLabel.
+        // DecoratedLabel: its own scope reads the progress (the style lerp) and the colours.
         std::function<void()> decoratedLabel;
         if (slots.label) {
             const Color labelColor = colors.LabelColor(enabled, isError, isFocused);
-            std::optional<Color> labelTextStyleColor;
-            if (overrideLabelTextStyleColor) {
-                const Color focusedColor = bodySmall.span.color.Specified() ? bodySmall.span.color : labelColor;
-                const Color unfocusedColor = bodyLarge.span.color.Specified() ? bodyLarge.span.color : labelColor;
-                labelTextStyleColor = AnimateColor<InputPhase>(transition, [focusedColor, unfocusedColor](const InputPhase& p) {
-                    return p == InputPhase::Focused ? focusedColor : unfocusedColor;
-                }, [fastEffects](const Segment&) { return fastEffects; }, rt::Key("LabelTextStyleColor"));
-            }
-            const Color labelContentColor = AnimateColor<InputPhase>(transition, [labelColor](const InputPhase&) { return labelColor; },
-                                                                     [fastEffects](const Segment&) { return fastEffects; }, rt::Key("LabelContentColor"));
-            text::TextStyle style = text::Lerp(bodyLarge, bodySmall, labelProgress);
-            if (labelTextStyleColor) style.span.color = *labelTextStyleColor;
             const auto label = slots.label;
-            decoratedLabel = [label, labelContentColor, style, labelProgress] {
-                TextFieldLabelScope scope{ [labelProgress] { return labelProgress; } };
-                Decoration(labelContentColor, &style, [&] { label(scope); });
+            Transition<InputPhase>* t = &transition;
+            decoratedLabel = [t, label, labelColor, overrideLabelTextStyleColor, bodyLarge, bodySmall, fastEffects, labelProgress] {
+                rt::Composition::Current()->Child([t, label, labelColor, overrideLabelTextStyleColor, bodyLarge, bodySmall, fastEffects, labelProgress] {
+                    std::optional<Color> labelTextStyleColor;
+                    if (overrideLabelTextStyleColor) {
+                        const Color focusedColor = bodySmall.span.color.Specified() ? bodySmall.span.color : labelColor;
+                        const Color unfocusedColor = bodyLarge.span.color.Specified() ? bodyLarge.span.color : labelColor;
+                        labelTextStyleColor = AnimateColor<InputPhase>(*t, [focusedColor, unfocusedColor](const InputPhase& p) {
+                            return p == InputPhase::Focused ? focusedColor : unfocusedColor;
+                        }, [fastEffects](const Segment&) { return fastEffects; }, rt::Key("LabelTextStyleColor"));
+                    }
+                    const Color labelContentColor = AnimateColor<InputPhase>(*t, [labelColor](const InputPhase&) { return labelColor; },
+                                                                             [fastEffects](const Segment&) { return fastEffects; }, rt::Key("LabelContentColor"));
+                    text::TextStyle style = text::Lerp(bodyLarge, bodySmall, labelProgress());
+                    if (labelTextStyleColor) style.span.color = *labelTextStyleColor;
+                    TextFieldLabelScope scope{ labelProgress };
+                    Decoration(labelContentColor, &style, [&] { label(scope); });
+                });
             };
         }
 
-        // Transparent slots trouble TalkBack (b/261061240): leave them out at zero alpha.
+        // Transparent slots trouble TalkBack (b/261061240): leave them out at zero alpha. Whether
+        // they show is derived state: this box recomposes only when it flips.
+        auto& showPlaceholder = comp.Remember<std::shared_ptr<rt::Derived<bool>>>(
+            [&] { return std::make_shared<rt::Derived<bool>>([placeholderAlpha] { return placeholderAlpha() > 0; }); },
+            rt::Keys(static_cast<const void*>(placeholderAlphaState ? placeholderAlphaState->child : nullptr)));
+        auto& showAffixState = comp.Remember<std::shared_ptr<rt::Derived<bool>>>(
+            [&] { return std::make_shared<rt::Derived<bool>>([affixAlpha] { return affixAlpha() > 0; }); },
+            rt::Keys(static_cast<const void*>(affixAlphaState ? affixAlphaState->child : nullptr)));
         std::function<void(Modifier)> decoratedPlaceholder;
-        if (slots.placeholder && visualText.empty() && placeholderAlpha > 0) {
+        if (slots.placeholder && visualText.empty() && showPlaceholder->Get()) {
             const Color color = colors.PlaceholderColor(enabled, isError, isFocused);
             const auto placeholder = slots.placeholder;
             decoratedPlaceholder = [placeholder, color, bodyLarge](Modifier m) {
                 Box(m, Alignment::TopStart(), false, [&] { Decoration(color, &bodyLarge, placeholder); });
             };
         }
-        const bool showAffix = affixAlpha > 0;
+        const bool showAffix = (slots.prefix || slots.suffix) && showAffixState->Get();
         std::function<void()> decoratedPrefix, decoratedSuffix;
         if (slots.prefix && showAffix) {
             const Color color = colors.PrefixColor(enabled, isError, isFocused);
@@ -186,14 +204,15 @@ namespace kiln::material3::internal {
         params.placement = cutout ? LabelPlacement::Cutout : above ? LabelPlacement::Above : LabelPlacement::Inside;
         params.minimizedAlignment = labelPosition.minimizedAlignment;
         params.expandedAlignment = labelPosition.expandedAlignment;
-        params.labelProgress = [labelProgress] { return labelProgress; };
+        params.labelProgress = labelProgress;
         params.padding = contentPadding;
         params.minimizedLabelHalfHeight = MinimizedLabelHalfHeight();
         params.horizontalIconPadding = iconPadding;
         if (cutout) {
             rt::State<ui::Size>* size = &cutoutSize;
             params.onLabelMeasured = [size, labelProgress](ui::Size label) {
-                const ui::Size s{ label.width * labelProgress, label.height * labelProgress };
+                const float progress = labelProgress();
+                const ui::Size s{ label.width * progress, label.height * progress };
                 if (!(size->Peek() == s)) size->Set(s);
             };
         }
@@ -211,7 +230,7 @@ namespace kiln::material3::internal {
 
             if (decoratedLeading) Box(MinimumInteractiveComponentSize(LayoutId({}, LeadingId)), Alignment::Center(), false, decoratedLeading);
             if (decoratedTrailing) Box(MinimumInteractiveComponentSize(LayoutId({}, TrailingId)), Alignment::Center(), false, decoratedTrailing);
-            const auto affixAlphaFn = [affixAlpha] { return affixAlpha; };
+            const auto affixAlphaFn = affixAlpha;
             if (decoratedPrefix) {
                 Box(FadingLayer(Padding(WrapContentHeight(HeightIn(LayoutId({}, PrefixId), MinTextLineHeight)),
                                         PaddingValues{ startPadding, Dp(0), PrefixSuffixTextPadding, Dp(0) }), affixAlphaFn),
@@ -227,7 +246,7 @@ namespace kiln::material3::internal {
                                              : cutout ? PaddingValues{}
                                                       : PaddingValues{ startPadding, Dp(0), endPadding, Dp(0) };
             if (decoratedLabel) {
-                const auto minHeight = [labelProgress] { return LerpDp(MinTextLineHeight, MinFocusedLabelLineHeight, labelProgress); };
+                const auto minHeight = [labelProgress] { return LerpDp(MinTextLineHeight, MinFocusedLabelLineHeight, labelProgress()); };
                 const Modifier m = cutout ? Padding(LayoutId(WrapContentHeight(LabelMinHeight({}, minHeight)), LabelId), labelPadding)
                                           : Padding(WrapContentHeight(LabelMinHeight(LayoutId({}, LabelId), minHeight)), labelPadding);
                 Box(m, Alignment::TopStart(), false, decoratedLabel);
@@ -235,7 +254,7 @@ namespace kiln::material3::internal {
 
             const PaddingValues textPadding{ decoratedPrefix ? Dp(0) : startPadding, Dp(0), decoratedSuffix ? Dp(0) : endPadding, Dp(0) };
             const auto padText = [&](Modifier m) { return Padding(WrapContentHeight(HeightIn(std::move(m), MinTextLineHeight)), textPadding); };
-            if (decoratedPlaceholder) decoratedPlaceholder(FadingLayer(padText(LayoutId({}, PlaceholderId)), [placeholderAlpha] { return placeholderAlpha; }));
+            if (decoratedPlaceholder) decoratedPlaceholder(FadingLayer(padText(LayoutId({}, PlaceholderId)), placeholderAlpha));
             Box(padText(VisualTextSemantics(LayoutId({}, TextFieldId), visualText, bool(decoratedPrefix) || bool(decoratedSuffix))), Alignment::TopStart(),
                 true, innerTextField);
 

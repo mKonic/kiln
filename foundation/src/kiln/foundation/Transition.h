@@ -261,10 +261,11 @@ namespace kiln::foundation {
         // A child animation of `t` towards valueOf(target) with specFor(segment).
         // forcedInitial: restart from this value (with forcedVelocity) when it is new or the target
         // changes (DeferredAnimation.animate's forcedInitialValue).
+        // AnimateChildRef: the child animation itself, its value not read here (a State).
         template<typename S>
-        const anim::Vec& AnimateChild(Transition<S>& t, int dims, const std::function<anim::Vec(const S&)>& valueOf,
-                                      const std::function<anim::SpecPtr(const typename Transition<S>::Segment&)>& specFor, rt::Key key,
-                                      std::optional<anim::Vec> forcedInitial = std::nullopt, std::optional<anim::Vec> forcedVelocity = std::nullopt) {
+        TransitionCore::Child& AnimateChildRef(Transition<S>& t, int dims, const std::function<anim::Vec(const S&)>& valueOf,
+                                               const std::function<anim::SpecPtr(const typename Transition<S>::Segment&)>& specFor, rt::Key key,
+                                               std::optional<anim::Vec> forcedInitial = std::nullopt, std::optional<anim::Vec> forcedVelocity = std::nullopt) {
             auto& c = *rt::Composition::Current();
             const anim::Vec initial = valueOf(t.CurrentState());
             auto& child = c.RememberNew<TransitionCore::Child>({}, key, initial, dims);
@@ -287,10 +288,34 @@ namespace kiln::foundation {
                 child.duration = child.spec->DurationNanos(child.start, child.target, {}, child.dims);
             }
             UpdateChildTarget(t, child, target, specFor, forcedInitial, forcedVelocity);
-            return child.value.Get();
+            return child;
+        }
+
+        template<typename S>
+        const anim::Vec& AnimateChild(Transition<S>& t, int dims, const std::function<anim::Vec(const S&)>& valueOf,
+                                      const std::function<anim::SpecPtr(const typename Transition<S>::Segment&)>& specFor, rt::Key key,
+                                      std::optional<anim::Vec> forcedInitial = std::nullopt, std::optional<anim::Vec> forcedVelocity = std::nullopt) {
+            return AnimateChildRef<S>(t, dims, valueOf, specFor, key, forcedInitial, forcedVelocity).value.Get();
         }
 
     }
+
+    // Transition.animateFloat / animateColor as State: the animation's value read where Value()
+    // is called (a layout or draw lambda, a child scope), so the caller's scope does not
+    // recompose on each frame. Valid while the call that made it stays composed.
+    struct AnimatedFloat {
+        const TransitionCore::Child* child = nullptr;
+        float Value() const { return child->value.Get()[0]; }
+        float operator()() const { return Value(); }
+    };
+    struct AnimatedColor {
+        const TransitionCore::Child* child = nullptr;
+        ui::Color Value() const {
+            const anim::Vec& v = child->value.Get();
+            return ui::FromOklab({ v[0], v[1], v[2], v[3] });
+        }
+        ui::Color operator()() const { return Value(); }
+    };
 
     // Transition.createDeferredAnimation: an animation of the transition whose target is only
     // known later (in measure or placement). Animate starts it on its first call and retargets
@@ -425,6 +450,20 @@ namespace kiln::foundation {
                        std::function<anim::SpecPtr(const typename Transition<S>::Segment&)> spec = {}, rt::Key key = {},
                        std::optional<anim::Vec> forcedInitial = std::nullopt, std::optional<anim::Vec> forcedVelocity = std::nullopt) {
         return detail::AnimateChild<S>(t, 1, [&](const S& s) { return anim::Vec{ valueOf(s), 0, 0, 0 }; }, spec, key, forcedInitial, forcedVelocity)[0];
+    }
+
+    template<typename S>
+    AnimatedFloat AnimateFloatState(Transition<S>& t, std::function<float(const S&)> valueOf,
+                                    std::function<anim::SpecPtr(const typename Transition<S>::Segment&)> spec = {}, rt::Key key = {}) {
+        return { &detail::AnimateChildRef<S>(t, 1, [&](const S& s) { return anim::Vec{ valueOf(s), 0, 0, 0 }; }, spec, key) };
+    }
+    template<typename S>
+    AnimatedColor AnimateColorState(Transition<S>& t, std::function<ui::Color(const S&)> valueOf,
+                                    std::function<anim::SpecPtr(const typename Transition<S>::Segment&)> spec = {}, rt::Key key = {}) {
+        return { &detail::AnimateChildRef<S>(t, 4, [&](const S& s) {
+            const auto lab = ui::ToOklab(valueOf(s));
+            return anim::Vec{ lab[0], lab[1], lab[2], lab[3] };
+        }, spec, key) };
     }
 
     // Colours interpolate in Oklab (ColorVectorConverter).
