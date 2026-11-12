@@ -10,6 +10,7 @@
 #include "kiln/ui/Geometry.h"
 
 #include <array>
+#include <map>
 #include <memory>
 #include <optional>
 #include <string>
@@ -95,6 +96,22 @@ namespace kiln::gfx::vector {
         PathData m_Nodes;
     };
 
+    // Vector.kt's defaults.
+    inline constexpr std::string_view DefaultGroupName = "";
+    inline constexpr float DefaultRotation = 0, DefaultPivotX = 0, DefaultPivotY = 0, DefaultScaleX = 1, DefaultScaleY = 1;
+    inline constexpr float DefaultTranslationX = 0, DefaultTranslationY = 0;
+    inline const PathData EmptyPath{};
+    inline constexpr std::string_view DefaultPathName = "";
+    inline constexpr float DefaultStrokeLineWidth = 0, DefaultStrokeLineMiter = 4;
+    inline constexpr float DefaultTrimPathStart = 0, DefaultTrimPathEnd = 1, DefaultTrimPathOffset = 0;
+    inline constexpr StrokeCap DefaultStrokeLineCap = StrokeCap::Butt;
+    inline constexpr StrokeJoin DefaultStrokeLineJoin = StrokeJoin::Miter;
+    inline constexpr BlendMode DefaultTintBlendMode = BlendMode::SrcIn;
+    inline const ui::Color DefaultTintColor = ui::Color::Transparent();
+    inline constexpr FillType DefaultFillType = FillType::NonZero;
+    // VectorPainter.kt: the root group's name.
+    inline constexpr std::string_view RootGroupName = "VectorRootGroup";
+
     // VectorPath
     struct VectorPath {
         std::string name;
@@ -120,6 +137,8 @@ namespace kiln::gfx::vector {
         float rotation = 0, pivotX = 0, pivotY = 0, scaleX = 1, scaleY = 1, translationX = 0, translationY = 0;
         PathData clipPathData;
         std::vector<VectorNode> children;
+        // Structural equality: children compared by value, not by pointer.
+        bool operator==(const VectorGroup& o) const;
     };
 
     // ImageVector
@@ -156,5 +175,35 @@ namespace kiln::gfx::vector {
         };
     };
     using ImageVectorPtr = std::shared_ptr<const ImageVector>;
+
+    // VectorProperty: a property of a group or path a VectorConfig can override.
+    template <typename T>
+    struct VectorProperty {
+        int id;
+        bool operator==(const VectorProperty&) const = default;
+    };
+    namespace VectorProperties {
+        inline constexpr VectorProperty<float> Rotation{ 0 }, PivotX{ 1 }, PivotY{ 2 }, ScaleX{ 3 }, ScaleY{ 4 }, TranslateX{ 5 }, TranslateY{ 6 };
+        inline constexpr VectorProperty<PathData> PathData{ 7 };
+        inline constexpr VectorProperty<std::optional<Brush>> Fill{ 8 }, Stroke{ 10 };
+        inline constexpr VectorProperty<float> FillAlpha{ 9 }, StrokeLineWidth{ 11 }, StrokeAlpha{ 12 }, TrimPathStart{ 13 }, TrimPathEnd{ 14 },
+            TrimPathOffset{ 15 };
+    }
+
+    // VectorConfig: values that replace a node's properties as RenderVectorGroup emits it
+    // (getOrDefault: the default unless overridden).
+    class VectorConfig {
+    public:
+        virtual ~VectorConfig() = default;
+        virtual float GetOrDefault(VectorProperty<float>, float defaultValue) const { return defaultValue; }
+        virtual PathData GetOrDefault(VectorProperty<PathData>, const PathData& defaultValue) const { return defaultValue; }
+        virtual std::optional<Brush> GetOrDefault(VectorProperty<std::optional<Brush>>, const std::optional<Brush>& defaultValue) const {
+            return defaultValue;
+        }
+    };
+
+    // RenderVectorGroup(group, configs): emits the group's children into the vector being built,
+    // each node's properties taken from the config under its name where there is one.
+    void RenderVectorGroup(ImageVector::Builder& builder, const VectorGroup& group, const std::map<std::string, const VectorConfig*>& configs = {});
 
 }

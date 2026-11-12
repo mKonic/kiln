@@ -290,3 +290,33 @@ TEST(VectorPathDataParsesLikeCompose) {
     // The builder makes the same nodes.
     CHECK(PathBuilder().MoveTo(10, 10).HorizontalLineToRelative(5).Nodes() == PathData(ParsePathString("M10 10h5")));
 }
+
+TEST(RenderVectorGroupAppliesConfigsByName) {
+    using namespace gfx::vector;
+    ImageVector::Builder b("v", ui::Dp(24), ui::Dp(24), 24, 24);
+    b.AddGroup("spin", 10, 12, 12);
+    VectorPath p;
+    p.name = "line";
+    p.pathData = ParsePathString("M0 0L24 24");
+    p.trimPathEnd = 1;
+    b.AddPath(p);
+    b.ClearGroup();
+    const ImageVectorPtr source = b.Build();
+    struct Spin final : VectorConfig {
+        float GetOrDefault(VectorProperty<float> prop, float d) const override { return prop == VectorProperties::Rotation ? 90.0f : d; }
+    } spin;
+    struct Trim final : VectorConfig {
+        float GetOrDefault(VectorProperty<float> prop, float d) const override { return prop == VectorProperties::TrimPathEnd ? 0.5f : d; }
+    } trim;
+    ImageVector::Builder out("v", ui::Dp(24), ui::Dp(24), 24, 24);
+    RenderVectorGroup(out, *source->root, { { "spin", &spin }, { "line", &trim } });
+    const ImageVectorPtr rendered = out.Build();
+    const auto& g = std::get<std::shared_ptr<const VectorGroup>>(rendered->root->children.at(0));
+    CHECK(g->name == "spin" && g->rotation == 90 && g->pivotX == 12);
+    const auto& path = std::get<VectorPath>(g->children.at(0));
+    CHECK(path.trimPathEnd == 0.5f && path.pathData == p.pathData);
+    // Without configs it is the same tree.
+    ImageVector::Builder same("v", ui::Dp(24), ui::Dp(24), 24, 24);
+    RenderVectorGroup(same, *source->root);
+    CHECK(*same.Build()->root == *source->root);
+}

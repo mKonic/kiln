@@ -371,4 +371,55 @@ namespace kiln::gfx::vector {
         return std::move(m_Result);
     }
 
+    bool VectorGroup::operator==(const VectorGroup& o) const {
+        if (name != o.name || rotation != o.rotation || pivotX != o.pivotX || pivotY != o.pivotY || scaleX != o.scaleX || scaleY != o.scaleY ||
+            translationX != o.translationX || translationY != o.translationY || clipPathData != o.clipPathData || children.size() != o.children.size())
+            return false;
+        for (std::size_t i = 0; i < children.size(); ++i) {
+            const VectorNode& a = children[i];
+            const VectorNode& b = o.children[i];
+            if (a.index() != b.index()) return false;
+            if (const auto* pa = std::get_if<VectorPath>(&a)) {
+                if (!(*pa == std::get<VectorPath>(b))) return false;
+            } else {
+                const auto& ga = std::get<std::shared_ptr<const VectorGroup>>(a);
+                const auto& gb = std::get<std::shared_ptr<const VectorGroup>>(b);
+                if (ga != gb && (!ga || !gb || !(*ga == *gb))) return false;
+            }
+        }
+        return true;
+    }
+
+    void RenderVectorGroup(ImageVector::Builder& builder, const VectorGroup& group, const std::map<std::string, const VectorConfig*>& configs) {
+        namespace P = VectorProperties;
+        static const VectorConfig none;
+        auto configFor = [&](const std::string& name) -> const VectorConfig& {
+            const auto it = configs.find(name);
+            return it != configs.end() && it->second ? *it->second : none;
+        };
+        for (const VectorNode& node : group.children) {
+            if (const auto* p = std::get_if<VectorPath>(&node)) {
+                const VectorConfig& c = configFor(p->name);
+                VectorPath out = *p;
+                out.pathData = c.GetOrDefault(P::PathData, p->pathData);
+                out.fill = c.GetOrDefault(P::Fill, p->fill);
+                out.fillAlpha = c.GetOrDefault(P::FillAlpha, p->fillAlpha);
+                out.stroke = c.GetOrDefault(P::Stroke, p->stroke);
+                out.strokeAlpha = c.GetOrDefault(P::StrokeAlpha, p->strokeAlpha);
+                out.strokeLineWidth = c.GetOrDefault(P::StrokeLineWidth, p->strokeLineWidth);
+                out.trimPathStart = c.GetOrDefault(P::TrimPathStart, p->trimPathStart);
+                out.trimPathEnd = c.GetOrDefault(P::TrimPathEnd, p->trimPathEnd);
+                out.trimPathOffset = c.GetOrDefault(P::TrimPathOffset, p->trimPathOffset);
+                builder.AddPath(std::move(out));
+            } else if (const auto& g = std::get<std::shared_ptr<const VectorGroup>>(node)) {
+                const VectorConfig& c = configFor(g->name);
+                builder.AddGroup(g->name, c.GetOrDefault(P::Rotation, g->rotation), c.GetOrDefault(P::PivotX, g->pivotX), c.GetOrDefault(P::PivotY, g->pivotY),
+                                 c.GetOrDefault(P::ScaleX, g->scaleX), c.GetOrDefault(P::ScaleY, g->scaleY), c.GetOrDefault(P::TranslateX, g->translationX),
+                                 c.GetOrDefault(P::TranslateY, g->translationY), c.GetOrDefault(P::PathData, g->clipPathData));
+                RenderVectorGroup(builder, *g, configs);
+                builder.ClearGroup();
+            }
+        }
+    }
+
 }

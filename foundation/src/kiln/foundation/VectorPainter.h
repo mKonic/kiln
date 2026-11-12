@@ -39,5 +39,12 @@ namespace kiln::foundation {
 
     // rememberVectorPainter(image): one painter per image and density.
     std::shared_ptr<VectorPainter> RememberVectorPainter(const gfx::vector::ImageVectorPtr& image, rt::Key key = {});
+    // rememberVectorPainter(defaultWidth, defaultHeight, ..., content): a painter of the vector
+    // `content` builds (given the viewport size) in each composition; a new painter only when
+    // what it built changed. An unset (NaN) viewport is the default size in px.
+    std::shared_ptr<VectorPainter> RememberVectorPainter(ui::Dp defaultWidth, ui::Dp defaultHeight, float viewportWidth, float viewportHeight,
+                                                         std::string name, ui::Color tintColor, gfx::BlendMode tintBlendMode, bool autoMirror,
+                                                         const std::function<void(gfx::vector::ImageVector::Builder&, float viewportWidth, float viewportHeight)>& content,
+                                                         rt::Key key = {});
 
 }

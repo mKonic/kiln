@@ -107,4 +107,35 @@ namespace kiln::foundation {
                                                            rt::Keys(image ? image->genId : -1, density.density), key);
     }
 
+    std::shared_ptr<VectorPainter> RememberVectorPainter(ui::Dp defaultWidth, ui::Dp defaultHeight, float viewportWidth, float viewportHeight,
+                                                         std::string name, ui::Color tintColor, gfx::BlendMode tintBlendMode, bool autoMirror,
+                                                         const std::function<void(ImageVector::Builder&, float, float)>& content, rt::Key key) {
+        rt::Composition* c = rt::Composition::Current();
+        const ui::Density density = c ? c->Read(ui::LocalDensity) : ui::Density{};
+        // obtainViewportSize: NaN takes the default size in px, as the content is given it.
+        const float vw = std::isnan(viewportWidth) ? density.ToPx(defaultWidth) : viewportWidth;
+        const float vh = std::isnan(viewportHeight) ? density.ToPx(defaultHeight) : viewportHeight;
+        ImageVector::Builder builder(name, defaultWidth, defaultHeight, vw, vh, tintColor, tintBlendMode, autoMirror);
+        builder.AddGroup(name);   // the root group carries the name
+        if (content) content(builder, vw, vh);
+        builder.ClearGroup();
+        ImageVectorPtr built = builder.Build();
+        if (!c) return std::make_shared<VectorPainter>(built, density);
+        struct Holder {
+            std::shared_ptr<VectorPainter> painter;
+            float density = 0;
+        };
+        auto& h = c->Remember<std::shared_ptr<Holder>>([] { return std::make_shared<Holder>(); }, rt::Keys(), key);
+        const auto same = [&](const ImageVector& a) {
+            return a.name == built->name && a.defaultWidth == built->defaultWidth && a.defaultHeight == built->defaultHeight &&
+                   a.viewportWidth == built->viewportWidth && a.viewportHeight == built->viewportHeight && a.tintColor == built->tintColor &&
+                   a.tintBlendMode == built->tintBlendMode && a.autoMirror == built->autoMirror && *a.root == *built->root;
+        };
+        if (!h->painter || h->density != density.density || !same(*h->painter->Image())) {
+            h->painter = std::make_shared<VectorPainter>(built, density);
+            h->density = density.density;
+        }
+        return h->painter;
+    }
+
 }
