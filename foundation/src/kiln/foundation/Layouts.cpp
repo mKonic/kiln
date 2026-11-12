@@ -711,7 +711,17 @@ namespace kiln::foundation {
                 if (params.scaleX != 1 || params.scaleY != 1) s.Scale(params.scaleX, params.scaleY, pivot);
                 // CompositingStrategy.Auto: alpha < 1 renders offscreen and composites once, so
                 // overlapping content fades as one image (RenderNode with overlapping rendering).
-                if (params.alpha <= 0) { s.Restore(); return; }
+                if (params.alpha <= 0) {
+                    // Invisible, but its content still draws into a discarded recording, so layers
+                    // recorded inside it (shared elements drawn in an overlay) stay current, as a
+                    // RenderNode records content it does not show.
+                    ui::DisplayList discarded;
+                    s.BeginRecording(discarded);
+                    s.DrawContent();
+                    s.EndRecording();
+                    s.Restore();
+                    return;
+                }
                 // A clip shape whose outline is a path clips through a masked layer.
                 std::optional<gfx::Path> clipPath;
                 std::optional<gfx::Outline> outline;

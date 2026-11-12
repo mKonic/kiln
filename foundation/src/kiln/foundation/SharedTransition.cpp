@@ -760,7 +760,15 @@ namespace kiln::foundation {
             std::optional<Rect> forcedHandoffBounds, boundsBeforeDetached;
             std::optional<anim::Vec> forcedHandoffVelocity;
             bool isPlaced = false;
+            // Where the approach placed the content in this node. Compose draws a node that both
+            // lays out and draws in the space below it (where its child is); kiln draws it in
+            // its own, so the recording is shifted back to the child's origin.
+            ui::Offset childOffset;
             explicit BoundsNode(BoundsParams p) : params(std::move(p)) {}
+            void PlaceChild(ui::PlacementScope& place, ui::Placeable& p, int x, int y) {
+                childOffset = { float(x), float(y) };
+                place.Place(p, x, y);
+            }
             ui::LayoutModifier* AsLayout() override { return this; }
             ui::DrawModifier* AsDraw() override { return this; }
             SharedElementEntry& Entry() const { return *params.entry; }
@@ -923,24 +931,24 @@ namespace kiln::foundation {
                     isPlaced = true;
                     boundsBeforeDetached.reset();
                     const auto state = Element().State();
-                    if (!Entry().IsEnabled()) { place.Place(p, 0, 0); return; }
-                    if (!state->MatchIsOrHasBeenConfigured()) { place.Place(p, 0, 0); return; }
+                    if (!Entry().IsEnabled()) { PlaceChild(place, p, 0, 0); return; }
+                    if (!state->MatchIsOrHasBeenConfigured()) { PlaceChild(place, p, 0, 0); return; }
                     TargetData* target = state->Target();
                     const std::optional<Rect> current = state->CurrentBounds();
-                    if (!target || !current) { place.Place(p, 0, 0); return; }
+                    if (!target || !current) { PlaceChild(place, p, 0, 0); return; }
                     if (Element().scope.IsTransitionActive()) PlaceInTransition(place, p, *target, *current);
                     else PlaceBeyondTransition(place, p, *current);
                 });
             }
             void PlaceBeyondTransition(ui::PlacementScope& place, ui::Placeable& p, const Rect& current) {
                 const LayoutCoordinates* c = place.Coordinates();
-                if (Entry().boundsAnimation->Target() || !c || !Root().root) { place.Place(p, 0, 0); return; }
+                if (Entry().boundsAnimation->Target() || !c || !Root().root) { PlaceChild(place, p, 0, 0); return; }
                 const ui::Offset inScope = Root().root->LocalPositionOf(*c, {});
-                place.Place(p, int(std::lround(current.left - inScope.x)), int(std::lround(current.top - inScope.y)));
+                PlaceChild(place, p, int(std::lround(current.left - inScope.x)), int(std::lround(current.top - inScope.y)));
             }
             void PlaceInTransition(ui::PlacementScope& place, ui::Placeable& p, TargetData& target, const Rect& current) {
                 const LayoutCoordinates* c = place.Coordinates();
-                if (!c || !Root().root) { place.Place(p, 0, 0); return; }
+                if (!c || !Root().root) { PlaceChild(place, p, 0, 0); return; }
                 const LayoutCoordinates& root = *Root().root;
                 const bool removed = !Element().State()->ActiveMatchFound();
                 const ui::Offset inScope = root.LocalPositionOf(*c, {});
@@ -975,7 +983,7 @@ namespace kiln::foundation {
                     }
                 }
                 const ui::Offset local = c->LocalPositionOf(root, finalTopLeft);
-                place.Place(p, int(std::lround(local.x)), int(std::lround(local.y)));
+                PlaceChild(place, p, int(std::lround(local.x)), int(std::lround(local.y)));
             }
 
             void Draw(ContentDrawScope& s) override {
@@ -990,8 +998,17 @@ namespace kiln::foundation {
                     ? Entry().overlayClip->GetClipPath(*Entry().userState, *bounds, s.Direction(), s) : std::nullopt;
                 if (!Entry().layer) Entry().layer = layer::RequireGraphicsContext(*this).CreateGraphicsLayer();
                 const ui::Size size = s.GetSize();
-                Entry().layer->Record(s, { int(size.width), int(size.height) }, [](ContentDrawScope& d) { d.DrawContent(); });
-                if (Entry().ShouldRenderInPlace()) layer::DrawLayer(s, *Entry().layer);
+                const ui::Offset at = childOffset;
+                Entry().layer->Record(s, { int(size.width), int(size.height) }, [at](ContentDrawScope& d) {
+                    d.Translate({ -at.x, -at.y });
+                    d.DrawContent();
+                });
+                if (Entry().ShouldRenderInPlace()) {
+                    s.Save();
+                    s.Translate(at);
+                    layer::DrawLayer(s, *Entry().layer);
+                    s.Restore();
+                }
             }
         };
 

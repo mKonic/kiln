@@ -13,7 +13,8 @@ namespace {
     struct Marks {
         int hits = 0;
         gfx::Matrix last;
-        void Mark(ui::DrawScope& s) { s.Record([this](ui::DrawScope& d) { ++hits; last = d.CurrentTransform(); }); }
+        // Counts replays that draw (not those into a recording, such as an invisible layer's).
+        void Mark(ui::DrawScope& s) { s.Record([this](ui::DrawScope& d) { if (d.IsRecording()) return; ++hits; last = d.CurrentTransform(); }); }
     };
     ui::ContentDrawScope Headless() { return ui::ContentDrawScope(ui::Density{ 1, 1 }, ui::LayoutDirection::Ltr, ui::DrawTarget{}); }
 }
