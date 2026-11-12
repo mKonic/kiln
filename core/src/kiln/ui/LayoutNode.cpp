@@ -237,6 +237,8 @@ namespace kiln::ui {
         IntOffset position;                  // within the enclosing coordinator (0: in parent)
         float zIndex = 0;                    // as placed by the enclosing coordinator (or parent)
         bool placed = false;                // enclosing layout modifier placed this coordinator
+        bool motionFrame = false;           // placed under the motion frame of reference
+        void SetPlacedUnderMotionFrameOfReference(bool m) override { motionFrame = m; if (index == 0) node.m_MotionFrame = m; }
         // Lookahead: this coordinator's lookahead pass, and the approach pass's state (an approach
         // modifier that is not approaching measures what it wraps with the lookahead constraints
         // and places it at its lookahead offset).
@@ -563,8 +565,11 @@ namespace kiln::ui {
         return !at && (ci == 0 || m_Coordinators[ci]->placed);
     }
 
+    // While set, coordinate math leaves out positions placed under the motion frame of reference.
+    thread_local bool g_ExcludeMotionFrame = false;
+
     void LayoutNode::HitSteps(const Mat3& parentInner, std::vector<HitStep>& out, Mat3& inner) const {
-        Mat3 m = Mul3(parentInner, Translate3(float(m_Position.x), float(m_Position.y)));
+        Mat3 m = Mul3(parentInner, Translate3(float(PosX()), float(PosY())));
         // Nodes up to and including a layout modifier sit in that modifier's coordinator.
         std::size_t ci = 0;
         auto sizeOf = [&](std::size_t i) { const auto& c = *m_Coordinators[i]; return ui::Size{ float(c.Width()), float(c.Height()) }; };
@@ -580,11 +585,16 @@ namespace kiln::ui {
             if (node->AsLayout() && ci + 1 < m_Coordinators.size()) {
                 ++ci;
                 const auto& c = *m_Coordinators[ci];
-                m = Mul3(m, Translate3(float(c.position.x), float(c.position.y)));
+                m = Mul3(m, Translate3(CoordX(c), CoordY(c)));
             }
         }
         inner = m;
     }
+
+    float LayoutNode::CoordX(const Coordinator& c) { return g_ExcludeMotionFrame && c.motionFrame ? 0.0f : float(c.position.x); }
+    float LayoutNode::CoordY(const Coordinator& c) { return g_ExcludeMotionFrame && c.motionFrame ? 0.0f : float(c.position.y); }
+    int LayoutNode::PosX() const { return g_ExcludeMotionFrame && m_MotionFrame ? 0 : m_Position.x; }
+    int LayoutNode::PosY() const { return g_ExcludeMotionFrame && m_MotionFrame ? 0 : m_Position.y; }
 
     bool LayoutNode::PointerSpace(const PointerInputModifier* mod, Mat3& toRoot, ui::Size& size) const {
         std::vector<const LayoutNode*> chain;
@@ -630,7 +640,7 @@ namespace kiln::ui {
     }
 
     LayoutNode::Mat3 LayoutNode::SpaceToRoot(const ModifierNode* at, ui::Size* sizeOut) const {
-        Mat3 m = Mul3(ParentInner(m_Parent), Translate3(float(m_Position.x), float(m_Position.y)));
+        Mat3 m = Mul3(ParentInner(m_Parent), Translate3(float(PosX()), float(PosY())));
         if (at) {
             std::size_t ci = 0;
             for (const auto& node : m_Nodes) {
@@ -647,10 +657,10 @@ namespace kiln::ui {
                 if (node->AsLayout() && ci + 1 < m_Coordinators.size()) {
                     ++ci;
                     const auto& n = *m_Coordinators[ci];
-                    m = Mul3(m, Translate3(float(n.position.x), float(n.position.y)));
+                    m = Mul3(m, Translate3(CoordX(n), CoordY(n)));
                 }
             }
-            m = Mul3(ParentInner(m_Parent), Translate3(float(m_Position.x), float(m_Position.y)));
+            m = Mul3(ParentInner(m_Parent), Translate3(float(PosX()), float(PosY())));
         }
         const IntSize sz = Size();
         if (!m_Coordinators.empty()) {
@@ -707,7 +717,7 @@ namespace kiln::ui {
 
     Rect LayoutNode::LayoutModifierRectInRoot(const LayoutModifier* modifier) const {
         // The walk of HitSteps, stopping after the modifier's coordinator (its layers included).
-        Mat3 m = Mul3(ParentInner(m_Parent), Translate3(float(m_Position.x), float(m_Position.y)));
+        Mat3 m = Mul3(ParentInner(m_Parent), Translate3(float(PosX()), float(PosY())));
         std::size_t ci = 0;
         for (const auto& node : m_Nodes) {
             const auto& c = *m_Coordinators[ci];
@@ -721,7 +731,7 @@ namespace kiln::ui {
                 if (ci + 1 < m_Coordinators.size()) {
                     ++ci;
                     const auto& n = *m_Coordinators[ci];
-                    m = Mul3(m, Translate3(float(n.position.x), float(n.position.y)));
+                    m = Mul3(m, Translate3(CoordX(n), CoordY(n)));
                 }
             }
         }
@@ -1427,6 +1437,15 @@ namespace kiln::ui {
         return r;
     }
 
+    Offset LayoutCoordinates::LocalPositionOf(const LayoutCoordinates& source, Offset rel, bool includeMotionFrame) const {
+        if (includeMotionFrame) return LocalPositionOf(source, rel);
+        const bool was = g_ExcludeMotionFrame;
+        g_ExcludeMotionFrame = true;
+        const Offset r = LocalPositionOf(source, rel);
+        g_ExcludeMotionFrame = was;
+        return r;
+    }
+
     Offset LayoutCoordinates::LocalPositionOf(const LayoutCoordinates& source, Offset rel) const {
         if (!node || !source.node) return rel;
         // A lookahead root's parent's children space (where lookahead offsets cross into main).
@@ -1500,7 +1519,7 @@ namespace kiln::ui {
 
     LayoutNode::Mat3 LayoutNode::CoordinatorToRoot(std::size_t k) const {
         // The walk of HitSteps: coordinator k's space is reached at its layout modifier.
-        Mat3 m = Mul3(ParentInner(m_Parent), Translate3(float(m_Position.x), float(m_Position.y)));
+        Mat3 m = Mul3(ParentInner(m_Parent), Translate3(float(PosX()), float(PosY())));
         std::size_t ci = 0;
         for (const auto& node : m_Nodes) {
             const auto& c = *m_Coordinators[ci];
@@ -1513,7 +1532,7 @@ namespace kiln::ui {
                 if (ci == k) return m;
                 ++ci;
                 const auto& n = *m_Coordinators[ci];
-                m = Mul3(m, Translate3(float(n.position.x), float(n.position.y)));
+                m = Mul3(m, Translate3(CoordX(n), CoordY(n)));
             }
         }
         return m;

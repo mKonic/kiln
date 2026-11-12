@@ -56,6 +56,9 @@ namespace kiln::ui {
         // map through every layer; lookahead ones add up lookahead offsets, and cross into main
         // space at their lookahead root's parent (as LookaheadLayoutCoordinates does).
         Offset LocalPositionOf(const LayoutCoordinates& source, Offset relativeToSource = {}) const;
+        // includeMotionFrameOfReference false: without offsets placed under the motion frame of
+        // reference (scrolling), the structural position only.
+        Offset LocalPositionOf(const LayoutCoordinates& source, Offset relativeToSource, bool includeMotionFrameOfReference) const;
         // localBoundingBoxOf: `source`'s bounds (its corners mapped) in this space.
         Rect LocalBoundingBoxOf(const LayoutCoordinates& source) const;
         // positionInWindow / boundsInWindow: the root sits at the window's origin, so these are
@@ -182,6 +185,8 @@ namespace kiln::ui {
             return { (m_Width - m_Measured.width) / 2, (m_Height - m_Measured.height) / 2 };
         }
         virtual void PlaceAt(IntOffset position, float zIndex) = 0;
+        // Placed inside withMotionFrameOfReferencePlacement (a scroll offset, say).
+        virtual void SetPlacedUnderMotionFrameOfReference(bool) {}
 
     private:
         IntSize m_Measured;
@@ -204,7 +209,17 @@ namespace kiln::ui {
     public:
         PlacementScope(LayoutDirection dir, int parentWidth) : m_Dir(dir), m_ParentWidth(parentWidth) {}
         void Place(Placeable& p, int x, int y, float zIndex = 0) {
+            p.SetPlacedUnderMotionFrameOfReference(m_MotionFrame);
             p.PlaceAt(IntOffset{ x, y } + p.ApparentToRealOffset(), zIndex);
+        }
+        // withMotionFrameOfReferencePlacement: placements in `block` are motion (scrolling)
+        // rather than structure; coordinates can leave them out (LocalPositionOf with
+        // includeMotionFrameOfReference false).
+        void WithMotionFrameOfReferencePlacement(const std::function<void()>& block) {
+            const bool was = m_MotionFrame;
+            m_MotionFrame = true;
+            block();
+            m_MotionFrame = was;
         }
         // Mirrors x in RTL: parentWidth - width - x (Placeable.placeRelative).
         void PlaceRelative(Placeable& p, int x, int y, float zIndex = 0) {
@@ -238,6 +253,7 @@ namespace kiln::ui {
         const WindowInsetsHolder* m_Insets = nullptr;
         std::optional<LayoutCoordinates> m_Coords;
         mutable bool m_CoordinatesRead = false;
+        bool m_MotionFrame = false;
     };
 
     struct MeasureResult {

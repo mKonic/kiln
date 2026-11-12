@@ -690,8 +690,11 @@ namespace kiln::foundation {
                     const int value = std::clamp(state->Value(), 0, vertical ? scrollHeight : scrollWidth);
                     if (value != lastValue) { lastValue = value; InvalidateSemantics(); }
                     const int abs = reverse ? value - (vertical ? scrollHeight : scrollWidth) : -value;
-                    if (vertical) place.PlaceRelative(p, 0, abs);
-                    else place.PlaceRelative(p, abs, 0);
+                    // The scroll offset is motion, not structure (withMotionFrameOfReferencePlacement).
+                    place.WithMotionFrameOfReferencePlacement([&] {
+                        if (vertical) place.PlaceRelative(p, 0, abs);
+                        else place.PlaceRelative(p, abs, 0);
+                    });
                 });
             }
         };

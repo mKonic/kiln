@@ -1201,11 +1201,14 @@ namespace kiln::foundation {
         for (int i : extra) placed.push_back({ byIndex[i]->p, at(*byIndex[i]), nullptr, true });
         for (auto& [p, a] : fading) placed.push_back({ p, a->target, a, false });   // leaving, where they were
         return s.Layout(w, h, [placed](PlacementScope& place) {
-            for (const auto& pl : placed) {
-                const IntOffset dd = pl.anim ? pl.anim->delta.Get() : IntOffset{};
-                if (pl.relative && !dd.x && !dd.y) place.PlaceRelative(*pl.p, pl.at.x, pl.at.y);
-                else place.Place(*pl.p, pl.at.x + dd.x, pl.at.y + dd.y);
-            }
+            // Item positions include the scroll: motion, not structure.
+            place.WithMotionFrameOfReferencePlacement([&] {
+                for (const auto& pl : placed) {
+                    const IntOffset dd = pl.anim ? pl.anim->delta.Get() : IntOffset{};
+                    if (pl.relative && !dd.x && !dd.y) place.PlaceRelative(*pl.p, pl.at.x, pl.at.y);
+                    else place.Place(*pl.p, pl.at.x + dd.x, pl.at.y + dd.y);
+                }
+            });
         });
     }
 
@@ -1799,6 +1802,7 @@ namespace kiln::foundation {
         const bool vert = vertical;
         const LayoutDirection dir = s.Direction();
         return s.Layout(w, h, [placed, crossBefore, crossPad, w, h, ha, va, vert, dir](PlacementScope& place) {
+            place.WithMotionFrameOfReferencePlacement([&] {
             for (const auto& pl : placed) {
                 // placementDelta, read here so its animation re-places without remeasuring.
                 const IntOffset d = pl.anim ? pl.anim->delta.Get() : IntOffset{};
@@ -1820,6 +1824,7 @@ namespace kiln::foundation {
                     place.PlaceRelative(*pl.p, m, crossBefore + y);
                 }
             }
+            });
         });
     }
 

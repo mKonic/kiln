@@ -287,6 +287,11 @@ namespace kiln::ui {
         bool m_Placed = false;
         bool m_PlacedThisPass = false;   // set by the parent's current layout pass
         IntOffset m_Position;
+        bool m_MotionFrame = false;   // placed under the parent's motion frame of reference
+        int PosX() const;
+        int PosY() const;
+        static float CoordX(const Coordinator& c);
+        static float CoordY(const Coordinator& c);
         float m_ZIndex = 0;
         int m_PlaceOrder = 0;
         IntSize m_ReportedSize{ -1, -1 };   // the size last told to NotifyLayoutChange

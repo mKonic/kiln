@@ -295,3 +295,26 @@ TEST(CustomSemanticsKeysMergeAndLazyIndexForKey) {
     CHECK_EQ(merged, 3);   // the child's 2 merged into the parent's 1
     CHECK_EQ(index, 7);
 }
+
+#include "kiln/foundation/Scroll.h"
+
+TEST(MotionFrameOfReferenceLeavesScrollingOut) {
+    Harness h;
+    ScrollState* scroll = nullptr;
+    LayoutCoordinates root, item;
+    h.Run([&] {
+        Box(Modifier{}, Alignment::TopStart(), false, [&] {
+            Box(OnGloballyPositioned(SizeMod(Modifier{}, Dp(100), Dp(100)), [&](const LayoutCoordinates& c) { root = c; }), Alignment::TopStart(), false, [&] {
+                scroll = &RememberScrollState();
+                Column(VerticalScroll(FillMax(Modifier{}, Axis::Both, 1), *scroll), [&] {
+                    Box(SizeMod(Modifier{}, Dp(100), Dp(150)));
+                    Box(OnGloballyPositioned(SizeMod(Modifier{}, Dp(100), Dp(50)), [&](const LayoutCoordinates& c) { item = c; }));
+                });
+            });
+        });
+    });
+    scroll->ScrollTo(50);
+    h.Pump();
+    CHECK_EQ(root.LocalPositionOf(item, {}).y, 100.0f);         // 150 down, scrolled up 50
+    CHECK_EQ(root.LocalPositionOf(item, {}, false).y, 150.0f);  // structural: without the scroll
+}
