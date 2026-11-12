@@ -113,7 +113,7 @@ kind = "git"
 repo = "https://github.com/AngusJohnson/Clipper2.git"
 branch = "main"
 checkout = "vendor/Clipper2"                           # submodule: bump it to update
-rev = "21ebba05db8894f0c7217ad35ea518080f324946"
+rev = "4be4655"
 
 [[clipper2.group]]
 name = "cpp"
