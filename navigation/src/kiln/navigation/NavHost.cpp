@@ -2,6 +2,7 @@
 
 #include "kiln/foundation/Back.h"
 #include "kiln/lifecycle/ViewModelCompose.h"
+#include "kiln/runtime/CoroutineScope.h"
 #include "kiln/runtime/Saveable.h"
 
 #include <algorithm>
@@ -325,9 +326,11 @@ namespace kiln::navigation {
                                 // A cancelled gesture: back to the current entry over what is left.
                                 const float fraction = s->Fraction();
                                 const std::int64_t totalMs = t->Core().TotalDurationNanos() / 1000000;
-                                co_await anim::Animate(fraction, 0.0f, anim::Tween(int(fraction * float(totalMs))), [s, to](float value, float) {
-                                    if (value > 0) rt::Launch(rt::Dispatcher::Main(), s->SeekTo(value));
-                                    if (value == 0) rt::Launch(rt::Dispatcher::Main(), s->SnapTo(to));
+                                // Each frame's seek runs in the effect's scope (upstream: this@LaunchedEffect.launch).
+                                rt::CoroutineScope children;
+                                co_await anim::Animate(fraction, 0.0f, anim::Tween(int(fraction * float(totalMs))), [s, to, &children](float value, float) {
+                                    if (value > 0) children.Launch(s->SeekTo(value));
+                                    if (value == 0) children.Launch(s->SnapTo(to));
                                 });
                             }
                         }(ts, tr, target);

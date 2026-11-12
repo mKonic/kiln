@@ -170,7 +170,7 @@ TEST(LookaheadOffsetsAreTheDestinationPositions) {
                            [&](PlacementScope&, const LayoutCoordinates&) { return progress.Get() < 1; },
                            [&](ApproachMeasureScope& s, Measurable& m, const Constraints& c) {
                                Placeable& p = m.Measure(c);
-                               return s.Layout(p.Width(), p.Height(), [&, &p](PlacementScope& place) {
+                               return s.Layout(p.Width(), p.Height(), [&](PlacementScope& place) {
                                    ++placements;
                                    const LayoutCoordinates scopeCoords = scope.LookaheadScopeCoordinates(place);
                                    lookaheadOffset = scope.LocalLookaheadPositionOf(scopeCoords, *place.Coordinates());

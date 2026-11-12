@@ -94,7 +94,7 @@ namespace kiln::gfx {
                     out[3] = 0;
                     break;
                 }
-                case Kind::Solid: out[0] = out[1] = out[2] = out[3] = 0; break;
+                default: out[0] = out[1] = out[2] = out[3] = 0; break;   // no geometry of their own
             }
         }
 
