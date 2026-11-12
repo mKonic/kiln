@@ -1,4 +1,6 @@
 #include "Check.h"
+#include "kiln/graphics/ColorSpace.h"
+#include <cmath>
 
 #include "kiln/material3/internal/colorUtil/ColorUtil.h"
 #include "kiln/material3/tokens/ColorLightTokens.h"
@@ -76,4 +78,27 @@ TEST(GamutMapReturnsTheColourItCameFrom) {
     const std::int32_t mapped = Cam::GetInt(309.0f, 40.0f, 70.0f);
     const Cam cam = Cam::FromInt(mapped);
     CHECK(Near(cam.hue, 308.759f, 0.001) && Near(cam.chroma, 40.148f, 0.001) && Near(CamUtils::LstarFromInt(mapped), 70.029f, 0.001));
+}
+
+TEST(ColorSpacesConvertLikeCompose) {
+    using namespace kiln::gfx::colorspace;
+    auto near = [](float a, float b, float eps = 2e-3f) { return std::abs(a - b) < eps; };
+    // sRGB's transfer: mid grey is 0.214 linear.
+    const Vec3 lin = Connect(ColorSpaces::Srgb(), ColorSpaces::LinearSrgb()).Transform(0.5f, 0.5f, 0.5f);
+    CHECK(near(lin[0], 0.2140411f));
+    // sRGB red inside Display P3.
+    const Vec3 p3 = Connect(ColorSpaces::Srgb(), ColorSpaces::DisplayP3()).Transform(1, 0, 0);
+    CHECK(near(p3[0], 0.9175f) && near(p3[1], 0.2003f) && near(p3[2], 0.1386f));
+    // White is L 100 in L*a*b* (D50, adapted from D65) and L 1 in Oklab.
+    const Vec3 lab = Connect(ColorSpaces::Srgb(), ColorSpaces::CieLab()).Transform(1, 1, 1);
+    CHECK(near(lab[0], 100.0f, 0.05f) && near(lab[1], 0.0f, 0.05f) && near(lab[2], 0.0f, 0.05f));
+    const auto ok = ConvertColor(kiln::ui::Color(0xFFFFFFFFu), ColorSpaces::Oklab());
+    CHECK(near(ok[0], 1.0f) && near(ok[1], 0.0f) && near(ok[2], 0.0f) && ok[3] == 1.0f);
+    // A Display P3 colour inside sRGB's gamut comes back to the same sRGB colour.
+    const auto back = ColorFromSpace(p3[0], p3[1], p3[2], 1, ColorSpaces::DisplayP3());
+    CHECK(back == kiln::ui::Color(0xFFFF0000u));
+    // Named spaces' flags, and match finds Display P3 from its D50 matrix.
+    CHECK(ColorSpaces::Srgb()->IsSrgb() && !ColorSpaces::DisplayP3()->IsSrgb() && ColorSpaces::DisplayP3()->IsWideGamut());
+    const auto d50 = std::static_pointer_cast<const Rgb>(Adapt(ColorSpaces::DisplayP3(), Illuminant::D50));
+    CHECK(ColorSpaces::Match(d50->Transform(), *std::static_pointer_cast<const Rgb>(ColorSpaces::DisplayP3())->GetTransferParameters()) == ColorSpaces::DisplayP3());
 }
