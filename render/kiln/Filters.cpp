@@ -61,6 +61,15 @@ namespace kiln {
         return row;
     }
 
+    int FilterTable::RowsForData(const float* data, int rows) {
+        if (rows <= 0 || m_NextData + rows > int(kDataRows)) return -1;
+        const int row = int(kRows - kDataRows) + m_NextData;
+        m_NextData += rows;
+        std::copy(data, data + std::size_t(rows) * kCols * 4, &m_Data[std::size_t(row) * kCols * 4]);
+        m_Dirty = true;
+        return row;
+    }
+
     void FilterTable::Sync() {
         if (!m_Dirty) return;
         m_Dirty = false;

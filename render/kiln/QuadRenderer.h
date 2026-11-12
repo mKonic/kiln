@@ -49,7 +49,8 @@ namespace kiln {
     public:
         enum class Mode : std::uint8_t { Solid = 0, TintedCoverage = 1, Color = 2, Stretch = 3, Blur = 4, ProgressiveBlur = 5, MaskShader = 6, Ripple = 7,
                                           TextCoverage = 8,
-                                          Flat = 9 };   // Flat: set by Push for pixel-aligned unclipped solid rects
+                                          Flat = 9,     // Flat: set by Push for pixel-aligned unclipped solid rects
+                                          Lighting = 10 };   // Flat: set by Push for pixel-aligned unclipped solid rects
 
         // A gradient paint instead of the flat colour: geometry in framebuffer pixels (linear
         // x0,y0,x1,y1; radial cx,cy,r; sweep cx,cy), the ramp row in the ramp texture.
@@ -124,6 +125,10 @@ namespace kiln {
             int dataRow = -1;
         };
         void DrawRipple(const Ripple& ripple);
+        // illuminate: lights over a rect (local), their uniforms in consecutive filter-table rows
+        // from dataRow (see quad_body.glsl lightColor).
+        struct Lighting { float x = 0, y = 0, width = 0, height = 0; int dataRow = -1; };
+        void DrawLighting(const Lighting& lighting);
         // shadow: GrRRectShadowGeoProc's (offset x, y, distance correction) with mode 1, which
         // scales the colour by the shadow falloff. Mode 2 filters the interpolated sx coverage
         // through SkGaussianColorFilter; mode 0 draws the colour as is.

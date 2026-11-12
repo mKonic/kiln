@@ -13,12 +13,15 @@ namespace kiln {
 
     class FilterTable {
     public:
-        static constexpr std::uint32_t kRows = 256, kCols = 6, kDataRows = 64;
+        static constexpr std::uint32_t kRows = 512, kCols = 6, kDataRows = 256;
         explicit FilterTable(hearth::Device& device);
         void BeginFrame();
         int RowFor(const gfx::ColorFilter& f);   // >= 0
         // Up to kCols * 4 floats for this frame's draws; -1 when the frame's data rows are used up.
         int RowForData(const float* data, std::size_t count);
+        // `rows` consecutive data rows filled from `data` (rows * kCols * 4 floats); the first row,
+        // or -1 when the frame's data rows cannot hold them.
+        int RowsForData(const float* data, int rows);
         void Sync();
         hearth::Ref<hearth::Texture> Texture() const { return m_Texture; }
 

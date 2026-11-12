@@ -154,7 +154,7 @@ namespace kiln {
             instance.paint2[1] = float(paint->tile);
             instance.paint2[2] = paint->rampV;
             instance.paint2[3] = 0;
-        } else if (instance.params[1] != float(Mode::Ripple)) {   // a ripple keeps its uniforms there
+        } else if (instance.params[1] != float(Mode::Ripple) && instance.params[1] != float(Mode::Lighting)) {   // these keep their uniforms there
             for (int i = 0; i < 4; ++i) instance.paint[i] = instance.paint2[i] = 0;
         }
         instance.clip[0] = m_Clip.x0; instance.clip[1] = m_Clip.y0; instance.clip[2] = m_Clip.x1; instance.clip[3] = m_Clip.y1;
@@ -169,7 +169,7 @@ namespace kiln {
         const AtlasPage* dst = nullptr;
         // Stretch and blur passes composite layers themselves and never blend.
         if (m_BlendMode != 3 && !mask && (instance.params[1] <= float(Mode::Color) || instance.params[1] == float(Mode::MaskShader) ||
-                                               instance.params[1] == float(Mode::Ripple))) {
+                                               instance.params[1] == float(Mode::Ripple) || instance.params[1] == float(Mode::Lighting))) {
             dst = DestinationCopy(instance);
             instance.params[3] = float(m_BlendMode + 1);
         }
@@ -236,6 +236,16 @@ namespace kiln {
                      { r.originX, r.originY, r.touchX, r.touchY }, { r.color.r, r.color.g, r.color.b, r.color.a },
                      { float(r.dataRow), float(Mode::Ripple), -1, 0 }, {}, {},
                      { r.progress, r.maxRadius, r.width, r.height }, { r.noisePhase, r.sparkleAlpha, r.alpha, 0 }, {}, {}, {}, {} };
+        Push(in, page, nullptr);
+    }
+
+    void QuadRenderer::DrawLighting(const Lighting& l) {
+        if (l.dataRow < 0 || !(l.width > 0) || !(l.height > 0)) return;
+        const bool openMask = !Current().runs.empty() && (Current().runs.back().mask || Current().runs.back().dst || Current().runs.back().triangles ||
+                                                          Current().runs.back().filtered);
+        const AtlasPage* page = Current().runs.empty() || openMask ? nullptr : Current().runs.back().page;
+        Instance in{ { l.x, l.y, l.width, l.height }, { l.x, l.y, 0, 0 }, { 1, 1, 1, 1 }, { float(l.dataRow), float(Mode::Lighting), -1, 0 }, {}, {},
+                     {}, {}, {}, {}, {}, {} };
         Push(in, page, nullptr);
     }
 

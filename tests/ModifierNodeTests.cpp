@@ -7,6 +7,7 @@
 #include "kiln/ui/MediaQuery.h"
 #include "kiln/foundation/FrameRate.h"
 #include "kiln/ui/PlatformTextInput.h"
+#include "kiln/foundation/Lighting.h"
 
 using namespace kiln;
 using namespace kiln::foundation;
@@ -453,4 +454,25 @@ TEST(PlatformTextInputSessionsStartStopAndIntercept) {
     CHECK(interceptor->seen == 1 && log == std::vector<std::string>{ "start:number" });
     third.Cancel();
     CHECK(log.back() == "stop");
+}
+
+TEST(LightAnchorsPublishWhereTheyAreAndLightsBuildFromAngles) {
+    Harness h;
+    LightAnchorState anchor;
+    rt::State<bool> shown(true);
+    h.Run([&] {
+        Box(Modifier{}, Alignment::TopStart(), false, [&] {
+            if (shown.Get()) Box(LightAnchor(OffsetMod(SizeMod(Modifier{}, Dp(10), Dp(10)), Dp(30), Dp(40)), anchor));
+        });
+    });
+    CHECK(anchor.PeekCoordinates().has_value());
+    const kiln::ui::Offset at = anchor.PeekCoordinates()->PositionInRoot();
+    CHECK(at.x == 30 && at.y == 40);
+    shown.Set(false);
+    h.Pump();
+    CHECK(!anchor.PeekCoordinates().has_value());   // released when the anchor leaves
+    const Light d = DirectionalLightFromAngles(Color(0xFFFFFFFFu), 0, 90, 1);
+    CHECK(std::abs(d.directionZ - 1) < 1e-6f && std::abs(d.directionX) < 1e-6f);
+    const Light s = SpotLightFromAngles(Color(0xFFFFFFFFu), LightPosition::Local({ Dp(0), Dp(0) }), 0, 45, Dp(10), Dp(100), 30, 1);
+    CHECK(std::abs(s.targetOffset.x.value + 10) < 1e-4f && std::abs(s.targetOffset.y.value) < 1e-4f);
 }

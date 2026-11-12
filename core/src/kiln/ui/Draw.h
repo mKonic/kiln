@@ -96,6 +96,9 @@ namespace kiln::ui {
             Color color, sparkleColor{ 0x8dffffffu };
         };
         void DrawRipple(const Ripple& ripple);
+        // illuminate's light shader over `rect` (local): `uniforms` is whole rows of 24 floats in
+        // the layout quad_body.glsl's lightColor reads (the alpha slot is filled here).
+        void DrawLighting(Rect rect, std::vector<float> uniforms);
         // Brush overloads; `alpha` multiplies the brush (gradient geometry is in scope coordinates).
         void DrawRect(const gfx::Brush& brush, Offset topLeft, Size size, float alpha = 1);
         void DrawRoundRect(const gfx::Brush& brush, Offset topLeft, Size size, float cornerRadius, float alpha = 1);

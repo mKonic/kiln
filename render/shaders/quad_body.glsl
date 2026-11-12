@@ -260,6 +260,104 @@ float rippleTurbulence(vec2 uv, vec4 t0, vec4 t1, vec4 t2) {
     float v = (g1 * g1 + g2 - g3) * 0.5;
     return clamp(0.45 + 0.8 * v, 0.0, 1.0);
 }
+// --- illuminate: LightShader.android.kt (Blinn-Phong diffuse and specular, Schlick Fresnel) over
+// SurfaceGeometryShaders.android.kt's rounded-rect normals. Rows from vParams.x: 0 geometry
+// (left, right, top, bottom; radii tl, tr, br, bl; bevel, tilt -1/0/1, thickness, light count;
+// diffuse, specular, fresnel on, shininess; diffuse rgba; specular rgba), 1 (fresnel reflectance,
+// intensity, alpha), then a row per light (type, falloff radius, cutoff cosine, intensity;
+// linear rgba; position xyz; direction xyz). Positions in local px.
+vec3 lightSafeNormalize(vec3 v) {
+    float l = dot(v, v);
+    return l > 0.0 ? v * inversesqrt(l) : vec3(0.0);
+}
+float lightToSrgb(float x) {
+    float a = abs(x);
+    float e = a <= 0.0031308 ? 12.92 * a : 1.055 * pow(a, 1.0 / 2.4) - 0.055;
+    return sign(x) * e;
+}
+vec4 lightColor(vec2 p) {
+    int row = int(vParams.x + 0.5);
+    vec4 corners = texelFetch(uFilters, ivec2(0, row), 0);
+    vec4 radii = texelFetch(uFilters, ivec2(1, row), 0);
+    vec4 shape = texelFetch(uFilters, ivec2(2, row), 0);
+    vec4 flags = texelFetch(uFilters, ivec2(3, row), 0);
+    vec4 diffuse = texelFetch(uFilters, ivec2(4, row), 0);
+    vec4 specular = texelFetch(uFilters, ivec2(5, row), 0);
+    vec4 fresnel = texelFetch(uFilters, ivec2(0, row + 1), 0);
+    // roundedRectSdf / outwardNormal: fragments outside the surface get nothing.
+    vec2 centre = (corners.yw + corners.xz) * 0.5;
+    vec2 halfSizes = (corners.yw - corners.xz) * 0.5;
+    vec2 local = p - centre;
+    vec2 radiiY = local.x < 0.0 ? radii.xw : radii.yz;
+    float radius = local.y < 0.0 ? radiiY.x : radiiY.y;
+    vec2 edge = abs(local) - halfSizes + vec2(radius);
+    float sdf = min(max(edge.x, edge.y), 0.0) + length(max(edge, 0.0)) - radius;
+    if (sdf > 0.0) return vec4(0.0);
+    vec3 normal = vec3(0.0, 0.0, 1.0);
+    float bevel = shape.x;
+    if (shape.y != 0.0 && bevel > 0.0 && sdf > -bevel) {
+        float t = clamp((sdf + bevel) / bevel, 0.0, 1.0);
+        float angle = t * 1.5707963267948966;
+        vec2 outward = edge.x > 0.0 && edge.y > 0.0 ? normalize(max(edge, 0.0)) * sign(local)
+                                                    : (edge.x > edge.y ? vec2(sign(local.x), 0.0) : vec2(0.0, sign(local.y)));
+        normal = normalize(vec3(shape.y * outward * sin(angle), cos(angle)));
+    }
+    float thickness = shape.z;
+    vec3 surfacePos = vec3(p, thickness);
+    vec3 viewDir = vec3(0.0, 0.0, 1.0);
+    vec3 rgb = vec3(0.0);
+    float a = 0.0;
+    int count = int(shape.w + 0.5);
+    for (int i = 0; i < 4; i++) {
+        if (i >= count) break;
+        vec4 head = texelFetch(uFilters, ivec2(0, row + 2 + i), 0);
+        vec4 color = texelFetch(uFilters, ivec2(1, row + 2 + i), 0);
+        vec3 position = texelFetch(uFilters, ivec2(2, row + 2 + i), 0).xyz;
+        vec3 direction = texelFetch(uFilters, ivec2(3, row + 2 + i), 0).xyz;
+        int type = int(head.x + 0.5);
+        float attenuation = head.w;
+        vec3 lightDir;
+        if (type == 0) {
+            lightDir = lightSafeNormalize(direction);
+        } else {
+            vec3 toLight = position - surfacePos;
+            lightDir = lightSafeNormalize(toLight);
+            float falloff = head.y > 0.0 ? clamp(1.0 - length(toLight) / head.y, 0.0, 1.0) : 1.0;
+            attenuation *= falloff * falloff;
+            if (type == 2) {
+                vec3 spotAxis = vec3(direction.xy, direction.z + thickness);
+                attenuation *= step(head.z, dot(-lightDir, lightSafeNormalize(spotAxis)));
+            }
+        }
+        float nDotL = dot(normal, lightDir);
+        if (nDotL > 0.0 && attenuation > 0.0) {
+            float lightA = color.a * attenuation;
+            if (flags.x > 0.5) {
+                float w = diffuse.a * lightA * nDotL;
+                rgb += diffuse.rgb * color.rgb * w;
+                a += w;
+            }
+            if (flags.y > 0.5) {
+                vec3 halfDir = lightSafeNormalize(lightDir + viewDir);
+                float w = specular.a * lightA * pow(max(dot(normal, halfDir), 0.0), flags.w);
+                rgb += specular.rgb * color.rgb * w;
+                a += w;
+            }
+            if (flags.z > 0.5) {
+                float f = fresnel.x + (1.0 - fresnel.x) * pow(1.0 - clamp(dot(normal, viewDir), 0.0, 1.0), 5.0);
+                float w = lightA * f * fresnel.y * nDotL;
+                rgb += color.rgb * w;
+                a += w;
+            }
+        }
+    }
+    float outA = clamp(a, 0.0, 1.0);
+    if (outA <= 0.0) return vec4(0.0);
+    vec3 c = rgb / outA;
+    vec3 encoded = clamp(vec3(lightToSrgb(c.r), lightToSrgb(c.g), lightToSrgb(c.b)), 0.0, 1.0);
+    return vec4(encoded * outA, outA) * fresnel.z;
+}
+
 vec4 rippleColor(vec2 p) {
     int row = int(vParams.x + 0.5);
     vec4 t0 = texelFetch(uFilters, ivec2(0, row), 0);   // tCircle1, tCircle2
@@ -433,6 +531,9 @@ void main() {
     if (mode == 7) {            // press ripple: the shader over HWUI's anti-aliased circle
         src = rippleColor(vUvMin + vLocal);
         coverage = aaCoverage(length(vLocal) - vHalf.x, vLocal);
+    } else if (mode == 10) {    // illuminate: the light shader over the node's rect
+        src = lightColor(vUvMin + vHalf + vLocal);
+        coverage = 1.0;
     } else if (mode == 6) {     // bitmap shader alpha and independent geometry coverage
         vec2 mask = texture(uAtlas, vUv).rg;
         src = applyFilter(paint() * mask.r);

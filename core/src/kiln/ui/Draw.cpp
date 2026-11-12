@@ -799,6 +799,20 @@ namespace kiln::ui {
         m_Target.quads->DrawRipple(q);
     }
 
+    void DrawScope::DrawLighting(Rect rect, std::vector<float> uniforms) {
+        if (m_Recording) { m_Recording->push_back([rect, uniforms](DrawScope& d) { d.DrawLighting(rect, uniforms); }); return; }
+        constexpr std::size_t kRow = 24;
+        if (!m_Target.quads || !m_Target.filters || m_State.alpha <= 0 || uniforms.size() < 2 * kRow || uniforms.size() % kRow) return;
+        uniforms[kRow + 2] = m_State.alpha;
+        const int row = m_Target.filters->RowsForData(uniforms.data(), int(uniforms.size() / kRow));
+        if (row < 0) return;
+        ApplyTransform();
+        QuadRenderer::Lighting l;
+        l.x = rect.left; l.y = rect.top; l.width = rect.Width(); l.height = rect.Height();
+        l.dataRow = row;
+        m_Target.quads->DrawLighting(l);
+    }
+
     void DrawScope::DrawVertices(const gfx::Vertices& v, Color color, float alpha) {
         if (m_Recording) { m_Recording->push_back([v, color, alpha](DrawScope& d) { d.DrawVertices(v, color, alpha); }); return; }
         if (!m_Target.quads) return;
