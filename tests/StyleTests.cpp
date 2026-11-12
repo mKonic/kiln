@@ -2,6 +2,8 @@
 
 #include "kiln/foundation/style/StyleProperty.h"
 #include "kiln/foundation/style/StyleState.h"
+#include "kiln/foundation/style/StyleResolver.h"
+#include "kiln/foundation/Compose.h"
 
 #include <stdexcept>
 
@@ -103,4 +105,109 @@ TEST(StyleStateFollowsKeysAndInteractions) {
     stop();
     source->End(Interaction::Kind::Focus, f);
     CHECK(follow.IsFocused());   // no longer following
+}
+
+namespace {
+    const auto& SizeProp() {
+        static const auto p = StylePropertyOf<ui::Dp>("size", [] { return ui::Dp(0); });
+        return p;
+    }
+    const auto& Tint() {
+        static const auto p = StyleLocalOf<float>("tint", [] { return 0.0f; });
+        return p;
+    }
+    const auto& Other() {
+        static const auto p = StylePropertyOf<float>("other", [] { return -1.0f; });
+        return p;
+    }
+    const NestedStyleKey& Inner() {
+        static const NestedStyleKey k("inner");
+        return k;
+    }
+    struct StyleHarness {
+        ui::Owner owner;
+        rt::Composition comp{ owner.Root(), rt::Dispatcher::Main() };
+        void Pump() {
+            rt::Observation::ApplyChanges();
+            rt::Dispatcher::Main().RunPending();
+            comp.Recompose();
+            owner.MeasureAndLayout({ 300, 300 });
+        }
+    };
+    template<typename T> T Read(StyleResolver& r, const StylePropertyRef<T>& p) {
+        return r.Resolve([&](const StyleResolverScope& s) { return s.Value(p); });
+    }
+}
+
+TEST(StyleResolverResolvesStatesLocalsAndNestedStyles) {
+    StyleHarness h;
+    auto parentState = std::make_shared<MutableStyleState>();
+    auto childState = std::make_shared<MutableStyleState>();
+    std::shared_ptr<StyleResolver> parent, child;
+    rt::State<bool> provideOther{ true };
+    h.comp.SetContent([&] {
+        parent = RememberStyleResolver(CommonStyle([&](CommonStyleScope& s) {
+            s.Provide(SizeProp(), ui::Dp(10));
+            s.Provide(Tint(), 0.5f);
+            if (provideOther.Get()) s.Provide(Other(), 3.0f);
+            Pressed(s, [&] { s.Provide(SizeProp(), ui::Dp(20)); });
+            s.Provide(SizeProp(), ui::Dp(15));   // the pressed layer still wins over a later base write
+            s.ProvideNestedStyle(Inner(), CommonStyle([](CommonStyleScope& n) { n.Provide(SizeProp(), ui::Dp(99)); }));
+        }), parentState);
+        child = RememberStyleResolver(CommonStyle([](CommonStyleScope& s) { s.ApplyNestedStyle(Inner()); }), childState);
+        foundation::Box(StyleResolverMod(Modifier{}, parent), Alignment::TopStart(), false, [&] {
+            foundation::Box(StyleResolverMod(Modifier{}, child));
+        });
+    });
+    h.Pump();
+    // Base values; a later write in the same layer wins; nested styles stay out of the parent.
+    CHECK(Read(*parent, SizeProp()) == ui::Dp(15) && Read(*parent, Other()) == 3.0f);
+    // The child: the nested style (not the parent's own properties); the local inherited.
+    CHECK(Read(*child, SizeProp()) == ui::Dp(99));
+    CHECK(!child->Resolve([](const StyleResolverScope& s) { return s.IsSet(*Other()); }));
+    CHECK(Read(*child, Tint()) == 0.5f && child->Resolve([](const StyleResolverScope& s) { return s.IsSet(*Tint()); }));
+    // A state change re-resolves: the pressed layer wins.
+    parentState->SetPressed(true);
+    h.Pump();
+    CHECK(Read(*parent, SizeProp()) == ui::Dp(20));
+    // A value no longer provided goes back to its default and is no longer set.
+    provideOther.Set(false);
+    h.Pump();
+    CHECK(Read(*parent, Other()) == -1.0f);
+    // It stays (at its default) until the next resolution, as in Compose.
+    parentState->SetPressed(false);
+    h.Pump();
+    CHECK(!parent->Resolve([](const StyleResolverScope& s) { return s.IsSet(*Other()); }));
+    // Read before binding: an error.
+    StyleResolver loose(CommonStyle{});
+    bool threw = false;
+    try { (void)Read(loose, SizeProp()); } catch (const std::logic_error&) { threw = true; }
+    CHECK(threw);
+}
+
+TEST(StyleResolverAnimatesValuesProvidedUnderAnimate) {
+    StyleHarness h;
+    auto state = std::make_shared<MutableStyleState>();
+    std::shared_ptr<StyleResolver> r;
+    h.comp.SetContent([&] {
+        r = RememberStyleResolver(CommonStyle([](CommonStyleScope& s) {
+            s.Animate(anim::Tween(100, 0, anim::Linear()), [&] {
+                s.Provide(SizeProp(), ui::Dp(0));
+                Selected(s, [&] { s.Provide(SizeProp(), ui::Dp(100)); });
+            });
+        }), state);
+        foundation::Box(StyleResolverMod(Modifier{}, r));
+    });
+    h.Pump();
+    CHECK(Read(*r, SizeProp()) == ui::Dp(0));
+    state->SetSelected(true);
+    h.Pump();
+    auto& d = rt::Dispatcher::Main();
+    d.RunFrame(1'000'000'000);
+    d.RunFrame(1'050'000'000);
+    const float mid = Read(*r, SizeProp()).value;
+    CHECK(mid > 30 && mid < 70);
+    d.RunFrame(1'200'000'000);
+    d.RunPending();
+    CHECK(Read(*r, SizeProp()) == ui::Dp(100));
 }
