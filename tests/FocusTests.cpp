@@ -557,3 +557,38 @@ TEST(IndirectPointerDragsScrollAndDraggable) {
     send(A::Up, { 140, 10 }, 1048, X);
     CHECK(dragged > 25 && dragged <= 40);
 }
+
+TEST(SaveRestoreFocusedChildAndFocusChildInBounds) {
+    Harness h;
+    std::string focused;
+    FocusRequester group;
+    h.Run([&] {
+        auto item = [&](const char* name) {
+            Box(Focusable(SizeMod(Modifier{}, Dp(50), Dp(50)), Focusability::Always,
+                          [&focused, name](FocusState s) { if (IsFocused(s)) focused = name; }));
+        };
+        Column(Modifier{}, [&] {
+            Row(FocusGroup(FocusRequesterModifier(Modifier{}, group)), [&] { item("a"); item("b"); item("c"); });
+            item("d");
+        });
+    });
+    h.Key(keys::Tab); h.Key(keys::Tab);
+    CHECK_EQ(focused, std::string("b"));
+    CHECK(group.SaveFocusedChild());
+    h.Key(keys::Tab); h.Key(keys::Tab);
+    CHECK_EQ(focused, std::string("d"));
+    CHECK(group.RestoreFocusedChild());
+    CHECK_EQ(focused, std::string("b"));
+    // The child whose bounds meet x 120..130 in the root: c.
+    // The row: the layout with three children.
+    std::function<const LayoutNode*(const LayoutNode&)> find = [&](const LayoutNode& n) -> const LayoutNode* {
+        if (n.Children().size() == 3) return &n;
+        for (const LayoutNode* c : n.Children()) if (auto* r = find(*c)) return r;
+        return nullptr;
+    };
+    const LayoutNode* row = find(h.owner.Root());
+    CHECK(row && !row->ModifierNodes().empty());
+    const ModifierNode* rowNode = row->ModifierNodes().front();
+    CHECK(RequestFocusForChildInRootBounds(*rowNode, 120, 10, 130, 20));
+    CHECK_EQ(focused, std::string("c"));
+}

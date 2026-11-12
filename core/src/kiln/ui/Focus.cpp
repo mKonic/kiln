@@ -65,6 +65,74 @@ namespace kiln::ui {
     }
 
     namespace {
+        std::uint64_t HashOf(const FocusTargetNode& t) { return t.Owner() ? t.Owner()->CompositeKeyHash() : 0; }
+        std::vector<FocusTargetNode*> ChildrenOf(const FocusTargetNode& t) {
+            Owner* o = t.Owner() ? t.Owner()->GetOwner() : nullptr;
+            return o ? o->FocusChildrenOf(t) : std::vector<FocusTargetNode*>{};
+        }
+    }
+
+    bool FocusRequester::SaveFocusedChild() {
+        return FindFocusTarget([](FocusTargetNode& t) {
+            if (!HasFocus(t.State())) return false;
+            for (FocusTargetNode* c : ChildrenOf(t))
+                if (HasFocus(c->State())) { t.savedFocusedChild = HashOf(*c); return true; }
+            return false;
+        });
+    }
+
+    bool FocusRequester::RestoreFocusedChild() {
+        return FindFocusTarget([](FocusTargetNode& t) {
+            if (!t.savedFocusedChild) return false;
+            for (FocusTargetNode* c : ChildrenOf(t))
+                if (HashOf(*c) == *t.savedFocusedChild) return c->RequestFocus();
+            return false;
+        });
+    }
+
+    void InvalidateFocusProperties(const ModifierNode& node) {
+        LayoutNode* n = node.Owner();
+        if (n && n->GetOwner()) n->GetOwner()->InvalidateFocusOf(*n);
+    }
+
+    namespace {
+        bool RequestChildFocusIn(const ModifierNode& node, Rect rootRect) {
+            const LayoutNode* n = node.Owner();
+            if (!n || !n->GetOwner()) return false;
+            // Breadth first: the highest targets in the hierarchy come first.
+            std::vector<const LayoutNode*> level{ n };
+            while (!level.empty()) {
+                std::vector<const LayoutNode*> next;
+                for (const LayoutNode* l : level) {
+                    if (!l->IsPlaced() && l != n) continue;
+                    for (const ModifierNode* m : l->ModifierNodes()) {
+                        if (l == n && m == &node) continue;
+                        auto* t = const_cast<ModifierNode*>(m)->AsFocusTarget();
+                        if (!t || !t->CanFocus()) continue;
+                        const Rect b = l->CoordinatesOf(m).BoundsInRoot();
+                        if (b.right <= rootRect.left || b.left >= rootRect.right || b.bottom <= rootRect.top || b.top >= rootRect.bottom) continue;
+                        if (IsFocused(t->State())) return false;
+                        return t->RequestFocus();
+                    }
+                    for (const LayoutNode* c : l->Children()) next.push_back(c);
+                }
+                level = std::move(next);
+            }
+            return false;
+        }
+    }
+
+    bool RequestFocusForChildInLocalBounds(const ModifierNode& node, float l, float t, float r, float b) {
+        if (!node.Owner()) return false;
+        // The rect into root space from the node's position there.
+        const Offset origin = node.Owner()->CoordinatesOf(&node).PositionInRoot();
+        return RequestChildFocusIn(node, { origin.x + l, origin.y + t, origin.x + r, origin.y + b });
+    }
+    bool RequestFocusForChildInRootBounds(const ModifierNode& node, float l, float t, float r, float b) {
+        return RequestChildFocusIn(node, { l, t, r, b });
+    }
+
+    namespace {
         void FirstTargetsIn(const LayoutNode& n, std::vector<FocusTargetNode*>& out) {
             for (const ModifierNode* m : n.ModifierNodes())
                 if (auto* t = const_cast<ModifierNode*>(m)->AsFocusTarget()) { out.push_back(t); return; }

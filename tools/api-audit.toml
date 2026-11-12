@@ -209,6 +209,8 @@ calculateOuterBoundsInRoot = "BoundsInRoot"
 SemanticsPropertyReceiver = "SemanticsConfiguration"
 SemanticsPropertyProvider = "SemanticsModifier"
 AccessibilityAction = "SemanticsConfiguration"   # each action: a function and its label
+FocusRequesterModifierNode = "FocusRequester"   # Add(anchor): any node can anchor one
+FocusRequesterFactory = "FocusRequester"   # createRefs: plain values
 CacheDrawModifierNode = "CacheDrawModifierNode"
 DrawCacheModifier = "CacheDrawModifierNode"
 

@@ -135,6 +135,8 @@ namespace kiln::ui {
         // The focusProperties above this target: earlier in its chain back to the previous
         // target, then up the parents until a target (fetchFocusProperties).
         FocusProperties FetchFocusProperties() const;
+        // The child FocusRequester.saveFocusedChild saved (its composite key hash).
+        std::optional<std::uint64_t> savedFocusedChild;
 
     protected:
         // Properties the target sets on itself, after the modifiers above it (focusRestorer).
@@ -170,9 +172,22 @@ namespace kiln::ui {
 
     // FocusRequester: requestFocus() from code. focusRequester nodes register while attached;
     // a request goes to the targets right below them.
+    // invalidateFocusProperties: a focusProperties node's values changed (re-read them).
+    void InvalidateFocusProperties(const ModifierNode& node);
+    // requestFocusForChildInLocalBounds / InRootBounds: focuses the highest focusable target
+    // below `node` whose bounds meet the rect (in the node's space, or the root's). False when
+    // none does, or one that does already has focus.
+    bool RequestFocusForChildInLocalBounds(const ModifierNode& node, float left, float top, float right, float bottom);
+    bool RequestFocusForChildInRootBounds(const ModifierNode& node, float left, float top, float right, float bottom);
+
     class FocusRequester {
     public:
         bool RequestFocus(FocusDirection direction = FocusDirection::Enter);
+        // saveFocusedChild / restoreFocusedChild: remember which child of this requester's
+        // focused target has focus, and later focus that child again (false: nothing saved, or it
+        // is gone).
+        bool SaveFocusedChild();
+        bool RestoreFocusedChild();
         void Add(const ModifierNode* anchor) { m_Anchors.push_back(anchor); }
         // findFocusTarget: offers each target below its nodes to `onFound` until one is taken.
         bool FindFocusTarget(const std::function<bool(FocusTargetNode&)>& onFound) {

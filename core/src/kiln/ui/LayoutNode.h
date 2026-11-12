@@ -401,6 +401,8 @@ namespace kiln::ui {
         CustomResult CustomRequestFocus(FocusTargetNode& t, FocusDirection d);
         // The nearest focus targets below `t` (its focus children).
         std::vector<FocusTargetNode*> FocusChildrenOf(const FocusTargetNode& t) const { return FocusChildren(t); }
+        // invalidateFocusProperties: re-read the focus properties of `n`'s targets.
+        void InvalidateFocusOf(LayoutNode& n) { ScheduleFocusInvalidation(n); }
         bool ClearFocus(bool force = false);
         // wrapAround: 1D search (Next / Previous) starts over from the other end when it runs out.
         bool MoveFocus(FocusDirection direction, bool wrapAround = true);
