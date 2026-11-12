@@ -1101,3 +1101,26 @@ TEST(SoftwareKeyboardControllerDefaultsToTheOwnersAndCanBeProvided) {
     CHECK_EQ(custom->hides, 1);
     CHECK_EQ(h.hides, 1);
 }
+
+// An idle field asks for no frames: drawing it without a magnifier writes no state.
+TEST(IdleTextFieldDrawsWithoutAskingForFrames) {
+    ui::Owner owner;
+    owner.SetDensity({ 1, 1 });
+    auto& d = rt::Dispatcher::Main();
+    rt::Composition comp(owner.Root(), d);
+    TextFieldState state("hi");
+    comp.SetContent([&] { Column(Modifier{}, [&] { BasicTextField(state, {}, {}); }); });
+    comp.Recompose();
+    owner.MeasureAndLayout({ 200, 100 });
+    owner.Draw({});
+    rt::Observation::ApplyChanges();
+    // A host asks for a frame on the first state write after a frame (the change listener).
+    int writes = 0;
+    rt::Observation::SetChangeListener([&] { ++writes; });
+    for (int i = 0; i < 3; ++i) {
+        owner.Draw({});
+        rt::Observation::ApplyChanges();
+    }
+    rt::Observation::SetChangeListener(nullptr);
+    CHECK_EQ(writes, 0);
+}

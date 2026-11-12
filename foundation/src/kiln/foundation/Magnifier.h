@@ -64,6 +64,9 @@ namespace kiln::foundation {
     private:
         anim::Animatable m_Center;
         std::optional<Offset> m_Target;
+        // Detach does nothing while detached: its snap is a state write, which would ask for a
+        // frame on every draw of a field without a magnifier.
+        bool m_Attached = true;   // the first Detach resets the centre
         rt::Job m_Animation;
         MagnifierController m_Controller;
         ui::IntSize m_MagnifierSize{ 0, 0 };

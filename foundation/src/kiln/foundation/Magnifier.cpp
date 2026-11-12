@@ -146,6 +146,7 @@ namespace kiln::foundation {
     SelectionMagnifier::~SelectionMagnifier() { m_Animation.Cancel(); }
 
     void SelectionMagnifier::Update(const std::function<Offset(ui::IntSize)>& center, ui::Owner* owner, Offset anchorInRoot, const ui::Density& density) {
+        m_Attached = true;
         const Offset target = center(m_MagnifierSize);
         if (!m_Target || !(SameFloat(m_Target->x, target.x) && SameFloat(m_Target->y, target.y))) {
             m_Target = target;
@@ -172,6 +173,8 @@ namespace kiln::foundation {
     }
 
     void SelectionMagnifier::Detach() {
+        if (!m_Attached) return;
+        m_Attached = false;
         m_Animation.Cancel();
         m_Controller.Detach();
         m_Target.reset();
