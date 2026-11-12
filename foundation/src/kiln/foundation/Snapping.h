@@ -38,6 +38,11 @@ namespace kiln::foundation {
     FlingBehavior SnapFlingBehavior(std::shared_ptr<SnapLayoutInfoProvider> provider,
                                     std::function<std::shared_ptr<const anim::DecaySpec>()> decay,
                                     anim::SpecPtr snapAnimationSpec = anim::Spring(1.0f, anim::spring::StiffnessMediumLow));
+    // The same fling as a TargetedFlingBehavior: the distance left to the approach target, then
+    // to the snap target, each frame.
+    TargetedFlingBehavior TargetedSnapFlingBehavior(std::shared_ptr<SnapLayoutInfoProvider> provider,
+                                                    std::function<std::shared_ptr<const anim::DecaySpec>()> decay,
+                                                    anim::SpecPtr snapAnimationSpec = anim::Spring(1.0f, anim::spring::StiffnessMediumLow));
 
     // SnapLayoutInfoProvider(lazyListState / lazyGridState, snapPosition): approach to an item
     // short of the decay, then snap to the closest item (or the next / previous one past 400 dp/s).

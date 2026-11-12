@@ -9,6 +9,7 @@
 // Coroutine pointer input (spec 05 req. 1, §Tap): Modifier.pointerInput with a handler that
 // awaits pointer events pass by pass, and the tap detector / clickable built on it.
 
+#include "kiln/runtime/Channel.h"
 #include "kiln/runtime/Composition.h"
 #include "kiln/ui/LayoutNode.h"
 
@@ -108,15 +109,55 @@ namespace kiln::foundation {
     };
     rt::Task<UpOrCancellation> WaitForUpOrCancellationWithTimeout(PointerInputScope& scope, std::int64_t timeoutMillis,
                                                                   PointerEventPass pass = PointerEventPass::Main);
+    // awaitDragOrCancellation: the next move of the pointer (following another pressed one if it
+    // lifts) or its up; nullopt when it already lifted or someone else consumed the change.
+    // The axis variants wait for movement along that axis.
+    rt::Task<std::optional<PointerInputChange>> AwaitDragOrCancellation(PointerInputScope& scope, std::int64_t pointerId);
+    rt::Task<std::optional<PointerInputChange>> AwaitHorizontalDragOrCancellation(PointerInputScope& scope, std::int64_t pointerId);
+    rt::Task<std::optional<PointerInputChange>> AwaitVerticalDragOrCancellation(PointerInputScope& scope, std::int64_t pointerId);
+    // await{Horizontal,Vertical}{Touch,Pointer}SlopOrCancellation: awaitTouchSlopOrCancellation
+    // along one axis (the over-slop distance on it); the Pointer forms take the slop of a pointer
+    // type (mice drag sooner).
+    rt::Task<std::optional<PointerInputChange>> AwaitHorizontalTouchSlopOrCancellation(PointerInputScope& scope, std::int64_t pointerId,
+                                                                                       std::function<void(PointerInputChange&, float overSlop)> onSlop);
+    rt::Task<std::optional<PointerInputChange>> AwaitVerticalTouchSlopOrCancellation(PointerInputScope& scope, std::int64_t pointerId,
+                                                                                     std::function<void(PointerInputChange&, float overSlop)> onSlop);
+    rt::Task<std::optional<PointerInputChange>> AwaitHorizontalPointerSlopOrCancellation(PointerInputScope& scope, std::int64_t pointerId, PointerType type,
+                                                                                         std::function<void(PointerInputChange&, float overSlop)> onSlop);
+    rt::Task<std::optional<PointerInputChange>> AwaitVerticalPointerSlopOrCancellation(PointerInputScope& scope, std::int64_t pointerId, PointerType type,
+                                                                                       std::function<void(PointerInputChange&, float overSlop)> onSlop);
+    // horizontalDrag / verticalDrag: each move along the axis until the pointer lifts (true) or a
+    // change is consumed elsewhere (false).
+    rt::Task<bool> HorizontalDrag(PointerInputScope& scope, std::int64_t pointerId, std::function<void(PointerInputChange&)> onDrag);
+    rt::Task<bool> VerticalDrag(PointerInputScope& scope, std::int64_t pointerId, std::function<void(PointerInputChange&)> onDrag);
     // awaitLongPressOrCancellation: the pressed change once the long-press timeout passes (or a
     // deep press), nullopt when it lifted, was consumed or left the bounds first.
     rt::Task<std::optional<PointerInputChange>> AwaitLongPressOrCancellation(PointerInputScope& scope, std::int64_t pointerId);
 
     // --- detectors (TapGestureDetector.kt) ---------------------------------------------------
 
+    // PressGestureScope: what a scoped onPress waits on. tryAwaitRelease: true when the press
+    // ended in a release, false when it was cancelled. awaitRelease: returns on a release; a
+    // cancelled press cancels the onPress task instead (Compose throws there).
+    class PressGestureScope : public ui::Density {
+    public:
+        rt::Task<bool> TryAwaitRelease();
+        rt::Task<> AwaitRelease();
+        // internal
+        void End(bool released);
+        rt::Job job;
+
+    private:
+        std::optional<bool> m_Result;
+        std::shared_ptr<rt::Channel<bool>> m_Ended = std::make_shared<rt::Channel<bool>>(1);
+    };
+
     struct TapCallbacks {
         std::function<void(Offset)> onPress;            // down
         std::function<void(bool released)> onPressEnd;  // up (true) or cancel (false)
+        // onPress with a PressGestureScope (detectTapGestures' suspending onPress): runs in its
+        // own task from the down.
+        std::function<rt::Task<>(PressGestureScope&, Offset)> onPressScoped;
         std::function<void(Offset)> onTap;
         std::function<void(Offset)> onDoubleTap;
         std::function<void(Offset)> onLongPress;

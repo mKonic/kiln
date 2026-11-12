@@ -217,12 +217,44 @@ namespace kiln::foundation {
         co_await AwaitAllUp(s);
     }
 
+    rt::Task<bool> PressGestureScope::TryAwaitRelease() {
+        if (!m_Result) {
+            auto ended = m_Ended;
+            if (auto r = co_await ended->Next()) m_Result = *r;
+            else m_Result = false;
+        }
+        co_return *m_Result;
+    }
+    rt::Task<> PressGestureScope::AwaitRelease() {
+        if (!co_await TryAwaitRelease()) job.Cancel();
+    }
+    void PressGestureScope::End(bool released) {
+        if (m_Result) return;
+        m_Ended->TrySend(released);
+    }
+
     rt::Task<> DetectTapGestures(PointerInputScope& s, TapCallbacks cb) {
+        // The current press's scope: ended (released or cancelled) when its press is.
+        std::shared_ptr<PressGestureScope> press;
+        auto startPress = [&](Offset at) {
+            if (cb.onPress) cb.onPress(at);
+            if (!cb.onPressScoped) return;
+            press = std::make_shared<PressGestureScope>();
+            static_cast<ui::Density&>(*press) = s.GetDensity();
+            auto keep = press;
+            auto onPress = cb.onPressScoped;
+            press->job = rt::Launch(rt::Dispatcher::Main(), [](std::shared_ptr<PressGestureScope> scope, std::function<rt::Task<>(PressGestureScope&, Offset)> f,
+                                                               Offset at) -> rt::Task<> { co_await f(*scope, at); }(keep, onPress, at));
+        };
+        auto endPress = [&](bool released) {
+            if (cb.onPressEnd) cb.onPressEnd(released);
+            if (press) press->End(released);
+        };
         for (;;) {   // awaitEachGesture
             auto downOpt = co_await AwaitFirstDown(s);
             PointerInputChange down = *downOpt;
             down.Consume();
-            if (cb.onPress) cb.onPress(down.position);
+            startPress(down.position);
             std::optional<PointerInputChange> upOrCancel;
             bool gestureDone = false;
             if (!cb.onLongPress) {
@@ -232,7 +264,7 @@ namespace kiln::foundation {
                 if (r.kind == LongPress::Success) {
                     cb.onLongPress(down.position);
                     co_await ConsumeUntilUp(s);
-                    if (cb.onPressEnd) cb.onPressEnd(true);
+                    endPress(true);
                     gestureDone = true;
                 } else if (r.kind == LongPress::Released) {
                     upOrCancel = r.up;
@@ -240,10 +272,10 @@ namespace kiln::foundation {
             }
             if (!gestureDone) {
                 if (!upOrCancel) {
-                    if (cb.onPressEnd) cb.onPressEnd(false);
+                    endPress(false);
                 } else {
                     upOrCancel->Consume();
-                    if (cb.onPressEnd) cb.onPressEnd(true);
+                    endPress(true);
                     if (!cb.onDoubleTap) {
                         if (cb.onTap) cb.onTap(upOrCancel->position);
                     } else {
@@ -251,14 +283,14 @@ namespace kiln::foundation {
                         if (!second) {
                             if (cb.onTap) cb.onTap(upOrCancel->position);
                         } else {
-                            if (cb.onPress) cb.onPress(second->position);
+                            startPress(second->position);
                             auto secondUp = co_await WaitForUpOrCancellation(s);
                             if (secondUp) {
                                 secondUp->Consume();
-                                if (cb.onPressEnd) cb.onPressEnd(true);
+                                endPress(true);
                                 cb.onDoubleTap(secondUp->position);
                             } else {
-                                if (cb.onPressEnd) cb.onPressEnd(false);
+                                endPress(false);
                                 if (cb.onTap) cb.onTap(upOrCancel->position);
                             }
                         }
@@ -392,6 +424,69 @@ namespace kiln::foundation {
                                                             std::function<void(PointerInputChange&)> onDrag) {
         co_return co_await Drag(s, pointerId, std::move(onDrag));
     }
+
+    namespace {
+        // awaitDragOrUp(pointer, hasDragged): the next change of the pointer that moved (along
+        // `axis` when given) or lifted for good; follows another pressed pointer when it lifts.
+        rt::Task<std::optional<PointerInputChange>> AwaitDragOrUp(PointerInputScope& s, std::int64_t pointer, std::optional<Orientation> axis) {
+            for (;;) {
+                auto e = co_await s.AwaitPointerEvent(PointerEventPass::Main);
+                PointerInputChange* c = Find(*e, pointer);
+                if (!c) co_return std::nullopt;
+                if (c->ChangedToUpIgnoreConsumed()) {
+                    const auto* other = FirstPressed(*e);
+                    if (!other) co_return *c;
+                    pointer = other->id;
+                    continue;
+                }
+                const Offset d = c->PositionChangeIgnoreConsumed();
+                const bool moved = !axis ? (d.x != 0 || d.y != 0) : *axis == Orientation::Horizontal ? d.x != 0 : d.y != 0;
+                if (moved) co_return *c;
+            }
+        }
+        rt::Task<std::optional<PointerInputChange>> AwaitDragOrCancellationOn(PointerInputScope& s, std::int64_t pointerId, std::optional<Orientation> axis) {
+            if (IsPointerUp(s.CurrentEvent(), pointerId)) co_return std::nullopt;
+            auto change = co_await AwaitDragOrUp(s, pointerId, axis);
+            if (change && !change->IsConsumed()) co_return change;
+            co_return std::nullopt;
+        }
+        rt::Task<bool> AxisDrag(PointerInputScope& s, std::int64_t pointerId, Orientation axis, std::function<void(PointerInputChange&)> onDrag) {
+            std::int64_t pointer = pointerId;
+            for (;;) {
+                auto change = co_await AwaitDragOrCancellationOn(s, pointer, axis);
+                if (!change) co_return false;
+                if (change->ChangedToUpIgnoreConsumed()) co_return true;
+                onDrag(*change);   // copies share their consumed state
+                pointer = change->id;
+            }
+        }
+        rt::Task<std::optional<PointerInputChange>> AxisSlop(PointerInputScope& s, std::int64_t pointerId, PointerType type, Orientation axis,
+                                                             std::function<void(PointerInputChange&, float)> onSlop) {
+            co_return co_await AwaitSlop(s, pointerId, type, axis, {}, [axis, onSlop = std::move(onSlop)](PointerInputChange& c, Offset over) {
+                onSlop(c, axis == Orientation::Horizontal ? over.x : over.y);
+            });
+        }
+    }
+
+    rt::Task<std::optional<PointerInputChange>> AwaitDragOrCancellation(PointerInputScope& s, std::int64_t id) { return AwaitDragOrCancellationOn(s, id, std::nullopt); }
+    rt::Task<std::optional<PointerInputChange>> AwaitHorizontalDragOrCancellation(PointerInputScope& s, std::int64_t id) { return AwaitDragOrCancellationOn(s, id, Orientation::Horizontal); }
+    rt::Task<std::optional<PointerInputChange>> AwaitVerticalDragOrCancellation(PointerInputScope& s, std::int64_t id) { return AwaitDragOrCancellationOn(s, id, Orientation::Vertical); }
+    rt::Task<std::optional<PointerInputChange>> AwaitHorizontalTouchSlopOrCancellation(PointerInputScope& s, std::int64_t id, std::function<void(PointerInputChange&, float)> f) {
+        return AxisSlop(s, id, PointerType::Touch, Orientation::Horizontal, std::move(f));
+    }
+    rt::Task<std::optional<PointerInputChange>> AwaitVerticalTouchSlopOrCancellation(PointerInputScope& s, std::int64_t id, std::function<void(PointerInputChange&, float)> f) {
+        return AxisSlop(s, id, PointerType::Touch, Orientation::Vertical, std::move(f));
+    }
+    rt::Task<std::optional<PointerInputChange>> AwaitHorizontalPointerSlopOrCancellation(PointerInputScope& s, std::int64_t id, PointerType type,
+                                                                                         std::function<void(PointerInputChange&, float)> f) {
+        return AxisSlop(s, id, type, Orientation::Horizontal, std::move(f));
+    }
+    rt::Task<std::optional<PointerInputChange>> AwaitVerticalPointerSlopOrCancellation(PointerInputScope& s, std::int64_t id, PointerType type,
+                                                                                       std::function<void(PointerInputChange&, float)> f) {
+        return AxisSlop(s, id, type, Orientation::Vertical, std::move(f));
+    }
+    rt::Task<bool> HorizontalDrag(PointerInputScope& s, std::int64_t id, std::function<void(PointerInputChange&)> f) { return AxisDrag(s, id, Orientation::Horizontal, std::move(f)); }
+    rt::Task<bool> VerticalDrag(PointerInputScope& s, std::int64_t id, std::function<void(PointerInputChange&)> f) { return AxisDrag(s, id, Orientation::Vertical, std::move(f)); }
 
     rt::Task<std::optional<PointerInputChange>> AwaitLongPressOrCancellation(PointerInputScope& s, std::int64_t pointerId) {
         if (IsPointerUp(s.CurrentEvent(), pointerId)) co_return std::nullopt;

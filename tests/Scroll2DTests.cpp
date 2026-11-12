@@ -5,6 +5,8 @@
 #include "kiln/foundation/Compose.h"
 #include "kiln/foundation/Layouts.h"
 #include "kiln/foundation/Scrollable2D.h"
+#include "kiln/foundation/Snapping.h"
+#include "kiln/animation/Decay.h"
 
 #include <chrono>
 #include <cmath>
@@ -178,4 +180,61 @@ TEST(ScrollableAreaScrollsWithTheFingerAndReportsDrags) {
     h.Drag({ 150, 200 }, { 0, -80 }, 8, 16);
     CHECK(value > 0);
     CHECK((phases == std::vector{ Interaction::Phase::Start, Interaction::Phase::End }));
+}
+
+TEST(AxisDragHelpersAndPressScope) {
+    Harness h;
+    float horizontal = 0;
+    int released = -1;
+    h.Run([&] {
+        Column(Modifier{}, [&] {
+            // horizontalTouchSlop + horizontalDrag: only x movement counts.
+            Box(PointerInput(SizeMod(Modifier{}, Dp(300), Dp(100)), rt::Keys(1), [&](PointerInputScope& s) -> rt::Task<> {
+                for (;;) {
+                    auto down = co_await AwaitFirstDown(s);
+                    float over = 0;
+                    auto drag = co_await AwaitHorizontalTouchSlopOrCancellation(s, down->id, [&](PointerInputChange& c, float o) { c.Consume(); over = o; });
+                    if (!drag) continue;
+                    horizontal += over;
+                    co_await HorizontalDrag(s, drag->id, [&](PointerInputChange& c) { horizontal += c.PositionChange().x; c.Consume(); });
+                }
+            }), Alignment::TopStart(), false, [] {});
+            // A scoped onPress learns how the press ended.
+            Box(PointerInput(SizeMod(Modifier{}, Dp(300), Dp(100)), rt::Keys(2), [&](PointerInputScope& s) {
+                TapCallbacks cb;
+                cb.onPressScoped = [&](PressGestureScope& p, Offset) -> rt::Task<> { released = (co_await p.TryAwaitRelease()) ? 1 : 0; };
+                return DetectTapGestures(s, cb);
+            }), Alignment::TopStart(), false, [] {});
+        });
+    });
+    h.Drag({ 20, 50 }, { 100, 30 }, 10, 10);
+    const float slop = h.owner.Config().touchSlop;
+    CHECK(std::abs(horizontal - (100 - slop)) < 1.0f);
+    h.Touch(PointerEventType::Press, { 50, 150 }, true);
+    CHECK_EQ(released, -1);   // still pressed
+    h.t += 30;
+    h.Touch(PointerEventType::Release, { 50, 150 }, false);
+    CHECK_EQ(released, 1);
+}
+
+TEST(TargetedSnapFlingReportsTheDistanceLeft) {
+    struct Provider final : SnapLayoutInfoProvider {
+        float CalculateApproachOffset(float, float) override { return 0; }
+        float CalculateSnapOffset(float) override { return 100; }
+    };
+    auto fling = TargetedSnapFlingBehavior(std::make_shared<Provider>(), [] { return std::make_shared<anim::SplineDecay>(1.0f); });
+    float scrolled = 0;
+    std::vector<float> reports;
+    auto job = rt::Launch(rt::Dispatcher::Main(), [](TargetedFlingBehavior f, float* scrolled, std::vector<float>* reports) -> rt::Task<> {
+        co_await f([scrolled](float d) { *scrolled += d; return d; }, 0, [reports](float r) { reports->push_back(r); });
+    }(fling, &scrolled, &reports));
+    std::int64_t t = 0;
+    for (int i = 0; i < 200; ++i) rt::Dispatcher::Main().RunFrame(t += 16'000'000);
+    CHECK(std::abs(scrolled - 100) < 0.5f);
+    CHECK(!reports.empty());
+    CHECK(std::abs(reports.back()) < 0.5f);
+    // The distance left only shrinks during the snap.
+    bool shrinking = true;
+    for (std::size_t i = 1; i < reports.size(); ++i) if (reports[i] > reports[i - 1] + 0.01f && reports[i - 1] != 0) shrinking = false;
+    CHECK(shrinking);
 }

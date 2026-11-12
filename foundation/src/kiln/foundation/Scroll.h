@@ -135,6 +135,13 @@ namespace kiln::foundation {
     // nested scroll); velocity is in the scroll direction; returns the velocity left over.
     // Implement it with a free coroutine function (captures of a coroutine lambda dangle).
     using FlingBehavior = std::function<rt::Task<float>(std::function<float(float)> scrollBy, float velocity)>;
+    // TargetedFlingBehavior: a fling that knows where it is going and reports the distance left
+    // (onRemainingDistanceUpdated) as it moves. AsFlingBehavior drops the reports.
+    using TargetedFlingBehavior =
+        std::function<rt::Task<float>(std::function<float(float)> scrollBy, float velocity, std::function<void(float remaining)> onRemainingDistanceUpdated)>;
+    inline FlingBehavior AsFlingBehavior(TargetedFlingBehavior f) {
+        return [f = std::move(f)](std::function<float(float)> scrollBy, float velocity) { return f(std::move(scrollBy), velocity, [](float) {}); };
+    }
 
     struct ScrollableOptions {
         bool enabled = true;
