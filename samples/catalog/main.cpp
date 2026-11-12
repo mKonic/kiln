@@ -516,6 +516,83 @@ namespace catalog {
     }
 }
 
+namespace catalog {
+    namespace {
+        // Golden mode (host, KILN_CATALOG_GOLDEN=<dir>): every example in turn, opened over its
+        // component and home as the catalog does, settled for a fixed number of frames, then
+        // captured to <dir>/<route>.pam; exits after the last. tools/catalog-golden drives it
+        // and compares two runs (a renderer change against its parent commit).
+        std::vector<std::string> AllExampleRoutes() {
+            std::vector<std::string> out;
+            for (const auto& c : Components())
+                for (std::size_t i = 0; i < c.examples.size(); ++i) out.push_back("example/" + std::to_string(c.id) + "/" + std::to_string(i));
+            return out;
+        }
+        std::vector<std::string> StackFor(const std::string& route) {
+            const Parsed p = Parse(route);
+            return { "home", "component/" + std::to_string(p.component), route };
+        }
+        void WritePam(const std::string& path, const kiln::gfx::ImageBitmap& b) {
+            std::FILE* f = std::fopen(path.c_str(), "wb");
+            if (!f) return;
+            std::fprintf(f, "P7\nWIDTH %d\nHEIGHT %d\nDEPTH 4\nMAXVAL 255\nTUPLTYPE RGB_ALPHA\nENDHDR\n", b.Width(), b.Height());
+            std::fwrite(b.Pixels(), 1, std::size_t(b.Width()) * b.Height() * 4, f);
+            std::fclose(f);
+        }
+
+        void Golden(std::string dir) {
+            // KILN_CATALOG_GOLDEN_FROM=<route>: start there (narrowing a failure down).
+            static const std::vector<std::string> routes = [] {
+                std::vector<std::string> all = AllExampleRoutes();
+                if (const char* from = std::getenv("KILN_CATALOG_GOLDEN_FROM")) {
+                    auto it = std::find(all.begin(), all.end(), std::string(from));
+                    if (it != all.end()) all.erase(all.begin(), it);
+                }
+                return all;
+            }();
+            auto& c = *kiln::rt::Composition::Current();
+            auto& index = RememberState(0);
+            auto& stack = RememberState<std::vector<std::string>>(StackFor(routes.front()));
+            auto coords = c.Remember<std::shared_ptr<std::optional<LayoutCoordinates>>>([] { return std::make_shared<std::optional<LayoutCoordinates>>(); });
+            const Nav nav{ &stack };
+            const std::string route = nav.Current();
+            Box(OnGloballyPositioned(FillMax({}, Axis::Both), [coords](const LayoutCoordinates& lc) { *coords = lc; }), Alignment::TopStart(), false,
+                [nav, route] {
+                    const Parsed p = Parse(route);
+                    const Component* component = p.component > 0 ? Find(p.component) : nullptr;
+                    kiln::rt::Composition::Current()->Child([=] {
+                        if (component && p.example >= 0) ExampleScreen(nav, *component, p.example, "", [](const std::string&) {});
+                    }, kiln::rt::Key(std::string_view(route)));
+                });
+            const int i = index.Get();
+            auto* indexState = &index;
+            auto* stackState = &stack;
+            c.LaunchedEffect(kiln::rt::Keys(i), [=]() -> kiln::rt::Task<> {
+                return [](int i, std::string dir, decltype(coords) cs, kiln::rt::State<int>* idx, kiln::rt::State<std::vector<std::string>>* st) -> kiln::rt::Task<> {
+                    for (int f = 0; f < 90; ++f) co_await kiln::rt::NextFrame{};   // settled (1.5 s of animation)
+                    if (*cs) {
+                        const kiln::gfx::ImageBitmap shot = DrawToImageBitmap(**cs);
+                        std::string name = routes[std::size_t(i)];
+                        for (char& ch : name) if (ch == '/') ch = '_';
+                        if (shot) WritePam(dir + "/" + name + ".pam", shot);
+                        std::fprintf(stderr, "golden: %s\n", routes[std::size_t(i)].c_str());
+                    }
+                    if (std::size_t(i + 1) >= routes.size()) std::exit(0);
+                    st->Set(StackFor(routes[std::size_t(i + 1)]));
+                    idx->Set(i + 1);
+                }(i, dir, coords, indexState, stackState);
+            });
+        }
+    }
+}
+
 extern "C" void kiln_main(kiln_app* app) {
+#if !defined(__ANDROID__)
+    if (const char* golden = std::getenv("KILN_CATALOG_GOLDEN")) {
+        const std::string dir = golden;
+        kiln::SetContent(app, [dir] { kiln::material3::MaterialTheme([dir] { catalog::Golden(dir); }); });
+        return;
+    }
+#endif
     kiln::SetContent(app, [] { kiln::material3::MaterialTheme([] { catalog::NavGraph(); }); });
 }

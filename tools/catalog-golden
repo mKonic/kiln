@@ -1,0 +1,107 @@
+#!/usr/bin/env python3
+"""Renders every catalog example on the host and compares runs: a fast regression check for
+changes that must not alter pixels (renderer work). The Compose parity check is catalog-compare.
+
+usage: tools/catalog-golden render OUT_DIR [--build build/host]
+       tools/catalog-golden compare BEFORE_DIR AFTER_DIR [--diffs DIR]
+
+render runs the host catalog in golden mode (KILN_CATALOG_GOLDEN) inside a hidden vc box, at a
+phone's size and density with a fixed frame clock, so each example settles on the same frame
+every run; it writes OUT_DIR/<route>.pam. compare lists the examples whose pixels differ (any
+channel by more than 1) and writes side-by-side images of them.
+"""
+import argparse, os, subprocess, sys, time
+
+import numpy
+from PIL import Image
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+def read_pam(path):
+    with open(path, "rb") as f:
+        data = f.read()
+    end = data.index(b"ENDHDR\n") + len(b"ENDHDR\n")
+    fields = dict(line.split(b" ", 1) for line in data[:end].split(b"\n")[1:-2])
+    w, h = int(fields[b"WIDTH"]), int(fields[b"HEIGHT"])
+    return numpy.frombuffer(data[end:], dtype=numpy.uint8).reshape(h, w, 4)
+
+
+def render(out, build):
+    out = os.path.abspath(out)
+    os.makedirs(out, exist_ok=True)
+    for f in os.listdir(out):
+        if f.endswith(".pam"):
+            os.remove(os.path.join(out, f))
+    binary = os.path.join(os.path.abspath(build), "catalog")
+    done = os.path.join(out, ".done")
+    if os.path.exists(done):
+        os.remove(done)
+    box = "kiln-golden"
+    subprocess.run(["vc", "box", "kill", box], capture_output=True)
+    subprocess.run(["vc", "box", "start", box, "--size", "1100x2450", "--hide", "4"], check=True, capture_output=True)
+    env = {"KILN_CATALOG_GOLDEN": out, "KILN_FIXED_FRAME_MS": "16", "KILN_WINDOW": "1080x2400", "KILN_DENSITY": "2.625",
+           "KILN_ASSETS": os.path.join(os.path.dirname(binary), "assets")}
+    if os.environ.get("KILN_CATALOG_GOLDEN_FROM"):
+        env["KILN_CATALOG_GOLDEN_FROM"] = os.environ["KILN_CATALOG_GOLDEN_FROM"]
+    cmd = " ".join(f"{k}={v}" for k, v in env.items()) + f" {binary} > {out}/.log 2>&1; echo exit=$? >> {out}/.log; touch {done}"
+    t0 = time.time()
+    subprocess.run(["vc", "box", "exec", box, "--", "sh", "-c", cmd + " &"], check=True, capture_output=True)
+    try:
+        while not os.path.exists(done):
+            time.sleep(1)
+            if time.time() - t0 > 1800:
+                sys.exit("catalog-golden: timed out")
+    finally:
+        subprocess.run(["vc", "box", "kill", box], capture_output=True)
+    n = len([f for f in os.listdir(out) if f.endswith(".pam")])
+    print(f"{n} examples rendered in {time.time() - t0:.0f} s into {out}")
+
+
+def compare(before, after, diffs):
+    names = sorted(f for f in os.listdir(before) if f.endswith(".pam"))
+    changed = []
+    for name in names:
+        b_path, a_path = os.path.join(before, name), os.path.join(after, name)
+        if not os.path.exists(a_path):
+            changed.append((name, "missing"))
+            continue
+        a, b = read_pam(a_path), read_pam(b_path)
+        if a.shape != b.shape:
+            changed.append((name, f"size {b.shape} -> {a.shape}"))
+            continue
+        delta = numpy.abs(a.astype(numpy.int16) - b.astype(numpy.int16)).max(axis=2)
+        n = int((delta > 1).sum())
+        if n:
+            changed.append((name, f"{n} px differ (max {int(delta.max())})"))
+            if diffs:
+                os.makedirs(diffs, exist_ok=True)
+                mask = numpy.zeros_like(b[..., :3])
+                mask[delta > 1] = (255, 0, 0)
+                sheet = numpy.concatenate([b[..., :3], a[..., :3], mask], axis=1)
+                Image.fromarray(sheet).resize((sheet.shape[1] // 3, sheet.shape[0] // 3)).save(os.path.join(diffs, name[:-4] + ".png"))
+    for name, why in changed:
+        print(f"{name[:-4]}\t{why}")
+    print(f"{len(names) - len(changed)} of {len(names)} identical")
+    return not changed
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    sub = ap.add_subparsers(dest="cmd", required=True)
+    r = sub.add_parser("render")
+    r.add_argument("out")
+    r.add_argument("--build", default=os.path.join(ROOT, "build", "host"))
+    c = sub.add_parser("compare")
+    c.add_argument("before")
+    c.add_argument("after")
+    c.add_argument("--diffs")
+    a = ap.parse_args()
+    if a.cmd == "render":
+        render(a.out, a.build)
+    else:
+        sys.exit(0 if compare(a.before, a.after, a.diffs) else 1)
+
+
+if __name__ == "__main__":
+    main()
