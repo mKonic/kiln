@@ -3,6 +3,7 @@
 #include "kiln/foundation/style/StyleProperty.h"
 #include "kiln/foundation/style/StyleState.h"
 #include "kiln/foundation/style/StyleResolver.h"
+#include "kiln/foundation/style/StyleModifiers.h"
 #include "kiln/foundation/Compose.h"
 
 #include <stdexcept>
@@ -210,4 +211,93 @@ TEST(StyleResolverAnimatesValuesProvidedUnderAnimate) {
     d.RunFrame(1'200'000'000);
     d.RunPending();
     CHECK(Read(*r, SizeProp()) == ui::Dp(100));
+}
+
+TEST(StyleModifiersPlaceSizePadAndDraw) {
+    StyleHarness h;
+    // placement: right / bottom anchor; fixed width; fractional height of what is left.
+    ui::Rect placed, padded, bordered;
+    h.comp.SetContent([&] {
+        foundation::Box(Modifier{}, Alignment::TopStart(), false, [&] {
+            foundation::Box(OnGloballyPositioned(
+                Placement(Modifier{}, [](PlacementModifierScope& p) {
+                    p.right = ui::Dp(10);
+                    p.bottom = ui::Dp(20);
+                    p.width = Breadth(ui::Dp(50));
+                    p.height = Breadth(0.5f);
+                }),
+                [&](const LayoutCoordinates& c) { placed = c.BoundsInRoot(); }));
+        });
+    });
+    h.Pump();
+    // 300 - 50 - 10 = 240; height: half of the max, which grows by the insets as in Compose
+    // (addMaxWithMinimum): (300 + 20) / 2 = 160.
+    CHECK_NEAR(placed.left, 240, 0.5f);
+    CHECK_NEAR(placed.right - placed.left, 50, 0.5f);
+    CHECK_NEAR(placed.bottom - placed.top, 160, 0.5f);
+
+    // Padding and placement from a resolver; the padding follows a state change.
+    StyleHarness g;
+    auto state = std::make_shared<MutableStyleState>();
+    std::shared_ptr<StyleResolver> r;
+    g.comp.SetContent([&] {
+        r = RememberStyleResolver(CommonStyle([](CommonStyleScope& s) {
+            s.Provide(style::ExternalPaddingStart(), ui::Dp(7));
+            s.Provide(style::ContentPaddingTop(), ui::Dp(5));
+            s.Provide(style::Width(), Breadth(ui::Dp(100)));
+            s.Provide(style::Height(), Breadth(ui::Dp(40)));
+            s.Provide(style::BorderWidth(), ui::Dp(2.4f));
+            Hovered(s, [&] { s.Provide(style::ContentPaddingTop(), ui::Dp(9)); });
+        }), state);
+        foundation::Box(Modifier{}, Alignment::TopStart(), false, [&] {
+            Modifier m = StyleResolverMod(Modifier{}, r);
+            m = StyleExternalPadding(std::move(m), r);
+            m = StylePlacement(std::move(m), r);
+            m = OnGloballyPositioned(std::move(m), [&](const LayoutCoordinates& c) { bordered = c.BoundsInRoot(); });
+            m = StyleBorderPadding(std::move(m), r);
+            m = StyleContentPadding(std::move(m), r);
+            m = OnGloballyPositioned(std::move(m), [&](const LayoutCoordinates& c) { padded = c.BoundsInRoot(); });
+            foundation::Box(m);
+        });
+    });
+    g.Pump();
+    CHECK_NEAR(bordered.left, 7, 0.5f);
+    CHECK_NEAR(bordered.right - bordered.left, 100, 0.5f);
+    CHECK_NEAR(bordered.bottom - bordered.top, 40, 0.5f);
+    // The border (2.4 dp at density 1, rounded up to 3) then the content padding (5 on top).
+    CHECK_NEAR(padded.left, 10, 0.5f);
+    CHECK_NEAR(padded.top, 8, 0.5f);
+    state->SetHovered(true);
+    g.Pump();
+    CHECK_NEAR(padded.top, 12, 0.5f);
+
+    // appearance: the shape is the element's semantics shape; the style layer only when needed.
+    StyleHarness a;
+    int layerBlocks = 0, required = 0;
+    rt::State<bool> needLayer{ false };
+    a.comp.SetContent([&] {
+        Modifier m = Appearance(SizeMod(Modifier{}, ui::Dp(20), ui::Dp(20)), [](AppearanceScope& s) {
+            s.shape = CircleShape();
+            s.background = Fill(ui::Color(0xFFFF0000u));
+            s.borderWidth = ui::Dp(2);
+        });
+        m = GraphicsLayer(std::move(m), [&] { ++required; return needLayer.Get(); }, [&](GraphicsLayerParams& p) { ++layerBlocks; p.alpha = 0.5f; });
+        foundation::Box(m);
+    });
+    a.Pump();
+    a.owner.Draw(ui::DrawTarget{});
+    // The node's own semantics carry the shape (extra data, not a node of the tree by itself).
+    bool circle = false;
+    std::function<void(ui::LayoutNode*)> visit = [&](ui::LayoutNode* n) {
+        ui::SemanticsConfiguration c;
+        if (ui::CalculateSemanticsConfiguration(*n, c) && c.shape == CircleShape()) circle = true;
+        for (ui::LayoutNode* child : n->Children()) visit(child);
+    };
+    visit(&a.owner.Root());
+    CHECK(circle);
+    CHECK(required >= 1 && layerBlocks == 0);
+    needLayer.Set(true);
+    a.Pump();
+    a.owner.Draw(ui::DrawTarget{});
+    CHECK(layerBlocks >= 1);
 }
