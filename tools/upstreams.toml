@@ -12,7 +12,7 @@ kind = "git"
 repo = "https://github.com/androidx/androidx.git"
 branch = "androidx-main"
 checkout = "~/dev/os/inspiration/androidx-compose"   # sparse: add new groups' paths to it
-rev = "acd47312051"      # 2026-11-05
+rev = "acd47312051"      # 2026-11-11; the comparison catalog keeps snapshot 16900967 (its sources still build with it)
 # The comparison catalog (~/dev/os/inspiration/m3-apps/catalog) builds the material3 catalog and
 # samples from this checkout and links: adaptive 1.4.0-SNAPSHOT, material3-adaptive-navigation-suite
 # and material3-window-size-class 1.6.0-SNAPSHOT, navigation3 1.3.0-SNAPSHOT, navigation-compose 2.9.5.
@@ -95,7 +95,7 @@ paths = ["cpp"]
 kind = "git"
 repo = "https://skia.googlesource.com/skia"
 branch = "main"
-rev = "765d2043b9674d376b414904d4b3dc21760874df"      # vendor/skia-shadow/VENDORED.txt
+rev = "267037d7a2"      # vendor/skia-shadow/VENDORED.txt
 
 [[skia.group]]
 name = "shadow"
