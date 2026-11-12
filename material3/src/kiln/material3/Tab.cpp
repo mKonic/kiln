@@ -80,7 +80,32 @@ namespace kiln::material3 {
                 });
             }
 
+            // Intrinsics without a simulated measure pass (TabBaselineLayoutMeasurePolicy).
+            int MinIntrinsicWidth(ui::MeasureScope&, std::span<ui::Measurable* const> children, int height) override {
+                return Widths(children, height, false);
+            }
+            int MaxIntrinsicWidth(ui::MeasureScope&, std::span<ui::Measurable* const> children, int height) override {
+                return Widths(children, height, true);
+            }
+            int MinIntrinsicHeight(ui::MeasureScope& s, std::span<ui::Measurable* const> children, int width) override {
+                return Height(s, children, width, false);
+            }
+            int MaxIntrinsicHeight(ui::MeasureScope& s, std::span<ui::Measurable* const> children, int width) override {
+                return Height(s, children, width, true);
+            }
+
         private:
+            ui::Measurable* Text(std::span<ui::Measurable* const> c) const { return m_HasText ? c[0] : nullptr; }
+            ui::Measurable* Icon(std::span<ui::Measurable* const> c) const { return m_HasIcon ? c[m_HasText ? 1 : 0] : nullptr; }
+            int Widths(std::span<ui::Measurable* const> c, int height, bool max) const {
+                auto w = [&](ui::Measurable* m) { return m ? (max ? m->MaxIntrinsicWidth(height) : m->MinIntrinsicWidth(height)) : 0; };
+                return std::max(w(Text(c)), w(Icon(c)));
+            }
+            int Height(ui::MeasureScope& s, std::span<ui::Measurable* const> c, int width, bool max) const {
+                auto h = [&](ui::Measurable* m) { return m ? (max ? m->MaxIntrinsicHeight(width) : m->MinIntrinsicHeight(width)) : 0; };
+                const int specHeight = s.RoundToPx(Text(c) && Icon(c) ? LargeTabHeight : SmallTabHeight);
+                return std::max(specHeight, h(Icon(c)) + h(Text(c)) + ui::RoundJava(s.SpToPx(IconDistanceFromBaselineSp)));
+            }
             bool m_HasText, m_HasIcon;
         };
     }
