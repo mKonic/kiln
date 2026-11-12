@@ -6,6 +6,7 @@
 #include "kiln/ui/VelocityTracker.h"
 
 #include <algorithm>
+#include <stdexcept>
 #include <chrono>
 #include <cmath>
 #include <limits>
@@ -108,8 +109,6 @@ namespace kiln::foundation {
 
     namespace {
         // --- SharedMutableTransformState (DeferredEnterExitTransition.kt) ----------------------
-
-        enum class EnterExitState : std::uint8_t { PreEnter, Visible, PostExit };
 
         enum class MutationPhase : std::uint8_t { Idle, MutatingPendingCatchUp, MutatingCatchingUp, Mutating, Handoff };
 
@@ -690,9 +689,24 @@ namespace kiln::foundation {
             l.originY = o.pivotFractionY;
         });
         if (!veilMatchParent) m = DrawWithContent(std::move(m), drawVeil);
+        // AnimatedVisibilityScope: the content sees the enter/exit state as a child transition.
+        auto& scopeTransition = CreateChildTransition<EnterExitState, bool>(t, stateOf, rt::Key("enterExitScope"));
+        auto& scope = c.Remember<std::shared_ptr<AnimatedVisibilityScope>>([] { return std::make_shared<AnimatedVisibilityScope>(); }, {}, key);
+        scope->transition = &scopeTransition;
         // AnimatedEnterExitMeasurePolicy measures the content with the incoming constraints,
         // minimums included (a fixed-height parent stretches the content rather than top-aligning it).
-        Box(m, Alignment::TopStart(), true, std::move(content), key);
+        Box(m, Alignment::TopStart(), true, [scope, content = std::move(content)] {
+            rt::Composition::Current()->Provide(LocalAnimatedVisibilityScope, scope.get(), content);
+        }, key);
+    }
+
+    void AnimateEnterExit(const Modifier& modifier, std::function<void()> content, EnterTransition enter, ExitTransition exit, rt::Key key) {
+        auto& c = *rt::Composition::Current();
+        AnimatedVisibilityScope* scope = c.Read(LocalAnimatedVisibilityScope);
+        if (!scope || !scope->transition) throw std::logic_error("AnimateEnterExit needs an AnimatedVisibility (or AnimatedContent) around it");
+        // Visible while the scope's content is; the parent removes it after its own exit.
+        auto& visible = CreateChildTransition<bool, EnterExitState>(*scope->transition, [](const EnterExitState& s) { return s == EnterExitState::Visible; }, key);
+        AnimatedEnterExit(visible, modifier, std::move(content), enter, exit, key, nullptr, /*forceVisible=*/true);
     }
 
     void Crossfade(rt::Key target, const Modifier& modifier, std::function<void(rt::Key)> content, anim::SpecPtr spec, rt::Key key) {

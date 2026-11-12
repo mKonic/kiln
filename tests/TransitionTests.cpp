@@ -414,3 +414,35 @@ TEST(DeferredAnimatedContentReturnsWhenThePendingTargetIsDropped) {
     CHECK_EQ(p.X(0), 0.0f);
     CHECK_EQ(p.state.CurrentState(), std::uint64_t(1));
 }
+
+TEST(AnimatedVisibilityScopeDrivesChildEnterExit) {
+    LayoutHarness h;
+    rt::State<bool> visible(false);
+    std::optional<EnterExitState> seenCurrent, seenTarget;
+    ui::LayoutNode* child = nullptr;
+    h.Run([&] {
+        Box(Modifier{}, Alignment::TopStart(), false, [&] {
+            AnimatedVisibility(visible.Get(), Modifier{}, [&] {
+                auto* scope = rt::Composition::Current()->Read(LocalAnimatedVisibilityScope);
+                if (scope && scope->transition) { seenCurrent = scope->transition->CurrentState(); seenTarget = scope->transition->TargetState(); }
+                // This child slides in from the left on its own while the whole only fades.
+                AnimateEnterExit(Modifier{}, [&] {
+                    child = &Layout(SizeMod(Modifier{}, Dp(100), Dp(40)), std::make_shared<ui::LambdaMeasurePolicy>(
+                        [](ui::MeasureScope& s, std::span<ui::Measurable* const>, const ui::Constraints& c) { return s.Layout(c.minWidth, c.minHeight); }));
+                }, SlideInHorizontally([](int w) { return -w; }), FadeOut());
+            }, FadeIn(), FadeOut());
+        });
+    });
+    visible.Set(true);
+    h.Pump();
+    h.Layout();
+    CHECK(seenCurrent == EnterExitState::PreEnter);
+    CHECK(seenTarget == EnterExitState::Visible);
+    h.Step(4);
+    CHECK(child != nullptr);
+    const float midX = child ? child->PositionInRoot().x : 0;
+    CHECK(midX < 0 && midX > -100);   // sliding in
+    h.Step(150);
+    CHECK_EQ(child->PositionInRoot().x, 0.0f);
+    CHECK(seenCurrent == EnterExitState::Visible);
+}

@@ -138,6 +138,23 @@ namespace kiln::foundation {
                                                                          std::function<ui::Offset()> targetOffsetVelocityProvider = {},
                                                                          std::function<void(MutableContentTransform&)> block = {});
 
+    // EnterExitState: where AnimatedVisibility's content is in its life.
+    enum class EnterExitState : std::uint8_t { PreEnter, Visible, PostExit };
+
+    // AnimatedVisibilityScope: what AnimatedVisibility (and AnimatedEnterExit, AnimatedContent's
+    // contents) give their content: the enter/exit transition, to animate on (Transition.animate*)
+    // or to run AnimateEnterExit with. Read with LocalAnimatedVisibilityScope.
+    struct AnimatedVisibilityScope {
+        Transition<EnterExitState>* transition = nullptr;
+    };
+    inline rt::Local<AnimatedVisibilityScope*> LocalAnimatedVisibilityScope{ nullptr };
+
+    // Modifier.animateEnterExit (as a wrapper): `content` enters and exits with the
+    // AnimatedVisibility around it, by its own transitions (a child that slides while the
+    // whole fades).
+    void AnimateEnterExit(const Modifier& modifier, std::function<void()> content, EnterTransition enter = FadeIn(), ExitTransition exit = FadeOut(),
+                          rt::Key key = {});
+
     void AnimatedVisibility(bool visible, const Modifier& modifier, std::function<void()> content,
                             EnterTransition enter = FadeIn() + ExpandIn(), ExitTransition exit = ShrinkOut() + FadeOut(), rt::Key key = {});
 
