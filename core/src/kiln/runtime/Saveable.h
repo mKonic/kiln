@@ -144,7 +144,7 @@ namespace kiln::rt {
     // SaveableStateHolder (SaveableStateHolder.kt): a child registry per key for content that
     // comes and goes (lazy items, pager pages, navigation entries). Closing a key keeps its
     // values for when it is opened again; everything is saved into the parent registry too.
-    class SaveableStateHolder {
+    class SaveableStateHolder : public std::enable_shared_from_this<SaveableStateHolder> {
     public:
         // The registry to provide for `key`'s content, restored from what Close saved.
         std::shared_ptr<SaveableStateRegistry> Open(const std::string& key);

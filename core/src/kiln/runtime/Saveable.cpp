@@ -216,10 +216,19 @@ namespace kiln::rt {
     void SaveableStateProvider(SaveableStateHolder& holder, const std::string& key, std::function<void()> content) {
         auto* c = Composition::Current();
         SaveableStateHolder* h = &holder;
+        // A holder owned by a shared_ptr (rememberSaveableStateHolder's) may go first when the
+        // content lives in a subcomposition disposed after it: then there is nothing to close.
+        std::weak_ptr<SaveableStateHolder> weak = holder.weak_from_this();
+        const bool shared = !weak.expired();
         // key(key) { ... }: each key's content is its own group.
-        c->Child([c, h, key, content = std::move(content)] {
+        c->Child([c, h, weak, shared, key, content = std::move(content)] {
             auto& registry = c->Remember<std::shared_ptr<SaveableStateRegistry>>([&] { return h->Open(key); });
-            c->DisposableEffect({}, [h, key] { return [h, key] { h->Close(key); }; });
+            c->DisposableEffect({}, [h, weak, shared, key] {
+                return [h, weak, shared, key] {
+                    if (!shared) h->Close(key);
+                    else if (auto live = weak.lock()) live->Close(key);
+                };
+            });
             c->Provide(LocalSaveableStateRegistry, registry.get(), content);
         }, Key(std::string_view(key)));
     }
