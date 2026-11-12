@@ -672,6 +672,8 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
         }
     }
     private KilnInputConnection connection;
+    // Whether onCreateInputConnection made a connection since the session started.
+    private boolean inputConnectionCreatedForSession;
     // getExtractedText(GET_EXTRACTED_TEXT_MONITOR): the IME's token for updateExtractedText.
     private boolean extractedTextMonitor;
     private int extractedTextToken;
@@ -686,8 +688,13 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
         this.inputType = type;
         this.imeOptions = options;
         this.hintLocales = hintLocales;
+        inputConnectionCreatedForSession = false;
         requestOwnerFocus();
-        imm().restartInput(this);
+        // TextInputServiceAndroid (isSkipRedundantRestartInputOnInitialFocusEnabled): on initial
+        // focus isActive() starts input on the view, creating its connection; a restart then
+        // would create a second one at once, and keys the IME sends the first are dropped.
+        imm().isActive(this);
+        if (!inputConnectionCreatedForSession) imm().restartInput(this);
         showSoftInputWhenFocused();
     }
 
@@ -1382,6 +1389,7 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
                     android.view.inputmethod.SelectRangeGesture.class, android.view.inputmethod.DeleteRangeGesture.class)));
         }
         if (connection != null) connection.closeConnection();
+        inputConnectionCreatedForSession = true;
         extractedTextMonitor = false;
         extractedTextToken = 0;
         connection = new KilnInputConnection(this);
