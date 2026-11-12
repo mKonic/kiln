@@ -148,12 +148,16 @@ TEST(NavHostShowsTheCurrentEntryAndBackRestoresTheLastOne) {
     NavHostController* nav = nullptr;
     std::vector<std::string> shown;
     int* homeCounter = nullptr;
+    bool homeHadScope = false;
     h.Run([&] {
         auto& c = RememberNavController();
         nav = &c;
         NavHost(c, "home", [&](NavGraphBuilder& b) {
             b.Composable("home", [&](const NavBackStackEntry&) {
                 shown.push_back("home");
+                // The AnimatedContentScope upstream gives composable content (sharedElement,
+                // animateEnterExit): LocalAnimatedVisibilityScope here.
+                homeHadScope = rt::Composition::Current()->Read(foundation::LocalAnimatedVisibilityScope) != nullptr;
                 homeCounter = &rt::RememberSaveable<int>([] { return 0; });
                 foundation::Box(ui::Modifier{});
             });
@@ -163,7 +167,7 @@ TEST(NavHostShowsTheCurrentEntryAndBackRestoresTheLastOne) {
             }, { { NavArgumentOf("id", NavType::Int) } });
         });
     });
-    CHECK(!shown.empty() && shown.back() == "home");
+    CHECK(!shown.empty() && shown.back() == "home" && homeHadScope);
     *homeCounter = 3;
     nav->Navigate("detail/5");
     shown.clear();

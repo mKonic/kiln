@@ -2,8 +2,9 @@
 
 // navigation-compose: the composable and dialog navigators, NavGraphBuilder's composable /
 // navigation / dialog, NavHost (an AnimatedContent over the back stack's top entry that a
-// predictive back gesture scrubs), DialogHost and rememberNavController. Not here (no kiln
-// counterpart): the AnimatedContentScope given to content, ViewModel and lifecycle owners.
+// predictive back gesture scrubs), DialogHost and rememberNavController. Composable content
+// reads its AnimatedContentScope as foundation::LocalAnimatedVisibilityScope; each entry is its
+// own lifecycle, ViewModelStore and saved-state owner.
 
 #include "kiln/foundation/AnimatedVisibility.h"
 #include "kiln/foundation/Dialog.h"
