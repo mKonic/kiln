@@ -68,6 +68,9 @@ C_RESERVED = {'auto', 'break', 'case', 'char', 'const', 'continue', 'default', '
               'key', 'self', 'out', 'done', 'r', 'h', 'c', 'cp', 'scope', 'out_handle', 'obj'}
 
 
+VAR_IDS = __import__('itertools').count()
+
+
 def field_name(n):
     f = snake(n)
     return f + '_value' if f == 'size' else f
@@ -155,6 +158,7 @@ class Generator:
         self.names = set()
         self.struct_order = []
         self.opt_structs = {}   # C name -> pointer type of its value
+        self.opaques = {}       # C name -> C++ type (opaque shared handles)
 
     # --- discovery ---------------------------------------------------------------------------
 
@@ -293,7 +297,7 @@ class Generator:
         c = h.c
         # from_cpp: a handle for the duration of the callback, on the caller's stack.
         def from_ref(e, out, c=c, kind=kind):
-            var = f'h{len(out)}'
+            var = f'h{next(VAR_IDS)}'
             out.append(f'auto* {var} = kiln::capi::NewTransient<{c}>();')
             if kind in ('shared', 'shared_const'):
                 out.append(f'{var}->owner = std::const_pointer_cast<{q}>({e}); {var}->ptr = {var}->owner.get();')
@@ -330,7 +334,7 @@ class Generator:
                     # A struct the callback edits in place: a pointer it writes, copied back after.
                     st = m.struct
                     def from_mut(e, o, st=st):
-                        var = f't{len(o)}'
+                        var = f't{next(VAR_IDS)}'
                         o.append(f'auto* {var} = kiln::capi::NewTransient<{st.c}>(); {var}->size = sizeof(*{var}); FromCpp({e}, {var});')
                         o.append(f'@post {e} = ToCpp({var});')
                         return var
@@ -366,6 +370,21 @@ class Generator:
         expr = im.from_cpp(f'(*({e}))', lines)
         body = ' '.join(lines)
         return f'([&]() -> {im.c} {{ if (!({e})) return nullptr; {body} return {expr}; }}())'
+
+    def opaque(self, q, const):
+        core = {'kiln::ui::NestedScrollConnection': 'kiln_nested_scroll_connection'}
+        if q in core:   # declared by kiln.h (a modifier takes it)
+            c = core[q]
+            cpp = f'std::shared_ptr<{"const " if const else ""}{q}>'
+            return Mapping(f'{c}*', lambda e, cpp=cpp, q=q: f'({e} ? std::const_pointer_cast<{"const " if const else ""}{q}>(std::static_pointer_cast<const {q}>({e}->p)) : {cpp}{{}})',
+                           lambda e, o, c=c: f'kiln::capi::TransientOpaque<{c}>({e})')
+        c = 'kiln_' + snake(q.split('::')[-1])
+        if c in CORE_NAMES or q.startswith('kiln::material3::'):
+            c = self.c_name_for(q).replace('kiln_m3_', 'kiln_m3_') if q.startswith('kiln::material3::') else 'kiln_' + '_'.join(snake(p) for p in q.split('::')[1:])
+        self.opaques[c] = q
+        cpp = f'std::shared_ptr<{"const " if const else ""}{q}>'
+        return Mapping(f'{c}*', lambda e, cpp=cpp, q=q: f'({e} ? std::const_pointer_cast<{"const " if const else ""}{q}>(std::static_pointer_cast<const {q}>({e}->p)) : {cpp}{{}})',
+                       lambda e, o, c=c: f'kiln::capi::TransientOpaque<{c}>({e})')
 
     def nested_optional(self, inner, name):
         """optional<optional<X>>: unset, none, or a value (Compose's default / null / given)."""
@@ -474,6 +493,8 @@ class Generator:
         if k == 'kiln::ui::Rect':
             return Mapping('kiln_rect', lambda e: f'kiln::ui::Rect{{ {e}.left, {e}.top, {e}.right, {e}.bottom }}',
                            lambda e, o: f'kiln_rect{{ ({e}).left, ({e}).top, ({e}).right, ({e}).bottom }}')
+        if k == 'kiln::foundation::ScrollableState':
+            return Mapping('kiln_scrollable_state*', lambda e: f'*reinterpret_cast<kiln::foundation::ScrollableState*>({e})', None)
         if k == 'kiln::foundation::PagerState':
             return Mapping('kiln_pager_state*', lambda e: f'*{e}->state', None)
         if k.startswith('std::function<'):
@@ -522,6 +543,17 @@ class Generator:
         m = re.match(r'std::shared_ptr<(const )?(kiln::material3::[\w:]+)>$', k)
         if m and m.group(2) in self.records and m.group(2) in self.handle_quals:
             return self.handle_mapping(m.group(2), 'shared_const' if m.group(1) else 'shared')
+        # A shared value struct: passed as the struct, shared on the C++ side.
+        if m and m.group(2) in self.records and m.group(2) not in self.handle_quals:
+            st = self.struct(m.group(2))
+            q2 = m.group(2)
+            return Mapping(f'const {st.c}*', lambda e, q2=q2: f'({e} ? std::make_shared<{q2}>(ToCpp({e})) : nullptr)',
+                           lambda e, o: f'(({e}) ? FromCppTransient(*({e})) : nullptr)', by_out=False, struct=st)
+        # Any other shared object (a position provider, a decay spec, a painter): an opaque
+        # handle that comes from one call and goes back into another, transient like modifiers.
+        m2 = re.match(r'std::shared_ptr<(const )?(kiln::[\w:]+)>$', k)
+        if m2 and not any(p in SKIP_NAMESPACES for p in m2.group(2).split('::')):
+            return self.opaque(m2.group(2), bool(m2.group(1)))
         d = base.get_canonical().get_declaration()
         if d.kind == ci.CursorKind.ENUM_DECL:
             return self.enum(base)
@@ -869,6 +901,9 @@ class Generator:
         out.append('/* Handles */')
         for h in sorted(self.handles.values(), key=lambda h: h.c):
             out.append(f'typedef struct {h.c} {h.c};')
+        out.append('/* Opaque objects: from one call, back into another; valid until the outermost callback returns. */')
+        for c in sorted(self.opaques):
+            out.append(f'typedef struct {c} {c};')
         out.append('')
         out.append('/* Structs */')
         for q in self.struct_order:
@@ -1056,6 +1091,8 @@ class Generator:
         out += ['', '#include <optional>', '#include <type_traits>', '']
         for h in sorted(self.handles.values(), key=lambda h: h.c):
             out.append(f'struct {h.c} : kiln::capi::Handle<{h.qual}> {{}};')
+        for c in sorted(self.opaques):
+            out.append(f'struct {c} {{ std::shared_ptr<const void> p; }};')
         out += ['', 'namespace {', '']
         # Struct converters: declarations, then definitions.
         for q in self.struct_order:

@@ -693,6 +693,11 @@ KILN_API kiln_modifier* kiln_mod_selectable(kiln_modifier* m, bool selected, boo
     o.enabled = enabled;
     MOD(fd::Selectable(base, selected, Fn(onClick), o))
 }
+KILN_API kiln_modifier* kiln_mod_nested_scroll(kiln_modifier* m, const kiln_nested_scroll_connection* c) {
+    if (!c) return m;
+    auto conn = std::const_pointer_cast<ui::NestedScrollConnection>(std::static_pointer_cast<const ui::NestedScrollConnection>(c->p));
+    MOD(fd::NestedScroll(base, conn))
+}
 KILN_API kiln_modifier* kiln_mod_vertical_scroll(kiln_modifier* m, kiln_scroll_state* s, bool enabled) {
     if (!s) return m;
     MOD(fd::VerticalScroll(base, *s->state, enabled))
@@ -881,6 +886,12 @@ KILN_API kiln_scroll_state* kiln_remember_scroll_state(kiln_key key, int32_t ini
     } CATCH(nullptr)
 }
 KILN_API int32_t kiln_scroll_state_value(const kiln_scroll_state* s) { return s ? s->state->Value() : 0; }
+KILN_API kiln_scrollable_state* kiln_scroll_state_scrollable(kiln_scroll_state* s) {
+    return s ? reinterpret_cast<kiln_scrollable_state*>(static_cast<fd::ScrollableState*>(s->state)) : nullptr;
+}
+KILN_API kiln_scrollable_state* kiln_lazy_list_state_scrollable(kiln_lazy_list_state* s) {
+    return s ? reinterpret_cast<kiln_scrollable_state*>(static_cast<fd::ScrollableState*>(s->state)) : nullptr;
+}
 KILN_API int32_t kiln_scroll_state_max_value(const kiln_scroll_state* s) { return s ? s->state->MaxValue() : 0; }
 KILN_API void kiln_scroll_state_animate_to(kiln_scroll_state* s, int32_t value, kiln_fn done) {
     TRY {

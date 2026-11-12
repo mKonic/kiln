@@ -23,6 +23,8 @@ extern "C" {
     void capi_m3_snackbar(void* user);
     void capi_m3_show_snackbar(void);
     void capi_m3_dismiss_snackbar(void);
+    void capi_m3_app_bar(void* user);
+    float capi_bar_height_offset(void);
 }
 
 extern int kpp_effect_runs, kpp_disposals;
@@ -92,6 +94,21 @@ namespace {
         std::optional<int> Toggle(const std::string& tag) {
             ui::SemanticsConfiguration c;
             return Find(owner.Root(), tag, &c) ? c.toggleableState : std::nullopt;
+        }
+        void Drag(float x, float y0, float y1, int steps) {
+            std::int64_t t = 1000;
+            auto send = [&](ui::PointerEventType type, float y, bool down) {
+                ui::RawPointerEvent e;
+                e.type = type;
+                e.uptimeMillis = t;
+                e.pointers.push_back({ 1, { x, y }, down, ui::PointerType::Touch, {} });
+                owner.ProcessPointer(e);
+                Pump();
+            };
+            send(ui::PointerEventType::Press, y0, true);
+            for (int i = 1; i <= steps; ++i) { t += 16; send(ui::PointerEventType::Move, y0 + (y1 - y0) * float(i) / float(steps), true); }
+            t += 16;
+            send(ui::PointerEventType::Release, y1, false);
         }
         bool Click(const std::string& tag) {
             ui::SemanticsConfiguration c;
@@ -188,4 +205,13 @@ TEST(KilnppLambdasStateEffectsAndMaterial3) {
     CHECK(h.Click("kpp-button"));
     h.Pump();
     CHECK_EQ(kpp_disposals, 1);
+}
+
+TEST(CApiMaterial3TopAppBarFollowsTheListThroughNestedScroll) {
+    Harness h;
+    h.Run(capi_m3_app_bar);
+    CHECK_EQ(capi_bar_height_offset(), 0.0f);
+    // Drag the list up: the enterAlways bar moves up with it.
+    h.Drag(100, 300, 200, 10);
+    CHECK(capi_bar_height_offset() < -10.0f);
 }

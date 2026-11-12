@@ -79,6 +79,8 @@ namespace kpp::m3 {
         BottomAppBarState state() const;
         bool is_pinned() const;
         const kiln_anim_spec* snap_animation_spec() const;
+        kiln_decay_spec* fling_animation_spec() const;
+        kiln_nested_scroll_connection* nested_scroll_connection() const;
     private:
         kiln_m3_bottom_app_bar_scroll_behavior* m_H;
     };
@@ -268,6 +270,8 @@ namespace kpp::m3 {
         kiln_m3_floating_toolbar_exit_direction exit_direction() const;
         FloatingToolbarState state() const;
         const kiln_anim_spec* snap_animation_spec() const;
+        kiln_decay_spec* fling_animation_spec() const;
+        kiln_nested_scroll_connection* nested_scroll_connection() const;
         kpp::Modifier floating_scroll_behavior(kpp::Modifier m = {}) const;
     private:
         kiln_m3_floating_toolbar_scroll_behavior* m_H;
@@ -372,6 +376,7 @@ namespace kpp::m3 {
         kiln_m3_search_bar_scroll_behavior* get() const { return m_H; }
         explicit operator bool() const { return m_H != nullptr; }
         SearchBarScrollState scroll_state() const;
+        kiln_nested_scroll_connection* nested_scroll_connection() const;
         kpp::Modifier search_bar_scroll_behavior_modifier() const;
         float overlapped_fraction() const;
     private:
@@ -501,6 +506,7 @@ namespace kpp::m3 {
         SnackbarData current_snackbar_data() const;
         void show_snackbar(kpp::Str message, kpp::Str action_label, bool with_dismiss_action, const kiln_m3_snackbar_duration* duration = {}, kpp::Callback<kiln_m3_fn_snackbar_result> done = {}) const;
         void show_snackbar_visuals(const kiln_m3_snackbar_visuals* visuals = {}, kpp::Callback<kiln_m3_fn_snackbar_result> done = {}) const;
+        void show_snackbar_2(const kiln_m3_snackbar_visuals* visuals = {}, kpp::Callback<kiln_m3_fn_snackbar_result> done = {}) const;
     private:
         kiln_m3_snackbar_host_state* m_H;
     };
@@ -560,6 +566,7 @@ namespace kpp::m3 {
         kiln_m3_tooltip_scope* get() const { return m_H; }
         explicit operator bool() const { return m_H != nullptr; }
         const kiln_layout_coordinates* obtain_anchor_bounds() const;
+        kiln_popup_position_provider* obtain_position_provider() const;
     private:
         kiln_m3_tooltip_scope* m_H;
     };
@@ -586,6 +593,8 @@ namespace kpp::m3 {
         TopAppBarState state() const;
         bool is_pinned() const;
         const kiln_anim_spec* snap_animation_spec() const;
+        kiln_decay_spec* fling_animation_spec() const;
+        kiln_nested_scroll_connection* nested_scroll_connection() const;
     private:
         kiln_m3_top_app_bar_scroll_behavior* m_H;
     };
@@ -632,6 +641,8 @@ namespace kpp::m3 {
     inline BottomAppBarState BottomAppBarScrollBehavior::state() const { return BottomAppBarState(kiln_m3_bottom_app_bar_scroll_behavior_state(m_H)); }
     inline bool BottomAppBarScrollBehavior::is_pinned() const { return kiln_m3_bottom_app_bar_scroll_behavior_is_pinned(m_H); }
     inline const kiln_anim_spec* BottomAppBarScrollBehavior::snap_animation_spec() const { return kiln_m3_bottom_app_bar_scroll_behavior_snap_animation_spec(m_H); }
+    inline kiln_decay_spec* BottomAppBarScrollBehavior::fling_animation_spec() const { return kiln_m3_bottom_app_bar_scroll_behavior_fling_animation_spec(m_H); }
+    inline kiln_nested_scroll_connection* BottomAppBarScrollBehavior::nested_scroll_connection() const { return kiln_m3_bottom_app_bar_scroll_behavior_nested_scroll_connection(m_H); }
     inline float BottomAppBarState::height_offset_limit() const { return kiln_m3_bottom_app_bar_state_height_offset_limit(m_H); }
     inline void BottomAppBarState::set_height_offset_limit(float limit) const { kiln_m3_bottom_app_bar_state_set_height_offset_limit(m_H, limit); }
     inline float BottomAppBarState::height_offset() const { return kiln_m3_bottom_app_bar_state_height_offset(m_H); }
@@ -704,6 +715,8 @@ namespace kpp::m3 {
     inline kiln_m3_floating_toolbar_exit_direction FloatingToolbarScrollBehavior::exit_direction() const { return kiln_m3_floating_toolbar_scroll_behavior_exit_direction(m_H); }
     inline FloatingToolbarState FloatingToolbarScrollBehavior::state() const { return FloatingToolbarState(kiln_m3_floating_toolbar_scroll_behavior_state(m_H)); }
     inline const kiln_anim_spec* FloatingToolbarScrollBehavior::snap_animation_spec() const { return kiln_m3_floating_toolbar_scroll_behavior_snap_animation_spec(m_H); }
+    inline kiln_decay_spec* FloatingToolbarScrollBehavior::fling_animation_spec() const { return kiln_m3_floating_toolbar_scroll_behavior_fling_animation_spec(m_H); }
+    inline kiln_nested_scroll_connection* FloatingToolbarScrollBehavior::nested_scroll_connection() const { return kiln_m3_floating_toolbar_scroll_behavior_nested_scroll_connection(m_H); }
     inline kpp::Modifier FloatingToolbarScrollBehavior::floating_scroll_behavior(kpp::Modifier m) const { return kpp::Modifier(const_cast<kiln_modifier*>(kiln_m3_floating_toolbar_scroll_behavior_floating_scroll_behavior(m_H, m))); }
     inline float FloatingToolbarState::offset_limit() const { return kiln_m3_floating_toolbar_state_offset_limit(m_H); }
     inline void FloatingToolbarState::set_offset_limit(float limit) const { kiln_m3_floating_toolbar_state_set_offset_limit(m_H, limit); }
@@ -754,6 +767,7 @@ namespace kpp::m3 {
     inline int32_t ScrollFieldState::target_option() const { return kiln_m3_scroll_field_state_target_option(m_H); }
     inline bool ScrollFieldState::is_scroll_in_progress() const { return kiln_m3_scroll_field_state_is_scroll_in_progress(m_H); }
     inline SearchBarScrollState SearchBarScrollBehavior::scroll_state() const { return SearchBarScrollState(kiln_m3_search_bar_scroll_behavior_scroll_state(m_H)); }
+    inline kiln_nested_scroll_connection* SearchBarScrollBehavior::nested_scroll_connection() const { return kiln_m3_search_bar_scroll_behavior_nested_scroll_connection(m_H); }
     inline kpp::Modifier SearchBarScrollBehavior::search_bar_scroll_behavior_modifier() const { return kpp::Modifier(const_cast<kiln_modifier*>(kiln_m3_search_bar_scroll_behavior_search_bar_scroll_behavior_modifier(m_H))); }
     inline float SearchBarScrollBehavior::overlapped_fraction() const { return kiln_m3_search_bar_scroll_behavior_overlapped_fraction(m_H); }
     inline float SearchBarScrollState::scroll_offset() const { return kiln_m3_search_bar_scroll_state_scroll_offset(m_H); }
@@ -820,6 +834,7 @@ namespace kpp::m3 {
     inline SnackbarData SnackbarHostState::current_snackbar_data() const { return SnackbarData(kiln_m3_snackbar_host_state_current_snackbar_data(m_H)); }
     inline void SnackbarHostState::show_snackbar(kpp::Str message, kpp::Str action_label, bool with_dismiss_action, const kiln_m3_snackbar_duration* duration, kpp::Callback<kiln_m3_fn_snackbar_result> done) const { kiln_m3_snackbar_host_state_show_snackbar(m_H, message.c_str(), action_label.c_str(), with_dismiss_action, duration, done.release()); }
     inline void SnackbarHostState::show_snackbar_visuals(const kiln_m3_snackbar_visuals* visuals, kpp::Callback<kiln_m3_fn_snackbar_result> done) const { kiln_m3_snackbar_host_state_show_snackbar_visuals(m_H, visuals, done.release()); }
+    inline void SnackbarHostState::show_snackbar_2(const kiln_m3_snackbar_visuals* visuals, kpp::Callback<kiln_m3_fn_snackbar_result> done) const { kiln_m3_snackbar_host_state_show_snackbar_2(m_H, visuals, done.release()); }
     inline float SwipeToDismissBoxState::require_offset() const { return kiln_m3_swipe_to_dismiss_box_state_require_offset(m_H); }
     inline kiln_m3_swipe_to_dismiss_box_value SwipeToDismissBoxState::current_value() const { return kiln_m3_swipe_to_dismiss_box_state_current_value(m_H); }
     inline kiln_m3_swipe_to_dismiss_box_value SwipeToDismissBoxState::target_value() const { return kiln_m3_swipe_to_dismiss_box_state_target_value(m_H); }
@@ -843,6 +858,7 @@ namespace kpp::m3 {
     inline kiln_m3_time_picker_selection_mode TimePickerState::selection() const { return kiln_m3_time_picker_state_selection(m_H); }
     inline void TimePickerState::set_selection(kiln_m3_time_picker_selection_mode selection) const { kiln_m3_time_picker_state_set_selection(m_H, selection); }
     inline const kiln_layout_coordinates* TooltipScope::obtain_anchor_bounds() const { return kiln_m3_tooltip_scope_obtain_anchor_bounds(m_H); }
+    inline kiln_popup_position_provider* TooltipScope::obtain_position_provider() const { return kiln_m3_tooltip_scope_obtain_position_provider(m_H); }
     inline bool TooltipState::is_visible() const { return kiln_m3_tooltip_state_is_visible(m_H); }
     inline bool TooltipState::is_persistent() const { return kiln_m3_tooltip_state_is_persistent(m_H); }
     inline void TooltipState::show(kiln_mutate_priority priority, kpp::Callback<kiln_fn> done) const { kiln_m3_tooltip_state_show(m_H, priority, done.release()); }
@@ -851,6 +867,8 @@ namespace kpp::m3 {
     inline TopAppBarState TopAppBarScrollBehavior::state() const { return TopAppBarState(kiln_m3_top_app_bar_scroll_behavior_state(m_H)); }
     inline bool TopAppBarScrollBehavior::is_pinned() const { return kiln_m3_top_app_bar_scroll_behavior_is_pinned(m_H); }
     inline const kiln_anim_spec* TopAppBarScrollBehavior::snap_animation_spec() const { return kiln_m3_top_app_bar_scroll_behavior_snap_animation_spec(m_H); }
+    inline kiln_decay_spec* TopAppBarScrollBehavior::fling_animation_spec() const { return kiln_m3_top_app_bar_scroll_behavior_fling_animation_spec(m_H); }
+    inline kiln_nested_scroll_connection* TopAppBarScrollBehavior::nested_scroll_connection() const { return kiln_m3_top_app_bar_scroll_behavior_nested_scroll_connection(m_H); }
     inline float TopAppBarState::height_offset_limit() const { return kiln_m3_top_app_bar_state_height_offset_limit(m_H); }
     inline void TopAppBarState::set_height_offset_limit(float limit) const { kiln_m3_top_app_bar_state_set_height_offset_limit(m_H, limit); }
     inline float TopAppBarState::height_offset() const { return kiln_m3_top_app_bar_state_height_offset(m_H); }
@@ -879,9 +897,12 @@ namespace kpp::m3 {
     inline kiln_m3_top_app_bar_colors top_app_bar_defaults_top_app_bar_colors_container_color(kiln_color container_color = {}, kiln_color scrolled_container_color = {}, kiln_color navigation_icon_content_color = {}, kiln_color title_content_color = {}, kiln_color action_icon_content_color = {}, kiln_color subtitle_content_color = {}, kpp::Key key = {}) { kiln_m3_top_app_bar_colors o; kiln_m3_top_app_bar_colors_init(&o); kiln_m3_top_app_bar_defaults_top_app_bar_colors_container_color(key, container_color, scrolled_container_color, navigation_icon_content_color, title_content_color, action_icon_content_color, subtitle_content_color, &o); return o; }
     inline const kiln_window_insets* top_app_bar_defaults_window_insets(kpp::Key key = {}) { return kiln_m3_top_app_bar_defaults_window_insets(key); }
     inline const kiln_anim_spec* top_app_bar_defaults_snap_animation_spec(kpp::Key key = {}) { return kiln_m3_top_app_bar_defaults_snap_animation_spec(key); }
+    inline kiln_decay_spec* top_app_bar_defaults_fling_animation_spec(kpp::Key key = {}) { return kiln_m3_top_app_bar_defaults_fling_animation_spec(key); }
     inline TopAppBarScrollBehavior top_app_bar_defaults_pinned_scroll_behavior(TopAppBarState state, kpp::Callback<kiln_m3_fn_to_bool> can_scroll = {}, kpp::Callback<kiln_m3_fn_to_bool> is_scrolling_content_at_start = {}, kpp::Key key = {}) { return TopAppBarScrollBehavior(kiln_m3_top_app_bar_defaults_pinned_scroll_behavior(key, state, can_scroll.release(), is_scrolling_content_at_start.release())); }
-    inline TopAppBarScrollBehavior top_app_bar_defaults_enter_always_scroll_behavior(TopAppBarState state, kpp::Callback<kiln_m3_fn_to_bool> can_scroll = {}, const kiln_anim_spec* snap_animation_spec = {}, kpp::Key key = {}) { return TopAppBarScrollBehavior(kiln_m3_top_app_bar_defaults_enter_always_scroll_behavior(key, state, can_scroll.release(), snap_animation_spec)); }
-    inline TopAppBarScrollBehavior top_app_bar_defaults_exit_until_collapsed_scroll_behavior(TopAppBarState state, kpp::Callback<kiln_m3_fn_to_bool> can_scroll = {}, const kiln_anim_spec* snap_animation_spec = {}, kpp::Key key = {}) { return TopAppBarScrollBehavior(kiln_m3_top_app_bar_defaults_exit_until_collapsed_scroll_behavior(key, state, can_scroll.release(), snap_animation_spec)); }
+    inline TopAppBarScrollBehavior top_app_bar_defaults_enter_always_scroll_behavior(TopAppBarState state, kpp::Callback<kiln_m3_fn_to_bool> can_scroll = {}, const kiln_anim_spec* snap_animation_spec = {}, kiln_decay_spec* fling_animation_spec = {}, kpp::Callback<kiln_m3_fn_to_bool> is_scrolling_content_at_start = {}, kpp::Key key = {}) { return TopAppBarScrollBehavior(kiln_m3_top_app_bar_defaults_enter_always_scroll_behavior(key, state, can_scroll.release(), snap_animation_spec, fling_animation_spec, is_scrolling_content_at_start.release())); }
+    inline TopAppBarScrollBehavior top_app_bar_defaults_pinned_scroll_behavior_scrollable_state(kiln_scrollable_state* scrollable_state, TopAppBarState state, kpp::Callback<kiln_m3_fn_to_bool> can_scroll = {}, kpp::Key key = {}) { return TopAppBarScrollBehavior(kiln_m3_top_app_bar_defaults_pinned_scroll_behavior_scrollable_state(key, scrollable_state, state, can_scroll.release())); }
+    inline TopAppBarScrollBehavior top_app_bar_defaults_enter_always_scroll_behavior_scrollable_state(kiln_scrollable_state* scrollable_state, TopAppBarState state, kpp::Callback<kiln_m3_fn_to_bool> can_scroll = {}, const kiln_anim_spec* snap_animation_spec = {}, kiln_decay_spec* fling_animation_spec = {}, kpp::Key key = {}) { return TopAppBarScrollBehavior(kiln_m3_top_app_bar_defaults_enter_always_scroll_behavior_scrollable_state(key, scrollable_state, state, can_scroll.release(), snap_animation_spec, fling_animation_spec)); }
+    inline TopAppBarScrollBehavior top_app_bar_defaults_exit_until_collapsed_scroll_behavior(TopAppBarState state, kpp::Callback<kiln_m3_fn_to_bool> can_scroll = {}, const kiln_anim_spec* snap_animation_spec = {}, kiln_decay_spec* fling_animation_spec = {}, kpp::Key key = {}) { return TopAppBarScrollBehavior(kiln_m3_top_app_bar_defaults_exit_until_collapsed_scroll_behavior(key, state, can_scroll.release(), snap_animation_spec, fling_animation_spec)); }
     inline void top_app_bar(kpp::Callback<kiln_fn> title = {}, kpp::Modifier modifier = {}, const kiln_m3_top_app_bar_options* options = {}, kpp::Key key = {}) { kiln_m3_top_app_bar(key, title.release(), modifier, options); }
     inline void center_aligned_top_app_bar(kpp::Callback<kiln_fn> title = {}, kpp::Modifier modifier = {}, const kiln_m3_top_app_bar_options* options = {}, kpp::Key key = {}) { kiln_m3_center_aligned_top_app_bar(key, title.release(), modifier, options); }
     inline void medium_top_app_bar(kpp::Callback<kiln_fn> title = {}, kpp::Modifier modifier = {}, const kiln_m3_two_rows_top_app_bar_options* options = {}, kpp::Key key = {}) { kiln_m3_medium_top_app_bar(key, title.release(), modifier, options); }
@@ -896,7 +917,8 @@ namespace kpp::m3 {
     inline kiln_arrangement bottom_app_bar_defaults_flexible_horizontal_arrangement(kpp::Key key = {}) { return kiln_m3_bottom_app_bar_defaults_flexible_horizontal_arrangement(key); }
     inline kiln_arrangement bottom_app_bar_defaults_flexible_fixed_horizontal_arrangement(kpp::Key key = {}) { return kiln_m3_bottom_app_bar_defaults_flexible_fixed_horizontal_arrangement(key); }
     inline const kiln_anim_spec* bottom_app_bar_defaults_snap_animation_spec(kpp::Key key = {}) { return kiln_m3_bottom_app_bar_defaults_snap_animation_spec(key); }
-    inline BottomAppBarScrollBehavior bottom_app_bar_defaults_exit_always_scroll_behavior(BottomAppBarState state, kpp::Callback<kiln_m3_fn_to_bool> can_scroll = {}, const kiln_anim_spec* snap_animation_spec = {}, kpp::Key key = {}) { return BottomAppBarScrollBehavior(kiln_m3_bottom_app_bar_defaults_exit_always_scroll_behavior(key, state, can_scroll.release(), snap_animation_spec)); }
+    inline kiln_decay_spec* bottom_app_bar_defaults_fling_animation_spec(kpp::Key key = {}) { return kiln_m3_bottom_app_bar_defaults_fling_animation_spec(key); }
+    inline BottomAppBarScrollBehavior bottom_app_bar_defaults_exit_always_scroll_behavior(BottomAppBarState state, kpp::Callback<kiln_m3_fn_to_bool> can_scroll = {}, const kiln_anim_spec* snap_animation_spec = {}, kiln_decay_spec* fling_animation_spec = {}, kpp::Key key = {}) { return BottomAppBarScrollBehavior(kiln_m3_bottom_app_bar_defaults_exit_always_scroll_behavior(key, state, can_scroll.release(), snap_animation_spec, fling_animation_spec)); }
     inline void bottom_app_bar(kpp::Callback<kiln_fn> actions = {}, kpp::Modifier modifier = {}, kpp::Callback<kiln_fn> floating_action_button = {}, const kiln_m3_bottom_app_bar_options* options = {}, kpp::Key key = {}) { kiln_m3_bottom_app_bar(key, actions.release(), modifier, floating_action_button.release(), options); }
     inline void bottom_app_bar_modifier(kpp::Modifier modifier = {}, const kiln_m3_bottom_app_bar_options* options = {}, kpp::Callback<kiln_fn> content = {}, kpp::Key key = {}) { kiln_m3_bottom_app_bar_modifier(key, modifier, options, content.release()); }
     inline void flexible_bottom_app_bar(kpp::Modifier modifier = {}, const kiln_m3_flexible_bottom_app_bar_options* options = {}, kpp::Callback<kiln_fn> content = {}, kpp::Key key = {}) { kiln_m3_flexible_bottom_app_bar(key, modifier, options, content.release()); }
@@ -998,6 +1020,7 @@ namespace kpp::m3 {
     inline void snackbar(kpp::Modifier modifier = {}, const kiln_m3_snackbar_options* options = {}, kpp::Callback<kiln_fn> content = {}, kpp::Key key = {}) { kiln_m3_snackbar(key, modifier, options, content.release()); }
     inline void snackbar_modifier(SnackbarData data, kpp::Modifier modifier = {}, const kiln_m3_snackbar_data_options* options = {}, kpp::Key key = {}) { kiln_m3_snackbar_modifier(key, data, modifier, options); }
     inline void snackbar_host(SnackbarHostState host_state, kpp::Modifier modifier = {}, kpp::Callback<kiln_m3_fn_snackbar_data> snackbar = {}, kpp::Key key = {}) { kiln_m3_snackbar_host(key, host_state, modifier, snackbar.release()); }
+    inline const kiln_m3_bottom_sheet_scaffold_state* remember_bottom_sheet_scaffold_state(SheetState bottom_sheet_state, SnackbarHostState snackbar_host_state, kpp::Key key = {}) { return kiln_m3_remember_bottom_sheet_scaffold_state(key, bottom_sheet_state, snackbar_host_state); }
     inline SheetState remember_standard_bottom_sheet_state(kiln_m3_sheet_value initial_value, kpp::Callback<kiln_m3_fn_sheet_value_to_bool> confirm_value_change, bool skip_hidden_state, kpp::Key key = {}) { return SheetState(kiln_m3_remember_standard_bottom_sheet_state(key, initial_value, confirm_value_change.release(), skip_hidden_state)); }
     inline void bottom_sheet_scaffold(kpp::Callback<kiln_fn> sheet_content = {}, kpp::Modifier modifier = {}, const kiln_m3_bottom_sheet_scaffold_options* options = {}, kpp::Callback<kiln_m3_fn_padding_values> content = {}, kpp::Key key = {}) { kiln_m3_bottom_sheet_scaffold(key, sheet_content.release(), modifier, options, content.release()); }
     inline float shadow_elevation(const kiln_m3_button_elevation* elevation, bool enabled, kiln_interaction_source* source = {}, kpp::Key key = {}) { return kiln_m3_shadow_elevation(key, elevation, enabled, source); }
@@ -1251,7 +1274,7 @@ namespace kpp::m3 {
     inline FloatingToolbarState remember_floating_toolbar_state(float initial_offset_limit, float initial_offset, float initial_content_offset, kpp::Key key = {}) { return FloatingToolbarState(kiln_m3_remember_floating_toolbar_state(key, initial_offset_limit, initial_offset, initial_content_offset)); }
     inline const kiln_shape* floating_toolbar_defaults_container_shape(kpp::Key key = {}) { return kiln_m3_floating_toolbar_defaults_container_shape(key); }
     inline const kiln_anim_spec* floating_toolbar_defaults_animation_spec(kpp::Key key = {}) { return kiln_m3_floating_toolbar_defaults_animation_spec(key); }
-    inline FloatingToolbarScrollBehavior floating_toolbar_defaults_exit_always_scroll_behavior(kiln_m3_floating_toolbar_exit_direction exit_direction, FloatingToolbarState state, const kiln_anim_spec* snap_animation_spec = {}, kpp::Key key = {}) { return FloatingToolbarScrollBehavior(kiln_m3_floating_toolbar_defaults_exit_always_scroll_behavior(key, exit_direction, state, snap_animation_spec)); }
+    inline FloatingToolbarScrollBehavior floating_toolbar_defaults_exit_always_scroll_behavior(kiln_m3_floating_toolbar_exit_direction exit_direction, FloatingToolbarState state, const kiln_anim_spec* snap_animation_spec = {}, kiln_decay_spec* fling_animation_spec = {}, kpp::Key key = {}) { return FloatingToolbarScrollBehavior(kiln_m3_floating_toolbar_defaults_exit_always_scroll_behavior(key, exit_direction, state, snap_animation_spec, fling_animation_spec)); }
     inline kiln_enter_transition floating_toolbar_defaults_horizontal_enter_transition(float expand_from, kpp::Key key = {}) { kiln_enter_transition o; kiln_enter_transition_init(&o); kiln_m3_floating_toolbar_defaults_horizontal_enter_transition(key, expand_from, &o); return o; }
     inline kiln_enter_transition floating_toolbar_defaults_vertical_enter_transition(float expand_from, kpp::Key key = {}) { kiln_enter_transition o; kiln_enter_transition_init(&o); kiln_m3_floating_toolbar_defaults_vertical_enter_transition(key, expand_from, &o); return o; }
     inline kiln_exit_transition floating_toolbar_defaults_horizontal_exit_transition(float shrink_towards, kpp::Key key = {}) { kiln_exit_transition o; kiln_exit_transition_init(&o); kiln_m3_floating_toolbar_defaults_horizontal_exit_transition(key, shrink_towards, &o); return o; }
@@ -1267,8 +1290,9 @@ namespace kpp::m3 {
     inline void vertical_floating_toolbar(bool expanded, kpp::Modifier modifier = {}, const kiln_m3_floating_toolbar_options* options = {}, kpp::Callback<kiln_fn> content = {}, kpp::Key key = {}) { kiln_m3_vertical_floating_toolbar(key, expanded, modifier, options, content.release()); }
     inline void horizontal_floating_toolbar_expanded(bool expanded, kpp::Callback<kiln_fn> floating_action_button = {}, kpp::Modifier modifier = {}, const kiln_m3_floating_toolbar_with_fab_options* options = {}, kpp::Callback<kiln_fn> content = {}, kpp::Key key = {}) { kiln_m3_horizontal_floating_toolbar_expanded(key, expanded, floating_action_button.release(), modifier, options, content.release()); }
     inline void vertical_floating_toolbar_expanded(bool expanded, kpp::Callback<kiln_fn> floating_action_button = {}, kpp::Modifier modifier = {}, const kiln_m3_floating_toolbar_with_fab_options* options = {}, kpp::Callback<kiln_fn> content = {}, kpp::Key key = {}) { kiln_m3_vertical_floating_toolbar_expanded(key, expanded, floating_action_button.release(), modifier, options, content.release()); }
-    inline TooltipState make_tooltip_state(bool initial_is_visible, bool is_persistent, kpp::Key key = {}) { return TooltipState(kiln_m3_make_tooltip_state(key, initial_is_visible, is_persistent)); }
-    inline TooltipState remember_tooltip_state(bool initial_is_visible, bool is_persistent, kpp::Key key = {}) { return TooltipState(kiln_m3_remember_tooltip_state(key, initial_is_visible, is_persistent)); }
+    inline kiln_mutator_mutex* basic_tooltip_defaults_global_mutator_mutex(kpp::Key key = {}) { return kiln_m3_basic_tooltip_defaults_global_mutator_mutex(key); }
+    inline TooltipState make_tooltip_state(bool initial_is_visible, bool is_persistent, kiln_mutator_mutex* mutator_mutex = {}, kpp::Key key = {}) { return TooltipState(kiln_m3_make_tooltip_state(key, initial_is_visible, is_persistent, mutator_mutex)); }
+    inline TooltipState remember_tooltip_state(bool initial_is_visible, bool is_persistent, kiln_mutator_mutex* mutator_mutex = {}, kpp::Key key = {}) { return TooltipState(kiln_m3_remember_tooltip_state(key, initial_is_visible, is_persistent, mutator_mutex)); }
     inline const kiln_shape* tooltip_defaults_plain_tooltip_container_shape(kpp::Key key = {}) { return kiln_m3_tooltip_defaults_plain_tooltip_container_shape(key); }
     inline kiln_color tooltip_defaults_plain_tooltip_container_color(kpp::Key key = {}) { return kiln_m3_tooltip_defaults_plain_tooltip_container_color(key); }
     inline kiln_color tooltip_defaults_plain_tooltip_content_color(kpp::Key key = {}) { return kiln_m3_tooltip_defaults_plain_tooltip_content_color(key); }
@@ -1276,6 +1300,11 @@ namespace kpp::m3 {
     inline const kiln_shape* tooltip_defaults_caret_shape(kiln_dp_size caret_size, kpp::Key key = {}) { return kiln_m3_tooltip_defaults_caret_shape(key, caret_size); }
     inline kiln_m3_rich_tooltip_colors tooltip_defaults_rich_tooltip_colors(kpp::Key key = {}) { kiln_m3_rich_tooltip_colors o; kiln_m3_rich_tooltip_colors_init(&o); kiln_m3_tooltip_defaults_rich_tooltip_colors(key, &o); return o; }
     inline kiln_m3_rich_tooltip_colors tooltip_defaults_rich_tooltip_colors_container_color(kiln_color container_color = {}, kiln_color content_color = {}, kiln_color title_content_color = {}, kiln_color action_content_color = {}, kpp::Key key = {}) { kiln_m3_rich_tooltip_colors o; kiln_m3_rich_tooltip_colors_init(&o); kiln_m3_tooltip_defaults_rich_tooltip_colors_container_color(key, container_color, content_color, title_content_color, action_content_color, &o); return o; }
+    inline kiln_popup_position_provider* tooltip_defaults_remember_tooltip_position_provider(kiln_m3_tooltip_anchor_position positioning, float spacing_between_tooltip_and_anchor, kpp::Key key = {}) { return kiln_m3_tooltip_defaults_remember_tooltip_position_provider(key, positioning, spacing_between_tooltip_and_anchor); }
+    inline kiln_popup_position_provider* tooltip_defaults_remember_tooltip_position_provider_spacing_between_tooltip_and_anchor(float spacing_between_tooltip_and_anchor, kpp::Key key = {}) { return kiln_m3_tooltip_defaults_remember_tooltip_position_provider_spacing_between_tooltip_and_anchor(key, spacing_between_tooltip_and_anchor); }
+    inline kiln_popup_position_provider* tooltip_defaults_remember_plain_tooltip_position_provider(float spacing_between_tooltip_and_anchor, kpp::Key key = {}) { return kiln_m3_tooltip_defaults_remember_plain_tooltip_position_provider(key, spacing_between_tooltip_and_anchor); }
+    inline kiln_popup_position_provider* tooltip_defaults_remember_rich_tooltip_position_provider(float spacing_between_tooltip_and_anchor, kpp::Key key = {}) { return kiln_m3_tooltip_defaults_remember_rich_tooltip_position_provider(key, spacing_between_tooltip_and_anchor); }
+    inline void tooltip_box(kiln_popup_position_provider* position_provider, kpp::Callback<kiln_m3_fn_tooltip_scope> tooltip, TooltipState state, kpp::Modifier modifier = {}, const kiln_m3_tooltip_box_options* options = {}, kpp::Callback<kiln_fn> content = {}, kpp::Key key = {}) { kiln_m3_tooltip_box(key, position_provider, tooltip.release(), state, modifier, options, content.release()); }
     inline void plain_tooltip(TooltipScope scope_, kpp::Modifier modifier = {}, const kiln_m3_plain_tooltip_options* options = {}, kpp::Callback<kiln_fn> content = {}, kpp::Key key = {}) { kiln_m3_plain_tooltip(key, scope_, modifier, options, content.release()); }
     inline void rich_tooltip(TooltipScope scope_, kpp::Modifier modifier = {}, const kiln_m3_rich_tooltip_options* options = {}, kpp::Callback<kiln_fn> text = {}, kpp::Key key = {}) { kiln_m3_rich_tooltip(key, scope_, modifier, options, text.release()); }
     inline void label(kpp::Callback<kiln_m3_fn_tooltip_scope> label = {}, kpp::Modifier modifier = {}, const kiln_m3_label_options* options = {}, kpp::Callback<kiln_fn> content = {}, kpp::Key key = {}) { kiln_m3_label(key, label.release(), modifier, options, content.release()); }
@@ -1476,6 +1505,7 @@ namespace kpp::m3 {
     inline kiln_m3_ripple_theme_configuration ripple_defaults_opacity_focus_theme_configuration(kpp::Key key = {}) { kiln_m3_ripple_theme_configuration o; kiln_m3_ripple_theme_configuration_init(&o); kiln_m3_ripple_defaults_opacity_focus_theme_configuration(key, &o); return o; }
     inline kiln_m3_ripple_theme_configuration ripple_defaults_inset_focus_ring_theme_configuration(kpp::Key key = {}) { kiln_m3_ripple_theme_configuration o; kiln_m3_ripple_theme_configuration_init(&o); kiln_m3_ripple_defaults_inset_focus_ring_theme_configuration(key, &o); return o; }
     inline kiln_m3_ripple_theme_configuration ripple_defaults_theme_configuration(kpp::Key key = {}) { kiln_m3_ripple_theme_configuration o; kiln_m3_ripple_theme_configuration_init(&o); kiln_m3_ripple_defaults_theme_configuration(key, &o); return o; }
+    inline kiln_indication* ripple(const kiln_m3_ripple_options* options = {}, kpp::Key key = {}) { return kiln_m3_ripple(key, options); }
     inline const kiln_window_insets* scaffold_defaults_content_window_insets(kpp::Key key = {}) { return kiln_m3_scaffold_defaults_content_window_insets(key); }
     inline void scaffold(kpp::Modifier modifier = {}, const kiln_m3_scaffold_options* options = {}, kpp::Callback<kiln_m3_fn_padding_values> content = {}, kpp::Key key = {}) { kiln_m3_scaffold(key, modifier, options, content.release()); }
     inline kiln_color scrim_defaults_color(kpp::Key key = {}) { return kiln_m3_scrim_defaults_color(key); }
@@ -1499,7 +1529,7 @@ namespace kpp::m3 {
     inline kiln_color search_bar_defaults_docked_dropdown_scrim_color(kpp::Key key = {}) { return kiln_m3_search_bar_defaults_docked_dropdown_scrim_color(key); }
     inline const kiln_window_insets* search_bar_defaults_window_insets(kpp::Key key = {}) { return kiln_m3_search_bar_defaults_window_insets(key); }
     inline const kiln_window_insets* search_bar_defaults_full_screen_window_insets(kpp::Key key = {}) { return kiln_m3_search_bar_defaults_full_screen_window_insets(key); }
-    inline SearchBarScrollBehavior search_bar_defaults_enter_always_search_bar_scroll_behavior(SearchBarScrollState scroll_state, kpp::Callback<kiln_m3_fn_to_bool> can_scroll = {}, const kiln_anim_spec* snap_animation_spec = {}, kpp::Key key = {}) { return SearchBarScrollBehavior(kiln_m3_search_bar_defaults_enter_always_search_bar_scroll_behavior(key, scroll_state, can_scroll.release(), snap_animation_spec)); }
+    inline SearchBarScrollBehavior search_bar_defaults_enter_always_search_bar_scroll_behavior(SearchBarScrollState scroll_state, kpp::Callback<kiln_m3_fn_to_bool> can_scroll, const kiln_anim_spec* snap_animation_spec, kiln_decay_spec* fling_animation_spec, bool reverse_layout, kpp::Key key = {}) { return SearchBarScrollBehavior(kiln_m3_search_bar_defaults_enter_always_search_bar_scroll_behavior(key, scroll_state, can_scroll.release(), snap_animation_spec, fling_animation_spec, reverse_layout)); }
     inline kiln_m3_search_bar_colors search_bar_defaults_colors(kpp::Key key = {}) { kiln_m3_search_bar_colors o; kiln_m3_search_bar_colors_init(&o); kiln_m3_search_bar_defaults_colors(key, &o); return o; }
     inline kiln_m3_search_bar_colors search_bar_defaults_colors_container_color(kiln_color container_color = {}, kiln_color divider_color = {}, const kiln_m3_text_field_colors* input_field_colors = {}, kpp::Key key = {}) { kiln_m3_search_bar_colors o; kiln_m3_search_bar_colors_init(&o); kiln_m3_search_bar_defaults_colors_container_color(key, container_color, divider_color, input_field_colors, &o); return o; }
     inline kiln_m3_search_bar_colors search_bar_defaults_contained_colors(SearchBarState state, kpp::Key key = {}) { kiln_m3_search_bar_colors o; kiln_m3_search_bar_colors_init(&o); kiln_m3_search_bar_defaults_contained_colors(key, state, &o); return o; }
@@ -1588,6 +1618,8 @@ namespace kpp::m3 {
     inline void text(kpp::Str text, kpp::Modifier modifier = {}, const kiln_m3_text_options* options = {}, kpp::Key key = {}) { kiln_m3_text(key, text.c_str(), modifier, options); }
     inline void icon(const kiln_image_vector* image_vector, kpp::Str content_description, kpp::Modifier modifier = {}, kiln_color tint = {}, kpp::Key key = {}) { kiln_m3_icon(key, image_vector, content_description.c_str(), modifier, tint); }
     inline void icon_bitmap(const kiln_image_bitmap* bitmap, kpp::Str content_description, kpp::Modifier modifier = {}, kiln_color tint = {}, kpp::Key key = {}) { kiln_m3_icon_bitmap(key, bitmap, content_description.c_str(), modifier, tint); }
+    inline void icon_painter(kiln_painter* painter, kpp::Str content_description, kpp::Modifier modifier = {}, kiln_color tint = {}, kpp::Key key = {}) { kiln_m3_icon_painter(key, painter, content_description.c_str(), modifier, tint); }
+    inline void icon_tint(kiln_painter* painter, kpp::Callback<kiln_m3_fn_to_color> tint, kpp::Str content_description, kpp::Modifier modifier = {}, kpp::Key key = {}) { kiln_m3_icon_tint(key, painter, tint.release(), content_description.c_str(), modifier); }
     inline bool is_pm(TimePickerState state, kpp::Key key = {}) { return kiln_m3_is_pm(key, state); }
     inline bool is_hour_input_valid(TimePickerState state, kpp::Key key = {}) { return kiln_m3_is_hour_input_valid(key, state); }
     inline bool is_minute_input_valid(TimePickerState state, kpp::Key key = {}) { return kiln_m3_is_minute_input_valid(key, state); }

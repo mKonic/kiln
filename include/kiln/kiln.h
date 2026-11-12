@@ -420,6 +420,10 @@ KILN_API kiln_modifier* kiln_mod_z_index(kiln_modifier* m, float z_index);
 KILN_API kiln_modifier* kiln_mod_clickable(kiln_modifier* m, bool enabled, kiln_fn on_click);
 KILN_API kiln_modifier* kiln_mod_toggleable(kiln_modifier* m, bool value, bool enabled, kiln_fn_bool on_value_change);
 KILN_API kiln_modifier* kiln_mod_selectable(kiln_modifier* m, bool selected, bool enabled, kiln_fn on_click);
+/* Nested scrolling: a connection (a top app bar's scroll behaviour gives one) sees the scrolls of
+ * the content below the modified element. */
+typedef struct kiln_nested_scroll_connection kiln_nested_scroll_connection;
+KILN_API kiln_modifier* kiln_mod_nested_scroll(kiln_modifier* m, const kiln_nested_scroll_connection* connection);
 KILN_API kiln_modifier* kiln_mod_vertical_scroll(kiln_modifier* m, kiln_scroll_state* state, bool enabled);
 KILN_API kiln_modifier* kiln_mod_horizontal_scroll(kiln_modifier* m, kiln_scroll_state* state, bool enabled);
 /* Semantics */
@@ -517,6 +521,9 @@ KILN_API void kiln_basic_text_field(kiln_key key, kiln_text_field_state* state, 
 
 KILN_API kiln_scroll_state* kiln_remember_scroll_state(kiln_key key, int32_t initial);
 KILN_API int32_t kiln_scroll_state_value(const kiln_scroll_state* state);       /* px; observes */
+/* Any scrollable's state, for components that follow one (a top app bar's scroll behaviour). */
+typedef struct kiln_scrollable_state kiln_scrollable_state;
+KILN_API kiln_scrollable_state* kiln_scroll_state_scrollable(kiln_scroll_state* state);
 KILN_API int32_t kiln_scroll_state_max_value(const kiln_scroll_state* state);   /* px; observes */
 /* Suspending calls: `done` (optional) runs when the scroll finishes or is cancelled. */
 KILN_API void kiln_scroll_state_animate_to(kiln_scroll_state* state, int32_t value, kiln_fn done);
@@ -529,6 +536,7 @@ KILN_API int32_t kiln_lazy_list_state_first_visible_item_index(const kiln_lazy_l
 KILN_API int32_t kiln_lazy_list_state_first_visible_item_scroll_offset(const kiln_lazy_list_state* state);
 KILN_API bool kiln_lazy_list_state_can_scroll_forward(const kiln_lazy_list_state* state);
 KILN_API bool kiln_lazy_list_state_can_scroll_backward(const kiln_lazy_list_state* state);
+KILN_API kiln_scrollable_state* kiln_lazy_list_state_scrollable(kiln_lazy_list_state* state);
 KILN_API void kiln_lazy_list_state_scroll_to_item(kiln_lazy_list_state* state, int32_t index, int32_t offset, kiln_fn done);
 KILN_API void kiln_lazy_list_state_animate_scroll_to_item(kiln_lazy_list_state* state, int32_t index, int32_t offset, kiln_fn done);
 

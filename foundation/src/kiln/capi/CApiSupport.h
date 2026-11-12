@@ -50,6 +50,7 @@ struct kiln_scroll_state { kiln::foundation::ScrollState* state; std::shared_ptr
 struct kiln_lazy_list_state { kiln::foundation::LazyListState* state; std::shared_ptr<kiln::rt::CoroutineScope> scope; };
 struct kiln_pager_state { kiln::foundation::PagerState* state; std::shared_ptr<kiln::rt::CoroutineScope> scope; };
 struct kiln_text_field_state { kiln::foundation::TextFieldState* state; };
+struct kiln_nested_scroll_connection { std::shared_ptr<const void> p; };   // a ui::NestedScrollConnection
 
 namespace kiln::capi {
 
@@ -198,6 +199,15 @@ namespace kiln::capi {
 
     // The composition running content; throws outside content.
     rt::Composition& CurrentComposition();
+
+    // An opaque shared object handed to C (transient).
+    template<typename C, typename T>
+    C* TransientOpaque(const std::shared_ptr<T>& p) {
+        if (!p) return nullptr;
+        C* c = NewTransient<C>();
+        c->p = std::const_pointer_cast<const T>(p);
+        return c;
+    }
 
     // Runs `body` in the call's own group when inside content (non-restartable, so it may return
     // values), or directly outside content.
