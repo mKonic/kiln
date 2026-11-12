@@ -645,24 +645,27 @@ namespace {
 [[maybe_unused]] kiln::material3::WideNavigationRailItemOptions ToCpp(const kiln_m3_wide_navigation_rail_item_options* c);
 [[maybe_unused]] void FromCpp(const kiln::material3::WideNavigationRailItemOptions& v, kiln_m3_wide_navigation_rail_item_options* out);
 [[maybe_unused]] const kiln_m3_wide_navigation_rail_item_options* FromCppTransient(const kiln::material3::WideNavigationRailItemOptions& v);
-[[maybe_unused]] kiln::foundation::EnterExitParts::Scale ToCpp(const kiln_scale* c);
-[[maybe_unused]] void FromCpp(const kiln::foundation::EnterExitParts::Scale& v, kiln_scale* out);
-[[maybe_unused]] const kiln_scale* FromCppTransient(const kiln::foundation::EnterExitParts::Scale& v);
+[[maybe_unused]] kiln::foundation::FadeConfig ToCpp(const kiln_fade_config* c);
+[[maybe_unused]] void FromCpp(const kiln::foundation::FadeConfig& v, kiln_fade_config* out);
+[[maybe_unused]] const kiln_fade_config* FromCppTransient(const kiln::foundation::FadeConfig& v);
+[[maybe_unused]] kiln::foundation::ScaleConfig ToCpp(const kiln_scale_config* c);
+[[maybe_unused]] void FromCpp(const kiln::foundation::ScaleConfig& v, kiln_scale_config* out);
+[[maybe_unused]] const kiln_scale_config* FromCppTransient(const kiln::foundation::ScaleConfig& v);
 [[maybe_unused]] kiln::ui::IntOffset ToCpp(const kiln_int_offset* c);
 [[maybe_unused]] void FromCpp(const kiln::ui::IntOffset& v, kiln_int_offset* out);
 [[maybe_unused]] const kiln_int_offset* FromCppTransient(const kiln::ui::IntOffset& v);
-[[maybe_unused]] kiln::foundation::EnterExitParts::Slide ToCpp(const kiln_slide* c);
-[[maybe_unused]] void FromCpp(const kiln::foundation::EnterExitParts::Slide& v, kiln_slide* out);
-[[maybe_unused]] const kiln_slide* FromCppTransient(const kiln::foundation::EnterExitParts::Slide& v);
-[[maybe_unused]] kiln::foundation::EnterExitParts::ChangeSize ToCpp(const kiln_change_size* c);
-[[maybe_unused]] void FromCpp(const kiln::foundation::EnterExitParts::ChangeSize& v, kiln_change_size* out);
-[[maybe_unused]] const kiln_change_size* FromCppTransient(const kiln::foundation::EnterExitParts::ChangeSize& v);
-[[maybe_unused]] kiln::foundation::EnterExitParts::Veil ToCpp(const kiln_veil* c);
-[[maybe_unused]] void FromCpp(const kiln::foundation::EnterExitParts::Veil& v, kiln_veil* out);
-[[maybe_unused]] const kiln_veil* FromCppTransient(const kiln::foundation::EnterExitParts::Veil& v);
-[[maybe_unused]] kiln::foundation::EnterExitParts ToCpp(const kiln_enter_exit_parts* c);
-[[maybe_unused]] void FromCpp(const kiln::foundation::EnterExitParts& v, kiln_enter_exit_parts* out);
-[[maybe_unused]] const kiln_enter_exit_parts* FromCppTransient(const kiln::foundation::EnterExitParts& v);
+[[maybe_unused]] kiln::foundation::SlideConfig ToCpp(const kiln_slide_config* c);
+[[maybe_unused]] void FromCpp(const kiln::foundation::SlideConfig& v, kiln_slide_config* out);
+[[maybe_unused]] const kiln_slide_config* FromCppTransient(const kiln::foundation::SlideConfig& v);
+[[maybe_unused]] kiln::foundation::ChangeSizeConfig ToCpp(const kiln_change_size_config* c);
+[[maybe_unused]] void FromCpp(const kiln::foundation::ChangeSizeConfig& v, kiln_change_size_config* out);
+[[maybe_unused]] const kiln_change_size_config* FromCppTransient(const kiln::foundation::ChangeSizeConfig& v);
+[[maybe_unused]] kiln::foundation::VeilConfig ToCpp(const kiln_veil_config* c);
+[[maybe_unused]] void FromCpp(const kiln::foundation::VeilConfig& v, kiln_veil_config* out);
+[[maybe_unused]] const kiln_veil_config* FromCppTransient(const kiln::foundation::VeilConfig& v);
+[[maybe_unused]] kiln::foundation::EnterExitTransitionConfig ToCpp(const kiln_enter_exit_transition_config* c);
+[[maybe_unused]] void FromCpp(const kiln::foundation::EnterExitTransitionConfig& v, kiln_enter_exit_transition_config* out);
+[[maybe_unused]] const kiln_enter_exit_transition_config* FromCppTransient(const kiln::foundation::EnterExitTransitionConfig& v);
 [[maybe_unused]] kiln::foundation::EnterTransition ToCpp(const kiln_enter_transition* c);
 [[maybe_unused]] void FromCpp(const kiln::foundation::EnterTransition& v, kiln_enter_transition* out);
 [[maybe_unused]] const kiln_enter_transition* FromCppTransient(const kiln::foundation::EnterTransition& v);
@@ -7634,11 +7637,38 @@ const kiln_m3_wide_navigation_rail_item_options* FromCppTransient(const kiln::ma
     FromCpp(v, c);
     return c;
 }
-kiln::foundation::EnterExitParts::Scale ToCpp(const kiln_scale* in) {
-    kiln::foundation::EnterExitParts::Scale v{};
+kiln::foundation::FadeConfig ToCpp(const kiln_fade_config* in) {
+    kiln::foundation::FadeConfig v{};
     if (!in) return v;
-    kiln_scale c;
-    kiln_scale_init(&c);
+    kiln_fade_config c;
+    kiln_fade_config_init(&c);
+    if (in->size > sizeof(size_t)) std::memcpy(reinterpret_cast<char*>(&c) + sizeof(size_t), reinterpret_cast<const char*>(in) + sizeof(size_t), std::min(in->size, sizeof(c)) - sizeof(size_t));
+    v.alpha = c.alpha;
+    if (c.spec) v.spec = (c.spec ? c.spec->spec : nullptr);
+    return v;
+}
+void FromCpp(const kiln::foundation::FadeConfig& v, kiln_fade_config* out) {
+    (void)v;
+    if (!out) return;
+    kiln_fade_config c{};
+    c.size = sizeof(c);
+    c.alpha = float(v.alpha);
+    c.spec = kiln::capi::TransientSpec(v.spec);
+    const size_t n = out->size < sizeof(size_t) ? sizeof(c) : std::min(out->size, sizeof(c));
+    std::memcpy(reinterpret_cast<char*>(out) + sizeof(size_t), reinterpret_cast<const char*>(&c) + sizeof(size_t), n - sizeof(size_t));
+    out->size = n;
+}
+const kiln_fade_config* FromCppTransient(const kiln::foundation::FadeConfig& v) {
+    auto* c = kiln::capi::NewTransient<kiln_fade_config>();
+    c->size = sizeof(*c);
+    FromCpp(v, c);
+    return c;
+}
+kiln::foundation::ScaleConfig ToCpp(const kiln_scale_config* in) {
+    kiln::foundation::ScaleConfig v{};
+    if (!in) return v;
+    kiln_scale_config c;
+    kiln_scale_config_init(&c);
     if (in->size > sizeof(size_t)) std::memcpy(reinterpret_cast<char*>(&c) + sizeof(size_t), reinterpret_cast<const char*>(in) + sizeof(size_t), std::min(in->size, sizeof(c)) - sizeof(size_t));
     v.scale = c.scale;
     v.originX = c.origin_x;
@@ -7646,10 +7676,10 @@ kiln::foundation::EnterExitParts::Scale ToCpp(const kiln_scale* in) {
     if (c.spec) v.spec = (c.spec ? c.spec->spec : nullptr);
     return v;
 }
-void FromCpp(const kiln::foundation::EnterExitParts::Scale& v, kiln_scale* out) {
+void FromCpp(const kiln::foundation::ScaleConfig& v, kiln_scale_config* out) {
     (void)v;
     if (!out) return;
-    kiln_scale c{};
+    kiln_scale_config c{};
     c.size = sizeof(c);
     c.scale = float(v.scale);
     c.origin_x = float(v.originX);
@@ -7659,8 +7689,8 @@ void FromCpp(const kiln::foundation::EnterExitParts::Scale& v, kiln_scale* out) 
     std::memcpy(reinterpret_cast<char*>(out) + sizeof(size_t), reinterpret_cast<const char*>(&c) + sizeof(size_t), n - sizeof(size_t));
     out->size = n;
 }
-const kiln_scale* FromCppTransient(const kiln::foundation::EnterExitParts::Scale& v) {
-    auto* c = kiln::capi::NewTransient<kiln_scale>();
+const kiln_scale_config* FromCppTransient(const kiln::foundation::ScaleConfig& v) {
+    auto* c = kiln::capi::NewTransient<kiln_scale_config>();
     c->size = sizeof(*c);
     FromCpp(v, c);
     return c;
@@ -7692,36 +7722,36 @@ const kiln_int_offset* FromCppTransient(const kiln::ui::IntOffset& v) {
     FromCpp(v, c);
     return c;
 }
-kiln::foundation::EnterExitParts::Slide ToCpp(const kiln_slide* in) {
-    kiln::foundation::EnterExitParts::Slide v{};
+kiln::foundation::SlideConfig ToCpp(const kiln_slide_config* in) {
+    kiln::foundation::SlideConfig v{};
     if (!in) return v;
-    kiln_slide c;
-    kiln_slide_init(&c);
+    kiln_slide_config c;
+    kiln_slide_config_init(&c);
     if (in->size > sizeof(size_t)) std::memcpy(reinterpret_cast<char*>(&c) + sizeof(size_t), reinterpret_cast<const char*>(in) + sizeof(size_t), std::min(in->size, sizeof(c)) - sizeof(size_t));
     if (c.spec) v.spec = (c.spec ? c.spec->spec : nullptr);
     return v;
 }
-void FromCpp(const kiln::foundation::EnterExitParts::Slide& v, kiln_slide* out) {
+void FromCpp(const kiln::foundation::SlideConfig& v, kiln_slide_config* out) {
     (void)v;
     if (!out) return;
-    kiln_slide c{};
+    kiln_slide_config c{};
     c.size = sizeof(c);
     c.spec = kiln::capi::TransientSpec(v.spec);
     const size_t n = out->size < sizeof(size_t) ? sizeof(c) : std::min(out->size, sizeof(c));
     std::memcpy(reinterpret_cast<char*>(out) + sizeof(size_t), reinterpret_cast<const char*>(&c) + sizeof(size_t), n - sizeof(size_t));
     out->size = n;
 }
-const kiln_slide* FromCppTransient(const kiln::foundation::EnterExitParts::Slide& v) {
-    auto* c = kiln::capi::NewTransient<kiln_slide>();
+const kiln_slide_config* FromCppTransient(const kiln::foundation::SlideConfig& v) {
+    auto* c = kiln::capi::NewTransient<kiln_slide_config>();
     c->size = sizeof(*c);
     FromCpp(v, c);
     return c;
 }
-kiln::foundation::EnterExitParts::ChangeSize ToCpp(const kiln_change_size* in) {
-    kiln::foundation::EnterExitParts::ChangeSize v{};
+kiln::foundation::ChangeSizeConfig ToCpp(const kiln_change_size_config* in) {
+    kiln::foundation::ChangeSizeConfig v{};
     if (!in) return v;
-    kiln_change_size c;
-    kiln_change_size_init(&c);
+    kiln_change_size_config c;
+    kiln_change_size_config_init(&c);
     if (in->size > sizeof(size_t)) std::memcpy(reinterpret_cast<char*>(&c) + sizeof(size_t), reinterpret_cast<const char*>(in) + sizeof(size_t), std::min(in->size, sizeof(c)) - sizeof(size_t));
     v.alignment = kiln::capi::ToAlignment(c.alignment);
     if (c.size_value.call) v.size = ToCpp_kiln_m3_fn_int_size_to_int_size(c.size_value);
@@ -7729,10 +7759,10 @@ kiln::foundation::EnterExitParts::ChangeSize ToCpp(const kiln_change_size* in) {
     if (c.spec) v.spec = (c.spec ? c.spec->spec : nullptr);
     return v;
 }
-void FromCpp(const kiln::foundation::EnterExitParts::ChangeSize& v, kiln_change_size* out) {
+void FromCpp(const kiln::foundation::ChangeSizeConfig& v, kiln_change_size_config* out) {
     (void)v;
     if (!out) return;
-    kiln_change_size c{};
+    kiln_change_size_config c{};
     c.size = sizeof(c);
     c.alignment = kiln_alignment{ (v.alignment).horizontal, (v.alignment).vertical };
     c.clip = bool(v.clip);
@@ -7741,17 +7771,17 @@ void FromCpp(const kiln::foundation::EnterExitParts::ChangeSize& v, kiln_change_
     std::memcpy(reinterpret_cast<char*>(out) + sizeof(size_t), reinterpret_cast<const char*>(&c) + sizeof(size_t), n - sizeof(size_t));
     out->size = n;
 }
-const kiln_change_size* FromCppTransient(const kiln::foundation::EnterExitParts::ChangeSize& v) {
-    auto* c = kiln::capi::NewTransient<kiln_change_size>();
+const kiln_change_size_config* FromCppTransient(const kiln::foundation::ChangeSizeConfig& v) {
+    auto* c = kiln::capi::NewTransient<kiln_change_size_config>();
     c->size = sizeof(*c);
     FromCpp(v, c);
     return c;
 }
-kiln::foundation::EnterExitParts::Veil ToCpp(const kiln_veil* in) {
-    kiln::foundation::EnterExitParts::Veil v{};
+kiln::foundation::VeilConfig ToCpp(const kiln_veil_config* in) {
+    kiln::foundation::VeilConfig v{};
     if (!in) return v;
-    kiln_veil c;
-    kiln_veil_init(&c);
+    kiln_veil_config c;
+    kiln_veil_config_init(&c);
     if (in->size > sizeof(size_t)) std::memcpy(reinterpret_cast<char*>(&c) + sizeof(size_t), reinterpret_cast<const char*>(in) + sizeof(size_t), std::min(in->size, sizeof(c)) - sizeof(size_t));
     v.initialColor = kiln::capi::ToColor(c.initial_color);
     v.targetColor = kiln::capi::ToColor(c.target_color);
@@ -7759,10 +7789,10 @@ kiln::foundation::EnterExitParts::Veil ToCpp(const kiln_veil* in) {
     v.matchParentSize = c.match_parent_size;
     return v;
 }
-void FromCpp(const kiln::foundation::EnterExitParts::Veil& v, kiln_veil* out) {
+void FromCpp(const kiln::foundation::VeilConfig& v, kiln_veil_config* out) {
     (void)v;
     if (!out) return;
-    kiln_veil c{};
+    kiln_veil_config c{};
     c.size = sizeof(c);
     c.initial_color = kiln::capi::FromColor(v.initialColor);
     c.target_color = kiln::capi::FromColor(v.targetColor);
@@ -7772,39 +7802,41 @@ void FromCpp(const kiln::foundation::EnterExitParts::Veil& v, kiln_veil* out) {
     std::memcpy(reinterpret_cast<char*>(out) + sizeof(size_t), reinterpret_cast<const char*>(&c) + sizeof(size_t), n - sizeof(size_t));
     out->size = n;
 }
-const kiln_veil* FromCppTransient(const kiln::foundation::EnterExitParts::Veil& v) {
-    auto* c = kiln::capi::NewTransient<kiln_veil>();
+const kiln_veil_config* FromCppTransient(const kiln::foundation::VeilConfig& v) {
+    auto* c = kiln::capi::NewTransient<kiln_veil_config>();
     c->size = sizeof(*c);
     FromCpp(v, c);
     return c;
 }
-kiln::foundation::EnterExitParts ToCpp(const kiln_enter_exit_parts* in) {
-    kiln::foundation::EnterExitParts v{};
+kiln::foundation::EnterExitTransitionConfig ToCpp(const kiln_enter_exit_transition_config* in) {
+    kiln::foundation::EnterExitTransitionConfig v{};
     if (!in) return v;
-    kiln_enter_exit_parts c;
-    kiln_enter_exit_parts_init(&c);
+    kiln_enter_exit_transition_config c;
+    kiln_enter_exit_transition_config_init(&c);
     if (in->size > sizeof(size_t)) std::memcpy(reinterpret_cast<char*>(&c) + sizeof(size_t), reinterpret_cast<const char*>(in) + sizeof(size_t), std::min(in->size, sizeof(c)) - sizeof(size_t));
-    if (c.scale) v.scale = (c.scale ? std::optional<kiln::foundation::EnterExitParts::Scale>(ToCpp(c.scale)) : std::nullopt);
-    if (c.slide) v.slide = (c.slide ? std::optional<kiln::foundation::EnterExitParts::Slide>(ToCpp(c.slide)) : std::nullopt);
-    if (c.change_size) v.changeSize = (c.change_size ? std::optional<kiln::foundation::EnterExitParts::ChangeSize>(ToCpp(c.change_size)) : std::nullopt);
-    if (c.veil) v.veil = (c.veil ? std::optional<kiln::foundation::EnterExitParts::Veil>(ToCpp(c.veil)) : std::nullopt);
+    if (c.fade) v.fade = (c.fade ? std::optional<kiln::foundation::FadeConfig>(ToCpp(c.fade)) : std::nullopt);
+    if (c.scale) v.scale = (c.scale ? std::optional<kiln::foundation::ScaleConfig>(ToCpp(c.scale)) : std::nullopt);
+    if (c.slide) v.slide = (c.slide ? std::optional<kiln::foundation::SlideConfig>(ToCpp(c.slide)) : std::nullopt);
+    if (c.change_size) v.changeSize = (c.change_size ? std::optional<kiln::foundation::ChangeSizeConfig>(ToCpp(c.change_size)) : std::nullopt);
+    if (c.veil) v.veil = (c.veil ? std::optional<kiln::foundation::VeilConfig>(ToCpp(c.veil)) : std::nullopt);
     return v;
 }
-void FromCpp(const kiln::foundation::EnterExitParts& v, kiln_enter_exit_parts* out) {
+void FromCpp(const kiln::foundation::EnterExitTransitionConfig& v, kiln_enter_exit_transition_config* out) {
     (void)v;
     if (!out) return;
-    kiln_enter_exit_parts c{};
+    kiln_enter_exit_transition_config c{};
     c.size = sizeof(c);
-    c.scale = ([&]() -> const kiln_scale* { if (!(v.scale)) return nullptr;  return FromCppTransient((*(v.scale))); }());
-    c.slide = ([&]() -> const kiln_slide* { if (!(v.slide)) return nullptr;  return FromCppTransient((*(v.slide))); }());
-    c.change_size = ([&]() -> const kiln_change_size* { if (!(v.changeSize)) return nullptr;  return FromCppTransient((*(v.changeSize))); }());
-    c.veil = ([&]() -> const kiln_veil* { if (!(v.veil)) return nullptr;  return FromCppTransient((*(v.veil))); }());
+    c.fade = ([&]() -> const kiln_fade_config* { if (!(v.fade)) return nullptr;  return FromCppTransient((*(v.fade))); }());
+    c.scale = ([&]() -> const kiln_scale_config* { if (!(v.scale)) return nullptr;  return FromCppTransient((*(v.scale))); }());
+    c.slide = ([&]() -> const kiln_slide_config* { if (!(v.slide)) return nullptr;  return FromCppTransient((*(v.slide))); }());
+    c.change_size = ([&]() -> const kiln_change_size_config* { if (!(v.changeSize)) return nullptr;  return FromCppTransient((*(v.changeSize))); }());
+    c.veil = ([&]() -> const kiln_veil_config* { if (!(v.veil)) return nullptr;  return FromCppTransient((*(v.veil))); }());
     const size_t n = out->size < sizeof(size_t) ? sizeof(c) : std::min(out->size, sizeof(c));
     std::memcpy(reinterpret_cast<char*>(out) + sizeof(size_t), reinterpret_cast<const char*>(&c) + sizeof(size_t), n - sizeof(size_t));
     out->size = n;
 }
-const kiln_enter_exit_parts* FromCppTransient(const kiln::foundation::EnterExitParts& v) {
-    auto* c = kiln::capi::NewTransient<kiln_enter_exit_parts>();
+const kiln_enter_exit_transition_config* FromCppTransient(const kiln::foundation::EnterExitTransitionConfig& v) {
+    auto* c = kiln::capi::NewTransient<kiln_enter_exit_transition_config>();
     c->size = sizeof(*c);
     FromCpp(v, c);
     return c;
@@ -7815,7 +7847,7 @@ kiln::foundation::EnterTransition ToCpp(const kiln_enter_transition* in) {
     kiln_enter_transition c;
     kiln_enter_transition_init(&c);
     if (in->size > sizeof(size_t)) std::memcpy(reinterpret_cast<char*>(&c) + sizeof(size_t), reinterpret_cast<const char*>(in) + sizeof(size_t), std::min(in->size, sizeof(c)) - sizeof(size_t));
-    if (c.parts) v.parts = ToCpp(c.parts);
+    if (c.config) v.config = ToCpp(c.config);
     return v;
 }
 void FromCpp(const kiln::foundation::EnterTransition& v, kiln_enter_transition* out) {
@@ -7823,7 +7855,7 @@ void FromCpp(const kiln::foundation::EnterTransition& v, kiln_enter_transition* 
     if (!out) return;
     kiln_enter_transition c{};
     c.size = sizeof(c);
-    c.parts = FromCppTransient(v.parts);
+    c.config = FromCppTransient(v.config);
     const size_t n = out->size < sizeof(size_t) ? sizeof(c) : std::min(out->size, sizeof(c));
     std::memcpy(reinterpret_cast<char*>(out) + sizeof(size_t), reinterpret_cast<const char*>(&c) + sizeof(size_t), n - sizeof(size_t));
     out->size = n;
@@ -7840,7 +7872,7 @@ kiln::foundation::ExitTransition ToCpp(const kiln_exit_transition* in) {
     kiln_exit_transition c;
     kiln_exit_transition_init(&c);
     if (in->size > sizeof(size_t)) std::memcpy(reinterpret_cast<char*>(&c) + sizeof(size_t), reinterpret_cast<const char*>(in) + sizeof(size_t), std::min(in->size, sizeof(c)) - sizeof(size_t));
-    if (c.parts) v.parts = ToCpp(c.parts);
+    if (c.config) v.config = ToCpp(c.config);
     return v;
 }
 void FromCpp(const kiln::foundation::ExitTransition& v, kiln_exit_transition* out) {
@@ -7848,7 +7880,7 @@ void FromCpp(const kiln::foundation::ExitTransition& v, kiln_exit_transition* ou
     if (!out) return;
     kiln_exit_transition c{};
     c.size = sizeof(c);
-    c.parts = FromCppTransient(v.parts);
+    c.config = FromCppTransient(v.config);
     const size_t n = out->size < sizeof(size_t) ? sizeof(c) : std::min(out->size, sizeof(c));
     std::memcpy(reinterpret_cast<char*>(out) + sizeof(size_t), reinterpret_cast<const char*>(&c) + sizeof(size_t), n - sizeof(size_t));
     out->size = n;
@@ -8878,29 +8910,33 @@ KILN_API void kiln_m3_wide_navigation_rail_item_options_init(kiln_m3_wide_naviga
     if (!s) return;
     KILN_CAPI_TRY { s->size = sizeof(*s); FromCpp(kiln::material3::WideNavigationRailItemOptions{}, s); } KILN_CAPI_CATCH()
 }
-KILN_API void kiln_scale_init(kiln_scale* s) {
+KILN_API void kiln_fade_config_init(kiln_fade_config* s) {
     if (!s) return;
-    KILN_CAPI_TRY { s->size = sizeof(*s); FromCpp(kiln::foundation::EnterExitParts::Scale{}, s); } KILN_CAPI_CATCH()
+    KILN_CAPI_TRY { s->size = sizeof(*s); FromCpp(kiln::foundation::FadeConfig{}, s); } KILN_CAPI_CATCH()
+}
+KILN_API void kiln_scale_config_init(kiln_scale_config* s) {
+    if (!s) return;
+    KILN_CAPI_TRY { s->size = sizeof(*s); FromCpp(kiln::foundation::ScaleConfig{}, s); } KILN_CAPI_CATCH()
 }
 KILN_API void kiln_int_offset_init(kiln_int_offset* s) {
     if (!s) return;
     KILN_CAPI_TRY { s->size = sizeof(*s); FromCpp(kiln::ui::IntOffset{}, s); } KILN_CAPI_CATCH()
 }
-KILN_API void kiln_slide_init(kiln_slide* s) {
+KILN_API void kiln_slide_config_init(kiln_slide_config* s) {
     if (!s) return;
-    KILN_CAPI_TRY { s->size = sizeof(*s); FromCpp(kiln::foundation::EnterExitParts::Slide{}, s); } KILN_CAPI_CATCH()
+    KILN_CAPI_TRY { s->size = sizeof(*s); FromCpp(kiln::foundation::SlideConfig{}, s); } KILN_CAPI_CATCH()
 }
-KILN_API void kiln_change_size_init(kiln_change_size* s) {
+KILN_API void kiln_change_size_config_init(kiln_change_size_config* s) {
     if (!s) return;
-    KILN_CAPI_TRY { s->size = sizeof(*s); FromCpp(kiln::foundation::EnterExitParts::ChangeSize{}, s); } KILN_CAPI_CATCH()
+    KILN_CAPI_TRY { s->size = sizeof(*s); FromCpp(kiln::foundation::ChangeSizeConfig{}, s); } KILN_CAPI_CATCH()
 }
-KILN_API void kiln_veil_init(kiln_veil* s) {
+KILN_API void kiln_veil_config_init(kiln_veil_config* s) {
     if (!s) return;
-    KILN_CAPI_TRY { s->size = sizeof(*s); FromCpp(kiln::foundation::EnterExitParts::Veil{}, s); } KILN_CAPI_CATCH()
+    KILN_CAPI_TRY { s->size = sizeof(*s); FromCpp(kiln::foundation::VeilConfig{}, s); } KILN_CAPI_CATCH()
 }
-KILN_API void kiln_enter_exit_parts_init(kiln_enter_exit_parts* s) {
+KILN_API void kiln_enter_exit_transition_config_init(kiln_enter_exit_transition_config* s) {
     if (!s) return;
-    KILN_CAPI_TRY { s->size = sizeof(*s); FromCpp(kiln::foundation::EnterExitParts{}, s); } KILN_CAPI_CATCH()
+    KILN_CAPI_TRY { s->size = sizeof(*s); FromCpp(kiln::foundation::EnterExitTransitionConfig{}, s); } KILN_CAPI_CATCH()
 }
 KILN_API void kiln_enter_transition_init(kiln_enter_transition* s) {
     if (!s) return;

@@ -18,8 +18,8 @@ namespace kiln::foundation {
 
     namespace {
         // EnterTransition.plus: per kind, the right-hand transition's part wins.
-        EnterExitParts Combine(const EnterExitParts& a, const EnterExitParts& b) {
-            EnterExitParts r = b;
+        EnterExitTransitionConfig Combine(const EnterExitTransitionConfig& a, const EnterExitTransitionConfig& b) {
+            EnterExitTransitionConfig r = b;
             if (!r.fade) r.fade = a.fade;
             if (!r.scale) r.scale = a.scale;
             if (!r.slide) r.slide = a.slide;
@@ -32,8 +32,8 @@ namespace kiln::foundation {
         anim::SpecPtr SizeSpring() { return DefaultSpatialEnterExitSpring(); }
     }
 
-    EnterTransition EnterTransition::operator+(const EnterTransition& o) const { return { Combine(parts, o.parts) }; }
-    ExitTransition ExitTransition::operator+(const ExitTransition& o) const { return { Combine(parts, o.parts) }; }
+    EnterTransition EnterTransition::operator+(const EnterTransition& o) const { return { Combine(config, o.config) }; }
+    ExitTransition ExitTransition::operator+(const ExitTransition& o) const { return { Combine(config, o.config) }; }
 
     anim::SpecPtr DefaultEnterExitSpring() { return anim::Spring(1.0f, anim::spring::StiffnessMediumLow); }
     anim::SpecPtr DefaultSpatialEnterExitSpring() {
@@ -41,21 +41,21 @@ namespace kiln::foundation {
         return spec;
     }
 
-    EnterTransition FadeIn(anim::SpecPtr s, float a) { EnterTransition t; t.parts.fade = { { a, std::move(s) } }; return t; }
-    ExitTransition FadeOut(anim::SpecPtr s, float a) { ExitTransition t; t.parts.fade = { { a, std::move(s) } }; return t; }
-    EnterTransition ScaleIn(anim::SpecPtr s, float sc, float ox, float oy) { EnterTransition t; t.parts.scale = EnterExitParts::Scale{ sc, ox, oy, std::move(s) }; return t; }
-    ExitTransition ScaleOut(anim::SpecPtr s, float sc, float ox, float oy) { ExitTransition t; t.parts.scale = EnterExitParts::Scale{ sc, ox, oy, std::move(s) }; return t; }
-    EnterTransition SlideIn(std::function<IntOffset(IntSize)> f, anim::SpecPtr s) { EnterTransition t; t.parts.slide = EnterExitParts::Slide{ std::move(f), s ? s : SizeSpring() }; return t; }
-    ExitTransition SlideOut(std::function<IntOffset(IntSize)> f, anim::SpecPtr s) { ExitTransition t; t.parts.slide = EnterExitParts::Slide{ std::move(f), s ? s : SizeSpring() }; return t; }
+    EnterTransition FadeIn(anim::SpecPtr s, float a) { EnterTransition t; t.config.fade = { { a, std::move(s) } }; return t; }
+    ExitTransition FadeOut(anim::SpecPtr s, float a) { ExitTransition t; t.config.fade = { { a, std::move(s) } }; return t; }
+    EnterTransition ScaleIn(anim::SpecPtr s, float sc, float ox, float oy) { EnterTransition t; t.config.scale = ScaleConfig{ sc, ox, oy, std::move(s) }; return t; }
+    ExitTransition ScaleOut(anim::SpecPtr s, float sc, float ox, float oy) { ExitTransition t; t.config.scale = ScaleConfig{ sc, ox, oy, std::move(s) }; return t; }
+    EnterTransition SlideIn(std::function<IntOffset(IntSize)> f, anim::SpecPtr s) { EnterTransition t; t.config.slide = SlideConfig{ std::move(f), s ? s : SizeSpring() }; return t; }
+    ExitTransition SlideOut(std::function<IntOffset(IntSize)> f, anim::SpecPtr s) { ExitTransition t; t.config.slide = SlideConfig{ std::move(f), s ? s : SizeSpring() }; return t; }
     EnterTransition SlideInVertically(std::function<int(int)> f, anim::SpecPtr s) { return SlideIn([f](IntSize sz) { return IntOffset{ 0, f(sz.height) }; }, std::move(s)); }
     ExitTransition SlideOutVertically(std::function<int(int)> f, anim::SpecPtr s) { return SlideOut([f](IntSize sz) { return IntOffset{ 0, f(sz.height) }; }, std::move(s)); }
     EnterTransition SlideInHorizontally(std::function<int(int)> f, anim::SpecPtr s) { return SlideIn([f](IntSize sz) { return IntOffset{ f(sz.width), 0 }; }, std::move(s)); }
     ExitTransition SlideOutHorizontally(std::function<int(int)> f, anim::SpecPtr s) { return SlideOut([f](IntSize sz) { return IntOffset{ f(sz.width), 0 }; }, std::move(s)); }
     EnterTransition ExpandIn(anim::SpecPtr s, Alignment a, bool clip, std::function<IntSize(IntSize)> f) {
-        EnterTransition t; t.parts.changeSize = EnterExitParts::ChangeSize{ a, std::move(f), clip, s }; return t;
+        EnterTransition t; t.config.changeSize = ChangeSizeConfig{ a, std::move(f), clip, s }; return t;
     }
     ExitTransition ShrinkOut(anim::SpecPtr s, Alignment a, bool clip, std::function<IntSize(IntSize)> f) {
-        ExitTransition t; t.parts.changeSize = EnterExitParts::ChangeSize{ a, std::move(f), clip, s }; return t;
+        ExitTransition t; t.config.changeSize = ChangeSizeConfig{ a, std::move(f), clip, s }; return t;
     }
     EnterTransition ExpandVertically(anim::SpecPtr s, AlignmentV a, bool clip, std::function<int(int)> f) {
         return ExpandIn(std::move(s), Alignment{ 0, a.bias }, clip, [f](IntSize sz) { return IntSize{ sz.width, f(sz.height) }; });
@@ -72,12 +72,12 @@ namespace kiln::foundation {
 
     EnterTransition UnveilIn(anim::SpecPtr spec, Color initialColor, bool matchParentSize) {
         EnterTransition t;
-        t.parts.veil = EnterExitParts::Veil{ initialColor, initialColor.WithAlpha(0), std::move(spec), matchParentSize };
+        t.config.veil = VeilConfig{ initialColor, initialColor.WithAlpha(0), std::move(spec), matchParentSize };
         return t;
     }
     ExitTransition VeilOut(anim::SpecPtr spec, Color targetColor, bool matchParentSize) {
         ExitTransition t;
-        t.parts.veil = EnterExitParts::Veil{ targetColor.WithAlpha(0), targetColor, std::move(spec), matchParentSize };
+        t.config.veil = VeilConfig{ targetColor.WithAlpha(0), targetColor, std::move(spec), matchParentSize };
         return t;
     }
 
@@ -341,7 +341,7 @@ namespace kiln::foundation {
                 if (transformScope.OffsetMutated()) { const IntOffset o = lastSlide; t = t + SlideIn([o](IntSize) { return o; }); }
                 if (transformScope.VeilMutated()) {
                     EnterTransition v;
-                    v.parts.veil = EnterExitParts::Veil{ lastVeil, lastVeil.WithAlpha(0), DefaultEnterExitSpring(), lastMutableData->veilMatchParentSize };
+                    v.config.veil = VeilConfig{ lastVeil, lastVeil.WithAlpha(0), DefaultEnterExitSpring(), lastMutableData->veilMatchParentSize };
                     t = t + v;
                 }
                 return t;
@@ -406,8 +406,8 @@ namespace kiln::foundation {
                     // to rest, unless hand-set values are being applied on top of them.
                     ExitTransition neutral = *activeExit;
                     if (!state->IsMutating()) {
-                        auto& np = neutral.parts;
-                        if (np.fade) np.fade->first = 1;
+                        auto& np = neutral.config;
+                        if (np.fade) np.fade->alpha = 1;
                         if (np.scale) np.scale->scale = 1;
                         if (np.slide) np.slide->offset = [](IntSize) { return IntOffset{}; };
                         if (np.changeSize) np.changeSize->size = [](IntSize full) { return full; };
@@ -545,8 +545,8 @@ namespace kiln::foundation {
         const EnterTransition& enter = *tracker->activeEnter;
         const ExitTransition& exit = *tracker->activeExit;
         const auto specFor = [&](auto part, anim::SpecPtr fallback) -> anim::SpecPtr {
-            if (current == EnterExitState::PreEnter && target == EnterExitState::Visible) { auto& e = enter.parts.*part; return e && e->spec ? e->spec : fallback; }
-            if (current == EnterExitState::Visible && target == EnterExitState::PostExit) { auto& x = exit.parts.*part; return x && x->spec ? x->spec : fallback; }
+            if (current == EnterExitState::PreEnter && target == EnterExitState::Visible) { auto& e = enter.config.*part; return e && e->spec ? e->spec : fallback; }
+            if (current == EnterExitState::Visible && target == EnterExitState::PostExit) { auto& x = exit.config.*part; return x && x->spec ? x->spec : fallback; }
             return fallback;
         };
         // Values by enter/exit state: rest when visible, the enter's before entering, the exit's
@@ -557,24 +557,24 @@ namespace kiln::foundation {
         };
         using Seg = Transition<bool>::Segment;
         const float alpha = AnimateFloat<bool>(t, [&](bool s) {
-            return byState(s, 1.0f, enter.parts.fade ? enter.parts.fade->first : 1.0f, exit.parts.fade ? exit.parts.fade->first : 1.0f);
+            return byState(s, 1.0f, enter.config.fade ? enter.config.fade->alpha : 1.0f, exit.config.fade ? exit.config.fade->alpha : 1.0f);
         }, [&](const Seg&) {
-            const auto& f = (current == EnterExitState::Visible && target == EnterExitState::PostExit) ? exit.parts.fade : enter.parts.fade;
+            const auto& f = (current == EnterExitState::Visible && target == EnterExitState::PostExit) ? exit.config.fade : enter.config.fade;
             const bool directional = (current == EnterExitState::PreEnter && target == EnterExitState::Visible) ||
                                      (current == EnterExitState::Visible && target == EnterExitState::PostExit);
-            return directional && f ? f->second : DefaultEnterExitSpring();
+            return directional && f ? f->spec : DefaultEnterExitSpring();
         }, rt::Key("alpha"), state->AlphaHandoffValue() ? std::optional(anim::Vec{ *state->AlphaHandoffValue(), 0, 0, 0 }) : std::nullopt);
         const float scale = AnimateFloat<bool>(t, [&](bool s) {
-            return byState(s, 1.0f, enter.parts.scale ? enter.parts.scale->scale : 1.0f, exit.parts.scale ? exit.parts.scale->scale : 1.0f);
-        }, [&](const Seg&) { return specFor(&EnterExitParts::scale, anim::Spring(1.0f, anim::spring::StiffnessMediumLow, 0.002f)); }, rt::Key("scale"),
+            return byState(s, 1.0f, enter.config.scale ? enter.config.scale->scale : 1.0f, exit.config.scale ? exit.config.scale->scale : 1.0f);
+        }, [&](const Seg&) { return specFor(&EnterExitTransitionConfig::scale, anim::Spring(1.0f, anim::spring::StiffnessMediumLow, 0.002f)); }, rt::Key("scale"),
             state->ScaleHandoffValue() ? std::optional(anim::Vec{ *state->ScaleHandoffValue(), 0, 0, 0 }) : std::nullopt,
             state->scaleHandoffVelocity ? std::optional(anim::Vec{ *state->scaleHandoffVelocity, 0, 0, 0 }) : std::nullopt);
         // The scale's pivot: if only one side scales, both use its origin.
-        const auto originOf = [](const std::optional<EnterExitParts::Scale>& sc) {
+        const auto originOf = [](const std::optional<ScaleConfig>& sc) {
             return sc ? std::optional(TransformOrigin{ sc->originX, sc->originY }) : std::nullopt;
         };
-        const std::optional<TransformOrigin> enterOrigin = originOf(enter.parts.scale), exitOrigin = originOf(exit.parts.scale);
-        const bool animateScale = enter.parts.scale || exit.parts.scale || (state->HasBlock() && state->transformScope.ScaleMutated()) || state->lastScale != 1;
+        const std::optional<TransformOrigin> enterOrigin = originOf(enter.config.scale), exitOrigin = originOf(exit.config.scale);
+        const bool animateScale = enter.config.scale || exit.config.scale || (state->HasBlock() && state->transformScope.ScaleMutated()) || state->lastScale != 1;
         const TransformOrigin whenVisible = current == EnterExitState::PreEnter ? enterOrigin.value_or(exitOrigin.value_or(TransformOrigin::Center()))
                                                                                : exitOrigin.value_or(enterOrigin.value_or(TransformOrigin::Center()));
         const anim::Vec originV = detail::AnimateChild<bool>(t, 2, [&](const bool& s) {
@@ -588,40 +588,40 @@ namespace kiln::foundation {
                 : std::nullopt);
         const TransformOrigin origin{ originV[0], originV[1] };
         const anim::Vec veilV = detail::AnimateChild<bool>(t, 4, [&](const bool& s) {
-            const Color visible = enter.parts.veil ? enter.parts.veil->targetColor : exit.parts.veil ? exit.parts.veil->initialColor : Color::Transparent();
-            return OklabVec(byState(s, visible, enter.parts.veil ? enter.parts.veil->initialColor : Color::Transparent(),
-                                    exit.parts.veil ? exit.parts.veil->targetColor : Color::Transparent()));
-        }, [&](const Seg&) { return specFor(&EnterExitParts::veil, DefaultEnterExitSpring()); }, rt::Key("veil"),
+            const Color visible = enter.config.veil ? enter.config.veil->targetColor : exit.config.veil ? exit.config.veil->initialColor : Color::Transparent();
+            return OklabVec(byState(s, visible, enter.config.veil ? enter.config.veil->initialColor : Color::Transparent(),
+                                    exit.config.veil ? exit.config.veil->targetColor : Color::Transparent()));
+        }, [&](const Seg&) { return specFor(&EnterExitTransitionConfig::veil, DefaultEnterExitSpring()); }, rt::Key("veil"),
             state->VeilHandoffValue() ? std::optional(OklabVec(*state->VeilHandoffValue())) : std::nullopt);
         const Color veil = FromVec(veilV);
         // Slide and size run as a 0..1 progress towards the side's own offset and size; a part
         // the moving side does not have stays at rest, so it cannot keep the content alive
         // (ExitTransition.None removes the content at once).
         const auto progressOf = [&](auto part) {
-            return [&, part](bool s) { return byState(s, 1.0f, (enter.parts.*part) ? 0.0f : 1.0f, (exit.parts.*part) ? 0.0f : 1.0f); };
+            return [&, part](bool s) { return byState(s, 1.0f, (enter.config.*part) ? 0.0f : 1.0f, (exit.config.*part) ? 0.0f : 1.0f); };
         };
         const auto slideSpec = DefaultSpatialEnterExitSpring();
         const std::shared_ptr<const float> slideDistance = tracker->slideDistance, sizeDistance = tracker->sizeDistance;
-        const float slideP = AnimateFloat<bool>(t, progressOf(&EnterExitParts::slide),
-                                                [&](const Seg&) { return anim::ScaledSpec(specFor(&EnterExitParts::slide, slideSpec), slideDistance); },
+        const float slideP = AnimateFloat<bool>(t, progressOf(&EnterExitTransitionConfig::slide),
+                                                [&](const Seg&) { return anim::ScaledSpec(specFor(&EnterExitTransitionConfig::slide, slideSpec), slideDistance); },
                                                 rt::Key("slide"));
         // A hand-off of a hand-set offset: from the last offset to the side's target offset.
         const std::optional<IntOffset> slideHandoff = state->SlideHandoffValue();
         float slideHandoffVelocity = 0;
         const float slideHandoffP = AnimateFloat<bool>(t, [&](bool) { return slideHandoff ? 1.0f : 0.0f; },
-                                                       [&](const Seg&) { return anim::ScaledSpec(specFor(&EnterExitParts::slide, slideSpec), slideDistance); }, rt::Key("slideHandoff"),
+                                                       [&](const Seg&) { return anim::ScaledSpec(specFor(&EnterExitTransitionConfig::slide, slideSpec), slideDistance); }, rt::Key("slideHandoff"),
                                                        slideHandoff ? std::optional(anim::Vec{}) : std::nullopt,
                                                        slideHandoff ? std::optional(anim::Vec{ slideHandoffVelocity, 0, 0, 0 }) : std::nullopt);
-        const float sizeP = AnimateFloat<bool>(t, progressOf(&EnterExitParts::changeSize),
-                                               [&](const Seg&) { return anim::ScaledSpec(specFor(&EnterExitParts::changeSize, SizeSpring()), sizeDistance); },
+        const float sizeP = AnimateFloat<bool>(t, progressOf(&EnterExitTransitionConfig::changeSize),
+                                               [&](const Seg&) { return anim::ScaledSpec(specFor(&EnterExitTransitionConfig::changeSize, SizeSpring()), sizeDistance); },
                                                rt::Key("size"));
 
         // Gone unless visible somewhere, held, or pending to show.
         if (!(forceVisible || t.CurrentState() || t.TargetState() || pendingVisible || t.IsRunning())) return;
 
         const bool towardsExit = target == EnterExitState::PostExit;
-        const auto& change = towardsExit ? exit.parts.changeSize : enter.parts.changeSize;
-        const auto& slide = towardsExit ? exit.parts.slide : enter.parts.slide;
+        const auto& change = towardsExit ? exit.config.changeSize : enter.config.changeSize;
+        const auto& slide = towardsExit ? exit.config.slide : enter.config.slide;
         EnterExitParams p;
         p.alignment = change ? change->alignment : Alignment::TopStart();
         if (change) { auto f = change->size; p.sizeAt = [f, sizeP](IntSize full) { return Lerp(f(full), full, sizeP); }; }
@@ -668,7 +668,7 @@ namespace kiln::foundation {
         }
 
         const bool clip = change && change->clip;
-        const auto& veilPart = enter.parts.veil ? enter.parts.veil : exit.parts.veil;
+        const auto& veilPart = enter.config.veil ? enter.config.veil : exit.config.veil;
         const bool veilMatchParent = veilPart ? veilPart->matchParentSize : (state->mutableData && state->mutableData->veilMatchParentSize);
         const auto drawVeil = [state, veil](ui::ContentDrawScope& d) {
             d.DrawContent();

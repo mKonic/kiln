@@ -93,14 +93,14 @@ namespace kiln::navigation3 {
         // gesture's progress (each part through its tween's easing, linearly otherwise).
         inline std::shared_ptr<foundation::MutableContentTransform> ToMutableTransform(const foundation::ContentTransform& t,
                                                                                          std::function<float()> progress) {
-            const foundation::EnterExitParts enter = t.enter.parts, exit = t.exit.parts;
+            const foundation::EnterExitTransitionConfig enter = t.enter.config, exit = t.exit.config;
             return foundation::MakeMutableContentTransform(
                 exit.veil ? exit.veil->matchParentSize : false, enter.veil ? enter.veil->matchParentSize : false, {}, {},
                 [enter, exit, progress](foundation::MutableContentTransform& m) {
                     m.SharedElementProgress(progress);
                     m.TargetContentTransform([enter, progress](foundation::TransformScope& s, ui::IntSize fullSize) {
                         const float p = progress();
-                        if (enter.fade) s.SetAlpha(Lerp(enter.fade->first, 1.0f, EasedProgress(enter.fade->second, p)));
+                        if (enter.fade) s.SetAlpha(Lerp(enter.fade->alpha, 1.0f, EasedProgress(enter.fade->spec, p)));
                         if (enter.scale) {
                             s.SetScale(Lerp(enter.scale->scale, 1.0f, EasedProgress(enter.scale->spec, p)));
                             s.SetTransformOrigin({ enter.scale->originX, enter.scale->originY });
@@ -114,7 +114,7 @@ namespace kiln::navigation3 {
                     });
                     m.InitialContentTransform([exit, progress](foundation::TransformScope& s, ui::IntSize fullSize) {
                         const float p = progress();
-                        if (exit.fade) s.SetAlpha(Lerp(1.0f, exit.fade->first, EasedProgress(exit.fade->second, p)));
+                        if (exit.fade) s.SetAlpha(Lerp(1.0f, exit.fade->alpha, EasedProgress(exit.fade->spec, p)));
                         if (exit.scale) {
                             s.SetScale(Lerp(1.0f, exit.scale->scale, EasedProgress(exit.scale->spec, p)));
                             s.SetTransformOrigin({ exit.scale->originX, exit.scale->originY });

@@ -18,27 +18,30 @@ namespace kiln::foundation {
     using ui::IntOffset;
     using ui::IntSize;
 
-    struct EnterExitParts {
-        std::optional<std::pair<float, anim::SpecPtr>> fade;                          // alpha
-        struct Scale { float scale; float originX = 0.5f, originY = 0.5f; anim::SpecPtr spec; };
-        std::optional<Scale> scale;
-        struct Slide { std::function<IntOffset(IntSize)> offset; anim::SpecPtr spec; };
-        std::optional<Slide> slide;
-        struct ChangeSize { Alignment alignment; std::function<IntSize(IntSize)> size; bool clip = true; anim::SpecPtr spec; };
-        std::optional<ChangeSize> changeSize;
-        // A scrim over the content (VeilConfig); with matchParentSize it is drawn apart from the
-        // other transforms.
-        struct Veil { ui::Color initialColor, targetColor; anim::SpecPtr spec; bool matchParentSize = false; };
-        std::optional<Veil> veil;
+    // The parts of an enter or exit transition (FadeConfig, ScaleConfig, SlideConfig,
+    // ChangeSizeConfig, VeilConfig and EnterExitTransitionConfig); each value is the start (enter)
+    // or end (exit) of its animation.
+    struct FadeConfig { float alpha; anim::SpecPtr spec; };
+    struct ScaleConfig { float scale; float originX = 0.5f, originY = 0.5f; anim::SpecPtr spec; };
+    struct SlideConfig { std::function<IntOffset(IntSize)> offset; anim::SpecPtr spec; };
+    struct ChangeSizeConfig { Alignment alignment; std::function<IntSize(IntSize)> size; bool clip = true; anim::SpecPtr spec; };
+    // A scrim over the content; with matchParentSize it is drawn apart from the other transforms.
+    struct VeilConfig { ui::Color initialColor, targetColor; anim::SpecPtr spec; bool matchParentSize = false; };
+    struct EnterExitTransitionConfig {
+        std::optional<FadeConfig> fade;
+        std::optional<ScaleConfig> scale;
+        std::optional<SlideConfig> slide;
+        std::optional<ChangeSizeConfig> changeSize;
+        std::optional<VeilConfig> veil;
     };
 
     // EnterTransition / ExitTransition: combine with + (the right one wins per kind).
     struct EnterTransition {
-        EnterExitParts parts;
+        EnterExitTransitionConfig config;
         EnterTransition operator+(const EnterTransition& o) const;
     };
     struct ExitTransition {
-        EnterExitParts parts;
+        EnterExitTransitionConfig config;
         ExitTransition operator+(const ExitTransition& o) const;
     };
 

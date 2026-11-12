@@ -235,12 +235,13 @@ typedef struct kiln_m3_wide_navigation_rail_options kiln_m3_wide_navigation_rail
 typedef struct kiln_m3_modal_wide_navigation_rail_properties kiln_m3_modal_wide_navigation_rail_properties;
 typedef struct kiln_m3_modal_wide_navigation_rail_options kiln_m3_modal_wide_navigation_rail_options;
 typedef struct kiln_m3_wide_navigation_rail_item_options kiln_m3_wide_navigation_rail_item_options;
-typedef struct kiln_scale kiln_scale;
+typedef struct kiln_fade_config kiln_fade_config;
+typedef struct kiln_scale_config kiln_scale_config;
 typedef struct kiln_int_offset kiln_int_offset;
-typedef struct kiln_slide kiln_slide;
-typedef struct kiln_change_size kiln_change_size;
-typedef struct kiln_veil kiln_veil;
-typedef struct kiln_enter_exit_parts kiln_enter_exit_parts;
+typedef struct kiln_slide_config kiln_slide_config;
+typedef struct kiln_change_size_config kiln_change_size_config;
+typedef struct kiln_veil_config kiln_veil_config;
+typedef struct kiln_enter_exit_transition_config kiln_enter_exit_transition_config;
 typedef struct kiln_enter_transition kiln_enter_transition;
 typedef struct kiln_exit_transition kiln_exit_transition;
 typedef struct kiln_size_transform kiln_size_transform;
@@ -2462,57 +2463,64 @@ struct kiln_m3_wide_navigation_rail_item_options {
     kiln_interaction_source* interaction_source;
 };
 KILN_API void kiln_m3_wide_navigation_rail_item_options_init(kiln_m3_wide_navigation_rail_item_options* s);
-struct kiln_scale {
+struct kiln_fade_config {
+    size_t size;
+    float alpha;
+    const kiln_anim_spec* spec;
+};
+KILN_API void kiln_fade_config_init(kiln_fade_config* s);
+struct kiln_scale_config {
     size_t size;
     float scale;
     float origin_x;
     float origin_y;
     const kiln_anim_spec* spec;
 };
-KILN_API void kiln_scale_init(kiln_scale* s);
+KILN_API void kiln_scale_config_init(kiln_scale_config* s);
 struct kiln_int_offset {
     size_t size;
     int32_t x;
     int32_t y;
 };
 KILN_API void kiln_int_offset_init(kiln_int_offset* s);
-struct kiln_slide {
+struct kiln_slide_config {
     size_t size;
     const kiln_anim_spec* spec;
 };
-KILN_API void kiln_slide_init(kiln_slide* s);
-struct kiln_change_size {
+KILN_API void kiln_slide_config_init(kiln_slide_config* s);
+struct kiln_change_size_config {
     size_t size;
     kiln_alignment alignment;
     kiln_m3_fn_int_size_to_int_size size_value;
     bool clip;
     const kiln_anim_spec* spec;
 };
-KILN_API void kiln_change_size_init(kiln_change_size* s);
-struct kiln_veil {
+KILN_API void kiln_change_size_config_init(kiln_change_size_config* s);
+struct kiln_veil_config {
     size_t size;
     kiln_color initial_color;
     kiln_color target_color;
     const kiln_anim_spec* spec;
     bool match_parent_size;
 };
-KILN_API void kiln_veil_init(kiln_veil* s);
-struct kiln_enter_exit_parts {
+KILN_API void kiln_veil_config_init(kiln_veil_config* s);
+struct kiln_enter_exit_transition_config {
     size_t size;
-    const kiln_scale* scale;
-    const kiln_slide* slide;
-    const kiln_change_size* change_size;
-    const kiln_veil* veil;
+    const kiln_fade_config* fade;
+    const kiln_scale_config* scale;
+    const kiln_slide_config* slide;
+    const kiln_change_size_config* change_size;
+    const kiln_veil_config* veil;
 };
-KILN_API void kiln_enter_exit_parts_init(kiln_enter_exit_parts* s);
+KILN_API void kiln_enter_exit_transition_config_init(kiln_enter_exit_transition_config* s);
 struct kiln_enter_transition {
     size_t size;
-    const kiln_enter_exit_parts* parts;
+    const kiln_enter_exit_transition_config* config;
 };
 KILN_API void kiln_enter_transition_init(kiln_enter_transition* s);
 struct kiln_exit_transition {
     size_t size;
-    const kiln_enter_exit_parts* parts;
+    const kiln_enter_exit_transition_config* config;
 };
 KILN_API void kiln_exit_transition_init(kiln_exit_transition* s);
 struct kiln_size_transform {

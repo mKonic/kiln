@@ -62,8 +62,7 @@ kiln::text::FontFamily::fonts: field left at its default: list of std::vector<ki
 kiln::material3::TextOptions::inlineContent: field left at its default: type std::map<std::basic_string<char>, kiln::foundation::InlineTextContent>
 kiln::material3::TextOptions::onTextLayout: field left at its default: type kiln::text::TextLayoutResult
 kiln::material3::WideNavigationRailItemOptions::indicatorPadding: field left at its default: kiln::material3::internal::DynamicPaddingValues is not default-constructible
-kiln::foundation::EnterExitParts::Slide::offset: field left at its default: callback returning a struct (kiln::ui::IntOffset)
-kiln::foundation::EnterExitParts::fade: field left at its default: type std::pair<float, std::shared_ptr<const kiln::anim::AnimationSpec>>
+kiln::foundation::SlideConfig::offset: field left at its default: callback returning a struct (kiln::ui::IntOffset)
 kiln::ui::LayoutCoordinates::node: field left at its default: pointer const LayoutNode *
 kiln::ui::LayoutCoordinates::at: field left at its default: pointer const ModifierNode *
 kiln::ui::LayoutCoordinates::alive: field left at its default: type std::weak_ptr<const char>
