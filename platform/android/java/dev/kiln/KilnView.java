@@ -640,6 +640,16 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
     private boolean stylusHandwriting;
     private String privateImeOptions;
 
+    /** ComposeInputMethodManagerImplApi34.prepareStylusHandwritingDelegation (handwritingDetector). */
+    void prepareStylusHandwritingDelegation() {
+        if (android.os.Build.VERSION.SDK_INT >= 34) imm().prepareStylusHandwritingDelegation(this);
+    }
+
+    /** ComposeInputMethodManagerImplApi34.acceptStylusHandwritingDelegation (handwritingHandler). */
+    void acceptStylusHandwritingDelegation() {
+        if (android.os.Build.VERSION.SDK_INT >= 34) imm().acceptStylusHandwritingDelegation(this);
+    }
+
     /** ComposeInputMethodManagerImplApi34.startStylusHandwriting. */
     void startStylusHandwriting() {
         if (inputActive && android.os.Build.VERSION.SDK_INT >= 34) imm().startStylusHandwriting(this);

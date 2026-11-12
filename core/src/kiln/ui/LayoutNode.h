@@ -681,6 +681,8 @@ namespace kiln::ui {
         void StartStylusHandwriting(TextInputSession& session) {
             if (m_Input == &session && m_InputHost.startStylusHandwriting) m_InputHost.startStylusHandwriting();
         }
+        void PrepareStylusHandwritingDelegation() { if (m_InputHost.prepareStylusHandwritingDelegation) m_InputHost.prepareStylusHandwritingDelegation(); }
+        void AcceptStylusHandwritingDelegation() { if (m_InputHost.acceptStylusHandwritingDelegation) m_InputHost.acceptStylusHandwritingDelegation(); }
         TextInputSession* ActiveTextInput() const { return m_Input; }
         // SoftwareKeyboardController: show or hide the keyboard without ending the session.
         void ShowSoftKeyboard() { if (m_InputHost.showKeyboard) m_InputHost.showKeyboard(); }

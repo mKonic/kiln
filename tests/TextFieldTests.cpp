@@ -6,6 +6,7 @@
 #include "ToolbarHelpers.h"
 #include "FakeText.h"
 
+#include "kiln/foundation/text/handwriting/StylusHandwriting.h"
 #include "kiln/foundation/text/BasicTextField.h"
 #include "kiln/foundation/text/contextmenu/TextContextMenuProvider.h"
 #include "kiln/foundation/text/BasicSecureTextField.h"
@@ -1203,4 +1204,53 @@ TEST(KeyboardOptionsCarryPlatformImeOptions) {
     CHECK(!a.FillUnspecifiedValuesWith(b).platformImeOptions->privateImeOptions);
     const ui::ImeOptions o = b.ToImeOptions(true);
     CHECK(o.platformImeOptions && o.platformImeOptions->privateImeOptions == "nm" && o.singleLine);
+}
+
+TEST(HandwritingDetectorDelegatesToTheHandlerThatTakesFocus) {
+    ui::SetStylusHandwritingSupported(true);
+    FieldHarness h;
+    int prepared = 0, accepted = 0, detected = 0;
+    ui::TextInputHost host;
+    host.prepareStylusHandwritingDelegation = [&] { ++prepared; };
+    host.acceptStylusHandwritingDelegation = [&] { ++accepted; };
+    h.owner.SetTextInputHost(host);
+    rt::State<bool> showEditor{ false };
+    FocusRequester editorFocus;
+    bool delegatorFocused = false;
+    h.comp.SetContent([&] {
+        Column(Modifier{}, [&] {
+            // A delegator: a focusable box that, on a stroke, opens the real editor.
+            Box(Focusable(OnFocusChanged(SizeMod(HandwritingDetector(Modifier{}, [&] { ++detected; showEditor.Set(true); }), Dp(100), Dp(40)),
+                                         [&](ui::FocusState s) { delegatorFocused = ui::IsFocused(s); })));
+            if (showEditor.Get())
+                Box(Focusable(FocusRequesterModifier(HandwritingHandler(SizeMod(Modifier{}, Dp(100), Dp(40))), editorFocus)));
+        });
+    });
+    h.Pump({ 300, 300 });
+    auto send = [&](ui::PointerType type, ui::PointerEventType kind, float x, float y, bool down) {
+        ui::RawPointerEvent e;
+        e.type = kind;
+        e.uptimeMillis = h.t += 16;
+        e.pointers.push_back({ 1, { x, y }, down, type, {} });
+        h.owner.ProcessPointer(e);
+        h.Pump({ 300, 300 });
+    };
+    // A finger does nothing; a stylus past the slop calls back, focuses the content below and
+    // prepares the delegation.
+    send(ui::PointerType::Touch, ui::PointerEventType::Press, 20, 20, true);
+    send(ui::PointerType::Touch, ui::PointerEventType::Move, 60, 20, true);
+    send(ui::PointerType::Touch, ui::PointerEventType::Release, 60, 20, false);
+    CHECK(detected == 0 && prepared == 0);
+    send(ui::PointerType::Stylus, ui::PointerEventType::Press, 20, 20, true);
+    send(ui::PointerType::Stylus, ui::PointerEventType::Move, 40, 20, true);
+    CHECK(detected == 1 && prepared == 1 && delegatorFocused);
+    send(ui::PointerType::Stylus, ui::PointerEventType::Release, 40, 20, false);
+    // The editor takes focus: it accepts the delegation once the focus change has run.
+    editorFocus.RequestFocus();
+    CHECK_EQ(accepted, 0);
+    rt::Dispatcher::Main().RunPending();
+    CHECK_EQ(accepted, 1);
+    // Without support both modifiers are nothing.
+    ui::SetStylusHandwritingSupported(false);
+    CHECK(HandwritingHandler(Modifier{}).Empty() && HandwritingDetector(Modifier{}, [] {}).Empty());
 }

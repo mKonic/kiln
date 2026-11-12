@@ -1702,6 +1702,8 @@ namespace {
         jclass cls = env->GetObjectClass(w->view);
         static jmethodID start = env->GetMethodID(cls, "startInput", "(IIZLjava/lang/String;ZZLjava/lang/String;)V");
         static jmethodID handwriting = env->GetMethodID(cls, "startStylusHandwriting", "()V");
+        static jmethodID prepareDelegation = env->GetMethodID(cls, "prepareStylusHandwritingDelegation", "()V");
+        static jmethodID acceptDelegation = env->GetMethodID(cls, "acceptStylusHandwritingDelegation", "()V");
         static jmethodID stop = env->GetMethodID(cls, "stopInput", "()V");
         static jmethodID update = env->GetMethodID(cls, "imeUpdate", "(IIIIZ)V");
         static jmethodID anchor = env->GetMethodID(cls, "cursorAnchorInfo", "([FLjava/lang/String;)V");
@@ -1748,6 +1750,8 @@ namespace {
         host.showKeyboard = [w] { MainEnv()->CallVoidMethod(w->view, show); };
         host.hideKeyboard = [w] { MainEnv()->CallVoidMethod(w->view, hide); };
         host.startStylusHandwriting = [w] { MainEnv()->CallVoidMethod(w->view, handwriting); };
+        host.prepareStylusHandwritingDelegation = [w] { MainEnv()->CallVoidMethod(w->view, prepareDelegation); };
+        host.acceptStylusHandwritingDelegation = [w] { MainEnv()->CallVoidMethod(w->view, acceptDelegation); };
         kiln::ui::SetStylusHandwritingSupported(android_get_device_api_level() >= 34);
         (*w->owner).SetTextInputHost(host);
     }

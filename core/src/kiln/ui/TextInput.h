@@ -152,6 +152,11 @@ namespace kiln::ui {
         std::function<void()> hideKeyboard;                                       // SoftwareKeyboardController.hide
         std::function<void(const CursorAnchorInfo&)> cursorAnchorInfo;            // InputMethodManager.updateCursorAnchorInfo
         std::function<void()> startStylusHandwriting;                             // InputMethodManager.startStylusHandwriting
+        // InputMethodManager.prepare / acceptStylusHandwritingDelegation (API 34): a stroke on a
+        // delegator (handwritingDetector) hands handwriting to the editor focused next
+        // (handwritingHandler).
+        std::function<void()> prepareStylusHandwritingDelegation;
+        std::function<void()> acceptStylusHandwritingDelegation;
     };
 
 }

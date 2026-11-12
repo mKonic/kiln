@@ -1,7 +1,11 @@
 #include "kiln/foundation/text/handwriting/StylusHandwriting.h"
 
 #include "kiln/foundation/Gestures.h"
+#include "kiln/foundation/Focus.h"
 #include "kiln/foundation/Hover.h"
+#include "kiln/runtime/Composition.h"
+#include "kiln/runtime/Task.h"
+#include "kiln/ui/LayoutNode.h"
 
 #include <cmath>
 #include <memory>
@@ -60,6 +64,76 @@ namespace kiln::foundation {
         if (showHoverIcon) m = StylusHoverIcon(std::move(m), PointerIcon::Handwriting, false, kHandwritingBoundsExpansion);
         auto cb = std::make_shared<StylusHandwritingCallbacks>(std::move(callbacks));
         return PointerInput(std::move(m), rt::Keys(0), [cb](PointerInputScope& s) { return Detect(s, cb); }, kHandwritingBoundsExpansion);
+    }
+
+    namespace {
+        // The detector's own focus (FocusEventModifierNode + FocusRequesterModifierNode over the
+        // content below) and its latest callback, kept across recompositions.
+        struct DetectorState {
+            FocusRequester requester;
+            bool focused = false;
+            std::function<void()> callback;
+            ui::Owner* owner = nullptr;
+        };
+
+        // The detector's owner (requireView): set while its node is attached.
+        struct AnchorParams {
+            DetectorState* state;
+            bool operator==(const AnchorParams&) const = default;
+        };
+        struct AnchorNode final : ModifierNode {
+            AnchorParams params;
+            explicit AnchorNode(AnchorParams p) : params(p) {}
+            void OnParamsChanged() { OnAttach(); }
+            void OnAttach() override { params.state->owner = Owner() ? Owner()->GetOwner() : nullptr; }
+            void OnDetach() override { params.state->owner = nullptr; }
+        };
+
+        struct HandlerParams {
+            bool operator==(const HandlerParams&) const = default;
+        };
+        // HandwritingHandlerNode: on gaining focus, accept the delegation once the editor's
+        // input connection exists (launched, so after the focus change has started input).
+        struct HandlerNode final : ModifierNode, ui::FocusEventModifier {
+            HandlerParams params;
+            std::optional<FocusState> last;
+            explicit HandlerNode(HandlerParams p) : params(p) {}
+            void OnParamsChanged() {}
+            ui::FocusEventModifier* AsFocusEvent() override { return this; }
+            void OnFocusEvent(FocusState s) override {
+                if (last == s) return;
+                last = s;
+                if (!ui::HasFocus(s) || !Owner() || !Owner()->GetOwner()) return;
+                ui::Owner* owner = Owner()->GetOwner();
+                std::weak_ptr<const char> alive = m_Alive;
+                rt::Dispatcher::Main().Post([owner, alive] { if (!alive.expired()) owner->AcceptStylusHandwritingDelegation(); });
+            }
+            std::shared_ptr<const char> m_Alive = std::make_shared<const char>(0);
+        };
+    }
+
+    Modifier HandwritingDetector(Modifier m, std::function<void()> callback) {
+        if (!ui::IsStylusHandwritingSupported()) return m;
+        auto state = std::make_shared<DetectorState>();
+        if (auto* c = rt::Composition::Current()) state = c->Remember<std::shared_ptr<DetectorState>>([&] { return state; });
+        state->callback = std::move(callback);
+        m = m.With<AnchorNode>(AnchorParams{ state.get() });
+        m = StylusHoverIcon(std::move(m), PointerIcon::Handwriting, false, kHandwritingBoundsExpansion);
+        StylusHandwritingCallbacks cb;
+        cb.isFocused = [state] { return state->focused; };
+        cb.requestFocus = [state] { state->requester.RequestFocus(); };
+        cb.onHandwritingSlopExceeded = [state] {
+            if (state->callback) state->callback();
+            if (state->owner) state->owner->PrepareStylusHandwritingDelegation();
+        };
+        m = StylusHandwriting(std::move(m), true, true, false, std::move(cb));
+        m = OnFocusChanged(std::move(m), [state](FocusState s) { state->focused = ui::IsFocused(s); });
+        return FocusRequesterModifier(std::move(m), state->requester);
+    }
+
+    Modifier HandwritingHandler(Modifier m) {
+        if (!ui::IsStylusHandwritingSupported()) return m;
+        return m.With<HandlerNode>(HandlerParams{});
     }
 
 }
