@@ -37,6 +37,10 @@ namespace kiln::ui {
         static const WindowInsetsRulers& SystemGestures();
         static const WindowInsetsRulers& TappableElement();
         static const WindowInsetsRulers& Waterfall();
+        // WindowInsetsRulers.disable: no root provides the insets rulers from then on (for apps
+        // that never read them). Call it before the first window; WindowInsets still work.
+        static void Disable() { s_Enabled = false; }
+        static bool Enabled() { return s_Enabled; }
         // Innermost of StatusBars, NavigationBars, CaptionBar.
         static const WindowInsetsRulers& SystemBars();
         // Innermost of the bars, DisplayCutout, Ime, TappableElement.
@@ -56,6 +60,7 @@ namespace kiln::ui {
         InsetsType m_Type = InsetsType::Count;
         RectRulers m_Current, m_Maximum;
         std::vector<const WindowInsetsRulers*> m_Parts;
+        static inline bool s_Enabled = true;
     };
 
     // getDisplayCutoutBounds: rulers around each cutout (up to four).

@@ -3,6 +3,10 @@
 #include "kiln/runtime/Composition.h"
 #include "kiln/runtime/SnapshotFlow.h"
 #include "kiln/runtime/Channel.h"
+#include "kiln/runtime/TaskDispatchers.h"
+
+#include <atomic>
+#include <thread>
 
 #include <map>
 #include <string>
@@ -466,4 +470,35 @@ TEST(ProduceStateSetsFromItsTask) {
     StateSet<int> set;
     m.Put("a", 1);
     CHECK(set.Add(3) && !set.Add(3) && set.Contains(3) && *m.Find("a") == 1);
+}
+
+TEST(WithContextRunsOffTheMainThreadAndResumesOnIt) {
+    Dispatcher& d = Dispatcher::Main();
+    BackgroundDispatcher pool(2, "test");
+    const auto mainThread = std::this_thread::get_id();
+    std::thread::id workThread, resumedThread;
+    int result = 0;
+    Job job = Launch(d, [](BackgroundDispatcher* pool, std::thread::id* work, std::thread::id* resumed, int* out) -> Task<> {
+        *out = co_await WithContext(*pool, [work] { *work = std::this_thread::get_id(); return 42; });
+        *resumed = std::this_thread::get_id();
+    }(&pool, &workThread, &resumedThread, &result));
+    for (int i = 0; i < 2000 && result == 0; ++i) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        d.RunPending();
+    }
+    CHECK_EQ(result, 42);
+    CHECK(workThread != mainThread && resumedThread == mainThread);
+    // A task cancelled while its work runs is not resumed.
+    std::atomic<bool> release{ false }, ran{ false };
+    bool resumedAfterCancel = false;
+    Job cancelled = Launch(d, [](BackgroundDispatcher* pool, std::atomic<bool>* release, std::atomic<bool>* ran, bool* resumed) -> Task<> {
+        co_await WithContext(*pool, [release, ran] { while (!*release) std::this_thread::yield(); *ran = true; });
+        *resumed = true;
+    }(&pool, &release, &ran, &resumedAfterCancel));
+    cancelled.Cancel();
+    release = true;
+    for (int i = 0; i < 2000 && !ran; ++i) std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    d.RunPending();
+    CHECK(ran && !resumedAfterCancel);
 }

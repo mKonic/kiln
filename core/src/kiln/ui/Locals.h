@@ -3,6 +3,7 @@
 // Platform composition locals (androidx.compose.ui.platform CompositionLocals).
 
 #include "kiln/runtime/Composition.h"
+#include "kiln/runtime/TaskDispatchers.h"
 #include "kiln/ui/Geometry.h"
 #include "kiln/ui/NestedScroll.h"
 
@@ -47,6 +48,9 @@ namespace kiln::ui {
     }
     // The pinnable container around this content (a lazy item), or null.
     inline rt::Local<std::shared_ptr<PinnableContainer>> LocalPinnableContainer{ nullptr };
+
+    // LocalTaskDispatchers: the pools content runs background work on (the platform's unless provided).
+    inline rt::Local<const rt::TaskDispatchers*> LocalTaskDispatchers{ &rt::TaskDispatchers::Platform() };
 
     // The device is a TV (FEATURE_LEANBACK): focus scrolling pivots (LocalBringIntoViewSpec).
     inline rt::Local<bool> LocalIsTelevision{ false };

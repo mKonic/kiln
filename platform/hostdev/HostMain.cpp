@@ -70,6 +70,7 @@ int main() {
     kiln::App& app = *appOwner;
     app.SetDensity(density, 1.0f);
     app.Dispatcher().wake = [] { Wake(); };
+    app.Dispatcher().SetRemoteWake([] { Wake(); });   // glfwPostEmptyEvent: any thread
     kiln_app handle{ &app };
     kiln_main(&handle);
 

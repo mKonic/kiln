@@ -14,7 +14,18 @@ namespace kiln::rt {
         if (wake) wake();
     }
 
+    void Dispatcher::PostFromAnyThread(std::function<void()> fn) {
+        std::lock_guard lock(m_RemoteMutex);
+        m_Remote.push_back(std::move(fn));
+        if (m_RemoteWake) m_RemoteWake();
+    }
+
     void Dispatcher::RunPending() {
+        {
+            std::lock_guard lock(m_RemoteMutex);
+            for (auto& fn : m_Remote) m_Queue.push_back(std::move(fn));
+            m_Remote.clear();
+        }
         // Drain including work posted while draining (trampoline, AndroidUiDispatcher:77-96).
         while (!m_Queue.empty()) {
             auto queue = std::move(m_Queue);

@@ -99,7 +99,7 @@ namespace kiln::ui {
     }
 
     void ProvideWindowInsetsRulers(RulerScope& s, const WindowInsetsHolder& h, int width, int height) {
-        if (!h.HasInsets()) return;   // nothing delivered yet: every ruler keeps its default
+        if (!h.HasInsets() || !WindowInsetsRulers::Enabled()) return;   // nothing delivered yet (or disabled): defaults
         for (std::size_t i = 0; i < kTypes; ++i) {
             const auto type = InsetsType(i);
             const WindowInsetsRulers* r = nullptr;

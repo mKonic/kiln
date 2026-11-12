@@ -1135,6 +1135,7 @@ namespace {
         ALooper_addFd(looper, g_Host->eventFd, ALOOPER_POLL_CALLBACK, ALOOPER_EVENT_INPUT, &OnLooperWake, nullptr);
         ALooper_addFd(looper, g_Host->timerFd, ALOOPER_POLL_CALLBACK, ALOOPER_EVENT_INPUT, &OnLooperWake, nullptr);
         g_Host->app->Dispatcher().wake = [] { Wake(); };
+        g_Host->app->Dispatcher().SetRemoteWake([] { Wake(); });   // an eventfd write: any thread
 
         if (saved) {
             std::vector<std::uint8_t> bytes(std::size_t(env->GetArrayLength(saved)));
@@ -2695,6 +2696,7 @@ namespace {
         kiln::ui::BackDispatcher::Main().onHasEnabledChanged = nullptr;
         auto& d = kiln::rt::Dispatcher::Main();
         d.wake = nullptr;
+        d.SetRemoteWake(nullptr);
         d.requestFrame = nullptr;
         g_Host->text.reset();
         close(g_Host->eventFd);

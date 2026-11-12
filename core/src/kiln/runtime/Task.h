@@ -15,6 +15,7 @@
 #include <exception>
 #include <functional>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <utility>
 #include <vector>
@@ -149,6 +150,11 @@ namespace kiln::rt {
         using Clock = std::chrono::steady_clock;
 
         void Post(std::function<void()> fn);
+        // Post from another thread (a background task handing its result back): queued under a
+        // lock, run by the next RunPending on this dispatcher's thread; wakes the host through
+        // the remote wake (which must be safe to call from any thread).
+        void PostFromAnyThread(std::function<void()> fn);
+        void SetRemoteWake(std::function<void()> fn) { std::lock_guard lock(m_RemoteMutex); m_RemoteWake = std::move(fn); }
         // Runs posted work, then due timers. The host calls this before each frame and when idle.
         void RunPending();
         // Resumes every NextFrame() waiter with the same frame time (animations step together).
@@ -182,6 +188,9 @@ namespace kiln::rt {
         struct FrameWaiter { std::uint64_t id; std::coroutine_handle<> h; std::int64_t* out; std::weak_ptr<JobState> job; };
         struct Timer { std::uint64_t id; Clock::time_point at; std::coroutine_handle<> h; std::weak_ptr<JobState> job; };
         std::vector<std::function<void()>> m_Queue;
+        std::mutex m_RemoteMutex;
+        std::vector<std::function<void()>> m_Remote;
+        std::function<void()> m_RemoteWake;
         std::vector<FrameWaiter> m_FrameWaiters;
         std::vector<Timer> m_Timers;
         std::uint64_t m_NextId = 1;

@@ -286,6 +286,9 @@ LocalUiMediaScope = "LocalUiMediaScope"
 computedMediaQuery = "ComputedMediaQuery"
 mediaQuery = "MediaQuery"
 
+disable = "WindowInsetsRulers::Disable"
+LocalTaskDispatchers = "LocalTaskDispatchers"
+
 [skipped]
 hasKeysMissingFrom = "kiln's configuration is a struct of typed fields; Equivalent compares them"
 DelegatingNode = "kiln nodes implement several capability interfaces themselves; nothing to delegate to"
