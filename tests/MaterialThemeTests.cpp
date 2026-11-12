@@ -14553,6 +14553,25 @@ TEST(ModalBottomSheetWindowSetsBarIconsFromItsContent) {
     }
 }
 
+TEST(TextFieldContainersAnimateWithoutRecomposing) {
+    // The container's colour, border colour and border width animate in a node (upstream
+    // textFieldContainer / NodeTransition): focusing does not recompose the caller each frame.
+    PhoneHarness h;
+    auto source = std::make_shared<foundation::MutableInteractionSource>();
+    int filled = 0, outlined = 0;
+    Themed(h, [&] {
+        auto& c = *rt::Composition::Current();
+        c.Child([&] { ++filled; TextFieldDefaults::Container(true, false, source, SizeMod({}, 100_dp, 56_dp)); });
+        c.Child([&] { ++outlined; OutlinedTextFieldDefaults::Container(true, false, source, SizeMod({}, 100_dp, 56_dp)); });
+    });
+    h.AdvanceTimeBy(100);
+    const int filledBefore = filled, outlinedBefore = outlined;
+    source->Start(foundation::Interaction::Kind::Focus);
+    h.AdvanceTimeBy(1000);
+    CHECK(filled - filledBefore <= 1);
+    CHECK(outlined - outlinedBefore <= 1);
+}
+
 TEST(TextFieldFocusAnimationRecomposesOnlyTheLabel) {
     // The decoration box reads its animated values in layout, draw and the label's own scope
     // (CommonDecorationBox passes States down): the other slots do not follow each frame.

@@ -189,6 +189,97 @@ namespace kiln::material3 {
         };
     }
 
+    namespace {
+        // TextFieldContainerNode (textFieldContainer, NodeTransition): the container colour
+        // (FastEffects), border colour (FastEffects) and border width (FastSpatial) animate in the
+        // node, so a focus change redraws without recomposing. The border snaps while disabled.
+        struct ContainerParams {
+            bool enabled, isError;
+            std::shared_ptr<MutableInteractionSource> source;
+            TextFieldColors colors;
+            ShapePtr shape;
+            std::optional<Dp> focusedBorder, unfocusedBorder;   // both unset: no border
+            anim::SpecPtr effectsSpec, spatialSpec;
+            bool operator==(const ContainerParams& o) const {
+                return enabled == o.enabled && isError == o.isError && source == o.source && colors == o.colors && shape == o.shape &&
+                       focusedBorder == o.focusedBorder && unfocusedBorder == o.unfocusedBorder;
+            }
+        };
+
+        // A colour animating as a lerp from where it was to its target (Animatable<Color>).
+        struct AnimatedColor {
+            Color from, to;
+            anim::Animatable progress{ 1.0f };
+            rt::Job job;
+            Color Value() const { return ui::Lerp(from, to, progress.Float()); }
+            void Retarget(Color target, const anim::SpecPtr& spec) {
+                if (target == to) return;
+                from = Value();
+                to = target;
+                if (!spec) { job.Cancel(); progress.SnapTo(1.0f); from = to; return; }
+                progress.SnapTo(0.0f);
+                job = rt::Launch(rt::Dispatcher::Main(), AnimateIndicator(&progress, { 1, 0, 0, 0 }, spec));
+            }
+        };
+
+        struct TextFieldContainerNode final : ui::ModifierNode, ui::DrawModifier {
+            ContainerParams params;
+            bool focused = false;
+            AnimatedColor container, border;
+            anim::Animatable borderWidth{ 0.0f };
+            float widthTarget = 0;
+            rt::Job widthJob;
+            BorderRenderer renderer;
+            explicit TextFieldContainerNode(ContainerParams p) : params(std::move(p)) {
+                rt::Observation::Untracked([&] { focused = params.source && params.source->IsFocused(); });
+                container.from = container.to = ContainerTarget();
+                border.from = border.to = BorderTarget();
+                widthTarget = WidthTarget();
+                borderWidth.SnapTo(widthTarget);
+            }
+            ui::DrawModifier* AsDraw() override { return this; }
+            void OnDetach() override { container.job.Cancel(); border.job.Cancel(); widthJob.Cancel(); }
+            void OnParamsChanged() { Update(); InvalidateDraw(); }
+            bool HasBorder() const { return params.focusedBorder || params.unfocusedBorder; }
+            Color ContainerTarget() const { return params.colors.ContainerColor(params.enabled, params.isError, focused); }
+            Color BorderTarget() const { return params.colors.IndicatorColor(params.enabled, params.isError, focused); }
+            float WidthTarget() const {
+                const std::optional<Dp>& w = focused && params.enabled ? params.focusedBorder : params.unfocusedBorder;
+                return w ? w->value : 0.0f;
+            }
+            void Update() {
+                rt::Observation::Untracked([&] {
+                    container.Retarget(ContainerTarget(), params.effectsSpec);
+                    border.Retarget(BorderTarget(), params.enabled ? params.effectsSpec : nullptr);
+                    const float w = WidthTarget();
+                    if (w == widthTarget) return;
+                    widthTarget = w;
+                    if (params.enabled) widthJob = rt::Launch(rt::Dispatcher::Main(), AnimateIndicator(&borderWidth, { w, 0, 0, 0 }, params.spatialSpec));
+                    else { widthJob.Cancel(); borderWidth.SnapTo(w); }
+                });
+            }
+            void Draw(ui::ContentDrawScope& s) override {
+                // The source's focus, read while drawing (InteractionTracker).
+                const bool nowFocused = params.source && params.source->IsFocused();
+                if (nowFocused != focused) {
+                    focused = nowFocused;
+                    Update();
+                }
+                const gfx::Outline outline = params.shape->CreateOutline(s.GetSize(), s.Direction(), s);
+                s.DrawPath(outline.ToPath(), container.Value());
+                s.DrawContent();
+                if (HasBorder()) renderer.DrawBorder(s, Dp(borderWidth.Float()), gfx::Brush::SolidColor(border.Value()), outline);
+            }
+        };
+
+        ui::Modifier TextFieldContainer(ui::Modifier m, bool enabled, bool isError, std::shared_ptr<MutableInteractionSource> source, const TextFieldColors& colors,
+                                        ShapePtr shape, std::optional<Dp> focusedBorder = std::nullopt, std::optional<Dp> unfocusedBorder = std::nullopt) {
+            return m.With<TextFieldContainerNode>(ContainerParams{ enabled, isError, std::move(source), colors, std::move(shape), focusedBorder, unfocusedBorder,
+                                                                   Value(tokens::MotionSchemeKeyTokens::FastEffects),
+                                                                   Value(tokens::MotionSchemeKeyTokens::FastSpatial) });
+        }
+    }
+
     ui::Modifier TextFieldDefaults::IndicatorLine(ui::Modifier m, bool enabled, bool isError, std::shared_ptr<MutableInteractionSource> source,
                                                   std::optional<TextFieldColors> colors, ShapePtr textFieldShape, Dp focused, Dp unfocused) {
         IndicatorParams p{ enabled, isError, std::move(source), colors, textFieldShape, focused, unfocused,
@@ -201,10 +292,8 @@ namespace kiln::material3 {
                                       std::optional<TextFieldColors> colors, ShapePtr shape, Dp focusedThickness, Dp unfocusedThickness) {
         const TextFieldColors c = colors ? *colors : TextFieldDefaults::colors();
         if (!shape) shape = TextFieldDefaults::shape();
-        const bool focused = source && source->IsFocused();
-        const Color container = AnimateColorAsState(c.ContainerColor(enabled, isError, focused), Value(tokens::MotionSchemeKeyTokens::FastEffects));
-        Box(TextFieldDefaults::IndicatorLine(internal::TextFieldBackground(modifier, [container] { return container; }, shape), enabled, isError, source, c,
-                                             shape, focusedThickness, unfocusedThickness));
+        Box(TextFieldDefaults::IndicatorLine(TextFieldContainer(modifier, enabled, isError, source, c, shape), enabled, isError, source, c, shape,
+                                             focusedThickness, unfocusedThickness));
     }
 
     // --- outlined -------------------------------------------------------------------------------
@@ -294,15 +383,7 @@ namespace kiln::material3 {
                                               std::optional<TextFieldColors> colors, ShapePtr shape, Dp focusedThickness, Dp unfocusedThickness) {
         const TextFieldColors c = colors ? *colors : OutlinedTextFieldDefaults::colors();
         if (!shape) shape = OutlinedTextFieldDefaults::shape();
-        const bool focused = source && source->IsFocused();
-        // animateBorderStrokeAsState: animated while enabled, the state's own value otherwise.
-        const Color target = c.IndicatorColor(enabled, isError, focused);
-        const Color borderColor = enabled ? AnimateColorAsState(target, Value(tokens::MotionSchemeKeyTokens::FastEffects)) : target;
-        const Dp thickness = enabled ? AnimateDpAsState(focused ? focusedThickness : unfocusedThickness, Value(tokens::MotionSchemeKeyTokens::FastSpatial))
-                                     : unfocusedThickness;
-        const Color container = AnimateColorAsState(c.ContainerColor(enabled, isError, focused), Value(tokens::MotionSchemeKeyTokens::FastEffects));
-        Box(internal::TextFieldBackground(Border(modifier, BorderStroke{ thickness, gfx::Brush::SolidColor(borderColor) }, shape), [container] { return container; },
-                                          shape));
+        Box(TextFieldContainer(modifier, enabled, isError, source, c, shape, focusedThickness, unfocusedThickness));
     }
 
     // --- shared ---------------------------------------------------------------------------------
