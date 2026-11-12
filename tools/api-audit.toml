@@ -42,6 +42,18 @@ collectIsPressedAsState = "IsPressed"
 fillMaxHeight = "FillMax"
 fillMaxWidth = "FillMax"
 fillMaxSize = "FillMax"
+heightIn = "SizeIn"
+widthIn = "SizeIn"
+requiredSizeIn = "SizeIn"   # enforceIncoming = false
+requiredHeightIn = "SizeIn"
+requiredWidthIn = "SizeIn"
+wrapContentHeight = "WrapContent"
+wrapContentWidth = "WrapContent"
+wrapContentSize = "WrapContent"
+absoluteOffset = "OffsetMod"   # rtlAware = false
+absolutePadding = "PaddingValues"   # rtlAware = false
+HorizontalOrVertical = "Arrangement"
+BoxScope = "AlignInBox"
 FontScaling = "Density"   # SpToPx / PxToSp
 TextUnitType = "TextUnit::Type"
 ModalBottomSheetDefaults = "ModalBottomSheetProperties"   # its only member: the default properties
@@ -95,6 +107,8 @@ rememberNavigationEventDispatcherOwner = "the dispatcher is per window (BackDisp
 NavigationForwardHandler = "forward navigation: Android sends no forward events"
 
 [skipped_patterns]
+'Marker$' = "Kotlin DSL / scope markers"
+'^Flow(Row|Column)OverflowScope$' = "the flow overflow API is deprecated upstream"
 'Dsl$' = "Kotlin DSL markers"
 '^Experimental\w*Api$' = "opt-in annotations: kiln has no opt-in"
 '^Internal\w*Api$' = "opt-in annotations: kiln has no opt-in"

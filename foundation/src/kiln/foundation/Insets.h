@@ -112,6 +112,10 @@ namespace kiln::foundation {
     // consumeWindowInsets: descendants see these insets as consumed (no padding here).
     Modifier ConsumeWindowInsets(Modifier m, WindowInsets insets);
     Modifier ConsumeWindowInsets(Modifier m, PaddingValues padding);
+    // recalculateWindowInsets: below this, the consumed insets are recomputed from where this
+    // element is in the window (for a parent that positions content without consuming insets,
+    // such as an animated pane). Needs fixed constraints; otherwise the ancestors' pass through.
+    Modifier RecalculateWindowInsets(Modifier m);
     // onConsumedWindowInsetsChanged: what the ancestors have consumed.
     Modifier OnConsumedWindowInsetsChanged(Modifier m, std::function<void(const WindowInsets&)> block);
 

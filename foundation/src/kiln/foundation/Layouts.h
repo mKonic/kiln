@@ -60,6 +60,9 @@ namespace kiln::foundation {
         Dp start{ 0 }, top{ 0 }, end{ 0 }, bottom{ 0 };
         bool rtlAware = true;
         bool operator==(const PaddingValues&) const = default;
+        // calculateStartPadding / calculateEndPadding: the left/right sides for absolute padding.
+        Dp CalculateStartPadding(LayoutDirection dir) const { return rtlAware || dir == LayoutDirection::Ltr ? start : end; }
+        Dp CalculateEndPadding(LayoutDirection dir) const { return rtlAware || dir == LayoutDirection::Ltr ? end : start; }
     };
     Modifier Padding(Modifier m, PaddingValues p);
     inline Modifier Padding(Modifier m, Dp all) { return Padding(std::move(m), { all, all, all, all }); }
@@ -87,6 +90,12 @@ namespace kiln::foundation {
     // State read in the block remeasures it.
     using LayoutModifierMeasure = std::function<MeasureResult(MeasureScope&, Measurable&, const Constraints&)>;
     Modifier LayoutMod(Modifier m, LayoutModifierMeasure measure);
+    // fitInside: with bounded constraints, sizes the content to the area inside `rulers` (insets,
+    // a cutout, ...); otherwise centres the content on that area. fitOutside: sizes the content
+    // to the space between the bounds and the first side of `rulers` with room (left, top,
+    // right, bottom), or to nothing.
+    Modifier FitInside(Modifier m, ui::RectRulers rulers);
+    Modifier FitOutside(Modifier m, ui::RectRulers rulers);
     // Modifier.approachLayout: an ApproachLayoutModifier from lambdas (see Layout.h). The
     // placement check defaults to never in progress.
     using ApproachMeasure = std::function<MeasureResult(ui::ApproachMeasureScope&, Measurable&, const Constraints&)>;

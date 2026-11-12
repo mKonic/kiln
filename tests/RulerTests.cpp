@@ -137,3 +137,45 @@ TEST(WindowInsetsRulersFollowTheInsets) {
     h.Pump();
     CHECK_EQ(statusTop, 30.0f);
 }
+
+TEST(FitInsideAndOutsideSizeToTheRulers) {
+    // A 200x200 parent providing an area 30..170 x 20..190.
+    const RectRulers area;
+    auto provider = std::make_shared<LambdaMeasurePolicy>([area](MeasureScope& s, std::span<Measurable* const> children, const Constraints& c) {
+        Placeable& p = children[0]->Measure(c);
+        return s.Layout(c.maxWidth, c.maxHeight, {}, [area](RulerScope& r) {
+            r.Provides(area.left, 30);
+            r.Provides(area.top, 20);
+            r.Provides(area.right, 170);
+            r.Provides(area.bottom, 190);
+        }, [&p](PlacementScope& ps) { ps.Place(p, 0, 0); });
+    });
+    IntSize inside, outside, unbounded;
+    IntOffset insideAt, unboundedAt;
+    Harness h;
+    h.Run([&] {
+        Layout(Modifier{}, provider, [&] {
+            Box(Modifier{}, Alignment::TopStart(), false, [&] {
+                Box(OnGloballyPositioned(FitInside(FillMax(Modifier{}, Axis::Both, 1), area), [&](const LayoutCoordinates& lc) {
+                    inside = lc.Size();
+                    insideAt = RoundToIntOffset(lc.PositionInRoot());
+                }), Alignment::TopStart(), false, [] {});
+                Box(OnGloballyPositioned(FitOutside(FillMax(Modifier{}, Axis::Both, 1), area), [&](const LayoutCoordinates& lc) { outside = lc.Size(); }),
+                    Alignment::TopStart(), false, [] {});
+                // Unbounded: measured as it likes (40x40), centred on the area.
+                Box(WrapContent(Modifier{}, Axis::Both, Alignment::TopStart(), true), Alignment::TopStart(), false, [&] {
+                    Box(OnGloballyPositioned(SizeMod(FitInside(Modifier{}, area), Dp(40), Dp(40)), [&](const LayoutCoordinates& lc) {
+                        unbounded = lc.Size();
+                        unboundedAt = RoundToIntOffset(lc.PositionInRoot());
+                    }), Alignment::TopStart(), false, [] {});
+                });
+            });
+        });
+    });
+    CHECK(inside == (IntSize{ 140, 170 }));
+    CHECK(insideAt == (IntOffset{ 30, 20 }));
+    CHECK(outside == (IntSize{ 30, 200 }));   // the space left of the area
+    CHECK(unbounded == (IntSize{ 40, 40 }));
+    // The ruler values are clamped to its own 40x40: (30 + 40 - 40) / 2, (20 + 40 - 40) / 2.
+    CHECK(unboundedAt == (IntOffset{ 15, 10 }));
+}

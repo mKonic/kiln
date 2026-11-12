@@ -140,3 +140,26 @@ TEST(ImeNestedScrollPullsTheKeyboard) {
     CHECK_EQ(finished, 1);
     CHECK_EQ(set.back(), 300);
 }
+
+TEST(RecalculateWindowInsetsConsumesWhatTheElementDoesNotOverlap) {
+    Harness h;
+    WindowInsets seen;
+    IntSize padded;
+    // 400x760 at y = 10 in an 800-high window: 10 above it, 30 below it.
+    h.Run([&] {
+        Box(Modifier{}, Alignment::TopStart(), false, [&] {
+            Box(OffsetMod(SizeMod(Modifier{}, Dp(400), Dp(760)), Dp(0), Dp(10)), Alignment::TopStart(), false, [&] {
+                Box(RecalculateWindowInsets(FillMax(Modifier{}, Axis::Both, 1)), Alignment::TopStart(), false, [&] {
+                    Box(OnSizeChanged(SystemBarsPadding(OnConsumedWindowInsetsChanged(FillMax(Modifier{}, Axis::Both, 1), [&](const WindowInsets& w) { seen = w; })),
+                                      [&](IntSize s) { padded = s; }),
+                        Alignment::TopStart(), false, [] {});
+                });
+            });
+        });
+    });
+    const auto c = h.Ctx();
+    CHECK_EQ(seen.Top(c), 10);
+    CHECK_EQ(seen.Bottom(c), 30);
+    // The status bar (24) pads 14, the navigation bar (48) pads 18.
+    CHECK(padded == (IntSize{ 400, 760 - 14 - 18 }));
+}

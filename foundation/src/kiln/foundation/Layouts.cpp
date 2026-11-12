@@ -4,6 +4,8 @@
 
 #include "kiln/ui/Draw.h"
 
+#include <algorithm>
+#include <array>
 #include <cmath>
 
 namespace kiln::foundation {
@@ -924,6 +926,50 @@ namespace kiln::foundation {
         return m.With<OffsetPxNode>(OffsetPxParams{ std::move(offset), rtlAware });
     }
     Modifier LayoutMod(Modifier m, LayoutModifierMeasure measure) { return m.With<LayoutBlockNode>(LayoutBlockParams{ std::move(measure) }); }
+
+    // RulerAlignment.kt.
+    Modifier FitInside(Modifier m, ui::RectRulers rulers) {
+        return LayoutMod(std::move(m), [rulers](MeasureScope& s, Measurable& measurable, const Constraints& c) {
+            auto side = [&rulers](ui::PlacementScope& p, int width, int height) {
+                return std::array<int, 4>{ std::clamp(RoundJava(p.Current(rulers.left, 0)), 0, width), std::clamp(RoundJava(p.Current(rulers.top, 0)), 0, height),
+                                           std::clamp(RoundJava(p.Current(rulers.right, float(width))), 0, width),
+                                           std::clamp(RoundJava(p.Current(rulers.bottom, float(height))), 0, height) };
+            };
+            if (c.HasBoundedWidth() && c.HasBoundedHeight()) {
+                const int width = c.maxWidth, height = c.maxHeight;
+                return s.Layout(width, height, [&measurable, side, width, height](ui::PlacementScope& p) {
+                    const auto [l, t, r, b] = side(p, width, height);
+                    Placeable& placeable = measurable.Measure(Constraints::Fixed(r - l, b - t));
+                    p.Place(placeable, l, t);
+                });
+            }
+            Placeable& placeable = measurable.Measure(c);
+            const int width = placeable.Width(), height = placeable.Height();
+            return s.Layout(width, height, [&placeable, side, width, height](ui::PlacementScope& p) {
+                const auto [l, t, r, b] = side(p, width, height);
+                p.Place(placeable, (l + r - width) / 2, (t + b - height) / 2);
+            });
+        });
+    }
+
+    Modifier FitOutside(Modifier m, ui::RectRulers rulers) {
+        return LayoutMod(std::move(m), [rulers](MeasureScope& s, Measurable& measurable, const Constraints& c) {
+            if (!c.HasBoundedWidth() || !c.HasBoundedHeight())
+                return s.Layout(0, 0, [&measurable](ui::PlacementScope& p) { p.Place(measurable.Measure(Constraints::Fixed(0, 0)), 0, 0); });
+            const int width = c.maxWidth, height = c.maxHeight;
+            return s.Layout(width, height, [&measurable, rulers, width, height](ui::PlacementScope& p) {
+                const int left = RoundJava(p.Current(rulers.left, 0)), top = RoundJava(p.Current(rulers.top, 0));
+                const int right = RoundJava(p.Current(rulers.right, float(width))), bottom = RoundJava(p.Current(rulers.bottom, float(height)));
+                int childWidth = width, childHeight = height, placeLeft = 0, placeTop = 0;
+                if (left > 0) childWidth = left;
+                else if (top > 0) childHeight = top;
+                else if (right < width) { placeLeft = right; childWidth = width - right; }
+                else if (bottom < height) { placeTop = bottom; childHeight = height - bottom; }
+                else { childWidth = 0; childHeight = 0; }
+                p.Place(measurable.Measure(Constraints::Fixed(childWidth, childHeight)), placeLeft, placeTop);
+            });
+        });
+    }
     Modifier ApproachLayout(Modifier m, std::function<bool(IntSize)> measuring, std::function<bool(PlacementScope&, const ui::LayoutCoordinates&)> placing,
                             ApproachMeasure measure) {
         return m.With<ApproachNode>(ApproachParams{ std::move(measuring), std::move(placing), std::move(measure) });

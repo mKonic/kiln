@@ -207,7 +207,7 @@ namespace kiln::foundation {
     // --- consumption ---------------------------------------------------------------------------
 
     namespace {
-        enum class ConsumeKind : std::uint8_t { Padding, Union, AddPadding, Observe, TopHeight, BottomHeight, StartWidth, EndWidth };
+        enum class ConsumeKind : std::uint8_t { Padding, Union, AddPadding, Observe, Recalculate, TopHeight, BottomHeight, StartWidth, EndWidth };
         struct InsetsParams {
             ConsumeKind kind;
             WindowInsets insets;
@@ -237,12 +237,20 @@ namespace kiln::foundation {
             void OnParamsChanged() { InvalidateMeasure(); }
             LayoutModifier* AsLayout() override { return this; }
 
-            bool Consumes() const { return params.kind == ConsumeKind::Padding || params.kind == ConsumeKind::Union || params.kind == ConsumeKind::AddPadding; }
+            // Recalculate: the distance to the root's edges, set while placing with fixed
+            // constraints (nullopt: the ancestors' consumption passes through).
+            std::optional<WindowInsets> recalculated;
+
+            bool Consumes() const {
+                return params.kind == ConsumeKind::Padding || params.kind == ConsumeKind::Union || params.kind == ConsumeKind::AddPadding ||
+                       params.kind == ConsumeKind::Recalculate;
+            }
             WindowInsets Calculate(const WindowInsets& ancestor) const {
                 switch (params.kind) {
                     case ConsumeKind::Padding:
                     case ConsumeKind::Union: return ancestor.Union(params.insets);
                     case ConsumeKind::AddPadding: return ancestor.Add(WindowInsets::FromPadding(params.padding));
+                    case ConsumeKind::Recalculate: return recalculated ? *recalculated : ancestor;
                     default: return ancestor;
                 }
             }
@@ -262,10 +270,12 @@ namespace kiln::foundation {
                 return consumed;
             }
 
+            MeasureResult MeasureRecalculating(MeasureScope& s, Measurable& m, const Constraints& c);
             MeasureResult Measure(MeasureScope& s, Measurable& m, const Constraints& c) override {
                 const InsetsContext ctx = ContextOf(*this);
                 const WindowInsets ancestor = AncestorConsumed();
                 if (params.kind == ConsumeKind::Observe && params.block && *params.block) (*params.block)(ancestor);
+                if (params.kind == ConsumeKind::Recalculate) return MeasureRecalculating(s, m, c);
                 if (params.kind != ConsumeKind::Padding && params.kind < ConsumeKind::TopHeight) {
                     Placeable& p = m.Measure(c);
                     return s.Layout(p.Width(), p.Height(), [&p](PlacementScope& place) { place.Place(p, 0, 0); });
@@ -297,6 +307,28 @@ namespace kiln::foundation {
             }
         };
 
+        // RecalculateWindowInsetsModifierNode.measure: with fixed constraints the content is
+        // measured while placing, after the consumed insets became this element's distance to
+        // the root's edges (so it pads exactly for the parts of the window it overlaps).
+        MeasureResult InsetsNode::MeasureRecalculating(MeasureScope& s, Measurable& m, const Constraints& c) {
+            if (!c.HasFixedWidth() || !c.HasFixedHeight()) {
+                recalculated.reset();
+                Placeable& p = m.Measure(c);
+                return s.Layout(p.Width(), p.Height(), [&p](PlacementScope& place) { place.Place(p, 0, 0); });
+            }
+            const int width = c.maxWidth, height = c.maxHeight;
+            return s.Layout(width, height, [this, &m, width, height](PlacementScope& place) {
+                if (const LayoutNode* node = Owner()) {
+                    const Rect bounds = node->CoordinatesOf(this).BoundsInRoot();
+                    const ui::Owner* owner = node->GetOwner();
+                    const IntSize rootSize = owner ? owner->WindowSize() : node->Size();
+                    recalculated = WindowInsets::Fixed(RoundJava(bounds.left), RoundJava(bounds.top), rootSize.width - RoundJava(bounds.right),
+                                                       rootSize.height - RoundJava(bounds.bottom));
+                }
+                place.Place(m.Measure(Constraints::Fixed(width, height)), 0, 0);
+            });
+        }
+
         Modifier With(Modifier m, ConsumeKind kind, WindowInsets insets, PaddingValues padding = {},
                       std::shared_ptr<std::function<void(const WindowInsets&)>> block = nullptr) {
             return m.With<InsetsNode>(InsetsParams{ kind, std::move(insets), padding, std::move(block) });
@@ -306,6 +338,7 @@ namespace kiln::foundation {
     Modifier WindowInsetsPadding(Modifier m, WindowInsets insets) { return With(std::move(m), ConsumeKind::Padding, std::move(insets)); }
     Modifier ConsumeWindowInsets(Modifier m, WindowInsets insets) { return With(std::move(m), ConsumeKind::Union, std::move(insets)); }
     Modifier ConsumeWindowInsets(Modifier m, PaddingValues padding) { return With(std::move(m), ConsumeKind::AddPadding, {}, padding); }
+    Modifier RecalculateWindowInsets(Modifier m) { return With(std::move(m), ConsumeKind::Recalculate, {}); }
     Modifier OnConsumedWindowInsetsChanged(Modifier m, std::function<void(const WindowInsets&)> block) {
         return With(std::move(m), ConsumeKind::Observe, {}, {}, std::make_shared<std::function<void(const WindowInsets&)>>(std::move(block)));
     }
