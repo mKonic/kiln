@@ -236,10 +236,18 @@ namespace kiln::foundation {
     rt::Task<> DetectTapGestures(PointerInputScope& s, TapCallbacks cb) {
         // The current press's scope: ended (released or cancelled) when its press is.
         std::shared_ptr<PressGestureScope> press;
+        // The onPress tasks still running: launched in the detector's scope, they end with it
+        // (each holds its scope, whose job holds the task: cancelling breaks that cycle).
+        struct Running {
+            std::vector<std::shared_ptr<PressGestureScope>> all;
+            ~Running() { for (auto& p : all) p->job.Cancel(); }
+        } running;
         auto startPress = [&](Offset at) {
             if (cb.onPress) cb.onPress(at);
             if (!cb.onPressScoped) return;
+            std::erase_if(running.all, [](const auto& p) { return p->job.Done(); });
             press = std::make_shared<PressGestureScope>();
+            running.all.push_back(press);
             static_cast<ui::Density&>(*press) = s.GetDensity();
             auto keep = press;
             auto onPress = cb.onPressScoped;
