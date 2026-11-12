@@ -1,5 +1,7 @@
 #include "kiln/ui/Draw.h"
 
+#include <cstring>
+
 #include "kiln/PathCache.h"
 #include "kiln/Gradients.h"
 #include "kiln/Filters.h"
@@ -401,11 +403,21 @@ namespace kiln::ui {
 
     void DrawScope::DrawRect(const gfx::Brush& b, Offset topLeft, Size size, float alpha) {
         if (m_Recording) { m_Recording->push_back([=](DrawScope& d) { d.DrawRect(b, topLeft, size, alpha); }); return; }
+        if (b.IsLayered()) {
+            const Rect r{ topLeft.x, topLeft.y, topLeft.x + size.width, topLeft.y + size.height };
+            FillLayered([&] { DrawRect(Color(0xFFFFFFFFu), topLeft, size); }, r, b, alpha, nullptr);
+            return;
+        }
         DrawRoundRect(b, topLeft, size, 0, alpha);
     }
 
     void DrawScope::DrawRoundRect(const gfx::Brush& b, Offset p, Size size, float r, float alpha) {
         if (m_Recording) { m_Recording->push_back([=](DrawScope& d) { d.DrawRoundRect(b, p, size, r, alpha); }); return; }
+        if (b.IsLayered()) {
+            const Rect bounds{ p.x, p.y, p.x + size.width, p.y + size.height };
+            FillLayered([&] { DrawRoundRect(Color(0xFFFFFFFFu), p, size, r); }, bounds, b, alpha, nullptr);
+            return;
+        }
         if (!m_Target.quads) return;
         QuadRenderer::Paint paint;
         Color solid;
@@ -423,6 +435,123 @@ namespace kiln::ui {
 
     int DrawScope::FilterRow(const gfx::ColorFilter* f) {
         return f && m_Target.filters ? m_Target.filters->RowFor(*f) : -1;
+    }
+
+    void DrawScope::FillLayered(const std::function<void()>& coverage, Rect bounds, const gfx::Brush& brush, float alpha, const gfx::ColorFilter* filter) {
+        if (bounds.right <= bounds.left || bounds.bottom <= bounds.top) return;
+        BeginLayer(bounds, alpha, nullptr, gfx::BlendMode::SrcOver, filter);
+        coverage();
+        Save();
+        SetBlendMode(gfx::BlendMode::SrcIn);
+        PaintBrush(bounds, brush);
+        Restore();
+        EndLayer();
+    }
+
+    void DrawScope::PaintBrush(Rect bounds, const gfx::Brush& brush) {
+        switch (brush.kind) {
+            case gfx::Brush::Kind::Shader:
+                if (brush.shader && *brush.shader) PaintBrush(bounds, (*brush.shader)(m_Size));
+                return;
+            case gfx::Brush::Kind::Composite: {
+                // CompositeShader: dst, then src blended onto it, as one image.
+                BeginLayer(bounds, 1);
+                if (brush.dst) PaintBrush(bounds, *brush.dst);
+                Save();
+                SetBlendMode(brush.blend);
+                if (brush.src) PaintBrush(bounds, *brush.src);
+                Restore();
+                EndLayer();
+                return;
+            }
+            case gfx::Brush::Kind::Image:
+                PaintImageTiles(bounds, brush);
+                return;
+            default:
+                DrawRect(brush, { bounds.left, bounds.top }, { bounds.Width(), bounds.Height() });
+                return;
+        }
+    }
+
+    namespace {
+        // One axis of an image shader across [lo, hi): pieces of the image (src span, in image
+        // pixels) placed over spans of the axis, flipped for the mirrored tiles.
+        struct TileSpan { float dst0, dst1, src0, src1; bool flip; };
+        std::vector<TileSpan> TileSpans(gfx::TileMode mode, float lo, float hi, float n) {
+            std::vector<TileSpan> out;
+            if (n <= 0 || hi <= lo) return out;
+            switch (mode) {
+                case gfx::TileMode::Decal:
+                    if (hi > 0 && lo < n) out.push_back({ 0, n, 0, n, false });
+                    break;
+                case gfx::TileMode::Clamp:
+                    // The edge pixels stretch past the image.
+                    if (lo < 0) out.push_back({ lo, 0, 0, 1, false });
+                    if (hi > 0 && lo < n) out.push_back({ 0, n, 0, n, false });
+                    if (hi > n) out.push_back({ n, hi, n - 1, n, false });
+                    break;
+                case gfx::TileMode::Repeated:
+                case gfx::TileMode::Mirror:
+                    for (long i = long(std::floor(lo / n)); float(i) * n < hi; ++i)
+                        out.push_back({ float(i) * n, float(i + 1) * n, 0, n, mode == gfx::TileMode::Mirror && (i & 1) != 0 });
+                    break;
+            }
+            return out;
+        }
+        // A small image repeated (mirrored as the tile modes say) into one at least `min` px on
+        // each side, so filling a large area takes few quads.
+        gfx::ImageBitmap Enlarge(const gfx::ImageBitmap& img, gfx::TileMode mx, gfx::TileMode my, int repX, int repY) {
+            const int w = img.Width(), h = img.Height();
+            const int W = w * repX, H = h * repY;
+            std::vector<std::uint8_t> out(std::size_t(W) * std::size_t(H) * 4);
+            const std::uint8_t* px = img.Pixels();
+            for (int y = 0; y < H; ++y) {
+                const int ty = y / h;
+                int sy = y % h;
+                if (my == gfx::TileMode::Mirror && (ty & 1)) sy = h - 1 - sy;
+                for (int x = 0; x < W; ++x) {
+                    const int tx = x / w;
+                    int sx = x % w;
+                    if (mx == gfx::TileMode::Mirror && (tx & 1)) sx = w - 1 - sx;
+                    std::memcpy(&out[(std::size_t(y) * std::size_t(W) + std::size_t(x)) * 4], px + (std::size_t(sy) * std::size_t(w) + std::size_t(sx)) * 4, 4);
+                }
+            }
+            return gfx::ImageBitmap::FromPixels(W, H, out, true);
+        }
+    }
+
+    void DrawScope::PaintImageTiles(Rect bounds, const gfx::Brush& brush) {
+        gfx::ImageBitmap image = brush.image;
+        if (!image) return;
+        float w = float(image.Width()), h = float(image.Height());
+        // Many small tiles: enlarge the repeated image first (an even count keeps mirroring right).
+        auto reps = [](gfx::TileMode m, float extent, float n) {
+            if (m != gfx::TileMode::Repeated && m != gfx::TileMode::Mirror) return 1;
+            const float tiles = extent / n;
+            if (tiles <= 16) return 1;
+            int r = int(std::ceil(tiles / 16));
+            return std::min(r + (r & 1), std::max(1, 1024 / int(n)));
+        };
+        const int rx = reps(brush.tile, bounds.Width(), w), ry = reps(brush.tileY, bounds.Height(), h);
+        if (rx > 1 || ry > 1) {
+            image = Enlarge(image, brush.tile, brush.tileY, rx, ry);
+            w *= float(rx);
+            h *= float(ry);
+        }
+        for (const TileSpan& sx : TileSpans(brush.tile, bounds.left, bounds.right, w)) {
+            for (const TileSpan& sy : TileSpans(brush.tileY, bounds.top, bounds.bottom, h)) {
+                const Rect src{ sx.src0, sy.src0, sx.src1, sy.src1 };
+                if (!sx.flip && !sy.flip) {
+                    DrawImage(image, src, { sx.dst0, sy.dst0 }, { sx.dst1 - sx.dst0, sy.dst1 - sy.dst0 }, 1);
+                    continue;
+                }
+                Save();
+                const Offset centre{ (sx.dst0 + sx.dst1) / 2, (sy.dst0 + sy.dst1) / 2 };
+                Scale(sx.flip ? -1.0f : 1.0f, sy.flip ? -1.0f : 1.0f, centre);
+                DrawImage(image, src, { sx.dst0, sy.dst0 }, { sx.dst1 - sx.dst0, sy.dst1 - sy.dst0 }, 1);
+                Restore();
+            }
+        }
     }
 
     namespace {
@@ -573,6 +702,15 @@ namespace kiln::ui {
 
     void DrawScope::DrawPath(const gfx::Path& path, const gfx::Brush& b, const gfx::Stroke* stroke, float alpha, const gfx::ColorFilter* filter) {
         if (m_Recording) { m_Recording->push_back([path, b, st = Opt(stroke), alpha, f = Opt(filter)](DrawScope& d) { d.DrawPath(path, b, st ? &*st : nullptr, alpha, f ? &*f : nullptr); }); return; }
+        if (b.IsLayered()) {
+            Rect bounds = path.Bounds();
+            if (stroke) {
+                const float grow = std::max(stroke->width, 1.0f) * std::max(stroke->miter, 1.0f);
+                bounds = { bounds.left - grow, bounds.top - grow, bounds.right + grow, bounds.bottom + grow };
+            }
+            FillLayered([&] { DrawPath(path, Color(0xFFFFFFFFu), stroke); }, bounds, b, alpha, filter);
+            return;
+        }
         QuadRenderer::Paint paint;
         Color solid;
         float a;
@@ -603,6 +741,11 @@ namespace kiln::ui {
     void DrawScope::DrawMaskShader(const gfx::ImageBitmap& mask, const gfx::Brush& brush, Offset origin, float alpha,
                                    const gfx::ColorFilter* filter) {
         if (m_Recording) { m_Recording->push_back([mask, brush, origin, alpha, f = Opt(filter)](DrawScope& d) { d.DrawMaskShader(mask, brush, origin, alpha, f ? &*f : nullptr); }); return; }
+        if (brush.IsLayered()) {
+            const Rect bounds{ origin.x, origin.y, origin.x + float(mask.Width()), origin.y + float(mask.Height()) };
+            FillLayered([&] { DrawMaskShader(mask, gfx::Brush::SolidColor(Color(0xFFFFFFFFu)), origin, 1); }, bounds, brush, alpha, filter);
+            return;
+        }
         if (!m_Target.quads || !m_Target.images || !mask) return;
         const AtlasPage* page = m_Target.images->PageFor(mask);
         if (!page) return;

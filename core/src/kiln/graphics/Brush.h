@@ -4,7 +4,12 @@
 // in DrawScope coordinates; infinite ends and unspecified centres resolve against the scope size
 // when drawing (LinearGradient/RadialGradient/SweepGradient.createShader).
 
+#include "kiln/graphics/ColorFilter.h"
+#include "kiln/graphics/Image.h"
 #include "kiln/ui/Geometry.h"
+
+#include <functional>
+#include <memory>
 
 #include <limits>
 #include <optional>
@@ -19,7 +24,10 @@ namespace kiln::gfx {
     enum class TileMode : std::uint8_t { Clamp, Repeated, Mirror, Decal };
 
     struct Brush {
-        enum class Kind : std::uint8_t { Solid, Linear, Radial, Sweep };
+        // Image: the image repeated from the origin by its tile modes (ImageShader); Composite:
+        // two brushes blended (CompositeShader, src over dst by `blend`); Shader: a brush made for
+        // the size drawn in (ShaderBrush.createShader).
+        enum class Kind : std::uint8_t { Solid, Linear, Radial, Sweep, Image, Composite, Shader };
         static constexpr float kInf = std::numeric_limits<float>::infinity();
 
         Kind kind = Kind::Solid;
@@ -29,6 +37,25 @@ namespace kiln::gfx {
         std::optional<Offset> center;       // Radial / Sweep; nullopt = scope centre
         float radius = kInf;                // Radial; infinite = minDimension / 2
         TileMode tile = TileMode::Clamp;
+        ImageBitmap image;                                       // Image
+        TileMode tileY = TileMode::Clamp;                        // Image: vertical (tile is horizontal)
+        std::shared_ptr<const Brush> dst, src;                   // Composite
+        BlendMode blend = BlendMode::SrcOver;                    // Composite
+        std::shared_ptr<const std::function<Brush(Size)>> shader;   // Shader
+
+        // Whether drawing it needs layers (image, composite and shader brushes) rather than a
+        // single shaded quad.
+        bool IsLayered() const { return kind == Kind::Image || kind == Kind::Composite || kind == Kind::Shader; }
+        static Brush ImageShader(ImageBitmap image, TileMode tileModeX = TileMode::Clamp, TileMode tileModeY = TileMode::Clamp) {
+            Brush b; b.kind = Kind::Image; b.image = std::move(image); b.tile = tileModeX; b.tileY = tileModeY; return b;
+        }
+        static Brush CompositeShader(Brush dst, Brush src, BlendMode blendMode) {
+            Brush b; b.kind = Kind::Composite; b.dst = std::make_shared<Brush>(std::move(dst)); b.src = std::make_shared<Brush>(std::move(src));
+            b.blend = blendMode; return b;
+        }
+        static Brush ShaderBrush(std::function<Brush(Size)> createShader) {
+            Brush b; b.kind = Kind::Shader; b.shader = std::make_shared<std::function<Brush(Size)>>(std::move(createShader)); return b;
+        }
 
         static Brush SolidColor(Color c) { Brush b; b.colors = { c }; return b; }
         static Brush LinearGradient(std::vector<Color> colors, Offset start = {}, Offset end = { kInf, kInf },

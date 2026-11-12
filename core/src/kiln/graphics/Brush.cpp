@@ -90,7 +90,7 @@ namespace kiln::gfx {
                     out.center = a.center && b.center ? std::optional<Offset>(Offset{ LerpF(a.center->x, b.center->x, t), LerpF(a.center->y, b.center->y, t) })
                                                       : (t < 0.5f ? a.center : b.center);
                     break;
-                case Brush::Kind::Solid: break;
+                case Brush::Kind::Solid: case Brush::Kind::Image: case Brush::Kind::Composite: case Brush::Kind::Shader: break;
             }
             return true;
         }

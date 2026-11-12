@@ -273,6 +273,11 @@ namespace kiln::ui {
             gfx::BlendMode blend = gfx::BlendMode::SrcOver;
         };
         void ApplyBlend(gfx::BlendMode mode);
+        // Image, composite and shader brushes: the shape drawn as coverage into a layer, then the
+        // brush painted over it (SrcIn) across `bounds` (local).
+        void FillLayered(const std::function<void()>& coverage, Rect bounds, const gfx::Brush& brush, float alpha, const gfx::ColorFilter* filter);
+        void PaintBrush(Rect bounds, const gfx::Brush& brush);
+        void PaintImageTiles(Rect bounds, const gfx::Brush& brush);
         void BeginLayerImpl(Rect bounds, float alpha, const gfx::Path* clipPath, bool forClip, gfx::BlendMode blend = gfx::BlendMode::SrcOver,
                             const gfx::ColorFilter* colorFilter = nullptr);
         void EndLayerPlain(float stretchX, float stretchY);
