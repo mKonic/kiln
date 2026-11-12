@@ -15,6 +15,7 @@
 //
 // An item without a grow factor grows by its FillMax fraction along the main axis.
 
+#include "kiln/foundation/LayoutConfig.h"
 #include "kiln/ui/Geometry.h"
 #include "kiln/ui/Layout.h"
 #include "kiln/ui/Modifier.h"
@@ -22,7 +23,6 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
-#include <type_traits>
 #include <vector>
 
 namespace kiln::foundation {
@@ -48,29 +48,6 @@ namespace kiln::foundation {
         static FlexBasis Of(ui::Dp d) { return { Kind::Dp, d.value }; }
         static FlexBasis Percent(float fraction) { return { Kind::Percent, fraction }; }
         bool operator==(const FlexBasis&) const = default;
-    };
-
-    // A config: functions applied in order to a scope (FlexBoxConfig / FlexConfig). Equal when
-    // made of the same functions (copies of one config).
-    template<typename Scope>
-    class FlexConfigOf {
-    public:
-        using Fn = std::function<void(Scope&)>;
-        FlexConfigOf() = default;   // the empty config
-        template<typename F, typename = std::enable_if_t<std::is_invocable_v<F&, Scope&> && !std::is_same_v<std::decay_t<F>, FlexConfigOf>>>
-        FlexConfigOf(F fn) { m_Parts.push_back(std::make_shared<const Fn>(std::move(fn))); }
-        // then: this, then `other`.
-        FlexConfigOf Then(const FlexConfigOf& other) const {
-            FlexConfigOf r = *this;
-            r.m_Parts.insert(r.m_Parts.end(), other.m_Parts.begin(), other.m_Parts.end());
-            return r;
-        }
-        void Configure(Scope& s) const { for (const auto& p : m_Parts) (*p)(s); }
-        bool Empty() const { return m_Parts.empty(); }
-        bool operator==(const FlexConfigOf& o) const { return m_Parts == o.m_Parts; }
-
-    private:
-        std::vector<std::shared_ptr<const Fn>> m_Parts;
     };
 
     // FlexBoxConfigScope: the container's settings, with the incoming constraints to read.
@@ -101,7 +78,7 @@ namespace kiln::foundation {
         const ui::AlignmentLine* baselineLine = nullptr;
         std::function<int(ui::Placeable&)> baselineBlock;
     };
-    using FlexBoxConfig = FlexConfigOf<FlexBoxConfigScope>;
+    using FlexBoxConfig = LayoutConfig<FlexBoxConfigScope>;
 
     // FlexConfigScope: an item's settings, with the container's constraints along its axes.
     class FlexConfigScope : public ui::Density {
@@ -126,7 +103,7 @@ namespace kiln::foundation {
         const ui::AlignmentLine* baselineLine = nullptr;
         std::function<int(ui::Placeable&)> baselineBlock;
     };
-    using FlexConfig = FlexConfigOf<FlexConfigScope>;
+    using FlexConfig = LayoutConfig<FlexConfigScope>;
 
     // FlexBox: lays its children out as a flex container.
     void FlexBox(const Modifier& modifier, FlexBoxConfig config, std::function<void()> content);

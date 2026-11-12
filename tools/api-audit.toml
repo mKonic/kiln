@@ -54,6 +54,9 @@ absoluteOffset = "OffsetMod"   # rtlAware = false
 absolutePadding = "PaddingValues"   # rtlAware = false
 HorizontalOrVertical = "Arrangement"
 BoxScope = "AlignInBox"
+FlexBoxScope = "Flex"
+GridScope = "GridItem"
+GridTrackSpec = "GridTrackSize"
 FontScaling = "Density"   # SpToPx / PxToSp
 TextUnitType = "TextUnit::Type"
 ModalBottomSheetDefaults = "ModalBottomSheetProperties"   # its only member: the default properties
