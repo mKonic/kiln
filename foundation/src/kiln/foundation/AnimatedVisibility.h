@@ -165,6 +165,13 @@ namespace kiln::foundation {
     // set the target to animate in on first composition; IsIdle once done).
     void AnimatedVisibility(MutableTransitionState<bool>& visibleState, const Modifier& modifier, std::function<void()> content,
                             EnterTransition enter = FadeIn() + ExpandIn(), ExitTransition exit = FadeOut() + ShrinkOut(), rt::Key key = {});
+    // CapturedAnimatedVisibility: as AnimatedVisibility, but on the way out the content leaves
+    // the composition at once and its last frame (captured in a graphics layer) animates out in
+    // its place, at its last size.
+    void CapturedAnimatedVisibility(bool visible, const Modifier& modifier, std::function<void()> content,
+                                    EnterTransition enter = FadeIn() + ExpandIn(), ExitTransition exit = ShrinkOut() + FadeOut(), rt::Key key = {});
+    void CapturedAnimatedVisibility(MutableTransitionState<bool>& visibleState, const Modifier& modifier, std::function<void()> content,
+                                    EnterTransition enter = FadeIn() + ExpandIn(), ExitTransition exit = ShrinkOut() + FadeOut(), rt::Key key = {});
     // RowScope / ColumnScope.AnimatedVisibility: the defaults expand and shrink along the
     // layout's main axis only.
     void AnimatedVisibilityInRow(bool visible, const Modifier& modifier, std::function<void()> content,

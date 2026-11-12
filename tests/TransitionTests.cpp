@@ -477,3 +477,36 @@ TEST(DeferredAnimatedVisibilityComposesThePendingContentAndMovesItByHand) {
     h.Step(40);
     CHECK_EQ(sheet->BoundsInRoot().top, 0.0f);
 }
+
+TEST(CapturedAnimatedVisibilityDropsTheContentAtOnceAndKeepsItsPlace) {
+    LayoutHarness h;
+    rt::State<bool> visible(true);
+    int alive = 0;
+    h.Run([&] {
+        Box(Modifier{}, Alignment::TopStart(), false, [&] {
+            CapturedAnimatedVisibility(visible.Get(), Modifier{}, [&] {
+                rt::Composition::Current()->DisposableEffect(rt::Keys(1), [&] {
+                    ++alive;
+                    return std::function<void()>([&] { --alive; });
+                });
+                Box(SizeMod(Modifier{}, Dp(100), Dp(80)));
+            }, FadeIn(), FadeOut(anim::Tween(160, 0, anim::Linear())));
+        });
+    });
+    h.Layout();
+    auto height = [&] { auto& outer = h.owner.Root().Children()[0]->Children(); return outer.empty() ? 0 : outer[0]->Size().height; };
+    CHECK_EQ(alive, 1);
+    CHECK_EQ(height(), 80);
+    visible.Set(false);
+    h.Pump();
+    h.Layout();
+    h.Step(2);
+    CHECK_EQ(alive, 0);                    // gone from the composition straight away
+    CHECK_EQ(height(), 80);    // while its captured frame fades in its place
+    h.Step(40);
+    CHECK_EQ(height(), 0);
+    visible.Set(true);
+    h.Pump();
+    h.Layout();
+    CHECK_EQ(alive, 1);
+}

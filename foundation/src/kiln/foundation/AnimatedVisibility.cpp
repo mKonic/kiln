@@ -2,6 +2,7 @@
 
 #include "kiln/foundation/Compose.h"
 #include "kiln/foundation/Draw.h"
+#include "kiln/foundation/GraphicsLayer.h"
 #include "kiln/ui/Locals.h"
 #include "kiln/ui/VelocityTracker.h"
 
@@ -508,6 +509,85 @@ namespace kiln::foundation {
         auto& t = UpdateTransition(state, key);
         AnimatedEnterExit(t, detail::LookaheadHide(modifier, t), std::move(content), enter, exit, key);
     }
+    namespace {
+        // CapturedAnimatedEnterExitMeasurePolicy: while the content is there, the children's
+        // size (kept per pass); while exiting, that size with nothing in it.
+        struct Captured {
+            bool exiting = false;
+            IntSize lookaheadSize, approachSize;
+            IntSize& For(const ui::MeasureScope& s) { return s.IsLookingAhead() ? lookaheadSize : approachSize; }
+        };
+        struct CapturedPolicy final : ui::MeasurePolicy {
+            std::shared_ptr<Captured> state;
+            explicit CapturedPolicy(std::shared_ptr<Captured> s) : state(std::move(s)) {}
+            ui::MeasureResult Measure(ui::MeasureScope& s, std::span<ui::Measurable* const> children, const ui::Constraints& c) override {
+                if (state->exiting) {
+                    const IntSize size = state->For(s);
+                    return s.Layout(size.width, size.height);
+                }
+                std::vector<ui::Placeable*> placeables;
+                int w = 0, h = 0;
+                for (ui::Measurable* m : children) {
+                    ui::Placeable& p = m->Measure(c);
+                    w = std::max(w, p.Width());
+                    h = std::max(h, p.Height());
+                    placeables.push_back(&p);
+                }
+                state->For(s) = { w, h };
+                return s.Layout(w, h, [placeables](ui::PlacementScope& place) { for (ui::Placeable* p : placeables) place.Place(*p, 0, 0); });
+            }
+            int Intrinsic(ui::MeasureScope& s, std::span<ui::Measurable* const> children, int cross, bool width, bool max) {
+                if (state->exiting) { const IntSize size = state->For(s); return width ? size.width : size.height; }
+                int r = 0;
+                for (ui::Measurable* m : children)
+                    r = std::max(r, width ? (max ? m->MaxIntrinsicWidth(cross) : m->MinIntrinsicWidth(cross))
+                                          : (max ? m->MaxIntrinsicHeight(cross) : m->MinIntrinsicHeight(cross)));
+                return r;
+            }
+            int MinIntrinsicWidth(ui::MeasureScope& s, std::span<ui::Measurable* const> c, int h) override { return Intrinsic(s, c, h, true, false); }
+            int MaxIntrinsicWidth(ui::MeasureScope& s, std::span<ui::Measurable* const> c, int h) override { return Intrinsic(s, c, h, true, true); }
+            int MinIntrinsicHeight(ui::MeasureScope& s, std::span<ui::Measurable* const> c, int w) override { return Intrinsic(s, c, w, false, false); }
+            int MaxIntrinsicHeight(ui::MeasureScope& s, std::span<ui::Measurable* const> c, int w) override { return Intrinsic(s, c, w, false, true); }
+        };
+
+        void CapturedAnimatedVisibilityImpl(Transition<bool>& t, const Modifier& modifier, std::function<void()> content,
+                                            const EnterTransition& enter, const ExitTransition& exit, rt::Key key) {
+            auto& c = *rt::Composition::Current();
+            c.Section([&] {
+                const layer::GraphicsLayerPtr captured = layer::RememberGraphicsLayer();
+                auto& state = c.Remember<std::shared_ptr<Captured>>([] { return std::make_shared<Captured>(); });
+                auto& policy = c.Remember<std::shared_ptr<CapturedPolicy>>([&] { return std::make_shared<CapturedPolicy>(state); });
+                const bool exiting = !t.TargetState();
+                state->exiting = exiting;
+                auto st = state;
+                auto pol = policy;
+                AnimatedEnterExit(t, detail::LookaheadHide(modifier, t), [captured, st, pol, exiting, content] {
+                    // While there, the content draws through the layer (recording its frame);
+                    // while exiting, the layer's last recording draws instead.
+                    Modifier draw = DrawWithContent(Modifier{}, [captured, st](ContentDrawScope& s) {
+                        if (!st->exiting) {
+                            const ui::Size size = s.GetSize();
+                            captured->Record(s, { int(size.width), int(size.height) }, [](ContentDrawScope& d) { d.DrawContent(); });
+                        }
+                        layer::DrawLayer(s, *captured);
+                    });
+                    Layout(draw, pol, exiting ? std::function<void()>([] {}) : content);
+                }, enter, exit, key);
+            }, key);
+        }
+    }
+
+    void CapturedAnimatedVisibility(bool visible, const Modifier& modifier, std::function<void()> content, EnterTransition enter, ExitTransition exit, rt::Key key) {
+        auto& t = UpdateTransition(visible, key);
+        CapturedAnimatedVisibilityImpl(t, modifier, std::move(content), enter, exit, key);
+    }
+
+    void CapturedAnimatedVisibility(MutableTransitionState<bool>& state, const Modifier& modifier, std::function<void()> content,
+                                    EnterTransition enter, ExitTransition exit, rt::Key key) {
+        auto& t = UpdateTransition(state, key);
+        CapturedAnimatedVisibilityImpl(t, modifier, std::move(content), enter, exit, key);
+    }
+
     void AnimatedVisibilityInRow(bool visible, const Modifier& m, std::function<void()> content, EnterTransition enter, ExitTransition exit, rt::Key key) {
         AnimatedVisibility(visible, m, std::move(content), std::move(enter), std::move(exit), key);
     }
