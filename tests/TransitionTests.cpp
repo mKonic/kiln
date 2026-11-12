@@ -510,3 +510,28 @@ TEST(CapturedAnimatedVisibilityDropsTheContentAtOnceAndKeepsItsPlace) {
     h.Layout();
     CHECK_EQ(alive, 1);
 }
+
+TEST(DeferredAnimationTargetsAValueKnownOnlyInLayout) {
+    LayoutHarness h;
+    rt::State<bool> on(false);
+    DeferredAnimation<bool>* anim = nullptr;
+    float target = 100;   // known only "in layout"
+    h.Run([&] {
+        auto& t = UpdateTransition(on.Get());
+        anim = &CreateDeferredAnimation(t, 1);
+    });
+    CHECK(anim->Value() == nullptr);
+    auto animate = [&] {
+        return anim->Animate([](const Transition<bool>::Segment&) { return anim::Tween(160, 0, anim::Linear()); },
+                             [&](const bool& s) { return anim::Vec{ s ? target : 0.0f, 0, 0, 0 }; })[0];
+    };
+    CHECK_EQ(animate(), 0.0f);
+    on.Set(true);
+    h.Pump();
+    animate();
+    h.Step(5);
+    const float mid = (*anim->Value())[0];
+    CHECK(mid > 0 && mid < 100);
+    h.Step(20);
+    CHECK_EQ((*anim->Value())[0], 100.0f);
+}

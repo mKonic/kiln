@@ -241,6 +241,23 @@ namespace kiln::foundation {
     }
 
     namespace detail {
+        // Retargets `child` to `target` (or restarts it from a new forced value).
+        template<typename S>
+        void UpdateChildTarget(Transition<S>& t, TransitionCore::Child& child, const anim::Vec& target,
+                               const std::function<anim::SpecPtr(const typename Transition<S>::Segment&)>& specFor,
+                               std::optional<anim::Vec> forcedInitial, std::optional<anim::Vec> forcedVelocity) {
+            const bool newForced = forcedInitial && !(child.forcedFrom == forcedInitial);
+            if (!forcedInitial) child.forcedFrom.reset();
+            if (!(target == child.target) || newForced) {
+                if (forcedInitial) {
+                    child.value.Set(*forcedInitial);
+                    if (forcedVelocity) child.velocity = *forcedVelocity;
+                    child.forcedFrom = forcedInitial;
+                }
+                t.Core().Retarget(child, target, specFor ? specFor(t.CurrentSegment()) : anim::Spring(), t.PeekSnap(), forcedInitial.has_value());
+            }
+        }
+
         // A child animation of `t` towards valueOf(target) with specFor(segment).
         // forcedInitial: restart from this value (with forcedVelocity) when it is new or the target
         // changes (DeferredAnimation.animate's forcedInitialValue).
@@ -269,18 +286,65 @@ namespace kiln::foundation {
                 if (!child.spec) child.spec = anim::Spring();
                 child.duration = child.spec->DurationNanos(child.start, child.target, {}, child.dims);
             }
-            const bool newForced = forcedInitial && !(child.forcedFrom == forcedInitial);
-            if (!forcedInitial) child.forcedFrom.reset();
-            if (!(target == child.target) || newForced) {
-                if (forcedInitial) {
-                    child.value.Set(*forcedInitial);
-                    if (forcedVelocity) child.velocity = *forcedVelocity;
-                    child.forcedFrom = forcedInitial;
-                }
-                core->Retarget(child, target, specFor ? specFor(t.CurrentSegment()) : anim::Spring(), t.PeekSnap(), forcedInitial.has_value());
-            }
+            UpdateChildTarget(t, child, target, specFor, forcedInitial, forcedVelocity);
             return child.value.Get();
         }
+
+    }
+
+    // Transition.createDeferredAnimation: an animation of the transition whose target is only
+    // known later (in measure or placement). Animate starts it on its first call and retargets
+    // it after; recompositions of the transition keep it following the last valueOf.
+    template<typename S>
+    class DeferredAnimation {
+    public:
+        using SpecFor = std::function<anim::SpecPtr(const typename Transition<S>::Segment&)>;
+        using ValueOf = std::function<anim::Vec(const S&)>;
+        DeferredAnimation(Transition<S>& t, int dims) : m_Transition(&t), m_Dims(dims) {}
+        ~DeferredAnimation() { if (m_Child && m_Core) m_Core->Remove(m_Child.get()); }
+        DeferredAnimation(const DeferredAnimation&) = delete;
+        DeferredAnimation& operator=(const DeferredAnimation&) = delete;
+
+        // animate(transitionSpec, forcedInitialValue, forcedInitialVelocity, targetValueByState).
+        const anim::Vec& Animate(SpecFor specFor, ValueOf valueOf, std::optional<anim::Vec> forcedInitial = std::nullopt,
+                                 std::optional<anim::Vec> forcedVelocity = std::nullopt) {
+            m_SpecFor = std::move(specFor);
+            m_ValueOf = std::move(valueOf);
+            if (!m_Child) {
+                m_Child = std::make_unique<TransitionCore::Child>(m_ValueOf(m_Transition->CurrentState()), m_Dims);
+                m_Core = &m_Transition->Core();
+                m_Core->Add(m_Child.get());
+                m_HasData.Set(true);
+            }
+            Update(forcedInitial, forcedVelocity);
+            return m_Child->value.Get();
+        }
+        // The value now (null before the first Animate).
+        const anim::Vec* Value() const { return m_HasData.Get() ? &m_Child->value.Get() : nullptr; }
+        // updateAnimationStates on a recomposition of the transition.
+        void Update(std::optional<anim::Vec> forcedInitial = std::nullopt, std::optional<anim::Vec> forcedVelocity = std::nullopt) {
+            if (!m_Child || !m_ValueOf) return;
+            detail::UpdateChildTarget(*m_Transition, *m_Child, m_ValueOf(m_Transition->TargetState()), m_SpecFor, forcedInitial, forcedVelocity);
+        }
+        void Rebind(Transition<S>& t) { m_Transition = &t; }
+
+    private:
+        Transition<S>* m_Transition;
+        int m_Dims;
+        std::unique_ptr<TransitionCore::Child> m_Child;
+        TransitionCore* m_Core = nullptr;
+        SpecFor m_SpecFor;
+        ValueOf m_ValueOf;
+        rt::State<bool> m_HasData{ false };
+    };
+
+    template<typename S>
+    DeferredAnimation<S>& CreateDeferredAnimation(Transition<S>& t, int dims = 4, rt::Key key = {}) {
+        auto& c = *rt::Composition::Current();
+        auto& a = c.Remember<std::shared_ptr<DeferredAnimation<S>>>([&] { return std::make_shared<DeferredAnimation<S>>(t, dims); }, rt::Keys(reinterpret_cast<std::uintptr_t>(&t)), key);
+        a->Rebind(t);
+        a->Update();
+        return *a;
     }
 
     using SegmentSpec = std::function<anim::SpecPtr()>;
