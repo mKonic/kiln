@@ -52,7 +52,9 @@ typedef struct kiln_m3_top_app_bar_state kiln_m3_top_app_bar_state;
 typedef struct kiln_m3_wide_navigation_rail_state kiln_m3_wide_navigation_rail_state;
 
 /* Structs */
+typedef struct kiln_dialog_properties kiln_dialog_properties;
 typedef struct kiln_m3_alert_dialog_options kiln_m3_alert_dialog_options;
+typedef struct kiln_rt_key kiln_rt_key;
 typedef struct kiln_m3_top_app_bar_colors kiln_m3_top_app_bar_colors;
 typedef struct kiln_m3_top_app_bar_options kiln_m3_top_app_bar_options;
 typedef struct kiln_m3_two_rows_top_app_bar_options kiln_m3_two_rows_top_app_bar_options;
@@ -85,6 +87,7 @@ typedef struct kiln_m3_card_colors kiln_m3_card_colors;
 typedef struct kiln_m3_card_options kiln_m3_card_options;
 typedef struct kiln_m3_carousel_options kiln_m3_carousel_options;
 typedef struct kiln_m3_checkbox_colors kiln_m3_checkbox_colors;
+typedef struct kiln_stroke kiln_stroke;
 typedef struct kiln_m3_checkbox_options kiln_m3_checkbox_options;
 typedef struct kiln_m3_chip_elevation kiln_m3_chip_elevation;
 typedef struct kiln_m3_chip_colors kiln_m3_chip_colors;
@@ -93,9 +96,12 @@ typedef struct kiln_m3_chip_shapes kiln_m3_chip_shapes;
 typedef struct kiln_m3_selectable_chip_colors kiln_m3_selectable_chip_colors;
 typedef struct kiln_m3_selectable_chip_options kiln_m3_selectable_chip_options;
 typedef struct kiln_m3_color_scheme kiln_m3_color_scheme;
+typedef struct kiln_text_selection_colors kiln_text_selection_colors;
 typedef struct kiln_m3_text_field_colors kiln_m3_text_field_colors;
 typedef struct kiln_m3_text_field_label_position kiln_m3_text_field_label_position;
 typedef struct kiln_m3_text_field_label_scope kiln_m3_text_field_label_scope;
+typedef struct kiln_keyboard_options kiln_keyboard_options;
+typedef struct kiln_text_field_line_limits kiln_text_field_line_limits;
 typedef struct kiln_m3_text_field_options kiln_m3_text_field_options;
 typedef struct kiln_m3_secure_text_field_options kiln_m3_secure_text_field_options;
 typedef struct kiln_m3_int_range kiln_m3_int_range;
@@ -106,6 +112,7 @@ typedef struct kiln_m3_drag_handle_sizes kiln_m3_drag_handle_sizes;
 typedef struct kiln_m3_drag_handle_colors kiln_m3_drag_handle_colors;
 typedef struct kiln_m3_drag_handle_shapes kiln_m3_drag_handle_shapes;
 typedef struct kiln_m3_vertical_drag_handle_options kiln_m3_vertical_drag_handle_options;
+typedef struct kiln_configuration kiln_configuration;
 typedef struct kiln_m3_tonal_palette kiln_m3_tonal_palette;
 typedef struct kiln_m3_exposed_dropdown_menu_options kiln_m3_exposed_dropdown_menu_options;
 typedef struct kiln_m3_floating_action_button_elevation kiln_m3_floating_action_button_elevation;
@@ -132,6 +139,7 @@ typedef struct kiln_m3_contained_loading_indicator_options kiln_m3_contained_loa
 typedef struct kiln_m3_shapes kiln_m3_shapes;
 typedef struct kiln_m3_typography kiln_m3_typography;
 typedef struct kiln_m3_material_theme_args kiln_m3_material_theme_args;
+typedef struct kiln_popup_properties kiln_popup_properties;
 typedef struct kiln_m3_dropdown_menu_options kiln_m3_dropdown_menu_options;
 typedef struct kiln_m3_menu_group_shapes kiln_m3_menu_group_shapes;
 typedef struct kiln_m3_dropdown_menu_group_options kiln_m3_dropdown_menu_group_options;
@@ -153,6 +161,8 @@ typedef struct kiln_m3_navigation_drawer_item_options kiln_m3_navigation_drawer_
 typedef struct kiln_m3_navigation_rail_options kiln_m3_navigation_rail_options;
 typedef struct kiln_m3_navigation_rail_item_colors kiln_m3_navigation_rail_item_colors;
 typedef struct kiln_m3_navigation_rail_item_options kiln_m3_navigation_rail_item_options;
+typedef struct kiln_back_event kiln_back_event;
+typedef struct kiln_density kiln_density;
 typedef struct kiln_m3_linear_progress_indicator_options kiln_m3_linear_progress_indicator_options;
 typedef struct kiln_m3_circular_progress_indicator_options kiln_m3_circular_progress_indicator_options;
 typedef struct kiln_m3_pull_to_refresh_defaults_indicator_box_options kiln_m3_pull_to_refresh_defaults_indicator_box_options;
@@ -185,6 +195,7 @@ typedef struct kiln_m3_slider_options kiln_m3_slider_options;
 typedef struct kiln_m3_range_slider_options kiln_m3_range_slider_options;
 typedef struct kiln_m3_slider_thumb_options kiln_m3_slider_thumb_options;
 typedef struct kiln_m3_slider_track_options kiln_m3_slider_track_options;
+typedef struct kiln_offset kiln_offset;
 typedef struct kiln_m3_split_button_shapes kiln_m3_split_button_shapes;
 typedef struct kiln_m3_split_button_options kiln_m3_split_button_options;
 typedef struct kiln_m3_surface_options kiln_m3_surface_options;
@@ -194,6 +205,8 @@ typedef struct kiln_m3_switch_options kiln_m3_switch_options;
 typedef struct kiln_m3_tab_options kiln_m3_tab_options;
 typedef struct kiln_m3_tab_row_options kiln_m3_tab_row_options;
 typedef struct kiln_m3_scrollable_tab_row_options kiln_m3_scrollable_tab_row_options;
+typedef struct kiln_font_weight kiln_font_weight;
+typedef struct kiln_font_family kiln_font_family;
 typedef struct kiln_m3_text_options kiln_m3_text_options;
 typedef struct kiln_m3_time_picker_colors kiln_m3_time_picker_colors;
 typedef struct kiln_m3_time_picker_shapes kiln_m3_time_picker_shapes;
@@ -209,33 +222,83 @@ typedef struct kiln_m3_wide_navigation_rail_options kiln_m3_wide_navigation_rail
 typedef struct kiln_m3_modal_wide_navigation_rail_properties kiln_m3_modal_wide_navigation_rail_properties;
 typedef struct kiln_m3_modal_wide_navigation_rail_options kiln_m3_modal_wide_navigation_rail_options;
 typedef struct kiln_m3_wide_navigation_rail_item_options kiln_m3_wide_navigation_rail_item_options;
+typedef struct kiln_scale kiln_scale;
+typedef struct kiln_int_offset kiln_int_offset;
+typedef struct kiln_slide kiln_slide;
+typedef struct kiln_change_size kiln_change_size;
+typedef struct kiln_veil kiln_veil;
+typedef struct kiln_enter_exit_parts kiln_enter_exit_parts;
+typedef struct kiln_enter_transition kiln_enter_transition;
+typedef struct kiln_exit_transition kiln_exit_transition;
+typedef struct kiln_size_transform kiln_size_transform;
+typedef struct kiln_content_transform kiln_content_transform;
 typedef struct kiln_m3_ripple_alpha kiln_m3_ripple_alpha;
 typedef struct kiln_m3_ripple_theme_configuration_inset_ring kiln_m3_ripple_theme_configuration_inset_ring;
 typedef struct kiln_m3_ripple_theme_configuration kiln_m3_ripple_theme_configuration;
+typedef struct kiln_m3_material_theme_values kiln_m3_material_theme_values;
+typedef struct kiln_m3_ripple_configuration_inset_ring_colors kiln_m3_ripple_configuration_inset_ring_colors;
+typedef struct kiln_m3_ripple_configuration kiln_m3_ripple_configuration;
 typedef struct kiln_m3_snackbar_visuals kiln_m3_snackbar_visuals;
 typedef struct kiln_m3_carousel_parallax_scroll_effect_item_info kiln_m3_carousel_parallax_scroll_effect_item_info;
+typedef struct kiln_layout_coordinates kiln_layout_coordinates;
 
 /* Enums */
-typedef enum kiln_foundation_mutate_priority {
-    KILN_FOUNDATION_MUTATE_PRIORITY_DEFAULT = 0,
-    KILN_FOUNDATION_MUTATE_PRIORITY_USER_INPUT = 1,
-    KILN_FOUNDATION_MUTATE_PRIORITY_PREVENT_USER_INPUT = 2,
-} kiln_foundation_mutate_priority;
-typedef enum kiln_foundation_orientation {
-    KILN_FOUNDATION_ORIENTATION_VERTICAL = 0,
-    KILN_FOUNDATION_ORIENTATION_HORIZONTAL = 1,
-} kiln_foundation_orientation;
-typedef enum kiln_foundation_text_obfuscation_mode {
-    KILN_FOUNDATION_TEXT_OBFUSCATION_MODE_VISIBLE = 0,
-    KILN_FOUNDATION_TEXT_OBFUSCATION_MODE_REVEAL_LAST_TYPED = 1,
-    KILN_FOUNDATION_TEXT_OBFUSCATION_MODE_HIDDEN = 2,
-    KILN_FOUNDATION_TEXT_OBFUSCATION_MODE_SYSTEM = 3,
-} kiln_foundation_text_obfuscation_mode;
-typedef enum kiln_gfx_stroke_cap {
-    KILN_GFX_STROKE_CAP_BUTT = 0,
-    KILN_GFX_STROKE_CAP_ROUND = 1,
-    KILN_GFX_STROKE_CAP_SQUARE = 2,
-} kiln_gfx_stroke_cap;
+typedef enum kiln_capitalization {
+    KILN_CAPITALIZATION_NONE = 0,
+    KILN_CAPITALIZATION_CHARACTERS = 1,
+    KILN_CAPITALIZATION_WORDS = 2,
+    KILN_CAPITALIZATION_SENTENCES = 3,
+} kiln_capitalization;
+typedef enum kiln_font_style {
+    KILN_FONT_STYLE_NORMAL = 0,
+    KILN_FONT_STYLE_ITALIC = 1,
+} kiln_font_style;
+typedef enum kiln_ime_action {
+    KILN_IME_ACTION_DEFAULT = 0,
+    KILN_IME_ACTION_NONE = 1,
+    KILN_IME_ACTION_GO = 2,
+    KILN_IME_ACTION_SEARCH = 3,
+    KILN_IME_ACTION_SEND = 4,
+    KILN_IME_ACTION_PREVIOUS = 5,
+    KILN_IME_ACTION_NEXT = 6,
+    KILN_IME_ACTION_DONE = 7,
+} kiln_ime_action;
+typedef enum kiln_keyboard_type {
+    KILN_KEYBOARD_TYPE_TEXT = 0,
+    KILN_KEYBOARD_TYPE_ASCII = 1,
+    KILN_KEYBOARD_TYPE_NUMBER = 2,
+    KILN_KEYBOARD_TYPE_PHONE = 3,
+    KILN_KEYBOARD_TYPE_URI = 4,
+    KILN_KEYBOARD_TYPE_EMAIL = 5,
+    KILN_KEYBOARD_TYPE_PASSWORD = 6,
+    KILN_KEYBOARD_TYPE_NUMBER_PASSWORD = 7,
+    KILN_KEYBOARD_TYPE_DECIMAL = 8,
+    KILN_KEYBOARD_TYPE_PASSWORD_VISIBLE = 9,
+    KILN_KEYBOARD_TYPE_POSTAL_ADDRESS = 10,
+    KILN_KEYBOARD_TYPE_PERSON_NAME = 11,
+    KILN_KEYBOARD_TYPE_EMAIL_SUBJECT = 12,
+    KILN_KEYBOARD_TYPE_SHORT_MESSAGE = 13,
+    KILN_KEYBOARD_TYPE_LONG_MESSAGE = 14,
+    KILN_KEYBOARD_TYPE_FILTER = 15,
+    KILN_KEYBOARD_TYPE_PHONETIC = 16,
+    KILN_KEYBOARD_TYPE_DATE_TIME = 17,
+    KILN_KEYBOARD_TYPE_DATE = 18,
+    KILN_KEYBOARD_TYPE_TIME = 19,
+    KILN_KEYBOARD_TYPE_NUMBER_SIGNED = 20,
+    KILN_KEYBOARD_TYPE_DECIMAL_SIGNED = 21,
+    KILN_KEYBOARD_TYPE_DECIMAL_PASSWORD = 22,
+    KILN_KEYBOARD_TYPE_NUMBER_PASSWORD_SIGNED = 23,
+    KILN_KEYBOARD_TYPE_DECIMAL_PASSWORD_SIGNED = 24,
+} kiln_keyboard_type;
+typedef enum kiln_kind {
+    KILN_KIND_DEFAULT = 0,
+    KILN_KIND_SANS_SERIF = 1,
+    KILN_KIND_SERIF = 2,
+    KILN_KIND_MONOSPACE = 3,
+    KILN_KIND_CURSIVE = 4,
+    KILN_KIND_SYSTEM_NAME = 5,
+    KILN_KIND_FONTS = 6,
+} kiln_kind;
 typedef enum kiln_m3_display_mode {
     KILN_M3_DISPLAY_MODE_PICKER = 0,
     KILN_M3_DISPLAY_MODE_INPUT = 1,
@@ -307,6 +370,10 @@ typedef enum kiln_m3_snackbar_duration {
     KILN_M3_SNACKBAR_DURATION_LONG = 1,
     KILN_M3_SNACKBAR_DURATION_INDEFINITE = 2,
 } kiln_m3_snackbar_duration;
+typedef enum kiln_m3_snackbar_result {
+    KILN_M3_SNACKBAR_RESULT_DISMISSED = 0,
+    KILN_M3_SNACKBAR_RESULT_ACTION_PERFORMED = 1,
+} kiln_m3_snackbar_result;
 typedef enum kiln_m3_swipe_to_dismiss_box_value {
     KILN_M3_SWIPE_TO_DISMISS_BOX_VALUE_START_TO_END = 0,
     KILN_M3_SWIPE_TO_DISMISS_BOX_VALUE_END_TO_START = 1,
@@ -347,21 +414,47 @@ typedef enum kiln_m3_wide_navigation_rail_value {
     KILN_M3_WIDE_NAVIGATION_RAIL_VALUE_COLLAPSED = 0,
     KILN_M3_WIDE_NAVIGATION_RAIL_VALUE_EXPANDED = 1,
 } kiln_m3_wide_navigation_rail_value;
-typedef enum kiln_text_font_style {
-    KILN_TEXT_FONT_STYLE_NORMAL = 0,
-    KILN_TEXT_FONT_STYLE_ITALIC = 1,
-} kiln_text_font_style;
+typedef enum kiln_mutate_priority {
+    KILN_MUTATE_PRIORITY_DEFAULT = 0,
+    KILN_MUTATE_PRIORITY_USER_INPUT = 1,
+    KILN_MUTATE_PRIORITY_PREVENT_USER_INPUT = 2,
+} kiln_mutate_priority;
+typedef enum kiln_orientation {
+    KILN_ORIENTATION_VERTICAL = 0,
+    KILN_ORIENTATION_HORIZONTAL = 1,
+} kiln_orientation;
+typedef enum kiln_secure_flag_policy {
+    KILN_SECURE_FLAG_POLICY_INHERIT = 0,
+    KILN_SECURE_FLAG_POLICY_SECURE_ON = 1,
+    KILN_SECURE_FLAG_POLICY_SECURE_OFF = 2,
+} kiln_secure_flag_policy;
+typedef enum kiln_stroke_cap {
+    KILN_STROKE_CAP_BUTT = 0,
+    KILN_STROKE_CAP_ROUND = 1,
+    KILN_STROKE_CAP_SQUARE = 2,
+} kiln_stroke_cap;
+typedef enum kiln_stroke_join {
+    KILN_STROKE_JOIN_MITER = 0,
+    KILN_STROKE_JOIN_ROUND = 1,
+    KILN_STROKE_JOIN_BEVEL = 2,
+} kiln_stroke_join;
+typedef enum kiln_swipe_edge {
+    KILN_SWIPE_EDGE_LEFT = 0,
+    KILN_SWIPE_EDGE_RIGHT = 1,
+    KILN_SWIPE_EDGE_NONE = 2,
+} kiln_swipe_edge;
+typedef enum kiln_text_obfuscation_mode {
+    KILN_TEXT_OBFUSCATION_MODE_VISIBLE = 0,
+    KILN_TEXT_OBFUSCATION_MODE_REVEAL_LAST_TYPED = 1,
+    KILN_TEXT_OBFUSCATION_MODE_HIDDEN = 2,
+    KILN_TEXT_OBFUSCATION_MODE_SYSTEM = 3,
+} kiln_text_obfuscation_mode;
 typedef enum kiln_text_text_decoration {
     KILN_TEXT_TEXT_DECORATION_NONE = 0,
     KILN_TEXT_TEXT_DECORATION_UNDERLINE = 1,
     KILN_TEXT_TEXT_DECORATION_LINE_THROUGH = 2,
     KILN_TEXT_TEXT_DECORATION_BOTH = 3,
 } kiln_text_text_decoration;
-typedef enum kiln_ui_secure_flag_policy {
-    KILN_UI_SECURE_FLAG_POLICY_INHERIT = 0,
-    KILN_UI_SECURE_FLAG_POLICY_SECURE_ON = 1,
-    KILN_UI_SECURE_FLAG_POLICY_SECURE_OFF = 2,
-} kiln_ui_secure_flag_policy;
 
 /* Callbacks */
 typedef struct kiln_m3_fn_app_bar_menu_state { void (*call)(void* user, kiln_m3_app_bar_menu_state* a0); void* user; void (*drop)(void* user); } kiln_m3_fn_app_bar_menu_state;
@@ -369,7 +462,7 @@ typedef struct kiln_m3_fn_app_bar_scope { void (*call)(void* user, kiln_m3_app_b
 typedef struct kiln_m3_fn_button_group_menu_state { void (*call)(void* user, kiln_m3_button_group_menu_state* a0); void* user; void (*drop)(void* user); } kiln_m3_fn_button_group_menu_state;
 typedef struct kiln_m3_fn_button_group_scope { void (*call)(void* user, kiln_m3_button_group_scope* a0); void* user; void (*drop)(void* user); } kiln_m3_fn_button_group_scope;
 typedef struct kiln_m3_fn_carousel_item_scope_int { void (*call)(void* user, kiln_m3_carousel_item_scope* a0, int32_t a1); void* user; void (*drop)(void* user); } kiln_m3_fn_carousel_item_scope_int;
-typedef struct kiln_m3_fn_color_scheme { void (*call)(void* user, const kiln_m3_color_scheme* a0); void* user; void (*drop)(void* user); } kiln_m3_fn_color_scheme;
+typedef struct kiln_m3_fn_color_scheme { void (*call)(void* user, kiln_m3_color_scheme* a0); void* user; void (*drop)(void* user); } kiln_m3_fn_color_scheme;
 typedef struct kiln_m3_fn_drawer_value_to_bool { bool (*call)(void* user, kiln_m3_drawer_value a0); void* user; void (*drop)(void* user); } kiln_m3_fn_drawer_value_to_bool;
 typedef struct kiln_m3_fn_exposed_dropdown_menu_box_scope { void (*call)(void* user, kiln_m3_exposed_dropdown_menu_box_scope* a0); void* user; void (*drop)(void* user); } kiln_m3_fn_exposed_dropdown_menu_box_scope;
 typedef struct kiln_m3_fn_float_to_color { kiln_color (*call)(void* user, float a0); void* user; void (*drop)(void* user); } kiln_m3_fn_float_to_color;
@@ -378,6 +471,8 @@ typedef struct kiln_m3_fn_float_to_float { float (*call)(void* user, float a0); 
 typedef struct kiln_m3_fn_floating_action_button_menu_scope { void (*call)(void* user, const kiln_m3_floating_action_button_menu_scope* a0); void* user; void (*drop)(void* user); } kiln_m3_fn_floating_action_button_menu_scope;
 typedef struct kiln_m3_fn_int_bool_bool { void (*call)(void* user, int32_t a0, bool a1, bool a2); void* user; void (*drop)(void* user); } kiln_m3_fn_int_bool_bool;
 typedef struct kiln_m3_fn_int_int_to_int { int32_t (*call)(void* user, int32_t a0, int32_t a1); void* user; void (*drop)(void* user); } kiln_m3_fn_int_int_to_int;
+typedef struct kiln_m3_fn_int_size_int_size_to_animation_spec { const kiln_anim_spec* (*call)(void* user, kiln_int_size a0, kiln_int_size a1); void* user; void (*drop)(void* user); } kiln_m3_fn_int_size_int_size_to_animation_spec;
+typedef struct kiln_m3_fn_int_size_to_int_size { kiln_int_size (*call)(void* user, kiln_int_size a0); void* user; void (*drop)(void* user); } kiln_m3_fn_int_size_to_int_size;
 typedef struct kiln_m3_fn_int_to_bool { bool (*call)(void* user, int32_t a0); void* user; void (*drop)(void* user); } kiln_m3_fn_int_to_bool;
 typedef struct kiln_m3_fn_int_to_string { const char* (*call)(void* user, int32_t a0); void* user; void (*drop)(void* user); } kiln_m3_fn_int_to_string;
 typedef struct kiln_m3_fn_long_to_bool { bool (*call)(void* user, int64_t a0); void* user; void (*drop)(void* user); } kiln_m3_fn_long_to_bool;
@@ -388,6 +483,7 @@ typedef struct kiln_m3_fn_slider_range { void (*call)(void* user, const kiln_m3_
 typedef struct kiln_m3_fn_slider_state { void (*call)(void* user, kiln_m3_slider_state* a0); void* user; void (*drop)(void* user); } kiln_m3_fn_slider_state;
 typedef struct kiln_m3_fn_snackbar_data { void (*call)(void* user, kiln_m3_snackbar_data* a0); void* user; void (*drop)(void* user); } kiln_m3_fn_snackbar_data;
 typedef struct kiln_m3_fn_snackbar_host_state { void (*call)(void* user, kiln_m3_snackbar_host_state* a0); void* user; void (*drop)(void* user); } kiln_m3_fn_snackbar_host_state;
+typedef struct kiln_m3_fn_snackbar_result { void (*call)(void* user, kiln_m3_snackbar_result a0); void* user; void (*drop)(void* user); } kiln_m3_fn_snackbar_result;
 typedef struct kiln_m3_fn_swipe_to_dismiss_box_value { void (*call)(void* user, kiln_m3_swipe_to_dismiss_box_value a0); void* user; void (*drop)(void* user); } kiln_m3_fn_swipe_to_dismiss_box_value;
 typedef struct kiln_m3_fn_swipe_to_dismiss_box_value_to_bool { bool (*call)(void* user, kiln_m3_swipe_to_dismiss_box_value a0); void* user; void (*drop)(void* user); } kiln_m3_fn_swipe_to_dismiss_box_value_to_bool;
 typedef struct kiln_m3_fn_tab_indicator_scope { void (*call)(void* user, kiln_m3_tab_indicator_scope* a0); void* user; void (*drop)(void* user); } kiln_m3_fn_tab_indicator_scope;
@@ -396,6 +492,7 @@ typedef struct kiln_m3_fn_to_bool { bool (*call)(void* user); void* user; void (
 typedef struct kiln_m3_fn_to_color { kiln_color (*call)(void* user); void* user; void (*drop)(void* user); } kiln_m3_fn_to_color;
 typedef struct kiln_m3_fn_to_float { float (*call)(void* user); void* user; void (*drop)(void* user); } kiln_m3_fn_to_float;
 typedef struct kiln_m3_fn_to_int { int32_t (*call)(void* user); void* user; void (*drop)(void* user); } kiln_m3_fn_to_int;
+typedef struct kiln_m3_fn_to_window_insets { const kiln_window_insets* (*call)(void* user); void* user; void (*drop)(void* user); } kiln_m3_fn_to_window_insets;
 typedef struct kiln_m3_fn_toggle_floating_action_button_scope { void (*call)(void* user, const kiln_m3_toggle_floating_action_button_scope* a0); void* user; void (*drop)(void* user); } kiln_m3_fn_toggle_floating_action_button_scope;
 typedef struct kiln_m3_fn_tooltip_scope { void (*call)(void* user, kiln_m3_tooltip_scope* a0); void* user; void (*drop)(void* user); } kiln_m3_fn_tooltip_scope;
 
@@ -405,6 +502,19 @@ typedef struct kiln_m3_opt_button_elevation { bool set; const kiln_m3_button_ele
 typedef struct kiln_m3_opt_chip_elevation { bool set; const kiln_m3_chip_elevation* value; } kiln_m3_opt_chip_elevation;
 
 /* Struct definitions */
+struct kiln_dialog_properties {
+    size_t size;
+    bool dismiss_on_back_press;
+    bool dismiss_on_click_outside;
+    kiln_secure_flag_policy secure_policy;
+    bool use_platform_default_width;
+    bool decor_fits_system_windows;
+    const char* window_title;
+    float blur_behind_radius;
+    float background_blur_radius;
+    float scrim_alpha;
+};
+KILN_API void kiln_dialog_properties_init(kiln_dialog_properties* s);
 struct kiln_m3_alert_dialog_options {
     size_t size;
     kiln_fn dismiss_button;
@@ -417,8 +527,15 @@ struct kiln_m3_alert_dialog_options {
     kiln_color title_content_color;
     kiln_color text_content_color;
     float tonal_elevation;
+    const kiln_dialog_properties* properties;
 };
 KILN_API void kiln_m3_alert_dialog_options_init(kiln_m3_alert_dialog_options* s);
+struct kiln_rt_key {
+    size_t size;
+    uint64_t value;
+    bool explicit_key;
+};
+KILN_API void kiln_rt_key_init(kiln_rt_key* s);
 struct kiln_m3_top_app_bar_colors {
     size_t size;
     kiln_color container_color;
@@ -436,6 +553,7 @@ struct kiln_m3_top_app_bar_options {
     kiln_fn subtitle;
     float title_horizontal_alignment;
     float expanded_height;
+    const kiln_window_insets* window_insets;
     const kiln_m3_top_app_bar_colors* colors;
     kiln_m3_top_app_bar_scroll_behavior* scroll_behavior;
     kiln_padding content_padding;
@@ -449,6 +567,7 @@ struct kiln_m3_two_rows_top_app_bar_options {
     float title_horizontal_alignment;
     float collapsed_height;
     float expanded_height;
+    const kiln_window_insets* window_insets;
     const kiln_m3_top_app_bar_colors* colors;
     kiln_m3_top_app_bar_scroll_behavior* scroll_behavior;
 };
@@ -459,6 +578,7 @@ struct kiln_m3_bottom_app_bar_options {
     kiln_color content_color;
     float tonal_elevation;
     kiln_padding content_padding;
+    const kiln_window_insets* window_insets;
     kiln_m3_bottom_app_bar_scroll_behavior* scroll_behavior;
 };
 KILN_API void kiln_m3_bottom_app_bar_options_init(kiln_m3_bottom_app_bar_options* s);
@@ -469,6 +589,7 @@ struct kiln_m3_flexible_bottom_app_bar_options {
     kiln_padding content_padding;
     kiln_arrangement horizontal_arrangement;
     float expanded_height;
+    const kiln_window_insets* window_insets;
     kiln_m3_bottom_app_bar_scroll_behavior* scroll_behavior;
 };
 KILN_API void kiln_m3_flexible_bottom_app_bar_options_init(kiln_m3_flexible_bottom_app_bar_options* s);
@@ -493,6 +614,7 @@ struct kiln_m3_icon_button_options {
     const kiln_m3_icon_button_shapes* shapes;
     const kiln_m3_icon_button_colors* colors;
     kiln_m3_opt_border_stroke border;
+    kiln_interaction_source* interaction_source;
 };
 KILN_API void kiln_m3_icon_button_options_init(kiln_m3_icon_button_options* s);
 struct kiln_m3_icon_toggle_button_shapes {
@@ -519,6 +641,7 @@ struct kiln_m3_icon_toggle_button_options {
     const kiln_m3_icon_toggle_button_shapes* shapes;
     const kiln_m3_icon_toggle_button_colors* colors;
     kiln_m3_opt_border_stroke border;
+    kiln_interaction_source* interaction_source;
 };
 KILN_API void kiln_m3_icon_toggle_button_options_init(kiln_m3_icon_toggle_button_options* s);
 struct kiln_m3_app_bar_overflow_indicator_options {
@@ -526,6 +649,7 @@ struct kiln_m3_app_bar_overflow_indicator_options {
     bool enabled;
     const kiln_shape* shape;
     const kiln_m3_icon_button_colors* colors;
+    kiln_interaction_source* interaction_source;
 };
 KILN_API void kiln_m3_app_bar_overflow_indicator_options_init(kiln_m3_app_bar_overflow_indicator_options* s);
 struct kiln_m3_sheet_values {
@@ -550,6 +674,7 @@ struct kiln_m3_bottom_sheet_options {
     bool gestures_enabled;
     bool back_handler_enabled;
     kiln_fn drag_handle;
+    kiln_m3_fn_to_window_insets content_window_insets;
     const kiln_shape* shape;
     kiln_color container_color;
     kiln_color content_color;
@@ -629,6 +754,7 @@ struct kiln_m3_button_options {
     kiln_m3_opt_button_elevation elevation;
     kiln_m3_opt_border_stroke border;
     const kiln_padding* content_padding;
+    kiln_interaction_source* interaction_source;
 };
 KILN_API void kiln_m3_button_options_init(kiln_m3_button_options* s);
 struct kiln_m3_toggle_button_shapes {
@@ -657,6 +783,7 @@ struct kiln_m3_toggle_button_options {
     kiln_m3_opt_button_elevation elevation;
     kiln_m3_opt_border_stroke border;
     const kiln_padding* content_padding;
+    kiln_interaction_source* interaction_source;
 };
 KILN_API void kiln_m3_toggle_button_options_init(kiln_m3_toggle_button_options* s);
 struct kiln_m3_button_group_defaults_overflow_indicator_options {
@@ -664,6 +791,7 @@ struct kiln_m3_button_group_defaults_overflow_indicator_options {
     bool enabled;
     const kiln_shape* shape;
     const kiln_m3_icon_button_colors* colors;
+    kiln_interaction_source* interaction_source;
 };
 KILN_API void kiln_m3_button_group_defaults_overflow_indicator_options_init(kiln_m3_button_group_defaults_overflow_indicator_options* s);
 struct kiln_m3_button_group_options {
@@ -698,6 +826,7 @@ struct kiln_m3_card_options {
     const kiln_m3_card_colors* colors;
     const kiln_m3_card_elevation* elevation;
     kiln_m3_opt_border_stroke border;
+    kiln_interaction_source* interaction_source;
 };
 KILN_API void kiln_m3_card_options_init(kiln_m3_card_options* s);
 struct kiln_m3_carousel_options {
@@ -724,10 +853,21 @@ struct kiln_m3_checkbox_colors {
     kiln_color disabled_checkmark_color;
 };
 KILN_API void kiln_m3_checkbox_colors_init(kiln_m3_checkbox_colors* s);
+struct kiln_stroke {
+    size_t size;
+    float width;
+    float miter;
+    kiln_stroke_cap cap;
+    kiln_stroke_join join;
+};
+KILN_API void kiln_stroke_init(kiln_stroke* s);
 struct kiln_m3_checkbox_options {
     size_t size;
     bool enabled;
     const kiln_m3_checkbox_colors* colors;
+    const kiln_stroke* checkmark_stroke;
+    const kiln_stroke* outline_stroke;
+    kiln_interaction_source* interaction_source;
 };
 KILN_API void kiln_m3_checkbox_options_init(kiln_m3_checkbox_options* s);
 struct kiln_m3_chip_elevation {
@@ -763,6 +903,7 @@ struct kiln_m3_chip_options {
     kiln_m3_opt_border_stroke border;
     const kiln_arrangement* horizontal_arrangement;
     const kiln_padding* content_padding;
+    kiln_interaction_source* interaction_source;
 };
 KILN_API void kiln_m3_chip_options_init(kiln_m3_chip_options* s);
 struct kiln_m3_chip_shapes {
@@ -802,6 +943,7 @@ struct kiln_m3_selectable_chip_options {
     kiln_m3_opt_border_stroke border;
     const kiln_arrangement* horizontal_arrangement;
     const kiln_padding* content_padding;
+    kiln_interaction_source* interaction_source;
 };
 KILN_API void kiln_m3_selectable_chip_options_init(kiln_m3_selectable_chip_options* s);
 struct kiln_m3_color_scheme {
@@ -856,6 +998,12 @@ struct kiln_m3_color_scheme {
     kiln_color on_tertiary_fixed_variant;
 };
 KILN_API void kiln_m3_color_scheme_init(kiln_m3_color_scheme* s);
+struct kiln_text_selection_colors {
+    size_t size;
+    kiln_color handle_color;
+    kiln_color background_color;
+};
+KILN_API void kiln_text_selection_colors_init(kiln_text_selection_colors* s);
 struct kiln_m3_text_field_colors {
     size_t size;
     kiln_color focused_text_color;
@@ -900,6 +1048,7 @@ struct kiln_m3_text_field_colors {
     kiln_color error_suffix_color;
     kiln_color cursor_color;
     kiln_color error_cursor_color;
+    const kiln_text_selection_colors* text_selection_colors;
 };
 KILN_API void kiln_m3_text_field_colors_init(kiln_m3_text_field_colors* s);
 struct kiln_m3_text_field_label_position {
@@ -915,6 +1064,22 @@ struct kiln_m3_text_field_label_scope {
     kiln_m3_fn_to_float progress;
 };
 KILN_API void kiln_m3_text_field_label_scope_init(kiln_m3_text_field_label_scope* s);
+struct kiln_keyboard_options {
+    size_t size;
+    const kiln_capitalization* capitalization;
+    kiln_opt_bool auto_correct_enabled;
+    const kiln_keyboard_type* keyboard_type;
+    const kiln_ime_action* ime_action;
+    kiln_opt_bool show_keyboard_on_focus;
+};
+KILN_API void kiln_keyboard_options_init(kiln_keyboard_options* s);
+struct kiln_text_field_line_limits {
+    size_t size;
+    bool single_line;
+    int32_t min_height_in_lines;
+    int32_t max_height_in_lines;
+};
+KILN_API void kiln_text_field_line_limits_init(kiln_text_field_line_limits* s);
 struct kiln_m3_text_field_options {
     size_t size;
     bool enabled;
@@ -929,9 +1094,12 @@ struct kiln_m3_text_field_options {
     kiln_fn suffix;
     kiln_fn supporting_text;
     bool is_error;
+    const kiln_keyboard_options* keyboard_options;
+    const kiln_text_field_line_limits* line_limits;
     const kiln_shape* shape;
     const kiln_m3_text_field_colors* colors;
     const kiln_padding* content_padding;
+    kiln_interaction_source* interaction_source;
 };
 KILN_API void kiln_m3_text_field_options_init(kiln_m3_text_field_options* s);
 struct kiln_m3_secure_text_field_options {
@@ -947,10 +1115,12 @@ struct kiln_m3_secure_text_field_options {
     kiln_fn suffix;
     kiln_fn supporting_text;
     bool is_error;
-    kiln_foundation_text_obfuscation_mode text_obfuscation_mode;
+    kiln_text_obfuscation_mode text_obfuscation_mode;
+    const kiln_keyboard_options* keyboard_options;
     const kiln_shape* shape;
     const kiln_m3_text_field_colors* colors;
     const kiln_padding* content_padding;
+    kiln_interaction_source* interaction_source;
 };
 KILN_API void kiln_m3_secure_text_field_options_init(kiln_m3_secure_text_field_options* s);
 struct kiln_m3_int_range {
@@ -1001,6 +1171,7 @@ struct kiln_m3_date_picker_dialog_options {
     const kiln_shape* shape;
     float tonal_elevation;
     const kiln_m3_date_picker_colors* colors;
+    const kiln_dialog_properties* properties;
 };
 KILN_API void kiln_m3_date_picker_dialog_options_init(kiln_m3_date_picker_dialog_options* s);
 struct kiln_m3_drag_handle_sizes {
@@ -1029,8 +1200,29 @@ struct kiln_m3_vertical_drag_handle_options {
     const kiln_m3_drag_handle_sizes* sizes;
     const kiln_m3_drag_handle_colors* colors;
     const kiln_m3_drag_handle_shapes* shapes;
+    kiln_interaction_source* interaction_source;
 };
 KILN_API void kiln_m3_vertical_drag_handle_options_init(kiln_m3_vertical_drag_handle_options* s);
+struct kiln_configuration {
+    size_t size;
+    float font_scale;
+    int32_t density_dpi;
+    int32_t font_weight_adjustment;
+    int32_t ui_mode;
+    int32_t screen_width_dp;
+    int32_t screen_height_dp;
+    int32_t smallest_screen_width_dp;
+    int32_t orientation;
+    int32_t screen_layout;
+    int32_t touchscreen;
+    int32_t keyboard;
+    int32_t keyboard_hidden;
+    int32_t hard_keyboard_hidden;
+    int32_t navigation;
+    int32_t navigation_hidden;
+    int32_t color_mode;
+};
+KILN_API void kiln_configuration_init(kiln_configuration* s);
 struct kiln_m3_tonal_palette {
     size_t size;
     kiln_color neutral100;
@@ -1146,6 +1338,7 @@ struct kiln_m3_floating_action_button_options {
     kiln_color container_color;
     kiln_color content_color;
     const kiln_m3_floating_action_button_elevation* elevation;
+    kiln_interaction_source* interaction_source;
 };
 KILN_API void kiln_m3_floating_action_button_options_init(kiln_m3_floating_action_button_options* s);
 struct kiln_m3_floating_action_button_menu_scope {
@@ -1246,6 +1439,7 @@ struct kiln_m3_rich_tooltip_options {
 KILN_API void kiln_m3_rich_tooltip_options_init(kiln_m3_rich_tooltip_options* s);
 struct kiln_m3_label_options {
     size_t size;
+    kiln_interaction_source* interaction_source;
     bool is_persistent;
 };
 KILN_API void kiln_m3_label_options_init(kiln_m3_label_options* s);
@@ -1318,6 +1512,7 @@ struct kiln_m3_list_item_options {
     const kiln_padding* content_padding;
     kiln_fn on_long_click;
     const char* on_long_click_label;
+    kiln_interaction_source* interaction_source;
 };
 KILN_API void kiln_m3_list_item_options_init(kiln_m3_list_item_options* s);
 struct kiln_m3_loading_indicator_options {
@@ -1334,6 +1529,14 @@ struct kiln_m3_contained_loading_indicator_options {
 KILN_API void kiln_m3_contained_loading_indicator_options_init(kiln_m3_contained_loading_indicator_options* s);
 struct kiln_m3_shapes {
     size_t size;
+    const kiln_shape* extra_small;
+    const kiln_shape* small;
+    const kiln_shape* medium;
+    const kiln_shape* large;
+    const kiln_shape* extra_large;
+    const kiln_shape* large_increased;
+    const kiln_shape* extra_large_increased;
+    const kiln_shape* extra_extra_large;
 };
 KILN_API void kiln_m3_shapes_init(kiln_m3_shapes* s);
 struct kiln_m3_typography {
@@ -1378,9 +1581,22 @@ struct kiln_m3_material_theme_args {
     const kiln_m3_typography* typography;
 };
 KILN_API void kiln_m3_material_theme_args_init(kiln_m3_material_theme_args* s);
+struct kiln_popup_properties {
+    size_t size;
+    bool focusable;
+    bool dismiss_on_back_press;
+    bool dismiss_on_click_outside;
+    kiln_secure_flag_policy secure_policy;
+    bool exclude_from_system_gesture;
+    bool clipping_enabled;
+    bool use_platform_default_width;
+    float scrim_alpha;
+};
+KILN_API void kiln_popup_properties_init(kiln_popup_properties* s);
 struct kiln_m3_dropdown_menu_options {
     size_t size;
     kiln_dp_offset offset;
+    const kiln_popup_properties* properties;
     const kiln_shape* shape;
     kiln_color container_color;
     float tonal_elevation;
@@ -1401,6 +1617,7 @@ struct kiln_m3_dropdown_menu_group_options {
     kiln_opt_float shadow_elevation;
     const kiln_border_stroke* border;
     kiln_padding content_padding;
+    kiln_interaction_source* interaction_source;
 };
 KILN_API void kiln_m3_dropdown_menu_group_options_init(kiln_m3_dropdown_menu_group_options* s);
 struct kiln_m3_menu_item_colors {
@@ -1422,6 +1639,7 @@ struct kiln_m3_dropdown_menu_item_options {
     bool enabled;
     const kiln_m3_menu_item_colors* colors;
     kiln_padding content_padding;
+    kiln_interaction_source* interaction_source;
 };
 KILN_API void kiln_m3_dropdown_menu_item_options_init(kiln_m3_dropdown_menu_item_options* s);
 struct kiln_m3_menu_item_options {
@@ -1433,6 +1651,7 @@ struct kiln_m3_menu_item_options {
     bool enabled;
     const kiln_arrangement* horizontal_arrangement;
     const kiln_padding* content_padding;
+    kiln_interaction_source* interaction_source;
 };
 KILN_API void kiln_m3_menu_item_options_init(kiln_m3_menu_item_options* s);
 struct kiln_m3_menu_item_shapes {
@@ -1459,7 +1678,7 @@ struct kiln_m3_selectable_menu_item_colors {
 KILN_API void kiln_m3_selectable_menu_item_colors_init(kiln_m3_selectable_menu_item_colors* s);
 struct kiln_m3_modal_bottom_sheet_properties {
     size_t size;
-    kiln_ui_secure_flag_policy secure_policy;
+    kiln_secure_flag_policy secure_policy;
     bool should_dismiss_on_back_press;
     bool should_dismiss_on_click_outside;
 };
@@ -1475,6 +1694,7 @@ struct kiln_m3_modal_bottom_sheet_options {
     float tonal_elevation;
     kiln_color scrim_color;
     kiln_fn drag_handle;
+    kiln_m3_fn_to_window_insets content_window_insets;
     const kiln_m3_modal_bottom_sheet_properties* properties;   /* NULL: the default */
 };
 KILN_API void kiln_m3_modal_bottom_sheet_options_init(kiln_m3_modal_bottom_sheet_options* s);
@@ -1483,6 +1703,7 @@ struct kiln_m3_navigation_bar_options {
     kiln_color container_color;
     kiln_color content_color;
     float tonal_elevation;
+    const kiln_window_insets* window_insets;
 };
 KILN_API void kiln_m3_navigation_bar_options_init(kiln_m3_navigation_bar_options* s);
 struct kiln_m3_navigation_bar_item_colors {
@@ -1502,6 +1723,7 @@ struct kiln_m3_navigation_bar_item_options {
     kiln_fn label;
     bool always_show_label;
     const kiln_m3_navigation_bar_item_colors* colors;
+    kiln_interaction_source* interaction_source;
 };
 KILN_API void kiln_m3_navigation_bar_item_options_init(kiln_m3_navigation_bar_item_options* s);
 struct kiln_m3_modal_navigation_drawer_options {
@@ -1523,6 +1745,7 @@ struct kiln_m3_drawer_sheet_options {
     kiln_color drawer_container_color;
     kiln_color drawer_content_color;
     kiln_opt_float drawer_tonal_elevation;
+    const kiln_window_insets* window_insets;
 };
 KILN_API void kiln_m3_drawer_sheet_options_init(kiln_m3_drawer_sheet_options* s);
 struct kiln_m3_navigation_drawer_item_colors {
@@ -1543,6 +1766,7 @@ struct kiln_m3_navigation_drawer_item_options {
     kiln_fn badge;
     const kiln_shape* shape;
     const kiln_m3_navigation_drawer_item_colors* colors;
+    kiln_interaction_source* interaction_source;
 };
 KILN_API void kiln_m3_navigation_drawer_item_options_init(kiln_m3_navigation_drawer_item_options* s);
 struct kiln_m3_navigation_rail_options {
@@ -1550,6 +1774,7 @@ struct kiln_m3_navigation_rail_options {
     kiln_color container_color;
     kiln_color content_color;
     kiln_fn header;
+    const kiln_window_insets* window_insets;
 };
 KILN_API void kiln_m3_navigation_rail_options_init(kiln_m3_navigation_rail_options* s);
 struct kiln_m3_navigation_rail_item_colors {
@@ -1569,13 +1794,30 @@ struct kiln_m3_navigation_rail_item_options {
     kiln_fn label;
     bool always_show_label;
     const kiln_m3_navigation_rail_item_colors* colors;
+    kiln_interaction_source* interaction_source;
 };
 KILN_API void kiln_m3_navigation_rail_item_options_init(kiln_m3_navigation_rail_item_options* s);
+struct kiln_back_event {
+    size_t size;
+    float touch_x;
+    float touch_y;
+    float progress;
+    kiln_swipe_edge swipe_edge;
+    int64_t frame_time_millis;
+};
+KILN_API void kiln_back_event_init(kiln_back_event* s);
+struct kiln_density {
+    size_t size;
+    float density;
+    float font_scale;
+    int32_t font_weight_adjustment;
+};
+KILN_API void kiln_density_init(kiln_density* s);
 struct kiln_m3_linear_progress_indicator_options {
     size_t size;
     kiln_color color;
     kiln_color track_color;
-    kiln_gfx_stroke_cap stroke_cap;
+    kiln_stroke_cap stroke_cap;
     float gap_size;
 };
 KILN_API void kiln_m3_linear_progress_indicator_options_init(kiln_m3_linear_progress_indicator_options* s);
@@ -1585,7 +1827,7 @@ struct kiln_m3_circular_progress_indicator_options {
     kiln_color track_color;
     float stroke_width;
     float gap_size;
-    kiln_gfx_stroke_cap stroke_cap;
+    kiln_stroke_cap stroke_cap;
 };
 KILN_API void kiln_m3_circular_progress_indicator_options_init(kiln_m3_circular_progress_indicator_options* s);
 struct kiln_m3_pull_to_refresh_defaults_indicator_box_options {
@@ -1625,6 +1867,7 @@ struct kiln_m3_radio_button_options {
     size_t size;
     bool enabled;
     const kiln_m3_radio_button_colors* colors;
+    kiln_interaction_source* interaction_source;
 };
 KILN_API void kiln_m3_radio_button_options_init(kiln_m3_radio_button_options* s);
 struct kiln_m3_ripple_options {
@@ -1649,6 +1892,7 @@ struct kiln_m3_scaffold_options {
     kiln_m3_fab_position floating_action_button_position;
     kiln_color container_color;
     kiln_color content_color;
+    const kiln_window_insets* content_window_insets;
 };
 KILN_API void kiln_m3_scaffold_options_init(kiln_m3_scaffold_options* s);
 struct kiln_m3_scrim_options {
@@ -1673,6 +1917,7 @@ struct kiln_m3_scroll_field_options {
     bool enabled;
     const kiln_m3_scroll_field_colors* colors;
     kiln_m3_fn_int_to_string field_accessibility_description;
+    kiln_interaction_source* interaction_source;
     kiln_m3_fn_int_bool_bool field;
     float item_height;
 };
@@ -1703,6 +1948,9 @@ struct kiln_m3_search_bar_input_field_options {
     kiln_fn suffix;
     const kiln_shape* shape;
     const kiln_m3_text_field_colors* colors;
+    kiln_interaction_source* interaction_source;
+    const kiln_keyboard_options* keyboard_options;
+    const kiln_text_field_line_limits* line_limits;
 };
 KILN_API void kiln_m3_search_bar_input_field_options_init(kiln_m3_search_bar_input_field_options* s);
 struct kiln_m3_search_bar_colors {
@@ -1739,6 +1987,7 @@ struct kiln_m3_app_bar_with_search_options {
     kiln_opt_float tonal_elevation;
     kiln_opt_float shadow_elevation;
     kiln_padding content_padding;
+    const kiln_window_insets* window_insets;
     kiln_m3_search_bar_scroll_behavior* scroll_behavior;
 };
 KILN_API void kiln_m3_app_bar_with_search_options_init(kiln_m3_app_bar_with_search_options* s);
@@ -1748,6 +1997,8 @@ struct kiln_m3_expanded_full_screen_search_bar_options {
     const kiln_m3_search_bar_colors* colors;
     kiln_opt_float tonal_elevation;
     kiln_opt_float shadow_elevation;
+    kiln_m3_fn_to_window_insets window_insets;
+    const kiln_dialog_properties* properties;
 };
 KILN_API void kiln_m3_expanded_full_screen_search_bar_options_init(kiln_m3_expanded_full_screen_search_bar_options* s);
 struct kiln_m3_expanded_docked_search_bar_options {
@@ -1756,6 +2007,7 @@ struct kiln_m3_expanded_docked_search_bar_options {
     const kiln_m3_search_bar_colors* colors;
     kiln_opt_float tonal_elevation;
     kiln_opt_float shadow_elevation;
+    const kiln_popup_properties* properties;
     const kiln_shape* dropdown_shape;
     kiln_opt_float dropdown_gap_size;
     kiln_color dropdown_scrim_color;
@@ -1767,6 +2019,7 @@ struct kiln_m3_expandable_search_bar_options {
     const kiln_m3_search_bar_colors* colors;
     kiln_opt_float tonal_elevation;
     kiln_opt_float shadow_elevation;
+    const kiln_window_insets* window_insets;
 };
 KILN_API void kiln_m3_expandable_search_bar_options_init(kiln_m3_expandable_search_bar_options* s);
 struct kiln_m3_segmented_button_colors {
@@ -1791,12 +2044,14 @@ struct kiln_m3_segmented_button_options {
     const kiln_m3_segmented_button_colors* colors;
     const kiln_border_stroke* border;
     const kiln_padding* content_padding;
+    kiln_interaction_source* interaction_source;
 };
 KILN_API void kiln_m3_segmented_button_options_init(kiln_m3_segmented_button_options* s);
 struct kiln_m3_short_navigation_bar_options {
     size_t size;
     kiln_color container_color;
     kiln_color content_color;
+    const kiln_window_insets* window_insets;
     kiln_m3_short_navigation_bar_arrangement arrangement;
 };
 KILN_API void kiln_m3_short_navigation_bar_options_init(kiln_m3_short_navigation_bar_options* s);
@@ -1817,6 +2072,7 @@ struct kiln_m3_short_navigation_bar_item_options {
     bool enabled;
     kiln_m3_navigation_item_icon_position icon_position;
     const kiln_m3_navigation_item_colors* colors;
+    kiln_interaction_source* interaction_source;
 };
 KILN_API void kiln_m3_short_navigation_bar_item_options_init(kiln_m3_short_navigation_bar_item_options* s);
 struct kiln_m3_slider_range {
@@ -1844,6 +2100,7 @@ struct kiln_m3_slider_options {
     bool enabled;
     kiln_fn on_value_change_finished;
     const kiln_m3_slider_colors* colors;
+    kiln_interaction_source* interaction_source;
     kiln_m3_fn_slider_state thumb;
     kiln_m3_fn_slider_state track;
 };
@@ -1853,6 +2110,8 @@ struct kiln_m3_range_slider_options {
     bool enabled;
     kiln_fn on_value_change_finished;
     const kiln_m3_slider_colors* colors;
+    kiln_interaction_source* start_thumb_interaction_source;
+    kiln_interaction_source* end_thumb_interaction_source;
     kiln_m3_fn_range_slider_state start_thumb;
     kiln_m3_fn_range_slider_state end_thumb;
     kiln_m3_fn_range_slider_state track;
@@ -1876,6 +2135,12 @@ struct kiln_m3_slider_track_options {
     bool enable_corner_shrinking;
 };
 KILN_API void kiln_m3_slider_track_options_init(kiln_m3_slider_track_options* s);
+struct kiln_offset {
+    size_t size;
+    float x;
+    float y;
+};
+KILN_API void kiln_offset_init(kiln_offset* s);
 struct kiln_m3_split_button_shapes {
     size_t size;
     const kiln_shape* shape;
@@ -1891,6 +2156,7 @@ struct kiln_m3_split_button_options {
     kiln_m3_opt_button_elevation elevation;
     kiln_m3_opt_border_stroke border;
     const kiln_padding* content_padding;
+    kiln_interaction_source* interaction_source;
 };
 KILN_API void kiln_m3_split_button_options_init(kiln_m3_split_button_options* s);
 struct kiln_m3_surface_options {
@@ -1936,6 +2202,7 @@ struct kiln_m3_switch_options {
     bool enabled;
     const kiln_m3_switch_colors* colors;
     kiln_fn thumb_content;
+    kiln_interaction_source* interaction_source;
 };
 KILN_API void kiln_m3_switch_options_init(kiln_m3_switch_options* s);
 struct kiln_m3_tab_options {
@@ -1943,6 +2210,7 @@ struct kiln_m3_tab_options {
     bool enabled;
     kiln_color selected_content_color;
     kiln_color unselected_content_color;
+    kiln_interaction_source* interaction_source;
 };
 KILN_API void kiln_m3_tab_options_init(kiln_m3_tab_options* s);
 struct kiln_m3_tab_row_options {
@@ -1959,13 +2227,29 @@ struct kiln_m3_scrollable_tab_row_options {
     float min_tab_width;
 };
 KILN_API void kiln_m3_scrollable_tab_row_options_init(kiln_m3_scrollable_tab_row_options* s);
+struct kiln_font_weight {
+    size_t size;
+    int32_t weight;
+};
+KILN_API void kiln_font_weight_init(kiln_font_weight* s);
+struct kiln_font_family {
+    size_t size;
+    kiln_kind kind;
+    const char* name;
+};
+KILN_API void kiln_font_family_init(kiln_font_family* s);
 struct kiln_m3_text_options {
     size_t size;
     kiln_color color;
     kiln_m3_fn_to_color color_producer;
-    const kiln_text_font_style* font_style;
+    kiln_text_unit font_size;
+    const kiln_font_style* font_style;
+    const kiln_font_weight* font_weight;
+    const kiln_font_family* font_family;
+    kiln_text_unit letter_spacing;
     const kiln_text_text_decoration* text_decoration;
     const kiln_text_align* text_align;
+    kiln_text_unit line_height;
     kiln_text_overflow overflow;
     bool soft_wrap;
     int32_t max_lines;
@@ -2030,6 +2314,7 @@ struct kiln_m3_time_scroll_options {
 KILN_API void kiln_m3_time_scroll_options_init(kiln_m3_time_scroll_options* s);
 struct kiln_m3_time_picker_dialog_options {
     size_t size;
+    const kiln_dialog_properties* properties;
     kiln_fn mode_toggle_button;
     kiln_fn dismiss_button;
     const kiln_shape* shape;
@@ -2040,6 +2325,8 @@ struct kiln_m3_linear_wavy_progress_indicator_options {
     size_t size;
     kiln_color color;
     kiln_color track_color;
+    const kiln_stroke* stroke;
+    const kiln_stroke* track_stroke;
     float gap_size;
     float stop_size;
     kiln_m3_fn_float_to_float amplitude;
@@ -2051,6 +2338,8 @@ struct kiln_m3_circular_wavy_progress_indicator_options {
     size_t size;
     kiln_color color;
     kiln_color track_color;
+    const kiln_stroke* stroke;
+    const kiln_stroke* track_stroke;
     float gap_size;
     kiln_m3_fn_float_to_float amplitude;
     float wavelength;
@@ -2072,13 +2361,14 @@ struct kiln_m3_wide_navigation_rail_options {
     const kiln_shape* shape;
     const kiln_m3_wide_navigation_rail_colors* colors;
     kiln_fn header;
+    const kiln_window_insets* window_insets;
     kiln_arrangement arrangement;
     kiln_padding content_padding;
 };
 KILN_API void kiln_m3_wide_navigation_rail_options_init(kiln_m3_wide_navigation_rail_options* s);
 struct kiln_m3_modal_wide_navigation_rail_properties {
     size_t size;
-    kiln_ui_secure_flag_policy secure_policy;
+    kiln_secure_flag_policy secure_policy;
     bool should_dismiss_on_back_press;
 };
 KILN_API void kiln_m3_modal_wide_navigation_rail_properties_init(kiln_m3_modal_wide_navigation_rail_properties* s);
@@ -2091,6 +2381,7 @@ struct kiln_m3_modal_wide_navigation_rail_options {
     const kiln_m3_wide_navigation_rail_colors* colors;
     kiln_fn header;
     float expanded_header_top_padding;
+    const kiln_window_insets* window_insets;
     kiln_arrangement arrangement;
     const kiln_m3_modal_wide_navigation_rail_properties* expanded_properties;   /* NULL: the default */
     kiln_padding content_padding;
@@ -2101,8 +2392,76 @@ struct kiln_m3_wide_navigation_rail_item_options {
     bool enabled;
     const kiln_m3_navigation_item_icon_position* icon_position;
     const kiln_m3_navigation_item_colors* colors;
+    kiln_interaction_source* interaction_source;
 };
 KILN_API void kiln_m3_wide_navigation_rail_item_options_init(kiln_m3_wide_navigation_rail_item_options* s);
+struct kiln_scale {
+    size_t size;
+    float scale;
+    float origin_x;
+    float origin_y;
+    const kiln_anim_spec* spec;
+};
+KILN_API void kiln_scale_init(kiln_scale* s);
+struct kiln_int_offset {
+    size_t size;
+    int32_t x;
+    int32_t y;
+};
+KILN_API void kiln_int_offset_init(kiln_int_offset* s);
+struct kiln_slide {
+    size_t size;
+    const kiln_anim_spec* spec;
+};
+KILN_API void kiln_slide_init(kiln_slide* s);
+struct kiln_change_size {
+    size_t size;
+    kiln_alignment alignment;
+    kiln_m3_fn_int_size_to_int_size size_value;
+    bool clip;
+    const kiln_anim_spec* spec;
+};
+KILN_API void kiln_change_size_init(kiln_change_size* s);
+struct kiln_veil {
+    size_t size;
+    kiln_color initial_color;
+    kiln_color target_color;
+    const kiln_anim_spec* spec;
+    bool match_parent_size;
+};
+KILN_API void kiln_veil_init(kiln_veil* s);
+struct kiln_enter_exit_parts {
+    size_t size;
+    const kiln_scale* scale;
+    const kiln_slide* slide;
+    const kiln_change_size* change_size;
+    const kiln_veil* veil;
+};
+KILN_API void kiln_enter_exit_parts_init(kiln_enter_exit_parts* s);
+struct kiln_enter_transition {
+    size_t size;
+    const kiln_enter_exit_parts* parts;
+};
+KILN_API void kiln_enter_transition_init(kiln_enter_transition* s);
+struct kiln_exit_transition {
+    size_t size;
+    const kiln_enter_exit_parts* parts;
+};
+KILN_API void kiln_exit_transition_init(kiln_exit_transition* s);
+struct kiln_size_transform {
+    size_t size;
+    bool clip;
+    kiln_m3_fn_int_size_int_size_to_animation_spec spec;
+};
+KILN_API void kiln_size_transform_init(kiln_size_transform* s);
+struct kiln_content_transform {
+    size_t size;
+    const kiln_enter_transition* enter;
+    const kiln_exit_transition* exit;
+    float target_content_z_index;
+    const kiln_size_transform* size_transform;
+};
+KILN_API void kiln_content_transform_init(kiln_content_transform* s);
 struct kiln_m3_ripple_alpha {
     size_t size;
     float dragged_alpha;
@@ -2124,6 +2483,27 @@ struct kiln_m3_ripple_theme_configuration {
     const kiln_m3_ripple_theme_configuration_inset_ring* focus;
 };
 KILN_API void kiln_m3_ripple_theme_configuration_init(kiln_m3_ripple_theme_configuration* s);
+struct kiln_m3_material_theme_values {
+    size_t size;
+    const kiln_m3_color_scheme* color_scheme;   /* NULL: the default */
+    const kiln_m3_typography* typography;   /* NULL: the default */
+    const kiln_m3_shapes* shapes;   /* NULL: the default */
+    kiln_m3_motion_scheme* motion_scheme;
+};
+KILN_API void kiln_m3_material_theme_values_init(kiln_m3_material_theme_values* s);
+struct kiln_m3_ripple_configuration_inset_ring_colors {
+    size_t size;
+    kiln_color outer_stroke_color;
+    kiln_color inner_stroke_color;
+};
+KILN_API void kiln_m3_ripple_configuration_inset_ring_colors_init(kiln_m3_ripple_configuration_inset_ring_colors* s);
+struct kiln_m3_ripple_configuration {
+    size_t size;
+    kiln_color color;
+    const kiln_m3_ripple_configuration_inset_ring_colors* focus;
+    const kiln_m3_ripple_alpha* ripple_alpha;
+};
+KILN_API void kiln_m3_ripple_configuration_init(kiln_m3_ripple_configuration* s);
 struct kiln_m3_snackbar_visuals {
     size_t size;
     const char* message;
@@ -2140,6 +2520,13 @@ struct kiln_m3_carousel_parallax_scroll_effect_item_info {
     float mask_progress;
 };
 KILN_API void kiln_m3_carousel_parallax_scroll_effect_item_info_init(kiln_m3_carousel_parallax_scroll_effect_item_info* s);
+struct kiln_layout_coordinates {
+    size_t size;
+    uint64_t coordinator;
+    bool lookahead;
+    bool tracked;
+};
+KILN_API void kiln_layout_coordinates_init(kiln_layout_coordinates* s);
 
 /* Functions */
 /* AlertDialog.h */
@@ -2148,11 +2535,13 @@ KILN_API kiln_color kiln_m3_alert_dialog_defaults_container_color(kiln_key key);
 KILN_API kiln_color kiln_m3_alert_dialog_defaults_icon_content_color(kiln_key key);
 KILN_API kiln_color kiln_m3_alert_dialog_defaults_title_content_color(kiln_key key);
 KILN_API kiln_color kiln_m3_alert_dialog_defaults_text_content_color(kiln_key key);
+KILN_API void kiln_m3_basic_alert_dialog(kiln_key key, kiln_fn on_dismiss_request, const kiln_modifier* modifier, const kiln_dialog_properties* properties, kiln_fn content);
 KILN_API void kiln_m3_alert_dialog(kiln_key key, kiln_fn on_dismiss_request, kiln_fn confirm_button, const kiln_modifier* modifier, const kiln_m3_alert_dialog_options* options);
 /* AppBar.h */
 KILN_API kiln_m3_top_app_bar_state* kiln_m3_remember_top_app_bar_state(kiln_key key, float initial_height_offset_limit, float initial_height_offset, float initial_content_offset);
 KILN_API void kiln_m3_top_app_bar_defaults_top_app_bar_colors(kiln_key key, kiln_m3_top_app_bar_colors* out);
 KILN_API void kiln_m3_top_app_bar_defaults_top_app_bar_colors_container_color(kiln_key key, kiln_color container_color, kiln_color scrolled_container_color, kiln_color navigation_icon_content_color, kiln_color title_content_color, kiln_color action_icon_content_color, kiln_color subtitle_content_color, kiln_m3_top_app_bar_colors* out);
+KILN_API const kiln_window_insets* kiln_m3_top_app_bar_defaults_window_insets(kiln_key key);
 KILN_API const kiln_anim_spec* kiln_m3_top_app_bar_defaults_snap_animation_spec(kiln_key key);
 KILN_API kiln_m3_top_app_bar_scroll_behavior* kiln_m3_top_app_bar_defaults_pinned_scroll_behavior(kiln_key key, kiln_m3_top_app_bar_state* state, kiln_m3_fn_to_bool can_scroll, kiln_m3_fn_to_bool is_scrolling_content_at_start);
 KILN_API kiln_m3_top_app_bar_scroll_behavior* kiln_m3_top_app_bar_defaults_enter_always_scroll_behavior(kiln_key key, kiln_m3_top_app_bar_state* state, kiln_m3_fn_to_bool can_scroll, const kiln_anim_spec* snap_animation_spec);
@@ -2166,7 +2555,10 @@ KILN_API void kiln_m3_large_flexible_top_app_bar(kiln_key key, kiln_fn title, co
 KILN_API void kiln_m3_two_rows_top_app_bar(kiln_key key, kiln_fn_bool title, const kiln_modifier* modifier, kiln_fn_bool subtitle, const kiln_m3_two_rows_top_app_bar_options* options);
 KILN_API kiln_m3_bottom_app_bar_state* kiln_m3_remember_bottom_app_bar_state(kiln_key key, float initial_height_offset_limit, float initial_height_offset, float initial_content_offset);
 KILN_API kiln_color kiln_m3_bottom_app_bar_defaults_container_color(kiln_key key);
+KILN_API const kiln_window_insets* kiln_m3_bottom_app_bar_defaults_window_insets(kiln_key key);
 KILN_API kiln_color kiln_m3_bottom_app_bar_defaults_bottom_app_bar_fab_color(kiln_key key);
+KILN_API kiln_arrangement kiln_m3_bottom_app_bar_defaults_flexible_horizontal_arrangement(kiln_key key);
+KILN_API kiln_arrangement kiln_m3_bottom_app_bar_defaults_flexible_fixed_horizontal_arrangement(kiln_key key);
 KILN_API const kiln_anim_spec* kiln_m3_bottom_app_bar_defaults_snap_animation_spec(kiln_key key);
 KILN_API kiln_m3_bottom_app_bar_scroll_behavior* kiln_m3_bottom_app_bar_defaults_exit_always_scroll_behavior(kiln_key key, kiln_m3_bottom_app_bar_state* state, kiln_m3_fn_to_bool can_scroll, const kiln_anim_spec* snap_animation_spec);
 KILN_API void kiln_m3_bottom_app_bar(kiln_key key, kiln_fn actions, const kiln_modifier* modifier, kiln_fn floating_action_button, const kiln_m3_bottom_app_bar_options* options);
@@ -2205,6 +2597,10 @@ KILN_API void kiln_m3_icon_button_defaults_filled_icon_toggle_button_colors_cont
 KILN_API void kiln_m3_icon_button_defaults_filled_tonal_icon_toggle_button_colors_container_color(kiln_key key, kiln_color container_color, kiln_color content_color, kiln_color disabled_container_color, kiln_color disabled_content_color, kiln_color checked_container_color, kiln_color checked_content_color, kiln_m3_icon_toggle_button_colors* out);
 KILN_API void kiln_m3_icon_button_defaults_outlined_icon_toggle_button_colors_container_color(kiln_key key, kiln_color container_color, kiln_color content_color, kiln_color disabled_container_color, kiln_color disabled_content_color, kiln_color checked_container_color, kiln_color checked_content_color, kiln_m3_icon_toggle_button_colors* out);
 KILN_API void kiln_m3_icon_button_defaults_outlined_icon_toggle_button_vibrant_colors_container_color(kiln_key key, kiln_color container_color, kiln_color content_color, kiln_color disabled_container_color, kiln_color disabled_content_color, kiln_color checked_container_color, kiln_color checked_content_color, kiln_m3_icon_toggle_button_colors* out);
+KILN_API kiln_border_stroke kiln_m3_icon_button_defaults_outlined_icon_button_border(kiln_key key, bool enabled);
+KILN_API kiln_border_stroke kiln_m3_icon_button_defaults_outlined_icon_button_vibrant_border(kiln_key key, bool enabled);
+KILN_API const kiln_border_stroke* kiln_m3_icon_button_defaults_outlined_icon_toggle_button_border(kiln_key key, bool enabled, bool checked);
+KILN_API const kiln_border_stroke* kiln_m3_icon_button_defaults_outlined_icon_toggle_button_vibrant_border(kiln_key key, bool enabled, bool checked);
 KILN_API const kiln_shape* kiln_m3_icon_button_defaults_standard_shape(kiln_key key);
 KILN_API const kiln_shape* kiln_m3_icon_button_defaults_filled_shape(kiln_key key);
 KILN_API const kiln_shape* kiln_m3_icon_button_defaults_outlined_shape(kiln_key key);
@@ -2256,6 +2652,8 @@ KILN_API const kiln_shape* kiln_m3_bottom_sheet_defaults_hidden_shape(kiln_key k
 KILN_API const kiln_shape* kiln_m3_bottom_sheet_defaults_expanded_shape(kiln_key key);
 KILN_API kiln_color kiln_m3_bottom_sheet_defaults_container_color(kiln_key key);
 KILN_API kiln_color kiln_m3_bottom_sheet_defaults_scrim_color(kiln_key key);
+KILN_API const kiln_window_insets* kiln_m3_bottom_sheet_defaults_standard_window_insets(kiln_key key);
+KILN_API const kiln_window_insets* kiln_m3_bottom_sheet_defaults_modal_window_insets(kiln_key key);
 KILN_API void kiln_m3_bottom_sheet_defaults_drag_handle(kiln_key key, const kiln_modifier* modifier, const kiln_m3_bottom_sheet_defaults_drag_handle_options* options);
 /* BottomSheet.h */
 KILN_API void kiln_m3_bottom_sheet(kiln_key key, const kiln_modifier* modifier, const kiln_m3_bottom_sheet_options* options, kiln_fn content);
@@ -2274,6 +2672,7 @@ KILN_API void kiln_m3_snackbar_host(kiln_key key, kiln_m3_snackbar_host_state* h
 KILN_API kiln_m3_sheet_state* kiln_m3_remember_standard_bottom_sheet_state(kiln_key key, kiln_m3_sheet_value initial_value, kiln_m3_fn_sheet_value_to_bool confirm_value_change, bool skip_hidden_state);
 KILN_API void kiln_m3_bottom_sheet_scaffold(kiln_key key, kiln_fn sheet_content, const kiln_modifier* modifier, const kiln_m3_bottom_sheet_scaffold_options* options, kiln_m3_fn_padding_values content);
 /* Button.h */
+KILN_API float kiln_m3_shadow_elevation(kiln_key key, const kiln_m3_button_elevation* elevation, bool enabled, kiln_interaction_source* source);
 KILN_API void kiln_m3_button(kiln_key key, kiln_fn on_click, const kiln_modifier* modifier, const kiln_m3_button_options* options, kiln_fn content);
 KILN_API void kiln_m3_elevated_button(kiln_key key, kiln_fn on_click, const kiln_modifier* modifier, const kiln_m3_button_options* options, kiln_fn content);
 KILN_API void kiln_m3_filled_tonal_button(kiln_key key, kiln_fn on_click, const kiln_modifier* modifier, const kiln_m3_button_options* options, kiln_fn content);
@@ -2310,6 +2709,7 @@ KILN_API void kiln_m3_button_defaults_text_button_colors_container_color(kiln_ke
 KILN_API void kiln_m3_button_defaults_button_elevation(kiln_key key, kiln_m3_button_elevation* out);
 KILN_API void kiln_m3_button_defaults_elevated_button_elevation(kiln_key key, kiln_m3_button_elevation* out);
 KILN_API void kiln_m3_button_defaults_filled_tonal_button_elevation(kiln_key key, kiln_m3_button_elevation* out);
+KILN_API kiln_border_stroke kiln_m3_button_defaults_outlined_button_border(kiln_key key, bool enabled);
 KILN_API void kiln_m3_button_defaults_shapes_for(kiln_key key, float button_height, kiln_m3_button_shapes* out);
 KILN_API kiln_padding kiln_m3_button_defaults_content_padding_for(kiln_key key, float button_height, bool has_start_icon, bool has_end_icon);
 KILN_API float kiln_m3_button_defaults_icon_size_for(kiln_key key, float button_height);
@@ -2332,7 +2732,9 @@ KILN_API void kiln_m3_elevated_toggle_button_defaults_elevation(kiln_key key, ki
 KILN_API void kiln_m3_filled_tonal_toggle_button_defaults_colors(kiln_key key, kiln_m3_toggle_button_colors* out);
 KILN_API void kiln_m3_filled_tonal_toggle_button_defaults_elevation(kiln_key key, kiln_m3_button_elevation* out);
 KILN_API void kiln_m3_outlined_toggle_button_defaults_colors(kiln_key key, kiln_m3_toggle_button_colors* out);
+KILN_API const kiln_border_stroke* kiln_m3_outlined_toggle_button_defaults_border(kiln_key key, bool enabled, bool checked);
 /* ButtonGroup.h */
+KILN_API kiln_arrangement kiln_m3_button_group_defaults_horizontal_arrangement(kiln_key key);
 KILN_API const kiln_shape* kiln_m3_button_group_defaults_connected_leading_button_shape(kiln_key key);
 KILN_API const kiln_shape* kiln_m3_button_group_defaults_connected_leading_button_press_shape(kiln_key key);
 KILN_API const kiln_shape* kiln_m3_button_group_defaults_connected_trailing_button_shape(kiln_key key);
@@ -2345,6 +2747,7 @@ KILN_API void kiln_m3_button_group_defaults_connected_trailing_button_shapes(kil
 KILN_API void kiln_m3_button_group_defaults_overflow_indicator(kiln_key key, kiln_m3_button_group_menu_state* menu_state, const kiln_modifier* modifier, const kiln_m3_button_group_defaults_overflow_indicator_options* options);
 KILN_API void kiln_m3_button_group(kiln_key key, kiln_m3_fn_button_group_menu_state overflow_indicator, const kiln_modifier* modifier, kiln_m3_fn_button_group_scope content, const kiln_m3_button_group_options* options);
 /* Card.h */
+KILN_API float kiln_m3_shadow_elevation_elevation(kiln_key key, const kiln_m3_card_elevation* elevation, bool enabled, kiln_interaction_source* source);
 KILN_API void kiln_m3_card(kiln_key key, const kiln_modifier* modifier, const kiln_m3_card_options* options, kiln_fn content);
 KILN_API void kiln_m3_card_on_click(kiln_key key, kiln_fn on_click, const kiln_modifier* modifier, const kiln_m3_card_options* options, kiln_fn content);
 KILN_API void kiln_m3_elevated_card(kiln_key key, const kiln_modifier* modifier, const kiln_m3_card_options* options, kiln_fn content);
@@ -2363,6 +2766,7 @@ KILN_API void kiln_m3_card_defaults_outlined_card_colors(kiln_key key, kiln_m3_c
 KILN_API void kiln_m3_card_defaults_card_colors_container(kiln_key key, kiln_color container, kiln_color content, kiln_color disabled_container, kiln_color disabled_content, kiln_m3_card_colors* out);
 KILN_API void kiln_m3_card_defaults_elevated_card_colors_container(kiln_key key, kiln_color container, kiln_color content, kiln_color disabled_container, kiln_color disabled_content, kiln_m3_card_colors* out);
 KILN_API void kiln_m3_card_defaults_outlined_card_colors_container(kiln_key key, kiln_color container, kiln_color content, kiln_color disabled_container, kiln_color disabled_content, kiln_m3_card_colors* out);
+KILN_API kiln_border_stroke kiln_m3_card_defaults_outlined_card_border(kiln_key key, bool enabled);
 /* Carousel.h */
 KILN_API kiln_m3_carousel_state* kiln_m3_remember_carousel_state(kiln_key key, int32_t initial_item, kiln_m3_fn_to_int item_count);
 KILN_API kiln_m3_carousel_state* kiln_m3_remember_carousel_state_item_count(kiln_key key, kiln_m3_fn_to_int item_count);
@@ -2378,6 +2782,7 @@ KILN_API void kiln_m3_checkbox_defaults_colors(kiln_key key, kiln_m3_checkbox_co
 KILN_API void kiln_m3_checkbox_defaults_colors_overrides(kiln_key key, const kiln_m3_checkbox_colors* overrides, kiln_m3_checkbox_colors* out);
 KILN_API void kiln_m3_checkbox_defaults_colors_checked_color(kiln_key key, kiln_color checked_color, kiln_color unchecked_color, kiln_color checkmark_color, kiln_color disabled_checked_color, kiln_color disabled_unchecked_color, kiln_color disabled_indeterminate_color, kiln_m3_checkbox_colors* out);
 /* Chip.h */
+KILN_API float kiln_m3_shadow_elevation_arg0(kiln_key key, const kiln_m3_chip_elevation* arg0, bool enabled, kiln_interaction_source* arg2);
 KILN_API void kiln_m3_assist_chip(kiln_key key, kiln_fn on_click, kiln_fn label, const kiln_modifier* modifier, const kiln_m3_chip_options* options);
 KILN_API void kiln_m3_elevated_assist_chip(kiln_key key, kiln_fn on_click, kiln_fn label, const kiln_modifier* modifier, const kiln_m3_chip_options* options);
 KILN_API void kiln_m3_suggestion_chip(kiln_key key, kiln_fn on_click, kiln_fn label, const kiln_modifier* modifier, const kiln_m3_chip_options* options);
@@ -2385,6 +2790,7 @@ KILN_API void kiln_m3_elevated_suggestion_chip(kiln_key key, kiln_fn on_click, k
 KILN_API void kiln_m3_filter_chip(kiln_key key, bool selected, kiln_fn on_click, kiln_fn label, const kiln_modifier* modifier, const kiln_m3_selectable_chip_options* options);
 KILN_API void kiln_m3_elevated_filter_chip(kiln_key key, bool selected, kiln_fn on_click, kiln_fn label, const kiln_modifier* modifier, const kiln_m3_selectable_chip_options* options);
 KILN_API void kiln_m3_input_chip(kiln_key key, bool selected, kiln_fn on_click, kiln_fn label, const kiln_modifier* modifier, const kiln_m3_selectable_chip_options* options);
+KILN_API kiln_arrangement kiln_m3_assist_chip_defaults_horizontal_arrangement(kiln_key key, float spacing);
 KILN_API const kiln_shape* kiln_m3_assist_chip_defaults_shape(kiln_key key);
 KILN_API void kiln_m3_assist_chip_defaults_assist_chip_colors(kiln_key key, kiln_m3_chip_colors* out);
 KILN_API void kiln_m3_assist_chip_defaults_assist_chip_colors_overrides(kiln_key key, const kiln_m3_chip_colors* overrides, kiln_m3_chip_colors* out);
@@ -2392,6 +2798,8 @@ KILN_API void kiln_m3_assist_chip_defaults_elevated_assist_chip_colors(kiln_key 
 KILN_API void kiln_m3_assist_chip_defaults_elevated_assist_chip_colors_overrides(kiln_key key, const kiln_m3_chip_colors* overrides, kiln_m3_chip_colors* out);
 KILN_API void kiln_m3_assist_chip_defaults_assist_chip_elevation(kiln_key key, kiln_m3_chip_elevation* out);
 KILN_API void kiln_m3_assist_chip_defaults_elevated_assist_chip_elevation(kiln_key key, kiln_m3_chip_elevation* out);
+KILN_API kiln_border_stroke kiln_m3_assist_chip_defaults_assist_chip_border(kiln_key key, bool enabled);
+KILN_API kiln_arrangement kiln_m3_suggestion_chip_defaults_horizontal_arrangement(kiln_key key, float spacing);
 KILN_API const kiln_shape* kiln_m3_suggestion_chip_defaults_shape(kiln_key key);
 KILN_API void kiln_m3_suggestion_chip_defaults_suggestion_chip_colors(kiln_key key, kiln_m3_chip_colors* out);
 KILN_API void kiln_m3_suggestion_chip_defaults_suggestion_chip_colors_overrides(kiln_key key, const kiln_m3_chip_colors* overrides, kiln_m3_chip_colors* out);
@@ -2399,6 +2807,9 @@ KILN_API void kiln_m3_suggestion_chip_defaults_elevated_suggestion_chip_colors(k
 KILN_API void kiln_m3_suggestion_chip_defaults_elevated_suggestion_chip_colors_overrides(kiln_key key, const kiln_m3_chip_colors* overrides, kiln_m3_chip_colors* out);
 KILN_API void kiln_m3_suggestion_chip_defaults_suggestion_chip_elevation(kiln_key key, kiln_m3_chip_elevation* out);
 KILN_API void kiln_m3_suggestion_chip_defaults_elevated_suggestion_chip_elevation(kiln_key key, kiln_m3_chip_elevation* out);
+KILN_API kiln_border_stroke kiln_m3_suggestion_chip_defaults_suggestion_chip_border(kiln_key key, bool enabled);
+KILN_API kiln_arrangement kiln_m3_filter_chip_defaults_horizontal_arrangement(kiln_key key, float spacing);
+KILN_API kiln_arrangement kiln_m3_filter_chip_defaults_horizontal_arrangement_has_leading_icon(kiln_key key, bool has_leading_icon, bool has_trailing_icon);
 KILN_API const kiln_shape* kiln_m3_filter_chip_defaults_shape(kiln_key key);
 KILN_API void kiln_m3_filter_chip_defaults_shapes(kiln_key key, const kiln_shape* shape, const kiln_shape* selected_shape, const kiln_shape* pressed_shape, kiln_m3_chip_shapes* out);
 KILN_API void kiln_m3_filter_chip_defaults_filter_chip_colors(kiln_key key, kiln_m3_selectable_chip_colors* out);
@@ -2409,6 +2820,9 @@ KILN_API void kiln_m3_filter_chip_defaults_elevated_filter_chip_colors_overrides
 KILN_API void kiln_m3_filter_chip_defaults_tonal_elevated_filter_chip_colors(kiln_key key, kiln_m3_selectable_chip_colors* out);
 KILN_API void kiln_m3_filter_chip_defaults_filter_chip_elevation(kiln_key key, kiln_m3_chip_elevation* out);
 KILN_API void kiln_m3_filter_chip_defaults_elevated_filter_chip_elevation(kiln_key key, kiln_m3_chip_elevation* out);
+KILN_API kiln_border_stroke kiln_m3_filter_chip_defaults_filter_chip_border(kiln_key key, bool enabled, bool selected);
+KILN_API kiln_arrangement kiln_m3_input_chip_defaults_horizontal_arrangement(kiln_key key, float spacing);
+KILN_API kiln_arrangement kiln_m3_input_chip_defaults_horizontal_arrangement_has_avatar(kiln_key key, bool has_avatar, bool has_leading_icon, bool has_trailing_icon);
 KILN_API kiln_padding kiln_m3_input_chip_defaults_content_padding(kiln_key key, bool has_avatar, bool has_leading_icon, bool has_trailing_icon);
 KILN_API const kiln_shape* kiln_m3_input_chip_defaults_shape(kiln_key key);
 KILN_API void kiln_m3_input_chip_defaults_shapes(kiln_key key, const kiln_shape* shape, const kiln_shape* selected_shape, const kiln_shape* pressed_shape, kiln_m3_chip_shapes* out);
@@ -2416,6 +2830,7 @@ KILN_API void kiln_m3_input_chip_defaults_input_chip_colors(kiln_key key, kiln_m
 KILN_API void kiln_m3_input_chip_defaults_input_chip_colors_overrides(kiln_key key, const kiln_m3_selectable_chip_colors* overrides, kiln_m3_selectable_chip_colors* out);
 KILN_API void kiln_m3_input_chip_defaults_tonal_input_chip_colors(kiln_key key, kiln_m3_selectable_chip_colors* out);
 KILN_API void kiln_m3_input_chip_defaults_input_chip_elevation(kiln_key key, kiln_m3_chip_elevation* out);
+KILN_API kiln_border_stroke kiln_m3_input_chip_defaults_input_chip_border(kiln_key key, bool enabled, bool selected);
 /* ColorScheme.h */
 KILN_API void kiln_m3_light_color_scheme(kiln_key key, kiln_m3_fn_color_scheme customize, kiln_m3_color_scheme* out);
 KILN_API void kiln_m3_dark_color_scheme(kiln_key key, kiln_m3_fn_color_scheme customize, kiln_m3_color_scheme* out);
@@ -2433,12 +2848,15 @@ KILN_API kiln_padding kiln_m3_text_field_defaults_content_padding_with_label(kil
 KILN_API kiln_padding kiln_m3_text_field_defaults_content_padding_without_label(kiln_key key, float start, float top, float end, float bottom);
 KILN_API void kiln_m3_text_field_defaults_colors(kiln_key key, kiln_m3_text_field_colors* out);
 KILN_API void kiln_m3_text_field_defaults_tonal_colors(kiln_key key, kiln_m3_text_field_colors* out);
+KILN_API void kiln_m3_text_field_defaults_container(kiln_key key, bool enabled, bool is_error, kiln_interaction_source* interaction_source, const kiln_modifier* modifier, const kiln_m3_text_field_colors* colors, const kiln_shape* shape, float focused_indicator_line_thickness, float unfocused_indicator_line_thickness);
+KILN_API const kiln_modifier* kiln_m3_text_field_defaults_indicator_line(kiln_key key, const kiln_modifier* m, bool enabled, bool is_error, kiln_interaction_source* interaction_source, const kiln_m3_text_field_colors* colors, const kiln_shape* text_field_shape, float focused_indicator_line_thickness, float unfocused_indicator_line_thickness);
 KILN_API const kiln_shape* kiln_m3_outlined_text_field_defaults_shape(kiln_key key);
 KILN_API const kiln_shape* kiln_m3_outlined_text_field_defaults_rounded_shape(kiln_key key);
 KILN_API kiln_padding kiln_m3_outlined_text_field_defaults_content_padding_with_label(kiln_key key, float start, float top, float end, float bottom);
 KILN_API kiln_padding kiln_m3_outlined_text_field_defaults_content_padding_without_label(kiln_key key, float start, float top, float end, float bottom);
 KILN_API void kiln_m3_outlined_text_field_defaults_colors(kiln_key key, kiln_m3_text_field_colors* out);
 KILN_API void kiln_m3_outlined_text_field_defaults_tonal_colors(kiln_key key, kiln_m3_text_field_colors* out);
+KILN_API void kiln_m3_outlined_text_field_defaults_container(kiln_key key, bool enabled, bool is_error, kiln_interaction_source* interaction_source, const kiln_modifier* modifier, const kiln_m3_text_field_colors* colors, const kiln_shape* shape, float focused_border_thickness, float unfocused_border_thickness);
 /* TextField.h */
 KILN_API void kiln_m3_text_field(kiln_key key, kiln_text_field_state* state, const kiln_modifier* modifier, const kiln_m3_text_field_options* options);
 KILN_API void kiln_m3_outlined_text_field(kiln_key key, kiln_text_field_state* state, const kiln_modifier* modifier, const kiln_m3_text_field_options* options);
@@ -2475,10 +2893,13 @@ KILN_API void kiln_m3_vertical_drag_handle(kiln_key key, const kiln_modifier* mo
 /* DynamicColorFields.h */
 KILN_API void kiln_m3_baseline_tonal_palette(kiln_key key, kiln_m3_tonal_palette* out);
 /* DynamicColorScheme.h */
+KILN_API const kiln_m3_tonal_palette* kiln_m3_dynamic_tonal_palette(kiln_key key, const kiln_configuration* config);
 KILN_API void kiln_m3_dynamic_light_color_scheme31(kiln_key key, const kiln_m3_tonal_palette* palette, kiln_m3_color_scheme* out);
 KILN_API void kiln_m3_dynamic_dark_color_scheme31(kiln_key key, const kiln_m3_tonal_palette* palette, kiln_m3_color_scheme* out);
-KILN_API const kiln_m3_color_scheme* kiln_m3_dynamic_light_color_scheme(kiln_key key);
-KILN_API const kiln_m3_color_scheme* kiln_m3_dynamic_dark_color_scheme(kiln_key key);
+KILN_API const kiln_m3_color_scheme* kiln_m3_dynamic_light_color_scheme(kiln_key key, const kiln_configuration* config);
+KILN_API const kiln_m3_color_scheme* kiln_m3_dynamic_dark_color_scheme(kiln_key key, const kiln_configuration* config);
+KILN_API const kiln_m3_color_scheme* kiln_m3_dynamic_light_color_scheme_2(kiln_key key);
+KILN_API const kiln_m3_color_scheme* kiln_m3_dynamic_dark_color_scheme_2(kiln_key key);
 /* ExposedDropdownMenu.h */
 KILN_API void kiln_m3_exposed_dropdown_menu_box(kiln_key key, bool expanded, kiln_fn_bool on_expanded_change, const kiln_modifier* modifier, kiln_m3_fn_exposed_dropdown_menu_box_scope content);
 KILN_API void kiln_m3_exposed_dropdown_menu(kiln_key key, kiln_m3_exposed_dropdown_menu_box_scope* scope_, bool expanded, kiln_fn on_dismiss_request, const kiln_modifier* modifier, const kiln_m3_exposed_dropdown_menu_options* options, kiln_fn content);
@@ -2487,6 +2908,7 @@ KILN_API void kiln_m3_exposed_dropdown_menu_defaults_text_field_colors(kiln_key 
 KILN_API void kiln_m3_exposed_dropdown_menu_defaults_outlined_text_field_colors(kiln_key key, kiln_m3_text_field_colors* out);
 KILN_API kiln_padding kiln_m3_exposed_dropdown_menu_defaults_item_content_padding(kiln_key key);
 /* FloatingActionButton.h */
+KILN_API float kiln_m3_shadow_elevation_source(kiln_key key, const kiln_m3_floating_action_button_elevation* elevation, kiln_interaction_source* source);
 KILN_API void kiln_m3_floating_action_button(kiln_key key, kiln_fn on_click, const kiln_modifier* modifier, const kiln_m3_floating_action_button_options* options, kiln_fn content);
 KILN_API void kiln_m3_small_floating_action_button(kiln_key key, kiln_fn on_click, const kiln_modifier* modifier, const kiln_m3_floating_action_button_options* options, kiln_fn content);
 KILN_API void kiln_m3_medium_floating_action_button(kiln_key key, kiln_fn on_click, const kiln_modifier* modifier, const kiln_m3_floating_action_button_options* options, kiln_fn content);
@@ -2522,6 +2944,10 @@ KILN_API kiln_m3_floating_toolbar_state* kiln_m3_remember_floating_toolbar_state
 KILN_API const kiln_shape* kiln_m3_floating_toolbar_defaults_container_shape(kiln_key key);
 KILN_API const kiln_anim_spec* kiln_m3_floating_toolbar_defaults_animation_spec(kiln_key key);
 KILN_API kiln_m3_floating_toolbar_scroll_behavior* kiln_m3_floating_toolbar_defaults_exit_always_scroll_behavior(kiln_key key, kiln_m3_floating_toolbar_exit_direction exit_direction, kiln_m3_floating_toolbar_state* state, const kiln_anim_spec* snap_animation_spec);
+KILN_API void kiln_m3_floating_toolbar_defaults_horizontal_enter_transition(kiln_key key, float expand_from, kiln_enter_transition* out);
+KILN_API void kiln_m3_floating_toolbar_defaults_vertical_enter_transition(kiln_key key, float expand_from, kiln_enter_transition* out);
+KILN_API void kiln_m3_floating_toolbar_defaults_horizontal_exit_transition(kiln_key key, float shrink_towards, kiln_exit_transition* out);
+KILN_API void kiln_m3_floating_toolbar_defaults_vertical_exit_transition(kiln_key key, float shrink_towards, kiln_exit_transition* out);
 KILN_API void kiln_m3_floating_toolbar_defaults_standard_floating_toolbar_colors(kiln_key key, kiln_m3_floating_toolbar_colors* out);
 KILN_API void kiln_m3_floating_toolbar_defaults_standard_floating_toolbar_colors_toolbar_container_color(kiln_key key, kiln_color toolbar_container_color, kiln_color toolbar_content_color, kiln_color fab_container_color, kiln_color fab_content_color, kiln_m3_floating_toolbar_colors* out);
 KILN_API void kiln_m3_floating_toolbar_defaults_vibrant_floating_toolbar_colors(kiln_key key, kiln_m3_floating_toolbar_colors* out);
@@ -2579,9 +3005,68 @@ KILN_API const kiln_shape* kiln_m3_loading_indicator_defaults_container_shape(ki
 KILN_API kiln_color kiln_m3_loading_indicator_defaults_indicator_color(kiln_key key);
 KILN_API kiln_color kiln_m3_loading_indicator_defaults_contained_indicator_color(kiln_key key);
 KILN_API kiln_color kiln_m3_loading_indicator_defaults_contained_container_color(kiln_key key);
+/* MaterialShapes.h */
+KILN_API const kiln_rounded_polygon* kiln_m3_material_shapes_circle(kiln_key key);
+KILN_API const kiln_rounded_polygon* kiln_m3_material_shapes_square(kiln_key key);
+KILN_API const kiln_rounded_polygon* kiln_m3_material_shapes_slanted(kiln_key key);
+KILN_API const kiln_rounded_polygon* kiln_m3_material_shapes_arch(kiln_key key);
+KILN_API const kiln_rounded_polygon* kiln_m3_material_shapes_fan(kiln_key key);
+KILN_API const kiln_rounded_polygon* kiln_m3_material_shapes_arrow(kiln_key key);
+KILN_API const kiln_rounded_polygon* kiln_m3_material_shapes_semi_circle(kiln_key key);
+KILN_API const kiln_rounded_polygon* kiln_m3_material_shapes_oval(kiln_key key);
+KILN_API const kiln_rounded_polygon* kiln_m3_material_shapes_pill(kiln_key key);
+KILN_API const kiln_rounded_polygon* kiln_m3_material_shapes_triangle(kiln_key key);
+KILN_API const kiln_rounded_polygon* kiln_m3_material_shapes_diamond(kiln_key key);
+KILN_API const kiln_rounded_polygon* kiln_m3_material_shapes_clam_shell(kiln_key key);
+KILN_API const kiln_rounded_polygon* kiln_m3_material_shapes_pentagon(kiln_key key);
+KILN_API const kiln_rounded_polygon* kiln_m3_material_shapes_gem(kiln_key key);
+KILN_API const kiln_rounded_polygon* kiln_m3_material_shapes_sunny(kiln_key key);
+KILN_API const kiln_rounded_polygon* kiln_m3_material_shapes_very_sunny(kiln_key key);
+KILN_API const kiln_rounded_polygon* kiln_m3_material_shapes_cookie4_sided(kiln_key key);
+KILN_API const kiln_rounded_polygon* kiln_m3_material_shapes_cookie6_sided(kiln_key key);
+KILN_API const kiln_rounded_polygon* kiln_m3_material_shapes_cookie7_sided(kiln_key key);
+KILN_API const kiln_rounded_polygon* kiln_m3_material_shapes_cookie9_sided(kiln_key key);
+KILN_API const kiln_rounded_polygon* kiln_m3_material_shapes_cookie12_sided(kiln_key key);
+KILN_API const kiln_rounded_polygon* kiln_m3_material_shapes_ghostish(kiln_key key);
+KILN_API const kiln_rounded_polygon* kiln_m3_material_shapes_clover4_leaf(kiln_key key);
+KILN_API const kiln_rounded_polygon* kiln_m3_material_shapes_clover8_leaf(kiln_key key);
+KILN_API const kiln_rounded_polygon* kiln_m3_material_shapes_burst(kiln_key key);
+KILN_API const kiln_rounded_polygon* kiln_m3_material_shapes_soft_burst(kiln_key key);
+KILN_API const kiln_rounded_polygon* kiln_m3_material_shapes_boom(kiln_key key);
+KILN_API const kiln_rounded_polygon* kiln_m3_material_shapes_soft_boom(kiln_key key);
+KILN_API const kiln_rounded_polygon* kiln_m3_material_shapes_flower(kiln_key key);
+KILN_API const kiln_rounded_polygon* kiln_m3_material_shapes_puffy(kiln_key key);
+KILN_API const kiln_rounded_polygon* kiln_m3_material_shapes_puffy_diamond(kiln_key key);
+KILN_API const kiln_rounded_polygon* kiln_m3_material_shapes_pixel_circle(kiln_key key);
+KILN_API const kiln_rounded_polygon* kiln_m3_material_shapes_pixel_triangle(kiln_key key);
+KILN_API const kiln_rounded_polygon* kiln_m3_material_shapes_bun(kiln_key key);
+KILN_API const kiln_rounded_polygon* kiln_m3_material_shapes_heart(kiln_key key);
 /* MotionScheme.h */
 KILN_API kiln_m3_motion_scheme* kiln_m3_motion_scheme_standard(kiln_key key);
 KILN_API kiln_m3_motion_scheme* kiln_m3_motion_scheme_expressive(kiln_key key);
+/* Shapes.h */
+KILN_API const kiln_shape* kiln_m3_shape_defaults_extra_small(kiln_key key);
+KILN_API const kiln_shape* kiln_m3_shape_defaults_small(kiln_key key);
+KILN_API const kiln_shape* kiln_m3_shape_defaults_medium(kiln_key key);
+KILN_API const kiln_shape* kiln_m3_shape_defaults_large(kiln_key key);
+KILN_API const kiln_shape* kiln_m3_shape_defaults_large_increased(kiln_key key);
+KILN_API const kiln_shape* kiln_m3_shape_defaults_extra_large(kiln_key key);
+KILN_API const kiln_shape* kiln_m3_shape_defaults_extra_large_increased(kiln_key key);
+KILN_API const kiln_shape* kiln_m3_shape_defaults_extra_extra_large(kiln_key key);
+KILN_API kiln_corner_size kiln_m3_shape_defaults_corner_none(kiln_key key);
+KILN_API kiln_corner_size kiln_m3_shape_defaults_corner_extra_small(kiln_key key);
+KILN_API kiln_corner_size kiln_m3_shape_defaults_corner_small(kiln_key key);
+KILN_API kiln_corner_size kiln_m3_shape_defaults_corner_medium(kiln_key key);
+KILN_API kiln_corner_size kiln_m3_shape_defaults_corner_large(kiln_key key);
+KILN_API kiln_corner_size kiln_m3_shape_defaults_corner_large_increased(kiln_key key);
+KILN_API kiln_corner_size kiln_m3_shape_defaults_corner_extra_large(kiln_key key);
+KILN_API kiln_corner_size kiln_m3_shape_defaults_corner_extra_large_increased(kiln_key key);
+KILN_API kiln_corner_size kiln_m3_shape_defaults_corner_extra_extra_large(kiln_key key);
+KILN_API kiln_corner_size kiln_m3_shape_defaults_corner_full(kiln_key key);
+KILN_API const kiln_shape* kiln_m3_top(kiln_key key, const kiln_shape* shape, kiln_corner_size bottom_size);
+KILN_API const kiln_shape* kiln_m3_bottom(kiln_key key, const kiln_shape* shape, kiln_corner_size top_size);
+KILN_API const kiln_shape* kiln_m3_start(kiln_key key, const kiln_shape* shape, kiln_corner_size end_size);
+KILN_API const kiln_shape* kiln_m3_end(kiln_key key, const kiln_shape* shape, kiln_corner_size start_size);
 /* MaterialTheme.h */
 KILN_API void kiln_m3_material_theme_color_scheme(kiln_key key, kiln_m3_color_scheme* out);
 KILN_API void kiln_m3_material_theme_typography(kiln_key key, kiln_m3_typography* out);
@@ -2596,6 +3081,7 @@ KILN_API kiln_color kiln_m3_apply_tonal_elevation(kiln_key key, const kiln_m3_co
 KILN_API const kiln_modifier* kiln_m3_minimum_interactive_component_size(kiln_key key, const kiln_modifier* m);
 /* Menu.h */
 KILN_API void kiln_m3_selectable_menu_item_colors_unspecified(kiln_key key, kiln_m3_selectable_menu_item_colors* out);
+KILN_API void kiln_m3_menu_defaults_default_menu_properties(kiln_key key, kiln_popup_properties* out);
 KILN_API float kiln_m3_menu_defaults_trailing_icon_size(kiln_key key);
 KILN_API const kiln_shape* kiln_m3_menu_defaults_shape(kiln_key key);
 KILN_API kiln_color kiln_m3_menu_defaults_container_color(kiln_key key);
@@ -2621,6 +3107,7 @@ KILN_API void kiln_m3_menu_defaults_item_colors(kiln_key key, kiln_m3_menu_item_
 KILN_API void kiln_m3_menu_defaults_item_vibrant_colors(kiln_key key, kiln_m3_menu_item_colors* out);
 KILN_API void kiln_m3_menu_defaults_selectable_item_colors(kiln_key key, kiln_m3_selectable_menu_item_colors* out);
 KILN_API void kiln_m3_menu_defaults_selectable_item_vibrant_colors(kiln_key key, kiln_m3_selectable_menu_item_colors* out);
+KILN_API kiln_arrangement kiln_m3_menu_defaults_dropdown_menu_item_horizontal_arrangement(kiln_key key);
 KILN_API void kiln_m3_menu_defaults_dropdown_menu_group_label(kiln_key key, const kiln_modifier* modifier, kiln_fn content, kiln_alignment content_alignment, kiln_padding padding);
 KILN_API void kiln_m3_menu_defaults_dropdown_menu_item_trailing_label(kiln_key key, const kiln_modifier* modifier, kiln_fn content);
 KILN_API void kiln_m3_dropdown_menu(kiln_key key, bool expanded, kiln_fn on_dismiss_request, const kiln_modifier* modifier, const kiln_m3_dropdown_menu_options* options, kiln_fn content);
@@ -2634,6 +3121,7 @@ KILN_API void kiln_m3_modal_bottom_sheet(kiln_key key, kiln_fn on_dismiss_reques
 KILN_API kiln_m3_sheet_state* kiln_m3_remember_modal_bottom_sheet_state(kiln_key key, bool skip_partially_expanded, kiln_m3_fn_sheet_value_to_bool confirm_value_change);
 /* NavigationBar.h */
 KILN_API kiln_color kiln_m3_navigation_bar_defaults_container_color(kiln_key key);
+KILN_API const kiln_window_insets* kiln_m3_navigation_bar_defaults_window_insets(kiln_key key);
 KILN_API void kiln_m3_navigation_bar_item_defaults_colors(kiln_key key, kiln_m3_navigation_bar_item_colors* out);
 KILN_API void kiln_m3_navigation_bar_item_defaults_colors_selected_icon_color(kiln_key key, kiln_color selected_icon_color, kiln_color selected_text_color, kiln_color indicator_color, kiln_color unselected_icon_color, kiln_color unselected_text_color, kiln_color disabled_icon_color, kiln_color disabled_text_color, kiln_m3_navigation_bar_item_colors* out);
 KILN_API void kiln_m3_navigation_bar(kiln_key key, const kiln_modifier* modifier, const kiln_m3_navigation_bar_options* options, kiln_fn content);
@@ -2644,6 +3132,7 @@ KILN_API const kiln_shape* kiln_m3_drawer_defaults_shape(kiln_key key);
 KILN_API kiln_color kiln_m3_drawer_defaults_scrim_color(kiln_key key);
 KILN_API kiln_color kiln_m3_drawer_defaults_standard_container_color(kiln_key key);
 KILN_API kiln_color kiln_m3_drawer_defaults_modal_container_color(kiln_key key);
+KILN_API const kiln_window_insets* kiln_m3_drawer_defaults_window_insets(kiln_key key);
 KILN_API void kiln_m3_modal_navigation_drawer(kiln_key key, kiln_fn drawer_content, const kiln_modifier* modifier, const kiln_m3_modal_navigation_drawer_options* options, kiln_fn content);
 KILN_API void kiln_m3_dismissible_navigation_drawer(kiln_key key, kiln_fn drawer_content, const kiln_modifier* modifier, const kiln_m3_dismissible_navigation_drawer_options* options, kiln_fn content);
 KILN_API void kiln_m3_permanent_navigation_drawer(kiln_key key, kiln_fn drawer_content, const kiln_modifier* modifier, kiln_fn content);
@@ -2655,12 +3144,16 @@ KILN_API void kiln_m3_navigation_drawer_item_defaults_colors_selected_container_
 KILN_API void kiln_m3_navigation_drawer_item(kiln_key key, kiln_fn label, bool selected, kiln_fn on_click, const kiln_modifier* modifier, const kiln_m3_navigation_drawer_item_options* options);
 /* NavigationRail.h */
 KILN_API kiln_color kiln_m3_navigation_rail_defaults_container_color(kiln_key key);
+KILN_API const kiln_window_insets* kiln_m3_navigation_rail_defaults_window_insets(kiln_key key);
 KILN_API void kiln_m3_navigation_rail_item_defaults_colors(kiln_key key, kiln_m3_navigation_rail_item_colors* out);
 KILN_API void kiln_m3_navigation_rail_item_defaults_colors_selected_icon_color(kiln_key key, kiln_color selected_icon_color, kiln_color selected_text_color, kiln_color indicator_color, kiln_color unselected_icon_color, kiln_color unselected_text_color, kiln_color disabled_icon_color, kiln_color disabled_text_color, kiln_m3_navigation_rail_item_colors* out);
 KILN_API void kiln_m3_navigation_rail(kiln_key key, const kiln_modifier* modifier, const kiln_m3_navigation_rail_options* options, kiln_fn content);
 KILN_API void kiln_m3_navigation_rail_item(kiln_key key, bool selected, kiln_fn on_click, kiln_fn icon, const kiln_modifier* modifier, const kiln_m3_navigation_rail_item_options* options);
 /* NavigationTransitions.h */
 KILN_API kiln_color kiln_m3_horizontal_shared_axis_navigation_transitions_scrim_color(kiln_key key);
+KILN_API void kiln_m3_horizontal_shared_axis_navigation_transitions_forward_transform(kiln_key key, kiln_content_transform* out);
+KILN_API void kiln_m3_horizontal_shared_axis_navigation_transitions_backward_transform(kiln_key key, kiln_content_transform* out);
+KILN_API void kiln_m3_fade_through_navigation_transitions_transform(kiln_key key, kiln_content_transform* out);
 /* ProgressIndicator.h */
 KILN_API void kiln_m3_linear_progress_indicator(kiln_key key, kiln_m3_fn_to_float progress, const kiln_modifier* modifier, const kiln_m3_linear_progress_indicator_options* options);
 KILN_API void kiln_m3_linear_progress_indicator_modifier(kiln_key key, const kiln_modifier* modifier, const kiln_m3_linear_progress_indicator_options* options);
@@ -2694,6 +3187,7 @@ KILN_API void kiln_m3_ripple_defaults_opacity_focus_theme_configuration(kiln_key
 KILN_API void kiln_m3_ripple_defaults_inset_focus_ring_theme_configuration(kiln_key key, kiln_m3_ripple_theme_configuration* out);
 KILN_API void kiln_m3_ripple_defaults_theme_configuration(kiln_key key, kiln_m3_ripple_theme_configuration* out);
 /* Scaffold.h */
+KILN_API const kiln_window_insets* kiln_m3_scaffold_defaults_content_window_insets(kiln_key key);
 KILN_API void kiln_m3_scaffold(kiln_key key, const kiln_modifier* modifier, const kiln_m3_scaffold_options* options, kiln_m3_fn_padding_values content);
 /* Scrim.h */
 KILN_API kiln_color kiln_m3_scrim_defaults_color(kiln_key key);
@@ -2718,6 +3212,8 @@ KILN_API kiln_color kiln_m3_search_bar_defaults_full_screen_contained_search_bar
 KILN_API const kiln_shape* kiln_m3_search_bar_defaults_docked_shape(kiln_key key);
 KILN_API const kiln_shape* kiln_m3_search_bar_defaults_docked_dropdown_shape(kiln_key key);
 KILN_API kiln_color kiln_m3_search_bar_defaults_docked_dropdown_scrim_color(kiln_key key);
+KILN_API const kiln_window_insets* kiln_m3_search_bar_defaults_window_insets(kiln_key key);
+KILN_API const kiln_window_insets* kiln_m3_search_bar_defaults_full_screen_window_insets(kiln_key key);
 KILN_API kiln_m3_search_bar_scroll_behavior* kiln_m3_search_bar_defaults_enter_always_search_bar_scroll_behavior(kiln_key key, kiln_m3_search_bar_scroll_state* scroll_state, kiln_m3_fn_to_bool can_scroll, const kiln_anim_spec* snap_animation_spec);
 KILN_API void kiln_m3_search_bar_defaults_colors(kiln_key key, kiln_m3_search_bar_colors* out);
 KILN_API void kiln_m3_search_bar_defaults_colors_container_color(kiln_key key, kiln_color container_color, kiln_color divider_color, const kiln_m3_text_field_colors* input_field_colors, kiln_m3_search_bar_colors* out);
@@ -2728,7 +3224,7 @@ KILN_API void kiln_m3_search_bar_defaults_input_field(kiln_key key, kiln_text_fi
 KILN_API void kiln_m3_search_bar_defaults_input_field_state(kiln_key key, kiln_text_field_state* state, kiln_fn_str on_search, bool expanded, kiln_fn_bool on_expanded_change, const kiln_modifier* modifier, const kiln_m3_search_bar_input_field_options* options);
 KILN_API void kiln_m3_search_bar(kiln_key key, kiln_m3_search_bar_state* state, kiln_fn input_field, const kiln_modifier* modifier, const kiln_m3_search_bar_options* options);
 KILN_API void kiln_m3_app_bar_with_search(kiln_key key, kiln_m3_search_bar_state* state, kiln_fn input_field, const kiln_modifier* modifier, const kiln_m3_app_bar_with_search_options* options);
-KILN_API void kiln_m3_top_search_bar(kiln_key key, kiln_m3_search_bar_state* state, kiln_fn input_field, const kiln_modifier* modifier, const kiln_m3_search_bar_options* options);
+KILN_API void kiln_m3_top_search_bar(kiln_key key, kiln_m3_search_bar_state* state, kiln_fn input_field, const kiln_modifier* modifier, const kiln_m3_search_bar_options* options, const kiln_window_insets* window_insets, kiln_m3_search_bar_scroll_behavior* scroll_behavior);
 KILN_API void kiln_m3_expanded_full_screen_search_bar(kiln_key key, kiln_m3_search_bar_state* state, kiln_fn input_field, const kiln_modifier* modifier, const kiln_m3_expanded_full_screen_search_bar_options* options, kiln_fn content);
 KILN_API void kiln_m3_expanded_full_screen_contained_search_bar(kiln_key key, kiln_m3_search_bar_state* state, kiln_fn input_field, const kiln_modifier* modifier, const kiln_m3_expanded_full_screen_search_bar_options* options, kiln_fn content);
 KILN_API void kiln_m3_expanded_docked_search_bar(kiln_key key, kiln_m3_search_bar_state* state, kiln_fn input_field, const kiln_modifier* modifier, const kiln_m3_expanded_docked_search_bar_options* options, kiln_fn content);
@@ -2744,12 +3240,15 @@ KILN_API void kiln_m3_segmented_button(kiln_key key, bool selected, kiln_fn on_c
 KILN_API void kiln_m3_segmented_button_checked(kiln_key key, bool checked, kiln_fn_bool on_checked_change, const kiln_shape* shape, kiln_fn label, const kiln_modifier* modifier, const kiln_m3_segmented_button_options* options);
 KILN_API void kiln_m3_segmented_button_defaults_colors(kiln_key key, kiln_m3_segmented_button_colors* out);
 KILN_API void kiln_m3_segmented_button_defaults_colors_overrides(kiln_key key, const kiln_m3_segmented_button_colors* overrides, kiln_m3_segmented_button_colors* out);
-KILN_API const kiln_shape* kiln_m3_segmented_button_defaults_item_shape(kiln_key key, int32_t index, int32_t count);
+KILN_API const kiln_shape* kiln_m3_segmented_button_defaults_base_shape(kiln_key key);
+KILN_API const kiln_shape* kiln_m3_segmented_button_defaults_item_shape(kiln_key key, int32_t index, int32_t count, const kiln_shape* base);
+KILN_API kiln_border_stroke kiln_m3_segmented_button_defaults_border_stroke(kiln_key key, kiln_color color, float width);
 KILN_API void kiln_m3_segmented_button_defaults_active_icon(kiln_key key);
 KILN_API void kiln_m3_segmented_button_defaults_icon(kiln_key key, bool active, kiln_fn active_content, kiln_fn inactive_content);
 /* ShortNavigationBar.h */
 KILN_API kiln_color kiln_m3_short_navigation_bar_defaults_container_color(kiln_key key);
 KILN_API kiln_color kiln_m3_short_navigation_bar_defaults_content_color(kiln_key key);
+KILN_API const kiln_window_insets* kiln_m3_short_navigation_bar_defaults_window_insets(kiln_key key);
 KILN_API void kiln_m3_short_navigation_bar_item_defaults_colors(kiln_key key, kiln_m3_navigation_item_colors* out);
 KILN_API void kiln_m3_short_navigation_bar_item_defaults_colors_selected_icon_color(kiln_key key, kiln_color selected_icon_color, kiln_color selected_text_color_top_icon_position, kiln_color selected_text_color_start_icon_position, kiln_color selected_indicator_color, kiln_color unselected_icon_color, kiln_color unselected_text_color, kiln_color disabled_icon_color, kiln_color disabled_text_color, kiln_m3_navigation_item_colors* out);
 KILN_API void kiln_m3_short_navigation_bar(kiln_key key, const kiln_modifier* modifier, const kiln_m3_short_navigation_bar_options* options, kiln_fn content);
@@ -2762,10 +3261,12 @@ KILN_API void kiln_m3_vertical_slider(kiln_key key, kiln_m3_slider_state* arg0, 
 KILN_API void kiln_m3_range_slider(kiln_key key, kiln_m3_range_slider_state* arg0, kiln_m3_fn_slider_range on_value_change, const kiln_modifier* arg2, const kiln_m3_range_slider_options* arg3);
 KILN_API void kiln_m3_slider_defaults_colors(kiln_key key, kiln_m3_slider_colors* out);
 KILN_API void kiln_m3_slider_defaults_colors_overrides(kiln_key key, const kiln_m3_slider_colors* overrides, kiln_m3_slider_colors* out);
+KILN_API void kiln_m3_slider_defaults_thumb(kiln_key key, kiln_interaction_source* arg0, const kiln_modifier* arg1, const kiln_m3_slider_thumb_options* arg2);
 KILN_API void kiln_m3_slider_defaults_track(kiln_key key, kiln_m3_slider_state* arg0, const kiln_modifier* arg1, const kiln_m3_slider_track_options* arg2);
 KILN_API void kiln_m3_slider_defaults_centered_track(kiln_key key, kiln_m3_slider_state* arg0, const kiln_modifier* arg1, const kiln_m3_slider_track_options* arg2);
 KILN_API void kiln_m3_slider_defaults_track_arg0(kiln_key key, kiln_m3_range_slider_state* arg0, const kiln_modifier* arg1, const kiln_m3_slider_track_options* arg2);
 /* SplitButton.h */
+KILN_API kiln_corner_size kiln_m3_split_button_defaults_outer_corner_size(kiln_key key);
 KILN_API void kiln_m3_split_button_defaults_leading_button_shapes_for(kiln_key key, float button_height, kiln_m3_split_button_shapes* out);
 KILN_API void kiln_m3_split_button_defaults_trailing_button_shapes_for(kiln_key key, float button_height, kiln_m3_split_button_shapes* out);
 KILN_API kiln_padding kiln_m3_split_button_defaults_leading_button_content_padding_for(kiln_key key, float button_height);
@@ -2784,9 +3285,9 @@ KILN_API void kiln_m3_split_button_defaults_elevated_trailing_button(kiln_key ke
 KILN_API void kiln_m3_split_button_layout(kiln_key key, kiln_fn leading_button, kiln_fn trailing_button, const kiln_modifier* modifier, float spacing);
 /* Surface.h */
 KILN_API void kiln_m3_surface(kiln_key key, const kiln_modifier* modifier, const kiln_m3_surface_options* options, kiln_fn content);
-KILN_API void kiln_m3_surface_on_click(kiln_key key, kiln_fn on_click, const kiln_modifier* modifier, const kiln_m3_surface_options* options, kiln_fn content, bool enabled);
-KILN_API void kiln_m3_surface_selected(kiln_key key, bool selected, kiln_fn on_click, const kiln_modifier* modifier, const kiln_m3_surface_options* options, kiln_fn content, bool enabled);
-KILN_API void kiln_m3_surface_checked(kiln_key key, bool checked, kiln_fn_bool on_checked_change, const kiln_modifier* modifier, const kiln_m3_surface_options* options, kiln_fn content, bool enabled);
+KILN_API void kiln_m3_surface_on_click(kiln_key key, kiln_fn on_click, const kiln_modifier* modifier, const kiln_m3_surface_options* options, kiln_fn content, bool enabled, kiln_interaction_source* interaction_source);
+KILN_API void kiln_m3_surface_selected(kiln_key key, bool selected, kiln_fn on_click, const kiln_modifier* modifier, const kiln_m3_surface_options* options, kiln_fn content, bool enabled, kiln_interaction_source* interaction_source);
+KILN_API void kiln_m3_surface_checked(kiln_key key, bool checked, kiln_fn_bool on_checked_change, const kiln_modifier* modifier, const kiln_m3_surface_options* options, kiln_fn content, bool enabled, kiln_interaction_source* interaction_source);
 /* SwipeToDismissBox.h */
 KILN_API kiln_m3_swipe_to_dismiss_box_state* kiln_m3_remember_swipe_to_dismiss_box_state(kiln_key key, kiln_m3_swipe_to_dismiss_box_value initial_value, kiln_m3_fn_float_to_float positional_threshold, kiln_m3_fn_swipe_to_dismiss_box_value_to_bool confirm_value_change);
 KILN_API void kiln_m3_swipe_to_dismiss_box(kiln_key key, kiln_m3_swipe_to_dismiss_box_state* state, kiln_fn background_content, const kiln_modifier* modifier, const kiln_m3_swipe_to_dismiss_box_options* options, kiln_fn content);
@@ -2847,11 +3348,17 @@ KILN_API void kiln_m3_circular_wavy_progress_indicator(kiln_key key, kiln_m3_fn_
 KILN_API void kiln_m3_circular_wavy_progress_indicator_modifier(kiln_key key, const kiln_modifier* modifier, const kiln_m3_circular_wavy_progress_indicator_options* options);
 KILN_API kiln_color kiln_m3_wavy_progress_indicator_defaults_indicator_color(kiln_key key);
 KILN_API kiln_color kiln_m3_wavy_progress_indicator_defaults_track_color(kiln_key key);
+KILN_API void kiln_m3_wavy_progress_indicator_defaults_linear_indicator_stroke(kiln_key key, kiln_stroke* out);
+KILN_API void kiln_m3_wavy_progress_indicator_defaults_linear_track_stroke(kiln_key key, kiln_stroke* out);
+KILN_API void kiln_m3_wavy_progress_indicator_defaults_circular_indicator_stroke(kiln_key key, kiln_stroke* out);
+KILN_API void kiln_m3_wavy_progress_indicator_defaults_circular_track_stroke(kiln_key key, kiln_stroke* out);
 KILN_API float kiln_m3_wavy_progress_indicator_defaults_indicator_amplitude(kiln_key key, float progress);
 KILN_API const kiln_anim_spec* kiln_m3_wavy_progress_indicator_defaults_progress_animation_spec(kiln_key key);
 /* WideNavigationRail.h */
 KILN_API kiln_m3_wide_navigation_rail_state* kiln_m3_remember_wide_navigation_rail_state(kiln_key key, kiln_m3_wide_navigation_rail_value initial_value);
 KILN_API const kiln_shape* kiln_m3_wide_navigation_rail_defaults_shape(kiln_key key);
+KILN_API kiln_arrangement kiln_m3_wide_navigation_rail_defaults_arrangement(kiln_key key);
+KILN_API const kiln_window_insets* kiln_m3_wide_navigation_rail_defaults_window_insets(kiln_key key);
 KILN_API const kiln_shape* kiln_m3_wide_navigation_rail_defaults_modal_collapsed_shape(kiln_key key);
 KILN_API const kiln_shape* kiln_m3_wide_navigation_rail_defaults_modal_expanded_shape(kiln_key key);
 KILN_API void kiln_m3_wide_navigation_rail_defaults_colors(kiln_key key, kiln_m3_wide_navigation_rail_colors* out);
@@ -2862,6 +3369,284 @@ KILN_API void kiln_m3_wide_navigation_rail_item_defaults_colors_selected_icon_co
 KILN_API void kiln_m3_wide_navigation_rail(kiln_key key, const kiln_modifier* modifier, const kiln_m3_wide_navigation_rail_options* options, kiln_fn content);
 KILN_API void kiln_m3_modal_wide_navigation_rail(kiln_key key, const kiln_modifier* modifier, const kiln_m3_modal_wide_navigation_rail_options* options, kiln_fn content);
 KILN_API void kiln_m3_wide_navigation_rail_item(kiln_key key, bool selected, kiln_fn on_click, kiln_fn icon, kiln_fn label, bool rail_expanded, const kiln_modifier* modifier, const kiln_m3_wide_navigation_rail_item_options* options);
+/* MaterialTheme.h */
+KILN_API void kiln_m3_local_material_theme_current(kiln_key key, kiln_m3_material_theme_values* out);
+KILN_API void kiln_m3_local_material_theme_provide(kiln_key key, const kiln_m3_material_theme_values* value, kiln_fn content);
+KILN_API kiln_color kiln_m3_local_content_color_current(kiln_key key);
+KILN_API void kiln_m3_local_content_color_provide(kiln_key key, kiln_color value, kiln_fn content);
+KILN_API const kiln_text_style* kiln_m3_local_text_style_current(kiln_key key);
+KILN_API void kiln_m3_local_text_style_provide(kiln_key key, const kiln_text_style* value, kiln_fn content);
+KILN_API bool kiln_m3_local_tonal_elevation_enabled_current(kiln_key key);
+KILN_API void kiln_m3_local_tonal_elevation_enabled_provide(kiln_key key, bool value, kiln_fn content);
+KILN_API float kiln_m3_local_minimum_interactive_component_size_current(kiln_key key);
+KILN_API void kiln_m3_local_minimum_interactive_component_size_provide(kiln_key key, float value, kiln_fn content);
+/* Ripple.h */
+KILN_API void kiln_m3_local_ripple_theme_configuration_current(kiln_key key, kiln_m3_ripple_theme_configuration* out);
+KILN_API void kiln_m3_local_ripple_theme_configuration_provide(kiln_key key, const kiln_m3_ripple_theme_configuration* value, kiln_fn content);
+KILN_API const kiln_m3_ripple_configuration* kiln_m3_local_ripple_configuration_current(kiln_key key);
+KILN_API void kiln_m3_local_ripple_configuration_provide(kiln_key key, const kiln_m3_ripple_configuration* value, kiln_fn content);
+/* Surface.h */
+KILN_API float kiln_m3_local_absolute_tonal_elevation_current(kiln_key key);
+KILN_API void kiln_m3_local_absolute_tonal_elevation_provide(kiln_key key, float value, kiln_fn content);
+/* AlertDialog.h */
+KILN_API float kiln_m3_alert_dialog_defaults_icon_size(void);
+KILN_API float kiln_m3_alert_dialog_defaults_tonal_elevation(void);
+/* AppBar.h */
+KILN_API kiln_padding kiln_m3_top_app_bar_defaults_content_padding(void);
+KILN_API float kiln_m3_top_app_bar_defaults_top_app_bar_expanded_height(void);
+KILN_API float kiln_m3_top_app_bar_defaults_medium_app_bar_collapsed_height(void);
+KILN_API float kiln_m3_top_app_bar_defaults_medium_app_bar_expanded_height(void);
+KILN_API float kiln_m3_top_app_bar_defaults_medium_flexible_app_bar_without_subtitle_expanded_height(void);
+KILN_API float kiln_m3_top_app_bar_defaults_medium_flexible_app_bar_with_subtitle_expanded_height(void);
+KILN_API float kiln_m3_top_app_bar_defaults_large_app_bar_collapsed_height(void);
+KILN_API float kiln_m3_top_app_bar_defaults_large_app_bar_expanded_height(void);
+KILN_API float kiln_m3_top_app_bar_defaults_large_flexible_app_bar_without_subtitle_expanded_height(void);
+KILN_API float kiln_m3_top_app_bar_defaults_large_flexible_app_bar_with_subtitle_expanded_height(void);
+KILN_API float kiln_m3_bottom_app_bar_defaults_container_elevation(void);
+KILN_API kiln_padding kiln_m3_bottom_app_bar_defaults_content_padding(void);
+KILN_API kiln_padding kiln_m3_bottom_app_bar_defaults_flexible_content_padding(void);
+KILN_API float kiln_m3_bottom_app_bar_defaults_flexible_bottom_app_bar_height(void);
+/* IconButton.h */
+KILN_API float kiln_m3_icon_button_defaults_extra_small_icon_size(void);
+KILN_API float kiln_m3_icon_button_defaults_small_icon_size(void);
+KILN_API float kiln_m3_icon_button_defaults_medium_icon_size(void);
+KILN_API float kiln_m3_icon_button_defaults_large_icon_size(void);
+KILN_API float kiln_m3_icon_button_defaults_extra_large_icon_size(void);
+/* SheetState.h */
+KILN_API float kiln_m3_bottom_sheet_defaults_elevation(void);
+KILN_API float kiln_m3_bottom_sheet_defaults_sheet_peek_height(void);
+KILN_API float kiln_m3_bottom_sheet_defaults_sheet_max_width(void);
+KILN_API float kiln_m3_bottom_sheet_defaults_positional_threshold(void);
+KILN_API float kiln_m3_bottom_sheet_defaults_velocity_threshold(void);
+KILN_API float kiln_m3_bottom_sheet_defaults_boundary_dampening_zone(void);
+/* Button.h */
+KILN_API kiln_padding kiln_m3_button_defaults_content_padding(void);
+KILN_API kiln_padding kiln_m3_button_defaults_button_with_icon_content_padding(void);
+KILN_API kiln_padding kiln_m3_button_defaults_text_button_content_padding(void);
+KILN_API kiln_padding kiln_m3_button_defaults_text_button_with_icon_content_padding(void);
+KILN_API float kiln_m3_button_defaults_min_width(void);
+KILN_API float kiln_m3_button_defaults_extra_small_container_height(void);
+KILN_API float kiln_m3_button_defaults_medium_container_height(void);
+KILN_API float kiln_m3_button_defaults_large_container_height(void);
+KILN_API float kiln_m3_button_defaults_extra_large_container_height(void);
+KILN_API float kiln_m3_button_defaults_icon_size(void);
+KILN_API float kiln_m3_button_defaults_extra_small_icon_size(void);
+KILN_API float kiln_m3_button_defaults_small_icon_size(void);
+KILN_API float kiln_m3_button_defaults_medium_icon_size(void);
+KILN_API float kiln_m3_button_defaults_large_icon_size(void);
+KILN_API float kiln_m3_button_defaults_extra_large_icon_size(void);
+KILN_API float kiln_m3_button_defaults_icon_spacing(void);
+KILN_API float kiln_m3_button_defaults_extra_small_icon_spacing(void);
+KILN_API float kiln_m3_button_defaults_medium_icon_spacing(void);
+KILN_API float kiln_m3_button_defaults_large_icon_spacing(void);
+KILN_API float kiln_m3_button_defaults_extra_large_icon_spacing(void);
+/* ToggleButton.h */
+KILN_API float kiln_m3_toggle_button_defaults_min_height(void);
+KILN_API float kiln_m3_toggle_button_defaults_icon_size(void);
+KILN_API float kiln_m3_toggle_button_defaults_icon_spacing(void);
+/* ButtonGroup.h */
+KILN_API float kiln_m3_button_group_defaults_expanded_ratio(void);
+KILN_API float kiln_m3_button_group_defaults_connected_space_between(void);
+/* Carousel.h */
+KILN_API float kiln_m3_carousel_defaults_min_small_item_size(void);
+KILN_API float kiln_m3_carousel_defaults_max_small_item_size(void);
+KILN_API float kiln_m3_carousel_defaults_item_spacing(void);
+/* Checkbox.h */
+KILN_API float kiln_m3_checkbox_defaults_stroke_width(void);
+/* Chip.h */
+KILN_API float kiln_m3_assist_chip_defaults_height(void);
+KILN_API float kiln_m3_assist_chip_defaults_icon_size(void);
+KILN_API float kiln_m3_assist_chip_defaults_horizontal_spacing(void);
+KILN_API kiln_padding kiln_m3_assist_chip_defaults_content_padding(void);
+KILN_API float kiln_m3_suggestion_chip_defaults_height(void);
+KILN_API float kiln_m3_suggestion_chip_defaults_icon_size(void);
+KILN_API float kiln_m3_suggestion_chip_defaults_horizontal_spacing(void);
+KILN_API kiln_padding kiln_m3_suggestion_chip_defaults_content_padding(void);
+KILN_API float kiln_m3_filter_chip_defaults_height(void);
+KILN_API float kiln_m3_filter_chip_defaults_icon_size(void);
+KILN_API float kiln_m3_filter_chip_defaults_horizontal_spacing(void);
+KILN_API float kiln_m3_filter_chip_defaults_compact_horizontal_spacing(void);
+KILN_API kiln_padding kiln_m3_filter_chip_defaults_content_padding(void);
+KILN_API float kiln_m3_input_chip_defaults_height(void);
+KILN_API float kiln_m3_input_chip_defaults_icon_size(void);
+KILN_API float kiln_m3_input_chip_defaults_avatar_size(void);
+KILN_API float kiln_m3_input_chip_defaults_horizontal_spacing(void);
+KILN_API float kiln_m3_input_chip_defaults_compact_horizontal_spacing(void);
+/* ColorScheme.h */
+KILN_API float kiln_m3_disabled_alpha(void);
+/* TextFieldDefaults.h */
+KILN_API float kiln_m3_text_field_defaults_min_height(void);
+KILN_API float kiln_m3_text_field_defaults_min_width(void);
+KILN_API float kiln_m3_text_field_defaults_unfocused_indicator_thickness(void);
+KILN_API float kiln_m3_text_field_defaults_focused_indicator_thickness(void);
+KILN_API float kiln_m3_outlined_text_field_defaults_min_height(void);
+KILN_API float kiln_m3_outlined_text_field_defaults_min_width(void);
+KILN_API float kiln_m3_outlined_text_field_defaults_unfocused_border_thickness(void);
+KILN_API float kiln_m3_outlined_text_field_defaults_focused_border_thickness(void);
+/* DatePicker.h */
+KILN_API void kiln_m3_date_picker_defaults_year_range(kiln_m3_int_range* out);
+KILN_API float kiln_m3_date_picker_defaults_tonal_elevation(void);
+/* Divider.h */
+KILN_API float kiln_m3_divider_defaults_thickness(void);
+/* DynamicColorFields.h */
+KILN_API int32_t kiln_m3_k_system_palette_count(void);
+KILN_API int32_t kiln_m3_k_system_role_count(void);
+/* FloatingActionButton.h */
+KILN_API float kiln_m3_floating_action_button_defaults_show_hide_target_scale(void);
+KILN_API float kiln_m3_floating_action_button_defaults_medium_icon_size(void);
+KILN_API float kiln_m3_floating_action_button_defaults_large_icon_size(void);
+/* FloatingToolbar.h */
+KILN_API float kiln_m3_floating_toolbar_defaults_container_size(void);
+KILN_API float kiln_m3_floating_toolbar_defaults_container_expanded_elevation(void);
+KILN_API float kiln_m3_floating_toolbar_defaults_container_collapsed_elevation(void);
+KILN_API float kiln_m3_floating_toolbar_defaults_container_expanded_elevation_with_fab(void);
+KILN_API float kiln_m3_floating_toolbar_defaults_container_collapsed_elevation_with_fab(void);
+KILN_API kiln_padding kiln_m3_floating_toolbar_defaults_content_padding(void);
+KILN_API float kiln_m3_floating_toolbar_defaults_screen_offset(void);
+KILN_API float kiln_m3_floating_toolbar_defaults_scroll_distance_threshold(void);
+KILN_API float kiln_m3_floating_toolbar_defaults_fab_size_min(void);
+KILN_API float kiln_m3_floating_toolbar_defaults_fab_size_max(void);
+KILN_API float kiln_m3_floating_toolbar_defaults_toolbar_to_fab_gap(void);
+/* Tooltip.h */
+KILN_API int64_t kiln_m3_basic_tooltip_defaults_tooltip_duration(void);
+KILN_API kiln_dp_size kiln_m3_tooltip_defaults_caret_size(void);
+KILN_API float kiln_m3_tooltip_defaults_plain_tooltip_max_width(void);
+KILN_API float kiln_m3_tooltip_defaults_rich_tooltip_max_width(void);
+KILN_API float kiln_m3_tooltip_defaults_spacing_between_tooltip_and_anchor(void);
+/* ListItem.h */
+KILN_API float kiln_m3_list_item_defaults_elevation_2(void);
+KILN_API float kiln_m3_list_item_defaults_segmented_gap(void);
+/* LoadingIndicator.h */
+KILN_API float kiln_m3_loading_indicator_defaults_container_width(void);
+KILN_API float kiln_m3_loading_indicator_defaults_container_height(void);
+KILN_API float kiln_m3_loading_indicator_defaults_indicator_size(void);
+/* MaterialTheme.h */
+KILN_API bool kiln_m3_compose_material3_flags_is_precision_pointer_component_sizing_enabled(void);
+KILN_API bool kiln_m3_compose_material3_flags_is_checkbox_styling_fix_enabled(void);
+KILN_API bool kiln_m3_compose_material3_flags_is_expressive_list_item_height_based_on_text_lines_fix_enabled(void);
+KILN_API bool kiln_m3_compose_material3_flags_is_snackbar_styling_fix_enabled(void);
+KILN_API bool kiln_m3_compose_material3_flags_is_bottom_sheet_partially_expanded_deterministic_enabled(void);
+KILN_API bool kiln_m3_compose_material3_flags_is_modal_bottom_sheet_state_restoration_fix_enabled(void);
+KILN_API bool kiln_m3_compose_material3_flags_is_updated_timepicker_toggle_enabled(void);
+KILN_API float kiln_m3_text_selection_background_opacity(void);
+/* Menu.h */
+KILN_API float kiln_m3_menu_defaults_tonal_elevation(void);
+KILN_API float kiln_m3_menu_defaults_shadow_elevation(void);
+KILN_API float kiln_m3_menu_defaults_leading_icon_size(void);
+KILN_API float kiln_m3_menu_defaults_group_spacing(void);
+KILN_API kiln_padding kiln_m3_menu_defaults_horizontal_divider_padding(void);
+KILN_API kiln_padding kiln_m3_menu_defaults_dropdown_menu_group_label_horizontal_padding(void);
+KILN_API kiln_padding kiln_m3_menu_defaults_dropdown_menu_item_content_padding(void);
+KILN_API kiln_padding kiln_m3_menu_defaults_dropdown_menu_group_content_padding(void);
+/* NavigationBar.h */
+KILN_API float kiln_m3_navigation_bar_defaults_elevation(void);
+/* NavigationDrawer.h */
+KILN_API float kiln_m3_drawer_defaults_modal_drawer_elevation(void);
+KILN_API float kiln_m3_drawer_defaults_permanent_drawer_elevation(void);
+KILN_API float kiln_m3_drawer_defaults_dismissible_drawer_elevation(void);
+KILN_API float kiln_m3_drawer_defaults_maximum_drawer_width(void);
+KILN_API kiln_padding kiln_m3_navigation_drawer_item_defaults_item_padding(void);
+/* ProgressIndicator.h */
+KILN_API float kiln_m3_progress_indicator_defaults_linear_indicator_width(void);
+KILN_API float kiln_m3_progress_indicator_defaults_linear_indicator_height(void);
+KILN_API float kiln_m3_progress_indicator_defaults_circular_indicator_diameter(void);
+KILN_API float kiln_m3_progress_indicator_defaults_circular_stroke_width(void);
+KILN_API float kiln_m3_progress_indicator_defaults_linear_track_stop_indicator_size(void);
+KILN_API float kiln_m3_progress_indicator_defaults_linear_indicator_track_gap_size(void);
+KILN_API float kiln_m3_progress_indicator_defaults_circular_indicator_track_gap_size(void);
+KILN_API kiln_stroke_cap kiln_m3_progress_indicator_defaults_linear_stroke_cap(void);
+KILN_API kiln_stroke_cap kiln_m3_progress_indicator_defaults_circular_determinate_stroke_cap(void);
+KILN_API kiln_stroke_cap kiln_m3_progress_indicator_defaults_circular_indeterminate_stroke_cap(void);
+/* PullToRefresh.h */
+KILN_API float kiln_m3_pull_to_refresh_defaults_positional_threshold(void);
+KILN_API float kiln_m3_pull_to_refresh_defaults_indicator_max_distance(void);
+KILN_API float kiln_m3_pull_to_refresh_defaults_elevation(void);
+KILN_API float kiln_m3_pull_to_refresh_defaults_loading_indicator_elevation(void);
+/* ScrollField.h */
+KILN_API float kiln_m3_scroll_field_defaults_scroll_field_height(void);
+KILN_API float kiln_m3_scroll_field_defaults_item_height(void);
+/* Scrollbar.h */
+KILN_API float kiln_m3_non_interactive_scrollbar_defaults_thumb_opacity(void);
+KILN_API int32_t kiln_m3_non_interactive_scrollbar_defaults_thumb_fade_duration_millis(void);
+KILN_API int32_t kiln_m3_non_interactive_scrollbar_defaults_thumb_fade_delay_millis(void);
+KILN_API float kiln_m3_non_interactive_scrollbar_defaults_thickness(void);
+KILN_API float kiln_m3_non_interactive_scrollbar_defaults_thumb_min_length(void);
+KILN_API float kiln_m3_non_interactive_scrollbar_defaults_thumb_max_length_fraction(void);
+KILN_API float kiln_m3_non_interactive_scrollbar_defaults_main_axis_track_inset(void);
+KILN_API float kiln_m3_non_interactive_scrollbar_defaults_cross_axis_track_inset(void);
+/* SearchBar.h */
+KILN_API float kiln_m3_search_bar_defaults_tonal_elevation(void);
+KILN_API float kiln_m3_search_bar_defaults_shadow_elevation(void);
+KILN_API float kiln_m3_search_bar_defaults_input_field_height(void);
+KILN_API float kiln_m3_search_bar_defaults_docked_dropdown_gap_size(void);
+KILN_API kiln_padding kiln_m3_search_bar_defaults_app_bar_content_padding(void);
+/* SegmentedButton.h */
+KILN_API float kiln_m3_segmented_button_defaults_border_width(void);
+KILN_API float kiln_m3_segmented_button_defaults_icon_size(void);
+KILN_API kiln_padding kiln_m3_segmented_button_defaults_content_padding(void);
+/* ShortNavigationBar.h */
+KILN_API kiln_m3_short_navigation_bar_arrangement kiln_m3_short_navigation_bar_defaults_arrangement(void);
+/* Slider.h */
+KILN_API float kiln_m3_slider_defaults_track_height(void);
+KILN_API float kiln_m3_slider_defaults_thumb_width(void);
+KILN_API float kiln_m3_slider_defaults_thumb_height(void);
+KILN_API float kiln_m3_slider_defaults_track_stop_indicator_size(void);
+KILN_API float kiln_m3_slider_defaults_tick_size(void);
+/* SplitButton.h */
+KILN_API float kiln_m3_split_button_defaults_leading_icon_size(void);
+KILN_API float kiln_m3_split_button_defaults_trailing_icon_size(void);
+KILN_API float kiln_m3_split_button_defaults_spacing(void);
+KILN_API kiln_corner_size kiln_m3_split_button_defaults_extra_small_inner_corner_size(void);
+KILN_API kiln_corner_size kiln_m3_split_button_defaults_small_inner_corner_size(void);
+KILN_API kiln_corner_size kiln_m3_split_button_defaults_medium_inner_corner_size(void);
+KILN_API kiln_corner_size kiln_m3_split_button_defaults_large_inner_corner_size(void);
+KILN_API kiln_corner_size kiln_m3_split_button_defaults_extra_large_inner_corner_size(void);
+KILN_API kiln_corner_size kiln_m3_split_button_defaults_extra_small_inner_corner_size_pressed(void);
+KILN_API kiln_corner_size kiln_m3_split_button_defaults_small_inner_corner_size_pressed(void);
+KILN_API kiln_corner_size kiln_m3_split_button_defaults_medium_inner_corner_size_pressed(void);
+KILN_API kiln_corner_size kiln_m3_split_button_defaults_large_inner_corner_size_pressed(void);
+KILN_API kiln_corner_size kiln_m3_split_button_defaults_extra_large_inner_corner_size_pressed(void);
+KILN_API kiln_padding kiln_m3_split_button_defaults_extra_small_leading_button_content_padding(void);
+KILN_API kiln_padding kiln_m3_split_button_defaults_small_leading_button_content_padding(void);
+KILN_API kiln_padding kiln_m3_split_button_defaults_medium_leading_button_content_padding(void);
+KILN_API kiln_padding kiln_m3_split_button_defaults_large_leading_button_content_padding(void);
+KILN_API kiln_padding kiln_m3_split_button_defaults_extra_large_leading_button_content_padding(void);
+KILN_API kiln_padding kiln_m3_split_button_defaults_extra_small_trailing_button_content_padding(void);
+KILN_API kiln_padding kiln_m3_split_button_defaults_small_trailing_button_content_padding(void);
+KILN_API kiln_padding kiln_m3_split_button_defaults_medium_trailing_button_content_padding(void);
+KILN_API kiln_padding kiln_m3_split_button_defaults_large_trailing_button_content_padding(void);
+KILN_API kiln_padding kiln_m3_split_button_defaults_extra_large_trailing_button_content_padding(void);
+KILN_API float kiln_m3_split_button_defaults_extra_small_trailing_button_icon_size(void);
+KILN_API float kiln_m3_split_button_defaults_small_trailing_button_icon_size(void);
+KILN_API float kiln_m3_split_button_defaults_medium_trailing_button_icon_size(void);
+KILN_API float kiln_m3_split_button_defaults_large_trailing_button_icon_size(void);
+KILN_API float kiln_m3_split_button_defaults_extra_large_trailing_button_icon_size(void);
+KILN_API float kiln_m3_split_button_defaults_extra_small_container_height(void);
+KILN_API float kiln_m3_split_button_defaults_small_container_height(void);
+KILN_API float kiln_m3_split_button_defaults_medium_container_height(void);
+KILN_API float kiln_m3_split_button_defaults_large_container_height(void);
+KILN_API float kiln_m3_split_button_defaults_extra_large_container_height(void);
+/* Switch.h */
+KILN_API float kiln_m3_switch_defaults_icon_size(void);
+/* TabRow.h */
+KILN_API float kiln_m3_tab_row_defaults_scrollable_tab_row_min_tab_width(void);
+KILN_API float kiln_m3_tab_row_defaults_scrollable_tab_row_edge_start_padding(void);
+/* TimePickerDialog.h */
+KILN_API float kiln_m3_time_picker_dialog_defaults_min_height_for_time_picker(void);
+/* WavyProgressIndicator.h */
+KILN_API float kiln_m3_wavy_progress_indicator_defaults_linear_container_width(void);
+KILN_API float kiln_m3_wavy_progress_indicator_defaults_linear_container_height(void);
+KILN_API float kiln_m3_wavy_progress_indicator_defaults_circular_container_size(void);
+KILN_API float kiln_m3_wavy_progress_indicator_defaults_linear_determinate_wavelength(void);
+KILN_API float kiln_m3_wavy_progress_indicator_defaults_linear_indeterminate_wavelength(void);
+KILN_API float kiln_m3_wavy_progress_indicator_defaults_circular_wavelength(void);
+KILN_API float kiln_m3_wavy_progress_indicator_defaults_linear_track_stop_indicator_size(void);
+KILN_API float kiln_m3_wavy_progress_indicator_defaults_linear_indicator_track_gap_size(void);
+KILN_API float kiln_m3_wavy_progress_indicator_defaults_circular_indicator_track_gap_size(void);
+/* WideNavigationRail.h */
+KILN_API kiln_padding kiln_m3_wide_navigation_rail_defaults_content_padding(void);
+KILN_API kiln_padding kiln_m3_wide_navigation_rail_item_defaults_indicator_collapsed_padding(void);
+KILN_API kiln_padding kiln_m3_wide_navigation_rail_item_defaults_indicator_expanded_padding(void);
 /* kiln_m3_top_app_bar_state */
 KILN_API float kiln_m3_top_app_bar_state_height_offset_limit(const kiln_m3_top_app_bar_state* self);
 KILN_API void kiln_m3_top_app_bar_state_set_height_offset_limit(kiln_m3_top_app_bar_state* self, float limit);
@@ -2923,12 +3708,15 @@ KILN_API void kiln_m3_snackbar_data_perform_action(kiln_m3_snackbar_data* self);
 KILN_API void kiln_m3_snackbar_data_dismiss(kiln_m3_snackbar_data* self);
 /* kiln_m3_snackbar_host_state */
 KILN_API kiln_m3_snackbar_data* kiln_m3_snackbar_host_state_current_snackbar_data(const kiln_m3_snackbar_host_state* self);
+KILN_API void kiln_m3_snackbar_host_state_show_snackbar(kiln_m3_snackbar_host_state* self, const char* message, const char* action_label, bool with_dismiss_action, const kiln_m3_snackbar_duration* duration, kiln_m3_fn_snackbar_result done);
+KILN_API void kiln_m3_snackbar_host_state_show_snackbar_visuals(kiln_m3_snackbar_host_state* self, const kiln_m3_snackbar_visuals* visuals, kiln_m3_fn_snackbar_result done);
 /* kiln_m3_button_group_menu_state */
 KILN_API bool kiln_m3_button_group_menu_state_is_showing(const kiln_m3_button_group_menu_state* self);
 KILN_API void kiln_m3_button_group_menu_state_dismiss(kiln_m3_button_group_menu_state* self);
 KILN_API void kiln_m3_button_group_menu_state_show(kiln_m3_button_group_menu_state* self);
 /* kiln_m3_button_group_scope */
 KILN_API const kiln_modifier* kiln_m3_button_group_scope_weight(const kiln_m3_button_group_scope* self, const kiln_modifier* m, float weight);
+KILN_API const kiln_modifier* kiln_m3_button_group_scope_animate_width(const kiln_m3_button_group_scope* self, const kiln_modifier* m, kiln_interaction_source* interaction_source, kiln_opt_float compression_limit);
 KILN_API const kiln_modifier* kiln_m3_button_group_scope_align(const kiln_m3_button_group_scope* self, const kiln_modifier* m, float alignment);
 KILN_API void kiln_m3_button_group_scope_clickable_item(kiln_m3_button_group_scope* self, kiln_fn on_click, const char* label, kiln_fn icon, float weight, bool enabled);
 KILN_API void kiln_m3_button_group_scope_toggleable_item(kiln_m3_button_group_scope* self, bool checked, const char* label, kiln_fn_bool on_checked_change, kiln_fn icon, float weight, bool enabled);
@@ -2945,7 +3733,7 @@ KILN_API const kiln_modifier* kiln_m3_carousel_item_scope_mask_border(const kiln
 KILN_API const kiln_shape* kiln_m3_carousel_item_scope_mask_shape(const kiln_m3_carousel_item_scope* self, const kiln_shape* shape);
 /* kiln_m3_carousel_parallax_scroll_effect_state */
 KILN_API void kiln_m3_carousel_parallax_scroll_effect_state_calculate_item_info(const kiln_m3_carousel_parallax_scroll_effect_state* self, int32_t index, kiln_m3_carousel_parallax_scroll_effect_item_info* out);
-KILN_API kiln_foundation_orientation kiln_m3_carousel_parallax_scroll_effect_state_orientation(const kiln_m3_carousel_parallax_scroll_effect_state* self);
+KILN_API kiln_orientation kiln_m3_carousel_parallax_scroll_effect_state_orientation(const kiln_m3_carousel_parallax_scroll_effect_state* self);
 /* kiln_m3_selectable_dates */
 KILN_API bool kiln_m3_selectable_dates_is_selectable_date(const kiln_m3_selectable_dates* self, int64_t utc_time_millis);
 KILN_API bool kiln_m3_selectable_dates_is_selectable_year(const kiln_m3_selectable_dates* self, int32_t year);
@@ -2992,10 +3780,12 @@ KILN_API kiln_m3_floating_toolbar_exit_direction kiln_m3_floating_toolbar_scroll
 KILN_API kiln_m3_floating_toolbar_state* kiln_m3_floating_toolbar_scroll_behavior_state(const kiln_m3_floating_toolbar_scroll_behavior* self);
 KILN_API const kiln_anim_spec* kiln_m3_floating_toolbar_scroll_behavior_snap_animation_spec(const kiln_m3_floating_toolbar_scroll_behavior* self);
 KILN_API const kiln_modifier* kiln_m3_floating_toolbar_scroll_behavior_floating_scroll_behavior(const kiln_m3_floating_toolbar_scroll_behavior* self, const kiln_modifier* m);
+/* kiln_m3_tooltip_scope */
+KILN_API const kiln_layout_coordinates* kiln_m3_tooltip_scope_obtain_anchor_bounds(const kiln_m3_tooltip_scope* self);
 /* kiln_m3_tooltip_state */
 KILN_API bool kiln_m3_tooltip_state_is_visible(const kiln_m3_tooltip_state* self);
 KILN_API bool kiln_m3_tooltip_state_is_persistent(const kiln_m3_tooltip_state* self);
-KILN_API void kiln_m3_tooltip_state_show(const kiln_m3_tooltip_state* self, kiln_foundation_mutate_priority priority, kiln_fn done);
+KILN_API void kiln_m3_tooltip_state_show(const kiln_m3_tooltip_state* self, kiln_mutate_priority priority, kiln_fn done);
 KILN_API void kiln_m3_tooltip_state_dismiss(const kiln_m3_tooltip_state* self);
 KILN_API void kiln_m3_tooltip_state_on_dispose(const kiln_m3_tooltip_state* self);
 /* kiln_m3_motion_scheme */
@@ -3062,14 +3852,15 @@ KILN_API void kiln_m3_slider_state_track_range(const kiln_m3_slider_state* self,
 KILN_API float kiln_m3_slider_state_coerced_value_as_fraction(const kiln_m3_slider_state* self);
 KILN_API bool kiln_m3_slider_state_is_dragging(const kiln_m3_slider_state* self);
 KILN_API void kiln_m3_slider_state_dispatch_raw_delta(kiln_m3_slider_state* self, float delta, kiln_fn_float on_change);
-KILN_API void kiln_m3_slider_state_configure(kiln_m3_slider_state* self, kiln_foundation_orientation orientation, bool rtl, bool reverse_vertical);
+KILN_API void kiln_m3_slider_state_configure(kiln_m3_slider_state* self, kiln_orientation orientation, bool rtl, bool reverse_vertical);
 KILN_API void kiln_m3_slider_state_update_dimensions(kiln_m3_slider_state* self, int32_t width, int32_t height, int32_t thumb_width, int32_t thumb_height);
+KILN_API void kiln_m3_slider_state_on_press(kiln_m3_slider_state* self, const kiln_offset* position);
 KILN_API void kiln_m3_slider_state_set_dragging(kiln_m3_slider_state* self, bool value);
 KILN_API void kiln_m3_slider_state_set_focused(kiln_m3_slider_state* self, bool value);
 KILN_API bool kiln_m3_slider_state_is_focused(const kiln_m3_slider_state* self);
 KILN_API int32_t kiln_m3_slider_state_thumb_width(const kiln_m3_slider_state* self);
 KILN_API int32_t kiln_m3_slider_state_thumb_height(const kiln_m3_slider_state* self);
-KILN_API kiln_foundation_orientation kiln_m3_slider_state_orientation(const kiln_m3_slider_state* self);
+KILN_API kiln_orientation kiln_m3_slider_state_orientation(const kiln_m3_slider_state* self);
 KILN_API bool kiln_m3_slider_state_is_rtl(const kiln_m3_slider_state* self);
 KILN_API bool kiln_m3_slider_state_reverse_vertical_direction(const kiln_m3_slider_state* self);
 /* kiln_m3_range_slider_state */
@@ -3088,10 +3879,13 @@ KILN_API void kiln_m3_range_slider_state_on_drag(kiln_m3_range_slider_state* sel
 KILN_API void kiln_m3_range_slider_state_set_dragging(kiln_m3_range_slider_state* self, bool value);
 KILN_API void kiln_m3_range_slider_state_configure(kiln_m3_range_slider_state* self, bool rtl);
 KILN_API bool kiln_m3_range_slider_state_is_rtl(const kiln_m3_range_slider_state* self);
+KILN_API void kiln_m3_range_slider_state_update_dimensions(kiln_m3_range_slider_state* self, int32_t width, kiln_int_size start_thumb, kiln_int_size end_thumb);
 KILN_API void kiln_m3_range_slider_state_update_min_max_px(kiln_m3_range_slider_state* self);
 KILN_API float kiln_m3_range_slider_state_raw_offset_start(const kiln_m3_range_slider_state* self);
 KILN_API float kiln_m3_range_slider_state_raw_offset_end(const kiln_m3_range_slider_state* self);
 KILN_API int32_t kiln_m3_range_slider_state_total_width(const kiln_m3_range_slider_state* self);
+KILN_API kiln_int_size kiln_m3_range_slider_state_start_thumb_size(const kiln_m3_range_slider_state* self);
+KILN_API kiln_int_size kiln_m3_range_slider_state_end_thumb_size(const kiln_m3_range_slider_state* self);
 KILN_API void kiln_m3_range_slider_state_set_focused(kiln_m3_range_slider_state* self, bool start, bool value);
 KILN_API bool kiln_m3_range_slider_state_is_focused(const kiln_m3_range_slider_state* self, bool start);
 /* kiln_m3_swipe_to_dismiss_box_state */
@@ -3131,6 +3925,8 @@ KILN_API void kiln_m3_wide_navigation_rail_state_snap_to(kiln_m3_wide_navigation
 KILN_API float kiln_m3_carousel_item_draw_info_size(const kiln_m3_carousel_item_draw_info* self);
 KILN_API float kiln_m3_carousel_item_draw_info_min_size(const kiln_m3_carousel_item_draw_info* self);
 KILN_API float kiln_m3_carousel_item_draw_info_max_size(const kiln_m3_carousel_item_draw_info* self);
+KILN_API kiln_rect kiln_m3_carousel_item_draw_info_mask_rect(const kiln_m3_carousel_item_draw_info* self);
+KILN_API void kiln_m3_carousel_item_draw_info_set(kiln_m3_carousel_item_draw_info* self, float size, float min_size, float max_size, kiln_rect mask);
 
 #ifdef __cplusplus
 }

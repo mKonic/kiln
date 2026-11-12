@@ -1,7 +1,7 @@
 #include "Check.h"
 #include "FakeText.h"
 
-#include <kiln/kiln.h>
+#include <kiln/kiln_m3.h>
 
 #include "kiln/foundation/Compose.h"
 #include "kiln/ui/Semantics.h"
@@ -18,6 +18,11 @@ extern "C" {
     int capi_handles_ok(void);
     extern kiln_color capi_m3_primary, capi_m3_expected;
     void capi_m3(void* user);
+    extern int capi_snack_result;
+    extern kiln_color capi_provided_color;
+    void capi_m3_snackbar(void* user);
+    void capi_m3_show_snackbar(void);
+    void capi_m3_dismiss_snackbar(void);
 }
 
 namespace {
@@ -149,4 +154,17 @@ TEST(CApiMaterial3ThemeButtonAndCheckbox) {
     CHECK(h.Click("checkbox"));
     h.Pump();
     CHECK(h.Toggle("checkbox") == std::optional<int>(1));
+}
+
+TEST(CApiMaterial3SnackbarResultAndProvidedLocal) {
+    Harness h;
+    h.Run(capi_m3_snackbar);
+    CHECK_EQ(capi_provided_color, KILN_ARGB(0xFF123456));
+    capi_m3_show_snackbar();
+    h.Frames(30);
+    CHECK_EQ(h.SubtreeText("host"), std::string("SavedUndo"));
+    CHECK_EQ(capi_snack_result, -1);
+    capi_m3_dismiss_snackbar();
+    h.Frames(30);
+    CHECK_EQ(capi_snack_result, int(KILN_M3_SNACKBAR_RESULT_ACTION_PERFORMED));
 }

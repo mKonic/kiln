@@ -1,169 +1,60 @@
 # Declarations tools/gen-capi could not map (generated).
 kiln::material3::AppBarScope::Items: result: type std::vector<kiln::material3::internal::AppBarItem>
-kiln::material3::AssistChipDefaults::assistChipBorder: result foundation::BorderStroke cannot be returned
-kiln::material3::AssistChipDefaults::horizontalArrangement: result foundation::Arrangement cannot be returned
-kiln::material3::BasicAlertDialog: parameter properties: type kiln::foundation::DialogProperties
 kiln::material3::BasicTooltipDefaults::GlobalMutatorMutex: result: type std::shared_ptr<kiln::foundation::MutatorMutex>
-kiln::material3::Bottom: parameter shape: type std::shared_ptr<const kiln::foundation::CornerBasedShape>
-kiln::material3::BottomAppBarDefaults::FlexibleFixedHorizontalArrangement: result foundation::Arrangement cannot be returned
-kiln::material3::BottomAppBarDefaults::FlexibleHorizontalArrangement: result foundation::Arrangement cannot be returned
 kiln::material3::BottomAppBarDefaults::flingAnimationSpec: result: type std::shared_ptr<const kiln::anim::DecaySpec>
-kiln::material3::BottomAppBarDefaults::windowInsets: result: type kiln::foundation::WindowInsets
 kiln::material3::BottomAppBarScrollBehavior::FlingAnimationSpec: result: type std::shared_ptr<const kiln::anim::DecaySpec>
 kiln::material3::BottomAppBarScrollBehavior::NestedScrollConnection: result: type std::shared_ptr<kiln::ui::NestedScrollConnection>
-kiln::material3::BottomSheetDefaults::modalWindowInsets: result: type kiln::foundation::WindowInsets
-kiln::material3::BottomSheetDefaults::standardWindowInsets: result: type kiln::foundation::WindowInsets
-kiln::material3::ButtonDefaults::outlinedButtonBorder: result foundation::BorderStroke cannot be returned
-kiln::material3::ButtonGroupDefaults::HorizontalArrangement: result foundation::Arrangement cannot be returned
-kiln::material3::ButtonGroupScope::AnimateWidth: parameter interactionSource: type std::shared_ptr<kiln::foundation::MutableInteractionSource>
 kiln::material3::ButtonGroupScope::Items: result: type std::vector<std::shared_ptr<kiln::material3::internal::ButtonGroupItem>>
-kiln::material3::CardDefaults::outlinedCardBorder: result foundation::BorderStroke cannot be returned
 kiln::material3::CarouselDefaults::multiBrowseFlingBehavior: result: callback argument std::function<float (float)>
 kiln::material3::CarouselDefaults::noSnapFlingBehavior: result: callback argument std::function<float (float)>
 kiln::material3::CarouselDefaults::singleAdvanceFlingBehavior: result: callback argument std::function<float (float)>
-kiln::material3::CarouselItemDrawInfo::MaskRect: result: type kiln::ui::Rect
-kiln::material3::CarouselItemDrawInfo::Set: parameter mask: type kiln::ui::Rect
-kiln::material3::CarouselState::PagerState: result: type kiln::foundation::PagerState
+kiln::material3::CarouselState::PagerState: result const foundation::PagerState & cannot be returned
+kiln::material3::CarouselState::PagerState: result foundation::PagerState & cannot be returned
+kiln::material3::DatePickerDefaults::YearAbbrMonthDaySkeleton: constant: pointer const char *const
+kiln::material3::DatePickerDefaults::YearMonthSkeleton: constant: pointer const char *const
+kiln::material3::DatePickerDefaults::YearMonthWeekdayDaySkeleton: constant: pointer const char *const
 kiln::material3::DatePickerState::Calendar: result: kiln::material3::internal::CalendarModel is internal
 kiln::material3::DateRangePickerState::Calendar: result: kiln::material3::internal::CalendarModel is internal
-kiln::material3::DrawerDefaults::windowInsets: result: type kiln::foundation::WindowInsets
 kiln::material3::DrawerState::Anchored: result: type kiln::foundation::AnchoredDraggableState<kiln::material3::DrawerValue>
 kiln::material3::DropdownMenuPopup: parameter popupPositionProvider: kiln::material3::internal::DropdownMenuPositionProvider is internal
-kiln::material3::DynamicDarkColorScheme: parameter config: type kiln::ui::Configuration
-kiln::material3::DynamicLightColorScheme: parameter config: type kiln::ui::Configuration
-kiln::material3::DynamicTonalPalette: parameter config: type kiln::ui::Configuration
-kiln::material3::End: parameter shape: type std::shared_ptr<const kiln::foundation::CornerBasedShape>
-kiln::material3::FadeThroughNavigationTransitions::predictiveBackTransform: parameter backEvent: type kiln::ui::BackEvent
-kiln::material3::FadeThroughNavigationTransitions::transform: result: type kiln::foundation::ContentTransform
-kiln::material3::FilterChipDefaults::filterChipBorder: result foundation::BorderStroke cannot be returned
-kiln::material3::FilterChipDefaults::horizontalArrangement: result foundation::Arrangement cannot be returned
-kiln::material3::FloatingToolbarDefaults::horizontalEnterTransition: result: type kiln::foundation::EnterTransition
-kiln::material3::FloatingToolbarDefaults::horizontalExitTransition: result: type kiln::foundation::ExitTransition
-kiln::material3::FloatingToolbarDefaults::verticalEnterTransition: result: type kiln::foundation::EnterTransition
-kiln::material3::FloatingToolbarDefaults::verticalExitTransition: result: type kiln::foundation::ExitTransition
+kiln::material3::FadeThroughNavigationTransitions::predictiveBackTransform: parameter backEvent: callback returning a struct (kiln::ui::BackEvent)
 kiln::material3::FloatingToolbarScrollBehavior::FlingAnimationSpec: result: type std::shared_ptr<const kiln::anim::DecaySpec>
 kiln::material3::FloatingToolbarScrollBehavior::NestedScrollConnection: result: type std::shared_ptr<kiln::ui::NestedScrollConnection>
 kiln::material3::FromToken: parameter token: kiln::material3::tokens::ColorToken is internal
 kiln::material3::FromToken: parameter token: kiln::material3::tokens::MotionSchemeToken is internal
 kiln::material3::FromToken: parameter token: kiln::material3::tokens::ShapeToken is internal
 kiln::material3::FromToken: parameter token: kiln::material3::tokens::TypographyToken is internal
-kiln::material3::HorizontalSharedAxisNavigationTransitions::backwardTransform: result: type kiln::foundation::ContentTransform
-kiln::material3::HorizontalSharedAxisNavigationTransitions::forwardTransform: result: type kiln::foundation::ContentTransform
-kiln::material3::HorizontalSharedAxisNavigationTransitions::predictiveBackTransform: parameter backEvent: type kiln::ui::BackEvent
+kiln::material3::HorizontalSharedAxisNavigationTransitions::predictiveBackTransform: parameter backEvent: callback returning a struct (kiln::ui::BackEvent)
 kiln::material3::Icon: parameter painter: type std::shared_ptr<kiln::foundation::Painter>
-kiln::material3::IconButtonDefaults::outlinedIconButtonBorder: result foundation::BorderStroke cannot be returned
-kiln::material3::IconButtonDefaults::outlinedIconButtonVibrantBorder: result foundation::BorderStroke cannot be returned
-kiln::material3::IconButtonDefaults::outlinedIconToggleButtonBorder: result std::optional<foundation::BorderStroke> cannot be returned
-kiln::material3::IconButtonDefaults::outlinedIconToggleButtonVibrantBorder: result std::optional<foundation::BorderStroke> cannot be returned
-kiln::material3::InputChipDefaults::horizontalArrangement: result foundation::Arrangement cannot be returned
-kiln::material3::InputChipDefaults::inputChipBorder: result foundation::BorderStroke cannot be returned
 kiln::material3::ListItemDefaults::verticalAlignment: result ListItemVerticalAlignment cannot be returned
 kiln::material3::LoadingIndicatorDefaults::determinateIndicatorPolygons: result: type std::vector<kiln::gfx::shapes::RoundedPolygon>
 kiln::material3::LoadingIndicatorDefaults::indeterminateIndicatorPolygons: result: type std::vector<kiln::gfx::shapes::RoundedPolygon>
-kiln::material3::LocalMaterialTheme: result: type kiln::rt::Local<kiln::material3::MaterialThemeValues>
-kiln::material3::LocalTextStyle: result: type kiln::rt::Local<kiln::text::TextStyle>
 kiln::material3::MakeCarouselParallaxScrollEffectState: parameter state: type kiln::foundation::LazyGridState
-kiln::material3::MaterialShapes::Arch: result: type kiln::gfx::shapes::RoundedPolygon
-kiln::material3::MaterialShapes::Arrow: result: type kiln::gfx::shapes::RoundedPolygon
-kiln::material3::MaterialShapes::Boom: result: type kiln::gfx::shapes::RoundedPolygon
-kiln::material3::MaterialShapes::Bun: result: type kiln::gfx::shapes::RoundedPolygon
-kiln::material3::MaterialShapes::Burst: result: type kiln::gfx::shapes::RoundedPolygon
-kiln::material3::MaterialShapes::Circle: result: type kiln::gfx::shapes::RoundedPolygon
-kiln::material3::MaterialShapes::ClamShell: result: type kiln::gfx::shapes::RoundedPolygon
-kiln::material3::MaterialShapes::Clover4Leaf: result: type kiln::gfx::shapes::RoundedPolygon
-kiln::material3::MaterialShapes::Clover8Leaf: result: type kiln::gfx::shapes::RoundedPolygon
-kiln::material3::MaterialShapes::Cookie12Sided: result: type kiln::gfx::shapes::RoundedPolygon
-kiln::material3::MaterialShapes::Cookie4Sided: result: type kiln::gfx::shapes::RoundedPolygon
-kiln::material3::MaterialShapes::Cookie6Sided: result: type kiln::gfx::shapes::RoundedPolygon
-kiln::material3::MaterialShapes::Cookie7Sided: result: type kiln::gfx::shapes::RoundedPolygon
-kiln::material3::MaterialShapes::Cookie9Sided: result: type kiln::gfx::shapes::RoundedPolygon
-kiln::material3::MaterialShapes::Diamond: result: type kiln::gfx::shapes::RoundedPolygon
-kiln::material3::MaterialShapes::Fan: result: type kiln::gfx::shapes::RoundedPolygon
-kiln::material3::MaterialShapes::Flower: result: type kiln::gfx::shapes::RoundedPolygon
-kiln::material3::MaterialShapes::Gem: result: type kiln::gfx::shapes::RoundedPolygon
-kiln::material3::MaterialShapes::Ghostish: result: type kiln::gfx::shapes::RoundedPolygon
-kiln::material3::MaterialShapes::Heart: result: type kiln::gfx::shapes::RoundedPolygon
-kiln::material3::MaterialShapes::Oval: result: type kiln::gfx::shapes::RoundedPolygon
-kiln::material3::MaterialShapes::Pentagon: result: type kiln::gfx::shapes::RoundedPolygon
-kiln::material3::MaterialShapes::Pill: result: type kiln::gfx::shapes::RoundedPolygon
-kiln::material3::MaterialShapes::PixelCircle: result: type kiln::gfx::shapes::RoundedPolygon
-kiln::material3::MaterialShapes::PixelTriangle: result: type kiln::gfx::shapes::RoundedPolygon
-kiln::material3::MaterialShapes::Puffy: result: type kiln::gfx::shapes::RoundedPolygon
-kiln::material3::MaterialShapes::PuffyDiamond: result: type kiln::gfx::shapes::RoundedPolygon
-kiln::material3::MaterialShapes::SemiCircle: result: type kiln::gfx::shapes::RoundedPolygon
-kiln::material3::MaterialShapes::Slanted: result: type kiln::gfx::shapes::RoundedPolygon
-kiln::material3::MaterialShapes::SoftBoom: result: type kiln::gfx::shapes::RoundedPolygon
-kiln::material3::MaterialShapes::SoftBurst: result: type kiln::gfx::shapes::RoundedPolygon
-kiln::material3::MaterialShapes::Square: result: type kiln::gfx::shapes::RoundedPolygon
-kiln::material3::MaterialShapes::Sunny: result: type kiln::gfx::shapes::RoundedPolygon
-kiln::material3::MaterialShapes::Triangle: result: type kiln::gfx::shapes::RoundedPolygon
-kiln::material3::MaterialShapes::VerySunny: result: type kiln::gfx::shapes::RoundedPolygon
-kiln::material3::MenuDefaults::DefaultMenuProperties: result: type kiln::ui::PopupProperties
-kiln::material3::MenuDefaults::DropdownMenuItemHorizontalArrangement: result foundation::Arrangement cannot be returned
 kiln::material3::MenuDefaults::rememberDropdownMenuPopupPositionProvider: parameter dropdownMenuAnchorPosition: kiln::material3::internal::MenuAnchorPosition is internal
-kiln::material3::NavigationBarDefaults::windowInsets: result: type kiln::foundation::WindowInsets
-kiln::material3::NavigationRailDefaults::windowInsets: result: type kiln::foundation::WindowInsets
+kiln::material3::MinimumInteractiveLeftAlignmentLine: constant: type kiln::ui::AlignmentLine
+kiln::material3::MinimumInteractiveTopAlignmentLine: constant: type kiln::ui::AlignmentLine
 kiln::material3::NonInteractiveScrollbar: parameter state: type kiln::foundation::ScrollIndicatorState
-kiln::material3::OutlinedTextFieldDefaults::Container: parameter interactionSource: type std::shared_ptr<kiln::foundation::MutableInteractionSource>
-kiln::material3::OutlinedToggleButtonDefaults::border: result std::optional<foundation::BorderStroke> cannot be returned
 kiln::material3::ProgressIndicatorDefaults::DrawStopIndicator: parameter scope: type kiln::ui::DrawScope
 kiln::material3::RangeSliderState::AliveToken: result: type std::weak_ptr<const char>
-kiln::material3::RangeSliderState::EndThumbSize: result: type kiln::ui::IntSize
-kiln::material3::RangeSliderState::StartThumbSize: result: type kiln::ui::IntSize
 kiln::material3::RangeSliderState::TickFractions: result: type std::vector<float>
-kiln::material3::RangeSliderState::UpdateDimensions: parameter startThumb: type kiln::ui::IntSize
 kiln::material3::RememberBottomSheetScaffoldState: result: type std::shared_ptr<kiln::material3::BottomSheetScaffoldState>
 kiln::material3::Ripple: result: type std::shared_ptr<const kiln::foundation::Indication>
-kiln::material3::ScaffoldDefaults::contentWindowInsets: result: type kiln::foundation::WindowInsets
-kiln::material3::ScrollFieldState::Pager: result: type kiln::foundation::PagerState
-kiln::material3::SearchBarDefaults::fullScreenWindowInsets: result: type kiln::foundation::WindowInsets
-kiln::material3::SearchBarDefaults::windowInsets: result: type kiln::foundation::WindowInsets
+kiln::material3::ScrollFieldState::Pager: result foundation::PagerState & cannot be returned
 kiln::material3::SearchBarScrollBehavior::NestedScrollConnection: result: type std::shared_ptr<kiln::ui::NestedScrollConnection>
-kiln::material3::SegmentedButtonDefaults::baseShape: result: type std::shared_ptr<const kiln::foundation::CornerBasedShape>
-kiln::material3::SegmentedButtonDefaults::borderStroke: result foundation::BorderStroke cannot be returned
-kiln::material3::ShadowElevation: parameter arg2: type std::shared_ptr<kiln::foundation::MutableInteractionSource>
-kiln::material3::ShadowElevation: parameter source: type std::shared_ptr<kiln::foundation::MutableInteractionSource>
-kiln::material3::ShapeDefaults::CornerExtraExtraLarge: result: type kiln::foundation::CornerSize
-kiln::material3::ShapeDefaults::CornerExtraLarge: result: type kiln::foundation::CornerSize
-kiln::material3::ShapeDefaults::CornerExtraLargeIncreased: result: type kiln::foundation::CornerSize
-kiln::material3::ShapeDefaults::CornerExtraSmall: result: type kiln::foundation::CornerSize
-kiln::material3::ShapeDefaults::CornerFull: result: type kiln::foundation::CornerSize
-kiln::material3::ShapeDefaults::CornerLarge: result: type kiln::foundation::CornerSize
-kiln::material3::ShapeDefaults::CornerLargeIncreased: result: type kiln::foundation::CornerSize
-kiln::material3::ShapeDefaults::CornerMedium: result: type kiln::foundation::CornerSize
-kiln::material3::ShapeDefaults::CornerNone: result: type kiln::foundation::CornerSize
-kiln::material3::ShapeDefaults::CornerSmall: result: type kiln::foundation::CornerSize
-kiln::material3::ShapeDefaults::ExtraExtraLarge: result: type std::shared_ptr<const kiln::foundation::CornerBasedShape>
-kiln::material3::ShapeDefaults::ExtraLarge: result: type std::shared_ptr<const kiln::foundation::CornerBasedShape>
-kiln::material3::ShapeDefaults::ExtraLargeIncreased: result: type std::shared_ptr<const kiln::foundation::CornerBasedShape>
-kiln::material3::ShapeDefaults::ExtraSmall: result: type std::shared_ptr<const kiln::foundation::CornerBasedShape>
-kiln::material3::ShapeDefaults::Large: result: type std::shared_ptr<const kiln::foundation::CornerBasedShape>
-kiln::material3::ShapeDefaults::LargeIncreased: result: type std::shared_ptr<const kiln::foundation::CornerBasedShape>
-kiln::material3::ShapeDefaults::Medium: result: type std::shared_ptr<const kiln::foundation::CornerBasedShape>
-kiln::material3::ShapeDefaults::Small: result: type std::shared_ptr<const kiln::foundation::CornerBasedShape>
 kiln::material3::SheetState::Anchored: result: type kiln::foundation::AnchoredDraggableState<kiln::material3::SheetValue>
-kiln::material3::ShortNavigationBarDefaults::windowInsets: result: type kiln::foundation::WindowInsets
 kiln::material3::SliderDefaults::DrawStopIndicator: parameter arg0: type kiln::ui::DrawScope
-kiln::material3::SliderDefaults::Thumb: parameter arg0: type std::shared_ptr<kiln::foundation::MutableInteractionSource>
 kiln::material3::SliderState::AliveToken: result: type std::weak_ptr<const char>
-kiln::material3::SliderState::OnPress: parameter position: type kiln::ui::Offset
 kiln::material3::SliderState::TickFractions: result: type std::vector<float>
 kiln::material3::SnackbarHostState::ShowSnackbar: parameter visuals: type std::shared_ptr<const kiln::material3::SnackbarVisuals>
-kiln::material3::SnackbarHostState::ShowSnackbar: suspending with a result (rt::Task<SnackbarResult>)
-kiln::material3::SplitButtonDefaults::OuterCornerSize: result: type kiln::foundation::CornerSize
-kiln::material3::Start: parameter shape: type std::shared_ptr<const kiln::foundation::CornerBasedShape>
-kiln::material3::SuggestionChipDefaults::horizontalArrangement: result foundation::Arrangement cannot be returned
-kiln::material3::SuggestionChipDefaults::suggestionChipBorder: result foundation::BorderStroke cannot be returned
 kiln::material3::SwipeToDismissBoxDefaults::positionalThreshold: result std::function<float (float)> cannot be returned
 kiln::material3::SwipeToDismissBoxState::Anchored: result: type kiln::foundation::AnchoredDraggableState<kiln::material3::SwipeToDismissBoxValue>
 kiln::material3::SwipeToDismissBoxState::PositionalThreshold: result const std::function<float (float)> & cannot be returned
 kiln::material3::TabIndicatorScope::TabIndicatorLayout: parameter measure: type kiln::ui::MeasureScope
 kiln::material3::Text: parameter text: pointer const char *
 kiln::material3::Text: parameter text: type kiln::text::AnnotatedString
-kiln::material3::TextFieldDefaults::Container: parameter interactionSource: type std::shared_ptr<kiln::foundation::MutableInteractionSource>
-kiln::material3::TextFieldDefaults::IndicatorLine: parameter interactionSource: type std::shared_ptr<kiln::foundation::MutableInteractionSource>
 kiln::material3::ToggleButtonDefaults::contentPaddingFor: parameter size: kiln::material3::ToggleButtonSize is not default-constructible
 kiln::material3::ToggleButtonDefaults::shapesFor: parameter size: kiln::material3::ToggleButtonSize is not default-constructible
+kiln::material3::ToggleButtonDefaults::size: constant: kiln::material3::ToggleButtonSize is not default-constructible
 kiln::material3::ToggleFloatingActionButtonDefaults::containerColor: result std::function<ui::Color (float)> cannot be returned
 kiln::material3::ToggleFloatingActionButtonDefaults::containerCornerRadius: result std::function<ui::Dp (float)> cannot be returned
 kiln::material3::ToggleFloatingActionButtonDefaults::containerCornerRadiusLarge: result std::function<ui::Dp (float)> cannot be returned
@@ -179,137 +70,60 @@ kiln::material3::TooltipBox: parameter positionProvider: type std::shared_ptr<co
 kiln::material3::TooltipDefaults::rememberPlainTooltipPositionProvider: result: type std::shared_ptr<const kiln::ui::PopupPositionProvider>
 kiln::material3::TooltipDefaults::rememberRichTooltipPositionProvider: result: type std::shared_ptr<const kiln::ui::PopupPositionProvider>
 kiln::material3::TooltipDefaults::rememberTooltipPositionProvider: result: type std::shared_ptr<const kiln::ui::PopupPositionProvider>
-kiln::material3::TooltipScope::ObtainAnchorBounds: result: type kiln::ui::LayoutCoordinates
 kiln::material3::TooltipScope::ObtainPositionProvider: result: type std::shared_ptr<const kiln::ui::PopupPositionProvider>
 kiln::material3::TooltipState::Transition: result: type kiln::foundation::MutableTransitionState<bool>
-kiln::material3::Top: parameter shape: type std::shared_ptr<const kiln::foundation::CornerBasedShape>
 kiln::material3::TopAppBarDefaults::enterAlwaysScrollBehavior: parameter scrollableState: type kiln::foundation::ScrollableState
 kiln::material3::TopAppBarDefaults::flingAnimationSpec: result: type std::shared_ptr<const kiln::anim::DecaySpec>
 kiln::material3::TopAppBarDefaults::pinnedScrollBehavior: parameter scrollableState: type kiln::foundation::ScrollableState
-kiln::material3::TopAppBarDefaults::windowInsets: result: type kiln::foundation::WindowInsets
 kiln::material3::TopAppBarScrollBehavior::FlingAnimationSpec: result: type std::shared_ptr<const kiln::anim::DecaySpec>
 kiln::material3::TopAppBarScrollBehavior::NestedScrollConnection: result: type std::shared_ptr<kiln::ui::NestedScrollConnection>
 kiln::material3::Value: parameter token: kiln::material3::tokens::ColorToken is internal
 kiln::material3::Value: parameter token: kiln::material3::tokens::MotionSchemeToken is internal
 kiln::material3::Value: parameter token: kiln::material3::tokens::ShapeToken is internal
 kiln::material3::Value: parameter token: kiln::material3::tokens::TypographyToken is internal
-kiln::material3::WavyProgressIndicatorDefaults::circularIndicatorStroke: result: type kiln::gfx::Stroke
-kiln::material3::WavyProgressIndicatorDefaults::circularTrackStroke: result: type kiln::gfx::Stroke
-kiln::material3::WavyProgressIndicatorDefaults::linearIndicatorStroke: result: type kiln::gfx::Stroke
-kiln::material3::WavyProgressIndicatorDefaults::linearTrackStroke: result: type kiln::gfx::Stroke
-kiln::material3::WideNavigationRailDefaults::arrangement: result foundation::Arrangement cannot be returned
-kiln::material3::WideNavigationRailDefaults::windowInsets: result: type kiln::foundation::WindowInsets
 kiln::material3::WideNavigationRailItemDefaults::indicatorPadding: result: type std::shared_ptr<kiln::material3::internal::DynamicPaddingValues>
-kiln::material3::AlertDialogOptions::properties: field left at its default: type kiln::foundation::DialogProperties
-kiln::material3::TopAppBarOptions::windowInsets: field left at its default: type kiln::foundation::WindowInsets
-kiln::material3::TwoRowsTopAppBarOptions::windowInsets: field left at its default: type kiln::foundation::WindowInsets
-kiln::material3::BottomAppBarOptions::windowInsets: field left at its default: type kiln::foundation::WindowInsets
-kiln::material3::FlexibleBottomAppBarOptions::windowInsets: field left at its default: type kiln::foundation::WindowInsets
-kiln::material3::IconButtonOptions::interactionSource: field left at its default: type std::shared_ptr<kiln::foundation::MutableInteractionSource>
-kiln::material3::IconToggleButtonOptions::interactionSource: field left at its default: type std::shared_ptr<kiln::foundation::MutableInteractionSource>
-kiln::material3::AppBarOverflowIndicatorOptions::interactionSource: field left at its default: type std::shared_ptr<kiln::foundation::MutableInteractionSource>
-kiln::material3::BottomSheetOptions::contentWindowInsets: field left at its default: type kiln::foundation::WindowInsets
+kiln::material3::kSystemPaletteFields: constant: type kiln::ui::Color kiln::material3::TonalPalette::*const[65]
+kiln::material3::kSystemRoleFields: constant: type kiln::ui::Color kiln::material3::ColorScheme::*const[43]
 kiln::material3::BottomSheetScaffoldOptions::scaffoldState: field left at its default: type std::shared_ptr<kiln::material3::BottomSheetScaffoldState>
-kiln::material3::ButtonOptions::interactionSource: field left at its default: type std::shared_ptr<kiln::foundation::MutableInteractionSource>
 kiln::material3::ToggleButtonOptions::buttonSize: field left at its default: kiln::material3::ToggleButtonSize is not default-constructible
-kiln::material3::ToggleButtonOptions::interactionSource: field left at its default: type std::shared_ptr<kiln::foundation::MutableInteractionSource>
-kiln::material3::ButtonGroupDefaults::OverflowIndicatorOptions::interactionSource: field left at its default: type std::shared_ptr<kiln::foundation::MutableInteractionSource>
-kiln::material3::CardOptions::interactionSource: field left at its default: type std::shared_ptr<kiln::foundation::MutableInteractionSource>
 kiln::material3::CarouselOptions::flingBehavior: field left at its default: callback argument std::function<float (float)>
-kiln::material3::CheckboxOptions::checkmarkStroke: field left at its default: type kiln::gfx::Stroke
-kiln::material3::CheckboxOptions::outlineStroke: field left at its default: type kiln::gfx::Stroke
-kiln::material3::CheckboxOptions::interactionSource: field left at its default: type std::shared_ptr<kiln::foundation::MutableInteractionSource>
-kiln::material3::ChipOptions::interactionSource: field left at its default: type std::shared_ptr<kiln::foundation::MutableInteractionSource>
-kiln::material3::SelectableChipOptions::interactionSource: field left at its default: type std::shared_ptr<kiln::foundation::MutableInteractionSource>
-kiln::material3::TextFieldColors::textSelectionColors: field left at its default: type kiln::foundation::TextSelectionColors
+kiln::gfx::Stroke::pathEffect: field left at its default: type std::shared_ptr<const kiln::gfx::PathEffect>
+kiln::foundation::KeyboardOptions::hintLocales: field left at its default: type std::vector<std::basic_string<char>>
 kiln::material3::TextFieldOptions::inputTransformation: field left at its default: type std::shared_ptr<const kiln::foundation::InputTransformation>
 kiln::material3::TextFieldOptions::outputTransformation: field left at its default: type std::shared_ptr<const kiln::foundation::OutputTransformation>
-kiln::material3::TextFieldOptions::keyboardOptions: field left at its default: type kiln::foundation::KeyboardOptions
 kiln::material3::TextFieldOptions::onKeyboardAction: field left at its default: callback argument std::function<void ()>
-kiln::material3::TextFieldOptions::lineLimits: field left at its default: type kiln::foundation::TextFieldLineLimits
 kiln::material3::TextFieldOptions::onTextLayout: field left at its default: type kiln::text::TextLayoutResult
 kiln::material3::TextFieldOptions::scrollState: field left at its default: pointer foundation::ScrollState *
-kiln::material3::TextFieldOptions::interactionSource: field left at its default: type std::shared_ptr<kiln::foundation::MutableInteractionSource>
 kiln::material3::SecureTextFieldOptions::inputTransformation: field left at its default: type std::shared_ptr<const kiln::foundation::InputTransformation>
 kiln::material3::SecureTextFieldOptions::textObfuscationCharacter: field left at its default: type char32_t
-kiln::material3::SecureTextFieldOptions::keyboardOptions: field left at its default: type kiln::foundation::KeyboardOptions
 kiln::material3::SecureTextFieldOptions::onKeyboardAction: field left at its default: callback argument std::function<void ()>
 kiln::material3::SecureTextFieldOptions::onTextLayout: field left at its default: type kiln::text::TextLayoutResult
-kiln::material3::SecureTextFieldOptions::interactionSource: field left at its default: type std::shared_ptr<kiln::foundation::MutableInteractionSource>
 kiln::material3::DatePickerOptions::title: field left at its default: optional std::optional<std::function<void ()>>
 kiln::material3::DatePickerOptions::headline: field left at its default: optional std::optional<std::function<void ()>>
 kiln::material3::DatePickerOptions::focusRequester: field left at its default: pointer kiln::ui::FocusRequester *
-kiln::material3::DatePickerDialogOptions::properties: field left at its default: type kiln::foundation::DialogProperties
-kiln::material3::VerticalDragHandleOptions::interactionSource: field left at its default: type std::shared_ptr<kiln::foundation::MutableInteractionSource>
+kiln::ui::Configuration::locales: field left at its default: type std::vector<std::basic_string<char>>
+kiln::ui::Configuration::systemPalette: field left at its default: type std::vector<unsigned int>
+kiln::ui::Configuration::systemRoles: field left at its default: type std::vector<unsigned int>
 kiln::material3::ExposedDropdownMenuOptions::scrollState: field left at its default: pointer foundation::ScrollState *
-kiln::material3::FloatingActionButtonOptions::interactionSource: field left at its default: type std::shared_ptr<kiln::foundation::MutableInteractionSource>
 kiln::material3::FloatingActionButtonMenuScope::state: field left at its default: type std::shared_ptr<kiln::material3::internal::FabMenuState>
-kiln::material3::LabelOptions::interactionSource: field left at its default: type std::shared_ptr<kiln::foundation::MutableInteractionSource>
-kiln::material3::ListItemOptions::interactionSource: field left at its default: type std::shared_ptr<kiln::foundation::MutableInteractionSource>
 kiln::material3::LoadingIndicatorOptions::polygons: field left at its default: type std::vector<kiln::gfx::shapes::RoundedPolygon>
 kiln::material3::ContainedLoadingIndicatorOptions::polygons: field left at its default: type std::vector<kiln::gfx::shapes::RoundedPolygon>
-kiln::material3::Shapes::extraSmall: field left at its default: type std::shared_ptr<const kiln::foundation::CornerBasedShape>
-kiln::material3::Shapes::small: field left at its default: type std::shared_ptr<const kiln::foundation::CornerBasedShape>
-kiln::material3::Shapes::medium: field left at its default: type std::shared_ptr<const kiln::foundation::CornerBasedShape>
-kiln::material3::Shapes::large: field left at its default: type std::shared_ptr<const kiln::foundation::CornerBasedShape>
-kiln::material3::Shapes::extraLarge: field left at its default: type std::shared_ptr<const kiln::foundation::CornerBasedShape>
-kiln::material3::Shapes::largeIncreased: field left at its default: type std::shared_ptr<const kiln::foundation::CornerBasedShape>
-kiln::material3::Shapes::extraLargeIncreased: field left at its default: type std::shared_ptr<const kiln::foundation::CornerBasedShape>
-kiln::material3::Shapes::extraExtraLarge: field left at its default: type std::shared_ptr<const kiln::foundation::CornerBasedShape>
 kiln::material3::DropdownMenuOptions::scrollState: field left at its default: pointer foundation::ScrollState *
-kiln::material3::DropdownMenuOptions::properties: field left at its default: type kiln::ui::PopupProperties
-kiln::material3::DropdownMenuGroupOptions::interactionSource: field left at its default: type std::shared_ptr<kiln::foundation::MutableInteractionSource>
-kiln::material3::DropdownMenuItemOptions::interactionSource: field left at its default: type std::shared_ptr<kiln::foundation::MutableInteractionSource>
-kiln::material3::MenuItemOptions::interactionSource: field left at its default: type std::shared_ptr<kiln::foundation::MutableInteractionSource>
-kiln::material3::ModalBottomSheetOptions::contentWindowInsets: field left at its default: type kiln::foundation::WindowInsets
-kiln::material3::NavigationBarOptions::windowInsets: field left at its default: type kiln::foundation::WindowInsets
-kiln::material3::NavigationBarItemOptions::interactionSource: field left at its default: type std::shared_ptr<kiln::foundation::MutableInteractionSource>
-kiln::material3::DrawerSheetOptions::windowInsets: field left at its default: type kiln::foundation::WindowInsets
-kiln::material3::NavigationDrawerItemOptions::interactionSource: field left at its default: type std::shared_ptr<kiln::foundation::MutableInteractionSource>
-kiln::material3::NavigationRailOptions::windowInsets: field left at its default: type kiln::foundation::WindowInsets
-kiln::material3::NavigationRailItemOptions::interactionSource: field left at its default: type std::shared_ptr<kiln::foundation::MutableInteractionSource>
 kiln::material3::LinearProgressIndicatorOptions::drawStopIndicator: field left at its default: type kiln::ui::DrawScope
-kiln::material3::RadioButtonOptions::interactionSource: field left at its default: type std::shared_ptr<kiln::foundation::MutableInteractionSource>
-kiln::material3::ScaffoldOptions::contentWindowInsets: field left at its default: type kiln::foundation::WindowInsets
-kiln::material3::ScrollFieldOptions::interactionSource: field left at its default: type std::shared_ptr<kiln::foundation::MutableInteractionSource>
 kiln::material3::SearchBarInputFieldOptions::inputTransformation: field left at its default: type std::shared_ptr<const kiln::foundation::InputTransformation>
 kiln::material3::SearchBarInputFieldOptions::outputTransformation: field left at its default: type std::shared_ptr<const kiln::foundation::OutputTransformation>
 kiln::material3::SearchBarInputFieldOptions::scrollState: field left at its default: pointer foundation::ScrollState *
-kiln::material3::SearchBarInputFieldOptions::interactionSource: field left at its default: type std::shared_ptr<kiln::foundation::MutableInteractionSource>
-kiln::material3::SearchBarInputFieldOptions::keyboardOptions: field left at its default: type kiln::foundation::KeyboardOptions
-kiln::material3::SearchBarInputFieldOptions::lineLimits: field left at its default: type kiln::foundation::TextFieldLineLimits
-kiln::material3::AppBarWithSearchOptions::windowInsets: field left at its default: type kiln::foundation::WindowInsets
-kiln::material3::ExpandedFullScreenSearchBarOptions::windowInsets: field left at its default: type kiln::foundation::WindowInsets
-kiln::material3::ExpandedFullScreenSearchBarOptions::properties: field left at its default: type kiln::foundation::DialogProperties
-kiln::material3::ExpandedDockedSearchBarOptions::properties: field left at its default: type kiln::ui::PopupProperties
-kiln::material3::ExpandableSearchBarOptions::windowInsets: field left at its default: type kiln::foundation::WindowInsets
-kiln::material3::SegmentedButtonOptions::interactionSource: field left at its default: type std::shared_ptr<kiln::foundation::MutableInteractionSource>
 kiln::material3::SegmentedButtonOptions::icon: field left at its default: optional std::optional<std::function<void ()>>
-kiln::material3::ShortNavigationBarOptions::windowInsets: field left at its default: type kiln::foundation::WindowInsets
-kiln::material3::ShortNavigationBarItemOptions::interactionSource: field left at its default: type std::shared_ptr<kiln::foundation::MutableInteractionSource>
-kiln::material3::SliderOptions::interactionSource: field left at its default: type std::shared_ptr<kiln::foundation::MutableInteractionSource>
-kiln::material3::RangeSliderOptions::startThumbInteractionSource: field left at its default: type std::shared_ptr<kiln::foundation::MutableInteractionSource>
-kiln::material3::RangeSliderOptions::endThumbInteractionSource: field left at its default: type std::shared_ptr<kiln::foundation::MutableInteractionSource>
 kiln::material3::SliderTrackOptions::drawStopIndicator: field left at its default: type kiln::ui::DrawScope
 kiln::material3::SliderTrackOptions::drawTick: field left at its default: type kiln::ui::DrawScope
-kiln::material3::SplitButtonOptions::interactionSource: field left at its default: type std::shared_ptr<kiln::foundation::MutableInteractionSource>
-kiln::material3::SwitchOptions::interactionSource: field left at its default: type std::shared_ptr<kiln::foundation::MutableInteractionSource>
-kiln::material3::TabOptions::interactionSource: field left at its default: type std::shared_ptr<kiln::foundation::MutableInteractionSource>
 kiln::material3::ScrollableTabRowOptions::scrollState: field left at its default: pointer foundation::ScrollState *
+kiln::text::FontFamily::fonts: field left at its default: type std::vector<kiln::text::Font>
 kiln::material3::TextOptions::autoSize: field left at its default: type std::shared_ptr<const kiln::foundation::TextAutoSize>
-kiln::material3::TextOptions::fontSize: field left at its default: type kiln::text::TextUnit
-kiln::material3::TextOptions::fontWeight: field left at its default: type kiln::text::FontWeight
-kiln::material3::TextOptions::fontFamily: field left at its default: type kiln::text::FontFamily
-kiln::material3::TextOptions::letterSpacing: field left at its default: type kiln::text::TextUnit
-kiln::material3::TextOptions::lineHeight: field left at its default: type kiln::text::TextUnit
 kiln::material3::TextOptions::inlineContent: field left at its default: type std::map<std::basic_string<char>, kiln::foundation::InlineTextContent>
 kiln::material3::TextOptions::onTextLayout: field left at its default: type kiln::text::TextLayoutResult
-kiln::material3::TimePickerDialogOptions::properties: field left at its default: type kiln::foundation::DialogProperties
-kiln::material3::LinearWavyProgressIndicatorOptions::stroke: field left at its default: type kiln::gfx::Stroke
-kiln::material3::LinearWavyProgressIndicatorOptions::trackStroke: field left at its default: type kiln::gfx::Stroke
-kiln::material3::CircularWavyProgressIndicatorOptions::stroke: field left at its default: type kiln::gfx::Stroke
-kiln::material3::CircularWavyProgressIndicatorOptions::trackStroke: field left at its default: type kiln::gfx::Stroke
-kiln::material3::WideNavigationRailOptions::windowInsets: field left at its default: type kiln::foundation::WindowInsets
-kiln::material3::ModalWideNavigationRailOptions::windowInsets: field left at its default: type kiln::foundation::WindowInsets
-kiln::material3::WideNavigationRailItemOptions::interactionSource: field left at its default: type std::shared_ptr<kiln::foundation::MutableInteractionSource>
 kiln::material3::WideNavigationRailItemOptions::indicatorPadding: field left at its default: type std::shared_ptr<kiln::material3::internal::DynamicPaddingValues>
+kiln::foundation::EnterExitParts::Slide::offset: field left at its default: callback returning a struct (kiln::ui::IntOffset)
+kiln::foundation::EnterExitParts::fade: field left at its default: type std::pair<float, std::shared_ptr<const kiln::anim::AnimationSpec>>
+kiln::ui::LayoutCoordinates::node: field left at its default: pointer const LayoutNode *
+kiln::ui::LayoutCoordinates::at: field left at its default: pointer const ModifierNode *
+kiln::ui::LayoutCoordinates::alive: field left at its default: type std::weak_ptr<const char>

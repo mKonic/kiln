@@ -7,7 +7,11 @@
 
 #include "kiln/animation/Spec.h"
 #include "kiln/foundation/Arrangement.h"
+#include "kiln/foundation/Border.h"
+#include "kiln/foundation/Insets.h"
+#include "kiln/foundation/Interaction.h"
 #include "kiln/foundation/Layouts.h"
+#include "kiln/graphics/shapes/RoundedPolygon.h"
 #include "kiln/foundation/Lazy.h"
 #include "kiln/foundation/Pager.h"
 #include "kiln/foundation/Scroll.h"
@@ -36,6 +40,9 @@ struct kiln_text_style { std::atomic<int> refs{ 1 }; kiln::text::TextStyle style
 struct kiln_anim_spec { std::atomic<int> refs{ 1 }; kiln::anim::SpecPtr spec; };
 struct kiln_image_bitmap { std::atomic<int> refs{ 1 }; kiln::gfx::ImageBitmap bitmap; };
 struct kiln_image_vector { std::atomic<int> refs{ 1 }; kiln::gfx::vector::ImageVectorPtr vector; };
+struct kiln_rounded_polygon { std::atomic<int> refs{ 1 }; kiln::gfx::shapes::RoundedPolygon polygon; };
+struct kiln_window_insets { std::atomic<int> refs{ 1 }; kiln::foundation::WindowInsets insets; };
+struct kiln_interaction_source { std::shared_ptr<kiln::foundation::MutableInteractionSource> source; };
 
 // Remembered handles: the state and a scope for its suspending calls, cancelled when the call
 // leaves the composition (before the state is freed).
@@ -150,6 +157,19 @@ namespace kiln::capi {
     kiln_shape* TransientShape(foundation::ShapePtr shape);         // null: null
     kiln_text_style* TransientTextStyle(text::TextStyle style);
     kiln_anim_spec* TransientSpec(anim::SpecPtr spec);              // null: null
+    kiln_rounded_polygon* TransientPolygon(gfx::shapes::RoundedPolygon polygon);
+    kiln_window_insets* TransientInsets(foundation::WindowInsets insets);
+    kiln_interaction_source* TransientSource(std::shared_ptr<foundation::MutableInteractionSource> source);   // null: null
+    inline text::TextUnit ToTextUnit(kiln_text_unit u) {
+        return u.type == KILN_TEXT_UNIT_SP ? text::Sp(u.value) : u.type == KILN_TEXT_UNIT_EM ? text::Em(u.value) : text::TextUnit{};
+    }
+    inline kiln_text_unit FromTextUnit(text::TextUnit u) {
+        return { u.value, u.IsSp() ? KILN_TEXT_UNIT_SP : u.IsEm() ? KILN_TEXT_UNIT_EM : KILN_TEXT_UNIT_UNSPECIFIED };
+    }
+    inline foundation::CornerSize ToCornerSize(kiln_corner_size c) { return { c.dp, c.px, c.percent }; }
+    inline kiln_corner_size FromCornerSize(foundation::CornerSize c) { return { c.dp, c.px, c.percent }; }
+    kiln_arrangement FromArrangement(const foundation::Arrangement& a);
+    kiln_border_stroke FromBorderStroke(const foundation::BorderStroke& b);
 
     // A material3 state or scope handle: the object, an owner where it is shared, and the scope
     // its suspending methods run in (remembered handles only).
@@ -175,6 +195,9 @@ namespace kiln::capi {
         KeepTransient(std::move(p));
         return raw;
     }
+
+    // The composition running content; throws outside content.
+    rt::Composition& CurrentComposition();
 
     // Runs `body` in the call's own group when inside content (non-restartable, so it may return
     // values), or directly outside content.

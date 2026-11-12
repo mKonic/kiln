@@ -117,9 +117,15 @@ struct kiln_m3_wide_navigation_rail_state : kiln::capi::Handle<kiln::material3::
 
 namespace {
 
+[[maybe_unused]] kiln::foundation::DialogProperties ToCpp(const kiln_dialog_properties* c);
+[[maybe_unused]] void FromCpp(const kiln::foundation::DialogProperties& v, kiln_dialog_properties* out);
+[[maybe_unused]] const kiln_dialog_properties* FromCppTransient(const kiln::foundation::DialogProperties& v);
 [[maybe_unused]] kiln::material3::AlertDialogOptions ToCpp(const kiln_m3_alert_dialog_options* c);
 [[maybe_unused]] void FromCpp(const kiln::material3::AlertDialogOptions& v, kiln_m3_alert_dialog_options* out);
 [[maybe_unused]] const kiln_m3_alert_dialog_options* FromCppTransient(const kiln::material3::AlertDialogOptions& v);
+[[maybe_unused]] kiln::rt::Key ToCpp(const kiln_rt_key* c);
+[[maybe_unused]] void FromCpp(const kiln::rt::Key& v, kiln_rt_key* out);
+[[maybe_unused]] const kiln_rt_key* FromCppTransient(const kiln::rt::Key& v);
 [[maybe_unused]] kiln::material3::TopAppBarColors ToCpp(const kiln_m3_top_app_bar_colors* c);
 [[maybe_unused]] void FromCpp(const kiln::material3::TopAppBarColors& v, kiln_m3_top_app_bar_colors* out);
 [[maybe_unused]] const kiln_m3_top_app_bar_colors* FromCppTransient(const kiln::material3::TopAppBarColors& v);
@@ -216,6 +222,9 @@ namespace {
 [[maybe_unused]] kiln::material3::CheckboxColors ToCpp(const kiln_m3_checkbox_colors* c);
 [[maybe_unused]] void FromCpp(const kiln::material3::CheckboxColors& v, kiln_m3_checkbox_colors* out);
 [[maybe_unused]] const kiln_m3_checkbox_colors* FromCppTransient(const kiln::material3::CheckboxColors& v);
+[[maybe_unused]] kiln::gfx::Stroke ToCpp(const kiln_stroke* c);
+[[maybe_unused]] void FromCpp(const kiln::gfx::Stroke& v, kiln_stroke* out);
+[[maybe_unused]] const kiln_stroke* FromCppTransient(const kiln::gfx::Stroke& v);
 [[maybe_unused]] kiln::material3::CheckboxOptions ToCpp(const kiln_m3_checkbox_options* c);
 [[maybe_unused]] void FromCpp(const kiln::material3::CheckboxOptions& v, kiln_m3_checkbox_options* out);
 [[maybe_unused]] const kiln_m3_checkbox_options* FromCppTransient(const kiln::material3::CheckboxOptions& v);
@@ -240,6 +249,9 @@ namespace {
 [[maybe_unused]] kiln::material3::ColorScheme ToCpp(const kiln_m3_color_scheme* c);
 [[maybe_unused]] void FromCpp(const kiln::material3::ColorScheme& v, kiln_m3_color_scheme* out);
 [[maybe_unused]] const kiln_m3_color_scheme* FromCppTransient(const kiln::material3::ColorScheme& v);
+[[maybe_unused]] kiln::foundation::TextSelectionColors ToCpp(const kiln_text_selection_colors* c);
+[[maybe_unused]] void FromCpp(const kiln::foundation::TextSelectionColors& v, kiln_text_selection_colors* out);
+[[maybe_unused]] const kiln_text_selection_colors* FromCppTransient(const kiln::foundation::TextSelectionColors& v);
 [[maybe_unused]] kiln::material3::TextFieldColors ToCpp(const kiln_m3_text_field_colors* c);
 [[maybe_unused]] void FromCpp(const kiln::material3::TextFieldColors& v, kiln_m3_text_field_colors* out);
 [[maybe_unused]] const kiln_m3_text_field_colors* FromCppTransient(const kiln::material3::TextFieldColors& v);
@@ -249,6 +261,12 @@ namespace {
 [[maybe_unused]] kiln::material3::TextFieldLabelScope ToCpp(const kiln_m3_text_field_label_scope* c);
 [[maybe_unused]] void FromCpp(const kiln::material3::TextFieldLabelScope& v, kiln_m3_text_field_label_scope* out);
 [[maybe_unused]] const kiln_m3_text_field_label_scope* FromCppTransient(const kiln::material3::TextFieldLabelScope& v);
+[[maybe_unused]] kiln::foundation::KeyboardOptions ToCpp(const kiln_keyboard_options* c);
+[[maybe_unused]] void FromCpp(const kiln::foundation::KeyboardOptions& v, kiln_keyboard_options* out);
+[[maybe_unused]] const kiln_keyboard_options* FromCppTransient(const kiln::foundation::KeyboardOptions& v);
+[[maybe_unused]] kiln::foundation::TextFieldLineLimits ToCpp(const kiln_text_field_line_limits* c);
+[[maybe_unused]] void FromCpp(const kiln::foundation::TextFieldLineLimits& v, kiln_text_field_line_limits* out);
+[[maybe_unused]] const kiln_text_field_line_limits* FromCppTransient(const kiln::foundation::TextFieldLineLimits& v);
 [[maybe_unused]] kiln::material3::TextFieldOptions ToCpp(const kiln_m3_text_field_options* c);
 [[maybe_unused]] void FromCpp(const kiln::material3::TextFieldOptions& v, kiln_m3_text_field_options* out);
 [[maybe_unused]] const kiln_m3_text_field_options* FromCppTransient(const kiln::material3::TextFieldOptions& v);
@@ -279,6 +297,9 @@ namespace {
 [[maybe_unused]] kiln::material3::VerticalDragHandleOptions ToCpp(const kiln_m3_vertical_drag_handle_options* c);
 [[maybe_unused]] void FromCpp(const kiln::material3::VerticalDragHandleOptions& v, kiln_m3_vertical_drag_handle_options* out);
 [[maybe_unused]] const kiln_m3_vertical_drag_handle_options* FromCppTransient(const kiln::material3::VerticalDragHandleOptions& v);
+[[maybe_unused]] kiln::ui::Configuration ToCpp(const kiln_configuration* c);
+[[maybe_unused]] void FromCpp(const kiln::ui::Configuration& v, kiln_configuration* out);
+[[maybe_unused]] const kiln_configuration* FromCppTransient(const kiln::ui::Configuration& v);
 [[maybe_unused]] kiln::material3::TonalPalette ToCpp(const kiln_m3_tonal_palette* c);
 [[maybe_unused]] void FromCpp(const kiln::material3::TonalPalette& v, kiln_m3_tonal_palette* out);
 [[maybe_unused]] const kiln_m3_tonal_palette* FromCppTransient(const kiln::material3::TonalPalette& v);
@@ -357,6 +378,9 @@ namespace {
 [[maybe_unused]] kiln::material3::MaterialThemeArgs ToCpp(const kiln_m3_material_theme_args* c);
 [[maybe_unused]] void FromCpp(const kiln::material3::MaterialThemeArgs& v, kiln_m3_material_theme_args* out);
 [[maybe_unused]] const kiln_m3_material_theme_args* FromCppTransient(const kiln::material3::MaterialThemeArgs& v);
+[[maybe_unused]] kiln::ui::PopupProperties ToCpp(const kiln_popup_properties* c);
+[[maybe_unused]] void FromCpp(const kiln::ui::PopupProperties& v, kiln_popup_properties* out);
+[[maybe_unused]] const kiln_popup_properties* FromCppTransient(const kiln::ui::PopupProperties& v);
 [[maybe_unused]] kiln::material3::DropdownMenuOptions ToCpp(const kiln_m3_dropdown_menu_options* c);
 [[maybe_unused]] void FromCpp(const kiln::material3::DropdownMenuOptions& v, kiln_m3_dropdown_menu_options* out);
 [[maybe_unused]] const kiln_m3_dropdown_menu_options* FromCppTransient(const kiln::material3::DropdownMenuOptions& v);
@@ -420,6 +444,12 @@ namespace {
 [[maybe_unused]] kiln::material3::NavigationRailItemOptions ToCpp(const kiln_m3_navigation_rail_item_options* c);
 [[maybe_unused]] void FromCpp(const kiln::material3::NavigationRailItemOptions& v, kiln_m3_navigation_rail_item_options* out);
 [[maybe_unused]] const kiln_m3_navigation_rail_item_options* FromCppTransient(const kiln::material3::NavigationRailItemOptions& v);
+[[maybe_unused]] kiln::ui::BackEvent ToCpp(const kiln_back_event* c);
+[[maybe_unused]] void FromCpp(const kiln::ui::BackEvent& v, kiln_back_event* out);
+[[maybe_unused]] const kiln_back_event* FromCppTransient(const kiln::ui::BackEvent& v);
+[[maybe_unused]] kiln::ui::Density ToCpp(const kiln_density* c);
+[[maybe_unused]] void FromCpp(const kiln::ui::Density& v, kiln_density* out);
+[[maybe_unused]] const kiln_density* FromCppTransient(const kiln::ui::Density& v);
 [[maybe_unused]] kiln::material3::LinearProgressIndicatorOptions ToCpp(const kiln_m3_linear_progress_indicator_options* c);
 [[maybe_unused]] void FromCpp(const kiln::material3::LinearProgressIndicatorOptions& v, kiln_m3_linear_progress_indicator_options* out);
 [[maybe_unused]] const kiln_m3_linear_progress_indicator_options* FromCppTransient(const kiln::material3::LinearProgressIndicatorOptions& v);
@@ -516,6 +546,9 @@ namespace {
 [[maybe_unused]] kiln::material3::SliderTrackOptions ToCpp(const kiln_m3_slider_track_options* c);
 [[maybe_unused]] void FromCpp(const kiln::material3::SliderTrackOptions& v, kiln_m3_slider_track_options* out);
 [[maybe_unused]] const kiln_m3_slider_track_options* FromCppTransient(const kiln::material3::SliderTrackOptions& v);
+[[maybe_unused]] kiln::ui::Offset ToCpp(const kiln_offset* c);
+[[maybe_unused]] void FromCpp(const kiln::ui::Offset& v, kiln_offset* out);
+[[maybe_unused]] const kiln_offset* FromCppTransient(const kiln::ui::Offset& v);
 [[maybe_unused]] kiln::material3::SplitButtonShapes ToCpp(const kiln_m3_split_button_shapes* c);
 [[maybe_unused]] void FromCpp(const kiln::material3::SplitButtonShapes& v, kiln_m3_split_button_shapes* out);
 [[maybe_unused]] const kiln_m3_split_button_shapes* FromCppTransient(const kiln::material3::SplitButtonShapes& v);
@@ -543,6 +576,12 @@ namespace {
 [[maybe_unused]] kiln::material3::ScrollableTabRowOptions ToCpp(const kiln_m3_scrollable_tab_row_options* c);
 [[maybe_unused]] void FromCpp(const kiln::material3::ScrollableTabRowOptions& v, kiln_m3_scrollable_tab_row_options* out);
 [[maybe_unused]] const kiln_m3_scrollable_tab_row_options* FromCppTransient(const kiln::material3::ScrollableTabRowOptions& v);
+[[maybe_unused]] kiln::text::FontWeight ToCpp(const kiln_font_weight* c);
+[[maybe_unused]] void FromCpp(const kiln::text::FontWeight& v, kiln_font_weight* out);
+[[maybe_unused]] const kiln_font_weight* FromCppTransient(const kiln::text::FontWeight& v);
+[[maybe_unused]] kiln::text::FontFamily ToCpp(const kiln_font_family* c);
+[[maybe_unused]] void FromCpp(const kiln::text::FontFamily& v, kiln_font_family* out);
+[[maybe_unused]] const kiln_font_family* FromCppTransient(const kiln::text::FontFamily& v);
 [[maybe_unused]] kiln::material3::TextOptions ToCpp(const kiln_m3_text_options* c);
 [[maybe_unused]] void FromCpp(const kiln::material3::TextOptions& v, kiln_m3_text_options* out);
 [[maybe_unused]] const kiln_m3_text_options* FromCppTransient(const kiln::material3::TextOptions& v);
@@ -588,6 +627,36 @@ namespace {
 [[maybe_unused]] kiln::material3::WideNavigationRailItemOptions ToCpp(const kiln_m3_wide_navigation_rail_item_options* c);
 [[maybe_unused]] void FromCpp(const kiln::material3::WideNavigationRailItemOptions& v, kiln_m3_wide_navigation_rail_item_options* out);
 [[maybe_unused]] const kiln_m3_wide_navigation_rail_item_options* FromCppTransient(const kiln::material3::WideNavigationRailItemOptions& v);
+[[maybe_unused]] kiln::foundation::EnterExitParts::Scale ToCpp(const kiln_scale* c);
+[[maybe_unused]] void FromCpp(const kiln::foundation::EnterExitParts::Scale& v, kiln_scale* out);
+[[maybe_unused]] const kiln_scale* FromCppTransient(const kiln::foundation::EnterExitParts::Scale& v);
+[[maybe_unused]] kiln::ui::IntOffset ToCpp(const kiln_int_offset* c);
+[[maybe_unused]] void FromCpp(const kiln::ui::IntOffset& v, kiln_int_offset* out);
+[[maybe_unused]] const kiln_int_offset* FromCppTransient(const kiln::ui::IntOffset& v);
+[[maybe_unused]] kiln::foundation::EnterExitParts::Slide ToCpp(const kiln_slide* c);
+[[maybe_unused]] void FromCpp(const kiln::foundation::EnterExitParts::Slide& v, kiln_slide* out);
+[[maybe_unused]] const kiln_slide* FromCppTransient(const kiln::foundation::EnterExitParts::Slide& v);
+[[maybe_unused]] kiln::foundation::EnterExitParts::ChangeSize ToCpp(const kiln_change_size* c);
+[[maybe_unused]] void FromCpp(const kiln::foundation::EnterExitParts::ChangeSize& v, kiln_change_size* out);
+[[maybe_unused]] const kiln_change_size* FromCppTransient(const kiln::foundation::EnterExitParts::ChangeSize& v);
+[[maybe_unused]] kiln::foundation::EnterExitParts::Veil ToCpp(const kiln_veil* c);
+[[maybe_unused]] void FromCpp(const kiln::foundation::EnterExitParts::Veil& v, kiln_veil* out);
+[[maybe_unused]] const kiln_veil* FromCppTransient(const kiln::foundation::EnterExitParts::Veil& v);
+[[maybe_unused]] kiln::foundation::EnterExitParts ToCpp(const kiln_enter_exit_parts* c);
+[[maybe_unused]] void FromCpp(const kiln::foundation::EnterExitParts& v, kiln_enter_exit_parts* out);
+[[maybe_unused]] const kiln_enter_exit_parts* FromCppTransient(const kiln::foundation::EnterExitParts& v);
+[[maybe_unused]] kiln::foundation::EnterTransition ToCpp(const kiln_enter_transition* c);
+[[maybe_unused]] void FromCpp(const kiln::foundation::EnterTransition& v, kiln_enter_transition* out);
+[[maybe_unused]] const kiln_enter_transition* FromCppTransient(const kiln::foundation::EnterTransition& v);
+[[maybe_unused]] kiln::foundation::ExitTransition ToCpp(const kiln_exit_transition* c);
+[[maybe_unused]] void FromCpp(const kiln::foundation::ExitTransition& v, kiln_exit_transition* out);
+[[maybe_unused]] const kiln_exit_transition* FromCppTransient(const kiln::foundation::ExitTransition& v);
+[[maybe_unused]] kiln::foundation::SizeTransform ToCpp(const kiln_size_transform* c);
+[[maybe_unused]] void FromCpp(const kiln::foundation::SizeTransform& v, kiln_size_transform* out);
+[[maybe_unused]] const kiln_size_transform* FromCppTransient(const kiln::foundation::SizeTransform& v);
+[[maybe_unused]] kiln::foundation::ContentTransform ToCpp(const kiln_content_transform* c);
+[[maybe_unused]] void FromCpp(const kiln::foundation::ContentTransform& v, kiln_content_transform* out);
+[[maybe_unused]] const kiln_content_transform* FromCppTransient(const kiln::foundation::ContentTransform& v);
 [[maybe_unused]] kiln::material3::RippleAlpha ToCpp(const kiln_m3_ripple_alpha* c);
 [[maybe_unused]] void FromCpp(const kiln::material3::RippleAlpha& v, kiln_m3_ripple_alpha* out);
 [[maybe_unused]] const kiln_m3_ripple_alpha* FromCppTransient(const kiln::material3::RippleAlpha& v);
@@ -597,16 +666,29 @@ namespace {
 [[maybe_unused]] kiln::material3::RippleThemeConfiguration ToCpp(const kiln_m3_ripple_theme_configuration* c);
 [[maybe_unused]] void FromCpp(const kiln::material3::RippleThemeConfiguration& v, kiln_m3_ripple_theme_configuration* out);
 [[maybe_unused]] const kiln_m3_ripple_theme_configuration* FromCppTransient(const kiln::material3::RippleThemeConfiguration& v);
+[[maybe_unused]] kiln::material3::MaterialThemeValues ToCpp(const kiln_m3_material_theme_values* c);
+[[maybe_unused]] void FromCpp(const kiln::material3::MaterialThemeValues& v, kiln_m3_material_theme_values* out);
+[[maybe_unused]] const kiln_m3_material_theme_values* FromCppTransient(const kiln::material3::MaterialThemeValues& v);
+[[maybe_unused]] kiln::material3::RippleConfiguration::InsetRingColors ToCpp(const kiln_m3_ripple_configuration_inset_ring_colors* c);
+[[maybe_unused]] void FromCpp(const kiln::material3::RippleConfiguration::InsetRingColors& v, kiln_m3_ripple_configuration_inset_ring_colors* out);
+[[maybe_unused]] const kiln_m3_ripple_configuration_inset_ring_colors* FromCppTransient(const kiln::material3::RippleConfiguration::InsetRingColors& v);
+[[maybe_unused]] kiln::material3::RippleConfiguration ToCpp(const kiln_m3_ripple_configuration* c);
+[[maybe_unused]] void FromCpp(const kiln::material3::RippleConfiguration& v, kiln_m3_ripple_configuration* out);
+[[maybe_unused]] const kiln_m3_ripple_configuration* FromCppTransient(const kiln::material3::RippleConfiguration& v);
 [[maybe_unused]] kiln::material3::SnackbarVisuals ToCpp(const kiln_m3_snackbar_visuals* c);
 [[maybe_unused]] void FromCpp(const kiln::material3::SnackbarVisuals& v, kiln_m3_snackbar_visuals* out);
 [[maybe_unused]] const kiln_m3_snackbar_visuals* FromCppTransient(const kiln::material3::SnackbarVisuals& v);
 [[maybe_unused]] kiln::material3::CarouselParallaxScrollEffectItemInfo ToCpp(const kiln_m3_carousel_parallax_scroll_effect_item_info* c);
 [[maybe_unused]] void FromCpp(const kiln::material3::CarouselParallaxScrollEffectItemInfo& v, kiln_m3_carousel_parallax_scroll_effect_item_info* out);
 [[maybe_unused]] const kiln_m3_carousel_parallax_scroll_effect_item_info* FromCppTransient(const kiln::material3::CarouselParallaxScrollEffectItemInfo& v);
+[[maybe_unused]] kiln::ui::LayoutCoordinates ToCpp(const kiln_layout_coordinates* c);
+[[maybe_unused]] void FromCpp(const kiln::ui::LayoutCoordinates& v, kiln_layout_coordinates* out);
+[[maybe_unused]] const kiln_layout_coordinates* FromCppTransient(const kiln::ui::LayoutCoordinates& v);
 [[maybe_unused]] std::function<bool ()> ToCpp_kiln_m3_fn_to_bool(kiln_m3_fn_to_bool f);
 [[maybe_unused]] std::function<void (kiln::material3::AppBarMenuState &)> ToCpp_kiln_m3_fn_app_bar_menu_state(kiln_m3_fn_app_bar_menu_state f);
 [[maybe_unused]] std::function<void (kiln::material3::AppBarScope &)> ToCpp_kiln_m3_fn_app_bar_scope(kiln_m3_fn_app_bar_scope f);
 [[maybe_unused]] std::function<bool (kiln::material3::SheetValue)> ToCpp_kiln_m3_fn_sheet_value_to_bool(kiln_m3_fn_sheet_value_to_bool f);
+[[maybe_unused]] std::function<kiln::foundation::WindowInsets ()> ToCpp_kiln_m3_fn_to_window_insets(kiln_m3_fn_to_window_insets f);
 [[maybe_unused]] std::function<void (std::shared_ptr<kiln::material3::SnackbarData>)> ToCpp_kiln_m3_fn_snackbar_data(kiln_m3_fn_snackbar_data f);
 [[maybe_unused]] std::function<void (kiln::material3::SnackbarHostState &)> ToCpp_kiln_m3_fn_snackbar_host_state(kiln_m3_fn_snackbar_host_state f);
 [[maybe_unused]] std::function<void (const kiln::foundation::PaddingValues &)> ToCpp_kiln_m3_fn_padding_values(kiln_m3_fn_padding_values f);
@@ -637,6 +719,9 @@ namespace {
 [[maybe_unused]] std::function<bool (kiln::material3::SwipeToDismissBoxValue)> ToCpp_kiln_m3_fn_swipe_to_dismiss_box_value_to_bool(kiln_m3_fn_swipe_to_dismiss_box_value_to_bool f);
 [[maybe_unused]] std::function<void (kiln::material3::SwipeToDismissBoxValue)> ToCpp_kiln_m3_fn_swipe_to_dismiss_box_value(kiln_m3_fn_swipe_to_dismiss_box_value f);
 [[maybe_unused]] std::function<void (kiln::material3::TabIndicatorScope &)> ToCpp_kiln_m3_fn_tab_indicator_scope(kiln_m3_fn_tab_indicator_scope f);
+[[maybe_unused]] std::function<kiln::ui::IntSize (kiln::ui::IntSize)> ToCpp_kiln_m3_fn_int_size_to_int_size(kiln_m3_fn_int_size_to_int_size f);
+[[maybe_unused]] std::function<std::shared_ptr<const kiln::anim::AnimationSpec> (kiln::ui::IntSize, kiln::ui::IntSize)> ToCpp_kiln_m3_fn_int_size_int_size_to_animation_spec(kiln_m3_fn_int_size_int_size_to_animation_spec f);
+[[maybe_unused]] std::function<void (kiln::material3::SnackbarResult)> ToCpp_kiln_m3_fn_snackbar_result(kiln_m3_fn_snackbar_result f);
 
 std::function<bool ()> ToCpp_kiln_m3_fn_to_bool(kiln_m3_fn_to_bool f) {
     auto o = kiln::capi::Own(f);
@@ -674,6 +759,15 @@ std::function<bool (kiln::material3::SheetValue)> ToCpp_kiln_m3_fn_sheet_value_t
         kiln::capi::CallbackScope scope;
         auto r = o->f.call(o->f.user, kiln_m3_sheet_value(x0));
         return r;
+    };
+}
+std::function<kiln::foundation::WindowInsets ()> ToCpp_kiln_m3_fn_to_window_insets(kiln_m3_fn_to_window_insets f) {
+    auto o = kiln::capi::Own(f);
+    if (!o) return {};
+    return [o]() -> kiln::foundation::WindowInsets {
+        kiln::capi::CallbackScope scope;
+        auto r = o->f.call(o->f.user);
+        return (r ? r->insets : kiln::foundation::WindowInsets{});
     };
 }
 std::function<void (std::shared_ptr<kiln::material3::SnackbarData>)> ToCpp_kiln_m3_fn_snackbar_data(kiln_m3_fn_snackbar_data f) {
@@ -757,7 +851,9 @@ std::function<void (kiln::material3::ColorScheme &)> ToCpp_kiln_m3_fn_color_sche
     if (!o) return {};
     return [o](kiln::material3::ColorScheme & x0) -> void {
         kiln::capi::CallbackScope scope;
-        o->f.call(o->f.user, FromCppTransient(x0));
+        auto* t0 = kiln::capi::NewTransient<kiln_m3_color_scheme>(); t0->size = sizeof(*t0); FromCpp(x0, t0);
+        o->f.call(o->f.user, t0);
+        x0 = ToCpp(t0);
     };
 }
 std::function<float ()> ToCpp_kiln_m3_fn_to_float(kiln_m3_fn_to_float f) {
@@ -948,6 +1044,73 @@ std::function<void (kiln::material3::TabIndicatorScope &)> ToCpp_kiln_m3_fn_tab_
         o->f.call(o->f.user, h0);
     };
 }
+std::function<kiln::ui::IntSize (kiln::ui::IntSize)> ToCpp_kiln_m3_fn_int_size_to_int_size(kiln_m3_fn_int_size_to_int_size f) {
+    auto o = kiln::capi::Own(f);
+    if (!o) return {};
+    return [o](kiln::ui::IntSize x0) -> kiln::ui::IntSize {
+        kiln::capi::CallbackScope scope;
+        auto r = o->f.call(o->f.user, kiln_int_size{ (x0).width, (x0).height });
+        return kiln::ui::IntSize{ r.width, r.height };
+    };
+}
+std::function<std::shared_ptr<const kiln::anim::AnimationSpec> (kiln::ui::IntSize, kiln::ui::IntSize)> ToCpp_kiln_m3_fn_int_size_int_size_to_animation_spec(kiln_m3_fn_int_size_int_size_to_animation_spec f) {
+    auto o = kiln::capi::Own(f);
+    if (!o) return {};
+    return [o](kiln::ui::IntSize x0, kiln::ui::IntSize x1) -> std::shared_ptr<const kiln::anim::AnimationSpec> {
+        kiln::capi::CallbackScope scope;
+        auto r = o->f.call(o->f.user, kiln_int_size{ (x0).width, (x0).height }, kiln_int_size{ (x1).width, (x1).height });
+        return (r ? r->spec : nullptr);
+    };
+}
+std::function<void (kiln::material3::SnackbarResult)> ToCpp_kiln_m3_fn_snackbar_result(kiln_m3_fn_snackbar_result f) {
+    auto o = kiln::capi::Own(f);
+    if (!o) return {};
+    return [o](kiln::material3::SnackbarResult x0) -> void {
+        kiln::capi::CallbackScope scope;
+        o->f.call(o->f.user, kiln_m3_snackbar_result(x0));
+    };
+}
+kiln::foundation::DialogProperties ToCpp(const kiln_dialog_properties* in) {
+    kiln::foundation::DialogProperties v{};
+    if (!in) return v;
+    kiln_dialog_properties c;
+    kiln_dialog_properties_init(&c);
+    if (in->size > sizeof(size_t)) std::memcpy(reinterpret_cast<char*>(&c) + sizeof(size_t), reinterpret_cast<const char*>(in) + sizeof(size_t), std::min(in->size, sizeof(c)) - sizeof(size_t));
+    v.dismissOnBackPress = c.dismiss_on_back_press;
+    v.dismissOnClickOutside = c.dismiss_on_click_outside;
+    v.securePolicy = kiln::ui::SecureFlagPolicy(c.secure_policy);
+    v.usePlatformDefaultWidth = c.use_platform_default_width;
+    v.decorFitsSystemWindows = c.decor_fits_system_windows;
+    if (c.window_title) v.windowTitle = kiln::capi::ToString(c.window_title);
+    v.blurBehindRadius = kiln::capi::ToDp(c.blur_behind_radius);
+    v.backgroundBlurRadius = kiln::capi::ToDp(c.background_blur_radius);
+    v.scrimAlpha = c.scrim_alpha;
+    return v;
+}
+void FromCpp(const kiln::foundation::DialogProperties& v, kiln_dialog_properties* out) {
+    (void)v;
+    if (!out) return;
+    kiln_dialog_properties c{};
+    c.size = sizeof(c);
+    c.dismiss_on_back_press = bool(v.dismissOnBackPress);
+    c.dismiss_on_click_outside = bool(v.dismissOnClickOutside);
+    c.secure_policy = kiln_secure_flag_policy(v.securePolicy);
+    c.use_platform_default_width = bool(v.usePlatformDefaultWidth);
+    c.decor_fits_system_windows = bool(v.decorFitsSystemWindows);
+    c.window_title = kiln::capi::TransientString(std::string(v.windowTitle));
+    c.blur_behind_radius = (v.blurBehindRadius).value;
+    c.background_blur_radius = (v.backgroundBlurRadius).value;
+    c.scrim_alpha = float(v.scrimAlpha);
+    const size_t n = out->size < sizeof(size_t) ? sizeof(c) : std::min(out->size, sizeof(c));
+    std::memcpy(reinterpret_cast<char*>(out) + sizeof(size_t), reinterpret_cast<const char*>(&c) + sizeof(size_t), n - sizeof(size_t));
+    out->size = n;
+}
+const kiln_dialog_properties* FromCppTransient(const kiln::foundation::DialogProperties& v) {
+    auto* c = kiln::capi::NewTransient<kiln_dialog_properties>();
+    c->size = sizeof(*c);
+    FromCpp(v, c);
+    return c;
+}
 kiln::material3::AlertDialogOptions ToCpp(const kiln_m3_alert_dialog_options* in) {
     kiln::material3::AlertDialogOptions v{};
     if (!in) return v;
@@ -964,6 +1127,7 @@ kiln::material3::AlertDialogOptions ToCpp(const kiln_m3_alert_dialog_options* in
     v.titleContentColor = (c.title_content_color ? std::optional<kiln::ui::Color>(kiln::capi::ToColor(c.title_content_color)) : std::nullopt);
     v.textContentColor = (c.text_content_color ? std::optional<kiln::ui::Color>(kiln::capi::ToColor(c.text_content_color)) : std::nullopt);
     v.tonalElevation = kiln::capi::ToDp(c.tonal_elevation);
+    if (c.properties) v.properties = ToCpp(c.properties);
     return v;
 }
 void FromCpp(const kiln::material3::AlertDialogOptions& v, kiln_m3_alert_dialog_options* out) {
@@ -977,12 +1141,40 @@ void FromCpp(const kiln::material3::AlertDialogOptions& v, kiln_m3_alert_dialog_
     c.title_content_color = ((v.titleContentColor) ? kiln::capi::FromColor(*(v.titleContentColor)) : KILN_COLOR_UNSPECIFIED);
     c.text_content_color = ((v.textContentColor) ? kiln::capi::FromColor(*(v.textContentColor)) : KILN_COLOR_UNSPECIFIED);
     c.tonal_elevation = (v.tonalElevation).value;
+    c.properties = FromCppTransient(v.properties);
     const size_t n = out->size < sizeof(size_t) ? sizeof(c) : std::min(out->size, sizeof(c));
     std::memcpy(reinterpret_cast<char*>(out) + sizeof(size_t), reinterpret_cast<const char*>(&c) + sizeof(size_t), n - sizeof(size_t));
     out->size = n;
 }
 const kiln_m3_alert_dialog_options* FromCppTransient(const kiln::material3::AlertDialogOptions& v) {
     auto* c = kiln::capi::NewTransient<kiln_m3_alert_dialog_options>();
+    c->size = sizeof(*c);
+    FromCpp(v, c);
+    return c;
+}
+kiln::rt::Key ToCpp(const kiln_rt_key* in) {
+    kiln::rt::Key v{};
+    if (!in) return v;
+    kiln_rt_key c;
+    kiln_rt_key_init(&c);
+    if (in->size > sizeof(size_t)) std::memcpy(reinterpret_cast<char*>(&c) + sizeof(size_t), reinterpret_cast<const char*>(in) + sizeof(size_t), std::min(in->size, sizeof(c)) - sizeof(size_t));
+    v.value = c.value;
+    v.explicitKey = c.explicit_key;
+    return v;
+}
+void FromCpp(const kiln::rt::Key& v, kiln_rt_key* out) {
+    (void)v;
+    if (!out) return;
+    kiln_rt_key c{};
+    c.size = sizeof(c);
+    c.value = uint64_t(v.value);
+    c.explicit_key = bool(v.explicitKey);
+    const size_t n = out->size < sizeof(size_t) ? sizeof(c) : std::min(out->size, sizeof(c));
+    std::memcpy(reinterpret_cast<char*>(out) + sizeof(size_t), reinterpret_cast<const char*>(&c) + sizeof(size_t), n - sizeof(size_t));
+    out->size = n;
+}
+const kiln_rt_key* FromCppTransient(const kiln::rt::Key& v) {
+    auto* c = kiln::capi::NewTransient<kiln_rt_key>();
     c->size = sizeof(*c);
     FromCpp(v, c);
     return c;
@@ -1033,6 +1225,7 @@ kiln::material3::TopAppBarOptions ToCpp(const kiln_m3_top_app_bar_options* in) {
     if (c.subtitle.call) v.subtitle = kiln::capi::Fn(c.subtitle);
     v.titleHorizontalAlignment = kiln::ui::AlignmentH{ c.title_horizontal_alignment };
     v.expandedHeight = kiln::capi::ToDp(c.expanded_height);
+    if (c.window_insets) v.windowInsets = (c.window_insets ? std::optional<kiln::foundation::WindowInsets>((c.window_insets ? c.window_insets->insets : kiln::foundation::WindowInsets{})) : std::nullopt);
     if (c.colors) v.colors = (c.colors ? std::optional<kiln::material3::TopAppBarColors>(ToCpp(c.colors)) : std::nullopt);
     if (c.scroll_behavior) v.scrollBehavior = (c.scroll_behavior ? c.scroll_behavior->Shared() : nullptr);
     v.contentPadding = kiln::capi::ToPadding(c.content_padding);
@@ -1045,6 +1238,7 @@ void FromCpp(const kiln::material3::TopAppBarOptions& v, kiln_m3_top_app_bar_opt
     c.size = sizeof(c);
     c.title_horizontal_alignment = (v.titleHorizontalAlignment).bias;
     c.expanded_height = (v.expandedHeight).value;
+    c.window_insets = ([&]() -> const kiln_window_insets* { if (!(v.windowInsets)) return nullptr;  return kiln::capi::TransientInsets((*(v.windowInsets))); }());
     c.colors = ([&]() -> const kiln_m3_top_app_bar_colors* { if (!(v.colors)) return nullptr;  return FromCppTransient((*(v.colors))); }());
     auto* h0 = kiln::capi::NewTransient<kiln_m3_top_app_bar_scroll_behavior>();
     h0->owner = std::const_pointer_cast<kiln::material3::TopAppBarScrollBehavior>(v.scrollBehavior); h0->ptr = h0->owner.get();
@@ -1072,6 +1266,7 @@ kiln::material3::TwoRowsTopAppBarOptions ToCpp(const kiln_m3_two_rows_top_app_ba
     v.titleHorizontalAlignment = kiln::ui::AlignmentH{ c.title_horizontal_alignment };
     v.collapsedHeight = kiln::capi::ToDp(c.collapsed_height);
     v.expandedHeight = kiln::capi::ToDp(c.expanded_height);
+    if (c.window_insets) v.windowInsets = (c.window_insets ? std::optional<kiln::foundation::WindowInsets>((c.window_insets ? c.window_insets->insets : kiln::foundation::WindowInsets{})) : std::nullopt);
     if (c.colors) v.colors = (c.colors ? std::optional<kiln::material3::TopAppBarColors>(ToCpp(c.colors)) : std::nullopt);
     if (c.scroll_behavior) v.scrollBehavior = (c.scroll_behavior ? c.scroll_behavior->Shared() : nullptr);
     return v;
@@ -1084,6 +1279,7 @@ void FromCpp(const kiln::material3::TwoRowsTopAppBarOptions& v, kiln_m3_two_rows
     c.title_horizontal_alignment = (v.titleHorizontalAlignment).bias;
     c.collapsed_height = (v.collapsedHeight).value;
     c.expanded_height = (v.expandedHeight).value;
+    c.window_insets = ([&]() -> const kiln_window_insets* { if (!(v.windowInsets)) return nullptr;  return kiln::capi::TransientInsets((*(v.windowInsets))); }());
     c.colors = ([&]() -> const kiln_m3_top_app_bar_colors* { if (!(v.colors)) return nullptr;  return FromCppTransient((*(v.colors))); }());
     auto* h0 = kiln::capi::NewTransient<kiln_m3_top_app_bar_scroll_behavior>();
     h0->owner = std::const_pointer_cast<kiln::material3::TopAppBarScrollBehavior>(v.scrollBehavior); h0->ptr = h0->owner.get();
@@ -1108,6 +1304,7 @@ kiln::material3::BottomAppBarOptions ToCpp(const kiln_m3_bottom_app_bar_options*
     v.contentColor = (c.content_color ? std::optional<kiln::ui::Color>(kiln::capi::ToColor(c.content_color)) : std::nullopt);
     v.tonalElevation = kiln::capi::ToDp(c.tonal_elevation);
     v.contentPadding = kiln::capi::ToPadding(c.content_padding);
+    if (c.window_insets) v.windowInsets = (c.window_insets ? std::optional<kiln::foundation::WindowInsets>((c.window_insets ? c.window_insets->insets : kiln::foundation::WindowInsets{})) : std::nullopt);
     if (c.scroll_behavior) v.scrollBehavior = (c.scroll_behavior ? c.scroll_behavior->Shared() : nullptr);
     return v;
 }
@@ -1120,6 +1317,7 @@ void FromCpp(const kiln::material3::BottomAppBarOptions& v, kiln_m3_bottom_app_b
     c.content_color = ((v.contentColor) ? kiln::capi::FromColor(*(v.contentColor)) : KILN_COLOR_UNSPECIFIED);
     c.tonal_elevation = (v.tonalElevation).value;
     c.content_padding = kiln::capi::FromPadding(v.contentPadding);
+    c.window_insets = ([&]() -> const kiln_window_insets* { if (!(v.windowInsets)) return nullptr;  return kiln::capi::TransientInsets((*(v.windowInsets))); }());
     auto* h0 = kiln::capi::NewTransient<kiln_m3_bottom_app_bar_scroll_behavior>();
     h0->owner = std::const_pointer_cast<kiln::material3::BottomAppBarScrollBehavior>(v.scrollBehavior); h0->ptr = h0->owner.get();
     c.scroll_behavior = h0;
@@ -1144,6 +1342,7 @@ kiln::material3::FlexibleBottomAppBarOptions ToCpp(const kiln_m3_flexible_bottom
     v.contentPadding = kiln::capi::ToPadding(c.content_padding);
     v.horizontalArrangement = kiln::capi::ToArrangement(c.horizontal_arrangement, false);
     v.expandedHeight = kiln::capi::ToDp(c.expanded_height);
+    if (c.window_insets) v.windowInsets = (c.window_insets ? std::optional<kiln::foundation::WindowInsets>((c.window_insets ? c.window_insets->insets : kiln::foundation::WindowInsets{})) : std::nullopt);
     if (c.scroll_behavior) v.scrollBehavior = (c.scroll_behavior ? c.scroll_behavior->Shared() : nullptr);
     return v;
 }
@@ -1155,7 +1354,9 @@ void FromCpp(const kiln::material3::FlexibleBottomAppBarOptions& v, kiln_m3_flex
     c.container_color = ((v.containerColor) ? kiln::capi::FromColor(*(v.containerColor)) : KILN_COLOR_UNSPECIFIED);
     c.content_color = ((v.contentColor) ? kiln::capi::FromColor(*(v.contentColor)) : KILN_COLOR_UNSPECIFIED);
     c.content_padding = kiln::capi::FromPadding(v.contentPadding);
+    c.horizontal_arrangement = kiln::capi::FromArrangement(v.horizontalArrangement);
     c.expanded_height = (v.expandedHeight).value;
+    c.window_insets = ([&]() -> const kiln_window_insets* { if (!(v.windowInsets)) return nullptr;  return kiln::capi::TransientInsets((*(v.windowInsets))); }());
     auto* h0 = kiln::capi::NewTransient<kiln_m3_bottom_app_bar_scroll_behavior>();
     h0->owner = std::const_pointer_cast<kiln::material3::BottomAppBarScrollBehavior>(v.scrollBehavior); h0->ptr = h0->owner.get();
     c.scroll_behavior = h0;
@@ -1238,6 +1439,7 @@ kiln::material3::IconButtonOptions ToCpp(const kiln_m3_icon_button_options* in) 
     if (c.shapes) v.shapes = (c.shapes ? std::optional<kiln::material3::IconButtonShapes>(ToCpp(c.shapes)) : std::nullopt);
     if (c.colors) v.colors = (c.colors ? std::optional<kiln::material3::IconButtonColors>(ToCpp(c.colors)) : std::nullopt);
     if (c.border.set) v.border = (c.border.set ? std::optional<std::optional<kiln::foundation::BorderStroke>>(c.border.value ? std::optional<kiln::foundation::BorderStroke>(kiln::foundation::BorderStroke(kiln::ui::Dp((*c.border.value).width), kiln::capi::ToColor((*c.border.value).color))) : std::nullopt) : std::nullopt);
+    if (c.interaction_source) v.interactionSource = (c.interaction_source ? c.interaction_source->source : nullptr);
     return v;
 }
 void FromCpp(const kiln::material3::IconButtonOptions& v, kiln_m3_icon_button_options* out) {
@@ -1249,6 +1451,7 @@ void FromCpp(const kiln::material3::IconButtonOptions& v, kiln_m3_icon_button_op
     c.shape = kiln::capi::TransientShape(v.shape);
     c.shapes = ([&]() -> const kiln_m3_icon_button_shapes* { if (!(v.shapes)) return nullptr;  return FromCppTransient((*(v.shapes))); }());
     c.colors = ([&]() -> const kiln_m3_icon_button_colors* { if (!(v.colors)) return nullptr;  return FromCppTransient((*(v.colors))); }());
+    c.interaction_source = kiln::capi::TransientSource(v.interactionSource);
     const size_t n = out->size < sizeof(size_t) ? sizeof(c) : std::min(out->size, sizeof(c));
     std::memcpy(reinterpret_cast<char*>(out) + sizeof(size_t), reinterpret_cast<const char*>(&c) + sizeof(size_t), n - sizeof(size_t));
     out->size = n;
@@ -1334,6 +1537,7 @@ kiln::material3::IconToggleButtonOptions ToCpp(const kiln_m3_icon_toggle_button_
     if (c.shapes) v.shapes = (c.shapes ? std::optional<kiln::material3::IconToggleButtonShapes>(ToCpp(c.shapes)) : std::nullopt);
     if (c.colors) v.colors = (c.colors ? std::optional<kiln::material3::IconToggleButtonColors>(ToCpp(c.colors)) : std::nullopt);
     if (c.border.set) v.border = (c.border.set ? std::optional<std::optional<kiln::foundation::BorderStroke>>(c.border.value ? std::optional<kiln::foundation::BorderStroke>(kiln::foundation::BorderStroke(kiln::ui::Dp((*c.border.value).width), kiln::capi::ToColor((*c.border.value).color))) : std::nullopt) : std::nullopt);
+    if (c.interaction_source) v.interactionSource = (c.interaction_source ? c.interaction_source->source : nullptr);
     return v;
 }
 void FromCpp(const kiln::material3::IconToggleButtonOptions& v, kiln_m3_icon_toggle_button_options* out) {
@@ -1345,6 +1549,7 @@ void FromCpp(const kiln::material3::IconToggleButtonOptions& v, kiln_m3_icon_tog
     c.shape = kiln::capi::TransientShape(v.shape);
     c.shapes = ([&]() -> const kiln_m3_icon_toggle_button_shapes* { if (!(v.shapes)) return nullptr;  return FromCppTransient((*(v.shapes))); }());
     c.colors = ([&]() -> const kiln_m3_icon_toggle_button_colors* { if (!(v.colors)) return nullptr;  return FromCppTransient((*(v.colors))); }());
+    c.interaction_source = kiln::capi::TransientSource(v.interactionSource);
     const size_t n = out->size < sizeof(size_t) ? sizeof(c) : std::min(out->size, sizeof(c));
     std::memcpy(reinterpret_cast<char*>(out) + sizeof(size_t), reinterpret_cast<const char*>(&c) + sizeof(size_t), n - sizeof(size_t));
     out->size = n;
@@ -1364,6 +1569,7 @@ kiln::material3::AppBarOverflowIndicatorOptions ToCpp(const kiln_m3_app_bar_over
     v.enabled = c.enabled;
     if (c.shape) v.shape = kiln::capi::ToShape(c.shape);
     if (c.colors) v.colors = (c.colors ? std::optional<kiln::material3::IconButtonColors>(ToCpp(c.colors)) : std::nullopt);
+    if (c.interaction_source) v.interactionSource = (c.interaction_source ? c.interaction_source->source : nullptr);
     return v;
 }
 void FromCpp(const kiln::material3::AppBarOverflowIndicatorOptions& v, kiln_m3_app_bar_overflow_indicator_options* out) {
@@ -1374,6 +1580,7 @@ void FromCpp(const kiln::material3::AppBarOverflowIndicatorOptions& v, kiln_m3_a
     c.enabled = bool(v.enabled);
     c.shape = kiln::capi::TransientShape(v.shape);
     c.colors = ([&]() -> const kiln_m3_icon_button_colors* { if (!(v.colors)) return nullptr;  return FromCppTransient((*(v.colors))); }());
+    c.interaction_source = kiln::capi::TransientSource(v.interactionSource);
     const size_t n = out->size < sizeof(size_t) ? sizeof(c) : std::min(out->size, sizeof(c));
     std::memcpy(reinterpret_cast<char*>(out) + sizeof(size_t), reinterpret_cast<const char*>(&c) + sizeof(size_t), n - sizeof(size_t));
     out->size = n;
@@ -1454,6 +1661,7 @@ kiln::material3::BottomSheetOptions ToCpp(const kiln_m3_bottom_sheet_options* in
     v.gesturesEnabled = c.gestures_enabled;
     v.backHandlerEnabled = c.back_handler_enabled;
     if (c.drag_handle.call) v.dragHandle = kiln::capi::Fn(c.drag_handle);
+    if (c.content_window_insets.call) v.contentWindowInsets = ToCpp_kiln_m3_fn_to_window_insets(c.content_window_insets);
     if (c.shape) v.shape = kiln::capi::ToShape(c.shape);
     v.containerColor = (c.container_color ? std::optional<kiln::ui::Color>(kiln::capi::ToColor(c.container_color)) : std::nullopt);
     v.contentColor = (c.content_color ? std::optional<kiln::ui::Color>(kiln::capi::ToColor(c.content_color)) : std::nullopt);
@@ -1711,6 +1919,7 @@ kiln::material3::ButtonOptions ToCpp(const kiln_m3_button_options* in) {
     if (c.elevation.set) v.elevation = (c.elevation.set ? std::optional<std::optional<kiln::material3::ButtonElevation>>(c.elevation.value ? std::optional<kiln::material3::ButtonElevation>(ToCpp(c.elevation.value)) : std::nullopt) : std::nullopt);
     if (c.border.set) v.border = (c.border.set ? std::optional<std::optional<kiln::foundation::BorderStroke>>(c.border.value ? std::optional<kiln::foundation::BorderStroke>(kiln::foundation::BorderStroke(kiln::ui::Dp((*c.border.value).width), kiln::capi::ToColor((*c.border.value).color))) : std::nullopt) : std::nullopt);
     if (c.content_padding) v.contentPadding = (c.content_padding ? std::optional<kiln::foundation::PaddingValues>(kiln::capi::ToPadding((*c.content_padding))) : std::nullopt);
+    if (c.interaction_source) v.interactionSource = (c.interaction_source ? c.interaction_source->source : nullptr);
     return v;
 }
 void FromCpp(const kiln::material3::ButtonOptions& v, kiln_m3_button_options* out) {
@@ -1722,6 +1931,8 @@ void FromCpp(const kiln::material3::ButtonOptions& v, kiln_m3_button_options* ou
     c.shape = kiln::capi::TransientShape(v.shape);
     c.shapes = ([&]() -> const kiln_m3_button_shapes* { if (!(v.shapes)) return nullptr;  return FromCppTransient((*(v.shapes))); }());
     c.colors = ([&]() -> const kiln_m3_button_colors* { if (!(v.colors)) return nullptr;  return FromCppTransient((*(v.colors))); }());
+    c.content_padding = ([&]() -> const kiln_padding* { if (!(v.contentPadding)) return nullptr;  auto* p = kiln::capi::NewTransient<kiln_padding>(); *p = kiln::capi::FromPadding((*(v.contentPadding))); return p; }());
+    c.interaction_source = kiln::capi::TransientSource(v.interactionSource);
     const size_t n = out->size < sizeof(size_t) ? sizeof(c) : std::min(out->size, sizeof(c));
     std::memcpy(reinterpret_cast<char*>(out) + sizeof(size_t), reinterpret_cast<const char*>(&c) + sizeof(size_t), n - sizeof(size_t));
     out->size = n;
@@ -1809,6 +2020,7 @@ kiln::material3::ToggleButtonOptions ToCpp(const kiln_m3_toggle_button_options* 
     if (c.elevation.set) v.elevation = (c.elevation.set ? std::optional<std::optional<kiln::material3::ButtonElevation>>(c.elevation.value ? std::optional<kiln::material3::ButtonElevation>(ToCpp(c.elevation.value)) : std::nullopt) : std::nullopt);
     if (c.border.set) v.border = (c.border.set ? std::optional<std::optional<kiln::foundation::BorderStroke>>(c.border.value ? std::optional<kiln::foundation::BorderStroke>(kiln::foundation::BorderStroke(kiln::ui::Dp((*c.border.value).width), kiln::capi::ToColor((*c.border.value).color))) : std::nullopt) : std::nullopt);
     if (c.content_padding) v.contentPadding = (c.content_padding ? std::optional<kiln::foundation::PaddingValues>(kiln::capi::ToPadding((*c.content_padding))) : std::nullopt);
+    if (c.interaction_source) v.interactionSource = (c.interaction_source ? c.interaction_source->source : nullptr);
     return v;
 }
 void FromCpp(const kiln::material3::ToggleButtonOptions& v, kiln_m3_toggle_button_options* out) {
@@ -1819,6 +2031,8 @@ void FromCpp(const kiln::material3::ToggleButtonOptions& v, kiln_m3_toggle_butto
     c.enabled = bool(v.enabled);
     c.shapes = ([&]() -> const kiln_m3_toggle_button_shapes* { if (!(v.shapes)) return nullptr;  return FromCppTransient((*(v.shapes))); }());
     c.colors = ([&]() -> const kiln_m3_toggle_button_colors* { if (!(v.colors)) return nullptr;  return FromCppTransient((*(v.colors))); }());
+    c.content_padding = ([&]() -> const kiln_padding* { if (!(v.contentPadding)) return nullptr;  auto* p = kiln::capi::NewTransient<kiln_padding>(); *p = kiln::capi::FromPadding((*(v.contentPadding))); return p; }());
+    c.interaction_source = kiln::capi::TransientSource(v.interactionSource);
     const size_t n = out->size < sizeof(size_t) ? sizeof(c) : std::min(out->size, sizeof(c));
     std::memcpy(reinterpret_cast<char*>(out) + sizeof(size_t), reinterpret_cast<const char*>(&c) + sizeof(size_t), n - sizeof(size_t));
     out->size = n;
@@ -1838,6 +2052,7 @@ kiln::material3::ButtonGroupDefaults::OverflowIndicatorOptions ToCpp(const kiln_
     v.enabled = c.enabled;
     if (c.shape) v.shape = kiln::capi::ToShape(c.shape);
     if (c.colors) v.colors = (c.colors ? std::optional<kiln::material3::IconButtonColors>(ToCpp(c.colors)) : std::nullopt);
+    if (c.interaction_source) v.interactionSource = (c.interaction_source ? c.interaction_source->source : nullptr);
     return v;
 }
 void FromCpp(const kiln::material3::ButtonGroupDefaults::OverflowIndicatorOptions& v, kiln_m3_button_group_defaults_overflow_indicator_options* out) {
@@ -1848,6 +2063,7 @@ void FromCpp(const kiln::material3::ButtonGroupDefaults::OverflowIndicatorOption
     c.enabled = bool(v.enabled);
     c.shape = kiln::capi::TransientShape(v.shape);
     c.colors = ([&]() -> const kiln_m3_icon_button_colors* { if (!(v.colors)) return nullptr;  return FromCppTransient((*(v.colors))); }());
+    c.interaction_source = kiln::capi::TransientSource(v.interactionSource);
     const size_t n = out->size < sizeof(size_t) ? sizeof(c) : std::min(out->size, sizeof(c));
     std::memcpy(reinterpret_cast<char*>(out) + sizeof(size_t), reinterpret_cast<const char*>(&c) + sizeof(size_t), n - sizeof(size_t));
     out->size = n;
@@ -1875,6 +2091,7 @@ void FromCpp(const kiln::material3::ButtonGroupOptions& v, kiln_m3_button_group_
     kiln_m3_button_group_options c{};
     c.size = sizeof(c);
     c.expanded_ratio = float(v.expandedRatio);
+    c.horizontal_arrangement = ([&]() -> const kiln_arrangement* { if (!(v.horizontalArrangement)) return nullptr;  auto* p = kiln::capi::NewTransient<kiln_arrangement>(); *p = kiln::capi::FromArrangement((*(v.horizontalArrangement))); return p; }());
     c.vertical_alignment = (v.verticalAlignment).bias;
     const size_t n = out->size < sizeof(size_t) ? sizeof(c) : std::min(out->size, sizeof(c));
     std::memcpy(reinterpret_cast<char*>(out) + sizeof(size_t), reinterpret_cast<const char*>(&c) + sizeof(size_t), n - sizeof(size_t));
@@ -1963,6 +2180,7 @@ kiln::material3::CardOptions ToCpp(const kiln_m3_card_options* in) {
     if (c.colors) v.colors = (c.colors ? std::optional<kiln::material3::CardColors>(ToCpp(c.colors)) : std::nullopt);
     if (c.elevation) v.elevation = (c.elevation ? std::optional<kiln::material3::CardElevation>(ToCpp(c.elevation)) : std::nullopt);
     if (c.border.set) v.border = (c.border.set ? std::optional<std::optional<kiln::foundation::BorderStroke>>(c.border.value ? std::optional<kiln::foundation::BorderStroke>(kiln::foundation::BorderStroke(kiln::ui::Dp((*c.border.value).width), kiln::capi::ToColor((*c.border.value).color))) : std::nullopt) : std::nullopt);
+    if (c.interaction_source) v.interactionSource = (c.interaction_source ? c.interaction_source->source : nullptr);
     return v;
 }
 void FromCpp(const kiln::material3::CardOptions& v, kiln_m3_card_options* out) {
@@ -1974,6 +2192,7 @@ void FromCpp(const kiln::material3::CardOptions& v, kiln_m3_card_options* out) {
     c.shape = kiln::capi::TransientShape(v.shape);
     c.colors = ([&]() -> const kiln_m3_card_colors* { if (!(v.colors)) return nullptr;  return FromCppTransient((*(v.colors))); }());
     c.elevation = ([&]() -> const kiln_m3_card_elevation* { if (!(v.elevation)) return nullptr;  return FromCppTransient((*(v.elevation))); }());
+    c.interaction_source = kiln::capi::TransientSource(v.interactionSource);
     const size_t n = out->size < sizeof(size_t) ? sizeof(c) : std::min(out->size, sizeof(c));
     std::memcpy(reinterpret_cast<char*>(out) + sizeof(size_t), reinterpret_cast<const char*>(&c) + sizeof(size_t), n - sizeof(size_t));
     out->size = n;
@@ -2062,6 +2281,37 @@ const kiln_m3_checkbox_colors* FromCppTransient(const kiln::material3::CheckboxC
     FromCpp(v, c);
     return c;
 }
+kiln::gfx::Stroke ToCpp(const kiln_stroke* in) {
+    kiln::gfx::Stroke v{};
+    if (!in) return v;
+    kiln_stroke c;
+    kiln_stroke_init(&c);
+    if (in->size > sizeof(size_t)) std::memcpy(reinterpret_cast<char*>(&c) + sizeof(size_t), reinterpret_cast<const char*>(in) + sizeof(size_t), std::min(in->size, sizeof(c)) - sizeof(size_t));
+    v.width = c.width;
+    v.miter = c.miter;
+    v.cap = kiln::gfx::StrokeCap(c.cap);
+    v.join = kiln::gfx::StrokeJoin(c.join);
+    return v;
+}
+void FromCpp(const kiln::gfx::Stroke& v, kiln_stroke* out) {
+    (void)v;
+    if (!out) return;
+    kiln_stroke c{};
+    c.size = sizeof(c);
+    c.width = float(v.width);
+    c.miter = float(v.miter);
+    c.cap = kiln_stroke_cap(v.cap);
+    c.join = kiln_stroke_join(v.join);
+    const size_t n = out->size < sizeof(size_t) ? sizeof(c) : std::min(out->size, sizeof(c));
+    std::memcpy(reinterpret_cast<char*>(out) + sizeof(size_t), reinterpret_cast<const char*>(&c) + sizeof(size_t), n - sizeof(size_t));
+    out->size = n;
+}
+const kiln_stroke* FromCppTransient(const kiln::gfx::Stroke& v) {
+    auto* c = kiln::capi::NewTransient<kiln_stroke>();
+    c->size = sizeof(*c);
+    FromCpp(v, c);
+    return c;
+}
 kiln::material3::CheckboxOptions ToCpp(const kiln_m3_checkbox_options* in) {
     kiln::material3::CheckboxOptions v{};
     if (!in) return v;
@@ -2070,6 +2320,9 @@ kiln::material3::CheckboxOptions ToCpp(const kiln_m3_checkbox_options* in) {
     if (in->size > sizeof(size_t)) std::memcpy(reinterpret_cast<char*>(&c) + sizeof(size_t), reinterpret_cast<const char*>(in) + sizeof(size_t), std::min(in->size, sizeof(c)) - sizeof(size_t));
     v.enabled = c.enabled;
     if (c.colors) v.colors = (c.colors ? std::optional<kiln::material3::CheckboxColors>(ToCpp(c.colors)) : std::nullopt);
+    if (c.checkmark_stroke) v.checkmarkStroke = (c.checkmark_stroke ? std::optional<kiln::gfx::Stroke>(ToCpp(c.checkmark_stroke)) : std::nullopt);
+    if (c.outline_stroke) v.outlineStroke = (c.outline_stroke ? std::optional<kiln::gfx::Stroke>(ToCpp(c.outline_stroke)) : std::nullopt);
+    if (c.interaction_source) v.interactionSource = (c.interaction_source ? c.interaction_source->source : nullptr);
     return v;
 }
 void FromCpp(const kiln::material3::CheckboxOptions& v, kiln_m3_checkbox_options* out) {
@@ -2079,6 +2332,9 @@ void FromCpp(const kiln::material3::CheckboxOptions& v, kiln_m3_checkbox_options
     c.size = sizeof(c);
     c.enabled = bool(v.enabled);
     c.colors = ([&]() -> const kiln_m3_checkbox_colors* { if (!(v.colors)) return nullptr;  return FromCppTransient((*(v.colors))); }());
+    c.checkmark_stroke = ([&]() -> const kiln_stroke* { if (!(v.checkmarkStroke)) return nullptr;  return FromCppTransient((*(v.checkmarkStroke))); }());
+    c.outline_stroke = ([&]() -> const kiln_stroke* { if (!(v.outlineStroke)) return nullptr;  return FromCppTransient((*(v.outlineStroke))); }());
+    c.interaction_source = kiln::capi::TransientSource(v.interactionSource);
     const size_t n = out->size < sizeof(size_t) ? sizeof(c) : std::min(out->size, sizeof(c));
     std::memcpy(reinterpret_cast<char*>(out) + sizeof(size_t), reinterpret_cast<const char*>(&c) + sizeof(size_t), n - sizeof(size_t));
     out->size = n;
@@ -2178,6 +2434,7 @@ kiln::material3::ChipOptions ToCpp(const kiln_m3_chip_options* in) {
     if (c.border.set) v.border = (c.border.set ? std::optional<std::optional<kiln::foundation::BorderStroke>>(c.border.value ? std::optional<kiln::foundation::BorderStroke>(kiln::foundation::BorderStroke(kiln::ui::Dp((*c.border.value).width), kiln::capi::ToColor((*c.border.value).color))) : std::nullopt) : std::nullopt);
     if (c.horizontal_arrangement) v.horizontalArrangement = (c.horizontal_arrangement ? std::optional<kiln::foundation::Arrangement>(kiln::capi::ToArrangement((*c.horizontal_arrangement), false)) : std::nullopt);
     if (c.content_padding) v.contentPadding = (c.content_padding ? std::optional<kiln::foundation::PaddingValues>(kiln::capi::ToPadding((*c.content_padding))) : std::nullopt);
+    if (c.interaction_source) v.interactionSource = (c.interaction_source ? c.interaction_source->source : nullptr);
     return v;
 }
 void FromCpp(const kiln::material3::ChipOptions& v, kiln_m3_chip_options* out) {
@@ -2188,6 +2445,9 @@ void FromCpp(const kiln::material3::ChipOptions& v, kiln_m3_chip_options* out) {
     c.enabled = bool(v.enabled);
     c.shape = kiln::capi::TransientShape(v.shape);
     c.colors = ([&]() -> const kiln_m3_chip_colors* { if (!(v.colors)) return nullptr;  return FromCppTransient((*(v.colors))); }());
+    c.horizontal_arrangement = ([&]() -> const kiln_arrangement* { if (!(v.horizontalArrangement)) return nullptr;  auto* p = kiln::capi::NewTransient<kiln_arrangement>(); *p = kiln::capi::FromArrangement((*(v.horizontalArrangement))); return p; }());
+    c.content_padding = ([&]() -> const kiln_padding* { if (!(v.contentPadding)) return nullptr;  auto* p = kiln::capi::NewTransient<kiln_padding>(); *p = kiln::capi::FromPadding((*(v.contentPadding))); return p; }());
+    c.interaction_source = kiln::capi::TransientSource(v.interactionSource);
     const size_t n = out->size < sizeof(size_t) ? sizeof(c) : std::min(out->size, sizeof(c));
     std::memcpy(reinterpret_cast<char*>(out) + sizeof(size_t), reinterpret_cast<const char*>(&c) + sizeof(size_t), n - sizeof(size_t));
     out->size = n;
@@ -2293,6 +2553,7 @@ kiln::material3::SelectableChipOptions ToCpp(const kiln_m3_selectable_chip_optio
     if (c.border.set) v.border = (c.border.set ? std::optional<std::optional<kiln::foundation::BorderStroke>>(c.border.value ? std::optional<kiln::foundation::BorderStroke>(kiln::foundation::BorderStroke(kiln::ui::Dp((*c.border.value).width), kiln::capi::ToColor((*c.border.value).color))) : std::nullopt) : std::nullopt);
     if (c.horizontal_arrangement) v.horizontalArrangement = (c.horizontal_arrangement ? std::optional<kiln::foundation::Arrangement>(kiln::capi::ToArrangement((*c.horizontal_arrangement), false)) : std::nullopt);
     if (c.content_padding) v.contentPadding = (c.content_padding ? std::optional<kiln::foundation::PaddingValues>(kiln::capi::ToPadding((*c.content_padding))) : std::nullopt);
+    if (c.interaction_source) v.interactionSource = (c.interaction_source ? c.interaction_source->source : nullptr);
     return v;
 }
 void FromCpp(const kiln::material3::SelectableChipOptions& v, kiln_m3_selectable_chip_options* out) {
@@ -2304,6 +2565,9 @@ void FromCpp(const kiln::material3::SelectableChipOptions& v, kiln_m3_selectable
     c.shape = kiln::capi::TransientShape(v.shape);
     c.shapes = ([&]() -> const kiln_m3_chip_shapes* { if (!(v.shapes)) return nullptr;  return FromCppTransient((*(v.shapes))); }());
     c.colors = ([&]() -> const kiln_m3_selectable_chip_colors* { if (!(v.colors)) return nullptr;  return FromCppTransient((*(v.colors))); }());
+    c.horizontal_arrangement = ([&]() -> const kiln_arrangement* { if (!(v.horizontalArrangement)) return nullptr;  auto* p = kiln::capi::NewTransient<kiln_arrangement>(); *p = kiln::capi::FromArrangement((*(v.horizontalArrangement))); return p; }());
+    c.content_padding = ([&]() -> const kiln_padding* { if (!(v.contentPadding)) return nullptr;  auto* p = kiln::capi::NewTransient<kiln_padding>(); *p = kiln::capi::FromPadding((*(v.contentPadding))); return p; }());
+    c.interaction_source = kiln::capi::TransientSource(v.interactionSource);
     const size_t n = out->size < sizeof(size_t) ? sizeof(c) : std::min(out->size, sizeof(c));
     std::memcpy(reinterpret_cast<char*>(out) + sizeof(size_t), reinterpret_cast<const char*>(&c) + sizeof(size_t), n - sizeof(size_t));
     out->size = n;
@@ -2433,6 +2697,33 @@ const kiln_m3_color_scheme* FromCppTransient(const kiln::material3::ColorScheme&
     FromCpp(v, c);
     return c;
 }
+kiln::foundation::TextSelectionColors ToCpp(const kiln_text_selection_colors* in) {
+    kiln::foundation::TextSelectionColors v{};
+    if (!in) return v;
+    kiln_text_selection_colors c;
+    kiln_text_selection_colors_init(&c);
+    if (in->size > sizeof(size_t)) std::memcpy(reinterpret_cast<char*>(&c) + sizeof(size_t), reinterpret_cast<const char*>(in) + sizeof(size_t), std::min(in->size, sizeof(c)) - sizeof(size_t));
+    v.handleColor = kiln::capi::ToColor(c.handle_color);
+    v.backgroundColor = kiln::capi::ToColor(c.background_color);
+    return v;
+}
+void FromCpp(const kiln::foundation::TextSelectionColors& v, kiln_text_selection_colors* out) {
+    (void)v;
+    if (!out) return;
+    kiln_text_selection_colors c{};
+    c.size = sizeof(c);
+    c.handle_color = kiln::capi::FromColor(v.handleColor);
+    c.background_color = kiln::capi::FromColor(v.backgroundColor);
+    const size_t n = out->size < sizeof(size_t) ? sizeof(c) : std::min(out->size, sizeof(c));
+    std::memcpy(reinterpret_cast<char*>(out) + sizeof(size_t), reinterpret_cast<const char*>(&c) + sizeof(size_t), n - sizeof(size_t));
+    out->size = n;
+}
+const kiln_text_selection_colors* FromCppTransient(const kiln::foundation::TextSelectionColors& v) {
+    auto* c = kiln::capi::NewTransient<kiln_text_selection_colors>();
+    c->size = sizeof(*c);
+    FromCpp(v, c);
+    return c;
+}
 kiln::material3::TextFieldColors ToCpp(const kiln_m3_text_field_colors* in) {
     kiln::material3::TextFieldColors v{};
     if (!in) return v;
@@ -2481,6 +2772,7 @@ kiln::material3::TextFieldColors ToCpp(const kiln_m3_text_field_colors* in) {
     v.errorSuffixColor = kiln::capi::ToColor(c.error_suffix_color);
     v.cursorColor = kiln::capi::ToColor(c.cursor_color);
     v.errorCursorColor = kiln::capi::ToColor(c.error_cursor_color);
+    if (c.text_selection_colors) v.textSelectionColors = ToCpp(c.text_selection_colors);
     return v;
 }
 void FromCpp(const kiln::material3::TextFieldColors& v, kiln_m3_text_field_colors* out) {
@@ -2530,6 +2822,7 @@ void FromCpp(const kiln::material3::TextFieldColors& v, kiln_m3_text_field_color
     c.error_suffix_color = kiln::capi::FromColor(v.errorSuffixColor);
     c.cursor_color = kiln::capi::FromColor(v.cursorColor);
     c.error_cursor_color = kiln::capi::FromColor(v.errorCursorColor);
+    c.text_selection_colors = FromCppTransient(v.textSelectionColors);
     const size_t n = out->size < sizeof(size_t) ? sizeof(c) : std::min(out->size, sizeof(c));
     std::memcpy(reinterpret_cast<char*>(out) + sizeof(size_t), reinterpret_cast<const char*>(&c) + sizeof(size_t), n - sizeof(size_t));
     out->size = n;
@@ -2595,6 +2888,68 @@ const kiln_m3_text_field_label_scope* FromCppTransient(const kiln::material3::Te
     FromCpp(v, c);
     return c;
 }
+kiln::foundation::KeyboardOptions ToCpp(const kiln_keyboard_options* in) {
+    kiln::foundation::KeyboardOptions v{};
+    if (!in) return v;
+    kiln_keyboard_options c;
+    kiln_keyboard_options_init(&c);
+    if (in->size > sizeof(size_t)) std::memcpy(reinterpret_cast<char*>(&c) + sizeof(size_t), reinterpret_cast<const char*>(in) + sizeof(size_t), std::min(in->size, sizeof(c)) - sizeof(size_t));
+    if (c.capitalization) v.capitalization = (c.capitalization ? std::optional<kiln::ui::Capitalization>(kiln::ui::Capitalization((*c.capitalization))) : std::nullopt);
+    v.autoCorrectEnabled = (c.auto_correct_enabled.set ? std::optional<bool>(c.auto_correct_enabled.value) : std::nullopt);
+    if (c.keyboard_type) v.keyboardType = (c.keyboard_type ? std::optional<kiln::ui::KeyboardType>(kiln::ui::KeyboardType((*c.keyboard_type))) : std::nullopt);
+    if (c.ime_action) v.imeAction = (c.ime_action ? std::optional<kiln::ui::ImeAction>(kiln::ui::ImeAction((*c.ime_action))) : std::nullopt);
+    v.showKeyboardOnFocus = (c.show_keyboard_on_focus.set ? std::optional<bool>(c.show_keyboard_on_focus.value) : std::nullopt);
+    return v;
+}
+void FromCpp(const kiln::foundation::KeyboardOptions& v, kiln_keyboard_options* out) {
+    (void)v;
+    if (!out) return;
+    kiln_keyboard_options c{};
+    c.size = sizeof(c);
+    c.capitalization = ([&]() -> const kiln_capitalization* { if (!(v.capitalization)) return nullptr;  auto* p = kiln::capi::NewTransient<kiln_capitalization>(); *p = kiln_capitalization((*(v.capitalization))); return p; }());
+    c.auto_correct_enabled = kiln_opt_bool{ (v.autoCorrectEnabled).has_value(), (v.autoCorrectEnabled).value_or(bool{}) };
+    c.keyboard_type = ([&]() -> const kiln_keyboard_type* { if (!(v.keyboardType)) return nullptr;  auto* p = kiln::capi::NewTransient<kiln_keyboard_type>(); *p = kiln_keyboard_type((*(v.keyboardType))); return p; }());
+    c.ime_action = ([&]() -> const kiln_ime_action* { if (!(v.imeAction)) return nullptr;  auto* p = kiln::capi::NewTransient<kiln_ime_action>(); *p = kiln_ime_action((*(v.imeAction))); return p; }());
+    c.show_keyboard_on_focus = kiln_opt_bool{ (v.showKeyboardOnFocus).has_value(), (v.showKeyboardOnFocus).value_or(bool{}) };
+    const size_t n = out->size < sizeof(size_t) ? sizeof(c) : std::min(out->size, sizeof(c));
+    std::memcpy(reinterpret_cast<char*>(out) + sizeof(size_t), reinterpret_cast<const char*>(&c) + sizeof(size_t), n - sizeof(size_t));
+    out->size = n;
+}
+const kiln_keyboard_options* FromCppTransient(const kiln::foundation::KeyboardOptions& v) {
+    auto* c = kiln::capi::NewTransient<kiln_keyboard_options>();
+    c->size = sizeof(*c);
+    FromCpp(v, c);
+    return c;
+}
+kiln::foundation::TextFieldLineLimits ToCpp(const kiln_text_field_line_limits* in) {
+    kiln::foundation::TextFieldLineLimits v{};
+    if (!in) return v;
+    kiln_text_field_line_limits c;
+    kiln_text_field_line_limits_init(&c);
+    if (in->size > sizeof(size_t)) std::memcpy(reinterpret_cast<char*>(&c) + sizeof(size_t), reinterpret_cast<const char*>(in) + sizeof(size_t), std::min(in->size, sizeof(c)) - sizeof(size_t));
+    v.singleLine = c.single_line;
+    v.minHeightInLines = c.min_height_in_lines;
+    v.maxHeightInLines = c.max_height_in_lines;
+    return v;
+}
+void FromCpp(const kiln::foundation::TextFieldLineLimits& v, kiln_text_field_line_limits* out) {
+    (void)v;
+    if (!out) return;
+    kiln_text_field_line_limits c{};
+    c.size = sizeof(c);
+    c.single_line = bool(v.singleLine);
+    c.min_height_in_lines = int32_t(v.minHeightInLines);
+    c.max_height_in_lines = int32_t(v.maxHeightInLines);
+    const size_t n = out->size < sizeof(size_t) ? sizeof(c) : std::min(out->size, sizeof(c));
+    std::memcpy(reinterpret_cast<char*>(out) + sizeof(size_t), reinterpret_cast<const char*>(&c) + sizeof(size_t), n - sizeof(size_t));
+    out->size = n;
+}
+const kiln_text_field_line_limits* FromCppTransient(const kiln::foundation::TextFieldLineLimits& v) {
+    auto* c = kiln::capi::NewTransient<kiln_text_field_line_limits>();
+    c->size = sizeof(*c);
+    FromCpp(v, c);
+    return c;
+}
 kiln::material3::TextFieldOptions ToCpp(const kiln_m3_text_field_options* in) {
     kiln::material3::TextFieldOptions v{};
     if (!in) return v;
@@ -2613,9 +2968,12 @@ kiln::material3::TextFieldOptions ToCpp(const kiln_m3_text_field_options* in) {
     if (c.suffix.call) v.suffix = kiln::capi::Fn(c.suffix);
     if (c.supporting_text.call) v.supportingText = kiln::capi::Fn(c.supporting_text);
     v.isError = c.is_error;
+    if (c.keyboard_options) v.keyboardOptions = ToCpp(c.keyboard_options);
+    if (c.line_limits) v.lineLimits = ToCpp(c.line_limits);
     if (c.shape) v.shape = kiln::capi::ToShape(c.shape);
     if (c.colors) v.colors = (c.colors ? std::optional<kiln::material3::TextFieldColors>(ToCpp(c.colors)) : std::nullopt);
     if (c.content_padding) v.contentPadding = (c.content_padding ? std::optional<kiln::foundation::PaddingValues>(kiln::capi::ToPadding((*c.content_padding))) : std::nullopt);
+    if (c.interaction_source) v.interactionSource = (c.interaction_source ? c.interaction_source->source : nullptr);
     return v;
 }
 void FromCpp(const kiln::material3::TextFieldOptions& v, kiln_m3_text_field_options* out) {
@@ -2628,8 +2986,12 @@ void FromCpp(const kiln::material3::TextFieldOptions& v, kiln_m3_text_field_opti
     c.text_style = ([&]() -> const kiln_text_style* { if (!(v.textStyle)) return nullptr;  return kiln::capi::TransientTextStyle((*(v.textStyle))); }());
     c.label_position = ([&]() -> const kiln_m3_text_field_label_position* { if (!(v.labelPosition)) return nullptr;  return FromCppTransient((*(v.labelPosition))); }());
     c.is_error = bool(v.isError);
+    c.keyboard_options = FromCppTransient(v.keyboardOptions);
+    c.line_limits = FromCppTransient(v.lineLimits);
     c.shape = kiln::capi::TransientShape(v.shape);
     c.colors = ([&]() -> const kiln_m3_text_field_colors* { if (!(v.colors)) return nullptr;  return FromCppTransient((*(v.colors))); }());
+    c.content_padding = ([&]() -> const kiln_padding* { if (!(v.contentPadding)) return nullptr;  auto* p = kiln::capi::NewTransient<kiln_padding>(); *p = kiln::capi::FromPadding((*(v.contentPadding))); return p; }());
+    c.interaction_source = kiln::capi::TransientSource(v.interactionSource);
     const size_t n = out->size < sizeof(size_t) ? sizeof(c) : std::min(out->size, sizeof(c));
     std::memcpy(reinterpret_cast<char*>(out) + sizeof(size_t), reinterpret_cast<const char*>(&c) + sizeof(size_t), n - sizeof(size_t));
     out->size = n;
@@ -2658,9 +3020,11 @@ kiln::material3::SecureTextFieldOptions ToCpp(const kiln_m3_secure_text_field_op
     if (c.supporting_text.call) v.supportingText = kiln::capi::Fn(c.supporting_text);
     v.isError = c.is_error;
     v.textObfuscationMode = kiln::foundation::TextObfuscationMode(c.text_obfuscation_mode);
+    if (c.keyboard_options) v.keyboardOptions = (c.keyboard_options ? std::optional<kiln::foundation::KeyboardOptions>(ToCpp(c.keyboard_options)) : std::nullopt);
     if (c.shape) v.shape = kiln::capi::ToShape(c.shape);
     if (c.colors) v.colors = (c.colors ? std::optional<kiln::material3::TextFieldColors>(ToCpp(c.colors)) : std::nullopt);
     if (c.content_padding) v.contentPadding = (c.content_padding ? std::optional<kiln::foundation::PaddingValues>(kiln::capi::ToPadding((*c.content_padding))) : std::nullopt);
+    if (c.interaction_source) v.interactionSource = (c.interaction_source ? c.interaction_source->source : nullptr);
     return v;
 }
 void FromCpp(const kiln::material3::SecureTextFieldOptions& v, kiln_m3_secure_text_field_options* out) {
@@ -2672,9 +3036,12 @@ void FromCpp(const kiln::material3::SecureTextFieldOptions& v, kiln_m3_secure_te
     c.text_style = ([&]() -> const kiln_text_style* { if (!(v.textStyle)) return nullptr;  return kiln::capi::TransientTextStyle((*(v.textStyle))); }());
     c.label_position = ([&]() -> const kiln_m3_text_field_label_position* { if (!(v.labelPosition)) return nullptr;  return FromCppTransient((*(v.labelPosition))); }());
     c.is_error = bool(v.isError);
-    c.text_obfuscation_mode = kiln_foundation_text_obfuscation_mode(v.textObfuscationMode);
+    c.text_obfuscation_mode = kiln_text_obfuscation_mode(v.textObfuscationMode);
+    c.keyboard_options = ([&]() -> const kiln_keyboard_options* { if (!(v.keyboardOptions)) return nullptr;  return FromCppTransient((*(v.keyboardOptions))); }());
     c.shape = kiln::capi::TransientShape(v.shape);
     c.colors = ([&]() -> const kiln_m3_text_field_colors* { if (!(v.colors)) return nullptr;  return FromCppTransient((*(v.colors))); }());
+    c.content_padding = ([&]() -> const kiln_padding* { if (!(v.contentPadding)) return nullptr;  auto* p = kiln::capi::NewTransient<kiln_padding>(); *p = kiln::capi::FromPadding((*(v.contentPadding))); return p; }());
+    c.interaction_source = kiln::capi::TransientSource(v.interactionSource);
     const size_t n = out->size < sizeof(size_t) ? sizeof(c) : std::min(out->size, sizeof(c));
     std::memcpy(reinterpret_cast<char*>(out) + sizeof(size_t), reinterpret_cast<const char*>(&c) + sizeof(size_t), n - sizeof(size_t));
     out->size = n;
@@ -2826,6 +3193,7 @@ kiln::material3::DatePickerDialogOptions ToCpp(const kiln_m3_date_picker_dialog_
     if (c.shape) v.shape = kiln::capi::ToShape(c.shape);
     v.tonalElevation = kiln::capi::ToDp(c.tonal_elevation);
     if (c.colors) v.colors = (c.colors ? std::optional<kiln::material3::DatePickerColors>(ToCpp(c.colors)) : std::nullopt);
+    if (c.properties) v.properties = ToCpp(c.properties);
     return v;
 }
 void FromCpp(const kiln::material3::DatePickerDialogOptions& v, kiln_m3_date_picker_dialog_options* out) {
@@ -2836,6 +3204,7 @@ void FromCpp(const kiln::material3::DatePickerDialogOptions& v, kiln_m3_date_pic
     c.shape = kiln::capi::TransientShape(v.shape);
     c.tonal_elevation = (v.tonalElevation).value;
     c.colors = ([&]() -> const kiln_m3_date_picker_colors* { if (!(v.colors)) return nullptr;  return FromCppTransient((*(v.colors))); }());
+    c.properties = FromCppTransient(v.properties);
     const size_t n = out->size < sizeof(size_t) ? sizeof(c) : std::min(out->size, sizeof(c));
     std::memcpy(reinterpret_cast<char*>(out) + sizeof(size_t), reinterpret_cast<const char*>(&c) + sizeof(size_t), n - sizeof(size_t));
     out->size = n;
@@ -2942,6 +3311,7 @@ kiln::material3::VerticalDragHandleOptions ToCpp(const kiln_m3_vertical_drag_han
     if (c.sizes) v.sizes = (c.sizes ? std::optional<kiln::material3::DragHandleSizes>(ToCpp(c.sizes)) : std::nullopt);
     if (c.colors) v.colors = (c.colors ? std::optional<kiln::material3::DragHandleColors>(ToCpp(c.colors)) : std::nullopt);
     if (c.shapes) v.shapes = (c.shapes ? std::optional<kiln::material3::DragHandleShapes>(ToCpp(c.shapes)) : std::nullopt);
+    if (c.interaction_source) v.interactionSource = (c.interaction_source ? c.interaction_source->source : nullptr);
     return v;
 }
 void FromCpp(const kiln::material3::VerticalDragHandleOptions& v, kiln_m3_vertical_drag_handle_options* out) {
@@ -2952,12 +3322,68 @@ void FromCpp(const kiln::material3::VerticalDragHandleOptions& v, kiln_m3_vertic
     c.sizes = ([&]() -> const kiln_m3_drag_handle_sizes* { if (!(v.sizes)) return nullptr;  return FromCppTransient((*(v.sizes))); }());
     c.colors = ([&]() -> const kiln_m3_drag_handle_colors* { if (!(v.colors)) return nullptr;  return FromCppTransient((*(v.colors))); }());
     c.shapes = ([&]() -> const kiln_m3_drag_handle_shapes* { if (!(v.shapes)) return nullptr;  return FromCppTransient((*(v.shapes))); }());
+    c.interaction_source = kiln::capi::TransientSource(v.interactionSource);
     const size_t n = out->size < sizeof(size_t) ? sizeof(c) : std::min(out->size, sizeof(c));
     std::memcpy(reinterpret_cast<char*>(out) + sizeof(size_t), reinterpret_cast<const char*>(&c) + sizeof(size_t), n - sizeof(size_t));
     out->size = n;
 }
 const kiln_m3_vertical_drag_handle_options* FromCppTransient(const kiln::material3::VerticalDragHandleOptions& v) {
     auto* c = kiln::capi::NewTransient<kiln_m3_vertical_drag_handle_options>();
+    c->size = sizeof(*c);
+    FromCpp(v, c);
+    return c;
+}
+kiln::ui::Configuration ToCpp(const kiln_configuration* in) {
+    kiln::ui::Configuration v{};
+    if (!in) return v;
+    kiln_configuration c;
+    kiln_configuration_init(&c);
+    if (in->size > sizeof(size_t)) std::memcpy(reinterpret_cast<char*>(&c) + sizeof(size_t), reinterpret_cast<const char*>(in) + sizeof(size_t), std::min(in->size, sizeof(c)) - sizeof(size_t));
+    v.fontScale = c.font_scale;
+    v.densityDpi = c.density_dpi;
+    v.fontWeightAdjustment = c.font_weight_adjustment;
+    v.uiMode = c.ui_mode;
+    v.screenWidthDp = c.screen_width_dp;
+    v.screenHeightDp = c.screen_height_dp;
+    v.smallestScreenWidthDp = c.smallest_screen_width_dp;
+    v.orientation = c.orientation;
+    v.screenLayout = c.screen_layout;
+    v.touchscreen = c.touchscreen;
+    v.keyboard = c.keyboard;
+    v.keyboardHidden = c.keyboard_hidden;
+    v.hardKeyboardHidden = c.hard_keyboard_hidden;
+    v.navigation = c.navigation;
+    v.navigationHidden = c.navigation_hidden;
+    v.colorMode = c.color_mode;
+    return v;
+}
+void FromCpp(const kiln::ui::Configuration& v, kiln_configuration* out) {
+    (void)v;
+    if (!out) return;
+    kiln_configuration c{};
+    c.size = sizeof(c);
+    c.font_scale = float(v.fontScale);
+    c.density_dpi = int32_t(v.densityDpi);
+    c.font_weight_adjustment = int32_t(v.fontWeightAdjustment);
+    c.ui_mode = int32_t(v.uiMode);
+    c.screen_width_dp = int32_t(v.screenWidthDp);
+    c.screen_height_dp = int32_t(v.screenHeightDp);
+    c.smallest_screen_width_dp = int32_t(v.smallestScreenWidthDp);
+    c.orientation = int32_t(v.orientation);
+    c.screen_layout = int32_t(v.screenLayout);
+    c.touchscreen = int32_t(v.touchscreen);
+    c.keyboard = int32_t(v.keyboard);
+    c.keyboard_hidden = int32_t(v.keyboardHidden);
+    c.hard_keyboard_hidden = int32_t(v.hardKeyboardHidden);
+    c.navigation = int32_t(v.navigation);
+    c.navigation_hidden = int32_t(v.navigationHidden);
+    c.color_mode = int32_t(v.colorMode);
+    const size_t n = out->size < sizeof(size_t) ? sizeof(c) : std::min(out->size, sizeof(c));
+    std::memcpy(reinterpret_cast<char*>(out) + sizeof(size_t), reinterpret_cast<const char*>(&c) + sizeof(size_t), n - sizeof(size_t));
+    out->size = n;
+}
+const kiln_configuration* FromCppTransient(const kiln::ui::Configuration& v) {
+    auto* c = kiln::capi::NewTransient<kiln_configuration>();
     c->size = sizeof(*c);
     FromCpp(v, c);
     return c;
@@ -3183,6 +3609,7 @@ void FromCpp(const kiln::material3::ExposedDropdownMenuOptions& v, kiln_m3_expos
     c.container_color = ((v.containerColor) ? kiln::capi::FromColor(*(v.containerColor)) : KILN_COLOR_UNSPECIFIED);
     c.tonal_elevation = (v.tonalElevation).value;
     c.shadow_elevation = kiln_opt_float{ (v.shadowElevation).has_value(), (v.shadowElevation) ? (v.shadowElevation)->value : 0.0f };
+    c.border = ([&]() -> const kiln_border_stroke* { if (!(v.border)) return nullptr;  auto* p = kiln::capi::NewTransient<kiln_border_stroke>(); *p = kiln::capi::FromBorderStroke((*(v.border))); return p; }());
     const size_t n = out->size < sizeof(size_t) ? sizeof(c) : std::min(out->size, sizeof(c));
     std::memcpy(reinterpret_cast<char*>(out) + sizeof(size_t), reinterpret_cast<const char*>(&c) + sizeof(size_t), n - sizeof(size_t));
     out->size = n;
@@ -3234,6 +3661,7 @@ kiln::material3::FloatingActionButtonOptions ToCpp(const kiln_m3_floating_action
     v.containerColor = (c.container_color ? std::optional<kiln::ui::Color>(kiln::capi::ToColor(c.container_color)) : std::nullopt);
     v.contentColor = (c.content_color ? std::optional<kiln::ui::Color>(kiln::capi::ToColor(c.content_color)) : std::nullopt);
     if (c.elevation) v.elevation = (c.elevation ? std::optional<kiln::material3::FloatingActionButtonElevation>(ToCpp(c.elevation)) : std::nullopt);
+    if (c.interaction_source) v.interactionSource = (c.interaction_source ? c.interaction_source->source : nullptr);
     return v;
 }
 void FromCpp(const kiln::material3::FloatingActionButtonOptions& v, kiln_m3_floating_action_button_options* out) {
@@ -3245,6 +3673,7 @@ void FromCpp(const kiln::material3::FloatingActionButtonOptions& v, kiln_m3_floa
     c.container_color = ((v.containerColor) ? kiln::capi::FromColor(*(v.containerColor)) : KILN_COLOR_UNSPECIFIED);
     c.content_color = ((v.contentColor) ? kiln::capi::FromColor(*(v.contentColor)) : KILN_COLOR_UNSPECIFIED);
     c.elevation = ([&]() -> const kiln_m3_floating_action_button_elevation* { if (!(v.elevation)) return nullptr;  return FromCppTransient((*(v.elevation))); }());
+    c.interaction_source = kiln::capi::TransientSource(v.interactionSource);
     const size_t n = out->size < sizeof(size_t) ? sizeof(c) : std::min(out->size, sizeof(c));
     std::memcpy(reinterpret_cast<char*>(out) + sizeof(size_t), reinterpret_cast<const char*>(&c) + sizeof(size_t), n - sizeof(size_t));
     out->size = n;
@@ -3614,6 +4043,7 @@ kiln::material3::LabelOptions ToCpp(const kiln_m3_label_options* in) {
     kiln_m3_label_options c;
     kiln_m3_label_options_init(&c);
     if (in->size > sizeof(size_t)) std::memcpy(reinterpret_cast<char*>(&c) + sizeof(size_t), reinterpret_cast<const char*>(in) + sizeof(size_t), std::min(in->size, sizeof(c)) - sizeof(size_t));
+    if (c.interaction_source) v.interactionSource = (c.interaction_source ? c.interaction_source->source : nullptr);
     v.isPersistent = c.is_persistent;
     return v;
 }
@@ -3622,6 +4052,7 @@ void FromCpp(const kiln::material3::LabelOptions& v, kiln_m3_label_options* out)
     if (!out) return;
     kiln_m3_label_options c{};
     c.size = sizeof(c);
+    c.interaction_source = kiln::capi::TransientSource(v.interactionSource);
     c.is_persistent = bool(v.isPersistent);
     const size_t n = out->size < sizeof(size_t) ? sizeof(c) : std::min(out->size, sizeof(c));
     std::memcpy(reinterpret_cast<char*>(out) + sizeof(size_t), reinterpret_cast<const char*>(&c) + sizeof(size_t), n - sizeof(size_t));
@@ -3817,6 +4248,7 @@ kiln::material3::ListItemOptions ToCpp(const kiln_m3_list_item_options* in) {
     if (c.content_padding) v.contentPadding = (c.content_padding ? std::optional<kiln::foundation::PaddingValues>(kiln::capi::ToPadding((*c.content_padding))) : std::nullopt);
     if (c.on_long_click.call) v.onLongClick = kiln::capi::Fn(c.on_long_click);
     if (c.on_long_click_label) v.onLongClickLabel = kiln::capi::ToString(c.on_long_click_label);
+    if (c.interaction_source) v.interactionSource = (c.interaction_source ? c.interaction_source->source : nullptr);
     return v;
 }
 void FromCpp(const kiln::material3::ListItemOptions& v, kiln_m3_list_item_options* out) {
@@ -3828,7 +4260,9 @@ void FromCpp(const kiln::material3::ListItemOptions& v, kiln_m3_list_item_option
     c.shapes = ([&]() -> const kiln_m3_list_item_shapes* { if (!(v.shapes)) return nullptr;  return FromCppTransient((*(v.shapes))); }());
     c.colors = ([&]() -> const kiln_m3_list_item_colors* { if (!(v.colors)) return nullptr;  return FromCppTransient((*(v.colors))); }());
     c.elevation = ([&]() -> const kiln_m3_list_item_elevation* { if (!(v.elevation)) return nullptr;  return FromCppTransient((*(v.elevation))); }());
+    c.content_padding = ([&]() -> const kiln_padding* { if (!(v.contentPadding)) return nullptr;  auto* p = kiln::capi::NewTransient<kiln_padding>(); *p = kiln::capi::FromPadding((*(v.contentPadding))); return p; }());
     c.on_long_click_label = kiln::capi::TransientString(std::string(v.onLongClickLabel));
+    c.interaction_source = kiln::capi::TransientSource(v.interactionSource);
     const size_t n = out->size < sizeof(size_t) ? sizeof(c) : std::min(out->size, sizeof(c));
     std::memcpy(reinterpret_cast<char*>(out) + sizeof(size_t), reinterpret_cast<const char*>(&c) + sizeof(size_t), n - sizeof(size_t));
     out->size = n;
@@ -3899,6 +4333,14 @@ kiln::material3::Shapes ToCpp(const kiln_m3_shapes* in) {
     kiln_m3_shapes c;
     kiln_m3_shapes_init(&c);
     if (in->size > sizeof(size_t)) std::memcpy(reinterpret_cast<char*>(&c) + sizeof(size_t), reinterpret_cast<const char*>(in) + sizeof(size_t), std::min(in->size, sizeof(c)) - sizeof(size_t));
+    if (c.extra_small) v.extraSmall = std::dynamic_pointer_cast<const kiln::foundation::CornerBasedShape>(kiln::capi::ToShape(c.extra_small));
+    if (c.small) v.small = std::dynamic_pointer_cast<const kiln::foundation::CornerBasedShape>(kiln::capi::ToShape(c.small));
+    if (c.medium) v.medium = std::dynamic_pointer_cast<const kiln::foundation::CornerBasedShape>(kiln::capi::ToShape(c.medium));
+    if (c.large) v.large = std::dynamic_pointer_cast<const kiln::foundation::CornerBasedShape>(kiln::capi::ToShape(c.large));
+    if (c.extra_large) v.extraLarge = std::dynamic_pointer_cast<const kiln::foundation::CornerBasedShape>(kiln::capi::ToShape(c.extra_large));
+    if (c.large_increased) v.largeIncreased = std::dynamic_pointer_cast<const kiln::foundation::CornerBasedShape>(kiln::capi::ToShape(c.large_increased));
+    if (c.extra_large_increased) v.extraLargeIncreased = std::dynamic_pointer_cast<const kiln::foundation::CornerBasedShape>(kiln::capi::ToShape(c.extra_large_increased));
+    if (c.extra_extra_large) v.extraExtraLarge = std::dynamic_pointer_cast<const kiln::foundation::CornerBasedShape>(kiln::capi::ToShape(c.extra_extra_large));
     return v;
 }
 void FromCpp(const kiln::material3::Shapes& v, kiln_m3_shapes* out) {
@@ -3906,6 +4348,14 @@ void FromCpp(const kiln::material3::Shapes& v, kiln_m3_shapes* out) {
     if (!out) return;
     kiln_m3_shapes c{};
     c.size = sizeof(c);
+    c.extra_small = kiln::capi::TransientShape(v.extraSmall);
+    c.small = kiln::capi::TransientShape(v.small);
+    c.medium = kiln::capi::TransientShape(v.medium);
+    c.large = kiln::capi::TransientShape(v.large);
+    c.extra_large = kiln::capi::TransientShape(v.extraLarge);
+    c.large_increased = kiln::capi::TransientShape(v.largeIncreased);
+    c.extra_large_increased = kiln::capi::TransientShape(v.extraLargeIncreased);
+    c.extra_extra_large = kiln::capi::TransientShape(v.extraExtraLarge);
     const size_t n = out->size < sizeof(size_t) ? sizeof(c) : std::min(out->size, sizeof(c));
     std::memcpy(reinterpret_cast<char*>(out) + sizeof(size_t), reinterpret_cast<const char*>(&c) + sizeof(size_t), n - sizeof(size_t));
     out->size = n;
@@ -4030,6 +4480,45 @@ const kiln_m3_material_theme_args* FromCppTransient(const kiln::material3::Mater
     FromCpp(v, c);
     return c;
 }
+kiln::ui::PopupProperties ToCpp(const kiln_popup_properties* in) {
+    kiln::ui::PopupProperties v{};
+    if (!in) return v;
+    kiln_popup_properties c;
+    kiln_popup_properties_init(&c);
+    if (in->size > sizeof(size_t)) std::memcpy(reinterpret_cast<char*>(&c) + sizeof(size_t), reinterpret_cast<const char*>(in) + sizeof(size_t), std::min(in->size, sizeof(c)) - sizeof(size_t));
+    v.focusable = c.focusable;
+    v.dismissOnBackPress = c.dismiss_on_back_press;
+    v.dismissOnClickOutside = c.dismiss_on_click_outside;
+    v.securePolicy = kiln::ui::SecureFlagPolicy(c.secure_policy);
+    v.excludeFromSystemGesture = c.exclude_from_system_gesture;
+    v.clippingEnabled = c.clipping_enabled;
+    v.usePlatformDefaultWidth = c.use_platform_default_width;
+    v.scrimAlpha = c.scrim_alpha;
+    return v;
+}
+void FromCpp(const kiln::ui::PopupProperties& v, kiln_popup_properties* out) {
+    (void)v;
+    if (!out) return;
+    kiln_popup_properties c{};
+    c.size = sizeof(c);
+    c.focusable = bool(v.focusable);
+    c.dismiss_on_back_press = bool(v.dismissOnBackPress);
+    c.dismiss_on_click_outside = bool(v.dismissOnClickOutside);
+    c.secure_policy = kiln_secure_flag_policy(v.securePolicy);
+    c.exclude_from_system_gesture = bool(v.excludeFromSystemGesture);
+    c.clipping_enabled = bool(v.clippingEnabled);
+    c.use_platform_default_width = bool(v.usePlatformDefaultWidth);
+    c.scrim_alpha = float(v.scrimAlpha);
+    const size_t n = out->size < sizeof(size_t) ? sizeof(c) : std::min(out->size, sizeof(c));
+    std::memcpy(reinterpret_cast<char*>(out) + sizeof(size_t), reinterpret_cast<const char*>(&c) + sizeof(size_t), n - sizeof(size_t));
+    out->size = n;
+}
+const kiln_popup_properties* FromCppTransient(const kiln::ui::PopupProperties& v) {
+    auto* c = kiln::capi::NewTransient<kiln_popup_properties>();
+    c->size = sizeof(*c);
+    FromCpp(v, c);
+    return c;
+}
 kiln::material3::DropdownMenuOptions ToCpp(const kiln_m3_dropdown_menu_options* in) {
     kiln::material3::DropdownMenuOptions v{};
     if (!in) return v;
@@ -4037,6 +4526,7 @@ kiln::material3::DropdownMenuOptions ToCpp(const kiln_m3_dropdown_menu_options* 
     kiln_m3_dropdown_menu_options_init(&c);
     if (in->size > sizeof(size_t)) std::memcpy(reinterpret_cast<char*>(&c) + sizeof(size_t), reinterpret_cast<const char*>(in) + sizeof(size_t), std::min(in->size, sizeof(c)) - sizeof(size_t));
     v.offset = kiln::ui::DpOffset{ kiln::ui::Dp(c.offset.x), kiln::ui::Dp(c.offset.y) };
+    if (c.properties) v.properties = (c.properties ? std::optional<kiln::ui::PopupProperties>(ToCpp(c.properties)) : std::nullopt);
     if (c.shape) v.shape = kiln::capi::ToShape(c.shape);
     v.containerColor = (c.container_color ? std::optional<kiln::ui::Color>(kiln::capi::ToColor(c.container_color)) : std::nullopt);
     v.tonalElevation = kiln::capi::ToDp(c.tonal_elevation);
@@ -4050,10 +4540,12 @@ void FromCpp(const kiln::material3::DropdownMenuOptions& v, kiln_m3_dropdown_men
     kiln_m3_dropdown_menu_options c{};
     c.size = sizeof(c);
     c.offset = kiln_dp_offset{ (v.offset).x.value, (v.offset).y.value };
+    c.properties = ([&]() -> const kiln_popup_properties* { if (!(v.properties)) return nullptr;  return FromCppTransient((*(v.properties))); }());
     c.shape = kiln::capi::TransientShape(v.shape);
     c.container_color = ((v.containerColor) ? kiln::capi::FromColor(*(v.containerColor)) : KILN_COLOR_UNSPECIFIED);
     c.tonal_elevation = (v.tonalElevation).value;
     c.shadow_elevation = kiln_opt_float{ (v.shadowElevation).has_value(), (v.shadowElevation) ? (v.shadowElevation)->value : 0.0f };
+    c.border = ([&]() -> const kiln_border_stroke* { if (!(v.border)) return nullptr;  auto* p = kiln::capi::NewTransient<kiln_border_stroke>(); *p = kiln::capi::FromBorderStroke((*(v.border))); return p; }());
     const size_t n = out->size < sizeof(size_t) ? sizeof(c) : std::min(out->size, sizeof(c));
     std::memcpy(reinterpret_cast<char*>(out) + sizeof(size_t), reinterpret_cast<const char*>(&c) + sizeof(size_t), n - sizeof(size_t));
     out->size = n;
@@ -4102,6 +4594,7 @@ kiln::material3::DropdownMenuGroupOptions ToCpp(const kiln_m3_dropdown_menu_grou
     v.shadowElevation = (c.shadow_elevation.set ? std::optional<kiln::ui::Dp>(kiln::ui::Dp(c.shadow_elevation.value)) : std::nullopt);
     if (c.border) v.border = (c.border ? std::optional<kiln::foundation::BorderStroke>(kiln::foundation::BorderStroke(kiln::ui::Dp((*c.border).width), kiln::capi::ToColor((*c.border).color))) : std::nullopt);
     v.contentPadding = kiln::capi::ToPadding(c.content_padding);
+    if (c.interaction_source) v.interactionSource = (c.interaction_source ? c.interaction_source->source : nullptr);
     return v;
 }
 void FromCpp(const kiln::material3::DropdownMenuGroupOptions& v, kiln_m3_dropdown_menu_group_options* out) {
@@ -4112,7 +4605,9 @@ void FromCpp(const kiln::material3::DropdownMenuGroupOptions& v, kiln_m3_dropdow
     c.container_color = ((v.containerColor) ? kiln::capi::FromColor(*(v.containerColor)) : KILN_COLOR_UNSPECIFIED);
     c.tonal_elevation = (v.tonalElevation).value;
     c.shadow_elevation = kiln_opt_float{ (v.shadowElevation).has_value(), (v.shadowElevation) ? (v.shadowElevation)->value : 0.0f };
+    c.border = ([&]() -> const kiln_border_stroke* { if (!(v.border)) return nullptr;  auto* p = kiln::capi::NewTransient<kiln_border_stroke>(); *p = kiln::capi::FromBorderStroke((*(v.border))); return p; }());
     c.content_padding = kiln::capi::FromPadding(v.contentPadding);
+    c.interaction_source = kiln::capi::TransientSource(v.interactionSource);
     const size_t n = out->size < sizeof(size_t) ? sizeof(c) : std::min(out->size, sizeof(c));
     std::memcpy(reinterpret_cast<char*>(out) + sizeof(size_t), reinterpret_cast<const char*>(&c) + sizeof(size_t), n - sizeof(size_t));
     out->size = n;
@@ -4173,6 +4668,7 @@ kiln::material3::DropdownMenuItemOptions ToCpp(const kiln_m3_dropdown_menu_item_
     v.enabled = c.enabled;
     if (c.colors) v.colors = (c.colors ? std::optional<kiln::material3::MenuItemColors>(ToCpp(c.colors)) : std::nullopt);
     v.contentPadding = kiln::capi::ToPadding(c.content_padding);
+    if (c.interaction_source) v.interactionSource = (c.interaction_source ? c.interaction_source->source : nullptr);
     return v;
 }
 void FromCpp(const kiln::material3::DropdownMenuItemOptions& v, kiln_m3_dropdown_menu_item_options* out) {
@@ -4183,6 +4679,7 @@ void FromCpp(const kiln::material3::DropdownMenuItemOptions& v, kiln_m3_dropdown
     c.enabled = bool(v.enabled);
     c.colors = ([&]() -> const kiln_m3_menu_item_colors* { if (!(v.colors)) return nullptr;  return FromCppTransient((*(v.colors))); }());
     c.content_padding = kiln::capi::FromPadding(v.contentPadding);
+    c.interaction_source = kiln::capi::TransientSource(v.interactionSource);
     const size_t n = out->size < sizeof(size_t) ? sizeof(c) : std::min(out->size, sizeof(c));
     std::memcpy(reinterpret_cast<char*>(out) + sizeof(size_t), reinterpret_cast<const char*>(&c) + sizeof(size_t), n - sizeof(size_t));
     out->size = n;
@@ -4206,6 +4703,7 @@ kiln::material3::MenuItemOptions ToCpp(const kiln_m3_menu_item_options* in) {
     v.enabled = c.enabled;
     if (c.horizontal_arrangement) v.horizontalArrangement = (c.horizontal_arrangement ? std::optional<kiln::foundation::Arrangement>(kiln::capi::ToArrangement((*c.horizontal_arrangement), false)) : std::nullopt);
     if (c.content_padding) v.contentPadding = (c.content_padding ? std::optional<kiln::foundation::PaddingValues>(kiln::capi::ToPadding((*c.content_padding))) : std::nullopt);
+    if (c.interaction_source) v.interactionSource = (c.interaction_source ? c.interaction_source->source : nullptr);
     return v;
 }
 void FromCpp(const kiln::material3::MenuItemOptions& v, kiln_m3_menu_item_options* out) {
@@ -4214,6 +4712,9 @@ void FromCpp(const kiln::material3::MenuItemOptions& v, kiln_m3_menu_item_option
     kiln_m3_menu_item_options c{};
     c.size = sizeof(c);
     c.enabled = bool(v.enabled);
+    c.horizontal_arrangement = ([&]() -> const kiln_arrangement* { if (!(v.horizontalArrangement)) return nullptr;  auto* p = kiln::capi::NewTransient<kiln_arrangement>(); *p = kiln::capi::FromArrangement((*(v.horizontalArrangement))); return p; }());
+    c.content_padding = ([&]() -> const kiln_padding* { if (!(v.contentPadding)) return nullptr;  auto* p = kiln::capi::NewTransient<kiln_padding>(); *p = kiln::capi::FromPadding((*(v.contentPadding))); return p; }());
+    c.interaction_source = kiln::capi::TransientSource(v.interactionSource);
     const size_t n = out->size < sizeof(size_t) ? sizeof(c) : std::min(out->size, sizeof(c));
     std::memcpy(reinterpret_cast<char*>(out) + sizeof(size_t), reinterpret_cast<const char*>(&c) + sizeof(size_t), n - sizeof(size_t));
     out->size = n;
@@ -4314,7 +4815,7 @@ void FromCpp(const kiln::material3::ModalBottomSheetProperties& v, kiln_m3_modal
     if (!out) return;
     kiln_m3_modal_bottom_sheet_properties c{};
     c.size = sizeof(c);
-    c.secure_policy = kiln_ui_secure_flag_policy(v.securePolicy);
+    c.secure_policy = kiln_secure_flag_policy(v.securePolicy);
     c.should_dismiss_on_back_press = bool(v.shouldDismissOnBackPress);
     c.should_dismiss_on_click_outside = bool(v.shouldDismissOnClickOutside);
     const size_t n = out->size < sizeof(size_t) ? sizeof(c) : std::min(out->size, sizeof(c));
@@ -4342,6 +4843,7 @@ kiln::material3::ModalBottomSheetOptions ToCpp(const kiln_m3_modal_bottom_sheet_
     v.tonalElevation = kiln::capi::ToDp(c.tonal_elevation);
     v.scrimColor = (c.scrim_color ? std::optional<kiln::ui::Color>(kiln::capi::ToColor(c.scrim_color)) : std::nullopt);
     if (c.drag_handle.call) v.dragHandle = kiln::capi::Fn(c.drag_handle);
+    if (c.content_window_insets.call) v.contentWindowInsets = ToCpp_kiln_m3_fn_to_window_insets(c.content_window_insets);
     if (c.properties) v.properties = ToCpp(c.properties);
     return v;
 }
@@ -4380,6 +4882,7 @@ kiln::material3::NavigationBarOptions ToCpp(const kiln_m3_navigation_bar_options
     v.containerColor = (c.container_color ? std::optional<kiln::ui::Color>(kiln::capi::ToColor(c.container_color)) : std::nullopt);
     v.contentColor = (c.content_color ? std::optional<kiln::ui::Color>(kiln::capi::ToColor(c.content_color)) : std::nullopt);
     v.tonalElevation = kiln::capi::ToDp(c.tonal_elevation);
+    if (c.window_insets) v.windowInsets = (c.window_insets ? std::optional<kiln::foundation::WindowInsets>((c.window_insets ? c.window_insets->insets : kiln::foundation::WindowInsets{})) : std::nullopt);
     return v;
 }
 void FromCpp(const kiln::material3::NavigationBarOptions& v, kiln_m3_navigation_bar_options* out) {
@@ -4390,6 +4893,7 @@ void FromCpp(const kiln::material3::NavigationBarOptions& v, kiln_m3_navigation_
     c.container_color = ((v.containerColor) ? kiln::capi::FromColor(*(v.containerColor)) : KILN_COLOR_UNSPECIFIED);
     c.content_color = ((v.contentColor) ? kiln::capi::FromColor(*(v.contentColor)) : KILN_COLOR_UNSPECIFIED);
     c.tonal_elevation = (v.tonalElevation).value;
+    c.window_insets = ([&]() -> const kiln_window_insets* { if (!(v.windowInsets)) return nullptr;  return kiln::capi::TransientInsets((*(v.windowInsets))); }());
     const size_t n = out->size < sizeof(size_t) ? sizeof(c) : std::min(out->size, sizeof(c));
     std::memcpy(reinterpret_cast<char*>(out) + sizeof(size_t), reinterpret_cast<const char*>(&c) + sizeof(size_t), n - sizeof(size_t));
     out->size = n;
@@ -4447,6 +4951,7 @@ kiln::material3::NavigationBarItemOptions ToCpp(const kiln_m3_navigation_bar_ite
     if (c.label.call) v.label = kiln::capi::Fn(c.label);
     v.alwaysShowLabel = c.always_show_label;
     if (c.colors) v.colors = (c.colors ? std::optional<kiln::material3::NavigationBarItemColors>(ToCpp(c.colors)) : std::nullopt);
+    if (c.interaction_source) v.interactionSource = (c.interaction_source ? c.interaction_source->source : nullptr);
     return v;
 }
 void FromCpp(const kiln::material3::NavigationBarItemOptions& v, kiln_m3_navigation_bar_item_options* out) {
@@ -4457,6 +4962,7 @@ void FromCpp(const kiln::material3::NavigationBarItemOptions& v, kiln_m3_navigat
     c.enabled = bool(v.enabled);
     c.always_show_label = bool(v.alwaysShowLabel);
     c.colors = ([&]() -> const kiln_m3_navigation_bar_item_colors* { if (!(v.colors)) return nullptr;  return FromCppTransient((*(v.colors))); }());
+    c.interaction_source = kiln::capi::TransientSource(v.interactionSource);
     const size_t n = out->size < sizeof(size_t) ? sizeof(c) : std::min(out->size, sizeof(c));
     std::memcpy(reinterpret_cast<char*>(out) + sizeof(size_t), reinterpret_cast<const char*>(&c) + sizeof(size_t), n - sizeof(size_t));
     out->size = n;
@@ -4537,6 +5043,7 @@ kiln::material3::DrawerSheetOptions ToCpp(const kiln_m3_drawer_sheet_options* in
     v.drawerContainerColor = (c.drawer_container_color ? std::optional<kiln::ui::Color>(kiln::capi::ToColor(c.drawer_container_color)) : std::nullopt);
     v.drawerContentColor = (c.drawer_content_color ? std::optional<kiln::ui::Color>(kiln::capi::ToColor(c.drawer_content_color)) : std::nullopt);
     v.drawerTonalElevation = (c.drawer_tonal_elevation.set ? std::optional<kiln::ui::Dp>(kiln::ui::Dp(c.drawer_tonal_elevation.value)) : std::nullopt);
+    if (c.window_insets) v.windowInsets = (c.window_insets ? std::optional<kiln::foundation::WindowInsets>((c.window_insets ? c.window_insets->insets : kiln::foundation::WindowInsets{})) : std::nullopt);
     return v;
 }
 void FromCpp(const kiln::material3::DrawerSheetOptions& v, kiln_m3_drawer_sheet_options* out) {
@@ -4548,6 +5055,7 @@ void FromCpp(const kiln::material3::DrawerSheetOptions& v, kiln_m3_drawer_sheet_
     c.drawer_container_color = ((v.drawerContainerColor) ? kiln::capi::FromColor(*(v.drawerContainerColor)) : KILN_COLOR_UNSPECIFIED);
     c.drawer_content_color = ((v.drawerContentColor) ? kiln::capi::FromColor(*(v.drawerContentColor)) : KILN_COLOR_UNSPECIFIED);
     c.drawer_tonal_elevation = kiln_opt_float{ (v.drawerTonalElevation).has_value(), (v.drawerTonalElevation) ? (v.drawerTonalElevation)->value : 0.0f };
+    c.window_insets = ([&]() -> const kiln_window_insets* { if (!(v.windowInsets)) return nullptr;  return kiln::capi::TransientInsets((*(v.windowInsets))); }());
     const size_t n = out->size < sizeof(size_t) ? sizeof(c) : std::min(out->size, sizeof(c));
     std::memcpy(reinterpret_cast<char*>(out) + sizeof(size_t), reinterpret_cast<const char*>(&c) + sizeof(size_t), n - sizeof(size_t));
     out->size = n;
@@ -4607,6 +5115,7 @@ kiln::material3::NavigationDrawerItemOptions ToCpp(const kiln_m3_navigation_draw
     if (c.badge.call) v.badge = kiln::capi::Fn(c.badge);
     if (c.shape) v.shape = kiln::capi::ToShape(c.shape);
     if (c.colors) v.colors = (c.colors ? std::optional<kiln::material3::NavigationDrawerItemColors>(ToCpp(c.colors)) : std::nullopt);
+    if (c.interaction_source) v.interactionSource = (c.interaction_source ? c.interaction_source->source : nullptr);
     return v;
 }
 void FromCpp(const kiln::material3::NavigationDrawerItemOptions& v, kiln_m3_navigation_drawer_item_options* out) {
@@ -4616,6 +5125,7 @@ void FromCpp(const kiln::material3::NavigationDrawerItemOptions& v, kiln_m3_navi
     c.size = sizeof(c);
     c.shape = kiln::capi::TransientShape(v.shape);
     c.colors = ([&]() -> const kiln_m3_navigation_drawer_item_colors* { if (!(v.colors)) return nullptr;  return FromCppTransient((*(v.colors))); }());
+    c.interaction_source = kiln::capi::TransientSource(v.interactionSource);
     const size_t n = out->size < sizeof(size_t) ? sizeof(c) : std::min(out->size, sizeof(c));
     std::memcpy(reinterpret_cast<char*>(out) + sizeof(size_t), reinterpret_cast<const char*>(&c) + sizeof(size_t), n - sizeof(size_t));
     out->size = n;
@@ -4635,6 +5145,7 @@ kiln::material3::NavigationRailOptions ToCpp(const kiln_m3_navigation_rail_optio
     v.containerColor = (c.container_color ? std::optional<kiln::ui::Color>(kiln::capi::ToColor(c.container_color)) : std::nullopt);
     v.contentColor = (c.content_color ? std::optional<kiln::ui::Color>(kiln::capi::ToColor(c.content_color)) : std::nullopt);
     if (c.header.call) v.header = kiln::capi::Fn(c.header);
+    if (c.window_insets) v.windowInsets = (c.window_insets ? std::optional<kiln::foundation::WindowInsets>((c.window_insets ? c.window_insets->insets : kiln::foundation::WindowInsets{})) : std::nullopt);
     return v;
 }
 void FromCpp(const kiln::material3::NavigationRailOptions& v, kiln_m3_navigation_rail_options* out) {
@@ -4644,6 +5155,7 @@ void FromCpp(const kiln::material3::NavigationRailOptions& v, kiln_m3_navigation
     c.size = sizeof(c);
     c.container_color = ((v.containerColor) ? kiln::capi::FromColor(*(v.containerColor)) : KILN_COLOR_UNSPECIFIED);
     c.content_color = ((v.contentColor) ? kiln::capi::FromColor(*(v.contentColor)) : KILN_COLOR_UNSPECIFIED);
+    c.window_insets = ([&]() -> const kiln_window_insets* { if (!(v.windowInsets)) return nullptr;  return kiln::capi::TransientInsets((*(v.windowInsets))); }());
     const size_t n = out->size < sizeof(size_t) ? sizeof(c) : std::min(out->size, sizeof(c));
     std::memcpy(reinterpret_cast<char*>(out) + sizeof(size_t), reinterpret_cast<const char*>(&c) + sizeof(size_t), n - sizeof(size_t));
     out->size = n;
@@ -4701,6 +5213,7 @@ kiln::material3::NavigationRailItemOptions ToCpp(const kiln_m3_navigation_rail_i
     if (c.label.call) v.label = kiln::capi::Fn(c.label);
     v.alwaysShowLabel = c.always_show_label;
     if (c.colors) v.colors = (c.colors ? std::optional<kiln::material3::NavigationRailItemColors>(ToCpp(c.colors)) : std::nullopt);
+    if (c.interaction_source) v.interactionSource = (c.interaction_source ? c.interaction_source->source : nullptr);
     return v;
 }
 void FromCpp(const kiln::material3::NavigationRailItemOptions& v, kiln_m3_navigation_rail_item_options* out) {
@@ -4711,12 +5224,75 @@ void FromCpp(const kiln::material3::NavigationRailItemOptions& v, kiln_m3_naviga
     c.enabled = bool(v.enabled);
     c.always_show_label = bool(v.alwaysShowLabel);
     c.colors = ([&]() -> const kiln_m3_navigation_rail_item_colors* { if (!(v.colors)) return nullptr;  return FromCppTransient((*(v.colors))); }());
+    c.interaction_source = kiln::capi::TransientSource(v.interactionSource);
     const size_t n = out->size < sizeof(size_t) ? sizeof(c) : std::min(out->size, sizeof(c));
     std::memcpy(reinterpret_cast<char*>(out) + sizeof(size_t), reinterpret_cast<const char*>(&c) + sizeof(size_t), n - sizeof(size_t));
     out->size = n;
 }
 const kiln_m3_navigation_rail_item_options* FromCppTransient(const kiln::material3::NavigationRailItemOptions& v) {
     auto* c = kiln::capi::NewTransient<kiln_m3_navigation_rail_item_options>();
+    c->size = sizeof(*c);
+    FromCpp(v, c);
+    return c;
+}
+kiln::ui::BackEvent ToCpp(const kiln_back_event* in) {
+    kiln::ui::BackEvent v{};
+    if (!in) return v;
+    kiln_back_event c;
+    kiln_back_event_init(&c);
+    if (in->size > sizeof(size_t)) std::memcpy(reinterpret_cast<char*>(&c) + sizeof(size_t), reinterpret_cast<const char*>(in) + sizeof(size_t), std::min(in->size, sizeof(c)) - sizeof(size_t));
+    v.touchX = c.touch_x;
+    v.touchY = c.touch_y;
+    v.progress = c.progress;
+    v.swipeEdge = kiln::ui::SwipeEdge(c.swipe_edge);
+    v.frameTimeMillis = c.frame_time_millis;
+    return v;
+}
+void FromCpp(const kiln::ui::BackEvent& v, kiln_back_event* out) {
+    (void)v;
+    if (!out) return;
+    kiln_back_event c{};
+    c.size = sizeof(c);
+    c.touch_x = float(v.touchX);
+    c.touch_y = float(v.touchY);
+    c.progress = float(v.progress);
+    c.swipe_edge = kiln_swipe_edge(v.swipeEdge);
+    c.frame_time_millis = int64_t(v.frameTimeMillis);
+    const size_t n = out->size < sizeof(size_t) ? sizeof(c) : std::min(out->size, sizeof(c));
+    std::memcpy(reinterpret_cast<char*>(out) + sizeof(size_t), reinterpret_cast<const char*>(&c) + sizeof(size_t), n - sizeof(size_t));
+    out->size = n;
+}
+const kiln_back_event* FromCppTransient(const kiln::ui::BackEvent& v) {
+    auto* c = kiln::capi::NewTransient<kiln_back_event>();
+    c->size = sizeof(*c);
+    FromCpp(v, c);
+    return c;
+}
+kiln::ui::Density ToCpp(const kiln_density* in) {
+    kiln::ui::Density v{};
+    if (!in) return v;
+    kiln_density c;
+    kiln_density_init(&c);
+    if (in->size > sizeof(size_t)) std::memcpy(reinterpret_cast<char*>(&c) + sizeof(size_t), reinterpret_cast<const char*>(in) + sizeof(size_t), std::min(in->size, sizeof(c)) - sizeof(size_t));
+    v.density = c.density;
+    v.fontScale = c.font_scale;
+    v.fontWeightAdjustment = c.font_weight_adjustment;
+    return v;
+}
+void FromCpp(const kiln::ui::Density& v, kiln_density* out) {
+    (void)v;
+    if (!out) return;
+    kiln_density c{};
+    c.size = sizeof(c);
+    c.density = float(v.density);
+    c.font_scale = float(v.fontScale);
+    c.font_weight_adjustment = int32_t(v.fontWeightAdjustment);
+    const size_t n = out->size < sizeof(size_t) ? sizeof(c) : std::min(out->size, sizeof(c));
+    std::memcpy(reinterpret_cast<char*>(out) + sizeof(size_t), reinterpret_cast<const char*>(&c) + sizeof(size_t), n - sizeof(size_t));
+    out->size = n;
+}
+const kiln_density* FromCppTransient(const kiln::ui::Density& v) {
+    auto* c = kiln::capi::NewTransient<kiln_density>();
     c->size = sizeof(*c);
     FromCpp(v, c);
     return c;
@@ -4740,7 +5316,7 @@ void FromCpp(const kiln::material3::LinearProgressIndicatorOptions& v, kiln_m3_l
     c.size = sizeof(c);
     c.color = kiln::capi::FromColor(v.color);
     c.track_color = kiln::capi::FromColor(v.trackColor);
-    c.stroke_cap = kiln_gfx_stroke_cap(v.strokeCap);
+    c.stroke_cap = kiln_stroke_cap(v.strokeCap);
     c.gap_size = (v.gapSize).value;
     const size_t n = out->size < sizeof(size_t) ? sizeof(c) : std::min(out->size, sizeof(c));
     std::memcpy(reinterpret_cast<char*>(out) + sizeof(size_t), reinterpret_cast<const char*>(&c) + sizeof(size_t), n - sizeof(size_t));
@@ -4774,7 +5350,7 @@ void FromCpp(const kiln::material3::CircularProgressIndicatorOptions& v, kiln_m3
     c.track_color = kiln::capi::FromColor(v.trackColor);
     c.stroke_width = (v.strokeWidth).value;
     c.gap_size = (v.gapSize).value;
-    c.stroke_cap = kiln_gfx_stroke_cap(v.strokeCap);
+    c.stroke_cap = kiln_stroke_cap(v.strokeCap);
     const size_t n = out->size < sizeof(size_t) ? sizeof(c) : std::min(out->size, sizeof(c));
     std::memcpy(reinterpret_cast<char*>(out) + sizeof(size_t), reinterpret_cast<const char*>(&c) + sizeof(size_t), n - sizeof(size_t));
     out->size = n;
@@ -4920,6 +5496,7 @@ kiln::material3::RadioButtonOptions ToCpp(const kiln_m3_radio_button_options* in
     if (in->size > sizeof(size_t)) std::memcpy(reinterpret_cast<char*>(&c) + sizeof(size_t), reinterpret_cast<const char*>(in) + sizeof(size_t), std::min(in->size, sizeof(c)) - sizeof(size_t));
     v.enabled = c.enabled;
     if (c.colors) v.colors = (c.colors ? std::optional<kiln::material3::RadioButtonColors>(ToCpp(c.colors)) : std::nullopt);
+    if (c.interaction_source) v.interactionSource = (c.interaction_source ? c.interaction_source->source : nullptr);
     return v;
 }
 void FromCpp(const kiln::material3::RadioButtonOptions& v, kiln_m3_radio_button_options* out) {
@@ -4929,6 +5506,7 @@ void FromCpp(const kiln::material3::RadioButtonOptions& v, kiln_m3_radio_button_
     c.size = sizeof(c);
     c.enabled = bool(v.enabled);
     c.colors = ([&]() -> const kiln_m3_radio_button_colors* { if (!(v.colors)) return nullptr;  return FromCppTransient((*(v.colors))); }());
+    c.interaction_source = kiln::capi::TransientSource(v.interactionSource);
     const size_t n = out->size < sizeof(size_t) ? sizeof(c) : std::min(out->size, sizeof(c));
     std::memcpy(reinterpret_cast<char*>(out) + sizeof(size_t), reinterpret_cast<const char*>(&c) + sizeof(size_t), n - sizeof(size_t));
     out->size = n;
@@ -4992,6 +5570,7 @@ kiln::material3::ScaffoldOptions ToCpp(const kiln_m3_scaffold_options* in) {
     v.floatingActionButtonPosition = kiln::material3::FabPosition(c.floating_action_button_position);
     v.containerColor = (c.container_color ? std::optional<kiln::ui::Color>(kiln::capi::ToColor(c.container_color)) : std::nullopt);
     v.contentColor = (c.content_color ? std::optional<kiln::ui::Color>(kiln::capi::ToColor(c.content_color)) : std::nullopt);
+    if (c.content_window_insets) v.contentWindowInsets = (c.content_window_insets ? std::optional<kiln::foundation::WindowInsets>((c.content_window_insets ? c.content_window_insets->insets : kiln::foundation::WindowInsets{})) : std::nullopt);
     return v;
 }
 void FromCpp(const kiln::material3::ScaffoldOptions& v, kiln_m3_scaffold_options* out) {
@@ -5002,6 +5581,7 @@ void FromCpp(const kiln::material3::ScaffoldOptions& v, kiln_m3_scaffold_options
     c.floating_action_button_position = kiln_m3_fab_position(v.floatingActionButtonPosition);
     c.container_color = ((v.containerColor) ? kiln::capi::FromColor(*(v.containerColor)) : KILN_COLOR_UNSPECIFIED);
     c.content_color = ((v.contentColor) ? kiln::capi::FromColor(*(v.contentColor)) : KILN_COLOR_UNSPECIFIED);
+    c.content_window_insets = ([&]() -> const kiln_window_insets* { if (!(v.contentWindowInsets)) return nullptr;  return kiln::capi::TransientInsets((*(v.contentWindowInsets))); }());
     const size_t n = out->size < sizeof(size_t) ? sizeof(c) : std::min(out->size, sizeof(c));
     std::memcpy(reinterpret_cast<char*>(out) + sizeof(size_t), reinterpret_cast<const char*>(&c) + sizeof(size_t), n - sizeof(size_t));
     out->size = n;
@@ -5083,6 +5663,7 @@ kiln::material3::ScrollFieldOptions ToCpp(const kiln_m3_scroll_field_options* in
     v.enabled = c.enabled;
     if (c.colors) v.colors = (c.colors ? std::optional<kiln::material3::ScrollFieldColors>(ToCpp(c.colors)) : std::nullopt);
     if (c.field_accessibility_description.call) v.fieldAccessibilityDescription = ToCpp_kiln_m3_fn_int_to_string(c.field_accessibility_description);
+    if (c.interaction_source) v.interactionSource = (c.interaction_source ? c.interaction_source->source : nullptr);
     if (c.field.call) v.field = ToCpp_kiln_m3_fn_int_bool_bool(c.field);
     v.itemHeight = kiln::capi::ToDp(c.item_height);
     return v;
@@ -5094,6 +5675,7 @@ void FromCpp(const kiln::material3::ScrollFieldOptions& v, kiln_m3_scroll_field_
     c.size = sizeof(c);
     c.enabled = bool(v.enabled);
     c.colors = ([&]() -> const kiln_m3_scroll_field_colors* { if (!(v.colors)) return nullptr;  return FromCppTransient((*(v.colors))); }());
+    c.interaction_source = kiln::capi::TransientSource(v.interactionSource);
     c.item_height = (v.itemHeight).value;
     const size_t n = out->size < sizeof(size_t) ? sizeof(c) : std::min(out->size, sizeof(c));
     std::memcpy(reinterpret_cast<char*>(out) + sizeof(size_t), reinterpret_cast<const char*>(&c) + sizeof(size_t), n - sizeof(size_t));
@@ -5164,6 +5746,9 @@ kiln::material3::SearchBarInputFieldOptions ToCpp(const kiln_m3_search_bar_input
     if (c.suffix.call) v.suffix = kiln::capi::Fn(c.suffix);
     if (c.shape) v.shape = kiln::capi::ToShape(c.shape);
     if (c.colors) v.colors = (c.colors ? std::optional<kiln::material3::TextFieldColors>(ToCpp(c.colors)) : std::nullopt);
+    if (c.interaction_source) v.interactionSource = (c.interaction_source ? c.interaction_source->source : nullptr);
+    if (c.keyboard_options) v.keyboardOptions = ToCpp(c.keyboard_options);
+    if (c.line_limits) v.lineLimits = ToCpp(c.line_limits);
     return v;
 }
 void FromCpp(const kiln::material3::SearchBarInputFieldOptions& v, kiln_m3_search_bar_input_field_options* out) {
@@ -5176,6 +5761,9 @@ void FromCpp(const kiln::material3::SearchBarInputFieldOptions& v, kiln_m3_searc
     c.text_style = ([&]() -> const kiln_text_style* { if (!(v.textStyle)) return nullptr;  return kiln::capi::TransientTextStyle((*(v.textStyle))); }());
     c.shape = kiln::capi::TransientShape(v.shape);
     c.colors = ([&]() -> const kiln_m3_text_field_colors* { if (!(v.colors)) return nullptr;  return FromCppTransient((*(v.colors))); }());
+    c.interaction_source = kiln::capi::TransientSource(v.interactionSource);
+    c.keyboard_options = FromCppTransient(v.keyboardOptions);
+    c.line_limits = FromCppTransient(v.lineLimits);
     const size_t n = out->size < sizeof(size_t) ? sizeof(c) : std::min(out->size, sizeof(c));
     std::memcpy(reinterpret_cast<char*>(out) + sizeof(size_t), reinterpret_cast<const char*>(&c) + sizeof(size_t), n - sizeof(size_t));
     out->size = n;
@@ -5294,6 +5882,7 @@ kiln::material3::AppBarWithSearchOptions ToCpp(const kiln_m3_app_bar_with_search
     v.tonalElevation = (c.tonal_elevation.set ? std::optional<kiln::ui::Dp>(kiln::ui::Dp(c.tonal_elevation.value)) : std::nullopt);
     v.shadowElevation = (c.shadow_elevation.set ? std::optional<kiln::ui::Dp>(kiln::ui::Dp(c.shadow_elevation.value)) : std::nullopt);
     v.contentPadding = kiln::capi::ToPadding(c.content_padding);
+    if (c.window_insets) v.windowInsets = (c.window_insets ? std::optional<kiln::foundation::WindowInsets>((c.window_insets ? c.window_insets->insets : kiln::foundation::WindowInsets{})) : std::nullopt);
     if (c.scroll_behavior) v.scrollBehavior = (c.scroll_behavior ? c.scroll_behavior->Shared() : nullptr);
     return v;
 }
@@ -5307,6 +5896,7 @@ void FromCpp(const kiln::material3::AppBarWithSearchOptions& v, kiln_m3_app_bar_
     c.tonal_elevation = kiln_opt_float{ (v.tonalElevation).has_value(), (v.tonalElevation) ? (v.tonalElevation)->value : 0.0f };
     c.shadow_elevation = kiln_opt_float{ (v.shadowElevation).has_value(), (v.shadowElevation) ? (v.shadowElevation)->value : 0.0f };
     c.content_padding = kiln::capi::FromPadding(v.contentPadding);
+    c.window_insets = ([&]() -> const kiln_window_insets* { if (!(v.windowInsets)) return nullptr;  return kiln::capi::TransientInsets((*(v.windowInsets))); }());
     auto* h0 = kiln::capi::NewTransient<kiln_m3_search_bar_scroll_behavior>();
     h0->owner = std::const_pointer_cast<kiln::material3::SearchBarScrollBehavior>(v.scrollBehavior); h0->ptr = h0->owner.get();
     c.scroll_behavior = h0;
@@ -5330,6 +5920,8 @@ kiln::material3::ExpandedFullScreenSearchBarOptions ToCpp(const kiln_m3_expanded
     if (c.colors) v.colors = (c.colors ? std::optional<kiln::material3::SearchBarColors>(ToCpp(c.colors)) : std::nullopt);
     v.tonalElevation = (c.tonal_elevation.set ? std::optional<kiln::ui::Dp>(kiln::ui::Dp(c.tonal_elevation.value)) : std::nullopt);
     v.shadowElevation = (c.shadow_elevation.set ? std::optional<kiln::ui::Dp>(kiln::ui::Dp(c.shadow_elevation.value)) : std::nullopt);
+    if (c.window_insets.call) v.windowInsets = ToCpp_kiln_m3_fn_to_window_insets(c.window_insets);
+    if (c.properties) v.properties = ToCpp(c.properties);
     return v;
 }
 void FromCpp(const kiln::material3::ExpandedFullScreenSearchBarOptions& v, kiln_m3_expanded_full_screen_search_bar_options* out) {
@@ -5341,6 +5933,7 @@ void FromCpp(const kiln::material3::ExpandedFullScreenSearchBarOptions& v, kiln_
     c.colors = ([&]() -> const kiln_m3_search_bar_colors* { if (!(v.colors)) return nullptr;  return FromCppTransient((*(v.colors))); }());
     c.tonal_elevation = kiln_opt_float{ (v.tonalElevation).has_value(), (v.tonalElevation) ? (v.tonalElevation)->value : 0.0f };
     c.shadow_elevation = kiln_opt_float{ (v.shadowElevation).has_value(), (v.shadowElevation) ? (v.shadowElevation)->value : 0.0f };
+    c.properties = FromCppTransient(v.properties);
     const size_t n = out->size < sizeof(size_t) ? sizeof(c) : std::min(out->size, sizeof(c));
     std::memcpy(reinterpret_cast<char*>(out) + sizeof(size_t), reinterpret_cast<const char*>(&c) + sizeof(size_t), n - sizeof(size_t));
     out->size = n;
@@ -5361,6 +5954,7 @@ kiln::material3::ExpandedDockedSearchBarOptions ToCpp(const kiln_m3_expanded_doc
     if (c.colors) v.colors = (c.colors ? std::optional<kiln::material3::SearchBarColors>(ToCpp(c.colors)) : std::nullopt);
     v.tonalElevation = (c.tonal_elevation.set ? std::optional<kiln::ui::Dp>(kiln::ui::Dp(c.tonal_elevation.value)) : std::nullopt);
     v.shadowElevation = (c.shadow_elevation.set ? std::optional<kiln::ui::Dp>(kiln::ui::Dp(c.shadow_elevation.value)) : std::nullopt);
+    if (c.properties) v.properties = ToCpp(c.properties);
     if (c.dropdown_shape) v.dropdownShape = kiln::capi::ToShape(c.dropdown_shape);
     v.dropdownGapSize = (c.dropdown_gap_size.set ? std::optional<kiln::ui::Dp>(kiln::ui::Dp(c.dropdown_gap_size.value)) : std::nullopt);
     v.dropdownScrimColor = (c.dropdown_scrim_color ? std::optional<kiln::ui::Color>(kiln::capi::ToColor(c.dropdown_scrim_color)) : std::nullopt);
@@ -5375,6 +5969,7 @@ void FromCpp(const kiln::material3::ExpandedDockedSearchBarOptions& v, kiln_m3_e
     c.colors = ([&]() -> const kiln_m3_search_bar_colors* { if (!(v.colors)) return nullptr;  return FromCppTransient((*(v.colors))); }());
     c.tonal_elevation = kiln_opt_float{ (v.tonalElevation).has_value(), (v.tonalElevation) ? (v.tonalElevation)->value : 0.0f };
     c.shadow_elevation = kiln_opt_float{ (v.shadowElevation).has_value(), (v.shadowElevation) ? (v.shadowElevation)->value : 0.0f };
+    c.properties = FromCppTransient(v.properties);
     c.dropdown_shape = kiln::capi::TransientShape(v.dropdownShape);
     c.dropdown_gap_size = kiln_opt_float{ (v.dropdownGapSize).has_value(), (v.dropdownGapSize) ? (v.dropdownGapSize)->value : 0.0f };
     c.dropdown_scrim_color = ((v.dropdownScrimColor) ? kiln::capi::FromColor(*(v.dropdownScrimColor)) : KILN_COLOR_UNSPECIFIED);
@@ -5398,6 +5993,7 @@ kiln::material3::ExpandableSearchBarOptions ToCpp(const kiln_m3_expandable_searc
     if (c.colors) v.colors = (c.colors ? std::optional<kiln::material3::SearchBarColors>(ToCpp(c.colors)) : std::nullopt);
     v.tonalElevation = (c.tonal_elevation.set ? std::optional<kiln::ui::Dp>(kiln::ui::Dp(c.tonal_elevation.value)) : std::nullopt);
     v.shadowElevation = (c.shadow_elevation.set ? std::optional<kiln::ui::Dp>(kiln::ui::Dp(c.shadow_elevation.value)) : std::nullopt);
+    if (c.window_insets) v.windowInsets = (c.window_insets ? std::optional<kiln::foundation::WindowInsets>((c.window_insets ? c.window_insets->insets : kiln::foundation::WindowInsets{})) : std::nullopt);
     return v;
 }
 void FromCpp(const kiln::material3::ExpandableSearchBarOptions& v, kiln_m3_expandable_search_bar_options* out) {
@@ -5409,6 +6005,7 @@ void FromCpp(const kiln::material3::ExpandableSearchBarOptions& v, kiln_m3_expan
     c.colors = ([&]() -> const kiln_m3_search_bar_colors* { if (!(v.colors)) return nullptr;  return FromCppTransient((*(v.colors))); }());
     c.tonal_elevation = kiln_opt_float{ (v.tonalElevation).has_value(), (v.tonalElevation) ? (v.tonalElevation)->value : 0.0f };
     c.shadow_elevation = kiln_opt_float{ (v.shadowElevation).has_value(), (v.shadowElevation) ? (v.shadowElevation)->value : 0.0f };
+    c.window_insets = ([&]() -> const kiln_window_insets* { if (!(v.windowInsets)) return nullptr;  return kiln::capi::TransientInsets((*(v.windowInsets))); }());
     const size_t n = out->size < sizeof(size_t) ? sizeof(c) : std::min(out->size, sizeof(c));
     std::memcpy(reinterpret_cast<char*>(out) + sizeof(size_t), reinterpret_cast<const char*>(&c) + sizeof(size_t), n - sizeof(size_t));
     out->size = n;
@@ -5476,6 +6073,7 @@ kiln::material3::SegmentedButtonOptions ToCpp(const kiln_m3_segmented_button_opt
     if (c.colors) v.colors = (c.colors ? std::optional<kiln::material3::SegmentedButtonColors>(ToCpp(c.colors)) : std::nullopt);
     if (c.border) v.border = (c.border ? std::optional<kiln::foundation::BorderStroke>(kiln::foundation::BorderStroke(kiln::ui::Dp((*c.border).width), kiln::capi::ToColor((*c.border).color))) : std::nullopt);
     if (c.content_padding) v.contentPadding = (c.content_padding ? std::optional<kiln::foundation::PaddingValues>(kiln::capi::ToPadding((*c.content_padding))) : std::nullopt);
+    if (c.interaction_source) v.interactionSource = (c.interaction_source ? c.interaction_source->source : nullptr);
     return v;
 }
 void FromCpp(const kiln::material3::SegmentedButtonOptions& v, kiln_m3_segmented_button_options* out) {
@@ -5485,6 +6083,9 @@ void FromCpp(const kiln::material3::SegmentedButtonOptions& v, kiln_m3_segmented
     c.size = sizeof(c);
     c.enabled = bool(v.enabled);
     c.colors = ([&]() -> const kiln_m3_segmented_button_colors* { if (!(v.colors)) return nullptr;  return FromCppTransient((*(v.colors))); }());
+    c.border = ([&]() -> const kiln_border_stroke* { if (!(v.border)) return nullptr;  auto* p = kiln::capi::NewTransient<kiln_border_stroke>(); *p = kiln::capi::FromBorderStroke((*(v.border))); return p; }());
+    c.content_padding = ([&]() -> const kiln_padding* { if (!(v.contentPadding)) return nullptr;  auto* p = kiln::capi::NewTransient<kiln_padding>(); *p = kiln::capi::FromPadding((*(v.contentPadding))); return p; }());
+    c.interaction_source = kiln::capi::TransientSource(v.interactionSource);
     const size_t n = out->size < sizeof(size_t) ? sizeof(c) : std::min(out->size, sizeof(c));
     std::memcpy(reinterpret_cast<char*>(out) + sizeof(size_t), reinterpret_cast<const char*>(&c) + sizeof(size_t), n - sizeof(size_t));
     out->size = n;
@@ -5503,6 +6104,7 @@ kiln::material3::ShortNavigationBarOptions ToCpp(const kiln_m3_short_navigation_
     if (in->size > sizeof(size_t)) std::memcpy(reinterpret_cast<char*>(&c) + sizeof(size_t), reinterpret_cast<const char*>(in) + sizeof(size_t), std::min(in->size, sizeof(c)) - sizeof(size_t));
     v.containerColor = (c.container_color ? std::optional<kiln::ui::Color>(kiln::capi::ToColor(c.container_color)) : std::nullopt);
     v.contentColor = (c.content_color ? std::optional<kiln::ui::Color>(kiln::capi::ToColor(c.content_color)) : std::nullopt);
+    if (c.window_insets) v.windowInsets = (c.window_insets ? std::optional<kiln::foundation::WindowInsets>((c.window_insets ? c.window_insets->insets : kiln::foundation::WindowInsets{})) : std::nullopt);
     v.arrangement = kiln::material3::ShortNavigationBarArrangement(c.arrangement);
     return v;
 }
@@ -5513,6 +6115,7 @@ void FromCpp(const kiln::material3::ShortNavigationBarOptions& v, kiln_m3_short_
     c.size = sizeof(c);
     c.container_color = ((v.containerColor) ? kiln::capi::FromColor(*(v.containerColor)) : KILN_COLOR_UNSPECIFIED);
     c.content_color = ((v.contentColor) ? kiln::capi::FromColor(*(v.contentColor)) : KILN_COLOR_UNSPECIFIED);
+    c.window_insets = ([&]() -> const kiln_window_insets* { if (!(v.windowInsets)) return nullptr;  return kiln::capi::TransientInsets((*(v.windowInsets))); }());
     c.arrangement = kiln_m3_short_navigation_bar_arrangement(v.arrangement);
     const size_t n = out->size < sizeof(size_t) ? sizeof(c) : std::min(out->size, sizeof(c));
     std::memcpy(reinterpret_cast<char*>(out) + sizeof(size_t), reinterpret_cast<const char*>(&c) + sizeof(size_t), n - sizeof(size_t));
@@ -5572,6 +6175,7 @@ kiln::material3::ShortNavigationBarItemOptions ToCpp(const kiln_m3_short_navigat
     v.enabled = c.enabled;
     v.iconPosition = kiln::material3::NavigationItemIconPosition(c.icon_position);
     if (c.colors) v.colors = (c.colors ? std::optional<kiln::material3::NavigationItemColors>(ToCpp(c.colors)) : std::nullopt);
+    if (c.interaction_source) v.interactionSource = (c.interaction_source ? c.interaction_source->source : nullptr);
     return v;
 }
 void FromCpp(const kiln::material3::ShortNavigationBarItemOptions& v, kiln_m3_short_navigation_bar_item_options* out) {
@@ -5582,6 +6186,7 @@ void FromCpp(const kiln::material3::ShortNavigationBarItemOptions& v, kiln_m3_sh
     c.enabled = bool(v.enabled);
     c.icon_position = kiln_m3_navigation_item_icon_position(v.iconPosition);
     c.colors = ([&]() -> const kiln_m3_navigation_item_colors* { if (!(v.colors)) return nullptr;  return FromCppTransient((*(v.colors))); }());
+    c.interaction_source = kiln::capi::TransientSource(v.interactionSource);
     const size_t n = out->size < sizeof(size_t) ? sizeof(c) : std::min(out->size, sizeof(c));
     std::memcpy(reinterpret_cast<char*>(out) + sizeof(size_t), reinterpret_cast<const char*>(&c) + sizeof(size_t), n - sizeof(size_t));
     out->size = n;
@@ -5671,6 +6276,7 @@ kiln::material3::SliderOptions ToCpp(const kiln_m3_slider_options* in) {
     v.enabled = c.enabled;
     if (c.on_value_change_finished.call) v.onValueChangeFinished = kiln::capi::Fn(c.on_value_change_finished);
     if (c.colors) v.colors = (c.colors ? std::optional<kiln::material3::SliderColors>(ToCpp(c.colors)) : std::nullopt);
+    if (c.interaction_source) v.interactionSource = (c.interaction_source ? c.interaction_source->source : nullptr);
     if (c.thumb.call) v.thumb = ToCpp_kiln_m3_fn_slider_state(c.thumb);
     if (c.track.call) v.track = ToCpp_kiln_m3_fn_slider_state(c.track);
     return v;
@@ -5682,6 +6288,7 @@ void FromCpp(const kiln::material3::SliderOptions& v, kiln_m3_slider_options* ou
     c.size = sizeof(c);
     c.enabled = bool(v.enabled);
     c.colors = ([&]() -> const kiln_m3_slider_colors* { if (!(v.colors)) return nullptr;  return FromCppTransient((*(v.colors))); }());
+    c.interaction_source = kiln::capi::TransientSource(v.interactionSource);
     const size_t n = out->size < sizeof(size_t) ? sizeof(c) : std::min(out->size, sizeof(c));
     std::memcpy(reinterpret_cast<char*>(out) + sizeof(size_t), reinterpret_cast<const char*>(&c) + sizeof(size_t), n - sizeof(size_t));
     out->size = n;
@@ -5701,6 +6308,8 @@ kiln::material3::RangeSliderOptions ToCpp(const kiln_m3_range_slider_options* in
     v.enabled = c.enabled;
     if (c.on_value_change_finished.call) v.onValueChangeFinished = kiln::capi::Fn(c.on_value_change_finished);
     if (c.colors) v.colors = (c.colors ? std::optional<kiln::material3::SliderColors>(ToCpp(c.colors)) : std::nullopt);
+    if (c.start_thumb_interaction_source) v.startThumbInteractionSource = (c.start_thumb_interaction_source ? c.start_thumb_interaction_source->source : nullptr);
+    if (c.end_thumb_interaction_source) v.endThumbInteractionSource = (c.end_thumb_interaction_source ? c.end_thumb_interaction_source->source : nullptr);
     if (c.start_thumb.call) v.startThumb = ToCpp_kiln_m3_fn_range_slider_state(c.start_thumb);
     if (c.end_thumb.call) v.endThumb = ToCpp_kiln_m3_fn_range_slider_state(c.end_thumb);
     if (c.track.call) v.track = ToCpp_kiln_m3_fn_range_slider_state(c.track);
@@ -5713,6 +6322,8 @@ void FromCpp(const kiln::material3::RangeSliderOptions& v, kiln_m3_range_slider_
     c.size = sizeof(c);
     c.enabled = bool(v.enabled);
     c.colors = ([&]() -> const kiln_m3_slider_colors* { if (!(v.colors)) return nullptr;  return FromCppTransient((*(v.colors))); }());
+    c.start_thumb_interaction_source = kiln::capi::TransientSource(v.startThumbInteractionSource);
+    c.end_thumb_interaction_source = kiln::capi::TransientSource(v.endThumbInteractionSource);
     const size_t n = out->size < sizeof(size_t) ? sizeof(c) : std::min(out->size, sizeof(c));
     std::memcpy(reinterpret_cast<char*>(out) + sizeof(size_t), reinterpret_cast<const char*>(&c) + sizeof(size_t), n - sizeof(size_t));
     out->size = n;
@@ -5743,6 +6354,7 @@ void FromCpp(const kiln::material3::SliderThumbOptions& v, kiln_m3_slider_thumb_
     c.enabled = bool(v.enabled);
     c.is_vertical = bool(v.isVertical);
     c.colors = ([&]() -> const kiln_m3_slider_colors* { if (!(v.colors)) return nullptr;  return FromCppTransient((*(v.colors))); }());
+    c.thumb_size = ([&]() -> const kiln_dp_size* { if (!(v.thumbSize)) return nullptr;  auto* p = kiln::capi::NewTransient<kiln_dp_size>(); *p = kiln_dp_size{ ((*(v.thumbSize))).width.value, ((*(v.thumbSize))).height.value }; return p; }());
     const size_t n = out->size < sizeof(size_t) ? sizeof(c) : std::min(out->size, sizeof(c));
     std::memcpy(reinterpret_cast<char*>(out) + sizeof(size_t), reinterpret_cast<const char*>(&c) + sizeof(size_t), n - sizeof(size_t));
     out->size = n;
@@ -5788,6 +6400,33 @@ const kiln_m3_slider_track_options* FromCppTransient(const kiln::material3::Slid
     FromCpp(v, c);
     return c;
 }
+kiln::ui::Offset ToCpp(const kiln_offset* in) {
+    kiln::ui::Offset v{};
+    if (!in) return v;
+    kiln_offset c;
+    kiln_offset_init(&c);
+    if (in->size > sizeof(size_t)) std::memcpy(reinterpret_cast<char*>(&c) + sizeof(size_t), reinterpret_cast<const char*>(in) + sizeof(size_t), std::min(in->size, sizeof(c)) - sizeof(size_t));
+    v.x = c.x;
+    v.y = c.y;
+    return v;
+}
+void FromCpp(const kiln::ui::Offset& v, kiln_offset* out) {
+    (void)v;
+    if (!out) return;
+    kiln_offset c{};
+    c.size = sizeof(c);
+    c.x = float(v.x);
+    c.y = float(v.y);
+    const size_t n = out->size < sizeof(size_t) ? sizeof(c) : std::min(out->size, sizeof(c));
+    std::memcpy(reinterpret_cast<char*>(out) + sizeof(size_t), reinterpret_cast<const char*>(&c) + sizeof(size_t), n - sizeof(size_t));
+    out->size = n;
+}
+const kiln_offset* FromCppTransient(const kiln::ui::Offset& v) {
+    auto* c = kiln::capi::NewTransient<kiln_offset>();
+    c->size = sizeof(*c);
+    FromCpp(v, c);
+    return c;
+}
 kiln::material3::SplitButtonShapes ToCpp(const kiln_m3_split_button_shapes* in) {
     kiln::material3::SplitButtonShapes v{};
     if (!in) return v;
@@ -5829,6 +6468,7 @@ kiln::material3::SplitButtonOptions ToCpp(const kiln_m3_split_button_options* in
     if (c.elevation.set) v.elevation = (c.elevation.set ? std::optional<std::optional<kiln::material3::ButtonElevation>>(c.elevation.value ? std::optional<kiln::material3::ButtonElevation>(ToCpp(c.elevation.value)) : std::nullopt) : std::nullopt);
     if (c.border.set) v.border = (c.border.set ? std::optional<std::optional<kiln::foundation::BorderStroke>>(c.border.value ? std::optional<kiln::foundation::BorderStroke>(kiln::foundation::BorderStroke(kiln::ui::Dp((*c.border.value).width), kiln::capi::ToColor((*c.border.value).color))) : std::nullopt) : std::nullopt);
     if (c.content_padding) v.contentPadding = (c.content_padding ? std::optional<kiln::foundation::PaddingValues>(kiln::capi::ToPadding((*c.content_padding))) : std::nullopt);
+    if (c.interaction_source) v.interactionSource = (c.interaction_source ? c.interaction_source->source : nullptr);
     return v;
 }
 void FromCpp(const kiln::material3::SplitButtonOptions& v, kiln_m3_split_button_options* out) {
@@ -5839,6 +6479,8 @@ void FromCpp(const kiln::material3::SplitButtonOptions& v, kiln_m3_split_button_
     c.enabled = bool(v.enabled);
     c.shapes = ([&]() -> const kiln_m3_split_button_shapes* { if (!(v.shapes)) return nullptr;  return FromCppTransient((*(v.shapes))); }());
     c.colors = ([&]() -> const kiln_m3_button_colors* { if (!(v.colors)) return nullptr;  return FromCppTransient((*(v.colors))); }());
+    c.content_padding = ([&]() -> const kiln_padding* { if (!(v.contentPadding)) return nullptr;  auto* p = kiln::capi::NewTransient<kiln_padding>(); *p = kiln::capi::FromPadding((*(v.contentPadding))); return p; }());
+    c.interaction_source = kiln::capi::TransientSource(v.interactionSource);
     const size_t n = out->size < sizeof(size_t) ? sizeof(c) : std::min(out->size, sizeof(c));
     std::memcpy(reinterpret_cast<char*>(out) + sizeof(size_t), reinterpret_cast<const char*>(&c) + sizeof(size_t), n - sizeof(size_t));
     out->size = n;
@@ -5873,6 +6515,7 @@ void FromCpp(const kiln::material3::SurfaceOptions& v, kiln_m3_surface_options* 
     c.content_color = ((v.contentColor) ? kiln::capi::FromColor(*(v.contentColor)) : KILN_COLOR_UNSPECIFIED);
     c.tonal_elevation = (v.tonalElevation).value;
     c.shadow_elevation = (v.shadowElevation).value;
+    c.border = ([&]() -> const kiln_border_stroke* { if (!(v.border)) return nullptr;  auto* p = kiln::capi::NewTransient<kiln_border_stroke>(); *p = kiln::capi::FromBorderStroke((*(v.border))); return p; }());
     const size_t n = out->size < sizeof(size_t) ? sizeof(c) : std::min(out->size, sizeof(c));
     std::memcpy(reinterpret_cast<char*>(out) + sizeof(size_t), reinterpret_cast<const char*>(&c) + sizeof(size_t), n - sizeof(size_t));
     out->size = n;
@@ -5977,6 +6620,7 @@ kiln::material3::SwitchOptions ToCpp(const kiln_m3_switch_options* in) {
     v.enabled = c.enabled;
     if (c.colors) v.colors = (c.colors ? std::optional<kiln::material3::SwitchColors>(ToCpp(c.colors)) : std::nullopt);
     if (c.thumb_content.call) v.thumbContent = kiln::capi::Fn(c.thumb_content);
+    if (c.interaction_source) v.interactionSource = (c.interaction_source ? c.interaction_source->source : nullptr);
     return v;
 }
 void FromCpp(const kiln::material3::SwitchOptions& v, kiln_m3_switch_options* out) {
@@ -5986,6 +6630,7 @@ void FromCpp(const kiln::material3::SwitchOptions& v, kiln_m3_switch_options* ou
     c.size = sizeof(c);
     c.enabled = bool(v.enabled);
     c.colors = ([&]() -> const kiln_m3_switch_colors* { if (!(v.colors)) return nullptr;  return FromCppTransient((*(v.colors))); }());
+    c.interaction_source = kiln::capi::TransientSource(v.interactionSource);
     const size_t n = out->size < sizeof(size_t) ? sizeof(c) : std::min(out->size, sizeof(c));
     std::memcpy(reinterpret_cast<char*>(out) + sizeof(size_t), reinterpret_cast<const char*>(&c) + sizeof(size_t), n - sizeof(size_t));
     out->size = n;
@@ -6005,6 +6650,7 @@ kiln::material3::TabOptions ToCpp(const kiln_m3_tab_options* in) {
     v.enabled = c.enabled;
     v.selectedContentColor = (c.selected_content_color ? std::optional<kiln::ui::Color>(kiln::capi::ToColor(c.selected_content_color)) : std::nullopt);
     v.unselectedContentColor = (c.unselected_content_color ? std::optional<kiln::ui::Color>(kiln::capi::ToColor(c.unselected_content_color)) : std::nullopt);
+    if (c.interaction_source) v.interactionSource = (c.interaction_source ? c.interaction_source->source : nullptr);
     return v;
 }
 void FromCpp(const kiln::material3::TabOptions& v, kiln_m3_tab_options* out) {
@@ -6015,6 +6661,7 @@ void FromCpp(const kiln::material3::TabOptions& v, kiln_m3_tab_options* out) {
     c.enabled = bool(v.enabled);
     c.selected_content_color = ((v.selectedContentColor) ? kiln::capi::FromColor(*(v.selectedContentColor)) : KILN_COLOR_UNSPECIFIED);
     c.unselected_content_color = ((v.unselectedContentColor) ? kiln::capi::FromColor(*(v.unselectedContentColor)) : KILN_COLOR_UNSPECIFIED);
+    c.interaction_source = kiln::capi::TransientSource(v.interactionSource);
     const size_t n = out->size < sizeof(size_t) ? sizeof(c) : std::min(out->size, sizeof(c));
     std::memcpy(reinterpret_cast<char*>(out) + sizeof(size_t), reinterpret_cast<const char*>(&c) + sizeof(size_t), n - sizeof(size_t));
     out->size = n;
@@ -6081,6 +6728,58 @@ const kiln_m3_scrollable_tab_row_options* FromCppTransient(const kiln::material3
     FromCpp(v, c);
     return c;
 }
+kiln::text::FontWeight ToCpp(const kiln_font_weight* in) {
+    kiln::text::FontWeight v{};
+    if (!in) return v;
+    kiln_font_weight c;
+    kiln_font_weight_init(&c);
+    if (in->size > sizeof(size_t)) std::memcpy(reinterpret_cast<char*>(&c) + sizeof(size_t), reinterpret_cast<const char*>(in) + sizeof(size_t), std::min(in->size, sizeof(c)) - sizeof(size_t));
+    v.weight = c.weight;
+    return v;
+}
+void FromCpp(const kiln::text::FontWeight& v, kiln_font_weight* out) {
+    (void)v;
+    if (!out) return;
+    kiln_font_weight c{};
+    c.size = sizeof(c);
+    c.weight = int32_t(v.weight);
+    const size_t n = out->size < sizeof(size_t) ? sizeof(c) : std::min(out->size, sizeof(c));
+    std::memcpy(reinterpret_cast<char*>(out) + sizeof(size_t), reinterpret_cast<const char*>(&c) + sizeof(size_t), n - sizeof(size_t));
+    out->size = n;
+}
+const kiln_font_weight* FromCppTransient(const kiln::text::FontWeight& v) {
+    auto* c = kiln::capi::NewTransient<kiln_font_weight>();
+    c->size = sizeof(*c);
+    FromCpp(v, c);
+    return c;
+}
+kiln::text::FontFamily ToCpp(const kiln_font_family* in) {
+    kiln::text::FontFamily v{};
+    if (!in) return v;
+    kiln_font_family c;
+    kiln_font_family_init(&c);
+    if (in->size > sizeof(size_t)) std::memcpy(reinterpret_cast<char*>(&c) + sizeof(size_t), reinterpret_cast<const char*>(in) + sizeof(size_t), std::min(in->size, sizeof(c)) - sizeof(size_t));
+    v.kind = kiln::text::FontFamily::Kind(c.kind);
+    if (c.name) v.name = kiln::capi::ToString(c.name);
+    return v;
+}
+void FromCpp(const kiln::text::FontFamily& v, kiln_font_family* out) {
+    (void)v;
+    if (!out) return;
+    kiln_font_family c{};
+    c.size = sizeof(c);
+    c.kind = kiln_kind(v.kind);
+    c.name = kiln::capi::TransientString(std::string(v.name));
+    const size_t n = out->size < sizeof(size_t) ? sizeof(c) : std::min(out->size, sizeof(c));
+    std::memcpy(reinterpret_cast<char*>(out) + sizeof(size_t), reinterpret_cast<const char*>(&c) + sizeof(size_t), n - sizeof(size_t));
+    out->size = n;
+}
+const kiln_font_family* FromCppTransient(const kiln::text::FontFamily& v) {
+    auto* c = kiln::capi::NewTransient<kiln_font_family>();
+    c->size = sizeof(*c);
+    FromCpp(v, c);
+    return c;
+}
 kiln::material3::TextOptions ToCpp(const kiln_m3_text_options* in) {
     kiln::material3::TextOptions v{};
     if (!in) return v;
@@ -6089,9 +6788,14 @@ kiln::material3::TextOptions ToCpp(const kiln_m3_text_options* in) {
     if (in->size > sizeof(size_t)) std::memcpy(reinterpret_cast<char*>(&c) + sizeof(size_t), reinterpret_cast<const char*>(in) + sizeof(size_t), std::min(in->size, sizeof(c)) - sizeof(size_t));
     v.color = kiln::capi::ToColor(c.color);
     if (c.color_producer.call) v.colorProducer = ToCpp_kiln_m3_fn_to_color(c.color_producer);
+    v.fontSize = kiln::capi::ToTextUnit(c.font_size);
     if (c.font_style) v.fontStyle = (c.font_style ? std::optional<kiln::text::FontStyle>(kiln::text::FontStyle((*c.font_style))) : std::nullopt);
+    if (c.font_weight) v.fontWeight = (c.font_weight ? std::optional<kiln::text::FontWeight>(ToCpp(c.font_weight)) : std::nullopt);
+    if (c.font_family) v.fontFamily = (c.font_family ? std::optional<kiln::text::FontFamily>(ToCpp(c.font_family)) : std::nullopt);
+    v.letterSpacing = kiln::capi::ToTextUnit(c.letter_spacing);
     if (c.text_decoration) v.textDecoration = (c.text_decoration ? std::optional<kiln::text::TextDecoration>(kiln::text::TextDecoration((*c.text_decoration))) : std::nullopt);
     if (c.text_align) v.textAlign = (c.text_align ? std::optional<kiln::text::TextAlign>(kiln::text::TextAlign((*c.text_align))) : std::nullopt);
+    v.lineHeight = kiln::capi::ToTextUnit(c.line_height);
     v.overflow = kiln::text::TextOverflow(c.overflow);
     v.softWrap = c.soft_wrap;
     v.maxLines = c.max_lines;
@@ -6105,6 +6809,14 @@ void FromCpp(const kiln::material3::TextOptions& v, kiln_m3_text_options* out) {
     kiln_m3_text_options c{};
     c.size = sizeof(c);
     c.color = kiln::capi::FromColor(v.color);
+    c.font_size = kiln::capi::FromTextUnit(v.fontSize);
+    c.font_style = ([&]() -> const kiln_font_style* { if (!(v.fontStyle)) return nullptr;  auto* p = kiln::capi::NewTransient<kiln_font_style>(); *p = kiln_font_style((*(v.fontStyle))); return p; }());
+    c.font_weight = ([&]() -> const kiln_font_weight* { if (!(v.fontWeight)) return nullptr;  return FromCppTransient((*(v.fontWeight))); }());
+    c.font_family = ([&]() -> const kiln_font_family* { if (!(v.fontFamily)) return nullptr;  return FromCppTransient((*(v.fontFamily))); }());
+    c.letter_spacing = kiln::capi::FromTextUnit(v.letterSpacing);
+    c.text_decoration = ([&]() -> const kiln_text_text_decoration* { if (!(v.textDecoration)) return nullptr;  auto* p = kiln::capi::NewTransient<kiln_text_text_decoration>(); *p = kiln_text_text_decoration((*(v.textDecoration))); return p; }());
+    c.text_align = ([&]() -> const kiln_text_align* { if (!(v.textAlign)) return nullptr;  auto* p = kiln::capi::NewTransient<kiln_text_align>(); *p = kiln_text_align((*(v.textAlign))); return p; }());
+    c.line_height = kiln::capi::FromTextUnit(v.lineHeight);
     c.overflow = kiln_text_overflow(v.overflow);
     c.soft_wrap = bool(v.softWrap);
     c.max_lines = int32_t(v.maxLines);
@@ -6215,6 +6927,7 @@ void FromCpp(const kiln::material3::TimePickerOptions& v, kiln_m3_time_picker_op
     kiln_m3_time_picker_options c{};
     c.size = sizeof(c);
     c.colors = ([&]() -> const kiln_m3_time_picker_colors* { if (!(v.colors)) return nullptr;  return FromCppTransient((*(v.colors))); }());
+    c.layout_type = ([&]() -> const kiln_m3_time_picker_layout_type* { if (!(v.layoutType)) return nullptr;  auto* p = kiln::capi::NewTransient<kiln_m3_time_picker_layout_type>(); *p = kiln_m3_time_picker_layout_type((*(v.layoutType))); return p; }());
     c.shapes = ([&]() -> const kiln_m3_time_picker_shapes* { if (!(v.shapes)) return nullptr;  return FromCppTransient((*(v.shapes))); }());
     const size_t n = out->size < sizeof(size_t) ? sizeof(c) : std::min(out->size, sizeof(c));
     std::memcpy(reinterpret_cast<char*>(out) + sizeof(size_t), reinterpret_cast<const char*>(&c) + sizeof(size_t), n - sizeof(size_t));
@@ -6323,6 +7036,7 @@ kiln::material3::TimePickerDialogOptions ToCpp(const kiln_m3_time_picker_dialog_
     kiln_m3_time_picker_dialog_options c;
     kiln_m3_time_picker_dialog_options_init(&c);
     if (in->size > sizeof(size_t)) std::memcpy(reinterpret_cast<char*>(&c) + sizeof(size_t), reinterpret_cast<const char*>(in) + sizeof(size_t), std::min(in->size, sizeof(c)) - sizeof(size_t));
+    if (c.properties) v.properties = ToCpp(c.properties);
     if (c.mode_toggle_button.call) v.modeToggleButton = kiln::capi::Fn(c.mode_toggle_button);
     if (c.dismiss_button.call) v.dismissButton = kiln::capi::Fn(c.dismiss_button);
     if (c.shape) v.shape = kiln::capi::ToShape(c.shape);
@@ -6334,6 +7048,7 @@ void FromCpp(const kiln::material3::TimePickerDialogOptions& v, kiln_m3_time_pic
     if (!out) return;
     kiln_m3_time_picker_dialog_options c{};
     c.size = sizeof(c);
+    c.properties = FromCppTransient(v.properties);
     c.shape = kiln::capi::TransientShape(v.shape);
     c.container_color = ((v.containerColor) ? kiln::capi::FromColor(*(v.containerColor)) : KILN_COLOR_UNSPECIFIED);
     const size_t n = out->size < sizeof(size_t) ? sizeof(c) : std::min(out->size, sizeof(c));
@@ -6354,6 +7069,8 @@ kiln::material3::LinearWavyProgressIndicatorOptions ToCpp(const kiln_m3_linear_w
     if (in->size > sizeof(size_t)) std::memcpy(reinterpret_cast<char*>(&c) + sizeof(size_t), reinterpret_cast<const char*>(in) + sizeof(size_t), std::min(in->size, sizeof(c)) - sizeof(size_t));
     v.color = kiln::capi::ToColor(c.color);
     v.trackColor = kiln::capi::ToColor(c.track_color);
+    if (c.stroke) v.stroke = (c.stroke ? std::optional<kiln::gfx::Stroke>(ToCpp(c.stroke)) : std::nullopt);
+    if (c.track_stroke) v.trackStroke = (c.track_stroke ? std::optional<kiln::gfx::Stroke>(ToCpp(c.track_stroke)) : std::nullopt);
     v.gapSize = kiln::capi::ToDp(c.gap_size);
     v.stopSize = kiln::capi::ToDp(c.stop_size);
     if (c.amplitude.call) v.amplitude = ToCpp_kiln_m3_fn_float_to_float(c.amplitude);
@@ -6368,6 +7085,8 @@ void FromCpp(const kiln::material3::LinearWavyProgressIndicatorOptions& v, kiln_
     c.size = sizeof(c);
     c.color = kiln::capi::FromColor(v.color);
     c.track_color = kiln::capi::FromColor(v.trackColor);
+    c.stroke = ([&]() -> const kiln_stroke* { if (!(v.stroke)) return nullptr;  return FromCppTransient((*(v.stroke))); }());
+    c.track_stroke = ([&]() -> const kiln_stroke* { if (!(v.trackStroke)) return nullptr;  return FromCppTransient((*(v.trackStroke))); }());
     c.gap_size = (v.gapSize).value;
     c.stop_size = (v.stopSize).value;
     c.wavelength = kiln_opt_float{ (v.wavelength).has_value(), (v.wavelength) ? (v.wavelength)->value : 0.0f };
@@ -6390,6 +7109,8 @@ kiln::material3::CircularWavyProgressIndicatorOptions ToCpp(const kiln_m3_circul
     if (in->size > sizeof(size_t)) std::memcpy(reinterpret_cast<char*>(&c) + sizeof(size_t), reinterpret_cast<const char*>(in) + sizeof(size_t), std::min(in->size, sizeof(c)) - sizeof(size_t));
     v.color = kiln::capi::ToColor(c.color);
     v.trackColor = kiln::capi::ToColor(c.track_color);
+    if (c.stroke) v.stroke = (c.stroke ? std::optional<kiln::gfx::Stroke>(ToCpp(c.stroke)) : std::nullopt);
+    if (c.track_stroke) v.trackStroke = (c.track_stroke ? std::optional<kiln::gfx::Stroke>(ToCpp(c.track_stroke)) : std::nullopt);
     v.gapSize = kiln::capi::ToDp(c.gap_size);
     if (c.amplitude.call) v.amplitude = ToCpp_kiln_m3_fn_float_to_float(c.amplitude);
     v.wavelength = kiln::capi::ToDp(c.wavelength);
@@ -6403,6 +7124,8 @@ void FromCpp(const kiln::material3::CircularWavyProgressIndicatorOptions& v, kil
     c.size = sizeof(c);
     c.color = kiln::capi::FromColor(v.color);
     c.track_color = kiln::capi::FromColor(v.trackColor);
+    c.stroke = ([&]() -> const kiln_stroke* { if (!(v.stroke)) return nullptr;  return FromCppTransient((*(v.stroke))); }());
+    c.track_stroke = ([&]() -> const kiln_stroke* { if (!(v.trackStroke)) return nullptr;  return FromCppTransient((*(v.trackStroke))); }());
     c.gap_size = (v.gapSize).value;
     c.wavelength = (v.wavelength).value;
     c.wave_speed = kiln_opt_float{ (v.waveSpeed).has_value(), (v.waveSpeed) ? (v.waveSpeed)->value : 0.0f };
@@ -6459,6 +7182,7 @@ kiln::material3::WideNavigationRailOptions ToCpp(const kiln_m3_wide_navigation_r
     if (c.shape) v.shape = kiln::capi::ToShape(c.shape);
     if (c.colors) v.colors = (c.colors ? std::optional<kiln::material3::WideNavigationRailColors>(ToCpp(c.colors)) : std::nullopt);
     if (c.header.call) v.header = kiln::capi::Fn(c.header);
+    if (c.window_insets) v.windowInsets = (c.window_insets ? std::optional<kiln::foundation::WindowInsets>((c.window_insets ? c.window_insets->insets : kiln::foundation::WindowInsets{})) : std::nullopt);
     v.arrangement = kiln::capi::ToArrangement(c.arrangement, false);
     v.contentPadding = kiln::capi::ToPadding(c.content_padding);
     return v;
@@ -6473,6 +7197,8 @@ void FromCpp(const kiln::material3::WideNavigationRailOptions& v, kiln_m3_wide_n
     c.state = h0;
     c.shape = kiln::capi::TransientShape(v.shape);
     c.colors = ([&]() -> const kiln_m3_wide_navigation_rail_colors* { if (!(v.colors)) return nullptr;  return FromCppTransient((*(v.colors))); }());
+    c.window_insets = ([&]() -> const kiln_window_insets* { if (!(v.windowInsets)) return nullptr;  return kiln::capi::TransientInsets((*(v.windowInsets))); }());
+    c.arrangement = kiln::capi::FromArrangement(v.arrangement);
     c.content_padding = kiln::capi::FromPadding(v.contentPadding);
     const size_t n = out->size < sizeof(size_t) ? sizeof(c) : std::min(out->size, sizeof(c));
     std::memcpy(reinterpret_cast<char*>(out) + sizeof(size_t), reinterpret_cast<const char*>(&c) + sizeof(size_t), n - sizeof(size_t));
@@ -6499,7 +7225,7 @@ void FromCpp(const kiln::material3::ModalWideNavigationRailProperties& v, kiln_m
     if (!out) return;
     kiln_m3_modal_wide_navigation_rail_properties c{};
     c.size = sizeof(c);
-    c.secure_policy = kiln_ui_secure_flag_policy(v.securePolicy);
+    c.secure_policy = kiln_secure_flag_policy(v.securePolicy);
     c.should_dismiss_on_back_press = bool(v.shouldDismissOnBackPress);
     const size_t n = out->size < sizeof(size_t) ? sizeof(c) : std::min(out->size, sizeof(c));
     std::memcpy(reinterpret_cast<char*>(out) + sizeof(size_t), reinterpret_cast<const char*>(&c) + sizeof(size_t), n - sizeof(size_t));
@@ -6524,6 +7250,7 @@ kiln::material3::ModalWideNavigationRailOptions ToCpp(const kiln_m3_modal_wide_n
     if (c.colors) v.colors = (c.colors ? std::optional<kiln::material3::WideNavigationRailColors>(ToCpp(c.colors)) : std::nullopt);
     if (c.header.call) v.header = kiln::capi::Fn(c.header);
     v.expandedHeaderTopPadding = kiln::capi::ToDp(c.expanded_header_top_padding);
+    if (c.window_insets) v.windowInsets = (c.window_insets ? std::optional<kiln::foundation::WindowInsets>((c.window_insets ? c.window_insets->insets : kiln::foundation::WindowInsets{})) : std::nullopt);
     v.arrangement = kiln::capi::ToArrangement(c.arrangement, false);
     if (c.expanded_properties) v.expandedProperties = ToCpp(c.expanded_properties);
     v.contentPadding = kiln::capi::ToPadding(c.content_padding);
@@ -6542,6 +7269,8 @@ void FromCpp(const kiln::material3::ModalWideNavigationRailOptions& v, kiln_m3_m
     c.expanded_shape = kiln::capi::TransientShape(v.expandedShape);
     c.colors = ([&]() -> const kiln_m3_wide_navigation_rail_colors* { if (!(v.colors)) return nullptr;  return FromCppTransient((*(v.colors))); }());
     c.expanded_header_top_padding = (v.expandedHeaderTopPadding).value;
+    c.window_insets = ([&]() -> const kiln_window_insets* { if (!(v.windowInsets)) return nullptr;  return kiln::capi::TransientInsets((*(v.windowInsets))); }());
+    c.arrangement = kiln::capi::FromArrangement(v.arrangement);
     c.expanded_properties = FromCppTransient(v.expandedProperties);
     c.content_padding = kiln::capi::FromPadding(v.contentPadding);
     const size_t n = out->size < sizeof(size_t) ? sizeof(c) : std::min(out->size, sizeof(c));
@@ -6563,6 +7292,7 @@ kiln::material3::WideNavigationRailItemOptions ToCpp(const kiln_m3_wide_navigati
     v.enabled = c.enabled;
     if (c.icon_position) v.iconPosition = (c.icon_position ? std::optional<kiln::material3::NavigationItemIconPosition>(kiln::material3::NavigationItemIconPosition((*c.icon_position))) : std::nullopt);
     if (c.colors) v.colors = (c.colors ? std::optional<kiln::material3::NavigationItemColors>(ToCpp(c.colors)) : std::nullopt);
+    if (c.interaction_source) v.interactionSource = (c.interaction_source ? c.interaction_source->source : nullptr);
     return v;
 }
 void FromCpp(const kiln::material3::WideNavigationRailItemOptions& v, kiln_m3_wide_navigation_rail_item_options* out) {
@@ -6571,13 +7301,297 @@ void FromCpp(const kiln::material3::WideNavigationRailItemOptions& v, kiln_m3_wi
     kiln_m3_wide_navigation_rail_item_options c{};
     c.size = sizeof(c);
     c.enabled = bool(v.enabled);
+    c.icon_position = ([&]() -> const kiln_m3_navigation_item_icon_position* { if (!(v.iconPosition)) return nullptr;  auto* p = kiln::capi::NewTransient<kiln_m3_navigation_item_icon_position>(); *p = kiln_m3_navigation_item_icon_position((*(v.iconPosition))); return p; }());
     c.colors = ([&]() -> const kiln_m3_navigation_item_colors* { if (!(v.colors)) return nullptr;  return FromCppTransient((*(v.colors))); }());
+    c.interaction_source = kiln::capi::TransientSource(v.interactionSource);
     const size_t n = out->size < sizeof(size_t) ? sizeof(c) : std::min(out->size, sizeof(c));
     std::memcpy(reinterpret_cast<char*>(out) + sizeof(size_t), reinterpret_cast<const char*>(&c) + sizeof(size_t), n - sizeof(size_t));
     out->size = n;
 }
 const kiln_m3_wide_navigation_rail_item_options* FromCppTransient(const kiln::material3::WideNavigationRailItemOptions& v) {
     auto* c = kiln::capi::NewTransient<kiln_m3_wide_navigation_rail_item_options>();
+    c->size = sizeof(*c);
+    FromCpp(v, c);
+    return c;
+}
+kiln::foundation::EnterExitParts::Scale ToCpp(const kiln_scale* in) {
+    kiln::foundation::EnterExitParts::Scale v{};
+    if (!in) return v;
+    kiln_scale c;
+    kiln_scale_init(&c);
+    if (in->size > sizeof(size_t)) std::memcpy(reinterpret_cast<char*>(&c) + sizeof(size_t), reinterpret_cast<const char*>(in) + sizeof(size_t), std::min(in->size, sizeof(c)) - sizeof(size_t));
+    v.scale = c.scale;
+    v.originX = c.origin_x;
+    v.originY = c.origin_y;
+    if (c.spec) v.spec = (c.spec ? c.spec->spec : nullptr);
+    return v;
+}
+void FromCpp(const kiln::foundation::EnterExitParts::Scale& v, kiln_scale* out) {
+    (void)v;
+    if (!out) return;
+    kiln_scale c{};
+    c.size = sizeof(c);
+    c.scale = float(v.scale);
+    c.origin_x = float(v.originX);
+    c.origin_y = float(v.originY);
+    c.spec = kiln::capi::TransientSpec(v.spec);
+    const size_t n = out->size < sizeof(size_t) ? sizeof(c) : std::min(out->size, sizeof(c));
+    std::memcpy(reinterpret_cast<char*>(out) + sizeof(size_t), reinterpret_cast<const char*>(&c) + sizeof(size_t), n - sizeof(size_t));
+    out->size = n;
+}
+const kiln_scale* FromCppTransient(const kiln::foundation::EnterExitParts::Scale& v) {
+    auto* c = kiln::capi::NewTransient<kiln_scale>();
+    c->size = sizeof(*c);
+    FromCpp(v, c);
+    return c;
+}
+kiln::ui::IntOffset ToCpp(const kiln_int_offset* in) {
+    kiln::ui::IntOffset v{};
+    if (!in) return v;
+    kiln_int_offset c;
+    kiln_int_offset_init(&c);
+    if (in->size > sizeof(size_t)) std::memcpy(reinterpret_cast<char*>(&c) + sizeof(size_t), reinterpret_cast<const char*>(in) + sizeof(size_t), std::min(in->size, sizeof(c)) - sizeof(size_t));
+    v.x = c.x;
+    v.y = c.y;
+    return v;
+}
+void FromCpp(const kiln::ui::IntOffset& v, kiln_int_offset* out) {
+    (void)v;
+    if (!out) return;
+    kiln_int_offset c{};
+    c.size = sizeof(c);
+    c.x = int32_t(v.x);
+    c.y = int32_t(v.y);
+    const size_t n = out->size < sizeof(size_t) ? sizeof(c) : std::min(out->size, sizeof(c));
+    std::memcpy(reinterpret_cast<char*>(out) + sizeof(size_t), reinterpret_cast<const char*>(&c) + sizeof(size_t), n - sizeof(size_t));
+    out->size = n;
+}
+const kiln_int_offset* FromCppTransient(const kiln::ui::IntOffset& v) {
+    auto* c = kiln::capi::NewTransient<kiln_int_offset>();
+    c->size = sizeof(*c);
+    FromCpp(v, c);
+    return c;
+}
+kiln::foundation::EnterExitParts::Slide ToCpp(const kiln_slide* in) {
+    kiln::foundation::EnterExitParts::Slide v{};
+    if (!in) return v;
+    kiln_slide c;
+    kiln_slide_init(&c);
+    if (in->size > sizeof(size_t)) std::memcpy(reinterpret_cast<char*>(&c) + sizeof(size_t), reinterpret_cast<const char*>(in) + sizeof(size_t), std::min(in->size, sizeof(c)) - sizeof(size_t));
+    if (c.spec) v.spec = (c.spec ? c.spec->spec : nullptr);
+    return v;
+}
+void FromCpp(const kiln::foundation::EnterExitParts::Slide& v, kiln_slide* out) {
+    (void)v;
+    if (!out) return;
+    kiln_slide c{};
+    c.size = sizeof(c);
+    c.spec = kiln::capi::TransientSpec(v.spec);
+    const size_t n = out->size < sizeof(size_t) ? sizeof(c) : std::min(out->size, sizeof(c));
+    std::memcpy(reinterpret_cast<char*>(out) + sizeof(size_t), reinterpret_cast<const char*>(&c) + sizeof(size_t), n - sizeof(size_t));
+    out->size = n;
+}
+const kiln_slide* FromCppTransient(const kiln::foundation::EnterExitParts::Slide& v) {
+    auto* c = kiln::capi::NewTransient<kiln_slide>();
+    c->size = sizeof(*c);
+    FromCpp(v, c);
+    return c;
+}
+kiln::foundation::EnterExitParts::ChangeSize ToCpp(const kiln_change_size* in) {
+    kiln::foundation::EnterExitParts::ChangeSize v{};
+    if (!in) return v;
+    kiln_change_size c;
+    kiln_change_size_init(&c);
+    if (in->size > sizeof(size_t)) std::memcpy(reinterpret_cast<char*>(&c) + sizeof(size_t), reinterpret_cast<const char*>(in) + sizeof(size_t), std::min(in->size, sizeof(c)) - sizeof(size_t));
+    v.alignment = kiln::capi::ToAlignment(c.alignment);
+    if (c.size_value.call) v.size = ToCpp_kiln_m3_fn_int_size_to_int_size(c.size_value);
+    v.clip = c.clip;
+    if (c.spec) v.spec = (c.spec ? c.spec->spec : nullptr);
+    return v;
+}
+void FromCpp(const kiln::foundation::EnterExitParts::ChangeSize& v, kiln_change_size* out) {
+    (void)v;
+    if (!out) return;
+    kiln_change_size c{};
+    c.size = sizeof(c);
+    c.alignment = kiln_alignment{ (v.alignment).horizontal, (v.alignment).vertical };
+    c.clip = bool(v.clip);
+    c.spec = kiln::capi::TransientSpec(v.spec);
+    const size_t n = out->size < sizeof(size_t) ? sizeof(c) : std::min(out->size, sizeof(c));
+    std::memcpy(reinterpret_cast<char*>(out) + sizeof(size_t), reinterpret_cast<const char*>(&c) + sizeof(size_t), n - sizeof(size_t));
+    out->size = n;
+}
+const kiln_change_size* FromCppTransient(const kiln::foundation::EnterExitParts::ChangeSize& v) {
+    auto* c = kiln::capi::NewTransient<kiln_change_size>();
+    c->size = sizeof(*c);
+    FromCpp(v, c);
+    return c;
+}
+kiln::foundation::EnterExitParts::Veil ToCpp(const kiln_veil* in) {
+    kiln::foundation::EnterExitParts::Veil v{};
+    if (!in) return v;
+    kiln_veil c;
+    kiln_veil_init(&c);
+    if (in->size > sizeof(size_t)) std::memcpy(reinterpret_cast<char*>(&c) + sizeof(size_t), reinterpret_cast<const char*>(in) + sizeof(size_t), std::min(in->size, sizeof(c)) - sizeof(size_t));
+    v.initialColor = kiln::capi::ToColor(c.initial_color);
+    v.targetColor = kiln::capi::ToColor(c.target_color);
+    if (c.spec) v.spec = (c.spec ? c.spec->spec : nullptr);
+    v.matchParentSize = c.match_parent_size;
+    return v;
+}
+void FromCpp(const kiln::foundation::EnterExitParts::Veil& v, kiln_veil* out) {
+    (void)v;
+    if (!out) return;
+    kiln_veil c{};
+    c.size = sizeof(c);
+    c.initial_color = kiln::capi::FromColor(v.initialColor);
+    c.target_color = kiln::capi::FromColor(v.targetColor);
+    c.spec = kiln::capi::TransientSpec(v.spec);
+    c.match_parent_size = bool(v.matchParentSize);
+    const size_t n = out->size < sizeof(size_t) ? sizeof(c) : std::min(out->size, sizeof(c));
+    std::memcpy(reinterpret_cast<char*>(out) + sizeof(size_t), reinterpret_cast<const char*>(&c) + sizeof(size_t), n - sizeof(size_t));
+    out->size = n;
+}
+const kiln_veil* FromCppTransient(const kiln::foundation::EnterExitParts::Veil& v) {
+    auto* c = kiln::capi::NewTransient<kiln_veil>();
+    c->size = sizeof(*c);
+    FromCpp(v, c);
+    return c;
+}
+kiln::foundation::EnterExitParts ToCpp(const kiln_enter_exit_parts* in) {
+    kiln::foundation::EnterExitParts v{};
+    if (!in) return v;
+    kiln_enter_exit_parts c;
+    kiln_enter_exit_parts_init(&c);
+    if (in->size > sizeof(size_t)) std::memcpy(reinterpret_cast<char*>(&c) + sizeof(size_t), reinterpret_cast<const char*>(in) + sizeof(size_t), std::min(in->size, sizeof(c)) - sizeof(size_t));
+    if (c.scale) v.scale = (c.scale ? std::optional<kiln::foundation::EnterExitParts::Scale>(ToCpp(c.scale)) : std::nullopt);
+    if (c.slide) v.slide = (c.slide ? std::optional<kiln::foundation::EnterExitParts::Slide>(ToCpp(c.slide)) : std::nullopt);
+    if (c.change_size) v.changeSize = (c.change_size ? std::optional<kiln::foundation::EnterExitParts::ChangeSize>(ToCpp(c.change_size)) : std::nullopt);
+    if (c.veil) v.veil = (c.veil ? std::optional<kiln::foundation::EnterExitParts::Veil>(ToCpp(c.veil)) : std::nullopt);
+    return v;
+}
+void FromCpp(const kiln::foundation::EnterExitParts& v, kiln_enter_exit_parts* out) {
+    (void)v;
+    if (!out) return;
+    kiln_enter_exit_parts c{};
+    c.size = sizeof(c);
+    c.scale = ([&]() -> const kiln_scale* { if (!(v.scale)) return nullptr;  return FromCppTransient((*(v.scale))); }());
+    c.slide = ([&]() -> const kiln_slide* { if (!(v.slide)) return nullptr;  return FromCppTransient((*(v.slide))); }());
+    c.change_size = ([&]() -> const kiln_change_size* { if (!(v.changeSize)) return nullptr;  return FromCppTransient((*(v.changeSize))); }());
+    c.veil = ([&]() -> const kiln_veil* { if (!(v.veil)) return nullptr;  return FromCppTransient((*(v.veil))); }());
+    const size_t n = out->size < sizeof(size_t) ? sizeof(c) : std::min(out->size, sizeof(c));
+    std::memcpy(reinterpret_cast<char*>(out) + sizeof(size_t), reinterpret_cast<const char*>(&c) + sizeof(size_t), n - sizeof(size_t));
+    out->size = n;
+}
+const kiln_enter_exit_parts* FromCppTransient(const kiln::foundation::EnterExitParts& v) {
+    auto* c = kiln::capi::NewTransient<kiln_enter_exit_parts>();
+    c->size = sizeof(*c);
+    FromCpp(v, c);
+    return c;
+}
+kiln::foundation::EnterTransition ToCpp(const kiln_enter_transition* in) {
+    kiln::foundation::EnterTransition v{};
+    if (!in) return v;
+    kiln_enter_transition c;
+    kiln_enter_transition_init(&c);
+    if (in->size > sizeof(size_t)) std::memcpy(reinterpret_cast<char*>(&c) + sizeof(size_t), reinterpret_cast<const char*>(in) + sizeof(size_t), std::min(in->size, sizeof(c)) - sizeof(size_t));
+    if (c.parts) v.parts = ToCpp(c.parts);
+    return v;
+}
+void FromCpp(const kiln::foundation::EnterTransition& v, kiln_enter_transition* out) {
+    (void)v;
+    if (!out) return;
+    kiln_enter_transition c{};
+    c.size = sizeof(c);
+    c.parts = FromCppTransient(v.parts);
+    const size_t n = out->size < sizeof(size_t) ? sizeof(c) : std::min(out->size, sizeof(c));
+    std::memcpy(reinterpret_cast<char*>(out) + sizeof(size_t), reinterpret_cast<const char*>(&c) + sizeof(size_t), n - sizeof(size_t));
+    out->size = n;
+}
+const kiln_enter_transition* FromCppTransient(const kiln::foundation::EnterTransition& v) {
+    auto* c = kiln::capi::NewTransient<kiln_enter_transition>();
+    c->size = sizeof(*c);
+    FromCpp(v, c);
+    return c;
+}
+kiln::foundation::ExitTransition ToCpp(const kiln_exit_transition* in) {
+    kiln::foundation::ExitTransition v{};
+    if (!in) return v;
+    kiln_exit_transition c;
+    kiln_exit_transition_init(&c);
+    if (in->size > sizeof(size_t)) std::memcpy(reinterpret_cast<char*>(&c) + sizeof(size_t), reinterpret_cast<const char*>(in) + sizeof(size_t), std::min(in->size, sizeof(c)) - sizeof(size_t));
+    if (c.parts) v.parts = ToCpp(c.parts);
+    return v;
+}
+void FromCpp(const kiln::foundation::ExitTransition& v, kiln_exit_transition* out) {
+    (void)v;
+    if (!out) return;
+    kiln_exit_transition c{};
+    c.size = sizeof(c);
+    c.parts = FromCppTransient(v.parts);
+    const size_t n = out->size < sizeof(size_t) ? sizeof(c) : std::min(out->size, sizeof(c));
+    std::memcpy(reinterpret_cast<char*>(out) + sizeof(size_t), reinterpret_cast<const char*>(&c) + sizeof(size_t), n - sizeof(size_t));
+    out->size = n;
+}
+const kiln_exit_transition* FromCppTransient(const kiln::foundation::ExitTransition& v) {
+    auto* c = kiln::capi::NewTransient<kiln_exit_transition>();
+    c->size = sizeof(*c);
+    FromCpp(v, c);
+    return c;
+}
+kiln::foundation::SizeTransform ToCpp(const kiln_size_transform* in) {
+    kiln::foundation::SizeTransform v{};
+    if (!in) return v;
+    kiln_size_transform c;
+    kiln_size_transform_init(&c);
+    if (in->size > sizeof(size_t)) std::memcpy(reinterpret_cast<char*>(&c) + sizeof(size_t), reinterpret_cast<const char*>(in) + sizeof(size_t), std::min(in->size, sizeof(c)) - sizeof(size_t));
+    v.clip = c.clip;
+    if (c.spec.call) v.spec = ToCpp_kiln_m3_fn_int_size_int_size_to_animation_spec(c.spec);
+    return v;
+}
+void FromCpp(const kiln::foundation::SizeTransform& v, kiln_size_transform* out) {
+    (void)v;
+    if (!out) return;
+    kiln_size_transform c{};
+    c.size = sizeof(c);
+    c.clip = bool(v.clip);
+    const size_t n = out->size < sizeof(size_t) ? sizeof(c) : std::min(out->size, sizeof(c));
+    std::memcpy(reinterpret_cast<char*>(out) + sizeof(size_t), reinterpret_cast<const char*>(&c) + sizeof(size_t), n - sizeof(size_t));
+    out->size = n;
+}
+const kiln_size_transform* FromCppTransient(const kiln::foundation::SizeTransform& v) {
+    auto* c = kiln::capi::NewTransient<kiln_size_transform>();
+    c->size = sizeof(*c);
+    FromCpp(v, c);
+    return c;
+}
+kiln::foundation::ContentTransform ToCpp(const kiln_content_transform* in) {
+    kiln::foundation::ContentTransform v{};
+    if (!in) return v;
+    kiln_content_transform c;
+    kiln_content_transform_init(&c);
+    if (in->size > sizeof(size_t)) std::memcpy(reinterpret_cast<char*>(&c) + sizeof(size_t), reinterpret_cast<const char*>(in) + sizeof(size_t), std::min(in->size, sizeof(c)) - sizeof(size_t));
+    if (c.enter) v.enter = ToCpp(c.enter);
+    if (c.exit) v.exit = ToCpp(c.exit);
+    v.targetContentZIndex = c.target_content_z_index;
+    if (c.size_transform) v.sizeTransform = (c.size_transform ? std::optional<kiln::foundation::SizeTransform>(ToCpp(c.size_transform)) : std::nullopt);
+    return v;
+}
+void FromCpp(const kiln::foundation::ContentTransform& v, kiln_content_transform* out) {
+    (void)v;
+    if (!out) return;
+    kiln_content_transform c{};
+    c.size = sizeof(c);
+    c.enter = FromCppTransient(v.enter);
+    c.exit = FromCppTransient(v.exit);
+    c.target_content_z_index = float(v.targetContentZIndex);
+    c.size_transform = ([&]() -> const kiln_size_transform* { if (!(v.sizeTransform)) return nullptr;  return FromCppTransient((*(v.sizeTransform))); }());
+    const size_t n = out->size < sizeof(size_t) ? sizeof(c) : std::min(out->size, sizeof(c));
+    std::memcpy(reinterpret_cast<char*>(out) + sizeof(size_t), reinterpret_cast<const char*>(&c) + sizeof(size_t), n - sizeof(size_t));
+    out->size = n;
+}
+const kiln_content_transform* FromCppTransient(const kiln::foundation::ContentTransform& v) {
+    auto* c = kiln::capi::NewTransient<kiln_content_transform>();
     c->size = sizeof(*c);
     FromCpp(v, c);
     return c;
@@ -6669,6 +7683,95 @@ const kiln_m3_ripple_theme_configuration* FromCppTransient(const kiln::material3
     FromCpp(v, c);
     return c;
 }
+kiln::material3::MaterialThemeValues ToCpp(const kiln_m3_material_theme_values* in) {
+    kiln::material3::MaterialThemeValues v{};
+    if (!in) return v;
+    kiln_m3_material_theme_values c;
+    kiln_m3_material_theme_values_init(&c);
+    if (in->size > sizeof(size_t)) std::memcpy(reinterpret_cast<char*>(&c) + sizeof(size_t), reinterpret_cast<const char*>(in) + sizeof(size_t), std::min(in->size, sizeof(c)) - sizeof(size_t));
+    if (c.color_scheme) v.colorScheme = ToCpp(c.color_scheme);
+    if (c.typography) v.typography = ToCpp(c.typography);
+    if (c.shapes) v.shapes = ToCpp(c.shapes);
+    if (c.motion_scheme) v.motionScheme = (c.motion_scheme ? c.motion_scheme->Shared() : nullptr);
+    return v;
+}
+void FromCpp(const kiln::material3::MaterialThemeValues& v, kiln_m3_material_theme_values* out) {
+    (void)v;
+    if (!out) return;
+    kiln_m3_material_theme_values c{};
+    c.size = sizeof(c);
+    c.color_scheme = FromCppTransient(v.colorScheme);
+    c.typography = FromCppTransient(v.typography);
+    c.shapes = FromCppTransient(v.shapes);
+    auto* h0 = kiln::capi::NewTransient<kiln_m3_motion_scheme>();
+    h0->owner = std::const_pointer_cast<kiln::material3::MotionScheme>(v.motionScheme); h0->ptr = h0->owner.get();
+    c.motion_scheme = h0;
+    const size_t n = out->size < sizeof(size_t) ? sizeof(c) : std::min(out->size, sizeof(c));
+    std::memcpy(reinterpret_cast<char*>(out) + sizeof(size_t), reinterpret_cast<const char*>(&c) + sizeof(size_t), n - sizeof(size_t));
+    out->size = n;
+}
+const kiln_m3_material_theme_values* FromCppTransient(const kiln::material3::MaterialThemeValues& v) {
+    auto* c = kiln::capi::NewTransient<kiln_m3_material_theme_values>();
+    c->size = sizeof(*c);
+    FromCpp(v, c);
+    return c;
+}
+kiln::material3::RippleConfiguration::InsetRingColors ToCpp(const kiln_m3_ripple_configuration_inset_ring_colors* in) {
+    kiln::material3::RippleConfiguration::InsetRingColors v{};
+    if (!in) return v;
+    kiln_m3_ripple_configuration_inset_ring_colors c;
+    kiln_m3_ripple_configuration_inset_ring_colors_init(&c);
+    if (in->size > sizeof(size_t)) std::memcpy(reinterpret_cast<char*>(&c) + sizeof(size_t), reinterpret_cast<const char*>(in) + sizeof(size_t), std::min(in->size, sizeof(c)) - sizeof(size_t));
+    v.outerStrokeColor = kiln::capi::ToColor(c.outer_stroke_color);
+    v.innerStrokeColor = kiln::capi::ToColor(c.inner_stroke_color);
+    return v;
+}
+void FromCpp(const kiln::material3::RippleConfiguration::InsetRingColors& v, kiln_m3_ripple_configuration_inset_ring_colors* out) {
+    (void)v;
+    if (!out) return;
+    kiln_m3_ripple_configuration_inset_ring_colors c{};
+    c.size = sizeof(c);
+    c.outer_stroke_color = kiln::capi::FromColor(v.outerStrokeColor);
+    c.inner_stroke_color = kiln::capi::FromColor(v.innerStrokeColor);
+    const size_t n = out->size < sizeof(size_t) ? sizeof(c) : std::min(out->size, sizeof(c));
+    std::memcpy(reinterpret_cast<char*>(out) + sizeof(size_t), reinterpret_cast<const char*>(&c) + sizeof(size_t), n - sizeof(size_t));
+    out->size = n;
+}
+const kiln_m3_ripple_configuration_inset_ring_colors* FromCppTransient(const kiln::material3::RippleConfiguration::InsetRingColors& v) {
+    auto* c = kiln::capi::NewTransient<kiln_m3_ripple_configuration_inset_ring_colors>();
+    c->size = sizeof(*c);
+    FromCpp(v, c);
+    return c;
+}
+kiln::material3::RippleConfiguration ToCpp(const kiln_m3_ripple_configuration* in) {
+    kiln::material3::RippleConfiguration v{};
+    if (!in) return v;
+    kiln_m3_ripple_configuration c;
+    kiln_m3_ripple_configuration_init(&c);
+    if (in->size > sizeof(size_t)) std::memcpy(reinterpret_cast<char*>(&c) + sizeof(size_t), reinterpret_cast<const char*>(in) + sizeof(size_t), std::min(in->size, sizeof(c)) - sizeof(size_t));
+    v.color = kiln::capi::ToColor(c.color);
+    if (c.focus) v.focus = (c.focus ? std::optional<kiln::material3::RippleConfiguration::InsetRingColors>(ToCpp(c.focus)) : std::nullopt);
+    if (c.ripple_alpha) v.rippleAlpha = (c.ripple_alpha ? std::optional<kiln::material3::RippleAlpha>(ToCpp(c.ripple_alpha)) : std::nullopt);
+    return v;
+}
+void FromCpp(const kiln::material3::RippleConfiguration& v, kiln_m3_ripple_configuration* out) {
+    (void)v;
+    if (!out) return;
+    kiln_m3_ripple_configuration c{};
+    c.size = sizeof(c);
+    c.color = kiln::capi::FromColor(v.color);
+    c.focus = ([&]() -> const kiln_m3_ripple_configuration_inset_ring_colors* { if (!(v.focus)) return nullptr;  return FromCppTransient((*(v.focus))); }());
+    c.ripple_alpha = ([&]() -> const kiln_m3_ripple_alpha* { if (!(v.rippleAlpha)) return nullptr;  return FromCppTransient((*(v.rippleAlpha))); }());
+    const size_t n = out->size < sizeof(size_t) ? sizeof(c) : std::min(out->size, sizeof(c));
+    std::memcpy(reinterpret_cast<char*>(out) + sizeof(size_t), reinterpret_cast<const char*>(&c) + sizeof(size_t), n - sizeof(size_t));
+    out->size = n;
+}
+const kiln_m3_ripple_configuration* FromCppTransient(const kiln::material3::RippleConfiguration& v) {
+    auto* c = kiln::capi::NewTransient<kiln_m3_ripple_configuration>();
+    c->size = sizeof(*c);
+    FromCpp(v, c);
+    return c;
+}
 kiln::material3::SnackbarVisuals ToCpp(const kiln_m3_snackbar_visuals* in) {
     kiln::material3::SnackbarVisuals v{};
     if (!in) return v;
@@ -6731,12 +7834,49 @@ const kiln_m3_carousel_parallax_scroll_effect_item_info* FromCppTransient(const 
     FromCpp(v, c);
     return c;
 }
+kiln::ui::LayoutCoordinates ToCpp(const kiln_layout_coordinates* in) {
+    kiln::ui::LayoutCoordinates v{};
+    if (!in) return v;
+    kiln_layout_coordinates c;
+    kiln_layout_coordinates_init(&c);
+    if (in->size > sizeof(size_t)) std::memcpy(reinterpret_cast<char*>(&c) + sizeof(size_t), reinterpret_cast<const char*>(in) + sizeof(size_t), std::min(in->size, sizeof(c)) - sizeof(size_t));
+    v.coordinator = c.coordinator;
+    v.lookahead = c.lookahead;
+    v.tracked = c.tracked;
+    return v;
+}
+void FromCpp(const kiln::ui::LayoutCoordinates& v, kiln_layout_coordinates* out) {
+    (void)v;
+    if (!out) return;
+    kiln_layout_coordinates c{};
+    c.size = sizeof(c);
+    c.coordinator = uint64_t(v.coordinator);
+    c.lookahead = bool(v.lookahead);
+    c.tracked = bool(v.tracked);
+    const size_t n = out->size < sizeof(size_t) ? sizeof(c) : std::min(out->size, sizeof(c));
+    std::memcpy(reinterpret_cast<char*>(out) + sizeof(size_t), reinterpret_cast<const char*>(&c) + sizeof(size_t), n - sizeof(size_t));
+    out->size = n;
+}
+const kiln_layout_coordinates* FromCppTransient(const kiln::ui::LayoutCoordinates& v) {
+    auto* c = kiln::capi::NewTransient<kiln_layout_coordinates>();
+    c->size = sizeof(*c);
+    FromCpp(v, c);
+    return c;
+}
 
 }
 
+KILN_API void kiln_dialog_properties_init(kiln_dialog_properties* s) {
+    if (!s) return;
+    KILN_CAPI_TRY { s->size = sizeof(*s); FromCpp(kiln::foundation::DialogProperties{}, s); } KILN_CAPI_CATCH()
+}
 KILN_API void kiln_m3_alert_dialog_options_init(kiln_m3_alert_dialog_options* s) {
     if (!s) return;
     KILN_CAPI_TRY { s->size = sizeof(*s); FromCpp(kiln::material3::AlertDialogOptions{}, s); } KILN_CAPI_CATCH()
+}
+KILN_API void kiln_rt_key_init(kiln_rt_key* s) {
+    if (!s) return;
+    KILN_CAPI_TRY { s->size = sizeof(*s); FromCpp(kiln::rt::Key{}, s); } KILN_CAPI_CATCH()
 }
 KILN_API void kiln_m3_top_app_bar_colors_init(kiln_m3_top_app_bar_colors* s) {
     if (!s) return;
@@ -6866,6 +8006,10 @@ KILN_API void kiln_m3_checkbox_colors_init(kiln_m3_checkbox_colors* s) {
     if (!s) return;
     KILN_CAPI_TRY { s->size = sizeof(*s); FromCpp(kiln::material3::CheckboxColors{}, s); } KILN_CAPI_CATCH()
 }
+KILN_API void kiln_stroke_init(kiln_stroke* s) {
+    if (!s) return;
+    KILN_CAPI_TRY { s->size = sizeof(*s); FromCpp(kiln::gfx::Stroke{}, s); } KILN_CAPI_CATCH()
+}
 KILN_API void kiln_m3_checkbox_options_init(kiln_m3_checkbox_options* s) {
     if (!s) return;
     KILN_CAPI_TRY { s->size = sizeof(*s); FromCpp(kiln::material3::CheckboxOptions{}, s); } KILN_CAPI_CATCH()
@@ -6898,6 +8042,10 @@ KILN_API void kiln_m3_color_scheme_init(kiln_m3_color_scheme* s) {
     if (!s) return;
     KILN_CAPI_TRY { s->size = sizeof(*s); FromCpp(kiln::material3::ColorScheme{}, s); } KILN_CAPI_CATCH()
 }
+KILN_API void kiln_text_selection_colors_init(kiln_text_selection_colors* s) {
+    if (!s) return;
+    KILN_CAPI_TRY { s->size = sizeof(*s); FromCpp(kiln::foundation::TextSelectionColors{}, s); } KILN_CAPI_CATCH()
+}
 KILN_API void kiln_m3_text_field_colors_init(kiln_m3_text_field_colors* s) {
     if (!s) return;
     KILN_CAPI_TRY { s->size = sizeof(*s); FromCpp(kiln::material3::TextFieldColors{}, s); } KILN_CAPI_CATCH()
@@ -6909,6 +8057,14 @@ KILN_API void kiln_m3_text_field_label_position_init(kiln_m3_text_field_label_po
 KILN_API void kiln_m3_text_field_label_scope_init(kiln_m3_text_field_label_scope* s) {
     if (!s) return;
     KILN_CAPI_TRY { s->size = sizeof(*s); FromCpp(kiln::material3::TextFieldLabelScope{}, s); } KILN_CAPI_CATCH()
+}
+KILN_API void kiln_keyboard_options_init(kiln_keyboard_options* s) {
+    if (!s) return;
+    KILN_CAPI_TRY { s->size = sizeof(*s); FromCpp(kiln::foundation::KeyboardOptions{}, s); } KILN_CAPI_CATCH()
+}
+KILN_API void kiln_text_field_line_limits_init(kiln_text_field_line_limits* s) {
+    if (!s) return;
+    KILN_CAPI_TRY { s->size = sizeof(*s); FromCpp(kiln::foundation::TextFieldLineLimits{}, s); } KILN_CAPI_CATCH()
 }
 KILN_API void kiln_m3_text_field_options_init(kiln_m3_text_field_options* s) {
     if (!s) return;
@@ -6949,6 +8105,10 @@ KILN_API void kiln_m3_drag_handle_shapes_init(kiln_m3_drag_handle_shapes* s) {
 KILN_API void kiln_m3_vertical_drag_handle_options_init(kiln_m3_vertical_drag_handle_options* s) {
     if (!s) return;
     KILN_CAPI_TRY { s->size = sizeof(*s); FromCpp(kiln::material3::VerticalDragHandleOptions{}, s); } KILN_CAPI_CATCH()
+}
+KILN_API void kiln_configuration_init(kiln_configuration* s) {
+    if (!s) return;
+    KILN_CAPI_TRY { s->size = sizeof(*s); FromCpp(kiln::ui::Configuration{}, s); } KILN_CAPI_CATCH()
 }
 KILN_API void kiln_m3_tonal_palette_init(kiln_m3_tonal_palette* s) {
     if (!s) return;
@@ -7054,6 +8214,10 @@ KILN_API void kiln_m3_material_theme_args_init(kiln_m3_material_theme_args* s) {
     if (!s) return;
     KILN_CAPI_TRY { s->size = sizeof(*s); FromCpp(kiln::material3::MaterialThemeArgs{}, s); } KILN_CAPI_CATCH()
 }
+KILN_API void kiln_popup_properties_init(kiln_popup_properties* s) {
+    if (!s) return;
+    KILN_CAPI_TRY { s->size = sizeof(*s); FromCpp(kiln::ui::PopupProperties{}, s); } KILN_CAPI_CATCH()
+}
 KILN_API void kiln_m3_dropdown_menu_options_init(kiln_m3_dropdown_menu_options* s) {
     if (!s) return;
     KILN_CAPI_TRY { s->size = sizeof(*s); FromCpp(kiln::material3::DropdownMenuOptions{}, s); } KILN_CAPI_CATCH()
@@ -7137,6 +8301,14 @@ KILN_API void kiln_m3_navigation_rail_item_colors_init(kiln_m3_navigation_rail_i
 KILN_API void kiln_m3_navigation_rail_item_options_init(kiln_m3_navigation_rail_item_options* s) {
     if (!s) return;
     KILN_CAPI_TRY { s->size = sizeof(*s); FromCpp(kiln::material3::NavigationRailItemOptions{}, s); } KILN_CAPI_CATCH()
+}
+KILN_API void kiln_back_event_init(kiln_back_event* s) {
+    if (!s) return;
+    KILN_CAPI_TRY { s->size = sizeof(*s); FromCpp(kiln::ui::BackEvent{}, s); } KILN_CAPI_CATCH()
+}
+KILN_API void kiln_density_init(kiln_density* s) {
+    if (!s) return;
+    KILN_CAPI_TRY { s->size = sizeof(*s); FromCpp(kiln::ui::Density{}, s); } KILN_CAPI_CATCH()
 }
 KILN_API void kiln_m3_linear_progress_indicator_options_init(kiln_m3_linear_progress_indicator_options* s) {
     if (!s) return;
@@ -7266,6 +8438,10 @@ KILN_API void kiln_m3_slider_track_options_init(kiln_m3_slider_track_options* s)
     if (!s) return;
     KILN_CAPI_TRY { s->size = sizeof(*s); FromCpp(kiln::material3::SliderTrackOptions{}, s); } KILN_CAPI_CATCH()
 }
+KILN_API void kiln_offset_init(kiln_offset* s) {
+    if (!s) return;
+    KILN_CAPI_TRY { s->size = sizeof(*s); FromCpp(kiln::ui::Offset{}, s); } KILN_CAPI_CATCH()
+}
 KILN_API void kiln_m3_split_button_shapes_init(kiln_m3_split_button_shapes* s) {
     if (!s) return;
     KILN_CAPI_TRY { s->size = sizeof(*s); FromCpp(kiln::material3::SplitButtonShapes{}, s); } KILN_CAPI_CATCH()
@@ -7301,6 +8477,14 @@ KILN_API void kiln_m3_tab_row_options_init(kiln_m3_tab_row_options* s) {
 KILN_API void kiln_m3_scrollable_tab_row_options_init(kiln_m3_scrollable_tab_row_options* s) {
     if (!s) return;
     KILN_CAPI_TRY { s->size = sizeof(*s); FromCpp(kiln::material3::ScrollableTabRowOptions{}, s); } KILN_CAPI_CATCH()
+}
+KILN_API void kiln_font_weight_init(kiln_font_weight* s) {
+    if (!s) return;
+    KILN_CAPI_TRY { s->size = sizeof(*s); FromCpp(kiln::text::FontWeight{}, s); } KILN_CAPI_CATCH()
+}
+KILN_API void kiln_font_family_init(kiln_font_family* s) {
+    if (!s) return;
+    KILN_CAPI_TRY { s->size = sizeof(*s); FromCpp(kiln::text::FontFamily{}, s); } KILN_CAPI_CATCH()
 }
 KILN_API void kiln_m3_text_options_init(kiln_m3_text_options* s) {
     if (!s) return;
@@ -7362,6 +8546,46 @@ KILN_API void kiln_m3_wide_navigation_rail_item_options_init(kiln_m3_wide_naviga
     if (!s) return;
     KILN_CAPI_TRY { s->size = sizeof(*s); FromCpp(kiln::material3::WideNavigationRailItemOptions{}, s); } KILN_CAPI_CATCH()
 }
+KILN_API void kiln_scale_init(kiln_scale* s) {
+    if (!s) return;
+    KILN_CAPI_TRY { s->size = sizeof(*s); FromCpp(kiln::foundation::EnterExitParts::Scale{}, s); } KILN_CAPI_CATCH()
+}
+KILN_API void kiln_int_offset_init(kiln_int_offset* s) {
+    if (!s) return;
+    KILN_CAPI_TRY { s->size = sizeof(*s); FromCpp(kiln::ui::IntOffset{}, s); } KILN_CAPI_CATCH()
+}
+KILN_API void kiln_slide_init(kiln_slide* s) {
+    if (!s) return;
+    KILN_CAPI_TRY { s->size = sizeof(*s); FromCpp(kiln::foundation::EnterExitParts::Slide{}, s); } KILN_CAPI_CATCH()
+}
+KILN_API void kiln_change_size_init(kiln_change_size* s) {
+    if (!s) return;
+    KILN_CAPI_TRY { s->size = sizeof(*s); FromCpp(kiln::foundation::EnterExitParts::ChangeSize{}, s); } KILN_CAPI_CATCH()
+}
+KILN_API void kiln_veil_init(kiln_veil* s) {
+    if (!s) return;
+    KILN_CAPI_TRY { s->size = sizeof(*s); FromCpp(kiln::foundation::EnterExitParts::Veil{}, s); } KILN_CAPI_CATCH()
+}
+KILN_API void kiln_enter_exit_parts_init(kiln_enter_exit_parts* s) {
+    if (!s) return;
+    KILN_CAPI_TRY { s->size = sizeof(*s); FromCpp(kiln::foundation::EnterExitParts{}, s); } KILN_CAPI_CATCH()
+}
+KILN_API void kiln_enter_transition_init(kiln_enter_transition* s) {
+    if (!s) return;
+    KILN_CAPI_TRY { s->size = sizeof(*s); FromCpp(kiln::foundation::EnterTransition{}, s); } KILN_CAPI_CATCH()
+}
+KILN_API void kiln_exit_transition_init(kiln_exit_transition* s) {
+    if (!s) return;
+    KILN_CAPI_TRY { s->size = sizeof(*s); FromCpp(kiln::foundation::ExitTransition{}, s); } KILN_CAPI_CATCH()
+}
+KILN_API void kiln_size_transform_init(kiln_size_transform* s) {
+    if (!s) return;
+    KILN_CAPI_TRY { s->size = sizeof(*s); FromCpp(kiln::foundation::SizeTransform{}, s); } KILN_CAPI_CATCH()
+}
+KILN_API void kiln_content_transform_init(kiln_content_transform* s) {
+    if (!s) return;
+    KILN_CAPI_TRY { s->size = sizeof(*s); FromCpp(kiln::foundation::ContentTransform{}, s); } KILN_CAPI_CATCH()
+}
 KILN_API void kiln_m3_ripple_alpha_init(kiln_m3_ripple_alpha* s) {
     if (!s) return;
     KILN_CAPI_TRY { s->size = sizeof(*s); FromCpp(kiln::material3::RippleAlpha{}, s); } KILN_CAPI_CATCH()
@@ -7374,6 +8598,18 @@ KILN_API void kiln_m3_ripple_theme_configuration_init(kiln_m3_ripple_theme_confi
     if (!s) return;
     KILN_CAPI_TRY { s->size = sizeof(*s); FromCpp(kiln::material3::RippleThemeConfiguration{}, s); } KILN_CAPI_CATCH()
 }
+KILN_API void kiln_m3_material_theme_values_init(kiln_m3_material_theme_values* s) {
+    if (!s) return;
+    KILN_CAPI_TRY { s->size = sizeof(*s); FromCpp(kiln::material3::MaterialThemeValues{}, s); } KILN_CAPI_CATCH()
+}
+KILN_API void kiln_m3_ripple_configuration_inset_ring_colors_init(kiln_m3_ripple_configuration_inset_ring_colors* s) {
+    if (!s) return;
+    KILN_CAPI_TRY { s->size = sizeof(*s); FromCpp(kiln::material3::RippleConfiguration::InsetRingColors{}, s); } KILN_CAPI_CATCH()
+}
+KILN_API void kiln_m3_ripple_configuration_init(kiln_m3_ripple_configuration* s) {
+    if (!s) return;
+    KILN_CAPI_TRY { s->size = sizeof(*s); FromCpp(kiln::material3::RippleConfiguration{}, s); } KILN_CAPI_CATCH()
+}
 KILN_API void kiln_m3_snackbar_visuals_init(kiln_m3_snackbar_visuals* s) {
     if (!s) return;
     KILN_CAPI_TRY { s->size = sizeof(*s); FromCpp(kiln::material3::SnackbarVisuals{}, s); } KILN_CAPI_CATCH()
@@ -7381,6 +8617,10 @@ KILN_API void kiln_m3_snackbar_visuals_init(kiln_m3_snackbar_visuals* s) {
 KILN_API void kiln_m3_carousel_parallax_scroll_effect_item_info_init(kiln_m3_carousel_parallax_scroll_effect_item_info* s) {
     if (!s) return;
     KILN_CAPI_TRY { s->size = sizeof(*s); FromCpp(kiln::material3::CarouselParallaxScrollEffectItemInfo{}, s); } KILN_CAPI_CATCH()
+}
+KILN_API void kiln_layout_coordinates_init(kiln_layout_coordinates* s) {
+    if (!s) return;
+    KILN_CAPI_TRY { s->size = sizeof(*s); FromCpp(kiln::ui::LayoutCoordinates{}, s); } KILN_CAPI_CATCH()
 }
 
 KILN_API const kiln_shape* kiln_m3_alert_dialog_defaults_shape(kiln_key key) {
@@ -7418,6 +8658,15 @@ KILN_API kiln_color kiln_m3_alert_dialog_defaults_text_content_color(kiln_key ke
         return kiln::capi::FromColor((*r));
     } KILN_CAPI_CATCH({})
 }
+KILN_API void kiln_m3_basic_alert_dialog(kiln_key key, kiln_fn on_dismiss_request, const kiln_modifier* modifier, const kiln_dialog_properties* properties, kiln_fn content) {
+    KILN_CAPI_TRY {
+        auto&& a0 = kiln::capi::Fn(on_dismiss_request);
+        auto&& a1 = kiln::capi::ToModifier(modifier);
+        auto&& a2 = ToCpp(properties);
+        auto&& a3 = kiln::capi::Fn(content);
+        kiln::capi::InGroup(key, [&] { kiln::material3::BasicAlertDialog(a0, a1, a2, a3); });
+    } KILN_CAPI_CATCH()
+}
 KILN_API void kiln_m3_alert_dialog(kiln_key key, kiln_fn on_dismiss_request, kiln_fn confirm_button, const kiln_modifier* modifier, const kiln_m3_alert_dialog_options* options) {
     KILN_CAPI_TRY {
         auto&& a0 = kiln::capi::Fn(on_dismiss_request);
@@ -7433,10 +8682,19 @@ KILN_API kiln_m3_top_app_bar_state* kiln_m3_remember_top_app_bar_state(kiln_key 
         auto&& a1 = initial_height_offset;
         auto&& a2 = initial_content_offset;
         std::optional<std::remove_cvref_t<decltype(kiln::material3::RememberTopAppBarState(a0, a1, a2, kiln::capi::ToKey(key)))>> r;
-        r.emplace(kiln::material3::RememberTopAppBarState(a0, a1, a2, kiln::capi::ToKey(key)));
-        auto* h0 = kiln::capi::NewTransient<kiln_m3_top_app_bar_state>();
-        h0->owner = std::const_pointer_cast<kiln::material3::TopAppBarState>((*r)); h0->ptr = h0->owner.get();
-        return h0;
+        kiln_m3_top_app_bar_state* out_handle = nullptr;
+        kiln::capi::InGroup(key, [&] {
+            r.emplace(kiln::material3::RememberTopAppBarState(a0, a1, a2, kiln::capi::ToKey(key)));
+            auto* cp = kiln::rt::Composition::Current();
+            if (!cp) throw std::logic_error("a remember call outside content");
+            auto& c = *cp;
+            auto scope = kiln::rt::RememberCoroutineScope();
+            auto& h = c.Remember<kiln_m3_top_app_bar_state>([] { return kiln_m3_top_app_bar_state{}; });
+            h.owner = std::const_pointer_cast<kiln::material3::TopAppBarState>(*r); h.ptr = h.owner.get();
+            h.scope = scope;
+            out_handle = &h;
+        });
+        return out_handle;
     } KILN_CAPI_CATCH({})
 }
 KILN_API void kiln_m3_top_app_bar_defaults_top_app_bar_colors(kiln_key key, kiln_m3_top_app_bar_colors* out) {
@@ -7458,6 +8716,13 @@ KILN_API void kiln_m3_top_app_bar_defaults_top_app_bar_colors_container_color(ki
         kiln::capi::InGroup(key, [&] { r.emplace(kiln::material3::TopAppBarDefaults::topAppBarColors(a0, a1, a2, a3, a4, a5)); });
         FromCpp((*r), out);
     } KILN_CAPI_CATCH()
+}
+KILN_API const kiln_window_insets* kiln_m3_top_app_bar_defaults_window_insets(kiln_key key) {
+    KILN_CAPI_TRY {
+        std::optional<std::remove_cvref_t<decltype(kiln::material3::TopAppBarDefaults::windowInsets())>> r;
+        kiln::capi::InGroup(key, [&] { r.emplace(kiln::material3::TopAppBarDefaults::windowInsets()); });
+        return kiln::capi::TransientInsets((*r));
+    } KILN_CAPI_CATCH({})
 }
 KILN_API const kiln_anim_spec* kiln_m3_top_app_bar_defaults_snap_animation_spec(kiln_key key) {
     KILN_CAPI_TRY {
@@ -7565,10 +8830,19 @@ KILN_API kiln_m3_bottom_app_bar_state* kiln_m3_remember_bottom_app_bar_state(kil
         auto&& a1 = initial_height_offset;
         auto&& a2 = initial_content_offset;
         std::optional<std::remove_cvref_t<decltype(kiln::material3::RememberBottomAppBarState(a0, a1, a2, kiln::capi::ToKey(key)))>> r;
-        r.emplace(kiln::material3::RememberBottomAppBarState(a0, a1, a2, kiln::capi::ToKey(key)));
-        auto* h0 = kiln::capi::NewTransient<kiln_m3_bottom_app_bar_state>();
-        h0->owner = std::const_pointer_cast<kiln::material3::BottomAppBarState>((*r)); h0->ptr = h0->owner.get();
-        return h0;
+        kiln_m3_bottom_app_bar_state* out_handle = nullptr;
+        kiln::capi::InGroup(key, [&] {
+            r.emplace(kiln::material3::RememberBottomAppBarState(a0, a1, a2, kiln::capi::ToKey(key)));
+            auto* cp = kiln::rt::Composition::Current();
+            if (!cp) throw std::logic_error("a remember call outside content");
+            auto& c = *cp;
+            auto scope = kiln::rt::RememberCoroutineScope();
+            auto& h = c.Remember<kiln_m3_bottom_app_bar_state>([] { return kiln_m3_bottom_app_bar_state{}; });
+            h.owner = std::const_pointer_cast<kiln::material3::BottomAppBarState>(*r); h.ptr = h.owner.get();
+            h.scope = scope;
+            out_handle = &h;
+        });
+        return out_handle;
     } KILN_CAPI_CATCH({})
 }
 KILN_API kiln_color kiln_m3_bottom_app_bar_defaults_container_color(kiln_key key) {
@@ -7578,11 +8852,32 @@ KILN_API kiln_color kiln_m3_bottom_app_bar_defaults_container_color(kiln_key key
         return kiln::capi::FromColor((*r));
     } KILN_CAPI_CATCH({})
 }
+KILN_API const kiln_window_insets* kiln_m3_bottom_app_bar_defaults_window_insets(kiln_key key) {
+    KILN_CAPI_TRY {
+        std::optional<std::remove_cvref_t<decltype(kiln::material3::BottomAppBarDefaults::windowInsets())>> r;
+        kiln::capi::InGroup(key, [&] { r.emplace(kiln::material3::BottomAppBarDefaults::windowInsets()); });
+        return kiln::capi::TransientInsets((*r));
+    } KILN_CAPI_CATCH({})
+}
 KILN_API kiln_color kiln_m3_bottom_app_bar_defaults_bottom_app_bar_fab_color(kiln_key key) {
     KILN_CAPI_TRY {
         std::optional<std::remove_cvref_t<decltype(kiln::material3::BottomAppBarDefaults::bottomAppBarFabColor())>> r;
         kiln::capi::InGroup(key, [&] { r.emplace(kiln::material3::BottomAppBarDefaults::bottomAppBarFabColor()); });
         return kiln::capi::FromColor((*r));
+    } KILN_CAPI_CATCH({})
+}
+KILN_API kiln_arrangement kiln_m3_bottom_app_bar_defaults_flexible_horizontal_arrangement(kiln_key key) {
+    KILN_CAPI_TRY {
+        std::optional<std::remove_cvref_t<decltype(kiln::material3::BottomAppBarDefaults::FlexibleHorizontalArrangement())>> r;
+        kiln::capi::InGroup(key, [&] { r.emplace(kiln::material3::BottomAppBarDefaults::FlexibleHorizontalArrangement()); });
+        return kiln::capi::FromArrangement((*r));
+    } KILN_CAPI_CATCH({})
+}
+KILN_API kiln_arrangement kiln_m3_bottom_app_bar_defaults_flexible_fixed_horizontal_arrangement(kiln_key key) {
+    KILN_CAPI_TRY {
+        std::optional<std::remove_cvref_t<decltype(kiln::material3::BottomAppBarDefaults::FlexibleFixedHorizontalArrangement())>> r;
+        kiln::capi::InGroup(key, [&] { r.emplace(kiln::material3::BottomAppBarDefaults::FlexibleFixedHorizontalArrangement()); });
+        return kiln::capi::FromArrangement((*r));
     } KILN_CAPI_CATCH({})
 }
 KILN_API const kiln_anim_spec* kiln_m3_bottom_app_bar_defaults_snap_animation_spec(kiln_key key) {
@@ -7933,6 +9228,40 @@ KILN_API void kiln_m3_icon_button_defaults_outlined_icon_toggle_button_vibrant_c
         FromCpp((*r), out);
     } KILN_CAPI_CATCH()
 }
+KILN_API kiln_border_stroke kiln_m3_icon_button_defaults_outlined_icon_button_border(kiln_key key, bool enabled) {
+    KILN_CAPI_TRY {
+        auto&& a0 = enabled;
+        std::optional<std::remove_cvref_t<decltype(kiln::material3::IconButtonDefaults::outlinedIconButtonBorder(a0))>> r;
+        kiln::capi::InGroup(key, [&] { r.emplace(kiln::material3::IconButtonDefaults::outlinedIconButtonBorder(a0)); });
+        return kiln::capi::FromBorderStroke((*r));
+    } KILN_CAPI_CATCH({})
+}
+KILN_API kiln_border_stroke kiln_m3_icon_button_defaults_outlined_icon_button_vibrant_border(kiln_key key, bool enabled) {
+    KILN_CAPI_TRY {
+        auto&& a0 = enabled;
+        std::optional<std::remove_cvref_t<decltype(kiln::material3::IconButtonDefaults::outlinedIconButtonVibrantBorder(a0))>> r;
+        kiln::capi::InGroup(key, [&] { r.emplace(kiln::material3::IconButtonDefaults::outlinedIconButtonVibrantBorder(a0)); });
+        return kiln::capi::FromBorderStroke((*r));
+    } KILN_CAPI_CATCH({})
+}
+KILN_API const kiln_border_stroke* kiln_m3_icon_button_defaults_outlined_icon_toggle_button_border(kiln_key key, bool enabled, bool checked) {
+    KILN_CAPI_TRY {
+        auto&& a0 = enabled;
+        auto&& a1 = checked;
+        std::optional<std::remove_cvref_t<decltype(kiln::material3::IconButtonDefaults::outlinedIconToggleButtonBorder(a0, a1))>> r;
+        kiln::capi::InGroup(key, [&] { r.emplace(kiln::material3::IconButtonDefaults::outlinedIconToggleButtonBorder(a0, a1)); });
+        return ([&]() -> const kiln_border_stroke* { if (!((*r))) return nullptr;  auto* p = kiln::capi::NewTransient<kiln_border_stroke>(); *p = kiln::capi::FromBorderStroke((*((*r)))); return p; }());
+    } KILN_CAPI_CATCH({})
+}
+KILN_API const kiln_border_stroke* kiln_m3_icon_button_defaults_outlined_icon_toggle_button_vibrant_border(kiln_key key, bool enabled, bool checked) {
+    KILN_CAPI_TRY {
+        auto&& a0 = enabled;
+        auto&& a1 = checked;
+        std::optional<std::remove_cvref_t<decltype(kiln::material3::IconButtonDefaults::outlinedIconToggleButtonVibrantBorder(a0, a1))>> r;
+        kiln::capi::InGroup(key, [&] { r.emplace(kiln::material3::IconButtonDefaults::outlinedIconToggleButtonVibrantBorder(a0, a1)); });
+        return ([&]() -> const kiln_border_stroke* { if (!((*r))) return nullptr;  auto* p = kiln::capi::NewTransient<kiln_border_stroke>(); *p = kiln::capi::FromBorderStroke((*((*r)))); return p; }());
+    } KILN_CAPI_CATCH({})
+}
 KILN_API const kiln_shape* kiln_m3_icon_button_defaults_standard_shape(kiln_key key) {
     KILN_CAPI_TRY {
         std::optional<std::remove_cvref_t<decltype(kiln::material3::IconButtonDefaults::standardShape())>> r;
@@ -8258,10 +9587,19 @@ KILN_API kiln_m3_sheet_state* kiln_m3_remember_bottom_sheet_state(kiln_key key, 
         auto&& a1 = ToCpp(enabled_values);
         auto&& a2 = ToCpp_kiln_m3_fn_sheet_value_to_bool(confirm_value_change);
         std::optional<std::remove_cvref_t<decltype(kiln::material3::RememberBottomSheetState(a0, a1, a2, kiln::capi::ToKey(key)))>> r;
-        r.emplace(kiln::material3::RememberBottomSheetState(a0, a1, a2, kiln::capi::ToKey(key)));
-        auto* h0 = kiln::capi::NewTransient<kiln_m3_sheet_state>();
-        h0->owner = std::const_pointer_cast<kiln::material3::SheetState>((*r)); h0->ptr = h0->owner.get();
-        return h0;
+        kiln_m3_sheet_state* out_handle = nullptr;
+        kiln::capi::InGroup(key, [&] {
+            r.emplace(kiln::material3::RememberBottomSheetState(a0, a1, a2, kiln::capi::ToKey(key)));
+            auto* cp = kiln::rt::Composition::Current();
+            if (!cp) throw std::logic_error("a remember call outside content");
+            auto& c = *cp;
+            auto scope = kiln::rt::RememberCoroutineScope();
+            auto& h = c.Remember<kiln_m3_sheet_state>([] { return kiln_m3_sheet_state{}; });
+            h.owner = std::const_pointer_cast<kiln::material3::SheetState>(*r); h.ptr = h.owner.get();
+            h.scope = scope;
+            out_handle = &h;
+        });
+        return out_handle;
     } KILN_CAPI_CATCH({})
 }
 KILN_API const kiln_shape* kiln_m3_bottom_sheet_defaults_hidden_shape(kiln_key key) {
@@ -8292,6 +9630,20 @@ KILN_API kiln_color kiln_m3_bottom_sheet_defaults_scrim_color(kiln_key key) {
         return kiln::capi::FromColor((*r));
     } KILN_CAPI_CATCH({})
 }
+KILN_API const kiln_window_insets* kiln_m3_bottom_sheet_defaults_standard_window_insets(kiln_key key) {
+    KILN_CAPI_TRY {
+        std::optional<std::remove_cvref_t<decltype(kiln::material3::BottomSheetDefaults::standardWindowInsets())>> r;
+        kiln::capi::InGroup(key, [&] { r.emplace(kiln::material3::BottomSheetDefaults::standardWindowInsets()); });
+        return kiln::capi::TransientInsets((*r));
+    } KILN_CAPI_CATCH({})
+}
+KILN_API const kiln_window_insets* kiln_m3_bottom_sheet_defaults_modal_window_insets(kiln_key key) {
+    KILN_CAPI_TRY {
+        std::optional<std::remove_cvref_t<decltype(kiln::material3::BottomSheetDefaults::modalWindowInsets())>> r;
+        kiln::capi::InGroup(key, [&] { r.emplace(kiln::material3::BottomSheetDefaults::modalWindowInsets()); });
+        return kiln::capi::TransientInsets((*r));
+    } KILN_CAPI_CATCH({})
+}
 KILN_API void kiln_m3_bottom_sheet_defaults_drag_handle(kiln_key key, const kiln_modifier* modifier, const kiln_m3_bottom_sheet_defaults_drag_handle_options* options) {
     KILN_CAPI_TRY {
         auto&& a0 = kiln::capi::ToModifier(modifier);
@@ -8310,10 +9662,19 @@ KILN_API void kiln_m3_bottom_sheet(kiln_key key, const kiln_modifier* modifier, 
 KILN_API kiln_m3_snackbar_host_state* kiln_m3_remember_snackbar_host_state(kiln_key key) {
     KILN_CAPI_TRY {
         std::remove_reference_t<decltype(kiln::material3::RememberSnackbarHostState(kiln::capi::ToKey(key)))>* r = nullptr;
-        r = &kiln::material3::RememberSnackbarHostState(kiln::capi::ToKey(key));
-        auto* h0 = kiln::capi::NewTransient<kiln_m3_snackbar_host_state>();
-        h0->ptr = const_cast<kiln::material3::SnackbarHostState*>(&((*r)));
-        return h0;
+        kiln_m3_snackbar_host_state* out_handle = nullptr;
+        kiln::capi::InGroup(key, [&] {
+            r = &kiln::material3::RememberSnackbarHostState(kiln::capi::ToKey(key));
+            auto* cp = kiln::rt::Composition::Current();
+            if (!cp) throw std::logic_error("a remember call outside content");
+            auto& c = *cp;
+            auto scope = kiln::rt::RememberCoroutineScope();
+            auto& h = c.Remember<kiln_m3_snackbar_host_state>([] { return kiln_m3_snackbar_host_state{}; });
+            h.ptr = r;
+            h.scope = scope;
+            out_handle = &h;
+        });
+        return out_handle;
     } KILN_CAPI_CATCH({})
 }
 KILN_API const kiln_shape* kiln_m3_snackbar_defaults_shape(kiln_key key) {
@@ -8388,10 +9749,19 @@ KILN_API kiln_m3_sheet_state* kiln_m3_remember_standard_bottom_sheet_state(kiln_
         auto&& a1 = ToCpp_kiln_m3_fn_sheet_value_to_bool(confirm_value_change);
         auto&& a2 = skip_hidden_state;
         std::optional<std::remove_cvref_t<decltype(kiln::material3::RememberStandardBottomSheetState(a0, a1, a2, kiln::capi::ToKey(key)))>> r;
-        r.emplace(kiln::material3::RememberStandardBottomSheetState(a0, a1, a2, kiln::capi::ToKey(key)));
-        auto* h0 = kiln::capi::NewTransient<kiln_m3_sheet_state>();
-        h0->owner = std::const_pointer_cast<kiln::material3::SheetState>((*r)); h0->ptr = h0->owner.get();
-        return h0;
+        kiln_m3_sheet_state* out_handle = nullptr;
+        kiln::capi::InGroup(key, [&] {
+            r.emplace(kiln::material3::RememberStandardBottomSheetState(a0, a1, a2, kiln::capi::ToKey(key)));
+            auto* cp = kiln::rt::Composition::Current();
+            if (!cp) throw std::logic_error("a remember call outside content");
+            auto& c = *cp;
+            auto scope = kiln::rt::RememberCoroutineScope();
+            auto& h = c.Remember<kiln_m3_sheet_state>([] { return kiln_m3_sheet_state{}; });
+            h.owner = std::const_pointer_cast<kiln::material3::SheetState>(*r); h.ptr = h.owner.get();
+            h.scope = scope;
+            out_handle = &h;
+        });
+        return out_handle;
     } KILN_CAPI_CATCH({})
 }
 KILN_API void kiln_m3_bottom_sheet_scaffold(kiln_key key, kiln_fn sheet_content, const kiln_modifier* modifier, const kiln_m3_bottom_sheet_scaffold_options* options, kiln_m3_fn_padding_values content) {
@@ -8402,6 +9772,16 @@ KILN_API void kiln_m3_bottom_sheet_scaffold(kiln_key key, kiln_fn sheet_content,
         auto&& a3 = ToCpp_kiln_m3_fn_padding_values(content);
         kiln::capi::InGroup(key, [&] { kiln::material3::BottomSheetScaffold(a0, a1, a2, a3); });
     } KILN_CAPI_CATCH()
+}
+KILN_API float kiln_m3_shadow_elevation(kiln_key key, const kiln_m3_button_elevation* elevation, bool enabled, kiln_interaction_source* source) {
+    KILN_CAPI_TRY {
+        auto&& a0 = ToCpp(elevation);
+        auto&& a1 = enabled;
+        auto&& a2 = (source ? source->source : nullptr);
+        std::optional<std::remove_cvref_t<decltype(kiln::material3::ShadowElevation(a0, a1, a2))>> r;
+        kiln::capi::InGroup(key, [&] { r.emplace(kiln::material3::ShadowElevation(a0, a1, a2)); });
+        return ((*r)).value;
+    } KILN_CAPI_CATCH({})
 }
 KILN_API void kiln_m3_button(kiln_key key, kiln_fn on_click, const kiln_modifier* modifier, const kiln_m3_button_options* options, kiln_fn content) {
     KILN_CAPI_TRY {
@@ -8687,6 +10067,14 @@ KILN_API void kiln_m3_button_defaults_filled_tonal_button_elevation(kiln_key key
         FromCpp((*r), out);
     } KILN_CAPI_CATCH()
 }
+KILN_API kiln_border_stroke kiln_m3_button_defaults_outlined_button_border(kiln_key key, bool enabled) {
+    KILN_CAPI_TRY {
+        auto&& a0 = enabled;
+        std::optional<std::remove_cvref_t<decltype(kiln::material3::ButtonDefaults::outlinedButtonBorder(a0))>> r;
+        kiln::capi::InGroup(key, [&] { r.emplace(kiln::material3::ButtonDefaults::outlinedButtonBorder(a0)); });
+        return kiln::capi::FromBorderStroke((*r));
+    } KILN_CAPI_CATCH({})
+}
 KILN_API void kiln_m3_button_defaults_shapes_for(kiln_key key, float button_height, kiln_m3_button_shapes* out) {
     KILN_CAPI_TRY {
         auto&& a0 = kiln::capi::ToDp(button_height);
@@ -8857,6 +10245,22 @@ KILN_API void kiln_m3_outlined_toggle_button_defaults_colors(kiln_key key, kiln_
         FromCpp((*r), out);
     } KILN_CAPI_CATCH()
 }
+KILN_API const kiln_border_stroke* kiln_m3_outlined_toggle_button_defaults_border(kiln_key key, bool enabled, bool checked) {
+    KILN_CAPI_TRY {
+        auto&& a0 = enabled;
+        auto&& a1 = checked;
+        std::optional<std::remove_cvref_t<decltype(kiln::material3::OutlinedToggleButtonDefaults::border(a0, a1))>> r;
+        kiln::capi::InGroup(key, [&] { r.emplace(kiln::material3::OutlinedToggleButtonDefaults::border(a0, a1)); });
+        return ([&]() -> const kiln_border_stroke* { if (!((*r))) return nullptr;  auto* p = kiln::capi::NewTransient<kiln_border_stroke>(); *p = kiln::capi::FromBorderStroke((*((*r)))); return p; }());
+    } KILN_CAPI_CATCH({})
+}
+KILN_API kiln_arrangement kiln_m3_button_group_defaults_horizontal_arrangement(kiln_key key) {
+    KILN_CAPI_TRY {
+        std::optional<std::remove_cvref_t<decltype(kiln::material3::ButtonGroupDefaults::HorizontalArrangement())>> r;
+        kiln::capi::InGroup(key, [&] { r.emplace(kiln::material3::ButtonGroupDefaults::HorizontalArrangement()); });
+        return kiln::capi::FromArrangement((*r));
+    } KILN_CAPI_CATCH({})
+}
 KILN_API const kiln_shape* kiln_m3_button_group_defaults_connected_leading_button_shape(kiln_key key) {
     KILN_CAPI_TRY {
         std::optional<std::remove_cvref_t<decltype(kiln::material3::ButtonGroupDefaults::connectedLeadingButtonShape())>> r;
@@ -8945,6 +10349,16 @@ KILN_API void kiln_m3_button_group(kiln_key key, kiln_m3_fn_button_group_menu_st
         auto&& a3 = ToCpp(options);
         kiln::capi::InGroup(key, [&] { kiln::material3::ButtonGroup(a0, a1, a2, a3); });
     } KILN_CAPI_CATCH()
+}
+KILN_API float kiln_m3_shadow_elevation_elevation(kiln_key key, const kiln_m3_card_elevation* elevation, bool enabled, kiln_interaction_source* source) {
+    KILN_CAPI_TRY {
+        auto&& a0 = ToCpp(elevation);
+        auto&& a1 = enabled;
+        auto&& a2 = (source ? source->source : nullptr);
+        std::optional<std::remove_cvref_t<decltype(kiln::material3::ShadowElevation(a0, a1, a2))>> r;
+        kiln::capi::InGroup(key, [&] { r.emplace(kiln::material3::ShadowElevation(a0, a1, a2)); });
+        return ((*r)).value;
+    } KILN_CAPI_CATCH({})
 }
 KILN_API void kiln_m3_card(kiln_key key, const kiln_modifier* modifier, const kiln_m3_card_options* options, kiln_fn content) {
     KILN_CAPI_TRY {
@@ -9093,25 +10507,51 @@ KILN_API void kiln_m3_card_defaults_outlined_card_colors_container(kiln_key key,
         FromCpp((*r), out);
     } KILN_CAPI_CATCH()
 }
+KILN_API kiln_border_stroke kiln_m3_card_defaults_outlined_card_border(kiln_key key, bool enabled) {
+    KILN_CAPI_TRY {
+        auto&& a0 = enabled;
+        std::optional<std::remove_cvref_t<decltype(kiln::material3::CardDefaults::outlinedCardBorder(a0))>> r;
+        kiln::capi::InGroup(key, [&] { r.emplace(kiln::material3::CardDefaults::outlinedCardBorder(a0)); });
+        return kiln::capi::FromBorderStroke((*r));
+    } KILN_CAPI_CATCH({})
+}
 KILN_API kiln_m3_carousel_state* kiln_m3_remember_carousel_state(kiln_key key, int32_t initial_item, kiln_m3_fn_to_int item_count) {
     KILN_CAPI_TRY {
         auto&& a0 = initial_item;
         auto&& a1 = ToCpp_kiln_m3_fn_to_int(item_count);
         std::optional<std::remove_cvref_t<decltype(kiln::material3::RememberCarouselState(a0, a1, kiln::capi::ToKey(key)))>> r;
-        r.emplace(kiln::material3::RememberCarouselState(a0, a1, kiln::capi::ToKey(key)));
-        auto* h0 = kiln::capi::NewTransient<kiln_m3_carousel_state>();
-        h0->owner = std::const_pointer_cast<kiln::material3::CarouselState>((*r)); h0->ptr = h0->owner.get();
-        return h0;
+        kiln_m3_carousel_state* out_handle = nullptr;
+        kiln::capi::InGroup(key, [&] {
+            r.emplace(kiln::material3::RememberCarouselState(a0, a1, kiln::capi::ToKey(key)));
+            auto* cp = kiln::rt::Composition::Current();
+            if (!cp) throw std::logic_error("a remember call outside content");
+            auto& c = *cp;
+            auto scope = kiln::rt::RememberCoroutineScope();
+            auto& h = c.Remember<kiln_m3_carousel_state>([] { return kiln_m3_carousel_state{}; });
+            h.owner = std::const_pointer_cast<kiln::material3::CarouselState>(*r); h.ptr = h.owner.get();
+            h.scope = scope;
+            out_handle = &h;
+        });
+        return out_handle;
     } KILN_CAPI_CATCH({})
 }
 KILN_API kiln_m3_carousel_state* kiln_m3_remember_carousel_state_item_count(kiln_key key, kiln_m3_fn_to_int item_count) {
     KILN_CAPI_TRY {
         auto&& a0 = ToCpp_kiln_m3_fn_to_int(item_count);
         std::optional<std::remove_cvref_t<decltype(kiln::material3::RememberCarouselState(a0, kiln::capi::ToKey(key)))>> r;
-        r.emplace(kiln::material3::RememberCarouselState(a0, kiln::capi::ToKey(key)));
-        auto* h0 = kiln::capi::NewTransient<kiln_m3_carousel_state>();
-        h0->owner = std::const_pointer_cast<kiln::material3::CarouselState>((*r)); h0->ptr = h0->owner.get();
-        return h0;
+        kiln_m3_carousel_state* out_handle = nullptr;
+        kiln::capi::InGroup(key, [&] {
+            r.emplace(kiln::material3::RememberCarouselState(a0, kiln::capi::ToKey(key)));
+            auto* cp = kiln::rt::Composition::Current();
+            if (!cp) throw std::logic_error("a remember call outside content");
+            auto& c = *cp;
+            auto scope = kiln::rt::RememberCoroutineScope();
+            auto& h = c.Remember<kiln_m3_carousel_state>([] { return kiln_m3_carousel_state{}; });
+            h.owner = std::const_pointer_cast<kiln::material3::CarouselState>(*r); h.ptr = h.owner.get();
+            h.scope = scope;
+            out_handle = &h;
+        });
+        return out_handle;
     } KILN_CAPI_CATCH({})
 }
 KILN_API void kiln_m3_horizontal_multi_browse_carousel(kiln_key key, kiln_m3_carousel_state* state, float preferred_item_width, const kiln_modifier* modifier, kiln_m3_fn_carousel_item_scope_int content, const kiln_m3_carousel_options* options, float min_small_item_width, float max_small_item_width) {
@@ -9216,6 +10656,16 @@ KILN_API void kiln_m3_checkbox_defaults_colors_checked_color(kiln_key key, kiln_
         FromCpp((*r), out);
     } KILN_CAPI_CATCH()
 }
+KILN_API float kiln_m3_shadow_elevation_arg0(kiln_key key, const kiln_m3_chip_elevation* arg0, bool enabled, kiln_interaction_source* arg2) {
+    KILN_CAPI_TRY {
+        auto&& a0 = ToCpp(arg0);
+        auto&& a1 = enabled;
+        auto&& a2 = (arg2 ? arg2->source : nullptr);
+        std::optional<std::remove_cvref_t<decltype(kiln::material3::ShadowElevation(a0, a1, a2))>> r;
+        kiln::capi::InGroup(key, [&] { r.emplace(kiln::material3::ShadowElevation(a0, a1, a2)); });
+        return ((*r)).value;
+    } KILN_CAPI_CATCH({})
+}
 KILN_API void kiln_m3_assist_chip(kiln_key key, kiln_fn on_click, kiln_fn label, const kiln_modifier* modifier, const kiln_m3_chip_options* options) {
     KILN_CAPI_TRY {
         auto&& a0 = kiln::capi::Fn(on_click);
@@ -9282,6 +10732,14 @@ KILN_API void kiln_m3_input_chip(kiln_key key, bool selected, kiln_fn on_click, 
         kiln::capi::InGroup(key, [&] { kiln::material3::InputChip(a0, a1, a2, a3, a4); });
     } KILN_CAPI_CATCH()
 }
+KILN_API kiln_arrangement kiln_m3_assist_chip_defaults_horizontal_arrangement(kiln_key key, float spacing) {
+    KILN_CAPI_TRY {
+        auto&& a0 = kiln::capi::ToDp(spacing);
+        std::optional<std::remove_cvref_t<decltype(kiln::material3::AssistChipDefaults::horizontalArrangement(a0))>> r;
+        kiln::capi::InGroup(key, [&] { r.emplace(kiln::material3::AssistChipDefaults::horizontalArrangement(a0)); });
+        return kiln::capi::FromArrangement((*r));
+    } KILN_CAPI_CATCH({})
+}
 KILN_API const kiln_shape* kiln_m3_assist_chip_defaults_shape(kiln_key key) {
     KILN_CAPI_TRY {
         std::optional<std::remove_cvref_t<decltype(kiln::material3::AssistChipDefaults::shape())>> r;
@@ -9333,6 +10791,22 @@ KILN_API void kiln_m3_assist_chip_defaults_elevated_assist_chip_elevation(kiln_k
         FromCpp((*r), out);
     } KILN_CAPI_CATCH()
 }
+KILN_API kiln_border_stroke kiln_m3_assist_chip_defaults_assist_chip_border(kiln_key key, bool enabled) {
+    KILN_CAPI_TRY {
+        auto&& a0 = enabled;
+        std::optional<std::remove_cvref_t<decltype(kiln::material3::AssistChipDefaults::assistChipBorder(a0))>> r;
+        kiln::capi::InGroup(key, [&] { r.emplace(kiln::material3::AssistChipDefaults::assistChipBorder(a0)); });
+        return kiln::capi::FromBorderStroke((*r));
+    } KILN_CAPI_CATCH({})
+}
+KILN_API kiln_arrangement kiln_m3_suggestion_chip_defaults_horizontal_arrangement(kiln_key key, float spacing) {
+    KILN_CAPI_TRY {
+        auto&& a0 = kiln::capi::ToDp(spacing);
+        std::optional<std::remove_cvref_t<decltype(kiln::material3::SuggestionChipDefaults::horizontalArrangement(a0))>> r;
+        kiln::capi::InGroup(key, [&] { r.emplace(kiln::material3::SuggestionChipDefaults::horizontalArrangement(a0)); });
+        return kiln::capi::FromArrangement((*r));
+    } KILN_CAPI_CATCH({})
+}
 KILN_API const kiln_shape* kiln_m3_suggestion_chip_defaults_shape(kiln_key key) {
     KILN_CAPI_TRY {
         std::optional<std::remove_cvref_t<decltype(kiln::material3::SuggestionChipDefaults::shape())>> r;
@@ -9383,6 +10857,31 @@ KILN_API void kiln_m3_suggestion_chip_defaults_elevated_suggestion_chip_elevatio
         kiln::capi::InGroup(key, [&] { r.emplace(kiln::material3::SuggestionChipDefaults::elevatedSuggestionChipElevation()); });
         FromCpp((*r), out);
     } KILN_CAPI_CATCH()
+}
+KILN_API kiln_border_stroke kiln_m3_suggestion_chip_defaults_suggestion_chip_border(kiln_key key, bool enabled) {
+    KILN_CAPI_TRY {
+        auto&& a0 = enabled;
+        std::optional<std::remove_cvref_t<decltype(kiln::material3::SuggestionChipDefaults::suggestionChipBorder(a0))>> r;
+        kiln::capi::InGroup(key, [&] { r.emplace(kiln::material3::SuggestionChipDefaults::suggestionChipBorder(a0)); });
+        return kiln::capi::FromBorderStroke((*r));
+    } KILN_CAPI_CATCH({})
+}
+KILN_API kiln_arrangement kiln_m3_filter_chip_defaults_horizontal_arrangement(kiln_key key, float spacing) {
+    KILN_CAPI_TRY {
+        auto&& a0 = kiln::capi::ToDp(spacing);
+        std::optional<std::remove_cvref_t<decltype(kiln::material3::FilterChipDefaults::horizontalArrangement(a0))>> r;
+        kiln::capi::InGroup(key, [&] { r.emplace(kiln::material3::FilterChipDefaults::horizontalArrangement(a0)); });
+        return kiln::capi::FromArrangement((*r));
+    } KILN_CAPI_CATCH({})
+}
+KILN_API kiln_arrangement kiln_m3_filter_chip_defaults_horizontal_arrangement_has_leading_icon(kiln_key key, bool has_leading_icon, bool has_trailing_icon) {
+    KILN_CAPI_TRY {
+        auto&& a0 = has_leading_icon;
+        auto&& a1 = has_trailing_icon;
+        std::optional<std::remove_cvref_t<decltype(kiln::material3::FilterChipDefaults::horizontalArrangement(a0, a1))>> r;
+        kiln::capi::InGroup(key, [&] { r.emplace(kiln::material3::FilterChipDefaults::horizontalArrangement(a0, a1)); });
+        return kiln::capi::FromArrangement((*r));
+    } KILN_CAPI_CATCH({})
 }
 KILN_API const kiln_shape* kiln_m3_filter_chip_defaults_shape(kiln_key key) {
     KILN_CAPI_TRY {
@@ -9459,6 +10958,33 @@ KILN_API void kiln_m3_filter_chip_defaults_elevated_filter_chip_elevation(kiln_k
         FromCpp((*r), out);
     } KILN_CAPI_CATCH()
 }
+KILN_API kiln_border_stroke kiln_m3_filter_chip_defaults_filter_chip_border(kiln_key key, bool enabled, bool selected) {
+    KILN_CAPI_TRY {
+        auto&& a0 = enabled;
+        auto&& a1 = selected;
+        std::optional<std::remove_cvref_t<decltype(kiln::material3::FilterChipDefaults::filterChipBorder(a0, a1))>> r;
+        kiln::capi::InGroup(key, [&] { r.emplace(kiln::material3::FilterChipDefaults::filterChipBorder(a0, a1)); });
+        return kiln::capi::FromBorderStroke((*r));
+    } KILN_CAPI_CATCH({})
+}
+KILN_API kiln_arrangement kiln_m3_input_chip_defaults_horizontal_arrangement(kiln_key key, float spacing) {
+    KILN_CAPI_TRY {
+        auto&& a0 = kiln::capi::ToDp(spacing);
+        std::optional<std::remove_cvref_t<decltype(kiln::material3::InputChipDefaults::horizontalArrangement(a0))>> r;
+        kiln::capi::InGroup(key, [&] { r.emplace(kiln::material3::InputChipDefaults::horizontalArrangement(a0)); });
+        return kiln::capi::FromArrangement((*r));
+    } KILN_CAPI_CATCH({})
+}
+KILN_API kiln_arrangement kiln_m3_input_chip_defaults_horizontal_arrangement_has_avatar(kiln_key key, bool has_avatar, bool has_leading_icon, bool has_trailing_icon) {
+    KILN_CAPI_TRY {
+        auto&& a0 = has_avatar;
+        auto&& a1 = has_leading_icon;
+        auto&& a2 = has_trailing_icon;
+        std::optional<std::remove_cvref_t<decltype(kiln::material3::InputChipDefaults::horizontalArrangement(a0, a1, a2))>> r;
+        kiln::capi::InGroup(key, [&] { r.emplace(kiln::material3::InputChipDefaults::horizontalArrangement(a0, a1, a2)); });
+        return kiln::capi::FromArrangement((*r));
+    } KILN_CAPI_CATCH({})
+}
 KILN_API kiln_padding kiln_m3_input_chip_defaults_content_padding(kiln_key key, bool has_avatar, bool has_leading_icon, bool has_trailing_icon) {
     KILN_CAPI_TRY {
         auto&& a0 = has_avatar;
@@ -9514,6 +11040,15 @@ KILN_API void kiln_m3_input_chip_defaults_input_chip_elevation(kiln_key key, kil
         kiln::capi::InGroup(key, [&] { r.emplace(kiln::material3::InputChipDefaults::inputChipElevation()); });
         FromCpp((*r), out);
     } KILN_CAPI_CATCH()
+}
+KILN_API kiln_border_stroke kiln_m3_input_chip_defaults_input_chip_border(kiln_key key, bool enabled, bool selected) {
+    KILN_CAPI_TRY {
+        auto&& a0 = enabled;
+        auto&& a1 = selected;
+        std::optional<std::remove_cvref_t<decltype(kiln::material3::InputChipDefaults::inputChipBorder(a0, a1))>> r;
+        kiln::capi::InGroup(key, [&] { r.emplace(kiln::material3::InputChipDefaults::inputChipBorder(a0, a1)); });
+        return kiln::capi::FromBorderStroke((*r));
+    } KILN_CAPI_CATCH({})
 }
 KILN_API void kiln_m3_light_color_scheme(kiln_key key, kiln_m3_fn_color_scheme customize, kiln_m3_color_scheme* out) {
     KILN_CAPI_TRY {
@@ -9634,6 +11169,34 @@ KILN_API void kiln_m3_text_field_defaults_tonal_colors(kiln_key key, kiln_m3_tex
         FromCpp((*r), out);
     } KILN_CAPI_CATCH()
 }
+KILN_API void kiln_m3_text_field_defaults_container(kiln_key key, bool enabled, bool is_error, kiln_interaction_source* interaction_source, const kiln_modifier* modifier, const kiln_m3_text_field_colors* colors, const kiln_shape* shape, float focused_indicator_line_thickness, float unfocused_indicator_line_thickness) {
+    KILN_CAPI_TRY {
+        auto&& a0 = enabled;
+        auto&& a1 = is_error;
+        auto&& a2 = (interaction_source ? interaction_source->source : nullptr);
+        auto&& a3 = kiln::capi::ToModifier(modifier);
+        auto&& a4 = (colors ? std::optional<kiln::material3::TextFieldColors>(ToCpp(colors)) : std::nullopt);
+        auto&& a5 = kiln::capi::ToShape(shape);
+        auto&& a6 = kiln::capi::ToDp(focused_indicator_line_thickness);
+        auto&& a7 = kiln::capi::ToDp(unfocused_indicator_line_thickness);
+        kiln::capi::InGroup(key, [&] { kiln::material3::TextFieldDefaults::Container(a0, a1, a2, a3, a4, a5, a6, a7); });
+    } KILN_CAPI_CATCH()
+}
+KILN_API const kiln_modifier* kiln_m3_text_field_defaults_indicator_line(kiln_key key, const kiln_modifier* m, bool enabled, bool is_error, kiln_interaction_source* interaction_source, const kiln_m3_text_field_colors* colors, const kiln_shape* text_field_shape, float focused_indicator_line_thickness, float unfocused_indicator_line_thickness) {
+    KILN_CAPI_TRY {
+        auto&& a0 = kiln::capi::ToModifier(m);
+        auto&& a1 = enabled;
+        auto&& a2 = is_error;
+        auto&& a3 = (interaction_source ? interaction_source->source : nullptr);
+        auto&& a4 = (colors ? std::optional<kiln::material3::TextFieldColors>(ToCpp(colors)) : std::nullopt);
+        auto&& a5 = kiln::capi::ToShape(text_field_shape);
+        auto&& a6 = kiln::capi::ToDp(focused_indicator_line_thickness);
+        auto&& a7 = kiln::capi::ToDp(unfocused_indicator_line_thickness);
+        std::optional<std::remove_cvref_t<decltype(kiln::material3::TextFieldDefaults::IndicatorLine(a0, a1, a2, a3, a4, a5, a6, a7))>> r;
+        kiln::capi::InGroup(key, [&] { r.emplace(kiln::material3::TextFieldDefaults::IndicatorLine(a0, a1, a2, a3, a4, a5, a6, a7)); });
+        return kiln::capi::NewModifier((*r));
+    } KILN_CAPI_CATCH({})
+}
 KILN_API const kiln_shape* kiln_m3_outlined_text_field_defaults_shape(kiln_key key) {
     KILN_CAPI_TRY {
         std::optional<std::remove_cvref_t<decltype(kiln::material3::OutlinedTextFieldDefaults::shape())>> r;
@@ -9682,6 +11245,19 @@ KILN_API void kiln_m3_outlined_text_field_defaults_tonal_colors(kiln_key key, ki
         std::optional<std::remove_cvref_t<decltype(kiln::material3::OutlinedTextFieldDefaults::tonalColors())>> r;
         kiln::capi::InGroup(key, [&] { r.emplace(kiln::material3::OutlinedTextFieldDefaults::tonalColors()); });
         FromCpp((*r), out);
+    } KILN_CAPI_CATCH()
+}
+KILN_API void kiln_m3_outlined_text_field_defaults_container(kiln_key key, bool enabled, bool is_error, kiln_interaction_source* interaction_source, const kiln_modifier* modifier, const kiln_m3_text_field_colors* colors, const kiln_shape* shape, float focused_border_thickness, float unfocused_border_thickness) {
+    KILN_CAPI_TRY {
+        auto&& a0 = enabled;
+        auto&& a1 = is_error;
+        auto&& a2 = (interaction_source ? interaction_source->source : nullptr);
+        auto&& a3 = kiln::capi::ToModifier(modifier);
+        auto&& a4 = (colors ? std::optional<kiln::material3::TextFieldColors>(ToCpp(colors)) : std::nullopt);
+        auto&& a5 = kiln::capi::ToShape(shape);
+        auto&& a6 = kiln::capi::ToDp(focused_border_thickness);
+        auto&& a7 = kiln::capi::ToDp(unfocused_border_thickness);
+        kiln::capi::InGroup(key, [&] { kiln::material3::OutlinedTextFieldDefaults::Container(a0, a1, a2, a3, a4, a5, a6, a7); });
     } KILN_CAPI_CATCH()
 }
 KILN_API void kiln_m3_text_field(kiln_key key, kiln_text_field_state* state, const kiln_modifier* modifier, const kiln_m3_text_field_options* options) {
@@ -9735,10 +11311,19 @@ KILN_API kiln_m3_date_picker_state* kiln_m3_remember_date_picker_state(kiln_key 
         auto&& a3 = kiln::material3::DisplayMode(initial_display_mode);
         auto&& a4 = (selectable_dates ? selectable_dates->Shared() : nullptr);
         std::optional<std::remove_cvref_t<decltype(kiln::material3::RememberDatePickerState(a0, a1, a2, a3, a4, kiln::capi::ToKey(key)))>> r;
-        r.emplace(kiln::material3::RememberDatePickerState(a0, a1, a2, a3, a4, kiln::capi::ToKey(key)));
-        auto* h0 = kiln::capi::NewTransient<kiln_m3_date_picker_state>();
-        h0->owner = std::const_pointer_cast<kiln::material3::DatePickerState>((*r)); h0->ptr = h0->owner.get();
-        return h0;
+        kiln_m3_date_picker_state* out_handle = nullptr;
+        kiln::capi::InGroup(key, [&] {
+            r.emplace(kiln::material3::RememberDatePickerState(a0, a1, a2, a3, a4, kiln::capi::ToKey(key)));
+            auto* cp = kiln::rt::Composition::Current();
+            if (!cp) throw std::logic_error("a remember call outside content");
+            auto& c = *cp;
+            auto scope = kiln::rt::RememberCoroutineScope();
+            auto& h = c.Remember<kiln_m3_date_picker_state>([] { return kiln_m3_date_picker_state{}; });
+            h.owner = std::const_pointer_cast<kiln::material3::DatePickerState>(*r); h.ptr = h.owner.get();
+            h.scope = scope;
+            out_handle = &h;
+        });
+        return out_handle;
     } KILN_CAPI_CATCH({})
 }
 KILN_API void kiln_m3_date_picker_defaults_colors(kiln_key key, kiln_m3_date_picker_colors* out) {
@@ -9821,10 +11406,19 @@ KILN_API kiln_m3_date_range_picker_state* kiln_m3_remember_date_range_picker_sta
         auto&& a4 = kiln::material3::DisplayMode(initial_display_mode);
         auto&& a5 = (selectable_dates ? selectable_dates->Shared() : nullptr);
         std::optional<std::remove_cvref_t<decltype(kiln::material3::RememberDateRangePickerState(a0, a1, a2, a3, a4, a5, kiln::capi::ToKey(key)))>> r;
-        r.emplace(kiln::material3::RememberDateRangePickerState(a0, a1, a2, a3, a4, a5, kiln::capi::ToKey(key)));
-        auto* h0 = kiln::capi::NewTransient<kiln_m3_date_range_picker_state>();
-        h0->owner = std::const_pointer_cast<kiln::material3::DateRangePickerState>((*r)); h0->ptr = h0->owner.get();
-        return h0;
+        kiln_m3_date_range_picker_state* out_handle = nullptr;
+        kiln::capi::InGroup(key, [&] {
+            r.emplace(kiln::material3::RememberDateRangePickerState(a0, a1, a2, a3, a4, a5, kiln::capi::ToKey(key)));
+            auto* cp = kiln::rt::Composition::Current();
+            if (!cp) throw std::logic_error("a remember call outside content");
+            auto& c = *cp;
+            auto scope = kiln::rt::RememberCoroutineScope();
+            auto& h = c.Remember<kiln_m3_date_range_picker_state>([] { return kiln_m3_date_range_picker_state{}; });
+            h.owner = std::const_pointer_cast<kiln::material3::DateRangePickerState>(*r); h.ptr = h.owner.get();
+            h.scope = scope;
+            out_handle = &h;
+        });
+        return out_handle;
     } KILN_CAPI_CATCH({})
 }
 KILN_API void kiln_m3_date_range_picker_defaults_date_range_picker_title(kiln_key key, kiln_m3_display_mode display_mode, const kiln_modifier* modifier, kiln_color content_color) {
@@ -9942,6 +11536,14 @@ KILN_API void kiln_m3_baseline_tonal_palette(kiln_key key, kiln_m3_tonal_palette
         FromCpp((*r), out);
     } KILN_CAPI_CATCH()
 }
+KILN_API const kiln_m3_tonal_palette* kiln_m3_dynamic_tonal_palette(kiln_key key, const kiln_configuration* config) {
+    KILN_CAPI_TRY {
+        auto&& a0 = ToCpp(config);
+        std::optional<std::remove_cvref_t<decltype(kiln::material3::DynamicTonalPalette(a0))>> r;
+        kiln::capi::InGroup(key, [&] { r.emplace(kiln::material3::DynamicTonalPalette(a0)); });
+        return ([&]() -> const kiln_m3_tonal_palette* { if (!((*r))) return nullptr;  return FromCppTransient((*((*r)))); }());
+    } KILN_CAPI_CATCH({})
+}
 KILN_API void kiln_m3_dynamic_light_color_scheme31(kiln_key key, const kiln_m3_tonal_palette* palette, kiln_m3_color_scheme* out) {
     KILN_CAPI_TRY {
         auto&& a0 = ToCpp(palette);
@@ -9958,14 +11560,30 @@ KILN_API void kiln_m3_dynamic_dark_color_scheme31(kiln_key key, const kiln_m3_to
         FromCpp((*r), out);
     } KILN_CAPI_CATCH()
 }
-KILN_API const kiln_m3_color_scheme* kiln_m3_dynamic_light_color_scheme(kiln_key key) {
+KILN_API const kiln_m3_color_scheme* kiln_m3_dynamic_light_color_scheme(kiln_key key, const kiln_configuration* config) {
+    KILN_CAPI_TRY {
+        auto&& a0 = ToCpp(config);
+        std::optional<std::remove_cvref_t<decltype(kiln::material3::DynamicLightColorScheme(a0))>> r;
+        kiln::capi::InGroup(key, [&] { r.emplace(kiln::material3::DynamicLightColorScheme(a0)); });
+        return ([&]() -> const kiln_m3_color_scheme* { if (!((*r))) return nullptr;  return FromCppTransient((*((*r)))); }());
+    } KILN_CAPI_CATCH({})
+}
+KILN_API const kiln_m3_color_scheme* kiln_m3_dynamic_dark_color_scheme(kiln_key key, const kiln_configuration* config) {
+    KILN_CAPI_TRY {
+        auto&& a0 = ToCpp(config);
+        std::optional<std::remove_cvref_t<decltype(kiln::material3::DynamicDarkColorScheme(a0))>> r;
+        kiln::capi::InGroup(key, [&] { r.emplace(kiln::material3::DynamicDarkColorScheme(a0)); });
+        return ([&]() -> const kiln_m3_color_scheme* { if (!((*r))) return nullptr;  return FromCppTransient((*((*r)))); }());
+    } KILN_CAPI_CATCH({})
+}
+KILN_API const kiln_m3_color_scheme* kiln_m3_dynamic_light_color_scheme_2(kiln_key key) {
     KILN_CAPI_TRY {
         std::optional<std::remove_cvref_t<decltype(kiln::material3::DynamicLightColorScheme())>> r;
         kiln::capi::InGroup(key, [&] { r.emplace(kiln::material3::DynamicLightColorScheme()); });
         return ([&]() -> const kiln_m3_color_scheme* { if (!((*r))) return nullptr;  return FromCppTransient((*((*r)))); }());
     } KILN_CAPI_CATCH({})
 }
-KILN_API const kiln_m3_color_scheme* kiln_m3_dynamic_dark_color_scheme(kiln_key key) {
+KILN_API const kiln_m3_color_scheme* kiln_m3_dynamic_dark_color_scheme_2(kiln_key key) {
     KILN_CAPI_TRY {
         std::optional<std::remove_cvref_t<decltype(kiln::material3::DynamicDarkColorScheme())>> r;
         kiln::capi::InGroup(key, [&] { r.emplace(kiln::material3::DynamicDarkColorScheme()); });
@@ -10018,6 +11636,15 @@ KILN_API kiln_padding kiln_m3_exposed_dropdown_menu_defaults_item_content_paddin
         std::optional<std::remove_cvref_t<decltype(kiln::material3::ExposedDropdownMenuDefaults::ItemContentPadding())>> r;
         kiln::capi::InGroup(key, [&] { r.emplace(kiln::material3::ExposedDropdownMenuDefaults::ItemContentPadding()); });
         return kiln::capi::FromPadding((*r));
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_shadow_elevation_source(kiln_key key, const kiln_m3_floating_action_button_elevation* elevation, kiln_interaction_source* source) {
+    KILN_CAPI_TRY {
+        auto&& a0 = ToCpp(elevation);
+        auto&& a1 = (source ? source->source : nullptr);
+        std::optional<std::remove_cvref_t<decltype(kiln::material3::ShadowElevation(a0, a1))>> r;
+        kiln::capi::InGroup(key, [&] { r.emplace(kiln::material3::ShadowElevation(a0, a1)); });
+        return ((*r)).value;
     } KILN_CAPI_CATCH({})
 }
 KILN_API void kiln_m3_floating_action_button(kiln_key key, kiln_fn on_click, const kiln_modifier* modifier, const kiln_m3_floating_action_button_options* options, kiln_fn content) {
@@ -10281,10 +11908,19 @@ KILN_API kiln_m3_floating_toolbar_state* kiln_m3_remember_floating_toolbar_state
         auto&& a1 = initial_offset;
         auto&& a2 = initial_content_offset;
         std::optional<std::remove_cvref_t<decltype(kiln::material3::RememberFloatingToolbarState(a0, a1, a2, kiln::capi::ToKey(key)))>> r;
-        r.emplace(kiln::material3::RememberFloatingToolbarState(a0, a1, a2, kiln::capi::ToKey(key)));
-        auto* h0 = kiln::capi::NewTransient<kiln_m3_floating_toolbar_state>();
-        h0->owner = std::const_pointer_cast<kiln::material3::FloatingToolbarState>((*r)); h0->ptr = h0->owner.get();
-        return h0;
+        kiln_m3_floating_toolbar_state* out_handle = nullptr;
+        kiln::capi::InGroup(key, [&] {
+            r.emplace(kiln::material3::RememberFloatingToolbarState(a0, a1, a2, kiln::capi::ToKey(key)));
+            auto* cp = kiln::rt::Composition::Current();
+            if (!cp) throw std::logic_error("a remember call outside content");
+            auto& c = *cp;
+            auto scope = kiln::rt::RememberCoroutineScope();
+            auto& h = c.Remember<kiln_m3_floating_toolbar_state>([] { return kiln_m3_floating_toolbar_state{}; });
+            h.owner = std::const_pointer_cast<kiln::material3::FloatingToolbarState>(*r); h.ptr = h.owner.get();
+            h.scope = scope;
+            out_handle = &h;
+        });
+        return out_handle;
     } KILN_CAPI_CATCH({})
 }
 KILN_API const kiln_shape* kiln_m3_floating_toolbar_defaults_container_shape(kiln_key key) {
@@ -10312,6 +11948,38 @@ KILN_API kiln_m3_floating_toolbar_scroll_behavior* kiln_m3_floating_toolbar_defa
         h0->owner = std::const_pointer_cast<kiln::material3::FloatingToolbarScrollBehavior>((*r)); h0->ptr = h0->owner.get();
         return h0;
     } KILN_CAPI_CATCH({})
+}
+KILN_API void kiln_m3_floating_toolbar_defaults_horizontal_enter_transition(kiln_key key, float expand_from, kiln_enter_transition* out) {
+    KILN_CAPI_TRY {
+        auto&& a0 = kiln::ui::AlignmentH{ expand_from };
+        std::optional<std::remove_cvref_t<decltype(kiln::material3::FloatingToolbarDefaults::horizontalEnterTransition(a0))>> r;
+        kiln::capi::InGroup(key, [&] { r.emplace(kiln::material3::FloatingToolbarDefaults::horizontalEnterTransition(a0)); });
+        FromCpp((*r), out);
+    } KILN_CAPI_CATCH()
+}
+KILN_API void kiln_m3_floating_toolbar_defaults_vertical_enter_transition(kiln_key key, float expand_from, kiln_enter_transition* out) {
+    KILN_CAPI_TRY {
+        auto&& a0 = kiln::ui::AlignmentV{ expand_from };
+        std::optional<std::remove_cvref_t<decltype(kiln::material3::FloatingToolbarDefaults::verticalEnterTransition(a0))>> r;
+        kiln::capi::InGroup(key, [&] { r.emplace(kiln::material3::FloatingToolbarDefaults::verticalEnterTransition(a0)); });
+        FromCpp((*r), out);
+    } KILN_CAPI_CATCH()
+}
+KILN_API void kiln_m3_floating_toolbar_defaults_horizontal_exit_transition(kiln_key key, float shrink_towards, kiln_exit_transition* out) {
+    KILN_CAPI_TRY {
+        auto&& a0 = kiln::ui::AlignmentH{ shrink_towards };
+        std::optional<std::remove_cvref_t<decltype(kiln::material3::FloatingToolbarDefaults::horizontalExitTransition(a0))>> r;
+        kiln::capi::InGroup(key, [&] { r.emplace(kiln::material3::FloatingToolbarDefaults::horizontalExitTransition(a0)); });
+        FromCpp((*r), out);
+    } KILN_CAPI_CATCH()
+}
+KILN_API void kiln_m3_floating_toolbar_defaults_vertical_exit_transition(kiln_key key, float shrink_towards, kiln_exit_transition* out) {
+    KILN_CAPI_TRY {
+        auto&& a0 = kiln::ui::AlignmentV{ shrink_towards };
+        std::optional<std::remove_cvref_t<decltype(kiln::material3::FloatingToolbarDefaults::verticalExitTransition(a0))>> r;
+        kiln::capi::InGroup(key, [&] { r.emplace(kiln::material3::FloatingToolbarDefaults::verticalExitTransition(a0)); });
+        FromCpp((*r), out);
+    } KILN_CAPI_CATCH()
 }
 KILN_API void kiln_m3_floating_toolbar_defaults_standard_floating_toolbar_colors(kiln_key key, kiln_m3_floating_toolbar_colors* out) {
     KILN_CAPI_TRY {
@@ -10781,6 +12449,251 @@ KILN_API kiln_color kiln_m3_loading_indicator_defaults_contained_container_color
         return kiln::capi::FromColor((*r));
     } KILN_CAPI_CATCH({})
 }
+KILN_API const kiln_rounded_polygon* kiln_m3_material_shapes_circle(kiln_key key) {
+    KILN_CAPI_TRY {
+        std::remove_reference_t<decltype(kiln::material3::MaterialShapes::Circle())>* r = nullptr;
+        kiln::capi::InGroup(key, [&] { r = &kiln::material3::MaterialShapes::Circle(); });
+        return kiln::capi::TransientPolygon((*r));
+    } KILN_CAPI_CATCH({})
+}
+KILN_API const kiln_rounded_polygon* kiln_m3_material_shapes_square(kiln_key key) {
+    KILN_CAPI_TRY {
+        std::remove_reference_t<decltype(kiln::material3::MaterialShapes::Square())>* r = nullptr;
+        kiln::capi::InGroup(key, [&] { r = &kiln::material3::MaterialShapes::Square(); });
+        return kiln::capi::TransientPolygon((*r));
+    } KILN_CAPI_CATCH({})
+}
+KILN_API const kiln_rounded_polygon* kiln_m3_material_shapes_slanted(kiln_key key) {
+    KILN_CAPI_TRY {
+        std::remove_reference_t<decltype(kiln::material3::MaterialShapes::Slanted())>* r = nullptr;
+        kiln::capi::InGroup(key, [&] { r = &kiln::material3::MaterialShapes::Slanted(); });
+        return kiln::capi::TransientPolygon((*r));
+    } KILN_CAPI_CATCH({})
+}
+KILN_API const kiln_rounded_polygon* kiln_m3_material_shapes_arch(kiln_key key) {
+    KILN_CAPI_TRY {
+        std::remove_reference_t<decltype(kiln::material3::MaterialShapes::Arch())>* r = nullptr;
+        kiln::capi::InGroup(key, [&] { r = &kiln::material3::MaterialShapes::Arch(); });
+        return kiln::capi::TransientPolygon((*r));
+    } KILN_CAPI_CATCH({})
+}
+KILN_API const kiln_rounded_polygon* kiln_m3_material_shapes_fan(kiln_key key) {
+    KILN_CAPI_TRY {
+        std::remove_reference_t<decltype(kiln::material3::MaterialShapes::Fan())>* r = nullptr;
+        kiln::capi::InGroup(key, [&] { r = &kiln::material3::MaterialShapes::Fan(); });
+        return kiln::capi::TransientPolygon((*r));
+    } KILN_CAPI_CATCH({})
+}
+KILN_API const kiln_rounded_polygon* kiln_m3_material_shapes_arrow(kiln_key key) {
+    KILN_CAPI_TRY {
+        std::remove_reference_t<decltype(kiln::material3::MaterialShapes::Arrow())>* r = nullptr;
+        kiln::capi::InGroup(key, [&] { r = &kiln::material3::MaterialShapes::Arrow(); });
+        return kiln::capi::TransientPolygon((*r));
+    } KILN_CAPI_CATCH({})
+}
+KILN_API const kiln_rounded_polygon* kiln_m3_material_shapes_semi_circle(kiln_key key) {
+    KILN_CAPI_TRY {
+        std::remove_reference_t<decltype(kiln::material3::MaterialShapes::SemiCircle())>* r = nullptr;
+        kiln::capi::InGroup(key, [&] { r = &kiln::material3::MaterialShapes::SemiCircle(); });
+        return kiln::capi::TransientPolygon((*r));
+    } KILN_CAPI_CATCH({})
+}
+KILN_API const kiln_rounded_polygon* kiln_m3_material_shapes_oval(kiln_key key) {
+    KILN_CAPI_TRY {
+        std::remove_reference_t<decltype(kiln::material3::MaterialShapes::Oval())>* r = nullptr;
+        kiln::capi::InGroup(key, [&] { r = &kiln::material3::MaterialShapes::Oval(); });
+        return kiln::capi::TransientPolygon((*r));
+    } KILN_CAPI_CATCH({})
+}
+KILN_API const kiln_rounded_polygon* kiln_m3_material_shapes_pill(kiln_key key) {
+    KILN_CAPI_TRY {
+        std::remove_reference_t<decltype(kiln::material3::MaterialShapes::Pill())>* r = nullptr;
+        kiln::capi::InGroup(key, [&] { r = &kiln::material3::MaterialShapes::Pill(); });
+        return kiln::capi::TransientPolygon((*r));
+    } KILN_CAPI_CATCH({})
+}
+KILN_API const kiln_rounded_polygon* kiln_m3_material_shapes_triangle(kiln_key key) {
+    KILN_CAPI_TRY {
+        std::remove_reference_t<decltype(kiln::material3::MaterialShapes::Triangle())>* r = nullptr;
+        kiln::capi::InGroup(key, [&] { r = &kiln::material3::MaterialShapes::Triangle(); });
+        return kiln::capi::TransientPolygon((*r));
+    } KILN_CAPI_CATCH({})
+}
+KILN_API const kiln_rounded_polygon* kiln_m3_material_shapes_diamond(kiln_key key) {
+    KILN_CAPI_TRY {
+        std::remove_reference_t<decltype(kiln::material3::MaterialShapes::Diamond())>* r = nullptr;
+        kiln::capi::InGroup(key, [&] { r = &kiln::material3::MaterialShapes::Diamond(); });
+        return kiln::capi::TransientPolygon((*r));
+    } KILN_CAPI_CATCH({})
+}
+KILN_API const kiln_rounded_polygon* kiln_m3_material_shapes_clam_shell(kiln_key key) {
+    KILN_CAPI_TRY {
+        std::remove_reference_t<decltype(kiln::material3::MaterialShapes::ClamShell())>* r = nullptr;
+        kiln::capi::InGroup(key, [&] { r = &kiln::material3::MaterialShapes::ClamShell(); });
+        return kiln::capi::TransientPolygon((*r));
+    } KILN_CAPI_CATCH({})
+}
+KILN_API const kiln_rounded_polygon* kiln_m3_material_shapes_pentagon(kiln_key key) {
+    KILN_CAPI_TRY {
+        std::remove_reference_t<decltype(kiln::material3::MaterialShapes::Pentagon())>* r = nullptr;
+        kiln::capi::InGroup(key, [&] { r = &kiln::material3::MaterialShapes::Pentagon(); });
+        return kiln::capi::TransientPolygon((*r));
+    } KILN_CAPI_CATCH({})
+}
+KILN_API const kiln_rounded_polygon* kiln_m3_material_shapes_gem(kiln_key key) {
+    KILN_CAPI_TRY {
+        std::remove_reference_t<decltype(kiln::material3::MaterialShapes::Gem())>* r = nullptr;
+        kiln::capi::InGroup(key, [&] { r = &kiln::material3::MaterialShapes::Gem(); });
+        return kiln::capi::TransientPolygon((*r));
+    } KILN_CAPI_CATCH({})
+}
+KILN_API const kiln_rounded_polygon* kiln_m3_material_shapes_sunny(kiln_key key) {
+    KILN_CAPI_TRY {
+        std::remove_reference_t<decltype(kiln::material3::MaterialShapes::Sunny())>* r = nullptr;
+        kiln::capi::InGroup(key, [&] { r = &kiln::material3::MaterialShapes::Sunny(); });
+        return kiln::capi::TransientPolygon((*r));
+    } KILN_CAPI_CATCH({})
+}
+KILN_API const kiln_rounded_polygon* kiln_m3_material_shapes_very_sunny(kiln_key key) {
+    KILN_CAPI_TRY {
+        std::remove_reference_t<decltype(kiln::material3::MaterialShapes::VerySunny())>* r = nullptr;
+        kiln::capi::InGroup(key, [&] { r = &kiln::material3::MaterialShapes::VerySunny(); });
+        return kiln::capi::TransientPolygon((*r));
+    } KILN_CAPI_CATCH({})
+}
+KILN_API const kiln_rounded_polygon* kiln_m3_material_shapes_cookie4_sided(kiln_key key) {
+    KILN_CAPI_TRY {
+        std::remove_reference_t<decltype(kiln::material3::MaterialShapes::Cookie4Sided())>* r = nullptr;
+        kiln::capi::InGroup(key, [&] { r = &kiln::material3::MaterialShapes::Cookie4Sided(); });
+        return kiln::capi::TransientPolygon((*r));
+    } KILN_CAPI_CATCH({})
+}
+KILN_API const kiln_rounded_polygon* kiln_m3_material_shapes_cookie6_sided(kiln_key key) {
+    KILN_CAPI_TRY {
+        std::remove_reference_t<decltype(kiln::material3::MaterialShapes::Cookie6Sided())>* r = nullptr;
+        kiln::capi::InGroup(key, [&] { r = &kiln::material3::MaterialShapes::Cookie6Sided(); });
+        return kiln::capi::TransientPolygon((*r));
+    } KILN_CAPI_CATCH({})
+}
+KILN_API const kiln_rounded_polygon* kiln_m3_material_shapes_cookie7_sided(kiln_key key) {
+    KILN_CAPI_TRY {
+        std::remove_reference_t<decltype(kiln::material3::MaterialShapes::Cookie7Sided())>* r = nullptr;
+        kiln::capi::InGroup(key, [&] { r = &kiln::material3::MaterialShapes::Cookie7Sided(); });
+        return kiln::capi::TransientPolygon((*r));
+    } KILN_CAPI_CATCH({})
+}
+KILN_API const kiln_rounded_polygon* kiln_m3_material_shapes_cookie9_sided(kiln_key key) {
+    KILN_CAPI_TRY {
+        std::remove_reference_t<decltype(kiln::material3::MaterialShapes::Cookie9Sided())>* r = nullptr;
+        kiln::capi::InGroup(key, [&] { r = &kiln::material3::MaterialShapes::Cookie9Sided(); });
+        return kiln::capi::TransientPolygon((*r));
+    } KILN_CAPI_CATCH({})
+}
+KILN_API const kiln_rounded_polygon* kiln_m3_material_shapes_cookie12_sided(kiln_key key) {
+    KILN_CAPI_TRY {
+        std::remove_reference_t<decltype(kiln::material3::MaterialShapes::Cookie12Sided())>* r = nullptr;
+        kiln::capi::InGroup(key, [&] { r = &kiln::material3::MaterialShapes::Cookie12Sided(); });
+        return kiln::capi::TransientPolygon((*r));
+    } KILN_CAPI_CATCH({})
+}
+KILN_API const kiln_rounded_polygon* kiln_m3_material_shapes_ghostish(kiln_key key) {
+    KILN_CAPI_TRY {
+        std::remove_reference_t<decltype(kiln::material3::MaterialShapes::Ghostish())>* r = nullptr;
+        kiln::capi::InGroup(key, [&] { r = &kiln::material3::MaterialShapes::Ghostish(); });
+        return kiln::capi::TransientPolygon((*r));
+    } KILN_CAPI_CATCH({})
+}
+KILN_API const kiln_rounded_polygon* kiln_m3_material_shapes_clover4_leaf(kiln_key key) {
+    KILN_CAPI_TRY {
+        std::remove_reference_t<decltype(kiln::material3::MaterialShapes::Clover4Leaf())>* r = nullptr;
+        kiln::capi::InGroup(key, [&] { r = &kiln::material3::MaterialShapes::Clover4Leaf(); });
+        return kiln::capi::TransientPolygon((*r));
+    } KILN_CAPI_CATCH({})
+}
+KILN_API const kiln_rounded_polygon* kiln_m3_material_shapes_clover8_leaf(kiln_key key) {
+    KILN_CAPI_TRY {
+        std::remove_reference_t<decltype(kiln::material3::MaterialShapes::Clover8Leaf())>* r = nullptr;
+        kiln::capi::InGroup(key, [&] { r = &kiln::material3::MaterialShapes::Clover8Leaf(); });
+        return kiln::capi::TransientPolygon((*r));
+    } KILN_CAPI_CATCH({})
+}
+KILN_API const kiln_rounded_polygon* kiln_m3_material_shapes_burst(kiln_key key) {
+    KILN_CAPI_TRY {
+        std::remove_reference_t<decltype(kiln::material3::MaterialShapes::Burst())>* r = nullptr;
+        kiln::capi::InGroup(key, [&] { r = &kiln::material3::MaterialShapes::Burst(); });
+        return kiln::capi::TransientPolygon((*r));
+    } KILN_CAPI_CATCH({})
+}
+KILN_API const kiln_rounded_polygon* kiln_m3_material_shapes_soft_burst(kiln_key key) {
+    KILN_CAPI_TRY {
+        std::remove_reference_t<decltype(kiln::material3::MaterialShapes::SoftBurst())>* r = nullptr;
+        kiln::capi::InGroup(key, [&] { r = &kiln::material3::MaterialShapes::SoftBurst(); });
+        return kiln::capi::TransientPolygon((*r));
+    } KILN_CAPI_CATCH({})
+}
+KILN_API const kiln_rounded_polygon* kiln_m3_material_shapes_boom(kiln_key key) {
+    KILN_CAPI_TRY {
+        std::remove_reference_t<decltype(kiln::material3::MaterialShapes::Boom())>* r = nullptr;
+        kiln::capi::InGroup(key, [&] { r = &kiln::material3::MaterialShapes::Boom(); });
+        return kiln::capi::TransientPolygon((*r));
+    } KILN_CAPI_CATCH({})
+}
+KILN_API const kiln_rounded_polygon* kiln_m3_material_shapes_soft_boom(kiln_key key) {
+    KILN_CAPI_TRY {
+        std::remove_reference_t<decltype(kiln::material3::MaterialShapes::SoftBoom())>* r = nullptr;
+        kiln::capi::InGroup(key, [&] { r = &kiln::material3::MaterialShapes::SoftBoom(); });
+        return kiln::capi::TransientPolygon((*r));
+    } KILN_CAPI_CATCH({})
+}
+KILN_API const kiln_rounded_polygon* kiln_m3_material_shapes_flower(kiln_key key) {
+    KILN_CAPI_TRY {
+        std::remove_reference_t<decltype(kiln::material3::MaterialShapes::Flower())>* r = nullptr;
+        kiln::capi::InGroup(key, [&] { r = &kiln::material3::MaterialShapes::Flower(); });
+        return kiln::capi::TransientPolygon((*r));
+    } KILN_CAPI_CATCH({})
+}
+KILN_API const kiln_rounded_polygon* kiln_m3_material_shapes_puffy(kiln_key key) {
+    KILN_CAPI_TRY {
+        std::remove_reference_t<decltype(kiln::material3::MaterialShapes::Puffy())>* r = nullptr;
+        kiln::capi::InGroup(key, [&] { r = &kiln::material3::MaterialShapes::Puffy(); });
+        return kiln::capi::TransientPolygon((*r));
+    } KILN_CAPI_CATCH({})
+}
+KILN_API const kiln_rounded_polygon* kiln_m3_material_shapes_puffy_diamond(kiln_key key) {
+    KILN_CAPI_TRY {
+        std::remove_reference_t<decltype(kiln::material3::MaterialShapes::PuffyDiamond())>* r = nullptr;
+        kiln::capi::InGroup(key, [&] { r = &kiln::material3::MaterialShapes::PuffyDiamond(); });
+        return kiln::capi::TransientPolygon((*r));
+    } KILN_CAPI_CATCH({})
+}
+KILN_API const kiln_rounded_polygon* kiln_m3_material_shapes_pixel_circle(kiln_key key) {
+    KILN_CAPI_TRY {
+        std::remove_reference_t<decltype(kiln::material3::MaterialShapes::PixelCircle())>* r = nullptr;
+        kiln::capi::InGroup(key, [&] { r = &kiln::material3::MaterialShapes::PixelCircle(); });
+        return kiln::capi::TransientPolygon((*r));
+    } KILN_CAPI_CATCH({})
+}
+KILN_API const kiln_rounded_polygon* kiln_m3_material_shapes_pixel_triangle(kiln_key key) {
+    KILN_CAPI_TRY {
+        std::remove_reference_t<decltype(kiln::material3::MaterialShapes::PixelTriangle())>* r = nullptr;
+        kiln::capi::InGroup(key, [&] { r = &kiln::material3::MaterialShapes::PixelTriangle(); });
+        return kiln::capi::TransientPolygon((*r));
+    } KILN_CAPI_CATCH({})
+}
+KILN_API const kiln_rounded_polygon* kiln_m3_material_shapes_bun(kiln_key key) {
+    KILN_CAPI_TRY {
+        std::remove_reference_t<decltype(kiln::material3::MaterialShapes::Bun())>* r = nullptr;
+        kiln::capi::InGroup(key, [&] { r = &kiln::material3::MaterialShapes::Bun(); });
+        return kiln::capi::TransientPolygon((*r));
+    } KILN_CAPI_CATCH({})
+}
+KILN_API const kiln_rounded_polygon* kiln_m3_material_shapes_heart(kiln_key key) {
+    KILN_CAPI_TRY {
+        std::remove_reference_t<decltype(kiln::material3::MaterialShapes::Heart())>* r = nullptr;
+        kiln::capi::InGroup(key, [&] { r = &kiln::material3::MaterialShapes::Heart(); });
+        return kiln::capi::TransientPolygon((*r));
+    } KILN_CAPI_CATCH({})
+}
 KILN_API kiln_m3_motion_scheme* kiln_m3_motion_scheme_standard(kiln_key key) {
     KILN_CAPI_TRY {
         std::optional<std::remove_cvref_t<decltype(kiln::material3::MotionScheme::Standard())>> r;
@@ -10797,6 +12710,168 @@ KILN_API kiln_m3_motion_scheme* kiln_m3_motion_scheme_expressive(kiln_key key) {
         auto* h0 = kiln::capi::NewTransient<kiln_m3_motion_scheme>();
         h0->owner = std::const_pointer_cast<kiln::material3::MotionScheme>((*r)); h0->ptr = h0->owner.get();
         return h0;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API const kiln_shape* kiln_m3_shape_defaults_extra_small(kiln_key key) {
+    KILN_CAPI_TRY {
+        std::optional<std::remove_cvref_t<decltype(kiln::material3::ShapeDefaults::ExtraSmall())>> r;
+        kiln::capi::InGroup(key, [&] { r.emplace(kiln::material3::ShapeDefaults::ExtraSmall()); });
+        return kiln::capi::TransientShape((*r));
+    } KILN_CAPI_CATCH({})
+}
+KILN_API const kiln_shape* kiln_m3_shape_defaults_small(kiln_key key) {
+    KILN_CAPI_TRY {
+        std::optional<std::remove_cvref_t<decltype(kiln::material3::ShapeDefaults::Small())>> r;
+        kiln::capi::InGroup(key, [&] { r.emplace(kiln::material3::ShapeDefaults::Small()); });
+        return kiln::capi::TransientShape((*r));
+    } KILN_CAPI_CATCH({})
+}
+KILN_API const kiln_shape* kiln_m3_shape_defaults_medium(kiln_key key) {
+    KILN_CAPI_TRY {
+        std::optional<std::remove_cvref_t<decltype(kiln::material3::ShapeDefaults::Medium())>> r;
+        kiln::capi::InGroup(key, [&] { r.emplace(kiln::material3::ShapeDefaults::Medium()); });
+        return kiln::capi::TransientShape((*r));
+    } KILN_CAPI_CATCH({})
+}
+KILN_API const kiln_shape* kiln_m3_shape_defaults_large(kiln_key key) {
+    KILN_CAPI_TRY {
+        std::optional<std::remove_cvref_t<decltype(kiln::material3::ShapeDefaults::Large())>> r;
+        kiln::capi::InGroup(key, [&] { r.emplace(kiln::material3::ShapeDefaults::Large()); });
+        return kiln::capi::TransientShape((*r));
+    } KILN_CAPI_CATCH({})
+}
+KILN_API const kiln_shape* kiln_m3_shape_defaults_large_increased(kiln_key key) {
+    KILN_CAPI_TRY {
+        std::optional<std::remove_cvref_t<decltype(kiln::material3::ShapeDefaults::LargeIncreased())>> r;
+        kiln::capi::InGroup(key, [&] { r.emplace(kiln::material3::ShapeDefaults::LargeIncreased()); });
+        return kiln::capi::TransientShape((*r));
+    } KILN_CAPI_CATCH({})
+}
+KILN_API const kiln_shape* kiln_m3_shape_defaults_extra_large(kiln_key key) {
+    KILN_CAPI_TRY {
+        std::optional<std::remove_cvref_t<decltype(kiln::material3::ShapeDefaults::ExtraLarge())>> r;
+        kiln::capi::InGroup(key, [&] { r.emplace(kiln::material3::ShapeDefaults::ExtraLarge()); });
+        return kiln::capi::TransientShape((*r));
+    } KILN_CAPI_CATCH({})
+}
+KILN_API const kiln_shape* kiln_m3_shape_defaults_extra_large_increased(kiln_key key) {
+    KILN_CAPI_TRY {
+        std::optional<std::remove_cvref_t<decltype(kiln::material3::ShapeDefaults::ExtraLargeIncreased())>> r;
+        kiln::capi::InGroup(key, [&] { r.emplace(kiln::material3::ShapeDefaults::ExtraLargeIncreased()); });
+        return kiln::capi::TransientShape((*r));
+    } KILN_CAPI_CATCH({})
+}
+KILN_API const kiln_shape* kiln_m3_shape_defaults_extra_extra_large(kiln_key key) {
+    KILN_CAPI_TRY {
+        std::optional<std::remove_cvref_t<decltype(kiln::material3::ShapeDefaults::ExtraExtraLarge())>> r;
+        kiln::capi::InGroup(key, [&] { r.emplace(kiln::material3::ShapeDefaults::ExtraExtraLarge()); });
+        return kiln::capi::TransientShape((*r));
+    } KILN_CAPI_CATCH({})
+}
+KILN_API kiln_corner_size kiln_m3_shape_defaults_corner_none(kiln_key key) {
+    KILN_CAPI_TRY {
+        std::optional<std::remove_cvref_t<decltype(kiln::material3::ShapeDefaults::CornerNone())>> r;
+        kiln::capi::InGroup(key, [&] { r.emplace(kiln::material3::ShapeDefaults::CornerNone()); });
+        return kiln::capi::FromCornerSize((*r));
+    } KILN_CAPI_CATCH({})
+}
+KILN_API kiln_corner_size kiln_m3_shape_defaults_corner_extra_small(kiln_key key) {
+    KILN_CAPI_TRY {
+        std::optional<std::remove_cvref_t<decltype(kiln::material3::ShapeDefaults::CornerExtraSmall())>> r;
+        kiln::capi::InGroup(key, [&] { r.emplace(kiln::material3::ShapeDefaults::CornerExtraSmall()); });
+        return kiln::capi::FromCornerSize((*r));
+    } KILN_CAPI_CATCH({})
+}
+KILN_API kiln_corner_size kiln_m3_shape_defaults_corner_small(kiln_key key) {
+    KILN_CAPI_TRY {
+        std::optional<std::remove_cvref_t<decltype(kiln::material3::ShapeDefaults::CornerSmall())>> r;
+        kiln::capi::InGroup(key, [&] { r.emplace(kiln::material3::ShapeDefaults::CornerSmall()); });
+        return kiln::capi::FromCornerSize((*r));
+    } KILN_CAPI_CATCH({})
+}
+KILN_API kiln_corner_size kiln_m3_shape_defaults_corner_medium(kiln_key key) {
+    KILN_CAPI_TRY {
+        std::optional<std::remove_cvref_t<decltype(kiln::material3::ShapeDefaults::CornerMedium())>> r;
+        kiln::capi::InGroup(key, [&] { r.emplace(kiln::material3::ShapeDefaults::CornerMedium()); });
+        return kiln::capi::FromCornerSize((*r));
+    } KILN_CAPI_CATCH({})
+}
+KILN_API kiln_corner_size kiln_m3_shape_defaults_corner_large(kiln_key key) {
+    KILN_CAPI_TRY {
+        std::optional<std::remove_cvref_t<decltype(kiln::material3::ShapeDefaults::CornerLarge())>> r;
+        kiln::capi::InGroup(key, [&] { r.emplace(kiln::material3::ShapeDefaults::CornerLarge()); });
+        return kiln::capi::FromCornerSize((*r));
+    } KILN_CAPI_CATCH({})
+}
+KILN_API kiln_corner_size kiln_m3_shape_defaults_corner_large_increased(kiln_key key) {
+    KILN_CAPI_TRY {
+        std::optional<std::remove_cvref_t<decltype(kiln::material3::ShapeDefaults::CornerLargeIncreased())>> r;
+        kiln::capi::InGroup(key, [&] { r.emplace(kiln::material3::ShapeDefaults::CornerLargeIncreased()); });
+        return kiln::capi::FromCornerSize((*r));
+    } KILN_CAPI_CATCH({})
+}
+KILN_API kiln_corner_size kiln_m3_shape_defaults_corner_extra_large(kiln_key key) {
+    KILN_CAPI_TRY {
+        std::optional<std::remove_cvref_t<decltype(kiln::material3::ShapeDefaults::CornerExtraLarge())>> r;
+        kiln::capi::InGroup(key, [&] { r.emplace(kiln::material3::ShapeDefaults::CornerExtraLarge()); });
+        return kiln::capi::FromCornerSize((*r));
+    } KILN_CAPI_CATCH({})
+}
+KILN_API kiln_corner_size kiln_m3_shape_defaults_corner_extra_large_increased(kiln_key key) {
+    KILN_CAPI_TRY {
+        std::optional<std::remove_cvref_t<decltype(kiln::material3::ShapeDefaults::CornerExtraLargeIncreased())>> r;
+        kiln::capi::InGroup(key, [&] { r.emplace(kiln::material3::ShapeDefaults::CornerExtraLargeIncreased()); });
+        return kiln::capi::FromCornerSize((*r));
+    } KILN_CAPI_CATCH({})
+}
+KILN_API kiln_corner_size kiln_m3_shape_defaults_corner_extra_extra_large(kiln_key key) {
+    KILN_CAPI_TRY {
+        std::optional<std::remove_cvref_t<decltype(kiln::material3::ShapeDefaults::CornerExtraExtraLarge())>> r;
+        kiln::capi::InGroup(key, [&] { r.emplace(kiln::material3::ShapeDefaults::CornerExtraExtraLarge()); });
+        return kiln::capi::FromCornerSize((*r));
+    } KILN_CAPI_CATCH({})
+}
+KILN_API kiln_corner_size kiln_m3_shape_defaults_corner_full(kiln_key key) {
+    KILN_CAPI_TRY {
+        std::optional<std::remove_cvref_t<decltype(kiln::material3::ShapeDefaults::CornerFull())>> r;
+        kiln::capi::InGroup(key, [&] { r.emplace(kiln::material3::ShapeDefaults::CornerFull()); });
+        return kiln::capi::FromCornerSize((*r));
+    } KILN_CAPI_CATCH({})
+}
+KILN_API const kiln_shape* kiln_m3_top(kiln_key key, const kiln_shape* shape, kiln_corner_size bottom_size) {
+    KILN_CAPI_TRY {
+        auto&& a0 = std::dynamic_pointer_cast<const kiln::foundation::CornerBasedShape>(kiln::capi::ToShape(shape));
+        auto&& a1 = kiln::capi::ToCornerSize(bottom_size);
+        std::optional<std::remove_cvref_t<decltype(kiln::material3::Top(a0, a1))>> r;
+        kiln::capi::InGroup(key, [&] { r.emplace(kiln::material3::Top(a0, a1)); });
+        return kiln::capi::TransientShape((*r));
+    } KILN_CAPI_CATCH({})
+}
+KILN_API const kiln_shape* kiln_m3_bottom(kiln_key key, const kiln_shape* shape, kiln_corner_size top_size) {
+    KILN_CAPI_TRY {
+        auto&& a0 = std::dynamic_pointer_cast<const kiln::foundation::CornerBasedShape>(kiln::capi::ToShape(shape));
+        auto&& a1 = kiln::capi::ToCornerSize(top_size);
+        std::optional<std::remove_cvref_t<decltype(kiln::material3::Bottom(a0, a1))>> r;
+        kiln::capi::InGroup(key, [&] { r.emplace(kiln::material3::Bottom(a0, a1)); });
+        return kiln::capi::TransientShape((*r));
+    } KILN_CAPI_CATCH({})
+}
+KILN_API const kiln_shape* kiln_m3_start(kiln_key key, const kiln_shape* shape, kiln_corner_size end_size) {
+    KILN_CAPI_TRY {
+        auto&& a0 = std::dynamic_pointer_cast<const kiln::foundation::CornerBasedShape>(kiln::capi::ToShape(shape));
+        auto&& a1 = kiln::capi::ToCornerSize(end_size);
+        std::optional<std::remove_cvref_t<decltype(kiln::material3::Start(a0, a1))>> r;
+        kiln::capi::InGroup(key, [&] { r.emplace(kiln::material3::Start(a0, a1)); });
+        return kiln::capi::TransientShape((*r));
+    } KILN_CAPI_CATCH({})
+}
+KILN_API const kiln_shape* kiln_m3_end(kiln_key key, const kiln_shape* shape, kiln_corner_size start_size) {
+    KILN_CAPI_TRY {
+        auto&& a0 = std::dynamic_pointer_cast<const kiln::foundation::CornerBasedShape>(kiln::capi::ToShape(shape));
+        auto&& a1 = kiln::capi::ToCornerSize(start_size);
+        std::optional<std::remove_cvref_t<decltype(kiln::material3::End(a0, a1))>> r;
+        kiln::capi::InGroup(key, [&] { r.emplace(kiln::material3::End(a0, a1)); });
+        return kiln::capi::TransientShape((*r));
     } KILN_CAPI_CATCH({})
 }
 KILN_API void kiln_m3_material_theme_color_scheme(kiln_key key, kiln_m3_color_scheme* out) {
@@ -10886,6 +12961,13 @@ KILN_API void kiln_m3_selectable_menu_item_colors_unspecified(kiln_key key, kiln
     KILN_CAPI_TRY {
         std::optional<std::remove_cvref_t<decltype(kiln::material3::SelectableMenuItemColors::Unspecified())>> r;
         kiln::capi::InGroup(key, [&] { r.emplace(kiln::material3::SelectableMenuItemColors::Unspecified()); });
+        FromCpp((*r), out);
+    } KILN_CAPI_CATCH()
+}
+KILN_API void kiln_m3_menu_defaults_default_menu_properties(kiln_key key, kiln_popup_properties* out) {
+    KILN_CAPI_TRY {
+        std::optional<std::remove_cvref_t<decltype(kiln::material3::MenuDefaults::DefaultMenuProperties())>> r;
+        kiln::capi::InGroup(key, [&] { r.emplace(kiln::material3::MenuDefaults::DefaultMenuProperties()); });
         FromCpp((*r), out);
     } KILN_CAPI_CATCH()
 }
@@ -11072,6 +13154,13 @@ KILN_API void kiln_m3_menu_defaults_selectable_item_vibrant_colors(kiln_key key,
         FromCpp((*r), out);
     } KILN_CAPI_CATCH()
 }
+KILN_API kiln_arrangement kiln_m3_menu_defaults_dropdown_menu_item_horizontal_arrangement(kiln_key key) {
+    KILN_CAPI_TRY {
+        std::optional<std::remove_cvref_t<decltype(kiln::material3::MenuDefaults::DropdownMenuItemHorizontalArrangement())>> r;
+        kiln::capi::InGroup(key, [&] { r.emplace(kiln::material3::MenuDefaults::DropdownMenuItemHorizontalArrangement()); });
+        return kiln::capi::FromArrangement((*r));
+    } KILN_CAPI_CATCH({})
+}
 KILN_API void kiln_m3_menu_defaults_dropdown_menu_group_label(kiln_key key, const kiln_modifier* modifier, kiln_fn content, kiln_alignment content_alignment, kiln_padding padding) {
     KILN_CAPI_TRY {
         auto&& a0 = kiln::capi::ToModifier(modifier);
@@ -11165,10 +13254,19 @@ KILN_API kiln_m3_sheet_state* kiln_m3_remember_modal_bottom_sheet_state(kiln_key
         auto&& a0 = skip_partially_expanded;
         auto&& a1 = ToCpp_kiln_m3_fn_sheet_value_to_bool(confirm_value_change);
         std::optional<std::remove_cvref_t<decltype(kiln::material3::RememberModalBottomSheetState(a0, a1, kiln::capi::ToKey(key)))>> r;
-        r.emplace(kiln::material3::RememberModalBottomSheetState(a0, a1, kiln::capi::ToKey(key)));
-        auto* h0 = kiln::capi::NewTransient<kiln_m3_sheet_state>();
-        h0->owner = std::const_pointer_cast<kiln::material3::SheetState>((*r)); h0->ptr = h0->owner.get();
-        return h0;
+        kiln_m3_sheet_state* out_handle = nullptr;
+        kiln::capi::InGroup(key, [&] {
+            r.emplace(kiln::material3::RememberModalBottomSheetState(a0, a1, kiln::capi::ToKey(key)));
+            auto* cp = kiln::rt::Composition::Current();
+            if (!cp) throw std::logic_error("a remember call outside content");
+            auto& c = *cp;
+            auto scope = kiln::rt::RememberCoroutineScope();
+            auto& h = c.Remember<kiln_m3_sheet_state>([] { return kiln_m3_sheet_state{}; });
+            h.owner = std::const_pointer_cast<kiln::material3::SheetState>(*r); h.ptr = h.owner.get();
+            h.scope = scope;
+            out_handle = &h;
+        });
+        return out_handle;
     } KILN_CAPI_CATCH({})
 }
 KILN_API kiln_color kiln_m3_navigation_bar_defaults_container_color(kiln_key key) {
@@ -11176,6 +13274,13 @@ KILN_API kiln_color kiln_m3_navigation_bar_defaults_container_color(kiln_key key
         std::optional<std::remove_cvref_t<decltype(kiln::material3::NavigationBarDefaults::containerColor())>> r;
         kiln::capi::InGroup(key, [&] { r.emplace(kiln::material3::NavigationBarDefaults::containerColor()); });
         return kiln::capi::FromColor((*r));
+    } KILN_CAPI_CATCH({})
+}
+KILN_API const kiln_window_insets* kiln_m3_navigation_bar_defaults_window_insets(kiln_key key) {
+    KILN_CAPI_TRY {
+        std::optional<std::remove_cvref_t<decltype(kiln::material3::NavigationBarDefaults::windowInsets())>> r;
+        kiln::capi::InGroup(key, [&] { r.emplace(kiln::material3::NavigationBarDefaults::windowInsets()); });
+        return kiln::capi::TransientInsets((*r));
     } KILN_CAPI_CATCH({})
 }
 KILN_API void kiln_m3_navigation_bar_item_defaults_colors(kiln_key key, kiln_m3_navigation_bar_item_colors* out) {
@@ -11222,10 +13327,19 @@ KILN_API kiln_m3_drawer_state* kiln_m3_remember_drawer_state(kiln_key key, kiln_
         auto&& a0 = kiln::material3::DrawerValue(initial_value);
         auto&& a1 = ToCpp_kiln_m3_fn_drawer_value_to_bool(confirm_state_change);
         std::optional<std::remove_cvref_t<decltype(kiln::material3::RememberDrawerState(a0, a1, kiln::capi::ToKey(key)))>> r;
-        r.emplace(kiln::material3::RememberDrawerState(a0, a1, kiln::capi::ToKey(key)));
-        auto* h0 = kiln::capi::NewTransient<kiln_m3_drawer_state>();
-        h0->owner = std::const_pointer_cast<kiln::material3::DrawerState>((*r)); h0->ptr = h0->owner.get();
-        return h0;
+        kiln_m3_drawer_state* out_handle = nullptr;
+        kiln::capi::InGroup(key, [&] {
+            r.emplace(kiln::material3::RememberDrawerState(a0, a1, kiln::capi::ToKey(key)));
+            auto* cp = kiln::rt::Composition::Current();
+            if (!cp) throw std::logic_error("a remember call outside content");
+            auto& c = *cp;
+            auto scope = kiln::rt::RememberCoroutineScope();
+            auto& h = c.Remember<kiln_m3_drawer_state>([] { return kiln_m3_drawer_state{}; });
+            h.owner = std::const_pointer_cast<kiln::material3::DrawerState>(*r); h.ptr = h.owner.get();
+            h.scope = scope;
+            out_handle = &h;
+        });
+        return out_handle;
     } KILN_CAPI_CATCH({})
 }
 KILN_API const kiln_shape* kiln_m3_drawer_defaults_shape(kiln_key key) {
@@ -11254,6 +13368,13 @@ KILN_API kiln_color kiln_m3_drawer_defaults_modal_container_color(kiln_key key) 
         std::optional<std::remove_cvref_t<decltype(kiln::material3::DrawerDefaults::modalContainerColor())>> r;
         kiln::capi::InGroup(key, [&] { r.emplace(kiln::material3::DrawerDefaults::modalContainerColor()); });
         return kiln::capi::FromColor((*r));
+    } KILN_CAPI_CATCH({})
+}
+KILN_API const kiln_window_insets* kiln_m3_drawer_defaults_window_insets(kiln_key key) {
+    KILN_CAPI_TRY {
+        std::optional<std::remove_cvref_t<decltype(kiln::material3::DrawerDefaults::windowInsets())>> r;
+        kiln::capi::InGroup(key, [&] { r.emplace(kiln::material3::DrawerDefaults::windowInsets()); });
+        return kiln::capi::TransientInsets((*r));
     } KILN_CAPI_CATCH({})
 }
 KILN_API void kiln_m3_modal_navigation_drawer(kiln_key key, kiln_fn drawer_content, const kiln_modifier* modifier, const kiln_m3_modal_navigation_drawer_options* options, kiln_fn content) {
@@ -11347,6 +13468,13 @@ KILN_API kiln_color kiln_m3_navigation_rail_defaults_container_color(kiln_key ke
         return kiln::capi::FromColor((*r));
     } KILN_CAPI_CATCH({})
 }
+KILN_API const kiln_window_insets* kiln_m3_navigation_rail_defaults_window_insets(kiln_key key) {
+    KILN_CAPI_TRY {
+        std::optional<std::remove_cvref_t<decltype(kiln::material3::NavigationRailDefaults::windowInsets())>> r;
+        kiln::capi::InGroup(key, [&] { r.emplace(kiln::material3::NavigationRailDefaults::windowInsets()); });
+        return kiln::capi::TransientInsets((*r));
+    } KILN_CAPI_CATCH({})
+}
 KILN_API void kiln_m3_navigation_rail_item_defaults_colors(kiln_key key, kiln_m3_navigation_rail_item_colors* out) {
     KILN_CAPI_TRY {
         std::optional<std::remove_cvref_t<decltype(kiln::material3::NavigationRailItemDefaults::colors())>> r;
@@ -11392,6 +13520,27 @@ KILN_API kiln_color kiln_m3_horizontal_shared_axis_navigation_transitions_scrim_
         kiln::capi::InGroup(key, [&] { r.emplace(kiln::material3::HorizontalSharedAxisNavigationTransitions::scrimColor()); });
         return kiln::capi::FromColor((*r));
     } KILN_CAPI_CATCH({})
+}
+KILN_API void kiln_m3_horizontal_shared_axis_navigation_transitions_forward_transform(kiln_key key, kiln_content_transform* out) {
+    KILN_CAPI_TRY {
+        std::optional<std::remove_cvref_t<decltype(kiln::material3::HorizontalSharedAxisNavigationTransitions::forwardTransform())>> r;
+        kiln::capi::InGroup(key, [&] { r.emplace(kiln::material3::HorizontalSharedAxisNavigationTransitions::forwardTransform()); });
+        FromCpp((*r), out);
+    } KILN_CAPI_CATCH()
+}
+KILN_API void kiln_m3_horizontal_shared_axis_navigation_transitions_backward_transform(kiln_key key, kiln_content_transform* out) {
+    KILN_CAPI_TRY {
+        std::optional<std::remove_cvref_t<decltype(kiln::material3::HorizontalSharedAxisNavigationTransitions::backwardTransform())>> r;
+        kiln::capi::InGroup(key, [&] { r.emplace(kiln::material3::HorizontalSharedAxisNavigationTransitions::backwardTransform()); });
+        FromCpp((*r), out);
+    } KILN_CAPI_CATCH()
+}
+KILN_API void kiln_m3_fade_through_navigation_transitions_transform(kiln_key key, kiln_content_transform* out) {
+    KILN_CAPI_TRY {
+        std::optional<std::remove_cvref_t<decltype(kiln::material3::FadeThroughNavigationTransitions::transform())>> r;
+        kiln::capi::InGroup(key, [&] { r.emplace(kiln::material3::FadeThroughNavigationTransitions::transform()); });
+        FromCpp((*r), out);
+    } KILN_CAPI_CATCH()
 }
 KILN_API void kiln_m3_linear_progress_indicator(kiln_key key, kiln_m3_fn_to_float progress, const kiln_modifier* modifier, const kiln_m3_linear_progress_indicator_options* options) {
     KILN_CAPI_TRY {
@@ -11477,10 +13626,19 @@ KILN_API kiln_m3_pull_to_refresh_state* kiln_m3_make_pull_to_refresh_state(kiln_
 KILN_API kiln_m3_pull_to_refresh_state* kiln_m3_remember_pull_to_refresh_state(kiln_key key) {
     KILN_CAPI_TRY {
         std::optional<std::remove_cvref_t<decltype(kiln::material3::RememberPullToRefreshState(kiln::capi::ToKey(key)))>> r;
-        r.emplace(kiln::material3::RememberPullToRefreshState(kiln::capi::ToKey(key)));
-        auto* h0 = kiln::capi::NewTransient<kiln_m3_pull_to_refresh_state>();
-        h0->owner = std::const_pointer_cast<kiln::material3::PullToRefreshState>((*r)); h0->ptr = h0->owner.get();
-        return h0;
+        kiln_m3_pull_to_refresh_state* out_handle = nullptr;
+        kiln::capi::InGroup(key, [&] {
+            r.emplace(kiln::material3::RememberPullToRefreshState(kiln::capi::ToKey(key)));
+            auto* cp = kiln::rt::Composition::Current();
+            if (!cp) throw std::logic_error("a remember call outside content");
+            auto& c = *cp;
+            auto scope = kiln::rt::RememberCoroutineScope();
+            auto& h = c.Remember<kiln_m3_pull_to_refresh_state>([] { return kiln_m3_pull_to_refresh_state{}; });
+            h.owner = std::const_pointer_cast<kiln::material3::PullToRefreshState>(*r); h.ptr = h.owner.get();
+            h.scope = scope;
+            out_handle = &h;
+        });
+        return out_handle;
     } KILN_CAPI_CATCH({})
 }
 KILN_API const kiln_shape* kiln_m3_pull_to_refresh_defaults_indicator_shape(kiln_key key) {
@@ -11613,6 +13771,13 @@ KILN_API void kiln_m3_ripple_defaults_theme_configuration(kiln_key key, kiln_m3_
         FromCpp((*r), out);
     } KILN_CAPI_CATCH()
 }
+KILN_API const kiln_window_insets* kiln_m3_scaffold_defaults_content_window_insets(kiln_key key) {
+    KILN_CAPI_TRY {
+        std::optional<std::remove_cvref_t<decltype(kiln::material3::ScaffoldDefaults::contentWindowInsets())>> r;
+        kiln::capi::InGroup(key, [&] { r.emplace(kiln::material3::ScaffoldDefaults::contentWindowInsets()); });
+        return kiln::capi::TransientInsets((*r));
+    } KILN_CAPI_CATCH({})
+}
 KILN_API void kiln_m3_scaffold(kiln_key key, const kiln_modifier* modifier, const kiln_m3_scaffold_options* options, kiln_m3_fn_padding_values content) {
     KILN_CAPI_TRY {
         auto&& a0 = kiln::capi::ToModifier(modifier);
@@ -11641,10 +13806,19 @@ KILN_API kiln_m3_scroll_field_state* kiln_m3_remember_scroll_field_state(kiln_ke
         auto&& a0 = item_count;
         auto&& a1 = index;
         std::optional<std::remove_cvref_t<decltype(kiln::material3::RememberScrollFieldState(a0, a1, kiln::capi::ToKey(key)))>> r;
-        r.emplace(kiln::material3::RememberScrollFieldState(a0, a1, kiln::capi::ToKey(key)));
-        auto* h0 = kiln::capi::NewTransient<kiln_m3_scroll_field_state>();
-        h0->owner = std::const_pointer_cast<kiln::material3::ScrollFieldState>((*r)); h0->ptr = h0->owner.get();
-        return h0;
+        kiln_m3_scroll_field_state* out_handle = nullptr;
+        kiln::capi::InGroup(key, [&] {
+            r.emplace(kiln::material3::RememberScrollFieldState(a0, a1, kiln::capi::ToKey(key)));
+            auto* cp = kiln::rt::Composition::Current();
+            if (!cp) throw std::logic_error("a remember call outside content");
+            auto& c = *cp;
+            auto scope = kiln::rt::RememberCoroutineScope();
+            auto& h = c.Remember<kiln_m3_scroll_field_state>([] { return kiln_m3_scroll_field_state{}; });
+            h.owner = std::const_pointer_cast<kiln::material3::ScrollFieldState>(*r); h.ptr = h.owner.get();
+            h.scope = scope;
+            out_handle = &h;
+        });
+        return out_handle;
     } KILN_CAPI_CATCH({})
 }
 KILN_API const kiln_shape* kiln_m3_scroll_field_defaults_shape(kiln_key key) {
@@ -11692,10 +13866,19 @@ KILN_API kiln_m3_search_bar_state* kiln_m3_remember_search_bar_state(kiln_key ke
         auto&& a1 = (animation_spec_for_expand ? animation_spec_for_expand->spec : nullptr);
         auto&& a2 = (animation_spec_for_collapse ? animation_spec_for_collapse->spec : nullptr);
         std::optional<std::remove_cvref_t<decltype(kiln::material3::RememberSearchBarState(a0, a1, a2, kiln::capi::ToKey(key)))>> r;
-        r.emplace(kiln::material3::RememberSearchBarState(a0, a1, a2, kiln::capi::ToKey(key)));
-        auto* h0 = kiln::capi::NewTransient<kiln_m3_search_bar_state>();
-        h0->owner = std::const_pointer_cast<kiln::material3::SearchBarState>((*r)); h0->ptr = h0->owner.get();
-        return h0;
+        kiln_m3_search_bar_state* out_handle = nullptr;
+        kiln::capi::InGroup(key, [&] {
+            r.emplace(kiln::material3::RememberSearchBarState(a0, a1, a2, kiln::capi::ToKey(key)));
+            auto* cp = kiln::rt::Composition::Current();
+            if (!cp) throw std::logic_error("a remember call outside content");
+            auto& c = *cp;
+            auto scope = kiln::rt::RememberCoroutineScope();
+            auto& h = c.Remember<kiln_m3_search_bar_state>([] { return kiln_m3_search_bar_state{}; });
+            h.owner = std::const_pointer_cast<kiln::material3::SearchBarState>(*r); h.ptr = h.owner.get();
+            h.scope = scope;
+            out_handle = &h;
+        });
+        return out_handle;
     } KILN_CAPI_CATCH({})
 }
 KILN_API kiln_m3_search_bar_state* kiln_m3_remember_contained_search_bar_state(kiln_key key, kiln_m3_search_bar_value initial_value, const kiln_anim_spec* animation_spec_for_expand, const kiln_anim_spec* animation_spec_for_collapse, const kiln_anim_spec* animation_spec_for_content_fade_in, const kiln_anim_spec* animation_spec_for_content_fade_out) {
@@ -11706,10 +13889,19 @@ KILN_API kiln_m3_search_bar_state* kiln_m3_remember_contained_search_bar_state(k
         auto&& a3 = (animation_spec_for_content_fade_in ? animation_spec_for_content_fade_in->spec : nullptr);
         auto&& a4 = (animation_spec_for_content_fade_out ? animation_spec_for_content_fade_out->spec : nullptr);
         std::optional<std::remove_cvref_t<decltype(kiln::material3::RememberContainedSearchBarState(a0, a1, a2, a3, a4, kiln::capi::ToKey(key)))>> r;
-        r.emplace(kiln::material3::RememberContainedSearchBarState(a0, a1, a2, a3, a4, kiln::capi::ToKey(key)));
-        auto* h0 = kiln::capi::NewTransient<kiln_m3_search_bar_state>();
-        h0->owner = std::const_pointer_cast<kiln::material3::SearchBarState>((*r)); h0->ptr = h0->owner.get();
-        return h0;
+        kiln_m3_search_bar_state* out_handle = nullptr;
+        kiln::capi::InGroup(key, [&] {
+            r.emplace(kiln::material3::RememberContainedSearchBarState(a0, a1, a2, a3, a4, kiln::capi::ToKey(key)));
+            auto* cp = kiln::rt::Composition::Current();
+            if (!cp) throw std::logic_error("a remember call outside content");
+            auto& c = *cp;
+            auto scope = kiln::rt::RememberCoroutineScope();
+            auto& h = c.Remember<kiln_m3_search_bar_state>([] { return kiln_m3_search_bar_state{}; });
+            h.owner = std::const_pointer_cast<kiln::material3::SearchBarState>(*r); h.ptr = h.owner.get();
+            h.scope = scope;
+            out_handle = &h;
+        });
+        return out_handle;
     } KILN_CAPI_CATCH({})
 }
 KILN_API kiln_m3_search_bar_state* kiln_m3_remember_search_bar_with_gap_state(kiln_key key, kiln_m3_search_bar_value initial_value, const kiln_anim_spec* animation_spec_for_expand, const kiln_anim_spec* animation_spec_for_collapse, const kiln_anim_spec* animation_spec_for_content_fade_in, const kiln_anim_spec* animation_spec_for_content_fade_out) {
@@ -11720,10 +13912,19 @@ KILN_API kiln_m3_search_bar_state* kiln_m3_remember_search_bar_with_gap_state(ki
         auto&& a3 = (animation_spec_for_content_fade_in ? animation_spec_for_content_fade_in->spec : nullptr);
         auto&& a4 = (animation_spec_for_content_fade_out ? animation_spec_for_content_fade_out->spec : nullptr);
         std::optional<std::remove_cvref_t<decltype(kiln::material3::RememberSearchBarWithGapState(a0, a1, a2, a3, a4, kiln::capi::ToKey(key)))>> r;
-        r.emplace(kiln::material3::RememberSearchBarWithGapState(a0, a1, a2, a3, a4, kiln::capi::ToKey(key)));
-        auto* h0 = kiln::capi::NewTransient<kiln_m3_search_bar_state>();
-        h0->owner = std::const_pointer_cast<kiln::material3::SearchBarState>((*r)); h0->ptr = h0->owner.get();
-        return h0;
+        kiln_m3_search_bar_state* out_handle = nullptr;
+        kiln::capi::InGroup(key, [&] {
+            r.emplace(kiln::material3::RememberSearchBarWithGapState(a0, a1, a2, a3, a4, kiln::capi::ToKey(key)));
+            auto* cp = kiln::rt::Composition::Current();
+            if (!cp) throw std::logic_error("a remember call outside content");
+            auto& c = *cp;
+            auto scope = kiln::rt::RememberCoroutineScope();
+            auto& h = c.Remember<kiln_m3_search_bar_state>([] { return kiln_m3_search_bar_state{}; });
+            h.owner = std::const_pointer_cast<kiln::material3::SearchBarState>(*r); h.ptr = h.owner.get();
+            h.scope = scope;
+            out_handle = &h;
+        });
+        return out_handle;
     } KILN_CAPI_CATCH({})
 }
 KILN_API kiln_m3_search_bar_scroll_state* kiln_m3_remember_search_bar_scroll_state(kiln_key key, float initial_scroll_offset_limit, float initial_scroll_offset, float initial_content_offset) {
@@ -11732,10 +13933,19 @@ KILN_API kiln_m3_search_bar_scroll_state* kiln_m3_remember_search_bar_scroll_sta
         auto&& a1 = initial_scroll_offset;
         auto&& a2 = initial_content_offset;
         std::optional<std::remove_cvref_t<decltype(kiln::material3::RememberSearchBarScrollState(a0, a1, a2, kiln::capi::ToKey(key)))>> r;
-        r.emplace(kiln::material3::RememberSearchBarScrollState(a0, a1, a2, kiln::capi::ToKey(key)));
-        auto* h0 = kiln::capi::NewTransient<kiln_m3_search_bar_scroll_state>();
-        h0->owner = std::const_pointer_cast<kiln::material3::SearchBarScrollState>((*r)); h0->ptr = h0->owner.get();
-        return h0;
+        kiln_m3_search_bar_scroll_state* out_handle = nullptr;
+        kiln::capi::InGroup(key, [&] {
+            r.emplace(kiln::material3::RememberSearchBarScrollState(a0, a1, a2, kiln::capi::ToKey(key)));
+            auto* cp = kiln::rt::Composition::Current();
+            if (!cp) throw std::logic_error("a remember call outside content");
+            auto& c = *cp;
+            auto scope = kiln::rt::RememberCoroutineScope();
+            auto& h = c.Remember<kiln_m3_search_bar_scroll_state>([] { return kiln_m3_search_bar_scroll_state{}; });
+            h.owner = std::const_pointer_cast<kiln::material3::SearchBarScrollState>(*r); h.ptr = h.owner.get();
+            h.scope = scope;
+            out_handle = &h;
+        });
+        return out_handle;
     } KILN_CAPI_CATCH({})
 }
 KILN_API const kiln_shape* kiln_m3_search_bar_defaults_input_field_shape(kiln_key key) {
@@ -11785,6 +13995,20 @@ KILN_API kiln_color kiln_m3_search_bar_defaults_docked_dropdown_scrim_color(kiln
         std::optional<std::remove_cvref_t<decltype(kiln::material3::SearchBarDefaults::dockedDropdownScrimColor())>> r;
         kiln::capi::InGroup(key, [&] { r.emplace(kiln::material3::SearchBarDefaults::dockedDropdownScrimColor()); });
         return kiln::capi::FromColor((*r));
+    } KILN_CAPI_CATCH({})
+}
+KILN_API const kiln_window_insets* kiln_m3_search_bar_defaults_window_insets(kiln_key key) {
+    KILN_CAPI_TRY {
+        std::optional<std::remove_cvref_t<decltype(kiln::material3::SearchBarDefaults::windowInsets())>> r;
+        kiln::capi::InGroup(key, [&] { r.emplace(kiln::material3::SearchBarDefaults::windowInsets()); });
+        return kiln::capi::TransientInsets((*r));
+    } KILN_CAPI_CATCH({})
+}
+KILN_API const kiln_window_insets* kiln_m3_search_bar_defaults_full_screen_window_insets(kiln_key key) {
+    KILN_CAPI_TRY {
+        std::optional<std::remove_cvref_t<decltype(kiln::material3::SearchBarDefaults::fullScreenWindowInsets())>> r;
+        kiln::capi::InGroup(key, [&] { r.emplace(kiln::material3::SearchBarDefaults::fullScreenWindowInsets()); });
+        return kiln::capi::TransientInsets((*r));
     } KILN_CAPI_CATCH({})
 }
 KILN_API kiln_m3_search_bar_scroll_behavior* kiln_m3_search_bar_defaults_enter_always_search_bar_scroll_behavior(kiln_key key, kiln_m3_search_bar_scroll_state* scroll_state, kiln_m3_fn_to_bool can_scroll, const kiln_anim_spec* snap_animation_spec) {
@@ -11877,13 +14101,15 @@ KILN_API void kiln_m3_app_bar_with_search(kiln_key key, kiln_m3_search_bar_state
         kiln::capi::InGroup(key, [&] { kiln::material3::AppBarWithSearch(a0, a1, a2, a3); });
     } KILN_CAPI_CATCH()
 }
-KILN_API void kiln_m3_top_search_bar(kiln_key key, kiln_m3_search_bar_state* state, kiln_fn input_field, const kiln_modifier* modifier, const kiln_m3_search_bar_options* options) {
+KILN_API void kiln_m3_top_search_bar(kiln_key key, kiln_m3_search_bar_state* state, kiln_fn input_field, const kiln_modifier* modifier, const kiln_m3_search_bar_options* options, const kiln_window_insets* window_insets, kiln_m3_search_bar_scroll_behavior* scroll_behavior) {
     KILN_CAPI_TRY {
         auto&& a0 = (state ? state->Shared() : nullptr);
         auto&& a1 = kiln::capi::Fn(input_field);
         auto&& a2 = kiln::capi::ToModifier(modifier);
         auto&& a3 = ToCpp(options);
-        kiln::capi::InGroup(key, [&] { kiln::material3::TopSearchBar(a0, a1, a2, a3); });
+        auto&& a4 = (window_insets ? std::optional<kiln::foundation::WindowInsets>((window_insets ? window_insets->insets : kiln::foundation::WindowInsets{})) : std::nullopt);
+        auto&& a5 = (scroll_behavior ? scroll_behavior->Shared() : nullptr);
+        kiln::capi::InGroup(key, [&] { kiln::material3::TopSearchBar(a0, a1, a2, a3, a4, a5); });
     } KILN_CAPI_CATCH()
 }
 KILN_API void kiln_m3_expanded_full_screen_search_bar(kiln_key key, kiln_m3_search_bar_state* state, kiln_fn input_field, const kiln_modifier* modifier, const kiln_m3_expanded_full_screen_search_bar_options* options, kiln_fn content) {
@@ -12012,13 +14238,30 @@ KILN_API void kiln_m3_segmented_button_defaults_colors_overrides(kiln_key key, c
         FromCpp((*r), out);
     } KILN_CAPI_CATCH()
 }
-KILN_API const kiln_shape* kiln_m3_segmented_button_defaults_item_shape(kiln_key key, int32_t index, int32_t count) {
+KILN_API const kiln_shape* kiln_m3_segmented_button_defaults_base_shape(kiln_key key) {
+    KILN_CAPI_TRY {
+        std::optional<std::remove_cvref_t<decltype(kiln::material3::SegmentedButtonDefaults::baseShape())>> r;
+        kiln::capi::InGroup(key, [&] { r.emplace(kiln::material3::SegmentedButtonDefaults::baseShape()); });
+        return kiln::capi::TransientShape((*r));
+    } KILN_CAPI_CATCH({})
+}
+KILN_API const kiln_shape* kiln_m3_segmented_button_defaults_item_shape(kiln_key key, int32_t index, int32_t count, const kiln_shape* base) {
     KILN_CAPI_TRY {
         auto&& a0 = index;
         auto&& a1 = count;
-        std::optional<std::remove_cvref_t<decltype(kiln::material3::SegmentedButtonDefaults::itemShape(a0, a1))>> r;
-        kiln::capi::InGroup(key, [&] { r.emplace(kiln::material3::SegmentedButtonDefaults::itemShape(a0, a1)); });
+        auto&& a2 = std::dynamic_pointer_cast<const kiln::foundation::CornerBasedShape>(kiln::capi::ToShape(base));
+        std::optional<std::remove_cvref_t<decltype(kiln::material3::SegmentedButtonDefaults::itemShape(a0, a1, a2))>> r;
+        kiln::capi::InGroup(key, [&] { r.emplace(kiln::material3::SegmentedButtonDefaults::itemShape(a0, a1, a2)); });
         return kiln::capi::TransientShape((*r));
+    } KILN_CAPI_CATCH({})
+}
+KILN_API kiln_border_stroke kiln_m3_segmented_button_defaults_border_stroke(kiln_key key, kiln_color color, float width) {
+    KILN_CAPI_TRY {
+        auto&& a0 = kiln::capi::ToColor(color);
+        auto&& a1 = kiln::capi::ToDp(width);
+        std::optional<std::remove_cvref_t<decltype(kiln::material3::SegmentedButtonDefaults::borderStroke(a0, a1))>> r;
+        kiln::capi::InGroup(key, [&] { r.emplace(kiln::material3::SegmentedButtonDefaults::borderStroke(a0, a1)); });
+        return kiln::capi::FromBorderStroke((*r));
     } KILN_CAPI_CATCH({})
 }
 KILN_API void kiln_m3_segmented_button_defaults_active_icon(kiln_key key) {
@@ -12046,6 +14289,13 @@ KILN_API kiln_color kiln_m3_short_navigation_bar_defaults_content_color(kiln_key
         std::optional<std::remove_cvref_t<decltype(kiln::material3::ShortNavigationBarDefaults::contentColor())>> r;
         kiln::capi::InGroup(key, [&] { r.emplace(kiln::material3::ShortNavigationBarDefaults::contentColor()); });
         return kiln::capi::FromColor((*r));
+    } KILN_CAPI_CATCH({})
+}
+KILN_API const kiln_window_insets* kiln_m3_short_navigation_bar_defaults_window_insets(kiln_key key) {
+    KILN_CAPI_TRY {
+        std::optional<std::remove_cvref_t<decltype(kiln::material3::ShortNavigationBarDefaults::windowInsets())>> r;
+        kiln::capi::InGroup(key, [&] { r.emplace(kiln::material3::ShortNavigationBarDefaults::windowInsets()); });
+        return kiln::capi::TransientInsets((*r));
     } KILN_CAPI_CATCH({})
 }
 KILN_API void kiln_m3_short_navigation_bar_item_defaults_colors(kiln_key key, kiln_m3_navigation_item_colors* out) {
@@ -12095,10 +14345,19 @@ KILN_API kiln_m3_slider_state* kiln_m3_remember_slider_state(kiln_key key, float
         auto&& a1 = steps;
         auto&& a2 = ToCpp(track_range);
         std::remove_reference_t<decltype(kiln::material3::RememberSliderState(a0, a1, a2, kiln::capi::ToKey(key)))>* r = nullptr;
-        r = &kiln::material3::RememberSliderState(a0, a1, a2, kiln::capi::ToKey(key));
-        auto* h0 = kiln::capi::NewTransient<kiln_m3_slider_state>();
-        h0->ptr = const_cast<kiln::material3::SliderState*>(&((*r)));
-        return h0;
+        kiln_m3_slider_state* out_handle = nullptr;
+        kiln::capi::InGroup(key, [&] {
+            r = &kiln::material3::RememberSliderState(a0, a1, a2, kiln::capi::ToKey(key));
+            auto* cp = kiln::rt::Composition::Current();
+            if (!cp) throw std::logic_error("a remember call outside content");
+            auto& c = *cp;
+            auto scope = kiln::rt::RememberCoroutineScope();
+            auto& h = c.Remember<kiln_m3_slider_state>([] { return kiln_m3_slider_state{}; });
+            h.ptr = r;
+            h.scope = scope;
+            out_handle = &h;
+        });
+        return out_handle;
     } KILN_CAPI_CATCH({})
 }
 KILN_API kiln_m3_range_slider_state* kiln_m3_remember_range_slider_state(kiln_key key, float start, float end, int32_t steps, const kiln_m3_slider_range* track_range) {
@@ -12108,10 +14367,19 @@ KILN_API kiln_m3_range_slider_state* kiln_m3_remember_range_slider_state(kiln_ke
         auto&& a2 = steps;
         auto&& a3 = ToCpp(track_range);
         std::remove_reference_t<decltype(kiln::material3::RememberRangeSliderState(a0, a1, a2, a3, kiln::capi::ToKey(key)))>* r = nullptr;
-        r = &kiln::material3::RememberRangeSliderState(a0, a1, a2, a3, kiln::capi::ToKey(key));
-        auto* h0 = kiln::capi::NewTransient<kiln_m3_range_slider_state>();
-        h0->ptr = const_cast<kiln::material3::RangeSliderState*>(&((*r)));
-        return h0;
+        kiln_m3_range_slider_state* out_handle = nullptr;
+        kiln::capi::InGroup(key, [&] {
+            r = &kiln::material3::RememberRangeSliderState(a0, a1, a2, a3, kiln::capi::ToKey(key));
+            auto* cp = kiln::rt::Composition::Current();
+            if (!cp) throw std::logic_error("a remember call outside content");
+            auto& c = *cp;
+            auto scope = kiln::rt::RememberCoroutineScope();
+            auto& h = c.Remember<kiln_m3_range_slider_state>([] { return kiln_m3_range_slider_state{}; });
+            h.ptr = r;
+            h.scope = scope;
+            out_handle = &h;
+        });
+        return out_handle;
     } KILN_CAPI_CATCH({})
 }
 KILN_API void kiln_m3_slider(kiln_key key, kiln_m3_slider_state* arg0, kiln_fn_float on_value_change, const kiln_modifier* arg2, const kiln_m3_slider_options* arg3) {
@@ -12157,6 +14425,14 @@ KILN_API void kiln_m3_slider_defaults_colors_overrides(kiln_key key, const kiln_
         FromCpp((*r), out);
     } KILN_CAPI_CATCH()
 }
+KILN_API void kiln_m3_slider_defaults_thumb(kiln_key key, kiln_interaction_source* arg0, const kiln_modifier* arg1, const kiln_m3_slider_thumb_options* arg2) {
+    KILN_CAPI_TRY {
+        auto&& a0 = (arg0 ? arg0->source : nullptr);
+        auto&& a1 = kiln::capi::ToModifier(arg1);
+        auto&& a2 = ToCpp(arg2);
+        kiln::capi::InGroup(key, [&] { kiln::material3::SliderDefaults::Thumb(a0, a1, a2); });
+    } KILN_CAPI_CATCH()
+}
 KILN_API void kiln_m3_slider_defaults_track(kiln_key key, kiln_m3_slider_state* arg0, const kiln_modifier* arg1, const kiln_m3_slider_track_options* arg2) {
     KILN_CAPI_TRY {
         auto&& a0 = *arg0->ptr;
@@ -12180,6 +14456,13 @@ KILN_API void kiln_m3_slider_defaults_track_arg0(kiln_key key, kiln_m3_range_sli
         auto&& a2 = ToCpp(arg2);
         kiln::capi::InGroup(key, [&] { kiln::material3::SliderDefaults::Track(a0, a1, a2); });
     } KILN_CAPI_CATCH()
+}
+KILN_API kiln_corner_size kiln_m3_split_button_defaults_outer_corner_size(kiln_key key) {
+    KILN_CAPI_TRY {
+        std::optional<std::remove_cvref_t<decltype(kiln::material3::SplitButtonDefaults::OuterCornerSize())>> r;
+        kiln::capi::InGroup(key, [&] { r.emplace(kiln::material3::SplitButtonDefaults::OuterCornerSize()); });
+        return kiln::capi::FromCornerSize((*r));
+    } KILN_CAPI_CATCH({})
 }
 KILN_API void kiln_m3_split_button_defaults_leading_button_shapes_for(kiln_key key, float button_height, kiln_m3_split_button_shapes* out) {
     KILN_CAPI_TRY {
@@ -12331,17 +14614,18 @@ KILN_API void kiln_m3_surface(kiln_key key, const kiln_modifier* modifier, const
         kiln::capi::InGroup(key, [&] { kiln::material3::Surface(a0, a1, a2); });
     } KILN_CAPI_CATCH()
 }
-KILN_API void kiln_m3_surface_on_click(kiln_key key, kiln_fn on_click, const kiln_modifier* modifier, const kiln_m3_surface_options* options, kiln_fn content, bool enabled) {
+KILN_API void kiln_m3_surface_on_click(kiln_key key, kiln_fn on_click, const kiln_modifier* modifier, const kiln_m3_surface_options* options, kiln_fn content, bool enabled, kiln_interaction_source* interaction_source) {
     KILN_CAPI_TRY {
         auto&& a0 = kiln::capi::Fn(on_click);
         auto&& a1 = kiln::capi::ToModifier(modifier);
         auto&& a2 = ToCpp(options);
         auto&& a3 = kiln::capi::Fn(content);
         auto&& a4 = enabled;
-        kiln::capi::InGroup(key, [&] { kiln::material3::Surface(a0, a1, a2, a3, a4); });
+        auto&& a5 = (interaction_source ? interaction_source->source : nullptr);
+        kiln::capi::InGroup(key, [&] { kiln::material3::Surface(a0, a1, a2, a3, a4, a5); });
     } KILN_CAPI_CATCH()
 }
-KILN_API void kiln_m3_surface_selected(kiln_key key, bool selected, kiln_fn on_click, const kiln_modifier* modifier, const kiln_m3_surface_options* options, kiln_fn content, bool enabled) {
+KILN_API void kiln_m3_surface_selected(kiln_key key, bool selected, kiln_fn on_click, const kiln_modifier* modifier, const kiln_m3_surface_options* options, kiln_fn content, bool enabled, kiln_interaction_source* interaction_source) {
     KILN_CAPI_TRY {
         auto&& a0 = selected;
         auto&& a1 = kiln::capi::Fn(on_click);
@@ -12349,10 +14633,11 @@ KILN_API void kiln_m3_surface_selected(kiln_key key, bool selected, kiln_fn on_c
         auto&& a3 = ToCpp(options);
         auto&& a4 = kiln::capi::Fn(content);
         auto&& a5 = enabled;
-        kiln::capi::InGroup(key, [&] { kiln::material3::Surface(a0, a1, a2, a3, a4, a5); });
+        auto&& a6 = (interaction_source ? interaction_source->source : nullptr);
+        kiln::capi::InGroup(key, [&] { kiln::material3::Surface(a0, a1, a2, a3, a4, a5, a6); });
     } KILN_CAPI_CATCH()
 }
-KILN_API void kiln_m3_surface_checked(kiln_key key, bool checked, kiln_fn_bool on_checked_change, const kiln_modifier* modifier, const kiln_m3_surface_options* options, kiln_fn content, bool enabled) {
+KILN_API void kiln_m3_surface_checked(kiln_key key, bool checked, kiln_fn_bool on_checked_change, const kiln_modifier* modifier, const kiln_m3_surface_options* options, kiln_fn content, bool enabled, kiln_interaction_source* interaction_source) {
     KILN_CAPI_TRY {
         auto&& a0 = checked;
         auto&& a1 = kiln::capi::Fn(on_checked_change);
@@ -12360,7 +14645,8 @@ KILN_API void kiln_m3_surface_checked(kiln_key key, bool checked, kiln_fn_bool o
         auto&& a3 = ToCpp(options);
         auto&& a4 = kiln::capi::Fn(content);
         auto&& a5 = enabled;
-        kiln::capi::InGroup(key, [&] { kiln::material3::Surface(a0, a1, a2, a3, a4, a5); });
+        auto&& a6 = (interaction_source ? interaction_source->source : nullptr);
+        kiln::capi::InGroup(key, [&] { kiln::material3::Surface(a0, a1, a2, a3, a4, a5, a6); });
     } KILN_CAPI_CATCH()
 }
 KILN_API kiln_m3_swipe_to_dismiss_box_state* kiln_m3_remember_swipe_to_dismiss_box_state(kiln_key key, kiln_m3_swipe_to_dismiss_box_value initial_value, kiln_m3_fn_float_to_float positional_threshold, kiln_m3_fn_swipe_to_dismiss_box_value_to_bool confirm_value_change) {
@@ -12369,10 +14655,19 @@ KILN_API kiln_m3_swipe_to_dismiss_box_state* kiln_m3_remember_swipe_to_dismiss_b
         auto&& a1 = ToCpp_kiln_m3_fn_float_to_float(positional_threshold);
         auto&& a2 = ToCpp_kiln_m3_fn_swipe_to_dismiss_box_value_to_bool(confirm_value_change);
         std::optional<std::remove_cvref_t<decltype(kiln::material3::RememberSwipeToDismissBoxState(a0, a1, a2, kiln::capi::ToKey(key)))>> r;
-        r.emplace(kiln::material3::RememberSwipeToDismissBoxState(a0, a1, a2, kiln::capi::ToKey(key)));
-        auto* h0 = kiln::capi::NewTransient<kiln_m3_swipe_to_dismiss_box_state>();
-        h0->owner = std::const_pointer_cast<kiln::material3::SwipeToDismissBoxState>((*r)); h0->ptr = h0->owner.get();
-        return h0;
+        kiln_m3_swipe_to_dismiss_box_state* out_handle = nullptr;
+        kiln::capi::InGroup(key, [&] {
+            r.emplace(kiln::material3::RememberSwipeToDismissBoxState(a0, a1, a2, kiln::capi::ToKey(key)));
+            auto* cp = kiln::rt::Composition::Current();
+            if (!cp) throw std::logic_error("a remember call outside content");
+            auto& c = *cp;
+            auto scope = kiln::rt::RememberCoroutineScope();
+            auto& h = c.Remember<kiln_m3_swipe_to_dismiss_box_state>([] { return kiln_m3_swipe_to_dismiss_box_state{}; });
+            h.owner = std::const_pointer_cast<kiln::material3::SwipeToDismissBoxState>(*r); h.ptr = h.owner.get();
+            h.scope = scope;
+            out_handle = &h;
+        });
+        return out_handle;
     } KILN_CAPI_CATCH({})
 }
 KILN_API void kiln_m3_swipe_to_dismiss_box(kiln_key key, kiln_m3_swipe_to_dismiss_box_state* state, kiln_fn background_content, const kiln_modifier* modifier, const kiln_m3_swipe_to_dismiss_box_options* options, kiln_fn content) {
@@ -12600,10 +14895,19 @@ KILN_API kiln_m3_time_picker_state* kiln_m3_remember_time_picker_state(kiln_key 
         auto&& a1 = initial_minute;
         auto&& a2 = (is24_hour.set ? std::optional<bool>(is24_hour.value) : std::nullopt);
         std::optional<std::remove_cvref_t<decltype(kiln::material3::RememberTimePickerState(a0, a1, a2, kiln::capi::ToKey(key)))>> r;
-        r.emplace(kiln::material3::RememberTimePickerState(a0, a1, a2, kiln::capi::ToKey(key)));
-        auto* h0 = kiln::capi::NewTransient<kiln_m3_time_picker_state>();
-        h0->owner = std::const_pointer_cast<kiln::material3::TimePickerState>((*r)); h0->ptr = h0->owner.get();
-        return h0;
+        kiln_m3_time_picker_state* out_handle = nullptr;
+        kiln::capi::InGroup(key, [&] {
+            r.emplace(kiln::material3::RememberTimePickerState(a0, a1, a2, kiln::capi::ToKey(key)));
+            auto* cp = kiln::rt::Composition::Current();
+            if (!cp) throw std::logic_error("a remember call outside content");
+            auto& c = *cp;
+            auto scope = kiln::rt::RememberCoroutineScope();
+            auto& h = c.Remember<kiln_m3_time_picker_state>([] { return kiln_m3_time_picker_state{}; });
+            h.owner = std::const_pointer_cast<kiln::material3::TimePickerState>(*r); h.ptr = h.owner.get();
+            h.scope = scope;
+            out_handle = &h;
+        });
+        return out_handle;
     } KILN_CAPI_CATCH({})
 }
 KILN_API void kiln_m3_time_picker_defaults_colors(kiln_key key, kiln_m3_time_picker_colors* out) {
@@ -12796,6 +15100,34 @@ KILN_API kiln_color kiln_m3_wavy_progress_indicator_defaults_track_color(kiln_ke
         return kiln::capi::FromColor((*r));
     } KILN_CAPI_CATCH({})
 }
+KILN_API void kiln_m3_wavy_progress_indicator_defaults_linear_indicator_stroke(kiln_key key, kiln_stroke* out) {
+    KILN_CAPI_TRY {
+        std::optional<std::remove_cvref_t<decltype(kiln::material3::WavyProgressIndicatorDefaults::linearIndicatorStroke())>> r;
+        kiln::capi::InGroup(key, [&] { r.emplace(kiln::material3::WavyProgressIndicatorDefaults::linearIndicatorStroke()); });
+        FromCpp((*r), out);
+    } KILN_CAPI_CATCH()
+}
+KILN_API void kiln_m3_wavy_progress_indicator_defaults_linear_track_stroke(kiln_key key, kiln_stroke* out) {
+    KILN_CAPI_TRY {
+        std::optional<std::remove_cvref_t<decltype(kiln::material3::WavyProgressIndicatorDefaults::linearTrackStroke())>> r;
+        kiln::capi::InGroup(key, [&] { r.emplace(kiln::material3::WavyProgressIndicatorDefaults::linearTrackStroke()); });
+        FromCpp((*r), out);
+    } KILN_CAPI_CATCH()
+}
+KILN_API void kiln_m3_wavy_progress_indicator_defaults_circular_indicator_stroke(kiln_key key, kiln_stroke* out) {
+    KILN_CAPI_TRY {
+        std::optional<std::remove_cvref_t<decltype(kiln::material3::WavyProgressIndicatorDefaults::circularIndicatorStroke())>> r;
+        kiln::capi::InGroup(key, [&] { r.emplace(kiln::material3::WavyProgressIndicatorDefaults::circularIndicatorStroke()); });
+        FromCpp((*r), out);
+    } KILN_CAPI_CATCH()
+}
+KILN_API void kiln_m3_wavy_progress_indicator_defaults_circular_track_stroke(kiln_key key, kiln_stroke* out) {
+    KILN_CAPI_TRY {
+        std::optional<std::remove_cvref_t<decltype(kiln::material3::WavyProgressIndicatorDefaults::circularTrackStroke())>> r;
+        kiln::capi::InGroup(key, [&] { r.emplace(kiln::material3::WavyProgressIndicatorDefaults::circularTrackStroke()); });
+        FromCpp((*r), out);
+    } KILN_CAPI_CATCH()
+}
 KILN_API float kiln_m3_wavy_progress_indicator_defaults_indicator_amplitude(kiln_key key, float progress) {
     KILN_CAPI_TRY {
         auto&& a0 = progress;
@@ -12815,10 +15147,19 @@ KILN_API kiln_m3_wide_navigation_rail_state* kiln_m3_remember_wide_navigation_ra
     KILN_CAPI_TRY {
         auto&& a0 = kiln::material3::WideNavigationRailValue(initial_value);
         std::optional<std::remove_cvref_t<decltype(kiln::material3::RememberWideNavigationRailState(a0, kiln::capi::ToKey(key)))>> r;
-        r.emplace(kiln::material3::RememberWideNavigationRailState(a0, kiln::capi::ToKey(key)));
-        auto* h0 = kiln::capi::NewTransient<kiln_m3_wide_navigation_rail_state>();
-        h0->owner = std::const_pointer_cast<kiln::material3::WideNavigationRailState>((*r)); h0->ptr = h0->owner.get();
-        return h0;
+        kiln_m3_wide_navigation_rail_state* out_handle = nullptr;
+        kiln::capi::InGroup(key, [&] {
+            r.emplace(kiln::material3::RememberWideNavigationRailState(a0, kiln::capi::ToKey(key)));
+            auto* cp = kiln::rt::Composition::Current();
+            if (!cp) throw std::logic_error("a remember call outside content");
+            auto& c = *cp;
+            auto scope = kiln::rt::RememberCoroutineScope();
+            auto& h = c.Remember<kiln_m3_wide_navigation_rail_state>([] { return kiln_m3_wide_navigation_rail_state{}; });
+            h.owner = std::const_pointer_cast<kiln::material3::WideNavigationRailState>(*r); h.ptr = h.owner.get();
+            h.scope = scope;
+            out_handle = &h;
+        });
+        return out_handle;
     } KILN_CAPI_CATCH({})
 }
 KILN_API const kiln_shape* kiln_m3_wide_navigation_rail_defaults_shape(kiln_key key) {
@@ -12826,6 +15167,20 @@ KILN_API const kiln_shape* kiln_m3_wide_navigation_rail_defaults_shape(kiln_key 
         std::optional<std::remove_cvref_t<decltype(kiln::material3::WideNavigationRailDefaults::shape())>> r;
         kiln::capi::InGroup(key, [&] { r.emplace(kiln::material3::WideNavigationRailDefaults::shape()); });
         return kiln::capi::TransientShape((*r));
+    } KILN_CAPI_CATCH({})
+}
+KILN_API kiln_arrangement kiln_m3_wide_navigation_rail_defaults_arrangement(kiln_key key) {
+    KILN_CAPI_TRY {
+        std::optional<std::remove_cvref_t<decltype(kiln::material3::WideNavigationRailDefaults::arrangement())>> r;
+        kiln::capi::InGroup(key, [&] { r.emplace(kiln::material3::WideNavigationRailDefaults::arrangement()); });
+        return kiln::capi::FromArrangement((*r));
+    } KILN_CAPI_CATCH({})
+}
+KILN_API const kiln_window_insets* kiln_m3_wide_navigation_rail_defaults_window_insets(kiln_key key) {
+    KILN_CAPI_TRY {
+        std::optional<std::remove_cvref_t<decltype(kiln::material3::WideNavigationRailDefaults::windowInsets())>> r;
+        kiln::capi::InGroup(key, [&] { r.emplace(kiln::material3::WideNavigationRailDefaults::windowInsets()); });
+        return kiln::capi::TransientInsets((*r));
     } KILN_CAPI_CATCH({})
 }
 KILN_API const kiln_shape* kiln_m3_wide_navigation_rail_defaults_modal_collapsed_shape(kiln_key key) {
@@ -12918,6 +15273,1207 @@ KILN_API void kiln_m3_wide_navigation_rail_item(kiln_key key, bool selected, kil
         auto&& a6 = ToCpp(options);
         kiln::capi::InGroup(key, [&] { kiln::material3::WideNavigationRailItem(a0, a1, a2, a3, a4, a5, a6); });
     } KILN_CAPI_CATCH()
+}
+KILN_API void kiln_m3_local_material_theme_current(kiln_key key, kiln_m3_material_theme_values* out) {
+    KILN_CAPI_TRY {
+        (void)key;
+        FromCpp(kiln::capi::CurrentComposition().Read(kiln::material3::LocalMaterialTheme()), out);
+    } KILN_CAPI_CATCH()
+}
+KILN_API void kiln_m3_local_material_theme_provide(kiln_key key, const kiln_m3_material_theme_values* value, kiln_fn content) {
+    KILN_CAPI_TRY {
+        auto fn = kiln::capi::Fn(content);
+        kiln::capi::CurrentComposition().Provide(kiln::material3::LocalMaterialTheme(), kiln::material3::MaterialThemeValues(ToCpp(value)), fn ? fn : [] {}, kiln::capi::ToKey(key));
+    } KILN_CAPI_CATCH()
+}
+KILN_API kiln_color kiln_m3_local_content_color_current(kiln_key key) {
+    KILN_CAPI_TRY {
+        (void)key;
+        return kiln::capi::FromColor(kiln::capi::CurrentComposition().Read(kiln::material3::LocalContentColor));
+    } KILN_CAPI_CATCH({})
+}
+KILN_API void kiln_m3_local_content_color_provide(kiln_key key, kiln_color value, kiln_fn content) {
+    KILN_CAPI_TRY {
+        auto fn = kiln::capi::Fn(content);
+        kiln::capi::CurrentComposition().Provide(kiln::material3::LocalContentColor, kiln::ui::Color(kiln::capi::ToColor(value)), fn ? fn : [] {}, kiln::capi::ToKey(key));
+    } KILN_CAPI_CATCH()
+}
+KILN_API const kiln_text_style* kiln_m3_local_text_style_current(kiln_key key) {
+    KILN_CAPI_TRY {
+        (void)key;
+        return kiln::capi::TransientTextStyle(kiln::capi::CurrentComposition().Read(kiln::material3::LocalTextStyle()));
+    } KILN_CAPI_CATCH({})
+}
+KILN_API void kiln_m3_local_text_style_provide(kiln_key key, const kiln_text_style* value, kiln_fn content) {
+    KILN_CAPI_TRY {
+        auto fn = kiln::capi::Fn(content);
+        kiln::capi::CurrentComposition().Provide(kiln::material3::LocalTextStyle(), kiln::text::TextStyle((value ? value->style : kiln::text::TextStyle{})), fn ? fn : [] {}, kiln::capi::ToKey(key));
+    } KILN_CAPI_CATCH()
+}
+KILN_API bool kiln_m3_local_tonal_elevation_enabled_current(kiln_key key) {
+    KILN_CAPI_TRY {
+        (void)key;
+        return bool(kiln::capi::CurrentComposition().Read(kiln::material3::LocalTonalElevationEnabled));
+    } KILN_CAPI_CATCH({})
+}
+KILN_API void kiln_m3_local_tonal_elevation_enabled_provide(kiln_key key, bool value, kiln_fn content) {
+    KILN_CAPI_TRY {
+        auto fn = kiln::capi::Fn(content);
+        kiln::capi::CurrentComposition().Provide(kiln::material3::LocalTonalElevationEnabled, bool(value), fn ? fn : [] {}, kiln::capi::ToKey(key));
+    } KILN_CAPI_CATCH()
+}
+KILN_API float kiln_m3_local_minimum_interactive_component_size_current(kiln_key key) {
+    KILN_CAPI_TRY {
+        (void)key;
+        return (kiln::capi::CurrentComposition().Read(kiln::material3::LocalMinimumInteractiveComponentSize)).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API void kiln_m3_local_minimum_interactive_component_size_provide(kiln_key key, float value, kiln_fn content) {
+    KILN_CAPI_TRY {
+        auto fn = kiln::capi::Fn(content);
+        kiln::capi::CurrentComposition().Provide(kiln::material3::LocalMinimumInteractiveComponentSize, kiln::ui::Dp(kiln::capi::ToDp(value)), fn ? fn : [] {}, kiln::capi::ToKey(key));
+    } KILN_CAPI_CATCH()
+}
+KILN_API void kiln_m3_local_ripple_theme_configuration_current(kiln_key key, kiln_m3_ripple_theme_configuration* out) {
+    KILN_CAPI_TRY {
+        (void)key;
+        FromCpp(kiln::capi::CurrentComposition().Read(kiln::material3::LocalRippleThemeConfiguration), out);
+    } KILN_CAPI_CATCH()
+}
+KILN_API void kiln_m3_local_ripple_theme_configuration_provide(kiln_key key, const kiln_m3_ripple_theme_configuration* value, kiln_fn content) {
+    KILN_CAPI_TRY {
+        auto fn = kiln::capi::Fn(content);
+        kiln::capi::CurrentComposition().Provide(kiln::material3::LocalRippleThemeConfiguration, kiln::material3::RippleThemeConfiguration(ToCpp(value)), fn ? fn : [] {}, kiln::capi::ToKey(key));
+    } KILN_CAPI_CATCH()
+}
+KILN_API const kiln_m3_ripple_configuration* kiln_m3_local_ripple_configuration_current(kiln_key key) {
+    KILN_CAPI_TRY {
+        (void)key;
+        return ([&]() -> const kiln_m3_ripple_configuration* { if (!(kiln::capi::CurrentComposition().Read(kiln::material3::LocalRippleConfiguration))) return nullptr;  return FromCppTransient((*(kiln::capi::CurrentComposition().Read(kiln::material3::LocalRippleConfiguration)))); }());
+    } KILN_CAPI_CATCH({})
+}
+KILN_API void kiln_m3_local_ripple_configuration_provide(kiln_key key, const kiln_m3_ripple_configuration* value, kiln_fn content) {
+    KILN_CAPI_TRY {
+        auto fn = kiln::capi::Fn(content);
+        kiln::capi::CurrentComposition().Provide(kiln::material3::LocalRippleConfiguration, std::optional<kiln::material3::RippleConfiguration>((value ? std::optional<kiln::material3::RippleConfiguration>(ToCpp(value)) : std::nullopt)), fn ? fn : [] {}, kiln::capi::ToKey(key));
+    } KILN_CAPI_CATCH()
+}
+KILN_API float kiln_m3_local_absolute_tonal_elevation_current(kiln_key key) {
+    KILN_CAPI_TRY {
+        (void)key;
+        return (kiln::capi::CurrentComposition().Read(kiln::material3::LocalAbsoluteTonalElevation)).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API void kiln_m3_local_absolute_tonal_elevation_provide(kiln_key key, float value, kiln_fn content) {
+    KILN_CAPI_TRY {
+        auto fn = kiln::capi::Fn(content);
+        kiln::capi::CurrentComposition().Provide(kiln::material3::LocalAbsoluteTonalElevation, kiln::ui::Dp(kiln::capi::ToDp(value)), fn ? fn : [] {}, kiln::capi::ToKey(key));
+    } KILN_CAPI_CATCH()
+}
+KILN_API float kiln_m3_alert_dialog_defaults_icon_size() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::AlertDialogDefaults::IconSize).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_alert_dialog_defaults_tonal_elevation() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::AlertDialogDefaults::TonalElevation).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API kiln_padding kiln_m3_top_app_bar_defaults_content_padding() {
+    KILN_CAPI_TRY {
+        return kiln::capi::FromPadding(kiln::material3::TopAppBarDefaults::ContentPadding);
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_top_app_bar_defaults_top_app_bar_expanded_height() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::TopAppBarDefaults::TopAppBarExpandedHeight).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_top_app_bar_defaults_medium_app_bar_collapsed_height() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::TopAppBarDefaults::MediumAppBarCollapsedHeight).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_top_app_bar_defaults_medium_app_bar_expanded_height() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::TopAppBarDefaults::MediumAppBarExpandedHeight).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_top_app_bar_defaults_medium_flexible_app_bar_without_subtitle_expanded_height() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::TopAppBarDefaults::MediumFlexibleAppBarWithoutSubtitleExpandedHeight).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_top_app_bar_defaults_medium_flexible_app_bar_with_subtitle_expanded_height() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::TopAppBarDefaults::MediumFlexibleAppBarWithSubtitleExpandedHeight).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_top_app_bar_defaults_large_app_bar_collapsed_height() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::TopAppBarDefaults::LargeAppBarCollapsedHeight).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_top_app_bar_defaults_large_app_bar_expanded_height() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::TopAppBarDefaults::LargeAppBarExpandedHeight).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_top_app_bar_defaults_large_flexible_app_bar_without_subtitle_expanded_height() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::TopAppBarDefaults::LargeFlexibleAppBarWithoutSubtitleExpandedHeight).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_top_app_bar_defaults_large_flexible_app_bar_with_subtitle_expanded_height() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::TopAppBarDefaults::LargeFlexibleAppBarWithSubtitleExpandedHeight).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_bottom_app_bar_defaults_container_elevation() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::BottomAppBarDefaults::ContainerElevation).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API kiln_padding kiln_m3_bottom_app_bar_defaults_content_padding() {
+    KILN_CAPI_TRY {
+        return kiln::capi::FromPadding(kiln::material3::BottomAppBarDefaults::ContentPadding);
+    } KILN_CAPI_CATCH({})
+}
+KILN_API kiln_padding kiln_m3_bottom_app_bar_defaults_flexible_content_padding() {
+    KILN_CAPI_TRY {
+        return kiln::capi::FromPadding(kiln::material3::BottomAppBarDefaults::FlexibleContentPadding);
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_bottom_app_bar_defaults_flexible_bottom_app_bar_height() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::BottomAppBarDefaults::FlexibleBottomAppBarHeight).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_icon_button_defaults_extra_small_icon_size() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::IconButtonDefaults::ExtraSmallIconSize).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_icon_button_defaults_small_icon_size() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::IconButtonDefaults::SmallIconSize).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_icon_button_defaults_medium_icon_size() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::IconButtonDefaults::MediumIconSize).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_icon_button_defaults_large_icon_size() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::IconButtonDefaults::LargeIconSize).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_icon_button_defaults_extra_large_icon_size() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::IconButtonDefaults::ExtraLargeIconSize).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_bottom_sheet_defaults_elevation() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::BottomSheetDefaults::Elevation).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_bottom_sheet_defaults_sheet_peek_height() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::BottomSheetDefaults::SheetPeekHeight).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_bottom_sheet_defaults_sheet_max_width() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::BottomSheetDefaults::SheetMaxWidth).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_bottom_sheet_defaults_positional_threshold() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::BottomSheetDefaults::PositionalThreshold).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_bottom_sheet_defaults_velocity_threshold() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::BottomSheetDefaults::VelocityThreshold).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_bottom_sheet_defaults_boundary_dampening_zone() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::BottomSheetDefaults::BoundaryDampeningZone).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API kiln_padding kiln_m3_button_defaults_content_padding() {
+    KILN_CAPI_TRY {
+        return kiln::capi::FromPadding(kiln::material3::ButtonDefaults::ContentPadding);
+    } KILN_CAPI_CATCH({})
+}
+KILN_API kiln_padding kiln_m3_button_defaults_button_with_icon_content_padding() {
+    KILN_CAPI_TRY {
+        return kiln::capi::FromPadding(kiln::material3::ButtonDefaults::ButtonWithIconContentPadding);
+    } KILN_CAPI_CATCH({})
+}
+KILN_API kiln_padding kiln_m3_button_defaults_text_button_content_padding() {
+    KILN_CAPI_TRY {
+        return kiln::capi::FromPadding(kiln::material3::ButtonDefaults::TextButtonContentPadding);
+    } KILN_CAPI_CATCH({})
+}
+KILN_API kiln_padding kiln_m3_button_defaults_text_button_with_icon_content_padding() {
+    KILN_CAPI_TRY {
+        return kiln::capi::FromPadding(kiln::material3::ButtonDefaults::TextButtonWithIconContentPadding);
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_button_defaults_min_width() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::ButtonDefaults::MinWidth).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_button_defaults_extra_small_container_height() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::ButtonDefaults::ExtraSmallContainerHeight).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_button_defaults_medium_container_height() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::ButtonDefaults::MediumContainerHeight).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_button_defaults_large_container_height() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::ButtonDefaults::LargeContainerHeight).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_button_defaults_extra_large_container_height() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::ButtonDefaults::ExtraLargeContainerHeight).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_button_defaults_icon_size() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::ButtonDefaults::IconSize).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_button_defaults_extra_small_icon_size() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::ButtonDefaults::ExtraSmallIconSize).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_button_defaults_small_icon_size() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::ButtonDefaults::SmallIconSize).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_button_defaults_medium_icon_size() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::ButtonDefaults::MediumIconSize).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_button_defaults_large_icon_size() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::ButtonDefaults::LargeIconSize).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_button_defaults_extra_large_icon_size() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::ButtonDefaults::ExtraLargeIconSize).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_button_defaults_icon_spacing() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::ButtonDefaults::IconSpacing).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_button_defaults_extra_small_icon_spacing() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::ButtonDefaults::ExtraSmallIconSpacing).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_button_defaults_medium_icon_spacing() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::ButtonDefaults::MediumIconSpacing).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_button_defaults_large_icon_spacing() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::ButtonDefaults::LargeIconSpacing).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_button_defaults_extra_large_icon_spacing() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::ButtonDefaults::ExtraLargeIconSpacing).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_toggle_button_defaults_min_height() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::ToggleButtonDefaults::MinHeight).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_toggle_button_defaults_icon_size() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::ToggleButtonDefaults::IconSize).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_toggle_button_defaults_icon_spacing() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::ToggleButtonDefaults::IconSpacing).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_button_group_defaults_expanded_ratio() {
+    KILN_CAPI_TRY {
+        return float(kiln::material3::ButtonGroupDefaults::ExpandedRatio);
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_button_group_defaults_connected_space_between() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::ButtonGroupDefaults::ConnectedSpaceBetween).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_carousel_defaults_min_small_item_size() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::CarouselDefaults::MinSmallItemSize).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_carousel_defaults_max_small_item_size() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::CarouselDefaults::MaxSmallItemSize).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_carousel_defaults_item_spacing() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::CarouselDefaults::ItemSpacing).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_checkbox_defaults_stroke_width() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::CheckboxDefaults::StrokeWidth).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_assist_chip_defaults_height() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::AssistChipDefaults::Height).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_assist_chip_defaults_icon_size() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::AssistChipDefaults::IconSize).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_assist_chip_defaults_horizontal_spacing() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::AssistChipDefaults::HorizontalSpacing).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API kiln_padding kiln_m3_assist_chip_defaults_content_padding() {
+    KILN_CAPI_TRY {
+        return kiln::capi::FromPadding(kiln::material3::AssistChipDefaults::ContentPadding);
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_suggestion_chip_defaults_height() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::SuggestionChipDefaults::Height).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_suggestion_chip_defaults_icon_size() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::SuggestionChipDefaults::IconSize).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_suggestion_chip_defaults_horizontal_spacing() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::SuggestionChipDefaults::HorizontalSpacing).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API kiln_padding kiln_m3_suggestion_chip_defaults_content_padding() {
+    KILN_CAPI_TRY {
+        return kiln::capi::FromPadding(kiln::material3::SuggestionChipDefaults::ContentPadding);
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_filter_chip_defaults_height() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::FilterChipDefaults::Height).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_filter_chip_defaults_icon_size() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::FilterChipDefaults::IconSize).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_filter_chip_defaults_horizontal_spacing() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::FilterChipDefaults::HorizontalSpacing).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_filter_chip_defaults_compact_horizontal_spacing() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::FilterChipDefaults::CompactHorizontalSpacing).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API kiln_padding kiln_m3_filter_chip_defaults_content_padding() {
+    KILN_CAPI_TRY {
+        return kiln::capi::FromPadding(kiln::material3::FilterChipDefaults::ContentPadding);
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_input_chip_defaults_height() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::InputChipDefaults::Height).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_input_chip_defaults_icon_size() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::InputChipDefaults::IconSize).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_input_chip_defaults_avatar_size() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::InputChipDefaults::AvatarSize).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_input_chip_defaults_horizontal_spacing() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::InputChipDefaults::HorizontalSpacing).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_input_chip_defaults_compact_horizontal_spacing() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::InputChipDefaults::CompactHorizontalSpacing).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_disabled_alpha() {
+    KILN_CAPI_TRY {
+        return float(kiln::material3::DisabledAlpha);
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_text_field_defaults_min_height() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::TextFieldDefaults::MinHeight).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_text_field_defaults_min_width() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::TextFieldDefaults::MinWidth).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_text_field_defaults_unfocused_indicator_thickness() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::TextFieldDefaults::UnfocusedIndicatorThickness).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_text_field_defaults_focused_indicator_thickness() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::TextFieldDefaults::FocusedIndicatorThickness).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_outlined_text_field_defaults_min_height() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::OutlinedTextFieldDefaults::MinHeight).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_outlined_text_field_defaults_min_width() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::OutlinedTextFieldDefaults::MinWidth).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_outlined_text_field_defaults_unfocused_border_thickness() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::OutlinedTextFieldDefaults::UnfocusedBorderThickness).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_outlined_text_field_defaults_focused_border_thickness() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::OutlinedTextFieldDefaults::FocusedBorderThickness).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API void kiln_m3_date_picker_defaults_year_range(kiln_m3_int_range* out) {
+    KILN_CAPI_TRY {
+        FromCpp(kiln::material3::DatePickerDefaults::YearRange, out);
+    } KILN_CAPI_CATCH()
+}
+KILN_API float kiln_m3_date_picker_defaults_tonal_elevation() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::DatePickerDefaults::TonalElevation).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_divider_defaults_thickness() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::DividerDefaults::Thickness).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API int32_t kiln_m3_k_system_palette_count() {
+    KILN_CAPI_TRY {
+        return int32_t(kiln::material3::kSystemPaletteCount);
+    } KILN_CAPI_CATCH({})
+}
+KILN_API int32_t kiln_m3_k_system_role_count() {
+    KILN_CAPI_TRY {
+        return int32_t(kiln::material3::kSystemRoleCount);
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_floating_action_button_defaults_show_hide_target_scale() {
+    KILN_CAPI_TRY {
+        return float(kiln::material3::FloatingActionButtonDefaults::ShowHideTargetScale);
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_floating_action_button_defaults_medium_icon_size() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::FloatingActionButtonDefaults::MediumIconSize).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_floating_action_button_defaults_large_icon_size() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::FloatingActionButtonDefaults::LargeIconSize).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_floating_toolbar_defaults_container_size() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::FloatingToolbarDefaults::ContainerSize).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_floating_toolbar_defaults_container_expanded_elevation() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::FloatingToolbarDefaults::ContainerExpandedElevation).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_floating_toolbar_defaults_container_collapsed_elevation() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::FloatingToolbarDefaults::ContainerCollapsedElevation).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_floating_toolbar_defaults_container_expanded_elevation_with_fab() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::FloatingToolbarDefaults::ContainerExpandedElevationWithFab).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_floating_toolbar_defaults_container_collapsed_elevation_with_fab() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::FloatingToolbarDefaults::ContainerCollapsedElevationWithFab).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API kiln_padding kiln_m3_floating_toolbar_defaults_content_padding() {
+    KILN_CAPI_TRY {
+        return kiln::capi::FromPadding(kiln::material3::FloatingToolbarDefaults::ContentPadding);
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_floating_toolbar_defaults_screen_offset() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::FloatingToolbarDefaults::ScreenOffset).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_floating_toolbar_defaults_scroll_distance_threshold() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::FloatingToolbarDefaults::ScrollDistanceThreshold).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_floating_toolbar_defaults_fab_size_min() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::FloatingToolbarDefaults::FabSizeMin).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_floating_toolbar_defaults_fab_size_max() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::FloatingToolbarDefaults::FabSizeMax).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_floating_toolbar_defaults_toolbar_to_fab_gap() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::FloatingToolbarDefaults::ToolbarToFabGap).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API int64_t kiln_m3_basic_tooltip_defaults_tooltip_duration() {
+    KILN_CAPI_TRY {
+        return int64_t(kiln::material3::BasicTooltipDefaults::TooltipDuration);
+    } KILN_CAPI_CATCH({})
+}
+KILN_API kiln_dp_size kiln_m3_tooltip_defaults_caret_size() {
+    KILN_CAPI_TRY {
+        return kiln_dp_size{ (kiln::material3::TooltipDefaults::caretSize).width.value, (kiln::material3::TooltipDefaults::caretSize).height.value };
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_tooltip_defaults_plain_tooltip_max_width() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::TooltipDefaults::plainTooltipMaxWidth).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_tooltip_defaults_rich_tooltip_max_width() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::TooltipDefaults::richTooltipMaxWidth).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_tooltip_defaults_spacing_between_tooltip_and_anchor() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::TooltipDefaults::SpacingBetweenTooltipAndAnchor).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_list_item_defaults_elevation_2() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::ListItemDefaults::Elevation).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_list_item_defaults_segmented_gap() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::ListItemDefaults::SegmentedGap).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_loading_indicator_defaults_container_width() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::LoadingIndicatorDefaults::ContainerWidth).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_loading_indicator_defaults_container_height() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::LoadingIndicatorDefaults::ContainerHeight).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_loading_indicator_defaults_indicator_size() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::LoadingIndicatorDefaults::IndicatorSize).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API bool kiln_m3_compose_material3_flags_is_precision_pointer_component_sizing_enabled() {
+    KILN_CAPI_TRY {
+        return bool(kiln::material3::ComposeMaterial3Flags::isPrecisionPointerComponentSizingEnabled);
+    } KILN_CAPI_CATCH({})
+}
+KILN_API bool kiln_m3_compose_material3_flags_is_checkbox_styling_fix_enabled() {
+    KILN_CAPI_TRY {
+        return bool(kiln::material3::ComposeMaterial3Flags::isCheckboxStylingFixEnabled);
+    } KILN_CAPI_CATCH({})
+}
+KILN_API bool kiln_m3_compose_material3_flags_is_expressive_list_item_height_based_on_text_lines_fix_enabled() {
+    KILN_CAPI_TRY {
+        return bool(kiln::material3::ComposeMaterial3Flags::isExpressiveListItemHeightBasedOnTextLinesFixEnabled);
+    } KILN_CAPI_CATCH({})
+}
+KILN_API bool kiln_m3_compose_material3_flags_is_snackbar_styling_fix_enabled() {
+    KILN_CAPI_TRY {
+        return bool(kiln::material3::ComposeMaterial3Flags::isSnackbarStylingFixEnabled);
+    } KILN_CAPI_CATCH({})
+}
+KILN_API bool kiln_m3_compose_material3_flags_is_bottom_sheet_partially_expanded_deterministic_enabled() {
+    KILN_CAPI_TRY {
+        return bool(kiln::material3::ComposeMaterial3Flags::isBottomSheetPartiallyExpandedDeterministicEnabled);
+    } KILN_CAPI_CATCH({})
+}
+KILN_API bool kiln_m3_compose_material3_flags_is_modal_bottom_sheet_state_restoration_fix_enabled() {
+    KILN_CAPI_TRY {
+        return bool(kiln::material3::ComposeMaterial3Flags::isModalBottomSheetStateRestorationFixEnabled);
+    } KILN_CAPI_CATCH({})
+}
+KILN_API bool kiln_m3_compose_material3_flags_is_updated_timepicker_toggle_enabled() {
+    KILN_CAPI_TRY {
+        return bool(kiln::material3::ComposeMaterial3Flags::isUpdatedTimepickerToggleEnabled);
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_text_selection_background_opacity() {
+    KILN_CAPI_TRY {
+        return float(kiln::material3::TextSelectionBackgroundOpacity);
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_menu_defaults_tonal_elevation() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::MenuDefaults::TonalElevation).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_menu_defaults_shadow_elevation() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::MenuDefaults::ShadowElevation).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_menu_defaults_leading_icon_size() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::MenuDefaults::LeadingIconSize).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_menu_defaults_group_spacing() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::MenuDefaults::GroupSpacing).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API kiln_padding kiln_m3_menu_defaults_horizontal_divider_padding() {
+    KILN_CAPI_TRY {
+        return kiln::capi::FromPadding(kiln::material3::MenuDefaults::HorizontalDividerPadding);
+    } KILN_CAPI_CATCH({})
+}
+KILN_API kiln_padding kiln_m3_menu_defaults_dropdown_menu_group_label_horizontal_padding() {
+    KILN_CAPI_TRY {
+        return kiln::capi::FromPadding(kiln::material3::MenuDefaults::DropdownMenuGroupLabelHorizontalPadding);
+    } KILN_CAPI_CATCH({})
+}
+KILN_API kiln_padding kiln_m3_menu_defaults_dropdown_menu_item_content_padding() {
+    KILN_CAPI_TRY {
+        return kiln::capi::FromPadding(kiln::material3::MenuDefaults::DropdownMenuItemContentPadding);
+    } KILN_CAPI_CATCH({})
+}
+KILN_API kiln_padding kiln_m3_menu_defaults_dropdown_menu_group_content_padding() {
+    KILN_CAPI_TRY {
+        return kiln::capi::FromPadding(kiln::material3::MenuDefaults::DropdownMenuGroupContentPadding);
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_navigation_bar_defaults_elevation() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::NavigationBarDefaults::Elevation).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_drawer_defaults_modal_drawer_elevation() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::DrawerDefaults::ModalDrawerElevation).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_drawer_defaults_permanent_drawer_elevation() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::DrawerDefaults::PermanentDrawerElevation).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_drawer_defaults_dismissible_drawer_elevation() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::DrawerDefaults::DismissibleDrawerElevation).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_drawer_defaults_maximum_drawer_width() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::DrawerDefaults::MaximumDrawerWidth).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API kiln_padding kiln_m3_navigation_drawer_item_defaults_item_padding() {
+    KILN_CAPI_TRY {
+        return kiln::capi::FromPadding(kiln::material3::NavigationDrawerItemDefaults::ItemPadding);
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_progress_indicator_defaults_linear_indicator_width() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::ProgressIndicatorDefaults::LinearIndicatorWidth).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_progress_indicator_defaults_linear_indicator_height() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::ProgressIndicatorDefaults::LinearIndicatorHeight).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_progress_indicator_defaults_circular_indicator_diameter() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::ProgressIndicatorDefaults::CircularIndicatorDiameter).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_progress_indicator_defaults_circular_stroke_width() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::ProgressIndicatorDefaults::CircularStrokeWidth).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_progress_indicator_defaults_linear_track_stop_indicator_size() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::ProgressIndicatorDefaults::LinearTrackStopIndicatorSize).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_progress_indicator_defaults_linear_indicator_track_gap_size() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::ProgressIndicatorDefaults::LinearIndicatorTrackGapSize).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_progress_indicator_defaults_circular_indicator_track_gap_size() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::ProgressIndicatorDefaults::CircularIndicatorTrackGapSize).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API kiln_stroke_cap kiln_m3_progress_indicator_defaults_linear_stroke_cap() {
+    KILN_CAPI_TRY {
+        return kiln_stroke_cap(kiln::material3::ProgressIndicatorDefaults::LinearStrokeCap);
+    } KILN_CAPI_CATCH({})
+}
+KILN_API kiln_stroke_cap kiln_m3_progress_indicator_defaults_circular_determinate_stroke_cap() {
+    KILN_CAPI_TRY {
+        return kiln_stroke_cap(kiln::material3::ProgressIndicatorDefaults::CircularDeterminateStrokeCap);
+    } KILN_CAPI_CATCH({})
+}
+KILN_API kiln_stroke_cap kiln_m3_progress_indicator_defaults_circular_indeterminate_stroke_cap() {
+    KILN_CAPI_TRY {
+        return kiln_stroke_cap(kiln::material3::ProgressIndicatorDefaults::CircularIndeterminateStrokeCap);
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_pull_to_refresh_defaults_positional_threshold() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::PullToRefreshDefaults::PositionalThreshold).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_pull_to_refresh_defaults_indicator_max_distance() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::PullToRefreshDefaults::IndicatorMaxDistance).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_pull_to_refresh_defaults_elevation() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::PullToRefreshDefaults::Elevation).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_pull_to_refresh_defaults_loading_indicator_elevation() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::PullToRefreshDefaults::LoadingIndicatorElevation).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_scroll_field_defaults_scroll_field_height() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::ScrollFieldDefaults::ScrollFieldHeight).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_scroll_field_defaults_item_height() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::ScrollFieldDefaults::ItemHeight).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_non_interactive_scrollbar_defaults_thumb_opacity() {
+    KILN_CAPI_TRY {
+        return float(kiln::material3::NonInteractiveScrollbarDefaults::ThumbOpacity);
+    } KILN_CAPI_CATCH({})
+}
+KILN_API int32_t kiln_m3_non_interactive_scrollbar_defaults_thumb_fade_duration_millis() {
+    KILN_CAPI_TRY {
+        return int32_t(kiln::material3::NonInteractiveScrollbarDefaults::ThumbFadeDurationMillis);
+    } KILN_CAPI_CATCH({})
+}
+KILN_API int32_t kiln_m3_non_interactive_scrollbar_defaults_thumb_fade_delay_millis() {
+    KILN_CAPI_TRY {
+        return int32_t(kiln::material3::NonInteractiveScrollbarDefaults::ThumbFadeDelayMillis);
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_non_interactive_scrollbar_defaults_thickness() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::NonInteractiveScrollbarDefaults::Thickness).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_non_interactive_scrollbar_defaults_thumb_min_length() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::NonInteractiveScrollbarDefaults::ThumbMinLength).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_non_interactive_scrollbar_defaults_thumb_max_length_fraction() {
+    KILN_CAPI_TRY {
+        return float(kiln::material3::NonInteractiveScrollbarDefaults::ThumbMaxLengthFraction);
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_non_interactive_scrollbar_defaults_main_axis_track_inset() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::NonInteractiveScrollbarDefaults::MainAxisTrackInset).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_non_interactive_scrollbar_defaults_cross_axis_track_inset() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::NonInteractiveScrollbarDefaults::CrossAxisTrackInset).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_search_bar_defaults_tonal_elevation() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::SearchBarDefaults::TonalElevation).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_search_bar_defaults_shadow_elevation() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::SearchBarDefaults::ShadowElevation).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_search_bar_defaults_input_field_height() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::SearchBarDefaults::InputFieldHeight).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_search_bar_defaults_docked_dropdown_gap_size() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::SearchBarDefaults::dockedDropdownGapSize).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API kiln_padding kiln_m3_search_bar_defaults_app_bar_content_padding() {
+    KILN_CAPI_TRY {
+        return kiln::capi::FromPadding(kiln::material3::SearchBarDefaults::AppBarContentPadding);
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_segmented_button_defaults_border_width() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::SegmentedButtonDefaults::BorderWidth).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_segmented_button_defaults_icon_size() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::SegmentedButtonDefaults::IconSize).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API kiln_padding kiln_m3_segmented_button_defaults_content_padding() {
+    KILN_CAPI_TRY {
+        return kiln::capi::FromPadding(kiln::material3::SegmentedButtonDefaults::ContentPadding);
+    } KILN_CAPI_CATCH({})
+}
+KILN_API kiln_m3_short_navigation_bar_arrangement kiln_m3_short_navigation_bar_defaults_arrangement() {
+    KILN_CAPI_TRY {
+        return kiln_m3_short_navigation_bar_arrangement(kiln::material3::ShortNavigationBarDefaults::arrangement);
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_slider_defaults_track_height() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::SliderDefaults::TrackHeight).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_slider_defaults_thumb_width() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::SliderDefaults::ThumbWidth).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_slider_defaults_thumb_height() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::SliderDefaults::ThumbHeight).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_slider_defaults_track_stop_indicator_size() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::SliderDefaults::TrackStopIndicatorSize).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_slider_defaults_tick_size() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::SliderDefaults::TickSize).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_split_button_defaults_leading_icon_size() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::SplitButtonDefaults::LeadingIconSize).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_split_button_defaults_trailing_icon_size() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::SplitButtonDefaults::TrailingIconSize).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_split_button_defaults_spacing() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::SplitButtonDefaults::Spacing).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API kiln_corner_size kiln_m3_split_button_defaults_extra_small_inner_corner_size() {
+    KILN_CAPI_TRY {
+        return kiln::capi::FromCornerSize(kiln::material3::SplitButtonDefaults::ExtraSmallInnerCornerSize);
+    } KILN_CAPI_CATCH({})
+}
+KILN_API kiln_corner_size kiln_m3_split_button_defaults_small_inner_corner_size() {
+    KILN_CAPI_TRY {
+        return kiln::capi::FromCornerSize(kiln::material3::SplitButtonDefaults::SmallInnerCornerSize);
+    } KILN_CAPI_CATCH({})
+}
+KILN_API kiln_corner_size kiln_m3_split_button_defaults_medium_inner_corner_size() {
+    KILN_CAPI_TRY {
+        return kiln::capi::FromCornerSize(kiln::material3::SplitButtonDefaults::MediumInnerCornerSize);
+    } KILN_CAPI_CATCH({})
+}
+KILN_API kiln_corner_size kiln_m3_split_button_defaults_large_inner_corner_size() {
+    KILN_CAPI_TRY {
+        return kiln::capi::FromCornerSize(kiln::material3::SplitButtonDefaults::LargeInnerCornerSize);
+    } KILN_CAPI_CATCH({})
+}
+KILN_API kiln_corner_size kiln_m3_split_button_defaults_extra_large_inner_corner_size() {
+    KILN_CAPI_TRY {
+        return kiln::capi::FromCornerSize(kiln::material3::SplitButtonDefaults::ExtraLargeInnerCornerSize);
+    } KILN_CAPI_CATCH({})
+}
+KILN_API kiln_corner_size kiln_m3_split_button_defaults_extra_small_inner_corner_size_pressed() {
+    KILN_CAPI_TRY {
+        return kiln::capi::FromCornerSize(kiln::material3::SplitButtonDefaults::ExtraSmallInnerCornerSizePressed);
+    } KILN_CAPI_CATCH({})
+}
+KILN_API kiln_corner_size kiln_m3_split_button_defaults_small_inner_corner_size_pressed() {
+    KILN_CAPI_TRY {
+        return kiln::capi::FromCornerSize(kiln::material3::SplitButtonDefaults::SmallInnerCornerSizePressed);
+    } KILN_CAPI_CATCH({})
+}
+KILN_API kiln_corner_size kiln_m3_split_button_defaults_medium_inner_corner_size_pressed() {
+    KILN_CAPI_TRY {
+        return kiln::capi::FromCornerSize(kiln::material3::SplitButtonDefaults::MediumInnerCornerSizePressed);
+    } KILN_CAPI_CATCH({})
+}
+KILN_API kiln_corner_size kiln_m3_split_button_defaults_large_inner_corner_size_pressed() {
+    KILN_CAPI_TRY {
+        return kiln::capi::FromCornerSize(kiln::material3::SplitButtonDefaults::LargeInnerCornerSizePressed);
+    } KILN_CAPI_CATCH({})
+}
+KILN_API kiln_corner_size kiln_m3_split_button_defaults_extra_large_inner_corner_size_pressed() {
+    KILN_CAPI_TRY {
+        return kiln::capi::FromCornerSize(kiln::material3::SplitButtonDefaults::ExtraLargeInnerCornerSizePressed);
+    } KILN_CAPI_CATCH({})
+}
+KILN_API kiln_padding kiln_m3_split_button_defaults_extra_small_leading_button_content_padding() {
+    KILN_CAPI_TRY {
+        return kiln::capi::FromPadding(kiln::material3::SplitButtonDefaults::ExtraSmallLeadingButtonContentPadding);
+    } KILN_CAPI_CATCH({})
+}
+KILN_API kiln_padding kiln_m3_split_button_defaults_small_leading_button_content_padding() {
+    KILN_CAPI_TRY {
+        return kiln::capi::FromPadding(kiln::material3::SplitButtonDefaults::SmallLeadingButtonContentPadding);
+    } KILN_CAPI_CATCH({})
+}
+KILN_API kiln_padding kiln_m3_split_button_defaults_medium_leading_button_content_padding() {
+    KILN_CAPI_TRY {
+        return kiln::capi::FromPadding(kiln::material3::SplitButtonDefaults::MediumLeadingButtonContentPadding);
+    } KILN_CAPI_CATCH({})
+}
+KILN_API kiln_padding kiln_m3_split_button_defaults_large_leading_button_content_padding() {
+    KILN_CAPI_TRY {
+        return kiln::capi::FromPadding(kiln::material3::SplitButtonDefaults::LargeLeadingButtonContentPadding);
+    } KILN_CAPI_CATCH({})
+}
+KILN_API kiln_padding kiln_m3_split_button_defaults_extra_large_leading_button_content_padding() {
+    KILN_CAPI_TRY {
+        return kiln::capi::FromPadding(kiln::material3::SplitButtonDefaults::ExtraLargeLeadingButtonContentPadding);
+    } KILN_CAPI_CATCH({})
+}
+KILN_API kiln_padding kiln_m3_split_button_defaults_extra_small_trailing_button_content_padding() {
+    KILN_CAPI_TRY {
+        return kiln::capi::FromPadding(kiln::material3::SplitButtonDefaults::ExtraSmallTrailingButtonContentPadding);
+    } KILN_CAPI_CATCH({})
+}
+KILN_API kiln_padding kiln_m3_split_button_defaults_small_trailing_button_content_padding() {
+    KILN_CAPI_TRY {
+        return kiln::capi::FromPadding(kiln::material3::SplitButtonDefaults::SmallTrailingButtonContentPadding);
+    } KILN_CAPI_CATCH({})
+}
+KILN_API kiln_padding kiln_m3_split_button_defaults_medium_trailing_button_content_padding() {
+    KILN_CAPI_TRY {
+        return kiln::capi::FromPadding(kiln::material3::SplitButtonDefaults::MediumTrailingButtonContentPadding);
+    } KILN_CAPI_CATCH({})
+}
+KILN_API kiln_padding kiln_m3_split_button_defaults_large_trailing_button_content_padding() {
+    KILN_CAPI_TRY {
+        return kiln::capi::FromPadding(kiln::material3::SplitButtonDefaults::LargeTrailingButtonContentPadding);
+    } KILN_CAPI_CATCH({})
+}
+KILN_API kiln_padding kiln_m3_split_button_defaults_extra_large_trailing_button_content_padding() {
+    KILN_CAPI_TRY {
+        return kiln::capi::FromPadding(kiln::material3::SplitButtonDefaults::ExtraLargeTrailingButtonContentPadding);
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_split_button_defaults_extra_small_trailing_button_icon_size() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::SplitButtonDefaults::ExtraSmallTrailingButtonIconSize).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_split_button_defaults_small_trailing_button_icon_size() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::SplitButtonDefaults::SmallTrailingButtonIconSize).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_split_button_defaults_medium_trailing_button_icon_size() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::SplitButtonDefaults::MediumTrailingButtonIconSize).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_split_button_defaults_large_trailing_button_icon_size() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::SplitButtonDefaults::LargeTrailingButtonIconSize).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_split_button_defaults_extra_large_trailing_button_icon_size() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::SplitButtonDefaults::ExtraLargeTrailingButtonIconSize).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_split_button_defaults_extra_small_container_height() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::SplitButtonDefaults::ExtraSmallContainerHeight).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_split_button_defaults_small_container_height() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::SplitButtonDefaults::SmallContainerHeight).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_split_button_defaults_medium_container_height() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::SplitButtonDefaults::MediumContainerHeight).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_split_button_defaults_large_container_height() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::SplitButtonDefaults::LargeContainerHeight).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_split_button_defaults_extra_large_container_height() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::SplitButtonDefaults::ExtraLargeContainerHeight).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_switch_defaults_icon_size() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::SwitchDefaults::IconSize).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_tab_row_defaults_scrollable_tab_row_min_tab_width() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::TabRowDefaults::ScrollableTabRowMinTabWidth).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_tab_row_defaults_scrollable_tab_row_edge_start_padding() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::TabRowDefaults::ScrollableTabRowEdgeStartPadding).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_time_picker_dialog_defaults_min_height_for_time_picker() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::TimePickerDialogDefaults::MinHeightForTimePicker).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_wavy_progress_indicator_defaults_linear_container_width() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::WavyProgressIndicatorDefaults::LinearContainerWidth).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_wavy_progress_indicator_defaults_linear_container_height() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::WavyProgressIndicatorDefaults::LinearContainerHeight).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_wavy_progress_indicator_defaults_circular_container_size() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::WavyProgressIndicatorDefaults::CircularContainerSize).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_wavy_progress_indicator_defaults_linear_determinate_wavelength() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::WavyProgressIndicatorDefaults::LinearDeterminateWavelength).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_wavy_progress_indicator_defaults_linear_indeterminate_wavelength() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::WavyProgressIndicatorDefaults::LinearIndeterminateWavelength).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_wavy_progress_indicator_defaults_circular_wavelength() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::WavyProgressIndicatorDefaults::CircularWavelength).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_wavy_progress_indicator_defaults_linear_track_stop_indicator_size() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::WavyProgressIndicatorDefaults::LinearTrackStopIndicatorSize).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_wavy_progress_indicator_defaults_linear_indicator_track_gap_size() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::WavyProgressIndicatorDefaults::LinearIndicatorTrackGapSize).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API float kiln_m3_wavy_progress_indicator_defaults_circular_indicator_track_gap_size() {
+    KILN_CAPI_TRY {
+        return (kiln::material3::WavyProgressIndicatorDefaults::CircularIndicatorTrackGapSize).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API kiln_padding kiln_m3_wide_navigation_rail_defaults_content_padding() {
+    KILN_CAPI_TRY {
+        return kiln::capi::FromPadding(kiln::material3::WideNavigationRailDefaults::ContentPadding);
+    } KILN_CAPI_CATCH({})
+}
+KILN_API kiln_padding kiln_m3_wide_navigation_rail_item_defaults_indicator_collapsed_padding() {
+    KILN_CAPI_TRY {
+        return kiln::capi::FromPadding(kiln::material3::WideNavigationRailItemDefaults::IndicatorCollapsedPadding);
+    } KILN_CAPI_CATCH({})
+}
+KILN_API kiln_padding kiln_m3_wide_navigation_rail_item_defaults_indicator_expanded_padding() {
+    KILN_CAPI_TRY {
+        return kiln::capi::FromPadding(kiln::material3::WideNavigationRailItemDefaults::IndicatorExpandedPadding);
+    } KILN_CAPI_CATCH({})
 }
 KILN_API float kiln_m3_top_app_bar_state_height_offset_limit(const kiln_m3_top_app_bar_state* self) {
     KILN_CAPI_TRY {
@@ -13331,6 +16887,27 @@ KILN_API kiln_m3_snackbar_data* kiln_m3_snackbar_host_state_current_snackbar_dat
         return h0;
     } KILN_CAPI_CATCH({})
 }
+KILN_API void kiln_m3_snackbar_host_state_show_snackbar(kiln_m3_snackbar_host_state* self, const char* message, const char* action_label, bool with_dismiss_action, const kiln_m3_snackbar_duration* duration, kiln_m3_fn_snackbar_result done) {
+    KILN_CAPI_TRY {
+        if (!self) return;
+        auto a0 = kiln::capi::ToString(message);
+        auto a1 = kiln::capi::ToOptString(action_label);
+        auto a2 = with_dismiss_action;
+        auto a3 = (duration ? std::optional<kiln::material3::SnackbarDuration>(kiln::material3::SnackbarDuration((*duration))) : std::nullopt);
+        auto* obj = self->ptr;
+        auto cb = ToCpp_kiln_m3_fn_snackbar_result(done);
+        kiln::capi::LaunchIn(self->scope, [obj, a0, a1, a2, a3, cb]() mutable -> kiln::rt::Task<> { auto res = co_await obj->ShowSnackbar(a0, a1, a2, a3); if (cb) cb(res); }, kiln_fn{});
+    } KILN_CAPI_CATCH()
+}
+KILN_API void kiln_m3_snackbar_host_state_show_snackbar_visuals(kiln_m3_snackbar_host_state* self, const kiln_m3_snackbar_visuals* visuals, kiln_m3_fn_snackbar_result done) {
+    KILN_CAPI_TRY {
+        if (!self) return;
+        auto a0 = ToCpp(visuals);
+        auto* obj = self->ptr;
+        auto cb = ToCpp_kiln_m3_fn_snackbar_result(done);
+        kiln::capi::LaunchIn(self->scope, [obj, a0, cb]() mutable -> kiln::rt::Task<> { auto res = co_await obj->ShowSnackbar(a0); if (cb) cb(res); }, kiln_fn{});
+    } KILN_CAPI_CATCH()
+}
 KILN_API bool kiln_m3_button_group_menu_state_is_showing(const kiln_m3_button_group_menu_state* self) {
     KILN_CAPI_TRY {
         if (!self) return {};
@@ -13358,6 +16935,17 @@ KILN_API const kiln_modifier* kiln_m3_button_group_scope_weight(const kiln_m3_bu
         auto&& a1 = weight;
         std::optional<std::remove_cvref_t<decltype(self->ptr->Weight(a0, a1))>> r;
         r.emplace(self->ptr->Weight(a0, a1));
+        return kiln::capi::NewModifier((*r));
+    } KILN_CAPI_CATCH({})
+}
+KILN_API const kiln_modifier* kiln_m3_button_group_scope_animate_width(const kiln_m3_button_group_scope* self, const kiln_modifier* m, kiln_interaction_source* interaction_source, kiln_opt_float compression_limit) {
+    KILN_CAPI_TRY {
+        if (!self) return {};
+        auto&& a0 = kiln::capi::ToModifier(m);
+        auto&& a1 = (interaction_source ? interaction_source->source : nullptr);
+        auto&& a2 = (compression_limit.set ? std::optional<kiln::ui::Dp>(kiln::ui::Dp(compression_limit.value)) : std::nullopt);
+        std::optional<std::remove_cvref_t<decltype(self->ptr->AnimateWidth(a0, a1, a2))>> r;
+        r.emplace(self->ptr->AnimateWidth(a0, a1, a2));
         return kiln::capi::NewModifier((*r));
     } KILN_CAPI_CATCH({})
 }
@@ -13483,12 +17071,12 @@ KILN_API void kiln_m3_carousel_parallax_scroll_effect_state_calculate_item_info(
         FromCpp((*r), out);
     } KILN_CAPI_CATCH()
 }
-KILN_API kiln_foundation_orientation kiln_m3_carousel_parallax_scroll_effect_state_orientation(const kiln_m3_carousel_parallax_scroll_effect_state* self) {
+KILN_API kiln_orientation kiln_m3_carousel_parallax_scroll_effect_state_orientation(const kiln_m3_carousel_parallax_scroll_effect_state* self) {
     KILN_CAPI_TRY {
         if (!self) return {};
         std::optional<std::remove_cvref_t<decltype(self->ptr->Orientation())>> r;
         r.emplace(self->ptr->Orientation());
-        return kiln_foundation_orientation((*r));
+        return kiln_orientation((*r));
     } KILN_CAPI_CATCH({})
 }
 KILN_API bool kiln_m3_selectable_dates_is_selectable_date(const kiln_m3_selectable_dates* self, int64_t utc_time_millis) {
@@ -13535,7 +17123,7 @@ KILN_API kiln_opt_i64 kiln_m3_date_picker_state_selected_date_millis(const kiln_
         if (!self) return {};
         std::optional<std::remove_cvref_t<decltype(self->ptr->SelectedDateMillis())>> r;
         r.emplace(self->ptr->SelectedDateMillis());
-        return kiln_opt_i64{ ((*r)).has_value(), ((*r)).value_or({}) };
+        return kiln_opt_i64{ ((*r)).has_value(), ((*r)).value_or(long{}) };
     } KILN_CAPI_CATCH({})
 }
 KILN_API void kiln_m3_date_picker_state_set_selected_date_millis(kiln_m3_date_picker_state* self, kiln_opt_i64 date_millis) {
@@ -13613,7 +17201,7 @@ KILN_API kiln_opt_i64 kiln_m3_date_range_picker_state_selected_start_date_millis
         if (!self) return {};
         std::optional<std::remove_cvref_t<decltype(self->ptr->SelectedStartDateMillis())>> r;
         r.emplace(self->ptr->SelectedStartDateMillis());
-        return kiln_opt_i64{ ((*r)).has_value(), ((*r)).value_or({}) };
+        return kiln_opt_i64{ ((*r)).has_value(), ((*r)).value_or(long{}) };
     } KILN_CAPI_CATCH({})
 }
 KILN_API kiln_opt_i64 kiln_m3_date_range_picker_state_selected_end_date_millis(const kiln_m3_date_range_picker_state* self) {
@@ -13621,7 +17209,7 @@ KILN_API kiln_opt_i64 kiln_m3_date_range_picker_state_selected_end_date_millis(c
         if (!self) return {};
         std::optional<std::remove_cvref_t<decltype(self->ptr->SelectedEndDateMillis())>> r;
         r.emplace(self->ptr->SelectedEndDateMillis());
-        return kiln_opt_i64{ ((*r)).has_value(), ((*r)).value_or({}) };
+        return kiln_opt_i64{ ((*r)).has_value(), ((*r)).value_or(long{}) };
     } KILN_CAPI_CATCH({})
 }
 KILN_API void kiln_m3_date_range_picker_state_set_selection(kiln_m3_date_range_picker_state* self, kiln_opt_i64 start_date_millis, kiln_opt_i64 end_date_millis) {
@@ -13812,6 +17400,14 @@ KILN_API const kiln_modifier* kiln_m3_floating_toolbar_scroll_behavior_floating_
         return kiln::capi::NewModifier((*r));
     } KILN_CAPI_CATCH({})
 }
+KILN_API const kiln_layout_coordinates* kiln_m3_tooltip_scope_obtain_anchor_bounds(const kiln_m3_tooltip_scope* self) {
+    KILN_CAPI_TRY {
+        if (!self) return {};
+        std::optional<std::remove_cvref_t<decltype(self->ptr->ObtainAnchorBounds())>> r;
+        r.emplace(self->ptr->ObtainAnchorBounds());
+        return ([&]() -> const kiln_layout_coordinates* { if (!((*r))) return nullptr;  return FromCppTransient((*((*r)))); }());
+    } KILN_CAPI_CATCH({})
+}
 KILN_API bool kiln_m3_tooltip_state_is_visible(const kiln_m3_tooltip_state* self) {
     KILN_CAPI_TRY {
         if (!self) return {};
@@ -13828,7 +17424,7 @@ KILN_API bool kiln_m3_tooltip_state_is_persistent(const kiln_m3_tooltip_state* s
         return bool((*r));
     } KILN_CAPI_CATCH({})
 }
-KILN_API void kiln_m3_tooltip_state_show(const kiln_m3_tooltip_state* self, kiln_foundation_mutate_priority priority, kiln_fn done) {
+KILN_API void kiln_m3_tooltip_state_show(const kiln_m3_tooltip_state* self, kiln_mutate_priority priority, kiln_fn done) {
     KILN_CAPI_TRY {
         if (!self) return;
         auto a0 = kiln::foundation::MutatePriority(priority);
@@ -14204,7 +17800,7 @@ KILN_API kiln_opt_int kiln_m3_search_bar_state_collapsed_width(const kiln_m3_sea
         if (!self) return {};
         std::optional<std::remove_cvref_t<decltype(self->ptr->CollapsedWidth())>> r;
         r.emplace(self->ptr->CollapsedWidth());
-        return kiln_opt_int{ ((*r)).has_value(), ((*r)).value_or({}) };
+        return kiln_opt_int{ ((*r)).has_value(), ((*r)).value_or(int{}) };
     } KILN_CAPI_CATCH({})
 }
 KILN_API kiln_m3_search_bar_scroll_state* kiln_m3_search_bar_scroll_behavior_scroll_state(const kiln_m3_search_bar_scroll_behavior* self) {
@@ -14288,7 +17884,7 @@ KILN_API void kiln_m3_slider_state_dispatch_raw_delta(kiln_m3_slider_state* self
         self->ptr->DispatchRawDelta(a0, a1);
     } KILN_CAPI_CATCH()
 }
-KILN_API void kiln_m3_slider_state_configure(kiln_m3_slider_state* self, kiln_foundation_orientation orientation, bool rtl, bool reverse_vertical) {
+KILN_API void kiln_m3_slider_state_configure(kiln_m3_slider_state* self, kiln_orientation orientation, bool rtl, bool reverse_vertical) {
     KILN_CAPI_TRY {
         if (!self) return;
         auto&& a0 = kiln::foundation::Orientation(orientation);
@@ -14305,6 +17901,13 @@ KILN_API void kiln_m3_slider_state_update_dimensions(kiln_m3_slider_state* self,
         auto&& a2 = thumb_width;
         auto&& a3 = thumb_height;
         self->ptr->UpdateDimensions(a0, a1, a2, a3);
+    } KILN_CAPI_CATCH()
+}
+KILN_API void kiln_m3_slider_state_on_press(kiln_m3_slider_state* self, const kiln_offset* position) {
+    KILN_CAPI_TRY {
+        if (!self) return;
+        auto&& a0 = ToCpp(position);
+        self->ptr->OnPress(a0);
     } KILN_CAPI_CATCH()
 }
 KILN_API void kiln_m3_slider_state_set_dragging(kiln_m3_slider_state* self, bool value) {
@@ -14345,12 +17948,12 @@ KILN_API int32_t kiln_m3_slider_state_thumb_height(const kiln_m3_slider_state* s
         return int32_t((*r));
     } KILN_CAPI_CATCH({})
 }
-KILN_API kiln_foundation_orientation kiln_m3_slider_state_orientation(const kiln_m3_slider_state* self) {
+KILN_API kiln_orientation kiln_m3_slider_state_orientation(const kiln_m3_slider_state* self) {
     KILN_CAPI_TRY {
         if (!self) return {};
         std::optional<std::remove_cvref_t<decltype(self->ptr->Orientation())>> r;
         r.emplace(self->ptr->Orientation());
-        return kiln_foundation_orientation((*r));
+        return kiln_orientation((*r));
     } KILN_CAPI_CATCH({})
 }
 KILN_API bool kiln_m3_slider_state_is_rtl(const kiln_m3_slider_state* self) {
@@ -14486,6 +18089,15 @@ KILN_API bool kiln_m3_range_slider_state_is_rtl(const kiln_m3_range_slider_state
         return bool((*r));
     } KILN_CAPI_CATCH({})
 }
+KILN_API void kiln_m3_range_slider_state_update_dimensions(kiln_m3_range_slider_state* self, int32_t width, kiln_int_size start_thumb, kiln_int_size end_thumb) {
+    KILN_CAPI_TRY {
+        if (!self) return;
+        auto&& a0 = width;
+        auto&& a1 = kiln::ui::IntSize{ start_thumb.width, start_thumb.height };
+        auto&& a2 = kiln::ui::IntSize{ end_thumb.width, end_thumb.height };
+        self->ptr->UpdateDimensions(a0, a1, a2);
+    } KILN_CAPI_CATCH()
+}
 KILN_API void kiln_m3_range_slider_state_update_min_max_px(kiln_m3_range_slider_state* self) {
     KILN_CAPI_TRY {
         if (!self) return;
@@ -14514,6 +18126,22 @@ KILN_API int32_t kiln_m3_range_slider_state_total_width(const kiln_m3_range_slid
         std::optional<std::remove_cvref_t<decltype(self->ptr->TotalWidth())>> r;
         r.emplace(self->ptr->TotalWidth());
         return int32_t((*r));
+    } KILN_CAPI_CATCH({})
+}
+KILN_API kiln_int_size kiln_m3_range_slider_state_start_thumb_size(const kiln_m3_range_slider_state* self) {
+    KILN_CAPI_TRY {
+        if (!self) return {};
+        std::optional<std::remove_cvref_t<decltype(self->ptr->StartThumbSize())>> r;
+        r.emplace(self->ptr->StartThumbSize());
+        return kiln_int_size{ ((*r)).width, ((*r)).height };
+    } KILN_CAPI_CATCH({})
+}
+KILN_API kiln_int_size kiln_m3_range_slider_state_end_thumb_size(const kiln_m3_range_slider_state* self) {
+    KILN_CAPI_TRY {
+        if (!self) return {};
+        std::optional<std::remove_cvref_t<decltype(self->ptr->EndThumbSize())>> r;
+        r.emplace(self->ptr->EndThumbSize());
+        return kiln_int_size{ ((*r)).width, ((*r)).height };
     } KILN_CAPI_CATCH({})
 }
 KILN_API void kiln_m3_range_slider_state_set_focused(kiln_m3_range_slider_state* self, bool start, bool value) {
@@ -14781,4 +18409,22 @@ KILN_API float kiln_m3_carousel_item_draw_info_max_size(const kiln_m3_carousel_i
         r.emplace(self->ptr->MaxSize());
         return float((*r));
     } KILN_CAPI_CATCH({})
+}
+KILN_API kiln_rect kiln_m3_carousel_item_draw_info_mask_rect(const kiln_m3_carousel_item_draw_info* self) {
+    KILN_CAPI_TRY {
+        if (!self) return {};
+        std::optional<std::remove_cvref_t<decltype(self->ptr->MaskRect())>> r;
+        r.emplace(self->ptr->MaskRect());
+        return kiln_rect{ ((*r)).left, ((*r)).top, ((*r)).right, ((*r)).bottom };
+    } KILN_CAPI_CATCH({})
+}
+KILN_API void kiln_m3_carousel_item_draw_info_set(kiln_m3_carousel_item_draw_info* self, float size, float min_size, float max_size, kiln_rect mask) {
+    KILN_CAPI_TRY {
+        if (!self) return;
+        auto&& a0 = size;
+        auto&& a1 = min_size;
+        auto&& a2 = max_size;
+        auto&& a3 = kiln::ui::Rect{ mask.left, mask.top, mask.right, mask.bottom };
+        self->ptr->Set(a0, a1, a2, a3);
+    } KILN_CAPI_CATCH()
 }

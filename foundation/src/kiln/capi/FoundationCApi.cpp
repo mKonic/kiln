@@ -61,6 +61,8 @@ namespace kiln::capi {
             std::vector<kiln_shape*> shapes;
             std::vector<kiln_text_style*> styles;
             std::vector<kiln_anim_spec*> specs;
+            std::vector<kiln_rounded_polygon*> polygons;
+            std::vector<kiln_window_insets*> insets;
             std::deque<std::string> strings;
             std::vector<std::shared_ptr<void>> values;
         };
@@ -78,6 +80,10 @@ namespace kiln::capi {
             t_Arena.shapes.clear();
             t_Arena.styles.clear();
             t_Arena.specs.clear();
+            for (auto* h : t_Arena.polygons) Release(h);
+            for (auto* h : t_Arena.insets) Release(h);
+            t_Arena.polygons.clear();
+            t_Arena.insets.clear();
             t_Arena.strings.clear();
             t_Arena.values.clear();
         }
@@ -126,6 +132,47 @@ namespace kiln::capi {
         return t_Arena.strings.back().c_str();
     }
     void KeepTransient(std::shared_ptr<void> value) { t_Arena.values.push_back(std::move(value)); }
+
+    kiln_rounded_polygon* TransientPolygon(gfx::shapes::RoundedPolygon polygon) {
+        auto* h = new kiln_rounded_polygon{ {}, std::move(polygon) };
+        h->refs = 1;
+        t_Arena.polygons.push_back(h);
+        return h;
+    }
+    kiln_window_insets* TransientInsets(fd::WindowInsets insets) {
+        auto* h = new kiln_window_insets;
+        h->insets = std::move(insets);
+        t_Arena.insets.push_back(h);
+        return h;
+    }
+    kiln_interaction_source* TransientSource(std::shared_ptr<fd::MutableInteractionSource> source) {
+        if (!source) return nullptr;
+        auto* h = NewTransient<kiln_interaction_source>();
+        h->source = std::move(source);
+        return h;
+    }
+    kiln_arrangement FromArrangement(const fd::Arrangement& a) {
+        using K = fd::Arrangement::Kind;
+        switch (a.kind) {
+        case K::End: case K::AbsRight: return { KILN_ARRANGE_END, 0, NAN };
+        case K::Center: case K::AbsCenter: return { KILN_ARRANGE_CENTER, 0, NAN };
+        case K::SpaceEvenly: case K::AbsSpaceEvenly: return { KILN_ARRANGE_SPACE_EVENLY, 0, NAN };
+        case K::SpaceBetween: case K::AbsSpaceBetween: return { KILN_ARRANGE_SPACE_BETWEEN, 0, NAN };
+        case K::SpaceAround: case K::AbsSpaceAround: return { KILN_ARRANGE_SPACE_AROUND, 0, NAN };
+        case K::Spaced: return { KILN_ARRANGE_SPACED_BY, a.space.value, a.alignBias.value_or(NAN) };
+        default: return { KILN_ARRANGE_START, 0, NAN };
+        }
+    }
+    kiln_border_stroke FromBorderStroke(const fd::BorderStroke& b) {
+        // Solid strokes only; a gradient's first colour stands in.
+        return { b.width.value, b.brush.colors.empty() ? KILN_COLOR_UNSPECIFIED : FromColor(b.brush.colors.front()) };
+    }
+
+    rt::Composition& CurrentComposition() {
+        rt::Composition* c = rt::Composition::Current();
+        if (!c) throw std::logic_error("a composable call outside content");
+        return *c;
+    }
 
     void InGroup(kiln_key key, const std::function<void()>& body) {
         if (rt::Composition* c = rt::Composition::Current()) c->Section(body, ToKey(key));
@@ -324,6 +371,17 @@ KILN_API void* kiln_remember(kiln_key key, const uint64_t* keys, size_t keyCount
     } CATCH(nullptr)
 }
 
+KILN_API kiln_interaction_source* kiln_remember_interaction_source(kiln_key key) {
+    TRY {
+        return &Current().Remember<kiln_interaction_source>([] { return kiln_interaction_source{ std::make_shared<fd::MutableInteractionSource>() }; },
+                                                             {}, ToKey(key));
+    } CATCH(nullptr)
+}
+KILN_API bool kiln_interaction_source_is_pressed(const kiln_interaction_source* s) { return s && s->source->IsPressed(); }
+KILN_API bool kiln_interaction_source_is_hovered(const kiln_interaction_source* s) { return s && s->source->IsHovered(); }
+KILN_API bool kiln_interaction_source_is_focused(const kiln_interaction_source* s) { return s && s->source->IsFocused(); }
+KILN_API bool kiln_interaction_source_is_dragged(const kiln_interaction_source* s) { return s && s->source->IsDragged(); }
+
 // --- Effects ------------------------------------------------------------------------------------
 
 KILN_API void kiln_side_effect(kiln_key, kiln_fn effect) {
@@ -494,6 +552,62 @@ KILN_API int32_t kiln_image_bitmap_height(const kiln_image_bitmap* b) { return b
 KILN_API kiln_image_bitmap* kiln_image_bitmap_retain(kiln_image_bitmap* b) { return Retain(b); }
 KILN_API void kiln_image_bitmap_release(kiln_image_bitmap* b) { Release(b); }
 
+KILN_API kiln_shape* kiln_shape_from_polygon(const kiln_rounded_polygon* p, int32_t startAngle) {
+    TRY { return p ? NewShape(fd::ToShape(p->polygon, startAngle)) : nullptr; } CATCH(nullptr)
+}
+KILN_API kiln_rounded_polygon* kiln_rounded_polygon_retain(kiln_rounded_polygon* p) { return Retain(p); }
+KILN_API void kiln_rounded_polygon_release(kiln_rounded_polygon* p) { Release(p); }
+
+namespace {
+    kiln_window_insets* NewInsets(fd::WindowInsets i) {
+        auto* h = new kiln_window_insets;
+        h->insets = std::move(i);
+        return h;
+    }
+    const fd::WindowInsets& InsetsOf(const kiln_window_insets* h) {
+        static const fd::WindowInsets none;
+        return h ? h->insets : none;
+    }
+}
+KILN_API kiln_window_insets* kiln_window_insets_of(kiln_window_insets_type type) {
+    TRY {
+        using W = fd::WindowInsets;
+        switch (type) {
+        case KILN_INSETS_SYSTEM_BARS: return NewInsets(W::SystemBars());
+        case KILN_INSETS_STATUS_BARS: return NewInsets(W::StatusBars());
+        case KILN_INSETS_NAVIGATION_BARS: return NewInsets(W::NavigationBars());
+        case KILN_INSETS_CAPTION_BAR: return NewInsets(W::CaptionBar());
+        case KILN_INSETS_IME: return NewInsets(W::Ime());
+        case KILN_INSETS_DISPLAY_CUTOUT: return NewInsets(W::DisplayCutout());
+        case KILN_INSETS_SAFE_DRAWING: return NewInsets(W::SafeDrawing());
+        case KILN_INSETS_SAFE_GESTURES: return NewInsets(W::SafeGestures());
+        case KILN_INSETS_SAFE_CONTENT: return NewInsets(W::SafeContent());
+        case KILN_INSETS_SYSTEM_GESTURES: return NewInsets(W::SystemGestures());
+        case KILN_INSETS_MANDATORY_SYSTEM_GESTURES: return NewInsets(W::MandatorySystemGestures());
+        case KILN_INSETS_TAPPABLE_ELEMENT: return NewInsets(W::TappableElement());
+        case KILN_INSETS_WATERFALL: return NewInsets(W::Waterfall());
+        default: return NewInsets(W());
+        }
+    } CATCH(nullptr)
+}
+KILN_API kiln_window_insets* kiln_window_insets_fixed(float l, float t, float r, float b) {
+    TRY { return NewInsets(fd::WindowInsets::Fixed(ui::Dp(l), ui::Dp(t), ui::Dp(r), ui::Dp(b))); } CATCH(nullptr)
+}
+KILN_API kiln_window_insets* kiln_window_insets_union(const kiln_window_insets* a, const kiln_window_insets* b) {
+    TRY { return NewInsets(InsetsOf(a).Union(InsetsOf(b))); } CATCH(nullptr)
+}
+KILN_API kiln_window_insets* kiln_window_insets_add(const kiln_window_insets* a, const kiln_window_insets* b) {
+    TRY { return NewInsets(InsetsOf(a).Add(InsetsOf(b))); } CATCH(nullptr)
+}
+KILN_API kiln_window_insets* kiln_window_insets_exclude(const kiln_window_insets* a, const kiln_window_insets* b) {
+    TRY { return NewInsets(InsetsOf(a).Exclude(InsetsOf(b))); } CATCH(nullptr)
+}
+KILN_API kiln_window_insets* kiln_window_insets_only(const kiln_window_insets* i, uint32_t sides) {
+    TRY { return NewInsets(InsetsOf(i).Only(fd::WindowInsetsSides{ std::uint8_t(sides) })); } CATCH(nullptr)
+}
+KILN_API kiln_window_insets* kiln_window_insets_retain(kiln_window_insets* i) { return Retain(i); }
+KILN_API void kiln_window_insets_release(kiln_window_insets* i) { Release(i); }
+
 KILN_API kiln_image_vector* kiln_image_vector_from_paths(float w, float h, float vw, float vh, const char* const* paths, size_t count,
                                                          bool autoMirror) {
     TRY {
@@ -540,6 +654,9 @@ KILN_API kiln_modifier* kiln_mod_match_parent_size(kiln_modifier* m) { MOD(fd::M
 KILN_API kiln_modifier* kiln_mod_safe_drawing_padding(kiln_modifier* m) { MOD(fd::SafeDrawingPadding(base)) }
 KILN_API kiln_modifier* kiln_mod_system_bars_padding(kiln_modifier* m) { MOD(fd::SystemBarsPadding(base)) }
 KILN_API kiln_modifier* kiln_mod_ime_padding(kiln_modifier* m) { MOD(fd::ImePadding(base)) }
+KILN_API kiln_modifier* kiln_mod_window_insets_padding(kiln_modifier* m, const kiln_window_insets* i) {
+    MOD(fd::WindowInsetsPadding(base, InsetsOf(i)))
+}
 KILN_API kiln_modifier* kiln_mod_background(kiln_modifier* m, kiln_color c, const kiln_shape* s) {
     MOD(fd::Background(base, ToColor(c), s ? s->shape : fd::RectangleShape()))
 }

@@ -33,6 +33,7 @@ from dataclasses import dataclass, field
 import clang.cindex as ci
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+CORE_NAMES = set(re.findall(r'\bkiln_\w+', open(os.path.join(ROOT, 'include/kiln/kiln.h')).read()))
 M3_DIR = os.path.join(ROOT, 'material3/src/kiln/material3')
 SKIP_NAMESPACES = {'internal', 'detail', 'tokens', 'impl'}
 
@@ -231,10 +232,12 @@ class Generator:
         parts = qual.split('::')
         if parts[:2] == ['kiln', 'material3']:
             parts = parts[2:]
-        else:
-            prefix = 'kiln_' + '_'.join(snake(p) for p in parts[1:-1]) + '_'
-            parts = parts[-1:]
-        return prefix + '_'.join(snake(p) for p in parts)
+            return prefix + '_'.join(snake(p) for p in parts)
+        # Other modules' types: kiln_<name>, or with the namespace where kiln.h has that name.
+        plain = 'kiln_' + snake(parts[-1])
+        if plain not in CORE_NAMES:
+            return plain
+        return 'kiln_' + '_'.join(snake(p) for p in parts[1:])
 
     # --- types -------------------------------------------------------------------------------
 
@@ -316,6 +319,15 @@ class Generator:
                 m = self.map(a, '', arg_of_callback=True)
                 if m.from_cpp is None:
                     raise Unmappable(f'callback argument {a.spelling}')
+                if m.by_out and a.kind == ci.TypeKind.LVALUEREFERENCE and not a.get_pointee().is_const_qualified():
+                    # A struct the callback edits in place: a pointer it writes, copied back after.
+                    st = m.struct
+                    def from_mut(e, o, st=st):
+                        var = f't{len(o)}'
+                        o.append(f'auto* {var} = kiln::capi::NewTransient<{st.c}>(); {var}->size = sizeof(*{var}); FromCpp({e}, {var});')
+                        o.append(f'@post {e} = ToCpp({var});')
+                        return var
+                    m = Mapping(f'{st.c}*', m.to_cpp, from_mut, by_out=False, struct=st)
                 args.append((m, a.spelling))
                 names.append(self.type_word(base))
             retm = None
@@ -328,6 +340,18 @@ class Generator:
             self.callbacks[sig] = Callback(c, args, retm, ret.spelling, sig)
         cb = self.callbacks[sig]
         return Mapping(cb.c, lambda e, cb=cb: f'ToCpp_{cb.c}({e})', None)
+
+    def result_callback(self, t):
+        """The `done` callback of a suspending call with a result: void(result)."""
+        key = 'result:' + canon(t)
+        if key not in self.callbacks:
+            m = self.map(t, '')
+            if m.from_cpp is None:
+                raise Unmappable(f'result {t.spelling}')
+            c = 'kiln_m3_fn_' + self.type_word(t)
+            cpp = t.get_canonical().spelling
+            self.callbacks[key] = Callback(c, [(m, cpp)], None, 'void', f'std::function<void ({cpp})>')
+        return self.callbacks[key]
 
     def guarded_from(self, im, e):
         """An optional's value converted only when it is there (the conversion may need statements)."""
@@ -402,7 +426,8 @@ class Generator:
             return Mapping('float', lambda e: f'kiln::ui::AlignmentV{{ {e} }}', lambda e, o: f'({e}).bias')
         if k == 'kiln::foundation::Arrangement':
             vertical = 'vertical' in name.lower()
-            return Mapping('kiln_arrangement', lambda e: f'kiln::capi::ToArrangement({e}, {str(vertical).lower()})', None)
+            return Mapping('kiln_arrangement', lambda e: f'kiln::capi::ToArrangement({e}, {str(vertical).lower()})',
+                           lambda e, o: f'kiln::capi::FromArrangement({e})')
         if k == 'kiln::ui::DpSize':
             return Mapping('kiln_dp_size', lambda e: f'kiln::ui::DpSize{{ kiln::ui::Dp({e}.width), kiln::ui::Dp({e}.height) }}',
                            lambda e, o: f'kiln_dp_size{{ ({e}).width.value, ({e}).height.value }}')
@@ -420,7 +445,30 @@ class Generator:
         if k == 'kiln::foundation::LazyListState':
             return Mapping('kiln_lazy_list_state*', lambda e: f'*{e}->state', None)
         if k == 'kiln::foundation::BorderStroke':
-            return Mapping('kiln_border_stroke', lambda e: f'kiln::foundation::BorderStroke(kiln::ui::Dp({e}.width), kiln::capi::ToColor({e}.color))', None)
+            return Mapping('kiln_border_stroke', lambda e: f'kiln::foundation::BorderStroke(kiln::ui::Dp({e}.width), kiln::capi::ToColor({e}.color))',
+                           lambda e, o: f'kiln::capi::FromBorderStroke({e})')
+        if k == 'std::shared_ptr<kiln::foundation::MutableInteractionSource>':
+            return Mapping('kiln_interaction_source*', lambda e: f'({e} ? {e}->source : nullptr)', lambda e, o: f'kiln::capi::TransientSource({e})')
+        if k == 'kiln::gfx::shapes::RoundedPolygon':
+            return Mapping('const kiln_rounded_polygon*', lambda e: f'({e} ? {e}->polygon : kiln::gfx::shapes::RoundedPolygon{{}})',
+                           lambda e, o: f'kiln::capi::TransientPolygon({e})')
+        if k == 'kiln::foundation::WindowInsets':
+            return Mapping('const kiln_window_insets*', lambda e: f'({e} ? {e}->insets : kiln::foundation::WindowInsets{{}})',
+                           lambda e, o: f'kiln::capi::TransientInsets({e})')
+        if k == 'std::shared_ptr<const kiln::foundation::CornerBasedShape>':
+            return Mapping('const kiln_shape*', lambda e: f'std::dynamic_pointer_cast<const kiln::foundation::CornerBasedShape>(kiln::capi::ToShape({e}))',
+                           lambda e, o: f'kiln::capi::TransientShape({e})')
+        if k == 'kiln::foundation::CornerSize':
+            return Mapping('kiln_corner_size', lambda e: f'kiln::capi::ToCornerSize({e})', lambda e, o: f'kiln::capi::FromCornerSize({e})')
+        if k == 'kiln::text::TextUnit':
+            return Mapping('kiln_text_unit', lambda e: f'kiln::capi::ToTextUnit({e})', lambda e, o: f'kiln::capi::FromTextUnit({e})')
+        if k == 'kiln::ui::IntSize':
+            return Mapping('kiln_int_size', lambda e: f'kiln::ui::IntSize{{ {e}.width, {e}.height }}', lambda e, o: f'kiln_int_size{{ ({e}).width, ({e}).height }}')
+        if k == 'kiln::ui::Rect':
+            return Mapping('kiln_rect', lambda e: f'kiln::ui::Rect{{ {e}.left, {e}.top, {e}.right, {e}.bottom }}',
+                           lambda e, o: f'kiln_rect{{ ({e}).left, ({e}).top, ({e}).right, ({e}).bottom }}')
+        if k == 'kiln::foundation::PagerState':
+            return Mapping('kiln_pager_state*', lambda e: f'*{e}->state', None)
         if k.startswith('std::function<'):
             return self.callback(base, name)
         m = re.match(r'std::optional<(.*)>$', k)
@@ -433,7 +481,7 @@ class Generator:
                 c, _ = opt_scalar[ik]
                 cpp = inner.get_canonical().spelling
                 return Mapping(c, lambda e, cpp=cpp: f'({e}.set ? std::optional<{cpp}>({e}.value) : std::nullopt)',
-                               lambda e, o, c=c: f'{c}{{ ({e}).has_value(), ({e}).value_or({{}}) }}')
+                               lambda e, o, c=c, cpp=cpp: f'{c}{{ ({e}).has_value(), ({e}).value_or({cpp}{{}}) }}')
             if ik == 'kiln::ui::Dp':
                 return Mapping('kiln_opt_float', lambda e: f'({e}.set ? std::optional<kiln::ui::Dp>(kiln::ui::Dp({e}.value)) : std::nullopt)',
                                lambda e, o: f'kiln_opt_float{{ ({e}).has_value(), ({e}) ? ({e})->value : 0.0f }}')
@@ -457,7 +505,12 @@ class Generator:
                                lambda e, o, st=st: f'(({e}) ? FromCppTransient(*({e})) : nullptr)')
             # Value types: a pointer, NULL is nullopt.
             if im.c.startswith('kiln_') and not im.c.startswith('kiln_fn'):
-                return Mapping(f'const {im.c}*', lambda e, im=im, cpp=cpp_inner: f'({e} ? std::optional<{cpp}>({im.to_cpp("(*" + e + ")")}) : std::nullopt)', None)
+                def from_opt(e, o, im=im):
+                    lines = []
+                    expr = im.from_cpp(f'(*({e}))', lines)
+                    return f'([&]() -> const {im.c}* {{ if (!({e})) return nullptr; {" ".join(lines)} auto* p = kiln::capi::NewTransient<{im.c}>(); *p = {expr}; return p; }}())'
+                return Mapping(f'const {im.c}*', lambda e, im=im, cpp=cpp_inner: f'({e} ? std::optional<{cpp}>({im.to_cpp("(*" + e + ")")}) : std::nullopt)',
+                               from_opt if im.from_cpp else None)
             raise Unmappable(f'optional {k}')
         m = re.match(r'std::shared_ptr<(const )?(kiln::material3::[\w:]+)>$', k)
         if m and m.group(2) in self.records and m.group(2) in self.handle_quals:
@@ -466,6 +519,12 @@ class Generator:
         if d.kind == ci.CursorKind.ENUM_DECL:
             return self.enum(base)
         q = qualname(d) if d.kind != ci.CursorKind.NO_DECL_FOUND else ''
+        # Plain structs of the other kiln modules (DialogProperties, KeyboardOptions, Stroke).
+        if q.startswith('kiln::') and q not in self.records and d.kind in (ci.CursorKind.STRUCT_DECL, ci.CursorKind.CLASS_DECL) \
+                and d.is_definition() and not base.get_canonical().get_num_template_arguments() > 0:
+            if self.public_fields(d) and not self.private_fields(d) and not self.non_copyable(d) \
+                    and not any(p in SKIP_NAMESPACES for p in q.split('::')):
+                self.records[q] = d
         if q in self.records:
             if any(p in SKIP_NAMESPACES for p in q.split('::')):
                 raise Unmappable(f'{q} is internal')
@@ -535,9 +594,16 @@ class Generator:
             if retm.from_cpp is None:
                 self.skipped.append(f'{qual}: result {ret.spelling} cannot be returned')
                 return
-        if is_task and canon(ret_base) != 'kiln::rt::Task<void>':
-            self.skipped.append(f'{qual}: suspending with a result ({ret.spelling})')
+        task_cb = None
+        if is_task and owner is None:
+            self.skipped.append(f'{qual}: a suspending free function')
             return
+        if is_task and canon(ret_base) != 'kiln::rt::Task<void>':
+            try:
+                task_cb = self.result_callback(template_args(ret_base)[0])
+            except Unmappable as e:
+                self.skipped.append(f'{qual}: suspending with a result: {e}')
+                return
         # Names.
         if owner is None:
             ns = [p for p in qual.split('::')[2:-1]]
@@ -563,7 +629,7 @@ class Generator:
             else:
                 c_ret = retm.c
         if is_task:
-            sig_params.append('kiln_fn done')
+            sig_params.append(f'{task_cb.c if task_cb else "kiln_fn"} done')
         self.header_funcs.append((owner.c if owner else self.group_of(cur), f'KILN_API {c_ret} {cname}({", ".join(sig_params)});', cur))
         # Body.
         call = f'{self.call_target(cur, owner)}({", ".join(cpp_args)})'
@@ -576,7 +642,11 @@ class Generator:
             cap = ', '.join(['obj'] + [f'a{i}' for i in range(len(params)) if f'a{i}' in ' '.join(cpp_args)])
             body = [b.replace('auto&& a', 'auto a') for b in body]
             call_obj = call.replace('self->ptr->', 'obj->')
-            body.append(f'kiln::capi::LaunchIn(self->scope, [{cap}]() mutable {{ return {call_obj}; }}, done);')
+            if task_cb:
+                body.append(f'auto cb = ToCpp_{task_cb.c}(done);')
+                body.append(f'kiln::capi::LaunchIn(self->scope, [{cap}, cb]() mutable -> kiln::rt::Task<> {{ auto res = co_await {call_obj}; if (cb) cb(res); }}, kiln_fn{{}});')
+            else:
+                body.append(f'kiln::capi::LaunchIn(self->scope, [{cap}]() mutable {{ return {call_obj}; }}, done);')
         elif retm is None:
             if owner is None and key_param is None:
                 body.append(f'kiln::capi::InGroup(key, [&] {{ {call}; }});')
@@ -593,7 +663,7 @@ class Generator:
                 assign = f'r.emplace({call});'
                 val = '(*r)'
             body.append(store)
-            if owner is None and key_param is None:
+            if handle_ret or (owner is None and key_param is None):
                 if handle_ret:
                     body.append(f'{retm.c} out_handle = nullptr;')
                     body.append('kiln::capi::InGroup(key, [&] {')
@@ -641,6 +711,62 @@ class Generator:
     def group_of(self, cur):
         return os.path.basename(cur.location.file.name)
 
+    def emit_local(self, cur, expr, local_type):
+        """CompositionLocal: read it (`_current`) or provide a value to content (`_provide`)."""
+        qual = qualname(cur)
+        t = template_args(local_type)[0]
+        try:
+            m = self.map(t, '')
+        except Unmappable as e:
+            self.skipped.append(f'{qual}: local of {e}')
+            return
+        ns = qual.split('::')[2:-1]
+        base = 'kiln_m3_' + '_'.join(snake(x) for x in ns + [cur.spelling])
+        group = self.group_of(cur)
+        if m.from_cpp is not None:
+            name = self.unique(base + '_current', [])
+            if m.by_out:
+                sig = ['kiln_key key', f'{m.struct.c}* out']
+                ret = 'void'
+                body = [f'FromCpp(kiln::capi::CurrentComposition().Read({expr}), out);']
+            else:
+                sig = ['kiln_key key']
+                ret = m.c
+                lines = []
+                e = m.from_cpp(f'kiln::capi::CurrentComposition().Read({expr})', lines)
+                body = lines + [f'return {e};']
+            body.insert(0, '(void)key;')
+            self.header_funcs.append((group, f'KILN_API {ret} {name}({", ".join(sig)});', cur))
+            self.glue_funcs.append((name, ret, sig, body))
+        name = self.unique(base + '_provide', [])
+        sig = ['kiln_key key', f'{m.c} value', 'kiln_fn content']
+        body = [f'auto fn = kiln::capi::Fn(content);',
+                f'kiln::capi::CurrentComposition().Provide({expr}, {t.get_canonical().spelling}({m.to_cpp("value")}), fn ? fn : [] {{}}, kiln::capi::ToKey(key));']
+        self.header_funcs.append((group, f'KILN_API void {name}({", ".join(sig)});', cur))
+        self.glue_funcs.append((name, 'void', sig, body))
+
+    def emit_constant(self, cur):
+        """A namespace constant (ButtonDefaults::MinWidth): a getter."""
+        qual = qualname(cur)
+        try:
+            m = self.map(cur.type, '')
+        except Unmappable as e:
+            self.skipped.append(f'{qual}: constant: {e}')
+            return
+        if m.from_cpp is None:
+            self.skipped.append(f'{qual}: constant cannot be returned')
+            return
+        ns = qual.split('::')[2:-1]
+        name = self.unique('kiln_m3_' + '_'.join(snake(x) for x in ns + [cur.spelling]), [])
+        if m.by_out:
+            sig, ret, body = [f'{m.struct.c}* out'], 'void', [f'FromCpp({qual}, out);']
+        else:
+            lines = []
+            e = m.from_cpp(qual, lines)
+            sig, ret, body = ['void'], m.c, lines + [f'return {e};']
+        self.header_funcs.append((self.group_of(cur), f'KILN_API {ret} {name}({", ".join(sig)});', cur))
+        self.glue_funcs.append((name, ret, [] if sig == ['void'] else sig, body))
+
     def reserve_type_names(self):
         for h in self.handles.values():
             self.names.add(h.c)
@@ -667,6 +793,8 @@ class Generator:
     def run(self):
         self.collect()
         funcs = []
+        locals_ = []
+        constants = []
         def walk(c, ns):
             for ch in c.get_children():
                 if ch.kind == ci.CursorKind.NAMESPACE:
@@ -676,7 +804,15 @@ class Generator:
                 elif ch.kind == ci.CursorKind.FUNCTION_DECL and ns[:2] == ['kiln', 'material3'] and self.in_m3(ch):
                     if ch.spelling.startswith('operator'):
                         continue
+                    if canon(strip_ref(ch.result_type)[0]).startswith('kiln::rt::Local<'):
+                        locals_.append((ch, qualname(ch) + '()', strip_ref(ch.result_type)[0]))
+                        continue
                     funcs.append(ch)
+                elif ch.kind == ci.CursorKind.VAR_DECL and ns[:2] == ['kiln', 'material3'] and self.in_m3(ch):
+                    if canon(ch.type).startswith('kiln::rt::Local<'):
+                        locals_.append((ch, qualname(ch), ch.type))
+                    else:
+                        constants.append(ch)
                 elif ch.kind in (ci.CursorKind.STRUCT_DECL, ci.CursorKind.CLASS_DECL) and ch.is_definition() and ns[:2] == ['kiln', 'material3'] \
                         and self.in_m3(ch):
                     # Static methods (MaterialTheme::colorScheme()) are free functions.
@@ -700,6 +836,10 @@ class Generator:
                 continue
             seen.add(usr)
             self.emit_function(f)
+        for cur, expr, t in locals_:
+            self.emit_local(cur, expr, t)
+        for cur in constants:
+            self.emit_constant(cur)
         done = set()
         while True:
             pending = [h for q, h in self.handles.items() if q not in done]
@@ -794,13 +934,19 @@ class Generator:
             out.append('    if (!o) return {};')
             out.append(f'    return [o]({params}) -> {cb.ret_cpp} {{')
             out.append('        kiln::capi::CallbackScope scope;')
+            post = [l[len('@post '):] for l in lines if l.startswith('@post ')]
             for l in lines:
-                out.append('        ' + l)
+                if not l.startswith('@post '):
+                    out.append('        ' + l)
             if cb.ret:
                 out.append(f'        auto r = o->f.call(o->f.user{cargs});')
+                for l in post:
+                    out.append('        ' + l)
                 out.append(f'        return {cb.ret.to_cpp("r")};')
             else:
                 out.append(f'        o->f.call(o->f.user{cargs});')
+                for l in post:
+                    out.append('        ' + l)
             out.append('    };')
             out.append('}')
         for q in self.struct_order:

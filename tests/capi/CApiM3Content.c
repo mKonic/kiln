@@ -51,3 +51,33 @@ void capi_m3(void* user) {
     args.color_scheme = &dark;
     kiln_m3_material_theme(KILN_HERE, &args, KILN_FN(themed, NULL));
 }
+
+/* Snackbars: a suspending call that reports its result; a provided content colour. */
+kiln_m3_snackbar_host_state* capi_snack_host;
+int capi_snack_result = -1;
+kiln_color capi_provided_color;
+
+static void read_color(void* user) {
+    (void)user;
+    capi_provided_color = kiln_m3_local_content_color_current(KILN_HERE);
+}
+static void snack_body(void* user) {
+    (void)user;
+    capi_snack_host = kiln_m3_remember_snackbar_host_state(KILN_HERE);
+    kiln_m3_fn_snackbar_data default_snackbar = { NULL, NULL, NULL };
+    kiln_m3_snackbar_host(KILN_HERE, capi_snack_host, kiln_mod_test_tag(NULL, "host"), default_snackbar);
+    kiln_m3_local_content_color_provide(KILN_HERE, KILN_ARGB(0xFF123456), KILN_FN(read_color, NULL));
+}
+void capi_m3_snackbar(void* user) {
+    (void)user;
+    kiln_m3_material_theme(KILN_HERE, NULL, KILN_FN(snack_body, NULL));
+}
+static void on_result(void* user, kiln_m3_snackbar_result result) { (void)user; capi_snack_result = (int)result; }
+void capi_m3_show_snackbar(void) {
+    kiln_m3_fn_snackbar_result done = { on_result, NULL, NULL };
+    kiln_m3_snackbar_host_state_show_snackbar(capi_snack_host, "Saved", "Undo", false, NULL, done);
+}
+void capi_m3_dismiss_snackbar(void) {
+    kiln_m3_snackbar_data* data = kiln_m3_snackbar_host_state_current_snackbar_data(capi_snack_host);
+    if (data) kiln_m3_snackbar_data_perform_action(data);
+}

@@ -139,6 +139,12 @@ typedef struct kiln_padding { float start, top, end, bottom; } kiln_padding;
 typedef struct kiln_border_stroke { float width; kiln_color color; } kiln_border_stroke;
 typedef struct kiln_dp_size { float width, height; } kiln_dp_size;
 typedef struct kiln_dp_offset { float x, y; } kiln_dp_offset;
+typedef struct kiln_int_size { int32_t width, height; } kiln_int_size;
+typedef struct kiln_rect { float left, top, right, bottom; } kiln_rect;
+/* A corner's size: dp + px + percent of the shape's smaller side. */
+typedef struct kiln_corner_size { float dp, px, percent; } kiln_corner_size;
+typedef enum kiln_text_unit_type { KILN_TEXT_UNIT_UNSPECIFIED, KILN_TEXT_UNIT_SP, KILN_TEXT_UNIT_EM } kiln_text_unit_type;
+typedef struct kiln_text_unit { float value; kiln_text_unit_type type; } kiln_text_unit;
 
 /* ---------------------------------------------------------------------------------------------
  * Callbacks
@@ -222,6 +228,14 @@ typedef struct kiln_remember_init {
     void (*drop_value)(void* value);
 } kiln_remember_init;
 KILN_API void* kiln_remember(kiln_key key, const uint64_t* keys, size_t key_count, kiln_remember_init init);
+
+/* An interaction source (pressed, hovered, focused, dragged), for components that take one. */
+typedef struct kiln_interaction_source kiln_interaction_source;
+KILN_API kiln_interaction_source* kiln_remember_interaction_source(kiln_key key);
+KILN_API bool kiln_interaction_source_is_pressed(const kiln_interaction_source* source);   /* observes */
+KILN_API bool kiln_interaction_source_is_hovered(const kiln_interaction_source* source);
+KILN_API bool kiln_interaction_source_is_focused(const kiln_interaction_source* source);
+KILN_API bool kiln_interaction_source_is_dragged(const kiln_interaction_source* source);
 
 /* ---------------------------------------------------------------------------------------------
  * Effects
@@ -317,6 +331,38 @@ KILN_API int32_t kiln_image_bitmap_height(const kiln_image_bitmap* bitmap);
 KILN_API kiln_image_bitmap* kiln_image_bitmap_retain(kiln_image_bitmap* bitmap);
 KILN_API void kiln_image_bitmap_release(kiln_image_bitmap* bitmap);
 
+/* Rounded polygons (MaterialShapes' shapes): as a shape to clip or fill with. */
+typedef struct kiln_rounded_polygon kiln_rounded_polygon;
+KILN_API kiln_shape* kiln_shape_from_polygon(const kiln_rounded_polygon* polygon, int32_t start_angle_degrees);
+KILN_API kiln_rounded_polygon* kiln_rounded_polygon_retain(kiln_rounded_polygon* polygon);
+KILN_API void kiln_rounded_polygon_release(kiln_rounded_polygon* polygon);
+
+/* Window insets: the system's (by type) or fixed ones, combined per side. */
+typedef enum kiln_window_insets_type {
+    KILN_INSETS_NONE, KILN_INSETS_SYSTEM_BARS, KILN_INSETS_STATUS_BARS, KILN_INSETS_NAVIGATION_BARS,
+    KILN_INSETS_CAPTION_BAR, KILN_INSETS_IME, KILN_INSETS_DISPLAY_CUTOUT, KILN_INSETS_SAFE_DRAWING,
+    KILN_INSETS_SAFE_GESTURES, KILN_INSETS_SAFE_CONTENT, KILN_INSETS_SYSTEM_GESTURES,
+    KILN_INSETS_MANDATORY_SYSTEM_GESTURES, KILN_INSETS_TAPPABLE_ELEMENT, KILN_INSETS_WATERFALL
+} kiln_window_insets_type;
+/* Sides for kiln_window_insets_only (WindowInsetsSides). */
+#define KILN_SIDES_START 0x09u
+#define KILN_SIDES_END 0x06u
+#define KILN_SIDES_TOP 0x10u
+#define KILN_SIDES_BOTTOM 0x20u
+#define KILN_SIDES_LEFT 0x0Au
+#define KILN_SIDES_RIGHT 0x05u
+#define KILN_SIDES_HORIZONTAL (KILN_SIDES_LEFT | KILN_SIDES_RIGHT)
+#define KILN_SIDES_VERTICAL (KILN_SIDES_TOP | KILN_SIDES_BOTTOM)
+typedef struct kiln_window_insets kiln_window_insets;
+KILN_API kiln_window_insets* kiln_window_insets_of(kiln_window_insets_type type);
+KILN_API kiln_window_insets* kiln_window_insets_fixed(float left, float top, float right, float bottom);
+KILN_API kiln_window_insets* kiln_window_insets_union(const kiln_window_insets* a, const kiln_window_insets* b);
+KILN_API kiln_window_insets* kiln_window_insets_add(const kiln_window_insets* a, const kiln_window_insets* b);
+KILN_API kiln_window_insets* kiln_window_insets_exclude(const kiln_window_insets* a, const kiln_window_insets* b);
+KILN_API kiln_window_insets* kiln_window_insets_only(const kiln_window_insets* insets, uint32_t sides);
+KILN_API kiln_window_insets* kiln_window_insets_retain(kiln_window_insets* insets);
+KILN_API void kiln_window_insets_release(kiln_window_insets* insets);
+
 /* Vector images (icons): SVG path data in a viewport, filled black. Icons tint them. */
 typedef struct kiln_image_vector kiln_image_vector;
 KILN_API kiln_image_vector* kiln_image_vector_from_paths(float default_width_dp, float default_height_dp,
@@ -360,6 +406,7 @@ KILN_API kiln_modifier* kiln_mod_match_parent_size(kiln_modifier* m);
 KILN_API kiln_modifier* kiln_mod_safe_drawing_padding(kiln_modifier* m);
 KILN_API kiln_modifier* kiln_mod_system_bars_padding(kiln_modifier* m);
 KILN_API kiln_modifier* kiln_mod_ime_padding(kiln_modifier* m);
+KILN_API kiln_modifier* kiln_mod_window_insets_padding(kiln_modifier* m, const kiln_window_insets* insets);
 /* Drawing. shape NULL: a rectangle. */
 KILN_API kiln_modifier* kiln_mod_background(kiln_modifier* m, kiln_color color, const kiln_shape* shape);
 KILN_API kiln_modifier* kiln_mod_border(kiln_modifier* m, float width, kiln_color color, const kiln_shape* shape);
