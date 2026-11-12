@@ -696,15 +696,46 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
     private boolean pendingShowSoftInput;
 
     private void showSoftInputWhenFocused() {
-        if (hasWindowFocus()) imm().showSoftInput(this, 0);
+        if (hasWindowFocus()) showSoftInput();
         else pendingShowSoftInput = true;
+    }
+
+    // SoftwareKeyboardControllerCompat.show (API 30+): the window's insets controller shows the
+    // IME, then a posted showSoftInput (it also reports the tool type); a direct showSoftInput
+    // right after restartInput is refused while the IME still serves the previous input.
+    // Posted as a whole: a show in the same pass as the window gaining focus loses to the focus change's own
+    // hide (softInputMode stateUnspecified), which the system applies after it.
+    private void showSoftInput() {
+        post(() -> {
+            if (!inputActive) return;
+            if (android.os.Build.VERSION.SDK_INT >= 30) {
+                if (android.os.Build.VERSION.SDK_INT < 33) imm().isActive();   // checkFocus() backport
+                android.view.WindowInsetsController c = getWindowInsetsController();
+                if (c != null) c.show(WindowInsets.Type.ime());
+            }
+            if (hasWindowFocus()) post(() -> imm().showSoftInput(this, 0));
+        });
+    }
+
+    // SoftwareKeyboardControllerCompat.hide (API 30+): through the insets controller, and the
+    // InputMethodManager too when the IME insets are not controllable (multi-window).
+    private void hideSoftInput() {
+        android.view.WindowInsetsController c = android.os.Build.VERSION.SDK_INT >= 30 ? getWindowInsetsController() : null;
+        if (c == null) { imm().hideSoftInputFromWindow(getWindowToken(), 0); return; }
+        final boolean[] controllable = { false };
+        android.view.WindowInsetsController.OnControllableInsetsChangedListener l =
+            (controller, typeMask) -> controllable[0] = (typeMask & WindowInsets.Type.ime()) != 0;
+        c.addOnControllableInsetsChangedListener(l);
+        if (!controllable[0]) imm().hideSoftInputFromWindow(getWindowToken(), 0);
+        c.removeOnControllableInsetsChangedListener(l);
+        c.hide(WindowInsets.Type.ime());
     }
 
     void stopInput() {
         pendingShowSoftInput = false;
         if (!inputActive) return;
         inputActive = false;
-        imm().hideSoftInputFromWindow(getWindowToken(), 0);
+        hideSoftInput();
         imm().restartInput(this);
     }
 
@@ -712,7 +743,7 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
 
     void showKeyboard() { if (inputActive) showSoftInputWhenFocused(); }
 
-    void hideKeyboard() { pendingShowSoftInput = false; imm().hideSoftInputFromWindow(getWindowToken(), 0); }
+    void hideKeyboard() { pendingShowSoftInput = false; hideSoftInput(); }
 
     /** The field changed without a restart (AndroidTextInputSession.collectImeNotifications). */
     void imeUpdate(int selStart, int selEnd, int compStart, int compEnd, boolean selectionChanged) {
@@ -1567,7 +1598,7 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
         KilnNative.windowFocusChanged(windowId, hasWindowFocus);
         if (hasWindowFocus && pendingShowSoftInput) {
             pendingShowSoftInput = false;
-            if (inputActive) imm().showSoftInput(this, 0);
+            if (inputActive) showSoftInput();
         }
     }
 
