@@ -378,6 +378,15 @@ namespace kiln::foundation {
             k.value = std::uint64_t(index) * 2 + 1;   // index-keyed items
             return k;
         }
+        // The index of the item with the user key `key` (-1: none).
+        int IndexOfUserKey(const rt::Key& key) const {
+            int base = 0;
+            for (const auto& iv : intervals) {
+                if (iv.key) for (int i = 0; i < iv.count; ++i) if (iv.key(i) == key) return base + i;
+                base += iv.count;
+            }
+            return -1;
+        }
         void Content(int index) const {
             int local = 0;
             if (const auto* iv = IntervalOf(index, local)) iv->content(iv->sticky ? index : local);
@@ -1934,6 +1943,7 @@ namespace kiln::foundation {
                     return true;
                 };
                 c.scrollViewportLength = [sp] { return sp->ViewportLength(); };
+                c.indexForKey = [cp](const rt::Key& key) { return cp->IndexOfUserKey(key); };
                 if (cp->grid || cp->staggered) c.collectionInfo = std::pair{ -1, -1 };
                 else c.collectionInfo = vertical ? std::pair{ cp->count, 1 } : std::pair{ 1, cp->count };
             });

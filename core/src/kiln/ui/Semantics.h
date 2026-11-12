@@ -8,9 +8,12 @@
 #include "kiln/ui/Geometry.h"
 #include "kiln/ui/Credentials.h"
 #include "kiln/ui/Modifier.h"
+#include "kiln/runtime/Composition.h"
 #include "kiln/runtime/Task.h"
 
+#include <any>
 #include <functional>
+#include <map>
 #include <memory>
 #include <optional>
 #include <string>
@@ -83,7 +86,46 @@ namespace kiln::ui {
 
     // SemanticsConfiguration: the properties and actions of SemanticsProperties /
     // SemanticsActions. Unset optionals and empty functions are absent keys; Unit keys are bools.
+    // SemanticsPropertyKey: an app's own semantics property (for tests or custom services).
+    // Merging into a parent goes through mergePolicy (parent value, child value) -> value; by
+    // default the parent's value stays, else the child's.
+    template<typename T>
+    struct SemanticsPropertyKey {
+        std::string name;
+        std::function<std::optional<T>(const std::optional<T>& parent, const T& child)> mergePolicy;
+    };
+
     struct SemanticsConfiguration {
+        // Custom properties (SemanticsPropertyKey), by key identity.
+        struct CustomValue {
+            std::any value;
+            std::function<std::optional<std::any>(const std::any* parent, const std::any& child)> merge;
+        };
+        std::map<const void*, CustomValue> custom;
+        template<typename T>
+        void Set(const SemanticsPropertyKey<T>& key, T value) {
+            CustomValue v;
+            v.value = std::move(value);
+            if (key.mergePolicy) {
+                auto policy = key.mergePolicy;
+                v.merge = [policy](const std::any* parent, const std::any& child) -> std::optional<std::any> {
+                    auto r = policy(parent ? std::optional<T>(std::any_cast<const T&>(*parent)) : std::nullopt, std::any_cast<const T&>(child));
+                    return r ? std::optional<std::any>(std::move(*r)) : std::nullopt;
+                };
+            }
+            custom[&key] = std::move(v);
+        }
+        // getOrNull / contains.
+        template<typename T>
+        const T* GetOrNull(const SemanticsPropertyKey<T>& key) const {
+            auto it = custom.find(&key);
+            return it == custom.end() ? nullptr : std::any_cast<T>(&it->second.value);
+        }
+        template<typename T>
+        bool Contains(const SemanticsPropertyKey<T>& key) const { return custom.count(&key) != 0; }
+        // IndexForKey (lazy layouts): the item index of a key, -1 when not there.
+        std::function<int(const rt::Key&)> indexForKey;
+
         bool mergeDescendants = false;   // isMergingSemanticsOfDescendants
         bool clearAndSet = false;        // isClearingSemantics
         bool isTraversalGroup = false;
@@ -174,7 +216,7 @@ namespace kiln::ui {
             return !contentDescription.empty() || !text.empty() || editableText || stateDescription || onClick ||
                    focused || role != Role::None || heading || selected || toggleableState || paneTitle ||
                    scrollBy || collectionInfo || collectionItemInfo || progressBarRangeInfo || !customActions.empty() ||
-                   hintText || error || liveRegion || selectableGroup;
+                   hintText || error || liveRegion || selectableGroup || !custom.empty();
         }
         // containsImportantForAccessibility: a property other than testTag, traversal index,
         // traversal group, test-tag-as-id, shape and the sensitive / substitution flags.
@@ -189,6 +231,7 @@ namespace kiln::ui {
         void Overlay(const SemanticsConfiguration& outer);
         // Same keys and values (actions compare by presence and label, like accessibilityEquals).
         bool Equivalent(const SemanticsConfiguration& o) const;
+        bool SameCustomKeys(const SemanticsConfiguration& o) const;
     };
 
     class SemanticsModifier {
@@ -214,5 +257,11 @@ namespace kiln::ui {
 
     class Owner;
 
+    // SemanticsOwner.getAllSemanticsNodes: every placed node of the tree (merged as the tree
+    // merges them), flattened with each one's children left out.
+    std::vector<SemanticsNode> GetAllSemanticsNodes(Owner& owner);
+    // forEachUncoveredSemanticsNode: the nodes accessibility sees, each with its uncovered bounds.
+    using UncoveredSemanticsNodeVisitor = std::function<void(const SemanticsNode&)>;
+    void ForEachUncoveredSemanticsNode(Owner& owner, const UncoveredSemanticsNodeVisitor& visitor);
 
 }

@@ -206,10 +206,14 @@ nestedScrollModifierNode = "NestedScrollNode"
 UnplacedAwareModifierNode = "LayoutAwareModifier"   # OnUnplaced
 onVisibilityChangedNode = "OnVisibilityChanged"   # no delegation: the modifier
 calculateOuterBoundsInRoot = "BoundsInRoot"
+SemanticsPropertyReceiver = "SemanticsConfiguration"
+SemanticsPropertyProvider = "SemanticsModifier"
+AccessibilityAction = "SemanticsConfiguration"   # each action: a function and its label
 CacheDrawModifierNode = "CacheDrawModifierNode"
 DrawCacheModifier = "CacheDrawModifierNode"
 
 [skipped]
+hasKeysMissingFrom = "kiln's configuration is a struct of typed fields; Equivalent compares them"
 DelegatingNode = "kiln nodes implement several capability interfaces themselves; nothing to delegate to"
 requireView = "Android View access: the host owns the view"
 AbstractComposeView = "Android View hosting: kiln's host is KilnView"

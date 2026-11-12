@@ -271,3 +271,27 @@ TEST(VisibilityBoundsAndDebouncedRectCallbacks) {
     CHECK_EQ(rects.back().top, 350);
     rt::Dispatcher::Main().SetVirtualTime(false);
 }
+
+#include "kiln/foundation/Lazy.h"
+#include "kiln/foundation/Semantics.h"
+
+namespace { inline ui::SemanticsPropertyKey<int> PriorityKey{ "Priority", [](const std::optional<int>& p, const int& c) { return std::optional<int>((p ? *p : 0) + c); } }; }
+
+TEST(CustomSemanticsKeysMergeAndLazyIndexForKey) {
+    Harness h;
+    h.Run([&] {
+        Box(Semantics(Modifier{}, [](SemanticsConfiguration& c) { c.Set(PriorityKey, 1); }, true), Alignment::TopStart(), false, [&] {
+            Box(Semantics(SizeMod(Modifier{}, Dp(10), Dp(10)), [](SemanticsConfiguration& c) { c.Set(PriorityKey, 2); }));
+        });
+        LazyColumn(SizeMod(Modifier{}, Dp(100), Dp(100)), RememberLazyListState(), [](LazyListScope& s) {
+            s.Items(10, [](int) { Box(SizeMod(Modifier{}, Dp(10), Dp(10))); }, [](int i) { return rt::Key(1000 + i); });
+        });
+    });
+    int merged = -1, index = -1;
+    for (const auto& n : GetAllSemanticsNodes(h.owner)) {
+        if (const int* p = n.config.GetOrNull(PriorityKey)) merged = std::max(merged, *p);
+        if (n.config.indexForKey) index = n.config.indexForKey(rt::Key(1007));
+    }
+    CHECK_EQ(merged, 3);   // the child's 2 merged into the parent's 1
+    CHECK_EQ(index, 7);
+}

@@ -87,6 +87,17 @@ namespace kiln::ui {
         Fill(scrollBy, c.scrollBy); Fill(scrollByOffset, c.scrollByOffset); Fill(scrollToIndex, c.scrollToIndex);
         Fill(scrollViewportLength, c.scrollViewportLength); Fill(scrollViewportPadding, c.scrollViewportPadding);
         Fill(pageUp, c.pageUp); Fill(pageDown, c.pageDown); Fill(pageLeft, c.pageLeft); Fill(pageRight, c.pageRight);
+        Fill(indexForKey, c.indexForKey);
+        for (const auto& [key, v] : c.custom) {
+            auto it = custom.find(key);
+            if (v.merge) {
+                auto merged = v.merge(it == custom.end() ? nullptr : &it->second.value, v.value);
+                if (merged) custom[key] = { std::move(*merged), v.merge };
+                else if (it != custom.end()) custom.erase(it);
+            } else if (it == custom.end()) {
+                custom[key] = v;
+            }
+        }
     }
 
     void SemanticsConfiguration::Overlay(const SemanticsConfiguration& o) {
@@ -137,6 +148,8 @@ namespace kiln::ui {
         Take(scrollBy, o.scrollBy); Take(scrollByOffset, o.scrollByOffset); Take(scrollToIndex, o.scrollToIndex);
         Take(scrollViewportLength, o.scrollViewportLength); Take(scrollViewportPadding, o.scrollViewportPadding);
         Take(pageUp, o.pageUp); Take(pageDown, o.pageDown); Take(pageLeft, o.pageLeft); Take(pageRight, o.pageRight);
+        Take(indexForKey, o.indexForKey);
+        for (const auto& [key, v] : o.custom) custom[key] = v;
     }
 
     bool SemanticsConfiguration::Equivalent(const SemanticsConfiguration& o) const {
@@ -186,7 +199,14 @@ namespace kiln::ui {
                bool(pageUp) == bool(o.pageUp) && bool(pageDown) == bool(o.pageDown) && bool(pageLeft) == bool(o.pageLeft) &&
                bool(pageRight) == bool(o.pageRight) && contentType == o.contentType && contentDataType == o.contentDataType &&
                fillableData == o.fillableData && inputText == o.inputText && bool(onFillData) == bool(o.onFillData) &&
-               credentialRequest == o.credentialRequest;
+               credentialRequest == o.credentialRequest && bool(indexForKey) == bool(o.indexForKey) && SameCustomKeys(o);
+    }
+
+    bool SemanticsConfiguration::SameCustomKeys(const SemanticsConfiguration& o) const {
+        // Values are opaque here: the same keys count as the same.
+        if (custom.size() != o.custom.size()) return false;
+        for (const auto& [k, v] : custom) if (!o.custom.count(k)) return false;
+        return true;
     }
 
     FillableData FillableData::FromText(std::u16string_view text) {
@@ -382,6 +402,33 @@ namespace kiln::ui {
         Region unaccounted{ { Round(root.boundsInRoot) } };
         KeepUncovered(root, unaccounted);
         return root;
+    }
+
+
+    namespace {
+        void Flatten(const SemanticsNode& n, std::vector<SemanticsNode>& out) {
+            SemanticsNode copy;
+            copy.id = n.id;
+            copy.layout = n.layout;
+            copy.boundsInRoot = n.boundsInRoot;
+            copy.config = n.config;
+            out.push_back(std::move(copy));
+            for (const auto& c : n.children) Flatten(c, out);
+        }
+        void Visit(const SemanticsNode& n, const UncoveredSemanticsNodeVisitor& v) {
+            v(n);
+            for (const auto& c : n.children) Visit(c, v);
+        }
+    }
+
+    std::vector<SemanticsNode> GetAllSemanticsNodes(Owner& owner) {
+        std::vector<SemanticsNode> out;
+        Flatten(owner.BuildSemanticsTree(false), out);
+        return out;
+    }
+
+    void ForEachUncoveredSemanticsNode(Owner& owner, const UncoveredSemanticsNodeVisitor& visitor) {
+        Visit(owner.BuildSemanticsTree(true), visitor);
     }
 
 }
