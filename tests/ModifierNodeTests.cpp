@@ -205,3 +205,39 @@ TEST(PlatformServiceLocalsDefaultToTheOwner) {
     CHECK(copied);
     CHECK(toolbar->Status() == TextToolbarStatus::Hidden);
 }
+
+#include "kiln/foundation/DrawCache.h"
+
+TEST(DrawWithCacheRebuildsOnlyWhenItsInputsChange) {
+    Harness h;
+    rt::State<float> width(40), tint(1);
+    int builds = 0, draws = 0;
+    float seenWidth = 0;
+    h.Run([&] {
+        Box(Modifier{}, Alignment::TopStart(), false, [&] {
+            Box(DrawWithCache(SizeMod(Modifier{}, Dp(width.Get()), Dp(20)), [&](CacheDrawScope& c) {
+                ++builds;
+                seenWidth = c.GetSize().width;
+                (void)tint.Get();   // read while building: a change rebuilds
+                auto layer = c.ObtainGraphicsLayer();
+                return c.OnDrawBehind([&, layer](ui::DrawScope&) { ++draws; });
+            }));
+        });
+    });
+    auto draw = [&] { h.owner.Draw(ui::DrawTarget{}); };
+    draw();
+    draw();
+    CHECK_EQ(builds, 1);
+    CHECK_EQ(draws, 2);
+    CHECK_EQ(seenWidth, 40.0f);
+    tint.Set(2);
+    h.Pump();
+    draw();
+    CHECK(builds >= 2);
+    const int before = builds;
+    width.Set(60);
+    h.Pump();
+    draw();
+    CHECK(builds > before);
+    CHECK_EQ(seenWidth, 60.0f);
+}
