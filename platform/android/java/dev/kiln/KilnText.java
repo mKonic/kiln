@@ -865,10 +865,31 @@ final class KilnText {
         return r == BreakIterator.DONE ? -1 : r;
     }
 
-    /** String.toUpperCase for a locale tag (the default locale when empty): AllCaps. */
-    String upperCase(String text, String localeTag) {
+    /** Case mapping for a locale tag (the default locale when empty), as AndroidStringDelegate:
+     *  0 uppercase, 1 lowercase, 2 capitalize (a lower-case first character to title case),
+     *  3 decapitalize (the first character to lower case). */
+    String mapCase(String text, String localeTag, int op) {
         Locale locale = localeTag == null || localeTag.isEmpty() ? Locale.getDefault() : Locale.forLanguageTag(localeTag);
-        return text.toUpperCase(locale);
+        switch (op) {
+            case 0: return text.toUpperCase(locale);
+            case 1: return text.toLowerCase(locale);
+            default: {
+                // replaceFirstChar: the first UTF-16 unit.
+                if (text.isEmpty()) return text;
+                char first = text.charAt(0);
+                String mapped = op == 2 ? (Character.isLowerCase(first) ? titlecase(first, locale) : String.valueOf(first))
+                                        : String.valueOf(first).toLowerCase(locale);
+                return mapped + text.substring(1);
+            }
+        }
+    }
+
+    // Kotlin's Char.titlecase(locale).
+    private static String titlecase(char c, Locale locale) {
+        String localized = String.valueOf(c).toUpperCase(locale);
+        if (localized.length() > 1) return c == '\u0149' ? localized : localized.charAt(0) + localized.substring(1).toLowerCase(Locale.ROOT);
+        if (!localized.equals(String.valueOf(c).toUpperCase(Locale.ROOT))) return localized;
+        return String.valueOf(Character.toTitleCase(c));
     }
 
     /** BreakIterator.getWordInstance (the default locale) preceding / following; -1 at the ends. */

@@ -77,7 +77,7 @@ namespace kiln::foundation {
 
     // Upper-casing for AllCaps (String.toUpperCase(Locale) on Android). The default handles the
     // characters with a one-to-one simple upper case mapping.
-    void SetUpperCaseFunction(std::function<std::u16string(std::u16string_view, const std::string& localeTag)> fn);
+    // (The host's locale-aware mapping is text::SetCaseMapper.)
     std::u16string ToUpperCase(std::u16string_view text, const std::string& localeTag);
 
     enum class TextObfuscationMode : std::uint8_t { Visible, RevealLastTyped, Hidden, System };

@@ -26,7 +26,8 @@ namespace kiln::android {
         int CharacterBreak(std::u16string_view text, int offset, bool following) override;
         int WordBreak(std::u16string_view text, int offset, bool following) override;
         int CharacterType(char32_t codePoint) override;
-        std::u16string UpperCase(std::u16string_view text, const std::string& localeTag);
+        // text::CaseOp: 0 upper, 1 lower, 2 capitalize, 3 decapitalize.
+        std::u16string MapCase(std::u16string_view text, const std::string& localeTag, int op);
 
     private:
         // Java arguments for a request: text, ints, floats, strings (local refs).

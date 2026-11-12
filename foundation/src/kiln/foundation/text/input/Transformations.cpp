@@ -1,4 +1,5 @@
 #include "kiln/foundation/text/input/Transformations.h"
+#include "kiln/text/CaseMapping.h"
 
 #include <cwctype>
 #include <stdexcept>
@@ -108,10 +109,6 @@ namespace kiln::foundation {
             }
         };
 
-        std::function<std::u16string(std::u16string_view, const std::string&)>& UpperCaseFn() {
-            static std::function<std::u16string(std::u16string_view, const std::string&)> fn;
-            return fn;
-        }
     }
 
     InputTransformationPtr Then(InputTransformationPtr first, InputTransformationPtr next) {
@@ -201,17 +198,6 @@ namespace kiln::foundation {
         return out;
     }
 
-    void SetUpperCaseFunction(std::function<std::u16string(std::u16string_view, const std::string&)> fn) { UpperCaseFn() = std::move(fn); }
-
-    std::u16string ToUpperCase(std::u16string_view text, const std::string& localeTag) {
-        if (UpperCaseFn()) return UpperCaseFn()(text, localeTag);
-        std::u16string out(text);
-        for (char16_t& c : out) {
-            if (c >= u'a' && c <= u'z') c = char16_t(c - 32);
-            else if ((c >= 0xE0 && c <= 0xFE && c != 0xF7)) c = char16_t(c - 32);
-            else if (c >= 0x100 && c < 0xD800) c = char16_t(std::towupper(wint_t(c)));
-        }
-        return out;
-    }
+    std::u16string ToUpperCase(std::u16string_view text, const std::string& localeTag) { return text::MapCase(text, localeTag, text::CaseOp::Upper); }
 
 }

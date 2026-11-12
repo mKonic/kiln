@@ -1,6 +1,7 @@
 #include "Check.h"
 
 #include "kiln/text/AnnotatedString.h"
+#include "kiln/text/CaseMapping.h"
 
 using namespace kiln;
 using namespace kiln::text;
@@ -117,4 +118,30 @@ TEST(TextStylesLerpLikeCompose) {
     c.span.fontSize = text::TextUnit::Unspecified();
     CHECK(text::Lerp(a, c, 0.4f).span.fontSize == text::Sp(16));
     CHECK(!text::Lerp(a, c, 0.6f).span.fontSize.IsSpecified());
+}
+
+TEST(CaseMappingKeepsAnnotationsOnTheirRuns) {
+    using namespace kiln::text;
+    CHECK(ToUpperCase(std::string_view("abc")) == "ABC" && ToLowerCase(std::string_view("ABC")) == "abc");
+    CHECK(Capitalize(std::string_view("hello world")) == "Hello world" && Decapitalize(std::string_view("Hello")) == "hello");
+    CHECK(Capitalize(std::string_view("Hello")) == "Hello");
+    // A host mapping that changes length ("ß" -> "SS") moves the following annotations along.
+    SetCaseMapper([](std::u16string_view t, const std::string&, CaseOp op) {
+        std::u16string out;
+        for (char16_t c : t) {
+            if (op == CaseOp::Upper && c == u'ß') out += u"SS";
+            else out += op == CaseOp::Upper && c >= u'a' && c <= u'z' ? char16_t(c - 32) : c;
+        }
+        return out;
+    });
+    AnnotatedStringBuilder b;
+    b.Append("stra\xC3\x9F" "e ");
+    SpanStyle bold;
+    bold.fontWeight = FontWeight::Bold();
+    b.WithStyle(bold, [&] { b.Append("big"); });
+    const AnnotatedString up = ToUpperCase(b.ToAnnotatedString());
+    SetCaseMapper(nullptr);
+    CHECK(up.Text() == "STRASSE BIG");
+    const auto spans = up.SpanStyles();
+    CHECK(spans.size() == 1u && spans[0].start == 8 && spans[0].end == 11);
 }

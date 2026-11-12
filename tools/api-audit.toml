@@ -314,6 +314,16 @@ CloseSegment = "PathSegment Close"
 DoneSegment = "PathSegment Done"
 StampedPathEffectStyle = "StampStyle"
 
+# ui-text
+KeyboardCapitalization = "Capitalization"
+GenericFontFamily = "FontFamily"
+SystemFontFamily = "FontFamily"
+FontListFontFamily = "FontFamily"
+FileBasedFontFamily = "FontFamily"
+DeviceFontFamilyName = "FontFamily System"
+ResourceFont = "Font"
+toFontFamily = "FontFamily Of"
+
 [skipped]
 hasKeysMissingFrom = "kiln's configuration is a struct of typed fields; Equivalent compares them"
 DelegatingNode = "kiln nodes implement several capability interfaces themselves; nothing to delegate to"
@@ -559,6 +569,17 @@ toComposeRect = "Android interop"
 CanvasHolder = "Android interop (android.graphics.Canvas holder)"
 fromColorLong = "Android ColorLong packing: kiln Color is 32-bit sRGB"
 toColorLong = "Android ColorLong packing: kiln Color is 32-bit sRGB"
+
+# ui-text
+AndroidFont = "Android Typeface loading: kiln fonts are files, assets or downloadable (Font)"
+TypefaceLoader = "Android Typeface loading"
+Typeface = "Android Typeface objects: the text backend resolves fonts"
+LoadedFontFamily = "Android Typeface objects"
+createFontFamilyResolver = "Android font resolution: the text backend resolves fonts"
+resolveAsTypeface = "Android Typeface objects"
+Resolver = "FontFamily.Resolver: the text backend resolves fonts"
+StaticLayoutFactory = "Android StaticLayout internals"
+toSpan = "Android spans (TtsSpan)"
 
 [skipped_patterns]
 '^ViewCompositionStrategy::' = "Android View hosting"

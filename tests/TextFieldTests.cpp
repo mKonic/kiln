@@ -1,4 +1,5 @@
 #include "Check.h"
+#include "kiln/foundation/text/input/TextFieldValue.h"
 #include "kiln/ui/Back.h"
 #include "kiln/foundation/contextmenu/ContextMenuUi.h"
 #include "kiln/ui/Semantics.h"
@@ -1169,4 +1170,26 @@ TEST(ToolbarProviderReplacesThePlatformToolbar) {
     CHECK_EQ(provider.shown, 1);
     CHECK(provider.items >= 3);   // cut, copy, select all
     CHECK(!h.owner.TextToolbarShown());
+}
+
+TEST(EditProcessorAppliesImeCommandsLikeCompose) {
+    using namespace kiln::foundation;
+    EditProcessor p;
+    p.Reset(TextFieldValue("hello", TextRange(5)));
+    auto v = p.Apply({ std::make_shared<SetComposingTextCommand>("wor", 1) });
+    CHECK(v.Text() == "hellowor" && v.Composition() == std::optional<TextRange>(TextRange(5, 8)) && v.Selection() == TextRange(8));
+    v = p.Apply({ std::make_shared<CommitTextCommand>("world", 1) });
+    CHECK(v.Text() == "helloworld" && !v.Composition() && v.Selection() == TextRange(10));
+    v = p.Apply({ std::make_shared<BackspaceCommand>(), std::make_shared<MoveCursorCommand>(-4) });
+    CHECK(v.Text() == "helloworl" && v.Selection() == TextRange(5));
+    v = p.Apply({ std::make_shared<DeleteSurroundingTextCommand>(2, 1) });
+    CHECK(v.Text() == "helorl" && v.Selection() == TextRange(3));
+    // A surrogate pair counts as one code point.
+    p.Reset(TextFieldValue("a\xF0\x9F\x98\x80" "b", TextRange(3)));
+    v = p.Apply({ std::make_shared<DeleteSurroundingTextInCodePointsCommand>(1, 0) });
+    CHECK(v.Text() == "ab" && v.Selection() == TextRange(1));
+    v = p.Apply({ std::make_shared<SetSelectionCommand>(2, 0), std::make_shared<DeleteAllCommand>() });
+    CHECK(v.Text().empty());
+    const TextFieldValue tf("hello world", TextRange(6, 11));
+    CHECK(GetSelectedText(tf).Text() == "world" && GetTextBeforeSelection(tf, 3).Text() == "lo " && GetTextAfterSelection(tf, 3).Text().empty());
 }

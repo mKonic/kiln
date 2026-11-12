@@ -6,6 +6,7 @@ namespace kiln::android { void InstallImageDecoder(); void InstallAssetReader(JN
 
 #include "kiln/foundation/text/TextFieldState.h"
 #include "kiln/text/AnnotatedString.h"
+#include "kiln/text/CaseMapping.h"
 #include "kiln/ui/MediaQuery.h"
 #include "kiln/ui/Back.h"
 #include "kiln/ui/Accessibility.h"
@@ -1113,8 +1114,8 @@ namespace {
         kiln::android::InstallDateFormat(env);
         g_Host = new Host();
         g_Host->text = std::make_unique<kiln::android::AndroidText>(env, text);
-        kiln::foundation::SetUpperCaseFunction([](std::u16string_view t, const std::string& tag) {
-            return g_Host && g_Host->text ? g_Host->text->UpperCase(t, tag) : std::u16string(t);
+        kiln::text::SetCaseMapper([](std::u16string_view t, const std::string& tag, kiln::text::CaseOp op) {
+            return g_Host && g_Host->text ? g_Host->text->MapCase(t, tag, int(op)) : std::u16string(t);
         });
         {
             jclass vc = env->GetObjectClass(view);
