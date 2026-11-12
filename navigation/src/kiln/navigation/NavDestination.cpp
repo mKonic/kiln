@@ -133,26 +133,60 @@ namespace kiln::navigation {
 
     // --- NavDeepLink ----------------------------------------------------------------------------
 
-    NavDeepLink::NavDeepLink(std::string uriPattern) : m_UriPattern(std::move(uriPattern)) {
+    NavDeepLinkRequest NavDeepLinkRequest::FromAction(std::string action) {
+        if (action.empty()) throw std::invalid_argument("The NavDeepLinkRequest cannot have an empty action.");
+        return { std::nullopt, std::move(action), std::nullopt };
+    }
+
+    NavDeepLinkRequest NavDeepLinkRequest::FromMimeType(std::string mimeType) {
+        static const std::regex pattern(R"(^[-\w*.]+/[-\w+*.]+$)");
+        if (!std::regex_match(mimeType, pattern))
+            throw std::invalid_argument("The given mimeType " + mimeType + " does not match to required \"type/subtype\" format");
+        return { std::nullopt, std::nullopt, std::move(mimeType) };
+    }
+
+    std::string NavDeepLinkRequest::ToString() const {
+        std::string out = "NavDeepLinkRequest{";
+        if (uri) out += " uri=" + uri->ToString();
+        if (action) out += " action=" + *action;
+        if (mimeType) out += " mimetype=" + *mimeType;
+        return out + " }";
+    }
+
+    NavDeepLink::NavDeepLink(std::optional<std::string> uriPattern, std::optional<std::string> action, std::optional<std::string> mimeType)
+        : m_UriPattern(std::move(uriPattern)), m_Action(std::move(action)), m_MimeType(std::move(mimeType)) {
+        if (m_Action && m_Action->empty()) throw std::invalid_argument("The NavDeepLink cannot have an empty action.");
+        // parseMime: type and subtype each match exactly, or anything where the deep link has "*"
+        // (a request's own "*" matches too). The parts are escaped (upstream puts them in the
+        // pattern raw, so "svg+xml" would not match itself).
+        if (m_MimeType) {
+            const std::size_t slash = m_MimeType->find('/');
+            if (slash == std::string::npos || slash == 0 || slash + 1 >= m_MimeType->size())
+                throw std::invalid_argument("The given mimeType " + *m_MimeType + " does not match to required \"type/subtype\" format");
+            auto part = [](const std::string& p) { return p == "*" ? std::string("[\\s\\S]+") : "(?:" + RegexEscape(p) + "|[*]+)"; };
+            m_MimeRegex = "^" + part(m_MimeType->substr(0, slash)) + "/" + part(m_MimeType->substr(slash + 1)) + "$";
+        }
+        if (!m_UriPattern) return;
+        const std::string& pattern = *m_UriPattern;
         // parsePath
         static const std::regex scheme(R"(^[a-zA-Z]+[+\w\-.]*:)");
         std::string regex = "^";
-        if (!std::regex_search(m_UriPattern, scheme)) regex += "http[s]?://";
-        const std::size_t split = std::min(m_UriPattern.find_first_of("?#"), m_UriPattern.size());
-        BuildRegex(m_UriPattern.substr(0, split), m_PathArgs, regex);
+        if (!std::regex_search(pattern, scheme)) regex += "http[s]?://";
+        const std::size_t split = std::min(pattern.find_first_of("?#"), pattern.size());
+        BuildRegex(pattern.substr(0, split), m_PathArgs, regex);
         regex += "($|(\\?(.)*)|(#(.)*))";
         m_PathRegex = SaveWildcard(regex);
         m_IsExact = m_PathRegex.find(".*") == std::string::npos && m_PathRegex.find(kPathRegex) == std::string::npos;
         // parseQuery
         static const std::regex queryPattern(R"(^[^?#]+\?([^#]*).*)");
-        m_IsParameterizedQuery = std::regex_match(m_UriPattern, queryPattern);
+        m_IsParameterizedQuery = std::regex_match(pattern, queryPattern);
         if (m_IsParameterizedQuery) {
-            const NavUri uri(m_UriPattern);
+            const NavUri uri(pattern);
             static const std::regex fillIn(R"(\{(.+?)\})");
             for (const auto& name : uri.QueryParameterNames()) {
                 const auto params = uri.QueryParameters(name);
                 if (params.size() > 1)
-                    throw std::invalid_argument("Query parameter " + name + " must only be present once in " + m_UriPattern + ".");
+                    throw std::invalid_argument("Query parameter " + name + " must only be present once in " + pattern + ".");
                 std::string queryParam = params.empty() ? name : params.front();
                 if (params.empty()) m_SingleQueryParamValueOnly = true;
                 ParamQuery param;
@@ -172,7 +206,7 @@ namespace kiln::navigation {
             }
         }
         // parseFragment
-        if (const auto frag = NavUri(m_UriPattern).Fragment()) BuildRegex(*frag, m_FragArgs, m_FragRegex);
+        if (const auto frag = NavUri(pattern).Fragment()) BuildRegex(*frag, m_FragArgs, m_FragRegex);
     }
 
     std::vector<std::string> NavDeepLink::ArgumentsNames() const {
@@ -182,11 +216,27 @@ namespace kiln::navigation {
         return out;
     }
 
-    bool NavDeepLink::Matches(const NavUri& uri) const {
-        return std::regex_match(uri.ToString(), std::regex(m_PathRegex, std::regex::icase));
+    bool NavDeepLink::Matches(const NavDeepLinkRequest& request) const {
+        // Each part this deep link has must be matched; a part it lacks matches anything.
+        if (m_UriPattern && (!request.uri || !std::regex_match(request.uri->ToString(), std::regex(m_PathRegex, std::regex::icase)))) return false;
+        if (m_Action && (!request.action || *request.action != *m_Action)) return false;
+        if (m_MimeType && (!request.mimeType || !std::regex_match(*request.mimeType, std::regex(m_MimeRegex)))) return false;
+        return true;
+    }
+
+    int NavDeepLink::GetMimeTypeMatchRating(const std::string& mimeType) const {
+        if (!m_MimeType || !std::regex_match(mimeType, std::regex(m_MimeRegex))) return -1;
+        auto split = [](const std::string& m) {
+            const std::size_t slash = m.find('/');
+            return std::pair<std::string, std::string>(m.substr(0, slash), slash == std::string::npos ? std::string() : m.substr(slash + 1));
+        };
+        const auto [type, subType] = split(*m_MimeType);
+        const auto [otherType, otherSubType] = split(mimeType);
+        return (type == otherType ? 2 : 0) + (subType == otherSubType ? 1 : 0);
     }
 
     std::optional<NavArgs> NavDeepLink::GetMatchingArguments(const NavUri& uri, const std::map<std::string, NavArgument>& arguments) const {
+        if (!m_UriPattern) return std::nullopt;
         std::smatch result;
         const std::string s = uri.ToString();
         if (!std::regex_match(s, result, std::regex(m_PathRegex, std::regex::icase))) return std::nullopt;
@@ -202,30 +252,7 @@ namespace kiln::navigation {
             }
         }
         // Query arguments.
-        if (m_IsParameterizedQuery) {
-            for (const auto& [paramName, stored] : m_QueryArgs) {
-                std::vector<std::string> inputs = uri.QueryParameters(paramName);
-                if (m_SingleQueryParamValueOnly) {
-                    const auto q = uri.Query();
-                    if (q && *q != s) inputs = { *q };
-                }
-                NavArgs temp;
-                const std::regex pattern(stored.regex);
-                for (const auto& input : inputs) {
-                    std::smatch m;
-                    if (!std::regex_match(input, m, pattern)) return std::nullopt;
-                    for (std::size_t i = 0; i < stored.arguments.size(); ++i) {
-                        const std::string& name = stored.arguments[i];
-                        if (temp.contains(name)) continue;   // repeated params: collections only
-                        try {
-                            ParseArgument(temp, name, m[i + 1].str(), argOf(name));
-                        } catch (const std::invalid_argument&) {
-                        }
-                    }
-                }
-                for (auto& [k, v] : temp) out[k] = v;
-            }
-        }
+        if (!QueryArguments(uri, s, arguments, out)) return std::nullopt;
         // Fragment arguments.
         if (!m_FragRegex.empty()) {
             const std::string fragment = uri.Fragment().value_or("null");
@@ -244,9 +271,56 @@ namespace kiln::navigation {
         return out;
     }
 
-    int NavDeepLink::CalculateMatchingPathSegments(const NavUri& uri) const {
-        const auto requested = uri.PathSegments();
-        const auto pattern = NavUri(m_UriPattern).PathSegments();
+    bool NavDeepLink::QueryArguments(const NavUri& uri, const std::string& s, const std::map<std::string, NavArgument>& arguments, NavArgs& out) const {
+        if (!m_IsParameterizedQuery) return true;
+        auto argOf = [&](const std::string& name) -> const NavArgument* { auto it = arguments.find(name); return it == arguments.end() ? nullptr : &it->second; };
+        for (const auto& [paramName, stored] : m_QueryArgs) {
+            std::vector<std::string> inputs = uri.QueryParameters(paramName);
+            if (m_SingleQueryParamValueOnly) {
+                const auto q = uri.Query();
+                if (q && *q != s) inputs = { *q };
+            }
+            NavArgs temp;
+            const std::regex pattern(stored.regex);
+            for (const auto& input : inputs) {
+                std::smatch m;
+                if (!std::regex_match(input, m, pattern)) return false;
+                for (std::size_t i = 0; i < stored.arguments.size(); ++i) {
+                    const std::string& name = stored.arguments[i];
+                    if (temp.contains(name)) continue;   // repeated params: collections only
+                    try {
+                        ParseArgument(temp, name, m[i + 1].str(), argOf(name));
+                    } catch (const std::invalid_argument&) {
+                    }
+                }
+            }
+            for (auto& [k, v] : temp) out[k] = v;
+        }
+        return true;
+    }
+
+    NavArgs NavDeepLink::GetMatchingPathAndQueryArgs(const std::optional<NavUri>& uri, const std::map<std::string, NavArgument>& arguments) const {
+        NavArgs out;
+        if (!uri || !m_UriPattern) return out;
+        std::smatch result;
+        const std::string s = uri->ToString();
+        if (!std::regex_match(s, result, std::regex(m_PathRegex, std::regex::icase))) return out;
+        for (std::size_t i = 0; i < m_PathArgs.size(); ++i) {
+            auto it = arguments.find(m_PathArgs[i]);
+            try {
+                ParseArgument(out, m_PathArgs[i], NavUri::Decode(result[i + 1].str()), it == arguments.end() ? nullptr : &it->second);
+            } catch (const std::invalid_argument&) {
+                return out;   // the uri does not fit this deep link's types
+            }
+        }
+        QueryArguments(*uri, s, arguments, out);
+        return out;
+    }
+
+    int NavDeepLink::CalculateMatchingPathSegments(const std::optional<NavUri>& uri) const {
+        if (!uri || !m_UriPattern) return 0;
+        const auto requested = uri->PathSegments();
+        const auto pattern = NavUri(*m_UriPattern).PathSegments();
         std::set<std::string> a(requested.begin(), requested.end()), b(pattern.begin(), pattern.end());
         int n = 0;
         for (const auto& s : a) if (b.contains(s)) ++n;
@@ -306,6 +380,48 @@ namespace kiln::navigation {
     }
 
     std::string NavDestination::DisplayName() const { return m_Route ? *m_Route : std::to_string(m_Id); }
+
+    NavDeepLink NavDeepLinkDslBuilder::Build() const {
+        if (!uriPattern && !action && !mimeType)
+            throw std::invalid_argument("The NavDeepLink must have an uri, action, and/or mimeType.");
+        return NavDeepLink(uriPattern, action, mimeType);
+    }
+
+    NavDeepLink NavDeepLinkOf(const std::function<void(NavDeepLinkDslBuilder&)>& deepLinkBuilder) {
+        NavDeepLinkDslBuilder b;
+        deepLinkBuilder(b);
+        return b.Build();
+    }
+
+    void NavDestination::AddDeepLink(NavDeepLink navDeepLink) {
+        const auto names = navDeepLink.ArgumentsNames();
+        const auto missing = MissingRequiredArguments(m_Arguments, [&](const std::string& k) { return std::find(names.begin(), names.end(), k) == names.end(); });
+        if (!missing.empty())
+            throw std::invalid_argument("Deep link " + navDeepLink.UriPattern().value_or("") + " can't be used to open destination " + DisplayName() +
+                                        ".\nFollowing required arguments are missing: " + missing.front());
+        m_DeepLinks.push_back(std::move(navDeepLink));
+    }
+
+    std::optional<DeepLinkMatch> NavDestination::MatchDeepLink(const NavDeepLinkRequest& request) {
+        std::optional<DeepLinkMatch> best;
+        for (const NavDeepLink& deepLink : m_DeepLinks) {
+            if (!deepLink.Matches(request)) continue;
+            std::optional<NavArgs> matchingArguments;
+            if (request.uri) matchingArguments = deepLink.GetMatchingArguments(*request.uri, m_Arguments);
+            const int matchingPathSegments = deepLink.CalculateMatchingPathSegments(request.uri);
+            const bool matchingAction = request.action && request.action == deepLink.Action();
+            const int mimeTypeMatchLevel = request.mimeType ? deepLink.GetMimeTypeMatchRating(*request.mimeType) : -1;
+            auto hasRequiredArguments = [&] {
+                const NavArgs args = deepLink.GetMatchingPathAndQueryArgs(request.uri, m_Arguments);
+                return MissingRequiredArguments(m_Arguments, [&](const std::string& k) { return !args.contains(k); }).empty();
+            };
+            if (matchingArguments || ((matchingAction || mimeTypeMatchLevel > -1) && hasRequiredArguments())) {
+                DeepLinkMatch m{ this, std::move(matchingArguments), deepLink.IsExactDeepLink(), matchingPathSegments, matchingAction, mimeTypeMatchLevel };
+                if (!best || *best < m) best = std::move(m);
+            }
+        }
+        return best;
+    }
 
     std::optional<DeepLinkMatch> NavDestination::MatchRoute(const std::string& route) {
         if (!m_RouteDeepLink) return std::nullopt;
@@ -396,6 +512,29 @@ namespace kiln::navigation {
             consider(std::move(bestChild));
         }
         if (searchParent && Parent() && Parent() != lastVisited) consider(Parent()->MatchRouteComprehensive(route, searchChildren, true, this));
+        return best;
+    }
+
+    std::optional<DeepLinkMatch> NavGraph::MatchDeepLink(const NavDeepLinkRequest& request) {
+        return MatchDeepLinkComprehensive(request, true, false, this);
+    }
+
+    std::optional<DeepLinkMatch> NavGraph::MatchDeepLinkComprehensive(const NavDeepLinkRequest& request, bool searchChildren, bool searchParent,
+                                                                      NavDestination* lastVisited) {
+        // This graph's own deep links, its children's (each graph searching its own), then the
+        // parents'.
+        std::optional<DeepLinkMatch> best = NavDestination::MatchDeepLink(request);
+        auto consider = [&](std::optional<DeepLinkMatch> m) { if (m && (!best || *best < *m)) best = std::move(m); };
+        if (searchChildren) {
+            std::optional<DeepLinkMatch> bestChild;
+            for (auto& child : m_Nodes) {
+                if (child.get() == lastVisited) continue;
+                std::optional<DeepLinkMatch> m = child->MatchDeepLink(request);
+                if (m && (!bestChild || *bestChild < *m)) bestChild = std::move(m);
+            }
+            consider(std::move(bestChild));
+        }
+        if (searchParent && Parent() && Parent() != lastVisited) consider(Parent()->MatchDeepLinkComprehensive(request, searchChildren, true, this));
         return best;
     }
 

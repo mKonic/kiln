@@ -2,8 +2,9 @@
 
 // navigation-common: arguments (NavType, NavArgument), route patterns (NavDeepLink's uri pattern
 // matching, as routes use it), NavDestination and NavGraph. Routes are strings with {argument}
-// placeholders in the path or query ("detail/{id}?tab={tab}"). Not here: deep links by intent
-// action or mime type, and type-safe (serializable) routes.
+// placeholders in the path or query ("detail/{id}?tab={tab}"). Deep links match a uri pattern,
+// an action and a mime type (NavDeepLinkRequest). Type-safe (kotlinx.serialization) routes have
+// no C++ counterpart.
 
 #include "kiln/Uri.h"
 
@@ -47,20 +48,48 @@ namespace kiln::navigation {
 
     using NavUri = kiln::Uri;
 
-    // NavDeepLink (uri pattern only): matches uris and extracts the arguments.
+    // NavDeepLinkRequest: what a deep link is asked to match: a uri, an action and a mime type,
+    // any of them absent.
+    struct NavDeepLinkRequest {
+        std::optional<NavUri> uri;
+        std::optional<std::string> action;
+        std::optional<std::string> mimeType;
+        // Builder.fromUri / fromAction / fromMimeType (an empty action or a mime type not
+        // "type/subtype" throws std::invalid_argument).
+        static NavDeepLinkRequest FromUri(NavUri uri) { return { std::move(uri), std::nullopt, std::nullopt }; }
+        static NavDeepLinkRequest FromAction(std::string action);
+        static NavDeepLinkRequest FromMimeType(std::string mimeType);
+        std::string ToString() const;
+    };
+
+    // NavDeepLink: a uri pattern ({argument} placeholders in the path, query and fragment), an
+    // action and a mime type ("type/subtype", either part "*"), each optional. A request matches
+    // when every part the deep link has matches; the uri gives the arguments.
     class NavDeepLink {
     public:
-        explicit NavDeepLink(std::string uriPattern);
-        const std::string& UriPattern() const { return m_UriPattern; }
+        explicit NavDeepLink(std::string uriPattern) : NavDeepLink(std::optional<std::string>(std::move(uriPattern)), std::nullopt, std::nullopt) {}
+        // An empty action or a mime type that is not "type/subtype" throws std::invalid_argument.
+        NavDeepLink(std::optional<std::string> uriPattern, std::optional<std::string> action, std::optional<std::string> mimeType);
+        const std::optional<std::string>& UriPattern() const { return m_UriPattern; }
+        const std::optional<std::string>& Action() const { return m_Action; }
+        const std::optional<std::string>& MimeType() const { return m_MimeType; }
         bool IsExactDeepLink() const { return m_IsExact; }
         std::vector<std::string> ArgumentsNames() const;
-        bool Matches(const NavUri& uri) const;
+        bool Matches(const NavUri& uri) const { return Matches(NavDeepLinkRequest::FromUri(uri)); }
+        bool Matches(const NavDeepLinkRequest& request) const;
         // The arguments `uri` gives, or nullopt when it does not match or misses a required one.
         std::optional<NavArgs> GetMatchingArguments(const NavUri& uri, const std::map<std::string, NavArgument>& arguments) const;
-        int CalculateMatchingPathSegments(const NavUri& uri) const;
+        // The path and query arguments that parse (none when the uri does not match).
+        NavArgs GetMatchingPathAndQueryArgs(const std::optional<NavUri>& uri, const std::map<std::string, NavArgument>& arguments) const;
+        int CalculateMatchingPathSegments(const std::optional<NavUri>& uri) const;
+        // getMimeTypeMatchRating: -1 no match; else 2 for the same type plus 1 for the same subtype.
+        int GetMimeTypeMatchRating(const std::string& mimeType) const;
+        bool operator==(const NavDeepLink& o) const { return m_UriPattern == o.m_UriPattern && m_Action == o.m_Action && m_MimeType == o.m_MimeType; }
     private:
         struct ParamQuery { std::string regex; std::vector<std::string> arguments; };
-        std::string m_UriPattern;
+        bool QueryArguments(const NavUri& uri, const std::string& whole, const std::map<std::string, NavArgument>& arguments, NavArgs& out) const;
+        std::optional<std::string> m_UriPattern, m_Action, m_MimeType;
+        std::string m_MimeRegex;
         std::vector<std::string> m_PathArgs;
         std::string m_PathRegex;
         bool m_IsExact = false;
@@ -70,6 +99,13 @@ namespace kiln::navigation {
         std::vector<std::string> m_FragArgs;
         std::string m_FragRegex;
     };
+
+    // navDeepLink { uriPattern = ...; action = ...; mimeType = ... }
+    struct NavDeepLinkDslBuilder {
+        std::optional<std::string> uriPattern, action, mimeType;
+        NavDeepLink Build() const;   // one of the three is required (std::invalid_argument)
+    };
+    NavDeepLink NavDeepLinkOf(const std::function<void(NavDeepLinkDslBuilder&)>& deepLinkBuilder);
 
     class NavGraph;
 
@@ -106,6 +142,15 @@ namespace kiln::navigation {
         void SetRoute(std::optional<std::string> route);
         virtual std::string DisplayName() const;
         void AddDeepLink(const std::string& uriPattern) { m_DeepLinks.emplace_back(uriPattern); }
+        // addDeepLink: a deep link with arguments not declared on the destination throws
+        // std::invalid_argument.
+        void AddDeepLink(NavDeepLink navDeepLink);
+        const std::vector<NavDeepLink>& DeepLinks() const { return m_DeepLinks; }
+        // matchDeepLink: the best of this destination's deep links for the request (a graph's
+        // also searches its children).
+        virtual std::optional<DeepLinkMatch> MatchDeepLink(const NavDeepLinkRequest& request);
+        bool HasDeepLink(const NavUri& deepLink) { return HasDeepLink(NavDeepLinkRequest::FromUri(deepLink)); }
+        bool HasDeepLink(const NavDeepLinkRequest& request) { return MatchDeepLink(request).has_value(); }
         std::optional<DeepLinkMatch> MatchRoute(const std::string& route);
         bool HasRoute(const std::string& route, const std::optional<NavArgs>& arguments);
         void AddArgument(const std::string& name, NavArgument argument) { m_Arguments[name] = std::move(argument); }
@@ -142,6 +187,9 @@ namespace kiln::navigation {
         void Remove(NavDestination* node);
         void Clear();
         std::optional<DeepLinkMatch> MatchRouteComprehensive(const std::string& route, bool searchChildren, bool searchParent, NavDestination* lastVisited);
+        std::optional<DeepLinkMatch> MatchDeepLink(const NavDeepLinkRequest& request) override;
+        std::optional<DeepLinkMatch> MatchDeepLinkComprehensive(const NavDeepLinkRequest& request, bool searchChildren, bool searchParent,
+                                                                NavDestination* lastVisited);
         NavDestination* FindNodeComprehensive(int id, NavDestination* lastVisited, bool searchChildren, NavDestination* matchingDest = nullptr);
         NavDestination* FindNode(int id) { return FindNodeComprehensive(id, this, false); }
         NavDestination* FindNode(const std::string& route, bool searchParents = true);

@@ -687,6 +687,18 @@ namespace kiln::navigation {
         NavigateTo(node, args, navOptions);
     }
 
+    void NavController::Navigate(const NavDeepLinkRequest& request, const std::optional<NavOptions>& navOptions) {
+        if (!m_Graph) throw std::logic_error("Cannot navigate to " + request.ToString() + ". Navigation graph has not been set for NavController.");
+        NavGraph& top = TopGraph();
+        const auto match = top.MatchDeepLinkComprehensive(request, true, true, &top);
+        if (!match)
+            throw std::invalid_argument("Navigation destination that matches request " + request.ToString() + " cannot be found in the navigation graph");
+        NavDestination* node = match->destination;
+        std::optional<NavArgs> args = node->AddInDefaultArgs(match->matchingArgs);
+        if (!args) args = NavArgs{};
+        NavigateTo(node, args, navOptions);
+    }
+
     void NavController::NavigateTo(NavDestination* node, const std::optional<NavArgs>& args, const std::optional<NavOptions>& navOptions) {
         for (auto& [n, s] : m_NavigatorState) s->isNavigating = true;
         bool popped = false, launchSingleTop = false, navigated = false;

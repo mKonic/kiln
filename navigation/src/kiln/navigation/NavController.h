@@ -222,6 +222,10 @@ namespace kiln::navigation {
         void SetGraph(std::shared_ptr<NavGraph> graph, std::optional<NavArgs> startDestinationArgs = std::nullopt);
 
         void Navigate(const std::string& route, const std::optional<NavOptions>& navOptions = std::nullopt);
+        // navigate(request / deepLink): the destination whose deep link best matches (in the whole
+        // graph, from the current one out); none throws std::invalid_argument.
+        void Navigate(const NavDeepLinkRequest& request, const std::optional<NavOptions>& navOptions = std::nullopt);
+        void Navigate(const NavUri& deepLink, const std::optional<NavOptions>& navOptions = std::nullopt) { Navigate(NavDeepLinkRequest::FromUri(deepLink), navOptions); }
         void Navigate(const std::string& route, const std::function<void(NavOptionsBuilder&)>& builder) { Navigate(route, MakeNavOptions(builder)); }
         bool PopBackStack();
         bool PopBackStack(const std::string& route, bool inclusive, bool saveState = false);

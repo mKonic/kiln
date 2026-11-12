@@ -96,12 +96,12 @@ namespace kiln::navigation {
 
     struct ComposableOptions {
         std::vector<NamedNavArgument> arguments;
-        std::vector<std::string> deepLinks;
+        std::vector<NavDeepLink> deepLinks;   // navDeepLink { ... } / NavDeepLink(uriPattern)
         NavDestinationTransitions transitions;   // pop transitions default to the enter / exit ones
     };
     struct DialogOptions {
         std::vector<NamedNavArgument> arguments;
-        std::vector<std::string> deepLinks;
+        std::vector<NavDeepLink> deepLinks;   // navDeepLink { ... } / NavDeepLink(uriPattern)
         foundation::DialogProperties dialogProperties;
     };
 

@@ -49,6 +49,52 @@ TEST(RoutesMatchWithTypedArguments) {
     CHECK(profile.MatchRoute("profile").has_value());   // the default fills in
 }
 
+TEST(DeepLinksMatchUrisActionsAndMimeTypes) {
+    auto c = Controller([](NavGraphBuilder& b) {
+        b.Composable("home", [](const NavBackStackEntry&) {});
+        b.Composable("item/{id}", [](const NavBackStackEntry&) {},
+                     { { NavArgumentOf("id", NavType::Int) }, { NavDeepLink("https://example.com/items/{id}") } });
+        b.Composable("share", [](const NavBackStackEntry&) {}, { {}, { NavDeepLinkOf([](NavDeepLinkDslBuilder& d) {
+            d.action = "android.intent.action.SEND";
+            d.mimeType = "image/*";
+        }) } });
+        b.Composable("text", [](const NavBackStackEntry&) {}, { {}, { NavDeepLinkOf([](NavDeepLinkDslBuilder& d) { d.mimeType = "text/plain"; }),
+                                                                      NavDeepLinkOf([](NavDeepLinkDslBuilder& d) { d.mimeType = "image/svg+xml"; }) } });
+    }, "home");
+    // A uri gives the arguments; the route pattern itself is not a deep link.
+    c->Navigate(NavUri("https://example.com/items/42"));
+    CHECK(Routes(*c).back() == "item/{id}" && c->CurrentBackStackEntry()->GetInt("id") == std::optional<std::int32_t>(42));
+    bool threw = false;
+    try { c->Navigate(NavUri("https://example.com/items/abc")); } catch (const std::invalid_argument&) { threw = true; }
+    CHECK(threw);
+    // Action and mime type: every part the deep link has must match; a wildcard subtype matches
+    // any, and an exact one ranks above it.
+    c->Navigate(NavDeepLinkRequest{ std::nullopt, std::string("android.intent.action.SEND"), std::string("image/png") });
+    CHECK(Routes(*c).back() == "share");
+    threw = false;
+    try { c->Navigate(NavDeepLinkRequest::FromAction("android.intent.action.SEND")); } catch (const std::invalid_argument&) { threw = true; }
+    CHECK(threw);   // the share link also needs a mime type
+    c->Navigate(NavDeepLinkRequest::FromMimeType("text/plain"));
+    CHECK(Routes(*c).back() == "text");
+    c->Navigate(NavDeepLinkRequest::FromMimeType("image/svg+xml"));
+    CHECK(Routes(*c).back() == "text");   // "svg+xml" matches itself (escaped; upstream puts the "+" in its regex raw)
+    const NavDeepLink wild = NavDeepLinkOf([](NavDeepLinkDslBuilder& d) { d.mimeType = "image/*"; });
+    CHECK(wild.GetMimeTypeMatchRating("image/png") == 2 && wild.GetMimeTypeMatchRating("video/mp4") == -1);
+    CHECK(NavDeepLinkOf([](NavDeepLinkDslBuilder& d) { d.mimeType = "*/*"; }).GetMimeTypeMatchRating("video/mp4") == 0);
+    // A deep link missing a required argument, an empty action and a bad mime type are errors.
+    threw = false;
+    ComposeNavigator::Destination needsId([](const NavBackStackEntry&) {});
+    needsId.AddArgument("id", NavArgument{ NavType::Int });
+    try { needsId.AddDeepLink(NavDeepLink("https://example.com/other")); } catch (const std::invalid_argument&) { threw = true; }
+    CHECK(threw);
+    threw = false;
+    try { (void)NavDeepLinkRequest::FromMimeType("plain"); } catch (const std::invalid_argument&) { threw = true; }
+    CHECK(threw);
+    threw = false;
+    try { (void)NavDeepLinkOf([](NavDeepLinkDslBuilder&) {}); } catch (const std::invalid_argument&) { threw = true; }
+    CHECK(threw);
+}
+
 TEST(NavControllerNavigatesPopsAndLaunchesSingleTop) {
     auto c = Controller(Screens, "home");
     CHECK(Routes(*c) == std::vector<std::string>{ "home" });

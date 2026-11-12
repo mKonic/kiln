@@ -34,7 +34,7 @@ namespace kiln::navigation {
     // --- NavGraphBuilder ------------------------------------------------------------------------
 
     namespace {
-        void ApplyArguments(NavDestination& d, const std::vector<NamedNavArgument>& args, const std::vector<std::string>& deepLinks) {
+        void ApplyArguments(NavDestination& d, const std::vector<NamedNavArgument>& args, const std::vector<NavDeepLink>& deepLinks) {
             for (const auto& a : args) d.AddArgument(a.name, a.argument);
             for (const auto& l : deepLinks) d.AddDeepLink(l);
         }
