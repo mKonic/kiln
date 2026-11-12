@@ -6,6 +6,7 @@
 #include "kiln/foundation/Layouts.h"
 #include "kiln/ui/MediaQuery.h"
 #include "kiln/foundation/FrameRate.h"
+#include "kiln/ui/PlatformTextInput.h"
 
 using namespace kiln;
 using namespace kiln::foundation;
@@ -381,4 +382,75 @@ TEST(PreferredFrameRateVotesFromWhatDraws) {
     h.Pump();
     h.owner.Draw({});
     CHECK(h.owner.LastFrameRateVote().category == FrameRateCategory::Normal());
+}
+
+namespace {
+    struct FakeRequest final : TextInputSession {
+        ImeOptions options;
+        ImeOptions Options() const override { return options; }
+        TextInputSnapshot Snapshot() const override { return {}; }
+        void CommitText(std::u16string_view, int, bool) override {}
+        void SetComposingText(std::u16string_view, int, const std::vector<text::Range<text::SpanStyle>>*, bool) override {}
+        void SetComposingRegion(int, int) override {}
+        void FinishComposingText() override {}
+        void DeleteSurroundingText(int, int) override {}
+        void DeleteSurroundingTextInCodePoints(int, int) override {}
+        void SetSelection(int, int) override {}
+        void PerformImeAction(ImeAction) override {}
+    };
+    // Makes every request below it a number keyboard.
+    struct NumberInterceptor final : PlatformTextInputInterceptor {
+        int seen = 0;
+        rt::Task<> InterceptStartInputMethod(PlatformTextInputMethodRequest& request, PlatformTextInputSession& next) override {
+            ++seen;
+            return Forward(&request, &next);
+        }
+        static rt::Task<> Forward(PlatformTextInputMethodRequest* request, PlatformTextInputSession* next) {
+            FakeRequest numbers;
+            numbers.options = request->Options();
+            numbers.options.keyboardType = KeyboardType::Number;
+            co_await next->StartInputMethod(numbers);
+        }
+    };
+}
+
+TEST(PlatformTextInputSessionsStartStopAndIntercept) {
+    Harness h;
+    std::vector<std::string> log;
+    TextInputHost host;
+    host.start = [&](const ImeOptions& o, const TextInputSnapshot&) { log.push_back(o.keyboardType == KeyboardType::Number ? "start:number" : "start"); };
+    host.stop = [&] { log.push_back("stop"); };
+    h.owner.SetTextInputHost(host);
+    auto interceptor = std::make_shared<NumberInterceptor>();
+    rt::State<bool> intercept(false);
+    h.Run([&] {
+        if (intercept.Get()) InterceptPlatformTextInput(interceptor, [&] { Box(ProbeMod(SizeMod(Modifier{}, Dp(10), Dp(10)), 1)); });
+        else Box(ProbeMod(SizeMod(Modifier{}, Dp(10), Dp(10)), 1));
+    });
+    auto probe = [&]() -> ModifierNode& {
+        for (LayoutNode* n = &h.owner.Root(); n;) {
+            for (const ModifierNode* m : n->ModifierNodes()) if (dynamic_cast<const ProbeNode*>(m)) return const_cast<ModifierNode&>(*m);
+            n = n->Children().empty() ? nullptr : n->Children()[0];
+        }
+        throw std::logic_error("no probe");
+    };
+    FakeRequest request;
+    auto session = [](ModifierNode* node, FakeRequest* r) -> rt::Task<> {
+        co_await EstablishTextInputSession(*node, [r](PlatformTextInputSessionScope& s) -> rt::Task<> { return s.StartInputMethod(*r); });
+    };
+    rt::Job first = rt::Launch(rt::Dispatcher::Main(), session(&probe(), &request));
+    CHECK(log == std::vector<std::string>{ "start" });
+    // A second session cancels the first (which stops its input method).
+    rt::Job second = rt::Launch(rt::Dispatcher::Main(), session(&probe(), &request));
+    CHECK(log == (std::vector<std::string>{ "start", "stop", "start" }));
+    second.Cancel();
+    CHECK(log.back() == "stop");
+    // Under an interceptor the request it passes on reaches the host.
+    intercept.Set(true);
+    h.Pump();
+    log.clear();
+    rt::Job third = rt::Launch(rt::Dispatcher::Main(), session(&probe(), &request));
+    CHECK(interceptor->seen == 1 && log == std::vector<std::string>{ "start:number" });
+    third.Cancel();
+    CHECK(log.back() == "stop");
 }
