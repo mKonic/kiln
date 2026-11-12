@@ -42,8 +42,11 @@
 #include <kiln/runtime/Task.h>
 #include <kiln/runtime/Saveable.h>
 #include <kiln/foundation/AndroidExternalSurface.h>
+#include <cstring>
 #if defined(__ANDROID__)
 #include <android/native_window.h>
+#include <media/NdkMediaCodec.h>
+#include <media/NdkMediaFormat.h>
 #endif
 
 using namespace kiln::foundation;
@@ -108,6 +111,107 @@ namespace {
 #endif
     }
     kiln::rt::Task<> FillRed(kiln::foundation::SurfaceCoroutineScope& s, kiln::foundation::Surface f, int w, int h) { return FillSurface(s, f, w, h, 0xFF2020C0u); }
+    // A decoder's frames: a short H.264 clip encoded here (a bar sweeping over a gradient, every
+    // frame a key frame), decoded in a loop into the surface. Decoders write their own YUV
+    // format, which kiln samples through a Y'CbCr conversion.
+    kiln::rt::Task<> PlayVideo(kiln::foundation::SurfaceCoroutineScope& scope, kiln::foundation::Surface surface, int, int) {
+#if defined(__ANDROID__)
+        constexpr int W = 320, H = 192, N = 60;
+        struct Packet { std::vector<std::uint8_t> data; std::uint32_t flags; };
+        struct Codec {
+            AMediaCodec* c = nullptr;
+            ~Codec() { if (c) { AMediaCodec_stop(c); AMediaCodec_delete(c); } }
+        };
+        auto format = [](bool encoder) {
+            AMediaFormat* f = AMediaFormat_new();
+            AMediaFormat_setString(f, AMEDIAFORMAT_KEY_MIME, "video/avc");
+            AMediaFormat_setInt32(f, AMEDIAFORMAT_KEY_WIDTH, W);
+            AMediaFormat_setInt32(f, AMEDIAFORMAT_KEY_HEIGHT, H);
+            if (encoder) {
+                AMediaFormat_setInt32(f, AMEDIAFORMAT_KEY_COLOR_FORMAT, 19);   // COLOR_FormatYUV420Planar
+                AMediaFormat_setInt32(f, AMEDIAFORMAT_KEY_BIT_RATE, 2'000'000);
+                AMediaFormat_setInt32(f, AMEDIAFORMAT_KEY_FRAME_RATE, 30);
+                AMediaFormat_setInt32(f, AMEDIAFORMAT_KEY_I_FRAME_INTERVAL, 0);
+            }
+            return f;
+        };
+        std::vector<Packet> packets;
+        {
+            Codec enc{ AMediaCodec_createEncoderByType("video/avc") };
+            AMediaFormat* f = format(true);
+            const bool ok = enc.c && AMediaCodec_configure(enc.c, f, nullptr, nullptr, AMEDIACODEC_CONFIGURE_FLAG_ENCODE) == AMEDIA_OK &&
+                            AMediaCodec_start(enc.c) == AMEDIA_OK;
+            AMediaFormat_delete(f);
+            if (!ok) co_return;
+            int queued = 0;
+            bool done = false;
+            while (!done && scope.IsActive()) {
+                const ssize_t in = queued <= N ? AMediaCodec_dequeueInputBuffer(enc.c, 0) : -1;
+                if (in >= 0) {
+                    std::size_t cap = 0;
+                    std::uint8_t* buf = AMediaCodec_getInputBuffer(enc.c, std::size_t(in), &cap);
+                    const std::size_t size = std::size_t(W * H * 3 / 2);
+                    if (queued == N || !buf || cap < size) {
+                        AMediaCodec_queueInputBuffer(enc.c, std::size_t(in), 0, 0, 0, AMEDIACODEC_BUFFER_FLAG_END_OF_STREAM);
+                    } else {
+                        const int bar = queued * W / N;
+                        for (int y = 0; y < H; ++y)
+                            for (int x = 0; x < W; ++x) buf[y * W + x] = std::abs(x - bar) < 8 ? 235 : std::uint8_t(40 + y * 120 / H);
+                        std::memset(buf + W * H, 90, std::size_t(W * H / 4));           // U
+                        std::memset(buf + W * H * 5 / 4, 200, std::size_t(W * H / 4));  // V: warm
+                        AMediaCodec_queueInputBuffer(enc.c, std::size_t(in), 0, size, std::uint64_t(queued) * 33333, 0);
+                    }
+                    ++queued;
+                }
+                AMediaCodecBufferInfo info;
+                const ssize_t out = AMediaCodec_dequeueOutputBuffer(enc.c, &info, 0);
+                if (out >= 0) {
+                    std::size_t cap = 0;
+                    const std::uint8_t* data = AMediaCodec_getOutputBuffer(enc.c, std::size_t(out), &cap);
+                    if (data && info.size > 0)
+                        packets.push_back({ std::vector<std::uint8_t>(data + info.offset, data + info.offset + info.size), info.flags });
+                    done = (info.flags & AMEDIACODEC_BUFFER_FLAG_END_OF_STREAM) != 0;
+                    AMediaCodec_releaseOutputBuffer(enc.c, std::size_t(out), false);
+                } else if (in < 0) {
+                    co_await kiln::rt::Delay(2);
+                }
+            }
+        }
+        Codec dec{ AMediaCodec_createDecoderByType("video/avc") };
+        AMediaFormat* f = format(false);
+        const bool ok = dec.c && AMediaCodec_configure(dec.c, f, static_cast<ANativeWindow*>(surface.nativeWindow), nullptr, 0) == AMEDIA_OK &&
+                        AMediaCodec_start(dec.c) == AMEDIA_OK;
+        AMediaFormat_delete(f);
+        if (!ok || packets.empty()) co_return;
+        // The configuration packet once, then the frames round and round.
+        std::size_t next = 0;
+        std::uint64_t pts = 0;
+        while (scope.IsActive()) {
+            const ssize_t in = AMediaCodec_dequeueInputBuffer(dec.c, 0);
+            if (in >= 0) {
+                if (next >= packets.size()) next = 1;
+                while (next < packets.size() && next > 0 && (packets[next].flags & AMEDIACODEC_BUFFER_FLAG_CODEC_CONFIG)) ++next;
+                if (next >= packets.size()) next = 1;
+                const Packet& p = packets[next++];
+                std::size_t cap = 0;
+                std::uint8_t* buf = AMediaCodec_getInputBuffer(dec.c, std::size_t(in), &cap);
+                const std::size_t n = std::min(cap, p.data.size());
+                if (buf) std::memcpy(buf, p.data.data(), n);
+                AMediaCodec_queueInputBuffer(dec.c, std::size_t(in), 0, n, pts, p.flags & AMEDIACODEC_BUFFER_FLAG_CODEC_CONFIG);
+                pts += 33333;
+            }
+            AMediaCodecBufferInfo info;
+            const ssize_t out = AMediaCodec_dequeueOutputBuffer(dec.c, &info, 0);
+            if (out >= 0) AMediaCodec_releaseOutputBuffer(dec.c, std::size_t(out), true);
+            co_await kiln::rt::Delay(33);
+        }
+#else
+        (void)scope; (void)surface;
+        co_return;
+#endif
+    }
+
+    kiln::rt::Task<> FillBlue(kiln::foundation::SurfaceCoroutineScope& s, kiln::foundation::Surface f, int w, int h) { return FillSurface(s, f, w, h, 0xFFC06020u); }
     kiln::rt::Task<> FillGreen(kiln::foundation::SurfaceCoroutineScope& s, kiln::foundation::Surface f, int w, int h) { return FillSurface(s, f, w, h, 0xFF20A020u); }
 
     void ExternalSurfaceDemo() {
@@ -120,6 +224,18 @@ namespace {
                 Box(Background(Padding(Modifier{}, 8_dp), kPrimaryContainer, CornerShape::Rounded(8_dp)), Alignment::Center(), false,
                     [] { BasicText("kiln over the surface", Padding(Modifier{}, 8_dp), { 16, kOnSurface }); });
             });
+            BasicText("Embedded, rotated, with content over it", Padding(Modifier{}, 16_dp, 0_dp), { 16, kOnSurface });
+            Box(Padding(Height(FillMax(Modifier{}, Axis::Horizontal), 120_dp), 16_dp, 0_dp), Alignment::BottomEnd(), false, [] {
+                // A slight rotation about the element's top-left (TextureView.setTransform).
+                const float c = 0.9962f, s = 0.0872f;   // 5 degrees
+                AndroidEmbeddedExternalSurface(Clip(FillMax(Modifier{}, Axis::Both), CornerShape::Rounded(16_dp)), true, {},
+                                               std::array<float, 9>{ c, -s, 0, s, c, 0, 0, 0, 1 },
+                                               [](AndroidExternalSurfaceScope& s) { s.OnSurface(&FillBlue); });
+                BasicText("drawn by kiln", Padding(Modifier{}, 8_dp), { 14, kOnSurface });
+            });
+            BasicText("Embedded, a decoder's frames", Padding(Modifier{}, 16_dp, 0_dp), { 16, kOnSurface });
+            AndroidEmbeddedExternalSurface(Padding(Height(FillMax(Modifier{}, Axis::Horizontal), 120_dp), 16_dp, 0_dp), true, { 320, 192 }, std::nullopt,
+                                           [](AndroidExternalSurfaceScope& s) { s.OnSurface(&PlayVideo); });
             BasicText("OnTop", Padding(Modifier{}, 16_dp, 0_dp), { 16, kOnSurface });
             AndroidExternalSurface(Padding(Height(FillMax(Modifier{}, Axis::Horizontal), 120_dp), 16_dp, 0_dp), true, {},
                                    AndroidExternalSurfaceZOrder::OnTop, false, [](AndroidExternalSurfaceScope& s) { s.OnSurface(&FillGreen); });

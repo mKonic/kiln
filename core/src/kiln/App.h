@@ -135,6 +135,12 @@ namespace kiln {
 
         // Used by the C frame calls.
         QuadRenderer& Quads() { return *m_Quads; }
+        // Embedded external surfaces: a hardware buffer (AHardwareBuffer*) imported as a page
+        // (null where the device cannot); a page dropped from every window's renderer before it
+        // goes; and waiting for the GPU before freeing what it may still read.
+        std::unique_ptr<AtlasPage> ImportHardwareBuffer(void* hardwareBuffer);
+        void ForgetPage(const AtlasPage* page);
+        void WaitGpuIdle();
         const AtlasPage* Page(std::uint32_t index) const {
             return index < m_Pages.size() ? m_Pages[index].get() : nullptr;
         }

@@ -88,6 +88,10 @@ namespace kiln {
                                               ShaderStage::Fragment, "main", "kiln.quad_stretch.frag" });
         desc.debugName = "kiln.quad.stretch";
         m_StretchPipeline = device.CreatePipeline(desc);
+        // Embedded external surface frames: built per Y'CbCr conversion on first use.
+        m_ExternalDesc = desc;
+        m_ExternalDesc.fragment = device.CreateShader({ { std::begin(shaders::kQuadExternalFrag), std::end(shaders::kQuadExternalFrag) },
+                                                        ShaderStage::Fragment, "main", "kiln.quad_external.frag" });
         desc.fragment = device.CreateShader({ { std::begin(shaders::kQuadFilteredFrag), std::end(shaders::kQuadFilteredFrag) },
                                               ShaderStage::Fragment, "main", "kiln.quad_filtered.frag" });
         desc.debugName = "kiln.quad.filtered";
@@ -167,8 +171,9 @@ namespace kiln {
         instance.clipInv2[0] = ci.e; instance.clipInv2[1] = ci.f; instance.clipInv2[2] = m_Clip.enabled ? 1.0f : 0.0f; instance.clipInv2[3] = 0;
         for (int i = 0; i < 4; ++i) instance.clipOuter[i] = m_Clip.outer[i];
         const AtlasPage* dst = nullptr;
-        // Stretch and blur passes composite layers themselves and never blend.
-        if (m_BlendMode != 3 && !mask && (instance.params[1] <= float(Mode::Color) || instance.params[1] == float(Mode::MaskShader) ||
+        // Stretch and blur passes composite layers themselves and never blend (nor do external
+        // frames: their pipeline has no destination read).
+        if (m_BlendMode != 3 && !mask && !m_PushExternal && (instance.params[1] <= float(Mode::Color) || instance.params[1] == float(Mode::MaskShader) ||
                                                instance.params[1] == float(Mode::Ripple) || instance.params[1] == float(Mode::Lighting))) {
             dst = DestinationCopy(instance);
             instance.params[3] = float(m_BlendMode + 1);
@@ -177,7 +182,9 @@ namespace kiln {
         const bool filtered = instance.params[2] >= 0;
         // Flat-colour draws without a filter or blend mode take a small pipeline.
         std::uint8_t lite = 0;
-        if (!filtered && !dst && !mask && instance.paint2[0] == 0) {
+        if (m_PushExternal) {
+            lite = 5;
+        } else if (!filtered && !dst && !mask && instance.paint2[0] == 0) {
             const float m = instance.params[1];
             if (m == float(Mode::Solid)) {
                 lite = 1;
@@ -222,6 +229,26 @@ namespace kiln {
                { nearest ? 1.0f : 0.0f, float(mode), float(filterRow), 0 }, {}, {}, {}, {}, {}, {}, {}, {} }, &page, paint);
     }
 
+    void QuadRenderer::DrawExternal(const RectF& r, const RectF& uv, const AtlasPage& page, float a, bool opaque) {
+        m_PushExternal = true;
+        Push({ { r.x, r.y, r.w, r.h }, { uv.x, uv.y, uv.x + uv.w, uv.y + uv.h }, { a, a, a, a },
+               { opaque ? 1.0f : 0.0f, float(Mode::Color), -1, 0 }, {}, {}, {}, {}, {}, {}, {}, {} }, &page, nullptr);
+        m_PushExternal = false;
+    }
+
+    const Ref<Pipeline>& QuadRenderer::ExternalPipeline(const AtlasPage* page) {
+        const Ref<Texture>& texture = page->Texture();
+        const std::uint64_t key = texture->SamplerConversionKey();
+        auto it = m_ExternalPipelines.find(key);
+        if (it == m_ExternalPipelines.end()) {
+            PipelineDesc desc = m_ExternalDesc;
+            if (key) desc.bindings[0].immutableSampler = texture;   // the conversion's sampler
+            desc.debugName = "kiln.quad.external";
+            it = m_ExternalPipelines.emplace(key, m_Device.CreatePipeline(desc)).first;
+        }
+        return it->second;
+    }
+
     void QuadRenderer::DrawGlyph(const RectF& r, const RectF& uv, const AtlasPage& page, Rgba c, float maskGamma) {
         Push({ { r.x, r.y, r.w, r.h }, { uv.x, uv.y, uv.x + uv.w, uv.y + uv.h }, { c.r, c.g, c.b, c.a },
                { maskGamma, float(Mode::TextCoverage), -1, 0 }, {}, {}, {}, {}, {}, {}, {}, {} }, &page, nullptr);
@@ -249,9 +276,10 @@ namespace kiln {
         Push(in, page, nullptr);
     }
 
-    Ref<BindGroup> QuadRenderer::GroupFor(const AtlasPage* page, const AtlasPage* dst) {
+    Ref<BindGroup> QuadRenderer::GroupFor(const AtlasPage* page, const AtlasPage* dst, const Ref<Pipeline>& pipeline) {
+        const Ref<Pipeline>& layout = pipeline ? pipeline : m_Pipeline;
         for (auto& g : m_Groups)
-            if (g.page == page && g.dst == dst) return g.group;
+            if (g.page == page && g.dst == dst && g.pipeline == layout.get()) return g.group;
         BindGroupEntry entry;
         entry.binding = 0;
         entry.type = BindingType::SampledTexture;
@@ -268,8 +296,8 @@ namespace kiln {
         destination.binding = 3;
         destination.type = BindingType::SampledTexture;
         destination.textures = { dst ? dst->Texture() : m_White };
-        auto group = m_Device.CreateBindGroup(m_Pipeline, { entry, ramp, filters, destination });
-        m_Groups.push_back({ page, dst, group });
+        auto group = m_Device.CreateBindGroup(layout, { entry, ramp, filters, destination });
+        m_Groups.push_back({ page, dst, group, layout.get() });
         return group;
     }
 
@@ -460,7 +488,8 @@ namespace kiln {
             }
             const Ref<Pipeline>& want = run.mask ? m_MaskPipeline : run.dst ? m_BlendPipeline : run.filtered ? m_FilteredPipeline
                                       : run.lite == 1 ? m_SolidPipeline : run.lite == 2 ? m_CoveragePipeline
-                                      : run.lite == 3 ? m_FlatPipeline : run.lite == 4 ? m_StretchPipeline : m_Pipeline;
+                                      : run.lite == 3 ? m_FlatPipeline : run.lite == 4 ? m_StretchPipeline
+                                      : run.lite == 5 ? ExternalPipeline(run.page) : m_Pipeline;
             if (boundPipeline != want.get()) {
                 cmd.BindPipeline(want);
                 cmd.SetViewport({ 0, 0, t.size[0], t.size[1], 0, 1 });
@@ -469,7 +498,7 @@ namespace kiln {
                 cmd.BindVertexBuffer(0, buffer);
                 boundPipeline = want.get();
             }
-            cmd.BindBindGroup(GroupFor(run.page, run.dst));
+            cmd.BindBindGroup(run.lite == 5 ? GroupFor(run.page, run.dst, want) : GroupFor(run.page, run.dst));
             cmd.Draw(4, run.count, 0, base + run.first);
         }
     }

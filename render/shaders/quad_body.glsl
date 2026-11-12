@@ -495,6 +495,13 @@ vec4 stretchComposite() {
 void main() { outColor = vColor; }
 #elif defined(KILN_STRETCH)
 void main() { outColor = stretchComposite(); }
+#elif defined(KILN_EXTERNAL)
+// Android buffers are premultiplied; an opaque surface's frame ignores its alpha (vParams.x).
+void main() {
+    vec4 t = texture(uAtlas, vUv);
+    if (vParams.x > 0.5) t.a = 1.0;
+    outColor = t * (vColor.a * clipCoverage());
+}
 #elif defined(KILN_SOLID)
 void main() {
     outColor = vColor * (aaCoverage(roundedRectSdf(vLocal, vHalf, vParams.x), vLocal) * clipCoverage());

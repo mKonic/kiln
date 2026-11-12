@@ -701,6 +701,12 @@ namespace kiln::ui {
         void DispatchExternalSurfaceChanged(int id, PlatformSurface surface, int width, int height) {
             if (auto it = m_ExternalSurfaces.find(id); it != m_ExternalSurfaces.end()) it->second.client->OnSurfaceChanged(surface, width, height);
         }
+        void DispatchExternalSurfaceFrameAvailable(int id) {
+            if (auto it = m_ExternalSurfaces.find(id); it != m_ExternalSurfaces.end()) it->second.client->OnFrameAvailable();
+        }
+        std::optional<ExternalFrame> ExternalSurfaceFrame(int id) {
+            return m_SurfaceHost.frame ? m_SurfaceHost.frame(id) : std::nullopt;
+        }
         void DispatchExternalSurfaceDestroyed(int id, PlatformSurface surface) {
             if (auto it = m_ExternalSurfaces.find(id); it != m_ExternalSurfaces.end()) it->second.client->OnSurfaceDestroyed(surface);
         }

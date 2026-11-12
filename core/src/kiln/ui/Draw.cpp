@@ -738,6 +738,15 @@ namespace kiln::ui {
                                   { a, a, a, a }, QuadRenderer::Mode::Color, nullptr, FilterRow(filter), quality == gfx::FilterQuality::None);
     }
 
+    void DrawScope::DrawExternalFrame(const AtlasPage& page, Offset dst, Size size, float alpha, bool opaque) {
+        if (m_Recording) { m_Recording->push_back([p = &page, dst, size, alpha, opaque](DrawScope& d) { d.DrawExternalFrame(*p, dst, size, alpha, opaque); }); return; }
+        if (!m_Target.quads) return;
+        const float a = alpha * m_State.alpha;
+        if (a <= 0) return;
+        ApplyTransform();
+        m_Target.quads->DrawExternal({ dst.x, dst.y, size.width, size.height }, { 0, 0, 1, 1 }, page, a, opaque);
+    }
+
     void DrawScope::DrawMaskShader(const gfx::ImageBitmap& mask, const gfx::Brush& brush, Offset origin, float alpha,
                                    const gfx::ColorFilter* filter) {
         if (m_Recording) { m_Recording->push_back([mask, brush, origin, alpha, f = Opt(filter)](DrawScope& d) { d.DrawMaskShader(mask, brush, origin, alpha, f ? &*f : nullptr); }); return; }

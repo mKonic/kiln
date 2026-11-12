@@ -12,6 +12,8 @@
 
 #include "kiln/ui/Geometry.h"
 
+namespace kiln { class AtlasPage; }
+
 #include <array>
 #include <cstdint>
 #include <functional>
@@ -45,6 +47,14 @@ namespace kiln::ui {
         virtual void OnSurfaceCreated(PlatformSurface surface, int width, int height) = 0;
         virtual void OnSurfaceChanged(PlatformSurface surface, int width, int height) = 0;
         virtual void OnSurfaceDestroyed(PlatformSurface surface) = 0;
+        // Embedded: a new frame is there to draw.
+        virtual void OnFrameAvailable() {}
+    };
+
+    // An embedded surface's latest frame, as the renderer draws it.
+    struct ExternalFrame {
+        const AtlasPage* page = nullptr;
+        int width = 0, height = 0;
     };
 
     // Host side: creates, places and releases surfaces by id.
@@ -52,6 +62,8 @@ namespace kiln::ui {
         std::function<void(int id, const ExternalSurfaceConfig&)> create;
         std::function<void(int id, const ExternalSurfaceConfig&)> update;
         std::function<void(int id)> release;
+        // Embedded: the frame to draw now (the latest the producer posted).
+        std::function<std::optional<ExternalFrame>(int id)> frame;
     };
 
 }

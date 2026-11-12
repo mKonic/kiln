@@ -42,6 +42,9 @@ namespace kiln::foundation {
                 if (m_OnDestroyed) m_OnDestroyed(surface);
                 m_Job.Cancel();
             }
+            // Embedded: a new frame redraws the element.
+            std::function<void()> onFrame;
+            void OnFrameAvailable() override { if (onFrame) onFrame(); }
             // The node went away with a surface still alive: it ends as destroyed.
             void EndIfAlive() {
                 if (m_Current) OnSurfaceDestroyed(*m_Current);
@@ -92,9 +95,11 @@ namespace kiln::foundation {
 
             void OnAttach() override {
                 m_Owner = Owner() ? Owner()->GetOwner() : nullptr;
+                params.state->onFrame = [this] { InvalidateDraw(); };
                 if (m_Owner) m_Id = m_Owner->AddExternalSurface(params.state.get(), Config());
             }
             void OnDetach() override {
+                params.state->onFrame = nullptr;
                 params.state->EndIfAlive();
                 if (m_Owner && m_Id) m_Owner->RemoveExternalSurface(m_Id);
                 m_Owner = nullptr;
@@ -122,6 +127,16 @@ namespace kiln::foundation {
                     s.SetBlendMode(gfx::BlendMode::Clear);
                     s.DrawRect(ui::Color(0xFF000000u), { 0, 0 }, s.GetSize());
                     s.Restore();
+                }
+                // An embedded surface draws its latest frame over the element, through
+                // `transform` (TextureView.setTransform: the affine part, in element pixels).
+                if (params.config.embedded && m_Owner && m_Id) {
+                    if (auto frame = m_Owner->ExternalSurfaceFrame(m_Id); frame && frame->page) {
+                        s.Save();
+                        if (const auto& t = params.config.transform) s.Concat(gfx::Matrix{ (*t)[0], (*t)[3], (*t)[1], (*t)[4], (*t)[2], (*t)[5] });
+                        s.DrawExternalFrame(*frame->page, { 0, 0 }, s.GetSize(), 1, params.config.opaque);
+                        s.Restore();
+                    }
                 }
                 s.DrawContent();
             }

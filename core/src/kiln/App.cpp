@@ -300,6 +300,23 @@ namespace kiln {
         if (m_Services.requestFrame) m_Services.requestFrame(m_Services.host);
     }
 
+    std::unique_ptr<AtlasPage> App::ImportHardwareBuffer(void* hardwareBuffer) {
+        if (!m_Device) return nullptr;
+        Ref<Texture> texture = m_Device->ImportHardwareBuffer(hardwareBuffer);
+        if (!texture) return nullptr;
+        const std::uint32_t w = texture->Width(), h = texture->Height();
+        return std::make_unique<AtlasPage>(std::move(texture), w, h);
+    }
+
+    void App::ForgetPage(const AtlasPage* page) {
+        if (m_Quads) m_Quads->ForgetPage(page);
+        for (auto& w : m_Windows) if (w->quads) w->quads->ForgetPage(page);
+    }
+
+    void App::WaitGpuIdle() {
+        if (m_Device) m_Device->WaitIdle();
+    }
+
     void App::SurfaceCreated(Surface& surface) {
         if (m_Device && m_SurfaceLost) {
             m_Device->OnSurfaceRecreated(surface);

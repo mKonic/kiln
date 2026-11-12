@@ -1,5 +1,6 @@
 #pragma once
 
+#include <unordered_map>
 #include <hearth/Device.h>
 
 #include <cstdint>
@@ -75,6 +76,9 @@ namespace kiln {
         // luminance (SkMaskGamma, contrast 0): dark text thins, light text thickens. maskGamma is
         // the gamma the mask was already corrected with for white (1: raw coverage, no correction).
         void DrawGlyph(const RectF& rect, const RectF& uv, const AtlasPage& page, Rgba color, float maskGamma);
+        // A frame of an embedded external surface: a page over an imported hardware buffer,
+        // sampled through its Y'CbCr conversion when it has one (a pipeline per conversion).
+        void DrawExternal(const RectF& rect, const RectF& uv, const AtlasPage& page, float alpha, bool opaque);
         void SetFilterTexture(hearth::Ref<hearth::Texture> t) { m_Filters = std::move(t); m_Groups.clear(); }
         // The gradient ramp texture (bound next to every atlas page).
         // Drops the cached bind group of a page about to be destroyed.
@@ -165,7 +169,7 @@ namespace kiln {
         struct Instance { float rect[4]; float uv[4]; float color[4]; float params[4]; float clip[4]; float clipParams[4]; float paint[4]; float paint2[4];
                          float xform[4]; float xform2[4]; float clipInv[4]; float clipInv2[4]; float clipOuter[4]; };
         struct Run { const AtlasPage* page; std::uint32_t first, count; bool mask = false; bool filtered = false; const AtlasPage* dst = nullptr;
-                     bool triangles = false; Clip clip{}; std::uint8_t lite = 0; };   // lite: 1 solid, 2 coverage, 3 flat, 4 stretch   // triangles: first/count into m_TriVerts
+                     bool triangles = false; Clip clip{}; std::uint8_t lite = 0; };   // lite: 1 solid, 2 coverage, 3 flat, 4 stretch, 5 external   // triangles: first/count into m_TriVerts
 
         void Push(const Instance& instance, const AtlasPage* page, const Paint* paint, bool mask = false);
         struct Target {
@@ -195,7 +199,14 @@ namespace kiln {
         Target& Current() { return m_Targets[m_Stack.back()]; }
         void Upload();
         void DrawTarget(hearth::CommandList& cmd, const Target& t);
-        hearth::Ref<hearth::BindGroup> GroupFor(const AtlasPage* page, const AtlasPage* dst = nullptr);
+        // Bind groups are made for `pipeline`'s layout (the main one's by default, which every
+        // pipeline but an external one with an immutable sampler shares).
+        hearth::Ref<hearth::BindGroup> GroupFor(const AtlasPage* page, const AtlasPage* dst = nullptr, const hearth::Ref<hearth::Pipeline>& pipeline = nullptr);
+        // The external-frame pipeline for a page (its texture's conversion fixes the sampler).
+        const hearth::Ref<hearth::Pipeline>& ExternalPipeline(const AtlasPage* page);
+        hearth::PipelineDesc m_ExternalDesc;
+        std::unordered_map<std::uint64_t, hearth::Ref<hearth::Pipeline>> m_ExternalPipelines;
+        bool m_PushExternal = false;
 
         hearth::Device& m_Device;
         hearth::Ref<hearth::Pipeline> m_Pipeline;
@@ -224,7 +235,7 @@ namespace kiln {
         std::vector<const AtlasPage*> m_LayerPages;   // per offscreen target (index - 1)
         std::vector<Instance> m_Staging;
         std::vector<hearth::Ref<hearth::Buffer>> m_Buffers;   // one per frame in flight
-        struct Group { const AtlasPage* page; const AtlasPage* dst; hearth::Ref<hearth::BindGroup> group; };
+        struct Group { const AtlasPage* page; const AtlasPage* dst; hearth::Ref<hearth::BindGroup> group; const hearth::Pipeline* pipeline = nullptr; };
         std::vector<Group> m_Groups;
         float m_Viewport[2] = { 1, 1 };
         Clip m_Clip;

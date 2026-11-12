@@ -33,6 +33,8 @@ namespace kiln::android { void InstallImageDecoder(); void InstallAssetReader(JN
 #include <unistd.h>
 #include <android/log.h>
 #include <android/native_window_jni.h>
+#include <media/NdkImageReader.h>
+#include <deque>
 #include <jni.h>
 
 #include <chrono>
@@ -102,6 +104,7 @@ namespace {
     struct Win;
     void InstallTextInputHost(JNIEnv* env, Win* w);
     void InstallExternalSurfaceHost(JNIEnv* env, Win* w);
+    void ReleaseExternalSurfaces();
     void InstallOwnerHosts(JNIEnv* env, Win* w);
     jobjectArray JavaIntent(JNIEnv* env, const kiln::ui::Intent& i);
     // A String[] (null entries kept) as UTF-8.
@@ -2725,6 +2728,9 @@ namespace {
         g_Host->visible = false;
         g_A11yStrings.clear();
         if (g_Host->window) { SurfaceDestroyed(env, nullptr, 0); }
+        // Embedded surfaces' frames are GPU textures: they go while the device does not (the
+        // composition's teardown comes after the device's), and the host goes with them.
+        ReleaseExternalSurfaces();
         g_Host->app.reset();
         kiln::ui::BackDispatcher::Main().onHasEnabledChanged = nullptr;
         auto& d = kiln::rt::Dispatcher::Main();
@@ -2746,19 +2752,139 @@ namespace {
     // The ANativeWindow each live external surface was handed out as, by window and id.
     std::map<std::pair<int, int>, ANativeWindow*> g_ExternalWindows;
 
+    // Embedded surfaces (AndroidEmbeddedExternalSurface): an AImageReader each, whose window the
+    // app renders into; kiln imports the latest image as a texture when it draws and keeps the
+    // last few until the GPU is surely done with them (an image goes back to the producer when
+    // freed). A new size is a new reader, so the app gets a new surface.
+    struct EmbeddedFrame {
+        AImage* image = nullptr;
+        std::unique_ptr<kiln::AtlasPage> page;
+    };
+    struct EmbeddedSurface {
+        std::pair<int, int> key;                 // window, id: the listener's context
+        AImageReader* reader = nullptr;
+        ANativeWindow* window = nullptr;         // the reader's
+        int width = 0, height = 0;
+        bool pending = false;                    // an image arrived since the last draw
+        std::deque<EmbeddedFrame> frames;        // newest last
+    };
+    std::map<std::pair<int, int>, std::unique_ptr<EmbeddedSurface>> g_Embedded;
+    constexpr std::size_t kEmbeddedFramesKept = 4;   // past any frame in flight
+    constexpr int kEmbeddedReaderImages = 6;          // the kept ones, one being acquired, one being written
+
+    void FreeEmbeddedFrame(EmbeddedFrame& f) {
+        if (f.page && g_Host->app) g_Host->app->ForgetPage(f.page.get());
+        f.page.reset();
+        if (f.image) AImage_delete(f.image);
+        f.image = nullptr;
+    }
+
+    void DestroyEmbedded(EmbeddedSurface& e, Win* w) {
+        if (!e.reader) return;
+        if (w) w->owner->DispatchExternalSurfaceDestroyed(e.key.second, kiln::ui::PlatformSurface{ e.window });
+        AImageReader_setImageListener(e.reader, nullptr);
+        if (g_Host->app) g_Host->app->WaitGpuIdle();
+        for (auto& f : e.frames) FreeEmbeddedFrame(f);
+        e.frames.clear();
+        AImageReader_delete(e.reader);
+        e.reader = nullptr;
+        e.window = nullptr;
+        e.pending = false;
+    }
+
+    void OnEmbeddedImage(void* context, AImageReader*) {
+        // On the reader's thread: the rest happens on the main one.
+        const auto key = static_cast<EmbeddedSurface*>(context)->key;
+        if (!g_Host->app) return;
+        g_Host->app->Dispatcher().PostFromAnyThread([key] {
+            auto it = g_Embedded.find(key);
+            if (it == g_Embedded.end() || !it->second->reader) return;
+            it->second->pending = true;
+            if (Win* w = WinOf(key.first)) w->owner->DispatchExternalSurfaceFrameAvailable(key.second);
+            g_Host->app->RequestFrame();
+        });
+    }
+
+    void ReleaseExternalSurfaces() {
+        for (auto& [key, e] : g_Embedded) DestroyEmbedded(*e, WinOf(key.first));
+        g_Embedded.clear();
+        for (auto& [id, w] : g_Wins) if (w->owner) w->owner->SetExternalSurfaceHost({});
+    }
+
+    void PlaceEmbedded(Win* w, int id, const kiln::ui::ExternalSurfaceConfig& c) {
+        auto& slot = g_Embedded[{ w->id, id }];
+        if (!slot) {
+            slot = std::make_unique<EmbeddedSurface>();
+            slot->key = { w->id, id };
+        }
+        EmbeddedSurface& e = *slot;
+        const int bw = c.fixedSize.width > 0 ? c.fixedSize.width : c.bounds.Width();
+        const int bh = c.fixedSize.height > 0 ? c.fixedSize.height : c.bounds.Height();
+        if (bw <= 0 || bh <= 0) return;
+        if (e.reader && (bw != e.width || bh != e.height)) DestroyEmbedded(e, w);
+        if (e.reader) return;
+        if (AImageReader_newWithUsage(bw, bh, AIMAGE_FORMAT_PRIVATE, AHARDWAREBUFFER_USAGE_GPU_SAMPLED_IMAGE, kEmbeddedReaderImages, &e.reader) != AMEDIA_OK) {
+            e.reader = nullptr;
+            __android_log_print(ANDROID_LOG_WARN, "kiln", "embedded surface: no image reader for %dx%d", bw, bh);
+            return;
+        }
+        AImageReader_ImageListener listener{ &e, &OnEmbeddedImage };
+        AImageReader_setImageListener(e.reader, &listener);
+        AImageReader_getWindow(e.reader, &e.window);
+        e.width = bw;
+        e.height = bh;
+        w->owner->DispatchExternalSurfaceCreated(id, kiln::ui::PlatformSurface{ e.window }, bw, bh);
+    }
+
+    std::optional<kiln::ui::ExternalFrame> EmbeddedFrameOf(Win* w, int id) {
+        auto it = g_Embedded.find({ w->id, id });
+        if (it == g_Embedded.end() || !it->second->reader) return std::nullopt;
+        EmbeddedSurface& e = *it->second;
+        if (e.pending) {
+            e.pending = false;
+            AImage* image = nullptr;
+            if (AImageReader_acquireLatestImage(e.reader, &image) == AMEDIA_OK && image) {
+                AHardwareBuffer* buffer = nullptr;
+                AImage_getHardwareBuffer(image, &buffer);
+                auto page = buffer ? g_Host->app->ImportHardwareBuffer(buffer) : nullptr;
+                if (page) {
+                    e.frames.push_back({ image, std::move(page) });
+                    while (e.frames.size() > kEmbeddedFramesKept) {
+                        FreeEmbeddedFrame(e.frames.front());
+                        e.frames.pop_front();
+                    }
+                } else {
+                    AImage_delete(image);
+                }
+            }
+        }
+        if (e.frames.empty()) return std::nullopt;
+        const auto& f = e.frames.back();
+        return kiln::ui::ExternalFrame{ f.page.get(), int(f.page->Width()), int(f.page->Height()) };
+    }
+
     void InstallExternalSurfaceHost(JNIEnv* env, Win* w) {
         jclass cls = env->GetObjectClass(w->view);
         static jmethodID place = env->GetMethodID(cls, "externalSurface", "(IIIIIIIZIZZZ)V");
         static jmethodID release = env->GetMethodID(cls, "releaseExternalSurface", "(I)V");
         env->DeleteLocalRef(cls);
         auto push = [w](int id, const kiln::ui::ExternalSurfaceConfig& c) {
+            if (c.embedded) return PlaceEmbedded(w, id, c);
             MainEnv()->CallVoidMethod(w->view, place, id, c.bounds.left, c.bounds.top, c.bounds.right, c.bounds.bottom, c.fixedSize.width,
                                       c.fixedSize.height, jboolean(c.opaque), c.zOrder, jboolean(c.secure), jboolean(c.embedded), jboolean(c.visible));
         };
         kiln::ui::ExternalSurfaceHost host;
         host.create = push;
         host.update = push;
-        host.release = [w](int id) { MainEnv()->CallVoidMethod(w->view, release, id); };
+        host.release = [w](int id) {
+            if (auto it = g_Embedded.find({ w->id, id }); it != g_Embedded.end()) {
+                DestroyEmbedded(*it->second, w);
+                g_Embedded.erase(it);
+                return;
+            }
+            MainEnv()->CallVoidMethod(w->view, release, id);
+        };
+        host.frame = [w](int id) { return EmbeddedFrameOf(w, id); };
         w->owner->SetExternalSurfaceHost(std::move(host));
     }
 
