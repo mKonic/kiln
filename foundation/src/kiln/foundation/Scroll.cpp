@@ -9,6 +9,7 @@
 #include "kiln/ui/VelocityTracker.h"
 
 #include <algorithm>
+#include <stdexcept>
 #include <cmath>
 #include <deque>
 #include <limits>
@@ -73,6 +74,7 @@ namespace kiln::foundation {
         IntSize viewport;          // ContentInViewNode's measured size (page keys)
         std::shared_ptr<IndirectDragDetector> indirect;   // touch-navigation pad drags
         std::shared_ptr<const BringIntoViewSpec> bringIntoViewSpec = DefaultBringIntoViewSpec();
+        std::shared_ptr<MutableInteractionSource> interactionSource;
 
         float Axis(Offset o) const { return orientation == Orientation::Vertical ? o.y : o.x; }
         Offset Single(float v) const { return orientation == Orientation::Vertical ? Offset{ 0, v } : Offset{ v, 0 }; }
@@ -370,6 +372,15 @@ namespace kiln::foundation {
                 const float slop = PointerSlop(s.Config(), e->changes[0].type);
                 float total = 0;
                 bool dragging = false;
+                // DragInteraction Start / Stop / Cancel on the interaction source (a drag that
+                // ends without a release, or is cancelled with the gesture, cancels).
+                struct DragInteraction {
+                    std::shared_ptr<MutableInteractionSource> source;
+                    std::uint64_t id = 0;
+                    void Start(Offset at) { if (source) id = source->Start(Interaction::Kind::Drag, at); }
+                    void End() { if (source && id) source->End(Interaction::Kind::Drag, id); id = 0; }
+                    ~DragInteraction() { if (source && id) source->Cancel(Interaction::Kind::Drag, id); }
+                } interaction{ logic->interactionSource };
                 for (;;) {
                     auto m = co_await s.AwaitPointerEvent(PointerEventPass::Main);
                     PointerInputChange* c = nullptr;
@@ -380,6 +391,7 @@ namespace kiln::foundation {
                         if (dragging) {
                             const auto& cfg = s.Config();
                             Offset v = tracker.CalculateVelocity({ cfg.maximumFlingVelocity, cfg.maximumFlingVelocity });
+                            interaction.End();
                             logic->state->SetScrollInProgress(false);
                             logic->StartFling(logic->Single(logic->Axis(v)));
                         }
@@ -393,6 +405,7 @@ namespace kiln::foundation {
                         total += logic->Axis(c->PositionChangeIgnoreConsumed());
                         if (std::abs(total) >= slop && std::abs(total) > 0) {
                             dragging = true;
+                            interaction.Start(c->position);
                             logic->state->SetScrollInProgress(true);
                             const float over = total - (total > 0 ? slop : -slop);
                             logic->Dispatch(logic->Single(over), NestedScrollSource::UserInput);
@@ -710,6 +723,7 @@ namespace kiln::foundation {
         logic->overscroll = opt.overscroll;
         logic->flingBehavior = opt.flingBehavior;
         logic->bringIntoViewSpec = opt.bringIntoViewSpec ? opt.bringIntoViewSpec : CurrentBringIntoViewSpec();
+        logic->interactionSource = opt.interactionSource;
         m = m.With<NestedNode>(NestedParams{ logic });
         m = m.With<ScrollFocusGroup>(FocusGroupParams{});
         m = m.With<ContentInViewNode>(ContentInViewParams{ logic });
@@ -805,6 +819,56 @@ namespace kiln::foundation {
             m = Scrollable(std::move(m), state, vertical ? Orientation::Vertical : Orientation::Horizontal, opt);
             return m.With<ScrollLayoutNode>(ScrollLayoutParams{ &state, vertical, reverseScrolling });
         }
+    }
+
+    void CheckScrollableContainerConstraints(const Constraints& c, Orientation orientation) {
+        const bool vertical = orientation == Orientation::Vertical;
+        if ((vertical ? c.maxHeight : c.maxWidth) != Constraints::Infinity) return;
+        throw std::logic_error(std::string(vertical ? "Vertically" : "Horizontally") + " scrollable component was measured with an infinity maximum " +
+                               (vertical ? "height" : "width") + " constraints, which is disallowed. One of the common reasons is nesting layouts like " +
+                               (vertical ? "LazyColumn and Column(Modifier.verticalScroll())" : "LazyRow and Row(Modifier.horizontalScroll())") +
+                               ". Remove the source of infinite constraints in the hierarchy above the scrolling container.");
+    }
+
+    namespace {
+        // HorizontalScrollableClipShape / VerticalScrollableClipShape.
+        class ScrollableClipShape final : public gfx::Shape {
+        public:
+            explicit ScrollableClipShape(bool vertical) : m_Vertical(vertical) {}
+            gfx::Outline CreateOutline(Size size, LayoutDirection, const Density& d) const override {
+                const float inflate = float(d.RoundToPx(Dp(30)));
+                return { m_Vertical ? Rect{ -inflate, 0, size.width + inflate, size.height } : Rect{ 0, -inflate, size.width, size.height + inflate } };
+            }
+            bool Equals(const gfx::Shape& o) const override {
+                auto* other = dynamic_cast<const ScrollableClipShape*>(&o);
+                return other && other->m_Vertical == m_Vertical;
+            }
+
+        private:
+            bool m_Vertical;
+        };
+    }
+
+    Modifier ClipScrollableContainer(Modifier m, Orientation orientation) {
+        static const auto vertical = std::make_shared<const ScrollableClipShape>(true), horizontal = std::make_shared<const ScrollableClipShape>(false);
+        return Clip(std::move(m), orientation == Orientation::Vertical ? vertical : horizontal);
+    }
+
+    Modifier ScrollableArea(Modifier m, ScrollableState& state, Orientation orientation, ScrollableAreaOptions o) {
+        ScrollableOptions opt;
+        opt.enabled = o.enabled;
+        opt.flingBehavior = std::move(o.flingBehavior);
+        opt.interactionSource = std::move(o.interactionSource);
+        opt.bringIntoViewSpec = std::move(o.bringIntoViewSpec);
+        // ScrollableDefaults.reverseDirection.
+        opt.reverseDirection = !o.reverseScrolling;
+        if (orientation == Orientation::Horizontal && rt::Composition::Current() &&
+            rt::Composition::Current()->Read(ui::LocalLayoutDirection) == LayoutDirection::Rtl)
+            opt.reverseDirection = !opt.reverseDirection;
+        opt.overscroll = o.overscroll ? *o.overscroll : RememberOverscrollEffect();
+        m = ClipScrollableContainer(std::move(m), orientation);
+        m = Overscroll(std::move(m), opt.overscroll);
+        return Scrollable(std::move(m), state, orientation, opt);
     }
 
     Modifier VerticalScroll(Modifier m, ScrollState& s, bool enabled, bool reverse, OverscrollParam o, FlingBehavior f) {

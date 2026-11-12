@@ -1356,6 +1356,7 @@ namespace kiln::foundation {
                 } });
         auto manager = c->Remember<std::shared_ptr<SelectionManager>>([&] { return std::make_shared<SelectionManager>(registrar); });
         SelectionManager* m = manager.get();
+        m->toolbar.toolbarProvider = rt::Composition::Current()->Read(LocalTextContextMenuToolbarProvider);
         m->onSelectionChangeUser = [&state, m](std::optional<Selection> s) {
             state.m_Selection.Set(s);
             state.m_SelectedTexts.Set(m->GetSelectedTexts());

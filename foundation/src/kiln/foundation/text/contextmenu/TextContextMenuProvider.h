@@ -5,7 +5,7 @@
 // LocalTextContextMenuDropdownProvider to show its menu (a right click does,
 // showTextContextMenuOnSecondaryClick); the default provider shows the menu's data in a context
 // menu popup at the click until an item or a dismissal closes the session. The floating toolbar
-// stays the owner's (TextContextMenuToolbarHandler).
+// is the owner's (TextContextMenuToolbarHandler) unless LocalTextContextMenuToolbarProvider has one.
 
 #include "kiln/foundation/text/contextmenu/TextContextMenu.h"
 
@@ -31,6 +31,9 @@ namespace kiln::foundation {
     };
 
     inline rt::Local<TextContextMenuProvider*> LocalTextContextMenuDropdownProvider{ nullptr };
+    // LocalTextContextMenuToolbarProvider: shows text components' floating toolbar (null: the
+    // owner's platform toolbar).
+    inline rt::Local<TextContextMenuProvider*> LocalTextContextMenuToolbarProvider{ nullptr };
 
     // ProvideDefaultPlatformTextContextMenuProviders: the default dropdown provider for `content`
     // (unless one is provided already), in a Box that propagates min constraints. `modifier` is

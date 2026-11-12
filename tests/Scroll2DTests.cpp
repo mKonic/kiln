@@ -141,3 +141,41 @@ TEST(DragBlocksMoveTheStateOneAtATime) {
     rt::Dispatcher::Main().RunFrame(16'000'000);
     CHECK_EQ(total, 11.0f);
 }
+
+TEST(ScrollContainerHelpers) {
+    auto throws = [](auto f) { try { f(); } catch (const std::logic_error&) { return true; } return false; };
+    CHECK(throws([] { CheckScrollableContainerConstraints(Constraints{ 0, 100, 0, Constraints::Infinity }, Orientation::Vertical); }));
+    CHECK(!throws([] { CheckScrollableContainerConstraints(Constraints{ 0, 100, 0, Constraints::Infinity }, Orientation::Horizontal); }));
+    // scroll { }: in progress while the block runs.
+    Offset moved{};
+    Scrollable2DState state([&](Offset d) { moved = moved + d; return d; });
+    bool during = false;
+    auto job = rt::Launch(rt::Dispatcher::Main(), state.Scroll([&](const Scrollable2DState::Scroll2DScope& s) -> rt::Task<> {
+        s.ScrollBy({ 3, 4 });
+        during = state.IsScrollInProgress();
+        co_return;
+    }));
+    CHECK(during);
+    CHECK(!state.IsScrollInProgress());
+    CHECK(moved == (Offset{ 3, 4 }));
+}
+
+TEST(ScrollableAreaScrollsWithTheFingerAndReportsDrags) {
+    Harness h;
+    float value = 0;
+    std::shared_ptr<MutableInteractionSource> source;
+    std::vector<Interaction::Phase> phases;
+    h.Run([&] {
+        source = RememberInteractionSource();
+        auto& state = RememberScrollableState([&](float d) { value += d; return d; });
+        ScrollableAreaOptions o;
+        o.interactionSource = source;
+        o.overscroll = std::shared_ptr<OverscrollEffect>();   // none
+        Box(ScrollableArea(SizeMod(Modifier{}, Dp(300), Dp(300)), state, Orientation::Vertical, o), Alignment::TopStart(), false, [] {});
+    });
+    source->Subscribe([&](const Interaction& i) { if (i.kind == Interaction::Kind::Drag) phases.push_back(i.phase); });
+    // Dragging up scrolls forward (the content follows the finger).
+    h.Drag({ 150, 200 }, { 0, -80 }, 8, 16);
+    CHECK(value > 0);
+    CHECK((phases == std::vector{ Interaction::Phase::Start, Interaction::Phase::End }));
+}

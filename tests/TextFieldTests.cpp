@@ -6,6 +6,7 @@
 #include "FakeText.h"
 
 #include "kiln/foundation/text/BasicTextField.h"
+#include "kiln/foundation/text/contextmenu/TextContextMenuProvider.h"
 #include "kiln/foundation/text/BasicSecureTextField.h"
 #include "kiln/foundation/Focus.h"
 #include "kiln/foundation/Layouts.h"
@@ -1139,4 +1140,33 @@ TEST(AutofillStructureCarriesHintText) {
     bool found = false;
     for (const auto& n : structure) if (n.hint == std::optional<std::string>("Hint")) found = true;
     CHECK(found);
+}
+
+TEST(ToolbarProviderReplacesThePlatformToolbar) {
+    FieldHarness h;
+    h.owner.Config().longPressTimeoutMillis = 40;
+    TextFieldState state("hello big world");
+    struct Provider final : TextContextMenuProvider {
+        int shown = 0;
+        std::size_t items = 0;
+        rt::Task<> ShowTextContextMenu(std::shared_ptr<TextContextMenuDataProvider> data) override {
+            ++shown;
+            items = data->Data().components.size();
+            co_await rt::NextFrame();   // stays up until cancelled (or a frame passes)
+        }
+    } provider;
+    h.comp.SetContent([&] {
+        rt::Composition::Current()->Provide(LocalTextContextMenuToolbarProvider, static_cast<TextContextMenuProvider*>(&provider), [&] {
+            Column(Modifier{}, [&] { BasicTextField(state, {}, Style20()); });
+        });
+    });
+    h.Pump({ 300, 300 });
+    using ui::PointerEventType;
+    using ui::PointerType;
+    SendPointer(h, PointerType::Touch, PointerEventType::Press, 75, 10, true);
+    WaitMs(h, 80);
+    SendPointer(h, PointerType::Touch, PointerEventType::Release, 75, 10, false);
+    CHECK_EQ(provider.shown, 1);
+    CHECK(provider.items >= 3);   // cut, copy, select all
+    CHECK(!h.owner.TextToolbarShown());
 }

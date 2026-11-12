@@ -35,6 +35,16 @@ namespace kiln::foundation {
         // dispatchRawDelta: outside of a scroll.
         Offset DispatchRawDelta(Offset delta) { return ConsumeScrollDelta(delta); }
         bool IsScrollInProgress() const { return m_InProgress.Get(); }
+        // scroll { scrollBy(...) }: scrolls from code (stops a fling first), in progress while
+        // the block runs.
+        struct Scroll2DScope { std::function<Offset(Offset)> scrollBy; Offset ScrollBy(Offset pixels) const { return scrollBy(pixels); } };
+        rt::Task<> Scroll(std::function<rt::Task<>(const Scroll2DScope&)> block) {
+            StopScroll();
+            SetScrollInProgress(true);
+            Scroll2DScope scope{ [this](Offset d) { return ConsumeScrollDelta(d); } };
+            co_await block(scope);
+            SetScrollInProgress(false);
+        }
         // Stops a running fling.
         void StopScroll() { if (m_Stop) { auto stop = std::move(m_Stop); m_Stop = nullptr; stop(); } SetScrollInProgress(false); }
         // internal

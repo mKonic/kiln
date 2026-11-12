@@ -1,4 +1,5 @@
 #include "kiln/foundation/text/contextmenu/TextContextMenu.h"
+#include "kiln/foundation/text/contextmenu/TextContextMenuProvider.h"
 
 #include "kiln/runtime/Channel.h"
 #include "kiln/ui/LayoutNode.h"
@@ -177,6 +178,21 @@ namespace kiln::foundation {
             if (alive.expired()) co_return;
         }
         if (!self->m_Owner) co_return;
+        if (TextContextMenuProvider* provider = self->toolbarProvider) {
+            // A toolbar provider shows it instead of the platform, until its session ends.
+            struct ToolbarData final : TextContextMenuDataProvider {
+                TextContextMenuToolbarHandler* self;
+                explicit ToolbarData(TextContextMenuToolbarHandler* h) : self(h) {}
+                Offset PositionInRoot() override { const Rect r = self->ContentBounds(); return { (r.left + r.right) / 2, r.top }; }
+                Rect ContentBoundsInRoot() override { return self->ContentBounds(); }
+                TextContextMenuData Data() override {
+                    self->m_Data = self->m_Anchor ? CollectTextContextMenuData(*self->m_Anchor) : TextContextMenuData{};
+                    return self->m_Data;
+                }
+            };
+            co_await provider->ShowTextContextMenu(std::make_shared<ToolbarData>(self));
+            co_return;
+        }
         self->m_Owner->ShowTextToolbar(self);
         if (session->closed.Closed()) co_return;
         if (!self->m_Owner || self->m_Owner->CurrentTextToolbarClient() != self) co_return;   // nothing to show

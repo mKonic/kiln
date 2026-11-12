@@ -1094,6 +1094,7 @@ namespace kiln::foundation {
         // SideEffect: properties that are not observable.
         f.transformed->Update(options.inputTransformation);
         f.options = options;
+        f.toolbar.toolbarProvider = rt::Composition::Current()->Read(LocalTextContextMenuToolbarProvider);
         f.keyboard = resolved;
         f.selection->Update(f.owner, f.selection->density, options.enabled, options.readOnly, options.isPassword);
         if (f.owner) f.UpdateBehaviors(options.textStyle.span.localeList);

@@ -142,8 +142,31 @@ namespace kiln::foundation {
         std::shared_ptr<OverscrollEffect> overscroll;   // null: no overscroll
         FlingBehavior flingBehavior;                     // null: the platform spline decay
         std::shared_ptr<const BringIntoViewSpec> bringIntoViewSpec;   // null: LocalBringIntoViewSpec
+        std::shared_ptr<MutableInteractionSource> interactionSource;  // gets drag interactions
     };
     Modifier Scrollable(Modifier m, ScrollableState& state, Orientation orientation, ScrollableOptions options = {});
+
+    // scrollableArea: a scrolling container's input and visuals around content that lays itself
+    // out from the state (clipScrollableContainer, the overscroll effect, scrollable with the
+    // direction verticalScroll / horizontalScroll use: content follows the finger, mirrored in
+    // RTL for horizontal areas, reversed by reverseScrolling).
+    struct ScrollableAreaOptions {
+        bool enabled = true;
+        bool reverseScrolling = false;
+        std::optional<std::shared_ptr<OverscrollEffect>> overscroll;   // OverscrollParam: unset uses rememberOverscrollEffect(); null: none
+        FlingBehavior flingBehavior;
+        std::shared_ptr<MutableInteractionSource> interactionSource;
+        std::shared_ptr<const BringIntoViewSpec> bringIntoViewSpec;
+    };
+    Modifier ScrollableArea(Modifier m, ScrollableState& state, Orientation orientation, ScrollableAreaOptions options = {});
+
+    // checkScrollableContainerConstraints: throws when a container scrolling along
+    // `orientation` is measured with an unbounded maximum on that axis (a LazyColumn inside a
+    // verticalScroll Column, wrapContentSize(unbounded = true), ...).
+    void CheckScrollableContainerConstraints(const Constraints& c, Orientation orientation);
+    // clipScrollableContainer: clips to the bounds along the scroll axis only; across it the
+    // clip leaves room for the content's shadows (30 dp, MaxSupportedElevation).
+    Modifier ClipScrollableContainer(Modifier m, Orientation orientation);
 
     // nestedScroll(connection): `connection` sees the scrolls and flings of scrollables inside
     // (before them: pre, after them: post) and may consume part of each.

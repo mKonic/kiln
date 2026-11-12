@@ -110,6 +110,9 @@ namespace kiln::foundation {
 
         std::function<rt::Task<>()> onShow;
         std::function<void()> onHide;
+        // LocalTextContextMenuToolbarProvider where the component is: shows the toolbar in place
+        // of the owner's platform toolbar (null: the platform's).
+        class TextContextMenuProvider* toolbarProvider = nullptr;
         // The content bounds in root pixels (null: keep the previous ones).
         std::function<std::optional<Rect>()> computeContentBounds;
 
