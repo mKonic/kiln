@@ -163,3 +163,45 @@ TEST(ModifierLocalModifiersAndOnPlaced) {
     h.Pump();
     CHECK_EQ(consumed.back(), 8);
 }
+
+#include "kiln/ui/PlatformServices.h"
+
+TEST(PlatformServiceLocalsDefaultToTheOwner) {
+    Harness h;
+    std::shared_ptr<FocusManager> focus;
+    std::shared_ptr<Clipboard> clipboard;
+    std::shared_ptr<UriHandler> uris;
+    std::shared_ptr<TextToolbar> toolbar;
+    std::vector<std::string> locales;
+    std::string opened;
+    h.owner.SetUriHandler([&](const std::string& u) { opened = u; return true; });
+    h.Run([&] {
+        rt::Composition::Current()->Provide(LocalOwner, &h.owner, [&] {
+            rt::Composition::Current()->Provide(LocalLocaleList, std::optional<std::vector<std::string>>({ "de-DE", "en-US" }), [&] {
+                focus = CurrentFocusManager();
+                clipboard = CurrentClipboard();
+                uris = CurrentUriHandler();
+                toolbar = CurrentTextToolbar();
+                locales = CurrentLocaleList();
+            });
+        });
+    });
+    CHECK(focus && clipboard && uris && toolbar);
+    CHECK((locales == std::vector<std::string>{ "de-DE", "en-US" }));
+    uris->OpenUri("https://example.com");
+    CHECK_EQ(opened, std::string("https://example.com"));
+    // A clip entry round-trips through the owner's clipboard (no host: kept locally as text).
+    auto set = rt::Launch(rt::Dispatcher::Main(), clipboard->SetClipEntry(ClipEntry{ { ClipItem{ "hello", std::nullopt, std::nullopt } } }));
+    std::optional<ClipEntry> got;
+    auto get = rt::Launch(rt::Dispatcher::Main(), [&]() -> rt::Task<> { got = co_await clipboard->GetClipEntry(); }());
+    h.Pump();
+    CHECK(got && got->items.size() == 1 && got->items[0].text == std::optional<std::string>("hello"));
+    // The legacy toolbar shows the asked items and runs the clicked one.
+    bool copied = false;
+    toolbar->ShowMenu({ 0, 0, 10, 10 }, [&] { copied = true; }, {}, {}, [] {});
+    CHECK(toolbar->Status() == TextToolbarStatus::Shown);
+    CHECK_EQ(int(h.owner.TextToolbarEntries().size()), 2);
+    h.owner.OnTextToolbarItem(0);
+    CHECK(copied);
+    CHECK(toolbar->Status() == TextToolbarStatus::Hidden);
+}

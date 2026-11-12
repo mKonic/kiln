@@ -849,6 +849,35 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
         if (cm != null) cm.setPrimaryClip(android.content.ClipData.newPlainText("plain text", text));
     }
 
+    /**
+     * Clipboard.setClipEntry: (text, html, uri) per item; null clears the clipboard (API 28+).
+     * The MIME types follow the items (text/plain, text/html, the content type of a URI).
+     */
+    void setClipboardClip(String[] items) {
+        android.content.ClipboardManager cm = clipboard();
+        if (cm == null) return;
+        if (items == null || items.length < 3) {
+            if (android.os.Build.VERSION.SDK_INT >= 28) cm.clearPrimaryClip();
+            return;
+        }
+        java.util.LinkedHashSet<String> types = new java.util.LinkedHashSet<>();
+        android.content.ClipData.Item[] list = new android.content.ClipData.Item[items.length / 3];
+        for (int i = 0; i < list.length; i++) {
+            String text = items[3 * i], html = items[3 * i + 1], uri = items[3 * i + 2];
+            android.net.Uri u = uri != null ? android.net.Uri.parse(uri) : null;
+            list[i] = new android.content.ClipData.Item(text, html, null, u);
+            if (html != null) types.add(android.content.ClipDescription.MIMETYPE_TEXT_HTML);
+            else if (text != null) types.add(android.content.ClipDescription.MIMETYPE_TEXT_PLAIN);
+            if (u != null) {
+                String t = getContext().getContentResolver().getType(u);
+                types.add(t != null ? t : android.content.ClipDescription.MIMETYPE_TEXT_URILIST);
+            }
+        }
+        android.content.ClipData clip = new android.content.ClipData(new android.content.ClipDescription("", types.toArray(new String[0])), list[0]);
+        for (int i = 1; i < list.length; i++) clip.addItem(list[i]);
+        cm.setPrimaryClip(clip);
+    }
+
     /** ClipboardManager.setText(AnnotatedString): the span styles as Compose encodes them. */
     void setClipboardStyledText(String text, int[] ints, float[] floats, String[] strings) {
         android.content.ClipboardManager cm = clipboard();

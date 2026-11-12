@@ -129,6 +129,20 @@ namespace {
         return a;
     }
 
+    // A String[] with null entries where a value is missing.
+    jobjectArray JavaOptionalStrings(JNIEnv* env, const std::vector<std::optional<std::string>>& v) {
+        jclass sc = env->FindClass("java/lang/String");
+        jobjectArray a = env->NewObjectArray(jsize(v.size()), sc, nullptr);
+        env->DeleteLocalRef(sc);
+        for (std::size_t i = 0; i < v.size(); ++i) {
+            if (!v[i]) continue;
+            jstring js = JavaString(env, kiln::foundation::ToUtf16(*v[i]));
+            env->SetObjectArrayElement(a, jsize(i), js);
+            env->DeleteLocalRef(js);
+        }
+        return a;
+    }
+
     // The text toolbar's entries as the parallel arrays KilnView takes.
     struct ToolbarArrays {
         JNIEnv* env;
@@ -720,6 +734,7 @@ namespace {
             // Clipboard, haptics and the floating text toolbar.
             jclass vc = env->GetObjectClass(view);
             static jmethodID setClip = env->GetMethodID(vc, "setClipboardText", "(Ljava/lang/String;)V");
+            static jmethodID setClipAll = env->GetMethodID(vc, "setClipboardClip", "([Ljava/lang/String;)V");
             static jmethodID getClip = env->GetMethodID(vc, "getClipboardText", "()Ljava/lang/String;");
             static jmethodID hasClip = env->GetMethodID(vc, "clipboardHasText", "()Z");
             static jmethodID clipAll = env->GetMethodID(vc, "getClipboardClip", "()[Ljava/lang/String;");
@@ -792,6 +807,15 @@ namespace {
                 std::string out = kiln::foundation::ToUtf8(u);
                 e->DeleteLocalRef(s);
                 return out;
+            };
+            clip.setClip = [w](const std::optional<kiln::ui::ClipEntry>& entry) {
+                JNIEnv* e = MainEnv();
+                if (!entry) { e->CallVoidMethod(w->view, setClipAll, nullptr); return; }
+                std::vector<std::optional<std::string>> triples;
+                for (const auto& item : entry->items) { triples.push_back(item.text); triples.push_back(item.htmlText); triples.push_back(item.uri); }
+                jobjectArray a = JavaOptionalStrings(e, triples);
+                e->CallVoidMethod(w->view, setClipAll, a);
+                e->DeleteLocalRef(a);
             };
             clip.hasText = [w] { return bool(MainEnv()->CallBooleanMethod(w->view, hasClip)); };
             clip.getClip = [w]() -> std::optional<std::pair<kiln::ui::ClipEntry, kiln::ui::ClipMetadata>> {

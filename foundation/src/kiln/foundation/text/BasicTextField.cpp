@@ -1,4 +1,5 @@
 #include "kiln/foundation/text/BasicTextField.h"
+#include "kiln/ui/PlatformServices.h"
 
 #include "kiln/TextBackend.h"
 #include "kiln/foundation/Focus.h"
@@ -70,10 +71,11 @@ namespace kiln::foundation {
         struct CursorAnimation {
             rt::State<float> alpha{ 0.0f };
             rt::Job job;
-            void SnapToVisibleAndAnimate() {
+            // With blinking off (LocalCursorBlinkEnabled) the cursor stays visible.
+            void SnapToVisibleAndAnimate(bool animate = true) {
                 job.Cancel();
                 alpha.Set(1.0f);
-                job = rt::Launch(rt::Dispatcher::Main(), Run(this));
+                if (animate) job = rt::Launch(rt::Dispatcher::Main(), Run(this));
             }
             void CancelAndHide() {
                 job.Cancel();
@@ -847,9 +849,14 @@ namespace kiln::foundation {
                 // Restart the animation whenever the text or the cursor changes (and now).
                 auto alive = AliveToken();
                 Field& f = *params.field;
-                m_Observer = f.Observe([this, alive] { if (!alive.expired() && m_Cursor) m_Cursor->SnapToVisibleAndAnimate(); });
+                m_Observer = f.Observe([this, alive] { if (!alive.expired() && m_Cursor) m_Cursor->SnapToVisibleAndAnimate(BlinkEnabled()); });
                 m_ObservedField = params.field;
-                if (params.isFocused) m_Cursor->SnapToVisibleAndAnimate();
+                if (params.isFocused) m_Cursor->SnapToVisibleAndAnimate(BlinkEnabled());
+            }
+            bool BlinkEnabled() const {
+                bool on = true;
+                rt::Observation::Untracked([&] { on = ui::CurrentValueOf(*this, ui::LocalCursorBlinkEnabled); });
+                return on;
             }
             void StopObserving() {
                 if (auto f = m_ObservedField.lock()) f->changeObservers.erase(m_Observer);

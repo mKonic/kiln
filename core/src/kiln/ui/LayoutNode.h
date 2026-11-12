@@ -510,9 +510,17 @@ namespace kiln::ui {
             // The first item's text with its span styles (Compose's Annotation encoding).
             std::function<void(const text::AnnotatedString&)> setAnnotatedText;
             std::function<std::optional<text::AnnotatedString>()> getAnnotatedText;
+            // The whole clip (Clipboard.setClipEntry); null clears the clipboard.
+            std::function<void(const std::optional<ClipEntry>&)> setClip;
         };
         void SetClipboardHost(ClipboardHost host) { m_Clipboard = std::move(host); }
+        // A service object kept for the owner's lifetime under `tag` (the CompositionLocals'
+        // owner-backed defaults).
+        std::shared_ptr<void>& Service(const std::string& tag) { return m_Services[tag]; }
         void SetClipboardText(const std::string& text);
+        // Clipboard.setClipEntry: every item; null clears it. Without a host that takes whole
+        // clips, the first item's text.
+        void SetClipboardClip(const std::optional<ClipEntry>& entry);
         // ClipboardManager.setText / getText with an AnnotatedString: the span styles travel
         // with the text (other annotations do not).
         void SetClipboardAnnotatedText(const text::AnnotatedString& text);
@@ -719,6 +727,7 @@ namespace kiln::ui {
         std::function<void(bool, bool)> m_BarsAppearance;
         std::function<void(const SystemBarStyle&, const SystemBarStyle&)> m_EdgeToEdge;
         ClipboardHost m_Clipboard;
+        std::map<std::string, std::shared_ptr<void>> m_Services;
         MagnifierHost m_Magnifier;
         ContentHost m_Content;
         std::optional<std::string> m_LocalClip;   // without a host (tests): an in-process clipboard

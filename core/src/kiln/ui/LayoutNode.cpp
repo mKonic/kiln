@@ -2091,6 +2091,13 @@ namespace kiln::ui {
         if (m_Clipboard.setText) m_Clipboard.setText(text);
         else { m_LocalClip = text; m_LocalStyledClip.reset(); }
     }
+    void Owner::SetClipboardClip(const std::optional<ClipEntry>& entry) {
+        if (m_Clipboard.setClip) { m_Clipboard.setClip(entry); return; }
+        const ClipItem* first = entry && !entry->items.empty() ? &entry->items.front() : nullptr;
+        if (first && first->text) { SetClipboardText(*first->text); return; }
+        if (!m_Clipboard.setText) { m_LocalClip.reset(); m_LocalStyledClip.reset(); }
+    }
+
     void Owner::SetClipboardAnnotatedText(const text::AnnotatedString& text) {
         if (m_Clipboard.setAnnotatedText) { m_Clipboard.setAnnotatedText(text); return; }
         if (m_Clipboard.setText) { m_Clipboard.setText(text.Text()); return; }
