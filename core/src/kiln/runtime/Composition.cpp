@@ -9,6 +9,20 @@ namespace kiln::rt {
     namespace {
         thread_local Composition* t_Current = nullptr;
         thread_local std::vector<Composition*> t_All;
+        thread_local std::uint64_t t_PassCounter = 0;
+        // RecomposeAll's batch: movable content dropped by one composition stays parked until
+        // every composition has recomposed, so another can adopt it (the Recomposer's
+        // movableContentRemoved); an insert whose content is still placed in a composition not yet
+        // recomposed waits for the end (movableContentAwaitingInsert).
+        thread_local int t_BatchDepth = 0;
+        thread_local std::uint64_t t_BatchId = 0;
+        struct AwaitingInsert {
+            Composition* composition;
+            std::shared_ptr<MovableHandle> handle;
+            std::weak_ptr<Scope*> placeholder;
+        };
+        thread_local std::vector<AwaitingInsert> t_Awaiting;
+        bool IsLive(const Composition* c) { return c && std::find(t_All.begin(), t_All.end(), c) != t_All.end(); }
         struct DisposableTag {};
         struct LaunchedTag {};
         struct SideEffectTag {};
@@ -22,7 +36,7 @@ namespace kiln::rt {
     }
 
     Scope::Scope(Composition& composition, Scope* parent, TreeNode* hostNode, std::uint64_t groupKey)
-        : m_Composition(composition), m_Parent(parent), m_Host(hostNode),
+        : m_Composition(&composition), m_Parent(parent), m_Host(hostNode),
           m_Depth(parent ? parent->m_Depth + 1 : 0),
           m_CompositeKey(parent ? Compound(parent->m_CompositeKey, groupKey) : 0) {}
 
@@ -44,11 +58,11 @@ namespace kiln::rt {
     Scope::~Scope() {
         m_Disposed = true;
         *m_Self = nullptr;
-        m_Composition.m_Pending.erase(this);
-        m_Composition.m_ChildrenDirty.erase(this);
+        m_Composition->m_Pending.erase(this);
+        m_Composition->m_ChildrenDirty.erase(this);
     }
 
-    void Scope::OnStateChanged() { m_Composition.Invalidate(*this); }
+    void Scope::OnStateChanged() { m_Composition->Invalidate(*this); }
 
     void Scope::CollectNodes(std::vector<TreeNode*>& out) const {
         for (const Group& g : m_Groups) {
@@ -63,7 +77,7 @@ namespace kiln::rt {
     }
 
     void RecomposeScope::Invalidate() const {
-        if (auto s = m_Scope.lock(); s && *s) (*s)->m_Composition.Invalidate(**s);
+        if (auto s = m_Scope.lock(); s && *s) (*s)->m_Composition->Invalidate(**s);
     }
 
     void Composition::RememberSlot(Group& g, std::shared_ptr<void> value, RememberObserver* observer) {
@@ -87,7 +101,7 @@ namespace kiln::rt {
                 for (const auto& [local, cell] : s->m_Provided) ctx.provided.emplace(local, cell);   // nearest wins
                 last = s;
             }
-            start = last ? last->m_Composition.m_ParentContext : nullptr;
+            start = last ? last->m_Composition->m_ParentContext : nullptr;
         }
         return ctx;
     }
@@ -107,11 +121,37 @@ namespace kiln::rt {
 
     bool Composition::RecomposeAll() {
         bool any = false;
+        const bool outer = t_BatchDepth == 0;
+        if (outer) ++t_BatchId;
+        ++t_BatchDepth;
+        struct Depth { ~Depth() { --t_BatchDepth; } } depth;
         // Recomposing one composition may create or destroy others (lazy items): iterate a copy
         // and skip ones that are gone.
+        auto recomposeAll = [&] {
+            auto all = t_All;
+            for (Composition* c : all)
+                if (IsLive(c)) any |= c->Recompose();
+        };
+        recomposeAll();
+        if (!outer) return any;
+        // Inserts that waited: adopt what another composition dropped, else compose anew.
+        while (!t_Awaiting.empty()) {
+            auto awaiting = std::move(t_Awaiting);
+            t_Awaiting.clear();
+            for (AwaitingInsert& a : awaiting) {
+                auto self = a.placeholder.lock();
+                if (self && *self && IsLive(a.composition)) a.composition->InsertAwaiting(a.handle, **self);
+            }
+            recomposeAll();
+        }
+        // What no composition adopted leaves now.
         auto all = t_All;
-        for (Composition* c : all)
-            if (std::find(t_All.begin(), t_All.end(), c) != t_All.end()) any |= c->Recompose();
+        for (Composition* c : all) {
+            if (!IsLive(c) || c->m_Parked.empty()) continue;
+            c->DisposeParked();
+            c->ApplyNodeChanges();
+            c->RunEffects();
+        }
         return any;
     }
 
@@ -283,18 +323,46 @@ namespace kiln::rt {
 
     // --- Movable content -----------------------------------------------------------------------
 
+    Composition* Composition::ParkedOwner(MovableHandle* handle, Composition* self) {
+        if (self->m_Parked.count(handle)) return self;
+        // Another composition's dropped content is adoptable within a RecomposeAll batch.
+        Composition* other = handle->composition;
+        if (t_BatchDepth > 0 && other != self && IsLive(other) && other->m_Parked.count(handle)) return other;
+        return nullptr;
+    }
+
+    void Composition::Retarget(Scope& scope) {
+        scope.m_Composition = this;
+        for (Group& g : scope.m_Groups)
+            if (g.scope) Retarget(*g.scope);
+    }
+
     void Composition::Movable(const std::shared_ptr<MovableHandle>& handle, std::function<void()> content) {
         Group& g = Take(Group::Kind::Scope, typeid(MovableHandle), Key(std::int64_t(reinterpret_cast<std::intptr_t>(handle.get()))));
+        if (g.scope && g.scope->m_AwaitingInsert) {   // still waiting for the batch to end
+            g.scope->m_Content = std::move(content);
+            return;
+        }
         bool adopted = false;
         if (!g.scope && handle->placedPass != m_PassId) {
-            auto it = m_Parked.find(handle.get());
-            if (it != m_Parked.end()) {
+            if (Composition* from = ParkedOwner(handle.get(), this)) {
+                auto it = from->m_Parked.find(handle.get());
                 Group parked = std::move(it->second);
-                m_Parked.erase(it);
+                from->m_Parked.erase(it);
                 g.scope = std::move(parked.scope);
+                if (from != this) Retarget(*g.scope);
                 TreeNode* oldHost = g.scope->m_Host;
                 Reparent(*g.scope, m_Current, oldHost, m_Current->m_Host);
                 adopted = true;
+            } else if (t_BatchDepth > 0 && handle->scope && handle->composition != this && IsLive(handle->composition) &&
+                       handle->placedBatch != t_BatchId) {
+                // Placed in a composition that has not recomposed in this batch: it may drop it yet.
+                g.scope = std::make_unique<Scope>(*this, m_Current, m_Current->m_Host, g.key.value);
+                g.scope->m_Content = std::move(content);
+                g.scope->m_AwaitingInsert = true;
+                g.scope->m_Invalid = false;
+                t_Awaiting.push_back({ this, handle, g.scope->m_Self });
+                return;
             }
         }
         if (!g.scope) g.scope = std::make_unique<Scope>(*this, m_Current, m_Current->m_Host, g.key.value);
@@ -303,6 +371,7 @@ namespace kiln::rt {
             handle->scope = g.scope.get();
             handle->composition = this;
             handle->placedPass = m_PassId;
+            handle->placedBatch = t_BatchDepth > 0 ? t_BatchId : 0;
             g.slot = handle;
         } else {
             g.slot.reset();
@@ -311,6 +380,42 @@ namespace kiln::rt {
         if (adopted) scope.m_Invalid = true;
         RunChild(scope, std::move(content), nullptr);
         if (adopted) Repend(scope);
+    }
+
+    void Composition::InsertAwaiting(const std::shared_ptr<MovableHandle>& handle, Scope& placeholder) {
+        placeholder.m_AwaitingInsert = false;
+        Scope* parent = placeholder.m_Parent;
+        Group* g = nullptr;
+        for (Group& o : parent->m_Groups)
+            if (o.scope.get() == &placeholder) { g = &o; break; }
+        if (!g) return;
+        if (Composition* from = ParkedOwner(handle.get(), this)) {
+            auto it = from->m_Parked.find(handle.get());
+            Group parked = std::move(it->second);
+            from->m_Parked.erase(it);
+            std::unique_ptr<Scope> moved = std::move(parked.scope);
+            if (from != this) Retarget(*moved);
+            Reparent(*moved, parent, moved->m_Host, placeholder.m_Host);
+            moved->m_Content = std::move(placeholder.m_Content);
+            g->scope = std::move(moved);   // the empty placeholder goes
+            handle->scope = g->scope.get();
+            handle->composition = this;
+            handle->placedPass = m_PassId;
+            handle->placedBatch = t_BatchId;
+            g->slot = handle;
+            Invalidate(*g->scope);
+            Repend(*g->scope);
+            return;
+        }
+        // Nothing dropped it: new state here (the original keeps its own if still placed).
+        if (!handle->scope) {
+            handle->scope = &placeholder;
+            handle->composition = this;
+            handle->placedPass = m_PassId;
+            handle->placedBatch = t_BatchId;
+            g->slot = handle;
+        }
+        Invalidate(placeholder);
     }
 
     void Composition::Park(Group& g) {
@@ -418,7 +523,7 @@ namespace kiln::rt {
 
     bool Composition::Recompose() {
         bool recomposed = false;
-        ++m_PassId;
+        m_PassId = ++t_PassCounter;
         // Apply until stable: a recomposition or a derived value can write state that other
         // scopes read. The bound stops a scope that writes what it reads from looping forever.
         for (int pass = 0; pass < 32; ++pass) {
@@ -440,8 +545,9 @@ namespace kiln::rt {
                 else m_Pending.erase(s);
             }
         }
-        // Movable content no call site adopted leaves now.
-        DisposeParked();
+        // Movable content no call site adopted leaves now (at the end of a RecomposeAll batch,
+        // where another composition may still adopt it).
+        if (t_BatchDepth == 0) DisposeParked();
         ApplyNodeChanges();
         RunEffects();
         return recomposed;

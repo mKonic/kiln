@@ -345,6 +345,63 @@ TEST(MovableContentMovesItsStateAndNodes) {
     CHECK_EQ(disposed, 1);
 }
 
+// Between compositions (the Recomposer's moves): content one composition drops in a frame is
+// adopted by another that starts calling it, whichever of them recomposes first; a second site
+// while the first still calls it gets state of its own.
+TEST(MovableContentMovesBetweenCompositions) {
+    Node rootA("a"), rootB("b");
+    Composition a(rootA), b(rootB);
+    State<int> where(0);   // 0: in a, 1: in b, 2: both, 3: neither
+    State<int> tick(0);
+    std::map<Composition*, int*> slots;
+    std::vector<Composition*> runs;
+    int disposed = 0;
+    MovableContent<> movable(std::function<void()>([&] {
+        Composition& c = *Composition::Current();
+        tick.Get();
+        runs.push_back(&c);
+        slots[&c] = &c.Remember<int>([] { return 7; });
+        c.DisposableEffect(Keys(0), [&] { return std::function<void()>([&] { ++disposed; }); });
+        Emit(c, "content");
+    }));
+    a.SetContent([&] { const int w = where.Get(); if (w == 0 || w == 2) movable(); });
+    b.SetContent([&] { const int w = where.Get(); if (w == 1 || w == 2) movable(); });
+    Composition::RecomposeAll();
+    CHECK_EQ(rootA.Dump() + rootB.Dump(), std::string("a(content)b"));
+    int* slot = slots[&a];
+    *slot = 8;
+    TreeNode* node = rootA.children[0];
+
+    // a recomposes first and drops it; b adopts it.
+    where.Set(1);
+    Composition::RecomposeAll();
+    CHECK_EQ(rootA.Dump() + rootB.Dump(), std::string("ab(content)"));
+    CHECK(slots[&b] == slot && *slot == 8 && rootB.children[0] == node && disposed == 0);
+    // Its reads now recompose it in b.
+    runs.clear();
+    tick.Set(1);
+    Composition::RecomposeAll();
+    CHECK(runs == std::vector<Composition*>{ &b });
+
+    // Back: a asks for it before b has dropped it; the insert waits for the end of the batch.
+    where.Set(0);
+    Composition::RecomposeAll();
+    CHECK_EQ(rootA.Dump() + rootB.Dump(), std::string("a(content)b"));
+    CHECK(slots[&a] == slot && *slot == 8 && rootA.children[0] == node && disposed == 0);
+
+    // Both: the second site composes anew, the first keeps its state.
+    slots.clear();
+    where.Set(2);
+    Composition::RecomposeAll();
+    CHECK_EQ(rootA.Dump() + rootB.Dump(), std::string("a(content)b(content)"));
+    CHECK(slots[&b] && slots[&b] != slot && *slots[&b] == 7 && rootA.children[0] == node);
+
+    where.Set(3);
+    Composition::RecomposeAll();
+    CHECK_EQ(rootA.Dump() + rootB.Dump(), std::string("ab"));
+    CHECK_EQ(disposed, 2);
+}
+
 // A section keeps its own identity but its reads recompose the enclosing scope.
 TEST(SectionReadsRecomposeTheParent) {
     Node root("root");

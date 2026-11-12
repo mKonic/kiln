@@ -118,6 +118,7 @@ namespace kiln::rt {
         Scope* scope = nullptr;
         Composition* composition = nullptr;
         std::uint64_t placedPass = 0;
+        std::uint64_t placedBatch = 0;   // the RecomposeAll it was last placed in
     };
 
     struct Group {
@@ -151,7 +152,7 @@ namespace kiln::rt {
         void CollectNodes(std::vector<TreeNode*>& out) const;
         const StateObject* FindLocal(const void* local) const;
 
-        Composition& m_Composition;
+        Composition* m_Composition;    // changes when movable content moves to another composition
         Scope* m_Parent;
         TreeNode* m_Host;              // node whose children this scope's nodes are
         std::function<void()> m_Content;
@@ -162,6 +163,7 @@ namespace kiln::rt {
         std::uint64_t m_CompositeKey = 0;
         bool m_Invalid = true;
         bool m_Disposed = false;
+        bool m_AwaitingInsert = false;   // movable content waiting for the end of the batch
         std::unordered_map<const void*, std::shared_ptr<StateObject>> m_Provided;   // Local* -> State<T>
         // Computed defaults read in this scope (Local* -> T), recomputed on each read.
         std::unordered_map<const void*, std::shared_ptr<void>> m_ComputedDefaults;
@@ -308,7 +310,7 @@ namespace kiln::rt {
                         return static_cast<const State<T, NeverEqual>*>(p)->Get();
                     last = s;
                 }
-                start = last ? last->m_Composition.m_ParentContext : nullptr;
+                start = last ? last->m_Composition->m_ParentContext : nullptr;
             }
             if (local.HasComputedDefault()) return ComputedDefault(scope, local);
             return local.Default();
@@ -324,7 +326,7 @@ namespace kiln::rt {
                         return &static_cast<const State<T, NeverEqual>*>(p)->Get();
                     last = s;
                 }
-                start = last ? last->m_Composition.m_ParentContext : nullptr;
+                start = last ? last->m_Composition->m_ParentContext : nullptr;
             }
             return nullptr;
         }
@@ -370,6 +372,10 @@ namespace kiln::rt {
         void Unpend(Scope& scope);
         void Repend(Scope& scope);
         void DisposeParked();
+        // Movable content moving between compositions (see RecomposeAll).
+        static Composition* ParkedOwner(MovableHandle* handle, Composition* self);
+        void Retarget(Scope& scope);
+        void InsertAwaiting(const std::shared_ptr<MovableHandle>& handle, Scope& placeholder);
         void Invalidate(Scope& scope);
         void ApplyNodeChanges();
         void RunEffects();

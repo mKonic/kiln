@@ -5398,6 +5398,31 @@ TEST(ModalWideNavigationRailItemsAreASelectableGroup) {
     CHECK(parent && parent->config.selectableGroup);
 }
 
+// The items are movable content: expanding moves them, with their state, into the window.
+TEST(ModalWideNavigationRailItemsKeepTheirStateInTheWindow) {
+    ModalHarness h;
+    std::shared_ptr<WideNavigationRailState> state;
+    std::vector<int*> slots;
+    Themed(h, [&] {
+        state = RememberWideNavigationRailState(WideNavigationRailValue::Collapsed);
+        ModalWideNavigationRailOptions o;
+        o.state = state;
+        ModalWideNavigationRail(Tag({}, "rail"), o, [&] {
+            int* slot = &rt::Composition::Current()->Remember<int>([] { return 1; });
+            if (slots.empty() || slots.back() != slot) slots.push_back(slot);
+            WideNavigationRailItem(true, [] {}, [] { NavIcon(); }, [] { Text("ItemText"); }, false, Tag({}, "item"), {});
+        });
+    });
+    h.AdvanceTimeBy(1000);
+    CHECK_EQ(slots.size(), std::size_t(1));
+    *slots[0] = 5;
+    auto job = rt::Launch(rt::Dispatcher::Main(), state->Expand());
+    h.AdvanceTimeBy(1000);
+    CHECK_EQ(h.dialogs.size(), std::size_t(1));
+    CHECK_EQ(slots.size(), std::size_t(1));   // the same remembered value, now composed in the window
+    CHECK_EQ(*slots.back(), 5);
+}
+
 TEST(ModalWideNavigationRailExpandsIntoAWindowAndCollapses) {
     ModalHarness h;
     std::int64_t t = 1000;

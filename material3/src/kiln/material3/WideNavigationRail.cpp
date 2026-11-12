@@ -516,6 +516,14 @@ namespace kiln::material3 {
         const auto state = o.state ? o.state : RememberWideNavigationRailState();
         const WideNavigationRailColors colors = o.colors.value_or(WideNavigationRailDefaults::colors());
         const bool hideOnCollapse = o.hideOnCollapse;
+        // rememberContent: with a collapsed rail kept, the items are movable content, keeping their
+        // state as they move into the expanded rail's window and back. The latest content runs.
+        if (!hideOnCollapse) {
+            const auto latest = c.Remember<std::shared_ptr<std::function<void()>>>([] { return std::make_shared<std::function<void()>>(); });
+            *latest = std::move(content);
+            const auto& movable = c.Remember<rt::MovableContent<>>([&] { return rt::MovableContent<>(std::function<void()>([latest] { if (*latest) (*latest)(); })); });
+            content = [movable] { movable(); };
+        }
         const bool targetExpanded = state->TargetValue() == Value_::Expanded;
 
         const auto position = c.Remember<std::shared_ptr<PositionProgress>>([targetExpanded] { return std::make_shared<PositionProgress>(targetExpanded); });
