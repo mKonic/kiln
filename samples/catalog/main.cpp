@@ -20,6 +20,7 @@
 #include <kiln/foundation/VectorPainter.h>
 #include <kiln/foundation/Animate.h>
 #include <kiln/foundation/text/TextFieldState.h>
+#include <kiln/runtime/Saveable.h>
 #include <kiln/material3/AppBar.h>
 #include <kiln/material3/Card.h>
 #include <kiln/material3/Divider.h>
@@ -336,6 +337,9 @@ namespace catalog {
 
         struct Nav {
             kiln::rt::State<std::vector<std::string>>* stack;
+            // Each route's saveable state, kept while it is on the back stack (NavHost's
+            // SaveableStateHolder per entry): home's scroll position survives an example.
+            kiln::rt::SaveableStateHolder* states = nullptr;
             std::string Current() const { return stack->Get().back(); }
             void Navigate(const std::string& route) const {
                 auto s = stack->Peek();
@@ -344,7 +348,10 @@ namespace catalog {
             }
             void Back() const {
                 auto s = stack->Peek();
-                if (s.size() > 1) s.pop_back();
+                if (s.size() <= 1) return;
+                const std::string popped = s.back();
+                s.pop_back();
+                if (states && std::find(s.begin(), s.end(), popped) == s.end()) states->RemoveState(popped);
                 stack->Set(s);
             }
         };
@@ -488,7 +495,8 @@ namespace catalog {
             auto& stack = RememberState<std::vector<std::string>>({ "home" });
             auto& initialLaunch = RememberState(true);
             auto& favorite = RememberState(InitialRoute());
-            const Nav nav{ &stack };
+            auto& states = kiln::rt::RememberSaveableStateHolder();
+            const Nav nav{ &stack, &states };
             const auto onFavorite = [&favorite](const std::string& route) { favorite.Set(favorite.Peek() == route ? std::string() : route); };
             BackHandler(stack.Get().size() > 1, [nav] { nav.Back(); });
             const std::string route = nav.Current();
@@ -496,10 +504,12 @@ namespace catalog {
             const Component* component = p.component > 0 ? Find(p.component) : nullptr;
             const std::string fav = favorite.Get();
             // Each destination in its own scope, keyed by route, as NavHost keeps them apart.
-            kiln::rt::Composition::Current()->Child([=] {
-                if (component && p.example >= 0) ExampleScreen(nav, *component, p.example, fav, onFavorite);
-                else if (component) ComponentScreen(nav, *component, fav, onFavorite);
-                else Home(nav, fav, onFavorite);
+            kiln::rt::Composition::Current()->Child([=, &states] {
+                kiln::rt::SaveableStateProvider(states, route, [=] {
+                    if (component && p.example >= 0) ExampleScreen(nav, *component, p.example, fav, onFavorite);
+                    else if (component) ComponentScreen(nav, *component, fav, onFavorite);
+                    else Home(nav, fav, onFavorite);
+                });
             }, kiln::rt::Key(std::string_view(route)));
             // maybeNavigate, on the first composition after home: an example opens over its
             // component, over home.
@@ -586,13 +596,23 @@ namespace catalog {
     }
 }
 
+namespace catalog {
+    // CatalogTheme with the default Theme (ThemeColorMode.System, ColorMode.Baseline): the
+    // baseline light or dark scheme as the system's night mode says.
+    void CatalogTheme(std::function<void()> content) {
+        kiln::material3::MaterialThemeArgs args;
+        args.colorScheme = kiln::ui::IsSystemInDarkTheme() ? kiln::material3::DarkColorScheme() : kiln::material3::LightColorScheme();
+        kiln::material3::MaterialTheme(args, std::move(content));
+    }
+}
+
 extern "C" void kiln_main(kiln_app* app) {
 #if !defined(__ANDROID__)
     if (const char* golden = std::getenv("KILN_CATALOG_GOLDEN")) {
         const std::string dir = golden;
-        kiln::SetContent(app, [dir] { kiln::material3::MaterialTheme([dir] { catalog::Golden(dir); }); });
+        kiln::SetContent(app, [dir] { catalog::CatalogTheme([dir] { catalog::Golden(dir); }); });
         return;
     }
 #endif
-    kiln::SetContent(app, [] { kiln::material3::MaterialTheme([] { catalog::NavGraph(); }); });
+    kiln::SetContent(app, [] { catalog::CatalogTheme([] { catalog::NavGraph(); }); });
 }
