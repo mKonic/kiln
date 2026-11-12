@@ -29,6 +29,7 @@
 #include "kiln/material3/tokens/ShapeKeyTokens.h"
 #include "kiln/material3/tokens/TimeInputTokens.h"
 #include "kiln/material3/tokens/TimePickerTokens.h"
+#include "kiln/material3/tokens/TypeScaleTokens.h"
 #include "kiln/material3/tokens/TypographyKeyTokens.h"
 #include "kiln/runtime/Saveable.h"
 #include "kiln/text/LocaleFormat.h"
@@ -447,16 +448,46 @@ namespace kiln::material3 {
             });
         }
 
-        void ToggleText(const std::string& text, bool bold, bool autoSized) {
+        // PeriodToggleAutoSize: the label at its largest size when it fits (one layout); only an
+        // overflowing label goes through StepBased, in 1 sp steps.
+        class PeriodToggleAutoSize final : public TextAutoSize {
+        public:
+            explicit PeriodToggleAutoSize(text::TextUnit maxFontSize)
+                : m_Max(maxFontSize), m_Fallback(TextAutoSize::StepBased(text::Sp(6), maxFontSize, text::Sp(1))) {}
+            text::TextUnit GetFontSize(TextAutoSizeLayoutScope& scope, const ui::Constraints& constraints, const text::AnnotatedString& text) const override {
+                if (!scope.PerformLayout(constraints, text, m_Max).HasVisualOverflow()) return m_Max;
+                return m_Fallback->GetFontSize(scope, constraints, text);
+            }
+            bool Equals(const TextAutoSize& other) const override {
+                const auto* o = dynamic_cast<const PeriodToggleAutoSize*>(&other);
+                return o && o->m_Max == m_Max;
+            }
+        private:
+            text::TextUnit m_Max;
+            TextAutoSizePtr m_Fallback;
+        };
+
+        // withDefaultPeriodLabelSizes: TitleMedium's sizes when the theme's style sets none.
+        text::TextStyle PeriodLabelStyle() {
             text::TextStyle style = Value(TimePickerTokens::PeriodSelectorLabelTextFont);
+            if (!style.span.fontSize.IsSp()) style.span.fontSize = TypeScaleTokens::TitleMediumSize;
+            if (!style.paragraph.lineHeight.IsSpecified()) style.paragraph.lineHeight = TypeScaleTokens::TitleMediumLineHeight;
+            return style;
+        }
+
+        void ToggleText(const std::string& text, bool bold, bool autoSized) {
+            text::TextStyle style = autoSized ? PeriodLabelStyle() : Value(TimePickerTokens::PeriodSelectorLabelTextFont);
+            const text::TextStyle base = style;
             if (bold) style.WithWeight(text::FontWeight::Bold());
             TextOptions o;
             o.style = style;
             o.maxLines = 1;
             if (autoSized) {
-                const text::TextStyle base = Value(TimePickerTokens::PeriodSelectorLabelTextFont);
-                o.lineHeight = text::Em(base.paragraph.lineHeight.value / base.span.fontSize.value);
-                o.autoSize = TextAutoSize::StepBased(text::Sp(6), base.span.fontSize);
+                o.lineHeight = base.paragraph.lineHeight.IsEm() ? base.paragraph.lineHeight
+                                                                : text::Em(base.paragraph.lineHeight.value / base.span.fontSize.value);
+                auto& autoSize = rt::Composition::Current()->Remember<TextAutoSizePtr>(
+                    [&] { return std::make_shared<const PeriodToggleAutoSize>(base.span.fontSize); }, rt::Keys(base.span.fontSize.value));
+                o.autoSize = autoSize;
             }
             Text(text, {}, o);
         }

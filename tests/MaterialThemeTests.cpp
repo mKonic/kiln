@@ -14452,3 +14452,25 @@ TEST(PaneScaffoldDirectiveFollowsTheSizeClassesAndPosture) {   // PaneScaffoldDi
     CHECK_EQ(twoOnMedium.maxHorizontalPartitions, 2);
     CHECK_EQ(twoOnMedium.maxVerticalPartitions, 1);
 }
+
+// timePicker_periodToggle_themeWithoutTitleMediumSizes_usesDefaults: a theme whose titleMedium
+// sets no sizes gives the period labels TitleMedium's 16 sp (no crash, no NaN line height).
+TEST(TimePickerPeriodToggleThemeWithoutTitleMediumSizesUsesDefaults) {
+    auto state = MakeTimePickerState(10, 30, false);
+    PhoneHarness h;
+    PickerContent(h, [state] {
+        MaterialThemeArgs args;
+        Typography t;
+        t.titleMedium = text::TextStyle{};
+        args.typography = t;
+        MaterialTheme(args, [state] { TimePicker(*state); });
+    });
+    const ui::SemanticsNode tree = h.owner.BuildSemanticsTree();
+    const ui::Rect window{ -1e6f, -1e6f, 1e6f, 1e6f };
+    const auto* am = FindNode(tree, [](const ui::SemanticsNode& n) { return TextContains(n, "AM") && n.config.getTextLayoutResult; }, window);
+    CHECK(am != nullptr);
+    if (am) {
+        const auto result = am->config.getTextLayoutResult();
+        CHECK(result && result->LayoutInput().style.span.fontSize == text::Sp(16));
+    }
+}
