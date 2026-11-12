@@ -142,6 +142,23 @@ TEST(PrecomposedSlotsAreClaimedByMeasureOrDisposed) {
     a.Dispose();
     h.Frame();
     CHECK_EQ(a.PlaceablesCount(), 1);
+    // A paused precomposition completes on its first resume; apply hands over the slot.
+    auto paused = state.CreatePausedPrecomposition(rt::Key(3), slotB);
+    CHECK(!paused.IsComplete());
+    CHECK(paused.Resume([] { return true; }) && paused.IsComplete());
+    CHECK_EQ(composedB, 2);
+    auto c3 = paused.Apply();
+    CHECK_EQ(c3.PlaceablesCount(), 1);
+    auto cancelled = state.CreatePausedPrecomposition(rt::Key(4), slotB);
+    cancelled.Resume({});
+    cancelled.Cancel();
+    CHECK_EQ(composedB, 3);
+    c3.Dispose();
+    // The fixed-count policy keeps the newest ids.
+    SubcomposeSlotReusePolicy::SlotIdsSet ids;
+    for (int i = 0; i < 5; ++i) ids.Add(rt::Key(i));
+    MakeSubcomposeSlotReusePolicy(2)->GetSlotsToRetain(ids);
+    CHECK(ids.Size() == 2 && ids.Contains(rt::Key(3)) && ids.Contains(rt::Key(4)));
 }
 
 TEST(SlotContentMeasuresWithTheOwnersDensityAndResizesTheLayout) {

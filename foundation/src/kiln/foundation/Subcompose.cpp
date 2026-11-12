@@ -209,7 +209,50 @@ namespace kiln::foundation {
         }
     }
 
-    SubcomposeLayoutState::SubcomposeLayoutState() : m_Impl(std::make_shared<State>()) {}
+    SubcomposeLayoutState::SubcomposeLayoutState() : m_Impl(std::make_shared<State>()), m_Policy(MakeSubcomposeSlotReusePolicy(0)) {}
+    SubcomposeLayoutState::SubcomposeLayoutState(std::shared_ptr<SubcomposeSlotReusePolicy> policy)
+        : m_Impl(std::make_shared<State>()), m_Policy(policy ? std::move(policy) : MakeSubcomposeSlotReusePolicy(0)) {}
+
+    std::shared_ptr<SubcomposeSlotReusePolicy> MakeSubcomposeSlotReusePolicy(int maxSlotsToRetainForReuse) {
+        struct FixedCount final : SubcomposeSlotReusePolicy {
+            int max;
+            explicit FixedCount(int m) : max(m) {}
+            void GetSlotsToRetain(SlotIdsSet& ids) override {
+                // The set lists the oldest first: drop from the front past the limit.
+                std::vector<rt::Key> keep(ids.Ids().end() - std::min<std::ptrdiff_t>(max, std::ptrdiff_t(ids.Size())), ids.Ids().end());
+                ids.Clear();
+                for (const rt::Key& k : keep) ids.Add(k);
+            }
+            bool AreCompatible(rt::Key, rt::Key) override { return true; }
+        };
+        return std::make_shared<FixedCount>(std::max(0, maxSlotsToRetainForReuse));
+    }
+
+    SubcomposeLayoutState::PausedPrecomposition SubcomposeLayoutState::CreatePausedPrecomposition(rt::Key slotId, std::function<void()> content) {
+        PausedPrecomposition p;
+        p.m_Owner = this;
+        p.m_Slot = slotId;
+        p.m_Content = std::move(content);
+        return p;
+    }
+
+    bool SubcomposeLayoutState::PausedPrecomposition::Resume(const rt::ShouldPauseCallback&) {
+        if (!m_Complete && !m_Cancelled && m_Owner) {
+            m_Handle = m_Owner->Precompose(m_Slot, std::move(m_Content));
+            m_Complete = true;
+        }
+        return m_Complete;
+    }
+
+    SubcomposeLayoutState::PrecomposedSlotHandle SubcomposeLayoutState::PausedPrecomposition::Apply() {
+        Resume({});
+        return std::move(m_Handle);
+    }
+
+    void SubcomposeLayoutState::PausedPrecomposition::Cancel() {
+        m_Cancelled = true;
+        m_Handle.Dispose();
+    }
 
     SubcomposeLayoutState::PrecomposedSlotHandle SubcomposeLayoutState::Precompose(rt::Key slotId, std::function<void()> content) {
         PrecomposedSlotHandle h;
