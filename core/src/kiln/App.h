@@ -54,6 +54,10 @@ namespace kiln {
         float AnimationScale() const { return m_AnimationScale; }
 
         void SurfaceCreated(hearth::Surface& surface);
+        // Where the device keeps its pipeline cache between launches (Android: the app's cache
+        // directory). Set before the first surface; SavePipelineCache writes it now.
+        void SetPipelineCachePath(std::string path) { m_PipelineCachePath = std::move(path); }
+        void SavePipelineCache() { if (m_Device) m_Device->SavePipelineCache(); }
         void SurfaceResized(std::uint32_t width, std::uint32_t height);
         // The host view's size from its own layout, which comes before the surface's (so focus
         // the platform gives on a window's first layout finds laid-out content).
@@ -186,6 +190,7 @@ namespace kiln {
         std::unique_ptr<rt::Composition> m_Composition;
         kiln_app_callbacks m_Callbacks{};
         std::unique_ptr<hearth::Device> m_Device;
+        std::string m_PipelineCachePath;
         std::unique_ptr<QuadRenderer> m_Quads;
         std::vector<std::unique_ptr<AtlasPage>> m_Pages;
         std::unique_ptr<PathCache> m_Paths;

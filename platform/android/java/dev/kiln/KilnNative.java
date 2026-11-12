@@ -11,6 +11,8 @@ final class KilnNative {
     static native void setVisible(boolean visible);
     // Lifecycle.Event ordinal (ON_CREATE 0 ... ON_DESTROY 5) for the window's lifecycle.
     static native void lifecycleEvent(int event);
+    /** The app's cache directory: the device's pipeline cache lives there. Before the surface. */
+    static native void setCacheDir(String dir);
     static native void destroy();
     static native void setDensity(float density, float fontScale);
     /** Configuration.fontWeightAdjustment (the bold text setting). */

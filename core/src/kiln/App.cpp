@@ -350,6 +350,7 @@ namespace kiln {
             desc.surface = &surface;
             desc.appName = "kiln";
             desc.engineName = "kiln";
+            desc.pipelineCachePath = m_PipelineCachePath;
 #ifdef __ANDROID__
             // External surfaces below kiln's frame show through where content clears it; the
             // view marks its surface opaque while there are none, which makes alpha moot.
@@ -363,6 +364,9 @@ namespace kiln {
             }
             HEARTH_INFO("kiln: {} / {}", m_Device->Caps().deviceName, m_Device->Caps().driverInfo);
             m_Quads = std::make_unique<QuadRenderer>(*m_Device);
+            // The renderer built its pipelines: keep them for the next cold start (the driver's
+            // shader compiler is most of a cold launch on Adreno).
+            m_Device->SavePipelineCache();
         }
         u32 w = 0, h = 0;
         surface.FramebufferSize(w, h);

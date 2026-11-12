@@ -1196,6 +1196,16 @@ namespace {
     void LifecycleEvent(JNIEnv*, jclass, jint event) {
         if (!g_Host || !g_Host->app || event < 0 || event > int(kiln::lifecycle::Event::OnDestroy)) return;
         g_Host->app->HandleLifecycleEvent(kiln::lifecycle::Event(event));
+        // A stopped app may be ended without its device being destroyed: write the pipeline
+        // cache (pipelines built since launch, external surfaces' among them) now.
+        if (kiln::lifecycle::Event(event) == kiln::lifecycle::Event::OnStop) g_Host->app->SavePipelineCache();
+    }
+
+    void SetCacheDir(JNIEnv* env, jclass, jstring dir) {
+        if (!g_Host || !g_Host->app || !dir) return;
+        const char* chars = env->GetStringUTFChars(dir, nullptr);
+        g_Host->app->SetPipelineCachePath(std::string(chars) + "/kiln-pipelines.bin");
+        env->ReleaseStringUTFChars(dir, chars);
     }
 
     void FontsChanged(JNIEnv*, jclass) {
@@ -2953,6 +2963,7 @@ extern "C" JNIEXPORT jint kiln_jni_onload(JavaVM* vm) {
         { "create", "(Ldev/kiln/KilnView;Ldev/kiln/KilnText;Landroid/content/res/AssetManager;FF[B)V", reinterpret_cast<void*>(&Create) },
         { "setVisible", "(Z)V", reinterpret_cast<void*>(&SetVisible) },
         { "lifecycleEvent", "(I)V", reinterpret_cast<void*>(&LifecycleEvent) },
+        { "setCacheDir", "(Ljava/lang/String;)V", reinterpret_cast<void*>(&SetCacheDir) },
         { "setDensity", "(FF)V", reinterpret_cast<void*>(&SetDensity) },
         { "setFontWeightAdjustment", "(I)V", reinterpret_cast<void*>(&SetFontWeightAdjustment) },
         { "setConfiguration", "([IF[Ljava/lang/String;[I[I)V", reinterpret_cast<void*>(&SetConfiguration) },
