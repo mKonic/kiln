@@ -111,6 +111,7 @@ typedef struct kiln_text_selection_colors kiln_text_selection_colors;
 typedef struct kiln_m3_text_field_colors kiln_m3_text_field_colors;
 typedef struct kiln_m3_text_field_label_position kiln_m3_text_field_label_position;
 typedef struct kiln_m3_text_field_label_scope kiln_m3_text_field_label_scope;
+typedef struct kiln_platform_ime_options kiln_platform_ime_options;
 typedef struct kiln_keyboard_options kiln_keyboard_options;
 typedef struct kiln_text_field_line_limits kiln_text_field_line_limits;
 typedef struct kiln_m3_text_field_options kiln_m3_text_field_options;
@@ -1091,6 +1092,11 @@ struct kiln_m3_text_field_label_scope {
     kiln_m3_fn_to_float progress;
 };
 KILN_API void kiln_m3_text_field_label_scope_init(kiln_m3_text_field_label_scope* s);
+struct kiln_platform_ime_options {
+    size_t size;
+    const char* private_ime_options;
+};
+KILN_API void kiln_platform_ime_options_init(kiln_platform_ime_options* s);
 struct kiln_keyboard_options {
     size_t size;
     const kiln_capitalization* capitalization;
@@ -1100,6 +1106,7 @@ struct kiln_keyboard_options {
     kiln_opt_bool show_keyboard_on_focus;
     const char* const* hint_locales;   /* NULL: the default */
     size_t hint_locales_count;
+    const kiln_platform_ime_options* platform_ime_options;
 };
 KILN_API void kiln_keyboard_options_init(kiln_keyboard_options* s);
 struct kiln_text_field_line_limits {

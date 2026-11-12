@@ -1700,7 +1700,7 @@ namespace {
 
     void InstallTextInputHost(JNIEnv* env, Win* w) {
         jclass cls = env->GetObjectClass(w->view);
-        static jmethodID start = env->GetMethodID(cls, "startInput", "(IIZLjava/lang/String;ZZ)V");
+        static jmethodID start = env->GetMethodID(cls, "startInput", "(IIZLjava/lang/String;ZZLjava/lang/String;)V");
         static jmethodID handwriting = env->GetMethodID(cls, "startStylusHandwriting", "()V");
         static jmethodID stop = env->GetMethodID(cls, "stopInput", "()V");
         static jmethodID update = env->GetMethodID(cls, "imeUpdate", "(IIIIZ)V");
@@ -1717,8 +1717,11 @@ namespace {
             for (const auto& t : o.hintLocales) { if (!tags.empty()) tags += ','; tags += t; }
             JNIEnv* e = MainEnv();
             jstring jt = e->NewStringUTF(tags.c_str());
-            e->CallVoidMethod(w->view, start, type, opts, jboolean(o.singleLine), jt, jboolean(o.acceptsContent), jboolean(o.stylusHandwriting));
+            // EditorInfo.update: platformImeOptions?.privateImeOptions
+            jstring jp = o.platformImeOptions && o.platformImeOptions->privateImeOptions ? e->NewStringUTF(o.platformImeOptions->privateImeOptions->c_str()) : nullptr;
+            e->CallVoidMethod(w->view, start, type, opts, jboolean(o.singleLine), jt, jboolean(o.acceptsContent), jboolean(o.stylusHandwriting), jp);
             e->DeleteLocalRef(jt);
+            if (jp) e->DeleteLocalRef(jp);
         };
         host.stop = [w] { MainEnv()->CallVoidMethod(w->view, stop); };
         host.update = [w](const kiln::ui::TextInputSnapshot& s, bool selectionChanged) {

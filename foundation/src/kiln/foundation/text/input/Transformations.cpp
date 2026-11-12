@@ -14,6 +14,7 @@ namespace kiln::foundation {
         if (!r.imeAction) r.imeAction = o.imeAction;
         if (!r.showKeyboardOnFocus) r.showKeyboardOnFocus = o.showKeyboardOnFocus;
         if (r.hintLocales.empty()) r.hintLocales = o.hintLocales;
+        if (!r.platformImeOptions) r.platformImeOptions = o.platformImeOptions;
         return r;
     }
 
@@ -25,6 +26,7 @@ namespace kiln::foundation {
         out.imeAction = imeAction.value_or(ui::ImeAction::Default);
         out.singleLine = singleLine;
         out.hintLocales = hintLocales;
+        out.platformImeOptions = platformImeOptions;
         return out;
     }
 

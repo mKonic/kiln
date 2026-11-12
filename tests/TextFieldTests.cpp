@@ -1193,3 +1193,14 @@ TEST(EditProcessorAppliesImeCommandsLikeCompose) {
     const TextFieldValue tf("hello world", TextRange(6, 11));
     CHECK(GetSelectedText(tf).Text() == "world" && GetTextBeforeSelection(tf, 3).Text() == "lo " && GetTextAfterSelection(tf, 3).Text().empty());
 }
+
+TEST(KeyboardOptionsCarryPlatformImeOptions) {
+    // fillUnspecifiedValuesWith keeps this side's platformImeOptions; ToImeOptions passes it on.
+    foundation::KeyboardOptions a, b;
+    b.platformImeOptions = ui::PlatformImeOptions{ "nm" };
+    CHECK(a.FillUnspecifiedValuesWith(b).platformImeOptions == b.platformImeOptions);
+    a.platformImeOptions = ui::PlatformImeOptions{};
+    CHECK(!a.FillUnspecifiedValuesWith(b).platformImeOptions->privateImeOptions);
+    const ui::ImeOptions o = b.ToImeOptions(true);
+    CHECK(o.platformImeOptions && o.platformImeOptions->privateImeOptions == "nm" && o.singleLine);
+}

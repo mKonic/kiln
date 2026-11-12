@@ -27,6 +27,7 @@ namespace kiln::foundation {
         std::optional<ui::ImeAction> imeAction;
         std::optional<bool> showKeyboardOnFocus;
         std::vector<std::string> hintLocales;
+        std::optional<ui::PlatformImeOptions> platformImeOptions;
         KeyboardOptions FillUnspecifiedValuesWith(const KeyboardOptions& o) const;
         // The options with the defaults for what is unset (and single line when asked).
         ui::ImeOptions ToImeOptions(bool singleLine) const;

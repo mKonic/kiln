@@ -638,6 +638,7 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
     private boolean acceptsContent;
     private boolean imeWasVisible;
     private boolean stylusHandwriting;
+    private String privateImeOptions;
 
     /** ComposeInputMethodManagerImplApi34.startStylusHandwriting. */
     void startStylusHandwriting() {
@@ -681,8 +682,9 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
     private InputMethodManager imm() { return getContext().getSystemService(InputMethodManager.class); }
 
     /** A field took focus: new EditorInfo, then show the keyboard (coalesced restart + show). */
-    void startInput(int type, int options, boolean singleLine, String hintLocales, boolean acceptsContent, boolean stylusHandwriting) {
+    void startInput(int type, int options, boolean singleLine, String hintLocales, boolean acceptsContent, boolean stylusHandwriting, String privateImeOptions) {
         this.inputActive = true;
+        this.privateImeOptions = privateImeOptions;
         this.stylusHandwriting = stylusHandwriting;
         this.acceptsContent = acceptsContent;
         this.inputType = type;
@@ -1420,6 +1422,7 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
         out.inputType = inputType;
         out.imeOptions = imeOptions;
         // EditorInfo.update
+        if (privateImeOptions != null) out.privateImeOptions = privateImeOptions;
         if (!hintLocales.isEmpty()) out.hintLocales = android.os.LocaleList.forLanguageTags(hintLocales);
         int[] sel = KilnNative.imeGetSelection(windowId);
         out.initialSelStart = sel[0];

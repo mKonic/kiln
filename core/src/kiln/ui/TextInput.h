@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <functional>
 #include <array>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -29,6 +30,13 @@ namespace kiln::ui {
     enum class ImeAction : std::uint8_t { Default, None, Go, Search, Send, Previous, Next, Done };
     enum class Capitalization : std::uint8_t { None, Characters, Words, Sentences };
 
+    // PlatformImeOptions (Android): privateImeOptions goes to EditorInfo.privateImeOptions, the
+    // app-private extra a keyboard may read.
+    struct PlatformImeOptions {
+        std::optional<std::string> privateImeOptions;
+        bool operator==(const PlatformImeOptions&) const = default;
+    };
+
     struct ImeOptions {
         KeyboardType keyboardType = KeyboardType::Text;
         ImeAction imeAction = ImeAction::Default;
@@ -41,6 +49,7 @@ namespace kiln::ui {
         bool acceptsContent = false;
         // EditorInfoCompat.setStylusHandwritingEnabled (shouldEnableStylusHandwriting).
         bool stylusHandwriting = false;
+        std::optional<PlatformImeOptions> platformImeOptions;
     };
 
     // The field's visual text as the IME sees it; selection and composition are min / max.

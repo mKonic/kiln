@@ -273,6 +273,9 @@ namespace {
 [[maybe_unused]] kiln::material3::TextFieldLabelScope ToCpp(const kiln_m3_text_field_label_scope* c);
 [[maybe_unused]] void FromCpp(const kiln::material3::TextFieldLabelScope& v, kiln_m3_text_field_label_scope* out);
 [[maybe_unused]] const kiln_m3_text_field_label_scope* FromCppTransient(const kiln::material3::TextFieldLabelScope& v);
+[[maybe_unused]] kiln::ui::PlatformImeOptions ToCpp(const kiln_platform_ime_options* c);
+[[maybe_unused]] void FromCpp(const kiln::ui::PlatformImeOptions& v, kiln_platform_ime_options* out);
+[[maybe_unused]] const kiln_platform_ime_options* FromCppTransient(const kiln::ui::PlatformImeOptions& v);
 [[maybe_unused]] kiln::foundation::KeyboardOptions ToCpp(const kiln_keyboard_options* c);
 [[maybe_unused]] void FromCpp(const kiln::foundation::KeyboardOptions& v, kiln_keyboard_options* out);
 [[maybe_unused]] const kiln_keyboard_options* FromCppTransient(const kiln::foundation::KeyboardOptions& v);
@@ -3121,6 +3124,31 @@ const kiln_m3_text_field_label_scope* FromCppTransient(const kiln::material3::Te
     FromCpp(v, c);
     return c;
 }
+kiln::ui::PlatformImeOptions ToCpp(const kiln_platform_ime_options* in) {
+    kiln::ui::PlatformImeOptions v{};
+    if (!in) return v;
+    kiln_platform_ime_options c;
+    kiln_platform_ime_options_init(&c);
+    if (in->size > sizeof(size_t)) std::memcpy(reinterpret_cast<char*>(&c) + sizeof(size_t), reinterpret_cast<const char*>(in) + sizeof(size_t), std::min(in->size, sizeof(c)) - sizeof(size_t));
+    if (c.private_ime_options) v.privateImeOptions = kiln::capi::ToOptString(c.private_ime_options);
+    return v;
+}
+void FromCpp(const kiln::ui::PlatformImeOptions& v, kiln_platform_ime_options* out) {
+    (void)v;
+    if (!out) return;
+    kiln_platform_ime_options c{};
+    c.size = sizeof(c);
+    c.private_ime_options = ((v.privateImeOptions) ? kiln::capi::TransientString(*(v.privateImeOptions)) : nullptr);
+    const size_t n = out->size < sizeof(size_t) ? sizeof(c) : std::min(out->size, sizeof(c));
+    std::memcpy(reinterpret_cast<char*>(out) + sizeof(size_t), reinterpret_cast<const char*>(&c) + sizeof(size_t), n - sizeof(size_t));
+    out->size = n;
+}
+const kiln_platform_ime_options* FromCppTransient(const kiln::ui::PlatformImeOptions& v) {
+    auto* c = kiln::capi::NewTransient<kiln_platform_ime_options>();
+    c->size = sizeof(*c);
+    FromCpp(v, c);
+    return c;
+}
 kiln::foundation::KeyboardOptions ToCpp(const kiln_keyboard_options* in) {
     kiln::foundation::KeyboardOptions v{};
     if (!in) return v;
@@ -3133,6 +3161,7 @@ kiln::foundation::KeyboardOptions ToCpp(const kiln_keyboard_options* in) {
     if (c.ime_action) v.imeAction = (c.ime_action ? std::optional<kiln::ui::ImeAction>(kiln::ui::ImeAction((*c.ime_action))) : std::nullopt);
     v.showKeyboardOnFocus = (c.show_keyboard_on_focus.set ? std::optional<bool>(c.show_keyboard_on_focus.value) : std::nullopt);
     if (c.hint_locales) { v.hintLocales.clear(); for (size_t i = 0; i < c.hint_locales_count; ++i) v.hintLocales.push_back(kiln::capi::ToString(c.hint_locales[i])); }
+    if (c.platform_ime_options) v.platformImeOptions = (c.platform_ime_options ? std::optional<kiln::ui::PlatformImeOptions>(ToCpp(c.platform_ime_options)) : std::nullopt);
     return v;
 }
 void FromCpp(const kiln::foundation::KeyboardOptions& v, kiln_keyboard_options* out) {
@@ -3145,6 +3174,7 @@ void FromCpp(const kiln::foundation::KeyboardOptions& v, kiln_keyboard_options* 
     c.keyboard_type = ([&]() -> const kiln_keyboard_type* { if (!(v.keyboardType)) return nullptr;  auto* p = kiln::capi::NewTransient<kiln_keyboard_type>(); *p = kiln_keyboard_type((*(v.keyboardType))); return p; }());
     c.ime_action = ([&]() -> const kiln_ime_action* { if (!(v.imeAction)) return nullptr;  auto* p = kiln::capi::NewTransient<kiln_ime_action>(); *p = kiln_ime_action((*(v.imeAction))); return p; }());
     c.show_keyboard_on_focus = kiln_opt_bool{ (v.showKeyboardOnFocus).has_value(), (v.showKeyboardOnFocus).value_or(bool{}) };
+    c.platform_ime_options = ([&]() -> const kiln_platform_ime_options* { if (!(v.platformImeOptions)) return nullptr;  return FromCppTransient((*(v.platformImeOptions))); }());
     const size_t n = out->size < sizeof(size_t) ? sizeof(c) : std::min(out->size, sizeof(c));
     std::memcpy(reinterpret_cast<char*>(out) + sizeof(size_t), reinterpret_cast<const char*>(&c) + sizeof(size_t), n - sizeof(size_t));
     out->size = n;
@@ -8381,6 +8411,10 @@ KILN_API void kiln_m3_text_field_label_position_init(kiln_m3_text_field_label_po
 KILN_API void kiln_m3_text_field_label_scope_init(kiln_m3_text_field_label_scope* s) {
     if (!s) return;
     KILN_CAPI_TRY { s->size = sizeof(*s); FromCpp(kiln::material3::TextFieldLabelScope{}, s); } KILN_CAPI_CATCH()
+}
+KILN_API void kiln_platform_ime_options_init(kiln_platform_ime_options* s) {
+    if (!s) return;
+    KILN_CAPI_TRY { s->size = sizeof(*s); FromCpp(kiln::ui::PlatformImeOptions{}, s); } KILN_CAPI_CATCH()
 }
 KILN_API void kiln_keyboard_options_init(kiln_keyboard_options* s) {
     if (!s) return;
