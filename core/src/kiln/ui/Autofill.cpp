@@ -17,7 +17,7 @@ namespace kiln::ui {
         }
         bool IsRelatedToAutoCommit(const SemanticsConfiguration& c) { return c.contentType.has_value(); }
         bool IsRelatedToAutofill(const SemanticsConfiguration& c, bool credentialRequests) {
-            return bool(c.onFillData) || c.contentType.has_value() || c.contentDataType.has_value() ||
+            return bool(c.onFillData) || c.contentType.has_value() || c.contentDataType.has_value() || c.hintText.has_value() ||
                    (credentialRequests && c.credentialRequest);
         }
         IntRect ToIntRect(const Rect& r) {
@@ -162,6 +162,7 @@ namespace kiln::ui {
             s.parent = parentIndex;
             const SemanticsConfiguration& c = n.config;
             if (!c.contentDescription.empty()) s.contentDescription = c.contentDescription.front();
+            if (c.hintText) s.hint = c.hintText;
             s.focused = c.focused;
             if (c.onClick) s.clickable = true;
             if (c.onLongClick) s.longClickable = true;

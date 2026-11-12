@@ -2233,6 +2233,7 @@ namespace {
             strs.push_back(n.contentDescription);
             strs.push_back(n.text);
             strs.push_back(n.className);
+            strs.push_back(n.hint);
         }
         jclass oc = env->FindClass("java/lang/Object");
         jobjectArray out = env->NewObjectArray(4, oc, nullptr);

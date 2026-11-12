@@ -1124,3 +1124,19 @@ TEST(IdleTextFieldDrawsWithoutAskingForFrames) {
     rt::Observation::SetChangeListener(nullptr);
     CHECK_EQ(writes, 0);
 }
+
+// populateViewStructure_hintText: a node with only HintText is in the structure, with its hint.
+TEST(AutofillStructureCarriesHintText) {
+    FieldHarness h;
+    h.owner.SetAutofillHost(ui::AutofillHost{});
+    h.comp.SetContent([&] {
+        Column(Modifier{}, [&] {
+            Box(SizeMod(Semantics(Modifier{}, [](ui::SemanticsConfiguration& c) { c.hintText = "Hint"; }), Dp(50), Dp(20)));
+        });
+    });
+    h.Pump({ 300, 300 });
+    const auto structure = h.owner.Autofill()->Structure();
+    bool found = false;
+    for (const auto& n : structure) if (n.hint == std::optional<std::string>("Hint")) found = true;
+    CHECK(found);
+}

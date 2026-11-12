@@ -77,7 +77,7 @@ final class KilnAutofill {
         }
     }
 
-    private static final int INTS = 11, STRINGS = 5;
+    private static final int INTS = 11, STRINGS = 6;
 
     /** populateViewStructure: the root (this view's structure), then each node under its parent. */
     void populate(ViewStructure root) {
@@ -115,7 +115,7 @@ final class KilnAutofill {
         int type = in[o + 2], valueKind = in[o + 3], valueInt = in[o + 4];
         int left = in[o + 5], top = in[o + 6], right = in[o + 7], bottom = in[o + 8];
         int flags = in[o + 9], maxLength = in[o + 10];
-        String valueText = str[so], hints = str[so + 1], description = str[so + 2], text = str[so + 3], className = str[so + 4];
+        String valueText = str[so], hints = str[so + 1], description = str[so + 2], text = str[so + 3], className = str[so + 4], hint = str[so + 5];
         if (description != null) s.setContentDescription(description);
         if ((flags & 1) != 0) s.setFocused((flags & 2) != 0);
         if ((flags & 8) != 0) s.setClickable(true);
@@ -136,6 +136,7 @@ final class KilnAutofill {
         s.setDataIsSensitive((flags & 1024) != 0);
         s.setVisibility(View.VISIBLE);
         if (text != null) s.setText(text);
+        if (hint != null) s.setHint(hint);
         if (className != null) s.setClassName(className);
         if ("android.widget.EditText".equals(className)) {
             if (Build.VERSION.SDK_INT >= 28 && maxLength >= 0) s.setMaxTextLength(maxLength);

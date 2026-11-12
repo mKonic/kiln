@@ -44,6 +44,7 @@ namespace kiln::ui {
         std::vector<std::string> hints;
         IntRect bounds;                        // in root pixels
         std::optional<std::string> contentDescription;
+        std::optional<std::string> hint;       // HintText (ViewStructure.setHint)
         std::optional<bool> focused;
         bool enabled = true, clickable = false, longClickable = false, focusable = false;
         std::optional<bool> selected;
