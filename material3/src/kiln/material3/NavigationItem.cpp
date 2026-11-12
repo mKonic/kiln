@@ -130,6 +130,16 @@ namespace kiln::material3 {
                 return PlaceLabelAndTopIcon(s, label, icon, ripple, indicator, c, m_IndicatorToLabel, m_IndicatorPadding.top, m_IndicatorPadding.bottom,
                                             m_ItemPadding.top, m_ItemPadding.bottom, StartOf(m_ItemPadding, dir), EndOf(m_ItemPadding, dir));
             }
+            // The wider of the label and the icon with the indicator around it, plus the item's
+            // horizontal padding.
+            int MaxIntrinsicWidth(ui::MeasureScope& s, std::span<ui::Measurable* const> children, int height) override {
+                const LayoutDirection dir = s.Direction();
+                const int iconWidth = children[IconChild]->MaxIntrinsicWidth(height);
+                const int labelWidth = children.size() > LabelChild ? children[LabelChild]->MaxIntrinsicWidth(height) : 0;
+                const int indicatorHorizontal = s.RoundToPx(Horizontal(m_IndicatorPadding, dir));
+                const int itemHorizontal = s.RoundToPx(Horizontal(m_ItemPadding, dir));
+                return std::max(labelWidth, iconWidth + indicatorHorizontal) + itemHorizontal;
+            }
             int MaxIntrinsicHeight(ui::MeasureScope& s, std::span<ui::Measurable* const> children, int width) override {
                 const int iconHeight = children[IconChild]->MaxIntrinsicHeight(width);
                 const int labelHeight = children.size() > LabelChild ? children[LabelChild]->MaxIntrinsicHeight(width) : 0;

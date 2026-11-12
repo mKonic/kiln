@@ -14474,3 +14474,20 @@ TEST(TimePickerPeriodToggleThemeWithoutTitleMediumSizesUsesDefaults) {
         CHECK(result && result->LayoutInput().style.span.fontSize == text::Sp(16));
     }
 }
+
+// itemContent_withoutLabel_respectsMaxIntrinsicWidth: an icon-only item's max intrinsic width is
+// the icon with the indicator's horizontal padding.
+TEST(ShortNavigationBarIconOnlyItemRespectsMaxIntrinsicWidth) {
+    PhoneHarness h;
+    int rowWidth = -1;
+    Themed(h, [&] {
+        Row(OnSizeChanged(Width({}, IntrinsicSize::Max), [&](ui::IntSize z) { rowWidth = z.width; }), Arrangement::Start(), AlignmentV::Top(), [] {
+            ShortNavigationBarItem(true, [] {}, [] { NavIcon(SizeMod({}, ui::Dp(24), ui::Dp(24))); }, nullptr, Tag({}, "item"), {});
+        });
+    });
+    const auto tree = h.owner.BuildSemanticsTree();
+    const float expected = (24 + 2 * internal::TopIconIndicatorHorizontalPadding.value) * 2;
+    const auto* item = FindSemantics(tree, "item");
+    CHECK(std::abs(float(rowWidth) - expected) < 1);
+    CHECK(item && std::abs(item->boundsInRoot.Width() - expected) < 1);
+}
