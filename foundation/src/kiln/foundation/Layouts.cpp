@@ -350,11 +350,16 @@ namespace kiln::foundation {
 
         // FillNode (Size.kt:697-750).
         struct FillParams { Axis axis; float fraction; bool operator==(const FillParams&) const = default; };
-        struct FillNode final : ModifierNode, LayoutModifier {
+        struct FillNode final : ModifierNode, LayoutModifier, ParentDataModifier {
             FillParams params;
             explicit FillNode(FillParams p) : params(p) {}
             void OnParamsChanged() { InvalidateMeasure(); }
             LayoutModifier* AsLayout() override { return this; }
+            ParentDataModifier* AsParentData() override { return this; }
+            void ModifyParentData(ParentData& d) const override {
+                if (params.axis != Axis::Vertical) d.fillHorizontalFraction = params.fraction;
+                if (params.axis != Axis::Horizontal) d.fillVerticalFraction = params.fraction;
+            }
             MeasureResult Measure(MeasureScope& s, Measurable& m, const Constraints& c) override {
                 Constraints w = c;
                 if (c.HasBoundedWidth() && params.axis != Axis::Vertical) {
