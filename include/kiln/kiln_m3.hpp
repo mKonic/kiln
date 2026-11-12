@@ -568,7 +568,6 @@ namespace kpp::m3 {
         operator kiln_m3_tooltip_scope*() const { return m_H; }
         kiln_m3_tooltip_scope* get() const { return m_H; }
         explicit operator bool() const { return m_H != nullptr; }
-        const kiln_layout_coordinates* obtain_anchor_bounds() const;
         kiln_popup_position_provider* obtain_position_provider() const;
     private:
         kiln_m3_tooltip_scope* m_H;
@@ -863,7 +862,6 @@ namespace kpp::m3 {
     inline void TimePickerState::set_is24_hour(bool is24_hour) const { kiln_m3_time_picker_state_set_is24_hour(m_H, is24_hour); }
     inline kiln_m3_time_picker_selection_mode TimePickerState::selection() const { return kiln_m3_time_picker_state_selection(m_H); }
     inline void TimePickerState::set_selection(kiln_m3_time_picker_selection_mode selection) const { kiln_m3_time_picker_state_set_selection(m_H, selection); }
-    inline const kiln_layout_coordinates* TooltipScope::obtain_anchor_bounds() const { return kiln_m3_tooltip_scope_obtain_anchor_bounds(m_H); }
     inline kiln_popup_position_provider* TooltipScope::obtain_position_provider() const { return kiln_m3_tooltip_scope_obtain_position_provider(m_H); }
     inline bool TooltipState::is_visible() const { return kiln_m3_tooltip_state_is_visible(m_H); }
     inline bool TooltipState::is_persistent() const { return kiln_m3_tooltip_state_is_persistent(m_H); }

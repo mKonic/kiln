@@ -76,6 +76,9 @@ namespace kiln::ui {
         bool ChangedToUpIgnoreConsumed() const { return previousPressed && !pressed; }
         Offset PositionChange() const { return IsConsumed() ? Offset{} : position - previousPosition; }
         Offset PositionChangeIgnoreConsumed() const { return position - previousPosition; }
+        // positionChanged / positionChangedIgnoreConsumed: whether it moved.
+        bool PositionChanged() const { Offset d = PositionChange(); return d.x != 0 || d.y != 0; }
+        bool PositionChangedIgnoreConsumed() const { Offset d = PositionChangeIgnoreConsumed(); return d.x != 0 || d.y != 0; }
         bool IsOutOfBounds(IntSize size, Size extended = {}) const {
             return position.x < -extended.width || position.x > size.width + extended.width ||
                    position.y < -extended.height || position.y > size.height + extended.height;

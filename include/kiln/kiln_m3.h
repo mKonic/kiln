@@ -254,7 +254,6 @@ typedef struct kiln_m3_ripple_configuration_inset_ring_colors kiln_m3_ripple_con
 typedef struct kiln_m3_ripple_configuration kiln_m3_ripple_configuration;
 typedef struct kiln_m3_snackbar_visuals kiln_m3_snackbar_visuals;
 typedef struct kiln_m3_carousel_parallax_scroll_effect_item_info kiln_m3_carousel_parallax_scroll_effect_item_info;
-typedef struct kiln_layout_coordinates kiln_layout_coordinates;
 
 /* Enums */
 typedef enum kiln_capitalization {
@@ -2595,13 +2594,6 @@ struct kiln_m3_carousel_parallax_scroll_effect_item_info {
     float mask_progress;
 };
 KILN_API void kiln_m3_carousel_parallax_scroll_effect_item_info_init(kiln_m3_carousel_parallax_scroll_effect_item_info* s);
-struct kiln_layout_coordinates {
-    size_t size;
-    uint64_t coordinator;
-    bool lookahead;
-    bool tracked;
-};
-KILN_API void kiln_layout_coordinates_init(kiln_layout_coordinates* s);
 
 /* Functions */
 /* AlertDialog.h */
@@ -3898,7 +3890,6 @@ KILN_API kiln_decay_spec* kiln_m3_floating_toolbar_scroll_behavior_fling_animati
 KILN_API kiln_nested_scroll_connection* kiln_m3_floating_toolbar_scroll_behavior_nested_scroll_connection(const kiln_m3_floating_toolbar_scroll_behavior* self);
 KILN_API const kiln_modifier* kiln_m3_floating_toolbar_scroll_behavior_floating_scroll_behavior(const kiln_m3_floating_toolbar_scroll_behavior* self, const kiln_modifier* m);
 /* kiln_m3_tooltip_scope */
-KILN_API const kiln_layout_coordinates* kiln_m3_tooltip_scope_obtain_anchor_bounds(const kiln_m3_tooltip_scope* self);
 KILN_API kiln_popup_position_provider* kiln_m3_tooltip_scope_obtain_position_provider(const kiln_m3_tooltip_scope* self);
 /* kiln_m3_tooltip_state */
 KILN_API bool kiln_m3_tooltip_state_is_visible(const kiln_m3_tooltip_state* self);

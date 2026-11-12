@@ -36,6 +36,7 @@ kiln::material3::Text: parameter text: pointer const char *
 kiln::material3::ToggleButtonDefaults::contentPaddingFor: parameter size: kiln::material3::ToggleButtonSize is not default-constructible
 kiln::material3::ToggleButtonDefaults::shapesFor: parameter size: kiln::material3::ToggleButtonSize is not default-constructible
 kiln::material3::ToggleButtonDefaults::size: constant: kiln::material3::ToggleButtonSize is not default-constructible
+kiln::material3::TooltipScope::ObtainAnchorBounds: result: type kiln::ui::LayoutCoordinates
 kiln::material3::TooltipState::Transition: result: type kiln::foundation::MutableTransitionState<bool>
 kiln::material3::Value: parameter token: kiln::material3::tokens::ColorToken is internal
 kiln::material3::Value: parameter token: kiln::material3::tokens::MotionSchemeToken is internal
@@ -63,6 +64,3 @@ kiln::material3::TextOptions::inlineContent: field left at its default: type std
 kiln::material3::TextOptions::onTextLayout: field left at its default: type kiln::text::TextLayoutResult
 kiln::material3::WideNavigationRailItemOptions::indicatorPadding: field left at its default: kiln::material3::internal::DynamicPaddingValues is not default-constructible
 kiln::foundation::SlideConfig::offset: field left at its default: callback returning a struct (kiln::ui::IntOffset)
-kiln::ui::LayoutCoordinates::node: field left at its default: pointer const LayoutNode *
-kiln::ui::LayoutCoordinates::at: field left at its default: pointer const ModifierNode *
-kiln::ui::LayoutCoordinates::alive: field left at its default: type std::weak_ptr<const char>

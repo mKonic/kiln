@@ -4777,9 +4777,6 @@ pub fn floating_toolbar_scroll_behavior_nested_scroll_connection(this: *const sy
 pub fn floating_toolbar_scroll_behavior_floating_scroll_behavior(this: *const sys::kiln_m3_floating_toolbar_scroll_behavior, m: Modifier) -> *const sys::kiln_modifier {
     unsafe { sys::kiln_m3_floating_toolbar_scroll_behavior_floating_scroll_behavior(this, m.raw()) }
 }
-pub fn tooltip_scope_obtain_anchor_bounds(this: *const sys::kiln_m3_tooltip_scope) -> *const sys::kiln_layout_coordinates {
-    unsafe { sys::kiln_m3_tooltip_scope_obtain_anchor_bounds(this) }
-}
 pub fn tooltip_scope_obtain_position_provider(this: *const sys::kiln_m3_tooltip_scope) -> *mut sys::kiln_popup_position_provider {
     unsafe { sys::kiln_m3_tooltip_scope_obtain_position_provider(this) }
 }

@@ -149,7 +149,7 @@ namespace kiln::foundation {
         if (width <= 0 || height <= 0) return;
         const ScaleFactor factor = contentScale.ComputeScaleFactor({ width, height }, size);
         // computeAlignedOffset (bias alignment, unrounded).
-        const float h = layoutDirection == ui::LayoutDirection::Ltr ? alignment.horizontal : -alignment.horizontal;
+        const float h = layoutDirection == ui::LayoutDirection::Ltr || alignment.absolute ? alignment.horizontal : -alignment.horizontal;
         const float posX = (size.width - width * factor.x) / 2 * (1 + h);
         const float posY = (size.height - height * factor.y) / 2 * (1 + alignment.vertical);
         const float offX = posX - b[0] * factor.x, offY = posY - b[1] * factor.y;

@@ -176,10 +176,12 @@ namespace kiln::ui {
     // Alignment (androidx.compose.ui.Alignment): bias in [-1, 1], RTL mirrors horizontal bias.
     struct Alignment {
         float horizontal = -1, vertical = -1;
+        // BiasAbsoluteAlignment: -1 is the left in either layout direction.
+        bool absolute = false;
         IntOffset Align(IntSize size, IntSize space, LayoutDirection dir) const {
             const float cx = (space.width - size.width) / 2.0f;
             const float cy = (space.height - size.height) / 2.0f;
-            const float h = dir == LayoutDirection::Ltr ? horizontal : -horizontal;
+            const float h = dir == LayoutDirection::Ltr || absolute ? horizontal : -horizontal;
             return { RoundJava(cx * (1 + h)), RoundJava(cy * (1 + vertical)) };
         }
         static constexpr Alignment TopStart() { return { -1, -1 }; }
@@ -193,12 +195,24 @@ namespace kiln::ui {
         static constexpr Alignment BottomEnd() { return { 1, 1 }; }
         bool operator==(const Alignment&) const = default;
     };
+    // BiasAbsoluteAlignment / AbsoluteAlignment: alignments that do not mirror in RTL.
+    constexpr Alignment BiasAbsoluteAlignment(float horizontalBias, float verticalBias) { return { horizontalBias, verticalBias, true }; }
+    struct AbsoluteAlignment {
+        static constexpr Alignment TopLeft() { return { -1, -1, true }; }
+        static constexpr Alignment TopRight() { return { 1, -1, true }; }
+        static constexpr Alignment CenterLeft() { return { -1, 0, true }; }
+        static constexpr Alignment CenterRight() { return { 1, 0, true }; }
+        static constexpr Alignment BottomLeft() { return { -1, 1, true }; }
+        static constexpr Alignment BottomRight() { return { 1, 1, true }; }
+    };
+
     // One-axis alignments used by Row (vertical) and Column (horizontal).
     struct AlignmentH {
         float bias = -1;
+        bool absolute = false;   // BiasAbsoluteAlignment.Horizontal
         int Align(int size, int space, LayoutDirection dir) const {
             const float c = (space - size) / 2.0f;
-            return RoundJava(c * (1 + (dir == LayoutDirection::Ltr ? bias : -bias)));
+            return RoundJava(c * (1 + (dir == LayoutDirection::Ltr || absolute ? bias : -bias)));
         }
         static constexpr AlignmentH Start() { return { -1 }; }
         static constexpr AlignmentH CenterHorizontally() { return { 0 }; }

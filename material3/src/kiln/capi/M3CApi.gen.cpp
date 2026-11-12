@@ -702,9 +702,6 @@ namespace {
 [[maybe_unused]] kiln::material3::CarouselParallaxScrollEffectItemInfo ToCpp(const kiln_m3_carousel_parallax_scroll_effect_item_info* c);
 [[maybe_unused]] void FromCpp(const kiln::material3::CarouselParallaxScrollEffectItemInfo& v, kiln_m3_carousel_parallax_scroll_effect_item_info* out);
 [[maybe_unused]] const kiln_m3_carousel_parallax_scroll_effect_item_info* FromCppTransient(const kiln::material3::CarouselParallaxScrollEffectItemInfo& v);
-[[maybe_unused]] kiln::ui::LayoutCoordinates ToCpp(const kiln_layout_coordinates* c);
-[[maybe_unused]] void FromCpp(const kiln::ui::LayoutCoordinates& v, kiln_layout_coordinates* out);
-[[maybe_unused]] const kiln_layout_coordinates* FromCppTransient(const kiln::ui::LayoutCoordinates& v);
 [[maybe_unused]] std::function<bool ()> ToCpp_kiln_m3_fn_to_bool(kiln_m3_fn_to_bool f);
 [[maybe_unused]] std::function<void (kiln::material3::AppBarMenuState &)> ToCpp_kiln_m3_fn_app_bar_menu_state(kiln_m3_fn_app_bar_menu_state f);
 [[maybe_unused]] std::function<void (kiln::material3::AppBarScope &)> ToCpp_kiln_m3_fn_app_bar_scope(kiln_m3_fn_app_bar_scope f);
@@ -8186,35 +8183,6 @@ const kiln_m3_carousel_parallax_scroll_effect_item_info* FromCppTransient(const 
     FromCpp(v, c);
     return c;
 }
-kiln::ui::LayoutCoordinates ToCpp(const kiln_layout_coordinates* in) {
-    kiln::ui::LayoutCoordinates v{};
-    if (!in) return v;
-    kiln_layout_coordinates c;
-    kiln_layout_coordinates_init(&c);
-    if (in->size > sizeof(size_t)) std::memcpy(reinterpret_cast<char*>(&c) + sizeof(size_t), reinterpret_cast<const char*>(in) + sizeof(size_t), std::min(in->size, sizeof(c)) - sizeof(size_t));
-    v.coordinator = c.coordinator;
-    v.lookahead = c.lookahead;
-    v.tracked = c.tracked;
-    return v;
-}
-void FromCpp(const kiln::ui::LayoutCoordinates& v, kiln_layout_coordinates* out) {
-    (void)v;
-    if (!out) return;
-    kiln_layout_coordinates c{};
-    c.size = sizeof(c);
-    c.coordinator = uint64_t(v.coordinator);
-    c.lookahead = bool(v.lookahead);
-    c.tracked = bool(v.tracked);
-    const size_t n = out->size < sizeof(size_t) ? sizeof(c) : std::min(out->size, sizeof(c));
-    std::memcpy(reinterpret_cast<char*>(out) + sizeof(size_t), reinterpret_cast<const char*>(&c) + sizeof(size_t), n - sizeof(size_t));
-    out->size = n;
-}
-const kiln_layout_coordinates* FromCppTransient(const kiln::ui::LayoutCoordinates& v) {
-    auto* c = kiln::capi::NewTransient<kiln_layout_coordinates>();
-    c->size = sizeof(*c);
-    FromCpp(v, c);
-    return c;
-}
 
 }
 
@@ -8985,10 +8953,6 @@ KILN_API void kiln_m3_snackbar_visuals_init(kiln_m3_snackbar_visuals* s) {
 KILN_API void kiln_m3_carousel_parallax_scroll_effect_item_info_init(kiln_m3_carousel_parallax_scroll_effect_item_info* s) {
     if (!s) return;
     KILN_CAPI_TRY { s->size = sizeof(*s); FromCpp(kiln::material3::CarouselParallaxScrollEffectItemInfo{}, s); } KILN_CAPI_CATCH()
-}
-KILN_API void kiln_layout_coordinates_init(kiln_layout_coordinates* s) {
-    if (!s) return;
-    KILN_CAPI_TRY { s->size = sizeof(*s); FromCpp(kiln::ui::LayoutCoordinates{}, s); } KILN_CAPI_CATCH()
 }
 
 KILN_API const kiln_shape* kiln_m3_alert_dialog_defaults_shape(kiln_key key) {
@@ -18118,14 +18082,6 @@ KILN_API const kiln_modifier* kiln_m3_floating_toolbar_scroll_behavior_floating_
         std::optional<std::remove_cvref_t<decltype(self->ptr->FloatingScrollBehavior(a0))>> r;
         r.emplace(self->ptr->FloatingScrollBehavior(a0));
         return kiln::capi::NewModifier((*r));
-    } KILN_CAPI_CATCH({})
-}
-KILN_API const kiln_layout_coordinates* kiln_m3_tooltip_scope_obtain_anchor_bounds(const kiln_m3_tooltip_scope* self) {
-    KILN_CAPI_TRY {
-        if (!self) return {};
-        std::optional<std::remove_cvref_t<decltype(self->ptr->ObtainAnchorBounds())>> r;
-        r.emplace(self->ptr->ObtainAnchorBounds());
-        return ([&]() -> const kiln_layout_coordinates* { if (!((*r))) return nullptr;  return FromCppTransient((*((*r)))); }());
     } KILN_CAPI_CATCH({})
 }
 KILN_API kiln_popup_position_provider* kiln_m3_tooltip_scope_obtain_position_provider(const kiln_m3_tooltip_scope* self) {

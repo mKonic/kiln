@@ -20,7 +20,15 @@ namespace kiln::foundation {
     using ui::Modifier;
     using ui::Size;
 
-    struct ScaleFactor { float x = 1, y = 1; };
+    struct ScaleFactor {
+        float x = 1, y = 1;
+        bool operator==(const ScaleFactor&) const = default;
+        ScaleFactor operator*(float k) const { return { x * k, y * k }; }
+        ScaleFactor operator/(float k) const { return { x / k, y / k }; }
+    };
+    // Size.times / Size.div with a ScaleFactor.
+    inline ui::Size operator*(ui::Size s, ScaleFactor f) { return { s.width * f.x, s.height * f.y }; }
+    inline ui::Size operator/(ui::Size s, ScaleFactor f) { return { s.width / f.x, s.height / f.y }; }
 
     struct ContentScale {
         enum class Kind : std::uint8_t { Crop, Fit, FillHeight, FillWidth, Inside, None, FillBounds, Fixed };

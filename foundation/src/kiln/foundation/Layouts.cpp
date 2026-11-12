@@ -526,7 +526,7 @@ namespace kiln::foundation {
         };
 
         // Parent data
-        struct ParentParams { int kind; float weight; bool fill; float bias, bias2; const AlignmentLine* line = nullptr;
+        struct ParentParams { int kind; float weight; bool fill; float bias, bias2; const AlignmentLine* line = nullptr; bool absolute = false;
             bool operator==(const ParentParams&) const = default; };
         struct ParentDataNode final : ModifierNode, ParentDataModifier {
             ParentParams params;
@@ -537,8 +537,8 @@ namespace kiln::foundation {
                 switch (params.kind) {
                     case 0: d.weight = params.weight; d.fill = params.fill; break;
                     case 1: d.alignV = AlignmentV{ params.bias }; break;
-                    case 2: d.alignH = AlignmentH{ params.bias }; break;
-                    case 3: d.boxAlign = Alignment{ params.bias, params.bias2 }; break;
+                    case 2: d.alignH = AlignmentH{ params.bias, params.absolute }; break;
+                    case 3: d.boxAlign = Alignment{ params.bias, params.bias2, params.absolute }; break;
                     case 4: d.matchParentSize = true; break;
                     case 5: d.alignBy = params.line; d.alignByBlock.reset(); break;
                     case 6: d.fillCrossAxisFraction = params.weight; break;
@@ -1169,7 +1169,7 @@ namespace kiln::foundation {
     Modifier AspectRatio(Modifier m, float ratio, bool heightFirst) { return m.With<AspectNode>(AspectParams{ ratio, heightFirst }); }
     Modifier Weight(Modifier m, float w, bool fill) { return m.With<ParentDataNode>(ParentParams{ 0, w, fill, 0, 0 }); }
     Modifier AlignInRow(Modifier m, AlignmentV a) { return m.With<ParentDataNode>(ParentParams{ 1, 0, true, a.bias, 0 }); }
-    Modifier AlignInColumn(Modifier m, AlignmentH a) { return m.With<ParentDataNode>(ParentParams{ 2, 0, true, a.bias, 0 }); }
+    Modifier AlignInColumn(Modifier m, AlignmentH a) { return m.With<ParentDataNode>(ParentParams{ 2, 0, true, a.bias, 0, nullptr, a.absolute }); }
     namespace {
         // LayoutIdElement / LayoutIdModifier.
         struct LayoutIdParams { std::string id; bool operator==(const LayoutIdParams&) const = default; };
@@ -1186,7 +1186,7 @@ namespace kiln::foundation {
         const auto& id = m.GetParentData().layoutId;
         return id ? &*id : nullptr;
     }
-    Modifier AlignInBox(Modifier m, Alignment a) { return m.With<ParentDataNode>(ParentParams{ 3, 0, true, a.horizontal, a.vertical }); }
+    Modifier AlignInBox(Modifier m, Alignment a) { return m.With<ParentDataNode>(ParentParams{ 3, 0, true, a.horizontal, a.vertical, nullptr, a.absolute }); }
     Modifier MatchParentSize(Modifier m) { return m.With<ParentDataNode>(ParentParams{ 4, 0, true, 0, 0 }); }
     Modifier AlignBy(Modifier m, const AlignmentLine& line) { return m.With<ParentDataNode>(ParentParams{ 5, 0, true, 0, 0, &line }); }
     namespace {
