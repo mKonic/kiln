@@ -118,13 +118,20 @@ namespace kiln {
             vl.attributes.push_back({ 0, Format::RG32_SFLOAT, 0 });
             vl.attributes.push_back({ 1, Format::RGBA32_SFLOAT, 8 });
             vl.attributes.push_back({ 2, Format::RGBA32_SFLOAT, 24 });
+            vl.attributes.push_back({ 3, Format::RGBA32_SFLOAT, 40 });
+            vl.attributes.push_back({ 4, Format::RGBA32_SFLOAT, 56 });
+            vl.attributes.push_back({ 5, Format::RGBA32_SFLOAT, 72 });
             tri.vertexBuffers.push_back(vl);
+            tri.bindings = desc.bindings;   // the quads' textures: image, ramp, filters, destination
             tri.pushConstantSize = 96;   // viewport, origin, clip (rect, radii, inverse, enabled, outer rect)
             tri.topology = PrimitiveTopology::TriangleList;
             tri.blend = BlendMode::AlphaPremultiplied;
             tri.colorFormats = { device.SwapchainFormat() };
             tri.debugName = "kiln.tri";
             m_TriPipeline = device.CreatePipeline(tri);
+            tri.blend = BlendMode::None;
+            tri.debugName = "kiln.tri.blend";
+            m_TriBlendPipeline = device.CreatePipeline(tri);
         }
         m_White = device.CreateSolidTexture(0xffffffffu);
         m_Buffers.resize(device.Caps().framesInFlight);
@@ -206,9 +213,10 @@ namespace kiln {
             else if (m == float(Mode::TintedCoverage) || m == float(Mode::TextCoverage) || (m == float(Mode::Color) && instance.params[0] < 0.5f)) lite = 2;
         }
         if (t2.runs.empty() || t2.runs.back().page != page || t2.runs.back().mask != mask || t2.runs.back().filtered != filtered ||
-            t2.runs.back().dst != dst || dst || t2.runs.back().triangles || t2.runs.back().lite != lite) {
+            t2.runs.back().dst != dst || dst || t2.runs.back().triangles || t2.runs.back().lite != lite || t2.runs.back().aux != m_PushAux) {
             t2.runs.push_back({ page, std::uint32_t(t2.instances.size()), 0, mask, filtered, dst });
             t2.runs.back().lite = lite;
+            t2.runs.back().aux = m_PushAux;
         }
         t2.instances.push_back(instance);
         ++t2.runs.back().count;
@@ -324,21 +332,57 @@ namespace kiln {
     }
 
     void QuadRenderer::DrawProgressiveBlur(const RectF& r, const RectF& uv, const AtlasPage& page, float su, float sv, float maxRadius,
-                                           bool decal, const Paint& intensity) {
-        // Pass parameters ride in the colour; the intensity gradient in the paint slots.
+                                           bool decal, const Paint& intensity, const AtlasPage* intensityMask) {
+        // Pass parameters ride in the colour; the intensity gradient in the paint slots (kind 4:
+        // the mask's alpha, bound in the destination slot).
+        m_PushAux = intensityMask;
         Push({ { r.x, r.y, r.w, r.h }, { uv.x, uv.y, uv.x + uv.w, uv.y + uv.h }, { su, sv, maxRadius, 1 },
                { decal ? 1.0f : 0.0f, float(Mode::ProgressiveBlur), -1, 0 }, {}, {}, {}, {}, {}, {}, {}, {} }, &page, &intensity);
+        m_PushAux = nullptr;
+        if (intensityMask) Current().instances.back().paint2[0] = 4;
     }
 
-    void QuadRenderer::DrawTriangles(const Vertex* v, std::size_t count) {
+    void QuadRenderer::DrawTriangles(const Vertex* v, std::size_t count, const TrianglePaint& paint, int blendMode) {
         if (count < 3) return;
         Target& t = Current();
         const auto first = std::uint32_t(m_TriVerts.size());
         m_TriVerts.insert(m_TriVerts.end(), v, v + count);
-        Run run{ nullptr, first, std::uint32_t(count) };
+        float paintGeometry[4] = {}, paint2[4] = {};
+        if (paint.image) {
+            paint2[0] = 4;
+            paint2[1] = float(paint.tileX);
+            paint2[3] = float(paint.tileY);
+        } else if (paint.paint && paint.paint->kind != Paint::Kind::Color) {
+            std::copy(std::begin(paint.paint->geometry), std::end(paint.paint->geometry), paintGeometry);
+            paint2[0] = float(paint.paint->kind);
+            paint2[1] = float(paint.paint->tile);
+            paint2[2] = paint.paint->rampV;
+        }
+        Run run{ paint.image, first, std::uint32_t(count) };
+        if (blendMode != 3) {
+            // Device bounds of the triangles in target pixels, a pixel of slack around them.
+            float x0 = 1e30f, y0 = 1e30f, x1 = -1e30f, y1 = -1e30f;
+            for (std::size_t i = 0; i < count; ++i) {
+                x0 = std::min(x0, v[i].x); y0 = std::min(y0, v[i].y);
+                x1 = std::max(x1, v[i].x); y1 = std::max(y1, v[i].y);
+            }
+            const float ox = t.origin[0], oy = t.origin[1];
+            run.dst = DestinationCopy(std::max(0.0f, std::floor(x0 - ox) - 2), std::max(0.0f, std::floor(y0 - oy) - 2),
+                                      std::min(t.size[0], std::ceil(x1 - ox) + 2), std::min(t.size[1], std::ceil(y1 - oy) + 2));
+        }
+        Target& cur = Current();   // DestinationCopy may have grown m_Targets
+        for (std::size_t i = first; i < m_TriVerts.size(); ++i) {
+            Vertex& out = m_TriVerts[i];
+            std::copy(std::begin(paintGeometry), std::end(paintGeometry), out.paint);
+            std::copy(std::begin(paint2), std::end(paint2), out.paint2);
+            out.paint3[0] = float(paint.filterRow + 1);
+            out.paint3[1] = blendMode != 3 ? float(blendMode + 1) : 0.0f;
+            out.paint3[2] = paint.imageWidth;
+            out.paint3[3] = paint.imageHeight;
+        }
         run.triangles = true;
         run.clip = m_Clip;
-        t.runs.push_back(run);
+        cur.runs.push_back(run);
     }
 
     QuadRenderer::PooledLayer& QuadRenderer::AcquireLayer(int w, int h) {
@@ -395,6 +439,13 @@ namespace kiln {
             x0 = std::max(0.0f, std::floor(x0) - 2); y0 = std::max(0.0f, std::floor(y0) - 2);
             x1 = std::min(tw, std::ceil(x1) + 2); y1 = std::min(th, std::ceil(y1) + 2);
         }
+        return DestinationCopy(x0, y0, x1, y1);
+    }
+
+    const AtlasPage* QuadRenderer::DestinationCopy(float x0, float y0, float x1, float y1) {
+        const std::size_t index = m_Stack.back();
+        const Target& cur = m_Targets[index];
+        const float ox = cur.origin[0], oy = cur.origin[1], tw = cur.size[0], th = cur.size[1];
         Target copy;
         copy.origin[0] = ox;
         copy.origin[1] = oy;
@@ -477,10 +528,12 @@ namespace kiln {
                                        c.inverse.a, c.inverse.b, c.inverse.c, c.inverse.d,
                                        c.inverse.e, c.inverse.f, c.enabled ? 1.0f : 0.0f, 0,
                                        c.outer[0], c.outer[1], c.outer[2], c.outer[3] };
-                cmd.BindPipeline(m_TriPipeline);
+                const Ref<Pipeline>& tri = run.dst ? m_TriBlendPipeline : m_TriPipeline;
+                cmd.BindPipeline(tri);
                 cmd.SetViewport({ 0, 0, t.size[0], t.size[1], 0, 1 });
                 cmd.SetScissor(scissor);
                 cmd.SetPushConstants(tp, sizeof(tp));
+                cmd.BindBindGroup(GroupFor(run.page, run.dst, tri));
                 cmd.BindVertexBuffer(0, m_TriBuffers[m_Device.FrameIndex() % m_TriBuffers.size()]);
                 cmd.Draw(run.count, 1, run.first, 0);
                 boundPipeline = nullptr;   // the quad state is set again
@@ -498,7 +551,7 @@ namespace kiln {
                 cmd.BindVertexBuffer(0, buffer);
                 boundPipeline = want.get();
             }
-            cmd.BindBindGroup(run.lite == 5 ? GroupFor(run.page, run.dst, want) : GroupFor(run.page, run.dst));
+            cmd.BindBindGroup(run.lite == 5 ? GroupFor(run.page, run.dst, want) : GroupFor(run.page, run.dst ? run.dst : run.aux));
             cmd.Draw(4, run.count, 0, base + run.first);
         }
     }

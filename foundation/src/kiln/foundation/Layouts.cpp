@@ -853,6 +853,9 @@ namespace kiln::foundation {
                     auto px = [&](Offset dp) { return Offset{ s.ToPx(Dp(dp.x)), s.ToPx(Dp(dp.y)) }; };
                     gfx::Brush intensity;
                     switch (spec.kind) {
+                        case BlurRadiusSpec::Kind::Shader:
+                            if (spec.shader && *spec.shader) intensity = (*spec.shader)(static_cast<const Density&>(s), size);
+                            break;
                         case BlurRadiusSpec::Kind::Vertical: intensity = gfx::Brush::LinearGradient(colors, { 0, 0 }, { 0, size.height }, gfx::TileMode::Clamp, stops); break;
                         case BlurRadiusSpec::Kind::Horizontal: intensity = gfx::Brush::LinearGradient(colors, { 0, 0 }, { size.width, 0 }, gfx::TileMode::Clamp, stops); break;
                         case BlurRadiusSpec::Kind::Linear:

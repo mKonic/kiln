@@ -1,6 +1,7 @@
 #pragma once
 
-// Vertices (ui-graphics Vertices.kt): triangles with per-vertex colours for Canvas.drawVertices.
+// Vertices (ui-graphics Vertices.kt): triangles with per-vertex colours and texture coordinates
+// for Canvas.drawVertices.
 
 #include "kiln/ui/Geometry.h"
 
@@ -14,6 +15,7 @@ namespace kiln::gfx {
     struct Vertices {
         VertexMode mode = VertexMode::Triangles;
         std::vector<ui::Offset> positions;
+        std::vector<ui::Offset> textureCoordinates;   // one per position, in the paint shader's space; empty: none
         std::vector<ui::Color> colors;          // one per position; empty: the paint colour
         std::vector<std::uint16_t> indices;     // into positions; empty: positions in order
 

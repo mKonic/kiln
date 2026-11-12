@@ -108,8 +108,13 @@ namespace kiln::ui {
         void DrawPath(const gfx::Path& path, const gfx::Brush& brush, const gfx::Stroke* stroke = nullptr, float alpha = 1,
                       const gfx::ColorFilter* colorFilter = nullptr);
 
-        // drawVertices: triangles with per-vertex colours (or `color` when the vertices have
-        // none), under the current transform and clip.
+        // Canvas.drawVertices as Android draws it (hwui's JNI over SkCanvas::drawVertices), under
+        // the current transform and clip: with texture coordinates, the paint's shader at them
+        // modulated by the vertex colours; without, the vertex colours (else the paint colour,
+        // opaque black for a shader brush). Then alpha, the colour filter and the blend mode.
+        // Composite brushes draw as a shader-less paint.
+        void DrawVertices(const gfx::Vertices& vertices, const gfx::Brush& paint, float alpha = 1, const gfx::ColorFilter* colorFilter = nullptr,
+                          gfx::BlendMode blendMode = gfx::BlendMode::SrcOver);
         void DrawVertices(const gfx::Vertices& vertices, Color color = Color(0xff000000), float alpha = 1);
 
         // An elevation shadow of `outline` (local) raised `elevation` px under the window's light

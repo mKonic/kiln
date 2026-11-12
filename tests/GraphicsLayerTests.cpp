@@ -4,6 +4,7 @@
 #include "Check.h"
 
 #include "kiln/foundation/GraphicsLayer.h"
+#include "kiln/foundation/Layouts.h"
 
 using namespace kiln;
 using namespace kiln::foundation;
@@ -76,4 +77,21 @@ TEST(RecordingInTheDrawnScopeCapturesItsContent) {
     DrawLayer(top, *layer);
     CHECK_EQ(m.hits, 1);
     CHECK_EQ(m.last.Map({ 0, 0 }).x, 7.0f);   // replayed where it is drawn
+}
+
+TEST(BlurRadiusSpecShaderComparesByIdentity) {
+    int calls = 0;
+    auto block = [&](const ui::Density& d, ui::Size size) {
+        ++calls;
+        return gfx::Brush::VerticalGradient({ ui::Color(0x00000000u), ui::Color(0xff000000u) }, 0, size.height * d.density);
+    };
+    const BlurRadiusSpec a = BlurRadiusSpec::Shader(ui::Dp(12), block), b = BlurRadiusSpec::Shader(ui::Dp(12), block);
+    const BlurRadiusSpec copy = a;
+    CHECK(a.kind == BlurRadiusSpec::Kind::Shader && a.stops.size() == 1 && a.stops[0].radius.value == 12);
+    CHECK(copy == a && !(a == b));
+    const gfx::Brush brush = (*a.shader)(ui::Density{ 2, 1 }, ui::Size{ 10, 20 });
+    CHECK(calls == 1 && brush.kind == gfx::Brush::Kind::Linear && brush.end.y == 40);
+    bool threw = false;
+    try { (void)BlurRadiusSpec::Shader(ui::Dp(-1), block); } catch (const std::invalid_argument&) { threw = true; }
+    CHECK(threw);
 }

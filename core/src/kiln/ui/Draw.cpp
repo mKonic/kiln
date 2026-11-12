@@ -822,23 +822,70 @@ namespace kiln::ui {
         m_Target.quads->DrawLighting(l);
     }
 
-    void DrawScope::DrawVertices(const gfx::Vertices& v, Color color, float alpha) {
-        if (m_Recording) { m_Recording->push_back([v, color, alpha](DrawScope& d) { d.DrawVertices(v, color, alpha); }); return; }
+    void DrawScope::DrawVertices(const gfx::Vertices& v, Color color, float alpha) { DrawVertices(v, gfx::Brush::SolidColor(color), alpha); }
+
+    void DrawScope::DrawVertices(const gfx::Vertices& v, const gfx::Brush& brush, float alpha, const gfx::ColorFilter* filter, gfx::BlendMode blendMode) {
+        if (blendMode != gfx::BlendMode::SrcOver) { WithBlend(*this, blendMode, [&] { DrawVertices(v, brush, alpha, filter); }); return; }
+        if (m_Recording) { m_Recording->push_back([v, brush, alpha, f = Opt(filter)](DrawScope& d) { d.DrawVertices(v, brush, alpha, f ? &*f : nullptr); }); return; }
         if (!m_Target.quads) return;
         const float a = alpha * m_State.alpha;
         if (a <= 0) return;
+        gfx::Brush shader = brush;
+        if (shader.kind == gfx::Brush::Kind::Shader) {
+            if (!shader.shader || !*shader.shader) return;
+            shader = (*shader.shader)(m_Size);
+        }
+        const bool gradient = (shader.kind == gfx::Brush::Kind::Linear || shader.kind == gfx::Brush::Kind::Radial ||
+                               shader.kind == gfx::Brush::Kind::Sweep) && shader.colors.size() >= 2;
+        const bool isShader = gradient || shader.kind == gfx::Brush::Kind::Image || shader.kind == gfx::Brush::Kind::Composite;
+        // hwui drops the shader without texture coordinates; Compose's ShaderBrush paints black.
+        const Color paintColor = isShader ? Color(0xff000000) : shader.colors.empty() ? Color::Transparent() : shader.colors[0];
+        QuadRenderer::TrianglePaint tp;
+        QuadRenderer::Paint gp;
+        if (!v.textureCoordinates.empty()) {
+            if (gradient && m_Target.gradients) {
+                float g[4];
+                shader.Resolve(m_Size, g);
+                gp.kind = shader.kind == gfx::Brush::Kind::Linear ? QuadRenderer::Paint::Kind::Linear
+                        : shader.kind == gfx::Brush::Kind::Radial ? QuadRenderer::Paint::Kind::Radial : QuadRenderer::Paint::Kind::Sweep;
+                std::copy(g, g + 4, gp.geometry);
+                gp.tile = std::uint8_t(shader.tile);
+                gp.rampV = m_Target.gradients->RowFor(shader);
+                tp.paint = &gp;
+            } else if (shader.kind == gfx::Brush::Kind::Image && shader.image && m_Target.images) {
+                if ((tp.image = m_Target.images->PageFor(shader.image))) {
+                    tp.imageWidth = float(shader.image.Width());
+                    tp.imageHeight = float(shader.image.Height());
+                    tp.tileX = std::uint8_t(shader.tile);
+                    tp.tileY = std::uint8_t(shader.tileY);
+                }
+            }
+        }
+        const bool shaded = tp.paint || tp.image;
         const std::vector<std::uint32_t> list = v.TriangleList();
         std::vector<QuadRenderer::Vertex> out;
         out.reserve(list.size());
         const gfx::Matrix& m = m_State.m;
+        auto at = [](const auto& values, std::uint32_t i) { return values[std::min<std::size_t>(i, values.size() - 1)]; };
         for (std::uint32_t i : list) {
             if (i >= v.positions.size()) return;
             const Offset p = m.Map(v.positions[i]);
-            const Rgba c = Scaled(ToRgba(v.colors.empty() ? color : v.colors[std::min<std::size_t>(i, v.colors.size() - 1)]), a);
-            out.push_back({ p.x, p.y, c.r, c.g, c.b, c.a });
+            // With a shader: SkBlendMode::kModulate of the shader (source) and the vertex colour
+            // (destination); without: kDst, the vertex colour.
+            const Color base = !v.colors.empty() ? at(v.colors, i) : shaded ? Color(0xFFFFFFFFu) : paintColor;
+            const Rgba c = Scaled(ToRgba(base), a);
+            QuadRenderer::Vertex q{ p.x, p.y, c.r, c.g, c.b, c.a };
+            if (shaded) {
+                const Offset t = at(v.textureCoordinates, i);
+                q.sx = t.x;
+                q.sy = t.y;
+                q.mode = 3;
+            }
+            out.push_back(q);
         }
         ApplyClip();
-        m_Target.quads->DrawTriangles(out.data(), out.size());
+        tp.filterRow = FilterRow(filter);
+        m_Target.quads->DrawTriangles(out.data(), out.size(), tp, int(m_State.blend));
     }
 
     namespace {
@@ -1234,18 +1281,39 @@ namespace kiln::ui {
         QuadRenderer& q = *m_Target.quads;
         QuadRenderer::LayerResult r = q.EndLayer();
         if (!r.page) { ApplyClip(); return; }
-        // The intensity gradient in device space (the layer's transform).
+        const kiln::RectF rect{ l.device.left, l.device.top, l.device.Width(), l.device.Height() };
+        const int x = int(l.device.left), y = int(l.device.top), w = int(l.device.Width()), h = int(l.device.Height());
+        // An image or composite intensity is painted into a layer over the same pixels, whose
+        // alpha the passes read; a gradient is evaluated in the passes, in device space.
+        const AtlasPage* mask = nullptr;
+        if (intensity.IsLayered()) {
+            Save();
+            m_State.alpha = 1;
+            m_State.blend = gfx::BlendMode::SrcOver;
+            q.BeginLayer(x, y, w, h);
+            Rect local{ 1e30f, 1e30f, -1e30f, -1e30f };
+            const gfx::Matrix inv = Inverse(m_State.m);
+            for (const Offset c : { Offset{ l.device.left, l.device.top }, Offset{ l.device.right, l.device.top },
+                                    Offset{ l.device.left, l.device.bottom }, Offset{ l.device.right, l.device.bottom } }) {
+                const Offset p = inv.Map(c);
+                local = { std::min(local.left, p.x), std::min(local.top, p.y), std::max(local.right, p.x), std::max(local.bottom, p.y) };
+            }
+            PaintBrush(local, intensity);
+            mask = q.EndLayer().page;
+            Restore();
+            if (!mask) { ApplyClip(); return; }
+        }
         QuadRenderer::Paint paint;
         Color solid;
         float unused;
-        if (!MakePaint(intensity, 1, &paint, solid, unused)) {
+        if (mask) {
+            paint.kind = QuadRenderer::Paint::Kind::Color;
+        } else if (!MakePaint(intensity, 1, &paint, solid, unused)) {
             paint.kind = QuadRenderer::Paint::Kind::Linear;   // constant intensity: a flat ramp
             const gfx::Brush flat = gfx::Brush::LinearGradient({ solid, solid }, { 0, 0 }, { 1, 0 });
             MakePaint(flat, 1, &paint, solid, unused);
         }
         const gfx::Matrix& m = l.saved.m;
-        const kiln::RectF rect{ l.device.left, l.device.top, l.device.Width(), l.device.Height() };
-        const int x = int(l.device.left), y = int(l.device.top), w = int(l.device.Width()), h = int(l.device.Height());
         auto uvOf = [&](const QuadRenderer::LayerResult& lr) {
             return kiln::RectF{ 0, 0, rect.w / float(lr.page->Width()), rect.h / float(lr.page->Height()) };
         };
@@ -1256,7 +1324,7 @@ namespace kiln::ui {
             const float scale = pass == 0 ? std::hypot(m.a, m.b) : std::hypot(m.c, m.d);
             q.BeginLayer(x, y, w, h);
             const float su = pass == 0 ? 1.0f / float(r.page->Width()) : 0, sv = pass == 0 ? 0 : 1.0f / float(r.page->Height());
-            q.DrawProgressiveBlur(rect, uvOf(r), *r.page, su, sv, std::min(maxRadius * scale, 150.0f), decal, paint);
+            q.DrawProgressiveBlur(rect, uvOf(r), *r.page, su, sv, std::min(maxRadius * scale, 150.0f), decal, paint, mask);
             r = q.EndLayer();
             if (!r.page) { ApplyClip(); return; }
         }

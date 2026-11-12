@@ -1,8 +1,11 @@
 #pragma once
 
-#include <optional>
-#include <vector>
 #include <algorithm>
+#include <functional>
+#include <memory>
+#include <optional>
+#include <stdexcept>
+#include <vector>
 
 #include "kiln/graphics/Brush.h"
 #include "kiln/graphics/ColorFilter.h"
@@ -221,19 +224,22 @@ namespace kiln::foundation {
     // BlurRadiusSpec (ui-graphics ProgressiveBlur.kt): a blur radius that varies across the layer.
     // Stops give the radius at fractions along a line (Linear: start to end, the whole height or
     // width by default) or out from a centre (Radial: to fallOff, half the smaller side by
-    // default). Uniform is the ordinary blur.
+    // default). Uniform is the ordinary blur. Shader: the alpha of a brush that `shader` builds
+    // for the layer's density and pixel size (layer pixels from the top-left) scales maxRadius
+    // (the one stop); a fresh spec never equals another, as upstream's.
     struct BlurStop {
         float fraction = 0;
         Dp radius;
         bool operator==(const BlurStop&) const = default;
     };
     struct BlurRadiusSpec {
-        enum class Kind : std::uint8_t { Uniform, Vertical, Horizontal, Linear, Radial };
+        enum class Kind : std::uint8_t { Uniform, Vertical, Horizontal, Linear, Radial, Shader };
         Kind kind = Kind::Uniform;
         std::vector<BlurStop> stops;                     // sorted; Uniform: one
         std::optional<Offset> start, end;                // Linear, in dp
         std::optional<Offset> center;                    // Radial, in dp; nullopt: the centre
         std::optional<Dp> fallOff;                       // Radial; nullopt: half the smaller side
+        std::shared_ptr<const std::function<gfx::Brush(const Density&, Size)>> shader;   // Shader
         bool operator==(const BlurRadiusSpec&) const = default;
 
         static BlurRadiusSpec Uniform(Dp radius) { return { Kind::Uniform, { { 0, radius } } }; }
@@ -254,6 +260,13 @@ namespace kiln::foundation {
         static BlurRadiusSpec RadialGradient(std::vector<BlurStop> stops, std::optional<Offset> centerDp = std::nullopt,
                                              std::optional<Dp> fallOff = std::nullopt) {
             return { Kind::Radial, Sorted(std::move(stops)), std::nullopt, std::nullopt, centerDp, fallOff };
+        }
+        // BlurRadiusSpec.shader(maxRadius, block); a negative maxRadius throws std::invalid_argument.
+        static BlurRadiusSpec Shader(Dp maxRadius, std::function<gfx::Brush(const Density&, Size)> block) {
+            if (maxRadius.value < 0) throw std::invalid_argument("maxRadius must be >= 0");
+            BlurRadiusSpec s{ Kind::Shader, { { 0, maxRadius } } };
+            s.shader = std::make_shared<const std::function<gfx::Brush(const Density&, Size)>>(std::move(block));
+            return s;
         }
     private:
         static std::vector<BlurStop> Sorted(std::vector<BlurStop> s) {

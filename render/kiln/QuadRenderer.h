@@ -110,12 +110,12 @@ namespace kiln {
         // One Gaussian pass over a layer: `step` is one texel along the pass axis in uv, `sigma` in
         // texels; outside the layer the edge repeats, or with `decal` is transparent.
         void DrawBlur(const RectF& rect, const RectF& uv, const AtlasPage& page, float alpha, float stepU, float stepV, float sigma, bool decal);
-        // Triangles (a list, three vertices each) with per-vertex colour: positions in device
-        // pixels, colours premultiplied. Clipped like quads; always SrcOver.
         // A progressive blur pass: the radius at each pixel is maxRadius (texels) times the alpha
         // of `intensity` (a gradient paint) there; Compose's sigma = radius / 2.
+        // With `intensityMask` (a layer over the same pixels as `page`), its alpha is the
+        // intensity instead.
         void DrawProgressiveBlur(const RectF& rect, const RectF& uv, const AtlasPage& page, float stepU, float stepV, float maxRadius,
-                                 bool decal, const Paint& intensity);
+                                 bool decal, const Paint& intensity, const AtlasPage* intensityMask = nullptr);
         // RippleShader (frameworks/base RippleShader.java) filling the circle HWUI's drawRipple
         // draws (AnimatedDrawables.h): centre `origin`, radius `radius`, local space. maxRadius,
         // width and height are the shader's in_maxRadius and resolution; the colour is straight
@@ -133,11 +133,30 @@ namespace kiln {
         // from dataRow (see quad_body.glsl lightColor).
         struct Lighting { float x = 0, y = 0, width = 0, height = 0; int dataRow = -1; };
         void DrawLighting(const Lighting& lighting);
+        // Triangles (a list, three vertices each) with per-vertex colour: positions in device
+        // pixels, colours premultiplied. Clipped like quads.
         // shadow: GrRRectShadowGeoProc's (offset x, y, distance correction) with mode 1, which
         // scales the colour by the shadow falloff. Mode 2 filters the interpolated sx coverage
-        // through SkGaussianColorFilter; mode 0 draws the colour as is.
-        struct Vertex { float x, y; float r, g, b, a; float sx = 0, sy = 0, sz = 0, mode = 0; };
-        void DrawTriangles(const Vertex* vertices, std::size_t count);
+        // through SkGaussianColorFilter; mode 0 draws the colour as is. Mode 3 modulates the
+        // colour by the paint's shader at the texture coordinate (sx, sy).
+        // paint, paint2, paint3 are filled by DrawTriangles from its paint and blend mode.
+        struct Vertex {
+            float x, y; float r, g, b, a; float sx = 0, sy = 0, sz = 0, mode = 0;
+            float paint[4] = {}, paint2[4] = {}, paint3[4] = {};
+        };
+        // The paint of a triangle draw: a gradient (`paint`, geometry in texture coordinates) or
+        // an image shader (`image`, its pixel size and tile modes), and a colour filter row.
+        struct TrianglePaint {
+            const Paint* paint = nullptr;
+            const AtlasPage* image = nullptr;
+            float imageWidth = 0, imageHeight = 0;
+            std::uint8_t tileX = 0, tileY = 0;
+            int filterRow = -1;
+        };
+        // blendMode as SetBlendMode's (3 = SrcOver): others read a copy of the target within the
+        // triangles' bounds. Vertices with mode 3 sample the paint's shader.
+        void DrawTriangles(const Vertex* vertices, std::size_t count, const TrianglePaint& paint, int blendMode = 3);
+        void DrawTriangles(const Vertex* vertices, std::size_t count) { DrawTriangles(vertices, count, TrianglePaint{}); }
 
         // Offscreen layers: quads submitted between BeginLayer and EndLayer render into a target
         // covering the device-space rect `bounds` (whole pixels). EndLayer returns the texture and
@@ -169,7 +188,8 @@ namespace kiln {
         struct Instance { float rect[4]; float uv[4]; float color[4]; float params[4]; float clip[4]; float clipParams[4]; float paint[4]; float paint2[4];
                          float xform[4]; float xform2[4]; float clipInv[4]; float clipInv2[4]; float clipOuter[4]; };
         struct Run { const AtlasPage* page; std::uint32_t first, count; bool mask = false; bool filtered = false; const AtlasPage* dst = nullptr;
-                     bool triangles = false; Clip clip{}; std::uint8_t lite = 0; };   // lite: 1 solid, 2 coverage, 3 flat, 4 stretch, 5 external   // triangles: first/count into m_TriVerts
+                     bool triangles = false; Clip clip{}; std::uint8_t lite = 0;
+                     const AtlasPage* aux = nullptr; };   // aux: a second texture in the destination slot (progressive blur masks)   // lite: 1 solid, 2 coverage, 3 flat, 4 stretch, 5 external   // triangles: first/count into m_TriVerts
 
         void Push(const Instance& instance, const AtlasPage* page, const Paint* paint, bool mask = false);
         struct Target {
@@ -188,6 +208,8 @@ namespace kiln {
         // The current target's content so far, rendered into a layer within the device bounds
         // of `instance` (for a blend mode's destination reads).
         const AtlasPage* DestinationCopy(const Instance& instance);
+        // The same within target pixels [x0, x1) x [y0, y1).
+        const AtlasPage* DestinationCopy(float x0, float y0, float x1, float y1);
         struct PooledLayer;
         PooledLayer& AcquireLayer(int width, int height);
         struct PooledLayer {
@@ -207,6 +229,7 @@ namespace kiln {
         hearth::PipelineDesc m_ExternalDesc;
         std::unordered_map<std::uint64_t, hearth::Ref<hearth::Pipeline>> m_ExternalPipelines;
         bool m_PushExternal = false;
+        const AtlasPage* m_PushAux = nullptr;
 
         hearth::Device& m_Device;
         hearth::Ref<hearth::Pipeline> m_Pipeline;
@@ -220,6 +243,7 @@ namespace kiln {
         hearth::Ref<hearth::Pipeline> m_StretchPipeline;
         hearth::Ref<hearth::Pipeline> m_BlendPipeline;
         hearth::Ref<hearth::Pipeline> m_TriPipeline;
+        hearth::Ref<hearth::Pipeline> m_TriBlendPipeline;   // blend modes: no fixed-function blending
         std::vector<Vertex> m_TriVerts;
         std::vector<hearth::Ref<hearth::Buffer>> m_TriBuffers;   // one per frame in flight   // filtered shader, no fixed-function blending
         int m_BlendMode = 3;
