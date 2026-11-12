@@ -300,9 +300,34 @@ namespace {
     struct FrameStats {
         bool enabled = false;
         std::vector<double> ms;
-        void Add(double v) {
+        // What the frames asked the GPU to shade, summed over the window (screens of pixels).
+        double quadScreens = 0, layerScreens = 0, copyScreens = 0, quads = 0, layers = 0, copies = 0;
+        double pipe[8] = {}, square = 0, full[10] = {}, fullGradient = 0;
+        void Add(double v, const kiln::QuadRenderer::Stats& s) {
             ms.push_back(v);
+            const double screen = std::max(1.0, s.screenPixels);
+            quadScreens += s.quadPixels / screen;
+            layerScreens += s.layerPixels / screen;
+            copyScreens += s.copyPixels / screen;
+            quads += double(s.quads);
+            layers += double(s.layers);
+            copies += double(s.destinationCopies);
+            for (int i = 0; i < 8; ++i) pipe[i] += s.pipelinePixels[i] / screen;
+            square += s.squarePixels / screen;
+            for (int i = 0; i < 10; ++i) full[i] += s.fullByMode[i] / screen;
+            fullGradient += s.fullGradient / screen;
             if (ms.size() < 120) return;
+            const double n = double(ms.size());
+            __android_log_print(ANDROID_LOG_INFO, "kiln", "shading per frame: %.0f quads covering %.2f screens, %.1f layers (%.2f screens), %.1f destination copies (%.2f screens)",
+                                quads / n, quadScreens / n, layers / n, layerScreens / n, copies / n, copyScreens / n);
+            __android_log_print(ANDROID_LOG_INFO, "kiln", "screens per frame by pipeline: stretch %.2f, flat %.2f, solid %.2f (square %.2f), coverage %.2f, full %.2f, filtered %.2f, blend %.2f, mask %.2f",
+                                pipe[7] / n, pipe[6] / n, pipe[0] / n, square / n, pipe[1] / n, pipe[2] / n, pipe[3] / n, pipe[4] / n, pipe[5] / n);
+            __android_log_print(ANDROID_LOG_INFO, "kiln", "full shader by mode: solid %.2f coverage %.2f color %.2f stretch %.2f blur %.2f pblur %.2f maskshader %.2f ripple %.2f text %.2f; gradient paint %.2f",
+                                full[0] / n, full[1] / n, full[2] / n, full[3] / n, full[4] / n, full[5] / n, full[6] / n, full[7] / n, full[8] / n, fullGradient / n);
+            for (double& v : full) v = 0;
+            fullGradient = 0;
+            quadScreens = layerScreens = copyScreens = quads = layers = copies = square = 0;
+            for (double& v : pipe) v = 0;
             std::sort(ms.begin(), ms.end());
             const double sum = std::accumulate(ms.begin(), ms.end(), 0.0);
             __android_log_print(ANDROID_LOG_INFO, "kiln", "frames: n=%zu mean=%.2fms p50=%.2fms p90=%.2fms p99=%.2fms max=%.2fms over16=%td",
@@ -320,7 +345,7 @@ namespace {
             const auto t0 = std::chrono::steady_clock::now();
             g_Host->app->Frame(double(frameTimeNanos) * 1e-9);
             if (g_FrameStats.enabled)
-                g_FrameStats.Add(std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count());
+                g_FrameStats.Add(std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count(), g_Host->app->Quads().ComputeStats());
         }
         ArmTimer();
     }

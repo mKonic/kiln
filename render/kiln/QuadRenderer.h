@@ -48,7 +48,8 @@ namespace kiln {
     class QuadRenderer {
     public:
         enum class Mode : std::uint8_t { Solid = 0, TintedCoverage = 1, Color = 2, Stretch = 3, Blur = 4, ProgressiveBlur = 5, MaskShader = 6, Ripple = 7,
-                                          TextCoverage = 8 };
+                                          TextCoverage = 8,
+                                          Flat = 9 };   // Flat: set by Push for pixel-aligned unclipped solid rects
 
         // A gradient paint instead of the flat colour: geometry in framebuffer pixels (linear
         // x0,y0,x1,y1; radial cx,cy,r; sweep cx,cy), the ramp row in the ramp texture.
@@ -141,11 +142,25 @@ namespace kiln {
         // Draws the main batch inside the open (swapchain) render pass.
         void Flush(hearth::CommandList& cmd);
 
+        // What the frame asks the GPU to shade (debug.kiln.frametimes): fragments are estimated
+        // from each quad's device bounds within its target.
+        struct Stats {
+            std::size_t quads = 0, triangles = 0, layers = 0, destinationCopies = 0;
+            double quadPixels = 0, layerPixels = 0, copyPixels = 0, screenPixels = 0;
+            // quadPixels split by pipeline: solid, coverage, full uber-shader, filtered, blend, mask, flat.
+            double pipelinePixels[8] = {};   // [7]: stretch
+            // Of the solid pixels, those of square quads (no corner radius).
+            double squarePixels = 0;
+            // Of the full uber-shader's pixels, by mode (0-9), and those with a gradient paint.
+            double fullByMode[10] = {}, fullGradient = 0;
+        };
+        Stats ComputeStats() const;
+
     private:
         struct Instance { float rect[4]; float uv[4]; float color[4]; float params[4]; float clip[4]; float clipParams[4]; float paint[4]; float paint2[4];
                          float xform[4]; float xform2[4]; float clipInv[4]; float clipInv2[4]; float clipOuter[4]; };
         struct Run { const AtlasPage* page; std::uint32_t first, count; bool mask = false; bool filtered = false; const AtlasPage* dst = nullptr;
-                     bool triangles = false; Clip clip{}; };   // triangles: first/count into m_TriVerts
+                     bool triangles = false; Clip clip{}; std::uint8_t lite = 0; };   // lite: 1 solid, 2 coverage, 3 flat, 4 stretch   // triangles: first/count into m_TriVerts
 
         void Push(const Instance& instance, const AtlasPage* page, const Paint* paint, bool mask = false);
         struct Target {
@@ -181,6 +196,12 @@ namespace kiln {
         hearth::Ref<hearth::Pipeline> m_Pipeline;
         hearth::Ref<hearth::Pipeline> m_MaskPipeline;
         hearth::Ref<hearth::Pipeline> m_FilteredPipeline;
+        // Small shaders for the common draws (Impeller's per-content pipelines): flat-colour
+        // (rounded) rects, and glyphs / masks / images with a flat colour.
+        hearth::Ref<hearth::Pipeline> m_SolidPipeline;
+        hearth::Ref<hearth::Pipeline> m_CoveragePipeline;
+        hearth::Ref<hearth::Pipeline> m_FlatPipeline;
+        hearth::Ref<hearth::Pipeline> m_StretchPipeline;
         hearth::Ref<hearth::Pipeline> m_BlendPipeline;
         hearth::Ref<hearth::Pipeline> m_TriPipeline;
         std::vector<Vertex> m_TriVerts;

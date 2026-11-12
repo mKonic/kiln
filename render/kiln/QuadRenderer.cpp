@@ -72,6 +72,22 @@ namespace kiln {
         desc.colorFormats = { device.SwapchainFormat() };
         desc.debugName = "kiln.quad";
         m_Pipeline = device.CreatePipeline(desc);
+        desc.fragment = device.CreateShader({ { std::begin(shaders::kQuadSolidFrag), std::end(shaders::kQuadSolidFrag) },
+                                              ShaderStage::Fragment, "main", "kiln.quad_solid.frag" });
+        desc.debugName = "kiln.quad.solid";
+        m_SolidPipeline = device.CreatePipeline(desc);
+        desc.fragment = device.CreateShader({ { std::begin(shaders::kQuadCoverageFrag), std::end(shaders::kQuadCoverageFrag) },
+                                              ShaderStage::Fragment, "main", "kiln.quad_coverage.frag" });
+        desc.debugName = "kiln.quad.coverage";
+        m_CoveragePipeline = device.CreatePipeline(desc);
+        desc.fragment = device.CreateShader({ { std::begin(shaders::kQuadFlatFrag), std::end(shaders::kQuadFlatFrag) },
+                                              ShaderStage::Fragment, "main", "kiln.quad_flat.frag" });
+        desc.debugName = "kiln.quad.flat";
+        m_FlatPipeline = device.CreatePipeline(desc);
+        desc.fragment = device.CreateShader({ { std::begin(shaders::kQuadStretchFrag), std::end(shaders::kQuadStretchFrag) },
+                                              ShaderStage::Fragment, "main", "kiln.quad_stretch.frag" });
+        desc.debugName = "kiln.quad.stretch";
+        m_StretchPipeline = device.CreatePipeline(desc);
         desc.fragment = device.CreateShader({ { std::begin(shaders::kQuadFilteredFrag), std::end(shaders::kQuadFilteredFrag) },
                                               ShaderStage::Fragment, "main", "kiln.quad_filtered.frag" });
         desc.debugName = "kiln.quad.filtered";
@@ -159,9 +175,34 @@ namespace kiln {
         }
         Target& t2 = Current();
         const bool filtered = instance.params[2] >= 0;
+        // Flat-colour draws without a filter or blend mode take a small pipeline.
+        std::uint8_t lite = 0;
+        if (!filtered && !dst && !mask && instance.paint2[0] == 0) {
+            const float m = instance.params[1];
+            if (m == float(Mode::Solid)) {
+                lite = 1;
+                // Square, axis-aligned, unclipped, edges on whole device pixels: fully covered
+                // pixels only, the same result as the anti-aliased edge gives there.
+                const float a = instance.xform[0], b = instance.xform[1], c = instance.xform[2], d = instance.xform[3];
+                if (instance.params[0] <= 0 && b == 0 && c == 0 && a > 0 && d > 0 && instance.xform2[2] == 0 && instance.xform2[3] == 0 &&
+                    instance.clipInv2[2] == 0) {
+                    const float x0 = a * instance.rect[0] + instance.xform2[0], y0 = d * instance.rect[1] + instance.xform2[1];
+                    const float x1 = x0 + a * instance.rect[2], y1 = y0 + d * instance.rect[3];
+                    auto whole = [](float v) { return std::abs(v - std::round(v)) < 1e-3f; };
+                    if (whole(x0) && whole(y0) && whole(x1) && whole(y1)) {
+                        lite = 3;
+                        instance.params[1] = float(Mode::Flat);   // the vertex shader grows only AA shapes
+                    }
+                }
+            }
+            else if (m == float(Mode::Stretch)) lite = 4;
+            else if (m == float(Mode::TintedCoverage) || m == float(Mode::TextCoverage) || (m == float(Mode::Color) && instance.params[0] < 0.5f)) lite = 2;
+        }
         if (t2.runs.empty() || t2.runs.back().page != page || t2.runs.back().mask != mask || t2.runs.back().filtered != filtered ||
-            t2.runs.back().dst != dst || dst || t2.runs.back().triangles)
+            t2.runs.back().dst != dst || dst || t2.runs.back().triangles || t2.runs.back().lite != lite) {
             t2.runs.push_back({ page, std::uint32_t(t2.instances.size()), 0, mask, filtered, dst });
+            t2.runs.back().lite = lite;
+        }
         t2.instances.push_back(instance);
         ++t2.runs.back().count;
     }
@@ -407,7 +448,9 @@ namespace kiln {
                 boundPipeline = nullptr;   // the quad state is set again
                 continue;
             }
-            const Ref<Pipeline>& want = run.mask ? m_MaskPipeline : run.dst ? m_BlendPipeline : run.filtered ? m_FilteredPipeline : m_Pipeline;
+            const Ref<Pipeline>& want = run.mask ? m_MaskPipeline : run.dst ? m_BlendPipeline : run.filtered ? m_FilteredPipeline
+                                      : run.lite == 1 ? m_SolidPipeline : run.lite == 2 ? m_CoveragePipeline
+                                      : run.lite == 3 ? m_FlatPipeline : run.lite == 4 ? m_StretchPipeline : m_Pipeline;
             if (boundPipeline != want.get()) {
                 cmd.BindPipeline(want);
                 cmd.SetViewport({ 0, 0, t.size[0], t.size[1], 0, 1 });
@@ -432,6 +475,52 @@ namespace kiln {
             DrawTarget(cmd, t);
             cmd.EndRenderPass();
         }
+    }
+
+    QuadRenderer::Stats QuadRenderer::ComputeStats() const {
+        Stats st;
+        st.screenPixels = double(m_Targets[0].size[0]) * m_Targets[0].size[1];
+        for (std::size_t ti = 0; ti < m_Targets.size(); ++ti) {
+            const Target& t = m_Targets[ti];
+            const Target& src = t.aliased ? m_Targets[t.alias] : t;
+            float sx0 = 0, sy0 = 0, sx1 = t.size[0], sy1 = t.size[1];
+            if (t.aliased) {
+                ++st.destinationCopies;
+                sx0 = float(t.scissor[0]); sy0 = float(t.scissor[1]);
+                sx1 = sx0 + float(t.scissor[2]); sy1 = sy0 + float(t.scissor[3]);
+                st.copyPixels += double(t.scissor[2]) * t.scissor[3];
+            } else if (ti > 0) {
+                ++st.layers;
+                st.layerPixels += double(t.size[0]) * t.size[1];
+            }
+            for (const Run& r : t.runs) {
+                if (r.triangles) { st.triangles += r.count / 3; continue; }
+                for (std::uint32_t i = r.first; i < r.first + r.count && i < src.instances.size(); ++i) {
+                    const Instance& in = src.instances[i];
+                    float x0 = 1e30f, y0 = 1e30f, x1 = -1e30f, y1 = -1e30f;
+                    for (const float cx : { in.rect[0], in.rect[0] + in.rect[2] })
+                        for (const float cy : { in.rect[1], in.rect[1] + in.rect[3] }) {
+                            const float dx = in.xform[0] * cx + in.xform[2] * cy + in.xform2[0] - t.origin[0];
+                            const float dy = in.xform[1] * cx + in.xform[3] * cy + in.xform2[1] - t.origin[1];
+                            x0 = std::min(x0, dx); y0 = std::min(y0, dy); x1 = std::max(x1, dx); y1 = std::max(y1, dy);
+                        }
+                    x0 = std::max(x0, sx0); y0 = std::max(y0, sy0); x1 = std::min(x1, sx1); y1 = std::min(y1, sy1);
+                    ++st.quads;
+                    if (x1 > x0 && y1 > y0) {
+                        const double px = double(x1 - x0) * (y1 - y0);
+                        st.quadPixels += px;
+                        const int pipe = r.mask ? 5 : r.dst ? 4 : r.filtered ? 3 : r.lite == 1 ? 0 : r.lite == 2 ? 1 : r.lite == 3 ? 6 : r.lite == 4 ? 7 : 2;
+                        st.pipelinePixels[pipe] += px;
+                        if (pipe == 0 && in.params[0] <= 0) st.squarePixels += px;
+                        if (pipe == 2) {
+                            st.fullByMode[std::clamp(int(in.params[1] + 0.5f), 0, 9)] += px;
+                            if (in.paint2[0] != 0) st.fullGradient += px;
+                        }
+                    }
+                }
+            }
+        }
+        return st;
     }
 
     void QuadRenderer::Flush(CommandList& cmd) {

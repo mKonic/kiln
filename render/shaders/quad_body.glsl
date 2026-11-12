@@ -385,6 +385,34 @@ vec4 progressiveBlurPass() {
     return result / weightSum;
 }
 
+vec4 stretchComposite() {
+    vec2 size = vPaint.zw;
+    vec2 local = (vLocal + vHalf);   // pixels within the layer rect
+    vec2 src = vec2(stretchAxis(local.x, vPaint.x, size.x), stretchAxis(local.y, vPaint.y, size.y));
+    vec2 uvSize = vUvMax - vUvMin;
+    return texture(uAtlas, vUvMin + clamp(src / size, 0.0, 1.0) * uvSize) * vColor.a * clipCoverage();
+}
+
+#ifdef KILN_FLAT
+void main() { outColor = vColor; }
+#elif defined(KILN_STRETCH)
+void main() { outColor = stretchComposite(); }
+#elif defined(KILN_SOLID)
+void main() {
+    outColor = vColor * (aaCoverage(roundedRectSdf(vLocal, vHalf, vParams.x), vLocal) * clipCoverage());
+}
+#elif defined(KILN_COVERAGE)
+// Text, path masks and images with a flat colour, no filter or blend mode.
+void main() {
+    int mode = int(vParams.y + 0.5);
+    vec4 src = vColor;
+    float coverage;
+    if (mode == 8) coverage = textCoverage(texture(uAtlas, vUv).a, vColor, vParams.x);
+    else if (mode == 1) coverage = texture(uAtlas, vUv).a;
+    else { src = texture(uAtlas, vUv) * vColor.a; coverage = 1.0; }
+    outColor = src * (coverage * clipCoverage());
+}
+#else
 void main() {
     int mode = int(vParams.y + 0.5);
     if (mode == 5) {
@@ -396,13 +424,7 @@ void main() {
         return;
     }
     if (mode == 3) {            // a layer seen through the stretch overscroll
-        vec2 size = vPaint.zw;
-        vec2 uvMin = vec2(0.0);
-        vec2 local = (vLocal + vHalf);   // pixels within the layer rect
-        vec2 src = vec2(stretchAxis(local.x, vPaint.x, size.x), stretchAxis(local.y, vPaint.y, size.y));
-        vec2 uvSize = vUvMax - vUvMin;
-        outColor = texture(uAtlas, vUvMin + clamp(src / size, 0.0, 1.0) * uvSize) * vColor.a;
-        outColor *= clipCoverage();
+        outColor = stretchComposite();
         return;
     }
     // Skia order: source colour (paint or image texel times alpha), colour filter, coverage.
@@ -445,3 +467,4 @@ void main() {
 #endif
     outColor = src * coverage;
 }
+#endif
