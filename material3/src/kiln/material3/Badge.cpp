@@ -33,6 +33,11 @@ namespace kiln::material3 {
                         r.Provides(BadgeTopRuler(), 0);
                     }, [&p](ui::PlacementScope& ps) { ps.Place(p, 0, 0); });
                 }
+                // Intrinsics pass straight through (no simulated measure).
+                int MinIntrinsicWidth(ui::MeasureScope&, ui::Measurable& m, int h) override { return m.MinIntrinsicWidth(h); }
+                int MaxIntrinsicWidth(ui::MeasureScope&, ui::Measurable& m, int h) override { return m.MaxIntrinsicWidth(h); }
+                int MinIntrinsicHeight(ui::MeasureScope&, ui::Measurable& m, int w) override { return m.MinIntrinsicHeight(w); }
+                int MaxIntrinsicHeight(ui::MeasureScope&, ui::Measurable& m, int w) override { return m.MaxIntrinsicHeight(w); }
             };
         }
         ui::Modifier BadgeBounds(ui::Modifier m) { return m.With<BoundsNode>(BoundsParams{}); }
