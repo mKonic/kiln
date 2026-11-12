@@ -1,6 +1,7 @@
 #include "Check.h"
 
 #include "kiln/foundation/Compose.h"
+#include "kiln/foundation/SharedTransition.h"
 #include "kiln/lifecycle/LifecycleCompose.h"
 #include "kiln/navigation3/NavDisplay.h"
 #include "kiln/navigation3/ResultEventBus.h"
@@ -162,6 +163,51 @@ TEST(EntryKeepsItsStateWhenItMovesIntoAnotherScene) {
     h.Frames(60);
     CHECK_EQ(homeCreated, 1);
     CHECK(homeState && *homeState == 42);
+}
+
+TEST(EntriesMoveBetweenScenesAsSharedElements) {
+    Harness h;
+    NavBackStack<Route>* stack = nullptr;
+    SharedTransitionScope* shared = nullptr;
+    bool homeSawScope = false;
+    int activeFrames = 0;
+    h.Run([&] {
+        auto& s = RememberNavBackStack<Route>(rt::Saver<Route>{ [](const Route&) { return rt::SavedValue(); }, [](const rt::SavedValue&) { return std::optional<Route>(); } },
+                                            { Home{} });
+        stack = &s;
+        SharedTransitionLayout(Modifier{}, [&](SharedTransitionScope& scope) {
+            shared = &scope;
+            NavDisplayOptions<Route> options;
+            auto& strategy = rt::Composition::Current()->Remember<SceneStrategyPtr<Route>>([] {
+                return MakeSceneStrategy<Route>([](const SceneStrategyScope<Route>&, const NavEntries<Route>& entries) -> ScenePtr<Route> {
+                    if (entries.size() < 2 || !std::holds_alternative<Detail>(entries.back().Key())) return nullptr;
+                    auto scene = std::make_shared<TwoPaneScene>();
+                    scene->entries = { entries[entries.size() - 2], entries.back() };
+                    scene->previous = NavEntries<Route>(entries.begin(), entries.end() - 2);
+                    return scene;
+                });
+            });
+            options.sceneStrategies = { strategy };
+            options.sharedTransitionScope = &scope;
+            NavDisplay(s, EntryProvider<Route>([&](EntryProviderScope<Route>& p) {
+                p.Entry<Home>([&](const Home&) {
+                    homeSawScope = NavAnimatedContentScope().transition != nullptr;
+                    Box(FillMax(Modifier{}, Axis::Both));
+                });
+                p.Entry<Detail>([](const Detail&) { Box(FillMax(Modifier{}, Axis::Both)); });
+            }), Modifier{}, options);
+        });
+    });
+    CHECK(homeSawScope && shared && !shared->IsTransitionActive());
+    // Home goes from the whole display into the two-pane scene's first pane: a shared element
+    // animating between the two scenes' bounds.
+    stack->Add(Detail{ 2 });
+    for (int i = 0; i < 60; ++i) {
+        h.Frames(1);
+        if (shared->IsTransitionActive()) ++activeFrames;
+    }
+    CHECK(activeFrames > 2);
+    CHECK(!shared->IsTransitionActive());
 }
 
 TEST(ResultEventBusDeliversResultsToTheWaitingEntry) {

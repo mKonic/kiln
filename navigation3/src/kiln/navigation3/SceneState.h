@@ -31,20 +31,25 @@ namespace kiln::navigation3 {
         }
     }
 
-    // rememberSceneState(entries, sceneStrategies, sceneDecoratorStrategies, onBack): entries go
-    // through the scene-setup decorator, then the strategies pick the current scene, the overlay
-    // scenes above it and the previous scenes.
+    // rememberSceneState(entries, sceneStrategies, sceneDecoratorStrategies, sharedTransitionScope,
+    // onBack): entries go through the shared-entry decorator (with a SharedTransitionScope), the
+    // scene-setup and lifecycle decorators, then the strategies pick the current scene, the
+    // overlay scenes above it and the previous scenes.
     template<typename T>
     SceneState<T> RememberSceneState(const NavEntries<T>& entries, const std::vector<SceneStrategyPtr<T>>& sceneStrategies,
-                                     const std::vector<SceneDecoratorStrategyPtr<T>>& sceneDecoratorStrategies, std::function<void()> onBack,
-                                     rt::Key key = {}) {
+                                     const std::vector<SceneDecoratorStrategyPtr<T>>& sceneDecoratorStrategies,
+                                     foundation::SharedTransitionScope* sharedTransitionScope, std::function<void()> onBack, rt::Key key = {}) {
         // Returns a value, so it is not a restartable scope of its own (like Compose).
         auto& c = *rt::Composition::Current();
         SceneState<T> result;
         {
             auto& currentOnBack = c.Remember<std::shared_ptr<std::function<void()>>>([] { return std::make_shared<std::function<void()>>(); }, {}, key);
             *currentOnBack = onBack;
-            const NavEntries<T> decorated = RememberDecoratedNavEntries(entries, { RememberSceneSetupNavEntryDecorator<T>(), RememberBackStackAwareLifecycleNavEntryDecorator<T>(entries) });
+            std::vector<NavEntryDecorator<T>> decorators;
+            if (sharedTransitionScope) decorators.push_back(RememberSharedEntryInSceneNavEntryDecorator<T>(*sharedTransitionScope));
+            decorators.push_back(RememberSceneSetupNavEntryDecorator<T>());
+            decorators.push_back(RememberBackStackAwareLifecycleNavEntryDecorator<T>(entries));
+            const NavEntries<T> decorated = RememberDecoratedNavEntries(entries, decorators);
             struct Cache {
                 std::vector<SceneStrategyPtr<T>> strategies;
                 NavEntries<T> entries;
@@ -107,6 +112,14 @@ namespace kiln::navigation3 {
         foundation::NavigationBackHandler(state, previous > 0, std::move(onBackCancelled), [onBackCompleted, total, previous] {
             for (std::size_t i = previous; i < total; ++i) onBackCompleted();
         }, key);
+    }
+
+    // The deprecated form without a SharedTransitionScope.
+    template<typename T>
+    SceneState<T> RememberSceneState(const NavEntries<T>& entries, const std::vector<SceneStrategyPtr<T>>& sceneStrategies,
+                                     const std::vector<SceneDecoratorStrategyPtr<T>>& sceneDecoratorStrategies, std::function<void()> onBack,
+                                     rt::Key key = {}) {
+        return RememberSceneState(entries, sceneStrategies, sceneDecoratorStrategies, nullptr, std::move(onBack), key);
     }
 
 }

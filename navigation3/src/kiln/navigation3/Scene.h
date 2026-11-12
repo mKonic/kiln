@@ -3,8 +3,10 @@
 // navigation3-ui scenes: Scene, OverlayScene, SceneStrategy (SinglePane, Dialog),
 // SceneDecoratorStrategy, SceneInfo and the scene-setup decorator.
 
+#include "kiln/foundation/Compose.h"
 #include "kiln/foundation/Dialog.h"
 #include "kiln/foundation/NavigationEvent.h"
+#include "kiln/foundation/SharedTransition.h"
 #include "kiln/lifecycle/LifecycleCompose.h"
 #include "kiln/navigation3/DecoratedNavEntries.h"
 
@@ -224,6 +226,49 @@ namespace kiln::navigation3 {
                     }, rt::Key(contentKey));
                 });
         }, {}, key);
+        return *decorator;
+    }
+
+    // LocalNavAnimatedContentScope: the AnimatedContent scope NavDisplay shows the entries in
+    // (for sharedElement / animateEnterExit in a NavEntry); null outside NavDisplay, where
+    // upstream throws on access (see NavAnimatedContentScope).
+    inline rt::Local<foundation::AnimatedVisibilityScope*> LocalNavAnimatedContentScope{ nullptr };
+    inline foundation::AnimatedVisibilityScope& NavAnimatedContentScope() {
+        auto* scope = rt::Composition::Current()->Read(LocalNavAnimatedContentScope);
+        if (!scope)
+            throw std::logic_error("Unexpected access to LocalNavAnimatedContentScope. You should only access LocalNavAnimatedContentScope inside a NavEntry passed to NavDisplay.");
+        return *scope;
+    }
+
+    // LocalCurrentScene (internal upstream): the scene being composed, and whether it overlays.
+    struct CurrentScene {
+        const void* scene = nullptr;
+        bool overlay = false;
+        bool operator==(const CurrentScene&) const = default;
+    };
+    inline rt::Local<CurrentScene> LocalCurrentScene{ CurrentScene{} };
+
+    // SharedEntryInSceneNavEntryDecorator: an entry in a (non-overlay) scene is a shared element
+    // keyed by its content key, so it moves between scenes (a list pane becoming a full screen)
+    // instead of fading out and in. Content outside a scene, or in an overlay, is left alone.
+    template<typename T>
+    NavEntryDecorator<T> RememberSharedEntryInSceneNavEntryDecorator(foundation::SharedTransitionScope& sharedTransitionScope, rt::Key key = {}) {
+        auto& c = *rt::Composition::Current();
+        auto* scope = &sharedTransitionScope;
+        auto& decorator = c.Remember<std::shared_ptr<NavEntryDecorator<T>>>([scope] {
+            return std::make_shared<NavEntryDecorator<T>>([scope](const NavEntry<T>& entry) {
+                auto& cc = *rt::Composition::Current();
+                const CurrentScene current = cc.Read(LocalCurrentScene);
+                foundation::AnimatedVisibilityScope* animated = cc.Read(LocalNavAnimatedContentScope);
+                if (!current.scene || current.overlay || !animated) {
+                    entry.Content();
+                    return;
+                }
+                auto& state = scope->RememberSharedContentState(rt::Key(std::string_view(entry.ContentKey())),
+                    foundation::SharedTransitionScope::MakeSharedContentConfig(foundation::DeferredTransitionBehavior::SeekToTarget));
+                foundation::Box(scope->SharedElement(ui::Modifier{}, state, *animated), ui::Alignment::TopStart(), false, [entry] { entry.Content(); });
+            });
+        }, rt::Keys(static_cast<const void*>(scope)), key);
         return *decorator;
     }
 

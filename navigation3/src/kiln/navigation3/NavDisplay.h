@@ -2,8 +2,8 @@
 
 // NavDisplay (navigation3-ui NavDisplay.kt, NavDisplay.android.kt, PredictivePopGesture.kt): the
 // back stack's scenes in an AnimatedContent, moving to the previous scene by hand while a back
-// gesture is in progress. Not here yet (no kiln counterpart): the lifecycle caps on scenes and
-// entries, LocalNavAnimatedContentScope and the shared element decorator.
+// gesture is in progress. Scenes and their entries see LocalNavAnimatedContentScope; with a
+// sharedTransitionScope, entries move between scenes as shared elements.
 
 #include "kiln/navigation3/SceneState.h"
 #include "kiln/foundation/AnimatedVisibility.h"
@@ -59,6 +59,8 @@ namespace kiln::navigation3 {
         std::optional<std::vector<NavEntryDecorator<T>>> entryDecorators;
         std::vector<SceneStrategyPtr<T>> sceneStrategies{ std::make_shared<SinglePaneSceneStrategy<T>>() };
         std::vector<SceneDecoratorStrategyPtr<T>> sceneDecoratorStrategies;
+        // Lets entries transition between scenes as shared elements (must outlive the display).
+        foundation::SharedTransitionScope* sharedTransitionScope = nullptr;
         std::optional<foundation::SizeTransform> sizeTransform;
         SceneTransitionSpec transitionSpec = DefaultTransitionSpec();
         SceneTransitionSpec popTransitionSpec = DefaultPopTransitionSpec();
@@ -136,6 +138,8 @@ namespace kiln::navigation3 {
             std::map<std::uint64_t, float> zIndices;
             std::vector<std::string> previousEntries;
             std::vector<std::string> isPopEntries;
+            // The AnimatedContent scope last given to a scene (the overlays see it too).
+            foundation::AnimatedVisibilityScope* animatedContentScope = nullptr;
             bool isPop = false;
             bool started = false;
             float lastProgress = 0;
@@ -279,8 +283,14 @@ namespace kiln::navigation3 {
                     const auto sceneOwner = lifecycle::RememberLifecycleOwner(settled && overlaysRef->Get().empty() ? lifecycle::State::Resumed
                                                                                                                     : lifecycle::State::Started);
                     auto* cc = rt::Composition::Current();
-                    cc->Provide(lifecycle::LocalLifecycleOwner, sceneOwner, [cc, excluded, s] {
-                        cc->Provide(LocalEntriesToExcludeFromCurrentScene, excluded, [s] { s->Content(); });
+                    foundation::AnimatedVisibilityScope* animated = cc->Read(foundation::LocalAnimatedVisibilityScope);
+                    bookRef->animatedContentScope = animated;
+                    cc->Provide(lifecycle::LocalLifecycleOwner, sceneOwner, [cc, excluded, s, animated] {
+                        cc->Provide(LocalNavAnimatedContentScope, animated, [cc, excluded, s] {
+                            cc->Provide(LocalCurrentScene, CurrentScene{ s.get(), false }, [cc, excluded, s] {
+                                cc->Provide(LocalEntriesToExcludeFromCurrentScene, excluded, [s] { s->Content(); });
+                            });
+                        });
                     });
                 },
                 [contentTransform, targetZ, opts](AnimatedContentTransitionScope& scope) {
@@ -310,11 +320,15 @@ namespace kiln::navigation3 {
                 bool onBackStack = false;
                 for (const auto& o : overlayScenes) if (o->Key() == overlay->Key()) { onBackStack = true; break; }
                 const bool topmost = !overlayScenes.empty() && overlayScenes.front()->Key() == overlay->Key();
-                c.Section([&c, overlay, excluded, onBackStack, topmost, list = currentOverlays] {
+                c.Section([&c, overlay, excluded, onBackStack, topmost, list = currentOverlays, animated = book->animatedContentScope] {
                     // Only the topmost overlay is RESUMED.
                     const auto overlayOwner = lifecycle::RememberLifecycleOwner(topmost ? lifecycle::State::Resumed : lifecycle::State::Started);
-                    c.Provide(lifecycle::LocalLifecycleOwner, overlayOwner, [&c, excluded, overlay] {
-                        c.Provide(LocalEntriesToExcludeFromCurrentScene, excluded, [overlay] { overlay->Content(); });
+                    c.Provide(lifecycle::LocalLifecycleOwner, overlayOwner, [&c, excluded, overlay, animated] {
+                        c.Provide(LocalEntriesToExcludeFromCurrentScene, excluded, [&c, overlay, animated] {
+                            c.Provide(LocalCurrentScene, CurrentScene{ overlay.get(), true }, [&c, overlay, animated] {
+                                c.Provide(LocalNavAnimatedContentScope, animated, [overlay] { overlay->Content(); });
+                            });
+                        });
                     });
                     // A popped overlay finishes onRemove before it leaves.
                     if (!onBackStack)
@@ -334,7 +348,7 @@ namespace kiln::navigation3 {
         auto& c = *rt::Composition::Current();
         c.Child([entries, modifier, options] {
             const std::function<void()> onBack = options.onBack ? options.onBack : [] {};
-            const SceneState<T> sceneState = RememberSceneState(entries, options.sceneStrategies, options.sceneDecoratorStrategies, onBack);
+            const SceneState<T> sceneState = RememberSceneState(entries, options.sceneStrategies, options.sceneDecoratorStrategies, options.sharedTransitionScope, onBack);
             auto& navigationEventState = RememberNavigationEventState(sceneState);
             NavigationBackHandler(sceneState, navigationEventState, [] {}, onBack);
             NavDisplay(sceneState, navigationEventState, modifier, options);
