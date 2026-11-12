@@ -47,4 +47,17 @@ namespace kiln::foundation {
         Spacer(DrawBehind(modifier, std::move(onDraw)));
     }
 
+
+    gfx::ImageBitmap DrawToImageBitmap(const ui::LayoutCoordinates& coordinates) {
+        auto* node = const_cast<ui::LayoutNode*>(coordinates.node);
+        if (!node || !node->GetOwner()) return {};
+        const IntSize size = node->Size();
+        if (size.width <= 0 || size.height <= 0) return {};
+        const std::vector<std::uint8_t> pixels = node->GetOwner()->RenderToPixels(size.width, size.height, [node](DrawScope& d) {
+            node->Draw(static_cast<ContentDrawScope&>(d));
+        });
+        if (pixels.empty()) return {};
+        return gfx::ImageBitmap::FromPixels(size.width, size.height, pixels, true);
+    }
+
 }

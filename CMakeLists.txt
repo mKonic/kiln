@@ -98,7 +98,7 @@ endif()
 target_sources(gallery PRIVATE samples/gallery/MaterialComponents.cpp)
 # The androidx material3 catalog: samples/catalog/gen-registry writes the registry and icons.
 file(GLOB KILN_CATALOG_SAMPLES CONFIGURE_DEPENDS samples/catalog/samples/*.cpp)
-target_sources(catalog PRIVATE samples/catalog/Registry.gen.cpp samples/catalog/gen/Icons.cpp ${KILN_CATALOG_SAMPLES})
+target_sources(catalog PRIVATE samples/catalog/Registry.gen.cpp samples/catalog/ComponentPreviews.cpp samples/catalog/gen/Icons.cpp ${KILN_CATALOG_SAMPLES})
 
 enable_testing()
 file(GLOB KILN_TEST_SOURCES CONFIGURE_DEPENDS tests/*.cpp)

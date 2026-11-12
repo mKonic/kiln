@@ -3,6 +3,7 @@
 // Draw modifiers (drawBehind, drawWithContent) and Canvas. The lambda runs in the draw phase,
 // so state it reads invalidates only drawing; a new lambda from recomposition redraws too.
 
+#include "kiln/graphics/Image.h"
 #include "kiln/graphics/Path.h"
 #include "kiln/ui/Draw.h"
 #include "kiln/ui/LayoutNode.h"
@@ -20,5 +21,9 @@ namespace kiln::foundation {
     Modifier DrawWithContent(Modifier m, std::function<void(ContentDrawScope&)> onDraw);
     // Spacer(modifier.drawBehind(onDraw)).
     void Canvas(const Modifier& modifier, std::function<void(DrawScope&)> onDraw);
+    // The layout at `coordinates` (its whole subtree) drawn into an image off screen
+    // (GraphicsLayer.toImageBitmap of a layer recording that layout); blocking, for one-off
+    // captures. Empty without a renderer or a size.
+    gfx::ImageBitmap DrawToImageBitmap(const ui::LayoutCoordinates& coordinates);
 
 }

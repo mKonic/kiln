@@ -5,11 +5,14 @@
 #include <kiln/kiln.hpp>
 
 #include "Catalog.h"
+#include "ComponentPreviews.h"
 #include "gen/Icons.h"
 
 #include <kiln/foundation/Back.h>
 #include <kiln/foundation/Compose.h>
 #include <kiln/foundation/Draw.h>
+#include <kiln/foundation/Gestures.h>
+#include <kiln/foundation/Semantics.h>
 #include <kiln/foundation/Image.h>
 #include <kiln/foundation/Insets.h>
 #include <kiln/foundation/Lazy.h>
@@ -30,6 +33,7 @@
 #include <kiln/runtime/Composition.h>
 
 #include <algorithm>
+#include <map>
 #include <cctype>
 #include <cstdlib>
 #include <string>
@@ -227,16 +231,79 @@ namespace catalog {
         constexpr Dp ComponentIconSize{ 108 }, ComponentIconVerticalPadding{ 42 }, ComponentPadding{ 16 }, ComponentDescriptionPadding{ 32 },
             ComponentExampleItemPadding{ 8 };
 
+        constexpr Dp ComponentItemPreviewBottomPadding{ 16 };
+        constexpr float ComponentItemPreviewAlpha = 0.8f;
+
+        // ComponentPreviewBitmap: the preview greyed out (no saturation, 80% alpha), drawn live
+        // once and then shown as the image captured from it (cached per component and surface
+        // colour). A cover takes touches while it is live, so they reach the tile.
+        kiln::gfx::ColorFilter GrayscaleColorFilter() {
+            return kiln::gfx::ColorFilter::ColorMatrix({
+                0.213f, 0.715f, 0.072f, 0, 0,
+                0.213f, 0.715f, 0.072f, 0, 0,
+                0.213f, 0.715f, 0.072f, 0, 0,
+                0, 0, 0, 1, 0,
+            });
+        }
+        std::map<std::pair<std::string, std::uint32_t>, kiln::gfx::ImageBitmap>& PreviewBitmapCache() {
+            static std::map<std::pair<std::string, std::uint32_t>, kiln::gfx::ImageBitmap> cache;
+            return cache;
+        }
+
+        void ComponentPreviewBox(const std::string& name, const std::function<void()>& preview) {
+            auto& c = *kiln::rt::Composition::Current();
+            const auto cacheKey = std::make_pair(name, m3::MaterialTheme::colorScheme().surface.argb);
+            auto& bitmap = c.Remember<std::shared_ptr<kiln::rt::State<kiln::gfx::ImageBitmap>>>(
+                [&] {
+                    auto it = PreviewBitmapCache().find(cacheKey);
+                    return std::make_shared<kiln::rt::State<kiln::gfx::ImageBitmap>>(it == PreviewBitmapCache().end() ? kiln::gfx::ImageBitmap() : it->second);
+                }, kiln::rt::Keys(name, cacheKey.second));
+            const Modifier placed = Padding(AlignInBox({}, Alignment::Center()), { 0_dp, 0_dp, 0_dp, ComponentItemPreviewBottomPadding });
+            if (const kiln::gfx::ImageBitmap shown = bitmap->Get()) {
+                Image(shown, std::nullopt, placed, Alignment::Center(), ContentScale::Fit(), ComponentItemPreviewAlpha, GrayscaleColorFilter());
+                return;
+            }
+            GraphicsLayerParams layer;
+            layer.alpha = ComponentItemPreviewAlpha;
+            layer.colorFilter = GrayscaleColorFilter();
+            auto& coordinates = c.Remember<std::shared_ptr<kiln::rt::State<std::optional<LayoutCoordinates>>>>(
+                [] { return std::make_shared<kiln::rt::State<std::optional<LayoutCoordinates>>>(std::nullopt); });
+            auto coords = coordinates;
+            auto target = bitmap;
+            // The capture is the layout under the alpha and filter (they apply to the image).
+            Box(GraphicsLayer(placed, layer), Alignment::Center(), false, [coords, preview] {
+                const Modifier captured = OnGloballyPositioned(ClearAndSetSemantics(Padding({}, 4_dp), [](SemanticsConfiguration&) {}),
+                                                               [coords](const LayoutCoordinates& lc) { if (!coords->Peek() && lc.node) coords->Set(lc); });
+                Box(captured, Alignment::Center(), false, [preview] {
+                    preview();
+                    Box(PointerInput(MatchParentSize({}), kiln::rt::Keys(0), [](PointerInputScope&) -> kiln::rt::Task<> { co_return; }));
+                });
+            });
+            const bool positioned = coordinates->Get().has_value();
+            c.LaunchedEffect(kiln::rt::Keys(positioned), [coords, target, cacheKey, positioned]() -> kiln::rt::Task<> {
+                return [](decltype(coords) cs, decltype(target) t, std::pair<std::string, std::uint32_t> key, bool ready) -> kiln::rt::Task<> {
+                    if (!ready) co_return;
+                    co_await kiln::rt::NextFrame{};   // drawn once
+                    const kiln::gfx::ImageBitmap captured = DrawToImageBitmap(*cs->Peek());
+                    if (!captured) co_return;
+                    PreviewBitmapCache()[key] = captured;
+                    t->Set(captured);
+                }(coords, target, cacheKey, positioned);
+            });
+        }
+
         void ComponentItem(const Component& component, std::function<void()> onClick) {
             m3::OutlinedCard(onClick, Padding(Height({}, ComponentItemHeight), ComponentItemOuterPadding), {}, [&component] {
                 Box(FillMax({}, Axis::Both), Alignment::TopStart(), false, [&component] {
                     Box(Padding(FillMax({}, Axis::Both), ComponentItemInnerPadding), Alignment::TopStart(), false, [&component] {
-                        // The Compose catalog shows a greyed live preview of each component here
-                        // (ComponentPreviews.kt); kiln shows the icon until those are ported.
-                        const Color tint = kiln::rt::Composition::Current()->Read(m3::LocalContentColor);
-                        Image(RememberVectorPainter(ComponentIcon()), std::nullopt, AlignInBox(SizeMod({}, ComponentItemIconSize, ComponentItemIconSize), Alignment::Center()),
-                              Alignment::Center(), ContentScale::Inside(), 1,
-                              component.tintIcon ? std::optional(kiln::gfx::ColorFilter::Tint(tint)) : std::nullopt);
+                        if (auto preview = ComponentPreview(component.name)) {
+                            ComponentPreviewBox(component.name, preview);
+                        } else {
+                            const Color tint = kiln::rt::Composition::Current()->Read(m3::LocalContentColor);
+                            Image(RememberVectorPainter(ComponentIcon()), std::nullopt, AlignInBox(SizeMod({}, ComponentItemIconSize, ComponentItemIconSize), Alignment::Center()),
+                                  Alignment::Center(), ContentScale::Inside(), 1,
+                                  component.tintIcon ? std::optional(kiln::gfx::ColorFilter::Tint(tint)) : std::nullopt);
+                        }
                         m3::TextOptions t;
                         t.style = m3::MaterialTheme::typography().bodySmall;
                         m3::Text(component.name, AlignInBox({}, Alignment::BottomStart()), t);

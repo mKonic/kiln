@@ -1745,6 +1745,37 @@ namespace catalog::Icons {
         return image;
     } }
 
+    namespace Filled { const ImageVectorPtr& Notifications() {
+        static const ImageVectorPtr image = [] {
+            ImageVector::Builder b("Filled.Notifications", ui::Dp(24), ui::Dp(24), 24, 24, ui::Color::Unspecified(), gfx::BlendMode::SrcIn, false);
+            b.Path(PathBuilder()
+                       .MoveTo(12.0f, 22.0f)
+                       .CurveToRelative(1.1f, 0.0f, 2.0f, -0.9f, 2.0f, -2.0f)
+                       .HorizontalLineToRelative(-4.0f)
+                       .CurveToRelative(0.0f, 1.1f, 0.89f, 2.0f, 2.0f, 2.0f)
+                       .Close()
+                       .MoveTo(18.0f, 16.0f)
+                       .VerticalLineToRelative(-5.0f)
+                       .CurveToRelative(0.0f, -3.07f, -1.64f, -5.64f, -4.5f, -6.32f)
+                       .LineTo(13.5f, 4.0f)
+                       .CurveToRelative(0.0f, -0.83f, -0.67f, -1.5f, -1.5f, -1.5f)
+                       .ReflectiveCurveToRelative(-1.5f, 0.67f, -1.5f, 1.5f)
+                       .VerticalLineToRelative(0.68f)
+                       .CurveTo(7.63f, 5.36f, 6.0f, 7.92f, 6.0f, 11.0f)
+                       .VerticalLineToRelative(5.0f)
+                       .LineToRelative(-2.0f, 2.0f)
+                       .VerticalLineToRelative(1.0f)
+                       .HorizontalLineToRelative(16.0f)
+                       .VerticalLineToRelative(-1.0f)
+                       .LineToRelative(-2.0f, -2.0f)
+                       .Close()
+                       .Nodes(), gfx::Brush::SolidColor(ui::Color(0xff000000)), 1.0f, std::nullopt, 1.0f, 1.0f,
+                   gfx::StrokeCap::Butt, gfx::StrokeJoin::Bevel, 1.0f, gfx::FillType::NonZero);
+            return b.Build();
+        }();
+        return image;
+    } }
+
     namespace Filled { const ImageVectorPtr& Outbox() {
         static const ImageVectorPtr image = [] {
             ImageVector::Builder b("Filled.Outbox", ui::Dp(24), ui::Dp(24), 24, 24, ui::Color::Unspecified(), gfx::BlendMode::SrcIn, false);
