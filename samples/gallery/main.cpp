@@ -5,6 +5,7 @@
 
 #include <cmath>
 #include <kiln/foundation/Compose.h>
+#include <kiln/lifecycle/ViewModelCompose.h>
 #include <kiln/foundation/text/BasicSecureTextField.h>
 #include <kiln/foundation/Semantics.h>
 #include <kiln/foundation/draganddrop/DragAndDrop.h>
@@ -265,6 +266,26 @@ namespace {
         });
     }
 
+    // The window's lifecycle and a ViewModel living as long as the window (debug.kiln.gallery.section=lifecycle).
+    struct ResumeCounter final : kiln::lifecycle::ViewModel {
+        kiln::rt::State<int> resumes{ 0 };
+    };
+    void LifecycleDemo() {
+        namespace lc = kiln::lifecycle;
+        auto owner = lc::CurrentLifecycleOwner();
+        const auto state = lc::CurrentStateAsState(owner->GetLifecycle()).Get();
+        auto counter = lc::ViewModelOf<ResumeCounter>();
+        lc::LifecycleResumeEffect(kiln::rt::Keys(0), [counter](lc::LifecycleResumePauseEffectScope& s) {
+            counter->resumes.Set(counter->resumes.Peek() + 1);
+            return s.OnPauseOrDispose([](lc::LifecycleOwner&) {});
+        });
+        const int resumes = counter->resumes.Get();
+        Column(SafeDrawingPadding(Padding(Modifier{}, 16_dp)), Arrangement::SpacedBy(8_dp), AlignmentH::Start(), [&] {
+            BasicText(std::string("Window lifecycle: ") + lc::ToString(state), Modifier{}, { 20, kOnSurface });
+            BasicText("Resumed " + std::to_string(resumes) + (resumes == 1 ? " time" : " times"), Modifier{}, { 20, kOnSurface });
+        });
+    }
+
     void Gallery() {
         auto& c = *kiln::rt::Composition::Current();
         auto& seconds = RememberState(0);
@@ -273,6 +294,10 @@ namespace {
         auto& scroll = RememberScrollState();
         // One Material section alone (for tools/gallery-smoke): nothing else in the tree.
         static const std::string section = kiln::gallery::RequestedSection();
+        if (section == "lifecycle") {
+            LifecycleDemo();
+            return;
+        }
         if (section == "external-surface") {
             ExternalSurfaceDemo();
             return;

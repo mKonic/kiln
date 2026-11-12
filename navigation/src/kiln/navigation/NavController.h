@@ -5,7 +5,7 @@
 // kept as a state only (kiln has no lifecycle owners): the host counts as RESUMED once a NavHost
 // sets it, and visible entries are those at least STARTED.
 
-#include "kiln/lifecycle/Lifecycle.h"
+#include "kiln/lifecycle/SavedStateHandle.h"
 #include "kiln/navigation/NavDestination.h"
 #include "kiln/runtime/Saveable.h"
 #include "kiln/runtime/State.h"
@@ -20,12 +20,41 @@ namespace kiln::navigation {
 
     using LifecycleState = lifecycle::State;
 
-    // NavBackStackEntry: a destination on the back stack with its arguments, and a lifecycle
-    // owner (LocalLifecycleOwner within its content) at the lower of the host's state and the
-    // entry's max.
-    class NavBackStackEntry : public lifecycle::LifecycleOwner {
+    // NavControllerViewModel: the entries' ViewModelStores by entry id, kept in the host's store.
+    class NavControllerViewModel final : public lifecycle::ViewModel {
     public:
-        NavBackStackEntry(NavDestination* destination, std::optional<NavArgs> arguments, LifecycleState host, std::string id);
+        lifecycle::ViewModelStore& Get(const std::string& id) {
+            auto& s = m_Stores[id];
+            if (!s) s = std::make_unique<lifecycle::ViewModelStore>();
+            return *s;
+        }
+        void Clear(const std::string& id) {
+            auto it = m_Stores.find(id);
+            if (it == m_Stores.end()) return;
+            auto store = std::move(it->second);
+            m_Stores.erase(it);
+            store->Clear();
+        }
+    protected:
+        void OnCleared() override {
+            for (auto& [id, s] : m_Stores) s->Clear();
+            m_Stores.clear();
+        }
+    private:
+        std::map<std::string, std::unique_ptr<lifecycle::ViewModelStore>> m_Stores;
+    };
+
+    // NavBackStackEntry: a destination on the back stack with its arguments. It is the owner of
+    // what its content keeps:
+    //   - a lifecycle (LocalLifecycleOwner) at the lower of the host's state and the entry's max;
+    //   - a ViewModelStore (LocalViewModelStoreOwner) that lives until the entry is popped for
+    //     good, its ViewModels' SavedStateHandles starting from the entry's arguments;
+    //   - a saved-state registry (LocalSavedStateRegistryOwner) saved with the back stack.
+    class NavBackStackEntry : public lifecycle::SavedStateRegistryOwner, public lifecycle::ViewModelStoreOwner,
+                              public lifecycle::HasDefaultViewModelProviderFactory {
+    public:
+        NavBackStackEntry(NavDestination* destination, std::optional<NavArgs> arguments, LifecycleState host, std::string id,
+                          std::shared_ptr<NavControllerViewModel> viewModels = nullptr, rt::SaveableStateRegistry::Values savedState = {});
         NavDestination* Destination() const { return m_Destination; }
         void SetDestination(NavDestination* d) { m_Destination = d; }
         const std::optional<NavArgs>& Arguments() const { return m_Args; }
@@ -40,6 +69,19 @@ namespace kiln::navigation {
         // Arguments as strings and numbers (convenience for content).
         std::optional<std::string> GetString(const std::string& key) const;
         std::optional<std::int32_t> GetInt(const std::string& key) const;
+        // The arguments as a SavedState map (DEFAULT_ARGS for the entry's SavedStateHandles).
+        rt::SavedValue ArgumentsAsSavedState() const;
+
+        // Throws std::logic_error before the entry is on the back stack, or when the
+        // controller has no ViewModelStore (NavHost gives it LocalViewModelStoreOwner's).
+        lifecycle::ViewModelStore& GetViewModelStore() override;
+        rt::SaveableStateRegistry& SavedStateRegistry() override { return m_Saved; }
+        lifecycle::ViewModelProvider::FactoryPtr DefaultViewModelProviderFactory() override { return lifecycle::SavedStateViewModelFactory::Instance(); }
+        lifecycle::MutableCreationExtras DefaultViewModelCreationExtras() override;
+        // NavBackStackEntry.savedStateHandle: the entry's own handle (results passed back go here).
+        std::shared_ptr<lifecycle::SavedStateHandle> SavedStateHandle();
+        // What the entry saves (its registry's values).
+        rt::SaveableStateRegistry::Values SaveState() const { return m_Saved.PerformSave(); }
 
     private:
         NavDestination* m_Destination;
@@ -47,15 +89,19 @@ namespace kiln::navigation {
         LifecycleState m_Host;
         LifecycleState m_Max = LifecycleState::Initialized;
         std::string m_Id;
+        std::shared_ptr<NavControllerViewModel> m_ViewModels;
+        rt::SaveableStateRegistry m_Saved;
+        bool m_Attached = false;
         mutable lifecycle::LifecycleRegistry m_Lifecycle{ *this };
     };
     using EntryPtr = std::shared_ptr<NavBackStackEntry>;
 
-    // NavBackStackEntryState: what an entry saves (id, destination id, arguments).
+    // NavBackStackEntryState: what an entry saves (id, destination id, arguments, its saved state).
     struct NavBackStackEntryState {
         std::string id;
         int destinationId = 0;
         std::optional<NavArgs> args;
+        rt::SaveableStateRegistry::Values savedState;
     };
 
     // NavOptions: launchSingleTop, restoreState and popUpTo (route or id, inclusive, saveState).
@@ -202,6 +248,9 @@ namespace kiln::navigation {
         // NavHostController.setLifecycleOwner: the host state follows `owner` (NavHost passes
         // LocalLifecycleOwner); each event moves the entries with it.
         void SetLifecycleOwner(std::shared_ptr<lifecycle::LifecycleOwner> owner);
+        // NavHostController.setViewModelStore: where the entries' ViewModelStores live (NavHost
+        // passes LocalViewModelStoreOwner's). Changing it with entries on the back stack throws.
+        void SetViewModelStore(lifecycle::ViewModelStore& store);
         // Called with an entry's id when its state is cleared for good (the host frees what it
         // kept for it: NavViewModelStoreProvider.clear).
         std::function<void(const std::string& id)> onEntryCleared;
@@ -274,6 +323,9 @@ namespace kiln::navigation {
         LifecycleState m_HostLifecycle = LifecycleState::Created;
         std::shared_ptr<lifecycle::LifecycleOwner> m_LifecycleOwner;
         std::shared_ptr<lifecycle::LifecycleEventObserver> m_LifecycleObserver;
+        std::shared_ptr<NavControllerViewModel> m_ViewModel;
+        // An entry's state is gone for good: its ViewModels and the host's saved content state.
+        void ClearEntry(const std::string& id);
         int m_DispatchReentrant = 0;
         std::vector<EntryPtr> m_ToDispatch;
     };

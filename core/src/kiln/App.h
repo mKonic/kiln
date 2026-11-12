@@ -6,7 +6,7 @@
 #include "kiln/PathCache.h"
 #include "kiln/QuadRenderer.h"
 #include "kiln/TextBackend.h"
-#include "kiln/lifecycle/LifecycleCompose.h"
+#include "kiln/lifecycle/ViewModelCompose.h"
 #include "kiln/runtime/Composition.h"
 #include "kiln/runtime/Saveable.h"
 #include "kiln/runtime/Task.h"
@@ -156,9 +156,24 @@ namespace kiln {
 
     private:
         HostServices m_Services;
-        struct HostLifecycleOwner final : lifecycle::LifecycleOwner {
+        // The window's owners, as a ComponentActivity is: lifecycle, ViewModels (living as long
+        // as the app object, which configuration changes keep), and saved state (the app's
+        // registry, so SavedStateHandles ride in SaveState).
+        struct HostLifecycleOwner final : lifecycle::SavedStateRegistryOwner, lifecycle::ViewModelStoreOwner,
+                                          lifecycle::HasDefaultViewModelProviderFactory {
             lifecycle::LifecycleRegistry registry{ *this };
+            lifecycle::ViewModelStore store;
+            rt::SaveableStateRegistry* saved = nullptr;
             lifecycle::Lifecycle& GetLifecycle() override { return registry; }
+            lifecycle::ViewModelStore& GetViewModelStore() override { return store; }
+            rt::SaveableStateRegistry& SavedStateRegistry() override { return *saved; }
+            lifecycle::ViewModelProvider::FactoryPtr DefaultViewModelProviderFactory() override { return lifecycle::SavedStateViewModelFactory::Instance(); }
+            lifecycle::MutableCreationExtras DefaultViewModelCreationExtras() override {
+                lifecycle::MutableCreationExtras extras;
+                extras.Set(lifecycle::SavedStateRegistryOwnerKey, static_cast<lifecycle::SavedStateRegistryOwner*>(this));
+                extras.Set(lifecycle::ViewModelStoreOwnerKey, static_cast<lifecycle::ViewModelStoreOwner*>(this));
+                return extras;
+            }
         };
         std::shared_ptr<HostLifecycleOwner> m_Lifecycle = std::make_shared<HostLifecycleOwner>();
         ui::Owner m_Owner;

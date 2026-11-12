@@ -1,7 +1,7 @@
 #include "kiln/navigation/NavHost.h"
 
 #include "kiln/foundation/Back.h"
-#include "kiln/lifecycle/LifecycleCompose.h"
+#include "kiln/lifecycle/ViewModelCompose.h"
 #include "kiln/runtime/Saveable.h"
 
 #include <algorithm>
@@ -183,18 +183,23 @@ namespace kiln::navigation {
             }
         };
 
-        // LocalOwnersProvider: the entry as LocalLifecycleOwner, and its saveable state, kept
-        // under its id.
-        void LocalOwnersProvider(const EntryPtr& entry, rt::SaveableStateHolder& holder, std::function<void()> content) {
-            rt::Composition::Current()->Provide(lifecycle::LocalLifecycleOwner, lifecycle::LifecycleOwnerPtr(entry),
-                                                [&holder, entry, content = std::move(content)] { rt::SaveableStateProvider(holder, entry->Id(), content); });
-        }
-
         struct HostBook {
             std::map<std::uint64_t, EntryPtr> entries;   // content key -> entry
             std::map<std::string, float> zIndices;        // entry id -> z index
             std::vector<EntryPtr> visible;
         };
+    }
+
+    // LocalOwnersProvider: the entry as LocalLifecycleOwner, LocalViewModelStoreOwner and
+    // LocalSavedStateRegistryOwner, and its saveable state, kept under its id.
+    void LocalOwnersProvider(const EntryPtr& entry, rt::SaveableStateHolder& holder, std::function<void()> content) {
+        auto* c = rt::Composition::Current();
+        c->Provide(lifecycle::LocalLifecycleOwner, lifecycle::LifecycleOwnerPtr(entry), [c, &holder, entry, content = std::move(content)] {
+            c->Provide(lifecycle::LocalViewModelStoreOwner, lifecycle::ViewModelStoreOwnerPtr(entry), [c, &holder, entry, content] {
+                c->Provide(lifecycle::LocalSavedStateRegistryOwner, lifecycle::SavedStateRegistryOwnerPtr(entry),
+                           [&holder, entry, content] { rt::SaveableStateProvider(holder, entry->Id(), content); });
+            });
+        });
     }
 
     void NavHost(NavHostController& navController, std::shared_ptr<NavGraph> graph, const Modifier& modifier, const NavHostOptions& options, rt::Key key) {
@@ -203,6 +208,8 @@ namespace kiln::navigation {
         c.Child([&c, nc, graph, modifier, options] {
             // The entries follow the composition's lifecycle owner (the activity's, a scene's...).
             nc->SetLifecycleOwner(lifecycle::CurrentLifecycleOwner());
+            // The entries' ViewModels live in the composition's store (the window's...).
+            if (auto store = lifecycle::CurrentViewModelStoreOwner()) nc->SetViewModelStore(store->GetViewModelStore());
             nc->SetGraph(graph);
             auto* composeNavigator = nc->Provider().Get<ComposeNavigator>();
             if (!composeNavigator) return;

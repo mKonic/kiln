@@ -170,4 +170,9 @@ namespace kiln::navigation {
     // DialogHost(dialogNavigator)
     void DialogHost(DialogNavigator& dialogNavigator, rt::Key key = {});
 
+    // NavBackStackEntry.LocalOwnersProvider(saveableStateHolder, content): `content` with the
+    // entry as LocalLifecycleOwner, LocalViewModelStoreOwner and LocalSavedStateRegistryOwner,
+    // its saveable state kept in `holder` under the entry's id.
+    void LocalOwnersProvider(const EntryPtr& entry, rt::SaveableStateHolder& holder, std::function<void()> content);
+
 }

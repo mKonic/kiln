@@ -36,6 +36,10 @@ modules = [
 ]
 
 [renamed]
+# lifecycle: the Kotlin file facade of enableSavedStateHandles / createSavedStateHandle; the
+# opt-in annotation guards SavedStateHandle.saveable.
+SavedStateHandleSupport = "EnableSavedStateHandles CreateSavedStateHandle"
+SavedStateHandleSaveableApi = "Saveable SaveableState"
 # Interactions: one Interaction struct with a Kind, and MutableInteractionSource's IsX().
 DragInteraction = "Interaction"
 FocusInteraction = "Interaction"
@@ -332,6 +336,11 @@ ResourceFont = "Font"
 toFontFamily = "FontFamily Of"
 
 [skipped]
+ViewTreeLifecycleOwner = "Android View tree; a kiln window's owners are set on its ui::Owner (SetHostLifecycleOwner)"
+ViewTreeViewModelStoreOwner = "Android View tree; a kiln window's owners are set on its ui::Owner (SetHostViewModelStoreOwner)"
+AndroidViewModel = "needs an Android Application object, which kiln apps do not have"
+AndroidViewModelFactory = "needs an Android Application object, which kiln apps do not have"
+ViewModelStoreOwnerHostDefaultKey = "Compose's host-default lookup; kiln falls back to the window's owner (CurrentViewModelStoreOwner)"
 hasKeysMissingFrom = "kiln's configuration is a struct of typed fields; Equivalent compares them"
 DelegatingNode = "kiln nodes implement several capability interfaces themselves; nothing to delegate to"
 requireView = "Android View access: the host owns the view"
@@ -410,7 +419,6 @@ NavKeySerializer = "kotlinx.serialization: back stacks save through Saver"
 NavBackStackSerializer = "kotlinx.serialization: back stacks save through Saver"
 DeepLinkSerializer = "kotlinx.serialization: UriDeepLinkMatcher takes a decode function"
 invoke = "DeepLinkRequest(Intent): kiln has no Intent type; pass the uri and ActionExtra"
-LocalOwnersProvider = "lifecycle / ViewModel owners per entry: kiln has neither"
 LocalNavigationEventDispatcherOwner = "the dispatcher is per window (BackDispatcher::Main)"
 NavigationEventDispatcherOwnerHostDefaultKey = "the dispatcher is per window (BackDispatcher::Main)"
 rememberNavigationEventDispatcherOwner = "the dispatcher is per window (BackDispatcher::Main)"

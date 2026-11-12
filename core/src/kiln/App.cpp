@@ -25,12 +25,17 @@ namespace kiln {
     App::App(HostServices services) : m_Services(services) {
         m_Dispatcher.requestFrame = [this] { RequestFrame(); };
         m_Owner.SetText(m_Services.text);
-        m_Lifecycle->registry.SetCurrentState(lifecycle::State::Created);
-        lifecycle::SetHostLifecycleOwner(m_Owner, m_Lifecycle);
         m_Owner.SetRequestFrame([this] { RequestFrame(); });
         m_Owner.SetOffscreenRenderer([this](int w, int h, const std::function<void(ui::DrawScope&)>& draw) { return RenderToPixels(w, h, draw); });
         // Any state write schedules a frame, like Compose's global apply observer (14 §Recomposer).
         rt::Observation::SetChangeListener([this] { RequestFrame(); });
+        // The window's owners (after the listener: moving the lifecycle writes state).
+        m_Lifecycle->registry.SetCurrentState(lifecycle::State::Created);
+        m_Lifecycle->saved = m_Saveable.get();
+        lifecycle::EnableSavedStateHandles(*m_Lifecycle);
+        lifecycle::SetHostLifecycleOwner(m_Owner, m_Lifecycle);
+        lifecycle::SetHostViewModelStoreOwner(m_Owner, m_Lifecycle);
+        lifecycle::SetHostSavedStateRegistryOwner(m_Owner, m_Lifecycle);
     }
 
     void App::RunIdle() { m_Dispatcher.RunPending(); }
@@ -221,16 +226,20 @@ namespace kiln {
         std::shared_ptr<ui::Window> window = std::make_shared<HostWindow>(&m_Owner);
         rt::State<ui::Configuration>* config = m_Configuration.get();
         rt::State<bool>* is24Hour = m_Is24Hour.get();
-        lifecycle::LifecycleOwnerPtr lifecycleOwner = m_Lifecycle;
-        content = [config, is24Hour, window, owner, lifecycleOwner, content = std::move(content)] {
+        auto hostOwner = m_Lifecycle;
+        content = [config, is24Hour, window, owner, hostOwner, content = std::move(content)] {
             auto* c = rt::Composition::Current();
-            c->Provide(lifecycle::LocalLifecycleOwner, lifecycleOwner, [c, config, is24Hour, window, owner, content] {
+            c->Provide(lifecycle::LocalViewModelStoreOwner, lifecycle::ViewModelStoreOwnerPtr(hostOwner), [c, hostOwner, config, is24Hour, window, owner, content] {
+            c->Provide(lifecycle::LocalSavedStateRegistryOwner, lifecycle::SavedStateRegistryOwnerPtr(hostOwner), [c, hostOwner, config, is24Hour, window, owner, content] {
+            c->Provide(lifecycle::LocalLifecycleOwner, lifecycle::LifecycleOwnerPtr(hostOwner), [c, config, is24Hour, window, owner, content] {
             c->Provide(ui::LocalOwner, owner, [c, config, is24Hour, window, owner, content] {
             c->Provide(ui::LocalDensity, owner->ObservedDensity(), [c, config, is24Hour, window, content] {
             c->Provide(ui::LocalConfiguration, config->Get(), [c, is24Hour, window, content] {
                 c->Provide(ui::LocalIs24HourFormat, is24Hour->Get(), [c, window, content] {
                     c->Provide(ui::LocalWindow, window.get(), content);
                 });
+            });
+            });
             });
             });
             });
@@ -265,6 +274,9 @@ namespace kiln {
 
     void App::RestoreState(std::span<const std::uint8_t> bytes) {
         *m_Saveable = rt::SaveableStateRegistry(rt::SaveableStateRegistry::Deserialize(bytes));
+        // The new registry has no providers: the window's SavedStateHandles register again
+        // (and restore from it).
+        lifecycle::EnableSavedStateHandles(*m_Lifecycle);
     }
 
     std::vector<std::uint8_t> App::SaveState() const {
@@ -288,6 +300,13 @@ namespace kiln {
     }
     App::~App() {
         if (m_Device) m_Device->WaitIdle();
+        // The window is gone for good: its ViewModels are cleared (the content leaves after).
+        m_Lifecycle->store.Clear();
+        // The thread's dispatcher and the global change listener outlive this app (a relaunched
+        // activity makes a new one): they must not call back into it.
+        rt::Observation::SetChangeListener(nullptr);
+        m_Dispatcher.requestFrame = nullptr;
+        m_Dispatcher.wake = nullptr;
     }
 
     void App::SetCallbacks(const kiln_app_callbacks& callbacks) {

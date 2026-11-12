@@ -21,10 +21,60 @@ namespace kiln::navigation {
 
     // --- NavBackStackEntry ----------------------------------------------------------------------
 
-    NavBackStackEntry::NavBackStackEntry(NavDestination* destination, std::optional<NavArgs> arguments, LifecycleState host, std::string id)
-        : m_Destination(destination), m_Args(std::move(arguments)), m_Host(host), m_Id(id.empty() ? RandomUuid() : std::move(id)) {}
+    NavBackStackEntry::NavBackStackEntry(NavDestination* destination, std::optional<NavArgs> arguments, LifecycleState host, std::string id,
+                                         std::shared_ptr<NavControllerViewModel> viewModels, rt::SaveableStateRegistry::Values savedState)
+        : m_Destination(destination), m_Args(std::move(arguments)), m_Host(host), m_Id(id.empty() ? RandomUuid() : std::move(id)),
+          m_ViewModels(std::move(viewModels)), m_Saved(std::move(savedState)) {}
+
+    lifecycle::ViewModelStore& NavBackStackEntry::GetViewModelStore() {
+        if (!m_Attached)
+            throw std::logic_error("You cannot access the NavBackStackEntry's ViewModels until it is added to the NavController's back stack (i.e., "
+                                   "the Lifecycle of the NavBackStackEntry reaches the CREATED state).");
+        if (!m_ViewModels)
+            throw std::logic_error("You must call setViewModelStore() on your NavHostController before accessing the ViewModelStore of a navigation "
+                                   "graph.");
+        return m_ViewModels->Get(m_Id);
+    }
+
+    lifecycle::MutableCreationExtras NavBackStackEntry::DefaultViewModelCreationExtras() {
+        lifecycle::MutableCreationExtras extras;
+        extras.Set(lifecycle::SavedStateRegistryOwnerKey, static_cast<lifecycle::SavedStateRegistryOwner*>(this));
+        extras.Set(lifecycle::ViewModelStoreOwnerKey, static_cast<lifecycle::ViewModelStoreOwner*>(this));
+        if (m_Args) extras.Set(lifecycle::DefaultArgsKey, ArgumentsAsSavedState());
+        return extras;
+    }
+
+    namespace {
+        // The entry's own handle, as a ViewModel in its store (upstream's SavedStateViewModel).
+        class EntryHandleViewModel final : public lifecycle::ViewModel {
+        public:
+            explicit EntryHandleViewModel(std::shared_ptr<lifecycle::SavedStateHandle> h) : handle(std::move(h)) {}
+            std::shared_ptr<lifecycle::SavedStateHandle> handle;
+        };
+    }
+
+    std::shared_ptr<lifecycle::SavedStateHandle> NavBackStackEntry::SavedStateHandle() {
+        if (!m_Attached)
+            throw std::logic_error("You cannot access the NavBackStackEntry's SavedStateHandle until it is added to the NavController's back stack.");
+        if (!m_ViewModels)
+            throw std::logic_error("You cannot access the NavBackStackEntry's SavedStateHandle without a ViewModelStore (setViewModelStore).");
+        auto factory = lifecycle::ViewModelFactory([](lifecycle::InitializerViewModelFactoryBuilder& b) {
+            lifecycle::Initializer<EntryHandleViewModel>(b, [](const lifecycle::CreationExtras& e) {
+                // The entry's own handle has no default arguments (they belong to its ViewModels').
+                lifecycle::MutableCreationExtras plain(e);
+                plain.Set(lifecycle::DefaultArgsKey, rt::SavedValue());
+                return std::make_shared<EntryHandleViewModel>(lifecycle::CreateSavedStateHandle(plain));
+            });
+        });
+        return lifecycle::ViewModelProvider::Create(*this, factory).Get<EntryHandleViewModel>()->handle;
+    }
 
     void NavBackStackEntry::UpdateState() {
+        if (!m_Attached) {
+            // Once, before the lifecycle moves up: SavedStateHandles restore from the registry.
+            m_Attached = true;
+            if (m_ViewModels) lifecycle::EnableSavedStateHandles(*this);
+        }
         const LifecycleState s = int(m_Host) < int(m_Max) ? m_Host : m_Max;
         // An entry that never got to CREATED has nothing to destroy.
         if (m_Lifecycle.CurrentState() == LifecycleState::Initialized && s == LifecycleState::Destroyed) return;
@@ -191,6 +241,19 @@ namespace kiln::navigation {
         if (m_LifecycleOwner) m_LifecycleOwner->GetLifecycle().RemoveObserver(m_LifecycleObserver);
     }
 
+    void NavController::SetViewModelStore(lifecycle::ViewModelStore& store) {
+        static const std::string key = "androidx.lifecycle.ViewModelProvider.DefaultKey:androidx.navigation.NavControllerViewModel";
+        auto vm = store.GetOrPut<NavControllerViewModel>(key, [] { return std::make_shared<NavControllerViewModel>(); });
+        if (vm == m_ViewModel) return;
+        if (!m_BackQueue.empty()) throw std::logic_error("ViewModelStore should be set before setGraph call");
+        m_ViewModel = std::move(vm);
+    }
+
+    void NavController::ClearEntry(const std::string& id) {
+        if (m_ViewModel) m_ViewModel->Clear(id);
+        if (onEntryCleared) onEntryCleared(id);
+    }
+
     void NavController::SetLifecycleOwner(std::shared_ptr<lifecycle::LifecycleOwner> owner) {
         if (owner == m_LifecycleOwner) return;
         if (m_LifecycleOwner) m_LifecycleOwner->GetLifecycle().RemoveObserver(m_LifecycleObserver);
@@ -221,11 +284,11 @@ namespace kiln::navigation {
     }
 
     EntryPtr NavController::CreateEntry(NavDestination* destination, std::optional<NavArgs> arguments) {
-        return std::make_shared<NavBackStackEntry>(destination, std::move(arguments), m_HostLifecycle, std::string());
+        return std::make_shared<NavBackStackEntry>(destination, std::move(arguments), m_HostLifecycle, std::string(), m_ViewModel);
     }
 
     EntryPtr NavController::Instantiate(const NavBackStackEntryState& s, NavDestination* destination) {
-        return std::make_shared<NavBackStackEntry>(destination, destination->AddInDefaultArgs(s.args), m_HostLifecycle, s.id);
+        return std::make_shared<NavBackStackEntry>(destination, destination->AddInDefaultArgs(s.args), m_HostLifecycle, s.id, m_ViewModel, s.savedState);
     }
 
     void NavController::LinkChildToParent(const EntryPtr& child, const EntryPtr& parent) {
@@ -300,7 +363,7 @@ namespace kiln::navigation {
             UnlinkChildFromParent(entry);
             if (AtLeast(entry->CurrentState(), LifecycleState::Created)) entry->SetMaxLifecycle(LifecycleState::Destroyed);
             const bool sameIdOnStack = std::any_of(m_BackQueue.begin(), m_BackQueue.end(), [&](const EntryPtr& e) { return e->Id() == entry->Id(); });
-            if (!sameIdOnStack && !savedState && onEntryCleared) onEntryCleared(entry->Id());
+            if (!sameIdOnStack && !savedState) ClearEntry(entry->Id());
             UpdateBackStackLifecycle();
             m_VisibleEntries.Set(PopulateVisibleEntries());
         } else if (!state.isNavigating) {
@@ -425,7 +488,7 @@ namespace kiln::navigation {
         if (AtLeast(entry->CurrentState(), LifecycleState::Created)) {
             if (saveState) {
                 entry->SetMaxLifecycle(LifecycleState::Created);
-                if (savedState) savedState->push_front(NavBackStackEntryState{ entry->Id(), entry->Destination()->Id(), entry->Arguments() });
+                if (savedState) savedState->push_front(NavBackStackEntryState{ entry->Id(), entry->Destination()->Id(), entry->Arguments(), entry->SaveState() });
             }
             if (!transitioning) {
                 entry->SetMaxLifecycle(LifecycleState::Destroyed);
@@ -434,7 +497,7 @@ namespace kiln::navigation {
                 entry->SetMaxLifecycle(LifecycleState::Created);
             }
         }
-        if (!saveState && !transitioning && onEntryCleared) onEntryCleared(entry->Id());
+        if (!saveState && !transitioning) ClearEntry(entry->Id());
     }
 
     bool NavController::ClearBackStack(const std::string& route) {
@@ -670,7 +733,8 @@ namespace kiln::navigation {
             EntryPtr old = m_BackQueue.back();
             m_BackQueue.pop_back();
             UnlinkChildFromParent(old);
-            temp.push_front(std::make_shared<NavBackStackEntry>(old->Destination(), old->Destination()->AddInDefaultArgs(args), m_HostLifecycle, old->Id()));
+            temp.push_front(std::make_shared<NavBackStackEntry>(old->Destination(), old->Destination()->AddInDefaultArgs(args), m_HostLifecycle, old->Id(),
+                                                                m_ViewModel, old->SaveState()));
         }
         for (const auto& e : temp) {
             if (NavGraph* parent = e->Destination()->Parent()) LinkChildToParent(e, GetBackStackEntry(parent->Id()));
@@ -865,7 +929,10 @@ namespace kiln::navigation {
         rt::SavedValue SaveEntryState(const NavBackStackEntryState& s) {
             rt::SavedValue::List args;
             if (s.args) for (const auto& [k, v] : *s.args) { args.push_back(k); args.push_back(SaveValue(v)); }
-            return rt::SavedValue::List{ s.id, s.destinationId, s.args.has_value(), args };
+            // The entry's registry: [key, [values...]] pairs.
+            rt::SavedValue::List saved;
+            for (const auto& [k, values] : s.savedState) saved.push_back(rt::SavedValue::List{ k, rt::SavedValue::List(values.begin(), values.end()) });
+            return rt::SavedValue::List{ s.id, s.destinationId, s.args.has_value(), args, saved };
         }
         NavBackStackEntryState RestoreEntryState(const rt::SavedValue& s) {
             NavBackStackEntryState out;
@@ -881,6 +948,15 @@ namespace kiln::navigation {
                     if (auto* k = std::get_if<std::string>(&(*args)[i].v)) a[*k] = RestoreValue((*args)[i + 1]);
                 out.args = std::move(a);
             }
+            if (l->size() >= 5)
+                if (const auto* saved = std::get_if<rt::SavedValue::List>(&(*l)[4].v))
+                    for (const auto& item : *saved) {
+                        const auto* pair = std::get_if<rt::SavedValue::List>(&item.v);
+                        if (!pair || pair->size() != 2) continue;
+                        const auto* k = std::get_if<std::string>(&(*pair)[0].v);
+                        const auto* values = std::get_if<rt::SavedValue::List>(&(*pair)[1].v);
+                        if (k && values) out.savedState[*k] = std::vector<rt::SavedValue>(values->begin(), values->end());
+                    }
             return out;
         }
     }
@@ -888,7 +964,7 @@ namespace kiln::navigation {
     rt::SavedValue NavController::SaveState() const {
         rt::SavedValue::List backStack, mapIds, mapValues, stateIds, states;
         if (!m_BackQueue.empty())
-            for (const auto& e : m_BackQueue) backStack.push_back(SaveEntryState({ e->Id(), e->Destination()->Id(), e->Arguments() }));
+            for (const auto& e : m_BackQueue) backStack.push_back(SaveEntryState({ e->Id(), e->Destination()->Id(), e->Arguments(), e->SaveState() }));
         else if (m_BackStackToRestore)
             for (const auto& s : *m_BackStackToRestore) backStack.push_back(SaveEntryState(s));
         for (const auto& [destId, id] : m_BackStackMap) { mapIds.push_back(destId); mapValues.push_back(id.value_or("")); }
@@ -928,6 +1004,18 @@ namespace kiln::navigation {
             for (const auto& s : *stack) d.push_back(RestoreEntryState(s));
             m_BackStackStates[*id] = std::move(d);
         }
+    }
+
+    rt::SavedValue NavBackStackEntry::ArgumentsAsSavedState() const {
+        std::map<std::string, rt::SavedValue> values;
+        // Plain values, as a Bundle holds them (SaveValue tags the type for the back stack's own format).
+        if (m_Args)
+            for (const auto& [k, v] : *m_Args)
+                values[k] = std::visit([](const auto& x) -> rt::SavedValue {
+                    if constexpr (std::is_same_v<std::decay_t<decltype(x)>, std::monostate>) return {};
+                    else return rt::SavedValue(x);
+                }, v);
+        return lifecycle::SavedStateOf(values);
     }
 
 }
