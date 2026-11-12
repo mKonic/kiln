@@ -804,6 +804,50 @@ KILN_API void kiln_basic_text(kiln_key key, const char* utf8, const kiln_modifie
     } CATCH_VOID
 }
 
+struct kiln_text_builder { text::AnnotatedStringBuilder b; };
+namespace {
+    text::LinkInteractionListener LinkListener(kiln_fn_str onClick, bool url) {
+        auto fn = Fn(onClick);
+        if (!fn) return {};
+        return [fn, url](const text::LinkAnnotation& l) { fn(url ? l.url : l.tag); };
+    }
+}
+KILN_API kiln_text_builder* kiln_text_builder_new(void) { TRY { return new kiln_text_builder; } CATCH(nullptr) }
+KILN_API void kiln_text_builder_append(kiln_text_builder* b, const char* t) { TRY { if (b && t) b->b.Append(t); } CATCH_VOID }
+KILN_API void kiln_text_builder_push_style(kiln_text_builder* b, const kiln_text_style* s) {
+    TRY { if (b) b->b.PushStyle(s ? s->style.span : text::SpanStyle{}); } CATCH_VOID
+}
+KILN_API void kiln_text_builder_push_link_url(kiln_text_builder* b, const char* url, kiln_fn_str onClick) {
+    TRY { if (b) b->b.PushLink(text::LinkAnnotation::Url(ToString(url), {}, LinkListener(onClick, true))); } CATCH_VOID
+}
+KILN_API void kiln_text_builder_push_link_clickable(kiln_text_builder* b, const char* tag, kiln_fn_str onClick) {
+    TRY { if (b) b->b.PushLink(text::LinkAnnotation::Clickable(ToString(tag), {}, LinkListener(onClick, false))); } CATCH_VOID
+}
+KILN_API void kiln_text_builder_pop(kiln_text_builder* b) { TRY { if (b) b->b.Pop(); } CATCH_VOID }
+KILN_API kiln_annotated_string* kiln_text_builder_build(const kiln_text_builder* b) {
+    TRY {
+        auto* s = new kiln_annotated_string;
+        if (b) s->text = b->b.ToAnnotatedString();
+        return s;
+    } CATCH(nullptr)
+}
+KILN_API void kiln_text_builder_free(kiln_text_builder* b) { delete b; }
+KILN_API kiln_annotated_string* kiln_annotated_string_retain(kiln_annotated_string* s) { return Retain(s); }
+KILN_API void kiln_annotated_string_release(kiln_annotated_string* s) { Release(s); }
+KILN_API void kiln_basic_text_annotated(kiln_key key, const kiln_annotated_string* t, const kiln_modifier* m, const kiln_text_style* style,
+                                        const kiln_text_options* in) {
+    TRY {
+        if (!t) return;
+        const auto o = ReadOptions(in, kiln_text_options_init);
+        fd::BasicTextOptions bo;
+        bo.overflow = text::TextOverflow(o.overflow);
+        bo.softWrap = o.soft_wrap;
+        bo.maxLines = o.max_lines;
+        bo.minLines = o.min_lines;
+        fd::BasicText(t->text, ToModifier(m), style ? style->style : text::TextStyle{}, std::move(bo), ToKey(key));
+    } CATCH_VOID
+}
+
 KILN_API void kiln_image_options_init(kiln_image_options* o) {
     if (!o) return;
     *o = {};

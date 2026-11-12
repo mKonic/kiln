@@ -482,6 +482,26 @@ KILN_API void kiln_text_options_init(kiln_text_options* options);
 KILN_API void kiln_basic_text(kiln_key key, const char* utf8, const kiln_modifier* modifier,
                               const kiln_text_style* style, const kiln_text_options* options);
 
+/* Text with styled ranges and links (AnnotatedString), made with a builder. A style pushed
+ * applies to the text appended until its pop; text styles contribute their span part (colour,
+ * size, weight, decoration, ...). */
+typedef struct kiln_annotated_string kiln_annotated_string;   /* refcounted */
+typedef struct kiln_text_builder kiln_text_builder;           /* owned by the caller */
+KILN_API kiln_text_builder* kiln_text_builder_new(void);
+KILN_API void kiln_text_builder_append(kiln_text_builder* b, const char* utf8);
+KILN_API void kiln_text_builder_push_style(kiln_text_builder* b, const kiln_text_style* style);
+/* A link: opened by the platform, or `on_click` (called with the url) handles it. */
+KILN_API void kiln_text_builder_push_link_url(kiln_text_builder* b, const char* url, kiln_fn_str on_click);
+/* A clickable range: on_click gets the tag. */
+KILN_API void kiln_text_builder_push_link_clickable(kiln_text_builder* b, const char* tag, kiln_fn_str on_click);
+KILN_API void kiln_text_builder_pop(kiln_text_builder* b);
+KILN_API kiln_annotated_string* kiln_text_builder_build(const kiln_text_builder* b);
+KILN_API void kiln_text_builder_free(kiln_text_builder* b);
+KILN_API kiln_annotated_string* kiln_annotated_string_retain(kiln_annotated_string* s);
+KILN_API void kiln_annotated_string_release(kiln_annotated_string* s);
+KILN_API void kiln_basic_text_annotated(kiln_key key, const kiln_annotated_string* text, const kiln_modifier* modifier,
+                                        const kiln_text_style* style, const kiln_text_options* options);
+
 typedef enum kiln_content_scale {
     KILN_CONTENT_SCALE_FIT, KILN_CONTENT_SCALE_CROP, KILN_CONTENT_SCALE_FILL_HEIGHT,
     KILN_CONTENT_SCALE_FILL_WIDTH, KILN_CONTENT_SCALE_INSIDE, KILN_CONTENT_SCALE_NONE,

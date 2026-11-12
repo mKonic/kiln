@@ -40,7 +40,6 @@ kiln::material3::SwipeToDismissBoxState::Anchored: result: type kiln::foundation
 kiln::material3::SwipeToDismissBoxState::PositionalThreshold: result const std::function<float (float)> & cannot be returned
 kiln::material3::TabIndicatorScope::TabIndicatorLayout: parameter measure: type kiln::ui::MeasureScope
 kiln::material3::Text: parameter text: pointer const char *
-kiln::material3::Text: parameter text: type kiln::text::AnnotatedString
 kiln::material3::ToggleButtonDefaults::contentPaddingFor: parameter size: kiln::material3::ToggleButtonSize is not default-constructible
 kiln::material3::ToggleButtonDefaults::shapesFor: parameter size: kiln::material3::ToggleButtonSize is not default-constructible
 kiln::material3::ToggleButtonDefaults::size: constant: kiln::material3::ToggleButtonSize is not default-constructible

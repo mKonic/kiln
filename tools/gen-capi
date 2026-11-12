@@ -159,6 +159,7 @@ class Generator:
         self.struct_order = []
         self.opt_structs = {}   # C name -> pointer type of its value
         self.opaques = {}       # C name -> C++ type (opaque shared handles)
+        self.base_sig = {}      # C name -> (param, C type) of its first overload
 
     # --- discovery ---------------------------------------------------------------------------
 
@@ -493,6 +494,8 @@ class Generator:
         if k == 'kiln::ui::Rect':
             return Mapping('kiln_rect', lambda e: f'kiln::ui::Rect{{ {e}.left, {e}.top, {e}.right, {e}.bottom }}',
                            lambda e, o: f'kiln_rect{{ ({e}).left, ({e}).top, ({e}).right, ({e}).bottom }}')
+        if k == 'kiln::text::AnnotatedString':
+            return Mapping('const kiln_annotated_string*', lambda e: f'({e} ? {e}->text : kiln::text::AnnotatedString{{}})', None)
         if k == 'kiln::foundation::ScrollableState':
             return Mapping('kiln_scrollable_state*', lambda e: f'*reinterpret_cast<kiln::foundation::ScrollableState*>({e})', None)
         if k == 'kiln::foundation::PagerState':
@@ -575,12 +578,26 @@ class Generator:
 
     # --- functions ---------------------------------------------------------------------------
 
-    def unique(self, name, params):
+    def unique(self, name, params, ctypes=None):
+        """A C name for a function; overloads get a suffix that tells them apart: a parameter
+        the first one lacks, else the type of the first parameter that differs."""
+        ctypes = ctypes or [''] * len(params)
         if name not in self.names:
             self.names.add(name)
+            self.base_sig[name] = list(zip(params, ctypes))
             return name
-        for p in params:
-            cand = f'{name}_{snake(p)}'
+        base = self.base_sig.get(name, [])
+        base_names = {p for p, _ in base}
+        cands = [snake(p) for p in params if p not in base_names]
+        for i, (p, t) in enumerate(zip(params, ctypes)):
+            if i >= len(base) or base[i][1] != t:
+                # A kiln struct or handle names an overload well; callbacks and numbers do not.
+                if 'kiln_' in t and 'kiln_fn' not in t and 'kiln_m3_fn' not in t:
+                    cands.append(re.sub(r'^(const )?kiln_(m3_)?', '', t).replace('*', '').strip())
+                break
+        cands += [snake(p) for p in params]
+        for c in cands:
+            cand = f'{name}_{c}'
             if cand not in self.names:
                 self.names.add(cand)
                 return cand
@@ -649,7 +666,7 @@ class Generator:
             base = 'kiln_m3_' + '_'.join(snake(x) for x in ns + [cur.spelling])
         else:
             base = f'{owner.c}_{snake(cur.spelling)}'
-        cname = self.unique(base, names)
+        cname = self.unique(base, names, [c.rsplit(' ', 1)[0] for c in c_params])
         # Signature.
         sig_params = []
         if owner is None:

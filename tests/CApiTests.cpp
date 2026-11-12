@@ -16,6 +16,7 @@ extern "C" {
     void capi_counter(void* user);
     void capi_list(void* user);
     int capi_handles_ok(void);
+    void capi_annotated(void* user);
     extern kiln_color capi_m3_primary, capi_m3_expected;
     void capi_m3(void* user);
     extern int capi_snack_result;
@@ -214,4 +215,10 @@ TEST(CApiMaterial3TopAppBarFollowsTheListThroughNestedScroll) {
     // Drag the list up: the enterAlways bar moves up with it.
     h.Drag(100, 300, 200, 10);
     CHECK(capi_bar_height_offset() < -10.0f);
+}
+
+TEST(CApiAnnotatedTextFromABuilder) {
+    Harness h;
+    h.Run(capi_annotated);
+    CHECK_EQ(h.Text("rich"), std::string("Read the terms."));
 }

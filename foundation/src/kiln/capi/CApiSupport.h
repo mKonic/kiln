@@ -21,6 +21,7 @@
 #include "kiln/graphics/vector/ImageVector.h"
 #include "kiln/runtime/Composition.h"
 #include "kiln/runtime/CoroutineScope.h"
+#include "kiln/text/AnnotatedString.h"
 #include "kiln/text/TextStyle.h"
 #include "kiln/ui/Modifier.h"
 
@@ -40,6 +41,7 @@ struct kiln_text_style { std::atomic<int> refs{ 1 }; kiln::text::TextStyle style
 struct kiln_anim_spec { std::atomic<int> refs{ 1 }; kiln::anim::SpecPtr spec; };
 struct kiln_image_bitmap { std::atomic<int> refs{ 1 }; kiln::gfx::ImageBitmap bitmap; };
 struct kiln_image_vector { std::atomic<int> refs{ 1 }; kiln::gfx::vector::ImageVectorPtr vector; };
+struct kiln_annotated_string { std::atomic<int> refs{ 1 }; kiln::text::AnnotatedString text; };
 struct kiln_rounded_polygon { std::atomic<int> refs{ 1 }; kiln::gfx::shapes::RoundedPolygon polygon; };
 struct kiln_window_insets { std::atomic<int> refs{ 1 }; kiln::foundation::WindowInsets insets; };
 struct kiln_interaction_source { std::shared_ptr<kiln::foundation::MutableInteractionSource> source; };

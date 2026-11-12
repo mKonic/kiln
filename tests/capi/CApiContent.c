@@ -122,3 +122,27 @@ int capi_handles_ok(void) {
     kiln_image_bitmap_release(b);
     return ok && kiln_abi_version() == KILN_ABI_VERSION;
 }
+
+/* Styled text with a link, built in C. */
+static void on_link(void* user, const char* tag) { (void)user; (void)tag; }
+void capi_annotated(void* user) {
+    (void)user;
+    kiln_text_builder* b = kiln_text_builder_new();
+    kiln_text_builder_append(b, "Read the ");
+    kiln_text_style_options o;
+    kiln_text_style_options_init(&o);
+    o.font_weight = 700;
+    kiln_text_style* bold = kiln_text_style_new(&o);
+    kiln_text_builder_push_style(b, bold);
+    kiln_fn_str click = { on_link, NULL, NULL };
+    kiln_text_builder_push_link_clickable(b, "terms", click);
+    kiln_text_builder_append(b, "terms");
+    kiln_text_builder_pop(b);
+    kiln_text_builder_pop(b);
+    kiln_text_builder_append(b, ".");
+    kiln_annotated_string* text = kiln_text_builder_build(b);
+    kiln_text_builder_free(b);
+    kiln_text_style_release(bold);
+    kiln_basic_text_annotated(KILN_HERE, text, kiln_mod_test_tag(NULL, "rich"), NULL, NULL);
+    kiln_annotated_string_release(text);
+}
