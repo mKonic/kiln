@@ -43,6 +43,7 @@ namespace kiln::rt {
 
     Scope::~Scope() {
         m_Disposed = true;
+        *m_Self = nullptr;
         m_Composition.m_Pending.erase(this);
         m_Composition.m_ChildrenDirty.erase(this);
     }
@@ -58,7 +59,44 @@ namespace kiln::rt {
 
     const StateObject* Scope::FindLocal(const void* local) const {
         auto it = m_Provided.find(local);
-        return it == m_Provided.end() ? nullptr : it->second;
+        return it == m_Provided.end() ? nullptr : it->second.get();
+    }
+
+    void RecomposeScope::Invalidate() const {
+        if (auto s = m_Scope.lock(); s && *s) (*s)->m_Composition.Invalidate(**s);
+    }
+
+    void Composition::RememberSlot(Group& g, std::shared_ptr<void> value, RememberObserver* observer) {
+        if (g.slot) {
+            if (g.observer) m_Disposers.push_back([o = g.observer] { o->OnForgotten(); });
+            m_DeadSlots.push_back(std::move(g.slot));
+        }
+        g.slot = std::move(value);
+        g.observer = observer;
+        if (observer) {
+            std::weak_ptr<void> alive = g.slot;
+            m_Effects.push_back([alive, observer] { if (alive.lock()) observer->OnRemembered(); });
+        }
+    }
+
+    CompositionLocalContext Composition::CurrentLocalContext() const {
+        CompositionLocalContext ctx;
+        for (Scope* start = m_Current; start;) {
+            Scope* last = nullptr;
+            for (Scope* s = start; s; s = s->m_Parent) {
+                for (const auto& [local, cell] : s->m_Provided) ctx.provided.emplace(local, cell);   // nearest wins
+                last = s;
+            }
+            start = last ? last->m_Composition.m_ParentContext : nullptr;
+        }
+        return ctx;
+    }
+
+    void Composition::Provide(const CompositionLocalContext& context, std::function<void()> content, Key key) {
+        Group& g = Take(Group::Kind::Scope, typeid(CompositionLocalContext), key);
+        if (!g.scope) g.scope = std::make_unique<Scope>(*this, m_Current, m_Current->m_Host, g.key.value);
+        g.scope->m_Provided = context.provided;
+        RunChild(*g.scope, std::move(content), nullptr);
     }
 
     // --- Composition --------------------------------------------------------------------------
@@ -235,6 +273,10 @@ namespace kiln::rt {
             g.effect->job.Cancel();
             if (g.effect->disposer) m_Disposers.push_back(std::move(g.effect->disposer));
             g.effect.reset();
+        }
+        if (g.observer && g.slot) {
+            m_Disposers.push_back([o = g.observer] { o->OnForgotten(); });
+            g.observer = nullptr;
         }
         if (g.slot) m_DeadSlots.push_back(std::move(g.slot));
     }

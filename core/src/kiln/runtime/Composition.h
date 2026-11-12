@@ -16,6 +16,7 @@
 #include "kiln/runtime/Task.h"
 
 #include <any>
+#include <type_traits>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -72,13 +73,41 @@ namespace kiln::rt {
         bool operator==(const Keys&) const = default;
     };
 
+    struct LocalAccessorScope;
+
+    // A CompositionLocal (compositionLocalOf / staticCompositionLocalOf): a value provided to
+    // the content below a Provide, read with Composition::Read; the default where none is.
     template<typename T>
     class Local {
     public:
         explicit Local(T defaultValue) : m_Default(std::move(defaultValue)) {}
+        // compositionLocalWithComputedDefaultOf: the default computed where it is read, from other
+        // locals' values there (read through the accessor).
+        struct ComputedTag {};
+        Local(ComputedTag, std::function<T(const LocalAccessorScope&)> computeDefault) : m_Compute(std::move(computeDefault)) {}
         const T& Default() const { return m_Default; }
+        bool HasComputedDefault() const { return bool(m_Compute); }
+        T ComputeDefault(const LocalAccessorScope& scope) const { return m_Compute(scope); }
     private:
-        T m_Default;
+        T m_Default{};
+        std::function<T(const LocalAccessorScope&)> m_Compute;
+    };
+
+    template<typename T>
+    Local<T> LocalWithComputedDefault(std::function<T(const LocalAccessorScope&)> computeDefault) {
+        return Local<T>(typename Local<T>::ComputedTag{}, std::move(computeDefault));
+    }
+
+    // RememberObserver: a remembered value told when it enters the composition (onRemembered,
+    // after the changes apply) and when it leaves (onForgotten: its group was removed, its keys
+    // changed or the composition was disposed). kiln applies every composition it runs, so
+    // onAbandoned is never called.
+    class RememberObserver {
+    public:
+        virtual ~RememberObserver() = default;
+        virtual void OnRemembered() {}
+        virtual void OnForgotten() {}
+        virtual void OnAbandoned() {}
     };
 
     class Composition;
@@ -98,6 +127,7 @@ namespace kiln::rt {
         Key key;
         Keys keys;
         std::shared_ptr<void> slot;              // Slot: the remembered value
+        RememberObserver* observer = nullptr;    // Slot: the value, when it observes remembering
         std::unique_ptr<TreeNode> node;          // Node: the node itself
         std::unique_ptr<Scope> scope;            // Node content or Scope
         // Effect: shared because effects run after apply, when groups may have moved.
@@ -115,6 +145,7 @@ namespace kiln::rt {
 
     private:
         friend class Composition;
+        friend class RecomposeScope;
         void OnStateChanged() override;
         void Run();
         void CollectNodes(std::vector<TreeNode*>& out) const;
@@ -131,8 +162,34 @@ namespace kiln::rt {
         std::uint64_t m_CompositeKey = 0;
         bool m_Invalid = true;
         bool m_Disposed = false;
-        std::unordered_map<const void*, StateObject*> m_Provided;   // Local* -> State<T>*
+        std::unordered_map<const void*, std::shared_ptr<StateObject>> m_Provided;   // Local* -> State<T>
+        // Computed defaults read in this scope (Local* -> T), recomputed on each read.
+        std::unordered_map<const void*, std::shared_ptr<void>> m_ComputedDefaults;
+        std::shared_ptr<Scope*> m_Self = std::make_shared<Scope*>(this);   // cleared on destruction
     };
+
+    // RecomposeScope (currentRecomposeScope): invalidates the scope it was taken in, so it runs
+    // again in the next recomposition. Does nothing once that scope is gone.
+    class RecomposeScope {
+    public:
+        RecomposeScope() = default;
+        explicit RecomposeScope(std::weak_ptr<Scope*> scope) : m_Scope(std::move(scope)) {}
+        void Invalidate() const;
+        bool operator==(const RecomposeScope& o) const { return m_Scope.lock() == o.m_Scope.lock(); }
+    private:
+        std::weak_ptr<Scope*> m_Scope;
+    };
+
+    // CompositionLocalContext (currentCompositionLocalContext): the locals provided at a point,
+    // to provide again elsewhere (Composition::Provide(context, content)), still following
+    // changes to the values where they were provided.
+    struct CompositionLocalContext {
+        std::unordered_map<const void*, std::shared_ptr<StateObject>> provided;
+        bool operator==(const CompositionLocalContext&) const = default;
+    };
+
+    // ShouldPauseCallback: asked between steps of a paused composition whether to yield.
+    using ShouldPauseCallback = std::function<bool()>;
 
     class Composition {
     public:
@@ -164,7 +221,8 @@ namespace kiln::rt {
         T& Remember(Init&& init, Keys keys = {}, Key key = {}) {
             Group& g = Take(Group::Kind::Slot, typeid(T), key);
             if (!g.slot || g.keys != keys) {
-                g.slot = std::make_shared<T>(init());
+                auto value = std::make_shared<T>(init());
+                RememberSlot(g, value, ObserverOf(value.get()));
                 g.keys = std::move(keys);
             }
             return *static_cast<T*>(g.slot.get());
@@ -175,10 +233,26 @@ namespace kiln::rt {
         T& RememberNew(Keys keys, Key key, Args&&... args) {
             Group& g = Take(Group::Kind::Slot, typeid(T), key);
             if (!g.slot || g.keys != keys) {
-                g.slot = std::make_shared<T>(std::forward<Args>(args)...);
+                auto value = std::make_shared<T>(std::forward<Args>(args)...);
+                RememberSlot(g, value, ObserverOf(value.get()));
                 g.keys = std::move(keys);
             }
             return *static_cast<T*>(g.slot.get());
+        }
+
+        // currentRecomposeScope
+        RecomposeScope CurrentRecomposeScope() const { return RecomposeScope(m_Current ? std::weak_ptr<Scope*>(m_Current->m_Self) : std::weak_ptr<Scope*>()); }
+        // currentCompositionLocalContext: every local provided above this point.
+        CompositionLocalContext CurrentLocalContext() const;
+        // CompositionLocalProvider(context): provides the context's locals to `content`.
+        void Provide(const CompositionLocalContext& context, std::function<void()> content, Key key = {});
+        // ReusableContent(key): content whose remembered state starts over when `key` changes
+        // (kiln composes it anew; Compose reuses the old nodes).
+        void ReusableContent(Key key, const std::function<void()>& content) { Section(content, key); }
+        // ReusableContentHost(active): content composed while `active`; deactivating forgets its
+        // remembered state (kiln disposes it; Compose keeps its nodes for reuse).
+        void ReusableContentHost(bool active, const std::function<void()>& content, Key key = {}) {
+            Section([&] { if (active) content(); }, key);
         }
         // remember { mutableStateOf(v) }
         template<typename T>
@@ -236,6 +310,7 @@ namespace kiln::rt {
                 }
                 start = last ? last->m_Composition.m_ParentContext : nullptr;
             }
+            if (local.HasComputedDefault()) return ComputedDefault(scope, local);
             return local.Default();
         }
 
@@ -261,17 +336,31 @@ namespace kiln::rt {
 
         template<typename T>
         void Provide(const Local<T>& local, T value, std::function<void()> content, Key key = {}) {
-            auto& cell = RememberNew<State<T, NeverEqual>>({}, key, value);
+            using Cell = State<T, NeverEqual>;
+            Group& slot = Take(Group::Kind::Slot, typeid(Cell), key);
+            if (!slot.slot) slot.slot = std::make_shared<Cell>(value);
+            std::shared_ptr<Cell> cell(slot.slot, static_cast<Cell*>(slot.slot.get()));
             // Equal values must not notify readers; NeverEqual is only the storage type.
-            if (!(cell.Peek() == value)) cell.Set(std::move(value));
+            if (!(cell->Peek() == value)) cell->Set(std::move(value));
             Group& g = Take(Group::Kind::Scope, typeid(Local<T>), key);
             if (!g.scope) g.scope = std::make_unique<Scope>(*this, m_Current, m_Current->m_Host, g.key.value);
-            g.scope->m_Provided[&local] = &cell;
+            g.scope->m_Provided[&local] = std::move(cell);
             RunChild(*g.scope, std::move(content), nullptr);
         }
 
     private:
+        template<typename T>
+        static RememberObserver* ObserverOf(T* v) {
+            if constexpr (std::is_base_of_v<RememberObserver, T>) return static_cast<RememberObserver*>(v);
+            else return nullptr;
+        }
+        // Stores a newly remembered value, forgetting the one it replaces.
+        void RememberSlot(Group& g, std::shared_ptr<void> value, RememberObserver* observer);
+        template<typename T>
+        static const T& ComputedDefault(Scope* scope, const Local<T>& local);
+
         friend class Scope;
+        friend class RecomposeScope;
         Group& Take(Group::Kind kind, std::type_index type, Key key);
         void RunChild(Scope& scope, std::function<void()> content, const Keys* memo);
         void RunScope(Scope& scope);
@@ -315,6 +404,39 @@ namespace kiln::rt {
         bool m_Destroying = false;
     };
 
+
+    // CompositionLocalAccessorScope: reads other locals' values where a computed default is read.
+    struct LocalAccessorScope {
+        Scope* scope = nullptr;
+        template<typename T> const T& CurrentValue(const Local<T>& local) const { return Composition::ReadFrom(scope, local); }
+    };
+
+    template<typename T>
+    const T& Composition::ComputedDefault(Scope* scope, const Local<T>& local) {
+        static thread_local std::unordered_map<const void*, std::shared_ptr<void>> outside;   // read outside any scope
+        T value = local.ComputeDefault(LocalAccessorScope{ scope });
+        std::shared_ptr<void>& cell = scope ? scope->m_ComputedDefaults[&local] : outside[&local];
+        if (!cell) cell = std::make_shared<T>(std::move(value));
+        else *static_cast<T*>(cell.get()) = std::move(value);
+        return *static_cast<const T*>(cell.get());
+    }
+
+    // produceState: state whose value `producer` sets from a task launched with the keys
+    // (restarted when they change, cancelled when the call leaves).
+    template<typename T>
+    struct ProduceStateScope {
+        State<T>& state;
+        void Set(T v) const { state.Set(std::move(v)); }
+        const T& Get() const { return state.Peek(); }
+    };
+    template<typename T>
+    State<T>& ProduceState(T initial, Keys keys, std::function<Task<>(ProduceStateScope<T>)> producer, Key key = {}) {
+        Composition* c = Composition::Current();
+        State<T>& state = c->RememberState(std::move(initial), key);
+        State<T>* ptr = &state;
+        c->LaunchedEffect(std::move(keys), [ptr, producer = std::move(producer)]() -> Task<> { return producer(ProduceStateScope<T>{ *ptr }); }, key);
+        return state;
+    }
 
     // movableContentOf: composable content whose state and nodes move with it when the call
     // moves to another place in the same recomposition (one site stops calling it, another

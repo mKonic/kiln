@@ -209,6 +209,9 @@ namespace kiln::rt {
         std::int64_t await_resume() const noexcept { return time; }
     };
 
+    // withFrameMillis: the next frame's time in milliseconds.
+    inline Task<std::int64_t> NextFrameMillis() { co_return (co_await NextFrame()) / 1000000; }
+
     // co_await Delay(ms)
     struct Delay {
         std::chrono::milliseconds ms;

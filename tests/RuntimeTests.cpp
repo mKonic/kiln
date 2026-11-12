@@ -382,3 +382,88 @@ TEST(NestedObservationOfTheSameSubscriberKeepsItsReads) {
     Observation::ApplyChanges();
     CHECK_EQ(s.changes, 2);
 }
+
+TEST(RememberObserverHearsRememberedAndForgotten) {
+    Node root("root");
+    Composition c(root);
+    std::vector<std::string> log;
+    struct Watch final : RememberObserver {
+        std::vector<std::string>* log;
+        int id;
+        Watch(std::vector<std::string>* l, int i) : log(l), id(i) {}
+        void OnRemembered() override { log->push_back("+" + std::to_string(id)); }
+        void OnForgotten() override { log->push_back("-" + std::to_string(id)); }
+    };
+    State<bool> shown(true);
+    State<int> k(1);
+    c.SetContent([&] {
+        if (shown.Get()) c.Remember<Watch>([&] { return Watch(&log, k.Get()); }, Keys(k.Get()));
+    });
+    c.Recompose();
+    CHECK(log == std::vector<std::string>{ "+1" });
+    k.Set(2);   // new keys: the old value is forgotten, the new one remembered
+    c.Recompose();
+    CHECK(log == (std::vector<std::string>{ "+1", "-1", "+2" }));
+    shown.Set(false);
+    c.Recompose();
+    CHECK(log.back() == "-2");
+}
+
+TEST(RecomposeScopeAndComputedLocalsAndLocalContext) {
+    Node root("root");
+    Composition c(root);
+    static Local<int> base(1);
+    static Local<int> twice = LocalWithComputedDefault<int>([](const LocalAccessorScope& s) { return s.CurrentValue(base) * 2; });
+    int runs = 0, seenTwice = 0, seenCaptured = 0;
+    RecomposeScope scope;
+    CompositionLocalContext captured;
+    State<int> provided(5);
+    c.SetContent([&] {
+        c.Provide(base, provided.Get(), [&] {
+            c.Child([&] {
+                ++runs;
+                scope = c.CurrentRecomposeScope();
+                seenTwice = c.Read(twice);
+                captured = c.CurrentLocalContext();
+            });
+        });
+        // Elsewhere, outside the provider, the captured context brings the value along.
+        c.Provide(captured, [&] { c.Child([&] { seenCaptured = c.Read(base); }); });
+    });
+    c.Recompose();
+    c.Recompose();   // the captured context was taken after its first use
+    CHECK_EQ(seenTwice, 10);
+    CHECK_EQ(seenCaptured, 5);
+    const int before = runs;
+    scope.Invalidate();
+    c.Recompose();
+    CHECK_EQ(runs, before + 1);
+}
+
+TEST(ProduceStateSetsFromItsTask) {
+    Dispatcher& d = Dispatcher::Main();
+    Node root("root");
+    Composition c(root);
+    std::shared_ptr<Channel<int>> channel = Channel<int>::Conflated();
+    int shown = -1;
+    c.SetContent([&] {
+        State<int>& s = ProduceState<int>(0, Keys(), [channel](ProduceStateScope<int> p) -> Task<> {
+            for (;;) {
+                auto v = co_await channel->Next();
+                if (!v) co_return;
+                p.Set(*v);
+            }
+        });
+        shown = s.Get();
+    });
+    c.Recompose();
+    d.RunPending();
+    channel->TrySend(7);
+    d.RunPending();
+    c.Recompose();
+    CHECK_EQ(shown, 7);
+    StateMap<std::string, int> m;
+    StateSet<int> set;
+    m.Put("a", 1);
+    CHECK(set.Add(3) && !set.Add(3) && set.Contains(3) && *m.Find("a") == 1);
+}

@@ -174,4 +174,41 @@ namespace kiln::rt {
         std::vector<T> m_Items;
     };
 
+    // Observable map (SnapshotStateMap, mutableStateMapOf): any mutation is one change.
+    template<typename K, typename V, typename Hash = std::hash<K>>
+    class StateMap final : public StateObject {
+    public:
+        StateMap() = default;
+        explicit StateMap(std::unordered_map<K, V, Hash> items) : m_Items(std::move(items)) {}
+        const std::unordered_map<K, V, Hash>& Get() const { RecordRead(); return m_Items; }
+        std::size_t Size() const { RecordRead(); return m_Items.size(); }
+        bool Contains(const K& k) const { RecordRead(); return m_Items.contains(k); }
+        const V* Find(const K& k) const { RecordRead(); auto it = m_Items.find(k); return it == m_Items.end() ? nullptr : &it->second; }
+        void Put(K k, V v) { m_Items.insert_or_assign(std::move(k), std::move(v)); RecordWrite(); }
+        bool Remove(const K& k) { if (!m_Items.erase(k)) return false; RecordWrite(); return true; }
+        void Clear() { if (!m_Items.empty()) { m_Items.clear(); RecordWrite(); } }
+        template<typename Fn> void Update(Fn&& fn) { fn(m_Items); RecordWrite(); }
+
+    private:
+        std::unordered_map<K, V, Hash> m_Items;
+    };
+
+    // Observable set (SnapshotStateSet, mutableStateSetOf).
+    template<typename T, typename Hash = std::hash<T>>
+    class StateSet final : public StateObject {
+    public:
+        StateSet() = default;
+        explicit StateSet(std::unordered_set<T, Hash> items) : m_Items(std::move(items)) {}
+        const std::unordered_set<T, Hash>& Get() const { RecordRead(); return m_Items; }
+        std::size_t Size() const { RecordRead(); return m_Items.size(); }
+        bool Contains(const T& v) const { RecordRead(); return m_Items.contains(v); }
+        bool Add(T v) { if (!m_Items.insert(std::move(v)).second) return false; RecordWrite(); return true; }
+        bool Remove(const T& v) { if (!m_Items.erase(v)) return false; RecordWrite(); return true; }
+        void Clear() { if (!m_Items.empty()) { m_Items.clear(); RecordWrite(); } }
+        template<typename Fn> void Update(Fn&& fn) { fn(m_Items); RecordWrite(); }
+
+    private:
+        std::unordered_set<T, Hash> m_Items;
+    };
+
 }
