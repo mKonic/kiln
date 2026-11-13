@@ -78,6 +78,7 @@ if [ "$CMD" = update ]; then
     [ -z "$(git status --porcelain --untracked-files=no)" ] || {
         echo "kiln: this tree has changes to kiln's own files; commit or stash them first" >&2; exit 1; }
     from="$(git describe --tags --always)"
+    [ "$from" != "$target" ] || { echo "kiln: already at $target"; exit 0; }
     git checkout --quiet "$target"
     git submodule update --quiet --init --recursive
     echo "kiln: $from -> $target. The next build rebuilds kiln with your apps."
