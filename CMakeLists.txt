@@ -81,7 +81,8 @@ if(ANDROID)
     # Set here, read when the function runs: from another project it still finds kiln's map.
     set(KILN_APP_MAP ${CMAKE_CURRENT_SOURCE_DIR}/platform/android/app.map CACHE INTERNAL "")
     function(kiln_add_android_app name)
-        cmake_parse_arguments(APP "" "PACKAGE;LABEL;ASSETS" "SOURCES;LIBS;WHOLE" ${ARGN})
+        cmake_parse_arguments(APP "" "PACKAGE;LABEL;ASSETS;ICON;VERSION_CODE;VERSION_NAME;MANIFEST_XML;APPLICATION_XML"
+                              "SOURCES;LIBS;WHOLE;PERMISSIONS" ${ARGN})
         if(NOT APP_PACKAGE)
             message(FATAL_ERROR "kiln_add_android_app(${name}): PACKAGE is required")
         endif()
@@ -103,8 +104,14 @@ if(ANDROID)
                                 -Wl,--version-script=${KILN_APP_MAP})
             set_property(TARGET ${target} APPEND PROPERTY LINK_DEPENDS ${KILN_APP_MAP})
         endforeach()
+        string(REPLACE ";" "," permissions "${APP_PERMISSIONS}")
+        foreach(f ASSETS ICON MANIFEST_XML APPLICATION_XML)   # paths relative to the app's CMakeLists.txt
+            if(APP_${f} AND NOT IS_ABSOLUTE "${APP_${f}}")
+                set(APP_${f} "${CMAKE_CURRENT_SOURCE_DIR}/${APP_${f}}")
+            endif()
+        endforeach()
         file(GENERATE OUTPUT ${CMAKE_BINARY_DIR}/apps/${name}
-             CONTENT "package=${APP_PACKAGE}\nlabel=${APP_LABEL}\nassets=${APP_ASSETS}\nlib=$<TARGET_FILE:${name}>\nlib_debug=$<TARGET_FILE:${name}_debug>\n")
+             CONTENT "package=${APP_PACKAGE}\nlabel=${APP_LABEL}\nassets=${APP_ASSETS}\nicon=${APP_ICON}\nversion_code=${APP_VERSION_CODE}\nversion_name=${APP_VERSION_NAME}\npermissions=${permissions}\nmanifest_xml=${APP_MANIFEST_XML}\napplication_xml=${APP_APPLICATION_XML}\nlib=$<TARGET_FILE:${name}>\nlib_debug=$<TARGET_FILE:${name}_debug>\n")
     endfunction()
     kiln_add_android_app(hello SOURCES samples/hello/main.cpp PACKAGE dev.kiln.hello LABEL "kiln hello")
     kiln_add_android_app(list SOURCES samples/list/main.cpp PACKAGE dev.kiln.list LABEL "kiln list")
@@ -156,6 +163,43 @@ file(GLOB KILN_CATALOG_SAMPLES CONFIGURE_DEPENDS samples/catalog/samples/*.cpp)
 foreach(t catalog catalog_debug)
     if(TARGET ${t})
         target_sources(${t} PRIVATE samples/catalog/Registry.gen.cpp samples/catalog/ComponentPreviews.cpp samples/catalog/gen/Icons.cpp ${KILN_CATALOG_SAMPLES})
+    endif()
+endforeach()
+
+# kiln_add_app(name SOURCES src... [LIBS lib...] [WHOLE lib...] PACKAGE id [LABEL text] [ASSETS dir]
+#              [ICON png] [VERSION_CODE n] [VERSION_NAME text] [PERMISSIONS perm...]
+#              [MANIFEST_XML file] [APPLICATION_XML file])
+# An app on Android (kiln_add_android_app, packed by tools/kiln) or in a desktop window. Paths
+# are relative to the calling CMakeLists.txt. The XML files hold elements for the manifest's
+# <manifest> or <application>.
+function(kiln_add_app name)
+    if(ANDROID)
+        kiln_add_android_app(${name} ${ARGN})
+        return()
+    endif()
+    cmake_parse_arguments(APP "" "PACKAGE;LABEL;ASSETS;ICON;VERSION_CODE;VERSION_NAME;MANIFEST_XML;APPLICATION_XML"
+                          "SOURCES;LIBS;WHOLE;PERMISSIONS" ${ARGN})
+    add_executable(${name} ${APP_SOURCES})
+    target_link_libraries(${name} PRIVATE kiln_hostdev ${APP_LIBS})
+    if(APP_WHOLE)
+        string(REPLACE ";" "," whole "${APP_WHOLE}")
+        target_link_libraries(${name} PRIVATE "$<LINK_LIBRARY:WHOLE_ARCHIVE,${whole}>")
+    endif()
+    if(APP_ASSETS)
+        if(NOT IS_ABSOLUTE "${APP_ASSETS}")
+            set(APP_ASSETS "${CMAKE_CURRENT_SOURCE_DIR}/${APP_ASSETS}")
+        endif()
+        add_custom_command(TARGET ${name} POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_directory
+                           ${APP_ASSETS} $<TARGET_FILE_DIR:${name}>/assets)
+    endif()
+endfunction()
+
+# Apps made with `tools/kiln new` (apps/<name>/CMakeLists.txt; the folder is the app's own).
+file(GLOB KILN_APP_DIRS LIST_DIRECTORIES true CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/apps/*)
+foreach(dir ${KILN_APP_DIRS})
+    if(EXISTS ${dir}/CMakeLists.txt)
+        get_filename_component(app ${dir} NAME)
+        add_subdirectory(${dir} ${CMAKE_BINARY_DIR}/app-${app})
     endif()
 endforeach()
 

@@ -6,12 +6,17 @@
 #
 # --debug: a debuggable APK that answers Volition (content://<package>.volition), so the
 # volition CLI and MCP tools drive it by name.
+# Also: --permission name (repeatable), --icon file.png (the launcher icon, 192 px),
+# --version-code n, --version-name text, --manifest-xml file / --application-xml file (elements
+# added to <manifest> / <application>), --keystore file --key-alias name (sign with your key:
+# passwords from KILN_KEYSTORE_PASSWORD and KILN_KEY_PASSWORD; default: kiln's debug key).
 #
 # Steps: javac (kiln's Java host, platform APIs only) -> d8 -> manifest -> aapt2 link ->
 # add classes.dex + lib/<abi>/*.so -> zipalign -> apksigner (debug key in build/).
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/android-env.sh"
 PACKAGE=""; LABEL="kiln app"; LIBNAME=""; OUT=""; LIBS=(); ASSETS=""; DEBUG=0
+PERMISSIONS=(); ICON=""; VERSION_CODE=1; VERSION_NAME="1.0"; MANIFEST_XML=""; APPLICATION_XML=""; KEYSTORE_ARG=""; KEY_ALIAS=""
 while [ $# -gt 0 ]; do
     case "$1" in
         --package) PACKAGE="$2"; shift 2 ;;
@@ -21,11 +26,19 @@ while [ $# -gt 0 ]; do
         --out) OUT="$2"; shift 2 ;;
         --assets) ASSETS="$2"; shift 2 ;;
         --debug) DEBUG=1; shift ;;
+        --permission) PERMISSIONS+=("$2"); shift 2 ;;
+        --icon) ICON="$2"; shift 2 ;;
+        --version-code) VERSION_CODE="$2"; shift 2 ;;
+        --version-name) VERSION_NAME="$2"; shift 2 ;;
+        --manifest-xml) MANIFEST_XML="$2"; shift 2 ;;
+        --application-xml) APPLICATION_XML="$2"; shift 2 ;;
+        --keystore) KEYSTORE_ARG="$2"; shift 2 ;;
+        --key-alias) KEY_ALIAS="$2"; shift 2 ;;
         *) echo "kiln-pack: unknown argument $1" >&2; exit 2 ;;
     esac
 done
 [ -n "$PACKAGE" ] && [ -n "$LIBNAME" ] && [ -n "$OUT" ] && [ ${#LIBS[@]} -gt 0 ] \
-    || { sed -n '2,11p' "$0" >&2; exit 2; }
+    || { sed -n '2,14p' "$0" >&2; exit 2; }
 
 DEBUG_ATTR=""; DEBUG_PROVIDER=""
 if [ "$DEBUG" = 1 ]; then
@@ -43,10 +56,25 @@ mapfile -t CLASSES < <(find "$STAGING/classes" -name '*.class')
 "$D8" --min-api "$ANDROID_MIN_SDK" --lib "$ANDROID_JAR" --output "$STAGING/dex" "${CLASSES[@]}"
 cp "$STAGING/dex/classes.dex" "$STAGING/classes.dex"
 
+PERMISSION_XML=""
+for p in "${PERMISSIONS[@]}"; do PERMISSION_XML+="    <uses-permission android:name=\"$p\" />"$'\n'; done
+EXTRA_MANIFEST=""; [ -n "$MANIFEST_XML" ] && EXTRA_MANIFEST="$(cat "$MANIFEST_XML")"
+EXTRA_APPLICATION=""; [ -n "$APPLICATION_XML" ] && EXTRA_APPLICATION="$(cat "$APPLICATION_XML")"
+ICON_ATTR=""
+RES_ARGS=()
+if [ -n "$ICON" ]; then
+    mkdir -p "$STAGING/res/mipmap-xxxhdpi"
+    cp "$ICON" "$STAGING/res/mipmap-xxxhdpi/ic_launcher.png"
+    "$AAPT2" compile --dir "$STAGING/res" -o "$STAGING/res.zip"
+    RES_ARGS=("$STAGING/res.zip")
+    ICON_ATTR='android:icon="@mipmap/ic_launcher"'
+fi
+
 cat > "$STAGING/AndroidManifest.xml" <<XML
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-          package="$PACKAGE" android:versionCode="1" android:versionName="1.0">
+          package="$PACKAGE" android:versionCode="$VERSION_CODE" android:versionName="$VERSION_NAME">
+$PERMISSION_XML$EXTRA_MANIFEST
     <uses-feature android:name="android.hardware.vulkan.version" android:version="0x00401000"
                   android:required="true" />
     <!-- The text toolbar's PROCESS_TEXT activities and Look Up. -->
@@ -60,7 +88,7 @@ cat > "$STAGING/AndroidManifest.xml" <<XML
             <data android:mimeType="text/plain" />
         </intent>
     </queries>
-    <application android:label="$LABEL" android:supportsRtl="true" android:hasCode="true" android:extractNativeLibs="false"
+    <application android:label="$LABEL" $ICON_ATTR android:supportsRtl="true" android:hasCode="true" android:extractNativeLibs="false"
                  android:enableOnBackInvokedCallback="true" $DEBUG_ATTR
                  android:theme="@android:style/Theme.DeviceDefault.NoActionBar">
         <activity android:name="dev.kiln.KilnActivity" android:exported="true"
@@ -73,13 +101,14 @@ cat > "$STAGING/AndroidManifest.xml" <<XML
             </intent-filter>
         </activity>
         $DEBUG_PROVIDER
+$EXTRA_APPLICATION
     </application>
 </manifest>
 XML
 
 UNSIGNED="$STAGING/unsigned.apk"; ALIGNED="$STAGING/aligned.apk"
 ASSET_ARGS=(); [ -n "$ASSETS" ] && ASSET_ARGS=(-A "$ASSETS")
-"$AAPT2" link -o "$UNSIGNED" -I "$ANDROID_JAR" --manifest "$STAGING/AndroidManifest.xml" "${ASSET_ARGS[@]}" \
+"$AAPT2" link -o "$UNSIGNED" -I "$ANDROID_JAR" --manifest "$STAGING/AndroidManifest.xml" "${ASSET_ARGS[@]}" "${RES_ARGS[@]}" \
     --min-sdk-version "$ANDROID_MIN_SDK" --target-sdk-version "$ANDROID_TARGET_SDK"
 
 ENTRIES=(classes.dex)
@@ -93,10 +122,17 @@ done
 python3 "$KILN_ROOT/tools/apkzip.py" "$UNSIGNED" "$STAGING" "${ENTRIES[@]}"
 "$ZIPALIGN" -f -P 16 4 "$UNSIGNED" "$ALIGNED"
 
-KEYSTORE="$KILN_ROOT/build/kiln-debug.keystore"
-[ -f "$KEYSTORE" ] || keytool -genkeypair -keystore "$KEYSTORE" -alias kiln -keyalg RSA -keysize 2048 \
-    -validity 10000 -storepass android -keypass android -dname "CN=kiln debug" >/dev/null 2>&1
 mkdir -p "$(dirname "$OUT")"
-"$APKSIGNER" sign --ks "$KEYSTORE" --ks-key-alias kiln --ks-pass pass:android --key-pass pass:android \
-    --out "$OUT" "$ALIGNED"
+if [ -n "$KEYSTORE_ARG" ]; then
+    : "${KILN_KEYSTORE_PASSWORD:?set KILN_KEYSTORE_PASSWORD for $KEYSTORE_ARG}"
+    KEYPASS_ENV=KILN_KEY_PASSWORD; [ -n "${KILN_KEY_PASSWORD:-}" ] || KEYPASS_ENV=KILN_KEYSTORE_PASSWORD
+    "$APKSIGNER" sign --ks "$KEYSTORE_ARG" --ks-key-alias "${KEY_ALIAS:?--key-alias is needed with --keystore}" \
+        --ks-pass env:KILN_KEYSTORE_PASSWORD --key-pass "env:$KEYPASS_ENV" --out "$OUT" "$ALIGNED"
+else
+    KEYSTORE="$KILN_ROOT/build/kiln-debug.keystore"
+    [ -f "$KEYSTORE" ] || keytool -genkeypair -keystore "$KEYSTORE" -alias kiln -keyalg RSA -keysize 2048 \
+        -validity 10000 -storepass android -keypass android -dname "CN=kiln debug" >/dev/null 2>&1
+    "$APKSIGNER" sign --ks "$KEYSTORE" --ks-key-alias kiln --ks-pass pass:android --key-pass pass:android \
+        --out "$OUT" "$ALIGNED"
+fi
 echo "APK: $OUT ($(du -h "$OUT" | cut -f1))"

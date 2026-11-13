@@ -1,27 +1,38 @@
 #!/usr/bin/env bash
 # kiln: from source to a running app in one command.
 #
-#   kiln list                       the apps this tree builds (kiln_add_android_app in CMakeLists.txt)
+#   kiln new <name> [--package id] [--label text]
+#                                   a new app in apps/<name> (its own folder: CMakeLists.txt,
+#                                   src/main.cpp, assets/, res/icon.png)
+#   kiln list                       the apps this tree builds (samples and apps/)
 #   kiln build <app> [opts]         configure and build the app's library for each ABI
 #   kiln apk <app> [opts]           ... and pack it: build/apk/<app>.apk (or --out)
 #   kiln run <app> [opts]           ... install it and start it
 #
 #   --abi a[,b]   ABIs (default: the device's for run, otherwise arm64-v8a,x86_64)
 #   --debug       a debuggable APK that answers Volition (content://<package>.volition)
+#   --release     an optimised APK for publishing (the default), signed with
+#                 --keystore file --key-alias name when given (passwords from
+#                 KILN_KEYSTORE_PASSWORD / KILN_KEY_PASSWORD), else with kiln's debug key
 #   --out file    where apk writes the APK
 #
 # The device is adb's: set ANDROID_SERIAL when more than one is attached.
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/android-env.sh"
 
-usage() { sed -n '2,13p' "$0" >&2; exit 2; }
+usage() { sed -n '2,20p' "$0" >&2; exit 2; }
 [ $# -ge 1 ] || usage
 CMD="$1"; shift
-APP=""; ABIS=""; DEBUG=(); OUT=""
+APP=""; ABIS=""; DEBUG=(); OUT=""; NEW_PACKAGE=""; NEW_LABEL=""; SIGN=()
 while [ $# -gt 0 ]; do
     case "$1" in
         --abi) ABIS="$2"; shift 2 ;;
         --debug) DEBUG=(--debug); shift ;;
+        --release) DEBUG=(); shift ;;
+        --keystore) SIGN+=(--keystore "$2"); shift 2 ;;
+        --key-alias) SIGN+=(--key-alias "$2"); shift 2 ;;
+        --package) NEW_PACKAGE="$2"; shift 2 ;;
+        --label) NEW_LABEL="$2"; shift 2 ;;
         --out) OUT="$2"; shift 2 ;;
         -h|--help) usage ;;
         -*) echo "kiln: unknown option $1" >&2; exit 2 ;;
@@ -31,6 +42,21 @@ done
 
 # An app's metadata, written by kiln_add_android_app at configure time.
 meta() { sed -n "s/^$2=//p" "$KILN_ROOT/build/android/$1/apps/$APP"; }
+
+if [ "$CMD" = new ]; then
+    [ -n "$APP" ] || usage
+    [[ "$APP" =~ ^[a-z][a-z0-9_-]*$ ]] || { echo "kiln: an app name is lower case letters, digits, - and _" >&2; exit 2; }
+    dir="$KILN_ROOT/apps/$APP"
+    [ ! -e "$dir" ] || { echo "kiln: $dir already exists" >&2; exit 1; }
+    for taken in hello list gallery notes-c notes-cpp catalog; do
+        [ "$APP" != "$taken" ] || { echo "kiln: '$APP' is one of kiln's samples" >&2; exit 1; }
+    done
+    package="${NEW_PACKAGE:-com.example.${APP//[-_]/}}"
+    label="${NEW_LABEL:-$APP}"
+    python3 "$KILN_ROOT/tools/kiln-new.py" "$dir" "$APP" "$package" "$label"
+    echo "kiln: created apps/$APP ($package). Run it: tools/kiln run $APP"
+    exit 0
+fi
 
 if [ "$CMD" = list ]; then
     abi=arm64-v8a
@@ -68,9 +94,16 @@ done
 first="${ABI_LIST[0]}"
 PACKAGE="$(meta "$first" package)"; LABEL="$(meta "$first" label)"; ASSETS="$(meta "$first" assets)"
 APK="${OUT:-$KILN_ROOT/build/apk/$APP.apk}"
-ASSET_ARGS=(); [ -n "$ASSETS" ] && ASSET_ARGS=(--assets "$ASSETS")
+PACK=(); [ -n "$ASSETS" ] && PACK+=(--assets "$ASSETS")
+v="$(meta "$first" icon)"; [ -n "$v" ] && PACK+=(--icon "$v")
+v="$(meta "$first" version_code)"; [ -n "$v" ] && PACK+=(--version-code "$v")
+v="$(meta "$first" version_name)"; [ -n "$v" ] && PACK+=(--version-name "$v")
+v="$(meta "$first" manifest_xml)"; [ -n "$v" ] && PACK+=(--manifest-xml "$v")
+v="$(meta "$first" application_xml)"; [ -n "$v" ] && PACK+=(--application-xml "$v")
+IFS=, read -r -a perms <<< "$(meta "$first" permissions)"
+for p in "${perms[@]}"; do [ -n "$p" ] && PACK+=(--permission "$p"); done
 "$KILN_ROOT/tools/kiln-pack" --package "$PACKAGE" --label "$LABEL" --lib-name "$APP" "${LIB_ARGS[@]}" \
-    "${ASSET_ARGS[@]}" "${DEBUG[@]}" --out "$APK"
+    "${PACK[@]}" "${DEBUG[@]}" "${SIGN[@]}" --out "$APK"
 [ "$CMD" = apk ] && exit 0
 
 "$ADB" install -r "$APK" >/dev/null

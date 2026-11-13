@@ -3,3 +3,5 @@ CHANGELOG.md
 design/
 build/
 __pycache__/
+# Apps made with tools/kiln new live here, each its own project.
+/apps/
