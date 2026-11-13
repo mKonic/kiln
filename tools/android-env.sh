@@ -14,3 +14,12 @@ APKSIGNER="$BUILD_TOOLS/apksigner"; ADB="$SDK/platform-tools/adb"
 for f in "$NDK/build/cmake/android.toolchain.cmake" "$AAPT2" "$D8" "$ANDROID_JAR"; do
     [ -e "$f" ] || { echo "android-env: missing $f" >&2; exit 1; }
 done
+
+# Configures build/android/<abi> (again each time, so KILN_CONFIG changes apply).
+kiln_configure_android() {
+    local abi="$1" dir="$KILN_ROOT/build/android/$1"
+    cmake -S "$KILN_ROOT" -B "$dir" -G Ninja \
+        -DCMAKE_TOOLCHAIN_FILE="$NDK/build/cmake/android.toolchain.cmake" \
+        -DANDROID_ABI="$abi" -DANDROID_PLATFORM="android-$ANDROID_MIN_SDK" \
+        -DANDROID_STL=c++_static -DCMAKE_BUILD_TYPE="${KILN_CONFIG:-RelWithDebInfo}" >/dev/null
+}

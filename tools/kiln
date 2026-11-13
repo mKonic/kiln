@@ -1,0 +1,75 @@
+#!/usr/bin/env bash
+# kiln: from source to a running app in one command.
+#
+#   kiln list                       the apps this tree builds (kiln_add_android_app in CMakeLists.txt)
+#   kiln build <app> [opts]         configure and build the app's library for each ABI
+#   kiln apk <app> [opts]           ... and pack it: build/apk/<app>.apk (or --out)
+#   kiln run <app> [opts]           ... install it and start it
+#
+#   --abi a[,b]   ABIs (default: the device's for run, otherwise arm64-v8a,x86_64)
+#   --debug       a debuggable APK that answers Volition (content://<package>.volition)
+#   --out file    where apk writes the APK
+#
+# The device is adb's: set ANDROID_SERIAL when more than one is attached.
+set -euo pipefail
+source "$(dirname "${BASH_SOURCE[0]}")/android-env.sh"
+
+usage() { sed -n '2,13p' "$0" >&2; exit 2; }
+[ $# -ge 1 ] || usage
+CMD="$1"; shift
+APP=""; ABIS=""; DEBUG=(); OUT=""
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --abi) ABIS="$2"; shift 2 ;;
+        --debug) DEBUG=(--debug); shift ;;
+        --out) OUT="$2"; shift 2 ;;
+        -h|--help) usage ;;
+        -*) echo "kiln: unknown option $1" >&2; exit 2 ;;
+        *) [ -z "$APP" ] || usage; APP="$1"; shift ;;
+    esac
+done
+
+# An app's metadata, written by kiln_add_android_app at configure time.
+meta() { sed -n "s/^$2=//p" "$KILN_ROOT/build/android/$1/apps/$APP"; }
+
+if [ "$CMD" = list ]; then
+    abi=arm64-v8a
+    [ -d "$KILN_ROOT/build/android/$abi/apps" ] || kiln_configure_android "$abi"
+    for f in "$KILN_ROOT/build/android/$abi/apps"/*; do
+        printf '%-12s %s\n' "$(basename "$f")" "$(sed -n 's/^package=//p' "$f")"
+    done
+    exit 0
+fi
+case "$CMD" in build|apk|run) ;; *) usage ;; esac
+[ -n "$APP" ] || usage
+
+if [ -z "$ABIS" ]; then
+    if [ "$CMD" = run ]; then
+        ABIS="$("$ADB" shell getprop ro.product.cpu.abi | tr -d '\r')"
+        [ -n "$ABIS" ] || { echo "kiln: no device (adb shell getprop failed)" >&2; exit 1; }
+    else
+        ABIS="arm64-v8a,x86_64"
+    fi
+fi
+IFS=, read -r -a ABI_LIST <<< "$ABIS"
+
+LIB_ARGS=()
+for abi in "${ABI_LIST[@]}"; do
+    kiln_configure_android "$abi"
+    [ -f "$KILN_ROOT/build/android/$abi/apps/$APP" ] || {
+        echo "kiln: no app '$APP' - kiln list shows them" >&2; exit 1; }
+    cmake --build "$KILN_ROOT/build/android/$abi" --target "$APP"
+    LIB_ARGS+=(--lib "$abi=$(meta "$abi" lib)")
+done
+[ "$CMD" = build ] && exit 0
+
+first="${ABI_LIST[0]}"
+PACKAGE="$(meta "$first" package)"; LABEL="$(meta "$first" label)"; ASSETS="$(meta "$first" assets)"
+APK="${OUT:-$KILN_ROOT/build/apk/$APP.apk}"
+ASSET_ARGS=(); [ -n "$ASSETS" ] && ASSET_ARGS=(--assets "$ASSETS")
+"$KILN_ROOT/tools/kiln-pack" --package "$PACKAGE" --label "$LABEL" --lib-name "$APP" "${LIB_ARGS[@]}" \
+    "${ASSET_ARGS[@]}" "${DEBUG[@]}" --out "$APK"
+[ "$CMD" = apk ] && exit 0
+
+"$ADB" install -r "$APK" >/dev/null
+"$ADB" shell am start -W -n "$PACKAGE/dev.kiln.KilnActivity" | grep -E 'Status|TotalTime'

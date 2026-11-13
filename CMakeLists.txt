@@ -65,30 +65,43 @@ if(ANDROID)
 
     # An app is one shared library linking kiln statically; KilnActivity loads it by the
     # <meta-data android:name="dev.kiln.lib_name"> in the manifest.
-    #   kiln_add_android_app(name SOURCES src... [LIBS lib...] [WHOLE lib...])
+    #   kiln_add_android_app(name SOURCES src... [LIBS lib...] [WHOLE lib...]
+    #                        PACKAGE id [LABEL text] [ASSETS dir])
+    # PACKAGE, LABEL and ASSETS go to build/android/<abi>/apps/<name>, which tools/kiln packs from.
     # kiln_android goes in whole (JNI_OnLoad and the natives it registers are reached only from
     # the VM); WHOLE adds others (the C ABI glue, reached only through kiln.h). The library
     # exports JNI_OnLoad alone, so the linker drops the code nothing reaches, and folds
     # identical functions whose address is never taken.
     function(kiln_add_android_app name)
-        cmake_parse_arguments(APP "" "" "SOURCES;LIBS;WHOLE" ${ARGN})
+        cmake_parse_arguments(APP "" "PACKAGE;LABEL;ASSETS" "SOURCES;LIBS;WHOLE" ${ARGN})
+        if(NOT APP_PACKAGE)
+            message(FATAL_ERROR "kiln_add_android_app(${name}): PACKAGE is required")
+        endif()
+        if(NOT APP_LABEL)
+            set(APP_LABEL "${name}")
+        endif()
         add_library(${name} SHARED ${APP_SOURCES})
         string(REPLACE ";" "," whole "kiln_android;${APP_WHOLE}")
         target_link_libraries(${name} PRIVATE "$<LINK_LIBRARY:WHOLE_ARCHIVE,${whole}>" ${APP_LIBS})
         target_link_options(${name} PRIVATE -Wl,--no-undefined -Wl,-z,max-page-size=16384 -Wl,--icf=safe
                             -Wl,--version-script=${CMAKE_SOURCE_DIR}/platform/android/app.map)
         set_property(TARGET ${name} APPEND PROPERTY LINK_DEPENDS ${CMAKE_SOURCE_DIR}/platform/android/app.map)
+        file(GENERATE OUTPUT ${CMAKE_BINARY_DIR}/apps/${name}
+             CONTENT "package=${APP_PACKAGE}\nlabel=${APP_LABEL}\nassets=${APP_ASSETS}\nlib=$<TARGET_FILE:${name}>\n")
     endfunction()
-    kiln_add_android_app(hello SOURCES samples/hello/main.cpp)
-    kiln_add_android_app(list SOURCES samples/list/main.cpp)
-    kiln_add_android_app(gallery SOURCES samples/gallery/main.cpp LIBS kiln_material3)
+    kiln_add_android_app(hello SOURCES samples/hello/main.cpp PACKAGE dev.kiln.hello LABEL "kiln hello")
+    kiln_add_android_app(list SOURCES samples/list/main.cpp PACKAGE dev.kiln.list LABEL "kiln list")
+    kiln_add_android_app(gallery SOURCES samples/gallery/main.cpp LIBS kiln_material3
+                         PACKAGE dev.kiln.gallery LABEL "kiln gallery" ASSETS ${CMAKE_SOURCE_DIR}/samples/gallery/assets)
     # Samples over the C ABI only (C, and C++ with kiln++).
     foreach(sample notes-c notes-cpp)
         file(GLOB src samples/${sample}/main.c*)
-        kiln_add_android_app(${sample} SOURCES ${src} WHOLE kiln_material3)
+        string(REPLACE "-" "" id ${sample})
+        kiln_add_android_app(${sample} SOURCES ${src} WHOLE kiln_material3 PACKAGE dev.kiln.${id} LABEL "kiln ${sample}")
         target_include_directories(${sample} PRIVATE include)
     endforeach()
-    kiln_add_android_app(catalog SOURCES samples/catalog/main.cpp LIBS kiln_material3 kiln_navigation)
+    kiln_add_android_app(catalog SOURCES samples/catalog/main.cpp LIBS kiln_material3 kiln_navigation
+                         PACKAGE dev.kiln.catalog LABEL "kiln catalog" ASSETS ${CMAKE_SOURCE_DIR}/samples/catalog/assets)
 else()
     file(GLOB KILN_HOSTDEV_SOURCES CONFIGURE_DEPENDS platform/hostdev/*.cpp)
     find_package(glfw3 REQUIRED)
