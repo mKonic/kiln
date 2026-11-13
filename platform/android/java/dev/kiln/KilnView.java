@@ -201,7 +201,8 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
     // onStart, which starts the animation of each type whose insets change; while types
     // animate, onProgress delivers their insets frame by frame.
     private boolean insetsPrepared;
-    private int runningAnimationMask;
+    // Types animating (insets reported by onProgress) and those whose animation native was told of.
+    private int runningAnimationMask, reportedAnimationMask;
     private WindowInsets savedInsets, currentInsets;
 
     /** current (4), maximum (4) and visible (1) per type, then the display cutout rects. */
@@ -262,16 +263,20 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
 
     private void installInsets() {
         setOnApplyWindowInsetsListener((v, insets) -> {
+            // The most recent insets, for onStart and onEnd.
+            savedInsets = insets;
             if (insetsPrepared) {
-                savedInsets = insets;   // for onStart
+                // controlWindowInsetsAnimation applies the target insets after onPrepare: report
+                // the current ones (onProgress) instead.
                 if (android.os.Build.VERSION.SDK_INT == 30) post(() -> {
                     // API 30 may not start the animation: apply what was saved.
                     if (!insetsPrepared) return;
-                    runningAnimationMask = 0;
+                    runningAnimationMask = reportedAnimationMask = 0;
                     insetsPrepared = false;
                     if (savedInsets != null) { pushInsets(savedInsets); savedInsets = null; }
                 });
             } else if (runningAnimationMask == 0) {
+                // While an animation runs onProgress reports the insets.
                 pushInsets(insets);
             }
             return insets;
@@ -280,24 +285,28 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
                 WindowInsetsAnimation.Callback.DISPATCH_MODE_STOP) {
             @Override public void onPrepare(WindowInsetsAnimation animation) { insetsPrepared = true; }
             @Override public WindowInsetsAnimation.Bounds onStart(WindowInsetsAnimation animation, WindowInsetsAnimation.Bounds bounds) {
-                WindowInsets insets = savedInsets;
                 insetsPrepared = false;
-                savedInsets = null;
-                if (animation.getDurationMillis() != 0 && insets != null && currentInsets != null) {
-                    for (int i = 0; i < TYPES.length - 1; i++) {
-                        int type = TYPES[i];
-                        if ((animation.getTypeMask() & type) == 0) continue;
-                        android.graphics.Insets current = currentInsets.getInsets(type), target = insets.getInsets(type);
-                        if (target.equals(current)) continue;
-                        runningAnimationMask |= type;
-                        sendAnimation(type, animation, new android.graphics.Insets[] { current, target });
+                if (animation.getDurationMillis() != 0) {
+                    // Running whether or not the target is known yet: a controlled animation
+                    // applies its target insets later, and those must not be reported.
+                    runningAnimationMask |= animation.getTypeMask();
+                    WindowInsets insets = savedInsets;
+                    if (insets != null && currentInsets != null) {
+                        for (int i = 0; i < TYPES.length - 1; i++) {
+                            int type = TYPES[i];
+                            if ((animation.getTypeMask() & type) == 0) continue;
+                            android.graphics.Insets current = currentInsets.getInsets(type), target = insets.getInsets(type);
+                            if (target.equals(current)) continue;
+                            reportedAnimationMask |= type;
+                            sendAnimation(type, animation, new android.graphics.Insets[] { current, target });
+                        }
                     }
                 }
                 return bounds;
             }
             @Override public WindowInsets onProgress(WindowInsets insets, List<WindowInsetsAnimation> running) {
                 for (WindowInsetsAnimation a : running) {
-                    int mask = a.getTypeMask() & runningAnimationMask;
+                    int mask = a.getTypeMask() & reportedAnimationMask;
                     if (mask != 0) sendAnimation(mask, a, null);
                 }
                 pushInsets(insets);
@@ -305,12 +314,16 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
             }
             @Override public void onEnd(WindowInsetsAnimation animation) {
                 insetsPrepared = false;
-                int mask = animation.getTypeMask() & runningAnimationMask;
+                int mask = animation.getTypeMask() & reportedAnimationMask;
                 if (mask != 0) sendAnimation(mask, null, null);
+                reportedAnimationMask &= ~animation.getTypeMask();
                 runningAnimationMask &= ~animation.getTypeMask();
-                savedInsets = null;
-                WindowInsets now = getRootWindowInsets();
-                if (now != null && runningAnimationMask == 0) pushInsets(now);
+                // The insets last applied, not getRootWindowInsets (stale for a frame after a
+                // controlled animation finishes).
+                if (runningAnimationMask == 0) {
+                    if (savedInsets != null) pushInsets(savedInsets);
+                    savedInsets = null;
+                }
             }
         });
         requestApplyInsets();
