@@ -8,6 +8,7 @@ and motion. The [gallery sample](https://github.com/mKonic/kiln/tree/master/samp
 Wrap the app in `MaterialTheme`. Components read their colors, type, shapes and motion
 from it:
 
+<!-- prelude: kiln_app* app = nullptr; void App(); -->
 ```cpp
 kiln::SetContent(app, [] { MaterialTheme([] { App(); }); });
 ```
@@ -65,6 +66,7 @@ The baseline functions take a callback that changes individual roles:
 Components take their required arguments first, then a modifier, then an options struct
 for everything else, then their content:
 
+<!-- prelude: bool isValid = true; void Submit(); -->
 ```cpp
 ButtonOptions options;
 options.enabled = isValid;
@@ -85,7 +87,9 @@ const kiln::gfx::vector::ImageVectorPtr& AddIcon() {
     return icon;
 }
 
-IconButton([] { AddItem(); }, Modifier{}, {}, [] { Icon(AddIcon(), std::string("Add")); });
+void AddButton(kiln::Function<void()> addItem) {
+    IconButton(std::move(addItem), Modifier{}, {}, [] { Icon(AddIcon(), std::string("Add")); });
+}
 ```
 
 The second argument of `Icon` is its description for accessibility services. Pass

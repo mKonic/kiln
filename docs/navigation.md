@@ -2,10 +2,10 @@
 
 kiln has both Compose navigation libraries:
 
-| Library | Header | Back stack |
+| Library | Header and namespace | Back stack |
 |---|---|---|
-| Navigation (`NavHost`) | `kiln/navigation/NavHost.h` | Kept by a `NavController`, addressed by route strings |
-| Navigation 3 (`NavDisplay`) | `kiln/navigation3/NavDisplay.h` | A list of keys that your code owns |
+| Navigation (`NavHost`) | `kiln/navigation/NavHost.h`, `kiln::navigation` | Kept by a `NavController`, addressed by route strings |
+| Navigation 3 (`NavDisplay`) | `kiln/navigation3/NavDisplay.h`, `kiln::navigation3` | A list of keys that your code owns |
 
 Both animate between screens, follow the predictive back gesture, and keep each screen's
 saved state while it is on the back stack.

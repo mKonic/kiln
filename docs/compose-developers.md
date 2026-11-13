@@ -53,6 +53,7 @@ Modifier.fillMaxWidth().padding(16.dp).background(color)
 In kiln each modifier function takes the chain so far as its first argument, so the same
 chain nests from the inside out:
 
+<!-- prelude: Color color = Color::Black(); -->
 ```cpp
 Background(Padding(FillMax(Modifier{}, Axis::Horizontal), 16_dp), color)
 ```

@@ -35,6 +35,7 @@ Creates apps, and builds, packs, installs and starts them.
 | `tools/kiln-pack` | Packs a native library into an APK without Gradle |
 | `tools/device-test [filter...]` | Runs the test suite on a device |
 | `tools/vtouchpad/run [script]` | Plays trackpad gestures on a rooted device that has no trackpad |
+| `tools/docs-check [file.md...]` | Compiles the C++ and C code blocks in `docs/` against the host build |
 
 ## Testing
 

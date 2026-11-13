@@ -152,7 +152,7 @@ video decoder, a camera preview or a game engine. kiln composites it with the UI
 ```cpp
 AndroidExternalSurface(FillMax(Modifier{}, Axis::Both), true, {}, AndroidExternalSurfaceZOrder::Behind, false,
     [](AndroidExternalSurfaceScope& s) {
-        s.OnSurface([](SurfaceCoroutineScope& scope, Surface surface, int width, int height) -> kiln::rt::Task<> {
+        s.OnSurface([](SurfaceCoroutineScope& scope, kiln::ui::PlatformSurface surface, int width, int height) -> kiln::rt::Task<> {
             // Render into surface.nativeWindow (an ANativeWindow*) until scope.IsActive() is false.
             co_return;
         });

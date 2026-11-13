@@ -69,6 +69,7 @@ Make anything focusable with `Focusable(m)`, and handle hardware keys with
 
 To move focus from code, attach a `FocusRequester`:
 
+<!-- prelude: auto& name = RememberTextFieldState(); -->
 ```cpp
 auto& c = *kiln::rt::Composition::Current();
 auto& requester = c.Remember<FocusRequester>([] { return FocusRequester(); });

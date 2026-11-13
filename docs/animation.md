@@ -32,6 +32,7 @@ The last argument chooses how the value moves:
 | `anim::Repeatable(iterations, spec)` | A spec played several times |
 | `anim::InfiniteRepeatable(spec)` | A spec played until the call leaves |
 
+<!-- prelude: bool visible = true; -->
 ```cpp
 const float alpha = AnimateFloatAsState(visible ? 1.0f : 0.0f, kiln::anim::Tween(300));
 ```
@@ -40,6 +41,7 @@ const float alpha = AnimateFloatAsState(visible ? 1.0f : 0.0f, kiln::anim::Tween
 
 `AnimatedVisibility` animates content in and out:
 
+<!-- prelude: auto& open = RememberState(false); -->
 ```cpp
 Column(Modifier{}, [&open] {
     Text("Tap to open");
@@ -56,6 +58,7 @@ expand transitions exist for both directions.
 `AnimatedContent` animates from one piece of content to the next when its target
 changes. `Crossfade` fades between them:
 
+<!-- prelude: auto& count = RememberState(0); -->
 ```cpp
 AnimatedContent(kiln::rt::Key(count.Get()), Modifier{}, [](kiln::rt::Key k) {
     Text(std::to_string(k.value));
@@ -69,6 +72,7 @@ AnimatedContent(kiln::rt::Key(count.Get()), Modifier{}, [](kiln::rt::Key k) {
 `UpdateTransition` runs several animations from one state, so they start and finish
 together:
 
+<!-- prelude: auto& selected = RememberState(false); -->
 ```cpp
 auto& transition = UpdateTransition(selected.Get());
 const float scale = AnimateFloat<bool>(transition, [](const bool& on) { return on ? 1.2f : 1.0f; });

@@ -86,11 +86,12 @@ static void state(void* user, kiln_volition_fields* fields) {
     kiln_volition_field_number(fields, "count", 3);
 }
 
-kiln_volition_adapter a;
-kiln_volition_adapter_init(&a);
-a.state.call = state;
-kiln_volition_registration* r = kiln_volition_register(&a);
-/* ... kiln_volition_unregister(r) when done */
+static kiln_volition_registration* register_volition(void) {
+    kiln_volition_adapter a;
+    kiln_volition_adapter_init(&a);
+    a.state.call = state;
+    return kiln_volition_register(&a);   /* kiln_volition_unregister when done */
+}
 ```
 
 `destinations` lists places `go` accepts, and `go` answers `volition go name:argument`.

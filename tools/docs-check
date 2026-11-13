@@ -1,0 +1,147 @@
+#!/usr/bin/env python3
+"""docs-check [file.md...]: compiles the C++ and C code blocks in docs/ against the host build's
+headers (-fsyntax-only), so the docs keep up with the API.
+
+A block with its own #include lines is a whole file. Any other block is tried as top-level code,
+then as statements inside a function, after a prelude that includes kiln's headers (precompiled
+once) and opens the namespaces the docs use. A hidden comment just above a block adds context the
+reader does not need to see:
+
+  <!-- prelude: auto& name = RememberTextFieldState(); -->   (declarations it refers to)
+  <!-- check: skip -->                                       (not compilable on purpose)
+
+Needs build/host (its compile_commands.json gives the include paths)."""
+import json
+import os
+import re
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+BUILD = ROOT / 'build' / 'host'
+CXX = 'c++'
+CC = 'cc'
+
+USINGS = '''using namespace kiln;
+using namespace kiln::foundation;
+using namespace kiln::ui;
+using namespace kiln::material3;
+using namespace kiln::text;
+using namespace kiln::navigation;
+using namespace kiln::navigation3;
+'''
+
+
+def include_flags():
+    flags, seen = [], set()
+    for entry in json.loads((BUILD / 'compile_commands.json').read_text()):
+        args = entry.get('command', '').split()
+        for i, a in enumerate(args):
+            pair = None
+            if a in ('-I', '-isystem') and i + 1 < len(args):
+                pair = (a, args[i + 1])
+            elif a.startswith('-I') and len(a) > 2:
+                pair = ('-I', a[2:])
+            if pair and pair not in seen:
+                seen.add(pair)
+                flags += list(pair)
+    return flags
+
+
+def prelude_headers():
+    """Every public header of the C++ modules (not internal/ or private details)."""
+    out = []
+    for module in ('foundation/src', 'material3/src', 'navigation/src', 'navigation3/src', 'core/src'):
+        base = ROOT / module
+        for h in sorted(base.rglob('*.h')):
+            rel = h.relative_to(base).as_posix()
+            if '/internal/' in rel or rel.endswith('.gen.h') or '/capi/' in rel or rel.startswith('kiln/platform'):
+                continue
+            out.append(rel)
+    return out
+
+
+def blocks(md: Path):
+    """(language, code, hidden directives, line) for each fenced block."""
+    lines = md.read_text().splitlines()
+    i = 0
+    while i < len(lines):
+        m = re.match(r'^```(\w[\w+]*)\s*$', lines[i])
+        if not m:
+            i += 1
+            continue
+        lang, start = m.group(1), i
+        directives = []
+        j = start - 1
+        while j >= 0 and lines[j].strip().startswith('<!--'):
+            directives.insert(0, lines[j].strip()[4:-3].strip())
+            j -= 1
+        k = i + 1
+        while k < len(lines) and not lines[k].startswith('```'):
+            k += 1
+        yield lang, '\n'.join(lines[i + 1:k]), directives, start + 1
+        i = k + 1
+
+
+def compile_ok(source: str, lang: str, flags, extra=()):
+    suffix = '.cpp' if lang == 'cpp' else '.c'
+    with tempfile.NamedTemporaryFile('w', suffix=suffix, delete=False, dir=tmpdir) as f:
+        f.write(source)
+        path = f.name
+    cmd = [CXX if lang == 'cpp' else CC]
+    cmd += ['-std=gnu++23'] if lang == 'cpp' else ['-std=c11']
+    cmd += ['-fsyntax-only', '-w', *extra, *flags, path]
+    r = subprocess.run(cmd, capture_output=True, text=True)
+    return r.returncode == 0, r.stderr
+
+
+def main():
+    global tmpdir
+    files = [Path(a).resolve() for a in sys.argv[1:]] or sorted((ROOT / 'docs').glob('*.md'))
+    flags = include_flags()
+    tmp = tempfile.TemporaryDirectory()
+    tmpdir = tmp.name
+    # The C++ prelude, precompiled once.
+    pch = Path(tmpdir) / 'prelude.hpp'
+    pch.write_text(''.join(f'#include <{h}>\n' for h in prelude_headers()) + '#include <kiln/kiln.hpp>\n#include <string>\n#include <vector>\n' + USINGS)
+    r = subprocess.run([CXX, '-std=gnu++23', '-w', '-x', 'c++-header', *flags, str(pch), '-o', str(pch) + '.gch'], capture_output=True, text=True)
+    if r.returncode != 0:
+        print('prelude does not compile:\n' + r.stderr[:4000])
+        return 1
+    failures, checked = 0, 0
+    for md in files:
+        for lang, code, directives, line in blocks(md):
+            if lang not in ('cpp', 'c') or 'check: skip' in directives:
+                continue
+            checked += 1
+            context = '\n'.join(d[len('prelude:'):].strip() for d in directives if d.startswith('prelude:'))
+            if '#include' in code:
+                ok, err = compile_ok(code, lang, flags)
+            elif lang == 'c':
+                ok, err = compile_ok('#include <kiln/kiln.h>\n#include <kiln/kiln_m3.h>\n' + context + '\n' + code, lang, flags)
+                if not ok:
+                    ok, err = compile_ok('#include <kiln/kiln.h>\n#include <kiln/kiln_m3.h>\nstatic void snippet(void) {\n' + context + '\n' + code + '\n}\n', lang, flags)
+            else:
+                use = ['-include', str(pch)]
+                ok, err = compile_ok(context + '\n' + code + '\n', lang, flags, use)
+                if not ok:
+                    ok, err2 = compile_ok('[[maybe_unused]] static void kiln_doc_snippet() {\n' + context + '\n' + code + '\n}\n', lang, flags, use)
+                    if not ok:   # an expression shown on its own, without its semicolon
+                        ok, _ = compile_ok('[[maybe_unused]] static void kiln_doc_snippet() {\n' + context + '\n' + code + ';\n}\n', lang, flags, use)
+                    # Report the attempt that came closer (both with DOCS_CHECK_VERBOSE=1).
+                    if not ok and os.environ.get('DOCS_CHECK_VERBOSE'):
+                        err = err + err2
+                    elif not ok and err2.count('error') < err.count('error'):
+                        err = err2
+            if not ok:
+                failures += 1
+                first = '\n'.join(l for l in err.splitlines() if 'error' in l)[:1500]
+                print(f'{md.relative_to(ROOT)}:{line}: {lang} block does not compile\n{first}\n')
+    print(f'{checked - failures} of {checked} blocks compile')
+    return 1 if failures else 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())

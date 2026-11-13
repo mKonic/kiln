@@ -86,6 +86,7 @@ void Clock() {
 
 Runs setup when the call enters the composition and the returned cleanup when it leaves:
 
+<!-- prelude: auto& c = *kiln::rt::Composition::Current(); std::string topic; void Subscribe(const std::string&); void Unsubscribe(const std::string&); -->
 ```cpp
 c.DisposableEffect(kiln::rt::Keys{ topic }, [topic] {
     Subscribe(topic);
@@ -101,6 +102,7 @@ c.DisposableEffect(kiln::rt::Keys{ topic }, [topic] {
 
 To start a coroutine from a click handler, remember a scope:
 
+<!-- prelude: LazyListState& listState = RememberLazyListState(); -->
 ```cpp
 auto scope = kiln::rt::RememberCoroutineScope();
 Button([scope, &listState] { scope->Launch(listState.AnimateScrollToItem(0)); }, {}, {},

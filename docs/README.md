@@ -14,6 +14,7 @@ to set it up, build a UI and ship it in an app.
 
 * [Composables, state and effects](composables.md)
 * [Layout and lists](layout.md)
+* [Text](text.md)
 * [Interactivity and text input](interactivity.md)
 * [Animation](animation.md)
 * [Navigation](navigation.md)
