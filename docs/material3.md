@@ -93,7 +93,7 @@ The second argument of `Icon` is its description for accessibility services. Pas
 
 ## Images
 
-Put images in the app's assets folder (`ASSETS` in `kiln_add_android_app`), then decode
+Put images in the app's assets folder (`ASSETS` in the app's `CMakeLists.txt`), then decode
 them and draw them with `Image`:
 
 ```cpp
