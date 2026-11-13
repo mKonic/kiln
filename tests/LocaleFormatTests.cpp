@@ -47,6 +47,14 @@ TEST(Material3StringsResolveOverTheLocaleList) {
     CHECK(ResolveString(Strings::SnackbarDismiss, { "he-IL" }) == "סגירה");
     // A locale without resources gives way to the next one in the list, before the default.
     CHECK(ResolveString(Strings::Dialog, { "xx-YY", "de" }) == "Dialogfeld");
+    // LocaleList.getFirstMatchWithEnglishSupported: English is always there (the defaults), so an
+    // English user's second language does not take over; and one locale serves every string.
+    CHECK(ResolveString(Strings::Dialog, { "en-US", "ja-JP" }) == "Dialog");
+    CHECK(ResolveString(Strings::SliderRangeStart, { "en-US", "ja-JP" }) == ResolveString(Strings::SliderRangeStart, {}));
+    CHECK(ResolveString(Strings::Dialog, { "en-GB", "ja-JP" }) == "Dialogue");
+    CHECK(ResolveString(Strings::Dialog, { "ja-JP", "en-US" }) == ResolveString(Strings::Dialog, { "ja" }));
+    CHECK(ResolveString(Strings::Dialog, { "xx-YY", "en-US", "de" }) == "Dialog");
+    CHECK(ResolveString(Strings::Dialog, { "zh-Hant-HK", "de" }) == ResolveString(Strings::Dialog, { "zh-HK" }));
 }
 
 TEST(AccessibilityStringsReadHebrewAndIndonesian) {
