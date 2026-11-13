@@ -29,6 +29,7 @@
 #include "kiln/ui/DragAndDrop.h"
 #include "kiln/ui/ExternalSurface.h"
 #include "kiln/ui/InteropView.h"
+#include "kiln/ui/SpellCheck.h"
 #include "kiln/ui/ScrollCapture.h"
 #include "kiln/ui/ActivityResult.h"
 #include "kiln/ui/Insets.h"
@@ -739,6 +740,10 @@ namespace kiln::ui {
             if (auto it = m_ExternalSurfaces.find(id); it != m_ExternalSurfaces.end()) it->second.client->OnSurfaceDestroyed(surface);
         }
 
+        // The platform spell checker (none: fields do not check).
+        void SetSpellCheckHost(SpellCheckHost host) { m_SpellCheckHost = std::move(host); }
+        const SpellCheckHost& SpellChecker() const { return m_SpellCheckHost; }
+
         // Native Views (AndroidView): content adds them by client; the host makes and keeps them.
         // Without a host (the desktop dev host) every call does nothing.
         void SetInteropViewHost(InteropViewHost host) { m_InteropHost = std::move(host); }
@@ -976,6 +981,7 @@ namespace kiln::ui {
         };
         ExternalSurfaceHost m_SurfaceHost;
         InteropViewHost m_InteropHost;
+        SpellCheckHost m_SpellCheckHost;
         std::map<int, InteropViewClient*> m_InteropViews;
         int m_NextInteropView = 1;
         std::map<int, ExternalSurfaceEntry> m_ExternalSurfaces;

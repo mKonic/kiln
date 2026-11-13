@@ -208,10 +208,22 @@ namespace kiln::foundation {
                     showKeyboard();
                     if (textFieldState.VisualText().Length() > 0) SetShowCursorHandle(true);
                 }
+                const TextRange previous = textFieldState.VisualText().selection;
+                const bool toolbarWasShown = m_ToolbarState.Peek() == TextToolbarState::Selection;
                 // No text toolbar after a tap.
                 UpdateTextToolbarState(TextToolbarState::None);
                 const Offset coerced = textLayoutState.CoercedInVisibleBoundsOfInputText(offset);
                 PlaceCursorAtNearestOffset(textLayoutState.FromDecorationToTextLayout(coerced));
+                // A tap on a misspelled word selects it and shows its suggestions; a tap on the
+                // word already selected toggles them (Flutter's TextSelectionGestureDetector
+                // onSingleTapUp with spell check results).
+                if (Editable()) {
+                    if (const auto span = MisspelledAt(textFieldState.VisualText().selection.start)) {
+                        const TextRange word(span->start, span->end);
+                        textFieldState.SelectCharsIn(word);
+                        UpdateTextToolbarState(previous == word && toolbarWasShown ? TextToolbarState::None : TextToolbarState::Selection);
+                    }
+                }
             }
         };
         cb.onPress = [this](Offset offset) {
@@ -829,6 +841,26 @@ namespace kiln::foundation {
             });
         };
         const TextFieldCharSequence v = textFieldState.VisualText();
+        // The suggestions for the misspelled word the selection is in come first (Flutter's
+        // SpellCheckSuggestionsToolbar: at most three; its Delete is this toolbar's Cut).
+        if (Editable()) {
+            if (const auto span = MisspelledAtSelection()) {
+                static const char kSuggestionTag = 0;
+                constexpr std::size_t kMaxSuggestions = 3;
+                const TextRange range(span->start, span->end);
+                for (std::size_t i = 0; i < span->suggestions.size() && i < kMaxSuggestions; ++i) {
+                    const std::u16string word = span->suggestions[i];
+                    scope.Item({ &kSuggestionTag, int(i) }, ToUtf8(word), [this, word, range](TextContextMenuSession& session) {
+                        // TextEditingValue.replaced: the selected word stays selected as its replacement.
+                        textFieldState.ReplaceText(word, range);
+                        textFieldState.SelectCharsIn(TextRange(range.start, range.start + int(word.size())));
+                        session.Close();
+                        UpdateTextToolbarState(TextToolbarState::None);
+                    });
+                }
+                scope.Separator();
+            }
+        }
         AddPlatformTextContextMenuItems(scope, owner, Editable(), &v.text, v.selection, platformSelectionBehaviors, [&](TextContextMenuBuilderScope& sc) {
             sc.Separator();
             item(sc, TextContextMenuKeys::Cut, IsCutAllowed(), [this] { Cut(); });
@@ -840,6 +872,27 @@ namespace kiln::foundation {
             item(sc, TextContextMenuKeys::Autofill, CanShowAutofillMenuItem() && owner && owner->Autofill(), [this] { Autofill(); });
             sc.Separator();
         });
+    }
+
+    std::vector<ui::SpellCheckSpan> TextFieldSelectionState::MisspelledSpans() const {
+        const SpellCheckResult& r = spellCheck.Get();
+        if (r.spans.empty()) return {};
+        const TextFieldCharSequence v = textFieldState.VisualText();
+        if (r.text == v.text) return r.spans;
+        return ui::CorrectSpellCheckResults(v.text, r.text, r.spans);
+    }
+
+    std::optional<ui::SpellCheckSpan> TextFieldSelectionState::MisspelledAt(int index) const {
+        for (ui::SpellCheckSpan& s : MisspelledSpans())
+            if (index >= s.start && index <= s.end) return std::move(s);
+        return std::nullopt;
+    }
+
+    std::optional<ui::SpellCheckSpan> TextFieldSelectionState::MisspelledAtSelection() const {
+        const TextRange selection = textFieldState.VisualText().selection;
+        auto span = MisspelledAt(selection.Min());
+        if (span && selection.Max() > span->end) span.reset();
+        return span;
     }
 
     rt::Task<> TextFieldSelectionState::OnPreShowContextMenu() {

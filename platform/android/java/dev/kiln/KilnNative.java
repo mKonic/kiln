@@ -30,6 +30,8 @@ final class KilnNative {
     static native void textToolbarDestroyed(int win);
     /** A suggestSelection / classifyText request's result (handle 0: no classification). */
     static native void classifierResult(int request, boolean hasRange, int start, int end, int handle, String[] actions, boolean legacyAssist);
+    /** A spell check's result: (start, end, suggestion count) per misspelled range, the suggestions in order. */
+    static native void spellCheckResult(int request, int[] ranges, String[] suggestions);
     static native void setAnimationScale(float scale);
     /** The show-passwords setting: bit 1 touch input, bit 2 physical keyboards. */
     static native void setPasswordVisibility(int bits);

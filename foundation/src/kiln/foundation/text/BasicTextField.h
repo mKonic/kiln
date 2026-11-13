@@ -38,6 +38,10 @@ namespace kiln::foundation {
         // TextFieldDecorator: draws around the text and calls innerTextField exactly once.
         kiln::Function<void(const kiln::Function<void()>& innerTextField)> decorator;
         ScrollState* scrollState = nullptr;   // null: remembered by the field
+        // Checks the text with the platform's spell checker as it changes: misspelled words get
+        // a wavy red underline, and a tap on one selects it and offers its suggestions in the
+        // toolbar. Never for a password; nothing where the platform has no spell checker.
+        bool spellCheck = false;
         // Internal (BasicSecureTextField): a codepoint transformation and password semantics.
         CodepointTransformationPtr codepointTransformation;
         bool isPassword = false;

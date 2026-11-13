@@ -37,6 +37,7 @@ namespace kiln::foundation {
         constexpr const char* kEmptyTextReplacement = "HHHHHHHHHH";
 
         struct Field;
+        constexpr Color kMisspelledColor{ 0xFFF44336u };   // Colors.red
 
         // The IME's handle on the field (platformSpecificTextInputSession): its edits run through
         // ImeEditCommandScope on the transformed state; the state's IME listener reports back.
@@ -176,6 +177,28 @@ namespace kiln::foundation {
                 autofillHighlightText = transformed->UntransformedText().text;
                 autofillHighlight.Set(true);
             }
+            // Spell check (Flutter's EditableText._performSpellCheck): one request at a time; a
+            // text that changed while it was checked is checked again when the result is in.
+            bool spellCheckPending = false;
+            bool SpellCheckOn() const {
+                return options.spellCheck && !options.isPassword && !ui::IsPasswordKeyboard(keyboard.keyboardType.value_or(ui::KeyboardType::Text));
+            }
+            void RequestSpellCheck() {
+                if (!selection || !owner || !SpellCheckOn()) return;
+                const auto& check = owner->SpellChecker().check;
+                if (!check || spellCheckPending) return;
+                const std::u16string text = transformed->VisualText().text;
+                if (text == selection->spellCheck.Peek().text) return;
+                if (text.empty()) { selection->spellCheck.Set({}); return; }
+                spellCheckPending = true;
+                check(text, [this, weak = std::weak_ptr<char>(alive), text](std::vector<ui::SpellCheckSpan> spans) {
+                    if (weak.expired()) return;
+                    spellCheckPending = false;
+                    if (!SpellCheckOn()) return;
+                    selection->spellCheck.Set({ text, std::move(spans) });
+                    RequestSpellCheck();
+                });
+            }
             std::map<int, kiln::Function<void()>> changeObservers;
             int nextObserver = 0;
             int Observe(kiln::Function<void()> fn) { changeObservers.emplace(nextObserver, std::move(fn)); return nextObserver++; }
@@ -228,6 +251,7 @@ namespace kiln::foundation {
                         autofillHighlightText.reset();
                         autofillHighlight.Set(false);
                     }
+                    RequestSpellCheck();
                     for (auto it = changeObservers.begin(); it != changeObservers.end();) {
                         const int token = it->first;
                         it->second();
@@ -553,6 +577,7 @@ namespace kiln::foundation {
                 f.selection->owner = f.owner;
                 f.decoratorNode = this;
                 f.UpdateBehaviors(f.options.textStyle.span.localeList);
+                f.RequestSpellCheck();
                 // requestAutofillAction (the toolbar's Autofill item).
                 auto alive = AliveToken();
                 f.selection->requestAutofill = [this, alive] {
@@ -953,6 +978,7 @@ namespace kiln::foundation {
                 s.Save();
                 s.Translate(origin);
                 if (value.highlight) DrawHighlight(s, *value.highlight, *layout);
+                DrawMisspelled(s, f, value, *layout);
                 if (value.selection.Collapsed()) {
                     DrawTextLayout(s, *layout, layout->LayoutInput().style);
                     if (value.ShouldShowSelection()) DrawCursor(s);
@@ -1001,6 +1027,45 @@ namespace kiln::foundation {
                 return f.layout->FromTextLayoutToCore(offset);
             }
             SelectionMagnifier m_Magnifier;
+
+            // The misspelled words' wavy red underline (Flutter's materialMisspelledTextStyle, drawn
+            // as SkParagraph's Decorations does: quarter waves as long as the line is thick,
+            // the thickness and the position under the baseline a 14th of the font size). A
+            // word being composed keeps the IME's own underline.
+            void DrawMisspelled(ContentDrawScope& s, Field& f, const TextFieldCharSequence& value, const text::TextLayoutResult& layout) {
+                const std::vector<ui::SpellCheckSpan> spans = f.selection->MisspelledSpans();
+                if (spans.empty()) return;
+                const text::TextLayoutInput& input = layout.LayoutInput();
+                const TextUnit size = input.style.span.fontSize;
+                const float fontPx = size.IsSp() ? input.density.SpToPx(size.value) : input.density.SpToPx(14) * (size.IsEm() ? size.value : 1);
+                const float thickness = std::max(1.0f, fontPx / 14);
+                const bool composing = f.Editable() && f.IsFocused() && value.composition;
+                const int length = int(value.text.size());
+                gfx::Path path;
+                for (const ui::SpellCheckSpan& span : spans) {
+                    const int start = std::clamp(span.start, 0, length), end = std::clamp(span.end, 0, length);
+                    if (start >= end) continue;
+                    if (composing && start >= value.composition->Min() && end <= value.composition->Max()) continue;
+                    for (int line = layout.LineForOffset(start); line <= layout.LineForOffset(end - 1); ++line) {
+                        const int from = std::max(start, layout.LineStart(line)), to = std::min(end, layout.LineEnd(line, true));
+                        if (from >= to) continue;
+                        const float y = layout.LineBaseline(line) + thickness;
+                        for (const RectF& r : layout.SelectionRects(from, to)) {
+                            path.MoveTo(r.x, y);
+                            int waves = 0;
+                            float x = 0;
+                            for (; x + thickness * 2 < r.w; x += thickness * 2, ++waves)
+                                path.RelativeQuadraticTo(thickness, waves % 2 != 0 ? thickness : -thickness, thickness * 2, 0);
+                            if (const float rest = r.w - x; rest > 0) {
+                                const float sign = waves % 2 == 0 ? -1.0f : 1.0f;
+                                path.RelativeQuadraticTo(rest / 2, rest / 2 * sign, rest, (rest - rest * rest / (thickness * 2)) * sign);
+                            }
+                        }
+                    }
+                }
+                const gfx::Stroke stroke{ thickness };
+                s.DrawPath(path, kMisspelledColor, &stroke);
+            }
 
             void DrawHighlight(ContentDrawScope& s, const std::pair<TextHighlightType, TextRange>& highlight, const text::TextLayoutResult& layout) {
                 const auto& [type, range] = highlight;
@@ -1109,6 +1174,8 @@ namespace kiln::foundation {
         f.selection->Update(f.owner, f.selection->density, options.enabled, options.readOnly, options.isPassword);
         if (f.owner) f.UpdateBehaviors(options.textStyle.span.localeList);
         f.layout->onTextLayout = options.onTextLayout;
+        if (f.SpellCheckOn()) f.RequestSpellCheck();
+        else if (!f.selection->spellCheck.Peek().spans.empty() || !f.selection->spellCheck.Peek().text.empty()) f.selection->spellCheck.Set({});
         if (sessionChanged) {
             if (f.Editable() && (f.IsFocused() || f.inputSession)) f.StartInputSession(false);   // replaces the old session
             else if (!f.Editable()) f.DisposeInputSession();

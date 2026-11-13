@@ -24,6 +24,12 @@ import android.view.textclassifier.TextClassificationContext;
 import android.view.textclassifier.TextClassificationManager;
 import android.view.textclassifier.TextClassifier;
 import android.view.textclassifier.TextSelection;
+import android.view.textservice.SentenceSuggestionsInfo;
+import android.view.textservice.SpellCheckerSession;
+import android.view.textservice.SuggestionsInfo;
+import android.view.textservice.TextInfo;
+import android.view.textservice.TextServicesManager;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
@@ -85,6 +91,71 @@ final class KilnTextServices {
         for (int id : ids) destroySession(id);
         classifications.clear();
         io.shutdown();
+        if (spellSession != null) spellSession.close();
+        spellSession = null;
+        spellRequests.clear();
+    }
+
+    // --- Spell check (Flutter's SpellCheckPlugin) ------------------------------------------------
+
+    private static final int MAX_SPELL_CHECK_SUGGESTIONS = 5;
+    private SpellCheckerSession spellSession;
+    // The requests the session has not answered yet: it answers them in order.
+    private final ArrayDeque<Integer> spellRequests = new ArrayDeque<>();
+
+    private final SpellCheckerSession.SpellCheckerSessionListener spellListener = new SpellCheckerSession.SpellCheckerSessionListener() {
+        @Override public void onGetSuggestions(SuggestionsInfo[] results) {}   // the deprecated word API: unused
+        @Override public void onGetSentenceSuggestions(SentenceSuggestionsInfo[] results) {
+            Integer request = spellRequests.poll();
+            if (request == null) return;
+            ArrayList<Integer> ranges = new ArrayList<>();
+            ArrayList<String> words = new ArrayList<>();
+            SentenceSuggestionsInfo info = results != null && results.length > 0 ? results[0] : null;
+            for (int i = 0; info != null && i < info.getSuggestionsCount(); ++i) {
+                SuggestionsInfo suggestions = info.getSuggestionsInfoAt(i);
+                int count = suggestions != null ? suggestions.getSuggestionsCount() : 0;
+                int valid = 0;
+                for (int j = 0; j < count; ++j) {
+                    // A spell checker that reports a word without saying what would replace it
+                    // (Samsung's, flutter#120608) gives nothing to underline.
+                    String suggestion = suggestions.getSuggestionAt(j);
+                    if (suggestion == null || suggestion.isEmpty()) continue;
+                    words.add(suggestion);
+                    ++valid;
+                }
+                if (valid == 0) continue;
+                int start = info.getOffsetAt(i);
+                ranges.add(start);
+                ranges.add(start + info.getLengthAt(i));
+                ranges.add(valid);
+            }
+            int[] r = new int[ranges.size()];
+            for (int i = 0; i < r.length; ++i) r[i] = ranges.get(i);
+            KilnNative.spellCheckResult(request, r, words.toArray(new String[0]));
+        }
+    };
+
+    /** Checks text with the user's spell checker; KilnNative.spellCheckResult gets the answer. */
+    void spellCheck(int request, String text) {
+        if (spellSession != null && spellSession.isSessionDisconnected()) {
+            spellSession.close();
+            spellSession = null;
+            for (Integer pending; (pending = spellRequests.poll()) != null;) KilnNative.spellCheckResult(pending, new int[0], new String[0]);
+        }
+        if (spellSession == null) {
+            TextServicesManager manager = (TextServicesManager) context.getSystemService(Context.TEXT_SERVICES_MANAGER_SERVICE);
+            // None when the user turned the spell checker off, or it has no language for the locale.
+            if (manager != null) {
+                spellSession = manager.newSpellCheckerSession(null, context.getResources().getConfiguration().getLocales().get(0),
+                                                              spellListener, true);
+            }
+        }
+        if (spellSession == null) {
+            KilnNative.spellCheckResult(request, new int[0], new String[0]);
+            return;
+        }
+        spellRequests.add(request);
+        spellSession.getSentenceSuggestions(new TextInfo[] { new TextInfo(text) }, MAX_SPELL_CHECK_SUGGESTIONS);
     }
 
     // --- TextClassifier sessions -----------------------------------------------------------------

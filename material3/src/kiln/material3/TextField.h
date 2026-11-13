@@ -37,6 +37,8 @@ namespace kiln::material3 {
         foundation::TextFieldLineLimits lineLimits = foundation::TextFieldLineLimits::MultiLine();
         kiln::Function<void(const text::TextLayoutResult&)> onTextLayout;
         foundation::ScrollState* scrollState = nullptr;   // null: remembered
+        // Misspelled words are underlined and a tap on one offers the platform's suggestions.
+        bool spellCheck = false;
         foundation::ShapePtr shape;                       // null: the variant's
         std::optional<TextFieldColors> colors;            // unset: the variant's colors()
         std::optional<foundation::PaddingValues> contentPadding;   // unset: with a label only for Inside labels

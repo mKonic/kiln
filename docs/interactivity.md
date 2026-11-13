@@ -100,6 +100,9 @@ Column(Padding(Modifier{}, 16_dp), [&name] {
 * `onKeyboardAction` runs when the action key is pressed.
 * `inputTransformation` filters or changes what is typed, for example to allow only
   digits.
+* `spellCheck` underlines misspelled words and offers the system spell checker's
+  suggestions when one is tapped. It is off by default and never applies to password
+  fields.
 
 Text fields work with the system keyboard, including composition, handwriting with a
 stylus, autofill, and the text toolbar with cut, copy, paste and the actions other apps

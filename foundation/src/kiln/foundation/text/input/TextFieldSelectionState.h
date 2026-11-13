@@ -10,6 +10,7 @@
 #include "kiln/foundation/Interaction.h"
 #include "kiln/foundation/text/Selection.h"
 #include "kiln/foundation/text/input/TextLayoutState.h"
+#include "kiln/ui/SpellCheck.h"
 
 #include <cmath>
 #include <functional>
@@ -110,6 +111,22 @@ namespace kiln::foundation {
         void SetTextToolbarShown(bool v) { if (m_TextToolbarShown.Peek() != v) m_TextToolbarShown.Set(v); }
         // addBasicTextFieldTextContextMenuComponents' builder.
         void AddTextContextMenuComponents(TextContextMenuBuilderScope& scope);
+
+        // Spell check (the field's spellCheck option): the misspelled ranges of `text`, used
+        // while that is still the visual text.
+        struct SpellCheckResult {
+            std::u16string text;
+            std::vector<ui::SpellCheckSpan> spans;
+            bool operator==(const SpellCheckResult&) const = default;
+        };
+        rt::State<SpellCheckResult> spellCheck{ SpellCheckResult{} };
+        // The misspelled ranges of the visual text as it is now (the results of an older text
+        // moved to where their words went).
+        std::vector<ui::SpellCheckSpan> MisspelledSpans() const;
+        // The misspelled range `index` is in, or at either end of (findSuggestionSpanAtCursorIndex).
+        std::optional<ui::SpellCheckSpan> MisspelledAt(int index) const;
+        // The misspelled range the whole selection is in.
+        std::optional<ui::SpellCheckSpan> MisspelledAtSelection() const;
         void Cut();
         void Copy(bool cancelSelection = true);
         void Paste(bool isFromHardwareSource = false);

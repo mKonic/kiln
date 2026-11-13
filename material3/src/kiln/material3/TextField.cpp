@@ -47,6 +47,7 @@ namespace kiln::material3 {
                 b.inputTransformation = o.inputTransformation;
                 b.outputTransformation = o.outputTransformation;
                 b.scrollState = scroll;
+                b.spellCheck = o.spellCheck;
                 const bool enabled = o.enabled, isError = o.isError, singleLine = o.lineLimits == TextFieldLineLimits::SingleLine();
                 internal::DecorationBoxSlots slots{ o.label, o.placeholder, o.leadingIcon, o.trailingIcon, o.prefix, o.suffix, o.supportingText };
                 TextFieldState* st = &state;

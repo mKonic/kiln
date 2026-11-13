@@ -1255,3 +1255,86 @@ TEST(HandwritingDetectorDelegatesToTheHandlerThatTakesFocus) {
     ui::SetStylusHandwritingSupported(false);
     CHECK(HandwritingHandler(Modifier{}).Empty() && HandwritingDetector(Modifier{}, [] {}).Empty());
 }
+
+TEST(SpellCheckResultsFollowTheirWordsThroughEdits) {
+    const std::vector<ui::SpellCheckSpan> spans{ { 0, 4, { u"hello" } }, { 10, 14, { u"world" } } };
+    // Text typed in front: both words found again, moved.
+    auto moved = ui::CorrectSpellCheckResults(u"oh helo big wrld", u"helo big  wrld", spans);
+    CHECK_EQ(int(moved.size()), 2);
+    if (moved.size() == 2) {
+        CHECK(moved[0].start == 3 && moved[0].end == 7);
+        CHECK(moved[1].start == 12 && moved[1].end == 16);
+        CHECK(moved[1].suggestions == std::vector<std::u16string>{ u"world" });
+    }
+    // An edited word loses its result; one that is now part of a longer word does too.
+    moved = ui::CorrectSpellCheckResults(u"hello big  wrldly", u"helo big  wrld", spans);
+    CHECK(moved.empty());
+}
+
+TEST(SpellCheckUnderlinesMisspelledWordsAndOffersSuggestions) {
+    FieldHarness h;
+    h.draw = true;
+    std::vector<std::u16string> requests;
+    kiln::Function<void(std::vector<ui::SpellCheckSpan>)> done;
+    h.owner.SetSpellCheckHost({ [&](const std::u16string& text, kiln::Function<void(std::vector<ui::SpellCheckSpan>)> d) {
+        requests.push_back(text);
+        done = std::move(d);
+    } });
+    TextFieldState state("helo wrld");
+    TextFieldState secret("helo");
+    h.comp.SetContent([&] {
+        Column(Modifier{}, [&] {
+            BasicTextFieldOptions o = Style20();
+            o.spellCheck = true;
+            BasicTextField(state, {}, o);
+            o.isPassword = true;   // never checked
+            BasicTextField(secret, {}, o);
+        });
+    });
+    h.Pump({ 300, 300 });
+    CHECK((requests == std::vector<std::u16string>{ u"helo wrld" }));
+    done({ { 0, 4, { u"hello", u"help", u"held", u"hero" } }, { 5, 9, { u"world" } } });
+    h.Pump({ 300, 300 });   // draws the underlines
+    // A tap on a misspelled word selects it; its first three suggestions lead the toolbar.
+    h.Tap(15, 10);
+    CHECK(state.Selection() == TextRange(0, 4));
+    CHECK(h.owner.TextToolbarShown());
+    const auto& entries = h.owner.TextToolbarEntries();
+    CHECK(entries.size() >= 4);
+    if (entries.size() >= 4) {
+        CHECK_EQ(entries[0].label, std::string("hello"));
+        CHECK_EQ(entries[1].label, std::string("help"));
+        CHECK_EQ(entries[2].label, std::string("held"));
+        CHECK(entries[3].id == ui::TextToolbarItemId::Cut);
+        CHECK(entries[3].group != entries[2].group);
+    }
+    // Tapping the selected word again (not a double tap) hides them.
+    WaitMs(h, 500);
+    h.Tap(15, 10);
+    CHECK(!h.owner.TextToolbarShown());
+    WaitMs(h, 500);
+    h.Tap(15, 10);
+    CHECK(h.owner.TextToolbarShown());
+    // A suggestion replaces the word; the changed text is checked again.
+    h.owner.OnTextToolbarItem(0);
+    h.Pump({ 300, 300 });
+    CHECK(state.Peek().text == U("hello wrld"));
+    CHECK(state.Selection() == TextRange(0, 5));
+    CHECK(!h.owner.TextToolbarShown());
+    CHECK_EQ(int(requests.size()), 2);
+    // Until that result is in, the old one follows its words: "wrld" moved by one.
+    state.Edit([](TextFieldBuffer& b) { b.Append(u"!"); });   // one request at a time
+    h.Pump({ 300, 300 });
+    CHECK_EQ(int(requests.size()), 2);
+    WaitMs(h, 500);
+    h.Tap(85, 10);
+    CHECK(state.Selection() == TextRange(6, 10));
+    // The result of the older text arrives: the text as it is now is checked next.
+    done({ { 6, 10, { u"world" } } });
+    h.Pump({ 300, 300 });
+    CHECK_EQ(int(requests.size()), 3);
+    if (requests.size() == 3) CHECK(requests[2] == u"hello wrld!");
+    done({ { 6, 10, { u"world" } } });
+    h.Pump({ 300, 300 });
+    CHECK_EQ(int(requests.size()), 3);
+}

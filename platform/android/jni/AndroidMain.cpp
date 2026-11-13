@@ -291,6 +291,22 @@ namespace {
         }
     };
 
+    std::u16string FromJava(JNIEnv* env, jstring s);
+
+    // Spell checks waiting for KilnNative.spellCheckResult.
+    struct PendingSpellCheck {
+        using Done = kiln::Function<void(std::vector<kiln::ui::SpellCheckSpan>)>;
+        static std::map<int, Done>& Map() {
+            static std::map<int, Done> m;
+            return m;
+        }
+        static int Add(Done fn) {
+            static int last = 0;
+            Map()[++last] = std::move(fn);
+            return last;
+        }
+    };
+
     // NestedScrollInteropConnection's View side: KilnView's NestedScrollingChildHelper port.
     struct ViewNestedScrollParent final : kiln::ui::HostNestedScrollParent {
         jmethodID start = nullptr, pre = nullptr, scroll = nullptr, preFling = nullptr, fling = nullptr, stop = nullptr;
@@ -802,6 +818,7 @@ namespace {
             static jmethodID ptStart = env->GetMethodID(vc, "processText", "(IZLjava/lang/String;)V");
             static jmethodID luCan = env->GetMethodID(vc, "canLookUp", "(Ljava/lang/String;)Z");
             static jmethodID luStart = env->GetMethodID(vc, "lookUp", "(Ljava/lang/String;)V");
+            static jmethodID spellCheck = env->GetMethodID(vc, "spellCheck", "(ILjava/lang/String;)V");
             env->DeleteLocalRef(vc);
             auto& owner = (*w->owner);
             kiln::ui::Owner::ClipboardHost clip;
@@ -987,6 +1004,13 @@ namespace {
                 e->DeleteLocalRef(a);
                 return out;
             };
+            w->owner->SetSpellCheckHost({ [w](const std::u16string& text, PendingSpellCheck::Done done) {
+                const int request = PendingSpellCheck::Add(std::move(done));
+                JNIEnv* e = MainEnv();
+                jstring js = JavaString(e, text);
+                e->CallVoidMethod(w->view, spellCheck, jint(request), js);
+                e->DeleteLocalRef(js);
+            } });
             tc.processText = [w](int index, bool editable, const std::u16string& selected) {
                 JNIEnv* e = MainEnv();
                 jstring js = JavaString(e, selected);
@@ -1257,6 +1281,31 @@ namespace {
         }
         if (!g_Host) return;
         fn(r);
+        g_Host->app->RequestFrame();
+    }
+
+    void SpellCheckResult(JNIEnv* env, jclass, jint request, jintArray ranges, jobjectArray suggestions) {
+        auto& map = PendingSpellCheck::Map();
+        auto it = map.find(request);
+        if (it == map.end()) return;
+        auto fn = std::move(it->second);
+        map.erase(it);
+        std::vector<kiln::ui::SpellCheckSpan> spans;
+        const jsize n = ranges ? env->GetArrayLength(ranges) : 0;
+        std::vector<jint> r(static_cast<std::size_t>(n));
+        if (n > 0) env->GetIntArrayRegion(ranges, 0, n, r.data());
+        const jsize words = suggestions ? env->GetArrayLength(suggestions) : 0;
+        jsize next = 0;
+        for (std::size_t i = 0; i + 2 < r.size(); i += 3) {
+            kiln::ui::SpellCheckSpan span{ r[i], r[i + 1], {} };
+            for (jint k = 0; k < r[i + 2] && next < words; ++k, ++next) {
+                auto s = static_cast<jstring>(env->GetObjectArrayElement(suggestions, next));
+                if (s) { span.suggestions.push_back(FromJava(env, s)); env->DeleteLocalRef(s); }
+            }
+            spans.push_back(std::move(span));
+        }
+        if (!g_Host) return;
+        fn(std::move(spans));
         g_Host->app->RequestFrame();
     }
 
@@ -3030,39 +3079,39 @@ namespace {
         w->owner->SetInteropViewHost(std::move(host));
     }
 
-    kiln::ui::InteropViewClient* InteropClient(jint win, jint id, WinScope& ws) {
+    kiln::ui::InteropViewClient* InteropClient(jint id, WinScope& ws) {
         if (!ws) return nullptr;
         return ws.w->owner->InteropViewClientOf(id);
     }
     void InteropRequestLayout(JNIEnv*, jclass, jint win, jint id) {
         WinScope ws(win);
-        if (auto* c = InteropClient(win, id, ws)) { c->OnRequestRemeasure(); g_Host->app->RequestFrame(); }
+        if (auto* c = InteropClient(id, ws)) { c->OnRequestRemeasure(); g_Host->app->RequestFrame(); }
     }
     void InteropDisallowIntercept(JNIEnv*, jclass, jint win, jint id, jboolean disallow) {
         WinScope ws(win);
-        if (auto* c = InteropClient(win, id, ws)) c->OnRequestDisallowInterceptTouchEvent(disallow);
+        if (auto* c = InteropClient(id, ws)) c->OnRequestDisallowInterceptTouchEvent(disallow);
     }
     void InteropRequestRectangle(JNIEnv*, jclass, jint win, jint id, jint l, jint t, jint r, jint b) {
         WinScope ws(win);
-        if (auto* c = InteropClient(win, id, ws)) { c->OnRequestRectangleOnScreen({ float(l), float(t), float(r), float(b) }); g_Host->app->RequestFrame(); }
+        if (auto* c = InteropClient(id, ws)) { c->OnRequestRectangleOnScreen({ float(l), float(t), float(r), float(b) }); g_Host->app->RequestFrame(); }
     }
     jintArray InteropNestedPreScroll(JNIEnv* env, jclass, jint win, jint id, jint dx, jint dy) {
         WinScope ws(win);
-        auto* c = InteropClient(win, id, ws);
+        auto* c = InteropClient(id, ws);
         const kiln::ui::IntOffset r = c ? c->OnNestedPreScroll(dx, dy, true) : kiln::ui::IntOffset{};
         if (c && (r.x || r.y)) g_Host->app->RequestFrame();
         return IntArray(env, { r.x, r.y });
     }
     void InteropNestedScroll(JNIEnv*, jclass, jint win, jint id, jint dxc, jint dyc, jint dxu, jint dyu) {
         WinScope ws(win);
-        if (auto* c = InteropClient(win, id, ws)) {
+        if (auto* c = InteropClient(id, ws)) {
             const kiln::ui::IntOffset r = c->OnNestedScroll(dxc, dyc, dxu, dyu, true);
             if (r.x || r.y) g_Host->app->RequestFrame();
         }
     }
     void InteropNestedFling(JNIEnv*, jclass, jint win, jint id, jfloat vx, jfloat vy, jboolean consumed, jboolean pre) {
         WinScope ws(win);
-        auto* c = InteropClient(win, id, ws);
+        auto* c = InteropClient(id, ws);
         if (!c) return;
         if (pre) c->OnNestedPreFling(vx, vy);
         else c->OnNestedFling(vx, vy, consumed);
@@ -3145,6 +3194,7 @@ extern "C" JNIEXPORT jint kiln_jni_onload(JavaVM* vm) {
         { "textToolbarItem", "(II)V", reinterpret_cast<void*>(&TextToolbarItem) },
         { "textToolbarDestroyed", "(I)V", reinterpret_cast<void*>(&TextToolbarDestroyed) },
         { "classifierResult", "(IZIII[Ljava/lang/String;Z)V", reinterpret_cast<void*>(&ClassifierResult) },
+        { "spellCheckResult", "(I[I[Ljava/lang/String;)V", reinterpret_cast<void*>(&SpellCheckResult) },
         { "setAnimationScale", "(F)V", reinterpret_cast<void*>(&SetAnimationScale) },
         { "setPasswordVisibility", "(I)V", reinterpret_cast<void*>(&SetPasswordVisibility) },
         { "updateInputDevice", "(IIZII)V", reinterpret_cast<void*>(&UpdateInputDevice) },

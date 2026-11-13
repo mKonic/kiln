@@ -1141,6 +1141,7 @@ struct kiln_m3_text_field_options {
     const kiln_keyboard_options* keyboard_options;
     const kiln_text_field_line_limits* line_limits;
     kiln_scroll_state* scroll_state;
+    bool spell_check;
     const kiln_shape* shape;
     const kiln_m3_text_field_colors* colors;
     const kiln_padding* content_padding;
@@ -1737,6 +1738,8 @@ struct kiln_m3_modal_bottom_sheet_properties {
     kiln_secure_flag_policy secure_policy;
     bool should_dismiss_on_back_press;
     bool should_dismiss_on_click_outside;
+    kiln_opt_bool is_appearance_light_status_bars;
+    kiln_opt_bool is_appearance_light_navigation_bars;
 };
 KILN_API void kiln_m3_modal_bottom_sheet_properties_init(kiln_m3_modal_bottom_sheet_properties* s);
 struct kiln_m3_modal_bottom_sheet_options {

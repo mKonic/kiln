@@ -1458,6 +1458,7 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
         textServices.classifyText(session, request, text, start, end, locales);
     }
     void releaseClassification(int handle) { textServices.releaseClassification(handle); }
+    void spellCheck(int request, String text) { textServices.spellCheck(request, text); }
     String[] processTextActivities() { return textServices.processTextActivities(); }
     void processText(int index, boolean editable, String selected) { textServices.processText(index, editable, selected); }
     boolean canLookUp(String selected) { return textServices.canLookUp(selected); }

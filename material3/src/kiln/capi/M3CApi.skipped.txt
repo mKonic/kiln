@@ -47,10 +47,10 @@ kiln::material3::kSystemPaletteFields: constant: type kiln::ui::Color kiln::mate
 kiln::material3::kSystemRoleFields: constant: type kiln::ui::Color kiln::material3::ColorScheme::*const[43]
 kiln::material3::ToggleButtonOptions::buttonSize: field left at its default: kiln::material3::ToggleButtonSize is not default-constructible
 kiln::material3::CarouselOptions::flingBehavior: field left at its default: type kiln::rt::Task<float>
-kiln::material3::TextFieldOptions::onKeyboardAction: field left at its default: callback argument std::function<void ()>
+kiln::material3::TextFieldOptions::onKeyboardAction: field left at its default: callback argument kiln::Function<void ()>
 kiln::material3::TextFieldOptions::onTextLayout: field left at its default: type kiln::text::TextLayoutResult
 kiln::material3::SecureTextFieldOptions::textObfuscationCharacter: field left at its default: type char32_t
-kiln::material3::SecureTextFieldOptions::onKeyboardAction: field left at its default: callback argument std::function<void ()>
+kiln::material3::SecureTextFieldOptions::onKeyboardAction: field left at its default: callback argument kiln::Function<void ()>
 kiln::material3::SecureTextFieldOptions::onTextLayout: field left at its default: type kiln::text::TextLayoutResult
 kiln::material3::DatePickerOptions::focusRequester: field left at its default: pointer kiln::ui::FocusRequester *
 kiln::material3::FloatingActionButtonMenuScope::state: field left at its default: type std::shared_ptr<kiln::material3::internal::FabMenuState>

@@ -613,6 +613,7 @@ namespace kiln::gallery {
             auto& email = foundation::RememberTextFieldState("me@example");
             auto& price = foundation::RememberTextFieldState("12");
             auto& password = foundation::RememberTextFieldState("secret");
+            auto& note = foundation::RememberTextFieldState("Teh quick borwn fox");
             const auto icon = [](const char* description) {
                 return [description] { m3::Icon(m3::internal::Icons::Filled::Edit(), std::string(description)); };
             };
@@ -659,6 +660,11 @@ namespace kiln::gallery {
             affixes.prefix = [] { m3::Text("$"); };
             affixes.suffix = [] { m3::Text(".00"); };
             m3::OutlinedTextField(price, Padding({}, 8_dp), affixes);
+            m3::TextFieldOptions checked;
+            checked.label = [](const m3::TextFieldLabelScope&) { m3::Text("Note"); };
+            checked.supportingText = [] { m3::Text("Spell checked: tap an underlined word"); };
+            checked.spellCheck = true;
+            m3::OutlinedTextField(note, Padding({}, 8_dp), checked);
             m3::SecureTextFieldOptions secure;
             secure.label = [](const m3::TextFieldLabelScope&) { m3::Text("Password"); };
             m3::SecureTextField(password, Padding({}, 8_dp), secure);
