@@ -173,3 +173,47 @@ TEST(PaddingFromBaselineReadsTheBaselineOfItsContent) {
     // The baseline sits 34 into the box (its padding is part of the leaf): 16 above it.
     CHECK_EQ(Top(leaf), 16);
 }
+
+// AlignmentLineTest (androidx ba9435ecc33): a placement that reads `coordinates` while it is run
+// only to find an alignment line (no coordinates then) is run again for real afterwards.
+TEST(PlacementReadingCoordinatesForALineQueryIsPlacedAgain) {
+    Harness h;
+    std::vector<bool> placements;   // whether each run of the block had coordinates
+    h.Run([&] {
+        Box(Modifier{}, Alignment::TopStart(), false, [&] {
+            // paddingFrom reads the line through the layout modifier while the leaf measures.
+            Leaf(LayoutMod(PaddingFromBaseline({}, Dp(50), Dp::Unspecified()), [&](MeasureScope& s, Measurable& m, const Constraints& c) {
+                     Placeable& p = m.Measure(c);
+                     return s.Layout(p.Width(), p.Height(), [&p, &placements](PlacementScope& place) {
+                         placements.push_back(place.Coordinates() != nullptr);
+                         place.Place(p, 0, 0);
+                     });
+                 }),
+                 10, 40, 30);
+        });
+    });
+    CHECK(placements.size() >= 2);
+    CHECK(!placements.front());   // run for the line, without coordinates
+    CHECK(placements.back());     // then for real
+}
+
+// AlignmentLineTest (androidx 601ad44aed2): reading several lines through a layout modifier
+// while measuring runs its placement once, not once per query.
+TEST(LineQueriesThroughAModifierPlaceItOncePerMeasure) {
+    Harness h;
+    int alignmentPlacements = 0;
+    h.Run([&] {
+        Box(Modifier{}, Alignment::TopStart(), false, [&] {
+            Leaf(LayoutMod(PaddingFromBaseline({}, Dp(50), Dp(20)), [&](MeasureScope& s, Measurable& m, const Constraints& c) {
+                     Placeable& p = m.Measure(c);
+                     return s.Layout(p.Width(), p.Height(), [&p, &alignmentPlacements](PlacementScope& place) {
+                         if (!place.Coordinates()) ++alignmentPlacements;
+                         place.Place(p, 0, 0);
+                     });
+                 }),
+                 10, 40, 30);
+        });
+    });
+    // paddingFrom reads both baselines: one placement for the queries.
+    CHECK_EQ(alignmentPlacements, 1);
+}

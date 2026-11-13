@@ -412,3 +412,39 @@ TEST(DpComparesAndNegatesLikeCompose) {   // Dp.compareTo, Dp.unaryMinus
     CHECK(!(ui::Dp::Unspecified() < ui::Dp(1)) && !(ui::Dp::Unspecified() > ui::Dp(1)));   // NaN orders with nothing
     CHECK(-ui::Dp(6) == ui::Dp(-6));
 }
+
+// IntrinsicRemeasureLivelockTest (androidx c0cf035bd4d): a layout block that measures its child
+// and then reads the child's intrinsics, around a Row(height(IntrinsicSize.Max)) that reads its
+// own children's: measuring finishes, and a change inside still reaches the outer block.
+TEST(IntrinsicQueriesInsideIntrinsicRowsDoNotLoop) {
+    Harness h;
+    rt::State<int> leftWidth(10);
+    int outerMeasures = 0;
+    LayoutNode* outer = nullptr;
+    h.Run([&] {
+        Box(Modifier{}, Alignment::TopStart(), false, [&] {   // loose constraints for the block
+        Box(Capture(LayoutMod(Modifier{}, [&](MeasureScope& s, Measurable& m, const Constraints& c) {
+                ++outerMeasures;
+                Placeable& p = m.Measure(c);
+                const int iw = m.MaxIntrinsicWidth(c.maxHeight);
+                return s.Layout(std::max(p.Width(), iw), p.Height(), [&p](PlacementScope& place) { place.PlaceRelative(p, 0, 0); });
+            }), outer),
+            Alignment::TopStart(), false, [&] {
+            Row(Height(Modifier{}, IntrinsicSize::Max), Arrangement::Start(), AlignmentV::Top(), [&] {
+                Box(SizeMod(Modifier{}, Dp(float(leftWidth.Get())), 10_dp));
+                Box(SizeMod(Modifier{}, 10_dp, 10_dp));
+            });
+        });
+        });
+    });
+    CHECK(outer != nullptr);
+    CHECK_EQ(outer->Size().width, 20);
+    CHECK(outerMeasures <= 3);
+    outerMeasures = 0;
+    leftWidth.Set(30);
+    rt::Observation::ApplyChanges();
+    h.composition.Recompose();
+    h.owner.MeasureAndLayout({ 100, 100 });
+    CHECK_EQ(outer->Size().width, 40);
+    CHECK(outerMeasures >= 1 && outerMeasures <= 3);
+}

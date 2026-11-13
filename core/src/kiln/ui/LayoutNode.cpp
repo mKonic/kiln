@@ -244,6 +244,9 @@ namespace kiln::ui {
         float zIndex = 0;                    // as placed by the enclosing coordinator (or parent)
         bool placed = false;                // enclosing layout modifier placed this coordinator
         bool motionFrame = false;           // placed under the motion frame of reference
+        // layoutPendingForAlignment: the placement must run again before a line query reads what
+        // this coordinator wraps (set when measured, cleared once it has run either way).
+        bool layoutPendingForAlignment = true;
         void SetPlacedUnderMotionFrameOfReference(bool m) override { motionFrame = m; if (index == 0) node.m_MotionFrame = m; }
         // Lookahead: this coordinator's lookahead pass, and the approach pass's state (an approach
         // modifier that is not approaching measures what it wraps with the lookahead constraints
@@ -297,6 +300,7 @@ namespace kiln::ui {
             }
             if (result.width != Width() || result.height != Height()) node.InvalidateDraw();   // draws read the size
             SetMeasured({ result.width, result.height }, c);
+            layoutPendingForAlignment = true;
             return *this;
         }
 
@@ -319,13 +323,16 @@ namespace kiln::ui {
                 // A modifier of this node reads a line of what it wraps while the node measures
                 // (paddingFrom): the outer results are not ready, so lay out from here only —
                 // this coordinator's placement places what it wraps (Compose lays children out
-                // for alignment-line queries the same way).
-                PlacementScope scope(node.GetLayoutDirection(), Width());
-                const std::size_t i = index;
-                LayoutNode* n = &node;
-                scope.SetRulerLookup([n, i](const Ruler& r, float d) { return n->FindRulerValue(i, r, d); });
-                if (node.m_Owner) scope.SetInsets(&node.m_Owner->Insets());
-                if (result.place) result.place(scope);
+                // for alignment-line queries the same way), once per measure.
+                if (layoutPendingForAlignment) {
+                    layoutPendingForAlignment = false;
+                    PlacementScope scope(node.GetLayoutDirection(), Width());
+                    const std::size_t i = index;
+                    LayoutNode* n = &node;
+                    scope.SetRulerLookup([n, i](const Ruler& r, float d) { return n->FindRulerValue(i, r, d); });
+                    if (node.m_Owner) scope.SetInsets(&node.m_Owner->Insets());
+                    if (result.place) result.place(scope);
+                }
             } else {
                 node.LayoutIfNeeded();
             }
@@ -1207,6 +1214,7 @@ namespace kiln::ui {
                     next->forceLookaheadOffset = complete;
                 }
                 if (c->result.place) c->result.place(scope);
+                c->layoutPendingForAlignment = false;
                 if (next) next->forceLookaheadOffset = false;
                 readCoordinates = readCoordinates || scope.CoordinatesRead();
             }
