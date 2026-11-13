@@ -333,6 +333,7 @@ namespace {
             TransformDemo();
             return;
         }
+
         // "effects": the gallery page without the Material section (layers, shadows, blur and
         // 3D tilts near the top, for measuring them on a device).
         static const bool effectsOnly = section == "effects";

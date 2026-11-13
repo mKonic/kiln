@@ -103,5 +103,22 @@ Button([scope, offset] {
 ## Shared elements
 
 `SharedTransitionLayout` with the `SharedElement` modifier moves an element from one
-screen to the next, as in a list that opens into a detail screen. `NavHost` and
-`NavDisplay` provide the animated visibility scope that `SharedElement` needs.
+screen to the next, as in a list that opens into a detail screen. `SharedBounds` shares
+only the bounds, for two different pieces of content that stand for the same thing, such
+as a card and the page it opens into. `NavHost`, `NavDisplay` and `AnimatedContent`
+provide the animated visibility scope these modifiers need:
+
+```cpp
+auto& open = RememberState(false);
+SharedTransitionLayout(Modifier{}, [&open](SharedTransitionScope& shared) {
+    AnimatedContent(kiln::rt::Key(open.Get() ? "detail" : "list"), Modifier{}, [&open, &shared](kiln::rt::Key k) {
+        auto* scope = kiln::rt::Composition::Current()->Read(LocalAnimatedVisibilityScope);
+        auto& title = shared.RememberSharedContentState(kiln::rt::Key("title"));
+        const bool detail = k == kiln::rt::Key("detail");
+        Text("Title", shared.SharedElement(Clickable(Modifier{}, [&open] { open.Set(!open.Peek()); }), title, *scope),
+             { .fontSize = Sp(detail ? 32 : 16) });
+    });
+});
+```
+
+The gallery's "Shared elements" section opens cards into a page with `SharedBounds`.

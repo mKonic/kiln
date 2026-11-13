@@ -90,6 +90,10 @@ COMPONENTS = {
     'groups': '''reach:Connected size: 0; tap:Mute; expect:Group styles: 1; tap:{more}; expect:Copy;
         shot:{p}-group-overflow; tap:Copy; expect:Group clicks: 1; reject:Copy; tap:Large;
         expect:Connected size: 2; shot:{p}-groups''',
+    'shared': '''expect:Card 1; tap:Card 2; expect:Close; reject:Card 3; wait:800; shot:{p}-shared-open; tap:Close;
+        expect:Card 3; reject:Close; wait:800; shot:{p}-shared; tap:Card 1; expect:Close; back; expect:Card 2; reject:Close''',
+    # The Views' own accessibility nodes, reached through kiln's tree.
+    'views': '''expect:Hello from WebView; expect:Native line 1; shot:{p}-views''',
 }
 LAUNCHES = (('1.0', 'ltr', ''), ('2.0', 'rtl', 'ar'))
 # Labels the framework translates, per launch locale.
@@ -98,6 +102,7 @@ STRINGS = {'': {'more': 'More options', 'dismiss': 'Dismiss', 'reveal': '250', '
            'ar': {'more': 'خيارات إضافية', 'dismiss': 'إغلاق', 'reveal': '-250', 'hide': '250', 'six': '\u200fالساعة 6',
                   'keyboard': 'التبديل إلى وضع "إدخال النص"'}}
 THEMES = ('Light', 'Dark', 'Dynamic')
+SCROLLED_AT_LAUNCH = {'timepickers'}
 
 
 def adb(*args):
@@ -123,7 +128,10 @@ def main():
                 for name in names:
                     # The section alone (debug.kiln.gallery.section), so the tree stays small.
                     prefix = f'{scale}-{direction}-{theme.lower()}-{name}'
-                    steps = f'wait:1000; tap:{theme}; wait:300; ' + ' '.join(COMPONENTS[name].split()).format(p=prefix, **STRINGS[locale])
+                    # The inline time input takes focus and the keyboard at launch (as Compose's
+                    # does), which scrolls the theme buttons away: back hides the keyboard.
+                    top = 'back; wait:600; scrollback:0; wait:500; ' if name in SCROLLED_AT_LAUNCH else ''
+                    steps = f'wait:1000; {top}tap:{theme}; wait:300; ' + ' '.join(COMPONENTS[name].split()).format(p=prefix, **STRINGS[locale])
                     adb('shell', 'setprop', 'debug.kiln.gallery.section', name)
                     adb('shell', 'am', 'force-stop', PACKAGE)
                     adb('shell', 'am', 'start', '-W', '-n', f'{PACKAGE}/dev.kiln.KilnActivity')

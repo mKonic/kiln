@@ -12,6 +12,14 @@
 #include <kiln/foundation/Flow.h>
 #include <kiln/foundation/Gestures.h>
 #include <kiln/foundation/Semantics.h>
+#include <kiln/foundation/AnimatedVisibility.h>
+#include <kiln/foundation/Back.h>
+#include <kiln/foundation/Shapes.h>
+#include <kiln/foundation/SharedTransition.h>
+#include <kiln/foundation/AndroidView.h>
+#if defined(__ANDROID__)
+#include <jni.h>
+#endif
 #include <kiln/material3/Checkbox.h>
 #include <kiln/material3/Card.h>
 #include <kiln/material3/Chip.h>
@@ -1323,6 +1331,111 @@ namespace kiln::gallery {
             m3::Text("FAB clicks: " + std::to_string(clicks->Get()));
         }
 
+        // Shared elements: a card opens into a detail page. Its bounds animate between the two places
+        // (sharedBounds) and its title moves with it (sharedElement); back closes it.
+        void SharedElements() {
+            auto& open = RememberState(0);   // 0: the cards, n: card n opened
+            static const Color colors[] = { Color(0xFF6750A4u), Color(0xFF7D5260u), Color(0xFF386A20u) };
+            auto* opened = &open;
+            Column(Modifier{}, Arrangement::Top(), AlignmentH::Start(), [opened] {
+                SharedTransitionLayout(Height(FillMax(Modifier{}, Axis::Horizontal), 220_dp), [opened](SharedTransitionScope& shared) {
+                    BackHandler(opened->Get() != 0, [opened] { opened->Set(0); });
+                    AnimatedContent(kiln::rt::Key(std::int64_t(opened->Get())), FillMax(Modifier{}, Axis::Both), [opened, &shared](kiln::rt::Key k) {
+                        auto* scope = kiln::rt::Composition::Current()->Read(LocalAnimatedVisibilityScope);
+                        int shown = 0;
+                        for (int n = 1; n <= 3; ++n) if (k == kiln::rt::Key(std::int64_t(n))) shown = n;
+                        auto card = [&shared, scope](int n, Modifier m) {
+                            auto& bounds = shared.RememberSharedContentState(kiln::rt::Key("card-" + std::to_string(n)));
+                            return shared.SharedBounds(Background(std::move(m), colors[n - 1], RoundedCorner(16_dp)), bounds, *scope);
+                        };
+                        auto title = [&shared, scope](int n, float size) {
+                            auto& text = shared.RememberSharedContentState(kiln::rt::Key("title-" + std::to_string(n)));
+                            m3::Text("Card " + std::to_string(n), shared.SharedElement(Modifier{}, text, *scope),
+                                     { .color = Color(0xFFFFFFFFu), .fontSize = text::Sp(size) });
+                        };
+                        if (shown == 0) {
+                            Row(Modifier{}, Arrangement::SpacedBy(12_dp), AlignmentV::Top(), [card, title, opened] {
+                                for (int n = 1; n <= 3; ++n)
+                                    Box(Padding(card(n, Clickable(SizeMod(Modifier{}, 96_dp, 96_dp), [opened, n] { opened->Set(n); })), 12_dp),
+                                        Alignment::BottomStart(), false, [title, n] { title(n, 16); }, kiln::rt::Key(n));
+                            });
+                        } else {
+                            Box(Padding(card(shown, FillMax(Modifier{}, Axis::Both)), 20_dp), Alignment::TopStart(), false, [title, shown, opened] {
+                                Column(Modifier{}, Arrangement::SpacedBy(12_dp), AlignmentH::Start(), [title, shown, opened] {
+                                    title(shown, 28);
+                                    m3::Text("Close", Clickable(Modifier{}, [opened] { opened->Set(0); }), { .color = Color(0xFFFFFFFFu) });
+                                });
+                            });
+                        }
+                    });
+                });
+            });
+        }
+
+        // Android Views inside kiln: a WebView with a local page, a SeekBar to drag, and a
+        // platform ScrollView whose scrolling chains into the page's (nested scrolling).
+        void NativeViews() {
+            auto make = [](const char* cls, kiln::Function<void(void* env, void* view)> setup) -> ui::InteropViewFactory {
+                auto base = AndroidViewClass(cls);
+                return [base, setup](void* env, void* context) -> void* {
+                    void* view = base(env, context);
+                    if (view && setup) setup(env, view);
+                    return view;
+                };
+            };
+            m3::Text("WebView, SeekBar and ScrollView");
+            AndroidView(make("android.webkit.WebView", [](void* e, void* v) {
+#if defined(__ANDROID__)
+                auto* env = static_cast<JNIEnv*>(e);
+                auto view = static_cast<jobject>(v);
+                jclass c = env->GetObjectClass(view);
+                // loadDataWithBaseURL: loadData would take the colour's '#' for a fragment.
+                jmethodID load = env->GetMethodID(c, "loadDataWithBaseURL",
+                                                  "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V");
+                jstring html = env->NewStringUTF("<html><body style='font-family:sans-serif;background:#EADDFF'>"
+                                                 "<h2>Hello from WebView</h2><p>A web page drawn inside kiln.</p></body></html>");
+                jstring type = env->NewStringUTF("text/html");
+                jstring enc = env->NewStringUTF("utf-8");
+                env->CallVoidMethod(view, load, nullptr, html, type, enc, nullptr);
+                for (jobject r : { static_cast<jobject>(c), static_cast<jobject>(html), static_cast<jobject>(type), static_cast<jobject>(enc) }) env->DeleteLocalRef(r);
+#else
+                (void)e; (void)v;
+#endif
+            }), Height(FillMax(Modifier{}, Axis::Horizontal), 140_dp));
+            AndroidView(AndroidViewClass("android.widget.SeekBar"), FillMax(Modifier{}, Axis::Horizontal));
+            AndroidView(make("android.widget.ScrollView", [](void* e, void* v) {
+#if defined(__ANDROID__)
+                auto* env = static_cast<JNIEnv*>(e);
+                auto view = static_cast<jobject>(v);
+                jclass scrollClass = env->GetObjectClass(view);
+                jmethodID getContext = env->GetMethodID(scrollClass, "getContext", "()Landroid/content/Context;");
+                jobject context = env->CallObjectMethod(view, getContext);
+                // A column of lines, one TextView each.
+                jclass columnClass = env->FindClass("android/widget/LinearLayout");
+                jobject column = env->NewObject(columnClass, env->GetMethodID(columnClass, "<init>", "(Landroid/content/Context;)V"), context);
+                env->CallVoidMethod(column, env->GetMethodID(columnClass, "setOrientation", "(I)V"), jint(1));
+                jclass textClass = env->FindClass("android/widget/TextView");
+                jmethodID textInit = env->GetMethodID(textClass, "<init>", "(Landroid/content/Context;)V");
+                jmethodID setText = env->GetMethodID(textClass, "setText", "(Ljava/lang/CharSequence;)V");
+                jmethodID addView = env->GetMethodID(columnClass, "addView", "(Landroid/view/View;)V");
+                for (int i = 1; i <= 40; ++i) {
+                    jobject text = env->NewObject(textClass, textInit, context);
+                    jstring js = env->NewStringUTF(("Native line " + std::to_string(i)).c_str());
+                    env->CallVoidMethod(text, setText, js);
+                    env->CallVoidMethod(column, addView, text);
+                    env->DeleteLocalRef(js);
+                    env->DeleteLocalRef(text);
+                }
+                env->CallVoidMethod(view, env->GetMethodID(scrollClass, "addView", "(Landroid/view/View;)V"), column);
+                env->CallVoidMethod(view, env->GetMethodID(scrollClass, "setNestedScrollingEnabled", "(Z)V"), jboolean(true));
+                for (jobject r : { static_cast<jobject>(scrollClass), context, static_cast<jobject>(textClass), static_cast<jobject>(columnClass), column })
+                    env->DeleteLocalRef(r);
+#else
+                (void)e; (void)v;
+#endif
+            }), Height(FillMax(Modifier{}, Axis::Horizontal), 120_dp));
+        }
+
         void IconButtons() {
             auto& checked = RememberState(false);
             auto* on = &checked;
@@ -1359,7 +1472,8 @@ namespace kiln::gallery {
                 { "chips", "Chips", Chips }, { "cards", "Cards", Cards }, { "selection", "", SelectionControls },
                 { "fabmenus", "FAB menus", FabMenus }, { "fabs", "Floating action buttons", FloatingActionButtons },
                 { "toggles", "Toggle buttons", ToggleButtons }, { "buttons", "Material buttons", Buttons },
-                { "iconbuttons", "Icon buttons", IconButtons },
+                { "iconbuttons", "Icon buttons", IconButtons }, { "shared", "Shared elements", SharedElements },
+                { "views", "Android Views", NativeViews },
             };
             return sections;
         }

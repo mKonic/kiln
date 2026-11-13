@@ -644,3 +644,42 @@ TEST(SharedElementFollowsAContainerMovedByHand) {
 }
 
 
+
+// The gallery's cards: sharedBounds on content in an AnimatedContent, opened and closed.
+TEST(SharedBoundsCardsOpenAndClose) {
+    LayoutHarness h;
+    rt::State<int> open(0);
+    bool active = false, sawActive = false;
+    h.Run([&] {
+        SharedTransitionLayout(Modifier{}, [&](SharedTransitionScope& shared) {
+            active = shared.IsTransitionActive();
+            sawActive = sawActive || active;
+            AnimatedContent(rt::Key(std::int64_t(open.Get())), FillMax(Modifier{}, Axis::Both), [&shared](rt::Key k) {
+                auto* scope = rt::Composition::Current()->Read(LocalAnimatedVisibilityScope);
+                int shown = 0;
+                for (int n = 1; n <= 3; ++n) if (k == rt::Key(std::int64_t(n))) shown = n;
+                auto card = [&shared, scope](int n, Modifier m) {
+                    auto& bounds = shared.RememberSharedContentState(rt::Key("card-" + std::to_string(n)));
+                    return shared.SharedBounds(std::move(m), bounds, *scope);
+                };
+                if (shown == 0) {
+                    Row(Modifier{}, Arrangement::SpacedBy(Dp(12)), AlignmentV::Top(), [card] {
+                        for (int n = 1; n <= 3; ++n) Box(card(n, SizeMod(Modifier{}, Dp(96), Dp(96))), Alignment::TopStart(), false, {}, rt::Key(n));
+                    });
+                } else {
+                    Box(card(shown, FillMax(Modifier{}, Axis::Both)));
+                }
+            });
+        });
+    });
+    h.Layout();
+    open.Set(2);
+    h.Pump();
+    h.Step(30);
+    CHECK(sawActive);
+    CHECK(!active);
+    open.Set(0);
+    h.Pump();
+    h.Step(30);
+    CHECK(!active);
+}
