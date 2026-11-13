@@ -1,2 +1,6 @@
 title: kiln
 description: A Compose-style UI toolkit for native Android apps in C++, C and Rust.
+# Code blocks are highlighted in the page (_includes/head-custom.html), not by Rouge.
+kramdown:
+  syntax_highlighter_opts:
+    disable: true
