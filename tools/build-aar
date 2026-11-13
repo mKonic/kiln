@@ -49,7 +49,7 @@ cat > "$STAGING/prefab/prefab.json" <<JSON
 JSON
 # Platform libraries libkiln.a needs, and libc++ (static) so a C app links without a C++ driver.
 cat > "$STAGING/prefab/modules/kiln/module.json" <<JSON
-{ "export_libraries": ["-landroid", "-ljnigraphics", "-llog", "-lvulkan", "-lc++_static", "-lc++abi", "-lm"], "library_name": "libkiln" }
+{ "export_libraries": ["-landroid", "-ljnigraphics", "-lnativewindow", "-lmediandk", "-llog", "-lvulkan", "-lc++_static", "-lc++abi", "-lm"], "library_name": "libkiln" }
 JSON
 
 # Java host.
