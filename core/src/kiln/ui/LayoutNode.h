@@ -191,8 +191,14 @@ namespace kiln::ui {
         static void TraverseDescendantsImpl(const ModifierNode& from, const void* key, const std::type_info* type, bool childrenOnly,
                                             const kiln::Function<TraverseDescendantsAction(ModifierNode&, TraversableNode&)>& block);
 
-        // Draws this node and its subtree with scope translated to the node's top-left.
+        // Draws this node and its subtree with scope translated to the node's top-left. The
+        // node's own drawing is recorded once and replayed until it is invalidated (a draw read
+        // changed, InvalidateDraw, its size or modifiers changed); its children are drawn live
+        // from the recording, so a child that moves or changes re-records only itself (a
+        // RenderNode per node, with children drawn at their current positions).
         void Draw(ContentDrawScope& scope);
+        // Whether the next Draw records again (tests).
+        bool DrawDirty() const { return m_DrawDirty; }
         // What `after` (one of this node's draw modifiers) draws as its content, into `scope` in
         // that modifier's space: the rest of the chain and the children (a one-off redraw, such
         // as a drag shadow; reads are not observed). False if `after` is not here.
@@ -321,6 +327,13 @@ namespace kiln::ui {
         std::unique_ptr<LookaheadState> m_Lookahead;
         bool m_ReadsCoordinates = false;   // a placement here read PlacementScope::Coordinates
 
+        // The retained recording of this node's drawing (children as one live command).
+        DisplayList m_DrawList;
+        bool m_DrawDirty = true;
+        std::uint64_t m_DrawGeneration = 0;   // the owner's when recorded
+        void MarkDrawDirty() { m_DrawDirty = true; }
+        void DrawChildren(ContentDrawScope& scope);
+
         Watcher m_MeasureWatch{ *this, 0 }, m_LayoutWatch{ *this, 1 }, m_DrawWatch{ *this, 2 };
         Watcher m_LookaheadMeasureWatch{ *this, 3 }, m_LookaheadLayoutWatch{ *this, 4 };
     };
@@ -366,6 +379,12 @@ namespace kiln::ui {
         // The window's (or a popup's) window focus: the content's window loses it to a focusable
         // popup above it; a popup has it while it is the top focusable one.
         bool IsContentWindowFocused() const { return IsWindowFocused() && !TopFocusablePopup(); }
+        // Every node records its drawing again (density, direction, fonts changed).
+        void InvalidateAllDraws() { ++m_DrawGeneration; OnDrawRequested(); }
+        std::uint64_t DrawGeneration() const { return m_DrawGeneration; }
+        // Retained drawing on (the default) or off (every frame re-runs every draw; A/B checks).
+        static void SetDrawRetention(bool on);
+        static bool DrawRetention();
         void SetDensity(Density d) { m_Density = d; m_ObservedDensity.Set(d); RequestFullRemeasure(); }
         Density GetDensity() const { return m_Density; }
         // The density as observable state: LocalDensity provides it to compositions.
@@ -900,6 +919,7 @@ namespace kiln::ui {
         LayoutDirection m_Direction = LayoutDirection::Ltr;
         TextBackend* m_Text = nullptr;
         kiln::Function<void()> m_RequestFrame;
+        std::uint64_t m_DrawGeneration = 1;
         std::set<LayoutNode*, ByDepth> m_MeasureDirty, m_LayoutDirty;
         std::set<LayoutNode*> m_CoordinateReaders;   // nodes whose placement read their coordinates
         IntSize m_Window;

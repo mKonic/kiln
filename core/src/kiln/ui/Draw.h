@@ -270,6 +270,18 @@ namespace kiln::ui {
         void Record(kiln::Function<void(DrawScope&)> op);
         // Replays a recording under the current transform, clip and alpha.
         void Replay(const DisplayList& list);
+        // A command that draws live content (a node's children): recorded like Record, and also
+        // handed to the collector a discarded recording set, which records that content again
+        // without drawing it (an invisible layer keeps the layers inside it current).
+        void RecordLive(kiln::Function<void(DrawScope&)> op) {
+            if (m_LiveCollector) m_LiveCollector->push_back(op);
+            Record(std::move(op));
+        }
+        // Collects RecordLive commands until set back (returns the previous collector).
+        DisplayList* CollectLive(DisplayList* collector) { std::swap(m_LiveCollector, collector); return collector; }
+        // A record-only scope: layout nodes record their drawing but draw nothing.
+        void SetRecordOnly(bool on) { m_RecordOnly = on; }
+        bool RecordOnly() const { return m_RecordOnly; }
 
     private:
         struct State {
@@ -315,6 +327,8 @@ namespace kiln::ui {
         void MaskLayer(const Layer& l);
         Size m_Size;
         DisplayList* m_Recording = nullptr;
+        DisplayList* m_LiveCollector = nullptr;
+        bool m_RecordOnly = false;
         struct Recording { DisplayList* list; State state; std::vector<State> stack; };
         std::vector<Recording> m_Recordings;
     };

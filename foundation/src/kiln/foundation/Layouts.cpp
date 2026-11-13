@@ -716,10 +716,19 @@ namespace kiln::foundation {
                     // Invisible, but its content still draws into a discarded recording, so layers
                     // recorded inside it (shared elements drawn in an overlay) stay current, as a
                     // RenderNode records content it does not show.
-                    ui::DisplayList discarded;
+                    ui::DisplayList discarded, live;
                     s.BeginRecording(discarded);
+                    ui::DisplayList* outer = s.CollectLive(&live);
                     s.DrawContent();
+                    s.CollectLive(outer);
                     s.EndRecording();
+                    if (!live.empty())
+                        s.Record([live = std::make_shared<const ui::DisplayList>(std::move(live))](ui::DrawScope& d) {
+                            // The children it draws live record their content, drawing nothing.
+                            ui::ContentDrawScope recordOnly(d, d.Direction(), ui::DrawTarget{});
+                            recordOnly.SetRecordOnly(true);
+                            for (const auto& op : *live) op(recordOnly);
+                        });
                     s.Restore();
                     return;
                 }

@@ -233,7 +233,7 @@ TEST(DrawWithCacheRebuildsOnlyWhenItsInputsChange) {
     draw();
     draw();
     CHECK_EQ(builds, 1);
-    CHECK_EQ(draws, 2);
+    CHECK_EQ(draws, 1);   // the second frame replays the node's recording
     CHECK_EQ(seenWidth, 40.0f);
     tint.Set(2);
     h.Pump();

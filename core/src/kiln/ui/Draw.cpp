@@ -74,6 +74,13 @@ namespace kiln::ui {
     }
 
     void DrawScope::Replay(const DisplayList& list) {
+        if (m_Recording) {
+            // Replayed when the enclosing recording replays, not inlined now: commands that draw
+            // live content (a node's children) then run against the real target.
+            auto copy = std::make_shared<const DisplayList>(list);
+            m_Recording->push_back([copy](DrawScope& d) { d.Replay(*copy); });
+            return;
+        }
         Save();
         for (const auto& op : list) op(*this);
         Restore();

@@ -14,7 +14,9 @@ namespace kiln::foundation {
             void OnParamsChanged() { InvalidateDraw(); }
             ui::DrawModifier* AsDraw() override { return this; }
             void Draw(ui::ContentDrawScope& scope) override {
-                if (Owner() && Owner()->GetOwner()) Owner()->GetOwner()->VoteFrameRate(params.value);
+                // A recorded command: the vote is cast on every frame the recording replays.
+                if (Owner() && Owner()->GetOwner())
+                    scope.Record([owner = Owner()->GetOwner(), v = params.value](ui::DrawScope&) { owner->VoteFrameRate(v); });
                 scope.DrawContent();
             }
         };

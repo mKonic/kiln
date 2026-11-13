@@ -1183,6 +1183,9 @@ namespace {
         {
             char v[PROP_VALUE_MAX] = {};
             g_FrameStats.enabled = __system_property_get("debug.kiln.frametimes", v) > 0 && v[0] == '1';
+            // `setprop debug.kiln.noretain 1`: every frame re-runs every draw (A/B against retention).
+            char r[PROP_VALUE_MAX] = {};
+            kiln::ui::Owner::SetDrawRetention(!(__system_property_get("debug.kiln.noretain", r) > 0 && r[0] == '1'));
         }
         kiln_main(&g_Host->handle);
     }

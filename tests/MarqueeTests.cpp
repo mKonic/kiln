@@ -60,7 +60,7 @@ TEST(MarqueeScrollsOverflowingContent) {
             Box(BasicMarquee(Width(OnSizeChanged(OnGloballyPositioned(Modifier{}, [&](const LayoutCoordinates& c) { containerX = c.PositionInRoot().x; }),
                                                  [&](IntSize s) { size = s; }), Dp(100)), o),
                 Alignment::TopStart(), false, [&] {
-                    Box(DrawBehind(SizeMod(Modifier{}, Dp(300), Dp(20)), [&](DrawScope& s) { drawnAt.push_back(s.CurrentTransform().e); }),
+                    Box(DrawBehind(SizeMod(Modifier{}, Dp(300), Dp(20)), [&](DrawScope& s) { s.Record([&](DrawScope& d) { drawnAt.push_back(d.CurrentTransform().e); }); }),
                         Alignment::TopStart(), false, [] {});
                 });
         });
@@ -82,7 +82,7 @@ TEST(MarqueeStaysStillWhenContentFits) {
     h.Run([&] {
         Box(Modifier{}, Alignment::TopStart(), false, [&] {
             Box(BasicMarquee(Width(Modifier{}, Dp(100))), Alignment::TopStart(), false, [&] {
-                Box(DrawBehind(SizeMod(Modifier{}, Dp(50), Dp(20)), [&](DrawScope& s) { drawnAt.push_back(s.CurrentTransform().e); }),
+                Box(DrawBehind(SizeMod(Modifier{}, Dp(50), Dp(20)), [&](DrawScope& s) { s.Record([&](DrawScope& d) { drawnAt.push_back(d.CurrentTransform().e); }); }),
                     Alignment::TopStart(), false, [] {});
             });
         });

@@ -295,6 +295,7 @@ namespace kiln::ui {
                 children = ChildMeasurables();
                 result = node.m_Policy ? node.m_Policy->Measure(scope, children, c) : MeasureResult{ c.minWidth, c.minHeight, {} };
             }
+            if (result.width != Width() || result.height != Height()) node.InvalidateDraw();   // draws read the size
             SetMeasured({ result.width, result.height }, c);
             return *this;
         }
@@ -363,7 +364,7 @@ namespace kiln::ui {
                 node.m_PlaceOrder = parent ? parent->m_NextPlaceOrder++ : 0;
                 node.m_Placed = true;
                 node.m_PlacedThisPass = true;
-                if (moved) node.InvalidateDraw();
+                if (moved && node.m_Owner) node.m_Owner->OnDrawRequested();
                 if (Owner* o = node.GetOwner(); o && (moved || node.Size() != node.m_ReportedSize)) {
                     node.m_ReportedSize = node.Size();
                     o->NotifyLayoutChange(node);
@@ -376,6 +377,7 @@ namespace kiln::ui {
                 if (position != p) {
                     if (Owner* o = node.GetOwner()) o->NotifyLayoutChange(node);
                     if (placed) node.OnMoved();
+                    node.InvalidateDraw();   // the recording translates by the inner positions
                 }
                 position = p;
                 // A layout modifier's zIndex adds to the node's (Modifier.zIndex).
@@ -1135,6 +1137,7 @@ namespace kiln::ui {
     }
 
     void LayoutNode::InvalidateDraw() {
+        m_DrawDirty = true;
         if (m_Owner) m_Owner->OnDrawRequested();
     }
 
@@ -1656,13 +1659,34 @@ namespace kiln::ui {
         else m_Parent->RequestRelayout();
     }
 
+    namespace { bool g_DrawRetention = true; }
+    void Owner::SetDrawRetention(bool on) { g_DrawRetention = on; }
+    bool Owner::DrawRetention() { return g_DrawRetention; }
+
     void LayoutNode::Draw(ContentDrawScope& scope) {
         if (!m_Placed && m_Parent) return;
         const LayoutDirection outer = scope.Direction();
         const Density outerDensity = scope;
         scope.SetDirection(GetLayoutDirection());
         static_cast<Density&>(scope) = NodeDensity();
-        DrawCoordinator(0, scope);
+        const std::uint64_t generation = m_Owner ? m_Owner->DrawGeneration() : 0;
+        if (!g_DrawRetention || scope.IsRecording()) {
+            // Drawn straight through (retention off), or into an enclosing recording, which
+            // keeps its own copy (a layer's record { drawContent() }).
+            DrawCoordinator(0, scope);
+        } else {
+            if (m_DrawDirty || m_DrawGeneration != generation) {
+                DisplayList list;
+                scope.BeginRecording(list);
+                DrawCoordinator(0, scope);
+                scope.EndRecording();
+                m_DrawList = std::move(list);
+                m_DrawDirty = false;
+                m_DrawGeneration = generation;
+            }
+            if (scope.RecordOnly()) DrawChildren(scope);   // up to date, nothing drawn
+            else scope.Replay(m_DrawList);
+        }
         scope.SetDirection(outer);
         static_cast<Density&>(scope) = outerDensity;
     }
@@ -1708,6 +1732,12 @@ namespace kiln::ui {
             scope.Translate({ -float(p.x), -float(p.y) });
             return;
         }
+        // The children as one command, run when the recording replays: each draws (and records)
+        // itself at its position then.
+        scope.RecordLive([this](DrawScope& d) { DrawChildren(static_cast<ContentDrawScope&>(d)); });
+    }
+
+    void LayoutNode::DrawChildren(ContentDrawScope& scope) {
         // Children in zIndex order, ties by placement order (spec 03 §layout).
         std::vector<LayoutNode*> order;
         for (LayoutNode* ch : m_Children) if (ch->m_Placed) order.push_back(ch);
@@ -1997,6 +2027,7 @@ namespace kiln::ui {
     }
 
     void Owner::RequestFullRemeasure() {
+        InvalidateAllDraws();
         std::vector<LayoutNode*> stack{ m_Root.get() };
         while (!stack.empty()) {
             LayoutNode* n = stack.back();
