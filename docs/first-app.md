@@ -5,10 +5,27 @@ that grows each time you press it.
 
 ## Create the app
 
-A kiln app is a shared library that exports one function, `kiln_main`. kiln calls it
-when the app starts, and the app hands kiln its content.
+From the kiln folder:
 
-Create `apps/counter/main.cpp`:
+```sh
+tools/kiln new counter --label "Counter"
+```
+
+This makes `apps/counter`, the app's own folder:
+
+| File | Holds |
+|---|---|
+| `CMakeLists.txt` | The app's name, package, label, icon, version and permissions |
+| `src/main.cpp` | The code |
+| `assets/` | Images, fonts and other files the app reads |
+| `res/icon.png` | The launcher icon |
+
+kiln builds every app in `apps/` with itself. The `apps` folder is not part of kiln's
+repository, so an app can be a repository of its own.
+
+A kiln app is a shared library that exports one function, `kiln_main`. kiln calls it
+when the app starts, and the app hands kiln its content. `src/main.cpp` starts as this
+counter app:
 
 ```cpp
 #include <kiln/kiln.hpp>
@@ -70,24 +87,28 @@ What the code does:
   the screen, then pads.
 * `LazyColumn` composes only the rows that are on screen.
 
-## Register the app
+## Configure the app
 
-Add the app to `CMakeLists.txt`, next to the samples inside `if(ANDROID)`:
-
-```cmake
-kiln_add_android_app(counter SOURCES apps/counter/main.cpp LIBS kiln_material3
-                     PACKAGE com.example.counter LABEL "Counter")
-```
-
-`PACKAGE` is the Android application ID and `LABEL` is the name under the launcher icon.
-`ASSETS dir` adds a folder of assets, such as images and fonts.
-
-To run it on the desktop as well, add it to the `else()` branch:
+`apps/counter/CMakeLists.txt` describes the app:
 
 ```cmake
-add_executable(counter apps/counter/main.cpp)
-target_link_libraries(counter PRIVATE kiln_hostdev kiln_material3)
+kiln_add_app(counter
+    SOURCES src/main.cpp
+    LIBS kiln_material3 kiln_navigation
+    PACKAGE com.example.counter
+    LABEL "Counter"
+    ASSETS assets
+    ICON res/icon.png
+    VERSION_CODE 1
+    VERSION_NAME 1.0
+)
 ```
+
+* `PACKAGE` is the Android application ID, `LABEL` the name under the launcher icon.
+* `PERMISSIONS android.permission.CAMERA ...` declares permissions.
+* `APPLICATION_XML file` and `MANIFEST_XML file` add elements to the manifest's
+  `<application>` and `<manifest>`, for services, receivers or queries.
+* Add source files to `SOURCES` as the app grows.
 
 ## Run it
 
@@ -97,11 +118,14 @@ tools/kiln run counter
 
 Change the code and run the command again: it rebuilds what changed and reinstalls the app.
 
-To build an APK without installing it:
+To build an APK for publishing, signed with your key:
 
 ```sh
-tools/kiln apk counter --out counter.apk
+KILN_KEYSTORE_PASSWORD=... tools/kiln apk counter --release --keystore my.jks --key-alias upload --out counter.apk
 ```
+
+`--abi arm64-v8a` builds one CPU architecture instead of both. The same app also runs in a
+desktop window: build the host tree and run `build/host/app-counter/counter`.
 
 ## Next
 

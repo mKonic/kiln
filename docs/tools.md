@@ -6,10 +6,11 @@ The tools are in the [tools](https://github.com/mKonic/kiln/tree/master/tools) f
 
 ## tools/kiln
 
-Builds, packs, installs and starts the apps declared with `kiln_add_android_app`.
+Creates apps, and builds, packs, installs and starts them.
 
 | Command | Does |
 |---|---|
+| `tools/kiln new <name>` | Creates an app in `apps/<name>` (`--package id`, `--label text`) |
 | `tools/kiln list` | Lists the apps |
 | `tools/kiln build <app>` | Builds the app's library for each ABI |
 | `tools/kiln apk <app>` | Builds and packs `build/apk/<app>.apk` |
@@ -19,6 +20,8 @@ Builds, packs, installs and starts the apps declared with `kiln_add_android_app`
 |---|---|
 | `--abi arm64-v8a,x86_64` | The ABIs to build. `run` defaults to the device's, the others to both |
 | `--debug` | A debuggable APK that answers [Volition](android.md#debug-builds-and-volition) |
+| `--release` | An APK for publishing (the default) |
+| `--keystore file --key-alias name` | Signs with your key; passwords from `KILN_KEYSTORE_PASSWORD` and `KILN_KEY_PASSWORD` |
 | `--out file` | Where `apk` writes the APK |
 
 `KILN_CONFIG` chooses the CMake build type, `RelWithDebInfo` by default.

@@ -14,14 +14,13 @@ the same process, and keeps saved state across process death.
 
 ## Build with tools/kiln
 
-`tools/kiln` builds, packs and installs the apps declared with `kiln_add_android_app`
-(see [Write your first app](first-app.md)). It writes the manifest itself, so it suits
-apps that need no permissions or other manifest entries.
+`tools/kiln` builds, packs and installs the apps in `apps/` (see
+[Write your first app](first-app.md)). It writes the manifest from the app's
+`CMakeLists.txt`: permissions, icon, version, and any extra manifest elements.
 
 ## Build with Gradle
 
-For an existing Gradle project, or an app that needs its own manifest entries, use kiln as
-an Android library (AAR).
+For an existing Gradle project, use kiln as an Android library (AAR).
 
 ### 1. Build the AAR
 
@@ -142,8 +141,8 @@ auto openDocument = RememberLauncherForActivityResult<std::vector<std::string>, 
 Button([openDocument] { openDocument.Launch({ "*/*" }); }, {}, {}, [] { Text("Open a document"); });
 ```
 
-A permission must also be declared in the app's manifest, so apps that request
-permissions build with Gradle.
+A permission must also be declared in the manifest: `PERMISSIONS` in the app's
+`CMakeLists.txt`, or the Gradle project's manifest.
 
 ## Video, camera and other surfaces
 
