@@ -1,5 +1,6 @@
 // M2 sample: the declarative C++ layer. Rows, columns, weights, arrangements, padding,
 // backgrounds and wrapped text, plus a counter driven by a coroutine to show recomposition.
+#include "kiln/foundation/Transformable.h"
 #include <kiln/kiln.hpp>
 #include "MaterialComponents.h"
 
@@ -215,6 +216,32 @@ namespace {
     kiln::rt::Task<> FillBlue(kiln::foundation::SurfaceCoroutineScope& s, kiln::foundation::Surface f, int w, int h) { return FillSurface(s, f, w, h, 0xFFC06020u); }
     kiln::rt::Task<> FillGreen(kiln::foundation::SurfaceCoroutineScope& s, kiln::foundation::Surface f, int w, int h) { return FillSurface(s, f, w, h, 0xFF20A020u); }
 
+    // Pinch, rotate and pan a tile (Compose's TransformableSample), for testing touchscreen and
+    // trackpad gestures on a device (debug.kiln.gallery.section=transform).
+    void TransformDemo() {
+        using namespace kiln::foundation;
+        auto& scale = RememberState(1.0f);
+        auto& rotation = RememberState(0.0f);
+        auto& offset = RememberState(Offset{});
+        auto& state = RememberTransformableState([&](Offset, float zoom, Offset pan, float rotate) {
+            scale.Set(scale.Peek() * zoom);
+            rotation.Set(rotation.Peek() + rotate);
+            offset.Set(offset.Peek() + pan);
+        });
+        Column(SafeDrawingPadding(Background(FillMax(Modifier{}, Axis::Both), kSurface)), Arrangement::SpacedBy(16_dp), AlignmentH::Start(), [&] {
+            char label[96];
+            std::snprintf(label, sizeof label, "scale %.2f  rotation %.0f  offset %.0f, %.0f", scale.Get(), rotation.Get(), offset.Get().x, offset.Get().y);
+            BasicText(label, Padding(Modifier{}, 16_dp, 16_dp), { 16, kOnSurface });
+            GraphicsLayerParams layer;
+            layer.scaleX = layer.scaleY = scale.Get();
+            layer.rotationZ = rotation.Get();
+            layer.translationX = offset.Get().x;
+            layer.translationY = offset.Get().y;
+            Box(Background(Transformable(GraphicsLayer(FillMax(Modifier{}, Axis::Both), layer), state), kPrimaryContainer),
+                Alignment::Center(), false, [] { BasicText("Pinch, rotate, pan", {}, { 20, kOnSurface }); });
+        });
+    }
+
     void ExternalSurfaceDemo() {
         using namespace kiln::foundation;
         Column(SafeDrawingPadding(Background(FillMax(Modifier{}, Axis::Both), kSurface)), Arrangement::SpacedBy(16_dp), AlignmentH::Start(), [] {
@@ -300,6 +327,10 @@ namespace {
         }
         if (section == "external-surface") {
             ExternalSurfaceDemo();
+            return;
+        }
+        if (section == "transform") {
+            TransformDemo();
             return;
         }
         // "effects": the gallery page without the Material section (layers, shadows, blur and
