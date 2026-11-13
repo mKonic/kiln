@@ -27,12 +27,17 @@ FreeType, libpng, libjpeg and the Vulkan loader.
 
 ## Get the source
 
-kiln uses Git submodules:
+kiln has no prebuilt packages: an app lives in kiln's folder and is built together with
+kiln from source. Clone a release (kiln uses Git submodules):
 
 ```sh
-git clone --recurse-submodules https://github.com/mKonic/kiln.git
+git clone --recurse-submodules --branch v0.1.0 https://github.com/mKonic/kiln.git
 cd kiln
 ```
+
+Leave out `--branch` for the newest development state. To move to a later release, run
+`tools/kiln update`: it checks out the newest release and its submodules, and the next build
+rebuilds kiln with your apps. `tools/kiln version` prints the version the folder is at.
 
 ## Point kiln at the SDK and NDK
 

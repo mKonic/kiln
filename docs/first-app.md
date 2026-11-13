@@ -109,6 +109,9 @@ kiln_add_app(counter
 * `APPLICATION_XML file` and `MANIFEST_XML file` add elements to the manifest's
   `<application>` and `<manifest>`, for services, receivers or queries.
 * Add source files to `SOURCES` as the app grows.
+* `LIBS` takes any CMake target. The file is ordinary CMake, so a library the app needs can
+  be added above `kiln_add_app` with `add_subdirectory` or `FetchContent`, and is then built
+  for each ABI with the app.
 
 ## Run it
 

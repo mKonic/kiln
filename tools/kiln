@@ -8,6 +8,9 @@
 #   kiln build <app> [opts]         configure and build the app's library for each ABI
 #   kiln apk <app> [opts]           ... and pack it: build/apk/<app>.apk (or --out)
 #   kiln run <app> [opts]           ... install it and start it
+#   kiln version                    the kiln version this tree is at
+#   kiln update [version]           move the tree to a release (the newest, or the one named):
+#                                   kiln is built from source with each app, so this is the update
 #
 #   --abi a[,b]   ABIs (default: the device's for run, otherwise arm64-v8a,x86_64)
 #   --debug       a debuggable APK that answers Volition (content://<package>.volition)
@@ -22,7 +25,7 @@ set -euo pipefail
 for a in "$@"; do [ "$a" = --lto ] && export KILN_LTO=1; done
 source "$(dirname "${BASH_SOURCE[0]}")/android-env.sh"
 
-usage() { sed -n '2,21p' "$0" >&2; exit 2; }
+usage() { sed -n '2,24p' "$0" >&2; exit 2; }
 [ $# -ge 1 ] || usage
 CMD="$1"; shift
 APP=""; ABIS=""; DEBUG=(); OUT=""; NEW_PACKAGE=""; NEW_LABEL=""; SIGN=()
@@ -58,6 +61,26 @@ if [ "$CMD" = new ]; then
     label="${NEW_LABEL:-$APP}"
     python3 "$KILN_ROOT/tools/kiln-new.py" "$dir" "$APP" "$package" "$label"
     echo "kiln: created apps/$APP ($package). Run it: tools/kiln run $APP"
+    exit 0
+fi
+
+if [ "$CMD" = version ]; then
+    exec "$KILN_ROOT/scripts/version.sh" name
+fi
+
+if [ "$CMD" = update ]; then
+    cd "$KILN_ROOT"
+    git fetch --quiet --tags origin
+    target="${APP:-$(git tag --list 'v[0-9]*' --sort=-v:refname | head -1)}"
+    [ -n "$target" ] || { echo "kiln: no releases yet" >&2; exit 1; }
+    git rev-parse --verify --quiet "refs/tags/$target" >/dev/null || { echo "kiln: no release '$target' (git tag --list 'v*' shows them)" >&2; exit 1; }
+    # Apps in apps/ are not kiln's files; only changes to kiln itself are in the way.
+    [ -z "$(git status --porcelain --untracked-files=no)" ] || {
+        echo "kiln: this tree has changes to kiln's own files; commit or stash them first" >&2; exit 1; }
+    from="$(git describe --tags --always)"
+    git checkout --quiet "$target"
+    git submodule update --quiet --init --recursive
+    echo "kiln: $from -> $target. The next build rebuilds kiln with your apps."
     exit 0
 fi
 
