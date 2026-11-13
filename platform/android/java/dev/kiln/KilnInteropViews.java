@@ -65,7 +65,8 @@ final class KilnInteropViews {
         final int id;
         final View view;
         int x, y;
-        int a11yParent = View.NO_ID;   // the kiln node it is a child of in the accessibility tree
+        // Its own kiln node, and the node it is a child of in the accessibility tree.
+        int a11yNode = View.NO_ID, a11yParent = View.NO_ID;
         private boolean ready;
         private Surface surface;
         private HardwareRenderer renderer;
@@ -80,6 +81,8 @@ final class KilnInteropViews {
             if (view.getParent() instanceof ViewGroup) ((ViewGroup) view.getParent()).removeView(view);
             ViewGroup.LayoutParams lp = view.getLayoutParams();
             addView(view, lp != null ? lp : new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
+            // A View that is not important for accessibility has no AccessibilityNodeInfo.
+            setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_YES);
             ready = true;
         }
 
@@ -140,7 +143,7 @@ final class KilnInteropViews {
 
         @Override public void onInitializeAccessibilityNodeInfo(AccessibilityNodeInfo info) {
             super.onInitializeAccessibilityNodeInfo(info);
-            if (a11yParent != View.NO_ID) info.setParent(owner, a11yParent);
+            if (a11yNode != View.NO_ID) owner.accessibility.initializeHolderInfo(info, a11yNode, a11yParent);
         }
 
         void scheduleDraw() {
@@ -289,12 +292,20 @@ final class KilnInteropViews {
         return handled;
     }
 
-    /** The View is the accessibility child of kiln's node `virtualId`. */
-    View accessibilityChild(int id, int virtualId) {
+    /** The holder of kiln's node `semanticsId`, the accessibility child of node `parentId`. */
+    View accessibilityChild(int id, int semanticsId, int parentId) {
         Holder h = holders.get(id);
         if (h == null) return null;
-        h.a11yParent = virtualId;
+        h.a11yNode = semanticsId;
+        h.a11yParent = parentId;
         return h;
+    }
+
+    /** semanticsIdToView: the holder at kiln's node `semanticsId`, or null. */
+    View holderOfNode(int windowId, int semanticsId) {
+        if (holders.size() == 0) return null;
+        int id = KilnNative.a11yInteropView(windowId, semanticsId);
+        return id > 0 ? holders.get(id) : null;
     }
 
     void destroyAll() {

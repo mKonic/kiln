@@ -236,6 +236,39 @@ final class KilnAccessibility extends AccessibilityNodeProvider {
         return out;
     }
 
+    /** The holder of the AndroidView at kiln's node `semanticsId` (null when it is not one), told its parent node. */
+    private View interopHolder(int semanticsId, int parentId) {
+        KilnInteropViews interop = view.interopIfAny();
+        if (interop == null) return null;
+        int interopId = KilnNative.a11yInteropView(view.windowId, semanticsId);
+        return interopId > 0 ? interop.accessibilityChild(interopId, semanticsId, parentId) : null;
+    }
+
+    /** The traversal order around a node: a neighbour that is an AndroidView is named by its holder. */
+    void setTraversal(AccessibilityNodeInfo info, int beforeId, int afterId) {
+        KilnInteropViews interop = view.interopIfAny();
+        if (beforeId != INVALID) {
+            View before = interop == null ? null : interop.holderOfNode(view.windowId, beforeId);
+            if (before != null) info.setTraversalBefore(before); else info.setTraversalBefore(view, beforeId);
+        }
+        if (afterId != INVALID) {
+            View after = interop == null ? null : interop.holderOfNode(view.windowId, afterId);
+            if (after != null) info.setTraversalAfter(after); else info.setTraversalAfter(view, afterId);
+        }
+    }
+
+    /** AndroidComposeView.addAndroidView's delegate: the holder's place in kiln's tree and order. */
+    void initializeHolderInfo(AccessibilityNodeInfo info, int semanticsId, int parentId) {
+        // Keeps TalkBack from focusing the holder itself (its View is what matters); UiAutomator
+        // still finds it while no service is on.
+        if (manager != null && manager.isEnabled()
+                && !manager.getEnabledAccessibilityServiceList(android.accessibilityservice.AccessibilityServiceInfo.FEEDBACK_ALL_MASK).isEmpty())
+            info.setVisibleToUser(false);
+        if (parentId == View.NO_ID || parentId == -1) info.setParent(view); else info.setParent(view, parentId);
+        int[] d = KilnNative.a11yNodeInfo(view.windowId, semanticsId);
+        if (d.length > 14 && d[0] != 0) setTraversal(info, d[13], d[14]);
+    }
+
     @Override
     public AccessibilityNodeInfo createAccessibilityNodeInfo(int virtualViewId) {
         final int id = virtualViewId == View.NO_ID ? -1 : virtualViewId;
@@ -282,8 +315,7 @@ final class KilnAccessibility extends AccessibilityNodeProvider {
             info.setLiveRegion(d[9]);
             info.setMovementGranularities(d[10]);
             if (d[11] != INVALID) info.setTextSelection(d[11], d[12]);
-            if (d[13] != INVALID) info.setTraversalBefore(view, d[13]);
-            if (d[14] != INVALID) info.setTraversalAfter(view, d[14]);
+            setTraversal(info, d[13], d[14]);
             if (d[15] != INVALID)
                 info.setCollectionInfo(AccessibilityNodeInfo.CollectionInfo.obtain(d[15], d[16], false,
                         AccessibilityNodeInfo.CollectionInfo.SELECTION_MODE_NONE));
@@ -304,15 +336,11 @@ final class KilnAccessibility extends AccessibilityNodeProvider {
         }
         int at = 26;
         int children = d[at++];
-        for (int i = 0; i < children; i++) info.addChild(view, d[at++]);
-        if (id != -1) {
-            // An AndroidView's View is a real child of this node.
-            int interopId = KilnNative.a11yInteropView(view.windowId, id);
-            KilnInteropViews interop = interopId > 0 ? view.interopIfAny() : null;
-            if (interop != null) {
-                View child = interop.accessibilityChild(interopId, id);
-                if (child != null) info.addChild(child);
-            }
+        for (int i = 0; i < children; i++) {
+            // addChildToNodeInfo: an AndroidView's holder is the child itself, in place of its node.
+            int child = d[at++];
+            View holder = interopHolder(child, id);
+            if (holder != null) info.addChild(holder); else info.addChild(view, child);
         }
         int actions = d[at++];
         for (int i = 0; i < actions; i++, at += 2) {

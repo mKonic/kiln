@@ -977,7 +977,7 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
     boolean isCurrentConnection(KilnInputConnection c) { return c == connection && inputActive; }
 
     // --- accessibility (spec 01) --------------------------------------------------------------
-    private final KilnAccessibility accessibility = new KilnAccessibility(this);
+    final KilnAccessibility accessibility = new KilnAccessibility(this);
 
     /** The display's highest refresh rate (preferredFrameRate's High category). */
     float maxRefreshRate() {
