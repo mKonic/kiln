@@ -10,6 +10,7 @@
 
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <variant>
@@ -95,6 +96,41 @@ namespace kiln::text {
         return { drawBehind ? std::make_shared<const DrawAnnotation::Block>(std::move(drawBehind)) : nullptr,
                  drawOver ? std::make_shared<const DrawAnnotation::Block>(std::move(drawOver)) : nullptr };
     }
+
+    // BackgroundAnnotation: a filled background (and an optional border) behind the annotated
+    // range, drawn in the draw phase: rounded multi-line highlights and pills that change colour
+    // or animate without laying the text out again. mergeLines: boxes on consecutive lines that
+    // overlap join into one contour (vertical spread then only moves its outer top and bottom);
+    // otherwise each line is its own rounded rectangle (a negative vertical spread leaves gaps).
+    //
+    //   b.AddDrawAnnotation(MakeDrawAnnotation(BackgroundAnnotation{ .color = yellow, .cornerRadius = ui::Dp(4) }), 7, 12);
+    //
+    // Set one of color, colorProducer (read at draw time) or brush.
+    struct BackgroundAnnotation {
+        // Per edge, positive outward and negative inward, applied to each line's box at draw time.
+        struct SpreadValues {
+            ui::Dp left{ 0 }, top{ 0 }, right{ 0 }, bottom{ 0 };
+            static SpreadValues Symmetric(ui::Dp horizontal, ui::Dp vertical) { return { horizontal, vertical, horizontal, vertical }; }
+            static SpreadValues All(ui::Dp all) { return { all, all, all, all }; }
+            bool operator==(const SpreadValues&) const = default;
+        };
+        // A stroke centred on the background's contour (0 dp: a hairline).
+        struct Border {
+            ui::Dp width{ 0 };
+            ui::Color color = ui::Color::Unspecified();
+            kiln::Function<ui::Color()> colorProducer;
+            std::optional<gfx::Brush> brush;
+        };
+        ui::Color color = ui::Color::Unspecified();
+        kiln::Function<ui::Color()> colorProducer;
+        std::optional<gfx::Brush> brush;
+        ui::Dp cornerRadius{ 0 };
+        SpreadValues spread;
+        bool mergeLines = true;
+        std::optional<Border> border;
+        float alpha = 1;
+    };
+    DrawAnnotation MakeDrawAnnotation(BackgroundAnnotation background);
 
     using Annotation = std::variant<SpanStyle, ParagraphStyle, StringAnnotation, LinkAnnotation, TtsAnnotation, Bullet, DrawAnnotation>;
 

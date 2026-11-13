@@ -407,6 +407,22 @@ namespace {
                               AppendInlineContent(b, "star");
                               b.Append(" sits in the line like a glyph.");
                           }), Padding(Modifier{}, 16_dp, 4_dp), { 16, kOnSurface }, inlineOpts);
+                // BackgroundAnnotation: a rounded highlight across a line break, and an outlined pill.
+                BasicText(BuildAnnotatedString([](AnnotatedStringBuilder& b) {
+                              b.Append("Highlights: ");
+                              BackgroundAnnotation mark;
+                              mark.color = Color(0x55E8618Cu);
+                              mark.cornerRadius = 6_dp;
+                              mark.spread = BackgroundAnnotation::SpreadValues::Symmetric(3_dp, 0_dp);
+                              b.WithDrawAnnotation(MakeDrawAnnotation(mark), [&] { b.Append("a rounded background that follows the text onto the next line"); });
+                              b.Append(" and an ");
+                              BackgroundAnnotation pill;
+                              pill.cornerRadius = 12_dp;
+                              pill.spread = BackgroundAnnotation::SpreadValues::Symmetric(6_dp, -2_dp);
+                              pill.border = BackgroundAnnotation::Border{ 1_dp, kPrimary };
+                              b.WithDrawAnnotation(MakeDrawAnnotation(pill), [&] { b.Append("outlined pill"); });
+                              b.Append(".");
+                          }), Padding(Modifier{}, 16_dp, 4_dp), body);
                 TextStyle downloaded(26, kPrimary);
                 downloaded.span.fontFamily = FontFamily::Of({ Font::Google("Lobster Two", FontWeight::Bold()) });
                 downloaded.span.fontWeight = FontWeight::Bold();

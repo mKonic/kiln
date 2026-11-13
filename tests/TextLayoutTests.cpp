@@ -861,3 +861,45 @@ TEST(FontListCarriesLoadingStrategiesInOrder) {
     try { (void)Font::Device(""); } catch (const std::invalid_argument&) { threw = true; }
     CHECK(threw);
 }
+
+// TextLayoutResult.getBoundingBoxesForRange / fillPathForRange and BackgroundAnnotation's path
+// (MultiParagraphBoundingBoxesForRangeTest, BoundingBoxesPathTest).
+TEST(BoundingBoxesAndTheirOutlineFollowTheLines) {
+    FakeText backend;
+    TextLayoutInput in;
+    // 10 px a character, wraps after "bbbb " (the fake keeps the space at the wrap visible).
+    in.text = AnnotatedString("aaaa bbbb cccc");
+    in.style = TextStyle(Sp(20));
+    in.constraints = ui::Constraints::FixedWidth(100);
+    const auto r = LayoutText(&backend, in);
+    CHECK_EQ(r.LineCount(), 2);
+    // Part of the first line, all of the second.
+    auto boxes = r.GetBoundingBoxesForRange(5, 14);
+    CHECK_EQ(boxes.size(), std::size_t(2));
+    if (boxes.size() == 2) {
+        CHECK((boxes[0] == ui::Rect{ 50, 0, 100, 25 }));
+        CHECK((boxes[1] == ui::Rect{ 0, 25, 40, 50 }));
+    }
+    CHECK(r.GetBoundingBoxesForRange(3, 3).empty());
+    // Overlapping lines merge into one outline: six corners, one contour.
+    gfx::Path p;
+    r.FillPathForRange(0, 14, p);
+    CHECK((p.Bounds() == ui::Rect{ 0, 0, 100, 50 }));
+    const auto closes = [](const gfx::Path& path) { return std::count(path.Verbs().begin(), path.Verbs().end(), gfx::Path::Verb::Close); };
+    CHECK_EQ(int(closes(p)), 1);
+    CHECK_EQ(int(std::count(p.Verbs().begin(), p.Verbs().end(), gfx::Path::Verb::Line)), 5);
+    // Rounded: each corner becomes a curve.
+    r.FillPathForRange(0, 14, p, { 4, 4 });
+    CHECK_EQ(int(std::count(p.Verbs().begin(), p.Verbs().end(), gfx::Path::Verb::Quad)), 6);
+    // Not merged, or not overlapping: a rectangle per line.
+    r.FillPathForRange(0, 14, p, {}, false);
+    CHECK_EQ(int(closes(p)), 2);
+    r.FillPathForRange(5, 14, p);
+    CHECK_EQ(int(closes(p)), 2);
+    // Spread: 5 px out at the sides, 3 px in at the top and bottom of each line.
+    r.PathFromBoundingBoxes(5, 14, p, {}, 5, -3, 5, -3, false);
+    CHECK((p.Bounds() == ui::Rect{ -5, 3, 105, 47 }));
+    // A spread that leaves no height draws nothing.
+    r.PathFromBoundingBoxes(5, 14, p, {}, 0, -13, 0, -13, false);
+    CHECK(p.IsEmpty());
+}

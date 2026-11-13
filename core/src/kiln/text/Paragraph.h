@@ -14,6 +14,7 @@
 #include <memory>
 #include <optional>
 #include <span>
+#include <unordered_map>
 #include <vector>
 
 namespace kiln::text {
@@ -157,6 +158,9 @@ namespace kiln::text {
         std::pair<int, int> RangeForRect(const ui::Rect& rect, TextGranularity granularity, const TextInclusionStrategy& inclusion) const;
         // One per placeholder given: where it is, or none (ellipsized, cut off, past maxLines).
         const std::vector<std::optional<RectF>>& PlaceholderRects() const { return m_PlaceholderRects; }
+        // boundaryBoxComputeCache: the boxes of recent ranges (TextLayoutResult::BoundingBoxes),
+        // packed left, top, right, bottom, so redraws skip the line and run queries.
+        std::unordered_map<std::uint64_t, std::vector<float>>& BoundingBoxCache() const { return m_BoxCache; }
 
     private:
         const ParagraphInfo& InfoForOffset(int offset) const;
@@ -168,6 +172,7 @@ namespace kiln::text {
         int m_LineCount = 0;
         bool m_DidExceedMaxLines = false;
         std::vector<std::optional<RectF>> m_PlaceholderRects;
+        mutable std::unordered_map<std::uint64_t, std::vector<float>> m_BoxCache;
     };
 
     struct TextLayoutInput {
@@ -221,7 +226,21 @@ namespace kiln::text {
         ResolvedTextDirection BidiRunDirection(int offset) const { return m_Paragraphs->BidiRunDirection(offset); }
         const std::vector<std::optional<RectF>>& PlaceholderRects() const { return m_Paragraphs->PlaceholderRects(); }
 
+        // getBoundingBoxesForRange: one box per line (per visual run on a line with mixed
+        // directions) around [start, end), as tall as the line; trailing whitespace at a wrap and
+        // ellipsized characters are left out. Top to bottom, left to right within a line.
+        std::vector<ui::Rect> GetBoundingBoxesForRange(int start, int end) const;
+        // fillPathForRange: `target` (reset first) becomes the outline of those boxes, with
+        // `cornerRadius` (x, y) on outer and inner corners. mergeLines: boxes on consecutive lines
+        // that overlap join into one contour; otherwise each is its own rounded rectangle.
+        void FillPathForRange(int start, int end, gfx::Path& target, ui::Offset cornerRadius = {}, bool mergeLines = true) const;
+        // calculatePathFromBoundingBoxes with a draw-phase spread per edge (BackgroundAnnotation).
+        void PathFromBoundingBoxes(int start, int end, gfx::Path& target, ui::Offset cornerRadius, float spreadLeft, float spreadTop,
+                                   float spreadRight, float spreadBottom, bool mergeLines) const;
+
     private:
+        // fillRangeBoundingBoxCoords: packed left, top, right, bottom per box.
+        void BoundingBoxCoords(int start, int end, std::vector<float>& target) const;
         TextLayoutInput m_Input;
         std::shared_ptr<MultiParagraph> m_Paragraphs;
         ui::IntSize m_Size;
