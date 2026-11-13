@@ -120,3 +120,40 @@ TEST(RetainedDrawCanBeTurnedOff) {
     Owner::SetDrawRetention(true);
     CHECK_EQ(p.draws, 2);
 }
+
+#include "kiln/ui/InsetsRulers.h"
+
+TEST(RetainedDrawFollowsAPlacementReadFromAnInsetsRuler) {
+    // A child placed at the status bar ruler (an immersive layout): the insets animating moves
+    // it frame by frame, replayed where it is now without recording again.
+    Harness h;
+    Probe child;
+    float y = -1;
+    auto& insets = h.owner.Insets();
+    insets.Set(InsetsType::StatusBars, { 0, 0, 0, 0 });
+    insets.SetHasInsets(true);
+    auto policy = std::make_shared<LambdaMeasurePolicy>([](MeasureScope& s, std::span<Measurable* const> children, const Constraints& c) {
+        std::vector<Placeable*> placed;
+        for (auto* m : children) placed.push_back(&m->Measure(c.CopyMaxDimensions()));
+        return s.Layout(c.maxWidth, c.maxHeight, [placed](PlacementScope& ps) {
+            const float top = ps.Current(WindowInsetsRulers::StatusBars().Current().top, 0);
+            for (auto* p : placed) ps.Place(*p, 0, int(top));
+        });
+    });
+    h.Run([&] {
+        Layout(Modifier{}, policy, [&] {
+            Box(DrawBehind(child.On(SizeMod(Modifier{}, Dp(10), Dp(10))), [&](DrawScope& s) {
+                s.Record([&](DrawScope& d) { y = d.CurrentTransform().f; });
+            }));
+        });
+    });
+    h.Draw();
+    CHECK_EQ(y, 0.0f);
+    for (int top : { 12, 40, 107 }) {
+        insets.Set(InsetsType::StatusBars, { 0, top, 0, 0 });
+        h.Pump();
+        h.Draw();
+        CHECK_EQ(y, float(top));
+    }
+    CHECK_EQ(child.draws, 1);
+}
