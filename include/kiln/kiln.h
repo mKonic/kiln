@@ -424,6 +424,10 @@ KILN_API kiln_modifier* kiln_mod_selectable(kiln_modifier* m, bool selected, boo
  * the content below the modified element. */
 typedef struct kiln_nested_scroll_connection kiln_nested_scroll_connection;
 KILN_API kiln_modifier* kiln_mod_nested_scroll(kiln_modifier* m, const kiln_nested_scroll_connection* connection);
+/* rememberNestedScrollInteropConnection: passes the nested scroll of the content below on to the
+ * host view's nested-scrolling parents (a CoordinatorLayout's app bar), in View pixels. Without
+ * such a parent it consumes nothing. Valid until the content callback returns. */
+KILN_API kiln_nested_scroll_connection* kiln_remember_nested_scroll_interop_connection(kiln_key key);
 KILN_API kiln_modifier* kiln_mod_vertical_scroll(kiln_modifier* m, kiln_scroll_state* state, bool enabled);
 KILN_API kiln_modifier* kiln_mod_horizontal_scroll(kiln_modifier* m, kiln_scroll_state* state, bool enabled);
 /* Semantics */

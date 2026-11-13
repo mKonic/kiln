@@ -198,6 +198,7 @@ namespace kpp {
         kiln_modifier* get() const { return m_M; }
 
         Modifier then(const Modifier& o) const { return kiln_mod_then(m_M, o.m_M); }
+        Modifier nested_scroll(const kiln_nested_scroll_connection* c) const { return kiln_mod_nested_scroll(m_M, c); }
         Modifier padding(float all) const { return kiln_mod_padding_all(m_M, all); }
         Modifier padding(float horizontal, float vertical) const { return kiln_mod_padding_hv(m_M, horizontal, vertical); }
         Modifier padding(float start, float top, float end, float bottom) const { return kiln_mod_padding(m_M, start, top, end, bottom); }
@@ -448,6 +449,11 @@ namespace kpp {
     private:
         kiln_scroll_state* m_S;
     };
+    // rememberNestedScrollInteropConnection: kiln content inside a CoordinatorLayout (or another
+    // nested-scrolling parent) scrolls the parent's app bar with it.
+    inline const kiln_nested_scroll_connection* remember_nested_scroll_interop_connection(Key key = {}) {
+        return kiln_remember_nested_scroll_interop_connection(key);
+    }
     inline ScrollState remember_scroll_state(int32_t initial = 0, Key key = {}) { return ScrollState(kiln_remember_scroll_state(key, initial)); }
 
     class LazyListState {

@@ -700,6 +700,13 @@ KILN_API kiln_modifier* kiln_mod_nested_scroll(kiln_modifier* m, const kiln_nest
     auto conn = std::const_pointer_cast<ui::NestedScrollConnection>(std::static_pointer_cast<const ui::NestedScrollConnection>(c->p));
     MOD(fd::NestedScroll(base, conn))
 }
+KILN_API kiln_nested_scroll_connection* kiln_remember_nested_scroll_interop_connection(kiln_key key) {
+    TRY {
+        kiln_nested_scroll_connection* out = nullptr;
+        InGroup(key, [&] { out = TransientOpaque<kiln_nested_scroll_connection>(fd::RememberNestedScrollInteropConnection()); });
+        return out;
+    } CATCH(nullptr)
+}
 KILN_API kiln_modifier* kiln_mod_vertical_scroll(kiln_modifier* m, kiln_scroll_state* s, bool enabled) {
     if (!s) return m;
     MOD(fd::VerticalScroll(base, *s->state, enabled))

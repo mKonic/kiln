@@ -162,3 +162,47 @@ AndroidExternalSurface(FillMax(Modifier{}, Axis::Both), true, {}, AndroidExterna
 `AndroidExternalSurface` is a separate layer, drawn behind or on top of the UI.
 `AndroidEmbeddedExternalSurface` is drawn as part of the UI, so it can be clipped,
 transformed and covered by other content.
+
+## Android Views inside kiln
+
+`AndroidView` puts an Android View, such as a `WebView` or a map, in kiln content. The View
+is a real View of the window, so touches, focus, the keyboard and accessibility work as for
+any View. It is drawn as part of kiln's frame, so kiln content can clip it and draw over it.
+
+```cpp
+AndroidView(AndroidViewClass("android.webkit.WebView"), Height(FillMax(Modifier{}, Axis::Horizontal), 300_dp), {
+    .update = [](void* env, void* view) {
+        // JNI on the View (a jobject): load a page, apply settings.
+    },
+});
+```
+
+* The factory gets the `JNIEnv*` and the window's `Context` and returns a new View.
+  `AndroidViewClass(name)` constructs a View class through its `Context` constructor.
+* `update` runs after the View is made, after each recomposition, and when state it reads
+  changes.
+* With `onReset`, a View in a lazy list item is kept when the item is reused, and reset
+  there. `onRelease` runs when the View leaves.
+* A View that scrolls with nested scrolling, such as a `ScrollView`, scrolls kiln's
+  scrollables around it once it reaches its end.
+* A `SurfaceView` inside an `AndroidView` is not drawn. Use `AndroidExternalSurface` for
+  video and camera content.
+
+## kiln inside your own layout
+
+An app with its own Activity can place kiln in any layout with `KilnHost`, such as under a
+`CoordinatorLayout`'s app bar:
+
+```java
+KilnView kiln = KilnHost.create(this, "myapp", savedInstanceState);   // loads libmyapp.so
+CoordinatorLayout.LayoutParams params = new CoordinatorLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT);
+params.setBehavior(new AppBarLayout.ScrollingViewBehavior());
+root.addView(kiln, params);
+```
+
+`KilnHost` follows the activity's lifecycle and saves the content's state with the
+activity's. To let kiln's scrolling move the app bar, give the scrolling content the interop
+connection: `NestedScroll(modifier, RememberNestedScrollInteropConnection())` in C++, or
+`kpp::Modifier().nested_scroll(kpp::remember_nested_scroll_interop_connection())` in kiln++.
+[samples/gradle-coordinator](https://github.com/mKonic/kiln/tree/master/samples/gradle-coordinator)
+is a complete app. Activity results and permission requests need `KilnActivity`.
