@@ -136,6 +136,24 @@ FlowRow(Modifier{}, Arrangement::SpacedBy(8_dp), Arrangement::SpacedBy(8_dp), Al
 });
 ```
 
+## Grid
+
+`Grid` places its children in columns and rows, as CSS grid does. Columns and rows can be a
+fixed size, a share of the space (`Fr`), a percentage, or sized to their content. Children
+fill the next free cell, or take a cell, a span or a named area of their own:
+
+```cpp
+Grid([](GridConfigurationScope& g) {
+    g.Column(80_dp);        // labels
+    g.Column(Fr(1));        // values take the rest
+    g.Gap(8_dp);
+}, Modifier{}, [] {
+    Text("Name");
+    Text("Ada Lovelace");
+    Text("Note", GridItem(Modifier{}, 2, 1, 1, 2));   // row 2, across both columns
+});
+```
+
 ## Window insets
 
 kiln apps draw edge to edge, behind the status and navigation bars. Keep content clear of
