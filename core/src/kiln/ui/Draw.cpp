@@ -85,6 +85,27 @@ namespace kiln::ui {
         for (const auto& op : list) op(*this);
         Restore();
     }
+    std::optional<Rect> DrawScope::MeasureInk(const DisplayList& list) {
+        if (!m_Target.quads || m_Recording) return std::nullopt;
+        m_Target.quads->BeginMeasure();
+        Replay(list);
+        const kiln::RectF ink = m_Target.quads->EndMeasure();
+        if (ink.w <= 0 || ink.h <= 0) return Rect{ 0, 0, 0, 0 };
+        // Device -> local through the inverse of the current (affine) transform.
+        const gfx::Matrix& m = m_State.m;
+        const float det = m.a * m.d - m.b * m.c;
+        if (std::abs(det) < 1e-12f) return std::nullopt;
+        const float ia = m.d / det, ib = -m.b / det, ic = -m.c / det, id = m.a / det;
+        const float ie = -(ia * m.e + ic * m.f), iff = -(ib * m.e + id * m.f);
+        float x0 = 1e30f, y0 = 1e30f, x1 = -1e30f, y1 = -1e30f;
+        for (float x : { ink.x, ink.x + ink.w })
+            for (float y : { ink.y, ink.y + ink.h }) {
+                const float lx = ia * x + ic * y + ie, ly = ib * x + id * y + iff;
+                x0 = std::min(x0, lx); y0 = std::min(y0, ly); x1 = std::max(x1, lx); y1 = std::max(y1, ly);
+            }
+        return Rect{ x0, y0, x1, y1 };
+    }
+
     void DrawScope::Translate(Offset o) { Concat(gfx::Matrix::Translate(o.x, o.y)); }
 
     void DrawScope::Scale(float sx, float sy, Offset pivot) {
@@ -1263,24 +1284,56 @@ namespace kiln::ui {
             return kiln::RectF{ 0, 0, rect.w / float(lr.page->Width()), rect.h / float(lr.page->Height()) };
         };
         // Each blur is a horizontal then a vertical pass, into layers over the same device
-        // pixels, unclipped. Sigmas are local; the passes run in device pixels.
+        // pixels, unclipped. Sigmas are local; the passes run in device pixels. Past Skia's
+        // kMaxLinearBlurSigma (4 texels) the image is first scaled down (repeated bilinear
+        // halving) so the sigma fits, blurred there, and scaled back up when composited
+        // (GrBlurUtils GaussianBlur's rescale). cw x ch: the image's texels now.
+        constexpr float kMaxSigma = 4.0f;
+        int cw = w, ch = h;
+        auto uvNow = [&](const QuadRenderer::LayerResult& lr) {
+            return kiln::RectF{ 0, 0, float(cw) / float(lr.page->Width()), float(ch) / float(lr.page->Height()) };
+        };
         q.SetTransform({});
         q.SetClip({});
-        for (const LayerBlur& b : blurs)
+        auto rescale = [&](int tw, int th) {
+            // One bilinear step at a time, never below half, as RescaleMode::kRepeatedLinear.
+            while (cw != tw || ch != th) {
+                const int nw = std::max(tw, (cw + 1) / 2), nh = std::max(th, (ch + 1) / 2);
+                const kiln::RectF uv = uvNow(r);
+                q.BeginLayer(x, y, nw, nh);
+                q.DrawAtlas({ float(x), float(y), float(nw), float(nh) }, uv, *r.page, { 1, 1, 1, 1 }, QuadRenderer::Mode::Color);
+                r = q.EndLayer();
+                cw = nw; ch = nh;
+                if (!r.page) return false;
+            }
+            return true;
+        };
+        for (const LayerBlur& b : blurs) {
+            // Sigmas in the image's current texels.
+            float sx = b.sigmaX * std::hypot(m.a, m.b) * float(cw) / float(w), sy = b.sigmaY * std::hypot(m.c, m.d) * float(ch) / float(h);
+            if (sx > kMaxSigma || sy > kMaxSigma) {
+                const int tw = sx > kMaxSigma ? std::max(int(std::floor(float(cw) * kMaxSigma / sx)), 1) : cw;
+                const int th = sy > kMaxSigma ? std::max(int(std::floor(float(ch) * kMaxSigma / sy)), 1) : ch;
+                sx *= float(tw) / float(cw);
+                sy *= float(th) / float(ch);
+                if (!rescale(tw, th)) { ApplyClip(); return; }
+            }
             for (int pass = 0; pass < 2; ++pass) {
-                const float sigma = pass == 0 ? b.sigmaX * std::hypot(m.a, m.b) : b.sigmaY * std::hypot(m.c, m.d);
+                const float sigma = pass == 0 ? sx : sy;
                 if (sigma <= 0) continue;
-                q.BeginLayer(x, y, w, h);
+                const kiln::RectF uv = uvNow(r);
+                q.BeginLayer(x, y, cw, ch);
                 const float su = pass == 0 ? 1.0f / float(r.page->Width()) : 0, sv = pass == 0 ? 0 : 1.0f / float(r.page->Height());
-                q.DrawBlur(rect, uvOf(r), *r.page, 1, su, sv, sigma, b.decal);
+                q.DrawBlur({ float(x), float(y), float(cw), float(ch) }, uv, *r.page, 1, su, sv, sigma, b.decal);
                 r = q.EndLayer();
                 if (!r.page) { ApplyClip(); return; }
             }
+        }
         ApplyClip();
         // An offset commutes with the blurs (the image's edges move with it).
         const Offset d{ m.a * offset.x + m.c * offset.y, m.b * offset.x + m.d * offset.y };
         q.SetTransform({ 1, 0, 0, 1, d.x, d.y });
-        CompositeLayer(l, rect, uvOf(r), *r.page);
+        CompositeLayer(l, rect, uvNow(r), *r.page);   // scaled back up, bilinear
         q.SetTransform({});
     }
 

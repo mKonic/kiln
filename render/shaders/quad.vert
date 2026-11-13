@@ -15,7 +15,7 @@ layout(location = 10) in vec4 iClipInv;  // framebuffer -> clip space: a, b, c, 
 layout(location = 11) in vec4 iClipInv2; // e, f, clip enabled
 layout(location = 12) in vec4 iClipOuter; // a plain clip rect too (framebuffer px)
 
-layout(push_constant) uniform Push { vec2 viewport; vec2 origin; } pc;   // target size, its device origin
+layout(push_constant) uniform Push { vec2 viewport; vec2 origin; vec2 dstOrigin; } pc;   // target size, its device origin
 
 layout(location = 0) out vec2 vLocal;      // local units from the rect centre
 layout(location = 1) out vec2 vUv;

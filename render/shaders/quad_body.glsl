@@ -21,7 +21,7 @@ layout(set = 0, binding = 3) uniform sampler2D uDst;   // blend modes: the targe
 
 layout(location = 0) out vec4 outColor;
 
-layout(push_constant) uniform Push { vec2 viewport; vec2 origin; } pc;
+layout(push_constant) uniform Push { vec2 viewport; vec2 origin; vec2 dstOrigin; } pc;   // dstOrigin: device origin of uDst
 // Device-space position of this fragment (layers render a window of device space).
 vec2 fragDevice() { return gl_FragCoord.xy + pc.origin; }
 
@@ -478,7 +478,7 @@ void main() {
     // A blend mode: the result replaces the pixel, lerped to the destination by coverage (Skia).
     int blendMode = int(vParams.w + 0.5) - 1;
     if (blendMode >= 0) {
-        vec4 dst = texture(uDst, gl_FragCoord.xy / vec2(textureSize(uDst, 0)));
+        vec4 dst = texture(uDst, (fragDevice() - pc.dstOrigin) / vec2(textureSize(uDst, 0)));
         outColor = mix(dst, blend(blendMode, src, dst), coverage);
         return;
     }

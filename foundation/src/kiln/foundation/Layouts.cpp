@@ -889,11 +889,32 @@ namespace kiln::foundation {
                 gfx::ShadowProjection projection;
                 LayerMatrix3D(params, size, projection.matrix.data(), &projection.zPlane, ShadowElevationPx(s));
                 if (ShadowElevationPx(s) > 0) DrawElevationShadow(s, size, &projection);
-                // Without a clip, content overflowing the bounds is drawn too (a RenderNode projects
-                // its whole display list): the layer then covers everything visible.
-                constexpr float kAll = 1e6f;
-                const Rect captured = params.clip ? Rect{ 0, 0, size.width, size.height } : Rect{ -kAll, -kAll, kAll, kAll };
-                s.BeginLayer(captured, params.alpha, nullptr, params.blendMode, Filter());
+                if (!params.clip) {
+                    // Without a clip, content overflowing the bounds is drawn too (a RenderNode
+                    // projects its whole display list). The layer covers the content's ink,
+                    // measured each time it replays (its children draw live).
+                    ui::DisplayList content;
+                    s.BeginRecording(content);
+                    s.DrawContent();
+                    s.EndRecording();
+                    std::optional<gfx::ColorFilter> filter;
+                    if (Filter()) filter = *Filter();
+                    s.Record([list = std::make_shared<const ui::DisplayList>(std::move(content)), alpha = params.alpha, blend = params.blendMode,
+                              filter, m = projection.matrix](ui::DrawScope& d) {
+                        constexpr float kAll = 1e6f;
+                        Rect captured{ -kAll, -kAll, kAll, kAll };
+                        if (const auto ink = d.MeasureInk(*list)) {
+                            if (ink->Width() <= 0 || ink->Height() <= 0) return;   // nothing to show
+                            captured = { ink->left - 1, ink->top - 1, ink->right + 1, ink->bottom + 1 };
+                        }
+                        d.BeginLayer(captured, alpha, nullptr, blend, filter ? &*filter : nullptr);
+                        d.Replay(*list);
+                        d.EndLayerProjective(m.data());
+                    });
+                    s.Restore();
+                    return;
+                }
+                s.BeginLayer({ 0, 0, size.width, size.height }, params.alpha, nullptr, params.blendMode, Filter());
                 std::optional<gfx::Path> clipPath;
                 if (params.clip) {
                     if (params.clipShape) {

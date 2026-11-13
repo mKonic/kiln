@@ -279,6 +279,10 @@ namespace kiln::ui {
         }
         // Collects RecordLive commands until set back (returns the previous collector).
         DisplayList* CollectLive(DisplayList* collector) { std::swap(m_LiveCollector, collector); return collector; }
+        // The local bounds of what `list` would draw here (after transforms and clips, with the
+        // layers it opens counted at their bounds), drawing nothing. Unset when nothing measures
+        // it (a headless scope, or one recording); an empty rect when it draws nothing.
+        std::optional<Rect> MeasureInk(const DisplayList& list);
         // A record-only scope: layout nodes record their drawing but draw nothing.
         void SetRecordOnly(bool on) { m_RecordOnly = on; }
         bool RecordOnly() const { return m_RecordOnly; }

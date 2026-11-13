@@ -1,5 +1,7 @@
 #pragma once
 
+#include <array>
+
 #include <unordered_map>
 #include <hearth/Device.h>
 
@@ -167,6 +169,14 @@ namespace kiln {
         struct LayerResult { const AtlasPage* page = nullptr; RectF uv; };
         LayerResult EndLayer();
 
+        // Ink measurement: between BeginMeasure and EndMeasure nothing is drawn; each quad and
+        // triangle adds its device bounds (after transform and clip), and a layer the bounds it
+        // would composite over (EndLayer returns no page). Measurements nest. EndMeasure returns
+        // the union (w = 0: nothing drawn).
+        void BeginMeasure();
+        RectF EndMeasure();
+        bool Measuring() const { return !m_Measures.empty(); }
+
         // Records the offscreen layers' passes; call before the main render pass.
         void RenderLayers(hearth::CommandList& cmd);
         // Draws the main batch inside the open (swapchain) render pass.
@@ -191,7 +201,8 @@ namespace kiln {
                          float xform[4]; float xform2[4]; float clipInv[4]; float clipInv2[4]; float clipOuter[4]; };
         struct Run { const AtlasPage* page; std::uint32_t first, count; bool mask = false; bool filtered = false; const AtlasPage* dst = nullptr;
                      bool triangles = false; Clip clip{}; std::uint8_t lite = 0;
-                     const AtlasPage* aux = nullptr; };   // aux: a second texture in the destination slot (progressive blur masks)   // lite: 1 solid, 2 coverage, 3 flat, 4 stretch, 5 external   // triangles: first/count into m_TriVerts
+                     const AtlasPage* aux = nullptr;
+                     float dstOrigin[2] = {}; };   // the device origin of `dst` (a destination copy)   // aux: a second texture in the destination slot (progressive blur masks)   // lite: 1 solid, 2 coverage, 3 flat, 4 stretch, 5 external   // triangles: first/count into m_TriVerts
 
         void Push(const Instance& instance, const AtlasPage* page, const Paint* paint, bool mask = false);
         struct Target {
@@ -266,6 +277,11 @@ namespace kiln {
         float m_Viewport[2] = { 1, 1 };
         Clip m_Clip;
         Transform m_Transform;
+        struct Measure { float x0 = 1e30f, y0 = 1e30f, x1 = -1e30f, y1 = -1e30f; std::vector<std::array<float, 4>> layers; };
+        std::vector<Measure> m_Measures;
+        float m_CopyOrigin[2] = {};   // the last DestinationCopy's device origin
+        void AddInk(float x0, float y0, float x1, float y1);
+        void AddInkQuad(const RectF& r);
     };
 
 }

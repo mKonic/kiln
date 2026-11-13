@@ -65,7 +65,7 @@ namespace kiln {
         desc.bindings.push_back({ 1, BindingType::SampledTexture, 1, StageBit(ShaderStage::Fragment) });
         desc.bindings.push_back({ 2, BindingType::SampledTexture, 1, StageBit(ShaderStage::Fragment) });
         desc.bindings.push_back({ 3, BindingType::SampledTexture, 1, StageBit(ShaderStage::Fragment) });   // blend destination
-        desc.pushConstantSize = 16;   // viewport size, device origin of the target
+        desc.pushConstantSize = 24;   // viewport size, device origin of the target, of the blend destination copy
         desc.topology = PrimitiveTopology::TriangleStrip;
         desc.blend = BlendMode::AlphaPremultiplied;
         desc.colorFormats = { device.SwapchainFormat() };
@@ -122,7 +122,7 @@ namespace kiln {
             vl.attributes.push_back({ 5, Format::RGBA32_SFLOAT, 72 });
             tri.vertexBuffers.push_back(vl);
             tri.bindings = desc.bindings;   // the quads' textures: image, ramp, filters, destination
-            tri.pushConstantSize = 96;   // viewport, origin, clip (rect, radii, inverse, enabled, outer rect)
+            tri.pushConstantSize = 104;   // viewport, origin, clip (rect, radii, inverse, enabled, outer rect)
             tri.topology = PrimitiveTopology::TriangleList;
             tri.blend = BlendMode::AlphaPremultiplied;
             tri.colorFormats = { device.SwapchainFormat() };
@@ -156,7 +156,51 @@ namespace kiln {
         m_Transform = {};
     }
 
+    void QuadRenderer::BeginMeasure() { m_Measures.emplace_back(); }
+
+    RectF QuadRenderer::EndMeasure() {
+        if (m_Measures.empty()) return {};
+        const Measure m = std::move(m_Measures.back());
+        m_Measures.pop_back();
+        if (m.x1 < m.x0 || m.y1 < m.y0) return {};
+        // A nested measurement's ink is the enclosing one's too.
+        if (!m_Measures.empty()) AddInk(m.x0, m.y0, m.x1, m.y1);
+        return { m.x0, m.y0, m.x1 - m.x0, m.y1 - m.y0 };
+    }
+
+    void QuadRenderer::AddInk(float x0, float y0, float x1, float y1) {
+        if (m_Clip.enabled) {
+            x0 = std::max(x0, m_Clip.outer[0]); y0 = std::max(y0, m_Clip.outer[1]);
+            x1 = std::min(x1, m_Clip.outer[2]); y1 = std::min(y1, m_Clip.outer[3]);
+            const Transform& ci = m_Clip.inverse;
+            if (ci.a == 1 && ci.b == 0 && ci.c == 0 && ci.d == 1 && ci.g == 0 && ci.h == 0) {
+                // A clip in device pixels moved by (e, f): its rect in device pixels.
+                x0 = std::max(x0, m_Clip.x0 - ci.e); y0 = std::max(y0, m_Clip.y0 - ci.f);
+                x1 = std::min(x1, m_Clip.x1 - ci.e); y1 = std::min(y1, m_Clip.y1 - ci.f);
+            }
+        }
+        if (x1 <= x0 || y1 <= y0) return;
+        Measure& m = m_Measures.back();
+        m.x0 = std::min(m.x0, x0); m.y0 = std::min(m.y0, y0);
+        m.x1 = std::max(m.x1, x1); m.y1 = std::max(m.y1, y1);
+    }
+
+    void QuadRenderer::AddInkQuad(const RectF& r) {
+        const Transform& t = m_Transform;
+        const float xs[2] = { r.x, r.x + r.w }, ys[2] = { r.y, r.y + r.h };
+        float x0 = 1e30f, y0 = 1e30f, x1 = -1e30f, y1 = -1e30f;
+        for (float x : xs)
+            for (float y : ys) {
+                const float w = t.g * x + t.h * y + 1;
+                if (!(w > 1e-6f)) { AddInk(-1e9f, -1e9f, 1e9f, 1e9f); return; }   // behind the eye: unbounded
+                const float px = (t.a * x + t.c * y + t.e) / w, py = (t.b * x + t.d * y + t.f) / w;
+                x0 = std::min(x0, px); y0 = std::min(y0, py); x1 = std::max(x1, px); y1 = std::max(y1, py);
+            }
+        AddInk(x0, y0, x1, y1);
+    }
+
     void QuadRenderer::Push(const Instance& in, const AtlasPage* page, const Paint* paint, bool mask) {
+        if (Measuring()) { AddInkQuad({ in.rect[0], in.rect[1], in.rect[2], in.rect[3] }); return; }
         Instance instance = in;
         if (paint && paint->kind != Paint::Kind::Color) {
             for (int i = 0; i < 4; ++i) instance.paint[i] = paint->geometry[i];
@@ -214,6 +258,7 @@ namespace kiln {
         if (t2.runs.empty() || t2.runs.back().page != page || t2.runs.back().mask != mask || t2.runs.back().filtered != filtered ||
             t2.runs.back().dst != dst || dst || t2.runs.back().triangles || t2.runs.back().lite != lite || t2.runs.back().aux != m_PushAux) {
             t2.runs.push_back({ page, std::uint32_t(t2.instances.size()), 0, mask, filtered, dst });
+            if (dst) { t2.runs.back().dstOrigin[0] = m_CopyOrigin[0]; t2.runs.back().dstOrigin[1] = m_CopyOrigin[1]; }
             t2.runs.back().lite = lite;
             t2.runs.back().aux = m_PushAux;
         }
@@ -317,6 +362,7 @@ namespace kiln {
         Instance in{ { r.x, r.y, r.w, r.h }, { uv.x, uv.y, uv.x + uv.w, uv.y + uv.h }, { a, a, a, a },
                      { 0, float(Mode::Stretch), -1, 0 }, {}, {}, {}, {}, {}, {}, {}, {} };
         Push(in, &page, nullptr);
+        if (Measuring()) return;   // nothing pushed
         // Stretch parameters ride in the paint slots (Push zeroes them for a null paint).
         Instance& last = Current().instances.back();
         last.paint[0] = sx; last.paint[1] = sy; last.paint[2] = r.w; last.paint[3] = r.h;
@@ -326,6 +372,7 @@ namespace kiln {
         Instance in{ { r.x, r.y, r.w, r.h }, { uv.x, uv.y, uv.x + uv.w, uv.y + uv.h }, { a, a, a, a },
                      { 0, float(Mode::Blur), -1, 0 }, {}, {}, {}, {}, {}, {}, {}, {} };
         Push(in, &page, nullptr);
+        if (Measuring()) return;   // nothing pushed
         Instance& last = Current().instances.back();
         last.paint[0] = su; last.paint[1] = sv; last.paint[2] = sigma; last.paint[3] = decal ? 1.0f : 0.0f;
     }
@@ -338,11 +385,19 @@ namespace kiln {
         Push({ { r.x, r.y, r.w, r.h }, { uv.x, uv.y, uv.x + uv.w, uv.y + uv.h }, { su, sv, maxRadius, 1 },
                { decal ? 1.0f : 0.0f, float(Mode::ProgressiveBlur), -1, 0 }, {}, {}, {}, {}, {}, {}, {}, {} }, &page, &intensity);
         m_PushAux = nullptr;
-        if (intensityMask) Current().instances.back().paint2[0] = 4;
+        if (intensityMask && !Measuring()) Current().instances.back().paint2[0] = 4;
     }
 
     void QuadRenderer::DrawTriangles(const Vertex* v, std::size_t count, const TrianglePaint& paint, int blendMode) {
         if (count < 3) return;
+        if (Measuring()) {
+            float x0 = 1e30f, y0 = 1e30f, x1 = -1e30f, y1 = -1e30f;
+            for (std::size_t i = 0; i < count; ++i) {
+                x0 = std::min(x0, v[i].x); y0 = std::min(y0, v[i].y); x1 = std::max(x1, v[i].x); y1 = std::max(y1, v[i].y);
+            }
+            AddInk(x0, y0, x1, y1);
+            return;
+        }
         Target& t = Current();
         const auto first = std::uint32_t(m_TriVerts.size());
         m_TriVerts.insert(m_TriVerts.end(), v, v + count);
@@ -368,6 +423,8 @@ namespace kiln {
             const float ox = t.origin[0], oy = t.origin[1];
             run.dst = DestinationCopy(std::max(0.0f, std::floor(x0 - ox) - 2), std::max(0.0f, std::floor(y0 - oy) - 2),
                                       std::min(t.size[0], std::ceil(x1 - ox) + 2), std::min(t.size[1], std::ceil(y1 - oy) + 2));
+            run.dstOrigin[0] = m_CopyOrigin[0];
+            run.dstOrigin[1] = m_CopyOrigin[1];
         }
         Target& cur = Current();   // DestinationCopy may have grown m_Targets
         for (std::size_t i = first; i < m_TriVerts.size(); ++i) {
@@ -409,6 +466,7 @@ namespace kiln {
     }
 
     void QuadRenderer::BeginLayer(int x, int y, int w, int h) {
+        if (Measuring()) { m_Measures.back().layers.push_back({ float(x), float(y), float(x + w), float(y + h) }); return; }
         PooledLayer& layer = AcquireLayer(w, h);
         Target t;
         t.origin[0] = float(x);
@@ -445,18 +503,24 @@ namespace kiln {
         const std::size_t index = m_Stack.back();
         const Target& cur = m_Targets[index];
         const float ox = cur.origin[0], oy = cur.origin[1], tw = cur.size[0], th = cur.size[1];
+        // A copy of just the pixels the draw covers, at their device position: the blend reads
+        // it at the fragment's device position less this origin.
+        const int w = std::max(1, int(x1 - x0)), h = std::max(1, int(y1 - y0));
         Target copy;
-        copy.origin[0] = ox;
-        copy.origin[1] = oy;
+        copy.origin[0] = ox + x0;
+        copy.origin[1] = oy + y0;
+        m_CopyOrigin[0] = copy.origin[0];
+        m_CopyOrigin[1] = copy.origin[1];
         copy.runs = cur.runs;
         copy.aliased = true;
         copy.alias = index;
         if (index == 0) std::copy(std::begin(m_RootClear), std::end(m_RootClear), copy.clear);
-        copy.scissor[0] = std::uint32_t(x0);
-        copy.scissor[1] = std::uint32_t(y0);
-        copy.scissor[2] = std::uint32_t(std::max(0.0f, x1 - x0));
-        copy.scissor[3] = std::uint32_t(std::max(0.0f, y1 - y0));
-        PooledLayer& layer = AcquireLayer(int(tw), int(th));
+        copy.scissor[0] = 0;
+        copy.scissor[1] = 0;
+        copy.scissor[2] = std::uint32_t(w);
+        copy.scissor[3] = std::uint32_t(h);
+        (void)tw; (void)th;
+        PooledLayer& layer = AcquireLayer(w, h);
         copy.size[0] = float(layer.width);
         copy.size[1] = float(layer.height);
         copy.rt = layer.rt.get();
@@ -467,6 +531,13 @@ namespace kiln {
     }
 
     QuadRenderer::LayerResult QuadRenderer::EndLayer() {
+        if (Measuring() && !m_Measures.back().layers.empty()) {
+            // What the layer would composite: at most its bounds (with the clip when it ends).
+            const auto b = m_Measures.back().layers.back();
+            m_Measures.back().layers.pop_back();
+            AddInk(b[0], b[1], b[2], b[3]);
+            return {};
+        }
         if (m_Stack.size() <= 1) return {};
         const std::size_t index = m_Stack.back();
         m_Stack.pop_back();
@@ -513,7 +584,7 @@ namespace kiln {
         if (t.runs.empty()) return;
         const std::uint32_t base = t.aliased ? m_Targets[t.alias].base : t.base;
         auto& buffer = m_Buffers[m_Device.FrameIndex() % m_Buffers.size()];
-        const float push[4] = { t.size[0], t.size[1], t.origin[0], t.origin[1] };
+        float push[6] = { t.size[0], t.size[1], t.origin[0], t.origin[1], 0, 0 };
         const ScissorRect scissor = t.aliased ? ScissorRect{ i32(t.scissor[0]), i32(t.scissor[1]), t.scissor[2], t.scissor[3] }
                                               : ScissorRect{ 0, 0, u32(t.size[0]), u32(t.size[1]) };
         if (scissor.width == 0 || scissor.height == 0) return;
@@ -521,12 +592,12 @@ namespace kiln {
         for (const Run& run : t.runs) {
             if (run.triangles) {
                 const Clip& c = run.clip;
-                const float tp[24] = { t.size[0], t.size[1], t.origin[0], t.origin[1],
+                const float tp[26] = { t.size[0], t.size[1], t.origin[0], t.origin[1],
                                        c.x0, c.y0, c.x1, c.y1,
                                        c.radii[0], c.radii[1], c.radii[2], c.radii[3],
                                        c.inverse.a, c.inverse.b, c.inverse.c, c.inverse.d,
                                        c.inverse.e, c.inverse.f, c.enabled ? 1.0f : 0.0f, 0,
-                                       c.outer[0], c.outer[1], c.outer[2], c.outer[3] };
+                                       c.outer[0], c.outer[1], c.outer[2], c.outer[3], run.dstOrigin[0], run.dstOrigin[1] };
                 const Ref<Pipeline>& tri = run.dst ? m_TriBlendPipeline : m_TriPipeline;
                 cmd.BindPipeline(tri);
                 cmd.SetViewport({ 0, 0, t.size[0], t.size[1], 0, 1 });
@@ -549,6 +620,11 @@ namespace kiln {
                 cmd.SetPushConstants(push, sizeof(push));
                 cmd.BindVertexBuffer(0, buffer);
                 boundPipeline = want.get();
+            }
+            if (run.dst && (push[4] != run.dstOrigin[0] || push[5] != run.dstOrigin[1])) {
+                push[4] = run.dstOrigin[0];
+                push[5] = run.dstOrigin[1];
+                cmd.SetPushConstants(push, sizeof(push));
             }
             cmd.BindBindGroup(run.lite == 5 ? GroupFor(run.page, run.dst, want) : GroupFor(run.page, run.dst ? run.dst : run.aux));
             cmd.Draw(4, run.count, 0, base + run.first);

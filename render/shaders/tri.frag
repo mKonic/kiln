@@ -19,6 +19,7 @@ layout(push_constant) uniform Push {
     vec4 clipInv;
     vec4 clipInv2;
     vec4 clipOuter;
+    vec2 dstOrigin;                  // device origin of uDst (blend modes)
 } pc;
 
 // Coverage of a plain, pixel-aligned clip rect (framebuffer px) at a fragment centre.
@@ -118,7 +119,7 @@ void main() {
     int blendMode = int(vPaint3.y + 0.5) - 1;
     if (blendMode >= 0) {
         // The result replaces the pixel, lerped to the destination by coverage (as the quads).
-        vec4 dst = texture(uDst, gl_FragCoord.xy / vec2(textureSize(uDst, 0)));
+        vec4 dst = texture(uDst, (gl_FragCoord.xy + pc.origin - pc.dstOrigin) / vec2(textureSize(uDst, 0)));
         outColor = mix(dst, blend(blendMode, color, dst), coverage);
         return;
     }
