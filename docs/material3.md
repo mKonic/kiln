@@ -1,7 +1,7 @@
 # Material 3 components and theming
 
 `kiln::material3` is a port of Compose Material 3, including the expressive components
-and motion. The [gallery sample](../samples/gallery) shows every component.
+and motion. The [gallery sample](https://github.com/mKonic/kiln/tree/master/samples/gallery) shows every component.
 
 ## Theme
 

@@ -102,7 +102,7 @@ capture by value. State and handles are small and cheap to copy.
 
 ## Rust
 
-[bindings/rust](../bindings/rust) has two crates:
+[bindings/rust](https://github.com/mKonic/kiln/tree/master/bindings/rust) has two crates:
 
 * `kiln-sys`: the raw C API, generated with bindgen. Its build script builds kiln with
   CMake.

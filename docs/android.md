@@ -86,7 +86,7 @@ In `src/main/AndroidManifest.xml`, point `KilnActivity` at the library:
 </activity>
 ```
 
-[samples/gradle-notes](../samples/gradle-notes) is a complete project.
+[samples/gradle-notes](https://github.com/mKonic/kiln/tree/master/samples/gradle-notes) is a complete project.
 
 ## Debug builds and Volition
 

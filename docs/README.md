@@ -30,7 +30,7 @@ to set it up, build a UI and ship it in an app.
 
 ## Samples
 
-The [samples](../samples) folder holds complete apps:
+The [samples](https://github.com/mKonic/kiln/tree/master/samples) folder holds complete apps:
 
 | Sample | What it shows |
 |---|---|

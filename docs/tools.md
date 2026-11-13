@@ -1,6 +1,6 @@
 # Command line tools and testing
 
-The tools are in the [tools](../tools) folder. They read the SDK and NDK locations from
+The tools are in the [tools](https://github.com/mKonic/kiln/tree/master/tools) folder. They read the SDK and NDK locations from
 `KILN_SDK` and `KILN_NDK` (see [Get started](get-started.md)) and use the device in
 `ANDROID_SERIAL` when more than one is attached.
 
@@ -52,7 +52,7 @@ ANDROID_SERIAL=<serial> tools/device-test
 ### Writing a test
 
 A test is a `TEST(Name) { ... }` block with `CHECK` and `CHECK_EQ`, in a file in
-[tests](../tests). Tests compose content without a window, then check layout, semantics
+[tests](https://github.com/mKonic/kiln/tree/master/tests). Tests compose content without a window, then check layout, semantics
 or state. The existing tests show how to compose content, send input, advance frames and
 read the semantics tree.
 
