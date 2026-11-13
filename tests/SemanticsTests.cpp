@@ -211,6 +211,26 @@ namespace {
     }
 }
 
+// Scrolling moves nodes without changing a configuration: accessibility hears of it, and what
+// follows configurations alone (autofill's sync) has nothing to redo.
+TEST(ScrollingInvalidatesSemanticsBoundsOnly) {
+    Harness h;
+    ScrollState state;
+    h.Run([&] {
+        Box(FillMax(Modifier{}, Axis::Both), Alignment::TopStart(), false, [&] {
+            Column(VerticalScroll(Height(Modifier{}, Dp(100)), state), [] {
+                for (int i = 0; i < 20; ++i) Box(Label(SizeMod({}, Dp(50), Dp(50)), "row"));
+            });
+        });
+    });
+    CHECK(state.MaxValue() > 120);
+    const auto all = h.owner.SemanticsVersion(), config = h.owner.SemanticsConfigVersion();
+    state.ScrollTo(120);
+    Frames(h, 2);
+    CHECK(h.owner.SemanticsVersion() != all);
+    CHECK_EQ(h.owner.SemanticsConfigVersion(), config);
+}
+
 TEST(VerticalScrollExposesItsRangeAndScrollsByForAccessibility) {
     Harness h;
     ScrollState state;

@@ -652,7 +652,7 @@ namespace kiln::foundation {
             void OnDetach() override { m_Watch.Unsubscribe(); }
             struct Watch final : rt::Subscriber {
                 LayerNode* node = nullptr;
-                void OnStateChanged() override { node->Resolve(); node->InvalidateDraw(); node->InvalidateSemantics(); }
+                void OnStateChanged() override { node->Resolve(); node->InvalidateDraw(); node->InvalidateSemantics(true); }   // an animated layer moves; it changes no configuration
             };
             Watch m_Watch;
             void Resolve() {

@@ -689,7 +689,7 @@ namespace kiln::foundation {
                     // Reading the value here subscribes placement only: scrolling re-places, it
                     // does not re-measure.
                     const int value = std::clamp(state->Value(), 0, vertical ? scrollHeight : scrollWidth);
-                    if (value != lastValue) { lastValue = value; InvalidateSemantics(); }
+                    if (value != lastValue) { lastValue = value; InvalidateSemantics(true); }
                     const int abs = reverse ? value - (vertical ? scrollHeight : scrollWidth) : -value;
                     // The scroll offset is motion, not structure (withMotionFrameOfReferencePlacement).
                     place.WithMotionFrameOfReferencePlacement([&] {

@@ -1309,7 +1309,7 @@ namespace kiln::foundation {
         for (int l = 0; l < lanes; ++l) if (out.fi[std::size_t(l)] == first) firstOffset = std::min(firstOffset, out.fo[std::size_t(l)]);
         if (firstOffset == std::numeric_limits<int>::max()) firstOffset = 0;
         if (!pass.approach) {
-            if ((st.m_Index.Peek() != first || st.m_Offset.Peek() != firstOffset) && self.GetOwner()) self.GetOwner()->InvalidateSemantics();
+            if ((st.m_Index.Peek() != first || st.m_Offset.Peek() != firstOffset) && self.GetOwner()) self.GetOwner()->InvalidateSemantics(true);
             st.m_Index.Set(first);
             st.m_Offset.Set(firstOffset);
             st.m_FirstKey = KeyOf(std::min(first, count - 1));
@@ -1821,7 +1821,7 @@ namespace kiln::foundation {
 
         if (!pass.approach) {
             if (st.m_Index.Peek() != firstIndex || st.m_Offset.Peek() != -pos)
-                if (self.GetOwner()) self.GetOwner()->InvalidateSemantics();   // bounds moved
+                if (self.GetOwner()) self.GetOwner()->InvalidateSemantics(true);   // bounds moved
             st.m_Index.Set(firstIndex);
             st.m_Offset.Set(-pos);
             st.m_FirstKey = KeyOf(firstIndex);

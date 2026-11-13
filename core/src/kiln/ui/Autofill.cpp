@@ -101,8 +101,9 @@ namespace kiln::ui {
     }
 
     void AutofillManager::SyncSemantics() {
-        if (m_SyncedVersion == m_Owner.SemanticsVersion()) return;
-        m_SyncedVersion = m_Owner.SemanticsVersion();
+        // Scrolling moves nodes without changing what autofill reads from them.
+        if (m_SyncedVersion == m_Owner.SemanticsConfigVersion()) return;
+        m_SyncedVersion = m_Owner.SemanticsConfigVersion();
         const auto& nodes = m_Owner.Accessibility().Nodes();
         std::unordered_map<int, Snapshot> next;
         for (const auto& [id, node] : nodes) {

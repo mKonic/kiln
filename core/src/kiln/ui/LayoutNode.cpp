@@ -63,8 +63,8 @@ namespace kiln::ui {
         return nullptr;
     }
 
-    void ModifierNode::InvalidateSemantics() {
-        if (m_Owner && m_Owner->GetOwner()) m_Owner->GetOwner()->InvalidateSemantics();
+    void ModifierNode::InvalidateSemantics(bool boundsOnly) {
+        if (m_Owner && m_Owner->GetOwner()) m_Owner->GetOwner()->InvalidateSemantics(boundsOnly);
     }
 
     void ModifierNode::DispatchOnScrollChanged(Offset delta) {
@@ -2147,8 +2147,9 @@ namespace kiln::ui {
         if (m_Accessibility) m_Accessibility->OnScrollChanged(node, delta);
     }
 
-    void Owner::InvalidateSemantics() {
+    void Owner::InvalidateSemantics(bool boundsOnly) {
         ++m_SemanticsVersion;
+        if (!boundsOnly) ++m_SemanticsConfigVersion;
         if (m_OnSemanticsChanged) m_OnSemanticsChanged();
         if (m_Accessibility) {
             m_Accessibility->OnSemanticsChange();

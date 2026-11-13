@@ -806,7 +806,9 @@ namespace kiln::ui {
         // what is not covered, covered and scrolled-away ones dropped. False: every placed node
         // (SemanticsOwner.rootSemanticsNode, what Compose's test finders search).
         SemanticsNode BuildSemanticsTree(bool uncoveredOnly = true);
-        void InvalidateSemantics();
+        // boundsOnly: nodes moved (a scroll) and nothing else about them changed, so what follows
+        // configurations alone (autofill) has nothing to do.
+        void InvalidateSemantics(bool boundsOnly = false);
         // The accessibility delegate (made on first use). The host hears of semantics changes
         // (`layout` false) and layout changes (true) while a service listens.
         AccessibilityDelegate& Accessibility();
@@ -824,6 +826,8 @@ namespace kiln::ui {
         // onLayoutChange: a node was placed somewhere else or at another size.
         void NotifyLayoutChange(LayoutNode& node);
         std::uint64_t SemanticsVersion() const { return m_SemanticsVersion; }
+        // Bumped by every change but boundsOnly ones.
+        std::uint64_t SemanticsConfigVersion() const { return m_SemanticsConfigVersion; }
         void SetOnSemanticsChanged(kiln::Function<void()> fn) { m_OnSemanticsChanged = std::move(fn); }
         LayoutNode* FindBySemanticsId(int id);
         int NextSemanticsId() { return ++m_LastSemanticsId; }
@@ -999,7 +1003,7 @@ namespace kiln::ui {
         std::shared_ptr<SoftwareKeyboardController> m_KeyboardController;
         TextInputSession* m_Input = nullptr;
         WindowInsetsHolder m_Insets;
-        std::uint64_t m_SemanticsVersion = 0;
+        std::uint64_t m_SemanticsVersion = 0, m_SemanticsConfigVersion = 0;
         std::unique_ptr<AutofillManager> m_Autofill;
         std::unique_ptr<DragAndDropManager> m_DragAndDrop;
         kiln::Function<void()> m_OnSemanticsChanged;

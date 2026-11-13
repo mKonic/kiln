@@ -202,7 +202,7 @@ namespace kiln::ui {
         // Expires when the node is destroyed (for callbacks that may outlive it).
         std::weak_ptr<const char> AliveToken() const { return m_Alive; }
         // Semantics changed (call from Update when semantic params change).
-        void InvalidateSemantics();
+        void InvalidateSemantics(bool boundsOnly = false);
         // The node's scrollable consumed `delta` itself (pointer coordinates), for accessibility.
         void DispatchOnScrollChanged(Offset delta);
 
