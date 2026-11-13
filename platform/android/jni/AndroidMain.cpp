@@ -1249,6 +1249,12 @@ namespace {
             owner.SetSystemBarsAppearanceHost([w](bool lightStatus, bool lightNav) {
                 MainEnv()->CallVoidMethod(w->view, barsAppearance, jboolean(lightStatus), jboolean(lightNav));
             });
+            static jmethodID insetsVisible = env->GetMethodID(env->GetObjectClass(view), "setInsetsVisible", "(IZ)V");
+            static jmethodID barsBehavior = env->GetMethodID(env->GetObjectClass(view), "setSystemBarsBehavior", "(I)V");
+            kiln::ui::Owner::InsetsVisibilityHost visibility;
+            visibility.setVisible = [w](std::uint32_t types, bool show) { MainEnv()->CallVoidMethod(w->view, insetsVisible, jint(types), jboolean(show)); };
+            visibility.setBehavior = [w](int behavior) { MainEnv()->CallVoidMethod(w->view, barsBehavior, jint(behavior)); };
+            owner.SetInsetsVisibilityHost(std::move(visibility));
             static jmethodID edgeToEdge = env->GetMethodID(env->GetObjectClass(view), "enableEdgeToEdge", "(IIIIII)V");
             owner.SetEdgeToEdgeHost([w](const kiln::ui::SystemBarStyle& status, const kiln::ui::SystemBarStyle& nav) {
                 MainEnv()->CallVoidMethod(w->view, edgeToEdge, jint(status.mode), jint(status.lightScrim.argb), jint(status.darkScrim.argb),

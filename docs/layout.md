@@ -167,3 +167,21 @@ the system bars, the display cutout and the keyboard with insets padding:
 | `ImePadding(m)` | The keyboard |
 
 `Scaffold` handles the insets for its bars and passes the rest to its content as padding.
+
+### Hiding the system bars
+
+For full-screen content such as video or games, hide the bars through the window's owner
+(`WindowInsetsControllerCompat.hide` in Compose). The insets padding above follows: content
+moves into the freed space, and back when the bars return.
+
+<!-- prelude: auto* owner = rt::Composition::Current()->Read(LocalOwner); -->
+```cpp
+owner->SetSystemBarsBehavior(Owner::SystemBarsBehavior::ShowTransientBarsBySwipe);
+owner->HideInsets(Owner::SystemBarsTypes());
+// Later:
+owner->ShowInsets(Owner::SystemBarsTypes());
+```
+
+With `SystemBarsBehavior::Default` a swipe from the edge brings the bars back for good. With
+`ShowTransientBarsBySwipe` it shows them briefly over the content, and the insets do not change.
+`AreSystemBarsVisible()` tells you whether they are showing.

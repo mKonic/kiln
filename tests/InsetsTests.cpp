@@ -164,3 +164,21 @@ TEST(RecalculateWindowInsetsConsumesWhatTheElementDoesNotOverlap) {
     // The status bar (24) pads 14, the navigation bar (48) pads 18.
     CHECK(padded == (IntSize{ 400, 760 - 14 - 18 }));
 }
+
+TEST(HidingSystemBarsReachesTheHostInOrder) {
+    // WindowInsetsControllerCompat.hide / show and setSystemBarsBehavior: requests made before
+    // the host exists are replayed when it is set, the behaviour first.
+    Owner owner;
+    owner.HideInsets(Owner::SystemBarsTypes());
+    owner.SetSystemBarsBehavior(Owner::SystemBarsBehavior::ShowTransientBarsBySwipe);
+    owner.ShowInsets(Owner::InsetsTypeBit(InsetsType::NavigationBars));
+    std::vector<std::string> calls;
+    Owner::InsetsVisibilityHost host;
+    host.setVisible = [&](std::uint32_t types, bool show) { calls.push_back((show ? "show " : "hide ") + std::to_string(types)); };
+    host.setBehavior = [&](int behavior) { calls.push_back("behavior " + std::to_string(behavior)); };
+    owner.SetInsetsVisibilityHost(std::move(host));
+    CHECK(calls == (std::vector<std::string>{ "behavior 2", "hide 7", "show 2" }));
+    calls.clear();
+    owner.ShowInsets(Owner::SystemBarsTypes());
+    CHECK(calls == (std::vector<std::string>{ "show 7" }));
+}

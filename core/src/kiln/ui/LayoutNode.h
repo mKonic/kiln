@@ -529,6 +529,32 @@ namespace kiln::ui {
             m_PendingBars = std::pair(lightStatusBars, lightNavigationBars);
             if (m_BarsAppearance) m_BarsAppearance(lightStatusBars, lightNavigationBars);
         }
+        // WindowInsetsControllerCompat.show / hide (immersive mode): types is a mask of
+        // InsetsTypeBit; SystemBarsTypes() is WindowInsetsCompat.Type.systemBars(). Requests made
+        // before the host exists are applied, in order, when it is set.
+        struct InsetsVisibilityHost {
+            kiln::Function<void(std::uint32_t types, bool show)> setVisible;
+            kiln::Function<void(int behavior)> setBehavior;
+        };
+        static constexpr std::uint32_t InsetsTypeBit(InsetsType t) { return 1u << unsigned(t); }
+        static constexpr std::uint32_t SystemBarsTypes() {
+            return InsetsTypeBit(InsetsType::StatusBars) | InsetsTypeBit(InsetsType::NavigationBars) | InsetsTypeBit(InsetsType::CaptionBar);
+        }
+        // WindowInsetsControllerCompat.BEHAVIOR_*: how hidden system bars come back.
+        enum class SystemBarsBehavior { Default = 1, ShowTransientBarsBySwipe = 2 };
+        void SetInsetsVisibilityHost(InsetsVisibilityHost host) {
+            m_InsetsVisibility = std::move(host);
+            if (m_PendingBehavior && m_InsetsVisibility.setBehavior) m_InsetsVisibility.setBehavior(*m_PendingBehavior);
+            if (m_InsetsVisibility.setVisible)
+                for (const auto& [types, show] : m_PendingVisibility) m_InsetsVisibility.setVisible(types, show);
+            m_PendingVisibility.clear();
+        }
+        void ShowInsets(std::uint32_t types) { SetInsetsVisible(types, true); }
+        void HideInsets(std::uint32_t types) { SetInsetsVisible(types, false); }
+        void SetSystemBarsBehavior(SystemBarsBehavior behavior) {
+            m_PendingBehavior = int(behavior);
+            if (m_InsetsVisibility.setBehavior) m_InsetsVisibility.setBehavior(int(behavior));
+        }
         // Magnifier (android.widget.Magnifier, API 28): created per user, shown over a source
         // point in root pixels (and optionally centred at another), its content refreshed after
         // each frame that changed what it shows.
@@ -860,6 +886,13 @@ namespace kiln::ui {
         kiln::Function<void(int)> m_Haptic;
         kiln::Function<void(bool, bool)> m_BarsAppearance;
         std::optional<std::pair<bool, bool>> m_PendingBars;   // the latest request (light status, light navigation)
+        void SetInsetsVisible(std::uint32_t types, bool show) {
+            if (m_InsetsVisibility.setVisible) m_InsetsVisibility.setVisible(types, show);
+            else m_PendingVisibility.emplace_back(types, show);
+        }
+        InsetsVisibilityHost m_InsetsVisibility;
+        std::vector<std::pair<std::uint32_t, bool>> m_PendingVisibility;
+        std::optional<int> m_PendingBehavior;
         kiln::Function<void(const SystemBarStyle&, const SystemBarStyle&)> m_EdgeToEdge;
         ClipboardHost m_Clipboard;
         std::map<std::string, std::shared_ptr<void>> m_Services;

@@ -355,6 +355,22 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
         c.setSystemBarsAppearance((lightStatus ? status : 0) | (lightNavigation ? nav : 0), status | nav);
     }
 
+    /** WindowInsetsController.show / hide: typeMask has bit i for kiln::ui::InsetsType i. */
+    void setInsetsVisible(int typeMask, boolean show) {
+        android.view.WindowInsetsController c = getWindowInsetsController();
+        if (c == null) return;
+        int types = 0;
+        for (int i = 0; i < TYPES.length - 1; i++) if ((typeMask & (1 << i)) != 0) types |= TYPES[i];
+        if (show) c.show(types);
+        else c.hide(types);
+    }
+
+    /** WindowInsetsController.setSystemBarsBehavior (BEHAVIOR_DEFAULT 1, BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE 2). */
+    void setSystemBarsBehavior(int behavior) {
+        android.view.WindowInsetsController c = getWindowInsetsController();
+        if (c != null) c.setSystemBarsBehavior(behavior);
+    }
+
     // --- imeNestedScroll: direct control of a type's insets (API 30+) ---------------------------
     private android.view.WindowInsetsAnimationController insetsController;
     // From the control request until the controlled animation has ended.
