@@ -87,6 +87,8 @@ final class KilnNative {
     // Semantics for KilnAccessibility.
     static native void a11ySetEnabled(int win, boolean enabled, String localeTag);
     static native int[] a11yNodeInfo(int win, int id);
+    /** Volition (debug builds): a command over the windows, bottom to top; origins are x, y pairs. */
+    static native String volition(int[] windowIds, String[] names, int[] origins, String activity, String method, String argument);
     static native String[] a11yStrings(int win);
     static native int[] a11yTakeEvents(int win);
     static native boolean a11yPerformAction(int win, int id, int action, int granularity, boolean extend, int selStart, int selEnd,

@@ -2,13 +2,16 @@
 # kiln-pack: builds an APK from a kiln app's native library without Gradle.
 #
 #   kiln-pack --package dev.example.app --label "App" --lib-name hello \
-#             --lib arm64-v8a=path/libhello.so [--lib x86_64=path/libhello.so] [--assets dir] --out app.apk
+#             --lib arm64-v8a=path/libhello.so [--lib x86_64=path/libhello.so] [--assets dir] [--debug] --out app.apk
+#
+# --debug: a debuggable APK that answers Volition (content://<package>.volition), so the
+# volition CLI and MCP tools drive it by name.
 #
 # Steps: javac (kiln's Java host, platform APIs only) -> d8 -> manifest -> aapt2 link ->
 # add classes.dex + lib/<abi>/*.so -> zipalign -> apksigner (debug key in build/).
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/android-env.sh"
-PACKAGE=""; LABEL="kiln app"; LIBNAME=""; OUT=""; LIBS=(); ASSETS=""
+PACKAGE=""; LABEL="kiln app"; LIBNAME=""; OUT=""; LIBS=(); ASSETS=""; DEBUG=0
 while [ $# -gt 0 ]; do
     case "$1" in
         --package) PACKAGE="$2"; shift 2 ;;
@@ -17,11 +20,18 @@ while [ $# -gt 0 ]; do
         --lib) LIBS+=("$2"); shift 2 ;;
         --out) OUT="$2"; shift 2 ;;
         --assets) ASSETS="$2"; shift 2 ;;
+        --debug) DEBUG=1; shift ;;
         *) echo "kiln-pack: unknown argument $1" >&2; exit 2 ;;
     esac
 done
 [ -n "$PACKAGE" ] && [ -n "$LIBNAME" ] && [ -n "$OUT" ] && [ ${#LIBS[@]} -gt 0 ] \
-    || { sed -n '2,8p' "$0" >&2; exit 2; }
+    || { sed -n '2,11p' "$0" >&2; exit 2; }
+
+DEBUG_ATTR=""; DEBUG_PROVIDER=""
+if [ "$DEBUG" = 1 ]; then
+    DEBUG_ATTR='android:debuggable="true"'
+    DEBUG_PROVIDER="<provider android:name=\"dev.kiln.KilnVolition\" android:authorities=\"$PACKAGE.volition\" android:exported=\"true\" />"
+fi
 
 STAGING="$KILN_ROOT/build/pack/$PACKAGE"
 rm -rf "$STAGING"; mkdir -p "$STAGING/classes" "$STAGING/dex"
@@ -51,7 +61,7 @@ cat > "$STAGING/AndroidManifest.xml" <<XML
         </intent>
     </queries>
     <application android:label="$LABEL" android:supportsRtl="true" android:hasCode="true" android:extractNativeLibs="false"
-                 android:enableOnBackInvokedCallback="true"
+                 android:enableOnBackInvokedCallback="true" $DEBUG_ATTR
                  android:theme="@android:style/Theme.DeviceDefault.NoActionBar">
         <activity android:name="dev.kiln.KilnActivity" android:exported="true"
                   android:windowSoftInputMode="adjustResize"
@@ -62,6 +72,7 @@ cat > "$STAGING/AndroidManifest.xml" <<XML
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        $DEBUG_PROVIDER
     </application>
 </manifest>
 XML

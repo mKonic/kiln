@@ -37,6 +37,8 @@ namespace kiln::android { void InstallImageDecoder(); void InstallAssetReader(JN
 #include <media/NdkImageReader.h>
 #include <deque>
 #include <jni.h>
+#include <kiln/ui/Volition.h>
+#include <kiln/foundation/text/input/TextFieldBuffer.h>
 
 #include <chrono>
 #include <algorithm>
@@ -2114,6 +2116,38 @@ namespace {
         return ok;
     }
 
+    // Volition (debug builds): one command over the app's windows, bottom to top, each its
+    // view's window id, its name and its origin on screen (x, y pairs).
+    jstring VolitionCall(JNIEnv* env, jclass, jintArray ids, jobjectArray names, jintArray origins, jstring activity,
+                         jstring method, jstring argument) {
+        auto utf8 = [env](jstring s) -> std::string {
+            if (!s) return {};
+            const jchar* c = env->GetStringChars(s, nullptr);
+            std::string out = kiln::foundation::ToUtf8(std::u16string_view(reinterpret_cast<const char16_t*>(c), std::size_t(env->GetStringLength(s))));
+            env->ReleaseStringChars(s, c);
+            return out;
+        };
+        std::vector<kiln::ui::volition::Window> windows;
+        if (g_Host) {
+            const jsize n = env->GetArrayLength(ids);
+            std::vector<jint> id(static_cast<std::size_t>(n)), xy(static_cast<std::size_t>(n) * 2);
+            env->GetIntArrayRegion(ids, 0, n, id.data());
+            env->GetIntArrayRegion(origins, 0, n * 2, xy.data());
+            for (jsize i = 0; i < n; ++i) {
+                Win* w = WinOf(id[std::size_t(i)]);
+                kiln::ui::Owner* owner = w ? w->owner : id[std::size_t(i)] == 0 ? &g_Host->app->GetOwner() : nullptr;
+                if (!owner) continue;
+                auto name = static_cast<jstring>(env->GetObjectArrayElement(names, i));
+                windows.push_back({ utf8(name), owner, xy[std::size_t(i) * 2], xy[std::size_t(i) * 2 + 1] });
+                env->DeleteLocalRef(name);
+            }
+        }
+        const std::string answer = kiln::ui::volition::Call(windows, { utf8(activity) }, utf8(method), utf8(argument));
+        if (g_Host) g_Host->app->RequestFrame();   // an action changes what is shown
+        const std::u16string u = kiln::foundation::ToUtf16(answer);
+        return env->NewString(reinterpret_cast<const jchar*>(u.data()), jsize(u.size()));
+    }
+
     // Extra data: [kind, ...] — 0 none; 1 int: value; 2 string: (strings[0]); 3 character
     // locations: count, (present, l, t, r, b) each; 4 shape: type (INT_MIN unset), has rect,
     // l, t, r, b, corner count, corners (float bits), region count, (l, t, r, b) each. Pixels in
@@ -3021,6 +3055,7 @@ extern "C" JNIEXPORT jint kiln_jni_onload(JavaVM* vm) {
         { "backInvoked", "()V", reinterpret_cast<void*>(&BackInvoked) },
         { "a11ySetEnabled", "(IZLjava/lang/String;)V", reinterpret_cast<void*>(&A11ySetEnabled) },
         { "a11yNodeInfo", "(II)[I", reinterpret_cast<void*>(&A11yNodeInfo) },
+        { "volition", "([I[Ljava/lang/String;[ILjava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;", reinterpret_cast<void*>(&VolitionCall) },
         { "a11yStrings", "(I)[Ljava/lang/String;", reinterpret_cast<void*>(&A11yStrings) },
         { "a11yTakeEvents", "(I)[I", reinterpret_cast<void*>(&A11yTakeEvents) },
         { "a11yPerformAction", "(IIIIZIILjava/lang/String;ZF)Z", reinterpret_cast<void*>(&A11yPerformAction) },
