@@ -1,6 +1,6 @@
 /* kiln C ABI: the app entry point, composition (keys, state, effects), modifiers, shapes, text
  * styles and foundation's layouts, text, images, lazy lists and pagers. Material 3 is in
- * kiln_m3.h. design/capi.md has the rules; in short:
+ * kiln_m3.h. The rules:
  *
  * - No C++ types or exceptions cross this boundary. A call that fails logs and does nothing.
  * - Composable calls (layouts, components, remember, effects) are valid only inside a content
