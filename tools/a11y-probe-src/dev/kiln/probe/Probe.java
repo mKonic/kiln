@@ -13,16 +13,19 @@ import android.view.accessibility.AccessibilityNodeInfo;
  */
 public final class Probe extends Instrumentation {
     private String cmd = "dump";
+    // -e keep 1: leave the running accessibility services (TalkBack) alone, to watch what they do.
+    private boolean keepServices;
     private final StringBuilder out = new StringBuilder();
     private final StringBuilder events = new StringBuilder();
 
     @Override public void onCreate(Bundle args) {
         if (args != null && args.getString("cmd") != null) cmd = args.getString("cmd");
+        keepServices = args != null && "1".equals(args.getString("keep"));
         start();
     }
 
     @Override public void onStart() {
-        UiAutomation ua = getUiAutomation();
+        UiAutomation ua = keepServices ? getUiAutomation(UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES) : getUiAutomation();
         // Every window, not just the active one: a non-focusable popup window (a tooltip) never is.
         android.accessibilityservice.AccessibilityServiceInfo info = ua.getServiceInfo();
         info.flags |= android.accessibilityservice.AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS;
@@ -134,6 +137,20 @@ public final class Probe extends Instrumentation {
         }
         if (root == null) { out.append("no active window\n"); return; }
         if (verb.equals("dump") || verb.equals("vdump")) { verbose = verb.equals("vdump"); dump(root, 0); return; }
+        if (verb.equals("where")) {
+            // The node holding accessibility focus (where TalkBack is), in any window.
+            for (android.view.accessibility.AccessibilityWindowInfo w : ua.getWindows()) {
+                AccessibilityNodeInfo r = w.getRoot();
+                AccessibilityNodeInfo f = r == null ? null : r.findFocus(AccessibilityNodeInfo.FOCUS_ACCESSIBILITY);
+                if (f == null) continue;
+                out.append("in window ").append(w.getType()).append(' ').append(w.getTitle()).append('\n');
+                verbose = true;
+                dump(f, 0);
+                return;
+            }
+            out.append("no accessibility focus\n");
+            return;
+        }
         if (verb.equals("windows")) {
             // Every window the service sees, top first, each with its tree.
             for (android.view.accessibility.AccessibilityWindowInfo w : ua.getWindows()) {

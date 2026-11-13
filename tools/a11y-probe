@@ -10,7 +10,8 @@
 # settext:<text>=<value> (the editable node holding <text>), setprogress:<text>=<float>, wait:<ms>, swipe:<x1,y1,x2,y2,ms>,
 # swipeon:<text>=<dx,dy,ms> (a drag from its centre, in dp),
 # scroll:<n> / scrollback:<n> (the n-th scrollable node), clip (the
-# clipboard's text). <text> matches a node's text or content description.
+# clipboard's text), where (the node with accessibility focus; with PROBE_KEEP_SERVICES=1 the running
+# services such as TalkBack stay on, to watch them). <text> matches a node's text or content description.
 # Checks, for one run per scenario: expect:<text> / reject:<text> (wait up to 3 s for a visible
 # node to appear / go away; a failure stops the run with a dump and exit status 1),
 # reach:<text> (scroll it into the upper half), tap:<text> / press:<text>[=ms] (a real touch at
@@ -45,7 +46,7 @@ adb shell rm -f "$files/*.png" 2>/dev/null || true
 steps="${1:-dump}"
 q="'"
 steps="${steps//$q/$q\\$q$q}"
-result="$(adb shell am instrument -w -e cmd "'$steps'" dev.kiln.probe/.Probe)"
+result="$(adb shell am instrument -w ${PROBE_KEEP_SERVICES:+-e keep 1} -e cmd "'$steps'" dev.kiln.probe/.Probe)"
 printf '%s\n' "$result"
 if adb shell ls "$files" 2>/dev/null | grep -q '\.png'; then
     mkdir -p "${PROBE_SHOTS:-$KILN_ROOT/build/shots}"
