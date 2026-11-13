@@ -295,27 +295,6 @@ namespace kiln::ui::volition {
             return out;
         }
 
-        std::string JsonString(std::string_view s) {
-            std::string out = "\"";
-            for (const char ch : s) {
-                switch (ch) {
-                    case '"': out += "\\\""; break;
-                    case '\\': out += "\\\\"; break;
-                    case '\n': out += "\\n"; break;
-                    case '\r': out += "\\r"; break;
-                    case '\t': out += "\\t"; break;
-                    case '/': out += "\\/"; break;   // as org.json writes it
-                    default:
-                        if (static_cast<unsigned char>(ch) < 0x20) {
-                            char buf[8];
-                            std::snprintf(buf, sizeof buf, "\\u%04x", ch);
-                            out += buf;
-                        } else out += ch;
-                }
-            }
-            return out + "\"";
-        }
-
         const char* const kHelp =
             "help          what this app answers\n"
             "destinations  where it can be told to go\n"
@@ -509,7 +488,9 @@ namespace kiln::ui::volition {
                 const auto sep = argument.find(kSeparator);
                 if (sep == std::string::npos) return "error: fill needs a field and the text for it";
                 const std::string query = argument.substr(0, sep), text = argument.substr(sep + 1);
-                const Element& field = Trim(query).empty() ? FocusedField(windows) : Pick(windows, query, "filled", CanFill);
+                // Pick returns into windows; a pointer, so GCC's dangling-reference heuristic (it sees the temporaries) stays quiet.
+                const Element* picked = Trim(query).empty() ? &FocusedField(windows) : &Pick(windows, query, "filled", CanFill);
+                const Element& field = *picked;
                 bool done = false;
                 if (field.config.setText) done = field.config.setText(text);
                 else {
@@ -521,8 +502,9 @@ namespace kiln::ui::volition {
                 return done ? "ok: filled " + Summary(field) : "error: " + Summary(field) + " refused '" + text + "'";
             }
             if (method == "submit") {
-                const Element& field = Trim(argument).empty() ? FocusedField(windows)
-                                                              : Pick(windows, argument, "submitted", [](const Element& x) { return bool(x.config.onImeAction); });
+                const Element* picked = Trim(argument).empty() ? &FocusedField(windows)
+                                                               : &Pick(windows, argument, "submitted", [](const Element& x) { return bool(x.config.onImeAction); });
+                const Element& field = *picked;
                 if (!field.config.onImeAction) return "error: " + Summary(field) + " has nothing to submit";
                 return field.config.onImeAction() ? "ok: submitted " + Summary(field) : "error: " + Summary(field) + " did not submit";
             }
