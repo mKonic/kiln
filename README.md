@@ -6,8 +6,8 @@ itself on Vulkan, works inside existing Android apps, and is free and open sourc
 
 ## Documentation
 
-* [Get started](docs/get-started.md)
-* [kiln documentation](docs/README.md)
+* [Get started](https://mkonic.github.io/kiln/get-started.html)
+* [kiln documentation](https://mkonic.github.io/kiln/)
 * [Samples](samples)
 
 ## About kiln
@@ -46,8 +46,8 @@ for Gradle projects. A [C API][c api] covers the toolkit for C and other languag
 can host video, camera and other surfaces, and accessibility, autofill, content capture, input methods
 and window insets work the way Android expects.
 
-[components]: docs/material3.md
+[components]: https://mkonic.github.io/kiln/material3.html
 [hearth]: https://github.com/mKonic/hearth
 [Volition]: https://github.com/mKonic/volition
-[c api]: docs/c-api.md
+[c api]: https://mkonic.github.io/kiln/c-api.html
 [Rust bindings]: bindings/rust
