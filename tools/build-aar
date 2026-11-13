@@ -44,6 +44,9 @@ done
 # The headers of the C ABI and kiln++ (kiln.hpp is the in-tree C++ API's entry: not shipped).
 mkdir -p "$STAGING/prefab/modules/kiln/include/kiln"
 cp "$KILN_ROOT"/include/kiln/{kiln.h,kiln_m3.h,kilnpp.hpp,kiln_m3.hpp} "$STAGING/prefab/modules/kiln/include/kiln/"
+# The version script an app's library links with: it exports JNI_OnLoad alone, so the linker
+# drops the kiln code the app never reaches (samples/gradle-notes shows the link options).
+cp "$KILN_ROOT/platform/android/app.map" "$STAGING/prefab/modules/kiln/include/kiln/"
 cat > "$STAGING/prefab/prefab.json" <<JSON
 { "schema_version": 2, "name": "kiln", "version": "$VERSION", "dependencies": [] }
 JSON

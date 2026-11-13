@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Debug builds answer Volition at content://<applicationId>.volition, so the volition CLI and
+     MCP tools drive the app by name. Release builds do not declare it. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <provider android:name="dev.kiln.KilnVolition" android:authorities="${applicationId}.volition"
+                  android:exported="true" />
+    </application>
+</manifest>
