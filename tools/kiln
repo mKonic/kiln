@@ -58,8 +58,10 @@ for abi in "${ABI_LIST[@]}"; do
     kiln_configure_android "$abi"
     [ -f "$KILN_ROOT/build/android/$abi/apps/$APP" ] || {
         echo "kiln: no app '$APP' - kiln list shows them" >&2; exit 1; }
-    cmake --build "$KILN_ROOT/build/android/$abi" --target "$APP"
-    LIB_ARGS+=(--lib "$abi=$(meta "$abi" lib)")
+    # --debug: the library with Volition's commands linked in.
+    if [ ${#DEBUG[@]} -gt 0 ]; then target="${APP}_debug"; key=lib_debug; else target="$APP"; key=lib; fi
+    cmake --build "$KILN_ROOT/build/android/$abi" --target "$target"
+    LIB_ARGS+=(--lib "$abi=$(meta "$abi" "$key")")
 done
 [ "$CMD" = build ] && exit 0
 

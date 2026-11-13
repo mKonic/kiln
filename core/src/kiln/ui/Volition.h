@@ -9,6 +9,7 @@
 #include <kiln/Function.h>
 #include <kiln/ui/Semantics.h>
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
@@ -77,15 +78,26 @@ namespace kiln::ui::volition {
         SemanticsConfiguration config;    // its actions
     };
 
-    // A window's elements in reading order (top to bottom, rows left to right).
+    // A window's elements in reading order (top to bottom, rows left to right). In kiln_volition.
     std::vector<Element> ElementsOf(const Window& window);
 
     // Separates a field's name from its text in fill's single argument.
     inline constexpr char kSeparator = '\x1f';
 
     // Runs one command: help, where / state, check, destinations, go, ui, find, click, longclick,
-    // fill, submit. A failure is an answer starting with "error:".
+    // fill, submit. A failure is an answer starting with "error:". The commands are in the
+    // kiln_volition library, which debug builds link; without it every call answers that this
+    // build does not (a release build carries only the registrations above).
     std::string Call(const std::vector<Window>& windows, const Context& context, std::string_view method,
                      std::string_view argument);
+
+    namespace detail {
+        struct Registered { std::uint64_t id; Adapter adapter; };
+        // The registered adapters, oldest first.
+        const std::vector<Registered>& RegisteredAdapters();
+        using Handler = std::string (*)(const std::vector<Window>&, const Context&, std::string_view, std::string_view);
+        // kiln_volition installs its commands here when it is linked in.
+        void SetHandler(Handler handler);
+    }
 
 }

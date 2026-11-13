@@ -328,9 +328,7 @@ namespace kiln::ui::volition {
             "fill <name>   set a field's text: <name>, a unit separator (0x1f), then the text\n"
             "submit <name> run a field's keyboard action - search, go, done";
 
-        // Registered adapters, oldest first.
-        struct Registered { std::uint64_t id; Adapter adapter; };
-        std::vector<Registered>& Adapters() { static std::vector<Registered> a; return a; }
+        const std::vector<detail::Registered>& Adapters() { return detail::RegisteredAdapters(); }
 
         std::string Number(double d) {
             if (std::isfinite(d) && std::fmod(d, 1.0) == 0.0 && std::fabs(d) < 1e15) return std::to_string(static_cast<long long>(d));
@@ -430,35 +428,6 @@ namespace kiln::ui::volition {
         }
     }
 
-    std::string ToJson(const Value& value) {
-        return std::visit([](const auto& x) -> std::string {
-            using T = std::decay_t<decltype(x)>;
-            if constexpr (std::is_same_v<T, std::nullptr_t>) return "null";
-            else if constexpr (std::is_same_v<T, bool>) return x ? "true" : "false";
-            else if constexpr (std::is_same_v<T, double>) return Number(x);
-            else if constexpr (std::is_same_v<T, std::string>) return JsonString(x);
-            else if constexpr (std::is_same_v<T, std::vector<Value>>) {
-                std::string out = "[";
-                for (std::size_t i = 0; i < x.size(); ++i) out += (i ? "," : "") + ToJson(x[i]);
-                return out + "]";
-            } else {
-                std::string out = "{";
-                for (std::size_t i = 0; i < x.size(); ++i) out += (i ? "," : "") + JsonString(x[i].first) + ":" + ToJson(x[i].second);
-                return out + "}";
-            }
-        }, value.v);
-    }
-
-    std::shared_ptr<void> Register(Adapter adapter) {
-        static std::uint64_t next = 0;
-        const std::uint64_t id = ++next;
-        Adapters().push_back({ id, std::move(adapter) });
-        return std::shared_ptr<void>(nullptr, [id](void*) {
-            auto& a = Adapters();
-            a.erase(std::remove_if(a.begin(), a.end(), [id](const Registered& r) { return r.id == id; }), a.end());
-        });
-    }
-
     std::vector<Element> ElementsOf(const Window& window) {
         if (!window.owner) return {};
         std::vector<Element> found;
@@ -489,8 +458,9 @@ namespace kiln::ui::volition {
         return ordered;
     }
 
-    std::string Call(const std::vector<Window>& windowList, const Context& context, std::string_view method,
-                     std::string_view argumentView) {
+    namespace {
+    std::string Answer(const std::vector<Window>& windowList, const Context& context, std::string_view method,
+                       std::string_view argumentView) {
         const std::string argument(argumentView);
         try {
             if (method == "help" || method == "commands") return kHelp;
@@ -560,6 +530,10 @@ namespace kiln::ui::volition {
         } catch (const Refused& r) {
             return "error: " + r.message;
         }
+    }
+
+    // Linked in (debug builds), this answers volition::Call.
+    const bool g_Installed = (detail::SetHandler(&Answer), true);
     }
 
 }

@@ -40,7 +40,22 @@ for abi in "${ABIS[@]}"; do
     cat > "$libdir/abi.json" <<JSON
 { "abi": "$abi", "api": $ANDROID_MIN_SDK, "ndk": $NDK_MAJOR, "stl": "c++_static", "static": true }
 JSON
+    # Volition's commands, for debug builds (linked whole next to libkiln.a).
+    vdir="$STAGING/prefab/modules/kiln_volition/libs/android.$abi"
+    mkdir -p "$vdir"
+    cmake --build "$dir" --target kiln_volition >/dev/null
+    "$NDK_TOOLCHAIN/bin/llvm-strip" --strip-debug "$dir/libkiln_volition.a" -o "$vdir/libkiln_volition.a"
+    cp "$libdir/abi.json" "$vdir/abi.json"
 done
+mkdir -p "$STAGING/prefab/modules/kiln_volition/include/kiln"
+cat > "$STAGING/prefab/modules/kiln_volition/include/kiln/volition.h" <<'H'
+/* kiln_volition: link this library whole into a debug build's app library, and declare
+ * dev.kiln.KilnVolition as a provider in the debug manifest, to answer Volition's commands.
+ * Release builds leave it out. It has no API of its own. */
+H
+cat > "$STAGING/prefab/modules/kiln_volition/module.json" <<JSON
+{ "export_libraries": [":kiln"], "library_name": "libkiln_volition" }
+JSON
 # The headers of the C ABI and kiln++ (kiln.hpp is the in-tree C++ API's entry: not shipped).
 mkdir -p "$STAGING/prefab/modules/kiln/include/kiln"
 cp "$KILN_ROOT"/include/kiln/{kiln.h,kiln_m3.h,kilnpp.hpp,kiln_m3.hpp} "$STAGING/prefab/modules/kiln/include/kiln/"
