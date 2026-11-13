@@ -21,6 +21,7 @@
 #include "kiln/foundation/text/BasicText.h"
 #include "kiln/foundation/text/BasicTextField.h"
 #include "kiln/runtime/CoroutineScope.h"
+#include "kiln/ui/Volition.h"
 #include "kiln/runtime/Saveable.h"
 
 #include <climits>
@@ -1145,3 +1146,62 @@ KILN_API void kiln_animated_visibility(kiln_key key, bool visible, const kiln_mo
     } CATCH_VOID
 }
 
+
+// --- Volition ------------------------------------------------------------------------------------
+
+struct kiln_volition_fields { kiln::ui::volition::Object* object; };
+struct kiln_volition_lines { std::vector<std::string>* lines; };
+struct kiln_volition_registration { std::shared_ptr<void> handle; };
+
+namespace {
+    void PutField(kiln_volition_fields* f, const char* key, kiln::ui::volition::Value v) {
+        if (!f || !f->object || !key) return;
+        f->object->push_back({ key, std::move(v) });
+    }
+}
+
+KILN_API void kiln_volition_adapter_init(kiln_volition_adapter* a) {
+    if (!a) return;
+    *a = {};
+    a->size = sizeof(*a);
+}
+
+KILN_API kiln_volition_registration* kiln_volition_register(const kiln_volition_adapter* in) {
+    TRY {
+        namespace v = kiln::ui::volition;
+        const auto o = ReadOptions(in, kiln_volition_adapter_init);
+        v::Adapter adapter;
+        if (auto state = Own(o.state))
+            adapter.state = [state](v::Object& fields) { kiln_volition_fields f{ &fields }; state->f.call(state->f.user, &f); };
+        if (auto lines = Own(o.destinations))
+            adapter.destinations = [lines] {
+                std::vector<std::string> out;
+                kiln_volition_lines l{ &out };
+                lines->f.call(lines->f.user, &l);
+                return out;
+            };
+        if (auto go = Own(o.go))
+            adapter.go = [go](const std::string& name, const std::optional<std::string>& argument) -> std::optional<std::string> {
+                const char* answer = go->f.call(go->f.user, name.c_str(), argument ? argument->c_str() : nullptr);
+                if (!answer) return std::nullopt;
+                return std::string(answer);
+            };
+        return new kiln_volition_registration{ v::Register(std::move(adapter)) };
+    } CATCH(nullptr)
+}
+
+KILN_API void kiln_volition_unregister(kiln_volition_registration* r) { delete r; }
+
+KILN_API void kiln_volition_field_string(kiln_volition_fields* f, const char* key, const char* value) {
+    PutField(f, key, value ? kiln::ui::volition::Value(std::string(value)) : kiln::ui::volition::Value(nullptr));
+}
+KILN_API void kiln_volition_field_number(kiln_volition_fields* f, const char* key, double value) { PutField(f, key, value); }
+KILN_API void kiln_volition_field_bool(kiln_volition_fields* f, const char* key, bool value) { PutField(f, key, value); }
+KILN_API void kiln_volition_field_strings(kiln_volition_fields* f, const char* key, const char* const* values, size_t count) {
+    std::vector<kiln::ui::volition::Value> list;
+    for (size_t i = 0; i < count; ++i) list.push_back(std::string(values && values[i] ? values[i] : ""));
+    PutField(f, key, std::move(list));
+}
+KILN_API void kiln_volition_line(kiln_volition_lines* l, const char* line) {
+    if (l && l->lines && line) l->lines->push_back(line);
+}

@@ -3,9 +3,11 @@
 #include "FakeText.h"
 
 #include <kiln/kiln_m3.h>
+#include <kiln/kilnpp.hpp>
 
 #include "kiln/foundation/Compose.h"
 #include "kiln/ui/Semantics.h"
+#include "kiln/ui/Volition.h"
 
 #include <chrono>
 
@@ -27,6 +29,8 @@ extern "C" {
     void capi_m3_dismiss_snackbar(void);
     void capi_m3_app_bar(void* user);
     float capi_bar_height_offset(void);
+    extern int capi_volition_dropped;
+    kiln_volition_registration* capi_volition_register(void);
 }
 
 extern int kpp_effect_runs, kpp_disposals;
@@ -222,4 +226,30 @@ TEST(CApiAnnotatedTextFromABuilder) {
     Harness h;
     h.Run(capi_annotated);
     CHECK_EQ(h.Text("rich"), std::string("Read the terms."));
+}
+
+TEST(CApiVolitionRegistrationAnswersWhereDestinationsAndGo) {
+    namespace v = ui::volition;
+    kiln_volition_registration* r = capi_volition_register();
+    CHECK(r != nullptr);
+    const std::string where = v::Call({}, { "KilnActivity" }, "where", {});
+    CHECK(where.find("\"screen\":\"item\",\"page\":4,\"editing\":false,\"stack\":[\"home\",\"item\"]") != std::string::npos);
+    CHECK(v::Call({}, {}, "destinations", {}).find("item:<id>  opens an item") != std::string::npos);
+    CHECK_EQ(v::Call({}, {}, "go", "item:42"), std::string("ok: opened item 42"));
+    CHECK_EQ(v::Call({}, {}, "check", "page>3"), std::string("ok: page is 4"));
+    kiln_volition_unregister(r);
+    CHECK_EQ(capi_volition_dropped, 1);
+    CHECK(v::Call({}, { "KilnActivity" }, "where", {}).find("screen") == std::string::npos);
+}
+
+kpp::VolitionRegistration kpp_volition_register();
+
+TEST(KilnppVolitionRegistration) {
+    namespace v = ui::volition;
+    {
+        auto r = kpp_volition_register();
+        CHECK(v::Call({}, {}, "where", {}).find("\"screen\":\"kpp\",\"stack\":[\"a\",\"b\"]") != std::string::npos);
+        CHECK_EQ(v::Call({}, {}, "go", "detail:7"), std::string("ok: detail 7"));
+    }
+    CHECK(v::Call({}, {}, "where", {}).find("kpp") == std::string::npos);   // unregistered with the handle
 }

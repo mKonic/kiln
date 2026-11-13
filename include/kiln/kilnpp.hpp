@@ -23,6 +23,7 @@
 
 #include <cstdint>
 #include <functional>
+#include <optional>
 #include <source_location>
 #include <string>
 #include <string_view>
@@ -571,5 +572,60 @@ namespace kpp {
     // --- App ------------------------------------------------------------------------------------
 
     inline void set_content(kiln_app* app, Callback<kiln_fn> content) { kiln_app_set_content(app, content.release()); }
+
+    // --- Volition (debug builds answer it; see kiln.h) -----------------------------------------
+
+    class VolitionFields {
+    public:
+        explicit VolitionFields(kiln_volition_fields* f) : m_F(f) {}
+        void string(const std::string& key, const std::string& value) { kiln_volition_field_string(m_F, key.c_str(), value.c_str()); }
+        void number(const std::string& key, double value) { kiln_volition_field_number(m_F, key.c_str(), value); }
+        void boolean(const std::string& key, bool value) { kiln_volition_field_bool(m_F, key.c_str(), value); }
+        void strings(const std::string& key, const std::vector<std::string>& values) {
+            std::vector<const char*> p;
+            for (const auto& v : values) p.push_back(v.c_str());
+            kiln_volition_field_strings(m_F, key.c_str(), p.data(), p.size());
+        }
+    private:
+        kiln_volition_fields* m_F;
+    };
+
+    struct VolitionAdapter {
+        std::function<void(VolitionFields&)> state;                 // `where` fields
+        std::function<std::vector<std::string>()> destinations;     // "name:<argument>  what it does"
+        // `go name[:argument]`: the answer, or nothing when `name` is not a destination here.
+        std::function<std::optional<std::string>(const std::string& name, const std::optional<std::string>& argument)> go;
+    };
+
+    // Registered while it lives (move-only).
+    class VolitionRegistration {
+    public:
+        VolitionRegistration() = default;
+        explicit VolitionRegistration(kiln_volition_registration* r) : m_R(r) {}
+        VolitionRegistration(VolitionRegistration&& o) noexcept : m_R(o.m_R) { o.m_R = nullptr; }
+        VolitionRegistration& operator=(VolitionRegistration&& o) noexcept { std::swap(m_R, o.m_R); return *this; }
+        ~VolitionRegistration() { if (m_R) kiln_volition_unregister(m_R); }
+    private:
+        kiln_volition_registration* m_R = nullptr;
+    };
+
+    inline VolitionRegistration volition_register(VolitionAdapter adapter) {
+        kiln_volition_adapter a;
+        kiln_volition_adapter_init(&a);
+        if (adapter.state)
+            a.state = fn<kiln_fn_volition_state>([f = std::move(adapter.state)](kiln_volition_fields* fields) { VolitionFields v(fields); f(v); });
+        if (adapter.destinations)
+            a.destinations = fn<kiln_fn_volition_lines>([f = std::move(adapter.destinations)](kiln_volition_lines* lines) {
+                for (const auto& line : f()) kiln_volition_line(lines, line.c_str());
+            });
+        if (adapter.go)
+            a.go = fn<kiln_fn_volition_go>([f = std::move(adapter.go), answer = std::string()](const char* name, const char* argument) mutable -> const char* {
+                auto r = f(name, argument ? std::optional<std::string>(argument) : std::nullopt);
+                if (!r) return nullptr;
+                answer = std::move(*r);   // kiln copies it before the next call
+                return answer.c_str();
+            });
+        return VolitionRegistration(kiln_volition_register(&a));
+    }
 
 }

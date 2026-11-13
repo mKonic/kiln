@@ -619,6 +619,42 @@ KILN_API kiln_color kiln_animate_color(kiln_key key, kiln_color target, const ki
 /* AnimatedVisibility with Compose's default transitions (fade and expand / shrink). */
 KILN_API void kiln_animated_visibility(kiln_key key, bool visible, const kiln_modifier* modifier, kiln_fn content);
 
+/* ---------------------------------------------------------------------------------------------
+ * Volition (github.com/mKonic/volition): debug builds answer its commands by name. An app tells
+ * `where` about itself (state fields) and lists where `go` can send it, as a NavHost does in
+ * C++. Registered until kiln_volition_unregister; the newest registration is asked first.
+ * Release builds keep the registrations and answer nothing.
+ * ------------------------------------------------------------------------------------------- */
+
+typedef struct kiln_volition_fields kiln_volition_fields;
+typedef struct kiln_volition_lines kiln_volition_lines;
+typedef struct kiln_volition_registration kiln_volition_registration;
+
+/* `where`: adds fields to the answer (a later registration's field replaces an earlier one's). */
+typedef struct kiln_fn_volition_state { void (*call)(void* user, kiln_volition_fields* fields); void* user; void (*drop)(void* user); } kiln_fn_volition_state;
+/* `destinations`: one line each, `name` or `name:<argument>`, two spaces, what it does. */
+typedef struct kiln_fn_volition_lines { void (*call)(void* user, kiln_volition_lines* lines); void* user; void (*drop)(void* user); } kiln_fn_volition_lines;
+/* `go name[:argument]` (argument NULL when absent): the answer ("ok: ..." or "error: ..."),
+ * copied at once, or NULL when `name` is not one of this registration's destinations. */
+typedef struct kiln_fn_volition_go { const char* (*call)(void* user, const char* name, const char* argument); void* user; void (*drop)(void* user); } kiln_fn_volition_go;
+
+typedef struct kiln_volition_adapter {
+    size_t size;
+    kiln_fn_volition_state state;           /* absent: no fields */
+    kiln_fn_volition_lines destinations;    /* absent: none */
+    kiln_fn_volition_go go;                 /* absent: goes nowhere */
+} kiln_volition_adapter;
+KILN_API void kiln_volition_adapter_init(kiln_volition_adapter* adapter);
+KILN_API kiln_volition_registration* kiln_volition_register(const kiln_volition_adapter* adapter);
+/* Ends the registration and drops its callbacks. */
+KILN_API void kiln_volition_unregister(kiln_volition_registration* registration);
+
+KILN_API void kiln_volition_field_string(kiln_volition_fields* fields, const char* key, const char* value);
+KILN_API void kiln_volition_field_number(kiln_volition_fields* fields, const char* key, double value);
+KILN_API void kiln_volition_field_bool(kiln_volition_fields* fields, const char* key, bool value);
+KILN_API void kiln_volition_field_strings(kiln_volition_fields* fields, const char* key, const char* const* values, size_t count);
+KILN_API void kiln_volition_line(kiln_volition_lines* lines, const char* line);
+
 #ifdef __cplusplus
 }
 #endif

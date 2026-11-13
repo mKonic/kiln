@@ -78,6 +78,9 @@ __kiln_callback!(sys::kiln_fn_lazy, (s: *mut sys::kiln_lazy_scope) -> ());
 __kiln_callback!(sys::kiln_fn_item_key, (i: i32) -> sys::kiln_key);
 __kiln_callback!(sys::kiln_fn_count, () -> i32);
 __kiln_callback!(sys::kiln_fn_effect, () -> sys::kiln_fn);
+__kiln_callback!(sys::kiln_fn_volition_state, (f: *mut sys::kiln_volition_fields) -> ());
+__kiln_callback!(sys::kiln_fn_volition_lines, (l: *mut sys::kiln_volition_lines) -> ());
+__kiln_callback!(sys::kiln_fn_volition_go, (n: *const ::std::ffi::c_char, a: *const ::std::ffi::c_char) -> *const ::std::ffi::c_char);
 __kiln_callback!(sys::kiln_fn_task, (t: *mut sys::kiln_task) -> ());
 __kiln_callback!(sys::kiln_fn_task_frame, (t: *mut sys::kiln_task, time: i64) -> ());
 __kiln_callback!(sys::kiln_fn_constraints, (c: *const sys::kiln_constraints) -> ());
@@ -438,4 +441,81 @@ pub extern "C" fn JNI_OnLoad(vm: *mut c_void, _reserved: *mut c_void) -> i32 {
         fn kiln_jni_onload(vm: *mut c_void) -> i32;
     }
     unsafe { kiln_jni_onload(vm) }
+}
+
+// --- Volition ---------------------------------------------------------------------------------
+
+/// Volition (github.com/mKonic/volition): what the app tells `where`, and where `go` can send
+/// it. Debug builds answer it; release builds keep the registration and answer nothing.
+pub mod volition {
+    use super::{sys, IntoCallback};
+    use std::ffi::{c_char, CStr, CString};
+
+    /// `where`'s fields.
+    pub struct Fields(*mut sys::kiln_volition_fields);
+    impl Fields {
+        fn c(s: &str) -> CString { CString::new(s.replace('\0', "")).unwrap() }
+        pub fn string(&mut self, key: &str, value: &str) {
+            let (k, v) = (Self::c(key), Self::c(value));
+            unsafe { sys::kiln_volition_field_string(self.0, k.as_ptr(), v.as_ptr()) }
+        }
+        pub fn number(&mut self, key: &str, value: f64) {
+            let k = Self::c(key);
+            unsafe { sys::kiln_volition_field_number(self.0, k.as_ptr(), value) }
+        }
+        pub fn boolean(&mut self, key: &str, value: bool) {
+            let k = Self::c(key);
+            unsafe { sys::kiln_volition_field_bool(self.0, k.as_ptr(), value) }
+        }
+        pub fn strings(&mut self, key: &str, values: &[&str]) {
+            let k = Self::c(key);
+            let owned: Vec<CString> = values.iter().map(|v| Self::c(v)).collect();
+            let ptrs: Vec<*const c_char> = owned.iter().map(|v| v.as_ptr()).collect();
+            unsafe { sys::kiln_volition_field_strings(self.0, k.as_ptr(), ptrs.as_ptr(), ptrs.len()) }
+        }
+    }
+
+    /// What the app answers; any part may be left out.
+    #[derive(Default)]
+    pub struct Adapter {
+        pub state: Option<Box<dyn FnMut(&mut Fields)>>,
+        /// One line each: `name` or `name:<argument>`, two spaces, what it does.
+        pub destinations: Option<Box<dyn FnMut() -> Vec<String>>>,
+        /// `go name[:argument]`: the answer, or `None` when `name` is not a destination here.
+        pub go: Option<Box<dyn FnMut(&str, Option<&str>) -> Option<String>>>,
+    }
+
+    /// Registered while it lives.
+    pub struct Registration(*mut sys::kiln_volition_registration);
+    impl Drop for Registration {
+        fn drop(&mut self) { unsafe { sys::kiln_volition_unregister(self.0) } }
+    }
+
+    pub fn register(adapter: Adapter) -> Registration {
+        let mut a = sys::kiln_volition_adapter::default();
+        unsafe { sys::kiln_volition_adapter_init(&mut a) };
+        if let Some(mut state) = adapter.state {
+            a.state = (move |f: *mut sys::kiln_volition_fields| state(&mut Fields(f))).into_callback();
+        }
+        if let Some(mut lines) = adapter.destinations {
+            a.destinations = (move |l: *mut sys::kiln_volition_lines| {
+                for line in lines() {
+                    let c = Fields::c(&line);
+                    unsafe { sys::kiln_volition_line(l, c.as_ptr()) }
+                }
+            }).into_callback();
+        }
+        if let Some(mut go) = adapter.go {
+            let mut answer = CString::default();   // kiln copies it before the next call
+            a.go = (move |n: *const c_char, arg: *const c_char| -> *const c_char {
+                let name = unsafe { CStr::from_ptr(n) }.to_string_lossy();
+                let argument = if arg.is_null() { None } else { Some(unsafe { CStr::from_ptr(arg) }.to_string_lossy().into_owned()) };
+                match go(&name, argument.as_deref()) {
+                    Some(r) => { answer = Fields::c(&r); answer.as_ptr() }
+                    None => std::ptr::null(),
+                }
+            }).into_callback();
+        }
+        Registration(unsafe { sys::kiln_volition_register(&a) })
+    }
 }

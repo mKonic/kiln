@@ -13,6 +13,11 @@ struct Notes {
 
 #[no_mangle]
 pub extern "C" fn kiln_main(app: *mut sys::kiln_app) {
+    // Debug builds tell Volition's `where` which screen this is; kept for the app's life.
+    std::mem::forget(volition::register(volition::Adapter {
+        state: Some(Box::new(|f| f.string("screen", "notes"))),
+        ..Default::default()
+    }));
     set_content(app, || {
         m3::material_theme(false, || {
             let notes: Rc<RefCell<Notes>> = remember(|| Rc::new(RefCell::new(Notes::default()))).clone();

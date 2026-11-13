@@ -30,3 +30,15 @@ void kpp_content() {
         }, { kpp::spaced_by(4) });
     });
 }
+
+// A Volition registration through kiln++ (CApiTests.cpp checks `where` and `go`).
+kpp::VolitionRegistration kpp_volition_register() {
+    return kpp::volition_register({
+        [](kpp::VolitionFields& f) { f.string("screen", "kpp"); f.strings("stack", { "a", "b" }); },
+        [] { return std::vector<std::string>{ "detail:<id>  a detail" }; },
+        [](const std::string& name, const std::optional<std::string>& arg) -> std::optional<std::string> {
+            if (name != "detail") return std::nullopt;
+            return "ok: detail " + arg.value_or("?");
+        },
+    });
+}
