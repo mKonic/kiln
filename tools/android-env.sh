@@ -15,11 +15,14 @@ for f in "$NDK/build/cmake/android.toolchain.cmake" "$AAPT2" "$D8" "$ANDROID_JAR
     [ -e "$f" ] || { echo "android-env: missing $f" >&2; exit 1; }
 done
 
+# KILN_LTO=1: link-time optimisation (ThinLTO), in a build tree of its own.
+KILN_ANDROID_BUILD="$KILN_ROOT/build/android${KILN_LTO:+-lto}"
 # Configures build/android/<abi> (again each time, so KILN_CONFIG changes apply).
 kiln_configure_android() {
-    local abi="$1" dir="$KILN_ROOT/build/android/$1"
+    local abi="$1" dir="$KILN_ANDROID_BUILD/$1"
     cmake -S "$KILN_ROOT" -B "$dir" -G Ninja \
         -DCMAKE_TOOLCHAIN_FILE="$NDK/build/cmake/android.toolchain.cmake" \
         -DANDROID_ABI="$abi" -DANDROID_PLATFORM="android-$ANDROID_MIN_SDK" \
-        -DANDROID_STL=c++_static -DCMAKE_BUILD_TYPE="${KILN_CONFIG:-RelWithDebInfo}" >/dev/null
+        -DANDROID_STL=c++_static -DCMAKE_BUILD_TYPE="${KILN_CONFIG:-RelWithDebInfo}" \
+        -DCMAKE_INTERPROCEDURAL_OPTIMIZATION="${KILN_LTO:+ON}" >/dev/null
 }

@@ -14,13 +14,15 @@
 #   --release     an optimised APK for publishing (the default), signed with
 #                 --keystore file --key-alias name when given (passwords from
 #                 KILN_KEYSTORE_PASSWORD / KILN_KEY_PASSWORD), else with kiln's debug key
+#   --lto         link-time optimisation: a 4-5% smaller library, a slower build, the same speed
 #   --out file    where apk writes the APK
 #
 # The device is adb's: set ANDROID_SERIAL when more than one is attached.
 set -euo pipefail
+for a in "$@"; do [ "$a" = --lto ] && export KILN_LTO=1; done
 source "$(dirname "${BASH_SOURCE[0]}")/android-env.sh"
 
-usage() { sed -n '2,20p' "$0" >&2; exit 2; }
+usage() { sed -n '2,21p' "$0" >&2; exit 2; }
 [ $# -ge 1 ] || usage
 CMD="$1"; shift
 APP=""; ABIS=""; DEBUG=(); OUT=""; NEW_PACKAGE=""; NEW_LABEL=""; SIGN=()
@@ -29,6 +31,7 @@ while [ $# -gt 0 ]; do
         --abi) ABIS="$2"; shift 2 ;;
         --debug) DEBUG=(--debug); shift ;;
         --release) DEBUG=(); shift ;;
+        --lto) shift ;;
         --keystore) SIGN+=(--keystore "$2"); shift 2 ;;
         --key-alias) SIGN+=(--key-alias "$2"); shift 2 ;;
         --package) NEW_PACKAGE="$2"; shift 2 ;;
@@ -41,7 +44,7 @@ while [ $# -gt 0 ]; do
 done
 
 # An app's metadata, written by kiln_add_android_app at configure time.
-meta() { sed -n "s/^$2=//p" "$KILN_ROOT/build/android/$1/apps/$APP"; }
+meta() { sed -n "s/^$2=//p" "$KILN_ANDROID_BUILD/$1/apps/$APP"; }
 
 if [ "$CMD" = new ]; then
     [ -n "$APP" ] || usage
@@ -60,8 +63,8 @@ fi
 
 if [ "$CMD" = list ]; then
     abi=arm64-v8a
-    [ -d "$KILN_ROOT/build/android/$abi/apps" ] || kiln_configure_android "$abi"
-    for f in "$KILN_ROOT/build/android/$abi/apps"/*; do
+    [ -d "$KILN_ANDROID_BUILD/$abi/apps" ] || kiln_configure_android "$abi"
+    for f in "$KILN_ANDROID_BUILD/$abi/apps"/*; do
         printf '%-12s %s\n' "$(basename "$f")" "$(sed -n 's/^package=//p' "$f")"
     done
     exit 0
@@ -82,11 +85,11 @@ IFS=, read -r -a ABI_LIST <<< "$ABIS"
 LIB_ARGS=()
 for abi in "${ABI_LIST[@]}"; do
     kiln_configure_android "$abi"
-    [ -f "$KILN_ROOT/build/android/$abi/apps/$APP" ] || {
+    [ -f "$KILN_ANDROID_BUILD/$abi/apps/$APP" ] || {
         echo "kiln: no app '$APP' - kiln list shows them" >&2; exit 1; }
     # --debug: the library with Volition's commands linked in.
     if [ ${#DEBUG[@]} -gt 0 ]; then target="${APP}_debug"; key=lib_debug; else target="$APP"; key=lib; fi
-    cmake --build "$KILN_ROOT/build/android/$abi" --target "$target"
+    cmake --build "$KILN_ANDROID_BUILD/$abi" --target "$target"
     LIB_ARGS+=(--lib "$abi=$(meta "$abi" "$key")")
 done
 [ "$CMD" = build ] && exit 0
