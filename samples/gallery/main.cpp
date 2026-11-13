@@ -26,6 +26,7 @@
 #include <kiln/foundation/Animate.h>
 #include <kiln/foundation/Scroll.h>
 #include <kiln/foundation/Insets.h>
+#include <kiln/ui/InsetsRulers.h>
 #include <kiln/foundation/Back.h>
 #include <kiln/foundation/Draw.h>
 #include <kiln/foundation/AnimatedVisibility.h>
@@ -242,6 +243,53 @@ namespace {
         });
     }
 
+    // Immersive mode (debug.kiln.gallery.section=immersive): hides the system bars. With the
+    // default behaviour a swipe brings them back for good, and their insets animate; transient
+    // bars shown by a swipe overlay the content without changing the insets. The top bar is as
+    // tall as the status bar inset (layout), the marker sits on the status bar ruler (placement).
+    void ImmersiveDemo() {
+        using namespace kiln::foundation;
+        using kiln::ui::Owner;
+        Owner* owner = kiln::rt::Composition::Current()->Read(LocalOwner);
+        auto& transient = RememberState(false);
+        // The bars' real visibility decides: a swipe may have brought them back.
+        const bool visible = AreStatusBarsVisible();
+        const auto setBars = [owner, &transient](bool hide) {
+            if (!owner) return;
+            owner->SetSystemBarsBehavior(transient.Peek() ? Owner::SystemBarsBehavior::ShowTransientBarsBySwipe : Owner::SystemBarsBehavior::Default);
+            if (hide) owner->HideInsets(Owner::SystemBarsTypes());
+            else owner->ShowInsets(Owner::SystemBarsTypes());
+        };
+        static const auto rulerMarker = std::make_shared<kiln::ui::LambdaMeasurePolicy>(
+            [](kiln::ui::MeasureScope& s, std::span<kiln::ui::Measurable* const> children, const kiln::ui::Constraints& c) {
+                std::vector<kiln::ui::Placeable*> placed;
+                for (auto* m : children) placed.push_back(&m->Measure(c.CopyMaxDimensions()));
+                return s.Layout(c.maxWidth, c.maxHeight, [placed](kiln::ui::PlacementScope& ps) {
+                    const float top = ps.Current(kiln::ui::WindowInsetsRulers::StatusBars().Current().top, 0);
+                    for (auto* p : placed) ps.Place(*p, 0, int(top));
+                });
+            });
+        Box(Background(FillMax(Modifier{}, Axis::Both), kSurface), Alignment::TopStart(), false, [&] {
+            Box(Semantics(Background(WindowInsetsPadding(FillMax(Modifier{}, Axis::Horizontal), WindowInsets::StatusBars()), kPrimaryContainer),
+                          [](kiln::ui::SemanticsConfiguration& sc) { sc.contentDescription = { "Status bar inset" }; }));
+            Layout(FillMax(Modifier{}, Axis::Both), rulerMarker, [] {
+                Box(Semantics(Background(SizeMod(Modifier{}, 48_dp, 8_dp), Color(0xFFE8618Cu)),
+                              [](kiln::ui::SemanticsConfiguration& sc) { sc.contentDescription = { "Status bar ruler" }; }));
+            });
+            Column(SafeDrawingPadding(Padding(Modifier{}, 16_dp, 64_dp)), Arrangement::SpacedBy(16_dp), AlignmentH::Start(), [&] {
+                BasicText(std::string("Status bars visible: ") + (visible ? "yes" : "no"), {}, { 16, kOnSurface });
+                Box(Clickable(Background(Modifier{}, kPrimaryContainer, CornerShape::Pill()), [setBars, visible] { setBars(visible); }),
+                    Alignment::Center(), false, [visible] {
+                        BasicText(visible ? "Hide system bars" : "Show system bars", Padding(Modifier{}, 24_dp, 10_dp), { 14, kOnSurface });
+                    });
+                Box(Clickable(Background(Modifier{}, kPrimaryContainer, CornerShape::Pill()), [&transient, setBars, visible] { transient.Set(!transient.Peek()); setBars(!visible); }),
+                    Alignment::Center(), false, [&transient] {
+                        BasicText(transient.Get() ? "Swipe: transient bars" : "Swipe: bars come back", Padding(Modifier{}, 24_dp, 10_dp), { 14, kOnSurface });
+                    });
+            });
+        });
+    }
+
     void ExternalSurfaceDemo() {
         using namespace kiln::foundation;
         Column(SafeDrawingPadding(Background(FillMax(Modifier{}, Axis::Both), kSurface)), Arrangement::SpacedBy(16_dp), AlignmentH::Start(), [] {
@@ -339,6 +387,10 @@ namespace {
         }
         if (section == "transform") {
             TransformDemo();
+            return;
+        }
+        if (section == "immersive") {
+            ImmersiveDemo();
             return;
         }
 
