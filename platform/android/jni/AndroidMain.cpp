@@ -107,6 +107,7 @@ namespace {
     struct Win;
     void InstallTextInputHost(JNIEnv* env, Win* w);
     void InstallExternalSurfaceHost(JNIEnv* env, Win* w);
+    void InstallInteropViewHost(JNIEnv* env, Win* w);
     void ReleaseExternalSurfaces();
     void InstallOwnerHosts(JNIEnv* env, Win* w);
     jobjectArray JavaIntent(JNIEnv* env, const kiln::ui::Intent& i);
@@ -568,6 +569,7 @@ namespace {
         jobject view = w->view;
         InstallTextInputHost(env, w);
         InstallExternalSurfaceHost(env, w);
+        InstallInteropViewHost(env, w);
         {
             // UiMediaScope's PackageManager features and dock state.
             jclass vc = env->GetObjectClass(view);
@@ -2948,6 +2950,131 @@ namespace {
         w->owner->SetExternalSurfaceHost(std::move(host));
     }
 
+    // --- AndroidView: the window's KilnInteropViews holds the Views ------------------------------
+
+    struct InteropMethods {
+        jmethodID interop, context, create, view, release, measure, intrinsic, place, target, touch;
+    };
+    InteropMethods g_Interop{};
+
+    void InstallInteropViewHost(JNIEnv* env, Win* w) {
+        if (!g_Interop.interop) {
+            jclass vc = env->GetObjectClass(w->view);
+            g_Interop.interop = env->GetMethodID(vc, "interop", "()Ldev/kiln/KilnInteropViews;");
+            g_Interop.context = env->GetMethodID(vc, "getContext", "()Landroid/content/Context;");
+            env->DeleteLocalRef(vc);
+            jclass ic = env->FindClass("dev/kiln/KilnInteropViews");
+            g_Interop.create = env->GetMethodID(ic, "create", "(ILandroid/view/View;)Z");
+            g_Interop.view = env->GetMethodID(ic, "view", "(I)Landroid/view/View;");
+            g_Interop.release = env->GetMethodID(ic, "release", "(I)V");
+            g_Interop.measure = env->GetMethodID(ic, "measure", "(IIIII)J");
+            g_Interop.intrinsic = env->GetMethodID(ic, "intrinsic", "(III)J");
+            g_Interop.place = env->GetMethodID(ic, "place", "(IIIIIZ)V");
+            g_Interop.target = env->GetMethodID(ic, "target", "(ILandroid/view/Surface;)V");
+            g_Interop.touch = env->GetMethodID(ic, "touch", "(IFFZ)Z");
+            env->DeleteLocalRef(ic);
+        }
+        // The holder container is made on first use, so windows without Views have none.
+        struct Interop {
+            JNIEnv* env;
+            jobject object;
+            explicit Interop(Win* w) : env(MainEnv()), object(env->CallObjectMethod(w->view, g_Interop.interop)) {}
+            ~Interop() {
+                if (env->ExceptionCheck()) { env->ExceptionDescribe(); env->ExceptionClear(); }
+                if (object) env->DeleteLocalRef(object);
+            }
+        };
+        auto unpack = [](jlong v) { return kiln::ui::IntSize{ int(std::uint64_t(v) >> 32), int(std::uint32_t(v)) }; };
+        kiln::ui::InteropViewHost host;
+        host.create = [w](int id, const kiln::ui::InteropViewFactory& factory) {
+            Interop i(w);
+            jobject context = i.env->CallObjectMethod(w->view, g_Interop.context);
+            auto view = static_cast<jobject>(factory(i.env, context));
+            i.env->DeleteLocalRef(context);
+            if (i.env->ExceptionCheck()) { i.env->ExceptionDescribe(); i.env->ExceptionClear(); }
+            if (!view) return false;
+            const bool ok = i.env->CallBooleanMethod(i.object, g_Interop.create, jint(id), view);
+            i.env->DeleteLocalRef(view);
+            return ok;
+        };
+        host.with = [w](int id, const kiln::ui::InteropViewBlock& block) {
+            Interop i(w);
+            jobject view = i.env->CallObjectMethod(i.object, g_Interop.view, jint(id));
+            if (!view) return;
+            block(i.env, view);
+            i.env->DeleteLocalRef(view);
+        };
+        host.release = [w](int id) { Interop i(w); i.env->CallVoidMethod(i.object, g_Interop.release, jint(id)); };
+        host.measure = [w, unpack](int id, const kiln::ui::Constraints& c) {
+            Interop i(w);
+            return unpack(i.env->CallLongMethod(i.object, g_Interop.measure, jint(id), jint(c.minWidth), jint(c.maxWidth), jint(c.minHeight), jint(c.maxHeight)));
+        };
+        host.intrinsic = [w, unpack](int id, int width, int height) {
+            Interop i(w);
+            return unpack(i.env->CallLongMethod(i.object, g_Interop.intrinsic, jint(id), jint(width), jint(height)));
+        };
+        host.place = [w](int id, kiln::ui::IntRect r, bool visible) {
+            Interop i(w);
+            i.env->CallVoidMethod(i.object, g_Interop.place, jint(id), jint(r.left), jint(r.top), jint(r.right), jint(r.bottom), jboolean(visible));
+        };
+        host.target = [w](int id, kiln::ui::PlatformSurface surface, int, int) {
+            Interop i(w);
+            jobject s = surface.nativeWindow ? ANativeWindow_toSurface(i.env, static_cast<ANativeWindow*>(surface.nativeWindow)) : nullptr;
+            i.env->CallVoidMethod(i.object, g_Interop.target, jint(id), s);
+            if (s) i.env->DeleteLocalRef(s);
+        };
+        host.touch = [w](int id, kiln::ui::Offset origin, bool cancel) {
+            Interop i(w);
+            return bool(i.env->CallBooleanMethod(i.object, g_Interop.touch, jint(id), jfloat(origin.x), jfloat(origin.y), jboolean(cancel)));
+        };
+        w->owner->SetInteropViewHost(std::move(host));
+    }
+
+    kiln::ui::InteropViewClient* InteropClient(jint win, jint id, WinScope& ws) {
+        if (!ws) return nullptr;
+        return ws.w->owner->InteropViewClientOf(id);
+    }
+    void InteropRequestLayout(JNIEnv*, jclass, jint win, jint id) {
+        WinScope ws(win);
+        if (auto* c = InteropClient(win, id, ws)) { c->OnRequestRemeasure(); g_Host->app->RequestFrame(); }
+    }
+    void InteropDisallowIntercept(JNIEnv*, jclass, jint win, jint id, jboolean disallow) {
+        WinScope ws(win);
+        if (auto* c = InteropClient(win, id, ws)) c->OnRequestDisallowInterceptTouchEvent(disallow);
+    }
+    void InteropRequestRectangle(JNIEnv*, jclass, jint win, jint id, jint l, jint t, jint r, jint b) {
+        WinScope ws(win);
+        if (auto* c = InteropClient(win, id, ws)) { c->OnRequestRectangleOnScreen({ float(l), float(t), float(r), float(b) }); g_Host->app->RequestFrame(); }
+    }
+    jintArray InteropNestedPreScroll(JNIEnv* env, jclass, jint win, jint id, jint dx, jint dy) {
+        WinScope ws(win);
+        auto* c = InteropClient(win, id, ws);
+        const kiln::ui::IntOffset r = c ? c->OnNestedPreScroll(dx, dy, true) : kiln::ui::IntOffset{};
+        if (c && (r.x || r.y)) g_Host->app->RequestFrame();
+        return IntArray(env, { r.x, r.y });
+    }
+    void InteropNestedScroll(JNIEnv*, jclass, jint win, jint id, jint dxc, jint dyc, jint dxu, jint dyu) {
+        WinScope ws(win);
+        if (auto* c = InteropClient(win, id, ws)) {
+            const kiln::ui::IntOffset r = c->OnNestedScroll(dxc, dyc, dxu, dyu, true);
+            if (r.x || r.y) g_Host->app->RequestFrame();
+        }
+    }
+    void InteropNestedFling(JNIEnv*, jclass, jint win, jint id, jfloat vx, jfloat vy, jboolean consumed, jboolean pre) {
+        WinScope ws(win);
+        auto* c = InteropClient(win, id, ws);
+        if (!c) return;
+        if (pre) c->OnNestedPreFling(vx, vy);
+        else c->OnNestedFling(vx, vy, consumed);
+        g_Host->app->RequestFrame();
+    }
+    jint A11yInteropView(JNIEnv*, jclass, jint win, jint virtualId) {
+        WinScope ws(win);
+        if (!ws) return 0;
+        kiln::ui::LayoutNode* node = ws.w->owner->FindBySemanticsId(virtualId);
+        return node ? ws.w->owner->InteropViewOf(node) : 0;
+    }
+
     void ExternalSurfaceCreated(JNIEnv* env, jclass, jint win, jint id, jobject surface, jint width, jint height) {
         WinScope ws(win);
         if (!ws.w) return;
@@ -3103,6 +3230,13 @@ extern "C" JNIEXPORT jint kiln_jni_onload(JavaVM* vm) {
         { "surfaceChanged", "(III)V", reinterpret_cast<void*>(&SurfaceChanged) },
         { "surfaceDestroyed", "(I)V", reinterpret_cast<void*>(&SurfaceDestroyed) },
         { "externalSurfaceCreated", "(IILandroid/view/Surface;II)V", reinterpret_cast<void*>(&ExternalSurfaceCreated) },
+        { "interopRequestLayout", "(II)V", reinterpret_cast<void*>(&InteropRequestLayout) },
+        { "interopDisallowIntercept", "(IIZ)V", reinterpret_cast<void*>(&InteropDisallowIntercept) },
+        { "interopRequestRectangle", "(IIIIII)V", reinterpret_cast<void*>(&InteropRequestRectangle) },
+        { "interopNestedPreScroll", "(IIII)[I", reinterpret_cast<void*>(&InteropNestedPreScroll) },
+        { "interopNestedScroll", "(IIIIII)V", reinterpret_cast<void*>(&InteropNestedScroll) },
+        { "interopNestedFling", "(IIFFZZ)V", reinterpret_cast<void*>(&InteropNestedFling) },
+        { "a11yInteropView", "(II)I", reinterpret_cast<void*>(&A11yInteropView) },
         { "externalSurfaceChanged", "(IIII)V", reinterpret_cast<void*>(&ExternalSurfaceChanged) },
         { "externalSurfaceDestroyed", "(II)V", reinterpret_cast<void*>(&ExternalSurfaceDestroyed) },
         { "destroy", "()V", reinterpret_cast<void*>(&Destroy) },

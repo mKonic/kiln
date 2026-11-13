@@ -139,6 +139,14 @@ final class KilnNative {
     static native void viewSizeChanged(int win, int width, int height);
     static native void setInputMode(int win, boolean touch);
     static native void surfaceDestroyed(int win);
+    // AndroidView: what a View inside asks of kiln (KilnInteropViews).
+    static native void interopRequestLayout(int win, int id);
+    static native void interopDisallowIntercept(int win, int id, boolean disallow);
+    static native void interopRequestRectangle(int win, int id, int left, int top, int right, int bottom);
+    static native int[] interopNestedPreScroll(int win, int id, int dx, int dy);
+    static native void interopNestedScroll(int win, int id, int dxConsumed, int dyConsumed, int dxUnconsumed, int dyUnconsumed);
+    static native void interopNestedFling(int win, int id, float velocityX, float velocityY, boolean consumed, boolean pre);
+    static native int a11yInteropView(int win, int virtualId);
     static native void externalSurfaceCreated(int win, int id, android.view.Surface surface, int width, int height);
     static native void externalSurfaceChanged(int win, int id, int width, int height);
     static native void externalSurfaceDestroyed(int win, int id);

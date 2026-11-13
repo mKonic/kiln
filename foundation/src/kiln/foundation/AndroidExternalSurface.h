@@ -52,6 +52,12 @@ namespace kiln::foundation {
     void AndroidExternalSurface(const Modifier& modifier = {}, bool isOpaque = true, ui::IntSize surfaceSize = {},
                                 AndroidExternalSurfaceZOrder zOrder = AndroidExternalSurfaceZOrder::Behind, bool isSecure = false,
                                 kiln::Function<void(AndroidExternalSurfaceScope&)> onInit = {}, rt::Key key = {});
+    namespace detail {
+        // An embedded surface on an element whose measure is someone else's (AndroidView): its
+        // frames drawn over the element. Call it in composition (it remembers its state).
+        Modifier EmbeddedSurface(const Modifier& modifier, bool isOpaque, kiln::Function<void(AndroidExternalSurfaceScope&)> onInit, rt::Key key = {});
+    }
+
     // transform: a 3x3 row-major matrix for the frames within the element (null: identity).
     void AndroidEmbeddedExternalSurface(const Modifier& modifier = {}, bool isOpaque = true, ui::IntSize surfaceSize = {},
                                         std::optional<std::array<float, 9>> transform = std::nullopt,

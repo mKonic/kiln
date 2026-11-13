@@ -404,7 +404,26 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
     private float[] xy = new float[8];
     private int[] tools = new int[4];
 
+    /** The touch event being dispatched to kiln right now (AndroidView hands it on to its View). */
+    MotionEvent currentTouch;
+    private KilnInteropViews interop;
+    /** Native Views inside this window's content (made on first use; called from native). */
+    KilnInteropViews interop() {
+        if (interop == null) interop = new KilnInteropViews(this);
+        return interop;
+    }
+    KilnInteropViews interopIfAny() { return interop; }
+
     private boolean forward(MotionEvent e) {
+        currentTouch = e;
+        try {
+            return forwardNow(e);
+        } finally {
+            currentTouch = null;
+        }
+    }
+
+    private boolean forwardNow(MotionEvent e) {
         final int n = e.getPointerCount();
         if (ids.length < n) { ids = new int[n]; xy = new float[2 * n]; tools = new int[n]; }
         for (int i = 0; i < n; i++) {

@@ -169,8 +169,8 @@ namespace kiln::foundation {
             }
         };
 
-        void ExternalSurface(const Modifier& modifier, ui::ExternalSurfaceConfig config, const kiln::Function<void(AndroidExternalSurfaceScope&)>& onInit,
-                             rt::Key key) {
+        Modifier SurfaceModifier(const Modifier& modifier, ui::ExternalSurfaceConfig config, const kiln::Function<void(AndroidExternalSurfaceScope&)>& onInit,
+                                 rt::Key key) {
             rt::Composition* c = rt::Composition::Current();
             const bool embedded = config.embedded;
             auto& state = c->Remember<std::shared_ptr<SurfaceState>>([&] { return std::make_shared<SurfaceState>(embedded); }, {}, key);
@@ -178,10 +178,22 @@ namespace kiln::foundation {
                 state->initialized = true;
                 if (onInit) onInit(*state);
             }
-            static const auto policy = std::make_shared<SurfaceMeasurePolicy>();
-            Layout(modifier.With<SurfaceNode>(SurfaceParams{ state, config }), policy, {}, key);
+            return modifier.With<SurfaceNode>(SurfaceParams{ state, config });
         }
 
+        void ExternalSurface(const Modifier& modifier, ui::ExternalSurfaceConfig config, const kiln::Function<void(AndroidExternalSurfaceScope&)>& onInit,
+                             rt::Key key) {
+            static const auto policy = std::make_shared<SurfaceMeasurePolicy>();
+            Layout(SurfaceModifier(modifier, config, onInit, key), policy, {}, key);
+        }
+
+    }
+
+    Modifier detail::EmbeddedSurface(const Modifier& modifier, bool isOpaque, kiln::Function<void(AndroidExternalSurfaceScope&)> onInit, rt::Key key) {
+        ui::ExternalSurfaceConfig config;
+        config.opaque = isOpaque;
+        config.embedded = true;
+        return SurfaceModifier(modifier, config, onInit, key);
     }
 
     void AndroidExternalSurface(const Modifier& modifier, bool isOpaque, ui::IntSize surfaceSize, AndroidExternalSurfaceZOrder zOrder, bool isSecure,

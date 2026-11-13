@@ -305,6 +305,15 @@ final class KilnAccessibility extends AccessibilityNodeProvider {
         int at = 26;
         int children = d[at++];
         for (int i = 0; i < children; i++) info.addChild(view, d[at++]);
+        if (id != -1) {
+            // An AndroidView's View is a real child of this node.
+            int interopId = KilnNative.a11yInteropView(view.windowId, id);
+            KilnInteropViews interop = interopId > 0 ? view.interopIfAny() : null;
+            if (interop != null) {
+                View child = interop.accessibilityChild(interopId, id);
+                if (child != null) info.addChild(child);
+            }
+        }
         int actions = d[at++];
         for (int i = 0; i < actions; i++, at += 2) {
             if (id == -1) continue;   // the host view keeps its own actions
