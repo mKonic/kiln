@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# tools/vtouchpad/run [SCRIPT]: builds vtouchpad for arm64, pushes it and plays the gestures in
+# SCRIPT (or stdin) on the device as root (needs su). See vtouchpad.c for the gesture lines.
+set -euo pipefail
+source "$(dirname "${BASH_SOURCE[0]}")/../android-env.sh"
+OUT="$KILN_ROOT/build/vtouchpad"
+mkdir -p "$OUT"
+"$NDK_TOOLCHAIN/bin/aarch64-linux-android${ANDROID_MIN_SDK}-clang" -O2 -Wall -o "$OUT/vtouchpad" \
+    "$KILN_ROOT/tools/vtouchpad/vtouchpad.c"
+"$ADB" push -q "$OUT/vtouchpad" /data/local/tmp/vtouchpad
+if [ $# -gt 0 ]; then "$ADB" push -q "$1" /data/local/tmp/vtouchpad.txt; else cat > "$OUT/script.txt"; "$ADB" push -q "$OUT/script.txt" /data/local/tmp/vtouchpad.txt; fi
+"$ADB" shell "su -c 'chmod 755 /data/local/tmp/vtouchpad; /data/local/tmp/vtouchpad < /data/local/tmp/vtouchpad.txt'"
+"$ADB" shell "rm -f /data/local/tmp/vtouchpad /data/local/tmp/vtouchpad.txt"
