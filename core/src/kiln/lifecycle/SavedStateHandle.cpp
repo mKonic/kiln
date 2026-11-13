@@ -1,4 +1,5 @@
 #include "kiln/lifecycle/SavedStateHandle.h"
+#include <kiln/Function.h>
 
 #include <unordered_map>
 
@@ -80,7 +81,7 @@ namespace kiln::lifecycle {
         v.flow = std::make_unique<rt::State<SavedState>>(std::move(start));
         return *v.flow;
     }
-    void SavedStateHandle::SetSavedStateProvider(const std::string& key, std::function<SavedState()> provider) {
+    void SavedStateHandle::SetSavedStateProvider(const std::string& key, kiln::Function<SavedState()> provider) {
         auto current = Get(key);
         Value& v = m_Values[key];
         v.flow.reset();
@@ -185,10 +186,12 @@ namespace kiln::lifecycle {
                     controller->PerformRestore();
                 } else {
                     std::weak_ptr<Controller> weak = controller;
-                    auto observer = std::make_shared<std::shared_ptr<LifecycleEventObserver>>();
-                    *observer = AddObserver(owner.GetLifecycle(), [weak, observer](LifecycleOwner& source, Event event) {
+                    // The lifecycle owns the observer; the observer reaches itself weakly (a
+                    // strong capture of its own pointer would keep it alive forever).
+                    auto self = std::make_shared<std::weak_ptr<LifecycleEventObserver>>();
+                    *self = AddObserver(owner.GetLifecycle(), [weak, self](LifecycleOwner& source, Event event) {
                         if (event != Event::OnCreate) throw std::logic_error(std::string("Next event must be ON_CREATE, it was ") + ToString(event));
-                        source.GetLifecycle().RemoveObserver(*observer);
+                        if (auto o = self->lock()) source.GetLifecycle().RemoveObserver(o);
                         if (auto c = weak.lock()) c->PerformRestore();
                     });
                 }
