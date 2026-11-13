@@ -125,6 +125,9 @@ namespace kiln {
         float FontScale() const { return m_FontScale; }
         TextBackend* Text() const { return m_Services.text; }
         bool FramePending() const { return m_FramePending; }
+        // The last frame's GPU half (cache uploads, acquire, command recording, submit and
+        // present), in ms: what a render thread would take off the main thread.
+        double LastSubmitMs() const { return m_SubmitMs; }
 
         // Extra windows (dialogs): an owner shown in its own platform window, laid out at that
         // window's size and drawn into its own presentation surface, every frame with the main
@@ -203,6 +206,7 @@ namespace kiln {
         int m_FontWeightAdjustment = 0;
         Rgba m_Clear{ 1, 1, 1, 1 };
         bool m_FramePending = false;
+        double m_SubmitMs = 0;
         rt::Dispatcher& m_Dispatcher = rt::Dispatcher::Main();
         std::vector<FrameStage> m_Stages;
         float m_AnimationScale = 1.0f;

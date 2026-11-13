@@ -1,3 +1,4 @@
+#include <chrono>
 #include "kiln/App.h"
 #include <kiln/Function.h>
 #include "kiln/ui/Locals.h"
@@ -585,6 +586,10 @@ namespace kiln {
         }
         kiln_frame frame{ this };
         if (m_Callbacks.on_frame) m_Callbacks.on_frame(m_Callbacks.user, &frame, timeSeconds);
+        struct SubmitTimer {
+            double& out; std::chrono::steady_clock::time_point t0 = std::chrono::steady_clock::now();
+            ~SubmitTimer() { out = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count(); }
+        } submitTimer{ m_SubmitMs };
         if (m_Services.text) m_Services.text->SyncAtlas(*this);
         m_Paths->Sync();
         m_Gradients->Sync();
