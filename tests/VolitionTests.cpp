@@ -128,3 +128,28 @@ TEST(VolitionAsksTheWindowOnTopFirst) {
     CHECK_EQ(volition::Call({}, {}, "ui", {}), std::string("error: nothing on screen"));
     CHECK_EQ(volition::Call({}, {}, "where", {}), std::string("{\"activity\":\"none\",\"ready\":false}"));
 }
+
+TEST(VolitionChecksConditionsOnWhere) {
+    namespace v = ui::volition;
+    auto registration = v::Register({ [](v::Object& o) {
+        o.push_back({ "page", 4 });
+        o.push_back({ "screen", "MangaScreen" });
+        o.push_back({ "stack", std::vector<v::Value>{ "Library", "Settings" } });
+        o.push_back({ "reader", v::Object{ { "page", 2.5 } } });
+        o.push_back({ "nothing", nullptr });
+    }, nullptr, nullptr });
+    auto check = [](std::string_view c) { return v::Call({}, {}, "check", c); };
+    CHECK_EQ(check("page>3"), std::string("ok: page is 4"));
+    CHECK_EQ(check("page<=3"), std::string("error: page is 4"));
+    CHECK_EQ(check("screen=mangascreen"), std::string("ok: screen is MangaScreen"));
+    CHECK_EQ(check("screen~manga"), std::string("ok: screen is MangaScreen"));
+    CHECK_EQ(check("stack~settings"), std::string("ok: stack is [\"Library\",\"Settings\"]"));
+    CHECK_EQ(check("stack~Sett"), std::string("error: stack is [\"Library\",\"Settings\"]"));   // a list holds whole items
+    CHECK_EQ(check("stack.1=Settings"), std::string("ok: stack.1 is Settings"));
+    CHECK_EQ(check("reader.page>=2.5"), std::string("ok: reader.page is 2.5"));
+    CHECK(check("nothing=1").rfind("error: nothing at 'nothing' - where says {", 0) == 0);
+    CHECK_EQ(check("=x"), std::string("error: '=x' is not a condition - try route=home or stack~details"));
+    CHECK(v::Call({}, {}, "where", {}).find("\"page\":4,\"screen\":\"MangaScreen\"") != std::string::npos);
+    registration.reset();
+    CHECK_EQ(v::Call({}, {}, "where", {}), std::string("{\"activity\":\"none\",\"ready\":false}"));
+}

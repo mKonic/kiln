@@ -4,6 +4,7 @@
 #include "kiln/foundation/Compose.h"
 #include "kiln/lifecycle/LifecycleCompose.h"
 #include "kiln/navigation/NavHost.h"
+#include "kiln/ui/Volition.h"
 #include "kiln/runtime/Saveable.h"
 
 #include <chrono>
@@ -271,4 +272,32 @@ TEST(NavHostEntriesAreLifecycleOwnersFollowingTheHost) {
     h.Frames(60);
     CHECK(entry->CurrentState() == LifecycleState::Created);
     CHECK(events == (std::vector<std::string>{ "resume", "pause", "resume", "pause" }));
+}
+
+TEST(NavHostAnswersVolitionWhereAndGo) {
+    Harness h;
+    h.Run([&] {
+        auto& c = RememberNavController();
+        NavHost(c, "home", [&](NavGraphBuilder& b) {
+            b.Composable("home", [](const NavBackStackEntry&) { foundation::Box(ui::Modifier{}); });
+            b.Composable("detail/{id}", [](const NavBackStackEntry&) { foundation::Box(ui::Modifier{}); },
+                         { { NavArgumentOf("id", NavType::Int) } });
+        });
+    });
+    namespace v = ui::volition;
+    auto call = [](std::string_view m, std::string_view a = {}) { return v::Call({}, { "KilnActivity" }, m, a); };
+    CHECK_EQ(call("where"), std::string("{\"activity\":\"KilnActivity\",\"ready\":true,\"route\":\"home\",\"stack\":[\"home\"]}"));
+    CHECK_EQ(call("destinations"), std::string("back  up one destination\nhome  back to the start of the graph\nhome\ndetail/{id}"));
+    CHECK_EQ(call("go", "detail:42"), std::string("ok: went to detail/42"));
+    h.Frames(60);
+    CHECK_EQ(call("check", "route=detail/{id}"), std::string("ok: route is detail/{id}"));
+    CHECK_EQ(call("check", "from=home"), std::string("ok: from is home"));
+    CHECK_EQ(call("check", "stack~home"), std::string("ok: stack is [\"home\",\"detail\\/{id}\"]"));
+    CHECK_EQ(call("go", "nowhere"), std::string("error: no destination 'nowhere' - try destinations"));
+    CHECK_EQ(call("go", "back"), std::string("ok: back to \"home\""));
+    h.Frames(60);
+    CHECK_EQ(call("go", "back"), std::string("error: nothing to go back to"));
+    // Gone with its NavHost.
+    h.Run([] {});
+    CHECK_EQ(call("destinations"), std::string("error: this app has registered no destinations"));
 }

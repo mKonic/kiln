@@ -5,7 +5,10 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <cstdint>
+#include <cstdlib>
 #include <tuple>
+#include <type_traits>
 
 namespace kiln::ui::volition {
 
@@ -315,12 +318,145 @@ namespace kiln::ui::volition {
 
         const char* const kHelp =
             "help          what this app answers\n"
+            "destinations  where it can be told to go\n"
             "where         what is on screen, and whether it is ready to be driven\n"
+            "check <cond>  whether where says so: route=details, stack~Settings\n"
+            "go <name>     open a destination, from wherever the app is\n"
             "ui            every button, field, switch and line of text on screen\n"
             "find <name>   the element a name picks, and where it is\n"
             "click <name>  click it - longclick for a long press\n"
             "fill <name>   set a field's text: <name>, a unit separator (0x1f), then the text\n"
             "submit <name> run a field's keyboard action - search, go, done";
+
+        // Registered adapters, oldest first.
+        struct Registered { std::uint64_t id; Adapter adapter; };
+        std::vector<Registered>& Adapters() { static std::vector<Registered> a; return a; }
+
+        std::string Number(double d) {
+            if (std::isfinite(d) && std::fmod(d, 1.0) == 0.0 && std::fabs(d) < 1e15) return std::to_string(static_cast<long long>(d));
+            char buf[32];
+            std::snprintf(buf, sizeof buf, "%.17g", d);
+            return buf;
+        }
+        std::string Text(const Value& v) {
+            if (std::holds_alternative<std::string>(v.v)) return std::get<std::string>(v.v);
+            if (std::holds_alternative<double>(v.v)) return Number(std::get<double>(v.v));
+            return ToJson(v);
+        }
+
+        // A condition: a path into where's answer, an operator, what it should be.
+        struct Condition { std::string path, op, wanted; };
+        std::optional<Condition> Split(std::string_view e) {
+            for (const char* op : { ">=", "<=", "!=", "=", ">", "<", "~" }) {
+                const auto at = e.find(op);
+                // A path comes first, so an expression starting with the operator is not one.
+                if (at == std::string_view::npos || at == 0) continue;
+                std::string path = Trim(e.substr(0, at)), wanted = Trim(e.substr(at + std::string_view(op).size()));
+                if (!path.empty() && !wanted.empty()) return Condition{ std::move(path), op, std::move(wanted) };
+            }
+            return std::nullopt;
+        }
+        // `route`, `stack.0`: keys through objects, indices through lists.
+        const Value* Follow(const Value& state, const std::string& path) {
+            const Value* here = &state;
+            std::size_t start = 0;
+            while (true) {
+                const auto dot = path.find('.', start);
+                const std::string step = path.substr(start, dot == std::string::npos ? std::string::npos : dot - start);
+                if (const auto* o = std::get_if<Object>(&here->v)) {
+                    auto it = std::find_if(o->begin(), o->end(), [&](const auto& kv) { return kv.first == step; });
+                    if (it == o->end() || std::holds_alternative<std::nullptr_t>(it->second.v)) return nullptr;
+                    here = &it->second;
+                } else if (const auto* l = std::get_if<std::vector<Value>>(&here->v)) {
+                    char* end = nullptr;
+                    const long i = std::strtol(step.c_str(), &end, 10);
+                    if (step.empty() || *end || i < 0 || i >= long(l->size())) return nullptr;
+                    here = &(*l)[std::size_t(i)];
+                } else return nullptr;
+                if (dot == std::string::npos) return here;
+                start = dot + 1;
+            }
+        }
+        int CompareIgnoreCase(std::string_view a, std::string_view b) { return Lower(a).compare(Lower(b)); }
+        bool Holds(const Value& actual, const std::string& op, const std::string& wanted) {
+            if (const auto* d = std::get_if<double>(&actual.v)) {
+                char* end = nullptr;
+                const double right = std::strtod(wanted.c_str(), &end);
+                if (end && *end == '\0' && end != wanted.c_str()) {
+                    const double left = *d;
+                    if (op == "=") return left == right;
+                    if (op == "!=") return left != right;
+                    if (op == ">") return left > right;
+                    if (op == "<") return left < right;
+                    if (op == ">=") return left >= right;
+                    if (op == "<=") return left <= right;
+                    return ContainsIgnoreCase(Number(left), wanted);
+                }
+            }
+            const std::string text = Text(actual);
+            if (op == "=") return EqualsIgnoreCase(text, wanted);
+            if (op == "!=") return !EqualsIgnoreCase(text, wanted);
+            if (op == "~") {
+                // A list holds what it holds; text contains what it contains.
+                if (const auto* l = std::get_if<std::vector<Value>>(&actual.v))
+                    return std::any_of(l->begin(), l->end(), [&](const Value& item) { return EqualsIgnoreCase(Text(item), wanted); });
+                return ContainsIgnoreCase(text, wanted);
+            }
+            const int c = CompareIgnoreCase(text, wanted);
+            if (op == ">") return c > 0;
+            if (op == "<") return c < 0;
+            if (op == ">=") return c >= 0;
+            if (op == "<=") return c <= 0;
+            return false;
+        }
+
+        Value State(const std::vector<Shown>& windows, const Context& context) {
+            Object o{ { "activity", context.activity.empty() ? std::string("none") : context.activity },
+                      { "ready", !context.activity.empty() } };
+            if (const Element* f = FocusedElement(windows)) o.push_back({ "focused", Summary(*f) });
+            for (const auto& r : Adapters()) {
+                if (!r.adapter.state) continue;
+                Object fields;
+                r.adapter.state(fields);
+                for (auto& [k, v] : fields) {
+                    // A field with nothing to say says nothing.
+                    if (std::holds_alternative<std::nullptr_t>(v.v)) continue;
+                    auto it = std::find_if(o.begin(), o.end(), [&](const auto& kv) { return kv.first == k; });
+                    if (it != o.end()) it->second = std::move(v);
+                    else o.push_back({ k, std::move(v) });
+                }
+            }
+            return o;
+        }
+    }
+
+    std::string ToJson(const Value& value) {
+        return std::visit([](const auto& x) -> std::string {
+            using T = std::decay_t<decltype(x)>;
+            if constexpr (std::is_same_v<T, std::nullptr_t>) return "null";
+            else if constexpr (std::is_same_v<T, bool>) return x ? "true" : "false";
+            else if constexpr (std::is_same_v<T, double>) return Number(x);
+            else if constexpr (std::is_same_v<T, std::string>) return JsonString(x);
+            else if constexpr (std::is_same_v<T, std::vector<Value>>) {
+                std::string out = "[";
+                for (std::size_t i = 0; i < x.size(); ++i) out += (i ? "," : "") + ToJson(x[i]);
+                return out + "]";
+            } else {
+                std::string out = "{";
+                for (std::size_t i = 0; i < x.size(); ++i) out += (i ? "," : "") + JsonString(x[i].first) + ":" + ToJson(x[i].second);
+                return out + "}";
+            }
+        }, value.v);
+    }
+
+    std::shared_ptr<void> Register(Adapter adapter) {
+        static std::uint64_t next = 0;
+        const std::uint64_t id = ++next;
+        Adapters().push_back({ id, std::move(adapter) });
+        return std::shared_ptr<void>(nullptr, [id](void*) {
+            auto& a = Adapters();
+            a.erase(std::remove_if(a.begin(), a.end(), [id](const Registered& r) { return r.id == id; }), a.end());
+        });
     }
 
     std::vector<Element> ElementsOf(const Window& window) {
@@ -359,11 +495,34 @@ namespace kiln::ui::volition {
         try {
             if (method == "help" || method == "commands") return kHelp;
             const auto windows = Windows(windowList);
-            if (method == "where" || method == "state") {
-                std::string json = "{\"activity\":" + JsonString(context.activity.empty() ? "none" : context.activity) +
-                                   ",\"ready\":" + (context.activity.empty() ? "false" : "true");
-                if (const Element* f = FocusedElement(windows)) json += ",\"focused\":" + JsonString(Summary(*f));
-                return json + "}";
+            if (method == "where" || method == "state") return ToJson(State(windows, context));
+            if (method == "check") {
+                const auto c = Split(argument);
+                if (!c) return "error: '" + argument + "' is not a condition - try route=home or stack~details";
+                const Value state = State(windows, context);
+                const Value* actual = Follow(state, c->path);
+                if (!actual) return "error: nothing at '" + c->path + "' - where says " + ToJson(state);
+                return (Holds(*actual, c->op, c->wanted) ? "ok: " : "error: ") + c->path + " is " + Text(*actual);
+            }
+            if (method == "destinations") {
+                std::string out;
+                for (auto it = Adapters().rbegin(); it != Adapters().rend(); ++it)
+                    if (it->adapter.destinations)
+                        for (const auto& line : it->adapter.destinations()) out += (out.empty() ? "" : "\n") + line;
+                return out.empty() ? "error: this app has registered no destinations" : out;
+            }
+            if (method == "go") {
+                if (Trim(argument).empty()) return "error: go needs a destination";
+                const auto colon = argument.find(':');
+                const std::string name = Trim(argument.substr(0, colon));
+                const std::optional<std::string> arg = colon == std::string::npos ? std::nullopt
+                                                                                   : std::optional<std::string>(Trim(argument.substr(colon + 1)));
+                // The newest first: an inner NavHost before the one around it.
+                const auto adapters = Adapters();
+                for (auto it = adapters.rbegin(); it != adapters.rend(); ++it)
+                    if (it->adapter.go)
+                        if (auto answer = it->adapter.go(name, arg)) return *answer;
+                return "error: no destination '" + name + "' - try destinations";
             }
             if (method == "ui") return List(windows);
             if (method == "find") return FindAnswer(windows, argument);

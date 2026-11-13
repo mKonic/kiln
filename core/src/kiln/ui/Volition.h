@@ -9,9 +9,12 @@
 #include <kiln/Function.h>
 #include <kiln/ui/Semantics.h>
 
+#include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
+#include <utility>
+#include <variant>
 #include <vector>
 
 namespace kiln::ui {
@@ -32,6 +35,36 @@ namespace kiln::ui::volition {
         std::string activity;       // the resumed activity's simple name, empty for none
     };
 
+    // `where`'s answer, as JSON: null, a boolean, a number, text, a list or an object.
+    struct Value;
+    using Object = std::vector<std::pair<std::string, Value>>;
+    struct Value {
+        std::variant<std::nullptr_t, bool, double, std::string, std::vector<Value>, Object> v = nullptr;
+        Value() = default;
+        Value(std::nullptr_t) {}
+        Value(bool b) : v(b) {}
+        Value(int i) : v(double(i)) {}
+        Value(double d) : v(d) {}
+        Value(std::string s) : v(std::move(s)) {}
+        Value(const char* s) : v(std::string(s)) {}
+        Value(std::vector<Value> list) : v(std::move(list)) {}
+        Value(Object object) : v(std::move(object)) {}
+    };
+    std::string ToJson(const Value& value);
+
+    // What the app says about itself and where it can be sent (Volition's state and destination
+    // registrations): a NavHost adds its route, previous route and back stack, and `go`es to
+    // its routes. Registered while the handle lives; the newest is asked first.
+    struct Adapter {
+        // Fields for `where` (a later adapter's field replaces an earlier one's).
+        kiln::Function<void(Object&)> state;
+        // `destinations`: one line each, `name` or `name:<argument>`, then two spaces and what it does.
+        kiln::Function<std::vector<std::string>()> destinations;
+        // `go name[:argument]`: the answer, or nothing when the name is not one of its destinations.
+        kiln::Function<std::optional<std::string>(const std::string& name, const std::optional<std::string>& argument)> go;
+    };
+    [[nodiscard]] std::shared_ptr<void> Register(Adapter adapter);
+
     // Something on screen a caller can name.
     struct Element {
         std::string kind;
@@ -50,8 +83,8 @@ namespace kiln::ui::volition {
     // Separates a field's name from its text in fill's single argument.
     inline constexpr char kSeparator = '\x1f';
 
-    // Runs one command: help, where / state, ui, find, click, longclick, fill, submit. A failure
-    // is an answer starting with "error:".
+    // Runs one command: help, where / state, check, destinations, go, ui, find, click, longclick,
+    // fill, submit. A failure is an answer starting with "error:".
     std::string Call(const std::vector<Window>& windows, const Context& context, std::string_view method,
                      std::string_view argument);
 

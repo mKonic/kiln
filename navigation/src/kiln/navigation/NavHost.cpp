@@ -5,6 +5,7 @@
 #include "kiln/lifecycle/ViewModelCompose.h"
 #include "kiln/runtime/CoroutineScope.h"
 #include "kiln/runtime/Saveable.h"
+#include "kiln/ui/Volition.h"
 
 #include <algorithm>
 
@@ -204,6 +205,64 @@ namespace kiln::navigation {
         });
     }
 
+    namespace {
+        // Volition (debug builds): where says the route, the one before it and the whole stack;
+        // go takes back, home and any route of the graph (`go details:42` is details/42).
+        ui::volition::Adapter VolitionAdapter(NavHostController* nc) {
+            auto routeOf = [](const EntryPtr& e) -> ui::volition::Value {
+                if (!e || !e->Destination() || !e->Destination()->Route()) return nullptr;
+                return *e->Destination()->Route();
+            };
+            auto screens = [nc] {
+                std::vector<EntryPtr> out;
+                for (const auto& e : nc->CurrentBackStack())
+                    if (e->Destination() && !e->Destination()->IsGraph()) out.push_back(e);
+                return out;
+            };
+            ui::volition::Adapter a;
+            a.state = [nc, routeOf, screens](ui::volition::Object& o) {
+                o.push_back({ "route", routeOf(nc->CurrentBackStackEntry()) });
+                o.push_back({ "from", routeOf(nc->PreviousBackStackEntry()) });
+                std::vector<ui::volition::Value> stack;
+                for (const auto& e : screens()) stack.push_back(routeOf(e));
+                o.push_back({ "stack", std::move(stack) });
+            };
+            a.destinations = [nc] {
+                std::vector<std::string> out{ "back  up one destination", "home  back to the start of the graph" };
+                if (!nc->HasGraph()) return out;
+                kiln::Function<void(const NavGraph&)> walk = [&](const NavGraph& g) {
+                    for (const auto& d : g.Nodes()) {
+                        if (d->IsGraph()) walk(static_cast<const NavGraph&>(*d));
+                        else if (d->Route()) out.push_back(*d->Route());
+                    }
+                };
+                walk(nc->Graph());
+                return out;
+            };
+            a.go = [nc, routeOf, screens](const std::string& name, const std::optional<std::string>& arg) -> std::optional<std::string> {
+                if (name == "back") {
+                    if (screens().size() < 2 || !nc->PopBackStack()) return "error: nothing to go back to";
+                    return "ok: back to " + ui::volition::ToJson(routeOf(nc->CurrentBackStackEntry()));
+                }
+                if (name == "home") {
+                    if (!nc->HasGraph() || !nc->Graph().StartDestinationRoute()) return "error: the graph has no start route";
+                    const std::string start = *nc->Graph().StartDestinationRoute();
+                    nc->PopBackStack(start, false);
+                    return "ok: home (" + start + ")";
+                }
+                if (!nc->HasGraph()) return std::nullopt;
+                const std::string route = arg ? name + "/" + *arg : name;
+                try {
+                    nc->Navigate(route);
+                } catch (const std::invalid_argument&) {
+                    return std::nullopt;   // not one of this graph's routes
+                }
+                return "ok: went to " + route;
+            };
+            return a;
+        }
+    }
+
     void NavHost(NavHostController& navController, std::shared_ptr<NavGraph> graph, const Modifier& modifier, const NavHostOptions& options, rt::Key key) {
         auto& c = *rt::Composition::Current();
         NavHostController* nc = &navController;
@@ -213,6 +272,10 @@ namespace kiln::navigation {
             // The entries' ViewModels live in the composition's store (the window's...).
             if (auto store = lifecycle::CurrentViewModelStoreOwner()) nc->SetViewModelStore(store->GetViewModelStore());
             nc->SetGraph(graph);
+            c.DisposableEffect(rt::Keys(static_cast<void*>(nc)), [nc] {
+                auto registration = ui::volition::Register(VolitionAdapter(nc));
+                return kiln::Function<void()>([registration]() mutable { registration.reset(); });
+            });
             auto* composeNavigator = nc->Provider().Get<ComposeNavigator>();
             if (!composeNavigator) return;
             const std::vector<EntryPtr> currentBackStack = composeNavigator->BackStack();
