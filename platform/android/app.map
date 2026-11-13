@@ -1,0 +1,6 @@
+/* An app's shared library exports only what the VM looks up: kiln registers its natives from
+   JNI_OnLoad. Everything else stays local, so --gc-sections can drop what the app never reaches. */
+{
+    global: JNI_OnLoad;
+    local: *;
+};
