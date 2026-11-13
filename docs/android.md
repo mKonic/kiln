@@ -93,15 +93,24 @@ In `src/main/AndroidManifest.xml`, point `KilnActivity` at the library:
 A debug build can answer [Volition](https://github.com/mKonic/volition), which lets you
 or an agent read the screen and drive the app by name from a terminal: list what is on
 screen, click a button by its label, fill a field, check where the app is. With
-`tools/kiln`, pass `--debug`. With Gradle, declare the provider in
-`src/debug/AndroidManifest.xml`:
+`tools/kiln`, pass `--debug`. With Gradle, link the `kiln_volition` library in debug builds:
+
+```cmake
+if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+    target_link_libraries(app PRIVATE -Wl,--whole-archive $<TARGET_FILE:kiln::kiln_volition> -Wl,--no-whole-archive)
+endif()
+```
+
+and declare the provider in `src/debug/AndroidManifest.xml`:
 
 ```xml
 <provider android:name="dev.kiln.KilnVolition"
           android:authorities="${applicationId}.volition" android:exported="true" />
 ```
 
-The provider answers only in debuggable builds.
+Release builds leave both out. A `NavHost` tells Volition its route and back stack by
+itself; other apps can describe their screen with `kiln_volition_register` (see
+[The C API](c-api.md#volition)).
 
 ## Platform services
 

@@ -74,6 +74,28 @@ void kiln_main(kiln_app* a) {
 * **Threads.** Composable calls work only inside content, on the main thread.
 * **Errors.** No C++ exception crosses the API. A call that fails logs and does nothing.
 
+### Volition
+
+Debug builds can tell [Volition](https://github.com/mKonic/volition) where the app is and
+where it can go:
+
+```c
+static void state(void* user, kiln_volition_fields* fields) {
+    (void)user;
+    kiln_volition_field_string(fields, "screen", "notes");
+    kiln_volition_field_number(fields, "count", 3);
+}
+
+kiln_volition_adapter a;
+kiln_volition_adapter_init(&a);
+a.state.call = state;
+kiln_volition_registration* r = kiln_volition_register(&a);
+/* ... kiln_volition_unregister(r) when done */
+```
+
+`destinations` lists places `go` accepts, and `go` answers `volition go name:argument`.
+kiln++ has `kpp::volition_register`, Rust `kiln::volition::register`.
+
 ## kiln++
 
 kiln++ is a header-only C++ layer over the C API, so it works against the AAR. It adds
