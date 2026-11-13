@@ -513,17 +513,11 @@ namespace kiln::material3 {
     }
 
     namespace internal {
-        float CaretX(float tooltipWidth, int screenWidthPx, Rect anchorBounds) {
-            const float anchorLeft = anchorBounds.left, anchorRight = anchorBounds.right;
-            const float anchorMid = (anchorLeft + anchorRight) / 2;
-            const float screen = float(screenWidthPx);
-            // As wide as the screen: under the anchor's middle.
-            if (tooltipWidth >= screen) return anchorMid;
-            // Start-aligned against the left edge, corrected when it also meets the right one.
-            if (anchorMid - tooltipWidth / 2 < 0) return anchorMid + std::max(tooltipWidth - screen, -anchorLeft);
-            // End-aligned against the right edge, corrected when it also meets the left one.
-            if (anchorMid + tooltipWidth / 2 > screen) return anchorMid + std::min(tooltipWidth - anchorRight, 0.0f);
-            return tooltipWidth / 2;
+        // Under the anchor's middle, measured from where the tooltip actually landed (it may have
+        // been pushed in from a screen edge), kept on the tooltip.
+        float CaretX(float tooltipWidth, Rect anchorBounds, float tooltipLeft) {
+            const float anchorMid = (anchorBounds.left + anchorBounds.right) / 2;
+            return std::clamp(anchorMid - tooltipLeft, 0.0f, tooltipWidth);
         }
     }
 
@@ -538,9 +532,31 @@ namespace kiln::material3 {
             TooltipCaretShape(gfx::Matrix matrix, ShapePtr tooltipShape, ShapePtr caretShape)
                 : m_Matrix(matrix), m_Tooltip(std::move(tooltipShape)), m_Caret(std::move(caretShape)) {}
             gfx::Outline CreateOutline(Size size, LayoutDirection dir, const Density& density) const override {
-                const gfx::Path tooltip = m_Tooltip->CreateOutline(size, dir, density).ToPath();
+                const gfx::Outline tooltipOutline = m_Tooltip->CreateOutline(size, dir, density);
+                const gfx::Path tooltip = tooltipOutline.ToPath();
                 gfx::Path caret = m_Caret->CreateOutline(size, dir, density).ToPath();
                 caret.Transform(m_Matrix);
+                // On a rounded tooltip the caret stays on the flat part of its edge, clear of the
+                // corners, so it does not hang off a curve.
+                if (const auto* rr = std::get_if<gfx::RoundRect>(&tooltipOutline.value)) {
+                    const Rect b = caret.Bounds();
+                    float dx = 0, dy = 0;
+                    const auto keepWithin = [](float lo, float hi, float a, float z) {
+                        if (hi - lo < z - a) return 0.0f;
+                        if (a < lo) return lo - a;
+                        if (z > hi) return hi - z;
+                        return 0.0f;
+                    };
+                    if (b.Width() < size.width) {
+                        if (b.top >= size.height - 1) dx = keepWithin(rr->bottomLeft.x, size.width - rr->bottomRight.x, b.left, b.right);
+                        else if (b.bottom <= 1) dx = keepWithin(rr->topLeft.x, size.width - rr->topRight.x, b.left, b.right);
+                    }
+                    if (b.Height() < size.height) {
+                        if (b.left >= size.width - 1) dy = keepWithin(rr->topRight.y, size.height - rr->bottomRight.y, b.top, b.bottom);
+                        else if (b.right <= 1) dy = keepWithin(rr->topLeft.y, size.height - rr->bottomLeft.y, b.top, b.bottom);
+                    }
+                    if (dx != 0 || dy != 0) caret.Translate({ dx, dy });
+                }
                 return { gfx::Path::Combine(gfx::PathOperation::Union, tooltip, caret) };
             }
 
@@ -551,9 +567,22 @@ namespace kiln::material3 {
 
         // Where the caret sits on the tooltip and which way it points, from where the tooltip
         // landed next to its anchor (layoutCaret).
+        // positionOnScreen: in the root, plus where the window is when its popups are windows of
+        // their own (the tooltip and its anchor are then in different windows). Otherwise both
+        // share one window and its root.
+        Offset PositionOnScreen(const LayoutCoordinates& c) {
+            Offset p = c.PositionInRoot();
+            const ui::Owner* o = c.node ? c.node->GetOwner() : nullptr;
+            if (o && o->PopupWindows().windowOrigin) {
+                const IntOffset w = o->PopupWindows().windowOrigin();
+                p = { p.x + float(w.x), p.y + float(w.y) };
+            }
+            return p;
+        }
+
         gfx::Matrix CaretMatrix(const LayoutCoordinates& tooltip, const LayoutCoordinates& anchor, const PopupPositionProvider* provider,
-                                LayoutDirection dir, int screenWidthPx) {
-            const Offset tooltipPos = tooltip.PositionInRoot(), anchorPos = anchor.PositionInRoot();
+                                LayoutDirection dir) {
+            const Offset tooltipPos = PositionOnScreen(tooltip), anchorPos = PositionOnScreen(anchor);
             const IntSize tooltipSize = tooltip.GetSize(), anchorSize = anchor.GetSize();
             const float width = float(tooltipSize.width), height = float(tooltipSize.height);
             const Rect anchorBounds{ anchorPos.x, anchorPos.y, anchorPos.x + float(anchorSize.width), anchorPos.y + float(anchorSize.height) };
@@ -567,7 +596,7 @@ namespace kiln::material3 {
             if (type == TooltipAnchorPosition::End) side = ltr ? TooltipAnchorPosition::Right : TooltipAnchorPosition::Left;
             const bool horizontal = side == TooltipAnchorPosition::Left || side == TooltipAnchorPosition::Right;
             const float caretY = horizontal ? height / 2 : (isBelow ? 0.0f : height);
-            const float caretX = horizontal ? (isToTheRight ? 0.0f : width) : internal::CaretX(width, screenWidthPx, anchorBounds);
+            const float caretX = horizontal ? (isToTheRight ? 0.0f : width) : internal::CaretX(width, anchorBounds, tooltipPos.x);
             gfx::Matrix m = gfx::Matrix::Translate(caretX, caretY);
             if (horizontal) {
                 // rotateZ(90) when the tooltip is right of the anchor, rotateZ(-90) when left.
@@ -596,13 +625,12 @@ namespace kiln::material3 {
             auto& c = *rt::Composition::Current();
             auto& matrix = c.Remember<std::shared_ptr<rt::State<gfx::Matrix, rt::NeverEqual>>>([] { return std::make_shared<rt::State<gfx::Matrix, rt::NeverEqual>>(gfx::Matrix{}); });
             const LayoutDirection dir = c.Read(LocalLayoutDirection);
-            const int screenWidth = WindowContainerSize().width;
             const auto provider = scope.ObtainPositionProvider();
             const auto anchorOf = [&scope] { return scope.ObtainAnchorBounds(); };
-            Modifier m = OnGloballyPositioned({}, [matrix, anchorOf, provider, dir, screenWidth](const LayoutCoordinates& tooltip) {
+            Modifier m = OnGloballyPositioned({}, [matrix, anchorOf, provider, dir](const LayoutCoordinates& tooltip) {
                 const auto anchor = anchorOf();
                 if (!anchor || !anchor->IsAttached()) return;
-                const gfx::Matrix next = CaretMatrix(tooltip, *anchor, provider.get(), dir, screenWidth);
+                const gfx::Matrix next = CaretMatrix(tooltip, *anchor, provider.get(), dir);
                 if (!SameMatrix(next, matrix->Peek())) matrix->Set(next);
             });
             m = m.Then(modifier);

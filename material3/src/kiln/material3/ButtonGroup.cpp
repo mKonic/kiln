@@ -507,7 +507,8 @@ namespace kiln::material3 {
         auto& c = *rt::Composition::Current();
         auto scope = std::make_shared<ButtonGroupScope>(Value(MotionSchemeKeyTokens::FastSpatial));
         if (content) content(*scope);
-        auto& menuState = c.Remember<std::shared_ptr<ButtonGroupMenuState>>([] { return std::make_shared<ButtonGroupMenuState>(); });
+        auto menuState = rt::RememberSaveable<std::shared_ptr<ButtonGroupMenuState>>([] { return std::make_shared<ButtonGroupMenuState>(); },
+                                                                                     ButtonGroupMenuState::Saver());
         auto& overflowState = c.Remember<std::shared_ptr<OverflowState>>([] { return std::make_shared<OverflowState>(); });
         // remember(horizontalArrangement, verticalAlignment, expandedRatio): a new policy
         // measures again.

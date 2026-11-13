@@ -2937,11 +2937,11 @@ TEST(TooltipPositionProvidersPreferTheirSideAndFlipOrClampAtTheWindowEdges) {
     // The deprecated rich provider starts at the anchor and ends at it near the right edge.
     CHECK(Place(rich, mid) == ui::IntOffset(100, 76));
     CHECK(Place(rich, { 260, 100, 290, 140 }) == ui::IntOffset(230, 76));
-    // The caret sits mid-tooltip unless the tooltip is pushed against an edge.
-    CHECK_EQ(internal::CaretX(60, 300, { 100, 100, 140, 140 }), 30.0f);
-    CHECK_EQ(internal::CaretX(60, 300, { 0, 100, 20, 140 }), 10.0f);
-    CHECK_EQ(internal::CaretX(60, 300, { 280, 100, 300, 140 }), 50.0f);
-    CHECK_EQ(internal::CaretX(300, 300, { 100, 100, 140, 140 }), 120.0f);
+    // The caret sits under the anchor's middle, measured from where the tooltip landed.
+    CHECK_EQ(internal::CaretX(60, { 100, 100, 140, 140 }, 90), 30.0f);
+    CHECK_EQ(internal::CaretX(60, { 0, 100, 20, 140 }, 0), 10.0f);
+    CHECK_EQ(internal::CaretX(60, { 280, 100, 300, 140 }, 240), 50.0f);
+    CHECK_EQ(internal::CaretX(300, { 100, 100, 140, 140 }, 0), 120.0f);
 }
 
 TEST(TooltipStatesShareAMutexAndEndTheirShowOnDismissCancelOrTimeout) {
@@ -4222,9 +4222,17 @@ TEST(TooltipAnchorKeepsItsClickAndOffersALongClick) {
 }
 
 TEST(FullWidthTooltipCaretFollowsTheAnchor) {
-    CHECK_EQ(internal::CaretX(1080, 1080, { 135, 0, 185, 0 }), 160.0f);
-    CHECK_EQ(internal::CaretX(1080, 1080, { 515.5f, 0, 565.5f, 0 }), 540.5f);
-    CHECK_EQ(internal::CaretX(1080, 1080, { 920.88f, 0, 970.88f, 0 }), 945.88f);
+    CHECK_EQ(internal::CaretX(1080, { 135, 0, 185, 0 }, 0), 160.0f);
+    CHECK_EQ(internal::CaretX(1080, { 515.5f, 0, 565.5f, 0 }, 0), 540.5f);
+    CHECK_EQ(internal::CaretX(1080, { 920.88f, 0, 970.88f, 0 }, 0), 945.88f);
+}
+
+// tooltipCaret_xPositioning_nearScreenEdges (androidx e173ca8210d).
+TEST(TooltipCaretStaysOverTheAnchorNearScreenEdges) {
+    // Pushed against the left edge: right over the anchor's middle.
+    CHECK_EQ(internal::CaretX(600, { 75, 0, 125, 0 }, 0), 100.0f);
+    // Pushed against the right edge of a 1080 screen (left at 480): 1000 - 480.
+    CHECK_EQ(internal::CaretX(600, { 975, 0, 1025, 0 }, 480), 520.0f);
 }
 
 // Ported from Compose's ScaffoldTest (bounds in dp, within its 0.5 dp rounding error). Left out:
@@ -14592,4 +14600,28 @@ TEST(TextFieldFocusAnimationRecomposesOnlyTheLabel) {
     h.AdvanceTimeBy(1000);
     CHECK(leading - leadingBefore <= 3);   // the focus change itself (each frame before: 14)
     CHECK(label - labelBefore > 5);         // the label follows the animation
+}
+
+// ButtonGroupTest (androidx d0a285fa305): the overflow menu's state survives a configuration
+// change (rememberSaveable with ButtonGroupMenuState.Saver).
+TEST(ButtonGroupOverflowMenuStaysOpenAcrossRestore) {
+    rt::SaveableStateRegistry::Values saved;
+    for (int pass = 0; pass < 2; ++pass) {
+        rt::SaveableStateRegistry registry(saved);
+        ButtonGroupMenuState* menu = nullptr;
+        Harness h;
+        h.Run([&] {
+            rt::Composition::Current()->Provide(rt::LocalSaveableStateRegistry, &registry, [&] { MaterialTheme({}, [&] {
+                ButtonGroup([&](ButtonGroupMenuState& m) { menu = &m; Box(SizeMod(Modifier{}, ui::Dp(30), ui::Dp(40))); }, {},
+                            [](ButtonGroupScope& scope) { scope.ClickableItem([] {}, "Only"); });
+            }); });
+        });
+        CHECK(menu != nullptr);
+        if (!menu) return;
+        CHECK_EQ(menu->IsShowing(), pass == 1);
+        if (pass == 0) {
+            menu->Show();
+            saved = rt::SaveableStateRegistry::Deserialize(rt::SaveableStateRegistry::Serialize(registry.PerformSave()));
+        }
+    }
 }

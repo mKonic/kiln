@@ -10,6 +10,7 @@
 #include "kiln/foundation/Interaction.h"
 #include "kiln/material3/IconButton.h"
 #include "kiln/material3/ToggleButton.h"
+#include "kiln/runtime/Saveable.h"
 
 #include <functional>
 #include <memory>
@@ -25,6 +26,15 @@ namespace kiln::material3 {
         bool IsShowing() const { return m_Showing.Get(); }   // observable
         void Dismiss() { m_Showing.Set(false); }
         void Show() { m_Showing.Set(true); }
+        // Saver: whether it shows, so the menu stays open across a configuration change.
+        static rt::Saver<std::shared_ptr<ButtonGroupMenuState>> Saver() {
+            return { [](const std::shared_ptr<ButtonGroupMenuState>& s) { return rt::SavedValue(s->IsShowing()); },
+                     [](const rt::SavedValue& v) -> std::optional<std::shared_ptr<ButtonGroupMenuState>> {
+                         const bool* showing = std::get_if<bool>(&v.v);
+                         if (!showing) return std::nullopt;
+                         return std::make_shared<ButtonGroupMenuState>(*showing);
+                     } };
+        }
 
     private:
         rt::State<bool> m_Showing;

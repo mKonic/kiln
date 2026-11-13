@@ -154,7 +154,7 @@ namespace kiln::material3 {
         void PlainTooltipInternal(const TooltipScope& scope, const std::string& tooltipText, const ui::Modifier& modifier,
                                   const PlainTooltipOptions& options, kiln::Function<void()> content);
         // caretX: where along the tooltip's width the caret sits for an above / below tooltip.
-        float CaretX(float tooltipWidth, int screenWidthPx, ui::Rect anchorBounds);
+        float CaretX(float tooltipWidth, ui::Rect anchorBounds, float tooltipLeft);
     }
 
 }
