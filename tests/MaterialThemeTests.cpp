@@ -1285,7 +1285,7 @@ TEST(TriStateCheckboxKeepsIndeterminateSemanticsAcrossInterruptedMorphsAndStylin
     ComposeMaterial3Flags::isCheckboxStylingFixEnabled = oldFlag;
 }
 
-TEST(SwitchThumbAnimatesSelectionSnapsPressAndHandlesContentRtlAndSourceReplacement) {
+TEST(SwitchThumbAnimatesSelectionAndPressAndHandlesContentRtlAndSourceReplacement) {
     for (auto direction : { ui::LayoutDirection::Ltr, ui::LayoutDirection::Rtl }) {
         rt::State<bool> checked{ false }, content{ false }, enabled{ true }, attached{ true };
         rt::State<int> version{ 0 };
@@ -1331,8 +1331,12 @@ TEST(SwitchThumbAnimatesSelectionSnapsPressAndHandlesContentRtlAndSourceReplacem
         CHECK_EQ(compositions, before);  // thumb geometry is observed by layout, not composition
         CHECK_EQ(thumb()->Size().width, 24);
         CHECK_EQ(left(), direction == ui::LayoutDirection::Ltr ? 24 : 4);
+        // Press grows the thumb with the motion scheme (androidx fe454c7f8a2: no longer a snap),
+        // centred where it was.
         const auto press = source->Start(Interaction::Kind::Press);
-        advance(2);
+        advance(4);
+        CHECK(thumb()->Size().width > 24 && thumb()->Size().width < 28);
+        advance(130);
         CHECK_EQ(thumb()->Size().width, 28);
         CHECK_EQ(left(), direction == ui::LayoutDirection::Ltr ? 22 : 2);
         source->Cancel(Interaction::Kind::Press, press); advance(130);
@@ -1347,7 +1351,7 @@ TEST(SwitchThumbAnimatesSelectionSnapsPressAndHandlesContentRtlAndSourceReplacem
         source = std::make_shared<MutableInteractionSource>(); version.Set(1); advance(2);
         oldSource->Start(Interaction::Kind::Press); advance(2);
         CHECK_EQ(thumb()->Size().width, 24);
-        source->Start(Interaction::Kind::Press); advance(2);
+        source->Start(Interaction::Kind::Press); advance(130);
         CHECK_EQ(thumb()->Size().width, 28);
         attached.Set(false); advance(3);
         source->Start(Interaction::Kind::Press); advance(2);
@@ -14623,5 +14627,39 @@ TEST(ButtonGroupOverflowMenuStaysOpenAcrossRestore) {
             menu->Show();
             saved = rt::SaveableStateRegistry::Deserialize(rt::SaveableStateRegistry::Serialize(registry.PerformSave()));
         }
+    }
+}
+
+// SwitchTest switch_dragToToggle (+ _rtl, partial drag; androidx fe454c7f8a2): a swipe across the
+// track toggles, a short one snaps back.
+TEST(SwitchTogglesWhenItsThumbIsDraggedAcross) {
+    for (auto direction : { ui::LayoutDirection::Ltr, ui::LayoutDirection::Rtl }) {
+        rt::State<bool> checked{ false };
+        Harness h;
+        h.owner.SetDirection(direction);
+        h.Run([&] { rt::Composition::Current()->Provide(ui::LocalLayoutDirection, direction, [&] { MaterialTheme([&] {
+            Box({}, Alignment::TopStart(), false, [&] { Switch(checked.Get(), [&](bool v) { checked.Set(v); }); });
+        }); }); });
+        std::int64_t t = 1000;
+        // The switch is 52 x 48 (a 52 x 32 track centred in it).
+        const float toEnd = direction == ui::LayoutDirection::Ltr ? 1.0f : -1.0f;
+        const auto swipe = [&](float fromX, float dx) {
+            Touch(h, t, ui::PointerEventType::Press, fromX, 24, true);
+            for (int i = 1; i <= 8; ++i) Touch(h, t, ui::PointerEventType::Move, fromX + dx * float(i) / 8, 24, true);
+            for (int i = 0; i < 6; ++i) Touch(h, t, ui::PointerEventType::Move, fromX + dx, 24, true);   // held: no fling
+            Touch(h, t, ui::PointerEventType::Release, fromX + dx, 24, false);
+            for (int i = 0; i < 60; ++i) Touch(h, t, ui::PointerEventType::Move, 200, 200, false);   // frames for the settle
+        };
+        // Where the switch is (at the right edge in RTL).
+        const float x0 = h.owner.Root().Children()[0]->Children()[0]->InnerRectInRoot().left;
+        const float start = x0 + (direction == ui::LayoutDirection::Ltr ? 8.0f : 44.0f);
+        const float end = x0 + (direction == ui::LayoutDirection::Ltr ? 44.0f : 8.0f);
+        swipe(start, 40 * toEnd);
+        CHECK(checked.Get());
+        swipe(end, -40 * toEnd);
+        CHECK(!checked.Get());
+        // Past the touch slop but not halfway: it settles back where it was.
+        swipe(start, 14 * toEnd);
+        CHECK(!checked.Get());
     }
 }

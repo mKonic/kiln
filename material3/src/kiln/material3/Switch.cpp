@@ -2,6 +2,7 @@
 #include <kiln/Function.h>
 
 #include "kiln/animation/Animatable.h"
+#include "kiln/foundation/AnchoredDraggable.h"
 #include "kiln/foundation/Border.h"
 #include "kiln/foundation/Gestures.h"
 #include "kiln/material3/MaterialTheme.h"
@@ -25,69 +26,76 @@ namespace kiln::material3 {
         struct ThumbParams {
             std::shared_ptr<MutableInteractionSource> source;
             bool checked;
+            std::shared_ptr<AnchoredDraggableState<bool>> drag;
             anim::SpecPtr spec;
             bool operator==(const ThumbParams&) const = default;
         };
         rt::Task<> Animate(anim::Animatable& value, float target, anim::SpecPtr spec) { co_await value.AnimateTo(target, std::move(spec)); }
+        // ThumbNode: the thumb's size (larger while pressed or dragged, animated with the motion
+        // scheme) and its place, the drag state's offset along the track.
         struct ThumbNode final : ui::ModifierNode, ui::LayoutModifier {
             ThumbParams params;
             std::shared_ptr<MutableInteractionSource> subscribed;
             std::uint64_t token = 0;
-            int pressCount = 0;
-            float initialSize = std::numeric_limits<float>::quiet_NaN(), initialOffset = initialSize;
-            std::unique_ptr<anim::Animatable> sizeAnim, offsetAnim;
-            rt::Job sizeJob, offsetJob;
+            int pressCount = 0, dragCount = 0;
+            float initialSize = std::numeric_limits<float>::quiet_NaN();
+            std::unique_ptr<anim::Animatable> sizeAnim;
+            rt::Job sizeJob;
             explicit ThumbNode(ThumbParams p) : params(std::move(p)) {}
             ui::LayoutModifier* AsLayout() override { return this; }
             void OnAttach() override { Subscribe(); }
             void OnDetach() override {
-                sizeJob.Cancel(); offsetJob.Cancel();
+                sizeJob.Cancel();
                 if (subscribed) subscribed->Unsubscribe(token);
-                subscribed.reset(); pressCount = 0;
+                subscribed.reset(); pressCount = dragCount = 0;
             }
+            // restartInteractionCollection: presses and drags both enlarge the thumb.
             void Subscribe() {
                 if (subscribed == params.source) return;
                 if (subscribed) subscribed->Unsubscribe(token);
-                subscribed = params.source; pressCount = 0;
+                subscribed = params.source; pressCount = dragCount = 0;
                 if (subscribed) token = subscribed->Subscribe([this](const Interaction& interaction) {
-                    if (interaction.kind != Interaction::Kind::Press) return;
-                    const bool wasPressed = pressCount > 0;
-                    pressCount += interaction.phase == Interaction::Phase::Start ? 1 : -1;
-                    if (wasPressed != (pressCount > 0)) InvalidateMeasure();
+                    int* count = interaction.kind == Interaction::Kind::Press ? &pressCount : interaction.kind == Interaction::Kind::Drag ? &dragCount : nullptr;
+                    if (!count) return;
+                    const bool was = pressCount > 0 || dragCount > 0;
+                    *count += interaction.phase == Interaction::Phase::Start ? 1 : -1;
+                    if (was != (pressCount > 0 || dragCount > 0)) InvalidateMeasure();
                 });
             }
             void OnParamsChanged() {
                 if (Owner() && Owner()->GetOwner()) Subscribe();
                 if (!sizeAnim && !std::isnan(initialSize)) sizeAnim = std::make_unique<anim::Animatable>(initialSize);
-                if (!offsetAnim && !std::isnan(initialOffset)) offsetAnim = std::make_unique<anim::Animatable>(initialOffset);
                 InvalidateMeasure();
             }
             ui::MeasureResult Measure(ui::MeasureScope& s, ui::Measurable& m, const ui::Constraints& c) override {
                 const bool hasContent = m.MaxIntrinsicHeight(c.maxWidth) != 0 && m.MaxIntrinsicWidth(c.maxHeight) != 0;
-                const bool pressed = pressCount > 0;
-                const Dp diameter = pressed ? SwitchTokens::PressedHandleWidth : hasContent || params.checked ? SwitchTokens::SelectedHandleWidth : SwitchTokens::UnselectedHandleWidth;
+                const bool enlarged = pressCount > 0 || dragCount > 0;
+                const Dp diameter = enlarged ? SwitchTokens::PressedHandleWidth : hasContent || params.checked ? SwitchTokens::SelectedHandleWidth : SwitchTokens::UnselectedHandleWidth;
                 const float size = s.ToPx(diameter);
-                const int actual = int(sizeAnim ? sizeAnim->Float() : size);
+                if (!sizeAnim && !std::isnan(initialSize)) sizeAnim = std::make_unique<anim::Animatable>(initialSize);
+                const int actual = std::max(0, int(sizeAnim ? sizeAnim->Float() : size));
                 auto& p = m.Measure(ui::Constraints::Fixed(actual, actual));
-                const float min = (s.ToPx(SwitchTokens::TrackHeight) - size) / 2;
-                const float max = s.ToPx(Dp(SwitchTokens::TrackWidth.value - SwitchTokens::SelectedHandleWidth.value -
-                                             (SwitchTokens::TrackHeight.value - SwitchTokens::SelectedHandleWidth.value) / 2));
-                const float outline = s.ToPx(SwitchTokens::TrackOutlineWidth);
-                const float offset = pressed ? (params.checked ? max - outline : outline) : params.checked ? max : min;
-                const auto spec = pressed ? anim::Snap() : params.spec;
                 if (sizeAnim && sizeAnim->Target()[0] != size) {
                     sizeJob.Cancel();
-                    sizeJob = rt::Launch(rt::Dispatcher::Main(), Animate(*sizeAnim, size, spec));
+                    sizeJob = rt::Launch(rt::Dispatcher::Main(), Animate(*sizeAnim, size, params.spec));
                 }
-                if (offsetAnim && offsetAnim->Target()[0] != offset) {
-                    offsetJob.Cancel();
-                    offsetJob = rt::Launch(rt::Dispatcher::Main(), Animate(*offsetAnim, offset, spec));
-                }
-                if (std::isnan(initialSize) && std::isnan(initialOffset)) { initialSize = size; initialOffset = offset; }
-                return s.Layout(actual, actual, [this, &p, offset](ui::PlacementScope& ps) {
-                    ps.PlaceRelative(p, int(offsetAnim ? offsetAnim->Float() : offset), 0);
+                if (std::isnan(initialSize)) initialSize = size;
+                const float minCenterX = s.ToPx(SwitchTokens::TrackHeight) / 2;
+                const float travel = s.ToPx(Dp(SwitchTokens::TrackWidth.value - SwitchTokens::TrackHeight.value));
+                return s.Layout(actual, actual, [this, &p, size, minCenterX, travel](ui::PlacementScope& ps) {
+                    // The thumb's centre follows the drag offset (read here: a drag only places it again).
+                    const float dragged = params.drag ? params.drag->Offset() : std::numeric_limits<float>::quiet_NaN();
+                    const float offset = !std::isnan(dragged) ? dragged : params.checked ? travel : 0.0f;
+                    const float current = sizeAnim ? sizeAnim->Float() : size;
+                    ps.PlaceRelative(p, int(minCenterX + offset - current / 2), 0);
                 });
             }
+        };
+        // The latest checked value and callback, for the effects below (rememberUpdatedState).
+        struct SwitchLatest {
+            bool checked = false;
+            kiln::Function<void(bool)> change;
+            rt::State<bool> forceAnimationCheck{ false };
         };
     }
 
@@ -129,6 +137,29 @@ namespace kiln::material3 {
         const auto thumbShape = Value(SwitchTokens::HandleShape), trackShape = Value(SwitchTokens::TrackShape);
         const auto iconColor = colors.IconColor(options.enabled, checked);
         const bool inset = bool(rt::Composition::Current()->Read(LocalRippleThemeConfiguration).focus);
+        auto& c = *rt::Composition::Current();
+        // Dragging the thumb (AnchoredDraggableState between unchecked at 0 and checked at the
+        // track's travel); the settled value reports a change, and a new `checked` animates there.
+        const anim::SpecPtr spec = Value(MotionSchemeKeyTokens::FastSpatial);
+        const float travel = c.Read(ui::LocalDensity).ToPx(Dp(SwitchTokens::TrackWidth.value - SwitchTokens::TrackHeight.value));
+        auto drag = c.Remember<std::shared_ptr<AnchoredDraggableState<bool>>>(
+            [&] { return std::make_shared<AnchoredDraggableState<bool>>(checked, DraggableAnchors<bool>{ { false, 0.0f }, { true, travel } }); },
+            rt::Keys(travel));
+        auto latest = c.Remember<std::shared_ptr<SwitchLatest>>([] { return std::make_shared<SwitchLatest>(); });
+        latest->checked = checked;
+        latest->change = change;
+        const bool settled = drag->SettledValue();
+        c.LaunchedEffect(rt::Keys(reinterpret_cast<std::uintptr_t>(drag.get()), settled), [latest, settled]() -> rt::Task<> {
+            if (latest->checked != settled && latest->change) {
+                latest->change(settled);
+                latest->forceAnimationCheck.Set(!latest->forceAnimationCheck.Peek());
+            }
+            co_return;
+        });
+        const bool force = latest->forceAnimationCheck.Get();
+        c.LaunchedEffect(rt::Keys(checked, force), [drag, checked, spec]() -> rt::Task<> {
+            if (checked != drag->SettledValue()) co_await drag->AnimateTo(checked, spec);
+        });
         auto m = modifier;
         if (change) {
             ClickableOptions toggle;
@@ -137,6 +168,11 @@ namespace kiln::material3 {
             toggle.interactionSource = source;
             toggle.useLocalIndication = false;
             m = Toggleable(MinimumInteractiveComponentSize(m), checked, std::move(change), toggle);
+            AnchoredDraggableOptions dragOptions;
+            dragOptions.enabled = options.enabled;
+            dragOptions.interactionSource = source;
+            dragOptions.snapAnimationSpec = spec;   // AnchoredDraggableDefaults.flingBehavior(state, animationSpec)
+            m = AnchoredDraggable(std::move(m), *drag, Orientation::Horizontal, dragOptions);
         }
         m = RequiredSize(WrapContent(m, Axis::Both), SwitchTokens::TrackWidth, SwitchTokens::TrackHeight);
         m = Background(Border(m, SwitchTokens::TrackOutlineWidth, colors.BorderColor(options.enabled, checked), trackShape), colors.TrackColor(options.enabled, checked), trackShape);
@@ -147,7 +183,7 @@ namespace kiln::material3 {
             m = Ripple(focus)->Create(m, source);
         }
         Box(m, ui::Alignment::TopStart(), false, [=] {
-            auto thumb = AlignInBox({}, ui::Alignment::CenterStart()).With<ThumbNode>(ThumbParams{ source, checked, Value(MotionSchemeKeyTokens::FastSpatial) });
+            auto thumb = AlignInBox({}, ui::Alignment::CenterStart()).With<ThumbNode>(ThumbParams{ source, checked, drag, spec });
             RippleOptions ripple;
             ripple.bounded = false;
             ripple.radius = Dp(SwitchTokens::StateLayerSize.value / 2);
