@@ -18,7 +18,7 @@ namespace kiln {
         auto it = m_Entries.find(image.Id());
         if (it != m_Entries.end()) return it->second.page.get();
         Entry e;
-        e.page = std::make_unique<AtlasPage>(m_Device, std::uint32_t(image.Width()), std::uint32_t(image.Height()), image.Pixels(), true);
+        e.page = std::make_unique<AtlasPage>(m_Device, std::uint32_t(image.Width()), std::uint32_t(image.Height()), image.Pixels());
         e.token = image.Token();
         return (m_Entries[image.Id()] = std::move(e)).page.get();
     }

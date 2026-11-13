@@ -22,13 +22,12 @@ namespace kiln {
         m_Texture->Upload(clear.data(), clear.size());
     }
 
-    AtlasPage::AtlasPage(Device& device, std::uint32_t width, std::uint32_t height, const void* rgba, bool mipmaps)
+    AtlasPage::AtlasPage(Device& device, std::uint32_t width, std::uint32_t height, const void* rgba)
         : m_Width(width), m_Height(height) {
         TextureDesc desc;
         desc.width = width;
         desc.height = height;
         desc.format = Format::RGBA8_UNORM;
-        desc.generateMipmaps = mipmaps;
         desc.debugName = "kiln.image";
         m_Texture = device.CreateTexture(desc);
         m_Texture->Upload(rgba, std::size_t(width) * height * 4);

@@ -27,8 +27,10 @@ namespace kiln {
     class AtlasPage {
     public:
         AtlasPage(hearth::Device& device, std::uint32_t width, std::uint32_t height);
-        // A whole image uploaded once, with a mip chain for minified drawing.
-        AtlasPage(hearth::Device& device, std::uint32_t width, std::uint32_t height, const void* rgba, bool mipmaps);
+        // A whole image uploaded once. No mip chain: Android draws bitmaps with bilinear sampling
+        // alone (hwui Paint::sampling() is SkSamplingOptions(filterMode)), so a minified photo
+        // keeps the same detail it has there.
+        AtlasPage(hearth::Device& device, std::uint32_t width, std::uint32_t height, const void* rgba);
         // Wraps an existing texture (an offscreen layer's colour attachment).
         AtlasPage(hearth::Ref<hearth::Texture> texture, std::uint32_t width, std::uint32_t height)
             : m_Texture(std::move(texture)), m_Width(width), m_Height(height) {}
