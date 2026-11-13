@@ -319,7 +319,7 @@ namespace kiln::ui {
         int FilterRow(const gfx::ColorFilter* f);
         // The cached coverage mask of a path under the current transform; device origin in ox/oy.
         const void* PathMask(const gfx::Path& path, const gfx::Stroke* stroke, float& ox, float& oy, const Rect* deviceVisible = nullptr);
-        void DrawBlurredShadowPath(const gfx::PathShadow& shadow, Color color);
+        void DrawBlurredShadowPath(const gfx::Path& outline, float sigma, Offset shift, Color color);
         LayoutDirection m_Dir;
         DrawTarget m_Target;
         State m_State;

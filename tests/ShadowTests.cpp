@@ -140,6 +140,39 @@ TEST(PathShadowFallbackRetainsContoursFillRuleAndSkiaMetrics) {
     CHECK(std::fabs(spot.sigma - (0.57735f * ShadowMetrics::SpotBlurRadius(12, light.z, light.radius) + 0.5f)) < 1e-5f);
 }
 
+// What the blurred-outline cache in DrawScope::DrawShadow relies on: a caster moved by t moves its
+// ambient outline by t and its spot outline by the spot scale times t, and changes neither.
+TEST(BlurredPathShadowMovesWithItsCasterWithoutChanging) {
+    Path path;
+    path.fillType = FillType::EvenOdd;
+    path.AddOval({ 0, 0, 100, 60 });
+    path.AddOval({ 20, 15, 80, 45 });
+    const ShadowLight light = ShadowLight::Framework(2.75f, 1216, 2688, 0, 0);
+    float radius = 0, scale = 0;
+    ui::Offset translate;
+    ShadowMetrics::GetSpotParams(12, light.x, light.y, light.z, light.radius, &radius, &scale, &translate);
+    CHECK(scale > 1.0f);
+    for (const ShadowLight* source : { static_cast<const ShadowLight*>(nullptr), &light }) {
+        ShadowProjection at;
+        at.zPlane = { 0, 0, 12 };
+        at.matrix = { 1.5f, 0, 30, 0, 1.5f, 40, 0, 0, 1 };
+        ShadowProjection moved = at;
+        moved.matrix[2] += 17;
+        moved.matrix[5] -= 913;
+        const auto a = MakePathShadow(path, at, source, false);
+        const auto b = MakePathShadow(path, moved, source, false);
+        CHECK(a.blurred && b.blurred);
+        CHECK_EQ(a.sigma, b.sigma);
+        CHECK_EQ(a.strokeWidth, b.strokeWidth);
+        const float k = source ? scale : 1.0f;
+        const ui::Rect ra = a.blurPath.Bounds(), rb = b.blurPath.Bounds();
+        CHECK(std::fabs(rb.left - (ra.left + k * 17)) < 0.01f);
+        CHECK(std::fabs(rb.top - (ra.top - k * 913)) < 0.01f);
+        CHECK(std::fabs(rb.Width() - ra.Width()) < 0.01f);
+        CHECK(std::fabs(rb.Height() - ra.Height()) < 0.01f);
+    }
+}
+
 TEST(PathShadowTransformsAndInvalidInput) {
     Path path;
     path.AddOval({ 0, 0, 100, 60 });

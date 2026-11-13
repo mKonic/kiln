@@ -20,6 +20,7 @@
 
 #include <algorithm>
 #include <optional>
+#include <unordered_map>
 
 namespace kiln::ui {
 
@@ -967,6 +968,36 @@ namespace kiln::ui {
         }
     }
 
+    namespace {
+        // The outline a blurred shadow fills (SkPaint::kStrokeAndFill_Style: the union filled
+        // once, not two translucent draws). Empty when the union fails.
+        gfx::Path BlurredShadowOutline(const gfx::PathShadow& shadow) {
+            if (shadow.strokeWidth <= 0) return shadow.blurPath;
+            gfx::Stroke stroke;
+            stroke.width = shadow.strokeWidth;
+            gfx::Path edge;
+            for (const gfx::Polyline& c : gfx::StrokeToPolygons(shadow.blurPath, stroke, {})) {
+                if (c.points.empty()) continue;
+                edge.MoveTo(c.points[0].x, c.points[0].y);
+                for (std::size_t i = 1; i < c.points.size(); ++i) edge.LineTo(c.points[i].x, c.points[i].y);
+                edge.Close();
+            }
+            gfx::Path filled;
+            if (!filled.Op(shadow.blurPath, edge, gfx::PathOperation::Union)) return {};
+            return filled;
+        }
+
+        // Blurred shadow outlines by caster (its path, the matrix without its translation, the
+        // height and the light). On a flat plane a caster that moves by t moves its ambient
+        // outline by t and its spot outline by scale * t without changing either, so a scrolled
+        // caster reuses the outline, and through it the mask in the path cache.
+        struct BlurredShadowEntry { gfx::Path outline; float sigma = 0, e = 0, f = 0, scale = 1; };
+        std::unordered_map<std::uint64_t, BlurredShadowEntry>& BlurredShadows() {
+            static std::unordered_map<std::uint64_t, BlurredShadowEntry> cache;
+            return cache;
+        }
+    }
+
     void DrawScope::DrawShadow(const gfx::Outline& outline, float elevation, Color ambientColor, Color spotColor, float casterAlpha,
                                const gfx::ShadowProjection* projection) {
         if (m_Recording) { m_Recording->push_back([outline, elevation, ambientColor, spotColor, casterAlpha, pr = Opt(projection)](DrawScope& d) { d.DrawShadow(outline, elevation, ambientColor, spotColor, casterAlpha, pr ? &*pr : nullptr); }); return; }
@@ -1005,8 +1036,34 @@ namespace kiln::ui {
             else path = std::get<gfx::Path>(outline.value);
             auto draw = [&](Color color, const gfx::ShadowLight* source) {
                 if (color.Alpha() <= 0) return;
+                // Without a projection the plane is flat and the matrix affine: see BlurredShadows.
+                std::uint64_t key = 0;
+                if (!projection) {
+                    key = path.Hash();
+                    const float params[8] = { m.a, m.b, m.c, m.d, elevation, transparent ? 1.0f : 0.0f, source ? source->z : -1.0f, source ? source->radius : -1.0f };
+                    const auto* b = reinterpret_cast<const std::uint8_t*>(params);
+                    for (std::size_t i = 0; i < sizeof(params); ++i) { key ^= b[i]; key *= 1099511628211ull; }
+                    if (const auto it = BlurredShadows().find(key); it != BlurredShadows().end()) {
+                        const BlurredShadowEntry& c = it->second;
+                        DrawBlurredShadowPath(c.outline, c.sigma, { c.scale * (m.e - c.e), c.scale * (m.f - c.f) }, color);
+                        return;
+                    }
+                }
                 const gfx::PathShadow shadow = gfx::MakePathShadow(path, dev, source, transparent);
-                if (shadow.blurred) { DrawBlurredShadowPath(shadow, color); return; }
+                if (shadow.blurred) {
+                    BlurredShadowEntry entry{ BlurredShadowOutline(shadow), shadow.sigma, m.e, m.f, 1 };
+                    if (source) {
+                        float radius = 0;
+                        Offset translate;
+                        gfx::ShadowMetrics::GetSpotParams(elevation, source->x, source->y, source->z, source->radius, &radius, &entry.scale, &translate);
+                    }
+                    DrawBlurredShadowPath(entry.outline, entry.sigma, {}, color);
+                    if (key) {
+                        if (BlurredShadows().size() >= 256) BlurredShadows().clear();
+                        BlurredShadows().emplace(key, std::move(entry));
+                    }
+                    return;
+                }
                 const Rgba c = Scaled(ToRgba(color), m_State.alpha);
                 std::vector<QuadRenderer::Vertex> out;
                 out.reserve(shadow.triangles.size());
@@ -1106,26 +1163,11 @@ namespace kiln::ui {
         m_Target.quads->DrawTriangles(out.data(), out.size());
     }
 
-    void DrawScope::DrawBlurredShadowPath(const gfx::PathShadow& shadow, Color color) {
-        if (!m_Target.paths || !m_Target.quads || m_State.alpha <= 0) return;
-        gfx::Path path = shadow.blurPath;
-        if (shadow.strokeWidth > 0) {
-            // SkPaint::kStrokeAndFill_Style: fill the union once, not two translucent draws.
-            gfx::Stroke stroke;
-            stroke.width = shadow.strokeWidth;
-            gfx::Path edge;
-            for (const gfx::Polyline& c : gfx::StrokeToPolygons(path, stroke, {})) {
-                if (c.points.empty()) continue;
-                edge.MoveTo(c.points[0].x, c.points[0].y);
-                for (std::size_t i = 1; i < c.points.size(); ++i) edge.LineTo(c.points[i].x, c.points[i].y);
-                edge.Close();
-            }
-            gfx::Path filled;
-            if (!filled.Op(path, edge, gfx::PathOperation::Union)) return;
-            path = std::move(filled);
-        }
-        const float pad = std::ceil(3 * shadow.sigma) + 1;
-        const Rect bounds = path.Bounds();
+    void DrawScope::DrawBlurredShadowPath(const gfx::Path& outline, float sigma, Offset shift, Color color) {
+        if (!m_Target.paths || !m_Target.quads || m_State.alpha <= 0 || outline.IsEmpty()) return;
+        const gfx::Path& path = outline;
+        const float pad = std::ceil(3 * sigma) + 1;
+        const Rect bounds = path.Bounds().Translate(shift);
         // Keep sources just outside the viewport and clip: they can blur into visible pixels.
         // The enclosing clip applies only when the finished shadow is composited.
         Rect d{ std::floor(bounds.left - pad), std::floor(bounds.top - pad),
@@ -1133,7 +1175,7 @@ namespace kiln::ui {
         d = d.Intersect({ -pad, -pad, m_Target.viewportWidth + pad, m_Target.viewportHeight + pad });
         if (d.Empty()) return;
         const State saved = m_State;
-        m_State.m = {};
+        m_State.m = gfx::Matrix::Translate(shift.x, shift.y);
         m_State.clip = false;
         float ox = 0, oy = 0;
         const auto* mask = static_cast<const PathCache::Entry*>(PathMask(path, nullptr, ox, oy, &d));
@@ -1150,10 +1192,10 @@ namespace kiln::ui {
         auto image = q.EndLayer();
         const kiln::RectF rect{ d.left, d.top, d.Width(), d.Height() };
         auto uv = [&] { return kiln::RectF{ 0, 0, d.Width() / image.page->Width(), d.Height() / image.page->Height() }; };
-        for (int pass = 0; pass < 2 && image.page && shadow.sigma > 0; ++pass) {
+        for (int pass = 0; pass < 2 && image.page && sigma > 0; ++pass) {
             q.BeginLayer(x, y, w, h);
             q.DrawBlur(rect, uv(), *image.page, 1, pass == 0 ? 1.0f / image.page->Width() : 0,
-                       pass == 1 ? 1.0f / image.page->Height() : 0, shadow.sigma, true);
+                       pass == 1 ? 1.0f / image.page->Height() : 0, sigma, true);
             image = q.EndLayer();
         }
         ApplyClip();
