@@ -5,6 +5,7 @@
 // persistent. Slider thumbs use it for their value.
 
 #include "kiln/foundation/Interaction.h"
+#include <kiln/Function.h>
 #include "kiln/material3/Tooltip.h"
 
 namespace kiln::material3 {
@@ -14,7 +15,7 @@ namespace kiln::material3 {
         std::shared_ptr<foundation::MutableInteractionSource> interactionSource;
         bool isPersistent = false;
     };
-    void Label(std::function<void(const TooltipScope&)> label, const ui::Modifier& modifier, const LabelOptions& options,
-               std::function<void()> content);
+    void Label(kiln::Function<void(const TooltipScope&)> label, const ui::Modifier& modifier, const LabelOptions& options,
+               kiln::Function<void()> content);
 
 }

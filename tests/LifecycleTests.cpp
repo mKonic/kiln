@@ -1,4 +1,5 @@
 #include "Check.h"
+#include <kiln/Function.h>
 
 #include "kiln/lifecycle/Lifecycle.h"
 #include "kiln/lifecycle/LifecycleCompose.h"
@@ -22,7 +23,7 @@ namespace {
     class TestObserver final : public DefaultLifecycleObserver {
     public:
         TestObserver(Log& log, std::string name) : m_Log(&log), m_Name(std::move(name)) {}
-        std::function<void()> onCreate, onStart, onResume, onPause, onStop, onDestroy;
+        kiln::Function<void()> onCreate, onStart, onResume, onPause, onStop, onDestroy;
         void OnCreate(LifecycleOwner&) override { Record("create", onCreate); }
         void OnStart(LifecycleOwner&) override { Record("start", onStart); }
         void OnResume(LifecycleOwner&) override { Record("resume", onResume); }
@@ -30,7 +31,7 @@ namespace {
         void OnStop(LifecycleOwner&) override { Record("stop", onStop); }
         void OnDestroy(LifecycleOwner&) override { Record("destroy", onDestroy); }
     private:
-        void Record(const char* what, const std::function<void()>& hook) {
+        void Record(const char* what, const kiln::Function<void()>& hook) {
             m_Log->lines.push_back(m_Name + ":" + what);
             if (hook) hook();
         }
@@ -311,7 +312,7 @@ TEST(LifecycleEffectsFollowTheWindowLifecycle) {
     rt::State<int> source{ 1 };
     std::vector<std::string> log;
     LifecycleOwnerPtr seen, child;
-    std::function<void()> click;
+    kiln::Function<void()> click;
     rt::State<int>* collected = nullptr;
     comp.SetContent([&] { rt::Composition::Current()->Provide(ui::LocalOwner, &window, [&] {
         seen = CurrentLifecycleOwner();

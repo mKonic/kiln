@@ -5,6 +5,7 @@
 // an AM/PM toggle for 12-hour clocks. The vibrant forms (with TimePickerShapes) are Expressive.
 
 #include "kiln/foundation/Shapes.h"
+#include <kiln/Function.h>
 #include "kiln/material3/TextFieldColors.h"
 #include "kiln/runtime/State.h"
 #include "kiln/ui/Modifier.h"
@@ -106,14 +107,14 @@ namespace kiln::material3 {
     struct TimeInputOptions {
         std::optional<TimeInputColors> colors;
         std::optional<TimePickerShapes> shapes;
-        std::function<void()> toggle;
+        kiln::Function<void()> toggle;
     };
     void TimeInput(TimePickerState& state, const ui::Modifier& modifier = {}, const TimeInputOptions& options = {});
 
     // The two scroll fields (always vibrant).
     struct TimeScrollOptions {
         std::optional<TimePickerColors> colors;            // unset: vibrantColors()
-        std::function<void()> toggle;
+        kiln::Function<void()> toggle;
     };
     void TimeScroll(TimePickerState& state, const TimePickerShapes& shapes, const ui::Modifier& modifier = {},
                     const TimeScrollOptions& options = {});

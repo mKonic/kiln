@@ -1,4 +1,5 @@
 #include "kiln/material3/Badge.h"
+#include <kiln/Function.h>
 
 #include "kiln/foundation/Compose.h"
 #include "kiln/foundation/Layouts.h"
@@ -69,7 +70,7 @@ namespace kiln::material3 {
         };
     }
 
-    void BadgedBox(std::function<void()> badge, const ui::Modifier& modifier, std::function<void()> content) {
+    void BadgedBox(kiln::Function<void()> badge, const ui::Modifier& modifier, kiln::Function<void()> content) {
         static const auto policy = std::make_shared<BadgedBoxPolicy>();
         foundation::Layout(modifier, policy, [badge = std::move(badge), content = std::move(content)] {
             foundation::Box({}, foundation::Alignment::Center(), false, content);
@@ -77,7 +78,7 @@ namespace kiln::material3 {
         });
     }
 
-    void Badge(const ui::Modifier& modifier, std::optional<ui::Color> containerColor, std::optional<ui::Color> contentColor, std::function<void()> content) {
+    void Badge(const ui::Modifier& modifier, std::optional<ui::Color> containerColor, std::optional<ui::Color> contentColor, kiln::Function<void()> content) {
         const ui::Color container = containerColor ? *containerColor : BadgeDefaults::containerColor();
         const ui::Color contentC = contentColor ? *contentColor : ContentColorFor(container);
         const bool has = bool(content);

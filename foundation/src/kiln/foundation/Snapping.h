@@ -6,6 +6,7 @@
 // SnapPosition.
 
 #include "kiln/animation/Decay.h"
+#include <kiln/Function.h>
 #include "kiln/foundation/Lazy.h"
 
 namespace kiln::foundation {
@@ -13,7 +14,7 @@ namespace kiln::foundation {
     // Where an item rests: Start, Center or End of the viewport (between the content padding),
     // or a custom offset that may depend on the item (a pager page's index and the page count).
     struct SnapPosition {
-        using Fn = std::function<int(int layoutSize, int itemSize, int beforeContentPadding, int afterContentPadding,
+        using Fn = kiln::Function<int(int layoutSize, int itemSize, int beforeContentPadding, int afterContentPadding,
                                      int itemIndex, int itemCount)>;
         enum class Kind : std::uint8_t { Start, Center, End } kind = Kind::Center;
         Fn custom;
@@ -36,12 +37,12 @@ namespace kiln::foundation {
 
     // snapFlingBehavior: `decay` is resolved when a fling starts (it may need the density).
     FlingBehavior SnapFlingBehavior(std::shared_ptr<SnapLayoutInfoProvider> provider,
-                                    std::function<std::shared_ptr<const anim::DecaySpec>()> decay,
+                                    kiln::Function<std::shared_ptr<const anim::DecaySpec>()> decay,
                                     anim::SpecPtr snapAnimationSpec = anim::Spring(1.0f, anim::spring::StiffnessMediumLow));
     // The same fling as a TargetedFlingBehavior: the distance left to the approach target, then
     // to the snap target, each frame.
     TargetedFlingBehavior TargetedSnapFlingBehavior(std::shared_ptr<SnapLayoutInfoProvider> provider,
-                                                    std::function<std::shared_ptr<const anim::DecaySpec>()> decay,
+                                                    kiln::Function<std::shared_ptr<const anim::DecaySpec>()> decay,
                                                     anim::SpecPtr snapAnimationSpec = anim::Spring(1.0f, anim::spring::StiffnessMediumLow));
 
     // SnapLayoutInfoProvider(lazyListState / lazyGridState, snapPosition): approach to an item

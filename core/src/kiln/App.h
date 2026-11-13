@@ -1,6 +1,7 @@
 #pragma once
 
 #include "kiln/Filters.h"
+#include <kiln/Function.h>
 #include "kiln/Gradients.h"
 #include "kiln/ImageCache.h"
 #include "kiln/PathCache.h"
@@ -45,7 +46,7 @@ namespace kiln {
         // Runs posted work and due timers. Hosts call it when woken and before each frame.
         void RunIdle();
         // Frame stages run in order after animations, before drawing (recomposition, layout...).
-        using FrameStage = std::function<void(double timeSeconds)>;
+        using FrameStage = kiln::Function<void(double timeSeconds)>;
         void AddFrameStage(FrameStage stage) { m_Stages.push_back(std::move(stage)); }
         rt::Dispatcher& Dispatcher() { return m_Dispatcher; }
 
@@ -65,7 +66,7 @@ namespace kiln {
         void SurfaceDestroyed();
         void Frame(double timeSeconds);
         // Owner::RenderToPixels: a one-off draw into an offscreen target, read back as RGBA.
-        std::vector<std::uint8_t> RenderToPixels(int width, int height, const std::function<void(ui::DrawScope&)>& draw);
+        std::vector<std::uint8_t> RenderToPixels(int width, int height, const kiln::Function<void(ui::DrawScope&)>& draw);
 
         void SetDensity(float density, float fontScale) {
             m_Density = density;
@@ -86,7 +87,7 @@ namespace kiln {
         // FEATURE_LEANBACK; set before SetContent.
         void SetTelevision(bool tv) { m_Television = tv; }
         // C++ content root: composed into the window's layout tree each frame it changes.
-        void SetContent(std::function<void()> content);
+        void SetContent(kiln::Function<void()> content);
         // Saved instance state (rememberSaveable): restore before SetContent, save on demand.
         void RestoreState(std::span<const std::uint8_t> bytes);
         std::vector<std::uint8_t> SaveState() const;

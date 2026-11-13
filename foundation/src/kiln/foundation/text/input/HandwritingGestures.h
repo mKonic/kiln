@@ -5,6 +5,7 @@
 // highlights. Areas arrive in root pixels and map into the text layout node.
 
 #include "kiln/foundation/text/TextFieldState.h"
+#include <kiln/Function.h>
 #include "kiln/foundation/text/input/TextLayoutState.h"
 #include "kiln/ui/TextInput.h"
 
@@ -19,7 +20,7 @@ namespace kiln::foundation {
         TextLayoutState& layout;
         TextBackend* backend = nullptr;              // character types (whitespace, punctuation)
         float lineMargin = 16;                       // ViewConfiguration.handwritingGestureLineMargin
-        std::function<void()> updateSelectionState;  // after a select: the toolbar shows for it
+        kiln::Function<void()> updateSelectionState;  // after a select: the toolbar shows for it
     };
 
     int PerformHandwritingGesture(const HandwritingGestureContext& c, const ui::HandwritingGesture& g);

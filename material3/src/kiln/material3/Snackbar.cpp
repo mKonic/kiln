@@ -1,4 +1,5 @@
 #include "kiln/material3/Snackbar.h"
+#include <kiln/Function.h>
 
 #include "kiln/animation/Animatable.h"
 #include "kiln/foundation/Compose.h"
@@ -178,7 +179,7 @@ namespace kiln::material3 {
             SnackbarVerticalPadding{ 14 }, ActionButtonBottomPadding{ 4 };
 
         struct Slots {
-            std::function<void()> text, action, dismissAction;
+            kiln::Function<void()> text, action, dismissAction;
             text::TextStyle actionTextStyle;
             ui::Color actionColor, dismissActionColor;
         };
@@ -308,7 +309,7 @@ namespace kiln::material3 {
         }
     }
 
-    void Snackbar(const ui::Modifier& modifier, const SnackbarOptions& o, std::function<void()> content) {
+    void Snackbar(const ui::Modifier& modifier, const SnackbarOptions& o, kiln::Function<void()> content) {
         SurfaceOptions so;
         so.shape = o.shape ? o.shape : SnackbarDefaults::shape();
         so.color = o.containerColor.value_or(SnackbarDefaults::color());
@@ -377,12 +378,12 @@ namespace kiln::material3 {
         };
 
         // animatedOpacity / animatedScale: from where an item enters or leaves, towards visible.
-        std::shared_ptr<anim::Animatable> Animated(bool visible, float hidden, anim::SpecPtr spec, std::function<void()> onFinish, int key) {
+        std::shared_ptr<anim::Animatable> Animated(bool visible, float hidden, anim::SpecPtr spec, kiln::Function<void()> onFinish, int key) {
             auto& c = *rt::Composition::Current();
             auto value = c.Remember<std::shared_ptr<anim::Animatable>>([&] { return std::make_shared<anim::Animatable>(visible ? hidden : 1.0f); },
                                                                       {}, rt::Key(key));
             c.LaunchedEffect(rt::Keys(visible), [value, visible, hidden, spec, onFinish]() -> rt::Task<> {
-                return [](std::shared_ptr<anim::Animatable> a, float target, anim::SpecPtr spec, std::function<void()> done) -> rt::Task<> {
+                return [](std::shared_ptr<anim::Animatable> a, float target, anim::SpecPtr spec, kiln::Function<void()> done) -> rt::Task<> {
                     co_await a->AnimateTo(target, spec);
                     if (done) done();
                 }(value, visible ? 1.0f : hidden, spec, onFinish);
@@ -391,7 +392,7 @@ namespace kiln::material3 {
         }
 
         void FadeInFadeOutWithScale(const std::shared_ptr<SnackbarData>& current, const ui::Modifier& modifier,
-                                    const std::function<void(std::shared_ptr<SnackbarData>)>& content) {
+                                    const kiln::Function<void(std::shared_ptr<SnackbarData>)>& content) {
             auto& c = *rt::Composition::Current();
             const std::string paneTitle = GetString(Strings::SnackbarPaneTitle);
             auto state = c.Remember<std::shared_ptr<FadeState>>([] { return std::make_shared<FadeState>(); });
@@ -442,7 +443,7 @@ namespace kiln::material3 {
         }
     }
 
-    void SnackbarHost(SnackbarHostState& hostState, const ui::Modifier& modifier, std::function<void(std::shared_ptr<SnackbarData>)> snackbar) {
+    void SnackbarHost(SnackbarHostState& hostState, const ui::Modifier& modifier, kiln::Function<void(std::shared_ptr<SnackbarData>)> snackbar) {
         auto& c = *rt::Composition::Current();
         const auto current = hostState.CurrentSnackbarData();
         const auto manager = c.Read(ui::LocalAccessibilityManager);

@@ -13,6 +13,7 @@
 // Owner arguments default to null, meaning LocalLifecycleOwner.
 
 #include "kiln/lifecycle/RepeatOnLifecycle.h"
+#include <kiln/Function.h>
 #include "kiln/runtime/Composition.h"
 
 namespace kiln::ui { class Owner; }
@@ -36,27 +37,27 @@ namespace kiln::lifecycle {
 
     // dropUnlessStarted / dropUnlessResumed: `block` wrapped to run only while the lifecycle is
     // at least STARTED / RESUMED (a click arriving during a transition is dropped).
-    std::function<void()> DropUnlessStarted(std::function<void()> block, LifecycleOwnerPtr lifecycleOwner = nullptr);
-    std::function<void()> DropUnlessResumed(std::function<void()> block, LifecycleOwnerPtr lifecycleOwner = nullptr);
+    kiln::Function<void()> DropUnlessStarted(kiln::Function<void()> block, LifecycleOwnerPtr lifecycleOwner = nullptr);
+    kiln::Function<void()> DropUnlessResumed(kiln::Function<void()> block, LifecycleOwnerPtr lifecycleOwner = nullptr);
 
     // LifecycleEventEffect: onEvent (the latest one passed) on each `event`. OnDestroy is
     // refused (std::invalid_argument): the composition is gone before it is sent.
-    void LifecycleEventEffect(Event event, std::function<void()> onEvent, LifecycleOwnerPtr lifecycleOwner = nullptr, rt::Key key = {});
+    void LifecycleEventEffect(Event event, kiln::Function<void()> onEvent, LifecycleOwnerPtr lifecycleOwner = nullptr, rt::Key key = {});
 
     // LifecycleStopOrDisposeEffectResult: what OnStopOrDispose returns.
     class LifecycleStopOrDisposeEffectResult {
     public:
-        explicit LifecycleStopOrDisposeEffectResult(std::function<void()> f) : m_F(std::move(f)) {}
+        explicit LifecycleStopOrDisposeEffectResult(kiln::Function<void()> f) : m_F(std::move(f)) {}
         void RunStopOrDisposeEffect() const { if (m_F) m_F(); }
     private:
-        std::function<void()> m_F;
+        kiln::Function<void()> m_F;
     };
     // LifecycleStartStopEffectScope: the start block's receiver.
     class LifecycleStartStopEffectScope : public LifecycleOwner {
     public:
         explicit LifecycleStartStopEffectScope(Lifecycle& lifecycle) : m_Lifecycle(&lifecycle) {}
         Lifecycle& GetLifecycle() override { return *m_Lifecycle; }
-        LifecycleStopOrDisposeEffectResult OnStopOrDispose(std::function<void(LifecycleOwner&)> onStopOrDisposeEffect) {
+        LifecycleStopOrDisposeEffectResult OnStopOrDispose(kiln::Function<void(LifecycleOwner&)> onStopOrDisposeEffect) {
             return LifecycleStopOrDisposeEffectResult([this, f = std::move(onStopOrDisposeEffect)] { f(*this); });
         }
     private:
@@ -64,28 +65,28 @@ namespace kiln::lifecycle {
     };
     // LifecycleStartEffect(keys): `effects` on each ON_START; its result runs on ON_STOP or when
     // the effect leaves (keys changing, the owner changing, or the call going away).
-    void LifecycleStartEffect(rt::Keys keys, std::function<LifecycleStopOrDisposeEffectResult(LifecycleStartStopEffectScope&)> effects,
+    void LifecycleStartEffect(rt::Keys keys, kiln::Function<LifecycleStopOrDisposeEffectResult(LifecycleStartStopEffectScope&)> effects,
                               LifecycleOwnerPtr lifecycleOwner = nullptr, rt::Key key = {});
 
     class LifecyclePauseOrDisposeEffectResult {
     public:
-        explicit LifecyclePauseOrDisposeEffectResult(std::function<void()> f) : m_F(std::move(f)) {}
+        explicit LifecyclePauseOrDisposeEffectResult(kiln::Function<void()> f) : m_F(std::move(f)) {}
         void RunPauseOrOnDisposeEffect() const { if (m_F) m_F(); }
     private:
-        std::function<void()> m_F;
+        kiln::Function<void()> m_F;
     };
     class LifecycleResumePauseEffectScope : public LifecycleOwner {
     public:
         explicit LifecycleResumePauseEffectScope(Lifecycle& lifecycle) : m_Lifecycle(&lifecycle) {}
         Lifecycle& GetLifecycle() override { return *m_Lifecycle; }
-        LifecyclePauseOrDisposeEffectResult OnPauseOrDispose(std::function<void(LifecycleOwner&)> onPauseOrDisposeEffect) {
+        LifecyclePauseOrDisposeEffectResult OnPauseOrDispose(kiln::Function<void(LifecycleOwner&)> onPauseOrDisposeEffect) {
             return LifecyclePauseOrDisposeEffectResult([this, f = std::move(onPauseOrDisposeEffect)] { f(*this); });
         }
     private:
         Lifecycle* m_Lifecycle;
     };
     // LifecycleResumeEffect(keys): `effects` on each ON_RESUME; its result on ON_PAUSE or dispose.
-    void LifecycleResumeEffect(rt::Keys keys, std::function<LifecyclePauseOrDisposeEffectResult(LifecycleResumePauseEffectScope&)> effects,
+    void LifecycleResumeEffect(rt::Keys keys, kiln::Function<LifecyclePauseOrDisposeEffectResult(LifecycleResumePauseEffectScope&)> effects,
                                LifecycleOwnerPtr lifecycleOwner = nullptr, rt::Key key = {});
 
     // rememberLifecycleOwner(maxLifecycle, parent): a child owner at the lower of its parent's

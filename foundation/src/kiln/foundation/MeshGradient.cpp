@@ -1,4 +1,5 @@
 #include "kiln/foundation/MeshGradient.h"
+#include <kiln/Function.h>
 
 #include "kiln/graphics/Vertices.h"
 #include "kiln/ui/ColorSpace.h"
@@ -65,7 +66,7 @@ namespace kiln::foundation {
             }
     }
 
-    MeshGradientPainter::MeshGradientPainter(int rows, int columns, bool bicubicColor, std::function<void(MeshGradientScope&)> block)
+    MeshGradientPainter::MeshGradientPainter(int rows, int columns, bool bicubicColor, kiln::Function<void(MeshGradientScope&)> block)
         : m_Rows(std::max(1, rows)), m_Columns(std::max(1, columns)), m_Bicubic(bicubicColor), m_Block(std::move(block)), m_Scope(rows, columns) {}
 
     void MeshGradientPainter::Draw(DrawScope& scope, ui::Size size, float alpha, const gfx::ColorFilter*) {

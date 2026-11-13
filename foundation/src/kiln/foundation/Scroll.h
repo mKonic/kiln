@@ -1,6 +1,7 @@
 #pragma once
 
 #include <memory>
+#include <kiln/Function.h>
 
 // Scrolling (spec 05 §Scrollable, §Scroll): ScrollableState, the Scrollable modifier (drag ->
 // nested pre-scroll -> self -> nested post-scroll; fling with the platform spline; a press
@@ -55,7 +56,7 @@ namespace kiln::foundation {
 
         // scroll { } (the scroll mutex): stops whatever runs, marks the scroll in progress and
         // returns a token; `stop` is how a later scroll or a press stops this one.
-        std::uint64_t BeginScroll(std::function<void()> stop) {
+        std::uint64_t BeginScroll(kiln::Function<void()> stop) {
             StopScroll();
             m_Stop = std::move(stop);
             SetScrollInProgress(true);
@@ -73,7 +74,7 @@ namespace kiln::foundation {
     protected:
         friend class ScrollingLogic;
         rt::State<bool> m_InProgress{ false };
-        std::function<void()> m_Stop;
+        kiln::Function<void()> m_Stop;
         std::uint64_t m_ScrollToken = 0;
         std::shared_ptr<const char> m_Alive = std::make_shared<const char>(0);
     };
@@ -84,7 +85,7 @@ namespace kiln::foundation {
         ScrollableState& state;
         std::uint64_t token;
         std::weak_ptr<const char> alive;
-        ScrollSession(ScrollableState& s, std::function<void()> stop) : state(s), token(s.BeginScroll(std::move(stop))), alive(s.AliveToken()) {}
+        ScrollSession(ScrollableState& s, kiln::Function<void()> stop) : state(s), token(s.BeginScroll(std::move(stop))), alive(s.AliveToken()) {}
         ~ScrollSession() { if (!alive.expired()) state.EndScroll(token); }
         bool Current() const { return state.IsCurrentScroll(token); }
         ScrollSession(const ScrollSession&) = delete;
@@ -134,13 +135,13 @@ namespace kiln::foundation {
     // FlingBehavior.performFling: `scrollBy` takes and returns scroll-direction pixels (through
     // nested scroll); velocity is in the scroll direction; returns the velocity left over.
     // Implement it with a free coroutine function (captures of a coroutine lambda dangle).
-    using FlingBehavior = std::function<rt::Task<float>(std::function<float(float)> scrollBy, float velocity)>;
+    using FlingBehavior = kiln::Function<rt::Task<float>(kiln::Function<float(float)> scrollBy, float velocity)>;
     // TargetedFlingBehavior: a fling that knows where it is going and reports the distance left
     // (onRemainingDistanceUpdated) as it moves. AsFlingBehavior drops the reports.
     using TargetedFlingBehavior =
-        std::function<rt::Task<float>(std::function<float(float)> scrollBy, float velocity, std::function<void(float remaining)> onRemainingDistanceUpdated)>;
+        kiln::Function<rt::Task<float>(kiln::Function<float(float)> scrollBy, float velocity, kiln::Function<void(float remaining)> onRemainingDistanceUpdated)>;
     inline FlingBehavior AsFlingBehavior(TargetedFlingBehavior f) {
-        return [f = std::move(f)](std::function<float(float)> scrollBy, float velocity) { return f(std::move(scrollBy), velocity, [](float) {}); };
+        return [f = std::move(f)](kiln::Function<float(float)> scrollBy, float velocity) { return f(std::move(scrollBy), velocity, [](float) {}); };
     }
 
     struct ScrollableOptions {

@@ -1,5 +1,6 @@
 // CardSamples.kt
 #include "CardSamples.h"
+#include <kiln/Function.h>
 #include "Common.h"
 
 #include <kiln/material3/Card.h>
@@ -7,7 +8,7 @@
 namespace catalog::samples {
     namespace {
         Modifier CardSize() { return SizeMod({}, 180_dp, 100_dp); }
-        std::function<void()> Centered(const char* text) {
+        kiln::Function<void()> Centered(const char* text) {
             return [text] { Box(FillMax({}, Axis::Both), Alignment::TopStart(), false, [text] { m3::Text(text, AlignInBox({}, Alignment::Center())); }); };
         }
     }

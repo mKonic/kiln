@@ -1,4 +1,5 @@
 #include "kiln/material3/Slider.h"
+#include <kiln/Function.h>
 #include "kiln/material3/MaterialTheme.h"
 #include "kiln/material3/Ripple.h"
 #include "kiln/material3/internal/Slider.h"
@@ -92,7 +93,7 @@ namespace kiln::material3 {
                 else SliderDefaults::DrawStopIndicator(s, offset, SliderDefaults::TickSize, color);
             }
         }
-        void Track(const Modifier& modifier, const SliderTrackOptions& o, std::function<TrackValues()> values) {
+        void Track(const Modifier& modifier, const SliderTrackOptions& o, kiln::Function<TrackValues()> values) {
             const auto initial = values();
             const auto colors = o.colors.value_or(SliderDefaults::colors());
             const bool inset = rt::Composition::Current()->Read(LocalRippleThemeConfiguration).focus.has_value();

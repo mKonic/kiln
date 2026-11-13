@@ -1,4 +1,5 @@
 #include "kiln/material3/FloatingToolbar.h"
+#include <kiln/Function.h>
 
 #include "kiln/foundation/Animate.h"
 #include "kiln/foundation/Compose.h"
@@ -214,12 +215,12 @@ namespace kiln::material3 {
             PaddingValues contentPadding;
             std::shared_ptr<FloatingToolbarScrollBehavior> behavior;
             ShapePtr shape;
-            std::function<void()> leading, trailing;
+            kiln::Function<void()> leading, trailing;
             Dp expandedShadowElevation, collapsedShadowElevation;
         };
 
         // HorizontalFloatingToolbarLayout / VerticalFloatingToolbarLayout.
-        void ToolbarLayout(bool vertical, const ui::Modifier& modifier, const LayoutParams& p, std::function<void()> content) {
+        void ToolbarLayout(bool vertical, const ui::Modifier& modifier, const LayoutParams& p, kiln::Function<void()> content) {
             auto& c = *rt::Composition::Current();
             const Dp shadow = AnimateDpAsState(p.expanded ? p.expandedShadowElevation : p.collapsedShadowElevation,
                                                FloatingToolbarDefaults::animationSpec(), {}, rt::Key(7104));
@@ -282,8 +283,8 @@ namespace kiln::material3 {
         };
 
         // HorizontalFloatingToolbarWithFabLayout / VerticalFloatingToolbarWithFabLayout.
-        void ToolbarWithFabLayout(bool vertical, const ui::Modifier& modifier, const FabLayoutParams& p, std::function<void()> fab,
-                                  std::function<void()> toolbar) {
+        void ToolbarWithFabLayout(bool vertical, const ui::Modifier& modifier, const FabLayoutParams& p, kiln::Function<void()> fab,
+                                  kiln::Function<void()> toolbar) {
             auto& c = *rt::Composition::Current();
             auto& transition = UpdateTransition<float>(p.expanded ? 1.0f : 0.0f, rt::Key(7105));
             const anim::SpecPtr spec = p.spec;
@@ -358,8 +359,8 @@ namespace kiln::material3 {
             });
         }
 
-        void FabWithElevation(std::function<void()> onClick, const ui::Modifier& modifier, FloatingActionButtonOptions o, Color container,
-                              Color content, std::function<void()> body) {
+        void FabWithElevation(kiln::Function<void()> onClick, const ui::Modifier& modifier, FloatingActionButtonOptions o, Color container,
+                              Color content, kiln::Function<void()> body) {
             if (!o.containerColor) o.containerColor = container;
             if (!o.contentColor) o.contentColor = content;
             if (!o.elevation) o.elevation = FloatingActionButtonElevation{ ElevationTokens::Level2, ElevationTokens::Level2, ElevationTokens::Level2,
@@ -370,7 +371,7 @@ namespace kiln::material3 {
         // VerticalNestedScrollExpansionNode.
         struct ExpansionConnection final : ui::NestedScrollConnection {
             bool expanded = false;
-            std::function<void()> onExpand, onCollapse;
+            kiln::Function<void()> onExpand, onCollapse;
             bool reverseLayout = false;
             Dp expandThreshold = Dp::Unspecified(), collapseThreshold = Dp::Unspecified();
             float expandPx = 0, collapsePx = 0;
@@ -477,18 +478,18 @@ namespace kiln::material3 {
         }
         FloatingToolbarColors vibrantFloatingToolbarColors(Color a, Color b, Color c, Color d) { return vibrantFloatingToolbarColors().Copy(a, b, c, d); }
 
-        void VibrantFloatingActionButton(std::function<void()> onClick, const ui::Modifier& modifier, const FloatingActionButtonOptions& options,
-                                         std::function<void()> content) {
+        void VibrantFloatingActionButton(kiln::Function<void()> onClick, const ui::Modifier& modifier, const FloatingActionButtonOptions& options,
+                                         kiln::Function<void()> content) {
             const auto colors = vibrantFloatingToolbarColors();
             FabWithElevation(std::move(onClick), modifier, options, colors.fabContainerColor, colors.fabContentColor, std::move(content));
         }
-        void StandardFloatingActionButton(std::function<void()> onClick, const ui::Modifier& modifier, const FloatingActionButtonOptions& options,
-                                          std::function<void()> content) {
+        void StandardFloatingActionButton(kiln::Function<void()> onClick, const ui::Modifier& modifier, const FloatingActionButtonOptions& options,
+                                          kiln::Function<void()> content) {
             const auto colors = standardFloatingToolbarColors();
             FabWithElevation(std::move(onClick), modifier, options, colors.fabContainerColor, colors.fabContentColor, std::move(content));
         }
 
-        ui::Modifier FloatingToolbarVerticalNestedScroll(ui::Modifier m, bool expanded, std::function<void()> onExpand, std::function<void()> onCollapse,
+        ui::Modifier FloatingToolbarVerticalNestedScroll(ui::Modifier m, bool expanded, kiln::Function<void()> onExpand, kiln::Function<void()> onCollapse,
                                                          Dp expandThreshold, Dp collapseThreshold, bool reverseLayout) {
             auto& c = *rt::Composition::Current();
             const auto density = c.Read(ui::LocalDensity);
@@ -519,7 +520,7 @@ namespace kiln::material3 {
     // --- toolbars ----------------------------------------------------------------------------------
 
     namespace {
-        void PlainToolbar(bool vertical, bool expanded, const ui::Modifier& modifier, const FloatingToolbarOptions& o, std::function<void()> content) {
+        void PlainToolbar(bool vertical, bool expanded, const ui::Modifier& modifier, const FloatingToolbarOptions& o, kiln::Function<void()> content) {
             const auto setup = Setup(expanded, o.scrollBehavior);
             LayoutParams p;
             p.expanded = setup.expanded;
@@ -535,8 +536,8 @@ namespace kiln::material3 {
             // Focus follows the given behaviour, even when touch exploration pins the toolbar.
             ToolbarLayout(vertical, UnfocusableWhileMoved(modifier, o.scrollBehavior), p, std::move(content));
         }
-        void ToolbarWithFab(bool vertical, bool expanded, std::function<void()> fab, const ui::Modifier& modifier, const FloatingToolbarWithFabOptions& o,
-                            std::function<void()> content) {
+        void ToolbarWithFab(bool vertical, bool expanded, kiln::Function<void()> fab, const ui::Modifier& modifier, const FloatingToolbarWithFabOptions& o,
+                            kiln::Function<void()> content) {
             const auto setup = Setup(expanded, o.scrollBehavior);
             FabLayoutParams p;
             p.expanded = setup.expanded;
@@ -554,18 +555,18 @@ namespace kiln::material3 {
         }
     }
 
-    void HorizontalFloatingToolbar(bool expanded, const ui::Modifier& modifier, const FloatingToolbarOptions& options, std::function<void()> content) {
+    void HorizontalFloatingToolbar(bool expanded, const ui::Modifier& modifier, const FloatingToolbarOptions& options, kiln::Function<void()> content) {
         PlainToolbar(false, expanded, modifier, options, std::move(content));
     }
-    void VerticalFloatingToolbar(bool expanded, const ui::Modifier& modifier, const FloatingToolbarOptions& options, std::function<void()> content) {
+    void VerticalFloatingToolbar(bool expanded, const ui::Modifier& modifier, const FloatingToolbarOptions& options, kiln::Function<void()> content) {
         PlainToolbar(true, expanded, modifier, options, std::move(content));
     }
-    void HorizontalFloatingToolbar(bool expanded, std::function<void()> floatingActionButton, const ui::Modifier& modifier,
-                                   const FloatingToolbarWithFabOptions& options, std::function<void()> content) {
+    void HorizontalFloatingToolbar(bool expanded, kiln::Function<void()> floatingActionButton, const ui::Modifier& modifier,
+                                   const FloatingToolbarWithFabOptions& options, kiln::Function<void()> content) {
         ToolbarWithFab(false, expanded, std::move(floatingActionButton), modifier, options, std::move(content));
     }
-    void VerticalFloatingToolbar(bool expanded, std::function<void()> floatingActionButton, const ui::Modifier& modifier,
-                                 const FloatingToolbarWithFabOptions& options, std::function<void()> content) {
+    void VerticalFloatingToolbar(bool expanded, kiln::Function<void()> floatingActionButton, const ui::Modifier& modifier,
+                                 const FloatingToolbarWithFabOptions& options, kiln::Function<void()> content) {
         ToolbarWithFab(true, expanded, std::move(floatingActionButton), modifier, options, std::move(content));
     }
 

@@ -7,6 +7,7 @@
 // composition locals.
 
 #include "kiln/foundation/Compose.h"
+#include <kiln/Function.h>
 #include "kiln/ui/Popup.h"
 
 #include <memory>
@@ -21,14 +22,14 @@ namespace kiln::foundation {
     // LocalIsInPopupLayout: true inside a popup's content (nested popups know it).
     inline rt::Local<bool> LocalIsInPopupLayout{ false };
 
-    void Popup(std::shared_ptr<const PopupPositionProvider> popupPositionProvider, std::function<void()> onDismissRequest,
-               PopupProperties properties, std::function<void()> content, Key key = {});
+    void Popup(std::shared_ptr<const PopupPositionProvider> popupPositionProvider, kiln::Function<void()> onDismissRequest,
+               PopupProperties properties, kiln::Function<void()> content, Key key = {});
 
     // The popup's alignment point sits on the same point of the anchor, moved by `offset`
     // (pixels; x mirrored in RTL).
-    void Popup(Alignment alignment, IntOffset offset, std::function<void()> onDismissRequest, PopupProperties properties,
-               std::function<void()> content, Key key = {});
-    inline void Popup(std::function<void()> content, Key key = {}) {
+    void Popup(Alignment alignment, IntOffset offset, kiln::Function<void()> onDismissRequest, PopupProperties properties,
+               kiln::Function<void()> content, Key key = {});
+    inline void Popup(kiln::Function<void()> content, Key key = {}) {
         Popup(Alignment::TopStart(), {}, {}, {}, std::move(content), key);
     }
 

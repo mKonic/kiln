@@ -6,6 +6,7 @@
 // FocusFinder's beam algorithm. Key events tunnel root -> focused (preview) and bubble back.
 
 #include "kiln/ui/Geometry.h"
+#include <kiln/Function.h>
 #include "kiln/ui/Modifier.h"
 
 #include <cstdint>
@@ -99,7 +100,7 @@ namespace kiln::ui {
     struct FocusProperties {
         bool canFocus = true;
         // Called when focus is about to enter / leave this target's subtree (a group).
-        std::function<void(FocusEnterExitScope&)> onEnter, onExit;
+        kiln::Function<void(FocusEnterExitScope&)> onEnter, onExit;
         // The target's focus area in its own coordinates (unset: its bounds), for focus search.
         std::optional<Rect> focusRect;
         FocusRequester* next = nullptr;
@@ -125,7 +126,7 @@ namespace kiln::ui {
     class FocusTargetNode : public ModifierNode {
     public:
         Focusability focusability = Focusability::Always;
-        std::function<void(FocusState previous, FocusState current)> onFocusChange;
+        kiln::Function<void(FocusState previous, FocusState current)> onFocusChange;
 
         FocusTargetNode* AsFocusTarget() override { return this; }
         FocusState State() const;
@@ -156,7 +157,7 @@ namespace kiln::ui {
     class BeyondBoundsLayout {
     public:
         virtual ~BeyondBoundsLayout() = default;
-        virtual std::optional<bool> Layout(FocusDirection direction, const std::function<std::optional<bool>(bool hasMoreContent)>& block) = 0;
+        virtual std::optional<bool> Layout(FocusDirection direction, const kiln::Function<std::optional<bool>(bool hasMoreContent)>& block) = 0;
     };
 
     // findNearestBeyondBoundsLayoutAncestor: the nearest beyond-bounds layout before the node in
@@ -194,7 +195,7 @@ namespace kiln::ui {
         bool RestoreFocusedChild();
         void Add(const ModifierNode* anchor) { m_Anchors.push_back(anchor); }
         // findFocusTarget: offers each target below its nodes to `onFound` until one is taken.
-        bool FindFocusTarget(const std::function<bool(FocusTargetNode&)>& onFound) {
+        bool FindFocusTarget(const kiln::Function<bool(FocusTargetNode&)>& onFound) {
             const auto anchors = m_Anchors;
             for (const ModifierNode* a : anchors)
                 for (FocusTargetNode* t : FocusTargetsBelow(*a)) if (onFound(*t)) return true;

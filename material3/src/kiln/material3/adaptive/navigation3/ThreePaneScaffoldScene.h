@@ -5,6 +5,7 @@
 // its panes showing the latest entry of each role.
 
 #include "kiln/material3/adaptive/ThreePaneScaffoldNavigator.h"
+#include <kiln/Function.h>
 #include "kiln/navigation3/SceneState.h"
 
 namespace kiln::material3::adaptive::navigation3 {
@@ -31,7 +32,7 @@ namespace kiln::material3::adaptive::navigation3 {
     inline constexpr const char* MetadataPreferredWidthKey = "androidx.compose.material3.adaptive.layout.preferredWidth";
     inline constexpr const char* MetadataPreferredHeightKey = "androidx.compose.material3.adaptive.layout.preferredHeight";
 
-    using DetailPlaceholder = std::function<void(const ThreePaneScaffoldScope&)>;
+    using DetailPlaceholder = kiln::Function<void(const ThreePaneScaffoldScope&)>;
 
     // A pane's role in a scaffold scene: which scene (sceneKey) and which pane.
     struct PaneMetadata {
@@ -94,14 +95,14 @@ namespace kiln::material3::adaptive::navigation3 {
     public:
         struct Params {
             std::string key;
-            std::function<void()> onBack;
+            kiln::Function<void()> onBack;
             BackNavigationBehavior backNavBehavior = BackNavigationBehavior::PopUntilScaffoldValueChange;
             PaneScaffoldDirective directive;
             ThreePaneScaffoldAdaptStrategies adaptStrategies;
             nav3::NavEntries<T> allEntries, scaffoldEntries;
             std::vector<std::size_t> scaffoldEntryIndices;
             std::vector<ThreePaneScaffoldDestinationItem<std::string>> entriesAsNavItems;
-            std::function<std::optional<ThreePaneScaffoldRole>(const nav3::NavEntry<T>&)> getPaneRole;
+            kiln::Function<std::optional<ThreePaneScaffoldRole>(const nav3::NavEntry<T>&)> getPaneRole;
             ThreePaneScaffoldType scaffoldType = ThreePaneScaffoldType::ListDetail;
             DetailPlaceholder detailPlaceholder;
             DragHandleContent paneExpansionDragHandle;
@@ -144,7 +145,7 @@ namespace kiln::material3::adaptive::navigation3 {
             for (const auto& e : m_P.scaffoldEntries) info.entries.push_back(e.ContentKey());
             auto& gestureState = foundation::RememberNavigationEventState(info);
             const std::size_t pops = m_P.allEntries.size() - m_PreviousEntries.size();
-            const std::function<void()> onBack = m_P.onBack;
+            const kiln::Function<void()> onBack = m_P.onBack;
             foundation::NavigationBackHandler(gestureState, previousScaffoldValue.has_value(), [] {}, [onBack, pops] {
                 for (std::size_t i = 0; i < pops; ++i) onBack();
             });
@@ -264,7 +265,7 @@ namespace kiln::material3::adaptive::navigation3 {
         // A pane showing `entry` (or `fallback` without one), with the scene scope provided.
         template<typename Scope, typename Local>
         static PaneContent Pane(const Local& local, std::optional<nav3::NavEntry<T>> entry, std::optional<nav3::NavEntry<T>> boundsFrom,
-                                std::function<void(const ThreePaneScaffoldPaneScope&)> fallback = {}) {
+                                kiln::Function<void(const ThreePaneScaffoldPaneScope&)> fallback = {}) {
             return [&local, entry, boundsFrom, fallback](const ThreePaneScaffoldPaneScope& paneScope) {
                 // Copies: the nested scopes may recompose after this call returns.
                 const ThreePaneScaffoldPaneScope s = paneScope;

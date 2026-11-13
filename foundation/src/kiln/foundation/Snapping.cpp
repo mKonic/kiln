@@ -1,4 +1,5 @@
 #include "kiln/foundation/Snapping.h"
+#include <kiln/Function.h>
 
 #include <cmath>
 #include <limits>
@@ -17,7 +18,7 @@ namespace kiln::foundation {
         struct Result { float remaining; float velocity; };
 
         // animateWithTarget: spring to targetOffset, never past cancelOffset.
-        rt::Task<Result> AnimateWithTarget(const std::function<float(float)>& scrollBy, float target, float cancel,
+        rt::Task<Result> AnimateWithTarget(const kiln::Function<float(float)>& scrollBy, float target, float cancel,
                                            float velocity, anim::SpecPtr spec) {
             anim::Animatable a(0.0f);
             float consumedUpToNow = 0;
@@ -35,7 +36,7 @@ namespace kiln::foundation {
         }
 
         // animateDecay: decay until targetOffset.
-        rt::Task<Result> AnimateDecayTo(const std::function<float(float)>& scrollBy, float target, float velocity,
+        rt::Task<Result> AnimateDecayTo(const kiln::Function<float(float)>& scrollBy, float target, float velocity,
                                         std::shared_ptr<const anim::DecaySpec> decay) {
             anim::Animatable a(0.0f);
             float previous = 0;
@@ -60,8 +61,8 @@ namespace kiln::foundation {
         }
 
         rt::Task<float> SnapFling(std::shared_ptr<SnapLayoutInfoProvider> provider, std::shared_ptr<const anim::DecaySpec> decay,
-                                  anim::SpecPtr snap, std::function<float(float)> scrollBy, float velocity,
-                                  std::function<void(float)> onRemaining = {}) {
+                                  anim::SpecPtr snap, kiln::Function<float(float)> scrollBy, float velocity,
+                                  kiln::Function<void(float)> onRemaining = {}) {
             const float decayOffset = decay->TargetValue(0, velocity);
             const float initial = provider->CalculateApproachOffset(velocity, decayOffset);
             float remaining = std::abs(initial) * Sign(velocity);
@@ -179,15 +180,15 @@ namespace kiln::foundation {
     }
 
     FlingBehavior SnapFlingBehavior(std::shared_ptr<SnapLayoutInfoProvider> provider,
-                                    std::function<std::shared_ptr<const anim::DecaySpec>()> decay, anim::SpecPtr snap) {
-        return [provider, decay, snap](std::function<float(float)> scrollBy, float velocity) {
+                                    kiln::Function<std::shared_ptr<const anim::DecaySpec>()> decay, anim::SpecPtr snap) {
+        return [provider, decay, snap](kiln::Function<float(float)> scrollBy, float velocity) {
             return SnapFling(provider, decay(), snap, std::move(scrollBy), velocity);
         };
     }
 
     TargetedFlingBehavior TargetedSnapFlingBehavior(std::shared_ptr<SnapLayoutInfoProvider> provider,
-                                                    std::function<std::shared_ptr<const anim::DecaySpec>()> decay, anim::SpecPtr snap) {
-        return [provider, decay, snap](std::function<float(float)> scrollBy, float velocity, std::function<void(float)> onRemaining) {
+                                                    kiln::Function<std::shared_ptr<const anim::DecaySpec>()> decay, anim::SpecPtr snap) {
+        return [provider, decay, snap](kiln::Function<float(float)> scrollBy, float velocity, kiln::Function<void(float)> onRemaining) {
             return SnapFling(provider, decay(), snap, std::move(scrollBy), velocity, std::move(onRemaining));
         };
     }

@@ -4,6 +4,7 @@
 // Grid's config block), so they can read the constraints.
 
 #include <functional>
+#include <kiln/Function.h>
 #include <memory>
 #include <type_traits>
 #include <vector>
@@ -15,7 +16,7 @@ namespace kiln::foundation {
     template<typename Scope>
     class LayoutConfig {
     public:
-        using Fn = std::function<void(Scope&)>;
+        using Fn = kiln::Function<void(Scope&)>;
         LayoutConfig() = default;   // the empty config
         template<typename F, typename = std::enable_if_t<std::is_invocable_v<F&, Scope&> && !std::is_same_v<std::decay_t<F>, LayoutConfig>>>
         LayoutConfig(F fn) { m_Parts.push_back(std::make_shared<const Fn>(std::move(fn))); }

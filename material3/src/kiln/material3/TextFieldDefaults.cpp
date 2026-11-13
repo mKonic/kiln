@@ -1,4 +1,5 @@
 #include "kiln/material3/TextFieldDefaults.h"
+#include <kiln/Function.h>
 
 #include "kiln/animation/Animatable.h"
 #include "kiln/foundation/Animate.h"
@@ -390,7 +391,7 @@ namespace kiln::material3 {
 
     namespace {
         struct BackgroundParams {
-            std::function<Color()> color;
+            kiln::Function<Color()> color;
             ShapePtr shape;
             bool operator==(const BackgroundParams& o) const { return false && o.shape == shape; }   // lambdas never compare equal
         };
@@ -407,7 +408,7 @@ namespace kiln::material3 {
         };
 
         struct CutoutParams {
-            std::function<ui::Size()> labelSize;
+            kiln::Function<ui::Size()> labelSize;
             ui::AlignmentH alignment;
             PaddingValues padding;
             bool operator==(const CutoutParams&) const { return false; }
@@ -450,10 +451,10 @@ namespace kiln::material3 {
         };
     }
 
-    ui::Modifier internal::TextFieldBackground(ui::Modifier m, std::function<Color()> color, ShapePtr shape) {
+    ui::Modifier internal::TextFieldBackground(ui::Modifier m, kiln::Function<Color()> color, ShapePtr shape) {
         return m.With<BackgroundNode>(BackgroundParams{ std::move(color), std::move(shape) });
     }
-    ui::Modifier internal::OutlineCutout(ui::Modifier m, std::function<ui::Size()> labelSize, ui::AlignmentH alignment, PaddingValues padding) {
+    ui::Modifier internal::OutlineCutout(ui::Modifier m, kiln::Function<ui::Size()> labelSize, ui::AlignmentH alignment, PaddingValues padding) {
         return m.With<CutoutNode>(CutoutParams{ std::move(labelSize), alignment, padding });
     }
     PaddingValues internal::SupportingTextPadding() { return { Dp(16), Dp(4), Dp(16), Dp(0) }; }

@@ -3,6 +3,7 @@
 // RadioButton.kt: selectable semantics, animated dot and enabled colors, static disabled colors.
 
 #include "kiln/foundation/Interaction.h"
+#include <kiln/Function.h>
 
 #include <optional>
 
@@ -21,7 +22,7 @@ namespace kiln::material3 {
     };
     // An empty onClick leaves the radio purely visual, without input/selection semantics or a
     // minimum interactive allocation. A parent selectable row can then own that behavior.
-    void RadioButton(bool selected, std::function<void()> onClick, const ui::Modifier& modifier = {}, const RadioButtonOptions& options = {});
+    void RadioButton(bool selected, kiln::Function<void()> onClick, const ui::Modifier& modifier = {}, const RadioButtonOptions& options = {});
     namespace RadioButtonDefaults {
         RadioButtonColors colors();
     }

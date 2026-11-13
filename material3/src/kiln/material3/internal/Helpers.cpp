@@ -1,4 +1,5 @@
 #include "kiln/material3/internal/Helpers.h"
+#include <kiln/Function.h>
 
 #include "kiln/runtime/Composition.h"
 
@@ -258,7 +259,7 @@ namespace kiln::material3::internal {
     }
 
     DropdownMenuPositionProvider::DropdownMenuPositionProvider(ui::DpOffset contentOffset, const ui::Density& density, MenuAnchorPosition anchorPosition,
-                                                               std::function<void(IntRect, IntRect)> onPositionCalculated)
+                                                               kiln::Function<void(IntRect, IntRect)> onPositionCalculated)
         : verticalMargin(density.RoundToPx(MenuVerticalMargin)), horizontalMargin(density.RoundToPx(MenuHorizontalMargin)),
           m_ContentOffset(contentOffset), m_Density(density), m_AnchorPosition(std::move(anchorPosition)),
           m_OnPositionCalculated(std::move(onPositionCalculated)) {}

@@ -7,6 +7,7 @@
 // own lifecycle, ViewModelStore and saved-state owner.
 
 #include "kiln/foundation/AnimatedVisibility.h"
+#include <kiln/Function.h>
 #include "kiln/foundation/Dialog.h"
 #include "kiln/navigation/NavController.h"
 
@@ -24,11 +25,11 @@ namespace kiln::navigation {
         foundation::AnimatedContentTransitionScope& scope;
         EntryPtr initialState, targetState;
     };
-    using NavEnter = std::function<std::optional<EnterTransition>(NavTransitionScope&)>;
-    using NavExit = std::function<std::optional<ExitTransition>(NavTransitionScope&)>;
-    using NavPredictiveEnter = std::function<std::optional<EnterTransition>(NavTransitionScope&, ui::SwipeEdge)>;
-    using NavPredictiveExit = std::function<std::optional<ExitTransition>(NavTransitionScope&, ui::SwipeEdge)>;
-    using NavSizeTransform = std::function<std::optional<SizeTransform>(NavTransitionScope&)>;
+    using NavEnter = kiln::Function<std::optional<EnterTransition>(NavTransitionScope&)>;
+    using NavExit = kiln::Function<std::optional<ExitTransition>(NavTransitionScope&)>;
+    using NavPredictiveEnter = kiln::Function<std::optional<EnterTransition>(NavTransitionScope&, ui::SwipeEdge)>;
+    using NavPredictiveExit = kiln::Function<std::optional<ExitTransition>(NavTransitionScope&, ui::SwipeEdge)>;
+    using NavSizeTransform = kiln::Function<std::optional<SizeTransform>(NavTransitionScope&)>;
 
     // A destination's own transitions (ComposeNavigator.Destination, ComposeNavGraph).
     struct NavDestinationTransitions {
@@ -46,8 +47,8 @@ namespace kiln::navigation {
     public:
         static constexpr const char* kName = "composable";
         struct Destination final : NavDestination {
-            explicit Destination(std::function<void(const NavBackStackEntry&)> c) : NavDestination(kName), content(std::move(c)) {}
-            std::function<void(const NavBackStackEntry&)> content;
+            explicit Destination(kiln::Function<void(const NavBackStackEntry&)> c) : NavDestination(kName), content(std::move(c)) {}
+            kiln::Function<void(const NavBackStackEntry&)> content;
             NavDestinationTransitions transitions;
         };
         ComposeNavigator() : Navigator(kName) {}
@@ -68,11 +69,11 @@ namespace kiln::navigation {
     public:
         static constexpr const char* kName = "dialog";
         struct Destination final : NavDestination {
-            Destination(foundation::DialogProperties p, std::function<void(const NavBackStackEntry&)> c)
+            Destination(foundation::DialogProperties p, kiln::Function<void(const NavBackStackEntry&)> c)
                 : NavDestination(kName), dialogProperties(p), content(std::move(c)) {}
             bool IsFloatingWindow() const override { return true; }
             foundation::DialogProperties dialogProperties;
-            std::function<void(const NavBackStackEntry&)> content;
+            kiln::Function<void(const NavBackStackEntry&)> content;
         };
         DialogNavigator() : Navigator(kName) {}
         NavDestinationPtr CreateDestination() override { return std::make_shared<Destination>(foundation::DialogProperties{}, [](const NavBackStackEntry&) {}); }
@@ -113,12 +114,12 @@ namespace kiln::navigation {
         NavigatorProvider& Provider() { return m_Provider; }
         void AddDestination(NavDestinationPtr d) { m_Destinations.push_back(std::move(d)); }
         // composable(route, arguments, deepLinks, transitions) { entry -> }
-        void Composable(const std::string& route, std::function<void(const NavBackStackEntry&)> content, ComposableOptions options = {});
+        void Composable(const std::string& route, kiln::Function<void(const NavBackStackEntry&)> content, ComposableOptions options = {});
         // navigation(startDestination, route, ...) { nested graph }
-        void Navigation(const std::string& startDestination, const std::string& route, const std::function<void(NavGraphBuilder&)>& builder,
+        void Navigation(const std::string& startDestination, const std::string& route, const kiln::Function<void(NavGraphBuilder&)>& builder,
                         ComposableOptions options = {});
         // dialog(route, arguments, deepLinks, dialogProperties) { entry -> }
-        void Dialog(const std::string& route, std::function<void(const NavBackStackEntry&)> content, DialogOptions options = {});
+        void Dialog(const std::string& route, kiln::Function<void(const NavBackStackEntry&)> content, DialogOptions options = {});
         std::shared_ptr<NavGraph> Build();
     private:
         NavigatorProvider& m_Provider;
@@ -133,7 +134,7 @@ namespace kiln::navigation {
         NavHostController();
         // createGraph(startDestination, route) { ... }
         std::shared_ptr<NavGraph> CreateGraph(const std::string& startDestination, std::optional<std::string> route,
-                                              const std::function<void(NavGraphBuilder&)>& builder);
+                                              const kiln::Function<void(NavGraphBuilder&)>& builder);
     };
 
     // rememberNavController(): saved and restored with the back stack.
@@ -166,7 +167,7 @@ namespace kiln::navigation {
                  rt::Key key = {});
     // NavHost(navController, startDestination, route, ...) { builder }: the graph is built once per
     // start destination and route.
-    void NavHost(NavHostController& navController, const std::string& startDestination, const std::function<void(NavGraphBuilder&)>& builder,
+    void NavHost(NavHostController& navController, const std::string& startDestination, const kiln::Function<void(NavGraphBuilder&)>& builder,
                  const Modifier& modifier = {}, const NavHostOptions& options = {}, std::optional<std::string> route = std::nullopt, rt::Key key = {});
     // DialogHost(dialogNavigator)
     void DialogHost(DialogNavigator& dialogNavigator, rt::Key key = {});
@@ -174,6 +175,6 @@ namespace kiln::navigation {
     // NavBackStackEntry.LocalOwnersProvider(saveableStateHolder, content): `content` with the
     // entry as LocalLifecycleOwner, LocalViewModelStoreOwner and LocalSavedStateRegistryOwner,
     // its saveable state kept in `holder` under the entry's id.
-    void LocalOwnersProvider(const EntryPtr& entry, rt::SaveableStateHolder& holder, std::function<void()> content);
+    void LocalOwnersProvider(const EntryPtr& entry, rt::SaveableStateHolder& holder, kiln::Function<void()> content);
 
 }

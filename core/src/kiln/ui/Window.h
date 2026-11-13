@@ -6,6 +6,7 @@
 // behind it, and asks for a dismissal on Back, Escape or a press outside the content.
 
 #include "kiln/ui/Configuration.h"
+#include <kiln/Function.h>
 #include "kiln/ui/Geometry.h"
 
 #include <cmath>
@@ -50,8 +51,8 @@ namespace kiln::ui {
     // Makes dialog windows for content owners (show). `onDismissRequest` runs for Back, Escape or
     // a press outside the content when the properties allow it.
     struct DialogHost {
-        std::function<std::unique_ptr<PlatformDialog>(Owner& content, const DialogWindowProperties& properties,
-                                                       std::function<void()> onDismissRequest)>
+        kiln::Function<std::unique_ptr<PlatformDialog>(Owner& content, const DialogWindowProperties& properties,
+                                                       kiln::Function<void()> onDismissRequest)>
             create;
     };
 

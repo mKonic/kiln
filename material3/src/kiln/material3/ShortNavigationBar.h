@@ -5,6 +5,7 @@
 // icon before the label).
 
 #include "kiln/foundation/Insets.h"
+#include <kiln/Function.h>
 #include "kiln/material3/NavigationItem.h"
 
 #include <cstdint>
@@ -41,7 +42,7 @@ namespace kiln::material3 {
         ShortNavigationBarArrangement arrangement = ShortNavigationBarDefaults::arrangement;
     };
     // Content is 3-6 ShortNavigationBarItems.
-    void ShortNavigationBar(const ui::Modifier& modifier, const ShortNavigationBarOptions& options, std::function<void()> content);
+    void ShortNavigationBar(const ui::Modifier& modifier, const ShortNavigationBarOptions& options, kiln::Function<void()> content);
 
     struct ShortNavigationBarItemOptions {
         bool enabled = true;
@@ -50,7 +51,7 @@ namespace kiln::material3 {
         std::shared_ptr<foundation::MutableInteractionSource> interactionSource;
     };
     // The label (if any) always shows.
-    void ShortNavigationBarItem(bool selected, std::function<void()> onClick, std::function<void()> icon, std::function<void()> label,
+    void ShortNavigationBarItem(bool selected, kiln::Function<void()> onClick, kiln::Function<void()> icon, kiln::Function<void()> label,
                                 const ui::Modifier& modifier, const ShortNavigationBarItemOptions& options);
 
     namespace internal {

@@ -1,4 +1,5 @@
 #include "kiln/ui/PlatformTextInput.h"
+#include <kiln/Function.h>
 
 #include "kiln/ui/LayoutNode.h"
 
@@ -61,14 +62,14 @@ namespace kiln::ui {
         };
     }
 
-    void InterceptPlatformTextInput(std::shared_ptr<PlatformTextInputInterceptor> interceptor, std::function<void()> content, rt::Key key) {
+    void InterceptPlatformTextInput(std::shared_ptr<PlatformTextInputInterceptor> interceptor, kiln::Function<void()> content, rt::Key key) {
         rt::Composition* c = rt::Composition::Current();
         auto chain = c->Read(LocalPlatformTextInputInterceptors);
         chain.push_back(std::move(interceptor));
         c->Provide(LocalPlatformTextInputInterceptors, std::move(chain), std::move(content), key);
     }
 
-    rt::Task<> EstablishTextInputSession(ModifierNode& node, std::function<rt::Task<>(PlatformTextInputSessionScope&)> block) {
+    rt::Task<> EstablishTextInputSession(ModifierNode& node, kiln::Function<rt::Task<>(PlatformTextInputSessionScope&)> block) {
         LayoutNode* layout = node.Owner();
         Owner* owner = layout ? layout->GetOwner() : nullptr;
         if (!owner) co_return;

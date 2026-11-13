@@ -12,6 +12,7 @@
 // (StylePadding / Placement / Appearance / StyleGraphicsLayer).
 
 #include "kiln/animation/Animatable.h"
+#include <kiln/Function.h>
 #include "kiln/foundation/style/Style.h"
 #include "kiln/runtime/Task.h"
 
@@ -76,7 +77,7 @@ namespace kiln::foundation {
             bool Empty() const { return m_Entries.empty(); }
             bool Animating(const StylePropertyBase& p) const { return m_Entries.contains(&p); }
             // The animated value of `p` while it animates (observed), else `orElse`.
-            std::any AnimatedValueOrElse(const StylePropertyBase& p, const std::function<std::any()>& orElse) const;
+            std::any AnimatedValueOrElse(const StylePropertyBase& p, const kiln::Function<std::any()>& orElse) const;
             void Record(const std::unordered_set<const StylePropertyBase*>& animating, const std::unordered_set<const StylePropertyBase*>& changes,
                         const std::unordered_map<const StylePropertyBase*, anim::SpecPtr>* toSpecs,
                         const std::unordered_map<const StylePropertyBase*, anim::SpecPtr>* fromSpecs,
@@ -140,9 +141,9 @@ namespace kiln::foundation {
         void Collect();
         void UpdateProperties(const detail::StyleValues& values, const std::unordered_set<const NestedStyleKey*>* nestedKeys);
         void DiscardUnneededProperties(const detail::StyleValues& current, const detail::StyleValues& previous);
-        void ResolveNestedStyle(const NestedStyleKey& key, const std::function<void(const CommonStyle&, const StyleState&)>& block);
+        void ResolveNestedStyle(const NestedStyleKey& key, const kiln::Function<void(const CommonStyle&, const StyleState&)>& block);
         std::any ResolveLocal(const StylePropertyBase& p) const;
-        void TraverseAncestors(const std::function<bool(StyleResolver&)>& block) const;
+        void TraverseAncestors(const kiln::Function<bool(StyleResolver&)>& block) const;
         StyleResolverNode* Node() const { return m_Node; }
         detail::StyleAnimations& Animations() { return m_Animations; }
         const detail::ResolvedProperties& Properties() const { return m_Properties; }
@@ -195,7 +196,7 @@ namespace kiln::foundation {
         std::shared_ptr<StyleResolver> m_Bound;
         bool m_Resolved = false;
         std::shared_ptr<MutableInteractionSource> m_Source;
-        std::function<void()> m_StopInteractions;
+        kiln::Function<void()> m_StopInteractions;
     };
 
     // contentFill / contentColor / contentBrush: the content fill local where the style resolves.

@@ -7,6 +7,7 @@
 // add the ripple and the minimum touch size.
 
 #include "kiln/foundation/Border.h"
+#include <kiln/Function.h>
 #include "kiln/foundation/Interaction.h"
 
 #include <functional>
@@ -25,24 +26,24 @@ namespace kiln::material3 {
         std::optional<foundation::BorderStroke> border;
     };
 
-    void Surface(const ui::Modifier& modifier, const SurfaceOptions& options, std::function<void()> content);
+    void Surface(const ui::Modifier& modifier, const SurfaceOptions& options, kiln::Function<void()> content);
     // Surface(onClick, ...)
-    void Surface(std::function<void()> onClick, const ui::Modifier& modifier, const SurfaceOptions& options, std::function<void()> content,
+    void Surface(kiln::Function<void()> onClick, const ui::Modifier& modifier, const SurfaceOptions& options, kiln::Function<void()> content,
                  bool enabled = true, std::shared_ptr<foundation::MutableInteractionSource> interactionSource = nullptr);
     // Surface(selected, onClick, ...)
-    void Surface(bool selected, std::function<void()> onClick, const ui::Modifier& modifier, const SurfaceOptions& options,
-                 std::function<void()> content, bool enabled = true,
+    void Surface(bool selected, kiln::Function<void()> onClick, const ui::Modifier& modifier, const SurfaceOptions& options,
+                 kiln::Function<void()> content, bool enabled = true,
                  std::shared_ptr<foundation::MutableInteractionSource> interactionSource = nullptr);
     // Surface(checked, onCheckedChange, ...)
-    void Surface(bool checked, std::function<void(bool)> onCheckedChange, const ui::Modifier& modifier, const SurfaceOptions& options,
-                 std::function<void()> content, bool enabled = true,
+    void Surface(bool checked, kiln::Function<void(bool)> onCheckedChange, const ui::Modifier& modifier, const SurfaceOptions& options,
+                 kiln::Function<void()> content, bool enabled = true,
                  std::shared_ptr<foundation::MutableInteractionSource> interactionSource = nullptr);
 
     namespace internal {
         // The internal Surface(backgroundColor: ColorProducer): the colour read at draw time,
         // tonally elevated when it is the surface colour; no shape, border or content colour.
-        void Surface(std::function<ui::Color()> backgroundColor, const ui::Modifier& modifier, ui::Dp tonalElevation, ui::Dp shadowElevation,
-                     std::function<void()> content);
+        void Surface(kiln::Function<ui::Color()> backgroundColor, const ui::Modifier& modifier, ui::Dp tonalElevation, ui::Dp shadowElevation,
+                     kiln::Function<void()> content);
     }
 
 }

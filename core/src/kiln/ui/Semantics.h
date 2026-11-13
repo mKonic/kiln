@@ -6,6 +6,7 @@
 // into AccessibilityNodeInfo (spec 01 req. 5).
 
 #include "kiln/ui/Geometry.h"
+#include <kiln/Function.h>
 #include "kiln/ui/Credentials.h"
 #include "kiln/ui/Modifier.h"
 #include "kiln/runtime/Composition.h"
@@ -30,7 +31,7 @@ namespace kiln::ui {
     // ScrollAxisRange: the scroll position and its maximum, read when asked (they change with
     // every scroll). reverseScrolling: a higher value means further towards the start.
     struct ScrollAxisRange {
-        std::function<float()> value, maxValue;
+        kiln::Function<float()> value, maxValue;
         bool reverseScrolling = false;
     };
 
@@ -48,7 +49,7 @@ namespace kiln::ui {
         int textIndex = 0;
         int start = 0, end = 0;
         std::string value;               // the URL, the verbatim text
-        std::function<void()> onClick;   // Clickable
+        kiln::Function<void()> onClick;   // Clickable
     };
 
     // ProgressBarRangeInfo: `current` within [start, end]; steps > 0 for a discrete range.
@@ -64,7 +65,7 @@ namespace kiln::ui {
 
     struct CustomAccessibilityAction {
         std::string label;
-        std::function<bool()> action;
+        kiln::Function<bool()> action;
     };
 
     // FillableData (AndroidFillableData over AutofillValue): what autofill fills or reads.
@@ -92,7 +93,7 @@ namespace kiln::ui {
     template<typename T>
     struct SemanticsPropertyKey {
         std::string name;
-        std::function<std::optional<T>(const std::optional<T>& parent, const T& child)> mergePolicy;
+        kiln::Function<std::optional<T>(const std::optional<T>& parent, const T& child)> mergePolicy;
     };
 
     // InputTextSuggestionState: whether the text was committed by the IME (not set in code or by
@@ -107,7 +108,7 @@ namespace kiln::ui {
         // Custom properties (SemanticsPropertyKey), by key identity.
         struct CustomValue {
             std::any value;
-            std::function<std::optional<std::any>(const std::any* parent, const std::any& child)> merge;
+            kiln::Function<std::optional<std::any>(const std::any* parent, const std::any& child)> merge;
         };
         std::map<const void*, CustomValue> custom;
         template<typename T>
@@ -132,7 +133,7 @@ namespace kiln::ui {
         template<typename T>
         bool Contains(const SemanticsPropertyKey<T>& key) const { return custom.count(&key) != 0; }
         // IndexForKey (lazy layouts): the item index of a key, -1 when not there.
-        std::function<int(const rt::Key&)> indexForKey;
+        kiln::Function<int(const rt::Key&)> indexForKey;
 
         bool mergeDescendants = false;   // isMergingSemanticsOfDescendants
         bool clearAndSet = false;        // isClearingSemantics
@@ -190,38 +191,38 @@ namespace kiln::ui {
         std::optional<CollectionItemInfo> collectionItemInfo;
 
         // Actions (an empty function is an absent action).
-        std::function<bool()> onClick;
+        kiln::Function<bool()> onClick;
         std::optional<std::string> onClickLabel;
-        std::function<bool()> onLongClick;
+        kiln::Function<bool()> onLongClick;
         std::optional<std::string> onLongClickLabel;
-        std::function<bool(const std::string&)> setText;
-        std::function<bool(const std::string&)> insertTextAtCursor;
-        std::function<bool(int start, int end, bool relativeToOriginal)> setSelection;   // traversal mode
-        std::function<bool()> requestFocus;
-        std::function<bool(float)> setProgress;
-        std::function<bool()> onImeAction;
+        kiln::Function<bool(const std::string&)> setText;
+        kiln::Function<bool(const std::string&)> insertTextAtCursor;
+        kiln::Function<bool(int start, int end, bool relativeToOriginal)> setSelection;   // traversal mode
+        kiln::Function<bool()> requestFocus;
+        kiln::Function<bool(float)> setProgress;
+        kiln::Function<bool()> onImeAction;
         std::optional<std::string> onImeActionLabel;
-        std::function<bool()> copyText, cutText, pasteText;
-        std::function<bool()> expand, collapse, dismiss;
+        kiln::Function<bool()> copyText, cutText, pasteText;
+        kiln::Function<bool()> expand, collapse, dismiss;
         std::optional<std::string> expandLabel, collapseLabel, dismissLabel;
-        std::function<bool(const std::string&)> setTextSubstitution;
-        std::function<bool(bool)> showTextSubstitution;
-        std::function<bool()> clearTextSubstitution;
+        kiln::Function<bool(const std::string&)> setTextSubstitution;
+        kiln::Function<bool(bool)> showTextSubstitution;
+        kiln::Function<bool()> clearTextSubstitution;
         std::vector<CustomAccessibilityAction> customActions;   // merged by concatenation
         // GetTextLayoutResult: the text's current layout (null: none yet).
-        std::function<std::shared_ptr<const text::TextLayoutResult>()> getTextLayoutResult;
-        std::function<bool(float x, float y)> scrollBy;        // positive: further into the content
+        kiln::Function<std::shared_ptr<const text::TextLayoutResult>()> getTextLayoutResult;
+        kiln::Function<bool(float x, float y)> scrollBy;        // positive: further into the content
         // ScrollByOffset (scroll capture): scrolls by the offset and returns what was consumed.
-        std::function<rt::Task<Offset>(Offset)> scrollByOffset;
-        std::function<bool(int index)> scrollToIndex;
+        kiln::Function<rt::Task<Offset>(Offset)> scrollByOffset;
+        kiln::Function<bool(int index)> scrollToIndex;
         // GetScrollViewportLength: the viewport minus content padding, and the padding before and
         // after the content.
-        std::function<float()> scrollViewportLength;
-        std::function<std::pair<float, float>()> scrollViewportPadding;
+        kiln::Function<float()> scrollViewportLength;
+        kiln::Function<std::pair<float, float>()> scrollViewportPadding;
         // Paging (pagers): scroll actions on a node that pages use these instead of scrollBy.
-        std::function<bool()> pageUp, pageDown, pageLeft, pageRight;
+        kiln::Function<bool()> pageUp, pageDown, pageLeft, pageRight;
         // OnFillData: autofill hands the node a value.
-        std::function<bool(const FillableData&)> onFillData;
+        kiln::Function<bool(const FillableData&)> onFillData;
 
         bool HasContent() const {
             return !contentDescription.empty() || !text.empty() || editableText || stateDescription || onClick ||
@@ -272,7 +273,7 @@ namespace kiln::ui {
     // merges them), flattened with each one's children left out.
     std::vector<SemanticsNode> GetAllSemanticsNodes(Owner& owner);
     // forEachUncoveredSemanticsNode: the nodes accessibility sees, each with its uncovered bounds.
-    using UncoveredSemanticsNodeVisitor = std::function<void(const SemanticsNode&)>;
+    using UncoveredSemanticsNodeVisitor = kiln::Function<void(const SemanticsNode&)>;
     void ForEachUncoveredSemanticsNode(Owner& owner, const UncoveredSemanticsNodeVisitor& visitor);
 
 }

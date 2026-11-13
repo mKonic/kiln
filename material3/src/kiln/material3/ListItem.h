@@ -4,6 +4,7 @@
 // segmented Expressive lists. Slot content owns its sizing (icons, avatars and controls).
 
 #include "kiln/foundation/Compose.h"
+#include <kiln/Function.h>
 #include "kiln/foundation/Interaction.h"
 #include "kiln/foundation/Shapes.h"
 
@@ -49,37 +50,37 @@ namespace kiln::material3 {
         bool operator==(const ListItemElevation&) const = default;
     };
 
-    using ListItemVerticalAlignment = std::function<int(int size, int space)>;
+    using ListItemVerticalAlignment = kiln::Function<int(int size, int space)>;
     struct ListItemOptions {
         bool enabled = true;
-        std::function<void()> leadingContent, trailingContent, overlineContent, supportingContent;
+        kiln::Function<void()> leadingContent, trailingContent, overlineContent, supportingContent;
         ListItemVerticalAlignment verticalAlignment; // empty: adaptive center/top alignment
         std::optional<ListItemShapes> shapes;
         std::optional<ListItemColors> colors;
         std::optional<ListItemElevation> elevation;
         std::optional<foundation::PaddingValues> contentPadding;
-        std::function<void()> onLongClick;
+        kiln::Function<void()> onLongClick;
         std::string onLongClickLabel;
         std::shared_ptr<foundation::MutableInteractionSource> interactionSource;
     };
     struct LegacyListItemOptions {
-        std::function<void()> overlineContent, supportingContent, leadingContent, trailingContent;
+        kiln::Function<void()> overlineContent, supportingContent, leadingContent, trailingContent;
         std::optional<ListItemColors> colors;
         Dp tonalElevation{0}, shadowElevation{0};
     };
 
     // Classic one/two/three-line layout. It always uses enabled, unselected colours.
-    void ListItem(std::function<void()> headline, const ui::Modifier& modifier = {}, const LegacyListItemOptions& options = {});
+    void ListItem(kiln::Function<void()> headline, const ui::Modifier& modifier = {}, const LegacyListItemOptions& options = {});
     // Updated noninteractive, clickable, single-selection, and multi-selection forms.
-    void ListItem(const ui::Modifier& modifier, const ListItemOptions& options, std::function<void()> content);
-    void ListItem(std::function<void()> onClick, const ui::Modifier& modifier, const ListItemOptions& options, std::function<void()> content);
-    void ListItem(bool selected, std::function<void()> onClick, const ui::Modifier& modifier, const ListItemOptions& options, std::function<void()> content);
-    void ListItem(bool checked, std::function<void(bool)> onCheckedChange, const ui::Modifier& modifier, const ListItemOptions& options, std::function<void()> content);
+    void ListItem(const ui::Modifier& modifier, const ListItemOptions& options, kiln::Function<void()> content);
+    void ListItem(kiln::Function<void()> onClick, const ui::Modifier& modifier, const ListItemOptions& options, kiln::Function<void()> content);
+    void ListItem(bool selected, kiln::Function<void()> onClick, const ui::Modifier& modifier, const ListItemOptions& options, kiln::Function<void()> content);
+    void ListItem(bool checked, kiln::Function<void(bool)> onCheckedChange, const ui::Modifier& modifier, const ListItemOptions& options, kiln::Function<void()> content);
 
-    void SegmentedListItem(const ListItemShapes& shapes, const ui::Modifier& modifier, const ListItemOptions& options, std::function<void()> content);
-    void SegmentedListItem(std::function<void()> onClick, const ListItemShapes& shapes, const ui::Modifier& modifier, const ListItemOptions& options, std::function<void()> content);
-    void SegmentedListItem(bool selected, std::function<void()> onClick, const ListItemShapes& shapes, const ui::Modifier& modifier, const ListItemOptions& options, std::function<void()> content);
-    void SegmentedListItem(bool checked, std::function<void(bool)> onCheckedChange, const ListItemShapes& shapes, const ui::Modifier& modifier, const ListItemOptions& options, std::function<void()> content);
+    void SegmentedListItem(const ListItemShapes& shapes, const ui::Modifier& modifier, const ListItemOptions& options, kiln::Function<void()> content);
+    void SegmentedListItem(kiln::Function<void()> onClick, const ListItemShapes& shapes, const ui::Modifier& modifier, const ListItemOptions& options, kiln::Function<void()> content);
+    void SegmentedListItem(bool selected, kiln::Function<void()> onClick, const ListItemShapes& shapes, const ui::Modifier& modifier, const ListItemOptions& options, kiln::Function<void()> content);
+    void SegmentedListItem(bool checked, kiln::Function<void(bool)> onCheckedChange, const ListItemShapes& shapes, const ui::Modifier& modifier, const ListItemOptions& options, kiln::Function<void()> content);
 
     namespace ListItemDefaults {
         inline constexpr Dp Elevation{0}, SegmentedGap{2};

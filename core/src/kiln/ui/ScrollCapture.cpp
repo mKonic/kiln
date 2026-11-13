@@ -1,4 +1,5 @@
 #include "kiln/ui/ScrollCapture.h"
+#include <kiln/Function.h>
 
 #include "kiln/ui/LayoutNode.h"
 
@@ -24,7 +25,7 @@ namespace kiln::ui {
         std::vector<Candidate> candidates;
         // visitScrollCaptureCandidates: depth-first from a node with a stack; a scrollable node
         // is a candidate and its own descendants are searched one level deeper.
-        std::function<void(int, int)> visit = [&](int fromId, int depth) {
+        kiln::Function<void(int, int)> visit = [&](int fromId, int depth) {
             const auto from = nodes.find(fromId);
             if (from == nodes.end()) return;
             std::vector<int> stack(from->second.children.begin(), from->second.children.end());

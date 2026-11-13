@@ -8,6 +8,7 @@
 // text (NavKeyToString(k) found by ADL, else std::format, else its hash) and its class.
 
 #include "kiln/runtime/Composition.h"
+#include <kiln/Function.h>
 
 #include <any>
 #include <format>
@@ -97,7 +98,7 @@ namespace kiln::navigation3 {
     private:
         NavMetadata m_Map;
     };
-    inline NavMetadata Metadata(const std::function<void(MetadataScope&)>& builder) {
+    inline NavMetadata Metadata(const kiln::Function<void(MetadataScope&)>& builder) {
         MetadataScope s;
         builder(s);
         return s.Build();
@@ -115,7 +116,7 @@ namespace kiln::navigation3 {
     template<typename T>
     class NavEntry {
     public:
-        using ContentFn = std::function<void(const T&)>;
+        using ContentFn = kiln::Function<void(const T&)>;
         NavEntry(T key, std::string contentKey, NavMetadata metadata, ContentFn content)
             : m_Key(std::move(key)), m_ContentKey(std::move(contentKey)), m_Metadata(std::move(metadata)),
               m_Content(std::make_shared<ContentFn>(std::move(content))) {}
@@ -148,17 +149,17 @@ namespace kiln::navigation3 {
     template<typename T>
     class NavEntryDecorator {
     public:
-        NavEntryDecorator(std::function<void(const std::string&)> onPop, std::function<void(const NavEntry<T>&)> decorate)
+        NavEntryDecorator(kiln::Function<void(const std::string&)> onPop, kiln::Function<void(const NavEntry<T>&)> decorate)
             : m_Impl(std::make_shared<Impl>(Impl{ std::move(onPop), std::move(decorate) })) {}
-        explicit NavEntryDecorator(std::function<void(const NavEntry<T>&)> decorate) : NavEntryDecorator([](const std::string&) {}, std::move(decorate)) {}
+        explicit NavEntryDecorator(kiln::Function<void(const NavEntry<T>&)> decorate) : NavEntryDecorator([](const std::string&) {}, std::move(decorate)) {}
         void OnPop(const std::string& contentKey) const { if (m_Impl->onPop) m_Impl->onPop(contentKey); }
         void Decorate(const NavEntry<T>& entry) const { m_Impl->decorate(entry); }
         bool operator==(const NavEntryDecorator& o) const { return m_Impl == o.m_Impl; }
 
     private:
         struct Impl {
-            std::function<void(const std::string&)> onPop;
-            std::function<void(const NavEntry<T>&)> decorate;
+            kiln::Function<void(const std::string&)> onPop;
+            kiln::Function<void(const NavEntry<T>&)> decorate;
         };
         std::shared_ptr<Impl> m_Impl;
     };
@@ -170,16 +171,16 @@ namespace kiln::navigation3 {
     template<typename T>
     class EntryProviderScope {
     public:
-        using Fallback = std::function<NavEntry<T>(const T&)>;
+        using Fallback = kiln::Function<NavEntry<T>(const T&)>;
         explicit EntryProviderScope(Fallback fallback = {}) : m_Fallback(std::move(fallback)) {}
 
         // entry(key, contentKey, metadata, content)
         template<typename K>
-        void Entry(K key, std::function<void(const K&)> content, NavMetadata metadata = {}, std::optional<std::string> contentKey = std::nullopt) {
+        void Entry(K key, kiln::Function<void(const K&)> content, NavMetadata metadata = {}, std::optional<std::string> contentKey = std::nullopt) {
             EntryWithMetadata<K>(std::move(key), std::move(content), [metadata](const K&) { return metadata; }, std::move(contentKey));
         }
         template<typename K>
-        void EntryWithMetadata(K key, std::function<void(const K&)> content, std::function<NavMetadata(const K&)> metadata,
+        void EntryWithMetadata(K key, kiln::Function<void(const K&)> content, kiln::Function<NavMetadata(const K&)> metadata,
                                std::optional<std::string> contentKey = std::nullopt) {
             const T asKey(key);
             for (const auto& p : m_Providers)
@@ -190,12 +191,12 @@ namespace kiln::navigation3 {
         }
         // entry<K>(clazzContentKey, metadata, content): every key of class K.
         template<typename K>
-        void Entry(std::function<void(const K&)> content, NavMetadata metadata = {}, std::function<std::string(const K&)> clazzContentKey = {}) {
+        void Entry(kiln::Function<void(const K&)> content, NavMetadata metadata = {}, kiln::Function<std::string(const K&)> clazzContentKey = {}) {
             EntryWithMetadata<K>(std::move(content), [metadata](const K&) { return metadata; }, std::move(clazzContentKey));
         }
         template<typename K>
-        void EntryWithMetadata(std::function<void(const K&)> content, std::function<NavMetadata(const K&)> metadata,
-                               std::function<std::string(const K&)> clazzContentKey = {}) {
+        void EntryWithMetadata(kiln::Function<void(const K&)> content, kiln::Function<NavMetadata(const K&)> metadata,
+                               kiln::Function<std::string(const K&)> clazzContentKey = {}) {
             const std::type_index clazz(typeid(K));
             if (m_ClassProviders.contains(clazz)) throw std::invalid_argument(std::string("An `entry` with the same `clazz` has already been added: ") + clazz.name() + ".");
             m_ClassProviders.emplace(clazz, ClassProvider{
@@ -205,7 +206,7 @@ namespace kiln::navigation3 {
         }
 
         // The provider: key -> NavEntry. Metadata is computed once per key.
-        std::function<NavEntry<T>(const T&)> Build() const {
+        kiln::Function<NavEntry<T>(const T&)> Build() const {
             struct State {
                 std::vector<Provider> providers;
                 std::map<std::type_index, ClassProvider> classProviders;
@@ -233,13 +234,13 @@ namespace kiln::navigation3 {
         struct Provider {
             T key;
             std::string contentKey;
-            std::function<NavMetadata(const T&)> metadata;
-            std::function<void(const T&)> content;
+            kiln::Function<NavMetadata(const T&)> metadata;
+            kiln::Function<void(const T&)> content;
         };
         struct ClassProvider {
-            std::function<std::string(const T&)> contentKey;
-            std::function<NavMetadata(const T&)> metadata;
-            std::function<void(const T&)> content;
+            kiln::Function<std::string(const T&)> contentKey;
+            kiln::Function<NavMetadata(const T&)> metadata;
+            kiln::Function<void(const T&)> content;
         };
         Fallback m_Fallback;
         std::vector<Provider> m_Providers;
@@ -248,7 +249,7 @@ namespace kiln::navigation3 {
 
     // entryProvider(fallback) { ... }
     template<typename T>
-    std::function<NavEntry<T>(const T&)> EntryProvider(const std::function<void(EntryProviderScope<T>&)>& builder,
+    kiln::Function<NavEntry<T>(const T&)> EntryProvider(const kiln::Function<void(EntryProviderScope<T>&)>& builder,
                                                        typename EntryProviderScope<T>::Fallback fallback = {}) {
         EntryProviderScope<T> scope(std::move(fallback));
         builder(scope);

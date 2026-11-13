@@ -1,5 +1,6 @@
 // ListSamples.kt
 #include "ListSamples.h"
+#include <kiln/Function.h>
 #include "Common.h"
 
 #include <kiln/foundation/AnimatedVisibility.h>
@@ -21,7 +22,7 @@ namespace catalog::samples {
     namespace {
         constexpr Dp legacyExtraPaddingForLeadingTrailing = 4_dp;
 
-        std::function<void()> TextOf(std::string text, Modifier modifier = {}) {
+        kiln::Function<void()> TextOf(std::string text, Modifier modifier = {}) {
             return [text, modifier] { m3::Text(text, modifier); };
         }
         void FavoriteIcon(std::optional<std::string> description = std::nullopt, Modifier modifier = {}) {
@@ -29,7 +30,7 @@ namespace catalog::samples {
         }
 
         // The legacy samples: one item between dividers, with the old paddings.
-        void Legacy(PaddingValues padding, const char* headline, std::function<void()> overline, std::function<void()> supporting, bool meta) {
+        void Legacy(PaddingValues padding, const char* headline, kiln::Function<void()> overline, kiln::Function<void()> supporting, bool meta) {
             Column({}, [=] {
                 m3::HorizontalDivider();
                 m3::ListItemOptions o;
@@ -46,7 +47,7 @@ namespace catalog::samples {
         }
 
         // The four standard items: one, two, three (overline) and three (two supporting lines).
-        void FourItems(std::function<void(int index, m3::ListItemOptions& o, std::function<void()> headline)> item) {
+        void FourItems(kiln::Function<void(int index, m3::ListItemOptions& o, kiln::Function<void()> headline)> item) {
             static const char* const headlines[4] = { "One line list item", "Two line list item", "Three line list item", "Another three line list item" };
             for (int i = 0; i < 4; ++i) {
                 m3::ListItemOptions o;
@@ -78,7 +79,7 @@ namespace catalog::samples {
     void StandardListItems() {
         Column(Scrolling(), [] {
             m3::HorizontalDivider();
-            FourItems([](int, m3::ListItemOptions& o, std::function<void()> headline) {
+            FourItems([](int, m3::ListItemOptions& o, kiln::Function<void()> headline) {
                 m3::ListItem({}, o, headline);
                 m3::HorizontalDivider();
             });
@@ -88,7 +89,7 @@ namespace catalog::samples {
     void SegmentedListItems() {
         const auto colors = SurfaceContainerColors();
         Column(Scrolling(), Arrangement::SpacedBy(LD::SegmentedGap), AlignmentH::Start(), [colors] {
-            FourItems([colors](int i, m3::ListItemOptions& o, std::function<void()> headline) {
+            FourItems([colors](int i, m3::ListItemOptions& o, kiln::Function<void()> headline) {
                 o.colors = colors;
                 m3::SegmentedListItem(LD::segmentedShapes(i, 4), {}, o, headline);
             });

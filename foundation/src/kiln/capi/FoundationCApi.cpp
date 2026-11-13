@@ -1,6 +1,7 @@
 // The C ABI (include/kiln/kiln.h) over the runtime and foundation.
 
 #include "kiln/capi/CApiSupport.h"
+#include <kiln/Function.h>
 
 #include "kiln/App.h"
 #include "kiln/Assets.h"
@@ -174,18 +175,18 @@ namespace kiln::capi {
         return *c;
     }
 
-    void InGroup(kiln_key key, const std::function<void()>& body) {
+    void InGroup(kiln_key key, const kiln::Function<void()>& body) {
         if (rt::Composition* c = rt::Composition::Current()) c->Section(body, ToKey(key));
         else body();
     }
 
-    void LaunchIn(const std::shared_ptr<rt::CoroutineScope>& scope, std::function<rt::Task<>()> task, kiln_fn done) {
+    void LaunchIn(const std::shared_ptr<rt::CoroutineScope>& scope, kiln::Function<rt::Task<>()> task, kiln_fn done) {
         auto onDone = Fn(done);
         struct Finally {
-            std::function<void()> fn;
+            kiln::Function<void()> fn;
             ~Finally() { if (fn) fn(); }
         };
-        scope->Launch([](std::function<rt::Task<>()> task, std::function<void()> onDone) -> rt::Task<> {
+        scope->Launch([](kiln::Function<rt::Task<>()> task, kiln::Function<void()> onDone) -> rt::Task<> {
             Finally f{ std::move(onDone) };
             co_await task();
         }(std::move(task), std::move(onDone)));
@@ -203,27 +204,27 @@ namespace kiln::capi {
         return t_ReturnedString.c_str();
     }
 
-    std::function<void()> Fn(kiln_fn f) {
+    kiln::Function<void()> Fn(kiln_fn f) {
         auto o = Own(f);
         if (!o) return {};
         return [o] { CallbackScope s; o->f.call(o->f.user); };
     }
-    std::function<void(bool)> Fn(kiln_fn_bool f) {
+    kiln::Function<void(bool)> Fn(kiln_fn_bool f) {
         auto o = Own(f);
         if (!o) return {};
         return [o](bool v) { CallbackScope s; o->f.call(o->f.user, v); };
     }
-    std::function<void(int)> Fn(kiln_fn_int f) {
+    kiln::Function<void(int)> Fn(kiln_fn_int f) {
         auto o = Own(f);
         if (!o) return {};
         return [o](int v) { CallbackScope s; o->f.call(o->f.user, v); };
     }
-    std::function<void(float)> Fn(kiln_fn_float f) {
+    kiln::Function<void(float)> Fn(kiln_fn_float f) {
         auto o = Own(f);
         if (!o) return {};
         return [o](float v) { CallbackScope s; o->f.call(o->f.user, v); };
     }
-    std::function<void(const std::string&)> Fn(kiln_fn_str f) {
+    kiln::Function<void(const std::string&)> Fn(kiln_fn_str f) {
         auto o = Own(f);
         if (!o) return {};
         return [o](const std::string& v) { CallbackScope s; o->f.call(o->f.user, v.c_str()); };
@@ -394,7 +395,7 @@ KILN_API void kiln_side_effect(kiln_key, kiln_fn effect) {
 KILN_API void kiln_disposable_effect(kiln_key key, const uint64_t* keys, size_t keyCount, kiln_fn_effect effect) {
     TRY {
         auto o = Own(effect);
-        Current().DisposableEffect(ToKeys(keys, keyCount), [o]() -> std::function<void()> {
+        Current().DisposableEffect(ToKeys(keys, keyCount), [o]() -> kiln::Function<void()> {
             if (!o) return {};
             kiln_fn disposer;
             {
@@ -995,7 +996,7 @@ KILN_API void kiln_lazy_items(kiln_lazy_scope* scope, int32_t count, kiln_fn_int
     TRY {
         if (!scope) return;
         auto fn = Fn(content);
-        std::function<rt::Key(int)> keyFn;
+        kiln::Function<rt::Key(int)> keyFn;
         if (auto k = Own(itemKey)) keyFn = [k](int i) { CallbackScope s; return ToKey(k->f.call(k->f.user, i)); };
         scope->scope->Items(count, fn ? fn : [](int) {}, std::move(keyFn));
     } CATCH_VOID
@@ -1055,7 +1056,7 @@ KILN_API void kiln_lazy_row(kiln_key key, const kiln_modifier* m, kiln_lazy_list
 KILN_API kiln_pager_state* kiln_remember_pager_state(kiln_key key, int32_t initialPage, kiln_fn_count pageCount) {
     TRY {
         auto own = Own(pageCount);
-        std::function<int()> count = [own] {
+        kiln::Function<int()> count = [own] {
             if (!own) return 0;
             CallbackScope s;
             return int(own->f.call(own->f.user));

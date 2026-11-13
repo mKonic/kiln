@@ -1,4 +1,5 @@
 #include "kiln/material3/DateRangePicker.h"
+#include <kiln/Function.h>
 
 #include "kiln/foundation/AnimatedVisibility.h"
 #include "kiln/foundation/Compose.h"
@@ -157,7 +158,7 @@ namespace kiln::material3 {
     }
 
     namespace {
-        using SelectionChange = std::function<void(std::optional<std::int64_t>, std::optional<std::int64_t>)>;
+        using SelectionChange = kiln::Function<void(std::optional<std::int64_t>, std::optional<std::int64_t>)>;
 
         // updateDateSelection: a first tap (or one after a complete range) starts over; a later
         // date ends the range; an earlier one starts it again.
@@ -173,7 +174,7 @@ namespace kiln::material3 {
         }
 
         void VerticalMonthsList(LazyListState& listState, std::optional<std::int64_t> start, std::optional<std::int64_t> end, SelectionChange onChange,
-                                std::function<void(std::int64_t)> onDisplayedMonthChange, const mi::CalendarModel& model, const IntRange& yearRange,
+                                kiln::Function<void(std::int64_t)> onDisplayedMonthChange, const mi::CalendarModel& model, const IntRange& yearRange,
                                 const DatePickerFormatterPtr& formatter, const SelectableDatesPtr& selectable, const DatePickerColors& colors) {
             const mi::CalendarDate today = model.Today();
             const mi::CalendarMonth firstMonth = model.GetMonth(yearRange.first, 1);
@@ -223,7 +224,7 @@ namespace kiln::material3 {
         }
 
         void DateRangePickerContent(std::optional<std::int64_t> start, std::optional<std::int64_t> end, std::int64_t displayedMonthMillis,
-                                    SelectionChange onChange, std::function<void(std::int64_t)> onDisplayedMonthChange, const mi::CalendarModel& model,
+                                    SelectionChange onChange, kiln::Function<void(std::int64_t)> onDisplayedMonthChange, const mi::CalendarModel& model,
                                     const IntRange& yearRange, const DatePickerFormatterPtr& formatter, const SelectableDatesPtr& selectable,
                                     const DatePickerColors& colors, ui::FocusRequester* top, ui::FocusRequester* bottom) {
             auto& c = *rt::Composition::Current();
@@ -271,7 +272,7 @@ namespace kiln::material3 {
             const mi::CalendarModel* m = &model;
             const ui::Modifier row = Padding({}, { mi::InputTextFieldPaddingStart, mi::InputTextFieldPaddingTop, mi::InputTextFieldPaddingEnd, Dp(0) });
             Row(row, Arrangement::SpacedBy(Dp(8)), ui::AlignmentV::Top(), [=] {
-                const auto field = [&](Strings labelId, std::optional<std::int64_t> initial, std::function<void(std::optional<std::int64_t>)> change,
+                const auto field = [&](Strings labelId, std::optional<std::int64_t> initial, kiln::Function<void(std::optional<std::int64_t>)> change,
                                        mi::InputIdentifier id, ui::FocusRequester* fr) {
                     const std::string labelText = GetString(labelId);
                     mi::DateInputTextField(
@@ -303,14 +304,14 @@ namespace kiln::material3 {
         ui::FocusRequester* bottom = &(*focus)[2];
         DateRangePickerState* st = &state;
 
-        std::function<void()> title = options.title ? *options.title : std::function<void()>([st, colors] {
+        kiln::Function<void()> title = options.title ? *options.title : kiln::Function<void()>([st, colors] {
             DateRangePickerDefaults::DateRangePickerTitle(st->GetDisplayMode(), Padding({}, { TitleStart, Dp(0), TitleEnd, Dp(0) }), colors.titleContentColor);
         });
-        std::function<void()> headline = options.headline ? *options.headline : std::function<void()>([st, formatter, colors] {
+        kiln::Function<void()> headline = options.headline ? *options.headline : kiln::Function<void()>([st, formatter, colors] {
             DateRangePickerDefaults::DateRangePickerHeadline(st->SelectedStartDateMillis(), st->SelectedEndDateMillis(), st->GetDisplayMode(), formatter,
                                                              Padding({}, { TitleStart, Dp(0), TitleEnd, HeadlineBottom }), colors.headlineContentColor);
         });
-        std::function<void()> toggle;
+        kiln::Function<void()> toggle;
         if (options.showModeToggle)
             toggle = [st, colors] {
                 mi::DisplayModeToggleButton(Padding({}, { Dp(0), Dp(0), Dp(12), Dp(12) }), st->GetDisplayMode(),

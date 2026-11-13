@@ -1,4 +1,5 @@
 #include "kiln/foundation/Lighting.h"
+#include <kiln/Function.h>
 
 #include "kiln/graphics/ColorSpace.h"
 
@@ -59,7 +60,7 @@ namespace kiln::foundation {
             std::vector<Light> lights;
             SurfaceMaterial material;
             SurfaceGeometrySpec geometry;
-            std::shared_ptr<const std::function<void(IlluminationScope&)>> block;
+            std::shared_ptr<const kiln::Function<void(IlluminationScope&)>> block;
             gfx::BlendMode blend = gfx::BlendMode::SrcOver;
             bool operator==(const IlluminateParams& o) const {
                 return lights == o.lights && material == o.material && geometry == o.geometry && block == o.block && blend == o.blend;
@@ -230,8 +231,8 @@ namespace kiln::foundation {
         return m.With<IlluminateNode>(IlluminateParams{ std::move(lights), std::move(material), std::move(geometry), nullptr, blendMode });
     }
 
-    Modifier Illuminate(Modifier m, std::function<void(IlluminationScope&)> block, gfx::BlendMode blendMode) {
-        return m.With<IlluminateNode>(IlluminateParams{ {}, {}, {}, std::make_shared<const std::function<void(IlluminationScope&)>>(std::move(block)), blendMode });
+    Modifier Illuminate(Modifier m, kiln::Function<void(IlluminationScope&)> block, gfx::BlendMode blendMode) {
+        return m.With<IlluminateNode>(IlluminateParams{ {}, {}, {}, std::make_shared<const kiln::Function<void(IlluminationScope&)>>(std::move(block)), blendMode });
     }
 
     Modifier LightAnchor(Modifier m, LightAnchorState& state) { return m.With<LightAnchorNode>(AnchorParams{ &state }); }

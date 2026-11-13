@@ -1,5 +1,6 @@
 // JNI entry points for dev.kiln.KilnNative and the Choreographer-driven frame loop.
 #include "AndroidText.h"
+#include <kiln/Function.h>
 #include "AndroidDates.h"
 
 namespace kiln::android { void InstallImageDecoder(); void InstallAssetReader(JNIEnv* env, jobject assets); }
@@ -276,11 +277,11 @@ namespace {
         std::optional<kiln::ui::TextClassificationInfo> info;
     };
     struct PendingClassifier {
-        static std::map<int, std::function<void(const ClassifierReply&)>>& Map() {
-            static std::map<int, std::function<void(const ClassifierReply&)>> m;
+        static std::map<int, kiln::Function<void(const ClassifierReply&)>>& Map() {
+            static std::map<int, kiln::Function<void(const ClassifierReply&)>> m;
             return m;
         }
-        static int Add(std::function<void(const ClassifierReply&)> fn) {
+        static int Add(kiln::Function<void(const ClassifierReply&)> fn) {
             static int last = 0;
             Map()[++last] = std::move(fn);
             return last;
@@ -437,7 +438,7 @@ namespace {
     jmethodID g_DialogOpen = nullptr, g_DialogUpdate = nullptr, g_DialogShow = nullptr, g_DialogDismissNative = nullptr;
     jfieldID g_DialogView = nullptr;
     jmethodID g_RequestLayout = nullptr;
-    std::map<int, std::function<void()>> g_DialogDismiss;
+    std::map<int, kiln::Function<void()>> g_DialogDismiss;
 
     void CacheDialogClass(JNIEnv* env) {
         if (g_DialogClass) return;
@@ -463,7 +464,7 @@ namespace {
         jobject dialog = nullptr;
         Win* win = nullptr;
 
-        AndroidDialog(Win* parent, kiln::ui::Owner& content, const kiln::ui::DialogWindowProperties& p, std::function<void()> onDismiss) {
+        AndroidDialog(Win* parent, kiln::ui::Owner& content, const kiln::ui::DialogWindowProperties& p, kiln::Function<void()> onDismiss) {
             JNIEnv* e = MainEnv();
             id = g_NextWinId++;
             auto nw = std::make_unique<Win>();
@@ -551,7 +552,7 @@ namespace {
     void InstallOwnerHosts(JNIEnv* env, Win* w) {
         CacheDialogClass(env);
         // Dialog composables in this window open dialog windows of their own.
-        w->owner->SetDialogHost({ [w](kiln::ui::Owner& content, const kiln::ui::DialogWindowProperties& p, std::function<void()> onDismiss)
+        w->owner->SetDialogHost({ [w](kiln::ui::Owner& content, const kiln::ui::DialogWindowProperties& p, kiln::Function<void()> onDismiss)
                                       -> std::unique_ptr<kiln::ui::PlatformDialog> {
             return std::make_unique<AndroidDialog>(w, content, p, std::move(onDismiss));
         } });

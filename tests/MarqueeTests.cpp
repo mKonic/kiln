@@ -1,5 +1,6 @@
 // basicMarquee: the content scrolls when it overflows, at the velocity, with a copy after the spacing.
 #include "Check.h"
+#include <kiln/Function.h>
 
 #include "kiln/foundation/Compose.h"
 #include "kiln/foundation/Draw.h"
@@ -20,7 +21,7 @@ namespace {
         std::int64_t frameNanos = 0;
         Harness() { owner.SetDensity({ 1, 1 }); }
         ~Harness() { composition.SetContent([] {}); Pump(); }
-        void Run(std::function<void()> content) { composition.SetContent(std::move(content)); Pump(); }
+        void Run(kiln::Function<void()> content) { composition.SetContent(std::move(content)); Pump(); }
         void Pump() {
             for (int i = 0; i < 3; ++i) {
                 rt::Dispatcher::Main().RunPending();

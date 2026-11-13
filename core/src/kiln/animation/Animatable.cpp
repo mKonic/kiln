@@ -1,4 +1,5 @@
 #include "kiln/animation/Animatable.h"
+#include <kiln/Function.h>
 
 #include <algorithm>
 
@@ -36,7 +37,7 @@ namespace kiln::anim {
     }
 
     rt::Task<AnimationResult> Animatable::AnimateDecay(float v0, std::shared_ptr<const DecaySpec> decay,
-                                                        std::function<void(float)> onFrame) {
+                                                        kiln::Function<void(float)> onFrame) {
         const std::uint64_t gen = ++m_Generation;
         const float from = m_Value.Peek()[0];
         const std::int64_t duration = decay->DurationNanos(from, v0);
@@ -64,7 +65,7 @@ namespace kiln::anim {
     }
 
     rt::Task<AnimationResult> Animatable::AnimateTo(Vec target, SpecPtr spec, std::optional<Vec> initialVelocity,
-                                                     std::function<void(const Vec&)> onFrame) {
+                                                     kiln::Function<void(const Vec&)> onFrame) {
         // An interruption-aware spec picks its interruption spec when we are already running.
         if (auto* aware = dynamic_cast<const InterruptionAwareSpec*>(spec.get()))
             spec = m_Running.Peek() ? aware->interruptionSpec : aware->animationSpec;
@@ -104,7 +105,7 @@ namespace kiln::anim {
     }
 
 
-    rt::Task<> Animate(float initialValue, float targetValue, SpecPtr spec, std::function<void(float, float)> block, float initialVelocity) {
+    rt::Task<> Animate(float initialValue, float targetValue, SpecPtr spec, kiln::Function<void(float, float)> block, float initialVelocity) {
         Animatable animatable(initialValue);
         co_await animatable.AnimateTo(Vec{ targetValue, 0, 0, 0 }, std::move(spec), Vec{ initialVelocity, 0, 0, 0 },
                                       [&animatable, &block](const Vec& v) { block(v[0], animatable.Velocity()[0]); });

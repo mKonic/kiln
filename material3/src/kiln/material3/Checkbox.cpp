@@ -1,4 +1,5 @@
 #include "kiln/material3/Checkbox.h"
+#include <kiln/Function.h>
 
 #include "kiln/foundation/Draw.h"
 #include "kiln/foundation/Gestures.h"
@@ -72,12 +73,12 @@ namespace kiln::material3 {
         }
     }
 
-    void Checkbox(bool checked, std::function<void(bool)> change, const ui::Modifier& modifier, const CheckboxOptions& options) {
-        std::function<void()> click;
+    void Checkbox(bool checked, kiln::Function<void(bool)> change, const ui::Modifier& modifier, const CheckboxOptions& options) {
+        kiln::Function<void()> click;
         if (change) click = [change = std::move(change), checked] { change(!checked); };
         TriStateCheckbox(checked ? ToggleableState::On : ToggleableState::Off, std::move(click), modifier, options);
     }
-    void TriStateCheckbox(ToggleableState state, std::function<void()> click, const ui::Modifier& modifier, const CheckboxOptions& options) {
+    void TriStateCheckbox(ToggleableState state, kiln::Function<void()> click, const ui::Modifier& modifier, const CheckboxOptions& options) {
         const bool fixed = ComposeMaterial3Flags::isCheckboxStylingFixEnabled;
         const auto colors = options.colors.value_or(CheckboxDefaults::colors());
         auto m = modifier;

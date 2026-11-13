@@ -5,6 +5,7 @@
 // absorb into them; the content draws through HWUI's stretch distortion.
 
 #include "kiln/foundation/EdgeEffect.h"
+#include <kiln/Function.h>
 #include "kiln/runtime/Composition.h"
 #include "kiln/runtime/State.h"
 #include "kiln/ui/Geometry.h"
@@ -24,7 +25,7 @@ namespace kiln::foundation {
     class OverscrollEffect {
     public:
         // applyToScroll: returns what was consumed in total (stretch + performScroll).
-        Offset ApplyToScroll(Offset delta, NestedScrollSource source, const std::function<Offset(Offset)>& performScroll);
+        Offset ApplyToScroll(Offset delta, NestedScrollSource source, const kiln::Function<Offset(Offset)>& performScroll);
         // Before the fling: the stretch may absorb the velocity (returns what it took).
         Offset ConsumePreFling(Offset velocity);
         // After the fling: leftover velocity is absorbed into the edges.
@@ -40,7 +41,7 @@ namespace kiln::foundation {
         float density = 1;
         // Millisecond clock for pulls and releases (AnimationUtils.currentAnimationTimeMillis);
         // tests replace it.
-        std::function<std::int64_t()> clock;
+        kiln::Function<std::int64_t()> clock;
 
         // withoutVisualEffect / withoutEventHandling: a view of `inner` that dispatches its
         // scroll and fling events but draws nothing (the visual goes elsewhere), or draws it but

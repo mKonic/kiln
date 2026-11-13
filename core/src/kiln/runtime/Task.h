@@ -10,6 +10,7 @@
 //   Job job = Launch(dispatcher, Blink(on));   // job.Cancel() or ~Job stops it
 
 #include <chrono>
+#include <kiln/Function.h>
 #include <coroutine>
 #include <cstdint>
 #include <exception>
@@ -29,7 +30,7 @@ namespace kiln::rt {
         Dispatcher* dispatcher = nullptr;
         bool cancelled = false;
         bool done = false;
-        std::function<void()> unregister;   // removes the current suspension from the dispatcher
+        kiln::Function<void()> unregister;   // removes the current suspension from the dispatcher
         std::coroutine_handle<> root;
         // Resumes of this job's coroutines in progress: a cancel while one runs (the coroutine
         // cancelling itself through what it calls) frees the frames once it returns.
@@ -149,12 +150,12 @@ namespace kiln::rt {
     public:
         using Clock = std::chrono::steady_clock;
 
-        void Post(std::function<void()> fn);
+        void Post(kiln::Function<void()> fn);
         // Post from another thread (a background task handing its result back): queued under a
         // lock, run by the next RunPending on this dispatcher's thread; wakes the host through
         // the remote wake (which must be safe to call from any thread).
-        void PostFromAnyThread(std::function<void()> fn);
-        void SetRemoteWake(std::function<void()> fn) { std::lock_guard lock(m_RemoteMutex); m_RemoteWake = std::move(fn); }
+        void PostFromAnyThread(kiln::Function<void()> fn);
+        void SetRemoteWake(kiln::Function<void()> fn) { std::lock_guard lock(m_RemoteMutex); m_RemoteWake = std::move(fn); }
         // Runs posted work, then due timers. The host calls this before each frame and when idle.
         void RunPending();
         // Resumes every NextFrame() waiter with the same frame time (animations step together).
@@ -175,8 +176,8 @@ namespace kiln::rt {
         bool VirtualTime() const { return m_Virtual; }
 
         // Host hooks: request a frame when someone waits for one, wake when work is posted.
-        std::function<void()> requestFrame;
-        std::function<void()> wake;
+        kiln::Function<void()> requestFrame;
+        kiln::Function<void()> wake;
 
         // Used by the awaitables.
         void AddFrameWaiter(std::coroutine_handle<> h, std::int64_t* out, const std::shared_ptr<JobState>& job);
@@ -187,10 +188,10 @@ namespace kiln::rt {
     private:
         struct FrameWaiter { std::uint64_t id; std::coroutine_handle<> h; std::int64_t* out; std::weak_ptr<JobState> job; };
         struct Timer { std::uint64_t id; Clock::time_point at; std::coroutine_handle<> h; std::weak_ptr<JobState> job; };
-        std::vector<std::function<void()>> m_Queue;
+        std::vector<kiln::Function<void()>> m_Queue;
         std::mutex m_RemoteMutex;
-        std::vector<std::function<void()>> m_Remote;
-        std::function<void()> m_RemoteWake;
+        std::vector<kiln::Function<void()>> m_Remote;
+        kiln::Function<void()> m_RemoteWake;
         std::vector<FrameWaiter> m_FrameWaiters;
         std::vector<Timer> m_Timers;
         std::uint64_t m_NextId = 1;

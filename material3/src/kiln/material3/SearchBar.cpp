@@ -1,4 +1,5 @@
 #include "kiln/material3/SearchBar.h"
+#include <kiln/Function.h>
 
 #include "kiln/animation/Easing.h"
 #include "kiln/foundation/Animate.h"
@@ -118,7 +119,7 @@ namespace kiln::material3 {
     }
 
     namespace {
-        rt::Task<> AnimateFloat(std::shared_ptr<anim::Animatable> a, float target, anim::SpecPtr spec, std::function<void()> onFrame = {}) {
+        rt::Task<> AnimateFloat(std::shared_ptr<anim::Animatable> a, float target, anim::SpecPtr spec, kiln::Function<void()> onFrame = {}) {
             co_await a->AnimateTo(anim::Vec{ target, 0, 0, 0 }, std::move(spec), std::nullopt, [onFrame](const anim::Vec&) { if (onFrame) onFrame(); });
             if (onFrame) onFrame();
         }
@@ -251,7 +252,7 @@ namespace kiln::material3 {
 
         struct EnterAlwaysSearchBarScrollBehavior final : SearchBarScrollBehavior, ui::NestedScrollConnection {
             std::shared_ptr<SearchBarScrollState> state;
-            std::function<bool()> canScroll;
+            kiln::Function<bool()> canScroll;
             bool reverseLayout = false;
             anim::SpecPtr snap;
             std::shared_ptr<const anim::DecaySpec> fling;
@@ -338,7 +339,7 @@ namespace kiln::material3 {
         }
         WindowInsets fullScreenWindowInsets() { return WindowInsets::SafeDrawing(); }
 
-        std::shared_ptr<SearchBarScrollBehavior> enterAlwaysSearchBarScrollBehavior(std::shared_ptr<SearchBarScrollState> scrollState, std::function<bool()> canScroll,
+        std::shared_ptr<SearchBarScrollBehavior> enterAlwaysSearchBarScrollBehavior(std::shared_ptr<SearchBarScrollState> scrollState, kiln::Function<bool()> canScroll,
                                                                                    anim::SpecPtr snap, std::shared_ptr<const anim::DecaySpec> fling, bool reverseLayout) {
             auto& c = *rt::Composition::Current();
             if (!scrollState) scrollState = RememberSearchBarScrollState();
@@ -432,7 +433,7 @@ namespace kiln::material3 {
             std::shared_ptr<MutableInteractionSource> source;
             TextFieldColors colors;
             bool expanded = false;
-            std::function<void(std::string)> onSearch;
+            kiln::Function<void(std::string)> onSearch;
             ui::Modifier modifier;   // the caller's, with the bar's own handlers after it
             bool ringFocus = false;
         };
@@ -464,7 +465,7 @@ namespace kiln::material3 {
                 b.keyboardOptions.imeAction = ui::ImeAction::Search;
                 TextFieldState* st = &state;
                 const auto onSearch = p.onSearch;
-                b.onKeyboardAction = [st, onSearch](std::function<void()>) { if (onSearch) onSearch(st->TextUtf8()); };
+                b.onKeyboardAction = [st, onSearch](kiln::Function<void()>) { if (onSearch) onSearch(st->TextUtf8()); };
                 b.lineLimits = o.lineLimits;
                 b.interactionSource = p.source;
                 b.inputTransformation = o.inputTransformation;
@@ -481,7 +482,7 @@ namespace kiln::material3 {
                     slots.trailingIcon = [icon = o.trailingIcon] { Box(OffsetMod({}, Dp(-internal::SearchBarIconOffsetX.value), Dp(0)), Alignment::TopStart(), false, icon); };
                 slots.prefix = o.prefix;
                 slots.suffix = o.suffix;
-                b.decorator = [=](const std::function<void()>& inner) {
+                b.decorator = [=](const kiln::Function<void()>& inner) {
                     internal::CommonDecorationBox(VisualText(*st, output), inner, TextFieldLabelPosition::Inside(), slots, singleLine, enabled, false, source,
                                                   TextFieldDefaults::contentPaddingWithoutLabel(), colors, [=] {
                                                       const Color container = AnimateColorAsState(colors.ContainerColor(enabled, false, source->IsFocused()),
@@ -495,7 +496,7 @@ namespace kiln::material3 {
     }
 
     namespace SearchBarDefaults {
-        void InputField(TextFieldState& textFieldState, std::shared_ptr<SearchBarState> bar, std::function<void(std::string)> onSearch, const ui::Modifier& modifier,
+        void InputField(TextFieldState& textFieldState, std::shared_ptr<SearchBarState> bar, kiln::Function<void(std::string)> onSearch, const ui::Modifier& modifier,
                         const SearchBarInputFieldOptions& o) {
             auto& c = *rt::Composition::Current();
             const auto source = o.interactionSource ? o.interactionSource : RememberInteractionSource();
@@ -535,7 +536,7 @@ namespace kiln::material3 {
 
             // Most touch expansions come from the focus change; after focusing by keyboard, a
             // later tap does not change focus, so a press released on the field expands too.
-            c.DisposableEffect(rt::Keys(reinterpret_cast<std::uintptr_t>(source.get())), [source, bar, scope]() -> std::function<void()> {
+            c.DisposableEffect(rt::Keys(reinterpret_cast<std::uintptr_t>(source.get())), [source, bar, scope]() -> kiln::Function<void()> {
                 const std::uint64_t token = source->Subscribe([bar, scope](const Interaction& i) {
                     if (i.kind == Interaction::Kind::Press && i.phase == Interaction::Phase::End && !bar->IsExpanded()) scope->Launch(ExpandBar(bar));
                 });
@@ -555,7 +556,7 @@ namespace kiln::material3 {
             });
         }
 
-        void InputField(TextFieldState& state, std::function<void(std::string)> onSearch, bool expanded, std::function<void(bool)> onExpandedChange,
+        void InputField(TextFieldState& state, kiln::Function<void(std::string)> onSearch, bool expanded, kiln::Function<void(bool)> onExpandedChange,
                         const ui::Modifier& modifier, const SearchBarInputFieldOptions& o) {
             auto& c = *rt::Composition::Current();
             const auto source = o.interactionSource ? o.interactionSource : RememberInteractionSource();

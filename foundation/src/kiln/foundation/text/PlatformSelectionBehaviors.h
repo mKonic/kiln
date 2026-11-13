@@ -7,6 +7,7 @@
 // Up follow the text items.
 
 #include "kiln/foundation/text/contextmenu/TextContextMenu.h"
+#include <kiln/Function.h>
 #include "kiln/foundation/text/input/TextFieldBuffer.h"
 #include "kiln/runtime/State.h"
 #include "kiln/runtime/Task.h"
@@ -49,7 +50,7 @@ namespace kiln::foundation {
         // before `child`'s items, the other actions after (all when the kept result is for this
         // text and selection).
         void AddSmartSelectionTextContextMenuItems(TextContextMenuBuilderScope& scope, const std::u16string& text, TextRange selection,
-                                                   const std::function<void(TextContextMenuBuilderScope&)>& child);
+                                                   const kiln::Function<void(TextContextMenuBuilderScope&)>& child);
 
     private:
         struct Result {
@@ -74,7 +75,7 @@ namespace kiln::foundation {
     // behaviors, then the process text items.
     void AddPlatformTextContextMenuItems(TextContextMenuBuilderScope& scope, ui::Owner* owner, bool editable, const std::u16string* text,
                                          std::optional<TextRange> selection, PlatformSelectionBehaviors* behaviors,
-                                         const std::function<void(TextContextMenuBuilderScope&)>& child);
+                                         const kiln::Function<void(TextContextMenuBuilderScope&)>& child);
     // addProcessedTextContextMenuItems: one item per ACTION_PROCESS_TEXT activity, between
     // separators, for a non-empty selection.
     void AddProcessedTextContextMenuItems(TextContextMenuBuilderScope& scope, ui::Owner* owner, bool editable, const std::u16string& text,

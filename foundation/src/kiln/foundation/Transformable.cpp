@@ -1,4 +1,5 @@
 #include "kiln/foundation/Transformable.h"
+#include <kiln/Function.h>
 
 #include <algorithm>
 #include <optional>
@@ -7,7 +8,7 @@ namespace kiln::foundation {
 
     // --- TransformableState ------------------------------------------------------------------
 
-    std::uint64_t TransformableState::BeginTransform(MutatePriority priority, std::function<void()> stop) {
+    std::uint64_t TransformableState::BeginTransform(MutatePriority priority, kiln::Function<void()> stop) {
         // MutatorMutex.mutate: only the same or a higher priority interrupts.
         if (m_Running && priority < m_Priority) return 0;
         if (m_Running) {
@@ -44,7 +45,7 @@ namespace kiln::foundation {
 
         struct TransformBox {
             TransformableState* state = nullptr;
-            std::function<bool(Offset)> canPan;
+            kiln::Function<bool(Offset)> canPan;
             bool CanPan(Offset d) const { return !canPan || canPan(d); }
         };
 
@@ -234,7 +235,7 @@ namespace kiln::foundation {
         }
     }
 
-    Modifier Transformable(Modifier m, TransformableState& state, std::function<bool(Offset)> canPan,
+    Modifier Transformable(Modifier m, TransformableState& state, kiln::Function<bool(Offset)> canPan,
                            bool lockRotationOnZoomPan, bool enabled) {
         auto box = std::make_shared<TransformBox>();
         if (auto* c = rt::Composition::Current()) box = c->Remember<std::shared_ptr<TransformBox>>([&] { return box; });

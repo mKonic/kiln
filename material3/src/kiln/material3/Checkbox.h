@@ -3,6 +3,7 @@
 // Checkbox.kt: nullable callbacks, tri-state morphs, configurable strokes and thirteen colors.
 
 #include "kiln/foundation/Interaction.h"
+#include <kiln/Function.h>
 #include "kiln/graphics/Path.h"
 #include "kiln/ui/ToggleableState.h"
 
@@ -37,8 +38,8 @@ namespace kiln::material3 {
         std::optional<gfx::Stroke> checkmarkStroke, outlineStroke;
         std::shared_ptr<foundation::MutableInteractionSource> interactionSource;
     };
-    void Checkbox(bool checked, std::function<void(bool)> onCheckedChange, const ui::Modifier& modifier = {}, const CheckboxOptions& options = {});
-    void TriStateCheckbox(ToggleableState state, std::function<void()> onClick, const ui::Modifier& modifier = {}, const CheckboxOptions& options = {});
+    void Checkbox(bool checked, kiln::Function<void(bool)> onCheckedChange, const ui::Modifier& modifier = {}, const CheckboxOptions& options = {});
+    void TriStateCheckbox(ToggleableState state, kiln::Function<void()> onClick, const ui::Modifier& modifier = {}, const CheckboxOptions& options = {});
     namespace CheckboxDefaults {
         inline constexpr ui::Dp StrokeWidth{ 2 };
         CheckboxColors colors();

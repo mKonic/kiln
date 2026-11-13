@@ -12,6 +12,7 @@
 // Styles combine with Then (the later one wins where both provide a property).
 
 #include "kiln/animation/Spec.h"
+#include <kiln/Function.h>
 #include "kiln/foundation/style/StyleProperty.h"
 #include "kiln/foundation/style/StyleState.h"
 #include "kiln/ui/LayoutNode.h"
@@ -39,7 +40,7 @@ namespace kiln::foundation {
     template<typename Scope>
     class CustomStyle {
     public:
-        using Block = std::function<void(Scope&)>;
+        using Block = kiln::Function<void(Scope&)>;
         CustomStyle() = default;
         CustomStyle(Block block) {
             if (block) m_Parts.push_back(std::make_shared<const Block>(std::move(block)));
@@ -61,10 +62,10 @@ namespace kiln::foundation {
     class AnimateStyleScope {
     public:
         virtual ~AnimateStyleScope() = default;
-        virtual void Animate(anim::SpecPtr toSpec, anim::SpecPtr fromSpec, const std::function<void()>& block) = 0;
+        virtual void Animate(anim::SpecPtr toSpec, anim::SpecPtr fromSpec, const kiln::Function<void()>& block) = 0;
         // animate(block): the default spring both ways; animate(spec, block): `spec` both ways.
-        void Animate(const std::function<void()>& block) { Animate(DefaultSpec(), DefaultSpec(), block); }
-        void Animate(anim::SpecPtr spec, const std::function<void()>& block) { Animate(spec, spec, block); }
+        void Animate(const kiln::Function<void()>& block) { Animate(DefaultSpec(), DefaultSpec(), block); }
+        void Animate(anim::SpecPtr spec, const kiln::Function<void()>& block) { Animate(spec, spec, block); }
         static const anim::SpecPtr& DefaultSpec();
     };
 
@@ -74,23 +75,23 @@ namespace kiln::foundation {
         virtual ~StyleStateScope() = default;
         virtual const StyleState& State() const = 0;
         template<typename T>
-        void State(const StyleStateKey<T>& key, const std::function<void()>& block,
-                   const std::function<bool(const StyleStateKey<T>&, const StyleState&)>& active) {
+        void State(const StyleStateKey<T>& key, const kiln::Function<void()>& block,
+                   const kiln::Function<bool(const StyleStateKey<T>&, const StyleState&)>& active) {
             StateAny(key, block, [&] { return active(key, State()); });
         }
-        virtual void StateAny(const StyleStateKeyBase& key, const std::function<void()>& block, const std::function<bool()>& active) = 0;
+        virtual void StateAny(const StyleStateKeyBase& key, const kiln::Function<void()>& block, const kiln::Function<bool()>& active) = 0;
     };
     // state(key, block) for a Boolean key, and the predefined states.
-    void State(StyleStateScope& scope, const StyleStateKey<bool>& key, const std::function<void()>& block);
-    void Pressed(StyleStateScope& scope, const std::function<void()>& block);
-    void Hovered(StyleStateScope& scope, const std::function<void()>& block);
-    void Focused(StyleStateScope& scope, const std::function<void()>& block);
-    void Selected(StyleStateScope& scope, const std::function<void()>& block);
-    void Disabled(StyleStateScope& scope, const std::function<void()>& block);
-    void Checked(StyleStateScope& scope, const std::function<void()>& block);
-    void TriStateToggleOn(StyleStateScope& scope, const std::function<void()>& block);
-    void TriStateToggleOff(StyleStateScope& scope, const std::function<void()>& block);
-    void TriStateToggleIndeterminate(StyleStateScope& scope, const std::function<void()>& block);
+    void State(StyleStateScope& scope, const StyleStateKey<bool>& key, const kiln::Function<void()>& block);
+    void Pressed(StyleStateScope& scope, const kiln::Function<void()>& block);
+    void Hovered(StyleStateScope& scope, const kiln::Function<void()>& block);
+    void Focused(StyleStateScope& scope, const kiln::Function<void()>& block);
+    void Selected(StyleStateScope& scope, const kiln::Function<void()>& block);
+    void Disabled(StyleStateScope& scope, const kiln::Function<void()>& block);
+    void Checked(StyleStateScope& scope, const kiln::Function<void()>& block);
+    void TriStateToggleOn(StyleStateScope& scope, const kiln::Function<void()>& block);
+    void TriStateToggleOff(StyleStateScope& scope, const kiln::Function<void()>& block);
+    void TriStateToggleIndeterminate(StyleStateScope& scope, const kiln::Function<void()>& block);
 
     // NestedStyleKey: names a nested style (identity is the key's address).
     class NestedStyleKey {
@@ -116,7 +117,7 @@ namespace kiln::foundation {
     class StyleLayerScope {
     public:
         virtual ~StyleLayerScope() = default;
-        virtual void StyleLayer(const std::function<void()>& block) = 0;
+        virtual void StyleLayer(const kiln::Function<void()>& block) = 0;
     };
 
     class CommonStyleScope : public CustomStyleScope,

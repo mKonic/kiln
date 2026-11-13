@@ -5,6 +5,7 @@
 // place SubcomposeLayout was composed.
 
 #include "kiln/foundation/Layouts.h"
+#include <kiln/Function.h>
 #include "kiln/runtime/Composition.h"
 #include "kiln/ui/LayoutNode.h"
 
@@ -23,14 +24,14 @@ namespace kiln::foundation {
     public:
         explicit SubcomposeMeasureScope(const MeasureScope& s) : MeasureScope(s) {}
         // Composes `content` for `slotId` (once per measure) and returns its root layouts.
-        virtual std::vector<Measurable*> Subcompose(rt::Key slotId, std::function<void()> content) = 0;
+        virtual std::vector<Measurable*> Subcompose(rt::Key slotId, kiln::Function<void()> content) = 0;
         // Content kept by identity, as Compose compares a slot's content lambda: the slot
         // recomposes only when `content` is another object or something it read changed. State
         // it reads (set before this call) stands in for arguments that change.
-        virtual std::vector<Measurable*> Subcompose(rt::Key slotId, const std::shared_ptr<const std::function<void()>>& content) = 0;
+        virtual std::vector<Measurable*> Subcompose(rt::Key slotId, const std::shared_ptr<const kiln::Function<void()>>& content) = 0;
     };
 
-    using SubcomposeMeasure = std::function<MeasureResult(SubcomposeMeasureScope&, const Constraints&)>;
+    using SubcomposeMeasure = kiln::Function<MeasureResult(SubcomposeMeasureScope&, const Constraints&)>;
 
     void SubcomposeLayout(const Modifier& modifier, SubcomposeMeasure measure, rt::Key key = {});
 
@@ -48,8 +49,8 @@ namespace kiln::foundation {
             void Clear() { m_Ids.clear(); }
             std::size_t Size() const { return m_Ids.size(); }
             bool IsEmpty() const { return m_Ids.empty(); }
-            void RemoveIf(const std::function<bool(const rt::Key&)>& pred) { std::erase_if(m_Ids, pred); }
-            void RetainIf(const std::function<bool(const rt::Key&)>& pred) { std::erase_if(m_Ids, [&](const rt::Key& k) { return !pred(k); }); }
+            void RemoveIf(const kiln::Function<bool(const rt::Key&)>& pred) { std::erase_if(m_Ids, pred); }
+            void RetainIf(const kiln::Function<bool(const rt::Key&)>& pred) { std::erase_if(m_Ids, [&](const rt::Key& k) { return !pred(k); }); }
             const std::vector<rt::Key>& Ids() const { return m_Ids; }
         private:
             std::vector<rt::Key> m_Ids;
@@ -94,7 +95,7 @@ namespace kiln::foundation {
             friend class SubcomposeLayoutState;
             SubcomposeLayoutState* m_Owner = nullptr;
             rt::Key m_Slot = rt::Key::Positional();
-            std::function<void()> m_Content;
+            kiln::Function<void()> m_Content;
             PrecomposedSlotHandle m_Handle;
             bool m_Complete = false;
             bool m_Cancelled = false;
@@ -103,9 +104,9 @@ namespace kiln::foundation {
         SubcomposeLayoutState();
         explicit SubcomposeLayoutState(std::shared_ptr<SubcomposeSlotReusePolicy> slotReusePolicy);
         // Composes `content` for `slotId` now (nothing when the layout is not composed yet).
-        PrecomposedSlotHandle Precompose(rt::Key slotId, std::function<void()> content);
+        PrecomposedSlotHandle Precompose(rt::Key slotId, kiln::Function<void()> content);
         // createPausedPrecomposition
-        PausedPrecomposition CreatePausedPrecomposition(rt::Key slotId, std::function<void()> content);
+        PausedPrecomposition CreatePausedPrecomposition(rt::Key slotId, kiln::Function<void()> content);
         const std::shared_ptr<SubcomposeSlotReusePolicy>& SlotReusePolicy() const { return m_Policy; }
         std::shared_ptr<void> Impl() const { return m_Impl; }
 
@@ -126,8 +127,8 @@ namespace kiln::foundation {
     };
 
     void BoxWithConstraints(const Modifier& modifier, Alignment contentAlignment, bool propagateMinConstraints,
-                            std::function<void(const BoxWithConstraintsScope&)> content, rt::Key key = {});
-    inline void BoxWithConstraints(const Modifier& modifier, std::function<void(const BoxWithConstraintsScope&)> content) {
+                            kiln::Function<void(const BoxWithConstraintsScope&)> content, rt::Key key = {});
+    inline void BoxWithConstraints(const Modifier& modifier, kiln::Function<void(const BoxWithConstraintsScope&)> content) {
         BoxWithConstraints(modifier, Alignment::TopStart(), false, std::move(content));
     }
 

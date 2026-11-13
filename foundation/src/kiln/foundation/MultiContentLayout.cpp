@@ -1,4 +1,5 @@
 #include "kiln/foundation/Compose.h"
+#include <kiln/Function.h>
 
 #include "kiln/ui/LayoutNode.h"
 
@@ -40,7 +41,7 @@ namespace kiln::foundation {
         };
     }
 
-    LayoutNode& Layout(const Modifier& modifier, std::vector<std::function<void()>> contents, std::shared_ptr<MultiContentMeasurePolicy> policy, Key key) {
+    LayoutNode& Layout(const Modifier& modifier, std::vector<kiln::Function<void()>> contents, std::shared_ptr<MultiContentMeasurePolicy> policy, Key key) {
         auto adapter = std::make_shared<MultiContentAdapter>();
         adapter->policy = std::move(policy);
         adapter->count = contents.size();

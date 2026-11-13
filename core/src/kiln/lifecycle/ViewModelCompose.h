@@ -9,6 +9,7 @@
 //   - LocalSavedStateRegistryOwner (savedstate-compose): where SavedStateHandles save.
 
 #include "kiln/lifecycle/LifecycleCompose.h"
+#include <kiln/Function.h>
 #include "kiln/lifecycle/SavedStateHandle.h"
 
 namespace kiln::lifecycle {
@@ -54,7 +55,7 @@ namespace kiln::lifecycle {
     // restored from the handle, else init(); the value as it is now is saved (a saver turns it
     // into a SavedValue). The property-delegate forms have no C++ counterpart.
     template<typename T>
-    T Saveable(SavedStateHandle& handle, const std::string& key, rt::Saver<T> saver, const std::function<T()>& init) {
+    T Saveable(SavedStateHandle& handle, const std::string& key, rt::Saver<T> saver, const kiln::Function<T()>& init) {
         std::optional<T> value;
         if (auto stored = handle.Get(key)) {
             const auto m = SavedStateMap(*stored);
@@ -65,11 +66,11 @@ namespace kiln::lifecycle {
         return *value;
     }
     template<typename T>
-    T Saveable(SavedStateHandle& handle, const std::string& key, const std::function<T()>& init) { return Saveable<T>(handle, key, rt::AutoSaver<T>(), init); }
+    T Saveable(SavedStateHandle& handle, const std::string& key, const kiln::Function<T()>& init) { return Saveable<T>(handle, key, rt::AutoSaver<T>(), init); }
     // saveable(key, stateSaver, init) for state: the state's latest value is what is saved.
     template<typename T>
     std::shared_ptr<rt::State<T>> SaveableState(SavedStateHandle& handle, const std::string& key, rt::Saver<T> stateSaver,
-                                                const std::function<std::shared_ptr<rt::State<T>>()>& init) {
+                                                const kiln::Function<std::shared_ptr<rt::State<T>>()>& init) {
         std::shared_ptr<rt::State<T>> state;
         if (auto stored = handle.Get(key)) {
             const auto m = SavedStateMap(*stored);

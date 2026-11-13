@@ -7,6 +7,7 @@
 // starting anything (getSynchronousResult).
 
 #include "kiln/ui/Credentials.h"
+#include <kiln/Function.h>
 
 #include <functional>
 #include <map>
@@ -40,11 +41,11 @@ namespace kiln::ui {
     // permission check contracts use for their synchronous results.
     struct ActivityResultHost {
         // registerKey; the host then delivers a result kept for the key (DispatchActivityResult).
-        std::function<void(const std::string& key)> registerKey;
-        std::function<void(const std::string& key)> unregister;
+        kiln::Function<void(const std::string& key)> registerKey;
+        kiln::Function<void(const std::string& key)> unregister;
         // False when no activity handles the intent.
-        std::function<bool(const std::string& key, const Intent& intent)> launch;
-        std::function<bool(const std::string& permission)> checkSelfPermission;
+        kiln::Function<bool(const std::string& key, const Intent& intent)> launch;
+        kiln::Function<bool(const std::string& permission)> checkSelfPermission;
     };
 
     class ActivityResultRegistry {
@@ -53,7 +54,7 @@ namespace kiln::ui {
         const ActivityResultHost& Host() const { return m_Host; }
 
         // register(key, contract, callback): `deliver` gets each raw result for the key.
-        void Register(const std::string& key, std::function<void(const ActivityResult&)> deliver) {
+        void Register(const std::string& key, kiln::Function<void(const ActivityResult&)> deliver) {
             m_Callbacks[key] = std::move(deliver);
             if (m_Host.registerKey) m_Host.registerKey(key);
             if (auto it = m_ParsedPending.find(key); it != m_ParsedPending.end()) {
@@ -81,7 +82,7 @@ namespace kiln::ui {
         }
         // dispatchResult(requestCode, result) for a synchronous result: to the callback now, or
         // kept until one registers. `deliver` calls the parsed callback.
-        void DispatchParsed(const std::string& key, std::function<void()> deliver, bool hasCallback) {
+        void DispatchParsed(const std::string& key, kiln::Function<void()> deliver, bool hasCallback) {
             if (hasCallback) deliver();
             else m_ParsedPending[key] = std::move(deliver);
         }
@@ -89,8 +90,8 @@ namespace kiln::ui {
 
     private:
         ActivityResultHost m_Host;
-        std::map<std::string, std::function<void(const ActivityResult&)>> m_Callbacks;
-        std::map<std::string, std::function<void()>> m_ParsedPending;
+        std::map<std::string, kiln::Function<void(const ActivityResult&)>> m_Callbacks;
+        std::map<std::string, kiln::Function<void()>> m_ParsedPending;
     };
 
 }

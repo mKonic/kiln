@@ -12,6 +12,7 @@
 // lookups have no kiln counterpart: kiln apps have no Application object or View tree.
 
 #include "kiln/runtime/CoroutineScope.h"
+#include <kiln/Function.h>
 
 #include <any>
 #include <functional>
@@ -36,7 +37,7 @@ namespace kiln::lifecycle {
         virtual ~AutoCloseable() = default;
         virtual void Close() = 0;
     };
-    std::shared_ptr<AutoCloseable> MakeCloseable(std::function<void()> close);
+    std::shared_ptr<AutoCloseable> MakeCloseable(kiln::Function<void()> close);
 
     class ViewModel {
     public:
@@ -97,7 +98,7 @@ namespace kiln::lifecycle {
         void Put(const std::string& key, std::shared_ptr<ViewModel> viewModel);
         std::shared_ptr<ViewModel> Get(const std::string& key) const;
         template<typename T>
-        std::shared_ptr<T> GetOrPut(const std::string& key, const std::function<std::shared_ptr<T>()>& make) {
+        std::shared_ptr<T> GetOrPut(const std::string& key, const kiln::Function<std::shared_ptr<T>()>& make) {
             auto it = m_Map.find(key);
             if (it == m_Map.end()) it = m_Map.emplace(key, make()).first;
             return std::static_pointer_cast<T>(it->second);
@@ -153,16 +154,16 @@ namespace kiln::lifecycle {
     MutableCreationExtras operator+(const CreationExtras& a, const CreationExtras& b);
     // CreationExtras(initialExtras, builderAction)
     MutableCreationExtras MakeCreationExtras(const CreationExtras& initial = CreationExtras::Empty(),
-                                             const std::function<void(MutableCreationExtras&)>& builder = {});
+                                             const kiln::Function<void(MutableCreationExtras&)>& builder = {});
 
     // KClass for ViewModels.
     struct ViewModelClass {
         std::type_index type;
         std::string name;
-        std::function<std::shared_ptr<ViewModel>()> newInstance;   // empty without a default constructor
+        kiln::Function<std::shared_ptr<ViewModel>()> newInstance;   // empty without a default constructor
         bool (*isInstance)(const ViewModel*) = nullptr;            // KClass.isInstance
         // A constructor taking the ViewModel's SavedStateHandle (SavedStateViewModelFactory).
-        std::function<std::shared_ptr<ViewModel>(std::shared_ptr<SavedStateHandle>)> newWithSavedStateHandle;
+        kiln::Function<std::shared_ptr<ViewModel>(std::shared_ptr<SavedStateHandle>)> newWithSavedStateHandle;
         bool operator==(const ViewModelClass& o) const { return type == o.type; }
 
         template<typename VM>
@@ -234,17 +235,17 @@ namespace kiln::lifecycle {
     // viewModelFactory { initializer { ... } }
     class ViewModelInitializer {
     public:
-        ViewModelInitializer(ViewModelClass clazz, std::function<std::shared_ptr<ViewModel>(const CreationExtras&)> initializer)
+        ViewModelInitializer(ViewModelClass clazz, kiln::Function<std::shared_ptr<ViewModel>(const CreationExtras&)> initializer)
             : clazz(std::move(clazz)), initializer(std::move(initializer)) {}
         ViewModelClass clazz;
-        std::function<std::shared_ptr<ViewModel>(const CreationExtras&)> initializer;
+        kiln::Function<std::shared_ptr<ViewModel>(const CreationExtras&)> initializer;
     };
     class InitializerViewModelFactoryBuilder {
     public:
         // One initializer per class (std::invalid_argument for a second).
-        void AddInitializer(const ViewModelClass& clazz, std::function<std::shared_ptr<ViewModel>(const CreationExtras&)> initializer);
+        void AddInitializer(const ViewModelClass& clazz, kiln::Function<std::shared_ptr<ViewModel>(const CreationExtras&)> initializer);
         template<typename VM>
-        void AddInitializer(std::function<std::shared_ptr<VM>(const CreationExtras&)> initializer) {
+        void AddInitializer(kiln::Function<std::shared_ptr<VM>(const CreationExtras&)> initializer) {
             AddInitializer(ViewModelClass::Of<VM>(), [f = std::move(initializer)](const CreationExtras& e) -> std::shared_ptr<ViewModel> { return f(e); });
         }
         ViewModelProvider::FactoryPtr Build() const;
@@ -254,16 +255,16 @@ namespace kiln::lifecycle {
     // initializer<VM> { ... }
     template<typename VM, typename F>
     void Initializer(InitializerViewModelFactoryBuilder& builder, F initializer) {
-        builder.AddInitializer<VM>(std::function<std::shared_ptr<VM>(const CreationExtras&)>(std::move(initializer)));
+        builder.AddInitializer<VM>(kiln::Function<std::shared_ptr<VM>(const CreationExtras&)>(std::move(initializer)));
     }
-    ViewModelProvider::FactoryPtr ViewModelFactory(const std::function<void(InitializerViewModelFactoryBuilder&)>& builder);
+    ViewModelProvider::FactoryPtr ViewModelFactory(const kiln::Function<void(InitializerViewModelFactoryBuilder&)>& builder);
 
     // ViewModelLazy: the ViewModel fetched on first Value().
     template<typename VM>
     class ViewModelLazy {
     public:
-        ViewModelLazy(std::function<ViewModelStore&()> storeProducer, std::function<ViewModelProvider::FactoryPtr()> factoryProducer,
-                      std::function<MutableCreationExtras()> extrasProducer = [] { return MutableCreationExtras(); })
+        ViewModelLazy(kiln::Function<ViewModelStore&()> storeProducer, kiln::Function<ViewModelProvider::FactoryPtr()> factoryProducer,
+                      kiln::Function<MutableCreationExtras()> extrasProducer = [] { return MutableCreationExtras(); })
             : m_Store(std::move(storeProducer)), m_Factory(std::move(factoryProducer)), m_Extras(std::move(extrasProducer)) {}
         const std::shared_ptr<VM>& Value() {
             if (!m_Cached) m_Cached = ViewModelProvider::Create(m_Store(), m_Factory(), m_Extras()).template Get<VM>();
@@ -271,9 +272,9 @@ namespace kiln::lifecycle {
         }
         bool IsInitialized() const { return m_Cached != nullptr; }
     private:
-        std::function<ViewModelStore&()> m_Store;
-        std::function<ViewModelProvider::FactoryPtr()> m_Factory;
-        std::function<MutableCreationExtras()> m_Extras;
+        kiln::Function<ViewModelStore&()> m_Store;
+        kiln::Function<ViewModelProvider::FactoryPtr()> m_Factory;
+        kiln::Function<MutableCreationExtras()> m_Extras;
         std::shared_ptr<VM> m_Cached;
     };
 

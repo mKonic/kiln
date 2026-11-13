@@ -5,6 +5,7 @@
 // at the end in a row (confirm last) that wraps into a column (confirm first).
 
 #include "kiln/foundation/Dialog.h"
+#include <kiln/Function.h>
 #include "kiln/foundation/Shapes.h"
 #include "kiln/ui/Modifier.h"
 
@@ -25,17 +26,17 @@ namespace kiln::material3 {
 
     // BasicAlertDialog: the dialog window, its content between the minimum and maximum widths,
     // announced as a dialog pane.
-    void BasicAlertDialog(std::function<void()> onDismissRequest, const ui::Modifier& modifier, const foundation::DialogProperties& properties,
-                          std::function<void()> content);
+    void BasicAlertDialog(kiln::Function<void()> onDismissRequest, const ui::Modifier& modifier, const foundation::DialogProperties& properties,
+                          kiln::Function<void()> content);
 
     struct AlertDialogOptions {
-        std::function<void()> dismissButton, icon, title, text;
+        kiln::Function<void()> dismissButton, icon, title, text;
         foundation::ShapePtr shape;   // null: AlertDialogDefaults::shape
         std::optional<ui::Color> containerColor, iconContentColor, titleContentColor, textContentColor;
         ui::Dp tonalElevation = AlertDialogDefaults::TonalElevation;
         foundation::DialogProperties properties;
     };
-    void AlertDialog(std::function<void()> onDismissRequest, std::function<void()> confirmButton, const ui::Modifier& modifier = {},
+    void AlertDialog(kiln::Function<void()> onDismissRequest, kiln::Function<void()> confirmButton, const ui::Modifier& modifier = {},
                      const AlertDialogOptions& options = {});
 
 }

@@ -4,6 +4,7 @@
 // items that do not fit, or are past maxItemCount, into an overflow menu.
 
 #include "kiln/foundation/Interaction.h"
+#include <kiln/Function.h>
 #include "kiln/foundation/Shapes.h"
 #include "kiln/material3/IconButton.h"
 #include "kiln/runtime/State.h"
@@ -32,8 +33,8 @@ namespace kiln::material3 {
     namespace internal {
         // An item: how it shows in the bar and how in the overflow menu.
         struct AppBarItem {
-            std::function<void()> appbarContent;
-            std::function<void(AppBarMenuState&)> menuContent;
+            kiln::Function<void()> appbarContent;
+            kiln::Function<void(AppBarMenuState&)> menuContent;
         };
     }
 
@@ -41,11 +42,11 @@ namespace kiln::material3 {
     class AppBarScope {
     public:
         // An IconButton with a tooltip; in the menu an item that runs onClick and closes the menu.
-        void ClickableItem(std::function<void()> onClick, std::function<void()> icon, std::string label, bool enabled = true);
+        void ClickableItem(kiln::Function<void()> onClick, kiln::Function<void()> icon, std::string label, bool enabled = true);
         // An IconToggleButton with a tooltip; in the menu an item that flips it.
-        void ToggleableItem(bool checked, std::function<void(bool)> onCheckedChange, std::function<void()> icon, std::string label,
+        void ToggleableItem(bool checked, kiln::Function<void(bool)> onCheckedChange, kiln::Function<void()> icon, std::string label,
                             bool enabled = true);
-        void CustomItem(std::function<void()> appbarContent, std::function<void(AppBarMenuState&)> menuContent);
+        void CustomItem(kiln::Function<void()> appbarContent, kiln::Function<void(AppBarMenuState&)> menuContent);
 
         const std::vector<internal::AppBarItem>& Items() const { return m_Items; }
 
@@ -57,14 +58,14 @@ namespace kiln::material3 {
 
     // Unset overflowIndicator: AppBarOverflowIndicator. With more items than maxItemCount, at most
     // maxItemCount - 1 show, the last place going to the indicator.
-    void AppBarRow(const ui::Modifier& modifier, std::function<void(AppBarMenuState&)> overflowIndicator, int maxItemCount,
-                   std::function<void(AppBarScope&)> content);
-    inline void AppBarRow(const ui::Modifier& modifier, std::function<void(AppBarScope&)> content) {
+    void AppBarRow(const ui::Modifier& modifier, kiln::Function<void(AppBarMenuState&)> overflowIndicator, int maxItemCount,
+                   kiln::Function<void(AppBarScope&)> content);
+    inline void AppBarRow(const ui::Modifier& modifier, kiln::Function<void(AppBarScope&)> content) {
         AppBarRow(modifier, {}, INT_MAX, std::move(content));
     }
-    void AppBarColumn(const ui::Modifier& modifier, std::function<void(AppBarMenuState&)> overflowIndicator, int maxItemCount,
-                      std::function<void(AppBarScope&)> content);
-    inline void AppBarColumn(const ui::Modifier& modifier, std::function<void(AppBarScope&)> content) {
+    void AppBarColumn(const ui::Modifier& modifier, kiln::Function<void(AppBarMenuState&)> overflowIndicator, int maxItemCount,
+                      kiln::Function<void(AppBarScope&)> content);
+    inline void AppBarColumn(const ui::Modifier& modifier, kiln::Function<void(AppBarScope&)> content) {
         AppBarColumn(modifier, {}, INT_MAX, std::move(content));
     }
 

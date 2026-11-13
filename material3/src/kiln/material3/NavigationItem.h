@@ -5,6 +5,7 @@
 // the icon and label) widens and fades in when selected.
 
 #include "kiln/foundation/Interaction.h"
+#include <kiln/Function.h>
 #include "kiln/foundation/Layouts.h"
 #include "kiln/foundation/Shapes.h"
 #include "kiln/text/TextStyle.h"
@@ -48,7 +49,7 @@ namespace kiln::material3 {
 
         struct NavigationItemParams {
             bool selected = false;
-            std::function<void()> onClick, icon;
+            kiln::Function<void()> onClick, icon;
             text::TextStyle labelTextStyle;
             foundation::ShapePtr indicatorShape;
             ui::Dp indicatorWidth{ 0 };
@@ -58,7 +59,7 @@ namespace kiln::material3 {
             ui::Color textColor, iconColor, indicatorColor;
             ui::Modifier modifier;
             bool enabled = true;
-            std::function<void()> label;
+            kiln::Function<void()> label;
             NavigationItemIconPosition iconPosition = NavigationItemIconPosition::Top;
             std::shared_ptr<foundation::MutableInteractionSource> interactionSource;
         };
@@ -66,7 +67,7 @@ namespace kiln::material3 {
 
         struct AnimatedNavigationItemParams {
             bool selected = false;
-            std::function<void()> onClick, icon;
+            kiln::Function<void()> onClick, icon;
             foundation::ShapePtr indicatorShape;
             ui::Dp topIconIndicatorWidth{ 0 };
             text::TextStyle topIconLabelTextStyle, startIconLabelTextStyle;
@@ -78,7 +79,7 @@ namespace kiln::material3 {
             ui::Color textColor, iconColor, indicatorColor;
             ui::Modifier modifier;
             bool enabled = true;
-            std::function<void()> label;
+            kiln::Function<void()> label;
             NavigationItemIconPosition iconPosition = NavigationItemIconPosition::Top;
             std::shared_ptr<foundation::MutableInteractionSource> interactionSource;
         };

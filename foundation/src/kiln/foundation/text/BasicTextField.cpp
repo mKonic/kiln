@@ -1,4 +1,5 @@
 #include "kiln/foundation/text/BasicTextField.h"
+#include <kiln/Function.h>
 #include "kiln/ui/PlatformServices.h"
 
 #include "kiln/TextBackend.h"
@@ -175,9 +176,9 @@ namespace kiln::foundation {
                 autofillHighlightText = transformed->UntransformedText().text;
                 autofillHighlight.Set(true);
             }
-            std::map<int, std::function<void()>> changeObservers;
+            std::map<int, kiln::Function<void()>> changeObservers;
             int nextObserver = 0;
-            int Observe(std::function<void()> fn) { changeObservers.emplace(nextObserver, std::move(fn)); return nextObserver++; }
+            int Observe(kiln::Function<void()> fn) { changeObservers.emplace(nextObserver, std::move(fn)); return nextObserver++; }
 
             ~Field() { DisposeInputSession(); RemoveListener(); }
 

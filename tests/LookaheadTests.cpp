@@ -1,4 +1,5 @@
 #include "Check.h"
+#include <kiln/Function.h>
 
 #include "kiln/foundation/Compose.h"
 #include "kiln/foundation/Subcompose.h"
@@ -12,7 +13,7 @@ namespace {
         Owner owner;
         rt::Composition composition{ owner.Root(), rt::Dispatcher::Main() };
         Harness() { owner.SetDensity({ 1, 1 }); }
-        void Run(std::function<void()> content) {
+        void Run(kiln::Function<void()> content) {
             composition.SetContent(std::move(content));
             Frame();
         }
@@ -25,7 +26,7 @@ namespace {
     };
 
     // A fixed-size layout that records whether each measure was the lookahead pass.
-    std::shared_ptr<MeasurePolicy> Recording(std::vector<bool>& passes, std::function<IntSize()> size) {
+    std::shared_ptr<MeasurePolicy> Recording(std::vector<bool>& passes, kiln::Function<IntSize()> size) {
         return std::make_shared<LambdaMeasurePolicy>([&passes, size](MeasureScope& s, std::span<Measurable* const>, const Constraints&) {
             passes.push_back(s.IsLookingAhead());
             const IntSize z = size();

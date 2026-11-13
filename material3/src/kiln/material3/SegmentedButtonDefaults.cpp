@@ -1,4 +1,5 @@
 #include "kiln/material3/SegmentedButton.h"
+#include <kiln/Function.h>
 
 #include "kiln/foundation/AnimatedVisibility.h"
 #include "kiln/material3/MaterialTheme.h"
@@ -55,7 +56,7 @@ namespace kiln::material3 {
         }
         BorderStroke borderStroke(Color color, Dp width) { return { width, color }; }
         void ActiveIcon() { material3::Icon(internal::Icons::Filled::Check(), {}, SizeMod({}, IconSize, IconSize)); }
-        void Icon(bool active, std::function<void()> activeContent, std::function<void()> inactiveContent) {
+        void Icon(bool active, kiln::Function<void()> activeContent, kiln::Function<void()> inactiveContent) {
             const auto effects = Value(MotionSchemeKeyTokens::DefaultEffects);
             if (!inactiveContent) {
                 AnimatedVisibility(active, {}, std::move(activeContent),

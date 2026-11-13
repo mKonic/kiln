@@ -6,6 +6,7 @@
 // the coordinator of the next layout modifier after them (or the inner one).
 
 #include "kiln/runtime/Composition.h"
+#include <kiln/Function.h>
 #include <stdexcept>
 #include <typeinfo>
 #include "kiln/runtime/State.h"
@@ -186,9 +187,9 @@ namespace kiln::ui {
         // Traversal of TraversableNodes by key (and, given, by the exact node type) for the
         // free functions below.
         static void TraverseAncestorsImpl(const ModifierNode& from, const void* key, const std::type_info* type,
-                                          const std::function<bool(ModifierNode&, TraversableNode&)>& block);
+                                          const kiln::Function<bool(ModifierNode&, TraversableNode&)>& block);
         static void TraverseDescendantsImpl(const ModifierNode& from, const void* key, const std::type_info* type, bool childrenOnly,
-                                            const std::function<TraverseDescendantsAction(ModifierNode&, TraversableNode&)>& block);
+                                            const kiln::Function<TraverseDescendantsAction(ModifierNode&, TraversableNode&)>& block);
 
         // Draws this node and its subtree with scope translated to the node's top-left.
         void Draw(ContentDrawScope& scope);
@@ -343,7 +344,7 @@ namespace kiln::ui {
         // Where the content sits in the window (window pixels).
         IntRect ContentBounds() const;
         // The content's measured size changed (the host re-measures its window).
-        void SetOnContentSizeChanged(std::function<void(IntSize)> fn) { m_OnContentSizeChanged = std::move(fn); }
+        void SetOnContentSizeChanged(kiln::Function<void(IntSize)> fn) { m_OnContentSizeChanged = std::move(fn); }
         // Dialog windows for Dialog composables in this owner's content.
         void SetDialogHost(DialogHost host) { m_DialogHost = std::move(host); }
         const DialogHost& Dialogs() const { return m_DialogHost; }
@@ -380,7 +381,7 @@ namespace kiln::ui {
         void OnFontsChanged() { ++m_FontGeneration; RequestFullRemeasure(); }
         int FontGeneration() const { return m_FontGeneration; }
         TextBackend* Text() const { return m_Text; }
-        void SetRequestFrame(std::function<void()> fn) { m_RequestFrame = std::move(fn); }
+        void SetRequestFrame(kiln::Function<void()> fn) { m_RequestFrame = std::move(fn); }
 
         // Measures dirty nodes (root with the window size) and places what moved.
         void MeasureAndLayout(IntSize window);
@@ -424,7 +425,7 @@ namespace kiln::ui {
         // `focusedRect`, root pixels, when nothing is focused) finds to `onFound`, without
         // moving focus itself. nullopt when a focusProperties destination cancels the search.
         std::optional<bool> FocusSearch(FocusDirection direction, const Rect* focusedRect,
-                                        const std::function<bool(FocusTargetNode&)>& onFound);
+                                        const kiln::Function<bool(FocusTargetNode&)>& onFound);
         // resetFocus: clear (unless held), then focus whatever a fresh search finds.
         bool ResetFocus(FocusDirection direction);
         // The focused item's focus rect in root pixels, if anything is focused.
@@ -457,38 +458,38 @@ namespace kiln::ui {
         template <typename T> std::vector<T*> FocusedPath(T* (ModifierNode::*as)());
         InputMode GetInputMode() const { return m_InputMode.Get(); }
         void SetInputMode(InputMode mode) { m_InputMode.Set(mode); }
-        void SetRequestHostFocus(std::function<bool()> fn) { m_RequestHostFocus = std::move(fn); }
+        void SetRequestHostFocus(kiln::Function<bool()> fn) { m_RequestHostFocus = std::move(fn); }
         // The root's bringIntoView: the rect (root pixels, where the scroll containers will have
         // put it) goes to the host view's requestRectangleOnScreen (its scrolling parents).
-        void SetRequestRectangleOnScreen(std::function<void(Rect)> fn) { m_RequestRectangle = std::move(fn); }
+        void SetRequestRectangleOnScreen(kiln::Function<void(Rect)> fn) { m_RequestRectangle = std::move(fn); }
         // The host's View.playSoundEffect (SoundEffectConstants: 0 click, 1-4 navigation left, up,
         // right, down, 5-8 their repeating variants).
         // Pointer icons (PointerIconService): nodes under a hovering mouse or stylus ask for an
         // icon (android.view.PointerIcon types); the deepest one wins, and the host shows it.
         // Without any, the default (TYPE_DEFAULT 1000).
-        void SetPointerIconHost(std::function<void(int)> fn) { m_PointerIconHost = std::move(fn); }
+        void SetPointerIconHost(kiln::Function<void(int)> fn) { m_PointerIconHost = std::move(fn); }
         // UriHandler (AndroidUriHandler): opens a URI with the platform (ACTION_VIEW); false when
         // nothing can open it.
-        void SetUriHandler(std::function<bool(const std::string&)> fn) { m_UriHandler = std::move(fn); }
+        void SetUriHandler(kiln::Function<bool(const std::string&)> fn) { m_UriHandler = std::move(fn); }
         bool OpenUri(const std::string& uri) { return m_UriHandler && m_UriHandler(uri); }
         void RequestPointerIcon(const void* requester, int depth, int type);
         void ReleasePointerIcon(const void* requester);
         int CurrentPointerIcon() const { return m_PointerIcon; }
-        void SetPlaySoundEffect(std::function<void(int)> fn) { m_PlaySound = std::move(fn); }
+        void SetPlaySoundEffect(kiln::Function<void(int)> fn) { m_PlaySound = std::move(fn); }
         // AudioManager.playSoundEffect(effect, volume) (AudioManager.FX_*: 9 is
         // FX_KEYPRESS_INVALID); volume 0..1, or -1 for the default.
-        void SetPlayAudioEffect(std::function<void(int effect, float volume)> fn) { m_PlayAudio = std::move(fn); }
+        void SetPlayAudioEffect(kiln::Function<void(int effect, float volume)> fn) { m_PlayAudio = std::move(fn); }
         void PlayAudioEffect(int effect, float volume = -1) { if (m_PlayAudio) m_PlayAudio(effect, volume); }
         // System bar icons (WindowInsetsControllerCompat.isAppearanceLight*Bars): dark icons for
         // light content behind the bars.
         // A request made before the host exists is applied when it is set.
-        void SetSystemBarsAppearanceHost(std::function<void(bool lightStatusBars, bool lightNavigationBars)> fn) {
+        void SetSystemBarsAppearanceHost(kiln::Function<void(bool lightStatusBars, bool lightNavigationBars)> fn) {
             m_BarsAppearance = std::move(fn);
             if (m_BarsAppearance && m_PendingBars) m_BarsAppearance(m_PendingBars->first, m_PendingBars->second);
         }
         // enableEdgeToEdge(statusBarStyle, navigationBarStyle) (activity EdgeToEdge.kt): bar
         // colours, contrast and icon appearance; the activity starts with the defaults.
-        void SetEdgeToEdgeHost(std::function<void(const SystemBarStyle&, const SystemBarStyle&)> fn) { m_EdgeToEdge = std::move(fn); }
+        void SetEdgeToEdgeHost(kiln::Function<void(const SystemBarStyle&, const SystemBarStyle&)> fn) { m_EdgeToEdge = std::move(fn); }
         void EnableEdgeToEdge(const SystemBarStyle& statusBarStyle = SystemBarStyle::DefaultStatus(),
                               const SystemBarStyle& navigationBarStyle = SystemBarStyle::DefaultNavigation()) {
             if (m_EdgeToEdge) m_EdgeToEdge(statusBarStyle, navigationBarStyle);
@@ -512,29 +513,29 @@ namespace kiln::ui {
             }
         };
         struct MagnifierHost {
-            std::function<int(const MagnifierConfig&)> create;                          // a handle (> 0)
-            std::function<void(int, Offset source, Offset magnifierCenter, float zoom)> show;   // NaN centre / zoom: default
-            std::function<void(int)> updateContent, dismiss, destroy;
-            std::function<IntSize(int)> size;
+            kiln::Function<int(const MagnifierConfig&)> create;                          // a handle (> 0)
+            kiln::Function<void(int, Offset source, Offset magnifierCenter, float zoom)> show;   // NaN centre / zoom: default
+            kiln::Function<void(int)> updateContent, dismiss, destroy;
+            kiln::Function<IntSize(int)> size;
             bool canUpdateZoom = true;                                                  // API 29+
         };
         void SetMagnifierHost(MagnifierHost host) { m_Magnifier = std::move(host); }
         const MagnifierHost& Magnifier() const { return m_Magnifier; }
         // HapticFeedback (View.performHapticFeedback with HapticFeedbackConstants).
-        void SetHapticHost(std::function<void(int)> fn) { m_Haptic = std::move(fn); }
+        void SetHapticHost(kiln::Function<void(int)> fn) { m_Haptic = std::move(fn); }
         void PerformHapticFeedback(int constant) { if (m_Haptic) m_Haptic(constant); }
         // Clipboard (AndroidClipboard: ClipboardManager primary clip, plain text).
         struct ClipboardHost {
-            std::function<void(const std::string&)> setText;
-            std::function<std::optional<std::string>()> getText;
-            std::function<bool()> hasText;   // without reading it (no "pasted" toast)
-            std::function<std::optional<std::pair<ClipEntry, ClipMetadata>>()> getClip;   // the whole primary clip
-            std::function<std::optional<ClipMetadata>()> getMetadata;                      // its description only
+            kiln::Function<void(const std::string&)> setText;
+            kiln::Function<std::optional<std::string>()> getText;
+            kiln::Function<bool()> hasText;   // without reading it (no "pasted" toast)
+            kiln::Function<std::optional<std::pair<ClipEntry, ClipMetadata>>()> getClip;   // the whole primary clip
+            kiln::Function<std::optional<ClipMetadata>()> getMetadata;                      // its description only
             // The first item's text with its span styles (Compose's Annotation encoding).
-            std::function<void(const text::AnnotatedString&)> setAnnotatedText;
-            std::function<std::optional<text::AnnotatedString>()> getAnnotatedText;
+            kiln::Function<void(const text::AnnotatedString&)> setAnnotatedText;
+            kiln::Function<std::optional<text::AnnotatedString>()> getAnnotatedText;
             // The whole clip (Clipboard.setClipEntry); null clears the clipboard.
-            std::function<void(const std::optional<ClipEntry>&)> setClip;
+            kiln::Function<void(const std::optional<ClipEntry>&)> setClip;
         };
         void SetClipboardHost(ClipboardHost host) { m_Clipboard = std::move(host); }
         // Layout rect callbacks (onLayoutRectChanged, onVisibilityChanged).
@@ -560,8 +561,8 @@ namespace kiln::ui {
         // Content URIs from clips and the keyboard (ContentResolver.openInputStream), and the
         // read permission a keyboard granted with commitContent (InputContentInfo, by handle).
         struct ContentHost {
-            std::function<std::optional<std::vector<std::uint8_t>>(const std::string& uri)> read;
-            std::function<void(int handle)> releasePermission;
+            kiln::Function<std::optional<std::vector<std::uint8_t>>(const std::string& uri)> read;
+            kiln::Function<void(int handle)> releasePermission;
         };
         void SetContentHost(ContentHost host) { m_Content = std::move(host); }
         std::optional<std::vector<std::uint8_t>> ReadContent(const std::string& uri) const { return m_Content.read ? m_Content.read(uri) : std::nullopt; }
@@ -572,10 +573,10 @@ namespace kiln::ui {
         // finishes it; it calls OnTextToolbarItem for a click and OnTextToolbarDestroyed when
         // the mode ends by itself.
         struct TextToolbarHost {
-            std::function<bool(Rect, const std::vector<TextToolbarEntry>&)> show;
-            std::function<void(const std::vector<TextToolbarEntry>&)> update;
-            std::function<void(Rect)> move;
-            std::function<void()> hide;
+            kiln::Function<bool(Rect, const std::vector<TextToolbarEntry>&)> show;
+            kiln::Function<void(const std::vector<TextToolbarEntry>&)> update;
+            kiln::Function<void(Rect)> move;
+            kiln::Function<void()> hide;
         };
         void SetTextToolbarHost(TextToolbarHost host) { m_ToolbarHost = std::move(host); }
         void ShowTextToolbar(TextToolbarClient* client);
@@ -589,13 +590,13 @@ namespace kiln::ui {
         void OnTextToolbarDestroyed();
         // Draws `draw` into a width x height RGBA image (premultiplied, tightly packed) off screen;
         // blocking, for one-off images such as a drag shadow. Empty without a renderer.
-        using OffscreenRenderer = std::function<std::vector<std::uint8_t>(int width, int height, const std::function<void(DrawScope&)>& draw)>;
+        using OffscreenRenderer = kiln::Function<std::vector<std::uint8_t>(int width, int height, const kiln::Function<void(DrawScope&)>& draw)>;
         void SetOffscreenRenderer(OffscreenRenderer r) { m_Offscreen = std::move(r); }
-        std::vector<std::uint8_t> RenderToPixels(int width, int height, const std::function<void(DrawScope&)>& draw) const {
+        std::vector<std::uint8_t> RenderToPixels(int width, int height, const kiln::Function<void(DrawScope&)>& draw) const {
             return m_Offscreen && width > 0 && height > 0 ? m_Offscreen(width, height, draw) : std::vector<std::uint8_t>{};
         }
         // A scope over `target` with this owner's density and direction (for an offscreen draw).
-        void DrawWith(const DrawTarget& target, const std::function<void(DrawScope&)>& draw);
+        void DrawWith(const DrawTarget& target, const kiln::Function<void(DrawScope&)>& draw);
         ActivityResultRegistry& ActivityResults() { return m_ActivityResults; }
         ScrollCapture& ScrollCaptureManager() {
             if (!m_ScrollCapture) m_ScrollCapture = std::make_unique<ui::ScrollCapture>(*this);
@@ -607,7 +608,7 @@ namespace kiln::ui {
         void SetScrollCaptureInProgress(bool v) { if (m_ScrollCaptureInProgress.Peek() != v) m_ScrollCaptureInProgress.Set(v); }
         // RectListNode: rects in root pixels that nodes give the host view (kind 0:
         // systemGestureExclusionRects, 1: preferKeepClearRects). The host gets the whole list.
-        void SetViewRectsHost(std::function<void(int kind, const std::vector<IntRect>& rects)> host) { m_ViewRectsHost = std::move(host); }
+        void SetViewRectsHost(kiln::Function<void(int kind, const std::vector<IntRect>& rects)> host) { m_ViewRectsHost = std::move(host); }
         void ReplaceViewRect(int kind, const void* key, std::optional<IntRect> rect) {
             auto& list = m_ViewRects[kind];
             if (rect && rect->Empty()) rect.reset();
@@ -626,7 +627,7 @@ namespace kiln::ui {
         }
         // AccessibilityManager: the recommended timeout (getRecommendedTimeoutMillis with
         // FLAG_CONTENT_ICONS 1 / TEXT 2 / CONTROLS 4) and the services' state (observable).
-        void SetRecommendedTimeoutHost(std::function<std::int64_t(int originalTimeout, int uiContentFlags)> host) { m_TimeoutHost = std::move(host); }
+        void SetRecommendedTimeoutHost(kiln::Function<std::int64_t(int originalTimeout, int uiContentFlags)> host) { m_TimeoutHost = std::move(host); }
         std::int64_t RecommendedTimeoutMillis(int originalTimeout, int flags) const {
             return m_TimeoutHost ? m_TimeoutHost(originalTimeout, flags) : originalTimeout;
         }
@@ -641,7 +642,7 @@ namespace kiln::ui {
             m_FlagSecure.Set(secure);
             ApplyFlagSecure();
         }
-        void SetFlagSecureHost(std::function<void(bool)> host) { m_FlagSecureHost = std::move(host); }
+        void SetFlagSecureHost(kiln::Function<void(bool)> host) { m_FlagSecureHost = std::move(host); }
         void SetContextMenuHost(ContextMenuHost host) { m_ContextMenuHost = std::move(host); }
         const ContextMenuHost& ContextMenu() const { return m_ContextMenuHost; }
         // A popup with SecureFlagPolicy::SecureOn is showing: the shared surface goes secure.
@@ -652,7 +653,7 @@ namespace kiln::ui {
             if (secure != m_AppliedSecure && m_FlagSecureHost) m_FlagSecureHost(secure);
             m_AppliedSecure = secure;
         }
-        void SetScreenHost(std::function<void(bool)> keepScreenOn, std::function<void(bool)> contentSensitive) {
+        void SetScreenHost(kiln::Function<void(bool)> keepScreenOn, kiln::Function<void(bool)> contentSensitive) {
             m_KeepScreenOnHost = std::move(keepScreenOn);
             m_ContentSensitiveHost = std::move(contentSensitive);
         }
@@ -670,7 +671,7 @@ namespace kiln::ui {
         const TextClassifierHost& TextClassifier() const { return m_Classifier; }
         void PlaySoundEffect(int constant) { if (m_PlaySound) m_PlaySound(constant); }
         // KeyCharacterMap.getDeadChar: the character a dead key's accent makes with `c`, or 0.
-        void SetDeadCharCombiner(std::function<int(int accent, int c)> fn) { m_DeadChar = std::move(fn); }
+        void SetDeadCharCombiner(kiln::Function<int(int accent, int c)> fn) { m_DeadChar = std::move(fn); }
         int DeadChar(int accent, int c) const { return m_DeadChar ? m_DeadChar(accent, c) : 0; }
         void RequestRectangleOnScreen(Rect r) { if (m_RequestRectangle) m_RequestRectangle(r); }
         // The platform took focus away from (or gave it back to) the host view.
@@ -760,11 +761,11 @@ namespace kiln::ui {
         AutofillManager* Autofill() const { return m_Autofill.get(); }
         // Owner.requestAutofill: shows the autofill UI for the node.
         void RequestAutofill(LayoutNode& node);
-        void SetOnAccessibilityChange(std::function<void(bool layout)> fn) { m_OnAccessibilityChange = std::move(fn); }
+        void SetOnAccessibilityChange(kiln::Function<void(bool layout)> fn) { m_OnAccessibilityChange = std::move(fn); }
         // onLayoutChange: a node was placed somewhere else or at another size.
         void NotifyLayoutChange(LayoutNode& node);
         std::uint64_t SemanticsVersion() const { return m_SemanticsVersion; }
-        void SetOnSemanticsChanged(std::function<void()> fn) { m_OnSemanticsChanged = std::move(fn); }
+        void SetOnSemanticsChanged(kiln::Function<void()> fn) { m_OnSemanticsChanged = std::move(fn); }
         LayoutNode* FindBySemanticsId(int id);
         int NextSemanticsId() { return ++m_LastSemanticsId; }
         // dispatchOnScrollChanged: a scrollable consumed `delta` (pointer coordinates) itself
@@ -793,10 +794,10 @@ namespace kiln::ui {
         std::set<LayoutNode*> m_PositionAware;
         bool m_LaidOutThisPass = false;
         bool m_LaidOut = false;
-        std::function<void(int)> m_Haptic;
-        std::function<void(bool, bool)> m_BarsAppearance;
+        kiln::Function<void(int)> m_Haptic;
+        kiln::Function<void(bool, bool)> m_BarsAppearance;
         std::optional<std::pair<bool, bool>> m_PendingBars;   // the latest request (light status, light navigation)
-        std::function<void(const SystemBarStyle&, const SystemBarStyle&)> m_EdgeToEdge;
+        kiln::Function<void(const SystemBarStyle&, const SystemBarStyle&)> m_EdgeToEdge;
         ClipboardHost m_Clipboard;
         std::map<std::string, std::shared_ptr<void>> m_Services;
         RectRegistry m_Rects;
@@ -820,21 +821,21 @@ namespace kiln::ui {
         void ReadToolbarBounds();
         TextClassifierHost m_Classifier;
         rt::State<int> m_PasswordVisibility{ 3 };
-        std::function<void(bool)> m_KeepScreenOnHost, m_ContentSensitiveHost;
+        kiln::Function<void(bool)> m_KeepScreenOnHost, m_ContentSensitiveHost;
         OffscreenRenderer m_Offscreen;
         rt::State<bool> m_ScrollCaptureInProgress{ false };
         std::unique_ptr<ui::ScrollCapture> m_ScrollCapture;
         ActivityResultRegistry m_ActivityResults;
         int m_KeepScreenOnCount = 0, m_SensitiveCount = 0;
-        std::function<void(int, const std::vector<IntRect>&)> m_ViewRectsHost;
-        std::function<std::int64_t(int, int)> m_TimeoutHost;
+        kiln::Function<void(int, const std::vector<IntRect>&)> m_ViewRectsHost;
+        kiln::Function<std::int64_t(int, int)> m_TimeoutHost;
         rt::State<AccessibilityServiceState> m_A11yServices{ AccessibilityServiceState{} };
         rt::State<bool> m_FlagSecure{ false };
-        std::function<void(bool)> m_FlagSecureHost;
+        kiln::Function<void(bool)> m_FlagSecureHost;
         bool m_AppliedSecure = false;
         std::optional<Constraints> m_ContentConstraints;
         IntSize m_LastContentSize{ -1, -1 };
-        std::function<void(IntSize)> m_OnContentSizeChanged;
+        kiln::Function<void(IntSize)> m_OnContentSizeChanged;
         DialogHost m_DialogHost;
         ContextMenuHost m_ContextMenuHost;
         PopupLayer* m_PopupBackTracking = nullptr;
@@ -859,17 +860,17 @@ namespace kiln::ui {
         bool CanFocus(const FocusTargetNode& t) const;
         void SetActive(FocusTargetNode* t);
         void DispatchFocusEvents();
-        bool FindChildForEnter(FocusTargetNode& t, FocusDirection dir, const std::function<bool(FocusTargetNode&)>& onFound);
-        bool Search2D(FocusTargetNode& t, FocusDirection dir, const Rect* previous, const std::function<bool(FocusTargetNode&)>& onFound);
-        bool SearchChildren2D(FocusTargetNode& t, Rect focused, FocusDirection dir, const std::function<bool(FocusTargetNode&)>& onFound);
-        bool Forward(FocusTargetNode& t, const std::function<bool(FocusTargetNode&)>& onFound);
-        bool Backward(FocusTargetNode& t, const std::function<bool(FocusTargetNode&)>& onFound);
-        bool SearchChildren1D(FocusTargetNode& t, FocusTargetNode& focused, FocusDirection dir, const std::function<bool(FocusTargetNode&)>& onFound);
+        bool FindChildForEnter(FocusTargetNode& t, FocusDirection dir, const kiln::Function<bool(FocusTargetNode&)>& onFound);
+        bool Search2D(FocusTargetNode& t, FocusDirection dir, const Rect* previous, const kiln::Function<bool(FocusTargetNode&)>& onFound);
+        bool SearchChildren2D(FocusTargetNode& t, Rect focused, FocusDirection dir, const kiln::Function<bool(FocusTargetNode&)>& onFound);
+        bool Forward(FocusTargetNode& t, const kiln::Function<bool(FocusTargetNode&)>& onFound);
+        bool Backward(FocusTargetNode& t, const kiln::Function<bool(FocusTargetNode&)>& onFound);
+        bool SearchChildren1D(FocusTargetNode& t, FocusTargetNode& focused, FocusDirection dir, const kiln::Function<bool(FocusTargetNode&)>& onFound);
         // generateAndSearchChildren: the search, then again over items laid out beyond bounds.
-        bool Generate1D(FocusTargetNode& t, FocusTargetNode& focused, FocusDirection dir, const std::function<bool(FocusTargetNode&)>& onFound);
-        bool Generate2D(FocusTargetNode& t, Rect focused, FocusDirection dir, const std::function<bool(FocusTargetNode&)>& onFound);
+        bool Generate1D(FocusTargetNode& t, FocusTargetNode& focused, FocusDirection dir, const kiln::Function<bool(FocusTargetNode&)>& onFound);
+        bool Generate2D(FocusTargetNode& t, Rect focused, FocusDirection dir, const kiln::Function<bool(FocusTargetNode&)>& onFound);
         BeyondBoundsLayout* BeyondBoundsParent(const FocusTargetNode& t) const;
-        bool SearchBeyondBounds(FocusTargetNode& t, FocusDirection dir, const std::function<bool()>& search);
+        bool SearchBeyondBounds(FocusTargetNode& t, FocusDirection dir, const kiln::Function<bool()>& search);
         std::vector<FocusTargetNode*> SortedChildren(const FocusTargetNode& t) const;
         FocusTargetNode* ActiveChild(const FocusTargetNode& t) const;
         struct HitEntry { LayoutNode* node; PointerInputModifier* mod; bool inBounds = true; };
@@ -880,17 +881,17 @@ namespace kiln::ui {
                            std::vector<HitEntry>& near, float& nearDistance, std::vector<HitEntry>& ancestors);
         void RequestFullRemeasure();
 
-        std::function<void(int)> m_PlaySound;
+        kiln::Function<void(int)> m_PlaySound;
 
-        std::function<void(int, float)> m_PlayAudio;
-        std::function<void(int)> m_PointerIconHost;
+        kiln::Function<void(int, float)> m_PlayAudio;
+        kiln::Function<void(int)> m_PointerIconHost;
         int m_FontGeneration = 0;
-        std::function<bool(const std::string&)> m_UriHandler;
+        kiln::Function<bool(const std::string&)> m_UriHandler;
         struct IconRequest { const void* requester; int depth; int type; };
         std::vector<IconRequest> m_IconRequests;
         int m_PointerIcon = 1000;
         void UpdatePointerIcon();
-        std::function<int(int, int)> m_DeadChar;
+        kiln::Function<int(int, int)> m_DeadChar;
         std::unique_ptr<LayoutNode> m_Root;
         std::unique_ptr<LayoutNode> m_ContentRoot;
         Density m_Density;
@@ -898,7 +899,7 @@ namespace kiln::ui {
         rt::State<IntSize> m_ObservedWindow{ IntSize{} };
         LayoutDirection m_Direction = LayoutDirection::Ltr;
         TextBackend* m_Text = nullptr;
-        std::function<void()> m_RequestFrame;
+        kiln::Function<void()> m_RequestFrame;
         std::set<LayoutNode*, ByDepth> m_MeasureDirty, m_LayoutDirty;
         std::set<LayoutNode*> m_CoordinateReaders;   // nodes whose placement read their coordinates
         IntSize m_Window;
@@ -918,8 +919,8 @@ namespace kiln::ui {
         bool m_FocusCaptured = false;
         rt::State<InputMode> m_InputMode{ InputMode::Touch };
         rt::State<bool> m_WindowFocused{ true };
-        std::function<bool()> m_RequestHostFocus;
-        std::function<void(Rect)> m_RequestRectangle;
+        kiln::Function<bool()> m_RequestHostFocus;
+        kiln::Function<void(Rect)> m_RequestRectangle;
         std::vector<int> m_KeysDown;
         TextInputHost m_InputHost;
         struct ExternalSurfaceEntry {
@@ -935,9 +936,9 @@ namespace kiln::ui {
         std::uint64_t m_SemanticsVersion = 0;
         std::unique_ptr<AutofillManager> m_Autofill;
         std::unique_ptr<DragAndDropManager> m_DragAndDrop;
-        std::function<void()> m_OnSemanticsChanged;
+        kiln::Function<void()> m_OnSemanticsChanged;
         std::unique_ptr<AccessibilityDelegate> m_Accessibility;
-        std::function<void(bool)> m_OnAccessibilityChange;
+        kiln::Function<void(bool)> m_OnAccessibilityChange;
         int m_LastSemanticsId = 0;
     };
 
@@ -975,11 +976,11 @@ namespace kiln::ui {
     // chain, then up the tree (nearest first); the block returns false to stop. Children: the
     // nearest matches below (not past one). Descendants: all matches below, depth first, as the
     // block's action says.
-    inline void TraverseAncestors(const ModifierNode& from, const void* key, const std::function<bool(TraversableNode&)>& block) {
+    inline void TraverseAncestors(const ModifierNode& from, const void* key, const kiln::Function<bool(TraversableNode&)>& block) {
         LayoutNode::TraverseAncestorsImpl(from, key, nullptr, [&](ModifierNode&, TraversableNode& t) { return block(t); });
     }
     template<typename T>
-    void TraverseAncestors(const T& self, const std::function<bool(T&)>& block) {
+    void TraverseAncestors(const T& self, const kiln::Function<bool(T&)>& block) {
         LayoutNode::TraverseAncestorsImpl(self, self.TraverseKey(), &typeid(self), [&](ModifierNode& m, TraversableNode&) { return block(static_cast<T&>(m)); });
     }
     template<typename T>
@@ -993,22 +994,22 @@ namespace kiln::ui {
         TraverseAncestors(from, key, [&](TraversableNode& t) { found = &t; return false; });
         return found;
     }
-    inline void TraverseChildren(const ModifierNode& from, const void* key, const std::function<bool(TraversableNode&)>& block) {
+    inline void TraverseChildren(const ModifierNode& from, const void* key, const kiln::Function<bool(TraversableNode&)>& block) {
         LayoutNode::TraverseDescendantsImpl(from, key, nullptr, true, [&](ModifierNode&, TraversableNode& t) {
             return block(t) ? TraverseDescendantsAction::ContinueTraversal : TraverseDescendantsAction::CancelTraversal;
         });
     }
     template<typename T>
-    void TraverseChildren(const T& self, const std::function<bool(T&)>& block) {
+    void TraverseChildren(const T& self, const kiln::Function<bool(T&)>& block) {
         LayoutNode::TraverseDescendantsImpl(self, self.TraverseKey(), &typeid(self), true, [&](ModifierNode& m, TraversableNode&) {
             return block(static_cast<T&>(m)) ? TraverseDescendantsAction::ContinueTraversal : TraverseDescendantsAction::CancelTraversal;
         });
     }
-    inline void TraverseDescendants(const ModifierNode& from, const void* key, const std::function<TraverseDescendantsAction(TraversableNode&)>& block) {
+    inline void TraverseDescendants(const ModifierNode& from, const void* key, const kiln::Function<TraverseDescendantsAction(TraversableNode&)>& block) {
         LayoutNode::TraverseDescendantsImpl(from, key, nullptr, false, [&](ModifierNode&, TraversableNode& t) { return block(t); });
     }
     template<typename T>
-    void TraverseDescendants(const T& self, const std::function<TraverseDescendantsAction(T&)>& block) {
+    void TraverseDescendants(const T& self, const kiln::Function<TraverseDescendantsAction(T&)>& block) {
         LayoutNode::TraverseDescendantsImpl(self, self.TraverseKey(), &typeid(self), false, [&](ModifierNode& m, TraversableNode&) { return block(static_cast<T&>(m)); });
     }
 

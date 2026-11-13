@@ -6,15 +6,16 @@
 // consumed. Android 14 (API 34) and later; the host says whether it is supported.
 
 #include "kiln/foundation/Compose.h"
+#include <kiln/Function.h>
 
 #include <functional>
 
 namespace kiln::foundation {
 
     struct StylusHandwritingCallbacks {
-        std::function<bool()> isFocused;
-        std::function<void()> requestFocus;
-        std::function<void()> onHandwritingSlopExceeded;
+        kiln::Function<bool()> isFocused;
+        kiln::Function<void()> requestFocus;
+        kiln::Function<void()> onHandwritingSlopExceeded;
     };
     // `supported`: isStylusHandwritingSupported (the host's API level).
     Modifier StylusHandwriting(Modifier m, bool enabled, bool supported, bool showHoverIcon, StylusHandwritingCallbacks callbacks);
@@ -24,7 +25,7 @@ namespace kiln::foundation {
     // delegation; the editor that takes focus next and carries handwritingHandler gets the
     // handwriting. Focus goes to the focusable content below first. Nothing without stylus
     // handwriting support.
-    Modifier HandwritingDetector(Modifier m, std::function<void()> callback);
+    Modifier HandwritingDetector(Modifier m, kiln::Function<void()> callback);
     // handwritingHandler: the editor below accepts a delegated handwriting session whenever it
     // takes focus.
     Modifier HandwritingHandler(Modifier m);

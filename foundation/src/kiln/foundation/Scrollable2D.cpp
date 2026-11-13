@@ -1,4 +1,5 @@
 #include "kiln/foundation/Scrollable2D.h"
+#include <kiln/Function.h>
 
 #include "kiln/animation/Decay.h"
 #include "kiln/runtime/Composition.h"
@@ -11,13 +12,13 @@ namespace kiln::foundation {
 
     using namespace ui;
 
-    LambdaScrollableState& RememberScrollableState(std::function<float(float)> consume, rt::Key key) {
+    LambdaScrollableState& RememberScrollableState(kiln::Function<float(float)> consume, rt::Key key) {
         auto& s = rt::Composition::Current()->RememberNew<LambdaScrollableState>({}, key, consume);
         s.SetConsume(std::move(consume));
         return s;
     }
 
-    Scrollable2DState& RememberScrollable2DState(std::function<Offset(Offset)> consume, rt::Key key) {
+    Scrollable2DState& RememberScrollable2DState(kiln::Function<Offset(Offset)> consume, rt::Key key) {
         auto& s = rt::Composition::Current()->RememberNew<Scrollable2DState>({}, key, consume);
         s.SetConsume(std::move(consume));
         return s;

@@ -5,6 +5,7 @@
 // layout by the state's offset. Kiln has no lookahead pass, so only the main pass applies.
 
 #include "kiln/foundation/AnchoredDraggable.h"
+#include <kiln/Function.h>
 #include "kiln/ui/LayoutNode.h"
 #include "kiln/ui/Modifier.h"
 
@@ -16,7 +17,7 @@
 namespace kiln::material3::internal {
 
     template<typename T>
-    using AnchorsCalculation = std::function<std::pair<foundation::DraggableAnchors<T>, T>(ui::IntSize size, const ui::Constraints& constraints)>;
+    using AnchorsCalculation = kiln::Function<std::pair<foundation::DraggableAnchors<T>, T>(ui::IntSize size, const ui::Constraints& constraints)>;
 
     template<typename T>
     struct DraggableAnchorsParams {

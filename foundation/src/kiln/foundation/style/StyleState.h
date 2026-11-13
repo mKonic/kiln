@@ -6,6 +6,7 @@
 // observed, so a style that reads a state re-resolves when it changes.
 
 #include "kiln/foundation/Interaction.h"
+#include <kiln/Function.h>
 #include "kiln/runtime/State.h"
 #include "kiln/ui/ToggleableState.h"
 
@@ -67,7 +68,7 @@ namespace kiln::foundation {
         // The source pressed / hovered / focused follow (null: set them yourself).
         virtual const std::shared_ptr<MutableInteractionSource>& InteractionSource() const = 0;
         // processInteractions: follow `source` until the returned function is called.
-        virtual std::function<void()> ProcessInteractions(const std::shared_ptr<MutableInteractionSource>& source) = 0;
+        virtual kiln::Function<void()> ProcessInteractions(const std::shared_ptr<MutableInteractionSource>& source) = 0;
     };
 
     class MutableStyleState final : public StyleState {
@@ -95,7 +96,7 @@ namespace kiln::foundation {
         void Remove(const StyleStateKeyBase& key);
 
         const std::shared_ptr<MutableInteractionSource>& InteractionSource() const override { return m_Source; }
-        std::function<void()> ProcessInteractions(const std::shared_ptr<MutableInteractionSource>& source) override;
+        kiln::Function<void()> ProcessInteractions(const std::shared_ptr<MutableInteractionSource>& source) override;
 
         // The flags (bit 0 pressed, 1 hovered, 2 focused, 3 selected, 4 enabled, 5-6 toggle).
         int Flags() const { return m_Flags.Get(); }
@@ -129,6 +130,6 @@ namespace kiln::foundation {
     // rememberUpdatedStyleState(interactionSource, block): a state remembered per source; `block`
     // updates it on each composition.
     std::shared_ptr<MutableStyleState> RememberUpdatedStyleState(std::shared_ptr<MutableInteractionSource> interactionSource,
-                                                                 const std::function<void(MutableStyleState&)>& block = {});
+                                                                 const kiln::Function<void(MutableStyleState&)>& block = {});
 
 }

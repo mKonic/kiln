@@ -1,4 +1,5 @@
 #include "kiln/material3/ListItem.h"
+#include <kiln/Function.h>
 
 #include "kiln/foundation/Draw.h"
 #include "kiln/foundation/Gestures.h"
@@ -17,7 +18,7 @@ namespace kiln::material3 {
     using namespace tokens;
 
     namespace {
-        using Content = std::function<void()>;
+        using Content = kiln::Function<void()>;
         enum class Selection { None, Radio, Checkbox };
         struct ColorState {
             bool enabled, selected, dragged;
@@ -126,9 +127,9 @@ namespace kiln::material3 {
     void ListItem(const ui::Modifier& m, const ListItemOptions& o, Content content) { Interactive(false, Selection::None, false, {}, m, o, std::move(content)); }
     void ListItem(Content click, const ui::Modifier& m, const ListItemOptions& o, Content content) { Interactive(false, Selection::None, false, std::move(click), m, o, std::move(content)); }
     void ListItem(bool selected, Content click, const ui::Modifier& m, const ListItemOptions& o, Content content) { Interactive(false, Selection::Radio, selected, std::move(click), m, o, std::move(content)); }
-    void ListItem(bool checked, std::function<void(bool)> change, const ui::Modifier& m, const ListItemOptions& o, Content content) { Interactive(false, Selection::Checkbox, checked, [=] { change(!checked); }, m, o, std::move(content)); }
+    void ListItem(bool checked, kiln::Function<void(bool)> change, const ui::Modifier& m, const ListItemOptions& o, Content content) { Interactive(false, Selection::Checkbox, checked, [=] { change(!checked); }, m, o, std::move(content)); }
     void SegmentedListItem(const ListItemShapes& shapes, const ui::Modifier& m, const ListItemOptions& o, Content content) { Interactive(true, Selection::None, false, {}, m, SegmentedOptions(shapes, o), std::move(content)); }
     void SegmentedListItem(Content click, const ListItemShapes& shapes, const ui::Modifier& m, const ListItemOptions& o, Content content) { Interactive(true, Selection::None, false, std::move(click), m, SegmentedOptions(shapes, o), std::move(content)); }
     void SegmentedListItem(bool selected, Content click, const ListItemShapes& shapes, const ui::Modifier& m, const ListItemOptions& o, Content content) { Interactive(true, Selection::Radio, selected, std::move(click), m, SegmentedOptions(shapes, o), std::move(content)); }
-    void SegmentedListItem(bool checked, std::function<void(bool)> change, const ListItemShapes& shapes, const ui::Modifier& m, const ListItemOptions& o, Content content) { Interactive(true, Selection::Checkbox, checked, [=] { change(!checked); }, m, SegmentedOptions(shapes, o), std::move(content)); }
+    void SegmentedListItem(bool checked, kiln::Function<void(bool)> change, const ListItemShapes& shapes, const ui::Modifier& m, const ListItemOptions& o, Content content) { Interactive(true, Selection::Checkbox, checked, [=] { change(!checked); }, m, SegmentedOptions(shapes, o), std::move(content)); }
 }

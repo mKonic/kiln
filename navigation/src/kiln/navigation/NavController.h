@@ -6,6 +6,7 @@
 // sets it, and visible entries are those at least STARTED.
 
 #include "kiln/lifecycle/SavedStateHandle.h"
+#include <kiln/Function.h>
 #include "kiln/navigation/NavDestination.h"
 #include "kiln/runtime/Saveable.h"
 #include "kiln/runtime/State.h"
@@ -129,7 +130,7 @@ namespace kiln::navigation {
     private:
         NavOptions m_Options;
     };
-    inline NavOptions MakeNavOptions(const std::function<void(NavOptionsBuilder&)>& build) { NavOptionsBuilder b; build(b); return b.Build(); }
+    inline NavOptions MakeNavOptions(const kiln::Function<void(NavOptionsBuilder&)>& build) { NavOptionsBuilder b; build(b); return b.Build(); }
 
     class Navigator;
 
@@ -226,7 +227,7 @@ namespace kiln::navigation {
         // graph, from the current one out); none throws std::invalid_argument.
         void Navigate(const NavDeepLinkRequest& request, const std::optional<NavOptions>& navOptions = std::nullopt);
         void Navigate(const NavUri& deepLink, const std::optional<NavOptions>& navOptions = std::nullopt) { Navigate(NavDeepLinkRequest::FromUri(deepLink), navOptions); }
-        void Navigate(const std::string& route, const std::function<void(NavOptionsBuilder&)>& builder) { Navigate(route, MakeNavOptions(builder)); }
+        void Navigate(const std::string& route, const kiln::Function<void(NavOptionsBuilder&)>& builder) { Navigate(route, MakeNavOptions(builder)); }
         bool PopBackStack();
         bool PopBackStack(const std::string& route, bool inclusive, bool saveState = false);
         bool PopBackStack(int destinationId, bool inclusive, bool saveState = false);
@@ -244,7 +245,7 @@ namespace kiln::navigation {
         EntryPtr GetBackStackEntry(const std::string& route) const;
         EntryPtr GetBackStackEntry(int destinationId) const;
 
-        using OnDestinationChanged = std::function<void(NavController&, NavDestination&, const std::optional<NavArgs>&)>;
+        using OnDestinationChanged = kiln::Function<void(NavController&, NavDestination&, const std::optional<NavArgs>&)>;
         void AddOnDestinationChangedListener(OnDestinationChanged listener);
 
         // The host's lifecycle state.
@@ -257,9 +258,9 @@ namespace kiln::navigation {
         void SetViewModelStore(lifecycle::ViewModelStore& store);
         // Called with an entry's id when its state is cleared for good (the host frees what it
         // kept for it: NavViewModelStoreProvider.clear).
-        std::function<void(const std::string& id)> onEntryCleared;
+        kiln::Function<void(const std::string& id)> onEntryCleared;
         // Called when whether back can pop changes (OnBackPressedCallback enabled).
-        std::function<void()> onBackEnabledChanged;
+        kiln::Function<void()> onBackEnabledChanged;
 
         // saveState / restoreState (before setGraph).
         rt::SavedValue SaveState() const;
@@ -275,16 +276,16 @@ namespace kiln::navigation {
         EntryPtr CreateEntry(NavDestination* destination, std::optional<NavArgs> arguments);
         EntryPtr Instantiate(const NavBackStackEntryState& s, NavDestination* destination);
         void NavigateInternal(Navigator* navigator, const std::vector<EntryPtr>& entries, const std::optional<NavOptions>& navOptions,
-                              std::function<void(const EntryPtr&)> handler);
-        void PopBackStackInternal(Navigator* navigator, const EntryPtr& popUpTo, bool saveState, std::function<void(const EntryPtr&)> handler);
+                              kiln::Function<void(const EntryPtr&)> handler);
+        void PopBackStackInternal(Navigator* navigator, const EntryPtr& popUpTo, bool saveState, kiln::Function<void(const EntryPtr&)> handler);
         void Push(NavigatorBackStack& state, const EntryPtr& entry);
-        void Pop(NavigatorBackStack& state, const EntryPtr& popUpTo, bool saveState, const std::function<void()>& super);
-        void MarkTransitionComplete(NavigatorBackStack& state, const EntryPtr& entry, const std::function<void()>& super);
+        void Pop(NavigatorBackStack& state, const EntryPtr& popUpTo, bool saveState, const kiln::Function<void()>& super);
+        void MarkTransitionComplete(NavigatorBackStack& state, const EntryPtr& entry, const kiln::Function<void()>& super);
         void PrepareForTransition(const EntryPtr& entry);
         bool PopBackStackInternal(int destinationId, bool inclusive, bool saveState = false);
         bool PopBackStackInternal(const std::string& route, bool inclusive, bool saveState);
         bool ExecutePopOperations(const std::vector<Navigator*>& popOperations, NavDestination* foundDestination, bool inclusive, bool saveState);
-        void PopBackStackFromNavigator(const EntryPtr& popUpTo, const std::function<void()>& onComplete);
+        void PopBackStackFromNavigator(const EntryPtr& popUpTo, const kiln::Function<void()>& onComplete);
         void PopEntryFromBackStack(const EntryPtr& popUpTo, bool saveState = false, std::deque<NavBackStackEntryState>* savedState = nullptr);
         bool ClearBackStackInternal(int destinationId);
         bool ClearBackStackInternal(const std::string& route);
@@ -322,7 +323,7 @@ namespace kiln::navigation {
         std::optional<std::vector<NavBackStackEntryState>> m_BackStackToRestore;
         std::map<Navigator*, std::unique_ptr<NavigatorBackStack>> m_NavigatorState;
         std::map<EntryPtr, bool> m_EntrySavedState;
-        std::function<void(const EntryPtr&)> m_AddHandler, m_PopHandler;
+        kiln::Function<void(const EntryPtr&)> m_AddHandler, m_PopHandler;
         std::vector<OnDestinationChanged> m_Listeners;
         LifecycleState m_HostLifecycle = LifecycleState::Created;
         std::shared_ptr<lifecycle::LifecycleOwner> m_LifecycleOwner;

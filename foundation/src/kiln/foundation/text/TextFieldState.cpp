@@ -1,4 +1,5 @@
 #include "kiln/foundation/text/TextFieldState.h"
+#include <kiln/Function.h>
 
 #include <algorithm>
 #include <chrono>
@@ -9,13 +10,13 @@ namespace kiln::foundation {
     // --- undo ---------------------------------------------------------------------------------
 
     namespace {
-        std::function<std::int64_t()>& UndoClock() {
-            static std::function<std::int64_t()> clock;
+        kiln::Function<std::int64_t()>& UndoClock() {
+            static kiln::Function<std::int64_t()> clock;
             return clock;
         }
     }
 
-    void SetUndoClock(std::function<std::int64_t()> clock) { UndoClock() = std::move(clock); }
+    void SetUndoClock(kiln::Function<std::int64_t()> clock) { UndoClock() = std::move(clock); }
     std::int64_t UndoNowMillis() {
         if (UndoClock()) return UndoClock()();
         return std::int64_t(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count());
@@ -149,7 +150,7 @@ namespace kiln::foundation {
             throw std::logic_error("TextFieldState cannot be edited from its onTextChanged callback; use an InputTransformation");
     }
 
-    void TextFieldState::Edit(const std::function<void(TextFieldBuffer&)>& block) {
+    void TextFieldState::Edit(const kiln::Function<void(TextFieldBuffer&)>& block) {
         CheckNotInOnTextChanged();
         if (m_Editing) throw std::logic_error("TextFieldState does not support concurrent or nested editing");
         m_Editing = true;
@@ -219,7 +220,7 @@ namespace kiln::foundation {
         SyncMainBufferToTemporaryBuffer(next, textChanged, selectionChanged, styleChanged, valueTextChanged);
     }
 
-    void TextFieldState::EditAsUser(const InputTransformation* input, const std::function<void(TextFieldBuffer&)>& block,
+    void TextFieldState::EditAsUser(const InputTransformation* input, const kiln::Function<void(TextFieldBuffer&)>& block,
                                     bool restartIme, TextFieldEditUndoBehavior undo) {
         CheckNotInOnTextChanged();
         m_Main.Tracker().ClearChanges();
@@ -229,7 +230,7 @@ namespace kiln::foundation {
         m_SuggestionSelected = m_Main.suggestionSelected;
     }
 
-    void TextFieldState::EditWithNoSideEffects(const std::function<void(TextFieldBuffer&)>& block) {
+    void TextFieldState::EditWithNoSideEffects(const kiln::Function<void(TextFieldBuffer&)>& block) {
         m_Main.Tracker().ClearChanges();
         block(m_Main);
         const TextFieldCharSequence before = m_Value.Peek();
@@ -514,7 +515,7 @@ namespace kiln::foundation {
     void TransformedTextFieldState::CollapseSelectionToEnd() {
         m_State.EditAsUser(m_Input.get(), [](TextFieldBuffer& b) { b.SetSelectionCoerced(b.Selection().end); });
     }
-    void TransformedTextFieldState::EditUntransformedTextAsUser(const std::function<void(TextFieldBuffer&)>& block, bool restartIme) {
+    void TransformedTextFieldState::EditUntransformedTextAsUser(const kiln::Function<void(TextFieldBuffer&)>& block, bool restartIme) {
         m_State.EditAsUser(m_Input.get(), [&](TextFieldBuffer& b) { block(b); UpdateWedgeAffinity(b); }, restartIme);
     }
 
@@ -547,7 +548,7 @@ namespace kiln::foundation {
         }
     }
 
-    void ImeEditCommandScope::Edit(std::function<void(TextFieldBuffer&)> block) {
+    void ImeEditCommandScope::Edit(kiln::Function<void(TextFieldBuffer&)> block) {
         BeginBatchEdit();
         m_Commands.push_back(std::move(block));
         EndBatchEdit();

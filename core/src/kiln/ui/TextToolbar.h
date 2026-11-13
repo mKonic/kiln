@@ -7,6 +7,7 @@
 // ProcessText, LookUpText).
 
 #include "kiln/ui/Geometry.h"
+#include <kiln/Function.h>
 
 #include <cstddef>
 #include <cstdint>
@@ -69,14 +70,14 @@ namespace kiln::ui {
     // theme's colours (Widget.PopupMenu's colorBackground, TextAppearance.Widget.PopupMenu.Large's
     // textColorPrimary enabled / disabled; 0 for the default).
     struct ContextMenuHost {
-        std::function<std::string(TextToolbarItemId)> standardLabel;
-        std::function<std::optional<HostIcon>(TextToolbarItemId, int sizePx)> standardIcon;
-        std::function<std::optional<HostIcon>(int themeAttr, int sizePx)> themeIcon;
-        std::function<std::string(int classification, int index)> classificationLabel;
-        std::function<std::optional<HostIcon>(int classification, int index, int sizePx)> classificationIcon;
-        std::function<void(int classification, int index)> performClassification;
+        kiln::Function<std::string(TextToolbarItemId)> standardLabel;
+        kiln::Function<std::optional<HostIcon>(TextToolbarItemId, int sizePx)> standardIcon;
+        kiln::Function<std::optional<HostIcon>(int themeAttr, int sizePx)> themeIcon;
+        kiln::Function<std::string(int classification, int index)> classificationLabel;
+        kiln::Function<std::optional<HostIcon>(int classification, int index, int sizePx)> classificationIcon;
+        kiln::Function<void(int classification, int index)> performClassification;
         struct Colors { std::uint32_t background = 0, text = 0, disabledText = 0; };
-        std::function<Colors()> colors;
+        kiln::Function<Colors()> colors;
     };
 
     // PlatformSelectionBehaviorsImpl's platform calls. Requests run off the main thread with
@@ -84,23 +85,23 @@ namespace kiln::ui {
     // on the main thread, with nothing after a timeout or a failure.
     struct TextClassifierHost {
         // An id for a TextClassifier session of the widget type, made on first use; 0: none.
-        std::function<int(SelectedTextType)> createSession;
-        std::function<void(int session)> destroySession;
+        kiln::Function<int(SelectedTextType)> createSession;
+        kiln::Function<void(int session)> destroySession;
         // suggestSelection (with the classification from API 31).
-        std::function<void(int session, const std::u16string& text, int start, int end, const std::vector<std::string>& locales,
-                           std::function<void(std::optional<std::pair<int, int>> range, std::optional<TextClassificationInfo>)> done)>
+        kiln::Function<void(int session, const std::u16string& text, int start, int end, const std::vector<std::string>& locales,
+                           kiln::Function<void(std::optional<std::pair<int, int>> range, std::optional<TextClassificationInfo>)> done)>
             suggestSelection;
-        std::function<void(int session, const std::u16string& text, int start, int end, const std::vector<std::string>& locales,
-                           std::function<void(std::optional<TextClassificationInfo>)> done)>
+        kiln::Function<void(int session, const std::u16string& text, int start, int end, const std::vector<std::string>& locales,
+                           kiln::Function<void(std::optional<TextClassificationInfo>)> done)>
             classifyText;
-        std::function<void(int handle)> releaseClassification;
+        kiln::Function<void(int handle)> releaseClassification;
         // ACTION_PROCESS_TEXT activities the app may start (their labels, in order), and starting
         // one of the last query with the selected text.
-        std::function<std::vector<std::string>()> processTextActivities;
-        std::function<void(int index, bool editable, const std::u16string& selected)> processText;
+        kiln::Function<std::vector<std::string>()> processTextActivities;
+        kiln::Function<void(int index, bool editable, const std::u16string& selected)> processText;
         // LookUpText (API 37): whether an activity handles the text, and starting it.
-        std::function<bool(const std::u16string&)> canLookUp;
-        std::function<void(const std::u16string&)> lookUp;
+        kiln::Function<bool(const std::u16string&)> canLookUp;
+        kiln::Function<void(const std::u16string&)> lookUp;
     };
 
 }

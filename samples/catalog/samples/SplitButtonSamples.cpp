@@ -1,5 +1,6 @@
 // SplitButtonSamples.kt
 #include "SplitButtonSamples.h"
+#include <kiln/Function.h>
 #include "Common.h"
 #include "Shared.h"
 
@@ -15,11 +16,11 @@ namespace catalog::samples {
     namespace BD = m3::ButtonDefaults;
 
     namespace {
-        using LeadingFn = void (*)(std::function<void()>, const Modifier&, const m3::SplitButtonOptions&, std::function<void()>);
-        using TrailingFn = void (*)(bool, std::function<void(bool)>, const Modifier&, const m3::SplitButtonOptions&, std::function<void()>);
+        using LeadingFn = void (*)(kiln::Function<void()>, const Modifier&, const m3::SplitButtonOptions&, kiln::Function<void()>);
+        using TrailingFn = void (*)(bool, kiln::Function<void(bool)>, const Modifier&, const m3::SplitButtonOptions&, kiln::Function<void()>);
 
         // The edit icon, a spacer and the label (sized for `height` when given).
-        std::function<void()> EditAndLabel(const char* label, std::optional<Dp> height = std::nullopt) {
+        kiln::Function<void()> EditAndLabel(const char* label, std::optional<Dp> height = std::nullopt) {
             return [label, height] {
                 const Dp iconSize = height ? SD::leadingButtonIconSizeFor(*height) : SD::LeadingIconSize;
                 m3::Icon(Icons::Filled::Edit(), std::string("Localized description"), Size({}, iconSize));
@@ -95,7 +96,7 @@ namespace catalog::samples {
             m3::SplitButtonLayout([] { SD::LeadingButton([] { /* Do Nothing */ }, {}, {}, EditAndLabel("My Button")); },
                                   [&checked] { ToggleTrailing(SD::TrailingButton, checked); });
             m3::DropdownMenu(checked.Get(), [&checked] { checked.Set(false); }, {}, {}, [] {
-                const auto item = [](const char* text, const ImageVectorPtr* icon, std::function<void()> trailing) {
+                const auto item = [](const char* text, const ImageVectorPtr* icon, kiln::Function<void()> trailing) {
                     m3::DropdownMenuItemOptions o;
                     o.leadingIcon = [icon] { m3::Icon(*icon, std::nullopt); };
                     o.trailingIcon = std::move(trailing);

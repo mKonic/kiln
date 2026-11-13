@@ -1,4 +1,5 @@
 #include "kiln/runtime/Composition.h"
+#include <kiln/Function.h>
 
 #include <bit>
 
@@ -106,7 +107,7 @@ namespace kiln::rt {
         return ctx;
     }
 
-    void Composition::Provide(const CompositionLocalContext& context, std::function<void()> content, Key key) {
+    void Composition::Provide(const CompositionLocalContext& context, kiln::Function<void()> content, Key key) {
         Group& g = Take(Group::Kind::Scope, typeid(CompositionLocalContext), key);
         if (!g.scope) g.scope = std::make_unique<Scope>(*this, m_Current, m_Current->m_Host, g.key.value);
         g.scope->m_Provided = context.provided;
@@ -174,7 +175,7 @@ namespace kiln::rt {
 
     Composition* Composition::Current() { return t_Current; }
 
-    void Composition::SetContent(std::function<void()> content) {
+    void Composition::SetContent(kiln::Function<void()> content) {
         if (!m_RootScope) m_RootScope = std::make_unique<Scope>(*this, nullptr, &m_Root);
         m_RootScope->m_Content = std::move(content);
         Invalidate(*m_RootScope);
@@ -250,20 +251,20 @@ namespace kiln::rt {
         m_ChildrenDirty.insert(top);
     }
 
-    void Composition::RunChild(Scope& scope, std::function<void()> content, const Keys* memo) {
+    void Composition::RunChild(Scope& scope, kiln::Function<void()> content, const Keys* memo) {
         if (memo && scope.m_HasMemo && *memo == scope.m_Memo && !scope.m_Invalid) return;   // skipped
         scope.m_Content = std::move(content);
         if (memo) { scope.m_Memo = *memo; scope.m_HasMemo = true; }
         RunScope(scope);
     }
 
-    void Composition::Child(std::function<void()> content, Key key, const Keys* memo) {
+    void Composition::Child(kiln::Function<void()> content, Key key, const Keys* memo) {
         Group& g = Take(Group::Kind::Scope, typeid(Scope), key);
         if (!g.scope) g.scope = std::make_unique<Scope>(*this, m_Current, m_Current->m_Host, g.key.value);
         RunChild(*g.scope, std::move(content), memo);
     }
 
-    void Composition::Section(const std::function<void()>& content, Key key) {
+    void Composition::Section(const kiln::Function<void()>& content, Key key) {
         struct GroupTag {};
         rt::Group& g = Take(Group::Kind::Scope, typeid(GroupTag), key);
         if (!g.scope) g.scope = std::make_unique<Scope>(*this, m_Current, m_Current->m_Host, g.key.value);
@@ -337,7 +338,7 @@ namespace kiln::rt {
             if (g.scope) Retarget(*g.scope);
     }
 
-    void Composition::Movable(const std::shared_ptr<MovableHandle>& handle, std::function<void()> content) {
+    void Composition::Movable(const std::shared_ptr<MovableHandle>& handle, kiln::Function<void()> content) {
         Group& g = Take(Group::Kind::Scope, typeid(MovableHandle), Key(std::int64_t(reinterpret_cast<std::intptr_t>(handle.get()))));
         if (g.scope && g.scope->m_AwaitingInsert) {   // still waiting for the batch to end
             g.scope->m_Content = std::move(content);
@@ -456,11 +457,11 @@ namespace kiln::rt {
         }
     }
 
-    void Composition::SideEffect(std::function<void()> effect) {
+    void Composition::SideEffect(kiln::Function<void()> effect) {
         m_Effects.push_back(std::move(effect));
     }
 
-    void Composition::DisposableEffect(Keys keys, std::function<std::function<void()>()> effect, Key key) {
+    void Composition::DisposableEffect(Keys keys, kiln::Function<kiln::Function<void()>()> effect, Key key) {
         Group& g = Take(Group::Kind::Effect, typeid(DisposableTag), key);
         if (!g.effect) g.effect = std::make_shared<Group::EffectState>();
         if (g.effect->started && g.keys == keys) return;
@@ -476,10 +477,10 @@ namespace kiln::rt {
     namespace {
         // A coroutine lambda keeps its captures in the closure, not in the coroutine frame: the
         // closure has to outlive the task it starts. This frame holds it for the task's life.
-        Task<> HoldClosure(std::shared_ptr<std::function<Task<>()>> fn) { co_await (*fn)(); }
+        Task<> HoldClosure(std::shared_ptr<kiln::Function<Task<>()>> fn) { co_await (*fn)(); }
     }
 
-    void Composition::LaunchedEffect(Keys keys, std::function<Task<>()> task, Key key) {
+    void Composition::LaunchedEffect(Keys keys, kiln::Function<Task<>()> task, Key key) {
         Group& g = Take(Group::Kind::Effect, typeid(LaunchedTag), key);
         if (!g.effect) g.effect = std::make_shared<Group::EffectState>();
         if (g.effect->started && g.keys == keys) return;
@@ -487,7 +488,7 @@ namespace kiln::rt {
         g.effect->started = true;
         auto state = g.effect;
         Dispatcher* dispatcher = &m_Dispatcher;
-        m_Effects.push_back([state, dispatcher, fn = std::make_shared<std::function<Task<>()>>(std::move(task))] {
+        m_Effects.push_back([state, dispatcher, fn = std::make_shared<kiln::Function<Task<>()>>(std::move(task))] {
             state->job.Cancel();
             state->job = Launch(*dispatcher, HoldClosure(fn));
         });

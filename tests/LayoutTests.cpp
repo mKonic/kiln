@@ -1,4 +1,5 @@
 #include "Check.h"
+#include <kiln/Function.h>
 #include <cmath>
 
 #include <cmath>
@@ -26,7 +27,7 @@ namespace {
         rt::Dispatcher dispatcher;
         rt::Composition composition{ owner.Root(), dispatcher };
         explicit Harness(LayoutDirection dir = LayoutDirection::Ltr) { owner.SetDensity({ 1, 1 }); owner.SetDirection(dir); }
-        void Run(std::function<void()> content, IntSize window = { 100, 100 }) {
+        void Run(kiln::Function<void()> content, IntSize window = { 100, 100 }) {
             composition.SetContent(std::move(content));
             composition.Recompose();
             owner.MeasureAndLayout(window);

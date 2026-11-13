@@ -6,13 +6,14 @@
 // (PagerDefaults.flingBehavior: PagerSnapDistance.atMost(1), snap spring StiffnessMediumLow).
 
 #include "kiln/foundation/Lazy.h"
+#include <kiln/Function.h>
 #include "kiln/foundation/Snapping.h"
 
 namespace kiln::foundation {
 
     class PagerState final : public LazyStateBase {
     public:
-        explicit PagerState(int currentPage = 0, float currentPageOffsetFraction = 0, std::function<int()> pageCount = {});
+        explicit PagerState(int currentPage = 0, float currentPageOffsetFraction = 0, kiln::Function<int()> pageCount = {});
 
         int PageCount() const { return m_PageCountFn ? m_PageCountFn() : m_PageCount; }
         // The page closest to the snap position, and how far (in pages, -0.5..0.5) it is from it.
@@ -38,7 +39,7 @@ namespace kiln::foundation {
         // (upDownDifference) and whether a finger is down on the pager (isGestureInProgress).
         float SnapOffset(float velocity, float positionalThreshold = 0.5f) const;
         void SetPageCount(int n) { m_PageCount = n; }
-        void SetPageCountProvider(std::function<int()> fn) { m_PageCountFn = std::move(fn); }
+        void SetPageCountProvider(kiln::Function<int()> fn) { m_PageCountFn = std::move(fn); }
         void SetGestureDelta(float d) { m_UpDown = d; }
         void SetGestureInProgress(bool b) { m_GestureInProgress = b; }
         bool GestureInProgress() const { return m_GestureInProgress; }
@@ -69,7 +70,7 @@ namespace kiln::foundation {
         void OnMeasured() override;
         bool ScrollingForward(float velocity) const;
 
-        std::function<int()> m_PageCountFn;
+        kiln::Function<int()> m_PageCountFn;
         int m_PageCount = 0;
         rt::State<int> m_Current, m_Settled;
         rt::State<float> m_Fraction{ 0 };
@@ -84,7 +85,7 @@ namespace kiln::foundation {
     // PagerSnapDistance: where a fling may settle given the page it started from and the page a
     // natural decay would reach. AtMost(n): at most n pages from the start page.
     struct PagerSnapDistance {
-        std::function<int(int startPage, int suggestedTargetPage, float velocity, int pageSize, int pageSpacing)> calculateTargetPage;
+        kiln::Function<int(int startPage, int suggestedTargetPage, float velocity, int pageSize, int pageSpacing)> calculateTargetPage;
         static PagerSnapDistance AtMost(int pages);
     };
 
@@ -104,10 +105,10 @@ namespace kiln::foundation {
     struct PageSize {
         bool fill = true;
         Dp size{ 0 };
-        std::function<int(const Density&, int availableSpace, int pageSpacing)> calculate;
+        kiln::Function<int(const Density&, int availableSpace, int pageSpacing)> calculate;
         static PageSize Fill() { return {}; }
         static PageSize Fixed(Dp d) { return { false, d, {} }; }
-        static PageSize Custom(std::function<int(const Density&, int, int)> f) { return { false, Dp{ 0 }, std::move(f) }; }
+        static PageSize Custom(kiln::Function<int(const Density&, int, int)> f) { return { false, Dp{ 0 }, std::move(f) }; }
     };
 
     struct PagerOptions {
@@ -119,7 +120,7 @@ namespace kiln::foundation {
         bool userScrollEnabled = true;
         // Page 0 at the end (bottom, or the end edge); scrolling and paging go the other way.
         bool reverseLayout = false;
-        std::function<rt::Key(int page)> key;
+        kiln::Function<rt::Key(int page)> key;
         OverscrollParam overscrollEffect;   // unset: rememberOverscrollEffect(); null: none
         // Pages composed and laid out on each side beyond the visible ones (ready before they
         // scroll in, and keeping their state).
@@ -129,14 +130,14 @@ namespace kiln::foundation {
         std::shared_ptr<NestedScrollConnection> pageNestedScrollConnection;   // null: PageNestedScrollConnection
     };
 
-    void HorizontalPager(const Modifier& modifier, PagerState& state, std::function<void(int page)> content,
+    void HorizontalPager(const Modifier& modifier, PagerState& state, kiln::Function<void(int page)> content,
                          PagerOptions options = {}, rt::Key key = {});
-    void VerticalPager(const Modifier& modifier, PagerState& state, std::function<void(int page)> content,
+    void VerticalPager(const Modifier& modifier, PagerState& state, kiln::Function<void(int page)> content,
                        PagerOptions options = {}, rt::Key key = {});
 
     // rememberPagerState: the current page and its offset fraction survive re-creation; the page
     // count is read from `pageCount` (refreshed every composition).
-    PagerState& RememberPagerState(int initialPage, float initialPageOffsetFraction, std::function<int()> pageCount, rt::Key key = {});
-    inline PagerState& RememberPagerState(std::function<int()> pageCount, rt::Key key = {}) { return RememberPagerState(0, 0, std::move(pageCount), key); }
+    PagerState& RememberPagerState(int initialPage, float initialPageOffsetFraction, kiln::Function<int()> pageCount, rt::Key key = {});
+    inline PagerState& RememberPagerState(kiln::Function<int()> pageCount, rt::Key key = {}) { return RememberPagerState(0, 0, std::move(pageCount), key); }
 
 }

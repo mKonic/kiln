@@ -13,6 +13,7 @@
 // surfaces (the desktop dev host), onSurface never runs.
 
 #include "kiln/foundation/Compose.h"
+#include <kiln/Function.h>
 #include "kiln/runtime/Task.h"
 #include "kiln/ui/ExternalSurface.h"
 
@@ -29,8 +30,8 @@ namespace kiln::foundation {
     class SurfaceScope {
     public:
         virtual ~SurfaceScope() = default;
-        virtual void OnChanged(std::function<void(Surface, int width, int height)> onChanged) = 0;
-        virtual void OnDestroyed(std::function<void(Surface)> onDestroyed) = 0;
+        virtual void OnChanged(kiln::Function<void(Surface, int width, int height)> onChanged) = 0;
+        virtual void OnDestroyed(kiln::Function<void(Surface)> onDestroyed) = 0;
     };
     // SurfaceCoroutineScope: a SurfaceScope whose task stops when the surface goes.
     class SurfaceCoroutineScope : public SurfaceScope {
@@ -41,7 +42,7 @@ namespace kiln::foundation {
     class AndroidExternalSurfaceScope {
     public:
         virtual ~AndroidExternalSurfaceScope() = default;
-        virtual void OnSurface(std::function<rt::Task<>(SurfaceCoroutineScope&, Surface, int width, int height)> onSurface) = 0;
+        virtual void OnSurface(kiln::Function<rt::Task<>(SurfaceCoroutineScope&, Surface, int width, int height)> onSurface) = 0;
     };
 
     // AndroidExternalSurfaceZOrder: Behind, MediaOverlay (over Behind surfaces), OnTop.
@@ -50,10 +51,10 @@ namespace kiln::foundation {
     // surfaceSize 0x0: the buffer follows the element's size.
     void AndroidExternalSurface(const Modifier& modifier = {}, bool isOpaque = true, ui::IntSize surfaceSize = {},
                                 AndroidExternalSurfaceZOrder zOrder = AndroidExternalSurfaceZOrder::Behind, bool isSecure = false,
-                                std::function<void(AndroidExternalSurfaceScope&)> onInit = {}, rt::Key key = {});
+                                kiln::Function<void(AndroidExternalSurfaceScope&)> onInit = {}, rt::Key key = {});
     // transform: a 3x3 row-major matrix for the frames within the element (null: identity).
     void AndroidEmbeddedExternalSurface(const Modifier& modifier = {}, bool isOpaque = true, ui::IntSize surfaceSize = {},
                                         std::optional<std::array<float, 9>> transform = std::nullopt,
-                                        std::function<void(AndroidExternalSurfaceScope&)> onInit = {}, rt::Key key = {});
+                                        kiln::Function<void(AndroidExternalSurfaceScope&)> onInit = {}, rt::Key key = {});
 
 }

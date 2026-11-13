@@ -7,6 +7,7 @@
 // its exit finishes.
 
 #include "kiln/animation/Spec.h"
+#include <kiln/Function.h>
 #include "kiln/foundation/Layouts.h"
 #include "kiln/foundation/Transition.h"
 
@@ -23,8 +24,8 @@ namespace kiln::foundation {
     // or end (exit) of its animation.
     struct FadeConfig { float alpha; anim::SpecPtr spec; };
     struct ScaleConfig { float scale; float originX = 0.5f, originY = 0.5f; anim::SpecPtr spec; };
-    struct SlideConfig { std::function<IntOffset(IntSize)> offset; anim::SpecPtr spec; };
-    struct ChangeSizeConfig { Alignment alignment; std::function<IntSize(IntSize)> size; bool clip = true; anim::SpecPtr spec; };
+    struct SlideConfig { kiln::Function<IntOffset(IntSize)> offset; anim::SpecPtr spec; };
+    struct ChangeSizeConfig { Alignment alignment; kiln::Function<IntSize(IntSize)> size; bool clip = true; anim::SpecPtr spec; };
     // A scrim over the content; with matchParentSize it is drawn apart from the other transforms.
     struct VeilConfig { ui::Color initialColor, targetColor; anim::SpecPtr spec; bool matchParentSize = false; };
     struct EnterExitTransitionConfig {
@@ -52,24 +53,24 @@ namespace kiln::foundation {
     ExitTransition FadeOut(anim::SpecPtr spec = DefaultEnterExitSpring(), float targetAlpha = 0);
     EnterTransition ScaleIn(anim::SpecPtr spec = DefaultEnterExitSpring(), float initialScale = 0, float originX = 0.5f, float originY = 0.5f);
     ExitTransition ScaleOut(anim::SpecPtr spec = DefaultEnterExitSpring(), float targetScale = 0, float originX = 0.5f, float originY = 0.5f);
-    EnterTransition SlideIn(std::function<IntOffset(IntSize)> initialOffset, anim::SpecPtr spec = DefaultSpatialEnterExitSpring());
-    ExitTransition SlideOut(std::function<IntOffset(IntSize)> targetOffset, anim::SpecPtr spec = DefaultSpatialEnterExitSpring());
-    EnterTransition SlideInVertically(std::function<int(int)> initialOffsetY = [](int h) { return -h / 2; }, anim::SpecPtr spec = DefaultSpatialEnterExitSpring());
-    ExitTransition SlideOutVertically(std::function<int(int)> targetOffsetY = [](int h) { return -h / 2; }, anim::SpecPtr spec = DefaultSpatialEnterExitSpring());
-    EnterTransition SlideInHorizontally(std::function<int(int)> initialOffsetX = [](int w) { return -w / 2; }, anim::SpecPtr spec = DefaultSpatialEnterExitSpring());
-    ExitTransition SlideOutHorizontally(std::function<int(int)> targetOffsetX = [](int w) { return -w / 2; }, anim::SpecPtr spec = DefaultSpatialEnterExitSpring());
+    EnterTransition SlideIn(kiln::Function<IntOffset(IntSize)> initialOffset, anim::SpecPtr spec = DefaultSpatialEnterExitSpring());
+    ExitTransition SlideOut(kiln::Function<IntOffset(IntSize)> targetOffset, anim::SpecPtr spec = DefaultSpatialEnterExitSpring());
+    EnterTransition SlideInVertically(kiln::Function<int(int)> initialOffsetY = [](int h) { return -h / 2; }, anim::SpecPtr spec = DefaultSpatialEnterExitSpring());
+    ExitTransition SlideOutVertically(kiln::Function<int(int)> targetOffsetY = [](int h) { return -h / 2; }, anim::SpecPtr spec = DefaultSpatialEnterExitSpring());
+    EnterTransition SlideInHorizontally(kiln::Function<int(int)> initialOffsetX = [](int w) { return -w / 2; }, anim::SpecPtr spec = DefaultSpatialEnterExitSpring());
+    ExitTransition SlideOutHorizontally(kiln::Function<int(int)> targetOffsetX = [](int w) { return -w / 2; }, anim::SpecPtr spec = DefaultSpatialEnterExitSpring());
     EnterTransition ExpandIn(anim::SpecPtr spec = DefaultSpatialEnterExitSpring(), Alignment expandFrom = Alignment::BottomEnd(),
-                             bool clip = true, std::function<IntSize(IntSize)> initialSize = [](IntSize) { return IntSize{ 0, 0 }; });
+                             bool clip = true, kiln::Function<IntSize(IntSize)> initialSize = [](IntSize) { return IntSize{ 0, 0 }; });
     ExitTransition ShrinkOut(anim::SpecPtr spec = DefaultSpatialEnterExitSpring(), Alignment shrinkTowards = Alignment::BottomEnd(),
-                             bool clip = true, std::function<IntSize(IntSize)> targetSize = [](IntSize) { return IntSize{ 0, 0 }; });
+                             bool clip = true, kiln::Function<IntSize(IntSize)> targetSize = [](IntSize) { return IntSize{ 0, 0 }; });
     EnterTransition ExpandVertically(anim::SpecPtr spec = DefaultSpatialEnterExitSpring(), AlignmentV expandFrom = AlignmentV::Bottom(),
-                                     bool clip = true, std::function<int(int)> initialHeight = [](int) { return 0; });
+                                     bool clip = true, kiln::Function<int(int)> initialHeight = [](int) { return 0; });
     ExitTransition ShrinkVertically(anim::SpecPtr spec = DefaultSpatialEnterExitSpring(), AlignmentV shrinkTowards = AlignmentV::Bottom(),
-                                    bool clip = true, std::function<int(int)> targetHeight = [](int) { return 0; });
+                                    bool clip = true, kiln::Function<int(int)> targetHeight = [](int) { return 0; });
     EnterTransition ExpandHorizontally(anim::SpecPtr spec = DefaultSpatialEnterExitSpring(), AlignmentH expandFrom = AlignmentH::End(),
-                                       bool clip = true, std::function<int(int)> initialWidth = [](int) { return 0; });
+                                       bool clip = true, kiln::Function<int(int)> initialWidth = [](int) { return 0; });
     ExitTransition ShrinkHorizontally(anim::SpecPtr spec = DefaultSpatialEnterExitSpring(), AlignmentH shrinkTowards = AlignmentH::End(),
-                                      bool clip = true, std::function<int(int)> targetWidth = [](int) { return 0; });
+                                      bool clip = true, kiln::Function<int(int)> targetWidth = [](int) { return 0; });
 
     // unveilIn: a scrim (Black at 50% by default) that clears as the content enters; veilOut:
     // one that darkens over the content as it exits.
@@ -144,10 +145,10 @@ namespace kiln::foundation {
     // unset, the velocity is tracked from the offsets set.
     struct MutableTransform {
         bool veilMatchParentSize = false;
-        std::function<ui::Offset()> offsetVelocityProvider;
-        std::function<void(TransformScope&, IntSize fullSize)> block;
-        std::function<float()> sharedElementProgressProvider;
-        void Update(std::function<void(TransformScope&, IntSize fullSize)> b) { block = std::move(b); }
+        kiln::Function<ui::Offset()> offsetVelocityProvider;
+        kiln::Function<void(TransformScope&, IntSize fullSize)> block;
+        kiln::Function<float()> sharedElementProgressProvider;
+        void Update(kiln::Function<void(TransformScope&, IntSize fullSize)> b) { block = std::move(b); }
         void Clear() { block = {}; veilMatchParentSize = false; offsetVelocityProvider = {}; sharedElementProgressProvider = {}; }
     };
 
@@ -156,18 +157,18 @@ namespace kiln::foundation {
     struct MutableContentTransform {
         std::shared_ptr<MutableTransform> initialTransform = std::make_shared<MutableTransform>();
         std::shared_ptr<MutableTransform> targetTransform = std::make_shared<MutableTransform>();
-        void InitialContentTransform(std::function<void(TransformScope&, IntSize)> block) { initialTransform->Update(std::move(block)); }
-        void TargetContentTransform(std::function<void(TransformScope&, IntSize)> block) { targetTransform->Update(std::move(block)); }
+        void InitialContentTransform(kiln::Function<void(TransformScope&, IntSize)> block) { initialTransform->Update(std::move(block)); }
+        void TargetContentTransform(kiln::Function<void(TransformScope&, IntSize)> block) { targetTransform->Update(std::move(block)); }
         // Shared elements' interpolation progress during the phase (0..1).
-        void SharedElementProgress(std::function<float()> progress) {
+        void SharedElementProgress(kiln::Function<float()> progress) {
             initialTransform->sharedElementProgressProvider = progress;
             targetTransform->sharedElementProgressProvider = std::move(progress);
         }
     };
     std::shared_ptr<MutableContentTransform> MakeMutableContentTransform(bool initialVeilMatchParentSize = false, bool targetVeilMatchParentSize = false,
-                                                                         std::function<ui::Offset()> initialOffsetVelocityProvider = {},
-                                                                         std::function<ui::Offset()> targetOffsetVelocityProvider = {},
-                                                                         std::function<void(MutableContentTransform&)> block = {});
+                                                                         kiln::Function<ui::Offset()> initialOffsetVelocityProvider = {},
+                                                                         kiln::Function<ui::Offset()> targetOffsetVelocityProvider = {},
+                                                                         kiln::Function<void(MutableContentTransform&)> block = {});
 
     // EnterExitState: where AnimatedVisibility's content is in its life.
     enum class EnterExitState : std::uint8_t { PreEnter, Visible, PostExit };
@@ -183,35 +184,35 @@ namespace kiln::foundation {
     // Modifier.animateEnterExit (as a wrapper): `content` enters and exits with the
     // AnimatedVisibility around it, by its own transitions (a child that slides while the
     // whole fades).
-    void AnimateEnterExit(const Modifier& modifier, std::function<void()> content, EnterTransition enter = FadeIn(), ExitTransition exit = FadeOut(),
+    void AnimateEnterExit(const Modifier& modifier, kiln::Function<void()> content, EnterTransition enter = FadeIn(), ExitTransition exit = FadeOut(),
                           rt::Key key = {});
 
-    void AnimatedVisibility(bool visible, const Modifier& modifier, std::function<void()> content,
+    void AnimatedVisibility(bool visible, const Modifier& modifier, kiln::Function<void()> content,
                             EnterTransition enter = FadeIn() + ExpandIn(), ExitTransition exit = ShrinkOut() + FadeOut(), rt::Key key = {});
 
     // AnimatedVisibility(visibleState): driven by a MutableTransitionState (start invisible and
     // set the target to animate in on first composition; IsIdle once done).
-    void AnimatedVisibility(MutableTransitionState<bool>& visibleState, const Modifier& modifier, std::function<void()> content,
+    void AnimatedVisibility(MutableTransitionState<bool>& visibleState, const Modifier& modifier, kiln::Function<void()> content,
                             EnterTransition enter = FadeIn() + ExpandIn(), ExitTransition exit = FadeOut() + ShrinkOut(), rt::Key key = {});
     // CapturedAnimatedVisibility: as AnimatedVisibility, but on the way out the content leaves
     // the composition at once and its last frame (captured in a graphics layer) animates out in
     // its place, at its last size.
-    void CapturedAnimatedVisibility(bool visible, const Modifier& modifier, std::function<void()> content,
+    void CapturedAnimatedVisibility(bool visible, const Modifier& modifier, kiln::Function<void()> content,
                                     EnterTransition enter = FadeIn() + ExpandIn(), ExitTransition exit = ShrinkOut() + FadeOut(), rt::Key key = {});
-    void CapturedAnimatedVisibility(MutableTransitionState<bool>& visibleState, const Modifier& modifier, std::function<void()> content,
+    void CapturedAnimatedVisibility(MutableTransitionState<bool>& visibleState, const Modifier& modifier, kiln::Function<void()> content,
                                     EnterTransition enter = FadeIn() + ExpandIn(), ExitTransition exit = ShrinkOut() + FadeOut(), rt::Key key = {});
     // RowScope / ColumnScope.AnimatedVisibility: the defaults expand and shrink along the
     // layout's main axis only.
-    void AnimatedVisibilityInRow(bool visible, const Modifier& modifier, std::function<void()> content,
+    void AnimatedVisibilityInRow(bool visible, const Modifier& modifier, kiln::Function<void()> content,
                                  EnterTransition enter = FadeIn() + ExpandHorizontally(),
                                  ExitTransition exit = FadeOut() + ShrinkHorizontally(), rt::Key key = {});
-    void AnimatedVisibilityInRow(MutableTransitionState<bool>& visibleState, const Modifier& modifier, std::function<void()> content,
+    void AnimatedVisibilityInRow(MutableTransitionState<bool>& visibleState, const Modifier& modifier, kiln::Function<void()> content,
                                  EnterTransition enter = ExpandHorizontally() + FadeIn(),
                                  ExitTransition exit = ShrinkHorizontally() + FadeOut(), rt::Key key = {});
-    void AnimatedVisibilityInColumn(bool visible, const Modifier& modifier, std::function<void()> content,
+    void AnimatedVisibilityInColumn(bool visible, const Modifier& modifier, kiln::Function<void()> content,
                                     EnterTransition enter = FadeIn() + ExpandVertically(),
                                     ExitTransition exit = FadeOut() + ShrinkVertically(), rt::Key key = {});
-    void AnimatedVisibilityInColumn(MutableTransitionState<bool>& visibleState, const Modifier& modifier, std::function<void()> content,
+    void AnimatedVisibilityInColumn(MutableTransitionState<bool>& visibleState, const Modifier& modifier, kiln::Function<void()> content,
                                     EnterTransition enter = ExpandVertically() + FadeIn(),
                                     ExitTransition exit = ShrinkVertically() + FadeOut(), rt::Key key = {});
 
@@ -219,7 +220,7 @@ namespace kiln::foundation {
     // leaves the composition) while it goes to false.
     // In a deferred phase (the transition has a pending target) mutableTransform moves the
     // content by hand; forceVisible keeps it composed after its exit (interrupted content).
-    void AnimatedEnterExit(Transition<bool>& visibility, const Modifier& modifier, std::function<void()> content,
+    void AnimatedEnterExit(Transition<bool>& visibility, const Modifier& modifier, kiln::Function<void()> content,
                            const EnterTransition& enter, const ExitTransition& exit, rt::Key key = {},
                            std::shared_ptr<MutableTransform> mutableTransform = nullptr, bool forceVisible = false);
 
@@ -232,8 +233,8 @@ namespace kiln::foundation {
     // Transition.AnimatedVisibility(visible): visibility derived from a parent transition's
     // state, animated on the parent's clock (a child transition).
     template<typename S>
-    void AnimatedVisibility(Transition<S>& transition, std::function<bool(const S&)> visible, const Modifier& modifier,
-                            std::function<void()> content, EnterTransition enter = FadeIn() + ExpandIn(),
+    void AnimatedVisibility(Transition<S>& transition, kiln::Function<bool(const S&)> visible, const Modifier& modifier,
+                            kiln::Function<void()> content, EnterTransition enter = FadeIn() + ExpandIn(),
                             ExitTransition exit = ShrinkOut() + FadeOut(), rt::Key key = {}) {
         auto& child = CreateChildTransition<bool, S>(transition, std::move(visible), key);
         AnimatedEnterExit(child, detail::LookaheadHide(modifier, child), std::move(content), enter, exit, key);
@@ -242,8 +243,8 @@ namespace kiln::foundation {
     // DeferredTransition.DeferredAnimatedVisibility(visible): as above on a deferred transition
     // (RememberDeferredTransition); while a target is pending, mutableTransform moves the content.
     template<typename S>
-    void DeferredAnimatedVisibility(Transition<S>& transition, std::function<bool(const S&)> visible, const Modifier& modifier,
-                                    std::function<void()> content, EnterTransition enter = FadeIn() + ExpandIn(),
+    void DeferredAnimatedVisibility(Transition<S>& transition, kiln::Function<bool(const S&)> visible, const Modifier& modifier,
+                                    kiln::Function<void()> content, EnterTransition enter = FadeIn() + ExpandIn(),
                                     ExitTransition exit = ShrinkOut() + FadeOut(), std::shared_ptr<MutableTransform> mutableTransform = nullptr,
                                     rt::Key key = {}) {
         auto& child = CreateChildTransition<bool, S>(transition, std::move(visible), key);
@@ -254,7 +255,7 @@ namespace kiln::foundation {
     // chosen from the initial and target sizes.
     struct SizeTransform {
         bool clip = true;
-        std::function<anim::SpecPtr(IntSize initial, IntSize target)> spec;   // null: spring(MediumLow)
+        kiln::Function<anim::SpecPtr(IntSize initial, IntSize target)> spec;   // null: spring(MediumLow)
     };
 
     // ContentTransform (enter togetherWith exit, targetContentZIndex, using SizeTransform).
@@ -279,10 +280,10 @@ namespace kiln::foundation {
         // slideIntoContainer: the new content slides in from the container's edge towards
         // `towards` (initialOffset maps the full-slide offset; identity by default).
         EnterTransition SlideIntoContainer(SlideDirection towards, anim::SpecPtr spec = nullptr,
-                                           std::function<int(int)> initialOffset = {}) const;
+                                           kiln::Function<int(int)> initialOffset = {}) const;
         // slideOutOfContainer: the old content slides out past the edge towards `towards`.
         ExitTransition SlideOutOfContainer(SlideDirection towards, anim::SpecPtr spec = nullptr,
-                                           std::function<int(int)> targetOffset = {}) const;
+                                           kiln::Function<int(int)> targetOffset = {}) const;
 
         // internal: sizes measured on the last pass.
         struct Sizes { IntSize container; IntSize target; };
@@ -301,11 +302,11 @@ namespace kiln::foundation {
     };
     // AnimatedContent(targetState): content keyed by `target`; the old content leaves with the
     // exit while the new one enters, both stacked at contentAlignment.
-    void AnimatedContent(rt::Key target, const Modifier& modifier, std::function<void(rt::Key)> content,
-                         std::function<ContentTransform(AnimatedContentTransitionScope&)> transitionSpec,
+    void AnimatedContent(rt::Key target, const Modifier& modifier, kiln::Function<void(rt::Key)> content,
+                         kiln::Function<ContentTransform(AnimatedContentTransitionScope&)> transitionSpec,
                          Alignment contentAlignment = Alignment::TopStart(), rt::Key key = {});
-    void AnimatedContent(rt::Key target, const Modifier& modifier, std::function<void(rt::Key)> content,
-                         std::function<ContentTransform()> transform = DefaultContentTransform,
+    void AnimatedContent(rt::Key target, const Modifier& modifier, kiln::Function<void(rt::Key)> content,
+                         kiln::Function<ContentTransform()> transform = DefaultContentTransform,
                          Alignment contentAlignment = Alignment::TopStart(), rt::Key key = {});
     // DeferredAnimatedContent: AnimatedContent over a deferred transition of content keys
     // (RememberDeferredTransition of a DeferredTransitionState<std::uint64_t>). While a target is
@@ -313,22 +314,22 @@ namespace kiln::foundation {
     // current target as initial and the pending one as target) moves the leaving and entering
     // contents by hand; when the automatic transition starts, the hand-set values are handed
     // to transitionSpec's animations. Up to three interrupted contents stay composed.
-    void DeferredAnimatedContent(Transition<std::uint64_t>& transition, const Modifier& modifier, std::function<void(rt::Key)> content,
-                                 std::function<ContentTransform(AnimatedContentTransitionScope&)> transitionSpec = {},
+    void DeferredAnimatedContent(Transition<std::uint64_t>& transition, const Modifier& modifier, kiln::Function<void(rt::Key)> content,
+                                 kiln::Function<ContentTransform(AnimatedContentTransitionScope&)> transitionSpec = {},
                                  Alignment contentAlignment = Alignment::TopStart(),
-                                 std::function<std::shared_ptr<MutableContentTransform>(AnimatedContentTransitionScope&)> mutableTransformSpec = {},
+                                 kiln::Function<std::shared_ptr<MutableContentTransform>(AnimatedContentTransitionScope&)> mutableTransformSpec = {},
                                  rt::Key key = {});
     // Transition.AnimatedContent(transitionSpec, contentAlignment, contentKey): contents keyed by
     // the transition's states, animated on its clock (a seekable transition scrubs them).
-    void AnimatedContent(Transition<std::uint64_t>& transition, const Modifier& modifier, std::function<void(rt::Key)> content,
-                         std::function<ContentTransform(AnimatedContentTransitionScope&)> transitionSpec = {},
+    void AnimatedContent(Transition<std::uint64_t>& transition, const Modifier& modifier, kiln::Function<void(rt::Key)> content,
+                         kiln::Function<ContentTransform(AnimatedContentTransitionScope&)> transitionSpec = {},
                          Alignment contentAlignment = Alignment::TopStart(), rt::Key key = {});
     // animateContentSize(spring): the size follows content size changes with an animation.
     Modifier AnimateContentSize(Modifier m, anim::SpecPtr spec = anim::Spring(1.0f, anim::spring::StiffnessMediumLow, 0.5f));
 
     // Crossfade(targetState, animationSpec = tween()): the old content fades out while the new one
     // fades in, both kept until the fade ends. The key identifies the content.
-    void Crossfade(rt::Key target, const Modifier& modifier, std::function<void(rt::Key)> content,
+    void Crossfade(rt::Key target, const Modifier& modifier, kiln::Function<void(rt::Key)> content,
                    anim::SpecPtr spec = anim::Tween(), rt::Key key = {});
 
 }

@@ -1,4 +1,5 @@
 #include "kiln/foundation/Overscroll.h"
+#include <kiln/Function.h>
 
 #include "kiln/runtime/Composition.h"
 #include "kiln/runtime/Task.h"
@@ -74,7 +75,7 @@ namespace kiln::foundation {
         return Stretched(m_Top) || Stretched(m_Bottom) || Stretched(m_Left) || Stretched(m_Right);
     }
 
-    Offset OverscrollEffect::ApplyToScroll(Offset delta, NestedScrollSource source, const std::function<Offset(Offset)>& perform) {
+    Offset OverscrollEffect::ApplyToScroll(Offset delta, NestedScrollSource source, const kiln::Function<Offset(Offset)>& perform) {
         if (m_Inner) return m_HandlesEvents ? m_Inner->ApplyToScroll(delta, source, perform) : perform(delta);
         if (m_Size.width <= 0 || m_Size.height <= 0) return perform(delta);
         if (!m_Cycle) {

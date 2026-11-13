@@ -1,4 +1,5 @@
 #include "kiln/App.h"
+#include <kiln/Function.h>
 #include "kiln/ui/Locals.h"
 #include "kiln/runtime/State.h"
 #include "kiln/animation/Animatable.h"
@@ -26,7 +27,7 @@ namespace kiln {
         m_Dispatcher.requestFrame = [this] { RequestFrame(); };
         m_Owner.SetText(m_Services.text);
         m_Owner.SetRequestFrame([this] { RequestFrame(); });
-        m_Owner.SetOffscreenRenderer([this](int w, int h, const std::function<void(ui::DrawScope&)>& draw) { return RenderToPixels(w, h, draw); });
+        m_Owner.SetOffscreenRenderer([this](int w, int h, const kiln::Function<void(ui::DrawScope&)>& draw) { return RenderToPixels(w, h, draw); });
         // Any state write schedules a frame, like Compose's global apply observer (14 §Recomposer).
         rt::Observation::SetChangeListener([this] { RequestFrame(); });
         // The window's owners (after the listener: moving the lifecycle writes state).
@@ -176,7 +177,7 @@ namespace kiln {
         RequestFrame();
     }
 
-    void App::SetContent(std::function<void()> content) {
+    void App::SetContent(kiln::Function<void()> content) {
         if (!m_Composition) m_Composition = std::make_unique<rt::Composition>(m_Owner.Root(), m_Dispatcher);
         rt::SaveableStateRegistry* registry = m_Saveable.get();
         rt::State<ui::LayoutDirection>* dir = m_Direction.get();
@@ -409,7 +410,7 @@ namespace kiln {
         if (index < m_Pages.size() && m_Pages[index]) m_Pages[index]->Upload(rgba, stride, x, y, w, h);
     }
 
-    std::vector<std::uint8_t> App::RenderToPixels(int width, int height, const std::function<void(ui::DrawScope&)>& draw) {
+    std::vector<std::uint8_t> App::RenderToPixels(int width, int height, const kiln::Function<void(ui::DrawScope&)>& draw) {
         std::vector<std::uint8_t> out;
         if (!m_Device || m_SurfaceLost || !m_Quads) return out;
         RenderTargetDesc d;

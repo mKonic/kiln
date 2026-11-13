@@ -1,5 +1,6 @@
 // IconButtonSamples.kt: every sample is an icon button with a tooltip (for accessibility).
 #include "IconButtonSamples.h"
+#include <kiln/Function.h>
 #include "Common.h"
 #include "Shared.h"
 
@@ -12,8 +13,8 @@ namespace catalog::samples {
     namespace {
         const std::string description = "Localized description";
 
-        using ButtonFn = void (*)(std::function<void()>, const Modifier&, const m3::IconButtonOptions&, std::function<void()>);
-        using ToggleFn = void (*)(bool, std::function<void(bool)>, const Modifier&, const m3::IconToggleButtonOptions&, std::function<void()>);
+        using ButtonFn = void (*)(kiln::Function<void()>, const Modifier&, const m3::IconButtonOptions&, kiln::Function<void()>);
+        using ToggleFn = void (*)(bool, kiln::Function<void(bool)>, const Modifier&, const m3::IconToggleButtonOptions&, kiln::Function<void()>);
 
         void Lock(const Modifier& modifier = {}) { m3::Icon(Icons::Filled::Lock(), description, modifier); }
 

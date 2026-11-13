@@ -1,5 +1,6 @@
 // TabSamples.kt
 #include "TabSamples.h"
+#include <kiln/Function.h>
 #include "Common.h"
 #include "Shared.h"
 
@@ -23,10 +24,10 @@ namespace catalog::samples {
         const Titles tenTitles = { "Tab 1", "Tab 2", "Tab 3 with lots of text", "Tab 4", "Tab 5", "Tab 6 with lots of text",
                                    "Tab 7", "Tab 8", "Tab 9 with lots of text", "Tab 10" };
 
-        using TabRowFn = void (*)(int, const Modifier&, const m3::TabRowOptions&, std::function<void()>);
+        using TabRowFn = void (*)(int, const Modifier&, const m3::TabRowOptions&, kiln::Function<void()>);
 
         // The column every sample shares: the row of tabs, then "<what> tab N selected".
-        void TabsColumn(int state, const char* what, std::function<void()> row) {
+        void TabsColumn(int state, const char* what, kiln::Function<void()> row) {
             Column({}, [state, what, row] {
                 row();
                 TextStyled(std::string(what) + " tab " + std::to_string(state + 1) + " selected", m3::MaterialTheme::typography().bodyLarge,
@@ -34,7 +35,7 @@ namespace catalog::samples {
             });
         }
 
-        std::function<void()> TitleText(const std::string& title, bool twoLines) {
+        kiln::Function<void()> TitleText(const std::string& title, bool twoLines) {
             return [title, twoLines] {
                 m3::TextOptions o;
                 if (twoLines) {
@@ -73,7 +74,7 @@ namespace catalog::samples {
             });
         }
 
-        using ScrollableRowFn = void (*)(int, const Modifier&, const m3::ScrollableTabRowOptions&, std::function<void()>);
+        using ScrollableRowFn = void (*)(int, const Modifier&, const m3::ScrollableTabRowOptions&, kiln::Function<void()>);
 
         void ScrollingTextTabs(ScrollableRowFn tabRow, const char* what) {
             auto& state = RememberSaveableState(0);
@@ -86,7 +87,7 @@ namespace catalog::samples {
             });
         }
 
-        void FancyTab(const std::string& title, std::function<void()> onClick, bool selected) {
+        void FancyTab(const std::string& title, kiln::Function<void()> onClick, bool selected) {
             m3::Tab(selected, std::move(onClick), {}, m3::TabOptions{}, [title, selected] {
                 Column(FillMax(Height(Padding({}, 10_dp), 50_dp), Axis::Horizontal), Arrangement::SpaceBetween(), AlignmentH::Start(), [title, selected] {
                     const auto& cs = m3::MaterialTheme::colorScheme();

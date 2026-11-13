@@ -9,6 +9,7 @@
 // stops the running one; one at lower priority does not start. Gestures run at UserInput.
 
 #include "kiln/animation/Animatable.h"
+#include <kiln/Function.h>
 #include "kiln/foundation/Gestures.h"
 #include "kiln/foundation/MutatorMutex.h"
 
@@ -23,7 +24,7 @@ namespace kiln::foundation {
 
     class TransformableState {
     public:
-        using OnTransformation = std::function<void(Offset centroid, float zoomChange, Offset panChange, float rotationChange)>;
+        using OnTransformation = kiln::Function<void(Offset centroid, float zoomChange, Offset panChange, float rotationChange)>;
         explicit TransformableState(OnTransformation onTransformation) : m_On(std::move(onTransformation)) {}
 
         bool IsTransformInProgress() const { return m_InProgress.Get(); }
@@ -37,7 +38,7 @@ namespace kiln::foundation {
 
         // transform(priority) { }: 0 when a higher-priority transformation holds the state;
         // otherwise it stops the running one and returns a token for EndTransform.
-        std::uint64_t BeginTransform(MutatePriority priority, std::function<void()> stop);
+        std::uint64_t BeginTransform(MutatePriority priority, kiln::Function<void()> stop);
         bool IsCurrent(std::uint64_t token) const { return token != 0 && token == m_Token; }
         void EndTransform(std::uint64_t token);
         // stopTransformation(priority): takes the state over and lets go at once.
@@ -48,7 +49,7 @@ namespace kiln::foundation {
     private:
         OnTransformation m_On;
         rt::State<bool> m_InProgress{ false };
-        std::function<void()> m_Stop;
+        kiln::Function<void()> m_Stop;
         MutatePriority m_Priority = MutatePriority::Default;
         std::uint64_t m_Token = 0;
         bool m_Running = false;
@@ -58,7 +59,7 @@ namespace kiln::foundation {
     struct TransformSession {
         TransformableState& state;
         std::uint64_t token;
-        TransformSession(TransformableState& s, MutatePriority priority, std::function<void()> stop)
+        TransformSession(TransformableState& s, MutatePriority priority, kiln::Function<void()> stop)
             : state(s), token(s.BeginTransform(priority, std::move(stop))) {}
         ~TransformSession() { state.EndTransform(token); }
         bool Current() const { return state.IsCurrent(token); }
@@ -72,7 +73,7 @@ namespace kiln::foundation {
     // Modifier.transformable. canPan decides whether a pan delta may start or continue the
     // gesture (a parent can scroll otherwise); lockRotationOnZoomPan keeps rotation out once a
     // zoom or pan started first.
-    Modifier Transformable(Modifier m, TransformableState& state, std::function<bool(Offset)> canPan = {},
+    Modifier Transformable(Modifier m, TransformableState& state, kiln::Function<bool(Offset)> canPan = {},
                            bool lockRotationOnZoomPan = false, bool enabled = true);
 
     // Programmatic transformations (priority Default).

@@ -1,4 +1,5 @@
 #include "Check.h"
+#include <kiln/Function.h>
 #include "kiln/foundation/text/input/TextFieldValue.h"
 #include "kiln/ui/Back.h"
 #include "kiln/foundation/contextmenu/ContextMenuUi.h"
@@ -374,7 +375,7 @@ TEST(ImeActionsRunTheHandlerOrTheDefault) {
     first.keyboardOptions.imeAction = ui::ImeAction::Next;
     BasicTextFieldOptions second = first;
     second.keyboardOptions.imeAction = ui::ImeAction::Done;
-    second.onKeyboardAction = [&](std::function<void()> performDefault) { ++handled; performDefault(); };
+    second.onKeyboardAction = [&](kiln::Function<void()> performDefault) { ++handled; performDefault(); };
     h.comp.SetContent([&] {
         Column(Modifier{}, [&] {
             BasicTextField(a, {}, first);
@@ -1034,7 +1035,7 @@ TEST(RightClickOpensTheDropdownTextContextMenu) {
     CHECK_EQ(b.right - b.left, 112);   // ContainerWidthMin
     // The items: Select all is there (the field has text); clicking it selects and closes.
     std::vector<std::string> labels;
-    std::function<void(ui::LayoutNode*)> walk = [&](ui::LayoutNode* n) {
+    kiln::Function<void(ui::LayoutNode*)> walk = [&](ui::LayoutNode* n) {
         ui::SemanticsConfiguration cfg;
         if (ui::CalculateSemanticsConfiguration(*n, cfg) && cfg.onClickLabel) labels.push_back(*cfg.onClickLabel);
         for (auto* c : n->Children()) walk(c);

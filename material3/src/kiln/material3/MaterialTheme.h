@@ -6,6 +6,7 @@
 // LocalMinimumInteractiveComponentSize (InteractiveComponentSize.kt).
 
 #include "kiln/foundation/Compose.h"
+#include <kiln/Function.h>
 #include "kiln/material3/ColorScheme.h"
 #include "kiln/material3/MotionScheme.h"
 #include "kiln/material3/Shapes.h"
@@ -44,13 +45,13 @@ namespace kiln::material3 {
         std::optional<Shapes> shapes;
         std::optional<Typography> typography;
     };
-    void MaterialTheme(const MaterialThemeArgs& args, std::function<void()> content);
-    inline void MaterialTheme(std::function<void()> content) { MaterialTheme({}, std::move(content)); }
+    void MaterialTheme(const MaterialThemeArgs& args, kiln::Function<void()> content);
+    inline void MaterialTheme(kiln::Function<void()> content) { MaterialTheme({}, std::move(content)); }
 
     // MaterialExpressiveTheme: inside another expressive theme it behaves like MaterialTheme;
     // otherwise unset values take the expressive defaults (expressive light colours, the
     // expressive motion scheme, default shapes and typography).
-    void MaterialExpressiveTheme(const MaterialThemeArgs& args, std::function<void()> content);
+    void MaterialExpressiveTheme(const MaterialThemeArgs& args, kiln::Function<void()> content);
 
     // LocalContentColor: the preferred colour for content (text, icons) at this point.
     inline rt::Local<Color> LocalContentColor{ Color(0xFF000000u) };
@@ -59,7 +60,7 @@ namespace kiln::material3 {
 
     // LocalTextStyle and ProvideTextStyle (the given style merged over the current one).
     const rt::Local<text::TextStyle>& LocalTextStyle();
-    void ProvideTextStyle(const text::TextStyle& value, std::function<void()> content);
+    void ProvideTextStyle(const text::TextStyle& value, kiln::Function<void()> content);
 
     // LocalTonalElevationEnabled, and ColorScheme.applyTonalElevation: surface at an elevation
     // takes the tonal overlay while enabled.

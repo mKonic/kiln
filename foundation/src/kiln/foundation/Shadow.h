@@ -1,6 +1,7 @@
 #pragma once
 
 #include "kiln/foundation/Image.h"
+#include <kiln/Function.h>
 #include "kiln/graphics/shadow/ShadowContext.h"
 
 namespace kiln::foundation {
@@ -45,7 +46,7 @@ namespace kiln::foundation {
     };
 
     Modifier DropShadow(Modifier m, std::shared_ptr<const gfx::Shape> shape, gfx::shadow::Shadow shadow);
-    Modifier DropShadow(Modifier m, std::shared_ptr<const gfx::Shape> shape, std::function<void(DropShadowScope&)> block);
+    Modifier DropShadow(Modifier m, std::shared_ptr<const gfx::Shape> shape, kiln::Function<void(DropShadowScope&)> block);
     Modifier InnerShadow(Modifier m, std::shared_ptr<const gfx::Shape> shape, gfx::shadow::Shadow shadow);
-    Modifier InnerShadow(Modifier m, std::shared_ptr<const gfx::Shape> shape, std::function<void(InnerShadowScope&)> block);
+    Modifier InnerShadow(Modifier m, std::shared_ptr<const gfx::Shape> shape, kiln::Function<void(InnerShadowScope&)> block);
 }

@@ -7,6 +7,7 @@
 // change the length: "ß" upper-cases to "SS").
 
 #include "kiln/text/AnnotatedString.h"
+#include <kiln/Function.h>
 
 #include <functional>
 #include <string>
@@ -15,7 +16,7 @@
 namespace kiln::text {
 
     enum class CaseOp : std::uint8_t { Upper, Lower, Capitalize, Decapitalize };
-    using CaseMapper = std::function<std::u16string(std::u16string_view text, const std::string& localeTag, CaseOp op)>;
+    using CaseMapper = kiln::Function<std::u16string(std::u16string_view text, const std::string& localeTag, CaseOp op)>;
     // The host's mapping (an empty locale tag: the default locale).
     void SetCaseMapper(CaseMapper mapper);
     std::u16string MapCase(std::u16string_view text, const std::string& localeTag, CaseOp op);

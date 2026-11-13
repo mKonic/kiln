@@ -3,6 +3,7 @@
 // Shared by DatePicker.cpp and DateRangePicker.cpp (DatePicker.kt / DateInput.kt internals).
 
 #include "kiln/foundation/Lazy.h"
+#include <kiln/Function.h>
 #include "kiln/material3/DatePicker.h"
 
 namespace kiln::material3::internal {
@@ -12,11 +13,11 @@ namespace kiln::material3::internal {
 
     // The top area (title, headline and mode toggle over a divider) above `content`. The range
     // picker passes focus targets that sit before and after the content.
-    void DateEntryContainer(const ui::Modifier& modifier, std::function<void()> title, std::function<void()> headline,
-                            std::function<void()> modeToggleButton, const DatePickerColors& colors, const text::TextStyle& headlineTextStyle,
-                            ui::Dp headerMinHeight, std::function<void()> content, ui::FocusRequester* topFocusTarget = nullptr,
+    void DateEntryContainer(const ui::Modifier& modifier, kiln::Function<void()> title, kiln::Function<void()> headline,
+                            kiln::Function<void()> modeToggleButton, const DatePickerColors& colors, const text::TextStyle& headlineTextStyle,
+                            ui::Dp headerMinHeight, kiln::Function<void()> content, ui::FocusRequester* topFocusTarget = nullptr,
                             ui::FocusRequester* bottomFocusTarget = nullptr);
-    void DisplayModeToggleButton(const ui::Modifier& modifier, DisplayMode displayMode, std::function<void(DisplayMode)> onDisplayModeChange,
+    void DisplayModeToggleButton(const ui::Modifier& modifier, DisplayMode displayMode, kiln::Function<void(DisplayMode)> onDisplayModeChange,
                                  const DatePickerColors& colors);
     void WeekDays(const DatePickerColors& colors, const CalendarModel& calendarModel);
 
@@ -33,14 +34,14 @@ namespace kiln::material3::internal {
 
     // A month grid. endDateMillis and rangeSelectionInfo are the range picker's; with a
     // focus owner (the single date picker) the arrow keys move between days and months.
-    void Month(const CalendarMonth& month, std::function<void(std::int64_t)> onDateSelectionChange, std::int64_t todayMillis,
+    void Month(const CalendarMonth& month, kiln::Function<void(std::int64_t)> onDateSelectionChange, std::int64_t todayMillis,
                std::optional<std::int64_t> startDateMillis, std::optional<std::int64_t> endDateMillis,
                std::optional<SelectedRangeInfo> rangeSelectionInfo, const DatePickerFormatterPtr& dateFormatter,
                const SelectableDatesPtr& selectableDates, const DatePickerColors& colors, const std::string& locale,
-               foundation::LazyListState& lazyListState, bool keyboardNavigation, std::function<void()> onReturnFocus);
+               foundation::LazyListState& lazyListState, bool keyboardNavigation, kiln::Function<void()> onReturnFocus);
 
     // Reports the month at the list's first visible item whenever it changes.
-    void UpdateDisplayedMonth(foundation::LazyListState& state, std::function<void(std::int64_t)> onDisplayedMonthChange,
+    void UpdateDisplayedMonth(foundation::LazyListState& state, kiln::Function<void(std::int64_t)> onDisplayedMonthChange,
                               const CalendarModel& calendarModel, const IntRange& yearRange);
 
     enum class InputIdentifier : std::uint8_t { SingleDateInput, StartDateInput, EndDateInput };
@@ -64,8 +65,8 @@ namespace kiln::material3::internal {
 
     // The outlined date field: digits only, delimiters shown as typed, validated once complete.
     void DateInputTextField(const ui::Modifier& modifier, std::optional<std::int64_t> initialDateMillis,
-                            std::function<void(std::optional<std::int64_t>)> onDateSelectionChange, const CalendarModel& calendarModel,
-                            std::function<void()> label, std::function<void()> placeholder, InputIdentifier inputIdentifier,
+                            kiln::Function<void(std::optional<std::int64_t>)> onDateSelectionChange, const CalendarModel& calendarModel,
+                            kiln::Function<void()> label, kiln::Function<void()> placeholder, InputIdentifier inputIdentifier,
                             std::shared_ptr<DateInputValidator> dateInputValidator, const DateInputFormat& dateInputFormat,
                             const std::string& locale, const DatePickerColors& colors, ui::FocusRequester* focusRequester);
 

@@ -5,6 +5,7 @@
 // offsets are UTF-16 code units, as in Compose (and in what IMEs and the platform layout use).
 
 #include "kiln/graphics/Shape.h"
+#include <kiln/Function.h>
 #include "kiln/text/TextStyle.h"
 
 #include <functional>
@@ -31,7 +32,7 @@ namespace kiln::text {
     };
 
     struct LinkAnnotation;
-    using LinkInteractionListener = std::function<void(const LinkAnnotation&)>;
+    using LinkInteractionListener = kiln::Function<void(const LinkAnnotation&)>;
 
     // LinkAnnotation.Url (opened with the UriHandler unless a listener handles it) or
     // LinkAnnotation.Clickable (a tag for the listener).
@@ -86,7 +87,7 @@ namespace kiln::text {
     // DrawAnnotation: drawing behind and over the annotated text, in the draw phase only (so a
     // change to it does not lay the text out again).
     struct DrawAnnotation {
-        using Block = std::function<void(DrawAnnotationScope&)>;
+        using Block = kiln::Function<void(DrawAnnotationScope&)>;
         std::shared_ptr<const Block> drawBehind, drawOver;
         bool operator==(const DrawAnnotation&) const = default;
     };

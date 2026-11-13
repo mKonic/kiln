@@ -5,6 +5,7 @@
 // towards where the inner ones will put it.
 
 #include "kiln/ui/LayoutNode.h"
+#include <kiln/Function.h>
 
 #include <functional>
 #include <optional>
@@ -18,7 +19,7 @@ namespace kiln::ui {
         // this responder has scrolled it in (calculateRectForParent).
         virtual Rect CalculateRectForParent(Rect localRect) = 0;
         // Scroll until the rect (re-read every frame; nullopt when gone) is visible.
-        virtual void BringChildIntoView(std::function<std::optional<Rect>()> localRect) = 0;
+        virtual void BringChildIntoView(kiln::Function<std::optional<Rect>()> localRect) = 0;
     };
 
     // bringIntoView(rect): `rect` in the space of modifier `from` (its coordinator, through the

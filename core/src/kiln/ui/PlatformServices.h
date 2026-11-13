@@ -6,6 +6,7 @@
 // owner's (as Compose's defaults come from the AndroidComposeView).
 
 #include "kiln/runtime/Composition.h"
+#include <kiln/Function.h>
 #include "kiln/runtime/Task.h"
 #include "kiln/ui/Clip.h"
 #include "kiln/ui/Focus.h"
@@ -67,9 +68,9 @@ namespace kiln::ui {
     class TextToolbar {
     public:
         virtual ~TextToolbar() = default;
-        virtual void ShowMenu(Rect rect, std::function<void()> onCopyRequested = {}, std::function<void()> onPasteRequested = {},
-                              std::function<void()> onCutRequested = {}, std::function<void()> onSelectAllRequested = {},
-                              std::function<void()> onAutofillRequested = {}) = 0;
+        virtual void ShowMenu(Rect rect, kiln::Function<void()> onCopyRequested = {}, kiln::Function<void()> onPasteRequested = {},
+                              kiln::Function<void()> onCutRequested = {}, kiln::Function<void()> onSelectAllRequested = {},
+                              kiln::Function<void()> onAutofillRequested = {}) = 0;
         virtual void Hide() = 0;
         virtual TextToolbarStatus Status() const = 0;
     };

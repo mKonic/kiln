@@ -1,4 +1,5 @@
 #include "kiln/material3/ExposedDropdownMenu.h"
+#include <kiln/Function.h>
 
 #include "kiln/foundation/Back.h"
 #include "kiln/foundation/Compose.h"
@@ -34,7 +35,7 @@ namespace kiln::material3 {
     namespace internal {
         struct ExposedDropdownMenuBoxState {
             bool expanded = false;
-            std::function<void(bool)> onExpandedChange;
+            kiln::Function<void(bool)> onExpandedChange;
             rt::State<AnchorType> anchorType{ AnchorType::PrimaryNotEditable };
             rt::State<bool> alwaysFocusable{ false };
             rt::State<int> anchorWidth{ 0 }, menuMaxHeight{ 0 };
@@ -222,8 +223,8 @@ namespace kiln::material3 {
     AnchorType ExposedDropdownMenuBoxScope::GetAnchorType() const { return m_State->anchorType.Get(); }
     bool ExposedDropdownMenuBoxScope::AlwaysFocusable() const { return m_State->alwaysFocusable.Get(); }
 
-    void ExposedDropdownMenuBox(bool expanded, std::function<void(bool)> onExpandedChange, const ui::Modifier& modifier,
-                                std::function<void(const ExposedDropdownMenuBoxScope&)> content) {
+    void ExposedDropdownMenuBox(bool expanded, kiln::Function<void(bool)> onExpandedChange, const ui::Modifier& modifier,
+                                kiln::Function<void(const ExposedDropdownMenuBoxScope&)> content) {
         auto& c = *rt::Composition::Current();
         auto state = c.Remember<std::shared_ptr<internal::ExposedDropdownMenuBoxState>>([] { return std::make_shared<internal::ExposedDropdownMenuBoxState>(); });
         state->expanded = expanded;
@@ -255,8 +256,8 @@ namespace kiln::material3 {
         });
     }
 
-    void ExposedDropdownMenu(const ExposedDropdownMenuBoxScope& scope, bool expanded, std::function<void()> onDismissRequest,
-                             const ui::Modifier& modifier, const ExposedDropdownMenuOptions& o, std::function<void()> content) {
+    void ExposedDropdownMenu(const ExposedDropdownMenuBoxScope& scope, bool expanded, kiln::Function<void()> onDismissRequest,
+                             const ui::Modifier& modifier, const ExposedDropdownMenuOptions& o, kiln::Function<void()> content) {
         auto& c = *rt::Composition::Current();
         auto& keyboardSignal = c.RememberState(0);
         const ui::Density density = c.Read(ui::LocalDensity);

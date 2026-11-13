@@ -1,4 +1,5 @@
 #include "kiln/material3/FloatingActionButtonMenu.h"
+#include <kiln/Function.h>
 
 #include "kiln/animation/Animatable.h"
 #include "kiln/foundation/Focus.h"
@@ -164,7 +165,7 @@ namespace kiln::material3 {
             return !progress || (*progress)->visible.Get();
         }
         void ItemColumn(const std::shared_ptr<FabMenuState>& state, ui::AlignmentH alignment,
-                        const std::function<void(const FloatingActionButtonMenuScope&)>& content) {
+                        const kiln::Function<void(const FloatingActionButtonMenuScope&)>& content) {
             const auto slow = Value(MotionSchemeKeyTokens::SlowEffects);
             auto& composition = *rt::Composition::Current();
             const auto spec = composition.Remember<anim::SpecPtr>([&] { return anim::WithSpringVisibilityThreshold(slow, 1); },
@@ -216,8 +217,8 @@ namespace kiln::material3 {
         }
     }
 
-    void FloatingActionButtonMenu(bool expanded, std::function<void()> button, const ui::Modifier& modifier,
-                                  ui::AlignmentH alignment, std::function<void(const FloatingActionButtonMenuScope&)> content) {
+    void FloatingActionButtonMenu(bool expanded, kiln::Function<void()> button, const ui::Modifier& modifier,
+                                  ui::AlignmentH alignment, kiln::Function<void(const FloatingActionButtonMenuScope&)> content) {
         auto& c = *rt::Composition::Current();
         const auto state = c.Remember<std::shared_ptr<FabMenuState>>([] { return std::make_shared<FabMenuState>(); });
         state->expanded = expanded;
@@ -248,8 +249,8 @@ namespace kiln::material3 {
         });
     }
 
-    void FloatingActionButtonMenuItem(const FloatingActionButtonMenuScope& scope, std::function<void()> click, std::function<void()> text,
-                                      std::function<void()> icon, const ui::Modifier& modifier, const FloatingActionButtonMenuItemOptions& options) {
+    void FloatingActionButtonMenuItem(const FloatingActionButtonMenuScope& scope, kiln::Function<void()> click, kiln::Function<void()> text,
+                                      kiln::Function<void()> icon, const ui::Modifier& modifier, const FloatingActionButtonMenuItemOptions& options) {
         auto& c = *rt::Composition::Current();
         const auto progress = c.Remember<std::shared_ptr<ItemProgress>>([&] { return std::make_shared<ItemProgress>(scope.state && scope.state->targetCount < 0); });
         const auto container = options.containerColor.value_or(MaterialTheme::colorScheme().primaryContainer);

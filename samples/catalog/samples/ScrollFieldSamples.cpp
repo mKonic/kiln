@@ -1,5 +1,6 @@
 // ScrollFieldSamples.kt
 #include "ScrollFieldSamples.h"
+#include <kiln/Function.h>
 #include "Common.h"
 
 #include <kiln/foundation/Semantics.h>
@@ -23,7 +24,7 @@ namespace catalog::samples {
         }
 
         // The samples' container: a rounded surfaceContainerHighest row, 12 dp in.
-        void Frame(std::function<void()> content) {
+        void Frame(kiln::Function<void()> content) {
             Row(Padding(Background({}, m3::MaterialTheme::colorScheme().surfaceContainerHighest, RoundedCorner(28_dp)), 12_dp), Arrangement::SpacedBy(8_dp),
                 AlignmentV::CenterVertically(), std::move(content));
         }

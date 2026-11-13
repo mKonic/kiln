@@ -1,4 +1,5 @@
 #include "kiln/foundation/SharedTransitionInternal.h"
+#include <kiln/Function.h>
 
 #include "kiln/foundation/Compose.h"
 #include "kiln/foundation/Layouts.h"
@@ -279,7 +280,7 @@ namespace kiln::foundation {
         // --- BoundsAnimation ----------------------------------------------------------------------
 
         BoundsAnimation::BoundsAnimation(SharedTransitionScope& scope, Transition<bool>& transition, DeferredAnimation<bool>& animation,
-                                         BoundsTransform transform, std::function<Offset()> momentumOffset)
+                                         BoundsTransform transform, kiln::Function<Offset()> momentumOffset)
             : m_Scope(&scope), m_Transition(&transition), m_Animation(&animation), m_Transform(std::move(transform)), m_Spec(DefaultBoundsSpring()),
               m_Momentum(std::move(momentumOffset)) {}
 
@@ -613,7 +614,7 @@ namespace kiln::foundation {
         // lookahead size (scaled into the bounds with a ScaleToBounds resize mode).
         struct SkipParams {
             std::optional<ResizeMode> scaleToBounds;
-            std::function<bool()> isEnabled;
+            kiln::Function<bool()> isEnabled;
             bool operator==(const SkipParams&) const { return false; }
         };
         struct SkipNode final : ui::ModifierNode, ui::LayoutModifier, ui::DrawModifier {
@@ -680,7 +681,7 @@ namespace kiln::foundation {
         // RenderInTransitionOverlayNode.
         struct OverlayParams {
             SharedTransitionRoot* root = nullptr;
-            std::function<bool()> renderInOverlay;
+            kiln::Function<bool()> renderInOverlay;
             float zIndex = 0;
             bool operator==(const OverlayParams&) const { return false; }
         };
@@ -1036,7 +1037,7 @@ namespace kiln::foundation {
         // The enter / exit of sharedBounds content: fade, scale and slide on the visibility
         // transition, applied only while a match is found (createEnterExitModifier with isEnabled).
         Modifier EnterExitModifier(Modifier m, Transition<EnterExitState>& t, const EnterTransition& enter, const ExitTransition& exit,
-                                   std::function<bool()> isEnabled) {
+                                   kiln::Function<bool()> isEnabled) {
             using Seg = Transition<EnterExitState>::Segment;
             const auto entering = [](const Seg& s) { return s.initialState == EnterExitState::PreEnter && s.targetState == EnterExitState::Visible; };
             const auto exiting = [](const Seg& s) { return s.initialState == EnterExitState::Visible && s.targetState == EnterExitState::PostExit; };
@@ -1107,12 +1108,12 @@ namespace kiln::foundation {
         return *state;
     }
 
-    Modifier SharedTransitionScope::SkipToLookaheadSize(Modifier m, std::function<bool()> enabled) {
+    Modifier SharedTransitionScope::SkipToLookaheadSize(Modifier m, kiln::Function<bool()> enabled) {
         if (!enabled) enabled = [this] { return IsTransitionActive(); };
         return m.With<SkipNode>(SkipParams{ std::nullopt, std::move(enabled) });
     }
 
-    Modifier SharedTransitionScope::SkipToLookaheadPosition(Modifier m, std::function<bool()> enabled) {
+    Modifier SharedTransitionScope::SkipToLookaheadPosition(Modifier m, kiln::Function<bool()> enabled) {
         if (!enabled) enabled = [this] { return IsTransitionActive(); };
         SharedTransitionRoot* root = m_Root.get();
         ui::LookaheadScope* lookahead = m_Lookahead;
@@ -1133,7 +1134,7 @@ namespace kiln::foundation {
             });
     }
 
-    Modifier SharedTransitionScope::RenderInSharedTransitionScopeOverlay(Modifier m, float zIndex, std::function<bool()> renderInOverlay) {
+    Modifier SharedTransitionScope::RenderInSharedTransitionScopeOverlay(Modifier m, float zIndex, kiln::Function<bool()> renderInOverlay) {
         if (!renderInOverlay) renderInOverlay = [this] { return IsTransitionActive(); };
         return m.With<OverlayNode>(OverlayParams{ m_Root.get(), std::move(renderInOverlay), zIndex });
     }
@@ -1215,7 +1216,7 @@ namespace kiln::foundation {
             c.DisposableEffect(rt::Keys(reinterpret_cast<std::uintptr_t>(keep.get())), [root, keep] {
                 root->OnEntryAdded(keep.get());
                 keep->sharedElement->InvalidateTargetBoundsProvider();
-                return std::function<void()>([root, keep] {
+                return kiln::Function<void()>([root, keep] {
                     root->OnEntryRemoved(keep.get());
                     keep->sharedElement->InvalidateTargetBoundsProvider();
                 });
@@ -1227,7 +1228,7 @@ namespace kiln::foundation {
 
     // --- the layouts -------------------------------------------------------------------------------
 
-    void WithSharedTransitionScope(std::function<void(SharedTransitionScope&, const Modifier&)> content, rt::Key key) {
+    void WithSharedTransitionScope(kiln::Function<void(SharedTransitionScope&, const Modifier&)> content, rt::Key key) {
         LookaheadScope([content = std::move(content)](ui::LookaheadScope& lookahead) {
             auto& c = *rt::Composition::Current();
             auto& scope = c.Remember<std::shared_ptr<SharedTransitionScope>>([&] { return std::make_shared<SharedTransitionScope>(lookahead); });
@@ -1236,7 +1237,7 @@ namespace kiln::foundation {
         }, key);
     }
 
-    void SharedTransitionLayout(const Modifier& modifier, std::function<void(SharedTransitionScope&)> content, rt::Key key) {
+    void SharedTransitionLayout(const Modifier& modifier, kiln::Function<void(SharedTransitionScope&)> content, rt::Key key) {
         WithSharedTransitionScope([modifier, content = std::move(content)](SharedTransitionScope& scope, const Modifier& root) {
             // The scope's modifier after the caller's, so theirs size and clip the overlay too.
             Box(modifier.Then(root), Alignment::TopStart(), false, [&scope, content] { content(scope); });

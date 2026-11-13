@@ -1,4 +1,5 @@
 #include "kiln/foundation/Pager.h"
+#include <kiln/Function.h>
 
 #include "kiln/foundation/Gestures.h"
 #include "kiln/foundation/Semantics.h"
@@ -15,7 +16,7 @@ namespace kiln::foundation {
         constexpr int kMaxPagesForAnimateScroll = 3;
     }
 
-    PagerState::PagerState(int currentPage, float fraction, std::function<int()> pageCount)
+    PagerState::PagerState(int currentPage, float fraction, kiln::Function<int()> pageCount)
         : LazyStateBase(std::max(0, currentPage), 0), m_PageCountFn(std::move(pageCount)),
           m_Current(std::max(0, currentPage)), m_Settled(std::max(0, currentPage)) {
         // The first measure rests the page at its snap position, `fraction` pages past it; the
@@ -269,7 +270,7 @@ namespace kiln::foundation {
 
         rt::Task<> PageTo(PagerState* st, int page) { co_await st->AnimateScrollToPage(page); }
 
-        void Pager(bool vertical, const Modifier& modifier, PagerState& state, std::function<void(int)> content,
+        void Pager(bool vertical, const Modifier& modifier, PagerState& state, kiln::Function<void(int)> content,
                    PagerOptions options, rt::Key key) {
             LazyPagerConfig config;
             config.contentPadding = options.contentPadding;
@@ -351,10 +352,10 @@ namespace kiln::foundation {
         return c->Remember<std::shared_ptr<NestedScrollConnection>>(make, rt::Keys(reinterpret_cast<std::uintptr_t>(&state), int(orientation), rtl));
     }
 
-    void HorizontalPager(const Modifier& m, PagerState& state, std::function<void(int)> content, PagerOptions o, rt::Key key) {
+    void HorizontalPager(const Modifier& m, PagerState& state, kiln::Function<void(int)> content, PagerOptions o, rt::Key key) {
         Pager(false, m, state, std::move(content), std::move(o), key);
     }
-    void VerticalPager(const Modifier& m, PagerState& state, std::function<void(int)> content, PagerOptions o, rt::Key key) {
+    void VerticalPager(const Modifier& m, PagerState& state, kiln::Function<void(int)> content, PagerOptions o, rt::Key key) {
         Pager(true, m, state, std::move(content), std::move(o), key);
     }
 

@@ -13,6 +13,7 @@
 // one with path arguments, then more path arguments, then any arguments, then more arguments.
 
 #include "kiln/Uri.h"
+#include <kiln/Function.h>
 
 #include <any>
 #include <cctype>
@@ -64,7 +65,7 @@ namespace kiln::navigation3 {
     };
 
     // requestExtras { put(...) }
-    inline RequestExtras MakeRequestExtras(const std::function<void(RequestExtras&)>& builder) {
+    inline RequestExtras MakeRequestExtras(const kiln::Function<void(RequestExtras&)>& builder) {
         RequestExtras r;
         builder(r);
         return r;
@@ -131,7 +132,7 @@ namespace kiln::navigation3 {
     };
 
     // DeepLinkMatcher.Filter: a request the matcher looks at (all filters must pass).
-    using DeepLinkFilter = std::function<bool(const DeepLinkRequest&)>;
+    using DeepLinkFilter = kiln::Function<bool(const DeepLinkRequest&)>;
 
     inline DeepLinkFilter MimeTypeFilter(std::string mimeType) {
         return [mimeType](const DeepLinkRequest& r) {
@@ -321,7 +322,7 @@ namespace kiln::navigation3 {
     template<typename T>
     class UriDeepLinkMatcher : public DeepLinkMatcher<T> {
     public:
-        using Decode = std::function<std::optional<T>(const DeepLinkArguments&)>;
+        using Decode = kiln::Function<std::optional<T>(const DeepLinkArguments&)>;
         UriDeepLinkMatcher(const std::string& uriPattern, Decode decode, std::vector<DeepLinkFilter> filters = {})
             : DeepLinkMatcher<T>(std::move(filters)), m_Pattern(Normalized(uriPattern)), m_Decode(std::move(decode)) {}
 
@@ -429,7 +430,7 @@ namespace kiln::navigation3 {
         int CompareTo(const BackStackMatch& o) const { return match.CompareTo(o.match); }
         bool operator<(const BackStackMatch& o) const { return CompareTo(o) < 0; }
 
-        std::function<std::vector<K>(const DeepLinkMatch<T>&)> m_Builder;
+        kiln::Function<std::vector<K>(const DeepLinkMatch<T>&)> m_Builder;
         mutable std::shared_ptr<std::vector<K>> m_BackStack;
     };
 
@@ -437,7 +438,7 @@ namespace kiln::navigation3 {
     template<typename T, typename K>
     class BackStackMatcher final : public DeepLinkMatcher<T, BackStackMatch<T, K>> {
     public:
-        using Builder = std::function<std::vector<K>(const DeepLinkMatch<T>&)>;
+        using Builder = kiln::Function<std::vector<K>(const DeepLinkMatch<T>&)>;
         BackStackMatcher(std::shared_ptr<const DeepLinkMatcher<T>> matcher, Builder builder) : m_Matcher(std::move(matcher)), m_Builder(std::move(builder)) {}
 
     protected:

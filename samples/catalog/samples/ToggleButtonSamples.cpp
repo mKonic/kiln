@@ -1,12 +1,13 @@
 // ToggleButtonSamples.kt
 #include "ToggleButtonSamples.h"
+#include <kiln/Function.h>
 #include "Common.h"
 
 #include <kiln/material3/ToggleButton.h>
 
 namespace catalog::samples {
     namespace {
-        using ToggleFn = void (*)(bool, std::function<void(bool)>, const Modifier&, const m3::ToggleButtonOptions&, std::function<void()>);
+        using ToggleFn = void (*)(bool, kiln::Function<void(bool)>, const Modifier&, const m3::ToggleButtonOptions&, kiln::Function<void()>);
 
         void Plain(ToggleFn toggle, const char* label) {
             auto& checked = RememberSaveableState(false);

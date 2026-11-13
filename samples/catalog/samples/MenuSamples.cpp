@@ -1,5 +1,6 @@
 // MenuSamples.kt
 #include "MenuSamples.h"
+#include <kiln/Function.h>
 #include "Common.h"
 #include "Shared.h"
 
@@ -20,10 +21,10 @@ namespace catalog::samples {
                 m3::IconButton([&expanded] { expanded.Set(true); }, {}, {}, [] { m3::Icon(Icons::Filled::MoreVert(), std::string("Localized description")); });
             });
         }
-        void InTopStart(std::function<void()> content) {
+        void InTopStart(kiln::Function<void()> content) {
             Box(WrapContent(FillMax({}, Axis::Both), Axis::Both, Alignment::TopStart()), Alignment::TopStart(), false, std::move(content));
         }
-        std::function<void()> MenuIcon(const ImageVectorPtr* icon, Dp size) {
+        kiln::Function<void()> MenuIcon(const ImageVectorPtr* icon, Dp size) {
             if (!icon) return {};
             return [icon, size] { m3::Icon(*icon, std::nullopt, Size({}, size)); };
         }

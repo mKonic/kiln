@@ -1,5 +1,6 @@
 // ButtonGroupSamples.kt
 #include "ButtonGroupSamples.h"
+#include <kiln/Function.h>
 #include "Common.h"
 
 #include <kiln/foundation/Flow.h>
@@ -33,7 +34,7 @@ namespace catalog::samples {
         }
 
         // The connected FlowRow samples: five toggle buttons with icons, wrapping as needed.
-        void ConnectedRow(std::function<bool(int)> isChecked, std::function<void(int, bool)> onChange, bool radio) {
+        void ConnectedRow(kiln::Function<bool(int)> isChecked, kiln::Function<void(int, bool)> onChange, bool radio) {
             FlowRow(FillMax(Padding({}, 8_dp, 0_dp), Axis::Horizontal), Arrangement::SpacedBy(GD::ConnectedSpaceBetween), Arrangement::SpacedBy(2_dp),
                     AlignmentV::Top(), [isChecked, onChange, radio] {
                         for (int index = 0; index < 5; ++index) {

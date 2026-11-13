@@ -1,4 +1,5 @@
 #include "kiln/foundation/Draggable.h"
+#include <kiln/Function.h>
 
 #include "kiln/foundation/IndirectDrag.h"
 #include "kiln/ui/VelocityTracker.h"
@@ -14,7 +15,7 @@ namespace kiln::foundation {
         // drag { }: the block runs holding the state's mutex; once a newer drag takes it, this
         // block's dragBy does nothing.
         template<typename Scope, typename Delta, typename State>
-        rt::Task<> RunDrag(State* state, MutatorMutex& mutex, std::function<rt::Task<>(const Scope&)> block, MutatePriority priority) {
+        rt::Task<> RunDrag(State* state, MutatorMutex& mutex, kiln::Function<rt::Task<>(const Scope&)> block, MutatePriority priority) {
             auto stopped = std::make_shared<bool>(false);
             const std::uint64_t token = mutex.Acquire(priority, [stopped] { *stopped = true; });
             if (!token) co_return;
@@ -24,14 +25,14 @@ namespace kiln::foundation {
         }
     }
 
-    rt::Task<> DraggableState::Drag(std::function<rt::Task<>(const DragScope&)> block, MutatePriority priority) {
+    rt::Task<> DraggableState::Drag(kiln::Function<rt::Task<>(const DragScope&)> block, MutatePriority priority) {
         return RunDrag<DragScope, float>(this, m_Mutex, std::move(block), priority);
     }
-    rt::Task<> Draggable2DState::Drag(std::function<rt::Task<>(const Drag2DScope&)> block, MutatePriority priority) {
+    rt::Task<> Draggable2DState::Drag(kiln::Function<rt::Task<>(const Drag2DScope&)> block, MutatePriority priority) {
         return RunDrag<Drag2DScope, Offset>(this, m_Mutex, std::move(block), priority);
     }
 
-    DraggableState& RememberDraggableState(std::function<void(float)> onDelta, rt::Key key) {
+    DraggableState& RememberDraggableState(kiln::Function<void(float)> onDelta, rt::Key key) {
         auto& c = *rt::Composition::Current();
         auto& s = c.RememberNew<DraggableState>({}, key, onDelta);
         s.SetOnDelta(std::move(onDelta));
@@ -189,7 +190,7 @@ namespace kiln::foundation {
 
     // --- draggable2D ---------------------------------------------------------------------------
 
-    Draggable2DState& RememberDraggable2DState(std::function<void(Offset)> onDelta, rt::Key key) {
+    Draggable2DState& RememberDraggable2DState(kiln::Function<void(Offset)> onDelta, rt::Key key) {
         auto& c = *rt::Composition::Current();
         auto& s = c.RememberNew<Draggable2DState>({}, key, onDelta);
         s.SetOnDelta(std::move(onDelta));

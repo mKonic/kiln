@@ -6,6 +6,7 @@
 // DropdownMenuItem and the shaped, checkable and selectable expressive items.
 
 #include "kiln/foundation/Border.h"
+#include <kiln/Function.h>
 #include "kiln/foundation/Interaction.h"
 #include "kiln/foundation/Layouts.h"
 #include "kiln/foundation/Popup.h"
@@ -116,10 +117,10 @@ namespace kiln::material3 {
         // Leading icon, then the text after the spacing, trailing content at the end.
         foundation::Arrangement DropdownMenuItemHorizontalArrangement();
 
-        void DropdownMenuGroupLabel(const ui::Modifier& modifier, std::function<void()> content,
+        void DropdownMenuGroupLabel(const ui::Modifier& modifier, kiln::Function<void()> content,
                                     ui::Alignment contentAlignment = ui::Alignment::CenterStart(),
                                     foundation::PaddingValues padding = DropdownMenuGroupLabelHorizontalPadding);
-        void DropdownMenuItemTrailingLabel(const ui::Modifier& modifier, std::function<void()> content);
+        void DropdownMenuItemTrailingLabel(const ui::Modifier& modifier, kiln::Function<void()> content);
 
         std::shared_ptr<const DropdownMenuPopupPositionProvider> rememberDropdownMenuPopupPositionProvider(
             const MenuAnchorPosition& dropdownMenuAnchorPosition, ui::DpOffset offset = {});
@@ -136,12 +137,12 @@ namespace kiln::material3 {
         std::optional<foundation::BorderStroke> border;
     };
     // The items go in a column as wide as the widest one, scrolled when taller than the window.
-    void DropdownMenu(bool expanded, std::function<void()> onDismissRequest, const ui::Modifier& modifier, const DropdownMenuOptions& options,
-                      std::function<void()> content);
+    void DropdownMenu(bool expanded, kiln::Function<void()> onDismissRequest, const ui::Modifier& modifier, const DropdownMenuOptions& options,
+                      kiln::Function<void()> content);
 
     // DropdownMenuPopup: the popup and its animation only; content arranges groups itself.
-    void DropdownMenuPopup(bool expanded, std::function<void()> onDismissRequest, const ui::Modifier& modifier,
-                           std::shared_ptr<const DropdownMenuPopupPositionProvider> popupPositionProvider, std::function<void()> content,
+    void DropdownMenuPopup(bool expanded, kiln::Function<void()> onDismissRequest, const ui::Modifier& modifier,
+                           std::shared_ptr<const DropdownMenuPopupPositionProvider> popupPositionProvider, kiln::Function<void()> content,
                            std::optional<ui::PopupProperties> properties = std::nullopt);
 
     struct DropdownMenuGroupOptions {
@@ -153,38 +154,38 @@ namespace kiln::material3 {
         std::shared_ptr<foundation::MutableInteractionSource> interactionSource;
     };
     void DropdownMenuGroup(const MenuGroupShapes& shapes, const ui::Modifier& modifier, const DropdownMenuGroupOptions& options,
-                           std::function<void()> content);
+                           kiln::Function<void()> content);
 
     // The classic item: a 48 dp row with optional icons.
     struct DropdownMenuItemOptions {
-        std::function<void()> leadingIcon, trailingIcon;
+        kiln::Function<void()> leadingIcon, trailingIcon;
         bool enabled = true;
         std::optional<MenuItemColors> colors;
         foundation::PaddingValues contentPadding = MenuDefaults::DropdownMenuItemContentPadding;
         std::shared_ptr<foundation::MutableInteractionSource> interactionSource;
     };
-    void DropdownMenuItem(std::function<void()> text, std::function<void()> onClick, const ui::Modifier& modifier,
+    void DropdownMenuItem(kiln::Function<void()> text, kiln::Function<void()> onClick, const ui::Modifier& modifier,
                           const DropdownMenuItemOptions& options);
 
     // The expressive items.
     struct MenuItemOptions {
-        std::function<void()> leadingIcon;
-        std::function<void()> selectedLeadingIcon;                     // checked / selected forms only
-        std::function<void()> trailingContent, supportingText;
+        kiln::Function<void()> leadingIcon;
+        kiln::Function<void()> selectedLeadingIcon;                     // checked / selected forms only
+        kiln::Function<void()> trailingContent, supportingText;
         bool enabled = true;
         std::optional<foundation::Arrangement> horizontalArrangement;  // unset: DropdownMenuItemHorizontalArrangement
         std::optional<foundation::PaddingValues> contentPadding;       // unset: DropdownMenuSelectableItemContentPadding
         std::shared_ptr<foundation::MutableInteractionSource> interactionSource;
     };
     // DropdownMenuItem(onClick, text, shape, ...): a shaped item (role Button).
-    void DropdownMenuItem(std::function<void()> onClick, std::function<void()> text, foundation::ShapePtr shape, const ui::Modifier& modifier,
+    void DropdownMenuItem(kiln::Function<void()> onClick, kiln::Function<void()> text, foundation::ShapePtr shape, const ui::Modifier& modifier,
                           const MenuItemOptions& options, std::optional<MenuItemColors> colors = std::nullopt);
     // Role Checkbox: a click flips `checked`.
-    void CheckableDropdownMenuItem(bool checked, std::function<void(bool)> onCheckedChange, std::function<void()> text,
+    void CheckableDropdownMenuItem(bool checked, kiln::Function<void(bool)> onCheckedChange, kiln::Function<void()> text,
                                    const MenuItemShapes& shapes, const ui::Modifier& modifier, const MenuItemOptions& options,
                                    std::optional<SelectableMenuItemColors> colors = std::nullopt);
     // Role RadioButton.
-    void SelectableDropdownMenuItem(bool selected, std::function<void()> onClick, std::function<void()> text, const MenuItemShapes& shapes,
+    void SelectableDropdownMenuItem(bool selected, kiln::Function<void()> onClick, kiln::Function<void()> text, const MenuItemShapes& shapes,
                                     const ui::Modifier& modifier, const MenuItemOptions& options,
                                     std::optional<SelectableMenuItemColors> colors = std::nullopt);
 

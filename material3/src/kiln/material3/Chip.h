@@ -3,6 +3,7 @@
 // Chip.kt: action chips, selectable chips and Expressive pressed/selected shape morphing.
 
 #include "kiln/foundation/Border.h"
+#include <kiln/Function.h>
 #include "kiln/foundation/Interaction.h"
 #include "kiln/foundation/Layouts.h"
 
@@ -49,7 +50,7 @@ namespace kiln::material3 {
     };
     struct ChipOptions {
         bool enabled = true;
-        std::function<void()> leadingIcon, trailingIcon;
+        kiln::Function<void()> leadingIcon, trailingIcon;
         foundation::ShapePtr shape;
         std::optional<ChipColors> colors;
         std::optional<std::optional<ChipElevation>> elevation;
@@ -60,7 +61,7 @@ namespace kiln::material3 {
     };
     struct SelectableChipOptions {
         bool enabled = true;
-        std::function<void()> leadingIcon, trailingIcon, avatar;  // avatar is used only by InputChip
+        kiln::Function<void()> leadingIcon, trailingIcon, avatar;  // avatar is used only by InputChip
         foundation::ShapePtr shape;
         std::optional<ChipShapes> shapes;
         std::optional<SelectableChipColors> colors;
@@ -70,13 +71,13 @@ namespace kiln::material3 {
         std::optional<foundation::PaddingValues> contentPadding;
         std::shared_ptr<foundation::MutableInteractionSource> interactionSource;
     };
-    void AssistChip(std::function<void()> onClick, std::function<void()> label, const ui::Modifier& modifier = {}, const ChipOptions& options = {});
-    void ElevatedAssistChip(std::function<void()> onClick, std::function<void()> label, const ui::Modifier& modifier = {}, const ChipOptions& options = {});
-    void SuggestionChip(std::function<void()> onClick, std::function<void()> label, const ui::Modifier& modifier = {}, const ChipOptions& options = {});
-    void ElevatedSuggestionChip(std::function<void()> onClick, std::function<void()> label, const ui::Modifier& modifier = {}, const ChipOptions& options = {});
-    void FilterChip(bool selected, std::function<void()> onClick, std::function<void()> label, const ui::Modifier& modifier = {}, const SelectableChipOptions& options = {});
-    void ElevatedFilterChip(bool selected, std::function<void()> onClick, std::function<void()> label, const ui::Modifier& modifier = {}, const SelectableChipOptions& options = {});
-    void InputChip(bool selected, std::function<void()> onClick, std::function<void()> label, const ui::Modifier& modifier = {}, const SelectableChipOptions& options = {});
+    void AssistChip(kiln::Function<void()> onClick, kiln::Function<void()> label, const ui::Modifier& modifier = {}, const ChipOptions& options = {});
+    void ElevatedAssistChip(kiln::Function<void()> onClick, kiln::Function<void()> label, const ui::Modifier& modifier = {}, const ChipOptions& options = {});
+    void SuggestionChip(kiln::Function<void()> onClick, kiln::Function<void()> label, const ui::Modifier& modifier = {}, const ChipOptions& options = {});
+    void ElevatedSuggestionChip(kiln::Function<void()> onClick, kiln::Function<void()> label, const ui::Modifier& modifier = {}, const ChipOptions& options = {});
+    void FilterChip(bool selected, kiln::Function<void()> onClick, kiln::Function<void()> label, const ui::Modifier& modifier = {}, const SelectableChipOptions& options = {});
+    void ElevatedFilterChip(bool selected, kiln::Function<void()> onClick, kiln::Function<void()> label, const ui::Modifier& modifier = {}, const SelectableChipOptions& options = {});
+    void InputChip(bool selected, kiln::Function<void()> onClick, kiln::Function<void()> label, const ui::Modifier& modifier = {}, const SelectableChipOptions& options = {});
 
     namespace AssistChipDefaults {
         inline constexpr ui::Dp Height{ 32 }, IconSize{ 18 }, HorizontalSpacing{ 8 };

@@ -1,4 +1,5 @@
 #include "kiln/foundation/content/ReceiveContent.h"
+#include <kiln/Function.h>
 
 #include "kiln/ui/LayoutNode.h"
 
@@ -7,7 +8,7 @@
 
 namespace kiln::foundation {
 
-    TransferableContentPtr TransferableContent::Consume(const std::function<bool(const ui::ClipItem&)>& predicate,
+    TransferableContentPtr TransferableContent::Consume(const kiln::Function<bool(const ui::ClipItem&)>& predicate,
                                                         const TransferableContentPtr& self) const {
         const auto& items = clipEntry.items;
         if (items.size() == 1) return predicate(items[0]) ? nullptr : self;
@@ -29,9 +30,9 @@ namespace kiln::foundation {
         return out;
     }
 
-    std::shared_ptr<ReceiveContentListener> ReceiveContentListenerOf(std::function<TransferableContentPtr(TransferableContentPtr)> onReceive) {
+    std::shared_ptr<ReceiveContentListener> ReceiveContentListenerOf(kiln::Function<TransferableContentPtr(TransferableContentPtr)> onReceive) {
         struct Fn final : ReceiveContentListener {
-            std::function<TransferableContentPtr(TransferableContentPtr)> fn;
+            kiln::Function<TransferableContentPtr(TransferableContentPtr)> fn;
             TransferableContentPtr OnReceive(TransferableContentPtr c) override { return fn(std::move(c)); }
         };
         auto l = std::make_shared<Fn>();

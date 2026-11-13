@@ -1,4 +1,5 @@
 #include "kiln/foundation/Flow.h"
+#include <kiln/Function.h>
 #include "kiln/foundation/Layouts.h"
 
 #include <cmath>
@@ -170,7 +171,7 @@ namespace kiln::foundation {
     }
 
     void FlowRow(const Modifier& modifier, Arrangement horizontal, Arrangement vertical, AlignmentV itemAlignment,
-                 std::function<void()> content, FlowOptions options, rt::Key key) {
+                 kiln::Function<void()> content, FlowOptions options, rt::Key key) {
         auto* c = rt::Composition::Current();
         FlowPolicy next(true, horizontal, vertical, itemAlignment.bias, options);
         c->Node<LayoutNode>([] { return std::make_unique<LayoutNode>(); },
@@ -183,7 +184,7 @@ namespace kiln::foundation {
     }
 
     void FlowColumn(const Modifier& modifier, Arrangement vertical, Arrangement horizontal, AlignmentH itemAlignment,
-                    std::function<void()> content, FlowOptions options, rt::Key key) {
+                    kiln::Function<void()> content, FlowOptions options, rt::Key key) {
         auto* c = rt::Composition::Current();
         FlowPolicy next(false, vertical, horizontal, itemAlignment.bias, options);
         c->Node<LayoutNode>([] { return std::make_unique<LayoutNode>(); },

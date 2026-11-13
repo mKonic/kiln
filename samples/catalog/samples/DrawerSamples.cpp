@@ -1,5 +1,6 @@
 // DrawerSamples.kt
 #include "DrawerSamples.h"
+#include <kiln/Function.h>
 #include "Common.h"
 
 #include <kiln/foundation/Focus.h>
@@ -27,7 +28,7 @@ namespace catalog::samples {
         }
 
         // The drawer's items in a scrolling column, 12 dp from the top.
-        void Items(kiln::rt::State<int>& selectedIndex, Modifier itemModifier, std::function<void()> onPick) {
+        void Items(kiln::rt::State<int>& selectedIndex, Modifier itemModifier, kiln::Function<void()> onPick) {
             Column(VerticalScroll({}, RememberScrollState()), [&selectedIndex, itemModifier, onPick] {
                 Spacer(Height({}, 12_dp));
                 for (int index = 0; index < 18; ++index) {

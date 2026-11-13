@@ -1,4 +1,5 @@
 #include "kiln/foundation/Marquee.h"
+#include <kiln/Function.h>
 
 #include "kiln/animation/Animatable.h"
 #include "kiln/animation/Spec.h"
@@ -17,10 +18,10 @@ namespace kiln::foundation {
     using namespace ui;
 
     MarqueeSpacing MarqueeSpacing::Of(Dp spacing) {
-        return { std::make_shared<const std::function<int(const Density&, int, int)>>([spacing](const Density& d, int, int) { return d.RoundToPx(spacing); }) };
+        return { std::make_shared<const kiln::Function<int(const Density&, int, int)>>([spacing](const Density& d, int, int) { return d.RoundToPx(spacing); }) };
     }
     MarqueeSpacing MarqueeSpacing::FractionOfContainer(float fraction) {
-        return { std::make_shared<const std::function<int(const Density&, int, int)>>([fraction](const Density&, int, int width) { return RoundJava(fraction * float(width)); }) };
+        return { std::make_shared<const kiln::Function<int(const Density&, int, int)>>([fraction](const Density&, int, int width) { return RoundJava(fraction * float(width)); }) };
     }
     MarqueeSpacing MarqueeDefaults::Spacing() {
         static const MarqueeSpacing spacing = MarqueeSpacing::FractionOfContainer(1.0f / 3.0f);

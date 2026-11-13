@@ -1,5 +1,6 @@
 // FloatingActionButtonSamples.kt
 #include "FloatingActionButtonSamples.h"
+#include <kiln/Function.h>
 #include "Common.h"
 #include "Shared.h"
 
@@ -11,12 +12,12 @@ namespace catalog::samples {
     namespace FD = m3::FloatingActionButtonDefaults;
 
     namespace {
-        using FabFn = void (*)(std::function<void()>, const Modifier&, const m3::FloatingActionButtonOptions&, std::function<void()>);
-        using ExtendedFn = void (*)(std::function<void()>, std::function<void()>, std::function<void()>, const Modifier&, bool,
+        using FabFn = void (*)(kiln::Function<void()>, const Modifier&, const m3::FloatingActionButtonOptions&, kiln::Function<void()>);
+        using ExtendedFn = void (*)(kiln::Function<void()>, kiln::Function<void()>, kiln::Function<void()>, const Modifier&, bool,
                                     const m3::FloatingActionButtonOptions&);
 
         // A FAB should have a tooltip associated with it.
-        void WithTooltip(std::function<void()> anchor, bool shown = true) { PlainTooltipAbove("Localized description", std::move(anchor), shown); }
+        void WithTooltip(kiln::Function<void()> anchor, bool shown = true) { PlainTooltipAbove("Localized description", std::move(anchor), shown); }
 
         void AddIcon(std::optional<Dp> size = std::nullopt, const char* description = "Localized description") {
             m3::Icon(Icons::Filled::Add(), std::string(description), size ? Size({}, *size) : Modifier{});

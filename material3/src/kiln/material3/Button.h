@@ -6,6 +6,7 @@
 // elevation animates with the interactions (internal animateElevation).
 
 #include "kiln/animation/Spec.h"
+#include <kiln/Function.h>
 #include "kiln/foundation/Border.h"
 #include "kiln/foundation/Interaction.h"
 #include "kiln/foundation/Layouts.h"
@@ -57,11 +58,11 @@ namespace kiln::material3 {
         std::shared_ptr<foundation::MutableInteractionSource> interactionSource;
     };
 
-    void Button(std::function<void()> onClick, const ui::Modifier& modifier, const ButtonOptions& options, std::function<void()> content);
-    void ElevatedButton(std::function<void()> onClick, const ui::Modifier& modifier, const ButtonOptions& options, std::function<void()> content);
-    void FilledTonalButton(std::function<void()> onClick, const ui::Modifier& modifier, const ButtonOptions& options, std::function<void()> content);
-    void OutlinedButton(std::function<void()> onClick, const ui::Modifier& modifier, const ButtonOptions& options, std::function<void()> content);
-    void TextButton(std::function<void()> onClick, const ui::Modifier& modifier, const ButtonOptions& options, std::function<void()> content);
+    void Button(kiln::Function<void()> onClick, const ui::Modifier& modifier, const ButtonOptions& options, kiln::Function<void()> content);
+    void ElevatedButton(kiln::Function<void()> onClick, const ui::Modifier& modifier, const ButtonOptions& options, kiln::Function<void()> content);
+    void FilledTonalButton(kiln::Function<void()> onClick, const ui::Modifier& modifier, const ButtonOptions& options, kiln::Function<void()> content);
+    void OutlinedButton(kiln::Function<void()> onClick, const ui::Modifier& modifier, const ButtonOptions& options, kiln::Function<void()> content);
+    void TextButton(kiln::Function<void()> onClick, const ui::Modifier& modifier, const ButtonOptions& options, kiln::Function<void()> content);
 
     namespace ButtonDefaults {
         extern const PaddingValues ContentPadding, ButtonWithIconContentPadding, TextButtonContentPadding, TextButtonWithIconContentPadding;

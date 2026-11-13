@@ -1,5 +1,6 @@
 // BadgeSamples.kt
 #include "BadgeSamples.h"
+#include <kiln/Function.h>
 #include "Common.h"
 
 #include <kiln/material3/Badge.h>
@@ -8,7 +9,7 @@
 namespace catalog::samples {
     void NavigationBarItemWithBadge() {
         m3::NavigationBar({}, {}, [] {
-            const auto item = [](std::function<void()> badge) {
+            const auto item = [](kiln::Function<void()> badge) {
                 m3::NavigationBarItem(false, [] {}, [badge] {
                     m3::BadgedBox(badge, {}, [] { m3::Icon(Icons::Filled::Star(), std::string("Favorite")); });
                 }, {}, {});

@@ -1,4 +1,5 @@
 #include "Check.h"
+#include <kiln/Function.h>
 
 #include "kiln/foundation/Compose.h"
 #include "kiln/foundation/Gestures.h"
@@ -23,7 +24,7 @@ namespace {
             owner.Config().touchSlop = 8;
             a11y.SetEnabled(true);
         }
-        void Run(std::function<void()> content) { composition.SetContent(std::move(content)); Pump(); }
+        void Run(kiln::Function<void()> content) { composition.SetContent(std::move(content)); Pump(); }
         void Pump() { composition.Recompose(); owner.MeasureAndLayout({ 300, 300 }); }
         std::int64_t frameNs = 0;
         void Frames(int n) { for (int i = 0; i < n; ++i) { frameNs += 16'000'000; d.RunFrame(frameNs); Pump(); } }

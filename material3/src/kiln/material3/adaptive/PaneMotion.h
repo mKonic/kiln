@@ -8,6 +8,7 @@
 // offsets.
 
 #include "kiln/animation/Spec.h"
+#include <kiln/Function.h>
 #include "kiln/foundation/AnimatedVisibility.h"
 #include "kiln/material3/adaptive/PaneScaffoldValue.h"
 #include "kiln/ui/Geometry.h"
@@ -98,7 +99,7 @@ namespace kiln::material3::adaptive {
 
         // The scaffold's scale during a predictive back gesture.
         PredictiveBackScaleState& predictiveBackScaleState() { return *m_BackScale; }
-        std::function<bool()> isPredictiveBackInProgress;   // set by the scaffold
+        kiln::Function<bool()> isPredictiveBackInProgress;   // set by the scaffold
 
     private:
         ThreePaneScaffoldHorizontalOrder m_LtrOrder{ ThreePaneScaffoldRole::Primary, ThreePaneScaffoldRole::Secondary, ThreePaneScaffoldRole::Tertiary };

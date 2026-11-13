@@ -5,6 +5,7 @@
 // edit commands applied to a buffer of it. Offsets are UTF-16 units, as everywhere in text.
 
 #include "kiln/foundation/text/input/TextFieldBuffer.h"
+#include <kiln/Function.h>
 #include "kiln/text/AnnotatedString.h"
 
 #include <functional>
@@ -154,7 +155,7 @@ namespace kiln::foundation {
     public:
         explicit EditProcessor(const TextBackend* backend = nullptr);
         // reset: a new value from the app; onUpdate (TextInputSession.updateState) hears old and new.
-        void Reset(const TextFieldValue& value, const std::function<void(const TextFieldValue&, const TextFieldValue&)>& onUpdate = {});
+        void Reset(const TextFieldValue& value, const kiln::Function<void(const TextFieldValue&, const TextFieldValue&)>& onUpdate = {});
         TextFieldValue Apply(const std::vector<EditCommandPtr>& commands);
         const TextFieldValue& ToTextFieldValue() const { return m_State; }
 

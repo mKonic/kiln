@@ -2,6 +2,7 @@
 // LazyStaggeredGridState.Saver, PagerState's DefaultPagerState.Saver, TextFieldState.Saver).
 
 #include "kiln/foundation/Lazy.h"
+#include <kiln/Function.h>
 #include "kiln/foundation/Pager.h"
 #include "kiln/foundation/Scroll.h"
 #include "kiln/foundation/text/TextFieldState.h"
@@ -46,7 +47,7 @@ namespace kiln::foundation {
     LazyGridState& RememberLazyGridState(int i, int o, rt::Key key) { return RememberLazy<LazyGridState>(i, o, key); }
     LazyStaggeredGridState& RememberLazyStaggeredGridState(int i, int o, rt::Key key) { return RememberLazy<LazyStaggeredGridState>(i, o, key); }
 
-    PagerState& RememberPagerState(int initialPage, float initialFraction, std::function<int()> pageCount, rt::Key key) {
+    PagerState& RememberPagerState(int initialPage, float initialFraction, kiln::Function<int()> pageCount, rt::Key key) {
         // [currentPage, currentPageOffsetFraction in -0.5..0.5, pageCount]; restored pages take
         // the page count lambda of the composition that restores them.
         auto saver = rt::ListSaver<std::shared_ptr<PagerState>>(

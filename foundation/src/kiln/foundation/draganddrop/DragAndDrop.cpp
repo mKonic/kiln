@@ -1,4 +1,5 @@
 #include "kiln/foundation/draganddrop/DragAndDrop.h"
+#include <kiln/Function.h>
 
 #include "kiln/foundation/Gestures.h"
 #include "kiln/ui/LayoutNode.h"
@@ -9,7 +10,7 @@ namespace kiln::foundation {
         // --- the target --------------------------------------------------------------------------
 
         struct TargetParams {
-            std::shared_ptr<const std::function<bool(const DragAndDropEvent&)>> shouldStart;
+            std::shared_ptr<const kiln::Function<bool(const DragAndDropEvent&)>> shouldStart;
             std::shared_ptr<ui::DragAndDropTarget> target;
             bool operator==(const TargetParams&) const = default;
         };
@@ -41,7 +42,7 @@ namespace kiln::foundation {
         struct SourceParams {
             std::shared_ptr<SourceState> state;
             std::shared_ptr<const DragTransferData> transferData;
-            std::shared_ptr<const std::function<void(DrawScope&)>> drawDragDecoration;   // null: the content
+            std::shared_ptr<const kiln::Function<void(DrawScope&)>> drawDragDecoration;   // null: the content
             bool operator==(const SourceParams&) const = default;
         };
         struct DragAndDropSourceNode final : ui::DragAndDropNode, DrawModifier {
@@ -51,7 +52,7 @@ namespace kiln::foundation {
                     const auto data = (*params.transferData)(offset);
                     if (!data || !ModifierNode::Owner()) return;
                     const ui::IntSize size = ModifierNode::Owner()->Size();
-                    std::function<void(DrawScope&)> draw;
+                    kiln::Function<void(DrawScope&)> draw;
                     if (params.drawDragDecoration) {
                         draw = *params.drawDragDecoration;
                     } else {
@@ -92,7 +93,7 @@ namespace kiln::foundation {
             }
         }
 
-        Modifier Source(Modifier m, std::shared_ptr<const std::function<void(DrawScope&)>> draw, DragTransferData transferData) {
+        Modifier Source(Modifier m, std::shared_ptr<const kiln::Function<void(DrawScope&)>> draw, DragTransferData transferData) {
             auto* c = rt::Composition::Current();
             auto state = c->Remember<std::shared_ptr<SourceState>>([] { return std::make_shared<SourceState>(); });
             m = m.With<DragAndDropSourceNode>(SourceParams{ state, std::make_shared<const DragTransferData>(std::move(transferData)), std::move(draw) });
@@ -102,14 +103,14 @@ namespace kiln::foundation {
 
     Modifier DragAndDropSource(Modifier m, DragTransferData transferData) { return Source(std::move(m), nullptr, std::move(transferData)); }
 
-    Modifier DragAndDropSource(Modifier m, std::function<void(DrawScope&)> drawDragDecoration, DragTransferData transferData) {
-        return Source(std::move(m), std::make_shared<const std::function<void(DrawScope&)>>(std::move(drawDragDecoration)), std::move(transferData));
+    Modifier DragAndDropSource(Modifier m, kiln::Function<void(DrawScope&)> drawDragDecoration, DragTransferData transferData) {
+        return Source(std::move(m), std::make_shared<const kiln::Function<void(DrawScope&)>>(std::move(drawDragDecoration)), std::move(transferData));
     }
 
-    Modifier DragAndDropTarget(Modifier m, std::function<bool(const DragAndDropEvent&)> shouldStartDragAndDrop,
+    Modifier DragAndDropTarget(Modifier m, kiln::Function<bool(const DragAndDropEvent&)> shouldStartDragAndDrop,
                                std::shared_ptr<ui::DragAndDropTarget> target) {
         return m.With<DragAndDropTargetNode>(
-            TargetParams{ std::make_shared<const std::function<bool(const DragAndDropEvent&)>>(std::move(shouldStartDragAndDrop)), std::move(target) });
+            TargetParams{ std::make_shared<const kiln::Function<bool(const DragAndDropEvent&)>>(std::move(shouldStartDragAndDrop)), std::move(target) });
     }
 
 }

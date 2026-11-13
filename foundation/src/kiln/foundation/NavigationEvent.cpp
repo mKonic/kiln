@@ -1,4 +1,5 @@
 #include "kiln/foundation/NavigationEvent.h"
+#include <kiln/Function.h>
 
 #include <cassert>
 
@@ -9,8 +10,8 @@ namespace kiln::foundation::detail {
 
         // ComposeNavigationEventHandler: the transition state follows the gesture.
         struct Handler final : ui::BackCallback {
-            std::function<void(NavigationEventTransitionState)> onTransition;
-            std::function<void()> onCancelled, onCompleted;
+            kiln::Function<void(NavigationEventTransitionState)> onTransition;
+            kiln::Function<void()> onCancelled, onCompleted;
             void OnBackStarted(const ui::BackEvent& e) override {
                 if (onTransition) onTransition(NavigationEventTransitionState::InProgress(ToEvent(e), NavigationEventTransitionState::TransitioningBack));
             }
@@ -28,8 +29,8 @@ namespace kiln::foundation::detail {
         };
     }
 
-    void NavigationEventHandlerImpl(void* stateId, std::function<void(NavigationEventTransitionState)> onTransition, bool& registered,
-                                    bool isBackEnabled, std::function<void()> onBackCancelled, std::function<void()> onBackCompleted,
+    void NavigationEventHandlerImpl(void* stateId, kiln::Function<void(NavigationEventTransitionState)> onTransition, bool& registered,
+                                    bool isBackEnabled, kiln::Function<void()> onBackCancelled, kiln::Function<void()> onBackCompleted,
                                     rt::Key key) {
         auto& c = *rt::Composition::Current();
         ui::BackDispatcher* d = c.Read(LocalBackDispatcher);

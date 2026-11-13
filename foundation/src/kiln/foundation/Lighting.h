@@ -8,6 +8,7 @@
 // directional, point and spot, placed in the node, in the window, or at another node (an anchor).
 
 #include "kiln/foundation/Layouts.h"
+#include <kiln/Function.h>
 #include "kiln/foundation/Shapes.h"
 #include "kiln/runtime/State.h"
 
@@ -127,7 +128,7 @@ namespace kiln::foundation {
     // Modifier.illuminate: the lights over the content, composited with `blendMode`.
     Modifier Illuminate(Modifier m, std::vector<Light> lights, SurfaceMaterial surfaceMaterial, SurfaceGeometrySpec surfaceGeometrySpec,
                         gfx::BlendMode blendMode = gfx::BlendMode::SrcOver);
-    Modifier Illuminate(Modifier m, std::function<void(IlluminationScope&)> block, gfx::BlendMode blendMode = gfx::BlendMode::SrcOver);
+    Modifier Illuminate(Modifier m, kiln::Function<void(IlluminationScope&)> block, gfx::BlendMode blendMode = gfx::BlendMode::SrcOver);
     // Modifier.lightAnchor: lights positioned Anchored(state) are placed relative to this node.
     Modifier LightAnchor(Modifier m, LightAnchorState& state);
 

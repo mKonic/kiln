@@ -1,6 +1,7 @@
 // Node features: modifier locals, observed reads, traversal by key, placement callbacks and
 // composition locals read from a node.
 #include "Check.h"
+#include <kiln/Function.h>
 
 #include "kiln/foundation/Compose.h"
 #include "kiln/foundation/Layouts.h"
@@ -19,7 +20,7 @@ namespace {
         rt::Composition composition{ owner.Root(), rt::Dispatcher::Main() };
         Harness() { owner.SetDensity({ 1, 1 }); }
         ~Harness() { composition.SetContent([] {}); Pump(); }
-        void Run(std::function<void()> content) { composition.SetContent(std::move(content)); Pump(); }
+        void Run(kiln::Function<void()> content) { composition.SetContent(std::move(content)); Pump(); }
         void Pump() {
             for (int i = 0; i < 3; ++i) {
                 rt::Observation::ApplyChanges();
@@ -66,7 +67,7 @@ namespace {
 
     std::vector<ProbeNode*> Probes(LayoutNode& root) {
         std::vector<ProbeNode*> out;
-        std::function<void(LayoutNode&)> walk = [&](LayoutNode& n) {
+        kiln::Function<void(LayoutNode&)> walk = [&](LayoutNode& n) {
             for (const ModifierNode* m : n.ModifierNodes())
                 if (auto* p = dynamic_cast<const ProbeNode*>(m)) out.push_back(const_cast<ProbeNode*>(p));
             for (LayoutNode* c : n.Children()) walk(*c);

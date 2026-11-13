@@ -1,4 +1,5 @@
 #include "kiln/material3/FloatingActionButton.h"
+#include <kiln/Function.h>
 
 #include "kiln/animation/Animatable.h"
 #include "kiln/foundation/Compose.h"
@@ -62,7 +63,7 @@ namespace kiln::material3 {
         auto& c = *rt::Composition::Current();
         auto state = c.Remember<std::shared_ptr<ElevationState>>([&] { return std::make_shared<ElevationState>(e); },
                                                                rt::Keys(std::hash<const void*>{}(source.get())));
-        c.DisposableEffect(rt::Keys(std::hash<const void*>{}(state.get())), [state, source]() -> std::function<void()> {
+        c.DisposableEffect(rt::Keys(std::hash<const void*>{}(state.get())), [state, source]() -> kiln::Function<void()> {
             if (!source) return {};
             const auto token = source->Subscribe([state](const Interaction& interaction) { OnInteraction(*state, interaction); });
             return [state, source, token] { source->Unsubscribe(token); state->animation.Cancel(); };

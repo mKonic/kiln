@@ -1,4 +1,5 @@
 #include "kiln/ui/Layout.h"
+#include <kiln/Function.h>
 
 #include <cmath>
 
@@ -42,7 +43,7 @@ namespace kiln::ui {
         }
 
         int Measure(Kind kind, int cross, std::span<Measurable* const> children,
-                    const std::function<MeasureResult(std::span<Measurable* const>, const Constraints&)>& measure) {
+                    const kiln::Function<MeasureResult(std::span<Measurable* const>, const Constraints&)>& measure) {
             std::vector<std::unique_ptr<Stand>> stands;
             std::vector<Measurable*> ptrs;
             stands.reserve(children.size());

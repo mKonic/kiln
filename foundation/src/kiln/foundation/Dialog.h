@@ -6,6 +6,7 @@
 // it. The content composes with the caller's composition locals, in its own window owner.
 
 #include <cmath>
+#include <kiln/Function.h>
 
 #include "kiln/foundation/Back.h"
 #include "kiln/foundation/Compose.h"
@@ -33,11 +34,11 @@ namespace kiln::foundation {
         }
     };
 
-    void Dialog(std::function<void()> onDismissRequest, DialogProperties properties, std::function<void()> content, Key key = {});
+    void Dialog(kiln::Function<void()> onDismissRequest, DialogProperties properties, kiln::Function<void()> content, Key key = {});
     // For dialogs that animate with the back gesture (Material's forks of Dialog): the window's
     // back callback is predictive. onBack runs once per gesture with its progress, as a
     // PredictiveBackHandler's, and decides what completing it does (usually onDismissRequest).
-    void Dialog(std::function<void()> onDismissRequest, DialogProperties properties, std::function<rt::Task<>(BackProgress&)> onBack,
-                std::function<void()> content, Key key = {});
+    void Dialog(kiln::Function<void()> onDismissRequest, DialogProperties properties, kiln::Function<rt::Task<>(BackProgress&)> onBack,
+                kiln::Function<void()> content, Key key = {});
 
 }

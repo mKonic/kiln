@@ -1,4 +1,5 @@
 #include "kiln/foundation/text/contextmenu/TextContextMenuProvider.h"
+#include <kiln/Function.h>
 
 #include "kiln/foundation/Gestures.h"
 #include "kiln/foundation/Image.h"
@@ -20,7 +21,7 @@ namespace kiln::foundation {
                 rt::Channel<int> closed{ 1 };
                 void Close() override { closed.TrySend(0); }
             };
-            using Block = std::function<void(const std::shared_ptr<Session>&)>;
+            using Block = kiln::Function<void(const std::shared_ptr<Session>&)>;
 
             explicit BasicTextContextMenuProvider(Block block) : m_Block(std::move(block)) {}
 
@@ -109,7 +110,7 @@ namespace kiln::foundation {
             // Icons are fetched once per menu (the host draws them).
             auto& icons = c.Remember<std::shared_ptr<std::map<std::string, std::optional<ui::HostIcon>>>>(
                 [] { return std::make_shared<std::map<std::string, std::optional<ui::HostIcon>>>(); });
-            auto cachedIcon = [&](const std::string& k, const std::function<std::optional<ui::HostIcon>()>& load) {
+            auto cachedIcon = [&](const std::string& k, const kiln::Function<std::optional<ui::HostIcon>()>& load) {
                 auto it = icons->find(k);
                 if (it == icons->end()) it = icons->emplace(k, load()).first;
                 return it->second;
@@ -128,7 +129,7 @@ namespace kiln::foundation {
                             icon = cachedIcon("a" + std::to_string(item->leadingIcon), [&] { return host->themeIcon(item->leadingIcon, iconPx); });
                         else if (host && item->leadingIcon == 0 && id != ui::TextToolbarItemId::None && host->standardIcon)
                             icon = cachedIcon("s" + std::to_string(int(id)), [&] { return host->standardIcon(id, iconPx); });
-                        std::function<void(Color)> leading;
+                        kiln::Function<void(Color)> leading;
                         if (icon) leading = [icon](Color tint) { IconBox(icon, tint); };
                         auto onClick = item->onClick;
                         scope.Item(label, [onClick, s] { if (onClick) onClick(*s); }, true, {}, leading);
@@ -140,7 +141,7 @@ namespace kiln::foundation {
                         if (host->classificationIcon)
                             icon = cachedIcon("c" + std::to_string(ci->classification) + ":" + std::to_string(ci->index),
                                               [&] { return host->classificationIcon(ci->classification, ci->index, iconPx); });
-                        std::function<void(Color)> leading;
+                        kiln::Function<void(Color)> leading;
                         if (icon) leading = [icon](Color) { IconBox(icon, std::nullopt); };
                         const int handle = ci->classification, index = ci->index;
                         auto perform = host->performClassification;
@@ -167,7 +168,7 @@ namespace kiln::foundation {
         }
     }
 
-    void ProvideDefaultPlatformTextContextMenuProviders(std::function<Modifier()> modifier, std::function<void()> content) {
+    void ProvideDefaultPlatformTextContextMenuProviders(kiln::Function<Modifier()> modifier, kiln::Function<void()> content) {
         auto& c = *rt::Composition::Current();
         if (c.Read(LocalTextContextMenuDropdownProvider)) {
             Box(modifier ? modifier() : Modifier{}, Alignment::TopStart(), true, content);
@@ -176,7 +177,7 @@ namespace kiln::foundation {
         auto& provider = c.Remember<std::shared_ptr<BasicTextContextMenuProvider>>([] {
             return std::make_shared<BasicTextContextMenuProvider>([](const std::shared_ptr<BasicTextContextMenuProvider::Session>& s) { OpenContextMenu(s); });
         });
-        c.DisposableEffect(rt::Keys(provider.get()), [p = provider] { return std::function<void()>([p] { p->Cancel(); }); });
+        c.DisposableEffect(rt::Keys(provider.get()), [p = provider] { return kiln::Function<void()>([p] { p->Cancel(); }); });
         BasicTextContextMenuProvider* raw = provider.get();
         c.Provide(LocalTextContextMenuDropdownProvider, static_cast<TextContextMenuProvider*>(raw), [modifier, content, raw] {
             Box(modifier ? modifier() : Modifier{}, Alignment::TopStart(), true, [content, raw] {
@@ -228,7 +229,7 @@ namespace kiln::foundation {
         };
 
         // onRightClickDown: each gesture that starts with a secondary button press.
-        rt::Task<> OnRightClickDown(PointerInputScope& s, std::function<void(Offset)> onDown) {
+        rt::Task<> OnRightClickDown(PointerInputScope& s, kiln::Function<void(Offset)> onDown) {
             for (;;) {
                 std::optional<PointerInputChange> down;
                 while (!down) {
@@ -253,18 +254,18 @@ namespace kiln::foundation {
         }
     }
 
-    Modifier ShowTextContextMenuOnSecondaryClick(Modifier m, std::function<rt::Task<>(Offset)> onPreShowContextMenu) {
+    Modifier ShowTextContextMenuOnSecondaryClick(Modifier m, kiln::Function<rt::Task<>(Offset)> onPreShowContextMenu) {
         auto& c = *rt::Composition::Current();
         TextContextMenuProvider* provider = c.Read(LocalTextContextMenuDropdownProvider);
         auto& anchor = c.Remember<std::shared_ptr<GestureAnchor>>([] { return std::make_shared<GestureAnchor>(); });
-        auto pre = std::make_shared<std::function<rt::Task<>(Offset)>>(std::move(onPreShowContextMenu));
+        auto pre = std::make_shared<kiln::Function<rt::Task<>(Offset)>>(std::move(onPreShowContextMenu));
         auto a = anchor;
         m = PointerInput(std::move(m), rt::Keys(reinterpret_cast<std::uintptr_t>(provider), reinterpret_cast<std::uintptr_t>(a.get())),
                          [provider, a, pre](PointerInputScope& s) {
             return OnRightClickDown(s, [provider, a, pre](Offset local) {
                 if (!provider) return;
                 auto data = std::make_shared<ClickDataProvider>(a, local);
-                a->job = rt::Launch(rt::Dispatcher::Main(), [](TextContextMenuProvider* p, std::shared_ptr<std::function<rt::Task<>(Offset)>> pre,
+                a->job = rt::Launch(rt::Dispatcher::Main(), [](TextContextMenuProvider* p, std::shared_ptr<kiln::Function<rt::Task<>(Offset)>> pre,
                                                       std::shared_ptr<ClickDataProvider> data, Offset local) -> rt::Task<> {
                     if (*pre) co_await (*pre)(local);
                     co_await p->ShowTextContextMenu(data);

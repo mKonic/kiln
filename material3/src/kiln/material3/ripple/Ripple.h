@@ -6,6 +6,7 @@
 // inset ring around the shape.
 
 #include "kiln/animation/Spec.h"
+#include <kiln/Function.h>
 #include "kiln/foundation/Interaction.h"
 #include "kiln/foundation/Shapes.h"
 
@@ -14,7 +15,7 @@
 
 namespace kiln::material3::ripple {
 
-    using ColorProducer = std::function<ui::Color()>;
+    using ColorProducer = kiln::Function<ui::Color()>;
 
     // RippleNodeConfiguration
     struct RippleNodeConfiguration {

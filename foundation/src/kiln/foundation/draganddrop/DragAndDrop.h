@@ -6,6 +6,7 @@
 // drags shouldStartDragAndDrop admits and then hears enter / move / exit / drop.
 
 #include "kiln/foundation/Compose.h"
+#include <kiln/Function.h>
 #include "kiln/ui/DragAndDrop.h"
 
 #include <functional>
@@ -17,11 +18,11 @@ namespace kiln::foundation {
     using ui::DragAndDropEvent;
     using ui::DragAndDropTransferData;
 
-    using DragTransferData = std::function<std::optional<DragAndDropTransferData>(Offset)>;
+    using DragTransferData = kiln::Function<std::optional<DragAndDropTransferData>(Offset)>;
     Modifier DragAndDropSource(Modifier m, DragTransferData transferData);
-    Modifier DragAndDropSource(Modifier m, std::function<void(DrawScope&)> drawDragDecoration, DragTransferData transferData);
+    Modifier DragAndDropSource(Modifier m, kiln::Function<void(DrawScope&)> drawDragDecoration, DragTransferData transferData);
 
-    Modifier DragAndDropTarget(Modifier m, std::function<bool(const DragAndDropEvent&)> shouldStartDragAndDrop,
+    Modifier DragAndDropTarget(Modifier m, kiln::Function<bool(const DragAndDropEvent&)> shouldStartDragAndDrop,
                                std::shared_ptr<ui::DragAndDropTarget> target);
 
 }

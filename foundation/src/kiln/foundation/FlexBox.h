@@ -16,6 +16,7 @@
 // An item without a grow factor grows by its FillMax fraction along the main axis.
 
 #include "kiln/foundation/LayoutConfig.h"
+#include <kiln/Function.h>
 #include "kiln/ui/Geometry.h"
 #include "kiln/ui/Layout.h"
 #include "kiln/ui/Modifier.h"
@@ -60,7 +61,7 @@ namespace kiln::foundation {
         void AlignItems(FlexAlignItems v) { alignItems = v; }
         // Baseline alignment on `line`, or on a position each item gives.
         void AlignItems(const ui::AlignmentLine& line) { alignItems = FlexAlignItems::Baseline; baselineLine = &line; baselineBlock = nullptr; }
-        void AlignItems(std::function<int(ui::Placeable&)> block) { alignItems = FlexAlignItems::Baseline; baselineLine = nullptr; baselineBlock = std::move(block); }
+        void AlignItems(kiln::Function<int(ui::Placeable&)> block) { alignItems = FlexAlignItems::Baseline; baselineLine = nullptr; baselineBlock = std::move(block); }
         void AlignContent(FlexAlignContent v) { alignContent = v; }
         void MaxItemsInEachLine(int v);   // > 0
         void RowGap(Dp v) { rowGap = v; }
@@ -76,7 +77,7 @@ namespace kiln::foundation {
         int maxItemsInEachLine = INT32_MAX;
         Dp rowGap{ 0 }, columnGap{ 0 };
         const ui::AlignmentLine* baselineLine = nullptr;
-        std::function<int(ui::Placeable&)> baselineBlock;
+        kiln::Function<int(ui::Placeable&)> baselineBlock;
     };
     using FlexBoxConfig = LayoutConfig<FlexBoxConfigScope>;
 
@@ -86,7 +87,7 @@ namespace kiln::foundation {
         int flexBoxMainAxisMaxPx = 0, flexBoxMainAxisMinPx = 0, flexBoxCrossAxisMaxPx = 0, flexBoxCrossAxisMinPx = 0;
         void AlignSelf(FlexAlignSelf v) { alignSelf = v; }
         void AlignSelf(const ui::AlignmentLine& line) { alignSelf = FlexAlignSelf::Baseline; baselineLine = &line; baselineBlock = nullptr; }
-        void AlignSelf(std::function<int(ui::Placeable&)> block) { alignSelf = FlexAlignSelf::Baseline; baselineLine = nullptr; baselineBlock = std::move(block); }
+        void AlignSelf(kiln::Function<int(ui::Placeable&)> block) { alignSelf = FlexAlignSelf::Baseline; baselineLine = nullptr; baselineBlock = std::move(block); }
         // Placement order among the items (stable; default 0).
         void Order(int v) { order = v; }
         void Grow(float v);     // >= 0
@@ -101,13 +102,13 @@ namespace kiln::foundation {
         float shrink = 1;
         FlexBasis basis;
         const ui::AlignmentLine* baselineLine = nullptr;
-        std::function<int(ui::Placeable&)> baselineBlock;
+        kiln::Function<int(ui::Placeable&)> baselineBlock;
     };
     using FlexConfig = LayoutConfig<FlexConfigScope>;
 
     // FlexBox: lays its children out as a flex container.
-    void FlexBox(const Modifier& modifier, FlexBoxConfig config, std::function<void()> content);
-    inline void FlexBox(const Modifier& modifier, std::function<void()> content) { FlexBox(modifier, FlexBoxConfig{}, std::move(content)); }
+    void FlexBox(const Modifier& modifier, FlexBoxConfig config, kiln::Function<void()> content);
+    inline void FlexBox(const Modifier& modifier, kiln::Function<void()> content) { FlexBox(modifier, FlexBoxConfig{}, std::move(content)); }
 
     // FlexBoxScope.flex: this child's flex settings.
     Modifier Flex(Modifier m, FlexConfig config);

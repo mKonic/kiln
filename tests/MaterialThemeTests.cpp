@@ -1,4 +1,5 @@
 #include "Check.h"
+#include <kiln/Function.h>
 
 #include <map>
 #include <set>
@@ -131,7 +132,7 @@ namespace {
                 d.RunPending();
             } while (done < ms);
         }
-        void Run(std::function<void()> content) {
+        void Run(kiln::Function<void()> content) {
             // LocalDensity, as App provides it (vector painters size themselves with it).
             composition.SetContent([this, content = std::move(content)] {
                 rt::Composition::Current()->Provide(ui::LocalDensity, owner.GetDensity(), content);
@@ -357,7 +358,7 @@ namespace {
     constexpr ui::IntRect MenuAnchorBounds{ 100, 100, 150, 150 };
     ui::IntRect At(int x, int y, int w, int h) { return { x, y, x + w, y + h }; }
     std::unique_ptr<DropdownMenuPositionProvider> Provider(int offsetX, int offsetY, const AnchorPos& anchor, std::optional<int> horizontalMargin = {},
-                                          std::optional<int> verticalMargin = {}, std::function<void(ui::IntRect, ui::IntRect)> callback = {}) {
+                                          std::optional<int> verticalMargin = {}, kiln::Function<void(ui::IntRect, ui::IntRect)> callback = {}) {
         auto p = std::make_unique<DropdownMenuPositionProvider>(ui::DpOffset{ ui::Dp(float(offsetX)), ui::Dp(float(offsetY)) }, ui::Density{ 1, 1 },
                                                                 anchor, std::move(callback));
         if (horizontalMargin) p->horizontalMargin = *horizontalMargin;
@@ -466,7 +467,7 @@ TEST(IconsAndTextTakeTheContentColour) {
         });
     });
     // The vector's 24 dp intrinsic size (density 1).
-    std::function<void(ui::LayoutNode*)> find = [&](ui::LayoutNode* n) {
+    kiln::Function<void(ui::LayoutNode*)> find = [&](ui::LayoutNode* n) {
         if (n->Size().width == 24 && n->Size().height == 24) icon = n;
         for (ui::LayoutNode* c : n->Children()) find(c);
     };
@@ -569,7 +570,7 @@ TEST(ButtonElevationFollowsTheLastInteractionAndSnapsWhenDisabled) {
 }
 
 TEST(ToggleButtonsResolveSizeColorAndCheckboxSemantics) {
-    using Toggle = void (*)(bool, std::function<void(bool)>, const ui::Modifier&, const ToggleButtonOptions&, std::function<void()>);
+    using Toggle = void (*)(bool, kiln::Function<void(bool)>, const ui::Modifier&, const ToggleButtonOptions&, kiln::Function<void()>);
     for (Toggle toggle : { ToggleButton, ElevatedToggleButton, FilledTonalToggleButton, OutlinedToggleButton }) {
         rt::State<bool> checked{ false };
         Harness h;
@@ -732,7 +733,7 @@ TEST(IconButtonDefaultsFollowContentColorAndExpressiveWidths) {
 }
 
 TEST(IconToggleVariantsExposeCheckboxStateAndHandlePresses) {
-    using Toggle = void (*)(bool, std::function<void(bool)>, const ui::Modifier&, const IconToggleButtonOptions&, std::function<void()>);
+    using Toggle = void (*)(bool, kiln::Function<void(bool)>, const ui::Modifier&, const IconToggleButtonOptions&, kiln::Function<void()>);
     for (Toggle toggle : { IconToggleButton, FilledIconToggleButton, FilledTonalIconToggleButton, OutlinedIconToggleButton }) {
         rt::State<bool> checked{ false }, enabled{ true };
         auto source = std::make_shared<MutableInteractionSource>();
@@ -785,7 +786,7 @@ TEST(IconToggleVariantsExposeCheckboxStateAndHandlePresses) {
 }
 
 TEST(FloatingActionButtonsResolveSizeStyleAndSemantics) {
-    using Fab = void (*)(std::function<void()>, const ui::Modifier&, const FloatingActionButtonOptions&, std::function<void()>);
+    using Fab = void (*)(kiln::Function<void()>, const ui::Modifier&, const FloatingActionButtonOptions&, kiln::Function<void()>);
     const Fab fabs[] = { SmallFloatingActionButton, FloatingActionButton, MediumFloatingActionButton, LargeFloatingActionButton };
     const int sizes[] = { 48, 56, 80, 96 };  // small's 40 dp visual still reserves 48 dp for input
     for (int i = 0; i < 4; ++i) {
@@ -824,7 +825,7 @@ TEST(FloatingActionButtonsResolveSizeStyleAndSemantics) {
 }
 
 TEST(ExtendedFloatingActionButtonsCollapseAndClearOnlyLabelSemantics) {
-    using Fab = void (*)(std::function<void()>, std::function<void()>, std::function<void()>, const ui::Modifier&, bool, const FloatingActionButtonOptions&);
+    using Fab = void (*)(kiln::Function<void()>, kiln::Function<void()>, kiln::Function<void()>, const ui::Modifier&, bool, const FloatingActionButtonOptions&);
     const Fab fabs[] = { ExtendedFloatingActionButton, SmallExtendedFloatingActionButton, MediumExtendedFloatingActionButton, LargeExtendedFloatingActionButton };
     const int sizes[] = { 56, 56, 80, 96 };
     const text::TextStyle styles[] = { Typography{}.labelLarge, Typography{}.titleMedium, Typography{}.titleLarge, Typography{}.headlineSmall };
@@ -871,7 +872,7 @@ TEST(ExtendedFloatingActionButtonsCollapseAndClearOnlyLabelSemantics) {
 }
 
 TEST(TextOnlyExtendedFabsUseTheirOwnMinimumsAndTypography) {
-    using Fab = void (*)(std::function<void()>, const ui::Modifier&, const FloatingActionButtonOptions&, std::function<void()>);
+    using Fab = void (*)(kiln::Function<void()>, const ui::Modifier&, const FloatingActionButtonOptions&, kiln::Function<void()>);
     const Fab fabs[] = { ExtendedFloatingActionButton, SmallExtendedFloatingActionButton, MediumExtendedFloatingActionButton, LargeExtendedFloatingActionButton };
     const int widths[] = { 80, 56, 80, 96 }, heights[] = { 56, 56, 80, 96 };
     const text::TextStyle styles[] = { Typography{}.labelLarge, Typography{}.titleMedium, Typography{}.titleLarge, Typography{}.headlineSmall };
@@ -1194,11 +1195,11 @@ TEST(SelectionControlsReserveInputSpaceOnlyWithCallbacksAndKeepDisabledState) {
         rt::State<bool> checked{ false };
         Harness h;
         auto control = [&](bool interactive, bool enabled) {
-            std::function<void(bool)> change;
+            kiln::Function<void(bool)> change;
             if (interactive) change = [&](bool value) { checked.Set(value); };
             if (kind == 0) Checkbox(checked.Get(), change, {}, { .enabled = enabled });
             else if (kind == 1) {
-                std::function<void()> click;
+                kiln::Function<void()> click;
                 if (interactive) click = [&] { checked.Set(true); };
                 RadioButton(checked.Get(), click, {}, { .enabled = enabled });
             } else Switch(checked.Get(), change, {}, { .enabled = enabled });
@@ -1423,8 +1424,8 @@ TEST(CardDefaultsResolveVariantColorsBordersAndCustomContent) {
 }
 
 TEST(CardsKeepColumnContentAndOnlyClickableFormsReserveInteractiveSpace) {
-    using Plain = void (*)(const ui::Modifier&, const CardOptions&, std::function<void()>);
-    using Clickable = void (*)(std::function<void()>, const ui::Modifier&, const CardOptions&, std::function<void()>);
+    using Plain = void (*)(const ui::Modifier&, const CardOptions&, kiln::Function<void()>);
+    using Clickable = void (*)(kiln::Function<void()>, const ui::Modifier&, const CardOptions&, kiln::Function<void()>);
     const Plain plain[] = { Card, ElevatedCard, OutlinedCard };
     const Clickable clickable[] = { Card, ElevatedCard, OutlinedCard };
     for (int variant = 0; variant < 3; ++variant) {
@@ -1556,7 +1557,7 @@ TEST(ChipDefaultsResolveColorsSelectionAndDisabledOverrides) {
 }
 
 TEST(ActionChipsUseIntrinsicWidthTokenTypographyAndButtonSemantics) {
-    using Chip = void (*)(std::function<void()>, std::function<void()>, const ui::Modifier&, const ChipOptions&);
+    using Chip = void (*)(kiln::Function<void()>, kiln::Function<void()>, const ui::Modifier&, const ChipOptions&);
     const Chip chips[] = { AssistChip, ElevatedAssistChip, SuggestionChip, ElevatedSuggestionChip };
     for (int variant = 0; variant < 4; ++variant) {
         Harness h;
@@ -1588,7 +1589,7 @@ TEST(ActionChipsUseIntrinsicWidthTokenTypographyAndButtonSemantics) {
 }
 
 TEST(SelectableChipsRetainExitIconsAndExposeSelectedCheckboxRoles) {
-    using Chip = void (*)(bool, std::function<void()>, std::function<void()>, const ui::Modifier&, const SelectableChipOptions&);
+    using Chip = void (*)(bool, kiln::Function<void()>, kiln::Function<void()>, const ui::Modifier&, const SelectableChipOptions&);
     for (Chip chip : { FilterChip, ElevatedFilterChip, InputChip }) for (bool expressive : { false, true }) {
         rt::State<bool> selected{ false };
         Harness h;
@@ -1677,7 +1678,7 @@ TEST(InputChipAvatarTakesPrecedenceAndDisabledOpacityWithoutForcedSizing) {
     CHECK_EQ(chip->Size().width, 94);  // 30 avatar + 40 label + 16 gaps + 8 padding
     CHECK(avatars > 0 && icons == 0);
     bool faded = false;
-    std::function<void(ui::LayoutNode*)> visit = [&](ui::LayoutNode* node) {
+    kiln::Function<void(ui::LayoutNode*)> visit = [&](ui::LayoutNode* node) {
         for (const auto* modifier : node->ModifierNodes())
             if (auto* draw = const_cast<ui::ModifierNode*>(modifier)->AsDraw(); draw && draw->LayerAlpha() == 0.38f) faded = true;
         for (auto* child : node->Children()) visit(child);
@@ -1781,7 +1782,7 @@ TEST(ListItemsMatchClassicAndModernSlotOrderSizingAndRtl) {
                     auto head = [&] { headline = &ListTestLeaf(40, 20); };
                     auto lead = [&] { leading = &ListTestLeaf(24, 24); };
                     auto trail = [&] { trailing = &ListTestLeaf(16, 16); };
-                    std::function<void()> over, support;
+                    kiln::Function<void()> over, support;
                     if (type == 3) over = [&] { overline = &ListTestLeaf(30, 10); };
                     if (type > 1) support = [&] { supporting = &ListTestLeaf(60, type == 4 ? 40 : 20, type == 4); };
                     if (legacy) ListItem(head, {}, { .overlineContent = over, .supportingContent = support, .leadingContent = lead, .trailingContent = trail });
@@ -1851,17 +1852,17 @@ TEST(ModernListItemsExposeSelectionLongClickAndDisabledSemanticsWithoutButtonRol
             o.onLongClickLabel = "Select item";
             auto content = [] { Box(SizeMod({}, 40_dp, 20_dp)); };
             auto click = [&] { ++clicks; selected.Set(!selected.Peek()); };
-            std::function<void(bool)> change = [&](bool value) { ++clicks; selected.Set(value); };
+            kiln::Function<void(bool)> change = [&](bool value) { ++clicks; selected.Set(value); };
             const auto shapes = ListItemDefaults::segmentedShapes(0, 1);
             if (segmented) {
                 if (variant == 0) SegmentedListItem(shapes, {}, o, content);
                 if (variant == 1) SegmentedListItem(click, shapes, {}, o, content);
-                if (variant == 2) SegmentedListItem(selected.Get(), std::function<void()>(click), shapes, {}, o, content);
+                if (variant == 2) SegmentedListItem(selected.Get(), kiln::Function<void()>(click), shapes, {}, o, content);
                 if (variant == 3) SegmentedListItem(selected.Get(), change, shapes, {}, o, content);
             } else {
                 if (variant == 0) ListItem({}, o, content);
                 if (variant == 1) ListItem(click, {}, o, content);
-                if (variant == 2) ListItem(selected.Get(), std::function<void()>(click), {}, o, content);
+                if (variant == 2) ListItem(selected.Get(), kiln::Function<void()>(click), {}, o, content);
                 if (variant == 3) ListItem(selected.Get(), change, {}, o, content);
             }
         }); }); });
@@ -1910,7 +1911,7 @@ TEST(ModernListColorsAndElevationAnimateAcrossInterruptedSelectionDragAndDisable
         o.trailingContent = [&] { observe(trailing, trailStyle); };
         o.overlineContent = [&] { observe(overline, overStyle); };
         o.supportingContent = [&] { observe(supporting, supportStyle); };
-        ListItem(selected.Get(), std::function<void()>([&] { ++clicks; }), {}, o, [&] { observe(content, headStyle); });
+        ListItem(selected.Get(), kiln::Function<void()>([&] { ++clicks; }), {}, o, [&] { observe(content, headStyle); });
     }); }); });
     const auto scheme = LightColorScheme();
     CHECK(content == scheme.onSurface && leading == scheme.onSurfaceVariant);
@@ -1995,7 +1996,7 @@ TEST(ProgressIndicatorsClampValuesKeepVisualSizeAndExpandLinearSemantics) {
         int stopDraws = 0;
         ui::Size stopScope;
         h.Run([&] { MaterialTheme([&] { Column(Padding({}, 20_dp), Arrangement::SpacedBy(20_dp), AlignmentH::Start(), [&] {
-            LinearProgressIndicator(progress, {}, { .drawStopIndicator = std::function<void(ui::DrawScope&)>([&](ui::DrawScope& s) { ++stopDraws; stopScope = s.GetSize(); }) });
+            LinearProgressIndicator(progress, {}, { .drawStopIndicator = kiln::Function<void(ui::DrawScope&)>([&](ui::DrawScope& s) { ++stopDraws; stopScope = s.GetSize(); }) });
             CircularProgressIndicator(progress);
             LinearProgressIndicator();
             CircularProgressIndicator();
@@ -2268,7 +2269,7 @@ TEST(SlidersPlaceSteppedThumbsMatchRtlAndDrawOnlyTicksOutsideTheGap) {
                     o.track = [&](SliderState& s) {
                         SliderTrackOptions track;
                         track.drawTick = [&](ui::DrawScope&, ui::Offset position, Color) { ticks.push_back(position.x); };
-                        track.drawStopIndicator = std::function<void(ui::DrawScope&, ui::Offset)>([&](ui::DrawScope&, ui::Offset p) { stops.push_back(p); });
+                        track.drawStopIndicator = kiln::Function<void(ui::DrawScope&, ui::Offset)>([&](ui::DrawScope&, ui::Offset p) { stops.push_back(p); });
                         SliderDefaults::Track(s, {}, track);
                     };
                     Slider(state, [&](float v) { state.SetValue(v); }, Width({}, 240_dp), o);
@@ -2543,7 +2544,7 @@ TEST(SegmentedButtonRowsKeepEqualWeightsOnePixelOverlapAndSourceSlotPlacement) {
             MultiChoiceSegmentedButtonRow({}, [&] {
                 SegmentedButtonOptions o;
                 if (customPadding) o.contentPadding = PaddingValues{ 24_dp, 24_dp, 24_dp, 24_dp };
-                o.icon = std::function<void()>([&] { icon = &ListTestLeaf(18, 18); ListTestLeaf(10, 10); });
+                o.icon = kiln::Function<void()>([&] { icon = &ListTestLeaf(18, 18); ListTestLeaf(10, 10); });
                 SegmentedButton(false, [](bool) {}, SegmentedButtonDefaults::itemShape(0, 2), [&] {
                     content = rt::Composition::Current()->Read(LocalContentColor);
                     style = rt::Composition::Current()->Read(LocalTextStyle());
@@ -2614,7 +2615,7 @@ TEST(SegmentedButtonLabelMotionKeepsAllocationAndInteractionsRaiseTheBorder) {
     h.Run([&] { MaterialTheme([&] { Column({}, [&] {
         MultiChoiceSegmentedButtonRow({}, [&] {
             SegmentedButtonOptions o; o.interactionSource = source;
-            o.icon = std::function<void()>([&] { if (active.Get()) ListTestLeaf(18, 18); });
+            o.icon = kiln::Function<void()>([&] { if (active.Get()) ListTestLeaf(18, 18); });
             SegmentedButton(active.Get(), [&](bool v) { active.Set(v); }, SegmentedButtonDefaults::itemShape(0, 1), [&] { label = &ListTestLeaf(40, 20); }, {}, o);
         });
     }); }); });
@@ -2659,7 +2660,7 @@ TEST(SegmentedButtonCustomSlotsKeepWideIconsEmptyLabelsAndMinimumSizes) {
         h.Run([&] { MaterialTheme([&] { Column({}, [&] {
             MultiChoiceSegmentedButtonRow({}, [&] {
                 SegmentedButtonOptions o;
-                o.icon = std::function<void()>([&] { if (kind == 0) icon = &ListTestLeaf(30, 18); });
+                o.icon = kiln::Function<void()>([&] { if (kind == 0) icon = &ListTestLeaf(30, 18); });
                 SegmentedButton(false, [](bool) {}, SegmentedButtonDefaults::itemShape(0, 1), [&] {
                     if (kind != 2) label = &ListTestLeaf(40, 20);
                 }, {}, o);
@@ -2681,10 +2682,10 @@ TEST(SegmentedButtonIconsCrossfadeOrEnterWithoutAnExitAndCancelOnDisposal) {
             if (!attached.Get()) return;
             MultiChoiceSegmentedButtonRow({}, [&] {
                 SegmentedButtonOptions o;
-                o.icon = std::function<void()>([&] {
+                o.icon = kiln::Function<void()>([&] {
                     // The toggleable merges its descendants' semantics, so the icons are told apart by size.
                     const auto named = [](const char* name) { Box(SizeMod({}, 18_dp, name[0] == 'a' ? 18_dp : 17_dp)); };
-                    std::function<void()> inactive;
+                    kiln::Function<void()> inactive;
                     if (crossfade) inactive = [=] { named("inactive icon"); };
                     SegmentedButtonDefaults::Icon(active.Get(), [=] { named("active icon"); }, inactive);
                 });
@@ -2702,7 +2703,7 @@ TEST(SegmentedButtonIconsCrossfadeOrEnterWithoutAnExitAndCancelOnDisposal) {
             int result = 0;
             // Inside AnimatedVisibility the active icon is stretched to the label's 20px height.
             const bool activeIcon = name[0] == 'a';
-            std::function<void(ui::LayoutNode&)> visit = [&](ui::LayoutNode& n) {
+            kiln::Function<void(ui::LayoutNode&)> visit = [&](ui::LayoutNode& n) {
                 if (n.Children().empty() && n.Size().width == 18 && (n.Size().height == 17) != activeIcon) ++result;
                 for (auto* child : n.Children()) visit(*child);
             };
@@ -2830,7 +2831,7 @@ TEST(SplitButtonLayoutGivesTheTrailingButtonItsWidthAndBothTheSameHeight) {
 }
 
 TEST(SplitButtonsClickToggleAndRecentreACheckedTrailingButton) {
-    using Maker = void (*)(bool, std::function<void(bool)>, const ui::Modifier&, const SplitButtonOptions&, std::function<void()>);
+    using Maker = void (*)(bool, kiln::Function<void(bool)>, const ui::Modifier&, const SplitButtonOptions&, kiln::Function<void()>);
     const Maker makers[] = { static_cast<Maker>(SplitButtonDefaults::TrailingButton), SplitButtonDefaults::TonalTrailingButton,
                              SplitButtonDefaults::OutlinedTrailingButton, SplitButtonDefaults::ElevatedTrailingButton };
     for (int variant = 0; variant < 4; ++variant) {
@@ -3567,7 +3568,7 @@ TEST(ButtonGroupNeighboursGiveWayNoFurtherThanTheirCompressionLimit) {   // widt
 // Ported from Compose's SplitButtonTest.
 TEST(SplitButtonVariantsShowTheirContentAndExposeButtonSemantics) {   // *SplitButton_contentDisplay, *Semantics
     using Leading = void (*)(SplitButtonDefaults::Content, const ui::Modifier&, const SplitButtonOptions&, SplitButtonDefaults::Content);
-    using Trailing = void (*)(bool, std::function<void(bool)>, const ui::Modifier&, const SplitButtonOptions&, SplitButtonDefaults::Content);
+    using Trailing = void (*)(bool, kiln::Function<void(bool)>, const ui::Modifier&, const SplitButtonOptions&, SplitButtonDefaults::Content);
     const std::pair<Leading, Trailing> variants[] = {
         { SplitButtonDefaults::LeadingButton, static_cast<Trailing>(SplitButtonDefaults::TrailingButton) },
         { SplitButtonDefaults::TonalLeadingButton, SplitButtonDefaults::TonalTrailingButton },
@@ -3705,7 +3706,7 @@ TEST(SplitButtonFillMaxWidthLeadingButtonInAHorizontalScrollDoesNotCrash) {   //
 // Ported from Compose's MenuTest.
 namespace {
     // A 20 px anchor whose menu holds `content`, shown while `expanded`.
-    void MenuAnchor(PhoneHarness& h, rt::State<bool>& expanded, std::function<void()> content, DropdownMenuOptions options = {}) {
+    void MenuAnchor(PhoneHarness& h, rt::State<bool>& expanded, kiln::Function<void()> content, DropdownMenuOptions options = {}) {
         h.Run([&h, &expanded, content = std::move(content), options] {
             rt::Composition::Current()->Provide(ui::LocalOwner, &h.owner, [&] { MaterialTheme({}, [&] {
                 Box({}, Alignment::TopStart(), false, [&] {
@@ -3874,7 +3875,7 @@ namespace {
     constexpr std::int64_t TooltipFadeInDuration = 300, TooltipFadeOutDuration = 300;
     // rule.setMaterialContent: the theme and the owner popups attach to. The Box stands for
     // the test activity's wrap-content ComposeView: content is not stretched to the window.
-    void Themed(Harness& h, std::function<void()> content) {
+    void Themed(Harness& h, kiln::Function<void()> content) {
         h.Run([&h, content = std::move(content)] {
             rt::Composition::Current()->Provide(ui::LocalOwner, &h.owner, [&] {
                 MaterialTheme({}, [&] { Box({}, Alignment::TopStart(), false, content); });
@@ -3892,12 +3893,12 @@ namespace {
         return TooltipDefaults::rememberTooltipPositionProvider(TooltipAnchorPosition::Above);
     }
     void Anchor(ui::Modifier m = {}) { Box(SizeMod(std::move(m), 24_dp, 24_dp), Alignment::TopStart(), false, {}); }
-    void PlainTooltipTest(const TooltipState& state, ui::Modifier modifier = {}, std::function<void()> content = [] {}) {
+    void PlainTooltipTest(const TooltipState& state, ui::Modifier modifier = {}, kiln::Function<void()> content = [] {}) {
         TooltipBox(Above(), [modifier, content](const TooltipScope& scope) { PlainTooltip(scope, Tag(modifier, "Container"), {}, content); },
                    state, {}, {}, [] { Anchor(); });
     }
-    void RichTooltipTest(const TooltipState& state, ui::Modifier modifier = {}, std::function<void()> text = [] {},
-                         std::function<void()> title = {}, std::function<void()> action = {}) {
+    void RichTooltipTest(const TooltipState& state, ui::Modifier modifier = {}, kiln::Function<void()> text = [] {},
+                         kiln::Function<void()> title = {}, kiln::Function<void()> action = {}) {
         TooltipBox(Above(), [=](const TooltipScope& scope) {
             RichTooltipOptions o; o.title = title; o.action = action;
             RichTooltip(scope, Tag(modifier, "Container"), o, text);
@@ -4233,7 +4234,7 @@ TEST(FullWidthTooltipCaretFollowsTheAnchor) {
 namespace {
     constexpr float FabSpacingDp = 16;
     // Box(Modifier.requiredSize(w, h)) { Scaffold(...) } at the window's corner.
-    void InBox(PhoneHarness& h, float w, float hgt, std::function<void()> content, bool rtl = false) {
+    void InBox(PhoneHarness& h, float w, float hgt, kiln::Function<void()> content, bool rtl = false) {
         Themed(h, [=] {
             auto inner = [=] { Box(RequiredSize({}, ui::Dp(w), ui::Dp(hgt)), Alignment::TopStart(), false, content); };
             if (rtl) rt::Composition::Current()->Provide(ui::LocalLayoutDirection, ui::LayoutDirection::Rtl, inner);
@@ -5064,7 +5065,7 @@ TEST(ShortNavigationBarItemPlacesItsIconAndLabel) {
 
 // Ported from Compose's WideNavigationRailTest (the window is 412 x 800 dp).
 namespace {
-    void WideItem(int index, bool expanded, int selected = 0, std::function<void()> onClick = [] {}) {
+    void WideItem(int index, bool expanded, int selected = 0, kiln::Function<void()> onClick = [] {}) {
         WideNavigationRailItem(selected == index, std::move(onClick), [] { NavIcon(); }, [index] { Text("Item " + std::to_string(index)); }, expanded,
                                Tag({}, "item" + std::to_string(index)), {});
     }
@@ -5240,7 +5241,7 @@ TEST(WideNavigationRailItemPlacesItsIconAndLabel) {
             WideNavigationRailItemOptions o;
             if (custom) o.indicatorPadding = WideNavigationRailItemDefaults::indicatorPadding(expanded, collapsed, expandedPadding);
             WideNavigationRailItem(true, [] {}, [] { NavIcon(Tag({}, "icon")); },
-                                   label ? std::function<void()>([] { Text("Label", Tag({}, "label")); }) : std::function<void()>{}, expanded,
+                                   label ? kiln::Function<void()>([] { Text("Label", Tag({}, "label")); }) : kiln::Function<void()>{}, expanded,
                                    Tag({}, "item"), o);
         });
         return std::tuple{ BoundsDp(h, "item"), BoundsDp(h, "icon"), BoundsDp(h, "label") };
@@ -5337,7 +5338,7 @@ namespace {
         };
         ui::DialogHost host;
         ModalHarness() {
-            host.create = [this](ui::Owner& o, const ui::DialogWindowProperties&, std::function<void()>) { return std::make_unique<Window>(this, &o); };
+            host.create = [this](ui::Owner& o, const ui::DialogWindowProperties&, kiln::Function<void()>) { return std::make_unique<Window>(this, &o); };
             owner.SetDialogHost(host);
         }
         ~ModalHarness() {
@@ -5346,7 +5347,7 @@ namespace {
         }
     };
     void ModalRail(ModalHarness& h, std::shared_ptr<WideNavigationRailState>& state, WideNavigationRailValue initial, bool hide,
-                   std::function<void()> header = {}) {
+                   kiln::Function<void()> header = {}) {
         Themed(h, [&, initial, hide, header] {
             state = RememberWideNavigationRailState(initial);
             ModalWideNavigationRailOptions o;
@@ -5366,7 +5367,7 @@ namespace {
         owners.insert(owners.end(), h.dialogs.begin(), h.dialogs.end());
         for (ui::Owner* o : owners) {
             const ui::SemanticsNode tree = o->BuildSemanticsTree();
-            std::function<const ui::SemanticsNode*(const ui::SemanticsNode&)> find = [&](const ui::SemanticsNode& n) -> const ui::SemanticsNode* {
+            kiln::Function<const ui::SemanticsNode*(const ui::SemanticsNode&)> find = [&](const ui::SemanticsNode& n) -> const ui::SemanticsNode* {
                 if (n.config.contentDescription == std::vector<std::string>{ description }) return &n;
                 for (const auto& c : n.children) if (const auto* r = find(c)) return r;
                 return nullptr;
@@ -5379,7 +5380,7 @@ namespace {
         }
         return false;
     }
-    const ui::SemanticsNode* FindIn(const ui::SemanticsNode& n, const std::function<bool(const ui::SemanticsNode&)>& pred) {
+    const ui::SemanticsNode* FindIn(const ui::SemanticsNode& n, const kiln::Function<bool(const ui::SemanticsNode&)>& pred) {
         if (pred(n)) return &n;
         for (const auto& c : n.children) if (const auto* r = FindIn(c, pred)) return r;
         return nullptr;
@@ -5543,7 +5544,7 @@ TEST(ModalWideNavigationRailHiddenOnCollapseSwipesAway) {
 namespace {
     std::vector<const ui::SemanticsNode*> Selectables(const ui::SemanticsNode& tree) {
         std::vector<const ui::SemanticsNode*> out;
-        std::function<void(const ui::SemanticsNode&)> walk = [&](const ui::SemanticsNode& n) {
+        kiln::Function<void(const ui::SemanticsNode&)> walk = [&](const ui::SemanticsNode& n) {
             if (n.config.selected) out.push_back(&n);
             for (const auto& c : n.children) walk(c);
         };
@@ -5568,7 +5569,7 @@ namespace {
         h.AdvanceTimeBy(1000);
     }
     // An indicator 1 dp tall, the selected tab's width, tagged "indicator".
-    std::function<void(TabIndicatorScope&)> RedIndicator(const rt::State<int>& state) {
+    kiln::Function<void(TabIndicatorScope&)> RedIndicator(const rt::State<int>& state) {
         return [&state](TabIndicatorScope& s) {
             Box(Tag(Background(Height(FillMax(s.TabIndicatorOffset({}, state.Get()), Axis::Horizontal), 1_dp), Color(0xFFFF0000u)), "indicator"),
                 Alignment::TopStart(), false, {});
@@ -5621,7 +5622,7 @@ TEST(TabsAreSelectableTabsInASelectableGroup) {
 }
 
 TEST(TabHeights) {
-    const auto height = [](std::function<void()> tab) {
+    const auto height = [](kiln::Function<void()> tab) {
         PhoneHarness h;
         Themed(h, [&] { Box(Tag({}, "box"), Alignment::TopStart(), false, tab); });
         const auto b = BoundsDp(h, "box");
@@ -5889,7 +5890,7 @@ namespace {
         if (actions) o.actions = [] { FakeIcon(Tag({}, "actions")); };
         return o;
     }
-    std::function<void()> TitleText(std::string text = "Title") { return [text] { Text(text, Tag({}, "title")); }; }
+    kiln::Function<void()> TitleText(std::string text = "Title") { return [text] { Text(text, Tag({}, "title")); }; }
     // assertSmallDefaultPositioning / assertSmallPositioningWithoutNavigation.
     void CheckSmallPositioning(Harness& h, bool navigation, bool centered) {
         const auto bar = BoundsDp(h, "topAppBar"), title = BoundsDp(h, "title"), actions = BoundsDp(h, "actions");
@@ -6168,7 +6169,7 @@ namespace {
     int CountMerged(Harness& h, const std::string& tag) {
         const auto tree = h.owner.BuildSemanticsTree(false);
         int n = 0;
-        std::function<void(const ui::SemanticsNode&)> walk = [&](const ui::SemanticsNode& s) {
+        kiln::Function<void(const ui::SemanticsNode&)> walk = [&](const ui::SemanticsNode& s) {
             if (s.config.testTag == tag) ++n;
             for (const auto& c : s.children) walk(c);
         };
@@ -6176,7 +6177,7 @@ namespace {
         return n;
     }
     enum class TwoRow : std::uint8_t { Medium, MediumFlexible, Large, LargeFlexible };
-    void TwoRowBar(TwoRow kind, std::function<void()> title, const ui::Modifier& m, const TwoRowsTopAppBarOptions& o) {
+    void TwoRowBar(TwoRow kind, kiln::Function<void()> title, const ui::Modifier& m, const TwoRowsTopAppBarOptions& o) {
         switch (kind) {
             case TwoRow::Medium: MediumTopAppBar(std::move(title), m, o); break;
             case TwoRow::MediumFlexible: MediumFlexibleTopAppBar(std::move(title), m, o); break;
@@ -6719,7 +6720,7 @@ namespace {
 }
 
 TEST(BottomAppBarHeights) {
-    const auto measure = [](std::function<void()> bar) {
+    const auto measure = [](kiln::Function<void()> bar) {
         PhoneHarness h;
         Themed(h, [&] { Box(Tag({}, "box"), Alignment::TopStart(), false, bar); });
         return BoundsDp(h, "box");
@@ -6869,7 +6870,7 @@ namespace {
         ToolbarIcon(Tag({}, "floatingToolbarContentLastItem"));
     }
     // setMaterialContentForSizeAssertions: the toolbar's own size, unconstrained by the window.
-    std::optional<ui::Rect> ToolbarSize(std::function<void()> toolbar) {
+    std::optional<ui::Rect> ToolbarSize(kiln::Function<void()> toolbar) {
         PhoneHarness h;
         Themed(h, [&] { Box(Tag({}, "sized"), Alignment::TopStart(), false, toolbar); });
         h.AdvanceTimeBy(1000);
@@ -7600,7 +7601,7 @@ namespace {
         ~SnackbarFix() { ComposeMaterial3Flags::isSnackbarStylingFixEnabled = previous; }
     };
     // setMaterialContentForSizeAssertions(parentMaxWidth): the snackbar under a width cap.
-    void SizedSnackbar(Harness& h, ui::Dp maxWidth, std::function<void()> snackbar) {
+    void SizedSnackbar(Harness& h, ui::Dp maxWidth, kiln::Function<void()> snackbar) {
         Themed(h, [&, maxWidth] {
             Box(SizeIn({}, ui::Dp::Unspecified(), ui::Dp::Unspecified(), maxWidth, ui::Dp::Unspecified()), Alignment::TopStart(), false, [&] {
                 Box(Tag({}, "snackbar"), Alignment::TopStart(), false, snackbar);
@@ -7921,7 +7922,7 @@ TEST(SnackbarHostSemantics) {
     }(&host, &result));
     h.AdvanceTimeBy(500);
     const auto tree = h.owner.BuildSemanticsTree();
-    std::function<const ui::SemanticsNode*(const ui::SemanticsNode&)> pane = [&](const ui::SemanticsNode& n) -> const ui::SemanticsNode* {
+    kiln::Function<const ui::SemanticsNode*(const ui::SemanticsNode&)> pane = [&](const ui::SemanticsNode& n) -> const ui::SemanticsNode* {
         if (n.config.paneTitle) return &n;
         for (const auto& c : n.children) if (const auto* r = pane(c)) return r;
         return nullptr;
@@ -9319,7 +9320,7 @@ namespace {
     };
     bool Within(float a, float b, float tolerance) { return std::abs(a - b) <= tolerance; }
     std::shared_ptr<SheetState> NewSheetState(SheetValues enabled = {}, SheetValue initial = SheetValue::Hidden,
-                                              std::function<bool(SheetValue)> confirm = {}) {
+                                              kiln::Function<bool(SheetValue)> confirm = {}) {
         const ui::Density d{ 2 };
         return std::make_shared<SheetState>(enabled, [d] { return d.ToPx(BottomSheetDefaults::PositionalThreshold); },
                                             [d] { return d.ToPx(BottomSheetDefaults::VelocityThreshold); }, initial, std::move(confirm));
@@ -9363,8 +9364,8 @@ namespace {
         return taken;
     }
     // A modal sheet shown while `show` holds; dismissing it clears `show`.
-    void ShownSheet(ModalHarness& h, rt::State<bool>& show, std::shared_ptr<SheetState>& state, std::function<void(ModalBottomSheetOptions&)> options,
-                    std::function<void()> content, ui::Modifier modifier = {}) {
+    void ShownSheet(ModalHarness& h, rt::State<bool>& show, std::shared_ptr<SheetState>& state, kiln::Function<void(ModalBottomSheetOptions&)> options,
+                    kiln::Function<void()> content, ui::Modifier modifier = {}) {
         Themed(h, [&, options, content, modifier] {
             if (!state) state = RememberBottomSheetState(SheetValue::Hidden);
             if (!show.Get()) return;
@@ -9842,7 +9843,7 @@ TEST(ModalBottomSheetWindowIsSecureWhenAsked) {
     // ModalBottomSheetDialogTest dialog_showsContent, with the secure policy.
     ModalHarness h;
     std::optional<ui::DialogWindowProperties> seen;
-    h.host.create = [&](ui::Owner& o, const ui::DialogWindowProperties& p, std::function<void()>) {
+    h.host.create = [&](ui::Owner& o, const ui::DialogWindowProperties& p, kiln::Function<void()>) {
         seen = p;
         return std::make_unique<ModalHarness::Window>(&h, &o);
     };
@@ -9872,8 +9873,8 @@ namespace {
         return b ? b->top : NAN;
     }
     // A scaffold with `sheet` as its sheet content and a Text body.
-    void Scaffold(Harness& h, std::shared_ptr<SheetState>& state, std::function<SheetState*()> makeState, std::function<void()> sheet,
-                  std::function<void(BottomSheetScaffoldOptions&)> options = {}) {
+    void Scaffold(Harness& h, std::shared_ptr<SheetState>& state, kiln::Function<SheetState*()> makeState, kiln::Function<void()> sheet,
+                  kiln::Function<void(BottomSheetScaffoldOptions&)> options = {}) {
         Themed(h, [&, makeState, sheet, options] {
             if (makeState) makeState();
             BottomSheetScaffoldOptions o;
@@ -9885,8 +9886,8 @@ namespace {
         });
         h.AdvanceTimeBy(1000);
     }
-    std::function<SheetState*()> Remembered(std::shared_ptr<SheetState>& state, SheetValue initial, SheetValues enabled,
-                                           std::function<bool(SheetValue)> confirm = {}) {
+    kiln::Function<SheetState*()> Remembered(std::shared_ptr<SheetState>& state, SheetValue initial, SheetValues enabled,
+                                           kiln::Function<bool(SheetValue)> confirm = {}) {
         return [&state, initial, enabled, confirm] {
             state = RememberBottomSheetState(initial, enabled, confirm);
             return state.get();
@@ -10032,10 +10033,10 @@ TEST(BottomSheetScaffoldRevealBySwiping) {
         std::shared_ptr<SheetState> state;
         Scaffold(h, state,
                  Remembered(state, SheetValue::PartiallyExpanded, SheetValues{ false, true },
-                            variant == 1 ? std::function<bool(SheetValue)>([](SheetValue v) { return v != SheetValue::Expanded; }) : nullptr),
+                            variant == 1 ? kiln::Function<bool(SheetValue)>([](SheetValue v) { return v != SheetValue::Expanded; }) : nullptr),
                  [] { Box(Tag(RequiredSize(FillMax({}, Axis::Horizontal), Dp::Unspecified(), 300_dp), "sheet")); },
                  [variant](BottomSheetScaffoldOptions& o) {
-                     o.sheetDragHandle = variant == 0 ? std::function<void()>{} : o.sheetDragHandle;
+                     o.sheetDragHandle = variant == 0 ? kiln::Function<void()>{} : o.sheetDragHandle;
                      o.sheetSwipeEnabled = variant != 2;
                  });
         CHECK(state->CurrentValue() == SheetValue::PartiallyExpanded);
@@ -10370,7 +10371,7 @@ TEST(BottomSheetScaffoldTakesTheThemesMotionScheme) {
 namespace {
     enum class DrawerKind { Modal, Dismissible };
     // A drawer of `kind` with `sheet` inside its sheet and `body` as the screen content.
-    void Drawer(DrawerKind kind, std::shared_ptr<DrawerState> state, std::function<void()> sheet, std::function<void()> body = [] {},
+    void Drawer(DrawerKind kind, std::shared_ptr<DrawerState> state, kiln::Function<void()> sheet, kiln::Function<void()> body = [] {},
                 ui::Modifier sheetModifier = {}, DrawerSheetOptions sheetOptions = {}, bool sheetWithState = false, ui::Modifier modifier = {}) {
         const auto drawerContent = [=] {
             if (kind == DrawerKind::Modal) ModalDrawerSheet(sheetModifier, sheetOptions, sheet, sheetWithState ? state : nullptr);
@@ -10835,14 +10836,14 @@ namespace {
         Touch(h, t, ui::PointerEventType::Press, xPx, yPx, true);
         Touch(h, t, ui::PointerEventType::Release, xPx, yPx, false);
     }
-    void SearchField(TextFieldState& field, std::shared_ptr<SearchBarState> bar, ui::Modifier m = {}, std::function<void(std::string)> onSearch = {},
-                     std::function<void()> trailing = {}) {
+    void SearchField(TextFieldState& field, std::shared_ptr<SearchBarState> bar, ui::Modifier m = {}, kiln::Function<void(std::string)> onSearch = {},
+                     kiln::Function<void()> trailing = {}) {
         SearchBarInputFieldOptions o;
         o.placeholder = [] { Text("Search"); };
         o.trailingIcon = std::move(trailing);
         SearchBarDefaults::InputField(field, std::move(bar), onSearch ? std::move(onSearch) : [](std::string) {}, m, o);
     }
-    void IconTag(std::function<void()> onClick) {
+    void IconTag(kiln::Function<void()> onClick) {
         IconButton(std::move(onClick), Tag({}, "Icon"), {}, [] { Icon(internal::Icons::Filled::Edit(), std::nullopt); });
     }
     bool KeyPress(ui::Owner& owner, int keyCode, std::uint32_t unicode = 0) {
@@ -11168,8 +11169,8 @@ TEST(AppBarWithSearchScrollBehavior) {
         rt::State<bool> canScroll{ true };
         Themed(h, [&] {
             const bool reverse = variant == 1;
-            auto behavior = SearchBarDefaults::enterAlwaysSearchBarScrollBehavior(nullptr, variant == 2 ? std::function<bool()>([&] { return canScroll.Get(); })
-                                                                                                          : std::function<bool()>{},
+            auto behavior = SearchBarDefaults::enterAlwaysSearchBarScrollBehavior(nullptr, variant == 2 ? kiln::Function<bool()>([&] { return canScroll.Get(); })
+                                                                                                          : kiln::Function<bool()>{},
                                                                                   nullptr, nullptr, reverse);
             auto bar = RememberSearchBarState();
             auto& field = RememberTextFieldState();
@@ -11294,7 +11295,7 @@ TEST(AppBarWithSearchWidthLimits) {
 // Ported from Compose's SwipeToDismissTest (412 x 800 dp, density 2).
 namespace {
     void Dismissible(std::shared_ptr<SwipeToDismissBoxState>& state, SwipeToDismissBoxValue initial, SwipeToDismissBoxOptions o = {},
-                     std::function<void()> background = [] {}, bool rtl = false, std::function<void()> content = {}) {
+                     kiln::Function<void()> background = [] {}, bool rtl = false, kiln::Function<void()> content = {}) {
         if (!content) content = [] { Box(Tag(FillMax({}, Axis::Both), "dismissContent")); };
         rt::Composition::Current()->Provide(ui::LocalLayoutDirection, rtl ? ui::LayoutDirection::Rtl : ui::LayoutDirection::Ltr, [&state, initial, o, background, content] {
             state = RememberSwipeToDismissBoxState(initial);
@@ -11540,7 +11541,7 @@ TEST(PullToRefreshBoxStartsAtItsRefreshingFraction) {
         CHECK(state->DistanceFraction() == (refreshing ? 1.0f : 0.0f));
         // Hidden: nothing reports progress; refreshing: the spinner does.
         const auto tree = h.owner.BuildSemanticsTree(false);
-        std::function<bool(const ui::SemanticsNode&)> hasProgress = [&](const ui::SemanticsNode& n) {
+        kiln::Function<bool(const ui::SemanticsNode&)> hasProgress = [&](const ui::SemanticsNode& n) {
             if (n.config.progressBarRangeInfo) return true;
             for (const auto& c : n.children) if (hasProgress(c)) return true;
             return false;
@@ -11562,7 +11563,7 @@ TEST(PullToRefreshLoadingIndicatorShowsOnlyWhilePulledOrRefreshing) {
         h.AdvanceTimeBy(300);
         CHECK(state->DistanceFraction() == (refreshing ? 1.0f : 0.0f));
         const auto tree = h.owner.BuildSemanticsTree(false);
-        std::function<bool(const ui::SemanticsNode&)> hasProgress = [&](const ui::SemanticsNode& n) {
+        kiln::Function<bool(const ui::SemanticsNode&)> hasProgress = [&](const ui::SemanticsNode& n) {
             if (n.config.progressBarRangeInfo) return true;
             for (const auto& c : n.children) if (hasProgress(c)) return true;
             return false;
@@ -11623,7 +11624,7 @@ TEST(PullToRefreshBoxTakesTheFlingOfItsPull) {
     Themed(h, [&] {
         PullToRefreshBox(refreshing.Get(), [&] { refreshing.Set(true); }, {}, { .state = state }, [&] {
             auto& scroll = RememberScrollState();
-            auto fling = [&](std::function<float(float)>, float velocity) -> rt::Task<float> {
+            auto fling = [&](kiln::Function<float(float)>, float velocity) -> rt::Task<float> {
                 remainingVelocity = velocity;
                 co_return velocity;
             };
@@ -11697,7 +11698,7 @@ TEST(PullToRefreshIndicators) {
 
 namespace {
     // Item(index): a box filling the item, tagged with its index.
-    void CarouselTestItem(int index, std::function<void()> onClick = {}) {
+    void CarouselTestItem(int index, kiln::Function<void()> onClick = {}) {
         ui::Modifier m = Tag(Background(FillMax({}, Axis::Both), Color(0xFF0000FFu)), "item" + std::to_string(index));
         if (onClick) m = Clickable(std::move(m), std::move(onClick));
         Box(m, Alignment::Center(), false, [index] { Text(std::to_string(index)); });
@@ -11956,7 +11957,7 @@ namespace {
     std::int64_t DayUtc(int year, int month, int day) { return text::UtcMillis({ year, month, day }); }
 
     // The first node (pre-order) that matches, among those shown in the window.
-    const ui::SemanticsNode* FindNode(const ui::SemanticsNode& n, const std::function<bool(const ui::SemanticsNode&)>& pred, const ui::Rect& window) {
+    const ui::SemanticsNode* FindNode(const ui::SemanticsNode& n, const kiln::Function<bool(const ui::SemanticsNode&)>& pred, const ui::Rect& window) {
         const ui::Rect& b = n.boundsInRoot;
         const bool shown = n.id == -1 || (b.right > window.left && b.left < window.right && b.bottom > window.top && b.top < window.bottom && b.Width() > 0);
         if (shown && pred(n)) return &n;
@@ -11981,7 +11982,7 @@ namespace {
         Harness& h;
         ui::Owner* owner = nullptr;   // a dialog's; null: the main window
         ui::Owner& O() { return owner ? *owner : h.owner; }
-        std::optional<ui::SemanticsNode> Find(const std::function<bool(const ui::SemanticsNode&)>& pred) {
+        std::optional<ui::SemanticsNode> Find(const kiln::Function<bool(const ui::SemanticsNode&)>& pred) {
             const ui::SemanticsNode tree = O().BuildSemanticsTree();
             const ui::Rect window{ 0, 0, float(h.window.width), float(h.window.height) };
             if (const auto* n = FindNode(tree, pred, window)) return *n;
@@ -12012,7 +12013,7 @@ namespace {
         std::int64_t tick = 0;
     };
 
-    void PickerContent(Harness& h, std::function<void()> content) { Themed(h, std::move(content)); h.AdvanceTimeBy(500); }
+    void PickerContent(Harness& h, kiln::Function<void()> content) { Themed(h, std::move(content)); h.AdvanceTimeBy(500); }
 }
 
 TEST(DatePickerSelectsDates) {
@@ -12977,7 +12978,7 @@ namespace {
         const std::string d = TimeDescription(selection, is24Hour, number);
         return q.Find([&d](const ui::SemanticsNode& n) { return HasDescription(n, d); });
     }
-    void AllNodes(const ui::SemanticsNode& n, const std::function<bool(const ui::SemanticsNode&)>& pred, std::vector<const ui::SemanticsNode*>& out) {
+    void AllNodes(const ui::SemanticsNode& n, const kiln::Function<bool(const ui::SemanticsNode&)>& pred, std::vector<const ui::SemanticsNode*>& out) {
         if (pred(n)) out.push_back(&n);
         for (const auto& c : n.children) AllNodes(c, pred, out);
     }
@@ -13553,7 +13554,7 @@ TEST(TimeInputTypesTheTime) {
 }
 
 TEST(TimeScrollFollowsTheState) {
-    auto content = [](std::shared_ptr<TimePickerState> state, std::function<void()> toggle = {}) {
+    auto content = [](std::shared_ptr<TimePickerState> state, kiln::Function<void()> toggle = {}) {
         return [state, toggle] {
             TimeScrollOptions o;
             o.toggle = toggle;
@@ -13611,13 +13612,13 @@ TEST(TimeScrollFollowsTheState) {
         auto state = MakeTimePickerState(10, 30, false);
         PhoneHarness h;
         h.owner.SetDensity({ 2, 2 });
-        PickerContent(h, input ? std::function<void()>([state] {
+        PickerContent(h, input ? kiln::Function<void()>([state] {
                                      TimeInputOptions o;
                                      o.shapes = TimePickerDefaults::shapes();
                                      o.toggle = [] { Text("Toggle"); };
                                      TimeInput(*state, {}, o);
                                  })
-                               : std::function<void()>(content(state, [] { Text("Toggle"); })));
+                               : kiln::Function<void()>(content(state, [] { Text("Toggle"); })));
         PickerQuery q{ h };
         const auto am = q.Text("AM"), pm = q.Text("PM");
         CHECK(Selected(am) && pm && pm->config.selected == false);
@@ -13808,11 +13809,11 @@ namespace {
     constexpr Dp TextFieldPadding{ 16 }, WithLabelVerticalPadding{ 8 }, AboveLabelBottomPadding{ 4 };
 
     struct Decorated { ui::IntSize size; ui::Offset inner; };
-    using LabelSlot = std::function<void(const TextFieldLabelScope&)>;
+    using LabelSlot = kiln::Function<void(const TextFieldLabelScope&)>;
 
     // assertSizeAndPosition: a 100 x 50 inner field in the decoration (focused).
     Decorated Decorate(PaddingValues padding, bool singleLine, bool outlined, bool rtl, LabelSlot label,
-                       TextFieldLabelPosition position, std::function<void()> placeholder = {}, bool sizedInner = true) {
+                       TextFieldLabelPosition position, kiln::Function<void()> placeholder = {}, bool sizedInner = true) {
         Decorated out;
         ui::FocusRequester focus;
         UnitDensityHarness h;
@@ -13825,8 +13826,8 @@ namespace {
                     BasicTextFieldOptions b;
                     b.lineLimits = singleLine ? TextFieldLineLimits::SingleLine() : TextFieldLineLimits::MultiLine();
                     b.interactionSource = source;
-                    b.decorator = [&, source, colors](const std::function<void()>& inner) {
-                        std::function<void()> innerField = inner;
+                    b.decorator = [&, source, colors](const kiln::Function<void()>& inner) {
+                        kiln::Function<void()> innerField = inner;
                         if (sizedInner)
                             innerField = [&out, inner] {
                                 Box(OnGloballyPositioned(SizeMod({}, InnerFieldWidth, InnerFieldHeight),
@@ -14238,7 +14239,7 @@ TEST(TextFieldKeepsItsInputSessionWhenItsErrorStateChanges) {
         o.label = [e](const TextFieldLabelScope&) { Text(e ? "Username*" : "Username"); };
         o.supportingText = [e] { Text(e ? "Too long" : ""); };
         o.isError = e;
-        o.onKeyboardAction = [](std::function<void()>) {};
+        o.onKeyboardAction = [](kiln::Function<void()>) {};
         TextField(state, FocusRequesterModifier(Semantics({}, [e](ui::SemanticsConfiguration& c) {
                                                     c.maxTextLength = 10;
                                                     if (e) c.error = "Too long";
@@ -14525,7 +14526,7 @@ TEST(ModalBottomSheetWindowSetsBarIconsFromItsContent) {
         std::optional<std::pair<bool, bool>> applied;
         struct NoWindow final : ui::PlatformDialog { void Update(const ui::DialogWindowProperties&) override {} };
         ui::DialogHost dialogs;
-        dialogs.create = [&](ui::Owner& content, const ui::DialogWindowProperties&, std::function<void()>) -> std::unique_ptr<ui::PlatformDialog> {
+        dialogs.create = [&](ui::Owner& content, const ui::DialogWindowProperties&, kiln::Function<void()>) -> std::unique_ptr<ui::PlatformDialog> {
             content.SetSystemBarsAppearanceHost([&](bool s, bool n) { applied = std::pair(s, n); });
             return std::make_unique<NoWindow>();
         };

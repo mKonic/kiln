@@ -1,4 +1,5 @@
 #include "kiln/foundation/FlexBox.h"
+#include <kiln/Function.h>
 
 #include "kiln/foundation/Compose.h"
 #include "kiln/runtime/Composition.h"
@@ -609,7 +610,7 @@ namespace kiln::foundation {
         };
     }
 
-    void FlexBox(const Modifier& modifier, FlexBoxConfig config, std::function<void()> content) {
+    void FlexBox(const Modifier& modifier, FlexBoxConfig config, kiln::Function<void()> content) {
         auto* c = rt::Composition::Current();
         c->Node<LayoutNode>([] { return std::make_unique<LayoutNode>(); },
                             [&](LayoutNode& n) {

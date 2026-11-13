@@ -4,6 +4,7 @@
 // SceneDecoratorStrategy, SceneInfo and the scene-setup decorator.
 
 #include "kiln/foundation/Compose.h"
+#include <kiln/Function.h>
 #include "kiln/foundation/Dialog.h"
 #include "kiln/foundation/NavigationEvent.h"
 #include "kiln/foundation/SharedTransition.h"
@@ -54,8 +55,8 @@ namespace kiln::navigation3 {
     class SceneStrategyScope {
     public:
         SceneStrategyScope() = default;
-        explicit SceneStrategyScope(std::function<void()> onBack) : onBack(std::move(onBack)) {}
-        std::function<void()> onBack = [] {};
+        explicit SceneStrategyScope(kiln::Function<void()> onBack) : onBack(std::move(onBack)) {}
+        kiln::Function<void()> onBack = [] {};
     };
 
     // SceneStrategy: a scene for the last entries, or null to let the next strategy try.
@@ -70,9 +71,9 @@ namespace kiln::navigation3 {
 
     // A strategy from a function.
     template<typename T>
-    SceneStrategyPtr<T> MakeSceneStrategy(std::function<ScenePtr<T>(const SceneStrategyScope<T>&, const NavEntries<T>&)> fn) {
+    SceneStrategyPtr<T> MakeSceneStrategy(kiln::Function<ScenePtr<T>(const SceneStrategyScope<T>&, const NavEntries<T>&)> fn) {
         struct Fn final : SceneStrategy<T> {
-            std::function<ScenePtr<T>(const SceneStrategyScope<T>&, const NavEntries<T>&)> fn;
+            kiln::Function<ScenePtr<T>(const SceneStrategyScope<T>&, const NavEntries<T>&)> fn;
             ScenePtr<T> CalculateScene(const SceneStrategyScope<T>& s, const NavEntries<T>& e) const override { return fn(s, e); }
         };
         auto p = std::make_shared<Fn>();
@@ -133,7 +134,7 @@ namespace kiln::navigation3 {
     class DialogScene final : public OverlayScene<T> {
     public:
         DialogScene(std::string key, NavEntry<T> entry, NavEntries<T> previous, NavEntries<T> overlaid, foundation::DialogProperties properties,
-                    std::function<void()> onBack)
+                    kiln::Function<void()> onBack)
             : m_Key(std::move(key)), m_Entries{ std::move(entry) }, m_Previous(std::move(previous)), m_Overlaid(std::move(overlaid)),
               m_Properties(properties), m_OnBack(std::move(onBack)) {}
         std::string Key() const override { return m_Key; }
@@ -156,7 +157,7 @@ namespace kiln::navigation3 {
         std::string m_Key;
         NavEntries<T> m_Entries, m_Previous, m_Overlaid;
         foundation::DialogProperties m_Properties;
-        std::function<void()> m_OnBack;
+        kiln::Function<void()> m_OnBack;
     };
 
     // The metadata key that makes an entry a dialog.
@@ -179,8 +180,8 @@ namespace kiln::navigation3 {
 
     // --- SceneInfo ------------------------------------------------------------------------------
 
-    inline constexpr NavMetadataKey<std::function<std::string()>> TitleMetadataKey{ "androidx.navigation3.scene.TitleMetadataKey" };
-    inline constexpr NavMetadataKey<std::function<std::string()>> UrlMetadataKey{ "androidx.navigation3.scene.UrlMetadataKey" };
+    inline constexpr NavMetadataKey<kiln::Function<std::string()>> TitleMetadataKey{ "androidx.navigation3.scene.TitleMetadataKey" };
+    inline constexpr NavMetadataKey<kiln::Function<std::string()>> UrlMetadataKey{ "androidx.navigation3.scene.UrlMetadataKey" };
 
     // SceneInfo: a scene as navigation event info.
     template<typename T>
@@ -204,7 +205,7 @@ namespace kiln::navigation3 {
     template<typename T>
     NavEntryDecorator<T> RememberSceneSetupNavEntryDecorator(rt::Key key = {}) {
         auto& c = *rt::Composition::Current();
-        using Movable = rt::MovableContent<std::function<void()>>;
+        using Movable = rt::MovableContent<kiln::Function<void()>>;
         using Map = std::map<std::string, Movable>;
         auto& decorator = c.Remember<std::shared_ptr<NavEntryDecorator<T>>>([] {
             auto map = std::make_shared<Map>();
@@ -219,10 +220,10 @@ namespace kiln::navigation3 {
                         auto& movable = cc.Remember<std::shared_ptr<Movable>>([&] {
                             auto it = map->find(contentKey);
                             if (it == map->end())
-                                it = map->emplace(contentKey, Movable(std::function<void(std::function<void()>)>([](std::function<void()> content) { content(); }))).first;
+                                it = map->emplace(contentKey, Movable(kiln::Function<void(kiln::Function<void()>)>([](kiln::Function<void()> content) { content(); }))).first;
                             return std::make_shared<Movable>(it->second);
                         });
-                        (*movable)(std::function<void()>([entry] { entry.Content(); }));
+                        (*movable)(kiln::Function<void()>([entry] { entry.Content(); }));
                     }, rt::Key(contentKey));
                 });
         }, {}, key);

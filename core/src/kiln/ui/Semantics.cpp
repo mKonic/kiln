@@ -1,4 +1,5 @@
 #include "kiln/ui/LayoutNode.h"
+#include <kiln/Function.h>
 #include "kiln/ui/Semantics.h"
 
 #include <algorithm>
@@ -21,9 +22,9 @@ namespace kiln::ui {
 
     namespace {
         template <class T> void Fill(std::optional<T>& into, const std::optional<T>& from) { if (!into) into = from; }
-        template <class F> void Fill(std::function<F>& into, const std::function<F>& from) { if (!into) into = from; }
+        template <class F> void Fill(kiln::Function<F>& into, const kiln::Function<F>& from) { if (!into) into = from; }
         template <class T> void Take(std::optional<T>& into, const std::optional<T>& from) { if (from) into = from; }
-        template <class F> void Take(std::function<F>& into, const std::function<F>& from) { if (from) into = from; }
+        template <class F> void Take(kiln::Function<F>& into, const kiln::Function<F>& from) { if (from) into = from; }
     }
 
     void SemanticsConfiguration::Merge(const SemanticsConfiguration& c) {

@@ -1,4 +1,5 @@
 #include "kiln/material3/ColorScheme.h"
+#include <kiln/Function.h>
 
 #include "kiln/material3/tokens/ColorDarkTokens.h"
 #include "kiln/material3/tokens/ColorLightTokens.h"
@@ -18,7 +19,7 @@ namespace kiln::material3 {
         }
     }
 
-    ColorScheme LightColorScheme(const std::function<void(ColorScheme&)>& customize) {
+    ColorScheme LightColorScheme(const kiln::Function<void(ColorScheme&)>& customize) {
         ColorScheme s;
         s.primary = tokens::ColorLightTokens::Primary;
         s.onPrimary = tokens::ColorLightTokens::OnPrimary;
@@ -70,7 +71,7 @@ namespace kiln::material3 {
         return Customized(s, customize);
     }
 
-    ColorScheme DarkColorScheme(const std::function<void(ColorScheme&)>& customize) {
+    ColorScheme DarkColorScheme(const kiln::Function<void(ColorScheme&)>& customize) {
         ColorScheme s;
         s.primary = tokens::ColorDarkTokens::Primary;
         s.onPrimary = tokens::ColorDarkTokens::OnPrimary;

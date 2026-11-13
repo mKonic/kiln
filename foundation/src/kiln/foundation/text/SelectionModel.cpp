@@ -2,6 +2,7 @@
 // MultiWidgetSelectionDelegate.kt, SelectionRegistrarImpl.kt, TextSelectionDelegate.kt).
 
 #include "kiln/foundation/text/Selection.h"
+#include <kiln/Function.h>
 
 #include "kiln/TextBackend.h"
 #include "kiln/foundation/text/TextFieldState.h"
@@ -129,7 +130,7 @@ namespace kiln::foundation::selection {
         return infos.size() == 1 ? infos[0] : infos[std::size_t(SlotToIndex(endSlot, false))];
     }
 
-    void SelectionLayout::ForEachMiddleInfo(const std::function<void(const SelectableInfo&)>& block) const {
+    void SelectionLayout::ForEachMiddleInfo(const kiln::Function<void(const SelectableInfo&)>& block) const {
         if (infos.size() == 1) return;
         const int minIndex = indexById.at(FirstInfo().selectableId), maxIndex = indexById.at(LastInfo().selectableId);
         for (int i = minIndex + 1; i < maxIndex; ++i) block(infos[std::size_t(i)]);
@@ -153,9 +154,9 @@ namespace kiln::foundation::selection {
         // createSubSelections: the boundary selectables keep their offsets, the ones between are
         // fully selected.
         template<typename T>
-        SubSelections CreateSubSelectionsOf(const Selection& selection, const std::vector<T>& items, const std::function<std::int64_t(const T&)>& getId,
-                                            const std::function<std::optional<Selection>(const T&, bool)>& getSelectAll,
-                                            const std::function<std::optional<Selection>(const T&, bool, int, bool)>& boundary) {
+        SubSelections CreateSubSelectionsOf(const Selection& selection, const std::vector<T>& items, const kiln::Function<std::int64_t(const T&)>& getId,
+                                            const kiln::Function<std::optional<Selection>(const T&, bool)>& getSelectAll,
+                                            const kiln::Function<std::optional<Selection>(const T&, bool, int, bool)>& boundary) {
             const std::int64_t startId = selection.start.selectableId, endId = selection.end.selectableId;
             if (startId == endId) return { { startId, selection } };
             int startIndex = -1, endIndex = -1;
@@ -212,7 +213,7 @@ namespace kiln::foundation::selection {
     // --- adjustment ----------------------------------------------------------------------------
 
     namespace {
-        using BoundaryFn = std::function<std::pair<int, int>(const SelectableInfo&, int)>;
+        using BoundaryFn = kiln::Function<std::pair<int, int>(const SelectableInfo&, int)>;
 
         AnchorInfo AnchorOnBoundary(const SelectableInfo& info, bool crossed, bool isStart, int slot, const BoundaryFn& boundary) {
             const int offset = isStart ? info.rawStartHandleOffset : info.rawEndHandleOffset;

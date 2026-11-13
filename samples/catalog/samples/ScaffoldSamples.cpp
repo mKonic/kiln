@@ -1,5 +1,6 @@
 // ScaffoldSamples.kt
 #include "ScaffoldSamples.h"
+#include <kiln/Function.h>
 #include "Common.h"
 
 #include <kiln/foundation/Border.h>
@@ -16,7 +17,7 @@ namespace catalog::samples {
         void Body(const char* text, const PaddingValues& innerPadding) {
             m3::Text(text, WrapContent(FillMax(Padding({}, innerPadding), Axis::Both), Axis::Both));
         }
-        void ShowSnackbarFab(std::function<void()> onClick) {
+        void ShowSnackbarFab(kiln::Function<void()> onClick) {
             m3::ExtendedFloatingActionButton(std::move(onClick), {}, {}, [] { m3::Text("Show snackbar"); });
         }
         // var clickCount by remember { mutableStateOf(0) }, in the FAB's own scope.

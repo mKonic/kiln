@@ -1,4 +1,5 @@
 #include "kiln/foundation/Shadow.h"
+#include <kiln/Function.h>
 
 #include "kiln/runtime/State.h"
 
@@ -36,7 +37,7 @@ namespace kiln::foundation {
         struct Params {
             std::shared_ptr<const gfx::Shape> shape;
             gfx::shadow::Shadow shadow;
-            std::shared_ptr<const std::function<void(ShadowScope&)>> block;
+            std::shared_ptr<const kiln::Function<void(ShadowScope&)>> block;
             bool operator==(const Params&) const = default;
         };
 
@@ -90,13 +91,13 @@ namespace kiln::foundation {
     Modifier DropShadow(Modifier m, std::shared_ptr<const gfx::Shape> shape, gfx::shadow::Shadow shadow) {
         return m.With<ShadowNode<false>>(Params{ std::move(shape), std::move(shadow), {} });
     }
-    Modifier DropShadow(Modifier m, std::shared_ptr<const gfx::Shape> shape, std::function<void(DropShadowScope&)> block) {
-        return m.With<ShadowNode<false>>(Params{ std::move(shape), gfx::shadow::Shadow{}, std::make_shared<const std::function<void(ShadowScope&)>>(std::move(block)) });
+    Modifier DropShadow(Modifier m, std::shared_ptr<const gfx::Shape> shape, kiln::Function<void(DropShadowScope&)> block) {
+        return m.With<ShadowNode<false>>(Params{ std::move(shape), gfx::shadow::Shadow{}, std::make_shared<const kiln::Function<void(ShadowScope&)>>(std::move(block)) });
     }
     Modifier InnerShadow(Modifier m, std::shared_ptr<const gfx::Shape> shape, gfx::shadow::Shadow shadow) {
         return m.With<ShadowNode<true>>(Params{ std::move(shape), std::move(shadow), {} });
     }
-    Modifier InnerShadow(Modifier m, std::shared_ptr<const gfx::Shape> shape, std::function<void(InnerShadowScope&)> block) {
-        return m.With<ShadowNode<true>>(Params{ std::move(shape), gfx::shadow::Shadow{}, std::make_shared<const std::function<void(ShadowScope&)>>(std::move(block)) });
+    Modifier InnerShadow(Modifier m, std::shared_ptr<const gfx::Shape> shape, kiln::Function<void(InnerShadowScope&)> block) {
+        return m.With<ShadowNode<true>>(Params{ std::move(shape), gfx::shadow::Shadow{}, std::make_shared<const kiln::Function<void(ShadowScope&)>>(std::move(block)) });
     }
 }

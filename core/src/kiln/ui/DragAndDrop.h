@@ -6,6 +6,7 @@
 // the owner's manager (AndroidDragAndDropManager) that the host view's drag listener drives.
 
 #include "kiln/ui/Clip.h"
+#include <kiln/Function.h>
 #include "kiln/ui/Geometry.h"
 #include "kiln/ui/Modifier.h"
 
@@ -40,7 +41,7 @@ namespace kiln::ui {
         std::shared_ptr<void> localState;
         bool result = false;   // ACTION_DRAG_ENDED: whether a target took the drop
         // Activity.requestDragAndDropPermissions for this drop's content URIs (true when granted).
-        std::function<bool()> requestPermissions;
+        kiln::Function<bool()> requestPermissions;
     };
 
     class DragAndDropTarget {
@@ -60,14 +61,14 @@ namespace kiln::ui {
         virtual ~DragAndDropStartTransferScope() = default;
         // Starts the platform drag with a shadow of `decorationSize` px drawn by `drawDecoration`.
         virtual bool StartDragAndDropTransfer(const DragAndDropTransferData& data, Size decorationSize,
-                                              std::function<void(DrawScope&)> drawDecoration) = 0;
+                                              kiln::Function<void(DrawScope&)> drawDecoration) = 0;
     };
 
     // DragAndDropNode: a source (onStartTransfer) and / or a target (onDropTargetValidate).
     class DragAndDropNode : public ModifierNode, public DragAndDropTarget {
     public:
-        std::function<void(DragAndDropStartTransferScope&, Offset)> onStartTransfer;
-        std::function<DragAndDropTarget*(const DragAndDropEvent&)> onDropTargetValidate;
+        kiln::Function<void(DragAndDropStartTransferScope&, Offset)> onStartTransfer;
+        kiln::Function<DragAndDropTarget*(const DragAndDropEvent&)> onDropTargetValidate;
 
         DragAndDropNode* AsDragAndDrop() override { return this; }
         void OnDetach() override;
@@ -76,7 +77,7 @@ namespace kiln::ui {
         // requestDragAndDropTransfer: offset in this node's space (NaN: unspecified).
         void RequestDragAndDropTransfer(Offset offset);
         // startDragAndDropTransfer: the first source here or below containing the offset.
-        void StartDragAndDropTransfer(DragAndDropStartTransferScope& scope, Offset offset, const std::function<bool()>& isTransferStarted);
+        void StartDragAndDropTransfer(DragAndDropStartTransferScope& scope, Offset offset, const kiln::Function<bool()>& isTransferStarted);
         // acceptDragAndDropTransfer: each attached node here and below decides; true if any did.
         bool AcceptDragAndDropTransfer(const DragAndDropEvent& start);
 
@@ -102,7 +103,7 @@ namespace kiln::ui {
     private:
         friend class DragAndDropManager;
         template<typename F> void TraverseSelfAndDescendants(F&& block);
-        DragAndDropNode* FirstDescendant(const std::function<bool(DragAndDropNode&)>& predicate);
+        DragAndDropNode* FirstDescendant(const kiln::Function<bool(DragAndDropNode&)>& predicate);
         bool Contains(Offset positionInRoot) const;
         DragAndDropNode* m_LastChild = nullptr;
         DragAndDropTarget* m_ThisTarget = nullptr;
@@ -111,7 +112,7 @@ namespace kiln::ui {
     // The host's drag starter (View.startDragAndDrop with a shadow image) and permissions.
     struct DragAndDropHost {
         // The shadow as RGBA (premultiplied) of width x height; false when the drag did not start.
-        std::function<bool(const DragAndDropTransferData& data, int width, int height, std::vector<std::uint8_t> shadowRgba)> startDrag;
+        kiln::Function<bool(const DragAndDropTransferData& data, int width, int height, std::vector<std::uint8_t> shadowRgba)> startDrag;
     };
 
     // AndroidDragAndDropManager with its root node over the whole tree.

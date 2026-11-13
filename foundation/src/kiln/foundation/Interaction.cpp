@@ -1,4 +1,5 @@
 #include "kiln/foundation/Interaction.h"
+#include <kiln/Function.h>
 
 #include "kiln/ui/Draw.h"
 
@@ -40,7 +41,7 @@ namespace kiln::foundation {
         for (auto& [token, fn] : subs) if (fn) fn(i);
     }
 
-    std::uint64_t MutableInteractionSource::Subscribe(std::function<void(const Interaction&)> fn) {
+    std::uint64_t MutableInteractionSource::Subscribe(kiln::Function<void(const Interaction&)> fn) {
         m_Subscribers.push_back({ m_NextToken, std::move(fn) });
         return m_NextToken++;
     }

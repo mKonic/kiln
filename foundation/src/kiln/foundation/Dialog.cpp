@@ -1,4 +1,5 @@
 #include "kiln/foundation/Dialog.h"
+#include <kiln/Function.h>
 
 #include "kiln/foundation/Back.h"
 #include "kiln/foundation/Semantics.h"
@@ -33,7 +34,7 @@ namespace kiln::foundation {
             std::unique_ptr<ui::Owner> owner = std::make_unique<ui::Owner>();
             std::unique_ptr<rt::Composition> composition;
             std::unique_ptr<ui::PlatformDialog> window;
-            std::function<void()> onDismissRequest;
+            kiln::Function<void()> onDismissRequest;
             DialogProperties properties;
 
             struct WindowInfoImpl final : ui::WindowInfo {
@@ -80,8 +81,8 @@ namespace kiln::foundation {
     }
 
     namespace {
-        void DialogImpl(std::function<void()> onDismissRequest, DialogProperties properties, std::function<rt::Task<>(BackProgress&)> onBack,
-                        std::function<void()> content, Key key) {
+        void DialogImpl(kiln::Function<void()> onDismissRequest, DialogProperties properties, kiln::Function<rt::Task<>(BackProgress&)> onBack,
+                        kiln::Function<void()> content, Key key) {
         rt::Composition::Current()->Child([onDismissRequest, properties, onBack, content] {
             auto& c = *rt::Composition::Current();
             ui::Owner* parent = c.Read(ui::LocalOwner);
@@ -112,7 +113,7 @@ namespace kiln::foundation {
                     state->window = parent->Dialogs().create(*state->owner, WindowProperties(state->properties, parent, density, direction),
                                                              [s = state.get()] { s->Dismiss(); });
                 // dispose: the content composition first, while the window's hosts still exist.
-                return std::function<void()>([state] {
+                return kiln::Function<void()>([state] {
                     state->composition.reset();
                     state->window.reset();
                 });
@@ -147,11 +148,11 @@ namespace kiln::foundation {
         }
     }
 
-    void Dialog(std::function<void()> onDismissRequest, DialogProperties properties, std::function<void()> content, Key key) {
+    void Dialog(kiln::Function<void()> onDismissRequest, DialogProperties properties, kiln::Function<void()> content, Key key) {
         DialogImpl(std::move(onDismissRequest), std::move(properties), {}, std::move(content), key);
     }
-    void Dialog(std::function<void()> onDismissRequest, DialogProperties properties, std::function<rt::Task<>(BackProgress&)> onBack,
-                std::function<void()> content, Key key) {
+    void Dialog(kiln::Function<void()> onDismissRequest, DialogProperties properties, kiln::Function<rt::Task<>(BackProgress&)> onBack,
+                kiln::Function<void()> content, Key key) {
         DialogImpl(std::move(onDismissRequest), std::move(properties), std::move(onBack), std::move(content), key);
     }
 

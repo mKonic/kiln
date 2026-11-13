@@ -1,4 +1,5 @@
 #include "kiln/material3/SheetState.h"
+#include <kiln/Function.h>
 
 #include "kiln/animation/Easing.h"
 #include "kiln/foundation/Compose.h"
@@ -25,8 +26,8 @@ namespace kiln::material3 {
     using ui::Color;
     using ui::Dp;
 
-    SheetState::SheetState(SheetValues enabledValues, std::function<float()> positionalThreshold, std::function<float()> velocityThreshold,
-                           SheetValue initialValue, std::function<bool(SheetValue)> confirmValueChange, std::optional<bool> partiallyExpandedDeterministic)
+    SheetState::SheetState(SheetValues enabledValues, kiln::Function<float()> positionalThreshold, kiln::Function<float()> velocityThreshold,
+                           SheetValue initialValue, kiln::Function<bool(SheetValue)> confirmValueChange, std::optional<bool> partiallyExpandedDeterministic)
         : showMotionSpec(anim::Snap()), hideMotionSpec(anim::Snap()), anchoredDraggableMotionSpec(internal::BottomSheetAnimationSpec()),
           m_Enabled(enabledValues), m_PositionalThreshold(std::move(positionalThreshold)), m_VelocityThreshold(std::move(velocityThreshold)),
           m_Confirm(std::move(confirmValueChange)), m_Deterministic(partiallyExpandedDeterministic.value_or(ComposeMaterial3Flags::isBottomSheetPartiallyExpandedDeterministicEnabled)),
@@ -70,7 +71,7 @@ namespace kiln::material3 {
     float SheetState::DragBy(float pixels) { return m_Anchored.DispatchRawDelta(pixels); }
 
     std::shared_ptr<SheetState> RememberBottomSheetState(SheetValue initialValue, SheetValues enabledValues,
-                                                         std::function<bool(SheetValue)> confirmValueChange, rt::Key key) {
+                                                         kiln::Function<bool(SheetValue)> confirmValueChange, rt::Key key) {
         return internal::RememberSheetState(enabledValues, std::move(confirmValueChange), initialValue, BottomSheetDefaults::PositionalThreshold,
                                             BottomSheetDefaults::VelocityThreshold, std::nullopt, key);
     }
@@ -98,15 +99,15 @@ namespace kiln::material3 {
 
     namespace internal {
 
-        std::shared_ptr<SheetState> RememberSheetState(SheetValues enabledValues, std::function<bool(SheetValue)> confirmValueChange,
+        std::shared_ptr<SheetState> RememberSheetState(SheetValues enabledValues, kiln::Function<bool(SheetValue)> confirmValueChange,
                                                        SheetValue initialValue, Dp positionalThreshold, Dp velocityThreshold,
                                                        std::optional<bool> partiallyExpandedDeterministic, rt::Key key) {
             auto& c = *rt::Composition::Current();
             const ui::Density density = c.Read(ui::LocalDensity);
             const bool deterministic =
                 partiallyExpandedDeterministic.value_or(ComposeMaterial3Flags::isBottomSheetPartiallyExpandedDeterministicEnabled);
-            std::function<float()> positional = [density, positionalThreshold] { return density.ToPx(positionalThreshold); };
-            std::function<float()> velocity = [density, velocityThreshold] { return density.ToPx(velocityThreshold); };
+            kiln::Function<float()> positional = [density, positionalThreshold] { return density.ToPx(positionalThreshold); };
+            kiln::Function<float()> velocity = [density, velocityThreshold] { return density.ToPx(velocityThreshold); };
             // SheetState.Saver keeps the current value.
             rt::Saver<std::shared_ptr<SheetState>> saver{
                 [](const std::shared_ptr<SheetState>& s) { return rt::SavedValue(double(int(s->CurrentValue()))); },
@@ -122,7 +123,7 @@ namespace kiln::material3 {
                 saver, rt::Keys(enabledKey, deterministic), key);
         }
 
-        void DragHandleWithTooltip(const ui::Modifier& modifier, std::function<void()> content) {
+        void DragHandleWithTooltip(const ui::Modifier& modifier, kiln::Function<void()> content) {
             const std::string description = GetString(Strings::BottomSheetDragHandleDescription);
             Box(FillMax(ui::Modifier{}, Axis::Horizontal), ui::Alignment::Center(), false, [=] {
                 const auto provider = TooltipDefaults::rememberTooltipPositionProvider(TooltipAnchorPosition::Above);
@@ -136,7 +137,7 @@ namespace kiln::material3 {
         namespace {
             struct ConsumeSwipeConnection final : ui::NestedScrollConnection {
                 std::shared_ptr<SheetState> state;
-                std::function<rt::Task<float>(float)> fling;
+                kiln::Function<rt::Task<float>(float)> fling;
 
                 ui::Offset OnPreScroll(ui::Offset available, ui::NestedScrollSource source) override {
                     const float delta = available.y;
@@ -169,7 +170,7 @@ namespace kiln::material3 {
         }
 
         std::shared_ptr<ui::NestedScrollConnection> ConsumeSwipeWithinBottomSheetBounds(std::shared_ptr<SheetState> state,
-                                                                                       std::function<rt::Task<float>(float velocity)> fling) {
+                                                                                       kiln::Function<rt::Task<float>(float velocity)> fling) {
             auto c = std::make_shared<ConsumeSwipeConnection>();
             c->state = std::move(state);
             c->fling = std::move(fling);
@@ -242,7 +243,7 @@ namespace kiln::material3 {
             return 1 - std::min(d.ToPx(PredictiveBackMaxScaleYDistance), height) * progress / height;
         }
 
-        ui::Modifier SheetPredictiveBackScaling(ui::Modifier m, std::shared_ptr<SheetState> state, std::function<float()> progress) {
+        ui::Modifier SheetPredictiveBackScaling(ui::Modifier m, std::shared_ptr<SheetState> state, kiln::Function<float()> progress) {
             const ui::Density d = rt::Composition::Current()->Read(ui::LocalDensity);
             return GraphicsLayer(std::move(m), [state, progress, d](GraphicsLayerParams& l) {
                 const float offset = state->Anchored().Offset();
@@ -256,7 +257,7 @@ namespace kiln::material3 {
             });
         }
 
-        ui::Modifier ContentPredictiveBackScaling(ui::Modifier m, std::function<float()> progress) {
+        ui::Modifier ContentPredictiveBackScaling(ui::Modifier m, kiln::Function<float()> progress) {
             const ui::Density d = rt::Composition::Current()->Read(ui::LocalDensity);
             return GraphicsLayer(std::move(m), [progress, d](GraphicsLayerParams& l) {
                 const float p = progress();

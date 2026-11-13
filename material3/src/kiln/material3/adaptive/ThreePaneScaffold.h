@@ -10,6 +10,7 @@
 // the pane expansion drag handle modifier, and the list-detail and supporting-pane scaffolds.
 
 #include "kiln/animation/Animatable.h"
+#include <kiln/Function.h>
 #include "kiln/foundation/AnimatedVisibility.h"
 #include "kiln/foundation/Interaction.h"
 #include "kiln/foundation/Layouts.h"
@@ -62,15 +63,15 @@ namespace kiln::material3::adaptive {
     // gesture is in progress; offsets convert into the scaled space.
     class PredictiveBackScaleState {
     public:
-        PredictiveBackScaleState(std::function<ui::IntSize()> scaffoldSize, std::function<bool()> isPredictiveBackInProgress)
+        PredictiveBackScaleState(kiln::Function<ui::IntSize()> scaffoldSize, kiln::Function<bool()> isPredictiveBackInProgress)
             : m_ScaffoldSize(std::move(scaffoldSize)), m_InProgress(std::move(isPredictiveBackInProgress)) {}
         anim::Animatable scaleAnimatable{ 1.0f };
         float Scale() const { return scaleAnimatable.Float(); }
         ui::IntOffset Convert(ui::IntOffset offset) const;
         static constexpr float PredictiveBackMinScale = 0.95f;
     private:
-        std::function<ui::IntSize()> m_ScaffoldSize;
-        std::function<bool()> m_InProgress;
+        kiln::Function<ui::IntSize()> m_ScaffoldSize;
+        kiln::Function<bool()> m_InProgress;
     };
 
     // --- Pane margins and parent data -------------------------------------------------------------
@@ -117,7 +118,7 @@ namespace kiln::material3::adaptive {
         // semantics: the default ones (the current anchor and an action to the next).
         ui::Modifier PaneExpansionDraggable(ui::Modifier m, PaneExpansionState& state, ui::Dp minTouchTargetSize,
                                             std::shared_ptr<foundation::MutableInteractionSource> interactionSource,
-                                            std::function<void(ui::SemanticsConfiguration&)> semanticsProperties = nullptr) const;
+                                            kiln::Function<void(ui::SemanticsConfiguration&)> semanticsProperties = nullptr) const;
         rt::SaveableStateHolder& SaveableStateHolder() const { return *m_Holder; }
         // PaneScaffoldTransitionScope
         foundation::Transition<ThreePaneScaffoldValue>& ScaffoldStateTransition() const { return *m_Transition; }
@@ -153,28 +154,28 @@ namespace kiln::material3::adaptive {
         std::optional<foundation::ExitTransition> exitTransition;
         anim::SpecPtr boundsAnimationSpec;                             // null: PaneMotionDefaults::AnimationSpec()
         // A handle shown above the content of a levitated pane with a DragToResizeState.
-        std::function<void(DragToResizeState&)> dragToResizeHandle;
+        kiln::Function<void(DragToResizeState&)> dragToResizeHandle;
         foundation::ShapePtr shape;                                    // null: RectangleShape
     };
     // AnimatedPane: a pane that animates in and out with its pane motion, animates its bounds
     // while it stays shown, and (levitated) casts a shadow over a scrim.
     void AnimatedPane(const ThreePaneScaffoldPaneScope& scope, const ui::Modifier& modifier, const AnimatedPaneOptions& options,
-                      std::function<void()> content);
-    inline void AnimatedPane(const ThreePaneScaffoldPaneScope& scope, std::function<void()> content) {
+                      kiln::Function<void()> content);
+    inline void AnimatedPane(const ThreePaneScaffoldPaneScope& scope, kiln::Function<void()> content) {
         AnimatedPane(scope, {}, {}, std::move(content));
     }
     namespace AnimatedPaneDefaults { inline constexpr ui::Dp ShadowElevation{ 15 }; }
 
     // LevitatedPaneScrim: a scrim over the panes under a levitated one (32% black); a click on it
     // runs `onClick` (without it, it is hidden from accessibility).
-    void LevitatedPaneScrim(const ui::Modifier& modifier = {}, std::function<void()> onClick = nullptr,
+    void LevitatedPaneScrim(const ui::Modifier& modifier = {}, kiln::Function<void()> onClick = nullptr,
                             std::optional<ui::Color> color = std::nullopt);
     namespace LevitatedPaneScrimDefaults { inline const ui::Color Color = ui::Color::Black().WithAlpha(0.32f); }
 
     // --- The scaffolds --------------------------------------------------------------------------
 
-    using PaneContent = std::function<void(const ThreePaneScaffoldPaneScope&)>;
-    using DragHandleContent = std::function<void(const ThreePaneScaffoldScope&, PaneExpansionState&)>;
+    using PaneContent = kiln::Function<void(const ThreePaneScaffoldPaneScope&)>;
+    using DragHandleContent = kiln::Function<void(const ThreePaneScaffoldScope&, PaneExpansionState&)>;
 
     namespace ThreePaneScaffoldDefaults {
         inline constexpr int PrimaryPanePriority = 10, SecondaryPanePriority = 5, TertiaryPanePriority = 1;

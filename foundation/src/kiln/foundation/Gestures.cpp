@@ -1,4 +1,5 @@
 #include "kiln/foundation/Gestures.h"
+#include <kiln/Function.h>
 #include "kiln/ui/Locals.h"
 
 #include "kiln/runtime/Task.h"
@@ -89,7 +90,7 @@ namespace kiln::foundation {
         m_JobState = job;
         // A timeout is a dispatcher timer on the waiting coroutine itself: it resumes it
         // with nullopt unless an event came first (which removes the timer).
-        std::function<void()> removeTimer;
+        kiln::Function<void()> removeTimer;
         if (timeout >= 0) {
             job->dispatcher->AddTimer(job->dispatcher->Now() + std::chrono::milliseconds(timeout), h, job);
             removeTimer = std::move(job->unregister);
@@ -253,7 +254,7 @@ namespace kiln::foundation {
             static_cast<ui::Density&>(*press) = s.GetDensity();
             auto keep = press;
             auto onPress = cb.onPressScoped;
-            press->job = rt::Launch(rt::Dispatcher::Main(), [](std::shared_ptr<PressGestureScope> scope, std::function<rt::Task<>(PressGestureScope&, Offset)> f,
+            press->job = rt::Launch(rt::Dispatcher::Main(), [](std::shared_ptr<PressGestureScope> scope, kiln::Function<rt::Task<>(PressGestureScope&, Offset)> f,
                                                                Offset at) -> rt::Task<> { co_await f(*scope, at); }(keep, onPress, at));
         };
         auto endPress = [&](bool released) {
@@ -359,7 +360,7 @@ namespace kiln::foundation {
         // callback, or nullopt if cancelled.
         rt::Task<std::optional<PointerInputChange>> AwaitSlop(PointerInputScope& s, std::int64_t id, PointerType type,
                                                               std::optional<Orientation> o, Offset initial,
-                                                              std::function<void(PointerInputChange&, Offset)> onSlop) {
+                                                              kiln::Function<void(PointerInputChange&, Offset)> onSlop) {
             if (IsPointerUp(s.CurrentEvent(), id)) co_return std::nullopt;
             const float slop = PointerSlop(s.Config(), type);
             std::int64_t pointer = id;
@@ -386,7 +387,7 @@ namespace kiln::foundation {
 
         // drag(): follows the pointer until it lifts (returns the up) or motion is consumed (nullopt).
         rt::Task<std::optional<PointerInputChange>> Drag(PointerInputScope& s, std::int64_t id,
-                                                         std::function<void(PointerInputChange&)> onDrag) {
+                                                         kiln::Function<void(PointerInputChange&)> onDrag) {
             if (IsPointerUp(s.CurrentEvent(), id)) co_return std::nullopt;
             std::int64_t pointer = id;
             for (;;) {
@@ -425,13 +426,13 @@ namespace kiln::foundation {
     }
 
     rt::Task<std::optional<PointerInputChange>> AwaitTouchSlopOrCancellation(PointerInputScope& s, std::int64_t pointerId,
-                                                                             std::function<void(PointerInputChange&, Offset)> onSlop) {
+                                                                             kiln::Function<void(PointerInputChange&, Offset)> onSlop) {
         const auto* c = Find(s.CurrentEvent(), pointerId);
         co_return co_await AwaitSlop(s, pointerId, c ? c->type : PointerType::Touch, std::nullopt, {}, std::move(onSlop));
     }
 
     rt::Task<std::optional<PointerInputChange>> DragPointer(PointerInputScope& s, std::int64_t pointerId,
-                                                            std::function<void(PointerInputChange&)> onDrag) {
+                                                            kiln::Function<void(PointerInputChange&)> onDrag) {
         co_return co_await Drag(s, pointerId, std::move(onDrag));
     }
 
@@ -460,7 +461,7 @@ namespace kiln::foundation {
             if (change && !change->IsConsumed()) co_return change;
             co_return std::nullopt;
         }
-        rt::Task<bool> AxisDrag(PointerInputScope& s, std::int64_t pointerId, Orientation axis, std::function<void(PointerInputChange&)> onDrag) {
+        rt::Task<bool> AxisDrag(PointerInputScope& s, std::int64_t pointerId, Orientation axis, kiln::Function<void(PointerInputChange&)> onDrag) {
             std::int64_t pointer = pointerId;
             for (;;) {
                 auto change = co_await AwaitDragOrCancellationOn(s, pointer, axis);
@@ -471,7 +472,7 @@ namespace kiln::foundation {
             }
         }
         rt::Task<std::optional<PointerInputChange>> AxisSlop(PointerInputScope& s, std::int64_t pointerId, PointerType type, Orientation axis,
-                                                             std::function<void(PointerInputChange&, float)> onSlop) {
+                                                             kiln::Function<void(PointerInputChange&, float)> onSlop) {
             co_return co_await AwaitSlop(s, pointerId, type, axis, {}, [axis, onSlop = std::move(onSlop)](PointerInputChange& c, Offset over) {
                 onSlop(c, axis == Orientation::Horizontal ? over.x : over.y);
             });
@@ -481,22 +482,22 @@ namespace kiln::foundation {
     rt::Task<std::optional<PointerInputChange>> AwaitDragOrCancellation(PointerInputScope& s, std::int64_t id) { return AwaitDragOrCancellationOn(s, id, std::nullopt); }
     rt::Task<std::optional<PointerInputChange>> AwaitHorizontalDragOrCancellation(PointerInputScope& s, std::int64_t id) { return AwaitDragOrCancellationOn(s, id, Orientation::Horizontal); }
     rt::Task<std::optional<PointerInputChange>> AwaitVerticalDragOrCancellation(PointerInputScope& s, std::int64_t id) { return AwaitDragOrCancellationOn(s, id, Orientation::Vertical); }
-    rt::Task<std::optional<PointerInputChange>> AwaitHorizontalTouchSlopOrCancellation(PointerInputScope& s, std::int64_t id, std::function<void(PointerInputChange&, float)> f) {
+    rt::Task<std::optional<PointerInputChange>> AwaitHorizontalTouchSlopOrCancellation(PointerInputScope& s, std::int64_t id, kiln::Function<void(PointerInputChange&, float)> f) {
         return AxisSlop(s, id, PointerType::Touch, Orientation::Horizontal, std::move(f));
     }
-    rt::Task<std::optional<PointerInputChange>> AwaitVerticalTouchSlopOrCancellation(PointerInputScope& s, std::int64_t id, std::function<void(PointerInputChange&, float)> f) {
+    rt::Task<std::optional<PointerInputChange>> AwaitVerticalTouchSlopOrCancellation(PointerInputScope& s, std::int64_t id, kiln::Function<void(PointerInputChange&, float)> f) {
         return AxisSlop(s, id, PointerType::Touch, Orientation::Vertical, std::move(f));
     }
     rt::Task<std::optional<PointerInputChange>> AwaitHorizontalPointerSlopOrCancellation(PointerInputScope& s, std::int64_t id, PointerType type,
-                                                                                         std::function<void(PointerInputChange&, float)> f) {
+                                                                                         kiln::Function<void(PointerInputChange&, float)> f) {
         return AxisSlop(s, id, type, Orientation::Horizontal, std::move(f));
     }
     rt::Task<std::optional<PointerInputChange>> AwaitVerticalPointerSlopOrCancellation(PointerInputScope& s, std::int64_t id, PointerType type,
-                                                                                       std::function<void(PointerInputChange&, float)> f) {
+                                                                                       kiln::Function<void(PointerInputChange&, float)> f) {
         return AxisSlop(s, id, type, Orientation::Vertical, std::move(f));
     }
-    rt::Task<bool> HorizontalDrag(PointerInputScope& s, std::int64_t id, std::function<void(PointerInputChange&)> f) { return AxisDrag(s, id, Orientation::Horizontal, std::move(f)); }
-    rt::Task<bool> VerticalDrag(PointerInputScope& s, std::int64_t id, std::function<void(PointerInputChange&)> f) { return AxisDrag(s, id, Orientation::Vertical, std::move(f)); }
+    rt::Task<bool> HorizontalDrag(PointerInputScope& s, std::int64_t id, kiln::Function<void(PointerInputChange&)> f) { return AxisDrag(s, id, Orientation::Horizontal, std::move(f)); }
+    rt::Task<bool> VerticalDrag(PointerInputScope& s, std::int64_t id, kiln::Function<void(PointerInputChange&)> f) { return AxisDrag(s, id, Orientation::Vertical, std::move(f)); }
 
     rt::Task<std::optional<PointerInputChange>> AwaitLongPressOrCancellation(PointerInputScope& s, std::int64_t pointerId) {
         if (IsPointerUp(s.CurrentEvent(), pointerId)) co_return std::nullopt;
@@ -596,10 +597,10 @@ namespace kiln::foundation {
         // The shared clickable core: callbacks behind boxes refreshed every composition
         // (rememberUpdatedState), interactions, indication, keys, focus, semantics, taps.
         struct ClickState {
-            std::function<void()> onClick;
-            std::function<void(bool)> onPressed;
-            std::function<void(SemanticsConfiguration&)> extraSemantics;
-            std::function<void()> onLongClick, onDoubleClick;
+            kiln::Function<void()> onClick;
+            kiln::Function<void(bool)> onPressed;
+            kiln::Function<void(SemanticsConfiguration&)> extraSemantics;
+            kiln::Function<void()> onLongClick, onDoubleClick;
             std::shared_ptr<ui::SoundEffect> sound;   // LocalSoundEffect
             void PlayClickSound() const { if (sound) sound->PlayClickSound(); }
             // performClick: the sound, then the click.
@@ -859,8 +860,8 @@ namespace kiln::foundation {
             if (st->source && !st->press) st->press = st->source->Start(Interaction::Kind::Press, at);
         }
 
-        Modifier ClickableCore(Modifier m, std::function<void()> onClick, std::function<void(bool)> onPressed,
-                               std::function<void(SemanticsConfiguration&)> extra, ClickableOptions o) {
+        Modifier ClickableCore(Modifier m, kiln::Function<void()> onClick, kiln::Function<void(bool)> onPressed,
+                               kiln::Function<void(SemanticsConfiguration&)> extra, ClickableOptions o) {
             auto st = std::make_shared<ClickState>();
             if (auto* c = rt::Composition::Current()) st = c->Remember<std::shared_ptr<ClickState>>([&] { return st; });
             st->onClick = std::move(onClick);
@@ -1013,7 +1014,7 @@ namespace kiln::foundation {
         };
     }
 
-    void SoundEffectOnInteraction(bool enabled, std::function<void()> content) {
+    void SoundEffectOnInteraction(bool enabled, kiln::Function<void()> content) {
         auto& c = *rt::Composition::Current();
         std::shared_ptr<ui::SoundEffect> current = c.Read(ui::LocalSoundEffect);
         // Unwrap delegating wrappers so the chain stays one deep.
@@ -1023,26 +1024,26 @@ namespace kiln::foundation {
         c.Provide(ui::LocalSoundEffect, wrapper, std::move(content));
     }
 
-    Modifier Clickable(Modifier m, std::function<void()> onClick, ClickableOptions o) {
+    Modifier Clickable(Modifier m, kiln::Function<void()> onClick, ClickableOptions o) {
         return ClickableCore(std::move(m), std::move(onClick), {}, {}, std::move(o));
     }
 
-    Modifier Clickable(Modifier m, std::function<void()> onClick, std::function<void(bool)> onPressedChange, bool enabled) {
+    Modifier Clickable(Modifier m, kiln::Function<void()> onClick, kiln::Function<void(bool)> onPressedChange, bool enabled) {
         ClickableOptions o;
         o.enabled = enabled;
         return ClickableCore(std::move(m), std::move(onClick), std::move(onPressedChange), {}, o);
     }
 
-    Modifier Toggleable(Modifier m, bool value, std::function<void(bool)> onValueChange, ClickableOptions o) {
+    Modifier Toggleable(Modifier m, bool value, kiln::Function<void(bool)> onValueChange, ClickableOptions o) {
         return ClickableCore(std::move(m), [value, onValueChange] { if (onValueChange) onValueChange(!value); }, {},
                              [value](SemanticsConfiguration& c) { c.toggleableState = value ? 1 : 0; }, std::move(o));
     }
 
-    Modifier TriStateToggleable(Modifier m, int state, std::function<void()> onClick, ClickableOptions o) {
+    Modifier TriStateToggleable(Modifier m, int state, kiln::Function<void()> onClick, ClickableOptions o) {
         return ClickableCore(std::move(m), std::move(onClick), {}, [state](SemanticsConfiguration& c) { c.toggleableState = state; }, std::move(o));
     }
 
-    Modifier Selectable(Modifier m, bool selected, std::function<void()> onClick, ClickableOptions o) {
+    Modifier Selectable(Modifier m, bool selected, kiln::Function<void()> onClick, ClickableOptions o) {
         return ClickableCore(std::move(m), std::move(onClick), {}, [selected](SemanticsConfiguration& c) { c.selected = selected; }, std::move(o));
     }
 
@@ -1107,7 +1108,7 @@ namespace kiln::foundation {
         return weight == 0 ? 0 : rotation / weight;
     }
 
-    rt::Task<> DetectTransformGestures(PointerInputScope& s, bool panZoomLock, std::function<void(Offset, Offset, float, float)> onGesture) {
+    rt::Task<> DetectTransformGestures(PointerInputScope& s, bool panZoomLock, kiln::Function<void(Offset, Offset, float, float)> onGesture) {
         for (;;) {
             // awaitFirstDown(requireUnconsumed = false)
             for (;;) {

@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <kiln/Function.h>
 #include "kiln/foundation/Semantics.h"
 
 #include "kiln/runtime/Composition.h"
@@ -7,7 +8,7 @@ namespace kiln::foundation {
 
     namespace {
         struct SemParams {
-            std::shared_ptr<std::function<void(SemanticsConfiguration&)>> fn;
+            std::shared_ptr<kiln::Function<void(SemanticsConfiguration&)>> fn;
             bool merge, clear;
             // The lambda is refreshed every composition; compare by what it produces instead.
             std::shared_ptr<SemanticsConfiguration> snapshot;
@@ -27,8 +28,8 @@ namespace kiln::foundation {
             }
         };
 
-        Modifier Make(Modifier m, std::function<void(SemanticsConfiguration&)> fn, bool merge, bool clear) {
-            auto box = std::make_shared<std::function<void(SemanticsConfiguration&)>>();
+        Modifier Make(Modifier m, kiln::Function<void(SemanticsConfiguration&)> fn, bool merge, bool clear) {
+            auto box = std::make_shared<kiln::Function<void(SemanticsConfiguration&)>>();
             if (auto* c = rt::Composition::Current()) box = c->Remember<decltype(box)>([&] { return box; });
             *box = std::move(fn);
             auto snap = std::make_shared<SemanticsConfiguration>();
@@ -37,8 +38,8 @@ namespace kiln::foundation {
         }
     }
 
-    Modifier Semantics(Modifier m, std::function<void(SemanticsConfiguration&)> p, bool merge) { return Make(std::move(m), std::move(p), merge, false); }
-    Modifier ClearAndSetSemantics(Modifier m, std::function<void(SemanticsConfiguration&)> p) { return Make(std::move(m), std::move(p), false, true); }
+    Modifier Semantics(Modifier m, kiln::Function<void(SemanticsConfiguration&)> p, bool merge) { return Make(std::move(m), std::move(p), merge, false); }
+    Modifier ClearAndSetSemantics(Modifier m, kiln::Function<void(SemanticsConfiguration&)> p) { return Make(std::move(m), std::move(p), false, true); }
 
     Modifier ProgressSemantics(Modifier m, float value, float start, float end, int steps) {
         return Semantics(std::move(m), [value, start, end, steps](SemanticsConfiguration& c) {

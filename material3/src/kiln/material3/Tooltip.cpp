@@ -1,4 +1,5 @@
 #include "kiln/material3/Tooltip.h"
+#include <kiln/Function.h>
 
 #include "kiln/foundation/Focus.h"
 #include "kiln/foundation/Gestures.h"
@@ -270,9 +271,9 @@ namespace kiln::material3 {
     }
 
     namespace internal {
-        void BasicTooltipBox(std::shared_ptr<const PopupPositionProvider> positionProvider, std::function<void()> tooltip,
+        void BasicTooltipBox(std::shared_ptr<const PopupPositionProvider> positionProvider, kiln::Function<void()> tooltip,
                              const TooltipState& state, const Modifier& modifier, const TooltipBoxOptions& options,
-                             std::function<void()> content) {
+                             kiln::Function<void()> content) {
             auto& c = *rt::Composition::Current();
             auto scope = internal::RememberCoroutineScope();
             auto& forceFocusableForKeyboardNav = c.Remember<std::shared_ptr<rt::State<bool>>>([] { return std::make_shared<rt::State<bool>>(false); });
@@ -359,7 +360,7 @@ namespace kiln::material3 {
             });
 
             c.DisposableEffect(rt::Keys(static_cast<const void*>(&state.Transition())), [state] {
-                return std::function<void()>([state] { state.OnDispose(); });
+                return kiln::Function<void()>([state] { state.OnDispose(); });
             });
         }
     }
@@ -609,7 +610,7 @@ namespace kiln::material3 {
             return { std::move(m), std::make_shared<TooltipCaretShape>(current, std::move(shape), std::move(caretShape)) };
         }
 
-        void ProvideColorAndStyle(Color color, const text::TextStyle& style, std::function<void()> content) {
+        void ProvideColorAndStyle(Color color, const text::TextStyle& style, kiln::Function<void()> content) {
             auto& c = *rt::Composition::Current();
             c.Provide(LocalContentColor, color, [&c, style, content = std::move(content)] { c.Provide(LocalTextStyle(), style, content); });
         }
@@ -627,8 +628,8 @@ namespace kiln::material3 {
 
     // --- TooltipBox ----------------------------------------------------------------------------
 
-    void TooltipBox(std::shared_ptr<const PopupPositionProvider> positionProvider, std::function<void(const TooltipScope&)> tooltip,
-                    const TooltipState& state, const Modifier& modifier, const TooltipBoxOptions& options, std::function<void()> content) {
+    void TooltipBox(std::shared_ptr<const PopupPositionProvider> positionProvider, kiln::Function<void(const TooltipScope&)> tooltip,
+                    const TooltipState& state, const Modifier& modifier, const TooltipBoxOptions& options, kiln::Function<void()> content) {
         auto& c = *rt::Composition::Current();
         auto& transition = UpdateTransition(state.Transition());
         auto& anchorBounds = c.Remember<std::shared_ptr<rt::State<std::optional<LayoutCoordinates>>>>(
@@ -678,7 +679,7 @@ namespace kiln::material3 {
 
     // --- PlainTooltip / RichTooltip ------------------------------------------------------------
 
-    void PlainTooltip(const TooltipScope& scope, const Modifier& modifier, const PlainTooltipOptions& o, std::function<void()> content) {
+    void PlainTooltip(const TooltipScope& scope, const Modifier& modifier, const PlainTooltipOptions& o, kiln::Function<void()> content) {
         const ShapePtr shape = o.shape ? o.shape : TooltipDefaults::plainTooltipContainerShape();
         auto [tooltipModifier, tooltipShape] = WithCaret(scope, modifier, shape, o.caretShape);
         const Color contentColor = o.contentColor ? *o.contentColor : TooltipDefaults::plainTooltipContentColor();
@@ -695,7 +696,7 @@ namespace kiln::material3 {
         });
     }
 
-    void RichTooltip(const TooltipScope& scope, const Modifier& modifier, const RichTooltipOptions& o, std::function<void()> text) {
+    void RichTooltip(const TooltipScope& scope, const Modifier& modifier, const RichTooltipOptions& o, kiln::Function<void()> text) {
         const ShapePtr shape = o.shape ? o.shape : TooltipDefaults::richTooltipContainerShape();
         auto [tooltipModifier, tooltipShape] = WithCaret(scope, modifier, shape, o.caretShape);
         const RichTooltipColors colors = o.colors ? *o.colors : TooltipDefaults::richTooltipColors();
@@ -726,7 +727,7 @@ namespace kiln::material3 {
 
     namespace internal {
         void PlainTooltipInternal(const TooltipScope& scope, const std::string& tooltipText, const Modifier& modifier,
-                                  const PlainTooltipOptions& options, std::function<void()> content) {
+                                  const PlainTooltipOptions& options, kiln::Function<void()> content) {
             Modifier m = Semantics({}, [tooltipText](SemanticsConfiguration& config) {
                 config.liveRegion = LiveRegionMode::Assertive;
                 config.paneTitle = tooltipText;

@@ -1,4 +1,5 @@
 #include "kiln/foundation/Draw.h"
+#include <kiln/Function.h>
 
 #include "kiln/foundation/Compose.h"
 
@@ -8,7 +9,7 @@ namespace kiln::foundation {
         // Lambdas are never equal (DrawBehindElement compares by identity), so every
         // recomposition updates the node and redraws it.
         struct BehindParams {
-            std::function<void(DrawScope&)> fn;
+            kiln::Function<void(DrawScope&)> fn;
             bool operator==(const BehindParams&) const { return false; }
         };
         struct BehindNode final : ui::ModifierNode, ui::DrawModifier {
@@ -23,7 +24,7 @@ namespace kiln::foundation {
         };
 
         struct ContentParams {
-            std::function<void(ContentDrawScope&)> fn;
+            kiln::Function<void(ContentDrawScope&)> fn;
             bool operator==(const ContentParams&) const { return false; }
         };
         struct ContentNode final : ui::ModifierNode, ui::DrawModifier {
@@ -37,13 +38,13 @@ namespace kiln::foundation {
         };
     }
 
-    Modifier DrawBehind(Modifier m, std::function<void(DrawScope&)> onDraw) {
+    Modifier DrawBehind(Modifier m, kiln::Function<void(DrawScope&)> onDraw) {
         return m.With<BehindNode>(BehindParams{ std::move(onDraw) });
     }
-    Modifier DrawWithContent(Modifier m, std::function<void(ContentDrawScope&)> onDraw) {
+    Modifier DrawWithContent(Modifier m, kiln::Function<void(ContentDrawScope&)> onDraw) {
         return m.With<ContentNode>(ContentParams{ std::move(onDraw) });
     }
-    void Canvas(const Modifier& modifier, std::function<void(DrawScope&)> onDraw) {
+    void Canvas(const Modifier& modifier, kiln::Function<void(DrawScope&)> onDraw) {
         Spacer(DrawBehind(modifier, std::move(onDraw)));
     }
 

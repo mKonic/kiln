@@ -1,4 +1,5 @@
 #include "kiln/navigation/NavController.h"
+#include <kiln/Function.h>
 
 #include <algorithm>
 #include <random>
@@ -310,13 +311,13 @@ namespace kiln::navigation {
     }
 
     void NavController::NavigateInternal(Navigator* navigator, const std::vector<EntryPtr>& entries, const std::optional<NavOptions>& navOptions,
-                                         std::function<void(const EntryPtr&)> handler) {
+                                         kiln::Function<void(const EntryPtr&)> handler) {
         m_AddHandler = std::move(handler);
         navigator->Navigate(entries, navOptions);
         m_AddHandler = nullptr;
     }
 
-    void NavController::PopBackStackInternal(Navigator* navigator, const EntryPtr& popUpTo, bool saveState, std::function<void(const EntryPtr&)> handler) {
+    void NavController::PopBackStackInternal(Navigator* navigator, const EntryPtr& popUpTo, bool saveState, kiln::Function<void(const EntryPtr&)> handler) {
         m_PopHandler = std::move(handler);
         navigator->PopBackStack(popUpTo, saveState);
         m_PopHandler = nullptr;
@@ -338,7 +339,7 @@ namespace kiln::navigation {
         }
     }
 
-    void NavController::Pop(NavigatorBackStack& state, const EntryPtr& popUpTo, bool saveState, const std::function<void()>& super) {
+    void NavController::Pop(NavigatorBackStack& state, const EntryPtr& popUpTo, bool saveState, const kiln::Function<void()>& super) {
         Navigator* destinationNavigator = m_Provider.Get(popUpTo->Destination()->NavigatorName());
         m_EntrySavedState[popUpTo] = saveState;
         if (destinationNavigator == state.GetNavigator()) {
@@ -354,7 +355,7 @@ namespace kiln::navigation {
         }
     }
 
-    void NavController::MarkTransitionComplete(NavigatorBackStack& state, const EntryPtr& entry, const std::function<void()>& super) {
+    void NavController::MarkTransitionComplete(NavigatorBackStack& state, const EntryPtr& entry, const kiln::Function<void()>& super) {
         const bool savedState = m_EntrySavedState.contains(entry) && m_EntrySavedState[entry];
         super();
         m_EntrySavedState.erase(entry);
@@ -467,7 +468,7 @@ namespace kiln::navigation {
         return popped;
     }
 
-    void NavController::PopBackStackFromNavigator(const EntryPtr& popUpTo, const std::function<void()>& onComplete) {
+    void NavController::PopBackStackFromNavigator(const EntryPtr& popUpTo, const kiln::Function<void()>& onComplete) {
         auto it = std::find(m_BackQueue.begin(), m_BackQueue.end(), popUpTo);
         if (it == m_BackQueue.end()) return;   // not on the back stack: ignored
         const std::size_t popIndex = std::size_t(it - m_BackQueue.begin());

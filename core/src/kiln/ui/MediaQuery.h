@@ -6,6 +6,7 @@
 // screen is viewed from.
 
 #include "kiln/runtime/Composition.h"
+#include <kiln/Function.h>
 #include "kiln/ui/Geometry.h"
 #include "kiln/ui/InputDevices.h"
 
@@ -94,18 +95,18 @@ namespace kiln::ui {
 
     // mediaQuery { }: the query's answer now; the composition re-runs when what it read changes.
     template<typename T>
-    T MediaQuery(const std::function<T(const UiMediaScope&)>& query) {
+    T MediaQuery(const kiln::Function<T(const UiMediaScope&)>& query) {
         const UiMediaScope* scope = rt::Composition::Current()->Read(LocalUiMediaScope);
         return query(*scope);
     }
     // computedMediaQuery { }: the answer as derived state, so only readers of the result
     // re-run when it changes (not everything that read the window size).
     template<typename T>
-    rt::Derived<T>& ComputedMediaQuery(std::function<T(const UiMediaScope&)> query, rt::Key key = {}) {
+    rt::Derived<T>& ComputedMediaQuery(kiln::Function<T(const UiMediaScope&)> query, rt::Key key = {}) {
         rt::Composition* c = rt::Composition::Current();
         const UiMediaScope* scope = c->Read(LocalUiMediaScope);
-        auto& current = c->Remember<std::shared_ptr<std::function<T(const UiMediaScope&)>>>(
-            [] { return std::make_shared<std::function<T(const UiMediaScope&)>>(); }, {}, key);
+        auto& current = c->Remember<std::shared_ptr<kiln::Function<T(const UiMediaScope&)>>>(
+            [] { return std::make_shared<kiln::Function<T(const UiMediaScope&)>>(); }, {}, key);
         *current = std::move(query);   // rememberUpdatedState
         auto fn = current;
         return c->RememberNew<rt::Derived<T>>(rt::Keys(reinterpret_cast<std::uintptr_t>(scope)), key, [scope, fn] { return (*fn)(*scope); });

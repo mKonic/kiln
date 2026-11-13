@@ -1,6 +1,7 @@
 #pragma once
 
 #include "kiln/foundation/Compose.h"
+#include <kiln/Function.h>
 #include "kiln/foundation/Shapes.h"
 #include "kiln/graphics/shapes/RoundedPolygon.h"
 
@@ -16,9 +17,9 @@ namespace kiln::material3 {
         foundation::ShapePtr containerShape;
         std::optional<std::vector<gfx::shapes::RoundedPolygon>> polygons;
     };
-    void LoadingIndicator(std::function<float()> progress, const ui::Modifier& modifier = {}, const LoadingIndicatorOptions& options = {});
+    void LoadingIndicator(kiln::Function<float()> progress, const ui::Modifier& modifier = {}, const LoadingIndicatorOptions& options = {});
     void LoadingIndicator(const ui::Modifier& modifier = {}, const LoadingIndicatorOptions& options = {});
-    void ContainedLoadingIndicator(std::function<float()> progress, const ui::Modifier& modifier = {}, const ContainedLoadingIndicatorOptions& options = {});
+    void ContainedLoadingIndicator(kiln::Function<float()> progress, const ui::Modifier& modifier = {}, const ContainedLoadingIndicatorOptions& options = {});
     void ContainedLoadingIndicator(const ui::Modifier& modifier = {}, const ContainedLoadingIndicatorOptions& options = {});
 
     namespace LoadingIndicatorDefaults {

@@ -1,4 +1,5 @@
 #include "kiln/runtime/Saveable.h"
+#include <kiln/Function.h>
 
 #include <cstring>
 
@@ -14,7 +15,7 @@ namespace kiln::rt {
         return v;
     }
 
-    std::uint64_t SaveableStateRegistry::RegisterProvider(const std::string& key, std::function<SavedValue()> provider) {
+    std::uint64_t SaveableStateRegistry::RegisterProvider(const std::string& key, kiln::Function<SavedValue()> provider) {
         const std::uint64_t id = m_NextId++;
         m_Providers[key].emplace_back(id, std::move(provider));
         return id;
@@ -111,9 +112,9 @@ namespace kiln::rt {
             return h;
         }, {}, key);
         c.DisposableEffect(Keys(registry, k), [registry, k, keep = holder] {
-            if (!registry) return std::function<void()>([] {});
+            if (!registry) return kiln::Function<void()>([] {});
             const std::uint64_t id = registry->RegisterProvider(k, [keep] { return keep->Save(); });
-            return std::function<void()>([registry, alive = registry->AliveToken(), k, id] { if (!alive.expired()) registry->Unregister(k, id); });
+            return kiln::Function<void()>([registry, alive = registry->AliveToken(), k, id] { if (!alive.expired()) registry->Unregister(k, id); });
         }, key);
         return *holder;
     }
@@ -213,7 +214,7 @@ namespace kiln::rt {
     }
 
 
-    void SaveableStateProvider(SaveableStateHolder& holder, const std::string& key, std::function<void()> content) {
+    void SaveableStateProvider(SaveableStateHolder& holder, const std::string& key, kiln::Function<void()> content) {
         auto* c = Composition::Current();
         SaveableStateHolder* h = &holder;
         // A holder owned by a shared_ptr (rememberSaveableStateHolder's) may go first when the

@@ -1,5 +1,6 @@
 // ChipSamples.kt
 #include "ChipSamples.h"
+#include <kiln/Function.h>
 #include "Common.h"
 
 #include <kiln/foundation/Flow.h>
@@ -12,14 +13,14 @@ namespace catalog::samples {
     namespace FCD = m3::FilterChipDefaults;
 
     namespace {
-        std::function<void()> ChipIcon(const ImageVectorPtr& icon, const char* description, Dp size) {
+        kiln::Function<void()> ChipIcon(const ImageVectorPtr& icon, const char* description, Dp size) {
             return [&icon, description, size] { m3::Icon(icon, std::string(description), Size({}, size)); };
         }
-        std::function<void()> Label(const char* text) {
+        kiln::Function<void()> Label(const char* text) {
             return [text] { m3::Text(text); };
         }
 
-        using SelectableFn = void (*)(bool, std::function<void()>, std::function<void()>, const Modifier&, const m3::SelectableChipOptions&);
+        using SelectableFn = void (*)(bool, kiln::Function<void()>, kiln::Function<void()>, const Modifier&, const m3::SelectableChipOptions&);
 
         // The filter chip samples: Done while selected; `unselectedHome` puts Home there otherwise.
         void Filter(SelectableFn chip, bool morphing, bool unselectedHome, bool trailing, std::optional<Dp> spacing = std::nullopt) {

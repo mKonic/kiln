@@ -6,6 +6,7 @@
 // readable for 1.5 s or until the next edit or focus loss. Cut and copy are off.
 
 #include "kiln/foundation/text/BasicTextField.h"
+#include <kiln/Function.h>
 
 namespace kiln::foundation {
 
@@ -21,11 +22,11 @@ namespace kiln::foundation {
             k.keyboardType = ui::KeyboardType::Password;
             return k;
         }();
-        std::function<void(std::function<void()> performDefaultAction)> onKeyboardAction;
-        std::function<void(const text::TextLayoutResult&)> onTextLayout;
+        kiln::Function<void(kiln::Function<void()> performDefaultAction)> onKeyboardAction;
+        kiln::Function<void(const text::TextLayoutResult&)> onTextLayout;
         std::shared_ptr<MutableInteractionSource> interactionSource;
         gfx::Brush cursorBrush = gfx::Brush::SolidColor(Color(0xFF000000u));
-        std::function<void(const std::function<void()>& innerTextField)> decorator;
+        kiln::Function<void(const kiln::Function<void()>& innerTextField)> decorator;
         TextObfuscationMode textObfuscationMode = TextObfuscationMode::System;
         char32_t textObfuscationCharacter = U'•';
         ScrollState* scrollState = nullptr;

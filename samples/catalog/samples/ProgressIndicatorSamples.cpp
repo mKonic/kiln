@@ -1,5 +1,6 @@
 // ProgressIndicatorSamples.kt
 #include "ProgressIndicatorSamples.h"
+#include <kiln/Function.h>
 #include "Common.h"
 
 #include <kiln/foundation/Animate.h>
@@ -18,7 +19,7 @@ namespace catalog::samples {
 
     namespace {
         // The determinate samples: an indicator following a slider (animated), the slider below.
-        void WithSlider(std::function<void(std::function<float()>)> indicator) {
+        void WithSlider(kiln::Function<void(kiln::Function<float()>)> indicator) {
             auto& sliderState = m3::RememberSliderState(0.1f);
             const float animatedProgress = AnimateFloatAsState(sliderState.Value(), PD::progressAnimationSpec());
             Column({}, Arrangement::Top(), AlignmentH::CenterHorizontally(), [&sliderState, animatedProgress, indicator] {
@@ -28,7 +29,7 @@ namespace catalog::samples {
                 m3::Slider(sliderState, [&sliderState](float v) { sliderState.SetValue(v); }, Width({}, 300_dp));
             });
         }
-        void Centered(std::function<void()> content) { Column({}, Arrangement::Top(), AlignmentH::CenterHorizontally(), std::move(content)); }
+        void Centered(kiln::Function<void()> content) { Column({}, Arrangement::Top(), AlignmentH::CenterHorizontally(), std::move(content)); }
 
         kiln::gfx::Stroke ThickStroke() {
             return kiln::gfx::Stroke{ Here().Read(LocalDensity).ToPx(8_dp), 4, kiln::gfx::StrokeCap::Round };
@@ -50,14 +51,14 @@ namespace catalog::samples {
     }
 
     void LinearProgressIndicatorSample() {
-        WithSlider([](std::function<float()> p) { m3::LinearProgressIndicator(p); });
+        WithSlider([](kiln::Function<float()> p) { m3::LinearProgressIndicator(p); });
     }
     void LinearWavyProgressIndicatorSample() {
-        WithSlider([](std::function<float()> p) { m3::LinearWavyProgressIndicator(p); });
+        WithSlider([](kiln::Function<float()> p) { m3::LinearWavyProgressIndicator(p); });
     }
     void LinearThickWavyProgressIndicatorSample() {
         const auto stroke = ThickStroke();
-        WithSlider([stroke](std::function<float()> p) {
+        WithSlider([stroke](kiln::Function<float()> p) {
             m3::LinearWavyProgressIndicatorOptions o;
             o.stroke = o.trackStroke = stroke;
             // Thick height is slightly higher than the WavyProgressIndicatorDefaults.LinearContainerHeight default
@@ -79,14 +80,14 @@ namespace catalog::samples {
     void IndeterminateLinearWavyProgressIndicatorSample() { Centered([] { m3::LinearWavyProgressIndicator(); }); }
 
     void CircularProgressIndicatorSample() {
-        WithSlider([](std::function<float()> p) { m3::CircularProgressIndicator(p); });
+        WithSlider([](kiln::Function<float()> p) { m3::CircularProgressIndicator(p); });
     }
     void CircularWavyProgressIndicatorSample() {
-        WithSlider([](std::function<float()> p) { m3::CircularWavyProgressIndicator(p); });
+        WithSlider([](kiln::Function<float()> p) { m3::CircularWavyProgressIndicator(p); });
     }
     void CircularThickWavyProgressIndicatorSample() {
         const auto stroke = ThickStroke();
-        WithSlider([stroke](std::function<float()> p) {
+        WithSlider([stroke](kiln::Function<float()> p) {
             m3::CircularWavyProgressIndicatorOptions o;
             o.stroke = o.trackStroke = stroke;
             m3::CircularWavyProgressIndicator(p, Size({}, 52_dp), o);   // Thick size is slightly larger than the default
@@ -96,12 +97,12 @@ namespace catalog::samples {
     void IndeterminateCircularWavyProgressIndicatorSample() { Centered([] { m3::CircularWavyProgressIndicator(); }); }
 
     void LegacyLinearProgressIndicatorSample() {
-        WithSlider([](std::function<float()> p) {
+        WithSlider([](kiln::Function<float()> p) {
             m3::LinearProgressIndicatorOptions o;
             o.trackColor = m3::MaterialTheme::colorScheme().surfaceVariant;
             o.strokeCap = kiln::gfx::StrokeCap::Butt;
             o.gapSize = 0_dp;
-            o.drawStopIndicator = std::function<void(DrawScope&)>([](DrawScope&) {});
+            o.drawStopIndicator = kiln::Function<void(DrawScope&)>([](DrawScope&) {});
             m3::LinearProgressIndicator(p, {}, o);
         });
     }
@@ -115,7 +116,7 @@ namespace catalog::samples {
         });
     }
     void LegacyCircularProgressIndicatorSample() {
-        WithSlider([](std::function<float()> p) {
+        WithSlider([](kiln::Function<float()> p) {
             m3::CircularProgressIndicatorOptions o;
             o.trackColor = Color::Transparent();
             o.strokeCap = kiln::gfx::StrokeCap::Butt;

@@ -5,6 +5,7 @@
 // line, paragraph and page; selection; deletion; clipboard; undo) mapped from Android's keys.
 
 #include "kiln/foundation/text/TextFieldState.h"
+#include <kiln/Function.h>
 #include "kiln/ui/Focus.h"
 
 #include <functional>
@@ -61,8 +62,8 @@ namespace kiln::foundation {
         SelectionMovementDeletionContext& Deselect();
         SelectionMovementDeletionContext& MoveCursorLeftByChar();
         SelectionMovementDeletionContext& MoveCursorRightByChar();
-        SelectionMovementDeletionContext& CollapseLeftOr(const std::function<void(SelectionMovementDeletionContext&)>& or_);
-        SelectionMovementDeletionContext& CollapseRightOr(const std::function<void(SelectionMovementDeletionContext&)>& or_);
+        SelectionMovementDeletionContext& CollapseLeftOr(const kiln::Function<void(SelectionMovementDeletionContext&)>& or_);
+        SelectionMovementDeletionContext& CollapseRightOr(const kiln::Function<void(SelectionMovementDeletionContext&)>& or_);
         SelectionMovementDeletionContext& MoveCursorPrevByCodePointOrEmoji();
         SelectionMovementDeletionContext& MoveCursorPrevByChar();
         SelectionMovementDeletionContext& MoveCursorNextByChar();
@@ -118,11 +119,11 @@ namespace kiln::foundation {
     class TextFieldKeyEventHandler {
     public:
         struct Callbacks {
-            std::function<void(KeyCommand, bool hardware)> clipboard;   // copy / cut / paste
-            std::function<bool()> onSubmit;                             // single line Enter
-            std::function<void()> deselect;
-            std::function<void()> showKeyboard;
-            std::function<void()> endDirectTouchInteraction;            // a keyboard key leaves touch mode
+            kiln::Function<void(KeyCommand, bool hardware)> clipboard;   // copy / cut / paste
+            kiln::Function<bool()> onSubmit;                             // single line Enter
+            kiln::Function<void()> deselect;
+            kiln::Function<void()> showKeyboard;
+            kiln::Function<void()> endDirectTouchInteraction;            // a keyboard key leaves touch mode
         };
         bool OnPreKeyEvent(const ui::KeyEvent& e, TransformedTextFieldState& state, const Callbacks& cb);
         bool OnKeyEvent(const ui::KeyEvent& e, TransformedTextFieldState& state, std::shared_ptr<const text::TextLayoutResult> layout,

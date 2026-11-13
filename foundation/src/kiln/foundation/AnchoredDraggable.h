@@ -11,6 +11,7 @@
 // animation runs restarts it towards the new target.
 
 #include "kiln/animation/Animatable.h"
+#include <kiln/Function.h>
 #include "kiln/foundation/Draggable.h"
 
 #include <cmath>
@@ -94,7 +95,7 @@ namespace kiln::foundation {
         std::vector<float> m_Positions;
     };
 
-    using PositionalThreshold = std::function<float(float totalDistance)>;
+    using PositionalThreshold = kiln::Function<float(float totalDistance)>;
 
     // AnchoredDraggableDefaults.
     namespace anchored_draggable {
@@ -123,9 +124,9 @@ namespace kiln::foundation {
     template<typename T>
     class AnchoredDraggableState final : public AnchoredDragTarget {
     public:
-        explicit AnchoredDraggableState(T initialValue, std::function<bool(const T&)> confirmValueChange = {})
+        explicit AnchoredDraggableState(T initialValue, kiln::Function<bool(const T&)> confirmValueChange = {})
             : m_Confirm(std::move(confirmValueChange)), m_Current(initialValue), m_Settled(initialValue) {}
-        AnchoredDraggableState(T initialValue, DraggableAnchors<T> anchors, std::function<bool(const T&)> confirmValueChange = {})
+        AnchoredDraggableState(T initialValue, DraggableAnchors<T> anchors, kiln::Function<bool(const T&)> confirmValueChange = {})
             : AnchoredDraggableState(std::move(initialValue), std::move(confirmValueChange)) {
             m_Anchors.Set(std::move(anchors));
             TrySnapTo(m_Current.Peek());
@@ -446,7 +447,7 @@ namespace kiln::foundation {
             }
         }
 
-        std::function<bool(const T&)> m_Confirm;
+        kiln::Function<bool(const T&)> m_Confirm;
         rt::State<T> m_Current, m_Settled;
         rt::State<float> m_Offset{ std::numeric_limits<float>::quiet_NaN() };
         rt::State<float> m_LastVelocity{ 0 };
@@ -473,10 +474,10 @@ namespace kiln::foundation {
         std::optional<Dp> velocityThreshold;
         // Runs once a release fling has settled, as a FlingBehavior that wraps the default one
         // and continues after it (not when the fling is cancelled).
-        std::function<rt::Task<>()> afterFling;
+        kiln::Function<rt::Task<>()> afterFling;
         // The release velocity as the fling should see it (a FlingBehavior that adjusts the
         // velocity before the default one: a sheet damps it near its floor).
-        std::function<float(float velocity)> transformVelocity;
+        kiln::Function<float(float velocity)> transformVelocity;
     };
 
     Modifier AnchoredDraggable(Modifier m, AnchoredDragTarget& state, Orientation orientation, AnchoredDraggableOptions options = {});

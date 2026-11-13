@@ -1,4 +1,5 @@
 #include "kiln/ui/Draw.h"
+#include <kiln/Function.h>
 
 #include <cstring>
 
@@ -67,7 +68,7 @@ namespace kiln::ui {
         m_Stack = std::move(r.stack);
     }
 
-    void DrawScope::Record(std::function<void(DrawScope&)> op) {
+    void DrawScope::Record(kiln::Function<void(DrawScope&)> op) {
         if (m_Recording) m_Recording->push_back(std::move(op));
         else op(*this);
     }
@@ -444,7 +445,7 @@ namespace kiln::ui {
         return f && m_Target.filters ? m_Target.filters->RowFor(*f) : -1;
     }
 
-    void DrawScope::FillLayered(const std::function<void()>& coverage, Rect bounds, const gfx::Brush& brush, float alpha, const gfx::ColorFilter* filter) {
+    void DrawScope::FillLayered(const kiln::Function<void()>& coverage, Rect bounds, const gfx::Brush& brush, float alpha, const gfx::ColorFilter* filter) {
         if (bounds.right <= bounds.left || bounds.bottom <= bounds.top) return;
         BeginLayer(bounds, alpha, nullptr, gfx::BlendMode::SrcOver, filter);
         coverage();

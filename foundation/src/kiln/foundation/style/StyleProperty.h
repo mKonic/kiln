@@ -11,6 +11,7 @@
 // properties use.
 
 #include "kiln/foundation/Shapes.h"
+#include <kiln/Function.h>
 #include "kiln/graphics/Brush.h"
 #include "kiln/graphics/shadow/Shadow.h"
 #include "kiln/text/TextStyle.h"
@@ -154,7 +155,7 @@ namespace kiln::foundation {
     template<typename T>
     class StyleProperty : public StylePropertyBase {
     public:
-        StyleProperty(std::string name, bool isLocal, std::function<T()> defaultValue)
+        StyleProperty(std::string name, bool isLocal, kiln::Function<T()> defaultValue)
             : StylePropertyBase(std::move(name), isLocal), m_Default(std::move(defaultValue)) {}
         T DefaultValue() const { return m_Default(); }
         virtual T Lerp(const T& a, const T& b, float t) const { return t < 0.5f ? a : b; }
@@ -168,7 +169,7 @@ namespace kiln::foundation {
             else return false;
         }
     private:
-        std::function<T()> m_Default;
+        kiln::Function<T()> m_Default;
     };
 
     // ProvidableStyleProperty<T>: a property a style can provide.
@@ -182,11 +183,11 @@ namespace kiln::foundation {
         template<typename T>
         class ObjectStyleProperty final : public ProvidableStyleProperty<T> {
         public:
-            ObjectStyleProperty(std::string name, bool local, std::function<T(const T&, const T&, float)> interpolate, std::function<T()> def)
+            ObjectStyleProperty(std::string name, bool local, kiln::Function<T(const T&, const T&, float)> interpolate, kiln::Function<T()> def)
                 : ProvidableStyleProperty<T>(std::move(name), local, std::move(def)), m_Interpolate(std::move(interpolate)) {}
             T Lerp(const T& a, const T& b, float t) const override { return m_Interpolate(a, b, t); }
         private:
-            std::function<T(const T&, const T&, float)> m_Interpolate;
+            kiln::Function<T(const T&, const T&, float)> m_Interpolate;
         };
     }
 
@@ -194,14 +195,14 @@ namespace kiln::foundation {
 
     // stylePropertyOf(name, interpolate, defaultValue): a property (not inherited).
     template<typename T>
-    StylePropertyRef<T> StylePropertyOf(std::string name, std::function<T()> defaultValue,
-                                        std::function<T(const T&, const T&, float)> interpolate = &DefaultStyleInterpolate<T>) {
+    StylePropertyRef<T> StylePropertyOf(std::string name, kiln::Function<T()> defaultValue,
+                                        kiln::Function<T(const T&, const T&, float)> interpolate = &DefaultStyleInterpolate<T>) {
         return std::make_shared<detail::ObjectStyleProperty<T>>(std::move(name), false, std::move(interpolate), std::move(defaultValue));
     }
     // styleLocalOf(name, interpolate, defaultValue): a local (inherited by the elements below).
     template<typename T>
-    StylePropertyRef<T> StyleLocalOf(std::string name, std::function<T()> defaultValue,
-                                     std::function<T(const T&, const T&, float)> interpolate = &DefaultStyleInterpolate<T>) {
+    StylePropertyRef<T> StyleLocalOf(std::string name, kiln::Function<T()> defaultValue,
+                                     kiln::Function<T(const T&, const T&, float)> interpolate = &DefaultStyleInterpolate<T>) {
         return std::make_shared<detail::ObjectStyleProperty<T>>(std::move(name), true, std::move(interpolate), std::move(defaultValue));
     }
 

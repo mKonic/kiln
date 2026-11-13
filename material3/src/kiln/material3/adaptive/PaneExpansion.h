@@ -11,6 +11,7 @@
 // clicking to expand, collapse or restore it).
 
 #include "kiln/animation/Spec.h"
+#include <kiln/Function.h>
 #include "kiln/foundation/Draggable.h"
 #include "kiln/foundation/Scroll.h"
 #include "kiln/material3/adaptive/PaneScaffoldValue.h"
@@ -60,7 +61,7 @@ namespace kiln::material3::adaptive {
         };
 
         explicit PaneExpansionState(std::shared_ptr<Data> data = std::make_shared<Data>(),
-                                    std::function<float(float)> consumeDragDelta = nullptr);
+                                    kiln::Function<float(float)> consumeDragDelta = nullptr);
 
         // The anchor the expansion is at (after settling or AnimateTo), if any.
         std::optional<PaneExpansionAnchor> CurrentAnchor() const { return m_Data.Get()->currentAnchor.Get(); }
@@ -106,7 +107,7 @@ namespace kiln::material3::adaptive {
 
         struct IndexedAnchorPosition { int position, index; };
         rt::State<std::shared_ptr<Data>> m_Data;
-        std::function<float(float)> m_ConsumeDragDelta;
+        kiln::Function<float(float)> m_ConsumeDragDelta;
         foundation::DraggableState m_Draggable;
         rt::State<bool> m_Settling{ false };
         rt::State<int> m_MaxExpansionWidth{ Unspecified };
@@ -126,7 +127,7 @@ namespace kiln::material3::adaptive {
         int initialAnchoredIndex = -1;
         anim::SpecPtr anchoringAnimationSpec;           // null: the default spring
         foundation::FlingBehavior flingBehavior;        // null: the platform spline decay
-        std::function<float(float)> consumeDragDelta;  // null: consumes nothing
+        kiln::Function<float(float)> consumeDragDelta;  // null: consumes nothing
     };
     // rememberPaneExpansionState(key / keyProvider, ...): the state of the expansion for `key`
     // (each key keeps its own, saved across configuration changes).
@@ -137,7 +138,7 @@ namespace kiln::material3::adaptive {
     }
     // rememberDefaultPaneExpansionState: a remembered state for the key when mutable (a drag
     // handle is shown), else a stub.
-    PaneExpansionState& RememberDefaultPaneExpansionState(std::function<PaneExpansionStateKey()> keyProvider, bool mutableState, rt::Key callKey = {});
+    PaneExpansionState& RememberDefaultPaneExpansionState(kiln::Function<PaneExpansionStateKey()> keyProvider, bool mutableState, rt::Key callKey = {});
 
     // --- DragToResizeState ----------------------------------------------------------------------
 

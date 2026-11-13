@@ -1,4 +1,5 @@
 #include "kiln/foundation/text/PlatformSelectionBehaviors.h"
+#include <kiln/Function.h>
 
 #include "kiln/runtime/Channel.h"
 #include "kiln/ui/LayoutNode.h"
@@ -98,7 +99,7 @@ namespace kiln::foundation {
     }
 
     void PlatformSelectionBehaviors::AddSmartSelectionTextContextMenuItems(TextContextMenuBuilderScope& scope, const std::u16string& text, TextRange selection,
-                                                                           const std::function<void(TextContextMenuBuilderScope&)>& child) {
+                                                                           const kiln::Function<void(TextContextMenuBuilderScope&)>& child) {
         // tryGetTextClassificationResult reads the kept result (observed: a new one rebuilds).
         const auto result = m_Result.Get();
         if (!result || result->selection != selection || result->text != text) {
@@ -114,7 +115,7 @@ namespace kiln::foundation {
 
     void AddPlatformTextContextMenuItems(TextContextMenuBuilderScope& scope, ui::Owner* owner, bool editable, const std::u16string* text,
                                          std::optional<TextRange> selection, PlatformSelectionBehaviors* behaviors,
-                                         const std::function<void(TextContextMenuBuilderScope&)>& child) {
+                                         const kiln::Function<void(TextContextMenuBuilderScope&)>& child) {
         if (!text || !selection || !behaviors) {
             child(scope);
             if (text && selection) AddProcessedTextContextMenuItems(scope, owner, editable, *text, *selection);

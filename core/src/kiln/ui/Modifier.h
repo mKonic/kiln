@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <kiln/Function.h>
 
 #include "kiln/graphics/Path.h"
 
@@ -52,7 +53,7 @@ namespace kiln::ui {
         std::optional<Alignment> boxAlign;// Box child
         bool matchParentSize = false;     // Box child
         const AlignmentLine* alignBy = nullptr;   // Row/Column child: align on this line
-        std::shared_ptr<const std::function<int(Placeable&)>> alignByBlock;   // ...or on this position
+        std::shared_ptr<const kiln::Function<int(Placeable&)>> alignByBlock;   // ...or on this position
         std::optional<float> fillCrossAxisFraction;   // FlowRow/FlowColumn child: of its line's cross size
         float fillHorizontalFraction = 0, fillVerticalFraction = 0;   // FillModifierParentData (FillMax): FlexBox's default grow
         std::optional<std::string> layoutId;          // Modifier.layoutId: how a custom layout finds this child
@@ -136,13 +137,13 @@ namespace kiln::ui {
     template<typename T>
     class ModifierLocal {
     public:
-        explicit ModifierLocal(std::function<T()> defaultFactory) : m_Default(std::move(defaultFactory)) {}
+        explicit ModifierLocal(kiln::Function<T()> defaultFactory) : m_Default(std::move(defaultFactory)) {}
         T Default() const { return m_Default(); }
     private:
-        std::function<T()> m_Default;
+        kiln::Function<T()> m_Default;
     };
     template<typename T> using ProvidableModifierLocal = ModifierLocal<T>;
-    template<typename T> ModifierLocal<T> ModifierLocalOf(std::function<T()> defaultFactory) { return ModifierLocal<T>(std::move(defaultFactory)); }
+    template<typename T> ModifierLocal<T> ModifierLocalOf(kiln::Function<T()> defaultFactory) { return ModifierLocal<T>(std::move(defaultFactory)); }
 
     class ModifierNode {
     public:
@@ -182,7 +183,7 @@ namespace kiln::ui {
         // ObserverModifierNode: observeReads runs `block` noting the state it reads; a change
         // to any of it calls OnObservedReadsChanged once (after the frame's changes apply).
         // Observe again from there to keep observing. Stops when the node detaches.
-        void ObserveReads(const std::function<void()>& block);
+        void ObserveReads(const kiln::Function<void()>& block);
         virtual void OnObservedReadsChanged() {}
 
         // ModifierLocalModifierNode: provide(local, value) for the nodes after this one and

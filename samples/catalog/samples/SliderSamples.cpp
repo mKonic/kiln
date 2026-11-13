@@ -1,5 +1,6 @@
 // SliderSamples.kt
 #include "SliderSamples.h"
+#include <kiln/Function.h>
 #include "Common.h"
 
 #include <kiln/animation/Animatable.h>
@@ -31,9 +32,9 @@ namespace catalog::samples {
             std::snprintf(buf, sizeof buf, "%.2f", double(v));
             return buf;
         }
-        void Padded(std::function<void()> content) { Column(Padding({}, 16_dp, 0_dp), Arrangement::Top(), AlignmentH::Start(), std::move(content)); }
-        std::function<void(float)> SetTo(m3::SliderState& s) { return [&s](float v) { s.SetValue(v); }; }
-        std::function<void(m3::SliderRange)> SetTo(m3::RangeSliderState& s) {
+        void Padded(kiln::Function<void()> content) { Column(Padding({}, 16_dp, 0_dp), Arrangement::Top(), AlignmentH::Start(), std::move(content)); }
+        kiln::Function<void(float)> SetTo(m3::SliderState& s) { return [&s](float v) { s.SetValue(v); }; }
+        kiln::Function<void(m3::SliderRange)> SetTo(m3::RangeSliderState& s) {
             return [&s](m3::SliderRange r) {
                 s.SetStartValue(r.start);
                 s.SetEndValue(r.endInclusive);
@@ -53,7 +54,7 @@ namespace catalog::samples {
             m3::SliderTrackOptions o;
             o.thumbTrackGapSize = 0_dp;
             o.trackInsideCornerSize = 0_dp;
-            o.drawStopIndicator = std::function<void(DrawScope&, Offset)>{};
+            o.drawStopIndicator = kiln::Function<void(DrawScope&, Offset)>{};
             return o;
         }
 
@@ -199,7 +200,7 @@ namespace catalog::samples {
                 };
                 m3::SliderTrackOptions t;
                 t.trackCornerSize = 12_dp;
-                t.drawStopIndicator = std::function<void(DrawScope&, Offset)>{};
+                t.drawStopIndicator = kiln::Function<void(DrawScope&, Offset)>{};
                 t.thumbTrackGapSize = thumbTrackGapSize;
                 SD::Track(sliderState, DrawWithContent(Height({}, 36_dp), [&sliderState, startIcon, endIcon, activeIconColor, inactiveIconColor,
                                                                           drawIcon](ContentDrawScope& d) {

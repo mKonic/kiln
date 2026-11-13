@@ -4,6 +4,7 @@
 // start, or both), showing its background as it moves; onDismiss runs once it settles away.
 
 #include "kiln/foundation/AnchoredDraggable.h"
+#include <kiln/Function.h>
 #include "kiln/runtime/Task.h"
 #include "kiln/ui/Modifier.h"
 
@@ -18,8 +19,8 @@ namespace kiln::material3 {
     public:
         // positionalThreshold: how far (of the total distance, in px) a release must have moved
         // to dismiss. confirmValueChange: the deprecated veto (vetoed swipes settle back).
-        SwipeToDismissBoxState(SwipeToDismissBoxValue initialValue, std::function<float(float totalDistance)> positionalThreshold,
-                               std::function<bool(SwipeToDismissBoxValue)> confirmValueChange = {});
+        SwipeToDismissBoxState(SwipeToDismissBoxValue initialValue, kiln::Function<float(float totalDistance)> positionalThreshold,
+                               kiln::Function<bool(SwipeToDismissBoxValue)> confirmValueChange = {});
 
         float RequireOffset() const { return m_Anchored.RequireOffset(); }
         // Reading these subscribes.
@@ -38,30 +39,30 @@ namespace kiln::material3 {
         // Internal.
         foundation::AnchoredDraggableState<SwipeToDismissBoxValue>& Anchored() { return m_Anchored; }
         const foundation::AnchoredDraggableState<SwipeToDismissBoxValue>& Anchored() const { return m_Anchored; }
-        const std::function<float(float)>& PositionalThreshold() const { return m_PositionalThreshold; }
+        const kiln::Function<float(float)>& PositionalThreshold() const { return m_PositionalThreshold; }
 
     private:
-        std::function<float(float)> m_PositionalThreshold;
+        kiln::Function<float(float)> m_PositionalThreshold;
         foundation::AnchoredDraggableState<SwipeToDismissBoxValue> m_Anchored;
     };
 
     namespace SwipeToDismissBoxDefaults {
         // 56 dp, whatever the distance.
-        std::function<float(float totalDistance)> positionalThreshold();
+        kiln::Function<float(float totalDistance)> positionalThreshold();
     }
 
     // rememberSwipeToDismissBoxState: the value survives re-creation. Null threshold: the default.
     std::shared_ptr<SwipeToDismissBoxState> RememberSwipeToDismissBoxState(SwipeToDismissBoxValue initialValue = SwipeToDismissBoxValue::Settled,
-                                                                           std::function<float(float)> positionalThreshold = {},
-                                                                           std::function<bool(SwipeToDismissBoxValue)> confirmValueChange = {}, rt::Key key = {});
+                                                                           kiln::Function<float(float)> positionalThreshold = {},
+                                                                           kiln::Function<bool(SwipeToDismissBoxValue)> confirmValueChange = {}, rt::Key key = {});
 
     struct SwipeToDismissBoxOptions {
         bool enableDismissFromStartToEnd = true, enableDismissFromEndToStart = true;
         bool gesturesEnabled = true;
-        std::function<void(SwipeToDismissBoxValue)> onDismiss;
+        kiln::Function<void(SwipeToDismissBoxValue)> onDismiss;
     };
     // backgroundContent fills the box behind content (both are rows).
-    void SwipeToDismissBox(std::shared_ptr<SwipeToDismissBoxState> state, std::function<void()> backgroundContent, const ui::Modifier& modifier,
-                           const SwipeToDismissBoxOptions& options, std::function<void()> content);
+    void SwipeToDismissBox(std::shared_ptr<SwipeToDismissBoxState> state, kiln::Function<void()> backgroundContent, const ui::Modifier& modifier,
+                           const SwipeToDismissBoxOptions& options, kiln::Function<void()> content);
 
 }

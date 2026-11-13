@@ -3,6 +3,7 @@
 // Switch.kt: static state colors, animated/pressed thumb geometry and optional thumb content.
 
 #include "kiln/foundation/Interaction.h"
+#include <kiln/Function.h>
 
 #include <optional>
 
@@ -34,10 +35,10 @@ namespace kiln::material3 {
     struct SwitchOptions {
         bool enabled = true;
         std::optional<SwitchColors> colors;
-        std::function<void()> thumbContent;
+        kiln::Function<void()> thumbContent;
         std::shared_ptr<foundation::MutableInteractionSource> interactionSource;
     };
-    void Switch(bool checked, std::function<void(bool)> onCheckedChange, const ui::Modifier& modifier = {}, const SwitchOptions& options = {});
+    void Switch(bool checked, kiln::Function<void(bool)> onCheckedChange, const ui::Modifier& modifier = {}, const SwitchOptions& options = {});
     namespace SwitchDefaults {
         inline constexpr ui::Dp IconSize{ 16 };
         SwitchColors colors();

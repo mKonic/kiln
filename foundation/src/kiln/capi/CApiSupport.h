@@ -4,6 +4,7 @@
 // the C types to kiln's, callback ownership and the transient modifier arena.
 
 #include <kiln/kiln.h>
+#include <kiln/Function.h>
 
 #include "kiln/animation/Spec.h"
 #include "kiln/foundation/Arrangement.h"
@@ -92,11 +93,11 @@ namespace kiln::capi {
     }
 
     // C callbacks as std::function (empty when absent).
-    std::function<void()> Fn(kiln_fn f);
-    std::function<void(bool)> Fn(kiln_fn_bool f);
-    std::function<void(int)> Fn(kiln_fn_int f);
-    std::function<void(float)> Fn(kiln_fn_float f);
-    std::function<void(const std::string&)> Fn(kiln_fn_str f);
+    kiln::Function<void()> Fn(kiln_fn f);
+    kiln::Function<void(bool)> Fn(kiln_fn_bool f);
+    kiln::Function<void(int)> Fn(kiln_fn_int f);
+    kiln::Function<void(float)> Fn(kiln_fn_float f);
+    kiln::Function<void(const std::string&)> Fn(kiln_fn_str f);
 
     // Values.
     inline rt::Key ToKey(kiln_key k) {
@@ -213,8 +214,8 @@ namespace kiln::capi {
 
     // Runs `body` in the call's own group when inside content (non-restartable, so it may return
     // values), or directly outside content.
-    void InGroup(kiln_key key, const std::function<void()>& body);
+    void InGroup(kiln_key key, const kiln::Function<void()>& body);
     // A suspending call: runs `task` in `scope`, then `done` (also when cancelled).
-    void LaunchIn(const std::shared_ptr<rt::CoroutineScope>& scope, std::function<rt::Task<>()> task, kiln_fn done);
+    void LaunchIn(const std::shared_ptr<rt::CoroutineScope>& scope, kiln::Function<rt::Task<>()> task, kiln_fn done);
 
 }

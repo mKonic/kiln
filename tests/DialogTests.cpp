@@ -1,4 +1,5 @@
 #include "Check.h"
+#include <kiln/Function.h>
 
 #include "kiln/foundation/Compose.h"
 #include "kiln/foundation/Dialog.h"
@@ -26,11 +27,11 @@ TEST(DialogOpensAPlatformWindowWithItsOwnOwner) {
     owner.SetDensity({ 2, 1 });
     rt::Composition comp{ owner.Root(), rt::Dispatcher::Main() };
     Owner* content = nullptr;
-    std::function<void()> dismiss;
+    kiln::Function<void()> dismiss;
     std::vector<DialogWindowProperties> created, updates;
     int alive = 0;
     DialogHost host;
-    host.create = [&](Owner& o, const DialogWindowProperties& p, std::function<void()> onDismiss) {
+    host.create = [&](Owner& o, const DialogWindowProperties& p, kiln::Function<void()> onDismiss) {
         content = &o;
         created.push_back(p);
         dismiss = std::move(onDismiss);
@@ -83,11 +84,11 @@ TEST(DialogOpensAPlatformWindowWithItsOwnOwner) {
 TEST(DialogBackRespectsDismissOnBackPress) {
     Owner owner;
     rt::Composition comp{ owner.Root(), rt::Dispatcher::Main() };
-    std::function<void()> dismiss;
+    kiln::Function<void()> dismiss;
     int alive = 0;
     std::vector<DialogWindowProperties> updates;
     DialogHost host;
-    host.create = [&](Owner&, const DialogWindowProperties&, std::function<void()> d) { dismiss = std::move(d); return std::make_unique<FakeDialog>(&updates, &alive); };
+    host.create = [&](Owner&, const DialogWindowProperties&, kiln::Function<void()> d) { dismiss = std::move(d); return std::make_unique<FakeDialog>(&updates, &alive); };
     owner.SetDialogHost(host);
     int dismissals = 0;
     comp.SetContent([&] {
@@ -121,7 +122,7 @@ TEST(DialogContentIsDisposedBeforeItsWindowCloses) {
         void Update(const DialogWindowProperties&) override {}
     };
     DialogHost host;
-    host.create = [&](Owner&, const DialogWindowProperties&, std::function<void()>) { return std::make_unique<OrderedDialog>(&order); };
+    host.create = [&](Owner&, const DialogWindowProperties&, kiln::Function<void()>) { return std::make_unique<OrderedDialog>(&order); };
     owner.SetDialogHost(host);
     auto shown = std::make_shared<rt::State<bool>>(true);
     comp.SetContent([&] {
@@ -129,7 +130,7 @@ TEST(DialogContentIsDisposedBeforeItsWindowCloses) {
             if (shown->Get())
                 Dialog([] {}, {}, [&] {
                     rt::Composition::Current()->DisposableEffect(rt::Keys(0), [&] {
-                        return std::function<void()>([&] { order.push_back("content"); });
+                        return kiln::Function<void()>([&] { order.push_back("content"); });
                     });
                 });
         });

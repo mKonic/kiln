@@ -1,4 +1,5 @@
 #include "kiln/material3/MaterialTheme.h"
+#include <kiln/Function.h>
 
 #include "kiln/foundation/text/Selection.h"
 #include "kiln/material3/Ripple.h"
@@ -25,7 +26,7 @@ namespace kiln::material3 {
     const Shapes& MaterialTheme::shapes() { return Comp().Read(LocalMaterialTheme()).shapes; }
     const MotionSchemePtr& MaterialTheme::motionScheme() { return Comp().Read(LocalMaterialTheme()).motionScheme; }
 
-    void MaterialTheme(const MaterialThemeArgs& args, std::function<void()> content) {
+    void MaterialTheme(const MaterialThemeArgs& args, kiln::Function<void()> content) {
         auto& c = Comp();
         const MaterialThemeValues& current = c.Read(LocalMaterialTheme());
         MaterialThemeValues theme;
@@ -46,7 +47,7 @@ namespace kiln::material3 {
         });
     }
 
-    void MaterialExpressiveTheme(const MaterialThemeArgs& args, std::function<void()> content) {
+    void MaterialExpressiveTheme(const MaterialThemeArgs& args, kiln::Function<void()> content) {
         auto& c = Comp();
         if (c.Read(LocalUsingExpressiveTheme)) {
             MaterialTheme(args, std::move(content));
@@ -70,7 +71,7 @@ namespace kiln::material3 {
         return local;
     }
 
-    void ProvideTextStyle(const text::TextStyle& value, std::function<void()> content) {
+    void ProvideTextStyle(const text::TextStyle& value, kiln::Function<void()> content) {
         auto& c = Comp();
         text::TextStyle merged = c.Read(LocalTextStyle()).Merge(value);
         c.Provide(LocalTextStyle(), std::move(merged), std::move(content));

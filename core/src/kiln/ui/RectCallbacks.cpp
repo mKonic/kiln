@@ -1,4 +1,5 @@
 #include "kiln/ui/RectCallbacks.h"
+#include <kiln/Function.h>
 
 #include "kiln/ui/LayoutNode.h"
 
@@ -13,7 +14,7 @@ namespace kiln::ui {
         std::weak_ptr<const char> alive;
         bool global = false;
         std::int64_t throttle = 0, debounce = 0;
-        std::function<void(const RelativeLayoutBounds&)> callback;
+        kiln::Function<void(const RelativeLayoutBounds&)> callback;
         IntRect rect;
         bool hasRect = false;
         std::int64_t lastInvoke = LLONG_MIN, lastUninvoked = -1;
@@ -61,7 +62,7 @@ namespace kiln::ui {
             while (a != b) { la = a; lb = b; a = a->Parent(); b = b->Parent(); if (!a || !b) return false; }
             return la->ZIndex() == lb->ZIndex() ? la->PlaceOrder() < lb->PlaceOrder() : la->ZIndex() < lb->ZIndex();
         };
-        std::function<void(const LayoutNode*)> walk = [&](const LayoutNode* n) {
+        kiln::Function<void(const LayoutNode*)> walk = [&](const LayoutNode* n) {
             if (n != m_Node && n->IsPlaced() && drawnFirst(m_Node, n)) {
                 const IntRect r = RectOf(*n);
                 const IntRect c{ std::max(r.left, m_Bounds.left), std::max(r.top, m_Bounds.top), std::min(r.right, m_Bounds.right), std::min(r.bottom, m_Bounds.bottom) };
@@ -74,7 +75,7 @@ namespace kiln::ui {
     }
 
     RegistrationHandle RectRegistry::Register(const ModifierNode& node, bool global, std::int64_t throttle, std::int64_t debounce,
-                                              std::function<void(const RelativeLayoutBounds&)> callback) {
+                                              kiln::Function<void(const RelativeLayoutBounds&)> callback) {
         auto e = std::make_shared<Entry>();
         e->node = node.Owner();
         e->alive = node.AliveToken();
@@ -148,13 +149,13 @@ namespace kiln::ui {
     }
 
     RegistrationHandle RegisterOnLayoutRectChanged(const ModifierNode& node, std::int64_t throttle, std::int64_t debounce,
-                                                   std::function<void(const RelativeLayoutBounds&)> callback) {
+                                                   kiln::Function<void(const RelativeLayoutBounds&)> callback) {
         Owner* o = node.Owner() ? node.Owner()->GetOwner() : nullptr;
         if (!o) return {};
         return o->Rects().Register(node, false, throttle, debounce, std::move(callback));
     }
     RegistrationHandle RegisterOnGlobalLayoutListener(const ModifierNode& node, std::int64_t throttle, std::int64_t debounce,
-                                                      std::function<void(const RelativeLayoutBounds&)> callback) {
+                                                      kiln::Function<void(const RelativeLayoutBounds&)> callback) {
         Owner* o = node.Owner() ? node.Owner()->GetOwner() : nullptr;
         if (!o) return {};
         return o->Rects().Register(node, true, throttle, debounce, std::move(callback));

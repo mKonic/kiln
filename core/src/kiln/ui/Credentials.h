@@ -7,6 +7,7 @@
 // GetPasswordOption and GetPublicKeyCredentialOption build the bundles androidx.credentials does.
 
 #include <cstdint>
+#include <kiln/Function.h>
 #include <functional>
 #include <optional>
 #include <stdexcept>
@@ -63,9 +64,9 @@ namespace kiln::ui {
     struct CredentialRequestData {
         std::vector<CredentialOption> options;   // GetCredentialRequest's options, in order
         Bundle data;                             // GetCredentialRequest's data
-        std::function<void(const Credential&)> onResult;
+        kiln::Function<void(const Credential&)> onResult;
         // GetCredentialException's type and message.
-        std::function<void(const std::string& type, const std::string& message)> onError;
+        kiln::Function<void(const std::string& type, const std::string& message)> onError;
     };
 
     namespace credentials {

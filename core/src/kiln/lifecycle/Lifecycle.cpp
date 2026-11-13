@@ -1,4 +1,5 @@
 #include "kiln/lifecycle/Lifecycle.h"
+#include <kiln/Function.h>
 
 #include "kiln/runtime/Channel.h"
 
@@ -67,10 +68,10 @@ namespace kiln::lifecycle {
     namespace {
         class CallbackObserver final : public LifecycleEventObserver {
         public:
-            explicit CallbackObserver(std::function<void(LifecycleOwner&, Event)> f) : m_F(std::move(f)) {}
+            explicit CallbackObserver(kiln::Function<void(LifecycleOwner&, Event)> f) : m_F(std::move(f)) {}
             void OnStateChanged(LifecycleOwner& source, Event event) override { m_F(source, event); }
         private:
-            std::function<void(LifecycleOwner&, Event)> m_F;
+            kiln::Function<void(LifecycleOwner&, Event)> m_F;
         };
 
         // Lifecycling.lifecycleEventObserver / DefaultLifecycleObserverAdapter: a
@@ -104,10 +105,10 @@ namespace kiln::lifecycle {
         };
     }
 
-    std::shared_ptr<LifecycleEventObserver> MakeEventObserver(std::function<void(LifecycleOwner&, Event)> action) {
+    std::shared_ptr<LifecycleEventObserver> MakeEventObserver(kiln::Function<void(LifecycleOwner&, Event)> action) {
         return std::make_shared<CallbackObserver>(std::move(action));
     }
-    std::shared_ptr<LifecycleEventObserver> AddObserver(Lifecycle& lifecycle, std::function<void(LifecycleOwner&, Event)> action) {
+    std::shared_ptr<LifecycleEventObserver> AddObserver(Lifecycle& lifecycle, kiln::Function<void(LifecycleOwner&, Event)> action) {
         auto o = MakeEventObserver(std::move(action));
         lifecycle.AddObserver(o);
         return o;
@@ -166,7 +167,7 @@ namespace kiln::lifecycle {
 
     // ---- eventFlow -------------------------------------------------------------------------
 
-    rt::Task<> LifecycleEventFlow::Collect(std::function<void(Event)> collector) const {
+    rt::Task<> LifecycleEventFlow::Collect(kiln::Function<void(Event)> collector) const {
         Lifecycle* lifecycle = m_Lifecycle;
         auto channel = std::make_shared<rt::Channel<Event>>(64);
         std::weak_ptr<rt::Channel<Event>> weak = channel;

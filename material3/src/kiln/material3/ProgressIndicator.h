@@ -4,6 +4,7 @@
 // animation. Indeterminate indicators share the source's repeating animation specs.
 
 #include "kiln/foundation/Draw.h"
+#include <kiln/Function.h>
 #include "kiln/animation/Spec.h"
 
 #include <optional>
@@ -14,16 +15,16 @@ namespace kiln::material3 {
         gfx::StrokeCap strokeCap = gfx::StrokeCap::Round;
         ui::Dp gapSize{4};
         // Unset: the default stop dot. An engaged, empty callback disables it.
-        std::optional<std::function<void(ui::DrawScope&)>> drawStopIndicator;
+        std::optional<kiln::Function<void(ui::DrawScope&)>> drawStopIndicator;
     };
     struct CircularProgressIndicatorOptions {
         ui::Color color = ui::Color::Unspecified(), trackColor = ui::Color::Unspecified();
         ui::Dp strokeWidth{4}, gapSize{4};
         gfx::StrokeCap strokeCap = gfx::StrokeCap::Round;
     };
-    void LinearProgressIndicator(std::function<float()> progress, const ui::Modifier& modifier = {}, const LinearProgressIndicatorOptions& options = {});
+    void LinearProgressIndicator(kiln::Function<float()> progress, const ui::Modifier& modifier = {}, const LinearProgressIndicatorOptions& options = {});
     void LinearProgressIndicator(const ui::Modifier& modifier = {}, const LinearProgressIndicatorOptions& options = {});
-    void CircularProgressIndicator(std::function<float()> progress, const ui::Modifier& modifier = {}, const CircularProgressIndicatorOptions& options = {});
+    void CircularProgressIndicator(kiln::Function<float()> progress, const ui::Modifier& modifier = {}, const CircularProgressIndicatorOptions& options = {});
     void CircularProgressIndicator(const ui::Modifier& modifier = {}, const CircularProgressIndicatorOptions& options = {});
 
     namespace ProgressIndicatorDefaults {

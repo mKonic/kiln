@@ -1,6 +1,7 @@
 // draggable2D, scrollable2D and rememberScrollableState: drags in any direction after the slop,
 // flings that decay on both axes.
 #include "Check.h"
+#include <kiln/Function.h>
 
 #include "kiln/foundation/Compose.h"
 #include "kiln/foundation/Layouts.h"
@@ -23,7 +24,7 @@ namespace {
         std::int64_t t = 0;
         Harness() { owner.SetDensity({ 1, 1 }); }
         ~Harness() { composition.SetContent([] {}); Pump(); }
-        void Run(std::function<void()> content) { composition.SetContent(std::move(content)); Pump(); }
+        void Run(kiln::Function<void()> content) { composition.SetContent(std::move(content)); Pump(); }
         void Pump() {
             rt::Dispatcher::Main().RunPending();
             rt::Composition::RecomposeAll();

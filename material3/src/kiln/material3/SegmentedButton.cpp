@@ -1,4 +1,5 @@
 #include "kiln/material3/SegmentedButton.h"
+#include <kiln/Function.h>
 
 #include "kiln/animation/Animatable.h"
 #include "kiln/foundation/Gestures.h"
@@ -15,7 +16,7 @@ namespace kiln::material3 {
     using namespace tokens;
 
     namespace {
-        using Content = std::function<void()>;
+        using Content = kiln::Function<void()>;
         struct ZParams {
             bool active;
             std::shared_ptr<rt::State<int>> interactions;
@@ -149,7 +150,7 @@ namespace kiln::material3 {
         Surface(selected, std::move(onClick), m, Options(selected, std::move(shape), o),
                 [=] { ButtonContent(IconContent(selected, o), label, o.contentPadding.value_or(SegmentedButtonDefaults::ContentPadding)); }, o.enabled, source);
     }
-    void SegmentedButton(bool checked, std::function<void(bool)> onChange, ShapePtr shape, Content label, const Modifier& modifier, const SegmentedButtonOptions& o) {
+    void SegmentedButton(bool checked, kiln::Function<void(bool)> onChange, ShapePtr shape, Content label, const Modifier& modifier, const SegmentedButtonOptions& o) {
         const auto source = o.interactionSource ? o.interactionSource : RememberInteractionSource();
         Surface(checked, std::move(onChange), ButtonModifier(modifier, checked, source), Options(checked, std::move(shape), o),
                 [=] { ButtonContent(IconContent(checked, o), label, o.contentPadding.value_or(SegmentedButtonDefaults::ContentPadding)); }, o.enabled, source);

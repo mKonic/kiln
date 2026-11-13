@@ -1,4 +1,5 @@
 #include "kiln/material3/TimePicker.h"
+#include <kiln/Function.h>
 
 #include "kiln/animation/Animatable.h"
 #include "kiln/foundation/AnimatedVisibility.h"
@@ -420,7 +421,7 @@ namespace kiln::material3 {
         }
 
         void TimeSelector(const ui::Modifier& modifier, int value, TimePickerState* st, Sel selection, const TimeInputColors& colors, bool isValid,
-                          const std::optional<TimePickerShapes>& shapes, std::function<void()> onSelectorActivated = {}) {
+                          const std::optional<TimePickerShapes>& shapes, kiln::Function<void()> onSelectorActivated = {}) {
             const bool selected = st->Selection() == selection;
             const std::string description = GetString(selection == Sel::Hour ? Strings::TimePickerHourSelection : Strings::TimePickerMinuteSelection);
             const auto& scheme = MaterialTheme::colorScheme();
@@ -510,7 +511,7 @@ namespace kiln::material3 {
         }
 
         // An AM or PM button in the side column (40 dp inside a 48 dp target).
-        void SideControlItem(bool checked, std::function<void()> onClick, const TimeInputColors& colors, std::function<void()> content) {
+        void SideControlItem(bool checked, kiln::Function<void()> onClick, const TimeInputColors& colors, kiln::Function<void()> content) {
             rt::Composition::Current()->Provide(LocalMinimumInteractiveComponentSize, MinimumInteractiveSize, [=] {
                 Box(DefaultMinSize({}, MinimumInteractiveSize, MinimumInteractiveSize), ui::Alignment::Center(), false, [=] {
                     ui::Modifier m = ZIndex({}, checked ? 0.0f : 1.0f);
@@ -522,8 +523,8 @@ namespace kiln::material3 {
             });
         }
 
-        void ToggleItem(bool checked, std::function<void()> onClick, const TimeInputColors& colors, const ShapePtr& shape,
-                        const std::optional<TimePickerShapes>& shapes, std::function<void()> content) {
+        void ToggleItem(bool checked, kiln::Function<void()> onClick, const TimeInputColors& colors, const ShapePtr& shape,
+                        const std::optional<TimePickerShapes>& shapes, kiln::Function<void()> content) {
             ui::Modifier m = FillMax(ZIndex({}, checked ? 0.0f : 1.0f), Axis::Both);
             m = SelectedSemantics(std::move(m), checked);
             const PaddingValues padding{ PeriodTogglePaddingSmall, Dp(0), PeriodTogglePaddingSmall, Dp(0) };
@@ -539,7 +540,7 @@ namespace kiln::material3 {
         }
 
         void PeriodToggleImpl(const ui::Modifier& modifier, TimePickerState* st, const TimeInputColors& colors, std::shared_ptr<ui::MeasurePolicy> policy,
-                              ShapePtr startShape, ShapePtr endShape, const std::optional<TimePickerShapes>& shapes, std::function<void()> toggle = {}) {
+                              ShapePtr startShape, ShapePtr endShape, const std::optional<TimePickerShapes>& shapes, kiln::Function<void()> toggle = {}) {
             const std::string description = GetString(Strings::TimePickerPeriodToggle);
             const bool updated = UseUpdatedToggle(shapes);
             const bool side = bool(toggle);
@@ -657,7 +658,7 @@ namespace kiln::material3 {
 
         // AM, PM and the mode toggle in a column beside the fields (uncontained pickers).
         void SideControlColumn(const ui::Modifier& modifier, TimePickerState* st, const TimeInputColors& colors, const std::optional<TimePickerShapes>& shapes,
-                               std::function<void()> toggle) {
+                               kiln::Function<void()> toggle) {
             auto policy = std::make_shared<ui::LambdaMeasurePolicy>([](ui::MeasureScope& s, std::span<ui::Measurable* const> children, const ui::Constraints& c) {
                 const int tap = s.RoundToPx(MinimumInteractiveSize);
                 std::vector<ui::Placeable*> items;
@@ -756,7 +757,7 @@ namespace kiln::material3 {
 
         // Spreads the children evenly on a circle of radius height * ratio (an "InnerCircle"
         // child sits in the middle).
-        void CircularLayout(const ui::Modifier& modifier, float radiusToSizeRatio, std::function<void()> content) {
+        void CircularLayout(const ui::Modifier& modifier, float radiusToSizeRatio, kiln::Function<void()> content) {
             auto policy = std::make_shared<ui::LambdaMeasurePolicy>([radiusToSizeRatio](ui::MeasureScope& s, std::span<ui::Measurable* const> children,
                                                                                          const ui::Constraints& c) {
                 const float radius = float(c.maxHeight) * radiusToSizeRatio;
@@ -1161,7 +1162,7 @@ namespace kiln::material3 {
 
         // TimeInputErrorHandler: a reject haptic and the invalid key sound (not under touch
         // exploration, where the sound would talk over the screen reader).
-        std::function<void()> RememberTimeInputErrorHandler(bool isTouchExplorationEnabled) {
+        kiln::Function<void()> RememberTimeInputErrorHandler(bool isTouchExplorationEnabled) {
             auto& c = *rt::Composition::Current();
             auto haptics = c.Read(ui::LocalHapticFeedback);
             auto* owner = c.Read(ui::LocalOwner);
@@ -1172,7 +1173,7 @@ namespace kiln::material3 {
         }
 
         InputTransformationPtr TimeInputTransformation(Sel fieldSelection, TimePickerState* st, std::shared_ptr<std::optional<bool>> userOverride,
-                                                       bool a11yServicesEnabled, std::function<void()> onError) {
+                                                       bool a11yServicesEnabled, kiln::Function<void()> onError) {
             return InputTransformationOf([=](TextFieldBuffer& b) {
                 if (b.Length() == 0) {
                     if (fieldSelection == Sel::Hour) {
@@ -1257,7 +1258,7 @@ namespace kiln::material3 {
         }
 
         void TimePickerTextField(const ui::Modifier& modifier, TextFieldState& textFieldState, TimePickerState* st, Sel selection,
-                                 KeyboardOptions keyboardOptions, std::function<void()> onKeyboardAction, InputTransformationPtr inputTransformation,
+                                 KeyboardOptions keyboardOptions, kiln::Function<void()> onKeyboardAction, InputTransformationPtr inputTransformation,
                                  const TimeInputColors& colors, const std::optional<TimePickerShapes>& shapes, Dp vibrantHeight) {
             auto& c = *rt::Composition::Current();
             auto& focusRequester = c.Remember<std::shared_ptr<ui::FocusRequester>>([] { return std::make_shared<ui::FocusRequester>(); });
@@ -1286,14 +1287,14 @@ namespace kiln::material3 {
                     BasicTextFieldOptions o;
                     o.inputTransformation = inputTransformation;
                     o.keyboardOptions = keyboardOptions;
-                    if (onKeyboardAction) o.onKeyboardAction = [onKeyboardAction](std::function<void()>) { onKeyboardAction(); };
+                    if (onKeyboardAction) o.onKeyboardAction = [onKeyboardAction](kiln::Function<void()>) { onKeyboardAction(); };
                     o.lineLimits = TextFieldLineLimits::SingleLine();
                     o.textStyle = textStyle;
                     o.interactionSource = source;
                     // A cursor over the middle 80 % of the line.
                     o.cursorBrush = gfx::Brush::LinearGradient({ Color::Transparent(), Color::Transparent(), cursor, cursor, Color::Transparent(), Color::Transparent() },
                                                                { 0, 0 }, { 0, gfx::Brush::kInf }, gfx::TileMode::Clamp, { 0.0f, 0.1f, 0.1f, 0.9f, 0.9f, 1.0f });
-                    o.decorator = [tfs, isValid, textFieldColors, source, shape](const std::function<void()>& inner) {
+                    o.decorator = [tfs, isValid, textFieldColors, source, shape](const kiln::Function<void()>& inner) {
                         mi::CommonDecorationBox(ToUtf8(tfs->Text()), inner, TextFieldLabelPosition::Cutout(), {}, true, true, !isValid, source,
                                                 PaddingValues{ Dp(0), Dp(0), Dp(0), Dp(0) }, textFieldColors, [isValid, source, textFieldColors, shape] {
                                                     OutlinedTextFieldDefaults::Container(true, !isValid, source, {}, textFieldColors, shape, Dp(2), Dp(1));
@@ -1338,7 +1339,7 @@ namespace kiln::material3 {
         }
 
         void TimeInputImpl(const ui::Modifier& modifier, const TimeInputColors& colors, TimePickerState& timePickerState,
-                           const std::optional<TimePickerShapes>& shapes, std::function<void()> toggle) {
+                           const std::optional<TimePickerShapes>& shapes, kiln::Function<void()> toggle) {
             auto& c = *rt::Composition::Current();
             TimePickerState* st = &timePickerState;
             auto hourTextValue = [st] { return LocalNumber(IsHourInputValid(*st) ? HourForDisplay(*st) : st->HourInput(), 2); };
@@ -1447,7 +1448,7 @@ namespace kiln::material3 {
         auto& c = *rt::Composition::Current();
         const TimePickerColors colors = options.colors.value_or(TimePickerDefaults::vibrantColors());
         const std::optional<TimePickerShapes> vibrant = shapes;
-        const std::function<void()> toggle = options.toggle;
+        const kiln::Function<void()> toggle = options.toggle;
         TimePickerState* st = &state;
         auto hourField = RememberScrollFieldState(state.Is24Hour() ? 24 : 12, HourScrollIndex(state));
         auto minuteField = RememberScrollFieldState(60, state.Minute());

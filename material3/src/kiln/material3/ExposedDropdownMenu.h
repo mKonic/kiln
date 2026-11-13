@@ -6,6 +6,7 @@
 // below the anchor (above when there is no room), as wide as the anchor.
 
 #include "kiln/foundation/Border.h"
+#include <kiln/Function.h>
 #include "kiln/foundation/Scroll.h"
 #include "kiln/foundation/Shapes.h"
 #include "kiln/material3/TextFieldColors.h"
@@ -48,8 +49,8 @@ namespace kiln::material3 {
         std::shared_ptr<internal::ExposedDropdownMenuBoxState> m_State;
     };
 
-    void ExposedDropdownMenuBox(bool expanded, std::function<void(bool)> onExpandedChange, const ui::Modifier& modifier,
-                                std::function<void(const ExposedDropdownMenuBoxScope&)> content);
+    void ExposedDropdownMenuBox(bool expanded, kiln::Function<void(bool)> onExpandedChange, const ui::Modifier& modifier,
+                                kiln::Function<void(const ExposedDropdownMenuBoxScope&)> content);
 
     struct ExposedDropdownMenuOptions {
         foundation::ScrollState* scrollState = nullptr;   // null: remembered
@@ -61,8 +62,8 @@ namespace kiln::material3 {
         std::optional<foundation::BorderStroke> border;
     };
     // ExposedDropdownMenuBoxScope.ExposedDropdownMenu: the menu, in a popup by the anchor.
-    void ExposedDropdownMenu(const ExposedDropdownMenuBoxScope& scope, bool expanded, std::function<void()> onDismissRequest,
-                             const ui::Modifier& modifier, const ExposedDropdownMenuOptions& options, std::function<void()> content);
+    void ExposedDropdownMenu(const ExposedDropdownMenuBoxScope& scope, bool expanded, kiln::Function<void()> onDismissRequest,
+                             const ui::Modifier& modifier, const ExposedDropdownMenuOptions& options, kiln::Function<void()> content);
 
     namespace ExposedDropdownMenuDefaults {
         // An arrow that points down, and up while expanded.

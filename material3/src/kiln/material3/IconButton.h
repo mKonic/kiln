@@ -4,6 +4,7 @@
 // forms, with 48 dp minimum targets, optional Expressive shape morphing and five sizes.
 
 #include "kiln/foundation/Border.h"
+#include <kiln/Function.h>
 #include "kiln/foundation/Interaction.h"
 #include "kiln/foundation/Shapes.h"
 
@@ -67,18 +68,18 @@ namespace kiln::material3 {
         std::shared_ptr<foundation::MutableInteractionSource> interactionSource;
     };
 
-    void IconButton(std::function<void()> onClick, const ui::Modifier& modifier, const IconButtonOptions& options, std::function<void()> content);
-    void FilledIconButton(std::function<void()> onClick, const ui::Modifier& modifier, const IconButtonOptions& options, std::function<void()> content);
-    void FilledTonalIconButton(std::function<void()> onClick, const ui::Modifier& modifier, const IconButtonOptions& options, std::function<void()> content);
-    void OutlinedIconButton(std::function<void()> onClick, const ui::Modifier& modifier, const IconButtonOptions& options, std::function<void()> content);
-    void IconToggleButton(bool checked, std::function<void(bool)> onCheckedChange, const ui::Modifier& modifier,
-                          const IconToggleButtonOptions& options, std::function<void()> content);
-    void FilledIconToggleButton(bool checked, std::function<void(bool)> onCheckedChange, const ui::Modifier& modifier,
-                                const IconToggleButtonOptions& options, std::function<void()> content);
-    void FilledTonalIconToggleButton(bool checked, std::function<void(bool)> onCheckedChange, const ui::Modifier& modifier,
-                                     const IconToggleButtonOptions& options, std::function<void()> content);
-    void OutlinedIconToggleButton(bool checked, std::function<void(bool)> onCheckedChange, const ui::Modifier& modifier,
-                                  const IconToggleButtonOptions& options, std::function<void()> content);
+    void IconButton(kiln::Function<void()> onClick, const ui::Modifier& modifier, const IconButtonOptions& options, kiln::Function<void()> content);
+    void FilledIconButton(kiln::Function<void()> onClick, const ui::Modifier& modifier, const IconButtonOptions& options, kiln::Function<void()> content);
+    void FilledTonalIconButton(kiln::Function<void()> onClick, const ui::Modifier& modifier, const IconButtonOptions& options, kiln::Function<void()> content);
+    void OutlinedIconButton(kiln::Function<void()> onClick, const ui::Modifier& modifier, const IconButtonOptions& options, kiln::Function<void()> content);
+    void IconToggleButton(bool checked, kiln::Function<void(bool)> onCheckedChange, const ui::Modifier& modifier,
+                          const IconToggleButtonOptions& options, kiln::Function<void()> content);
+    void FilledIconToggleButton(bool checked, kiln::Function<void(bool)> onCheckedChange, const ui::Modifier& modifier,
+                                const IconToggleButtonOptions& options, kiln::Function<void()> content);
+    void FilledTonalIconToggleButton(bool checked, kiln::Function<void(bool)> onCheckedChange, const ui::Modifier& modifier,
+                                     const IconToggleButtonOptions& options, kiln::Function<void()> content);
+    void OutlinedIconToggleButton(bool checked, kiln::Function<void(bool)> onCheckedChange, const ui::Modifier& modifier,
+                                  const IconToggleButtonOptions& options, kiln::Function<void()> content);
 
     enum class IconButtonWidthOption { Narrow, Uniform, Wide };
 

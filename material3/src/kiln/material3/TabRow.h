@@ -6,6 +6,7 @@
 // ones the whole tab.
 
 #include "kiln/foundation/Layouts.h"
+#include <kiln/Function.h>
 #include "kiln/foundation/Scroll.h"
 #include "kiln/foundation/Shapes.h"
 #include "kiln/runtime/State.h"
@@ -27,7 +28,7 @@ namespace kiln::material3 {
     class TabIndicatorScope {
     public:
         virtual ~TabIndicatorScope() = default;
-        using IndicatorMeasure = std::function<ui::MeasureResult(ui::MeasureScope&, ui::Measurable&, const ui::Constraints&, const std::vector<TabPosition>&)>;
+        using IndicatorMeasure = kiln::Function<ui::MeasureResult(ui::MeasureScope&, ui::Measurable&, const ui::Constraints&, const std::vector<TabPosition>&)>;
         // A layout modifier given the tab positions (and remeasured when they change).
         virtual ui::Modifier TabIndicatorLayout(ui::Modifier m, IndicatorMeasure measure) = 0;
         // The default placement: the selected tab's offset and width (or content width), animated.
@@ -52,19 +53,19 @@ namespace kiln::material3 {
     struct TabRowOptions {
         std::optional<ui::Color> containerColor;   // unset: the primary / secondary container colour
         std::optional<ui::Color> contentColor;     // unset: the primary / secondary content colour
-        std::function<void(TabIndicatorScope&)> indicator;   // unset: the primary / secondary indicator
-        std::function<void()> divider;             // unset: HorizontalDivider; `[] {}` for none
+        kiln::Function<void(TabIndicatorScope&)> indicator;   // unset: the primary / secondary indicator
+        kiln::Function<void()> divider;             // unset: HorizontalDivider; `[] {}` for none
     };
-    void PrimaryTabRow(int selectedTabIndex, const ui::Modifier& modifier, const TabRowOptions& options, std::function<void()> tabs);
-    void SecondaryTabRow(int selectedTabIndex, const ui::Modifier& modifier, const TabRowOptions& options, std::function<void()> tabs);
+    void PrimaryTabRow(int selectedTabIndex, const ui::Modifier& modifier, const TabRowOptions& options, kiln::Function<void()> tabs);
+    void SecondaryTabRow(int selectedTabIndex, const ui::Modifier& modifier, const TabRowOptions& options, kiln::Function<void()> tabs);
 
     struct ScrollableTabRowOptions : TabRowOptions {
         foundation::ScrollState* scrollState = nullptr;   // unset: a remembered one
         ui::Dp edgePadding = TabRowDefaults::ScrollableTabRowEdgeStartPadding;
         ui::Dp minTabWidth = TabRowDefaults::ScrollableTabRowMinTabWidth;
     };
-    void PrimaryScrollableTabRow(int selectedTabIndex, const ui::Modifier& modifier, const ScrollableTabRowOptions& options, std::function<void()> tabs);
+    void PrimaryScrollableTabRow(int selectedTabIndex, const ui::Modifier& modifier, const ScrollableTabRowOptions& options, kiln::Function<void()> tabs);
     void SecondaryScrollableTabRow(int selectedTabIndex, const ui::Modifier& modifier, const ScrollableTabRowOptions& options,
-                                   std::function<void()> tabs);
+                                   kiln::Function<void()> tabs);
 
 }

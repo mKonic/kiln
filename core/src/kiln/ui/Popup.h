@@ -9,6 +9,7 @@
 // ACTION_OUTSIDE does); Back and Escape dismiss a focusable popup when dismissOnBackPress.
 
 #include "kiln/ui/Accessibility.h"
+#include <kiln/Function.h>
 #include "kiln/ui/Configuration.h"
 #include "kiln/ui/Geometry.h"
 
@@ -75,9 +76,9 @@ namespace kiln::ui {
     struct PopupLayer {
         LayoutNode* node = nullptr;              // the popup's root; its children are the content
         PopupProperties properties;
-        std::function<void()> onDismissRequest;
+        kiln::Function<void()> onDismissRequest;
         // The anchor's bounds in window pixels; nullopt while it is not placed (the popup hides).
-        std::function<std::optional<IntRect>()> anchorBounds;
+        kiln::Function<std::optional<IntRect>()> anchorBounds;
         std::shared_ptr<const PopupPositionProvider> positionProvider;
         LayoutDirection direction = LayoutDirection::Ltr;
 

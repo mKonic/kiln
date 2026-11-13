@@ -1,4 +1,5 @@
 #include "kiln/material3/adaptive/NavigationSuiteScaffold.h"
+#include <kiln/Function.h>
 
 #include "kiln/animation/Animatable.h"
 #include "kiln/foundation/Animate.h"
@@ -74,20 +75,20 @@ namespace kiln::material3::adaptive {
             return WindowInsets();
         }
 
-        void NavigationItemIcon(std::function<void()> icon, std::function<void()> badge) {
+        void NavigationItemIcon(kiln::Function<void()> icon, kiln::Function<void()> badge) {
             if (badge) BadgedBox(std::move(badge), {}, std::move(icon));
             else icon();
         }
 
         // The arrangement of the older vertical components: weighted spacers around the items.
-        void Arranged(const Arrangement& arrangement, const std::function<void()>& content) {
+        void Arranged(const Arrangement& arrangement, const kiln::Function<void()>& content) {
             if (arrangement == Arrangement::Center() || arrangement == Arrangement::Bottom()) Spacer(Weight({}, 1));
             content();
             if (arrangement == Arrangement::Center()) Spacer(Weight({}, 1));
         }
 
-        void SuiteItem(bool isNavigationSuite, NavigationSuiteType type, bool selected, std::function<void()> onClick, std::function<void()> icon,
-                       std::function<void()> label, const ui::Modifier& modifier, bool enabled, std::function<void()> badge,
+        void SuiteItem(bool isNavigationSuite, NavigationSuiteType type, bool selected, kiln::Function<void()> onClick, kiln::Function<void()> icon,
+                       kiln::Function<void()> label, const ui::Modifier& modifier, bool enabled, kiln::Function<void()> badge,
                        const std::optional<NavigationItemColors>& navigationItemColors,
                        const std::optional<NavigationSuiteItemColors>& navigationSuiteItemColors,
                        std::shared_ptr<MutableInteractionSource> interactionSource) {
@@ -232,9 +233,9 @@ namespace kiln::material3::adaptive {
         }
     }
 
-    void NavigationSuite(NavigationSuiteType type, const ui::Modifier& modifier, const NavigationSuiteOptions& options, std::function<void()> content) {
+    void NavigationSuite(NavigationSuiteType type, const ui::Modifier& modifier, const NavigationSuiteOptions& options, kiln::Function<void()> content) {
         const NavigationSuiteColors colors = options.colors.value_or(NavigationSuiteDefaults::colors());
-        const auto primaryAction = options.primaryActionContent ? options.primaryActionContent : std::function<void()>([] {});
+        const auto primaryAction = options.primaryActionContent ? options.primaryActionContent : kiln::Function<void()>([] {});
         switch (type) {
             case NavigationSuiteType::ShortNavigationBarCompact:
             case NavigationSuiteType::ShortNavigationBarMedium: {
@@ -285,15 +286,15 @@ namespace kiln::material3::adaptive {
         }
     }
 
-    void NavigationSuiteItem(bool selected, std::function<void()> onClick, std::function<void()> icon, std::function<void()> label,
+    void NavigationSuiteItem(bool selected, kiln::Function<void()> onClick, kiln::Function<void()> icon, kiln::Function<void()> label,
                              const ui::Modifier& modifier, const NavigationSuiteItemOptions& o) {
         SuiteItem(false, o.navigationSuiteType.value_or(DefaultType()), selected, std::move(onClick), std::move(icon), std::move(label), modifier, o.enabled,
                   o.badge, o.colors, std::nullopt, o.interactionSource);
     }
 
-    void NavigationSuiteScaffoldLayout(std::function<void()> navigationSuite, NavigationSuiteType type,
-                                       std::shared_ptr<NavigationSuiteScaffoldState> state, std::function<void()> primaryActionContent,
-                                       ui::AlignmentH alignment, std::function<void()> content) {
+    void NavigationSuiteScaffoldLayout(kiln::Function<void()> navigationSuite, NavigationSuiteType type,
+                                       std::shared_ptr<NavigationSuiteScaffoldState> state, kiln::Function<void()> primaryActionContent,
+                                       ui::AlignmentH alignment, kiln::Function<void()> content) {
         if (!state) state = RememberNavigationSuiteScaffoldState();
         const float progress = AnimateFloatAsState(state->CurrentValue() == Value::Hidden ? 0.0f : 1.0f, AnimationSpec());
         const bool isNavigationBar = IsNavigationBar(type);
@@ -333,7 +334,7 @@ namespace kiln::material3::adaptive {
                     }
                 });
             });
-        auto primary = primaryActionContent ? primaryActionContent : std::function<void()>([] {});
+        auto primary = primaryActionContent ? primaryActionContent : kiln::Function<void()>([] {});
         // Each in a Box so the parent's (Surface's) minimum constraints do not reach it.
         Layout({}, policy, [navigationSuite, primary, content] {
             Box(LayoutId({}, "navigationSuite"), ui::Alignment::TopStart(), false, navigationSuite);
@@ -342,8 +343,8 @@ namespace kiln::material3::adaptive {
         });
     }
 
-    void NavigationSuiteScaffold(std::function<void()> navigationItems, const ui::Modifier& modifier, const NavigationSuiteScaffoldOptions& o,
-                                 std::function<void()> content) {
+    void NavigationSuiteScaffold(kiln::Function<void()> navigationItems, const ui::Modifier& modifier, const NavigationSuiteScaffoldOptions& o,
+                                 kiln::Function<void()> content) {
         const NavigationSuiteType type = o.navigationSuiteType.value_or(DefaultType());
         const auto state = o.state ? o.state : RememberNavigationSuiteScaffoldState();
         const NavigationSuiteColors colors = o.navigationSuiteColors.value_or(NavigationSuiteDefaults::colors());
@@ -364,12 +365,12 @@ namespace kiln::material3::adaptive {
         });
     }
 
-    void NavigationSuiteScope::Item(bool selected, std::function<void()> onClick, std::function<void()> icon, const NavigationSuiteScopeItemOptions& options) {
+    void NavigationSuiteScope::Item(bool selected, kiln::Function<void()> onClick, kiln::Function<void()> icon, const NavigationSuiteScopeItemOptions& options) {
         items.push_back({ selected, std::move(onClick), std::move(icon), options });
     }
 
     void NavigationSuite(const ui::Modifier& modifier, NavigationSuiteType layoutType, const std::optional<NavigationSuiteColors>& colorsArg,
-                         std::function<void(NavigationSuiteScope&)> content) {
+                         kiln::Function<void(NavigationSuiteScope&)> content) {
         NavigationSuiteScope scope;
         if (content) content(scope);
         const NavigationSuiteColors colors = colorsArg.value_or(NavigationSuiteDefaults::colors());
@@ -445,8 +446,8 @@ namespace kiln::material3::adaptive {
         }
     }
 
-    void NavigationSuiteScaffold(std::function<void(NavigationSuiteScope&)> navigationSuiteItems, const ui::Modifier& modifier,
-                                 const NavigationSuiteScaffoldScopeOptions& o, std::function<void()> content) {
+    void NavigationSuiteScaffold(kiln::Function<void(NavigationSuiteScope&)> navigationSuiteItems, const ui::Modifier& modifier,
+                                 const NavigationSuiteScaffoldScopeOptions& o, kiln::Function<void()> content) {
         const NavigationSuiteType layoutType = o.layoutType.value_or(NavigationSuiteScaffoldDefaults::calculateFromAdaptiveInfo(CurrentWindowAdaptiveInfo()));
         const auto state = o.state ? o.state : RememberNavigationSuiteScaffoldState();
         SurfaceOptions surface;

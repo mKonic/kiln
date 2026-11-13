@@ -1,4 +1,5 @@
 #include "Check.h"
+#include <kiln/Function.h>
 #include "ToolbarHelpers.h"
 #include "FakeText.h"
 #include "kiln/foundation/text/TextMeasurer.h"
@@ -368,7 +369,7 @@ TEST(BasicTextPlacesInlineContentInPlaceholders) {
     // The content sits in it.
     const ui::SemanticsNode root = owner.BuildSemanticsTree();
     bool found = false;
-    std::function<void(const ui::SemanticsNode&)> walk = [&](const ui::SemanticsNode& n) {
+    kiln::Function<void(const ui::SemanticsNode&)> walk = [&](const ui::SemanticsNode& n) {
         if (!n.config.text.empty() && n.config.text[0] == "icon") {
             found = true;
             CHECK_NEAR(n.boundsInRoot.left, 30, 1e-3f);
@@ -433,7 +434,7 @@ namespace {
             comp.Recompose();
             owner.MeasureAndLayout({ 300, 200 });
         }
-        void Run(std::function<void()> content) {
+        void Run(kiln::Function<void()> content) {
             comp.SetContent(std::move(content));
             Pump();
         }

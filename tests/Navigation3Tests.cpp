@@ -1,4 +1,5 @@
 #include "Check.h"
+#include <kiln/Function.h>
 
 #include "kiln/foundation/Compose.h"
 #include "kiln/foundation/SharedTransition.h"
@@ -27,7 +28,7 @@ namespace {
         std::int64_t frameNanos = 0;
         Harness() { owner.SetDensity({ 1, 1 }); }
         ~Harness() { composition.SetContent([] {}); Pump(); }
-        void Run(std::function<void()> content) { composition.SetContent(std::move(content)); Pump(); }
+        void Run(kiln::Function<void()> content) { composition.SetContent(std::move(content)); Pump(); }
         void Pump() {
             for (int i = 0; i < 3; ++i) {
                 rt::Dispatcher::Main().RunPending();
@@ -68,7 +69,7 @@ TEST(EntryProviderMatchesKeysAndClasses) {
     int shown = -1;
     auto provider = EntryProvider<Route>([&](EntryProviderScope<Route>& s) {
         s.Entry<Home>(Home{}, [&](const Home&) { shown = 0; });
-        s.Entry<Detail>([&](const Detail& d) { shown = d.id; }, Metadata([](MetadataScope& m) { m.Put(TitleMetadataKey, std::function<std::string()>([] { return std::string("detail"); })); }));
+        s.Entry<Detail>([&](const Detail& d) { shown = d.id; }, Metadata([](MetadataScope& m) { m.Put(TitleMetadataKey, kiln::Function<std::string()>([] { return std::string("detail"); })); }));
     });
     const NavEntry<Route> home = provider(Home{});
     const NavEntry<Route> d7 = provider(Detail{ 7 });

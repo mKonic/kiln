@@ -8,6 +8,7 @@
 // InterceptPlatformTextInput lets content above see and change the requests below it.
 
 #include "kiln/runtime/Composition.h"
+#include <kiln/Function.h>
 #include "kiln/runtime/Task.h"
 #include "kiln/ui/TextInput.h"
 
@@ -49,10 +50,10 @@ namespace kiln::ui {
     inline rt::Local<std::vector<std::shared_ptr<PlatformTextInputInterceptor>>> LocalPlatformTextInputInterceptors{ {} };
 
     // InterceptPlatformTextInput(interceptor, content).
-    void InterceptPlatformTextInput(std::shared_ptr<PlatformTextInputInterceptor> interceptor, std::function<void()> content, rt::Key key = {});
+    void InterceptPlatformTextInput(std::shared_ptr<PlatformTextInputInterceptor> interceptor, kiln::Function<void()> content, rt::Key key = {});
 
     // establishTextInputSession: runs `block` with the window's input method for `node` (which
     // must be attached). Returns when `block` returns; cancelled when another session starts.
-    rt::Task<> EstablishTextInputSession(ModifierNode& node, std::function<rt::Task<>(PlatformTextInputSessionScope&)> block);
+    rt::Task<> EstablishTextInputSession(ModifierNode& node, kiln::Function<rt::Task<>(PlatformTextInputSessionScope&)> block);
 
 }

@@ -13,6 +13,7 @@
 // top-down, updates node child lists, destroys removed nodes, then runs effects.
 
 #include "kiln/runtime/State.h"
+#include <kiln/Function.h>
 #include "kiln/runtime/Task.h"
 
 #include <any>
@@ -84,17 +85,17 @@ namespace kiln::rt {
         // compositionLocalWithComputedDefaultOf: the default computed where it is read, from other
         // locals' values there (read through the accessor).
         struct ComputedTag {};
-        Local(ComputedTag, std::function<T(const LocalAccessorScope&)> computeDefault) : m_Compute(std::move(computeDefault)) {}
+        Local(ComputedTag, kiln::Function<T(const LocalAccessorScope&)> computeDefault) : m_Compute(std::move(computeDefault)) {}
         const T& Default() const { return m_Default; }
         bool HasComputedDefault() const { return bool(m_Compute); }
         T ComputeDefault(const LocalAccessorScope& scope) const { return m_Compute(scope); }
     private:
         T m_Default{};
-        std::function<T(const LocalAccessorScope&)> m_Compute;
+        kiln::Function<T(const LocalAccessorScope&)> m_Compute;
     };
 
     template<typename T>
-    Local<T> LocalWithComputedDefault(std::function<T(const LocalAccessorScope&)> computeDefault) {
+    Local<T> LocalWithComputedDefault(kiln::Function<T(const LocalAccessorScope&)> computeDefault) {
         return Local<T>(typename Local<T>::ComputedTag{}, std::move(computeDefault));
     }
 
@@ -132,7 +133,7 @@ namespace kiln::rt {
         std::unique_ptr<TreeNode> node;          // Node: the node itself
         std::unique_ptr<Scope> scope;            // Node content or Scope
         // Effect: shared because effects run after apply, when groups may have moved.
-        struct EffectState { std::function<void()> disposer; Job job; bool started = false; };
+        struct EffectState { kiln::Function<void()> disposer; Job job; bool started = false; };
         std::shared_ptr<EffectState> effect;
     };
 
@@ -155,7 +156,7 @@ namespace kiln::rt {
         Composition* m_Composition;    // changes when movable content moves to another composition
         Scope* m_Parent;
         TreeNode* m_Host;              // node whose children this scope's nodes are
-        std::function<void()> m_Content;
+        kiln::Function<void()> m_Content;
         Keys m_Memo;
         bool m_HasMemo = false;
         std::vector<Group> m_Groups;
@@ -191,7 +192,7 @@ namespace kiln::rt {
     };
 
     // ShouldPauseCallback: asked between steps of a paused composition whether to yield.
-    using ShouldPauseCallback = std::function<bool()>;
+    using ShouldPauseCallback = kiln::Function<bool()>;
 
     class Composition {
     public:
@@ -199,7 +200,7 @@ namespace kiln::rt {
         explicit Composition(TreeNode& root, Dispatcher& dispatcher = Dispatcher::Main());
         ~Composition();
 
-        void SetContent(std::function<void()> content);
+        void SetContent(kiln::Function<void()> content);
         // Frame step 3: apply state changes, recompose, apply node changes, run effects.
         // Returns whether anything recomposed.
         bool Recompose();
@@ -247,13 +248,13 @@ namespace kiln::rt {
         // currentCompositionLocalContext: every local provided above this point.
         CompositionLocalContext CurrentLocalContext() const;
         // CompositionLocalProvider(context): provides the context's locals to `content`.
-        void Provide(const CompositionLocalContext& context, std::function<void()> content, Key key = {});
+        void Provide(const CompositionLocalContext& context, kiln::Function<void()> content, Key key = {});
         // ReusableContent(key): content whose remembered state starts over when `key` changes
         // (kiln composes it anew; Compose reuses the old nodes).
-        void ReusableContent(Key key, const std::function<void()>& content) { Section(content, key); }
+        void ReusableContent(Key key, const kiln::Function<void()>& content) { Section(content, key); }
         // ReusableContentHost(active): content composed while `active`; deactivating forgets its
         // remembered state (kiln disposes it; Compose keeps its nodes for reuse).
-        void ReusableContentHost(bool active, const std::function<void()>& content, Key key = {}) {
+        void ReusableContentHost(bool active, const kiln::Function<void()>& content, Key key = {}) {
             Section([&] { if (active) content(); }, key);
         }
         // remember { mutableStateOf(v) }
@@ -262,18 +263,18 @@ namespace kiln::rt {
 
         // A child scope re-run on its own when state it reads changes. With memo keys it is
         // skipped while the keys are equal and nothing it read changed.
-        void Child(std::function<void()> content, Key key = {}, const Keys* memo = nullptr);
+        void Child(kiln::Function<void()> content, Key key = {}, const Keys* memo = nullptr);
         // A non-restartable group (Compose's key { } and if / else groups): its calls get their
         // own identity, but it runs only with its parent, which observes what it reads. Use it
         // where a restartable Child would outlive what its content refers to (a function that
         // returns a value, content capturing locals by reference).
-        void Section(const std::function<void()>& content, Key key = {});
+        void Section(const kiln::Function<void()>& content, Key key = {});
 
         // Emits a node of type N: created by make() on first call, update(node) every run,
         // content composes its children.
         template<typename N>
-        N& Node(const std::function<std::unique_ptr<N>()>& make, const std::function<void(N&)>& update,
-                std::function<void()> content = {}, Key key = {}) {
+        N& Node(const kiln::Function<std::unique_ptr<N>()>& make, const kiln::Function<void(N&)>& update,
+                kiln::Function<void()> content = {}, Key key = {}) {
             Group& g = Take(Group::Kind::Node, typeid(N), key);
             if (!g.node) {
                 g.node = make();
@@ -289,11 +290,11 @@ namespace kiln::rt {
 
         // Composes `content` as the movable content `handle`: a call site that newly calls it adopts
         // the state (and nodes) a site that stopped calling it in this recomposition left behind.
-        void Movable(const std::shared_ptr<MovableHandle>& handle, std::function<void()> content);
+        void Movable(const std::shared_ptr<MovableHandle>& handle, kiln::Function<void()> content);
 
-        void SideEffect(std::function<void()> effect);
-        void DisposableEffect(Keys keys, std::function<std::function<void()>()> effect, Key key = {});
-        void LaunchedEffect(Keys keys, std::function<Task<>()> task, Key key = {});
+        void SideEffect(kiln::Function<void()> effect);
+        void DisposableEffect(Keys keys, kiln::Function<kiln::Function<void()>()> effect, Key key = {});
+        void LaunchedEffect(Keys keys, kiln::Function<Task<>()> task, Key key = {});
 
         template<typename T>
         const T& Read(const Local<T>& local) { return ReadFrom(m_Current, local); }
@@ -337,7 +338,7 @@ namespace kiln::rt {
         Scope* CurrentScope() const { return m_Current; }
 
         template<typename T>
-        void Provide(const Local<T>& local, T value, std::function<void()> content, Key key = {}) {
+        void Provide(const Local<T>& local, T value, kiln::Function<void()> content, Key key = {}) {
             using Cell = State<T, NeverEqual>;
             Group& slot = Take(Group::Kind::Slot, typeid(Cell), key);
             if (!slot.slot) slot.slot = std::make_shared<Cell>(value);
@@ -364,7 +365,7 @@ namespace kiln::rt {
         friend class Scope;
         friend class RecomposeScope;
         Group& Take(Group::Kind kind, std::type_index type, Key key);
-        void RunChild(Scope& scope, std::function<void()> content, const Keys* memo);
+        void RunChild(Scope& scope, kiln::Function<void()> content, const Keys* memo);
         void RunScope(Scope& scope);
         void Dispose(Group& g);
         void Park(Group& g);
@@ -399,8 +400,8 @@ namespace kiln::rt {
         std::unordered_set<Scope*> m_Pending;
         std::unordered_set<Scope*> m_ChildrenDirty;   // top content scope of each touched host
         std::vector<std::unique_ptr<TreeNode>> m_DeadNodes;
-        std::vector<std::function<void()>> m_Effects;     // run after apply, in order
-        std::vector<std::function<void()>> m_Disposers;   // run after apply, before effects
+        std::vector<kiln::Function<void()>> m_Effects;     // run after apply, in order
+        std::vector<kiln::Function<void()>> m_Disposers;   // run after apply, before effects
         // Remembered values of disposed groups, freed after the disposers ran (a disposer may
         // still use what was remembered beside it).
         std::vector<std::shared_ptr<void>> m_DeadSlots;
@@ -436,7 +437,7 @@ namespace kiln::rt {
         const T& Get() const { return state.Peek(); }
     };
     template<typename T>
-    State<T>& ProduceState(T initial, Keys keys, std::function<Task<>(ProduceStateScope<T>)> producer, Key key = {}) {
+    State<T>& ProduceState(T initial, Keys keys, kiln::Function<Task<>(ProduceStateScope<T>)> producer, Key key = {}) {
         Composition* c = Composition::Current();
         State<T>& state = c->RememberState(std::move(initial), key);
         State<T>* ptr = &state;
@@ -450,19 +451,19 @@ namespace kiln::rt {
     template<typename... P>
     class MovableContent {
     public:
-        explicit MovableContent(std::function<void(P...)> content)
-            : m_Content(std::make_shared<std::function<void(P...)>>(std::move(content))), m_Handle(std::make_shared<MovableHandle>()) {}
+        explicit MovableContent(kiln::Function<void(P...)> content)
+            : m_Content(std::make_shared<kiln::Function<void(P...)>>(std::move(content))), m_Handle(std::make_shared<MovableHandle>()) {}
         void operator()(P... args) const {
             auto fn = m_Content;
             Composition::Current()->Movable(m_Handle, [fn, args...] { (*fn)(args...); });
         }
         bool operator==(const MovableContent& o) const { return m_Handle == o.m_Handle; }
     private:
-        std::shared_ptr<std::function<void(P...)>> m_Content;
+        std::shared_ptr<kiln::Function<void(P...)>> m_Content;
         std::shared_ptr<MovableHandle> m_Handle;
     };
 
     template<typename... P>
-    MovableContent<P...> MovableContentOf(std::function<void(P...)> content) { return MovableContent<P...>(std::move(content)); }
+    MovableContent<P...> MovableContentOf(kiln::Function<void(P...)> content) { return MovableContent<P...>(std::move(content)); }
 
 }

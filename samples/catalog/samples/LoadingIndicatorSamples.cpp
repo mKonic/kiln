@@ -1,5 +1,6 @@
 // LoadingIndicatorSamples.kt
 #include "LoadingIndicatorSamples.h"
+#include <kiln/Function.h>
 #include "Common.h"
 
 #include <kiln/animation/Easing.h>
@@ -51,7 +52,7 @@ namespace catalog::samples {
         auto& isRefreshing = RememberState(false);
         const auto state = m3::RememberPullToRefreshState();
         const LaunchScope coroutineScope = RememberCoroutineScope();
-        const std::function<void()> onRefresh = [&itemCount, &isRefreshing, coroutineScope] {
+        const kiln::Function<void()> onRefresh = [&itemCount, &isRefreshing, coroutineScope] {
             isRefreshing.Set(true);
             coroutineScope.Launch(Refresh(itemCount, isRefreshing));
         };

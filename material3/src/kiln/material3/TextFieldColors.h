@@ -4,6 +4,7 @@
 // unfocused) and TextFieldLabelPosition (where a text field's label sits).
 
 #include "kiln/foundation/text/Selection.h"
+#include <kiln/Function.h>
 #include "kiln/ui/Geometry.h"
 
 #include <cstdint>
@@ -61,7 +62,7 @@ namespace kiln::material3 {
 
     // TextFieldLabelScope: what a label may read while it composes.
     struct TextFieldLabelScope {
-        std::function<float()> progress;
+        kiln::Function<float()> progress;
         // 0 while the label is expanded in the input area, 1 once minimized (reading it subscribes).
         float LabelMinimizedProgress() const { return progress ? progress() : 1.0f; }
     };

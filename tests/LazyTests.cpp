@@ -1,4 +1,5 @@
 #include "Check.h"
+#include <kiln/Function.h>
 
 #include "kiln/foundation/BringIntoView.h"
 #include "kiln/foundation/Focus.h"
@@ -18,7 +19,7 @@ namespace {
         Owner owner;
         rt::Composition composition{ owner.Root(), rt::Dispatcher::Main() };
         Harness() { owner.SetDensity({ 1, 1 }); }
-        void Run(std::function<void()> content) { composition.SetContent(std::move(content)); Pump(); }
+        void Run(kiln::Function<void()> content) { composition.SetContent(std::move(content)); Pump(); }
         void Pump() { rt::Composition::RecomposeAll(); owner.MeasureAndLayout({ 100, 100 }); }
         std::int64_t frameNs = 0;
         void Frames(int n) { for (int i = 0; i < n; ++i) { frameNs += 16'000'000; rt::Dispatcher::Main().RunFrame(frameNs); Pump(); } }

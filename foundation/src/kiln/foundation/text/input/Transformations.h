@@ -6,6 +6,7 @@
 // them); codepoint transformations replace characters one for one (password masks, single line).
 
 #include "kiln/foundation/text/input/TextFieldBuffer.h"
+#include <kiln/Function.h>
 #include "kiln/ui/Semantics.h"
 #include "kiln/ui/TextInput.h"
 
@@ -48,11 +49,11 @@ namespace kiln::foundation {
     // inserted text upper-cased for a locale. maxLengthTrim: drops inserted characters past
     // maxLength; maxLengthReject: rejects the whole edit.
     InputTransformationPtr Then(InputTransformationPtr first, InputTransformationPtr next);
-    InputTransformationPtr ByValue(std::function<std::u16string(std::u16string_view current, std::u16string_view proposed)> fn);
+    InputTransformationPtr ByValue(kiln::Function<std::u16string(std::u16string_view current, std::u16string_view proposed)> fn);
     InputTransformationPtr AllCaps(std::string localeTag = {});
     InputTransformationPtr MaxLengthTrim(int maxLength);
     InputTransformationPtr MaxLengthReject(int maxLength);
-    InputTransformationPtr InputTransformationOf(std::function<void(TextFieldBuffer&)> fn);
+    InputTransformationPtr InputTransformationOf(kiln::Function<void(TextFieldBuffer&)> fn);
 
     class OutputTransformation {
     public:
@@ -60,7 +61,7 @@ namespace kiln::foundation {
         virtual void TransformOutput(TextFieldBuffer& buffer) const = 0;
     };
     using OutputTransformationPtr = std::shared_ptr<const OutputTransformation>;
-    OutputTransformationPtr OutputTransformationOf(std::function<void(TextFieldBuffer&)> fn);
+    OutputTransformationPtr OutputTransformationOf(kiln::Function<void(TextFieldBuffer&)> fn);
     // SingleLineOutputTransformation: line feeds show as spaces, carriage returns as nothing.
     OutputTransformationPtr SingleLineOutputTransformation(OutputTransformationPtr inner = nullptr);
 

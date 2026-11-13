@@ -7,6 +7,7 @@
 // pushed to the host synchronously (avoids the one-frame lag noted in PredictiveBackHandler.kt).
 
 #include <cstdint>
+#include <kiln/Function.h>
 #include <functional>
 #include <vector>
 
@@ -49,7 +50,7 @@ namespace kiln::ui {
         bool Completed();
 
         // Host hook: register/unregister the platform callback.
-        std::function<void(bool hasEnabled)> onHasEnabledChanged;
+        kiln::Function<void(bool hasEnabled)> onHasEnabledChanged;
 
     private:
         BackCallback* Top() const;

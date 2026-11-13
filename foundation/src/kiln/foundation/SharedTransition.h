@@ -11,6 +11,7 @@
 // content is drawn in the layout's overlay, above everything else, through a graphics layer.
 
 #include "kiln/foundation/AnimatedVisibility.h"
+#include <kiln/Function.h>
 #include "kiln/foundation/GraphicsLayer.h"
 #include "kiln/foundation/Image.h"
 #include "kiln/foundation/Transition.h"
@@ -30,12 +31,12 @@ namespace kiln::foundation {
     namespace detail { class SharedElement; class SharedElementEntry; class LayerRenderer; class SharedTransitionRoot; }
 
     // BoundsTransform: the spec the bounds animate with, from the initial and target bounds.
-    using BoundsTransform = std::function<anim::SpecPtr(const ui::Rect& initialBounds, const ui::Rect& targetBounds)>;
+    using BoundsTransform = kiln::Function<anim::SpecPtr(const ui::Rect& initialBounds, const ui::Rect& targetBounds)>;
 
     // PlaceholderSize: the size the layout reports while its content animates (the content's
     // own lookahead size, or the animated size).
     struct PlaceholderSize {
-        std::function<IntSize(IntSize contentSize, IntSize animatedSize)> calculate;
+        kiln::Function<IntSize(IntSize contentSize, IntSize animatedSize)> calculate;
         IntSize CalculateSize(IntSize contentSize, IntSize animatedSize) const { return calculate ? calculate(contentSize, animatedSize) : contentSize; }
         static PlaceholderSize AnimatedSize() { return { [](IntSize, IntSize a) { return a; } }; }
         static PlaceholderSize ContentSize() { return { [](IntSize c, IntSize) { return c; } }; }
@@ -72,12 +73,12 @@ namespace kiln::foundation {
     // SharedContentConfig: whether a state takes part, and where it goes when its target leaves
     // mid-transition.
     struct SharedContentConfig {
-        std::function<bool(const SharedContentState&)> isEnabled;   // unset: always
+        kiln::Function<bool(const SharedContentState&)> isEnabled;   // unset: always
         bool shouldKeepEnabledForOngoingAnimation = true;
         DeferredTransitionBehavior deferredTransitionBehavior = DeferredTransitionBehavior::FollowContainer;
         // alternativeTargetBoundsInTransitionScopeAfterRemoval: new target bounds (in the
         // layout) once the visible target left during the transition; null ends the match.
-        std::function<std::optional<ui::Rect>(const SharedContentState&, const ui::Rect& targetBoundsBeforeRemoval, ui::Size layoutSize)>
+        kiln::Function<std::optional<ui::Rect>(const SharedContentState&, const ui::Rect& targetBoundsBeforeRemoval, ui::Size layoutSize)>
             alternativeTargetBoundsAfterRemoval;
     };
 
@@ -122,12 +123,12 @@ namespace kiln::foundation {
 
         // skipToLookaheadSize: measured at its lookahead (target) size while `enabled` (by
         // default while a transition runs), not at each animated size.
-        Modifier SkipToLookaheadSize(Modifier m, std::function<bool()> enabled = {});
+        Modifier SkipToLookaheadSize(Modifier m, kiln::Function<bool()> enabled = {});
         // skipToLookaheadPosition: placed straight at its lookahead position while `enabled`.
-        Modifier SkipToLookaheadPosition(Modifier m, std::function<bool()> enabled = {});
+        Modifier SkipToLookaheadPosition(Modifier m, kiln::Function<bool()> enabled = {});
         // renderInSharedTransitionScopeOverlay: drawn in the overlay (above the shared content
         // at zIndexInOverlay) while `renderInOverlay` (by default while a transition runs).
-        Modifier RenderInSharedTransitionScopeOverlay(Modifier m, float zIndexInOverlay = 0, std::function<bool()> renderInOverlay = {});
+        Modifier RenderInSharedTransitionScopeOverlay(Modifier m, float zIndexInOverlay = 0, kiln::Function<bool()> renderInOverlay = {});
 
         // sharedElement: the same content in both places; only the visible one is drawn, at the
         // animated bounds.
@@ -179,9 +180,9 @@ namespace kiln::foundation {
     };
 
     // SharedTransitionLayout: a Box whose content can share elements.
-    void SharedTransitionLayout(const Modifier& modifier, std::function<void(SharedTransitionScope&)> content, rt::Key key = {});
+    void SharedTransitionLayout(const Modifier& modifier, kiln::Function<void(SharedTransitionScope&)> content, rt::Key key = {});
     // SharedTransitionScope { modifier -> }: as SharedTransitionLayout, but the content puts the
     // given modifier on its own root layout (which then hosts the overlay).
-    void WithSharedTransitionScope(std::function<void(SharedTransitionScope&, const Modifier&)> content, rt::Key key = {});
+    void WithSharedTransitionScope(kiln::Function<void(SharedTransitionScope&, const Modifier&)> content, rt::Key key = {});
 
 }

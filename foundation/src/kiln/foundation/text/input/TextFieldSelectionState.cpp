@@ -1,4 +1,5 @@
 #include "kiln/foundation/text/input/TextFieldSelectionState.h"
+#include <kiln/Function.h>
 
 #include "kiln/foundation/content/ReceiveContent.h"
 #include "kiln/foundation/text/PlatformSelectionBehaviors.h"
@@ -197,8 +198,8 @@ namespace kiln::foundation {
         }
     }
 
-    rt::Task<> TextFieldSelectionState::DetectTextFieldTapGestures(PointerInputScope& scope, std::function<void()> requestFocus,
-                                                                   std::function<void()> showKeyboard) {
+    rt::Task<> TextFieldSelectionState::DetectTextFieldTapGestures(PointerInputScope& scope, kiln::Function<void()> requestFocus,
+                                                                   kiln::Function<void()> showKeyboard) {
         TapCallbacks cb;
         cb.onTap = [this, requestFocus, showKeyboard](Offset offset) {
             requestFocus();
@@ -236,7 +237,7 @@ namespace kiln::foundation {
         bool IsSpecified(Offset o) { return !std::isnan(o.x) && !std::isnan(o.y); }
         // Runs `fn` when the coroutine frame holding it goes (a cancelled gesture).
         struct Finally {
-            std::function<void()> fn;
+            kiln::Function<void()> fn;
             ~Finally() { if (fn) fn(); }
         };
     }
@@ -419,7 +420,7 @@ namespace kiln::foundation {
     namespace {
         class TouchObserver final : public selection::TextDragObserver {
         public:
-            TouchObserver(TextFieldSelectionState& s, std::function<void()> requestFocus) : m_S(s), m_RequestFocus(std::move(requestFocus)) {}
+            TouchObserver(TextFieldSelectionState& s, kiln::Function<void()> requestFocus) : m_S(s), m_RequestFocus(std::move(requestFocus)) {}
             void OnStop() override { DragStop(); }
             void OnCancel() override { DragStop(); }
             void OnStart(Offset startPoint, selection::Adjustment adjustment) override {
@@ -515,7 +516,7 @@ namespace kiln::foundation {
                 if (m_LongPressSelectionOnly) s.MaybeSuggestSelectionRange();
             }
             TextFieldSelectionState& m_S;
-            std::function<void()> m_RequestFocus;
+            kiln::Function<void()> m_RequestFocus;
             int m_BeginOffsetInText = -1;
             Offset m_BeginPosition{ NAN, NAN };
             Offset m_TotalDistance;
@@ -526,7 +527,7 @@ namespace kiln::foundation {
 
         class MouseObserver final : public selection::MouseSelectionObserver {
         public:
-            MouseObserver(TextFieldSelectionState& s, std::function<void()> requestFocus) : m_S(s), m_RequestFocus(std::move(requestFocus)) {}
+            MouseObserver(TextFieldSelectionState& s, kiln::Function<void()> requestFocus) : m_S(s), m_RequestFocus(std::move(requestFocus)) {}
             bool OnStart(Offset down, selection::Adjustment adjustment, int clickCount) override {
                 TextFieldSelectionState& s = m_S;
                 const auto layout = s.textLayoutState.PeekLayoutResult();
@@ -580,14 +581,14 @@ namespace kiln::foundation {
                 return newSelection;
             }
             TextFieldSelectionState& m_S;
-            std::function<void()> m_RequestFocus;
+            kiln::Function<void()> m_RequestFocus;
             int m_BeginOffsetInText = -1;
             Offset m_BeginPosition{ NAN, NAN };
             bool m_DoubleOrTripleClickOnly = true;
         };
     }
 
-    rt::Task<> TextFieldSelectionState::TextFieldSelectionGestures(PointerInputScope& scope, std::function<void()> requestFocus) {
+    rt::Task<> TextFieldSelectionState::TextFieldSelectionGestures(PointerInputScope& scope, kiln::Function<void()> requestFocus) {
         auto mouse = std::make_shared<MouseObserver>(*this, requestFocus);
         auto touch = std::make_shared<TouchObserver>(*this, requestFocus);
         co_await selection::AwaitSelectionGestures(scope, mouse, touch);
@@ -818,8 +819,8 @@ namespace kiln::foundation {
 
     void TextFieldSelectionState::AddTextContextMenuComponents(TextContextMenuBuilderScope& scope) {
         // textFieldItem: the action, closing unless told not to, then the toolbar state it leaves.
-        auto item = [this](TextContextMenuBuilderScope& sc, TextContextMenuKey key, bool enabled, std::function<void()> onClick,
-                           TextToolbarState desired = TextToolbarState::None, std::function<bool()> closePredicate = {}) {
+        auto item = [this](TextContextMenuBuilderScope& sc, TextContextMenuKey key, bool enabled, kiln::Function<void()> onClick,
+                           TextToolbarState desired = TextToolbarState::None, kiln::Function<bool()> closePredicate = {}) {
             if (!enabled) return;
             sc.Item(key, {}, [this, onClick, desired, closePredicate](TextContextMenuSession& session) {
                 onClick();

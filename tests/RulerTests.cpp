@@ -1,4 +1,5 @@
 #include "Check.h"
+#include <kiln/Function.h>
 
 #include "kiln/foundation/Compose.h"
 #include "kiln/foundation/Layouts.h"
@@ -14,7 +15,7 @@ namespace {
         Owner owner;
         rt::Composition composition{ owner.Root(), rt::Dispatcher::Main() };
         Harness() { owner.SetDensity({ 1, 1 }); }
-        void Run(std::function<void()> content) { composition.SetContent(std::move(content)); Pump(); }
+        void Run(kiln::Function<void()> content) { composition.SetContent(std::move(content)); Pump(); }
         void Pump() { rt::Composition::RecomposeAll(); owner.MeasureAndLayout({ 200, 200 }); }
     };
     const VerticalRuler kLeft;

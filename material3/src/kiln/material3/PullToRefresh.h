@@ -5,6 +5,7 @@
 // Expressive loading indicator) and spins while refreshing.
 
 #include "kiln/foundation/Shapes.h"
+#include <kiln/Function.h>
 #include "kiln/runtime/Composition.h"
 #include "kiln/runtime/Task.h"
 #include "kiln/ui/Geometry.h"
@@ -49,7 +50,7 @@ namespace kiln::material3 {
         // A 40 dp container that slides down with the pull (maxDistance at the threshold),
         // clipped above its resting place, with a shadow once it shows.
         void IndicatorBox(std::shared_ptr<PullToRefreshState> state, bool isRefreshing, const ui::Modifier& modifier, const IndicatorBoxOptions& options,
-                          std::function<void()> content);
+                          kiln::Function<void()> content);
 
         struct IndicatorOptions {
             std::optional<ui::Color> containerColor, color;   // unset: the defaults (per indicator)
@@ -66,18 +67,18 @@ namespace kiln::material3 {
 
     // Modifier.pullToRefresh: content inside that is scrolled to its top, pulled down past
     // `threshold`, calls onRefresh on release. Call it during composition.
-    ui::Modifier PullToRefresh(ui::Modifier m, bool isRefreshing, std::shared_ptr<PullToRefreshState> state, std::function<void()> onRefresh,
+    ui::Modifier PullToRefresh(ui::Modifier m, bool isRefreshing, std::shared_ptr<PullToRefreshState> state, kiln::Function<void()> onRefresh,
                                bool enabled = true, ui::Dp threshold = PullToRefreshDefaults::PositionalThreshold);
 
     struct PullToRefreshBoxOptions {
         std::shared_ptr<PullToRefreshState> state;   // null: remembered
         ui::Alignment contentAlignment = ui::Alignment::TopStart();
-        std::function<void()> indicator;             // null: Indicator at the top centre
+        kiln::Function<void()> indicator;             // null: Indicator at the top centre
         bool enabled = true;
         ui::Dp threshold = PullToRefreshDefaults::PositionalThreshold;
     };
-    void PullToRefreshBox(bool isRefreshing, std::function<void()> onRefresh, const ui::Modifier& modifier, const PullToRefreshBoxOptions& options,
-                          std::function<void()> content);
+    void PullToRefreshBox(bool isRefreshing, kiln::Function<void()> onRefresh, const ui::Modifier& modifier, const PullToRefreshBoxOptions& options,
+                          kiln::Function<void()> content);
 
     namespace internal {
         inline constexpr ui::Dp SpinnerSize{ 16 }, SpinnerContainerSize{ 40 };

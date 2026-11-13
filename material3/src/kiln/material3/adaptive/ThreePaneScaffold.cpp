@@ -1,4 +1,5 @@
 #include "kiln/material3/adaptive/ThreePaneScaffold.h"
+#include <kiln/Function.h>
 
 #include "kiln/foundation/Compose.h"
 #include "kiln/foundation/Draggable.h"
@@ -263,9 +264,9 @@ namespace kiln::material3::adaptive {
         // Modifier.animateBounds (adaptive's): the pane's bounds follow the scaffold's motion
         // progress from where it was to where lookahead put it.
         struct AnimateBoundsParams {
-            std::function<float()> fraction;
+            kiln::Function<float()> fraction;
             anim::SpecPtr spec;
-            std::function<IntOffset(IntOffset)> scaleConversion;
+            kiln::Function<IntOffset(IntOffset)> scaleConversion;
             const ui::LookaheadScope* scope;
             bool enabled;
             bool operator==(const AnimateBoundsParams&) const { return false; }
@@ -304,7 +305,7 @@ namespace kiln::material3::adaptive {
                 });
             }
         };
-        Modifier AnimateBounds(Modifier m, std::function<float()> fraction, anim::SpecPtr spec, std::function<IntOffset(IntOffset)> scale,
+        Modifier AnimateBounds(Modifier m, kiln::Function<float()> fraction, anim::SpecPtr spec, kiln::Function<IntOffset(IntOffset)> scale,
                                const ui::LookaheadScope& scope, bool enabled) {
             return m.With<AnimateBoundsNode>(AnimateBoundsParams{ std::move(fraction), std::move(spec), std::move(scale), &scope, enabled });
         }
@@ -313,7 +314,7 @@ namespace kiln::material3::adaptive {
         // its new one (the drag handle). The approach placement sets the layer's alpha
         // (placeWithLayer { alpha }).
         struct FadingParams {
-            std::function<float()> fraction;
+            kiln::Function<float()> fraction;
             const ui::LookaheadScope* scope;
             bool enabled;
             std::shared_ptr<rt::State<float>> alpha;
@@ -350,7 +351,7 @@ namespace kiln::material3::adaptive {
                 });
             }
         };
-        Modifier AnimateWithFading(Modifier m, bool enabled, std::function<float()> fraction, const ui::LookaheadScope& scope) {
+        Modifier AnimateWithFading(Modifier m, bool enabled, kiln::Function<float()> fraction, const ui::LookaheadScope& scope) {
             auto& c = *rt::Composition::Current();
             auto& alpha = c.Remember<std::shared_ptr<rt::State<float>>>([] { return std::make_shared<rt::State<float>>(1.0f); });
             auto a = alpha;
@@ -391,7 +392,7 @@ namespace kiln::material3::adaptive {
 
     Modifier ThreePaneScaffoldScope::PaneExpansionDraggable(Modifier m, PaneExpansionState& state, Dp minTouchTargetSize,
                                                             std::shared_ptr<MutableInteractionSource> interactionSource,
-                                                            std::function<void(ui::SemanticsConfiguration&)> semanticsProperties) const {
+                                                            kiln::Function<void(ui::SemanticsConfiguration&)> semanticsProperties) const {
         PaneExpansionState* sp = &state;
         DraggableOptions drag;
         drag.interactionSource = interactionSource;
@@ -464,7 +465,7 @@ namespace kiln::material3::adaptive {
         const char* RoleName(Role r) { return r == Role::Primary ? "Primary" : r == Role::Secondary ? "Secondary" : "Tertiary"; }
     }
 
-    void AnimatedPane(const ThreePaneScaffoldPaneScope& scope, const Modifier& modifier, const AnimatedPaneOptions& options, std::function<void()> content) {
+    void AnimatedPane(const ThreePaneScaffoldPaneScope& scope, const Modifier& modifier, const AnimatedPaneOptions& options, kiln::Function<void()> content) {
         auto& c = *rt::Composition::Current();
         const Role role = scope.paneRole;
         ThreePaneScaffoldMotionDataProvider& motion = scope.MotionDataProvider();
@@ -518,7 +519,7 @@ namespace kiln::material3::adaptive {
         }
     }
 
-    void LevitatedPaneScrim(const Modifier& modifier, std::function<void()> onClick, std::optional<ui::Color> color) {
+    void LevitatedPaneScrim(const Modifier& modifier, kiln::Function<void()> onClick, std::optional<ui::Color> color) {
         Modifier m = Background(FillMax(modifier, Axis::Both), color.value_or(LevitatedPaneScrimDefaults::Color));
         // With the default (no-op) click, the scrim is hidden from accessibility.
         if (!onClick) m = ClearAndSetSemantics(std::move(m), [](ui::SemanticsConfiguration&) {});
@@ -624,7 +625,7 @@ namespace kiln::material3::adaptive {
         private:
             std::vector<PaneMeasurable> PanesWith(ui::Measurable* const panes[3], const ThreePaneScaffoldValue& val, const ThreePaneScaffoldHorizontalOrder& ord,
                                                   const PaneScaffoldDirective& dirv, const ui::Density& density, IntSize size,
-                                                  const std::function<bool(const PaneAdaptedValue&)>& predicate) {
+                                                  const kiln::Function<bool(const PaneAdaptedValue&)>& predicate) {
                 std::vector<PaneMeasurable> out;
                 for (int i = 0; i < 3; ++i) {
                     const Role role = ord[i];
@@ -940,7 +941,7 @@ namespace kiln::material3::adaptive {
                 return p;
             };
             const auto primaryScope = paneScope(Role::Primary), secondaryScope = paneScope(Role::Secondary), tertiaryScope = paneScope(Role::Tertiary);
-            std::vector<std::function<void()>> contents{
+            std::vector<kiln::Function<void()>> contents{
                 [primaryPane, primaryScope] { if (primaryPane) primaryPane(primaryScope); },
                 [secondaryPane, secondaryScope] { if (secondaryPane) secondaryPane(secondaryScope); },
                 [tertiary = options.tertiaryPane, tertiaryScope] { if (tertiary) tertiary(tertiaryScope); },
@@ -1011,7 +1012,7 @@ namespace kiln::material3::adaptive {
             t.paneExpansionState = &expansion;
             return t;
         }
-        PaneExpansionState& ExpansionFor(const ListDetailPaneScaffoldOptions& o, std::function<PaneExpansionStateKey()> key) {
+        PaneExpansionState& ExpansionFor(const ListDetailPaneScaffoldOptions& o, kiln::Function<PaneExpansionStateKey()> key) {
             return o.paneExpansionState ? *o.paneExpansionState : RememberDefaultPaneExpansionState(std::move(key), o.paneExpansionDragHandle != nullptr);
         }
     }

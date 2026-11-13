@@ -1,4 +1,5 @@
 #include "kiln/material3/RadioButton.h"
+#include <kiln/Function.h>
 
 #include "kiln/foundation/Animate.h"
 #include "kiln/foundation/Draw.h"
@@ -30,7 +31,7 @@ namespace kiln::material3 {
                      Value(RadioButtonTokens::DisabledUnselectedIconColor).WithAlpha(RadioButtonTokens::DisabledUnselectedIconOpacity) };
         }
     }
-    void RadioButton(bool selected, std::function<void()> click, const ui::Modifier& modifier, const RadioButtonOptions& options) {
+    void RadioButton(bool selected, kiln::Function<void()> click, const ui::Modifier& modifier, const RadioButtonOptions& options) {
         const auto colors = options.colors.value_or(RadioButtonDefaults::colors());
         const auto radius = AnimateDpAsState(selected ? Dp(6) : Dp(0), Value(MotionSchemeKeyTokens::FastSpatial));
         const auto targetColor = colors.RadioColor(options.enabled, selected);

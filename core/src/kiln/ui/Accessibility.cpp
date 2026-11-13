@@ -1,4 +1,5 @@
 #include "kiln/ui/Accessibility.h"
+#include <kiln/Function.h>
 #include "kiln/text/LocaleFormat.h"
 
 #include "kiln/graphics/Shape.h"
@@ -380,7 +381,7 @@ namespace kiln::ui {
             const Rect visible = mine.Intersect(parent);
             return !(visible.left == mine.left && visible.top == mine.top && visible.right == mine.right && visible.bottom == mine.bottom);
         };
-        std::function<void(const AccessibilityNode&, Region&, bool)> partial = [&](const AccessibilityNode& a, Region& unaccounted, bool hiddenIn) {
+        kiln::Function<void(const AccessibilityNode&, Region&, bool)> partial = [&](const AccessibilityNode& a, Region& unaccounted, bool hiddenIn) {
             if (!a.fake && (!a.layout || !IsPlacedNode(*a.layout))) return;
             if (unaccounted.Empty()) { if (a.fake) addFake(a, hiddenIn); return; }
             if (a.fake) { addFake(a, hiddenIn); return; }
@@ -396,7 +397,7 @@ namespace kiln::ui {
                 if (a.important) unaccounted.Difference(r);
             }
         };
-        std::function<void(const AccessibilityNode&, Region&, bool)> rec = [&](const AccessibilityNode& a, Region& unaccounted, bool hiddenIn) {
+        kiln::Function<void(const AccessibilityNode&, Region&, bool)> rec = [&](const AccessibilityNode& a, Region& unaccounted, bool hiddenIn) {
             const bool isRoot = a.id == kHostViewId;
             if ((unaccounted.Empty() && !isRoot) || (!a.fake && (!a.layout || !IsPlacedNode(*a.layout)))) return;
             if (a.fake) { addFake(a, hiddenIn); return; }
@@ -441,7 +442,7 @@ namespace kiln::ui {
     namespace {
         struct Sorter {
             const std::unordered_map<int, AccessibilityNode>& all;
-            std::function<bool(const AccessibilityNode&)> isVisible, isFocusableContainer;
+            kiln::Function<bool(const AccessibilityNode&)> isVisible, isFocusableContainer;
             bool rtl = false;
 
             const AccessibilityNode* Get(int id) const { auto it = all.find(id); return it == all.end() ? nullptr : &it->second; }
@@ -611,7 +612,7 @@ namespace kiln::ui {
         // (stopping at nodes that merge their own and below clearing ones).
         SemanticsConfiguration out = node.config;
         if (!node.config.mergeDescendants || node.fake) return out;
-        std::function<void(const AccessibilityNode&)> mergeInto = [&](const AccessibilityNode& n) {
+        kiln::Function<void(const AccessibilityNode&)> mergeInto = [&](const AccessibilityNode& n) {
             if (n.config.clearAndSet) return;
             for (int id : n.children) {
                 const AccessibilityNode* c = FindAny(id);
@@ -1737,7 +1738,7 @@ namespace kiln::ui {
                 return std::pair{ start, end };
             }
             // BreakIterator.isBoundary through preceding / following.
-            bool IsBoundary(const std::u16string& text, int i, const std::function<int(int, bool)>& brk) {
+            bool IsBoundary(const std::u16string& text, int i, const kiln::Function<int(int, bool)>& brk) {
                 if (i <= 0 || i >= int(text.size())) return true;
                 const int p = brk(i, false);
                 return brk(p < 0 ? 0 : p, true) == i;
@@ -1767,7 +1768,7 @@ namespace kiln::ui {
             }
         }
 
-        Segment CharacterFollowing(const std::u16string& text, int current, const std::function<int(int, bool)>& brk) {
+        Segment CharacterFollowing(const std::u16string& text, int current, const kiln::Function<int(int, bool)>& brk) {
             const int n = int(text.size());
             if (n <= 0 || current >= n) return std::nullopt;
             int start = std::max(current, 0);
@@ -1779,7 +1780,7 @@ namespace kiln::ui {
             if (end < 0) return std::nullopt;
             return Range(start, end);
         }
-        Segment CharacterPreceding(const std::u16string& text, int current, const std::function<int(int, bool)>& brk) {
+        Segment CharacterPreceding(const std::u16string& text, int current, const kiln::Function<int(int, bool)>& brk) {
             const int n = int(text.size());
             if (n <= 0 || current <= 0) return std::nullopt;
             int end = std::min(current, n);
@@ -1791,7 +1792,7 @@ namespace kiln::ui {
             if (start < 0) return std::nullopt;
             return Range(start, end);
         }
-        Segment WordFollowing(const std::u16string& text, int current, const std::function<int(int, bool)>& brk) {
+        Segment WordFollowing(const std::u16string& text, int current, const kiln::Function<int(int, bool)>& brk) {
             const int n = int(text.size());
             if (n <= 0 || current >= n) return std::nullopt;
             auto isStart = [&](int i) { return LetterOrDigit(text, i) && (i == 0 || !LetterOrDigit(text, i - 1)); };
@@ -1805,7 +1806,7 @@ namespace kiln::ui {
             if (end < 0 || !isEnd(end)) return std::nullopt;
             return Range(start, end);
         }
-        Segment WordPreceding(const std::u16string& text, int current, const std::function<int(int, bool)>& brk) {
+        Segment WordPreceding(const std::u16string& text, int current, const kiln::Function<int(int, bool)>& brk) {
             const int n = int(text.size());
             if (n <= 0 || current <= 0) return std::nullopt;
             auto isStart = [&](int i) { return LetterOrDigit(text, i) && (i == 0 || !LetterOrDigit(text, i - 1)); };

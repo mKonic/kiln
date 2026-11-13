@@ -5,6 +5,7 @@
 // when drawing (LinearGradient/RadialGradient/SweepGradient.createShader).
 
 #include "kiln/graphics/ColorFilter.h"
+#include <kiln/Function.h>
 #include "kiln/graphics/Image.h"
 #include "kiln/ui/Geometry.h"
 
@@ -41,7 +42,7 @@ namespace kiln::gfx {
         TileMode tileY = TileMode::Clamp;                        // Image: vertical (tile is horizontal)
         std::shared_ptr<const Brush> dst, src;                   // Composite
         BlendMode blend = BlendMode::SrcOver;                    // Composite
-        std::shared_ptr<const std::function<Brush(Size)>> shader;   // Shader
+        std::shared_ptr<const kiln::Function<Brush(Size)>> shader;   // Shader
 
         // Whether drawing it needs layers (image, composite and shader brushes) rather than a
         // single shaded quad.
@@ -53,8 +54,8 @@ namespace kiln::gfx {
             Brush b; b.kind = Kind::Composite; b.dst = std::make_shared<Brush>(std::move(dst)); b.src = std::make_shared<Brush>(std::move(src));
             b.blend = blendMode; return b;
         }
-        static Brush ShaderBrush(std::function<Brush(Size)> createShader) {
-            Brush b; b.kind = Kind::Shader; b.shader = std::make_shared<std::function<Brush(Size)>>(std::move(createShader)); return b;
+        static Brush ShaderBrush(kiln::Function<Brush(Size)> createShader) {
+            Brush b; b.kind = Kind::Shader; b.shader = std::make_shared<kiln::Function<Brush(Size)>>(std::move(createShader)); return b;
         }
 
         static Brush SolidColor(Color c) { Brush b; b.colors = { c }; return b; }

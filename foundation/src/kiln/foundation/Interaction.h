@@ -5,6 +5,7 @@
 // in Material, DefaultDebugIndication here).
 
 #include "kiln/runtime/Composition.h"
+#include <kiln/Function.h>
 #include "kiln/runtime/State.h"
 #include "kiln/ui/Geometry.h"
 #include "kiln/ui/LayoutNode.h"
@@ -44,14 +45,14 @@ namespace kiln::foundation {
         bool IsDragAndDropHovered() const { return m_Count[4].Get() > 0; }
 
         // Every event, in order (indications that need positions and ends, like the ripple).
-        std::uint64_t Subscribe(std::function<void(const Interaction&)> fn);
+        std::uint64_t Subscribe(kiln::Function<void(const Interaction&)> fn);
         void Unsubscribe(std::uint64_t token);
 
     private:
         void Emit(const Interaction& i);
         rt::State<int> m_Count[5] = { rt::State<int>(0), rt::State<int>(0), rt::State<int>(0), rt::State<int>(0), rt::State<int>(0) };
         std::vector<std::pair<std::uint64_t, Interaction::Kind>> m_Active;
-        std::vector<std::pair<std::uint64_t, std::function<void(const Interaction&)>>> m_Subscribers;
+        std::vector<std::pair<std::uint64_t, kiln::Function<void(const Interaction&)>>> m_Subscribers;
         std::uint64_t m_NextId = 1, m_NextToken = 1;
     };
 

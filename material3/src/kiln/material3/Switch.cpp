@@ -1,4 +1,5 @@
 #include "kiln/material3/Switch.h"
+#include <kiln/Function.h>
 
 #include "kiln/animation/Animatable.h"
 #include "kiln/foundation/Border.h"
@@ -122,7 +123,7 @@ namespace kiln::material3 {
         SwitchColors colors(const SwitchColors& overrides) { return colors().Copy(overrides); }
     }
 
-    void Switch(bool checked, std::function<void(bool)> change, const ui::Modifier& modifier, const SwitchOptions& options) {
+    void Switch(bool checked, kiln::Function<void(bool)> change, const ui::Modifier& modifier, const SwitchOptions& options) {
         const auto source = options.interactionSource ? options.interactionSource : RememberInteractionSource();
         const auto colors = options.colors.value_or(SwitchDefaults::colors());
         const auto thumbShape = Value(SwitchTokens::HandleShape), trackShape = Value(SwitchTokens::TrackShape);

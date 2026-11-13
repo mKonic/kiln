@@ -1,4 +1,5 @@
 #include "kiln/foundation/contextmenu/ContextMenuUi.h"
+#include <kiln/Function.h>
 #include "kiln/foundation/Shapes.h"
 
 #include "kiln/foundation/Gestures.h"
@@ -40,8 +41,8 @@ namespace kiln::foundation {
         return cached;
     }
 
-    void ContextMenuScope::Item(std::string label, std::function<void()> onClick, bool enabled, Modifier modifier,
-                                std::function<void(Color)> leadingIcon) {
+    void ContextMenuScope::Item(std::string label, kiln::Function<void()> onClick, bool enabled, Modifier modifier,
+                                kiln::Function<void(Color)> leadingIcon) {
         if (label.find_first_not_of(" \t\n") == std::string::npos) throw std::logic_error("Label must not be blank");
         m_Entries.push_back({ false, std::move(label), enabled, std::move(modifier), std::move(leadingIcon), std::move(onClick) });
     }
@@ -63,7 +64,7 @@ namespace kiln::foundation {
     }
 
     void ContextMenuColumnBuilder(const Modifier& modifier, const ContextMenuColors& colors,
-                                  const std::function<void(ContextMenuScope&)>& builder) {
+                                  const kiln::Function<void(ContextMenuScope&)>& builder) {
         ContextMenuScope scope;
         builder(scope);
         auto& scroll = RememberScrollState();
@@ -78,7 +79,7 @@ namespace kiln::foundation {
     }
 
     void ContextMenuItem(const std::string& label, bool enabled, const ContextMenuColors& colors, const Modifier& modifier,
-                         const std::function<void(Color)>& leadingIcon, std::function<void()> onClick) {
+                         const kiln::Function<void(Color)>& leadingIcon, kiln::Function<void()> onClick) {
         ClickableOptions opts;
         opts.enabled = enabled;
         opts.onClickLabel = label;
@@ -102,8 +103,8 @@ namespace kiln::foundation {
         });
     }
 
-    void ContextMenuPopup(std::shared_ptr<const PopupPositionProvider> positionProvider, std::function<void()> onDismiss,
-                          const Modifier& modifier, std::function<void(ContextMenuScope&)> builder, Key key) {
+    void ContextMenuPopup(std::shared_ptr<const PopupPositionProvider> positionProvider, kiln::Function<void()> onDismiss,
+                          const Modifier& modifier, kiln::Function<void(ContextMenuScope&)> builder, Key key) {
         rt::Composition::Current()->Child([positionProvider, onDismiss, modifier, builder] {
             const ContextMenuColors colors = ComputeContextMenuColors();
             PopupProperties p;

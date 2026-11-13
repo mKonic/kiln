@@ -1,4 +1,5 @@
 #include "kiln/foundation/LazyLayout.h"
+#include <kiln/Function.h>
 
 #include "kiln/runtime/Saveable.h"
 
@@ -22,22 +23,22 @@ namespace kiln::foundation {
         // LazyLayoutItemContentFactory: one content object per key, so a slot recomposes only
         // when its item changes; the item's index is state its content reads.
         struct ItemContentFactory {
-            std::function<LazyLayoutItemProviderPtr()> provider;
+            kiln::Function<LazyLayoutItemProviderPtr()> provider;
             rt::SaveableStateHolder* holder = nullptr;
             struct Cached {
                 std::shared_ptr<rt::State<int>> index;
-                std::shared_ptr<const std::function<void()>> content;
+                std::shared_ptr<const kiln::Function<void()>> content;
             };
             std::unordered_map<std::uint64_t, Cached> cache;
 
-            std::shared_ptr<const std::function<void()>> GetContent(int index, const rt::Key& key) {
+            std::shared_ptr<const kiln::Function<void()>> GetContent(int index, const rt::Key& key) {
                 auto it = cache.find(key.value);
                 if (it != cache.end()) {
                     if (it->second.index->Peek() != index) it->second.index->Set(index);
                     return it->second.content;
                 }
                 auto indexState = std::make_shared<rt::State<int>>(index);
-                auto content = std::make_shared<const std::function<void()>>([this, indexState, key] {
+                auto content = std::make_shared<const kiln::Function<void()>>([this, indexState, key] {
                     const LazyLayoutItemProviderPtr p = provider();
                     const int i = indexState->Get();
                     if (!p || i < 0 || i >= p->ItemCount()) return;
@@ -83,7 +84,7 @@ namespace kiln::foundation {
         };
     }
 
-    void LazyLayout(std::function<LazyLayoutItemProviderPtr()> itemProvider, const Modifier& modifier, LazyLayoutPrefetchState* prefetchState,
+    void LazyLayout(kiln::Function<LazyLayoutItemProviderPtr()> itemProvider, const Modifier& modifier, LazyLayoutPrefetchState* prefetchState,
                     LazyLayoutMeasurePolicy measurePolicy, rt::Key key) {
         auto& c = *rt::Composition::Current();
         c.Section([&] {
@@ -102,12 +103,12 @@ namespace kiln::foundation {
                                        LazyLayoutPrefetchState::Target t;
                                        t.subcompose = state;
                                        t.provider = [wf]() -> LazyLayoutItemProviderPtr { auto f = wf.lock(); return f ? f->provider() : nullptr; };
-                                       t.content = [wf](int index, const rt::Key& k) -> std::shared_ptr<const std::function<void()>> {
+                                       t.content = [wf](int index, const rt::Key& k) -> std::shared_ptr<const kiln::Function<void()>> {
                                            auto f = wf.lock();
                                            return f ? f->GetContent(index, k) : nullptr;
                                        };
                                        prefetchState->SetTarget(std::move(t));
-                                       return std::function<void()>([prefetchState] { prefetchState->SetTarget(std::nullopt); });
+                                       return kiln::Function<void()>([prefetchState] { prefetchState->SetTarget(std::nullopt); });
                                    });
             }
             ItemContentFactory* f = factory.get();
@@ -135,7 +136,7 @@ namespace kiln::foundation {
     }
 
     LazyLayoutPrefetchState::PrefetchHandle LazyLayoutPrefetchState::SchedulePrecompositionAndPremeasure(int index, Constraints constraints,
-                                                                                                        std::function<void(const PrefetchResultScope&)> onItemPremeasured) {
+                                                                                                        kiln::Function<void(const PrefetchResultScope&)> onItemPremeasured) {
         PrefetchHandle h = SchedulePrecomposition(index);
         if (!h.m_Handle) return h;
         PrefetchResultScope result;
@@ -202,7 +203,7 @@ namespace kiln::foundation {
         };
     }
 
-    void LazyLayoutPinnableItem(const rt::Key& key, int index, LazyLayoutPinnedItemList& pinnedItemList, std::function<void()> content) {
+    void LazyLayoutPinnableItem(const rt::Key& key, int index, LazyLayoutPinnedItemList& pinnedItemList, kiln::Function<void()> content) {
         auto& c = *rt::Composition::Current();
         auto& item = c.Remember<std::shared_ptr<PinnableItem>>([&] {
             auto p = std::make_shared<PinnableItem>();
@@ -220,7 +221,7 @@ namespace kiln::foundation {
             item->parent = parent;
         }
         auto keep = item;
-        c.DisposableEffect(rt::Keys(reinterpret_cast<std::uintptr_t>(keep.get())), [keep] { return std::function<void()>([keep] { keep->OnDisposed(); }); });
+        c.DisposableEffect(rt::Keys(reinterpret_cast<std::uintptr_t>(keep.get())), [keep] { return kiln::Function<void()>([keep] { keep->OnDisposed(); }); });
         c.Provide(LocalPinnableContainer, std::static_pointer_cast<PinnableContainer>(keep), std::move(content));
     }
 

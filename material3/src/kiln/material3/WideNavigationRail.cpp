@@ -1,4 +1,5 @@
 #include "kiln/material3/WideNavigationRail.h"
+#include <kiln/Function.h>
 
 #include "kiln/animation/Easing.h"
 #include "kiln/foundation/AnchoredDraggable.h"
@@ -167,14 +168,14 @@ namespace kiln::material3 {
             bool isModal = false, expanded = false;
             Color containerColor, contentColor;
             ShapePtr shape;
-            std::function<void()> header;
+            kiln::Function<void()> header;
             WindowInsets windowInsets;
             Arrangement arrangement;
             PaddingValues contentPadding;
             Dp collapsedRailWidth, expandedRailMinWidth, expandedRailMaxWidth;
         };
 
-        void WideNavigationRailLayout(const ui::Modifier& modifier, const LayoutParams& lp, std::function<void()> content) {
+        void WideNavigationRailLayout(const ui::Modifier& modifier, const LayoutParams& lp, kiln::Function<void()> content) {
             auto& c = *rt::Composition::Current();
             const auto widths = c.Remember<std::shared_ptr<RailWidths>>([] { return std::make_shared<RailWidths>(); });
             const Dp minimumA11ySize = c.Read(LocalMinimumInteractiveComponentSize);
@@ -274,7 +275,7 @@ namespace kiln::material3 {
         }
     }
 
-    void WideNavigationRail(const ui::Modifier& modifier, const WideNavigationRailOptions& o, std::function<void()> content) {
+    void WideNavigationRail(const ui::Modifier& modifier, const WideNavigationRailOptions& o, kiln::Function<void()> content) {
         const auto state = o.state ? o.state : RememberWideNavigationRailState();
         const WideNavigationRailColors colors = o.colors.value_or(WideNavigationRailDefaults::colors());
         LayoutParams lp;
@@ -293,7 +294,7 @@ namespace kiln::material3 {
         WideNavigationRailLayout(modifier, lp, std::move(content));
     }
 
-    void WideNavigationRailItem(bool selected, std::function<void()> onClick, std::function<void()> icon, std::function<void()> label, bool railExpanded,
+    void WideNavigationRailItem(bool selected, kiln::Function<void()> onClick, kiln::Function<void()> icon, kiln::Function<void()> label, bool railExpanded,
                                 const ui::Modifier& modifier, const WideNavigationRailItemOptions& o) {
         const NavigationItemIconPosition position = o.iconPosition.value_or(WideNavigationRailItemDefaults::iconPositionFor(railExpanded));
         const NavigationItemColors colors = o.colors.value_or(WideNavigationRailItemDefaults::colors());
@@ -429,13 +430,13 @@ namespace kiln::material3 {
             std::shared_ptr<WideNavigationRailState> state;
             Color containerColor, contentColor;
             ShapePtr shape;
-            std::function<void()> header;
+            kiln::Function<void()> header;
             WindowInsets windowInsets;
             Arrangement arrangement;
             PaddingValues contentPadding;
         };
 
-        void ModalWideNavigationRailContent(const ui::Modifier& modifier, const ModalContentParams& p, std::function<void()> content) {
+        void ModalWideNavigationRailContent(const ui::Modifier& modifier, const ModalContentParams& p, kiln::Function<void()> content) {
             auto& c = *rt::Composition::Current();
             const bool rtl = c.Read(ui::LocalLayoutDirection) == ui::LayoutDirection::Rtl;
             const ui::Density density = c.Read(ui::LocalDensity);
@@ -511,7 +512,7 @@ namespace kiln::material3 {
         }
     }
 
-    void ModalWideNavigationRail(const ui::Modifier& modifier, const ModalWideNavigationRailOptions& o, std::function<void()> content) {
+    void ModalWideNavigationRail(const ui::Modifier& modifier, const ModalWideNavigationRailOptions& o, kiln::Function<void()> content) {
         auto& c = *rt::Composition::Current();
         const auto state = o.state ? o.state : RememberWideNavigationRailState();
         const WideNavigationRailColors colors = o.colors.value_or(WideNavigationRailDefaults::colors());
@@ -519,9 +520,9 @@ namespace kiln::material3 {
         // rememberContent: with a collapsed rail kept, the items are movable content, keeping their
         // state as they move into the expanded rail's window and back. The latest content runs.
         if (!hideOnCollapse) {
-            const auto latest = c.Remember<std::shared_ptr<std::function<void()>>>([] { return std::make_shared<std::function<void()>>(); });
+            const auto latest = c.Remember<std::shared_ptr<kiln::Function<void()>>>([] { return std::make_shared<kiln::Function<void()>>(); });
             *latest = std::move(content);
-            const auto& movable = c.Remember<rt::MovableContent<>>([&] { return rt::MovableContent<>(std::function<void()>([latest] { if (*latest) (*latest)(); })); });
+            const auto& movable = c.Remember<rt::MovableContent<>>([&] { return rt::MovableContent<>(kiln::Function<void()>([latest] { if (*latest) (*latest)(); })); });
             content = [movable] { movable(); };
         }
         const bool targetExpanded = state->TargetValue() == Value_::Expanded;
@@ -584,7 +585,7 @@ namespace kiln::material3 {
         properties.usePlatformDefaultWidth = false;   // edge to edge, full size
         properties.decorFitsSystemWindows = false;
         properties.scrimAlpha = 0;                   // the rail draws its own scrim
-        std::function<rt::Task<>(BackProgress&)> onBack;
+        kiln::Function<rt::Task<>(BackProgress&)> onBack;
         if (o.expandedProperties.shouldDismissOnBackPress)
             onBack = [backProgress, backState, rtl, dialogScope, state](BackProgress& events) {
                 return PredictiveBack(events, backProgress, backState, rtl, dialogScope, state);

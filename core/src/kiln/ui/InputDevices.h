@@ -4,6 +4,7 @@
 // keyboard types are InputDevice's values; no Android classes are needed in the core.
 
 #include "kiln/runtime/State.h"
+#include <kiln/Function.h>
 
 #include <cstdint>
 #include <functional>
@@ -28,7 +29,7 @@ namespace kiln::ui {
 
     class InputDevices {
     public:
-        void SetListenerHost(std::function<void(bool)> host) {
+        void SetListenerHost(kiln::Function<void(bool)> host) {
             if (m_Listeners && m_Host) m_Host(false);
             m_Host = std::move(host);
             if (m_Listeners && m_Host) m_Host(true);
@@ -69,7 +70,7 @@ namespace kiln::ui {
             else devices.erase(id);
         }
         int m_Listeners = 0;
-        std::function<void(bool)> m_Host;
+        kiln::Function<void(bool)> m_Host;
         std::set<int> m_Keyboards, m_Mice;
         rt::State<bool> m_HasBoth{ false };
         rt::State<std::vector<InputDeviceInfo>, rt::NeverEqual> m_All{ {} };

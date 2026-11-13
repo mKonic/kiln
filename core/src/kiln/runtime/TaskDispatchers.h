@@ -9,6 +9,7 @@
 // (the function still runs to its end and its result is dropped).
 
 #include "kiln/runtime/Task.h"
+#include <kiln/Function.h>
 
 #include <condition_variable>
 #include <deque>
@@ -32,7 +33,7 @@ namespace kiln::rt {
         ~BackgroundDispatcher();
         BackgroundDispatcher(const BackgroundDispatcher&) = delete;
         BackgroundDispatcher& operator=(const BackgroundDispatcher&) = delete;
-        void Execute(std::function<void()> work);
+        void Execute(kiln::Function<void()> work);
         unsigned MaxThreads() const { return m_Max; }
         const std::string& Name() const { return m_Name; }
 
@@ -42,7 +43,7 @@ namespace kiln::rt {
         std::string m_Name;
         std::mutex m_Mutex;
         std::condition_variable m_Cv;
-        std::deque<std::function<void()>> m_Queue;
+        std::deque<kiln::Function<void()>> m_Queue;
         std::vector<std::thread> m_Threads;
         unsigned m_Idle = 0;
         bool m_Stop = false;
@@ -73,7 +74,7 @@ namespace kiln::rt {
     template<typename T>
     struct WithContextAwaitable {
         BackgroundDispatcher* pool;
-        std::function<T()> fn;
+        kiln::Function<T()> fn;
         std::shared_ptr<detail::BackgroundResult<T>> result = std::make_shared<detail::BackgroundResult<T>>();
 
         bool await_ready() const noexcept { return false; }
@@ -110,7 +111,7 @@ namespace kiln::rt {
     template<typename F>
     auto WithContext(BackgroundDispatcher& pool, F&& fn) {
         using T = std::invoke_result_t<F>;
-        return WithContextAwaitable<T>{ &pool, std::function<T()>(std::forward<F>(fn)) };
+        return WithContextAwaitable<T>{ &pool, kiln::Function<T()>(std::forward<F>(fn)) };
     }
 
 }

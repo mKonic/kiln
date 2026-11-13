@@ -1,4 +1,5 @@
 #include "kiln/material3/FloatingActionButton.h"
+#include <kiln/Function.h>
 
 #include "kiln/foundation/AnimatedVisibility.h"
 #include "kiln/foundation/Semantics.h"
@@ -57,8 +58,8 @@ namespace kiln::material3 {
                     FloatingActionButtonDefaults::extendedFabShape(), ExtendedFabPrimaryTokens::LabelTextFont };
             }
         }
-        void Fab(std::function<void()> click, const ui::Modifier& m, const FloatingActionButtonOptions& o,
-                 const Metrics& metrics, std::function<void()> content) {
+        void Fab(kiln::Function<void()> click, const ui::Modifier& m, const FloatingActionButtonOptions& o,
+                 const Metrics& metrics, kiln::Function<void()> content) {
             const auto source = o.interactionSource ? o.interactionSource : RememberInteractionSource();
             const auto elevation = o.elevation.value_or(FloatingActionButtonDefaults::elevation());
             SurfaceOptions surface;
@@ -76,8 +77,8 @@ namespace kiln::material3 {
                 });
             }, true, source);
         }
-        void IconFab(std::function<void()> click, const ui::Modifier& m, const FloatingActionButtonOptions& o,
-                     std::function<void()> content, FabSize size) {
+        void IconFab(kiln::Function<void()> click, const ui::Modifier& m, const FloatingActionButtonOptions& o,
+                     kiln::Function<void()> content, FabSize size) {
             auto metrics = IconMetrics(size);
             auto modifier = m;
             if (size != FabSize::Baseline) {
@@ -87,8 +88,8 @@ namespace kiln::material3 {
             }
             Fab(std::move(click), modifier, o, metrics, std::move(content));
         }
-        void TextFab(std::function<void()> click, const ui::Modifier& m, const FloatingActionButtonOptions& o,
-                     std::function<void()> content, FabSize size) {
+        void TextFab(kiln::Function<void()> click, const ui::Modifier& m, const FloatingActionButtonOptions& o,
+                     kiln::Function<void()> content, FabSize size) {
             auto metrics = ExtendedMetrics(size);
             const auto rowMetrics = metrics;
             if (size == FabSize::Baseline) metrics.width = FabBaselineTokens::ContainerWidth;
@@ -112,7 +113,7 @@ namespace kiln::material3 {
                 return s.Layout(width, p.Height(), [&p](ui::PlacementScope& ps) { ps.Place(p, 0, 0); });
             }
         };
-        void ExpandableFab(std::function<void()> text, std::function<void()> icon, std::function<void()> click,
+        void ExpandableFab(kiln::Function<void()> text, kiln::Function<void()> icon, kiln::Function<void()> click,
                            const ui::Modifier& m, bool expanded, const FloatingActionButtonOptions& o, FabSize size) {
             const auto metrics = ExtendedMetrics(size);
             auto outer = metrics;
@@ -156,18 +157,18 @@ namespace kiln::material3 {
         }
     }
 
-    void FloatingActionButton(std::function<void()> c, const ui::Modifier& m, const FloatingActionButtonOptions& o, std::function<void()> body) { IconFab(std::move(c), m, o, std::move(body), FabSize::Baseline); }
-    void SmallFloatingActionButton(std::function<void()> c, const ui::Modifier& m, const FloatingActionButtonOptions& o, std::function<void()> body) { IconFab(std::move(c), m, o, std::move(body), FabSize::Small); }
-    void MediumFloatingActionButton(std::function<void()> c, const ui::Modifier& m, const FloatingActionButtonOptions& o, std::function<void()> body) { IconFab(std::move(c), m, o, std::move(body), FabSize::Medium); }
-    void LargeFloatingActionButton(std::function<void()> c, const ui::Modifier& m, const FloatingActionButtonOptions& o, std::function<void()> body) { IconFab(std::move(c), m, o, std::move(body), FabSize::Large); }
-    void ExtendedFloatingActionButton(std::function<void()> c, const ui::Modifier& m, const FloatingActionButtonOptions& o, std::function<void()> body) { TextFab(std::move(c), m, o, std::move(body), FabSize::Baseline); }
-    void SmallExtendedFloatingActionButton(std::function<void()> c, const ui::Modifier& m, const FloatingActionButtonOptions& o, std::function<void()> body) { TextFab(std::move(c), m, o, std::move(body), FabSize::Small); }
-    void MediumExtendedFloatingActionButton(std::function<void()> c, const ui::Modifier& m, const FloatingActionButtonOptions& o, std::function<void()> body) { TextFab(std::move(c), m, o, std::move(body), FabSize::Medium); }
-    void LargeExtendedFloatingActionButton(std::function<void()> c, const ui::Modifier& m, const FloatingActionButtonOptions& o, std::function<void()> body) { TextFab(std::move(c), m, o, std::move(body), FabSize::Large); }
-    void ExtendedFloatingActionButton(std::function<void()> text, std::function<void()> icon, std::function<void()> c, const ui::Modifier& m, bool expanded, const FloatingActionButtonOptions& o) { ExpandableFab(std::move(text), std::move(icon), std::move(c), m, expanded, o, FabSize::Baseline); }
-    void SmallExtendedFloatingActionButton(std::function<void()> text, std::function<void()> icon, std::function<void()> c, const ui::Modifier& m, bool expanded, const FloatingActionButtonOptions& o) { ExpandableFab(std::move(text), std::move(icon), std::move(c), m, expanded, o, FabSize::Small); }
-    void MediumExtendedFloatingActionButton(std::function<void()> text, std::function<void()> icon, std::function<void()> c, const ui::Modifier& m, bool expanded, const FloatingActionButtonOptions& o) { ExpandableFab(std::move(text), std::move(icon), std::move(c), m, expanded, o, FabSize::Medium); }
-    void LargeExtendedFloatingActionButton(std::function<void()> text, std::function<void()> icon, std::function<void()> c, const ui::Modifier& m, bool expanded, const FloatingActionButtonOptions& o) { ExpandableFab(std::move(text), std::move(icon), std::move(c), m, expanded, o, FabSize::Large); }
+    void FloatingActionButton(kiln::Function<void()> c, const ui::Modifier& m, const FloatingActionButtonOptions& o, kiln::Function<void()> body) { IconFab(std::move(c), m, o, std::move(body), FabSize::Baseline); }
+    void SmallFloatingActionButton(kiln::Function<void()> c, const ui::Modifier& m, const FloatingActionButtonOptions& o, kiln::Function<void()> body) { IconFab(std::move(c), m, o, std::move(body), FabSize::Small); }
+    void MediumFloatingActionButton(kiln::Function<void()> c, const ui::Modifier& m, const FloatingActionButtonOptions& o, kiln::Function<void()> body) { IconFab(std::move(c), m, o, std::move(body), FabSize::Medium); }
+    void LargeFloatingActionButton(kiln::Function<void()> c, const ui::Modifier& m, const FloatingActionButtonOptions& o, kiln::Function<void()> body) { IconFab(std::move(c), m, o, std::move(body), FabSize::Large); }
+    void ExtendedFloatingActionButton(kiln::Function<void()> c, const ui::Modifier& m, const FloatingActionButtonOptions& o, kiln::Function<void()> body) { TextFab(std::move(c), m, o, std::move(body), FabSize::Baseline); }
+    void SmallExtendedFloatingActionButton(kiln::Function<void()> c, const ui::Modifier& m, const FloatingActionButtonOptions& o, kiln::Function<void()> body) { TextFab(std::move(c), m, o, std::move(body), FabSize::Small); }
+    void MediumExtendedFloatingActionButton(kiln::Function<void()> c, const ui::Modifier& m, const FloatingActionButtonOptions& o, kiln::Function<void()> body) { TextFab(std::move(c), m, o, std::move(body), FabSize::Medium); }
+    void LargeExtendedFloatingActionButton(kiln::Function<void()> c, const ui::Modifier& m, const FloatingActionButtonOptions& o, kiln::Function<void()> body) { TextFab(std::move(c), m, o, std::move(body), FabSize::Large); }
+    void ExtendedFloatingActionButton(kiln::Function<void()> text, kiln::Function<void()> icon, kiln::Function<void()> c, const ui::Modifier& m, bool expanded, const FloatingActionButtonOptions& o) { ExpandableFab(std::move(text), std::move(icon), std::move(c), m, expanded, o, FabSize::Baseline); }
+    void SmallExtendedFloatingActionButton(kiln::Function<void()> text, kiln::Function<void()> icon, kiln::Function<void()> c, const ui::Modifier& m, bool expanded, const FloatingActionButtonOptions& o) { ExpandableFab(std::move(text), std::move(icon), std::move(c), m, expanded, o, FabSize::Small); }
+    void MediumExtendedFloatingActionButton(kiln::Function<void()> text, kiln::Function<void()> icon, kiln::Function<void()> c, const ui::Modifier& m, bool expanded, const FloatingActionButtonOptions& o) { ExpandableFab(std::move(text), std::move(icon), std::move(c), m, expanded, o, FabSize::Medium); }
+    void LargeExtendedFloatingActionButton(kiln::Function<void()> text, kiln::Function<void()> icon, kiln::Function<void()> c, const ui::Modifier& m, bool expanded, const FloatingActionButtonOptions& o) { ExpandableFab(std::move(text), std::move(icon), std::move(c), m, expanded, o, FabSize::Large); }
 
     namespace FloatingActionButtonDefaults {
         const Dp MediumIconSize = FabMediumTokens::IconSize;

@@ -1,4 +1,5 @@
 #include "Check.h"
+#include <kiln/Function.h>
 
 #include "kiln/runtime/Saveable.h"
 
@@ -16,7 +17,7 @@ namespace {
         Composition composition{ root };
         explicit Root(const std::vector<std::uint8_t>& saved)
             : registry(SaveableStateRegistry::Deserialize(saved)) {}
-        void Run(std::function<void()> content) {
+        void Run(kiln::Function<void()> content) {
             composition.SetContent([this, content] { Composition::Current()->Provide(LocalSaveableStateRegistry, &registry, content); });
             composition.Recompose();
         }

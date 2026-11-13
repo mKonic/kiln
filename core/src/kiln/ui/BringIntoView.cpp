@@ -1,10 +1,11 @@
 #include "kiln/ui/BringIntoView.h"
+#include <kiln/Function.h>
 
 namespace kiln::ui {
 
     void BringIntoView(LayoutNode& node, std::optional<Rect> rect, const ModifierNode* from) {
         // The rect in root coordinates, re-read each time (the content moves while scrolling).
-        std::function<std::optional<Rect>()> inRoot = [alive = node.AliveToken(), n = &node, rect,
+        kiln::Function<std::optional<Rect>()> inRoot = [alive = node.AliveToken(), n = &node, rect,
                                                         fromAlive = from ? from->AliveToken() : std::weak_ptr<const char>{}, from]() -> std::optional<Rect> {
             if (alive.expired() || !n->IsPlaced()) return std::nullopt;
             if (from && fromAlive.expired()) return std::nullopt;

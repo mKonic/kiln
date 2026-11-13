@@ -4,6 +4,7 @@
 // 0..itemCount-1 (the current one centred, larger and emphasised).
 
 #include "kiln/foundation/Interaction.h"
+#include <kiln/Function.h>
 #include "kiln/foundation/Shapes.h"
 #include "kiln/foundation/Pager.h"
 #include "kiln/runtime/Task.h"
@@ -58,10 +59,10 @@ namespace kiln::material3 {
         bool enabled = true;
         std::optional<ScrollFieldColors> colors;
         // The state description of an option (default: its number in the locale's digits).
-        std::function<std::string(int index)> fieldAccessibilityDescription;
+        kiln::Function<std::string(int index)> fieldAccessibilityDescription;
         std::shared_ptr<foundation::MutableInteractionSource> interactionSource;
         // An item's content (default: ScrollFieldDefaults::Item).
-        std::function<void(int index, bool selected, bool enabled)> field;
+        kiln::Function<void(int index, bool selected, bool enabled)> field;
         ui::Dp itemHeight = ScrollFieldDefaults::ItemHeight;   // internal (the time picker's)
     };
     void ScrollField(ScrollFieldState& state, std::optional<std::string> contentDescription, const ui::Modifier& modifier = {},

@@ -1,4 +1,5 @@
 #include "kiln/material3/Chip.h"
+#include <kiln/Function.h>
 
 #include "kiln/animation/Animatable.h"
 #include "kiln/foundation/AnimatedVisibility.h"
@@ -21,7 +22,7 @@ namespace kiln::material3 {
     using ui::Dp;
 
     namespace {
-        using Content = std::function<void()>;
+        using Content = kiln::Function<void()>;
         struct Entry { Interaction::Kind kind; std::uint64_t id; bool operator==(const Entry&) const = default; };
         struct ElevationState {
             anim::Animatable value;

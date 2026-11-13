@@ -1,4 +1,5 @@
 #include "kiln/material3/internal/ListItemLayout.h"
+#include <kiln/Function.h>
 
 #include "kiln/material3/MaterialTheme.h"
 #include "kiln/material3/tokens/ListTokens.h"
@@ -137,7 +138,7 @@ namespace kiln::material3::internal {
         };
     }
 
-    void ListItemLayout(const Modifier& modifier, bool legacy, Dp verticalPadding, ListItemVerticalAlignment alignment, std::array<std::function<void()>, 5> content) {
+    void ListItemLayout(const Modifier& modifier, bool legacy, Dp verticalPadding, ListItemVerticalAlignment alignment, std::array<kiln::Function<void()>, 5> content) {
         const auto slots = std::make_shared<Slots>();
         const auto firstChild = std::make_shared<FirstChildPolicy>();
         Layout(modifier, std::make_shared<ListPolicy>(slots, legacy, verticalPadding, std::move(alignment)), [=] {

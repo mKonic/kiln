@@ -1,17 +1,18 @@
 #pragma once
 // Minimal test harness (hearth-style: no framework). TEST registers, CHECK records failures.
 #include <cmath>
+#include <kiln/Function.h>
 #include <cstdio>
 #include <functional>
 #include <string>
 #include <vector>
 
 namespace kiln::test {
-    struct Case { const char* name; std::function<void()> fn; };
+    struct Case { const char* name; kiln::Function<void()> fn; };
     inline std::vector<Case>& Cases() { static std::vector<Case> c; return c; }
     inline int& Failures() { static int f = 0; return f; }
     inline int& Checks() { static int c = 0; return c; }
-    struct Register { Register(const char* n, std::function<void()> f) { Cases().push_back({ n, std::move(f) }); } };
+    struct Register { Register(const char* n, kiln::Function<void()> f) { Cases().push_back({ n, std::move(f) }); } };
 }
 
 #define KILN_CAT2(a, b) a##b

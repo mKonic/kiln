@@ -1,4 +1,5 @@
 #include "kiln/material3/Slider.h"
+#include <kiln/Function.h>
 #include "kiln/foundation/Focus.h"
 #include "kiln/foundation/Semantics.h"
 #include "kiln/material3/MaterialTheme.h"
@@ -35,7 +36,7 @@ namespace kiln::material3 {
             return value;
         }
         bool KeyValue(const KeyEvent& event, float value, SliderRange range, int steps, bool reverse, bool vertical,
-                      const std::function<void(float)>& change, const std::function<void()>& finished) {
+                      const kiln::Function<void(float)>& change, const kiln::Function<void()>& finished) {
             const int key = event.keyCode;
             const bool home = key == keys::MoveHome, end = key == keys::MoveEnd, pageUp = key == keys::PageUp, pageDown = key == keys::PageDown;
             const bool increase = key == (vertical ? keys::DpadDown : keys::DpadRight), decrease = key == (vertical ? keys::DpadUp : keys::DpadLeft);
@@ -71,7 +72,7 @@ namespace kiln::material3 {
             const bool extreme = !ticks.empty() && (fraction == ticks.front() || fraction == ticks.back());
             return steps > 0 && !extreme ? RoundJava(float(length - corner * 2) * fraction) + corner : RoundJava(float(length) * fraction);
         }
-        void Single(SliderState& state, std::function<void(float)> onChange, const Modifier& modifier, const SliderOptions& o, bool vertical, bool topToBottom) {
+        void Single(SliderState& state, kiln::Function<void(float)> onChange, const Modifier& modifier, const SliderOptions& o, bool vertical, bool topToBottom) {
             auto& c = *rt::Composition::Current();
             const bool rtl = c.Read(LocalLayoutDirection) == LayoutDirection::Rtl;
             state.Configure(vertical ? Orientation::Vertical : Orientation::Horizontal, rtl, vertical && !topToBottom);
@@ -133,10 +134,10 @@ namespace kiln::material3 {
             });
         }
     }
-    void Slider(SliderState& state, std::function<void(float)> onChange, const Modifier& modifier, const SliderOptions& options) { Single(state, std::move(onChange), modifier, options, false, true); }
-    void VerticalSlider(SliderState& state, std::function<void(float)> onChange, const Modifier& modifier, const SliderOptions& options, bool topToBottom) { Single(state, std::move(onChange), modifier, options, true, topToBottom); }
+    void Slider(SliderState& state, kiln::Function<void(float)> onChange, const Modifier& modifier, const SliderOptions& options) { Single(state, std::move(onChange), modifier, options, false, true); }
+    void VerticalSlider(SliderState& state, kiln::Function<void(float)> onChange, const Modifier& modifier, const SliderOptions& options, bool topToBottom) { Single(state, std::move(onChange), modifier, options, true, topToBottom); }
 
-    void RangeSlider(RangeSliderState& state, std::function<void(SliderRange)> onChange, const Modifier& modifier, const RangeSliderOptions& o) {
+    void RangeSlider(RangeSliderState& state, kiln::Function<void(SliderRange)> onChange, const Modifier& modifier, const RangeSliderOptions& o) {
         auto& c = *rt::Composition::Current();
         state.Configure(c.Read(LocalLayoutDirection) == LayoutDirection::Rtl);
         const auto startSource = o.startThumbInteractionSource ? o.startThumbInteractionSource : RememberInteractionSource();

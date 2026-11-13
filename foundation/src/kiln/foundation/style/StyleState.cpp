@@ -1,4 +1,5 @@
 #include "kiln/foundation/style/StyleState.h"
+#include <kiln/Function.h>
 
 #include "kiln/runtime/Composition.h"
 
@@ -58,7 +59,7 @@ namespace kiln::foundation {
         m_Custom.Update([&](auto& map) { map.erase(&key); });
     }
 
-    std::function<void()> MutableStyleState::ProcessInteractions(const std::shared_ptr<MutableInteractionSource>& source) {
+    kiln::Function<void()> MutableStyleState::ProcessInteractions(const std::shared_ptr<MutableInteractionSource>& source) {
         if (!source) return [] {};
         // Interactions still in progress, by kind (a press ends with its release or cancel).
         struct Tracker {
@@ -97,7 +98,7 @@ namespace kiln::foundation {
     }
 
     std::shared_ptr<MutableStyleState> RememberUpdatedStyleState(std::shared_ptr<MutableInteractionSource> interactionSource,
-                                                                 const std::function<void(MutableStyleState&)>& block) {
+                                                                 const kiln::Function<void(MutableStyleState&)>& block) {
         std::shared_ptr<MutableStyleState> state;
         if (auto* c = rt::Composition::Current()) {
             // remember(interactionSource): a new state for a new source.

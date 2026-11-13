@@ -1,4 +1,5 @@
 #include "kiln/material3/NavigationItem.h"
+#include <kiln/Function.h>
 
 #include "kiln/foundation/Animate.h"
 #include "kiln/foundation/Compose.h"
@@ -300,7 +301,7 @@ namespace kiln::material3 {
         }
 
         // The selectable item box, at least the minimum interactive size, recording its width.
-        ui::Modifier ItemModifier(const ui::Modifier& modifier, bool selected, std::function<void()> onClick, bool enabled,
+        ui::Modifier ItemModifier(const ui::Modifier& modifier, bool selected, kiln::Function<void()> onClick, bool enabled,
                                   const std::shared_ptr<MutableInteractionSource>& source, const std::shared_ptr<rt::State<int>>& width) {
             ClickableOptions click;
             click.enabled = enabled;

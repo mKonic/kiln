@@ -6,6 +6,7 @@
 // has hidden.
 
 #include "kiln/foundation/Dialog.h"
+#include <kiln/Function.h>
 #include "kiln/material3/BottomSheet.h"
 
 namespace kiln::material3 {
@@ -28,18 +29,18 @@ namespace kiln::material3 {
         std::optional<ui::Color> containerColor, contentColor;
         ui::Dp tonalElevation{ 0 };
         std::optional<ui::Color> scrimColor;            // unset: BottomSheetDefaults::ScrimColor
-        std::function<void()> dragHandle = [] { BottomSheetDefaults::DragHandle(); };   // null: none
-        std::function<foundation::WindowInsets()> contentWindowInsets;                  // null: modalWindowInsets
+        kiln::Function<void()> dragHandle = [] { BottomSheetDefaults::DragHandle(); };   // null: none
+        kiln::Function<foundation::WindowInsets()> contentWindowInsets;                  // null: modalWindowInsets
         ModalBottomSheetProperties properties;
     };
 
-    void ModalBottomSheet(std::function<void()> onDismissRequest, const ui::Modifier& modifier, const ModalBottomSheetOptions& options,
-                          std::function<void()> content);
+    void ModalBottomSheet(kiln::Function<void()> onDismissRequest, const ui::Modifier& modifier, const ModalBottomSheetOptions& options,
+                          kiln::Function<void()> content);
 
     // rememberModalBottomSheetState (deprecated in Compose): hidden, with the legacy partially
     // expanded height (half the window).
     std::shared_ptr<SheetState> RememberModalBottomSheetState(bool skipPartiallyExpanded = false,
-                                                              std::function<bool(SheetValue)> confirmValueChange = {}, rt::Key key = {});
+                                                              kiln::Function<bool(SheetValue)> confirmValueChange = {}, rt::Key key = {});
 
     namespace internal {
         // SheetWindowInsets: the sheet's offset as a top inset (what lies above the sheet).

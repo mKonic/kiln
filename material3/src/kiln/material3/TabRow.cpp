@@ -1,4 +1,5 @@
 #include "kiln/material3/TabRow.h"
+#include <kiln/Function.h>
 
 #include "kiln/foundation/Compose.h"
 #include "kiln/foundation/Draw.h"
@@ -149,8 +150,8 @@ namespace kiln::material3 {
             std::shared_ptr<ScopeImpl> m_Scope;
         };
 
-        void TabRowImpl(const ui::Modifier& modifier, Color containerColor, Color contentColor, std::function<void(TabIndicatorScope&)> indicator,
-                        std::function<void()> divider, std::function<void()> tabs) {
+        void TabRowImpl(const ui::Modifier& modifier, Color containerColor, Color contentColor, kiln::Function<void(TabIndicatorScope&)> indicator,
+                        kiln::Function<void()> divider, kiln::Function<void()> tabs) {
             SurfaceOptions surface;
             surface.color = containerColor;
             surface.contentColor = contentColor;
@@ -240,8 +241,8 @@ namespace kiln::material3 {
         };
 
         void ScrollableTabRowImpl(int selectedTabIndex, const ui::Modifier& modifier, Color containerColor, Color contentColor, Dp edgePadding,
-                                  Dp minTabWidth, ScrollState* scrollState, std::function<void(TabIndicatorScope&)> indicator,
-                                  std::function<void()> divider, std::function<void()> tabs) {
+                                  Dp minTabWidth, ScrollState* scrollState, kiln::Function<void(TabIndicatorScope&)> indicator,
+                                  kiln::Function<void()> divider, kiln::Function<void()> tabs) {
             SurfaceOptions surface;
             surface.color = containerColor;
             surface.contentColor = contentColor;
@@ -265,13 +266,13 @@ namespace kiln::material3 {
             });
         }
 
-        std::function<void()> DividerOr(const std::function<void()>& divider) {
+        kiln::Function<void()> DividerOr(const kiln::Function<void()>& divider) {
             return divider ? divider : [] { HorizontalDivider(); };
         }
-        std::function<void(TabIndicatorScope&)> PrimaryIndicatorFor(int selected) {
+        kiln::Function<void(TabIndicatorScope&)> PrimaryIndicatorFor(int selected) {
             return [selected](TabIndicatorScope& s) { TabRowDefaults::PrimaryIndicator(s.TabIndicatorOffset({}, selected, true), Dp::Unspecified()); };
         }
-        std::function<void(TabIndicatorScope&)> SecondaryIndicatorFor(int selected) {
+        kiln::Function<void(TabIndicatorScope&)> SecondaryIndicatorFor(int selected) {
             return [selected](TabIndicatorScope& s) { TabRowDefaults::SecondaryIndicator(s.TabIndicatorOffset({}, selected, false)); };
         }
     }
@@ -293,22 +294,22 @@ namespace kiln::material3 {
         }
     }
 
-    void PrimaryTabRow(int selectedTabIndex, const ui::Modifier& modifier, const TabRowOptions& o, std::function<void()> tabs) {
+    void PrimaryTabRow(int selectedTabIndex, const ui::Modifier& modifier, const TabRowOptions& o, kiln::Function<void()> tabs) {
         const Color container = o.containerColor.value_or(TabRowDefaults::primaryContainerColor());
         TabRowImpl(modifier, container, o.contentColor.value_or(TabRowDefaults::primaryContentColor()),
                    o.indicator ? o.indicator : PrimaryIndicatorFor(selectedTabIndex), DividerOr(o.divider), std::move(tabs));
     }
-    void SecondaryTabRow(int selectedTabIndex, const ui::Modifier& modifier, const TabRowOptions& o, std::function<void()> tabs) {
+    void SecondaryTabRow(int selectedTabIndex, const ui::Modifier& modifier, const TabRowOptions& o, kiln::Function<void()> tabs) {
         const Color container = o.containerColor.value_or(TabRowDefaults::secondaryContainerColor());
         TabRowImpl(modifier, container, o.contentColor.value_or(TabRowDefaults::secondaryContentColor()),
                    o.indicator ? o.indicator : SecondaryIndicatorFor(selectedTabIndex), DividerOr(o.divider), std::move(tabs));
     }
-    void PrimaryScrollableTabRow(int selectedTabIndex, const ui::Modifier& modifier, const ScrollableTabRowOptions& o, std::function<void()> tabs) {
+    void PrimaryScrollableTabRow(int selectedTabIndex, const ui::Modifier& modifier, const ScrollableTabRowOptions& o, kiln::Function<void()> tabs) {
         ScrollableTabRowImpl(selectedTabIndex, modifier, o.containerColor.value_or(TabRowDefaults::primaryContainerColor()),
                              o.contentColor.value_or(TabRowDefaults::primaryContentColor()), o.edgePadding, o.minTabWidth, o.scrollState,
                              o.indicator ? o.indicator : PrimaryIndicatorFor(selectedTabIndex), DividerOr(o.divider), std::move(tabs));
     }
-    void SecondaryScrollableTabRow(int selectedTabIndex, const ui::Modifier& modifier, const ScrollableTabRowOptions& o, std::function<void()> tabs) {
+    void SecondaryScrollableTabRow(int selectedTabIndex, const ui::Modifier& modifier, const ScrollableTabRowOptions& o, kiln::Function<void()> tabs) {
         ScrollableTabRowImpl(selectedTabIndex, modifier, o.containerColor.value_or(TabRowDefaults::secondaryContainerColor()),
                              o.contentColor.value_or(TabRowDefaults::secondaryContentColor()), o.edgePadding, o.minTabWidth, o.scrollState,
                              o.indicator ? o.indicator : SecondaryIndicatorFor(selectedTabIndex), DividerOr(o.divider), std::move(tabs));

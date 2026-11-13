@@ -1,4 +1,5 @@
 #include "kiln/material3/Surface.h"
+#include <kiln/Function.h>
 
 #include "kiln/foundation/Compose.h"
 #include "kiln/foundation/Draw.h"
@@ -49,7 +50,7 @@ namespace kiln::material3 {
         }
 
         // CompositionLocalProvider(LocalContentColor, LocalAbsoluteTonalElevation) { Box(...) }.
-        void Provide(const Resolved& r, std::function<void()> body) {
+        void Provide(const Resolved& r, kiln::Function<void()> body) {
             auto& c = Comp();
             c.Provide(LocalContentColor, r.contentColor, [&c, r, body = std::move(body)] {
                 c.Provide(LocalAbsoluteTonalElevation, r.absoluteElevation, body);
@@ -62,7 +63,7 @@ namespace kiln::material3 {
         // for inset rings, the surface, then `interactive` (clickable / selectable / toggleable)
         // with the ripple, and childSemantics.
         void Interactive(const SurfaceOptions& options, const Modifier& modifier, std::shared_ptr<foundation::MutableInteractionSource> source,
-                         std::function<Modifier(Modifier, foundation::ClickableOptions)> interactive, bool enabled, std::function<void()> content) {
+                         kiln::Function<Modifier(Modifier, foundation::ClickableOptions)> interactive, bool enabled, kiln::Function<void()> content) {
             auto& c = Comp();
             if (!source) source = c.Remember<std::shared_ptr<foundation::MutableInteractionSource>>(
                 [] { return std::make_shared<foundation::MutableInteractionSource>(); });
@@ -96,7 +97,7 @@ namespace kiln::material3 {
         }
     }
 
-    void Surface(const Modifier& modifier, const SurfaceOptions& options, std::function<void()> content) {
+    void Surface(const Modifier& modifier, const SurfaceOptions& options, kiln::Function<void()> content) {
         const Resolved r = Resolve(options);
         const float shadow = ShadowPx(options.shadowElevation);
         Provide(r, [=] {
@@ -109,14 +110,14 @@ namespace kiln::material3 {
         });
     }
 
-    void Surface(std::function<void()> onClick, const Modifier& modifier, const SurfaceOptions& options, std::function<void()> content, bool enabled,
+    void Surface(kiln::Function<void()> onClick, const Modifier& modifier, const SurfaceOptions& options, kiln::Function<void()> content, bool enabled,
                  std::shared_ptr<foundation::MutableInteractionSource> interactionSource) {
         Interactive(options, modifier, std::move(interactionSource),
                     [onClick = std::move(onClick)](Modifier m, foundation::ClickableOptions co) { return foundation::Clickable(std::move(m), onClick, std::move(co)); },
                     enabled, std::move(content));
     }
 
-    void Surface(bool selected, std::function<void()> onClick, const Modifier& modifier, const SurfaceOptions& options, std::function<void()> content,
+    void Surface(bool selected, kiln::Function<void()> onClick, const Modifier& modifier, const SurfaceOptions& options, kiln::Function<void()> content,
                  bool enabled, std::shared_ptr<foundation::MutableInteractionSource> interactionSource) {
         Interactive(options, modifier, std::move(interactionSource),
                     [selected, onClick = std::move(onClick)](Modifier m, foundation::ClickableOptions co) {
@@ -125,8 +126,8 @@ namespace kiln::material3 {
                     enabled, std::move(content));
     }
 
-    void Surface(bool checked, std::function<void(bool)> onCheckedChange, const Modifier& modifier, const SurfaceOptions& options,
-                 std::function<void()> content, bool enabled, std::shared_ptr<foundation::MutableInteractionSource> interactionSource) {
+    void Surface(bool checked, kiln::Function<void(bool)> onCheckedChange, const Modifier& modifier, const SurfaceOptions& options,
+                 kiln::Function<void()> content, bool enabled, std::shared_ptr<foundation::MutableInteractionSource> interactionSource) {
         Interactive(options, modifier, std::move(interactionSource),
                     [checked, onCheckedChange = std::move(onCheckedChange)](Modifier m, foundation::ClickableOptions co) {
                         return foundation::Toggleable(std::move(m), checked, onCheckedChange, std::move(co));
@@ -135,7 +136,7 @@ namespace kiln::material3 {
     }
 
     namespace internal {
-        void Surface(std::function<Color()> backgroundColor, const Modifier& modifier, Dp tonalElevation, Dp shadowElevation, std::function<void()> content) {
+        void Surface(kiln::Function<Color()> backgroundColor, const Modifier& modifier, Dp tonalElevation, Dp shadowElevation, kiln::Function<void()> content) {
             auto& c = Comp();
             const Dp absolute = Dp(c.Read(LocalAbsoluteTonalElevation).value + tonalElevation.value);
             const bool tonalElevationEnabled = c.Read(LocalTonalElevationEnabled);

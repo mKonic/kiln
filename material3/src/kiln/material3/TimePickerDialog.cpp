@@ -1,4 +1,5 @@
 #include "kiln/material3/TimePickerDialog.h"
+#include <kiln/Function.h>
 
 #include "kiln/foundation/Compose.h"
 #include "kiln/foundation/Layouts.h"
@@ -23,7 +24,7 @@ namespace kiln::material3 {
     namespace {
         constexpr Dp ClockDialMinContainerSize{ 200 };
 
-        void ToggleWithTooltip(std::function<void()> onClick, const gfx::vector::ImageVectorPtr& icon, std::string description,
+        void ToggleWithTooltip(kiln::Function<void()> onClick, const gfx::vector::ImageVectorPtr& icon, std::string description,
                                const ui::Modifier& modifier) {
             const auto provider = TooltipDefaults::rememberTooltipPositionProvider(TooltipAnchorPosition::Above);
             const TooltipState state = RememberTooltipState();
@@ -48,7 +49,7 @@ namespace kiln::material3 {
         }
 
         // The buttons: the mode toggle at the start, dismiss and confirm at the end.
-        std::function<void()> Actions(std::function<void()> modeToggleButton, std::function<void()> dismissButton, std::function<void()> confirmButton) {
+        kiln::Function<void()> Actions(kiln::Function<void()> modeToggleButton, kiln::Function<void()> dismissButton, kiln::Function<void()> confirmButton) {
             return [=] {
                 Row(FillMax({}, Axis::Horizontal), Arrangement::SpacedBy(Dp(8)), ui::AlignmentV::Top(), [=] {
                     if (modeToggleButton) modeToggleButton();
@@ -59,7 +60,7 @@ namespace kiln::material3 {
             };
         }
 
-        void TimePickerCustomLayout(std::function<void()> title, std::function<void()> actions, std::function<void()> content) {
+        void TimePickerCustomLayout(kiln::Function<void()> title, kiln::Function<void()> actions, kiln::Function<void()> content) {
             auto policy = std::make_shared<ui::LambdaMeasurePolicy>([](ui::MeasureScope& s, std::span<ui::Measurable* const> children, const ui::Constraints& c) {
                 const int contentPadding = s.RoundToPx(Dp(24));
                 const int landMaxDialogHeight = s.RoundToPx(Dp(384)), landTitleTopPadding = s.RoundToPx(Dp(24)), landContentTopPadding = s.RoundToPx(Dp(16));
@@ -101,7 +102,7 @@ namespace kiln::material3 {
             });
         }
 
-        void VibrantTimePickerCustomLayout(std::function<void()> actions, std::function<void()> content) {
+        void VibrantTimePickerCustomLayout(kiln::Function<void()> actions, kiln::Function<void()> content) {
             auto policy = std::make_shared<ui::LambdaMeasurePolicy>([](ui::MeasureScope& s, std::span<ui::Measurable* const> children, const ui::Constraints& c) {
                 const int landContentTopPadding = s.RoundToPx(Dp(12)), landContentActionsPadding = s.RoundToPx(Dp(24)), landActionsBottomPadding = s.RoundToPx(Dp(12));
                 const int portTitleTopPadding = s.RoundToPx(Dp(12)), portActionsBottomPadding = s.RoundToPx(Dp(12)), portContentActionsPadding = s.RoundToPx(Dp(12));
@@ -144,13 +145,13 @@ namespace kiln::material3 {
         ui::Color vibrantContainerColor() { return MaterialTheme::colorScheme().surfaceContainer; }
         ShapePtr vibrantShape() { return Value(ShapeKeyTokens::CornerExtraLarge); }
 
-        void DisplayModeToggle(std::function<void()> onDisplayModeChange, TimePickerDisplayMode displayMode, const ui::Modifier& modifier) {
+        void DisplayModeToggle(kiln::Function<void()> onDisplayModeChange, TimePickerDisplayMode displayMode, const ui::Modifier& modifier) {
             const bool picker = displayMode == TimePickerDisplayMode::Picker;
             ToggleWithTooltip(std::move(onDisplayModeChange), picker ? internal::Icons::Filled::Keyboard() : internal::Icons::Filled::Schedule(),
                               GetString(picker ? Strings::TimePickerToggleKeyboard : Strings::TimePickerToggleTouch), modifier);
         }
 
-        void ScrollDisplayModeToggle(std::function<void()> onDisplayModeChange, TimePickerDisplayMode displayMode, const ui::Modifier& modifier) {
+        void ScrollDisplayModeToggle(kiln::Function<void()> onDisplayModeChange, TimePickerDisplayMode displayMode, const ui::Modifier& modifier) {
             const bool scroll = displayMode == TimePickerDisplayMode::Scroll;
             ToggleWithTooltip(std::move(onDisplayModeChange), scroll ? internal::Icons::Filled::Keyboard() : internal::Icons::Filled::SwipeVertical(),
                               GetString(scroll ? Strings::TimePickerToggleKeyboard : Strings::TimePickerToggleScroll), modifier);
@@ -166,8 +167,8 @@ namespace kiln::material3 {
         }
     }
 
-    void TimePickerDialog(std::function<void()> onDismissRequest, std::function<void()> confirmButton, std::function<void()> title,
-                          const ui::Modifier& modifier, const TimePickerDialogOptions& o, std::function<void()> content) {
+    void TimePickerDialog(kiln::Function<void()> onDismissRequest, kiln::Function<void()> confirmButton, kiln::Function<void()> title,
+                          const ui::Modifier& modifier, const TimePickerDialogOptions& o, kiln::Function<void()> content) {
         const ShapePtr shape = o.shape ? o.shape : TimePickerDialogDefaults::shape();
         const ui::Color container = o.containerColor.value_or(TimePickerDialogDefaults::containerColor());
         auto actions = Actions(o.modeToggleButton, o.dismissButton, std::move(confirmButton));
@@ -180,8 +181,8 @@ namespace kiln::material3 {
         });
     }
 
-    void VibrantTimePickerDialog(std::function<void()> onDismissRequest, std::function<void()> confirmButton, const ui::Modifier& modifier,
-                                 const TimePickerDialogOptions& o, std::function<void()> content) {
+    void VibrantTimePickerDialog(kiln::Function<void()> onDismissRequest, kiln::Function<void()> confirmButton, const ui::Modifier& modifier,
+                                 const TimePickerDialogOptions& o, kiln::Function<void()> content) {
         const ShapePtr shape = o.shape ? o.shape : TimePickerDialogDefaults::vibrantShape();
         const ui::Color container = o.containerColor.value_or(TimePickerDialogDefaults::vibrantContainerColor());
         auto actions = Actions(o.modeToggleButton, o.dismissButton, std::move(confirmButton));

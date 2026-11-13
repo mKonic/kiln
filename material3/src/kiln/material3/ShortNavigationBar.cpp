@@ -1,4 +1,5 @@
 #include "kiln/material3/ShortNavigationBar.h"
+#include <kiln/Function.h>
 
 #include "kiln/foundation/Compose.h"
 #include "kiln/foundation/Gestures.h"
@@ -120,7 +121,7 @@ namespace kiln::material3 {
         }
     }
 
-    void ShortNavigationBar(const ui::Modifier& modifier, const ShortNavigationBarOptions& o, std::function<void()> content) {
+    void ShortNavigationBar(const ui::Modifier& modifier, const ShortNavigationBarOptions& o, kiln::Function<void()> content) {
         SurfaceOptions surface;
         surface.color = o.containerColor.value_or(ShortNavigationBarDefaults::containerColor());
         surface.contentColor = o.contentColor.value_or(ShortNavigationBarDefaults::contentColor());
@@ -135,7 +136,7 @@ namespace kiln::material3 {
         });
     }
 
-    void ShortNavigationBarItem(bool selected, std::function<void()> onClick, std::function<void()> icon, std::function<void()> label,
+    void ShortNavigationBarItem(bool selected, kiln::Function<void()> onClick, kiln::Function<void()> icon, kiln::Function<void()> label,
                                 const ui::Modifier& modifier, const ShortNavigationBarItemOptions& o) {
         const NavigationItemColors colors = o.colors.value_or(ShortNavigationBarItemDefaults::colors());
         const bool top = o.iconPosition == NavigationItemIconPosition::Top;

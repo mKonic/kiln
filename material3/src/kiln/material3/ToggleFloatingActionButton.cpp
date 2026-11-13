@@ -1,4 +1,5 @@
 #include "kiln/material3/FloatingActionButtonMenu.h"
+#include <kiln/Function.h>
 
 #include "kiln/foundation/Animate.h"
 #include "kiln/foundation/Gestures.h"
@@ -32,13 +33,13 @@ namespace kiln::material3 {
                 return s.Layout(size, size, [&p, size](ui::PlacementScope& ps) { ps.Place(p, (size - p.Width()) / 2, (size - p.Height()) / 2); });
             }
         };
-        std::function<Dp(float)> Sizes(Dp start, Dp end) {
+        kiln::Function<Dp(float)> Sizes(Dp start, Dp end) {
             return [=](float progress) { return Dp(start.value + (end.value - start.value) * progress); };
         }
     }
 
-    void ToggleFloatingActionButton(bool checked, std::function<void(bool)> change, const ui::Modifier& modifier,
-                                    const ToggleFloatingActionButtonOptions& options, std::function<void(const ToggleFloatingActionButtonScope&)> content) {
+    void ToggleFloatingActionButton(bool checked, kiln::Function<void(bool)> change, const ui::Modifier& modifier,
+                                    const ToggleFloatingActionButtonOptions& options, kiln::Function<void(const ToggleFloatingActionButtonScope&)> content) {
         const float progress = AnimateFloatAsState(checked ? 1.0f : 0.0f, Value(MotionSchemeKeyTokens::FastSpatial));
         const auto size = options.containerSize ? options.containerSize : ToggleFloatingActionButtonDefaults::containerSize();
         const auto radius = options.containerCornerRadius ? options.containerCornerRadius : ToggleFloatingActionButtonDefaults::containerCornerRadius();
@@ -64,33 +65,33 @@ namespace kiln::material3 {
     }
 
     namespace ToggleFloatingActionButtonDefaults {
-        std::function<ui::Color(float)> containerColor(ui::Color initial, ui::Color final) {
+        kiln::Function<ui::Color(float)> containerColor(ui::Color initial, ui::Color final) {
             return [=](float progress) { return ui::Lerp(initial, final, progress); };
         }
-        std::function<ui::Color(float)> containerColor() {
+        kiln::Function<ui::Color(float)> containerColor() {
             const auto& scheme = MaterialTheme::colorScheme();
             return containerColor(scheme.primaryContainer, scheme.primary);
         }
-        std::function<Dp(float)> containerSize(Dp initial, Dp final) { return Sizes(initial, final); }
-        std::function<Dp(float)> containerSize() { return containerSize(FabBaselineTokens::ContainerHeight, FabMenuBaselineTokens::CloseButtonContainerHeight); }
-        std::function<Dp(float)> containerSizeMedium() { return containerSize(FabMediumTokens::ContainerHeight, FabMenuBaselineTokens::CloseButtonContainerHeight); }
-        std::function<Dp(float)> containerSizeLarge() { return containerSize(FabLargeTokens::ContainerHeight, FabMenuBaselineTokens::CloseButtonContainerHeight); }
-        std::function<Dp(float)> containerCornerRadius(Dp initial, Dp final) { return Sizes(initial, final); }
-        std::function<Dp(float)> containerCornerRadius() { return containerCornerRadius(Dp(16)); }
-        std::function<Dp(float)> containerCornerRadiusMedium() { return containerCornerRadius(Dp(20)); }
-        std::function<Dp(float)> containerCornerRadiusLarge() { return containerCornerRadius(Dp(28)); }
-        std::function<ui::Color(float)> iconColor(ui::Color initial, ui::Color final) {
+        kiln::Function<Dp(float)> containerSize(Dp initial, Dp final) { return Sizes(initial, final); }
+        kiln::Function<Dp(float)> containerSize() { return containerSize(FabBaselineTokens::ContainerHeight, FabMenuBaselineTokens::CloseButtonContainerHeight); }
+        kiln::Function<Dp(float)> containerSizeMedium() { return containerSize(FabMediumTokens::ContainerHeight, FabMenuBaselineTokens::CloseButtonContainerHeight); }
+        kiln::Function<Dp(float)> containerSizeLarge() { return containerSize(FabLargeTokens::ContainerHeight, FabMenuBaselineTokens::CloseButtonContainerHeight); }
+        kiln::Function<Dp(float)> containerCornerRadius(Dp initial, Dp final) { return Sizes(initial, final); }
+        kiln::Function<Dp(float)> containerCornerRadius() { return containerCornerRadius(Dp(16)); }
+        kiln::Function<Dp(float)> containerCornerRadiusMedium() { return containerCornerRadius(Dp(20)); }
+        kiln::Function<Dp(float)> containerCornerRadiusLarge() { return containerCornerRadius(Dp(28)); }
+        kiln::Function<ui::Color(float)> iconColor(ui::Color initial, ui::Color final) {
             return [=](float progress) { return ui::Lerp(initial, final, progress); };
         }
-        std::function<ui::Color(float)> iconColor() {
+        kiln::Function<ui::Color(float)> iconColor() {
             const auto& scheme = MaterialTheme::colorScheme();
             return iconColor(scheme.onPrimaryContainer, scheme.onPrimary);
         }
-        std::function<Dp(float)> iconSize(Dp initial, Dp final) { return Sizes(initial, final); }
-        std::function<Dp(float)> iconSize() { return iconSize(FabBaselineTokens::IconSize, FabMenuBaselineTokens::CloseButtonIconSize); }
-        std::function<Dp(float)> iconSizeMedium() { return iconSize(FabMediumTokens::IconSize, FabMenuBaselineTokens::CloseButtonIconSize); }
-        std::function<Dp(float)> iconSizeLarge() { return iconSize(Dp(36), FabMenuBaselineTokens::CloseButtonIconSize); }
-        ui::Modifier AnimateIcon(ui::Modifier m, float progress, std::function<ui::Color(float)> color, std::function<Dp(float)> size) {
+        kiln::Function<Dp(float)> iconSize(Dp initial, Dp final) { return Sizes(initial, final); }
+        kiln::Function<Dp(float)> iconSize() { return iconSize(FabBaselineTokens::IconSize, FabMenuBaselineTokens::CloseButtonIconSize); }
+        kiln::Function<Dp(float)> iconSizeMedium() { return iconSize(FabMediumTokens::IconSize, FabMenuBaselineTokens::CloseButtonIconSize); }
+        kiln::Function<Dp(float)> iconSizeLarge() { return iconSize(Dp(36), FabMenuBaselineTokens::CloseButtonIconSize); }
+        ui::Modifier AnimateIcon(ui::Modifier m, float progress, kiln::Function<ui::Color(float)> color, kiln::Function<Dp(float)> size) {
             if (!color) color = iconColor();
             if (!size) size = iconSize();
             m = m.With<SizeNode>(SizeParams{ size(progress), true });

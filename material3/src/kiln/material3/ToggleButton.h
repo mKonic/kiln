@@ -4,6 +4,7 @@
 // padding, typography and optional leading icon; press and selection morph the shape.
 
 #include "kiln/material3/Button.h"
+#include <kiln/Function.h>
 
 namespace kiln::material3 {
 
@@ -38,7 +39,7 @@ namespace kiln::material3 {
     struct ToggleButtonOptions {
         ToggleButtonSize buttonSize = ToggleButtonSize::Small;
         bool enabled = true;
-        std::function<void()> icon;
+        kiln::Function<void()> icon;
         std::optional<ToggleButtonShapes> shapes;
         std::optional<ToggleButtonColors> colors;
         std::optional<std::optional<ToggleButtonElevation>> elevation;
@@ -47,14 +48,14 @@ namespace kiln::material3 {
         std::shared_ptr<foundation::MutableInteractionSource> interactionSource;
     };
 
-    void ToggleButton(bool checked, std::function<void(bool)> onCheckedChange, const ui::Modifier& modifier,
-                      const ToggleButtonOptions& options, std::function<void()> content);
-    void ElevatedToggleButton(bool checked, std::function<void(bool)> onCheckedChange, const ui::Modifier& modifier,
-                              const ToggleButtonOptions& options, std::function<void()> content);
-    void FilledTonalToggleButton(bool checked, std::function<void(bool)> onCheckedChange, const ui::Modifier& modifier,
-                                 const ToggleButtonOptions& options, std::function<void()> content);
-    void OutlinedToggleButton(bool checked, std::function<void(bool)> onCheckedChange, const ui::Modifier& modifier,
-                               const ToggleButtonOptions& options, std::function<void()> content);
+    void ToggleButton(bool checked, kiln::Function<void(bool)> onCheckedChange, const ui::Modifier& modifier,
+                      const ToggleButtonOptions& options, kiln::Function<void()> content);
+    void ElevatedToggleButton(bool checked, kiln::Function<void(bool)> onCheckedChange, const ui::Modifier& modifier,
+                              const ToggleButtonOptions& options, kiln::Function<void()> content);
+    void FilledTonalToggleButton(bool checked, kiln::Function<void(bool)> onCheckedChange, const ui::Modifier& modifier,
+                                 const ToggleButtonOptions& options, kiln::Function<void()> content);
+    void OutlinedToggleButton(bool checked, kiln::Function<void(bool)> onCheckedChange, const ui::Modifier& modifier,
+                               const ToggleButtonOptions& options, kiln::Function<void()> content);
 
     namespace ToggleButtonDefaults {
         inline constexpr ToggleButtonSize size{ ui::Dp(40) };

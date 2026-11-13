@@ -5,6 +5,7 @@
 // flipped to stay inside the window.
 
 #include "kiln/foundation/Compose.h"
+#include <kiln/Function.h>
 #include "kiln/foundation/Popup.h"
 
 #include <functional>
@@ -35,8 +36,8 @@ namespace kiln::foundation {
     class ContextMenuScope {
     public:
         // leadingIcon draws the icon (24 dp box) in the colour it is given.
-        void Item(std::string label, std::function<void()> onClick, bool enabled = true, Modifier modifier = {},
-                  std::function<void(Color)> leadingIcon = {});
+        void Item(std::string label, kiln::Function<void()> onClick, bool enabled = true, Modifier modifier = {},
+                  kiln::Function<void(Color)> leadingIcon = {});
         void Separator();
         void Content(const ContextMenuColors& colors) const;
     private:
@@ -45,19 +46,19 @@ namespace kiln::foundation {
             std::string label;
             bool enabled = true;
             Modifier modifier;
-            std::function<void(Color)> leadingIcon;
-            std::function<void()> onClick;
+            kiln::Function<void(Color)> leadingIcon;
+            kiln::Function<void()> onClick;
         };
         std::vector<Entry> m_Entries;
     };
 
     void ContextMenuColumnBuilder(const Modifier& modifier, const ContextMenuColors& colors,
-                                  const std::function<void(ContextMenuScope&)>& builder);
+                                  const kiln::Function<void(ContextMenuScope&)>& builder);
     void ContextMenuItem(const std::string& label, bool enabled, const ContextMenuColors& colors, const Modifier& modifier,
-                         const std::function<void(Color)>& leadingIcon, std::function<void()> onClick);
+                         const kiln::Function<void(Color)>& leadingIcon, kiln::Function<void()> onClick);
     // ContextMenuPopup: the column in a focusable popup.
-    void ContextMenuPopup(std::shared_ptr<const PopupPositionProvider> positionProvider, std::function<void()> onDismiss,
-                          const Modifier& modifier, std::function<void(ContextMenuScope&)> builder, Key key = {});
+    void ContextMenuPopup(std::shared_ptr<const PopupPositionProvider> positionProvider, kiln::Function<void()> onDismiss,
+                          const Modifier& modifier, kiln::Function<void(ContextMenuScope&)> builder, Key key = {});
 
     // alignPopupAxis: the popup's start at the position if it fits towards the end, else its end
     // there, else against the window edge (closeAffinity: the start is the near side).
@@ -66,14 +67,14 @@ namespace kiln::foundation {
     // ContextMenuPopupPositionProvider: the menu at a point in the anchor's coordinates.
     class ContextMenuPopupPositionProvider final : public PopupPositionProvider {
     public:
-        explicit ContextMenuPopupPositionProvider(std::function<IntOffset()> anchorPosition,
-                                                  std::function<void(IntOffset, ui::IntRect)> onPositionCalculated = {})
+        explicit ContextMenuPopupPositionProvider(kiln::Function<IntOffset()> anchorPosition,
+                                                  kiln::Function<void(IntOffset, ui::IntRect)> onPositionCalculated = {})
             : m_AnchorPosition(std::move(anchorPosition)), m_OnPositionCalculated(std::move(onPositionCalculated)) {}
         IntOffset CalculatePosition(ui::IntRect anchorBounds, ui::IntSize windowSize, LayoutDirection dir,
                                     ui::IntSize popupContentSize) const override;
     private:
-        std::function<IntOffset()> m_AnchorPosition;
-        std::function<void(IntOffset, ui::IntRect)> m_OnPositionCalculated;
+        kiln::Function<IntOffset()> m_AnchorPosition;
+        kiln::Function<void(IntOffset, ui::IntRect)> m_OnPositionCalculated;
     };
 
 }

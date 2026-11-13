@@ -1,4 +1,5 @@
 #include "kiln/foundation/style/StyleModifiers.h"
+#include <kiln/Function.h>
 
 #include "kiln/foundation/Border.h"
 #include "kiln/foundation/Shadow.h"
@@ -19,7 +20,7 @@ namespace kiln::foundation {
         // --- Placement.kt ---------------------------------------------------------------------
 
         struct PlacementParams {
-            std::shared_ptr<const std::function<void(PlacementModifierScope&)>> block;
+            std::shared_ptr<const kiln::Function<void(PlacementModifierScope&)>> block;
             bool operator==(const PlacementParams&) const = default;
         };
         struct PlacementNode final : ui::ModifierNode, ui::LayoutModifier {
@@ -77,7 +78,7 @@ namespace kiln::foundation {
         // --- Appearance.kt --------------------------------------------------------------------
 
         struct AppearanceParams {
-            std::shared_ptr<const std::function<void(AppearanceScope&)>> block;
+            std::shared_ptr<const kiln::Function<void(AppearanceScope&)>> block;
             bool operator==(const AppearanceParams&) const = default;
         };
         struct AppearanceNode final : ui::ModifierNode, ui::DrawModifier, ui::SemanticsModifier {
@@ -230,15 +231,15 @@ namespace kiln::foundation {
 
     }
 
-    Modifier Placement(Modifier m, std::function<void(PlacementModifierScope&)> block) {
-        return m.With<PlacementNode>(PlacementParams{ std::make_shared<const std::function<void(PlacementModifierScope&)>>(std::move(block)) });
+    Modifier Placement(Modifier m, kiln::Function<void(PlacementModifierScope&)> block) {
+        return m.With<PlacementNode>(PlacementParams{ std::make_shared<const kiln::Function<void(PlacementModifierScope&)>>(std::move(block)) });
     }
 
-    Modifier Appearance(Modifier m, std::function<void(AppearanceScope&)> block) {
-        return m.With<AppearanceNode>(AppearanceParams{ std::make_shared<const std::function<void(AppearanceScope&)>>(std::move(block)) });
+    Modifier Appearance(Modifier m, kiln::Function<void(AppearanceScope&)> block) {
+        return m.With<AppearanceNode>(AppearanceParams{ std::make_shared<const kiln::Function<void(AppearanceScope&)>>(std::move(block)) });
     }
 
-    Modifier GraphicsLayer(Modifier m, std::function<bool()> layerRequired, std::function<void(GraphicsLayerParams&)> block) {
+    Modifier GraphicsLayer(Modifier m, kiln::Function<bool()> layerRequired, kiln::Function<void(GraphicsLayerParams&)> block) {
         return GraphicsLayer(std::move(m), [layerRequired = std::move(layerRequired), block = std::move(block)](GraphicsLayerParams& p) {
             if (!layerRequired || layerRequired()) block(p);
         });

@@ -5,6 +5,7 @@
 // scales from 0.8 and fades in; a caret can point at the anchor.
 
 #include "kiln/foundation/Layouts.h"
+#include <kiln/Function.h>
 #include "kiln/foundation/MutatorMutex.h"
 #include "kiln/foundation/Popup.h"
 #include "kiln/foundation/Shapes.h"
@@ -109,13 +110,13 @@ namespace kiln::material3 {
     }
 
     struct TooltipBoxOptions {
-        std::function<void()> onDismissRequest;   // null: a click outside or Back dismisses
+        kiln::Function<void()> onDismissRequest;   // null: a click outside or Back dismisses
         bool focusable = false;
         bool enableUserInput = true;               // long press, hover and focus show it
         bool hasAction = false;                    // keyboard and accessibility users can reach it
     };
-    void TooltipBox(std::shared_ptr<const ui::PopupPositionProvider> positionProvider, std::function<void(const TooltipScope&)> tooltip,
-                    const TooltipState& state, const ui::Modifier& modifier, const TooltipBoxOptions& options, std::function<void()> content);
+    void TooltipBox(std::shared_ptr<const ui::PopupPositionProvider> positionProvider, kiln::Function<void(const TooltipScope&)> tooltip,
+                    const TooltipState& state, const ui::Modifier& modifier, const TooltipBoxOptions& options, kiln::Function<void()> content);
 
     struct PlainTooltipOptions {
         foundation::ShapePtr caretShape;           // null: no caret
@@ -124,10 +125,10 @@ namespace kiln::material3 {
         std::optional<ui::Color> contentColor, containerColor;
         ui::Dp tonalElevation{ 0 }, shadowElevation{ 0 };
     };
-    void PlainTooltip(const TooltipScope& scope, const ui::Modifier& modifier, const PlainTooltipOptions& options, std::function<void()> content);
+    void PlainTooltip(const TooltipScope& scope, const ui::Modifier& modifier, const PlainTooltipOptions& options, kiln::Function<void()> content);
 
     struct RichTooltipOptions {
-        std::function<void()> title, action;
+        kiln::Function<void()> title, action;
         foundation::ShapePtr caretShape;
         ui::Dp maxWidth = TooltipDefaults::richTooltipMaxWidth;
         foundation::ShapePtr shape;                // null: richTooltipContainerShape
@@ -135,13 +136,13 @@ namespace kiln::material3 {
         ui::Dp tonalElevation{ 0 };
         std::optional<ui::Dp> shadowElevation;     // unset: RichTooltipTokens.ContainerElevation
     };
-    void RichTooltip(const TooltipScope& scope, const ui::Modifier& modifier, const RichTooltipOptions& options, std::function<void()> text);
+    void RichTooltip(const TooltipScope& scope, const ui::Modifier& modifier, const RichTooltipOptions& options, kiln::Function<void()> text);
 
     namespace internal {
         // BasicTooltipBox: the popup, anchor gestures, semantics and keys without the animation.
-        void BasicTooltipBox(std::shared_ptr<const ui::PopupPositionProvider> positionProvider, std::function<void()> tooltip,
+        void BasicTooltipBox(std::shared_ptr<const ui::PopupPositionProvider> positionProvider, kiln::Function<void()> tooltip,
                              const TooltipState& state, const ui::Modifier& modifier, const TooltipBoxOptions& options,
-                             std::function<void()> content);
+                             kiln::Function<void()> content);
         // rememberBasicTooltipState: visibility without a transition (Label's tooltips).
         TooltipState RememberBasicTooltipState(bool initialIsVisible = false, bool isPersistent = true,
                                                std::shared_ptr<foundation::MutatorMutex> mutatorMutex = BasicTooltipDefaults::GlobalMutatorMutex(), rt::Key key = {});
@@ -151,7 +152,7 @@ namespace kiln::material3 {
         TooltipState MakeLabelState();
         // PlainTooltipInternal: a plain tooltip that announces `tooltipText` as its pane title.
         void PlainTooltipInternal(const TooltipScope& scope, const std::string& tooltipText, const ui::Modifier& modifier,
-                                  const PlainTooltipOptions& options, std::function<void()> content);
+                                  const PlainTooltipOptions& options, kiln::Function<void()> content);
         // caretX: where along the tooltip's width the caret sits for an above / below tooltip.
         float CaretX(float tooltipWidth, int screenWidthPx, ui::Rect anchorBounds);
     }

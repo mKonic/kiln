@@ -5,6 +5,7 @@
 // content colour; focus can show an inset ring instead (RippleDefaults.InsetFocusRingThemeConfiguration).
 
 #include "kiln/foundation/Interaction.h"
+#include <kiln/Function.h>
 #include "kiln/foundation/Shapes.h"
 
 #include <functional>
@@ -60,7 +61,7 @@ namespace kiln::material3 {
         bool bounded = true;
         ui::Dp radius = ui::Dp::Unspecified();   // Unspecified: from the size
         ui::Color color = ui::Color::Unspecified();
-        std::function<ui::Color()> colorProducer;   // read at draw time; overrides color
+        kiln::Function<ui::Color()> colorProducer;   // read at draw time; overrides color
         foundation::ShapePtr focusRingShape;        // null: rounded by radius, else a rectangle
         bool enablePressIndication = true, enableFocusIndication = true, enableHoverIndication = true,
              enableDragIndication = true;

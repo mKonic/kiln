@@ -5,6 +5,7 @@
 // their duration (as long as accessibility settings ask) and fades and scales them in and out.
 
 #include "kiln/foundation/Shapes.h"
+#include <kiln/Function.h>
 #include "kiln/runtime/Composition.h"
 #include "kiln/runtime/State.h"
 #include "kiln/runtime/Task.h"
@@ -91,14 +92,14 @@ namespace kiln::material3 {
     }
 
     struct SnackbarOptions {
-        std::function<void()> action;          // a button; consider colorScheme.inversePrimary
-        std::function<void()> dismissAction;   // a close button for snackbars that do not time out
+        kiln::Function<void()> action;          // a button; consider colorScheme.inversePrimary
+        kiln::Function<void()> dismissAction;   // a close button for snackbars that do not time out
         bool actionOnNewLine = false;          // for long action labels
         foundation::ShapePtr shape;            // null: SnackbarDefaults::shape
         std::optional<ui::Color> containerColor, contentColor, actionContentColor, dismissActionContentColor;
     };
     // The snackbar's visuals with any content.
-    void Snackbar(const ui::Modifier& modifier, const SnackbarOptions& options, std::function<void()> content);
+    void Snackbar(const ui::Modifier& modifier, const SnackbarOptions& options, kiln::Function<void()> content);
 
     struct SnackbarDataOptions {
         bool actionOnNewLine = false;
@@ -111,7 +112,7 @@ namespace kiln::material3 {
 
     // SnackbarHost: shows hostState's snackbars with `snackbar` (null: the default Snackbar).
     void SnackbarHost(SnackbarHostState& hostState, const ui::Modifier& modifier = {},
-                      std::function<void(std::shared_ptr<SnackbarData>)> snackbar = {});
+                      kiln::Function<void(std::shared_ptr<SnackbarData>)> snackbar = {});
 
     namespace internal {
         // SnackbarDuration.toMillis: INT64_MAX for Indefinite; `manager` (may be null) stretches

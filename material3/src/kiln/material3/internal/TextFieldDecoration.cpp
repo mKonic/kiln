@@ -1,4 +1,5 @@
 #include "kiln/material3/internal/TextFieldDecoration.h"
+#include <kiln/Function.h>
 
 #include "kiln/foundation/Compose.h"
 #include "kiln/foundation/Semantics.h"
@@ -27,7 +28,7 @@ namespace kiln::material3::internal {
         Modifier WrapContentHeight(Modifier m) { return WrapContent(std::move(m), Axis::Vertical, Alignment::CenterStart()); }
 
         // Decoration: the content colour and the text style merged over the current one.
-        void Decoration(Color contentColor, const text::TextStyle* style, const std::function<void()>& content) {
+        void Decoration(Color contentColor, const text::TextStyle* style, const kiln::Function<void()>& content) {
             auto& c = *rt::Composition::Current();
             c.Provide(LocalContentColor, contentColor, [=] {
                 if (style) ProvideTextStyle(*style, content);
@@ -36,7 +37,7 @@ namespace kiln::material3::internal {
         }
 
         // textFieldLabelMinHeight: at least this tall, while the constraints allow it.
-        Modifier LabelMinHeight(Modifier m, std::function<Dp()> minHeight) {
+        Modifier LabelMinHeight(Modifier m, kiln::Function<Dp()> minHeight) {
             return LayoutMod(std::move(m), [minHeight](ui::MeasureScope& s, ui::Measurable& measurable, const ui::Constraints& c) {
                 const Dp min = minHeight();
                 ui::Constraints child = c;
@@ -52,7 +53,7 @@ namespace kiln::material3::internal {
             return Semantics(std::move(m), [visualText](ui::SemanticsConfiguration& c) { c.text = { visualText }; });
         }
 
-        Modifier FadingLayer(Modifier m, std::function<float()> alpha) {
+        Modifier FadingLayer(Modifier m, kiln::Function<float()> alpha) {
             return GraphicsLayer(std::move(m), [alpha](GraphicsLayerParams& p) { p.alpha = alpha(); });
         }
     }
@@ -82,10 +83,10 @@ namespace kiln::material3::internal {
         return Semantics(std::move(m), [message](ui::SemanticsConfiguration& c) { c.error = message; });
     }
 
-    void CommonDecorationBox(const std::string& visualText, const std::function<void()>& innerTextField, const TextFieldLabelPosition& labelPosition,
+    void CommonDecorationBox(const std::string& visualText, const kiln::Function<void()>& innerTextField, const TextFieldLabelPosition& labelPosition,
                              const DecorationBoxSlots& slots, bool singleLine, bool enabled, bool isError,
                              std::shared_ptr<MutableInteractionSource> source, const PaddingValues& contentPadding, const TextFieldColors& colors,
-                             const std::function<void()>& container) {
+                             const kiln::Function<void()>& container) {
         auto& comp = *rt::Composition::Current();
         const bool isFocused = source && source->IsFocused();
         const InputPhase inputState = isFocused ? InputPhase::Focused : visualText.empty() ? InputPhase::UnfocusedEmpty : InputPhase::UnfocusedNotEmpty;
@@ -122,12 +123,12 @@ namespace kiln::material3::internal {
             affixAlphaState = AnimateFloatState<InputPhase>(transition, [showExpandedLabel](const InputPhase& p) {
                 return p == InputPhase::UnfocusedEmpty ? (showExpandedLabel ? 0.0f : 1.0f) : 1.0f;
             }, [fastEffects](const Segment&) { return fastEffects; }, rt::Key("PrefixSuffixOpacity"));
-        const std::function<float()> labelProgress = [labelProgressState] { return labelProgressState ? labelProgressState->Value() : 1.0f; };
-        const std::function<float()> placeholderAlpha = [placeholderAlphaState] { return placeholderAlphaState ? placeholderAlphaState->Value() : 0.0f; };
-        const std::function<float()> affixAlpha = [affixAlphaState] { return affixAlphaState ? affixAlphaState->Value() : 0.0f; };
+        const kiln::Function<float()> labelProgress = [labelProgressState] { return labelProgressState ? labelProgressState->Value() : 1.0f; };
+        const kiln::Function<float()> placeholderAlpha = [placeholderAlphaState] { return placeholderAlphaState ? placeholderAlphaState->Value() : 0.0f; };
+        const kiln::Function<float()> affixAlpha = [affixAlphaState] { return affixAlphaState ? affixAlphaState->Value() : 0.0f; };
 
         // DecoratedLabel: its own scope reads the progress (the style lerp) and the colours.
-        std::function<void()> decoratedLabel;
+        kiln::Function<void()> decoratedLabel;
         if (slots.label) {
             const Color labelColor = colors.LabelColor(enabled, isError, isFocused);
             const auto label = slots.label;
@@ -160,7 +161,7 @@ namespace kiln::material3::internal {
         auto& showAffixState = comp.Remember<std::shared_ptr<rt::Derived<bool>>>(
             [&] { return std::make_shared<rt::Derived<bool>>([affixAlpha] { return affixAlpha() > 0; }); },
             rt::Keys(static_cast<const void*>(affixAlphaState ? affixAlphaState->child : nullptr)));
-        std::function<void(Modifier)> decoratedPlaceholder;
+        kiln::Function<void(Modifier)> decoratedPlaceholder;
         if (slots.placeholder && visualText.empty() && showPlaceholder->Get()) {
             const Color color = colors.PlaceholderColor(enabled, isError, isFocused);
             const auto placeholder = slots.placeholder;
@@ -169,7 +170,7 @@ namespace kiln::material3::internal {
             };
         }
         const bool showAffix = (slots.prefix || slots.suffix) && showAffixState->Get();
-        std::function<void()> decoratedPrefix, decoratedSuffix;
+        kiln::Function<void()> decoratedPrefix, decoratedSuffix;
         if (slots.prefix && showAffix) {
             const Color color = colors.PrefixColor(enabled, isError, isFocused);
             decoratedPrefix = [p = slots.prefix, color, bodyLarge] { Decoration(color, &bodyLarge, p); };
@@ -178,7 +179,7 @@ namespace kiln::material3::internal {
             const Color color = colors.SuffixColor(enabled, isError, isFocused);
             decoratedSuffix = [p = slots.suffix, color, bodyLarge] { Decoration(color, &bodyLarge, p); };
         }
-        std::function<void()> decoratedLeading, decoratedTrailing, decoratedSupporting;
+        kiln::Function<void()> decoratedLeading, decoratedTrailing, decoratedSupporting;
         if (slots.leadingIcon) decoratedLeading = [p = slots.leadingIcon, color = colors.LeadingIconColor(enabled, isError, isFocused)] { Decoration(color, nullptr, p); };
         if (slots.trailingIcon) decoratedTrailing = [p = slots.trailingIcon, color = colors.TrailingIconColor(enabled, isError, isFocused)] { Decoration(color, nullptr, p); };
         if (slots.supportingText) {

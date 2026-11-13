@@ -1,4 +1,5 @@
 #include "kiln/material3/ripple/RippleHost.h"
+#include <kiln/Function.h>
 
 #include "kiln/animation/Easing.h"
 
@@ -126,7 +127,7 @@ namespace kiln::material3::ripple {
     // --- RippleHostView --------------------------------------------------------------------------
 
     void RippleHostView::AddRipple(Offset press, bool bounded, Size size, int radius, Color color, float alpha,
-                                   std::function<void()> onInvalidateRipple) {
+                                   kiln::Function<void()> onInvalidateRipple) {
         // A RippleDrawable cannot change between bounded and unbounded: a new one replaces it.
         if (!m_Ripple || m_Bounded != bounded) {
             m_Ripple = std::make_unique<RippleDrawable>(bounded);

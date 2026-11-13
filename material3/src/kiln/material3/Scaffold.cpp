@@ -1,4 +1,5 @@
 #include "kiln/material3/Scaffold.h"
+#include <kiln/Function.h>
 
 #include "kiln/foundation/Subcompose.h"
 #include "kiln/material3/MaterialTheme.h"
@@ -35,16 +36,16 @@ namespace kiln::material3 {
             return out;
         }
 
-        void ScaffoldLayout(FabPosition fabPosition, std::function<void()> topBar, std::function<void(const PaddingValues&)> content,
-                            std::function<void()> snackbar, std::function<void()> fab, WindowInsets contentWindowInsets,
-                            std::function<void()> bottomBar) {
+        void ScaffoldLayout(FabPosition fabPosition, kiln::Function<void()> topBar, kiln::Function<void(const PaddingValues&)> content,
+                            kiln::Function<void()> snackbar, kiln::Function<void()> fab, WindowInsets contentWindowInsets,
+                            kiln::Function<void()> bottomBar) {
             auto& c = *rt::Composition::Current();
             // The content padding, updated while measuring before the body is subcomposed: the
             // body reads it, so it recomposes when the padding changes and not on every measure.
             const auto padding = c.Remember<std::shared_ptr<rt::State<PaddingValues>>>([] {
                 return std::make_shared<rt::State<PaddingValues>>(PaddingValues{});
             });
-            const auto body = std::make_shared<const std::function<void()>>([content, padding] { content(padding->Get()); });
+            const auto body = std::make_shared<const kiln::Function<void()>>([content, padding] { content(padding->Get()); });
             ui::Owner* owner = c.Read(ui::LocalOwner);
             SubcomposeLayout({}, [=](SubcomposeMeasureScope& s, const ui::Constraints& constraints) {
                 const int layoutWidth = constraints.maxWidth, layoutHeight = constraints.maxHeight;
@@ -129,7 +130,7 @@ namespace kiln::material3 {
         WindowInsets contentWindowInsets() { return WindowInsets::SystemBars().Union(WindowInsets::DisplayCutout()); }
     }
 
-    void Scaffold(const ui::Modifier& modifier, const ScaffoldOptions& options, std::function<void(const PaddingValues&)> content) {
+    void Scaffold(const ui::Modifier& modifier, const ScaffoldOptions& options, kiln::Function<void(const PaddingValues&)> content) {
         auto& c = *rt::Composition::Current();
         const WindowInsets contentWindowInsets = options.contentWindowInsets.value_or(ScaffoldDefaults::contentWindowInsets());
         // MutableWindowInsets remembered with the given insets; consumed insets are excluded.

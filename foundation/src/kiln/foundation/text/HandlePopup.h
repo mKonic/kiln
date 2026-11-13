@@ -7,12 +7,13 @@
 // one is kept.
 
 #include "kiln/foundation/Compose.h"
+#include <kiln/Function.h>
 
 #include <functional>
 
 namespace kiln::foundation {
 
     // referenceX: 0 for AbsoluteAlignment.TopLeft, 0.5 for TopCenter, 1 for TopRight.
-    void HandlePopup(std::function<Offset()> positionProvider, float referenceX, std::function<void()> content, Key key = {});
+    void HandlePopup(kiln::Function<Offset()> positionProvider, float referenceX, kiln::Function<void()> content, Key key = {});
 
 }

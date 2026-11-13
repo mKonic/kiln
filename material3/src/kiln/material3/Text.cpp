@@ -1,4 +1,5 @@
 #include "kiln/material3/Text.h"
+#include <kiln/Function.h>
 
 #include "kiln/foundation/Draw.h"
 #include "kiln/foundation/Semantics.h"
@@ -108,7 +109,7 @@ namespace kiln::material3 {
         foundation::Box(m);
     }
 
-    void Icon(std::shared_ptr<foundation::Painter> painter, std::function<ui::Color()> tint, const std::optional<std::string>& contentDescription,
+    void Icon(std::shared_ptr<foundation::Painter> painter, kiln::Function<ui::Color()> tint, const std::optional<std::string>& contentDescription,
               const ui::Modifier& modifier) {
         ui::Modifier m = foundation::DrawWithContent(modifier, [tint](ui::ContentDrawScope& s) {
             const gfx::ColorFilter filter = gfx::ColorFilter::Tint(tint ? tint() : ui::Color::Unspecified());
@@ -120,7 +121,7 @@ namespace kiln::material3 {
     }
 
     namespace internal {
-        void ProvideContentColorTextStyle(ui::Color contentColor, const text::TextStyle& textStyle, std::function<void()> content) {
+        void ProvideContentColorTextStyle(ui::Color contentColor, const text::TextStyle& textStyle, kiln::Function<void()> content) {
             auto& c = Comp();
             text::TextStyle merged = c.Read(LocalTextStyle()).Merge(textStyle);
             c.Provide(LocalContentColor, contentColor, [&c, merged = std::move(merged), content = std::move(content)] {

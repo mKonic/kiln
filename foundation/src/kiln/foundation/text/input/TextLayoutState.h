@@ -6,6 +6,7 @@
 // bring-into-view requester the core uses to keep the cursor visible.
 
 #include "kiln/foundation/BringIntoView.h"
+#include <kiln/Function.h>
 #include "kiln/foundation/text/Selection.h"
 #include "kiln/foundation/text/TextFieldState.h"
 #include "kiln/runtime/State.h"
@@ -21,7 +22,7 @@ namespace kiln::foundation {
     public:
         using Coordinates = selection::Coordinates;
 
-        std::function<void(const text::TextLayoutResult&)> onTextLayout;
+        kiln::Function<void(const text::TextLayoutResult&)> onTextLayout;
 
         // The last layout (observable: readers recompute when a new layout replaces it).
         std::shared_ptr<const text::TextLayoutResult> LayoutResult() const { return m_Result.Get(); }

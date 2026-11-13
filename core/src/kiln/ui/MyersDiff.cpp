@@ -1,4 +1,5 @@
 #include "kiln/ui/MyersDiff.h"
+#include <kiln/Function.h>
 
 #include <algorithm>
 #include <array>
@@ -9,7 +10,7 @@
 namespace kiln::ui {
 
     namespace {
-        using SameFn = std::function<bool(int, int)>;
+        using SameFn = kiln::Function<bool(int, int)>;
 
         // CenteredArray: indexed from -mid.
         struct Centered {
@@ -113,7 +114,7 @@ namespace kiln::ui {
         }
     }
 
-    void ExecuteDiff(int oldSize, int newSize, const SameFn& areItemsTheSame, const std::function<void(int, int)>& same) {
+    void ExecuteDiff(int oldSize, int newSize, const SameFn& areItemsTheSame, const kiln::Function<void(int, int)>& same) {
         // calculateDiff
         const int max = (oldSize + newSize + 1) / 2;
         std::vector<int> diagonals;

@@ -1,4 +1,5 @@
 #include "kiln/lifecycle/ViewModelCompose.h"
+#include <kiln/Function.h>
 
 #include "kiln/ui/LayoutNode.h"
 
@@ -56,7 +57,7 @@ namespace kiln::lifecycle {
         c->DisposableEffect(rt::Keys(static_cast<const void*>(provider.get()), static_cast<const void*>(lifecycleOwner.get())),
                             [p = provider, lifecycleOwner] {
             auto token = p->AcquireToken(ViewModelStoreProvider::ProviderMarkerKey);
-            return std::function<void()>([p, token, lifecycleOwner] {
+            return kiln::Function<void()>([p, token, lifecycleOwner] {
                 token->Close();
                 // Leaving while the window lives: this place is gone for good.
                 if (IsAtLeast(lifecycleOwner->GetLifecycle().CurrentState(), State::Created)) p->ClearAllKeys();
@@ -73,7 +74,7 @@ namespace kiln::lifecycle {
             rt::Keys(static_cast<const void*>(provider.get()), ownerKey, static_cast<const void*>(savedStateRegistryOwner.get())), key);
         c->DisposableEffect(rt::Keys(static_cast<const void*>(owner.get())), [provider, ownerKey] {
             auto token = provider->AcquireToken(ownerKey);
-            return std::function<void()>([token] { token->Close(); });
+            return kiln::Function<void()>([token] { token->Close(); });
         }, key);
         return owner;
     }

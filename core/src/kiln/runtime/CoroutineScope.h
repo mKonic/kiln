@@ -4,6 +4,7 @@
 // the caller leaves the composition.
 
 #include "kiln/runtime/Composition.h"
+#include <kiln/Function.h>
 #include "kiln/runtime/Task.h"
 
 #include <memory>
@@ -26,7 +27,7 @@ namespace kiln::rt {
         // the scope.
         std::weak_ptr<CoroutineScope> weak = scope;
         c.DisposableEffect({}, [weak] {
-            return std::function<void()>([weak] {
+            return kiln::Function<void()>([weak] {
                 if (auto s = weak.lock()) {
                     auto jobs = std::move(s->jobs);
                     s->jobs.clear();

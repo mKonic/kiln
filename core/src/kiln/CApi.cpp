@@ -1,4 +1,5 @@
 #include "kiln/App.h"
+#include <kiln/Function.h>
 
 #include <cmath>
 #include <kiln/kiln.hpp>
@@ -55,7 +56,7 @@ KILN_API void kiln_paragraph_free(kiln_paragraph* p) { delete p; }
 }
 
 namespace kiln {
-    void SetContent(kiln_app* app, std::function<void()> content) {
+    void SetContent(kiln_app* app, kiln::Function<void()> content) {
         if (app) app->impl->SetContent(std::move(content));
     }
 }

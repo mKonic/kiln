@@ -1,4 +1,5 @@
 #include "kiln/material3/BottomSheet.h"
+#include <kiln/Function.h>
 
 #include "kiln/animation/Easing.h"
 #include "kiln/foundation/AnchoredDraggable.h"
@@ -29,11 +30,11 @@ namespace kiln::material3 {
         // invokeOnCompletion { if (!state.isVisible) onDismissRequest() }: also when cancelled.
         struct DismissIfHidden {
             std::shared_ptr<SheetState> state;
-            std::function<void()> onDismiss;
+            kiln::Function<void()> onDismiss;
             ~DismissIfHidden() { if (onDismiss && !state->IsVisible()) onDismiss(); }
         };
 
-        rt::Task<> HideThenDismiss(std::shared_ptr<SheetState> state, std::function<void()> onDismiss) {
+        rt::Task<> HideThenDismiss(std::shared_ptr<SheetState> state, kiln::Function<void()> onDismiss) {
             DismissIfHidden guard{ state, std::move(onDismiss) };
             co_await state->Hide();
         }
@@ -44,7 +45,7 @@ namespace kiln::material3 {
 
         // The sheet's fling (modalBottomSheetFlingBehavior), from the nested scroll.
         rt::Task<float> FlingThenDismiss(std::shared_ptr<SheetState> state, float velocity, ui::Density density, anim::SpecPtr spec,
-                                         std::function<void()> onDismiss) {
+                                         kiln::Function<void()> onDismiss) {
             DismissIfHidden guard{ state, std::move(onDismiss) };
             co_return co_await internal::SheetFling(state, velocity, density, std::move(spec));
         }
@@ -52,7 +53,7 @@ namespace kiln::material3 {
         // settleToDismiss: an expanded sheet that can rest partially expanded goes there; any
         // other hides, then reports the dismissal.
         void SettleToDismiss(const std::shared_ptr<SheetState>& state, const std::shared_ptr<internal::CoroutineScope>& scope,
-                             const std::shared_ptr<anim::Animatable>& progress, const std::function<void()>& onDismiss) {
+                             const std::shared_ptr<anim::Animatable>& progress, const kiln::Function<void()>& onDismiss) {
             if (state->CurrentValue() == SheetValue::Expanded && state->HasPartiallyExpandedState()) {
                 scope->Launch(PartialExpandSheet(state));
                 scope->Launch(AnimateToZero(progress));
@@ -62,7 +63,7 @@ namespace kiln::material3 {
         }
 
         rt::Task<> SheetPredictiveBack(BackProgress& events, std::shared_ptr<anim::Animatable> progress, std::shared_ptr<internal::CoroutineScope> scope,
-                                       std::shared_ptr<SheetState> state, std::function<void()> onDismiss) {
+                                       std::shared_ptr<SheetState> state, kiln::Function<void()> onDismiss) {
             struct OnCancel {
                 std::shared_ptr<internal::CoroutineScope> scope;
                 std::shared_ptr<anim::Animatable> progress;
@@ -76,7 +77,7 @@ namespace kiln::material3 {
         }
     }
 
-    void BottomSheet(const ui::Modifier& modifier, const BottomSheetOptions& o, std::function<void()> content) {
+    void BottomSheet(const ui::Modifier& modifier, const BottomSheetOptions& o, kiln::Function<void()> content) {
         auto& c = *rt::Composition::Current();
         const auto state = o.state ? o.state : RememberBottomSheetState(SheetValue::Hidden);
         const anim::SpecPtr showMotion = Value(MotionSchemeKeyTokens::DefaultSpatial);
@@ -98,8 +99,8 @@ namespace kiln::material3 {
 
     namespace internal {
 
-        void BottomSheetImpl(std::function<float()> predictiveBackProgress, const ui::Modifier& modifier, std::shared_ptr<SheetState> state,
-                             const BottomSheetOptions& o, std::function<void()> content) {
+        void BottomSheetImpl(kiln::Function<float()> predictiveBackProgress, const ui::Modifier& modifier, std::shared_ptr<SheetState> state,
+                             const BottomSheetOptions& o, kiln::Function<void()> content) {
             auto& c = *rt::Composition::Current();
             const std::string paneTitle = GetString(Strings::BottomSheetPaneTitle);
             const ui::Density density = c.Read(ui::LocalDensity);
@@ -117,7 +118,7 @@ namespace kiln::material3 {
                 struct Holder {
                     ui::Density density;
                     anim::SpecPtr spec;
-                    std::function<void()> onDismiss;
+                    kiln::Function<void()> onDismiss;
                 };
                 const auto holder = c.Remember<std::shared_ptr<Holder>>([] { return std::make_shared<Holder>(); });
                 holder->density = density;

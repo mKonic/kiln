@@ -1,4 +1,5 @@
 #include "kiln/foundation/text/HandlePopup.h"
+#include <kiln/Function.h>
 
 #include "kiln/foundation/Popup.h"
 
@@ -10,7 +11,7 @@ namespace kiln::foundation {
     namespace {
         struct HandlePositionProvider final : PopupPositionProvider {
             float referenceX = 0;
-            std::function<Offset()> positionProvider;
+            kiln::Function<Offset()> positionProvider;
             mutable Offset prevPosition{ 0, 0 };
             IntOffset CalculatePosition(ui::IntRect anchor, ui::IntSize, LayoutDirection, ui::IntSize content) const override {
                 Offset position = positionProvider ? positionProvider() : Offset{ NAN, NAN };
@@ -24,7 +25,7 @@ namespace kiln::foundation {
         };
     }
 
-    void HandlePopup(std::function<Offset()> positionProvider, float referenceX, std::function<void()> content, Key key) {
+    void HandlePopup(kiln::Function<Offset()> positionProvider, float referenceX, kiln::Function<void()> content, Key key) {
         rt::Composition::Current()->Child([positionProvider, referenceX, content] {
             auto& c = *rt::Composition::Current();
             auto& provider = c.Remember<std::shared_ptr<HandlePositionProvider>>(

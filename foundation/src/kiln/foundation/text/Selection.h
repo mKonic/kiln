@@ -8,6 +8,7 @@
 // by '\n'.
 
 #include "kiln/foundation/Layouts.h"
+#include <kiln/Function.h>
 #include "kiln/foundation/Focus.h"
 #include "kiln/foundation/Gestures.h"
 #include "kiln/runtime/State.h"
@@ -119,7 +120,7 @@ namespace kiln::foundation {
             const SelectableInfo& CurrentInfo() const { return isStartHandle ? StartInfo() : EndInfo(); }
             const SelectableInfo& FirstInfo() const { return Cross() == CrossStatus::Crossed ? EndInfo() : StartInfo(); }
             const SelectableInfo& LastInfo() const { return Cross() == CrossStatus::Crossed ? StartInfo() : EndInfo(); }
-            void ForEachMiddleInfo(const std::function<void(const SelectableInfo&)>& block) const;
+            void ForEachMiddleInfo(const kiln::Function<void(const SelectableInfo&)>& block) const;
             const SelectableInfo* InfoForSelectable(std::int64_t id) const;
             bool ShouldRecomputeSelection(const std::optional<SelectionLayout>& other) const;
             SubSelections CreateSubSelections(const Selection& selection) const;
@@ -141,7 +142,7 @@ namespace kiln::foundation {
             bool isStartHandle = false;
             std::optional<Selection> previousSelection;
             const SelectionLayout* previousLayout = nullptr;
-            std::function<int(std::int64_t, std::int64_t)> compareIds;   // selectable order
+            kiln::Function<int(std::int64_t, std::int64_t)> compareIds;   // selectable order
             bool allowSelectionBetweenSelectables = false;
 
             bool IsEmpty() const { return m_Infos.empty(); }
@@ -164,11 +165,11 @@ namespace kiln::foundation {
         class Selectable {
         public:
             std::int64_t selectableId = 0;
-            std::function<std::optional<Coordinates>()> coordinatesCallback;
-            std::function<std::shared_ptr<const TextLayoutResult>()> layoutCallback;
+            kiln::Function<std::optional<Coordinates>()> coordinatesCallback;
+            kiln::Function<std::shared_ptr<const TextLayoutResult>()> layoutCallback;
             TextBackend* backend = nullptr;
-            std::function<void(Rect)> bringIntoView;   // the rect in the selectable's space
-            std::function<std::shared_ptr<ui::PinnableContainer>()> pinnableContainer;
+            kiln::Function<void(Rect)> bringIntoView;   // the rect in the selectable's space
+            kiln::Function<std::shared_ptr<ui::PinnableContainer>()> pinnableContainer;
 
             void AppendSelectableInfoToBuilder(SelectionLayoutBuilder& builder, bool isLast, const SelectionLayout* previousLayout);
             std::optional<Selection> GetSelectAllSelection() const;
@@ -211,13 +212,13 @@ namespace kiln::foundation {
             void NotifySelectionUpdateEnd();
             void NotifySelectableChange(std::int64_t id);
 
-            std::function<void(std::int64_t)> onPositionChange;
-            std::function<void(bool, const Coordinates&, Offset, Adjustment)> onSelectionUpdateStart;
-            std::function<void(bool, std::int64_t)> onSelectionUpdateSelectAll;
-            std::function<bool(bool, const Coordinates&, Offset, Offset, bool, Adjustment)> onSelectionUpdate;
-            std::function<void()> onSelectionUpdateEnd;
-            std::function<void(std::int64_t)> onSelectableChange;
-            std::function<void(std::int64_t)> afterSelectableUnsubscribe;
+            kiln::Function<void(std::int64_t)> onPositionChange;
+            kiln::Function<void(bool, const Coordinates&, Offset, Adjustment)> onSelectionUpdateStart;
+            kiln::Function<void(bool, std::int64_t)> onSelectionUpdateSelectAll;
+            kiln::Function<bool(bool, const Coordinates&, Offset, Offset, bool, Adjustment)> onSelectionUpdate;
+            kiln::Function<void()> onSelectionUpdateEnd;
+            kiln::Function<void(std::int64_t)> onSelectableChange;
+            kiln::Function<void(std::int64_t)> afterSelectableUnsubscribe;
 
         private:
             bool m_Sorted = false;
@@ -232,7 +233,7 @@ namespace kiln::foundation {
         // makeSelectionModifier: a text's selection gestures (long press and drag, double / triple
         // taps, mouse clicks and drags), reported to the registrar in the text's coordinates.
         Modifier SelectionGestures(Modifier m, std::shared_ptr<SelectionRegistrar> registrar, std::int64_t selectableId,
-                                   std::function<std::optional<Coordinates>()> coordinates);
+                                   kiln::Function<std::optional<Coordinates>()> coordinates);
         // isCopyKeyEvent (Android key mapping): Ctrl+C, Ctrl+Insert or the Copy key.
         // TextDragObserver / MouseSelectionObserver.
         class TextDragObserver {
@@ -280,7 +281,7 @@ namespace kiln::foundation {
 
     private:
         friend class selection::SelectionManager;
-        friend void SelectionContainer(SelectionState&, const Modifier&, std::function<void()>);
+        friend void SelectionContainer(SelectionState&, const Modifier&, kiln::Function<void()>);
         friend SelectionState& RememberSelectionState();
         rt::State<std::optional<selection::Selection>> m_Selection;
         rt::State<std::vector<text::AnnotatedString>> m_SelectedTexts;
@@ -289,10 +290,10 @@ namespace kiln::foundation {
     // rememberSelectionState: survives re-creation.
     SelectionState& RememberSelectionState();
 
-    void SelectionContainer(const Modifier& modifier, std::function<void()> content);
-    void SelectionContainer(SelectionState& state, const Modifier& modifier, std::function<void()> content);
+    void SelectionContainer(const Modifier& modifier, kiln::Function<void()> content);
+    void SelectionContainer(SelectionState& state, const Modifier& modifier, kiln::Function<void()> content);
     // DisableSelection: texts inside are not selectable (LocalSelectionRegistrar provides null).
-    void DisableSelection(std::function<void()> content);
+    void DisableSelection(kiln::Function<void()> content);
 
     // Selection handles (SelectionHandles.kt): 25 dp, a quarter square joined to a circle with the
     // point at the selection; the start handle of LTR text points right (mirrored).

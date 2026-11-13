@@ -1,4 +1,5 @@
 #include "kiln/material3/TextField.h"
+#include <kiln/Function.h>
 
 #include "kiln/foundation/text/input/TextFieldBuffer.h"
 #include "kiln/material3/MaterialTheme.h"
@@ -50,7 +51,7 @@ namespace kiln::material3 {
                 internal::DecorationBoxSlots slots{ o.label, o.placeholder, o.leadingIcon, o.trailingIcon, o.prefix, o.suffix, o.supportingText };
                 TextFieldState* st = &state;
                 const OutputTransformationPtr output = o.outputTransformation;
-                b.decorator = [=](const std::function<void()>& inner) {
+                b.decorator = [=](const kiln::Function<void()>& inner) {
                     internal::CommonDecorationBox(VisualText(*st, output), inner, labelPosition, slots, singleLine, enabled, isError, source, contentPadding,
                                                   colors, [=] {
                                                       if (outlined) OutlinedTextFieldDefaults::Container(enabled, isError, source, {}, colors, shape);
@@ -104,7 +105,7 @@ namespace kiln::material3 {
                 internal::DecorationBoxSlots slots{ o.label, o.placeholder, o.leadingIcon, o.trailingIcon, o.prefix, o.suffix, o.supportingText };
                 TextFieldState* st = &state;
                 // The decorator sees the state's text (no output transformation), single line.
-                b.decorator = [=](const std::function<void()>& inner) {
+                b.decorator = [=](const kiln::Function<void()>& inner) {
                     internal::CommonDecorationBox(VisualText(*st, nullptr), inner, labelPosition, slots, true, enabled, isError, source, contentPadding, colors,
                                                   [=] {
                                                       if (outlined) OutlinedTextFieldDefaults::Container(enabled, isError, source, {}, colors, shape);

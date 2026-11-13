@@ -1,6 +1,7 @@
 #pragma once
 
 #include "kiln/foundation/Interaction.h"
+#include <kiln/Function.h>
 #include "kiln/ui/Semantics.h"
 
 #include <optional>
@@ -58,7 +59,7 @@ namespace kiln::foundation {
         PointerEvent m_Current;
     };
 
-    using PointerInputHandler = std::function<rt::Task<>(PointerInputScope&)>;
+    using PointerInputHandler = kiln::Function<rt::Task<>(PointerInputScope&)>;
 
     // DpTouchBoundsExpansion: how far a stylus or eraser reaches past a node's bounds and still
     // hits it (start / end follow the layout direction unless absolute).
@@ -129,11 +130,11 @@ namespace kiln::foundation {
     // it and the over-slop distance; it must consume it to accept), or nullopt when the pointer
     // lifted or someone else consumed the motion. Follows another pressed pointer if this lifts.
     rt::Task<std::optional<PointerInputChange>> AwaitTouchSlopOrCancellation(PointerInputScope& scope, std::int64_t pointerId,
-                                                                             std::function<void(PointerInputChange&, Offset overSlop)> onSlop);
+                                                                             kiln::Function<void(PointerInputChange&, Offset overSlop)> onSlop);
     // drag(pointerId, onDrag): each move until the pointer lifts (returns the up) or someone else
     // consumed a move (nullopt).
     rt::Task<std::optional<PointerInputChange>> DragPointer(PointerInputScope& scope, std::int64_t pointerId,
-                                                            std::function<void(PointerInputChange&)> onDrag);
+                                                            kiln::Function<void(PointerInputChange&)> onDrag);
     // waitForUpOrCancellation(pass): the up once every pointer lifted, nullopt when a change was
     // consumed (on `pass`, or its position on the Final pass) or left the bounds.
     rt::Task<std::optional<PointerInputChange>> WaitForUpOrCancellation(PointerInputScope& scope,
@@ -156,17 +157,17 @@ namespace kiln::foundation {
     // along one axis (the over-slop distance on it); the Pointer forms take the slop of a pointer
     // type (mice drag sooner).
     rt::Task<std::optional<PointerInputChange>> AwaitHorizontalTouchSlopOrCancellation(PointerInputScope& scope, std::int64_t pointerId,
-                                                                                       std::function<void(PointerInputChange&, float overSlop)> onSlop);
+                                                                                       kiln::Function<void(PointerInputChange&, float overSlop)> onSlop);
     rt::Task<std::optional<PointerInputChange>> AwaitVerticalTouchSlopOrCancellation(PointerInputScope& scope, std::int64_t pointerId,
-                                                                                     std::function<void(PointerInputChange&, float overSlop)> onSlop);
+                                                                                     kiln::Function<void(PointerInputChange&, float overSlop)> onSlop);
     rt::Task<std::optional<PointerInputChange>> AwaitHorizontalPointerSlopOrCancellation(PointerInputScope& scope, std::int64_t pointerId, PointerType type,
-                                                                                         std::function<void(PointerInputChange&, float overSlop)> onSlop);
+                                                                                         kiln::Function<void(PointerInputChange&, float overSlop)> onSlop);
     rt::Task<std::optional<PointerInputChange>> AwaitVerticalPointerSlopOrCancellation(PointerInputScope& scope, std::int64_t pointerId, PointerType type,
-                                                                                       std::function<void(PointerInputChange&, float overSlop)> onSlop);
+                                                                                       kiln::Function<void(PointerInputChange&, float overSlop)> onSlop);
     // horizontalDrag / verticalDrag: each move along the axis until the pointer lifts (true) or a
     // change is consumed elsewhere (false).
-    rt::Task<bool> HorizontalDrag(PointerInputScope& scope, std::int64_t pointerId, std::function<void(PointerInputChange&)> onDrag);
-    rt::Task<bool> VerticalDrag(PointerInputScope& scope, std::int64_t pointerId, std::function<void(PointerInputChange&)> onDrag);
+    rt::Task<bool> HorizontalDrag(PointerInputScope& scope, std::int64_t pointerId, kiln::Function<void(PointerInputChange&)> onDrag);
+    rt::Task<bool> VerticalDrag(PointerInputScope& scope, std::int64_t pointerId, kiln::Function<void(PointerInputChange&)> onDrag);
     // awaitLongPressOrCancellation: the pressed change once the long-press timeout passes (or a
     // deep press), nullopt when it lifted, was consumed or left the bounds first.
     rt::Task<std::optional<PointerInputChange>> AwaitLongPressOrCancellation(PointerInputScope& scope, std::int64_t pointerId);
@@ -190,14 +191,14 @@ namespace kiln::foundation {
     };
 
     struct TapCallbacks {
-        std::function<void(Offset)> onPress;            // down
-        std::function<void(bool released)> onPressEnd;  // up (true) or cancel (false)
+        kiln::Function<void(Offset)> onPress;            // down
+        kiln::Function<void(bool released)> onPressEnd;  // up (true) or cancel (false)
         // onPress with a PressGestureScope (detectTapGestures' suspending onPress): runs in its
         // own task from the down.
-        std::function<rt::Task<>(PressGestureScope&, Offset)> onPressScoped;
-        std::function<void(Offset)> onTap;
-        std::function<void(Offset)> onDoubleTap;
-        std::function<void(Offset)> onLongPress;
+        kiln::Function<rt::Task<>(PressGestureScope&, Offset)> onPressScoped;
+        kiln::Function<void(Offset)> onTap;
+        kiln::Function<void(Offset)> onDoubleTap;
+        kiln::Function<void(Offset)> onLongPress;
     };
     rt::Task<> DetectTapGestures(PointerInputScope& scope, TapCallbacks callbacks);
 
@@ -209,10 +210,10 @@ namespace kiln::foundation {
     float PointerSlop(const ViewConfiguration& c, PointerType type);
 
     struct DragCallbacks {
-        std::function<void(const PointerInputChange& down, const PointerInputChange& slopTrigger, Offset overSlop)> onDragStart;
-        std::function<void(const PointerInputChange& change, Offset dragAmount)> onDrag;
-        std::function<void(const PointerInputChange& up)> onDragEnd;
-        std::function<void()> onDragCancel;
+        kiln::Function<void(const PointerInputChange& down, const PointerInputChange& slopTrigger, Offset overSlop)> onDragStart;
+        kiln::Function<void(const PointerInputChange& change, Offset dragAmount)> onDrag;
+        kiln::Function<void(const PointerInputChange& up)> onDragEnd;
+        kiln::Function<void()> onDragCancel;
     };
     // detectDragGestures(orientationLock): slop, then drag until up or consumed by someone else.
     rt::Task<> DetectDragGestures(PointerInputScope& scope, std::optional<Orientation> orientationLock, DragCallbacks callbacks);
@@ -230,7 +231,7 @@ namespace kiln::foundation {
     float CalculateRotation(const PointerEvent& e);
     // detectTransformGestures(panZoomLock, onGesture(centroid, pan, zoom, rotation)).
     rt::Task<> DetectTransformGestures(PointerInputScope& scope, bool panZoomLock,
-                                       std::function<void(Offset centroid, Offset pan, float zoom, float rotation)> onGesture);
+                                       kiln::Function<void(Offset centroid, Offset pan, float zoom, float rotation)> onGesture);
 
     struct ClickableOptions {
         bool enabled = true;
@@ -243,28 +244,28 @@ namespace kiln::foundation {
         bool useLocalIndication = true;
         // combinedClickable: a long press and/or a double tap besides the click (with a double
         // tap set, a single tap waits out the double-tap timeout).
-        std::function<void()> onLongClick;
+        kiln::Function<void()> onLongClick;
         std::optional<std::string> onLongClickLabel;
-        std::function<void()> onDoubleClick;
+        kiln::Function<void()> onDoubleClick;
     };
     // clickable(interactionSource, indication, enabled, onClickLabel, role, onClick): tap and
     // Enter/Space/DPAD-centre activation, press interactions (delayed TapTimeout inside scrollable
     // containers), focusable outside touch mode, merged click semantics with role and label.
     // SoundEffectOnInteraction: turns the click sound of the clickables in `content` off (or back
     // on), by wrapping LocalSoundEffect.
-    void SoundEffectOnInteraction(bool enabled, std::function<void()> content);
+    void SoundEffectOnInteraction(bool enabled, kiln::Function<void()> content);
 
-    Modifier Clickable(Modifier m, std::function<void()> onClick, ClickableOptions options);
+    Modifier Clickable(Modifier m, kiln::Function<void()> onClick, ClickableOptions options);
     // Compatibility form: pressed-state callback, local indication.
-    Modifier Clickable(Modifier m, std::function<void()> onClick, std::function<void(bool)> onPressedChange = {},
+    Modifier Clickable(Modifier m, kiln::Function<void()> onClick, kiln::Function<void(bool)> onPressedChange = {},
                        bool enabled = true);
 
     // toggleable(value, onValueChange): a clickable with on/off state semantics.
-    Modifier Toggleable(Modifier m, bool value, std::function<void(bool)> onValueChange, ClickableOptions options = {});
+    Modifier Toggleable(Modifier m, bool value, kiln::Function<void(bool)> onValueChange, ClickableOptions options = {});
     // triStateToggleable(state, onClick): 0 off, 1 on, 2 indeterminate.
-    Modifier TriStateToggleable(Modifier m, int state, std::function<void()> onClick, ClickableOptions options = {});
+    Modifier TriStateToggleable(Modifier m, int state, kiln::Function<void()> onClick, ClickableOptions options = {});
     // selectable(selected, onClick): a clickable with selected semantics (radio buttons, tabs).
-    Modifier Selectable(Modifier m, bool selected, std::function<void()> onClick, ClickableOptions options = {});
+    Modifier Selectable(Modifier m, bool selected, kiln::Function<void()> onClick, ClickableOptions options = {});
     // selectableGroup(): a traversal group for selectable children.
     Modifier SelectableGroup(Modifier m);
 

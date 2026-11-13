@@ -1,4 +1,5 @@
 #include "kiln/foundation/Subcompose.h"
+#include <kiln/Function.h>
 
 #include <algorithm>
 #include <map>
@@ -28,7 +29,7 @@ namespace kiln::foundation {
             std::unique_ptr<LayoutNode> holder;
             std::unique_ptr<rt::Composition> composition;
             bool precomposed = false;   // composed ahead, not yet claimed by a measure
-            std::shared_ptr<const std::function<void()>> stable;   // content set by identity
+            std::shared_ptr<const kiln::Function<void()>> stable;   // content set by identity
         };
 
         struct State;
@@ -36,8 +37,8 @@ namespace kiln::foundation {
         class Scope final : public SubcomposeMeasureScope {
         public:
             Scope(const MeasureScope& s, State& st) : SubcomposeMeasureScope(s), m_State(st) {}
-            std::vector<Measurable*> Subcompose(rt::Key slotId, std::function<void()> content) override;
-            std::vector<Measurable*> Subcompose(rt::Key slotId, const std::shared_ptr<const std::function<void()>>& content) override;
+            std::vector<Measurable*> Subcompose(rt::Key slotId, kiln::Function<void()> content) override;
+            std::vector<Measurable*> Subcompose(rt::Key slotId, const std::shared_ptr<const kiln::Function<void()>>& content) override;
         private:
             std::vector<Measurable*> Claim(rt::Key slotId, Slot& slot);
             State& m_State;
@@ -141,7 +142,7 @@ namespace kiln::foundation {
             }
             return slot;
         }
-        Slot& ComposeSlot(State& st, std::uint64_t id, std::function<void()> content) {
+        Slot& ComposeSlot(State& st, std::uint64_t id, kiln::Function<void()> content) {
             Slot& slot = SlotFor(st, id);
             slot.stable = nullptr;
             slot.composition->SetContent(std::move(content));
@@ -149,13 +150,13 @@ namespace kiln::foundation {
             return slot;
         }
 
-        std::vector<Measurable*> Scope::Subcompose(rt::Key slotId, std::function<void()> content) {
+        std::vector<Measurable*> Scope::Subcompose(rt::Key slotId, kiln::Function<void()> content) {
             // The approach pass takes what lookahead composed as it is.
             if (m_State.pass == Pass::Approach && m_State.UsedInLookahead(slotId.value) && m_State.slots.count(slotId.value))
                 return Claim(slotId, m_State.slots[slotId.value]);
             return Claim(slotId, ComposeSlot(m_State, slotId.value, std::move(content)));
         }
-        std::vector<Measurable*> Scope::Subcompose(rt::Key slotId, const std::shared_ptr<const std::function<void()>>& content) {
+        std::vector<Measurable*> Scope::Subcompose(rt::Key slotId, const std::shared_ptr<const kiln::Function<void()>>& content) {
             if (m_State.pass == Pass::Approach && m_State.UsedInLookahead(slotId.value) && m_State.slots.count(slotId.value))
                 return Claim(slotId, m_State.slots[slotId.value]);
             Slot& slot = SlotFor(m_State, slotId.value);
@@ -228,7 +229,7 @@ namespace kiln::foundation {
         return std::make_shared<FixedCount>(std::max(0, maxSlotsToRetainForReuse));
     }
 
-    SubcomposeLayoutState::PausedPrecomposition SubcomposeLayoutState::CreatePausedPrecomposition(rt::Key slotId, std::function<void()> content) {
+    SubcomposeLayoutState::PausedPrecomposition SubcomposeLayoutState::CreatePausedPrecomposition(rt::Key slotId, kiln::Function<void()> content) {
         PausedPrecomposition p;
         p.m_Owner = this;
         p.m_Slot = slotId;
@@ -254,7 +255,7 @@ namespace kiln::foundation {
         m_Handle.Dispose();
     }
 
-    SubcomposeLayoutState::PrecomposedSlotHandle SubcomposeLayoutState::Precompose(rt::Key slotId, std::function<void()> content) {
+    SubcomposeLayoutState::PrecomposedSlotHandle SubcomposeLayoutState::Precompose(rt::Key slotId, kiln::Function<void()> content) {
         PrecomposedSlotHandle h;
         auto st = std::static_pointer_cast<State>(m_Impl);
         if (!st->node || !st->node->GetOwner()) return h;   // root.isAttached
@@ -315,7 +316,7 @@ namespace kiln::foundation {
     }
 
     void BoxWithConstraints(const Modifier& modifier, Alignment alignment, bool propagateMin,
-                            std::function<void(const BoxWithConstraintsScope&)> content, rt::Key key) {
+                            kiln::Function<void(const BoxWithConstraintsScope&)> content, rt::Key key) {
         auto box = std::make_shared<BoxPolicy>(alignment, propagateMin);
         SubcomposeLayout(modifier, [box, content = std::move(content)](SubcomposeMeasureScope& s, const Constraints& c) {
             const BoxWithConstraintsScope scope{ c, s };

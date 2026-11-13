@@ -1,4 +1,5 @@
 #include "kiln/material3/DatePicker.h"
+#include <kiln/Function.h>
 
 #include "kiln/foundation/AnimatedVisibility.h"
 #include "kiln/foundation/Animate.h"
@@ -44,12 +45,12 @@ namespace kiln::material3 {
     namespace {
         class FunctionSelectableDates final : public SelectableDates {
         public:
-            FunctionSelectableDates(std::function<bool(std::int64_t)> d, std::function<bool(int)> y) : m_Date(std::move(d)), m_Year(std::move(y)) {}
+            FunctionSelectableDates(kiln::Function<bool(std::int64_t)> d, kiln::Function<bool(int)> y) : m_Date(std::move(d)), m_Year(std::move(y)) {}
             bool IsSelectableDate(std::int64_t ms) const override { return !m_Date || m_Date(ms); }
             bool IsSelectableYear(int year) const override { return !m_Year || m_Year(year); }
         private:
-            std::function<bool(std::int64_t)> m_Date;
-            std::function<bool(int)> m_Year;
+            kiln::Function<bool(std::int64_t)> m_Date;
+            kiln::Function<bool(int)> m_Year;
         };
 
         mi::CalendarMonth InitialMonth(const mi::CalendarModel& model, std::optional<std::int64_t> millis, const IntRange& range) {
@@ -69,7 +70,7 @@ namespace kiln::material3 {
         }
     }
 
-    SelectableDatesPtr MakeSelectableDates(std::function<bool(std::int64_t)> isSelectableDate, std::function<bool(int)> isSelectableYear) {
+    SelectableDatesPtr MakeSelectableDates(kiln::Function<bool(std::int64_t)> isSelectableDate, kiln::Function<bool(int)> isSelectableYear) {
         return std::make_shared<FunctionSelectableDates>(std::move(isSelectableDate), std::move(isSelectableYear));
     }
 
@@ -243,7 +244,7 @@ namespace kiln::material3 {
         namespace {
             ui::Modifier RequiredHeightDp(ui::Modifier m, Dp h) { return SizeIn(std::move(m), Dp::Unspecified(), h, Dp::Unspecified(), h, false); }
 
-            void IconButtonWithTooltip(std::function<void()> onClick, const gfx::vector::ImageVectorPtr& icon, std::string description,
+            void IconButtonWithTooltip(kiln::Function<void()> onClick, const gfx::vector::ImageVectorPtr& icon, std::string description,
                                        const ui::Modifier& modifier = {}, bool enabled = true) {
                 auto provider = TooltipDefaults::rememberTooltipPositionProvider(TooltipAnchorPosition::Above);
                 auto state = RememberTooltipState();
@@ -257,9 +258,9 @@ namespace kiln::material3 {
             }
         }
 
-        void DateEntryContainer(const ui::Modifier& modifier, std::function<void()> title, std::function<void()> headline,
-                                std::function<void()> modeToggleButton, const DatePickerColors& colors, const text::TextStyle& headlineTextStyle,
-                                Dp headerMinHeight, std::function<void()> content, ui::FocusRequester* topFocusTarget,
+        void DateEntryContainer(const ui::Modifier& modifier, kiln::Function<void()> title, kiln::Function<void()> headline,
+                                kiln::Function<void()> modeToggleButton, const DatePickerColors& colors, const text::TextStyle& headlineTextStyle,
+                                Dp headerMinHeight, kiln::Function<void()> content, ui::FocusRequester* topFocusTarget,
                                 ui::FocusRequester* bottomFocusTarget) {
             ui::Modifier m = SizeIn(modifier, DatePickerModalTokens::ContainerWidth, Dp::Unspecified(), Dp::Unspecified(), Dp::Unspecified());
             m = Semantics(std::move(m), [](ui::SemanticsConfiguration& c) { c.isTraversalGroup = true; });
@@ -318,7 +319,7 @@ namespace kiln::material3 {
             });
         }
 
-        void DisplayModeToggleButton(const ui::Modifier& modifier, DisplayMode mode, std::function<void(DisplayMode)> onChange, const DatePickerColors& colors) {
+        void DisplayModeToggleButton(const ui::Modifier& modifier, DisplayMode mode, kiln::Function<void(DisplayMode)> onChange, const DatePickerColors& colors) {
             rt::Composition::Current()->Provide(LocalContentColor, colors.headlineContentColor, [=] {
                 if (mode == DisplayMode::Picker)
                     IconButtonWithTooltip([onChange] { onChange(DisplayMode::Input); }, Icons::Filled::Edit(),
@@ -356,7 +357,7 @@ namespace kiln::material3 {
                 });
         }
 
-        void UpdateDisplayedMonth(LazyListState& state, std::function<void(std::int64_t)> onChange, const CalendarModel& model, const IntRange& range) {
+        void UpdateDisplayedMonth(LazyListState& state, kiln::Function<void(std::int64_t)> onChange, const CalendarModel& model, const IntRange& range) {
             // snapshotFlow { firstVisibleItemIndex }: a scope of its own reads the index and reports
             // each new value.
             auto& c = *rt::Composition::Current();
@@ -419,7 +420,7 @@ namespace kiln::material3 {
                 return enabled ? c.dayContentColor : c.disabledDayContentColor;
             }
 
-            void Day(const std::string& label, const ui::Modifier& modifier, bool selected, std::function<void()> onClick, bool animateChecked, bool enabled,
+            void Day(const std::string& label, const ui::Modifier& modifier, bool selected, kiln::Function<void()> onClick, bool animateChecked, bool enabled,
                      bool today, bool inRange, const std::string& description, const DatePickerColors& colors) {
                 const Color containerTarget = selected ? (enabled ? colors.selectedDayContainerColor : colors.disabledSelectedDayContainerColor)
                                                        : Color::Transparent();
@@ -472,10 +473,10 @@ namespace kiln::material3 {
             }
         }
 
-        void Month(const CalendarMonth& month, std::function<void(std::int64_t)> onSelect, std::int64_t todayMillis,
+        void Month(const CalendarMonth& month, kiln::Function<void(std::int64_t)> onSelect, std::int64_t todayMillis,
                    std::optional<std::int64_t> startMillis, std::optional<std::int64_t> endMillis, std::optional<SelectedRangeInfo> rangeInfo,
                    const DatePickerFormatterPtr& formatter, const SelectableDatesPtr& selectable, const DatePickerColors& colors,
-                   const std::string& locale, LazyListState& listState, bool keyboardNavigation, std::function<void()> onReturnFocus) {
+                   const std::string& locale, LazyListState& listState, bool keyboardNavigation, kiln::Function<void()> onReturnFocus) {
             auto& c = *rt::Composition::Current();
             auto scope = RememberCoroutineScope();
             auto* owner = c.Read(ui::LocalOwner);
@@ -618,8 +619,8 @@ namespace kiln::material3 {
         }
 
         void DateInputTextField(const ui::Modifier& modifier, std::optional<std::int64_t> initialDateMillis,
-                                std::function<void(std::optional<std::int64_t>)> onDateSelectionChange, const CalendarModel& calendarModel,
-                                std::function<void()> label, std::function<void()> placeholder, InputIdentifier inputIdentifier,
+                                kiln::Function<void(std::optional<std::int64_t>)> onDateSelectionChange, const CalendarModel& calendarModel,
+                                kiln::Function<void()> label, kiln::Function<void()> placeholder, InputIdentifier inputIdentifier,
                                 std::shared_ptr<DateInputValidator> validator, const DateInputFormat& format, const std::string& locale,
                                 const DatePickerColors& colors, ui::FocusRequester* focusRequester) {
             auto& c = *rt::Composition::Current();
@@ -692,7 +693,7 @@ namespace kiln::material3 {
         }
 
         namespace {
-            void DateInputContent(std::optional<std::int64_t> selected, std::function<void(std::optional<std::int64_t>)> onSelect, const CalendarModel& model,
+            void DateInputContent(std::optional<std::int64_t> selected, kiln::Function<void(std::optional<std::int64_t>)> onSelect, const CalendarModel& model,
                                   const IntRange& yearRange, const DatePickerFormatterPtr& formatter, const SelectableDatesPtr& selectable,
                                   const DatePickerColors& colors, ui::FocusRequester* focusRequester) {
                 auto& c = *rt::Composition::Current();
@@ -720,7 +721,7 @@ namespace kiln::material3 {
 
             // --- the calendar ---------------------------------------------------------------------
 
-            void Year(const std::string& label, const ui::Modifier& modifier, bool selected, bool currentYear, std::function<void()> onClick, bool enabled,
+            void Year(const std::string& label, const ui::Modifier& modifier, bool selected, bool currentYear, kiln::Function<void()> onClick, bool enabled,
                       const std::string& description, const DatePickerColors& colors) {
                 const Color containerTarget = selected ? (enabled ? colors.selectedYearContainerColor : colors.disabledSelectedYearContainerColor)
                                                        : Color::Transparent();
@@ -749,9 +750,9 @@ namespace kiln::material3 {
                 }, enabled);
             }
 
-            void YearPicker(const ui::Modifier& modifier, std::int64_t displayedMonthMillis, std::function<void(int)> onYearSelected,
+            void YearPicker(const ui::Modifier& modifier, std::int64_t displayedMonthMillis, kiln::Function<void(int)> onYearSelected,
                             const SelectableDatesPtr& selectable, const CalendarModel& model, const IntRange& yearRange, const DatePickerColors& colors,
-                            ui::FocusRequester* currentYearFocusRequester, std::function<void()> onShiftTab, std::function<void()> onTab) {
+                            ui::FocusRequester* currentYearFocusRequester, kiln::Function<void()> onShiftTab, kiln::Function<void()> onTab) {
                 auto& c = *rt::Composition::Current();
                 const CalendarModel* m = &model;
                 ProvideTextStyle(Value(DatePickerModalTokens::SelectionYearLabelTextFont), [=] {
@@ -785,7 +786,7 @@ namespace kiln::material3 {
                 c.LaunchedEffect({}, [currentYearFocusRequester] { return FocusAfterLayout(currentYearFocusRequester); });
             }
 
-            void YearPickerMenuButton(std::function<void()> onClick, bool expanded, const ui::Modifier& modifier, std::function<void()> content) {
+            void YearPickerMenuButton(kiln::Function<void()> onClick, bool expanded, const ui::Modifier& modifier, kiln::Function<void()> content) {
                 ButtonOptions o;
                 o.shape = CircleShape();
                 o.colors = ButtonDefaults::textButtonColors().Copy(Color::Unspecified(), rt::Composition::Current()->Read(LocalContentColor));
@@ -801,8 +802,8 @@ namespace kiln::material3 {
             }
 
             void MonthsNavigation(const ui::Modifier& modifier, bool nextAvailable, bool previousAvailable, bool yearPickerVisible,
-                                  const std::string& yearPickerText, const ui::Modifier& nextButtonModifier, std::function<void()> onNext,
-                                  std::function<void()> onPrevious, std::function<void()> onYearPickerButton, std::function<void()> onYearPickerTab,
+                                  const std::string& yearPickerText, const ui::Modifier& nextButtonModifier, kiln::Function<void()> onNext,
+                                  kiln::Function<void()> onPrevious, kiln::Function<void()> onYearPickerButton, kiln::Function<void()> onYearPickerTab,
                                   ui::FocusRequester* yearSelectionButtonFocusRequester, const DatePickerColors& colors) {
                 Row(RequiredHeightDp(FillMax(modifier, Axis::Horizontal), MonthYearHeight),
                     yearPickerVisible ? Arrangement::Start() : Arrangement::SpaceBetween(), ui::AlignmentV::CenterVertically(), [=] {
@@ -862,10 +863,10 @@ namespace kiln::material3 {
                 }, rt::Keys(reinterpret_cast<std::uintptr_t>(&state)));
             }
 
-            void HorizontalMonthsList(LazyListState& listState, std::optional<std::int64_t> selected, std::function<void(std::int64_t)> onSelect,
-                                      std::function<void(std::int64_t)> onDisplayedMonthChange, const CalendarModel& model, const IntRange& yearRange,
+            void HorizontalMonthsList(LazyListState& listState, std::optional<std::int64_t> selected, kiln::Function<void(std::int64_t)> onSelect,
+                                      kiln::Function<void(std::int64_t)> onDisplayedMonthChange, const CalendarModel& model, const IntRange& yearRange,
                                       const DatePickerFormatterPtr& formatter, const SelectableDatesPtr& selectable, const DatePickerColors& colors,
-                                      std::function<void()> onReturnFocus) {
+                                      kiln::Function<void()> onReturnFocus) {
                 const CalendarDate today = model.Today();
                 const CalendarMonth firstMonth = model.GetMonth(yearRange.first, 1);
                 const CalendarModel* m = &model;
@@ -890,8 +891,8 @@ namespace kiln::material3 {
                 UpdateDisplayedMonth(listState, std::move(onDisplayedMonthChange), model, yearRange);
             }
 
-            void DatePickerContent(std::optional<std::int64_t> selected, std::int64_t displayedMonthMillis, std::function<void(std::int64_t)> onSelect,
-                                   std::function<void(std::int64_t)> onDisplayedMonthChange, const CalendarModel& model, const IntRange& yearRange,
+            void DatePickerContent(std::optional<std::int64_t> selected, std::int64_t displayedMonthMillis, kiln::Function<void(std::int64_t)> onSelect,
+                                   kiln::Function<void(std::int64_t)> onDisplayedMonthChange, const CalendarModel& model, const IntRange& yearRange,
                                    const DatePickerFormatterPtr& formatter, const SelectableDatesPtr& selectable, const DatePickerColors& colors) {
                 auto& c = *rt::Composition::Current();
                 const CalendarMonth displayedMonth = model.GetMonth(displayedMonthMillis);
@@ -979,7 +980,7 @@ namespace kiln::material3 {
             }
 
             void SwitchableDateEntryContent(std::optional<std::int64_t> selected, std::int64_t displayedMonthMillis, DisplayMode mode,
-                                            std::function<void(std::optional<std::int64_t>)> onSelect, std::function<void(std::int64_t)> onDisplayedMonthChange,
+                                            kiln::Function<void(std::optional<std::int64_t>)> onSelect, kiln::Function<void(std::int64_t)> onDisplayedMonthChange,
                                             const CalendarModel& model, const IntRange& yearRange, const DatePickerFormatterPtr& formatter,
                                             const SelectableDatesPtr& selectable, const DatePickerColors& colors, ui::FocusRequester* focusRequester) {
                 auto& c = *rt::Composition::Current();
@@ -1027,14 +1028,14 @@ namespace kiln::material3 {
         ui::FocusRequester* focusRequester = options.focusRequester ? *options.focusRequester : defaultFocus.get();
         DatePickerState* st = &state;
 
-        std::function<void()> title = options.title ? *options.title : std::function<void()>([st, colors] {
+        kiln::Function<void()> title = options.title ? *options.title : kiln::Function<void()>([st, colors] {
             DatePickerDefaults::DatePickerTitle(st->GetDisplayMode(), Padding({}, { TitleStart, TitleTop, TitleEnd, Dp(0) }), colors.titleContentColor);
         });
-        std::function<void()> headline = options.headline ? *options.headline : std::function<void()>([st, formatter, colors] {
+        kiln::Function<void()> headline = options.headline ? *options.headline : kiln::Function<void()>([st, formatter, colors] {
             DatePickerDefaults::DatePickerHeadline(st->SelectedDateMillis(), st->GetDisplayMode(), formatter,
                                                    Padding({}, { TitleStart, Dp(0), TitleEnd, HeadlineBottom }), colors.headlineContentColor);
         });
-        std::function<void()> toggle;
+        kiln::Function<void()> toggle;
         if (options.showModeToggle)
             toggle = [st, colors] {
                 mi::DisplayModeToggleButton(Padding({}, { Dp(0), Dp(0), Dp(12), Dp(12) }), st->GetDisplayMode(),
@@ -1064,8 +1065,8 @@ namespace kiln::material3 {
         bool IsShiftTabKey(const ui::KeyEvent& e) { return e.type == ui::KeyEventType::KeyDown && e.keyCode == ui::keys::Tab && e.Shift(); }
     }
 
-    void DatePickerDialog(std::function<void()> onDismissRequest, std::function<void()> confirmButton, const ui::Modifier& modifier,
-                          const DatePickerDialogOptions& o, std::function<void()> content) {
+    void DatePickerDialog(kiln::Function<void()> onDismissRequest, kiln::Function<void()> confirmButton, const ui::Modifier& modifier,
+                          const DatePickerDialogOptions& o, kiln::Function<void()> content) {
         const DatePickerColors colors = o.colors.value_or(DatePickerDefaults::colors());
         const ShapePtr shape = o.shape ? o.shape : DatePickerDefaults::shape();
         const Dp elevation = o.tonalElevation;
@@ -1122,7 +1123,7 @@ namespace kiln::material3 {
                                             return true;
                                         }
                                         return false;
-                                    }), ui::Alignment::TopStart(), false, dismissButton ? dismissButton : std::function<void()>([] {}));
+                                    }), ui::Alignment::TopStart(), false, dismissButton ? dismissButton : kiln::Function<void()>([] {}));
                             });
                         });
                     });

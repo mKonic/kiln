@@ -1,4 +1,5 @@
 #include "kiln/ui/PlatformServices.h"
+#include <kiln/Function.h>
 
 #include "kiln/ui/Configuration.h"
 #include "kiln/ui/LayoutNode.h"
@@ -57,11 +58,11 @@ namespace kiln::ui {
         struct OwnerTextToolbar final : TextToolbar, TextToolbarClient {
             Owner* owner;
             Rect rect;
-            std::vector<std::pair<TextToolbarItemId, std::function<void()>>> items;
+            std::vector<std::pair<TextToolbarItemId, kiln::Function<void()>>> items;
             explicit OwnerTextToolbar(Owner* o) : owner(o) {}
             ~OwnerTextToolbar() override { Hide(); }
-            void ShowMenu(Rect r, std::function<void()> copy, std::function<void()> paste, std::function<void()> cut,
-                          std::function<void()> selectAll, std::function<void()> autofill) override {
+            void ShowMenu(Rect r, kiln::Function<void()> copy, kiln::Function<void()> paste, kiln::Function<void()> cut,
+                          kiln::Function<void()> selectAll, kiln::Function<void()> autofill) override {
                 rect = r;
                 items.clear();
                 // The order TextToolbarHelperMethods adds them in.

@@ -1,5 +1,6 @@
 // NavigationSuiteScaffoldSamples.kt
 #include "NavigationSuiteScaffoldSamples.h"
+#include <kiln/Function.h>
 #include "Common.h"
 
 #include <kiln/material3/Button.h>
@@ -14,7 +15,7 @@ namespace catalog::samples {
 
     namespace {
         // The three items, a filled heart on the selected one.
-        std::function<void()> NavItems(kiln::rt::State<int>& selectedItem, std::optional<NS::NavigationSuiteType> type) {
+        kiln::Function<void()> NavItems(kiln::rt::State<int>& selectedItem, std::optional<NS::NavigationSuiteType> type) {
             return [&selectedItem, type] {
                 static const char* const navItems[3] = { "Songs", "Artists", "Playlists" };
                 for (int index = 0; index < 3; ++index) {
@@ -30,7 +31,7 @@ namespace catalog::samples {
         }
 
         // Screen content.
-        std::function<void()> Screen(NS::NavigationSuiteType navSuiteType, std::shared_ptr<NS::NavigationSuiteScaffoldState> state, LaunchScope scope) {
+        kiln::Function<void()> Screen(NS::NavigationSuiteType navSuiteType, std::shared_ptr<NS::NavigationSuiteScaffoldState> state, LaunchScope scope) {
             return [navSuiteType, state, scope] {
                 Column(FillMax({}, Axis::Horizontal), Arrangement::Top(), AlignmentH::CenterHorizontally(), [navSuiteType, state, scope] {
                     m3::TextOptions t;

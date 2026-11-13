@@ -6,6 +6,7 @@
 // sharedTransitionScope, entries move between scenes as shared elements.
 
 #include "kiln/navigation3/SceneState.h"
+#include <kiln/Function.h>
 #include "kiln/foundation/AnimatedVisibility.h"
 #include "kiln/ui/ColorSpace.h"
 
@@ -17,8 +18,8 @@ namespace kiln::navigation3 {
     using ui::Alignment;
     using ui::Modifier;
 
-    using SceneTransitionSpec = std::function<foundation::ContentTransform(foundation::AnimatedContentTransitionScope&)>;
-    using PredictivePopTransitionSpec = std::function<foundation::ContentTransform(foundation::AnimatedContentTransitionScope&, ui::SwipeEdge)>;
+    using SceneTransitionSpec = kiln::Function<foundation::ContentTransform(foundation::AnimatedContentTransitionScope&)>;
+    using PredictivePopTransitionSpec = kiln::Function<foundation::ContentTransform(foundation::AnimatedContentTransitionScope&, ui::SwipeEdge)>;
 
     // NavDisplay's metadata keys: a scene (its last entry) can bring its own transitions.
     namespace NavDisplayKeys {
@@ -54,7 +55,7 @@ namespace kiln::navigation3 {
     struct NavDisplayOptions {
         Alignment contentAlignment = Alignment::TopStart();
         // Pops one entry; unset, NavDisplay over a NavBackStack removes the last key.
-        std::function<void()> onBack;
+        kiln::Function<void()> onBack;
         // Unset: rememberSaveableStateHolderNavEntryDecorator().
         std::optional<std::vector<NavEntryDecorator<T>>> entryDecorators;
         std::vector<SceneStrategyPtr<T>> sceneStrategies{ std::make_shared<SinglePaneSceneStrategy<T>>() };
@@ -94,7 +95,7 @@ namespace kiln::navigation3 {
         // ContentTransform.toMutableTransform(progress): the enter and exit set by hand along the
         // gesture's progress (each part through its tween's easing, linearly otherwise).
         inline std::shared_ptr<foundation::MutableContentTransform> ToMutableTransform(const foundation::ContentTransform& t,
-                                                                                         std::function<float()> progress) {
+                                                                                         kiln::Function<float()> progress) {
             const foundation::EnterExitTransitionConfig enter = t.enter.config, exit = t.exit.config;
             return foundation::MakeMutableContentTransform(
                 exit.veil ? exit.veil->matchParentSize : false, enter.veil ? enter.veil->matchParentSize : false, {}, {},
@@ -347,7 +348,7 @@ namespace kiln::navigation3 {
         if (entries.empty()) throw std::invalid_argument("NavDisplay entries cannot be empty");
         auto& c = *rt::Composition::Current();
         c.Child([entries, modifier, options] {
-            const std::function<void()> onBack = options.onBack ? options.onBack : [] {};
+            const kiln::Function<void()> onBack = options.onBack ? options.onBack : [] {};
             const SceneState<T> sceneState = RememberSceneState(entries, options.sceneStrategies, options.sceneDecoratorStrategies, options.sharedTransitionScope, onBack);
             auto& navigationEventState = RememberNavigationEventState(sceneState);
             NavigationBackHandler(sceneState, navigationEventState, [] {}, onBack);
@@ -357,7 +358,7 @@ namespace kiln::navigation3 {
 
     // NavDisplay(backStack, entryProvider, ...).
     template<typename T>
-    void NavDisplay(const std::vector<T>& backStack, const std::function<NavEntry<T>(const T&)>& entryProvider, const Modifier& modifier = {},
+    void NavDisplay(const std::vector<T>& backStack, const kiln::Function<NavEntry<T>(const T&)>& entryProvider, const Modifier& modifier = {},
                     const NavDisplayOptions<T>& options = {}, rt::Key key = {}) {
         if (backStack.empty()) throw std::invalid_argument("NavDisplay backstack cannot be empty");
         auto& c = *rt::Composition::Current();
@@ -371,7 +372,7 @@ namespace kiln::navigation3 {
 
     // NavDisplay(backStack: NavBackStack, ...): back removes the last key unless options.onBack.
     template<typename T>
-    void NavDisplay(NavBackStack<T>& backStack, const std::function<NavEntry<T>(const T&)>& entryProvider, const Modifier& modifier = {},
+    void NavDisplay(NavBackStack<T>& backStack, const kiln::Function<NavEntry<T>(const T&)>& entryProvider, const Modifier& modifier = {},
                     NavDisplayOptions<T> options = {}, rt::Key key = {}) {
         if (!options.onBack) {
             auto* stack = &backStack;

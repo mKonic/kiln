@@ -1,5 +1,6 @@
 // ThreePaneScaffoldSample.kt (adaptive samples)
 #include "ThreePaneScaffoldSamples.h"
+#include <kiln/Function.h>
 #include "Common.h"
 
 #include <kiln/foundation/Gestures.h>
@@ -59,7 +60,7 @@ namespace catalog::samples {
             return anchors;
         }
 
-        void ListCard(const std::string& title, bool isSelected, std::function<void()> onClick) {
+        void ListCard(const std::string& title, bool isSelected, kiln::Function<void()> onClick) {
             m3::CardOptions o;
             o.colors = m3::CardDefaults::outlinedCardColors(isSelected ? m3::MaterialTheme::colorScheme().primaryContainer
                                                                        : m3::MaterialTheme::colorScheme().surface);
@@ -81,14 +82,14 @@ namespace catalog::samples {
             });
         }
 
-        void BackButton(std::function<void()> onClick, bool visible) {
+        void BackButton(kiln::Function<void()> onClick, bool visible) {
             AnimatedVisibility(visible, {}, [onClick] {
                 m3::IconButton(onClick, {}, {}, [] { m3::Icon(Icons::AutoMirrored::Filled::ArrowBack(), std::string("Back")); });
             }, FadeIn() + ExpandHorizontally(), ShrinkHorizontally() + FadeOut());
         }
 
         // A screen: a top app bar over a card holding the content.
-        void BasicScreen(const std::string& title, std::function<void()> backButton, Color containerColor, std::function<void()> content) {
+        void BasicScreen(const std::string& title, kiln::Function<void()> backButton, Color containerColor, kiln::Function<void()> content) {
             m3::ScaffoldOptions o;
             o.topBar = [title, backButton] {
                 m3::TopAppBarOptions t;
@@ -184,7 +185,7 @@ namespace catalog::samples {
                 if (*ref) scope.Launch([](Navigator* n) -> kiln::rt::Task<> { co_await n->NavigateBack(); }(*ref));
             };
             auto& scrim = Here().Remember<A::ScrimContent>([&] {
-                return std::make_shared<const std::function<void()>>([onClick] {
+                return std::make_shared<const kiln::Function<void()>>([onClick] {
                     A::LevitatedPaneScrim(Semantics({}, [onClick](SemanticsConfiguration& c) {
                         c.contentDescription = { "Scrim" };
                         c.onClickLabel = "Dismiss the extra pane";
@@ -345,14 +346,14 @@ namespace catalog::samples {
             };
         }
 
-        void NavListPaneContent(const std::vector<std::string>& items, std::optional<int> selectedIndex, std::function<void(int)> onItemClick) {
+        void NavListPaneContent(const std::vector<std::string>& items, std::optional<int> selectedIndex, kiln::Function<void(int)> onItemClick) {
             Column(SelectableGroup({}), Arrangement::SpacedBy(8_dp), AlignmentH::Start(), [&items, selectedIndex, onItemClick] {
                 for (int index = 0; index < int(items.size()); ++index)
                     ListCard(items[std::size_t(index)], selectedIndex && index == *selectedIndex, [onItemClick, index] { onItemClick(index); });
             });
         }
 
-        void NavDetailPaneContent(std::optional<std::string> selectedItem, std::function<void()> onShowExtra, std::function<void()> backButton = {}) {
+        void NavDetailPaneContent(std::optional<std::string> selectedItem, kiln::Function<void()> onShowExtra, kiln::Function<void()> backButton = {}) {
             const std::string title = selectedItem ? *selectedItem : "No item selected";
             const std::string description = selectedItem ? "This is a description about " + *selectedItem + "." : "Select an item from the list.";
             BasicScreen(title, backButton ? backButton : [] {}, m3::MaterialTheme::colorScheme().surfaceContainer, [description, selectedItem, onShowExtra] {
@@ -361,7 +362,7 @@ namespace catalog::samples {
             });
         }
 
-        void NavExtraPaneContent(const std::string& item, std::function<void()> backButton = {}) {
+        void NavExtraPaneContent(const std::string& item, kiln::Function<void()> backButton = {}) {
             BasicScreen(item, backButton ? backButton : [] {}, m3::MaterialTheme::colorScheme().surfaceContainerHighest,
                         [item] { m3::Text("This is extra content about " + item + "."); });
         }
@@ -400,19 +401,19 @@ namespace catalog::samples {
                                          if (!(stack->Last() == dest)) stack->Add(dest);
                                      },
                                      // Only show the back button in a single-pane context.
-                                     inScene ? std::function<void()>() : std::function<void()>([stack] { BackButton([stack] { stack->RemoveLast(); }, true); }));
+                                     inScene ? kiln::Function<void()>() : kiln::Function<void()>([stack] { BackButton([stack] { stack->RemoveLast(); }, true); }));
             }, Strategy::DetailPane());
             p.Entry<ExtraKey>([stack, selectedIndex](const ExtraKey&) {
                 const bool inScene = Here().Read(A::navigation3::LocalListDetailSceneScope).has_value();
                 NavExtraPaneContent(ExtraItems()[std::size_t(*selectedIndex)],
-                                    inScene ? std::function<void()>() : std::function<void()>([stack] { BackButton([stack] { stack->RemoveLast(); }, true); }));
+                                    inScene ? kiln::Function<void()>() : kiln::Function<void()>([stack] { BackButton([stack] { stack->RemoveLast(); }, true); }));
             }, Strategy::ExtraPane());
         }), FillMax({}, Axis::Both), options);
     }
 
 
     namespace {
-        void RadioButtonRow(bool selected, std::function<void()> onClick, const std::string& text) {
+        void RadioButtonRow(bool selected, kiln::Function<void()> onClick, const std::string& text) {
             ClickableOptions click;
             click.role = Role::RadioButton;
             Row(Selectable({}, selected, onClick, click), Arrangement::Start(), AlignmentV::CenterVertically(), [selected, onClick, text] {

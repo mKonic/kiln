@@ -7,6 +7,7 @@
 // items are selectable tabs with an icon, a label and a badge.
 
 #include "kiln/foundation/AnchoredDraggable.h"
+#include <kiln/Function.h>
 #include "kiln/foundation/Insets.h"
 #include "kiln/foundation/Interaction.h"
 #include "kiln/foundation/Layouts.h"
@@ -24,7 +25,7 @@ namespace kiln::material3 {
 
     class DrawerState {
     public:
-        explicit DrawerState(DrawerValue initialValue, std::function<bool(DrawerValue)> confirmStateChange = {});
+        explicit DrawerState(DrawerValue initialValue, kiln::Function<bool(DrawerValue)> confirmStateChange = {});
 
         // Reading these subscribes.
         bool IsOpen() const { return CurrentValue() == DrawerValue::Open; }
@@ -48,12 +49,12 @@ namespace kiln::material3 {
         anim::SpecPtr openDrawerMotionSpec, closeDrawerMotionSpec;
 
     private:
-        std::function<bool(DrawerValue)> m_Confirm;
+        kiln::Function<bool(DrawerValue)> m_Confirm;
         foundation::AnchoredDraggableState<DrawerValue> m_Anchored;
     };
 
     // rememberDrawerState: the value survives re-creation (DrawerState.Saver).
-    std::shared_ptr<DrawerState> RememberDrawerState(DrawerValue initialValue, std::function<bool(DrawerValue)> confirmStateChange = {}, rt::Key key = {});
+    std::shared_ptr<DrawerState> RememberDrawerState(DrawerValue initialValue, kiln::Function<bool(DrawerValue)> confirmStateChange = {}, rt::Key key = {});
 
     namespace DrawerDefaults {
         extern const ui::Dp ModalDrawerElevation, PermanentDrawerElevation, DismissibleDrawerElevation, MaximumDrawerWidth;
@@ -70,17 +71,17 @@ namespace kiln::material3 {
         bool gesturesEnabled = true;
         std::optional<ui::Color> scrimColor;         // unset: DrawerDefaults::scrimColor
     };
-    void ModalNavigationDrawer(std::function<void()> drawerContent, const ui::Modifier& modifier, const ModalNavigationDrawerOptions& options,
-                               std::function<void()> content);
+    void ModalNavigationDrawer(kiln::Function<void()> drawerContent, const ui::Modifier& modifier, const ModalNavigationDrawerOptions& options,
+                               kiln::Function<void()> content);
 
     struct DismissibleNavigationDrawerOptions {
         std::shared_ptr<DrawerState> drawerState;   // null: RememberDrawerState(Closed)
         bool gesturesEnabled = true;
     };
-    void DismissibleNavigationDrawer(std::function<void()> drawerContent, const ui::Modifier& modifier,
-                                     const DismissibleNavigationDrawerOptions& options, std::function<void()> content);
+    void DismissibleNavigationDrawer(kiln::Function<void()> drawerContent, const ui::Modifier& modifier,
+                                     const DismissibleNavigationDrawerOptions& options, kiln::Function<void()> content);
 
-    void PermanentNavigationDrawer(std::function<void()> drawerContent, const ui::Modifier& modifier, std::function<void()> content);
+    void PermanentNavigationDrawer(kiln::Function<void()> drawerContent, const ui::Modifier& modifier, kiln::Function<void()> content);
 
     // The drawer sheets. Unset fields take the kind's defaults: modal sheets have the rounded end
     // shape and modalContainerColor; dismissible and permanent ones are rectangles in
@@ -92,11 +93,11 @@ namespace kiln::material3 {
         std::optional<foundation::WindowInsets> windowInsets;   // unset: DrawerDefaults::windowInsets
     };
     // With a drawerState, the sheet follows the predictive back gesture and Back closes the drawer.
-    void ModalDrawerSheet(const ui::Modifier& modifier, const DrawerSheetOptions& options, std::function<void()> content,
+    void ModalDrawerSheet(const ui::Modifier& modifier, const DrawerSheetOptions& options, kiln::Function<void()> content,
                           std::shared_ptr<DrawerState> drawerState = nullptr);
-    void DismissibleDrawerSheet(const ui::Modifier& modifier, const DrawerSheetOptions& options, std::function<void()> content,
+    void DismissibleDrawerSheet(const ui::Modifier& modifier, const DrawerSheetOptions& options, kiln::Function<void()> content,
                                 std::shared_ptr<DrawerState> drawerState = nullptr);
-    void PermanentDrawerSheet(const ui::Modifier& modifier, const DrawerSheetOptions& options, std::function<void()> content);
+    void PermanentDrawerSheet(const ui::Modifier& modifier, const DrawerSheetOptions& options, kiln::Function<void()> content);
 
     struct NavigationDrawerItemColors {
         ui::Color selectedIconColor, unselectedIconColor, selectedTextColor, unselectedTextColor, selectedContainerColor, unselectedContainerColor,
@@ -121,12 +122,12 @@ namespace kiln::material3 {
     }
 
     struct NavigationDrawerItemOptions {
-        std::function<void()> icon, badge;
+        kiln::Function<void()> icon, badge;
         foundation::ShapePtr shape;                     // null: a full pill
         std::optional<NavigationDrawerItemColors> colors;
         std::shared_ptr<foundation::MutableInteractionSource> interactionSource;
     };
-    void NavigationDrawerItem(std::function<void()> label, bool selected, std::function<void()> onClick, const ui::Modifier& modifier = {},
+    void NavigationDrawerItem(kiln::Function<void()> label, bool selected, kiln::Function<void()> onClick, const ui::Modifier& modifier = {},
                               const NavigationDrawerItemOptions& options = {});
 
 }

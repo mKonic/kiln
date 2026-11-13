@@ -1,4 +1,5 @@
 #include "kiln/foundation/IndirectDrag.h"
+#include <kiln/Function.h>
 #include "kiln/foundation/Scroll.h"
 #include "kiln/foundation/Semantics.h"
 #include "kiln/foundation/Focus.h"
@@ -133,7 +134,7 @@ namespace kiln::foundation {
             float remaining = Axis(available);
             if (flingBehavior) {
                 // Custom (snapping) flings run even at zero velocity: a release settles.
-                std::function<float(float)> scrollBy = [this](float d) {
+                kiln::Function<float(float)> scrollBy = [this](float d) {
                     return Reverse(Axis(Dispatch(Single(Reverse(d)), NestedScrollSource::SideEffect)));
                 };
                 remaining = Reverse(co_await flingBehavior(std::move(scrollBy), Reverse(remaining)));
@@ -178,7 +179,7 @@ namespace kiln::foundation {
         struct ContentInViewNode final : ModifierNode, LayoutModifier, ui::BringIntoViewResponder {
             ContentInViewParams params;
             IntSize viewport{ -1, -1 };
-            std::vector<std::function<std::optional<Rect>()>> requests;
+            std::vector<kiln::Function<std::optional<Rect>()>> requests;
             bool running = false, tracking = false;
             rt::Job job;
 
@@ -205,7 +206,7 @@ namespace kiln::foundation {
                 return Vertical() ? Rect{ r.left, r.top - d, r.right, r.bottom - d } : Rect{ r.left - d, r.top, r.right - d, r.bottom };
             }
 
-            void BringChildIntoView(std::function<std::optional<Rect>()> localRect) override {
+            void BringChildIntoView(kiln::Function<std::optional<Rect>()> localRect) override {
                 auto r = localRect();
                 if (!r || MaxVisible(*r, ViewportOrZero())) return;
                 requests.push_back(std::move(localRect));

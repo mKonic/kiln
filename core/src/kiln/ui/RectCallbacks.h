@@ -5,6 +5,7 @@
 // debounced; and the same on any layout change in the window (global layout listeners).
 
 #include "kiln/runtime/Task.h"
+#include <kiln/Function.h>
 #include "kiln/ui/Geometry.h"
 
 #include <cstdint>
@@ -53,11 +54,11 @@ namespace kiln::ui {
     class RegistrationHandle {
     public:
         RegistrationHandle() = default;
-        explicit RegistrationHandle(std::function<void()> unregister) : m_Unregister(std::move(unregister)) {}
+        explicit RegistrationHandle(kiln::Function<void()> unregister) : m_Unregister(std::move(unregister)) {}
         void Unregister() { if (auto f = std::move(m_Unregister)) { m_Unregister = {}; f(); } }
         explicit operator bool() const { return bool(m_Unregister); }
     private:
-        std::function<void()> m_Unregister;
+        kiln::Function<void()> m_Unregister;
     };
 
     class Owner;
@@ -67,7 +68,7 @@ namespace kiln::ui {
     public:
         struct Entry;
         RegistrationHandle Register(const ModifierNode& node, bool global, std::int64_t throttle, std::int64_t debounce,
-                                    std::function<void(const RelativeLayoutBounds&)> callback);
+                                    kiln::Function<void(const RelativeLayoutBounds&)> callback);
         void Dispatch(Owner& owner, bool laidOut);
         void SetScreenOffset(IntOffset o) { m_Screen = o; }
     private:
@@ -85,8 +86,8 @@ namespace kiln::ui {
     // callback runs at most once per throttle period and, while changes keep coming, once
     // they have stopped for the debounce period (0: the throttle period).
     RegistrationHandle RegisterOnLayoutRectChanged(const ModifierNode& node, std::int64_t throttleMillis, std::int64_t debounceMillis,
-                                                   std::function<void(const RelativeLayoutBounds&)> callback);
+                                                   kiln::Function<void(const RelativeLayoutBounds&)> callback);
     RegistrationHandle RegisterOnGlobalLayoutListener(const ModifierNode& node, std::int64_t throttleMillis, std::int64_t debounceMillis,
-                                                      std::function<void(const RelativeLayoutBounds&)> callback);
+                                                      kiln::Function<void(const RelativeLayoutBounds&)> callback);
 
 }

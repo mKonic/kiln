@@ -1,4 +1,5 @@
 #include "kiln/foundation/VectorPainter.h"
+#include <kiln/Function.h>
 
 #include "kiln/graphics/PathMeasure.h"
 #include "kiln/runtime/Composition.h"
@@ -109,7 +110,7 @@ namespace kiln::foundation {
 
     std::shared_ptr<VectorPainter> RememberVectorPainter(ui::Dp defaultWidth, ui::Dp defaultHeight, float viewportWidth, float viewportHeight,
                                                          std::string name, ui::Color tintColor, gfx::BlendMode tintBlendMode, bool autoMirror,
-                                                         const std::function<void(ImageVector::Builder&, float, float)>& content, rt::Key key) {
+                                                         const kiln::Function<void(ImageVector::Builder&, float, float)>& content, rt::Key key) {
         rt::Composition* c = rt::Composition::Current();
         const ui::Density density = c ? c->Read(ui::LocalDensity) : ui::Density{};
         // obtainViewportSize: NaN takes the default size in px, as the content is given it.

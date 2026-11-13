@@ -1,4 +1,5 @@
 #include "Check.h"
+#include <kiln/Function.h>
 
 #include "kiln/foundation/AnchoredDraggable.h"
 #include "kiln/foundation/Compose.h"
@@ -18,7 +19,7 @@ namespace {
         rt::Composition composition{ owner.Root(), d };
         std::int64_t frameNs = 0;
         Harness() { owner.SetDensity({ 1, 1 }); owner.Config().touchSlop = 8; }
-        void Run(std::function<void()> content) { composition.SetContent(std::move(content)); Pump(); }
+        void Run(kiln::Function<void()> content) { composition.SetContent(std::move(content)); Pump(); }
         void Pump() { composition.Recompose(); owner.MeasureAndLayout({ 200, 100 }); }
         void Touch(PointerEventType type, float x, float y, bool down, std::int64_t t) {
             RawPointerEvent e;

@@ -1,4 +1,5 @@
 #include "kiln/material3/NavigationDrawer.h"
+#include <kiln/Function.h>
 
 #include "kiln/animation/Easing.h"
 #include "kiln/foundation/Back.h"
@@ -178,10 +179,10 @@ namespace kiln::material3 {
             ShapePtr shape;
             Color containerColor, contentColor;
             Dp tonalElevation;
-            std::function<float()> drawerOffset = [] { return 0.0f; };
+            kiln::Function<float()> drawerOffset = [] { return 0.0f; };
         };
 
-        void DrawerSheet(const ui::Modifier& modifier, const DrawerSheetParams& p, std::function<void()> content) {
+        void DrawerSheet(const ui::Modifier& modifier, const DrawerSheetParams& p, kiln::Function<void()> content) {
             auto& c = *rt::Composition::Current();
             const ui::Density density = c.Read(ui::LocalDensity);
             const Dp maxWidth = NavigationDrawerTokens::ContainerWidth;
@@ -235,7 +236,7 @@ namespace kiln::material3 {
             });
         }
 
-        void SheetWithBack(const ui::Modifier& modifier, DrawerSheetParams p, std::function<void()> content, const std::shared_ptr<DrawerState>& state) {
+        void SheetWithBack(const ui::Modifier& modifier, DrawerSheetParams p, kiln::Function<void()> content, const std::shared_ptr<DrawerState>& state) {
             if (state) {
                 p.back = DrawerPredictiveBackHandler(state);
                 p.drawerOffset = [state] { return state->Anchored().Offset(); };
@@ -304,7 +305,7 @@ namespace kiln::material3 {
         };
     }
 
-    DrawerState::DrawerState(DrawerValue initialValue, std::function<bool(DrawerValue)> confirmStateChange)
+    DrawerState::DrawerState(DrawerValue initialValue, kiln::Function<bool(DrawerValue)> confirmStateChange)
         : openDrawerMotionSpec(anim::Snap()), closeDrawerMotionSpec(anim::Snap()), m_Confirm(confirmStateChange),
           m_Anchored(initialValue, [confirmStateChange](const DrawerValue& v) { return !confirmStateChange || confirmStateChange(v); }) {}
 
@@ -313,7 +314,7 @@ namespace kiln::material3 {
     rt::Task<> DrawerState::AnimateTo(DrawerValue target, anim::SpecPtr spec) { co_await m_Anchored.AnimateTo(target, std::move(spec)); }
     rt::Task<> DrawerState::SnapTo(DrawerValue target) { co_await m_Anchored.SnapTo(target); }
 
-    std::shared_ptr<DrawerState> RememberDrawerState(DrawerValue initialValue, std::function<bool(DrawerValue)> confirmStateChange, rt::Key key) {
+    std::shared_ptr<DrawerState> RememberDrawerState(DrawerValue initialValue, kiln::Function<bool(DrawerValue)> confirmStateChange, rt::Key key) {
         // DrawerState.Saver keeps the current value.
         rt::Saver<std::shared_ptr<DrawerState>> saver{
             [](const std::shared_ptr<DrawerState>& s) { return rt::SavedValue(double(int(s->CurrentValue()))); },
@@ -341,8 +342,8 @@ namespace kiln::material3 {
         }
     }
 
-    void ModalNavigationDrawer(std::function<void()> drawerContent, const ui::Modifier& modifier, const ModalNavigationDrawerOptions& o,
-                               std::function<void()> content) {
+    void ModalNavigationDrawer(kiln::Function<void()> drawerContent, const ui::Modifier& modifier, const ModalNavigationDrawerOptions& o,
+                               kiln::Function<void()> content) {
         auto& c = *rt::Composition::Current();
         const auto state = o.drawerState ? o.drawerState : RememberDrawerState(DrawerValue::Closed);
         const auto scope = internal::RememberCoroutineScope();
@@ -367,7 +368,7 @@ namespace kiln::material3 {
                     if (gestures && state->Confirm(DrawerValue::Closed)) scope->Launch(CloseDrawer(state));
                 };
                 ScrimOptions scrim;
-                scrim.onClick = open ? std::function<void()>(onDismissRequest) : nullptr;
+                scrim.onClick = open ? kiln::Function<void()>(onDismissRequest) : nullptr;
                 scrim.alpha = [minValue, state] { return CalculateFraction(minValue->Get(), 0, state->Anchored().Offset()); };
                 scrim.color = scrimColor;
                 Scrim(GetString(Strings::CloseDrawer), {}, scrim);
@@ -382,8 +383,8 @@ namespace kiln::material3 {
             });
     }
 
-    void DismissibleNavigationDrawer(std::function<void()> drawerContent, const ui::Modifier& modifier, const DismissibleNavigationDrawerOptions& o,
-                                     std::function<void()> content) {
+    void DismissibleNavigationDrawer(kiln::Function<void()> drawerContent, const ui::Modifier& modifier, const DismissibleNavigationDrawerOptions& o,
+                                     kiln::Function<void()> content) {
         auto& c = *rt::Composition::Current();
         const auto state = o.drawerState ? o.drawerState : RememberDrawerState(DrawerValue::Closed);
         const auto scope = internal::RememberCoroutineScope();
@@ -402,7 +403,7 @@ namespace kiln::material3 {
             });
     }
 
-    void PermanentNavigationDrawer(std::function<void()> drawerContent, const ui::Modifier& modifier, std::function<void()> content) {
+    void PermanentNavigationDrawer(kiln::Function<void()> drawerContent, const ui::Modifier& modifier, kiln::Function<void()> content) {
         Row(FillMax(modifier, Axis::Both), [=] {
             drawerContent();
             Box({}, ui::Alignment::TopStart(), false, content);
@@ -421,18 +422,18 @@ namespace kiln::material3 {
         }
     }
 
-    void ModalDrawerSheet(const ui::Modifier& modifier, const DrawerSheetOptions& o, std::function<void()> content, std::shared_ptr<DrawerState> drawerState) {
+    void ModalDrawerSheet(const ui::Modifier& modifier, const DrawerSheetOptions& o, kiln::Function<void()> content, std::shared_ptr<DrawerState> drawerState) {
         SheetWithBack(modifier, SheetParams(o, DrawerDefaults::shape(), DrawerDefaults::modalContainerColor(), DrawerDefaults::ModalDrawerElevation),
                       std::move(content), drawerState);
     }
 
-    void DismissibleDrawerSheet(const ui::Modifier& modifier, const DrawerSheetOptions& o, std::function<void()> content,
+    void DismissibleDrawerSheet(const ui::Modifier& modifier, const DrawerSheetOptions& o, kiln::Function<void()> content,
                                 std::shared_ptr<DrawerState> drawerState) {
         SheetWithBack(modifier, SheetParams(o, RectangleShape(), DrawerDefaults::standardContainerColor(), DrawerDefaults::DismissibleDrawerElevation),
                       std::move(content), drawerState);
     }
 
-    void PermanentDrawerSheet(const ui::Modifier& modifier, const DrawerSheetOptions& o, std::function<void()> content) {
+    void PermanentDrawerSheet(const ui::Modifier& modifier, const DrawerSheetOptions& o, kiln::Function<void()> content) {
         const std::string navigationMenu = GetString(Strings::NavigationMenu);
         DrawerSheet(Semantics(modifier, [navigationMenu](ui::SemanticsConfiguration& s) { s.paneTitle = navigationMenu; }),
                     SheetParams(o, RectangleShape(), DrawerDefaults::standardContainerColor(), DrawerDefaults::PermanentDrawerElevation),
@@ -468,7 +469,7 @@ namespace kiln::material3 {
         }
     }
 
-    void NavigationDrawerItem(std::function<void()> label, bool selected, std::function<void()> onClick, const ui::Modifier& modifier,
+    void NavigationDrawerItem(kiln::Function<void()> label, bool selected, kiln::Function<void()> onClick, const ui::Modifier& modifier,
                               const NavigationDrawerItemOptions& o) {
         auto& c = *rt::Composition::Current();
         const NavigationDrawerItemColors colors = o.colors.value_or(NavigationDrawerItemDefaults::colors());

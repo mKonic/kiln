@@ -1,4 +1,5 @@
 #include "kiln/material3/Tab.h"
+#include <kiln/Function.h>
 
 #include "kiln/foundation/Animate.h"
 #include "kiln/foundation/Compose.h"
@@ -28,7 +29,7 @@ namespace kiln::material3 {
         constexpr Dp TextDistanceFromLeadingIcon{ 8 };
 
         // TabTransition: the content colour, faded in (DefaultEffects) or out (FastEffects).
-        void TabTransition(Color activeColor, Color inactiveColor, bool selected, std::function<void()> content) {
+        void TabTransition(Color activeColor, Color inactiveColor, bool selected, kiln::Function<void()> content) {
             const Color color = AnimateColorAsState(selected ? activeColor : inactiveColor,
                                                     Value(selected ? MotionSchemeKeyTokens::DefaultEffects : MotionSchemeKeyTokens::FastEffects));
             rt::Composition::Current()->Provide(LocalContentColor, color, std::move(content));
@@ -110,7 +111,7 @@ namespace kiln::material3 {
         };
     }
 
-    void Tab(bool selected, std::function<void()> onClick, const ui::Modifier& modifier, const TabOptions& o, std::function<void()> content) {
+    void Tab(bool selected, kiln::Function<void()> onClick, const ui::Modifier& modifier, const TabOptions& o, kiln::Function<void()> content) {
         const Color selectedColor = o.selectedContentColor.value_or(rt::Composition::Current()->Read(LocalContentColor));
         const Color unselectedColor = o.unselectedContentColor.value_or(selectedColor);
         const ClickableOptions click = Selection(o, selectedColor);
@@ -119,9 +120,9 @@ namespace kiln::material3 {
         });
     }
 
-    void Tab(bool selected, std::function<void()> onClick, const ui::Modifier& modifier, std::function<void()> text, std::function<void()> icon,
+    void Tab(bool selected, kiln::Function<void()> onClick, const ui::Modifier& modifier, kiln::Function<void()> text, kiln::Function<void()> icon,
              const TabOptions& o) {
-        std::function<void()> styledText;
+        kiln::Function<void()> styledText;
         if (text) {
             styledText = [text] {
                 text::TextStyle style = Value(PrimaryNavigationTabTokens::LabelTextFont);
@@ -138,7 +139,7 @@ namespace kiln::material3 {
         });
     }
 
-    void LeadingIconTab(bool selected, std::function<void()> onClick, std::function<void()> text, std::function<void()> icon,
+    void LeadingIconTab(bool selected, kiln::Function<void()> onClick, kiln::Function<void()> text, kiln::Function<void()> icon,
                         const ui::Modifier& modifier, const TabOptions& o) {
         const Color selectedColor = o.selectedContentColor.value_or(rt::Composition::Current()->Read(LocalContentColor));
         const Color unselectedColor = o.unselectedContentColor.value_or(selectedColor);

@@ -6,6 +6,7 @@
 // popup, so nothing drawn after the field covers it.
 
 #include "kiln/foundation/text/input/TextFieldSelectionState.h"
+#include <kiln/Function.h>
 
 #include <functional>
 
@@ -13,6 +14,6 @@ namespace kiln::foundation {
 
     // The field's text content (`content`, sized as usual) with the handles in popups, placed in
     // the content's (the core node's) coordinates.
-    void TextFieldWithHandles(TextFieldSelectionState& selection, bool showHandles, bool showCursorHandle, std::function<void()> content);
+    void TextFieldWithHandles(TextFieldSelectionState& selection, bool showHandles, bool showCursorHandle, kiln::Function<void()> content);
 
 }

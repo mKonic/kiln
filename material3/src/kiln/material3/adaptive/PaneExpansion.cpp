@@ -1,4 +1,5 @@
 #include "kiln/material3/adaptive/PaneExpansion.h"
+#include <kiln/Function.h>
 
 #include "kiln/animation/Animatable.h"
 #include "kiln/animation/Decay.h"
@@ -49,7 +50,7 @@ namespace kiln::material3::adaptive {
         return spec;
     }
 
-    PaneExpansionState::PaneExpansionState(std::shared_ptr<Data> data, std::function<float(float)> consumeDragDelta)
+    PaneExpansionState::PaneExpansionState(std::shared_ptr<Data> data, kiln::Function<float(float)> consumeDragDelta)
         : m_Data(std::move(data)), m_ConsumeDragDelta(std::move(consumeDragDelta)),
           m_Draggable([this](float delta) {
               // draggableState.dispatchRawDelta: what the consumer leaves moves the handle.
@@ -184,7 +185,7 @@ namespace kiln::material3::adaptive {
         constexpr float AnchoringVelocityThreshold = 200;
 
         // DefaultFlingBehavior with the platform spline decay.
-        rt::Task<float> DecayFling(std::function<float(float)> scrollBy, float velocity, float density) {
+        rt::Task<float> DecayFling(kiln::Function<float(float)> scrollBy, float velocity, float density) {
             if (std::abs(velocity) <= 1) co_return velocity;
             anim::Animatable a(0.0f);
             float last = 0, velocityLeft = velocity;
@@ -203,7 +204,7 @@ namespace kiln::material3::adaptive {
         if (m_AnchorPositions.empty()) co_return;
         const std::uint64_t token = ++m_Mutation;
         m_Settling.Set(true);
-        std::function<float(float)> scrollBy = [this](float d) { return ScrollBy(d); };
+        kiln::Function<float(float)> scrollBy = [this](float d) { return ScrollBy(d); };
         const float density = m_MeasuredDensity ? m_MeasuredDensity->density : 1.0f;
         const float left = m_Fling ? co_await m_Fling(scrollBy, velocity) : co_await DecayFling(scrollBy, velocity, density);
         if (m_Mutation != token) co_return;
@@ -303,7 +304,7 @@ namespace kiln::material3::adaptive {
         }
         auto data = slot;
         // rememberUpdatedRef(consumeDragDelta)
-        auto& consumeRef = c.Remember<std::shared_ptr<std::function<float(float)>>>([] { return std::make_shared<std::function<float(float)>>(); }, {}, callKey);
+        auto& consumeRef = c.Remember<std::shared_ptr<kiln::Function<float(float)>>>([] { return std::make_shared<kiln::Function<float(float)>>(); }, {}, callKey);
         *consumeRef = options.consumeDragDelta;
         auto consume = consumeRef;
         auto& state = c.RememberNew<PaneExpansionState>({}, callKey, data, [consume](float delta) { return *consume ? (*consume)(delta) : delta; });
@@ -320,7 +321,7 @@ namespace kiln::material3::adaptive {
         return state;
     }
 
-    PaneExpansionState& RememberDefaultPaneExpansionState(std::function<PaneExpansionStateKey()> keyProvider, bool mutableState, rt::Key callKey) {
+    PaneExpansionState& RememberDefaultPaneExpansionState(kiln::Function<PaneExpansionStateKey()> keyProvider, bool mutableState, rt::Key callKey) {
         auto& c = *rt::Composition::Current();
         PaneExpansionState* result = nullptr;
         // The two branches are separate groups (Compose's if / else).
@@ -360,7 +361,7 @@ namespace kiln::material3::adaptive {
     }
 
     namespace {
-        rt::Task<> AnimateSize(float from, float to, std::function<void(float)> set) {
+        rt::Task<> AnimateSize(float from, float to, kiln::Function<void(float)> set) {
             anim::Animatable a(from);
             co_await a.AnimateTo(anim::Vec{ to, 0, 0, 0 }, anim::Spring(), std::nullopt, [set](const anim::Vec& v) { set(v[0]); });
         }

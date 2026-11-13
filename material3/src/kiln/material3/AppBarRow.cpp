@@ -1,4 +1,5 @@
 #include "kiln/material3/AppBarRow.h"
+#include <kiln/Function.h>
 #include "kiln/foundation/Compose.h"
 #include "kiln/material3/Menu.h"
 #include "kiln/material3/Text.h"
@@ -15,14 +16,14 @@ namespace kiln::material3 {
 
     namespace {
         // An icon button with a tooltip naming the item.
-        void WithTooltip(const std::string& label, std::function<void()> button) {
+        void WithTooltip(const std::string& label, kiln::Function<void()> button) {
             TooltipBox(TooltipDefaults::rememberTooltipPositionProvider(TooltipAnchorPosition::Above),
                        [label](const TooltipScope& scope) { internal::PlainTooltipInternal(scope, label, {}, {}, [label] { Text(label); }); },
                        RememberTooltipState(), {}, {}, std::move(button));
         }
 
         // A plain menu item that runs `onClick` and closes the menu.
-        void MenuItem(const std::string& label, bool enabled, std::function<void()> onClick, AppBarMenuState& state) {
+        void MenuItem(const std::string& label, bool enabled, kiln::Function<void()> onClick, AppBarMenuState& state) {
             DropdownMenuItemOptions o;
             o.enabled = enabled;
             auto* menu = &state;
@@ -131,8 +132,8 @@ namespace kiln::material3 {
             bool m_Vertical;
         };
 
-        void AppBarLayout(const Modifier& modifier, std::function<void(AppBarMenuState&)> overflowIndicator, int maxItemCount,
-                          const std::function<void(AppBarScope&)>& content, bool vertical) {
+        void AppBarLayout(const Modifier& modifier, kiln::Function<void(AppBarMenuState&)> overflowIndicator, int maxItemCount,
+                          const kiln::Function<void(AppBarScope&)>& content, bool vertical) {
             auto& c = *rt::Composition::Current();
             auto scope = std::make_shared<AppBarScope>();
             if (content) content(*scope);
@@ -157,7 +158,7 @@ namespace kiln::material3 {
         }
     }
 
-    void AppBarScope::ClickableItem(std::function<void()> onClick, std::function<void()> icon, std::string label, bool enabled) {
+    void AppBarScope::ClickableItem(kiln::Function<void()> onClick, kiln::Function<void()> icon, std::string label, bool enabled) {
         m_Items.push_back({ [=] {
                                // Icon buttons should have a tooltip associated with them.
                                WithTooltip(label, [=] {
@@ -169,7 +170,7 @@ namespace kiln::material3 {
                             [=](AppBarMenuState& state) { MenuItem(label, enabled, onClick, state); } });
     }
 
-    void AppBarScope::ToggleableItem(bool checked, std::function<void(bool)> onCheckedChange, std::function<void()> icon, std::string label,
+    void AppBarScope::ToggleableItem(bool checked, kiln::Function<void(bool)> onCheckedChange, kiln::Function<void()> icon, std::string label,
                                      bool enabled) {
         m_Items.push_back({ [=] {
                                WithTooltip(label, [=] {
@@ -181,17 +182,17 @@ namespace kiln::material3 {
                             [=](AppBarMenuState& state) { MenuItem(label, enabled, [=] { onCheckedChange(!checked); }, state); } });
     }
 
-    void AppBarScope::CustomItem(std::function<void()> appbarContent, std::function<void(AppBarMenuState&)> menuContent) {
+    void AppBarScope::CustomItem(kiln::Function<void()> appbarContent, kiln::Function<void(AppBarMenuState&)> menuContent) {
         m_Items.push_back({ std::move(appbarContent), std::move(menuContent) });
     }
 
-    void AppBarRow(const Modifier& modifier, std::function<void(AppBarMenuState&)> overflowIndicator, int maxItemCount,
-                   std::function<void(AppBarScope&)> content) {
+    void AppBarRow(const Modifier& modifier, kiln::Function<void(AppBarMenuState&)> overflowIndicator, int maxItemCount,
+                   kiln::Function<void(AppBarScope&)> content) {
         AppBarLayout(modifier, std::move(overflowIndicator), maxItemCount, content, false);
     }
 
-    void AppBarColumn(const Modifier& modifier, std::function<void(AppBarMenuState&)> overflowIndicator, int maxItemCount,
-                      std::function<void(AppBarScope&)> content) {
+    void AppBarColumn(const Modifier& modifier, kiln::Function<void(AppBarMenuState&)> overflowIndicator, int maxItemCount,
+                      kiln::Function<void(AppBarScope&)> content) {
         AppBarLayout(modifier, std::move(overflowIndicator), maxItemCount, content, true);
     }
 

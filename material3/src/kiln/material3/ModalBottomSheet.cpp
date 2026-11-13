@@ -1,4 +1,5 @@
 #include "kiln/material3/ModalBottomSheet.h"
+#include <kiln/Function.h>
 
 #include "kiln/foundation/Back.h"
 #include "kiln/foundation/Compose.h"
@@ -23,17 +24,17 @@ namespace kiln::material3 {
     namespace {
         struct DismissIfHidden {
             std::shared_ptr<SheetState> state;
-            std::function<void()> onDismiss;
+            kiln::Function<void()> onDismiss;
             ~DismissIfHidden() { if (onDismiss && !state->IsVisible()) onDismiss(); }
         };
-        rt::Task<> HideThenDismiss(std::shared_ptr<SheetState> state, std::function<void()> onDismiss) {
+        rt::Task<> HideThenDismiss(std::shared_ptr<SheetState> state, kiln::Function<void()> onDismiss) {
             DismissIfHidden guard{ state, std::move(onDismiss) };
             co_await state->Hide();
         }
         // settleToDismiss's hide: reports the dismissal however it ends.
-        rt::Task<> HideThenAlwaysDismiss(std::shared_ptr<SheetState> state, std::function<void()> onDismiss) {
+        rt::Task<> HideThenAlwaysDismiss(std::shared_ptr<SheetState> state, kiln::Function<void()> onDismiss) {
             struct Always {
-                std::function<void()> f;
+                kiln::Function<void()> f;
                 ~Always() { if (f) f(); }
             } always{ std::move(onDismiss) };
             co_await state->Hide();
@@ -48,7 +49,7 @@ namespace kiln::material3 {
         }
     }
 
-    std::shared_ptr<SheetState> RememberModalBottomSheetState(bool skipPartiallyExpanded, std::function<bool(SheetValue)> confirmValueChange, rt::Key key) {
+    std::shared_ptr<SheetState> RememberModalBottomSheetState(bool skipPartiallyExpanded, kiln::Function<bool(SheetValue)> confirmValueChange, rt::Key key) {
         return internal::RememberSheetState(SheetValues{ true, !skipPartiallyExpanded }, std::move(confirmValueChange), SheetValue::Hidden,
                                             BottomSheetDefaults::PositionalThreshold, BottomSheetDefaults::VelocityThreshold, false, key);
     }
@@ -66,8 +67,8 @@ namespace kiln::material3 {
         }
     }
 
-    void ModalBottomSheet(std::function<void()> onDismissRequest, const ui::Modifier& modifier, const ModalBottomSheetOptions& o,
-                          std::function<void()> content) {
+    void ModalBottomSheet(kiln::Function<void()> onDismissRequest, const ui::Modifier& modifier, const ModalBottomSheetOptions& o,
+                          kiln::Function<void()> content) {
         auto& c = *rt::Composition::Current();
         const auto state = o.sheetState ? o.sheetState : RememberBottomSheetState(SheetValue::Hidden);
         const auto scope = internal::RememberCoroutineScope();
@@ -127,7 +128,7 @@ namespace kiln::material3 {
                     });
                 });
                 ScrimOptions scrim;
-                scrim.onClick = properties.shouldDismissOnClickOutside ? std::function<void()>(animateToDismiss) : nullptr;
+                scrim.onClick = properties.shouldDismissOnClickOutside ? kiln::Function<void()>(animateToDismiss) : nullptr;
                 scrim.alpha = [alpha] { return alpha->Float(); };
                 scrim.color = scrimColor;
                 Scrim(GetString(Strings::CloseSheet), {}, scrim);

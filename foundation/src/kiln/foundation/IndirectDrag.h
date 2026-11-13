@@ -7,6 +7,7 @@
 // while it stays unconsumed. Deltas of 2 px or less are dropped.
 
 #include "kiln/foundation/Gestures.h"
+#include <kiln/Function.h>
 #include "kiln/ui/IndirectPointer.h"
 #include "kiln/ui/VelocityTracker.h"
 
@@ -19,11 +20,11 @@ namespace kiln::foundation {
     class IndirectDragDetector {
     public:
         struct Callbacks {
-            std::function<bool()> startDragImmediately;
-            std::function<void(Offset startedAt)> onStart;
-            std::function<void(Offset delta)> onDelta;
-            std::function<void(Offset velocity)> onStop;
-            std::function<void()> onCancel;
+            kiln::Function<bool()> startDragImmediately;
+            kiln::Function<void(Offset startedAt)> onStart;
+            kiln::Function<void(Offset delta)> onDelta;
+            kiln::Function<void(Offset velocity)> onStop;
+            kiln::Function<void()> onCancel;
         };
 
         Orientation orientation = Orientation::Vertical;

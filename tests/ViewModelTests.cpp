@@ -1,4 +1,5 @@
 #include "Check.h"
+#include <kiln/Function.h>
 
 #include "kiln/foundation/Compose.h"
 #include "kiln/lifecycle/ViewModelCompose.h"
@@ -57,7 +58,7 @@ namespace {
         std::int64_t frameNanos = 0;
         Harness() { owner.SetDensity({ 1, 1 }); }
         ~Harness() { composition.SetContent([] {}); Pump(); }
-        void Run(std::function<void()> content) {
+        void Run(kiln::Function<void()> content) {
             composition.SetContent([this, content = std::move(content)] { rt::Composition::Current()->Provide(ui::LocalOwner, &owner, content); });
             Pump();
         }

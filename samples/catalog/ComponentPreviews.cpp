@@ -1,5 +1,6 @@
 // ComponentPreviews.kt (material3 catalog): the small live preview each home screen tile shows.
 #include "ComponentPreviews.h"
+#include <kiln/Function.h>
 #include "samples/Common.h"
 
 #include <kiln/foundation/Border.h>
@@ -33,7 +34,7 @@ namespace catalog {
         const m3::ColorScheme& Colors() { return m3::MaterialTheme::colorScheme(); }
 
         // Surface(modifier, shape, color, border)
-        void Panel(Modifier m, ShapePtr shape, Color color, std::function<void()> content, bool border = true, Dp shadow = 0_dp,
+        void Panel(Modifier m, ShapePtr shape, Color color, kiln::Function<void()> content, bool border = true, Dp shadow = 0_dp,
                    std::optional<Color> borderColor = std::nullopt) {
             m3::SurfaceOptions o;
             o.shape = std::move(shape);
@@ -307,7 +308,7 @@ namespace catalog {
         void SegmentedButtonsPreview() {
             m3::SingleChoiceSegmentedButtonRow({}, [] {
                 m3::SegmentedButtonOptions o;
-                o.icon = std::function<void()>([] {});
+                o.icon = kiln::Function<void()>([] {});
                 m3::SegmentedButton(true, [] {}, m3::SegmentedButtonDefaults::itemShape(0, 2), [] { SmallIcon(Icons::Filled::Check(), 16_dp); }, {}, o);
                 m3::SegmentedButton(false, [] {}, m3::SegmentedButtonDefaults::itemShape(1, 2), [] { SmallIcon(Icons::Filled::Star(), 16_dp); }, {}, o);
             });
@@ -419,7 +420,7 @@ namespace catalog {
         void TypographyPreview() { Label("Aa", m3::MaterialTheme::typography().headlineLarge, {}, kiln::text::FontWeight::SemiBold()); }
     }
 
-    std::function<void()> ComponentPreview(const std::string& componentName) {
+    kiln::Function<void()> ComponentPreview(const std::string& componentName) {
         static const std::map<std::string, void (*)()> previews{
             { "Adaptive", AdaptivePreview },
             { "Badge", BadgePreview },

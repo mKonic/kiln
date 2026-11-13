@@ -1,4 +1,5 @@
 #include "kiln/foundation/style/StyleResolver.h"
+#include <kiln/Function.h>
 
 #include "kiln/runtime/Composition.h"
 
@@ -14,36 +15,36 @@ namespace kiln::foundation {
         return spec;
     }
 
-    void State(StyleStateScope& scope, const StyleStateKey<bool>& key, const std::function<void()>& block) {
+    void State(StyleStateScope& scope, const StyleStateKey<bool>& key, const kiln::Function<void()>& block) {
         scope.State<bool>(key, block, [](const StyleStateKey<bool>& k, const StyleState& s) { return s.Get(k); });
     }
-    void Pressed(StyleStateScope& s, const std::function<void()>& b) {
+    void Pressed(StyleStateScope& s, const kiln::Function<void()>& b) {
         s.State<bool>(StyleStateKeys::Pressed(), b, [](const auto&, const StyleState& st) { return st.IsPressed(); });
     }
-    void Hovered(StyleStateScope& s, const std::function<void()>& b) {
+    void Hovered(StyleStateScope& s, const kiln::Function<void()>& b) {
         s.State<bool>(StyleStateKeys::Hovered(), b, [](const auto&, const StyleState& st) { return st.IsHovered(); });
     }
-    void Focused(StyleStateScope& s, const std::function<void()>& b) {
+    void Focused(StyleStateScope& s, const kiln::Function<void()>& b) {
         s.State<bool>(StyleStateKeys::Focused(), b, [](const auto&, const StyleState& st) { return st.IsFocused(); });
     }
-    void Selected(StyleStateScope& s, const std::function<void()>& b) {
+    void Selected(StyleStateScope& s, const kiln::Function<void()>& b) {
         s.State<bool>(StyleStateKeys::Selected(), b, [](const auto&, const StyleState& st) { return st.IsSelected(); });
     }
-    void Disabled(StyleStateScope& s, const std::function<void()>& b) {
+    void Disabled(StyleStateScope& s, const kiln::Function<void()>& b) {
         s.State<bool>(StyleStateKeys::Enabled(), b, [](const auto&, const StyleState& st) { return !st.IsEnabled(); });
     }
-    void Checked(StyleStateScope& s, const std::function<void()>& b) {
+    void Checked(StyleStateScope& s, const kiln::Function<void()>& b) {
         s.State<ui::ToggleableState>(StyleStateKeys::Toggle(), b, [](const auto&, const StyleState& st) { return st.IsChecked(); });
     }
-    void TriStateToggleOn(StyleStateScope& s, const std::function<void()>& b) {
+    void TriStateToggleOn(StyleStateScope& s, const kiln::Function<void()>& b) {
         s.State<ui::ToggleableState>(StyleStateKeys::Toggle(), b,
                                      [](const auto&, const StyleState& st) { return st.TriStateToggle() == ui::ToggleableState::On; });
     }
-    void TriStateToggleOff(StyleStateScope& s, const std::function<void()>& b) {
+    void TriStateToggleOff(StyleStateScope& s, const kiln::Function<void()>& b) {
         s.State<ui::ToggleableState>(StyleStateKeys::Toggle(), b,
                                      [](const auto&, const StyleState& st) { return st.TriStateToggle() == ui::ToggleableState::Off; });
     }
-    void TriStateToggleIndeterminate(StyleStateScope& s, const std::function<void()>& b) {
+    void TriStateToggleIndeterminate(StyleStateScope& s, const kiln::Function<void()>& b) {
         s.State<ui::ToggleableState>(StyleStateKeys::Toggle(), b,
                                      [](const auto&, const StyleState& st) { return st.TriStateToggle() == ui::ToggleableState::Indeterminate; });
     }
@@ -88,7 +89,7 @@ namespace kiln::foundation {
 
         // --- StyleAnimations ----------------------------------------------------------------
 
-        std::any StyleAnimations::AnimatedValueOrElse(const StylePropertyBase& p, const std::function<std::any()>& orElse) const {
+        std::any StyleAnimations::AnimatedValueOrElse(const StylePropertyBase& p, const kiln::Function<std::any()>& orElse) const {
             (void)m_Version.Get();
             auto it = m_Entries.find(&p);
             if (it == m_Entries.end()) return orElse();
@@ -247,15 +248,15 @@ namespace kiln::foundation {
                     if (m_Layer > effective) m_Layers[&p] = m_Layer;
                 }
             }
-            void StateAny(const StyleStateKeyBase&, const std::function<void()>& block, const std::function<bool()>& active) override {
+            void StateAny(const StyleStateKeyBase&, const kiln::Function<void()>& block, const kiln::Function<bool()>& active) override {
                 if (active()) StyleLayer(block);
             }
-            void StyleLayer(const std::function<void()>& block) override {
+            void StyleLayer(const kiln::Function<void()>& block) override {
                 ++m_Layer;
                 struct Pop { int& l; ~Pop() { --l; } } pop{ m_Layer };
                 block();
             }
-            void Animate(anim::SpecPtr toSpec, anim::SpecPtr fromSpec, const std::function<void()>& block) override {
+            void Animate(anim::SpecPtr toSpec, anim::SpecPtr fromSpec, const kiln::Function<void()>& block) override {
                 auto prevTo = m_DefaultTo, prevFrom = m_DefaultFrom;
                 const bool prevSpecified = m_Specified;
                 m_DefaultTo = std::move(toSpec);
@@ -468,7 +469,7 @@ namespace kiln::foundation {
         return result;
     }
 
-    void StyleResolver::TraverseAncestors(const std::function<bool(StyleResolver&)>& block) const {
+    void StyleResolver::TraverseAncestors(const kiln::Function<bool(StyleResolver&)>& block) const {
         if (m_ParentOverride) {
             for (StyleResolver* p = m_ParentOverride; p; p = p->m_ParentOverride)
                 if (!block(*p)) return;
@@ -495,7 +496,7 @@ namespace kiln::foundation {
         m_ResolvedAtLeastOnce = true;
     }
 
-    void StyleResolver::ResolveNestedStyle(const NestedStyleKey& key, const std::function<void(const CommonStyle&, const StyleState&)>& block) {
+    void StyleResolver::ResolveNestedStyle(const NestedStyleKey& key, const kiln::Function<void(const CommonStyle&, const StyleState&)>& block) {
         // Ancestors that provide the key, applied from the furthest to the nearest.
         std::vector<StyleResolver*> resolvers;
         TraverseAncestors([&](StyleResolver& r) {

@@ -6,6 +6,7 @@
 // reports each layout to onTextLayout. Colour-only style changes redraw without a new layout.
 
 #include "kiln/foundation/Layouts.h"
+#include <kiln/Function.h>
 #include "kiln/foundation/text/TextAutoSize.h"
 #include "kiln/text/Paragraph.h"
 #include "kiln/text/TextStyleScope.h"
@@ -26,7 +27,7 @@ namespace kiln::foundation {
     // range, in a box the placeholder sizes; it gets the range's alternate text.
     struct InlineTextContent {
         text::Placeholder placeholder;
-        std::function<void(const std::string& alternateText)> children;
+        kiln::Function<void(const std::string& alternateText)> children;
     };
     // appendInlineContent: marks text (by default U+FFFD) to be replaced by the inline content
     // with this id.
@@ -34,7 +35,7 @@ namespace kiln::foundation {
     void AppendInlineContent(text::AnnotatedStringBuilder& builder, const std::string& id, const std::string& alternateText = "\xEF\xBF\xBD");
 
     struct BasicTextOptions {
-        std::function<void(const TextLayoutResult&)> onTextLayout;
+        kiln::Function<void(const TextLayoutResult&)> onTextLayout;
         TextOverflow overflow = TextOverflow::Clip;
         bool softWrap = true;
         int maxLines = INT_MAX;
@@ -42,13 +43,13 @@ namespace kiln::foundation {
         std::map<std::string, InlineTextContent> inlineContent;
         // ColorProducer: read when drawing, overriding the style's colour when specified (a
         // colour animation redraws without recomposing or a new layout).
-        std::function<ui::Color()> color;
+        kiln::Function<ui::Color()> color;
         // The font size picked for the constraints (the style's own size is ignored).
         TextAutoSizePtr autoSize;
         // styleProvider (the BasicText(text, styleProvider) overloads): sets the style in place
         // of `style`, run when measuring so the state it reads lays out again only when a
         // layout attribute changes (a colour change only redraws).
-        std::function<void(text::TextStyleScope&)> styleProvider;
+        kiln::Function<void(text::TextStyleScope&)> styleProvider;
     };
 
     void BasicText(const AnnotatedString& text, const Modifier& modifier = {}, TextStyle style = {},
@@ -60,11 +61,11 @@ namespace kiln::foundation {
         BasicText(std::string(text), modifier, std::move(style), std::move(options), key);
     }
     // BasicText(text, styleProvider, ..): the style from a TextStyleScope block.
-    void BasicText(const AnnotatedString& text, std::function<void(text::TextStyleScope&)> styleProvider, const Modifier& modifier = {},
+    void BasicText(const AnnotatedString& text, kiln::Function<void(text::TextStyleScope&)> styleProvider, const Modifier& modifier = {},
                    BasicTextOptions options = {}, rt::Key key = {});
-    void BasicText(const std::string& text, std::function<void(text::TextStyleScope&)> styleProvider, const Modifier& modifier = {},
+    void BasicText(const std::string& text, kiln::Function<void(text::TextStyleScope&)> styleProvider, const Modifier& modifier = {},
                    BasicTextOptions options = {}, rt::Key key = {});
-    inline void BasicText(const char* text, std::function<void(text::TextStyleScope&)> styleProvider, const Modifier& modifier = {},
+    inline void BasicText(const char* text, kiln::Function<void(text::TextStyleScope&)> styleProvider, const Modifier& modifier = {},
                           BasicTextOptions options = {}, rt::Key key = {}) {
         BasicText(std::string(text), std::move(styleProvider), modifier, std::move(options), key);
     }

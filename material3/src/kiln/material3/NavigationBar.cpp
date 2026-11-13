@@ -1,4 +1,5 @@
 #include "kiln/material3/NavigationBar.h"
+#include <kiln/Function.h>
 
 #include "kiln/animation/Animatable.h"
 #include "kiln/foundation/Animate.h"
@@ -134,7 +135,7 @@ namespace kiln::material3 {
         }
     }
 
-    void NavigationBar(const ui::Modifier& modifier, const NavigationBarOptions& o, std::function<void()> content) {
+    void NavigationBar(const ui::Modifier& modifier, const NavigationBarOptions& o, kiln::Function<void()> content) {
         const Color container = o.containerColor.value_or(NavigationBarDefaults::containerColor());
         SurfaceOptions surface;
         surface.color = container;
@@ -147,7 +148,7 @@ namespace kiln::material3 {
         });
     }
 
-    void NavigationBarItem(bool selected, std::function<void()> onClick, std::function<void()> icon, const ui::Modifier& modifier,
+    void NavigationBarItem(bool selected, kiln::Function<void()> onClick, kiln::Function<void()> icon, const ui::Modifier& modifier,
                            const NavigationBarItemOptions& o) {
         auto& c = *rt::Composition::Current();
         const auto source = o.interactionSource ? o.interactionSource : RememberInteractionSource();

@@ -7,6 +7,7 @@
 // that answers TextLayoutResult's queries. Offsets are UTF-16.
 
 #include "kiln/TextBackend.h"
+#include <kiln/Function.h>
 #include "kiln/text/AnnotatedString.h"
 
 #include <functional>
@@ -56,7 +57,7 @@ namespace kiln::text {
     // TextGranularity / TextInclusionStrategy (getRangeForRect): segments are grapheme clusters or
     // words; a segment is in the range when its bounds and the rect pass the strategy.
     enum class TextGranularity : std::uint8_t { Character, Word };
-    using TextInclusionStrategy = std::function<bool(const ui::Rect& textBounds, const ui::Rect& rect)>;
+    using TextInclusionStrategy = kiln::Function<bool(const ui::Rect& textBounds, const ui::Rect& rect)>;
     namespace inclusion {
         TextInclusionStrategy AnyOverlap();
         TextInclusionStrategy ContainsAll();

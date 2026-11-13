@@ -1,4 +1,5 @@
 #include "kiln/material3/LoadingIndicator.h"
+#include <kiln/Function.h>
 
 #include "kiln/animation/Animatable.h"
 #include "kiln/foundation/Draw.h"
@@ -83,7 +84,7 @@ namespace kiln::material3 {
             s.DrawPath(path, color);
             s.Restore();
         }
-        void Impl(std::function<float()> progress, const Modifier& modifier, Color container, Color indicator, ShapePtr shape, const Polygons& polygons) {
+        void Impl(kiln::Function<float()> progress, const Modifier& modifier, Color container, Color indicator, ShapePtr shape, const Polygons& polygons) {
             const auto sequence = MorphSequence(polygons, !progress);
             std::shared_ptr<AnimationState> state;
             if (!progress) {
@@ -115,7 +116,7 @@ namespace kiln::material3 {
             });
         }
     }
-    void LoadingIndicator(std::function<float()> progress, const Modifier& modifier, const LoadingIndicatorOptions& o) {
+    void LoadingIndicator(kiln::Function<float()> progress, const Modifier& modifier, const LoadingIndicatorOptions& o) {
         Impl(std::move(progress), modifier, Color::Unspecified(), o.color.Specified() ? o.color : LoadingIndicatorDefaults::indicatorColor(),
              LoadingIndicatorDefaults::containerShape(), o.polygons ? *o.polygons : LoadingIndicatorDefaults::determinateIndicatorPolygons());
     }
@@ -123,7 +124,7 @@ namespace kiln::material3 {
         Impl({}, modifier, Color::Unspecified(), o.color.Specified() ? o.color : LoadingIndicatorDefaults::indicatorColor(),
              LoadingIndicatorDefaults::containerShape(), o.polygons ? *o.polygons : LoadingIndicatorDefaults::indeterminateIndicatorPolygons());
     }
-    void ContainedLoadingIndicator(std::function<float()> progress, const Modifier& modifier, const ContainedLoadingIndicatorOptions& o) {
+    void ContainedLoadingIndicator(kiln::Function<float()> progress, const Modifier& modifier, const ContainedLoadingIndicatorOptions& o) {
         Impl(std::move(progress), modifier, o.containerColor.Specified() ? o.containerColor : LoadingIndicatorDefaults::containedContainerColor(),
              o.indicatorColor.Specified() ? o.indicatorColor : LoadingIndicatorDefaults::containedIndicatorColor(), o.containerShape ? o.containerShape : LoadingIndicatorDefaults::containerShape(),
              o.polygons ? *o.polygons : LoadingIndicatorDefaults::determinateIndicatorPolygons());

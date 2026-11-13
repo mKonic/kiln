@@ -1,4 +1,5 @@
 #include "MaterialComponents.h"
+#include <kiln/Function.h>
 
 #include <cstdlib>
 #include <vector>
@@ -142,7 +143,7 @@ namespace kiln::gallery {
             m3::SingleChoiceSegmentedButtonRow({}, [=] {
                 for (int i = 0; i < 2; ++i) {
                     m3::SegmentedButtonOptions o; o.enabled = enabled->Get();
-                    o.icon = std::function<void()>([=] {
+                    o.icon = kiln::Function<void()>([=] {
                         m3::SegmentedButtonDefaults::Icon(choice->Get() == i, m3::SegmentedButtonDefaults::ActiveIcon,
                             [] { m3::Icon(m3::internal::Icons::Filled::Edit(), std::nullopt, SizeMod({}, 18_dp, 18_dp)); });
                     });
@@ -153,7 +154,7 @@ namespace kiln::gallery {
             m3::Text("Label only");
             m3::SingleChoiceSegmentedButtonRow({}, [=] {
                 for (int i = 0; i < 2; ++i) {
-                    m3::SegmentedButtonOptions o; o.enabled = enabled->Get(); o.icon = std::function<void()>{};
+                    m3::SegmentedButtonOptions o; o.enabled = enabled->Get(); o.icon = kiln::Function<void()>{};
                     m3::SegmentedButton(choice->Get() == i, [=] { choice->Set(i); }, m3::SegmentedButtonDefaults::itemShape(i, 2),
                         [=] { m3::Text(i == 0 ? "Open" : "Closed"); }, {}, o);
                 }
@@ -1107,11 +1108,11 @@ namespace kiln::gallery {
                 m3::ListItemOptions radio;
                 radio.leadingContent = icon;
                 radio.trailingContent = [selected] { m3::RadioButton(selected->Get(), {}); };
-                m3::ListItem(selected->Get(), std::function<void()>([selected] { selected->Set(!selected->Peek()); }), {}, radio, [] { m3::Text("Expressive radio"); });
+                m3::ListItem(selected->Get(), kiln::Function<void()>([selected] { selected->Set(!selected->Peek()); }), {}, radio, [] { m3::Text("Expressive radio"); });
                 m3::ListItemOptions toggle;
                 toggle.leadingContent = icon;
                 toggle.trailingContent = [checked] { m3::Checkbox(checked->Get(), {}); };
-                m3::ListItem(checked->Get(), std::function<void(bool)>([checked](bool value) { checked->Set(value); }), {}, toggle, [] { m3::Text("Expressive checkbox"); });
+                m3::ListItem(checked->Get(), kiln::Function<void(bool)>([checked](bool value) { checked->Set(value); }), {}, toggle, [] { m3::Text("Expressive checkbox"); });
                 m3::ListItem({}, { .enabled = false, .leadingContent = icon, .trailingContent = meta,
                     .supportingContent = [] { m3::Text("Disabled content"); } }, [] { m3::Text("Disabled list item"); });
             });
@@ -1122,7 +1123,7 @@ namespace kiln::gallery {
                     .supportingContent = [] { m3::Text("Supporting text wraps naturally with large fonts"); } }, [] { m3::Text("Segmented plain"); });
                 m3::SegmentedListItem([clicks] { clicks->Set(clicks->Peek() + 1); }, m3::ListItemDefaults::segmentedShapes(1, 3), {}, {
                     .leadingContent = icon, .trailingContent = meta }, [] { m3::Text("Segmented action"); });
-                m3::SegmentedListItem(checked->Get(), std::function<void(bool)>([checked](bool value) { checked->Set(value); }),
+                m3::SegmentedListItem(checked->Get(), kiln::Function<void(bool)>([checked](bool value) { checked->Set(value); }),
                     m3::ListItemDefaults::segmentedShapes(2, 3), {}, {
                     .leadingContent = icon, .trailingContent = [checked] { m3::Checkbox(checked->Get(), {}); } }, [] { m3::Text("Segmented checkbox"); });
             });

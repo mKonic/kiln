@@ -4,6 +4,7 @@
 // overload reserves a touch target, observes interactions and adds input semantics.
 
 #include "kiln/foundation/Border.h"
+#include <kiln/Function.h>
 #include "kiln/foundation/Interaction.h"
 
 #include <optional>
@@ -31,12 +32,12 @@ namespace kiln::material3 {
         std::optional<std::optional<foundation::BorderStroke>> border;  // unset: variant default; inner nullopt: none
         std::shared_ptr<foundation::MutableInteractionSource> interactionSource;
     };
-    void Card(const ui::Modifier& modifier, const CardOptions& options, std::function<void()> content);
-    void Card(std::function<void()> onClick, const ui::Modifier& modifier, const CardOptions& options, std::function<void()> content);
-    void ElevatedCard(const ui::Modifier& modifier, const CardOptions& options, std::function<void()> content);
-    void ElevatedCard(std::function<void()> onClick, const ui::Modifier& modifier, const CardOptions& options, std::function<void()> content);
-    void OutlinedCard(const ui::Modifier& modifier, const CardOptions& options, std::function<void()> content);
-    void OutlinedCard(std::function<void()> onClick, const ui::Modifier& modifier, const CardOptions& options, std::function<void()> content);
+    void Card(const ui::Modifier& modifier, const CardOptions& options, kiln::Function<void()> content);
+    void Card(kiln::Function<void()> onClick, const ui::Modifier& modifier, const CardOptions& options, kiln::Function<void()> content);
+    void ElevatedCard(const ui::Modifier& modifier, const CardOptions& options, kiln::Function<void()> content);
+    void ElevatedCard(kiln::Function<void()> onClick, const ui::Modifier& modifier, const CardOptions& options, kiln::Function<void()> content);
+    void OutlinedCard(const ui::Modifier& modifier, const CardOptions& options, kiln::Function<void()> content);
+    void OutlinedCard(kiln::Function<void()> onClick, const ui::Modifier& modifier, const CardOptions& options, kiln::Function<void()> content);
 
     namespace CardDefaults {
         foundation::ShapePtr shape();

@@ -1,4 +1,5 @@
 #include "kiln/foundation/text/input/TextFieldKeys.h"
+#include <kiln/Function.h>
 
 #include "kiln/TextBackend.h"
 #include "kiln/text/Paragraph.h"
@@ -254,13 +255,13 @@ namespace kiln::foundation {
     }
     SelectionMovementDeletionContext& SelectionMovementDeletionContext::MoveCursorLeftByChar() { return IsLtr() ? MoveCursorPrevByChar() : MoveCursorNextByChar(); }
     SelectionMovementDeletionContext& SelectionMovementDeletionContext::MoveCursorRightByChar() { return IsLtr() ? MoveCursorNextByChar() : MoveCursorPrevByChar(); }
-    SelectionMovementDeletionContext& SelectionMovementDeletionContext::CollapseLeftOr(const std::function<void(SelectionMovementDeletionContext&)>& or_) {
+    SelectionMovementDeletionContext& SelectionMovementDeletionContext::CollapseLeftOr(const kiln::Function<void(SelectionMovementDeletionContext&)>& or_) {
         return ApplyIfNotEmpty(true, [&] {
             if (selection.Collapsed()) or_(*this);
             else selection = IsLtr() ? TextRange(selection.Min()) : TextRange(selection.Max());
         });
     }
-    SelectionMovementDeletionContext& SelectionMovementDeletionContext::CollapseRightOr(const std::function<void(SelectionMovementDeletionContext&)>& or_) {
+    SelectionMovementDeletionContext& SelectionMovementDeletionContext::CollapseRightOr(const kiln::Function<void(SelectionMovementDeletionContext&)>& or_) {
         return ApplyIfNotEmpty(true, [&] {
             if (selection.Collapsed()) or_(*this);
             else selection = IsLtr() ? TextRange(selection.Max()) : TextRange(selection.Min());

@@ -6,6 +6,7 @@
 // runs every frame with them.
 
 #include "kiln/foundation/GraphicsLayer.h"
+#include <kiln/Function.h>
 
 #include <functional>
 #include <memory>
@@ -24,10 +25,10 @@ namespace kiln::foundation {
     // DrawResult: the per-frame part, from onDrawBehind / onDrawWithContent.
     class DrawResult {
     public:
-        explicit DrawResult(std::function<void(ui::ContentDrawScope&)> block) : m_Block(std::move(block)) {}
+        explicit DrawResult(kiln::Function<void(ui::ContentDrawScope&)> block) : m_Block(std::move(block)) {}
         void Draw(ui::ContentDrawScope& s) const { if (m_Block) m_Block(s); }
     private:
-        std::function<void(ui::ContentDrawScope&)> m_Block;
+        kiln::Function<void(ui::ContentDrawScope&)> m_Block;
     };
 
     class CacheDrawScope : public ui::Density {
@@ -39,9 +40,9 @@ namespace kiln::foundation {
         layer::GraphicsLayerPtr ObtainGraphicsLayer();
         // GraphicsLayer.record in the cache: records `block` with the scope being drawn (so it
         // can draw the content), at the cache's size unless given.
-        void Record(layer::GraphicsLayer& layer, const std::function<void(ui::ContentDrawScope&)>& block, std::optional<IntSize> size = std::nullopt);
-        DrawResult OnDrawBehind(std::function<void(ui::DrawScope&)> block);
-        DrawResult OnDrawWithContent(std::function<void(ui::ContentDrawScope&)> block);
+        void Record(layer::GraphicsLayer& layer, const kiln::Function<void(ui::ContentDrawScope&)>& block, std::optional<IntSize> size = std::nullopt);
+        DrawResult OnDrawBehind(kiln::Function<void(ui::DrawScope&)> block);
+        DrawResult OnDrawWithContent(kiln::Function<void(ui::ContentDrawScope&)> block);
 
     private:
         friend class CacheDrawModifierNode;
@@ -55,7 +56,7 @@ namespace kiln::foundation {
     // CacheDrawModifierNode: the node behind drawWithCache, for custom nodes too.
     class CacheDrawModifierNode : public ui::ModifierNode, public ui::DrawModifier {
     public:
-        using Block = std::function<DrawResult(CacheDrawScope&)>;
+        using Block = kiln::Function<DrawResult(CacheDrawScope&)>;
         explicit CacheDrawModifierNode(Block block) : m_Block(std::move(block)) {}
         ui::DrawModifier* AsDraw() override { return this; }
         void Draw(ui::ContentDrawScope& s) override;
@@ -72,6 +73,6 @@ namespace kiln::foundation {
         bool m_Valid = false;
     };
 
-    Modifier DrawWithCache(Modifier m, std::function<DrawResult(CacheDrawScope&)> onBuildDrawCache);
+    Modifier DrawWithCache(Modifier m, kiln::Function<DrawResult(CacheDrawScope&)> onBuildDrawCache);
 
 }

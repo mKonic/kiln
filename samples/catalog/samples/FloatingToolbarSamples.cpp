@@ -1,5 +1,6 @@
 // FloatingToolbarSamples.kt
 #include "FloatingToolbarSamples.h"
+#include <kiln/Function.h>
 #include "Common.h"
 #include "Shared.h"
 
@@ -114,7 +115,7 @@ namespace catalog::samples {
             else m3::IconButton([] { /* doSomething() */ }, m, {}, [] { m3::Icon(Icons::Filled::Favorite(), description); });
             TipIconButton(&Icons::Filled::MoreVert(), m);
         }
-        std::function<void()> VibrantFab(std::function<void()> onClick) {
+        kiln::Function<void()> VibrantFab(kiln::Function<void()> onClick) {
             return [onClick] {
                 PlainTooltipAbove(description, [onClick] {
                     FD::VibrantFloatingActionButton(onClick, {}, {}, [] { m3::Icon(Icons::Filled::Add(), description); });

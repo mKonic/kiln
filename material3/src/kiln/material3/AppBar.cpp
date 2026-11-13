@@ -1,4 +1,5 @@
 #include "kiln/material3/AppBar.h"
+#include <kiln/Function.h>
 
 #include "kiln/animation/Easing.h"
 #include "kiln/foundation/Animate.h"
@@ -87,7 +88,7 @@ namespace kiln::material3 {
 
         struct TopBehaviorBase : TopAppBarScrollBehavior, ui::NestedScrollConnection, std::enable_shared_from_this<TopBehaviorBase> {
             std::shared_ptr<TopAppBarState> state;
-            std::function<bool()> canScroll;
+            kiln::Function<bool()> canScroll;
             anim::SpecPtr snap;
             std::shared_ptr<const anim::DecaySpec> fling;
             bool pinned = false;
@@ -173,9 +174,9 @@ namespace kiln::material3 {
         };
 
         template<typename B>
-        std::shared_ptr<TopAppBarScrollBehavior> RememberTopBehavior(std::shared_ptr<TopAppBarState> state, std::function<bool()> canScroll,
+        std::shared_ptr<TopAppBarScrollBehavior> RememberTopBehavior(std::shared_ptr<TopAppBarState> state, kiln::Function<bool()> canScroll,
                                                                      anim::SpecPtr snap, std::shared_ptr<const anim::DecaySpec> fling,
-                                                                     std::function<bool()> isScrollingContentAtStart, bool pinned) {
+                                                                     kiln::Function<bool()> isScrollingContentAtStart, bool pinned) {
             auto& c = *rt::Composition::Current();
             if (!state) state = RememberTopAppBarState();
             // remember(state, canScroll, snap, fling): the lambdas compare by presence.
@@ -227,7 +228,7 @@ namespace kiln::material3 {
         class TopAppBarPolicy final : public ui::MeasurePolicy {
         public:
             enum class TitleArrangement : std::uint8_t { Center, Bottom };
-            TopAppBarPolicy(std::function<float()> scrolledOffset, TitleArrangement arrangement, AlignmentH alignment, int titleBottomPadding, Dp height,
+            TopAppBarPolicy(kiln::Function<float()> scrolledOffset, TitleArrangement arrangement, AlignmentH alignment, int titleBottomPadding, Dp height,
                             PaddingValues contentPadding)
                 : m_ScrolledOffset(std::move(scrolledOffset)), m_Arrangement(arrangement), m_Alignment(alignment), m_TitleBottomPadding(titleBottomPadding),
                   m_Height(height), m_ContentPadding(contentPadding) {}
@@ -311,7 +312,7 @@ namespace kiln::material3 {
                 });
             }
 
-            std::function<float()> m_ScrolledOffset;
+            kiln::Function<float()> m_ScrolledOffset;
             TitleArrangement m_Arrangement;
             AlignmentH m_Alignment;
             int m_TitleBottomPadding;
@@ -320,18 +321,18 @@ namespace kiln::material3 {
         };
 
         struct LayoutParams {
-            std::function<float()> scrolledOffset;
+            kiln::Function<float()> scrolledOffset;
             Color navigationIconContentColor, titleContentColor, subtitleContentColor, actionIconContentColor;
-            std::function<void()> title;
+            kiln::Function<void()> title;
             text::TextStyle titleTextStyle;
-            std::function<void()> subtitle;
+            kiln::Function<void()> subtitle;
             text::TextStyle subtitleTextStyle;
-            std::function<float()> titleAlpha;
+            kiln::Function<float()> titleAlpha;
             TopAppBarPolicy::TitleArrangement titleArrangement = TopAppBarPolicy::TitleArrangement::Center;
             AlignmentH titleHorizontalAlignment = AlignmentH::Start();
             int titleBottomPadding = 0;
             bool hideTitleSemantics = false;
-            std::function<void()> navigationIcon, actions;
+            kiln::Function<void()> navigationIcon, actions;
             Dp height;
             PaddingValues contentPadding;
         };
@@ -363,19 +364,19 @@ namespace kiln::material3 {
         }
 
         // The actions wrapped in a row at the end.
-        std::function<void()> ActionsRow(std::function<void()> actions) {
+        kiln::Function<void()> ActionsRow(kiln::Function<void()> actions) {
             return [actions] { Row({}, Arrangement::End(), AlignmentV::CenterVertically(), actions ? actions : [] {}); };
         }
 
         rt::Task<> Nothing(PointerInputScope&) { co_return; }
 
         struct SingleRowParams {
-            std::function<void()> title;
+            kiln::Function<void()> title;
             text::TextStyle titleTextStyle;
-            std::function<void()> subtitle;
+            kiln::Function<void()> subtitle;
             text::TextStyle subtitleTextStyle;
             AlignmentH titleHorizontalAlignment;
-            std::function<void()> navigationIcon, actions;
+            kiln::Function<void()> navigationIcon, actions;
             Dp expandedHeight;
             PaddingValues contentPadding;
             WindowInsets windowInsets;
@@ -424,17 +425,17 @@ namespace kiln::material3 {
         }
 
         struct TwoRowsParams {
-            std::function<void()> title;
+            kiln::Function<void()> title;
             text::TextStyle titleTextStyle;
             Dp titleBottomPadding;
-            std::function<void()> smallTitle;
+            kiln::Function<void()> smallTitle;
             text::TextStyle smallTitleTextStyle;
-            std::function<void()> subtitle;
+            kiln::Function<void()> subtitle;
             text::TextStyle subtitleTextStyle;
-            std::function<void()> smallSubtitle;
+            kiln::Function<void()> smallSubtitle;
             text::TextStyle smallSubtitleTextStyle;
             AlignmentH titleHorizontalAlignment;
-            std::function<void()> navigationIcon, actions;
+            kiln::Function<void()> navigationIcon, actions;
             Dp collapsedHeight, expandedHeight;
             WindowInsets windowInsets;
             TopAppBarColors colors;
@@ -502,9 +503,9 @@ namespace kiln::material3 {
 
         Dp Or(Dp d, Dp fallback) { return Usable(d) ? d : fallback; }
 
-        void TwoRows(std::function<void()> title, const ui::Modifier& modifier, const TwoRowsTopAppBarOptions& o, TypographyToken titleFont,
-                     Dp titleBottomPadding, std::function<void()> subtitle, std::optional<TypographyToken> subtitleFont, Dp collapsedDefault,
-                     Dp expandedDefault, AlignmentH alignment, std::function<void()> smallTitle = {}, std::function<void()> smallSubtitle = {}) {
+        void TwoRows(kiln::Function<void()> title, const ui::Modifier& modifier, const TwoRowsTopAppBarOptions& o, TypographyToken titleFont,
+                     Dp titleBottomPadding, kiln::Function<void()> subtitle, std::optional<TypographyToken> subtitleFont, Dp collapsedDefault,
+                     Dp expandedDefault, AlignmentH alignment, kiln::Function<void()> smallTitle = {}, kiln::Function<void()> smallSubtitle = {}) {
             TwoRowsParams p;
             p.title = title;
             p.titleTextStyle = Value(titleFont);
@@ -533,7 +534,7 @@ namespace kiln::material3 {
         // ExitAlwaysScrollBehavior: the bar hides with the content's scroll and comes back.
         struct ExitAlways final : BottomAppBarScrollBehavior, ui::NestedScrollConnection, std::enable_shared_from_this<ExitAlways> {
             std::shared_ptr<BottomAppBarState> state;
-            std::function<bool()> canScroll;
+            kiln::Function<bool()> canScroll;
             anim::SpecPtr snap;
             std::shared_ptr<const anim::DecaySpec> fling;
             BottomAppBarState& State() const override { return *state; }
@@ -566,7 +567,7 @@ namespace kiln::material3 {
             std::shared_ptr<BottomAppBarScrollBehavior> scrollBehavior;
         };
 
-        void BottomAppBarLayout(const ui::Modifier& modifier, const BottomLayoutParams& p, std::function<void()> content) {
+        void BottomAppBarLayout(const ui::Modifier& modifier, const BottomLayoutParams& p, kiln::Function<void()> content) {
             auto& c = *rt::Composition::Current();
             // Off for touch exploration: the bar stays where it can be found.
             const auto manager = c.Read(ui::LocalAccessibilityManager);
@@ -682,19 +683,19 @@ namespace kiln::material3 {
                 [density] { return std::make_shared<anim::SplineDecay>(density); }, rt::Keys(density));
         }
 
-        std::shared_ptr<TopAppBarScrollBehavior> pinnedScrollBehavior(std::shared_ptr<TopAppBarState> state, std::function<bool()> canScroll,
-                                                                      std::function<bool()> isScrollingContentAtStart) {
+        std::shared_ptr<TopAppBarScrollBehavior> pinnedScrollBehavior(std::shared_ptr<TopAppBarState> state, kiln::Function<bool()> canScroll,
+                                                                      kiln::Function<bool()> isScrollingContentAtStart) {
             return RememberTopBehavior<Pinned>(std::move(state), std::move(canScroll), nullptr, nullptr, std::move(isScrollingContentAtStart), true);
         }
-        std::shared_ptr<TopAppBarScrollBehavior> enterAlwaysScrollBehavior(std::shared_ptr<TopAppBarState> state, std::function<bool()> canScroll,
+        std::shared_ptr<TopAppBarScrollBehavior> enterAlwaysScrollBehavior(std::shared_ptr<TopAppBarState> state, kiln::Function<bool()> canScroll,
                                                                            std::optional<anim::SpecPtr> snap,
                                                                            std::optional<std::shared_ptr<const anim::DecaySpec>> fling,
-                                                                           std::function<bool()> isScrollingContentAtStart) {
+                                                                           kiln::Function<bool()> isScrollingContentAtStart) {
             return RememberTopBehavior<EnterAlways>(std::move(state), std::move(canScroll), snap.value_or(snapAnimationSpec()),
                                                     fling.value_or(flingAnimationSpec()), std::move(isScrollingContentAtStart), false);
         }
         namespace {
-            std::function<bool()> AtStart(foundation::ScrollableState& s) {
+            kiln::Function<bool()> AtStart(foundation::ScrollableState& s) {
                 return [&s] {
                     const foundation::ScrollIndicatorState* i = s.ScrollIndicator();
                     return (i ? i->ScrollOffset() : 0) == 0;
@@ -702,16 +703,16 @@ namespace kiln::material3 {
             }
         }
         std::shared_ptr<TopAppBarScrollBehavior> pinnedScrollBehavior(foundation::ScrollableState& scrollableState, std::shared_ptr<TopAppBarState> state,
-                                                                      std::function<bool()> canScroll) {
+                                                                      kiln::Function<bool()> canScroll) {
             return pinnedScrollBehavior(std::move(state), std::move(canScroll), AtStart(scrollableState));
         }
         std::shared_ptr<TopAppBarScrollBehavior> enterAlwaysScrollBehavior(foundation::ScrollableState& scrollableState,
-                                                                           std::shared_ptr<TopAppBarState> state, std::function<bool()> canScroll,
+                                                                           std::shared_ptr<TopAppBarState> state, kiln::Function<bool()> canScroll,
                                                                            std::optional<anim::SpecPtr> snap,
                                                                            std::optional<std::shared_ptr<const anim::DecaySpec>> fling) {
             return enterAlwaysScrollBehavior(std::move(state), std::move(canScroll), std::move(snap), std::move(fling), AtStart(scrollableState));
         }
-        std::shared_ptr<TopAppBarScrollBehavior> exitUntilCollapsedScrollBehavior(std::shared_ptr<TopAppBarState> state, std::function<bool()> canScroll,
+        std::shared_ptr<TopAppBarScrollBehavior> exitUntilCollapsedScrollBehavior(std::shared_ptr<TopAppBarState> state, kiln::Function<bool()> canScroll,
                                                                                   std::optional<anim::SpecPtr> snap,
                                                                                   std::optional<std::shared_ptr<const anim::DecaySpec>> fling) {
             return RememberTopBehavior<ExitUntilCollapsed>(std::move(state), std::move(canScroll), snap.value_or(snapAnimationSpec()),
@@ -725,7 +726,7 @@ namespace kiln::material3 {
         Color bottomAppBarFabColor() { return Value(FabSecondaryContainerTokens::ContainerColor); }
         anim::SpecPtr snapAnimationSpec() { return Value(MotionSchemeKeyTokens::FastSpatial); }
         std::shared_ptr<const anim::DecaySpec> flingAnimationSpec() { return TopAppBarDefaults::flingAnimationSpec(); }
-        std::shared_ptr<BottomAppBarScrollBehavior> exitAlwaysScrollBehavior(std::shared_ptr<BottomAppBarState> state, std::function<bool()> canScroll,
+        std::shared_ptr<BottomAppBarScrollBehavior> exitAlwaysScrollBehavior(std::shared_ptr<BottomAppBarState> state, kiln::Function<bool()> canScroll,
                                                                              std::optional<anim::SpecPtr> snap,
                                                                              std::optional<std::shared_ptr<const anim::DecaySpec>> fling) {
             auto& c = *rt::Composition::Current();
@@ -745,7 +746,7 @@ namespace kiln::material3 {
     // --- top app bars ----------------------------------------------------------------------------
 
     namespace {
-        void SingleRow(std::function<void()> title, const ui::Modifier& modifier, const TopAppBarOptions& o, AlignmentH alignment) {
+        void SingleRow(kiln::Function<void()> title, const ui::Modifier& modifier, const TopAppBarOptions& o, AlignmentH alignment) {
             SingleRowParams p;
             p.title = std::move(title);
             p.titleTextStyle = Value(AppBarSmallTokens::TitleFont);
@@ -763,34 +764,34 @@ namespace kiln::material3 {
         }
     }
 
-    void TopAppBar(std::function<void()> title, const ui::Modifier& modifier, const TopAppBarOptions& o) {
+    void TopAppBar(kiln::Function<void()> title, const ui::Modifier& modifier, const TopAppBarOptions& o) {
         SingleRow(std::move(title), modifier, o, o.titleHorizontalAlignment);
     }
-    void CenterAlignedTopAppBar(std::function<void()> title, const ui::Modifier& modifier, const TopAppBarOptions& o) {
+    void CenterAlignedTopAppBar(kiln::Function<void()> title, const ui::Modifier& modifier, const TopAppBarOptions& o) {
         SingleRow(std::move(title), modifier, o, AlignmentH::CenterHorizontally());
     }
 
-    void MediumTopAppBar(std::function<void()> title, const ui::Modifier& modifier, const TwoRowsTopAppBarOptions& o) {
+    void MediumTopAppBar(kiln::Function<void()> title, const ui::Modifier& modifier, const TwoRowsTopAppBarOptions& o) {
         TwoRows(std::move(title), modifier, o, AppBarMediumTokens::TitleFont, MediumTitleBottomPadding, {}, std::nullopt,
                 TopAppBarDefaults::MediumAppBarCollapsedHeight, TopAppBarDefaults::MediumAppBarExpandedHeight, AlignmentH::Start());
     }
-    void MediumFlexibleTopAppBar(std::function<void()> title, const ui::Modifier& modifier, const TwoRowsTopAppBarOptions& o) {
+    void MediumFlexibleTopAppBar(kiln::Function<void()> title, const ui::Modifier& modifier, const TwoRowsTopAppBarOptions& o) {
         const Dp expanded = o.subtitle ? TopAppBarDefaults::MediumFlexibleAppBarWithSubtitleExpandedHeight
                                        : TopAppBarDefaults::MediumFlexibleAppBarWithoutSubtitleExpandedHeight;
         TwoRows(std::move(title), modifier, o, AppBarMediumFlexibleTokens::TitleFont, MediumTitleBottomPadding, o.subtitle ? o.subtitle : [] {},
                 AppBarMediumFlexibleTokens::SubtitleFont, TopAppBarDefaults::MediumAppBarCollapsedHeight, expanded, o.titleHorizontalAlignment);
     }
-    void LargeTopAppBar(std::function<void()> title, const ui::Modifier& modifier, const TwoRowsTopAppBarOptions& o) {
+    void LargeTopAppBar(kiln::Function<void()> title, const ui::Modifier& modifier, const TwoRowsTopAppBarOptions& o) {
         TwoRows(std::move(title), modifier, o, AppBarLargeTokens::TitleFont, LargeTitleBottomPadding, {}, std::nullopt,
                 TopAppBarDefaults::LargeAppBarCollapsedHeight, TopAppBarDefaults::LargeAppBarExpandedHeight, AlignmentH::Start());
     }
-    void LargeFlexibleTopAppBar(std::function<void()> title, const ui::Modifier& modifier, const TwoRowsTopAppBarOptions& o) {
+    void LargeFlexibleTopAppBar(kiln::Function<void()> title, const ui::Modifier& modifier, const TwoRowsTopAppBarOptions& o) {
         const Dp expanded = o.subtitle ? TopAppBarDefaults::LargeFlexibleAppBarWithSubtitleExpandedHeight
                                        : TopAppBarDefaults::LargeFlexibleAppBarWithoutSubtitleExpandedHeight;
         TwoRows(std::move(title), modifier, o, AppBarLargeFlexibleTokens::TitleFont, LargeTitleBottomPadding, o.subtitle ? o.subtitle : [] {},
                 AppBarLargeFlexibleTokens::SubtitleFont, TopAppBarDefaults::LargeAppBarCollapsedHeight, expanded, o.titleHorizontalAlignment);
     }
-    void TwoRowsTopAppBar(std::function<void(bool)> title, const ui::Modifier& modifier, std::function<void(bool)> subtitle, const TwoRowsTopAppBarOptions& o) {
+    void TwoRowsTopAppBar(kiln::Function<void(bool)> title, const ui::Modifier& modifier, kiln::Function<void(bool)> subtitle, const TwoRowsTopAppBarOptions& o) {
         const Dp expanded = subtitle ? TopAppBarDefaults::MediumFlexibleAppBarWithSubtitleExpandedHeight
                                      : TopAppBarDefaults::MediumFlexibleAppBarWithoutSubtitleExpandedHeight;
         TwoRows([title] { title(true); }, modifier, o, AppBarMediumFlexibleTokens::TitleFont, Dp(0), [subtitle] { if (subtitle) subtitle(true); },
@@ -800,7 +801,7 @@ namespace kiln::material3 {
 
     // --- bottom app bars -------------------------------------------------------------------------
 
-    void BottomAppBar(const ui::Modifier& modifier, const BottomAppBarOptions& o, std::function<void()> content) {
+    void BottomAppBar(const ui::Modifier& modifier, const BottomAppBarOptions& o, kiln::Function<void()> content) {
         BottomLayoutParams p;
         p.containerHeight = BottomAppBarTokens::ContainerHeight;
         p.horizontalArrangement = Arrangement::Start();
@@ -813,7 +814,7 @@ namespace kiln::material3 {
         BottomAppBarLayout(modifier, p, std::move(content));
     }
 
-    void BottomAppBar(std::function<void()> actions, const ui::Modifier& modifier, std::function<void()> floatingActionButton, const BottomAppBarOptions& o) {
+    void BottomAppBar(kiln::Function<void()> actions, const ui::Modifier& modifier, kiln::Function<void()> floatingActionButton, const BottomAppBarOptions& o) {
         BottomAppBar(modifier, o, [actions, floatingActionButton] {
             Row(Weight({}, 1), Arrangement::Start(), AlignmentV::CenterVertically(), actions ? actions : [] {});
             if (floatingActionButton)
@@ -822,7 +823,7 @@ namespace kiln::material3 {
         });
     }
 
-    void FlexibleBottomAppBar(const ui::Modifier& modifier, const FlexibleBottomAppBarOptions& o, std::function<void()> content) {
+    void FlexibleBottomAppBar(const ui::Modifier& modifier, const FlexibleBottomAppBarOptions& o, kiln::Function<void()> content) {
         BottomLayoutParams p;
         p.containerHeight = Usable(o.expandedHeight) && o.expandedHeight.value > 0 ? o.expandedHeight : BottomAppBarDefaults::FlexibleBottomAppBarHeight;
         p.horizontalArrangement = o.horizontalArrangement;

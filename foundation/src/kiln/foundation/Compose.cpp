@@ -1,4 +1,5 @@
 #include "kiln/foundation/Compose.h"
+#include <kiln/Function.h>
 #include "kiln/ui/Locals.h"
 
 
@@ -16,7 +17,7 @@ namespace kiln::foundation {
         n.SetLocalDensity(density ? std::optional<ui::Density>(*density) : std::nullopt);
     }
 
-    LayoutNode& Layout(const Modifier& modifier, std::shared_ptr<MeasurePolicy> policy, std::function<void()> content, Key key) {
+    LayoutNode& Layout(const Modifier& modifier, std::shared_ptr<MeasurePolicy> policy, kiln::Function<void()> content, Key key) {
         auto* c = rt::Composition::Current();
         return c->Node<LayoutNode>([] { return std::make_unique<LayoutNode>(); },
                                    [&](LayoutNode& n) { n.SetModifier(modifier); TakeLocalLayoutDirection(n); n.SetMeasurePolicy(policy); },
@@ -36,7 +37,7 @@ namespace kiln::foundation {
         };
     }
 
-    void LookaheadScope(std::function<void(ui::LookaheadScope&)> content, Key key) {
+    void LookaheadScope(kiln::Function<void(ui::LookaheadScope&)> content, Key key) {
         auto* c = rt::Composition::Current();
         auto& scope = c->Remember<std::shared_ptr<LookaheadScopeImpl>>([] { return std::make_shared<LookaheadScopeImpl>(); }, {}, key);
         auto impl = scope;
@@ -53,7 +54,7 @@ namespace kiln::foundation {
     namespace {
         // A layout whose policy is a value type: keep the node's current policy if equal.
         template<typename P, typename... A>
-        void ValueLayout(const Modifier& modifier, std::function<void()> content, Key key, A&&... args) {
+        void ValueLayout(const Modifier& modifier, kiln::Function<void()> content, Key key, A&&... args) {
             auto* c = rt::Composition::Current();
             P next(std::forward<A>(args)...);
             c->Node<LayoutNode>([] { return std::make_unique<LayoutNode>(); },
@@ -67,13 +68,13 @@ namespace kiln::foundation {
         }
     }
 
-    void Box(const Modifier& m, Alignment a, bool propagateMin, std::function<void()> content, Key key) {
+    void Box(const Modifier& m, Alignment a, bool propagateMin, kiln::Function<void()> content, Key key) {
         ValueLayout<BoxPolicy>(m, std::move(content), key, a, propagateMin);
     }
-    void Row(const Modifier& m, Arrangement h, AlignmentV v, std::function<void()> content, Key key) {
+    void Row(const Modifier& m, Arrangement h, AlignmentV v, kiln::Function<void()> content, Key key) {
         ValueLayout<RowColumnPolicy>(m, std::move(content), key, true, h, v, AlignmentH::Start());
     }
-    void Column(const Modifier& m, Arrangement v, AlignmentH h, std::function<void()> content, Key key) {
+    void Column(const Modifier& m, Arrangement v, AlignmentH h, kiln::Function<void()> content, Key key) {
         ValueLayout<RowColumnPolicy>(m, std::move(content), key, false, v, AlignmentV::Top(), h);
     }
     namespace {

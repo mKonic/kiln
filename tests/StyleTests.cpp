@@ -1,4 +1,5 @@
 #include "Check.h"
+#include <kiln/Function.h>
 
 #include "kiln/foundation/style/StyleProperty.h"
 #include "kiln/foundation/style/StyleState.h"
@@ -288,7 +289,7 @@ TEST(StyleModifiersPlaceSizePadAndDraw) {
     a.owner.Draw(ui::DrawTarget{});
     // The node's own semantics carry the shape (extra data, not a node of the tree by itself).
     bool circle = false;
-    std::function<void(ui::LayoutNode*)> visit = [&](ui::LayoutNode* n) {
+    kiln::Function<void(ui::LayoutNode*)> visit = [&](ui::LayoutNode* n) {
         ui::SemanticsConfiguration c;
         if (ui::CalculateSemanticsConfiguration(*n, c) && c.shape == CircleShape()) circle = true;
         for (ui::LayoutNode* child : n->Children()) visit(child);

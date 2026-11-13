@@ -4,6 +4,7 @@
 // platform decoder (AImageDecoder on Android, libpng/libjpeg on the dev host).
 
 #include "kiln/ui/Geometry.h"
+#include <kiln/Function.h>
 
 #include <cstdint>
 #include <functional>
@@ -64,7 +65,7 @@ namespace kiln::gfx {
 
     // Decoded straight-alpha RGBA, or nullopt.
     struct DecodedImage { int width = 0, height = 0; std::vector<std::uint8_t> rgba; bool premultiplied = false; };
-    using ImageDecoder = std::function<std::optional<DecodedImage>(std::span<const std::uint8_t>)>;
+    using ImageDecoder = kiln::Function<std::optional<DecodedImage>(std::span<const std::uint8_t>)>;
     void SetImageDecoder(ImageDecoder decoder);
 
 }

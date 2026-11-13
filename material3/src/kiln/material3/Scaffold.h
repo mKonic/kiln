@@ -5,6 +5,7 @@
 // the window insets take.
 
 #include "kiln/foundation/Insets.h"
+#include <kiln/Function.h>
 #include "kiln/foundation/Layouts.h"
 #include <cstdint>
 
@@ -22,7 +23,7 @@ namespace kiln::material3 {
     }
 
     struct ScaffoldOptions {
-        std::function<void()> topBar, bottomBar, snackbarHost, floatingActionButton;
+        kiln::Function<void()> topBar, bottomBar, snackbarHost, floatingActionButton;
         FabPosition floatingActionButtonPosition = FabPosition::End;
         std::optional<ui::Color> containerColor;       // unset: colorScheme.background
         std::optional<ui::Color> contentColor;         // unset: contentColorFor(containerColor)
@@ -34,6 +35,6 @@ namespace kiln::material3 {
     // The content receives the padding to apply (and consume): the top bar's height or the top
     // inset, the bottom bar's height or the bottom inset, and the horizontal insets. It
     // recomposes when that padding changes, not on every measure.
-    void Scaffold(const ui::Modifier& modifier, const ScaffoldOptions& options, std::function<void(const foundation::PaddingValues&)> content);
+    void Scaffold(const ui::Modifier& modifier, const ScaffoldOptions& options, kiln::Function<void(const foundation::PaddingValues&)> content);
 
 }

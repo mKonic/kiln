@@ -6,6 +6,7 @@
 // left unspecified are inferred from the neighbours.
 
 #include "kiln/foundation/Image.h"
+#include <kiln/Function.h>
 
 #include <functional>
 #include <optional>
@@ -40,14 +41,14 @@ namespace kiln::foundation {
     class MeshGradientPainter final : public Painter {
     public:
         // bicubicColor: Catmull-Rom colour interpolation in Oklab instead of bilinear.
-        MeshGradientPainter(int rows, int columns, bool bicubicColor, std::function<void(MeshGradientScope&)> block);
+        MeshGradientPainter(int rows, int columns, bool bicubicColor, kiln::Function<void(MeshGradientScope&)> block);
         std::optional<ui::Size> IntrinsicSize() const override { return std::nullopt; }
         void Draw(DrawScope& scope, ui::Size size, float alpha, const gfx::ColorFilter* colorFilter) override;
 
     private:
         int m_Rows, m_Columns;
         bool m_Bicubic;
-        std::function<void(MeshGradientScope&)> m_Block;
+        kiln::Function<void(MeshGradientScope&)> m_Block;
         MeshGradientScope m_Scope;
     };
 

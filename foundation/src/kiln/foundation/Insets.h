@@ -6,6 +6,7 @@
 // consumption without padding, size modifiers and visibility queries.
 
 #include "kiln/foundation/Layouts.h"
+#include <kiln/Function.h>
 #include "kiln/runtime/State.h"
 #include "kiln/ui/Insets.h"
 
@@ -65,7 +66,7 @@ namespace kiln::foundation {
         // A WindowInsets implementation: `side` answers each side (0 left, 1 top, 2 right,
         // 3 bottom) when read; state it reads is observed by the layouts that read it. Equal to
         // another with the same non-null `identity` (its equals), else only to its copies.
-        using SideFunction = std::function<int(const InsetsContext& c, int side)>;
+        using SideFunction = kiln::Function<int(const InsetsContext& c, int side)>;
         static WindowInsets FromFunction(SideFunction side, const void* identity = nullptr);
 
         // The window's insets by type.
@@ -117,7 +118,7 @@ namespace kiln::foundation {
     // such as an animated pane). Needs fixed constraints; otherwise the ancestors' pass through.
     Modifier RecalculateWindowInsets(Modifier m);
     // onConsumedWindowInsetsChanged: what the ancestors have consumed.
-    Modifier OnConsumedWindowInsetsChanged(Modifier m, std::function<void(const WindowInsets&)> block);
+    Modifier OnConsumedWindowInsetsChanged(Modifier m, kiln::Function<void(const WindowInsets&)> block);
 
     inline Modifier SafeDrawingPadding(Modifier m) { return WindowInsetsPadding(std::move(m), WindowInsets::SafeDrawing()); }
     inline Modifier SafeGesturesPadding(Modifier m) { return WindowInsetsPadding(std::move(m), WindowInsets::SafeGestures()); }

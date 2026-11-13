@@ -1,4 +1,5 @@
 #include "kiln/text/CaseMapping.h"
+#include <kiln/Function.h>
 
 #include <cwctype>
 #include <map>
@@ -45,7 +46,7 @@ namespace kiln::text {
             return char16_t(upper ? std::towupper(wint_t(c)) : std::towlower(wint_t(c)));
         }
 
-        AnnotatedString Transform(const AnnotatedString& s, const std::function<std::u16string(std::u16string_view, int start)>& fn) {
+        AnnotatedString Transform(const AnnotatedString& s, const kiln::Function<std::u16string(std::u16string_view, int start)>& fn) {
             const std::u16string text = ToU16(s.Text());
             std::set<int> cuts{ 0, int(text.size()) };
             for (const auto& a : s.Annotations()) { cuts.insert(a.start); cuts.insert(a.end); }

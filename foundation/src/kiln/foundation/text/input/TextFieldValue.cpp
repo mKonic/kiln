@@ -1,4 +1,5 @@
 #include "kiln/foundation/text/input/TextFieldValue.h"
+#include <kiln/Function.h>
 
 #include "kiln/TextBackend.h"
 
@@ -210,7 +211,7 @@ namespace kiln::foundation {
         : m_State(text::AnnotatedString(), TextRange(0), std::nullopt), m_Buffer(std::make_unique<EditingBuffer>(text::AnnotatedString(), TextRange(0), backend)),
           m_Backend(backend) {}
 
-    void EditProcessor::Reset(const TextFieldValue& value, const std::function<void(const TextFieldValue&, const TextFieldValue&)>& onUpdate) {
+    void EditProcessor::Reset(const TextFieldValue& value, const kiln::Function<void(const TextFieldValue&, const TextFieldValue&)>& onUpdate) {
         bool textChanged = false, selectionChanged = false;
         const bool compositionChanged = value.Composition() != m_Buffer->Composition();
         if (m_State.Text() != value.Text()) {

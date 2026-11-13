@@ -1,4 +1,5 @@
 #include "kiln/foundation/text/input/TextFieldHandles.h"
+#include <kiln/Function.h>
 
 #include "kiln/foundation/Compose.h"
 #include "kiln/foundation/Draw.h"
@@ -79,7 +80,7 @@ namespace kiln::foundation {
         }
     }
 
-    void TextFieldWithHandles(TextFieldSelectionState& selection, bool showHandles, bool showCursorHandle, std::function<void()> content) {
+    void TextFieldWithHandles(TextFieldSelectionState& selection, bool showHandles, bool showCursorHandle, kiln::Function<void()> content) {
         TextFieldSelectionState* s = &selection;
         // The content measures as if alone; the handle popups' anchors take no space.
         auto policy = std::make_shared<ui::LambdaMeasurePolicy>([](MeasureScope& ms, std::span<Measurable* const> children, const Constraints& c) {

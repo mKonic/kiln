@@ -7,6 +7,7 @@
 // frame this way, shared elements draw their content in the transition's overlay.
 
 #include "kiln/foundation/Layouts.h"
+#include <kiln/Function.h>
 #include "kiln/runtime/Composition.h"
 #include "kiln/ui/Draw.h"
 #include "kiln/ui/LayoutNode.h"
@@ -38,8 +39,8 @@ namespace kiln::foundation::layer {
         // record(density, layoutDirection, size, block): replaces the recording with what
         // `block` draws now. The scope overload records in the scope being drawn (so the block
         // can draw that scope's content, as drawWithContent { layer.record { drawContent() } }).
-        void Record(const ui::Density& density, ui::LayoutDirection direction, IntSize size, const std::function<void(ui::DrawScope&)>& block);
-        void Record(ui::ContentDrawScope& scope, IntSize size, const std::function<void(ui::ContentDrawScope&)>& block);
+        void Record(const ui::Density& density, ui::LayoutDirection direction, IntSize size, const kiln::Function<void(ui::DrawScope&)>& block);
+        void Record(ui::ContentDrawScope& scope, IntSize size, const kiln::Function<void(ui::ContentDrawScope&)>& block);
         IntSize Size() const { return m_Size; }
 
         // The outline (for the shadow, and the clip when `clip` is set); the rectangle of the

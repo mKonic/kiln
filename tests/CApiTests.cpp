@@ -1,4 +1,5 @@
 #include "Check.h"
+#include <kiln/Function.h>
 #include "FakeText.h"
 
 #include <kiln/kiln_m3.h>
@@ -83,7 +84,7 @@ namespace {
         std::string SubtreeText(const std::string& tag) {
             const ui::LayoutNode* n = Find(owner.Root(), tag);
             std::string out;
-            std::function<void(const ui::LayoutNode&)> walk = [&](const ui::LayoutNode& l) {
+            kiln::Function<void(const ui::LayoutNode&)> walk = [&](const ui::LayoutNode& l) {
                 ui::SemanticsConfiguration c;
                 if (ui::CalculateSemanticsConfiguration(const_cast<ui::LayoutNode&>(l), c))
                     for (const auto& t : c.text) out += t;

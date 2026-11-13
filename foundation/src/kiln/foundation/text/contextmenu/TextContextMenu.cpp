@@ -1,4 +1,5 @@
 #include "kiln/foundation/text/contextmenu/TextContextMenu.h"
+#include <kiln/Function.h>
 #include "kiln/foundation/text/contextmenu/TextContextMenuProvider.h"
 
 #include "kiln/runtime/Channel.h"
@@ -72,7 +73,7 @@ namespace kiln::foundation {
         };
 
         struct FilterParams {
-            std::shared_ptr<const std::function<bool(const TextContextMenuComponent&)>> filter;
+            std::shared_ptr<const kiln::Function<bool(const TextContextMenuComponent&)>> filter;
             bool operator==(const FilterParams& o) const { return filter == o.filter; }
         };
         struct FilterNode final : ModifierNode, DataNode {
@@ -92,8 +93,8 @@ namespace kiln::foundation {
         return m.With<AddNode>(AddParams{ std::make_shared<const TextContextMenuBuilder>(std::move(builder)) });
     }
 
-    Modifier FilterTextContextMenuComponents(Modifier m, std::function<bool(const TextContextMenuComponent&)> filter) {
-        return m.With<FilterNode>(FilterParams{ std::make_shared<const std::function<bool(const TextContextMenuComponent&)>>(std::move(filter)) });
+    Modifier FilterTextContextMenuComponents(Modifier m, kiln::Function<bool(const TextContextMenuComponent&)> filter) {
+        return m.With<FilterNode>(FilterParams{ std::make_shared<const kiln::Function<bool(const TextContextMenuComponent&)>>(std::move(filter)) });
     }
 
     TextContextMenuData CollectTextContextMenuData(const ui::ModifierNode& node) {

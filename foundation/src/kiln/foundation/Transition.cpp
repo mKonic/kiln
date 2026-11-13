@@ -1,4 +1,5 @@
 #include "kiln/foundation/Transition.h"
+#include <kiln/Function.h>
 
 #include "kiln/animation/Animation.h"
 
@@ -108,7 +109,7 @@ namespace kiln::foundation {
     }
 
     namespace detail {
-        rt::Task<> DriveTransition(TransitionCore& core, std::function<void()> onFinished) {
+        rt::Task<> DriveTransition(TransitionCore& core, kiln::Function<void()> onFinished) {
             while (core.Running()) {
                 const std::int64_t t = co_await rt::NextFrame();
                 if (!core.Step(t)) break;

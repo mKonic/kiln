@@ -5,6 +5,7 @@
 // with WhileFocused, while focused).
 
 #include "kiln/ui/Geometry.h"
+#include <kiln/Function.h>
 #include "kiln/ui/Modifier.h"
 
 #include <climits>
@@ -19,7 +20,7 @@ namespace kiln::foundation {
     // MarqueeSpacing: the gap between the end of the content and its copy, from the content's
     // and the container's widths (px).
     struct MarqueeSpacing {
-        std::shared_ptr<const std::function<int(const ui::Density&, int contentWidth, int containerWidth)>> calculate;
+        std::shared_ptr<const kiln::Function<int(const ui::Density&, int contentWidth, int containerWidth)>> calculate;
         int Calculate(const ui::Density& d, int contentWidth, int containerWidth) const { return calculate ? (*calculate)(d, contentWidth, containerWidth) : 0; }
         static MarqueeSpacing Of(ui::Dp spacing);
         static MarqueeSpacing FractionOfContainer(float fraction);

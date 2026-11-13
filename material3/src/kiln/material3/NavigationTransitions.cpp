@@ -1,4 +1,5 @@
 #include "kiln/material3/NavigationTransitions.h"
+#include <kiln/Function.h>
 
 #include "kiln/material3/MaterialTheme.h"
 #include "kiln/material3/internal/SearchBarInternal.h"
@@ -59,7 +60,7 @@ namespace kiln::material3 {
             return t;
         }
 
-        std::shared_ptr<MutableContentTransform> predictiveBackTransform(std::function<ui::BackEvent()> backEvent, const ui::Density& density,
+        std::shared_ptr<MutableContentTransform> predictiveBackTransform(kiln::Function<ui::BackEvent()> backEvent, const ui::Density& density,
                                                                          ui::Color scrim) {
             const float margin = density.ToPx(DisplayBoundsMargin);
             const float initialTouchY = backEvent().touchY;
@@ -100,7 +101,7 @@ namespace kiln::material3 {
                                 FadeOut(anim::Tween(FadeOutDurationMillis, 0, anim::Linear())) + ScaleOut(DefaultEnterExitSpring(), TargetScale));
         }
 
-        std::shared_ptr<MutableContentTransform> predictiveBackTransform(std::function<ui::BackEvent()> backEvent, const ui::Density& density) {
+        std::shared_ptr<MutableContentTransform> predictiveBackTransform(kiln::Function<ui::BackEvent()> backEvent, const ui::Density& density) {
             const float margin = density.ToPx(DisplayBoundsMargin);
             const float initialTouchY = backEvent().touchY;
             return MakeMutableContentTransform(false, false, {}, {}, [=](MutableContentTransform& m) {

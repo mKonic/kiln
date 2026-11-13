@@ -5,6 +5,7 @@
 // the selection. Dates are the start of their day in UTC milliseconds.
 
 #include "kiln/foundation/Dialog.h"
+#include <kiln/Function.h>
 #include "kiln/material3/TextField.h"
 #include "kiln/material3/internal/CalendarModel.h"
 #include "kiln/runtime/State.h"
@@ -36,8 +37,8 @@ namespace kiln::material3 {
     };
     using SelectableDatesPtr = std::shared_ptr<const SelectableDates>;
     // A SelectableDates from two functions (either may be null: allowed).
-    SelectableDatesPtr MakeSelectableDates(std::function<bool(std::int64_t)> isSelectableDate,
-                                           std::function<bool(int)> isSelectableYear = {});
+    SelectableDatesPtr MakeSelectableDates(kiln::Function<bool(std::int64_t)> isSelectableDate,
+                                           kiln::Function<bool(int)> isSelectableYear = {});
 
     // DatePickerFormatter: the month-and-year and date texts.
     class DatePickerFormatter {
@@ -123,7 +124,7 @@ namespace kiln::material3 {
         DatePickerFormatterPtr dateFormatter;        // null: DatePickerDefaults::dateFormatter()
         std::optional<DatePickerColors> colors;      // unset: DatePickerDefaults::colors()
         // Unset: the defaults; an empty function: none.
-        std::optional<std::function<void()>> title, headline;
+        std::optional<kiln::Function<void()>> title, headline;
         bool showModeToggle = true;
         // Focused when the input mode shows; unset: remembered; null: none.
         std::optional<ui::FocusRequester*> focusRequester;
@@ -134,14 +135,14 @@ namespace kiln::material3 {
     // buttons; the buttons stay in view on small screens. onDismissRequest: a click outside or
     // Back (not the dismiss button).
     struct DatePickerDialogOptions {
-        std::function<void()> dismissButton;
+        kiln::Function<void()> dismissButton;
         foundation::ShapePtr shape;                  // null: DatePickerDefaults::shape()
         ui::Dp tonalElevation = DatePickerDefaults::TonalElevation;
         std::optional<DatePickerColors> colors;
         foundation::DialogProperties properties{ .usePlatformDefaultWidth = false };
     };
-    void DatePickerDialog(std::function<void()> onDismissRequest, std::function<void()> confirmButton, const ui::Modifier& modifier,
-                          const DatePickerDialogOptions& options, std::function<void()> content);
+    void DatePickerDialog(kiln::Function<void()> onDismissRequest, kiln::Function<void()> confirmButton, const ui::Modifier& modifier,
+                          const DatePickerDialogOptions& options, kiln::Function<void()> content);
 
     // Shared with the range picker.
     namespace internal {

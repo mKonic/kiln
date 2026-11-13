@@ -1,4 +1,5 @@
 #include "kiln/foundation/Back.h"
+#include <kiln/Function.h>
 
 #include <cassert>
 
@@ -6,19 +7,19 @@ namespace kiln::foundation {
 
     namespace {
         struct SimpleHandler final : ui::BackCallback {
-            std::function<void()> onBack;
+            kiln::Function<void()> onBack;
             void OnBack() override { if (onBack) onBack(); }
         };
 
         // ComposePredictiveBackHandler: a channel and job per gesture.
         struct PredictiveHandler final : ui::BackCallback {
-            std::function<rt::Task<>(BackProgress&)> onBack;
+            kiln::Function<rt::Task<>(BackProgress&)> onBack;
             rt::Dispatcher* dispatcher = nullptr;
             std::shared_ptr<BackProgress> channel;
             rt::Job job;
             bool predictive = false;
 
-            static rt::Task<> Run(std::function<rt::Task<>(BackProgress&)> fn, std::shared_ptr<BackProgress> ch) {
+            static rt::Task<> Run(kiln::Function<rt::Task<>(BackProgress&)> fn, std::shared_ptr<BackProgress> ch) {
                 co_await fn(*ch);
                 assert(ch->Closed() && "You must collect the progress flow");
             }
@@ -74,11 +75,11 @@ namespace kiln::foundation {
         }
     }
 
-    void BackHandler(bool enabled, std::function<void()> onBack) {
+    void BackHandler(bool enabled, kiln::Function<void()> onBack) {
         Register<SimpleHandler>(enabled).onBack = std::move(onBack);
     }
 
-    void PredictiveBackHandler(bool enabled, std::function<rt::Task<>(BackProgress&)> onBack) {
+    void PredictiveBackHandler(bool enabled, kiln::Function<rt::Task<>(BackProgress&)> onBack) {
         auto& h = Register<PredictiveHandler>(enabled);
         h.onBack = std::move(onBack);
         h.dispatcher = &rt::Composition::Current()->GetDispatcher();

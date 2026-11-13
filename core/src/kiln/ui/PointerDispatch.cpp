@@ -1,4 +1,5 @@
 #include "kiln/ui/LayoutNode.h"
+#include <kiln/Function.h>
 
 #include <algorithm>
 #include <cmath>
@@ -121,7 +122,7 @@ namespace kiln::ui {
     // through (ACTION_OUTSIDE). Dismissals run after the hit test, the topmost first.
     void Owner::HitTestWindow(Offset p, PointerType type, bool press, std::vector<HitEntry>& path,
                               std::vector<HitEntry>& near, float& nearDistance, std::vector<HitEntry>& ancestors) {
-        std::vector<std::function<void()>> dismissals;
+        std::vector<kiln::Function<void()>> dismissals;
         bool blocked = false;
         for (auto it = m_Popups.rbegin(); it != m_Popups.rend(); ++it) {
             PopupLayer& l = **it;
@@ -274,7 +275,7 @@ namespace kiln::ui {
                 for (auto& x : t.path) if (x.mod == e.mod) return true;
             return false;
         };
-        std::function<void(std::size_t, PointerEventPass)> down = [&](std::size_t i, PointerEventPass pass) {
+        kiln::Function<void(std::size_t, PointerEventPass)> down = [&](std::size_t i, PointerEventPass pass) {
             if (alive(tree[i].entry)) {
                 IntSize size;
                 PointerEvent ev = eventFor(tree[i], size);
@@ -282,7 +283,7 @@ namespace kiln::ui {
             }
             for (std::size_t c : tree[i].children) down(c, pass);
         };
-        std::function<void(std::size_t)> up = [&](std::size_t i) {
+        kiln::Function<void(std::size_t)> up = [&](std::size_t i) {
             for (std::size_t c : tree[i].children) up(c);
             if (alive(tree[i].entry)) {
                 IntSize size;

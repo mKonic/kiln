@@ -1,4 +1,5 @@
 #include "kiln/ui/DragAndDrop.h"
+#include <kiln/Function.h>
 
 #include "kiln/ui/LayoutNode.h"
 
@@ -40,7 +41,7 @@ namespace kiln::ui {
     template<typename F>
     void DragAndDropNode::TraverseSelfAndDescendants(F&& block) {
         bool cancelled = false;
-        std::function<void(DragAndDropNode&)> visit = [&](DragAndDropNode& n) {
+        kiln::Function<void(DragAndDropNode&)> visit = [&](DragAndDropNode& n) {
             if (cancelled) return;
             const Traverse t = block(n);
             if (t == Traverse::Cancel) { cancelled = true; return; }
@@ -50,10 +51,10 @@ namespace kiln::ui {
         visit(*this);
     }
 
-    DragAndDropNode* DragAndDropNode::FirstDescendant(const std::function<bool(DragAndDropNode&)>& predicate) {
+    DragAndDropNode* DragAndDropNode::FirstDescendant(const kiln::Function<bool(DragAndDropNode&)>& predicate) {
         if (!Attached()) return nullptr;
         DragAndDropNode* match = nullptr;
-        std::function<bool(DragAndDropNode&)> visit = [&](DragAndDropNode& n) {
+        kiln::Function<bool(DragAndDropNode&)> visit = [&](DragAndDropNode& n) {
             for (DragAndDropNode* c : n.Children()) {
                 if (predicate(*c)) { match = c; return true; }
                 if (visit(*c)) return true;
@@ -86,7 +87,7 @@ namespace kiln::ui {
         if (ui::Owner* o = OwnerOf()) o->DragAndDrop().RequestDragAndDropTransfer(*this, offset);
     }
 
-    void DragAndDropNode::StartDragAndDropTransfer(DragAndDropStartTransferScope& scope, Offset offset, const std::function<bool()>& isTransferStarted) {
+    void DragAndDropNode::StartDragAndDropTransfer(DragAndDropStartTransferScope& scope, Offset offset, const kiln::Function<bool()>& isTransferStarted) {
         const auto origin = BoundsInRoot();
         TraverseSelfAndDescendants([&](DragAndDropNode& n) {
             if (!n.Attached()) return Traverse::SkipSubtree;
@@ -215,7 +216,7 @@ namespace kiln::ui {
         struct Scope final : DragAndDropStartTransferScope {
             DragAndDropManager* m;
             bool started = false;
-            bool StartDragAndDropTransfer(const DragAndDropTransferData& data, Size size, std::function<void(DrawScope&)> draw) override {
+            bool StartDragAndDropTransfer(const DragAndDropTransferData& data, Size size, kiln::Function<void(DrawScope&)> draw) override {
                 if (!m->m_Host.startDrag) return false;
                 const int w = std::max(1, int(std::ceil(size.width))), h = std::max(1, int(std::ceil(size.height)));
                 std::vector<std::uint8_t> pixels = draw ? m->m_Owner.RenderToPixels(w, h, draw) : std::vector<std::uint8_t>{};

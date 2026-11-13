@@ -1,4 +1,5 @@
 #include "Check.h"
+#include <kiln/Function.h>
 
 #include "kiln/foundation/Compose.h"
 #include "kiln/foundation/Gestures.h"
@@ -13,7 +14,7 @@ namespace {
         Owner owner;
         rt::Composition composition{ owner.Root(), rt::Dispatcher::Main() };
         Harness() { owner.SetDensity({ 1, 1 }); }
-        void Run(std::function<void()> content) {
+        void Run(kiln::Function<void()> content) {
             composition.SetContent(std::move(content));
             composition.Recompose();
             owner.MeasureAndLayout({ 300, 300 });
@@ -155,7 +156,7 @@ TEST(ZIndexDecidesWhichSiblingCoversTheOther) {
     });
     const SemanticsNode root = h.owner.BuildSemanticsTree();
     std::vector<std::string> kept;
-    std::function<void(const SemanticsNode&)> walk = [&](const SemanticsNode& n) {
+    kiln::Function<void(const SemanticsNode&)> walk = [&](const SemanticsNode& n) {
         for (const auto& t : n.config.text) kept.push_back(t);
         for (const auto& c : n.children) walk(c);
     };

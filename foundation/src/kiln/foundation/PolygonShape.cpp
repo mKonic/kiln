@@ -1,4 +1,5 @@
 #include "kiln/foundation/PolygonShape.h"
+#include <kiln/Function.h>
 
 #include "kiln/graphics/shapes/Shapes.h"
 
@@ -387,7 +388,7 @@ namespace kiln::foundation {
 
         class MorphShape final : public gfx::Shape {
         public:
-            MorphShape(std::shared_ptr<PolygonShape> s, std::shared_ptr<PolygonShape> e, std::function<float()> p)
+            MorphShape(std::shared_ptr<PolygonShape> s, std::shared_ptr<PolygonShape> e, kiln::Function<float()> p)
                 : m_Start(std::move(s)), m_End(std::move(e)), m_Progress(std::move(p)) {}
             gfx::Outline CreateOutline(Size size, ui::LayoutDirection dir, const ui::Density& d) const override {
                 auto start = m_Start->ResolvePolygon(size, dir, d);
@@ -411,7 +412,7 @@ namespace kiln::foundation {
             }
         private:
             std::shared_ptr<PolygonShape> m_Start, m_End;
-            std::function<float()> m_Progress;
+            kiln::Function<float()> m_Progress;
             mutable std::unique_ptr<shp::Morph> m_Morph;
             mutable std::shared_ptr<const shp::RoundedPolygon> m_StartPolygon, m_EndPolygon;
             mutable std::optional<gfx::Outline> m_StartOutline, m_EndOutline, m_LastOutline;
@@ -446,7 +447,7 @@ namespace kiln::foundation {
         return std::make_shared<CornerShapePolygon>(shape.topStart, shape.topEnd, shape.bottomEnd, shape.bottomStart, cut != nullptr, absolute);
     }
 
-    ShapePtr MorphPolygonShape(std::shared_ptr<PolygonShape> start, std::shared_ptr<PolygonShape> end, std::function<float()> progress) {
+    ShapePtr MorphPolygonShape(std::shared_ptr<PolygonShape> start, std::shared_ptr<PolygonShape> end, kiln::Function<float()> progress) {
         return std::make_shared<MorphShape>(std::move(start), std::move(end), std::move(progress));
     }
 

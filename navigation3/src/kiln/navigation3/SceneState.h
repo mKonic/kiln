@@ -4,6 +4,7 @@
 // RememberNavigationEventState.kt): the scenes for the current entries.
 
 #include "kiln/navigation3/Scene.h"
+#include <kiln/Function.h>
 
 namespace kiln::navigation3 {
 
@@ -38,12 +39,12 @@ namespace kiln::navigation3 {
     template<typename T>
     SceneState<T> RememberSceneState(const NavEntries<T>& entries, const std::vector<SceneStrategyPtr<T>>& sceneStrategies,
                                      const std::vector<SceneDecoratorStrategyPtr<T>>& sceneDecoratorStrategies,
-                                     foundation::SharedTransitionScope* sharedTransitionScope, std::function<void()> onBack, rt::Key key = {}) {
+                                     foundation::SharedTransitionScope* sharedTransitionScope, kiln::Function<void()> onBack, rt::Key key = {}) {
         // Returns a value, so it is not a restartable scope of its own (like Compose).
         auto& c = *rt::Composition::Current();
         SceneState<T> result;
         {
-            auto& currentOnBack = c.Remember<std::shared_ptr<std::function<void()>>>([] { return std::make_shared<std::function<void()>>(); }, {}, key);
+            auto& currentOnBack = c.Remember<std::shared_ptr<kiln::Function<void()>>>([] { return std::make_shared<kiln::Function<void()>>(); }, {}, key);
             *currentOnBack = onBack;
             std::vector<NavEntryDecorator<T>> decorators;
             if (sharedTransitionScope) decorators.push_back(RememberSharedEntryInSceneNavEntryDecorator<T>(*sharedTransitionScope));
@@ -107,7 +108,7 @@ namespace kiln::navigation3 {
     // each.
     template<typename T>
     void NavigationBackHandler(const SceneState<T>& sceneState, foundation::NavigationEventState<SceneInfo<T>>& state,
-                               std::function<void()> onBackCancelled, std::function<void()> onBackCompleted, rt::Key key = {}) {
+                               kiln::Function<void()> onBackCancelled, kiln::Function<void()> onBackCompleted, rt::Key key = {}) {
         const std::size_t total = sceneState.entries.size(), previous = sceneState.currentScene->PreviousEntries().size();
         foundation::NavigationBackHandler(state, previous > 0, std::move(onBackCancelled), [onBackCompleted, total, previous] {
             for (std::size_t i = previous; i < total; ++i) onBackCompleted();
@@ -117,7 +118,7 @@ namespace kiln::navigation3 {
     // The deprecated form without a SharedTransitionScope.
     template<typename T>
     SceneState<T> RememberSceneState(const NavEntries<T>& entries, const std::vector<SceneStrategyPtr<T>>& sceneStrategies,
-                                     const std::vector<SceneDecoratorStrategyPtr<T>>& sceneDecoratorStrategies, std::function<void()> onBack,
+                                     const std::vector<SceneDecoratorStrategyPtr<T>>& sceneDecoratorStrategies, kiln::Function<void()> onBack,
                                      rt::Key key = {}) {
         return RememberSceneState(entries, sceneStrategies, sceneDecoratorStrategies, nullptr, std::move(onBack), key);
     }

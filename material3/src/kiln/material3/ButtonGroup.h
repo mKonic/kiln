@@ -6,6 +6,7 @@
 // connected*ButtonShapes with ConnectedSpaceBetween.
 
 #include "kiln/foundation/Arrangement.h"
+#include <kiln/Function.h>
 #include "kiln/foundation/Interaction.h"
 #include "kiln/material3/IconButton.h"
 #include "kiln/material3/ToggleButton.h"
@@ -45,12 +46,12 @@ namespace kiln::material3 {
         ui::Modifier Align(ui::Modifier m, ui::AlignmentV alignment) const;
 
         // A Button; in the overflow menu a DropdownMenuItem that also closes the menu.
-        void ClickableItem(std::function<void()> onClick, std::string label, std::function<void()> icon = {}, float weight = NAN,
+        void ClickableItem(kiln::Function<void()> onClick, std::string label, kiln::Function<void()> icon = {}, float weight = NAN,
                            bool enabled = true);
         // A ToggleButton; in the menu an item that flips it.
-        void ToggleableItem(bool checked, std::string label, std::function<void(bool)> onCheckedChange, std::function<void()> icon = {},
+        void ToggleableItem(bool checked, std::string label, kiln::Function<void(bool)> onCheckedChange, kiln::Function<void()> icon = {},
                             float weight = NAN, bool enabled = true);
-        void CustomItem(std::function<void()> buttonGroupContent, std::function<void(ButtonGroupMenuState&)> menuContent);
+        void CustomItem(kiln::Function<void()> buttonGroupContent, kiln::Function<void(ButtonGroupMenuState&)> menuContent);
 
         const std::vector<std::shared_ptr<internal::ButtonGroupItem>>& Items() const { return m_Items; }
 
@@ -92,7 +93,7 @@ namespace kiln::material3 {
         std::optional<foundation::Arrangement> horizontalArrangement;   // unset: HorizontalArrangement
         ui::AlignmentV verticalAlignment = ui::AlignmentV::Top();
     };
-    void ButtonGroup(std::function<void(ButtonGroupMenuState&)> overflowIndicator, const ui::Modifier& modifier,
-                     std::function<void(ButtonGroupScope&)> content, const ButtonGroupOptions& options = {});
+    void ButtonGroup(kiln::Function<void(ButtonGroupMenuState&)> overflowIndicator, const ui::Modifier& modifier,
+                     kiln::Function<void(ButtonGroupScope&)> content, const ButtonGroupOptions& options = {});
 
 }

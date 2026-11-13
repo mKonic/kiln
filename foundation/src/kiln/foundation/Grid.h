@@ -17,6 +17,7 @@
 // Indices are 1-based; negative ones count from the end of the explicit tracks (-1 = the last).
 
 #include "kiln/foundation/LayoutConfig.h"
+#include <kiln/Function.h>
 #include "kiln/ui/Geometry.h"
 #include "kiln/ui/Layout.h"
 #include "kiln/ui/Modifier.h"
@@ -96,7 +97,7 @@ namespace kiln::foundation {
     };
     using GridConfig = LayoutConfig<GridConfigurationScope>;
 
-    void Grid(GridConfig config, const Modifier& modifier, std::function<void()> content);
+    void Grid(GridConfig config, const Modifier& modifier, kiln::Function<void()> content);
 
     // GridScope.gridItem: a cell (1-based; 0 lets that axis auto-place), spans, and the
     // alignment inside the spanned area.

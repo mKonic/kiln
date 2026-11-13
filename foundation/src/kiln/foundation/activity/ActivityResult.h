@@ -5,6 +5,7 @@
 // and hands the parsed result to onResult, also after the activity was recreated meanwhile.
 
 #include "kiln/foundation/Compose.h"
+#include <kiln/Function.h>
 #include "kiln/runtime/Saveable.h"
 #include "kiln/ui/ActivityResult.h"
 #include "kiln/ui/Locals.h"
@@ -278,7 +279,7 @@ namespace kiln::foundation {
             ui::ActivityResultRegistry* registry = nullptr;
             std::string key;
             std::shared_ptr<const ActivityResultContract<I, O>> contract;
-            std::function<void(const O&)> onResult;
+            kiln::Function<void(const O&)> onResult;
         };
         explicit ActivityResultLauncher(std::shared_ptr<Shared> s) : m_Shared(std::move(s)) {}
         // launch: a synchronous result is posted; otherwise the host starts the intent.
@@ -304,7 +305,7 @@ namespace kiln::foundation {
     // rememberLauncherForActivityResult.
     template<typename I, typename O>
     ActivityResultLauncher<I, O> RememberLauncherForActivityResult(std::shared_ptr<const ActivityResultContract<I, O>> contract,
-                                                                   std::function<void(const O&)> onResult, rt::Key key = {}) {
+                                                                   kiln::Function<void(const O&)> onResult, rt::Key key = {}) {
         auto* c = rt::Composition::Current();
         // rememberSaveable { UUID.randomUUID().toString() }
         const std::string& launcherKey = rt::RememberSaveable<std::string>([] {
@@ -328,7 +329,7 @@ namespace kiln::foundation {
             registry->Register(launcherKey, [shared](const ActivityResult& r) {
                 if (shared->onResult) shared->onResult(shared->contract->ParseResult(r.resultCode, r.data));
             });
-            return std::function<void()>([registry, launcherKey] { registry->Unregister(launcherKey); });
+            return kiln::Function<void()>([registry, launcherKey] { registry->Unregister(launcherKey); });
         }, key);
         return ActivityResultLauncher<I, O>(shared);
     }

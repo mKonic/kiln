@@ -5,6 +5,7 @@
 // unless a colour filter is given, and composited as one image with the alpha.
 
 #include "kiln/foundation/Image.h"
+#include <kiln/Function.h>
 #include "kiln/graphics/vector/ImageVector.h"
 
 namespace kiln::foundation {
@@ -44,7 +45,7 @@ namespace kiln::foundation {
     // what it built changed. An unset (NaN) viewport is the default size in px.
     std::shared_ptr<VectorPainter> RememberVectorPainter(ui::Dp defaultWidth, ui::Dp defaultHeight, float viewportWidth, float viewportHeight,
                                                          std::string name, ui::Color tintColor, gfx::BlendMode tintBlendMode, bool autoMirror,
-                                                         const std::function<void(gfx::vector::ImageVector::Builder&, float viewportWidth, float viewportHeight)>& content,
+                                                         const kiln::Function<void(gfx::vector::ImageVector::Builder&, float viewportWidth, float viewportHeight)>& content,
                                                          rt::Key key = {});
 
 }

@@ -11,6 +11,7 @@
 // subcomposition has no slot reuse).
 
 #include "kiln/foundation/Subcompose.h"
+#include <kiln/Function.h>
 #include "kiln/runtime/Composition.h"
 #include "kiln/runtime/State.h"
 #include "kiln/ui/Locals.h"
@@ -82,8 +83,8 @@ namespace kiln::foundation {
     // LazyLayoutIntervalContent.Interval: an interval's keys and content types by local index
     // (content type 0: none).
     struct LazyLayoutInterval {
-        std::function<rt::Key(int)> key;
-        std::function<std::size_t(int)> type;
+        kiln::Function<rt::Key(int)> key;
+        kiln::Function<std::size_t(int)> type;
     };
 
     // LazyLayoutIntervalContent: items described by intervals.
@@ -159,7 +160,7 @@ namespace kiln::foundation {
         // measure(index, constraints): compose(index), each measured (cached per measure).
         virtual const std::vector<ui::Placeable*>& Measure(int index, const Constraints& constraints) = 0;
     };
-    using LazyLayoutMeasurePolicy = std::function<MeasureResult(LazyLayoutMeasureScope&, const Constraints&)>;
+    using LazyLayoutMeasurePolicy = kiln::Function<MeasureResult(LazyLayoutMeasureScope&, const Constraints&)>;
 
     // LazyLayoutPrefetchState: items composed (and measured) ahead of being needed. A handle
     // cancels its request; precomposed items are kept until a measure composes them or the
@@ -191,29 +192,29 @@ namespace kiln::foundation {
         };
 
         LazyLayoutPrefetchState() = default;
-        explicit LazyLayoutPrefetchState(std::function<void(NestedPrefetchScope&)> onNestedPrefetch) : m_OnNestedPrefetch(std::move(onNestedPrefetch)) {}
+        explicit LazyLayoutPrefetchState(kiln::Function<void(NestedPrefetchScope&)> onNestedPrefetch) : m_OnNestedPrefetch(std::move(onNestedPrefetch)) {}
 
         PrefetchHandle SchedulePrecomposition(int index);
         PrefetchHandle SchedulePrecompositionAndPremeasure(int index, Constraints constraints,
-                                                           std::function<void(const PrefetchResultScope&)> onItemPremeasured = {});
+                                                           kiln::Function<void(const PrefetchResultScope&)> onItemPremeasured = {});
         // collectNestedPrefetchRequests: what onNestedPrefetch asks for.
         std::vector<std::pair<int, std::optional<Constraints>>> CollectNestedPrefetchRequests() const;
 
         // internal: the LazyLayout it serves.
         struct Target {
             SubcomposeLayoutState* subcompose = nullptr;
-            std::function<LazyLayoutItemProviderPtr()> provider;
-            std::function<std::shared_ptr<const std::function<void()>>(int index, const rt::Key& key)> content;
+            kiln::Function<LazyLayoutItemProviderPtr()> provider;
+            kiln::Function<std::shared_ptr<const kiln::Function<void()>>(int index, const rt::Key& key)> content;
         };
         void SetTarget(std::optional<Target> t) { m_Target = std::move(t); }
 
     private:
         std::optional<Target> m_Target;
-        std::function<void(NestedPrefetchScope&)> m_OnNestedPrefetch;
+        kiln::Function<void(NestedPrefetchScope&)> m_OnNestedPrefetch;
     };
 
     // LazyLayout(itemProvider, modifier, prefetchState, measurePolicy).
-    void LazyLayout(std::function<LazyLayoutItemProviderPtr()> itemProvider, const Modifier& modifier, LazyLayoutPrefetchState* prefetchState,
+    void LazyLayout(kiln::Function<LazyLayoutItemProviderPtr()> itemProvider, const Modifier& modifier, LazyLayoutPrefetchState* prefetchState,
                     LazyLayoutMeasurePolicy measurePolicy, rt::Key key = {});
 
     // LazyLayoutPinnedItemList: the items of a lazy layout that content pinned (a focused field
@@ -237,7 +238,7 @@ namespace kiln::foundation {
 
     // LazyLayoutPinnableItem: the pinnable container around an item's content; pinning it puts
     // the item in `pinnedItemList` (and pins the container around the layout).
-    void LazyLayoutPinnableItem(const rt::Key& key, int index, LazyLayoutPinnedItemList& pinnedItemList, std::function<void()> content);
+    void LazyLayoutPinnableItem(const rt::Key& key, int index, LazyLayoutPinnedItemList& pinnedItemList, kiln::Function<void()> content);
 
     // LazyLayoutCacheWindow: how far beyond the viewport (ahead of and behind the scroll) a lazy
     // layout keeps items composed.

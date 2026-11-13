@@ -6,6 +6,7 @@
 // and snaps along one.
 
 #include "kiln/animation/Animatable.h"
+#include <kiln/Function.h>
 #include "kiln/foundation/Compose.h"
 #include "kiln/ui/LayoutNode.h"
 
@@ -17,9 +18,9 @@ namespace kiln::foundation {
 
     struct MagnifierParams {
         // sourceCenter / magnifierCenter in the node's space; NaN hides / uses the default.
-        std::function<Offset(const ui::Density&)> sourceCenter;
-        std::function<Offset(const ui::Density&)> magnifierCenter;
-        std::function<void(ui::Size dpSize)> onSizeChanged;
+        kiln::Function<Offset(const ui::Density&)> sourceCenter;
+        kiln::Function<Offset(const ui::Density&)> magnifierCenter;
+        kiln::Function<void(ui::Size dpSize)> onSizeChanged;
         float zoom = NAN;
         bool useTextDefault = false;
         Dp width = Dp::Unspecified(), height = Dp::Unspecified(), cornerRadius = Dp::Unspecified(), elevation = Dp::Unspecified();
@@ -59,7 +60,7 @@ namespace kiln::foundation {
         ~SelectionMagnifier();
         // From the host node's draw: `center` (in the node's space, NaN: hidden) for the
         // magnifier's size.
-        void Update(const std::function<Offset(ui::IntSize magnifierSize)>& center, ui::Owner* owner, Offset anchorInRoot, const ui::Density& density);
+        void Update(const kiln::Function<Offset(ui::IntSize magnifierSize)>& center, ui::Owner* owner, Offset anchorInRoot, const ui::Density& density);
         void Detach();
     private:
         anim::Animatable m_Center;

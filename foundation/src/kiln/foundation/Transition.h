@@ -7,6 +7,7 @@
 // InfiniteTransition runs repeatable specs on a free clock.
 
 #include "kiln/animation/Animatable.h"
+#include <kiln/Function.h>
 #include "kiln/foundation/Animate.h"
 #include "kiln/foundation/MutatorMutex.h"
 #include "kiln/animation/Spec.h"
@@ -140,7 +141,7 @@ namespace kiln::foundation {
         const TransitionCore& Core() const { return m_Parent ? *m_Parent : m_Core; }
 
         // createChildTransition: states come from the parent each composition, no clock of its own.
-        void AttachToParent(TransitionCore& parent, std::function<bool()> parentSnap) {
+        void AttachToParent(TransitionCore& parent, kiln::Function<bool()> parentSnap) {
             m_Parent = &parent;
             m_ParentSnap = std::move(parentSnap);
         }
@@ -181,12 +182,12 @@ namespace kiln::foundation {
         bool m_Deferred = false;
         TransitionCore m_Core;
         TransitionCore* m_Parent = nullptr;
-        std::function<bool()> m_ParentSnap;
+        kiln::Function<bool()> m_ParentSnap;
         bool m_SnapNext = false;
     };
 
     namespace detail {
-        rt::Task<> DriveTransition(TransitionCore& core, std::function<void()> onFinished);
+        rt::Task<> DriveTransition(TransitionCore& core, kiln::Function<void()> onFinished);
     }
 
     // updateTransition(targetState)
@@ -244,7 +245,7 @@ namespace kiln::foundation {
         // Retargets `child` to `target` (or restarts it from a new forced value).
         template<typename S>
         void UpdateChildTarget(Transition<S>& t, TransitionCore::Child& child, const anim::Vec& target,
-                               const std::function<anim::SpecPtr(const typename Transition<S>::Segment&)>& specFor,
+                               const kiln::Function<anim::SpecPtr(const typename Transition<S>::Segment&)>& specFor,
                                std::optional<anim::Vec> forcedInitial, std::optional<anim::Vec> forcedVelocity) {
             const bool newForced = forcedInitial && !(child.forcedFrom == forcedInitial);
             if (!forcedInitial) child.forcedFrom.reset();
@@ -263,8 +264,8 @@ namespace kiln::foundation {
         // changes (DeferredAnimation.animate's forcedInitialValue).
         // AnimateChildRef: the child animation itself, its value not read here (a State).
         template<typename S>
-        TransitionCore::Child& AnimateChildRef(Transition<S>& t, int dims, const std::function<anim::Vec(const S&)>& valueOf,
-                                               const std::function<anim::SpecPtr(const typename Transition<S>::Segment&)>& specFor, rt::Key key,
+        TransitionCore::Child& AnimateChildRef(Transition<S>& t, int dims, const kiln::Function<anim::Vec(const S&)>& valueOf,
+                                               const kiln::Function<anim::SpecPtr(const typename Transition<S>::Segment&)>& specFor, rt::Key key,
                                                std::optional<anim::Vec> forcedInitial = std::nullopt, std::optional<anim::Vec> forcedVelocity = std::nullopt) {
             auto& c = *rt::Composition::Current();
             const anim::Vec initial = valueOf(t.CurrentState());
@@ -273,7 +274,7 @@ namespace kiln::foundation {
             auto* cp = &child;
             c.DisposableEffect(rt::Keys(reinterpret_cast<std::uintptr_t>(core)), [core, cp] {
                 core->Add(cp);
-                return std::function<void()>([core, cp] { core->Remove(cp); });
+                return kiln::Function<void()>([core, cp] { core->Remove(cp); });
             }, key);
             const anim::Vec target = valueOf(t.TargetState());
             // A seeking transition (SeekableTransitionState) is a function of its play time from
@@ -292,8 +293,8 @@ namespace kiln::foundation {
         }
 
         template<typename S>
-        const anim::Vec& AnimateChild(Transition<S>& t, int dims, const std::function<anim::Vec(const S&)>& valueOf,
-                                      const std::function<anim::SpecPtr(const typename Transition<S>::Segment&)>& specFor, rt::Key key,
+        const anim::Vec& AnimateChild(Transition<S>& t, int dims, const kiln::Function<anim::Vec(const S&)>& valueOf,
+                                      const kiln::Function<anim::SpecPtr(const typename Transition<S>::Segment&)>& specFor, rt::Key key,
                                       std::optional<anim::Vec> forcedInitial = std::nullopt, std::optional<anim::Vec> forcedVelocity = std::nullopt) {
             return AnimateChildRef<S>(t, dims, valueOf, specFor, key, forcedInitial, forcedVelocity).value.Get();
         }
@@ -323,8 +324,8 @@ namespace kiln::foundation {
     template<typename S>
     class DeferredAnimation {
     public:
-        using SpecFor = std::function<anim::SpecPtr(const typename Transition<S>::Segment&)>;
-        using ValueOf = std::function<anim::Vec(const S&)>;
+        using SpecFor = kiln::Function<anim::SpecPtr(const typename Transition<S>::Segment&)>;
+        using ValueOf = kiln::Function<anim::Vec(const S&)>;
         DeferredAnimation(Transition<S>& t, int dims) : m_Transition(&t), m_Dims(dims) {}
         ~DeferredAnimation() { Detach(); }
         // Leaves the transition's clock (its composition left; see CreateDeferredAnimation).
@@ -379,18 +380,18 @@ namespace kiln::foundation {
         // Leave the clock while the transition is still there (the slots may outlive it).
         std::weak_ptr<DeferredAnimation<S>> w = a;
         c.DisposableEffect(rt::Keys(reinterpret_cast<std::uintptr_t>(a.get())), [w] {
-            return std::function<void()>([w] { if (auto p = w.lock()) p->Detach(); });
+            return kiln::Function<void()>([w] { if (auto p = w.lock()) p->Detach(); });
         }, key);
         return *a;
     }
 
-    using SegmentSpec = std::function<anim::SpecPtr()>;
+    using SegmentSpec = kiln::Function<anim::SpecPtr()>;
 
     // Transition.createChildTransition(transformToChildState): a transition over a derived
     // state. Its animations are part of the parent's: they share its clock, count towards its
     // running state and duration, and snap with it.
     template<typename T, typename S>
-    Transition<T>& CreateChildTransition(Transition<S>& parent, std::function<T(const S&)> transform, rt::Key key = {}) {
+    Transition<T>& CreateChildTransition(Transition<S>& parent, kiln::Function<T(const S&)> transform, rt::Key key = {}) {
         auto& c = *rt::Composition::Current();
         auto& child = c.RememberNew<Transition<T>>({}, key, transform(parent.CurrentState()));
         auto* pp = &parent;
@@ -404,62 +405,62 @@ namespace kiln::foundation {
 
     // Transition.animateValue(typeConverter, transitionSpec, targetValueByState)
     template<typename T, typename S>
-    T AnimateValue(Transition<S>& t, const VectorConverter<T>& converter, std::function<T(const S&)> valueOf,
-                   std::function<anim::SpecPtr(const typename Transition<S>::Segment&)> spec = {}, rt::Key key = {}) {
+    T AnimateValue(Transition<S>& t, const VectorConverter<T>& converter, kiln::Function<T(const S&)> valueOf,
+                   kiln::Function<anim::SpecPtr(const typename Transition<S>::Segment&)> spec = {}, rt::Key key = {}) {
         return converter.fromVector(detail::AnimateChild<S>(t, converter.dims, [&](const S& s) { return converter.toVector(valueOf(s)); }, spec, key));
     }
     template<typename S>
-    ui::Dp AnimateDp(Transition<S>& t, std::function<ui::Dp(const S&)> valueOf,
-                     std::function<anim::SpecPtr(const typename Transition<S>::Segment&)> spec = {}, rt::Key key = {}) {
+    ui::Dp AnimateDp(Transition<S>& t, kiln::Function<ui::Dp(const S&)> valueOf,
+                     kiln::Function<anim::SpecPtr(const typename Transition<S>::Segment&)> spec = {}, rt::Key key = {}) {
         return AnimateValue<ui::Dp, S>(t, converters::Dp(), std::move(valueOf), std::move(spec), key);
     }
     template<typename S>
-    ui::Offset AnimateOffset(Transition<S>& t, std::function<ui::Offset(const S&)> valueOf,
-                             std::function<anim::SpecPtr(const typename Transition<S>::Segment&)> spec = {}, rt::Key key = {}) {
+    ui::Offset AnimateOffset(Transition<S>& t, kiln::Function<ui::Offset(const S&)> valueOf,
+                             kiln::Function<anim::SpecPtr(const typename Transition<S>::Segment&)> spec = {}, rt::Key key = {}) {
         return AnimateValue<ui::Offset, S>(t, converters::Offset(), std::move(valueOf), std::move(spec), key);
     }
     template<typename S>
-    ui::Size AnimateSize(Transition<S>& t, std::function<ui::Size(const S&)> valueOf,
-                         std::function<anim::SpecPtr(const typename Transition<S>::Segment&)> spec = {}, rt::Key key = {}) {
+    ui::Size AnimateSize(Transition<S>& t, kiln::Function<ui::Size(const S&)> valueOf,
+                         kiln::Function<anim::SpecPtr(const typename Transition<S>::Segment&)> spec = {}, rt::Key key = {}) {
         return AnimateValue<ui::Size, S>(t, converters::Size(), std::move(valueOf), std::move(spec), key);
     }
     template<typename S>
-    ui::Rect AnimateRect(Transition<S>& t, std::function<ui::Rect(const S&)> valueOf,
-                         std::function<anim::SpecPtr(const typename Transition<S>::Segment&)> spec = {}, rt::Key key = {}) {
+    ui::Rect AnimateRect(Transition<S>& t, kiln::Function<ui::Rect(const S&)> valueOf,
+                         kiln::Function<anim::SpecPtr(const typename Transition<S>::Segment&)> spec = {}, rt::Key key = {}) {
         return AnimateValue<ui::Rect, S>(t, converters::Rect(), std::move(valueOf), std::move(spec), key);
     }
     template<typename S>
-    int AnimateInt(Transition<S>& t, std::function<int(const S&)> valueOf,
-                   std::function<anim::SpecPtr(const typename Transition<S>::Segment&)> spec = {}, rt::Key key = {}) {
+    int AnimateInt(Transition<S>& t, kiln::Function<int(const S&)> valueOf,
+                   kiln::Function<anim::SpecPtr(const typename Transition<S>::Segment&)> spec = {}, rt::Key key = {}) {
         return AnimateValue<int, S>(t, converters::Int(), std::move(valueOf), std::move(spec), key);
     }
     template<typename S>
-    ui::IntOffset AnimateIntOffset(Transition<S>& t, std::function<ui::IntOffset(const S&)> valueOf,
-                                   std::function<anim::SpecPtr(const typename Transition<S>::Segment&)> spec = {}, rt::Key key = {}) {
+    ui::IntOffset AnimateIntOffset(Transition<S>& t, kiln::Function<ui::IntOffset(const S&)> valueOf,
+                                   kiln::Function<anim::SpecPtr(const typename Transition<S>::Segment&)> spec = {}, rt::Key key = {}) {
         return AnimateValue<ui::IntOffset, S>(t, converters::IntOffset(), std::move(valueOf), std::move(spec), key);
     }
     template<typename S>
-    ui::IntSize AnimateIntSize(Transition<S>& t, std::function<ui::IntSize(const S&)> valueOf,
-                               std::function<anim::SpecPtr(const typename Transition<S>::Segment&)> spec = {}, rt::Key key = {}) {
+    ui::IntSize AnimateIntSize(Transition<S>& t, kiln::Function<ui::IntSize(const S&)> valueOf,
+                               kiln::Function<anim::SpecPtr(const typename Transition<S>::Segment&)> spec = {}, rt::Key key = {}) {
         return AnimateValue<ui::IntSize, S>(t, converters::IntSize(), std::move(valueOf), std::move(spec), key);
     }
 
     // forcedInitial / forcedVelocity: see detail::AnimateChild.
     template<typename S>
-    float AnimateFloat(Transition<S>& t, std::function<float(const S&)> valueOf,
-                       std::function<anim::SpecPtr(const typename Transition<S>::Segment&)> spec = {}, rt::Key key = {},
+    float AnimateFloat(Transition<S>& t, kiln::Function<float(const S&)> valueOf,
+                       kiln::Function<anim::SpecPtr(const typename Transition<S>::Segment&)> spec = {}, rt::Key key = {},
                        std::optional<anim::Vec> forcedInitial = std::nullopt, std::optional<anim::Vec> forcedVelocity = std::nullopt) {
         return detail::AnimateChild<S>(t, 1, [&](const S& s) { return anim::Vec{ valueOf(s), 0, 0, 0 }; }, spec, key, forcedInitial, forcedVelocity)[0];
     }
 
     template<typename S>
-    AnimatedFloat AnimateFloatState(Transition<S>& t, std::function<float(const S&)> valueOf,
-                                    std::function<anim::SpecPtr(const typename Transition<S>::Segment&)> spec = {}, rt::Key key = {}) {
+    AnimatedFloat AnimateFloatState(Transition<S>& t, kiln::Function<float(const S&)> valueOf,
+                                    kiln::Function<anim::SpecPtr(const typename Transition<S>::Segment&)> spec = {}, rt::Key key = {}) {
         return { &detail::AnimateChildRef<S>(t, 1, [&](const S& s) { return anim::Vec{ valueOf(s), 0, 0, 0 }; }, spec, key) };
     }
     template<typename S>
-    AnimatedColor AnimateColorState(Transition<S>& t, std::function<ui::Color(const S&)> valueOf,
-                                    std::function<anim::SpecPtr(const typename Transition<S>::Segment&)> spec = {}, rt::Key key = {}) {
+    AnimatedColor AnimateColorState(Transition<S>& t, kiln::Function<ui::Color(const S&)> valueOf,
+                                    kiln::Function<anim::SpecPtr(const typename Transition<S>::Segment&)> spec = {}, rt::Key key = {}) {
         return { &detail::AnimateChildRef<S>(t, 4, [&](const S& s) {
             const auto lab = ui::ToOklab(valueOf(s));
             return anim::Vec{ lab[0], lab[1], lab[2], lab[3] };
@@ -468,8 +469,8 @@ namespace kiln::foundation {
 
     // Colours interpolate in Oklab (ColorVectorConverter).
     template<typename S>
-    ui::Color AnimateColor(Transition<S>& t, std::function<ui::Color(const S&)> valueOf,
-                           std::function<anim::SpecPtr(const typename Transition<S>::Segment&)> spec = {}, rt::Key key = {}) {
+    ui::Color AnimateColor(Transition<S>& t, kiln::Function<ui::Color(const S&)> valueOf,
+                           kiln::Function<anim::SpecPtr(const typename Transition<S>::Segment&)> spec = {}, rt::Key key = {}) {
         const anim::Vec v = detail::AnimateChild<S>(t, 4, [&](const S& s) {
             const auto lab = ui::ToOklab(valueOf(s));
             return anim::Vec{ lab[0], lab[1], lab[2], lab[3] };

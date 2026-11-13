@@ -10,6 +10,7 @@
 //    placement; updateTarget starts (or retargets) it and returns the value to use now.
 
 #include "kiln/animation/Animatable.h"
+#include <kiln/Function.h>
 #include "kiln/animation/Decay.h"
 #include "kiln/animation/Spec.h"
 #include "kiln/runtime/State.h"
@@ -116,14 +117,14 @@ namespace kiln::anim {
     // AnimationState.animateTo(targetValue, animationSpec, sequentialAnimation, block): from the
     // state's value (and velocity, unless sequentialAnimation keeps the last one), frame by frame.
     rt::Task<> AnimateTo(AnimationState& state, Vec targetValue, SpecPtr spec = Spring(), bool sequentialAnimation = false,
-                         std::function<void(AnimationScope&)> block = {});
+                         kiln::Function<void(AnimationScope&)> block = {});
     inline rt::Task<> AnimateTo(AnimationState& state, float targetValue, SpecPtr spec = Spring(), bool sequentialAnimation = false,
-                                std::function<void(AnimationScope&)> block = {}) {
+                                kiln::Function<void(AnimationScope&)> block = {}) {
         return AnimateTo(state, Vec{ targetValue }, std::move(spec), sequentialAnimation, std::move(block));
     }
     // AnimationState.animateDecay(animationSpec, sequentialAnimation, block): from its value and velocity.
     rt::Task<> AnimateDecay(AnimationState& state, std::shared_ptr<const DecaySpec> decay, bool sequentialAnimation = false,
-                            std::function<void(AnimationScope&)> block = {});
+                            kiln::Function<void(AnimationScope&)> block = {});
     // calculateTargetValue(initialValue, initialVelocity): where a decay ends.
     inline float CalculateTargetValue(const DecaySpec& decay, float initialValue, float initialVelocity) { return decay.TargetValue(initialValue, initialVelocity); }
 
@@ -133,7 +134,7 @@ namespace kiln::anim {
     class InfiniteAnimationPolicy {
     public:
         virtual ~InfiniteAnimationPolicy() = default;
-        virtual rt::Task<std::int64_t> OnInfiniteOperation(std::function<rt::Task<std::int64_t>()> block) = 0;
+        virtual rt::Task<std::int64_t> OnInfiniteOperation(kiln::Function<rt::Task<std::int64_t>()> block) = 0;
     };
     void SetInfiniteAnimationPolicy(InfiniteAnimationPolicy* policy);
     InfiniteAnimationPolicy* CurrentInfiniteAnimationPolicy();

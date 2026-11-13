@@ -5,6 +5,7 @@
 // filled, laid out inside the container (filled) or with the label in the outline's cutout.
 
 #include "kiln/foundation/Interaction.h"
+#include <kiln/Function.h>
 #include "kiln/foundation/Layouts.h"
 #include "kiln/material3/TextFieldColors.h"
 
@@ -15,14 +16,14 @@
 namespace kiln::material3::internal {
 
     struct DecorationBoxSlots {
-        std::function<void(const TextFieldLabelScope&)> label;
-        std::function<void()> placeholder, leadingIcon, trailingIcon, prefix, suffix, supportingText;
+        kiln::Function<void(const TextFieldLabelScope&)> label;
+        kiln::Function<void()> placeholder, leadingIcon, trailingIcon, prefix, suffix, supportingText;
     };
 
-    void CommonDecorationBox(const std::string& visualText, const std::function<void()>& innerTextField, const TextFieldLabelPosition& labelPosition,
+    void CommonDecorationBox(const std::string& visualText, const kiln::Function<void()>& innerTextField, const TextFieldLabelPosition& labelPosition,
                              const DecorationBoxSlots& slots, bool singleLine, bool enabled, bool isError,
                              std::shared_ptr<foundation::MutableInteractionSource> interactionSource, const foundation::PaddingValues& contentPadding,
-                             const TextFieldColors& colors, const std::function<void()>& container);
+                             const TextFieldColors& colors, const kiln::Function<void()>& container);
 
     // textFieldHorizontalIconPadding: the space an icon's touch target leaves around its 24 dp glyph.
     ui::Dp TextFieldHorizontalIconPadding();

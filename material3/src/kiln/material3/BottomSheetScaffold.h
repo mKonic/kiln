@@ -6,6 +6,7 @@
 // over the body, and the snackbar host rides just above the peeking sheet.
 
 #include "kiln/foundation/Layouts.h"
+#include <kiln/Function.h>
 #include "kiln/foundation/Shapes.h"
 #include "kiln/material3/SheetState.h"
 #include "kiln/material3/Snackbar.h"
@@ -30,7 +31,7 @@ namespace kiln::material3 {
     // rememberStandardBottomSheetState (deprecated in Compose): with the legacy rule that drops
     // the partially expanded state when the sheet is shorter than half the screen.
     std::shared_ptr<SheetState> RememberStandardBottomSheetState(SheetValue initialValue = SheetValue::PartiallyExpanded,
-                                                                 std::function<bool(SheetValue)> confirmValueChange = {},
+                                                                 kiln::Function<bool(SheetValue)> confirmValueChange = {},
                                                                  bool skipHiddenState = true, rt::Key key = {});
 
     struct BottomSheetScaffoldOptions {
@@ -41,15 +42,15 @@ namespace kiln::material3 {
         std::optional<ui::Color> sheetContainerColor, sheetContentColor;
         ui::Dp sheetTonalElevation{ 0 };
         std::optional<ui::Dp> sheetShadowElevation;                // unset: BottomSheetDefaults::Elevation
-        std::function<void()> sheetDragHandle = [] { BottomSheetDefaults::DragHandle(); };   // null: none
+        kiln::Function<void()> sheetDragHandle = [] { BottomSheetDefaults::DragHandle(); };   // null: none
         bool sheetSwipeEnabled = true;
-        std::function<void()> topBar;
-        std::function<void(SnackbarHostState&)> snackbarHost;      // null: SnackbarHost
+        kiln::Function<void()> topBar;
+        kiln::Function<void(SnackbarHostState&)> snackbarHost;      // null: SnackbarHost
         std::optional<ui::Color> containerColor, contentColor;     // unset: surface, and its content colour
     };
 
     // `content` gets the bottom padding the peeking sheet covers.
-    void BottomSheetScaffold(std::function<void()> sheetContent, const ui::Modifier& modifier, const BottomSheetScaffoldOptions& options,
-                             std::function<void(const foundation::PaddingValues&)> content);
+    void BottomSheetScaffold(kiln::Function<void()> sheetContent, const ui::Modifier& modifier, const BottomSheetScaffoldOptions& options,
+                             kiln::Function<void(const foundation::PaddingValues&)> content);
 
 }

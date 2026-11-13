@@ -6,6 +6,7 @@
 // ThreePaneScaffoldValue.kt (which of the three panes show, by the destination history).
 
 #include "kiln/material3/adaptive/WindowAdaptiveInfo.h"
+#include <kiln/Function.h>
 #include "kiln/ui/Geometry.h"
 
 #include <cstdint>
@@ -55,7 +56,7 @@ namespace kiln::material3::adaptive {
 
     class DragToResizeState;
     // A levitated pane's scrim (identity matters: the same function object is the same scrim).
-    using ScrimContent = std::shared_ptr<const std::function<void()>>;
+    using ScrimContent = std::shared_ptr<const kiln::Function<void()>>;
 
     // AdaptStrategy: what a pane does when it does not fit: Hide, Reflow (below another pane,
     // when panes stack), or Levitate (over the others, at an alignment, with a scrim; resizable
@@ -149,7 +150,7 @@ namespace kiln::material3::adaptive {
         // isInteractable: a hidden pane is not; a levitated one is; the rest are unless a pane
         // levitates with a scrim.
         bool IsInteractable(ThreePaneScaffoldRole role) const;
-        void ForEach(const std::function<void(ThreePaneScaffoldRole, const PaneAdaptedValue&)>& action) const {
+        void ForEach(const kiln::Function<void(ThreePaneScaffoldRole, const PaneAdaptedValue&)>& action) const {
             action(ThreePaneScaffoldRole::Primary, primary);
             action(ThreePaneScaffoldRole::Secondary, secondary);
             action(ThreePaneScaffoldRole::Tertiary, tertiary);

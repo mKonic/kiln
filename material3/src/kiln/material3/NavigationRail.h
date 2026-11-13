@@ -5,6 +5,7 @@
 // fades in when selected, with the label shown always or only while selected.
 
 #include "kiln/foundation/Insets.h"
+#include <kiln/Function.h>
 #include "kiln/foundation/Interaction.h"
 #include "kiln/foundation/Layouts.h"
 
@@ -46,21 +47,21 @@ namespace kiln::material3 {
     struct NavigationRailOptions {
         std::optional<ui::Color> containerColor;   // unset: NavigationRailDefaults::ContainerColor
         std::optional<ui::Color> contentColor;     // unset: contentColorFor(containerColor)
-        std::function<void()> header;              // a FAB or a logo, 8 dp above the items
+        kiln::Function<void()> header;              // a FAB or a logo, 8 dp above the items
         std::optional<foundation::WindowInsets> windowInsets;   // unset: NavigationRailDefaults
     };
     // A full-height column at least 80 dp wide, items centred and 4 dp apart.
-    void NavigationRail(const ui::Modifier& modifier, const NavigationRailOptions& options, std::function<void()> content);
+    void NavigationRail(const ui::Modifier& modifier, const NavigationRailOptions& options, kiln::Function<void()> content);
 
     struct NavigationRailItemOptions {
         bool enabled = true;
-        std::function<void()> label;
+        kiln::Function<void()> label;
         bool alwaysShowLabel = true;               // false: the label shows only while selected
         std::optional<NavigationRailItemColors> colors;
         std::shared_ptr<foundation::MutableInteractionSource> interactionSource;
     };
     // An item of a NavigationRail, at least 80 dp wide and 56 dp tall.
-    void NavigationRailItem(bool selected, std::function<void()> onClick, std::function<void()> icon, const ui::Modifier& modifier,
+    void NavigationRailItem(bool selected, kiln::Function<void()> onClick, kiln::Function<void()> icon, const ui::Modifier& modifier,
                             const NavigationRailItemOptions& options);
 
     namespace internal {

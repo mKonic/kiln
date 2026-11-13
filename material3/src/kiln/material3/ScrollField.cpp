@@ -1,4 +1,5 @@
 #include "kiln/material3/ScrollField.h"
+#include <kiln/Function.h>
 
 #include "kiln/foundation/Animate.h"
 #include "kiln/foundation/Compose.h"
@@ -89,8 +90,8 @@ namespace kiln::material3 {
         const bool enabled = options.enabled;
         const std::string locale = ui::PlatformLocale();
         auto describe = options.fieldAccessibilityDescription ? options.fieldAccessibilityDescription
-                                                              : std::function<std::string(int)>([locale](int i) { return internal::ToLocalString(i, locale); });
-        auto field = options.field ? options.field : std::function<void(int, bool, bool)>([colors](int i, bool selected, bool enabled) {
+                                                              : kiln::Function<std::string(int)>([locale](int i) { return internal::ToLocalString(i, locale); });
+        auto field = options.field ? options.field : kiln::Function<void(int, bool, bool)>([colors](int i, bool selected, bool enabled) {
             ScrollFieldDefaults::Item(i, selected, enabled, colors);
         });
         ScrollFieldState* st = &state;

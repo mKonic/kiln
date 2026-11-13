@@ -1,4 +1,5 @@
 #include "Check.h"
+#include <kiln/Function.h>
 
 #include "kiln/foundation/Compose.h"
 #include "kiln/material3/MaterialTheme.h"
@@ -20,7 +21,7 @@ namespace {
         ui::IntSize window;
         std::int64_t frameNanos = 0;
         explicit Harness(ui::IntSize size = { 900, 600 }) : window(size) { owner.SetDensity({ 1, 1 }); }
-        void Run(std::function<void()> content) {
+        void Run(kiln::Function<void()> content) {
             composition.SetContent([this, content = std::move(content)] {
                 rt::Composition::Current()->Provide(ui::LocalDensity, owner.GetDensity(), content);
             });

@@ -3,6 +3,7 @@
 // "component/<id>" or "example/<id>/<index>" (debug.kiln.catalog.route on Android,
 // KILN_CATALOG_ROUTE on the host).
 #include <kiln/kiln.hpp>
+#include <kiln/Function.h>
 
 #include "Catalog.h"
 #include "ComponentPreviews.h"
@@ -119,7 +120,7 @@ namespace catalog {
         }
 
         // CatalogTopAppBar's external links menu. The links open nothing here: kiln has no browser intent yet.
-        void MoreMenu(bool expanded, std::function<void()> onDismissRequest) {
+        void MoreMenu(bool expanded, kiln::Function<void()> onDismissRequest) {
             m3::DropdownMenu(expanded, onDismissRequest, {}, {}, [=] {
                 const auto item = [&](const char* text) {
                     m3::DropdownMenuItem([=] { m3::Text(text); }, onDismissRequest, {}, {});
@@ -138,12 +139,12 @@ namespace catalog {
 
         struct ScaffoldArgs {
             std::string title;
-            std::function<void()> topBarBottomContent;
+            kiln::Function<void()> topBarBottomContent;
             std::shared_ptr<m3::TopAppBarScrollBehavior> scrollBehavior;
             bool showBackNavigationIcon = false;
-            std::function<void()> onBackClick;
+            kiln::Function<void()> onBackClick;
             bool favorite = false;
-            std::function<void()> onFavoriteClick;
+            kiln::Function<void()> onFavoriteClick;
         };
 
         void CatalogTopAppBar(const ScaffoldArgs& a) {
@@ -179,7 +180,7 @@ namespace catalog {
         }
 
         // CatalogScaffold: the top bar (and what goes under it) over the content.
-        void CatalogScaffold(const ScaffoldArgs& a, std::function<void(const PaddingValues&)> content) {
+        void CatalogScaffold(const ScaffoldArgs& a, kiln::Function<void(const PaddingValues&)> content) {
             m3::ScaffoldOptions o;
             o.topBar = [a] {
                 Column({}, Arrangement::Top(), AlignmentH::Start(), [a] {
@@ -251,7 +252,7 @@ namespace catalog {
             return cache;
         }
 
-        void ComponentPreviewBox(const std::string& name, const std::function<void()>& preview) {
+        void ComponentPreviewBox(const std::string& name, const kiln::Function<void()>& preview) {
             auto& c = *kiln::rt::Composition::Current();
             const auto cacheKey = std::make_pair(name, m3::MaterialTheme::colorScheme().surface.argb);
             auto& bitmap = c.Remember<std::shared_ptr<kiln::rt::State<kiln::gfx::ImageBitmap>>>(
@@ -293,7 +294,7 @@ namespace catalog {
             });
         }
 
-        void ComponentItem(const Component& component, std::function<void()> onClick) {
+        void ComponentItem(const Component& component, kiln::Function<void()> onClick) {
             m3::OutlinedCard(onClick, Padding(Height({}, ComponentItemHeight), ComponentItemOuterPadding), {}, [&component] {
                 Box(FillMax({}, Axis::Both), Alignment::TopStart(), false, [&component] {
                     Box(Padding(FillMax({}, Axis::Both), ComponentItemInnerPadding), Alignment::TopStart(), false, [&component] {
@@ -314,7 +315,7 @@ namespace catalog {
             });
         }
 
-        void ExampleItem(const Example& example, std::function<void()> onClick) {
+        void ExampleItem(const Example& example, kiln::Function<void()> onClick) {
             m3::OutlinedCard(onClick, FillMax({}, Axis::Horizontal), {}, [&example] {
                 Box(FillMax({}, Axis::Both), Alignment::TopStart(), false, [&example] {
                     Row(Padding({}, ExampleItemPadding), Arrangement::Start(), AlignmentV::Top(), [&example] {
@@ -356,7 +357,7 @@ namespace catalog {
             }
         };
 
-        void Home(const Nav& nav, const std::string& favoriteRoute, std::function<void(const std::string&)> onFavorite) {
+        void Home(const Nav& nav, const std::string& favoriteRoute, kiln::Function<void(const std::string&)> onFavorite) {
             auto& textFieldState = RememberTextFieldState();
             const auto scrollBehavior = m3::TopAppBarDefaults::pinnedScrollBehavior();
             ScaffoldArgs a;
@@ -393,7 +394,7 @@ namespace catalog {
         }
 
         void ComponentScreen(const Nav& nav, const Component& component, const std::string& favoriteRoute,
-                             std::function<void(const std::string&)> onFavorite) {
+                             kiln::Function<void(const std::string&)> onFavorite) {
             const std::string route = "component/" + std::to_string(component.id);
             ScaffoldArgs a;
             a.title = component.name;
@@ -453,7 +454,7 @@ namespace catalog {
         }
 
         void ExampleScreen(const Nav& nav, const Component& component, int index, const std::string& favoriteRoute,
-                           std::function<void(const std::string&)> onFavorite) {
+                           kiln::Function<void(const std::string&)> onFavorite) {
             const Example& example = component.examples[size_t(index)];
             const std::string route = "example/" + std::to_string(component.id) + "/" + std::to_string(index);
             ScaffoldArgs a;
@@ -599,7 +600,7 @@ namespace catalog {
 namespace catalog {
     // CatalogTheme with the default Theme (ThemeColorMode.System, ColorMode.Baseline): the
     // baseline light or dark scheme as the system's night mode says.
-    void CatalogTheme(std::function<void()> content) {
+    void CatalogTheme(kiln::Function<void()> content) {
         kiln::material3::MaterialThemeArgs args;
         args.colorScheme = kiln::ui::IsSystemInDarkTheme() ? kiln::material3::DarkColorScheme() : kiln::material3::LightColorScheme();
         kiln::material3::MaterialTheme(args, std::move(content));

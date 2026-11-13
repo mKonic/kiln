@@ -5,6 +5,7 @@
 // selected (the icon then moves up to make room).
 
 #include "kiln/foundation/Insets.h"
+#include <kiln/Function.h>
 #include "kiln/foundation/Interaction.h"
 #include "kiln/foundation/Layouts.h"
 
@@ -51,17 +52,17 @@ namespace kiln::material3 {
         std::optional<foundation::WindowInsets> windowInsets;   // unset: NavigationBarDefaults
     };
     // A full-width row at least 80 dp tall, items 8 dp apart; content is 3-5 NavigationBarItems.
-    void NavigationBar(const ui::Modifier& modifier, const NavigationBarOptions& options, std::function<void()> content);
+    void NavigationBar(const ui::Modifier& modifier, const NavigationBarOptions& options, kiln::Function<void()> content);
 
     struct NavigationBarItemOptions {
         bool enabled = true;
-        std::function<void()> label;
+        kiln::Function<void()> label;
         bool alwaysShowLabel = true;               // false: the label shows only while selected
         std::optional<NavigationBarItemColors> colors;
         std::shared_ptr<foundation::MutableInteractionSource> interactionSource;
     };
     // An item of a NavigationBar's row (it takes an equal share of the width).
-    void NavigationBarItem(bool selected, std::function<void()> onClick, std::function<void()> icon, const ui::Modifier& modifier,
+    void NavigationBarItem(bool selected, kiln::Function<void()> onClick, kiln::Function<void()> icon, const ui::Modifier& modifier,
                            const NavigationBarItemOptions& options);
 
     namespace internal {

@@ -11,6 +11,7 @@
 // Compose's float arrays.
 
 #include "kiln/ui/Geometry.h"
+#include <kiln/Function.h>
 
 #include <array>
 #include <functional>
@@ -89,7 +90,7 @@ namespace kiln::gfx::colorspace {
     // functions (parametric, a gamma, or functions with a value range).
     class Rgb final : public ColorSpace {
     public:
-        using Function = std::function<double(double)>;
+        using Function = kiln::Function<double(double)>;
         Rgb(std::string name, std::vector<float> primaries, WhitePoint whitePoint, TransferParameters function, int id = -1);
         Rgb(std::string name, std::vector<float> primaries, WhitePoint whitePoint, double gamma, float min = 0, float max = 1, int id = -1);
         Rgb(std::string name, std::vector<float> primaries, WhitePoint whitePoint, Function oetf, Function eotf, float min, float max,

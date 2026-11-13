@@ -1,6 +1,7 @@
 // animation-core's low-level pieces: Animation objects sampled by time, AnimationState with
 // animateTo / animateDecay and a cancellable scope, DeferredTargetAnimation.
 #include "Check.h"
+#include <kiln/Function.h>
 
 #include "kiln/animation/Animation.h"
 
@@ -76,7 +77,7 @@ TEST(InfiniteAnimationFramesGoThroughThePolicy) {
     // A policy sees each request and may run the frame block (here it counts and passes through).
     struct Counting final : InfiniteAnimationPolicy {
         int calls = 0;
-        rt::Task<std::int64_t> OnInfiniteOperation(std::function<rt::Task<std::int64_t>()> block) override {
+        rt::Task<std::int64_t> OnInfiniteOperation(kiln::Function<rt::Task<std::int64_t>()> block) override {
             ++calls;
             co_return co_await block();
         }

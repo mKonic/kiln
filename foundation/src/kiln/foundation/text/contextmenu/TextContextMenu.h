@@ -7,6 +7,7 @@
 // ToolbarRequester; the provider is the owner's text toolbar).
 
 #include "kiln/foundation/Compose.h"
+#include <kiln/Function.h>
 #include "kiln/runtime/Task.h"
 #include "kiln/ui/TextToolbar.h"
 
@@ -47,7 +48,7 @@ namespace kiln::foundation {
         TextContextMenuKey key;
         std::string label;   // empty: the platform's string for a standard key
         int leadingIcon = 0;   // a drawable resource (the dropdown menu's icon)
-        std::function<void(TextContextMenuSession&)> onClick;
+        kiln::Function<void(TextContextMenuSession&)> onClick;
     };
     // TextContextMenuTextClassificationItem: an action of a TextClassification the host keeps
     // (index 0 is the primary one; -1 the legacy label and intent).
@@ -70,27 +71,27 @@ namespace kiln::foundation {
     class TextContextMenuBuilderScope {
     public:
         void Separator() { m_Components.emplace_back(TextContextMenuSeparator{}); }
-        void Item(TextContextMenuKey key, std::string label, std::function<void(TextContextMenuSession&)> onClick, int leadingIcon = 0) {
+        void Item(TextContextMenuKey key, std::string label, kiln::Function<void(TextContextMenuSession&)> onClick, int leadingIcon = 0) {
             m_Components.emplace_back(TextContextMenuItem{ key, std::move(label), leadingIcon, std::move(onClick) });
         }
         void TextClassificationItem(TextContextMenuKey key, int classification, int index) {
             m_Components.emplace_back(TextContextMenuTextClassificationItem{ key, classification, index });
         }
         void AddComponent(TextContextMenuComponent c) { m_Components.push_back(std::move(c)); }
-        void AddFilter(std::function<bool(const TextContextMenuComponent&)> filter) { m_Filters.push_back(std::move(filter)); }
+        void AddFilter(kiln::Function<bool(const TextContextMenuComponent&)> filter) { m_Filters.push_back(std::move(filter)); }
         // No separators first, last or twice in a row; items every filter keeps.
         TextContextMenuData Build() const;
 
     private:
         std::vector<TextContextMenuComponent> m_Components;
-        std::vector<std::function<bool(const TextContextMenuComponent&)>> m_Filters;
+        std::vector<kiln::Function<bool(const TextContextMenuComponent&)>> m_Filters;
     };
 
-    using TextContextMenuBuilder = std::function<void(TextContextMenuBuilderScope&)>;
+    using TextContextMenuBuilder = kiln::Function<void(TextContextMenuBuilderScope&)>;
     // appendTextContextMenuComponents / filterTextContextMenuComponents: for the menus of the
     // text components inside (nearest builders first).
     Modifier AppendTextContextMenuComponents(Modifier m, TextContextMenuBuilder builder);
-    Modifier FilterTextContextMenuComponents(Modifier m, std::function<bool(const TextContextMenuComponent&)> filter);
+    Modifier FilterTextContextMenuComponents(Modifier m, kiln::Function<bool(const TextContextMenuComponent&)> filter);
     // collectTextContextMenuData: the modifiers before `node` in its chain, then its ancestors'.
     TextContextMenuData CollectTextContextMenuData(const ui::ModifierNode& node);
 
@@ -108,13 +109,13 @@ namespace kiln::foundation {
         TextContextMenuToolbarHandler& operator=(const TextContextMenuToolbarHandler&) = delete;
         ~TextContextMenuToolbarHandler() override;
 
-        std::function<rt::Task<>()> onShow;
-        std::function<void()> onHide;
+        kiln::Function<rt::Task<>()> onShow;
+        kiln::Function<void()> onHide;
         // LocalTextContextMenuToolbarProvider where the component is: shows the toolbar in place
         // of the owner's platform toolbar (null: the platform's).
         class TextContextMenuProvider* toolbarProvider = nullptr;
         // The content bounds in root pixels (null: keep the previous ones).
-        std::function<std::optional<Rect>()> computeContentBounds;
+        kiln::Function<std::optional<Rect>()> computeContentBounds;
 
         void Attach(ui::Owner* owner, const ui::ModifierNode* anchor);
         void Detach();

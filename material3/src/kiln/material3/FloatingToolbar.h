@@ -7,6 +7,7 @@
 // same. Touch exploration keeps it expanded and in place; accessibility can still collapse it.
 
 #include "kiln/animation/Decay.h"
+#include <kiln/Function.h>
 #include "kiln/animation/Spec.h"
 #include "kiln/foundation/AnimatedVisibility.h"
 #include "kiln/foundation/Layouts.h"
@@ -116,15 +117,15 @@ namespace kiln::material3 {
 
         // The FABs to put beside a toolbar: they fill the size the toolbar gives them. Unset
         // options: the colour set's FAB colours and the toolbar FAB's elevation.
-        void VibrantFloatingActionButton(std::function<void()> onClick, const ui::Modifier& modifier, const FloatingActionButtonOptions& options,
-                                         std::function<void()> content);
-        void StandardFloatingActionButton(std::function<void()> onClick, const ui::Modifier& modifier, const FloatingActionButtonOptions& options,
-                                          std::function<void()> content);
+        void VibrantFloatingActionButton(kiln::Function<void()> onClick, const ui::Modifier& modifier, const FloatingActionButtonOptions& options,
+                                         kiln::Function<void()> content);
+        void StandardFloatingActionButton(kiln::Function<void()> onClick, const ui::Modifier& modifier, const FloatingActionButtonOptions& options,
+                                          kiln::Function<void()> content);
 
         // Expands a toolbar when content scrolls down by the threshold, collapses it when it
         // scrolls up by it (put it on a parent of the scrolling content; call during composition).
-        ui::Modifier FloatingToolbarVerticalNestedScroll(ui::Modifier m, bool expanded, std::function<void()> onExpand,
-                                                         std::function<void()> onCollapse,
+        ui::Modifier FloatingToolbarVerticalNestedScroll(ui::Modifier m, bool expanded, kiln::Function<void()> onExpand,
+                                                         kiln::Function<void()> onCollapse,
                                                          ui::Dp expandScrollDistanceThreshold = ScrollDistanceThreshold,
                                                          ui::Dp collapseScrollDistanceThreshold = ScrollDistanceThreshold,
                                                          bool reverseLayout = false);
@@ -135,17 +136,17 @@ namespace kiln::material3 {
         foundation::PaddingValues contentPadding = FloatingToolbarDefaults::ContentPadding;
         std::shared_ptr<FloatingToolbarScrollBehavior> scrollBehavior;
         foundation::ShapePtr shape;                  // null: FloatingToolbarDefaults::ContainerShape
-        std::function<void()> leadingContent;        // shown while expanded, before the content
-        std::function<void()> trailingContent;       // shown while expanded, after it
+        kiln::Function<void()> leadingContent;        // shown while expanded, before the content
+        kiln::Function<void()> trailingContent;       // shown while expanded, after it
         ui::Dp expandedShadowElevation = FloatingToolbarDefaults::ContainerExpandedElevation;
         ui::Dp collapsedShadowElevation = FloatingToolbarDefaults::ContainerCollapsedElevation;
     };
     // The content in a row; leading and trailing content only while expanded.
     void HorizontalFloatingToolbar(bool expanded, const ui::Modifier& modifier, const FloatingToolbarOptions& options,
-                                   std::function<void()> content);
+                                   kiln::Function<void()> content);
     // The content in a column.
     void VerticalFloatingToolbar(bool expanded, const ui::Modifier& modifier, const FloatingToolbarOptions& options,
-                                 std::function<void()> content);
+                                 kiln::Function<void()> content);
 
     struct FloatingToolbarWithFabOptions {
         std::optional<FloatingToolbarColors> colors;
@@ -160,9 +161,9 @@ namespace kiln::material3 {
     };
     // A toolbar that unrolls from beside a FAB (typically StandardFloatingActionButton or
     // VibrantFloatingActionButton) while expanded; collapsed, only the FAB shows.
-    void HorizontalFloatingToolbar(bool expanded, std::function<void()> floatingActionButton, const ui::Modifier& modifier,
-                                   const FloatingToolbarWithFabOptions& options, std::function<void()> content);
-    void VerticalFloatingToolbar(bool expanded, std::function<void()> floatingActionButton, const ui::Modifier& modifier,
-                                 const FloatingToolbarWithFabOptions& options, std::function<void()> content);
+    void HorizontalFloatingToolbar(bool expanded, kiln::Function<void()> floatingActionButton, const ui::Modifier& modifier,
+                                   const FloatingToolbarWithFabOptions& options, kiln::Function<void()> content);
+    void VerticalFloatingToolbar(bool expanded, kiln::Function<void()> floatingActionButton, const ui::Modifier& modifier,
+                                 const FloatingToolbarWithFabOptions& options, kiln::Function<void()> content);
 
 }

@@ -1,4 +1,5 @@
 #include "kiln/material3/NavigationRail.h"
+#include <kiln/Function.h>
 
 #include "kiln/foundation/Animate.h"
 #include "kiln/foundation/Compose.h"
@@ -133,7 +134,7 @@ namespace kiln::material3 {
         }
     }
 
-    void NavigationRail(const ui::Modifier& modifier, const NavigationRailOptions& o, std::function<void()> content) {
+    void NavigationRail(const ui::Modifier& modifier, const NavigationRailOptions& o, kiln::Function<void()> content) {
         const Color container = o.containerColor.value_or(NavigationRailDefaults::ContainerColor());
         SurfaceOptions surface;
         surface.color = container;
@@ -154,7 +155,7 @@ namespace kiln::material3 {
         });
     }
 
-    void NavigationRailItem(bool selected, std::function<void()> onClick, std::function<void()> icon, const ui::Modifier& modifier,
+    void NavigationRailItem(bool selected, kiln::Function<void()> onClick, kiln::Function<void()> icon, const ui::Modifier& modifier,
                             const NavigationRailItemOptions& o) {
         const auto source = o.interactionSource ? o.interactionSource : RememberInteractionSource();
         const NavigationRailItemColors colors = o.colors.value_or(NavigationRailItemDefaults::colors());

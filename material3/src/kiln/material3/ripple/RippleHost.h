@@ -6,6 +6,7 @@
 // does, RippleHostView's state timing, and RippleContainer's pool of five hosts per window.
 
 #include "kiln/runtime/Task.h"
+#include <kiln/Function.h>
 #include "kiln/ui/Draw.h"
 
 #include <cstdint>
@@ -69,7 +70,7 @@ namespace kiln::material3::ripple {
         static float Progress(const Session& s, std::int64_t now);
         static float NoisePhase(const Session& s, std::int64_t now);
 
-        std::function<void()> invalidate;   // Drawable.Callback.invalidateDrawable
+        kiln::Function<void()> invalidate;   // Drawable.Callback.invalidateDrawable
 
     private:
         void Invalidate() { if (invalidate) invalidate(); }
@@ -88,7 +89,7 @@ namespace kiln::material3::ripple {
     public:
         // Bounded ripples start at the press; unbounded ones at the centre of the bounds.
         void AddRipple(Offset pressPosition, bool bounded, Size size, int radius, Color color, float alpha,
-                       std::function<void()> onInvalidateRipple);
+                       kiln::Function<void()> onInvalidateRipple);
         void RemoveRipple() { SetRippleState(false); }
         void SetRippleProperties(Size size, int radius, Color color, float alpha);
         // Drops callbacks and ends any ripple at once (the host goes to another node).
@@ -107,7 +108,7 @@ namespace kiln::material3::ripple {
         std::optional<bool> m_Bounded;
         std::optional<std::int64_t> m_LastStateChange;
         Color m_RippleColor = Color::Unspecified();   // UnprojectedRipple's last colour
-        std::function<void()> m_OnInvalidateRipple;
+        kiln::Function<void()> m_OnInvalidateRipple;
         rt::Job m_Reset;   // the posted resting state
         bool m_ResetPending = false;
         rt::Job m_Frames;  // the render thread's animation frames

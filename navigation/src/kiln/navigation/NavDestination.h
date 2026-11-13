@@ -7,6 +7,7 @@
 // no C++ counterpart.
 
 #include "kiln/Uri.h"
+#include <kiln/Function.h>
 
 #include <cstdint>
 #include <functional>
@@ -105,7 +106,7 @@ namespace kiln::navigation {
         std::optional<std::string> uriPattern, action, mimeType;
         NavDeepLink Build() const;   // one of the three is required (std::invalid_argument)
     };
-    NavDeepLink NavDeepLinkOf(const std::function<void(NavDeepLinkDslBuilder&)>& deepLinkBuilder);
+    NavDeepLink NavDeepLinkOf(const kiln::Function<void(NavDeepLinkDslBuilder&)>& deepLinkBuilder);
 
     class NavGraph;
 

@@ -4,6 +4,7 @@
 // the host from WindowInsets and, for the IME, every frame of WindowInsetsAnimation.
 
 #include "kiln/runtime/State.h"
+#include <kiln/Function.h>
 
 #include <array>
 #include <cstdint>
@@ -48,9 +49,9 @@ namespace kiln::ui {
     };
     // WindowInsetsController.controlWindowInsetsAnimation on the host (API 30+).
     struct InsetsControlHost {
-        std::function<bool(InsetsType)> request;   // false: not available
-        std::function<void(const InsetsValue&, float alpha, float progress)> setInsetsAndAlpha;
-        std::function<void(bool shown)> finish;
+        kiln::Function<bool(InsetsType)> request;   // false: not available
+        kiln::Function<void(const InsetsValue&, float alpha, float progress)> setInsetsAndAlpha;
+        kiln::Function<void(bool shown)> finish;
     };
 
     class WindowInsetsHolder {

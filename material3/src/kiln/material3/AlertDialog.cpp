@@ -1,4 +1,5 @@
 #include "kiln/material3/AlertDialog.h"
+#include <kiln/Function.h>
 #include "kiln/material3/internal/AlertDialogInternal.h"
 
 #include "kiln/foundation/Compose.h"
@@ -27,7 +28,7 @@ namespace kiln::material3 {
         Dp TextPadding() { return internal::ShouldUsePrecisionPointerComponentSizing() ? Dp(16) : Dp(24); }
 
         // ProvideContentColorTextStyle
-        void ProvideColorAndStyle(Color color, const text::TextStyle& style, const std::function<void()>& content) {
+        void ProvideColorAndStyle(Color color, const text::TextStyle& style, const kiln::Function<void()>& content) {
             rt::Composition::Current()->Provide(LocalContentColor, color, [=] { ProvideTextStyle(style, content); });
         }
 
@@ -35,7 +36,7 @@ namespace kiln::material3 {
 
         // AlertDialogFlowRow: the confirm button comes after the dismiss one in a row, before it
         // once they wrap into a column (the row runs in the flipped direction).
-        void AlertDialogFlowRow(Dp mainAxisSpacing, Dp crossAxisSpacing, std::function<void()> content) {
+        void AlertDialogFlowRow(Dp mainAxisSpacing, Dp crossAxisSpacing, kiln::Function<void()> content) {
             auto& c = *rt::Composition::Current();
             const ui::LayoutDirection original = c.Read(ui::LocalLayoutDirection);
             c.Provide(ui::LocalLayoutDirection, Flip(original), [=] {
@@ -45,7 +46,7 @@ namespace kiln::material3 {
         }
 
         struct ContentParams {
-            std::function<void()> buttons, icon, title, text;
+            kiln::Function<void()> buttons, icon, title, text;
             ShapePtr shape;
             Color containerColor;
             Dp tonalElevation;
@@ -101,8 +102,8 @@ namespace kiln::material3 {
         Color textContentColor() { return Value(T::SupportingTextColor); }
     }
 
-    void BasicAlertDialog(std::function<void()> onDismissRequest, const ui::Modifier& modifier, const DialogProperties& properties,
-                          std::function<void()> content) {
+    void BasicAlertDialog(kiln::Function<void()> onDismissRequest, const ui::Modifier& modifier, const DialogProperties& properties,
+                          kiln::Function<void()> content) {
         Dialog(std::move(onDismissRequest), properties, [modifier, content = std::move(content)] {
             const std::string pane = GetString(Strings::Dialog);
             Box(Semantics(SizeIn(modifier, DialogMinWidth, Dp::Unspecified(), DialogMaxWidth, Dp::Unspecified()),
@@ -111,7 +112,7 @@ namespace kiln::material3 {
         });
     }
 
-    void AlertDialog(std::function<void()> onDismissRequest, std::function<void()> confirmButton, const ui::Modifier& modifier, const AlertDialogOptions& o) {
+    void AlertDialog(kiln::Function<void()> onDismissRequest, kiln::Function<void()> confirmButton, const ui::Modifier& modifier, const AlertDialogOptions& o) {
         ContentParams p;
         p.icon = o.icon;
         p.title = o.title;
@@ -137,7 +138,7 @@ namespace kiln::material3 {
         BasicAlertDialog(std::move(onDismissRequest), modifier, o.properties, [p] { AlertDialogContent({}, p); });
     }
 
-    void internal::AlertDialogFlowRow(Dp mainAxisSpacing, Dp crossAxisSpacing, std::function<void()> content) {
+    void internal::AlertDialogFlowRow(Dp mainAxisSpacing, Dp crossAxisSpacing, kiln::Function<void()> content) {
         kiln::material3::AlertDialogFlowRow(mainAxisSpacing, crossAxisSpacing, std::move(content));   // the file-local one
     }
 

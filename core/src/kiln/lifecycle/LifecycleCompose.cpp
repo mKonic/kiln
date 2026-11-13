@@ -1,4 +1,5 @@
 #include "kiln/lifecycle/LifecycleCompose.h"
+#include <kiln/Function.h>
 
 #include "kiln/ui/LayoutNode.h"
 
@@ -39,7 +40,7 @@ namespace kiln::lifecycle {
 
         LifecycleOwnerPtr Resolve(const LifecycleOwnerPtr& p) { return p ? p : CurrentLifecycleOwner(); }
 
-        std::function<void()> DropUnless(State state, std::function<void()> block, LifecycleOwnerPtr owner) {
+        kiln::Function<void()> DropUnless(State state, kiln::Function<void()> block, LifecycleOwnerPtr owner) {
             owner = Resolve(owner);
             return [state, block = std::move(block), owner] {
                 if (owner && IsAtLeast(owner->GetLifecycle().CurrentState(), state)) block();
@@ -71,32 +72,32 @@ namespace kiln::lifecycle {
         return detached;
     }
 
-    std::function<void()> DropUnlessStarted(std::function<void()> block, LifecycleOwnerPtr owner) {
+    kiln::Function<void()> DropUnlessStarted(kiln::Function<void()> block, LifecycleOwnerPtr owner) {
         return DropUnless(State::Started, std::move(block), std::move(owner));
     }
-    std::function<void()> DropUnlessResumed(std::function<void()> block, LifecycleOwnerPtr owner) {
+    kiln::Function<void()> DropUnlessResumed(kiln::Function<void()> block, LifecycleOwnerPtr owner) {
         return DropUnless(State::Resumed, std::move(block), std::move(owner));
     }
 
-    void LifecycleEventEffect(Event event, std::function<void()> onEvent, LifecycleOwnerPtr lifecycleOwner, rt::Key key) {
+    void LifecycleEventEffect(Event event, kiln::Function<void()> onEvent, LifecycleOwnerPtr lifecycleOwner, rt::Key key) {
         if (event == Event::OnDestroy)
             throw std::invalid_argument("LifecycleEventEffect cannot be used to listen for Lifecycle.Event.ON_DESTROY, since Compose disposes "
                                         "of the composition before ON_DESTROY observers are invoked.");
         rt::Composition* c = rt::Composition::Current();
         const LifecycleOwnerPtr owner = Resolve(lifecycleOwner);
         // rememberUpdatedState(onEvent)
-        auto& current = c->Remember<std::shared_ptr<std::function<void()>>>([] { return std::make_shared<std::function<void()>>(); }, {}, key);
+        auto& current = c->Remember<std::shared_ptr<kiln::Function<void()>>>([] { return std::make_shared<kiln::Function<void()>>(); }, {}, key);
         *current = std::move(onEvent);
         c->DisposableEffect(rt::Keys(static_cast<const void*>(owner.get())), [owner, event, current = current]() {
             auto observer = MakeEventObserver([event, current](LifecycleOwner&, Event e) {
                 if (e == event && *current) (*current)();
             });
             owner->GetLifecycle().AddObserver(observer);
-            return std::function<void()>([owner, observer] { owner->GetLifecycle().RemoveObserver(observer); });
+            return kiln::Function<void()>([owner, observer] { owner->GetLifecycle().RemoveObserver(observer); });
         }, key);
     }
 
-    void LifecycleStartEffect(rt::Keys keys, std::function<LifecycleStopOrDisposeEffectResult(LifecycleStartStopEffectScope&)> effects,
+    void LifecycleStartEffect(rt::Keys keys, kiln::Function<LifecycleStopOrDisposeEffectResult(LifecycleStartStopEffectScope&)> effects,
                               LifecycleOwnerPtr lifecycleOwner, rt::Key key) {
         rt::Composition* c = rt::Composition::Current();
         const LifecycleOwnerPtr owner = Resolve(lifecycleOwner);
@@ -114,14 +115,14 @@ namespace kiln::lifecycle {
                 }
             });
             owner->GetLifecycle().AddObserver(observer);
-            return std::function<void()>([owner, observer, result] {
+            return kiln::Function<void()>([owner, observer, result] {
                 owner->GetLifecycle().RemoveObserver(observer);
                 if (*result) (*result)->RunStopOrDisposeEffect();
             });
         }, key);
     }
 
-    void LifecycleResumeEffect(rt::Keys keys, std::function<LifecyclePauseOrDisposeEffectResult(LifecycleResumePauseEffectScope&)> effects,
+    void LifecycleResumeEffect(rt::Keys keys, kiln::Function<LifecyclePauseOrDisposeEffectResult(LifecycleResumePauseEffectScope&)> effects,
                                LifecycleOwnerPtr lifecycleOwner, rt::Key key) {
         rt::Composition* c = rt::Composition::Current();
         const LifecycleOwnerPtr owner = Resolve(lifecycleOwner);
@@ -139,7 +140,7 @@ namespace kiln::lifecycle {
                 }
             });
             owner->GetLifecycle().AddObserver(observer);
-            return std::function<void()>([owner, observer, result] {
+            return kiln::Function<void()>([owner, observer, result] {
                 owner->GetLifecycle().RemoveObserver(observer);
                 if (*result) (*result)->RunPauseOrOnDisposeEffect();
             });
@@ -161,7 +162,7 @@ namespace kiln::lifecycle {
             });
             if (parent) parent->GetLifecycle().AddObserver(observer);
             else owner->HandleLifecycleEvent(Event::OnResume);
-            return std::function<void()>([owner, parent, observer] {
+            return kiln::Function<void()>([owner, parent, observer] {
                 if (parent) parent->GetLifecycle().RemoveObserver(observer);
                 owner->HandleLifecycleEvent(Event::OnDestroy);
             });

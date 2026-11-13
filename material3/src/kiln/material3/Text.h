@@ -5,6 +5,7 @@
 // bitmap or painter tinted by the content colour, 24 dp unless it has a size of its own).
 
 #include "kiln/foundation/Image.h"
+#include <kiln/Function.h>
 #include "kiln/foundation/text/BasicText.h"
 #include "kiln/graphics/vector/ImageVector.h"
 
@@ -13,7 +14,7 @@ namespace kiln::material3 {
     struct TextOptions {
         ui::Color color = ui::Color::Unspecified();
         // A colour read at draw time (Text(text, color: ColorProducer)); replaces `color`.
-        std::function<ui::Color()> colorProducer;
+        kiln::Function<ui::Color()> colorProducer;
         foundation::TextAutoSizePtr autoSize;
         text::TextUnit fontSize;
         std::optional<text::FontStyle> fontStyle;
@@ -28,7 +29,7 @@ namespace kiln::material3 {
         int maxLines = INT_MAX;
         int minLines = 1;
         std::map<std::string, foundation::InlineTextContent> inlineContent;
-        std::function<void(const text::TextLayoutResult&)> onTextLayout;
+        kiln::Function<void(const text::TextLayoutResult&)> onTextLayout;
         std::optional<text::TextStyle> style;   // unset: LocalTextStyle
     };
     void Text(const std::string& text, const ui::Modifier& modifier = {}, const TextOptions& options = {});
@@ -44,12 +45,12 @@ namespace kiln::material3 {
     void Icon(std::shared_ptr<foundation::Painter> painter, const std::optional<std::string>& contentDescription,
               const ui::Modifier& modifier = {}, std::optional<ui::Color> tint = std::nullopt);
     // Icon(painter, tint: ColorProducer?): the tint read at draw time, through a layer.
-    void Icon(std::shared_ptr<foundation::Painter> painter, std::function<ui::Color()> tint, const std::optional<std::string>& contentDescription,
+    void Icon(std::shared_ptr<foundation::Painter> painter, kiln::Function<ui::Color()> tint, const std::optional<std::string>& contentDescription,
               const ui::Modifier& modifier = {});
 
     namespace internal {
         // ProvideContentColorTextStyle: the content colour, and the text style merged over the current one.
-        void ProvideContentColorTextStyle(ui::Color contentColor, const text::TextStyle& textStyle, std::function<void()> content);
+        void ProvideContentColorTextStyle(ui::Color contentColor, const text::TextStyle& textStyle, kiln::Function<void()> content);
     }
 
 }

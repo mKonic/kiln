@@ -1,4 +1,5 @@
 #include "kiln/material3/Button.h"
+#include <kiln/Function.h>
 
 #include "kiln/animation/Animatable.h"
 #include "kiln/foundation/Compose.h"
@@ -65,7 +66,7 @@ namespace kiln::material3 {
         auto& c = Comp();
         auto& interactions = c.RememberState(Entries{});
         auto* state = &interactions;
-        c.DisposableEffect(rt::Keys(std::hash<const void*>{}(source.get())), [source, state]() -> std::function<void()> {
+        c.DisposableEffect(rt::Keys(std::hash<const void*>{}(source.get())), [source, state]() -> kiln::Function<void()> {
             if (!source) return {};
             const std::uint64_t token = source->Subscribe([state](const Interaction& i) {
                 if (i.kind != Interaction::Kind::Press && i.kind != Interaction::Kind::Hover && i.kind != Interaction::Kind::Focus) return;
@@ -114,8 +115,8 @@ namespace kiln::material3 {
             PaddingValues padding;
         };
 
-        void ButtonImpl(std::function<void()> onClick, const ui::Modifier& modifier, const ButtonOptions& o, const Variant& v,
-                        std::function<void()> content) {
+        void ButtonImpl(kiln::Function<void()> onClick, const ui::Modifier& modifier, const ButtonOptions& o, const Variant& v,
+                        kiln::Function<void()> content) {
             auto& c = Comp();
             auto source = o.interactionSource;
             if (!source) source = c.Remember<std::shared_ptr<foundation::MutableInteractionSource>>(
@@ -159,26 +160,26 @@ namespace kiln::material3 {
         std::optional<foundation::BorderStroke> OutlinedBorder(bool enabled) { return ButtonDefaults::outlinedButtonBorder(enabled); }
     }
 
-    void Button(std::function<void()> onClick, const ui::Modifier& modifier, const ButtonOptions& o, std::function<void()> content) {
+    void Button(kiln::Function<void()> onClick, const ui::Modifier& modifier, const ButtonOptions& o, kiln::Function<void()> content) {
         ButtonImpl(std::move(onClick), modifier, o, { ButtonDefaults::buttonColors, FilledElevation, ButtonDefaults::shape, nullptr, ButtonDefaults::ContentPadding },
                    std::move(content));
     }
-    void ElevatedButton(std::function<void()> onClick, const ui::Modifier& modifier, const ButtonOptions& o, std::function<void()> content) {
+    void ElevatedButton(kiln::Function<void()> onClick, const ui::Modifier& modifier, const ButtonOptions& o, kiln::Function<void()> content) {
         ButtonImpl(std::move(onClick), modifier, o,
                    { ButtonDefaults::elevatedButtonColors, ElevatedElevation, ButtonDefaults::elevatedShape, nullptr, ButtonDefaults::ContentPadding },
                    std::move(content));
     }
-    void FilledTonalButton(std::function<void()> onClick, const ui::Modifier& modifier, const ButtonOptions& o, std::function<void()> content) {
+    void FilledTonalButton(kiln::Function<void()> onClick, const ui::Modifier& modifier, const ButtonOptions& o, kiln::Function<void()> content) {
         ButtonImpl(std::move(onClick), modifier, o,
                    { ButtonDefaults::filledTonalButtonColors, TonalElevation, ButtonDefaults::filledTonalShape, nullptr, ButtonDefaults::ContentPadding },
                    std::move(content));
     }
-    void OutlinedButton(std::function<void()> onClick, const ui::Modifier& modifier, const ButtonOptions& o, std::function<void()> content) {
+    void OutlinedButton(kiln::Function<void()> onClick, const ui::Modifier& modifier, const ButtonOptions& o, kiln::Function<void()> content) {
         ButtonImpl(std::move(onClick), modifier, o,
                    { ButtonDefaults::outlinedButtonColors, NoElevation, ButtonDefaults::outlinedShape, OutlinedBorder, ButtonDefaults::ContentPadding },
                    std::move(content));
     }
-    void TextButton(std::function<void()> onClick, const ui::Modifier& modifier, const ButtonOptions& o, std::function<void()> content) {
+    void TextButton(kiln::Function<void()> onClick, const ui::Modifier& modifier, const ButtonOptions& o, kiln::Function<void()> content) {
         ButtonImpl(std::move(onClick), modifier, o,
                    { ButtonDefaults::textButtonColors, NoElevation, ButtonDefaults::textShape, nullptr, ButtonDefaults::TextButtonContentPadding },
                    std::move(content));

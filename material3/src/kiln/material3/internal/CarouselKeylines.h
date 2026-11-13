@@ -4,6 +4,7 @@
 // Strategy.kt, KeylineSnapPosition.kt). All sizes and offsets are pixels along the scroll axis.
 
 #include "kiln/material3/Carousel.h"
+#include <kiln/Function.h>
 
 #include <cstdint>
 
@@ -138,7 +139,7 @@ namespace kiln::material3::internal::carousel {
 
     // Carousel(orientation, keylineList, ...): what the public carousels build on.
     // maxNonFocalVisibleItemCount: pages composed beyond the viewport on each side.
-    void Carousel(CarouselState& state, bool vertical, std::function<KeylineList(float availableSpace, float itemSpacing)> keylineList,
+    void Carousel(CarouselState& state, bool vertical, kiln::Function<KeylineList(float availableSpace, float itemSpacing)> keylineList,
                   const CarouselOptions& options, foundation::FlingBehavior defaultFling, int maxNonFocalVisibleItemCount,
                   const ui::Modifier& modifier, CarouselContent content);
 

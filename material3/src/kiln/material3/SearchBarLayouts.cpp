@@ -2,6 +2,7 @@
 // or docked, and the expanded-flag forms. State, behaviours and input fields: SearchBar.cpp.
 
 #include "kiln/material3/SearchBar.h"
+#include <kiln/Function.h>
 
 #include "kiln/animation/Easing.h"
 #include "kiln/foundation/Animate.h"
@@ -51,7 +52,7 @@ namespace kiln::material3 {
 
         // asPaddingValues padding: the insets read when measuring, as plain padding (no
         // consumption: the bar consumed them already).
-        ui::Modifier InsetsAsPadding(ui::Modifier m, std::function<WindowInsets()> insets, ui::Owner* owner) {
+        ui::Modifier InsetsAsPadding(ui::Modifier m, kiln::Function<WindowInsets()> insets, ui::Owner* owner) {
             return LayoutMod(std::move(m), [insets, owner](ui::MeasureScope& s, ui::Measurable& measurable, const ui::Constraints& c) {
                 const InsetsContext ctx{ owner ? &owner->Insets() : nullptr, s, s.Direction() };
                 const WindowInsets w = insets();
@@ -66,7 +67,7 @@ namespace kiln::material3 {
         // The collapsed bar records where it sits (collapsedCoords).
         ui::Modifier RecordCollapsedBounds(ui::Modifier m, const std::shared_ptr<SearchBarState>& state) {
             auto& c = *rt::Composition::Current();
-            c.DisposableEffect(rt::Keys(reinterpret_cast<std::uintptr_t>(state.get())), [state]() -> std::function<void()> {
+            c.DisposableEffect(rt::Keys(reinterpret_cast<std::uintptr_t>(state.get())), [state]() -> kiln::Function<void()> {
                 return [state] { state->collapsedPlaced.Set(false); };
             });
             return OnGloballyPositioned(std::move(m), [state](const LayoutCoordinates& coords) {
@@ -80,7 +81,7 @@ namespace kiln::material3 {
 
         // SearchBarImpl (the collapsed bar): the input field on its container, with no soft
         // keyboard of its own (the expanded bar's field takes the input).
-        void CollapsedSearchBar(const std::shared_ptr<SearchBarState>& state, std::function<void()> inputField, const ui::Modifier& modifier, ShapePtr shape,
+        void CollapsedSearchBar(const std::shared_ptr<SearchBarState>& state, kiln::Function<void()> inputField, const ui::Modifier& modifier, ShapePtr shape,
                                 Color container, Color content, Dp tonal, Dp shadow) {
             const ui::Modifier m = RecordCollapsedBounds(modifier, state);
             BlockPlatformTextInput([&] {
@@ -95,14 +96,14 @@ namespace kiln::material3 {
         }
     }
 
-    void SearchBar(std::shared_ptr<SearchBarState> state, std::function<void()> inputField, const ui::Modifier& modifier, const SearchBarOptions& o) {
+    void SearchBar(std::shared_ptr<SearchBarState> state, kiln::Function<void()> inputField, const ui::Modifier& modifier, const SearchBarOptions& o) {
         const SearchBarColors colors = o.colors.value_or(SearchBarDefaults::colors());
         CollapsedSearchBar(state, std::move(inputField), modifier, o.shape ? o.shape : SearchBarDefaults::inputFieldShape(), colors.containerColor,
                            ContentColorFor(colors.containerColor), o.tonalElevation.value_or(SearchBarDefaults::TonalElevation),
                            o.shadowElevation.value_or(SearchBarDefaults::ShadowElevation));
     }
 
-    void AppBarWithSearch(std::shared_ptr<SearchBarState> state, std::function<void()> inputField, const ui::Modifier& modifier,
+    void AppBarWithSearch(std::shared_ptr<SearchBarState> state, kiln::Function<void()> inputField, const ui::Modifier& modifier,
                           const AppBarWithSearchOptions& o) {
         const AppBarWithSearchColors colors = o.colors.value_or(SearchBarDefaults::appBarWithSearchColors());
         const bool transparent = colors.appBarContainerColor == Color::Transparent();
@@ -149,7 +150,7 @@ namespace kiln::material3 {
         });
     }
 
-    void TopSearchBar(std::shared_ptr<SearchBarState> state, std::function<void()> inputField, const ui::Modifier& modifier, const SearchBarOptions& o,
+    void TopSearchBar(std::shared_ptr<SearchBarState> state, kiln::Function<void()> inputField, const ui::Modifier& modifier, const SearchBarOptions& o,
                       std::optional<WindowInsets> windowInsets, std::shared_ptr<SearchBarScrollBehavior> scrollBehavior) {
         AppBarWithSearchOptions a;
         AppBarWithSearchColors colors = SearchBarDefaults::appBarWithSearchColors();
@@ -180,7 +181,7 @@ namespace kiln::material3 {
 
         // PredictiveBackStateHandler: the gesture's progress into the state; completing it
         // dismisses.
-        rt::Task<> BackStateHandler(BackProgress& events, std::shared_ptr<BackState> st, std::function<void()> onBack) {
+        rt::Task<> BackStateHandler(BackProgress& events, std::shared_ptr<BackState> st, kiln::Function<void()> onBack) {
             if (st->Peek().kind == BackInfo::Kind::Completed) {
                 // Already dismissing (Compose disables the handler).
                 co_await HoldBack(events);
@@ -197,7 +198,7 @@ namespace kiln::material3 {
             if (onBack) onBack();
         }
 
-        using ExpandedContent = std::function<void(std::shared_ptr<ui::FocusRequester>, std::shared_ptr<BackState>)>;
+        using ExpandedContent = kiln::Function<void(std::shared_ptr<ui::FocusRequester>, std::shared_ptr<BackState>)>;
 
         // ExpandedFullScreenSearchBarImpl: while expanded, an edge to edge window with the bar.
         void ExpandedFullScreenImpl(const std::shared_ptr<SearchBarState>& state, DialogProperties properties, ExpandedContent content) {
@@ -211,7 +212,7 @@ namespace kiln::material3 {
             properties.usePlatformDefaultWidth = false;
             properties.decorFitsSystemWindows = false;
             properties.scrimAlpha = 0;
-            std::function<rt::Task<>(BackProgress&)> onBack;
+            kiln::Function<rt::Task<>(BackProgress&)> onBack;
             if (dismissOnBack) onBack = [back, onDismiss](BackProgress& events) { return BackStateHandler(events, back, onDismiss); };
             else onBack = [](BackProgress& events) { return HoldBack(events); };
             // BasicEdgeToEdgeDialog's lightStatusBars / lightNavigationBars: from the content colour here.
@@ -263,7 +264,7 @@ namespace kiln::material3 {
         struct FullScreenParams {
             std::shared_ptr<SearchBarState> state;
             std::shared_ptr<BackState> back;
-            std::function<void()> inputField;
+            kiln::Function<void()> inputField;
             PaddingValues inputFieldPadding;
             ui::Modifier modifier;
             ShapePtr collapsedShape;
@@ -271,7 +272,7 @@ namespace kiln::material3 {
             Dp tonalElevation, shadowElevation;
             WindowInsets windowInsets;
             bool isContained = false;
-            std::function<void()> content;
+            kiln::Function<void()> content;
         };
 
         struct FullScreenPolicy final : ui::MeasurePolicy {
@@ -407,8 +408,8 @@ namespace kiln::material3 {
             });
         }
 
-        void FullScreenBar(const std::shared_ptr<SearchBarState>& state, std::function<void()> inputField, const ui::Modifier& modifier,
-                           const ExpandedFullScreenSearchBarOptions& o, std::function<void()> content, bool contained) {
+        void FullScreenBar(const std::shared_ptr<SearchBarState>& state, kiln::Function<void()> inputField, const ui::Modifier& modifier,
+                           const ExpandedFullScreenSearchBarOptions& o, kiln::Function<void()> content, bool contained) {
             if (!state->expandsToFullScreen.Peek()) state->expandsToFullScreen.Set(true);
             const SearchBarColors colors = o.colors.value_or(contained ? SearchBarDefaults::containedColors(*state) : SearchBarDefaults::colors());
             FullScreenParams p;
@@ -439,13 +440,13 @@ namespace kiln::material3 {
         }
     }
 
-    void ExpandedFullScreenSearchBar(std::shared_ptr<SearchBarState> state, std::function<void()> inputField, const ui::Modifier& modifier,
-                                     const ExpandedFullScreenSearchBarOptions& options, std::function<void()> content) {
+    void ExpandedFullScreenSearchBar(std::shared_ptr<SearchBarState> state, kiln::Function<void()> inputField, const ui::Modifier& modifier,
+                                     const ExpandedFullScreenSearchBarOptions& options, kiln::Function<void()> content) {
         FullScreenBar(state, std::move(inputField), modifier, options, std::move(content), false);
     }
 
-    void ExpandedFullScreenContainedSearchBar(std::shared_ptr<SearchBarState> state, std::function<void()> inputField, const ui::Modifier& modifier,
-                                              const ExpandedFullScreenSearchBarOptions& options, std::function<void()> content) {
+    void ExpandedFullScreenContainedSearchBar(std::shared_ptr<SearchBarState> state, kiln::Function<void()> inputField, const ui::Modifier& modifier,
+                                              const ExpandedFullScreenSearchBarOptions& options, kiln::Function<void()> content) {
         FullScreenBar(state, std::move(inputField), modifier, options, std::move(content), true);
     }
 
@@ -507,8 +508,8 @@ namespace kiln::material3 {
 
         // DockedSearchBarLayoutImpl: the field and the results on one surface that grows from the
         // collapsed bar's height to its maximum with the progress; Back collapses it.
-        void DockedSearchBarLayoutImpl(const std::shared_ptr<SearchBarState>& state, ShapePtr shape, std::function<void()> inputField, const ui::Modifier& modifier,
-                                       Color containerColor, Dp tonal, Dp shadow, bool hasGap, std::function<void()> content) {
+        void DockedSearchBarLayoutImpl(const std::shared_ptr<SearchBarState>& state, ShapePtr shape, kiln::Function<void()> inputField, const ui::Modifier& modifier,
+                                       Color containerColor, Dp tonal, Dp shadow, bool hasGap, kiln::Function<void()> content) {
             auto& c = *rt::Composition::Current();
             const auto scope = internal::RememberCoroutineScope();
             BackHandler(state->IsExpanded(), [scope, state] { scope->Launch(Collapse(state)); });
@@ -529,14 +530,14 @@ namespace kiln::material3 {
             Surface(ImePadding(modifier), o, [=] { Layout({}, { inputField, content }, policy); });
         }
 
-        void DockedSearchBarLayout(const std::shared_ptr<SearchBarState>& state, std::function<void()> inputField, const ui::Modifier& modifier, ShapePtr searchBarShape,
+        void DockedSearchBarLayout(const std::shared_ptr<SearchBarState>& state, kiln::Function<void()> inputField, const ui::Modifier& modifier, ShapePtr searchBarShape,
                                    ShapePtr dropdownShape, std::optional<Dp> gap, Color containerColor, Color dividerColor, Dp tonal, Dp shadow,
-                                   std::function<void()> content) {
+                                   kiln::Function<void()> content) {
             const bool hasDropdown = dropdownShape != nullptr;
-            std::function<void()> field = inputField;
+            kiln::Function<void()> field = inputField;
             if (hasDropdown)
                 field = [=] { Box(Clip(Background({}, containerColor, searchBarShape), searchBarShape), Alignment::TopStart(), false, inputField); };
-            std::function<void()> results;
+            kiln::Function<void()> results;
             if (hasDropdown) {
                 results = [=] {
                     const bool sufficientProgress = state->Progress() > 0.1f;
@@ -564,8 +565,8 @@ namespace kiln::material3 {
                                       tonal, shadow, gap.has_value(), results);
         }
 
-        void DockedBar(const std::shared_ptr<SearchBarState>& state, std::function<void()> inputField, const ui::Modifier& modifier, const ExpandedDockedSearchBarOptions& o,
-                       std::function<void()> content, bool withGap) {
+        void DockedBar(const std::shared_ptr<SearchBarState>& state, kiln::Function<void()> inputField, const ui::Modifier& modifier, const ExpandedDockedSearchBarOptions& o,
+                       kiln::Function<void()> content, bool withGap) {
             if (!state->IsExpanded()) return;
             auto& c = *rt::Composition::Current();
             const Color scrimColor = withGap ? o.dropdownScrimColor.value_or(SearchBarDefaults::dockedDropdownScrimColor()) : Color::Unspecified();
@@ -609,13 +610,13 @@ namespace kiln::material3 {
         }
     }
 
-    void ExpandedDockedSearchBar(std::shared_ptr<SearchBarState> state, std::function<void()> inputField, const ui::Modifier& modifier,
-                                 const ExpandedDockedSearchBarOptions& options, std::function<void()> content) {
+    void ExpandedDockedSearchBar(std::shared_ptr<SearchBarState> state, kiln::Function<void()> inputField, const ui::Modifier& modifier,
+                                 const ExpandedDockedSearchBarOptions& options, kiln::Function<void()> content) {
         DockedBar(state, std::move(inputField), modifier, options, std::move(content), false);
     }
 
-    void ExpandedDockedSearchBarWithGap(std::shared_ptr<SearchBarState> state, std::function<void()> inputField, const ui::Modifier& modifier,
-                                        const ExpandedDockedSearchBarOptions& options, std::function<void()> content) {
+    void ExpandedDockedSearchBarWithGap(std::shared_ptr<SearchBarState> state, kiln::Function<void()> inputField, const ui::Modifier& modifier,
+                                        const ExpandedDockedSearchBarOptions& options, kiln::Function<void()> content) {
         DockedBar(state, std::move(inputField), modifier, options, std::move(content), true);
     }
 
@@ -655,7 +656,7 @@ namespace kiln::material3 {
         }
         // The bar follows the gesture; completing it collapses, cancelling springs back.
         rt::Task<> LegacyPredictiveBack(BackProgress& events, std::shared_ptr<LegacyBack> b, std::shared_ptr<internal::CoroutineScope> scope,
-                                        std::function<void(bool)> onExpandedChange) {
+                                        kiln::Function<void(bool)> onExpandedChange) {
             struct OnCancel {
                 std::shared_ptr<LegacyBack> b;
                 std::shared_ptr<internal::CoroutineScope> scope;
@@ -741,8 +742,8 @@ namespace kiln::material3 {
         };
     }
 
-    void SearchBar(std::function<void()> inputField, bool expanded, std::function<void(bool)> onExpandedChange, const ui::Modifier& modifier,
-                   const ExpandableSearchBarOptions& o, std::function<void()> content) {
+    void SearchBar(kiln::Function<void()> inputField, bool expanded, kiln::Function<void(bool)> onExpandedChange, const ui::Modifier& modifier,
+                   const ExpandableSearchBarOptions& o, kiln::Function<void()> content) {
         auto& c = *rt::Composition::Current();
         const auto scope = internal::RememberCoroutineScope();
         const auto back = c.Remember<std::shared_ptr<LegacyBack>>([expanded] {
@@ -800,8 +801,8 @@ namespace kiln::material3 {
         });
     }
 
-    void DockedSearchBar(std::function<void()> inputField, bool expanded, std::function<void(bool)> onExpandedChange, const ui::Modifier& modifier,
-                         const ExpandableSearchBarOptions& o, std::function<void()> content) {
+    void DockedSearchBar(kiln::Function<void()> inputField, bool expanded, kiln::Function<void(bool)> onExpandedChange, const ui::Modifier& modifier,
+                         const ExpandableSearchBarOptions& o, kiln::Function<void()> content) {
         const SearchBarColors colors = o.colors.value_or(SearchBarDefaults::colors());
         SurfaceOptions so;
         so.shape = o.shape ? o.shape : SearchBarDefaults::dockedShape();

@@ -6,6 +6,7 @@
 // cursor while the content is visible); and the clipboard commands.
 
 #include "kiln/foundation/Gestures.h"
+#include <kiln/Function.h>
 #include "kiln/foundation/Interaction.h"
 #include "kiln/foundation/text/Selection.h"
 #include "kiln/foundation/text/input/TextLayoutState.h"
@@ -66,13 +67,13 @@ namespace kiln::foundation {
         InputType DirectDragGestureInitiator() const { return m_DragInitiator.Get(); }
         std::shared_ptr<MutableInteractionSource> interactionSource;
         // The receiveContent modifiers around the field (pastes go through them first).
-        std::function<ReceiveContentConfiguration*()> receiveContentConfiguration;
+        kiln::Function<ReceiveContentConfiguration*()> receiveContentConfiguration;
         // Smart selection (null: none), and the toolbar handler the core node keeps
         // (ToolbarRequester).
         PlatformSelectionBehaviors* platformSelectionBehaviors = nullptr;
         TextContextMenuToolbarHandler* toolbarHandler = nullptr;
         // requestAutofillAction (null: no Autofill item).
-        std::function<void()> requestAutofill;
+        kiln::Function<void()> requestAutofill;
 
         void Update(ui::Owner* owner, float density, bool enabled, bool readOnly, bool isPassword);
 
@@ -119,11 +120,11 @@ namespace kiln::foundation {
 
         // detectTextFieldTapGestures (detectTapAndPress): a tap focuses, shows the keyboard and
         // places the cursor; presses go to the interaction source.
-        rt::Task<> DetectTextFieldTapGestures(PointerInputScope& scope, std::function<void()> requestFocus, std::function<void()> showKeyboard);
+        rt::Task<> DetectTextFieldTapGestures(PointerInputScope& scope, kiln::Function<void()> requestFocus, kiln::Function<void()> showKeyboard);
         // detectDirectTouchInteraction: each event's pointer type, seen first.
         rt::Task<> DetectDirectTouchInteraction(PointerInputScope& scope);
         // textFieldSelectionGestures: long-press and mouse selection, double and triple taps.
-        rt::Task<> TextFieldSelectionGestures(PointerInputScope& scope, std::function<void()> requestFocus);
+        rt::Task<> TextFieldSelectionGestures(PointerInputScope& scope, kiln::Function<void()> requestFocus);
         // cursorHandleGestures / selectionHandleGestures, one detector each (the handle chains a
         // pointer input per detector, with DetectDirectTouchInteraction).
         rt::Task<> CursorHandleDragGestures(PointerInputScope& scope);

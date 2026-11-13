@@ -5,6 +5,7 @@
 // and arranged along the cross axis. Weighted items share a line's leftover space.
 
 #include "kiln/foundation/Arrangement.h"
+#include <kiln/Function.h>
 #include "kiln/ui/LayoutNode.h"
 
 #include <climits>
@@ -20,9 +21,9 @@ namespace kiln::foundation {
     };
 
     void FlowRow(const Modifier& modifier, Arrangement horizontal, Arrangement vertical, AlignmentV itemAlignment,
-                 std::function<void()> content, FlowOptions options = {}, rt::Key key = {});
+                 kiln::Function<void()> content, FlowOptions options = {}, rt::Key key = {});
     void FlowColumn(const Modifier& modifier, Arrangement vertical, Arrangement horizontal, AlignmentH itemAlignment,
-                    std::function<void()> content, FlowOptions options = {}, rt::Key key = {});
+                    kiln::Function<void()> content, FlowOptions options = {}, rt::Key key = {});
 
     class FlowPolicy final : public ui::MeasurePolicy {
     public:

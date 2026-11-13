@@ -6,6 +6,7 @@
 // some are received). A key defaults to the result type's name.
 
 #include "kiln/navigation3/NavEntry.h"
+#include <kiln/Function.h>
 #include "kiln/runtime/Channel.h"
 #include "kiln/runtime/Composition.h"
 #include "kiln/runtime/State.h"
@@ -72,10 +73,10 @@ namespace kiln::navigation3 {
     // ResultEffect: calls onResult with each result sent under `resultKey`, in order, while this
     // is composed (the latest onResult). `bus` null: LocalResultEventBus.
     template<typename T>
-    void ResultEffect(const std::string& resultKey, std::function<void(const T&)> onResult, ResultEventBusPtr bus = nullptr, rt::Key key = {}) {
+    void ResultEffect(const std::string& resultKey, kiln::Function<void(const T&)> onResult, ResultEventBusPtr bus = nullptr, rt::Key key = {}) {
         auto& c = *rt::Composition::Current();
         if (!bus) bus = CurrentResultEventBus();
-        auto& current = c.Remember<std::shared_ptr<std::function<void(const T&)>>>([] { return std::make_shared<std::function<void(const T&)>>(); }, {}, key);
+        auto& current = c.Remember<std::shared_ptr<kiln::Function<void(const T&)>>>([] { return std::make_shared<kiln::Function<void(const T&)>>(); }, {}, key);
         *current = std::move(onResult);   // rememberUpdatedState
         c.LaunchedEffect(rt::Keys(resultKey, bus->Generation(), static_cast<const void*>(bus.get())), [bus, resultKey, current]() -> rt::Task<> {
             const auto channel = bus->ChannelFor(resultKey);
@@ -83,7 +84,7 @@ namespace kiln::navigation3 {
         }, key);
     }
     template<typename T>
-    void ResultEffect(std::function<void(const T&)> onResult, ResultEventBusPtr bus = nullptr, rt::Key key = {}) {
+    void ResultEffect(kiln::Function<void(const T&)> onResult, ResultEventBusPtr bus = nullptr, rt::Key key = {}) {
         ResultEffect<T>(ResultEventBus::KeyOf<T>(), std::move(onResult), std::move(bus), key);
     }
 

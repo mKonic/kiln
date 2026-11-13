@@ -6,6 +6,7 @@
 // through a graphics layer on themselves (Compose places them with one).
 
 #include "kiln/foundation/Layouts.h"
+#include <kiln/Function.h>
 #include "kiln/ui/Layout.h"
 
 #include <cmath>
@@ -32,12 +33,12 @@ namespace kiln::material3::internal {
         LabelPlacement placement = LabelPlacement::Inside;
         // TextFieldLabelPosition's alignments while minimized and expanded.
         ui::AlignmentH minimizedAlignment = ui::AlignmentH::Start(), expandedAlignment = ui::AlignmentH::Start();
-        std::function<float()> labelProgress;   // 0 expanded .. 1 minimized
+        kiln::Function<float()> labelProgress;   // 0 expanded .. 1 minimized
         foundation::PaddingValues padding;
         ui::Dp minimizedLabelHalfHeight{ 0 };   // filled fields
         ui::Dp horizontalIconPadding{ 0 };      // outlined fields
         // Outlined fields: the label's size times its progress, for the outline's cutout.
-        std::function<void(ui::Size)> onLabelMeasured;
+        kiln::Function<void(ui::Size)> onLabelMeasured;
     };
 
     std::shared_ptr<ui::MeasurePolicy> TextFieldMeasurePolicy(TextFieldLayoutParams p);

@@ -1,5 +1,6 @@
 // Grid: cases from GridTest (foundation-layout).
 #include "Check.h"
+#include <kiln/Function.h>
 
 #include "kiln/foundation/Compose.h"
 #include "kiln/foundation/Grid.h"
@@ -12,7 +13,7 @@ using namespace kiln::ui;
 
 namespace {
     // Lays `content` out in a loose 400x400 window.
-    void Show(std::function<void()> content) {
+    void Show(kiln::Function<void()> content) {
         Owner owner;
         owner.SetDensity({ 1, 1 });
         rt::Composition composition{ owner.Root(), rt::Dispatcher::Main() };

@@ -5,6 +5,7 @@
 // its width and its items between the two.
 
 #include "kiln/foundation/Arrangement.h"
+#include <kiln/Function.h>
 #include "kiln/foundation/Insets.h"
 #include "kiln/ui/Configuration.h"
 #include "kiln/material3/NavigationItem.h"
@@ -79,13 +80,13 @@ namespace kiln::material3 {
         std::shared_ptr<WideNavigationRailState> state;   // unset: RememberWideNavigationRailState()
         foundation::ShapePtr shape;                       // unset: WideNavigationRailDefaults::shape
         std::optional<WideNavigationRailColors> colors;
-        std::function<void()> header;                     // a menu button, a FAB or a logo, 40 dp above the items
+        kiln::Function<void()> header;                     // a menu button, a FAB or a logo, 40 dp above the items
         std::optional<foundation::WindowInsets> windowInsets;
         // The items' arrangement below the header (Center centres them in the whole rail).
         foundation::Arrangement arrangement = WideNavigationRailDefaults::arrangement();
         foundation::PaddingValues contentPadding = WideNavigationRailDefaults::ContentPadding;
     };
-    void WideNavigationRail(const ui::Modifier& modifier, const WideNavigationRailOptions& options, std::function<void()> content);
+    void WideNavigationRail(const ui::Modifier& modifier, const WideNavigationRailOptions& options, kiln::Function<void()> content);
 
     // The expanded modal rail's window.
     struct ModalWideNavigationRailProperties {
@@ -101,7 +102,7 @@ namespace kiln::material3 {
         foundation::ShapePtr collapsedShape;   // unset: modalCollapsedShape
         foundation::ShapePtr expandedShape;    // unset: modalExpandedShape
         std::optional<WideNavigationRailColors> colors;
-        std::function<void()> header;
+        kiln::Function<void()> header;
         ui::Dp expandedHeaderTopPadding{ 0 };   // aligns the header between the two states
         std::optional<foundation::WindowInsets> windowInsets;
         foundation::Arrangement arrangement = WideNavigationRailDefaults::arrangement();
@@ -112,7 +113,7 @@ namespace kiln::material3 {
     // window above the app with a scrim that collapses it on a tap; the layout behind is unchanged.
     // Unlike Compose, the content is not movable content: moving between the collapsed rail and
     // the window composes it anew.
-    void ModalWideNavigationRail(const ui::Modifier& modifier, const ModalWideNavigationRailOptions& options, std::function<void()> content);
+    void ModalWideNavigationRail(const ui::Modifier& modifier, const ModalWideNavigationRailOptions& options, kiln::Function<void()> content);
 
     struct WideNavigationRailItemOptions {
         bool enabled = true;
@@ -122,7 +123,7 @@ namespace kiln::material3 {
         std::shared_ptr<internal::DynamicPaddingValues> indicatorPadding;   // unset: the defaults' indicatorPadding
     };
     // The label (if any) always shows; the item animates between the icon positions.
-    void WideNavigationRailItem(bool selected, std::function<void()> onClick, std::function<void()> icon, std::function<void()> label, bool railExpanded,
+    void WideNavigationRailItem(bool selected, kiln::Function<void()> onClick, kiln::Function<void()> icon, kiln::Function<void()> label, bool railExpanded,
                                 const ui::Modifier& modifier, const WideNavigationRailItemOptions& options);
 
     namespace internal {

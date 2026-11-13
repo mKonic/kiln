@@ -1,4 +1,5 @@
 #include "kiln/runtime/Task.h"
+#include <kiln/Function.h>
 
 #include <algorithm>
 
@@ -9,12 +10,12 @@ namespace kiln::rt {
         return d;
     }
 
-    void Dispatcher::Post(std::function<void()> fn) {
+    void Dispatcher::Post(kiln::Function<void()> fn) {
         m_Queue.push_back(std::move(fn));
         if (wake) wake();
     }
 
-    void Dispatcher::PostFromAnyThread(std::function<void()> fn) {
+    void Dispatcher::PostFromAnyThread(kiln::Function<void()> fn) {
         std::lock_guard lock(m_RemoteMutex);
         m_Remote.push_back(std::move(fn));
         if (m_RemoteWake) m_RemoteWake();

@@ -1,4 +1,5 @@
 #include "Check.h"
+#include <kiln/Function.h>
 
 #include "kiln/foundation/Compose.h"
 #include "kiln/lifecycle/LifecycleCompose.h"
@@ -19,7 +20,7 @@ namespace {
     }
 
     // A controller whose navigators are attached without a NavHost.
-    std::unique_ptr<NavHostController> Controller(const std::function<void(NavGraphBuilder&)>& builder, const std::string& start) {
+    std::unique_ptr<NavHostController> Controller(const kiln::Function<void(NavGraphBuilder&)>& builder, const std::string& start) {
         auto c = std::make_unique<NavHostController>();
         c->SetHostLifecycleState(LifecycleState::Resumed);
         c->SetGraph(c->CreateGraph(start, std::nullopt, builder));
@@ -168,7 +169,7 @@ namespace {
         std::int64_t frameNanos = 0;
         Harness() { owner.SetDensity({ 1, 1 }); }
         ~Harness() { composition.SetContent([] {}); Pump(); }
-        void Run(std::function<void()> content) { composition.SetContent(std::move(content)); Pump(); }
+        void Run(kiln::Function<void()> content) { composition.SetContent(std::move(content)); Pump(); }
         void Pump() {
             for (int i = 0; i < 3; ++i) {
                 rt::Dispatcher::Main().RunPending();

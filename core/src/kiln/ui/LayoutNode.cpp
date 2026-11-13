@@ -1,4 +1,5 @@
 #include "kiln/ui/LayoutNode.h"
+#include <kiln/Function.h>
 #include "kiln/ui/Accessibility.h"
 #include "kiln/ui/InsetsRulers.h"
 #include "kiln/ui/MyersDiff.h"
@@ -76,7 +77,7 @@ namespace kiln::ui {
 
     bool ModifierNode::IsAttached() const { return m_Owner && m_Owner->GetOwner(); }
 
-    void ModifierNode::ObserveReads(const std::function<void()>& block) {
+    void ModifierNode::ObserveReads(const kiln::Function<void()>& block) {
         if (!m_ReadObserver) {
             m_ReadObserver = std::make_unique<ReadObserver>();
             m_ReadObserver->node = this;
@@ -115,7 +116,7 @@ namespace kiln::ui {
     }
 
     namespace {
-        void ForSubtree(LayoutNode& n, const std::function<void(LayoutNode&)>& f) {
+        void ForSubtree(LayoutNode& n, const kiln::Function<void(LayoutNode&)>& f) {
             f(n);
             for (LayoutNode* c : n.Children()) ForSubtree(*c, f);
         }
@@ -143,7 +144,7 @@ namespace kiln::ui {
     }
 
     void LayoutNode::TraverseAncestorsImpl(const ModifierNode& from, const void* key, const std::type_info* type,
-                                           const std::function<bool(ModifierNode&, TraversableNode&)>& block) {
+                                           const kiln::Function<bool(ModifierNode&, TraversableNode&)>& block) {
         LayoutNode* n = from.m_Owner;
         if (!n) return;
         bool before = false;
@@ -158,13 +159,13 @@ namespace kiln::ui {
     }
 
     void LayoutNode::TraverseDescendantsImpl(const ModifierNode& from, const void* key, const std::type_info* type, bool childrenOnly,
-                                             const std::function<TraverseDescendantsAction(ModifierNode&, TraversableNode&)>& block) {
+                                             const kiln::Function<TraverseDescendantsAction(ModifierNode&, TraversableNode&)>& block) {
         LayoutNode* n = from.m_Owner;
         if (!n) return;
         // Depth first: the rest of this chain, then each child's chain and below it. A match
         // ends its branch when only the nearest ones (children) are wanted, or when skipped.
         bool cancelled = false;
-        std::function<void(LayoutNode*, std::size_t)> walk = [&](LayoutNode* node, std::size_t first) {
+        kiln::Function<void(LayoutNode*, std::size_t)> walk = [&](LayoutNode* node, std::size_t first) {
             TraversableNode* t = nullptr;
             for (std::size_t i = first; i < node->m_Nodes.size(); ++i) {
                 ModifierNode& m = *node->m_Nodes[i];
@@ -964,7 +965,7 @@ namespace kiln::ui {
         // Virtual nodes no longer composed here leave.
         for (LayoutNode* v : virtualsBefore) {
             bool kept = false;
-            std::function<bool(const std::vector<rt::TreeNode*>&)> has = [&](const std::vector<rt::TreeNode*>& list) {
+            kiln::Function<bool(const std::vector<rt::TreeNode*>&)> has = [&](const std::vector<rt::TreeNode*>& list) {
                 for (rt::TreeNode* t : list) {
                     auto* c = static_cast<LayoutNode*>(t);
                     if (c == v) return true;
@@ -1672,7 +1673,7 @@ namespace kiln::ui {
         const ui::Size size{ float(c.Width()), float(c.Height()) };
         // Draw modifiers nest: each one's DrawContent runs the next, the last draws the wrapped
         // content. Their reads subscribe this node's draw watcher.
-        std::function<void(std::size_t)> step = [&](std::size_t d) {
+        kiln::Function<void(std::size_t)> step = [&](std::size_t d) {
             if (d == c.draws.size()) { DrawWrapped(index, scope); return; }
             scope.SetSize(size);
             scope.SetContent([&, d] { step(d + 1); });
@@ -1687,7 +1688,7 @@ namespace kiln::ui {
             const auto it = std::find(c.draws.begin(), c.draws.end(), after);
             if (it == c.draws.end()) continue;
             const ui::Size size{ float(c.Width()), float(c.Height()) };
-            std::function<void(std::size_t)> step = [&](std::size_t d) {
+            kiln::Function<void(std::size_t)> step = [&](std::size_t d) {
                 if (d == c.draws.size()) { DrawWrapped(index, scope); return; }
                 scope.SetSize(size);
                 scope.SetContent([&, d] { step(d + 1); });
@@ -2287,7 +2288,7 @@ namespace kiln::ui {
         return gfx::ShadowLight::Framework(m_Density.density, float(m_Window.width), float(m_Window.height), 0, 0);
     }
 
-    void Owner::DrawWith(const DrawTarget& target, const std::function<void(DrawScope&)>& draw) {
+    void Owner::DrawWith(const DrawTarget& target, const kiln::Function<void(DrawScope&)>& draw) {
         DrawTarget t = target;
         t.shadowLight = ShadowLight();
         ContentDrawScope scope(m_Density, m_Direction, t);

@@ -1,4 +1,5 @@
 #include "Check.h"
+#include <kiln/Function.h>
 
 #include "kiln/foundation/Compose.h"
 #include "kiln/foundation/BringIntoView.h"
@@ -19,7 +20,7 @@ namespace {
         rt::Composition composition{ owner.Root(), rt::Dispatcher::Main() };
         std::int64_t frameNs = 0;
         Harness() { owner.SetDensity({ 1, 1 }); owner.Config().touchSlop = 8; }
-        void Run(std::function<void()> content) { composition.SetContent(std::move(content)); Pump(); }
+        void Run(kiln::Function<void()> content) { composition.SetContent(std::move(content)); Pump(); }
         void Pump() { rt::Composition::RecomposeAll(); owner.MeasureAndLayout({ 100, 100 }); }
         void Frames(int n) { for (int i = 0; i < n; ++i) { frameNs += 16'000'000; rt::Dispatcher::Main().RunFrame(frameNs); Pump(); } }
         void Touch(PointerEventType type, float x, float y, bool down, std::int64_t t) {
@@ -134,7 +135,7 @@ TEST(PagerPagesForAccessibility) {
     h.Run([&] {
         HorizontalPager(FillMax(Modifier{}, Axis::Both), state, [](int) { Box(FillMax(Modifier{}, Axis::Both)); });
     });
-    std::function<const SemanticsNode*(const SemanticsNode&)> find = [&](const SemanticsNode& n) -> const SemanticsNode* {
+    kiln::Function<const SemanticsNode*(const SemanticsNode&)> find = [&](const SemanticsNode& n) -> const SemanticsNode* {
         if (n.config.pageRight) return &n;
         for (const auto& c : n.children) if (const auto* f = find(c)) return f;
         return nullptr;

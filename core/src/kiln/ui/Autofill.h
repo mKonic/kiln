@@ -7,6 +7,7 @@
 // values to PerformAutofill.
 
 #include "kiln/ui/Accessibility.h"
+#include <kiln/Function.h>
 #include "kiln/ui/Semantics.h"
 
 #include <functional>
@@ -24,13 +25,13 @@ namespace kiln::ui {
     // PlatformAutofillManager: android.view.autofill.AutofillManager for the host view's virtual
     // children (by semantics id, bounds in root pixels).
     struct AutofillHost {
-        std::function<void(int id, IntRect bounds)> notifyViewEntered;
-        std::function<void(int id)> notifyViewExited;
-        std::function<void(int id, const FillableData& value)> notifyValueChanged;
-        std::function<void(int id, bool visible)> notifyViewVisibilityChanged;
-        std::function<void()> commit;
-        std::function<void()> cancel;
-        std::function<void(int id, IntRect bounds)> requestAutofill;
+        kiln::Function<void(int id, IntRect bounds)> notifyViewEntered;
+        kiln::Function<void(int id)> notifyViewExited;
+        kiln::Function<void(int id, const FillableData& value)> notifyValueChanged;
+        kiln::Function<void(int id, bool visible)> notifyViewVisibilityChanged;
+        kiln::Function<void()> commit;
+        kiln::Function<void()> cancel;
+        kiln::Function<void(int id, IntRect bounds)> requestAutofill;
         // CredentialRequest nodes are autofill nodes (API 34+).
         bool credentialRequestsSupported = false;
     };

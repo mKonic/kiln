@@ -4,6 +4,7 @@
 // defaults, contentColorFor, surfaceColorAtElevation and the token lookup.
 
 #include "kiln/material3/tokens/TokenTypes.h"
+#include <kiln/Function.h>
 
 #include <functional>
 
@@ -118,8 +119,8 @@ namespace kiln::material3 {
     // lightColorScheme / darkColorScheme: the baseline roles (ColorLightTokens /
     // ColorDarkTokens). `customize` sets roles as the named arguments do; surfaceTint follows
     // primary unless it sets surfaceTint too.
-    ColorScheme LightColorScheme(const std::function<void(ColorScheme&)>& customize = {});
-    ColorScheme DarkColorScheme(const std::function<void(ColorScheme&)>& customize = {});
+    ColorScheme LightColorScheme(const kiln::Function<void(ColorScheme&)>& customize = {});
+    ColorScheme DarkColorScheme(const kiln::Function<void(ColorScheme&)>& customize = {});
     // expressiveLightColorScheme: the light scheme with tone 30 on-container roles.
     ColorScheme ExpressiveLightColorScheme();
 

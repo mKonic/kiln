@@ -1,4 +1,5 @@
 #include "kiln/material3/ButtonGroup.h"
+#include <kiln/Function.h>
 
 #include "kiln/animation/Animatable.h"
 #include "kiln/foundation/Compose.h"
@@ -317,7 +318,7 @@ namespace kiln::material3 {
             o.overflow = text::TextOverflow::Visible;
             return o;
         }
-        void Label(const std::function<void()>& icon, const std::string& label) {
+        void Label(const kiln::Function<void()>& icon, const std::string& label) {
             if (icon) {
                 icon();
                 Spacer(SizeMod({}, ButtonDefaults::IconSpacing, ButtonDefaults::IconSpacing));
@@ -333,7 +334,7 @@ namespace kiln::material3 {
 
         class ClickableItem final : public internal::ButtonGroupItem {
         public:
-            ClickableItem(std::function<void()> onClick, std::function<void()> icon, float weight, anim::SpecPtr spec, bool enabled, std::string label)
+            ClickableItem(kiln::Function<void()> onClick, kiln::Function<void()> icon, float weight, anim::SpecPtr spec, bool enabled, std::string label)
                 : m_OnClick(std::move(onClick)), m_Icon(std::move(icon)), m_Weight(weight), m_Spec(std::move(spec)), m_Enabled(enabled),
                   m_Label(std::move(label)) {}
             void ButtonGroupContent() override {
@@ -353,7 +354,7 @@ namespace kiln::material3 {
             }
 
         private:
-            std::function<void()> m_OnClick, m_Icon;
+            kiln::Function<void()> m_OnClick, m_Icon;
             float m_Weight;
             anim::SpecPtr m_Spec;
             bool m_Enabled;
@@ -362,7 +363,7 @@ namespace kiln::material3 {
 
         class ToggleableItem final : public internal::ButtonGroupItem {
         public:
-            ToggleableItem(bool checked, std::function<void(bool)> onCheckedChange, float weight, anim::SpecPtr spec, std::function<void()> icon,
+            ToggleableItem(bool checked, kiln::Function<void(bool)> onCheckedChange, float weight, anim::SpecPtr spec, kiln::Function<void()> icon,
                            bool enabled, std::string label)
                 : m_Checked(checked), m_OnCheckedChange(std::move(onCheckedChange)), m_Weight(weight), m_Spec(std::move(spec)), m_Icon(std::move(icon)),
                   m_Enabled(enabled), m_Label(std::move(label)) {}
@@ -386,24 +387,24 @@ namespace kiln::material3 {
 
         private:
             bool m_Checked;
-            std::function<void(bool)> m_OnCheckedChange;
+            kiln::Function<void(bool)> m_OnCheckedChange;
             float m_Weight;
             anim::SpecPtr m_Spec;
-            std::function<void()> m_Icon;
+            kiln::Function<void()> m_Icon;
             bool m_Enabled;
             std::string m_Label;
         };
 
         class CustomItem final : public internal::ButtonGroupItem {
         public:
-            CustomItem(std::function<void()> content, std::function<void(ButtonGroupMenuState&)> menu)
+            CustomItem(kiln::Function<void()> content, kiln::Function<void(ButtonGroupMenuState&)> menu)
                 : m_Content(std::move(content)), m_Menu(std::move(menu)) {}
             void ButtonGroupContent() override { if (m_Content) m_Content(); }
             void MenuContent(ButtonGroupMenuState& state) override { if (m_Menu) m_Menu(state); }
 
         private:
-            std::function<void()> m_Content;
-            std::function<void(ButtonGroupMenuState&)> m_Menu;
+            kiln::Function<void()> m_Content;
+            kiln::Function<void(ButtonGroupMenuState&)> m_Menu;
         };
 
         // Cached so morph state keyed on the shapes survives recomposition.
@@ -440,18 +441,18 @@ namespace kiln::material3 {
     }
     Modifier ButtonGroupScope::Align(Modifier m, AlignmentV alignment) const { return m.With<AlignNode>(AlignParams{ alignment }); }
 
-    void ButtonGroupScope::ClickableItem(std::function<void()> onClick, std::string label, std::function<void()> icon, float weight, bool enabled) {
+    void ButtonGroupScope::ClickableItem(kiln::Function<void()> onClick, std::string label, kiln::Function<void()> icon, float weight, bool enabled) {
         // require(weight > 0 || weight is NaN)
         if (!(weight > 0 || std::isnan(weight))) weight = NAN;
         m_Items.push_back(std::make_shared<class ClickableItem>(std::move(onClick), std::move(icon), weight, m_Spec, enabled, std::move(label)));
     }
-    void ButtonGroupScope::ToggleableItem(bool checked, std::string label, std::function<void(bool)> onCheckedChange, std::function<void()> icon,
+    void ButtonGroupScope::ToggleableItem(bool checked, std::string label, kiln::Function<void(bool)> onCheckedChange, kiln::Function<void()> icon,
                                           float weight, bool enabled) {
         if (!(weight > 0 || std::isnan(weight))) weight = NAN;
         m_Items.push_back(std::make_shared<class ToggleableItem>(checked, std::move(onCheckedChange), weight, m_Spec, std::move(icon), enabled,
                                                                  std::move(label)));
     }
-    void ButtonGroupScope::CustomItem(std::function<void()> buttonGroupContent, std::function<void(ButtonGroupMenuState&)> menuContent) {
+    void ButtonGroupScope::CustomItem(kiln::Function<void()> buttonGroupContent, kiln::Function<void(ButtonGroupMenuState&)> menuContent) {
         m_Items.push_back(std::make_shared<class CustomItem>(std::move(buttonGroupContent), std::move(menuContent)));
     }
 
@@ -501,8 +502,8 @@ namespace kiln::material3 {
 
     // --- ButtonGroup ---------------------------------------------------------------------------
 
-    void ButtonGroup(std::function<void(ButtonGroupMenuState&)> overflowIndicator, const Modifier& modifier,
-                     std::function<void(ButtonGroupScope&)> content, const ButtonGroupOptions& options) {
+    void ButtonGroup(kiln::Function<void(ButtonGroupMenuState&)> overflowIndicator, const Modifier& modifier,
+                     kiln::Function<void(ButtonGroupScope&)> content, const ButtonGroupOptions& options) {
         auto& c = *rt::Composition::Current();
         auto scope = std::make_shared<ButtonGroupScope>(Value(MotionSchemeKeyTokens::FastSpatial));
         if (content) content(*scope);

@@ -1,4 +1,5 @@
 #include "kiln/animation/Animation.h"
+#include <kiln/Function.h>
 
 namespace kiln::anim {
 
@@ -6,7 +7,7 @@ namespace kiln::anim {
         // animateTo / animateDecay's loop: samples `animation` on each frame (the play time
         // scaled by the animator duration scale for spec animations), updating the state and the
         // scope, until it finishes, the block cancels it or a newer animation of the state starts.
-        static rt::Task<> Run(AnimationState& state, std::shared_ptr<const Animation> animation, bool scaled, std::function<void(AnimationScope&)> block) {
+        static rt::Task<> Run(AnimationState& state, std::shared_ptr<const Animation> animation, bool scaled, kiln::Function<void(AnimationScope&)> block) {
             const std::uint64_t gen = state.NextGeneration();
             AnimationScope scope;
             scope.value = state.Value();
@@ -37,7 +38,7 @@ namespace kiln::anim {
         }
     };
 
-    rt::Task<> AnimateTo(AnimationState& state, Vec target, SpecPtr spec, bool, std::function<void(AnimationScope&)> block) {
+    rt::Task<> AnimateTo(AnimationState& state, Vec target, SpecPtr spec, bool, kiln::Function<void(AnimationScope&)> block) {
         // From the state's velocity (sequentialAnimation only moves Compose's start time to the
         // last frame's, which the frame clock here gives anyway).
         const Vec v0 = state.Velocity();
@@ -45,7 +46,7 @@ namespace kiln::anim {
         co_await AnimationRunner::Run(state, animation, true, std::move(block));
     }
 
-    rt::Task<> AnimateDecay(AnimationState& state, std::shared_ptr<const DecaySpec> decay, bool, std::function<void(AnimationScope&)> block) {
+    rt::Task<> AnimateDecay(AnimationState& state, std::shared_ptr<const DecaySpec> decay, bool, kiln::Function<void(AnimationScope&)> block) {
         auto animation = std::make_shared<DecayAnimation>(std::move(decay), state.Value()[0], state.Velocity()[0]);
         co_await AnimationRunner::Run(state, animation, false, std::move(block));
     }

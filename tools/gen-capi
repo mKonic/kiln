@@ -16,7 +16,7 @@ Mapping (design/capi.md):
 - Classes (states, scopes) become opaque handles with their public methods. A function that
   returns one (rememberX) remembers the handle at its call; suspending methods take a `done`
   callback.
-- std::function parameters become callback structs { call, user, drop }.
+- kiln::Function parameters become callback structs { call, user, drop }.
 - Enums become C enums.
 """
 
@@ -320,12 +320,12 @@ class Generator:
     def callback(self, fn_type, name=''):
         sig = canon(fn_type)
         core = {
-            'std::function<void ()>': 'kiln_fn',
-            'std::function<void (bool)>': 'kiln_fn_bool',
-            'std::function<void (int)>': 'kiln_fn_int',
-            'std::function<void (float)>': 'kiln_fn_float',
-            'std::function<void (std::basic_string<char>)>': 'kiln_fn_str',
-            'std::function<void (const std::basic_string<char> &)>': 'kiln_fn_str',
+            'kiln::Function<void ()>': 'kiln_fn',
+            'kiln::Function<void (bool)>': 'kiln_fn_bool',
+            'kiln::Function<void (int)>': 'kiln_fn_int',
+            'kiln::Function<void (float)>': 'kiln_fn_float',
+            'kiln::Function<void (std::basic_string<char>)>': 'kiln_fn_str',
+            'kiln::Function<void (const std::basic_string<char> &)>': 'kiln_fn_str',
         }
         if sig in core:
             return Mapping(core[sig], lambda e: f'kiln::capi::Fn({e})', None)
@@ -375,7 +375,7 @@ class Generator:
                 raise Unmappable(f'result {t.spelling}')
             c = 'kiln_m3_fn_' + self.type_word(t)
             cpp = t.get_canonical().spelling
-            self.callbacks[key] = Callback(c, [(m, cpp)], None, 'void', f'std::function<void ({cpp})>')
+            self.callbacks[key] = Callback(c, [(m, cpp)], None, 'void', f'kiln::Function<void ({cpp})>')
         return self.callbacks[key]
 
     def guarded_from(self, im, e):
@@ -521,7 +521,7 @@ class Generator:
             return Mapping('kiln_scrollable_state*', lambda e: f'*reinterpret_cast<kiln::foundation::ScrollableState*>({e})', None)
         if k == 'kiln::foundation::PagerState':
             return Mapping('kiln_pager_state*', lambda e: f'*{e}->state', None)
-        if k.startswith('std::function<'):
+        if k.startswith('kiln::Function<'):
             return self.callback(base, name)
         m = re.match(r'std::optional<(.*)>$', k)
         if m:
@@ -545,10 +545,10 @@ class Generator:
                                lambda e, o: f'(({e}) ? kiln::capi::TransientString(*({e})) : nullptr)')
             if ik.startswith('std::optional<'):
                 return self.nested_optional(inner, name)
-            if ik == 'std::function<void ()>':
+            if ik == 'kiln::Function<void ()>':
                 # unset (the default) / none (a NULL call) / a callback
                 self.opt_structs['kiln_m3_opt_fn'] = 'kiln_fn'
-                return Mapping('kiln_m3_opt_fn', lambda e: f'({e}.set ? std::optional<std::function<void()>>(kiln::capi::Fn({e}.value)) : std::nullopt)', None)
+                return Mapping('kiln_m3_opt_fn', lambda e: f'({e}.set ? std::optional<kiln::Function<void()>>(kiln::capi::Fn({e}.value)) : std::nullopt)', None)
             im = self.map(inner, name, field_=field_)
             if im.list_item is not None:
                 raise Unmappable(f'optional list {k}')

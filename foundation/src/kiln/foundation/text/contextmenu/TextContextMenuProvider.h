@@ -8,6 +8,7 @@
 // is the owner's (TextContextMenuToolbarHandler) unless LocalTextContextMenuToolbarProvider has one.
 
 #include "kiln/foundation/text/contextmenu/TextContextMenu.h"
+#include <kiln/Function.h>
 
 #include <memory>
 
@@ -38,11 +39,11 @@ namespace kiln::foundation {
     // ProvideDefaultPlatformTextContextMenuProviders: the default dropdown provider for `content`
     // (unless one is provided already), in a Box that propagates min constraints. `modifier` is
     // built inside, where the provider is the local (the menu gestures read it).
-    void ProvideDefaultPlatformTextContextMenuProviders(std::function<Modifier()> modifier, std::function<void()> content);
+    void ProvideDefaultPlatformTextContextMenuProviders(kiln::Function<Modifier()> modifier, kiln::Function<void()> content);
 
     // showTextContextMenuOnSecondaryClick: a right click shows the menu of the components around
     // this point of the chain, at the click; `onPreShowContextMenu` runs first (with the click in
     // the node's space).
-    Modifier ShowTextContextMenuOnSecondaryClick(Modifier m, std::function<rt::Task<>(Offset)> onPreShowContextMenu = {});
+    Modifier ShowTextContextMenuOnSecondaryClick(Modifier m, kiln::Function<rt::Task<>(Offset)> onPreShowContextMenu = {});
 
 }

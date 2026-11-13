@@ -4,6 +4,7 @@
 // tonal/shadow elevation, and the show/hide modifier.
 
 #include "kiln/animation/Spec.h"
+#include <kiln/Function.h>
 #include "kiln/foundation/Interaction.h"
 #include "kiln/foundation/Shapes.h"
 
@@ -25,32 +26,32 @@ namespace kiln::material3 {
         std::shared_ptr<foundation::MutableInteractionSource> interactionSource;
     };
 
-    void FloatingActionButton(std::function<void()> onClick, const ui::Modifier& modifier, const FloatingActionButtonOptions& options,
-                              std::function<void()> content);
-    void SmallFloatingActionButton(std::function<void()> onClick, const ui::Modifier& modifier, const FloatingActionButtonOptions& options,
-                                   std::function<void()> content);
-    void MediumFloatingActionButton(std::function<void()> onClick, const ui::Modifier& modifier, const FloatingActionButtonOptions& options,
-                                    std::function<void()> content);
-    void LargeFloatingActionButton(std::function<void()> onClick, const ui::Modifier& modifier, const FloatingActionButtonOptions& options,
-                                   std::function<void()> content);
+    void FloatingActionButton(kiln::Function<void()> onClick, const ui::Modifier& modifier, const FloatingActionButtonOptions& options,
+                              kiln::Function<void()> content);
+    void SmallFloatingActionButton(kiln::Function<void()> onClick, const ui::Modifier& modifier, const FloatingActionButtonOptions& options,
+                                   kiln::Function<void()> content);
+    void MediumFloatingActionButton(kiln::Function<void()> onClick, const ui::Modifier& modifier, const FloatingActionButtonOptions& options,
+                                    kiln::Function<void()> content);
+    void LargeFloatingActionButton(kiln::Function<void()> onClick, const ui::Modifier& modifier, const FloatingActionButtonOptions& options,
+                                   kiln::Function<void()> content);
 
-    void ExtendedFloatingActionButton(std::function<void()> onClick, const ui::Modifier& modifier, const FloatingActionButtonOptions& options,
-                                      std::function<void()> content);
-    void SmallExtendedFloatingActionButton(std::function<void()> onClick, const ui::Modifier& modifier, const FloatingActionButtonOptions& options,
-                                           std::function<void()> content);
-    void MediumExtendedFloatingActionButton(std::function<void()> onClick, const ui::Modifier& modifier, const FloatingActionButtonOptions& options,
-                                            std::function<void()> content);
-    void LargeExtendedFloatingActionButton(std::function<void()> onClick, const ui::Modifier& modifier, const FloatingActionButtonOptions& options,
-                                           std::function<void()> content);
+    void ExtendedFloatingActionButton(kiln::Function<void()> onClick, const ui::Modifier& modifier, const FloatingActionButtonOptions& options,
+                                      kiln::Function<void()> content);
+    void SmallExtendedFloatingActionButton(kiln::Function<void()> onClick, const ui::Modifier& modifier, const FloatingActionButtonOptions& options,
+                                           kiln::Function<void()> content);
+    void MediumExtendedFloatingActionButton(kiln::Function<void()> onClick, const ui::Modifier& modifier, const FloatingActionButtonOptions& options,
+                                            kiln::Function<void()> content);
+    void LargeExtendedFloatingActionButton(kiln::Function<void()> onClick, const ui::Modifier& modifier, const FloatingActionButtonOptions& options,
+                                           kiln::Function<void()> content);
 
     // The label has cleared semantics: the icon supplies the accessible name, including collapsed.
-    void ExtendedFloatingActionButton(std::function<void()> text, std::function<void()> icon, std::function<void()> onClick,
+    void ExtendedFloatingActionButton(kiln::Function<void()> text, kiln::Function<void()> icon, kiln::Function<void()> onClick,
                                       const ui::Modifier& modifier = {}, bool expanded = true, const FloatingActionButtonOptions& options = {});
-    void SmallExtendedFloatingActionButton(std::function<void()> text, std::function<void()> icon, std::function<void()> onClick,
+    void SmallExtendedFloatingActionButton(kiln::Function<void()> text, kiln::Function<void()> icon, kiln::Function<void()> onClick,
                                            const ui::Modifier& modifier = {}, bool expanded = true, const FloatingActionButtonOptions& options = {});
-    void MediumExtendedFloatingActionButton(std::function<void()> text, std::function<void()> icon, std::function<void()> onClick,
+    void MediumExtendedFloatingActionButton(kiln::Function<void()> text, kiln::Function<void()> icon, kiln::Function<void()> onClick,
                                             const ui::Modifier& modifier = {}, bool expanded = true, const FloatingActionButtonOptions& options = {});
-    void LargeExtendedFloatingActionButton(std::function<void()> text, std::function<void()> icon, std::function<void()> onClick,
+    void LargeExtendedFloatingActionButton(kiln::Function<void()> text, kiln::Function<void()> icon, kiln::Function<void()> onClick,
                                            const ui::Modifier& modifier = {}, bool expanded = true, const FloatingActionButtonOptions& options = {});
 
     namespace FloatingActionButtonDefaults {

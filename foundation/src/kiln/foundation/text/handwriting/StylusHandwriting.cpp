@@ -1,4 +1,5 @@
 #include "kiln/foundation/text/handwriting/StylusHandwriting.h"
+#include <kiln/Function.h>
 
 #include "kiln/foundation/Gestures.h"
 #include "kiln/foundation/Focus.h"
@@ -72,7 +73,7 @@ namespace kiln::foundation {
         struct DetectorState {
             FocusRequester requester;
             bool focused = false;
-            std::function<void()> callback;
+            kiln::Function<void()> callback;
             ui::Owner* owner = nullptr;
         };
 
@@ -112,7 +113,7 @@ namespace kiln::foundation {
         };
     }
 
-    Modifier HandwritingDetector(Modifier m, std::function<void()> callback) {
+    Modifier HandwritingDetector(Modifier m, kiln::Function<void()> callback) {
         if (!ui::IsStylusHandwritingSupported()) return m;
         auto state = std::make_shared<DetectorState>();
         if (auto* c = rt::Composition::Current()) state = c->Remember<std::shared_ptr<DetectorState>>([&] { return state; });

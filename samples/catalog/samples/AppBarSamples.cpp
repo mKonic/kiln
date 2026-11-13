@@ -1,5 +1,6 @@
 // AppBarSamples.kt
 #include "AppBarSamples.h"
+#include <kiln/Function.h>
 #include "Common.h"
 #include "Shared.h"
 
@@ -24,7 +25,7 @@ namespace catalog::samples {
     namespace {
 
         // Text(text, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        std::function<void()> OneLine(std::string text, const Modifier& modifier = {}) {
+        kiln::Function<void()> OneLine(std::string text, const Modifier& modifier = {}) {
             return [text, modifier] {
                 m3::TextOptions o;
                 o.maxLines = 1;
@@ -83,7 +84,7 @@ namespace catalog::samples {
             m3::Scaffold(behavior ? Nested(behavior) : Modifier{}, s, [](const PaddingValues& p) { NumberList(p); });
         }
 
-        using TwoRowsFn = void (*)(std::function<void()>, const Modifier&, const m3::TwoRowsTopAppBarOptions&);
+        using TwoRowsFn = void (*)(kiln::Function<void()>, const Modifier&, const m3::TwoRowsTopAppBarOptions&);
         void TwoRowsBar(TwoRowsFn bar, const char* title, bool subtitle, bool alignCenter, bool tooltips, ScrollBehavior behavior) {
             m3::ScaffoldOptions s;
             s.topBar = [=] {

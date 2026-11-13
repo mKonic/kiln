@@ -1,4 +1,5 @@
 #include "kiln/lifecycle/ViewModel.h"
+#include <kiln/Function.h>
 
 namespace kiln::lifecycle {
 
@@ -8,10 +9,10 @@ namespace kiln::lifecycle {
 
         class FnCloseable final : public AutoCloseable {
         public:
-            explicit FnCloseable(std::function<void()> f) : m_F(std::move(f)) {}
+            explicit FnCloseable(kiln::Function<void()> f) : m_F(std::move(f)) {}
             void Close() override { if (auto f = std::exchange(m_F, nullptr)) f(); }
         private:
-            std::function<void()> m_F;
+            kiln::Function<void()> m_F;
         };
 
         class InitializerFactory final : public ViewModelProvider::Factory {
@@ -28,7 +29,7 @@ namespace kiln::lifecycle {
         };
     }
 
-    std::shared_ptr<AutoCloseable> MakeCloseable(std::function<void()> close) { return std::make_shared<FnCloseable>(std::move(close)); }
+    std::shared_ptr<AutoCloseable> MakeCloseable(kiln::Function<void()> close) { return std::make_shared<FnCloseable>(std::move(close)); }
 
     // ---- ViewModel -------------------------------------------------------------------------
 
@@ -117,7 +118,7 @@ namespace kiln::lifecycle {
         r += b;
         return r;
     }
-    MutableCreationExtras MakeCreationExtras(const CreationExtras& initial, const std::function<void(MutableCreationExtras&)>& builder) {
+    MutableCreationExtras MakeCreationExtras(const CreationExtras& initial, const kiln::Function<void(MutableCreationExtras&)>& builder) {
         MutableCreationExtras r(initial);
         if (builder) builder(r);
         return r;
@@ -176,14 +177,14 @@ namespace kiln::lifecycle {
     // ---- initializers ----------------------------------------------------------------------
 
     void InitializerViewModelFactoryBuilder::AddInitializer(const ViewModelClass& clazz,
-                                                            std::function<std::shared_ptr<ViewModel>(const CreationExtras&)> initializer) {
+                                                            kiln::Function<std::shared_ptr<ViewModel>(const CreationExtras&)> initializer) {
         for (const auto& i : m_Initializers)
             if (i.clazz == clazz) throw std::invalid_argument("A `initializer` with the same `clazz` has already been added: " + clazz.name + ".");
         m_Initializers.emplace_back(clazz, std::move(initializer));
     }
     ViewModelProvider::FactoryPtr InitializerViewModelFactoryBuilder::Build() const { return std::make_shared<InitializerFactory>(m_Initializers); }
 
-    ViewModelProvider::FactoryPtr ViewModelFactory(const std::function<void(InitializerViewModelFactoryBuilder&)>& builder) {
+    ViewModelProvider::FactoryPtr ViewModelFactory(const kiln::Function<void(InitializerViewModelFactoryBuilder&)>& builder) {
         InitializerViewModelFactoryBuilder b;
         builder(b);
         return b.Build();

@@ -1,4 +1,5 @@
 #include "kiln/material3/SwipeToDismissBox.h"
+#include <kiln/Function.h>
 
 #include "kiln/foundation/Compose.h"
 #include "kiln/foundation/Layouts.h"
@@ -12,8 +13,8 @@ namespace kiln::material3 {
 
     using namespace foundation;
 
-    SwipeToDismissBoxState::SwipeToDismissBoxState(SwipeToDismissBoxValue initialValue, std::function<float(float)> positionalThreshold,
-                                                   std::function<bool(SwipeToDismissBoxValue)> confirm)
+    SwipeToDismissBoxState::SwipeToDismissBoxState(SwipeToDismissBoxValue initialValue, kiln::Function<float(float)> positionalThreshold,
+                                                   kiln::Function<bool(SwipeToDismissBoxValue)> confirm)
         : m_PositionalThreshold(std::move(positionalThreshold)),
           m_Anchored(initialValue, [confirm](const SwipeToDismissBoxValue& v) { return !confirm || confirm(v); }) {}
 
@@ -34,14 +35,14 @@ namespace kiln::material3 {
     rt::Task<> SwipeToDismissBoxState::Dismiss(SwipeToDismissBoxValue direction) { co_await m_Anchored.AnimateTo(direction); }
 
     namespace SwipeToDismissBoxDefaults {
-        std::function<float(float)> positionalThreshold() {
+        kiln::Function<float(float)> positionalThreshold() {
             const ui::Density d = rt::Composition::Current()->Read(ui::LocalDensity);
             return [px = d.ToPx(ui::Dp(56))](float) { return px; };
         }
     }
 
-    std::shared_ptr<SwipeToDismissBoxState> RememberSwipeToDismissBoxState(SwipeToDismissBoxValue initialValue, std::function<float(float)> threshold,
-                                                                           std::function<bool(SwipeToDismissBoxValue)> confirm, rt::Key key) {
+    std::shared_ptr<SwipeToDismissBoxState> RememberSwipeToDismissBoxState(SwipeToDismissBoxValue initialValue, kiln::Function<float(float)> threshold,
+                                                                           kiln::Function<bool(SwipeToDismissBoxValue)> confirm, rt::Key key) {
         if (!threshold) threshold = SwipeToDismissBoxDefaults::positionalThreshold();
         // SwipeToDismissBoxState.Saver keeps the current value.
         rt::Saver<std::shared_ptr<SwipeToDismissBoxState>> saver{
@@ -55,8 +56,8 @@ namespace kiln::material3 {
             [&] { return std::make_shared<SwipeToDismissBoxState>(initialValue, threshold, confirm); }, saver, rt::Keys(), key);
     }
 
-    void SwipeToDismissBox(std::shared_ptr<SwipeToDismissBoxState> state, std::function<void()> backgroundContent, const ui::Modifier& modifier,
-                           const SwipeToDismissBoxOptions& o, std::function<void()> content) {
+    void SwipeToDismissBox(std::shared_ptr<SwipeToDismissBoxState> state, kiln::Function<void()> backgroundContent, const ui::Modifier& modifier,
+                           const SwipeToDismissBoxOptions& o, kiln::Function<void()> content) {
         auto& c = *rt::Composition::Current();
         AnchoredDraggableOptions drag;
         drag.enabled = o.gesturesEnabled && state->SettledValue() == SwipeToDismissBoxValue::Settled;

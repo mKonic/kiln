@@ -1,5 +1,6 @@
 // PullToRefreshSamples.kt
 #include "PullToRefreshSamples.h"
+#include <kiln/Function.h>
 #include "Common.h"
 
 #include <kiln/animation/Animatable.h>
@@ -32,7 +33,7 @@ namespace catalog::samples {
         struct Refreshing {
             kiln::rt::State<int>& itemCount;
             kiln::rt::State<bool>& isRefreshing;
-            std::function<void()> onRefresh;
+            kiln::Function<void()> onRefresh;
         };
         Refreshing RememberRefreshing(int millis = 5000) {
             auto& itemCount = RememberState(15);
@@ -44,7 +45,7 @@ namespace catalog::samples {
                     } };
         }
 
-        void Bar(const char* title, std::function<void()> onRefresh, bool enabled = true) {
+        void Bar(const char* title, kiln::Function<void()> onRefresh, bool enabled = true) {
             m3::TopAppBarOptions bar;
             // Provide an accessible alternative to trigger refresh.
             bar.actions = [onRefresh, enabled] {
@@ -56,7 +57,7 @@ namespace catalog::samples {
         }
 
         // LazyColumn(Modifier.fillMaxSize()) { items(itemCount) { ListItem { Text("Item ${itemCount - it}") } } }
-        void Items(std::function<int()> count) {
+        void Items(kiln::Function<int()> count) {
             LazyColumn(FillMax({}, Axis::Both), RememberLazyListState(), [count](LazyListScope& s) {
                 const int n = count();
                 s.Items(n, [n](int it) { m3::ListItem({}, {}, [n, it] { m3::Text("Item " + std::to_string(n - it)); }); });
@@ -65,7 +66,7 @@ namespace catalog::samples {
 
         // The PullToRefreshBox samples: the list in the box, under a top bar.
         void BoxSample(const char* title, const Refreshing& r, StatePtr state, bool hideWhileRefreshing,
-                       std::function<void(StatePtr, bool)> indicator = {}) {
+                       kiln::Function<void(StatePtr, bool)> indicator = {}) {
             m3::ScaffoldOptions o;
             o.topBar = [title, onRefresh = r.onRefresh] { Bar(title, onRefresh); };
             m3::Scaffold({}, o, [r, state, hideWhileRefreshing, indicator](const PaddingValues& padding) {

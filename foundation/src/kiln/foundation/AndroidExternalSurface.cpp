@@ -1,4 +1,5 @@
 #include "kiln/foundation/AndroidExternalSurface.h"
+#include <kiln/Function.h>
 
 #include "kiln/runtime/Composition.h"
 #include "kiln/ui/Draw.h"
@@ -17,7 +18,7 @@ namespace kiln::foundation {
             explicit SurfaceState(bool embedded) : m_Embedded(embedded) {}
             bool initialized = false;
 
-            void OnSurface(std::function<rt::Task<>(SurfaceCoroutineScope&, Surface, int, int)> onSurface) override { m_OnSurface = std::move(onSurface); }
+            void OnSurface(kiln::Function<rt::Task<>(SurfaceCoroutineScope&, Surface, int, int)> onSurface) override { m_OnSurface = std::move(onSurface); }
 
             void OnSurfaceCreated(Surface surface, int width, int height) override {
                 m_Current = surface;
@@ -43,7 +44,7 @@ namespace kiln::foundation {
                 m_Job.Cancel();
             }
             // Embedded: a new frame redraws the element.
-            std::function<void()> onFrame;
+            kiln::Function<void()> onFrame;
             void OnFrameAvailable() override { if (onFrame) onFrame(); }
             // The node went away with a surface still alive: it ends as destroyed.
             void EndIfAlive() {
@@ -54,8 +55,8 @@ namespace kiln::foundation {
             class Receiver final : public SurfaceCoroutineScope {
             public:
                 explicit Receiver(std::shared_ptr<SurfaceState> s) : m_State(std::move(s)), m_Generation(m_State->m_Generation) {}
-                void OnChanged(std::function<void(Surface, int, int)> f) override { m_State->m_OnChanged = std::move(f); }
-                void OnDestroyed(std::function<void(Surface)> f) override { m_State->m_OnDestroyed = std::move(f); }
+                void OnChanged(kiln::Function<void(Surface, int, int)> f) override { m_State->m_OnChanged = std::move(f); }
+                void OnDestroyed(kiln::Function<void(Surface)> f) override { m_State->m_OnDestroyed = std::move(f); }
                 // Until the surface goes or a new one replaces it.
                 bool IsActive() const override { return m_State->m_Current.has_value() && m_State->m_Generation == m_Generation; }
             private:
@@ -69,9 +70,9 @@ namespace kiln::foundation {
             }
 
             bool m_Embedded;
-            std::function<rt::Task<>(SurfaceCoroutineScope&, Surface, int, int)> m_OnSurface;
-            std::function<void(Surface, int, int)> m_OnChanged;
-            std::function<void(Surface)> m_OnDestroyed;
+            kiln::Function<rt::Task<>(SurfaceCoroutineScope&, Surface, int, int)> m_OnSurface;
+            kiln::Function<void(Surface, int, int)> m_OnChanged;
+            kiln::Function<void(Surface)> m_OnDestroyed;
             std::optional<Surface> m_Current;
             int m_LastWidth = -1, m_LastHeight = -1;
             std::uint64_t m_Generation = 0;
@@ -168,7 +169,7 @@ namespace kiln::foundation {
             }
         };
 
-        void ExternalSurface(const Modifier& modifier, ui::ExternalSurfaceConfig config, const std::function<void(AndroidExternalSurfaceScope&)>& onInit,
+        void ExternalSurface(const Modifier& modifier, ui::ExternalSurfaceConfig config, const kiln::Function<void(AndroidExternalSurfaceScope&)>& onInit,
                              rt::Key key) {
             rt::Composition* c = rt::Composition::Current();
             const bool embedded = config.embedded;
@@ -184,7 +185,7 @@ namespace kiln::foundation {
     }
 
     void AndroidExternalSurface(const Modifier& modifier, bool isOpaque, ui::IntSize surfaceSize, AndroidExternalSurfaceZOrder zOrder, bool isSecure,
-                                std::function<void(AndroidExternalSurfaceScope&)> onInit, rt::Key key) {
+                                kiln::Function<void(AndroidExternalSurfaceScope&)> onInit, rt::Key key) {
         ui::ExternalSurfaceConfig config;
         config.fixedSize = surfaceSize;
         config.opaque = isOpaque;
@@ -194,7 +195,7 @@ namespace kiln::foundation {
     }
 
     void AndroidEmbeddedExternalSurface(const Modifier& modifier, bool isOpaque, ui::IntSize surfaceSize, std::optional<std::array<float, 9>> transform,
-                                        std::function<void(AndroidExternalSurfaceScope&)> onInit, rt::Key key) {
+                                        kiln::Function<void(AndroidExternalSurfaceScope&)> onInit, rt::Key key) {
         ui::ExternalSurfaceConfig config;
         config.fixedSize = surfaceSize;
         config.opaque = isOpaque;

@@ -5,6 +5,7 @@
 // Morph interpolates between two of them.
 
 #include <array>
+#include <kiln/Function.h>
 #include <cmath>
 #include <functional>
 #include <utility>
@@ -46,9 +47,9 @@ namespace kiln::gfx::shapes {
     bool CollinearIsh(float ax, float ay, float bx, float by, float cx, float cy, float tolerance = DistanceEpsilon);
     inline bool Convex(Point prev, Point cur, Point next) { return (cur - prev).Clockwise(next - cur); }
     // Ternary search for the minimum of f in [v0, v1].
-    float FindMinimum(float v0, float v1, float tolerance, const std::function<float(float)>& f);
+    float FindMinimum(float v0, float v1, float tolerance, const kiln::Function<float(float)>& f);
 
-    using PointTransformer = std::function<Point(float x, float y)>;
+    using PointTransformer = kiln::Function<Point(float x, float y)>;
 
     class Cubic {
     public:

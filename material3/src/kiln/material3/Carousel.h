@@ -7,6 +7,7 @@
 // size the look of an uncontained multi-aspect carousel.
 
 #include "kiln/foundation/Border.h"
+#include <kiln/Function.h>
 #include "kiln/foundation/Lazy.h"
 #include "kiln/foundation/Pager.h"
 #include "kiln/runtime/State.h"
@@ -23,7 +24,7 @@ namespace kiln::material3 {
     public:
         // currentItemOffsetFraction: -0.5..0.5, how far from its snapped position the current
         // item starts.
-        CarouselState(int currentItem, float currentItemOffsetFraction, std::function<int()> itemCount);
+        CarouselState(int currentItem, float currentItemOffsetFraction, kiln::Function<int()> itemCount);
         CarouselState(const CarouselState&) = delete;
         CarouselState& operator=(const CarouselState&) = delete;
 
@@ -44,8 +45,8 @@ namespace kiln::material3 {
 
     // rememberCarouselState: the current item and its offset survive re-creation; the count is
     // read from itemCount (refreshed every composition).
-    std::shared_ptr<CarouselState> RememberCarouselState(int initialItem, std::function<int()> itemCount, rt::Key key = {});
-    inline std::shared_ptr<CarouselState> RememberCarouselState(std::function<int()> itemCount, rt::Key key = {}) {
+    std::shared_ptr<CarouselState> RememberCarouselState(int initialItem, kiln::Function<int()> itemCount, rt::Key key = {});
+    inline std::shared_ptr<CarouselState> RememberCarouselState(kiln::Function<int()> itemCount, rt::Key key = {}) {
         return RememberCarouselState(0, std::move(itemCount), key);
     }
 
@@ -82,7 +83,7 @@ namespace kiln::material3 {
         std::shared_ptr<CarouselItemDrawInfo> m_Info;
     };
 
-    using CarouselContent = std::function<void(const CarouselItemScope&, int itemIndex)>;
+    using CarouselContent = kiln::Function<void(const CarouselItemScope&, int itemIndex)>;
 
     struct CarouselOptions {
         ui::Dp itemSpacing{ 0 };

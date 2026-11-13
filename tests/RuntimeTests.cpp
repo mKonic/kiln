@@ -1,4 +1,5 @@
 #include "Check.h"
+#include <kiln/Function.h>
 
 #include "kiln/runtime/Composition.h"
 #include "kiln/runtime/SnapshotFlow.h"
@@ -31,7 +32,7 @@ namespace {
         }
     };
 
-    Node& Emit(Composition& c, std::string name, std::function<void()> content = {}, Key key = {}) {
+    Node& Emit(Composition& c, std::string name, kiln::Function<void()> content = {}, Key key = {}) {
         return c.Node<Node>([name] { return std::make_unique<Node>(name); },
                             [name](Node& n) { n.name = name; }, std::move(content), key);
     }
@@ -319,9 +320,9 @@ TEST(MovableContentMovesItsStateAndNodes) {
     int disposed = 0;
     std::optional<MovableContent<>> movable;
     c.SetContent([&] {
-        if (!movable) movable.emplace(std::function<void()>([&] {
+        if (!movable) movable.emplace(kiln::Function<void()>([&] {
             slot = &c.Remember<int>([] { return 7; });
-            c.DisposableEffect(Keys(0), [&] { return std::function<void()>([&] { ++disposed; }); });
+            c.DisposableEffect(Keys(0), [&] { return kiln::Function<void()>([&] { ++disposed; }); });
             Emit(c, "content");
         }));
         Emit(c, "a", [&] { if (shown.Get() && left.Get()) (*movable)(); });
@@ -356,12 +357,12 @@ TEST(MovableContentMovesBetweenCompositions) {
     std::map<Composition*, int*> slots;
     std::vector<Composition*> runs;
     int disposed = 0;
-    MovableContent<> movable(std::function<void()>([&] {
+    MovableContent<> movable(kiln::Function<void()>([&] {
         Composition& c = *Composition::Current();
         tick.Get();
         runs.push_back(&c);
         slots[&c] = &c.Remember<int>([] { return 7; });
-        c.DisposableEffect(Keys(0), [&] { return std::function<void()>([&] { ++disposed; }); });
+        c.DisposableEffect(Keys(0), [&] { return kiln::Function<void()>([&] { ++disposed; }); });
         Emit(c, "content");
     }));
     a.SetContent([&] { const int w = where.Get(); if (w == 0 || w == 2) movable(); });

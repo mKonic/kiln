@@ -11,6 +11,7 @@
 // cancelled one (upstream serialises them with a Mutex).
 
 #include "kiln/lifecycle/Lifecycle.h"
+#include <kiln/Function.h>
 
 #include <optional>
 #include <stdexcept>
@@ -25,14 +26,14 @@ namespace kiln::lifecycle {
     };
 
     // state must not be Initialized (std::invalid_argument).
-    rt::Task<> RepeatOnLifecycle(Lifecycle& lifecycle, State state, std::function<rt::Task<>()> block);
-    inline rt::Task<> RepeatOnLifecycle(LifecycleOwner& owner, State state, std::function<rt::Task<>()> block) {
+    rt::Task<> RepeatOnLifecycle(Lifecycle& lifecycle, State state, kiln::Function<rt::Task<>()> block);
+    inline rt::Task<> RepeatOnLifecycle(LifecycleOwner& owner, State state, kiln::Function<rt::Task<>()> block) {
         return RepeatOnLifecycle(owner.GetLifecycle(), state, std::move(block));
     }
 
     namespace detail {
         // withStateAtLeastUnchecked: runs `block` now or inside the event reaching `state`.
-        rt::Task<> WithStateAtLeastUnchecked(Lifecycle& lifecycle, State state, std::function<void()> block);
+        rt::Task<> WithStateAtLeastUnchecked(Lifecycle& lifecycle, State state, kiln::Function<void()> block);
 
         template<typename F>
         rt::Task<std::invoke_result_t<F&>> WithState(Lifecycle& lifecycle, State state, F block) {

@@ -1,6 +1,7 @@
 // The public lazy layout API: a custom lazy column built on LazyLayout composes only what it
 // measures; prefetching and pinning keep more composed; interval content and key maps.
 #include "Check.h"
+#include <kiln/Function.h>
 
 #include "kiln/foundation/Compose.h"
 #include "kiln/foundation/LazyLayout.h"
@@ -16,7 +17,7 @@ namespace {
         rt::Composition composition{ owner.Root(), rt::Dispatcher::Main() };
         Harness() { owner.SetDensity({ 1, 1 }); }
         ~Harness() { composition.SetContent([] {}); Pump(); }
-        void Run(std::function<void()> content) { composition.SetContent(std::move(content)); Pump(); }
+        void Run(kiln::Function<void()> content) { composition.SetContent(std::move(content)); Pump(); }
         void Pump() {
             for (int i = 0; i < 3; ++i) {
                 rt::Dispatcher::Main().RunPending();
@@ -40,7 +41,7 @@ namespace {
             auto* c = composed;
             rt::Composition::Current()->DisposableEffect(rt::Keys(index), [c, index] {
                 c->insert(index);
-                return std::function<void()>([c, index] { c->erase(index); });
+                return kiln::Function<void()>([c, index] { c->erase(index); });
             });
             Box(Height(FillMax(Modifier{}, Axis::Horizontal, 1), Dp(50)), Alignment::TopStart(), false, [] {});
         }

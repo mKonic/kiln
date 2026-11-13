@@ -1,4 +1,5 @@
 #include "kiln/foundation/AnimatedVisibility.h"
+#include <kiln/Function.h>
 
 #include "kiln/foundation/Compose.h"
 #include "kiln/foundation/Draw.h"
@@ -46,28 +47,28 @@ namespace kiln::foundation {
     ExitTransition FadeOut(anim::SpecPtr s, float a) { ExitTransition t; t.config.fade = { { a, std::move(s) } }; return t; }
     EnterTransition ScaleIn(anim::SpecPtr s, float sc, float ox, float oy) { EnterTransition t; t.config.scale = ScaleConfig{ sc, ox, oy, std::move(s) }; return t; }
     ExitTransition ScaleOut(anim::SpecPtr s, float sc, float ox, float oy) { ExitTransition t; t.config.scale = ScaleConfig{ sc, ox, oy, std::move(s) }; return t; }
-    EnterTransition SlideIn(std::function<IntOffset(IntSize)> f, anim::SpecPtr s) { EnterTransition t; t.config.slide = SlideConfig{ std::move(f), s ? s : SizeSpring() }; return t; }
-    ExitTransition SlideOut(std::function<IntOffset(IntSize)> f, anim::SpecPtr s) { ExitTransition t; t.config.slide = SlideConfig{ std::move(f), s ? s : SizeSpring() }; return t; }
-    EnterTransition SlideInVertically(std::function<int(int)> f, anim::SpecPtr s) { return SlideIn([f](IntSize sz) { return IntOffset{ 0, f(sz.height) }; }, std::move(s)); }
-    ExitTransition SlideOutVertically(std::function<int(int)> f, anim::SpecPtr s) { return SlideOut([f](IntSize sz) { return IntOffset{ 0, f(sz.height) }; }, std::move(s)); }
-    EnterTransition SlideInHorizontally(std::function<int(int)> f, anim::SpecPtr s) { return SlideIn([f](IntSize sz) { return IntOffset{ f(sz.width), 0 }; }, std::move(s)); }
-    ExitTransition SlideOutHorizontally(std::function<int(int)> f, anim::SpecPtr s) { return SlideOut([f](IntSize sz) { return IntOffset{ f(sz.width), 0 }; }, std::move(s)); }
-    EnterTransition ExpandIn(anim::SpecPtr s, Alignment a, bool clip, std::function<IntSize(IntSize)> f) {
+    EnterTransition SlideIn(kiln::Function<IntOffset(IntSize)> f, anim::SpecPtr s) { EnterTransition t; t.config.slide = SlideConfig{ std::move(f), s ? s : SizeSpring() }; return t; }
+    ExitTransition SlideOut(kiln::Function<IntOffset(IntSize)> f, anim::SpecPtr s) { ExitTransition t; t.config.slide = SlideConfig{ std::move(f), s ? s : SizeSpring() }; return t; }
+    EnterTransition SlideInVertically(kiln::Function<int(int)> f, anim::SpecPtr s) { return SlideIn([f](IntSize sz) { return IntOffset{ 0, f(sz.height) }; }, std::move(s)); }
+    ExitTransition SlideOutVertically(kiln::Function<int(int)> f, anim::SpecPtr s) { return SlideOut([f](IntSize sz) { return IntOffset{ 0, f(sz.height) }; }, std::move(s)); }
+    EnterTransition SlideInHorizontally(kiln::Function<int(int)> f, anim::SpecPtr s) { return SlideIn([f](IntSize sz) { return IntOffset{ f(sz.width), 0 }; }, std::move(s)); }
+    ExitTransition SlideOutHorizontally(kiln::Function<int(int)> f, anim::SpecPtr s) { return SlideOut([f](IntSize sz) { return IntOffset{ f(sz.width), 0 }; }, std::move(s)); }
+    EnterTransition ExpandIn(anim::SpecPtr s, Alignment a, bool clip, kiln::Function<IntSize(IntSize)> f) {
         EnterTransition t; t.config.changeSize = ChangeSizeConfig{ a, std::move(f), clip, s }; return t;
     }
-    ExitTransition ShrinkOut(anim::SpecPtr s, Alignment a, bool clip, std::function<IntSize(IntSize)> f) {
+    ExitTransition ShrinkOut(anim::SpecPtr s, Alignment a, bool clip, kiln::Function<IntSize(IntSize)> f) {
         ExitTransition t; t.config.changeSize = ChangeSizeConfig{ a, std::move(f), clip, s }; return t;
     }
-    EnterTransition ExpandVertically(anim::SpecPtr s, AlignmentV a, bool clip, std::function<int(int)> f) {
+    EnterTransition ExpandVertically(anim::SpecPtr s, AlignmentV a, bool clip, kiln::Function<int(int)> f) {
         return ExpandIn(std::move(s), Alignment{ 0, a.bias }, clip, [f](IntSize sz) { return IntSize{ sz.width, f(sz.height) }; });
     }
-    ExitTransition ShrinkVertically(anim::SpecPtr s, AlignmentV a, bool clip, std::function<int(int)> f) {
+    ExitTransition ShrinkVertically(anim::SpecPtr s, AlignmentV a, bool clip, kiln::Function<int(int)> f) {
         return ShrinkOut(std::move(s), Alignment{ 0, a.bias }, clip, [f](IntSize sz) { return IntSize{ sz.width, f(sz.height) }; });
     }
-    EnterTransition ExpandHorizontally(anim::SpecPtr s, AlignmentH a, bool clip, std::function<int(int)> f) {
+    EnterTransition ExpandHorizontally(anim::SpecPtr s, AlignmentH a, bool clip, kiln::Function<int(int)> f) {
         return ExpandIn(std::move(s), Alignment{ a.bias, 0 }, clip, [f](IntSize sz) { return IntSize{ f(sz.width), sz.height }; });
     }
-    ExitTransition ShrinkHorizontally(anim::SpecPtr s, AlignmentH a, bool clip, std::function<int(int)> f) {
+    ExitTransition ShrinkHorizontally(anim::SpecPtr s, AlignmentH a, bool clip, kiln::Function<int(int)> f) {
         return ShrinkOut(std::move(s), Alignment{ a.bias, 0 }, clip, [f](IntSize sz) { return IntSize{ f(sz.width), sz.height }; });
     }
 
@@ -96,9 +97,9 @@ namespace kiln::foundation {
     }
 
     std::shared_ptr<MutableContentTransform> MakeMutableContentTransform(bool initialVeilMatchParentSize, bool targetVeilMatchParentSize,
-                                                                         std::function<ui::Offset()> initialOffsetVelocityProvider,
-                                                                         std::function<ui::Offset()> targetOffsetVelocityProvider,
-                                                                         std::function<void(MutableContentTransform&)> block) {
+                                                                         kiln::Function<ui::Offset()> initialOffsetVelocityProvider,
+                                                                         kiln::Function<ui::Offset()> targetOffsetVelocityProvider,
+                                                                         kiln::Function<void(MutableContentTransform&)> block) {
         auto t = std::make_shared<MutableContentTransform>();
         t->initialTransform->veilMatchParentSize = initialVeilMatchParentSize;
         t->initialTransform->offsetVelocityProvider = std::move(initialOffsetVelocityProvider);
@@ -457,10 +458,10 @@ namespace kiln::foundation {
         // The enter/exit layout: content measured at full size, reported at the animated size
         // (aligned by the expand alignment), shifted by the slide.
         struct EnterExitParams {
-            std::function<IntSize(IntSize)> sizeAt;     // null: full size
-            std::function<IntOffset(IntSize)> slideAt;  // null: none
+            kiln::Function<IntSize(IntSize)> sizeAt;     // null: full size
+            kiln::Function<IntOffset(IntSize)> slideAt;  // null: none
             Alignment alignment;
-            std::function<void(IntSize full)> measured;   // the main pass's full size
+            kiln::Function<void(IntSize full)> measured;   // the main pass's full size
             bool operator==(const EnterExitParams&) const { return false; }   // new lambdas each frame
         };
         struct EnterExitNode final : ModifierNode, LayoutModifier {
@@ -518,13 +519,13 @@ namespace kiln::foundation {
         return Modifier(m).With<LookaheadHideNode>(LookaheadHideParams{ &t });
     }
 
-    void AnimatedVisibility(bool visible, const Modifier& modifier, std::function<void()> content,
+    void AnimatedVisibility(bool visible, const Modifier& modifier, kiln::Function<void()> content,
                             EnterTransition enter, ExitTransition exit, rt::Key key) {
         auto& t = UpdateTransition(visible, key);
         AnimatedEnterExit(t, detail::LookaheadHide(modifier, t), std::move(content), enter, exit, key);
     }
 
-    void AnimatedVisibility(MutableTransitionState<bool>& state, const Modifier& modifier, std::function<void()> content,
+    void AnimatedVisibility(MutableTransitionState<bool>& state, const Modifier& modifier, kiln::Function<void()> content,
                             EnterTransition enter, ExitTransition exit, rt::Key key) {
         auto& t = UpdateTransition(state, key);
         AnimatedEnterExit(t, detail::LookaheadHide(modifier, t), std::move(content), enter, exit, key);
@@ -570,7 +571,7 @@ namespace kiln::foundation {
             int MaxIntrinsicHeight(ui::MeasureScope& s, std::span<ui::Measurable* const> c, int w) override { return Intrinsic(s, c, w, false, true); }
         };
 
-        void CapturedAnimatedVisibilityImpl(Transition<bool>& t, const Modifier& modifier, std::function<void()> content,
+        void CapturedAnimatedVisibilityImpl(Transition<bool>& t, const Modifier& modifier, kiln::Function<void()> content,
                                             const EnterTransition& enter, const ExitTransition& exit, rt::Key key) {
             auto& c = *rt::Composition::Current();
             c.Section([&] {
@@ -591,33 +592,33 @@ namespace kiln::foundation {
                         }
                         layer::DrawLayer(s, *captured);
                     });
-                    Layout(draw, pol, exiting ? std::function<void()>([] {}) : content);
+                    Layout(draw, pol, exiting ? kiln::Function<void()>([] {}) : content);
                 }, enter, exit, key);
             }, key);
         }
     }
 
-    void CapturedAnimatedVisibility(bool visible, const Modifier& modifier, std::function<void()> content, EnterTransition enter, ExitTransition exit, rt::Key key) {
+    void CapturedAnimatedVisibility(bool visible, const Modifier& modifier, kiln::Function<void()> content, EnterTransition enter, ExitTransition exit, rt::Key key) {
         auto& t = UpdateTransition(visible, key);
         CapturedAnimatedVisibilityImpl(t, modifier, std::move(content), enter, exit, key);
     }
 
-    void CapturedAnimatedVisibility(MutableTransitionState<bool>& state, const Modifier& modifier, std::function<void()> content,
+    void CapturedAnimatedVisibility(MutableTransitionState<bool>& state, const Modifier& modifier, kiln::Function<void()> content,
                                     EnterTransition enter, ExitTransition exit, rt::Key key) {
         auto& t = UpdateTransition(state, key);
         CapturedAnimatedVisibilityImpl(t, modifier, std::move(content), enter, exit, key);
     }
 
-    void AnimatedVisibilityInRow(bool visible, const Modifier& m, std::function<void()> content, EnterTransition enter, ExitTransition exit, rt::Key key) {
+    void AnimatedVisibilityInRow(bool visible, const Modifier& m, kiln::Function<void()> content, EnterTransition enter, ExitTransition exit, rt::Key key) {
         AnimatedVisibility(visible, m, std::move(content), std::move(enter), std::move(exit), key);
     }
-    void AnimatedVisibilityInRow(MutableTransitionState<bool>& s, const Modifier& m, std::function<void()> content, EnterTransition enter, ExitTransition exit, rt::Key key) {
+    void AnimatedVisibilityInRow(MutableTransitionState<bool>& s, const Modifier& m, kiln::Function<void()> content, EnterTransition enter, ExitTransition exit, rt::Key key) {
         AnimatedVisibility(s, m, std::move(content), std::move(enter), std::move(exit), key);
     }
-    void AnimatedVisibilityInColumn(bool visible, const Modifier& m, std::function<void()> content, EnterTransition enter, ExitTransition exit, rt::Key key) {
+    void AnimatedVisibilityInColumn(bool visible, const Modifier& m, kiln::Function<void()> content, EnterTransition enter, ExitTransition exit, rt::Key key) {
         AnimatedVisibility(visible, m, std::move(content), std::move(enter), std::move(exit), key);
     }
-    void AnimatedVisibilityInColumn(MutableTransitionState<bool>& s, const Modifier& m, std::function<void()> content, EnterTransition enter, ExitTransition exit, rt::Key key) {
+    void AnimatedVisibilityInColumn(MutableTransitionState<bool>& s, const Modifier& m, kiln::Function<void()> content, EnterTransition enter, ExitTransition exit, rt::Key key) {
         AnimatedVisibility(s, m, std::move(content), std::move(enter), std::move(exit), key);
     }
 
@@ -638,7 +639,7 @@ namespace kiln::foundation {
         };
     }
 
-    void AnimatedEnterExit(Transition<bool>& t, const Modifier& modifier, std::function<void()> content,
+    void AnimatedEnterExit(Transition<bool>& t, const Modifier& modifier, kiln::Function<void()> content,
                            const EnterTransition& enterArg, const ExitTransition& exitArg, rt::Key key,
                            std::shared_ptr<MutableTransform> mutableTransform, bool forceVisible) {
         auto& c = *rt::Composition::Current();
@@ -742,10 +743,10 @@ namespace kiln::foundation {
         EnterExitParams p;
         p.alignment = change ? change->alignment : Alignment::TopStart();
         if (change) { auto f = change->size; p.sizeAt = [f, sizeP](IntSize full) { return Lerp(f(full), full, sizeP); }; }
-        std::function<IntOffset(IntSize)> slideOffset;
+        kiln::Function<IntOffset(IntSize)> slideOffset;
         if (slideHandoff) {
             const IntOffset from = *slideHandoff;
-            auto to = slide ? slide->offset : std::function<IntOffset(IntSize)>();
+            auto to = slide ? slide->offset : kiln::Function<IntOffset(IntSize)>();
             const bool visibleTarget = target == EnterExitState::Visible;
             slideOffset = [from, to, visibleTarget, slideHandoffP](IntSize full) {
                 const IntOffset end = visibleTarget || !to ? IntOffset{} : to(full);
@@ -763,8 +764,8 @@ namespace kiln::foundation {
         p.slideAt = [slideOffset, state](IntSize full) { return state->CombinedSlide(slideOffset ? slideOffset(full) : IntOffset{}, full); };
         // The distances the progress values stand for, from the full size.
         {
-            auto slideTo = slide ? slide->offset : std::function<IntOffset(IntSize)>();
-            auto sizeTo = change ? change->size : std::function<IntSize(IntSize)>();
+            auto slideTo = slide ? slide->offset : kiln::Function<IntOffset(IntSize)>();
+            auto sizeTo = change ? change->size : kiln::Function<IntSize(IntSize)>();
             const std::optional<IntOffset> handoffFrom = slideHandoff;
             const bool visibleTarget = target == EnterExitState::Visible;
             auto sd = tracker->slideDistance, zd = tracker->sizeDistance;
@@ -819,7 +820,7 @@ namespace kiln::foundation {
         }, key);
     }
 
-    void AnimateEnterExit(const Modifier& modifier, std::function<void()> content, EnterTransition enter, ExitTransition exit, rt::Key key) {
+    void AnimateEnterExit(const Modifier& modifier, kiln::Function<void()> content, EnterTransition enter, ExitTransition exit, rt::Key key) {
         auto& c = *rt::Composition::Current();
         AnimatedVisibilityScope* scope = c.Read(LocalAnimatedVisibilityScope);
         if (!scope || !scope->transition) throw std::logic_error("AnimateEnterExit needs an AnimatedVisibility (or AnimatedContent) around it");
@@ -828,7 +829,7 @@ namespace kiln::foundation {
         AnimatedEnterExit(visible, modifier, std::move(content), enter, exit, key, nullptr, /*forceVisible=*/true);
     }
 
-    void Crossfade(rt::Key target, const Modifier& modifier, std::function<void(rt::Key)> content, anim::SpecPtr spec, rt::Key key) {
+    void Crossfade(rt::Key target, const Modifier& modifier, kiln::Function<void(rt::Key)> content, anim::SpecPtr spec, rt::Key key) {
         auto& c = *rt::Composition::Current();
         auto& t = UpdateTransition<std::uint64_t>(target.value, key);
         auto& items = c.Remember<std::vector<std::uint64_t>>([&] { return std::vector<std::uint64_t>{ target.value }; }, {}, key);
@@ -917,11 +918,11 @@ namespace kiln::foundation {
             using D = AnimatedContentTransitionScope::SlideDirection;
             return d == D::Right || (d == D::Start && dir == ui::LayoutDirection::Rtl) || (d == D::End && dir == ui::LayoutDirection::Ltr);
         }
-        std::function<int(int)> OrIdentity(std::function<int(int)> f) { return f ? f : [](int v) { return v; }; }
+        kiln::Function<int(int)> OrIdentity(kiln::Function<int(int)> f) { return f ? f : [](int v) { return v; }; }
     }
 
     EnterTransition AnimatedContentTransitionScope::SlideIntoContainer(SlideDirection towards, anim::SpecPtr spec,
-                                                                       std::function<int(int)> initialOffset) const {
+                                                                       kiln::Function<int(int)> initialOffset) const {
         auto f = OrIdentity(std::move(initialOffset));
         auto sizes = this->sizes;
         const Alignment align = contentAlignment;
@@ -939,7 +940,7 @@ namespace kiln::foundation {
     }
 
     ExitTransition AnimatedContentTransitionScope::SlideOutOfContainer(SlideDirection towards, anim::SpecPtr spec,
-                                                                       std::function<int(int)> targetOffset) const {
+                                                                       kiln::Function<int(int)> targetOffset) const {
         auto f = OrIdentity(std::move(targetOffset));
         auto sizes = this->sizes;
         const Alignment align = contentAlignment;
@@ -975,10 +976,10 @@ namespace kiln::foundation {
             return s;
         }
 
-        using Spec = std::function<ContentTransform(AnimatedContentTransitionScope&)>;
-        using MutableSpec = std::function<std::shared_ptr<MutableContentTransform>(AnimatedContentTransitionScope&)>;
+        using Spec = kiln::Function<ContentTransform(AnimatedContentTransitionScope&)>;
+        using MutableSpec = kiln::Function<std::shared_ptr<MutableContentTransform>(AnimatedContentTransitionScope&)>;
 
-        void AnimatedContentImpl(Transition<std::uint64_t>& t, const Modifier& modifier, std::function<void(rt::Key)> content, Spec transitionSpec,
+        void AnimatedContentImpl(Transition<std::uint64_t>& t, const Modifier& modifier, kiln::Function<void(rt::Key)> content, Spec transitionSpec,
                                  Alignment alignment, MutableSpec mutableTransformSpec, rt::Key key) {
             auto& c = *rt::Composition::Current();
             if (!transitionSpec) transitionSpec = [](AnimatedContentTransitionScope&) { return DefaultContentTransform(); };
@@ -1117,27 +1118,27 @@ namespace kiln::foundation {
         }
     }
 
-    void AnimatedContent(rt::Key target, const Modifier& modifier, std::function<void(rt::Key)> content,
-                         std::function<ContentTransform(AnimatedContentTransitionScope&)> transitionSpec,
+    void AnimatedContent(rt::Key target, const Modifier& modifier, kiln::Function<void(rt::Key)> content,
+                         kiln::Function<ContentTransform(AnimatedContentTransitionScope&)> transitionSpec,
                          Alignment alignment, rt::Key key) {
         auto& t = UpdateTransition<std::uint64_t>(target.value, key);
         AnimatedContentImpl(t, modifier, std::move(content), std::move(transitionSpec), alignment, {}, key);
     }
 
-    void DeferredAnimatedContent(Transition<std::uint64_t>& transition, const Modifier& modifier, std::function<void(rt::Key)> content,
-                                 std::function<ContentTransform(AnimatedContentTransitionScope&)> transitionSpec, Alignment alignment,
-                                 std::function<std::shared_ptr<MutableContentTransform>(AnimatedContentTransitionScope&)> mutableTransformSpec, rt::Key key) {
+    void DeferredAnimatedContent(Transition<std::uint64_t>& transition, const Modifier& modifier, kiln::Function<void(rt::Key)> content,
+                                 kiln::Function<ContentTransform(AnimatedContentTransitionScope&)> transitionSpec, Alignment alignment,
+                                 kiln::Function<std::shared_ptr<MutableContentTransform>(AnimatedContentTransitionScope&)> mutableTransformSpec, rt::Key key) {
         AnimatedContentImpl(transition, modifier, std::move(content), std::move(transitionSpec), alignment, std::move(mutableTransformSpec), key);
     }
 
-    void AnimatedContent(Transition<std::uint64_t>& transition, const Modifier& modifier, std::function<void(rt::Key)> content,
-                         std::function<ContentTransform(AnimatedContentTransitionScope&)> transitionSpec, Alignment alignment, rt::Key key) {
+    void AnimatedContent(Transition<std::uint64_t>& transition, const Modifier& modifier, kiln::Function<void(rt::Key)> content,
+                         kiln::Function<ContentTransform(AnimatedContentTransitionScope&)> transitionSpec, Alignment alignment, rt::Key key) {
         AnimatedContentImpl(transition, modifier, std::move(content), std::move(transitionSpec), alignment, {}, key);
     }
 
-    void AnimatedContent(rt::Key target, const Modifier& modifier, std::function<void(rt::Key)> content,
-                         std::function<ContentTransform()> transformFn, Alignment alignment, rt::Key key) {
-        std::function<ContentTransform(AnimatedContentTransitionScope&)> spec;
+    void AnimatedContent(rt::Key target, const Modifier& modifier, kiln::Function<void(rt::Key)> content,
+                         kiln::Function<ContentTransform()> transformFn, Alignment alignment, rt::Key key) {
+        kiln::Function<ContentTransform(AnimatedContentTransitionScope&)> spec;
         if (transformFn) spec = [transformFn](AnimatedContentTransitionScope&) { return transformFn(); };
         AnimatedContent(target, modifier, std::move(content), std::move(spec), alignment, key);
     }

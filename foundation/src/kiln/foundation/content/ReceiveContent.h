@@ -5,6 +5,7 @@
 // first; each takes what it wants and passes on the rest. Text left over is inserted as text.
 
 #include "kiln/foundation/Compose.h"
+#include <kiln/Function.h>
 #include "kiln/ui/Clip.h"
 #include "kiln/ui/DragAndDrop.h"
 
@@ -42,7 +43,7 @@ namespace kiln::foundation {
 
         bool HasMediaType(const MediaType& t) const { return clipMetadata.HasMimeType(t.representation); }
         // consume: drops the items `predicate` takes; null when it took them all, this when none.
-        std::shared_ptr<const TransferableContent> Consume(const std::function<bool(const ui::ClipItem&)>& predicate,
+        std::shared_ptr<const TransferableContent> Consume(const kiln::Function<bool(const ui::ClipItem&)>& predicate,
                                                            const std::shared_ptr<const TransferableContent>& self) const;
         // ClipEntry.readPlainText: the items' texts joined with line breaks, null without text.
         std::optional<std::string> ReadPlainText() const;
@@ -65,7 +66,7 @@ namespace kiln::foundation {
         // What is left for the receivers further out (the same pointer: nothing taken; null: all).
         virtual TransferableContentPtr OnReceive(TransferableContentPtr content) = 0;
     };
-    std::shared_ptr<ReceiveContentListener> ReceiveContentListenerOf(std::function<TransferableContentPtr(TransferableContentPtr)> onReceive);
+    std::shared_ptr<ReceiveContentListener> ReceiveContentListenerOf(kiln::Function<TransferableContentPtr(TransferableContentPtr)> onReceive);
 
     Modifier ContentReceiver(Modifier m, std::shared_ptr<ReceiveContentListener> listener);
 

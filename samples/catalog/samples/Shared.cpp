@@ -1,10 +1,11 @@
 #include "Shared.h"
+#include <kiln/Function.h>
 #include "Common.h"
 
 #include <kiln/material3/Tooltip.h>
 
 namespace catalog::samples {
-    void PlainTooltipAbove(const std::string& text, std::function<void()> anchor, bool shown) {
+    void PlainTooltipAbove(const std::string& text, kiln::Function<void()> anchor, bool shown) {
         m3::TooltipBox(m3::TooltipDefaults::rememberTooltipPositionProvider(m3::TooltipAnchorPosition::Above),
                        [text, shown](const m3::TooltipScope& scope) {
                            if (!shown) return;

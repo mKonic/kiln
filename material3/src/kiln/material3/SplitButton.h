@@ -4,6 +4,7 @@
 // control. The inner corners morph on press, and a checked trailing button becomes a circle.
 
 #include "kiln/material3/Button.h"
+#include <kiln/Function.h>
 
 namespace kiln::material3 {
 
@@ -44,25 +45,25 @@ namespace kiln::material3 {
         Dp leadingButtonIconSizeFor(Dp buttonHeight);
         Dp trailingButtonIconSizeFor(Dp buttonHeight);
 
-        using Content = std::function<void()>;
+        using Content = kiln::Function<void()>;
         void LeadingButton(Content onClick, const ui::Modifier& modifier, const SplitButtonOptions& options, Content content);
         void TrailingButton(Content onClick, const ui::Modifier& modifier, const SplitButtonOptions& options, Content content);
-        void TrailingButton(bool checked, std::function<void(bool)> onCheckedChange, const ui::Modifier& modifier, const SplitButtonOptions& options,
+        void TrailingButton(bool checked, kiln::Function<void(bool)> onCheckedChange, const ui::Modifier& modifier, const SplitButtonOptions& options,
                             Content content);
         void TonalLeadingButton(Content onClick, const ui::Modifier& modifier, const SplitButtonOptions& options, Content content);
-        void TonalTrailingButton(bool checked, std::function<void(bool)> onCheckedChange, const ui::Modifier& modifier,
+        void TonalTrailingButton(bool checked, kiln::Function<void(bool)> onCheckedChange, const ui::Modifier& modifier,
                                  const SplitButtonOptions& options, Content content);
         void OutlinedLeadingButton(Content onClick, const ui::Modifier& modifier, const SplitButtonOptions& options, Content content);
-        void OutlinedTrailingButton(bool checked, std::function<void(bool)> onCheckedChange, const ui::Modifier& modifier,
+        void OutlinedTrailingButton(bool checked, kiln::Function<void(bool)> onCheckedChange, const ui::Modifier& modifier,
                                     const SplitButtonOptions& options, Content content);
         void ElevatedLeadingButton(Content onClick, const ui::Modifier& modifier, const SplitButtonOptions& options, Content content);
-        void ElevatedTrailingButton(bool checked, std::function<void(bool)> onCheckedChange, const ui::Modifier& modifier,
+        void ElevatedTrailingButton(bool checked, kiln::Function<void(bool)> onCheckedChange, const ui::Modifier& modifier,
                                     const SplitButtonOptions& options, Content content);
     }
 
     // The trailing button is measured first so it keeps its width; both get the taller one's
     // height. The minimum touch size applies to the whole layout, not to each button.
-    void SplitButtonLayout(std::function<void()> leadingButton, std::function<void()> trailingButton, const ui::Modifier& modifier = {},
+    void SplitButtonLayout(kiln::Function<void()> leadingButton, kiln::Function<void()> trailingButton, const ui::Modifier& modifier = {},
                            Dp spacing = SplitButtonDefaults::Spacing);
 
 }

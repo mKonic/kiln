@@ -1,4 +1,5 @@
 #include "kiln/graphics/Brush.h"
+#include <kiln/Function.h>
 #include "kiln/foundation/Layouts.h"
 #include "kiln/foundation/Shapes.h"
 
@@ -118,7 +119,7 @@ namespace kiln::foundation {
     }
 
     namespace {
-        using SizeFn = std::function<int(Measurable&, int)>;
+        using SizeFn = kiln::Function<int(Measurable&, int)>;
 
         int IntrinsicMain(std::span<Measurable* const> ch, const SizeFn& mainSize, int crossAvail, int spacing) {
             if (ch.empty()) return 0;
@@ -415,7 +416,7 @@ namespace kiln::foundation {
 
         // OffsetPxNode: the lambda runs in placement (its reads re-place the node).
         struct OffsetPxParams {
-            std::function<IntOffset(const Density&)> offset;
+            kiln::Function<IntOffset(const Density&)> offset;
             bool rtlAware;
             bool operator==(const OffsetPxParams&) const { return false; }   // lambdas never compare equal
         };
@@ -447,8 +448,8 @@ namespace kiln::foundation {
         };
 
         struct ApproachParams {
-            std::function<bool(IntSize)> measuring;
-            std::function<bool(PlacementScope&, const ui::LayoutCoordinates&)> placing;
+            kiln::Function<bool(IntSize)> measuring;
+            kiln::Function<bool(PlacementScope&, const ui::LayoutCoordinates&)> placing;
             ApproachMeasure measure;
             bool operator==(const ApproachParams&) const { return false; }
         };
@@ -465,7 +466,7 @@ namespace kiln::foundation {
         };
 
         struct SizeChangedParams {
-            std::function<void(IntSize)> callback;
+            kiln::Function<void(IntSize)> callback;
             bool operator==(const SizeChangedParams&) const { return false; }
         };
         struct SizeChangedNode final : ModifierNode, LayoutModifier {
@@ -637,7 +638,7 @@ namespace kiln::foundation {
         // The layer's properties: fixed, or a block run at draw time whose reads are observed
         // (graphicsLayer { }): a change redraws the layer without recomposing.
         struct LayerSpec : GraphicsLayerParams {
-            std::shared_ptr<const std::function<void(GraphicsLayerParams&)>> block;
+            std::shared_ptr<const kiln::Function<void(GraphicsLayerParams&)>> block;
             // Modifier.shadow: the elevation in dp, made px with the layer's density at draw.
             float shadowElevationDp = 0;
             bool operator==(const LayerSpec& o) const {
@@ -909,20 +910,20 @@ namespace kiln::foundation {
         return m.With<LayerNode>(spec);
     }
 
-    Modifier GraphicsLayer(Modifier m, std::function<void(GraphicsLayerParams&)> block) {
+    Modifier GraphicsLayer(Modifier m, kiln::Function<void(GraphicsLayerParams&)> block) {
         LayerSpec spec;
-        spec.block = std::make_shared<const std::function<void(GraphicsLayerParams&)>>(std::move(block));
+        spec.block = std::make_shared<const kiln::Function<void(GraphicsLayerParams&)>>(std::move(block));
         return m.With<LayerNode>(spec);
     }
 
     bool IsGraphicsLayerElement(const ui::ModifierElement& e) { return e.Type() == typeid(LayerNode); }
     void GraphicsLayerMatrix(const GraphicsLayerParams& p, Size size, float out[9]) { LayerMatrix3D(p, size, out); }
 
-    void detail::DrawWithLayerParams(ui::ContentDrawScope& s, const GraphicsLayerParams& p, std::function<void()> content) {
+    void detail::DrawWithLayerParams(ui::ContentDrawScope& s, const GraphicsLayerParams& p, kiln::Function<void()> content) {
         LayerSpec spec;
         static_cast<GraphicsLayerParams&>(spec) = p;
         LayerNode node(std::move(spec));
-        std::function<void()> outer = s.SwapContent(std::move(content));
+        kiln::Function<void()> outer = s.SwapContent(std::move(content));
         node.Draw(s);
         s.SwapContent(std::move(outer));
     }
@@ -958,7 +959,7 @@ namespace kiln::foundation {
     Modifier FillMax(Modifier m, Axis axis, float fraction) { return m.With<FillNode>(FillParams{ axis, fraction }); }
     Modifier WrapContent(Modifier m, Axis axis, Alignment a, bool unbounded) { return m.With<WrapNode>(WrapParams{ axis, a, unbounded }); }
     Modifier OffsetMod(Modifier m, Dp x, Dp y, bool rtlAware) { return m.With<OffsetNode>(OffsetParams{ x, y, rtlAware }); }
-    Modifier OffsetMod(Modifier m, std::function<IntOffset(const Density&)> offset, bool rtlAware) {
+    Modifier OffsetMod(Modifier m, kiln::Function<IntOffset(const Density&)> offset, bool rtlAware) {
         return m.With<OffsetPxNode>(OffsetPxParams{ std::move(offset), rtlAware });
     }
     Modifier LayoutMod(Modifier m, LayoutModifierMeasure measure) { return m.With<LayoutBlockNode>(LayoutBlockParams{ std::move(measure) }); }
@@ -1006,15 +1007,15 @@ namespace kiln::foundation {
             });
         });
     }
-    Modifier ApproachLayout(Modifier m, std::function<bool(IntSize)> measuring, std::function<bool(PlacementScope&, const ui::LayoutCoordinates&)> placing,
+    Modifier ApproachLayout(Modifier m, kiln::Function<bool(IntSize)> measuring, kiln::Function<bool(PlacementScope&, const ui::LayoutCoordinates&)> placing,
                             ApproachMeasure measure) {
         return m.With<ApproachNode>(ApproachParams{ std::move(measuring), std::move(placing), std::move(measure) });
     }
-    Modifier OnSizeChanged(Modifier m, std::function<void(IntSize)> f) { return m.With<SizeChangedNode>(SizeChangedParams{ std::move(f) }); }
+    Modifier OnSizeChanged(Modifier m, kiln::Function<void(IntSize)> f) { return m.With<SizeChangedNode>(SizeChangedParams{ std::move(f) }); }
 
     namespace {
         struct GloballyPositionedParams {
-            std::function<void(const LayoutCoordinates&)> callback;
+            kiln::Function<void(const LayoutCoordinates&)> callback;
             bool operator==(const GloballyPositionedParams&) const { return false; }
         };
         struct GloballyPositionedNode final : ModifierNode, ui::GlobalPositionAwareModifier {
@@ -1027,12 +1028,12 @@ namespace kiln::foundation {
             }
         };
     }
-    Modifier OnGloballyPositioned(Modifier m, std::function<void(const LayoutCoordinates&)> f) {
+    Modifier OnGloballyPositioned(Modifier m, kiln::Function<void(const LayoutCoordinates&)> f) {
         return m.With<GloballyPositionedNode>(GloballyPositionedParams{ std::move(f) });
     }
     namespace {
         struct PlacedParams {
-            std::function<void(const LayoutCoordinates&)> callback;
+            kiln::Function<void(const LayoutCoordinates&)> callback;
             bool operator==(const PlacedParams&) const { return false; }
         };
         struct PlacedNode final : ModifierNode, ui::LayoutAwareModifier {
@@ -1043,7 +1044,7 @@ namespace kiln::foundation {
             void OnPlaced(const LayoutCoordinates& c) override { if (params.callback) params.callback(c); }
         };
         struct LocalConsumerParams {
-            std::function<void(const ModifierNode&)> consumer;
+            kiln::Function<void(const ModifierNode&)> consumer;
             bool operator==(const LocalConsumerParams&) const { return false; }
         };
         struct LocalConsumerNode final : ModifierNode {
@@ -1057,7 +1058,7 @@ namespace kiln::foundation {
     }
     namespace {
         struct RectChangedParams {
-            std::function<void(const ui::RelativeLayoutBounds&)> callback;
+            kiln::Function<void(const ui::RelativeLayoutBounds&)> callback;
             std::int64_t throttle = 0, debounce = 64;
             bool operator==(const RectChangedParams&) const { return false; }
         };
@@ -1106,7 +1107,7 @@ namespace kiln::foundation {
         };
 
         struct VisibilityParams {
-            std::function<void(bool)> callback;
+            kiln::Function<void(bool)> callback;
             std::int64_t minDurationMs = 0;
             float minFractionVisible = 1;
             LayoutBoundsHolder* viewport = nullptr;
@@ -1177,15 +1178,15 @@ namespace kiln::foundation {
             void OnUnplaced() override { FireExitIfNeeded(); }
         };
     }
-    Modifier OnLayoutRectChanged(Modifier m, std::function<void(const ui::RelativeLayoutBounds&)> f, std::int64_t throttle, std::int64_t debounce) {
+    Modifier OnLayoutRectChanged(Modifier m, kiln::Function<void(const ui::RelativeLayoutBounds&)> f, std::int64_t throttle, std::int64_t debounce) {
         return m.With<RectChangedNode>(RectChangedParams{ std::move(f), throttle, debounce });
     }
     Modifier LayoutBounds(Modifier m, LayoutBoundsHolder& holder) { return m.With<BoundsNode>(BoundsParams{ &holder }); }
-    Modifier OnVisibilityChanged(Modifier m, std::function<void(bool)> f, std::int64_t minDurationMs, float minFraction, LayoutBoundsHolder* viewport) {
+    Modifier OnVisibilityChanged(Modifier m, kiln::Function<void(bool)> f, std::int64_t minDurationMs, float minFraction, LayoutBoundsHolder* viewport) {
         return m.With<VisibilityNode>(VisibilityParams{ std::move(f), minDurationMs, minFraction, viewport });
     }
-    Modifier OnPlaced(Modifier m, std::function<void(const LayoutCoordinates&)> f) { return m.With<PlacedNode>(PlacedParams{ std::move(f) }); }
-    Modifier ModifierLocalConsumer(Modifier m, std::function<void(const ModifierNode&)> f) {
+    Modifier OnPlaced(Modifier m, kiln::Function<void(const LayoutCoordinates&)> f) { return m.With<PlacedNode>(PlacedParams{ std::move(f) }); }
+    Modifier ModifierLocalConsumer(Modifier m, kiln::Function<void(const ModifierNode&)> f) {
         return m.With<LocalConsumerNode>(LocalConsumerParams{ std::move(f) });
     }
     Modifier AspectRatio(Modifier m, float ratio, bool heightFirst) { return m.With<AspectNode>(AspectParams{ ratio, heightFirst }); }
@@ -1212,7 +1213,7 @@ namespace kiln::foundation {
     Modifier MatchParentSize(Modifier m) { return m.With<ParentDataNode>(ParentParams{ 4, 0, true, 0, 0 }); }
     Modifier AlignBy(Modifier m, const AlignmentLine& line) { return m.With<ParentDataNode>(ParentParams{ 5, 0, true, 0, 0, &line }); }
     namespace {
-        struct AlignBlockParams { std::shared_ptr<const std::function<int(Placeable&)>> block; bool operator==(const AlignBlockParams&) const = default; };
+        struct AlignBlockParams { std::shared_ptr<const kiln::Function<int(Placeable&)>> block; bool operator==(const AlignBlockParams&) const = default; };
         struct AlignBlockNode final : ModifierNode, ParentDataModifier {
             AlignBlockParams params;
             explicit AlignBlockNode(AlignBlockParams p) : params(std::move(p)) {}
@@ -1221,8 +1222,8 @@ namespace kiln::foundation {
             void ModifyParentData(ParentData& d) const override { d.alignByBlock = params.block; d.alignBy = nullptr; }
         };
     }
-    Modifier AlignBy(Modifier m, std::function<int(Placeable&)> block) {
-        return m.With<AlignBlockNode>(AlignBlockParams{ std::make_shared<const std::function<int(Placeable&)>>(std::move(block)) });
+    Modifier AlignBy(Modifier m, kiln::Function<int(Placeable&)> block) {
+        return m.With<AlignBlockNode>(AlignBlockParams{ std::make_shared<const kiln::Function<int(Placeable&)>>(std::move(block)) });
     }
 
     namespace {
@@ -1244,7 +1245,7 @@ namespace kiln::foundation {
         }
     }
 
-    Modifier Blur(Modifier m, std::function<void(BlurScope&)> block) {
+    Modifier Blur(Modifier m, kiln::Function<void(BlurScope&)> block) {
         rt::Composition* c = rt::Composition::Current();
         const ui::Density density = c ? c->Read(ui::LocalDensity) : ui::Density{};
         return GraphicsLayer(std::move(m), [block = std::move(block), density](GraphicsLayerParams& p) {

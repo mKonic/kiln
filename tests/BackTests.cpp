@@ -1,4 +1,5 @@
 #include "Check.h"
+#include <kiln/Function.h>
 
 #include "kiln/foundation/Back.h"
 #include "kiln/ui/LayoutNode.h"
@@ -15,7 +16,7 @@ namespace {
         std::vector<bool> reported;
         Harness() { back.onHasEnabledChanged = [this](bool b) { reported.push_back(b); }; }
         ~Harness() { composition.SetContent([] {}); composition.Recompose(); back.onHasEnabledChanged = nullptr; }
-        void Run(std::function<void()> content) { composition.SetContent(std::move(content)); composition.Recompose(); }
+        void Run(kiln::Function<void()> content) { composition.SetContent(std::move(content)); composition.Recompose(); }
         void Recompose() { composition.Recompose(); rt::Dispatcher::Main().RunPending(); }
     };
 }

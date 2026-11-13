@@ -4,6 +4,7 @@
 // next to the executable on the dev host (KILN_ASSETS overrides it).
 
 #include <cstdint>
+#include <kiln/Function.h>
 #include <functional>
 #include <optional>
 #include <string_view>
@@ -14,7 +15,7 @@ namespace kiln {
     std::optional<std::vector<std::uint8_t>> ReadAsset(std::string_view path);
 
     // Installed by the host.
-    using AssetReader = std::function<std::optional<std::vector<std::uint8_t>>(std::string_view)>;
+    using AssetReader = kiln::Function<std::optional<std::vector<std::uint8_t>>(std::string_view)>;
     void SetAssetReader(AssetReader reader);
 
 }

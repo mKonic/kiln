@@ -9,6 +9,7 @@
 // they actually read.
 
 #include <cstdint>
+#include <kiln/Function.h>
 #include <functional>
 #include <memory>
 #include <type_traits>
@@ -66,9 +67,9 @@ namespace kiln::rt {
     public:
         // Runs fn with reads attributed to subscriber (nested runs restore the outer reader).
         // The subscriber's previous reads are replaced.
-        static void Track(Subscriber& subscriber, const std::function<void()>& fn);
+        static void Track(Subscriber& subscriber, const kiln::Function<void()>& fn);
         // Runs fn with no reader: reads inside are not recorded (event handlers, effects).
-        static void Untracked(const std::function<void()>& fn);
+        static void Untracked(const kiln::Function<void()>& fn);
 
         // Frame step 3: notifies each subscriber that read a changed object, once. Returns
         // whether anything changed. Writes made by notified subscribers are applied next call.
@@ -77,7 +78,7 @@ namespace kiln::rt {
 
         // Called whenever the first change after an apply is recorded, so the host can schedule
         // a frame (Compose's global snapshot apply observer, 14 §Recomposer).
-        static void SetChangeListener(std::function<void()> listener);
+        static void SetChangeListener(kiln::Function<void()> listener);
 
     private:
         friend class StateObject;
@@ -141,7 +142,7 @@ namespace kiln::rt {
     template<typename T, typename Policy = StructuralEquality>
     class Derived final : public DerivedBase {
     public:
-        explicit Derived(std::function<T()> compute) : m_Compute(std::move(compute)) {}
+        explicit Derived(kiln::Function<T()> compute) : m_Compute(std::move(compute)) {}
         const T& Get() { Refresh(); RecordRead(); return m_Value; }
 
     private:
@@ -152,7 +153,7 @@ namespace kiln::rt {
             m_HasValue = true;
             return true;
         }
-        std::function<T()> m_Compute;
+        kiln::Function<T()> m_Compute;
         T m_Value{};
         bool m_HasValue = false;
     };

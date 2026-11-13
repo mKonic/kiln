@@ -7,6 +7,7 @@
 // immediately), the MotionDurationScale Compose reads from ANIMATOR_DURATION_SCALE.
 
 #include "kiln/animation/Decay.h"
+#include <kiln/Function.h>
 #include "kiln/animation/Spec.h"
 #include "kiln/runtime/State.h"
 #include "kiln/runtime/Task.h"
@@ -38,14 +39,14 @@ namespace kiln::anim {
         int Dims() const { return m_Dims; }
 
         rt::Task<AnimationResult> AnimateTo(Vec target, SpecPtr spec = Spring(), std::optional<Vec> initialVelocity = {},
-                                            std::function<void(const Vec&)> onFrame = {});
+                                            kiln::Function<void(const Vec&)> onFrame = {});
         rt::Task<AnimationResult> AnimateTo(float target, SpecPtr spec = Spring()) {
             return AnimateTo(Vec{ target, 0, 0, 0 }, std::move(spec));
         }
         // 1D decay from the current value (animateDecay): runs until the decay ends, a bound is
         // reached, or another animation interrupts.
         rt::Task<AnimationResult> AnimateDecay(float initialVelocity, std::shared_ptr<const DecaySpec> decay,
-                                               std::function<void(float)> onFrame = {});
+                                               kiln::Function<void(float)> onFrame = {});
         void SnapTo(Vec value);
         void SnapTo(float value) { SnapTo(Vec{ value, 0, 0, 0 }); }
         void Stop();
@@ -67,7 +68,7 @@ namespace kiln::anim {
     // animate(initialValue, targetValue, initialVelocity, animationSpec) { value, velocity -> }
     // (SuspendAnimation.kt): runs the spec frame by frame, handing each value and its velocity
     // to `block`; returns when it ends (or with the caller's cancellation).
-    rt::Task<> Animate(float initialValue, float targetValue, SpecPtr spec, std::function<void(float, float)> block,
+    rt::Task<> Animate(float initialValue, float targetValue, SpecPtr spec, kiln::Function<void(float, float)> block,
                        float initialVelocity = 0);
 
 }

@@ -1,4 +1,5 @@
 #include "kiln/material3/Carousel.h"
+#include <kiln/Function.h>
 
 #include "kiln/foundation/Compose.h"
 #include "kiln/foundation/Draw.h"
@@ -21,7 +22,7 @@ namespace kiln::material3 {
 
     // --- state ----------------------------------------------------------------------------------
 
-    CarouselState::CarouselState(int currentItem, float fraction, std::function<int()> itemCount)
+    CarouselState::CarouselState(int currentItem, float fraction, kiln::Function<int()> itemCount)
         : m_Pager(currentItem, fraction, std::move(itemCount)) {}
 
     rt::Task<> CarouselState::AnimateScrollToItem(int item, anim::SpecPtr spec) {
@@ -29,7 +30,7 @@ namespace kiln::material3 {
         co_await m_Pager.AnimateScrollToPage(item, 0, std::move(spec));
     }
 
-    std::shared_ptr<CarouselState> RememberCarouselState(int initialItem, std::function<int()> itemCount, rt::Key key) {
+    std::shared_ptr<CarouselState> RememberCarouselState(int initialItem, kiln::Function<int()> itemCount, rt::Key key) {
         // [currentItem, currentItemOffsetFraction, itemCount] (CarouselState.Saver).
         auto saver = rt::ListSaver<std::shared_ptr<CarouselState>>(
             [](const std::shared_ptr<CarouselState>& s) {
@@ -111,7 +112,7 @@ namespace kiln::material3 {
     namespace {
         // CarouselPageSize: the strategy for the latest available space.
         struct PageSizeHolder {
-            std::function<kc::KeylineList(float availableSpace, float itemSpacing)> keylineList;
+            kiln::Function<kc::KeylineList(float availableSpace, float itemSpacing)> keylineList;
             float before = 0, after = 0;
             rt::State<kc::Strategy> strategy{ kc::Strategy{} };
         };
@@ -180,7 +181,7 @@ namespace kiln::material3 {
         return std::max(0.0f, s.ItemMainAxisSize() * count + s.itemSpacing * (count - 1) - s.availableSpace);
     }
 
-    void kc::Carousel(CarouselState& state, bool vertical, std::function<kc::KeylineList(float, float)> keylineList,
+    void kc::Carousel(CarouselState& state, bool vertical, kiln::Function<kc::KeylineList(float, float)> keylineList,
                       const CarouselOptions& options, FlingBehavior defaultFling, int maxNonFocalVisibleItemCount,
                       const ui::Modifier& modifier, CarouselContent content) {
             auto& c = *rt::Composition::Current();

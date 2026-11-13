@@ -1,4 +1,5 @@
 #include "kiln/foundation/Lazy.h"
+#include <kiln/Function.h>
 #include "kiln/foundation/Overscroll.h"
 #include "kiln/foundation/Semantics.h"
 #include "kiln/foundation/StaggeredLaneInfo.h"
@@ -19,41 +20,41 @@ namespace kiln::foundation {
 
     // --- scopes ---------------------------------------------------------------------------------
 
-    void LazyListScope::Item(std::function<void()> content, rt::Key key) {
-        auto c = std::make_shared<std::function<void()>>(std::move(content));
-        intervals.push_back({ 1, [c](int) { (*c)(); }, key.value ? std::function<rt::Key(int)>([key](int) { return key; }) : nullptr });
+    void LazyListScope::Item(kiln::Function<void()> content, rt::Key key) {
+        auto c = std::make_shared<kiln::Function<void()>>(std::move(content));
+        intervals.push_back({ 1, [c](int) { (*c)(); }, key.value ? kiln::Function<rt::Key(int)>([key](int) { return key; }) : nullptr });
     }
-    void LazyListScope::StickyHeader(std::function<void(int)> content, rt::Key key) {
+    void LazyListScope::StickyHeader(kiln::Function<void(int)> content, rt::Key key) {
         // The content gets the global index (filled in by the core).
-        intervals.push_back({ 1, std::move(content), key.value ? std::function<rt::Key(int)>([key](int) { return key; }) : nullptr, true });
+        intervals.push_back({ 1, std::move(content), key.value ? kiln::Function<rt::Key(int)>([key](int) { return key; }) : nullptr, true });
     }
-    void LazyListScope::Items(int count, std::function<void(int)> content, std::function<rt::Key(int)> key) {
+    void LazyListScope::Items(int count, kiln::Function<void(int)> content, kiln::Function<rt::Key(int)> key) {
         intervals.push_back({ count, std::move(content), std::move(key) });
     }
 
-    void LazyGridScope::Item(std::function<void()> content, rt::Key key, std::function<int(const GridItemSpanScope&)> span) {
-        auto c = std::make_shared<std::function<void()>>(std::move(content));
-        LazyInterval iv{ 1, [c](int) { (*c)(); }, key.value ? std::function<rt::Key(int)>([key](int) { return key; }) : nullptr };
+    void LazyGridScope::Item(kiln::Function<void()> content, rt::Key key, kiln::Function<int(const GridItemSpanScope&)> span) {
+        auto c = std::make_shared<kiln::Function<void()>>(std::move(content));
+        LazyInterval iv{ 1, [c](int) { (*c)(); }, key.value ? kiln::Function<rt::Key(int)>([key](int) { return key; }) : nullptr };
         if (span) iv.span = [span](int, int cur, int max) { return span({ cur, max }); };
         intervals.push_back(std::move(iv));
     }
-    void LazyGridScope::Items(int count, std::function<void(int)> content, std::function<rt::Key(int)> key, GridSpan span) {
+    void LazyGridScope::Items(int count, kiln::Function<void(int)> content, kiln::Function<rt::Key(int)> key, GridSpan span) {
         LazyInterval iv{ count, std::move(content), std::move(key) };
         if (span) iv.span = [span](int i, int cur, int max) { return span({ cur, max }, i); };
         intervals.push_back(std::move(iv));
     }
-    void LazyGridScope::StickyHeader(std::function<void(int)> content, rt::Key key) {
-        intervals.push_back({ 1, std::move(content), key.value ? std::function<rt::Key(int)>([key](int) { return key; }) : nullptr, true });
+    void LazyGridScope::StickyHeader(kiln::Function<void(int)> content, rt::Key key) {
+        intervals.push_back({ 1, std::move(content), key.value ? kiln::Function<rt::Key(int)>([key](int) { return key; }) : nullptr, true });
     }
 
-    void LazyStaggeredGridScope::Item(std::function<void()> content, rt::Key key, bool fullLine) {
-        auto c = std::make_shared<std::function<void()>>(std::move(content));
-        LazyInterval iv{ 1, [c](int) { (*c)(); }, key.value ? std::function<rt::Key(int)>([key](int) { return key; }) : nullptr };
+    void LazyStaggeredGridScope::Item(kiln::Function<void()> content, rt::Key key, bool fullLine) {
+        auto c = std::make_shared<kiln::Function<void()>>(std::move(content));
+        LazyInterval iv{ 1, [c](int) { (*c)(); }, key.value ? kiln::Function<rt::Key(int)>([key](int) { return key; }) : nullptr };
         if (fullLine) iv.span = [](int, int, int max) { return max; };
         intervals.push_back(std::move(iv));
     }
-    void LazyStaggeredGridScope::Items(int count, std::function<void(int)> content, std::function<rt::Key(int)> key,
-                                       std::function<bool(int)> fullLine) {
+    void LazyStaggeredGridScope::Items(int count, kiln::Function<void(int)> content, kiln::Function<rt::Key(int)> key,
+                                       kiln::Function<bool(int)> fullLine) {
         LazyInterval iv{ count, std::move(content), std::move(key) };
         if (fullLine) iv.span = [fullLine](int i, int, int max) { return fullLine(i) ? max : 1; };
         intervals.push_back(std::move(iv));
@@ -93,7 +94,7 @@ namespace kiln::foundation {
         };
         // Holder node of one item.
         struct HolderPolicy final : MeasurePolicy {
-            std::function<HolderLayout()> layout;
+            kiln::Function<HolderLayout()> layout;
             MeasureResult Measure(MeasureScope& s, std::span<Measurable* const> ch, const Constraints& c) override {
                 const HolderLayout l = layout ? layout() : HolderLayout{};
                 std::vector<Placeable*> ps;
@@ -202,7 +203,7 @@ namespace kiln::foundation {
                 if (to == 0 && fade.Float() == 0) { disappeared = true; if (onDisappeared) onDisappeared(); }
                 if (to == 1) appearing = false;
             }
-            std::function<void()> onDisappeared;   // the layout drops the item then
+            kiln::Function<void()> onDisappeared;   // the layout drops the item then
             bool Busy() const { return placing || appearing || (disappearing && !disappeared); }
         };
 
@@ -263,7 +264,7 @@ namespace kiln::foundation {
         GridCells cells;
         bool pager = false;
         int beyondCount = 0;   // pager: beyondViewportPageCount
-        std::function<int(int, int, int, int, int, int)> pageSnap;   // pager: SnapPosition
+        kiln::Function<int(int, int, int, int, int, int)> pageSnap;   // pager: SnapPosition
         int stickingSize = 0;   // the header sticking to the start (stickingItemsCombinedSize)
         // Staggered grids: positions of the items measured so far (a prefix from item 0).
         bool staggered = false;
@@ -287,7 +288,7 @@ namespace kiln::foundation {
         AnimFrame AnimBegin(const std::vector<int>& placedIndices);
         void AnimPlace(LayoutNode& self, AnimFrame& f, const std::vector<AnimItem>& items, IntOffset shift, int mainMax, bool reverse,
                        int spacing, int firstIndex, std::vector<std::pair<Placeable*, std::shared_ptr<ItemAnim>>>& fading);
-        std::function<int(const Density&, int, int)> pageSize;
+        kiln::Function<int(const Density&, int, int)> pageSize;
         std::vector<LazyInterval> intervals;
         std::uint64_t version = 0;
         std::map<std::uint64_t, Slot> slots;     // by item key value
@@ -1866,7 +1867,7 @@ namespace kiln::foundation {
             explicit BeyondBoundsNode(BeyondParams p) : params(std::move(p)) {}
             void OnParamsChanged() {}
             ui::BeyondBoundsLayout* AsBeyondBoundsLayout() override { return this; }
-            std::optional<bool> Layout(ui::FocusDirection d, const std::function<std::optional<bool>(bool)>& block) override {
+            std::optional<bool> Layout(ui::FocusDirection d, const kiln::Function<std::optional<bool>(bool)>& block) override {
                 auto core = params.core.lock();
                 if (!core || core->count <= 0 || !core->HasVisible() || !Owner()) return block(false);
                 using FD = ui::FocusDirection;
@@ -1904,8 +1905,8 @@ namespace kiln::foundation {
         };
 
         void LazyLayout(bool vertical, const Modifier& modifier, LazyStateBase& state, bool userScrollEnabled, rt::Key key,
-                        const std::function<void(LazyCore&)>& configure, FlingBehavior fling = {},
-                        const std::function<Modifier(Modifier)>& extra = {}, bool reverseLayout = false,
+                        const kiln::Function<void(LazyCore&)>& configure, FlingBehavior fling = {},
+                        const kiln::Function<Modifier(Modifier)>& extra = {}, bool reverseLayout = false,
                         OverscrollParam overscroll = std::nullopt,
                         std::shared_ptr<const BringIntoViewSpec> bringIntoView = nullptr) {
             auto& comp = *rt::Composition::Current();
@@ -1973,7 +1974,7 @@ namespace kiln::foundation {
                                   }, {}, key);
         }
 
-        void LazyList(bool vertical, const Modifier& modifier, LazyListState& state, std::function<void(LazyListScope&)> content,
+        void LazyList(bool vertical, const Modifier& modifier, LazyListState& state, kiln::Function<void(LazyListScope&)> content,
                       LazyListOptions options, rt::Key key) {
             LazyListScope scope;
             content(scope);
@@ -1994,7 +1995,7 @@ namespace kiln::foundation {
         }
 
         void LazyGrid(bool vertical, const Modifier& modifier, GridCells cells, LazyGridState& state,
-                      std::function<void(LazyGridScope&)> content, LazyGridOptions options, rt::Key key) {
+                      kiln::Function<void(LazyGridScope&)> content, LazyGridOptions options, rt::Key key) {
             LazyGridScope scope;
             content(scope);
             LazyLayout(vertical, modifier, state, options.userScrollEnabled, key, [&](LazyCore& core) {
@@ -2015,7 +2016,7 @@ namespace kiln::foundation {
 
     namespace {
         void LazyStaggered(bool vertical, const Modifier& modifier, GridCells cells, LazyStaggeredGridState& state,
-                           std::function<void(LazyStaggeredGridScope&)> content, LazyStaggeredGridOptions options, rt::Key key) {
+                           kiln::Function<void(LazyStaggeredGridScope&)> content, LazyStaggeredGridOptions options, rt::Key key) {
             LazyStaggeredGridScope scope;
             content(scope);
             LazyLayout(vertical, modifier, state, options.userScrollEnabled, key, [&](LazyCore& core) {
@@ -2037,16 +2038,16 @@ namespace kiln::foundation {
     }
 
     void LazyVerticalStaggeredGrid(const Modifier& m, GridCells columns, LazyStaggeredGridState& s,
-                                   std::function<void(LazyStaggeredGridScope&)> content, LazyStaggeredGridOptions o, rt::Key key) {
+                                   kiln::Function<void(LazyStaggeredGridScope&)> content, LazyStaggeredGridOptions o, rt::Key key) {
         LazyStaggered(true, m, columns, s, std::move(content), o, key);
     }
     void LazyHorizontalStaggeredGrid(const Modifier& m, GridCells rows, LazyStaggeredGridState& s,
-                                     std::function<void(LazyStaggeredGridScope&)> content, LazyStaggeredGridOptions o, rt::Key key) {
+                                     kiln::Function<void(LazyStaggeredGridScope&)> content, LazyStaggeredGridOptions o, rt::Key key) {
         LazyStaggered(false, m, rows, s, std::move(content), o, key);
     }
 
     void LazyPagerLayout(bool vertical, const Modifier& modifier, LazyStateBase& state, int pageCount,
-                         std::function<void(int)> content, std::function<rt::Key(int)> key, LazyPagerConfig config, rt::Key compositionKey) {
+                         kiln::Function<void(int)> content, kiln::Function<rt::Key(int)> key, LazyPagerConfig config, rt::Key compositionKey) {
         LazyLayout(vertical, modifier, state, config.userScrollEnabled, compositionKey, [&](LazyCore& core) {
             core.grid = false;
             core.staggered = false;
@@ -2067,17 +2068,17 @@ namespace kiln::foundation {
         }, std::move(config.flingBehavior), config.extraModifier, config.reverseLayout, config.overscrollEffect, std::move(config.bringIntoViewSpec));
     }
 
-    void LazyColumn(const Modifier& m, LazyListState& s, std::function<void(LazyListScope&)> content, LazyListOptions o, rt::Key key) {
+    void LazyColumn(const Modifier& m, LazyListState& s, kiln::Function<void(LazyListScope&)> content, LazyListOptions o, rt::Key key) {
         LazyList(true, m, s, std::move(content), o, key);
     }
-    void LazyRow(const Modifier& m, LazyListState& s, std::function<void(LazyListScope&)> content, LazyListOptions o, rt::Key key) {
+    void LazyRow(const Modifier& m, LazyListState& s, kiln::Function<void(LazyListScope&)> content, LazyListOptions o, rt::Key key) {
         LazyList(false, m, s, std::move(content), o, key);
     }
-    void LazyVerticalGrid(const Modifier& m, GridCells columns, LazyGridState& s, std::function<void(LazyGridScope&)> content,
+    void LazyVerticalGrid(const Modifier& m, GridCells columns, LazyGridState& s, kiln::Function<void(LazyGridScope&)> content,
                           LazyGridOptions o, rt::Key key) {
         LazyGrid(true, m, columns, s, std::move(content), o, key);
     }
-    void LazyHorizontalGrid(const Modifier& m, GridCells rows, LazyGridState& s, std::function<void(LazyGridScope&)> content,
+    void LazyHorizontalGrid(const Modifier& m, GridCells rows, LazyGridState& s, kiln::Function<void(LazyGridScope&)> content,
                             LazyGridOptions o, rt::Key key) {
         LazyGrid(false, m, rows, s, std::move(content), o, key);
     }

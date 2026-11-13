@@ -12,6 +12,7 @@
 // Blocks read state observably: a change measures or draws again without recomposing.
 
 #include "kiln/foundation/Layouts.h"
+#include <kiln/Function.h>
 #include "kiln/foundation/style/StyleResolver.h"
 
 #include <functional>
@@ -26,7 +27,7 @@ namespace kiln::foundation {
                maxHeight = ui::Dp::Unspecified();
         Breadth width, height;
     };
-    Modifier Placement(Modifier m, std::function<void(PlacementModifierScope&)> block);
+    Modifier Placement(Modifier m, kiln::Function<void(PlacementModifierScope&)> block);
 
     // AppearanceScope: what is drawn, in `shape` (the element's semantics shape too).
     struct AppearanceScope {
@@ -36,11 +37,11 @@ namespace kiln::foundation {
         Shadows dropShadow, innerShadow;
         ShapePtr shape = RectangleShape();
     };
-    Modifier Appearance(Modifier m, std::function<void(AppearanceScope&)> block);
+    Modifier Appearance(Modifier m, kiln::Function<void(AppearanceScope&)> block);
 
     // graphicsLayer(layerRequired, block): the block's layer while `layerRequired` returns true
     // (or is null), else no layer.
-    Modifier GraphicsLayer(Modifier m, std::function<bool()> layerRequired, std::function<void(GraphicsLayerParams&)> block);
+    Modifier GraphicsLayer(Modifier m, kiln::Function<bool()> layerRequired, kiln::Function<void(GraphicsLayerParams&)> block);
 
     Modifier StylePlacement(Modifier m, std::shared_ptr<StyleResolver> resolver);
     Modifier StyleAppearance(Modifier m, std::shared_ptr<StyleResolver> resolver);

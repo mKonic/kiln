@@ -1,4 +1,5 @@
 #include "kiln/foundation/text/BasicText.h"
+#include <kiln/Function.h>
 
 #include "kiln/TextBackend.h"
 #include "kiln/foundation/Compose.h"
@@ -618,7 +619,7 @@ namespace kiln::foundation {
         for (auto& l : text.GetLinkAnnotations(0, text.Length()))
             if (l.start != l.end) links.push_back(std::move(l));
         // resolveInlineContent: the inline content ranges with content for their id.
-        struct Inline { int start, end; std::function<void(const std::string&)> children; std::string alternate; };
+        struct Inline { int start, end; kiln::Function<void(const std::string&)> children; std::string alternate; };
         std::vector<text::Range<text::Placeholder>> placeholders;
         std::vector<Inline> inlines;
         if (!options.inlineContent.empty())
@@ -724,13 +725,13 @@ namespace kiln::foundation {
         BasicText(AnnotatedString(text), modifier, std::move(style), std::move(options), key);
     }
 
-    void BasicText(const AnnotatedString& text, std::function<void(text::TextStyleScope&)> styleProvider, const Modifier& modifier, BasicTextOptions options,
+    void BasicText(const AnnotatedString& text, kiln::Function<void(text::TextStyleScope&)> styleProvider, const Modifier& modifier, BasicTextOptions options,
                    rt::Key key) {
         options.styleProvider = std::move(styleProvider);
         BasicText(text, modifier, TextStyle{}, std::move(options), key);
     }
 
-    void BasicText(const std::string& text, std::function<void(text::TextStyleScope&)> styleProvider, const Modifier& modifier, BasicTextOptions options,
+    void BasicText(const std::string& text, kiln::Function<void(text::TextStyleScope&)> styleProvider, const Modifier& modifier, BasicTextOptions options,
                    rt::Key key) {
         BasicText(AnnotatedString(text), std::move(styleProvider), modifier, std::move(options), key);
     }

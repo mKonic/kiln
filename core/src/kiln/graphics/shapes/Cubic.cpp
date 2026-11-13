@@ -1,4 +1,5 @@
 #include "kiln/graphics/shapes/Cubic.h"
+#include <kiln/Function.h>
 
 #include <algorithm>
 
@@ -12,7 +13,7 @@ namespace kiln::gfx::shapes {
         return dot < tolerance || dot < relative;
     }
 
-    float FindMinimum(float v0, float v1, float tolerance, const std::function<float(float)>& f) {
+    float FindMinimum(float v0, float v1, float tolerance, const kiln::Function<float(float)>& f) {
         float a = v0, b = v1;
         while (b - a > tolerance) {
             const float c1 = (2 * a + b) / 3, c2 = (2 * b + a) / 3;

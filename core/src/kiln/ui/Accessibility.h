@@ -7,6 +7,7 @@
 // root coordinates to the screen. Action, event and granularity numbers are Android's.
 
 #include "kiln/ui/Semantics.h"
+#include <kiln/Function.h>
 
 #include <climits>
 #include <cstdint>
@@ -171,12 +172,12 @@ namespace kiln::ui {
 
     // The host side the delegate needs (all optional).
     struct AccessibilityHost {
-        std::function<bool()> touchExplorationEnabled;
-        std::function<bool()> requestFromAccessibilityTool;   // isRequestFromAccessibilityTool
-        std::function<bool(const IntRect&)> requestRectangleOnScreen;
-        std::function<void()> invalidate;                     // view.invalidate (focus highlight)
-        std::function<void()> requestFocusFromTouch;          // ACTION_FOCUS in touch mode
-        std::function<std::int64_t()> uptimeMillis;
+        kiln::Function<bool()> touchExplorationEnabled;
+        kiln::Function<bool()> requestFromAccessibilityTool;   // isRequestFromAccessibilityTool
+        kiln::Function<bool(const IntRect&)> requestRectangleOnScreen;
+        kiln::Function<void()> invalidate;                     // view.invalidate (focus highlight)
+        kiln::Function<void()> requestFocusFromTouch;          // ACTION_FOCUS in touch mode
+        kiln::Function<std::int64_t()> uptimeMillis;
     };
 
     class AccessibilityDelegate {
@@ -324,7 +325,7 @@ namespace kiln::ui {
         // A session exists (the view's content capture session; false without a service).
         void SetEnabled(bool enabled) { m_Enabled = enabled; }
         bool Enabled() const { return m_Enabled; }
-        void SetClock(std::function<std::int64_t()> currentTimeMillis) { m_Clock = std::move(currentTimeMillis); }
+        void SetClock(kiln::Function<std::int64_t()> currentTimeMillis) { m_Clock = std::move(currentTimeMillis); }
         // Lifecycle onStart / onStop: the whole tree appears / disappears.
         void OnStart();
         void OnStop();
@@ -352,7 +353,7 @@ namespace kiln::ui {
         std::int64_t Now() const { return m_Clock ? m_Clock() : 0; }
 
         AccessibilityDelegate& m_Delegate;
-        std::function<std::int64_t()> m_Clock;
+        kiln::Function<std::int64_t()> m_Clock;
         bool m_Enabled = false;
         bool m_ShowTranslated = false;
         std::unordered_map<int, Copy> m_Previous;
@@ -364,10 +365,10 @@ namespace kiln::ui {
     // the segment after / before `current`, nullopt at the end.
     namespace a11y {
         using Segment = std::optional<std::pair<int, int>>;
-        Segment CharacterFollowing(const std::u16string& text, int current, const std::function<int(int, bool)>& brk);
-        Segment CharacterPreceding(const std::u16string& text, int current, const std::function<int(int, bool)>& brk);
-        Segment WordFollowing(const std::u16string& text, int current, const std::function<int(int, bool)>& brk);
-        Segment WordPreceding(const std::u16string& text, int current, const std::function<int(int, bool)>& brk);
+        Segment CharacterFollowing(const std::u16string& text, int current, const kiln::Function<int(int, bool)>& brk);
+        Segment CharacterPreceding(const std::u16string& text, int current, const kiln::Function<int(int, bool)>& brk);
+        Segment WordFollowing(const std::u16string& text, int current, const kiln::Function<int(int, bool)>& brk);
+        Segment WordPreceding(const std::u16string& text, int current, const kiln::Function<int(int, bool)>& brk);
         Segment ParagraphFollowing(const std::u16string& text, int current);
         Segment ParagraphPreceding(const std::u16string& text, int current);
         Segment LineFollowing(const std::u16string& text, const text::TextLayoutResult& layout, int current);

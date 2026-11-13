@@ -11,6 +11,7 @@
 // Main thread only, as upstream (kiln has one UI thread; the checks are not repeated here).
 
 #include "kiln/runtime/CoroutineScope.h"
+#include <kiln/Function.h>
 #include "kiln/runtime/State.h"
 #include "kiln/runtime/Task.h"
 
@@ -95,9 +96,9 @@ namespace kiln::lifecycle {
     };
 
     // Lifecycle.addObserver { source, event -> }: adds and returns a callback observer.
-    std::shared_ptr<LifecycleEventObserver> AddObserver(Lifecycle& lifecycle, std::function<void(LifecycleOwner&, Event)> action);
+    std::shared_ptr<LifecycleEventObserver> AddObserver(Lifecycle& lifecycle, kiln::Function<void(LifecycleOwner&, Event)> action);
     // LifecycleEventObserver { source, event -> } without adding it.
-    std::shared_ptr<LifecycleEventObserver> MakeEventObserver(std::function<void(LifecycleOwner&, Event)> action);
+    std::shared_ptr<LifecycleEventObserver> MakeEventObserver(kiln::Function<void(LifecycleOwner&, Event)> action);
 
     // LifecycleRegistry: a Lifecycle moved by HandleLifecycleEvent / SetCurrentState. It keeps a
     // pointer to its owner, which must outlive it or be the object holding it.
@@ -175,7 +176,7 @@ namespace kiln::lifecycle {
     class LifecycleEventFlow {
     public:
         explicit LifecycleEventFlow(Lifecycle& lifecycle) : m_Lifecycle(&lifecycle) {}
-        rt::Task<> Collect(std::function<void(Event)> collector) const;
+        rt::Task<> Collect(kiln::Function<void(Event)> collector) const;
     private:
         Lifecycle* m_Lifecycle;
     };

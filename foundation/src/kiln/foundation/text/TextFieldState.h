@@ -7,6 +7,7 @@
 // of it through output and codepoint transformations.
 
 #include "kiln/foundation/text/input/TextFieldBuffer.h"
+#include <kiln/Function.h>
 #include "kiln/foundation/text/input/Transformations.h"
 #include "kiln/runtime/State.h"
 #include "kiln/runtime/Composition.h"
@@ -40,7 +41,7 @@ namespace kiln::foundation {
     // Edits within this many ms of each other merge (SNAPSHOTS_INTERVAL_MILLIS).
     constexpr std::int64_t kUndoSnapshotsIntervalMillis = 5000;
     // The clock undo stamps edits with (System.currentTimeMillis; replaceable for tests).
-    void SetUndoClock(std::function<std::int64_t()> clock);
+    void SetUndoClock(kiln::Function<std::int64_t()> clock);
     std::int64_t UndoNowMillis();
     // merge: typing (inserts at the end of the last one) and deleting in one direction merge;
     // new lines, other kinds and edits over 5 s apart do not.
@@ -94,7 +95,7 @@ namespace kiln::foundation {
         }
 
         // edit { }: a programmatic edit (no input transformation; never merged for undo).
-        void Edit(const std::function<void(TextFieldBuffer&)>& block);
+        void Edit(const kiln::Function<void(TextFieldBuffer&)>& block);
         // setTextAndPlaceCursorAtEnd / setTextAndSelectAll / clearText.
         void SetTextAndPlaceCursorAtEnd(std::string_view text);
         void SetTextAndSelectAll(std::string_view text);
@@ -102,11 +103,11 @@ namespace kiln::foundation {
 
         // The user's edits (typing, the IME, paste): through the input transformation, merged
         // for undo where possible.
-        void EditAsUser(const InputTransformation* inputTransformation, const std::function<void(TextFieldBuffer&)>& block,
+        void EditAsUser(const InputTransformation* inputTransformation, const kiln::Function<void(TextFieldBuffer&)>& block,
                         bool restartImeIfContentChanges = true,
                         TextFieldEditUndoBehavior undoBehavior = TextFieldEditUndoBehavior::MergeIfPossible);
         // Undo / redo applying: no transformation, no undo record.
-        void EditWithNoSideEffects(const std::function<void(TextFieldBuffer&)>& block);
+        void EditWithNoSideEffects(const kiln::Function<void(TextFieldBuffer&)>& block);
 
         // undoState.
         bool CanUndo() const { return m_Undo.CanUndo(); }
@@ -120,11 +121,11 @@ namespace kiln::foundation {
         bool UserCommit() const { return m_UserCommit; }
         bool SuggestionSelected() const { return m_SuggestionSelected; }
         // onTextChanged: told after the text changes (not from within it).
-        void SetOnTextChanged(std::function<void(const std::u16string&)> fn) { m_OnTextChanged = std::move(fn); }
+        void SetOnTextChanged(kiln::Function<void(const std::u16string&)> fn) { m_OnTextChanged = std::move(fn); }
 
         // NotifyImeListener: told of every value change; restartIme when the content changed
         // under a composition.
-        using NotifyImeListener = std::function<void(const TextFieldCharSequence& oldValue, const TextFieldCharSequence& newValue, bool restartIme)>;
+        using NotifyImeListener = kiln::Function<void(const TextFieldCharSequence& oldValue, const TextFieldCharSequence& newValue, bool restartIme)>;
         int AddNotifyImeListener(NotifyImeListener l);
         void RemoveNotifyImeListener(int token);
 
@@ -161,7 +162,7 @@ namespace kiln::foundation {
         bool m_UserCommit = false;
         bool m_SuggestionSelected = false;
         bool m_InOnTextChanged = false;
-        std::function<void(const std::u16string&)> m_OnTextChanged;
+        kiln::Function<void(const std::u16string&)> m_OnTextChanged;
         std::vector<std::pair<int, NotifyImeListener>> m_ImeListeners;
         int m_NextListener = 0;
         std::uint64_t m_Version = 0;
@@ -216,7 +217,7 @@ namespace kiln::foundation {
         void CollapseSelectionToEnd();
         void Undo() { m_State.Undo(); }
         void Redo() { m_State.Redo(); }
-        void EditUntransformedTextAsUser(const std::function<void(TextFieldBuffer&)>& block, bool restartImeIfContentChanges = true);
+        void EditUntransformedTextAsUser(const kiln::Function<void(TextFieldBuffer&)>& block, bool restartImeIfContentChanges = true);
 
         TextRange MapToTransformed(int offset) const;
         TextRange MapToTransformed(TextRange range) const;
@@ -266,7 +267,7 @@ namespace kiln::foundation {
         explicit ImeEditCommandScope(TransformedTextFieldState& state) : m_State(state) {}
         bool BeginBatchEdit() { ++m_Depth; return true; }
         bool EndBatchEdit();
-        void Edit(std::function<void(TextFieldBuffer&)> block);
+        void Edit(kiln::Function<void(TextFieldBuffer&)> block);
 
         void CommitText(std::u16string_view text, int newCursorPosition, bool isTextSuggestionSelected = false);
         void SetComposingText(std::u16string_view text, int newCursorPosition, const std::vector<PlacedSpan>* annotations = nullptr,
@@ -282,7 +283,7 @@ namespace kiln::foundation {
         TextRange MapToTransformed(TextRange r) const { return m_State.IsTransformed() ? m_State.MapToTransformed(r) : r; }
         int TransformedLength() const { return m_Batch ? m_Batch->Length() : m_State.VisualText().Length(); }
         TransformedTextFieldState& m_State;
-        std::vector<std::function<void(TextFieldBuffer&)>> m_Commands;
+        std::vector<kiln::Function<void(TextFieldBuffer&)>> m_Commands;
         TextFieldBuffer* m_Batch = nullptr;
         int m_Depth = 0;
     };

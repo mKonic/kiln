@@ -1,4 +1,5 @@
 #include "kiln/foundation/Animate.h"
+#include <kiln/Function.h>
 
 #include <algorithm>
 #include <memory>
@@ -36,7 +37,7 @@ namespace kiln::foundation {
 
     namespace detail {
         namespace {
-            struct Listener { std::function<void(const anim::Vec&)> finished; };
+            struct Listener { kiln::Function<void(const anim::Vec&)> finished; };
 
             rt::Task<> Run(anim::Animatable* a, anim::Vec target, anim::SpecPtr spec, std::shared_ptr<Listener> listener) {
                 const auto result = co_await a->AnimateTo(target, spec);
@@ -46,7 +47,7 @@ namespace kiln::foundation {
         }
 
         const anim::Vec& AnimateVector(const anim::Vec& target, int dims, anim::SpecPtr spec,
-                                       std::function<void(const anim::Vec&)> finished, rt::Key key) {
+                                       kiln::Function<void(const anim::Vec&)> finished, rt::Key key) {
             auto& c = *rt::Composition::Current();
             auto& a = c.RememberNew<anim::Animatable>({}, key, target, dims);
             auto& listener = c.RememberNew<std::shared_ptr<Listener>>({}, key, std::make_shared<Listener>());
@@ -58,31 +59,31 @@ namespace kiln::foundation {
         }
     }
 
-    float AnimateFloatAsState(float target, anim::SpecPtr spec, std::function<void(float)> f, rt::Key key) {
+    float AnimateFloatAsState(float target, anim::SpecPtr spec, kiln::Function<void(float)> f, rt::Key key) {
         return AnimateValueAsState(target, converters::Float(), std::move(spec), std::move(f), key);
     }
-    ui::Dp AnimateDpAsState(ui::Dp target, anim::SpecPtr spec, std::function<void(ui::Dp)> f, rt::Key key) {
+    ui::Dp AnimateDpAsState(ui::Dp target, anim::SpecPtr spec, kiln::Function<void(ui::Dp)> f, rt::Key key) {
         return AnimateValueAsState(target, converters::Dp(), std::move(spec), std::move(f), key);
     }
-    ui::Offset AnimateOffsetAsState(ui::Offset target, anim::SpecPtr spec, std::function<void(ui::Offset)> f, rt::Key key) {
+    ui::Offset AnimateOffsetAsState(ui::Offset target, anim::SpecPtr spec, kiln::Function<void(ui::Offset)> f, rt::Key key) {
         return AnimateValueAsState(target, converters::Offset(), std::move(spec), std::move(f), key);
     }
-    ui::Size AnimateSizeAsState(ui::Size target, anim::SpecPtr spec, std::function<void(ui::Size)> f, rt::Key key) {
+    ui::Size AnimateSizeAsState(ui::Size target, anim::SpecPtr spec, kiln::Function<void(ui::Size)> f, rt::Key key) {
         return AnimateValueAsState(target, converters::Size(), std::move(spec), std::move(f), key);
     }
-    ui::Rect AnimateRectAsState(ui::Rect target, anim::SpecPtr spec, std::function<void(ui::Rect)> f, rt::Key key) {
+    ui::Rect AnimateRectAsState(ui::Rect target, anim::SpecPtr spec, kiln::Function<void(ui::Rect)> f, rt::Key key) {
         return AnimateValueAsState(target, converters::Rect(), std::move(spec), std::move(f), key);
     }
-    int AnimateIntAsState(int target, anim::SpecPtr spec, std::function<void(int)> f, rt::Key key) {
+    int AnimateIntAsState(int target, anim::SpecPtr spec, kiln::Function<void(int)> f, rt::Key key) {
         return AnimateValueAsState(target, converters::Int(), std::move(spec), std::move(f), key);
     }
-    ui::IntOffset AnimateIntOffsetAsState(ui::IntOffset target, anim::SpecPtr spec, std::function<void(ui::IntOffset)> f, rt::Key key) {
+    ui::IntOffset AnimateIntOffsetAsState(ui::IntOffset target, anim::SpecPtr spec, kiln::Function<void(ui::IntOffset)> f, rt::Key key) {
         return AnimateValueAsState(target, converters::IntOffset(), std::move(spec), std::move(f), key);
     }
-    ui::IntSize AnimateIntSizeAsState(ui::IntSize target, anim::SpecPtr spec, std::function<void(ui::IntSize)> f, rt::Key key) {
+    ui::IntSize AnimateIntSizeAsState(ui::IntSize target, anim::SpecPtr spec, kiln::Function<void(ui::IntSize)> f, rt::Key key) {
         return AnimateValueAsState(target, converters::IntSize(), std::move(spec), std::move(f), key);
     }
-    ui::Color AnimateColorAsState(ui::Color target, anim::SpecPtr spec, std::function<void(ui::Color)> f, rt::Key key) {
+    ui::Color AnimateColorAsState(ui::Color target, anim::SpecPtr spec, kiln::Function<void(ui::Color)> f, rt::Key key) {
         return AnimateValueAsState(target, converters::Color(), std::move(spec), std::move(f), key);
     }
 

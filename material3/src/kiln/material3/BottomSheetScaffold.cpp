@@ -1,4 +1,5 @@
 #include "kiln/material3/BottomSheetScaffold.h"
+#include <kiln/Function.h>
 
 #include "kiln/foundation/AnchoredDraggable.h"
 #include "kiln/foundation/Compose.h"
@@ -34,7 +35,7 @@ namespace kiln::material3 {
             rt::Keys(bottomSheetState.get(), snackbarHostState.get()), key);
     }
 
-    std::shared_ptr<SheetState> RememberStandardBottomSheetState(SheetValue initialValue, std::function<bool(SheetValue)> confirmValueChange,
+    std::shared_ptr<SheetState> RememberStandardBottomSheetState(SheetValue initialValue, kiln::Function<bool(SheetValue)> confirmValueChange,
                                                                  bool skipHiddenState, rt::Key key) {
         return internal::RememberSheetState(SheetValues{ !skipHiddenState, true }, std::move(confirmValueChange), initialValue,
                                             BottomSheetDefaults::PositionalThreshold, BottomSheetDefaults::VelocityThreshold, false, key);
@@ -62,7 +63,7 @@ namespace kiln::material3 {
             ShapePtr shape;
             Color containerColor, contentColor;
             Dp tonalElevation, shadowElevation;
-            std::function<void()> dragHandle, content;
+            kiln::Function<void()> dragHandle, content;
         };
 
         void StandardBottomSheet(const StandardSheetParams& p) {
@@ -258,8 +259,8 @@ namespace kiln::material3 {
         };
     }
 
-    void BottomSheetScaffold(std::function<void()> sheetContent, const ui::Modifier& modifier, const BottomSheetScaffoldOptions& o,
-                             std::function<void(const PaddingValues&)> content) {
+    void BottomSheetScaffold(kiln::Function<void()> sheetContent, const ui::Modifier& modifier, const BottomSheetScaffoldOptions& o,
+                             kiln::Function<void(const PaddingValues&)> content) {
         auto& c = *rt::Composition::Current();
         const auto scaffold = o.scaffoldState ? o.scaffoldState : RememberBottomSheetScaffoldState();
         const Color container = o.containerColor.value_or(MaterialTheme::colorScheme().surface);

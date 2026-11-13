@@ -1,6 +1,7 @@
 #pragma once
 
 #include <algorithm>
+#include <kiln/Function.h>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -88,10 +89,10 @@ namespace kiln::foundation {
     Modifier OffsetMod(Modifier m, Dp x, Dp y, bool rtlAware = true);
     // offset { IntOffset }: evaluated at placement, so state it reads re-places without
     // recomposing (the form for offsets that change every frame).
-    Modifier OffsetMod(Modifier m, std::function<IntOffset(const Density&)> offset, bool rtlAware = true);
+    Modifier OffsetMod(Modifier m, kiln::Function<IntOffset(const Density&)> offset, bool rtlAware = true);
     // Modifier.layout { measurable, constraints -> }: measures and places what it wraps itself.
     // State read in the block remeasures it.
-    using LayoutModifierMeasure = std::function<MeasureResult(MeasureScope&, Measurable&, const Constraints&)>;
+    using LayoutModifierMeasure = kiln::Function<MeasureResult(MeasureScope&, Measurable&, const Constraints&)>;
     Modifier LayoutMod(Modifier m, LayoutModifierMeasure measure);
     // fitInside: with bounded constraints, sizes the content to the area inside `rulers` (insets,
     // a cutout, ...); otherwise centres the content on that area. fitOutside: sizes the content
@@ -101,31 +102,31 @@ namespace kiln::foundation {
     Modifier FitOutside(Modifier m, ui::RectRulers rulers);
     // Modifier.approachLayout: an ApproachLayoutModifier from lambdas (see Layout.h). The
     // placement check defaults to never in progress.
-    using ApproachMeasure = std::function<MeasureResult(ui::ApproachMeasureScope&, Measurable&, const Constraints&)>;
-    Modifier ApproachLayout(Modifier m, std::function<bool(IntSize lookaheadSize)> isMeasurementApproachInProgress,
-                            std::function<bool(PlacementScope&, const ui::LayoutCoordinates& lookaheadCoordinates)> isPlacementApproachInProgress,
+    using ApproachMeasure = kiln::Function<MeasureResult(ui::ApproachMeasureScope&, Measurable&, const Constraints&)>;
+    Modifier ApproachLayout(Modifier m, kiln::Function<bool(IntSize lookaheadSize)> isMeasurementApproachInProgress,
+                            kiln::Function<bool(PlacementScope&, const ui::LayoutCoordinates& lookaheadCoordinates)> isPlacementApproachInProgress,
                             ApproachMeasure approachMeasure);
     // onSizeChanged: called after measuring when the size differs from the last one (and the first time).
-    Modifier OnSizeChanged(Modifier m, std::function<void(IntSize)> onSizeChanged);
+    Modifier OnSizeChanged(Modifier m, kiln::Function<void(IntSize)> onSizeChanged);
     // LayoutCoordinates as onGloballyPositioned hands them over: a live view of the space the
     // modifier sits in (read when asked, so a stored copy follows later moves). Popups share the
     // window's root, so root positions stand in for positionOnScreen.
     using LayoutCoordinates = ui::LayoutCoordinates;
     // onGloballyPositioned: called after a layout pass when the space it sits in moved, changed
     // its transform or its size (and the first time).
-    Modifier OnGloballyPositioned(Modifier m, std::function<void(const LayoutCoordinates&)> onGloballyPositioned);
+    Modifier OnGloballyPositioned(Modifier m, kiln::Function<void(const LayoutCoordinates&)> onGloballyPositioned);
     // onPlaced: called after the layout is placed, with the coordinates of where the modifier
     // sits (before onGloballyPositioned, and also when only a parent moved it).
-    Modifier OnPlaced(Modifier m, std::function<void(const LayoutCoordinates&)> onPlaced);
+    Modifier OnPlaced(Modifier m, kiln::Function<void(const LayoutCoordinates&)> onPlaced);
     // modifierLocalProvider(key) { value }: provides `value()` for the modifiers after it and
     // below. modifierLocalConsumer { }: runs `consumer` with a node that reads them (Current),
     // when attached and again when what it read changes.
     template<typename T>
-    Modifier ModifierLocalProvider(Modifier m, const ui::ModifierLocal<T>& key, std::function<T()> value);
-    Modifier ModifierLocalConsumer(Modifier m, std::function<void(const ui::ModifierNode& scope)> consumer);
+    Modifier ModifierLocalProvider(Modifier m, const ui::ModifierLocal<T>& key, kiln::Function<T()> value);
+    Modifier ModifierLocalConsumer(Modifier m, kiln::Function<void(const ui::ModifierNode& scope)> consumer);
     // onLayoutRectChanged: the layout's bounds in the window after it moves or resizes, at most
     // once per throttle period and once changes have stopped for the debounce period.
-    Modifier OnLayoutRectChanged(Modifier m, std::function<void(const ui::RelativeLayoutBounds&)> callback, std::int64_t throttleMillis = 0,
+    Modifier OnLayoutRectChanged(Modifier m, kiln::Function<void(const ui::RelativeLayoutBounds&)> callback, std::int64_t throttleMillis = 0,
                                  std::int64_t debounceMillis = 64);
     // LayoutBoundsHolder / layoutBounds: a layout's bounds as observable state (a viewport for
     // onVisibilityChanged); null while it is not laid out.
@@ -140,7 +141,7 @@ namespace kiln::foundation {
     // onVisibilityChanged: true once more than minFractionVisible of the layout (or all of it)
     // is inside the window, or inside `viewportBounds`'s layout, for minDurationMs; false when
     // that stops (and when it leaves).
-    Modifier OnVisibilityChanged(Modifier m, std::function<void(bool visible)> callback, std::int64_t minDurationMs = 0,
+    Modifier OnVisibilityChanged(Modifier m, kiln::Function<void(bool visible)> callback, std::int64_t minDurationMs = 0,
                                  float minFractionVisible = 1.0f, LayoutBoundsHolder* viewportBounds = nullptr);
     Modifier AspectRatio(Modifier m, float ratio, bool matchHeightConstraintsFirst = false);
 
@@ -164,7 +165,7 @@ namespace kiln::foundation {
     Modifier AlignBy(Modifier m, const AlignmentLine& line);
     // alignBy { measured -> position }: align on a position the block reads from the measured
     // child (its size or lines).
-    Modifier AlignBy(Modifier m, std::function<int(ui::Placeable&)> block);
+    Modifier AlignBy(Modifier m, kiln::Function<int(ui::Placeable&)> block);
     inline Modifier AlignByBaseline(Modifier m) { return AlignBy(std::move(m), FirstBaseline); }
     // paddingFrom / paddingFromBaseline: space so the line sits `before` from the top (or start)
     // and `after` from the bottom (or end).
@@ -239,7 +240,7 @@ namespace kiln::foundation {
         std::optional<Offset> start, end;                // Linear, in dp
         std::optional<Offset> center;                    // Radial, in dp; nullopt: the centre
         std::optional<Dp> fallOff;                       // Radial; nullopt: half the smaller side
-        std::shared_ptr<const std::function<gfx::Brush(const Density&, Size)>> shader;   // Shader
+        std::shared_ptr<const kiln::Function<gfx::Brush(const Density&, Size)>> shader;   // Shader
         bool operator==(const BlurRadiusSpec&) const = default;
 
         static BlurRadiusSpec Uniform(Dp radius) { return { Kind::Uniform, { { 0, radius } } }; }
@@ -262,10 +263,10 @@ namespace kiln::foundation {
             return { Kind::Radial, Sorted(std::move(stops)), std::nullopt, std::nullopt, centerDp, fallOff };
         }
         // BlurRadiusSpec.shader(maxRadius, block); a negative maxRadius throws std::invalid_argument.
-        static BlurRadiusSpec Shader(Dp maxRadius, std::function<gfx::Brush(const Density&, Size)> block) {
+        static BlurRadiusSpec Shader(Dp maxRadius, kiln::Function<gfx::Brush(const Density&, Size)> block) {
             if (maxRadius.value < 0) throw std::invalid_argument("maxRadius must be >= 0");
             BlurRadiusSpec s{ Kind::Shader, { { 0, maxRadius } } };
-            s.shader = std::make_shared<const std::function<gfx::Brush(const Density&, Size)>>(std::move(block));
+            s.shader = std::make_shared<const kiln::Function<gfx::Brush(const Density&, Size)>>(std::move(block));
             return s;
         }
     private:
@@ -331,11 +332,11 @@ namespace kiln::foundation {
     Modifier GraphicsLayer(Modifier m, GraphicsLayerParams p);
     // graphicsLayer { }: the block sets the properties; state it reads is observed, so an
     // animated value redraws the layer without recomposing the caller.
-    Modifier GraphicsLayer(Modifier m, std::function<void(GraphicsLayerParams&)> block);
+    Modifier GraphicsLayer(Modifier m, kiln::Function<void(GraphicsLayerParams&)> block);
     namespace detail {
         // Draws `content` as a graphicsLayer with `p` would (at the scope's size); for
         // layer::DrawLayer.
-        void DrawWithLayerParams(ui::ContentDrawScope& s, const GraphicsLayerParams& p, std::function<void()> content);
+        void DrawWithLayerParams(ui::ContentDrawScope& s, const GraphicsLayerParams& p, kiln::Function<void()> content);
     }
     // Whether an element is a graphicsLayer (GraphicsLayerElement).
     bool IsGraphicsLayerElement(const ui::ModifierElement& e);
@@ -368,7 +369,7 @@ namespace kiln::foundation {
         float alpha = 1;
     };
     // Modifier.blur(block).
-    Modifier Blur(Modifier m, std::function<void(BlurScope&)> block);
+    Modifier Blur(Modifier m, kiln::Function<void(BlurScope&)> block);
     inline Modifier Blur(Modifier m, Dp radius, BlurredEdgeTreatment edgeTreatment = BlurredEdgeTreatment::Rectangle()) {
         return Blur(std::move(m), radius, radius, std::move(edgeTreatment));
     }
@@ -381,7 +382,7 @@ namespace kiln::foundation {
         template<typename T>
         struct LocalProviderParams {
             const ui::ModifierLocal<T>* key = nullptr;
-            std::function<T()> value;
+            kiln::Function<T()> value;
             bool operator==(const LocalProviderParams&) const { return false; }
         };
         template<typename T>
@@ -397,7 +398,7 @@ namespace kiln::foundation {
         };
     }
     template<typename T>
-    Modifier ModifierLocalProvider(Modifier m, const ui::ModifierLocal<T>& key, std::function<T()> value) {
+    Modifier ModifierLocalProvider(Modifier m, const ui::ModifierLocal<T>& key, kiln::Function<T()> value) {
         return m.With<detail::LocalProviderNode<T>>(detail::LocalProviderParams<T>{ &key, std::move(value) });
     }
 

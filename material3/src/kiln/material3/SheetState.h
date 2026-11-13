@@ -6,6 +6,7 @@
 // back scaling).
 
 #include "kiln/animation/Animatable.h"
+#include <kiln/Function.h>
 #include "kiln/foundation/AnchoredDraggable.h"
 #include "kiln/foundation/Insets.h"
 #include "kiln/foundation/Shapes.h"
@@ -32,8 +33,8 @@ namespace kiln::material3 {
     class SheetState {
     public:
         // Throws std::invalid_argument when initialValue is not one of the enabled values.
-        SheetState(SheetValues enabledValues, std::function<float()> positionalThreshold, std::function<float()> velocityThreshold,
-                   SheetValue initialValue = SheetValue::Hidden, std::function<bool(SheetValue)> confirmValueChange = {},
+        SheetState(SheetValues enabledValues, kiln::Function<float()> positionalThreshold, kiln::Function<float()> velocityThreshold,
+                   SheetValue initialValue = SheetValue::Hidden, kiln::Function<bool(SheetValue)> confirmValueChange = {},
                    std::optional<bool> partiallyExpandedDeterministic = std::nullopt);   // unset: the flag
 
         // Reading these subscribes.
@@ -72,15 +73,15 @@ namespace kiln::material3 {
 
     private:
         SheetValues m_Enabled;
-        std::function<float()> m_PositionalThreshold, m_VelocityThreshold;
-        std::function<bool(SheetValue)> m_Confirm;
+        kiln::Function<float()> m_PositionalThreshold, m_VelocityThreshold;
+        kiln::Function<bool(SheetValue)> m_Confirm;
         bool m_Deterministic;
         foundation::AnchoredDraggableState<SheetValue> m_Anchored;
     };
 
     // rememberBottomSheetState: the value survives re-creation (SheetState.Saver).
     std::shared_ptr<SheetState> RememberBottomSheetState(SheetValue initialValue, SheetValues enabledValues = {},
-                                                         std::function<bool(SheetValue)> confirmValueChange = {}, rt::Key key = {});
+                                                         kiln::Function<bool(SheetValue)> confirmValueChange = {}, rt::Key key = {});
 
     namespace BottomSheetDefaults {
         foundation::ShapePtr HiddenShape();
@@ -103,18 +104,18 @@ namespace kiln::material3 {
 
     namespace internal {
         // rememberSheetState
-        std::shared_ptr<SheetState> RememberSheetState(SheetValues enabledValues = {}, std::function<bool(SheetValue)> confirmValueChange = {},
+        std::shared_ptr<SheetState> RememberSheetState(SheetValues enabledValues = {}, kiln::Function<bool(SheetValue)> confirmValueChange = {},
                                                        SheetValue initialValue = SheetValue::Hidden,
                                                        ui::Dp positionalThreshold = BottomSheetDefaults::PositionalThreshold,
                                                        ui::Dp velocityThreshold = BottomSheetDefaults::VelocityThreshold,
                                                        std::optional<bool> partiallyExpandedDeterministic = std::nullopt,   // unset: the flag
                                                        rt::Key key = {});
         // DragHandleWithTooltip: the handle centred across the sheet, with its description as a tooltip.
-        void DragHandleWithTooltip(const ui::Modifier& modifier, std::function<void()> content);
+        void DragHandleWithTooltip(const ui::Modifier& modifier, kiln::Function<void()> content);
         // ConsumeSwipeWithinBottomSheetBoundsNestedScrollConnection: content scrolled up drags the
         // sheet up first; what the content leaves drags it either way; flings settle it.
         std::shared_ptr<ui::NestedScrollConnection> ConsumeSwipeWithinBottomSheetBounds(std::shared_ptr<SheetState> state,
-                                                                                       std::function<rt::Task<float>(float velocity)> fling);
+                                                                                       kiln::Function<rt::Task<float>(float velocity)> fling);
         // The sheet's release velocity (BottomSheetImpl's fling): damped near the hidden anchor,
         // kept at the velocity threshold when it started past it. The velocity trackers already
         // cap it at the system's maximum.
@@ -130,8 +131,8 @@ namespace kiln::material3 {
         // bottom edge; the content keeps its aspect.
         float SheetPredictiveBackScaleX(float progress, float width, const ui::Density& d);
         float SheetPredictiveBackScaleY(float progress, float height, const ui::Density& d);
-        ui::Modifier SheetPredictiveBackScaling(ui::Modifier m, std::shared_ptr<SheetState> state, std::function<float()> progress);
-        ui::Modifier ContentPredictiveBackScaling(ui::Modifier m, std::function<float()> progress);
+        ui::Modifier SheetPredictiveBackScaling(ui::Modifier m, std::shared_ptr<SheetState> state, kiln::Function<float()> progress);
+        ui::Modifier ContentPredictiveBackScaling(ui::Modifier m, kiln::Function<float()> progress);
         bool IsPartiallyExpandedAnchorAvailable(const SheetState& state, float fullHeight, float sheetHeight);
         float CalculatePartiallyExpandedOffset(const SheetState& state, float fullHeight, float sheetHeight);
         // BottomSheetAnimationSpec: tween(300, FastOutSlowIn).

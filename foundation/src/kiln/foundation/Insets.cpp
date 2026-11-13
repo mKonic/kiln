@@ -1,4 +1,5 @@
 #include "kiln/foundation/Insets.h"
+#include <kiln/Function.h>
 
 #include "kiln/animation/Animatable.h"
 #include "kiln/animation/Decay.h"
@@ -212,7 +213,7 @@ namespace kiln::foundation {
             ConsumeKind kind;
             WindowInsets insets;
             PaddingValues padding;
-            std::shared_ptr<std::function<void(const WindowInsets&)>> block;
+            std::shared_ptr<kiln::Function<void(const WindowInsets&)>> block;
             bool operator==(const InsetsParams& o) const {
                 return kind == o.kind && insets == o.insets && padding == o.padding && block == o.block;
             }
@@ -330,7 +331,7 @@ namespace kiln::foundation {
         }
 
         Modifier With(Modifier m, ConsumeKind kind, WindowInsets insets, PaddingValues padding = {},
-                      std::shared_ptr<std::function<void(const WindowInsets&)>> block = nullptr) {
+                      std::shared_ptr<kiln::Function<void(const WindowInsets&)>> block = nullptr) {
             return m.With<InsetsNode>(InsetsParams{ kind, std::move(insets), padding, std::move(block) });
         }
     }
@@ -339,8 +340,8 @@ namespace kiln::foundation {
     Modifier ConsumeWindowInsets(Modifier m, WindowInsets insets) { return With(std::move(m), ConsumeKind::Union, std::move(insets)); }
     Modifier ConsumeWindowInsets(Modifier m, PaddingValues padding) { return With(std::move(m), ConsumeKind::AddPadding, {}, padding); }
     Modifier RecalculateWindowInsets(Modifier m) { return With(std::move(m), ConsumeKind::Recalculate, {}); }
-    Modifier OnConsumedWindowInsetsChanged(Modifier m, std::function<void(const WindowInsets&)> block) {
-        return With(std::move(m), ConsumeKind::Observe, {}, {}, std::make_shared<std::function<void(const WindowInsets&)>>(std::move(block)));
+    Modifier OnConsumedWindowInsetsChanged(Modifier m, kiln::Function<void(const WindowInsets&)> block) {
+        return With(std::move(m), ConsumeKind::Observe, {}, {}, std::make_shared<kiln::Function<void(const WindowInsets&)>>(std::move(block)));
     }
     Modifier WindowInsetsTopHeight(Modifier m, WindowInsets insets) { return With(std::move(m), ConsumeKind::TopHeight, std::move(insets)); }
     Modifier WindowInsetsBottomHeight(Modifier m, WindowInsets insets) { return With(std::move(m), ConsumeKind::BottomHeight, std::move(insets)); }

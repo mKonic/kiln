@@ -8,6 +8,7 @@
 // size the field like Compose.
 
 #include "kiln/foundation/Compose.h"
+#include <kiln/Function.h>
 #include "kiln/foundation/Interaction.h"
 #include "kiln/foundation/Scroll.h"
 #include "kiln/foundation/text/TextFieldState.h"
@@ -28,14 +29,14 @@ namespace kiln::foundation {
         foundation::KeyboardOptions keyboardOptions;
         // KeyboardActionHandler: the IME action (or Enter in a single line field); call
         // performDefaultAction for the default (Next / Previous move focus, Done hides the keyboard).
-        std::function<void(std::function<void()> performDefaultAction)> onKeyboardAction;
+        kiln::Function<void(kiln::Function<void()> performDefaultAction)> onKeyboardAction;
         TextFieldLineLimits lineLimits = TextFieldLineLimits::MultiLine();
-        std::function<void(const text::TextLayoutResult&)> onTextLayout;
+        kiln::Function<void(const text::TextLayoutResult&)> onTextLayout;
         std::shared_ptr<MutableInteractionSource> interactionSource;
         gfx::Brush cursorBrush = gfx::Brush::SolidColor(Color(0xFF000000u));
         OutputTransformationPtr outputTransformation;
         // TextFieldDecorator: draws around the text and calls innerTextField exactly once.
-        std::function<void(const std::function<void()>& innerTextField)> decorator;
+        kiln::Function<void(const kiln::Function<void()>& innerTextField)> decorator;
         ScrollState* scrollState = nullptr;   // null: remembered by the field
         // Internal (BasicSecureTextField): a codepoint transformation and password semantics.
         CodepointTransformationPtr codepointTransformation;
@@ -50,7 +51,7 @@ namespace kiln::foundation {
     // InterceptPlatformTextInput with an interceptor that never lets a request through: text
     // fields inside start no input session and show no keyboard (hardware keys still edit them).
     inline rt::Local<bool> LocalPlatformTextInputBlocked{ false };
-    inline void BlockPlatformTextInput(std::function<void()> content) {
+    inline void BlockPlatformTextInput(kiln::Function<void()> content) {
         rt::Composition::Current()->Provide(LocalPlatformTextInputBlocked, true, std::move(content));
     }
 

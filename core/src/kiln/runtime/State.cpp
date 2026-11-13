@@ -1,4 +1,5 @@
 #include "kiln/runtime/State.h"
+#include <kiln/Function.h>
 
 namespace kiln::rt {
 
@@ -8,7 +9,7 @@ namespace kiln::rt {
             bool untracked = false;
             std::unordered_map<StateObject*, std::vector<Subscriber*>> readers;
             std::unordered_set<StateObject*> changed;
-            std::function<void()> listener;
+            kiln::Function<void()> listener;
             std::unordered_set<Subscriber*>* notifying = nullptr;
         };
         Registry& R() {
@@ -60,7 +61,7 @@ namespace kiln::rt {
         if (r.notifying) r.notifying->erase(subscriber);
     }
 
-    void Observation::Track(Subscriber& subscriber, const std::function<void()>& fn) {
+    void Observation::Track(Subscriber& subscriber, const kiln::Function<void()>& fn) {
         Registry& r = R();
         // Only the outermost run starts the reads over: a run nested in one of the same
         // subscriber (directly or through another) adds to them (SnapshotStateObserver).
@@ -74,7 +75,7 @@ namespace kiln::rt {
         fn();
     }
 
-    void Observation::Untracked(const std::function<void()>& fn) {
+    void Observation::Untracked(const kiln::Function<void()>& fn) {
         Registry& r = R();
         const bool outer = r.untracked;
         r.untracked = true;
@@ -83,7 +84,7 @@ namespace kiln::rt {
     }
 
     bool Observation::HasPendingChanges() { return !R().changed.empty(); }
-    void Observation::SetChangeListener(std::function<void()> listener) { R().listener = std::move(listener); }
+    void Observation::SetChangeListener(kiln::Function<void()> listener) { R().listener = std::move(listener); }
 
     bool Observation::ApplyChanges() {
         Registry& r = R();

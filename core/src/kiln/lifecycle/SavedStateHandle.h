@@ -10,6 +10,7 @@
 //     arguments (a navigation entry's arguments) as its initial values.
 
 #include "kiln/lifecycle/Lifecycle.h"
+#include <kiln/Function.h>
 #include "kiln/lifecycle/ViewModel.h"
 #include "kiln/runtime/Saveable.h"
 
@@ -44,7 +45,7 @@ namespace kiln::lifecycle {
         const rt::State<SavedState>& GetStateFlow(const std::string& key, SavedState initialValue) { return GetMutableStateFlow(key, std::move(initialValue)); }
         rt::State<SavedState>& GetMutableStateFlow(const std::string& key, SavedState initialValue);
         // A provider's value is saved under key in place of a stored one.
-        void SetSavedStateProvider(const std::string& key, std::function<SavedState()> provider);
+        void SetSavedStateProvider(const std::string& key, kiln::Function<SavedState()> provider);
         void ClearSavedStateProvider(const std::string& key);
         // A child handle saved under key.
         SavedStateHandle& GetOrCreateSavedStateHandle(const std::string& key);
@@ -59,7 +60,7 @@ namespace kiln::lifecycle {
         struct Value {
             SavedState value;
             std::unique_ptr<rt::State<SavedState>> flow;
-            std::function<SavedState()> provider;
+            kiln::Function<SavedState()> provider;
             std::shared_ptr<SavedStateHandle> child;
             SavedState Current() const;
         };

@@ -1,4 +1,5 @@
 #include "kiln/material3/internal/Slider.h"
+#include <kiln/Function.h>
 
 #include <cmath>
 
@@ -6,7 +7,7 @@ namespace kiln::material3::internal {
     using namespace foundation;
     using namespace ui;
     namespace {
-        struct Callbacks { std::function<void(float)> single; std::function<void(SliderRange)> range; std::function<void()> finished; };
+        struct Callbacks { kiln::Function<void(float)> single; kiln::Function<void(SliderRange)> range; kiln::Function<void()> finished; };
         struct InteractionGuard {
             std::shared_ptr<MutableInteractionSource> source;
             std::uint64_t press = 0, drag = 0;
@@ -107,7 +108,7 @@ namespace kiln::material3::internal {
         }
     }
     Modifier SliderGestures(Modifier m, SliderState& state, std::shared_ptr<MutableInteractionSource> source, bool enabled,
-                            std::function<void(float)> onChange, std::function<void()> finished) {
+                            kiln::Function<void(float)> onChange, kiln::Function<void()> finished) {
         auto& c = *rt::Composition::Current();
         auto box = c.Remember<std::shared_ptr<Callbacks>>([] { return std::make_shared<Callbacks>(); });
         box->single = std::move(onChange); box->finished = std::move(finished);
@@ -123,7 +124,7 @@ namespace kiln::material3::internal {
     }
     Modifier RangeSliderGestures(Modifier m, RangeSliderState& state, std::shared_ptr<MutableInteractionSource> start,
                                  std::shared_ptr<MutableInteractionSource> end, bool enabled,
-                                 std::function<void(SliderRange)> onChange, std::function<void()> finished) {
+                                 kiln::Function<void(SliderRange)> onChange, kiln::Function<void()> finished) {
         auto box = rt::Composition::Current()->Remember<std::shared_ptr<Callbacks>>([] { return std::make_shared<Callbacks>(); });
         box->range = std::move(onChange); box->finished = std::move(finished);
         if (!enabled) return m;

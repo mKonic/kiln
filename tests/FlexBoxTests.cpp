@@ -1,6 +1,7 @@
 // FlexBox: cases from FlexBoxTest and FlexBoxDirectionTest (foundation-layout), in the Row
 // direction unless they are about direction.
 #include "Check.h"
+#include <kiln/Function.h>
 
 #include "kiln/foundation/Compose.h"
 #include "kiln/foundation/FlexBox.h"
@@ -16,7 +17,7 @@ namespace {
         Owner owner;
         rt::Composition composition{ owner.Root(), rt::Dispatcher::Main() };
         Harness() { owner.SetDensity({ 1, 1 }); }
-        void Run(std::function<void()> content) { composition.SetContent(std::move(content)); rt::Composition::RecomposeAll(); owner.MeasureAndLayout({ 400, 400 }); }
+        void Run(kiln::Function<void()> content) { composition.SetContent(std::move(content)); rt::Composition::RecomposeAll(); owner.MeasureAndLayout({ 400, 400 }); }
     };
     Dp D(float v) { return Dp(v); }
     // A box that reports its size and position in its parent.
@@ -28,7 +29,7 @@ namespace {
     }
     void Leaf(Modifier m) { Box(std::move(m), Alignment::TopStart(), false, [] {}); }
     // A box of a fixed size inside a 200x200 parent (loose constraints to the FlexBox).
-    void In200(std::function<void()> content) { Box(SizeMod(Modifier{}, D(200), D(200)), Alignment::TopStart(), false, std::move(content)); }
+    void In200(kiln::Function<void()> content) { Box(SizeMod(Modifier{}, D(200), D(200)), Alignment::TopStart(), false, std::move(content)); }
     // A layout with a first baseline at `baseline`.
     void BaselineLeaf(Modifier m, int width, int height, int baseline) {
         Layout(std::move(m), std::make_shared<LambdaMeasurePolicy>([=](MeasureScope& s, std::span<Measurable* const>, const Constraints& c) {

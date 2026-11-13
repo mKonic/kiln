@@ -1,4 +1,5 @@
 #include "kiln/foundation/Grid.h"
+#include <kiln/Function.h>
 
 #include "kiln/foundation/Compose.h"
 #include "kiln/foundation/Layouts.h"
@@ -444,7 +445,7 @@ namespace kiln::foundation {
         };
     }
 
-    void Grid(GridConfig config, const Modifier& modifier, std::function<void()> content) {
+    void Grid(GridConfig config, const Modifier& modifier, kiln::Function<void()> content) {
         auto* c = rt::Composition::Current();
         c->Node<LayoutNode>([] { return std::make_unique<LayoutNode>(); },
                             [&](LayoutNode& n) {

@@ -1,10 +1,11 @@
 #include "kiln/lifecycle/RepeatOnLifecycle.h"
+#include <kiln/Function.h>
 
 #include "kiln/runtime/Channel.h"
 
 namespace kiln::lifecycle {
 
-    rt::Task<> RepeatOnLifecycle(Lifecycle& lifecycle, State state, std::function<rt::Task<>()> block) {
+    rt::Task<> RepeatOnLifecycle(Lifecycle& lifecycle, State state, kiln::Function<rt::Task<>()> block) {
         if (state == State::Initialized) throw std::invalid_argument("repeatOnLifecycle cannot start work with the INITIALIZED lifecycle state.");
         if (lifecycle.CurrentState() == State::Destroyed) co_return;
 
@@ -41,7 +42,7 @@ namespace kiln::lifecycle {
     }
 
     namespace detail {
-        rt::Task<> WithStateAtLeastUnchecked(Lifecycle& lifecycle, State state, std::function<void()> block) {
+        rt::Task<> WithStateAtLeastUnchecked(Lifecycle& lifecycle, State state, kiln::Function<void()> block) {
             if (lifecycle.CurrentState() == State::Destroyed) throw LifecycleDestroyedException();
             if (lifecycle.CurrentState() >= state) {
                 block();

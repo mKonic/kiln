@@ -11,6 +11,7 @@
 // The host creates the surface when asked and reports its lifecycle; content decides where.
 
 #include "kiln/ui/Geometry.h"
+#include <kiln/Function.h>
 
 namespace kiln { class AtlasPage; }
 
@@ -59,11 +60,11 @@ namespace kiln::ui {
 
     // Host side: creates, places and releases surfaces by id.
     struct ExternalSurfaceHost {
-        std::function<void(int id, const ExternalSurfaceConfig&)> create;
-        std::function<void(int id, const ExternalSurfaceConfig&)> update;
-        std::function<void(int id)> release;
+        kiln::Function<void(int id, const ExternalSurfaceConfig&)> create;
+        kiln::Function<void(int id, const ExternalSurfaceConfig&)> update;
+        kiln::Function<void(int id)> release;
         // Embedded: the frame to draw now (the latest the producer posted).
-        std::function<std::optional<ExternalFrame>(int id)> frame;
+        kiln::Function<std::optional<ExternalFrame>(int id)> frame;
     };
 
 }

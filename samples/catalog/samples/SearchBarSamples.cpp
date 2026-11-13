@@ -1,5 +1,6 @@
 // SearchBarSamples.kt
 #include "SearchBarSamples.h"
+#include <kiln/Function.h>
 #include "Common.h"
 #include "Shared.h"
 
@@ -23,7 +24,7 @@ namespace catalog::samples {
     namespace {
         void Collapse(const StatePtr& state, const LaunchScope& scope) { scope.Launch(state->AnimateToCollapsed()); }
 
-        void SampleSearchResults(std::function<void(const std::string&)> onResultClick) {
+        void SampleSearchResults(kiln::Function<void(const std::string&)> onResultClick) {
             Column(VerticalScroll({}, RememberScrollState()), [onResultClick] {
                 for (int idx = 0; idx < 10; ++idx) {
                     const std::string resultText = "Suggestion " + std::to_string(idx);
@@ -70,7 +71,7 @@ namespace catalog::samples {
             SlidingTipButton(state, isAnimated, false, "Account", &Icons::Filled::AccountCircle());
         }
 
-        std::function<void()> InputField(kiln::foundation::TextFieldState& textFieldState, StatePtr state, LaunchScope scope,
+        kiln::Function<void()> InputField(kiln::foundation::TextFieldState& textFieldState, StatePtr state, LaunchScope scope,
                                          std::optional<m3::TextFieldColors> colors = std::nullopt) {
             return [&textFieldState, state, scope, colors] {
                 m3::SearchBarInputFieldOptions o;
@@ -82,7 +83,7 @@ namespace catalog::samples {
             };
         }
 
-        std::function<void()> Results(kiln::foundation::TextFieldState& textFieldState, StatePtr state, LaunchScope scope) {
+        kiln::Function<void()> Results(kiln::foundation::TextFieldState& textFieldState, StatePtr state, LaunchScope scope) {
             return [&textFieldState, state, scope] {
                 SampleSearchResults([&textFieldState, state, scope](const std::string& result) {
                     textFieldState.SetTextAndPlaceCursorAtEnd(result);

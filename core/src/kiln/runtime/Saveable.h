@@ -6,6 +6,7 @@
 // are consumed in registration order (several providers may share a key, e.g. in a loop).
 
 #include "kiln/runtime/Composition.h"
+#include <kiln/Function.h>
 
 #include <cstdint>
 #include <functional>
@@ -43,8 +44,8 @@ namespace kiln::rt {
     // to the initialiser.
     template<typename T>
     struct Saver {
-        std::function<SavedValue(const T&)> save;
-        std::function<std::optional<T>(const SavedValue&)> restore;
+        kiln::Function<SavedValue(const T&)> save;
+        kiln::Function<std::optional<T>(const SavedValue&)> restore;
     };
 
     // autoSaver for the types a SavedValue holds directly.
@@ -71,7 +72,7 @@ namespace kiln::rt {
 
     // listSaver: T as a list of saveable values.
     template<typename T>
-    Saver<T> ListSaver(std::function<SavedValue::List(const T&)> save, std::function<std::optional<T>(const SavedValue::List&)> restore) {
+    Saver<T> ListSaver(kiln::Function<SavedValue::List(const T&)> save, kiln::Function<std::optional<T>(const SavedValue::List&)> restore) {
         return {
             [save = std::move(save)](const T& v) { return SavedValue(save(v)); },
             [restore = std::move(restore)](const SavedValue& s) -> std::optional<T> {
@@ -83,8 +84,8 @@ namespace kiln::rt {
     }
     // mapSaver: T as named saveable values (kept as [key, value] pairs).
     template<typename T>
-    Saver<T> MapSaver(std::function<std::map<std::string, SavedValue>(const T&)> save,
-                      std::function<std::optional<T>(const std::map<std::string, SavedValue>&)> restore) {
+    Saver<T> MapSaver(kiln::Function<std::map<std::string, SavedValue>(const T&)> save,
+                      kiln::Function<std::optional<T>(const std::map<std::string, SavedValue>&)> restore) {
         return {
             [save = std::move(save)](const T& v) {
                 SavedValue::List pairs;
@@ -121,7 +122,7 @@ namespace kiln::rt {
         // The first restored value under key (later ones stay for the next caller).
         std::optional<SavedValue> ConsumeRestored(const std::string& key);
         // Returns an id for Unregister.
-        std::uint64_t RegisterProvider(const std::string& key, std::function<SavedValue()> provider);
+        std::uint64_t RegisterProvider(const std::string& key, kiln::Function<SavedValue()> provider);
         void Unregister(const std::string& key, std::uint64_t id);
         // Restored values not consumed yet are kept (for content not composed this time).
         Values PerformSave() const;
@@ -134,7 +135,7 @@ namespace kiln::rt {
 
     private:
         Values m_Restored;
-        std::map<std::string, std::vector<std::pair<std::uint64_t, std::function<SavedValue()>>>> m_Providers;
+        std::map<std::string, std::vector<std::pair<std::uint64_t, kiln::Function<SavedValue()>>>> m_Providers;
         std::uint64_t m_NextId = 1;
         std::shared_ptr<const char> m_Alive = std::make_shared<const char>(0);
     };
@@ -163,7 +164,7 @@ namespace kiln::rt {
     SaveableStateHolder& RememberSaveableStateHolder(Key key = {});
     // SaveableStateHolder.SaveableStateProvider(key, content): `content` saves into `key`'s
     // registry; when it leaves the composition its values are kept for its return.
-    void SaveableStateProvider(SaveableStateHolder& holder, const std::string& key, std::function<void()> content);
+    void SaveableStateProvider(SaveableStateHolder& holder, const std::string& key, kiln::Function<void()> content);
 
     namespace detail {
         std::string SaveableKey(std::uint64_t compositeKey);   // base-36 like Compose
@@ -184,7 +185,7 @@ namespace kiln::rt {
     // rememberSaveable(inputs) { init() }: restored from the registry on re-creation, re-created
     // by init() when inputs change.
     template<typename T>
-    T& RememberSaveable(std::function<T()> init, Saver<T> saver = AutoSaver<T>(), Keys inputs = {}, Key key = {}) {
+    T& RememberSaveable(kiln::Function<T()> init, Saver<T> saver = AutoSaver<T>(), Keys inputs = {}, Key key = {}) {
         auto& c = *Composition::Current();
         SaveableStateRegistry* registry = c.Read(LocalSaveableStateRegistry);
         const std::string k = detail::SaveableKey(c.CompositeKey(key));
@@ -198,9 +199,9 @@ namespace kiln::rt {
         holder->saver = std::move(saver);
         auto* h = holder.get();
         c.DisposableEffect(Keys(registry, k), [registry, k, h, keep = holder] {
-            if (!registry) return std::function<void()>([] {});
+            if (!registry) return kiln::Function<void()>([] {});
             const std::uint64_t id = registry->RegisterProvider(k, [h] { return h->saver.save(h->value); });
-            return std::function<void()>([registry, alive = registry->AliveToken(), k, id] { if (!alive.expired()) registry->Unregister(k, id); });
+            return kiln::Function<void()>([registry, alive = registry->AliveToken(), k, id] { if (!alive.expired()) registry->Unregister(k, id); });
         }, key);
         return holder->value;
     }
@@ -222,9 +223,9 @@ namespace kiln::rt {
         holder->saver = std::move(saver);
         auto* h = holder.get();
         c.DisposableEffect(Keys(registry, k), [registry, k, h, keep = holder] {
-            if (!registry) return std::function<void()>([] {});
+            if (!registry) return kiln::Function<void()>([] {});
             const std::uint64_t id = registry->RegisterProvider(k, [h] { return h->saver.save(h->state->Peek()); });
-            return std::function<void()>([registry, alive = registry->AliveToken(), k, id] { if (!alive.expired()) registry->Unregister(k, id); });
+            return kiln::Function<void()>([registry, alive = registry->AliveToken(), k, id] { if (!alive.expired()) registry->Unregister(k, id); });
         }, key);
         return *holder->state;
     }

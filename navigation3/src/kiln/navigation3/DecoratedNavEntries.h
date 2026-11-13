@@ -5,6 +5,7 @@
 // NavBackStack.kt, RememberNavBackStack.kt).
 
 #include "kiln/navigation3/NavEntry.h"
+#include <kiln/Function.h>
 #include "kiln/runtime/Saveable.h"
 #include "kiln/runtime/State.h"
 
@@ -55,7 +56,7 @@ namespace kiln::navigation3 {
                 auto& cc = *rt::Composition::Current();
                 cc.DisposableEffect(rt::Keys(contentKey), [state, contentKey] {
                     state->keysInComposition.insert(contentKey);
-                    return std::function<void()>([state, contentKey] {
+                    return kiln::Function<void()>([state, contentKey] {
                         const bool notInComposition = state->keysInComposition.erase(contentKey) > 0;
                         const bool popped = !state->keysInBackStack.contains(contentKey);
                         if (popped && notInComposition)
@@ -85,7 +86,7 @@ namespace kiln::navigation3 {
                 const std::string contentKey = e.ContentKey();
                 state->keysInBackStack.insert(contentKey);
                 c.DisposableEffect(rt::Keys(contentKey, listHash), [state, contentKey] {
-                    return std::function<void()>([state, contentKey] {
+                    return kiln::Function<void()>([state, contentKey] {
                         const bool inLatest = std::find(state->latestKeys.begin(), state->latestKeys.end(), contentKey) != state->latestKeys.end();
                         const bool popped = !inLatest && state->keysInBackStack.erase(contentKey) > 0;
                         if (popped && !state->keysInComposition.contains(contentKey))
@@ -117,7 +118,7 @@ namespace kiln::navigation3 {
     // again only when the keys change.
     template<typename T>
     NavEntries<T> RememberDecoratedNavEntries(const std::vector<T>& backStack, const std::vector<NavEntryDecorator<T>>& entryDecorators,
-                                              const std::function<NavEntry<T>(const T&)>& entryProvider, rt::Key key = {}) {
+                                              const kiln::Function<NavEntry<T>(const T&)>& entryProvider, rt::Key key = {}) {
         auto& c = *rt::Composition::Current();
         struct Cache { std::vector<T> keys; NavEntries<T> entries; bool valid = false; };
         auto& cache = c.Remember<std::shared_ptr<Cache>>([] { return std::make_shared<Cache>(); }, {}, key);

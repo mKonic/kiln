@@ -1,4 +1,5 @@
 #include "kiln/foundation/Focus.h"
+#include <kiln/Function.h>
 #include "kiln/runtime/Saveable.h"
 #include "kiln/ui/BringIntoView.h"
 
@@ -19,7 +20,7 @@ namespace kiln::foundation {
         }
 
         struct FocusParams {
-            Focusability f; std::shared_ptr<std::function<void(FocusState)>> cb;
+            Focusability f; std::shared_ptr<kiln::Function<void(FocusState)>> cb;
             std::shared_ptr<MutableInteractionSource> source;
             std::shared_ptr<ui::PinnableContainer> pin;   // LocalPinnableContainer where it was composed
             bool operator==(const FocusParams& o) const { return f == o.f && cb == o.cb && source == o.source && pin == o.pin; }
@@ -65,7 +66,7 @@ namespace kiln::foundation {
         };
 
         struct EventParams {
-            std::shared_ptr<std::function<void(FocusState)>> cb;
+            std::shared_ptr<kiln::Function<void(FocusState)>> cb;
             bool operator==(const EventParams& o) const { return cb == o.cb; }
         };
         struct EventNode final : ModifierNode, FocusEventModifier {
@@ -165,7 +166,7 @@ namespace kiln::foundation {
         };
 
         struct KeyParams {
-            std::shared_ptr<std::function<bool(const KeyEvent&)>> onKey, onPreview;
+            std::shared_ptr<kiln::Function<bool(const KeyEvent&)>> onKey, onPreview;
             bool operator==(const KeyParams& o) const { return onKey == o.onKey && onPreview == o.onPreview; }
         };
         struct KeyNode final : ModifierNode, KeyInputModifier {
@@ -187,7 +188,7 @@ namespace kiln::foundation {
         };
 
         struct RotaryParams {
-            std::shared_ptr<std::function<bool(const RotaryScrollEvent&)>> on, onPre;
+            std::shared_ptr<kiln::Function<bool(const RotaryScrollEvent&)>> on, onPre;
             bool operator==(const RotaryParams& o) const { return on == o.on && onPre == o.onPre; }
         };
         struct RotaryNode final : ModifierNode, RotaryInputModifier {
@@ -225,21 +226,21 @@ namespace kiln::foundation {
 
     Modifier InteractionBarrier(Modifier m) { return m.With<BarrierNode>(BarrierParams{}); }
 
-    Modifier OnInterceptKeyBeforeSoftKeyboard(Modifier m, std::function<bool(const KeyEvent&)> onKey, std::function<bool(const KeyEvent&)> onPre) {
+    Modifier OnInterceptKeyBeforeSoftKeyboard(Modifier m, kiln::Function<bool(const KeyEvent&)> onKey, kiln::Function<bool(const KeyEvent&)> onPre) {
         return m.With<SoftKeyNode>(KeyParams{ Latest(std::move(onKey)), Latest(std::move(onPre)) });
     }
-    Modifier OnRotaryScrollEvent(Modifier m, std::function<bool(const RotaryScrollEvent&)> on, std::function<bool(const RotaryScrollEvent&)> onPre) {
+    Modifier OnRotaryScrollEvent(Modifier m, kiln::Function<bool(const RotaryScrollEvent&)> on, kiln::Function<bool(const RotaryScrollEvent&)> onPre) {
         return m.With<RotaryNode>(RotaryParams{ Latest(std::move(on)), Latest(std::move(onPre)) });
     }
 
-    Modifier Focusable(Modifier m, Focusability f, std::function<void(FocusState)> cb, std::shared_ptr<MutableInteractionSource> source) {
+    Modifier Focusable(Modifier m, Focusability f, kiln::Function<void(FocusState)> cb, std::shared_ptr<MutableInteractionSource> source) {
         auto* c = rt::Composition::Current();
         auto pin = c ? c->Read(ui::LocalPinnableContainer) : nullptr;
         return m.With<FocusNode>(FocusParams{ f, Latest(std::move(cb)), std::move(source), std::move(pin) });
     }
     namespace {
         struct PropsParams {
-            std::shared_ptr<std::function<void(ui::FocusProperties&)>> fn;
+            std::shared_ptr<kiln::Function<void(ui::FocusProperties&)>> fn;
             bool operator==(const PropsParams& o) const { return fn == o.fn; }
         };
         struct PropsNode final : ModifierNode, ui::FocusPropertiesModifier {
@@ -251,11 +252,11 @@ namespace kiln::foundation {
         };
     }
 
-    Modifier FocusPropertiesMod(Modifier m, std::function<void(ui::FocusProperties&)> fn) {
+    Modifier FocusPropertiesMod(Modifier m, kiln::Function<void(ui::FocusProperties&)> fn) {
         return m.With<PropsNode>(PropsParams{ Latest(std::move(fn)) });
     }
 
-    Modifier OnFocusChanged(Modifier m, std::function<void(FocusState)> cb) {
+    Modifier OnFocusChanged(Modifier m, kiln::Function<void(FocusState)> cb) {
         return m.With<EventNode>(EventParams{ Latest(std::move(cb)) });
     }
     Modifier FocusRequesterModifier(Modifier m, FocusRequester& r) {
@@ -267,7 +268,7 @@ namespace kiln::foundation {
         if (auto* c = rt::Composition::Current()) registry = c->Read(rt::LocalSaveableStateRegistry);
         return m.With<RestorerNode>(RestorerParams{ fallback, registry });
     }
-    Modifier OnKeyEvent(Modifier m, std::function<bool(const KeyEvent&)> onKey, std::function<bool(const KeyEvent&)> onPreview) {
+    Modifier OnKeyEvent(Modifier m, kiln::Function<bool(const KeyEvent&)> onKey, kiln::Function<bool(const KeyEvent&)> onPreview) {
         return m.With<KeyNode>(KeyParams{ Latest(std::move(onKey)), Latest(std::move(onPreview)) });
     }
 

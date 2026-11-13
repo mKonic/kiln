@@ -1,4 +1,5 @@
 #include "kiln/material3/Slider.h"
+#include <kiln/Function.h>
 #include "kiln/runtime/Saveable.h"
 
 #include <cmath>
@@ -52,7 +53,7 @@ namespace kiln::material3 {
                                                                          : (m_Rtl ? float(m_Width) - position.x : position.x);
         m_PressOffset = to - m_RawOffset;
     }
-    void SliderState::DispatchRawDelta(float delta, const std::function<void(float)>& onChange) {
+    void SliderState::DispatchRawDelta(float delta, const kiln::Function<void(float)>& onChange) {
         const bool vertical = m_Orientation == foundation::Orientation::Vertical;
         const float half = float(vertical ? ThumbHeight() : ThumbWidth()) / 2;
         const float max = std::max(float(vertical ? m_Height : m_Width) - half, 0.0f), min = std::min(half, max);
@@ -85,7 +86,7 @@ namespace kiln::material3 {
         m_RawStart = Scale(m_Range.start, m_Range.endInclusive, StartValue(), m_MinPx, m_MaxPx);
         m_RawEnd = Scale(m_Range.start, m_Range.endInclusive, EndValue(), m_MinPx, m_MaxPx);
     }
-    void RangeSliderState::OnDrag(bool start, float delta, const std::function<void(SliderRange)>& onChange) {
+    void RangeSliderState::OnDrag(bool start, float delta, const kiln::Function<void(SliderRange)>& onChange) {
         SliderRange value{ StartValue(), EndValue() };
         if (start) {
             m_RawStart += delta;

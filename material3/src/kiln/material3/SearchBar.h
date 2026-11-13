@@ -11,6 +11,7 @@
 // BasicTextField kiln lacks) and the Styleable variants (Compose's internal style system).
 
 #include "kiln/animation/Animatable.h"
+#include <kiln/Function.h>
 #include "kiln/foundation/Dialog.h"
 #include "kiln/foundation/Insets.h"
 #include "kiln/foundation/Interaction.h"
@@ -141,7 +142,7 @@ namespace kiln::material3 {
     struct SearchBarInputFieldOptions {
         bool enabled = true, readOnly = false;
         std::optional<text::TextStyle> textStyle;   // unset: LocalTextStyle
-        std::function<void()> placeholder, leadingIcon, trailingIcon, prefix, suffix;
+        kiln::Function<void()> placeholder, leadingIcon, trailingIcon, prefix, suffix;
         foundation::InputTransformationPtr inputTransformation;
         foundation::OutputTransformationPtr outputTransformation;
         foundation::ScrollState* scrollState = nullptr;   // null: remembered
@@ -170,7 +171,7 @@ namespace kiln::material3 {
         // as soon as the content scrolls the other way. Null specs: default effects (snap) and
         // the spline decay (fling).
         std::shared_ptr<SearchBarScrollBehavior> enterAlwaysSearchBarScrollBehavior(std::shared_ptr<SearchBarScrollState> scrollState = nullptr,
-                                                                                   std::function<bool()> canScroll = {},
+                                                                                   kiln::Function<bool()> canScroll = {},
                                                                                    anim::SpecPtr snapAnimationSpec = nullptr,
                                                                                    std::shared_ptr<const anim::DecaySpec> flingAnimationSpec = nullptr,
                                                                                    bool reverseLayout = false);
@@ -187,10 +188,10 @@ namespace kiln::material3 {
         // The input field for a SearchBarState: expands the bar when focused by touch, tapped,
         // typed in, or on Down from a keyboard (Down in an expanded bar moves focus into its
         // results); Search runs onSearch with the text. Focus clears when the bar collapses.
-        void InputField(foundation::TextFieldState& textFieldState, std::shared_ptr<SearchBarState> searchBarState, std::function<void(std::string)> onSearch,
+        void InputField(foundation::TextFieldState& textFieldState, std::shared_ptr<SearchBarState> searchBarState, kiln::Function<void(std::string)> onSearch,
                         const ui::Modifier& modifier = {}, const SearchBarInputFieldOptions& options = {});
         // The input field for the expanded-flag search bars: focus asks to expand.
-        void InputField(foundation::TextFieldState& state, std::function<void(std::string)> onSearch, bool expanded, std::function<void(bool)> onExpandedChange,
+        void InputField(foundation::TextFieldState& state, kiln::Function<void(std::string)> onSearch, bool expanded, kiln::Function<void(bool)> onExpandedChange,
                         const ui::Modifier& modifier = {}, const SearchBarInputFieldOptions& options = {});
     }
 
@@ -201,11 +202,11 @@ namespace kiln::material3 {
     };
     // The collapsed search bar: the input field on its container. It records where it sits so
     // the expanded bar can grow out of it.
-    void SearchBar(std::shared_ptr<SearchBarState> state, std::function<void()> inputField, const ui::Modifier& modifier = {},
+    void SearchBar(std::shared_ptr<SearchBarState> state, kiln::Function<void()> inputField, const ui::Modifier& modifier = {},
                    const SearchBarOptions& options = {});
 
     struct AppBarWithSearchOptions {
-        std::function<void()> navigationIcon, actions;
+        kiln::Function<void()> navigationIcon, actions;
         foundation::ShapePtr shape;
         std::optional<AppBarWithSearchColors> colors;   // unset: appBarWithSearchColors()
         std::optional<ui::Dp> tonalElevation, shadowElevation;
@@ -215,10 +216,10 @@ namespace kiln::material3 {
     };
     // A top app bar holding a collapsed search bar between a navigation icon and actions; its
     // colour changes when content scrolls under it, and a scroll behaviour can hide it.
-    void AppBarWithSearch(std::shared_ptr<SearchBarState> state, std::function<void()> inputField, const ui::Modifier& modifier = {},
+    void AppBarWithSearch(std::shared_ptr<SearchBarState> state, kiln::Function<void()> inputField, const ui::Modifier& modifier = {},
                           const AppBarWithSearchOptions& options = {});
     // TopSearchBar (renamed AppBarWithSearch in Compose): the bar on a transparent app bar.
-    void TopSearchBar(std::shared_ptr<SearchBarState> state, std::function<void()> inputField, const ui::Modifier& modifier = {},
+    void TopSearchBar(std::shared_ptr<SearchBarState> state, kiln::Function<void()> inputField, const ui::Modifier& modifier = {},
                       const SearchBarOptions& options = {}, std::optional<foundation::WindowInsets> windowInsets = std::nullopt,
                       std::shared_ptr<SearchBarScrollBehavior> scrollBehavior = nullptr);
 
@@ -226,16 +227,16 @@ namespace kiln::material3 {
         foundation::ShapePtr collapsedShape;              // null: inputFieldShape
         std::optional<SearchBarColors> colors;            // unset: colors() (contained: containedColors(state))
         std::optional<ui::Dp> tonalElevation, shadowElevation;
-        std::function<foundation::WindowInsets()> windowInsets;   // null: fullScreenWindowInsets
+        kiln::Function<foundation::WindowInsets()> windowInsets;   // null: fullScreenWindowInsets
         foundation::DialogProperties properties;
     };
     // While the state is expanded: a window where the bar grows from the collapsed one to fill
     // the screen, the field focused and the content below a divider.
-    void ExpandedFullScreenSearchBar(std::shared_ptr<SearchBarState> state, std::function<void()> inputField, const ui::Modifier& modifier,
-                                     const ExpandedFullScreenSearchBarOptions& options, std::function<void()> content);
+    void ExpandedFullScreenSearchBar(std::shared_ptr<SearchBarState> state, kiln::Function<void()> inputField, const ui::Modifier& modifier,
+                                     const ExpandedFullScreenSearchBarOptions& options, kiln::Function<void()> content);
     // The contained variant: the field keeps its pill inside a fading full-screen container.
-    void ExpandedFullScreenContainedSearchBar(std::shared_ptr<SearchBarState> state, std::function<void()> inputField, const ui::Modifier& modifier,
-                                              const ExpandedFullScreenSearchBarOptions& options, std::function<void()> content);
+    void ExpandedFullScreenContainedSearchBar(std::shared_ptr<SearchBarState> state, kiln::Function<void()> inputField, const ui::Modifier& modifier,
+                                              const ExpandedFullScreenSearchBarOptions& options, kiln::Function<void()> content);
 
     struct ExpandedDockedSearchBarOptions {
         foundation::ShapePtr shape;                   // null: dockedShape
@@ -254,11 +255,11 @@ namespace kiln::material3 {
     };
     // While the state is expanded: a popup over the collapsed bar that drops down to show the
     // results under the field (up to two thirds of the window).
-    void ExpandedDockedSearchBar(std::shared_ptr<SearchBarState> state, std::function<void()> inputField, const ui::Modifier& modifier,
-                                 const ExpandedDockedSearchBarOptions& options, std::function<void()> content);
+    void ExpandedDockedSearchBar(std::shared_ptr<SearchBarState> state, kiln::Function<void()> inputField, const ui::Modifier& modifier,
+                                 const ExpandedDockedSearchBarOptions& options, kiln::Function<void()> content);
     // The results in their own card below a gap, over a scrim (up to half the window).
-    void ExpandedDockedSearchBarWithGap(std::shared_ptr<SearchBarState> state, std::function<void()> inputField, const ui::Modifier& modifier,
-                                        const ExpandedDockedSearchBarOptions& options, std::function<void()> content);
+    void ExpandedDockedSearchBarWithGap(std::shared_ptr<SearchBarState> state, kiln::Function<void()> inputField, const ui::Modifier& modifier,
+                                        const ExpandedDockedSearchBarOptions& options, kiln::Function<void()> content);
 
     struct ExpandableSearchBarOptions {
         foundation::ShapePtr shape;                   // null: inputFieldShape (DockedSearchBar: dockedShape)
@@ -268,11 +269,11 @@ namespace kiln::material3 {
     };
     // The expanded-flag search bar (deprecated in Compose): grows in place to fill its space,
     // following the predictive back gesture; content shows below a divider while expanded.
-    void SearchBar(std::function<void()> inputField, bool expanded, std::function<void(bool)> onExpandedChange, const ui::Modifier& modifier,
-                   const ExpandableSearchBarOptions& options, std::function<void()> content);
+    void SearchBar(kiln::Function<void()> inputField, bool expanded, kiln::Function<void(bool)> onExpandedChange, const ui::Modifier& modifier,
+                   const ExpandableSearchBarOptions& options, kiln::Function<void()> content);
     // The expanded-flag docked search bar: the results drop down below the field.
-    void DockedSearchBar(std::function<void()> inputField, bool expanded, std::function<void(bool)> onExpandedChange, const ui::Modifier& modifier,
-                         const ExpandableSearchBarOptions& options, std::function<void()> content);
+    void DockedSearchBar(kiln::Function<void()> inputField, bool expanded, kiln::Function<void(bool)> onExpandedChange, const ui::Modifier& modifier,
+                         const ExpandableSearchBarOptions& options, kiln::Function<void()> content);
 
     namespace internal {
         inline constexpr ui::Dp SearchBarMinWidth{ 360 }, SearchBarMaxWidth{ 720 }, SearchBarVerticalPadding{ 8 }, SearchBarAsTopBarPadding{ 8 },

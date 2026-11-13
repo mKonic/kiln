@@ -1,4 +1,5 @@
 #include "kiln/navigation/NavHost.h"
+#include <kiln/Function.h>
 
 #include "kiln/foundation/Back.h"
 #include "kiln/lifecycle/ViewModelCompose.h"
@@ -45,7 +46,7 @@ namespace kiln::navigation {
         }
     }
 
-    void NavGraphBuilder::Composable(const std::string& route, std::function<void(const NavBackStackEntry&)> content, ComposableOptions options) {
+    void NavGraphBuilder::Composable(const std::string& route, kiln::Function<void(const NavBackStackEntry&)> content, ComposableOptions options) {
         auto d = std::make_shared<ComposeNavigator::Destination>(std::move(content));
         // Arguments first: the route checks them.
         ApplyArguments(*d, options.arguments, options.deepLinks);
@@ -54,7 +55,7 @@ namespace kiln::navigation {
         AddDestination(d);
     }
 
-    void NavGraphBuilder::Navigation(const std::string& startDestination, const std::string& route, const std::function<void(NavGraphBuilder&)>& builder,
+    void NavGraphBuilder::Navigation(const std::string& startDestination, const std::string& route, const kiln::Function<void(NavGraphBuilder&)>& builder,
                                      ComposableOptions options) {
         NavGraphBuilder nested(m_Provider, startDestination, route);
         builder(nested);
@@ -64,7 +65,7 @@ namespace kiln::navigation {
         AddDestination(graph);
     }
 
-    void NavGraphBuilder::Dialog(const std::string& route, std::function<void(const NavBackStackEntry&)> content, DialogOptions options) {
+    void NavGraphBuilder::Dialog(const std::string& route, kiln::Function<void(const NavBackStackEntry&)> content, DialogOptions options) {
         auto d = std::make_shared<DialogNavigator::Destination>(options.dialogProperties, std::move(content));
         ApplyArguments(*d, options.arguments, options.deepLinks);
         d->SetRoute(route);
@@ -88,7 +89,7 @@ namespace kiln::navigation {
     }
 
     std::shared_ptr<NavGraph> NavHostController::CreateGraph(const std::string& startDestination, std::optional<std::string> route,
-                                                             const std::function<void(NavGraphBuilder&)>& builder) {
+                                                             const kiln::Function<void(NavGraphBuilder&)>& builder) {
         NavGraphBuilder b(Provider(), startDestination, std::move(route));
         builder(b);
         return b.Build();
@@ -193,7 +194,7 @@ namespace kiln::navigation {
 
     // LocalOwnersProvider: the entry as LocalLifecycleOwner, LocalViewModelStoreOwner and
     // LocalSavedStateRegistryOwner, and its saveable state, kept under its id.
-    void LocalOwnersProvider(const EntryPtr& entry, rt::SaveableStateHolder& holder, std::function<void()> content) {
+    void LocalOwnersProvider(const EntryPtr& entry, rt::SaveableStateHolder& holder, kiln::Function<void()> content) {
         auto* c = rt::Composition::Current();
         c->Provide(lifecycle::LocalLifecycleOwner, lifecycle::LifecycleOwnerPtr(entry), [c, &holder, entry, content = std::move(content)] {
             c->Provide(lifecycle::LocalViewModelStoreOwner, lifecycle::ViewModelStoreOwnerPtr(entry), [c, &holder, entry, content] {
@@ -228,7 +229,7 @@ namespace kiln::navigation {
                 auto keep = handler;
                 c.DisposableEffect(rt::Keys(dispatcher), [dispatcher, keep] {
                     dispatcher->Add(keep.get());
-                    return std::function<void()>([dispatcher, keep] { dispatcher->Remove(keep.get()); });
+                    return kiln::Function<void()>([dispatcher, keep] { dispatcher->Remove(keep.get()); });
                 });
                 const bool enabled = currentBackStack.size() > 1;
                 c.SideEffect([dispatcher, keep, enabled] { keep->enabled = enabled; dispatcher->EnabledChanged(); });
@@ -299,7 +300,7 @@ namespace kiln::navigation {
 
                 // Leaving the composition finishes the transitions in progress.
                 c.DisposableEffect(rt::Keys(true), [composeNavigator, bookRef] {
-                    return std::function<void()>([composeNavigator, bookRef] {
+                    return kiln::Function<void()>([composeNavigator, bookRef] {
                         for (const auto& e : bookRef->visible) composeNavigator->OnTransitionComplete(e);
                     });
                 });
@@ -387,7 +388,7 @@ namespace kiln::navigation {
         }, key);
     }
 
-    void NavHost(NavHostController& navController, const std::string& startDestination, const std::function<void(NavGraphBuilder&)>& builder,
+    void NavHost(NavHostController& navController, const std::string& startDestination, const kiln::Function<void(NavGraphBuilder&)>& builder,
                  const Modifier& modifier, const NavHostOptions& options, std::optional<std::string> route, rt::Key key) {
         auto& c = *rt::Composition::Current();
         auto& graph = c.Remember<std::shared_ptr<NavGraph>>([&] { return navController.CreateGraph(startDestination, route, builder); },
@@ -415,7 +416,7 @@ namespace kiln::navigation {
                         (void)c;
                         cc.DisposableEffect(rt::Keys(entry.get()), [dn, entry, list] {
                             list->Add(entry);
-                            return std::function<void()>([dn, entry, list] {
+                            return kiln::Function<void()>([dn, entry, list] {
                                 dn->OnTransitionComplete(entry);
                                 list->Update([&](std::vector<EntryPtr>& v) { std::erase(v, entry); });
                             });

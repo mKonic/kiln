@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <kiln/Function.h>
 
 // Drawing during the draw pass (spec 03 §ui-graphics, DrawScope). M2 draws straight into the
 // frame's QuadRenderer with an accumulated translation; retained layers come with GraphicsLayer.
@@ -27,7 +28,7 @@ namespace kiln::ui {
 
     struct DrawTarget {
         QuadRenderer* quads = nullptr;
-        std::function<const AtlasPage*(std::uint32_t)> page;
+        kiln::Function<const AtlasPage*(std::uint32_t)> page;
         PathCache* paths = nullptr;
         GradientRamps* gradients = nullptr;
         ImageCache* images = nullptr;
@@ -60,7 +61,7 @@ namespace kiln::ui {
     class DrawScope;
     // A display list (a RenderNode's recording): commands replayed onto a scope, in the
     // coordinates of where the recording began.
-    using DisplayList = std::vector<std::function<void(DrawScope&)>>;
+    using DisplayList = std::vector<kiln::Function<void(DrawScope&)>>;
 
     class DrawScope : public Density {
     public:
@@ -183,7 +184,7 @@ namespace kiln::ui {
         // drawImage(image, topLeft): the whole image at its size.
         void DrawImage(const gfx::ImageBitmap& image, Offset topLeft = {}, float alpha = 1);
         // inset / clipPath / withTransform / rotateRad.
-        void Inset(float left, float top, float right, float bottom, const std::function<void(DrawScope&)>& draw) {
+        void Inset(float left, float top, float right, float bottom, const kiln::Function<void(DrawScope&)>& draw) {
             WithTransform([&](DrawScope& d) { d.Translate({ left, top }); d.m_Size = { d.m_Size.width - left - right, d.m_Size.height - top - bottom }; }, draw);
         }
         // Clips to a path through a masked layer, until the Restore: inside it (Intersect) or
@@ -198,7 +199,7 @@ namespace kiln::ui {
         }
         void RotateRad(float radians, Offset pivot) { Rotate(radians * 57.29577951308232f, pivot); }
         void Skew(float sx, float sy) { Concat(gfx::Matrix{ 1, sy, sx, 1, 0, 0 }); }
-        void WithTransform(const std::function<void(DrawScope&)>& transform, const std::function<void(DrawScope&)>& draw) {
+        void WithTransform(const kiln::Function<void(DrawScope&)>& transform, const kiln::Function<void(DrawScope&)>& draw) {
             Save();
             const Size size = m_Size;
             transform(*this);
@@ -266,7 +267,7 @@ namespace kiln::ui {
         void EndRecording();
         bool IsRecording() const { return m_Recording != nullptr; }
         // Appends a command to the recording (or runs it now when not recording).
-        void Record(std::function<void(DrawScope&)> op);
+        void Record(kiln::Function<void(DrawScope&)> op);
         // Replays a recording under the current transform, clip and alpha.
         void Replay(const DisplayList& list);
 
@@ -286,7 +287,7 @@ namespace kiln::ui {
         void ApplyBlend(gfx::BlendMode mode);
         // Image, composite and shader brushes: the shape drawn as coverage into a layer, then the
         // brush painted over it (SrcIn) across `bounds` (local).
-        void FillLayered(const std::function<void()>& coverage, Rect bounds, const gfx::Brush& brush, float alpha, const gfx::ColorFilter* filter);
+        void FillLayered(const kiln::Function<void()>& coverage, Rect bounds, const gfx::Brush& brush, float alpha, const gfx::ColorFilter* filter);
         void PaintBrush(Rect bounds, const gfx::Brush& brush);
         void PaintImageTiles(Rect bounds, const gfx::Brush& brush);
         void BeginLayerImpl(Rect bounds, float alpha, const gfx::Path* clipPath, bool forClip, gfx::BlendMode blend = gfx::BlendMode::SrcOver,
@@ -328,11 +329,11 @@ namespace kiln::ui {
             m_Content();
             SetSize(size);
         }
-        void SetContent(std::function<void()> c) { m_Content = std::move(c); }
+        void SetContent(kiln::Function<void()> c) { m_Content = std::move(c); }
         // Sets the content and returns the one it replaces (to put back after).
-        std::function<void()> SwapContent(std::function<void()> c) { std::swap(m_Content, c); return c; }
+        kiln::Function<void()> SwapContent(kiln::Function<void()> c) { std::swap(m_Content, c); return c; }
     private:
-        std::function<void()> m_Content;
+        kiln::Function<void()> m_Content;
     };
 
 }

@@ -1,11 +1,12 @@
 #include "kiln/ui/LayoutNode.h"
+#include <kiln/Function.h>
 
 #include <algorithm>
 #include <climits>
 
 namespace kiln::ui {
 
-    using OnFound = std::function<bool(FocusTargetNode&)>;
+    using OnFound = kiln::Function<bool(FocusTargetNode&)>;
 
     // --- FocusTargetNode / FocusRequester --------------------------------------------------------
 
@@ -571,7 +572,7 @@ namespace kiln::ui {
     bool Owner::FindChildForEnter(FocusTargetNode& t, FocusDirection dir, const OnFound& onFound) {
         // collectAccessibleChildren: focusable descendants, flattening non-focusable groups.
         std::vector<FocusTargetNode*> acc;
-        std::function<void(FocusTargetNode&)> collect = [&](FocusTargetNode& n) {
+        kiln::Function<void(FocusTargetNode&)> collect = [&](FocusTargetNode& n) {
             for (FocusTargetNode* c : FocusChildren(n)) {
                 if (!Eligible(*c)) continue;
                 if (CanFocus(*c)) acc.push_back(c); else collect(*c);
@@ -736,7 +737,7 @@ namespace kiln::ui {
         return nullptr;
     }
 
-    bool Owner::SearchBeyondBounds(FocusTargetNode& t, FocusDirection d, const std::function<bool()>& search) {
+    bool Owner::SearchBeyondBounds(FocusTargetNode& t, FocusDirection d, const kiln::Function<bool()>& search) {
         if (d == FocusDirection::Enter || d == FocusDirection::Exit) return false;
         BeyondBoundsLayout* layout = BeyondBoundsParent(t);
         // Only the lazy layout's own target searches beyond bounds, not the targets in its items.

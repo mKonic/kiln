@@ -1,5 +1,6 @@
 // ExposedDropdownMenuSamples.kt
 #include "ExposedDropdownMenuSamples.h"
+#include <kiln/Function.h>
 #include "Common.h"
 
 #include <kiln/foundation/text/input/TextFieldBuffer.h>
@@ -73,7 +74,7 @@ namespace catalog::samples {
 
         // The editable samples' menu: up to 280 dp of the filtered options.
         void FilteredMenu(const m3::ExposedDropdownMenuBoxScope& scope, bool expanded, kiln::rt::State<bool>& allowExpanded,
-                          std::vector<AnnotatedString> options, std::function<void(const AnnotatedString&)> onPick) {
+                          std::vector<AnnotatedString> options, kiln::Function<void(const AnnotatedString&)> onPick) {
             m3::ExposedDropdownMenu(scope, expanded, [&allowExpanded] { allowExpanded.Set(false); }, HeightIn({}, Dp::Unspecified(), 280_dp), {},
                                     [options, onPick] {
                                         for (const AnnotatedString& option : options) {

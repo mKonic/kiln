@@ -5,6 +5,7 @@
 // here, so the forward callbacks never run.
 
 #include "kiln/foundation/Back.h"
+#include <kiln/Function.h>
 #include "kiln/runtime/State.h"
 
 #include <cstdint>
@@ -77,17 +78,17 @@ namespace kiln::foundation {
 
     namespace detail {
         // The handler behind NavigationEventHandler: reports the gesture as transition states.
-        void NavigationEventHandlerImpl(void* stateId, std::function<void(NavigationEventTransitionState)> onTransition, bool& registered,
-                                        bool isBackEnabled, std::function<void()> onBackCancelled, std::function<void()> onBackCompleted,
+        void NavigationEventHandlerImpl(void* stateId, kiln::Function<void(NavigationEventTransitionState)> onTransition, bool& registered,
+                                        bool isBackEnabled, kiln::Function<void()> onBackCancelled, kiln::Function<void()> onBackCompleted,
                                         rt::Key key);
     }
 
     // NavigationEventHandler(state, ...): the back gesture drives state's transition state;
     // completion and cancellation call back.
     template<typename I>
-    void NavigationEventHandler(NavigationEventState<I>& state, bool isForwardEnabled = true, std::function<void()> onForwardCancelled = {},
-                                std::function<void()> onForwardCompleted = {}, bool isBackEnabled = true,
-                                std::function<void()> onBackCancelled = {}, std::function<void()> onBackCompleted = {}, rt::Key key = {}) {
+    void NavigationEventHandler(NavigationEventState<I>& state, bool isForwardEnabled = true, kiln::Function<void()> onForwardCancelled = {},
+                                kiln::Function<void()> onForwardCompleted = {}, bool isBackEnabled = true,
+                                kiln::Function<void()> onBackCancelled = {}, kiln::Function<void()> onBackCompleted = {}, rt::Key key = {}) {
         (void)isForwardEnabled; (void)onForwardCancelled; (void)onForwardCompleted;
         auto* s = &state;
         detail::NavigationEventHandlerImpl(s, [s](NavigationEventTransitionState t) { s->m_Transition.Set(t); }, s->m_Registered, isBackEnabled,
@@ -96,8 +97,8 @@ namespace kiln::foundation {
 
     // NavigationBackHandler(state, isBackEnabled, onBackCancelled, onBackCompleted).
     template<typename I>
-    void NavigationBackHandler(NavigationEventState<I>& state, bool isBackEnabled, std::function<void()> onBackCancelled,
-                               std::function<void()> onBackCompleted, rt::Key key = {}) {
+    void NavigationBackHandler(NavigationEventState<I>& state, bool isBackEnabled, kiln::Function<void()> onBackCancelled,
+                               kiln::Function<void()> onBackCompleted, rt::Key key = {}) {
         NavigationEventHandler(state, false, {}, {}, isBackEnabled, std::move(onBackCancelled), std::move(onBackCompleted), key);
     }
 

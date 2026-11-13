@@ -1,5 +1,6 @@
 // NavigationRailSamples.kt
 #include "NavigationRailSamples.h"
+#include <kiln/Function.h>
 #include "Common.h"
 
 #include <kiln/foundation/Semantics.h>
@@ -27,7 +28,7 @@ namespace catalog::samples {
                                  "devices. For any compact screen dimensions, use a Navigation Bar instead.";
 
         // The menu / menu-open button that expands and collapses the rail, with its tooltip.
-        std::function<void()> Header(RailState state, LaunchScope scope) {
+        kiln::Function<void()> Header(RailState state, LaunchScope scope) {
             return [state, scope] {
                 const bool expanding = state->TargetValue() == RailValue::Expanded;
                 const std::string headerDescription = expanding ? "Collapse rail" : "Expand rail";
@@ -56,7 +57,7 @@ namespace catalog::samples {
         }
 
         // The three items; `describe` gives the icons their labels as descriptions.
-        void RailItems(kiln::rt::State<int>& selectedItem, bool railExpanded, bool describe, std::function<void()> afterClick = {}) {
+        void RailItems(kiln::rt::State<int>& selectedItem, bool railExpanded, bool describe, kiln::Function<void()> afterClick = {}) {
             for (int index = 0; index < 3; ++index) {
                 const bool selected = selectedItem.Get() == index;
                 m3::WideNavigationRailItem(

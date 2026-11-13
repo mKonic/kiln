@@ -1,4 +1,5 @@
 #include "kiln/material3/Card.h"
+#include <kiln/Function.h>
 
 #include "kiln/animation/Animatable.h"
 #include "kiln/foundation/Compose.h"
@@ -38,7 +39,7 @@ namespace kiln::material3 {
             if (kind == Kind::Outlined) return CardDefaults::outlinedCardColors();
             return CardDefaults::cardColors();
         }
-        void Impl(Kind kind, bool clickable, std::function<void()> click, const ui::Modifier& modifier, const CardOptions& options, std::function<void()> content) {
+        void Impl(Kind kind, bool clickable, kiln::Function<void()> click, const ui::Modifier& modifier, const CardOptions& options, kiln::Function<void()> content) {
             const bool enabled = !clickable || options.enabled;
             const auto colors = options.colors.value_or(Colors(kind));
             const auto elevation = options.elevation.value_or(kind == Kind::Elevated ? CardDefaults::elevatedCardElevation() :
@@ -70,7 +71,7 @@ namespace kiln::material3 {
         if (!source) return c.Remember<Dp>([&] { return e.defaultElevation; });
         auto& interactions = c.RememberState(Entries{});
         auto* state = &interactions;
-        c.DisposableEffect(rt::Keys(std::hash<const void*>{}(source.get())), [source, state]() -> std::function<void()> {
+        c.DisposableEffect(rt::Keys(std::hash<const void*>{}(source.get())), [source, state]() -> kiln::Function<void()> {
             const auto token = source->Subscribe([state](const Interaction& interaction) {
                 auto entries = state->Peek();
                 if (interaction.phase == Interaction::Phase::Start) entries.push_back({ interaction.kind, interaction.id });
@@ -92,12 +93,12 @@ namespace kiln::material3 {
         return Dp(value->Float());
     }
 
-    void Card(const ui::Modifier& m, const CardOptions& o, std::function<void()> content) { Impl(Kind::Filled, false, {}, m, o, std::move(content)); }
-    void Card(std::function<void()> click, const ui::Modifier& m, const CardOptions& o, std::function<void()> content) { Impl(Kind::Filled, true, std::move(click), m, o, std::move(content)); }
-    void ElevatedCard(const ui::Modifier& m, const CardOptions& o, std::function<void()> content) { Impl(Kind::Elevated, false, {}, m, o, std::move(content)); }
-    void ElevatedCard(std::function<void()> click, const ui::Modifier& m, const CardOptions& o, std::function<void()> content) { Impl(Kind::Elevated, true, std::move(click), m, o, std::move(content)); }
-    void OutlinedCard(const ui::Modifier& m, const CardOptions& o, std::function<void()> content) { Impl(Kind::Outlined, false, {}, m, o, std::move(content)); }
-    void OutlinedCard(std::function<void()> click, const ui::Modifier& m, const CardOptions& o, std::function<void()> content) { Impl(Kind::Outlined, true, std::move(click), m, o, std::move(content)); }
+    void Card(const ui::Modifier& m, const CardOptions& o, kiln::Function<void()> content) { Impl(Kind::Filled, false, {}, m, o, std::move(content)); }
+    void Card(kiln::Function<void()> click, const ui::Modifier& m, const CardOptions& o, kiln::Function<void()> content) { Impl(Kind::Filled, true, std::move(click), m, o, std::move(content)); }
+    void ElevatedCard(const ui::Modifier& m, const CardOptions& o, kiln::Function<void()> content) { Impl(Kind::Elevated, false, {}, m, o, std::move(content)); }
+    void ElevatedCard(kiln::Function<void()> click, const ui::Modifier& m, const CardOptions& o, kiln::Function<void()> content) { Impl(Kind::Elevated, true, std::move(click), m, o, std::move(content)); }
+    void OutlinedCard(const ui::Modifier& m, const CardOptions& o, kiln::Function<void()> content) { Impl(Kind::Outlined, false, {}, m, o, std::move(content)); }
+    void OutlinedCard(kiln::Function<void()> click, const ui::Modifier& m, const CardOptions& o, kiln::Function<void()> content) { Impl(Kind::Outlined, true, std::move(click), m, o, std::move(content)); }
 
     namespace CardDefaults {
         ShapePtr shape() { return Value(FilledCardTokens::ContainerShape); }

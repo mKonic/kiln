@@ -5,6 +5,7 @@
 // the caller's source location, so conditionals around a call keep its identity.
 
 #include "kiln/foundation/Layouts.h"
+#include <kiln/Function.h>
 #include "kiln/foundation/text/BasicText.h"
 
 #include <string>
@@ -16,7 +17,7 @@ namespace kiln::foundation {
 
     // A raw layout: the base of everything below.
     LayoutNode& Layout(const Modifier& modifier, std::shared_ptr<MeasurePolicy> policy,
-                       std::function<void()> content = {}, Key key = {});
+                       kiln::Function<void()> content = {}, Key key = {});
 
     // MultiContentMeasurePolicy: measures the children of each content separately (in the
     // order of the contents).
@@ -27,25 +28,25 @@ namespace kiln::foundation {
     };
     // Layout(contents, modifier, measurePolicy): each content's nodes are this layout's children,
     // handed to the policy grouped by content.
-    LayoutNode& Layout(const Modifier& modifier, std::vector<std::function<void()>> contents, std::shared_ptr<MultiContentMeasurePolicy> policy,
+    LayoutNode& Layout(const Modifier& modifier, std::vector<kiln::Function<void()>> contents, std::shared_ptr<MultiContentMeasurePolicy> policy,
                        Key key = {});
 
     // LookaheadScope (ui LookaheadScope.kt): its content is laid out twice, a lookahead pass that
     // settles where everything ends up, then the main pass in which approach modifiers
     // (ApproachLayout) move toward that. A virtual node: the content's layouts are the children
     // of the enclosing layout, as if written there.
-    void LookaheadScope(std::function<void(ui::LookaheadScope&)> content, Key key = {});
+    void LookaheadScope(kiln::Function<void(ui::LookaheadScope&)> content, Key key = {});
 
     void Box(const Modifier& modifier = {}, Alignment contentAlignment = Alignment::TopStart(),
-             bool propagateMinConstraints = false, std::function<void()> content = {}, Key key = {});
+             bool propagateMinConstraints = false, kiln::Function<void()> content = {}, Key key = {});
     void Row(const Modifier& modifier, Arrangement horizontal, AlignmentV vertical,
-             std::function<void()> content, Key key = {});
+             kiln::Function<void()> content, Key key = {});
     void Column(const Modifier& modifier, Arrangement vertical, AlignmentH horizontal,
-                std::function<void()> content, Key key = {});
-    inline void Row(const Modifier& modifier, std::function<void()> content, Key key = {}) {
+                kiln::Function<void()> content, Key key = {});
+    inline void Row(const Modifier& modifier, kiln::Function<void()> content, Key key = {}) {
         Row(modifier, Arrangement::Start(), AlignmentV::Top(), std::move(content), key);
     }
-    inline void Column(const Modifier& modifier, std::function<void()> content, Key key = {}) {
+    inline void Column(const Modifier& modifier, kiln::Function<void()> content, Key key = {}) {
         Column(modifier, Arrangement::Top(), AlignmentH::Start(), std::move(content), key);
     }
     void Spacer(const Modifier& modifier, Key key = {});

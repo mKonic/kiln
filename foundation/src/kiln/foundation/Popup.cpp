@@ -1,4 +1,5 @@
 #include "kiln/foundation/Popup.h"
+#include <kiln/Function.h>
 
 #include "kiln/foundation/Back.h"
 #include "kiln/foundation/Draw.h"
@@ -97,8 +98,8 @@ namespace kiln::foundation {
         };
     }
 
-    void Popup(std::shared_ptr<const PopupPositionProvider> popupPositionProvider, std::function<void()> onDismissRequest,
-               PopupProperties properties, std::function<void()> content, Key key) {
+    void Popup(std::shared_ptr<const PopupPositionProvider> popupPositionProvider, kiln::Function<void()> onDismissRequest,
+               PopupProperties properties, kiln::Function<void()> content, Key key) {
         rt::Composition::Current()->Child([popupPositionProvider, onDismissRequest, properties, content] {
             auto& c = *rt::Composition::Current();
             auto& state = c.Remember<std::shared_ptr<PopupState>>([] { return std::make_shared<PopupState>(); });
@@ -156,8 +157,8 @@ namespace kiln::foundation {
         }, key);
     }
 
-    void Popup(Alignment alignment, IntOffset offset, std::function<void()> onDismissRequest, PopupProperties properties,
-               std::function<void()> content, Key key) {
+    void Popup(Alignment alignment, IntOffset offset, kiln::Function<void()> onDismissRequest, PopupProperties properties,
+               kiln::Function<void()> content, Key key) {
         rt::Composition::Current()->Child([alignment, offset, onDismissRequest, properties, content] {
             auto& c = *rt::Composition::Current();
             auto& provider = c.Remember<std::shared_ptr<const PopupPositionProvider>>(

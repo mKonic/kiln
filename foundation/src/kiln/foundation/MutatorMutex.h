@@ -5,6 +5,7 @@
 // new one starts); one with a lower priority does not start.
 
 #include <cstdint>
+#include <kiln/Function.h>
 #include <functional>
 #include <utility>
 
@@ -16,7 +17,7 @@ namespace kiln::foundation {
     public:
         // mutate(priority): 0 when the running mutation has a higher priority; otherwise the
         // running one is interrupted and the returned token holds the mutex until Release.
-        std::uint64_t Acquire(MutatePriority priority, std::function<void()> interrupt) {
+        std::uint64_t Acquire(MutatePriority priority, kiln::Function<void()> interrupt) {
             if (m_Token != 0 && priority < m_Priority) return 0;
             if (m_Token != 0) {
                 auto previous = std::exchange(m_Interrupt, nullptr);
@@ -35,7 +36,7 @@ namespace kiln::foundation {
         bool IsHeld(std::uint64_t token) const { return token != 0 && token == m_Token; }
 
     private:
-        std::function<void()> m_Interrupt;
+        kiln::Function<void()> m_Interrupt;
         MutatePriority m_Priority = MutatePriority::Default;
         std::uint64_t m_Token = 0, m_Next = 0;
     };

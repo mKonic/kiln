@@ -5,6 +5,7 @@
 // badgeBounds marks, as navigation items do).
 
 #include "kiln/ui/LayoutNode.h"
+#include <kiln/Function.h>
 
 #include <functional>
 #include <optional>
@@ -15,10 +16,10 @@ namespace kiln::material3 {
         ui::Color containerColor();   // BadgeTokens.Color (error)
     }
 
-    void BadgedBox(std::function<void()> badge, const ui::Modifier& modifier, std::function<void()> content);
+    void BadgedBox(kiln::Function<void()> badge, const ui::Modifier& modifier, kiln::Function<void()> content);
     // content: shown in a Row, centred; null draws the small dot.
     void Badge(const ui::Modifier& modifier = {}, std::optional<ui::Color> containerColor = std::nullopt,
-               std::optional<ui::Color> contentColor = std::nullopt, std::function<void()> content = {});
+               std::optional<ui::Color> contentColor = std::nullopt, kiln::Function<void()> content = {});
 
     namespace internal {
         // BadgeTopRuler / BadgeEndRuler, provided by badgeBounds: the top and end edge a badge

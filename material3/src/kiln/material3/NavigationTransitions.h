@@ -7,6 +7,7 @@
 // fades out quickly, the new one fades and scales in.
 
 #include "kiln/foundation/AnimatedVisibility.h"
+#include <kiln/Function.h>
 #include "kiln/ui/Back.h"
 #include "kiln/ui/Geometry.h"
 
@@ -24,7 +25,7 @@ namespace kiln::material3 {
         // The gesture phase: the leaving page shrinks by up to 15% towards the swipe's far side
         // and follows the finger vertically (damped); the page behind waits shifted 20% to the
         // left, slightly smaller, under `scrimColor`.
-        std::shared_ptr<foundation::MutableContentTransform> predictiveBackTransform(std::function<ui::BackEvent()> backEvent, const ui::Density& density,
+        std::shared_ptr<foundation::MutableContentTransform> predictiveBackTransform(kiln::Function<ui::BackEvent()> backEvent, const ui::Density& density,
                                                                                     ui::Color scrimColor);
     }
 
@@ -32,7 +33,7 @@ namespace kiln::material3 {
         foundation::ContentTransform transform();
         // The gesture phase: the leaving page shrinks about its centre and follows the finger;
         // the page behind stays hidden at 80% scale.
-        std::shared_ptr<foundation::MutableContentTransform> predictiveBackTransform(std::function<ui::BackEvent()> backEvent, const ui::Density& density);
+        std::shared_ptr<foundation::MutableContentTransform> predictiveBackTransform(kiln::Function<ui::BackEvent()> backEvent, const ui::Density& density);
     }
 
     namespace internal {

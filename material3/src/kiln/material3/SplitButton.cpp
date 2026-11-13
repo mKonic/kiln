@@ -1,4 +1,5 @@
 #include "kiln/material3/SplitButton.h"
+#include <kiln/Function.h>
 
 #include "kiln/foundation/Draw.h"
 #include "kiln/foundation/Semantics.h"
@@ -24,7 +25,7 @@ namespace kiln::material3 {
     using namespace tokens;
 
     namespace {
-        using Content = std::function<void()>;
+        using Content = kiln::Function<void()>;
         constexpr Dp ButtonMinWidth{ 48 };
         enum class Variant { Filled, Tonal, Outlined, Elevated };
 
@@ -77,7 +78,7 @@ namespace kiln::material3 {
         struct Action {
             Content onClick;                          // the plain form
             std::optional<bool> checked;              // the toggleable trailing form
-            std::function<void(bool)> onCheckedChange;
+            kiln::Function<void(bool)> onCheckedChange;
         };
         void Impl(bool leading, Action action, const Modifier& modifier, const SplitButtonOptions& o, Content content, Variant variant) {
             using namespace SplitButtonDefaults;
@@ -191,25 +192,25 @@ namespace kiln::material3 {
         void TrailingButton(Content onClick, const Modifier& m, const SplitButtonOptions& o, Content content) {
             Impl(false, { std::move(onClick) }, m, o, std::move(content), Variant::Filled);
         }
-        void TrailingButton(bool checked, std::function<void(bool)> change, const Modifier& m, const SplitButtonOptions& o, Content content) {
+        void TrailingButton(bool checked, kiln::Function<void(bool)> change, const Modifier& m, const SplitButtonOptions& o, Content content) {
             Impl(false, { {}, checked, std::move(change) }, m, o, std::move(content), Variant::Filled);
         }
         void TonalLeadingButton(Content onClick, const Modifier& m, const SplitButtonOptions& o, Content content) {
             Impl(true, { std::move(onClick) }, m, o, std::move(content), Variant::Tonal);
         }
-        void TonalTrailingButton(bool checked, std::function<void(bool)> change, const Modifier& m, const SplitButtonOptions& o, Content content) {
+        void TonalTrailingButton(bool checked, kiln::Function<void(bool)> change, const Modifier& m, const SplitButtonOptions& o, Content content) {
             Impl(false, { {}, checked, std::move(change) }, m, o, std::move(content), Variant::Tonal);
         }
         void OutlinedLeadingButton(Content onClick, const Modifier& m, const SplitButtonOptions& o, Content content) {
             Impl(true, { std::move(onClick) }, m, o, std::move(content), Variant::Outlined);
         }
-        void OutlinedTrailingButton(bool checked, std::function<void(bool)> change, const Modifier& m, const SplitButtonOptions& o, Content content) {
+        void OutlinedTrailingButton(bool checked, kiln::Function<void(bool)> change, const Modifier& m, const SplitButtonOptions& o, Content content) {
             Impl(false, { {}, checked, std::move(change) }, m, o, std::move(content), Variant::Outlined);
         }
         void ElevatedLeadingButton(Content onClick, const Modifier& m, const SplitButtonOptions& o, Content content) {
             Impl(true, { std::move(onClick) }, m, o, std::move(content), Variant::Elevated);
         }
-        void ElevatedTrailingButton(bool checked, std::function<void(bool)> change, const Modifier& m, const SplitButtonOptions& o, Content content) {
+        void ElevatedTrailingButton(bool checked, kiln::Function<void(bool)> change, const Modifier& m, const SplitButtonOptions& o, Content content) {
             Impl(false, { {}, checked, std::move(change) }, m, o, std::move(content), Variant::Elevated);
         }
     }

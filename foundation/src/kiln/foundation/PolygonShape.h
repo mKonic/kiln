@@ -8,6 +8,7 @@
 // them by a progress read when the outline is made.
 
 #include "kiln/foundation/Image.h"
+#include <kiln/Function.h>
 #include "kiln/foundation/Shapes.h"
 #include "kiln/graphics/shapes/Morph.h"
 
@@ -94,8 +95,8 @@ namespace kiln::foundation {
 
     class PolygonShape : public gfx::Shape {
     public:
-        using Builder = std::function<PolygonShapeGeometry(PolygonShapeScope&)>;
-        using TransformBlock = std::function<void(PolygonShapeTransformScope&)>;
+        using Builder = kiln::Function<PolygonShapeGeometry(PolygonShapeScope&)>;
+        using TransformBlock = kiln::Function<void(PolygonShapeTransformScope&)>;
 
         gfx::Outline CreateOutline(Size size, ui::LayoutDirection dir, const ui::Density& density) const final;
         // transform { }: replaces the transform block.
@@ -145,6 +146,6 @@ namespace kiln::foundation {
     std::shared_ptr<PolygonShape> ToPolygonShape(const CornerBasedShape& shape);
 
     // MorphPolygonShape(start, end, progress): progress <= 0 is start, >= 1 is end.
-    ShapePtr MorphPolygonShape(std::shared_ptr<PolygonShape> start, std::shared_ptr<PolygonShape> end, std::function<float()> progress);
+    ShapePtr MorphPolygonShape(std::shared_ptr<PolygonShape> start, std::shared_ptr<PolygonShape> end, kiln::Function<float()> progress);
 
 }

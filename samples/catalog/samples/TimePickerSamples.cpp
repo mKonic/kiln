@@ -1,5 +1,6 @@
 // TimePickerSamples.kt
 #include "TimePickerSamples.h"
+#include <kiln/Function.h>
 #include "Common.h"
 
 #include <kiln/material3/Button.h>
@@ -35,9 +36,9 @@ namespace catalog::samples {
             const char* buttonText;
             bool vibrant;
             const char* okText;
-            std::function<void()> title;                         // the plain dialog's
-            std::function<void()> toggle;                        // null: an empty toggle slot
-            std::function<void(m3::TimePickerState&)> content;
+            kiln::Function<void()> title;                         // the plain dialog's
+            kiln::Function<void()> toggle;                        // null: an empty toggle slot
+            kiln::Function<void(m3::TimePickerState&)> content;
         };
         void Run(const DialogSample& sample, kiln::rt::State<bool>& showTimePicker, const StatePtr& state) {
             auto& snackState = m3::RememberSnackbarHostState();
@@ -58,7 +59,7 @@ namespace catalog::samples {
             };
             m3::TimePickerDialogOptions o;
             o.dismissButton = [dismiss] { m3::TextButton(dismiss, {}, {}, [] { m3::Text("Cancel"); }); };
-            o.modeToggleButton = sample.toggle ? sample.toggle : std::function<void()>([] {});
+            o.modeToggleButton = sample.toggle ? sample.toggle : kiln::Function<void()>([] {});
             const auto content = [state, c = sample.content] { c(*state); };
             if (sample.vibrant) m3::VibrantTimePickerDialog(dismiss, confirm, {}, o, content);
             else m3::TimePickerDialog(dismiss, confirm, sample.title, {}, o, content);

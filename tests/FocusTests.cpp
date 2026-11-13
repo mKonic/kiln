@@ -1,4 +1,5 @@
 #include "Check.h"
+#include <kiln/Function.h>
 
 #include "kiln/foundation/Compose.h"
 #include "kiln/foundation/Focus.h"
@@ -18,7 +19,7 @@ namespace {
         Owner owner;
         rt::Composition composition{ owner.Root(), rt::Dispatcher::Main() };
         Harness() { owner.SetDensity({ 1, 1 }); }
-        void Run(std::function<void()> content) {
+        void Run(kiln::Function<void()> content) {
             composition.SetContent(std::move(content));
             composition.Recompose();
             owner.MeasureAndLayout({ 300, 300 });
@@ -581,7 +582,7 @@ TEST(SaveRestoreFocusedChildAndFocusChildInBounds) {
     CHECK_EQ(focused, std::string("b"));
     // The child whose bounds meet x 120..130 in the root: c.
     // The row: the layout with three children.
-    std::function<const LayoutNode*(const LayoutNode&)> find = [&](const LayoutNode& n) -> const LayoutNode* {
+    kiln::Function<const LayoutNode*(const LayoutNode&)> find = [&](const LayoutNode& n) -> const LayoutNode* {
         if (n.Children().size() == 3) return &n;
         for (const LayoutNode* c : n.Children()) if (auto* r = find(*c)) return r;
         return nullptr;

@@ -4,6 +4,7 @@
 // per place that key is used, a state machine for the match, and the bounds animation.
 
 #include "kiln/foundation/SharedTransition.h"
+#include <kiln/Function.h>
 #include "kiln/animation/Animatable.h"
 
 namespace kiln::foundation::detail {
@@ -86,7 +87,7 @@ namespace kiln::foundation::detail {
     class BoundsAnimation {
     public:
         BoundsAnimation(SharedTransitionScope& scope, Transition<bool>& transition, DeferredAnimation<bool>& animation, BoundsTransform transform,
-                        std::function<Offset()> momentumOffset);
+                        kiln::Function<Offset()> momentumOffset);
         void UpdateAnimation(DeferredAnimation<bool>& animation, BoundsTransform transform);
         // isRunning: the visibility transition is between states.
         bool IsRunning() const { return m_Transition->IsRunning() || !(m_Transition->CurrentState() == m_Transition->TargetState()); }
@@ -106,7 +107,7 @@ namespace kiln::foundation::detail {
         rt::State<bool> m_Started{ false };
         BoundsTransform m_Transform;
         anim::SpecPtr m_Spec;
-        std::function<Offset()> m_Momentum;
+        kiln::Function<Offset()> m_Momentum;
         Rect m_Current, m_TargetRect;
     };
 
@@ -209,7 +210,7 @@ namespace kiln::foundation::detail {
     public:
         explicit SharedTransitionRoot(SharedTransitionScope& s) : scope(s) {}
         SharedTransitionScope& scope;
-        std::function<void()> invalidateOverlay;
+        kiln::Function<void()> invalidateOverlay;
         std::optional<ui::LayoutCoordinates> root, lookaheadRoot;
         std::shared_ptr<SharedElement> SharedElementsFor(const rt::Key& key);
         void OnNodeTransitionActivenessChanged(bool active);

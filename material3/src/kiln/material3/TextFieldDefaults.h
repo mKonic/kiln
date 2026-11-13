@@ -6,6 +6,7 @@
 // arguments).
 
 #include "kiln/foundation/Interaction.h"
+#include <kiln/Function.h>
 #include "kiln/foundation/Layouts.h"
 #include "kiln/foundation/Shapes.h"
 #include "kiln/material3/TextFieldColors.h"
@@ -61,9 +62,9 @@ namespace kiln::material3 {
 
     namespace internal {
         // textFieldBackground: the shape filled with the colour read while drawing.
-        ui::Modifier TextFieldBackground(ui::Modifier m, std::function<ui::Color()> color, foundation::ShapePtr shape);
+        ui::Modifier TextFieldBackground(ui::Modifier m, kiln::Function<ui::Color()> color, foundation::ShapePtr shape);
         // outlineCutout: draws what it wraps except a gap for the label in the top edge.
-        ui::Modifier OutlineCutout(ui::Modifier m, std::function<ui::Size()> labelSize, ui::AlignmentH alignment, foundation::PaddingValues padding);
+        ui::Modifier OutlineCutout(ui::Modifier m, kiln::Function<ui::Size()> labelSize, ui::AlignmentH alignment, foundation::PaddingValues padding);
         // supportingTextPadding
         foundation::PaddingValues SupportingTextPadding();
         // The default content padding: with a label only for an Inside label.

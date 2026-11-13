@@ -5,6 +5,7 @@
 // thread and edit the field directly, so reads after writes see the new state.
 
 #include <cstdint>
+#include <kiln/Function.h>
 #include <functional>
 #include <array>
 #include <optional>
@@ -142,21 +143,21 @@ namespace kiln::ui {
 
     // Host side (the Android view / dev window).
     struct TextInputHost {
-        std::function<void(const ImeOptions&, const TextInputSnapshot&)> start;   // restartInput + show keyboard
-        std::function<void()> stop;                                               // hide keyboard + restartInput
+        kiln::Function<void(const ImeOptions&, const TextInputSnapshot&)> start;   // restartInput + show keyboard
+        kiln::Function<void()> stop;                                               // hide keyboard + restartInput
         // The field changed without a restart: updateExtractedText for a monitoring IME, and
         // updateSelection when the selection or composition moved.
-        std::function<void(const TextInputSnapshot&, bool selectionChanged)> update;
-        std::function<void()> restartInput;                                       // content changed under a composition
-        std::function<void()> showKeyboard;                                       // SoftwareKeyboardController.show
-        std::function<void()> hideKeyboard;                                       // SoftwareKeyboardController.hide
-        std::function<void(const CursorAnchorInfo&)> cursorAnchorInfo;            // InputMethodManager.updateCursorAnchorInfo
-        std::function<void()> startStylusHandwriting;                             // InputMethodManager.startStylusHandwriting
+        kiln::Function<void(const TextInputSnapshot&, bool selectionChanged)> update;
+        kiln::Function<void()> restartInput;                                       // content changed under a composition
+        kiln::Function<void()> showKeyboard;                                       // SoftwareKeyboardController.show
+        kiln::Function<void()> hideKeyboard;                                       // SoftwareKeyboardController.hide
+        kiln::Function<void(const CursorAnchorInfo&)> cursorAnchorInfo;            // InputMethodManager.updateCursorAnchorInfo
+        kiln::Function<void()> startStylusHandwriting;                             // InputMethodManager.startStylusHandwriting
         // InputMethodManager.prepare / acceptStylusHandwritingDelegation (API 34): a stroke on a
         // delegator (handwritingDetector) hands handwriting to the editor focused next
         // (handwritingHandler).
-        std::function<void()> prepareStylusHandwritingDelegation;
-        std::function<void()> acceptStylusHandwritingDelegation;
+        kiln::Function<void()> prepareStylusHandwritingDelegation;
+        kiln::Function<void()> acceptStylusHandwritingDelegation;
     };
 
 }

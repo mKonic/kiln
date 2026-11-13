@@ -1,4 +1,5 @@
 #include "kiln/material3/Menu.h"
+#include <kiln/Function.h>
 
 #include "kiln/foundation/Animate.h"
 #include "kiln/foundation/AnimatedVisibility.h"
@@ -81,7 +82,7 @@ namespace kiln::material3 {
                                                    [alphaSpec](const auto&) { return alphaSpec; });
             return { scale, alpha };
         }
-        Modifier MenuLayer(Modifier m, MenuAnimation a, std::function<internal::TransformOrigin()> transformOrigin) {
+        Modifier MenuLayer(Modifier m, MenuAnimation a, kiln::Function<internal::TransformOrigin()> transformOrigin) {
             return GraphicsLayer(std::move(m), [a, transformOrigin](GraphicsLayerParams& p) {
                 p.scaleX = a.scale;
                 p.scaleY = a.scale;
@@ -92,7 +93,7 @@ namespace kiln::material3 {
             });
         }
 
-        void ProvideContentColor(Color color, std::function<void()> content) {
+        void ProvideContentColor(Color color, kiln::Function<void()> content) {
             rt::Composition::Current()->Provide(LocalContentColor, color, std::move(content));
         }
 
@@ -118,11 +119,11 @@ namespace kiln::material3 {
             return shape;
         }
 
-        void WrappedLeadingIcon(std::function<void()> content) {
+        void WrappedLeadingIcon(kiln::Function<void()> content) {
             Box(DefaultMinSize({}, SegmentedMenuTokens::ItemLeadingIconSize, Dp::Unspecified()), Alignment::TopStart(), false, std::move(content));
         }
 
-        void LabelWithSupportingText(std::function<void()> supportingText, std::function<void()> content) {
+        void LabelWithSupportingText(kiln::Function<void()> supportingText, kiln::Function<void()> content) {
             Column({}, Arrangement::Top(), AlignmentH::Start(), [&] {
                 ProvideTextStyle(MaterialTheme::typography().labelLarge, content);
                 ProvideTextStyle(MaterialTheme::typography().bodyMedium, supportingText);
@@ -133,7 +134,7 @@ namespace kiln::material3 {
             Color container, leadingIcon, text, trailingContent;
         };
         // The expressive item (Menu.kt's private DropdownMenuItemContent).
-        void ExpressiveItemContent(bool selected, std::function<void()> onClick, std::function<void()> text, const Modifier& modifier,
+        void ExpressiveItemContent(bool selected, kiln::Function<void()> onClick, kiln::Function<void()> text, const Modifier& modifier,
                                    const MenuItemOptions& o, ItemColors colors, const MenuItemShapes& shapes) {
             auto& c = *rt::Composition::Current();
             const auto source = o.interactionSource ? o.interactionSource : RememberInteractionSource();
@@ -374,7 +375,7 @@ namespace kiln::material3 {
 
         Arrangement DropdownMenuItemHorizontalArrangement() { return ItemHorizontalArrangement(); }
 
-        void DropdownMenuGroupLabel(const Modifier& modifier, std::function<void()> content, Alignment contentAlignment, PaddingValues padding) {
+        void DropdownMenuGroupLabel(const Modifier& modifier, kiln::Function<void()> content, Alignment contentAlignment, PaddingValues padding) {
             ProvideTextStyle(MaterialTheme::typography().labelLarge, [=] {
                 Box(Padding(SizeIn(modifier, DropdownMenuItemDefaultMinWidth, DropdownMenuGroupDefaultMinHeight, DropdownMenuItemDefaultMaxWidth,
                                    Dp::Unspecified()),
@@ -382,7 +383,7 @@ namespace kiln::material3 {
                     contentAlignment, false, content);
             });
         }
-        void DropdownMenuItemTrailingLabel(const Modifier& modifier, std::function<void()> content) {
+        void DropdownMenuItemTrailingLabel(const Modifier& modifier, kiln::Function<void()> content) {
             const PaddingValues padding = DropdownMenuItemTrailingLabelHorizontalPadding();
             ProvideTextStyle(MaterialTheme::typography().labelLarge, [=] { Box(Padding(modifier, padding), Alignment::TopStart(), false, content); });
         }
@@ -400,9 +401,9 @@ namespace kiln::material3 {
     // --- DropdownMenu --------------------------------------------------------------------------
 
 void internal::DropdownMenuContent(const Modifier& modifier, MutableTransitionState<bool>& expandedState,
-                                   std::function<TransformOrigin()> transformOrigin, ScrollState& scrollState, ShapePtr shape,
+                                   kiln::Function<TransformOrigin()> transformOrigin, ScrollState& scrollState, ShapePtr shape,
                              Color containerColor, Dp tonalElevation, Dp shadowElevation, std::optional<BorderStroke> border,
-                             std::function<void()> content) {
+                             kiln::Function<void()> content) {
         const MenuAnimation a = AnimateMenu(expandedState);
         SurfaceOptions surface;
         surface.shape = std::move(shape);
@@ -415,8 +416,8 @@ void internal::DropdownMenuContent(const Modifier& modifier, MutableTransitionSt
                 [column, content = std::move(content)] { Column(column, Arrangement::Top(), AlignmentH::Start(), content); });
     }
 
-    void DropdownMenu(bool expanded, std::function<void()> onDismissRequest, const Modifier& modifier, const DropdownMenuOptions& o,
-                      std::function<void()> content) {
+    void DropdownMenu(bool expanded, kiln::Function<void()> onDismissRequest, const Modifier& modifier, const DropdownMenuOptions& o,
+                      kiln::Function<void()> content) {
         auto& c = *rt::Composition::Current();
         auto& expandedState = c.RememberNew<MutableTransitionState<bool>>({}, {}, false);
         expandedState.SetTargetState(expanded);
@@ -444,8 +445,8 @@ void internal::DropdownMenuContent(const Modifier& modifier, MutableTransitionSt
               });
     }
 
-    void DropdownMenuPopup(bool expanded, std::function<void()> onDismissRequest, const Modifier& modifier,
-                           std::shared_ptr<const DropdownMenuPopupPositionProvider> provider, std::function<void()> content,
+    void DropdownMenuPopup(bool expanded, kiln::Function<void()> onDismissRequest, const Modifier& modifier,
+                           std::shared_ptr<const DropdownMenuPopupPositionProvider> provider, kiln::Function<void()> content,
                            std::optional<PopupProperties> properties) {
         auto& c = *rt::Composition::Current();
         auto& expandedState = c.RememberNew<MutableTransitionState<bool>>({}, {}, false);
@@ -460,7 +461,7 @@ void internal::DropdownMenuContent(const Modifier& modifier, MutableTransitionSt
               });
     }
 
-    void DropdownMenuGroup(const MenuGroupShapes& shapes, const Modifier& modifier, const DropdownMenuGroupOptions& o, std::function<void()> content) {
+    void DropdownMenuGroup(const MenuGroupShapes& shapes, const Modifier& modifier, const DropdownMenuGroupOptions& o, kiln::Function<void()> content) {
         auto& c = *rt::Composition::Current();
         const auto source = o.interactionSource ? o.interactionSource : RememberInteractionSource();
         const bool hovered = source->IsHovered();
@@ -479,7 +480,7 @@ void internal::DropdownMenuContent(const Modifier& modifier, MutableTransitionSt
 
     // --- items ---------------------------------------------------------------------------------
 
-    void DropdownMenuItem(std::function<void()> text, std::function<void()> onClick, const Modifier& modifier, const DropdownMenuItemOptions& o) {
+    void DropdownMenuItem(kiln::Function<void()> text, kiln::Function<void()> onClick, const Modifier& modifier, const DropdownMenuItemOptions& o) {
         const MenuItemColors colors = o.colors ? *o.colors : MenuDefaults::itemColors();
         const bool enabled = o.enabled;
         ClickableOptions click;
@@ -513,7 +514,7 @@ void internal::DropdownMenuContent(const Modifier& modifier, MutableTransitionSt
         });
     }
 
-    void DropdownMenuItem(std::function<void()> onClick, std::function<void()> text, ShapePtr shape, const Modifier& modifier, const MenuItemOptions& o,
+    void DropdownMenuItem(kiln::Function<void()> onClick, kiln::Function<void()> text, ShapePtr shape, const Modifier& modifier, const MenuItemOptions& o,
                           std::optional<MenuItemColors> colors) {
         const MenuItemColors c = colors ? *colors : MenuDefaults::itemColors();
         MenuItemOptions options = o;
@@ -523,7 +524,7 @@ void internal::DropdownMenuContent(const Modifier& modifier, MutableTransitionSt
                               MenuDefaults::itemShapes(std::move(shape)));
     }
 
-    void CheckableDropdownMenuItem(bool checked, std::function<void(bool)> onCheckedChange, std::function<void()> text, const MenuItemShapes& shapes,
+    void CheckableDropdownMenuItem(bool checked, kiln::Function<void(bool)> onCheckedChange, kiln::Function<void()> text, const MenuItemShapes& shapes,
                                    const Modifier& modifier, const MenuItemOptions& o, std::optional<SelectableMenuItemColors> colors) {
         const SelectableMenuItemColors c = colors ? *colors : MenuDefaults::selectableItemColors();
         ExpressiveItemContent(checked, [checked, onCheckedChange = std::move(onCheckedChange)] { onCheckedChange(!checked); }, std::move(text),
@@ -533,7 +534,7 @@ void internal::DropdownMenuContent(const Modifier& modifier, MutableTransitionSt
                               shapes);
     }
 
-    void SelectableDropdownMenuItem(bool selected, std::function<void()> onClick, std::function<void()> text, const MenuItemShapes& shapes,
+    void SelectableDropdownMenuItem(bool selected, kiln::Function<void()> onClick, kiln::Function<void()> text, const MenuItemShapes& shapes,
                                     const Modifier& modifier, const MenuItemOptions& o, std::optional<SelectableMenuItemColors> colors) {
         const SelectableMenuItemColors c = colors ? *colors : MenuDefaults::selectableItemColors();
         ExpressiveItemContent(selected, std::move(onClick), std::move(text), WithRole(modifier, Role::RadioButton), o,

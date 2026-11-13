@@ -8,6 +8,7 @@
 // default error message.
 
 #include "kiln/foundation/Interaction.h"
+#include <kiln/Function.h>
 #include "kiln/foundation/Scroll.h"
 #include "kiln/foundation/text/BasicSecureTextField.h"
 #include "kiln/foundation/text/BasicTextField.h"
@@ -26,15 +27,15 @@ namespace kiln::material3 {
         std::optional<text::TextStyle> textStyle;   // unset: LocalTextStyle
         // Unset: Inside for TextField, Cutout for OutlinedTextField.
         std::optional<TextFieldLabelPosition> labelPosition;
-        std::function<void(const TextFieldLabelScope&)> label;
-        std::function<void()> placeholder, leadingIcon, trailingIcon, prefix, suffix, supportingText;
+        kiln::Function<void(const TextFieldLabelScope&)> label;
+        kiln::Function<void()> placeholder, leadingIcon, trailingIcon, prefix, suffix, supportingText;
         bool isError = false;
         foundation::InputTransformationPtr inputTransformation;
         foundation::OutputTransformationPtr outputTransformation;
         foundation::KeyboardOptions keyboardOptions;
-        std::function<void(std::function<void()> performDefaultAction)> onKeyboardAction;
+        kiln::Function<void(kiln::Function<void()> performDefaultAction)> onKeyboardAction;
         foundation::TextFieldLineLimits lineLimits = foundation::TextFieldLineLimits::MultiLine();
-        std::function<void(const text::TextLayoutResult&)> onTextLayout;
+        kiln::Function<void(const text::TextLayoutResult&)> onTextLayout;
         foundation::ScrollState* scrollState = nullptr;   // null: remembered
         foundation::ShapePtr shape;                       // null: the variant's
         std::optional<TextFieldColors> colors;            // unset: the variant's colors()
@@ -52,15 +53,15 @@ namespace kiln::material3 {
         bool enabled = true;
         std::optional<text::TextStyle> textStyle;
         std::optional<TextFieldLabelPosition> labelPosition;
-        std::function<void(const TextFieldLabelScope&)> label;
-        std::function<void()> placeholder, leadingIcon, trailingIcon, prefix, suffix, supportingText;
+        kiln::Function<void(const TextFieldLabelScope&)> label;
+        kiln::Function<void()> placeholder, leadingIcon, trailingIcon, prefix, suffix, supportingText;
         bool isError = false;
         foundation::InputTransformationPtr inputTransformation;
         foundation::TextObfuscationMode textObfuscationMode = foundation::TextObfuscationMode::System;
         char32_t textObfuscationCharacter = U'\u2022';
         std::optional<foundation::KeyboardOptions> keyboardOptions;
-        std::function<void(std::function<void()> performDefaultAction)> onKeyboardAction;
-        std::function<void(const text::TextLayoutResult&)> onTextLayout;
+        kiln::Function<void(kiln::Function<void()> performDefaultAction)> onKeyboardAction;
+        kiln::Function<void(const text::TextLayoutResult&)> onTextLayout;
         foundation::ShapePtr shape;
         std::optional<TextFieldColors> colors;
         // Unset: SecureTextField pads for a label unless there is none or it is Above;

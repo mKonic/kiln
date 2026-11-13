@@ -1,6 +1,7 @@
 #pragma once
 
 #include <algorithm>
+#include <kiln/Function.h>
 #include <climits>
 
 // The measure/layout contract (spec 03 §layout, req. 2): constraints down, size up, each child
@@ -79,7 +80,7 @@ namespace kiln::ui {
     // identity: copies share it. Derived rulers compute their value from others.
     struct RulerData {
         bool vertical = true;
-        std::function<float(PlacementScope&, float defaultValue)> calculate;   // derived rulers
+        kiln::Function<float(PlacementScope&, float defaultValue)> calculate;   // derived rulers
     };
     class Ruler {
     public:
@@ -96,7 +97,7 @@ namespace kiln::ui {
         // The largest / smallest of the rulers that have a value (default when none has).
         static VerticalRuler MaxOf(std::vector<VerticalRuler> rulers);
         static VerticalRuler MinOf(std::vector<VerticalRuler> rulers);
-        static VerticalRuler Derived(std::function<float(PlacementScope&, float defaultValue)> calculation) {
+        static VerticalRuler Derived(kiln::Function<float(PlacementScope&, float defaultValue)> calculation) {
             return VerticalRuler(std::make_shared<RulerData>(RulerData{ true, std::move(calculation) }));
         }
     private:
@@ -107,7 +108,7 @@ namespace kiln::ui {
         HorizontalRuler() : Ruler(std::make_shared<RulerData>(RulerData{ false, {} })) {}
         static HorizontalRuler MaxOf(std::vector<HorizontalRuler> rulers);
         static HorizontalRuler MinOf(std::vector<HorizontalRuler> rulers);
-        static HorizontalRuler Derived(std::function<float(PlacementScope&, float defaultValue)> calculation) {
+        static HorizontalRuler Derived(kiln::Function<float(PlacementScope&, float defaultValue)> calculation) {
             return HorizontalRuler(std::make_shared<RulerData>(RulerData{ false, std::move(calculation) }));
         }
     private:
@@ -127,7 +128,7 @@ namespace kiln::ui {
     // RulerScope: where a layout provides ruler values, in its own coordinates.
     class RulerScope : public Density {
     public:
-        RulerScope(Density d, LayoutDirection dir, int width, std::function<Offset(Offset)> toRoot)
+        RulerScope(Density d, LayoutDirection dir, int width, kiln::Function<Offset(Offset)> toRoot)
             : Density(d), m_Dir(dir), m_Width(width), m_ToRoot(std::move(toRoot)) {}
         void Provides(const Ruler& ruler, float value) { Set(ruler.Id(), value); }
         // providesRelative: from the start edge (mirrored in RTL).
@@ -142,7 +143,7 @@ namespace kiln::ui {
         }
         LayoutDirection m_Dir;
         int m_Width;
-        std::function<Offset(Offset)> m_ToRoot;
+        kiln::Function<Offset(Offset)> m_ToRoot;
         std::vector<std::pair<const RulerData*, float>> m_Values;
     };
 
@@ -215,7 +216,7 @@ namespace kiln::ui {
         // withMotionFrameOfReferencePlacement: placements in `block` are motion (scrolling)
         // rather than structure; coordinates can leave them out (LocalPositionOf with
         // includeMotionFrameOfReference false).
-        void WithMotionFrameOfReferencePlacement(const std::function<void()>& block) {
+        void WithMotionFrameOfReferencePlacement(const kiln::Function<void()>& block) {
             const bool was = m_MotionFrame;
             m_MotionFrame = true;
             block();
@@ -234,7 +235,7 @@ namespace kiln::ui {
             if (ruler.Id()->calculate) return ruler.Id()->calculate(*this, defaultValue);
             return m_Lookup ? m_Lookup(ruler, defaultValue) : defaultValue;
         }
-        void SetRulerLookup(std::function<float(const Ruler&, float)> lookup) { m_Lookup = std::move(lookup); }
+        void SetRulerLookup(kiln::Function<float(const Ruler&, float)> lookup) { m_Lookup = std::move(lookup); }
         // The window's insets (for WindowInsetsRulers.getAnimation), when attached.
         const WindowInsetsHolder* Insets() const { return m_Insets; }
         void SetInsets(const WindowInsetsHolder* h) { m_Insets = h; }
@@ -249,7 +250,7 @@ namespace kiln::ui {
     private:
         LayoutDirection m_Dir;
         int m_ParentWidth;
-        std::function<float(const Ruler&, float)> m_Lookup;
+        kiln::Function<float(const Ruler&, float)> m_Lookup;
         const WindowInsetsHolder* m_Insets = nullptr;
         std::optional<LayoutCoordinates> m_Coords;
         mutable bool m_CoordinatesRead = false;
@@ -258,11 +259,11 @@ namespace kiln::ui {
 
     struct MeasureResult {
         int width = 0, height = 0;
-        std::function<void(PlacementScope&)> place;
+        kiln::Function<void(PlacementScope&)> place;
         // Lines this layout provides itself (others are inherited from what it wraps).
         std::vector<std::pair<const AlignmentLine*, int>> alignmentLines = {};
         // Ruler values this layout provides to its subtree (run when it places).
-        std::function<void(RulerScope&)> rulers = {};
+        kiln::Function<void(RulerScope&)> rulers = {};
     };
 
     class MeasureScope : public Density {
@@ -272,12 +273,12 @@ namespace kiln::ui {
         // isLookingAhead: this measure is the lookahead pass of a LookaheadScope (it settles the
         // destination layout; the main pass then approaches it).
         bool IsLookingAhead() const { return m_LookingAhead; }
-        MeasureResult Layout(int width, int height, std::function<void(PlacementScope&)> place = {},
+        MeasureResult Layout(int width, int height, kiln::Function<void(PlacementScope&)> place = {},
                              std::vector<std::pair<const AlignmentLine*, int>> lines = {}) const {
             return { width, height, std::move(place), std::move(lines) };
         }
         MeasureResult Layout(int width, int height, std::vector<std::pair<const AlignmentLine*, int>> lines,
-                             std::function<void(RulerScope&)> rulers, std::function<void(PlacementScope&)> place) const {
+                             kiln::Function<void(RulerScope&)> rulers, kiln::Function<void(PlacementScope&)> place) const {
             return { width, height, std::move(place), std::move(lines), std::move(rulers) };
         }
 
@@ -347,7 +348,7 @@ namespace kiln::ui {
     // A policy from a lambda, for one-off layouts.
     class LambdaMeasurePolicy final : public MeasurePolicy {
     public:
-        using Fn = std::function<MeasureResult(MeasureScope&, std::span<Measurable* const>, const Constraints&)>;
+        using Fn = kiln::Function<MeasureResult(MeasureScope&, std::span<Measurable* const>, const Constraints&)>;
         explicit LambdaMeasurePolicy(Fn fn) : m_Fn(std::move(fn)) {}
         MeasureResult Measure(MeasureScope& s, std::span<Measurable* const> c, const Constraints& k) override { return m_Fn(s, c, k); }
     private:
@@ -359,7 +360,7 @@ namespace kiln::ui {
         // Measures `measure` with children replaced by stand-ins whose size along the queried
         // axis comes from their own intrinsics (DefaultIntrinsicMeasurable / FixedSizeIntrinsicsPlaceable).
         int Measure(Kind kind, int crossSize, std::span<Measurable* const> children,
-                    const std::function<MeasureResult(std::span<Measurable* const>, const Constraints&)>& measure);
+                    const kiln::Function<MeasureResult(std::span<Measurable* const>, const Constraints&)>& measure);
     }
 
 }

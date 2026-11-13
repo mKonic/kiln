@@ -1,4 +1,5 @@
 #include "kiln/foundation/DrawCache.h"
+#include <kiln/Function.h>
 
 #include <stdexcept>
 
@@ -11,20 +12,20 @@ namespace kiln::foundation {
         return l;
     }
 
-    void CacheDrawScope::Record(layer::GraphicsLayer& layer, const std::function<void(ui::ContentDrawScope&)>& block, std::optional<IntSize> size) {
+    void CacheDrawScope::Record(layer::GraphicsLayer& layer, const kiln::Function<void(ui::ContentDrawScope&)>& block, std::optional<IntSize> size) {
         if (!m_Content) throw std::logic_error("CacheDrawScope.record outside a cache build");
         const IntSize s = size ? *size : IntSize{ int(m_Params.size.width), int(m_Params.size.height) };
         layer.Record(*m_Content, s, block);
     }
 
-    DrawResult CacheDrawScope::OnDrawBehind(std::function<void(ui::DrawScope&)> block) {
+    DrawResult CacheDrawScope::OnDrawBehind(kiln::Function<void(ui::DrawScope&)> block) {
         return OnDrawWithContent([block = std::move(block)](ui::ContentDrawScope& s) {
             block(s);
             s.DrawContent();
         });
     }
 
-    DrawResult CacheDrawScope::OnDrawWithContent(std::function<void(ui::ContentDrawScope&)> block) {
+    DrawResult CacheDrawScope::OnDrawWithContent(kiln::Function<void(ui::ContentDrawScope&)> block) {
         m_Result.emplace(std::move(block));
         return *m_Result;
     }
@@ -78,7 +79,7 @@ namespace kiln::foundation {
         };
     }
 
-    Modifier DrawWithCache(Modifier m, std::function<DrawResult(CacheDrawScope&)> onBuildDrawCache) {
+    Modifier DrawWithCache(Modifier m, kiln::Function<DrawResult(CacheDrawScope&)> onBuildDrawCache) {
         return m.With<CacheNode>(CacheParams{ std::move(onBuildDrawCache) });
     }
 

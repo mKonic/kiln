@@ -1,4 +1,5 @@
 #include "Check.h"
+#include <kiln/Function.h>
 
 #include "kiln/foundation/Compose.h"
 #include "kiln/foundation/Insets.h"
@@ -26,7 +27,7 @@ namespace {
             h.SetVisible(InsetsType::Ime, true);
             h.SetHasInsets(true);
         }
-        void Run(std::function<void()> content) {
+        void Run(kiln::Function<void()> content) {
             composition.SetContent([this, content] { rt::Composition::Current()->Provide(LocalWindowInsets, &owner.Insets(), content); });
             Pump();
         }

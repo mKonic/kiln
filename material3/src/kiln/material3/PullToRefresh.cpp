@@ -1,4 +1,5 @@
 #include "kiln/material3/PullToRefresh.h"
+#include <kiln/Function.h>
 
 #include "kiln/animation/Animatable.h"
 #include "kiln/foundation/Animate.h"
@@ -70,7 +71,7 @@ namespace kiln::material3 {
         // PullToRefreshModifierNode, as the nested scroll connection.
         struct PullToRefreshConnection final : ui::NestedScrollConnection, std::enable_shared_from_this<PullToRefreshConnection> {
             bool isRefreshing = false, enabled = true, attached = false;
-            std::function<void()> onRefresh;
+            kiln::Function<void()> onRefresh;
             std::shared_ptr<PullToRefreshState> state;
             Dp threshold;
             ui::Density density;
@@ -174,7 +175,7 @@ namespace kiln::material3 {
         };
     }
 
-    ui::Modifier PullToRefresh(ui::Modifier m, bool isRefreshing, std::shared_ptr<PullToRefreshState> state, std::function<void()> onRefresh, bool enabled,
+    ui::Modifier PullToRefresh(ui::Modifier m, bool isRefreshing, std::shared_ptr<PullToRefreshState> state, kiln::Function<void()> onRefresh, bool enabled,
                                Dp threshold) {
         auto& c = *rt::Composition::Current();
         const auto scope = internal::RememberCoroutineScope();
@@ -195,7 +196,7 @@ namespace kiln::material3 {
                 conn->Update();
             }
         });
-        c.DisposableEffect(rt::Keys(reinterpret_cast<std::uintptr_t>(conn.get())), [conn]() -> std::function<void()> {
+        c.DisposableEffect(rt::Keys(reinterpret_cast<std::uintptr_t>(conn.get())), [conn]() -> kiln::Function<void()> {
             return [conn] { conn->attached = false; };
         });
         return NestedScroll(std::move(m), conn);
@@ -215,7 +216,7 @@ namespace kiln::material3 {
         Color loadingIndicatorColor() { return LoadingIndicatorDefaults::containedIndicatorColor(); }
 
         void IndicatorBox(std::shared_ptr<PullToRefreshState> state, bool isRefreshing, const ui::Modifier& modifier, const IndicatorBoxOptions& o,
-                          std::function<void()> content) {
+                          kiln::Function<void()> content) {
             const ui::Density d = rt::Composition::Current()->Read(ui::LocalDensity);
             const float maxDistancePx = float(std::lround(d.ToPx(o.maxDistance)));
             const float elevationPx = d.ToPx(o.elevation);
@@ -366,10 +367,10 @@ namespace kiln::material3 {
         }
     }
 
-    void PullToRefreshBox(bool isRefreshing, std::function<void()> onRefresh, const ui::Modifier& modifier, const PullToRefreshBoxOptions& o,
-                          std::function<void()> content) {
+    void PullToRefreshBox(bool isRefreshing, kiln::Function<void()> onRefresh, const ui::Modifier& modifier, const PullToRefreshBoxOptions& o,
+                          kiln::Function<void()> content) {
         const auto state = o.state ? o.state : RememberPullToRefreshState();
-        std::function<void()> indicator = o.indicator;
+        kiln::Function<void()> indicator = o.indicator;
         if (!indicator)
             indicator = [state, isRefreshing] { PullToRefreshDefaults::Indicator(state, isRefreshing, AlignInBox({}, ui::Alignment::TopCenter())); };
         Box(PullToRefresh(modifier, isRefreshing, state, std::move(onRefresh), o.enabled, o.threshold), o.contentAlignment, false, [content, indicator] {

@@ -1,4 +1,5 @@
 #include "kiln/foundation/GraphicsLayer.h"
+#include <kiln/Function.h>
 
 #include "kiln/ui/LayoutNode.h"
 
@@ -14,12 +15,12 @@ namespace kiln::foundation::layer {
         ui::Size Or(ui::Size s, IntSize fallback) { return s.width < 0 ? ui::Size{ float(fallback.width), float(fallback.height) } : s; }
     }
 
-    void GraphicsLayer::Record(const ui::Density& density, ui::LayoutDirection direction, IntSize size, const std::function<void(ui::DrawScope&)>& block) {
+    void GraphicsLayer::Record(const ui::Density& density, ui::LayoutDirection direction, IntSize size, const kiln::Function<void(ui::DrawScope&)>& block) {
         ui::ContentDrawScope scope(density, direction, ui::DrawTarget{});
         Record(scope, size, [&](ui::ContentDrawScope& s) { block(s); });
     }
 
-    void GraphicsLayer::Record(ui::ContentDrawScope& scope, IntSize size, const std::function<void(ui::ContentDrawScope&)>& block) {
+    void GraphicsLayer::Record(ui::ContentDrawScope& scope, IntSize size, const kiln::Function<void(ui::ContentDrawScope&)>& block) {
         ui::DisplayList list;
         const ui::Size outer = scope.GetSize();
         scope.BeginRecording(list);
@@ -94,7 +95,7 @@ namespace kiln::foundation::layer {
         auto& layer = c.Remember<GraphicsLayerPtr>([context] { return context->CreateGraphicsLayer(); });
         GraphicsLayerPtr keep = layer;
         c.DisposableEffect(rt::Keys(reinterpret_cast<std::uintptr_t>(keep.get())), [keep, context] {
-            return std::function<void()>([keep, context] { context->ReleaseGraphicsLayer(*keep); });
+            return kiln::Function<void()>([keep, context] { context->ReleaseGraphicsLayer(*keep); });
         });
         return layer;
     }

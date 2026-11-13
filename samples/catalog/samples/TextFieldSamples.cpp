@@ -1,5 +1,6 @@
 // TextFieldSamples.kt
 #include "TextFieldSamples.h"
+#include <kiln/Function.h>
 #include "Common.h"
 #include "Shared.h"
 
@@ -22,10 +23,10 @@ namespace catalog::samples {
         using FieldFn = void (*)(TextFieldState&, const Modifier&, const m3::TextFieldOptions&);
         using SecureFieldFn = void (*)(TextFieldState&, const Modifier&, const m3::SecureTextFieldOptions&);
 
-        std::function<void(const m3::TextFieldLabelScope&)> Label(std::string text) {
+        kiln::Function<void(const m3::TextFieldLabelScope&)> Label(std::string text) {
             return [text](const m3::TextFieldLabelScope&) { m3::Text(text); };
         }
-        std::function<void()> TextOf(std::string text) {
+        kiln::Function<void()> TextOf(std::string text) {
             return [text] { m3::Text(text); };
         }
 
@@ -63,7 +64,7 @@ namespace catalog::samples {
 
         // A "Show placeholder even when unfocused" checkbox over the field: checked, the label
         // stays minimized so the placeholder shows.
-        void WithMinimizeToggle(FieldFn field, bool expressive, bool outlined, const char* label, std::function<void(m3::TextFieldOptions&)> extra) {
+        void WithMinimizeToggle(FieldFn field, bool expressive, bool outlined, const char* label, kiln::Function<void(m3::TextFieldOptions&)> extra) {
             auto& alwaysMinimizeLabel = RememberState(false);
             Column({}, [&alwaysMinimizeLabel, field, expressive, outlined, label, extra] {
                 Row({}, [&alwaysMinimizeLabel] {
@@ -113,7 +114,7 @@ namespace catalog::samples {
                 });
             };
             o.isError = error;
-            o.onKeyboardAction = [&state, validate](std::function<void()>) { validate(state.Text()); };
+            o.onKeyboardAction = [&state, validate](kiln::Function<void()>) { validate(state.Text()); };
             field(state, Semantics({}, [error](SemanticsConfiguration& c) {
                       c.maxTextLength = charLimit;
                       // Provide localized description of the error
@@ -203,7 +204,7 @@ namespace catalog::samples {
         m3::TextFieldOptions o;
         o.label = Label("Label");
         o.keyboardOptions.imeAction = ImeAction::Done;
-        o.onKeyboardAction = [keyboardController](std::function<void()>) { if (keyboardController) keyboardController->Hide(); };
+        o.onKeyboardAction = [keyboardController](kiln::Function<void()>) { if (keyboardController) keyboardController->Hide(); };
         m3::TextField(RememberTextFieldState(), {}, o);
     }
 

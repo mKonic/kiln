@@ -1,4 +1,5 @@
 #include "kiln/runtime/TaskDispatchers.h"
+#include <kiln/Function.h>
 
 #include <algorithm>
 
@@ -15,7 +16,7 @@ namespace kiln::rt {
         for (auto& t : m_Threads) t.join();
     }
 
-    void BackgroundDispatcher::Execute(std::function<void()> work) {
+    void BackgroundDispatcher::Execute(kiln::Function<void()> work) {
         std::lock_guard lock(m_Mutex);
         m_Queue.push_back(std::move(work));
         // A thread more when none is idle, up to the limit.

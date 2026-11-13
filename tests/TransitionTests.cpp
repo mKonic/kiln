@@ -1,4 +1,5 @@
 #include "Check.h"
+#include <kiln/Function.h>
 
 #include "kiln/foundation/Transition.h"
 #include "kiln/ui/LayoutNode.h"
@@ -15,7 +16,7 @@ namespace {
         rt::Dispatcher& d = rt::Dispatcher::Main();
         rt::Composition composition{ owner.Root(), d };
         std::int64_t now = 1'000'000'000;
-        void Run(std::function<void()> content) { composition.SetContent(std::move(content)); Pump(); }
+        void Run(kiln::Function<void()> content) { composition.SetContent(std::move(content)); Pump(); }
         void Pump() { d.RunPending(); composition.Recompose(); d.RunPending(); composition.Recompose(); }
         void Frames(int n, std::int64_t stepMs = 16) {
             for (int i = 0; i < n; ++i) { now += stepMs * 1'000'000; d.RunFrame(now); Pump(); }
@@ -487,7 +488,7 @@ TEST(CapturedAnimatedVisibilityDropsTheContentAtOnceAndKeepsItsPlace) {
             CapturedAnimatedVisibility(visible.Get(), Modifier{}, [&] {
                 rt::Composition::Current()->DisposableEffect(rt::Keys(1), [&] {
                     ++alive;
-                    return std::function<void()>([&] { --alive; });
+                    return kiln::Function<void()>([&] { --alive; });
                 });
                 Box(SizeMod(Modifier{}, Dp(100), Dp(80)));
             }, FadeIn(), FadeOut(anim::Tween(160, 0, anim::Linear())));

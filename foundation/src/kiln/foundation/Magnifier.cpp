@@ -1,4 +1,5 @@
 #include "kiln/foundation/Magnifier.h"
+#include <kiln/Function.h>
 
 #include "kiln/foundation/text/Selection.h"
 
@@ -145,7 +146,7 @@ namespace kiln::foundation {
     SelectionMagnifier::SelectionMagnifier() : m_Center(anim::Vec{ NAN, NAN, 0, 0 }, 2) {}
     SelectionMagnifier::~SelectionMagnifier() { m_Animation.Cancel(); }
 
-    void SelectionMagnifier::Update(const std::function<Offset(ui::IntSize)>& center, ui::Owner* owner, Offset anchorInRoot, const ui::Density& density) {
+    void SelectionMagnifier::Update(const kiln::Function<Offset(ui::IntSize)>& center, ui::Owner* owner, Offset anchorInRoot, const ui::Density& density) {
         m_Attached = true;
         const Offset target = center(m_MagnifierSize);
         if (!m_Target || !(SameFloat(m_Target->x, target.x) && SameFloat(m_Target->y, target.y))) {

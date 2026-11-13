@@ -2,6 +2,7 @@
 // SelectionModifierNode.kt, SelectionHandles.kt, AndroidSelectionHandles.android.kt).
 
 #include "kiln/foundation/text/Selection.h"
+#include <kiln/Function.h>
 #include "kiln/foundation/text/HandlePopup.h"
 #include "kiln/foundation/Magnifier.h"
 
@@ -48,7 +49,7 @@ namespace kiln::foundation {
 
             // Runs `fn` when destroyed unless disarmed (a cancelled gesture coroutine).
             struct CancelGuard {
-                std::function<void()> fn;
+                kiln::Function<void()> fn;
                 ~CancelGuard() { if (fn) fn(); }
             };
         }
@@ -205,7 +206,7 @@ namespace kiln::foundation {
             // DefaultLongPressDragObserver.
             class LongPressDragObserver final : public TextDragObserver {
             public:
-                LongPressDragObserver(std::shared_ptr<SelectionRegistrar> r, std::int64_t id, std::function<std::optional<Coordinates>()> c)
+                LongPressDragObserver(std::shared_ptr<SelectionRegistrar> r, std::int64_t id, kiln::Function<std::optional<Coordinates>()> c)
                     : m_Registrar(std::move(r)), m_Id(id), m_Coords(std::move(c)) {}
                 void OnStart(Offset start, Adjustment a) override {
                     m_Adjustment = a;
@@ -241,7 +242,7 @@ namespace kiln::foundation {
                 }
                 std::shared_ptr<SelectionRegistrar> m_Registrar;
                 std::int64_t m_Id;
-                std::function<std::optional<Coordinates>()> m_Coords;
+                kiln::Function<std::optional<Coordinates>()> m_Coords;
                 Offset m_LastPosition = kUnspecified, m_LastOffsetInRoot = kUnspecified, m_Total;
                 Adjustment m_Adjustment = Adjustment::None;
             };
@@ -249,7 +250,7 @@ namespace kiln::foundation {
             // DefaultMouseSelectionObserver: `id` null for the container (selection between texts).
             class DefaultMouseObserver final : public MouseSelectionObserver {
             public:
-                DefaultMouseObserver(std::shared_ptr<SelectionRegistrar> r, std::optional<std::int64_t> id, std::function<std::optional<Coordinates>()> c)
+                DefaultMouseObserver(std::shared_ptr<SelectionRegistrar> r, std::optional<std::int64_t> id, kiln::Function<std::optional<Coordinates>()> c)
                     : m_Registrar(std::move(r)), m_Id(id), m_Coords(std::move(c)) {}
                 bool OnExtend(Offset down) override {
                     auto c = m_Coords();
@@ -282,13 +283,13 @@ namespace kiln::foundation {
                 bool ShouldProcess() const { return !m_Id || m_Registrar->HasSelection(*m_Id); }
                 std::shared_ptr<SelectionRegistrar> m_Registrar;
                 std::optional<std::int64_t> m_Id;
-                std::function<std::optional<Coordinates>()> m_Coords;
+                kiln::Function<std::optional<Coordinates>()> m_Coords;
                 Offset m_LastPosition;
             };
         }
 
         Modifier SelectionGestures(Modifier m, std::shared_ptr<SelectionRegistrar> registrar, std::int64_t id,
-                                   std::function<std::optional<Coordinates>()> coordinates) {
+                                   kiln::Function<std::optional<Coordinates>()> coordinates) {
             auto mouse = std::make_shared<DefaultMouseObserver>(registrar, id, coordinates);
             auto drag = std::make_shared<LongPressDragObserver>(registrar, id, coordinates);
             return PointerInput(std::move(m), rt::Keys(registrar.get(), id), [mouse, drag](PointerInputScope& s) {
@@ -340,7 +341,7 @@ namespace kiln::foundation {
             rt::State<bool> hasFocus{ false };
             rt::State<std::optional<Offset>> startHandlePosition, endHandlePosition, currentDragPosition;
             rt::State<std::optional<Handle>> draggingHandle;
-            std::function<void(std::optional<Selection>)> onSelectionChangeUser;
+            kiln::Function<void(std::optional<Selection>)> onSelectionChangeUser;
             ui::Owner* owner = nullptr;
             FocusRequester focusRequester;
             std::optional<Coordinates> container;
@@ -721,7 +722,7 @@ namespace kiln::foundation {
             }
 
             // forEachSelectableWithSelection: in order, with whether it is the last one selected.
-            void ForEachSelectableWithSelection(const std::function<bool(const Selectable&, const AnnotatedString&, int, int, bool)>& block) {
+            void ForEachSelectableWithSelection(const kiln::Function<bool(const Selectable&, const AnnotatedString&, int, int, bool)>& block) {
                 const auto& sorted = Sorted();
                 const auto& subs = registrar->subselections.Peek();
                 int lastIndex = -1;
@@ -852,8 +853,8 @@ namespace kiln::foundation {
 
             // addSelectionContainerTextContextMenuComponents
             void AddTextContextMenuComponents(TextContextMenuBuilderScope& scope) {
-                auto item = [](TextContextMenuBuilderScope& sc, TextContextMenuKey key, bool enabled, std::function<void()> onClick,
-                               std::function<bool()> closePredicate = {}) {
+                auto item = [](TextContextMenuBuilderScope& sc, TextContextMenuKey key, bool enabled, kiln::Function<void()> onClick,
+                               kiln::Function<bool()> closePredicate = {}) {
                     if (!enabled) return;
                     sc.Item(key, {}, [onClick, closePredicate](TextContextMenuSession& session) {
                         onClick();
@@ -1266,7 +1267,7 @@ namespace kiln::foundation {
 
         // The container's onGloballyPositioned: its inner space is the manager's coordinates.
         struct PositionedParams {
-            std::shared_ptr<std::function<void(const Coordinates&)>> fn;
+            std::shared_ptr<kiln::Function<void(const Coordinates&)>> fn;
             bool operator==(const PositionedParams& o) const { return fn == o.fn; }
         };
         struct PositionedNode final : ModifierNode, ui::GlobalPositionAwareModifier {
@@ -1281,7 +1282,7 @@ namespace kiln::foundation {
 
         // A focus target without semantics (Modifier.focusTarget).
         struct TargetParams {
-            std::shared_ptr<std::function<void(FocusState)>> onChange;
+            std::shared_ptr<kiln::Function<void(FocusState)>> onChange;
             bool operator==(const TargetParams& o) const { return onChange == o.onChange; }
         };
         struct TargetNode final : ui::FocusTargetNode {
@@ -1339,11 +1340,11 @@ namespace kiln::foundation {
         }
     }
 
-    void SelectionContainer(const Modifier& modifier, std::function<void()> content) {
+    void SelectionContainer(const Modifier& modifier, kiln::Function<void()> content) {
         SelectionContainer(RememberSelectionState(), modifier, std::move(content));
     }
 
-    void SelectionContainer(SelectionState& state, const Modifier& modifier, std::function<void()> content) {
+    void SelectionContainer(SelectionState& state, const Modifier& modifier, kiln::Function<void()> content) {
         auto* c = rt::Composition::Current();
         // The registrar's next id survives re-creation (SelectionRegistrarImpl.Saver).
         auto& registrar = rt::RememberSaveable<std::shared_ptr<SelectionRegistrar>>(
@@ -1366,14 +1367,14 @@ namespace kiln::foundation {
         if (!m->mouseObserver)
             m->mouseObserver = std::make_shared<DefaultMouseObserver>(registrar, std::nullopt, [m] { return m->container; });
 
-        auto onFocus = c->Remember<std::shared_ptr<std::function<void(FocusState)>>>([m = manager] {
-            return std::make_shared<std::function<void(FocusState)>>([m](FocusState f) {
+        auto onFocus = c->Remember<std::shared_ptr<kiln::Function<void(FocusState)>>>([m = manager] {
+            return std::make_shared<kiln::Function<void(FocusState)>>([m](FocusState f) {
                 if (!HasFocus(f) && m->hasFocus.Peek()) m->OnRelease();
                 m->hasFocus.Set(HasFocus(f));
             });
         });
-        auto onPositioned = c->Remember<std::shared_ptr<std::function<void(const Coordinates&)>>>([m = manager] {
-            return std::make_shared<std::function<void(const Coordinates&)>>([m](const Coordinates& co) {
+        auto onPositioned = c->Remember<std::shared_ptr<kiln::Function<void(const Coordinates&)>>>([m = manager] {
+            return std::make_shared<kiln::Function<void(const Coordinates&)>>([m](const Coordinates& co) {
                 if (!m->owner) m->owner = co.node->GetOwner();
                 m->EnsureBehaviors();
                 m->SetContainerCoordinates(co);
@@ -1438,7 +1439,7 @@ namespace kiln::foundation {
         // Binds the state; on dispose the selection goes (manager.onRelease, hasFocus = false).
         c->DisposableEffect(rt::Keys(&state, m), [&state, m = manager] {
             state.m_Manager = m.get();
-            return std::function<void()>([&state, m] {
+            return kiln::Function<void()>([&state, m] {
                 m->onSelectionChangeUser = {};
                 m->OnRelease();
                 m->hasFocus.Set(false);
@@ -1451,7 +1452,7 @@ namespace kiln::foundation {
         });
     }
 
-    void DisableSelection(std::function<void()> content) {
+    void DisableSelection(kiln::Function<void()> content) {
         rt::Composition::Current()->Provide(selection::LocalSelectionRegistrar, std::shared_ptr<selection::SelectionRegistrar>{}, std::move(content));
     }
 

@@ -1,4 +1,5 @@
 #include "kiln/material3/WavyProgressIndicator.h"
+#include <kiln/Function.h>
 
 #include "kiln/animation/Animatable.h"
 #include "kiln/foundation/Compose.h"
@@ -19,8 +20,8 @@ namespace kiln::material3 {
     namespace {
         struct Params {
             bool circular;
-            std::function<float()> progress;
-            std::function<float(float)> amplitude;
+            kiln::Function<float()> progress;
+            kiln::Function<float(float)> amplitude;
             Color color, track;
             gfx::Stroke stroke, trackStroke;
             Dp gap, stop, wavelength, speed, indeterminateWavelength, indeterminateSpeed;
@@ -140,42 +141,42 @@ namespace kiln::material3 {
                 else s.DrawRect(params.color, origin, { stop, stop });
             }
         };
-        Modifier ProgressSemantics(Modifier m, const std::function<float()>& progress) {
+        Modifier ProgressSemantics(Modifier m, const kiln::Function<float()>& progress) {
             return Semantics(m, [progress](SemanticsConfiguration& config) {
                 const float value = progress();
                 config.progressBarRangeInfo = std::isfinite(value) ? ProgressBarRangeInfo{ std::clamp(value, 0.0f, 1.0f), 0, 1 } : ProgressBarRangeInfo::Indeterminate();
             }, true);
         }
-        Params LinearParams(std::function<float()> progress, const LinearWavyProgressIndicatorOptions& o, bool indeterminate) {
+        Params LinearParams(kiln::Function<float()> progress, const LinearWavyProgressIndicatorOptions& o, bool indeterminate) {
             const auto wavelength = o.wavelength.value_or(indeterminate ? WavyProgressIndicatorDefaults::LinearIndeterminateWavelength : WavyProgressIndicatorDefaults::LinearDeterminateWavelength);
-            return { false, std::move(progress), o.amplitude ? o.amplitude : std::function<float(float)>(indeterminate ? [](float) { return 1.0f; } : WavyProgressIndicatorDefaults::indicatorAmplitude),
+            return { false, std::move(progress), o.amplitude ? o.amplitude : kiln::Function<float(float)>(indeterminate ? [](float) { return 1.0f; } : WavyProgressIndicatorDefaults::indicatorAmplitude),
                 o.color.Specified() ? o.color : WavyProgressIndicatorDefaults::indicatorColor(), o.trackColor.Specified() ? o.trackColor : WavyProgressIndicatorDefaults::trackColor(),
                 o.stroke.value_or(WavyProgressIndicatorDefaults::linearIndicatorStroke()), o.trackStroke.value_or(WavyProgressIndicatorDefaults::linearTrackStroke()), o.gapSize, indeterminate ? Dp(0) : o.stopSize,
                 wavelength, o.waveSpeed.value_or(wavelength), indeterminate ? wavelength : WavyProgressIndicatorDefaults::LinearIndeterminateWavelength,
                 indeterminate ? o.waveSpeed.value_or(wavelength) : WavyProgressIndicatorDefaults::LinearIndeterminateWavelength };
         }
-        Params CircularParams(std::function<float()> progress, const CircularWavyProgressIndicatorOptions& o, bool indeterminate) {
-            return { true, std::move(progress), o.amplitude ? o.amplitude : std::function<float(float)>(indeterminate ? [](float) { return 1.0f; } : WavyProgressIndicatorDefaults::indicatorAmplitude),
+        Params CircularParams(kiln::Function<float()> progress, const CircularWavyProgressIndicatorOptions& o, bool indeterminate) {
+            return { true, std::move(progress), o.amplitude ? o.amplitude : kiln::Function<float(float)>(indeterminate ? [](float) { return 1.0f; } : WavyProgressIndicatorDefaults::indicatorAmplitude),
                 o.color.Specified() ? o.color : WavyProgressIndicatorDefaults::indicatorColor(), o.trackColor.Specified() ? o.trackColor : WavyProgressIndicatorDefaults::trackColor(),
                 o.stroke.value_or(WavyProgressIndicatorDefaults::circularIndicatorStroke()), o.trackStroke.value_or(WavyProgressIndicatorDefaults::circularTrackStroke()), o.gapSize, Dp(0), o.wavelength, o.waveSpeed.value_or(o.wavelength), o.wavelength, o.waveSpeed.value_or(o.wavelength) };
         }
     }
-    void LinearWavyProgressIndicator(std::function<float()> progress, const Modifier& modifier, const LinearWavyProgressIndicatorOptions& o) {
+    void LinearWavyProgressIndicator(kiln::Function<float()> progress, const Modifier& modifier, const LinearWavyProgressIndicatorOptions& o) {
         auto m = ClipToBounds(SizeMod(ProgressSemantics(internal::IncreaseVerticalSemanticsBounds(modifier), progress), WavyProgressIndicatorDefaults::LinearContainerWidth, WavyProgressIndicatorDefaults::LinearContainerHeight));
         Spacer(m.With<WavyNode>(LinearParams(std::move(progress), o, false)));
     }
     void LinearWavyProgressIndicator(const Modifier& modifier, const LinearWavyProgressIndicatorOptions& o) {
-        const std::function<float()> progress = [] { return NAN; };
+        const kiln::Function<float()> progress = [] { return NAN; };
         auto m = ClipToBounds(SizeMod(ProgressSemantics(internal::IncreaseVerticalSemanticsBounds(modifier), progress), WavyProgressIndicatorDefaults::LinearContainerWidth, WavyProgressIndicatorDefaults::LinearContainerHeight));
         Spacer(m.With<WavyNode>(LinearParams(progress, o, true)));
     }
-    void CircularWavyProgressIndicator(std::function<float()> progress, const Modifier& modifier, const CircularWavyProgressIndicatorOptions& o) {
+    void CircularWavyProgressIndicator(kiln::Function<float()> progress, const Modifier& modifier, const CircularWavyProgressIndicatorOptions& o) {
         auto m = SizeMod(modifier, WavyProgressIndicatorDefaults::CircularContainerSize, WavyProgressIndicatorDefaults::CircularContainerSize);
         m = m.With<WavyNode>(CircularParams(progress, o, false));
         Spacer(ProgressSemantics(m, progress));
     }
     void CircularWavyProgressIndicator(const Modifier& modifier, const CircularWavyProgressIndicatorOptions& o) {
-        const std::function<float()> progress = [] { return NAN; };
+        const kiln::Function<float()> progress = [] { return NAN; };
         Box(ProgressSemantics(SizeMod(modifier, WavyProgressIndicatorDefaults::CircularContainerSize, WavyProgressIndicatorDefaults::CircularContainerSize), progress), Alignment::TopStart(), false, [=] {
             Spacer(FillMax({}, Axis::Both).With<WavyNode>(CircularParams(progress, o, true)));
         });

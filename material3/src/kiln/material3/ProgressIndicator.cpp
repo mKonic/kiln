@@ -1,4 +1,5 @@
 #include "kiln/material3/ProgressIndicator.h"
+#include <kiln/Function.h>
 
 #include "kiln/foundation/Compose.h"
 #include "kiln/foundation/Semantics.h"
@@ -18,7 +19,7 @@ namespace kiln::material3 {
     using gfx::StrokeCap;
     namespace {
         float Coerce(float value) { return std::clamp(value, 0.0f, 1.0f); }
-        Modifier ProgressSemantics(Modifier m, const std::function<float()>& progress = {}) {
+        Modifier ProgressSemantics(Modifier m, const kiln::Function<float()>& progress = {}) {
             return Semantics(m, [progress](SemanticsConfiguration& config) {
                 const float value = progress ? Coerce(progress()) : 0;
                 config.progressBarRangeInfo = progress ? ProgressBarRangeInfo{ std::isnan(value) ? 0 : value, 0, 1 } : ProgressBarRangeInfo::Indeterminate();
@@ -95,7 +96,7 @@ namespace kiln::material3 {
         }
     }
 
-    void LinearProgressIndicator(std::function<float()> progress, const Modifier& modifier, const LinearProgressIndicatorOptions& o) {
+    void LinearProgressIndicator(kiln::Function<float()> progress, const Modifier& modifier, const LinearProgressIndicatorOptions& o) {
         const auto color = o.color.Specified() ? o.color : ProgressIndicatorDefaults::linearColor();
         const auto track = o.trackColor.Specified() ? o.trackColor : ProgressIndicatorDefaults::linearTrackColor();
         const auto m = SizeMod(ProgressSemantics(internal::IncreaseVerticalSemanticsBounds(modifier), progress), ProgressIndicatorDefaults::LinearIndicatorWidth, ProgressIndicatorDefaults::LinearIndicatorHeight);
@@ -126,7 +127,7 @@ namespace kiln::material3 {
             if (v.secondTail > gap) LinearSegment(s, 0, v.secondTail < 1 ? v.secondTail - gap : 1, track, size.height, o.strokeCap);
         });
     }
-    void CircularProgressIndicator(std::function<float()> progress, const Modifier& modifier, const CircularProgressIndicatorOptions& o) {
+    void CircularProgressIndicator(kiln::Function<float()> progress, const Modifier& modifier, const CircularProgressIndicatorOptions& o) {
         const auto color = o.color.Specified() ? o.color : ProgressIndicatorDefaults::circularColor();
         const auto track = o.trackColor.Specified() ? o.trackColor : ProgressIndicatorDefaults::circularDeterminateTrackColor();
         Canvas(SizeMod(ProgressSemantics(modifier, progress), ProgressIndicatorDefaults::CircularIndicatorDiameter, ProgressIndicatorDefaults::CircularIndicatorDiameter), [=](DrawScope& s) {

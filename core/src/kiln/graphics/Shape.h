@@ -4,6 +4,7 @@
 // border draw for a size. Rect and rounded-rect outlines take fast paths; anything else is a path.
 
 #include "kiln/graphics/Path.h"
+#include <kiln/Function.h>
 #include "kiln/ui/Geometry.h"
 
 #include <memory>
@@ -42,7 +43,7 @@ namespace kiln::gfx {
     // GenericShape { size, direction -> path }.
     class GenericShape final : public Shape {
     public:
-        using Builder = std::function<void(Path&, ui::Size, ui::LayoutDirection)>;
+        using Builder = kiln::Function<void(Path&, ui::Size, ui::LayoutDirection)>;
         explicit GenericShape(Builder b) : m_Builder(std::move(b)) {}
         Outline CreateOutline(ui::Size size, ui::LayoutDirection dir, const ui::Density&) const override {
             Path p;

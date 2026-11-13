@@ -1,4 +1,5 @@
 #include "kiln/navigation/NavDestination.h"
+#include <kiln/Function.h>
 
 #include <algorithm>
 #include <cctype>
@@ -85,7 +86,7 @@ namespace kiln::navigation {
 
     namespace {
         std::vector<std::string> MissingRequiredArguments(const std::map<std::string, NavArgument>& arguments,
-                                                          const std::function<bool(const std::string&)>& isMissing) {
+                                                          const kiln::Function<bool(const std::string&)>& isMissing) {
             std::vector<std::string> out;
             for (const auto& [k, a] : arguments)
                 if (!a.isNullable && !a.IsDefaultValuePresent() && isMissing(k)) out.push_back(k);
@@ -387,7 +388,7 @@ namespace kiln::navigation {
         return NavDeepLink(uriPattern, action, mimeType);
     }
 
-    NavDeepLink NavDeepLinkOf(const std::function<void(NavDeepLinkDslBuilder&)>& deepLinkBuilder) {
+    NavDeepLink NavDeepLinkOf(const kiln::Function<void(NavDeepLinkDslBuilder&)>& deepLinkBuilder) {
         NavDeepLinkDslBuilder b;
         deepLinkBuilder(b);
         return b.Build();

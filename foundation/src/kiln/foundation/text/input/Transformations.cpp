@@ -1,4 +1,5 @@
 #include "kiln/foundation/text/input/Transformations.h"
+#include <kiln/Function.h>
 #include "kiln/text/CaseMapping.h"
 
 #include <cwctype>
@@ -42,7 +43,7 @@ namespace kiln::foundation {
             void TransformInput(TextFieldBuffer& b) const override { first->TransformInput(b); second->TransformInput(b); }
         };
         struct ByValueTransformation final : InputTransformation {
-            std::function<std::u16string(std::u16string_view, std::u16string_view)> fn;
+            kiln::Function<std::u16string(std::u16string_view, std::u16string_view)> fn;
             void TransformInput(TextFieldBuffer& b) const override {
                 const std::u16string proposed = b.AsCharSequence();
                 const std::u16string accepted = fn(b.OriginalText(), proposed);
@@ -92,11 +93,11 @@ namespace kiln::foundation {
             void TransformInput(TextFieldBuffer& b) const override { if (b.Length() > maxLength) b.RevertAllChanges(); }
         };
         struct LambdaInput final : InputTransformation {
-            std::function<void(TextFieldBuffer&)> fn;
+            kiln::Function<void(TextFieldBuffer&)> fn;
             void TransformInput(TextFieldBuffer& b) const override { fn(b); }
         };
         struct LambdaOutput final : OutputTransformation {
-            std::function<void(TextFieldBuffer&)> fn;
+            kiln::Function<void(TextFieldBuffer&)> fn;
             void TransformOutput(TextFieldBuffer& b) const override { fn(b); }
         };
         struct Mask final : CodepointTransformation {
@@ -121,7 +122,7 @@ namespace kiln::foundation {
         c->second = std::move(next);
         return c;
     }
-    InputTransformationPtr ByValue(std::function<std::u16string(std::u16string_view, std::u16string_view)> fn) {
+    InputTransformationPtr ByValue(kiln::Function<std::u16string(std::u16string_view, std::u16string_view)> fn) {
         auto t = std::make_shared<ByValueTransformation>();
         t->fn = std::move(fn);
         return t;
@@ -143,12 +144,12 @@ namespace kiln::foundation {
         t->maxLength = maxLength;
         return t;
     }
-    InputTransformationPtr InputTransformationOf(std::function<void(TextFieldBuffer&)> fn) {
+    InputTransformationPtr InputTransformationOf(kiln::Function<void(TextFieldBuffer&)> fn) {
         auto t = std::make_shared<LambdaInput>();
         t->fn = std::move(fn);
         return t;
     }
-    OutputTransformationPtr OutputTransformationOf(std::function<void(TextFieldBuffer&)> fn) {
+    OutputTransformationPtr OutputTransformationOf(kiln::Function<void(TextFieldBuffer&)> fn) {
         auto t = std::make_shared<LambdaOutput>();
         t->fn = std::move(fn);
         return t;

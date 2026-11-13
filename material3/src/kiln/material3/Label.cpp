@@ -1,4 +1,5 @@
 #include "kiln/material3/Label.h"
+#include <kiln/Function.h>
 
 #include "kiln/foundation/Compose.h"
 #include "kiln/foundation/Interaction.h"
@@ -38,8 +39,8 @@ namespace kiln::material3 {
         }
     }
 
-    void Label(std::function<void(const TooltipScope&)> label, const ui::Modifier& modifier, const LabelOptions& options,
-               std::function<void()> content) {
+    void Label(kiln::Function<void(const TooltipScope&)> label, const ui::Modifier& modifier, const LabelOptions& options,
+               kiln::Function<void()> content) {
         auto& c = *rt::Composition::Current();
         auto source = options.interactionSource;
         if (!source) source = c.Remember<std::shared_ptr<MutableInteractionSource>>([] { return std::make_shared<MutableInteractionSource>(); });

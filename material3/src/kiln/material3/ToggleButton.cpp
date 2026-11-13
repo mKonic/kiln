@@ -1,4 +1,5 @@
 #include "kiln/material3/ToggleButton.h"
+#include <kiln/Function.h>
 
 #include "kiln/foundation/Animate.h"
 #include "kiln/foundation/Semantics.h"
@@ -29,8 +30,8 @@ namespace kiln::material3 {
                 default: return ToggleButtonDefaults::elevation();
             }
         }
-        void ToggleImpl(bool checked, std::function<void(bool)> onCheckedChange, const ui::Modifier& modifier,
-                        const ToggleButtonOptions& options, std::function<void()> content, Variant variant) {
+        void ToggleImpl(bool checked, kiln::Function<void(bool)> onCheckedChange, const ui::Modifier& modifier,
+                        const ToggleButtonOptions& options, kiln::Function<void()> content, Variant variant) {
             auto source = options.interactionSource ? options.interactionSource : foundation::RememberInteractionSource();
             const auto colors = options.colors ? *options.colors : Colors(variant);
             const auto elevation = options.elevation ? *options.elevation : Elevation(variant);
@@ -84,16 +85,16 @@ namespace kiln::material3 {
         }
     }
 
-    void ToggleButton(bool checked, std::function<void(bool)> change, const ui::Modifier& m, const ToggleButtonOptions& o, std::function<void()> content) {
+    void ToggleButton(bool checked, kiln::Function<void(bool)> change, const ui::Modifier& m, const ToggleButtonOptions& o, kiln::Function<void()> content) {
         ToggleImpl(checked, std::move(change), m, o, std::move(content), Variant::Filled);
     }
-    void ElevatedToggleButton(bool checked, std::function<void(bool)> change, const ui::Modifier& m, const ToggleButtonOptions& o, std::function<void()> content) {
+    void ElevatedToggleButton(bool checked, kiln::Function<void(bool)> change, const ui::Modifier& m, const ToggleButtonOptions& o, kiln::Function<void()> content) {
         ToggleImpl(checked, std::move(change), m, o, std::move(content), Variant::Elevated);
     }
-    void FilledTonalToggleButton(bool checked, std::function<void(bool)> change, const ui::Modifier& m, const ToggleButtonOptions& o, std::function<void()> content) {
+    void FilledTonalToggleButton(bool checked, kiln::Function<void(bool)> change, const ui::Modifier& m, const ToggleButtonOptions& o, kiln::Function<void()> content) {
         ToggleImpl(checked, std::move(change), m, o, std::move(content), Variant::Tonal);
     }
-    void OutlinedToggleButton(bool checked, std::function<void(bool)> change, const ui::Modifier& m, const ToggleButtonOptions& o, std::function<void()> content) {
+    void OutlinedToggleButton(bool checked, kiln::Function<void(bool)> change, const ui::Modifier& m, const ToggleButtonOptions& o, kiln::Function<void()> content) {
         ToggleImpl(checked, std::move(change), m, o, std::move(content), Variant::Outlined);
     }
 

@@ -1,4 +1,5 @@
 #include "kiln/material3/Scrim.h"
+#include <kiln/Function.h>
 
 #include "kiln/foundation/Draw.h"
 #include "kiln/foundation/Gestures.h"
@@ -17,7 +18,7 @@ namespace kiln::material3 {
     }
 
     namespace {
-        rt::Task<> Taps(PointerInputScope& s, std::function<void()> onClick) {
+        rt::Task<> Taps(PointerInputScope& s, kiln::Function<void()> onClick) {
             TapCallbacks tap;
             tap.onTap = [onClick](ui::Offset) { onClick(); };
             co_await DetectTapGestures(s, std::move(tap));
@@ -30,7 +31,7 @@ namespace kiln::material3 {
         ui::Modifier m = FillMax(modifier, Axis::Both);
         if (o.onClick) {
             // The latest onClick, for the gesture handler that outlives this composition.
-            auto& latest = rt::Composition::Current()->Remember<std::shared_ptr<std::function<void()>>>([] { return std::make_shared<std::function<void()>>(); });
+            auto& latest = rt::Composition::Current()->Remember<std::shared_ptr<kiln::Function<void()>>>([] { return std::make_shared<kiln::Function<void()>>(); });
             *latest = o.onClick;
             const auto onClick = [latest] { if (*latest) (*latest)(); };
             m = PointerInput(std::move(m), rt::Keys(), [onClick](PointerInputScope& s) { return Taps(s, onClick); });

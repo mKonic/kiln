@@ -5,6 +5,7 @@
 // selected and unselected content colours.
 
 #include "kiln/foundation/Interaction.h"
+#include <kiln/Function.h>
 #include "kiln/foundation/Layouts.h"
 
 #include <functional>
@@ -21,13 +22,13 @@ namespace kiln::material3 {
     };
 
     // A tab with a text label and/or an icon (an icon-only tab passes nullptr for the text).
-    void Tab(bool selected, std::function<void()> onClick, const ui::Modifier& modifier, std::function<void()> text, std::function<void()> icon,
+    void Tab(bool selected, kiln::Function<void()> onClick, const ui::Modifier& modifier, kiln::Function<void()> text, kiln::Function<void()> icon,
              const TabOptions& options = {});
     // A tab with an icon (24 dp) before its text label.
-    void LeadingIconTab(bool selected, std::function<void()> onClick, std::function<void()> text, std::function<void()> icon,
+    void LeadingIconTab(bool selected, kiln::Function<void()> onClick, kiln::Function<void()> text, kiln::Function<void()> icon,
                         const ui::Modifier& modifier, const TabOptions& options = {});
     // A tab with any content, centred in a column the width of the tab.
-    void Tab(bool selected, std::function<void()> onClick, const ui::Modifier& modifier, const TabOptions& options, std::function<void()> content);
+    void Tab(bool selected, kiln::Function<void()> onClick, const ui::Modifier& modifier, const TabOptions& options, kiln::Function<void()> content);
 
     namespace internal {
         inline constexpr ui::Dp HorizontalTextPadding{ 16 };

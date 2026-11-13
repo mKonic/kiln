@@ -1,6 +1,7 @@
 #pragma once
 
 #include "kiln/foundation/Draggable.h"
+#include <kiln/Function.h>
 #include "kiln/foundation/Draw.h"
 
 #include <optional>
@@ -23,7 +24,7 @@ namespace kiln::material3 {
         bool IsDragging() const { return m_Dragging.Get(); }
         std::weak_ptr<const char> AliveToken() const { return m_Alive; }
         bool shouldAutoSnap = true;
-        void DispatchRawDelta(float delta, const std::function<void(float)>& onChange = {});
+        void DispatchRawDelta(float delta, const kiln::Function<void(float)>& onChange = {});
 
         // Layout/gesture bookkeeping shared by the component and its custom track.
         void Configure(foundation::Orientation orientation, bool rtl, bool reverseVertical);
@@ -68,7 +69,7 @@ namespace kiln::material3 {
         int EndSteps() const;
         bool IsDragging() const { return m_Dragging.Get(); }
         std::weak_ptr<const char> AliveToken() const { return m_Alive; }
-        void OnDrag(bool start, float delta, const std::function<void(SliderRange)>& onChange = {});
+        void OnDrag(bool start, float delta, const kiln::Function<void(SliderRange)>& onChange = {});
 
         void SetDragging(bool value) { m_Dragging.Set(value); }
         void Configure(bool rtl) { m_Rtl = rtl; }
@@ -113,17 +114,17 @@ namespace kiln::material3 {
 
     struct SliderOptions {
         bool enabled = true;
-        std::function<void()> onValueChangeFinished;
+        kiln::Function<void()> onValueChangeFinished;
         std::optional<SliderColors> colors;
         std::shared_ptr<foundation::MutableInteractionSource> interactionSource;
-        std::function<void(SliderState&)> thumb, track;
+        kiln::Function<void(SliderState&)> thumb, track;
     };
     struct RangeSliderOptions {
         bool enabled = true;
-        std::function<void()> onValueChangeFinished;
+        kiln::Function<void()> onValueChangeFinished;
         std::optional<SliderColors> colors;
         std::shared_ptr<foundation::MutableInteractionSource> startThumbInteractionSource, endThumbInteractionSource;
-        std::function<void(RangeSliderState&)> startThumb, endThumb, track;
+        kiln::Function<void(RangeSliderState&)> startThumb, endThumb, track;
     };
     struct SliderThumbOptions {
         bool enabled = true, isVertical = false;
@@ -134,16 +135,16 @@ namespace kiln::material3 {
         bool enabled = true;
         std::optional<SliderColors> colors;
         // Unset uses the default dot; an engaged empty callback disables stop indicators.
-        std::optional<std::function<void(ui::DrawScope&, ui::Offset)>> drawStopIndicator;
-        std::function<void(ui::DrawScope&, ui::Offset, ui::Color)> drawTick;
+        std::optional<kiln::Function<void(ui::DrawScope&, ui::Offset)>> drawStopIndicator;
+        kiln::Function<void(ui::DrawScope&, ui::Offset, ui::Color)> drawTick;
         ui::Dp thumbTrackGapSize{ 6 }, trackInsideCornerSize{ 2 };
         std::optional<ui::Dp> trackCornerSize;
         bool enableCornerShrinking = false;
     };
 
-    void Slider(SliderState&, std::function<void(float)> onValueChange, const ui::Modifier& = {}, const SliderOptions& = {});
-    void VerticalSlider(SliderState&, std::function<void(float)> onValueChange, const ui::Modifier& = {}, const SliderOptions& = {}, bool topToBottom = true);
-    void RangeSlider(RangeSliderState&, std::function<void(SliderRange)> onValueChange, const ui::Modifier& = {}, const RangeSliderOptions& = {});
+    void Slider(SliderState&, kiln::Function<void(float)> onValueChange, const ui::Modifier& = {}, const SliderOptions& = {});
+    void VerticalSlider(SliderState&, kiln::Function<void(float)> onValueChange, const ui::Modifier& = {}, const SliderOptions& = {}, bool topToBottom = true);
+    void RangeSlider(RangeSliderState&, kiln::Function<void(SliderRange)> onValueChange, const ui::Modifier& = {}, const RangeSliderOptions& = {});
 
     namespace SliderDefaults {
         inline constexpr ui::Dp TrackHeight{ 16 }, ThumbWidth{ 4 }, ThumbHeight{ 44 };

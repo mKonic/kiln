@@ -1,4 +1,5 @@
 #include "kiln/foundation/ScreenModifiers.h"
+#include <kiln/Function.h>
 
 #include "kiln/ui/LayoutNode.h"
 
@@ -59,7 +60,7 @@ namespace kiln::foundation {
         // RectListNode.
         struct RectListParams {
             int kind = 0;
-            std::shared_ptr<const std::function<Rect(ui::Size)>> rect;
+            std::shared_ptr<const kiln::Function<Rect(ui::Size)>> rect;
             bool operator==(const RectListParams&) const = default;
         };
         struct RectListNode final : ModifierNode, ui::GlobalPositionAwareModifier {
@@ -91,11 +92,11 @@ namespace kiln::foundation {
         };
     }
 
-    Modifier SystemGestureExclusion(Modifier m, std::function<Rect(ui::Size)> rect) {
-        return m.With<RectListNode>(RectListParams{ 0, rect ? std::make_shared<const std::function<Rect(ui::Size)>>(std::move(rect)) : nullptr });
+    Modifier SystemGestureExclusion(Modifier m, kiln::Function<Rect(ui::Size)> rect) {
+        return m.With<RectListNode>(RectListParams{ 0, rect ? std::make_shared<const kiln::Function<Rect(ui::Size)>>(std::move(rect)) : nullptr });
     }
-    Modifier PreferKeepClear(Modifier m, std::function<Rect(ui::Size)> rect) {
-        return m.With<RectListNode>(RectListParams{ 1, rect ? std::make_shared<const std::function<Rect(ui::Size)>>(std::move(rect)) : nullptr });
+    Modifier PreferKeepClear(Modifier m, kiln::Function<Rect(ui::Size)> rect) {
+        return m.With<RectListNode>(RectListParams{ 1, rect ? std::make_shared<const kiln::Function<Rect(ui::Size)>>(std::move(rect)) : nullptr });
     }
 
     Modifier KeepScreenOn(Modifier m) { return m.With<KeepScreenOnNode>(KeepParams{}); }
