@@ -318,6 +318,14 @@ namespace {
         auto& seconds = RememberState(0);
         c.LaunchedEffect(kiln::rt::Keys(0), [&seconds] { return Tick(seconds); });
 
+        // The page's own colors are light whatever the system's theme, so its bars are too
+        // (enableEdgeToEdge's defaults follow the system: light icons over this page in dark mode).
+        const auto lightBars = [](kiln::ui::Owner* owner) {
+            if (owner) owner->EnableEdgeToEdge(kiln::ui::SystemBarStyle::Light(Color::Transparent(), Color::Transparent()),
+                                               kiln::ui::SystemBarStyle::Light(Color(0xe6ffffffu), Color(0x801b1b1bu)));
+        };
+        c.DisposableEffect({}, [lightBars, owner = c.Read(LocalOwner)] { lightBars(owner); return [] {}; });
+
         auto& scroll = RememberScrollState();
         // One Material section alone (for tools/gallery-smoke): nothing else in the tree.
         static const std::string section = kiln::gallery::RequestedSection();
@@ -510,18 +518,18 @@ namespace {
                     BasicText(secure ? "Secure window: on" : "Secure window: off", Padding(Modifier{}, 24_dp, 10_dp), { 14, kOnSurface });
                 });
             }
-            // enableEdgeToEdge styles: the defaults (icons follow dark mode), or dark bars with a scrim.
+            // enableEdgeToEdge styles: light bars for this light page, or dark bars with a scrim.
             {
                 auto& darkBars = kiln::rt::RememberSaveableState(false);
                 kiln::ui::Owner* owner = kiln::rt::Composition::Current()->Read(LocalOwner);
-                Box(Clickable(Background(Padding(Modifier{}, 16_dp, 0_dp), kPrimaryContainer, CornerShape::Pill()), [&darkBars, owner] {
+                Box(Clickable(Background(Padding(Modifier{}, 16_dp, 0_dp), kPrimaryContainer, CornerShape::Pill()), [&darkBars, owner, lightBars] {
                         darkBars.Set(!darkBars.Peek());
                         if (!owner) return;
                         if (darkBars.Peek()) owner->EnableEdgeToEdge(kiln::ui::SystemBarStyle::Dark(Color(0x80000000u)), kiln::ui::SystemBarStyle::Dark(Color(0x80000000u)));
-                        else owner->EnableEdgeToEdge();
+                        else lightBars(owner);
                     }),
                     Alignment::Center(), false, [&darkBars] {
-                    BasicText(darkBars.Get() ? "System bars: dark" : "System bars: auto", Padding(Modifier{}, 24_dp, 10_dp), { 14, kOnSurface });
+                    BasicText(darkBars.Get() ? "System bars: dark" : "System bars: light", Padding(Modifier{}, 24_dp, 10_dp), { 14, kOnSurface });
                 });
             }
             // A popup menu under its button: focusable, so it takes key focus and the content under
