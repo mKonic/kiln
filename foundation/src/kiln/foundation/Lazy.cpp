@@ -6,6 +6,7 @@
 #include "kiln/foundation/Draw.h"
 #include "kiln/runtime/Saveable.h"
 #include "kiln/ui/Locals.h"
+#include "kiln/ui/PrefetchScheduler.h"
 
 #include <algorithm>
 #include <cmath>
@@ -20,43 +21,60 @@ namespace kiln::foundation {
 
     // --- scopes ---------------------------------------------------------------------------------
 
-    void LazyListScope::Item(kiln::Function<void()> content, rt::Key key) {
+    namespace {
+        kiln::Function<rt::Key(int)> Constant(rt::Key k) {
+            return k.value ? kiln::Function<rt::Key(int)>([k](int) { return k; }) : nullptr;
+        }
+    }
+
+    void LazyListScope::Item(kiln::Function<void()> content, rt::Key key, rt::Key contentType) {
         auto c = std::make_shared<kiln::Function<void()>>(std::move(content));
-        intervals.push_back({ 1, [c](int) { (*c)(); }, key.value ? kiln::Function<rt::Key(int)>([key](int) { return key; }) : nullptr });
+        LazyInterval iv{ 1, [c](int) { (*c)(); }, Constant(key) };
+        iv.contentType = Constant(contentType);
+        intervals.push_back(std::move(iv));
     }
     void LazyListScope::StickyHeader(kiln::Function<void(int)> content, rt::Key key) {
         // The content gets the global index (filled in by the core).
-        intervals.push_back({ 1, std::move(content), key.value ? kiln::Function<rt::Key(int)>([key](int) { return key; }) : nullptr, true });
+        intervals.push_back({ 1, std::move(content), Constant(key), true });
     }
-    void LazyListScope::Items(int count, kiln::Function<void(int)> content, kiln::Function<rt::Key(int)> key) {
-        intervals.push_back({ count, std::move(content), std::move(key) });
-    }
-
-    void LazyGridScope::Item(kiln::Function<void()> content, rt::Key key, kiln::Function<int(const GridItemSpanScope&)> span) {
-        auto c = std::make_shared<kiln::Function<void()>>(std::move(content));
-        LazyInterval iv{ 1, [c](int) { (*c)(); }, key.value ? kiln::Function<rt::Key(int)>([key](int) { return key; }) : nullptr };
-        if (span) iv.span = [span](int, int cur, int max) { return span({ cur, max }); };
+    void LazyListScope::Items(int count, kiln::Function<void(int)> content, kiln::Function<rt::Key(int)> key,
+                              kiln::Function<rt::Key(int)> contentType) {
+        LazyInterval iv{ count, std::move(content), std::move(key) };
+        iv.contentType = std::move(contentType);
         intervals.push_back(std::move(iv));
     }
-    void LazyGridScope::Items(int count, kiln::Function<void(int)> content, kiln::Function<rt::Key(int)> key, GridSpan span) {
+
+    void LazyGridScope::Item(kiln::Function<void()> content, rt::Key key, kiln::Function<int(const GridItemSpanScope&)> span,
+                             rt::Key contentType) {
+        auto c = std::make_shared<kiln::Function<void()>>(std::move(content));
+        LazyInterval iv{ 1, [c](int) { (*c)(); }, Constant(key) };
+        if (span) iv.span = [span](int, int cur, int max) { return span({ cur, max }); };
+        iv.contentType = Constant(contentType);
+        intervals.push_back(std::move(iv));
+    }
+    void LazyGridScope::Items(int count, kiln::Function<void(int)> content, kiln::Function<rt::Key(int)> key, GridSpan span,
+                              kiln::Function<rt::Key(int)> contentType) {
         LazyInterval iv{ count, std::move(content), std::move(key) };
         if (span) iv.span = [span](int i, int cur, int max) { return span({ cur, max }, i); };
+        iv.contentType = std::move(contentType);
         intervals.push_back(std::move(iv));
     }
     void LazyGridScope::StickyHeader(kiln::Function<void(int)> content, rt::Key key) {
-        intervals.push_back({ 1, std::move(content), key.value ? kiln::Function<rt::Key(int)>([key](int) { return key; }) : nullptr, true });
+        intervals.push_back({ 1, std::move(content), Constant(key), true });
     }
 
-    void LazyStaggeredGridScope::Item(kiln::Function<void()> content, rt::Key key, bool fullLine) {
+    void LazyStaggeredGridScope::Item(kiln::Function<void()> content, rt::Key key, bool fullLine, rt::Key contentType) {
         auto c = std::make_shared<kiln::Function<void()>>(std::move(content));
-        LazyInterval iv{ 1, [c](int) { (*c)(); }, key.value ? kiln::Function<rt::Key(int)>([key](int) { return key; }) : nullptr };
+        LazyInterval iv{ 1, [c](int) { (*c)(); }, Constant(key) };
         if (fullLine) iv.span = [](int, int, int max) { return max; };
+        iv.contentType = Constant(contentType);
         intervals.push_back(std::move(iv));
     }
     void LazyStaggeredGridScope::Items(int count, kiln::Function<void(int)> content, kiln::Function<rt::Key(int)> key,
-                                       kiln::Function<bool(int)> fullLine) {
+                                       kiln::Function<bool(int)> fullLine, kiln::Function<rt::Key(int)> contentType) {
         LazyInterval iv{ count, std::move(content), std::move(key) };
         if (fullLine) iv.span = [fullLine](int i, int, int max) { return fullLine(i) ? max : 1; };
+        iv.contentType = std::move(contentType);
         intervals.push_back(std::move(iv));
     }
 
@@ -145,7 +163,11 @@ namespace kiln::foundation {
             std::unique_ptr<rt::Composition> composition;
             int index = -1;
             std::uint64_t contentVersion = 0;
+            std::uint64_t contentType = 0;
         };
+        // LazyLayoutItemReusePolicy: items kept for reuse per content type (RecyclerView's 5
+        // scrap + 2 cache).
+        constexpr std::size_t kMaxItemsToRetainForReuse = 7;
         constexpr int kNone = std::numeric_limits<int>::min();
 
         // LazyLayoutItemAnimation: one item's placement delta and fade, by key.
@@ -356,6 +378,118 @@ namespace kiln::foundation {
             slot.composition.reset();
             slot.registry.reset();
         }
+        // Items kept for reuse, by content type (oldest first), with the key they had.
+        std::map<std::uint64_t, std::vector<std::pair<std::uint64_t, Slot>>> reusable;
+        // An item that left: its state is saved, its composition deactivated and kept for an
+        // item of the same content type (LazyLayoutItemReusePolicy).
+        void RecycleSlot(std::uint64_t keyValue, Slot& slot) {
+            if (slot.pin) slot.pin->Dispose();
+            slot.pin.reset();
+            if (holder && slot.registry) holder->Close(SaveKey(keyValue));
+            slot.composition->Deactivate();
+            slot.registry.reset();
+            slot.index = -1;
+            reusable[slot.contentType].emplace_back(keyValue, std::move(slot));
+        }
+        // Past the limit the oldest go; called once they are out of the layout.
+        void TrimReusable() {
+            for (auto& [type, pool] : reusable)
+                while (pool.size() > kMaxItemsToRetainForReuse) {
+                    pool.front().second.composition.reset();
+                    pool.erase(pool.begin());
+                }
+        }
+        // takeNodeFromReusables: the item's own kept slot, else the newest of its content type.
+        bool TakeReusable(std::uint64_t keyValue, std::uint64_t type, Slot& into) {
+            auto it = reusable.find(type);
+            if (it == reusable.end() || it->second.empty()) return false;
+            auto& pool = it->second;
+            auto chosen = pool.end() - 1;
+            for (auto p = pool.begin(); p != pool.end(); ++p)
+                if (p->first == keyValue) { chosen = p; break; }
+            into = std::move(chosen->second);
+            pool.erase(chosen);
+            return true;
+        }
+        // The layout node's composition was deactivated: every item leaves.
+        void DisposeAll(LayoutNode& self) {
+            CancelPrefetch();
+            self.SetChildrenDuringMeasure({});
+            for (auto& [k, slot] : slots) DisposeSlot(k, slot);
+            slots.clear();
+            for (auto& [t, pool] : reusable) for (auto& [k, slot] : pool) slot.composition.reset();
+            reusable.clear();
+            lookaheadKeys.clear();
+            approachKeys.clear();
+        }
+        // Prefetch (DefaultLazyListPrefetchStrategy): while scrolling, the line about to come in
+        // is composed and premeasured in the frames' spare time (PrefetchScheduler).
+        struct PrefetchItem final : ui::PrefetchRequest {
+            std::weak_ptr<LazyCore> core;
+            int index = 0;
+            Constraints constraints;
+            bool cancelled = false, composed = false, measured = false, urgent = false;
+            bool Execute(ui::PrefetchRequestScope& scope) override;
+        };
+        struct PrefetchTimes { std::int64_t compose = 0, measure = 0; };
+        std::map<std::uint64_t, PrefetchTimes> prefetchTimes;   // by content type
+        std::vector<std::shared_ptr<PrefetchItem>> prefetching;
+        std::set<std::uint64_t> prefetched;   // composed ahead, kept until a measure uses them
+        int prefetchLine = -1;
+        bool prefetchForward = false;
+        LayoutNode* prefetchNode = nullptr;
+        std::weak_ptr<const char> prefetchNodeAlive;
+        void CancelPrefetch() {
+            for (auto& p : prefetching) p->cancelled = true;
+            prefetching.clear();
+            prefetched.clear();   // the next measure recycles the ones it does not use
+            prefetchLine = -1;
+        }
+        // onScroll and onVisibleItemsUpdated. distanceForward / Backward: how far the line to
+        // prefetch is from the viewport edge; one more scroll by delta reaching it makes it urgent.
+        template<typename CellsOf>
+        void UpdatePrefetch(LayoutNode& self, float delta, int firstLine, int lastLine, int lineCount,
+                            int distanceForward, int distanceBackward, const CellsOf& cellsOf) {
+            prefetchNode = &self;
+            prefetchNodeAlive = self.AliveToken();
+            // evaluatePrefetchForCancellation: the line expected now is another one.
+            if (prefetchLine != -1 && prefetchLine != (prefetchForward ? lastLine + 1 : firstLine - 1)) CancelPrefetch();
+            if (delta == 0) return;
+            const bool forward = delta > 0;
+            const int target = forward ? lastLine + 1 : firstLine - 1;
+            if (target < 0 || target >= lineCount) return;
+            if (target != prefetchLine) {
+                // The other way: what was prefetched is not coming soon.
+                if (forward != prefetchForward) CancelPrefetch();
+                prefetchForward = forward;
+                prefetchLine = target;
+                for (auto& [i, cc] : cellsOf(target)) {
+                    auto item = std::make_shared<PrefetchItem>();
+                    item->core = weak_from_this();
+                    item->index = i;
+                    item->constraints = cc;
+                    prefetching.push_back(item);
+                    ui::PrefetchScheduler::Main().Schedule(item);
+                }
+            }
+            if ((forward ? distanceForward : distanceBackward) < std::abs(delta))
+                for (auto& p : prefetching) p->urgent = true;   // markAsUrgent
+        }
+        // Prefetched slots no measure used stay composed, attached but not placed.
+        void KeepPrefetched(const std::vector<const Slot*>& used, std::vector<LayoutNode*>& active) {
+            for (auto it = prefetched.begin(); it != prefetched.end();) {
+                auto sl = slots.find(*it);
+                if (sl == slots.end() || std::find(used.begin(), used.end(), &sl->second) != used.end()) { it = prefetched.erase(it); continue; }
+                if (std::find(active.begin(), active.end(), sl->second.holder.get()) == active.end()) active.push_back(sl->second.holder.get());
+                ++it;
+            }
+        }
+
+        std::uint64_t ContentTypeOf(int index) const {
+            int local = 0;
+            if (const auto* iv = IntervalOf(index, local); iv && iv->contentType) return iv->contentType(local).value;
+            return 0;
+        }
 
         const LazyInterval* IntervalOf(int index, int& local) const {
             int base = 0;
@@ -450,6 +584,10 @@ namespace kiln::foundation {
             const rt::Key key = KeyOf(index);
             Slot& slot = slots[key.value];
             if (!slot.holder) {
+                slot.contentType = ContentTypeOf(index);
+                TakeReusable(key.value, slot.contentType, slot);
+            }
+            if (!slot.holder) {
                 slot.holder = std::make_unique<LayoutNode>();
                 auto policy = std::make_shared<HolderPolicy>();
                 // The core owns the slots, so it outlives their holders.
@@ -458,8 +596,8 @@ namespace kiln::foundation {
                 };
                 slot.holder->SetMeasurePolicy(policy);
                 slot.composition = std::make_unique<rt::Composition>(*slot.holder, d);
-                if (holder) slot.registry = holder->Open(SaveKey(key.value));
             }
+            if (holder && !slot.registry) slot.registry = holder->Open(SaveKey(key.value));
             slot.composition->SetParentContext(context);
             if (!slot.pin) slot.pin = std::make_shared<PinItem>(weak_from_this(), key);
             slot.pin->parent = parentPin;
@@ -487,6 +625,42 @@ namespace kiln::foundation {
 
         MeasureResult Measure(LayoutNode& self, MeasureScope& s, const Constraints& c);
     };
+
+    // HandleAndRequestImpl.execute: compose, then premeasure, each only when the time left in the
+    // frame covers what it took on average for this content type (or when urgent).
+    bool LazyCore::PrefetchItem::Execute(ui::PrefetchRequestScope& scope) {
+        auto c = core.lock();
+        if (!c || cancelled || index >= c->count || c->prefetchNodeAlive.expired()) return false;
+        using Clock = std::chrono::steady_clock;
+        const auto since = [](Clock::time_point t0) { return std::chrono::duration_cast<std::chrono::nanoseconds>(Clock::now() - t0).count(); };
+        PrefetchTimes& times = c->prefetchTimes[c->ContentTypeOf(index)];
+        const std::uint64_t key = c->KeyOf(index).value;
+        if (!composed) {
+            if (!urgent && times.compose > scope.AvailableTimeNanos()) return true;
+            const auto t0 = Clock::now();
+            Slot& sl = c->Compose(index, rt::Dispatcher::Main());
+            c->prefetched.insert(key);
+            // Attached, not placed: measured with the layout's owner and locals.
+            LayoutNode& node = *c->prefetchNode;
+            std::vector<LayoutNode*> children(node.Children().begin(), node.Children().end());
+            if (std::find(children.begin(), children.end(), sl.holder.get()) == children.end()) {
+                children.push_back(sl.holder.get());
+                node.SetChildrenDuringMeasure(children);
+            }
+            times.compose = ui::AverageNanos(times.compose, since(t0));
+            composed = true;
+        }
+        if (!measured) {
+            if (!urgent && times.measure > scope.AvailableTimeNanos()) return true;
+            auto sl = c->slots.find(key);
+            if (sl == c->slots.end() || !sl->second.holder) return false;
+            const auto t0 = Clock::now();
+            sl->second.holder->AsMeasurable().Measure(constraints);
+            times.measure = ui::AverageNanos(times.measure, since(t0));
+            measured = true;
+        }
+        return false;
+    }
 
     namespace {
         void PinItem::Pin() {
@@ -687,6 +861,7 @@ namespace kiln::foundation {
 
         if ((count == 0 || lanes == 0) && pass.approach) return s.Layout(c.minWidth, c.minHeight);
         if (count == 0 || lanes == 0) {
+            CancelPrefetch();
             self.SetChildrenDuringMeasure({});   // detach before the slots free the nodes
             for (auto& [k, slot] : slots) DisposeSlot(k, slot);
             slots.clear();
@@ -1117,11 +1292,14 @@ namespace kiln::foundation {
         for (auto& [k, a] : af.disappearing) { Slot& sl = slots[k]; nowActive.push_back(sl.holder.get()); used.push_back(&sl); }
         for (auto& m : af.movingAway) { Slot& sl = Compose(m.index, d); nowActive.push_back(sl.holder.get()); used.push_back(&sl); }
         const std::set<std::uint64_t>* kept = KeepForOtherPass(pass, used, nowActive);
-        self.SetChildrenDuringMeasure(nowActive);
+        // Leaving items are deactivated while still attached (their nodes reset first, then
+        // detach), then leave the layout; the pools drop their oldest after.
         for (auto it = slots.begin(); it != slots.end();) {
-            if (std::find(used.begin(), used.end(), &it->second) == used.end() && !(kept && kept->count(it->first))) { DisposeSlot(it->first, it->second); it = slots.erase(it); }
+            if (std::find(used.begin(), used.end(), &it->second) == used.end() && !(kept && kept->count(it->first))) { RecycleSlot(it->first, it->second); it = slots.erase(it); }
             else ++it;
         }
+        self.SetChildrenDuringMeasure(nowActive);
+        TrimReusable();
 
         // calculateFirstVisibleIndex / Offset.
         int first = std::numeric_limits<int>::max();
@@ -1399,6 +1577,17 @@ namespace kiln::foundation {
         // mid-measure would detach its content (a focused item would lose its pin).
         std::vector<LayoutNode*> active;
         for (auto& [k, sl] : slots) if (sl.holder) active.push_back(sl.holder.get());
+        // A cell's constraints: its slots' width in a grid, the page in a pager.
+        auto cellConstraints = [&](int slot, int span) {
+            if (grid) {
+                int w = 0;
+                for (int k = slot; k < slot + span; ++k) w += slotSizes[std::size_t(k)];
+                w += crossSpacingPx * (span - 1);
+                return vertical ? Constraints{ w, w, 0, Constraints::Infinity } : Constraints{ 0, Constraints::Infinity, w, w };
+            }
+            if (pager) return vertical ? Constraints{ 0, crossAvailable, pagePx, pagePx } : Constraints{ pagePx, pagePx, 0, crossAvailable };
+            return vertical ? Constraints{ 0, crossAvailable, 0, Constraints::Infinity } : Constraints{ 0, Constraints::Infinity, 0, crossAvailable };
+        };
         auto measureLine = [&](int line) -> MLine {
             MLine ml{ line, LineFirst(line), LineEnd(line) - 1, {}, 0 };
             int slot = 0;
@@ -1407,21 +1596,8 @@ namespace kiln::foundation {
                 Slot& sl = Compose(i, d);
                 if (std::find(active.begin(), active.end(), sl.holder.get()) == active.end()) active.push_back(sl.holder.get());
                 self.SetChildrenDuringMeasure(active);   // attached before measuring (to get an owner)
-                Constraints ic;
-                int crossPos = -1;
-                if (grid) {
-                    int w = 0;
-                    for (int k = slot; k < slot + span; ++k) w += slotSizes[std::size_t(k)];
-                    w += crossSpacingPx * (span - 1);
-                    ic = vertical ? Constraints{ w, w, 0, Constraints::Infinity } : Constraints{ 0, Constraints::Infinity, w, w };
-                    crossPos = slotPositions[std::size_t(slot)];
-                } else if (pager) {
-                    ic = vertical ? Constraints{ 0, crossAvailable, pagePx, pagePx }
-                                  : Constraints{ pagePx, pagePx, 0, crossAvailable };
-                } else {
-                    ic = vertical ? Constraints{ 0, crossAvailable, 0, Constraints::Infinity }
-                                  : Constraints{ 0, Constraints::Infinity, 0, crossAvailable };
-                }
+                const Constraints ic = cellConstraints(slot, span);
+                const int crossPos = grid ? slotPositions[std::size_t(slot)] : -1;
                 Placeable& p = MeasurableOf(*sl.holder, pass).Measure(ic);
                 ml.cells.push_back({ i, &sl, &p, crossPos, slot, ic });
                 ml.size = std::max(ml.size, vertical ? p.Height() : p.Width());
@@ -1464,6 +1640,7 @@ namespace kiln::foundation {
         }
         if (count == 0 && pass.approach) return s.Layout(c.minWidth, c.minHeight);
         if (count == 0) {
+            CancelPrefetch();
             self.SetChildrenDuringMeasure({});   // detach before the slots free the nodes
             for (auto& [k, slot] : slots) DisposeSlot(k, slot);
             slots.clear();
@@ -1537,6 +1714,21 @@ namespace kiln::foundation {
             st.m_Lines.clear();
             for (std::size_t i = 0; i < lines.size(); ++i) st.m_Lines.push_back({ lines[i].first, lines[i].last, offsets[i], lines[i].size });
         }
+        if (!pass.lookingAhead && !pass.approach) {
+            // The cells of the line to prefetch, with the constraints they will be measured with.
+            auto cellsOf = [&](int l) {
+                std::vector<std::pair<int, Constraints>> cells;
+                int slot = 0;
+                for (int i = LineFirst(l); i < LineEnd(l); ++i) {
+                    const int span = std::min(SpanOf(i, slotsPerLine - slot), slotsPerLine - slot);
+                    cells.emplace_back(i, cellConstraints(slot, span));
+                    slot += span;
+                }
+                return cells;
+            };
+            const int lastEnd = offsets.back() + lines.back().size + spacing;
+            UpdatePrefetch(self, delta, lines.front().line, lastLine, lineCount, lastEnd - viewport, -offsets.front(), cellsOf);
+        }
 
         // Sticky header (StickToTopPlacement): the last header at or before the first visible
         // item, at the viewport start, pushed back by the next visible header; drawn on top.
@@ -1604,7 +1796,7 @@ namespace kiln::foundation {
         auto& disappearing = af.disappearing;
         auto& movingAway = af.movingAway;
 
-        // Dispose slots not in use (no reuse pool yet).
+        // Slots not in use are kept for reuse or disposed.
         std::vector<LayoutNode*> nowActive;
         std::vector<const Slot*> used;
         for (auto& l : lines) for (auto& cell : l.cells) { nowActive.push_back(cell.slot->holder.get()); used.push_back(cell.slot); }
@@ -1614,11 +1806,14 @@ namespace kiln::foundation {
         for (auto& [k, a] : disappearing) { Slot& sl = slots[k]; nowActive.push_back(sl.holder.get()); used.push_back(&sl); }
         for (auto& m : movingAway) { Slot& sl = Compose(m.index, d); nowActive.push_back(sl.holder.get()); used.push_back(&sl); }
         const std::set<std::uint64_t>* kept = KeepForOtherPass(pass, used, nowActive);
-        self.SetChildrenDuringMeasure(nowActive);
+        KeepPrefetched(used, nowActive);
         for (auto it = slots.begin(); it != slots.end();) {
-            if (std::find(used.begin(), used.end(), &it->second) == used.end() && !(kept && kept->count(it->first))) { DisposeSlot(it->first, it->second); it = slots.erase(it); }
+            if (std::find(used.begin(), used.end(), &it->second) == used.end() && !(kept && kept->count(it->first)) &&
+                !prefetched.count(it->first)) { RecycleSlot(it->first, it->second); it = slots.erase(it); }
             else ++it;
         }
+        self.SetChildrenDuringMeasure(nowActive);
+        TrimReusable();
         for (auto it = anims.begin(); it != anims.end();) {
             if (!slots.count(it->first) && !it->second->Busy()) it = anims.erase(it);
             else ++it;
@@ -1836,6 +2031,7 @@ namespace kiln::foundation {
             MeasureResult Measure(MeasureScope& s, std::span<Measurable* const>, const Constraints& c) override {
                 return core->Measure(*node, s, c);
             }
+            void OnDeactivate() override { if (core && node) core->DisposeAll(*node); }
         };
 
         // The composable part shared by lists and grids; `configure` fills the core.
@@ -1969,6 +2165,8 @@ namespace kiln::foundation {
                                           p->core = c;
                                           p->node = &n;
                                           n.SetMeasurePolicy(p);
+                                      } else {
+                                          policy->core = c;   // a reused node: the core composed now
                                       }
                                       n.RequestRemeasure();
                                   }, {}, key);

@@ -5,8 +5,9 @@
 // own saveable registry (kept while it is off-screen). Both layouts measure lines: a list line
 // is one item, a grid line is a row (column) of cells. The scroll position is the first visible
 // item (tracked by key across data changes) and its offset.
-// Not yet: reuse pool by contentType, prefetch, item animations, beyond-bounds composition for
-// focus (PLAN M5).
+// An item that scrolls away is kept for reuse (up to 7 per content type, as RecyclerView): its
+// composition is deactivated, and an item of the same content type coming in takes over its
+// nodes instead of creating new ones.
 
 #include "kiln/foundation/Arrangement.h"
 #include <kiln/Function.h>
@@ -235,12 +236,16 @@ namespace kiln::foundation {
         bool sticky = false;
         // Grid only: the span for local index i given (maxCurrentLineSpan, maxLineSpan).
         kiln::Function<int(int i, int maxCurrentLineSpan, int maxLineSpan)> span;
+        // contentType: items of one type reuse each other's nodes. Unset (or a positional key):
+        // the null type, shared by every item without one.
+        kiln::Function<rt::Key(int)> contentType;
     };
 
     class LazyListScope {
     public:
-        void Item(kiln::Function<void()> content, rt::Key key = rt::Key::Positional());
-        void Items(int count, kiln::Function<void(int)> content, kiln::Function<rt::Key(int)> key = {});
+        void Item(kiln::Function<void()> content, rt::Key key = rt::Key::Positional(), rt::Key contentType = rt::Key::Positional());
+        void Items(int count, kiln::Function<void(int)> content, kiln::Function<rt::Key(int)> key = {},
+                   kiln::Function<rt::Key(int)> contentType = {});
         // stickyHeader: stays pinned at the start while the items after it scroll, until the
         // next header pushes it out. `content` gets the header's index in the list.
         void StickyHeader(kiln::Function<void(int index)> content, rt::Key key = rt::Key::Positional());
@@ -257,8 +262,9 @@ namespace kiln::foundation {
     class LazyGridScope {
     public:
         void Item(kiln::Function<void()> content, rt::Key key = rt::Key::Positional(),
-                  kiln::Function<int(const GridItemSpanScope&)> span = {});
-        void Items(int count, kiln::Function<void(int)> content, kiln::Function<rt::Key(int)> key = {}, GridSpan span = {});
+                  kiln::Function<int(const GridItemSpanScope&)> span = {}, rt::Key contentType = rt::Key::Positional());
+        void Items(int count, kiln::Function<void(int)> content, kiln::Function<rt::Key(int)> key = {}, GridSpan span = {},
+                   kiln::Function<rt::Key(int)> contentType = {});
         // A full-line header that sticks like LazyColumn's.
         void StickyHeader(kiln::Function<void(int index)> content, rt::Key key = rt::Key::Positional());
 
@@ -269,9 +275,10 @@ namespace kiln::foundation {
     // start below every lane (StaggeredGridItemSpan.FullLine).
     class LazyStaggeredGridScope {
     public:
-        void Item(kiln::Function<void()> content, rt::Key key = rt::Key::Positional(), bool fullLine = false);
+        void Item(kiln::Function<void()> content, rt::Key key = rt::Key::Positional(), bool fullLine = false,
+                  rt::Key contentType = rt::Key::Positional());
         void Items(int count, kiln::Function<void(int)> content, kiln::Function<rt::Key(int)> key = {},
-                   kiln::Function<bool(int index)> fullLine = {});
+                   kiln::Function<bool(int index)> fullLine = {}, kiln::Function<rt::Key(int)> contentType = {});
         std::vector<LazyInterval> intervals;
     };
 

@@ -36,9 +36,8 @@ namespace kiln::foundation {
     void SubcomposeLayout(const Modifier& modifier, SubcomposeMeasure measure, rt::Key key = {});
 
     // SubcomposeSlotReusePolicy: which slots that leave are kept for reuse, and which kept slot
-    // a new slot id may take over. kiln composes a slot anew rather than reusing another's
-    // nodes, so a slot that leaves is disposed: its state is forgotten either way, as Compose
-    // forgets a retained slot's state.
+    // a new slot id may take over. A kept slot's composition is deactivated: its remembered
+    // state is forgotten, its nodes stay for the slot that takes it over.
     class SubcomposeSlotReusePolicy {
     public:
         class SlotIdsSet {
@@ -51,6 +50,8 @@ namespace kiln::foundation {
             bool IsEmpty() const { return m_Ids.empty(); }
             void RemoveIf(const kiln::Function<bool(const rt::Key&)>& pred) { std::erase_if(m_Ids, pred); }
             void RetainIf(const kiln::Function<bool(const rt::Key&)>& pred) { std::erase_if(m_Ids, [&](const rt::Key& k) { return !pred(k); }); }
+            // trimToSize: keeps the first `size` ids.
+            void TrimToSize(std::size_t size) { if (m_Ids.size() > size) m_Ids.resize(size); }
             const std::vector<rt::Key>& Ids() const { return m_Ids; }
         private:
             std::vector<rt::Key> m_Ids;

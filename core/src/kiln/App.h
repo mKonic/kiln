@@ -207,6 +207,14 @@ namespace kiln {
         Rgba m_Clear{ 1, 1, 1, 1 };
         bool m_FramePending = false;
         double m_SubmitMs = 0;
+        // Prefetch in each frame's spare time (PrefetchScheduler): the vsync interval, from the
+        // frame times, and the idle run for work no frame got to.
+        double m_LastFrameSeconds = 0;
+        std::chrono::nanoseconds m_FrameInterval{ 16'666'667 };
+        std::uint64_t m_FrameCount = 0;
+        rt::Job m_IdlePrefetch;
+        void RunPrefetch(std::chrono::steady_clock::time_point frameStart);
+        rt::Task<> IdlePrefetch(std::uint64_t frame);
         rt::Dispatcher& m_Dispatcher = rt::Dispatcher::Main();
         std::vector<FrameStage> m_Stages;
         float m_AnimationScale = 1.0f;

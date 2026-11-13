@@ -61,6 +61,7 @@ namespace kiln::foundation {
         ui::DrawModifier* AsDraw() override { return this; }
         void Draw(ui::ContentDrawScope& s) override;
         void OnDetach() override { ReleaseLayers(); }
+        void OnReset() override { InvalidateDrawCache(); }
         void OnObservedReadsChanged() override { InvalidateDrawCache(); }
         // invalidateDrawCache: rebuild before the next draw.
         void InvalidateDrawCache();

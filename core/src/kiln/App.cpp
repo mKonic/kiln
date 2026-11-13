@@ -2,6 +2,7 @@
 #include "kiln/App.h"
 #include <kiln/Function.h>
 #include "kiln/ui/Locals.h"
+#include "kiln/ui/PrefetchScheduler.h"
 #include "kiln/runtime/State.h"
 #include "kiln/animation/Animatable.h"
 
@@ -546,8 +547,33 @@ namespace kiln {
         return handled;
     }
 
+    // What fits before the next vsync runs now; the rest waits for the next frame, or for an
+    // idle one when no frame comes (two intervals without drawing, as AndroidPrefetchScheduler).
+    void App::RunPrefetch(std::chrono::steady_clock::time_point frameStart) {
+        ui::PrefetchScheduler& prefetch = ui::PrefetchScheduler::Main();
+        if (!prefetch.HasWork() || !prefetch.Run(frameStart + m_FrameInterval)) return;
+        m_IdlePrefetch = rt::Launch(m_Dispatcher, IdlePrefetch(m_FrameCount));
+    }
+
+    rt::Task<> App::IdlePrefetch(std::uint64_t frame) {
+        for (;;) {
+            co_await rt::Delay(std::chrono::duration_cast<std::chrono::milliseconds>(m_FrameInterval * 2).count() + 1);
+            if (m_FrameCount != frame) co_return;   // frames are running it
+            if (!ui::PrefetchScheduler::Main().Run(std::chrono::steady_clock::now() + m_FrameInterval)) co_return;
+        }
+    }
+
     void App::Frame(double timeSeconds) {
         m_FramePending = false;
+        const auto frameStart = std::chrono::steady_clock::now();
+        if (const double dt = timeSeconds - m_LastFrameSeconds; m_LastFrameSeconds > 0 && dt > 0.002 && dt < 0.05)
+            m_FrameInterval = std::min(std::chrono::nanoseconds(std::int64_t(dt * 1e9)), m_FrameInterval * 101 / 100);
+        m_LastFrameSeconds = timeSeconds;
+        ++m_FrameCount;
+        struct AfterFrame {
+            App& app; std::chrono::steady_clock::time_point start;
+            ~AfterFrame() { app.RunPrefetch(start); }
+        } afterFrame{ *this, frameStart };
         // Frame order (architecture 3.3): posted work, animation frame waiters with the shared
         // vsync time, then stages (state apply + recomposition, measure, layout), then drawing.
         m_Dispatcher.RunPending();

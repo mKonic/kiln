@@ -150,6 +150,9 @@ namespace kiln::ui {
         virtual ~ModifierNode() = default;
         virtual void OnAttach() {}
         virtual void OnDetach() {}
+        // onReset: the node's layout node is being kept for reuse by other content (a lazy item
+        // scrolled away). Drop state that belongs to the old content; detach follows.
+        virtual void OnReset() {}
         virtual LayoutModifier* AsLayout() { return nullptr; }
         virtual DrawModifier* AsDraw() { return nullptr; }
         // True when the node clips what is drawn under it to its bounds (graphicsLayer clip):

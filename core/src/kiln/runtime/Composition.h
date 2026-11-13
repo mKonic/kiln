@@ -45,6 +45,12 @@ namespace kiln::rt {
         // CompositionLocals there (CompositionLocalConsumerModifierNode). Null outside a composition.
         class Scope* ContentScope() const { return m_ContentScope; }
         class Scope* m_ContentScope = nullptr;
+        // Reuse (ComposeNodeLifecycleCallback): the composition that emitted the node was
+        // deactivated and keeps it for other content (OnDeactivate), then that content took it
+        // over (OnReuse, before its update runs).
+        virtual void OnDeactivate() {}
+        virtual void OnReuse() {}
+        bool m_Deactivated = false;
     };
 
     // Identity of a call. Default-constructed at a call site it is that site's source location,
@@ -201,6 +207,11 @@ namespace kiln::rt {
         ~Composition();
 
         void SetContent(kiln::Function<void()> content);
+        // ReusableComposition.deactivate: forgets every remembered value and effect (their
+        // observers and disposers run now) but keeps the nodes. The next SetContent composes
+        // anew over them, reusing each node its calls match (setContentWithReuse).
+        void Deactivate();
+        bool IsDeactivated() const { return m_Deactivated; }
         // Frame step 3: apply state changes, recompose, apply node changes, run effects.
         // Returns whether anything recomposed.
         bool Recompose();
@@ -281,6 +292,9 @@ namespace kiln::rt {
                 g.scope = std::make_unique<Scope>(*this, m_Current, g.node.get(), g.key.value);
                 g.node->m_CompositeKeyHash = NodeKeyHash(g);
                 g.node->m_ContentScope = g.scope.get();
+            } else if (g.node->m_Deactivated) {
+                g.node->m_Deactivated = false;
+                g.node->OnReuse();
             }
             auto& n = static_cast<N&>(*g.node);
             if (update) update(n);
@@ -368,6 +382,7 @@ namespace kiln::rt {
         void RunChild(Scope& scope, kiln::Function<void()> content, const Keys* memo);
         void RunScope(Scope& scope);
         void Dispose(Group& g);
+        void DeactivateScope(Scope& scope);
         void Park(Group& g);
         void Reparent(Scope& scope, Scope* parent, TreeNode* oldHost, TreeNode* newHost);
         void Unpend(Scope& scope);
@@ -409,6 +424,7 @@ namespace kiln::rt {
         std::unordered_map<MovableHandle*, Group> m_Parked;
         std::uint64_t m_PassId = 1;
         bool m_Destroying = false;
+        bool m_Deactivated = false;
     };
 
 

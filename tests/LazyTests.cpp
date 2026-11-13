@@ -6,6 +6,8 @@
 #include "kiln/foundation/Compose.h"
 #include "kiln/foundation/Lazy.h"
 #include "kiln/runtime/Saveable.h"
+#include "kiln/ui/PrefetchScheduler.h"
+#include <set>
 #include <chrono>
 #include <cstdio>
 #include <map>
@@ -874,4 +876,68 @@ TEST(LazyColumnInALookaheadScopeScrollsOnce) {
     int top = 1000;
     for (LayoutNode* c : list->Children()) if (c->IsPlaced()) top = std::min(top, c->Position().y);
     CHECK_EQ(top, -5);
+}
+
+// LazyLayoutItemReusePolicy: an item scrolled away is kept and an item of the same content type
+// coming in takes over its nodes (created once), with its remembered state started over; other
+// content types make their own.
+TEST(LazyItemsReuseNodesByContentType) {
+    Harness h;
+    LazyListState state;
+    int made = 0, remembered = 0;
+    std::map<int, int> rememberedBy;
+    h.Run([&] {
+        LazyColumn(FillMax(Modifier{}, Axis::Both), state, [&](LazyListScope& s) {
+            s.Items(1000, [&](int i) {
+                rememberedBy[i] = rt::Composition::Current()->Remember<int>([&] { return ++remembered; });
+                rt::Composition::Current()->Node<LayoutNode>([&] { ++made; return std::make_unique<LayoutNode>(); },
+                    [](LayoutNode& n) { n.SetMeasurePolicy(std::make_shared<BoxPolicy>(Alignment::TopStart(), false)); n.SetModifier(SizeMod(Modifier{}, Dp(100), Dp(30))); });
+            }, {}, [](int i) { return rt::Key(i % 2); });
+        });
+    });
+    const int first = made;
+    CHECK(first >= 4 && first <= 6);
+    for (int step = 0; step < 20; ++step) { state.ConsumeScrollDelta(30); h.Pump(); }
+    CHECK_EQ(state.FirstVisibleItemIndex(), 20);
+    // Scrolling 20 items made at most a couple of nodes beyond the first screen; each item that
+    // came in still remembered afresh.
+    CHECK(made <= first + 2);
+    CHECK(remembered >= 20);
+    CHECK(rememberedBy[20] != rememberedBy[0]);
+}
+
+// Prefetch (DefaultLazyListPrefetchStrategy): scrolling composes the next item in the frame's
+// spare time, so it is ready when it scrolls in; a scroll the other way drops it.
+TEST(LazyColumnPrefetchesTheNextItemInTheScrollDirection) {
+    // Earlier tests' requests (their lists gone) leave the thread's scheduler first.
+    ui::PrefetchScheduler::Main().Run(std::chrono::steady_clock::now() + std::chrono::seconds(1));
+    Harness h;
+    LazyListState state;
+    std::set<int> composed;
+    h.Run([&] {
+        LazyColumn(FillMax(Modifier{}, Axis::Both), state, [&](LazyListScope& s) {
+            s.Items(100, [&](int i) { composed.insert(i); Box(SizeMod(Modifier{}, Dp(100), Dp(30))); });
+        });
+    });
+    auto& prefetch = ui::PrefetchScheduler::Main();
+    auto later = [] { return std::chrono::steady_clock::now() + std::chrono::seconds(1); };
+    // 0..3 visible (100 px, 30 px items). No scroll yet: nothing to prefetch.
+    CHECK(!prefetch.HasWork());
+    state.ConsumeScrollDelta(10);
+    h.Pump();
+    CHECK(prefetch.HasWork());
+    composed.clear();
+    CHECK(!prefetch.Run(later()));
+    CHECK(composed == std::set<int>{ 4 });   // the item after the last visible one
+    composed.clear();
+    state.ConsumeScrollDelta(20);            // 4 comes into view: composed already
+    h.Pump();
+    CHECK(!composed.count(4));
+    prefetch.Run(later());
+    CHECK(composed.count(5));
+    composed.clear();
+    state.ConsumeScrollDelta(-5);            // the other way: the item before the first visible
+    h.Pump();
+    prefetch.Run(later());
+    CHECK(composed == std::set<int>{ 0 });
 }

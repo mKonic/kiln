@@ -28,6 +28,7 @@
 #include "kiln/ui/Window.h"
 #include "kiln/ui/DragAndDrop.h"
 #include "kiln/ui/ExternalSurface.h"
+#include "kiln/ui/InteropView.h"
 #include "kiln/ui/ScrollCapture.h"
 #include "kiln/ui/ActivityResult.h"
 #include "kiln/ui/Insets.h"
@@ -62,6 +63,8 @@ namespace kiln::ui {
         const std::shared_ptr<MeasurePolicy>& Policy() const { return m_Policy; }
         void SetModifier(const Modifier& modifier);
         void SetChildren(std::vector<rt::TreeNode*> children) override;
+        void OnDeactivate() override;   // LayoutNode.onDeactivate: resets its modifier nodes
+        void OnReuse() override;        // LayoutNode.onReuse: measures and draws anew
         // Measure-time child changes (subcomposition): attaches without re-dirtying this node,
         // which is being measured right now.
         void SetChildrenDuringMeasure(std::vector<LayoutNode*> children);
@@ -736,6 +739,30 @@ namespace kiln::ui {
             if (auto it = m_ExternalSurfaces.find(id); it != m_ExternalSurfaces.end()) it->second.client->OnSurfaceDestroyed(surface);
         }
 
+        // Native Views (AndroidView): content adds them by client; the host makes and keeps them.
+        // Without a host (the desktop dev host) every call does nothing.
+        void SetInteropViewHost(InteropViewHost host) { m_InteropHost = std::move(host); }
+        const InteropViewHost& InteropViews() const { return m_InteropHost; }
+        int AddInteropView(InteropViewClient* client) {
+            const int id = m_NextInteropView++;
+            m_InteropViews[id] = client;
+            return id;
+        }
+        void RemoveInteropView(int id) {
+            if (m_InteropViews.erase(id) && m_InteropHost.release) m_InteropHost.release(id);
+        }
+        // The View on `node`'s element (0: none), for accessibility.
+        int InteropViewOf(const LayoutNode* node) const {
+            for (const auto& [id, client] : m_InteropViews)
+                if (client->Node() == node) return id;
+            return 0;
+        }
+        // From the host: the client of a View it holds (null once removed).
+        InteropViewClient* InteropViewClientOf(int id) const {
+            auto it = m_InteropViews.find(id);
+            return it == m_InteropViews.end() ? nullptr : it->second;
+        }
+
         // Text input: one active session at a time (TextInputServiceAndroid).
         void SetTextInputHost(TextInputHost host) { m_InputHost = std::move(host); }
         void StartTextInput(TextInputSession& session);
@@ -948,6 +975,9 @@ namespace kiln::ui {
             ExternalSurfaceConfig config;
         };
         ExternalSurfaceHost m_SurfaceHost;
+        InteropViewHost m_InteropHost;
+        std::map<int, InteropViewClient*> m_InteropViews;
+        int m_NextInteropView = 1;
         std::map<int, ExternalSurfaceEntry> m_ExternalSurfaces;
         int m_NextExternalSurface = 1;
         std::shared_ptr<SoftwareKeyboardController> m_KeyboardController;

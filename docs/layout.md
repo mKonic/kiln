@@ -90,8 +90,14 @@ LazyColumn(FillMax(Modifier{}, Axis::Both), state, [&contacts](LazyListScope& s)
 
 * `Item(content)` adds one item, `Items(count, content, key)` adds many.
 * A key keeps an item's state with the item when the list changes order.
+* A content type, the last argument of `Item` and `Items`, says which items look alike.
+  An item that scrolls away keeps its nodes for the next item of the same type, so
+  scrolling builds few new ones. Give items of different layouts different types.
 * `StickyHeader` stays at the top while its section scrolls.
 * `AnimateItem(modifier)` on an item animates it when it appears, moves or leaves.
+
+While the list scrolls, the item about to come in is composed and measured ahead, in the
+time each frame leaves before the next one.
 
 The state scrolls the list from code: `state.ScrollToItem(i)` jumps,
 `state.AnimateScrollToItem(i)` returns a task that animates. Read the position with

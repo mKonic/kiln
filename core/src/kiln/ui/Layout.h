@@ -343,6 +343,9 @@ namespace kiln::ui {
         virtual int MaxIntrinsicWidth(MeasureScope& s, std::span<Measurable* const> children, int height);
         virtual int MinIntrinsicHeight(MeasureScope& s, std::span<Measurable* const> children, int width);
         virtual int MaxIntrinsicHeight(MeasureScope& s, std::span<Measurable* const> children, int width);
+        // The node's composition was deactivated for reuse: content the policy composed itself
+        // (subcompositions) leaves now, while what it refers to is still alive.
+        virtual void OnDeactivate() {}
     };
 
     // A policy from a lambda, for one-off layouts.

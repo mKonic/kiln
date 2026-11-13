@@ -176,13 +176,14 @@ namespace kiln::rt {
     Composition* Composition::Current() { return t_Current; }
 
     void Composition::SetContent(kiln::Function<void()> content) {
+        m_Deactivated = false;
         if (!m_RootScope) m_RootScope = std::make_unique<Scope>(*this, nullptr, &m_Root);
         m_RootScope->m_Content = std::move(content);
         Invalidate(*m_RootScope);
     }
 
     void Composition::Invalidate(Scope& scope) {
-        if (scope.m_Disposed) return;
+        if (scope.m_Disposed || m_Deactivated) return;
         scope.m_Invalid = true;
         if (m_Pending.insert(&scope).second) {
             m_Invalid.push_back(&scope);
@@ -320,6 +321,53 @@ namespace kiln::rt {
             g.observer = nullptr;
         }
         if (g.slot) m_DeadSlots.push_back(std::move(g.slot));
+    }
+
+    void Composition::Deactivate() {
+        if (!m_RootScope || m_Deactivated) return;
+        DeactivateScope(*m_RootScope);
+        m_Deactivated = true;
+        ApplyNodeChanges();
+        RunEffects();
+    }
+
+    // Remembered values and effects go; nodes and the scopes around them stay, so the next
+    // content matches them by call site (reuseComposition). Nothing here is observed or pending
+    // any more: a scope runs again only when new content calls it.
+    void Composition::DeactivateScope(Scope& scope) {
+        scope.Unsubscribe();
+        m_Pending.erase(&scope);
+        scope.m_Invalid = true;
+        scope.m_HasMemo = false;
+        scope.m_Provided.clear();
+        scope.m_ComputedDefaults.clear();
+        scope.m_Content = nullptr;   // drops what the old content captured
+        auto groups = std::move(scope.m_Groups);
+        scope.m_Groups.clear();
+        for (Group& g : groups) {
+            const bool movable = g.kind == Group::Kind::Scope && g.type == typeid(MovableHandle);
+            if (g.kind == Group::Kind::Node && g.node) {
+                if (g.scope) DeactivateScope(*g.scope);
+                g.node->m_Deactivated = true;
+                g.node->OnDeactivate();
+                scope.m_Groups.push_back(std::move(g));
+            } else if (g.kind == Group::Kind::Scope && g.scope && !movable) {
+                DeactivateScope(*g.scope);
+                scope.m_Groups.push_back(std::move(g));
+            } else {
+                // Slots, effects and movable content (its state cannot move into a deactivated
+                // composition) leave as on disposal.
+                const bool destroying = m_Destroying;
+                m_Destroying = true;
+                Dispose(g);
+                m_Destroying = destroying;
+                if (movable) {   // its nodes left the host
+                    Scope* top = &scope;
+                    while (top->m_Parent && top->m_Parent->m_Host == scope.m_Host) top = top->m_Parent;
+                    m_ChildrenDirty.insert(top);
+                }
+            }
+        }
     }
 
     // --- Movable content -----------------------------------------------------------------------

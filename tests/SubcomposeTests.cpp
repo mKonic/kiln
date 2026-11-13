@@ -155,11 +155,11 @@ TEST(PrecomposedSlotsAreClaimedByMeasureOrDisposed) {
     cancelled.Cancel();
     CHECK_EQ(composedB, 3);
     c3.Dispose();
-    // The fixed-count policy keeps the newest ids.
+    // The fixed-count policy keeps the first ids (trimToSize): the slots that just left.
     SubcomposeSlotReusePolicy::SlotIdsSet ids;
     for (int i = 0; i < 5; ++i) ids.Add(rt::Key(i));
     MakeSubcomposeSlotReusePolicy(2)->GetSlotsToRetain(ids);
-    CHECK(ids.Size() == 2 && ids.Contains(rt::Key(3)) && ids.Contains(rt::Key(4)));
+    CHECK(ids.Size() == 2 && ids.Contains(rt::Key(0)) && ids.Contains(rt::Key(1)));
 }
 
 TEST(SlotContentMeasuresWithTheOwnersDensityAndResizesTheLayout) {
@@ -185,4 +185,44 @@ TEST(SlotContentMeasuresWithTheOwnersDensityAndResizesTheLayout) {
     h.Frame();
     CHECK_EQ(bwc->Children()[0]->Children()[0]->Size().width, 60);
     CHECK_EQ(bwc->Size().width, 60);
+}
+
+// SubcomposeSlotReusePolicy: a slot that leaves is kept, deactivated; a new slot id takes over
+// its nodes, with its state forgotten.
+TEST(SubcomposeLayoutReusesKeptSlotsForNewIds) {
+    Harness h;
+    SubcomposeLayoutState state(MakeSubcomposeSlotReusePolicy(1));
+    rt::State<int> id(1);
+    int remembered = 0;
+    h.Run([&] {
+        SubcomposeLayout(state, Modifier{}, [&](SubcomposeMeasureScope& s, const Constraints& c) {
+            const int slot = id.Get();
+            auto ms = s.Subcompose(rt::Key(slot), [&, slot] {
+                rt::Composition::Current()->Remember<int>([&] { return ++remembered; });
+                Box(SizeMod(Modifier{}, Dp(float(slot)), Dp(float(slot))));
+            });
+            for (Measurable* m : ms) (void)m->Measure(Constraints{ 0, c.maxWidth, 0, c.maxHeight });
+            return s.Layout(c.minWidth, c.minHeight);
+        });
+    });
+    CHECK_EQ(remembered, 1);
+    auto collect = [&] {
+        std::vector<LayoutNode*> out;
+        for (LayoutNode* sub : h.owner.Root().Children()[0]->Children())
+            for (LayoutNode* n : sub->Children()) out.push_back(n);
+        return out;
+    };
+    auto before = collect();
+    CHECK_EQ(before.size(), std::size_t(1));
+    // Slot 1 becomes reusable only after the measure it left in: slot 2 is new.
+    id.Set(2);
+    h.Frame();
+    CHECK(collect()[0] != before[0]);
+    id.Set(3);
+    h.Frame();
+    auto after = collect();
+    CHECK_EQ(after.size(), std::size_t(1));
+    CHECK(after[0] == before[0]);   // slot 3 took over slot 1's node
+    CHECK_EQ(remembered, 3);        // with its state started over
+    CHECK_EQ(after[0]->Size().width, 3);
 }

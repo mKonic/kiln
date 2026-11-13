@@ -1054,6 +1054,16 @@ namespace kiln::ui {
         owner.OnMeasureRequested(*this);
     }
 
+    void LayoutNode::OnDeactivate() {
+        for (auto& n : m_Nodes) n->OnReset();
+        if (m_Policy) m_Policy->OnDeactivate();
+    }
+
+    void LayoutNode::OnReuse() {
+        InvalidateDraw();
+        RequestRemeasure();
+    }
+
     void LayoutNode::Detach() {
         if (m_Virtual) { m_Owner = nullptr; return; }
         for (LayoutNode* c : m_Children) c->Detach();

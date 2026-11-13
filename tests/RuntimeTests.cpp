@@ -560,3 +560,58 @@ TEST(WithContextRunsOffTheMainThreadAndResumesOnIt) {
     d.RunPending();
     CHECK(ran && !resumedAfterCancel);
 }
+
+// ReusableComposition: deactivate forgets remembered state and stops observing, keeps the nodes;
+// new content takes them over (CompositionReusingTests).
+TEST(DeactivatedCompositionForgetsStateAndReusesNodes) {
+    struct Reusable : Node {
+        using Node::Node;
+        int deactivated = 0, reused = 0;
+        void OnDeactivate() override { ++deactivated; }
+        void OnReuse() override { ++reused; }
+    };
+    // Declared before the composition: its destructor forgets into them.
+    std::vector<std::string> log;
+    struct Watch final : RememberObserver {
+        std::vector<std::string>* log;
+        explicit Watch(std::vector<std::string>* l) : log(l) {}
+        void OnForgotten() override { log->push_back("forgotten"); }
+    };
+    State<int> read(0);
+    int runs = 0, disposed = 0;
+    Reusable* made = nullptr;
+    Node root("root");
+    Composition c(root);
+    auto content = [&](std::string name) {
+        return [&, name] {
+            ++runs;
+            (void)read.Get();
+            c.Remember<Watch>([&] { return Watch(&log); });
+            c.DisposableEffect(Keys(), [&] { return kiln::Function<void()>([&] { ++disposed; }); });
+            auto& n = c.Node<Reusable>([&, name] { auto p = std::make_unique<Reusable>(name); made = p.get(); return p; },
+                                       [name](Reusable& r) { r.name = name; });
+            (void)n;
+        };
+    };
+    c.SetContent(content("a"));
+    c.Recompose();
+    Reusable* first = made;
+    CHECK(root.Dump() == "root(a)");
+    c.Deactivate();
+    CHECK(c.IsDeactivated());
+    CHECK(log == std::vector<std::string>{ "forgotten" });
+    CHECK_EQ(disposed, 1);
+    CHECK_EQ(first->deactivated, 1);
+    read.Set(1);            // no longer observed
+    c.Recompose();
+    CHECK_EQ(runs, 1);
+    c.SetContent(content("b"));
+    c.Recompose();
+    CHECK_EQ(runs, 2);
+    CHECK(made == first);   // the same node, updated
+    CHECK_EQ(first->reused, 1);
+    CHECK(root.Dump() == "root(b)");
+    read.Set(2);            // observed again
+    c.Recompose();
+    CHECK_EQ(runs, 3);
+}

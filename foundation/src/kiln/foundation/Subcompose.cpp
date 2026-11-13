@@ -50,6 +50,10 @@ namespace kiln::foundation {
 
         struct State {
             std::map<std::uint64_t, Slot> slots;
+            // Slots kept for reuse (deactivated, holders out of the layout), as Compose's
+            // reusable section: taken from the back.
+            std::vector<std::pair<std::uint64_t, Slot>> reusable;
+            std::shared_ptr<SubcomposeSlotReusePolicy> policy;   // null: nothing is kept
             std::vector<std::uint64_t> used;   // this measure, in order
             // In a lookahead scope: the slots each pass used last. The approach pass reuses
             // what lookahead composed and composes only what it alone needs; a slot goes when
@@ -64,6 +68,71 @@ namespace kiln::foundation {
             ~State() {
                 // Compositions go before their holders.
                 for (auto& [k, s] : slots) s.composition.reset();
+                for (auto& [k, s] : reusable) s.composition.reset();
+            }
+
+            // The node's own composition was deactivated: every slot leaves.
+            void DisposeAll() {
+                if (node) node->SetChildrenDuringMeasure({});
+                for (auto& [k, s] : slots) s.composition.reset();
+                for (auto& [k, s] : reusable) s.composition.reset();
+                slots.clear();
+                reusable.clear();
+                used.clear();
+                lookaheadUsed.clear();
+                approachUsed.clear();
+            }
+
+            // disposeOrReuseStartingFromIndex: the policy picks which of the slots that left
+            // (and the ones already kept) stay for reuse; the rest are disposed.
+            // Returns the slots that leave for good, to free once out of the layout.
+            std::vector<Slot> DisposeOrReuse(std::vector<std::uint64_t> leaving) {
+                SubcomposeSlotReusePolicy::SlotIdsSet ids;
+                auto key = [](std::uint64_t v) { rt::Key k = rt::Key::Positional(); k.value = v; return k; };
+                for (std::uint64_t id : leaving) ids.Add(key(id));
+                for (auto& [id, sl] : reusable) ids.Add(key(id));
+                if (policy) policy->GetSlotsToRetain(ids);
+                else ids.Clear();
+                std::vector<std::pair<std::uint64_t, Slot>> kept;
+                std::vector<Slot> dropped;
+                for (std::uint64_t id : leaving) {
+                    auto it = slots.find(id);
+                    if (it == slots.end()) continue;
+                    if (ids.Contains(key(id))) {
+                        it->second.composition->Deactivate();
+                        it->second.stable = nullptr;
+                        kept.emplace_back(id, std::move(it->second));
+                    } else {
+                        dropped.push_back(std::move(it->second));
+                    }
+                    slots.erase(it);
+                }
+                for (auto& [id, sl] : reusable)
+                    if (ids.Contains(key(id))) kept.emplace_back(id, std::move(sl));
+                    else sl.composition.reset();   // out of the layout already
+                reusable = std::move(kept);
+                return dropped;
+            }
+
+            // takeNodeFromReusables: the kept slot of the same id, else the last compatible one.
+            bool TakeReusable(std::uint64_t id) {
+                if (reusable.empty() || !policy) return false;
+                auto chosen = reusable.end();
+                for (auto it = reusable.rbegin(); it != reusable.rend(); ++it)
+                    if (it->first == id) { chosen = std::next(it).base(); break; }
+                if (chosen == reusable.end()) {
+                    rt::Key k = rt::Key::Positional();
+                    k.value = id;
+                    for (auto it = reusable.rbegin(); it != reusable.rend(); ++it) {
+                        rt::Key r = rt::Key::Positional();
+                        r.value = it->first;
+                        if (policy->AreCompatible(k, r)) { chosen = std::next(it).base(); break; }
+                    }
+                }
+                if (chosen == reusable.end()) return false;
+                slots[id] = std::move(chosen->second);
+                reusable.erase(chosen);
+                return true;
             }
 
             bool UsedInLookahead(std::uint64_t id) const { return std::find(lookaheadUsed.begin(), lookaheadUsed.end(), id) != lookaheadUsed.end(); }
@@ -96,13 +165,16 @@ namespace kiln::foundation {
                 for (auto& [k, sl] : slots)
                     if (sl.precomposed) children.push_back(sl.holder.get());
                     else if (!disposes && !keep.count(k)) children.push_back(sl.holder.get());   // lookahead keeps what it does not use
-                // The holders leave the layout before their slots free them.
+                // Slots kept for reuse are deactivated while still attached; the holders then
+                // leave the layout before the other slots free them.
+                std::vector<std::uint64_t> leaving;
+                for (auto& [k, sl] : slots)
+                    if (!kept(k, sl)) leaving.push_back(k);
+                std::vector<Slot> dropped;
+                if (disposes) dropped = DisposeOrReuse(std::move(leaving));
                 node->SetChildrenDuringMeasure(children);
-                for (auto it = slots.begin(); it != slots.end();) {
-                    if (kept(it->first, it->second)) { ++it; continue; }
-                    it->second.composition.reset();
-                    it = slots.erase(it);
-                }
+                for (Slot& sl : dropped) sl.composition.reset();
+                dropped.clear();
                 std::vector<Placeable*> holders;
                 for (std::size_t i = 0; i < placed; ++i) {
                     Measurable& m = pass == Pass::Lookahead ? children[i]->AsLookaheadMeasurable() : children[i]->AsMeasurable();
@@ -125,7 +197,13 @@ namespace kiln::foundation {
         // Creates the slot if needed. A new holder joins the layout's children at once, so its
         // content is measured attached (with the owner's density and locals), not detached.
         Slot& SlotFor(State& st, std::uint64_t id) {
+            const bool reused = !st.slots.count(id) && st.TakeReusable(id);
             Slot& slot = st.slots[id];
+            if (reused && st.node) {   // back into the layout, attached again
+                std::vector<LayoutNode*> children(st.node->Children().begin(), st.node->Children().end());
+                children.push_back(slot.holder.get());
+                st.node->SetChildrenDuringMeasure(children);
+            }
             if (!slot.holder) {
                 slot.holder = std::make_unique<LayoutNode>();
                 auto policy = std::make_shared<HolderPolicy>();
@@ -185,6 +263,7 @@ namespace kiln::foundation {
             MeasureResult Measure(MeasureScope& s, std::span<Measurable* const>, const Constraints& c) override {
                 return state->Measure(s, c);
             }
+            void OnDeactivate() override { if (state) state->DisposeAll(); }
         };
     }
 
@@ -200,30 +279,30 @@ namespace kiln::foundation {
                                       TakeLocalLayoutDirection(n);
                                       n.SetMeasureManagedChildren(true);
                                       st->node = &n;
-                                      if (!dynamic_cast<Policy*>(n.Policy().get())) {
-                                          auto p = std::make_shared<Policy>();
-                                          p->state = st;
-                                          n.SetMeasurePolicy(p);
+                                      // A reused node keeps its policy; the state is the one composed now.
+                                      if (auto* p = dynamic_cast<Policy*>(n.Policy().get())) p->state = st;
+                                      else {
+                                          auto np = std::make_shared<Policy>();
+                                          np->state = st;
+                                          n.SetMeasurePolicy(np);
                                       }
                                       n.RequestRemeasure();   // the measure block may capture new values
                                   }, {}, key);
         }
     }
 
-    SubcomposeLayoutState::SubcomposeLayoutState() : m_Impl(std::make_shared<State>()), m_Policy(MakeSubcomposeSlotReusePolicy(0)) {}
+    SubcomposeLayoutState::SubcomposeLayoutState() : SubcomposeLayoutState(nullptr) {}
     SubcomposeLayoutState::SubcomposeLayoutState(std::shared_ptr<SubcomposeSlotReusePolicy> policy)
-        : m_Impl(std::make_shared<State>()), m_Policy(policy ? std::move(policy) : MakeSubcomposeSlotReusePolicy(0)) {}
+        : m_Impl(std::make_shared<State>()), m_Policy(policy ? std::move(policy) : MakeSubcomposeSlotReusePolicy(0)) {
+        std::static_pointer_cast<State>(m_Impl)->policy = m_Policy;
+    }
 
     std::shared_ptr<SubcomposeSlotReusePolicy> MakeSubcomposeSlotReusePolicy(int maxSlotsToRetainForReuse) {
         struct FixedCount final : SubcomposeSlotReusePolicy {
             int max;
             explicit FixedCount(int m) : max(m) {}
-            void GetSlotsToRetain(SlotIdsSet& ids) override {
-                // The set lists the oldest first: drop from the front past the limit.
-                std::vector<rt::Key> keep(ids.Ids().end() - std::min<std::ptrdiff_t>(max, std::ptrdiff_t(ids.Size())), ids.Ids().end());
-                ids.Clear();
-                for (const rt::Key& k : keep) ids.Add(k);
-            }
+            // The set lists the slots that just left first, then the ones kept before.
+            void GetSlotsToRetain(SlotIdsSet& ids) override { ids.TrimToSize(std::size_t(max)); }
             bool AreCompatible(rt::Key, rt::Key) override { return true; }
         };
         return std::make_shared<FixedCount>(std::max(0, maxSlotsToRetainForReuse));
