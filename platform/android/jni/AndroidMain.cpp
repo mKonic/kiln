@@ -466,8 +466,11 @@ namespace {
     jmethodID g_RequestLayout = nullptr;
     std::map<int, kiln::Function<void()>> g_DialogDismiss;
 
+    void CachePopupClass(JNIEnv* env);
+    // On a call from Java (the app's class loader): FindClass on a frame callback sees only the boot one.
     void CacheDialogClass(JNIEnv* env) {
         if (g_DialogClass) return;
+        CachePopupClass(env);
         jclass c = env->FindClass("dev/kiln/KilnDialog");
         g_DialogClass = static_cast<jclass>(env->NewGlobalRef(c));
         env->DeleteLocalRef(c);
@@ -536,6 +539,120 @@ namespace {
         }
     };
 
+    // --- popup windows (KilnPopup) ----------------------------------------------------------------
+
+    jclass g_PopupClass = nullptr;
+    jmethodID g_PopupOpen = nullptr, g_PopupUpdate = nullptr, g_PopupPlace = nullptr, g_PopupDismiss = nullptr;
+    jfieldID g_PopupView = nullptr;
+
+    void CachePopupClass(JNIEnv* env) {
+        if (g_PopupClass) return;
+        jclass c = env->FindClass("dev/kiln/KilnPopup");
+        g_PopupClass = static_cast<jclass>(env->NewGlobalRef(c));
+        env->DeleteLocalRef(c);
+        g_PopupOpen = env->GetStaticMethodID(g_PopupClass, "open", "(Ldev/kiln/KilnView;I)Ldev/kiln/KilnPopup;");
+        g_PopupUpdate = env->GetMethodID(g_PopupClass, "update", "(ZZZZZFZ)V");
+        g_PopupPlace = env->GetMethodID(g_PopupClass, "place", "(IIII)V");
+        g_PopupDismiss = env->GetMethodID(g_PopupClass, "dismissFromNative", "()V");
+        g_PopupView = env->GetFieldID(g_PopupClass, "view", "Ldev/kiln/KilnView;");
+    }
+
+    // PopupLayout's native half: a sub-panel window of its own (KilnView, owner, presentation
+    // surface) for a Popup composable's content.
+    struct AndroidPopup final : kiln::ui::PlatformPopup {
+        int id = 0;
+        jobject popup = nullptr;
+        Win* win = nullptr;
+
+        AndroidPopup(Win* parent, kiln::ui::Owner& content, const kiln::ui::PopupWindowProperties& p, kiln::Function<void()> onDismiss) {
+            JNIEnv* e = MainEnv();
+            CachePopupClass(e);
+            id = g_NextWinId++;
+            auto nw = std::make_unique<Win>();
+            nw->id = id;
+            nw->owner = &content;
+            nw->appWindow = g_Host->app->AddWindow(content);
+            win = nw.get();
+            g_Wins[id] = std::move(nw);
+            g_DialogDismiss[id] = std::move(onDismiss);
+            jobject o = e->CallStaticObjectMethod(g_PopupClass, g_PopupOpen, parent->view, jint(id));
+            popup = e->NewGlobalRef(o);
+            jobject v = e->GetObjectField(o, g_PopupView);
+            win->view = e->NewGlobalRef(v);
+            e->DeleteLocalRef(v);
+            e->DeleteLocalRef(o);
+            InstallOwnerHosts(e, win);
+            Update(p);
+        }
+
+        void Update(const kiln::ui::PopupWindowProperties& p) override {
+            MainEnv()->CallVoidMethod(popup, g_PopupUpdate, jboolean(p.focusable), jboolean(p.dismissOnBackPress), jboolean(p.dismissOnClickOutside),
+                                      jboolean(p.secure), jboolean(p.clippingEnabled), jfloat(std::isnan(p.scrimAlpha) ? 0.0f : p.scrimAlpha),
+                                      jboolean(p.direction == kiln::ui::LayoutDirection::Rtl));
+        }
+
+        void Place(kiln::ui::IntRect r) override {
+            MainEnv()->CallVoidMethod(popup, g_PopupPlace, jint(r.left), jint(r.top), jint(r.right - r.left), jint(r.bottom - r.top));
+            if (g_Host) g_Host->app->RequestFrame();
+        }
+
+        ~AndroidPopup() override {
+            JNIEnv* e = MainEnv();
+            // Removing the window takes its surface with it (SurfaceDestroyed).
+            if (popup) e->CallVoidMethod(popup, g_PopupDismiss);
+            if (g_Host && g_Host->app && win && win->appWindow) g_Host->app->RemoveWindow(win->appWindow);
+            g_DialogDismiss.erase(id);
+            if (win && win->view) { e->DeleteGlobalRef(win->view); win->view = nullptr; }
+            if (popup) e->DeleteGlobalRef(popup);
+            if (g_CurWin == win) g_CurWin = nullptr;
+            g_Wins.erase(id);
+        }
+    };
+
+    // Popups of this window's content as windows of their own (PopupHost).
+    void InstallPopupHost(JNIEnv* env, Win* w) {
+        jclass vc = env->GetObjectClass(w->view);
+        static jmethodID origin = env->GetMethodID(vc, "popupWindowOrigin", "()[I");
+        static jmethodID display = env->GetMethodID(vc, "popupDisplayBounds", "(Z)[I");
+        env->DeleteLocalRef(vc);
+        kiln::ui::PopupHost host;
+        host.create = [w](kiln::ui::Owner& content, const kiln::ui::PopupWindowProperties& p, kiln::Function<void()> onDismiss)
+            -> std::unique_ptr<kiln::ui::PlatformPopup> { return std::make_unique<AndroidPopup>(w, content, p, std::move(onDismiss)); };
+        const auto ints = [](JNIEnv* e, jintArray a, jint* out, jsize n) {
+            if (!a) return false;
+            e->GetIntArrayRegion(a, 0, n, out);
+            e->DeleteLocalRef(a);
+            return true;
+        };
+        host.windowOrigin = [w, ints] {
+            JNIEnv* e = MainEnv();
+            jint v[2] = { 0, 0 };
+            ints(e, static_cast<jintArray>(e->CallObjectMethod(w->view, origin)), v, 2);
+            return kiln::ui::IntOffset{ v[0], v[1] };
+        };
+        host.displayBounds = [w, ints](bool clipping) {
+            JNIEnv* e = MainEnv();
+            jint v[4] = { 0, 0, 0, 0 };
+            ints(e, static_cast<jintArray>(e->CallObjectMethod(w->view, display, jboolean(clipping))), v, 4);
+            return kiln::ui::IntRect{ v[0], v[1], v[2], v[3] };
+        };
+        w->owner->SetPopupHost(std::move(host));
+    }
+
+    void SetPopupWindows(JNIEnv* env, jclass, jint win, jboolean on) {
+        Win* w = WinOf(win);
+        if (!w || !w->owner) return;
+        if (on) InstallPopupHost(env, w);
+        else w->owner->SetPopupHost({});
+    }
+
+    void WindowMovedOnScreen(JNIEnv*, jclass, jint win) {
+        WinScope ws(win);
+        if (!ws) return;
+        ws.w->owner->OnWindowMovedOnScreen();
+        g_Host->app->RequestFrame();
+    }
+
     void DialogDismissRequest(JNIEnv*, jclass, jint win) {
         auto it = g_DialogDismiss.find(int(win));
         if (it == g_DialogDismiss.end() || !it->second) return;
@@ -582,6 +699,8 @@ namespace {
                                       -> std::unique_ptr<kiln::ui::PlatformDialog> {
             return std::make_unique<AndroidDialog>(w, content, p, std::move(onDismiss));
         } });
+        // A dialog's or a popup's window covers only its content: popups there are windows.
+        if (w->id != 0) InstallPopupHost(env, w);
         jobject view = w->view;
         InstallTextInputHost(env, w);
         InstallExternalSurfaceHost(env, w);
@@ -3260,6 +3379,8 @@ extern "C" JNIEXPORT jint kiln_jni_onload(JavaVM* vm) {
         { "scrollCaptureEnd", "(I)V", reinterpret_cast<void*>(&ScrollCaptureEnd) },
         { "activityResult", "(Ljava/lang/String;I[Ljava/lang/Object;)V", reinterpret_cast<void*>(&ActivityResultFromJava) },
         { "dialogDismissRequest", "(I)V", reinterpret_cast<void*>(&DialogDismissRequest) },
+        { "windowMovedOnScreen", "(I)V", reinterpret_cast<void*>(&WindowMovedOnScreen) },
+        { "setPopupWindows", "(IZ)V", reinterpret_cast<void*>(&SetPopupWindows) },
         { "windowMeasure", "(III)[I", reinterpret_cast<void*>(&WindowMeasure) },
         { "windowContentBounds", "(I)[I", reinterpret_cast<void*>(&WindowContentBounds) },
         { "dragEvent", "(IIFF[Ljava/lang/String;Ljava/lang/String;[Ljava/lang/String;ZZ)Z", reinterpret_cast<void*>(&DragEvent) },

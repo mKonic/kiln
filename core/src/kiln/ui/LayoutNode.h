@@ -365,6 +365,14 @@ namespace kiln::ui {
         // Dialog windows for Dialog composables in this owner's content.
         void SetDialogHost(DialogHost host) { m_DialogHost = std::move(host); }
         const DialogHost& Dialogs() const { return m_DialogHost; }
+        // Popup windows for Popup composables in this owner's content (unset: the overlay layer).
+        void SetPopupHost(PopupHost host) { m_PopupHost = std::move(host); }
+        const PopupHost& PopupWindows() const { return m_PopupHost; }
+        // The host's window moved on the screen without a layout here (a dialog re-centred, the
+        // IME panned the window): the window popups place themselves again.
+        void OnWindowMovedOnScreen() { for (auto* f : m_WindowMovedListeners) (*f)(); }
+        void AddWindowMovedListener(kiln::Function<void()>* f) { m_WindowMovedListeners.push_back(f); }
+        void RemoveWindowMovedListener(kiln::Function<void()>* f) { std::erase(m_WindowMovedListeners, f); }
         const std::optional<Constraints>& ContentConstraintsForRoot() const { return m_ContentConstraints; }
 
         // Popups (PopupLayout windows) in show order; the last is on top. The layer's node is the
@@ -888,6 +896,8 @@ namespace kiln::ui {
         IntSize m_LastContentSize{ -1, -1 };
         kiln::Function<void(IntSize)> m_OnContentSizeChanged;
         DialogHost m_DialogHost;
+        PopupHost m_PopupHost;
+        std::vector<kiln::Function<void()>*> m_WindowMovedListeners;
         ContextMenuHost m_ContextMenuHost;
         PopupLayer* m_PopupBackTracking = nullptr;
         // The top focusable popup takes the key focus: the focus under it is parked there.

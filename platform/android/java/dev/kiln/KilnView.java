@@ -42,6 +42,8 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
     android.view.Window hostWindow;
     /** The dialog this view is the content of; null for the activity's view. */
     KilnDialog dialog;
+    /** The popup window this view is the content of (KilnPopup); null otherwise. */
+    KilnPopup popup;
 
     public KilnView(Context context) { this(context, null); }
 
@@ -1674,9 +1676,40 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
         pushShadowLight();
     }
 
+    // pollForLocationOnScreenChange: the window can move on the screen without a layout here (a
+    // dialog re-centred, the window panned for the IME); its popup windows follow.
+    private final int[] lastLocation = { Integer.MIN_VALUE, Integer.MIN_VALUE };
+    private final android.view.ViewTreeObserver.OnPreDrawListener locationListener = this::checkLocationOnScreen;
+    private boolean checkLocationOnScreen() {
+        int x = lastLocation[0], y = lastLocation[1];
+        getLocationOnScreen(lastLocation);
+        if (x != lastLocation[0] || y != lastLocation[1]) KilnNative.windowMovedOnScreen(windowId);
+        return true;
+    }
+
+    /** PopupHost.windowOrigin: this view's top-left on the screen. */
+    int[] popupWindowOrigin() {
+        int[] at = new int[2];
+        getLocationOnScreen(at);
+        return at;
+    }
+
+    /** getDisplayBounds: the visible display frame (clipping) or the window manager's bounds. */
+    int[] popupDisplayBounds(boolean clippingEnabled) {
+        android.graphics.Rect r = new android.graphics.Rect();
+        if (clippingEnabled) {
+            getWindowVisibleDisplayFrame(r);
+        } else {
+            android.view.WindowManager wm = getContext().getSystemService(android.view.WindowManager.class);
+            r.set(wm.getCurrentWindowMetrics().getBounds());
+        }
+        return new int[] { r.left, r.top, r.right, r.bottom };
+    }
+
     @Override
     protected void onAttachedToWindow() {
         super.onAttachedToWindow();
+        getViewTreeObserver().addOnPreDrawListener(locationListener);
         pushShadowLight();
         back.onAttached();
         KilnNative.setInputMode(windowId, isInTouchMode());
@@ -1702,6 +1735,7 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
     @Override
     protected void onDetachedFromWindow() {
         getViewTreeObserver().removeOnTouchModeChangeListener(touchModeListener);
+        getViewTreeObserver().removeOnPreDrawListener(locationListener);
         back.onDetached();
         inputDevices.onDetached();
         flushHoverExit(true);

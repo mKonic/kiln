@@ -679,7 +679,22 @@ namespace kiln::gallery {
                 m3::AlertDialogOptions o;
                 o.icon = [] { m3::Icon(m3::internal::Icons::Filled::Edit(), std::nullopt); };
                 o.title = [] { m3::Text("Reset settings?"); };
-                o.text = [] { m3::Text("This will reset your app preferences back to their default settings."); };
+                // A menu in a dialog reaches past the dialog's window, as it does in Compose.
+                auto* keep = &RememberState(std::string("Nothing"));
+                auto* keepOpen = &RememberState(false);
+                o.text = [keep, keepOpen] {
+                    Column({}, Arrangement::Top(), AlignmentH::Start(), [keep, keepOpen] {
+                        m3::Text("This will reset your app preferences back to their default settings.");
+                        Box({}, Alignment::TopStart(), false, [keep, keepOpen] {
+                            m3::TextButton([keepOpen] { keepOpen->Set(true); }, {}, {}, [keep] { m3::Text("Keep: " + keep->Get()); });
+                            m3::DropdownMenu(keepOpen->Get(), [keepOpen] { keepOpen->Set(false); }, {}, {}, [keep, keepOpen] {
+                                for (const char* name : { "Nothing", "Theme", "Language", "Font size", "Notifications", "Downloads",
+                                                          "Accounts", "Privacy", "Storage", "Everything" })
+                                    m3::DropdownMenuItem([name] { m3::Text(name); }, [=] { keep->Set(name); keepOpen->Set(false); }, {}, {});
+                            });
+                        });
+                    });
+                };
                 o.dismissButton = [open, result] { m3::TextButton([open, result] { result->Set("dismissed"); open->Set(false); }, {}, {}, [] { m3::Text("Cancel"); }); };
                 m3::AlertDialog([open, result] { result->Set("outside"); open->Set(false); },
                                 [open, result] { m3::TextButton([open, result] { result->Set("confirmed"); open->Set(false); }, {}, {}, [] { m3::Text("Accept"); }); },

@@ -23,6 +23,10 @@ public final class Probe extends Instrumentation {
 
     @Override public void onStart() {
         UiAutomation ua = getUiAutomation();
+        // Every window, not just the active one: a non-focusable popup window (a tooltip) never is.
+        android.accessibilityservice.AccessibilityServiceInfo info = ua.getServiceInfo();
+        info.flags |= android.accessibilityservice.AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS;
+        ua.setServiceInfo(info);
         ua.setOnAccessibilityEventListener(e -> {
             if (e.getEventType() == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return;
             events.append("  event ").append(AccessibilityEvent.eventTypeToString(e.getEventType()))
@@ -102,8 +106,7 @@ public final class Probe extends Instrumentation {
             // Waits (up to 3 s) for a visible node with that text or description to appear / go away.
             boolean want = verb.equals("expect"), seen = !want;
             for (long end = android.os.SystemClock.uptimeMillis() + 3000; ; Thread.sleep(50)) {
-                AccessibilityNodeInfo r = ua.getRootInActiveWindow();
-                AccessibilityNodeInfo found = r == null ? null : findByText(r, arg);
+                AccessibilityNodeInfo found = findAnywhere(ua, arg);
                 seen = found != null && found.isVisibleToUser();
                 if (seen == want || android.os.SystemClock.uptimeMillis() > end) break;
             }
@@ -131,6 +134,14 @@ public final class Probe extends Instrumentation {
         }
         if (root == null) { out.append("no active window\n"); return; }
         if (verb.equals("dump") || verb.equals("vdump")) { verbose = verb.equals("vdump"); dump(root, 0); return; }
+        if (verb.equals("windows")) {
+            // Every window the service sees, top first, each with its tree.
+            for (android.view.accessibility.AccessibilityWindowInfo w : ua.getWindows()) {
+                out.append("window ").append(w.getType()).append(' ').append(w.getTitle()).append(w.isActive() ? " active" : "").append('\n');
+                if (w.getType() == android.view.accessibility.AccessibilityWindowInfo.TYPE_APPLICATION) dump(w.getRoot(), 0);
+            }
+            return;
+        }
         if (verb.equals("scroll") || verb.equals("scrollback")) {
             // The n-th scrollable node in pre-order (0 when no argument).
             java.util.List<AccessibilityNodeInfo> list = new java.util.ArrayList<>();
@@ -144,14 +155,15 @@ public final class Probe extends Instrumentation {
         }
         String find = arg, value = null;
         if ((verb.equals("press") && arg.contains("=")) || verb.equals("swipeon") || verb.equals("settext") || verb.equals("setprogress") || verb.equals("action")) { find = arg.substring(0, arg.indexOf('=')); value = arg.substring(arg.indexOf('=') + 1); }
-        AccessibilityNodeInfo n = findByText(root, find);
+        AccessibilityNodeInfo n = findAnywhere(ua, find);
         // The tree changes under us (a popup closing, a recomposition): wait for the node as
         // expect: does before giving up (reach: then scrolls for it).
         for (long end = android.os.SystemClock.uptimeMillis() + (verb.equals("reach") ? 500 : 3000);
              n == null && android.os.SystemClock.uptimeMillis() < end; ) {
             Thread.sleep(50);
             AccessibilityNodeInfo r = ua.getRootInActiveWindow();
-            if (r != null) { root = r; n = findByText(root, find); }
+            if (r != null) root = r;
+            n = findAnywhere(ua, find);
         }
         if (n == null && verb.equals("reach")) {
             // Scrolls the first scrollable forward until the node exists.
@@ -310,6 +322,20 @@ public final class Probe extends Instrumentation {
         if (n == null) return;
         if (n.isScrollable()) out.add(n);
         for (int i = 0; i < n.getChildCount(); i++) scrollables(n.getChild(i), out);
+    }
+
+    // The active window first, then the app's other windows (popup windows, top first).
+    private AccessibilityNodeInfo findAnywhere(UiAutomation ua, String text) {
+        AccessibilityNodeInfo r = ua.getRootInActiveWindow();
+        AccessibilityNodeInfo n = r == null ? null : findByText(r, text);
+        if (n != null) return n;
+        for (android.view.accessibility.AccessibilityWindowInfo w : ua.getWindows()) {
+            if (w.getType() != android.view.accessibility.AccessibilityWindowInfo.TYPE_APPLICATION) continue;
+            AccessibilityNodeInfo wr = w.getRoot();
+            n = wr == null ? null : findByText(wr, text);
+            if (n != null) return n;
+        }
+        return null;
     }
 
     private AccessibilityNodeInfo findByText(AccessibilityNodeInfo n, String text) {

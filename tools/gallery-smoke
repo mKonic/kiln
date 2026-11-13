@@ -40,10 +40,12 @@ COMPONENTS = {
         shot:{p}-snackbars; tap:Undo; wait:800; expect:Snackbar result: action; reject:Photo deleted; tap:Show until closed; wait:800;
         expect:Connection lost; shot:{p}-snackbars-indefinite; click:{dismiss}; wait:800; expect:Snackbar result: dismissed''',
     'textfields': '''expect:Flavour: Vanilla; click:Flavour; wait:800; expect:Mint; shot:{p}-textfields-dropdown; click:Mint; wait:800;
-        expect:Flavour: Mint; expect:Name: (empty); expect:Email; expect:Price; expect:Password; shot:{p}-textfields; tap:Name; wait:600;
+        expect:Flavour: Mint; expect:Name: (empty); expect:Email; expect:Price; reach:Note; reach:Password; shot:{p}-textfields; tap:Name; wait:600;
         settext:Name=Ada Lovelace; wait:600; expect:Name: Ada Lovelace; shot:{p}-textfields-typed''',
     'dialogs': '''expect:Dialog result: none; tap:Show alert dialog; wait:800; expect:Reset settings?; shot:{p}-dialogs; tap:Accept; wait:800;
-        expect:Dialog result: confirmed; tap:Show alert dialog; wait:800; back; wait:800; expect:Dialog result: outside''',
+        expect:Dialog result: confirmed; tap:Show alert dialog; wait:800; tap:Keep: Nothing; wait:1200; expect:Everything;
+        shot:{p}-dialogs-menu; tap:Privacy; wait:800; expect:Keep: Privacy; expect:Reset settings?; back; wait:800;
+        expect:Dialog result: outside''',
     'sheets': '''expect:Sheet result: none; tap:Show bottom sheet; wait:1000; expect:Share with; shot:{p}-sheets-modal; tap:Copy link;
         wait:1000; expect:Sheet result: Copy link; reject:Share with; tap:Show bottom sheet; wait:1000; expect:Share with; back; wait:1000;
         expect:Sheet result: dismissed; reject:Share with; reach:Standard sheet: peeking; expect:Nearby places; shot:{p}-sheets-standard;
@@ -85,7 +87,7 @@ COMPONENTS = {
         expect:Tooltip actions: 1; reject:Camera settings; click:Show plain tooltip; expect:Add to favorites''',
     'menus': '''reach:Classic menu; tap:Classic menu; expect:Schedule; expect:Archive; shot:{p}-menu-classic;
         tap:Schedule; expect:Menu choice: Schedule; reject:Archive;
-        tap:Expressive menu; expect:Italic; tap:Bold; tap:Right; expect:Menu styles: 1; shot:{p}-menu-expressive;
+        tap:Expressive menu; expect:Italic; tap:Bold; wait:300; tap:Right; expect:Menu styles: 1; shot:{p}-menu-expressive;
         back; reject:Italic; expect:Menu align: right''',
     'groups': '''reach:Connected size: 0; tap:Mute; expect:Group styles: 1; tap:{more}; expect:Copy;
         shot:{p}-group-overflow; tap:Copy; expect:Group clicks: 1; reject:Copy; tap:Large;

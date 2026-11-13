@@ -206,3 +206,7 @@ connection: `NestedScroll(modifier, RememberNestedScrollInteropConnection())` in
 `kpp::Modifier().nested_scroll(kpp::remember_nested_scroll_interop_connection())` in kiln++.
 [samples/gradle-coordinator](https://github.com/mKonic/kiln/tree/master/samples/gradle-coordinator)
 is a complete app. Activity results and permission requests need `KilnActivity`.
+
+Menus, tooltips and other popups from a `KilnView` placed this way open in windows of their
+own, so they can reach past the view (over the app bar, for example), as they do from a
+`ComposeView`. Popups in a dialog do the same.

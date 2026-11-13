@@ -133,6 +133,10 @@ final class KilnNative {
     static native void surfaceCreated(int win, Surface surface);
     /** A dialog window asks to be dismissed (Back, Escape, a press outside its content). */
     static native void dialogDismissRequest(int win);
+    /** The window's view moved on the screen: its popup windows are placed again. */
+    static native void windowMovedOnScreen(int win);
+    /** Popups of this window's content become windows of their own (a KilnView in an app's layout). */
+    static native void setPopupWindows(int win, boolean on);
     /** A dialog's view measures its content (MeasureSpecs): {width, height, content height}. */
     static native int[] windowMeasure(int win, int widthSpec, int heightSpec);
     /** Where a dialog's content sits in its view: {left, top, right, bottom}. */

@@ -56,4 +56,44 @@ namespace kiln::ui {
             create;
     };
 
+    // Real windows for popups (PopupLayout: a TYPE_APPLICATION_SUB_PANEL window per popup), for
+    // owners whose window does not cover the display: a dialog's (it wraps its content), a popup's,
+    // a KilnView placed in an app's own layout. A popup there would otherwise be cut to that window.
+    // The main window keeps popups in its overlay layer (architecture 3.4).
+    struct PopupWindowProperties {
+        bool focusable = false;
+        bool dismissOnBackPress = true;
+        bool dismissOnClickOutside = true;
+        bool secure = false;                // the secure policy resolved against the parent window
+        bool clippingEnabled = true;        // false: FLAG_LAYOUT_NO_LIMITS
+        float scrimAlpha = NAN;             // NaN or 0: none (FLAG_DIM_BEHIND otherwise)
+        LayoutDirection direction = LayoutDirection::Ltr;
+        bool operator==(const PopupWindowProperties& o) const {
+            return focusable == o.focusable && dismissOnBackPress == o.dismissOnBackPress &&
+                   dismissOnClickOutside == o.dismissOnClickOutside && secure == o.secure && clippingEnabled == o.clippingEnabled &&
+                   (scrimAlpha == o.scrimAlpha || (std::isnan(scrimAlpha) && std::isnan(o.scrimAlpha))) && direction == o.direction;
+        }
+    };
+
+    // The platform window showing a popup's content owner; destroying it removes the window.
+    class PlatformPopup {
+    public:
+        virtual ~PlatformPopup() = default;
+        virtual void Update(const PopupWindowProperties& properties) = 0;
+        // Where the window goes, in screen pixels (the first call shows it).
+        virtual void Place(IntRect boundsOnScreen) = 0;
+    };
+
+    struct PopupHost {
+        // `onDismissRequest` runs for a press outside the window (or Escape) when the properties
+        // allow it.
+        kiln::Function<std::unique_ptr<PlatformPopup>(Owner& content, const PopupWindowProperties& properties,
+                                                      kiln::Function<void()> onDismissRequest)>
+            create;
+        // Where the owner's window is on the screen (window pixel 0,0), in screen pixels.
+        kiln::Function<IntOffset()> windowOrigin;
+        // getWindowVisibleDisplayFrame (clipping) or the window manager's bounds, screen pixels.
+        kiln::Function<IntRect(bool clippingEnabled)> displayBounds;
+    };
+
 }

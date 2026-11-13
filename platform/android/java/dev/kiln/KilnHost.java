@@ -29,6 +29,9 @@ public final class KilnHost {
         System.loadLibrary(libraryName);
         byte[] saved = savedInstanceState != null ? savedInstanceState.getByteArray(SAVED_STATE_KEY) : null;
         final KilnView view = new KilnView(activity, saved);
+        // The view may cover only part of the window: popups get windows of their own, so a menu
+        // can reach past the view as it does from a ComposeView.
+        KilnNative.setPopupWindows(0, true);
         activity.registerActivityLifecycleCallbacks(new Application.ActivityLifecycleCallbacks() {
             // As KilnActivity (and androidx's ReportFragment): start and resume after the
             // activity's own callback, pause, stop and destroy before it.

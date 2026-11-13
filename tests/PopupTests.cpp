@@ -6,6 +6,7 @@
 #include "kiln/foundation/Gestures.h"
 #include "kiln/foundation/Popup.h"
 #include "kiln/ui/LayoutNode.h"
+#include "kiln/ui/Locals.h"
 #include "kiln/ui/Semantics.h"
 
 using namespace kiln;
@@ -196,4 +197,78 @@ TEST(PopupFollowsItsAnchorAndStaysInTheDisplay) {
     x->Set(280);   // would stick out past 300: pushed back inside
     h.Pump();
     CHECK((*h.owner.Popups()[0]->bounds == IntRect{ 240, 50, 300, 70 }));
+}
+
+namespace {
+    // A PopupHost standing in for the window manager: the owner's window at `origin` on a
+    // 1080 x 2400 display, each popup window recorded where it was placed.
+    struct FakePopupWindows {
+        struct Shown { IntRect bounds{}; bool placed = false; bool removed = false; PopupWindowProperties properties; Owner* content = nullptr;
+                       kiln::Function<void()> dismiss; };
+        std::vector<std::shared_ptr<Shown>> shown;
+        IntOffset origin{ 200, 500 };
+        struct Window final : PlatformPopup {
+            std::shared_ptr<Shown> s;
+            explicit Window(std::shared_ptr<Shown> s_) : s(std::move(s_)) {}
+            ~Window() override { s->removed = true; }
+            void Update(const PopupWindowProperties& p) override { s->properties = p; }
+            void Place(IntRect r) override { s->bounds = r; s->placed = true; }
+        };
+        PopupHost Host() {
+            PopupHost h;
+            h.create = [this](Owner& content, const PopupWindowProperties& p, kiln::Function<void()> dismiss) -> std::unique_ptr<PlatformPopup> {
+                auto s = std::make_shared<Shown>();
+                s->properties = p;
+                s->content = &content;
+                s->dismiss = std::move(dismiss);
+                shown.push_back(s);
+                return std::make_unique<Window>(s);
+            };
+            h.windowOrigin = [this] { return origin; };
+            h.displayBounds = [](bool) { return IntRect{ 0, 0, 1080, 2400 }; };
+            return h;
+        }
+    };
+}
+
+TEST(PopupInAWindowThatDoesNotCoverTheDisplayIsAWindowOfItsOwn) {
+    Harness h;
+    FakePopupWindows wm;
+    h.owner.SetPopupHost(wm.Host());
+    Scene s;
+    // LocalOwner, as the app provides it: the Popup asks its owner for a window.
+    h.Run([&] { rt::Composition::Current()->Provide(LocalOwner, &h.owner, [&] { s.Compose(); }); });
+    CHECK(h.owner.Popups().empty());   // not in the overlay layer
+    CHECK_EQ(int(wm.shown.size()), 1);
+    // BottomEnd on BottomEnd, on the screen: the anchor is at (250, 560)-(350, 600).
+    CHECK(wm.shown[0]->placed);
+    CHECK((wm.shown[0]->bounds == IntRect{ 320, 580, 350, 600 }));
+    // A press outside the window asks to dismiss; the popup leaving removes the window.
+    wm.shown[0]->dismiss();
+    h.Pump();
+    CHECK_EQ(s.dismissals, 1);
+    CHECK(wm.shown[0]->removed);
+}
+
+TEST(PopupWindowReachesPastItsOwnersWindowAndFollowsIt) {
+    Harness h;
+    FakePopupWindows wm;
+    h.owner.SetPopupHost(wm.Host());
+    h.Run([&] {
+        rt::Composition::Current()->Provide(LocalOwner, &h.owner, [] {
+            Box(SizeMod(Modifier{}, 40_dp, 40_dp), Alignment::TopStart(), false, [] {
+                Popup(Alignment::TopStart(), { 0, 50 }, {}, {}, [] { Box(SizeMod(Modifier{}, 60_dp, 400_dp)); });
+            });
+        });
+    });
+    // 400 px tall below a 300 px window: the window's own bounds do not cut it.
+    CHECK((wm.shown.at(0)->bounds == IntRect{ 200, 550, 260, 950 }));
+    // The owner's window moved on the screen (a dialog re-centred): the popup goes with it.
+    wm.origin = { 100, 400 };
+    h.owner.OnWindowMovedOnScreen();
+    CHECK((wm.shown[0]->bounds == IntRect{ 100, 450, 160, 850 }));
+    // Kept on the display: near its bottom the popup is pushed up to fit.
+    wm.origin = { 100, 2200 };
+    h.owner.OnWindowMovedOnScreen();
+    CHECK((wm.shown[0]->bounds == IntRect{ 100, 2000, 160, 2400 }));
 }
