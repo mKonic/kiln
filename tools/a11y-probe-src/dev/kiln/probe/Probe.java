@@ -259,8 +259,17 @@ public final class Probe extends Instrumentation {
             case "click": ok = clickableAt(n, false).performAction(AccessibilityNodeInfo.ACTION_CLICK); break;
             case "longclick": ok = clickableAt(n, true).performAction(AccessibilityNodeInfo.ACTION_LONG_CLICK); break;
             case "focus": ok = focusableAt(n).performAction(AccessibilityNodeInfo.ACTION_FOCUS); break;
-            case "a11yfocus": ok = n.performAction(AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS); break;
+            case "a11yfocus": {
+                // Where a screen reader would stop: the node itself, or the ancestor that speaks for it.
+                AccessibilityNodeInfo t = n;
+                while (!t.isScreenReaderFocusable() && t.getParent() != null) t = t.getParent();
+                if (!t.isScreenReaderFocusable()) t = n;
+                ok = t.performAction(AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS);
+                break;
+            }
             case "show": ok = n.performAction(android.R.id.accessibilityActionShowOnScreen); break;
+            case "fwd": ok = n.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD); break;
+            case "back": ok = n.performAction(AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD); break;
             case "word": case "char": case "line": case "para": {
                 Bundle a = new Bundle();
                 int g = verb.equals("word") ? AccessibilityNodeInfo.MOVEMENT_GRANULARITY_WORD : verb.equals("char") ? AccessibilityNodeInfo.MOVEMENT_GRANULARITY_CHARACTER
