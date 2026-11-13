@@ -69,7 +69,7 @@ COMPONENTS = {
         shot:{p}-datepickers-dialog; tap:OK; wait:800; expect:Dialog date: 2026-01-15; tap:Pick a range; wait:1000;
         shot:{p}-datepickers-range; tap:OK; wait:800; expect:Dialog date: 2026-01-15 to 2026-01-20''',
     'timepickers': '''expect:Dialog time: none; tap:Pick a time; wait:1000; shot:{p}-timepickers-dialog; tap:{keyboard}; wait:2000;
-        shot:{p}-timepickers-dialog-input; tap:OK; wait:1500; scrollback:0; wait:500; scrollback:0; wait:500; expect:Dialog time: 18:30; reach:Clock time: 14:23; shot:{p}-timepickers;
+        shot:{p}-timepickers-dialog-input; tap:OK; wait:1500; scrollback:0; wait:500; scrollback:0; wait:500; scrollback:0; wait:500; expect:Dialog time: 18:30; reach:Clock time: 14:23; shot:{p}-timepickers;
         tap:{six}; wait:800; expect:Clock time: 18:23; shot:{p}-timepickers-minutes; reach:Typed time: 09:41; shot:{p}-timepickers-input;
         reach:Wheel time: 07:05; shot:{p}-timepickers-scroll''',
     'scrollfield': '''expect:Scroll field: 15; shot:{p}-scrollfield; swipeon:Minutes=0,-104,800; wait:1500; reject:Scroll field: 15;
