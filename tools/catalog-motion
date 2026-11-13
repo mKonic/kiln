@@ -1,0 +1,147 @@
+#!/usr/bin/env python3
+"""Compares a transition in kiln's catalog with the Compose one, frame by frame.
+
+usage: tools/catalog-motion [--out DIR] [--wait S] [--length S] [--step MS] ROUTE@STEP[@STEP...]
+
+Opens ROUTE in each app (as tools/catalog-compare does), records the screen while the steps run
+(same step syntax: tap:x,y, swipe:..., wait:ms ...), and lines the two recordings up on their
+first visible change - the input reaches the apps with different delays, the animation is what
+is compared. Prints, every --step ms from there, the share of pixels that differ, and how long
+each app kept changing; writes <route>.png with Compose | kiln | difference at those times.
+Needs ANDROID_SERIAL and ffmpeg.
+"""
+import argparse, importlib.machinery, importlib.util, os, re, subprocess, sys, tempfile, threading, time
+
+import numpy
+from PIL import Image
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+_loader = importlib.machinery.SourceFileLoader("catalog_compare", os.path.join(HERE, "catalog-compare"))
+_spec = importlib.util.spec_from_loader("catalog_compare", _loader)
+cc = importlib.util.module_from_spec(_spec)
+_loader.exec_module(cc)
+
+SCALE = 2          # frames are compared at half resolution
+CHANGE_PIXELS = 12   # a frame "changed" when this many pixels moved by more than 24
+
+
+def record(component, route, steps, wait, length):
+    """Opens the route, records `length` seconds while the steps run; returns [(t, image)]."""
+    package = component.split("/")[0]
+    cc.adb("shell", "am", "force-stop", package)
+    if package == "dev.kiln.catalog":
+        cc.adb("shell", "setprop", "debug.kiln.catalog.route", route)
+        cc.adb("shell", "am", "start", "-W", "-n", component)
+    else:
+        cc.adb("shell", "am", "start", "-W", "-n", component, "-e", "route", route)
+    time.sleep(wait)
+    cc.require_front(component)
+    remote = "/data/local/tmp/catalog-motion.mp4"
+    rec = subprocess.Popen(["adb", "shell", "screenrecord", "--bit-rate", "40000000", "--time-limit",
+                            str(int(length)), remote], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    time.sleep(1.0)   # screenrecord's encoder starts
+    held = cc.run_steps(steps)
+    rec.wait()
+    if held:
+        cc.adb("shell", "input", "motionevent", "UP", *held)
+    cc.require_front(component)
+    with tempfile.TemporaryDirectory() as d:
+        local = os.path.join(d, "m.mp4")
+        cc.adb("pull", remote, local)
+        cc.adb("shell", "rm", remote)
+        times = [float(t) for t in subprocess.run(
+            ["ffprobe", "-v", "error", "-select_streams", "v", "-show_entries", "frame=pts_time", "-of", "csv=p=0", local],
+            check=True, capture_output=True, text=True).stdout.split()]
+        w, h = (int(v) for v in subprocess.run(
+            ["ffprobe", "-v", "error", "-select_streams", "v", "-show_entries", "stream=width,height", "-of", "csv=p=0", local],
+            check=True, capture_output=True, text=True).stdout.strip().split(","))
+        w, h = w // SCALE, h // SCALE
+        raw = subprocess.run(["ffmpeg", "-loglevel", "error", "-i", local, "-vf", f"scale={w}:{h}", "-fps_mode", "passthrough",
+                              "-f", "rawvideo", "-pix_fmt", "rgb24", "-"], check=True, capture_output=True).stdout
+        count = len(raw) // (w * h * 3)
+        if count != len(times):
+            sys.exit(f"catalog-motion: {count} frames decoded for {len(times)} timestamps")
+        top = int(h * 0.04)   # the status bar (clock) always differs
+        out = []
+        for i, t in enumerate(times):
+            f = numpy.frombuffer(raw, numpy.uint8, w * h * 3, i * w * h * 3).reshape(h, w, 3)
+            out.append((t, f[top:].astype(numpy.int16)))
+        return out
+
+
+def moved(a, b):
+    return int((numpy.abs(a - b).max(axis=2) > 24).sum())
+
+
+def share(a, b):
+    return float((numpy.abs(a - b).max(axis=2) > 24).mean())
+
+
+def motion(frames):
+    """(start, end): the first frame that differs from the first one, and the last change."""
+    first = frames[0][1]
+    start = next((i for i, (_, f) in enumerate(frames) if moved(f, first) > CHANGE_PIXELS), None)
+    if start is None:
+        return None, None
+    end = start
+    for i in range(start + 1, len(frames)):
+        if moved(frames[i][1], frames[i - 1][1]) > CHANGE_PIXELS:
+            end = i
+    return start, end
+
+
+def at(frames, t):
+    """What was on screen at time t: the last frame shown at or before it."""
+    best = frames[0][1]
+    for ft, f in frames:
+        if ft > t:
+            break
+        best = f
+    return best
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("route")
+    ap.add_argument("--wait", type=float, default=2.5)
+    ap.add_argument("--length", type=float, default=4)
+    ap.add_argument("--step", type=float, default=50, help="ms between compared moments")
+    ap.add_argument("--out", default=os.path.join(HERE, "..", "build", "compare"))
+    a = ap.parse_args()
+    if "ANDROID_SERIAL" not in os.environ:
+        sys.exit("catalog-motion: set ANDROID_SERIAL")
+    route, *steps = a.route.split("@")
+    compose = record(cc.COMPOSE, route, steps, a.wait, a.length)
+    kiln = record(cc.KILN, route, steps, a.wait, a.length)
+    (cs, ce), (ks, ke) = motion(compose), motion(kiln)
+    if cs is None or ks is None:
+        sys.exit(f"catalog-motion: no motion in {'Compose' if cs is None else 'kiln'}")
+    c0, k0 = compose[cs][0], kiln[ks][0]
+    cdur, kdur = compose[ce][0] - c0, kiln[ke][0] - k0
+    print(f"{a.route}\tmoved for {cdur * 1000:.0f} ms in Compose, {kdur * 1000:.0f} ms in kiln")
+    rows, t = [], 0.0
+    end = max(cdur, kdur) + a.step / 1000
+    while t <= end:
+        cf, kf = at(compose, c0 + t), at(kiln, k0 + t)
+        s = share(cf, kf)
+        print(f"  +{t * 1000:4.0f} ms\t{s * 100:5.2f}% differ")
+        rows.append((cf, kf))
+        t += a.step / 1000
+    # The sheet: a row per moment, Compose | kiln | difference, at a further half size.
+    h, w = rows[0][0].shape[:2]
+    sw, sh = w // 2, h // 2
+    sheet = Image.new("RGB", (sw * 3, sh * len(rows)), "white")
+    for i, (cf, kf) in enumerate(rows):
+        diff = (numpy.abs(cf - kf).max(axis=2) > 24)
+        over = (cf * 0.3 + 178).astype(numpy.uint8)
+        over[diff] = (255, 0, 0)
+        for j, im in enumerate((cf.astype(numpy.uint8), kf.astype(numpy.uint8), over)):
+            sheet.paste(Image.fromarray(im).resize((sw, sh)), (j * sw, i * sh))
+    os.makedirs(a.out, exist_ok=True)
+    path = os.path.join(a.out, re.sub(r"[^\w.-]", "_", a.route) + ".motion.png")
+    sheet.save(path)
+    print(path)
+
+
+if __name__ == "__main__":
+    main()
