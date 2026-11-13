@@ -347,7 +347,9 @@ namespace {
         // What the frames asked the GPU to shade, summed over the window (screens of pixels).
         double quadScreens = 0, layerScreens = 0, copyScreens = 0, quads = 0, layers = 0, copies = 0;
         double pipe[8] = {}, square = 0, full[10] = {}, fullGradient = 0;
-        void Add(double v, double submitMs, const kiln::QuadRenderer::Stats& s) {
+        double phases[5] = {};   // animate, compose, layout, draw, prefetch (summed)
+        void Add(double v, double submitMs, const kiln::App::FramePhases& p, const kiln::QuadRenderer::Stats& s) {
+            phases[0] += p.animate; phases[1] += p.compose; phases[2] += p.layout; phases[3] += p.draw; phases[4] += p.prefetch;
             ms.push_back(v);
             submit.push_back(submitMs);
             const double screen = std::max(1.0, s.screenPixels);
@@ -379,6 +381,9 @@ namespace {
                                 std::accumulate(submit.begin(), submit.end(), 0.0) / double(submit.size()), submit[submit.size() / 2],
                                 submit[submit.size() * 9 / 10], submit[submit.size() * 99 / 100]);
             submit.clear();
+            __android_log_print(ANDROID_LOG_INFO, "kiln", "mean by phase: animate %.2fms, compose %.2fms, layout %.2fms, draw %.2fms, prefetch %.2fms",
+                                phases[0] / n, phases[1] / n, phases[2] / n, phases[3] / n, phases[4] / n);
+            for (double& v : phases) v = 0;
             const double sum = std::accumulate(ms.begin(), ms.end(), 0.0);
             __android_log_print(ANDROID_LOG_INFO, "kiln", "frames: n=%zu mean=%.2fms p50=%.2fms p90=%.2fms p99=%.2fms max=%.2fms over16=%td",
                                 ms.size(), sum / double(ms.size()), ms[ms.size() / 2], ms[ms.size() * 9 / 10], ms[ms.size() * 99 / 100], ms.back(),
@@ -409,7 +414,7 @@ namespace {
             g_Host->app->Frame(double(frameTimeNanos) * 1e-9);
             ApplyFrameRate();
             if (g_FrameStats.enabled)
-                g_FrameStats.Add(std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count(), g_Host->app->LastSubmitMs(),
+                g_FrameStats.Add(std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count(), g_Host->app->LastSubmitMs(), g_Host->app->LastFramePhases(),
                                  g_Host->app->Quads().ComputeStats());
         }
         ArmTimer();

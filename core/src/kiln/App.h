@@ -128,6 +128,9 @@ namespace kiln {
         // The last frame's GPU half (cache uploads, acquire, command recording, submit and
         // present), in ms: what a render thread would take off the main thread.
         double LastSubmitMs() const { return m_SubmitMs; }
+        // The last frame's CPU time by phase, in ms (debug.kiln.frametimes logs them).
+        struct FramePhases { double animate = 0, compose = 0, layout = 0, draw = 0, prefetch = 0; };
+        const FramePhases& LastFramePhases() const { return m_Phases; }
 
         // Extra windows (dialogs): an owner shown in its own platform window, laid out at that
         // window's size and drawn into its own presentation surface, every frame with the main
@@ -207,6 +210,7 @@ namespace kiln {
         Rgba m_Clear{ 1, 1, 1, 1 };
         bool m_FramePending = false;
         double m_SubmitMs = 0;
+        FramePhases m_Phases;
         // Prefetch in each frame's spare time (PrefetchScheduler): the vsync interval, from the
         // frame times, and the idle run for work no frame got to.
         double m_LastFrameSeconds = 0;

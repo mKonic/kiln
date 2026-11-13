@@ -572,17 +572,31 @@ namespace kiln {
         ++m_FrameCount;
         struct AfterFrame {
             App& app; std::chrono::steady_clock::time_point start;
-            ~AfterFrame() { app.RunPrefetch(start); }
+            ~AfterFrame() {
+                const auto t = std::chrono::steady_clock::now();
+                app.RunPrefetch(start);
+                app.m_Phases.prefetch = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t).count();
+            }
         } afterFrame{ *this, frameStart };
+        m_Phases = {};
+        auto phaseStart = frameStart;
+        const auto phase = [&phaseStart](double& out) {
+            const auto now = std::chrono::steady_clock::now();
+            out = std::chrono::duration<double, std::milli>(now - phaseStart).count();
+            phaseStart = now;
+        };
         // Frame order (architecture 3.3): posted work, animation frame waiters with the shared
         // vsync time, then stages (state apply + recomposition, measure, layout), then drawing.
         m_Dispatcher.RunPending();
         m_Dispatcher.RunFrame(std::int64_t(timeSeconds * 1e9));
+        phase(m_Phases.animate);
         for (auto& stage : m_Stages) stage(timeSeconds);
         rt::Composition::RecomposeAll();
+        phase(m_Phases.compose);
         if (!m_Device || m_SurfaceLost || m_Width == 0 || m_Height == 0) return;
         m_Owner.MeasureAndLayout({ int(m_Width), int(m_Height) });
         MeasureWindows();
+        phase(m_Phases.layout);
 
         m_Quads->Begin(m_Width, m_Height);
         m_Quads->SetClearColor(m_Clear.r, m_Clear.g, m_Clear.b, m_Clear.a);
@@ -612,6 +626,7 @@ namespace kiln {
         }
         kiln_frame frame{ this };
         if (m_Callbacks.on_frame) m_Callbacks.on_frame(m_Callbacks.user, &frame, timeSeconds);
+        phase(m_Phases.draw);
         struct SubmitTimer {
             double& out; std::chrono::steady_clock::time_point t0 = std::chrono::steady_clock::now();
             ~SubmitTimer() { out = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count(); }
