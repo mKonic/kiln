@@ -187,19 +187,36 @@ namespace kiln::ui {
 
     void DrawScope::ClipRect(Rect local, float radius) {
         if (m_Recording) { m_Recording->push_back([local, radius](DrawScope& d) { d.ClipRect(local, radius); }); return; }
+        ClipRounded(local, { radius, radius, radius, radius });
+    }
+
+    void DrawScope::ClipRoundRect(const gfx::RoundRect& rr) {
+        if (m_Recording) { m_Recording->push_back([rr](DrawScope& d) { d.ClipRoundRect(rr); }); return; }
+        const bool circular = rr.topLeft.x == rr.topLeft.y && rr.topRight.x == rr.topRight.y && rr.bottomRight.x == rr.bottomRight.y &&
+                              rr.bottomLeft.x == rr.bottomLeft.y;
+        if (circular) { ClipRounded(rr.rect, { rr.topLeft.x, rr.topRight.x, rr.bottomRight.x, rr.bottomLeft.x }); return; }
+        gfx::Path path;   // elliptical corners: a masked layer
+        path.AddRoundRect(rr);
+        BeginLayerImpl(rr.rect, 1, &path, true);
+    }
+
+    void DrawScope::ClipRounded(Rect local, const ClipRadii& localRadii) {
         const gfx::Matrix& m = m_State.m;
         // The new clip in its own space: device pixels when axis-aligned, else local.
         Rect r = local;
-        float rad = radius;
+        ClipRadii radii = localRadii;
         gfx::Matrix inv;
         if (AxisAligned()) {
             const Offset p0 = m.Map({ local.left, local.top }), p1 = m.Map({ local.right, local.bottom });
             r = { std::min(p0.x, p1.x), std::min(p0.y, p1.y), std::max(p0.x, p1.x), std::max(p0.y, p1.y) };
-            rad = radius * std::min(std::abs(m.a), std::abs(m.d));
+            const float sc = std::min(std::abs(m.a), std::abs(m.d));
+            for (float& v : radii) v *= sc;
+            // Corners in device order (top-left, top-right, bottom-right, bottom-left) under a flip.
+            if (m.a < 0) { std::swap(radii[0], radii[1]); std::swap(radii[3], radii[2]); }
+            if (m.d < 0) { std::swap(radii[0], radii[3]); std::swap(radii[1], radii[2]); }
         } else {
             inv = Inverse(m);
         }
-        const ClipRadii radii{ rad, rad, rad, rad };
         auto set = [&](const Rect& cr, const ClipRadii& cradii, const gfx::Matrix& cinv) {
             m_State.clip = true;
             m_State.clipRect = cr;
@@ -239,7 +256,8 @@ namespace kiln::ui {
         // Otherwise content renders into a layer masked to the new clip, which is composited
         // under the old one.
         gfx::Path path;
-        path.AddRoundRect(gfx::RoundRect::Uniform(local, radius));
+        path.AddRoundRect({ local, { localRadii[0], localRadii[0] }, { localRadii[1], localRadii[1] }, { localRadii[2], localRadii[2] },
+                            { localRadii[3], localRadii[3] } });
         BeginLayerImpl(local, 1, &path, true);
     }
 
@@ -446,6 +464,54 @@ namespace kiln::ui {
             return;
         }
         DrawRoundRect(b, topLeft, size, 0, alpha);
+    }
+
+    void DrawScope::DrawRoundRect(const gfx::Brush& brush, const gfx::RoundRect& rr, float alpha) {
+        if (m_Recording) { m_Recording->push_back([brush, rr, alpha](DrawScope& d) { d.DrawRoundRect(brush, rr, alpha); }); return; }
+        const gfx::Matrix& m = m_State.m;
+        const bool circular = rr.topLeft.x == rr.topLeft.y && rr.topRight.x == rr.topRight.y && rr.bottomRight.x == rr.bottomRight.y &&
+                              rr.bottomLeft.x == rr.bottomLeft.y;
+        // Decided at replay: the clip it combines with is the one there.
+        if (circular && m.b == 0 && m.c == 0 && m.a > 0 && m.d > 0) {
+            const Offset p0 = m.Map({ rr.rect.left, rr.rect.top }), p1 = m.Map({ rr.rect.right, rr.rect.bottom });
+            const Rect r{ p0.x, p0.y, p1.x, p1.y };
+            const float sc = std::min(m.a, m.d);
+            const ClipRadii radii{ rr.topLeft.x * sc, rr.topRight.x * sc, rr.bottomRight.x * sc, rr.bottomLeft.x * sc };
+            Rect out = r;
+            ClipRadii outRadii = radii;
+            Rect outer = m_State.clipOuter;
+            bool analytic = true;
+            if (m_State.clip) {
+                const bool sameSpace = SameMatrix(m_State.clipInverse, {});
+                analytic = sameSpace && IntersectRoundedRects(m_State.clipRect, m_State.clipRadii, r, radii, out, outRadii);
+                // A plain device rect (the window, a list's bounds) clips as the outer rect, as in
+                // ClipRect, when it cuts into a rounded corner.
+                const bool plain = sameSpace && m_State.clipRadii == ClipRadii{};
+                const bool noOuter = outer.left <= -1e8f && outer.right >= 1e8f && outer.top <= -1e8f && outer.bottom >= 1e8f;
+                if (!analytic && plain && noOuter) {
+                    out = r;
+                    outRadii = radii;
+                    outer = m_State.clipRect;
+                    analytic = true;
+                }
+            }
+            if (analytic) {
+                const State saved = m_State;
+                m_State.clip = true;
+                m_State.clipRect = out;
+                m_State.clipRadii = outRadii;
+                m_State.clipInverse = {};
+                m_State.clipOuter = outer;
+                ApplyClip();
+                DrawRect(brush, { rr.rect.left, rr.rect.top }, { rr.rect.Width(), rr.rect.Height() }, alpha);
+                m_State = saved;
+                ApplyClip();
+                return;
+            }
+        }
+        gfx::Path path;
+        path.AddRoundRect(rr);
+        DrawPath(path, brush, nullptr, alpha);
     }
 
     void DrawScope::DrawRoundRect(const gfx::Brush& b, Offset p, Size size, float r, float alpha) {

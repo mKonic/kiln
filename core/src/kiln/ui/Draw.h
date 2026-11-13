@@ -106,6 +106,10 @@ namespace kiln::ui {
         // Brush overloads; `alpha` multiplies the brush (gradient geometry is in scope coordinates).
         void DrawRect(const gfx::Brush& brush, Offset topLeft, Size size, float alpha = 1);
         void DrawRoundRect(const gfx::Brush& brush, Offset topLeft, Size size, float cornerRadius, float alpha = 1);
+        // A rounded rect with its own radius per corner (a drawer's or sheet's shape): filled
+        // through the analytic rounded clip when its corners are circular and the clip combines
+        // with it, else as a path.
+        void DrawRoundRect(const gfx::Brush& brush, const gfx::RoundRect& rr, float alpha = 1);
         void DrawPath(const gfx::Path& path, const gfx::Brush& brush, const gfx::Stroke* stroke = nullptr, float alpha = 1,
                       const gfx::ColorFilter* colorFilter = nullptr);
 
@@ -231,6 +235,9 @@ namespace kiln::ui {
         // into an outer rounded corner, clips in different rotations) clip through a masked layer
         // that ends with the Restore.
         void ClipRect(Rect local, float radius = 0);
+        // The same with a radius per corner (circular corners stay analytic; elliptical ones clip
+        // through a masked layer).
+        void ClipRoundRect(const gfx::RoundRect& rr);
         // Offscreen layer (saveLayerAlpha): content drawn until EndLayer composites as one image
         // with `alpha`, clipped to `bounds` (local). Inherited alpha applies at compositing.
         // With `clipPath` (local), the layer is masked to it (anti-aliased clip by path).
@@ -311,6 +318,7 @@ namespace kiln::ui {
         void EndLayerPlain(float stretchX, float stretchY);
         void EndClipLayers() { while (!m_Layers.empty() && m_Layers.back().forClip) EndLayerPlain(0, 0); }
         bool AxisAligned() const { return m_State.m.b == 0 && m_State.m.c == 0; }
+        void ClipRounded(Rect local, const ClipRadii& localRadii);
         void ApplyTransform();
         void ApplyClip();
         // Paint for a gradient brush; false for a solid one (its colour is returned in `solid`).

@@ -124,6 +124,7 @@ namespace kiln::foundation {
             s.DrawRoundRect(color, { rr->rect.left, rr->rect.top }, { rr->rect.Width(), rr->rect.Height() }, rr->topLeft.x);
             return;
         }
+        if (auto* rr = std::get_if<gfx::RoundRect>(&o.value)) { s.DrawRoundRect(gfx::Brush::SolidColor(color), *rr); return; }
         s.DrawPath(o.ToPath(), color);
     }
 
@@ -133,6 +134,7 @@ namespace kiln::foundation {
             s.DrawRoundRect(b, { rr->rect.left, rr->rect.top }, { rr->rect.Width(), rr->rect.Height() }, rr->topLeft.x, alpha);
             return;
         }
+        if (auto* rr = std::get_if<gfx::RoundRect>(&o.value)) { s.DrawRoundRect(b, *rr, alpha); return; }
         s.DrawPath(o.ToPath(), b, nullptr, alpha);
     }
 

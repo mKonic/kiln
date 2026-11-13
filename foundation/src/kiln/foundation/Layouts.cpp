@@ -739,9 +739,9 @@ namespace kiln::foundation {
                     outline = params.clipShape->CreateOutline(size, s.Direction(), s);
                     if (auto* p = std::get_if<gfx::Path>(&outline->value)) clipPath = *p;
                     else if (auto* rr = std::get_if<gfx::RoundRect>(&outline->value);
-                             rr && !(rr->topLeft == rr->topRight && rr->topLeft == rr->bottomLeft && rr->topLeft == rr->bottomRight &&
-                                     rr->topLeft.x == rr->topLeft.y))
-                        clipPath = outline->ToPath();   // non-uniform corners: no SDF fast path
+                             rr && !(rr->topLeft.x == rr->topLeft.y && rr->topRight.x == rr->topRight.y && rr->bottomRight.x == rr->bottomRight.y &&
+                                     rr->bottomLeft.x == rr->bottomLeft.y))
+                        clipPath = outline->ToPath();   // elliptical corners: no analytic clip
                 }
                 if (ShadowElevationPx(s) > 0) DrawElevationShadow(s, size);
                 if (params.renderEffect || params.progressiveBlur) {
@@ -796,7 +796,7 @@ namespace kiln::foundation {
             void ClipToShape(ContentDrawScope& s, Size size, const gfx::Outline* outline) {
                 if (outline) {
                     if (auto* r = std::get_if<Rect>(&outline->value)) s.ClipRect(*r);
-                    else { const auto& rr = std::get<gfx::RoundRect>(outline->value); s.ClipRect(rr.rect, rr.topLeft.x); }
+                    else s.ClipRoundRect(std::get<gfx::RoundRect>(outline->value));   // a radius per corner
                 } else {
                     s.ClipRect({ 0, 0, size.width, size.height }, CornerRadiusPx(params.shape, size, s));
                 }
