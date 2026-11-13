@@ -319,9 +319,12 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
                 reportedAnimationMask &= ~animation.getTypeMask();
                 runningAnimationMask &= ~animation.getTypeMask();
                 // The insets last applied, not getRootWindowInsets (stale for a frame after a
-                // controlled animation finishes).
+                // controlled animation finishes). Not after an animation this view controlled
+                // (imeNestedScroll): what was applied then is the target asked for when it began
+                // (the IME shown), not where it was finished, and the real insets follow ~100 ms
+                // later; the last onProgress insets stand until they do.
                 if (runningAnimationMask == 0) {
-                    if (savedInsets != null) pushInsets(savedInsets);
+                    if (savedInsets != null && !insetsControlled) pushInsets(savedInsets);
                     savedInsets = null;
                 }
             }
@@ -352,11 +355,14 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
 
     // --- imeNestedScroll: direct control of a type's insets (API 30+) ---------------------------
     private android.view.WindowInsetsAnimationController insetsController;
+    // From the control request until the controlled animation has ended.
+    private boolean insetsControlled;
 
     boolean requestInsetsControl(int typeIndex) {
         if (android.os.Build.VERSION.SDK_INT < 30 || typeIndex < 0 || typeIndex >= TYPES.length - 1) return false;
         android.view.WindowInsetsController c = getWindowInsetsController();
         if (c == null) return false;
+        insetsControlled = true;
         c.controlWindowInsetsAnimation(TYPES[typeIndex], -1, null, new android.os.CancellationSignal(),
             new android.view.WindowInsetsAnimationControlListener() {
                 @Override public void onReady(android.view.WindowInsetsAnimationController controller, int types) {
@@ -369,6 +375,7 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
                 @Override public void onCancelled(android.view.WindowInsetsAnimationController controller) { ended(); }
                 private void ended() {
                     insetsController = null;
+                    insetsControlled = false;
                     KilnNative.insetsControlEnded(windowId);
                 }
             });
