@@ -80,6 +80,10 @@ void UseSystemLanguage() { kiln::ui::SetApplicationLocales({}); }
   for it. If the app's unqualified `values` are not English, set `DEFAULT_LOCALE` in
   `kiln_add_app`.
 * `ui::GetApplicationLocales()` returns the choice, empty when the app follows the system.
+* Choose only languages the app has strings for. Android treats the unqualified `values` as
+  English. For a language with no `values-<language>`, it moves English or the closest
+  supported language ahead of the choice, and the layout direction follows that language. An
+  app without Arabic strings set to Arabic shows English, left to right.
 
 ## On Android and on the desktop
 
