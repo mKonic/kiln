@@ -821,6 +821,15 @@ namespace kpp {
         }));
     }
     inline void http_cancel(uint64_t request) { kiln_http_cancel(request); }
+    // Logging; see kiln_log. Messages below info are kept only for enabled tags.
+    inline void log(kiln_log_level level, const char* tag, const std::string& message) {
+        if (kiln_log_is_loggable(level, tag)) kiln_log(level, tag, message.c_str());
+    }
+    inline void log_info(const char* tag, const std::string& message) { log(KILN_LOG_INFO, tag, message); }
+    inline void log_warn(const char* tag, const std::string& message) { log(KILN_LOG_WARN, tag, message); }
+    inline void log_error(const char* tag, const std::string& message) { log(KILN_LOG_ERROR, tag, message); }
+    inline void log_debug(const char* tag, const std::string& message) { log(KILN_LOG_DEBUG, tag, message); }
+
     // A trace section for the scope (kiln_trace_begin / kiln_trace_end).
     class TraceSection {
     public:

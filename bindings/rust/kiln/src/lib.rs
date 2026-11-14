@@ -725,6 +725,31 @@ pub fn http_fetch(request: &HttpRequest, wanted_headers: &[&str], mut done: impl
     };
     unsafe { sys::kiln_http_fetch(&r, IntoCallback::<sys::kiln_fn_http>::into_callback(callback)) }
 }
+/// Log levels (android.util.Log priorities).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LogLevel { Verbose = 2, Debug = 3, Info = 4, Warn = 5, Error = 6 }
+/// Writes to logcat on Android, stderr elsewhere. Below Info only for tags enabled with
+/// `setprop log.tag.<tag> D`.
+pub fn log(level: LogLevel, tag: &str, message: &str) {
+    let t = CStrBuf::new(tag);
+    let lvl = match level {
+        LogLevel::Verbose => sys::kiln_log_level::KILN_LOG_VERBOSE,
+        LogLevel::Debug => sys::kiln_log_level::KILN_LOG_DEBUG,
+        LogLevel::Info => sys::kiln_log_level::KILN_LOG_INFO,
+        LogLevel::Warn => sys::kiln_log_level::KILN_LOG_WARN,
+        LogLevel::Error => sys::kiln_log_level::KILN_LOG_ERROR,
+    };
+    if unsafe { sys::kiln_log_is_loggable(lvl.clone(), t.ptr()) } {
+        let m = CStrBuf::new(message);
+        unsafe { sys::kiln_log(lvl, t.ptr(), m.ptr()) }
+    }
+}
+/// `log` with a format string: `kiln::log!(Info, "Notes", "loaded {} notes", n)`.
+#[macro_export]
+macro_rules! log {
+    ($level:ident, $tag:expr, $($arg:tt)*) => { $crate::log($crate::LogLevel::$level, $tag, &format!($($arg)*)) };
+}
+
 /// A system trace section (Perfetto, systrace) that ends when dropped.
 pub struct TraceSection(());
 impl TraceSection {

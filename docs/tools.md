@@ -73,6 +73,24 @@ volition click "Add"         # click by label
 volition wait route=detail   # wait until a condition holds
 ```
 
+## Logging
+
+`kiln::log` (`kiln/Log.h`) writes to logcat on Android and to stderr on the desktop:
+
+```cpp
+#include <kiln/Log.h>
+
+void Loaded(int count, double ms) {
+    kiln::log::Info("Notes", "loaded {} notes in {:.1f} ms", count, ms);
+    kiln::log::Debug("Notes", "first id {}", 42);   // kept only for an enabled tag
+}
+```
+
+Messages use `std::format`. As with `android.util.Log`, debug and verbose messages are kept
+only for tags turned on with `adb shell setprop log.tag.Notes D`, and are not formatted
+otherwise. From C, `kiln_log(KILN_LOG_INFO, "Notes", text)`; kiln++ has `kpp::log_info` and
+Rust `kiln::log!(Info, "Notes", "loaded {} notes", n)`.
+
 ## Performance
 
 kiln marks its frame with system trace sections, under the names Compose uses where there is

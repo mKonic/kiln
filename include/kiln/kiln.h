@@ -476,6 +476,12 @@ KILN_API const char* kiln_http_response_header(const kiln_http_response* respons
  * without android.permission.ACCESS_NETWORK_STATE). For content: recomposes on a change. */
 KILN_API bool kiln_network_connected(kiln_key key);
 
+/* Logging: logcat on Android (android.util.Log priorities: 2 verbose, 3 debug, 4 info, 5 warn,
+ * 6 error; below info only for tags enabled with setprop log.tag.<tag>), stderr elsewhere. */
+typedef enum kiln_log_level { KILN_LOG_VERBOSE = 2, KILN_LOG_DEBUG, KILN_LOG_INFO, KILN_LOG_WARN, KILN_LOG_ERROR } kiln_log_level;
+KILN_API void kiln_log(kiln_log_level level, const char* tag, const char* message);
+KILN_API bool kiln_log_is_loggable(kiln_log_level level, const char* tag);
+
 /* System trace sections (Perfetto, systrace; ATrace on Android): begin and end nest on one
  * thread; a counter plots a value. Cheap when no trace is being recorded. */
 KILN_API void kiln_trace_begin(const char* name);

@@ -16,6 +16,7 @@ namespace kiln::android { void InstallImageDecoder(); void InstallAssetReader(JN
 #include "kiln/ui/MediaQuery.h"
 #include "kiln/ui/PictureInPicture.h"
 #include "kiln/Trace.h"
+#include "kiln/Log.h"
 
 #include <android/trace.h>
 #include "kiln/ui/Back.h"
@@ -1307,6 +1308,15 @@ namespace {
 
     void Create(JNIEnv* env, jclass, jobject view, jobject text, jobject assets, jfloat density, jfloat fontScale, jbyteArray saved) {
         hearth::SetLogSink(&LogToLogcat);
+        // kiln::log: logcat, with Log.isLoggable's per-tag levels (Info by default).
+        kiln::log::SetSink([](kiln::log::Level level, std::string_view tag, std::string_view message) {
+            const std::string t(tag);
+            __android_log_write(int(level), t.c_str(), std::string(message).c_str());
+        });
+        kiln::log::SetLoggableCheck([](kiln::log::Level level, std::string_view tag) {
+            const std::string t(tag);
+            return __android_log_is_loggable(int(level), t.c_str(), ANDROID_LOG_INFO) != 0;
+        });
         // System tracing (Perfetto / systrace): kiln's and the app's sections go to ATrace.
         kiln::trace::SetTracer({
             .enabled = [] { return ATrace_isEnabled(); },

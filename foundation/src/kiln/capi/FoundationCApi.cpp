@@ -12,6 +12,7 @@
 #include "kiln/datastore/Preferences.h"
 #include "kiln/net/Http.h"
 #include "kiln/Trace.h"
+#include "kiln/Log.h"
 #include "kiln/ui/PictureInPicture.h"
 #include "kiln/foundation/AsyncImage.h"
 #include "kiln/ui/AppDirectories.h"
@@ -2165,3 +2166,12 @@ KILN_API void kiln_set_requested_orientation(int32_t o) { TRY { kiln::ui::SetReq
 KILN_API void kiln_trace_begin(const char* name) { if (name) kiln::trace::Begin(name); }
 KILN_API void kiln_trace_end(void) { kiln::trace::End(); }
 KILN_API void kiln_trace_counter(const char* name, int64_t value) { if (name) kiln::trace::Counter(name, value); }
+
+// --- Logging --------------------------------------------------------------------------------
+
+KILN_API void kiln_log(kiln_log_level level, const char* tag, const char* message) {
+    TRY { kiln::log::Write(kiln::log::Level(level), tag ? tag : "kiln", message ? message : ""); } CATCH_VOID
+}
+KILN_API bool kiln_log_is_loggable(kiln_log_level level, const char* tag) {
+    TRY { return kiln::log::IsLoggable(kiln::log::Level(level), tag ? tag : "kiln"); } CATCH(false)
+}
