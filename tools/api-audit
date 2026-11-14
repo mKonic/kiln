@@ -1,19 +1,25 @@
 #!/usr/bin/env python3
-"""Lists Compose public API that kiln has no counterpart for.
+"""Lists upstream public API that kiln has no counterpart for.
 
-usage: tools/api-audit [--androidx DIR] [module-substring...]
+usage: tools/api-audit [--androidx DIR] [--media3 DIR] [--no-members] [module-substring...]
 
-Reads each followed androidx module's api/current.txt (the public API dump, kept in step with the
-sources), takes its public, non-deprecated classes and top-level functions and properties, and
-prints those no kiln header names (case-insensitively), grouped by module and Kotlin file. A name
-that kiln spells differently, or that does not apply (Android views, tooling, Kotlin-only
-plumbing), goes in tools/api-audit.toml with the kiln spelling or the reason, so the list only
-shows real gaps.
+Reads each followed module's API dump (androidx api/current.txt, media3's api.txt), takes its
+public, non-deprecated classes and top-level functions and properties, and prints those no kiln
+header names (case-insensitively), grouped by module and Kotlin file. For each class kiln has, its
+public members are checked too, against the kiln headers that define the class (getFoo / setFoo /
+isFoo also match Foo). A module entry "path | regex" follows only the classes whose name matches.
+A name that kiln spells differently, or that does not apply (Android views, tooling, Kotlin-only
+plumbing), goes in tools/api-audit.toml with the kiln spelling or the reason ("Class.member" for
+members), so the list only shows real gaps.
 """
 import argparse, os, re, sys, tomllib
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DEFAULT_ANDROIDX = os.path.expanduser("~/dev/os/inspiration/androidx-compose")
+DEFAULT_MEDIA3 = os.path.expanduser("~/dev/os/inspiration/media3")
+# Members every class has, or that only Kotlin / Java plumbing uses.
+PLUMBING = {"equals", "hashcode", "tostring", "copy", "describecontents", "writetoparcel", "values", "valueof",
+            "entries", "getentries", "creator", "newarray", "createfromparcel", "builder", "build", "companion"}
 # Where kiln's API lives.
 HEADER_DIRS = ["include", "core/src", "foundation/src", "material3/src", "navigation/src", "navigation3/src", "sqlite/src", "paging/src", "render", "platform"]
 
@@ -22,18 +28,85 @@ CLASS = re.compile(r"^  (?P<ann>(?:@[\w.]+(?:\([^)]*\))? )*)public (?:[a-z]+ )*?
 MEMBER = re.compile(r"^    (?P<what>method|property|field|ctor) (?P<ann>(?:@[\w.]+(?:\([^)]*\))? )*)public (?P<rest>.*)")
 
 
-def kiln_identifiers():
-    ids = set()
+def kiln_headers():
+    """{path: (text, lowercase identifiers)} for every kiln header."""
+    out = {}
     for d in HEADER_DIRS:
         for dirpath, _, files in os.walk(os.path.join(ROOT, d)):
             for f in files:
                 if f.endswith((".h", ".hpp")):
-                    with open(os.path.join(dirpath, f), errors="replace") as fh:
-                        ids.update(w.lower() for w in re.findall(r"[A-Za-z_]\w*", fh.read()))
+                    path = os.path.join(dirpath, f)
+                    with open(path, errors="replace") as fh:
+                        text = fh.read()
+                    out[path] = (text, {w.lower() for w in re.findall(r"[A-Za-z_]\w*", text)})
+    return out
+
+
+def kiln_identifiers(headers):
+    ids = set()
+    for _, words in headers.values():
+        ids |= words
     return ids
 
 
-def api_names(path):
+def counterpart_ids(headers, name, cache):
+    """The identifiers of the kiln headers that define a type called name (case-insensitive), or None."""
+    low = name.lower()
+    if low in cache:
+        return cache[low]
+    pattern = re.compile(r"\b(?:class|struct|enum\s+class|enum|using)\s+(?:KILN_API\s+)?" + re.escape(name) + r"\b", re.I)
+    ids = None
+    for text, words in headers.values():
+        if pattern.search(text):
+            ids = (ids or set()) | words
+    cache[low] = ids
+    return ids
+
+
+def class_members(path, class_filter):
+    """Yields (class, member) for each public member of the followed, non-deprecated classes."""
+    cls = None
+    with open(path) as f:
+        for line in f:
+            m = CLASS.match(line)
+            if m:
+                name = m.group("name")
+                deprecated = "@Deprecated" in m.group("ann") or "kotlin.Deprecated" in m.group("ann")
+                cls = None if deprecated or name.endswith("Kt") or name.endswith(".Companion") else name
+                if cls and class_filter and not class_filter.search(cls):
+                    cls = None
+                continue
+            if cls is None:
+                continue
+            m = MEMBER.match(line)
+            if not m or m.group("what") not in ("method", "property"):
+                continue
+            if "@Deprecated" in m.group("ann") or "@BytecodeOnly" in m.group("ann"):
+                continue
+            rest = m.group("rest")
+            if m.group("what") == "method":
+                if "@InaccessibleFromKotlin" in m.group("ann"):
+                    continue
+                nm = re.search(r"(?:^|\s)([\w$-]+)\(", rest)
+            else:
+                nm = re.search(r"\s([\w$]+);$", rest)
+            if nm:
+                member = nm.group(1).split("-")[0].split("$")[0]
+                if member and not member.startswith("component"):
+                    yield cls, member
+
+
+def member_known(member, ids):
+    low = member.lower()
+    if low in ids:
+        return True
+    for prefix in ("get", "set", "is", "has"):
+        if low.startswith(prefix) and len(low) > len(prefix) and low[len(prefix):] in ids:
+            return True
+    return False
+
+
+def api_names(path, class_filter=None):
     """Yields (group, name): group is the Kotlin file (FooKt) for top-level members, else the class."""
     cls = None          # current class name
     top_level = False   # the class is a FooKt file facade
@@ -43,6 +116,9 @@ def api_names(path):
             if m:
                 cls = m.group("name")
                 top_level = cls.endswith("Kt") and m.group("kind") == "class"
+                if class_filter and not class_filter.search(cls):
+                    cls = None
+                    continue
                 deprecated = "@Deprecated" in m.group("ann") or "kotlin.Deprecated" in m.group("ann")
                 if not top_level and not deprecated and "." not in cls:
                     yield cls, cls
@@ -72,6 +148,8 @@ def api_names(path):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--androidx", default=DEFAULT_ANDROIDX)
+    ap.add_argument("--media3", default=DEFAULT_MEDIA3)
+    ap.add_argument("--no-members", action="store_true")
     ap.add_argument("modules", nargs="*")
     a = ap.parse_args()
     with open(os.path.join(ROOT, "tools", "api-audit.toml"), "rb") as f:
@@ -80,19 +158,26 @@ def main():
     skipped = {k.lower(): v for k, v in triage.get("skipped", {}).items()}
     patterns = [re.compile(p) for p in triage.get("skipped_patterns", {})]
     modules = triage["modules"]
-    ids = kiln_identifiers()
+    headers = kiln_headers()
+    ids = kiln_identifiers(headers)
+    cache = {}
     total = 0
     stale = []
-    for module in modules:
+    for entry in modules:
+        module, _, filt = (x.strip() for x in entry.partition("|"))
+        class_filter = re.compile(filt) if filt else None
         if a.modules and not any(s in module for s in a.modules):
             continue
-        path = os.path.join(a.androidx, module, "api", "current.txt")
+        if module.startswith("media3:"):
+            path = os.path.join(a.media3, "api.txt")
+        else:
+            path = os.path.join(a.androidx, module, "api", "current.txt")
         if not os.path.exists(path):
             print(f"## {module}: no api/current.txt (add it to the sparse checkout)")
             continue
         missing = {}
         seen = set()
-        for group, name in api_names(path):
+        for group, name in api_names(path, class_filter):
             key = name.split("::")[-1]
             if (group, key) in seen:
                 continue
@@ -107,6 +192,34 @@ def main():
             if low in ids:
                 continue
             missing.setdefault(group, []).append(name)
+        if not a.no_members:
+            seen_members = set()
+            for cls, member in class_members(path, class_filter):
+                short = cls.split(".")[-1]
+                key = f"{short}.{member}".lower()
+                if key in seen_members or member.lower() in PLUMBING:
+                    continue
+                seen_members.add(key)
+                if key in skipped or short.lower() in skipped or any(p.search(f"{short}.{member}") for p in patterns):
+                    continue
+                kiln_name = renamed.get(short.lower(), short).split("::")[-1].split(".")[-1].split("(")[0]
+                cids = counterpart_ids(headers, kiln_name, cache) if short != "Builder" else None
+                # Foo.Builder's setters are Foo's fields in kiln (aggregates, designated initializers).
+                if cids is None and "." in cls:
+                    outer = cls.split(".")[-2]
+                    cids = counterpart_ids(headers, renamed.get(outer.lower(), outer).split("::")[-1].split(".")[-1].split("(")[0], cache)
+                if cids is None:
+                    # No kiln type of that name: a class kiln covers with functions (or only
+                    # mentions); its members are looked for anywhere in kiln.
+                    if short.lower() not in ids and kiln_name.lower() not in ids:
+                        continue   # the class itself is reported (or triaged) at class level
+                    cids = ids
+                if key in renamed:
+                    if not all(w.lower() in ids for w in re.findall(r"[A-Za-z_]\w*", renamed[key])):
+                        stale.append(f"{short}.{member} -> {renamed[key]}")
+                    continue
+                if not member_known(member, cids):
+                    missing.setdefault(cls.split(".")[0] + " (members)", []).append(f"{short}.{member}")
         n = sum(len(v) for v in missing.values())
         total += n
         if n:
