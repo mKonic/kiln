@@ -109,6 +109,22 @@ kiln = "samples/catalog"
 paths = ["compose/material3/material3/integration-tests/material3-catalog", "compose/material3/material3/samples",
          "compose/material3/adaptive/samples", "compose/material3/material3-adaptive-navigation-suite/samples"]
 
+[[androidx.group]]
+name = "file-provider"
+kiln = "core/src/kiln/ui/FileProvider (SimplePathStrategy), KilnFileProvider.java"
+paths = ["core/core/src/main/java/androidx/core/content/FileProvider.java"]
+
+[[androidx.group]]
+name = "app-locales"
+kiln = "core/src/kiln/ui/AppLocales, KilnLocales.java (setApplicationLocales, the stored locales before 33)"
+paths = ["appcompat/appcompat/src/main/java/androidx/appcompat/app/AppCompatDelegate.java",
+         "appcompat/appcompat/src/main/java/androidx/appcompat/app/AppLocalesMetadataHolderService.java"]
+
+[[androidx.group]]
+name = "alarms"
+kiln = "core/src/kiln/work/Alarm, KilnAlarms.java"
+paths = ["core/core/src/main/java/androidx/core/app/AlarmManagerCompat.java"]
+
 [material-color-utilities]
 kind = "git"
 repo = "https://github.com/material-foundation/material-color-utilities.git"

@@ -32,6 +32,8 @@ final class KilnResources {
 
     private KilnResources() {}
 
+    static boolean attached() { return sContext != null; }
+
     static void attach(Context context) {
         sContext = context;
         synchronized (sIds) { sIds.clear(); }

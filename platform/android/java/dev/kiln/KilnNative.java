@@ -124,6 +124,8 @@ final class KilnNative {
     static native void setDirectories(String files, String cache, String noBackup);
     /** KilnFileProvider.config: the authority, then root name and folder pairs. */
     static native void setFileProvider(String[] config);
+    /** A process without a window (a job, a widget, an alarm): the app's assets, until a view gives its own. */
+    static native void setProcessAssets(android.content.res.AssetManager assets);
     static native void trimMemory(int level);
     static native boolean keepSplashScreen(long elapsedMillis);
     static native void setHighContrastText(boolean enabled, boolean background);

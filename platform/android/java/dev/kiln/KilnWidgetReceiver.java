@@ -27,7 +27,6 @@ import java.util.Map;
  */
 public class KilnWidgetReceiver extends AppWidgetProvider {
     private static Context appContext;
-    private static boolean loaded;
 
     static native Object[] render(String widget, int appWidgetId, float[] launcherSizes, float minWidth, float minHeight);
     static native boolean runCallback(String widget, int appWidgetId, String key, String params, int checked);
@@ -37,16 +36,7 @@ public class KilnWidgetReceiver extends AppWidgetProvider {
     }
 
     private static void ensureLoaded(Context context) {
-        attach(context);
-        if (loaded) return;
-        String lib = "main";
-        try {
-            ActivityInfo info = context.getPackageManager().getActivityInfo(new ComponentName(context, KilnActivity.class), PackageManager.GET_META_DATA);
-            if (info.metaData != null && info.metaData.getString("dev.kiln.lib_name") != null) lib = info.metaData.getString("dev.kiln.lib_name");
-        } catch (PackageManager.NameNotFoundException ignored) {
-        }
-        System.loadLibrary(lib);
-        loaded = true;
+        KilnProcess.ensureLoaded(context);
     }
 
     /** This receiver's widget name (its dev.kiln.widget meta-data). */

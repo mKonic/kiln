@@ -950,6 +950,22 @@ namespace kpp {
     }
     inline void cancel_work(const char* name) { kiln_work_cancel(name); }
 
+    // Alarms at a time; see kiln_alarm_schedule. f(name, payload, triggerAtMs) runs when it goes off.
+    template<typename F> void register_alarm_handler(const char* name, F&& f) {
+        kiln_alarm_register_handler(name, fn<kiln_fn_alarm>(std::forward<F>(f)));
+    }
+    inline bool schedule_alarm(const char* name, int64_t triggerAtMs, const char* payload = nullptr,
+                               kiln_alarm_kind kind = KILN_ALARM_EXACT_WHILE_IDLE) {
+        kiln_alarm a{};
+        a.name = name;
+        a.trigger_at_ms = triggerAtMs;
+        a.kind = kind;
+        a.payload = payload;
+        return kiln_alarm_schedule(&a);
+    }
+    inline void cancel_alarm(const char* name) { kiln_alarm_cancel(name); }
+    inline bool alarm_pending(const char* name) { return kiln_alarm_is_pending(name); }
+
     // Home-screen widgets; see kiln_glance_register_widget. Content functions take lambdas.
     namespace glance {
         template<typename F> void box(const kiln_glance_modifier& m, kiln_alignment a, F&& content) { kiln_glance_box(&m, a, fn<kiln_fn>(std::forward<F>(content))); }

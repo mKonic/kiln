@@ -77,6 +77,7 @@ __kiln_callback!(sys::kiln_fn_sensor, (v: *const f32, n: i32, t: i64) -> ());
 __kiln_callback!(sys::kiln_fn_location, (has: bool, lat: f64, lon: f64, acc: f32) -> ());
 __kiln_callback!(sys::kiln_fn_glance_content, (w: *const std::ffi::c_char, id: i32, width: f32, height: f32) -> ());
 __kiln_callback!(sys::kiln_fn_glance_action, (w: *const std::ffi::c_char, id: i32, params: *const std::ffi::c_char, checked: i32) -> ());
+__kiln_callback!(sys::kiln_fn_alarm, (name: *const std::ffi::c_char, payload: *const std::ffi::c_char, trigger_at_ms: i64) -> ());
 __kiln_callback!(sys::kiln_fn_worker, (name: *const std::ffi::c_char, input: *const std::ffi::c_char, attempt: i32, done: *mut sys::kiln_work_done) -> ());
 __kiln_callback!(sys::kiln_fn_biometric, (ok: bool, code: i32, msg: *const std::ffi::c_char) -> ());
 __kiln_callback!(sys::kiln_fn_int, (v: i32) -> ());
@@ -932,6 +933,24 @@ pub fn enqueue_work(name: &str, worker: &str, input: &str, request: sys::kiln_wo
     unsafe { sys::kiln_work_enqueue(n.ptr(), &r, keep_existing) }
 }
 pub fn cancel_work(name: &str) { let n = CStrBuf::new(name); unsafe { sys::kiln_work_cancel(n.ptr()) } }
+
+/// Registers an alarm's handler: `f(name, payload, trigger_at_ms)`, run when the alarm goes off.
+/// Register it as the library loads (as workers), so a process started for the alarm has it.
+pub fn register_alarm_handler(name: &str, mut f: impl FnMut(&str, &str, i64) + 'static) {
+    let n = CStrBuf::new(name);
+    let cb = move |name: *const std::ffi::c_char, payload: *const std::ffi::c_char, at: i64| f(&from_c(name), &from_c(payload), at);
+    unsafe { sys::kiln_alarm_register_handler(n.ptr(), IntoCallback::<sys::kiln_fn_alarm>::into_callback(cb)) }
+}
+/// Sets the alarm `name` (replacing one of that name); false when refused (see kiln_alarm_schedule).
+pub fn schedule_alarm(name: &str, trigger_at_ms: i64, kind: sys::kiln_alarm_kind, payload: &str) -> bool {
+    let (n, p) = (CStrBuf::new(name), CStrBuf::new(payload));
+    let a = sys::kiln_alarm { name: n.ptr(), trigger_at_ms, kind, window_length_ms: 0, payload: p.ptr(), show_uri: std::ptr::null() };
+    unsafe { sys::kiln_alarm_schedule(&a) }
+}
+pub fn cancel_alarm(name: &str) { let n = CStrBuf::new(name); unsafe { sys::kiln_alarm_cancel(n.ptr()) } }
+pub fn alarm_pending(name: &str) -> bool { let n = CStrBuf::new(name); unsafe { sys::kiln_alarm_is_pending(n.ptr()) } }
+pub fn can_schedule_exact_alarms() -> bool { unsafe { sys::kiln_alarm_can_schedule_exact() } }
+pub fn open_exact_alarm_settings() { unsafe { sys::kiln_alarm_open_exact_settings() } }
 
 /// Keeps the launch splash screen up while true (after the first frame it would go).
 pub fn keep_splash_screen(keep: bool) { unsafe { sys::kiln_keep_splash_screen(keep) } }

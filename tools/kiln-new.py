@@ -236,6 +236,15 @@ GRADLE_MANIFEST = '''<?xml version="1.0" encoding="utf-8"?>
         <!-- ui::GetUriForFile: the app's files, shared by content:// URI (FileProvider). -->
         <provider android:name="dev.kiln.KilnFileProvider" android:authorities="${{applicationId}}.kiln.fileprovider"
                   android:exported="false" android:grantUriPermissions="true" />
+        <!-- kiln::alarm: alarms going off, and set again after a reboot (with the app's
+             RECEIVE_BOOT_COMPLETED) or when exact alarms are allowed again. -->
+        <receiver android:name="dev.kiln.KilnAlarmReceiver" android:exported="false" />
+        <receiver android:name="dev.kiln.KilnAlarmRescheduler" android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.app.action.SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED" />
+            </intent-filter>
+        </receiver>
     </application>
 </manifest>
 '''

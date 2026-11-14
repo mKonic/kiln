@@ -31,6 +31,7 @@
 #include "kiln/ui/FileProvider.h"
 #include "kiln/ui/AppLocales.h"
 #include "kiln/security/SecureStore.h"
+#include "kiln/work/Alarm.h"
 #include "kiln/ui/AppDirectories.h"
 #include "kiln/ui/AppResources.h"
 #include "kiln/ui/ContentResolver.h"
@@ -2595,6 +2596,51 @@ KILN_API void kiln_work_cancel_all(void) {
 }
 KILN_API bool kiln_work_is_scheduled(const char* name) {
     TRY { return name && kiln::work::Find(name).has_value(); } CATCH(false)
+}
+
+KILN_API void kiln_alarm_register_handler(const char* name, kiln_fn_alarm handler) {
+    auto owned = kiln::capi::Own(handler);
+    TRY {
+        kiln::alarm::RegisterAlarmHandler(name ? name : "", [owned](const kiln::alarm::Alarm& a) {
+            kiln::capi::CallbackScope scope;
+            owned->f.call(owned->f.user, a.name.c_str(), a.payload.c_str(), a.triggerAtMillis);
+        });
+    } CATCH_VOID
+}
+KILN_API bool kiln_alarm_schedule(const kiln_alarm* a) {
+    TRY {
+        if (!a || !a->name) return false;
+        static constexpr kiln::alarm::AlarmKind kinds[] = {
+            kiln::alarm::AlarmKind::ExactWhileIdle, kiln::alarm::AlarmKind::Exact, kiln::alarm::AlarmKind::AlarmClock,
+            kiln::alarm::AlarmKind::Inexact, kiln::alarm::AlarmKind::InexactWhileIdle, kiln::alarm::AlarmKind::Window,
+        };
+        kiln::alarm::Alarm alarm{
+            .name = a->name,
+            .triggerAtMillis = a->trigger_at_ms,
+            .kind = kinds[std::clamp(int(a->kind), 0, int(std::size(kinds)) - 1)],
+            .windowLengthMillis = std::max<int64_t>(a->window_length_ms, 0),
+            .payload = a->payload ? a->payload : "",
+            .showUri = a->show_uri ? a->show_uri : "",
+        };
+        return kiln::alarm::Schedule(alarm);
+    } CATCH(false)
+}
+KILN_API void kiln_alarm_cancel(const char* name) {
+    TRY { if (name) kiln::alarm::Cancel(name); } CATCH_VOID
+}
+KILN_API bool kiln_alarm_is_pending(const char* name) {
+    TRY {
+        if (!name) return false;
+        for (const auto& a : kiln::alarm::Pending())
+            if (a.name == name) return true;
+        return false;
+    } CATCH(false)
+}
+KILN_API bool kiln_alarm_can_schedule_exact(void) {
+    TRY { return kiln::alarm::CanScheduleExactAlarms(); } CATCH(true)
+}
+KILN_API void kiln_alarm_open_exact_settings(void) {
+    TRY { kiln::alarm::OpenExactAlarmSettings(); } CATCH_VOID
 }
 
 // --- home-screen widgets ----------------------------------------------------------------------

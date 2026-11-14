@@ -334,6 +334,48 @@ through `kiln_work_complete`. Register C workers in a function marked
 `__attribute__((constructor))`. A Rust cdylib registers them in its `JNI_OnLoad`, before it
 calls `kiln_jni_onload`.
 
+## Alarms
+
+Work runs when the system finds it convenient. A reminder, a timer or a calendar event has to
+run at its time. `kiln::alarm` (`kiln/work/Alarm.h`) sets alarms with AlarmManager, the way
+AlarmManagerCompat does. As with workers, register the handler at namespace scope: when the app
+isn't running, the system starts a process just for the alarm.
+
+```cpp
+#include <kiln/ui/Notifications.h>
+#include <kiln/work/Alarm.h>
+
+kiln::alarm::AlarmRegistration reminder("reminder", [](const kiln::alarm::Alarm& a) {
+    kiln::ui::Notify({ .id = 7, .channelId = "reminders", .title = "Reminder", .text = a.payload });
+});
+
+void RemindAt(std::int64_t atMillis, std::string text) {
+    kiln::alarm::Schedule({ .name = "reminder", .triggerAtMillis = atMillis, .payload = std::move(text) });
+}
+```
+
+* An alarm's time is wall-clock milliseconds since the epoch. Scheduling a name again
+  replaces its alarm. `Cancel` removes it and `Pending()` lists those still to go off.
+* `kind` picks the AlarmManager call:
+  * `ExactWhileIdle` (the default) goes off on time, even when the device is dozing.
+  * `Exact` is on time but waits while the device dozes.
+  * `AlarmClock` is the user's own alarm, shown in the status bar and on the lock screen.
+    `showUri` is the deep link opened from there.
+  * `Inexact`, `InexactWhileIdle` and `Window` let the system batch the alarm to save
+    battery.
+* The exact kinds need `android.permission.SCHEDULE_EXACT_ALARM`, which the user can turn off.
+  When it is off, `Schedule` returns false. `CanScheduleExactAlarms()` checks the permission and
+  `OpenExactAlarmSettings()` opens the page where the user allows it. Alarm-clock and calendar
+  apps may declare `USE_EXACT_ALARM` instead.
+* The platform forgets alarms on a reboot. kiln keeps them and sets them again after the
+  reboot (with `android.permission.RECEIVE_BOOT_COMPLETED`), and also when exact alarms are
+  allowed again. An alarm whose time passed while the device was off goes off as it starts.
+* On the desktop, alarms go off in the app's process, on the main dispatcher's clock.
+
+From C, `kiln_alarm_register_handler` and `kiln_alarm_schedule` do the same. kiln++ has
+`kpp::register_alarm_handler` and `kpp::schedule_alarm`; Rust has `kiln::register_alarm_handler`
+and `kiln::schedule_alarm`.
+
 ## Home-screen widgets
 
 `kiln::glance` (`kiln/glance/Glance.h`) builds home-screen widgets in Glance's model. A widget's

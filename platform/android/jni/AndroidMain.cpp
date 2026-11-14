@@ -1345,14 +1345,16 @@ namespace {
         kiln::android::InstallMediaSession(env);
         kiln::android::InstallLocales(env);
         kiln::android::InstallSecurity(env);
-    }
-
-    void Create(JNIEnv* env, jclass, jobject view, jobject text, jobject assets, jfloat density, jfloat fontScale, jbyteArray saved) {
-        kiln::android::InstallAssetReader(env, assets);
+        kiln::android::InstallAlarms(env);
+        // Not tied to a window: a process started for a job, a widget or an alarm has them too.
         kiln::android::InstallDateFormat(env);
         kiln::android::InstallAppResources(env);
         kiln::android::InstallContentResolver(env);
         kiln::android::InstallDevice(env, [] { if (g_Host && g_Host->app) g_Host->app->RequestFrame(); });
+    }
+
+    void Create(JNIEnv* env, jclass, jobject view, jobject text, jobject assets, jfloat density, jfloat fontScale, jbyteArray saved) {
+        kiln::android::InstallAssetReader(env, assets);
         {
             // ui::StartActivity / ShouldShowRequestPermissionRationale on the main window's view.
             jclass vc = env->GetObjectClass(view);
@@ -2962,6 +2964,9 @@ namespace {
         };
         kiln::ui::SetAppDirectories(str(files), str(cache), str(noBackup));
     }
+    void SetProcessAssetsFromJava(JNIEnv* env, jclass, jobject assets) {
+        if (!kiln::android::AssetManager()) kiln::android::InstallAssetReader(env, assets);
+    }
     void SetFileProviderFromJava(JNIEnv* env, jclass, jobjectArray config) {
         std::vector<std::string> c;
         for (jsize i = 0, n = env->GetArrayLength(config); i < n; ++i) {
@@ -3689,6 +3694,7 @@ extern "C" JNIEXPORT jint kiln_jni_onload(JavaVM* vm) {
         { "setActivityIntent", "([Ljava/lang/Object;)V", reinterpret_cast<void*>(&SetActivityIntentFromJava) },
         { "setDirectories", "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V", reinterpret_cast<void*>(&SetDirectoriesFromJava) },
         { "setFileProvider", "([Ljava/lang/String;)V", reinterpret_cast<void*>(&SetFileProviderFromJava) },
+        { "setProcessAssets", "(Landroid/content/res/AssetManager;)V", reinterpret_cast<void*>(&SetProcessAssetsFromJava) },
         { "newIntent", "([Ljava/lang/Object;)V", reinterpret_cast<void*>(&NewIntentFromJava) },
         { "dialogDismissRequest", "(I)V", reinterpret_cast<void*>(&DialogDismissRequest) },
         { "windowMovedOnScreen", "(I)V", reinterpret_cast<void*>(&WindowMovedOnScreen) },

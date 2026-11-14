@@ -16,6 +16,9 @@
 #include <kiln/foundation/VideoSurface.h>
 #include <kiln/media/MediaSession.h>
 #include <kiln/ui/AppLocales.h>
+#include <kiln/ui/Notifications.h>
+#include <kiln/work/Alarm.h>
+#include <chrono>
 #include <kiln/ui/AppResources.h>
 #include "kiln_res.h"
 #include <fstream>
@@ -416,6 +419,32 @@ namespace {
         });
     }
 
+    // An alarm at a time (kiln::alarm): it goes off with the app closed and posts a notification.
+    kiln::alarm::AlarmRegistration g_Reminder("gallery-reminder", [](const kiln::alarm::Alarm& a) {
+        kiln::ui::CreateNotificationChannel({ .id = "reminders", .name = "Reminders" });
+        kiln::ui::Notify({ .id = 7, .channelId = "reminders", .title = "Reminder", .text = a.payload });
+    });
+    void AlarmDemo() {
+        using namespace kiln::foundation;
+        auto& status = RememberState(std::string());
+        Column(SafeDrawingPadding(Background(FillMax(Modifier{}, Axis::Both), kSurface)), Arrangement::SpacedBy(12_dp), AlignmentH::Start(), [&] {
+            BasicText("Alarms", Padding(Modifier{}, 16_dp, 0_dp), { 22, kOnSurface });
+            BasicText(status.Get(), Padding(Modifier{}, 16_dp, 0_dp), { 16, kOnSurface });
+            FlowRow(Padding(Modifier{}, 16_dp, 0_dp), Arrangement::SpacedBy(8_dp), Arrangement::SpacedBy(8_dp), AlignmentV::CenterVertically(), [&] {
+                auto button = [](const char* label, kiln::Function<void()> onClick) {
+                    Box(Clickable(Background(Modifier{}, kPrimaryContainer, CornerShape::Pill()), std::move(onClick)), Alignment::Center(), false,
+                        [label] { BasicText(label, Padding(Modifier{}, 20_dp, 10_dp), { 14, kOnSurface }); });
+                };
+                button("Remind me in 10 s", [&status] {
+                    const auto now = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+                    const bool ok = kiln::alarm::Schedule({ .name = "gallery-reminder", .triggerAtMillis = now + 10'000, .payload = "Ten seconds have passed" });
+                    status.Set(ok ? "Set for 10 s from now" : "Exact alarms are not allowed");
+                });
+                if (!kiln::alarm::CanScheduleExactAlarms()) button("Allow exact alarms", [] { kiln::alarm::OpenExactAlarmSettings(); });
+            });
+        });
+    }
+
     // The app's own language (ui::SetApplicationLocales): its strings follow, the system's stay.
     void LanguageDemo() {
         using namespace kiln::foundation;
@@ -506,6 +535,10 @@ namespace {
         }
         if (section == "media") {
             MediaDemo();
+            return;
+        }
+        if (section == "alarm") {
+            AlarmDemo();
             return;
         }
         if (section == "language") {

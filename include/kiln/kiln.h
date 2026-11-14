@@ -558,6 +558,32 @@ KILN_API void kiln_work_cancel(const char* unique_name);
 KILN_API void kiln_work_cancel_all(void);
 KILN_API bool kiln_work_is_scheduled(const char* unique_name);
 
+/* Alarms at a wall-clock time (alarm::Schedule, AlarmManager): the handler registered under the
+ * alarm's name runs on the main thread when it goes off, in a process started for it if the app
+ * was not running, so register handlers as the library loads (as workers). Scheduling a name
+ * again replaces its alarm. Exact kinds need android.permission.SCHEDULE_EXACT_ALARM (see
+ * kiln_alarm_can_schedule_exact); alarms are set again after a reboot with
+ * android.permission.RECEIVE_BOOT_COMPLETED. kiln_alarm_schedule: false when refused. */
+typedef enum kiln_alarm_kind {
+    KILN_ALARM_EXACT_WHILE_IDLE, KILN_ALARM_EXACT, KILN_ALARM_ALARM_CLOCK,
+    KILN_ALARM_INEXACT, KILN_ALARM_INEXACT_WHILE_IDLE, KILN_ALARM_WINDOW,
+} kiln_alarm_kind;
+typedef struct kiln_alarm {
+    const char* name;
+    int64_t trigger_at_ms;             /* ms since the epoch (UTC) */
+    kiln_alarm_kind kind;
+    int64_t window_length_ms;          /* KILN_ALARM_WINDOW */
+    const char* payload;               /* may be NULL */
+    const char* show_uri;              /* KILN_ALARM_ALARM_CLOCK: opened from the status bar; may be NULL */
+} kiln_alarm;
+typedef struct kiln_fn_alarm { void (*call)(void* user, const char* name, const char* payload, int64_t trigger_at_ms); void* user; void (*drop)(void* user); } kiln_fn_alarm;
+KILN_API void kiln_alarm_register_handler(const char* name, kiln_fn_alarm handler);
+KILN_API bool kiln_alarm_schedule(const kiln_alarm* alarm);
+KILN_API void kiln_alarm_cancel(const char* name);
+KILN_API bool kiln_alarm_is_pending(const char* name);
+KILN_API bool kiln_alarm_can_schedule_exact(void);
+KILN_API void kiln_alarm_open_exact_settings(void);
+
 /* Home-screen widgets (kiln::glance): a widget's content callback calls the element functions
  * below to build what the launcher shows, for each size it draws (size_mode 0 single, 1 exact).
  * Register widgets and actions as the library loads, like background workers; declare the

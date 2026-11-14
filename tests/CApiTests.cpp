@@ -896,6 +896,23 @@ TEST(CApiApplicationLocales) {
     CHECK(std::string(kiln_get_application_locales()).empty());
 }
 
+TEST(CApiAlarms) {
+    std::vector<std::string> fired;
+    kpp::register_alarm_handler("capi-alarm", [&](const char* name, const char* payload, int64_t) { fired.push_back(std::string(name) + ":" + payload); });
+    kiln_alarm a{};
+    a.name = "capi-alarm";
+    a.trigger_at_ms = 0;   // already past: goes off at once
+    a.kind = KILN_ALARM_WINDOW;
+    a.window_length_ms = 1000;
+    a.payload = "p";
+    CHECK(kiln_alarm_can_schedule_exact() && kiln_alarm_schedule(&a));
+    kiln::rt::Dispatcher::Main().RunPending();
+    CHECK(fired == std::vector<std::string>{ "capi-alarm:p" } && !kpp::alarm_pending("capi-alarm"));
+    CHECK(kpp::schedule_alarm("capi-alarm", INT64_MAX / 2, "later") && kiln_alarm_is_pending("capi-alarm"));
+    kpp::cancel_alarm("capi-alarm");
+    CHECK(!kiln_alarm_is_pending("capi-alarm") && fired.size() == 1);
+}
+
 TEST(CApiSecureStore) {
     kiln_secure_store* s = kiln_secure_store_open("capi-secure");
     CHECK(s && kiln_secure_store_open("capi-secure") == s && !kiln_secure_store_get(s, "k"));
