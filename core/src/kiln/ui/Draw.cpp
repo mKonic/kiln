@@ -1097,6 +1097,15 @@ namespace kiln::ui {
             static std::unordered_map<std::uint64_t, BlurredShadowEntry> cache;
             return cache;
         }
+        // SkShadowUtils' CachedTessellations for the meshes: an ambient mesh is made without the
+        // translation and then moved (MakePathShadow), so it serves the caster anywhere under the
+        // same matrix; a spot mesh is made with the light where it is, so it serves the caster
+        // where it was (its key holds the translation and the light).
+        struct MeshShadowEntry { std::vector<gfx::ShadowMeshVertex> triangles; float e = 0, f = 0; };
+        std::unordered_map<std::uint64_t, MeshShadowEntry>& MeshShadows() {
+            static std::unordered_map<std::uint64_t, MeshShadowEntry> cache;
+            return cache;
+        }
     }
 
     void DrawScope::DrawShadow(const gfx::Outline& outline, float elevation, Color ambientColor, Color spotColor, float casterAlpha,
@@ -1150,6 +1159,29 @@ namespace kiln::ui {
                         return;
                     }
                 }
+                const Rgba c = Scaled(ToRgba(color), m_State.alpha);
+                auto drawMesh = [&](const std::vector<gfx::ShadowMeshVertex>& triangles, float dx, float dy) {
+                    std::vector<QuadRenderer::Vertex> out;
+                    out.reserve(triangles.size());
+                    for (const gfx::ShadowMeshVertex& v : triangles)
+                        out.push_back({ v.position.x + dx, v.position.y + dy, c.r, c.g, c.b, c.a, v.coverage, 0, 0, 2.0f });
+                    if (out.empty()) return;
+                    ApplyClip();
+                    m_Target.quads->DrawTriangles(out.data(), out.size());
+                };
+                std::uint64_t meshKey = 0;
+                if (key) {
+                    meshKey = key ^ 0x9e3779b97f4a7c15ull;
+                    if (source) {
+                        const float at[4] = { m.e, m.f, source->x, source->y };
+                        const auto* b = reinterpret_cast<const std::uint8_t*>(at);
+                        for (std::size_t i = 0; i < sizeof(at); ++i) { meshKey ^= b[i]; meshKey *= 1099511628211ull; }
+                    }
+                    if (const auto it = MeshShadows().find(meshKey); it != MeshShadows().end()) {
+                        drawMesh(it->second.triangles, m.e - it->second.e, m.f - it->second.f);
+                        return;
+                    }
+                }
                 const gfx::PathShadow shadow = gfx::MakePathShadow(path, dev, source, transparent);
                 if (shadow.blurred) {
                     BlurredShadowEntry entry{ BlurredShadowOutline(shadow), shadow.sigma, m.e, m.f, 1 };
@@ -1165,14 +1197,11 @@ namespace kiln::ui {
                     }
                     return;
                 }
-                const Rgba c = Scaled(ToRgba(color), m_State.alpha);
-                std::vector<QuadRenderer::Vertex> out;
-                out.reserve(shadow.triangles.size());
-                for (const gfx::ShadowMeshVertex& v : shadow.triangles)
-                    out.push_back({ v.position.x, v.position.y, c.r, c.g, c.b, c.a, v.coverage, 0, 0, 2.0f });
-                if (out.empty()) return;
-                ApplyClip();
-                m_Target.quads->DrawTriangles(out.data(), out.size());
+                drawMesh(shadow.triangles, 0, 0);
+                if (meshKey) {
+                    if (MeshShadows().size() >= 256) MeshShadows().clear();
+                    MeshShadows().emplace(meshKey, MeshShadowEntry{ shadow.triangles, m.e, m.f });
+                }
             };
             draw(ambient, nullptr);
             draw(spot, &light);

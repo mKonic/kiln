@@ -173,6 +173,29 @@ TEST(BlurredPathShadowMovesWithItsCasterWithoutChanging) {
     }
 }
 
+// What the mesh cache (DrawScope::DrawShadow) relies on: an ambient mesh is made without the
+// translation, so a moved caster's mesh is the same mesh moved.
+TEST(AmbientShadowMeshMovesWithItsCasterUnchanged) {
+    Path path;
+    path.AddRoundRect({ { 0, 0, 120, 80 }, { 4, 4 }, { 24, 24 }, { 10, 10 }, { 0, 0 } });
+    ShadowProjection at;
+    at.zPlane = { 0, 0, 8 };
+    at.matrix = { 1.25f, 0, 30, 0, 1.25f, 40, 0, 0, 1 };
+    ShadowProjection moved = at;
+    moved.matrix[2] += 17.5f;
+    moved.matrix[5] -= 613;
+    const auto a = MakePathShadow(path, at, nullptr, false);
+    const auto b = MakePathShadow(path, moved, nullptr, false);
+    CHECK(!a.blurred && !a.triangles.empty() && a.triangles.size() == b.triangles.size());
+    bool same = true;
+    for (std::size_t i = 0; i < a.triangles.size() && i < b.triangles.size(); ++i) {
+        same = same && std::fabs(b.triangles[i].position.x - (a.triangles[i].position.x + 17.5f)) < 1e-3f &&
+               std::fabs(b.triangles[i].position.y - (a.triangles[i].position.y - 613)) < 1e-3f &&
+               a.triangles[i].coverage == b.triangles[i].coverage;
+    }
+    CHECK(same);
+}
+
 TEST(PathShadowTransformsAndInvalidInput) {
     Path path;
     path.AddOval({ 0, 0, 100, 60 });
