@@ -547,33 +547,69 @@ namespace kiln::foundation {
             return std::pair{ link.start, std::min(link.end, last) };
         }
 
-        // The link's rectangles and their rounded bounds.
-        struct LinkGeometry { std::vector<RectF> rects; ui::IntOffset topLeft; ui::IntSize size; };
+        // The link's geometry (TextLinkScope with isLinkPerformanceOptimizationEnabled, on by
+        // default since androidx 65fb6f62fed): a link on one line takes its bounds from the boxes
+        // of its visually outermost characters and the line's top and bottom; one that is also a
+        // single bidi run is a single rectangle and is not clipped. Others are clipped to their
+        // rectangles, relative to their (unrounded) bounds.
+        struct LinkGeometry {
+            std::vector<RectF> rects;      // empty: a single rectangle, no clip
+            float pathLeft = 0, pathTop = 0;
+            ui::IntOffset topLeft;
+            ui::IntSize size;
+        };
+        bool SingleBidiDirection(int start, int end, const TextLayoutResult& r) {
+            const auto direction = r.BidiRunDirection(start);
+            for (int o = start + 1; o < end; ++o)
+                if (r.BidiRunDirection(o) != direction) return false;
+            return true;
+        }
         std::optional<LinkGeometry> Geometry(const Range<LinkAnnotation>& link, const LinkShared& shared) {
             if (!shared.layout) return std::nullopt;
-            const auto range = VisibleLinkRange(link, *shared.layout);
-            if (!range) return std::nullopt;
+            const TextLayoutResult& r = *shared.layout;
+            const auto range = VisibleLinkRange(link, r);
+            if (!range || range->first >= range->second) return std::nullopt;
+            const auto [start, end] = *range;
             LinkGeometry g;
-            g.rects = shared.layout->SelectionRects(range->first, range->second);
+            const bool singleLine = r.LineCount() == 1 || r.LineForOffset(start) == r.LineForOffset(end - 1);
+            if (singleLine) {
+                // getSingleLineBounds.
+                const bool oneRun = SingleBidiDirection(start, end, r);
+                const RectF first = r.BoundingBox(start);
+                float left = first.x, right = first.x + first.w;
+                for (int o = oneRun ? end - 1 : start + 1; o <= end - 1; ++o) {
+                    const RectF b = r.BoundingBox(o);
+                    left = std::min(left, b.x);
+                    right = std::max(right, b.x + b.w);
+                }
+                const int line = r.LineForOffset(start);
+                g.topLeft = { RoundJava(left), RoundJava(r.LineTop(line)) };
+                g.size = { std::max(0, RoundJava(right) - g.topLeft.x), std::max(0, RoundJava(r.LineBottom(line)) - g.topLeft.y) };
+                if (oneRun) return g;
+            }
+            g.rects = r.SelectionRects(start, end);
             if (g.rects.empty()) return std::nullopt;
-            float l = INFINITY, t = INFINITY, r = -INFINITY, b = -INFINITY;
-            for (const RectF& x : g.rects) { l = std::min(l, x.x); t = std::min(t, x.y); r = std::max(r, x.x + x.w); b = std::max(b, x.y + x.h); }
-            g.topLeft = { RoundJava(l), RoundJava(t) };
-            g.size = { std::max(0, RoundJava(r) - g.topLeft.x), std::max(0, RoundJava(b) - g.topLeft.y) };
+            float l = INFINITY, t = INFINITY, rt = -INFINITY, b = -INFINITY;
+            for (const RectF& x : g.rects) { l = std::min(l, x.x); t = std::min(t, x.y); rt = std::max(rt, x.x + x.w); b = std::max(b, x.y + x.h); }
+            g.pathLeft = l;
+            g.pathTop = t;
+            if (!singleLine) {
+                g.topLeft = { RoundJava(l), RoundJava(t) };
+                g.size = { std::max(0, RoundJava(rt) - g.topLeft.x), std::max(0, RoundJava(b) - g.topLeft.y) };
+            }
             return g;
         }
 
-        // clipLink: the link's path, in the link box's coordinates.
+        // clipLink: the link's path relative to its bounds; a single rectangle is not clipped.
         struct LinkShape final : gfx::Shape {
             Range<LinkAnnotation> link;
             std::shared_ptr<LinkShared> shared;
             LinkShape(Range<LinkAnnotation> l, std::shared_ptr<LinkShared> s) : link(std::move(l)), shared(std::move(s)) {}
             gfx::Outline CreateOutline(ui::Size size, ui::LayoutDirection, const ui::Density&) const override {
                 const auto g = Geometry(link, *shared);
-                if (!g) return { ui::Rect{ 0, 0, size.width, size.height } };
+                if (!g || g->rects.empty()) return { ui::Rect{ 0, 0, size.width, size.height } };
                 gfx::Path p;
-                const float dx = float(g->topLeft.x), dy = float(g->topLeft.y);
-                for (const RectF& r : g->rects) p.AddRect({ r.x - dx, r.y - dy, r.x + r.w - dx, r.y + r.h - dy });
+                for (const RectF& r : g->rects) p.AddRect({ r.x - g->pathLeft, r.y - g->pathTop, r.x + r.w - g->pathLeft, r.y + r.h - g->pathTop });
                 return { std::move(p) };
             }
         };

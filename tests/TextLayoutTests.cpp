@@ -231,6 +231,54 @@ TEST(LayoutTextSizesToIntrinsicsAndConstraints) {
     CHECK(intr && std::abs(intr->maxWidth - 360) < 1e-3f && std::abs(intr->minWidth - 60) < 1e-3f);
 }
 
+namespace {
+    // The link box over the text whose semantics text is `text`.
+    const ui::LayoutNode* FindLinkBox(const ui::LayoutNode& n, const std::string& text) {
+        ui::SemanticsConfiguration c;
+        if (n.Parent() && ui::CalculateSemanticsConfiguration(const_cast<ui::LayoutNode&>(n), c) && c.text.size() == 1 && c.text[0] == text &&
+            n.Children().empty())
+            return &n;
+        for (const auto* child : n.Children())
+            if (const auto* r = FindLinkBox(*child, text)) return r;
+        return nullptr;
+    }
+}
+
+// TextLinkScope with the link performance optimizations (Compose's default since androidx
+// 65fb6f62fed): a link on one line spans its characters' boxes and the line's top and bottom; a
+// wrapped link spans its rectangles.
+TEST(BasicTextLinkBoxesCoverTheirCharactersAndLines) {
+    FakeText backend;
+    ui::Owner owner;
+    owner.SetDensity({ 1, 1 });
+    owner.SetText(&backend);
+    rt::Composition comp(owner.Root(), rt::Dispatcher::Main());
+    AnnotatedStringBuilder b;
+    b.Append("Go ");
+    b.WithLink(LinkAnnotation::Url("https://a.example"), [&] { b.Append("one"); });
+    b.Append(" xx ");
+    b.WithLink(LinkAnnotation::Url("https://b.example"), [&] { b.Append("wrapped"); });
+    const AnnotatedString text = b.ToAnnotatedString();   // "Go one xx wrapped": 17 chars of 10 px
+    comp.SetContent([&] {
+        foundation::Column(ui::Modifier{}, [&] {
+            foundation::BasicText(text, foundation::Width(ui::Modifier{}, ui::Dp(120)), TextStyle(Sp(20)));
+        });
+    });
+    comp.Recompose();
+    owner.MeasureAndLayout({ 300, 200 });
+    const ui::LayoutNode* one = FindLinkBox(owner.Root(), "one");
+    const ui::LayoutNode* wrapped = FindLinkBox(owner.Root(), "wrapped");
+    CHECK(one && wrapped);
+    if (!one || !wrapped) return;
+    // "one" at 30..60 on the first line (0..25).
+    CHECK(one->PositionInRoot().x == 30 && one->PositionInRoot().y == 0);
+    CHECK(one->Size().width == 30 && one->Size().height == 25);
+    // "wrapped" starts at 100 on line 1 and goes on at 0 on line 2: its box spans both lines.
+    CHECK(wrapped->PositionInRoot().y == 0);
+    CHECK(wrapped->Size().height == 50);
+    CHECK(wrapped->PositionInRoot().x == 0 && wrapped->Size().width == 120);
+}
+
 TEST(BasicTextLinksClickHoverAndOpenUris) {
     FakeText backend;
     ui::Owner owner;
