@@ -380,6 +380,18 @@ namespace kpp {
         kiln_column(key, m, &c, content.release());
     }
     inline void spacer(Modifier m, Key key = {}) { kiln_spacer(key, m); }
+    // AndroidView: an Android View inside kiln content. The callbacks get (JNIEnv*, jobject) as void*.
+    struct AndroidViewOptions {
+        Callback<kiln_fn_view> update, on_reset, on_release;
+    };
+    inline void android_view(Callback<kiln_fn_view_factory> factory, Modifier m = {}, AndroidViewOptions o = {}, Key key = {}) {
+        kiln_android_view_options c{ o.update.release(), o.on_reset.release(), o.on_release.release() };
+        kiln_android_view(key, m, factory.release(), &c);
+    }
+    inline void android_view(const char* class_name, Modifier m = {}, AndroidViewOptions o = {}, Key key = {}) {
+        kiln_android_view_options c{ o.update.release(), o.on_reset.release(), o.on_release.release() };
+        kiln_android_view_class(key, m, class_name, &c);
+    }
     // content gets the incoming constraints in dp.
     inline void box_with_constraints(Modifier m, Callback<kiln_fn_constraints> content, BoxOptions o = {}, Key key = {}) {
         kiln_box_options c;

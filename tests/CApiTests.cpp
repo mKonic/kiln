@@ -6,6 +6,7 @@
 #include <kiln/kilnpp.hpp>
 
 #include "kiln/foundation/Compose.h"
+#include "kiln/ui/InteropView.h"
 #include "kiln/ui/Semantics.h"
 #include "kiln/ui/Volition.h"
 
@@ -252,4 +253,38 @@ TEST(KilnppVolitionRegistration) {
         CHECK_EQ(v::Call({}, {}, "go", "detail:7"), std::string("ok: detail 7"));
     }
     CHECK(v::Call({}, {}, "where", {}).find("kpp") == std::string::npos);   // unregistered with the handle
+}
+
+TEST(CApiAndroidViewMakesUpdatesAndReleasesItsView) {
+    static int made, updates, released, dropped;
+    made = updates = released = dropped = 0;
+    static bool show;
+    show = true;
+    {
+        Harness h;
+        ui::InteropViewHost host;
+        int view = 0;
+        host.create = [&](int, const ui::InteropViewFactory& f) { return f(nullptr, &view) == &view; };
+        host.with = [&](int, const ui::InteropViewBlock& b) { b(nullptr, &view); };
+        host.release = [](int) {};
+        host.measure = [](int, const ui::Constraints&) { return ui::IntSize{ 60, 40 }; };
+        host.place = [](int, ui::IntRect, bool) {};
+        host.touch = [](int, ui::Offset, bool) { return false; };
+        h.owner.SetInteropViewHost(std::move(host));
+        struct Dropped { ~Dropped() { ++dropped; } };
+        h.Run([](void*) {
+            if (!show) return;
+            auto guard = std::make_shared<Dropped>();
+            kpp::android_view([guard](void*, void* context) { ++made; return context; }, kpp::Modifier().size(60, 40),
+                              { .update = [](void*, void*) { ++updates; }, .on_release = [](void*, void*) { ++released; } });
+        });
+        CHECK(made == 1);
+        CHECK(updates >= 1);
+        CHECK(released == 0);
+        show = false;
+        h.composition.SetContent([] {});
+        h.Pump();
+        CHECK(released == 1);
+    }
+    CHECK(dropped == 1);
 }

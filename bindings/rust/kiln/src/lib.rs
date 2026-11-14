@@ -84,6 +84,8 @@ __kiln_callback!(sys::kiln_fn_volition_go, (n: *const ::std::ffi::c_char, a: *co
 __kiln_callback!(sys::kiln_fn_task, (t: *mut sys::kiln_task) -> ());
 __kiln_callback!(sys::kiln_fn_task_frame, (t: *mut sys::kiln_task, time: i64) -> ());
 __kiln_callback!(sys::kiln_fn_constraints, (c: *const sys::kiln_constraints) -> ());
+__kiln_callback!(sys::kiln_fn_view_factory, (env: *mut ::std::ffi::c_void, context: *mut ::std::ffi::c_void) -> *mut ::std::ffi::c_void);
+__kiln_callback!(sys::kiln_fn_view, (env: *mut ::std::ffi::c_void, view: *mut ::std::ffi::c_void) -> ());
 
 /// No callback.
 pub fn none<C: Default>() -> C { C::default() }
@@ -360,6 +362,22 @@ pub fn column_with(modifier: Modifier, arrangement: Option<sys::kiln_arrangement
 }
 #[track_caller]
 pub fn spacer(modifier: Modifier) { unsafe { sys::kiln_spacer(here(), modifier.0) } }
+
+/// AndroidView: an Android View inside kiln content, made by `factory(env, context)` (a JNIEnv*
+/// and the window's Context; it returns a local reference). `update(env, view)` runs after the
+/// View is made and after each recomposition.
+#[track_caller]
+pub fn android_view(modifier: Modifier, factory: impl IntoCallback<sys::kiln_fn_view_factory>, update: impl IntoCallback<sys::kiln_fn_view>) {
+    let o = sys::kiln_android_view_options { update: update.into_callback(), ..Default::default() };
+    unsafe { sys::kiln_android_view(here(), modifier.0, factory.into_callback(), &o) }
+}
+/// The same for a View class with a (Context) constructor, such as "android.webkit.WebView".
+#[track_caller]
+pub fn android_view_class(class_name: &str, modifier: Modifier, update: impl IntoCallback<sys::kiln_fn_view>) {
+    let name = CStrBuf::new(class_name);
+    let o = sys::kiln_android_view_options { update: update.into_callback(), ..Default::default() };
+    unsafe { sys::kiln_android_view_class(here(), modifier.0, name.ptr(), &o) }
+}
 
 #[track_caller]
 pub fn basic_text(text: &str, modifier: Modifier) { basic_text_styled(text, modifier, None) }

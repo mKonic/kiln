@@ -464,6 +464,25 @@ KILN_API void kiln_column(kiln_key key, const kiln_modifier* modifier, const kil
 
 KILN_API void kiln_spacer(kiln_key key, const kiln_modifier* modifier);
 
+/* AndroidView: an Android View (a WebView, a map, a RecyclerView) inside kiln content. It is a
+ * real View of the window, so touches, focus, the keyboard and accessibility work as for any
+ * View, and one that scrolls takes part in nested scrolling with kiln's scrollables around it.
+ * The callbacks get the JNIEnv* and jobjects as void*. On a host without Views the element is
+ * empty. */
+/* factory(env, context): a local reference to a new View for the window's Context. It can run
+ * outside a Java call, where FindClass only finds platform classes: load the app's own classes
+ * (androidx, a map SDK) with context.getClassLoader().loadClass(name). */
+typedef struct kiln_fn_view_factory { void* (*call)(void* user, void* env, void* context); void* user; void (*drop)(void* user); } kiln_fn_view_factory;
+typedef struct kiln_fn_view { void (*call)(void* user, void* env, void* view); void* user; void (*drop)(void* user); } kiln_fn_view;
+typedef struct kiln_android_view_options {
+    kiln_fn_view update;       /* after the View is made and after each recomposition */
+    kiln_fn_view on_reset;     /* set: the View is kept with a reused lazy item and reset here */
+    kiln_fn_view on_release;   /* the View leaves for good */
+} kiln_android_view_options;
+KILN_API void kiln_android_view(kiln_key key, const kiln_modifier* modifier, kiln_fn_view_factory factory, const kiln_android_view_options* options);
+/* The same for a View class with a (Context) constructor, such as "android.webkit.WebView". */
+KILN_API void kiln_android_view_class(kiln_key key, const kiln_modifier* modifier, const char* class_name, const kiln_android_view_options* options);
+
 /* BoxWithConstraints: content gets the incoming constraints in dp (max may be INFINITY). */
 typedef struct kiln_constraints { float min_width, max_width, min_height, max_height; } kiln_constraints;
 typedef struct kiln_fn_constraints { void (*call)(void* user, const kiln_constraints* constraints); void* user; void (*drop)(void* user); } kiln_fn_constraints;

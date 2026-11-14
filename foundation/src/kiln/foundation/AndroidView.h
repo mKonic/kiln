@@ -31,6 +31,8 @@ namespace kiln::foundation {
     };
 
     // factory(env, context): a new View (a local reference) for the window's Context.
+    // It can run outside a Java call, where FindClass only finds platform classes: load the app's
+    // own classes (androidx, a map SDK) with context.getClassLoader().loadClass(name).
     void AndroidView(ui::InteropViewFactory factory, const Modifier& modifier = {}, AndroidViewOptions options = {}, rt::Key key = {});
 
     // A factory that constructs `className` (a View with a Context constructor), such as

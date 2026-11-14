@@ -6,6 +6,7 @@
 #include "kiln/App.h"
 #include "kiln/Assets.h"
 #include "kiln/foundation/Animate.h"
+#include "kiln/foundation/AndroidView.h"
 #include "kiln/foundation/AnimatedVisibility.h"
 #include "kiln/foundation/Border.h"
 #include "kiln/foundation/Compose.h"
@@ -773,6 +774,39 @@ KILN_API void kiln_column(kiln_key key, const kiln_modifier* m, const kiln_colum
 
 KILN_API void kiln_spacer(kiln_key key, const kiln_modifier* m) {
     TRY { fd::Spacer(ToModifier(m), ToKey(key)); } CATCH_VOID
+}
+
+namespace {
+    kiln::ui::InteropViewBlock ViewBlock(kiln_fn_view f) {
+        auto own = Own(f);
+        if (!own) return {};
+        return [own](void* env, void* view) {
+            CallbackScope s;
+            own->f.call(own->f.user, env, view);
+        };
+    }
+    fd::AndroidViewOptions ViewOptions(const kiln_android_view_options* o) {
+        if (!o) return {};
+        return { ViewBlock(o->update), ViewBlock(o->on_reset), ViewBlock(o->on_release) };
+    }
+}
+KILN_API void kiln_android_view(kiln_key key, const kiln_modifier* m, kiln_fn_view_factory factory, const kiln_android_view_options* options) {
+    TRY {
+        auto own = Own(factory);
+        fd::AndroidViewOptions o = ViewOptions(options);
+        if (!own) return;
+        fd::AndroidView([own](void* env, void* context) -> void* {
+            CallbackScope s;
+            return own->f.call(own->f.user, env, context);
+        }, ToModifier(m), std::move(o), ToKey(key));
+    } CATCH_VOID
+}
+KILN_API void kiln_android_view_class(kiln_key key, const kiln_modifier* m, const char* className, const kiln_android_view_options* options) {
+    TRY {
+        fd::AndroidViewOptions o = ViewOptions(options);
+        if (!className) return;
+        fd::AndroidView(fd::AndroidViewClass(className), ToModifier(m), std::move(o), ToKey(key));
+    } CATCH_VOID
 }
 
 KILN_API void kiln_box_with_constraints(kiln_key key, const kiln_modifier* m, const kiln_box_options* in, kiln_fn_constraints content) {

@@ -179,12 +179,17 @@ AndroidView(AndroidViewClass("android.webkit.WebView"), Height(FillMax(Modifier{
 
 * The factory gets the `JNIEnv*` and the window's `Context` and returns a new View.
   `AndroidViewClass(name)` constructs a View class through its `Context` constructor.
+  In a factory of your own, load the app's classes (androidx, a map SDK) with
+  `context.getClassLoader().loadClass(name)`: JNI's `FindClass` only finds platform classes
+  there.
 * `update` runs after the View is made, after each recomposition, and when state it reads
   changes.
 * With `onReset`, a View in a lazy list item is kept when the item is reused, and reset
   there. `onRelease` runs when the View leaves.
-* A View that scrolls with nested scrolling, such as a `ScrollView`, scrolls kiln's
-  scrollables around it once it reaches its end.
+* A View that scrolls with nested scrolling, such as a `ScrollView`, a `RecyclerView` or a
+  `NestedScrollView`, scrolls kiln's scrollables around it once it reaches its end.
+* From C it is `kiln_android_view` and `kiln_android_view_class`, from kiln++
+  `kpp::android_view`, and from Rust `kiln::android_view`.
 * A `SurfaceView` inside an `AndroidView` is not drawn. Use `AndroidExternalSurface` for
   video and camera content.
 
