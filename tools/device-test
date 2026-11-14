@@ -12,6 +12,9 @@ cmake --build "$dir" --target kiln_tests >/dev/null
 strip="$(ls "$NDK"/toolchains/llvm/prebuilt/*/bin/llvm-strip | head -1)"
 "$strip" -o "$dir/kiln_tests.stripped" "$dir/kiln_tests"
 adb push -q "$dir/kiln_tests.stripped" /data/local/tmp/kiln_tests >/dev/null
+# The test resources' bitmaps, which the test binary reads from res/ beside it.
+adb shell rm -rf /data/local/tmp/res
+adb push -q "$KILN_ROOT/tests/res" /data/local/tmp/res >/dev/null
 args=""
 for f in "$@"; do args+=" '${f//\'/}'"; done
 exec adb shell "cd /data/local/tmp && chmod 755 kiln_tests && ./kiln_tests$args"

@@ -4,6 +4,7 @@
 
 #include "kiln/runtime/Flow.h"
 
+#include <algorithm>
 #include <chrono>
 #include <stdexcept>
 #include <string>

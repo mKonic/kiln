@@ -35,6 +35,12 @@ namespace kiln::ui {
         }
         std::string Base(const char* xdg, const char* fallback) {
             if (const char* v = std::getenv(xdg); v && *v) return v;
+#if defined(__ANDROID__)
+            // An executable outside an app (a test binary under adb shell; apps get theirs from
+            // the platform): HOME is / and read-only.
+            const char* tmp = std::getenv("TMPDIR");
+            return std::string(tmp && *tmp ? tmp : "/data/local/tmp") + fallback;
+#endif
             const char* home = std::getenv("HOME");
             return std::string(home ? home : "/tmp") + fallback;
         }

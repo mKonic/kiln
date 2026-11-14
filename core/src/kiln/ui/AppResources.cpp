@@ -3,6 +3,7 @@
 #include <cmath>
 #include <charconv>
 #include <cstdlib>
+#include <filesystem>
 #include <mutex>
 #include <stdexcept>
 
@@ -318,12 +319,22 @@ namespace kiln::ui {
             out.vector = best->vector;
             return out;
         }
-        // A bitmap: read from the source res/ folder (desktop builds run from the checkout).
-        if (FILE* f = std::fopen(best->path, "rb")) {
+        // A bitmap: read from the source res/ folder (desktop builds run from the checkout), else
+        // from a res/ folder beside the executable (a test binary pushed to a device).
+        auto read = [&](const std::string& path) {
+            FILE* f = std::fopen(path.c_str(), "rb");
+            if (!f) return false;
             std::uint8_t buf[65536];
             std::size_t n;
             while ((n = std::fread(buf, 1, sizeof buf, f)) > 0) out.bitmap.insert(out.bitmap.end(), buf, buf + n);
             std::fclose(f);
+            return true;
+        };
+        if (!read(best->path)) {
+            std::error_code ec;
+            const std::filesystem::path exe = std::filesystem::read_symlink("/proc/self/exe", ec);
+            const std::filesystem::path source(best->path);
+            if (!ec) read((exe.parent_path() / "res" / source.parent_path().filename() / source.filename()).string());
         }
         if (out.bitmap.empty()) return std::nullopt;
         return out;

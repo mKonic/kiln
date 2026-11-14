@@ -155,6 +155,9 @@ TEST(HttpHeadersCompareNamesWithoutCase) {
     CHECK(FormBody({ { "q", "a b&c" }, { "n", "é" } }) == "q=a+b%26c&n=%C3%A9");
 }
 
+// Against the loopback server: the desktop engine (libcurl). On Android the engine is the
+// platform's, which only an app process has.
+#if !defined(__ANDROID__)
 TEST(HttpFetchGetsAResponse) {
     Server server;
     Outcome o = Do({ .url = server.Url("/hello") });
@@ -250,6 +253,7 @@ TEST(HttpCancellingTheTaskAbortsTheTransfer) {
     CHECK(server.slowAborted == 1);            // the connection was closed, not left to finish
     CHECK(!out->response && !out->error);      // and the cancelled task did not resume
 }
+#endif
 
 TEST(HttpEngineCanBeReplaced) {
     struct Fake final : HttpEngine {
