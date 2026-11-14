@@ -72,7 +72,10 @@ namespace kiln::media {
         bool hasVideo = false, hasAudio = false;
         int videoWidth = 0, videoHeight = 0;
         int rotationDegrees = 0;      // how the video is meant to be turned (clockwise)
-        VideoSize videoSize;          // as decoded (videoWidth / videoHeight, with the pixel aspect ratio)
+        // As shown (getVideoSize): the decoded size, turned as the surface shows it, with the
+        // pixel aspect ratio; 0 x 0 until a frame is shown. A video's shape is
+        // width * pixelWidthHeightRatio / height.
+        VideoSize videoSize;
         std::string error;            // why playback stopped, when it failed (playerError's message)
         std::optional<PlaybackException> playerError;
         bool isLoading = false;               // the source is being read
@@ -95,6 +98,8 @@ namespace kiln::media {
         kiln::Function<void(const PositionInfo& oldPosition, const PositionInfo& newPosition, DiscontinuityReason reason)> onPositionDiscontinuity;
         kiln::Function<void(const PlaybackException& error)> onPlayerError;
         kiln::Function<void(const MediaMetadata& metadata)> onPlaylistMetadataChanged;
+        // The first frame since the item loaded, a seek or a new surface is on the surface.
+        kiln::Function<void()> onRenderedFirstFrame;
     };
 
     // One item for the engine to play (empty uri: stop and release).
@@ -125,6 +130,7 @@ namespace kiln::media {
         // The state of the load it belongs to; looped: repeat started the item again.
         kiln::Function<void(const PlayerState&, std::uint64_t loadId)> onState;
         kiln::Function<void(std::uint64_t loadId)> onLooped;
+        kiln::Function<void(std::uint64_t loadId)> onRenderedFirstFrame;
     };
     // The platform's engines (Android installs one; tests install their own).
     void SetPlayerEngineFactory(kiln::Function<std::unique_ptr<PlayerEngine>()> factory);

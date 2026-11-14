@@ -107,6 +107,15 @@ TEST(MediaPlayerReachesItsEngineAndReportsOnTheMainThread) {
         rt::Dispatcher::Main().RunPending();
         CHECK(p.State().state == PlaybackState::Ready && p.State().durationMs == 1500 && p.State().videoWidth == 640);
         CHECK(p.State().mediaItemCount == 1 && p.State().currentMediaItemIndex == 0);
+        // The shown size comes with the state; the first frame is an event, for the current load only.
+        int firstFrames = 0;
+        p.AddListener({ .onRenderedFirstFrame = [&] { ++firstFrames; } });
+        s.videoSize = { .width = 360, .height = 640, .pixelWidthHeightRatio = 1 };
+        engine->Report(s);
+        engine->onRenderedFirstFrame(engine->load.loadId);
+        engine->onRenderedFirstFrame(engine->load.loadId + 7);   // another load's
+        rt::Dispatcher::Main().RunPending();
+        CHECK(firstFrames == 1 && p.State().videoSize.width == 360 && p.State().videoSize.height == 640);
         // After the player goes, a late report is dropped.
         engine->Report(s);
     }

@@ -329,14 +329,20 @@ namespace kiln::android {
                     AMediaExtractor_seekTo(t->extractor, startUs, AMEDIAEXTRACTOR_SEEK_PREVIOUS_SYNC);
                     t->seekTargetUs = startUs;
                 }
+                m_DecodedVideoSize = {};
                 if (m_Video) {
-                    std::int32_t w = 0, h = 0, rotation = 0;
+                    std::int32_t w = 0, h = 0, rotation = 0, sarW = 0, sarH = 0;
                     AMediaFormat_getInt32(m_Video->format, AMEDIAFORMAT_KEY_WIDTH, &w);
                     AMediaFormat_getInt32(m_Video->format, AMEDIAFORMAT_KEY_HEIGHT, &h);
                     AMediaFormat_getInt32(m_Video->format, AMEDIAFORMAT_KEY_ROTATION, &rotation);
                     m_State.videoWidth = w;
                     m_State.videoHeight = h;
                     m_State.rotationDegrees = rotation;
+                    // Format.pixelWidthHeightRatio: the container's sample aspect ratio.
+                    m_PixelRatio = AMediaFormat_getInt32(m_Video->format, "sar-width", &sarW) && AMediaFormat_getInt32(m_Video->format, "sar-height", &sarH)
+                                       && sarW > 0 && sarH > 0 ? float(sarW) / float(sarH) : 1.0f;
+                } else {
+                    m_ReportedVideoSize = {};   // the video renderer is disabled (clearReportedVideoSize)
                 }
                 if (m_Audio) {
                     m_Audio->codec = AMediaCodec_createDecoderByType(m_Audio->mime.c_str());
@@ -660,7 +666,12 @@ namespace kiln::android {
                     if (m_PendingVideo < 0) {
                         AMediaCodecBufferInfo info{};
                         ssize_t idx = AMediaCodec_dequeueOutputBuffer(t.codec, &info, 0);
-                        if (idx == AMEDIACODEC_INFO_OUTPUT_FORMAT_CHANGED) continue;
+                        if (idx == AMEDIACODEC_INFO_OUTPUT_FORMAT_CHANGED) {
+                            AMediaFormat* f = AMediaCodec_getOutputFormat(t.codec);
+                            DecodedVideoSize(f);
+                            AMediaFormat_delete(f);
+                            continue;
+                        }
                         if (idx < 0) return;
                         m_PendingVideo = idx;
                         m_PendingVideoPts = info.presentationTimeUs;
@@ -692,11 +703,12 @@ namespace kiln::android {
                             return;
                         case media::FrameRelease::Immediately:
                             AMediaCodec_releaseOutputBuffer(t.codec, idx, true);
-                            m_FirstFrameRendered = true;
+                            OnFrameRendered();
                             m_LastReleaseUs = NowUs();
                             break;
                         case media::FrameRelease::Scheduled:
                             AMediaCodec_releaseOutputBufferAtTime(t.codec, idx, NowNs() + timing.earlyUs * 1000);
+                            OnFrameRendered();
                             m_LastReleaseUs = NowUs();
                             break;
                         case media::FrameRelease::Drop:
@@ -705,6 +717,42 @@ namespace kiln::android {
                     }
                     m_PendingVideo = -1;
                     if (m_PendingVideoEos) t.outputDone = true;
+                }
+            }
+
+            // onOutputFormatChanged: the decoder's crop, turned by the rotation it applies on the
+            // way to the surface (90 and 270 swap the sides and invert the pixel aspect ratio).
+            void DecodedVideoSize(AMediaFormat* f) {
+                std::int32_t w = 0, h = 0, left = 0, top = 0, right = 0, bottom = 0;
+                if (AMediaFormat_getRect(f, AMEDIAFORMAT_KEY_DISPLAY_CROP, &left, &top, &right, &bottom)) {
+                    w = right - left + 1;
+                    h = bottom - top + 1;
+                } else {
+                    AMediaFormat_getInt32(f, AMEDIAFORMAT_KEY_WIDTH, &w);
+                    AMediaFormat_getInt32(f, AMEDIAFORMAT_KEY_HEIGHT, &h);
+                }
+                if (w <= 0 || h <= 0) return;   // transient invalid formats some decoders report
+                float ratio = m_PixelRatio;
+                if (m_State.rotationDegrees == 90 || m_State.rotationDegrees == 270) {
+                    std::swap(w, h);
+                    ratio = 1 / ratio;
+                }
+                m_DecodedVideoSize = { .width = w, .height = h, .pixelWidthHeightRatio = ratio };
+            }
+            // A frame went to the surface: the size it was decoded at (maybeNotifyVideoSizeChanged)
+            // and, the first since a load, seek or new surface, onRenderedFirstFrame.
+            void OnFrameRendered() {
+                if (m_DecodedVideoSize.width == 0 && m_Video && m_Video->codec) {
+                    AMediaFormat* f = AMediaCodec_getOutputFormat(m_Video->codec);
+                    if (f) {
+                        DecodedVideoSize(f);
+                        AMediaFormat_delete(f);
+                    }
+                }
+                if (m_DecodedVideoSize.width > 0) m_ReportedVideoSize = m_DecodedVideoSize;
+                if (!m_FirstFrameRendered) {
+                    m_FirstFrameRendered = true;
+                    m_RenderedFirstFrame = true;
                 }
             }
 
@@ -738,6 +786,7 @@ namespace kiln::android {
 
             void Report() {
                 media::PlayerState s = m_State;
+                s.videoSize = m_ReportedVideoSize;
                 s.playWhenReady = m_PlayingWanted;
                 s.isPlaying = m_Playing;
                 if (m_Prepared) {
@@ -767,6 +816,7 @@ namespace kiln::android {
                     m_ReportedLoad = m_LoadId;
                     if (onState) onState(s, m_LoadId);
                 }
+                if (std::exchange(m_RenderedFirstFrame, false) && onRenderedFirstFrame) onRenderedFirstFrame(m_LoadId);
             }
 
             // Shared with the main thread (m_Mutex).
@@ -812,6 +862,9 @@ namespace kiln::android {
             media::SonicProcessor m_Sonic;
             bool m_SonicEnded = false, m_SonicFirst = true;
             bool m_AllowDiscontinuity = true, m_Rebase = false;
+            media::VideoSize m_DecodedVideoSize, m_ReportedVideoSize;
+            float m_PixelRatio = 1;
+            bool m_RenderedFirstFrame = false;   // to report (onRenderedFirstFrame)
             std::int64_t m_AudioPositionUs = 0;
             std::thread m_Thread;   // last: starts once the members exist
         };

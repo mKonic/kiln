@@ -412,6 +412,13 @@ namespace kiln::media {
                 if (auto shared = weak.lock()) shared->OnLooped(id);
             });
         };
+        m_Shared->engine->onRenderedFirstFrame = [main, weak](std::uint64_t id) {
+            main->PostFromAnyThread([weak, id] {
+                auto shared = weak.lock();
+                if (!shared || id != shared->loadId || shared->loadId == 0) return;
+                shared->Notify([](PlayerListener& l) { if (l.onRenderedFirstFrame) l.onRenderedFirstFrame(); });
+            });
+        };
     }
 
     Player::~Player() = default;

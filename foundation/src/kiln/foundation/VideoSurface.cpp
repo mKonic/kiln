@@ -12,7 +12,10 @@ namespace kiln::foundation {
     void VideoSurface(const Modifier& modifier, media::Player& player, bool keepAspectRatio) {
         const media::PlayerState& s = rt::CollectAsState(player.StateFlow()).Get();
         Modifier m = modifier;
-        if (keepAspectRatio && s.videoWidth > 0 && s.videoHeight > 0) {
+        if (keepAspectRatio && s.videoSize.width > 0 && s.videoSize.height > 0) {
+            // PlayerView: the shown size with its pixel aspect ratio.
+            m = AspectRatio(m, float(s.videoSize.width) * s.videoSize.pixelWidthHeightRatio / float(s.videoSize.height));
+        } else if (keepAspectRatio && s.videoWidth > 0 && s.videoHeight > 0) {
             const bool turned = s.rotationDegrees % 180 != 0;
             m = AspectRatio(m, turned ? float(s.videoHeight) / float(s.videoWidth) : float(s.videoWidth) / float(s.videoHeight));
         }
