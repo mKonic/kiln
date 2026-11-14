@@ -993,6 +993,32 @@ KILN_API void kiln_async_image_options_init(kiln_async_image_options* options);
 KILN_API void kiln_async_image(kiln_key key, const char* model, const char* content_description,
                                const kiln_modifier* modifier, const kiln_async_image_options* options);
 
+/* Media: a player remembered at the call (released when it leaves the composition), its video
+ * in kiln_video_surface, and a camera's live preview (android.permission.CAMERA granted first).
+ * Sources: asset:///path, file paths, content:// and http(s):// URIs. Reading the state inside
+ * content recomposes when it changes. */
+typedef struct kiln_player kiln_player;
+typedef enum kiln_playback_state { KILN_PLAYBACK_IDLE, KILN_PLAYBACK_BUFFERING, KILN_PLAYBACK_READY, KILN_PLAYBACK_ENDED } kiln_playback_state;
+typedef struct kiln_player_state {
+    kiln_playback_state state;
+    bool play_when_ready, is_playing, has_video, has_audio;
+    int64_t position_ms, duration_ms;   /* duration -1: unknown */
+    int32_t video_width, video_height, rotation_degrees;
+    const char* error;                  /* "" unless it failed; valid until the next call */
+} kiln_player_state;
+KILN_API kiln_player* kiln_remember_player(kiln_key key);
+KILN_API void kiln_player_set_media_uri(kiln_player* player, const char* uri);
+KILN_API void kiln_player_play(kiln_player* player);
+KILN_API void kiln_player_pause(kiln_player* player);
+KILN_API void kiln_player_seek_to(kiln_player* player, int64_t position_ms);
+KILN_API void kiln_player_set_repeat(kiln_player* player, bool repeat);
+KILN_API void kiln_player_set_volume(kiln_player* player, float volume);
+KILN_API void kiln_player_get_state(kiln_player* player, kiln_player_state* out);
+KILN_API void kiln_video_surface(kiln_key key, const kiln_modifier* modifier, kiln_player* player, bool keep_aspect_ratio);
+/* facing: 0 front, 1 back, 2 external. The id is valid until the next call; NULL: none. */
+KILN_API const char* kiln_find_camera(int32_t facing);
+KILN_API void kiln_camera_preview(kiln_key key, const kiln_modifier* modifier, const char* camera_id);
+
 /* BasicTextField over a remembered text field state. */
 typedef struct kiln_text_field_state kiln_text_field_state;
 KILN_API kiln_text_field_state* kiln_remember_text_field_state(kiln_key key, const char* initial);

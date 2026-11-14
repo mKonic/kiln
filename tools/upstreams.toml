@@ -153,6 +153,18 @@ kiln = "core/src/kiln/image (ImageLoader, caches, DecodeUtils), foundation/src/k
 paths = ["coil-core/src/commonMain", "coil-core/src/androidMain", "coil-network-core/src/commonMain",
          "coil-compose-core/src/commonMain"]
 
+[media3]
+kind = "git"
+repo = "https://github.com/androidx/media.git"
+branch = "release"
+checkout = "~/dev/os/inspiration/media3"
+rev = "8c6678b"          # 2026-11-14
+
+[[media3.group]]
+name = "exoplayer"
+kiln = "core/src/kiln/media (DecideFrameRelease), platform/android/jni/AndroidMedia (the playback loop and clocks)"
+paths = ["libraries/exoplayer/src/main/java/androidx/media3/exoplayer/video", "libraries/exoplayer/src/main/java/androidx/media3/exoplayer/audio"]
+
 [aosp-frameworks-base]
 kind = "gitiles"
 repo = "https://android.googlesource.com/platform/frameworks/base"

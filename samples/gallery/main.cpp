@@ -12,6 +12,7 @@
 #include <kiln/foundation/draganddrop/DragAndDrop.h>
 #include <kiln/foundation/activity/ActivityResult.h>
 #include <kiln/foundation/Popup.h>
+#include <kiln/foundation/VideoSurface.h>
 #include <kiln/foundation/Dialog.h>
 #include <kiln/material3/DynamicColorScheme.h>
 #include <kiln/material3/MaterialTheme.h>
@@ -318,6 +319,53 @@ namespace {
         });
     }
 
+    // media::Player in a VideoSurface, and a camera's preview once the permission is granted.
+    void MediaDemo() {
+        using namespace kiln::foundation;
+        auto& c = *kiln::rt::Composition::Current();
+        auto& player = c.RememberNew<kiln::media::Player>({}, {});
+        c.LaunchedEffect(kiln::rt::Keys{}, [&player]() -> kiln::rt::Task<> {
+            player.SetMediaUri("asset:///clip.mp4");
+            player.SetRepeat(true);
+            player.Play();
+            co_return;
+        });
+        const kiln::media::PlayerState& s = kiln::rt::CollectAsState(player.StateFlow()).Get();
+        auto& cameraOn = RememberState(false);
+        auto& cameraError = RememberState(std::string());
+        auto askCamera = RememberLauncherForActivityResult<std::string, bool>(
+            std::make_shared<contracts::RequestPermission>(), [&cameraOn, &cameraError](bool granted) {
+                cameraOn.Set(granted);
+                cameraError.Set(granted ? "" : "The camera permission was not granted");
+            });
+        Column(VerticalScroll(SafeDrawingPadding(Background(FillMax(Modifier{}, Axis::Both), kSurface)), RememberScrollState()),
+               Arrangement::SpacedBy(12_dp), AlignmentH::Start(), [&] {
+            BasicText("Video", Padding(Modifier{}, 16_dp, 0_dp), { 16, kOnSurface });
+            VideoSurface(Padding(FillMax(Modifier{}, Axis::Horizontal), 16_dp, 0_dp), player);
+            const std::string time = std::to_string(s.positionMs / 1000) + "." + std::to_string(s.positionMs / 100 % 10) + " / " +
+                                     std::to_string(std::max<std::int64_t>(s.durationMs, 0) / 1000) + " s";
+            BasicText(s.error.empty() ? time : s.error, Padding(Modifier{}, 16_dp, 0_dp), { 14, kOnSurface });
+            Row(Padding(Modifier{}, 16_dp, 0_dp), Arrangement::SpacedBy(8_dp), AlignmentV::CenterVertically(), [&] {
+                auto button = [](const char* label, kiln::Function<void()> onClick) {
+                    Box(Clickable(Background(Modifier{}, kPrimaryContainer, CornerShape::Pill()), std::move(onClick)), Alignment::Center(), false,
+                        [label] { BasicText(label, Padding(Modifier{}, 20_dp, 10_dp), { 14, kOnSurface }); });
+                };
+                button(s.playWhenReady ? "Pause" : "Play", [&player, play = !s.playWhenReady] { play ? player.Play() : player.Pause(); });
+                button("Back to start", [&player] { player.SeekTo(0); });
+                button(cameraOn.Get() ? "Hide camera" : "Camera", [&cameraOn, askCamera] {
+                    if (cameraOn.Peek()) cameraOn.Set(false);
+                    else askCamera.Launch("android.permission.CAMERA");
+                });
+            });
+            if (cameraOn.Get()) {
+                if (auto back = kiln::media::FindCamera(kiln::media::LensFacing::Back))
+                    CameraPreview(Padding(FillMax(Modifier{}, Axis::Horizontal), 16_dp, 0_dp), back->id, [&cameraError](std::string e) { cameraError.Set(e); });
+                else cameraError.Set("No back camera");
+            }
+            if (!cameraError.Get().empty()) BasicText(cameraError.Get(), Padding(Modifier{}, 16_dp, 0_dp), { 14, kOnSurface });
+        });
+    }
+
     // A coroutine must not be a capturing lambda: its frame would outlive the captures.
     kiln::rt::Task<> Spin(kiln::rt::State<float>& angle) {
         const std::int64_t start = co_await kiln::rt::NextFrame();
@@ -383,6 +431,10 @@ namespace {
         }
         if (section == "external-surface") {
             ExternalSurfaceDemo();
+            return;
+        }
+        if (section == "media") {
+            MediaDemo();
             return;
         }
         if (section == "transform") {

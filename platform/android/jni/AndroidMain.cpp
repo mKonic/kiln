@@ -7,6 +7,7 @@
 #include "AndroidDevice.h"
 #include "AndroidResources.h"
 #include "kiln/jvm/Jvm.h"
+#include "AndroidMedia.h"
 #include "AndroidWork.h"
 #include "kiln/ui/ActivityIntent.h"
 #include "kiln/ui/AppDirectories.h"
@@ -1336,6 +1337,8 @@ namespace {
         });
         kiln::android::InstallImageDecoder();
         kiln::android::InstallHttp(env);
+        kiln::android::InstallMedia();
+        kiln::android::InstallCamera();
     }
 
     void Create(JNIEnv* env, jclass, jobject view, jobject text, jobject assets, jfloat density, jfloat fontScale, jbyteArray saved) {
@@ -1658,14 +1661,14 @@ namespace {
     // composition sees the right locales and night mode.
     void SetConfiguration(JNIEnv* env, jclass, jintArray values, jfloat fontScale, jobjectArray locales, jintArray palette, jintArray roles) {
         kiln::ui::Configuration c;
-        jint v[15]{};
-        env->GetIntArrayRegion(values, 0, std::min<jsize>(15, env->GetArrayLength(values)), v);
+        jint v[16]{};
+        env->GetIntArrayRegion(values, 0, std::min<jsize>(16, env->GetArrayLength(values)), v);
         c.fontScale = fontScale;
         c.densityDpi = v[0]; c.fontWeightAdjustment = v[1]; c.uiMode = v[2];
         c.screenWidthDp = v[3]; c.screenHeightDp = v[4]; c.smallestScreenWidthDp = v[5];
         c.orientation = v[6]; c.screenLayout = v[7]; c.touchscreen = v[8]; c.keyboard = v[9];
         c.keyboardHidden = v[10]; c.hardKeyboardHidden = v[11]; c.navigation = v[12];
-        c.navigationHidden = v[13]; c.colorMode = v[14];
+        c.navigationHidden = v[13]; c.colorMode = v[14]; c.displayRotation = v[15];
         for (auto& l : StringsFromJava(env, locales)) if (l && !l->empty()) c.locales.push_back(*l);
         if (!c.locales.empty()) kiln::ui::SetPlatformLocaleList(c.locales);
         auto colors = [env](jintArray a, std::vector<std::uint32_t>& out) {

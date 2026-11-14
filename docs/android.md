@@ -488,6 +488,53 @@ std::string Describe(const std::string& uri) {
 
 ## Video, camera and other surfaces
 
+### Playing media
+
+`media::Player` (`kiln/media/Player.h`) plays audio and video files from assets, files,
+`content://` URIs and `http(s)://` URLs. It decodes on its own thread and plays sound through
+AAudio. `VideoSurface` (`kiln/foundation/VideoSurface.h`) shows the video, at the video's
+aspect ratio:
+
+```cpp
+void Clip() {
+    auto& c = *kiln::rt::Composition::Current();
+    auto& player = c.RememberNew<kiln::media::Player>({}, {});
+    c.LaunchedEffect(kiln::rt::Keys{}, [&player]() -> kiln::rt::Task<> {
+        player.SetMediaUri("asset:///intro.mp4");
+        player.Play();
+        co_return;
+    });
+    const kiln::media::PlayerState& s = kiln::rt::CollectAsState(player.StateFlow()).Get();
+    VideoSurface(FillMax(Modifier{}, Axis::Horizontal), player);
+    Text(std::to_string(s.positionMs / 1000) + " s" + (s.state == kiln::media::PlaybackState::Ended ? ", done" : ""));
+}
+```
+
+* `Play`, `Pause`, `SeekTo`, `SetRepeat` and `SetVolume` control playback. The state reports
+  `Buffering`, `Ready` and `Ended`, the position and duration, the video's size and rotation,
+  and an `error` when the media cannot be played.
+* Video frames are timed against the audio clock, as media3's ExoPlayer times them: a frame
+  more than 30 ms late is dropped. Without sound, or without an audio output, the video keeps
+  its own time.
+* Remember the player above its `VideoSurface`, so it outlives the surface.
+
+### Camera preview
+
+`CameraPreview` shows a camera's live picture, upright on the display. Ask for
+`android.permission.CAMERA` first (`contracts::RequestPermission`):
+
+<!-- prelude: std::function<void(std::string)> showError; -->
+```cpp
+if (auto back = kiln::media::FindCamera(kiln::media::LensFacing::Back))
+    CameraPreview(FillMax(Modifier{}, Axis::Horizontal), back->id, [&](std::string error) { showError(error); });
+```
+
+`media::Cameras()` lists the cameras, with their facing, sensor orientation and preview sizes.
+The preview uses the largest size within 1080p. A front camera's preview is mirrored, as in
+CameraX.
+
+### Your own rendering
+
 `AndroidExternalSurface` gives a native window to code that renders on its own, such as a
 video decoder, a camera preview or a game engine. kiln composites it with the UI:
 

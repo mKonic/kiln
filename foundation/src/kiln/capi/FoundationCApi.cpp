@@ -25,6 +25,7 @@
 #include "kiln/ui/Vibration.h"
 #include "kiln/ui/PictureInPicture.h"
 #include "kiln/foundation/AsyncImage.h"
+#include "kiln/foundation/VideoSurface.h"
 #include "kiln/ui/AppDirectories.h"
 #include "kiln/ui/AppResources.h"
 #include "kiln/ui/ContentResolver.h"
@@ -1595,6 +1596,85 @@ KILN_API void kiln_async_image(kiln_key key, const char* model, const char* desc
         const auto desc = ToOptString(description);
         const ui::Modifier mod = ToModifier(m);
         InGroup(key, [&] { fd::AsyncImage(data, desc, mod, options); });
+    } CATCH_VOID
+}
+
+// --- media ----------------------------------------------------------------------------------
+
+struct kiln_player {
+    kiln::media::Player* player;
+};
+
+KILN_API kiln_player* kiln_remember_player(kiln_key key) {
+    TRY {
+        kiln_player* out = nullptr;
+        InGroup(key, [&] {
+            auto& c = *rt::Composition::Current();
+            auto& p = c.RememberNew<kiln::media::Player>({}, {});
+            out = &c.Remember<kiln_player>([&] { return kiln_player{ &p }; });
+        });
+        return out;
+    } CATCH(nullptr)
+}
+KILN_API void kiln_player_set_media_uri(kiln_player* p, const char* uri) {
+    TRY { if (p) p->player->SetMediaUri(ToString(uri)); } CATCH_VOID
+}
+KILN_API void kiln_player_play(kiln_player* p) {
+    TRY { if (p) p->player->Play(); } CATCH_VOID
+}
+KILN_API void kiln_player_pause(kiln_player* p) {
+    TRY { if (p) p->player->Pause(); } CATCH_VOID
+}
+KILN_API void kiln_player_seek_to(kiln_player* p, int64_t ms) {
+    TRY { if (p) p->player->SeekTo(ms); } CATCH_VOID
+}
+KILN_API void kiln_player_set_repeat(kiln_player* p, bool repeat) {
+    TRY { if (p) p->player->SetRepeat(repeat); } CATCH_VOID
+}
+KILN_API void kiln_player_set_volume(kiln_player* p, float volume) {
+    TRY { if (p) p->player->SetVolume(volume); } CATCH_VOID
+}
+KILN_API void kiln_player_get_state(kiln_player* p, kiln_player_state* out) {
+    TRY {
+        if (!p || !out) return;
+        // Read through a collected state inside content, so the caller recomposes on changes.
+        const kiln::media::PlayerState& s = rt::Composition::Current() ? rt::CollectAsState(p->player->StateFlow()).Get() : p->player->State();
+        static thread_local std::string error;
+        error = s.error;
+        out->state = kiln_playback_state(int(s.state));
+        out->play_when_ready = s.playWhenReady;
+        out->is_playing = s.isPlaying;
+        out->has_video = s.hasVideo;
+        out->has_audio = s.hasAudio;
+        out->position_ms = s.positionMs;
+        out->duration_ms = s.durationMs;
+        out->video_width = s.videoWidth;
+        out->video_height = s.videoHeight;
+        out->rotation_degrees = s.rotationDegrees;
+        out->error = error.c_str();
+    } CATCH_VOID
+}
+KILN_API void kiln_video_surface(kiln_key key, const kiln_modifier* m, kiln_player* p, bool keep) {
+    TRY {
+        if (!p) return;
+        const ui::Modifier mod = ToModifier(m);
+        InGroup(key, [&] { fd::VideoSurface(mod, *p->player, keep); });
+    } CATCH_VOID
+}
+KILN_API const char* kiln_find_camera(int32_t facing) {
+    TRY {
+        static thread_local std::string id;
+        auto camera = kiln::media::FindCamera(facing == 0 ? kiln::media::LensFacing::Front : facing == 2 ? kiln::media::LensFacing::External : kiln::media::LensFacing::Back);
+        if (!camera) return nullptr;
+        id = camera->id;
+        return id.c_str();
+    } CATCH(nullptr)
+}
+KILN_API void kiln_camera_preview(kiln_key key, const kiln_modifier* m, const char* id) {
+    TRY {
+        const ui::Modifier mod = ToModifier(m);
+        const std::string camera = ToString(id);
+        InGroup(key, [&] { fd::CameraPreview(mod, camera); });
     } CATCH_VOID
 }
 

@@ -467,6 +467,31 @@ namespace kpp {
         kiln_async_image(key, model.c_str(), contentDescription, m, &c);
     }
 
+    // A media player remembered at the call; see kiln_remember_player.
+    class Player {
+    public:
+        explicit Player(Key key = {}) : m_P(kiln_remember_player(key)) {}
+        void setMediaUri(const std::string& uri) { kiln_player_set_media_uri(m_P, uri.c_str()); }
+        void play() { kiln_player_play(m_P); }
+        void pause() { kiln_player_pause(m_P); }
+        void seekTo(int64_t ms) { kiln_player_seek_to(m_P, ms); }
+        void setRepeat(bool repeat) { kiln_player_set_repeat(m_P, repeat); }
+        void setVolume(float volume) { kiln_player_set_volume(m_P, volume); }
+        kiln_player_state state() const {
+            kiln_player_state s;
+            kiln_player_get_state(m_P, &s);
+            return s;
+        }
+        kiln_player* get() const { return m_P; }
+
+    private:
+        kiln_player* m_P;
+    };
+    inline void video_surface(const Player& player, Modifier m = {}, bool keepAspectRatio = true, Key key = {}) {
+        kiln_video_surface(key, m, player.get(), keepAspectRatio);
+    }
+    inline void camera_preview(const char* cameraId, Modifier m = {}, Key key = {}) { kiln_camera_preview(key, m, cameraId); }
+
     class TextFieldState {
     public:
         explicit TextFieldState(kiln_text_field_state* s = nullptr) : m_S(s) {}

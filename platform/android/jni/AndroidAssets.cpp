@@ -7,15 +7,21 @@
 #include <android/asset_manager_jni.h>
 #include <jni.h>
 
+#include <atomic>
 #include <string>
 
 namespace kiln::android {
+
+    namespace { std::atomic<AAssetManager*> g_Manager{ nullptr }; }
+
+    AAssetManager* AssetManager() { return g_Manager.load(); }
 
     void InstallAssetReader(JNIEnv* env, jobject assets) {
         static jobject ref = nullptr;
         if (ref) env->DeleteGlobalRef(ref);
         ref = env->NewGlobalRef(assets);
         AAssetManager* mgr = AAssetManager_fromJava(env, ref);
+        g_Manager = mgr;
         SetAssetReader([mgr](std::string_view path) -> std::optional<std::vector<std::uint8_t>> {
             AAsset* a = AAssetManager_open(mgr, std::string(path).c_str(), AASSET_MODE_BUFFER);
             if (!a) return std::nullopt;

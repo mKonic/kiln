@@ -1,0 +1,683 @@
+// media::Player's engine on Android: an extractor and an AMediaCodec decoder per track, sound
+// through AAudio, on a playback thread that works every 10 ms while it plays (ExoPlayer's
+// doSomeWork loop). Video frames are released against the audio clock, or a standalone clock
+// without sound (StandaloneMediaClock), as DecideFrameRelease says.
+#include "AndroidMedia.h"
+
+#include "kiln/media/Player.h"
+#include "kiln/ui/ContentResolver.h"
+
+#include <aaudio/AAudio.h>
+#include <android/log.h>
+#include <android/native_window.h>
+#include <media/NdkMediaCodec.h>
+#include <media/NdkMediaDataSource.h>
+#include <media/NdkMediaExtractor.h>
+#include <media/NdkMediaFormat.h>
+
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <time.h>
+#include <unistd.h>
+
+#include <algorithm>
+#include <chrono>
+#include <condition_variable>
+#include <cstring>
+#include <memory>
+#include <mutex>
+#include <optional>
+#include <string>
+#include <thread>
+#include <vector>
+
+namespace kiln::android {
+
+    namespace {
+        std::int64_t NowNs() {
+            timespec ts{};
+            clock_gettime(CLOCK_MONOTONIC, &ts);
+            return std::int64_t(ts.tv_sec) * 1'000'000'000 + ts.tv_nsec;
+        }
+        std::int64_t NowUs() { return NowNs() / 1000; }
+
+        // Where the bytes come from: a file descriptor range, a URL, or memory.
+        struct Source {
+            int fd = -1;
+            off64_t offset = 0, length = 0;
+            std::string url;
+            std::shared_ptr<std::vector<std::uint8_t>> bytes;
+            ~Source() { if (fd >= 0) close(fd); }
+        };
+
+        ssize_t ReadMemory(void* user, off64_t offset, void* buffer, size_t size) {
+            auto* bytes = static_cast<std::vector<std::uint8_t>*>(user);
+            if (offset < 0 || std::size_t(offset) >= bytes->size()) return -1;
+            size_t n = std::min(size, bytes->size() - std::size_t(offset));
+            std::memcpy(buffer, bytes->data() + offset, n);
+            return ssize_t(n);
+        }
+        ssize_t MemorySize(void* user) { return ssize_t(static_cast<std::vector<std::uint8_t>*>(user)->size()); }
+        void MemoryClose(void*) {}
+
+        std::unique_ptr<Source> OpenSource(const std::string& uri, std::string& error) {
+            auto s = std::make_unique<Source>();
+            auto prefixed = [&](const char* p) { return uri.rfind(p, 0) == 0; };
+            if (prefixed("http://") || prefixed("https://")) {
+                s->url = uri;
+                return s;
+            }
+            if (prefixed("asset:///") || prefixed("file:///android_asset/")) {
+                std::string path = uri.substr(prefixed("asset:///") ? 9 : 22);
+                AAssetManager* mgr = AssetManager();
+                AAsset* a = mgr ? AAssetManager_open(mgr, path.c_str(), AASSET_MODE_RANDOM) : nullptr;
+                if (!a) {
+                    error = "no asset " + path;
+                    return nullptr;
+                }
+                off64_t start = 0, length = 0;
+                s->fd = AAsset_openFileDescriptor64(a, &start, &length);
+                if (s->fd >= 0) {
+                    s->offset = start;
+                    s->length = length;
+                } else {
+                    // Compressed in the APK: read it into memory.
+                    const auto* data = static_cast<const std::uint8_t*>(AAsset_getBuffer(a));
+                    if (data) s->bytes = std::make_shared<std::vector<std::uint8_t>>(data, data + AAsset_getLength64(a));
+                }
+                AAsset_close(a);
+                if (s->fd < 0 && !s->bytes) {
+                    error = "cannot read asset " + path;
+                    return nullptr;
+                }
+                return s;
+            }
+            if (prefixed("content://")) {
+                s->fd = ui::GetContentResolver().OpenFileDescriptor(uri, "r");
+            } else {
+                std::string path = prefixed("file://") ? uri.substr(7) : uri;
+                s->fd = open(path.c_str(), O_RDONLY | O_CLOEXEC);
+            }
+            if (s->fd < 0) {
+                error = "cannot open " + uri;
+                return nullptr;
+            }
+            struct stat st{};
+            fstat(s->fd, &st);
+            s->length = st.st_size;
+            return s;
+        }
+
+        // One track: its own extractor (seeked on its own) and decoder.
+        struct Track {
+            int index = -1;
+            std::string mime;
+            AMediaExtractor* extractor = nullptr;
+            AMediaDataSource* dataSource = nullptr;
+            AMediaFormat* format = nullptr;
+            AMediaCodec* codec = nullptr;
+            bool inputDone = false, outputDone = false;
+            std::int64_t seekTargetUs = 0;   // frames before it are decoded, not shown or played
+
+            void ReleaseCodec() {
+                if (codec) {
+                    AMediaCodec_stop(codec);
+                    AMediaCodec_delete(codec);
+                    codec = nullptr;
+                }
+            }
+            ~Track() {
+                ReleaseCodec();
+                if (format) AMediaFormat_delete(format);
+                if (extractor) AMediaExtractor_delete(extractor);
+                if (dataSource) AMediaDataSource_delete(dataSource);
+            }
+        };
+
+        AMediaExtractor* NewExtractor(const Source& s, AMediaDataSource** dataSource) {
+            AMediaExtractor* ex = AMediaExtractor_new();
+            media_status_t r;
+            if (!s.url.empty()) {
+                r = AMediaExtractor_setDataSource(ex, s.url.c_str());
+            } else if (s.bytes) {
+                *dataSource = AMediaDataSource_new();
+                AMediaDataSource_setUserdata(*dataSource, s.bytes.get());
+                AMediaDataSource_setReadAt(*dataSource, &ReadMemory);
+                AMediaDataSource_setGetSize(*dataSource, &MemorySize);
+                AMediaDataSource_setClose(*dataSource, &MemoryClose);
+                r = AMediaExtractor_setDataSourceCustom(ex, *dataSource);
+            } else {
+                r = AMediaExtractor_setDataSourceFd(ex, s.fd, s.offset, s.length);
+            }
+            if (r != AMEDIA_OK) {
+                AMediaExtractor_delete(ex);
+                return nullptr;
+            }
+            return ex;
+        }
+
+        class Engine final : public media::PlayerEngine {
+        public:
+            Engine() : m_Thread([this] { Run(); }) {}
+            ~Engine() override {
+                {
+                    std::lock_guard lock(m_Mutex);
+                    m_Quit = true;
+                }
+                m_Cv.notify_all();
+                m_Thread.join();
+                if (m_Window) ANativeWindow_release(m_Window);
+            }
+
+            void SetMediaUri(std::string uri) override { Command([&] { m_Uri = std::move(uri); m_UriChanged = true; }); }
+            void SetPlayWhenReady(bool play) override { Command([&] { m_PlayWhenReady = play; }); }
+            void SeekTo(std::int64_t ms) override { Command([&] { m_SeekUs = ms * 1000; }); }
+            void SetRepeat(bool repeat) override { Command([&] { m_RepeatWanted = repeat; }); }
+            void SetVolume(float v) override { Command([&] { m_VolumeWanted = v; }); }
+            void SetSurface(ui::PlatformSurface surface) override {
+                auto* w = static_cast<ANativeWindow*>(surface.nativeWindow);
+                if (w) ANativeWindow_acquire(w);
+                std::unique_lock lock(m_Mutex);
+                if (m_Window) ANativeWindow_release(m_Window);
+                m_Window = w;
+                ++m_SurfaceGeneration;
+                m_Cv.notify_all();
+                // The window may go once this returns: wait until the decoder let go of it.
+                if (!w) m_Cv.wait(lock, [this] { return m_AppliedSurface == m_SurfaceGeneration || m_Quit; });
+            }
+
+        private:
+            template<typename F>
+            void Command(F&& f) {
+                {
+                    std::lock_guard lock(m_Mutex);
+                    f();
+                }
+                m_Cv.notify_all();
+            }
+
+            // --- the playback thread ---------------------------------------------------------
+            void Run() {
+                for (;;) {
+                    std::unique_lock lock(m_Mutex);
+                    bool busy = m_Prepared && (m_Playing || !m_FirstFrameRendered || NeedsDecoding());
+                    if (busy) m_Cv.wait_for(lock, std::chrono::milliseconds(10));
+                    else m_Cv.wait(lock, [this] { return m_Quit || m_UriChanged || m_SeekUs || m_PlayWhenReady != m_PlayingWanted || m_AppliedSurface != m_SurfaceGeneration || m_RepeatWanted != m_Repeat || m_VolumeWanted != m_Volume; });
+                    if (m_Quit) break;
+                    // Take the commands.
+                    std::optional<std::string> uri;
+                    if (m_UriChanged) { uri = m_Uri; m_UriChanged = false; }
+                    std::optional<std::int64_t> seek = std::exchange(m_SeekUs, std::nullopt);
+                    bool play = m_PlayWhenReady;
+                    m_Repeat = m_RepeatWanted;
+                    m_Volume = m_VolumeWanted;
+                    ANativeWindow* window = nullptr;
+                    bool surfaceChanged = m_AppliedSurface != m_SurfaceGeneration;
+                    std::uint64_t generation = m_SurfaceGeneration;
+                    if (surfaceChanged && m_Window) {
+                        window = m_Window;
+                        ANativeWindow_acquire(window);
+                    }
+                    lock.unlock();
+
+                    if (uri) Open(*uri);
+                    if (surfaceChanged) {
+                        ApplySurface(window);
+                        if (window) ANativeWindow_release(window);
+                        {
+                            std::lock_guard l(m_Mutex);
+                            m_AppliedSurface = generation;
+                        }
+                        m_Cv.notify_all();
+                    }
+                    if (seek && m_Prepared) Seek(std::min(*seek, m_DurationUs > 0 ? m_DurationUs : *seek));
+                    m_PlayingWanted = play;
+                    if (m_Prepared) {
+                        SetPlaying(play && m_State.state != media::PlaybackState::Ended);
+                        DoSomeWork();
+                    }
+                    Report();
+                }
+                Close();
+                if (m_LastWindow) ANativeWindow_release(m_LastWindow);
+                m_LastWindow = nullptr;
+            }
+
+            bool NeedsDecoding() const {
+                return (m_Video && !m_Video->outputDone && m_Video->codec && !m_FirstFrameRendered)
+                    || (m_Audio && !m_AudioReady);
+            }
+
+            void Fail(const std::string& message) {
+                __android_log_print(ANDROID_LOG_ERROR, "kiln", "media: %s", message.c_str());
+                Close();
+                m_State = {};
+                m_State.error = message;
+                m_State.playWhenReady = m_PlayingWanted;
+            }
+
+            void Close() {
+                CloseAudio();
+                m_Video.reset();
+                m_Audio.reset();
+                m_Source.reset();
+                m_Prepared = false;
+                m_Playing = false;
+                m_PendingVideo = -1;
+            }
+
+            void Open(const std::string& uri) {
+                Close();
+                m_State = {};
+                m_State.playWhenReady = m_PlayingWanted;
+                if (uri.empty()) return;
+                std::string error;
+                m_Source = OpenSource(uri, error);
+                if (!m_Source) return Fail(error);
+                AMediaDataSource* probeSource = nullptr;
+                AMediaExtractor* probe = NewExtractor(*m_Source, &probeSource);
+                if (!probe) {
+                    if (probeSource) AMediaDataSource_delete(probeSource);
+                    return Fail("cannot read " + uri);
+                }
+                m_DurationUs = -1;
+                int videoIndex = -1, audioIndex = -1;
+                for (size_t i = 0, n = AMediaExtractor_getTrackCount(probe); i < n; ++i) {
+                    AMediaFormat* f = AMediaExtractor_getTrackFormat(probe, i);
+                    const char* mime = nullptr;
+                    AMediaFormat_getString(f, AMEDIAFORMAT_KEY_MIME, &mime);
+                    std::int64_t d = 0;
+                    if (AMediaFormat_getInt64(f, AMEDIAFORMAT_KEY_DURATION, &d)) m_DurationUs = std::max(m_DurationUs, d);
+                    if (mime && std::strncmp(mime, "video/", 6) == 0 && videoIndex < 0) videoIndex = int(i);
+                    if (mime && std::strncmp(mime, "audio/", 6) == 0 && audioIndex < 0) audioIndex = int(i);
+                    AMediaFormat_delete(f);
+                }
+                AMediaExtractor_delete(probe);
+                if (probeSource) AMediaDataSource_delete(probeSource);
+                if (videoIndex < 0 && audioIndex < 0) return Fail("no audio or video in " + uri);
+                if (videoIndex >= 0 && !(m_Video = OpenTrack(videoIndex))) return Fail("cannot read the video of " + uri);
+                if (audioIndex >= 0 && !(m_Audio = OpenTrack(audioIndex))) return Fail("cannot read the audio of " + uri);
+                if (m_Video) {
+                    std::int32_t w = 0, h = 0, rotation = 0;
+                    AMediaFormat_getInt32(m_Video->format, AMEDIAFORMAT_KEY_WIDTH, &w);
+                    AMediaFormat_getInt32(m_Video->format, AMEDIAFORMAT_KEY_HEIGHT, &h);
+                    AMediaFormat_getInt32(m_Video->format, AMEDIAFORMAT_KEY_ROTATION, &rotation);
+                    m_State.videoWidth = w;
+                    m_State.videoHeight = h;
+                    m_State.rotationDegrees = rotation;
+                }
+                if (m_Audio) {
+                    m_Audio->codec = AMediaCodec_createDecoderByType(m_Audio->mime.c_str());
+                    if (!m_Audio->codec || AMediaCodec_configure(m_Audio->codec, m_Audio->format, nullptr, nullptr, 0) != AMEDIA_OK
+                        || AMediaCodec_start(m_Audio->codec) != AMEDIA_OK)
+                        return Fail("no decoder for " + m_Audio->mime);
+                    AMediaFormat_getInt32(m_Audio->format, AMEDIAFORMAT_KEY_SAMPLE_RATE, &m_SampleRate);
+                    AMediaFormat_getInt32(m_Audio->format, AMEDIAFORMAT_KEY_CHANNEL_COUNT, &m_Channels);
+                }
+                m_Prepared = true;
+                m_State.hasVideo = bool(m_Video);
+                m_State.hasAudio = bool(m_Audio);
+                m_State.durationMs = m_DurationUs >= 0 ? m_DurationUs / 1000 : -1;
+                if (m_Video && m_LastWindow) CreateVideoCodec(m_LastWindow);
+                StartFrom(0);
+            }
+
+            std::unique_ptr<Track> OpenTrack(int index) {
+                auto t = std::make_unique<Track>();
+                t->index = index;
+                t->extractor = NewExtractor(*m_Source, &t->dataSource);
+                if (!t->extractor) return nullptr;
+                AMediaExtractor_selectTrack(t->extractor, size_t(index));
+                t->format = AMediaExtractor_getTrackFormat(t->extractor, size_t(index));
+                const char* mime = nullptr;
+                AMediaFormat_getString(t->format, AMEDIAFORMAT_KEY_MIME, &mime);
+                t->mime = mime ? mime : "";
+                return t;
+            }
+
+            bool CreateVideoCodec(ANativeWindow* window) {
+                m_Video->codec = AMediaCodec_createDecoderByType(m_Video->mime.c_str());
+                if (!m_Video->codec || AMediaCodec_configure(m_Video->codec, m_Video->format, window, nullptr, 0) != AMEDIA_OK
+                    || AMediaCodec_start(m_Video->codec) != AMEDIA_OK) {
+                    m_Video->ReleaseCodec();
+                    Fail("no decoder for " + m_Video->mime);
+                    return false;
+                }
+                return true;
+            }
+
+            // The decoder moves to the window (or lets go of the old one) before that is released.
+            void ApplySurface(ANativeWindow* window) {
+                ANativeWindow* old = std::exchange(m_LastWindow, window);
+                if (window) ANativeWindow_acquire(window);
+                struct ReleaseOld {
+                    ANativeWindow* w;
+                    ~ReleaseOld() { if (w) ANativeWindow_release(w); }
+                } releaseOld{ old };
+                if (!m_Video) return;
+                if (window && m_Video->codec && AMediaCodec_setOutputSurface(m_Video->codec, window) == AMEDIA_OK) {
+                    m_FirstFrameRendered = false;   // show the current frame on the new surface
+                    return;
+                }
+                m_PendingVideo = -1;
+                m_Video->ReleaseCodec();
+                if (window && CreateVideoCodec(window)) {
+                    // Decode from the keyframe before the clock, showing from the clock on.
+                    std::int64_t now = ClockUs();
+                    AMediaExtractor_seekTo(m_Video->extractor, now, AMEDIAEXTRACTOR_SEEK_PREVIOUS_SYNC);
+                    m_Video->inputDone = m_Video->outputDone = false;
+                    m_Video->seekTargetUs = now;
+                    m_FirstFrameRendered = false;
+                }
+            }
+
+            // --- position and seeking -----------------------------------------------------------
+            void StartFrom(std::int64_t us) {
+                m_ClockBaseUs = us;
+                m_ClockRealUs = NowUs();
+                m_AudioBaseFrame = -1;
+                m_FirstFrameRendered = false;
+                m_AudioReady = !m_Audio;
+                m_PendingPcm.clear();
+                m_PendingPcmOffset = 0;
+                m_State.state = media::PlaybackState::Buffering;
+                m_LastReleaseUs = NowUs();
+            }
+
+            void Seek(std::int64_t us) {
+                m_PendingVideo = -1;
+                for (Track* t : { m_Video.get(), m_Audio.get() }) {
+                    if (!t) continue;
+                    AMediaExtractor_seekTo(t->extractor, us, AMEDIAEXTRACTOR_SEEK_PREVIOUS_SYNC);
+                    if (t->codec) AMediaCodec_flush(t->codec);
+                    t->inputDone = t->outputDone = false;
+                    t->seekTargetUs = us;
+                }
+                if (m_Stream) {
+                    AAudioStream_requestPause(m_Stream);
+                    AAudioStream_requestFlush(m_Stream);
+                    m_StreamStarted = false;
+                }
+                bool wasEnded = m_State.state == media::PlaybackState::Ended;
+                StartFrom(us);
+                if (wasEnded) m_Playing = false;
+            }
+
+            // The media time: the audio's while it plays, else the standalone clock.
+            std::int64_t ClockUs() {
+                if (m_Playing && m_Stream && m_StreamStarted && m_AudioBaseFrame >= 0) {
+                    std::int64_t frame = 0, time = 0;
+                    // Only a timestamp taken since the stream (re)started: after a pause or flush
+                    // AAudio still reports the last one, from before.
+                    if (AAudioStream_getTimestamp(m_Stream, CLOCK_MONOTONIC, &frame, &time) == AAUDIO_OK && frame > m_AudioBaseFrame
+                        && time >= m_StreamStartNs) {
+                        std::int64_t us = m_AudioBasePtsUs + (frame - m_AudioBaseFrame) * 1'000'000 / m_SampleRate + (NowNs() - time) / 1000;
+                        // The standalone clock follows, to take over without a jump.
+                        m_ClockBaseUs = us;
+                        m_ClockRealUs = NowUs();
+                        return us;
+                    }
+                }
+                return m_Playing && m_State.state == media::PlaybackState::Ready ? m_ClockBaseUs + (NowUs() - m_ClockRealUs) : m_ClockBaseUs;
+            }
+
+            void SetPlaying(bool play) {
+                bool started = play && m_State.state == media::PlaybackState::Ready;
+                if (started == m_Playing) return;
+                m_ClockBaseUs = ClockUs();
+                m_ClockRealUs = NowUs();
+                m_Playing = started;
+                if (m_Stream) {
+                    if (started) {
+                        AAudioStream_requestStart(m_Stream);
+                        m_StreamStarted = true;
+                        m_StreamStartNs = NowNs();
+                    } else {
+                        AAudioStream_requestPause(m_Stream);
+                        m_StreamStarted = false;
+                    }
+                }
+            }
+
+            // --- decoding ------------------------------------------------------------------------
+            void FeedInput(Track& t) {
+                if (!t.codec) return;
+                for (int i = 0; i < 4 && !t.inputDone; ++i) {
+                    ssize_t idx = AMediaCodec_dequeueInputBuffer(t.codec, 0);
+                    if (idx < 0) return;
+                    size_t capacity = 0;
+                    std::uint8_t* buffer = AMediaCodec_getInputBuffer(t.codec, size_t(idx), &capacity);
+                    ssize_t size = buffer ? AMediaExtractor_readSampleData(t.extractor, buffer, capacity) : -1;
+                    if (size < 0) {
+                        AMediaCodec_queueInputBuffer(t.codec, size_t(idx), 0, 0, 0, AMEDIACODEC_BUFFER_FLAG_END_OF_STREAM);
+                        t.inputDone = true;
+                        return;
+                    }
+                    AMediaCodec_queueInputBuffer(t.codec, size_t(idx), 0, size_t(size), std::uint64_t(AMediaExtractor_getSampleTime(t.extractor)), 0);
+                    AMediaExtractor_advance(t.extractor);
+                }
+            }
+
+            void OpenAudio() {
+                CloseAudio();
+                AAudioStreamBuilder* b = nullptr;
+                if (AAudio_createStreamBuilder(&b) != AAUDIO_OK) return;
+                AAudioStreamBuilder_setFormat(b, AAUDIO_FORMAT_PCM_I16);
+                AAudioStreamBuilder_setChannelCount(b, m_Channels);
+                AAudioStreamBuilder_setSampleRate(b, m_SampleRate);
+                AAudioStreamBuilder_setUsage(b, AAUDIO_USAGE_MEDIA);
+                AAudioStreamBuilder_setContentType(b, m_Video ? AAUDIO_CONTENT_TYPE_MOVIE : AAUDIO_CONTENT_TYPE_MUSIC);
+                if (AAudioStreamBuilder_openStream(b, &m_Stream) != AAUDIO_OK) {
+                    m_Stream = nullptr;
+                    __android_log_print(ANDROID_LOG_WARN, "kiln", "media: no audio output; playing without sound");
+                }
+                AAudioStreamBuilder_delete(b);
+                m_StreamStarted = false;
+                if (m_Stream && m_Playing) {
+                    AAudioStream_requestStart(m_Stream);
+                    m_StreamStarted = true;
+                    m_StreamStartNs = NowNs();
+                }
+            }
+            void CloseAudio() {
+                if (m_Stream) AAudioStream_close(m_Stream);
+                m_Stream = nullptr;
+                m_StreamStarted = false;
+                m_AudioOpened = false;
+            }
+
+            void DrainAudio() {
+                Track& t = *m_Audio;
+                while (m_PendingPcmOffset >= m_PendingPcm.size() && !t.outputDone) {
+                    AMediaCodecBufferInfo info{};
+                    ssize_t idx = AMediaCodec_dequeueOutputBuffer(t.codec, &info, 0);
+                    if (idx == AMEDIACODEC_INFO_OUTPUT_FORMAT_CHANGED) {
+                        AMediaFormat* f = AMediaCodec_getOutputFormat(t.codec);
+                        AMediaFormat_getInt32(f, AMEDIAFORMAT_KEY_SAMPLE_RATE, &m_SampleRate);
+                        AMediaFormat_getInt32(f, AMEDIAFORMAT_KEY_CHANNEL_COUNT, &m_Channels);
+                        AMediaFormat_delete(f);
+                        m_AudioOpened = false;
+                        continue;
+                    }
+                    if (idx < 0) return;
+                    if (info.flags & AMEDIACODEC_BUFFER_FLAG_END_OF_STREAM) t.outputDone = true;
+                    size_t size = 0;
+                    std::uint8_t* data = AMediaCodec_getOutputBuffer(t.codec, size_t(idx), &size);
+                    std::int64_t frames = info.size / std::int64_t(2 * std::max(m_Channels, 1));
+                    std::int64_t endUs = info.presentationTimeUs + frames * 1'000'000 / std::max(m_SampleRate, 1);
+                    if (data && info.size > 0 && endUs > t.seekTargetUs) {
+                        const auto* pcm = reinterpret_cast<const std::int16_t*>(data + info.offset);
+                        m_PendingPcm.assign(pcm, pcm + info.size / 2);
+                        m_PendingPcmOffset = 0;
+                        m_PendingPts = info.presentationTimeUs;
+                        if (m_Volume < 1) for (auto& s : m_PendingPcm) s = std::int16_t(float(s) * m_Volume);
+                    }
+                    AMediaCodec_releaseOutputBuffer(t.codec, size_t(idx), false);
+                }
+                if (!m_AudioOpened && m_PendingPcmOffset < m_PendingPcm.size()) {
+                    OpenAudio();
+                    m_AudioOpened = true;
+                }
+                if (m_PendingPcmOffset < m_PendingPcm.size()) {
+                    if (!m_Stream) {
+                        // No output: the sound's time passes on the standalone clock.
+                        if (m_PendingPts <= ClockUs() || !m_Playing) {
+                            m_AudioReady = true;
+                            if (m_Playing) m_PendingPcmOffset = m_PendingPcm.size();
+                        }
+                        return;
+                    }
+                    if (m_AudioBaseFrame < 0) {
+                        m_AudioBaseFrame = AAudioStream_getFramesWritten(m_Stream);
+                        m_AudioBasePtsUs = m_PendingPts;
+                    }
+                    int channels = std::max(m_Channels, 1);
+                    std::int64_t left = std::int64_t(m_PendingPcm.size() - m_PendingPcmOffset) / channels;
+                    aaudio_result_t n = AAudioStream_write(m_Stream, m_PendingPcm.data() + m_PendingPcmOffset, std::int32_t(left), 0);
+                    if (n > 0) m_PendingPcmOffset += std::size_t(n) * std::size_t(channels);
+                    else if (n == AAUDIO_ERROR_DISCONNECTED) m_AudioOpened = false;   // a new output (headphones)
+                    m_AudioReady = true;
+                }
+                if (t.outputDone) m_AudioReady = true;
+            }
+
+            void DrainVideo() {
+                Track& t = *m_Video;
+                if (!t.codec) return;
+                while (!t.outputDone) {
+                    if (m_PendingVideo < 0) {
+                        AMediaCodecBufferInfo info{};
+                        ssize_t idx = AMediaCodec_dequeueOutputBuffer(t.codec, &info, 0);
+                        if (idx == AMEDIACODEC_INFO_OUTPUT_FORMAT_CHANGED) continue;
+                        if (idx < 0) return;
+                        m_PendingVideo = idx;
+                        m_PendingVideoPts = info.presentationTimeUs;
+                        m_PendingVideoEos = (info.flags & AMEDIACODEC_BUFFER_FLAG_END_OF_STREAM) != 0;
+                        m_PendingVideoEmpty = info.size == 0;
+                    }
+                    size_t idx = size_t(m_PendingVideo);
+                    if (m_PendingVideoEmpty) {
+                        AMediaCodec_releaseOutputBuffer(t.codec, idx, false);
+                        m_PendingVideo = -1;
+                        if (m_PendingVideoEos) t.outputDone = true;
+                        continue;
+                    }
+                    // Decode-only frames between the keyframe and the seek target.
+                    if (m_PendingVideoPts < t.seekTargetUs && !m_PendingVideoEos) {
+                        AMediaCodec_releaseOutputBuffer(t.codec, idx, false);
+                        m_PendingVideo = -1;
+                        continue;
+                    }
+                    media::FrameTiming timing;
+                    timing.earlyUs = m_PendingVideoPts - ClockUs();
+                    timing.started = m_Playing;
+                    timing.firstFrameRendered = m_FirstFrameRendered;
+                    timing.lastFrame = m_PendingVideoEos;
+                    timing.sinceLastReleaseUs = NowUs() - m_LastReleaseUs;
+                    switch (media::DecideFrameRelease(timing)) {
+                        case media::FrameRelease::TryAgainLater:
+                            return;
+                        case media::FrameRelease::Immediately:
+                            AMediaCodec_releaseOutputBuffer(t.codec, idx, true);
+                            m_FirstFrameRendered = true;
+                            m_LastReleaseUs = NowUs();
+                            break;
+                        case media::FrameRelease::Scheduled:
+                            AMediaCodec_releaseOutputBufferAtTime(t.codec, idx, NowNs() + timing.earlyUs * 1000);
+                            m_LastReleaseUs = NowUs();
+                            break;
+                        case media::FrameRelease::Drop:
+                            AMediaCodec_releaseOutputBuffer(t.codec, idx, false);
+                            break;
+                    }
+                    m_PendingVideo = -1;
+                    if (m_PendingVideoEos) t.outputDone = true;
+                }
+            }
+
+            void DoSomeWork() {
+                if (m_Video) FeedInput(*m_Video);
+                if (m_Audio) FeedInput(*m_Audio);
+                if (m_Audio) DrainAudio();
+                if (m_Video) DrainVideo();
+                bool videoReady = !m_Video || !m_Video->codec || m_FirstFrameRendered || m_Video->outputDone;
+                if (m_State.state == media::PlaybackState::Buffering && videoReady && m_AudioReady) {
+                    m_State.state = media::PlaybackState::Ready;
+                    m_ClockRealUs = NowUs();
+                    SetPlaying(m_PlayingWanted);
+                }
+                bool videoDone = !m_Video || !m_Video->codec || m_Video->outputDone;
+                bool audioDone = !m_Audio || (m_Audio->outputDone && m_PendingPcmOffset >= m_PendingPcm.size());
+                if (m_State.state == media::PlaybackState::Ready && videoDone && audioDone && ClockUs() >= m_DurationUs - 1000) {
+                    if (m_Repeat) {
+                        Seek(0);
+                    } else {
+                        m_ClockBaseUs = std::max<std::int64_t>(m_DurationUs, 0);
+                        SetPlaying(false);
+                        m_State.state = media::PlaybackState::Ended;
+                    }
+                }
+            }
+
+            void Report() {
+                media::PlayerState s = m_State;
+                s.playWhenReady = m_PlayingWanted;
+                s.isPlaying = m_Playing;
+                if (m_Prepared) {
+                    std::int64_t us = ClockUs();
+                    if (m_DurationUs > 0) us = std::min(us, m_DurationUs);
+                    s.positionMs = std::max<std::int64_t>(us, 0) / 1000;
+                }
+                std::int64_t now = NowUs();
+                media::PlayerState withoutPosition = s, lastWithoutPosition = m_Reported;
+                withoutPosition.positionMs = lastWithoutPosition.positionMs = 0;
+                if (withoutPosition != lastWithoutPosition || (s.positionMs != m_Reported.positionMs && now - m_ReportedUs >= 250'000)) {
+                    m_Reported = s;
+                    m_ReportedUs = now;
+                    if (onState) onState(s);
+                }
+            }
+
+            // Shared with the main thread (m_Mutex).
+            std::mutex m_Mutex;
+            std::condition_variable m_Cv;
+            bool m_Quit = false;
+            std::string m_Uri;
+            bool m_UriChanged = false;
+            bool m_PlayWhenReady = false;
+            std::optional<std::int64_t> m_SeekUs;
+            bool m_RepeatWanted = false;
+            float m_VolumeWanted = 1;
+            ANativeWindow* m_Window = nullptr;
+            std::uint64_t m_SurfaceGeneration = 0, m_AppliedSurface = 0;
+
+            // The playback thread's.
+            bool m_PlayingWanted = false, m_Repeat = false;
+            float m_Volume = 1;
+            std::unique_ptr<Source> m_Source;
+            std::unique_ptr<Track> m_Video, m_Audio;
+            ANativeWindow* m_LastWindow = nullptr;
+            bool m_Prepared = false, m_Playing = false, m_FirstFrameRendered = false, m_AudioReady = false;
+            std::int64_t m_DurationUs = -1;
+            std::int64_t m_ClockBaseUs = 0, m_ClockRealUs = 0, m_LastReleaseUs = 0;
+            ssize_t m_PendingVideo = -1;
+            std::int64_t m_PendingVideoPts = 0;
+            bool m_PendingVideoEos = false, m_PendingVideoEmpty = false;
+            AAudioStream* m_Stream = nullptr;
+            bool m_StreamStarted = false, m_AudioOpened = false;
+            std::int64_t m_StreamStartNs = 0;
+            std::int32_t m_SampleRate = 44100, m_Channels = 2;
+            std::vector<std::int16_t> m_PendingPcm;
+            std::size_t m_PendingPcmOffset = 0;
+            std::int64_t m_PendingPts = 0, m_AudioBaseFrame = -1, m_AudioBasePtsUs = 0;
+            media::PlayerState m_State, m_Reported;
+            std::int64_t m_ReportedUs = 0;
+            std::thread m_Thread;   // last: starts once the members exist
+        };
+    }
+
+    void InstallMedia() {
+        media::SetPlayerEngineFactory([] { return std::unique_ptr<media::PlayerEngine>(std::make_unique<Engine>()); });
+    }
+
+}

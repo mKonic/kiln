@@ -653,6 +653,41 @@ pub fn async_image(model: &str, content_description: Option<&str>, modifier: Mod
     if let Some(mut f) = on_state { o.on_state = (move |v: i32| f(v)).into_callback(); }
     unsafe { sys::kiln_async_image(here(), m.ptr(), d.as_ref().map_or(std::ptr::null(), |d| d.ptr()), modifier.0, &o) }
 }
+/// A media player remembered at the call (see `kiln_remember_player`).
+#[derive(Clone, Copy)]
+pub struct Player(*mut sys::kiln_player);
+impl Player {
+    pub fn set_media_uri(&self, uri: &str) { let u = CStrBuf::new(uri); unsafe { sys::kiln_player_set_media_uri(self.0, u.ptr()) } }
+    pub fn play(&self) { unsafe { sys::kiln_player_play(self.0) } }
+    pub fn pause(&self) { unsafe { sys::kiln_player_pause(self.0) } }
+    pub fn seek_to(&self, ms: i64) { unsafe { sys::kiln_player_seek_to(self.0, ms) } }
+    pub fn set_repeat(&self, repeat: bool) { unsafe { sys::kiln_player_set_repeat(self.0, repeat) } }
+    pub fn set_volume(&self, volume: f32) { unsafe { sys::kiln_player_set_volume(self.0, volume) } }
+    /// The state; reading it in content recomposes when it changes.
+    pub fn state(&self) -> sys::kiln_player_state {
+        let mut s = unsafe { std::mem::zeroed() };
+        unsafe { sys::kiln_player_get_state(self.0, &mut s) };
+        s
+    }
+}
+#[track_caller]
+pub fn remember_player() -> Player { Player(unsafe { sys::kiln_remember_player(here()) }) }
+/// The player's video, sized to its aspect ratio unless `keep_aspect_ratio` is false.
+#[track_caller]
+pub fn video_surface(player: Player, modifier: Modifier, keep_aspect_ratio: bool) {
+    unsafe { sys::kiln_video_surface(here(), modifier.0, player.0, keep_aspect_ratio) }
+}
+/// The id of the first camera facing that way (0 front, 1 back, 2 external).
+pub fn find_camera(facing: i32) -> Option<String> {
+    let p = unsafe { sys::kiln_find_camera(facing) };
+    if p.is_null() { None } else { Some(from_c(p)) }
+}
+/// A camera's live preview (android.permission.CAMERA granted first).
+#[track_caller]
+pub fn camera_preview(camera_id: &str, modifier: Modifier) {
+    let c = CStrBuf::new(camera_id);
+    unsafe { sys::kiln_camera_preview(here(), modifier.0, c.ptr()) }
+}
 /// The default async image options, to change before passing to [`async_image`].
 pub fn async_image_options() -> sys::kiln_async_image_options {
     let mut o = unsafe { std::mem::zeroed() };

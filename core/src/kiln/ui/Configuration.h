@@ -38,6 +38,9 @@ namespace kiln::ui {
         int touchscreen = 0, keyboard = 0, keyboardHidden = 0, hardKeyboardHidden = 0;
         int navigation = 0, navigationHidden = 0;
         int colorMode = 0;
+        // The display's rotation from its natural orientation, in degrees (Display.getRotation;
+        // not part of android.content.res.Configuration): what a camera preview turns by.
+        int displayRotation = 0;
         // The platform's Material You colours (android.R.color.system_*), in the order
         // KilnSystemColors reads them: the API 31 tonal palette, and the API 34 light then dark
         // scheme roles. Empty where the platform lacks them (or off Android).

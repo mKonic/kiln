@@ -116,7 +116,7 @@ endfunction()
 if(ANDROID)
     file(GLOB KILN_ANDROID_SOURCES CONFIGURE_DEPENDS platform/android/jni/*.cpp)
     add_library(kiln_android STATIC ${KILN_ANDROID_SOURCES})
-    target_link_libraries(kiln_android PUBLIC kiln_foundation jnigraphics android nativewindow log mediandk)
+    target_link_libraries(kiln_android PUBLIC kiln_foundation jnigraphics android nativewindow log mediandk aaudio camera2ndk)
     target_compile_options(kiln_android PRIVATE -Wall -Wextra -Wno-missing-field-initializers)
 
     # An app is one shared library linking kiln statically; KilnActivity loads it by the
@@ -188,7 +188,8 @@ if(ANDROID)
     kiln_add_android_app(hello SOURCES samples/hello/main.cpp PACKAGE dev.kiln.hello LABEL "kiln hello")
     kiln_add_android_app(list SOURCES samples/list/main.cpp PACKAGE dev.kiln.list LABEL "kiln list")
     kiln_add_android_app(gallery SOURCES samples/gallery/main.cpp LIBS kiln_material3
-                         PACKAGE dev.kiln.gallery LABEL "kiln gallery" ASSETS ${CMAKE_SOURCE_DIR}/samples/gallery/assets)
+                         PACKAGE dev.kiln.gallery LABEL "kiln gallery" ASSETS ${CMAKE_SOURCE_DIR}/samples/gallery/assets
+                         PERMISSIONS android.permission.CAMERA)
     # Samples over the C ABI only (C, and C++ with kiln++).
     foreach(sample notes-c notes-cpp)
         file(GLOB src samples/${sample}/main.c*)

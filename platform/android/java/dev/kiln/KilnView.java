@@ -1947,6 +1947,13 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback2 {
         accessibility.onTranslationResponses(response);
     }
 
+    // Display.getRotation in degrees (what a camera preview turns by).
+    private int displayRotationDegrees() {
+        android.view.Display d = null;
+        try { d = getContext().getDisplay(); } catch (UnsupportedOperationException e) { /* not a visual context */ }
+        return d == null ? 0 : d.getRotation() * 90;
+    }
+
     // LocalConfiguration (and Locale.current from its locales).
     private void pushConfiguration(Configuration c) {
         android.os.LocaleList list = c.getLocales();
@@ -1957,6 +1964,7 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback2 {
                 c.screenWidthDp, c.screenHeightDp, c.smallestScreenWidthDp,
                 c.orientation, c.screenLayout, c.touchscreen, c.keyboard,
                 c.keyboardHidden, c.hardKeyboardHidden, c.navigation, c.navigationHidden, c.colorMode,
+                displayRotationDegrees(),
         }, c.fontScale, locales, KilnSystemColors.palette(getContext()), KilnSystemColors.roles(getContext()));
     }
 
