@@ -4,6 +4,7 @@
 #include "kiln/jvm/Codec.h"
 #include "kiln/runtime/Task.h"
 
+#include <algorithm>
 #include <chrono>
 #include <map>
 #include <mutex>
@@ -30,7 +31,14 @@ namespace kiln::alarm {
             return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
         }
         rt::Task<> RunAt(Alarm a) {
-            co_await rt::Delay(std::max<std::int64_t>(0, a.triggerAtMillis - NowMillis()));
+            // In steps of at most ~24 days: a time far off would overflow the clock's nanoseconds.
+            const std::int64_t now = NowMillis();
+            std::int64_t remaining = a.triggerAtMillis > now ? a.triggerAtMillis - now : 0;
+            while (remaining > 0) {
+                const std::int64_t step = std::min<std::int64_t>(remaining, std::int64_t(1) << 31);
+                co_await rt::Delay(step);
+                remaining -= step;
+            }
             Alarm fired = a;
             {
                 std::lock_guard lock(R().mutex);
