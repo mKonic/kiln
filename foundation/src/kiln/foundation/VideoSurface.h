@@ -20,8 +20,9 @@
 namespace kiln::foundation {
 
     // keepAspectRatio: the element takes the video's aspect ratio (turned by its rotation); else
-    // the video is stretched to the element.
-    void VideoSurface(const Modifier& modifier, media::Player& player, bool keepAspectRatio = true);
+    // the video is stretched to the element. showSubtitles: the player's subtitles over it
+    // (Subtitles, as PlayerView shows them).
+    void VideoSurface(const Modifier& modifier, media::Player& player, bool keepAspectRatio = true, bool showSubtitles = true);
 
     // The camera's preview, upright on the display, at the largest preview size within 1080p.
     // onError: the camera failed or android.permission.CAMERA is not granted.

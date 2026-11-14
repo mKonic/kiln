@@ -58,6 +58,43 @@ final class KilnMedia {
 
     private static AudioManager audio() { return sContext.getSystemService(AudioManager.class); }
 
+    // --- the system's caption settings (CaptioningManager) ------------------------------------
+    private static android.view.accessibility.CaptioningManager captioning() {
+        return sContext == null ? null : sContext.getSystemService(android.view.accessibility.CaptioningManager.class);
+    }
+    static boolean captioningEnabled() {
+        android.view.accessibility.CaptioningManager c = captioning();
+        return c != null && c.isEnabled();
+    }
+    /** Util.getLocaleLanguageTag of the captions' locale, or null. */
+    static String captioningLocale() {
+        android.view.accessibility.CaptioningManager c = captioning();
+        java.util.Locale l = c == null ? null : c.getLocale();
+        return l == null ? null : l.toLanguageTag();
+    }
+    static float captioningFontScale() {
+        android.view.accessibility.CaptioningManager c = captioning();
+        return c == null ? 1f : c.getFontScale();
+    }
+    /**
+     * CaptionStyleCompat.createFromCaptionStyle: {foreground, background, window, edgeType,
+     * edgeColor}, each -1 in has[] where the user set none (the default applies).
+     */
+    static int[] captioningStyle() {
+        android.view.accessibility.CaptioningManager c = captioning();
+        if (c == null) return null;
+        android.view.accessibility.CaptioningManager.CaptionStyle s = c.getUserStyle();
+        return new int[] {
+            s.hasForegroundColor() ? 1 : 0, s.foregroundColor, s.hasBackgroundColor() ? 1 : 0, s.backgroundColor,
+            s.hasWindowColor() ? 1 : 0, s.windowColor, s.hasEdgeType() ? 1 : 0, s.edgeType, s.hasEdgeColor() ? 1 : 0, s.edgeColor,
+        };
+    }
+    /** The caption typeface's family name, as the setting stores it ("sans-serif-condensed" ...). */
+    static String captioningTypeface() {
+        if (sContext == null) return null;
+        return android.provider.Settings.Secure.getString(sContext.getContentResolver(), "accessibility_captioning_typeface");
+    }
+
     // --- audio focus -------------------------------------------------------------------------
 
     private static final SparseArray<AudioFocusRequest> sFocus = new SparseArray<>();

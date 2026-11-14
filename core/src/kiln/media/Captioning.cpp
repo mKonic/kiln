@@ -17,7 +17,14 @@ namespace kiln::media {
         return h.localeTag ? h.localeTag() : std::nullopt;
     }
 
-    CaptionStyle UserCaptionStyle() { return Host().userStyle ? Host().userStyle() : CaptionStyle{}; }
-    float CaptioningFontScale() { return Host().fontScale ? Host().fontScale() : 1.0f; }
+    // SubtitleView.getUserCaptionStyle / getUserCaptionFontScale: the user's only while captions are on.
+    CaptionStyle UserCaptionStyle() {
+        auto& h = Host();
+        return h.isEnabled && h.isEnabled() && h.userStyle ? h.userStyle() : CaptionStyle{};
+    }
+    float CaptioningFontScale() {
+        auto& h = Host();
+        return h.isEnabled && h.isEnabled() && h.fontScale ? h.fontScale() : 1.0f;
+    }
 
 }

@@ -35,7 +35,8 @@ namespace kiln::media {
 
     // getPreferredLanguageFromCaptioningManager: the captions' language while they're on.
     std::optional<std::string> CaptioningPreferredLanguage();
-    // The user's caption style (CaptionStyleCompat.DEFAULT without a host).
+    // The user's caption style and text scale while captions are on (else CaptionStyleCompat.DEFAULT
+    // and 1).
     CaptionStyle UserCaptionStyle();
     float CaptioningFontScale();
 

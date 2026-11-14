@@ -5,6 +5,7 @@
 
 #include "kiln/jvm/Jvm.h"
 #include "kiln/media/AudioFocus.h"
+#include "kiln/media/Captioning.h"
 #include "kiln/media/MediaSession.h"
 
 #include <android/log.h>
@@ -90,6 +91,52 @@ namespace kiln::android {
                 JNIEnv* env = jvm::Env();
                 env->CallStaticVoidMethod(g_Media.get(), g_Release, jint(id));
                 Clear(env);
+            },
+        });
+        // CaptioningManager, read when asked (the user may change it any time).
+        static jmethodID enabled = jvm::detail::StaticMethod(env, g_Media.get(), "captioningEnabled", "()Z");
+        static jmethodID locale = jvm::detail::StaticMethod(env, g_Media.get(), "captioningLocale", "()Ljava/lang/String;");
+        static jmethodID scale = jvm::detail::StaticMethod(env, g_Media.get(), "captioningFontScale", "()F");
+        static jmethodID style = jvm::detail::StaticMethod(env, g_Media.get(), "captioningStyle", "()[I");
+        static jmethodID typeface = jvm::detail::StaticMethod(env, g_Media.get(), "captioningTypeface", "()Ljava/lang/String;");
+        media::SetCaptioningHost({
+            .isEnabled = [] {
+                JNIEnv* env = jvm::Env();
+                const bool on = env->CallStaticBooleanMethod(g_Media.get(), enabled);
+                Clear(env);
+                return on;
+            },
+            .localeTag = []() -> std::optional<std::string> {
+                JNIEnv* env = jvm::Env();
+                jvm::Local<jstring> tag(static_cast<jstring>(env->CallStaticObjectMethod(g_Media.get(), locale)), env);
+                Clear(env);
+                if (!tag.get()) return std::nullopt;
+                return jvm::ToString(env, tag.get());
+            },
+            .userStyle = [] {
+                JNIEnv* env = jvm::Env();
+                media::CaptionStyle out;   // CaptionStyleCompat.DEFAULT where the user set nothing
+                jvm::Local<jintArray> a(static_cast<jintArray>(env->CallStaticObjectMethod(g_Media.get(), style)), env);
+                Clear(env);
+                if (a.get() && env->GetArrayLength(a.get()) == 10) {
+                    jint v[10];
+                    env->GetIntArrayRegion(a.get(), 0, 10, v);
+                    if (v[0]) out.foregroundColor = std::uint32_t(v[1]);
+                    if (v[2]) out.backgroundColor = std::uint32_t(v[3]);
+                    if (v[4]) out.windowColor = std::uint32_t(v[5]);
+                    if (v[6]) out.edgeType = v[7];
+                    if (v[8]) out.edgeColor = std::uint32_t(v[9]);
+                }
+                jvm::Local<jstring> family(static_cast<jstring>(env->CallStaticObjectMethod(g_Media.get(), typeface)), env);
+                Clear(env);
+                if (family.get()) out.typeface = jvm::ToString(env, family.get());
+                return out;
+            },
+            .fontScale = [] {
+                JNIEnv* env = jvm::Env();
+                const float f = env->CallStaticFloatMethod(g_Media.get(), scale);
+                Clear(env);
+                return f > 0 ? f : 1.0f;
             },
         });
     }

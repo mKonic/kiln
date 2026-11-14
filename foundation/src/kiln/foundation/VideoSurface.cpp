@@ -2,6 +2,7 @@
 
 #include "kiln/foundation/AndroidExternalSurface.h"
 #include "kiln/foundation/Layouts.h"
+#include "kiln/foundation/Subtitles.h"
 #include "kiln/runtime/Composition.h"
 #include "kiln/ui/Configuration.h"
 
@@ -9,7 +10,7 @@
 
 namespace kiln::foundation {
 
-    void VideoSurface(const Modifier& modifier, media::Player& player, bool keepAspectRatio) {
+    void VideoSurface(const Modifier& modifier, media::Player& player, bool keepAspectRatio, bool showSubtitles) {
         const media::PlayerState& s = rt::CollectAsState(player.StateFlow()).Get();
         Modifier m = modifier;
         if (keepAspectRatio && s.videoSize.width > 0 && s.videoSize.height > 0) {
@@ -20,13 +21,17 @@ namespace kiln::foundation {
             m = AspectRatio(m, turned ? float(s.videoHeight) / float(s.videoWidth) : float(s.videoWidth) / float(s.videoHeight));
         }
         media::Player* p = &player;
-        AndroidExternalSurface(m, true, {}, AndroidExternalSurfaceZOrder::Behind, false, [p](AndroidExternalSurfaceScope& scope) {
-            scope.OnSurface([p](SurfaceCoroutineScope& surface, Surface window, int, int) -> rt::Task<> {
-                p->SetSurface(window);
-                // The decoder lets go of the window before it goes.
-                surface.OnDestroyed([p](Surface) { p->SetSurface({}); });
-                co_return;
+        // PlayerView: the subtitles over the picture, in the same frame.
+        Box(m, Alignment::TopStart(), false, [p, showSubtitles] {
+            AndroidExternalSurface(MatchParentSize(Modifier{}), true, {}, AndroidExternalSurfaceZOrder::Behind, false, [p](AndroidExternalSurfaceScope& scope) {
+                scope.OnSurface([p](SurfaceCoroutineScope& surface, Surface window, int, int) -> rt::Task<> {
+                    p->SetSurface(window);
+                    // The decoder lets go of the window before it goes.
+                    surface.OnDestroyed([p](Surface) { p->SetSurface({}); });
+                    co_return;
+                });
             });
+            if (showSubtitles) Subtitles(MatchParentSize(Modifier{}), *p);
         });
     }
 

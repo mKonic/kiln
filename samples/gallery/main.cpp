@@ -378,6 +378,8 @@ namespace {
             kiln::media::MediaItem whole = kiln::media::MediaItem::FromUri("asset:///clip.mp4");
             whole.mediaId = "whole";
             whole.mediaMetadata.title = "Sample clip";
+            whole.subtitleConfigurations = { { .uri = "asset:///clip.vtt", .mimeType = "text/vtt", .language = "en",
+                                               .selectionFlags = kiln::media::kSelectionFlagDefault } };
             kiln::media::MediaItem part = whole;
             part.mediaId = "part";
             part.mediaMetadata.title = "Sample clip, from 1 s to 3 s";

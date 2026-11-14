@@ -1,0 +1,10 @@
+WEBVTT
+
+STYLE
+::cue(.note) { color: yellow; }
+
+00:00.300 --> 00:01.800
+A <b>subtitle</b> from a WebVTT file
+
+00:02.000 --> 00:03.800 line:10% align:start position:5%
+<c.note>Placed at the top left</c>
