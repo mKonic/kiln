@@ -502,13 +502,27 @@ namespace kiln::material3 {
 
     // --- ButtonGroup ---------------------------------------------------------------------------
 
+    namespace {
+        // Whether the overflow menu shows, so it stays open across a configuration change.
+        // (Compose remembers the menu state without saving it; kiln keeps it like its other
+        // component states.)
+        rt::Saver<std::shared_ptr<ButtonGroupMenuState>> MenuStateSaver() {
+            return { [](const std::shared_ptr<ButtonGroupMenuState>& s) { return rt::SavedValue(s->IsShowing()); },
+                     [](const rt::SavedValue& v) -> std::optional<std::shared_ptr<ButtonGroupMenuState>> {
+                         const bool* showing = std::get_if<bool>(&v.v);
+                         if (!showing) return std::nullopt;
+                         return std::make_shared<ButtonGroupMenuState>(*showing);
+                     } };
+        }
+    }
+
     void ButtonGroup(kiln::Function<void(ButtonGroupMenuState&)> overflowIndicator, const Modifier& modifier,
                      kiln::Function<void(ButtonGroupScope&)> content, const ButtonGroupOptions& options) {
         auto& c = *rt::Composition::Current();
         auto scope = std::make_shared<ButtonGroupScope>(Value(MotionSchemeKeyTokens::FastSpatial));
         if (content) content(*scope);
         auto menuState = rt::RememberSaveable<std::shared_ptr<ButtonGroupMenuState>>([] { return std::make_shared<ButtonGroupMenuState>(); },
-                                                                                     ButtonGroupMenuState::Saver());
+                                                                                     MenuStateSaver());
         auto& overflowState = c.Remember<std::shared_ptr<OverflowState>>([] { return std::make_shared<OverflowState>(); });
         // remember(horizontalArrangement, verticalAlignment, expandedRatio): a new policy
         // measures again.

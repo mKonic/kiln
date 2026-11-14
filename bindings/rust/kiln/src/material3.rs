@@ -4115,6 +4115,12 @@ pub fn loading_indicator_defaults_container_height() -> f32 {
 pub fn loading_indicator_defaults_indicator_size() -> f32 {
     unsafe { sys::kiln_m3_loading_indicator_defaults_indicator_size() }
 }
+pub fn minimum_interactive_top_alignment_line() -> crate::AlignmentLine {
+    crate::AlignmentLine(unsafe { sys::kiln_m3_minimum_interactive_top_alignment_line() })
+}
+pub fn minimum_interactive_left_alignment_line() -> crate::AlignmentLine {
+    crate::AlignmentLine(unsafe { sys::kiln_m3_minimum_interactive_left_alignment_line() })
+}
 pub fn compose_material3_flags_is_precision_pointer_component_sizing_enabled() -> bool {
     unsafe { sys::kiln_m3_compose_material3_flags_is_precision_pointer_component_sizing_enabled() }
 }

@@ -179,6 +179,12 @@ impl Modifier {
         scale(sx: f32, sy: f32) => kiln_mod_scale;
         z_index(z: f32) => kiln_mod_z_index;
     }
+    /// alignBy: aligns a Row / Column child on the line with its siblings that use it.
+    pub fn align_by(self, line: AlignmentLine) -> Self { Modifier(unsafe { sys::kiln_mod_align_by(self.0, line.0) }) }
+    /// paddingFrom: `before` / `after` are dp, `f32::NAN` to leave a side alone.
+    pub fn padding_from(self, line: AlignmentLine, before: f32, after: f32) -> Self {
+        Modifier(unsafe { sys::kiln_mod_padding_from(self.0, line.0, before, after) })
+    }
     pub fn safe_drawing_padding(self) -> Self { Modifier(unsafe { sys::kiln_mod_safe_drawing_padding(self.0) }) }
     pub fn system_bars_padding(self) -> Self { Modifier(unsafe { sys::kiln_mod_system_bars_padding(self.0) }) }
     pub fn ime_padding(self) -> Self { Modifier(unsafe { sys::kiln_mod_ime_padding(self.0) }) }
@@ -205,6 +211,14 @@ impl Modifier {
         let t = CStrBuf::new(d);
         Modifier(unsafe { sys::kiln_mod_content_description(self.0, t.ptr()) })
     }
+}
+
+/// An alignment line (a baseline, a component's line). Static, compared by identity.
+#[derive(Clone, Copy)]
+pub struct AlignmentLine(pub *const sys::kiln_alignment_line);
+impl AlignmentLine {
+    pub fn first_baseline() -> Self { AlignmentLine(unsafe { sys::kiln_first_baseline() }) }
+    pub fn last_baseline() -> Self { AlignmentLine(unsafe { sys::kiln_last_baseline() }) }
 }
 
 // --- Refcounted handles ---------------------------------------------------------------------

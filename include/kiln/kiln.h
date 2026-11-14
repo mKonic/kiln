@@ -402,6 +402,16 @@ KILN_API kiln_modifier* kiln_mod_align_in_box(kiln_modifier* m, kiln_alignment a
 KILN_API kiln_modifier* kiln_mod_align_in_row(kiln_modifier* m, float vertical_bias);
 KILN_API kiln_modifier* kiln_mod_align_in_column(kiln_modifier* m, float horizontal_bias);
 KILN_API kiln_modifier* kiln_mod_match_parent_size(kiln_modifier* m);
+/* Alignment lines: a layout's lines by address (kiln_first_baseline, a component's lines such
+ * as kiln_m3_minimum_interactive_top_alignment_line). Static; never freed. */
+typedef struct kiln_alignment_line kiln_alignment_line;
+KILN_API const kiln_alignment_line* kiln_first_baseline(void);
+KILN_API const kiln_alignment_line* kiln_last_baseline(void);
+/* alignBy: a Row / Column child aligns on the line with its siblings that use the same line. */
+KILN_API kiln_modifier* kiln_mod_align_by(kiln_modifier* m, const kiln_alignment_line* line);
+/* paddingFrom: space so the line sits `before` from the top (start) and `after` from the bottom
+ * (end); KILN_DP_UNSPECIFIED for either leaves that side alone. */
+KILN_API kiln_modifier* kiln_mod_padding_from(kiln_modifier* m, const kiln_alignment_line* line, float before, float after);
 /* Window insets */
 KILN_API kiln_modifier* kiln_mod_safe_drawing_padding(kiln_modifier* m);
 KILN_API kiln_modifier* kiln_mod_system_bars_padding(kiln_modifier* m);

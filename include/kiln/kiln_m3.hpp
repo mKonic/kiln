@@ -1839,6 +1839,8 @@ namespace kpp::m3 {
     inline float loading_indicator_defaults_container_width() { return kiln_m3_loading_indicator_defaults_container_width(); }
     inline float loading_indicator_defaults_container_height() { return kiln_m3_loading_indicator_defaults_container_height(); }
     inline float loading_indicator_defaults_indicator_size() { return kiln_m3_loading_indicator_defaults_indicator_size(); }
+    inline const kiln_alignment_line* minimum_interactive_top_alignment_line() { return kiln_m3_minimum_interactive_top_alignment_line(); }
+    inline const kiln_alignment_line* minimum_interactive_left_alignment_line() { return kiln_m3_minimum_interactive_left_alignment_line(); }
     inline bool compose_material3_flags_is_precision_pointer_component_sizing_enabled() { return kiln_m3_compose_material3_flags_is_precision_pointer_component_sizing_enabled(); }
     inline bool compose_material3_flags_is_checkbox_styling_fix_enabled() { return kiln_m3_compose_material3_flags_is_checkbox_styling_fix_enabled(); }
     inline bool compose_material3_flags_is_expressive_list_item_height_based_on_text_lines_fix_enabled() { return kiln_m3_compose_material3_flags_is_expressive_list_item_height_based_on_text_lines_fix_enabled(); }

@@ -7,6 +7,7 @@
 
 #include "kiln/foundation/Compose.h"
 #include "kiln/ui/InteropView.h"
+#include "kiln/material3/MaterialTheme.h"
 #include "kiln/ui/Semantics.h"
 #include "kiln/ui/Volition.h"
 
@@ -253,6 +254,27 @@ TEST(KilnppVolitionRegistration) {
         CHECK_EQ(v::Call({}, {}, "go", "detail:7"), std::string("ok: detail 7"));
     }
     CHECK(v::Call({}, {}, "where", {}).find("kpp") == std::string::npos);   // unregistered with the handle
+}
+
+TEST(CApiAlignmentLinesPadFromABaselineAndAreTheComponentsOwn) {
+    CHECK(reinterpret_cast<const void*>(kiln_first_baseline()) == &ui::FirstBaseline);
+    CHECK(reinterpret_cast<const void*>(kiln_m3_minimum_interactive_top_alignment_line()) == &material3::MinimumInteractiveTopAlignmentLine);
+    CHECK(reinterpret_cast<const void*>(kiln_m3_minimum_interactive_left_alignment_line()) == &material3::MinimumInteractiveLeftAlignmentLine);
+    Harness h;
+    h.Run([](void*) {
+        kpp::column(kpp::Modifier(), [] {
+            kiln_basic_text(KILN_HERE, "Ag", kiln_mod_test_tag(NULL, "plain"), NULL, NULL);
+            kiln_basic_text(KILN_HERE, "Ag", kiln_mod_padding_from(kiln_mod_test_tag(NULL, "padded"), kiln_first_baseline(), 30, KILN_DP_UNSPECIFIED),
+                            NULL, NULL);
+        });
+    });
+    const ui::LayoutNode* plain = h.Find(h.owner.Root(), "plain");
+    const ui::LayoutNode* padded = h.Find(h.owner.Root(), "padded");
+    CHECK(plain && padded);
+    if (!plain || !padded) return;
+    // FakeText puts a line's baseline at 0.8 of its height: 30 above it, the rest below.
+    const float lineH = float(plain->Size().height);
+    CHECK(std::abs(float(padded->Size().height) - (30 + lineH * 0.2f)) <= 1);
 }
 
 TEST(CApiAndroidViewMakesUpdatesAndReleasesItsView) {

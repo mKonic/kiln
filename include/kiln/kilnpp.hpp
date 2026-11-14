@@ -220,6 +220,10 @@ namespace kpp {
         Modifier align_in_row(float verticalBias) const { return kiln_mod_align_in_row(m_M, verticalBias); }
         Modifier align_in_column(float horizontalBias) const { return kiln_mod_align_in_column(m_M, horizontalBias); }
         Modifier match_parent_size() const { return kiln_mod_match_parent_size(m_M); }
+        Modifier align_by(const kiln_alignment_line* line) const { return kiln_mod_align_by(m_M, line); }
+        Modifier padding_from(const kiln_alignment_line* line, float before = KILN_DP_UNSPECIFIED, float after = KILN_DP_UNSPECIFIED) const {
+            return kiln_mod_padding_from(m_M, line, before, after);
+        }
         Modifier safe_drawing_padding() const { return kiln_mod_safe_drawing_padding(m_M); }
         Modifier system_bars_padding() const { return kiln_mod_system_bars_padding(m_M); }
         Modifier ime_padding() const { return kiln_mod_ime_padding(m_M); }

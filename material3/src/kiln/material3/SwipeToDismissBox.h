@@ -1,5 +1,6 @@
 #pragma once
 
+#include "kiln/Internal.h"
 // SwipeToDismissBox.kt: content that can be swiped away horizontally (start to end, end to
 // start, or both), showing its background as it moves; onDismiss runs once it settles away.
 
@@ -37,8 +38,8 @@ namespace kiln::material3 {
         rt::Task<> Dismiss(SwipeToDismissBoxValue direction);
 
         // Internal.
-        foundation::AnchoredDraggableState<SwipeToDismissBoxValue>& Anchored() { return m_Anchored; }
-        const foundation::AnchoredDraggableState<SwipeToDismissBoxValue>& Anchored() const { return m_Anchored; }
+        KILN_INTERNAL foundation::AnchoredDraggableState<SwipeToDismissBoxValue>& Anchored() { return m_Anchored; }
+        KILN_INTERNAL const foundation::AnchoredDraggableState<SwipeToDismissBoxValue>& Anchored() const { return m_Anchored; }
         const kiln::Function<float(float)>& PositionalThreshold() const { return m_PositionalThreshold; }
 
     private:

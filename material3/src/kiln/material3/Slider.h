@@ -1,5 +1,6 @@
 #pragma once
 
+#include "kiln/Internal.h"
 #include "kiln/foundation/Draggable.h"
 #include <kiln/Function.h>
 #include "kiln/foundation/Draw.h"
@@ -22,7 +23,7 @@ namespace kiln::material3 {
         SliderRange TrackRange() const { return m_Range; }
         float CoercedValueAsFraction() const;
         bool IsDragging() const { return m_Dragging.Get(); }
-        std::weak_ptr<const char> AliveToken() const { return m_Alive; }
+        KILN_INTERNAL std::weak_ptr<const char> AliveToken() const { return m_Alive; }
         bool shouldAutoSnap = true;
         void DispatchRawDelta(float delta, const kiln::Function<void(float)>& onChange = {});
 
@@ -68,7 +69,7 @@ namespace kiln::material3 {
         int StartSteps() const;
         int EndSteps() const;
         bool IsDragging() const { return m_Dragging.Get(); }
-        std::weak_ptr<const char> AliveToken() const { return m_Alive; }
+        KILN_INTERNAL std::weak_ptr<const char> AliveToken() const { return m_Alive; }
         void OnDrag(bool start, float delta, const kiln::Function<void(SliderRange)>& onChange = {});
 
         void SetDragging(bool value) { m_Dragging.Set(value); }

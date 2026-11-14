@@ -1,5 +1,6 @@
 #pragma once
 
+#include "kiln/Internal.h"
 // NavigationDrawer.kt: navigation drawers. A modal drawer slides in from the start edge over a
 // scrim (a tap on it, Back, Escape or the dismiss action closes it); a dismissible drawer pushes
 // the content aside; a permanent drawer always shows beside it. Modal and dismissible drawers
@@ -44,8 +45,8 @@ namespace kiln::material3 {
 
         // Internal.
         bool Confirm(DrawerValue v) const { return !m_Confirm || m_Confirm(v); }
-        foundation::AnchoredDraggableState<DrawerValue>& Anchored() { return m_Anchored; }
-        const foundation::AnchoredDraggableState<DrawerValue>& Anchored() const { return m_Anchored; }
+        KILN_INTERNAL foundation::AnchoredDraggableState<DrawerValue>& Anchored() { return m_Anchored; }
+        KILN_INTERNAL const foundation::AnchoredDraggableState<DrawerValue>& Anchored() const { return m_Anchored; }
         anim::SpecPtr openDrawerMotionSpec, closeDrawerMotionSpec;
 
     private:

@@ -16750,6 +16750,16 @@ KILN_API float kiln_m3_loading_indicator_defaults_indicator_size() {
         return (kiln::material3::LoadingIndicatorDefaults::IndicatorSize).value;
     } KILN_CAPI_CATCH({})
 }
+KILN_API const kiln_alignment_line* kiln_m3_minimum_interactive_top_alignment_line() {
+    KILN_CAPI_TRY {
+        return reinterpret_cast<const kiln_alignment_line*>(&kiln::material3::MinimumInteractiveTopAlignmentLine);
+    } KILN_CAPI_CATCH({})
+}
+KILN_API const kiln_alignment_line* kiln_m3_minimum_interactive_left_alignment_line() {
+    KILN_CAPI_TRY {
+        return reinterpret_cast<const kiln_alignment_line*>(&kiln::material3::MinimumInteractiveLeftAlignmentLine);
+    } KILN_CAPI_CATCH({})
+}
 KILN_API bool kiln_m3_compose_material3_flags_is_precision_pointer_component_sizing_enabled() {
     KILN_CAPI_TRY {
         return bool(kiln::material3::ComposeMaterial3Flags::isPrecisionPointerComponentSizingEnabled);

@@ -1,13 +1,11 @@
 # Declarations tools/gen-capi could not map (generated).
 kiln::material3::AppBarScope::Items: result: list of kiln::material3::internal::AppBarItem is internal
-kiln::material3::ButtonGroupMenuState::Saver: result: type kiln::rt::Saver<std::shared_ptr<kiln::material3::ButtonGroupMenuState>>
 kiln::material3::ButtonGroupScope::Items: result: list of type std::shared_ptr<kiln::material3::internal::ButtonGroupItem>
 kiln::material3::CarouselDefaults::multiBrowseFlingBehavior: result: type kiln::rt::Task<float>
 kiln::material3::CarouselDefaults::noSnapFlingBehavior: result: type kiln::rt::Task<float>
 kiln::material3::CarouselDefaults::singleAdvanceFlingBehavior: result: type kiln::rt::Task<float>
 kiln::material3::DatePickerState::Calendar: result: kiln::material3::internal::CalendarModel is internal
 kiln::material3::DateRangePickerState::Calendar: result: kiln::material3::internal::CalendarModel is internal
-kiln::material3::DrawerState::Anchored: result: type kiln::foundation::AnchoredDraggableState<kiln::material3::DrawerValue>
 kiln::material3::DropdownMenuPopup: parameter popupPositionProvider: kiln::material3::internal::DropdownMenuPositionProvider is internal
 kiln::material3::FromToken: parameter token: kiln::material3::tokens::ColorToken is internal
 kiln::material3::FromToken: parameter token: kiln::material3::tokens::MotionSchemeToken is internal
@@ -15,15 +13,9 @@ kiln::material3::FromToken: parameter token: kiln::material3::tokens::ShapeToken
 kiln::material3::FromToken: parameter token: kiln::material3::tokens::TypographyToken is internal
 kiln::material3::MakeCarouselParallaxScrollEffectState: parameter state: type kiln::foundation::LazyGridState
 kiln::material3::MenuDefaults::rememberDropdownMenuPopupPositionProvider: parameter dropdownMenuAnchorPosition: kiln::material3::internal::MenuAnchorPosition is internal
-kiln::material3::MinimumInteractiveLeftAlignmentLine: constant: type kiln::ui::AlignmentLine
-kiln::material3::MinimumInteractiveTopAlignmentLine: constant: type kiln::ui::AlignmentLine
 kiln::material3::NonInteractiveScrollbar: parameter state: type kiln::foundation::ScrollIndicatorState
 kiln::material3::ProgressIndicatorDefaults::DrawStopIndicator: parameter scope: type kiln::ui::DrawScope
-kiln::material3::RangeSliderState::AliveToken: result: type std::weak_ptr<const char>
-kiln::material3::SheetState::Anchored: result: type kiln::foundation::AnchoredDraggableState<kiln::material3::SheetValue>
 kiln::material3::SliderDefaults::DrawStopIndicator: parameter arg0: type kiln::ui::DrawScope
-kiln::material3::SliderState::AliveToken: result: type std::weak_ptr<const char>
-kiln::material3::SwipeToDismissBoxState::Anchored: result: type kiln::foundation::AnchoredDraggableState<kiln::material3::SwipeToDismissBoxValue>
 kiln::material3::TabIndicatorScope::TabIndicatorLayout: parameter measure: type kiln::ui::MeasureScope
 kiln::material3::TooltipScope::ObtainAnchorBounds: result: type kiln::ui::LayoutCoordinates
 kiln::material3::TooltipState::Transition: result: type kiln::foundation::MutableTransitionState<bool>

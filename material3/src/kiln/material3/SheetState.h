@@ -1,5 +1,6 @@
 #pragma once
 
+#include "kiln/Internal.h"
 // SheetDefaults.kt: SheetState (where a bottom sheet rests: hidden, partially expanded or
 // expanded, over an anchored draggable), its defaults, the drag handle, and the pieces the sheets
 // share (the nested scroll that hands drags to the sheet, the overscroll stretch, the predictive
@@ -61,8 +62,8 @@ namespace kiln::material3 {
         // Internal.
         bool Confirm(SheetValue v) const { return !m_Confirm || m_Confirm(v); }
         rt::Task<> AnimateTo(SheetValue target, anim::SpecPtr spec);
-        foundation::AnchoredDraggableState<SheetValue>& Anchored() { return m_Anchored; }
-        const foundation::AnchoredDraggableState<SheetValue>& Anchored() const { return m_Anchored; }
+        KILN_INTERNAL foundation::AnchoredDraggableState<SheetValue>& Anchored() { return m_Anchored; }
+        KILN_INTERNAL const foundation::AnchoredDraggableState<SheetValue>& Anchored() const { return m_Anchored; }
         float PositionalThresholdPx() const { return m_PositionalThreshold ? m_PositionalThreshold() : 0.0f; }
         float VelocityThresholdPx() const { return m_VelocityThreshold ? m_VelocityThreshold() : 0.0f; }
         bool PartiallyExpandedDeterministic() const { return m_Deterministic; }

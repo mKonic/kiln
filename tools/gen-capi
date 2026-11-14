@@ -103,6 +103,11 @@ def template_args(t):
     return [t.get_template_argument_type(i) for i in range(max(t.get_num_template_arguments(), 0))]
 
 
+
+def is_internal(c):
+    """KILN_INTERNAL (kiln/Internal.h): public for kiln's own components, internal in Compose."""
+    return any(ch.kind == ci.CursorKind.ANNOTATE_ATTR and ch.spelling == 'kiln_internal' for ch in c.get_children())
+
 class Unmappable(Exception):
     pass
 
@@ -493,6 +498,10 @@ class Generator:
             return Mapping('const kiln_image_bitmap*', lambda e: f'({e} ? {e}->bitmap : kiln::gfx::ImageBitmap{{}})', None)
         if k == 'std::shared_ptr<const kiln::gfx::vector::ImageVector>':
             return Mapping('const kiln_image_vector*', lambda e: f'({e} ? {e}->vector : nullptr)', None)
+        if k == 'kiln::ui::AlignmentLine':
+            # Lines are compared by address: a C handle is the line's own address.
+            return Mapping('const kiln_alignment_line*', lambda e: f'*reinterpret_cast<const kiln::ui::AlignmentLine*>({e})',
+                           lambda e, o: f'reinterpret_cast<const kiln_alignment_line*>(&{e})')
         if k == 'kiln::foundation::TextFieldState':
             return Mapping('kiln_text_field_state*', lambda e: f'*{e}->state', None)
         if k == 'kiln::foundation::ScrollState':
@@ -910,7 +919,7 @@ class Generator:
         if h.cursor is None:
             return
         for ch in h.cursor.get_children():
-            if ch.kind != ci.CursorKind.CXX_METHOD or ch.access_specifier != ci.AccessSpecifier.PUBLIC:
+            if ch.kind != ci.CursorKind.CXX_METHOD or ch.access_specifier != ci.AccessSpecifier.PUBLIC or is_internal(ch):
                 continue
             if ch.is_static_method() or ch.spelling.startswith('operator') or ch.is_deleted_method():
                 continue
@@ -930,13 +939,13 @@ class Generator:
                         continue
                     walk(ch, ns + [ch.spelling])
                 elif ch.kind == ci.CursorKind.FUNCTION_DECL and ns[:2] == ['kiln', 'material3'] and self.in_m3(ch):
-                    if ch.spelling.startswith('operator'):
+                    if ch.spelling.startswith('operator') or is_internal(ch):
                         continue
                     if canon(strip_ref(ch.result_type)[0]).startswith('kiln::rt::Local<'):
                         locals_.append((ch, qualname(ch) + '()', strip_ref(ch.result_type)[0]))
                         continue
                     funcs.append(ch)
-                elif ch.kind == ci.CursorKind.VAR_DECL and ns[:2] == ['kiln', 'material3'] and self.in_m3(ch):
+                elif ch.kind == ci.CursorKind.VAR_DECL and ns[:2] == ['kiln', 'material3'] and self.in_m3(ch) and not is_internal(ch):
                     if canon(ch.type).startswith('kiln::rt::Local<'):
                         locals_.append((ch, qualname(ch), ch.type))
                     else:
@@ -946,7 +955,7 @@ class Generator:
                     # Static methods (MaterialTheme::colorScheme()) are free functions.
                     for m in ch.get_children():
                         if m.kind == ci.CursorKind.CXX_METHOD and m.is_static_method() and m.access_specifier == ci.AccessSpecifier.PUBLIC \
-                                and not m.spelling.startswith('operator'):
+                                and not m.spelling.startswith('operator') and not is_internal(m):
                             funcs.append(m)
         walk(self.tu.cursor, [])
         # Types first, so function names never take a type's name.
@@ -1120,6 +1129,9 @@ class Generator:
                 elif t in cbs or t in core_cbs:
                     decls.append(f'{rn}: impl IntoCallback<sys::{t}>')
                     args.append(f'{rn}.into_callback()')
+                elif t == 'const kiln_alignment_line*':
+                    decls.append(f'{rn}: crate::AlignmentLine')
+                    args.append(f'{rn}.0')
                 elif t == 'const kiln_modifier*':
                     decls.append(f'{rn}: Modifier')
                     args.append(f'{rn}.raw()')
@@ -1145,6 +1157,9 @@ class Generator:
             elif ret == 'const char*':
                 body = pre + [f'crate::from_c(unsafe {{ {call} }})']
                 rt = ' -> String'
+            elif ret == 'const kiln_alignment_line*':
+                body = pre + [f'crate::AlignmentLine(unsafe {{ {call} }})']
+                rt = ' -> crate::AlignmentLine'
             else:
                 body = pre + [f'unsafe {{ {call} }}']
                 rt = f' -> {rty(ret)}'

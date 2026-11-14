@@ -671,6 +671,16 @@ KILN_API kiln_modifier* kiln_mod_align_in_box(kiln_modifier* m, kiln_alignment a
 KILN_API kiln_modifier* kiln_mod_align_in_row(kiln_modifier* m, float bias) { MOD(fd::AlignInRow(base, ui::AlignmentV{ bias })) }
 KILN_API kiln_modifier* kiln_mod_align_in_column(kiln_modifier* m, float bias) { MOD(fd::AlignInColumn(base, ui::AlignmentH{ bias })) }
 KILN_API kiln_modifier* kiln_mod_match_parent_size(kiln_modifier* m) { MOD(fd::MatchParentSize(base)) }
+KILN_API const kiln_alignment_line* kiln_first_baseline(void) { return reinterpret_cast<const kiln_alignment_line*>(&ui::FirstBaseline); }
+KILN_API const kiln_alignment_line* kiln_last_baseline(void) { return reinterpret_cast<const kiln_alignment_line*>(&ui::LastBaseline); }
+KILN_API kiln_modifier* kiln_mod_align_by(kiln_modifier* m, const kiln_alignment_line* line) {
+    if (!line) return kiln_mod_then(m, nullptr);
+    MOD(fd::AlignBy(base, *reinterpret_cast<const ui::AlignmentLine*>(line)))
+}
+KILN_API kiln_modifier* kiln_mod_padding_from(kiln_modifier* m, const kiln_alignment_line* line, float before, float after) {
+    if (!line) return kiln_mod_then(m, nullptr);
+    MOD(fd::PaddingFrom(base, *reinterpret_cast<const ui::AlignmentLine*>(line), ui::Dp(before), ui::Dp(after)))
+}
 KILN_API kiln_modifier* kiln_mod_safe_drawing_padding(kiln_modifier* m) { MOD(fd::SafeDrawingPadding(base)) }
 KILN_API kiln_modifier* kiln_mod_system_bars_padding(kiln_modifier* m) { MOD(fd::SystemBarsPadding(base)) }
 KILN_API kiln_modifier* kiln_mod_ime_padding(kiln_modifier* m) { MOD(fd::ImePadding(base)) }
