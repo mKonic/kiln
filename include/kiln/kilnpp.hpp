@@ -443,6 +443,30 @@ namespace kpp {
         kiln_image(key, bitmap, contentDescription, m, &c);
     }
 
+    struct AsyncImageOptions {
+        kiln_alignment alignment = KILN_ALIGN_CENTER;
+        kiln_content_scale contentScale = KILN_CONTENT_SCALE_FIT;
+        float alpha = 1;
+        kiln_color placeholderColor = KILN_COLOR_UNSPECIFIED, errorColor = KILN_COLOR_UNSPECIFIED;
+        const kiln_image_bitmap* placeholder = nullptr;
+        const kiln_image_bitmap* error = nullptr;
+    };
+    // See kiln_async_image; onState gets 0 (loading), 1 (loaded) or 2 (failed).
+    inline void async_image(const std::string& model, const char* contentDescription, Modifier m = {}, AsyncImageOptions o = {},
+                            Callback<kiln_fn_int> onState = {}, Key key = {}) {
+        kiln_async_image_options c;
+        kiln_async_image_options_init(&c);
+        c.alignment = o.alignment;
+        c.content_scale = o.contentScale;
+        c.alpha = o.alpha;
+        c.placeholder_color = o.placeholderColor;
+        c.error_color = o.errorColor;
+        c.placeholder = o.placeholder;
+        c.error = o.error;
+        c.on_state = onState.release();
+        kiln_async_image(key, model.c_str(), contentDescription, m, &c);
+    }
+
     class TextFieldState {
     public:
         explicit TextFieldState(kiln_text_field_state* s = nullptr) : m_S(s) {}

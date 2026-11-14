@@ -867,6 +867,24 @@ KILN_API void kiln_image_options_init(kiln_image_options* options);
 KILN_API void kiln_image(kiln_key key, const kiln_image_bitmap* bitmap, const char* content_description,
                          const kiln_modifier* modifier, const kiln_image_options* options);
 
+/* AsyncImage: an image loaded in the background (an https:// URL, content:// or file:// URI,
+ * path, asset:///path or data: URI) at the size its layout gives it, through the memory and
+ * disk caches. on_state is told 0 (loading), 1 (loaded) or 2 (failed). */
+typedef struct kiln_async_image_options {
+    size_t size;
+    kiln_alignment alignment;          /* center */
+    kiln_content_scale content_scale;  /* fit */
+    float alpha;                       /* 1 */
+    kiln_color placeholder_color;      /* drawn while loading; unspecified: nothing */
+    kiln_color error_color;            /* drawn on failure; unspecified: nothing */
+    const kiln_image_bitmap* placeholder;   /* instead of the colour */
+    const kiln_image_bitmap* error;
+    kiln_fn_int on_state;
+} kiln_async_image_options;
+KILN_API void kiln_async_image_options_init(kiln_async_image_options* options);
+KILN_API void kiln_async_image(kiln_key key, const char* model, const char* content_description,
+                               const kiln_modifier* modifier, const kiln_async_image_options* options);
+
 /* BasicTextField over a remembered text field state. */
 typedef struct kiln_text_field_state kiln_text_field_state;
 KILN_API kiln_text_field_state* kiln_remember_text_field_state(kiln_key key, const char* initial);

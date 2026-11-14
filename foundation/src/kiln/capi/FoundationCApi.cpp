@@ -11,6 +11,7 @@
 #include "kiln/foundation/activity/NewIntent.h"
 #include "kiln/datastore/Preferences.h"
 #include "kiln/net/Http.h"
+#include "kiln/foundation/AsyncImage.h"
 #include "kiln/ui/AppDirectories.h"
 #include "kiln/ui/AppResources.h"
 #include "kiln/ui/ContentResolver.h"
@@ -1521,25 +1522,66 @@ KILN_API void kiln_image_options_init(kiln_image_options* o) {
     o->content_scale = KILN_CONTENT_SCALE_FIT;
     o->alpha = 1;
 }
+namespace {
+    fd::ContentScale ToContentScale(kiln_content_scale s) {
+        switch (s) {
+        case KILN_CONTENT_SCALE_CROP: return fd::ContentScale::Crop();
+        case KILN_CONTENT_SCALE_FILL_HEIGHT: return fd::ContentScale::FillHeight();
+        case KILN_CONTENT_SCALE_FILL_WIDTH: return fd::ContentScale::FillWidth();
+        case KILN_CONTENT_SCALE_INSIDE: return fd::ContentScale::Inside();
+        case KILN_CONTENT_SCALE_NONE: return fd::ContentScale::None();
+        case KILN_CONTENT_SCALE_FILL_BOUNDS: return fd::ContentScale::FillBounds();
+        default: return fd::ContentScale::Fit();
+        }
+    }
+}
 KILN_API void kiln_image(kiln_key key, const kiln_image_bitmap* bitmap, const char* description, const kiln_modifier* m,
                          const kiln_image_options* in) {
     TRY {
         if (!bitmap) return;
         const auto o = ReadOptions(in, kiln_image_options_init);
-        fd::ContentScale scale;
-        switch (o.content_scale) {
-        case KILN_CONTENT_SCALE_CROP: scale = fd::ContentScale::Crop(); break;
-        case KILN_CONTENT_SCALE_FILL_HEIGHT: scale = fd::ContentScale::FillHeight(); break;
-        case KILN_CONTENT_SCALE_FILL_WIDTH: scale = fd::ContentScale::FillWidth(); break;
-        case KILN_CONTENT_SCALE_INSIDE: scale = fd::ContentScale::Inside(); break;
-        case KILN_CONTENT_SCALE_NONE: scale = fd::ContentScale::None(); break;
-        case KILN_CONTENT_SCALE_FILL_BOUNDS: scale = fd::ContentScale::FillBounds(); break;
-        default: scale = fd::ContentScale::Fit(); break;
-        }
+        const fd::ContentScale scale = ToContentScale(o.content_scale);
         const gfx::ImageBitmap bmp = bitmap->bitmap;
         const auto desc = ToOptString(description);
         const ui::Modifier mod = ToModifier(m);
         InGroup(key, [&] { fd::Image(bmp, desc, mod, ToAlignment(o.alignment), scale, o.alpha); });
+    } CATCH_VOID
+}
+
+KILN_API void kiln_async_image_options_init(kiln_async_image_options* o) {
+    if (!o) return;
+    *o = {};
+    o->size = sizeof(*o);
+    o->alignment = KILN_ALIGN_CENTER;
+    o->content_scale = KILN_CONTENT_SCALE_FIT;
+    o->alpha = 1;
+}
+KILN_API void kiln_async_image(kiln_key key, const char* model, const char* description, const kiln_modifier* m,
+                               const kiln_async_image_options* in) {
+    // The callback is owned from here, also when the call fails.
+    std::shared_ptr<kiln::capi::Owned<kiln_fn_int>> onState;
+    if (in && in->size >= offsetof(kiln_async_image_options, on_state) + sizeof(kiln_fn_int)) onState = kiln::capi::Own(in->on_state);
+    TRY {
+        const auto o = ReadOptions(in, kiln_async_image_options_init);
+        auto painterOf = [](const kiln_image_bitmap* b, kiln_color c) -> std::shared_ptr<fd::Painter> {
+            if (b) return std::make_shared<fd::BitmapPainter>(b->bitmap);
+            if (c != KILN_COLOR_UNSPECIFIED) return std::make_shared<fd::ColorPainter>(ToColor(c));
+            return nullptr;
+        };
+        fd::AsyncImageOptions options;
+        options.placeholder = painterOf(o.placeholder, o.placeholder_color);
+        options.error = painterOf(o.error, o.error_color);
+        options.alignment = ToAlignment(o.alignment);
+        options.contentScale = ToContentScale(o.content_scale);
+        options.alpha = o.alpha;
+        if (onState) options.onState = [onState](const fd::AsyncImageState& st) {
+            kiln::capi::CallbackScope scope;
+            onState->f.call(onState->f.user, st.kind == fd::AsyncImageState::Kind::Loading ? 0 : st.kind == fd::AsyncImageState::Kind::Success ? 1 : 2);
+        };
+        const std::string data = ToString(model);
+        const auto desc = ToOptString(description);
+        const ui::Modifier mod = ToModifier(m);
+        InGroup(key, [&] { fd::AsyncImage(data, desc, mod, options); });
     } CATCH_VOID
 }
 

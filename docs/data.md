@@ -1,4 +1,4 @@
-# Files, preferences and databases
+# Files, data and network
 
 ## App directories
 

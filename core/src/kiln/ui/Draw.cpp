@@ -1388,9 +1388,6 @@ namespace kiln::ui {
         const gfx::Matrix& m = l.saved.m;
         const kiln::RectF rect{ l.device.left, l.device.top, l.device.Width(), l.device.Height() };
         const int x = int(l.device.left), y = int(l.device.top), w = int(l.device.Width()), h = int(l.device.Height());
-        auto uvOf = [&](const QuadRenderer::LayerResult& lr) {
-            return kiln::RectF{ 0, 0, rect.w / float(lr.page->Width()), rect.h / float(lr.page->Height()) };
-        };
         // Each blur is a horizontal then a vertical pass, into layers over the same device
         // pixels, unclipped. Sigmas are local; the passes run in device pixels. Past Skia's
         // kMaxLinearBlurSigma (4 texels) the image is first scaled down (repeated bilinear

@@ -1,5 +1,7 @@
 #pragma once
 
+#include <utility>
+
 // ImageBitmap: immutable premultiplied RGBA8 pixels shared by handle. Decoding goes through a
 // platform decoder (AImageDecoder on Android, libpng/libjpeg on the dev host).
 
@@ -43,6 +45,15 @@ namespace kiln::gfx {
         static ImageBitmap FromPixels(int width, int height, std::span<const std::uint8_t> rgba, bool premultiplied = false);
         // Encoded PNG/JPEG/WebP/... bytes; empty bitmap when undecodable.
         static ImageBitmap Decode(std::span<const std::uint8_t> encoded);
+        // Decoded at the size `size` picks for the source's width and height: through the sized
+        // decoder (AImageDecoder's target size) when the host has one, else decoded whole and
+        // resampled. `sourceSize`, when given, receives the source's size.
+        static ImageBitmap Decode(std::span<const std::uint8_t> encoded, const kiln::Function<std::pair<int, int>(int, int)>& size,
+                                  std::pair<int, int>* sourceSize = nullptr);
+        // The bitmap resampled to width x height (area average down, bilinear up).
+        ImageBitmap Scaled(int width, int height) const;
+        // Bytes of pixel memory.
+        std::size_t ByteCount() const { return m_Data ? m_Data->rgba.size() : 0; }
 
         explicit operator bool() const { return m_Data != nullptr; }
         int Width() const { return m_Data ? m_Data->width : 0; }
@@ -64,8 +75,12 @@ namespace kiln::gfx {
     };
 
     // Decoded straight-alpha RGBA, or nullopt.
-    struct DecodedImage { int width = 0, height = 0; std::vector<std::uint8_t> rgba; bool premultiplied = false; };
+    struct DecodedImage { int width = 0, height = 0; std::vector<std::uint8_t> rgba; bool premultiplied = false; int sourceWidth = 0, sourceHeight = 0; };
     using ImageDecoder = kiln::Function<std::optional<DecodedImage>(std::span<const std::uint8_t>)>;
     void SetImageDecoder(ImageDecoder decoder);
+    // A decoder that reads the header, asks `size` for the output size and decodes at it.
+    // DecodedImage holds the output; sourceWidth / sourceHeight the encoded size.
+    using SizedImageDecoder = kiln::Function<std::optional<DecodedImage>(std::span<const std::uint8_t>, const kiln::Function<std::pair<int, int>(int, int)>&)>;
+    void SetSizedImageDecoder(SizedImageDecoder decoder);
 
 }

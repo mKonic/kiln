@@ -24,7 +24,7 @@ to set it up, build a UI and ship it in an app.
 ## Platform integration
 
 * [Android apps and Gradle](android.md)
-* [Files, preferences and databases](data.md)
+* [Files, data and network](data.md)
 * [The C API, kiln++ and Rust](c-api.md)
 
 ## Tools

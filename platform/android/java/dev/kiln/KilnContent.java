@@ -23,6 +23,15 @@ final class KilnContent {
 
     static void attach(Context context) { sContext = context.getApplicationContext(); }
 
+    /** The app's memory budget for image caches: { bytes, lowRam } (Coil's totalAvailableMemoryBytes). */
+    static long[] memoryClass() {
+        android.app.ActivityManager am = sContext.getSystemService(android.app.ActivityManager.class);
+        if (am == null) return new long[] { 0, 0 };
+        boolean large = (sContext.getApplicationInfo().flags & android.content.pm.ApplicationInfo.FLAG_LARGE_HEAP) != 0;
+        long mb = large ? am.getLargeMemoryClass() : am.getMemoryClass();
+        return new long[] { mb * 1024L * 1024L, am.isLowRamDevice() ? 1 : 0 };
+    }
+
     private static ContentResolver resolver() { return sContext.getContentResolver(); }
 
     static int openFd(String uri, String mode) {

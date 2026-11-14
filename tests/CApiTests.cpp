@@ -820,3 +820,34 @@ TEST(CApiHttpFetchCallsBackOnTheMainThread) {
     CHECK(calls == 2 && dropped == 3);
     kiln::net::SetHttpEngine(real);
 }
+
+TEST(CApiAsyncImageReportsItsStates) {
+    // Any bytes decode to a 2 x 2 image here.
+    kiln::gfx::SetImageDecoder([](std::span<const std::uint8_t> b) -> std::optional<kiln::gfx::DecodedImage> {
+        if (b.empty()) return std::nullopt;
+        kiln::gfx::DecodedImage d;
+        d.width = d.height = 2;
+        d.rgba.assign(16, 200);
+        return d;
+    });
+    static std::vector<int> states;
+    states.clear();
+    {
+        Harness h;
+        h.Run([](void*) {
+            kiln_box(KILN_HERE, nullptr, nullptr, kiln_fn{ [](void*) {
+                kiln_async_image_options o;
+                kiln_async_image_options_init(&o);
+                o.placeholder_color = KILN_ARGB(0xFF808080);
+                o.on_state = kiln_fn_int{ [](void*, int32_t s) { states.push_back(s); }, nullptr, nullptr };
+                kiln_async_image(KILN_HERE, "data:image/png;base64,AAEC", "Picture", kiln_mod_size(nullptr, 20, 20), &o);
+            }, nullptr, nullptr });
+        });
+        for (int i = 0; i < 2000 && (states.size() < 2); ++i) {
+            h.Pump();
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+    }
+    CHECK(states == (std::vector<int>{ 0, 1 }));
+    kiln::gfx::SetImageDecoder({});
+}

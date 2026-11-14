@@ -135,6 +135,19 @@ name = "cpp"
 kiln = "vendor/Clipper2"
 paths = ["CPP/Clipper2Lib"]
 
+[coil]
+kind = "git"
+repo = "https://github.com/coil-kt/coil.git"
+branch = "main"
+checkout = "~/dev/os/inspiration/coil"
+rev = "a6cc8e3"          # 2026-11-14
+
+[[coil.group]]
+name = "image"
+kiln = "core/src/kiln/image (ImageLoader, caches, DecodeUtils), foundation/src/kiln/foundation/AsyncImage"
+paths = ["coil-core/src/commonMain", "coil-core/src/androidMain", "coil-network-core/src/commonMain",
+         "coil-compose-core/src/commonMain"]
+
 [aosp-frameworks-base]
 kind = "gitiles"
 repo = "https://android.googlesource.com/platform/frameworks/base"

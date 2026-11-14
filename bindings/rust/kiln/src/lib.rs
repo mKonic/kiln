@@ -633,6 +633,29 @@ pub fn no_backup_files_dir() -> String { crate::from_c(unsafe { sys::kiln_no_bac
 /// Where a database file goes (Context.getDatabasePath).
 pub fn database_path(name: &str) -> String { let n = CStrBuf::new(name); crate::from_c(unsafe { sys::kiln_database_path(n.ptr()) }) }
 
+/// An image loaded in the background (a URL, content or file URI, path, `asset:///path` or
+/// `data:` URI) at the size its layout gives it; see `kiln_async_image`. `options` may set the
+/// placeholder and error colours, content scale and alignment; `on_state` gets 0 (loading),
+/// 1 (loaded) or 2 (failed).
+#[track_caller]
+pub fn async_image(model: &str, content_description: Option<&str>, modifier: Modifier, options: Option<sys::kiln_async_image_options>,
+                   on_state: Option<Box<dyn FnMut(i32)>>) {
+    let m = CStrBuf::new(model);
+    let d = content_description.map(CStrBuf::new);
+    let mut o: sys::kiln_async_image_options = match options {
+        Some(o) => o,
+        None => { let mut o = unsafe { std::mem::zeroed() }; unsafe { sys::kiln_async_image_options_init(&mut o) }; o }
+    };
+    if let Some(mut f) = on_state { o.on_state = (move |v: i32| f(v)).into_callback(); }
+    unsafe { sys::kiln_async_image(here(), m.ptr(), d.as_ref().map_or(std::ptr::null(), |d| d.ptr()), modifier.0, &o) }
+}
+/// The default async image options, to change before passing to [`async_image`].
+pub fn async_image_options() -> sys::kiln_async_image_options {
+    let mut o = unsafe { std::mem::zeroed() };
+    unsafe { sys::kiln_async_image_options_init(&mut o) };
+    o
+}
+
 /// An HTTP request for [`http_fetch`]. Timeouts of 0 mean 10 s; negative, no limit.
 #[derive(Clone, Default)]
 pub struct HttpRequest {

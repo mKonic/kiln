@@ -111,3 +111,44 @@ Image(photo, std::string("A beach at sunset"), FillMax(Modifier{}, Axis::Horizon
 ```
 
 PNG, JPEG, WebP and HEIF decode on Android, and GIF decodes its first frame.
+
+### Loading images
+
+`AsyncImage` loads an image in the background and shows it when it is ready, as Coil's
+`AsyncImage` does. The model is an `https://` URL, a `content://` or `file://` URI from a
+picker or another app, a file path, an app asset (`asset:///photos/beach.jpg`) or a `data:`
+URI.
+
+```cpp
+#include <kiln/foundation/AsyncImage.h>
+#include <kiln/foundation/Layouts.h>
+#include <kiln/foundation/Shapes.h>
+
+using namespace kiln::foundation;
+using namespace kiln::ui;
+
+void Avatar(const std::string& url) {
+    AsyncImage(url, std::string("Profile picture"), Clip(SizeMod(Modifier{}, 48_dp, 48_dp), CircleShape()), {
+        .placeholder = std::make_shared<ColorPainter>(Color(0xFFE0E0E0)),
+        .error = std::make_shared<ColorPainter>(Color(0xFFB3261E)),
+        .contentScale = ContentScale::Crop(),
+    });
+}
+```
+
+* The image is decoded at the size its layout gives it, not at the size of the file: a
+  4000 px photo in a 48 dp avatar takes the memory of a 48 dp one. Give it a size
+  (`SizeMod`, `FillMaxWidth` with an aspect ratio, a fixed row height); an unbounded side
+  leaves that side at the image's own size. `ContentScale::None` always loads it whole.
+* `placeholder` is drawn while it loads, `error` when it fails, and `fallback` when the
+  model is empty. Without them nothing is drawn. `onState` is told when it starts loading,
+  and when it succeeds or fails, with the `image::ImageResult`.
+* Decoded images stay in a memory cache, and downloads in a disk cache under the app's cache
+  directory, so a list that scrolls back shows its images at once and an app that restarts
+  does not download them again.
+* Network images need `android.permission.INTERNET` ([HTTP](data.md#http)).
+
+`image::ImageLoader::Default().Execute(request)` is the same loader for code that needs a
+bitmap rather than content: a task that returns an `ImageResult`. The `ImageRequest` sets
+the size, `Scale::Fit` or `Fill`, headers and cache policies, and `AsyncImage` takes one
+too.

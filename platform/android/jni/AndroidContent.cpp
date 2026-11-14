@@ -1,5 +1,6 @@
 #include "AndroidContent.h"
 
+#include "kiln/image/ImageLoader.h"
 #include "kiln/ui/ContentResolver.h"
 
 #include <string>
@@ -101,6 +102,21 @@ namespace kiln::android {
 
     void InstallContentResolver(JNIEnv* env) {
         ui::SetContentResolver(std::make_shared<AndroidContentResolver>(env));
+        // The image loader's memory cache follows the app's memory class.
+        if (jclass c = env->FindClass("dev/kiln/KilnContent")) {
+            jmethodID m = env->GetStaticMethodID(c, "memoryClass", "()[J");
+            auto* arr = m ? static_cast<jlongArray>(env->CallStaticObjectMethod(c, m)) : nullptr;
+            if (env->ExceptionCheck()) env->ExceptionClear();
+            if (arr) {
+                jlong v[2] = { 0, 0 };
+                env->GetLongArrayRegion(arr, 0, 2, v);
+                if (v[0] > 0) image::SetMemoryClass(v[0], v[1] != 0);
+                env->DeleteLocalRef(arr);
+            }
+            env->DeleteLocalRef(c);
+        } else {
+            env->ExceptionClear();
+        }
     }
 
 }
