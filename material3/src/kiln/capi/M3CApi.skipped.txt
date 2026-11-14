@@ -23,7 +23,6 @@ kiln::material3::FloatingActionButtonMenuScope::state: field left at its default
 kiln::material3::LinearProgressIndicatorOptions::drawStopIndicator: field left at its default: type kiln::ui::DrawScope
 kiln::material3::SliderTrackOptions::drawStopIndicator: field left at its default: type kiln::ui::DrawScope
 kiln::material3::SliderTrackOptions::drawTick: field left at its default: type kiln::ui::DrawScope
-kiln::text::FontFamily::fonts: field left at its default: list of std::vector<kiln::text::Font>
 kiln::material3::TextOptions::inlineContent: field left at its default: type std::map<std::basic_string<char>, kiln::foundation::InlineTextContent>
 kiln::material3::TextOptions::onTextLayout: field left at its default: type kiln::text::TextLayoutResult
 kiln::material3::WideNavigationRailItemOptions::indicatorPadding: field left at its default: kiln::material3::internal::DynamicPaddingValues is not default-constructible

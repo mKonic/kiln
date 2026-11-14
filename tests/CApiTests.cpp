@@ -417,6 +417,27 @@ TEST(CApiLayoutCoordinatesReportWhereAnElementSits) {
     CHECK(inParent.y == 35);
 }
 
+TEST(CApiFontFamilyOfFontsReachesTheText) {
+    Harness h;
+    h.Run([](void*) {
+        kiln_font font;
+        kiln_font_init(&font);
+        font.source = KILN_FONT_SOURCE_FILE;
+        font.path = "/data/fonts/Brand.ttf";
+        kiln_font_family family;
+        kiln_font_family_init(&family);
+        family.kind = KILN_FONT_FAMILY_KIND_FONTS;
+        family.fonts = &font;
+        family.fonts_count = 1;
+        kiln_m3_text_options o;
+        kiln_m3_text_options_init(&o);
+        o.font_family = &family;
+        kiln_m3_text(KILN_HERE, "Brand", NULL, &o);
+    });
+    CHECK(h.text.lastFont.kind == TextFontRequest::Kind::File);
+    CHECK(h.text.lastFont.name == "/data/fonts/Brand.ttf");
+}
+
 TEST(CApiAndroidViewMakesUpdatesAndReleasesItsView) {
     static int made, updates, released, dropped;
     made = updates = released = dropped = 0;

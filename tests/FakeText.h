@@ -17,8 +17,10 @@ namespace kiln::test {
     class FakeText final : public TextBackend {
     public:
         int layouts = 0;
+        TextFontRequest lastFont;   // the last paragraph's base font
         ParagraphData Layout(const ParagraphRequest& r) override {
             ++layouts;
+            lastFont = r.base.font;
             ParagraphData d;
             const std::u16string text = ToU16(r.text);
             const float width = r.widthPx > 0 ? r.widthPx : INFINITY;

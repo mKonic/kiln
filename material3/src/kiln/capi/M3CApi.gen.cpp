@@ -7177,7 +7177,7 @@ void FromCpp(const kiln::text::Font& v, kiln_font* out) {
     if (!out) return;
     kiln_font c{};
     c.size = sizeof(c);
-    c.source = kiln_source(v.source);
+    c.source = kiln_font_source(v.source);
     c.loading_strategy = kiln_font_loading_strategy(v.loadingStrategy);
     c.path = kiln::capi::TransientString(std::string(v.path));
     c.provider = FromCppTransient(v.provider);
@@ -7202,6 +7202,7 @@ kiln::text::FontFamily ToCpp(const kiln_font_family* in) {
     if (in->size > sizeof(size_t)) std::memcpy(reinterpret_cast<char*>(&c) + sizeof(size_t), reinterpret_cast<const char*>(in) + sizeof(size_t), std::min(in->size, sizeof(c)) - sizeof(size_t));
     v.kind = kiln::text::FontFamily::Kind(c.kind);
     if (c.name) v.name = kiln::capi::ToString(c.name);
+    if (c.fonts) { v.fonts.clear(); for (size_t i = 0; i < c.fonts_count; ++i) v.fonts.push_back(ToCpp(&c.fonts[i])); }
     return v;
 }
 void FromCpp(const kiln::text::FontFamily& v, kiln_font_family* out) {
@@ -7209,7 +7210,7 @@ void FromCpp(const kiln::text::FontFamily& v, kiln_font_family* out) {
     if (!out) return;
     kiln_font_family c{};
     c.size = sizeof(c);
-    c.kind = kiln_kind(v.kind);
+    c.kind = kiln_font_family_kind(v.kind);
     c.name = kiln::capi::TransientString(std::string(v.name));
     const size_t n = out->size < sizeof(size_t) ? sizeof(c) : std::min(out->size, sizeof(c));
     std::memcpy(reinterpret_cast<char*>(out) + sizeof(size_t), reinterpret_cast<const char*>(&c) + sizeof(size_t), n - sizeof(size_t));

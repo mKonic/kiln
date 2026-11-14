@@ -259,8 +259,10 @@ class Generator:
         if parts[:2] == ['kiln', 'material3']:
             parts = parts[2:]
             return prefix + '_'.join(snake(p) for p in parts)
-        # Other modules' types: kiln_<name>, or with the namespace where kiln.h has that name.
-        plain = 'kiln_' + snake(parts[-1])
+        # Other modules' types: kiln_<name>, or with the namespace where kiln.h has that name. A
+        # type nested in a class keeps the class's name (FontFamily::Kind: kiln_font_family_kind).
+        types = [p for p in parts[1:] if p[:1].isupper()]
+        plain = 'kiln_' + '_'.join(snake(p) for p in types) if len(types) > 1 else 'kiln_' + snake(parts[-1])
         if plain not in CORE_NAMES:
             return plain
         return 'kiln_' + '_'.join(snake(p) for p in parts[1:])
@@ -443,7 +445,11 @@ class Generator:
         k = canon(base)
         if field_ and k.startswith('std::vector<'):
             item = self.map(template_args(base)[0], name)
-            if item.by_out or item.c.startswith('kiln_fn') or item.c.startswith('kiln_m3_fn') or item.c.startswith('kiln_m3_opt'):
+            if item.by_out:
+                # Structs: an array of them (each with its size set by its _init).
+                st = item.struct
+                return Mapping(f'const {st.c}*', None, None, list_item=Mapping(st.c, lambda e: f'ToCpp(&{e})'))
+            if item.c.startswith('kiln_fn') or item.c.startswith('kiln_m3_fn') or item.c.startswith('kiln_m3_opt'):
                 raise Unmappable(f'list of {k}')
             ptr = f'{item.c} const*' if item.c.endswith('*') else f'const {item.c}*'
             return Mapping(ptr, None, None, list_item=item)

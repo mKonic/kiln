@@ -265,11 +265,26 @@ typedef enum kiln_capitalization {
     KILN_CAPITALIZATION_WORDS = 2,
     KILN_CAPITALIZATION_SENTENCES = 3,
 } kiln_capitalization;
+typedef enum kiln_font_family_kind {
+    KILN_FONT_FAMILY_KIND_DEFAULT = 0,
+    KILN_FONT_FAMILY_KIND_SANS_SERIF = 1,
+    KILN_FONT_FAMILY_KIND_SERIF = 2,
+    KILN_FONT_FAMILY_KIND_MONOSPACE = 3,
+    KILN_FONT_FAMILY_KIND_CURSIVE = 4,
+    KILN_FONT_FAMILY_KIND_SYSTEM_NAME = 5,
+    KILN_FONT_FAMILY_KIND_FONTS = 6,
+} kiln_font_family_kind;
 typedef enum kiln_font_loading_strategy {
     KILN_FONT_LOADING_STRATEGY_BLOCKING = 0,
     KILN_FONT_LOADING_STRATEGY_OPTIONAL_LOCAL = 1,
     KILN_FONT_LOADING_STRATEGY_ASYNC = 2,
 } kiln_font_loading_strategy;
+typedef enum kiln_font_source {
+    KILN_FONT_SOURCE_ASSET = 0,
+    KILN_FONT_SOURCE_FILE = 1,
+    KILN_FONT_SOURCE_DOWNLOADABLE = 2,
+    KILN_FONT_SOURCE_DEVICE = 3,
+} kiln_font_source;
 typedef enum kiln_font_style {
     KILN_FONT_STYLE_NORMAL = 0,
     KILN_FONT_STYLE_ITALIC = 1,
@@ -311,15 +326,6 @@ typedef enum kiln_keyboard_type {
     KILN_KEYBOARD_TYPE_NUMBER_PASSWORD_SIGNED = 23,
     KILN_KEYBOARD_TYPE_DECIMAL_PASSWORD_SIGNED = 24,
 } kiln_keyboard_type;
-typedef enum kiln_kind {
-    KILN_KIND_DEFAULT = 0,
-    KILN_KIND_SANS_SERIF = 1,
-    KILN_KIND_SERIF = 2,
-    KILN_KIND_MONOSPACE = 3,
-    KILN_KIND_CURSIVE = 4,
-    KILN_KIND_SYSTEM_NAME = 5,
-    KILN_KIND_FONTS = 6,
-} kiln_kind;
 typedef enum kiln_m3_display_mode {
     KILN_M3_DISPLAY_MODE_PICKER = 0,
     KILN_M3_DISPLAY_MODE_INPUT = 1,
@@ -444,12 +450,6 @@ typedef enum kiln_secure_flag_policy {
     KILN_SECURE_FLAG_POLICY_SECURE_ON = 1,
     KILN_SECURE_FLAG_POLICY_SECURE_OFF = 2,
 } kiln_secure_flag_policy;
-typedef enum kiln_source {
-    KILN_SOURCE_ASSET = 0,
-    KILN_SOURCE_FILE = 1,
-    KILN_SOURCE_DOWNLOADABLE = 2,
-    KILN_SOURCE_DEVICE = 3,
-} kiln_source;
 typedef enum kiln_stroke_cap {
     KILN_STROKE_CAP_BUTT = 0,
     KILN_STROKE_CAP_ROUND = 1,
@@ -2327,7 +2327,7 @@ struct kiln_font_provider {
 KILN_API void kiln_font_provider_init(kiln_font_provider* s);
 struct kiln_font {
     size_t size;
-    kiln_source source;
+    kiln_font_source source;
     kiln_font_loading_strategy loading_strategy;
     const char* path;
     const kiln_font_provider* provider;
@@ -2338,8 +2338,10 @@ struct kiln_font {
 KILN_API void kiln_font_init(kiln_font* s);
 struct kiln_font_family {
     size_t size;
-    kiln_kind kind;
+    kiln_font_family_kind kind;
     const char* name;
+    const kiln_font* fonts;   /* NULL: the default */
+    size_t fonts_count;
 };
 KILN_API void kiln_font_family_init(kiln_font_family* s);
 struct kiln_m3_text_options {
