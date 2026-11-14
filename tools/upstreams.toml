@@ -12,7 +12,7 @@ kind = "git"
 repo = "https://github.com/androidx/androidx.git"
 branch = "androidx-main"
 checkout = "~/dev/os/inspiration/androidx-compose"   # sparse: add new groups' paths to it
-rev = "7583ecee052"      # 2026-11-13; the comparison catalog keeps snapshot 16900967 (its sources still build with it)
+rev = "6dce8f813f5"      # 2026-11-14 (ported 65fb6f62fed; e9be53192c5 already holds); the comparison catalog keeps snapshot 16900967 (its sources still build with it)
 # The comparison catalog (~/dev/os/inspiration/m3-apps/catalog) builds the material3 catalog and
 # samples from this checkout and links: adaptive 1.4.0-SNAPSHOT, material3-adaptive-navigation-suite
 # and material3-window-size-class 1.6.0-SNAPSHOT, navigation3 1.3.0-SNAPSHOT, navigation-compose 2.9.5.
@@ -84,7 +84,7 @@ kind = "git"
 repo = "https://github.com/material-foundation/material-color-utilities.git"
 branch = "main"
 checkout = "~/dev/os/inspiration/material-color-utilities"
-rev = "bd811e4ca2ab94c4ce3cadc89c19b1820b9704b3"      # 2026-10-19; vendored copy in vendor/material-color-utilities
+rev = "194144d"      # 2026-11-14, no change in cpp/; vendored copy (bd811e4) in vendor/material-color-utilities
 
 [[material-color-utilities.group]]
 name = "cpp"
@@ -95,7 +95,7 @@ paths = ["cpp"]
 kind = "git"
 repo = "https://skia.googlesource.com/skia"
 branch = "main"
-rev = "267037d7a2"      # vendor/skia-shadow/VENDORED.txt
+rev = "741278733a"      # 2026-11-14, no change in the shadow paths; copied files: vendor/skia-shadow/VENDORED.txt
 
 [[skia.group]]
 name = "shadow"
