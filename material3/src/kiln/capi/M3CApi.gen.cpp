@@ -16666,16 +16666,6 @@ KILN_API float kiln_m3_divider_defaults_thickness() {
         return (kiln::material3::DividerDefaults::Thickness).value;
     } KILN_CAPI_CATCH({})
 }
-KILN_API int32_t kiln_m3_k_system_palette_count() {
-    KILN_CAPI_TRY {
-        return int32_t(kiln::material3::kSystemPaletteCount);
-    } KILN_CAPI_CATCH({})
-}
-KILN_API int32_t kiln_m3_k_system_role_count() {
-    KILN_CAPI_TRY {
-        return int32_t(kiln::material3::kSystemRoleCount);
-    } KILN_CAPI_CATCH({})
-}
 KILN_API float kiln_m3_floating_action_button_defaults_show_hide_target_scale() {
     KILN_CAPI_TRY {
         return float(kiln::material3::FloatingActionButtonDefaults::ShowHideTargetScale);

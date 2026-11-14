@@ -1818,8 +1818,6 @@ namespace kpp::m3 {
     inline std::string date_picker_defaults_year_abbr_month_day_skeleton() { return std::string(kpp::detail::Nz(kiln_m3_date_picker_defaults_year_abbr_month_day_skeleton())); }
     inline std::string date_picker_defaults_year_month_weekday_day_skeleton() { return std::string(kpp::detail::Nz(kiln_m3_date_picker_defaults_year_month_weekday_day_skeleton())); }
     inline float divider_defaults_thickness() { return kiln_m3_divider_defaults_thickness(); }
-    inline int32_t k_system_palette_count() { return kiln_m3_k_system_palette_count(); }
-    inline int32_t k_system_role_count() { return kiln_m3_k_system_role_count(); }
     inline float floating_action_button_defaults_show_hide_target_scale() { return kiln_m3_floating_action_button_defaults_show_hide_target_scale(); }
     inline float floating_action_button_defaults_medium_icon_size() { return kiln_m3_floating_action_button_defaults_medium_icon_size(); }
     inline float floating_action_button_defaults_large_icon_size() { return kiln_m3_floating_action_button_defaults_large_icon_size(); }

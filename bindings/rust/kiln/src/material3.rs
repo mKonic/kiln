@@ -4057,12 +4057,6 @@ pub fn date_picker_defaults_year_month_weekday_day_skeleton() -> String {
 pub fn divider_defaults_thickness() -> f32 {
     unsafe { sys::kiln_m3_divider_defaults_thickness() }
 }
-pub fn k_system_palette_count() -> i32 {
-    unsafe { sys::kiln_m3_k_system_palette_count() }
-}
-pub fn k_system_role_count() -> i32 {
-    unsafe { sys::kiln_m3_k_system_role_count() }
-}
 pub fn floating_action_button_defaults_show_hide_target_scale() -> f32 {
     unsafe { sys::kiln_m3_floating_action_button_defaults_show_hide_target_scale() }
 }

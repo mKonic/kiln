@@ -3642,9 +3642,6 @@ KILN_API const char* kiln_m3_date_picker_defaults_year_abbr_month_day_skeleton(v
 KILN_API const char* kiln_m3_date_picker_defaults_year_month_weekday_day_skeleton(void);
 /* Divider.h */
 KILN_API float kiln_m3_divider_defaults_thickness(void);
-/* DynamicColorFields.h */
-KILN_API int32_t kiln_m3_k_system_palette_count(void);
-KILN_API int32_t kiln_m3_k_system_role_count(void);
 /* FloatingActionButton.h */
 KILN_API float kiln_m3_floating_action_button_defaults_show_hide_target_scale(void);
 KILN_API float kiln_m3_floating_action_button_defaults_medium_icon_size(void);

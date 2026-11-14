@@ -19,8 +19,6 @@ kiln::material3::Value: parameter token: kiln::material3::tokens::MotionSchemeTo
 kiln::material3::Value: parameter token: kiln::material3::tokens::ShapeToken is internal
 kiln::material3::Value: parameter token: kiln::material3::tokens::TypographyToken is internal
 kiln::material3::WideNavigationRailItemDefaults::indicatorPadding: result: kiln::material3::internal::DynamicPaddingValues is not default-constructible
-kiln::material3::kSystemPaletteFields: constant: type kiln::ui::Color kiln::material3::TonalPalette::*const[65]
-kiln::material3::kSystemRoleFields: constant: type kiln::ui::Color kiln::material3::ColorScheme::*const[43]
 kiln::material3::TextFieldOptions::onTextLayout: field left at its default: type kiln::text::TextLayoutResult
 kiln::material3::SecureTextFieldOptions::onTextLayout: field left at its default: type kiln::text::TextLayoutResult
 kiln::material3::DatePickerOptions::focusRequester: field left at its default: pointer kiln::ui::FocusRequester *
