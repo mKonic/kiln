@@ -55,6 +55,7 @@ namespace kiln::rt {
         for (auto& w : waiters) {
             auto job = w.job.lock();
             if (!job || job->cancelled) continue;
+            if (job->gate && job->gate->held) { m_FrameWaiters.push_back(std::move(w)); continue; }   // waits for its window
             job->unregister = nullptr;
             *w.out = frameTimeNanos;
             ResumeJob(job, w.h);
@@ -66,6 +67,14 @@ namespace kiln::rt {
         for (const auto& t : m_Timers)
             if (!next || t.at < *next) next = t.at;
         return next;
+    }
+
+    bool Dispatcher::HasFrameWaiters() const {
+        for (const auto& w : m_FrameWaiters) {
+            auto job = w.job.lock();
+            if (job && !job->cancelled && !(job->gate && job->gate->held)) return true;
+        }
+        return false;
     }
 
     void Dispatcher::AddFrameWaiter(std::coroutine_handle<> h, std::int64_t* out, const std::shared_ptr<JobState>& job) {
@@ -106,9 +115,15 @@ namespace kiln::rt {
         if (m_State->root) { m_State->root.destroy(); m_State->root = {}; }
     }
 
-    Job Launch(Dispatcher& dispatcher, Task<> task) {
+    namespace { thread_local std::shared_ptr<const FrameGate> t_LaunchGate; }
+    FrameGateScope::FrameGateScope(std::shared_ptr<const FrameGate> gate) : m_Previous(std::move(t_LaunchGate)) { t_LaunchGate = std::move(gate); }
+    FrameGateScope::~FrameGateScope() { t_LaunchGate = std::move(m_Previous); }
+
+    Job Launch(Dispatcher& dispatcher, Task<> task, std::shared_ptr<const FrameGate> gate) {
+        if (!gate) gate = t_LaunchGate;
         auto state = std::make_shared<JobState>();
         state->dispatcher = &dispatcher;
+        state->gate = std::move(gate);
         auto h = task.Release();
         h.promise().job = state;
         state->root = h;

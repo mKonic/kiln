@@ -615,3 +615,31 @@ TEST(DeactivatedCompositionForgetsStateAndReusesNodes) {
     c.Recompose();
     CHECK_EQ(runs, 3);
 }
+
+namespace {
+    Task<> FirstFrame(std::int64_t& seen) { seen = co_await NextFrame{}; }
+}
+
+TEST(AGatedCompositionsEffectsWaitForTheGate) {
+    // A dialog's content until its window shows: its LaunchedEffect gets no frames, and does
+    // not keep the host drawing; released, it starts on the next frame.
+    Node root("root");
+    Dispatcher d;
+    Composition c(root, d);
+    auto gate = std::make_shared<FrameGate>();
+    gate->held = true;
+    c.SetFrameGate(gate);
+    std::int64_t seen = 0;
+    c.SetContent([&] { c.LaunchedEffect({}, [&] { return FirstFrame(seen); }); });
+    c.Recompose();
+    d.RunFrame(10);
+    d.RunFrame(20);
+    CHECK_EQ(seen, std::int64_t(0));
+    CHECK(!d.HasFrameWaiters());
+    gate->held = false;
+    CHECK(d.HasFrameWaiters());
+    d.RunFrame(30);
+    CHECK_EQ(seen, std::int64_t(30));
+    c.SetContent([] {});
+    c.Recompose();
+}

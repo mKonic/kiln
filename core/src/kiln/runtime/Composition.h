@@ -348,7 +348,17 @@ namespace kiln::rt {
 
         // For compositions created during measure (SubcomposeLayout, lazy items): the scope whose
         // Locals the content sees. It must outlive this composition.
-        void SetParentContext(Scope* scope) { m_ParentContext = scope; }
+        void SetParentContext(Scope* scope) {
+            m_ParentContext = scope;
+            // Taken now: the scope can be gone by the time this composition is disposed.
+            m_InheritedGate = scope && scope->m_Composition ? scope->m_Composition->CurrentFrameGate() : nullptr;
+        }
+        // Jobs this composition launches (LaunchedEffect, RememberCoroutineScope) take this gate,
+        // or the one of the composition it is nested in (a dialog's content until its window shows).
+        void SetFrameGate(std::shared_ptr<const FrameGate> gate) { m_FrameGate = std::move(gate); }
+        std::shared_ptr<const FrameGate> CurrentFrameGate() const {
+            return m_FrameGate ? m_FrameGate : m_InheritedGate;
+        }
         Scope* CurrentScope() const { return m_Current; }
 
         template<typename T>
@@ -410,6 +420,7 @@ namespace kiln::rt {
         std::vector<Frame> m_Stack;
         Scope* m_Current = nullptr;
         Scope* m_ParentContext = nullptr;
+        std::shared_ptr<const FrameGate> m_FrameGate, m_InheritedGate;
 
         std::vector<Scope*> m_Invalid;
         std::unordered_set<Scope*> m_Pending;

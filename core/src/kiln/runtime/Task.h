@@ -26,8 +26,14 @@ namespace kiln::rt {
     class Dispatcher;
 
     // Shared by every frame of one launched task tree.
+    // Holds a job's frames: while `held`, its NextFrame waits (an animation does not start). A
+    // dialog's content is gated until its window can show it, so its first frame is the
+    // animation's first, as when Compose composes it into the window's own surface.
+    struct FrameGate { bool held = false; };
+
     struct JobState {
         Dispatcher* dispatcher = nullptr;
+        std::shared_ptr<const FrameGate> gate;
         bool cancelled = false;
         bool done = false;
         kiln::Function<void()> unregister;   // removes the current suspension from the dispatcher
@@ -162,7 +168,8 @@ namespace kiln::rt {
         void RunFrame(std::int64_t frameTimeNanos);
         // The frame time RunFrame last ran with (AnimationUtils.currentAnimationTimeMillis while drawing).
         std::int64_t LastFrameTimeNanos() const { return m_LastFrameNanos; }
-        bool HasFrameWaiters() const { return !m_FrameWaiters.empty(); }
+        // Waiters a frame would resume (not those behind a held gate).
+        bool HasFrameWaiters() const;
         // Earliest timer deadline, if any (the host arms a wake-up for it).
         std::optional<Clock::time_point> NextTimer() const;
         // This dispatcher's time: the clock plus whatever a test advanced it by. Timers are due by it.
@@ -202,7 +209,18 @@ namespace kiln::rt {
 
     // Starts `task` now (it runs until its first suspension) under a new Job.
     // The Job must be kept: dropping it cancels the task.
-    [[nodiscard]] Job Launch(Dispatcher& dispatcher, Task<> task);
+    // Without a gate, a launch takes the one in effect (FrameGateScope): what a composition starts
+    // while it recomposes or applies (its nodes attaching) follows its gate.
+    [[nodiscard]] Job Launch(Dispatcher& dispatcher, Task<> task, std::shared_ptr<const FrameGate> gate = {});
+    class FrameGateScope {
+    public:
+        explicit FrameGateScope(std::shared_ptr<const FrameGate> gate);
+        ~FrameGateScope();
+        FrameGateScope(const FrameGateScope&) = delete;
+        FrameGateScope& operator=(const FrameGateScope&) = delete;
+    private:
+        std::shared_ptr<const FrameGate> m_Previous;
+    };
 
     namespace detail {
         template<typename P> std::shared_ptr<JobState> JobOf(std::coroutine_handle<P> h) { return h.promise().job; }
@@ -217,6 +235,25 @@ namespace kiln::rt {
             job->dispatcher->AddFrameWaiter(h, &time, job);
         }
         std::int64_t await_resume() const noexcept { return time; }
+    };
+
+    // co_await GateOpen{gate}: the first frame after `gate` opens (at once when it is not held).
+    // An animation started from outside a dialog's content (a sheet's show) waits on the
+    // dialog's gate this way, so it starts on the window's first visible frame.
+    struct GateOpen {
+        std::shared_ptr<const FrameGate> gate;
+        std::shared_ptr<const FrameGate> saved;
+        JobState* job = nullptr;
+        std::int64_t time = 0;
+        bool await_ready() const noexcept { return !gate || !gate->held; }
+        template<typename P> void await_suspend(std::coroutine_handle<P> h) {
+            auto j = detail::JobOf(h);
+            job = j.get();
+            saved = j->gate;
+            j->gate = gate;   // this wait only: the job's own gate comes back after it
+            j->dispatcher->AddFrameWaiter(h, &time, j);
+        }
+        void await_resume() noexcept { if (job) job->gate = std::move(saved); }
     };
 
     // withFrameMillis: the next frame's time in milliseconds.

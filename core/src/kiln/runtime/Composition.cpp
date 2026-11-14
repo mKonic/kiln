@@ -536,13 +536,14 @@ namespace kiln::rt {
         g.effect->started = true;
         auto state = g.effect;
         Dispatcher* dispatcher = &m_Dispatcher;
-        m_Effects.push_back([state, dispatcher, fn = std::make_shared<kiln::Function<Task<>()>>(std::move(task))] {
+        m_Effects.push_back([this, state, dispatcher, fn = std::make_shared<kiln::Function<Task<>()>>(std::move(task))] {
             state->job.Cancel();
-            state->job = Launch(*dispatcher, HoldClosure(fn));
+            state->job = Launch(*dispatcher, HoldClosure(fn), CurrentFrameGate());
         });
     }
 
     void Composition::ApplyNodeChanges() {
+        FrameGateScope gate(CurrentFrameGate());   // nodes attaching start their work under it
         auto dirty = std::move(m_ChildrenDirty);
         m_ChildrenDirty.clear();
         std::vector<TreeNode*> children;
@@ -555,6 +556,7 @@ namespace kiln::rt {
     }
 
     void Composition::RunEffects() {
+        FrameGateScope gate(CurrentFrameGate());
         // Disposers first (removed or restarted effects), then new effects, in call order.
         // Effects run untracked: their reads do not subscribe anything.
         while (!m_Disposers.empty() || !m_Effects.empty() || !m_DeadSlots.empty()) {
@@ -571,6 +573,7 @@ namespace kiln::rt {
     }
 
     bool Composition::Recompose() {
+        FrameGateScope gate(CurrentFrameGate());
         bool recomposed = false;
         m_PassId = ++t_PassCounter;
         // Apply until stable: a recomposition or a derived value can write state that other

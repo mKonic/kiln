@@ -14,15 +14,17 @@ namespace kiln::rt {
 
     struct CoroutineScope {
         std::vector<Job> jobs;
+        std::shared_ptr<const FrameGate> gate;   // the composition's (a dialog's until it shows)
         void Launch(Task<> task) {
             std::erase_if(jobs, [](const Job& j) { return j.Done(); });
-            jobs.push_back(rt::Launch(Dispatcher::Main(), std::move(task)));
+            jobs.push_back(rt::Launch(Dispatcher::Main(), std::move(task), gate));
         }
     };
 
     inline std::shared_ptr<CoroutineScope> RememberCoroutineScope(Key key = {}) {
         auto& c = *Composition::Current();
         auto scope = c.Remember<std::shared_ptr<CoroutineScope>>([] { return std::make_shared<CoroutineScope>(); }, {}, key);
+        scope->gate = c.CurrentFrameGate();
         // Cancel on leaving the composition, not only on destruction: a job may hold an owner of
         // the scope.
         std::weak_ptr<CoroutineScope> weak = scope;
