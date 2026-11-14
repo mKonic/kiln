@@ -98,6 +98,21 @@ namespace kiln::media {
         int m_Id;
     };
 
+    struct StreamVolume {
+        int volume = 0;
+        bool muted = false;
+        int minVolume = 0, maxVolume = 0;
+        bool operator==(const StreamVolume&) const = default;
+    };
+    // AudioManager.STREAM_*, ADJUST_* and C.VOLUME_FLAG_*.
+    inline constexpr int kStreamVoiceCall = 0, kStreamSystem = 1, kStreamRing = 2, kStreamMusic = 3, kStreamAlarm = 4, kStreamNotification = 5,
+                         kStreamDtmf = 8, kStreamAccessibility = 10;
+    inline constexpr int kAdjustLower = -1, kAdjustRaise = 1, kAdjustMute = -100, kAdjustUnmute = 100;
+    inline constexpr int kVolumeFlagShowUi = 1, kVolumeFlagAllowRingerModes = 2, kVolumeFlagPlaySound = 4, kVolumeFlagRemoveSoundAndVibrate = 8,
+                         kVolumeFlagVibrate = 16;
+    // AudioAttributes.getVolumeControlStream (Util.getStreamTypeForAudioUsage).
+    int VolumeControlStream(const AudioAttributes& attributes);
+
     // The platform's audio services, called on the main thread. Without a host (the desktop,
     // tests) focus is always granted and nothing becomes noisy.
     struct AudioHost {
@@ -107,11 +122,55 @@ namespace kiln::media {
         kiln::Function<void(int id)> abandonFocus;
         // A receiver for ACTION_AUDIO_BECOMING_NOISY for client `id`, or none.
         kiln::Function<void(int id, bool enabled)> setNoisyReceiver;
+        // A stream's volume (AudioManager.getStreamVolume, isStreamMute, getStreamMinVolume,
+        // getStreamMaxVolume), setStreamVolume and adjustStreamVolume (ADJUST_*), and a receiver
+        // for its changes (VOLUME_CHANGED_ACTION, reported through OnStreamVolumeChanged).
+        kiln::Function<StreamVolume(int stream)> streamVolume;
+        kiln::Function<void(int stream, int volume, int flags)> setStreamVolume;
+        kiln::Function<void(int stream, int direction, int flags)> adjustStreamVolume;
+        kiln::Function<void(int id, bool enabled)> setVolumeChangedReceiver;
+        // A partial wake lock and a high-performance Wi-Fi lock held for client `id`, or not.
+        kiln::Function<void(int id, bool wake, bool wifi)> setLocks;
     };
     void SetAudioHost(AudioHost host);
     // From the platform, on the main thread.
     void OnAudioFocusChange(int id, int focusChange);
     void OnAudioBecomingNoisy(int id);
+    void OnStreamVolumeChanged(int id);
+    // A new client id for the host's per-client calls, and the playback locks it holds.
+    int NewAudioClientId();
+    void SetPlaybackLocks(int id, bool wake, bool wifi);
+
+    // StreamVolumeManager: a stream's volume on the device, followed while it lives.
+    class StreamVolumeManager {
+    public:
+        // onChanged(volume, muted) and onStreamTypeChanged as media3's listener.
+        StreamVolumeManager(int streamType, kiln::Function<void(int, bool)> onVolumeChanged, kiln::Function<void(int)> onStreamTypeChanged);
+        ~StreamVolumeManager();
+        StreamVolumeManager(const StreamVolumeManager&) = delete;
+        StreamVolumeManager& operator=(const StreamVolumeManager&) = delete;
+        void SetStreamType(int streamType);
+        int StreamType() const { return m_State.streamType; }
+        int MinVolume() const { return m_State.volume.minVolume; }
+        int MaxVolume() const { return m_State.volume.maxVolume; }
+        int Volume() const { return m_State.volume.volume; }
+        bool IsMuted() const { return m_State.volume.muted; }
+        void SetVolume(int volume, int flags);
+        void IncreaseVolume(int flags);
+        void DecreaseVolume(int flags);
+        void SetMuted(bool muted, int flags);
+        void OnSystemChange();   // the receiver heard a change
+
+    private:
+        struct State { int streamType = kStreamMusic; StreamVolume volume; };
+        State Generate(int streamType) const;
+        void Apply(State next);
+        State m_State;
+        int m_VolumeBeforeMute = 0;
+        kiln::Function<void(int, bool)> m_OnVolume;
+        kiln::Function<void(int)> m_OnStreamType;
+        int m_Id;
+    };
 
     // AudioBecomingNoisyManager: calls back when audio is about to come out of the speaker
     // (headphones unplugged, a Bluetooth headset gone), while enabled.

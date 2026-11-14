@@ -8,6 +8,8 @@
 #include "kiln/runtime/Task.h"
 
 #include <chrono>
+#include <climits>
+#include <map>
 #include <thread>
 
 using namespace kiln;
@@ -375,4 +377,103 @@ TEST(PlayerAvailableCommandsAsUtil) {
     CHECK(p.IsCommandAvailable(C::SeekToPrevious) && p.IsCommandAvailable(C::SeekToNext) && p.IsCommandAvailable(C::SeekToNextMediaItem)
           && !p.IsCommandAvailable(C::SeekToPreviousMediaItem));
     CHECK(!p.IsCommandAvailable(C::SeekInCurrentMediaItem) && p.BufferedPercentage() == 0 && !p.IsCurrentMediaItemLive());
+}
+
+TEST(PlayerWakeLocksDeviceVolumeAndStuckDetection) {
+    auto& d = rt::Dispatcher::Main();
+    const bool wasVirtual = d.VirtualTime();
+    d.SetVirtualTime(true);
+    struct Engine : PlayerEngine {
+        EngineLoad load;
+        void Load(EngineLoad l) override { load = l; }
+        void SetPlayWhenReady(bool) override {}
+        void SeekTo(std::int64_t) override {}
+        void SetRepeat(bool) override {}
+        void SetVolume(float) override {}
+        void SetSurface(ui::PlatformSurface) override {}
+        void Report(PlaybackState st, std::int64_t pos, bool playing) {
+            PlayerState s;
+            s.state = st;
+            s.durationMs = 10'000;
+            s.positionMs = pos;
+            s.isPlaying = playing;
+            onState(s, load.loadId);
+        }
+    };
+    Engine* engine = nullptr;
+    SetPlayerEngineFactory([&] {
+        auto e = std::make_unique<Engine>();
+        engine = e.get();
+        return std::unique_ptr<PlayerEngine>(std::move(e));
+    });
+    std::map<int, std::pair<bool, bool>> locks;
+    StreamVolume music{ .volume = 5, .muted = false, .minVolume = 0, .maxVolume = 15 };
+    int adjusts = 0, volumeId = 0;
+    SetAudioHost({ .streamVolume = [&](int stream) { return stream == kStreamMusic ? music : StreamVolume{}; },
+                   .setStreamVolume = [&](int, int v, int) { music.volume = v; },
+                   .adjustStreamVolume = [&](int, int dir, int) { ++adjusts; if (dir == kAdjustRaise) ++music.volume; if (dir == kAdjustMute) music.muted = true; },
+                   .setVolumeChangedReceiver = [&](int id, bool on) { if (on) volumeId = id; },
+                   .setLocks = [&](int id, bool wake, bool wifi) { locks[id] = { wake, wifi }; } });
+    {
+        Player p;
+        p.SetMediaItem(MediaItem::FromUri("asset:///a.mp4"));
+        p.Prepare();
+        p.Play();
+        auto held = [&] { return locks.empty() ? std::pair{ false, false } : locks.begin()->second; };
+        // Buffering to play: the wake lock (Local by default), no Wi-Fi lock.
+        CHECK(held() == std::pair(true, false));
+        p.SetWakeMode(WakeMode::Network);
+        CHECK(held() == std::pair(true, true));
+        p.Pause();
+        CHECK(held() == std::pair(false, false));
+        p.SetWakeMode(WakeMode::Local);
+        p.Play();
+        // Device volume: off until enabled; then the music stream's.
+        CHECK(!p.IsCommandAvailable(PlayerCommand::GetDeviceVolume) && p.State().deviceVolume == 0);
+        p.SetDeviceVolumeControlEnabled(true);
+        CHECK(p.State().deviceVolume == 5 && p.State().deviceInfo.maxVolume == 15 && p.IsCommandAvailable(PlayerCommand::SetDeviceVolumeWithFlags));
+        p.SetDeviceVolume(9);
+        p.IncreaseDeviceVolume();
+        CHECK(p.State().deviceVolume == 10 && adjusts == 1);
+        p.SetDeviceVolume(99);   // out of range: ignored
+        p.SetDeviceMuted(true);
+        CHECK(p.State().deviceVolume == 10 && p.State().deviceMuted);
+        music.volume = 3;
+        OnStreamVolumeChanged(volumeId);   // a change elsewhere is heard
+        CHECK(p.State().deviceVolume == 3);
+
+        // Stuck playing: no progress for 10 s fails with a timeout, and the locks go.
+        int errors = 0;
+        p.AddListener({ .onPlayerError = [&](const PlaybackException& e) { if (e.errorCode == PlaybackException::Timeout) ++errors; } });
+        engine->Report(PlaybackState::Ready, 1000, true);
+        d.RunPending();
+        d.AdvanceTimeBy(std::chrono::milliseconds(9000));
+        engine->Report(PlaybackState::Ready, 1500, true);   // progress: the timeout starts again
+        d.RunPending();
+        d.AdvanceTimeBy(std::chrono::milliseconds(9000));
+        d.RunPending();
+        CHECK(errors == 0);
+        d.AdvanceTimeBy(std::chrono::milliseconds(1500));
+        d.RunPending();
+        CHECK(errors == 1 && p.State().state == PlaybackState::Idle && p.State().playerError && held() == std::pair(false, false));
+        // Playing at the end without ending: 60 s.
+        p.Prepare();
+        engine->Report(PlaybackState::Ready, 10'000, true);
+        d.RunPending();
+        d.AdvanceTimeBy(std::chrono::milliseconds(60'500));
+        d.RunPending();
+        CHECK(errors == 2);
+        // Never, when turned off.
+        p.SetStuckDetectionTimeoutsMs(INT_MAX, INT_MAX, INT_MAX, INT_MAX);
+        p.Prepare();
+        engine->Report(PlaybackState::Ready, 2000, true);
+        d.AdvanceTimeBy(std::chrono::milliseconds(120'000));
+        d.RunPending();
+        CHECK(errors == 2);
+    }
+    CHECK(locks.begin()->second == std::pair(false, false));
+    SetAudioHost({});
+    d.RunPending();
+    SetPlayerEngineFactory({});
+    d.SetVirtualTime(wasVirtual);
 }

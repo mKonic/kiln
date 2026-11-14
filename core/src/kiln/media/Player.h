@@ -70,6 +70,17 @@ namespace kiln::media {
         SetSpeedAndPitch = 13, SetShuffleMode = 14, SetRepeatMode = 15, GetCurrentMediaItem = 16, GetTimeline = 17, GetMetadata = 18,
         SetPlaylistMetadata = 19, ChangeMediaItems = 20, GetAudioAttributes = 21, GetVolume = 22, SetVolume = 24, SetVideoSurface = 27,
         GetText = 28, SetTrackSelectionParameters = 29, GetTracks = 30, SetMediaItem = 31, Release = 32, SetAudioAttributes = 35,
+        GetDeviceVolume = 23, SetDeviceVolume = 25, AdjustDeviceVolume = 26, SetDeviceVolumeWithFlags = 33, AdjustDeviceVolumeWithFlags = 34,
+    };
+    // C.WAKE_MODE_*: what the player keeps awake while it plays (or is about to): nothing, the CPU
+    // (a partial wake lock), or the CPU and Wi-Fi (for streams). Needs android.permission.WAKE_LOCK.
+    enum class WakeMode { None = 0, Local = 1, Network = 2 };
+    // DeviceInfo: where the sound plays and its volume range (local playback: the stream's).
+    struct DeviceInfo {
+        enum class PlaybackType { Local = 0, Remote = 1 };
+        PlaybackType playbackType = PlaybackType::Local;
+        int minVolume = 0, maxVolume = 0;
+        bool operator==(const DeviceInfo&) const = default;
     };
     // Player.Commands.
     struct Commands {
@@ -115,6 +126,10 @@ namespace kiln::media {
         // getAvailableCommands (Util.getAvailableCommands over ExoPlayer's permanent ones).
         Commands availableCommands;
         bool isCurrentMediaItemSeekable = false;   // its duration is known (no live streams here)
+        // getDeviceInfo / getDeviceVolume / isDeviceMuted (with device volume control on).
+        DeviceInfo deviceInfo;
+        int deviceVolume = 0;
+        bool deviceMuted = false;
         bool operator==(const PlayerState&) const = default;
     };
 
@@ -248,6 +263,19 @@ namespace kiln::media {
         const PlaybackParameters& GetPlaybackParameters() const;
 
         bool IsCommandAvailable(PlayerCommand command) const;
+
+        // ExoPlayer.Builder.setDeviceVolumeControlEnabled (off by default): the device's volume
+        // for the player's stream (from its audio attributes), changed with C.VOLUME_FLAG_*.
+        void SetDeviceVolumeControlEnabled(bool enabled);
+        void SetDeviceVolume(int volume, int flags = 0);
+        void IncreaseDeviceVolume(int flags = 0);
+        void DecreaseDeviceVolume(int flags = 0);
+        void SetDeviceMuted(bool muted, int flags = 0);
+        // setWakeMode (Local by default, as ExoPlayer's).
+        void SetWakeMode(WakeMode mode);
+        // ExoPlayer.Builder's stuck-player detection: playback that makes no progress for these
+        // long fails with PlaybackException::Timeout (INT_MAX: never).
+        void SetStuckDetectionTimeoutsMs(int buffering = 600'000, int playing = 10'000, int playingNotEnding = 60'000, int suppressed = 600'000);
         // BasePlayer.getBufferedPercentage (0 to 100) and getTotalBufferedDuration.
         int BufferedPercentage() const;
         std::int64_t TotalBufferedDurationMs() const;

@@ -757,6 +757,15 @@ void Episodes(kiln::media::Player& player) {
   `params.SetOverrideForType({ .type = TrackType::Audio, .groupId = group.id, .trackIndices = { 0 } })`.
 * **Errors.** `playerError` carries ExoPlayer's error codes (`PlaybackException`), for example
   `IoNetworkConnectionFailed` or `DecoderInitFailed`.
+* **Staying awake.** While it plays, the player holds a partial wake lock (`WakeMode::Local`,
+  as ExoPlayer does), so sound keeps going with the screen off. Declare
+  `android.permission.WAKE_LOCK`. `WakeMode::Network` also holds Wi-Fi for streams.
+* **Stuck playback.** Playback that makes no progress (10 s playing without moving, 10 min
+  buffering) fails with `PlaybackException::Timeout` instead of hanging.
+  `SetStuckDetectionTimeoutsMs` changes the limits.
+* **Device volume.** With `SetDeviceVolumeControlEnabled(true)` the player reads and changes
+  the device's volume for its stream (`deviceVolume`, `SetDeviceVolume`,
+  `IncreaseDeviceVolume`, `SetDeviceMuted`).
 
 ### Subtitles
 

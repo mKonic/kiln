@@ -14,6 +14,7 @@ namespace kiln::media {
             int next = 1;
             std::map<int, AudioFocusManager*> focus;
             std::map<int, kiln::Function<void()>*> noisy;
+            std::map<int, StreamVolumeManager*> volume;
         };
         Registry& R() {
             static Registry* r = new Registry;
@@ -31,6 +32,90 @@ namespace kiln::media {
         auto it = R().noisy.find(id);
         if (it != R().noisy.end() && *it->second) (*it->second)();
     }
+
+    int NewAudioClientId() { return R().next++; }
+    void SetPlaybackLocks(int id, bool wake, bool wifi) {
+        if (R().host.setLocks) R().host.setLocks(id, wake, wifi);
+    }
+
+    void OnStreamVolumeChanged(int id) {
+        auto it = R().volume.find(id);
+        if (it != R().volume.end()) it->second->OnSystemChange();
+    }
+
+    int VolumeControlStream(const AudioAttributes& a) {
+        switch (a.usage) {
+            case AudioUsage::Media:
+            case AudioUsage::Game:
+            case AudioUsage::AssistanceNavigationGuidance: return kStreamMusic;
+            case AudioUsage::AssistanceSonification: return kStreamSystem;
+            case AudioUsage::VoiceCommunication: return kStreamVoiceCall;
+            case AudioUsage::VoiceCommunicationSignalling: return kStreamDtmf;
+            case AudioUsage::Alarm: return kStreamAlarm;
+            case AudioUsage::NotificationRingtone: return kStreamRing;
+            case AudioUsage::Notification:
+            case AudioUsage::NotificationCommunicationRequest:
+            case AudioUsage::NotificationCommunicationInstant:
+            case AudioUsage::NotificationCommunicationDelayed:
+            case AudioUsage::NotificationEvent: return kStreamNotification;
+            case AudioUsage::AssistanceAccessibility: return kStreamAccessibility;
+            default: return kStreamMusic;   // C.STREAM_TYPE_DEFAULT
+        }
+    }
+
+    // --- StreamVolumeManager ------------------------------------------------------------------
+
+    StreamVolumeManager::StreamVolumeManager(int streamType, kiln::Function<void(int, bool)> onVolume, kiln::Function<void(int)> onStreamType)
+        : m_OnVolume(std::move(onVolume)), m_OnStreamType(std::move(onStreamType)), m_Id(R().next++) {
+        R().volume[m_Id] = this;
+        if (R().host.setVolumeChangedReceiver) R().host.setVolumeChangedReceiver(m_Id, true);
+        m_State = Generate(streamType);
+    }
+    StreamVolumeManager::~StreamVolumeManager() {
+        R().volume.erase(m_Id);
+        if (R().host.setVolumeChangedReceiver) R().host.setVolumeChangedReceiver(m_Id, false);
+    }
+    StreamVolumeManager::State StreamVolumeManager::Generate(int streamType) const {
+        State s;
+        s.streamType = streamType;
+        if (R().host.streamVolume) s.volume = R().host.streamVolume(streamType);
+        return s;
+    }
+    void StreamVolumeManager::Apply(State next) {
+        const State old = m_State;
+        m_State = next;
+        // onStreamVolumeStateChanged.
+        if (!old.volume.muted && next.volume.muted) m_VolumeBeforeMute = old.volume.volume;
+        if (old.volume.volume != next.volume.volume || old.volume.muted != next.volume.muted)
+            if (m_OnVolume) m_OnVolume(next.volume.volume, next.volume.muted);
+        if (old.streamType != next.streamType || old.volume.minVolume != next.volume.minVolume || old.volume.maxVolume != next.volume.maxVolume)
+            if (m_OnStreamType) m_OnStreamType(next.streamType);
+    }
+    void StreamVolumeManager::SetStreamType(int streamType) {
+        if (streamType != m_State.streamType) Apply(Generate(streamType));
+    }
+    void StreamVolumeManager::SetVolume(int volume, int flags) {
+        const auto& v = m_State.volume;
+        if (volume == v.volume || volume < v.minVolume || volume > v.maxVolume) return;
+        if (R().host.setStreamVolume) R().host.setStreamVolume(m_State.streamType, volume, flags);
+        Apply(Generate(m_State.streamType));
+    }
+    void StreamVolumeManager::IncreaseVolume(int flags) {
+        if (m_State.volume.volume >= m_State.volume.maxVolume) return;
+        if (R().host.adjustStreamVolume) R().host.adjustStreamVolume(m_State.streamType, kAdjustRaise, flags);
+        Apply(Generate(m_State.streamType));
+    }
+    void StreamVolumeManager::DecreaseVolume(int flags) {
+        if (m_State.volume.volume <= m_State.volume.minVolume) return;
+        if (R().host.adjustStreamVolume) R().host.adjustStreamVolume(m_State.streamType, kAdjustLower, flags);
+        Apply(Generate(m_State.streamType));
+    }
+    void StreamVolumeManager::SetMuted(bool muted, int flags) {
+        if (m_State.volume.muted == muted) return;
+        if (R().host.adjustStreamVolume) R().host.adjustStreamVolume(m_State.streamType, muted ? kAdjustMute : kAdjustUnmute, flags);
+        Apply(Generate(m_State.streamType));
+    }
+    void StreamVolumeManager::OnSystemChange() { Apply(Generate(m_State.streamType)); }
 
     int FocusGainFor(const std::optional<AudioAttributes>& a) {
         // Video-only content, or an app that handles focus itself.

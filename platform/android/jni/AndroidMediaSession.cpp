@@ -15,6 +15,7 @@ namespace kiln::android {
     namespace {
         jvm::Global<jclass> g_Media;
         jmethodID g_Request = nullptr, g_Abandon = nullptr, g_Noisy = nullptr, g_Update = nullptr, g_Release = nullptr;
+        jmethodID g_StreamVolume = nullptr, g_SetStreamVolume = nullptr, g_AdjustStreamVolume = nullptr, g_VolumeReceiver = nullptr, g_Locks = nullptr;
 
         void Clear(JNIEnv* env) {
             if (env->ExceptionCheck()) {
@@ -25,6 +26,7 @@ namespace kiln::android {
 
         void FocusChanged(JNIEnv*, jclass, jint id, jint change) { media::OnAudioFocusChange(id, change); }
         void BecomingNoisy(JNIEnv*, jclass, jint id) { media::OnAudioBecomingNoisy(id); }
+        void VolumeChanged(JNIEnv*, jclass, jint id) { media::OnStreamVolumeChanged(id); }
         void SessionCommand(JNIEnv*, jclass, jint id, jint command, jlong positionMs, jfloat speed) {
             if (command < 0 || command > int(media::MediaSessionCommand::SetPlaybackSpeed)) return;
             media::OnMediaSessionCommand(id, media::MediaSessionCommand(command), positionMs, speed);
@@ -40,12 +42,18 @@ namespace kiln::android {
             g_Noisy = jvm::detail::StaticMethod(env, c, "setNoisyReceiver", "(IZ)V");
             g_Update = jvm::detail::StaticMethod(env, c, "update", "(I[Ljava/lang/String;IZZJJJFIZZZZZ)V");
             g_Release = jvm::detail::StaticMethod(env, c, "release", "(I)V");
+            g_StreamVolume = jvm::detail::StaticMethod(env, c, "streamVolume", "(I)[I");
+            g_SetStreamVolume = jvm::detail::StaticMethod(env, c, "setStreamVolume", "(III)V");
+            g_AdjustStreamVolume = jvm::detail::StaticMethod(env, c, "adjustStreamVolume", "(III)V");
+            g_VolumeReceiver = jvm::detail::StaticMethod(env, c, "setVolumeReceiver", "(IZ)V");
+            g_Locks = jvm::detail::StaticMethod(env, c, "setLocks", "(IZZ)V");
             static const JNINativeMethod natives[] = {
                 { "focusChanged", "(II)V", reinterpret_cast<void*>(&FocusChanged) },
                 { "becomingNoisy", "(I)V", reinterpret_cast<void*>(&BecomingNoisy) },
+                { "volumeChanged", "(I)V", reinterpret_cast<void*>(&VolumeChanged) },
                 { "sessionCommand", "(IIJF)V", reinterpret_cast<void*>(&SessionCommand) },
             };
-            jvm::detail::RegisterNatives(env, c, natives, 3);
+            jvm::detail::RegisterNatives(env, c, natives, 4);
         } catch (const std::exception& e) {
             __android_log_print(ANDROID_LOG_ERROR, "kiln", "media: no audio focus or session host: %s", e.what());
             return;
@@ -68,6 +76,38 @@ namespace kiln::android {
             .setNoisyReceiver = [](int id, bool enabled) {
                 JNIEnv* env = jvm::Env();
                 env->CallStaticVoidMethod(g_Media.get(), g_Noisy, jint(id), jboolean(enabled));
+                Clear(env);
+            },
+            .streamVolume = [](int stream) {
+                JNIEnv* env = jvm::Env();
+                media::StreamVolume v;
+                jvm::Local<jintArray> a(static_cast<jintArray>(env->CallStaticObjectMethod(g_Media.get(), g_StreamVolume, jint(stream))), env);
+                Clear(env);
+                if (a.get() && env->GetArrayLength(a.get()) == 4) {
+                    jint x[4];
+                    env->GetIntArrayRegion(a.get(), 0, 4, x);
+                    v = { x[0], x[1] != 0, x[2], x[3] };
+                }
+                return v;
+            },
+            .setStreamVolume = [](int stream, int volume, int flags) {
+                JNIEnv* env = jvm::Env();
+                env->CallStaticVoidMethod(g_Media.get(), g_SetStreamVolume, jint(stream), jint(volume), jint(flags));
+                Clear(env);
+            },
+            .adjustStreamVolume = [](int stream, int direction, int flags) {
+                JNIEnv* env = jvm::Env();
+                env->CallStaticVoidMethod(g_Media.get(), g_AdjustStreamVolume, jint(stream), jint(direction), jint(flags));
+                Clear(env);
+            },
+            .setVolumeChangedReceiver = [](int id, bool enabled) {
+                JNIEnv* env = jvm::Env();
+                env->CallStaticVoidMethod(g_Media.get(), g_VolumeReceiver, jint(id), jboolean(enabled));
+                Clear(env);
+            },
+            .setLocks = [](int id, bool wake, bool wifi) {
+                JNIEnv* env = jvm::Env();
+                env->CallStaticVoidMethod(g_Media.get(), g_Locks, jint(id), jboolean(wake), jboolean(wifi));
                 Clear(env);
             },
         });

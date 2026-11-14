@@ -46,6 +46,7 @@ final class KilnMedia {
 
     static native void focusChanged(int id, int change);
     static native void becomingNoisy(int id);
+    static native void volumeChanged(int id);
     static native void sessionCommand(int id, int command, long positionMs, float speed);
 
     private KilnMedia() {}
@@ -142,6 +143,77 @@ final class KilnMedia {
         } else if (!enabled && r != null) {
             sContext.unregisterReceiver(r);
             sNoisy.remove(id);
+        }
+    }
+
+    // --- device volume (StreamVolumeManager) ---------------------------------------------------
+    /** {volume, muted, min, max} of an AudioManager stream (AudioManagerCompat). */
+    static int[] streamVolume(int stream) {
+        AudioManager a = sContext == null ? null : audio();
+        if (a == null) return new int[] { 0, 0, 0, 0 };
+        int volume, max = a.getStreamMaxVolume(stream), min = a.getStreamMinVolume(stream);
+        try {
+            volume = a.getStreamVolume(stream);
+        } catch (RuntimeException e) {   // some devices throw for some streams
+            volume = max;
+        }
+        return new int[] { volume, a.isStreamMute(stream) ? 1 : 0, min, max };
+    }
+    static void setStreamVolume(int stream, int volume, int flags) {
+        if (sContext != null) audio().setStreamVolume(stream, volume, flags);
+    }
+    static void adjustStreamVolume(int stream, int direction, int flags) {
+        if (sContext != null) audio().adjustStreamVolume(stream, direction, flags);
+    }
+    private static final SparseArray<BroadcastReceiver> sVolume = new SparseArray<>();
+    static void setVolumeReceiver(int id, boolean enabled) {
+        if (sContext == null) return;
+        BroadcastReceiver r = sVolume.get(id);
+        if (enabled && r == null) {
+            r = new BroadcastReceiver() {
+                @Override public void onReceive(Context context, Intent intent) { sMain.post(() -> volumeChanged(id)); }
+            };
+            sVolume.put(id, r);
+            // AudioManager.VOLUME_CHANGED_ACTION (hidden; media3 uses it too): a system broadcast.
+            sContext.registerReceiver(r, new IntentFilter("android.media.VOLUME_CHANGED_ACTION"));
+        } else if (!enabled && r != null) {
+            sContext.unregisterReceiver(r);
+            sVolume.remove(id);
+        }
+    }
+
+    // --- wake and Wi-Fi locks (WakeLockManager, WifiLockManager) -----------------------------------
+    private static final SparseArray<android.os.PowerManager.WakeLock> sWake = new SparseArray<>();
+    private static final SparseArray<android.net.wifi.WifiManager.WifiLock> sWifi = new SparseArray<>();
+    @SuppressWarnings("deprecation")
+    static void setLocks(int id, boolean wake, boolean wifi) {
+        if (sContext == null) return;
+        if (sContext.checkSelfPermission(android.Manifest.permission.WAKE_LOCK) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            if (wake || wifi) android.util.Log.w("kiln", "media: WAKE_LOCK permission not granted, can't keep playback awake");
+            return;
+        }
+        android.os.PowerManager.WakeLock w = sWake.get(id);
+        if (wake && w == null) {
+            w = sContext.getSystemService(android.os.PowerManager.class).newWakeLock(android.os.PowerManager.PARTIAL_WAKE_LOCK, "ExoPlayer:WakeLockManager");
+            w.setReferenceCounted(false);
+            sWake.put(id, w);
+        }
+        if (w != null) {
+            if (wake) w.acquire();
+            else w.release();
+        }
+        android.net.wifi.WifiManager.WifiLock l = sWifi.get(id);
+        if (wifi && l == null) {
+            android.net.wifi.WifiManager m = sContext.getApplicationContext().getSystemService(android.net.wifi.WifiManager.class);
+            if (m != null) {
+                l = m.createWifiLock(android.net.wifi.WifiManager.WIFI_MODE_FULL_HIGH_PERF, "ExoPlayer:WifiLockManager");
+                l.setReferenceCounted(false);
+                sWifi.put(id, l);
+            }
+        }
+        if (l != null) {
+            if (wifi) l.acquire();
+            else l.release();
         }
     }
 

@@ -12,6 +12,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <climits>
 #include <cmath>
 #include <map>
 #include <stdexcept>
@@ -115,6 +116,27 @@ namespace kiln::media {
         // When the engine last reported the position, to tell where playback is between reports.
         std::int64_t reportedPositionMs = -1;
         std::chrono::steady_clock::time_point reportedAt{};
+
+        AudioAttributes audioAttributes;
+        // Device volume (ExoPlayer's StreamVolumeManager), when enabled.
+        std::unique_ptr<StreamVolumeManager> deviceVolume;
+        // Wake and Wi-Fi locks (WakeLockManager, WifiLockManager).
+        WakeMode wakeMode = WakeMode::Local;
+        int lockId = NewAudioClientId();
+        bool heldWake = false, heldWifi = false;
+        // StuckPlayerDetector.
+        struct Stuck {
+            bool active = false;
+            std::chrono::steady_clock::time_point start{};
+            std::int64_t a = 0, b = 0;   // what must not change (position, buffered ...)
+            int item = -1;
+            rt::Job timer;
+        };
+        Stuck stuckBuffering, stuckPlaying, stuckNotEnding, stuckSuppressed;
+        int stuckBufferingMs = 600'000, stuckPlayingMs = 10'000, stuckNotEndingMs = 60'000, stuckSuppressedMs = 600'000;
+        bool stuckDetected = false;
+
+        ~Shared() { SetPlaybackLocks(lockId, false, false); }
 
         AudioFocusManager focus{ { .setVolumeMultiplier = [this](float) { ApplyVolume(); },
                                    .executePlayerCommand = [this](Command c) { Update(playWhenReady, c, reason); } } };
@@ -440,6 +462,11 @@ namespace kiln::media {
             s.isPlaying = s.state == PlaybackState::Ready && playWhenReady && suppression == PlaybackSuppression::None && engineState.isPlaying;
             UpdateCues();
             s.currentCues = cues;
+            if (deviceVolume) {
+                s.deviceInfo = { DeviceInfo::PlaybackType::Local, deviceVolume->MinVolume(), deviceVolume->MaxVolume() };
+                s.deviceVolume = deviceVolume->Volume();
+                s.deviceMuted = deviceVolume->IsMuted();
+            }
             s.tracks = CurrentTracks();
             s.isCurrentMediaItemSeekable = m && s.durationMs >= 0;
             // ExoPlayerImpl's permanent commands, then Util.getAvailableCommands (no ads, no live).
@@ -457,7 +484,82 @@ namespace kiln::media {
             s.availableCommands.Add(C::SeekToNext, !empty && s.hasNextMediaItem);
             s.availableCommands.Add(C::SeekBack, seekable);
             s.availableCommands.Add(C::SeekForward, seekable);
+            for (C c : { C::GetDeviceVolume, C::SetDeviceVolume, C::SetDeviceVolumeWithFlags, C::AdjustDeviceVolume, C::AdjustDeviceVolumeWithFlags })
+                s.availableCommands.Add(c, deviceVolume != nullptr);
+            UpdateLocks(s);
+            UpdateStuck(s);
             state.SetValue(s);
+            if (std::exchange(stuckDetected, false)) {
+                // onStuckPlayerDetected: stopInternal with a timeout error.
+                prepared = false;
+                ended = false;
+                Unload();
+                error = PlaybackException{ .errorCode = PlaybackException::Timeout, .message = "playback made no progress" };
+                Notify([&](PlayerListener& l) { if (l.onPlayerError) l.onPlayerError(*error); });
+                UpdateWithFocus(playWhenReady, reason);
+                Publish();
+            }
+        }
+
+        // updateWakeAndWifiLock: held while it plays or buffers to play, if the wake mode asks.
+        void UpdateLocks(const PlayerState& s) {
+            const bool active = (s.state == PlaybackState::Ready || s.state == PlaybackState::Buffering) && s.playWhenReady;
+            const bool wake = active && wakeMode != WakeMode::None, wifi = active && wakeMode == WakeMode::Network;
+            if (wake == heldWake && wifi == heldWifi) return;
+            heldWake = wake;
+            heldWifi = wifi;
+            SetPlaybackLocks(lockId, wake, wifi);
+        }
+
+        // StuckPlayerDetector: each detector restarts its timeout when what it watches changes,
+        // and fails the player when the timeout passes with nothing changed.
+        void Watch(Stuck& d, bool applies, std::int64_t a, std::int64_t b, int timeoutMs) {
+            if (!applies) {
+                if (d.active) d.timer.Cancel();
+                d.active = false;
+                return;
+            }
+            const auto now = rt::Dispatcher::Main().Now();
+            if (d.active && d.item == current && d.a == a && d.b == b) {
+                if (now - d.start >= std::chrono::milliseconds(timeoutMs)) stuckDetected = true;
+                return;
+            }
+            d.active = true;
+            d.start = now;
+            d.item = current;
+            d.a = a;
+            d.b = b;
+            d.timer.Cancel();
+            if (timeoutMs == INT_MAX) return;
+            d.timer = rt::Launch(rt::Dispatcher::Main(), [](std::weak_ptr<Shared> weak, int ms) -> rt::Task<> {
+                co_await rt::Delay(ms);
+                if (auto shared = weak.lock()) shared->Publish();
+            }(self, timeoutMs));
+        }
+        void UpdateStuck(const PlayerState& s) {
+            const bool hasItem = current < Count();
+            Watch(stuckBuffering, s.state == PlaybackState::Buffering && s.playWhenReady && s.suppression == PlaybackSuppression::None,
+                  s.bufferedPositionMs, 0, stuckBufferingMs);
+            Watch(stuckPlaying, s.isPlaying, s.positionMs, 0, stuckPlayingMs);
+            // Playing at (or past) the duration without ending; until then, a check when it should end.
+            const bool atEnd = s.isPlaying && hasItem && s.durationMs >= 0 && s.positionMs >= s.durationMs;
+            if (!atEnd) {
+                stuckNotEnding.timer.Cancel();
+                stuckNotEnding.active = false;
+                if (s.isPlaying && hasItem && s.durationMs >= 0) {
+                    const auto ms = int(std::ceil(double(s.durationMs - s.positionMs) / s.playbackParameters.speed));
+                    stuckNotEnding.timer = rt::Launch(rt::Dispatcher::Main(), [](std::weak_ptr<Shared> weak, int ms) -> rt::Task<> {
+                        co_await rt::Delay(ms);
+                        if (auto shared = weak.lock()) shared->Publish();
+                    }(self, std::max(ms, 1)));
+                }
+            } else {
+                Watch(stuckNotEnding, true, 0, 0, stuckNotEndingMs);
+            }
+            // Suppressed for a reason other than a transient focus loss (none of kiln's yet).
+            Watch(stuckSuppressed, s.playWhenReady && s.state != PlaybackState::Idle && s.state != PlaybackState::Ended
+                                       && s.suppression != PlaybackSuppression::None && s.suppression != PlaybackSuppression::TransientAudioFocusLoss,
+                  int(s.suppression), 0, stuckSuppressedMs);
         }
 
         // --- playlist edits (ExoPlayerImpl) -----------------------------------------------------
@@ -928,7 +1030,41 @@ namespace kiln::media {
     void Player::SetSurface(ui::PlatformSurface surface) {
         if (m_Shared->engine) m_Shared->engine->SetSurface(surface);
     }
+    void Player::SetDeviceVolumeControlEnabled(bool enabled) {
+        Shared& s = *m_Shared;
+        if (enabled == bool(s.deviceVolume)) return;
+        if (!enabled) s.deviceVolume.reset();
+        else {
+            std::weak_ptr<Shared> weak = s.self;
+            auto changed = [weak](auto&&...) { if (auto shared = weak.lock()) shared->Publish(); };
+            s.deviceVolume = std::make_unique<StreamVolumeManager>(VolumeControlStream(s.audioAttributes), changed, changed);
+        }
+        s.Publish();
+    }
+    void Player::SetDeviceVolume(int volume, int flags) { if (m_Shared->deviceVolume) m_Shared->deviceVolume->SetVolume(volume, flags); }
+    void Player::IncreaseDeviceVolume(int flags) { if (m_Shared->deviceVolume) m_Shared->deviceVolume->IncreaseVolume(flags); }
+    void Player::DecreaseDeviceVolume(int flags) { if (m_Shared->deviceVolume) m_Shared->deviceVolume->DecreaseVolume(flags); }
+    void Player::SetDeviceMuted(bool muted, int flags) { if (m_Shared->deviceVolume) m_Shared->deviceVolume->SetMuted(muted, flags); }
+    void Player::SetWakeMode(WakeMode mode) {
+        m_Shared->wakeMode = mode;
+        m_Shared->Publish();
+    }
+    void Player::SetStuckDetectionTimeoutsMs(int buffering, int playing, int notEnding, int suppressed) {
+        Shared& s = *m_Shared;
+        s.stuckBufferingMs = buffering;
+        s.stuckPlayingMs = playing;
+        s.stuckNotEndingMs = notEnding;
+        s.stuckSuppressedMs = suppressed;
+        for (auto* d : { &s.stuckBuffering, &s.stuckPlaying, &s.stuckNotEnding, &s.stuckSuppressed }) {
+            d->timer.Cancel();
+            d->active = false;
+        }
+        s.Publish();
+    }
+
     void Player::SetAudioAttributes(AudioAttributes attributes, bool handleAudioFocus) {
+        m_Shared->audioAttributes = attributes;
+        if (m_Shared->deviceVolume) m_Shared->deviceVolume->SetStreamType(VolumeControlStream(attributes));
         m_Shared->focus.SetAudioAttributes(handleAudioFocus ? std::optional(attributes) : std::nullopt);
         if (m_Shared->engine) m_Shared->engine->SetAudioAttributes(attributes);
         m_Shared->UpdateWithFocus(m_Shared->playWhenReady, m_Shared->reason);

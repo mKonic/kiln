@@ -12,6 +12,7 @@
 #include "kiln/media/TrackSelection.h"
 #include "kiln/ui/Configuration.h"
 #include <android/log.h>
+#include <dlfcn.h>
 #include <android/native_window.h>
 #include <media/NdkMediaCodec.h>
 #include <media/NdkMediaDataSource.h>
@@ -653,9 +654,11 @@ namespace kiln::android {
                 AAudioStreamBuilder_setSampleRate(b, m_SampleRate);
                 AAudioStreamBuilder_setUsage(b, aaudio_usage_t(m_Usage.load()));
                 AAudioStreamBuilder_setAllowedCapturePolicy(b, aaudio_allowed_capture_policy_t(m_CapturePolicy.load()));
-                if (__builtin_available(android 32, *))
-                    AAudioStreamBuilder_setSpatializationBehavior(b, m_Spatialization.load() == 1 ? AAUDIO_SPATIALIZATION_BEHAVIOR_NEVER
-                                                                                                    : AAUDIO_SPATIALIZATION_BEHAVIOR_AUTO);
+                // AAudioStreamBuilder_setSpatializationBehavior: API 32, above kiln's minimum.
+                using SetSpatialization = void (*)(AAudioStreamBuilder*, aaudio_spatialization_behavior_t);
+                static const auto setSpatialization = reinterpret_cast<SetSpatialization>(dlsym(RTLD_DEFAULT, "AAudioStreamBuilder_setSpatializationBehavior"));
+                if (setSpatialization)
+                    setSpatialization(b, m_Spatialization.load() == 1 ? AAUDIO_SPATIALIZATION_BEHAVIOR_NEVER : AAUDIO_SPATIALIZATION_BEHAVIOR_AUTO);
                 const int content = m_ContentType.load();
                 AAudioStreamBuilder_setContentType(b, content ? aaudio_content_type_t(content) : m_Video ? AAUDIO_CONTENT_TYPE_MOVIE : AAUDIO_CONTENT_TYPE_MUSIC);
                 if (AAudioStreamBuilder_openStream(b, &m_Stream) != AAUDIO_OK) {
