@@ -1,5 +1,6 @@
 #include "kiln/material3/adaptive/WindowAdaptiveInfo.h"
 #include "kiln/ui/Locals.h"
+#include "kiln/ui/MediaQuery.h"
 
 #include <algorithm>
 #include <initializer_list>
@@ -18,6 +19,23 @@ namespace kiln::material3::adaptive {
                               : largest(widthDp, { 0, WIDTH_DP_MEDIUM_LOWER_BOUND, WIDTH_DP_EXPANDED_LOWER_BOUND });
         return { width, largest(heightDp, { 0, HEIGHT_DP_MEDIUM_LOWER_BOUND, HEIGHT_DP_EXPANDED_LOWER_BOUND }) };
     }
+
+    rt::Local<std::vector<FoldingFeature>> LocalFoldingFeatures = rt::LocalWithComputedDefault<std::vector<FoldingFeature>>([](const rt::LocalAccessorScope& s) {
+        std::vector<FoldingFeature> out;
+        ui::Owner* owner = s.CurrentValue(ui::LocalOwner);
+        if (!owner) return out;
+        // Read as state: content that reads it recomposes when the device folds.
+        for (const auto& f : ui::MediaScopeOf(*owner).DisplayFolds()) {
+            FoldingFeature ff;
+            ff.bounds = f.bounds;
+            ff.orientation = f.IsHorizontal() ? FoldingFeature::Orientation::Horizontal : FoldingFeature::Orientation::Vertical;
+            ff.state = f.halfOpened ? FoldingFeature::State::HalfOpened : FoldingFeature::State::Flat;
+            ff.occlusionType = f.IsOccluding() ? FoldingFeature::OcclusionType::Full : FoldingFeature::OcclusionType::None;
+            ff.isSeparating = f.IsSeparating();
+            out.push_back(ff);
+        }
+        return out;
+    });
 
     Posture CalculatePosture(const std::vector<FoldingFeature>& foldingFeatures) {
         Posture p;

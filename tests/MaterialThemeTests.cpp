@@ -1,4 +1,5 @@
 #include "Check.h"
+#include "kiln/ui/MediaQuery.h"
 #include <numbers>
 #include <kiln/Function.h>
 
@@ -14729,4 +14730,38 @@ TEST(ModalBottomSheetSheetOffsetIsTaggedAsMotionFrameOfReference) {
         const ui::LayoutCoordinates root(&h.dialogs.back()->Root(), 0);
         CHECK(SheetOffsetIsMotion(root, sheet, *state));
     }
+}
+
+TEST(WindowAdaptiveInfoFollowsTheFoldsTheHostReports) {
+    using Fold = ui::OwnerMediaScope::DisplayFold;
+    ui::Owner owner;
+    owner.SetDensity({ 1, 1 });
+    rt::Composition composition{ owner.Root(), rt::Dispatcher::Main() };
+    adaptive::WindowAdaptiveInfo info;
+    std::vector<adaptive::FoldingFeature> features;
+    int compositions = 0;
+    composition.SetContent([&] {
+        rt::Composition::Current()->Provide(ui::LocalOwner, &owner, [&] {
+            ++compositions;
+            info = adaptive::CurrentWindowAdaptiveInfo();
+            features = rt::Composition::Current()->Read(adaptive::LocalFoldingFeatures);
+        });
+    });
+    composition.Recompose();
+    CHECK(features.empty() && !info.windowPosture.isTabletop && ui::MediaScopeOf(owner).GetWindowPosture().IsFlat());
+    // A book-style foldable, half open on its horizontal fold: tabletop.
+    ui::MediaScopeOf(owner).SetDisplayFolds({ Fold{ { 0, 1000, 1800, 1000 }, false, true } });
+    rt::Observation::ApplyChanges();
+    rt::Composition::RecomposeAll();
+    CHECK(compositions == 2 && features.size() == 1 && info.windowPosture.isTabletop);
+    CHECK(features.size() == 1 && features[0].orientation == adaptive::FoldingFeature::Orientation::Horizontal && features[0].isSeparating &&
+          features[0].occlusionType == adaptive::FoldingFeature::OcclusionType::None);
+    CHECK(ui::MediaScopeOf(owner).GetWindowPosture().IsTabletop());
+    // A vertical hinge with a width: separating and occluding, not tabletop.
+    ui::MediaScopeOf(owner).SetDisplayFolds({ Fold{ { 900, 0, 940, 2000 }, true, false } });
+    rt::Observation::ApplyChanges();
+    rt::Composition::RecomposeAll();
+    const ui::Rect hinge{ 900, 0, 940, 2000 };
+    CHECK(!info.windowPosture.isTabletop && info.windowPosture.SeparatingVerticalHingeBounds() == std::vector<ui::Rect>{ hinge });
+    CHECK(info.windowPosture.OccludingVerticalHingeBounds().size() == 1);
 }

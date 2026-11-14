@@ -109,6 +109,9 @@ cat > "$STAGING/AndroidManifest.xml" <<XML
         </intent>
     </queries>
     <application android:enableOnBackInvokedCallback="true">
+        <!-- The OEM window extensions (folds and hinges), where the device has them. -->
+        <uses-library android:name="androidx.window.extensions" android:required="false" />
+        <uses-library android:name="androidx.window.sidecar" android:required="false" />
         <!-- Apps add the dev.kiln.lib_name meta-data and their launcher intent filter. -->
         <activity android:name="dev.kiln.KilnActivity"
                   android:theme="@android:style/Theme.DeviceDefault.NoActionBar"

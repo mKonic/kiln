@@ -27,6 +27,13 @@ namespace kiln::ui {
         const NoMediaScope g_NoMedia;
     }
 
+    UiMediaScope::WindowPosture OwnerMediaScope::GetWindowPosture() const {
+        WindowPosture p;
+        for (const DisplayFold& f : m_Folds.Get())
+            p.folds.push_back({ f.halfOpened ? FoldState::HalfOpened : FoldState::Flat, f.IsHorizontal() ? FoldOrientation::Horizontal : FoldOrientation::Vertical });
+        return p;
+    }
+
     OwnerMediaScope& MediaScopeOf(Owner& owner) {
         auto& slot = owner.Service("UiMediaScope");
         if (!slot) slot = std::make_shared<OwnerMediaScope>(owner);

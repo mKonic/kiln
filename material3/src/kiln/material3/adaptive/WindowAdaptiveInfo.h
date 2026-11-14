@@ -63,9 +63,12 @@ namespace kiln::material3::adaptive {
         State state = State::Flat;
         OcclusionType occlusionType = OcclusionType::None;
         bool isSeparating = false;
+        bool operator==(const FoldingFeature&) const = default;
     };
-    // The window's folding features (collectFoldingFeaturesAsState); empty where the host has none.
-    inline rt::Local<std::vector<FoldingFeature>> LocalFoldingFeatures{ {} };
+    // The window's folding features (collectFoldingFeaturesAsState): by default the folds the
+    // host reports for the window (Android's window extensions); empty where it has none.
+    // Provide a value to simulate a posture.
+    extern rt::Local<std::vector<FoldingFeature>> LocalFoldingFeatures;
 
     struct Posture {
         bool isTabletop = false;

@@ -1409,6 +1409,19 @@ namespace {
         __android_log_print(ANDROID_LOG_DEBUG, "kiln", "trim memory %d: %zu KB of GPU caches freed", int(level), freed / 1024);
     }
 
+    // KilnWindowLayout: the window's folds (androidx.window extensions).
+    void SetDisplayFolds(JNIEnv* env, jclass, jint win, jintArray data) {
+        WinScope ws(win);
+        if (!ws || !g_Host) return;
+        std::vector<jint> v(std::size_t(env->GetArrayLength(data)));
+        env->GetIntArrayRegion(data, 0, jsize(v.size()), v.data());
+        std::vector<kiln::ui::OwnerMediaScope::DisplayFold> folds;
+        for (std::size_t i = 0; i + 6 <= v.size(); i += 6)
+            folds.push_back({ { float(v[i]), float(v[i + 1]), float(v[i + 2]), float(v[i + 3]) }, v[i + 4] != 0, v[i + 5] != 0 });
+        kiln::ui::MediaScopeOf(CurOwner()).SetDisplayFolds(std::move(folds));
+        g_Host->app->RequestFrame();
+    }
+
     void FontsChanged(JNIEnv*, jclass) {
         if (!g_Host) return;
         g_Host->app->GetOwner().OnFontsChanged();
@@ -3397,6 +3410,7 @@ extern "C" JNIEXPORT jint kiln_jni_onload(JavaVM* vm) {
         { "flagSecureChanged", "(Z)V", reinterpret_cast<void*>(&FlagSecureChanged) },
         { "fontsChanged", "()V", reinterpret_cast<void*>(&FontsChanged) },
         { "trimMemory", "(I)V", reinterpret_cast<void*>(&TrimMemory) },
+        { "setDisplayFolds", "(I[I)V", reinterpret_cast<void*>(&SetDisplayFolds) },
         { "textToolbarItem", "(II)V", reinterpret_cast<void*>(&TextToolbarItem) },
         { "textToolbarDestroyed", "(I)V", reinterpret_cast<void*>(&TextToolbarDestroyed) },
         { "classifierResult", "(IZIII[Ljava/lang/String;Z)V", reinterpret_cast<void*>(&ClassifierResult) },

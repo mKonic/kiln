@@ -110,6 +110,9 @@ $PERMISSION_XML$EXTRA_MANIFEST
     <application android:label="$LABEL" $ICON_ATTR android:supportsRtl="true" android:hasCode="true" android:extractNativeLibs="false"
                  android:enableOnBackInvokedCallback="true" $DEBUG_ATTR $APPLICATION_ATTRIBUTES
                  android:theme="@android:style/Theme.DeviceDefault.NoActionBar">
+        <!-- The OEM window extensions (folds and hinges), where the device has them. -->
+        <uses-library android:name="androidx.window.extensions" android:required="false" />
+        <uses-library android:name="androidx.window.sidecar" android:required="false" />
         <activity android:name="dev.kiln.KilnActivity" android:exported="true"
                   android:windowSoftInputMode="adjustResize" $ACTIVITY_ATTRIBUTES
                   android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|uiMode|density|fontScale|fontWeightAdjustment|keyboard|keyboardHidden|navigation|locale|layoutDirection|colorMode|touchscreen|grammaticalGender">

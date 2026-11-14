@@ -65,12 +65,26 @@ namespace kiln::ui {
             bool microphone = false, camera = false, television = false, automotive = false, docked = false;
             bool operator==(const Features&) const = default;
         };
+        // A fold or hinge of the display as the platform reports it (the window extensions'
+        // FoldingFeature), in window pixels.
+        struct DisplayFold {
+            Rect bounds;
+            bool hinge = false;        // TYPE_HINGE, else TYPE_FOLD
+            bool halfOpened = false;   // STATE_HALF_OPENED, else STATE_FLAT
+            bool operator==(const DisplayFold&) const = default;
+            // HardwareFoldingFeature's derived properties.
+            bool IsHorizontal() const { return bounds.Width() > bounds.Height(); }
+            bool IsSeparating() const { return hinge || halfOpened; }
+            bool IsOccluding() const { return bounds.Width() != 0 && bounds.Height() != 0; }
+        };
         explicit OwnerMediaScope(Owner& owner) : m_Owner(owner) {}
         ~OwnerMediaScope() override;
         void SetFeatures(Features f) { m_Features.Set(f); }
-        void SetWindowPosture(WindowPosture p) { m_Posture.Set(std::move(p)); }
+        // The window's folds (the host's WindowLayoutInfo listener); the posture follows.
+        void SetDisplayFolds(std::vector<DisplayFold> folds) { m_Folds.Set(std::move(folds)); }
+        const std::vector<DisplayFold>& DisplayFolds() const { return m_Folds.Get(); }
 
-        WindowPosture GetWindowPosture() const override { return m_Posture.Get(); }
+        WindowPosture GetWindowPosture() const override;
         Dp WindowWidth() const override;
         Dp WindowHeight() const override;
         PointerPrecision GetPointerPrecision() const override;
@@ -83,7 +97,7 @@ namespace kiln::ui {
         void Listen() const;
         Owner& m_Owner;
         rt::State<Features> m_Features;
-        rt::State<WindowPosture> m_Posture;
+        rt::State<std::vector<DisplayFold>> m_Folds;
         mutable bool m_Listening = false;
     };
 

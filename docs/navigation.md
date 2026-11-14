@@ -121,3 +121,10 @@ The Material 3 adaptive components build on navigation:
   window size.
 * `ThreePaneScaffold` and its navigator lay out list, detail and extra panes, as one pane
   on a phone and side by side on a tablet.
+
+They read the window from `adaptive::CurrentWindowAdaptiveInfo()`: its size class, and its
+posture on a foldable. On Android, kiln reads the device's folds and hinges from the window
+extensions, as androidx.window does. A pane scaffold then keeps its panes off a hinge, and
+`windowPosture.isTabletop` is true when a horizontal fold is half open.
+`adaptive::LocalFoldingFeatures` holds the folds; provide a value to try a posture on a
+device without one.
