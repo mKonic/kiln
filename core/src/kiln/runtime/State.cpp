@@ -12,9 +12,21 @@ namespace kiln::rt {
             kiln::Function<void()> listener;
             std::unordered_set<Subscriber*>* notifying = nullptr;
         };
+        // A thread's registry goes with the thread's other thread_locals, before static objects
+        // on the main thread; a static holding a state (a lifecycle registry) forgets itself
+        // later. Past that point the thread gets a registry that is never destroyed.
+        thread_local bool t_RegistryGone = false;   // trivially destructible: readable to the end
+        struct RegistryHolder {
+            Registry registry;
+            ~RegistryHolder() { t_RegistryGone = true; }
+        };
         Registry& R() {
-            thread_local Registry registry;
-            return registry;
+            if (t_RegistryGone) [[unlikely]] {
+                thread_local Registry* late = new Registry;   // left to the process's exit
+                return *late;
+            }
+            thread_local RegistryHolder holder;
+            return holder.registry;
         }
         void Erase(std::vector<Subscriber*>& v, Subscriber* s) {
             for (std::size_t i = 0; i < v.size(); ++i)
