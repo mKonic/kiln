@@ -568,7 +568,8 @@ namespace kiln::foundation {
                 if (used >= slotsPerLine) used = 0;
             }
         }
-        int LineCount() const { return regular ? (count + slotsPerLine - 1) / slotsPerLine : int(lineStarts.size()); }
+        // In 64 bits: Int.MAX_VALUE items (an endless list) would overflow rounding up.
+        int LineCount() const { return regular ? int((std::int64_t(count) + slotsPerLine - 1) / slotsPerLine) : int(lineStarts.size()); }
         int LineOf(int index) const {
             if (regular) return index / slotsPerLine;
             auto it = std::upper_bound(lineStarts.begin(), lineStarts.end(), index);
@@ -576,7 +577,7 @@ namespace kiln::foundation {
         }
         int LineFirst(int line) const { return regular ? line * slotsPerLine : lineStarts[std::size_t(line)]; }
         int LineEnd(int line) const {
-            if (regular) return std::min(count, (line + 1) * slotsPerLine);
+            if (regular) return int(std::min<std::int64_t>(count, (std::int64_t(line) + 1) * slotsPerLine));
             return line + 1 < int(lineStarts.size()) ? lineStarts[std::size_t(line) + 1] : count;
         }
 
