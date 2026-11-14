@@ -5,7 +5,8 @@
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/android-env.sh"
 pkg=dev.kiln.bridgesample
-"$KILN_ROOT/tools/kiln" apk bridge --abi "$("$ADB" shell getprop ro.product.cpu.abi | tr -d '\r')" >/dev/null
+log="$KILN_ROOT/build/bridge-test.log"
+"$KILN_ROOT/tools/kiln" apk bridge >"$log" 2>&1 || { cat "$log" >&2; exit 1; }
 "$ADB" install -r "$KILN_ROOT/build/apk/bridge.apk" >/dev/null
 "$ADB" shell am force-stop "$pkg"
 failures=0

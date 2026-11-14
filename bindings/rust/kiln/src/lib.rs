@@ -75,6 +75,7 @@ __kiln_callback!(sys::kiln_fn_bool, (v: bool) -> ());
 __kiln_callback!(sys::kiln_fn_http, (r: *const sys::kiln_http_response) -> ());
 __kiln_callback!(sys::kiln_fn_sensor, (v: *const f32, n: i32, t: i64) -> ());
 __kiln_callback!(sys::kiln_fn_location, (has: bool, lat: f64, lon: f64, acc: f32) -> ());
+__kiln_callback!(sys::kiln_fn_worker, (name: *const std::ffi::c_char, input: *const std::ffi::c_char, attempt: i32, done: *mut sys::kiln_work_done) -> ());
 __kiln_callback!(sys::kiln_fn_biometric, (ok: bool, code: i32, msg: *const std::ffi::c_char) -> ());
 __kiln_callback!(sys::kiln_fn_int, (v: i32) -> ());
 __kiln_callback!(sys::kiln_fn_float, (v: f32) -> ());
@@ -796,6 +797,31 @@ pub fn authenticate(title: &str, mut f: impl FnMut(Result<(), (i32, String)>) + 
     let cb = move |ok: bool, code: i32, msg: *const std::ffi::c_char| f(if ok { Ok(()) } else { Err((code, from_c(msg))) });
     unsafe { sys::kiln_authenticate(t.ptr(), std::ptr::null(), std::ptr::null(), 0, IntoCallback::<sys::kiln_fn_biometric>::into_callback(cb)) }
 }
+
+/// A background worker's answer: call [`WorkDone::complete`] once, from any thread.
+pub struct WorkDone(*mut sys::kiln_work_done);
+unsafe impl Send for WorkDone {}
+impl WorkDone {
+    pub fn complete(self, result: sys::kiln_work_result) { unsafe { sys::kiln_work_complete(self.0, result) } }
+}
+/// Registers a background worker: `f(name, input, attempt, done)`. Register it as the library
+/// loads (in the cdylib's `JNI_OnLoad`, before `kiln_jni_onload`).
+pub fn register_worker(name: &str, mut f: impl FnMut(&str, &str, i32, WorkDone) + 'static) {
+    let n = CStrBuf::new(name);
+    let cb = move |name: *const std::ffi::c_char, input: *const std::ffi::c_char, attempt: i32, done: *mut sys::kiln_work_done| {
+        f(&from_c(name), &from_c(input), attempt, WorkDone(done))
+    };
+    unsafe { sys::kiln_work_register_worker(n.ptr(), IntoCallback::<sys::kiln_fn_worker>::into_callback(cb)) }
+}
+/// Enqueues unique work (see kiln_work_enqueue); `keep_existing` leaves a scheduled one alone.
+pub fn enqueue_work(name: &str, worker: &str, input: &str, request: sys::kiln_work_request, keep_existing: bool) {
+    let (n, w, i) = (CStrBuf::new(name), CStrBuf::new(worker), CStrBuf::new(input));
+    let mut r = request;
+    r.worker = w.ptr();
+    r.input = i.ptr();
+    unsafe { sys::kiln_work_enqueue(n.ptr(), &r, keep_existing) }
+}
+pub fn cancel_work(name: &str) { let n = CStrBuf::new(name); unsafe { sys::kiln_work_cancel(n.ptr()) } }
 
 /// Keeps the launch splash screen up while true (after the first frame it would go).
 pub fn keep_splash_screen(keep: bool) { unsafe { sys::kiln_keep_splash_screen(keep) } }

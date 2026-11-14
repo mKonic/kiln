@@ -14,5 +14,8 @@
         </activity>
         <!-- tools/bridge-test: the bridge's checks, run with no activity. -->
         <receiver android:name=".SelfTest" android:exported="true" />
+        <!-- kiln::work's jobs (JobScheduler). -->
+        <service android:name="dev.kiln.KilnJobService" android:exported="false"
+                 android:permission="android.permission.BIND_JOB_SERVICE" />
     </application>
 </manifest>

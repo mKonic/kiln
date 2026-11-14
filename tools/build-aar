@@ -117,6 +117,9 @@ cat > "$STAGING/AndroidManifest.xml" <<XML
                   android:theme="@android:style/Theme.DeviceDefault.NoActionBar"
                   android:windowSoftInputMode="adjustResize"
                   android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|uiMode|density|fontScale|fontWeightAdjustment|keyboard|keyboardHidden|navigation|locale|layoutDirection|colorMode|touchscreen|grammaticalGender" />
+        <!-- kiln::work's jobs (JobScheduler). -->
+        <service android:name="dev.kiln.KilnJobService" android:exported="false"
+                 android:permission="android.permission.BIND_JOB_SERVICE" />
     </application>
 </manifest>
 XML

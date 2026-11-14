@@ -20,6 +20,7 @@
 #include "kiln/ui/Biometric.h"
 #include "kiln/ui/Location.h"
 #include "kiln/ui/Notifications.h"
+#include "kiln/work/Work.h"
 #include "kiln/ui/Sensors.h"
 #include "kiln/ui/Vibration.h"
 #include "kiln/ui/PictureInPicture.h"
@@ -2329,6 +2330,92 @@ KILN_API void kiln_authenticate(const char* title, const char* subtitle, const c
 KILN_API bool kiln_create_notification_channel(const char* id, const char* name, int32_t importance) {
     TRY { return id && name && kiln::ui::CreateNotificationChannel({ id, name, "", importance ? importance : kiln::ui::kImportanceDefault }); } CATCH(false)
 }
+// --- background work --------------------------------------------------------------------------
+
+namespace {
+    // A C worker's answer: kiln_work_complete posts it to the worker's dispatcher.
+    struct WorkDone {
+        std::optional<kiln::work::Result> result;
+        std::coroutine_handle<> h;
+        std::weak_ptr<kiln::rt::JobState> job;
+        kiln::rt::Dispatcher* home = nullptr;
+    };
+    struct AwaitWorkDone {
+        std::shared_ptr<WorkDone> s;
+        bool await_ready() const noexcept { return s->result.has_value(); }
+        template<typename P>
+        void await_suspend(std::coroutine_handle<P> h) {
+            s->h = h;
+            s->job = h.promise().job;
+        }
+        kiln::work::Result await_resume() const { return *s->result; }
+    };
+}
+struct kiln_work_done {
+    std::shared_ptr<WorkDone> state;
+};
+
+KILN_API void kiln_work_register_worker(const char* name, kiln_fn_worker worker) {
+    auto owned = kiln::capi::Own(worker);
+    TRY {
+        kiln::work::RegisterWorker(name ? name : "", [owned](kiln::work::WorkContext c) -> kiln::rt::Task<kiln::work::Result> {
+            auto s = std::make_shared<WorkDone>();
+            s->home = &kiln::rt::Dispatcher::Main();
+            {
+                kiln::capi::CallbackScope scope;
+                owned->f.call(owned->f.user, c.name.c_str(), c.input.c_str(), c.runAttemptCount, new kiln_work_done{ s });
+            }
+            co_return co_await AwaitWorkDone{ s };
+        });
+    } CATCH_VOID
+}
+
+KILN_API void kiln_work_complete(kiln_work_done* done, kiln_work_result result) {
+    if (!done) return;
+    std::shared_ptr<WorkDone> s = std::move(done->state);
+    delete done;
+    kiln::work::Result r = result == KILN_WORK_RETRY ? kiln::work::Result::Retry()
+                         : result == KILN_WORK_FAILURE ? kiln::work::Result::Failure() : kiln::work::Result::Success();
+    // Resumed on the worker's dispatcher after it has suspended (never inside its callback).
+    s->home->PostFromAnyThread([s, r] {
+        s->result = r;
+        if (!s->h) return;
+        auto job = s->job.lock();
+        if (!job || job->cancelled) return;
+        kiln::rt::ResumeJob(job, std::exchange(s->h, {}));
+    });
+}
+
+KILN_API void kiln_work_enqueue(const char* name, const kiln_work_request* r, bool keep) {
+    TRY {
+        if (!name || !r) return;
+        kiln::work::WorkRequest w;
+        w.worker = r->worker ? r->worker : "";
+        w.input = r->input ? r->input : "";
+        w.constraints.requiredNetwork = kiln::work::NetworkType(std::clamp(int(r->network), 0, int(kiln::work::NetworkType::TemporarilyUnmetered)));
+        w.constraints.requiresCharging = r->requires_charging;
+        w.constraints.requiresDeviceIdle = r->requires_device_idle;
+        w.constraints.requiresBatteryNotLow = r->requires_battery_not_low;
+        w.constraints.requiresStorageNotLow = r->requires_storage_not_low;
+        w.initialDelayMillis = r->initial_delay_ms;
+        w.backoffPolicy = r->linear_backoff ? kiln::work::BackoffPolicy::Linear : kiln::work::BackoffPolicy::Exponential;
+        if (r->backoff_delay_ms > 0) w.backoffDelayMillis = r->backoff_delay_ms;
+        w.repeatIntervalMillis = std::max<int64_t>(r->repeat_interval_ms, 0);
+        w.flexMillis = std::max<int64_t>(r->flex_ms, 0);
+        w.expedited = r->expedited;
+        kiln::work::Enqueue(name, std::move(w), keep ? kiln::work::ExistingWorkPolicy::Keep : kiln::work::ExistingWorkPolicy::Replace);
+    } CATCH_VOID
+}
+KILN_API void kiln_work_cancel(const char* name) {
+    TRY { if (name) kiln::work::Cancel(name); } CATCH_VOID
+}
+KILN_API void kiln_work_cancel_all(void) {
+    TRY { kiln::work::CancelAll(); } CATCH_VOID
+}
+KILN_API bool kiln_work_is_scheduled(const char* name) {
+    TRY { return name && kiln::work::Find(name).has_value(); } CATCH(false)
+}
+
 KILN_API bool kiln_notify(int32_t id, const char* channel, const char* title, const char* text, const char* data) {
     TRY {
         kiln::ui::Notification n;

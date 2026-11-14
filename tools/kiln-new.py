@@ -225,6 +225,9 @@ GRADLE_MANIFEST = '''<?xml version="1.0" encoding="utf-8"?>
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <!-- kiln::work's jobs (JobScheduler). -->
+        <service android:name="dev.kiln.KilnJobService" android:exported="false"
+                 android:permission="android.permission.BIND_JOB_SERVICE" />
     </application>
 </manifest>
 '''

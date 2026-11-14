@@ -184,6 +184,9 @@ $PERMISSION_XML$EXTRA_MANIFEST
 $EXTRA_ACTIVITY
         </activity>
         $DEBUG_PROVIDER
+        <!-- kiln::work's jobs (JobScheduler). -->
+        <service android:name="dev.kiln.KilnJobService" android:exported="false"
+                 android:permission="android.permission.BIND_JOB_SERVICE" />
 $EXTRA_APPLICATION
     </application>
 </manifest>

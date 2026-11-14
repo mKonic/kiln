@@ -7,6 +7,7 @@
 #include "AndroidDevice.h"
 #include "AndroidResources.h"
 #include "kiln/jvm/Jvm.h"
+#include "AndroidWork.h"
 #include "kiln/ui/ActivityIntent.h"
 #include "kiln/ui/AppDirectories.h"
 
@@ -1311,7 +1312,9 @@ namespace {
         });
     }
 
-    void Create(JNIEnv* env, jclass, jobject view, jobject text, jobject assets, jfloat density, jfloat fontScale, jbyteArray saved) {
+    // What works in any process of the app, an activity or not (a job, a bridged service):
+    // installed as the library loads.
+    void InstallProcessHosts(JNIEnv* env) {
         hearth::SetLogSink(&LogToLogcat);
         // kiln::log: logcat, with Log.isLoggable's per-tag levels (Info by default).
         kiln::log::SetSink([](kiln::log::Level level, std::string_view tag, std::string_view message) {
@@ -1332,11 +1335,14 @@ namespace {
             .asyncEnd = [](const char* name, std::int32_t cookie) { ATrace_endAsyncSection(name, cookie); },
         });
         kiln::android::InstallImageDecoder();
+        kiln::android::InstallHttp(env);
+    }
+
+    void Create(JNIEnv* env, jclass, jobject view, jobject text, jobject assets, jfloat density, jfloat fontScale, jbyteArray saved) {
         kiln::android::InstallAssetReader(env, assets);
         kiln::android::InstallDateFormat(env);
         kiln::android::InstallAppResources(env);
         kiln::android::InstallContentResolver(env);
-        kiln::android::InstallHttp(env);
         kiln::android::InstallDevice(env, [] { if (g_Host && g_Host->app) g_Host->app->RequestFrame(); });
         {
             // ui::StartActivity / ShouldShowRequestPermissionRationale on the main window's view.
@@ -3698,6 +3704,8 @@ extern "C" JNIEXPORT jint kiln_jni_onload(JavaVM* vm) {
     };
     if (env->RegisterNatives(cls, methods, sizeof(methods) / sizeof(methods[0])) != JNI_OK) return JNI_ERR;
     kiln::jvm::Install(vm, env);
+    InstallProcessHosts(env);
+    kiln::android::InstallWork(env);
     return JNI_VERSION_1_6;
 }
 

@@ -509,6 +509,38 @@ KILN_API bool kiln_notify(int32_t id, const char* channel_id, const char* title,
 KILN_API void kiln_cancel_notification(int32_t id);
 KILN_API bool kiln_notifications_enabled(void);
 
+/* Background work (WorkManager's model over JobScheduler): a unique work runs its registered
+ * worker when its constraints hold, even after the app's process has gone; workers answer with
+ * kiln_work_complete (once, from any thread), retried with backoff on KILN_WORK_RETRY. Register
+ * workers as the library loads (a C __attribute__((constructor)), or a Rust cdylib's JNI_OnLoad
+ * before kiln_jni_onload), so a process started for a job has them. A zeroed request runs once,
+ * at once, with no constraints. Network constraints need android.permission.ACCESS_NETWORK_STATE. */
+typedef enum kiln_work_network {
+    KILN_WORK_NETWORK_NOT_REQUIRED, KILN_WORK_NETWORK_CONNECTED, KILN_WORK_NETWORK_UNMETERED,
+    KILN_WORK_NETWORK_NOT_ROAMING, KILN_WORK_NETWORK_METERED, KILN_WORK_NETWORK_TEMPORARILY_UNMETERED,
+} kiln_work_network;
+typedef struct kiln_work_request {
+    const char* worker;
+    const char* input;                 /* may be NULL */
+    kiln_work_network network;
+    bool requires_charging, requires_device_idle, requires_battery_not_low, requires_storage_not_low;
+    int64_t initial_delay_ms;
+    bool linear_backoff;               /* else exponential */
+    int64_t backoff_delay_ms;          /* 0: 30 s */
+    int64_t repeat_interval_ms;        /* periodic when > 0 (at least 15 min) */
+    int64_t flex_ms;                   /* 0: the whole interval */
+    bool expedited;
+} kiln_work_request;
+typedef enum kiln_work_result { KILN_WORK_SUCCESS, KILN_WORK_FAILURE, KILN_WORK_RETRY } kiln_work_result;
+typedef struct kiln_work_done kiln_work_done;
+typedef struct kiln_fn_worker { void (*call)(void* user, const char* name, const char* input, int32_t run_attempt_count, kiln_work_done* done); void* user; void (*drop)(void* user); } kiln_fn_worker;
+KILN_API void kiln_work_register_worker(const char* name, kiln_fn_worker worker);
+KILN_API void kiln_work_complete(kiln_work_done* done, kiln_work_result result);
+KILN_API void kiln_work_enqueue(const char* unique_name, const kiln_work_request* request, bool keep_existing);
+KILN_API void kiln_work_cancel(const char* unique_name);
+KILN_API void kiln_work_cancel_all(void);
+KILN_API bool kiln_work_is_scheduled(const char* unique_name);
+
 /* Device: vibration patterns (VibrationEffect; needs android.permission.VIBRATE), sensors
  * (Sensor.TYPE_*; events on the main thread until stopped), location (needs a location
  * permission; the callback runs once, has_fix false when there is none) and the biometric

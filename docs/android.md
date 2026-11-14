@@ -286,6 +286,54 @@ void NotifySynced(int count) {
 * With `ACTIVITY_ATTRIBUTES "android:launchMode=\"singleTop\""` a tap reaches the running
   activity rather than starting another.
 
+## Background work
+
+`kiln::work` (`kiln/work/Work.h`) runs work when its constraints hold, even after the
+app's process has gone. It follows WorkManager's model, on top of JobScheduler. Register a
+worker at namespace scope, so that a process the system starts only to run a job also has
+it:
+
+<!-- prelude: std::string url; -->
+```cpp
+kiln::work::WorkerRegistration sync("sync", [](kiln::work::WorkContext c) -> kiln::rt::Task<kiln::work::Result> {
+    try {
+        kiln::net::HttpResponse r = co_await kiln::net::Fetch({ .url = c.input });
+        co_return r.Ok() ? kiln::work::Result::Success() : kiln::work::Result::Retry();
+    } catch (const kiln::net::HttpError&) {
+        co_return kiln::work::Result::Retry();
+    }
+});
+
+void ScheduleSync() {
+    kiln::work::Enqueue("sync-notes", { .worker = "sync", .input = url,
+                                        .constraints = { .requiredNetwork = kiln::work::NetworkType::Connected },
+                                        .repeatIntervalMillis = 60 * 60 * 1000 });
+}
+```
+
+* Work is unique by name. Enqueuing the same name replaces the scheduled work, or keeps it
+  with `ExistingWorkPolicy::Keep`. `Cancel` and `CancelAll` remove work, and `Works()` lists
+  what is scheduled or running.
+* `Result::Retry()` runs the work again after the backoff delay. With exponential backoff
+  (the default) the delay doubles each attempt; with linear backoff it grows by the delay
+  each time. The default delay is 30 s and the most is 5 hours. `WorkContext::runAttemptCount`
+  counts the attempts.
+* Periodic work (`repeatIntervalMillis`, at least 15 minutes) runs once per interval, inside
+  the `flexMillis` window at the interval's end. A run that fails still runs again next
+  period.
+* A worker runs on the main dispatcher, whether or not an activity is open. When the system
+  stops it early, because a constraint stopped holding or its time ran out, the worker's task
+  is cancelled and the job runs again later.
+* Network constraints need `android.permission.ACCESS_NETWORK_STATE`. Jobs survive a reboot
+  when the app holds `android.permission.RECEIVE_BOOT_COMPLETED`.
+* On the desktop, work runs in the app's process when it is due, and constraints are
+  ignored.
+
+From C, `kiln_work_register_worker` and `kiln_work_enqueue` do the same; a C worker answers
+through `kiln_work_complete`. Register C workers in a function marked
+`__attribute__((constructor))`. A Rust cdylib registers them in its `JNI_OnLoad`, before it
+calls `kiln_jni_onload`.
+
 ## Device features
 
 Vibration patterns, sensors, location and the biometric prompt, each in `kiln/ui`:

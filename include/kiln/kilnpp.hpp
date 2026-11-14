@@ -857,6 +857,16 @@ namespace kpp {
         kiln_authenticate(title, nullptr, nullptr, authenticators, fn<kiln_fn_biometric>(std::forward<F>(f)));
     }
 
+    // Background work; see kiln_work_enqueue. f(name, input, attempt, done) answers with
+    // kiln_work_complete(done, ...).
+    template<typename F> void register_worker(const char* name, F&& f) {
+        kiln_work_register_worker(name, fn<kiln_fn_worker>(std::forward<F>(f)));
+    }
+    inline void enqueue_work(const char* name, const kiln_work_request& request, bool keepExisting = false) {
+        kiln_work_enqueue(name, &request, keepExisting);
+    }
+    inline void cancel_work(const char* name) { kiln_work_cancel(name); }
+
     // See kiln_keep_splash_screen.
     inline void keep_splash_screen(bool keep) { kiln_keep_splash_screen(keep); }
 
