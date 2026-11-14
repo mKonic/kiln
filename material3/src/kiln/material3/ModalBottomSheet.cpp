@@ -105,11 +105,14 @@ namespace kiln::material3 {
         dialog.usePlatformDefaultWidth = false;
         dialog.decorFitsSystemWindows = false;
         dialog.scrimAlpha = 0;
+        dialog.windowAnimations = false;   // EdgeToEdgeFloatingDialogTheme: windowAnimationStyle @null
         // Color.isDark: not transparent and luminance at most 0.5.
         const bool darkContent = !(contentColor == Color::Transparent()) && Luminance(contentColor) <= 0.5f;
         const bool lightStatusBars = properties.isAppearanceLightStatusBars.value_or(darkContent);
         const bool lightNavigationBars = properties.isAppearanceLightNavigationBars.value_or(darkContent);
-        Dialog(settleToDismiss, dialog, [](BackProgress& events) { return HoldBack(events); }, [=] {
+        // Held until the sheet's window can show it: the slide in starts on its first frame.
+        const auto shown = c.Remember<std::shared_ptr<rt::FrameGate>>([] { return std::make_shared<rt::FrameGate>(); });
+        foundation::GatedDialog(settleToDismiss, dialog, [](BackProgress& events) { return HoldBack(events); }, [=] {
             // updateParameters: the sheet window's bar icons follow its content.
             if (ui::Owner* window = rt::Composition::Current()->Read(ui::LocalOwner))
                 rt::Composition::Current()->SideEffect([window, lightStatusBars, lightNavigationBars] { window->SetSystemBarsAppearance(lightStatusBars, lightNavigationBars); });
@@ -136,12 +139,13 @@ namespace kiln::material3 {
                 m = ConsumeWindowInsets(std::move(m), sheetInsets);
                 BottomSheet(m, sheet, content);
             });
-        });
+        }, shown);
 
         if (state->HasExpandedState()) {
-            c.LaunchedEffect(rt::Keys(state.get()), [state]() -> rt::Task<> {
+            c.LaunchedEffect(rt::Keys(state.get()), [state, shown]() -> rt::Task<> {
                 const bool shouldShow = !ComposeMaterial3Flags::isModalBottomSheetStateRestorationFixEnabled ||
                                         state->Anchored().TargetValue() == SheetValue::Hidden;
+                co_await rt::GateOpen{ shown };   // kiln draws the window from when its surface exists
                 if (shouldShow) co_await state->Show();
             });
         }

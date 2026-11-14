@@ -20,6 +20,7 @@ namespace kiln {
         std::unique_ptr<QuadRenderer> quads;
         std::uint32_t width = 0, height = 0;
         bool drawn = false;   // drawn this frame (its batch is ready to record)
+        bool presented = false;   // the last frame went to its surface
         bool textures = false;   // the shared ramp and filter textures are bound
     };
 
@@ -564,6 +565,8 @@ namespace kiln {
     }
 
     void App::Frame(double timeSeconds) {
+        m_MainPresented = false;
+        for (auto& w : m_Windows) w->presented = false;
         m_FramePending = false;
         const auto frameStart = std::chrono::steady_clock::now();
         if (const double dt = timeSeconds - m_LastFrameSeconds; m_LastFrameSeconds > 0 && dt > 0.002 && dt < 0.05)
@@ -652,6 +655,7 @@ namespace kiln {
         cmd->EndRenderPass();
         for (auto& w : m_Windows) {
             if (!w->drawn || !w->present->Ready()) continue;
+            w->presented = true;
             w->quads->RenderLayers(*cmd);
             RenderPassDesc wp;
             wp.present = w->present;
@@ -661,6 +665,9 @@ namespace kiln {
             cmd->EndRenderPass();
         }
         m_Device->EndFrame();
+        m_MainPresented = true;
     }
+
+    bool App::Presented(const Window* window) const { return window ? window->presented : m_MainPresented; }
 
 }

@@ -31,13 +31,14 @@ namespace kiln::ui {
         int blurBehindRadiusPx = -1;        // -1: unspecified
         int backgroundBlurRadiusPx = -1;
         LayoutDirection direction = LayoutDirection::Ltr;
+        bool windowAnimations = true;       // the platform's window enter / exit animation
         bool operator==(const DialogWindowProperties& o) const {
             return dismissOnBackPress == o.dismissOnBackPress && dismissOnClickOutside == o.dismissOnClickOutside &&
                    secure == o.secure && usePlatformDefaultWidth == o.usePlatformDefaultWidth &&
                    decorFitsSystemWindows == o.decorFitsSystemWindows && windowTitle == o.windowTitle &&
                    (scrimAlpha == o.scrimAlpha || (std::isnan(scrimAlpha) && std::isnan(o.scrimAlpha))) &&
                    blurBehindRadiusPx == o.blurBehindRadiusPx && backgroundBlurRadiusPx == o.backgroundBlurRadiusPx &&
-                   direction == o.direction;
+                   direction == o.direction && windowAnimations == o.windowAnimations;
         }
     };
 
@@ -46,6 +47,9 @@ namespace kiln::ui {
     public:
         virtual ~PlatformDialog() = default;
         virtual void Update(const DialogWindowProperties& properties) = 0;
+        // Runs `f` once the window can show its content (its surface exists): until then the
+        // content's animations wait, so they start on its first visible frame. At once by default.
+        virtual void WhenShown(kiln::Function<void()> f) { f(); }
     };
 
     // Makes dialog windows for content owners (show). `onDismissRequest` runs for Back, Escape or

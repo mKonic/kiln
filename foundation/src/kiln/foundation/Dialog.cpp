@@ -36,6 +36,8 @@ namespace kiln::foundation {
             std::unique_ptr<ui::PlatformDialog> window;
             kiln::Function<void()> onDismissRequest;
             DialogProperties properties;
+            // Holds the content's frames until the window shows (PlatformDialog::WhenShown).
+            std::shared_ptr<rt::FrameGate> gate = std::make_shared<rt::FrameGate>();
 
             struct WindowInfoImpl final : ui::WindowInfo {
                 const DialogState* s = nullptr;
@@ -76,14 +78,15 @@ namespace kiln::foundation {
             w.blurBehindRadiusPx = p.blurBehindRadius.Specified() ? d.RoundToPx(p.blurBehindRadius) : -1;
             w.backgroundBlurRadiusPx = p.backgroundBlurRadius.Specified() ? d.RoundToPx(p.backgroundBlurRadius) : -1;
             w.direction = dir;
+            w.windowAnimations = p.windowAnimations;
             return w;
         }
     }
 
     namespace {
         void DialogImpl(kiln::Function<void()> onDismissRequest, DialogProperties properties, kiln::Function<rt::Task<>(BackProgress&)> onBack,
-                        kiln::Function<void()> content, Key key) {
-        rt::Composition::Current()->Child([onDismissRequest, properties, onBack, content] {
+                        kiln::Function<void()> content, Key key, std::shared_ptr<rt::FrameGate> gate = {}) {
+        rt::Composition::Current()->Child([onDismissRequest, properties, onBack, content, gate] {
             auto& c = *rt::Composition::Current();
             ui::Owner* parent = c.Read(ui::LocalOwner);
             auto& state = c.Remember<std::shared_ptr<DialogState>>([] { return std::make_shared<DialogState>(); });
@@ -96,10 +99,16 @@ namespace kiln::foundation {
             if (o.Direction() != direction) o.SetDirection(direction);
             const Density density = o.GetDensity();
             rt::Scope* parentScope = c.CurrentScope();
-            // Before the window is made: it opens with these.
+            // Before the window is made: it opens with these, and the content's animations wait
+            // for it to show.
             if (!state->window) {
                 state->properties = properties;
                 state->onDismissRequest = onDismissRequest;
+                if (gate) state->gate = gate;
+                if (parent && parent->Dialogs().create && state->composition) {
+                    state->gate->held = true;
+                    state->composition->SetFrameGate(state->gate);
+                }
             }
 
             // The dialog window's own back callback (onBackPressedDispatcher.addCallback): before
@@ -112,6 +121,14 @@ namespace kiln::foundation {
                 if (parent && parent->Dialogs().create)
                     state->window = parent->Dialogs().create(*state->owner, WindowProperties(state->properties, parent, density, direction),
                                                              [s = state.get()] { s->Dismiss(); });
+                const auto release = [gate = std::weak_ptr<rt::FrameGate>(state->gate)] {
+                    auto g = gate.lock();
+                    if (!g || !g->held) return;
+                    g->held = false;
+                    if (auto& request = rt::Dispatcher::Main().requestFrame) request();
+                };
+                if (state->window) state->window->WhenShown(release);
+                else release();
                 // dispose: the content composition first, while the window's hosts still exist.
                 return kiln::Function<void()>([state] {
                     state->composition.reset();
@@ -154,6 +171,10 @@ namespace kiln::foundation {
     void Dialog(kiln::Function<void()> onDismissRequest, DialogProperties properties, kiln::Function<rt::Task<>(BackProgress&)> onBack,
                 kiln::Function<void()> content, Key key) {
         DialogImpl(std::move(onDismissRequest), std::move(properties), std::move(onBack), std::move(content), key);
+    }
+    void GatedDialog(kiln::Function<void()> onDismissRequest, DialogProperties properties, kiln::Function<rt::Task<>(BackProgress&)> onBack,
+                     kiln::Function<void()> content, std::shared_ptr<rt::FrameGate> gate, Key key) {
+        DialogImpl(std::move(onDismissRequest), std::move(properties), std::move(onBack), std::move(content), key, std::move(gate));
     }
 
 }

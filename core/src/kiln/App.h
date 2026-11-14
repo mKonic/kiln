@@ -136,6 +136,8 @@ namespace kiln {
         // window's size and drawn into its own presentation surface, every frame with the main
         // one. Input for it goes to its owner through the overloads below.
         Window* AddWindow(ui::Owner& owner);
+        // Whether the last Frame presented to the window (null: the main one).
+        bool Presented(const Window* window) const;
         void RemoveWindow(Window* window);
         void WindowSurfaceCreated(Window* window, hearth::Surface& surface);
         void WindowSurfaceResized(Window* window, std::uint32_t width, std::uint32_t height);
@@ -166,6 +168,7 @@ namespace kiln {
         std::uint32_t Height() const { return m_Height; }
 
     private:
+        bool m_MainPresented = false;
         HostServices m_Services;
         // The window's owners, as a ComponentActivity is: lifecycle, ViewModels (living as long
         // as the app object, which configuration changes keep), and saved state (the app's

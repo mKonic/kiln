@@ -32,7 +32,7 @@ import android.widget.FrameLayout;
  * focusable, IME-target, accessibility and autofill View (architecture 3.1); those services
  * attach here in later milestones.
  */
-public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
+public class KilnView extends FrameLayout implements SurfaceHolder.Callback2 {
     private final SurfaceView surfaceView;
     private final KilnText text;
 
@@ -1976,6 +1976,32 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback {
     @Override
     public void surfaceChanged(SurfaceHolder holder, int format, int width, int height) {
         KilnNative.surfaceChanged(windowId, width, height);
+    }
+
+    // The window shows once kiln's frame is on the surface (its first draw waits for it), so a
+    // dialog appears with its content and its animations' first frame, as a View draws in the
+    // window's own first frame.
+    private Runnable drawingFinished;
+    private final Runnable drawingTimeout = this::framePresented;
+
+    @Override
+    public void surfaceRedrawNeeded(SurfaceHolder holder) {}
+
+    @Override
+    public void surfaceRedrawNeededAsync(SurfaceHolder holder, Runnable finished) {
+        if (drawingFinished != null) drawingFinished.run();
+        drawingFinished = finished;
+        removeCallbacks(drawingTimeout);
+        postDelayed(drawingTimeout, 100);   // never keep a window hidden
+        KilnNative.redrawNeeded(windowId);
+    }
+
+    /** Native: a frame was presented on this view's surface. */
+    void framePresented() {
+        removeCallbacks(drawingTimeout);
+        Runnable r = drawingFinished;
+        drawingFinished = null;
+        if (r != null) r.run();
     }
 
     @Override

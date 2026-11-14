@@ -141,3 +141,49 @@ TEST(DialogContentIsDisposedBeforeItsWindowCloses) {
     pump();
     CHECK((order == std::vector<std::string>{ "content", "window" }));
 }
+
+namespace {
+    // A window whose surface comes later (Android's): show() runs what waited.
+    struct LateShownDialog final : PlatformDialog {
+        kiln::Function<void()>* pending;
+        explicit LateShownDialog(kiln::Function<void()>* p) : pending(p) {}
+        void Update(const DialogWindowProperties&) override {}
+        void WhenShown(kiln::Function<void()> f) override { *pending = std::move(f); }
+    };
+    rt::Task<> FirstFrame(std::int64_t* seen) { *seen = co_await rt::NextFrame{}; }
+}
+
+TEST(DialogContentAnimatesFromItsWindowsFirstFrame) {
+    // The content composes (it can be measured) but its animations get no frames until the
+    // window can show it: a sheet's slide starts on its first visible frame.
+    Owner owner;
+    rt::Composition comp{ owner.Root(), rt::Dispatcher::Main() };
+    kiln::Function<void()> show;
+    DialogHost host;
+    host.create = [&](Owner&, const DialogWindowProperties&, kiln::Function<void()>) { return std::make_unique<LateShownDialog>(&show); };
+    owner.SetDialogHost(host);
+    std::int64_t seen = 0;
+    bool composed = false;
+    comp.SetContent([&] {
+        rt::Composition::Current()->Provide(LocalOwner, &owner, [&] {
+            Dialog([] {}, {}, [&] {
+                composed = true;
+                rt::Composition::Current()->LaunchedEffect({}, [&] { return FirstFrame(&seen); });
+            });
+        });
+    });
+    auto pump = [&] { rt::Composition::RecomposeAll(); rt::Dispatcher::Main().RunPending(); owner.MeasureAndLayout({ 1000, 2000 }); };
+    pump();
+    rt::Dispatcher::Main().RunFrame(100);
+    pump();
+    rt::Dispatcher::Main().RunFrame(200);
+    CHECK(composed);
+    CHECK_EQ(seen, std::int64_t(0));
+    CHECK(bool(show));
+    auto f = std::move(show);
+    f();
+    rt::Dispatcher::Main().RunFrame(300);
+    CHECK_EQ(seen, std::int64_t(300));
+    comp.SetContent([] {});
+    pump();
+}

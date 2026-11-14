@@ -144,6 +144,7 @@ final class KilnNative {
     static native void surfaceChanged(int win, int width, int height);
     static native void viewSizeChanged(int win, int width, int height);
     static native void setInputMode(int win, boolean touch);
+    static native void redrawNeeded(int win);
     static native void surfaceDestroyed(int win);
     // AndroidView: what a View inside asks of kiln (KilnInteropViews).
     static native void interopRequestLayout(int win, int id);

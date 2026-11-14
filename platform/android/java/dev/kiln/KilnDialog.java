@@ -27,12 +27,12 @@ final class KilnDialog extends Dialog {
     private boolean pressOutside;
 
     /** Called by native code for a new dialog window. */
-    static KilnDialog open(KilnView parent, int id, boolean decorFitsSystemWindows) {
-        return new KilnDialog(parent, id, decorFitsSystemWindows);
+    static KilnDialog open(KilnView parent, int id, boolean decorFitsSystemWindows, boolean windowAnimations) {
+        return new KilnDialog(parent, id, decorFitsSystemWindows, windowAnimations);
     }
 
     @SuppressWarnings("deprecation")
-    private KilnDialog(KilnView parent, int id, boolean decorFits) {
+    private KilnDialog(KilnView parent, int id, boolean decorFits, boolean windowAnimations) {
         super(parent.getContext());
         this.id = id;
         this.decorFitsSystemWindows = decorFits;
@@ -55,6 +55,9 @@ final class KilnDialog extends Dialog {
         view.dialog = this;
         view.setClipChildren(false);
         setContentView(view);
+        // windowAnimationStyle @null: after setContentView, as installing the decor fills an
+        // unset style in from the theme.
+        if (!windowAnimations) window.setWindowAnimations(0);
         disableClipping(window.getDecorView());
     }
 

@@ -77,6 +77,9 @@ namespace {
         kiln::App::Window* appWindow = nullptr;    // null for the main window
         hearth::AndroidSurface surface;
         ANativeWindow* nativeWindow = nullptr;
+        bool shown = false;                        // its surface has existed (a dialog can show)
+        bool redrawNeeded = false;                 // the window waits for a frame on its surface
+        kiln::Function<void()> onShown;            // a dialog's content waiting for that
     };
     std::map<int, std::unique_ptr<Win>> g_Wins;
     int g_NextWinId = 1;
@@ -413,6 +416,15 @@ namespace {
             const auto t0 = std::chrono::steady_clock::now();
             g_Host->app->Frame(double(frameTimeNanos) * 1e-9);
             ApplyFrameRate();
+            // surfaceRedrawNeededAsync: a window shows once a frame is on its surface.
+            static jmethodID presented = nullptr;
+            for (auto& [id, w] : g_Wins) {
+                if (!w->redrawNeeded || !w->view || !g_Host->app->Presented(w->appWindow)) continue;
+                w->redrawNeeded = false;
+                JNIEnv* e = MainEnv();
+                if (!presented) presented = e->GetMethodID(e->GetObjectClass(w->view), "framePresented", "()V");
+                e->CallVoidMethod(w->view, presented);
+            }
             if (g_FrameStats.enabled)
                 g_FrameStats.Add(std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count(), g_Host->app->LastSubmitMs(), g_Host->app->LastFramePhases(),
                                  g_Host->app->Quads().ComputeStats());
@@ -479,7 +491,7 @@ namespace {
         jclass c = env->FindClass("dev/kiln/KilnDialog");
         g_DialogClass = static_cast<jclass>(env->NewGlobalRef(c));
         env->DeleteLocalRef(c);
-        g_DialogOpen = env->GetStaticMethodID(g_DialogClass, "open", "(Ldev/kiln/KilnView;IZ)Ldev/kiln/KilnDialog;");
+        g_DialogOpen = env->GetStaticMethodID(g_DialogClass, "open", "(Ldev/kiln/KilnView;IZZ)Ldev/kiln/KilnDialog;");
         g_DialogUpdate = env->GetMethodID(g_DialogClass, "update", "(ZZZZZLjava/lang/String;FIIZ)V");
         g_DialogShow = env->GetMethodID(g_DialogClass, "show", "()V");
         g_DialogDismissNative = env->GetMethodID(g_DialogClass, "dismissFromNative", "()V");
@@ -508,7 +520,8 @@ namespace {
             win = nw.get();
             g_Wins[id] = std::move(nw);
             g_DialogDismiss[id] = std::move(onDismiss);
-            jobject d = e->CallStaticObjectMethod(g_DialogClass, g_DialogOpen, parent->view, jint(id), jboolean(p.decorFitsSystemWindows));
+            jobject d = e->CallStaticObjectMethod(g_DialogClass, g_DialogOpen, parent->view, jint(id), jboolean(p.decorFitsSystemWindows),
+                                                  jboolean(p.windowAnimations));
             dialog = e->NewGlobalRef(d);
             jobject v = e->GetObjectField(d, g_DialogView);
             win->view = e->NewGlobalRef(v);
@@ -521,6 +534,10 @@ namespace {
             e->CallVoidMethod(dialog, g_DialogShow);
         }
 
+        void WhenShown(kiln::Function<void()> f) override {
+            if (win->shown) f();
+            else win->onShown = std::move(f);
+        }
         void Update(const kiln::ui::DialogWindowProperties& p) override {
             JNIEnv* e = MainEnv();
             jstring title = JavaString(e, kiln::foundation::ToUtf16(p.windowTitle));
@@ -2928,6 +2945,8 @@ namespace {
             w->nativeWindow = ANativeWindow_fromSurface(env, surface);
             w->surface.Reset(w->nativeWindow);
             g_Host->app->WindowSurfaceCreated(w->appWindow, w->surface);
+            w->shown = true;
+            if (auto f = std::move(w->onShown)) f();   // the content's animations start now
             return;
         }
         g_Host->window = ANativeWindow_fromSurface(env, surface);
@@ -2949,6 +2968,15 @@ namespace {
         if (!ws) return;
         if (!g_Host) return;
         g_Host->app->ViewResized(ws.w->appWindow, std::uint32_t(width), std::uint32_t(height));
+    }
+
+    // SurfaceHolder.Callback2.surfaceRedrawNeededAsync: the next frame presented on the window's
+    // surface lets it show (KilnView.framePresented).
+    void RedrawNeeded(JNIEnv*, jclass, jint win) {
+        Win* w = WinOf(win);
+        if (!w || !g_Host) return;
+        w->redrawNeeded = true;
+        g_Host->app->RequestFrame();
     }
 
     void SetInputMode(JNIEnv*, jclass, jint win, jboolean touch) {
@@ -3344,6 +3372,7 @@ extern "C" JNIEXPORT jint kiln_jni_onload(JavaVM* vm) {
         { "hostRequestFocus", "(IIZFFFFZ)Z", reinterpret_cast<void*>(&HostRequestFocus) },
         { "viewSizeChanged", "(III)V", reinterpret_cast<void*>(&ViewSizeChanged) },
         { "setInputMode", "(IZ)V", reinterpret_cast<void*>(&SetInputMode) },
+        { "redrawNeeded", "(I)V", reinterpret_cast<void*>(&RedrawNeeded) },
         { "hostFocusChanged", "(IZ)V", reinterpret_cast<void*>(&HostFocusChanged) },
         { "windowFocusChanged", "(IZ)V", reinterpret_cast<void*>(&WindowFocusChanged) },
         { "setShadowLight", "(IFFFFFF)V", reinterpret_cast<void*>(&SetShadowLight) },
