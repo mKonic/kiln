@@ -1,0 +1,3 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- kiln::glance (KilnGlance.java): the widget's root, alternated with kiln_glance_root so each update inflates afresh. -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android" android:id="@+id/kiln_glance_view" android:layout_width="match_parent" android:layout_height="match_parent" />

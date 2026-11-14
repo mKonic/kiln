@@ -123,7 +123,13 @@ cat > "$STAGING/AndroidManifest.xml" <<XML
     </application>
 </manifest>
 XML
-: > "$STAGING/R.txt"
+# kiln's resources (the widget layouts), raw as an AAR carries them, and their symbols.
+rm -rf "$STAGING/res"
+cp -r "$KILN_ROOT/platform/android/res" "$STAGING/res"
+{
+    for f in "$STAGING"/res/layout/*.xml; do echo "int layout $(basename "$f" .xml) 0x0"; done
+    grep -ho '@+id/[a-z_]*' "$STAGING"/res/layout/*.xml | sort -u | sed 's|@+id/|int id |; s|$| 0x0|'
+} > "$STAGING/R.txt"
 # Rules for an app that shrinks its code: native code finds kiln's Java by name, and the androidx
 # interfaces kiln's embedded-View holder implements are the app's to bring.
 cat > "$STAGING/proguard.txt" <<RULES
@@ -135,5 +141,5 @@ RULES
 
 mkdir -p "$(dirname "$OUT")"
 rm -f "$OUT"
-(cd "$STAGING" && zip -qr "$OUT" AndroidManifest.xml classes.jar R.txt proguard.txt prefab)
+(cd "$STAGING" && zip -qr "$OUT" AndroidManifest.xml classes.jar R.txt proguard.txt prefab res)
 echo "AAR: $OUT ($(du -h "$OUT" | cut -f1))"

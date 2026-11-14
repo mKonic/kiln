@@ -16,6 +16,8 @@
 # added to <manifest> / <application>), --keystore file --key-alias name (sign with your key:
 # passwords from KILN_KEYSTORE_PASSWORD and KILN_KEY_PASSWORD; default: kiln's debug key).
 #
+# --widgets a,b: kiln::glance widgets, each with res/xml/<name>_widget.xml (its appwidget-provider
+# info) in the app's res; a receiver for each is generated and declared.
 # --bundle: an Android App Bundle (.aab, what Play takes) instead of an APK: aapt2 links in proto
 # format, the base module is laid out as bundletool expects, and jarsigner signs the bundle.
 # bundletool comes from KILN_BUNDLETOOL, or is downloaded once to ~/.cache/kiln.
@@ -25,7 +27,7 @@
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/android-env.sh"
 PACKAGE=""; LABEL="kiln app"; LIBNAME=""; OUT=""; LIBS=(); ASSETS=""; DEBUG=0
-PERMISSIONS=(); ICON=""; VERSION_CODE=1; VERSION_NAME="1.0"; MANIFEST_XML=""; APPLICATION_XML=""; RES=""; ACTIVITY_XML=""; ACTIVITY_ATTRIBUTES=""; APPLICATION_ATTRIBUTES=""; KEYSTORE_ARG=""; KEY_ALIAS=""; BUNDLE=0
+PERMISSIONS=(); WIDGETS=(); ICON=""; VERSION_CODE=1; VERSION_NAME="1.0"; MANIFEST_XML=""; APPLICATION_XML=""; RES=""; ACTIVITY_XML=""; ACTIVITY_ATTRIBUTES=""; APPLICATION_ATTRIBUTES=""; KEYSTORE_ARG=""; KEY_ALIAS=""; BUNDLE=0
 ICON_FOREGROUND=""; ICON_BACKGROUND=""; ICON_MONOCHROME=""; SPLASH_BACKGROUND=""; SPLASH_ICON=""; SPLASH_ICON_BACKGROUND=""
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -55,6 +57,7 @@ while [ $# -gt 0 ]; do
         --keystore) KEYSTORE_ARG="$2"; shift 2 ;;
         --bundle) BUNDLE=1; shift ;;
         --key-alias) KEY_ALIAS="$2"; shift 2 ;;
+        --widgets) IFS=, read -ra WIDGETS <<< "$2"; shift 2 ;;
         *) echo "kiln-pack: unknown argument $1" >&2; exit 2 ;;
     esac
 done
@@ -72,6 +75,21 @@ rm -rf "$STAGING"; mkdir -p "$STAGING/classes" "$STAGING/dex"
 
 # Java host -> dex. --release keeps the class files at a level d8 understands.
 mapfile -t SOURCES < <(find "$KILN_ROOT/platform/android/java" -name '*.java')
+# kiln::glance widgets (WIDGETS): a receiver class each, as the manifest needs one per provider.
+WIDGET_XML=""
+mkdir -p "$STAGING/widgets/dev/kiln/widgets"
+for w in "${WIDGETS[@]}"; do
+    [ -n "$w" ] || continue
+    cls="W_${w//[^A-Za-z0-9_]/_}"
+    printf 'package dev.kiln.widgets;\n\n/** The %s widget'"'"'s receiver (kiln-pack). */\npublic final class %s extends dev.kiln.KilnWidgetReceiver {}\n' "$w" "$cls" > "$STAGING/widgets/dev/kiln/widgets/$cls.java"
+    SOURCES+=("$STAGING/widgets/dev/kiln/widgets/$cls.java")
+    WIDGET_XML+="        <receiver android:name=\"dev.kiln.widgets.$cls\" android:exported=\"false\">
+            <intent-filter><action android:name=\"android.appwidget.action.APPWIDGET_UPDATE\" /></intent-filter>
+            <meta-data android:name=\"android.appwidget.provider\" android:resource=\"@xml/${w}_widget\" />
+            <meta-data android:name=\"dev.kiln.widget\" android:value=\"$w\" />
+        </receiver>
+"
+done
 # androidx interfaces kiln implements when the app has them: compiled against, not packaged.
 mapfile -t STUBS < <(find "$KILN_ROOT/platform/android/java-stubs" -name '*.java')
 mkdir -p "$STAGING/stubs"
@@ -88,9 +106,11 @@ EXTRA_APPLICATION=""; [ -n "$APPLICATION_XML" ] && EXTRA_APPLICATION="$(cat "$AP
 EXTRA_ACTIVITY=""; [ -n "$ACTIVITY_XML" ] && EXTRA_ACTIVITY="$(cat "$ACTIVITY_XML")"
 ICON_ATTR=""
 RES_ARGS=()
-# The app's res/ (strings, plurals, drawables...) and the icon, compiled together.
+# kiln's own res/ (the widget layouts), then the app's (strings, plurals, drawables...) and the
+# icon, compiled together.
+mkdir -p "$STAGING/res"
+cp -r "$KILN_ROOT/platform/android/res"/. "$STAGING/res/"
 if [ -n "$RES" ]; then
-    mkdir -p "$STAGING/res"
     cp -r "$RES"/. "$STAGING/res/"
 fi
 if [ -n "$ICON" ]; then
@@ -184,7 +204,7 @@ $PERMISSION_XML$EXTRA_MANIFEST
 $EXTRA_ACTIVITY
         </activity>
         $DEBUG_PROVIDER
-        <!-- kiln::work's jobs (JobScheduler). -->
+$WIDGET_XML        <!-- kiln::work's jobs (JobScheduler). -->
         <service android:name="dev.kiln.KilnJobService" android:exported="false"
                  android:permission="android.permission.BIND_JOB_SERVICE" />
 $EXTRA_APPLICATION

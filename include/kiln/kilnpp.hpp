@@ -892,6 +892,26 @@ namespace kpp {
     }
     inline void cancel_work(const char* name) { kiln_work_cancel(name); }
 
+    // Home-screen widgets; see kiln_glance_register_widget. Content functions take lambdas.
+    namespace glance {
+        template<typename F> void box(const kiln_glance_modifier& m, kiln_alignment a, F&& content) { kiln_glance_box(&m, a, fn<kiln_fn>(std::forward<F>(content))); }
+        template<typename F> void row(const kiln_glance_modifier& m, kiln_alignment a, F&& content) { kiln_glance_row(&m, a, fn<kiln_fn>(std::forward<F>(content))); }
+        template<typename F> void column(const kiln_glance_modifier& m, kiln_alignment a, F&& content) { kiln_glance_column(&m, a, fn<kiln_fn>(std::forward<F>(content))); }
+        inline void text(const std::string& t, const kiln_glance_modifier& m = {}, float fontSize = 0, uint32_t color = 0, int32_t weight = 400, int32_t maxLines = 0) {
+            kiln_glance_text(t.c_str(), &m, fontSize, color, weight, maxLines);
+        }
+        inline void button(const std::string& t, kiln_glance_action onClick, const kiln_glance_modifier& m = {}) { kiln_glance_button(t.c_str(), onClick, &m); }
+        inline kiln_glance_action run_callback(const char* key, const char* params = "") { return { 2, nullptr, key, params }; }
+        inline kiln_glance_action open_app(const char* uri = "") { return { 1, uri, nullptr, nullptr }; }
+        template<typename F> void register_widget(const char* name, int32_t sizeMode, F&& content) {
+            kiln_glance_register_widget(name, sizeMode, fn<kiln_fn_glance_content>(std::forward<F>(content)));
+        }
+        template<typename F> void register_action(const char* key, F&& action) {
+            kiln_glance_register_action(key, fn<kiln_fn_glance_action>(std::forward<F>(action)));
+        }
+        inline void update_all(const char* name) { kiln_glance_update_all(name); }
+    }
+
     // See kiln_keep_splash_screen.
     inline void keep_splash_screen(bool keep) { kiln_keep_splash_screen(keep); }
 

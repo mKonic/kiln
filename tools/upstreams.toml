@@ -89,6 +89,11 @@ kiln = "paging (PagingSource, Pager's page fetcher, PagingData, the presenter, c
 paths = ["paging/paging-common/src", "paging/paging-compose/src"]
 
 [[androidx.group]]
+name = "glance"
+kiln = "kiln::glance (core/src/kiln/glance, KilnGlance.java's RemoteViews translation, KilnWidgetReceiver)"
+paths = ["glance/glance-appwidget/src/main/java/androidx/glance/appwidget", "glance/glance/src/main/java/androidx/glance"]
+
+[[androidx.group]]
 name = "work"
 kiln = "kiln::work (WorkSpec.calculateNextRunTime, SystemJobInfoConverter, SystemJobService, WorkerWrapper's results)"
 paths = ["work/work-runtime/src/main/java/androidx/work"]

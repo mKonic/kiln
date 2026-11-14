@@ -34,6 +34,7 @@ android {
         getByName("main") {
             // kiln's Java host (KilnActivity and the platform glue), the app's resources and assets.
             java.directories.add(kilnRoot.resolve("platform/android/java").path)
+            res.directories.add(kilnRoot.resolve("platform/android/res").path)   // kiln's (widget layouts)
             res.directories.add("res")
             assets.directories.add("assets")
         }

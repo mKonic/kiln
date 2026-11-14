@@ -541,6 +541,41 @@ KILN_API void kiln_work_cancel(const char* unique_name);
 KILN_API void kiln_work_cancel_all(void);
 KILN_API bool kiln_work_is_scheduled(const char* unique_name);
 
+/* Home-screen widgets (kiln::glance): a widget's content callback calls the element functions
+ * below to build what the launcher shows, for each size it draws (size_mode 0 single, 1 exact).
+ * Register widgets and actions as the library loads, like background workers; declare the
+ * widget with WIDGETS in kiln_add_app and res/xml/<name>_widget.xml. A zeroed modifier changes
+ * nothing; dimension kinds: 0 wrap, 1 fill, 2 expand (share a Row's or Column's space), 3 dp. */
+typedef struct kiln_glance_action {
+    int32_t kind;                 /* 0 none, 1 open the app at uri, 2 run the callback key with params */
+    const char* uri;
+    const char* key;
+    const char* params;
+} kiln_glance_action;
+typedef struct kiln_glance_modifier {
+    int32_t width_kind, height_kind;
+    float width_dp, height_dp;
+    float padding_start, padding_top, padding_end, padding_bottom;
+    uint32_t background;          /* ARGB; 0: none */
+    float corner_radius;
+    kiln_glance_action click;
+} kiln_glance_modifier;
+KILN_API void kiln_glance_box(const kiln_glance_modifier* modifier, kiln_alignment alignment, kiln_fn content);
+KILN_API void kiln_glance_row(const kiln_glance_modifier* modifier, kiln_alignment alignment, kiln_fn content);
+KILN_API void kiln_glance_column(const kiln_glance_modifier* modifier, kiln_alignment alignment, kiln_fn content);
+/* font_size 0 and color 0: the platform's; weight 400, 500 or 700; max_lines 0: no limit. */
+KILN_API void kiln_glance_text(const char* text, const kiln_glance_modifier* modifier, float font_size, uint32_t color, int32_t weight, int32_t max_lines);
+KILN_API void kiln_glance_button(const char* text, kiln_glance_action on_click, const kiln_glance_modifier* modifier);
+KILN_API void kiln_glance_image(const char* drawable, const char* content_description, const kiln_glance_modifier* modifier);
+KILN_API void kiln_glance_spacer(const kiln_glance_modifier* modifier);
+KILN_API void kiln_glance_check_box(bool checked, kiln_glance_action on_checked_change, const char* text, const kiln_glance_modifier* modifier);
+typedef struct kiln_fn_glance_content { void (*call)(void* user, const char* widget, int32_t app_widget_id, float width_dp, float height_dp); void* user; void (*drop)(void* user); } kiln_fn_glance_content;
+typedef struct kiln_fn_glance_action { void (*call)(void* user, const char* widget, int32_t app_widget_id, const char* params, int32_t checked /* -1, 0, 1 */); void* user; void (*drop)(void* user); } kiln_fn_glance_action;
+KILN_API void kiln_glance_register_widget(const char* name, int32_t size_mode, kiln_fn_glance_content content);
+KILN_API void kiln_glance_register_action(const char* key, kiln_fn_glance_action action);
+KILN_API void kiln_glance_update_all(const char* name);
+KILN_API bool kiln_glance_request_pin(const char* name);
+
 /* Device: vibration patterns (VibrationEffect; needs android.permission.VIBRATE), sensors
  * (Sensor.TYPE_*; events on the main thread until stopped), location (needs a location
  * permission; the callback runs once, has_fix false when there is none) and the biometric

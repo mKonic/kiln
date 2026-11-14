@@ -89,6 +89,7 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback2 {
         KilnDevice.attach(context);
         KilnNotifications.attach(context);
         KilnWork.attach(context);
+        KilnWidgetReceiver.attach(context);
         KilnNative.create(this, text, context.getAssets(), metrics.density, getResources().getConfiguration().fontScale, savedState);
         KilnHttp.attach(context);
         KilnNative.setCacheDir(context.getCacheDir().getPath());

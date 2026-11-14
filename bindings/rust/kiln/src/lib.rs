@@ -75,6 +75,8 @@ __kiln_callback!(sys::kiln_fn_bool, (v: bool) -> ());
 __kiln_callback!(sys::kiln_fn_http, (r: *const sys::kiln_http_response) -> ());
 __kiln_callback!(sys::kiln_fn_sensor, (v: *const f32, n: i32, t: i64) -> ());
 __kiln_callback!(sys::kiln_fn_location, (has: bool, lat: f64, lon: f64, acc: f32) -> ());
+__kiln_callback!(sys::kiln_fn_glance_content, (w: *const std::ffi::c_char, id: i32, width: f32, height: f32) -> ());
+__kiln_callback!(sys::kiln_fn_glance_action, (w: *const std::ffi::c_char, id: i32, params: *const std::ffi::c_char, checked: i32) -> ());
 __kiln_callback!(sys::kiln_fn_worker, (name: *const std::ffi::c_char, input: *const std::ffi::c_char, attempt: i32, done: *mut sys::kiln_work_done) -> ());
 __kiln_callback!(sys::kiln_fn_biometric, (ok: bool, code: i32, msg: *const std::ffi::c_char) -> ());
 __kiln_callback!(sys::kiln_fn_int, (v: i32) -> ());
@@ -832,6 +834,38 @@ pub fn authenticate(title: &str, mut f: impl FnMut(Result<(), (i32, String)>) + 
     let cb = move |ok: bool, code: i32, msg: *const std::ffi::c_char| f(if ok { Ok(()) } else { Err((code, from_c(msg))) });
     unsafe { sys::kiln_authenticate(t.ptr(), std::ptr::null(), std::ptr::null(), 0, IntoCallback::<sys::kiln_fn_biometric>::into_callback(cb)) }
 }
+
+/// Home-screen widgets (see `kiln_glance_register_widget`): register in the cdylib's
+/// `JNI_OnLoad`. `content(widget, app_widget_id, width_dp, height_dp)` calls the `glance_*`
+/// functions.
+pub fn glance_register_widget(name: &str, size_mode: i32, mut content: impl FnMut(&str, i32, f32, f32) + 'static) {
+    let n = CStrBuf::new(name);
+    let cb = move |w: *const std::ffi::c_char, id: i32, width: f32, height: f32| content(&from_c(w), id, width, height);
+    unsafe { sys::kiln_glance_register_widget(n.ptr(), size_mode, IntoCallback::<sys::kiln_fn_glance_content>::into_callback(cb)) }
+}
+/// `action(widget, app_widget_id, params, checked)`; checked is -1 unless a check box changed.
+pub fn glance_register_action(key: &str, mut action: impl FnMut(&str, i32, &str, i32) + 'static) {
+    let k = CStrBuf::new(key);
+    let cb = move |w: *const std::ffi::c_char, id: i32, p: *const std::ffi::c_char, checked: i32| action(&from_c(w), id, &from_c(p), checked);
+    unsafe { sys::kiln_glance_register_action(k.ptr(), IntoCallback::<sys::kiln_fn_glance_action>::into_callback(cb)) }
+}
+pub fn glance_column(modifier: &sys::kiln_glance_modifier, alignment: sys::kiln_alignment, content: impl FnMut() + 'static) {
+    unsafe { sys::kiln_glance_column(modifier, alignment, IntoCallback::<sys::kiln_fn>::into_callback(content)) }
+}
+pub fn glance_row(modifier: &sys::kiln_glance_modifier, alignment: sys::kiln_alignment, content: impl FnMut() + 'static) {
+    unsafe { sys::kiln_glance_row(modifier, alignment, IntoCallback::<sys::kiln_fn>::into_callback(content)) }
+}
+pub fn glance_text(text: &str, modifier: &sys::kiln_glance_modifier, font_size: f32, color: u32, weight: i32, max_lines: i32) {
+    let t = CStrBuf::new(text);
+    unsafe { sys::kiln_glance_text(t.ptr(), modifier, font_size, color, weight, max_lines) }
+}
+/// A button running the callback `key` with `params`.
+pub fn glance_button(text: &str, key: &str, params: &str, modifier: &sys::kiln_glance_modifier) {
+    let (t, k, p) = (CStrBuf::new(text), CStrBuf::new(key), CStrBuf::new(params));
+    let action = sys::kiln_glance_action { kind: 2, uri: std::ptr::null(), key: k.ptr(), params: p.ptr() };
+    unsafe { sys::kiln_glance_button(t.ptr(), action, modifier) }
+}
+pub fn glance_update_all(name: &str) { let n = CStrBuf::new(name); unsafe { sys::kiln_glance_update_all(n.ptr()) } }
 
 /// A background worker's answer: call [`WorkDone::complete`] once, from any thread.
 pub struct WorkDone(*mut sys::kiln_work_done);

@@ -7,6 +7,7 @@
 #include "AndroidDevice.h"
 #include "AndroidResources.h"
 #include "kiln/jvm/Jvm.h"
+#include "AndroidGlance.h"
 #include "AndroidMedia.h"
 #include "AndroidWork.h"
 #include "kiln/ui/ActivityIntent.h"
@@ -3709,6 +3710,7 @@ extern "C" JNIEXPORT jint kiln_jni_onload(JavaVM* vm) {
     kiln::jvm::Install(vm, env);
     InstallProcessHosts(env);
     kiln::android::InstallWork(env);
+    kiln::android::InstallGlance(env);
     return JNI_VERSION_1_6;
 }
 

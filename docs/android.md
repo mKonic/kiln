@@ -334,6 +334,45 @@ through `kiln_work_complete`. Register C workers in a function marked
 `__attribute__((constructor))`. A Rust cdylib registers them in its `JNI_OnLoad`, before it
 calls `kiln_jni_onload`.
 
+## Home-screen widgets
+
+`kiln::glance` (`kiln/glance/Glance.h`) builds home-screen widgets in Glance's model. A widget's
+content is a tree of `Box`, `Row`, `Column`, `Text`, `Image`, `Button`, `CheckBox`, `Switch`,
+progress indicators and `LazyColumn`. kiln draws it as RemoteViews for each size the launcher
+shows, and redraws it when the app calls `UpdateAll`:
+
+```cpp
+namespace g = kiln::glance;
+std::atomic<int> taps{ 0 };
+
+g::WidgetRegistration counter("counter", { .sizeMode = g::SizeMode::Exact, .content = [](const g::WidgetContext& w) {
+    g::Column(g::Padding(g::FillMaxSize(g::Background(g::GlanceModifier{}, { 0xFFFFFFFF, 0xFF1D1B20 })), 12), g::Alignment::Center(), [&] {
+        g::Text(std::to_string(taps.load()) + " taps", {}, { .fontSize = 18, .fontWeight = g::FontWeight::Bold });
+        g::Button("Tap", g::RunCallback("tap"));
+        if (w.size.width > 200) g::Button("Open", g::StartActivity("app://counter"));
+    });
+} });
+g::ActionCallbackRegistration tap("tap", [](const g::ActionContext&) { ++taps; });
+```
+
+* Register widgets and callbacks at namespace scope. The system starts the app's process to
+  draw a widget or run a callback, without an activity, and the registrations must exist
+  there.
+* Declare each widget with `WIDGETS counter` in `kiln_add_app`, and give its
+  appwidget-provider info in `res/xml/counter_widget.xml` (its size, resize modes and
+  category). A Gradle app declares a receiver class extending `dev.kiln.KilnWidgetReceiver`
+  instead, with `<meta-data android:name="dev.kiln.widget" android:value="counter" />` and the
+  provider info.
+* `SizeMode::Single` draws once, at the widget's minimum size. `Exact` draws for every size
+  the launcher uses. `Responsive` draws for the sizes you list, and the launcher picks among
+  them. `WidgetContext::size` is the size being drawn.
+* `RunCallback` runs a registered callback in the app's process, then redraws the widget.
+  `StartActivity` opens the app at a deep link. A `CheckBox` or `Switch` reports its new state in
+  `ActionContext::checked`.
+* `glance::UpdateAll(name)` redraws every placed instance after the app's data changes, for
+  example from a `kiln::work` job. `RequestPin(name)` asks the launcher to place one.
+* A widget has up to four `LazyColumn`s. Images are app drawables by name, or encoded bytes.
+
 ## Device features
 
 Vibration patterns, sensors, location and the biometric prompt, each in `kiln/ui`:

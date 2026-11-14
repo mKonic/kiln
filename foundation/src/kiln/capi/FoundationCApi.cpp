@@ -21,6 +21,7 @@
 #include "kiln/ui/Location.h"
 #include "kiln/ui/Notifications.h"
 #include "kiln/work/Work.h"
+#include "kiln/glance/Glance.h"
 #include "kiln/ui/Sensors.h"
 #include "kiln/ui/Vibration.h"
 #include "kiln/ui/PictureInPicture.h"
@@ -2494,6 +2495,111 @@ KILN_API void kiln_work_cancel_all(void) {
 }
 KILN_API bool kiln_work_is_scheduled(const char* name) {
     TRY { return name && kiln::work::Find(name).has_value(); } CATCH(false)
+}
+
+// --- home-screen widgets ----------------------------------------------------------------------
+
+namespace {
+    namespace gl = kiln::glance;
+    gl::Dimension GlanceDimension(int32_t kind, float dp) {
+        switch (kind) {
+            case 1: return gl::Dimension::Fill();
+            case 2: return gl::Dimension::Expand();
+            case 3: return gl::Dimension::Dp(dp);
+            default: return gl::Dimension::Wrap();
+        }
+    }
+    gl::Action GlanceAction(const kiln_glance_action& a) {
+        if (a.kind == 1) return gl::StartActivity(a.uri ? a.uri : "");
+        if (a.kind == 2) return gl::RunCallback(a.key ? a.key : "", a.params ? a.params : "");
+        return {};
+    }
+    gl::GlanceModifier GlanceModifierOf(const kiln_glance_modifier* m) {
+        gl::GlanceModifier out;
+        if (!m) return out;
+        if (m->background) out = gl::Background(out, m->background);
+        if (m->width_kind) out = gl::Width(out, GlanceDimension(m->width_kind, m->width_dp));
+        if (m->height_kind) out = gl::Height(out, GlanceDimension(m->height_kind, m->height_dp));
+        if (m->padding_start || m->padding_top || m->padding_end || m->padding_bottom)
+            out = gl::Padding(out, m->padding_start, m->padding_top, m->padding_end, m->padding_bottom);
+        if (m->corner_radius > 0) out = gl::CornerRadius(out, m->corner_radius);
+        if (m->click.kind) out = gl::Clickable(out, GlanceAction(m->click));
+        return out;
+    }
+    gl::Alignment GlanceAlignment(kiln_alignment a) {
+        gl::Alignment out;
+        out.horizontal = a.horizontal < -0.5f ? gl::HorizontalAlignment::Start : a.horizontal > 0.5f ? gl::HorizontalAlignment::End : gl::HorizontalAlignment::CenterHorizontally;
+        out.vertical = a.vertical < -0.5f ? gl::VerticalAlignment::Top : a.vertical > 0.5f ? gl::VerticalAlignment::Bottom : gl::VerticalAlignment::CenterVertically;
+        return out;
+    }
+    kiln::Function<void()> GlanceContent(kiln_fn content) {
+        auto owned = kiln::capi::Own(content);
+        return [owned] {
+            kiln::capi::CallbackScope scope;
+            owned->f.call(owned->f.user);
+        };
+    }
+}
+
+KILN_API void kiln_glance_box(const kiln_glance_modifier* m, kiln_alignment a, kiln_fn content) {
+    auto c = GlanceContent(content);
+    TRY { gl::Box(GlanceModifierOf(m), GlanceAlignment(a), std::move(c)); } CATCH_VOID
+}
+KILN_API void kiln_glance_row(const kiln_glance_modifier* m, kiln_alignment a, kiln_fn content) {
+    auto c = GlanceContent(content);
+    TRY { gl::Row(GlanceModifierOf(m), GlanceAlignment(a), std::move(c)); } CATCH_VOID
+}
+KILN_API void kiln_glance_column(const kiln_glance_modifier* m, kiln_alignment a, kiln_fn content) {
+    auto c = GlanceContent(content);
+    TRY { gl::Column(GlanceModifierOf(m), GlanceAlignment(a), std::move(c)); } CATCH_VOID
+}
+KILN_API void kiln_glance_text(const char* text, const kiln_glance_modifier* m, float size, uint32_t color, int32_t weight, int32_t maxLines) {
+    TRY {
+        gl::TextStyle style;
+        style.fontSize = size;
+        if (color) style.color = color;
+        style.fontWeight = weight >= 700 ? gl::FontWeight::Bold : weight >= 500 ? gl::FontWeight::Medium : gl::FontWeight::Normal;
+        gl::Text(ToString(text), GlanceModifierOf(m), style, maxLines);
+    } CATCH_VOID
+}
+KILN_API void kiln_glance_button(const char* text, kiln_glance_action onClick, const kiln_glance_modifier* m) {
+    TRY { gl::Button(ToString(text), GlanceAction(onClick), GlanceModifierOf(m)); } CATCH_VOID
+}
+KILN_API void kiln_glance_image(const char* drawable, const char* description, const kiln_glance_modifier* m) {
+    TRY { gl::Image(gl::ImageProvider::Resource(ToString(drawable)), ToString(description), GlanceModifierOf(m)); } CATCH_VOID
+}
+KILN_API void kiln_glance_spacer(const kiln_glance_modifier* m) {
+    TRY { gl::Spacer(GlanceModifierOf(m)); } CATCH_VOID
+}
+KILN_API void kiln_glance_check_box(bool checked, kiln_glance_action onChange, const char* text, const kiln_glance_modifier* m) {
+    TRY { gl::CheckBox(checked, GlanceAction(onChange), ToString(text), GlanceModifierOf(m)); } CATCH_VOID
+}
+KILN_API void kiln_glance_register_widget(const char* name, int32_t sizeMode, kiln_fn_glance_content content) {
+    auto owned = kiln::capi::Own(content);
+    TRY {
+        gl::GlanceAppWidget w;
+        w.sizeMode = sizeMode == 1 ? gl::SizeMode::Exact : gl::SizeMode::Single;
+        w.content = [owned](const gl::WidgetContext& c) {
+            kiln::capi::CallbackScope scope;
+            owned->f.call(owned->f.user, c.name.c_str(), c.appWidgetId, c.size.width, c.size.height);
+        };
+        gl::RegisterWidget(ToString(name), std::move(w));
+    } CATCH_VOID
+}
+KILN_API void kiln_glance_register_action(const char* key, kiln_fn_glance_action action) {
+    auto owned = kiln::capi::Own(action);
+    TRY {
+        gl::RegisterActionCallback(ToString(key), [owned](const gl::ActionContext& c) {
+            kiln::capi::CallbackScope scope;
+            owned->f.call(owned->f.user, c.widget.c_str(), c.appWidgetId, c.params.c_str(), c.checked ? (*c.checked ? 1 : 0) : -1);
+        });
+    } CATCH_VOID
+}
+KILN_API void kiln_glance_update_all(const char* name) {
+    TRY { gl::UpdateAll(ToString(name)); } CATCH_VOID
+}
+KILN_API bool kiln_glance_request_pin(const char* name) {
+    TRY { return gl::RequestPin(ToString(name)); } CATCH(false)
 }
 
 KILN_API bool kiln_notify(int32_t id, const char* channel, const char* title, const char* text, const char* data) {

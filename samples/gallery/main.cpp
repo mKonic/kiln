@@ -13,6 +13,8 @@
 #include <kiln/foundation/activity/ActivityResult.h>
 #include <kiln/foundation/Popup.h>
 #include <kiln/foundation/VideoSurface.h>
+#include <kiln/glance/Glance.h>
+#include <atomic>
 #include <kiln/foundation/Dialog.h>
 #include <kiln/material3/DynamicColorScheme.h>
 #include <kiln/material3/MaterialTheme.h>
@@ -319,6 +321,31 @@ namespace {
         });
     }
 
+    // The gallery's home-screen widget: taps counted in the app's process, which the system
+    // starts for them.
+    std::atomic<int> g_WidgetTaps{ 0 };
+    kiln::glance::WidgetRegistration galleryWidget("gallery", { .sizeMode = kiln::glance::SizeMode::Exact, .content = [](const kiln::glance::WidgetContext& w) {
+        namespace g = kiln::glance;
+        g::Column(g::CornerRadius(g::Padding(g::FillMaxSize(g::Background(g::GlanceModifier{}, { 0xFFF3EDF7, 0xFF2B2930 })), 12), 16), g::Alignment::Center(), [&] {
+            g::Text("kiln gallery", {}, { .color = { 0xFF6750A4, 0xFFD0BCFF }, .fontSize = 16, .fontWeight = g::FontWeight::Bold });
+            g::Text(std::to_string(g_WidgetTaps.load()) + " taps", g::Padding(g::GlanceModifier{}, 0, 4), { .color = { 0xFF1D1B20, 0xFFE6E0E9 } });
+            g::Row({}, g::Alignment::Center(), [&] {
+                g::Button("Tap", g::RunCallback("gallery-tap"));
+                if (w.size.width >= 180) g::Button("Open", g::StartActivity(), g::Padding(g::GlanceModifier{}, 8, 0, 0, 0));
+            });
+        });
+    } });
+    kiln::glance::ActionCallbackRegistration galleryWidgetTap("gallery-tap", [](const kiln::glance::ActionContext&) { ++g_WidgetTaps; });
+
+    void WidgetDemo() {
+        using namespace kiln::foundation;
+        Column(SafeDrawingPadding(Background(FillMax(Modifier{}, Axis::Both), kSurface)), Arrangement::SpacedBy(12_dp), AlignmentH::Start(), [] {
+            BasicText("A home-screen widget (kiln::glance)", Padding(Modifier{}, 16_dp, 0_dp), { 16, kOnSurface });
+            Box(Clickable(Background(Padding(Modifier{}, 16_dp, 0_dp), kPrimaryContainer, CornerShape::Pill()), [] { kiln::glance::RequestPin("gallery"); }),
+                Alignment::Center(), false, [] { BasicText("Add to the home screen", Padding(Modifier{}, 20_dp, 10_dp), { 14, kOnSurface }); });
+        });
+    }
+
     // media::Player in a VideoSurface, and a camera's preview once the permission is granted.
     void MediaDemo() {
         using namespace kiln::foundation;
@@ -431,6 +458,10 @@ namespace {
         }
         if (section == "external-surface") {
             ExternalSurfaceDemo();
+            return;
+        }
+        if (section == "widget") {
+            WidgetDemo();
             return;
         }
         if (section == "media") {
