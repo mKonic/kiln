@@ -171,6 +171,7 @@ class Generator:
         self.names = set()
         self.struct_order = []
         self.opt_structs = {}   # C name -> pointer type of its value
+        self.list_structs = {}  # C name -> item struct (lists handed to callbacks)
         self.opaques = {}       # C name -> C++ type (opaque shared handles)
         self.base_sig = {}      # C name -> (param, C type) of its first overload
         self.returned_callbacks = set()
@@ -443,6 +444,9 @@ class Generator:
         k = re.sub(r'std::basic_string<char>', 'string', k)
         k = re.sub(r'std::shared_ptr<(const )?(.*)>', r'\2', k)
         k = re.sub(r'std::optional<(.*)>', r'opt_\1', k)
+        lst = re.match(r'std::vector<(.*)>$', k)
+        if lst:
+            return snake(lst.group(1).split('::')[-1].replace(' ', '_')) + '_list'
         k = k.split('::')[-1].replace(' ', '_')
         return snake(k)
 
@@ -532,6 +536,29 @@ class Generator:
         if k == 'kiln::ui::LayoutCoordinates':
             return Mapping('const kiln_layout_coordinates*', lambda e: f'({e} ? {e}->c : kiln::ui::LayoutCoordinates{{}})',
                            lambda e, o: f'kiln::capi::TransientCoordinates({e})')
+        if k == 'kiln::ui::MeasureScope':
+            return Mapping('kiln_measure_scope*', lambda e: f'*reinterpret_cast<kiln::ui::MeasureScope*>({e})',
+                           lambda e, o: f'reinterpret_cast<kiln_measure_scope*>(&({e}))')
+        if k == 'kiln::ui::Measurable':
+            return Mapping('kiln_measurable*', lambda e: f'*reinterpret_cast<kiln::ui::Measurable*>({e})',
+                           lambda e, o: f'reinterpret_cast<kiln_measurable*>(&({e}))')
+        if k == 'kiln::ui::Constraints':
+            return Mapping('kiln_int_constraints', lambda e: f'kiln::capi::ToConstraints({e})', lambda e, o: f'kiln::capi::FromConstraints({e})')
+        if k == 'kiln::ui::MeasureResult':
+            return Mapping('kiln_measure_result*', lambda e: f'kiln::capi::TakeMeasureResult({e})', None)
+        if arg_of_callback and k.startswith('std::vector<'):
+            # A list handed to a callback: items and count, valid during the call.
+            item = self.map(template_args(base)[0], name)
+            if item.by_out:
+                st = item.struct
+                lc = st.c + '_list'
+                self.list_structs[lc] = st.c
+                def from_list(e, o, st=st, lc=lc):
+                    var = f't{next(VAR_IDS)}'
+                    o.append(f'auto* {var} = kiln::capi::NewTransient<std::vector<{st.c}>>(); for (const auto& x : {e}) {{ {st.c} c{{}}; c.size = sizeof(c); FromCpp(x, &c); {var}->push_back(c); }}')
+                    o.append(f'auto* {var}l = kiln::capi::NewTransient<{lc}>(); {var}l->items = {var}->data(); {var}l->count = {var}->size();')
+                    return f'{var}l'
+                return Mapping(f'const {lc}*', None, from_list)
         if k in ('kiln::ui::DrawScope', 'kiln::ui::ContentDrawScope'):
             return Mapping('kiln_draw_scope*', lambda e: f'*reinterpret_cast<kiln::ui::DrawScope*>({e})',
                            lambda e, o: f'reinterpret_cast<kiln_draw_scope*>(static_cast<kiln::ui::DrawScope*>(&({e})))')
@@ -1060,6 +1087,10 @@ class Generator:
             for n, v in e.values:
                 out.append(f'    {e.c.upper()}_{snake(n).upper()} = {v},')
             out.append(f'}} {e.c};')
+        out.append('')
+        out.append('/* Lists handed to callbacks (valid during the call) */')
+        for c, item in sorted(self.list_structs.items()):
+            out.append(f'typedef struct {c} {{ const {item}* items; size_t count; }} {c};')
         out.append('')
         out.append('/* Callbacks */')
         for cb in sorted(self.callbacks.values(), key=lambda c: c.c):

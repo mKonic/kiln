@@ -706,6 +706,9 @@ namespace {
 [[maybe_unused]] kiln::material3::CarouselParallaxScrollEffectItemInfo ToCpp(const kiln_m3_carousel_parallax_scroll_effect_item_info* c);
 [[maybe_unused]] void FromCpp(const kiln::material3::CarouselParallaxScrollEffectItemInfo& v, kiln_m3_carousel_parallax_scroll_effect_item_info* out);
 [[maybe_unused]] const kiln_m3_carousel_parallax_scroll_effect_item_info* FromCppTransient(const kiln::material3::CarouselParallaxScrollEffectItemInfo& v);
+[[maybe_unused]] kiln::material3::TabPosition ToCpp(const kiln_m3_tab_position* c);
+[[maybe_unused]] void FromCpp(const kiln::material3::TabPosition& v, kiln_m3_tab_position* out);
+[[maybe_unused]] const kiln_m3_tab_position* FromCppTransient(const kiln::material3::TabPosition& v);
 [[maybe_unused]] kiln::Function<bool ()> ToCpp_kiln_m3_fn_to_bool(kiln_m3_fn_to_bool f);
 [[maybe_unused]] kiln::Function<void (kiln::material3::AppBarMenuState &)> ToCpp_kiln_m3_fn_app_bar_menu_state(kiln_m3_fn_app_bar_menu_state f);
 [[maybe_unused]] kiln::Function<void (kiln::material3::AppBarScope &)> ToCpp_kiln_m3_fn_app_bar_scope(kiln_m3_fn_app_bar_scope f);
@@ -749,6 +752,7 @@ namespace {
 [[maybe_unused]] kiln::Function<kiln::ui::IntSize (kiln::ui::IntSize)> ToCpp_kiln_m3_fn_int_size_to_int_size(kiln_m3_fn_int_size_to_int_size f);
 [[maybe_unused]] kiln::Function<std::shared_ptr<const kiln::anim::AnimationSpec> (kiln::ui::IntSize, kiln::ui::IntSize)> ToCpp_kiln_m3_fn_int_size_int_size_to_animation_spec(kiln_m3_fn_int_size_int_size_to_animation_spec f);
 [[maybe_unused]] kiln::Function<void (kiln::material3::SnackbarResult)> ToCpp_kiln_m3_fn_snackbar_result(kiln_m3_fn_snackbar_result f);
+[[maybe_unused]] kiln::Function<kiln::ui::MeasureResult (kiln::ui::MeasureScope &, kiln::ui::Measurable &, const kiln::ui::Constraints &, const std::vector<kiln::material3::TabPosition> &)> ToCpp_kiln_m3_fn_measure_scope_measurable_constraints_tab_position_list_to_measure_result(kiln_m3_fn_measure_scope_measurable_constraints_tab_position_list_to_measure_result f);
 
 kiln::Function<bool ()> ToCpp_kiln_m3_fn_to_bool(kiln_m3_fn_to_bool f) {
     auto o = kiln::capi::Own(f);
@@ -1143,6 +1147,17 @@ kiln::Function<void (kiln::material3::SnackbarResult)> ToCpp_kiln_m3_fn_snackbar
         o->f.call(o->f.user, kiln_m3_snackbar_result(x0));
     };
 }
+kiln::Function<kiln::ui::MeasureResult (kiln::ui::MeasureScope &, kiln::ui::Measurable &, const kiln::ui::Constraints &, const std::vector<kiln::material3::TabPosition> &)> ToCpp_kiln_m3_fn_measure_scope_measurable_constraints_tab_position_list_to_measure_result(kiln_m3_fn_measure_scope_measurable_constraints_tab_position_list_to_measure_result f) {
+    auto o = kiln::capi::Own(f);
+    if (!o) return {};
+    return [o](kiln::ui::MeasureScope & x0, kiln::ui::Measurable & x1, const kiln::ui::Constraints & x2, const std::vector<kiln::material3::TabPosition> & x3) -> kiln::ui::MeasureResult {
+        kiln::capi::CallbackScope scope;
+        auto* t40 = kiln::capi::NewTransient<std::vector<kiln_m3_tab_position>>(); for (const auto& x : x3) { kiln_m3_tab_position c{}; c.size = sizeof(c); FromCpp(x, &c); t40->push_back(c); }
+        auto* t40l = kiln::capi::NewTransient<kiln_m3_tab_position_list>(); t40l->items = t40->data(); t40l->count = t40->size();
+        auto r = o->f.call(o->f.user, reinterpret_cast<kiln_measure_scope*>(&(x0)), reinterpret_cast<kiln_measurable*>(&(x1)), kiln::capi::FromConstraints(x2), t40l);
+        return kiln::capi::TakeMeasureResult(r);
+    };
+}
 [[maybe_unused]] kiln_m3_fn_to_bool FromCpp_kiln_m3_fn_to_bool(kiln::Function<bool ()> fn) {
     using F = kiln::Function<bool ()>;
     kiln_m3_fn_to_bool c{};
@@ -1504,9 +1519,9 @@ void FromCpp(const kiln::material3::TopAppBarOptions& v, kiln_m3_top_app_bar_opt
     c.expanded_height = (v.expandedHeight).value;
     c.window_insets = ([&]() -> const kiln_window_insets* { if (!(v.windowInsets)) return nullptr;  return kiln::capi::TransientInsets((*(v.windowInsets))); }());
     c.colors = ([&]() -> const kiln_m3_top_app_bar_colors* { if (!(v.colors)) return nullptr;  return FromCppTransient((*(v.colors))); }());
-    auto* h40 = kiln::capi::NewTransient<kiln_m3_top_app_bar_scroll_behavior>();
-    h40->owner = std::const_pointer_cast<kiln::material3::TopAppBarScrollBehavior>(v.scrollBehavior); h40->ptr = h40->owner.get();
-    c.scroll_behavior = h40;
+    auto* h41 = kiln::capi::NewTransient<kiln_m3_top_app_bar_scroll_behavior>();
+    h41->owner = std::const_pointer_cast<kiln::material3::TopAppBarScrollBehavior>(v.scrollBehavior); h41->ptr = h41->owner.get();
+    c.scroll_behavior = h41;
     c.content_padding = kiln::capi::FromPadding(v.contentPadding);
     const size_t n = out->size < sizeof(size_t) ? sizeof(c) : std::min(out->size, sizeof(c));
     std::memcpy(reinterpret_cast<char*>(out) + sizeof(size_t), reinterpret_cast<const char*>(&c) + sizeof(size_t), n - sizeof(size_t));
@@ -1545,9 +1560,9 @@ void FromCpp(const kiln::material3::TwoRowsTopAppBarOptions& v, kiln_m3_two_rows
     c.expanded_height = (v.expandedHeight).value;
     c.window_insets = ([&]() -> const kiln_window_insets* { if (!(v.windowInsets)) return nullptr;  return kiln::capi::TransientInsets((*(v.windowInsets))); }());
     c.colors = ([&]() -> const kiln_m3_top_app_bar_colors* { if (!(v.colors)) return nullptr;  return FromCppTransient((*(v.colors))); }());
-    auto* h41 = kiln::capi::NewTransient<kiln_m3_top_app_bar_scroll_behavior>();
-    h41->owner = std::const_pointer_cast<kiln::material3::TopAppBarScrollBehavior>(v.scrollBehavior); h41->ptr = h41->owner.get();
-    c.scroll_behavior = h41;
+    auto* h42 = kiln::capi::NewTransient<kiln_m3_top_app_bar_scroll_behavior>();
+    h42->owner = std::const_pointer_cast<kiln::material3::TopAppBarScrollBehavior>(v.scrollBehavior); h42->ptr = h42->owner.get();
+    c.scroll_behavior = h42;
     const size_t n = out->size < sizeof(size_t) ? sizeof(c) : std::min(out->size, sizeof(c));
     std::memcpy(reinterpret_cast<char*>(out) + sizeof(size_t), reinterpret_cast<const char*>(&c) + sizeof(size_t), n - sizeof(size_t));
     out->size = n;
@@ -1582,9 +1597,9 @@ void FromCpp(const kiln::material3::BottomAppBarOptions& v, kiln_m3_bottom_app_b
     c.tonal_elevation = (v.tonalElevation).value;
     c.content_padding = kiln::capi::FromPadding(v.contentPadding);
     c.window_insets = ([&]() -> const kiln_window_insets* { if (!(v.windowInsets)) return nullptr;  return kiln::capi::TransientInsets((*(v.windowInsets))); }());
-    auto* h42 = kiln::capi::NewTransient<kiln_m3_bottom_app_bar_scroll_behavior>();
-    h42->owner = std::const_pointer_cast<kiln::material3::BottomAppBarScrollBehavior>(v.scrollBehavior); h42->ptr = h42->owner.get();
-    c.scroll_behavior = h42;
+    auto* h43 = kiln::capi::NewTransient<kiln_m3_bottom_app_bar_scroll_behavior>();
+    h43->owner = std::const_pointer_cast<kiln::material3::BottomAppBarScrollBehavior>(v.scrollBehavior); h43->ptr = h43->owner.get();
+    c.scroll_behavior = h43;
     const size_t n = out->size < sizeof(size_t) ? sizeof(c) : std::min(out->size, sizeof(c));
     std::memcpy(reinterpret_cast<char*>(out) + sizeof(size_t), reinterpret_cast<const char*>(&c) + sizeof(size_t), n - sizeof(size_t));
     out->size = n;
@@ -1621,9 +1636,9 @@ void FromCpp(const kiln::material3::FlexibleBottomAppBarOptions& v, kiln_m3_flex
     c.horizontal_arrangement = kiln::capi::FromArrangement(v.horizontalArrangement);
     c.expanded_height = (v.expandedHeight).value;
     c.window_insets = ([&]() -> const kiln_window_insets* { if (!(v.windowInsets)) return nullptr;  return kiln::capi::TransientInsets((*(v.windowInsets))); }());
-    auto* h43 = kiln::capi::NewTransient<kiln_m3_bottom_app_bar_scroll_behavior>();
-    h43->owner = std::const_pointer_cast<kiln::material3::BottomAppBarScrollBehavior>(v.scrollBehavior); h43->ptr = h43->owner.get();
-    c.scroll_behavior = h43;
+    auto* h44 = kiln::capi::NewTransient<kiln_m3_bottom_app_bar_scroll_behavior>();
+    h44->owner = std::const_pointer_cast<kiln::material3::BottomAppBarScrollBehavior>(v.scrollBehavior); h44->ptr = h44->owner.get();
+    c.scroll_behavior = h44;
     const size_t n = out->size < sizeof(size_t) ? sizeof(c) : std::min(out->size, sizeof(c));
     std::memcpy(reinterpret_cast<char*>(out) + sizeof(size_t), reinterpret_cast<const char*>(&c) + sizeof(size_t), n - sizeof(size_t));
     out->size = n;
@@ -1938,9 +1953,9 @@ void FromCpp(const kiln::material3::BottomSheetOptions& v, kiln_m3_bottom_sheet_
     if (!out) return;
     kiln_m3_bottom_sheet_options c{};
     c.size = sizeof(c);
-    auto* h44 = kiln::capi::NewTransient<kiln_m3_sheet_state>();
-    h44->owner = std::const_pointer_cast<kiln::material3::SheetState>(v.state); h44->ptr = h44->owner.get();
-    c.state = h44;
+    auto* h45 = kiln::capi::NewTransient<kiln_m3_sheet_state>();
+    h45->owner = std::const_pointer_cast<kiln::material3::SheetState>(v.state); h45->ptr = h45->owner.get();
+    c.state = h45;
     c.max_width = (v.maxWidth).value;
     c.gestures_enabled = bool(v.gesturesEnabled);
     c.back_handler_enabled = bool(v.backHandlerEnabled);
@@ -2048,12 +2063,12 @@ void FromCpp(const kiln::material3::BottomSheetScaffoldState& v, kiln_m3_bottom_
     if (!out) return;
     kiln_m3_bottom_sheet_scaffold_state c{};
     c.size = sizeof(c);
-    auto* h45 = kiln::capi::NewTransient<kiln_m3_sheet_state>();
-    h45->owner = std::const_pointer_cast<kiln::material3::SheetState>(v.bottomSheetState); h45->ptr = h45->owner.get();
-    c.bottom_sheet_state = h45;
-    auto* h46 = kiln::capi::NewTransient<kiln_m3_snackbar_host_state>();
-    h46->owner = std::const_pointer_cast<kiln::material3::SnackbarHostState>(v.snackbarHostState); h46->ptr = h46->owner.get();
-    c.snackbar_host_state = h46;
+    auto* h46 = kiln::capi::NewTransient<kiln_m3_sheet_state>();
+    h46->owner = std::const_pointer_cast<kiln::material3::SheetState>(v.bottomSheetState); h46->ptr = h46->owner.get();
+    c.bottom_sheet_state = h46;
+    auto* h47 = kiln::capi::NewTransient<kiln_m3_snackbar_host_state>();
+    h47->owner = std::const_pointer_cast<kiln::material3::SnackbarHostState>(v.snackbarHostState); h47->ptr = h47->owner.get();
+    c.snackbar_host_state = h47;
     const size_t n = out->size < sizeof(size_t) ? sizeof(c) : std::min(out->size, sizeof(c));
     std::memcpy(reinterpret_cast<char*>(out) + sizeof(size_t), reinterpret_cast<const char*>(&c) + sizeof(size_t), n - sizeof(size_t));
     out->size = n;
@@ -3542,9 +3557,9 @@ void FromCpp(const kiln::material3::DatePickerOptions& v, kiln_m3_date_picker_op
     if (!out) return;
     kiln_m3_date_picker_options c{};
     c.size = sizeof(c);
-    auto* h47 = kiln::capi::NewTransient<kiln_m3_date_picker_formatter>();
-    h47->owner = std::const_pointer_cast<kiln::material3::DatePickerFormatter>(v.dateFormatter); h47->ptr = h47->owner.get();
-    c.date_formatter = h47;
+    auto* h48 = kiln::capi::NewTransient<kiln_m3_date_picker_formatter>();
+    h48->owner = std::const_pointer_cast<kiln::material3::DatePickerFormatter>(v.dateFormatter); h48->ptr = h48->owner.get();
+    c.date_formatter = h48;
     c.colors = ([&]() -> const kiln_m3_date_picker_colors* { if (!(v.colors)) return nullptr;  return FromCppTransient((*(v.colors))); }());
     c.show_mode_toggle = bool(v.showModeToggle);
     c.focus_requester = ([&]() -> kiln_focus_requester* { if (!(v.focusRequester)) return nullptr;  return reinterpret_cast<kiln_focus_requester*>((*(v.focusRequester))); }());
@@ -4222,9 +4237,9 @@ void FromCpp(const kiln::material3::FloatingToolbarOptions& v, kiln_m3_floating_
     c.size = sizeof(c);
     c.colors = ([&]() -> const kiln_m3_floating_toolbar_colors* { if (!(v.colors)) return nullptr;  return FromCppTransient((*(v.colors))); }());
     c.content_padding = kiln::capi::FromPadding(v.contentPadding);
-    auto* h48 = kiln::capi::NewTransient<kiln_m3_floating_toolbar_scroll_behavior>();
-    h48->owner = std::const_pointer_cast<kiln::material3::FloatingToolbarScrollBehavior>(v.scrollBehavior); h48->ptr = h48->owner.get();
-    c.scroll_behavior = h48;
+    auto* h49 = kiln::capi::NewTransient<kiln_m3_floating_toolbar_scroll_behavior>();
+    h49->owner = std::const_pointer_cast<kiln::material3::FloatingToolbarScrollBehavior>(v.scrollBehavior); h49->ptr = h49->owner.get();
+    c.scroll_behavior = h49;
     c.shape = kiln::capi::TransientShape(v.shape);
     c.expanded_shadow_elevation = (v.expandedShadowElevation).value;
     c.collapsed_shadow_elevation = (v.collapsedShadowElevation).value;
@@ -4262,9 +4277,9 @@ void FromCpp(const kiln::material3::FloatingToolbarWithFabOptions& v, kiln_m3_fl
     c.size = sizeof(c);
     c.colors = ([&]() -> const kiln_m3_floating_toolbar_colors* { if (!(v.colors)) return nullptr;  return FromCppTransient((*(v.colors))); }());
     c.content_padding = kiln::capi::FromPadding(v.contentPadding);
-    auto* h49 = kiln::capi::NewTransient<kiln_m3_floating_toolbar_scroll_behavior>();
-    h49->owner = std::const_pointer_cast<kiln::material3::FloatingToolbarScrollBehavior>(v.scrollBehavior); h49->ptr = h49->owner.get();
-    c.scroll_behavior = h49;
+    auto* h50 = kiln::capi::NewTransient<kiln_m3_floating_toolbar_scroll_behavior>();
+    h50->owner = std::const_pointer_cast<kiln::material3::FloatingToolbarScrollBehavior>(v.scrollBehavior); h50->ptr = h50->owner.get();
+    c.scroll_behavior = h50;
     c.shape = kiln::capi::TransientShape(v.shape);
     c.horizontal_fab_position = kiln_m3_floating_toolbar_horizontal_fab_position(v.horizontalFabPosition);
     c.vertical_fab_position = kiln_m3_floating_toolbar_vertical_fab_position(v.verticalFabPosition);
@@ -4848,7 +4863,7 @@ void FromCpp(const kiln::material3::MaterialThemeArgs& v, kiln_m3_material_theme
     kiln_m3_material_theme_args c{};
     c.size = sizeof(c);
     c.color_scheme = ([&]() -> const kiln_m3_color_scheme* { if (!(v.colorScheme)) return nullptr;  return FromCppTransient((*(v.colorScheme))); }());
-    c.motion_scheme = ([&]() -> kiln_m3_motion_scheme* { if (!(v.motionScheme)) return nullptr; auto* h50 = kiln::capi::NewTransient<kiln_m3_motion_scheme>(); h50->owner = std::const_pointer_cast<kiln::material3::MotionScheme>((*(v.motionScheme))); h50->ptr = h50->owner.get(); return h50; }());
+    c.motion_scheme = ([&]() -> kiln_m3_motion_scheme* { if (!(v.motionScheme)) return nullptr; auto* h51 = kiln::capi::NewTransient<kiln_m3_motion_scheme>(); h51->owner = std::const_pointer_cast<kiln::material3::MotionScheme>((*(v.motionScheme))); h51->ptr = h51->owner.get(); return h51; }());
     c.shapes = ([&]() -> const kiln_m3_shapes* { if (!(v.shapes)) return nullptr;  return FromCppTransient((*(v.shapes))); }());
     c.typography = ([&]() -> const kiln_m3_typography* { if (!(v.typography)) return nullptr;  return FromCppTransient((*(v.typography))); }());
     const size_t n = out->size < sizeof(size_t) ? sizeof(c) : std::min(out->size, sizeof(c));
@@ -5238,9 +5253,9 @@ void FromCpp(const kiln::material3::ModalBottomSheetOptions& v, kiln_m3_modal_bo
     if (!out) return;
     kiln_m3_modal_bottom_sheet_options c{};
     c.size = sizeof(c);
-    auto* h51 = kiln::capi::NewTransient<kiln_m3_sheet_state>();
-    h51->owner = std::const_pointer_cast<kiln::material3::SheetState>(v.sheetState); h51->ptr = h51->owner.get();
-    c.sheet_state = h51;
+    auto* h52 = kiln::capi::NewTransient<kiln_m3_sheet_state>();
+    h52->owner = std::const_pointer_cast<kiln::material3::SheetState>(v.sheetState); h52->ptr = h52->owner.get();
+    c.sheet_state = h52;
     c.sheet_max_width = (v.sheetMaxWidth).value;
     c.sheet_gestures_enabled = bool(v.sheetGesturesEnabled);
     c.shape = kiln::capi::TransientShape(v.shape);
@@ -5375,9 +5390,9 @@ void FromCpp(const kiln::material3::ModalNavigationDrawerOptions& v, kiln_m3_mod
     if (!out) return;
     kiln_m3_modal_navigation_drawer_options c{};
     c.size = sizeof(c);
-    auto* h52 = kiln::capi::NewTransient<kiln_m3_drawer_state>();
-    h52->owner = std::const_pointer_cast<kiln::material3::DrawerState>(v.drawerState); h52->ptr = h52->owner.get();
-    c.drawer_state = h52;
+    auto* h53 = kiln::capi::NewTransient<kiln_m3_drawer_state>();
+    h53->owner = std::const_pointer_cast<kiln::material3::DrawerState>(v.drawerState); h53->ptr = h53->owner.get();
+    c.drawer_state = h53;
     c.gestures_enabled = bool(v.gesturesEnabled);
     c.scrim_color = ((v.scrimColor) ? kiln::capi::FromColor(*(v.scrimColor)) : KILN_COLOR_UNSPECIFIED);
     const size_t n = out->size < sizeof(size_t) ? sizeof(c) : std::min(out->size, sizeof(c));
@@ -5405,9 +5420,9 @@ void FromCpp(const kiln::material3::DismissibleNavigationDrawerOptions& v, kiln_
     if (!out) return;
     kiln_m3_dismissible_navigation_drawer_options c{};
     c.size = sizeof(c);
-    auto* h53 = kiln::capi::NewTransient<kiln_m3_drawer_state>();
-    h53->owner = std::const_pointer_cast<kiln::material3::DrawerState>(v.drawerState); h53->ptr = h53->owner.get();
-    c.drawer_state = h53;
+    auto* h54 = kiln::capi::NewTransient<kiln_m3_drawer_state>();
+    h54->owner = std::const_pointer_cast<kiln::material3::DrawerState>(v.drawerState); h54->ptr = h54->owner.get();
+    c.drawer_state = h54;
     c.gestures_enabled = bool(v.gesturesEnabled);
     const size_t n = out->size < sizeof(size_t) ? sizeof(c) : std::min(out->size, sizeof(c));
     std::memcpy(reinterpret_cast<char*>(out) + sizeof(size_t), reinterpret_cast<const char*>(&c) + sizeof(size_t), n - sizeof(size_t));
@@ -5827,9 +5842,9 @@ void FromCpp(const kiln::material3::PullToRefreshBoxOptions& v, kiln_m3_pull_to_
     if (!out) return;
     kiln_m3_pull_to_refresh_box_options c{};
     c.size = sizeof(c);
-    auto* h54 = kiln::capi::NewTransient<kiln_m3_pull_to_refresh_state>();
-    h54->owner = std::const_pointer_cast<kiln::material3::PullToRefreshState>(v.state); h54->ptr = h54->owner.get();
-    c.state = h54;
+    auto* h55 = kiln::capi::NewTransient<kiln_m3_pull_to_refresh_state>();
+    h55->owner = std::const_pointer_cast<kiln::material3::PullToRefreshState>(v.state); h55->ptr = h55->owner.get();
+    c.state = h55;
     c.content_alignment = kiln_alignment{ (v.contentAlignment).horizontal, (v.contentAlignment).vertical };
     c.enabled = bool(v.enabled);
     c.threshold = (v.threshold).value;
@@ -6288,9 +6303,9 @@ void FromCpp(const kiln::material3::AppBarWithSearchOptions& v, kiln_m3_app_bar_
     c.shadow_elevation = kiln_opt_float{ (v.shadowElevation).has_value(), (v.shadowElevation) ? (v.shadowElevation)->value : 0.0f };
     c.content_padding = kiln::capi::FromPadding(v.contentPadding);
     c.window_insets = ([&]() -> const kiln_window_insets* { if (!(v.windowInsets)) return nullptr;  return kiln::capi::TransientInsets((*(v.windowInsets))); }());
-    auto* h55 = kiln::capi::NewTransient<kiln_m3_search_bar_scroll_behavior>();
-    h55->owner = std::const_pointer_cast<kiln::material3::SearchBarScrollBehavior>(v.scrollBehavior); h55->ptr = h55->owner.get();
-    c.scroll_behavior = h55;
+    auto* h56 = kiln::capi::NewTransient<kiln_m3_search_bar_scroll_behavior>();
+    h56->owner = std::const_pointer_cast<kiln::material3::SearchBarScrollBehavior>(v.scrollBehavior); h56->ptr = h56->owner.get();
+    c.scroll_behavior = h56;
     const size_t n = out->size < sizeof(size_t) ? sizeof(c) : std::min(out->size, sizeof(c));
     std::memcpy(reinterpret_cast<char*>(out) + sizeof(size_t), reinterpret_cast<const char*>(&c) + sizeof(size_t), n - sizeof(size_t));
     out->size = n;
@@ -7630,9 +7645,9 @@ void FromCpp(const kiln::material3::WideNavigationRailOptions& v, kiln_m3_wide_n
     if (!out) return;
     kiln_m3_wide_navigation_rail_options c{};
     c.size = sizeof(c);
-    auto* h56 = kiln::capi::NewTransient<kiln_m3_wide_navigation_rail_state>();
-    h56->owner = std::const_pointer_cast<kiln::material3::WideNavigationRailState>(v.state); h56->ptr = h56->owner.get();
-    c.state = h56;
+    auto* h57 = kiln::capi::NewTransient<kiln_m3_wide_navigation_rail_state>();
+    h57->owner = std::const_pointer_cast<kiln::material3::WideNavigationRailState>(v.state); h57->ptr = h57->owner.get();
+    c.state = h57;
     c.shape = kiln::capi::TransientShape(v.shape);
     c.colors = ([&]() -> const kiln_m3_wide_navigation_rail_colors* { if (!(v.colors)) return nullptr;  return FromCppTransient((*(v.colors))); }());
     c.window_insets = ([&]() -> const kiln_window_insets* { if (!(v.windowInsets)) return nullptr;  return kiln::capi::TransientInsets((*(v.windowInsets))); }());
@@ -7699,9 +7714,9 @@ void FromCpp(const kiln::material3::ModalWideNavigationRailOptions& v, kiln_m3_m
     if (!out) return;
     kiln_m3_modal_wide_navigation_rail_options c{};
     c.size = sizeof(c);
-    auto* h57 = kiln::capi::NewTransient<kiln_m3_wide_navigation_rail_state>();
-    h57->owner = std::const_pointer_cast<kiln::material3::WideNavigationRailState>(v.state); h57->ptr = h57->owner.get();
-    c.state = h57;
+    auto* h58 = kiln::capi::NewTransient<kiln_m3_wide_navigation_rail_state>();
+    h58->owner = std::const_pointer_cast<kiln::material3::WideNavigationRailState>(v.state); h58->ptr = h58->owner.get();
+    c.state = h58;
     c.hide_on_collapse = bool(v.hideOnCollapse);
     c.collapsed_shape = kiln::capi::TransientShape(v.collapsedShape);
     c.expanded_shape = kiln::capi::TransientShape(v.expandedShape);
@@ -8171,9 +8186,9 @@ void FromCpp(const kiln::material3::MaterialThemeValues& v, kiln_m3_material_the
     c.color_scheme = FromCppTransient(v.colorScheme);
     c.typography = FromCppTransient(v.typography);
     c.shapes = FromCppTransient(v.shapes);
-    auto* h58 = kiln::capi::NewTransient<kiln_m3_motion_scheme>();
-    h58->owner = std::const_pointer_cast<kiln::material3::MotionScheme>(v.motionScheme); h58->ptr = h58->owner.get();
-    c.motion_scheme = h58;
+    auto* h59 = kiln::capi::NewTransient<kiln_m3_motion_scheme>();
+    h59->owner = std::const_pointer_cast<kiln::material3::MotionScheme>(v.motionScheme); h59->ptr = h59->owner.get();
+    c.motion_scheme = h59;
     const size_t n = out->size < sizeof(size_t) ? sizeof(c) : std::min(out->size, sizeof(c));
     std::memcpy(reinterpret_cast<char*>(out) + sizeof(size_t), reinterpret_cast<const char*>(&c) + sizeof(size_t), n - sizeof(size_t));
     out->size = n;
@@ -8298,6 +8313,35 @@ void FromCpp(const kiln::material3::CarouselParallaxScrollEffectItemInfo& v, kil
 }
 const kiln_m3_carousel_parallax_scroll_effect_item_info* FromCppTransient(const kiln::material3::CarouselParallaxScrollEffectItemInfo& v) {
     auto* c = kiln::capi::NewTransient<kiln_m3_carousel_parallax_scroll_effect_item_info>();
+    c->size = sizeof(*c);
+    FromCpp(v, c);
+    return c;
+}
+kiln::material3::TabPosition ToCpp(const kiln_m3_tab_position* in) {
+    kiln::material3::TabPosition v{};
+    if (!in) return v;
+    kiln_m3_tab_position c;
+    kiln_m3_tab_position_init(&c);
+    if (in->size > sizeof(size_t)) std::memcpy(reinterpret_cast<char*>(&c) + sizeof(size_t), reinterpret_cast<const char*>(in) + sizeof(size_t), std::min(in->size, sizeof(c)) - sizeof(size_t));
+    v.left = kiln::capi::ToDp(c.left);
+    v.width = kiln::capi::ToDp(c.width);
+    v.contentWidth = kiln::capi::ToDp(c.content_width);
+    return v;
+}
+void FromCpp(const kiln::material3::TabPosition& v, kiln_m3_tab_position* out) {
+    (void)v;
+    if (!out) return;
+    kiln_m3_tab_position c{};
+    c.size = sizeof(c);
+    c.left = (v.left).value;
+    c.width = (v.width).value;
+    c.content_width = (v.contentWidth).value;
+    const size_t n = out->size < sizeof(size_t) ? sizeof(c) : std::min(out->size, sizeof(c));
+    std::memcpy(reinterpret_cast<char*>(out) + sizeof(size_t), reinterpret_cast<const char*>(&c) + sizeof(size_t), n - sizeof(size_t));
+    out->size = n;
+}
+const kiln_m3_tab_position* FromCppTransient(const kiln::material3::TabPosition& v) {
+    auto* c = kiln::capi::NewTransient<kiln_m3_tab_position>();
     c->size = sizeof(*c);
     FromCpp(v, c);
     return c;
@@ -9076,6 +9120,10 @@ KILN_API void kiln_m3_snackbar_visuals_init(kiln_m3_snackbar_visuals* s) {
 KILN_API void kiln_m3_carousel_parallax_scroll_effect_item_info_init(kiln_m3_carousel_parallax_scroll_effect_item_info* s) {
     if (!s) return;
     KILN_CAPI_TRY { s->size = sizeof(*s); FromCpp(kiln::material3::CarouselParallaxScrollEffectItemInfo{}, s); } KILN_CAPI_CATCH()
+}
+KILN_API void kiln_m3_tab_position_init(kiln_m3_tab_position* s) {
+    if (!s) return;
+    KILN_CAPI_TRY { s->size = sizeof(*s); FromCpp(kiln::material3::TabPosition{}, s); } KILN_CAPI_CATCH()
 }
 
 KILN_API const kiln_shape* kiln_m3_alert_dialog_defaults_shape(kiln_key key) {
@@ -19238,6 +19286,16 @@ KILN_API kiln_m3_fn_float_to_float kiln_m3_swipe_to_dismiss_box_state_positional
         std::remove_reference_t<decltype(self->ptr->PositionalThreshold())>* r = nullptr;
         r = &self->ptr->PositionalThreshold();
         return FromCpp_kiln_m3_fn_float_to_float((*r));
+    } KILN_CAPI_CATCH({})
+}
+KILN_API const kiln_modifier* kiln_m3_tab_indicator_scope_tab_indicator_layout(kiln_m3_tab_indicator_scope* self, const kiln_modifier* m, kiln_m3_fn_measure_scope_measurable_constraints_tab_position_list_to_measure_result measure) {
+    KILN_CAPI_TRY {
+        if (!self) return {};
+        auto&& a0 = kiln::capi::ToModifier(m);
+        auto&& a1 = ToCpp_kiln_m3_fn_measure_scope_measurable_constraints_tab_position_list_to_measure_result(measure);
+        std::optional<std::remove_cvref_t<decltype(self->ptr->TabIndicatorLayout(a0, a1))>> r;
+        r.emplace(self->ptr->TabIndicatorLayout(a0, a1));
+        return kiln::capi::NewModifier((*r));
     } KILN_CAPI_CATCH({})
 }
 KILN_API const kiln_modifier* kiln_m3_tab_indicator_scope_tab_indicator_offset(kiln_m3_tab_indicator_scope* self, const kiln_modifier* m, int32_t selected_tab_index, bool match_content_size) {

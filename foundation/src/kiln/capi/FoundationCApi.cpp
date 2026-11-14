@@ -287,6 +287,10 @@ namespace kiln::capi {
         if (auto fn = Fn(c.content)) out.children = [fn](const std::string& alt) { fn(alt); };
         return out;
     }
+    ui::MeasureResult TakeMeasureResult(kiln_measure_result* r) {
+        if (!r) return {};
+        return std::move(r->r);
+    }
     kiln::Function<void(float)> Fn(kiln_fn_float f) {
         auto o = Own(f);
         if (!o) return {};
@@ -1070,6 +1074,79 @@ KILN_API void kiln_box_with_constraints(kiln_key key, const kiln_modifier* m, co
             }, ToKey(key));
     } CATCH_VOID
 }
+
+// --- Custom layouts -----------------------------------------------------------------------------
+
+namespace {
+    ui::MeasureScope* ToMS(kiln_measure_scope* s) { return reinterpret_cast<ui::MeasureScope*>(s); }
+    const ui::MeasureScope* ToMS(const kiln_measure_scope* s) { return reinterpret_cast<const ui::MeasureScope*>(s); }
+    ui::Measurable* ToMeas(kiln_measurable* m) { return reinterpret_cast<ui::Measurable*>(m); }
+    ui::Placeable* ToPl(kiln_placeable* p) { return reinterpret_cast<ui::Placeable*>(p); }
+    const ui::Placeable* ToPl(const kiln_placeable* p) { return reinterpret_cast<const ui::Placeable*>(p); }
+    ui::PlacementScope* ToPS(kiln_placement_scope* s) { return reinterpret_cast<ui::PlacementScope*>(s); }
+}
+KILN_API float kiln_measure_scope_density(const kiln_measure_scope* s) { return s ? ToMS(s)->density : 1; }
+KILN_API bool kiln_measure_scope_is_rtl(const kiln_measure_scope* s) { return s && ToMS(s)->Direction() == ui::LayoutDirection::Rtl; }
+KILN_API kiln_measure_result* kiln_measure_scope_layout(kiln_measure_scope* s, int32_t w, int32_t h, kiln_fn_place place) {
+    TRY {
+        if (!s) return nullptr;
+        auto own = Own(place);
+        auto* r = NewTransient<kiln_measure_result>();
+        r->r = ToMS(s)->Layout(std::max(0, w), std::max(0, h), [own](ui::PlacementScope& ps) {
+            if (!own) return;
+            CallbackScope cs;
+            own->f.call(own->f.user, reinterpret_cast<kiln_placement_scope*>(&ps));
+        });
+        return r;
+    } CATCH(nullptr)
+}
+KILN_API kiln_placeable* kiln_measurable_measure(kiln_measurable* m, kiln_int_constraints c) {
+    TRY { return m ? reinterpret_cast<kiln_placeable*>(&ToMeas(m)->Measure(ToConstraints(c))) : nullptr; } CATCH(nullptr)
+}
+KILN_API int32_t kiln_measurable_min_intrinsic_width(kiln_measurable* m, int32_t h) { TRY { return m ? ToMeas(m)->MinIntrinsicWidth(h) : 0; } CATCH(0) }
+KILN_API int32_t kiln_measurable_max_intrinsic_width(kiln_measurable* m, int32_t h) { TRY { return m ? ToMeas(m)->MaxIntrinsicWidth(h) : 0; } CATCH(0) }
+KILN_API int32_t kiln_measurable_min_intrinsic_height(kiln_measurable* m, int32_t w) { TRY { return m ? ToMeas(m)->MinIntrinsicHeight(w) : 0; } CATCH(0) }
+KILN_API int32_t kiln_measurable_max_intrinsic_height(kiln_measurable* m, int32_t w) { TRY { return m ? ToMeas(m)->MaxIntrinsicHeight(w) : 0; } CATCH(0) }
+KILN_API const char* kiln_measurable_layout_id(const kiln_measurable* m) {
+    if (!m) return nullptr;
+    const std::string* id = fd::LayoutIdOf(*reinterpret_cast<const ui::Measurable*>(m));
+    return id ? id->c_str() : nullptr;
+}
+KILN_API int32_t kiln_placeable_width(const kiln_placeable* p) { return p ? ToPl(p)->Width() : 0; }
+KILN_API int32_t kiln_placeable_height(const kiln_placeable* p) { return p ? ToPl(p)->Height() : 0; }
+KILN_API int32_t kiln_placeable_get(kiln_placeable* p, const kiln_alignment_line* line) {
+    if (!p || !line) return INT32_MIN;
+    TRY { return ToPl(p)->Get(*reinterpret_cast<const ui::AlignmentLine*>(line)); } CATCH(INT32_MIN)
+}
+KILN_API void kiln_place(kiln_placement_scope* s, kiln_placeable* p, int32_t x, int32_t y) { TRY { if (s && p) ToPS(s)->Place(*ToPl(p), x, y); } CATCH_VOID }
+KILN_API void kiln_place_relative(kiln_placement_scope* s, kiln_placeable* p, int32_t x, int32_t y) {
+    TRY { if (s && p) ToPS(s)->PlaceRelative(*ToPl(p), x, y); } CATCH_VOID
+}
+KILN_API void kiln_layout(kiln_key key, const kiln_modifier* m, kiln_fn content, kiln_fn_measure measure) {
+    TRY {
+        auto fn = Fn(content);
+        auto own = Own(measure);
+        auto policy = std::make_shared<ui::LambdaMeasurePolicy>([own](ui::MeasureScope& s, std::span<ui::Measurable* const> children, const ui::Constraints& c) {
+            if (!own) return s.Layout(c.minWidth, c.minHeight);
+            CallbackScope cs;
+            auto* r = own->f.call(own->f.user, reinterpret_cast<kiln_measure_scope*>(&s),
+                                  reinterpret_cast<kiln_measurable* const*>(children.data()), children.size(), FromConstraints(c));
+            return TakeMeasureResult(r);
+        });
+        const ui::Modifier mod = ToModifier(m);
+        InGroup(key, [&] { fd::Layout(mod, policy, fn ? fn : [] {}); });
+    } CATCH_VOID
+}
+KILN_API kiln_modifier* kiln_mod_layout(kiln_modifier* m, kiln_fn_layout_modifier measure) {
+    auto own = Own(measure);
+    MOD(fd::LayoutMod(base, [own](ui::MeasureScope& s, ui::Measurable& meas, const ui::Constraints& c) {
+        if (!own) { ui::Placeable& p = meas.Measure(c); return s.Layout(p.Width(), p.Height(), [&p](ui::PlacementScope& ps) { ps.Place(p, 0, 0); }); }
+        CallbackScope cs;
+        return TakeMeasureResult(own->f.call(own->f.user, reinterpret_cast<kiln_measure_scope*>(&s), reinterpret_cast<kiln_measurable*>(&meas),
+                                             FromConstraints(c)));
+    }))
+}
+KILN_API kiln_modifier* kiln_mod_layout_id(kiln_modifier* m, const char* id) { MOD(fd::LayoutId(base, ToString(id))) }
 
 // --- Text and images ----------------------------------------------------------------------------
 

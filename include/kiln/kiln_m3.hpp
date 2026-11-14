@@ -540,6 +540,7 @@ namespace kpp::m3 {
         operator kiln_m3_tab_indicator_scope*() const { return m_H; }
         kiln_m3_tab_indicator_scope* get() const { return m_H; }
         explicit operator bool() const { return m_H != nullptr; }
+        kpp::Modifier tab_indicator_layout(kpp::Modifier m = {}, kpp::Callback<kiln_m3_fn_measure_scope_measurable_constraints_tab_position_list_to_measure_result> measure = {}) const;
         kpp::Modifier tab_indicator_offset(kpp::Modifier m, int32_t selected_tab_index, bool match_content_size) const;
     private:
         kiln_m3_tab_indicator_scope* m_H;
@@ -857,6 +858,7 @@ namespace kpp::m3 {
     inline void SwipeToDismissBoxState::reset(kpp::Callback<kiln_fn> done) const { kiln_m3_swipe_to_dismiss_box_state_reset(m_H, done.release()); }
     inline void SwipeToDismissBoxState::dismiss(kiln_m3_swipe_to_dismiss_box_value direction, kpp::Callback<kiln_fn> done) const { kiln_m3_swipe_to_dismiss_box_state_dismiss(m_H, direction, done.release()); }
     inline kiln_m3_fn_float_to_float SwipeToDismissBoxState::positional_threshold() const { return kiln_m3_swipe_to_dismiss_box_state_positional_threshold(m_H); }
+    inline kpp::Modifier TabIndicatorScope::tab_indicator_layout(kpp::Modifier m, kpp::Callback<kiln_m3_fn_measure_scope_measurable_constraints_tab_position_list_to_measure_result> measure) const { return kpp::Modifier(const_cast<kiln_modifier*>(kiln_m3_tab_indicator_scope_tab_indicator_layout(m_H, m, measure.release()))); }
     inline kpp::Modifier TabIndicatorScope::tab_indicator_offset(kpp::Modifier m, int32_t selected_tab_index, bool match_content_size) const { return kpp::Modifier(const_cast<kiln_modifier*>(kiln_m3_tab_indicator_scope_tab_indicator_offset(m_H, m, selected_tab_index, match_content_size))); }
     inline int32_t TimePickerState::minute() const { return kiln_m3_time_picker_state_minute(m_H); }
     inline void TimePickerState::set_minute(int32_t minute) const { kiln_m3_time_picker_state_set_minute(m_H, minute); }

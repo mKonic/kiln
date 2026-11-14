@@ -9,7 +9,6 @@ kiln::material3::FromToken: parameter token: kiln::material3::tokens::MotionSche
 kiln::material3::FromToken: parameter token: kiln::material3::tokens::ShapeToken is internal
 kiln::material3::FromToken: parameter token: kiln::material3::tokens::TypographyToken is internal
 kiln::material3::MenuDefaults::rememberDropdownMenuPopupPositionProvider: parameter dropdownMenuAnchorPosition: kiln::material3::internal::MenuAnchorPosition is internal
-kiln::material3::TabIndicatorScope::TabIndicatorLayout: parameter measure: type kiln::ui::MeasureScope
 kiln::material3::Value: parameter token: kiln::material3::tokens::ColorToken is internal
 kiln::material3::Value: parameter token: kiln::material3::tokens::MotionSchemeToken is internal
 kiln::material3::Value: parameter token: kiln::material3::tokens::ShapeToken is internal

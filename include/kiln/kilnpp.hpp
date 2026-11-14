@@ -221,6 +221,9 @@ namespace kpp {
         Modifier align_in_column(float horizontalBias) const { return kiln_mod_align_in_column(m_M, horizontalBias); }
         Modifier match_parent_size() const { return kiln_mod_match_parent_size(m_M); }
         Modifier focus_requester(kiln_focus_requester* r) const { return kiln_mod_focus_requester(m_M, r); }
+        // f(kiln_measure_scope*, kiln_measurable*, kiln_int_constraints) -> kiln_measure_result*: Modifier.layout.
+        template<typename F> Modifier layout(F&& f) const { return kiln_mod_layout(m_M, fn<kiln_fn_layout_modifier>(std::forward<F>(f))); }
+        Modifier layout_id(const char* id) const { return kiln_mod_layout_id(m_M, id); }
         // f(kiln_draw_scope*): drawBehind / drawWithContent (f calls kiln_draw_content).
         template<typename F> Modifier draw_behind(F&& f) const { return kiln_mod_draw_behind(m_M, fn<kiln_fn_draw>(std::forward<F>(f))); }
         template<typename F> Modifier draw_with_content(F&& f) const { return kiln_mod_draw_with_content(m_M, fn<kiln_fn_draw>(std::forward<F>(f))); }
@@ -678,6 +681,14 @@ namespace kpp {
     }
 
     // MutableTransitionState<Boolean>.
+    // Layout: measure(kiln_measure_scope*, kiln_measurable* const*, size_t, kiln_int_constraints) -> kiln_measure_result*.
+    template<typename M> void layout(Modifier m, Callback<kiln_fn> content, M&& measure, Key key = {}) {
+        kiln_layout(key, m, content.release(), fn<kiln_fn_measure>(std::forward<M>(measure)));
+    }
+    // kiln_measure_scope_layout with a callable placement.
+    template<typename P> kiln_measure_result* measure_layout(kiln_measure_scope* s, int32_t w, int32_t h, P&& place) {
+        return kiln_measure_scope_layout(s, w, h, fn<kiln_fn_place>(std::forward<P>(place)));
+    }
     // Canvas: a box that only draws, with on_draw(kiln_draw_scope*).
     template<typename F> void canvas(Modifier m, F&& onDraw, Key key = {}) { kiln_canvas(key, m, fn<kiln_fn_draw>(std::forward<F>(onDraw))); }
     // A path owned by this object.

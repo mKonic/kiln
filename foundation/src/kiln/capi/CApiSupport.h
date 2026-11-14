@@ -55,6 +55,7 @@ struct kiln_scroll_state { kiln::foundation::ScrollState* state; std::shared_ptr
 struct kiln_lazy_list_state { kiln::foundation::LazyListState* state; std::shared_ptr<kiln::rt::CoroutineScope> scope; };
 struct kiln_lazy_grid_state { kiln::foundation::LazyGridState* state; std::shared_ptr<kiln::rt::CoroutineScope> scope; };
 struct kiln_layout_coordinates { kiln::ui::LayoutCoordinates c; };
+struct kiln_measure_result { kiln::ui::MeasureResult r; };
 struct kiln_text_layout_result { std::atomic<int> refs{ 1 }; kiln::text::TextLayoutResult r; };
 struct kiln_fling_behavior { kiln::foundation::FlingBehavior fling; };
 struct kiln_pager_state {
@@ -109,6 +110,10 @@ namespace kiln::capi {
     kiln::Function<void(const text::TextLayoutResult&)> Fn(kiln_fn_text_layout f);
     kiln::Function<void(ui::DrawScope&)> Fn(kiln_fn_draw f);
     foundation::InlineTextContent ToInlineContent(const kiln_inline_content& c);
+    // A C measure callback's result as kiln's (null: an empty layout).
+    ui::MeasureResult TakeMeasureResult(kiln_measure_result* r);
+    inline ui::Constraints ToConstraints(kiln_int_constraints c) { return { c.min_width, c.max_width, c.min_height, c.max_height }; }
+    inline kiln_int_constraints FromConstraints(const ui::Constraints& c) { return { c.minWidth, c.maxWidth, c.minHeight, c.maxHeight }; }
     kiln::Function<void(float)> Fn(kiln_fn_float f);
     kiln::Function<void(const std::string&)> Fn(kiln_fn_str f);
 

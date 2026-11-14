@@ -546,6 +546,48 @@ KILN_API void kiln_canvas(kiln_key key, const kiln_modifier* modifier, kiln_fn_d
  * Layouts
  * ------------------------------------------------------------------------------------------- */
 
+/* Custom layouts (Layout, Modifier.layout). Sizes and positions are px; a max of INT32_MAX is
+ * unbounded. The scopes, measurables and placeables are valid during the callback that gets
+ * them (a placeable also in the place callback of the same measure). */
+typedef struct kiln_int_constraints { int32_t min_width, max_width, min_height, max_height; } kiln_int_constraints;
+typedef struct kiln_measure_scope kiln_measure_scope;
+typedef struct kiln_measurable kiln_measurable;
+typedef struct kiln_placeable kiln_placeable;
+typedef struct kiln_placement_scope kiln_placement_scope;
+typedef struct kiln_measure_result kiln_measure_result;   /* from kiln_measure_scope_layout, returned to kiln */
+typedef struct kiln_fn_place { void (*call)(void* user, kiln_placement_scope* scope); void* user; void (*drop)(void* user); } kiln_fn_place;
+typedef struct kiln_fn_measure {
+    kiln_measure_result* (*call)(void* user, kiln_measure_scope* scope, kiln_measurable* const* measurables, size_t count,
+                                 kiln_int_constraints constraints);
+    void* user; void (*drop)(void* user);
+} kiln_fn_measure;
+typedef struct kiln_fn_layout_modifier {
+    kiln_measure_result* (*call)(void* user, kiln_measure_scope* scope, kiln_measurable* measurable, kiln_int_constraints constraints);
+    void* user; void (*drop)(void* user);
+} kiln_fn_layout_modifier;
+KILN_API float kiln_measure_scope_density(const kiln_measure_scope* scope);   /* px per dp */
+KILN_API bool kiln_measure_scope_is_rtl(const kiln_measure_scope* scope);
+/* layout(width, height) { place }: the result to return from the measure callback. */
+KILN_API kiln_measure_result* kiln_measure_scope_layout(kiln_measure_scope* scope, int32_t width, int32_t height, kiln_fn_place place);
+/* Each measurable is measured at most once per measure. */
+KILN_API kiln_placeable* kiln_measurable_measure(kiln_measurable* measurable, kiln_int_constraints constraints);
+KILN_API int32_t kiln_measurable_min_intrinsic_width(kiln_measurable* measurable, int32_t height);
+KILN_API int32_t kiln_measurable_max_intrinsic_width(kiln_measurable* measurable, int32_t height);
+KILN_API int32_t kiln_measurable_min_intrinsic_height(kiln_measurable* measurable, int32_t width);
+KILN_API int32_t kiln_measurable_max_intrinsic_height(kiln_measurable* measurable, int32_t width);
+KILN_API const char* kiln_measurable_layout_id(const kiln_measurable* measurable);   /* kiln_mod_layout_id's, or NULL */
+KILN_API int32_t kiln_placeable_width(const kiln_placeable* placeable);
+KILN_API int32_t kiln_placeable_height(const kiln_placeable* placeable);
+/* The line's position from the top-left, or INT32_MIN when the placeable has none. */
+KILN_API int32_t kiln_placeable_get(kiln_placeable* placeable, const kiln_alignment_line* line);
+KILN_API void kiln_place(kiln_placement_scope* scope, kiln_placeable* placeable, int32_t x, int32_t y);
+/* placeRelative: x mirrored in RTL. */
+KILN_API void kiln_place_relative(kiln_placement_scope* scope, kiln_placeable* placeable, int32_t x, int32_t y);
+/* Layout: content's children measured and placed by `measure`. */
+KILN_API void kiln_layout(kiln_key key, const kiln_modifier* modifier, kiln_fn content, kiln_fn_measure measure);
+KILN_API kiln_modifier* kiln_mod_layout(kiln_modifier* m, kiln_fn_layout_modifier measure);
+KILN_API kiln_modifier* kiln_mod_layout_id(kiln_modifier* m, const char* id);
+
 typedef struct kiln_box_options {
     size_t size;
     kiln_alignment content_alignment;   /* top start */

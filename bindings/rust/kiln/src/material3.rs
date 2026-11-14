@@ -27,6 +27,7 @@ crate::__kiln_callback!(sys::kiln_m3_fn_int_size_to_int_size, (a0: sys::kiln_int
 crate::__kiln_callback!(sys::kiln_m3_fn_int_to_bool, (a0: i32) -> bool);
 crate::__kiln_callback!(sys::kiln_m3_fn_int_to_string, (a0: i32) -> *const std::ffi::c_char);
 crate::__kiln_callback!(sys::kiln_m3_fn_long_to_bool, (a0: i64) -> bool);
+crate::__kiln_callback!(sys::kiln_m3_fn_measure_scope_measurable_constraints_tab_position_list_to_measure_result, (a0: *mut sys::kiln_measure_scope, a1: *mut sys::kiln_measurable, a2: sys::kiln_int_constraints, a3: *const sys::kiln_m3_tab_position_list) -> *mut sys::kiln_measure_result);
 crate::__kiln_callback!(sys::kiln_m3_fn_padding_values, (a0: sys::kiln_padding) -> ());
 crate::__kiln_callback!(sys::kiln_m3_fn_range_slider_state, (a0: *mut sys::kiln_m3_range_slider_state) -> ());
 crate::__kiln_callback!(sys::kiln_m3_fn_sheet_value_to_bool, (a0: sys::kiln_m3_sheet_value) -> bool);
@@ -5195,6 +5196,9 @@ pub fn swipe_to_dismiss_box_state_dismiss(this: *mut sys::kiln_m3_swipe_to_dismi
 }
 pub fn swipe_to_dismiss_box_state_positional_threshold(this: *const sys::kiln_m3_swipe_to_dismiss_box_state) -> sys::kiln_m3_fn_float_to_float {
     unsafe { sys::kiln_m3_swipe_to_dismiss_box_state_positional_threshold(this) }
+}
+pub fn tab_indicator_scope_tab_indicator_layout(this: *mut sys::kiln_m3_tab_indicator_scope, m: Modifier, measure: impl IntoCallback<sys::kiln_m3_fn_measure_scope_measurable_constraints_tab_position_list_to_measure_result>) -> *const sys::kiln_modifier {
+    unsafe { sys::kiln_m3_tab_indicator_scope_tab_indicator_layout(this, m.raw(), measure.into_callback()) }
 }
 pub fn tab_indicator_scope_tab_indicator_offset(this: *mut sys::kiln_m3_tab_indicator_scope, m: Modifier, selected_tab_index: i32, match_content_size: bool) -> *const sys::kiln_modifier {
     unsafe { sys::kiln_m3_tab_indicator_scope_tab_indicator_offset(this, m.raw(), selected_tab_index, match_content_size) }

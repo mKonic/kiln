@@ -256,6 +256,7 @@ typedef struct kiln_m3_ripple_configuration_inset_ring_colors kiln_m3_ripple_con
 typedef struct kiln_m3_ripple_configuration kiln_m3_ripple_configuration;
 typedef struct kiln_m3_snackbar_visuals kiln_m3_snackbar_visuals;
 typedef struct kiln_m3_carousel_parallax_scroll_effect_item_info kiln_m3_carousel_parallax_scroll_effect_item_info;
+typedef struct kiln_m3_tab_position kiln_m3_tab_position;
 
 /* Enums */
 typedef enum kiln_capitalization {
@@ -472,6 +473,9 @@ typedef enum kiln_toggleable_state {
     KILN_TOGGLEABLE_STATE_INDETERMINATE = 2,
 } kiln_toggleable_state;
 
+/* Lists handed to callbacks (valid during the call) */
+typedef struct kiln_m3_tab_position_list { const kiln_m3_tab_position* items; size_t count; } kiln_m3_tab_position_list;
+
 /* Callbacks */
 typedef struct kiln_m3_fn_app_bar_menu_state { void (*call)(void* user, kiln_m3_app_bar_menu_state* a0); void* user; void (*drop)(void* user); } kiln_m3_fn_app_bar_menu_state;
 typedef struct kiln_m3_fn_app_bar_scope { void (*call)(void* user, kiln_m3_app_bar_scope* a0); void* user; void (*drop)(void* user); } kiln_m3_fn_app_bar_scope;
@@ -496,6 +500,7 @@ typedef struct kiln_m3_fn_int_size_to_int_size { kiln_int_size (*call)(void* use
 typedef struct kiln_m3_fn_int_to_bool { bool (*call)(void* user, int32_t a0); void* user; void (*drop)(void* user); } kiln_m3_fn_int_to_bool;
 typedef struct kiln_m3_fn_int_to_string { const char* (*call)(void* user, int32_t a0); void* user; void (*drop)(void* user); } kiln_m3_fn_int_to_string;
 typedef struct kiln_m3_fn_long_to_bool { bool (*call)(void* user, int64_t a0); void* user; void (*drop)(void* user); } kiln_m3_fn_long_to_bool;
+typedef struct kiln_m3_fn_measure_scope_measurable_constraints_tab_position_list_to_measure_result { kiln_measure_result* (*call)(void* user, kiln_measure_scope* a0, kiln_measurable* a1, kiln_int_constraints a2, const kiln_m3_tab_position_list* a3); void* user; void (*drop)(void* user); } kiln_m3_fn_measure_scope_measurable_constraints_tab_position_list_to_measure_result;
 typedef struct kiln_m3_fn_padding_values { void (*call)(void* user, kiln_padding a0); void* user; void (*drop)(void* user); } kiln_m3_fn_padding_values;
 typedef struct kiln_m3_fn_range_slider_state { void (*call)(void* user, kiln_m3_range_slider_state* a0); void* user; void (*drop)(void* user); } kiln_m3_fn_range_slider_state;
 typedef struct kiln_m3_fn_sheet_value_to_bool { bool (*call)(void* user, kiln_m3_sheet_value a0); void* user; void (*drop)(void* user); } kiln_m3_fn_sheet_value_to_bool;
@@ -2627,6 +2632,13 @@ struct kiln_m3_carousel_parallax_scroll_effect_item_info {
     float mask_progress;
 };
 KILN_API void kiln_m3_carousel_parallax_scroll_effect_item_info_init(kiln_m3_carousel_parallax_scroll_effect_item_info* s);
+struct kiln_m3_tab_position {
+    size_t size;
+    float left;
+    float width;
+    float content_width;
+};
+KILN_API void kiln_m3_tab_position_init(kiln_m3_tab_position* s);
 
 /* Functions */
 /* AlertDialog.h */
@@ -4065,6 +4077,7 @@ KILN_API void kiln_m3_swipe_to_dismiss_box_state_reset(kiln_m3_swipe_to_dismiss_
 KILN_API void kiln_m3_swipe_to_dismiss_box_state_dismiss(kiln_m3_swipe_to_dismiss_box_state* self, kiln_m3_swipe_to_dismiss_box_value direction, kiln_fn done);
 KILN_API kiln_m3_fn_float_to_float kiln_m3_swipe_to_dismiss_box_state_positional_threshold(const kiln_m3_swipe_to_dismiss_box_state* self);
 /* kiln_m3_tab_indicator_scope */
+KILN_API const kiln_modifier* kiln_m3_tab_indicator_scope_tab_indicator_layout(kiln_m3_tab_indicator_scope* self, const kiln_modifier* m, kiln_m3_fn_measure_scope_measurable_constraints_tab_position_list_to_measure_result measure);
 KILN_API const kiln_modifier* kiln_m3_tab_indicator_scope_tab_indicator_offset(kiln_m3_tab_indicator_scope* self, const kiln_modifier* m, int32_t selected_tab_index, bool match_content_size);
 /* kiln_m3_time_picker_state */
 KILN_API int32_t kiln_m3_time_picker_state_minute(const kiln_m3_time_picker_state* self);

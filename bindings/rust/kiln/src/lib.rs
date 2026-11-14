@@ -79,6 +79,9 @@ __kiln_callback!(sys::kiln_fn_item_key, (i: i32) -> sys::kiln_key);
 __kiln_callback!(sys::kiln_fn_layout_coordinates, (c: *const sys::kiln_layout_coordinates) -> ());
 __kiln_callback!(sys::kiln_fn_size, (s: sys::kiln_int_size) -> ());
 __kiln_callback!(sys::kiln_fn_draw, (d: *mut sys::kiln_draw_scope) -> ());
+__kiln_callback!(sys::kiln_fn_place, (s: *mut sys::kiln_placement_scope) -> ());
+__kiln_callback!(sys::kiln_fn_measure, (s: *mut sys::kiln_measure_scope, m: *const *mut sys::kiln_measurable, n: usize, c: sys::kiln_int_constraints) -> *mut sys::kiln_measure_result);
+__kiln_callback!(sys::kiln_fn_layout_modifier, (s: *mut sys::kiln_measure_scope, m: *mut sys::kiln_measurable, c: sys::kiln_int_constraints) -> *mut sys::kiln_measure_result);
 __kiln_callback!(sys::kiln_fn_lazy_grid, (s: *mut sys::kiln_lazy_grid_scope) -> ());
 __kiln_callback!(sys::kiln_fn_grid_span, (i: i32, max_current_line_span: i32, max_line_span: i32) -> i32);
 __kiln_callback!(sys::kiln_fn_count, () -> i32);
@@ -212,6 +215,17 @@ impl Modifier {
     pub fn draw_with_content(self, mut on_draw: impl FnMut(&mut DrawScope) + 'static) -> Self {
         let c = move |d: *mut sys::kiln_draw_scope| on_draw(&mut DrawScope(d));
         Modifier(unsafe { sys::kiln_mod_draw_with_content(self.0, c.into_callback()) })
+    }
+    /// Modifier.layout: `measure(scope, measurable, constraints)` measures and places what it wraps.
+    pub fn layout(self, mut measure: impl FnMut(&MeasureScope, Measurable, sys::kiln_int_constraints) -> MeasureResult + 'static) -> Self {
+        let c = move |s: *mut sys::kiln_measure_scope, m: *mut sys::kiln_measurable, k: sys::kiln_int_constraints| {
+            measure(&MeasureScope(s), Measurable(m), k).0
+        };
+        Modifier(unsafe { sys::kiln_mod_layout(self.0, c.into_callback()) })
+    }
+    pub fn layout_id(self, id: &str) -> Self {
+        let t = CStrBuf::new(id);
+        Modifier(unsafe { sys::kiln_mod_layout_id(self.0, t.ptr()) })
     }
     pub fn focus_requester(self, r: FocusRequester) -> Self { Modifier(unsafe { sys::kiln_mod_focus_requester(self.0, r.0) }) }
     pub fn focusable(self, enabled: bool) -> Self { Modifier(unsafe { sys::kiln_mod_focusable(self.0, enabled) }) }
@@ -540,6 +554,50 @@ pub fn animate_color(target: sys::kiln_color) -> sys::kiln_color { unsafe { sys:
 #[track_caller]
 pub fn animated_visibility(visible: bool, modifier: Modifier, content: impl FnMut() + 'static) {
     unsafe { sys::kiln_animated_visibility(here(), visible, modifier.0, content.into_callback()) }
+}
+
+/// A measure pass (px); only valid inside the measure callback.
+pub struct MeasureScope(*mut sys::kiln_measure_scope);
+/// What a measure callback returns.
+pub struct MeasureResult(*mut sys::kiln_measure_result);
+#[derive(Clone, Copy)]
+pub struct Measurable(*mut sys::kiln_measurable);
+#[derive(Clone, Copy)]
+pub struct Placeable(*mut sys::kiln_placeable);
+pub struct PlacementScope(*mut sys::kiln_placement_scope);
+impl MeasureScope {
+    pub fn density(&self) -> f32 { unsafe { sys::kiln_measure_scope_density(self.0) } }
+    pub fn is_rtl(&self) -> bool { unsafe { sys::kiln_measure_scope_is_rtl(self.0) } }
+    /// layout(width, height) { place }.
+    pub fn layout(&self, width: i32, height: i32, mut place: impl FnMut(&PlacementScope) + 'static) -> MeasureResult {
+        let c = move |s: *mut sys::kiln_placement_scope| place(&PlacementScope(s));
+        MeasureResult(unsafe { sys::kiln_measure_scope_layout(self.0, width, height, c.into_callback()) })
+    }
+}
+impl Measurable {
+    pub fn measure(&self, c: sys::kiln_int_constraints) -> Placeable { Placeable(unsafe { sys::kiln_measurable_measure(self.0, c) }) }
+    pub fn layout_id(&self) -> Option<String> {
+        let p = unsafe { sys::kiln_measurable_layout_id(self.0) };
+        if p.is_null() { None } else { Some(crate::from_c(p)) }
+    }
+}
+impl Placeable {
+    pub fn width(&self) -> i32 { unsafe { sys::kiln_placeable_width(self.0) } }
+    pub fn height(&self) -> i32 { unsafe { sys::kiln_placeable_height(self.0) } }
+}
+impl PlacementScope {
+    pub fn place(&self, p: Placeable, x: i32, y: i32) { unsafe { sys::kiln_place(self.0, p.0, x, y) } }
+    pub fn place_relative(&self, p: Placeable, x: i32, y: i32) { unsafe { sys::kiln_place_relative(self.0, p.0, x, y) } }
+}
+/// Layout: `measure(scope, children, constraints)` measures and places the content's children.
+#[track_caller]
+pub fn layout(modifier: Modifier, content: impl FnMut() + 'static,
+              mut measure: impl FnMut(&MeasureScope, &[Measurable], sys::kiln_int_constraints) -> MeasureResult + 'static) {
+    let c = move |s: *mut sys::kiln_measure_scope, m: *const *mut sys::kiln_measurable, n: usize, k: sys::kiln_int_constraints| {
+        let children: Vec<Measurable> = (0..n).map(|i| Measurable(unsafe { *m.add(i) })).collect();
+        measure(&MeasureScope(s), &children, k).0
+    };
+    unsafe { sys::kiln_layout(here(), modifier.0, content.into_callback(), c.into_callback()) }
 }
 
 /// A draw scope (px, +y down); only valid inside the draw callback.

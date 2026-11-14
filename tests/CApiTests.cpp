@@ -556,6 +556,74 @@ TEST(CApiInlineContentComposesInItsPlaceholder) {
     if (icon) CHECK(icon->Size().width == 20 && icon->Size().height == 10);
 }
 
+TEST(CApiCustomLayoutMeasuresAndPlacesItsChildren) {
+    static std::string ids;
+    ids.clear();
+    Harness h;
+    h.Run([](void*) {
+        kpp::column(kpp::Modifier(), [] {
+            // A diagonal layout: each child at the previous one's bottom-right corner.
+            kiln_layout(KILN_HERE, kiln_mod_test_tag(NULL, "diagonal"),
+                KILN_FN([](void*) {
+                    kiln_box(KILN_HERE, kiln_mod_test_tag(kiln_mod_layout_id(kiln_mod_size(NULL, 10, 20), "a"), "a"), NULL, KILN_FN(NULL, NULL));
+                    kiln_box(KILN_HERE, kiln_mod_test_tag(kiln_mod_layout_id(kiln_mod_size(NULL, 30, 5), "b"), "b"), NULL, KILN_FN(NULL, NULL));
+                }, NULL),
+                kiln_fn_measure{ [](void*, kiln_measure_scope* s, kiln_measurable* const* ms, size_t n, kiln_int_constraints c) -> kiln_measure_result* {
+                    static kiln_placeable* placed[8];
+                    int w = 0, hgt = 0;
+                    const kiln_int_constraints loose{ 0, c.max_width, 0, c.max_height };
+                    for (size_t i = 0; i < n; ++i) {
+                        ids += kiln_measurable_layout_id(ms[i]) ? kiln_measurable_layout_id(ms[i]) : "?";
+                        placed[i] = kiln_measurable_measure(ms[i], loose);
+                        w += kiln_placeable_width(placed[i]);
+                        hgt += kiln_placeable_height(placed[i]);
+                    }
+                    static size_t count;
+                    count = n;
+                    return kiln_measure_scope_layout(s, w, hgt, kiln_fn_place{ [](void*, kiln_placement_scope* ps) {
+                        int x = 0, y = 0;
+                        for (size_t i = 0; i < count; ++i) {
+                            kiln_place(ps, placed[i], x, y);
+                            x += kiln_placeable_width(placed[i]);
+                            y += kiln_placeable_height(placed[i]);
+                        }
+                    }, nullptr, nullptr });
+                }, nullptr, nullptr });
+        });
+    });
+    CHECK(ids == "ab");
+    const ui::LayoutNode* d = h.Find(h.owner.Root(), "diagonal");
+    const ui::LayoutNode* b = h.Find(h.owner.Root(), "b");
+    CHECK(d && b);
+    if (!d || !b) return;
+    CHECK(d->Size().width == 40 && d->Size().height == 25);
+    CHECK(b->PositionInRoot().x == 10 && b->PositionInRoot().y == 20);
+}
+
+TEST(CApiLayoutModifierWrapsWhatItModifies) {
+    Harness h;
+    h.Run([](void*) {
+        kpp::column(kpp::Modifier(), [] {
+            // Modifier.layout: 8 px of space on each side, the content placed inside it.
+            kiln_modifier* m = kiln_mod_layout(kiln_mod_test_tag(NULL, "padded"),
+                kiln_fn_layout_modifier{ [](void*, kiln_measure_scope* s, kiln_measurable* meas, kiln_int_constraints c) -> kiln_measure_result* {
+                    kiln_int_constraints inner = c;
+                    if (inner.max_width != INT32_MAX) inner.max_width -= 16;
+                    if (inner.max_height != INT32_MAX) inner.max_height -= 16;
+                    inner.min_width = inner.min_height = 0;
+                    static kiln_placeable* p;
+                    p = kiln_measurable_measure(meas, inner);
+                    return kiln_measure_scope_layout(s, kiln_placeable_width(p) + 16, kiln_placeable_height(p) + 16,
+                        kiln_fn_place{ [](void*, kiln_placement_scope* ps) { kiln_place(ps, p, 8, 8); }, nullptr, nullptr });
+                }, nullptr, nullptr });
+            kiln_box(KILN_HERE, kiln_mod_size(m, 20, 10), NULL, KILN_FN(NULL, NULL));
+        });
+    });
+    const ui::LayoutNode* n = h.Find(h.owner.Root(), "padded");
+    CHECK(n != nullptr);
+    if (n) CHECK(n->Size().width == 36 && n->Size().height == 26);
+}
+
 TEST(CApiAndroidViewMakesUpdatesAndReleasesItsView) {
     static int made, updates, released, dropped;
     made = updates = released = dropped = 0;
