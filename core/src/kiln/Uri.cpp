@@ -126,4 +126,48 @@ namespace kiln {
         return m_Uri.substr(at, end == std::string::npos ? std::string::npos : end - at);
     }
 
+    namespace {
+        int Base64Value(char c) {
+            if (c >= 'A' && c <= 'Z') return c - 'A';
+            if (c >= 'a' && c <= 'z') return c - 'a' + 26;
+            if (c >= '0' && c <= '9') return c - '0' + 52;
+            if (c == '+' || c == '-') return 62;
+            if (c == '/' || c == '_') return 63;
+            return -1;
+        }
+
+    }
+
+    std::optional<std::vector<std::uint8_t>> DecodeDataUri(std::string_view uri) {
+        const auto comma = uri.find(',');
+        if (comma == std::string_view::npos) return std::nullopt;
+        const std::string_view meta = uri.substr(5, comma - 5), payload = uri.substr(comma + 1);
+        std::vector<std::uint8_t> out;
+        if (meta.ends_with(";base64")) {
+            unsigned acc = 0;
+            int bits = 0;
+            for (char c : payload) {
+                if (c == '=' || c == '\n' || c == '\r' || c == ' ') continue;
+                const int v = Base64Value(c);
+                if (v < 0) return std::nullopt;
+                acc = (acc << 6) | unsigned(v);
+                bits += 6;
+                if (bits >= 8) {
+                    bits -= 8;
+                    out.push_back(std::uint8_t((acc >> bits) & 0xff));
+                }
+            }
+        } else {
+            for (std::size_t i = 0; i < payload.size(); ++i) {
+                if (payload[i] == '%' && i + 2 < payload.size()) {
+                    out.push_back(std::uint8_t(std::stoi(std::string(payload.substr(i + 1, 2)), nullptr, 16)));
+                    i += 2;
+                } else {
+                    out.push_back(std::uint8_t(payload[i]));
+                }
+            }
+        }
+        return out;
+    }
+
 }

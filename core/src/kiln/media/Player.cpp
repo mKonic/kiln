@@ -1,8 +1,18 @@
 #include "kiln/media/Player.h"
 
+#include "kiln/Assets.h"
+#include "kiln/Uri.h"
+#include "kiln/media/Captioning.h"
+#include "kiln/media/Subrip.h"
+#include "kiln/media/Webvtt.h"
+#include "kiln/net/Http.h"
 #include "kiln/runtime/Task.h"
+#include "kiln/runtime/TaskDispatchers.h"
+#include "kiln/ui/ContentResolver.h"
 
 #include <algorithm>
+#include <chrono>
+#include <cmath>
 #include <map>
 #include <stdexcept>
 
@@ -19,6 +29,45 @@ namespace kiln::media {
     }
 
     void SetPlayerEngineFactory(kiln::Function<std::unique_ptr<PlayerEngine>()> factory) { Factory() = std::move(factory); }
+
+    namespace {
+        // The parser for a subtitle (DefaultSubtitleParserFactory's formats that are ported), by
+        // its mimeType, else its uri's extension.
+        std::unique_ptr<SubtitleParser> SubtitleParserFor(const MediaItem::SubtitleConfiguration& s) {
+            std::string mime = s.mimeType;
+            if (mime.empty()) {
+                std::string path = s.uri.substr(0, s.uri.find_first_of("?#"));
+                for (char& c : path) if (c >= 'A' && c <= 'Z') c = char(c - 'A' + 'a');
+                if (path.ends_with(".vtt")) mime = "text/vtt";
+                else if (path.ends_with(".srt")) mime = "application/x-subrip";
+            }
+            if (mime == "text/vtt") return std::make_unique<WebvttParser>();
+            if (mime == "application/x-subrip") return std::make_unique<SubripParser>();
+            return nullptr;
+        }
+
+        // A subtitle file's bytes: the web, data: URIs, app assets, files and content URIs.
+        rt::Task<std::vector<std::uint8_t>> ReadSubtitle(std::string uri) {
+            if (uri.starts_with("http://") || uri.starts_with("https://")) {
+                net::HttpResponse r = co_await net::Fetch({ .url = uri });
+                if (!r.Ok()) throw std::runtime_error("HTTP " + std::to_string(r.status));
+                co_return std::vector<std::uint8_t>(r.body.begin(), r.body.end());
+            }
+            if (uri.starts_with("data:")) {
+                auto bytes = DecodeDataUri(uri);
+                if (!bytes) throw std::runtime_error("malformed data URI");
+                co_return std::move(*bytes);
+            }
+            std::string asset;
+            if (uri.starts_with("asset:///")) asset = uri.substr(9);
+            else if (uri.starts_with("file:///android_asset/")) asset = uri.substr(22);
+            auto bytes = co_await rt::WithContext(rt::TaskDispatchers::Platform().IO(), [uri, asset] {
+                return asset.empty() ? ui::ReadContent(uri) : ReadAsset(asset);
+            });
+            if (!bytes) throw std::runtime_error("cannot read " + uri);
+            co_return std::move(*bytes);
+        }
+    }
 
     // The playlist (ExoPlayerImpl's masking of the timeline and position) and the player's own
     // playWhenReady with audio focus applied over the engine's state
@@ -53,6 +102,19 @@ namespace kiln::media {
         float volume = 1, unmuteVolume = 1;
         std::map<int, PlayerListener> listeners;
         int nextListener = 1;
+        std::weak_ptr<Shared> self;
+
+        // Text (TextRenderer over a MergingCuesResolver): the current item's selected subtitle,
+        // read and parsed in the background, its cues at the position.
+        TrackSelectionParameters trackSelection;
+        int selectedText = -1;                   // in the current item's subtitleConfigurations
+        std::uint64_t textGeneration = 0;
+        rt::Job textLoad, cueTimer;
+        MergingCuesResolver cueResolver;
+        CueGroup cues;
+        // When the engine last reported the position, to tell where playback is between reports.
+        std::int64_t reportedPositionMs = -1;
+        std::chrono::steady_clock::time_point reportedAt{};
 
         AudioFocusManager focus{ { .setVolumeMultiplier = [this](float) { ApplyVolume(); },
                                    .executePlayerCommand = [this](Command c) { Update(playWhenReady, c, reason); } } };
@@ -103,11 +165,91 @@ namespace kiln::media {
                            .startPositionMs = m.clippingConfiguration.startPositionMs + positionMs,
                            .clipStartMs = m.clippingConfiguration.startPositionMs,
                            .endPositionMs = m.clippingConfiguration.endPositionMs, .loadId = loadId });
+            LoadText();
         }
         void Unload() {
             loadId = 0;
             engineState = {};
             if (engine) engine->Load({});
+            ClearText();
+        }
+
+        // --- text ---------------------------------------------------------------------------------
+        void ClearText() {
+            ++textGeneration;
+            textLoad.Cancel();
+            cueTimer.Cancel();
+            cueResolver.Clear();
+            selectedText = -1;
+        }
+        // The current item's text track, chosen afresh (a new item, or new parameters), and read.
+        void LoadText() {
+            ClearText();
+            if (!loadId || current >= Count()) return;
+            const auto& subtitles = items[std::size_t(current)].subtitleConfigurations;
+            std::vector<bool> supported;
+            for (const auto& s : subtitles) supported.push_back(SubtitleParserFor(s) != nullptr);
+            const auto captioning = trackSelection.usePreferredTextLanguagesAndRoleFlagsFromCaptioningManager ? CaptioningPreferredLanguage() : std::nullopt;
+            selectedText = SelectTextTrack(subtitles, supported, trackSelection, captioning, std::nullopt);
+            if (selectedText < 0) return;
+            const auto subtitle = subtitles[std::size_t(selectedText)];
+            const std::uint64_t generation = textGeneration;
+            textLoad = rt::Launch(rt::Dispatcher::Main(), [](std::weak_ptr<Shared> weak, MediaItem::SubtitleConfiguration s, std::uint64_t generation) -> rt::Task<> {
+                std::vector<CuesWithTiming> parsed;
+                try {
+                    std::vector<std::uint8_t> bytes = co_await ReadSubtitle(s.uri);
+                    parsed = co_await rt::WithContext(rt::TaskDispatchers::Platform().Default(), [&bytes, &s] {
+                        return SubtitleParserFor(s)->ParseAll(bytes);
+                    });
+                } catch (const std::exception&) {
+                    co_return;   // a subtitle that can't be read or parsed shows nothing
+                }
+                auto shared = weak.lock();
+                if (!shared || shared->textGeneration != generation) co_return;
+                for (auto& c : parsed) shared->cueResolver.AddCues(std::move(c), 0);
+                shared->Publish();
+            }(self, subtitle, generation));
+        }
+        // Where playback is in the item's media (ms): the last report, moved on by the time since
+        // while it plays.
+        std::int64_t MediaPositionMs() const {
+            const MediaItem& m = items[std::size_t(current)];
+            std::int64_t p = positionMs;
+            if (engineState.isPlaying && playWhenReady && reportedPositionMs == positionMs) {
+                const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(rt::Dispatcher::Main().Now() - reportedAt).count();
+                p += std::int64_t(double(elapsed) * parameters.speed);
+            }
+            return m.clippingConfiguration.startPositionMs + p;
+        }
+        // Makes the estimate's starting point now, before the speed it moves at changes.
+        void RebasePosition() {
+            if (current >= Count()) return;
+            positionMs = MediaPositionMs() - items[std::size_t(current)].clippingConfiguration.startPositionMs;
+            reportedPositionMs = positionMs;
+            reportedAt = rt::Dispatcher::Main().Now();
+        }
+        // The cues at the position (onCues when they change), and a wake-up at the next change.
+        void UpdateCues() {
+            cueTimer.Cancel();
+            CueGroup next;
+            if (selectedText >= 0 && current < Count() && !cueResolver.Empty()) {
+                const std::int64_t us = MediaPositionMs() * 1000;
+                next.cues = cueResolver.GetCuesAtTimeUs(us);
+                const std::int64_t previous = cueResolver.GetPreviousCueChangeTimeUs(us);
+                next.presentationTimeUs = previous == kTimeUnset ? 0 : previous;
+                const std::int64_t change = cueResolver.GetNextCueChangeTimeUs(us);
+                if (change != kTimeEndOfSource && engineState.isPlaying && playWhenReady) {
+                    const auto delayMs = std::max<std::int64_t>(1, std::int64_t(std::ceil(double(change - us) / 1000.0 / parameters.speed)));
+                    cueTimer = rt::Launch(rt::Dispatcher::Main(), [](std::weak_ptr<Shared> weak, std::int64_t ms) -> rt::Task<> {
+                        co_await rt::Delay(ms);
+                        if (auto shared = weak.lock()) shared->Publish();
+                    }(self, delayMs));
+                }
+            }
+            if (next.cues != cues.cues) {
+                cues = std::move(next);
+                Notify([&](PlayerListener& l) { if (l.onCues) l.onCues(cues); });
+            }
         }
 
         // The current item changed (index or contents): load it when prepared.
@@ -175,6 +317,8 @@ namespace kiln::media {
             const MediaItem& m = items[std::size_t(current)];
             const auto& clip = m.clippingConfiguration;
             positionMs = std::max<std::int64_t>(s.positionMs - clip.startPositionMs, 0);
+            reportedPositionMs = positionMs;
+            reportedAt = rt::Dispatcher::Main().Now();
             if (s.playerError || !s.error.empty()) {
                 const bool first = !error;
                 error = s.playerError ? *s.playerError : PlaybackException{ .message = s.error };
@@ -255,6 +399,8 @@ namespace kiln::media {
             s.playWhenReadyChangeReason = reason;
             s.suppression = suppression;
             s.isPlaying = s.state == PlaybackState::Ready && playWhenReady && suppression == PlaybackSuppression::None && engineState.isPlaying;
+            UpdateCues();
+            s.currentCues = cues;
             state.SetValue(s);
         }
 
@@ -397,6 +543,7 @@ namespace kiln::media {
     };
 
     Player::Player() : m_Shared(std::make_shared<Shared>()) {
+        m_Shared->self = m_Shared;
         if (Factory()) m_Shared->engine = Factory()();
         if (!m_Shared->engine) return;
         // Reports from the decoding thread reach the state on this (the main) thread.
@@ -671,10 +818,20 @@ namespace kiln::media {
         if (!(p.speed > 0) || !(p.pitch > 0)) throw std::invalid_argument("playback speed and pitch must be more than 0");
         Shared& s = *m_Shared;
         if (s.parameters == p) return;
+        s.RebasePosition();
         s.parameters = p;
         if (s.engine) s.engine->SetPlaybackParameters(p);
         s.Publish();
     }
+    void Player::SetTrackSelectionParameters(TrackSelectionParameters p) {
+        Shared& s = *m_Shared;
+        if (s.trackSelection == p) return;
+        s.trackSelection = std::move(p);
+        s.LoadText();
+        s.Publish();
+    }
+    const TrackSelectionParameters& Player::GetTrackSelectionParameters() const { return m_Shared->trackSelection; }
+
     void Player::SetPlaybackSpeed(float speed) { SetPlaybackParameters(m_Shared->parameters.WithSpeed(speed)); }
     const PlaybackParameters& Player::GetPlaybackParameters() const { return m_Shared->parameters; }
 

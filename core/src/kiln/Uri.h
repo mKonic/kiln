@@ -3,7 +3,9 @@
 // A URI, scheme://authority/path?query#fragment, read as android.net.Uri reads one (the parts
 // deep links match on). Path segments and query parameters come decoded.
 
+#include <cstdint>
 #include <optional>
+#include <string_view>
 #include <string>
 #include <vector>
 
@@ -30,5 +32,9 @@ namespace kiln {
     private:
         std::string m_Uri;
     };
+
+    // A data: URI's bytes (data:[<mediatype>][;base64],<data>, as Coil's DataUriFetcher reads
+    // it), nullopt when malformed.
+    std::optional<std::vector<std::uint8_t>> DecodeDataUri(std::string_view uri);
 
 }

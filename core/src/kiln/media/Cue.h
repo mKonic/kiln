@@ -99,6 +99,23 @@ namespace kiln::media {
         std::vector<CuesWithTiming> ParseAll(std::span<const std::uint8_t> data);
     };
 
+    // MergingCuesResolver: the CuesWithTiming showing at a time, all of them (ordered by start
+    // time, longer first), and when that changes. For parsers whose behaviour is Merge.
+    class MergingCuesResolver {
+    public:
+        // Whether they show at currentPositionUs.
+        bool AddCues(CuesWithTiming cues, std::int64_t currentPositionUs);
+        std::vector<Cue> GetCuesAtTimeUs(std::int64_t timeUs) const;
+        void DiscardCuesBeforeTimeUs(std::int64_t timeUs);
+        std::int64_t GetPreviousCueChangeTimeUs(std::int64_t timeUs) const;   // kTimeUnset before the first
+        std::int64_t GetNextCueChangeTimeUs(std::int64_t timeUs) const;       // kTimeEndOfSource after the last
+        void Clear() { m_List.clear(); }
+        bool Empty() const { return m_List.empty(); }
+
+    private:
+        std::vector<CuesWithTiming> m_List;   // by start time
+    };
+
     // Text lines as ParsableByteArray.readLine reads them: a byte order mark chooses UTF-8 or
     // UTF-16 (UTF-8 without one); lines end at \n, \r or \r\n.
     class SubtitleLineReader {

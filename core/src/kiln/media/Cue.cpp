@@ -1,5 +1,8 @@
 #include "kiln/media/Cue.h"
 
+#include <algorithm>
+#include <stdexcept>
+
 namespace kiln::media {
 
     CuesWithTiming::CuesWithTiming(std::vector<Cue> c, std::int64_t start, std::int64_t duration)
@@ -10,6 +13,69 @@ namespace kiln::media {
         std::vector<CuesWithTiming> all;
         Parse(data, SubtitleOutputOptions::AllCues(), [&](CuesWithTiming c) { all.push_back(std::move(c)); });
         return all;
+    }
+
+    bool MergingCuesResolver::AddCues(CuesWithTiming cues, std::int64_t positionUs) {
+        if (cues.startTimeUs == kTimeUnset || cues.durationUs == kTimeUnset) throw std::invalid_argument("cues need a start and duration");
+        const bool shown = cues.startTimeUs <= positionUs && positionUs < cues.endTimeUs;
+        for (std::size_t i = m_List.size(); i-- > 0;)
+            if (cues.startTimeUs >= m_List[i].startTimeUs) {
+                m_List.insert(m_List.begin() + std::ptrdiff_t(i + 1), std::move(cues));
+                return shown;
+            }
+        m_List.insert(m_List.begin(), std::move(cues));
+        return shown;
+    }
+
+    std::vector<Cue> MergingCuesResolver::GetCuesAtTimeUs(std::int64_t timeUs) const {
+        if (m_List.empty() || timeUs < m_List[0].startTimeUs) return {};
+        std::vector<const CuesWithTiming*> visible;
+        for (const auto& c : m_List) {
+            if (timeUs >= c.startTimeUs && timeUs < c.endTimeUs) visible.push_back(&c);
+            if (timeUs < c.startTimeUs) break;
+        }
+        // CUES_DISPLAY_PRIORITY_COMPARATOR: by start time, then the longer first.
+        std::stable_sort(visible.begin(), visible.end(), [](const CuesWithTiming* a, const CuesWithTiming* b) {
+            return a->startTimeUs != b->startTimeUs ? a->startTimeUs < b->startTimeUs : a->durationUs > b->durationUs;
+        });
+        std::vector<Cue> result;
+        for (const auto* c : visible) result.insert(result.end(), c->cues.begin(), c->cues.end());
+        return result;
+    }
+
+    void MergingCuesResolver::DiscardCuesBeforeTimeUs(std::int64_t timeUs) {
+        for (std::size_t i = 0; i < m_List.size(); ++i) {
+            const std::int64_t start = m_List[i].startTimeUs;
+            if (timeUs > start && timeUs > m_List[i].endTimeUs) {
+                m_List.erase(m_List.begin() + std::ptrdiff_t(i));
+                --i;
+            } else if (timeUs < start) {
+                break;
+            }
+        }
+    }
+
+    std::int64_t MergingCuesResolver::GetPreviousCueChangeTimeUs(std::int64_t timeUs) const {
+        if (m_List.empty() || timeUs < m_List[0].startTimeUs) return kTimeUnset;
+        std::int64_t result = m_List[0].startTimeUs;
+        for (const auto& c : m_List) {
+            if (c.endTimeUs <= timeUs) result = std::max(result, c.endTimeUs);
+            else if (c.startTimeUs <= timeUs) result = std::max(result, c.startTimeUs);
+            else break;
+        }
+        return result;
+    }
+
+    std::int64_t MergingCuesResolver::GetNextCueChangeTimeUs(std::int64_t timeUs) const {
+        std::int64_t result = kTimeUnset;
+        for (const auto& c : m_List) {
+            if (timeUs < c.startTimeUs) {
+                result = result == kTimeUnset ? c.startTimeUs : std::min(result, c.startTimeUs);
+                break;
+            }
+            if (timeUs < c.endTimeUs) result = result == kTimeUnset ? c.endTimeUs : std::min(result, c.endTimeUs);
+        }
+        return result != kTimeUnset ? result : kTimeEndOfSource;
     }
 
     namespace {

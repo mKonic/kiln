@@ -21,7 +21,9 @@
 // as BasePlayer has them, and playback speed.
 
 #include "kiln/media/AudioFocus.h"
+#include "kiln/media/Cue.h"
 #include "kiln/media/MediaItem.h"
+#include "kiln/media/TrackSelection.h"
 #include "kiln/runtime/Flow.h"
 #include "kiln/ui/ExternalSurface.h"
 #include <kiln/Function.h>
@@ -89,6 +91,8 @@ namespace kiln::media {
         RepeatMode repeatMode = RepeatMode::Off;
         bool shuffleModeEnabled = false;
         PlaybackParameters playbackParameters;
+        // getCurrentCues: the subtitles showing now (the selected text track's, at the position).
+        CueGroup currentCues;
         bool operator==(const PlayerState&) const = default;
     };
 
@@ -100,6 +104,8 @@ namespace kiln::media {
         kiln::Function<void(const MediaMetadata& metadata)> onPlaylistMetadataChanged;
         // The first frame since the item loaded, a seek or a new surface is on the surface.
         kiln::Function<void()> onRenderedFirstFrame;
+        // The subtitles showing changed (onCues).
+        kiln::Function<void(const CueGroup& cues)> onCues;
     };
 
     // One item for the engine to play (empty uri: stop and release).
@@ -215,6 +221,11 @@ namespace kiln::media {
         void SetPlaybackParameters(PlaybackParameters parameters);
         void SetPlaybackSpeed(float speed);
         const PlaybackParameters& GetPlaybackParameters() const;
+
+        // Which tracks play: the text track among each item's subtitleConfigurations (WebVTT and
+        // SubRip, by mimeType or a .vtt / .srt uri), chosen as DefaultTrackSelector does.
+        void SetTrackSelectionParameters(TrackSelectionParameters parameters);
+        const TrackSelectionParameters& GetTrackSelectionParameters() const;
 
         // 0 to 1.
         void SetVolume(float volume);
