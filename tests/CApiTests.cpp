@@ -1,4 +1,7 @@
 #include "Check.h"
+
+#include "kiln/ui/AppDirectories.h"
+#include <unistd.h>
 #include <kiln/Function.h>
 #include "FakeText.h"
 
@@ -714,4 +717,43 @@ TEST(CApiTextFieldKeyboardActionGetsTheDefaultToCall) {
     h.Pump();
     CHECK_EQ(handled, 1);
     CHECK_EQ(defaults, 1);
+}
+
+TEST(CApiDirectoriesAndPreferences) {
+    CHECK(std::string(kiln_files_dir()) == ui::FilesDir() && std::string(kiln_cache_dir()) == ui::CacheDir());
+    char tmpl[] = "/tmp/kiln-capi-prefs-XXXXXX";
+    const std::string dir = mkdtemp(tmpl);
+    ui::SetAppDirectories(dir + "/f", dir + "/c", dir + "/n");
+    static kiln_preferences* prefs;
+    static std::string name;
+    static int64_t count;
+    static bool dark;
+    prefs = kiln_preferences_open("capi");
+    CHECK(prefs && kiln_preferences_open("capi") == prefs);
+    {
+        Harness h;
+        auto compose = [](void*) {
+            name = kiln_preferences_str(KILN_HERE, prefs, "name", "none");
+            count = kiln_preferences_i64(KILN_HERE, prefs, "count", -1);
+            dark = kiln_preferences_bool(KILN_HERE, prefs, "dark", false);
+        };
+        h.Run(compose);
+        CHECK(name == "none" && count == -1 && !dark);
+        kiln_preferences_set_str(prefs, "name", "Ada");
+        kiln_preferences_set_i64(prefs, "count", 7);
+        kiln_preferences_set_bool(prefs, "dark", true);
+        for (int i = 0; i < 2000 && !dark; ++i) {
+            h.Pump();
+            usleep(1000);
+        }
+        CHECK(name == "Ada" && count == 7 && dark);
+        kiln_preferences_remove(prefs, "name");
+        for (int i = 0; i < 2000 && name != "none"; ++i) {
+            h.Pump();
+            usleep(1000);
+        }
+        CHECK(name == "none" && count == 7);
+    }
+    CHECK(::access((dir + "/f/datastore/capi.preferences").c_str(), F_OK) == 0);
+    ui::SetAppDirectories({}, {}, {});
 }

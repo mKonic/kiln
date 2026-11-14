@@ -723,6 +723,32 @@ namespace kpp {
         const kiln_format_arg a[] = { detail::FormatArgOf(args)..., kiln_format_arg{} };
         return detail::Str(kiln_plural_string_resource(name, quantity, a, sizeof...(A)));
     }
+    // The app's private directories; see kiln_files_dir.
+    inline std::string files_dir() { return detail::Str(kiln_files_dir()); }
+    inline std::string cache_dir() { return detail::Str(kiln_cache_dir()); }
+    inline std::string no_backup_files_dir() { return detail::Str(kiln_no_backup_files_dir()); }
+
+    // Preferences (DataStore); see kiln_preferences_open. The getters are for content.
+    class Preferences {
+    public:
+        explicit Preferences(const char* name) : m_P(kiln_preferences_open(name)) {}
+        bool get(const char* name, bool fallback, Key key = {}) const { return kiln_preferences_bool(key, m_P, name, fallback); }
+        int64_t get(const char* name, int64_t fallback, Key key = {}) const { return kiln_preferences_i64(key, m_P, name, fallback); }
+        int64_t get(const char* name, int fallback, Key key = {}) const { return kiln_preferences_i64(key, m_P, name, fallback); }
+        double get(const char* name, double fallback, Key key = {}) const { return kiln_preferences_f64(key, m_P, name, fallback); }
+        std::string get(const char* name, const char* fallback, Key key = {}) const { return detail::Str(kiln_preferences_str(key, m_P, name, fallback)); }
+        void set(const char* name, bool v) const { kiln_preferences_set_bool(m_P, name, v); }
+        void set(const char* name, int64_t v) const { kiln_preferences_set_i64(m_P, name, v); }
+        void set(const char* name, int v) const { kiln_preferences_set_i64(m_P, name, v); }
+        void set(const char* name, double v) const { kiln_preferences_set_f64(m_P, name, v); }
+        void set(const char* name, const char* v) const { kiln_preferences_set_str(m_P, name, v); }
+        void set(const char* name, const std::string& v) const { kiln_preferences_set_str(m_P, name, v.c_str()); }
+        void remove(const char* name) const { kiln_preferences_remove(m_P, name); }
+        void clear() const { kiln_preferences_clear(m_P); }
+    private:
+        kiln_preferences* m_P;
+    };
+
     inline std::vector<std::string> string_array_resource(const char* name) {
         std::vector<std::string> out;
         for (size_t i = 0, n = kiln_string_array_resource_size(name); i < n; ++i) out.push_back(detail::Str(kiln_string_array_resource(name, i)));

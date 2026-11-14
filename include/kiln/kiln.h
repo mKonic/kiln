@@ -409,6 +409,31 @@ KILN_API bool kiln_content_write(const char* uri, const uint8_t* bytes, size_t l
 KILN_API bool kiln_content_take_persistable(const char* uri, bool read, bool write);
 KILN_API bool kiln_content_release_persistable(const char* uri, bool read, bool write);
 
+/* The app's private directories (Context.getFilesDir, getCacheDir, getNoBackupFilesDir; on the
+ * desktop under $XDG_DATA_HOME and $XDG_CACHE_HOME), created on first use. No trailing slash. */
+KILN_API const char* kiln_files_dir(void);
+KILN_API const char* kiln_cache_dir(void);
+KILN_API const char* kiln_no_backup_files_dir(void);
+
+/* Preferences (DataStore): typed key-value data in <files dir>/datastore/<name>.preferences. The
+ * store lives for the process; opening a name again returns the same one. The getters are for
+ * content: they return the stored value (the fallback when there is none, or while the file is
+ * first read) and recompose the caller when it changes. The setters queue an edit that is
+ * written atomically off the main thread; edits apply in the order they were made. */
+typedef struct kiln_preferences kiln_preferences;
+KILN_API kiln_preferences* kiln_preferences_open(const char* name);
+KILN_API bool kiln_preferences_bool(kiln_key key, kiln_preferences* p, const char* name, bool fallback);
+KILN_API int64_t kiln_preferences_i64(kiln_key key, kiln_preferences* p, const char* name, int64_t fallback);
+KILN_API double kiln_preferences_f64(kiln_key key, kiln_preferences* p, const char* name, double fallback);
+/* Valid until the next kiln call on this thread. */
+KILN_API const char* kiln_preferences_str(kiln_key key, kiln_preferences* p, const char* name, const char* fallback);
+KILN_API void kiln_preferences_set_bool(kiln_preferences* p, const char* name, bool value);
+KILN_API void kiln_preferences_set_i64(kiln_preferences* p, const char* name, int64_t value);
+KILN_API void kiln_preferences_set_f64(kiln_preferences* p, const char* name, double value);
+KILN_API void kiln_preferences_set_str(kiln_preferences* p, const char* name, const char* value);
+KILN_API void kiln_preferences_remove(kiln_preferences* p, const char* name);
+KILN_API void kiln_preferences_clear(kiln_preferences* p);
+
 /* App resources (kiln_add_app RES: the app's Android res/ folder) by name: on Android the app's
  * Resources, on the desktop the tables built from the same folder. Read inside content they
  * follow the configuration (locale, night mode). Strings are valid until the next call on this

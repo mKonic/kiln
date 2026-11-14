@@ -9,6 +9,8 @@
 #include "kiln/foundation/Focus.h"
 #include "kiln/foundation/PainterResource.h"
 #include "kiln/foundation/activity/NewIntent.h"
+#include "kiln/datastore/Preferences.h"
+#include "kiln/ui/AppDirectories.h"
 #include "kiln/ui/AppResources.h"
 #include "kiln/ui/ContentResolver.h"
 #include "kiln/ui/PlatformServices.h"
@@ -684,6 +686,59 @@ KILN_API kiln_window_insets* kiln_window_insets_only(const kiln_window_insets* i
 }
 KILN_API kiln_window_insets* kiln_window_insets_retain(kiln_window_insets* i) { return Retain(i); }
 KILN_API void kiln_window_insets_release(kiln_window_insets* i) { Release(i); }
+
+KILN_API const char* kiln_files_dir(void) { TRY { return ReturnString(ui::FilesDir()); } CATCH("") }
+KILN_API const char* kiln_cache_dir(void) { TRY { return ReturnString(ui::CacheDir()); } CATCH("") }
+KILN_API const char* kiln_no_backup_files_dir(void) { TRY { return ReturnString(ui::NoBackupFilesDir()); } CATCH("") }
+
+struct kiln_preferences { std::shared_ptr<kiln::datastore::PreferencesDataStore> store; };
+namespace {
+    // Stores opened from C live for the process, as the handle has no release.
+    kiln_preferences* PreferencesHandle(const std::string& name) {
+        static auto* handles = new std::map<std::string, std::unique_ptr<kiln_preferences>>;
+        auto& h = (*handles)[name];
+        if (!h) h = std::make_unique<kiln_preferences>(kiln_preferences{ kiln::datastore::PreferencesDataStore::Open(name) });
+        return h.get();
+    }
+    const kiln::datastore::Preferences& PreferencesIn(kiln_key key, kiln_preferences* p) {
+        Current();
+        return kiln::datastore::CollectAsState(p->store, ToKey(key)).Get();
+    }
+    template<typename T>
+    void SetPreference(kiln_preferences* p, const char* name, T value) {
+        if (!p || !name) return;
+        p->store->Update([n = std::string(name), v = std::move(value)](kiln::datastore::MutablePreferences& m) { m.Set(kiln::datastore::PreferenceKey<T>{ n }, v); });
+    }
+}
+KILN_API kiln_preferences* kiln_preferences_open(const char* name) {
+    TRY { return name ? PreferencesHandle(name) : nullptr; } CATCH(nullptr)
+}
+KILN_API bool kiln_preferences_bool(kiln_key key, kiln_preferences* p, const char* name, bool fallback) {
+    TRY { return p && name ? PreferencesIn(key, p).Get(kiln::datastore::BoolKey(name)).value_or(fallback) : fallback; } CATCH(fallback)
+}
+KILN_API int64_t kiln_preferences_i64(kiln_key key, kiln_preferences* p, const char* name, int64_t fallback) {
+    TRY { return p && name ? PreferencesIn(key, p).Get(kiln::datastore::LongKey(name)).value_or(fallback) : fallback; } CATCH(fallback)
+}
+KILN_API double kiln_preferences_f64(kiln_key key, kiln_preferences* p, const char* name, double fallback) {
+    TRY { return p && name ? PreferencesIn(key, p).Get(kiln::datastore::DoubleKey(name)).value_or(fallback) : fallback; } CATCH(fallback)
+}
+KILN_API const char* kiln_preferences_str(kiln_key key, kiln_preferences* p, const char* name, const char* fallback) {
+    TRY {
+        if (!p || !name) return fallback;
+        auto v = PreferencesIn(key, p).Get(kiln::datastore::StringKey(name));
+        return v ? ReturnString(std::move(*v)) : fallback;
+    } CATCH(fallback)
+}
+KILN_API void kiln_preferences_set_bool(kiln_preferences* p, const char* name, bool value) { TRY { SetPreference<bool>(p, name, value); } CATCH_VOID }
+KILN_API void kiln_preferences_set_i64(kiln_preferences* p, const char* name, int64_t value) { TRY { SetPreference<std::int64_t>(p, name, value); } CATCH_VOID }
+KILN_API void kiln_preferences_set_f64(kiln_preferences* p, const char* name, double value) { TRY { SetPreference<double>(p, name, value); } CATCH_VOID }
+KILN_API void kiln_preferences_set_str(kiln_preferences* p, const char* name, const char* value) { TRY { SetPreference<std::string>(p, name, std::string(value ? value : "")); } CATCH_VOID }
+KILN_API void kiln_preferences_remove(kiln_preferences* p, const char* name) {
+    TRY { if (p && name) p->store->Update([n = std::string(name)](kiln::datastore::MutablePreferences& m) { m.Remove(kiln::datastore::StringKey(n)); }); } CATCH()
+}
+KILN_API void kiln_preferences_clear(kiln_preferences* p) {
+    TRY { if (p) p->store->Update([](kiln::datastore::MutablePreferences& m) { m.Clear(); }); } CATCH()
+}
 
 KILN_API int kiln_content_open_fd(const char* uri, const char* mode) {
     TRY { return uri ? ui::GetContentResolver().OpenFileDescriptor(uri, mode ? mode : "r") : -1; } CATCH(-1)

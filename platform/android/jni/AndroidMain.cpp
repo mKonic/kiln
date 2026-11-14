@@ -5,6 +5,7 @@
 #include "AndroidContent.h"
 #include "AndroidResources.h"
 #include "kiln/ui/ActivityIntent.h"
+#include "kiln/ui/AppDirectories.h"
 
 namespace kiln::android { void InstallImageDecoder(); void InstallAssetReader(JNIEnv* env, jobject assets); }
 
@@ -2741,6 +2742,16 @@ namespace {
         return i;
     }
 
+    void SetDirectoriesFromJava(JNIEnv* env, jclass, jstring files, jstring cache, jstring noBackup) {
+        auto str = [env](jstring s) {
+            if (!s) return std::string();
+            const char* c = env->GetStringUTFChars(s, nullptr);
+            std::string r(c ? c : "");
+            if (c) env->ReleaseStringUTFChars(s, c);
+            return r;
+        };
+        kiln::ui::SetAppDirectories(str(files), str(cache), str(noBackup));
+    }
     void SetActivityIntentFromJava(JNIEnv* env, jclass, jobjectArray intent) {
         kiln::ui::SetActivityIntent(IntentFromJava(env, intent));
     }
@@ -3446,6 +3457,7 @@ extern "C" JNIEXPORT jint kiln_jni_onload(JavaVM* vm) {
         { "scrollCaptureEnd", "(I)V", reinterpret_cast<void*>(&ScrollCaptureEnd) },
         { "activityResult", "(Ljava/lang/String;I[Ljava/lang/Object;)V", reinterpret_cast<void*>(&ActivityResultFromJava) },
         { "setActivityIntent", "([Ljava/lang/Object;)V", reinterpret_cast<void*>(&SetActivityIntentFromJava) },
+        { "setDirectories", "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V", reinterpret_cast<void*>(&SetDirectoriesFromJava) },
         { "newIntent", "([Ljava/lang/Object;)V", reinterpret_cast<void*>(&NewIntentFromJava) },
         { "dialogDismissRequest", "(I)V", reinterpret_cast<void*>(&DialogDismissRequest) },
         { "windowMovedOnScreen", "(I)V", reinterpret_cast<void*>(&WindowMovedOnScreen) },

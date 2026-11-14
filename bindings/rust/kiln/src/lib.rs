@@ -623,6 +623,39 @@ pub fn content_display_name(uri: &str) -> Option<String> {
     opt_c(unsafe { sys::kiln_content_display_name(u.ptr()) })
 }
 
+/// The app's private files directory (Context.getFilesDir).
+pub fn files_dir() -> String { crate::from_c(unsafe { sys::kiln_files_dir() }) }
+/// The app's cache directory (Context.getCacheDir).
+pub fn cache_dir() -> String { crate::from_c(unsafe { sys::kiln_cache_dir() }) }
+/// Files left out of backups (Context.getNoBackupFilesDir).
+pub fn no_backup_files_dir() -> String { crate::from_c(unsafe { sys::kiln_no_backup_files_dir() }) }
+
+/// Preferences (DataStore): typed key-value data kept in the app's files directory. The getters
+/// are for content and recompose it when the value changes; the setters write in the background.
+#[derive(Clone, Copy)]
+pub struct Preferences(*mut sys::kiln_preferences);
+impl Preferences {
+    pub fn open(name: &str) -> Self { let n = CStrBuf::new(name); Preferences(unsafe { sys::kiln_preferences_open(n.ptr()) }) }
+    #[track_caller]
+    pub fn bool(&self, name: &str, fallback: bool) -> bool { let n = CStrBuf::new(name); unsafe { sys::kiln_preferences_bool(here(), self.0, n.ptr(), fallback) } }
+    #[track_caller]
+    pub fn i64(&self, name: &str, fallback: i64) -> i64 { let n = CStrBuf::new(name); unsafe { sys::kiln_preferences_i64(here(), self.0, n.ptr(), fallback) } }
+    #[track_caller]
+    pub fn f64(&self, name: &str, fallback: f64) -> f64 { let n = CStrBuf::new(name); unsafe { sys::kiln_preferences_f64(here(), self.0, n.ptr(), fallback) } }
+    #[track_caller]
+    pub fn string(&self, name: &str, fallback: &str) -> String {
+        let n = CStrBuf::new(name);
+        let p = unsafe { sys::kiln_preferences_str(here(), self.0, n.ptr(), std::ptr::null()) };
+        if p.is_null() { fallback.to_string() } else { crate::from_c(p) }
+    }
+    pub fn set_bool(&self, name: &str, v: bool) { let n = CStrBuf::new(name); unsafe { sys::kiln_preferences_set_bool(self.0, n.ptr(), v) } }
+    pub fn set_i64(&self, name: &str, v: i64) { let n = CStrBuf::new(name); unsafe { sys::kiln_preferences_set_i64(self.0, n.ptr(), v) } }
+    pub fn set_f64(&self, name: &str, v: f64) { let n = CStrBuf::new(name); unsafe { sys::kiln_preferences_set_f64(self.0, n.ptr(), v) } }
+    pub fn set_string(&self, name: &str, v: &str) { let n = CStrBuf::new(name); let s = CStrBuf::new(v); unsafe { sys::kiln_preferences_set_str(self.0, n.ptr(), s.ptr()) } }
+    pub fn remove(&self, name: &str) { let n = CStrBuf::new(name); unsafe { sys::kiln_preferences_remove(self.0, n.ptr()) } }
+    pub fn clear(&self) { unsafe { sys::kiln_preferences_clear(self.0) } }
+}
+
 /// An intent (a deep link, a share): only valid inside the call or callback that gave it.
 pub struct Intent(*const sys::kiln_intent);
 fn opt_c(p: *const std::ffi::c_char) -> Option<String> { if p.is_null() { None } else { Some(crate::from_c(p)) } }
