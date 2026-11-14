@@ -58,7 +58,10 @@ namespace kiln::foundation {
             // are one object, or of one kind with the same duration and curve.
             bool SameSpec(const anim::SpecPtr& a, const anim::SpecPtr& b) {
                 if (a == b) return true;
-                if (!a || !b || typeid(*a) != typeid(*b)) return false;
+                if (!a || !b) return false;
+                const auto& sa = *a;
+                const auto& sb = *b;
+                if (typeid(sa) != typeid(sb)) return false;
                 const anim::Vec from{ 0, 0, 0, 0 }, to{ 1, 0, 0, 0 }, v0{ 0, 0, 0, 0 };
                 const std::int64_t da = a->DurationNanos(from, to, v0, 1), db = b->DurationNanos(from, to, v0, 1);
                 if (da != db) return false;
