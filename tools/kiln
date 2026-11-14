@@ -7,6 +7,7 @@
 #   kiln list                       the apps this tree builds (samples and apps/)
 #   kiln build <app> [opts]         configure and build the app's library for each ABI
 #   kiln apk <app> [opts]           ... and pack it: build/apk/<app>.apk (or --out)
+#   kiln bundle <app> [opts]        ... as an Android App Bundle for Play: build/apk/<app>.aab
 #   kiln run <app> [opts]           ... install it and start it
 #   kiln version                    the kiln version this tree is at
 #   kiln update [version]           move the tree to a release (the newest, or the one named):
@@ -93,7 +94,7 @@ if [ "$CMD" = list ]; then
     done
     exit 0
 fi
-case "$CMD" in build|apk|run) ;; *) usage ;; esac
+case "$CMD" in build|apk|bundle|run) ;; *) usage ;; esac
 [ -n "$APP" ] || usage
 
 if [ -z "$ABIS" ]; then
@@ -121,6 +122,8 @@ done
 first="${ABI_LIST[0]}"
 PACKAGE="$(meta "$first" package)"; LABEL="$(meta "$first" label)"; ASSETS="$(meta "$first" assets)"
 APK="${OUT:-$KILN_ROOT/build/apk/$APP.apk}"
+BUNDLE=()
+if [ "$CMD" = bundle ]; then APK="${OUT:-$KILN_ROOT/build/apk/$APP.aab}"; BUNDLE=(--bundle); fi
 PACK=(); [ -n "$ASSETS" ] && PACK+=(--assets "$ASSETS")
 v="$(meta "$first" icon)"; [ -n "$v" ] && PACK+=(--icon "$v")
 v="$(meta "$first" version_code)"; [ -n "$v" ] && PACK+=(--version-code "$v")
@@ -134,8 +137,8 @@ v="$(meta "$first" application_attributes)"; [ -n "$v" ] && PACK+=(--application
 IFS=, read -r -a perms <<< "$(meta "$first" permissions)"
 for p in "${perms[@]}"; do [ -n "$p" ] && PACK+=(--permission "$p"); done
 "$KILN_ROOT/tools/kiln-pack" --package "$PACKAGE" --label "$LABEL" --lib-name "$APP" "${LIB_ARGS[@]}" \
-    "${PACK[@]}" "${DEBUG[@]}" "${SIGN[@]}" --out "$APK"
-[ "$CMD" = apk ] && exit 0
+    "${PACK[@]}" "${DEBUG[@]}" "${SIGN[@]}" "${BUNDLE[@]}" --out "$APK"
+[ "$CMD" = apk ] || [ "$CMD" = bundle ] && exit 0
 
 "$ADB" install -r "$APK" >/dev/null
 "$ADB" shell am start -W -n "$PACKAGE/dev.kiln.KilnActivity" | grep -E 'Status|TotalTime'

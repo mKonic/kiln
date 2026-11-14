@@ -14,12 +14,16 @@
 # added to <manifest> / <application>), --keystore file --key-alias name (sign with your key:
 # passwords from KILN_KEYSTORE_PASSWORD and KILN_KEY_PASSWORD; default: kiln's debug key).
 #
+# --bundle: an Android App Bundle (.aab, what Play takes) instead of an APK: aapt2 links in proto
+# format, the base module is laid out as bundletool expects, and jarsigner signs the bundle.
+# bundletool comes from KILN_BUNDLETOOL, or is downloaded once to ~/.cache/kiln.
+#
 # Steps: javac (kiln's Java host, platform APIs only) -> d8 -> manifest -> aapt2 link ->
 # add classes.dex + lib/<abi>/*.so -> zipalign -> apksigner (debug key in build/).
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/android-env.sh"
 PACKAGE=""; LABEL="kiln app"; LIBNAME=""; OUT=""; LIBS=(); ASSETS=""; DEBUG=0
-PERMISSIONS=(); ICON=""; VERSION_CODE=1; VERSION_NAME="1.0"; MANIFEST_XML=""; APPLICATION_XML=""; RES=""; ACTIVITY_XML=""; ACTIVITY_ATTRIBUTES=""; APPLICATION_ATTRIBUTES=""; KEYSTORE_ARG=""; KEY_ALIAS=""
+PERMISSIONS=(); ICON=""; VERSION_CODE=1; VERSION_NAME="1.0"; MANIFEST_XML=""; APPLICATION_XML=""; RES=""; ACTIVITY_XML=""; ACTIVITY_ATTRIBUTES=""; APPLICATION_ATTRIBUTES=""; KEYSTORE_ARG=""; KEY_ALIAS=""; BUNDLE=0
 while [ $# -gt 0 ]; do
     case "$1" in
         --package) PACKAGE="$2"; shift 2 ;;
@@ -40,6 +44,7 @@ while [ $# -gt 0 ]; do
         --activity-attributes) ACTIVITY_ATTRIBUTES="$2"; shift 2 ;;
         --application-attributes) APPLICATION_ATTRIBUTES="$2"; shift 2 ;;
         --keystore) KEYSTORE_ARG="$2"; shift 2 ;;
+        --bundle) BUNDLE=1; shift ;;
         --key-alias) KEY_ALIAS="$2"; shift 2 ;;
         *) echo "kiln-pack: unknown argument $1" >&2; exit 2 ;;
     esac
@@ -129,8 +134,69 @@ $EXTRA_APPLICATION
 </manifest>
 XML
 
-UNSIGNED="$STAGING/unsigned.apk"; ALIGNED="$STAGING/aligned.apk"
 ASSET_ARGS=(); [ -n "$ASSETS" ] && ASSET_ARGS=(-A "$ASSETS")
+
+# The signing key: the app's (--keystore) or kiln's debug key.
+if [ -n "$KEYSTORE_ARG" ]; then
+    : "${KILN_KEYSTORE_PASSWORD:?set KILN_KEYSTORE_PASSWORD for $KEYSTORE_ARG}"
+    KEYPASS_ENV=KILN_KEY_PASSWORD; [ -n "${KILN_KEY_PASSWORD:-}" ] || KEYPASS_ENV=KILN_KEYSTORE_PASSWORD
+    SIGN_KS="$KEYSTORE_ARG"; SIGN_ALIAS="${KEY_ALIAS:?--key-alias is needed with --keystore}"
+    SIGN_STOREPASS="$KILN_KEYSTORE_PASSWORD"; SIGN_KEYPASS="${!KEYPASS_ENV}"
+else
+    SIGN_KS="$KILN_ROOT/build/kiln-debug.keystore"; SIGN_ALIAS=kiln; SIGN_STOREPASS=android; SIGN_KEYPASS=android
+    [ -f "$SIGN_KS" ] || keytool -genkeypair -keystore "$SIGN_KS" -alias kiln -keyalg RSA -keysize 2048 \
+        -validity 10000 -storepass android -keypass android -dname "CN=kiln debug" >/dev/null 2>&1
+fi
+
+if [ "$BUNDLE" = 1 ]; then
+    BUNDLETOOL_VERSION=1.18.3
+    BUNDLETOOL_SHA256=a099cfa1543f55593bc2ed16a70a7c67fe54b1747bb7301f37fdfd6d91028e29
+    BUNDLETOOL="${KILN_BUNDLETOOL:-$HOME/.cache/kiln/bundletool-all-$BUNDLETOOL_VERSION.jar}"
+    if [ ! -f "$BUNDLETOOL" ]; then
+        mkdir -p "$(dirname "$BUNDLETOOL")"
+        echo "kiln-pack: downloading bundletool $BUNDLETOOL_VERSION" >&2
+        curl -fsSL -o "$BUNDLETOOL.part" "https://github.com/google/bundletool/releases/download/$BUNDLETOOL_VERSION/bundletool-all-$BUNDLETOOL_VERSION.jar"
+        echo "$BUNDLETOOL_SHA256  $BUNDLETOOL.part" | sha256sum -c --quiet - || { rm -f "$BUNDLETOOL.part"; echo "kiln-pack: bundletool checksum mismatch" >&2; exit 1; }
+        mv "$BUNDLETOOL.part" "$BUNDLETOOL"
+    fi
+    PROTO="$STAGING/proto.apk"
+    "$AAPT2" link --proto-format -o "$PROTO" -I "$ANDROID_JAR" --manifest "$STAGING/AndroidManifest.xml" "${ASSET_ARGS[@]}" "${RES_ARGS[@]}" \
+        --min-sdk-version "$ANDROID_MIN_SDK" --target-sdk-version "$ANDROID_TARGET_SDK"
+    LIB_SPECS=()
+    for spec in "${LIBS[@]}"; do
+        abi="${spec%%=*}"; so="${spec#*=}"
+        mkdir -p "$STAGING/lib/$abi"
+        "$NDK_TOOLCHAIN/bin/llvm-strip" --strip-unneeded "$so" -o "$STAGING/lib/$abi/lib$LIBNAME.so"
+        LIB_SPECS+=("lib/$abi/lib$LIBNAME.so")
+    done
+    # The base module: manifest/, dex/, lib/, res/, assets/ and resources.pb (bundletool's layout).
+    python3 - "$PROTO" "$STAGING" "$STAGING/base.zip" "${LIB_SPECS[@]}" <<'PY'
+import sys, zipfile
+proto, staging, out, libs = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4:]
+with zipfile.ZipFile(proto) as src, zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as dst:
+    for info in src.infolist():
+        name = info.filename
+        if name == "AndroidManifest.xml": name = "manifest/AndroidManifest.xml"
+        elif not (name == "resources.pb" or name.startswith("res/") or name.startswith("assets/")): name = "root/" + name
+        dst.writestr(name, src.read(info.filename))
+    dst.write(staging + "/classes.dex", "dex/classes.dex")
+    for lib in libs: dst.write(staging + "/" + lib, lib)
+PY
+    # Native libraries stay uncompressed and 16 KB aligned in the APKs Play makes from it.
+    cat > "$STAGING/BundleConfig.json" <<'JSON'
+{ "optimizations": { "uncompressNativeLibraries": { "enabled": true, "alignment": "PAGE_ALIGNMENT_16K" } } }
+JSON
+    rm -f "$STAGING/unsigned.aab"
+    java -jar "$BUNDLETOOL" build-bundle --modules="$STAGING/base.zip" --config="$STAGING/BundleConfig.json" --output="$STAGING/unsigned.aab"
+    mkdir -p "$(dirname "$OUT")"
+    jarsigner -keystore "$SIGN_KS" -storepass "$SIGN_STOREPASS" -keypass "$SIGN_KEYPASS" -sigalg SHA256withRSA -digestalg SHA-256 \
+        -signedjar "$OUT" "$STAGING/unsigned.aab" "$SIGN_ALIAS" > "$STAGING/jarsigner.log" 2>&1 \
+        || { cat "$STAGING/jarsigner.log" >&2; exit 1; }
+    echo "Bundle: $OUT ($(du -h "$OUT" | cut -f1))"
+    exit 0
+fi
+
+UNSIGNED="$STAGING/unsigned.apk"; ALIGNED="$STAGING/aligned.apk"
 "$AAPT2" link -o "$UNSIGNED" -I "$ANDROID_JAR" --manifest "$STAGING/AndroidManifest.xml" "${ASSET_ARGS[@]}" "${RES_ARGS[@]}" \
     --min-sdk-version "$ANDROID_MIN_SDK" --target-sdk-version "$ANDROID_TARGET_SDK"
 
@@ -147,15 +213,10 @@ python3 "$KILN_ROOT/tools/apkzip.py" "$UNSIGNED" "$STAGING" "${ENTRIES[@]}"
 
 mkdir -p "$(dirname "$OUT")"
 if [ -n "$KEYSTORE_ARG" ]; then
-    : "${KILN_KEYSTORE_PASSWORD:?set KILN_KEYSTORE_PASSWORD for $KEYSTORE_ARG}"
-    KEYPASS_ENV=KILN_KEY_PASSWORD; [ -n "${KILN_KEY_PASSWORD:-}" ] || KEYPASS_ENV=KILN_KEYSTORE_PASSWORD
-    "$APKSIGNER" sign --ks "$KEYSTORE_ARG" --ks-key-alias "${KEY_ALIAS:?--key-alias is needed with --keystore}" \
+    "$APKSIGNER" sign --ks "$SIGN_KS" --ks-key-alias "$SIGN_ALIAS" \
         --ks-pass env:KILN_KEYSTORE_PASSWORD --key-pass "env:$KEYPASS_ENV" --out "$OUT" "$ALIGNED"
 else
-    KEYSTORE="$KILN_ROOT/build/kiln-debug.keystore"
-    [ -f "$KEYSTORE" ] || keytool -genkeypair -keystore "$KEYSTORE" -alias kiln -keyalg RSA -keysize 2048 \
-        -validity 10000 -storepass android -keypass android -dname "CN=kiln debug" >/dev/null 2>&1
-    "$APKSIGNER" sign --ks "$KEYSTORE" --ks-key-alias kiln --ks-pass pass:android --key-pass pass:android \
+    "$APKSIGNER" sign --ks "$SIGN_KS" --ks-key-alias kiln --ks-pass pass:android --key-pass pass:android \
         --out "$OUT" "$ALIGNED"
 fi
 echo "APK: $OUT ($(du -h "$OUT" | cut -f1))"

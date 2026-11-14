@@ -14,6 +14,7 @@ Creates apps, and builds, packs, installs and starts them.
 | `tools/kiln list` | Lists the apps |
 | `tools/kiln build <app>` | Builds the app's library for each ABI |
 | `tools/kiln apk <app>` | Builds and packs `build/apk/<app>.apk` |
+| `tools/kiln bundle <app>` | Builds an Android App Bundle for Google Play, `build/apk/<app>.aab` |
 | `tools/kiln run <app>` | Builds, packs, installs and starts the app |
 | `tools/kiln version` | Prints the kiln version the tree is at |
 | `tools/kiln update [version]` | Moves the tree to the newest release, or the one named |
@@ -25,9 +26,11 @@ Creates apps, and builds, packs, installs and starts them.
 | `--release` | An APK for publishing (the default) |
 | `--keystore file --key-alias name` | Signs with your key; passwords from `KILN_KEYSTORE_PASSWORD` and `KILN_KEY_PASSWORD` |
 | `--lto` | Link-time optimization: a 4-5% smaller library and a slower build, at the same speed |
-| `--out file` | Where `apk` writes the APK |
+| `--out file` | Where `apk` or `bundle` writes its file |
 
-`KILN_CONFIG` chooses the CMake build type, `RelWithDebInfo` by default.
+`KILN_CONFIG` chooses the CMake build type, `RelWithDebInfo` by default. `bundle` uses
+bundletool, downloaded once to `~/.cache/kiln` and checked against its checksum, or the jar
+`KILN_BUNDLETOOL` names.
 
 ## Other tools
 

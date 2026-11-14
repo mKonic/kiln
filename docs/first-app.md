@@ -134,11 +134,14 @@ tools/kiln run counter
 
 Change the code and run the command again: it rebuilds what changed and reinstalls the app.
 
-To build an APK for publishing, signed with your key:
+To publish on Google Play, build an Android App Bundle signed with your upload key:
 
 ```sh
-KILN_KEYSTORE_PASSWORD=... tools/kiln apk counter --release --keystore my.jks --key-alias upload --out counter.apk
+KILN_KEYSTORE_PASSWORD=... tools/kiln bundle counter --keystore my.jks --key-alias upload --out counter.aab
 ```
+
+`tools/kiln apk` with the same options builds a signed APK instead, for other stores and for
+installing directly.
 
 `--abi arm64-v8a` builds one CPU architecture instead of both. The same app also runs in a
 desktop window: build the host tree and run `build/host/app-counter/counter`.
