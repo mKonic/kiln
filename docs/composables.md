@@ -109,6 +109,39 @@ Button([scope, &listState] { scope->Launch(listState.AnimateScrollToItem(0)); },
        [] { Text("Back to top"); });
 ```
 
+## Flows
+
+`kiln/runtime/Flow.h` has kotlinx's flows: cold `Flow<T>` streams built with
+`Flow<T>::Create` and its operators (`Map`, `Filter`, `Combine`, `Debounce`,
+`FlatMapLatest`, `Take` and more), and hot `MutableStateFlow` and `MutableSharedFlow`.
+A ViewModel can expose a state flow, and content reads it as state:
+
+```cpp
+struct SearchModel {
+    kiln::rt::MutableStateFlow<std::string> query{ std::string() };
+    kiln::rt::Flow<std::string> Hint() const {
+        auto debounced = kiln::rt::Debounce(query.AsFlow(), 300);
+        return kiln::rt::Map(debounced, [](const std::string& q) { return q.empty() ? std::string("Type to search") : "Searching " + q; });
+    }
+};
+
+void Search(SearchModel& model) {
+    auto& query = kiln::rt::CollectAsState(model.query);
+    Text("Query: " + query.Get());
+    auto& hint = kiln::rt::CollectAsState(model.Hint(), std::string());
+    Text(hint.Get());
+}
+```
+
+* A body emits with `co_await emit(value)`; emitting waits until the collector took the
+  value, as in Kotlin.
+* `CollectAsState` collects while the caller is composed. `CollectAsStateWithLifecycle`
+  (`kiln/lifecycle/LifecycleCompose.h`) pauses while the app is in the background.
+* `StateIn(flow, scope, SharingStarted::WhileSubscribed(5000), initial)` shares one
+  upstream between collectors, as in a ViewModel.
+* Flows run on the main thread. Do blocking work in `co_await WithContext(...)` inside the
+  body.
+
 ## Lifetimes
 
 Content lambdas can run again after the function that created them has returned.
