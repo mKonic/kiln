@@ -278,6 +278,15 @@ namespace kiln::capi {
         if (!o) return {};
         return [o](ui::DrawScope& d) { CallbackScope s; o->f.call(o->f.user, reinterpret_cast<kiln_draw_scope*>(&d)); };
     }
+    foundation::InlineTextContent ToInlineContent(const kiln_inline_content& c) {
+        foundation::InlineTextContent out;
+        out.placeholder.width = ToTextUnit(c.width);
+        out.placeholder.height = ToTextUnit(c.height);
+        out.placeholder.verticalAlign = c.vertical_align >= KILN_PLACEHOLDER_ABOVE_BASELINE && c.vertical_align <= KILN_PLACEHOLDER_TEXT_CENTER
+            ? text::PlaceholderVerticalAlign(c.vertical_align) : text::PlaceholderVerticalAlign::AboveBaseline;
+        if (auto fn = Fn(c.content)) out.children = [fn](const std::string& alt) { fn(alt); };
+        return out;
+    }
     kiln::Function<void(float)> Fn(kiln_fn_float f) {
         auto o = Own(f);
         if (!o) return {};
@@ -1128,9 +1137,8 @@ KILN_API kiln_rect kiln_text_layout_result_cursor_rect(const kiln_text_layout_re
     TRY { const CursorRect c = l->r.Cursor(offset); return kiln_rect{ c.x, c.top, c.x, c.bottom }; } CATCH(kiln_rect{})
 }
 
-KILN_API void kiln_basic_text(kiln_key key, const char* utf8, const kiln_modifier* m, const kiln_text_style* style,
-                              const kiln_text_options* in) {
-    TRY {
+namespace {
+    fd::BasicTextOptions ToBasicTextOptions(const kiln_text_options* in) {
         const auto o = ReadOptions(in, kiln_text_options_init);
         fd::BasicTextOptions bo;
         bo.overflow = text::TextOverflow(o.overflow);
@@ -1138,7 +1146,15 @@ KILN_API void kiln_basic_text(kiln_key key, const char* utf8, const kiln_modifie
         bo.maxLines = o.max_lines;
         bo.minLines = o.min_lines;
         bo.onTextLayout = Fn(o.on_text_layout);
-        fd::BasicText(ToString(utf8), ToModifier(m), style ? style->style : text::TextStyle{}, std::move(bo), ToKey(key));
+        for (size_t i = 0; o.inline_content && i < o.inline_content_count; ++i)
+            if (o.inline_content[i].id) bo.inlineContent[o.inline_content[i].id] = ToInlineContent(o.inline_content[i]);
+        return bo;
+    }
+}
+KILN_API void kiln_basic_text(kiln_key key, const char* utf8, const kiln_modifier* m, const kiln_text_style* style,
+                              const kiln_text_options* in) {
+    TRY {
+        fd::BasicText(ToString(utf8), ToModifier(m), style ? style->style : text::TextStyle{}, ToBasicTextOptions(in), ToKey(key));
     } CATCH_VOID
 }
 
@@ -1162,6 +1178,9 @@ KILN_API void kiln_text_builder_push_link_clickable(kiln_text_builder* b, const 
     TRY { if (b) b->b.PushLink(text::LinkAnnotation::Clickable(ToString(tag), {}, LinkListener(onClick, false))); } CATCH_VOID
 }
 KILN_API void kiln_text_builder_pop(kiln_text_builder* b) { TRY { if (b) b->b.Pop(); } CATCH_VOID }
+KILN_API void kiln_text_builder_append_inline_content(kiln_text_builder* b, const char* id, const char* alt) {
+    TRY { if (b && id) fd::AppendInlineContent(b->b, id, alt ? alt : "\xEF\xBF\xBD"); } CATCH_VOID
+}
 KILN_API kiln_annotated_string* kiln_text_builder_build(const kiln_text_builder* b) {
     TRY {
         auto* s = new kiln_annotated_string;
@@ -1176,13 +1195,7 @@ KILN_API void kiln_basic_text_annotated(kiln_key key, const kiln_annotated_strin
                                         const kiln_text_options* in) {
     TRY {
         if (!t) return;
-        const auto o = ReadOptions(in, kiln_text_options_init);
-        fd::BasicTextOptions bo;
-        bo.overflow = text::TextOverflow(o.overflow);
-        bo.softWrap = o.soft_wrap;
-        bo.maxLines = o.max_lines;
-        bo.minLines = o.min_lines;
-        fd::BasicText(t->text, ToModifier(m), style ? style->style : text::TextStyle{}, std::move(bo), ToKey(key));
+        fd::BasicText(t->text, ToModifier(m), style ? style->style : text::TextStyle{}, ToBasicTextOptions(in), ToKey(key));
     } CATCH_VOID
 }
 

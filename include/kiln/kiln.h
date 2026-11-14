@@ -631,6 +631,20 @@ KILN_API int32_t kiln_text_layout_result_offset_for_position(const kiln_text_lay
 KILN_API kiln_rect kiln_text_layout_result_bounding_box(const kiln_text_layout_result* layout, int32_t offset);
 KILN_API kiln_rect kiln_text_layout_result_cursor_rect(const kiln_text_layout_result* layout, int32_t offset);
 
+/* Inline content: a composable in the text in place of a range appended with
+ * kiln_text_builder_append_inline_content(id). `content` gets the alternate text. The placeholder
+ * is width x height (sp or em), aligned to the line by vertical_align. */
+typedef enum kiln_placeholder_vertical_align {
+    KILN_PLACEHOLDER_ABOVE_BASELINE = 1, KILN_PLACEHOLDER_TOP, KILN_PLACEHOLDER_BOTTOM, KILN_PLACEHOLDER_CENTER,
+    KILN_PLACEHOLDER_TEXT_TOP, KILN_PLACEHOLDER_TEXT_BOTTOM, KILN_PLACEHOLDER_TEXT_CENTER
+} kiln_placeholder_vertical_align;
+typedef struct kiln_inline_content {
+    const char* id;
+    kiln_text_unit width, height;
+    kiln_placeholder_vertical_align vertical_align;
+    kiln_fn_str content;
+} kiln_inline_content;
+
 typedef struct kiln_text_options {
     size_t size;
     kiln_text_overflow overflow;   /* clip */
@@ -638,6 +652,8 @@ typedef struct kiln_text_options {
     int32_t max_lines;             /* INT32_MAX */
     int32_t min_lines;             /* 1 */
     kiln_fn_text_layout on_text_layout;   /* after each layout */
+    const kiln_inline_content* inline_content;   /* for the annotated text's inline content ranges */
+    size_t inline_content_count;
 } kiln_text_options;
 KILN_API void kiln_text_options_init(kiln_text_options* options);
 /* BasicText. style NULL: the default style (no theme; Material's Text is kiln_m3_text). */
@@ -657,6 +673,9 @@ KILN_API void kiln_text_builder_push_link_url(kiln_text_builder* b, const char* 
 /* A clickable range: on_click gets the tag. */
 KILN_API void kiln_text_builder_push_link_clickable(kiln_text_builder* b, const char* tag, kiln_fn_str on_click);
 KILN_API void kiln_text_builder_pop(kiln_text_builder* b);
+/* appendInlineContent: alternate_text (NULL: U+FFFD) stands for the inline content with this id
+ * (kiln_text_options.inline_content). */
+KILN_API void kiln_text_builder_append_inline_content(kiln_text_builder* b, const char* id, const char* alternate_text);
 KILN_API kiln_annotated_string* kiln_text_builder_build(const kiln_text_builder* b);
 KILN_API void kiln_text_builder_free(kiln_text_builder* b);
 KILN_API kiln_annotated_string* kiln_annotated_string_retain(kiln_annotated_string* s);

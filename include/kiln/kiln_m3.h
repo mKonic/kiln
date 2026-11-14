@@ -2350,6 +2350,8 @@ struct kiln_m3_text_options {
     bool soft_wrap;
     int32_t max_lines;
     int32_t min_lines;
+    const kiln_inline_content* inline_content;   /* NULL: the default */
+    size_t inline_content_count;
     kiln_fn_text_layout on_text_layout;
     const kiln_text_style* style;
 };

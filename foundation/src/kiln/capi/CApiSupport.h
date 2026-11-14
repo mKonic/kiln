@@ -34,6 +34,8 @@
 #include <memory>
 #include <string>
 
+namespace kiln::foundation { struct InlineTextContent; }
+
 struct kiln_modifier { kiln::ui::Modifier m; };
 
 // Refcounted handles.
@@ -106,6 +108,7 @@ namespace kiln::capi {
     kiln::Function<void(int)> Fn(kiln_fn_int f);
     kiln::Function<void(const text::TextLayoutResult&)> Fn(kiln_fn_text_layout f);
     kiln::Function<void(ui::DrawScope&)> Fn(kiln_fn_draw f);
+    foundation::InlineTextContent ToInlineContent(const kiln_inline_content& c);
     kiln::Function<void(float)> Fn(kiln_fn_float f);
     kiln::Function<void(const std::string&)> Fn(kiln_fn_str f);
 

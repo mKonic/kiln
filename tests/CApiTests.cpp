@@ -522,6 +522,40 @@ TEST(CApiTextLayoutResultDescribesTheLinesAndCanBeKept) {
     }
 }
 
+TEST(CApiInlineContentComposesInItsPlaceholder) {
+    static std::string alternate;
+    alternate.clear();
+    Harness h;
+    h.Run([](void*) {
+        kiln_text_builder* b = kiln_text_builder_new();
+        kiln_text_builder_append(b, "Go ");
+        kiln_text_builder_append_inline_content(b, "icon", "[icon]");
+        kiln_annotated_string* t = kiln_text_builder_build(b);
+        kiln_text_builder_free(b);
+        kiln_inline_content icon{};
+        icon.id = "icon";
+        icon.width = kiln_text_unit{ 20, KILN_TEXT_UNIT_SP };
+        icon.height = kiln_text_unit{ 10, KILN_TEXT_UNIT_SP };
+        icon.vertical_align = KILN_PLACEHOLDER_CENTER;
+        icon.content = kiln_fn_str{ [](void*, const char* alt) {
+            alternate = alt;
+            kiln_box(KILN_HERE, kiln_mod_test_tag(kiln_mod_fill_max_size(NULL, 1), "icon"), NULL, KILN_FN(NULL, NULL));
+        }, nullptr, nullptr };
+        kiln_text_options o;
+        kiln_text_options_init(&o);
+        o.inline_content = &icon;
+        o.inline_content_count = 1;
+        kpp::column(kpp::Modifier(), [t, &o] {
+            kiln_basic_text_annotated(KILN_HERE, t, NULL, NULL, &o);
+        });
+        kiln_annotated_string_release(t);
+    });
+    CHECK(alternate == "[icon]");
+    const ui::LayoutNode* icon = h.Find(h.owner.Root(), "icon");
+    CHECK(icon != nullptr);
+    if (icon) CHECK(icon->Size().width == 20 && icon->Size().height == 10);
+}
+
 TEST(CApiAndroidViewMakesUpdatesAndReleasesItsView) {
     static int made, updates, released, dropped;
     made = updates = released = dropped = 0;

@@ -121,6 +121,7 @@ class Mapping:
     struct: object = None       # the Struct for by_out
     list_item: object = None    # a struct field holding a list: items pointer + count
     list_optional: bool = False # the list is a std::optional: NULL items leave it unset
+    list_map: str = None        # the list fills a std::map: the C item field holding the key
 
 
 @dataclass
@@ -448,6 +449,10 @@ class Generator:
     def map(self, t, name, field_=False, arg_of_callback=False):
         base, is_ref = strip_ref(t)
         k = canon(base)
+        if field_ and k == 'std::map<std::basic_string<char>, kiln::foundation::InlineTextContent>':
+            # Inline content by id: an array of kiln_inline_content (kiln.h).
+            return Mapping('const kiln_inline_content*', None, None,
+                           list_item=Mapping('kiln_inline_content', lambda e: f'kiln::capi::ToInlineContent({e})'), list_map='id')
         if field_ and k.startswith('std::vector<'):
             item = self.map(template_args(base)[0], name)
             if item.by_out:
@@ -1433,6 +1438,9 @@ class Generator:
                 if m.list_item is not None:
                     if m.list_optional:
                         out.append(f'    if (c.{f}) {{ v.{n}.emplace(); for (size_t i = 0; i < c.{f}_count; ++i) v.{n}->push_back({m.list_item.to_cpp(f"c.{f}[i]")}); }}')
+                    elif m.list_map:
+                        key = m.list_map
+                        out.append(f'    if (c.{f}) {{ v.{n}.clear(); for (size_t i = 0; i < c.{f}_count; ++i) if (c.{f}[i].{key}) v.{n}[c.{f}[i].{key}] = {m.list_item.to_cpp(f"c.{f}[i]")}; }}')
                     else:
                         out.append(f'    if (c.{f}) {{ v.{n}.clear(); for (size_t i = 0; i < c.{f}_count; ++i) v.{n}.push_back({m.list_item.to_cpp(f"c.{f}[i]")}); }}')
                     continue

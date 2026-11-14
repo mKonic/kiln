@@ -7235,6 +7235,7 @@ kiln::material3::TextOptions ToCpp(const kiln_m3_text_options* in) {
     v.softWrap = c.soft_wrap;
     v.maxLines = c.max_lines;
     v.minLines = c.min_lines;
+    if (c.inline_content) { v.inlineContent.clear(); for (size_t i = 0; i < c.inline_content_count; ++i) if (c.inline_content[i].id) v.inlineContent[c.inline_content[i].id] = kiln::capi::ToInlineContent(c.inline_content[i]); }
     if (c.on_text_layout.call) v.onTextLayout = kiln::capi::Fn(c.on_text_layout);
     if (c.style) v.style = (c.style ? std::optional<kiln::text::TextStyle>((c.style ? c.style->style : kiln::text::TextStyle{})) : std::nullopt);
     return v;
