@@ -598,7 +598,16 @@ final class KilnText {
         pe = Math.max(pe, end);
         Bidi paragraph = new Bidi(chars, ps, null, 0, pe - ps,
                 paraRtl ? Bidi.DIRECTION_RIGHT_TO_LEFT : Bidi.DIRECTION_LEFT_TO_RIGHT);
-        Bidi bidi = paragraph.createLineBidi(start - ps, end - ps);
+        // ICU also ends paragraphs at U+001C-001E, U+0085 and U+2029, which StaticLayout keeps
+        // inside a line: such a line gets its own levels (a line Bidi may not cross them).
+        boolean crosses = false;
+        for (int i = start; i < end - 1 && !crosses; i++) {
+            char ch = chars[i];
+            crosses = (ch >= 0x1C && ch <= 0x1E) || ch == 0x85 || ch == 0x2029;
+        }
+        Bidi bidi = crosses
+                ? new Bidi(chars, start, null, 0, end - start, paraRtl ? Bidi.DIRECTION_RIGHT_TO_LEFT : Bidi.DIRECTION_LEFT_TO_RIGHT)
+                : paragraph.createLineBidi(start - ps, end - ps);
         final int nBidi = bidi.getRunCount();
         Integer[] order = new Integer[nBidi];
         byte[] levels = new byte[nBidi];
