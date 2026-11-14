@@ -8,6 +8,7 @@ import android.content.Intent;
 import android.content.pm.ActivityInfo;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
+import android.os.Build;
 import android.os.Bundle;
 import android.util.Log;
 import android.util.SizeF;
@@ -98,7 +99,7 @@ public class KilnWidgetReceiver extends AppWidgetProvider {
             return;
         }
         Bundle options = manager.getAppWidgetOptions(id);
-        ArrayList<SizeF> sizes = options.getParcelableArrayList(AppWidgetManager.OPTION_APPWIDGET_SIZES, SizeF.class);
+        ArrayList<SizeF> sizes = sizes(options);
         float[] launcher = new float[sizes == null ? 0 : sizes.size() * 2];
         for (int i = 0; sizes != null && i < sizes.size(); i++) {
             launcher[2 * i] = sizes.get(i).getWidth();
@@ -129,6 +130,13 @@ public class KilnWidgetReceiver extends AppWidgetProvider {
             return;
         }
         manager.updateAppWidget(id, views);
+    }
+
+    /** OPTION_APPWIDGET_SIZES (the typed getParcelableArrayList is API 33). */
+    @SuppressWarnings("deprecation")
+    private static ArrayList<SizeF> sizes(Bundle options) {
+        if (Build.VERSION.SDK_INT >= 33) return options.getParcelableArrayList(AppWidgetManager.OPTION_APPWIDGET_SIZES, SizeF.class);
+        return options.getParcelableArrayList(AppWidgetManager.OPTION_APPWIDGET_SIZES);
     }
 
     /** The receivers of a widget: this package's with that dev.kiln.widget name. */

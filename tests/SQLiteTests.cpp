@@ -21,8 +21,7 @@ namespace {
         rt::Dispatcher::Main().RunPending();
     }
     std::string TempFile(const char* name) {
-        char tmpl[] = "/tmp/kiln-sqlite-XXXXXX";
-        return std::string(mkdtemp(tmpl)) + "/" + name;
+        return test::MakeTempDir("kiln-sqlite-") + "/" + name;
     }
     std::vector<std::string> Titles(Connection& c) {
         std::vector<std::string> out;

@@ -728,8 +728,8 @@ TEST(CApiTextFieldKeyboardActionGetsTheDefaultToCall) {
 
 TEST(CApiDirectoriesAndPreferences) {
     CHECK(std::string(kiln_files_dir()) == ui::FilesDir() && std::string(kiln_cache_dir()) == ui::CacheDir());
-    char tmpl[] = "/tmp/kiln-capi-prefs-XXXXXX";
-    const std::string dir = mkdtemp(tmpl);
+    const std::string dir = test::MakeTempDir("kiln-capi-prefs-");
+    CHECK(!dir.empty());
     ui::SetAppDirectories(dir + "/f", dir + "/c", dir + "/n");
     static kiln_preferences* prefs;
     static std::string name;
@@ -886,4 +886,24 @@ TEST(CApiGetUriForFile) {
     CHECK(kiln_get_uri_for_file("/etc/passwd", nullptr) == nullptr);
     CHECK(kpp::get_uri_for_file("/etc/passwd").empty());
     ui::SetFileProvider({}, {});
+}
+
+TEST(CApiApplicationLocales) {
+    kiln_set_application_locales("fr-CA,fr");
+    CHECK(std::string(kiln_get_application_locales()) == "fr-CA,fr");
+    CHECK(kpp::get_application_locales() == "fr-CA,fr");
+    kpp::set_application_locales("");
+    CHECK(std::string(kiln_get_application_locales()).empty());
+}
+
+TEST(CApiSecureStore) {
+    kiln_secure_store* s = kiln_secure_store_open("capi-secure");
+    CHECK(s && kiln_secure_store_open("capi-secure") == s && !kiln_secure_store_get(s, "k"));
+    kiln_secure_store_set(s, "k", "v");
+    CHECK(std::string(kiln_secure_store_get(s, "k")) == "v");
+    kpp::SecureStore pp("capi-secure");
+    CHECK(pp.get("k") == std::optional<std::string>("v"));
+    pp.remove("k");
+    CHECK(!pp.get("k"));
+    kiln_secure_store_clear(s);
 }

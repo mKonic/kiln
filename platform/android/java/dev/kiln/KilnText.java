@@ -350,10 +350,12 @@ final class KilnText {
         Run[] runs;
         LineHeightStyleSpan lineHeightSpan;
         PlaceholderSpan[] placeholders = new PlaceholderSpan[0];
+        boolean justify;   // the layout's justification (Layout.getJustificationMode is API 35)
     }
 
     private Built build(String text, int[] ints, float[] floats, String[] strs) {
         Built b = new Built();
+        b.justify = ints[3] == 4;   // as staticLayout sets it
         final int nRuns = ints[0];
         b.basePaint = makeRun(ints, floats, strs, 0).paint;
         b.runs = new Run[nRuns];
@@ -615,7 +617,7 @@ final class KilnText {
         Bidi.reorderVisually(levels, 0, order, 0, nBidi);
 
         // Justified lines (not a paragraph's last line) stretch their spaces.
-        final boolean justify = layout.getJustificationMode() == Layout.JUSTIFICATION_MODE_INTER_WORD
+        final boolean justify = b.justify
                 && line < layout.getLineCount() - 1 && chars[Math.max(start, layout.getLineEnd(line) - 1)] != '\n';
         final Run[] runs = b.runs;
         ArrayList<ArrayList<Piece>> visual = new ArrayList<>();

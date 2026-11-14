@@ -53,6 +53,30 @@ void SettingsScreen() {
 From C, `kiln_preferences_open` and the `kiln_preferences_*` getters and setters do the
 same; kiln++ has `kpp::Preferences` and Rust `kiln::Preferences`.
 
+## Secrets
+
+Login tokens and other secrets go in a `security::SecureStore` (`kiln/security/SecureStore.h`)
+rather than in preferences:
+
+```cpp
+#include <kiln/security/SecureStore.h>
+
+void SignedIn(const std::string& token) {
+    kiln::security::SecureStore::Open("session")->Set("token", token);
+}
+std::optional<std::string> Token() { return kiln::security::SecureStore::Open("session")->Get("token"); }
+```
+
+* The values are encrypted with AES-256-GCM under a key the Android Keystore makes and keeps:
+  the key never leaves the device's secure hardware.
+* The whole store, keys and values, is one file in `NoBackupFilesDir`. Keystore keys are not
+  part of a backup, so the file is not either. After a restore, or if the key is gone, the
+  store starts empty: sign the user in again.
+* On the desktop there is no key store: values are kept in memory for the process only.
+
+From C, `kiln_secure_store_open` and `kiln_secure_store_get` / `_set` / `_remove` / `_clear`;
+kiln++ has `kpp::SecureStore` and Rust `kiln::SecureStore`.
+
 ## SQLite
 
 kiln carries SQLite (the NDK does not offer the platform's) and a database class in the

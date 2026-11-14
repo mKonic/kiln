@@ -831,6 +831,21 @@ namespace kpp {
         kiln_preferences* m_P;
     };
 
+    // Secrets at rest; see kiln_secure_store_open.
+    class SecureStore {
+    public:
+        explicit SecureStore(const char* name) : m_S(kiln_secure_store_open(name)) {}
+        std::optional<std::string> get(const char* key) const {
+            const char* v = kiln_secure_store_get(m_S, key);
+            return v ? std::optional<std::string>(v) : std::nullopt;
+        }
+        void set(const char* key, const std::string& value) const { kiln_secure_store_set(m_S, key, value.c_str()); }
+        void remove(const char* key) const { kiln_secure_store_remove(m_S, key); }
+        void clear() const { kiln_secure_store_clear(m_S); }
+    private:
+        kiln_secure_store* m_S;
+    };
+
     // HTTP; see kiln_http_fetch. `done` runs on the main thread with the response (status 0 and
     // an error when there was none).
     struct HttpRequest {
@@ -886,6 +901,12 @@ namespace kpp {
         return kiln_share(text.c_str(), subject.c_str(), s.data(), s.size(), mimeType.c_str(), chooserTitle);
     }
     inline bool open_uri(const std::string& uri) { return kiln_open_uri(uri.c_str()); }
+    // See kiln_set_application_locales: "de-DE", "fr-CA,fr", or "" for the system's.
+    inline void set_application_locales(const std::string& tags) { kiln_set_application_locales(tags.c_str()); }
+    inline std::string get_application_locales() {
+        const char* t = kiln_get_application_locales();
+        return t ? t : "";
+    }
     // See kiln_get_uri_for_file; empty for a file outside the app's folders.
     inline std::string get_uri_for_file(const std::string& path, const std::string& displayName = {}) {
         const char* u = kiln_get_uri_for_file(path.c_str(), displayName.c_str());

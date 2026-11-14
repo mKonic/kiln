@@ -15,6 +15,9 @@
 #include <kiln/foundation/Flow.h>
 #include <kiln/foundation/VideoSurface.h>
 #include <kiln/media/MediaSession.h>
+#include <kiln/ui/AppLocales.h>
+#include <kiln/ui/AppResources.h>
+#include "kiln_res.h"
 #include <fstream>
 #include <filesystem>
 #include <kiln/ui/AppDirectories.h>
@@ -413,6 +416,23 @@ namespace {
         });
     }
 
+    // The app's own language (ui::SetApplicationLocales): its strings follow, the system's stay.
+    void LanguageDemo() {
+        using namespace kiln::foundation;
+        Column(SafeDrawingPadding(Background(FillMax(Modifier{}, Axis::Both), kSurface)), Arrangement::SpacedBy(12_dp), AlignmentH::Start(), [] {
+            BasicText(kiln::ui::StringResource(R::string::language_title), Padding(Modifier{}, 16_dp, 0_dp), { 22, kOnSurface });
+            BasicText(kiln::ui::StringResource(R::string::language_current), Padding(Modifier{}, 16_dp, 0_dp), { 16, kOnSurface });
+            FlowRow(Padding(Modifier{}, 16_dp, 0_dp), Arrangement::SpacedBy(8_dp), Arrangement::SpacedBy(8_dp), AlignmentV::CenterVertically(), [] {
+                auto button = [](const char* label, std::vector<std::string> tags) {
+                    Box(Clickable(Background(Modifier{}, kPrimaryContainer, CornerShape::Pill()), [tags] { kiln::ui::SetApplicationLocales(tags); }),
+                        Alignment::Center(), false, [label] { BasicText(label, Padding(Modifier{}, 20_dp, 10_dp), { 14, kOnSurface }); });
+                };
+                button("Deutsch", { "de-DE" });
+                button("System language", {});
+            });
+        });
+    }
+
     // A coroutine must not be a capturing lambda: its frame would outlive the captures.
     kiln::rt::Task<> Spin(kiln::rt::State<float>& angle) {
         const std::int64_t start = co_await kiln::rt::NextFrame();
@@ -486,6 +506,10 @@ namespace {
         }
         if (section == "media") {
             MediaDemo();
+            return;
+        }
+        if (section == "language") {
+            LanguageDemo();
             return;
         }
         if (section == "transform") {

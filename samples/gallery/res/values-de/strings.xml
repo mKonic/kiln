@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="language_title">Die Sprache der App</string>
+    <string name="language_current">Auf Deutsch angezeigt</string>
+</resources>

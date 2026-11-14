@@ -177,6 +177,7 @@ v="$(meta "$first" res)"; [ -n "$v" ] && PACK+=(--res "$v")
 v="$(meta "$first" activity_xml)"; [ -n "$v" ] && PACK+=(--activity-xml "$v")
 v="$(meta "$first" activity_attributes)"; [ -n "$v" ] && PACK+=(--activity-attributes "$v")
 v="$(meta "$first" application_attributes)"; [ -n "$v" ] && PACK+=(--application-attributes "$v")
+v="$(meta "$first" default_locale)"; [ -n "$v" ] && PACK+=(--default-locale "$v")
 IFS=, read -r -a perms <<< "$(meta "$first" permissions)"
 for p in "${perms[@]}"; do [ -n "$p" ] && PACK+=(--permission "$p"); done
 "$KILN_ROOT/tools/kiln-pack" --package "$PACKAGE" --label "$LABEL" --lib-name "$APP" "${LIB_ARGS[@]}" \

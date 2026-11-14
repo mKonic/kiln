@@ -184,6 +184,7 @@ final class KilnActivityResults {
                 PackageManager.MATCH_DEFAULT_ONLY | PackageManager.MATCH_SYSTEM_ONLY);
     }
 
+    @android.annotation.SuppressLint("NewApi")   // the system picker only where isSystemPickerAvailable (SDK extension 2)
     private Intent pickVisualMediaIntent(Intent request) {
         String type = request.getStringExtra("type");
         boolean multiple = request.hasExtra("max");

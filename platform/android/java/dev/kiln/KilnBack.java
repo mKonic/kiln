@@ -35,6 +35,7 @@ final class KilnBack {
         if (enabled && view.isAttachedToWindow()) register(); else unregister();
     }
 
+    @android.annotation.TargetApi(33)   // sync() returns before 33
     private void register() {
         OnBackInvokedDispatcher d = view.findOnBackInvokedDispatcher();
         if (d == null || d == registeredWith) return;
@@ -44,6 +45,7 @@ final class KilnBack {
         registeredWith = d;
     }
 
+    @android.annotation.TargetApi(33)   // registeredWith is only set on 33+
     private void unregister() {
         if (registeredWith == null) return;
         registeredWith.unregisterOnBackInvokedCallback((OnBackInvokedCallback) callback);
@@ -66,10 +68,12 @@ final class KilnBack {
         return false;
     }
 
+    @android.annotation.TargetApi(33)
     private static final class Api33 {
         static OnBackInvokedCallback create() { return KilnNative::backInvoked; }
     }
 
+    @android.annotation.TargetApi(34)
     private static final class Api34 {
         static OnBackInvokedCallback create(KilnView view) {
             return new OnBackAnimationCallback() {

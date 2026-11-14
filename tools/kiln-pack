@@ -16,6 +16,9 @@
 # added to <manifest> / <application>), --keystore file --key-alias name (sign with your key:
 # passwords from KILN_KEYSTORE_PASSWORD and KILN_KEY_PASSWORD; default: kiln's debug key).
 #
+# --default-locale tag: the language of the app's unqualified res/values (en by default). With
+# translations (res/values-<language>), the app lists its languages for the system's per-app
+# language settings (android:localeConfig, as AGP's generateLocaleConfig writes it).
 # --widgets a,b: kiln::glance widgets, each with res/xml/<name>_widget.xml (its appwidget-provider
 # info) in the app's res; a receiver for each is generated and declared.
 # --bundle: an Android App Bundle (.aab, what Play takes) instead of an APK: aapt2 links in proto
@@ -27,7 +30,7 @@
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/android-env.sh"
 PACKAGE=""; LABEL="kiln app"; LIBNAME=""; OUT=""; LIBS=(); ASSETS=""; DEBUG=0
-PERMISSIONS=(); WIDGETS=(); ICON=""; VERSION_CODE=1; VERSION_NAME="1.0"; MANIFEST_XML=""; APPLICATION_XML=""; RES=""; ACTIVITY_XML=""; ACTIVITY_ATTRIBUTES=""; APPLICATION_ATTRIBUTES=""; KEYSTORE_ARG=""; KEY_ALIAS=""; BUNDLE=0
+PERMISSIONS=(); WIDGETS=(); ICON=""; VERSION_CODE=1; VERSION_NAME="1.0"; MANIFEST_XML=""; APPLICATION_XML=""; RES=""; ACTIVITY_XML=""; ACTIVITY_ATTRIBUTES=""; APPLICATION_ATTRIBUTES=""; KEYSTORE_ARG=""; KEY_ALIAS=""; BUNDLE=0; DEFAULT_LOCALE="en"
 ICON_FOREGROUND=""; ICON_BACKGROUND=""; ICON_MONOCHROME=""; SPLASH_BACKGROUND=""; SPLASH_ICON=""; SPLASH_ICON_BACKGROUND=""
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -57,6 +60,7 @@ while [ $# -gt 0 ]; do
         --keystore) KEYSTORE_ARG="$2"; shift 2 ;;
         --bundle) BUNDLE=1; shift ;;
         --key-alias) KEY_ALIAS="$2"; shift 2 ;;
+        --default-locale) DEFAULT_LOCALE="$2"; shift 2 ;;
         --widgets) IFS=, read -ra WIDGETS <<< "$2"; shift 2 ;;
         *) echo "kiln-pack: unknown argument $1" >&2; exit 2 ;;
     esac
@@ -150,6 +154,36 @@ fi
 if [ -z "$ICON_ATTR" ] && find "$STAGING/res" -path '*mipmap*' -name 'ic_launcher.*' | grep -q .; then
     ICON_ATTR='android:icon="@mipmap/ic_launcher"'
 fi
+# The languages the app has strings in (values-<language>[-r<region>] or values-b+<tag>), for
+# ui::SetApplicationLocales and the system's per-app language settings (localeConfig).
+LOCALE_TAGS=$(find "$STAGING/res" -maxdepth 1 -type d -name 'values-*' -printf '%f\n' | python3 -c '
+import re, sys
+tags = set()
+for d in sys.stdin.read().split():
+    q = d.split("-", 1)[1]
+    if q.startswith("b+"):
+        tags.add("-".join(q[2:].split("+")[:3]))
+        continue
+    parts = q.split("-")
+    if re.fullmatch(r"[a-z]{2,3}", parts[0]):
+        tag = parts[0]
+        if len(parts) > 1 and re.fullmatch(r"r[A-Z]{2}|r[0-9]{3}", parts[1]):
+            tag += "-" + parts[1][1:]
+        tags.add(tag)
+print(" ".join(sorted(tags)))
+')
+LOCALE_ATTR=""
+if [ -n "$LOCALE_TAGS" ]; then
+    mkdir -p "$STAGING/res/xml"
+    {
+        echo '<?xml version="1.0" encoding="utf-8"?>'
+        echo '<locale-config xmlns:android="http://schemas.android.com/apk/res/android">'
+        echo "    <locale android:name=\"$DEFAULT_LOCALE\" />"
+        for t in $LOCALE_TAGS; do if [ "$t" != "$DEFAULT_LOCALE" ]; then echo "    <locale android:name=\"$t\" />"; fi; done
+        echo '</locale-config>'
+    } > "$STAGING/res/xml/kiln_locales_config.xml"
+    LOCALE_ATTR='android:localeConfig="@xml/kiln_locales_config"'
+fi
 # The activity's theme, with the splash screen's attributes (API 31) when the app sets them.
 SPLASH_ITEMS=""
 [ -n "$SPLASH_BACKGROUND" ] && SPLASH_ITEMS+="        <item name=\"android:windowSplashScreenBackground\">$SPLASH_BACKGROUND</item>"$'\n'
@@ -188,7 +222,7 @@ $PERMISSION_XML$EXTRA_MANIFEST
         </intent>
     </queries>
     <application android:label="$LABEL" $ICON_ATTR android:supportsRtl="true" android:hasCode="true" android:extractNativeLibs="false"
-                 android:enableOnBackInvokedCallback="true" $DEBUG_ATTR $APPLICATION_ATTRIBUTES
+                 android:enableOnBackInvokedCallback="true" $LOCALE_ATTR $DEBUG_ATTR $APPLICATION_ATTRIBUTES
                  android:theme="@style/KilnTheme">
         <!-- The OEM window extensions (folds and hinges), where the device has them. -->
         <uses-library android:name="androidx.window.extensions" android:required="false" />

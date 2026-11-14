@@ -69,6 +69,7 @@ final class KilnHighContrast {
     }
 
     /** Kept apart so older devices never load the API 36 listener type. */
+    @android.annotation.TargetApi(36)
     private static final class Api36 {
         static void register(KilnHighContrast h) {
             AccessibilityManager am = h.context.getSystemService(AccessibilityManager.class);

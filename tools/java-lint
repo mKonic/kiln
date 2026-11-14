@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# java-lint: Android lint's API-level checks (NewApi) over kiln's Java (platform/android/java),
+# through the bridge sample's Gradle build, which compiles it. Fails when a call needs a newer
+# Android than kiln's minSdk (31) without a guard. ANDROID_HOME defaults to ~/Android/Sdk.
+set -euo pipefail
+root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+export ANDROID_HOME="${ANDROID_HOME:-$HOME/Android/Sdk}"
+cd "$root/samples/bridge"
+./gradlew -q lintDebug >/dev/null 2>&1 || true
+report=build/reports/lint-results-debug.txt
+[ -f "$report" ] || { echo "java-lint: lint did not run (see ./gradlew lintDebug in samples/bridge)"; exit 2; }
+errors=$(grep -E "Error: .*\[NewApi\]" "$report" | sed -E 's|^.*/platform/android/java/||' || true)
+if [ -n "$errors" ]; then
+    echo "$errors"
+    echo "java-lint: $(echo "$errors" | wc -l) calls above minSdk without a guard"
+    exit 1
+fi
+echo "java-lint: no calls above minSdk without a guard"

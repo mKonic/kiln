@@ -9,6 +9,7 @@
 #include "kiln/jvm/Jvm.h"
 #include "AndroidGlance.h"
 #include "AndroidMedia.h"
+#include "AndroidServices.h"
 #include "AndroidWork.h"
 #include "kiln/ui/ActivityIntent.h"
 #include "kiln/ui/AppDirectories.h"
@@ -1342,6 +1343,8 @@ namespace {
         kiln::android::InstallMedia();
         kiln::android::InstallCamera();
         kiln::android::InstallMediaSession(env);
+        kiln::android::InstallLocales(env);
+        kiln::android::InstallSecurity(env);
     }
 
     void Create(JNIEnv* env, jclass, jobject view, jobject text, jobject assets, jfloat density, jfloat fontScale, jbyteArray saved) {

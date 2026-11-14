@@ -29,6 +29,8 @@
 #include "kiln/foundation/VideoSurface.h"
 #include "kiln/media/MediaSession.h"
 #include "kiln/ui/FileProvider.h"
+#include "kiln/ui/AppLocales.h"
+#include "kiln/security/SecureStore.h"
 #include "kiln/ui/AppDirectories.h"
 #include "kiln/ui/AppResources.h"
 #include "kiln/ui/ContentResolver.h"
@@ -729,6 +731,34 @@ namespace {
         if (!p || !name) return;
         p->store->Update([n = std::string(name), v = std::move(value)](kiln::datastore::MutablePreferences& m) { m.Set(kiln::datastore::PreferenceKey<T>{ n }, v); });
     }
+}
+struct kiln_secure_store {
+    std::shared_ptr<kiln::security::SecureStore> store;
+};
+KILN_API kiln_secure_store* kiln_secure_store_open(const char* name) {
+    TRY {
+        if (!name) return nullptr;
+        static auto* handles = new std::map<std::string, std::unique_ptr<kiln_secure_store>>;
+        auto& h = (*handles)[name];
+        if (!h) h = std::make_unique<kiln_secure_store>(kiln_secure_store{ kiln::security::SecureStore::Open(name) });
+        return h.get();
+    } CATCH(nullptr)
+}
+KILN_API const char* kiln_secure_store_get(kiln_secure_store* s, const char* key) {
+    TRY {
+        if (!s || !key) return nullptr;
+        auto v = s->store->Get(key);
+        return v ? ReturnString(std::move(*v)) : nullptr;
+    } CATCH(nullptr)
+}
+KILN_API void kiln_secure_store_set(kiln_secure_store* s, const char* key, const char* value) {
+    TRY { if (s && key) s->store->Set(key, value ? value : ""); } CATCH_VOID
+}
+KILN_API void kiln_secure_store_remove(kiln_secure_store* s, const char* key) {
+    TRY { if (s && key) s->store->Remove(key); } CATCH_VOID
+}
+KILN_API void kiln_secure_store_clear(kiln_secure_store* s) {
+    TRY { if (s) s->store->Clear(); } CATCH_VOID
 }
 KILN_API kiln_preferences* kiln_preferences_open(const char* name) {
     TRY { return name ? PreferencesHandle(name) : nullptr; } CATCH(nullptr)
@@ -2326,6 +2356,26 @@ KILN_API bool kiln_share(const char* text, const char* subject, const char* cons
     } CATCH(false)
 }
 KILN_API bool kiln_open_uri(const char* uri) { TRY { return uri && kiln::ui::OpenUri(uri); } CATCH(false) }
+KILN_API void kiln_set_application_locales(const char* tags) {
+    TRY {
+        std::vector<std::string> out;
+        std::string all = tags ? tags : "";
+        for (std::size_t start = 0; start < all.size();) {
+            std::size_t comma = all.find(',', start);
+            if (comma == std::string::npos) comma = all.size();
+            if (comma > start) out.push_back(all.substr(start, comma - start));
+            start = comma + 1;
+        }
+        kiln::ui::SetApplicationLocales(std::move(out));
+    } CATCH_VOID
+}
+KILN_API const char* kiln_get_application_locales(void) {
+    TRY {
+        std::string joined;
+        for (const auto& t : kiln::ui::GetApplicationLocales()) joined += (joined.empty() ? "" : ",") + t;
+        return ReturnString(std::move(joined));
+    } CATCH(nullptr)
+}
 KILN_API const char* kiln_get_uri_for_file(const char* path, const char* name) {
     TRY {
         if (!path) return nullptr;

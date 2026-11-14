@@ -803,6 +803,13 @@ pub fn share(text: &str, subject: &str, streams: &[&str], mime_type: &str, choos
     let title = chooser_title.map(CStrBuf::new);
     unsafe { sys::kiln_share(t.ptr(), s.ptr(), ptrs.as_ptr(), ptrs.len(), m.ptr(), title.as_ref().map_or(std::ptr::null(), |b| b.ptr())) }
 }
+/// The app's own language: comma-separated BCP 47 tags ("de-DE"), or "" for the system's.
+pub fn set_application_locales(tags: &str) { let t = CStrBuf::new(tags); unsafe { sys::kiln_set_application_locales(t.ptr()) } }
+/// The app's own languages as set, comma-separated; "" when it follows the system.
+pub fn get_application_locales() -> String {
+    let p = unsafe { sys::kiln_get_application_locales() };
+    if p.is_null() { String::new() } else { from_c(p) }
+}
 /// A content:// URI for a file in the app's folders, to share; None outside them.
 pub fn get_uri_for_file(path: &str, display_name: Option<&str>) -> Option<String> {
     let p = CStrBuf::new(path);
@@ -982,6 +989,21 @@ pub fn http_cancel(request: u64) { unsafe { sys::kiln_http_cancel(request) } }
 /// Whether the default network is connected. For content: recomposes on a change.
 #[track_caller]
 pub fn network_connected() -> bool { unsafe { sys::kiln_network_connected(here()) } }
+
+/// Secrets at rest: string values encrypted with a key the Android Keystore keeps.
+#[derive(Clone, Copy)]
+pub struct SecureStore(*mut sys::kiln_secure_store);
+impl SecureStore {
+    pub fn open(name: &str) -> Self { let n = CStrBuf::new(name); SecureStore(unsafe { sys::kiln_secure_store_open(n.ptr()) }) }
+    pub fn get(&self, key: &str) -> Option<String> {
+        let k = CStrBuf::new(key);
+        let p = unsafe { sys::kiln_secure_store_get(self.0, k.ptr()) };
+        if p.is_null() { None } else { Some(crate::from_c(p)) }
+    }
+    pub fn set(&self, key: &str, value: &str) { let (k, v) = (CStrBuf::new(key), CStrBuf::new(value)); unsafe { sys::kiln_secure_store_set(self.0, k.ptr(), v.ptr()) } }
+    pub fn remove(&self, key: &str) { let k = CStrBuf::new(key); unsafe { sys::kiln_secure_store_remove(self.0, k.ptr()) } }
+    pub fn clear(&self) { unsafe { sys::kiln_secure_store_clear(self.0) } }
+}
 
 /// Preferences (DataStore): typed key-value data kept in the app's files directory. The getters
 /// are for content and recompose it when the value changes; the setters write in the background.

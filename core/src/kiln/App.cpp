@@ -2,6 +2,7 @@
 #include "kiln/App.h"
 #include <kiln/Function.h>
 #include "kiln/ui/Locals.h"
+#include "kiln/ui/AppLocales.h"
 #include "kiln/image/ImageLoader.h"
 #include "kiln/Trace.h"
 #include "kiln/text/HighContrastText.h"
@@ -33,6 +34,7 @@ namespace kiln {
 
     App::App(HostServices services) : m_Services(services) {
         m_Dispatcher.requestFrame = [this] { RequestFrame(); };
+        m_LocalesListener = ui::AddApplicationLocalesListener([this] { SetConfiguration(m_SystemConfiguration); });
         m_Owner.SetText(m_Services.text);
         m_Owner.SetRequestFrame([this] { RequestFrame(); });
         m_Owner.SetOffscreenRenderer([this](int w, int h, const kiln::Function<void(ui::DrawScope&)>& draw) { return RenderToPixels(w, h, draw); });
@@ -173,6 +175,9 @@ namespace kiln {
     }
 
     void App::SetConfiguration(ui::Configuration config) {
+        m_SystemConfiguration = config;
+        // The app's own language (ui::SetApplicationLocales) where the platform does not apply it.
+        config.locales = ui::ApplyApplicationLocales(std::move(config.locales));
         if (!config.locales.empty()) ui::SetPlatformLocaleList(config.locales);
         if (m_Configuration->Peek() == config) return;
         m_Configuration->Set(std::move(config));
@@ -308,6 +313,7 @@ namespace kiln {
         return bytes;
     }
     App::~App() {
+        ui::RemoveApplicationLocalesListener(m_LocalesListener);
         if (m_Device) m_Device->WaitIdle();
         // The window is gone for good: its ViewModels are cleared (the content leaves after).
         m_Lifecycle->store.Clear();

@@ -148,6 +148,7 @@ final class KilnAutofill {
 
     private final android.os.Handler main = new android.os.Handler(android.os.Looper.getMainLooper());
 
+    @android.annotation.TargetApi(35)   // called on 35+
     private void setPendingCredentialRequest(ViewStructure s, int id, Object[] request) {
         android.credentials.GetCredentialRequest.Builder b = new android.credentials.GetCredentialRequest.Builder(KilnBundles.toBundle((Object[]) request[0]));
         for (Object o : (Object[]) request[1]) {

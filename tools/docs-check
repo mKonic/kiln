@@ -44,6 +44,9 @@ def include_flags():
                 pair = (a, args[i + 1])
             elif a.startswith('-I') and len(a) > 2:
                 pair = ('-I', a[2:])
+            # App resources (kiln_res.h): the test suite's, which the docs' examples use.
+            if pair and '/kiln_res/' in pair[1] and not pair[1].endswith('/kiln_res/kiln_tests'):
+                continue
             if pair and pair not in seen:
                 seen.add(pair)
                 flags += list(pair)

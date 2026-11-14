@@ -437,6 +437,16 @@ KILN_API void kiln_preferences_set_str(kiln_preferences* p, const char* name, co
 KILN_API void kiln_preferences_remove(kiln_preferences* p, const char* name);
 KILN_API void kiln_preferences_clear(kiln_preferences* p);
 
+/* Secrets at rest (security::SecureStore): string values encrypted with a key the Android
+ * Keystore keeps, in one file under the no-backup directory. Opening a name again returns the
+ * same store. kiln_secure_store_get: NULL when unset; valid until the next kiln call. */
+typedef struct kiln_secure_store kiln_secure_store;
+KILN_API kiln_secure_store* kiln_secure_store_open(const char* name);
+KILN_API const char* kiln_secure_store_get(kiln_secure_store* store, const char* key);
+KILN_API void kiln_secure_store_set(kiln_secure_store* store, const char* key, const char* value);
+KILN_API void kiln_secure_store_remove(kiln_secure_store* store, const char* key);
+KILN_API void kiln_secure_store_clear(kiln_secure_store* store);
+
 /* HTTP: a request on a background thread through the platform (HttpURLConnection on Android, so
  * the system's TLS, proxies and network security config; libcurl on the desktop). `done` runs
  * once on the main thread, unless the request was cancelled. An Android app declares
@@ -485,6 +495,10 @@ KILN_API bool kiln_open_uri(const char* uri);
 /* A content:// URI for a file in the app's folders, to share (FileProvider.getUriForFile);
  * display_name may be NULL. NULL for a file outside them. Valid until the next call. */
 KILN_API const char* kiln_get_uri_for_file(const char* path, const char* display_name);
+/* The app's own language (AppCompatDelegate.setApplicationLocales): comma-separated BCP 47 tags,
+ * most preferred first; "" or NULL follows the system again. The get is valid until the next call. */
+KILN_API void kiln_set_application_locales(const char* language_tags);
+KILN_API const char* kiln_get_application_locales(void);
 KILN_API bool kiln_should_show_permission_rationale(const char* permission);
 
 /* A Custom Tab: the URL in the user's browser inside the app, with the toolbar colour

@@ -6,6 +6,7 @@ import android.graphics.HardwareRenderer;
 import android.graphics.PorterDuff;
 import android.graphics.RecordingCanvas;
 import android.graphics.Rect;
+import android.os.Build;
 import android.graphics.Region;
 import android.graphics.RenderNode;
 import android.os.SystemClock;
@@ -218,7 +219,8 @@ final class KilnInteropViews {
                     surfaces = new SurfaceControl.Builder().setName("kiln-interop-" + id).setParent(parent).build();
                     t.setLayer(surfaces, -2);
                 }
-                t.setPosition(surfaces, x, y);
+                if (Build.VERSION.SDK_INT >= 33) t.setPosition(surfaces, x, y);
+                else t.setGeometry(surfaces, null, new Rect(x, y, x + 1, y + 1), 0);   // no source: placed at the origin, unscaled
                 t.setVisibility(surfaces, getVisibility() == VISIBLE);
             }
             for (SurfaceView v : surfaceViews) {
@@ -232,11 +234,19 @@ final class KilnInteropViews {
                 if (t == null || c == null || !c.isValid()) continue;
                 t.reparent(c, surfaces);
                 t.setLayer(c, 0);
-                t.setPosition(c, l, top);
                 // A surface of a fixed size is scaled to its view.
                 final Rect frame = v.getHolder().getSurfaceFrame();
-                if (frame.width() > 0 && frame.height() > 0)
-                    t.setScale(c, v.getWidth() / (float) frame.width(), v.getHeight() / (float) frame.height());
+                if (Build.VERSION.SDK_INT >= 33) {
+                    t.setPosition(c, l, top);
+                    if (frame.width() > 0 && frame.height() > 0)
+                        t.setScale(c, v.getWidth() / (float) frame.width(), v.getHeight() / (float) frame.height());
+                } else {
+                    // Before setPosition / setScale: the destination frame places and scales the buffer.
+                    // (SurfaceComposerClient::setGeometry: scale = destination / source, an
+                    // invalid source scaling by 1.)
+                    t.setGeometry(c, frame.width() > 0 && frame.height() > 0 ? new Rect(0, 0, frame.width(), frame.height()) : null,
+                                  new Rect(l, top, l + v.getWidth(), top + v.getHeight()), 0);
+                }
                 t.setVisibility(c, shown);
             }
             if (t != null) t.apply();

@@ -204,6 +204,8 @@ namespace kiln {
         std::unique_ptr<rt::SaveableStateRegistry> m_Saveable = std::make_unique<rt::SaveableStateRegistry>();
         bool m_Television = false;
         std::unique_ptr<rt::State<ui::Configuration>> m_Configuration = std::make_unique<rt::State<ui::Configuration>>(ui::Configuration{});
+        ui::Configuration m_SystemConfiguration;   // as the platform last gave it
+        int m_LocalesListener = 0;
         std::unique_ptr<rt::State<bool>> m_Is24Hour = std::make_unique<rt::State<bool>>(false);
         std::unique_ptr<rt::State<ui::LayoutDirection>> m_Direction = std::make_unique<rt::State<ui::LayoutDirection>>(ui::LayoutDirection::Ltr);
         std::unique_ptr<rt::Composition> m_Composition;

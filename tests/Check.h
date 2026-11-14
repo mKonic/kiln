@@ -3,11 +3,24 @@
 #include <cmath>
 #include <kiln/Function.h>
 #include <cstdio>
+#include <cstdlib>
 #include <functional>
 #include <string>
 #include <vector>
 
+#include <unistd.h>
+
 namespace kiln::test {
+
+    // A new folder for a test's files: under $TMPDIR (adb shell sets it; Android before 15 has no
+    // /tmp), else /tmp. Empty if it cannot be made.
+    inline std::string MakeTempDir(const char* prefix) {
+        const char* base = std::getenv("TMPDIR");
+        std::string tmpl = std::string(base && *base ? base : "/tmp") + "/" + prefix + "XXXXXX";
+        std::vector<char> buf(tmpl.begin(), tmpl.end());
+        buf.push_back('\0');
+        return mkdtemp(buf.data()) ? std::string(buf.data()) : std::string();
+    }
     struct Case { const char* name; kiln::Function<void()> fn; };
     inline std::vector<Case>& Cases() { static std::vector<Case> c; return c; }
     inline int& Failures() { static int f = 0; return f; }

@@ -868,7 +868,11 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback2 {
     byte[] readContent(String uri) {
         try (java.io.InputStream in = getContext().getContentResolver().openInputStream(android.net.Uri.parse(uri))) {
             if (in == null) return null;
-            return in.readAllBytes();
+            // InputStream.readAllBytes is API 33.
+            java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+            byte[] buf = new byte[65536];
+            for (int n; (n = in.read(buf)) > 0;) out.write(buf, 0, n);
+            return out.toByteArray();
         } catch (Exception e) {
             return null;
         }

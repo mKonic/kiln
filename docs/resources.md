@@ -61,6 +61,26 @@ Reads inside content follow the configuration: when the language or night mode c
 the text and colours update without restarting the app. A name the app has no value for
 throws, as `Resources.NotFoundException` does.
 
+## Choosing the app's language
+
+Users can pick a language for one app apart from the system's. `ui::SetApplicationLocales`
+(`kiln/ui/AppLocales.h`) does what AppCompat's `setApplicationLocales` does:
+
+```cpp
+#include <kiln/ui/AppLocales.h>
+
+void UseGerman() { kiln::ui::SetApplicationLocales({ "de-DE" }); }
+void UseSystemLanguage() { kiln::ui::SetApplicationLocales({}); }
+```
+
+* The configuration's locales change at once, so every string, plural and date format follows.
+  The choice is kept across restarts.
+* On Android 13 and later the system keeps it. The app also shows up in the system's per-app
+  language settings: with translations in `values-<language>`, the build lists those languages
+  for it. If the app's unqualified `values` are not English, set `DEFAULT_LOCALE` in
+  `kiln_add_app`.
+* `ui::GetApplicationLocales()` returns the choice, empty when the app follows the system.
+
 ## On Android and on the desktop
 
 On a device the values come from Android's resources, so language fallback, plural

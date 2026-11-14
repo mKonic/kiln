@@ -12,9 +12,8 @@
 using namespace kiln;
 
 TEST(ContentResolverReadsAndWritesFiles) {
-    char tmpl[] = "/tmp/kiln-content-XXXXXX";
-    const int dir = mkdtemp(tmpl) ? 0 : -1;
-    CHECK(dir == 0);
+    const std::string tmpl = test::MakeTempDir("kiln-content-");
+    CHECK(!tmpl.empty());
     const std::string path = std::string(tmpl) + "/notes file.txt";
     const std::string uri = "file://" + std::string(tmpl) + "/notes%20file.txt";
     const std::string text = "first line\n";
@@ -45,5 +44,5 @@ TEST(ContentResolverReadsAndWritesFiles) {
     CHECK(kiln_content_size(path.c_str()) == std::int64_t(bytes->size()));
     CHECK(kiln_content_write(path.c_str(), reinterpret_cast<const uint8_t*>("x"), 1, "wt") && kiln_content_size(path.c_str()) == 1);
     std::remove(path.c_str());
-    ::rmdir(tmpl);
+    ::rmdir(tmpl.c_str());
 }

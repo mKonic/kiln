@@ -23,6 +23,14 @@ public class KilnActivity extends Activity {
     private KilnEdgeToEdge.Style navigationBarStyle = KilnEdgeToEdge.defaultNavigation();
 
     @Override
+    protected void attachBaseContext(android.content.Context base) {
+        super.attachBaseContext(base);
+        // ui::SetApplicationLocales before Android 13: the stored locales, as AppCompat applies them.
+        android.content.res.Configuration locales = KilnLocales.override(base);
+        if (locales != null) applyOverrideConfiguration(locales);
+    }
+
+    @Override
     protected void onSaveInstanceState(Bundle outState) {
         super.onSaveInstanceState(outState);
         outState.putByteArray(SAVED_STATE_KEY, view.saveState());
@@ -32,6 +40,7 @@ public class KilnActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        KilnLocales.attach(this);
         System.loadLibrary(libraryName());
 
         // Edge to edge: kiln draws behind the system bars and reads insets itself.

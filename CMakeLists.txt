@@ -140,7 +140,7 @@ if(ANDROID)
     set(KILN_APP_MAP ${CMAKE_CURRENT_SOURCE_DIR}/platform/android/app.map CACHE INTERNAL "")
     set(KILN_GEN_JVM ${CMAKE_CURRENT_SOURCE_DIR}/tools/gen-jvm CACHE INTERNAL "")
     function(kiln_add_android_app name)
-        cmake_parse_arguments(APP "" "PACKAGE;LABEL;ASSETS;ICON;ICON_FOREGROUND;ICON_BACKGROUND;ICON_MONOCHROME;SPLASH_BACKGROUND;SPLASH_ICON;SPLASH_ICON_BACKGROUND;VERSION_CODE;VERSION_NAME;MANIFEST_XML;APPLICATION_XML;ACTIVITY_XML;ACTIVITY_ATTRIBUTES;APPLICATION_ATTRIBUTES;RES;JVM_BRIDGE"
+        cmake_parse_arguments(APP "" "PACKAGE;LABEL;ASSETS;ICON;ICON_FOREGROUND;ICON_BACKGROUND;ICON_MONOCHROME;SPLASH_BACKGROUND;SPLASH_ICON;SPLASH_ICON_BACKGROUND;VERSION_CODE;VERSION_NAME;MANIFEST_XML;APPLICATION_XML;ACTIVITY_XML;ACTIVITY_ATTRIBUTES;APPLICATION_ATTRIBUTES;RES;JVM_BRIDGE;DEFAULT_LOCALE"
                               "SOURCES;LIBS;WHOLE;PERMISSIONS;WIDGETS" ${ARGN})
         if(NOT APP_PACKAGE)
             message(FATAL_ERROR "kiln_add_android_app(${name}): PACKAGE is required")
@@ -192,7 +192,7 @@ if(ANDROID)
             kiln_app_resources(${name}_debug ${APP_RES})
         endif()
         file(GENERATE OUTPUT ${CMAKE_BINARY_DIR}/apps/${name}
-             CONTENT "res=${APP_RES}\npackage=${APP_PACKAGE}\nlabel=${APP_LABEL}\nassets=${APP_ASSETS}\nicon=${APP_ICON}\nicon_foreground=${APP_ICON_FOREGROUND}\nicon_background=${APP_ICON_BACKGROUND}\nicon_monochrome=${APP_ICON_MONOCHROME}\nsplash_background=${APP_SPLASH_BACKGROUND}\nsplash_icon=${APP_SPLASH_ICON}\nsplash_icon_background=${APP_SPLASH_ICON_BACKGROUND}\nversion_code=${APP_VERSION_CODE}\nversion_name=${APP_VERSION_NAME}\npermissions=${permissions}\nwidgets=${widgets}\nmanifest_xml=${APP_MANIFEST_XML}\napplication_xml=${APP_APPLICATION_XML}\nactivity_xml=${APP_ACTIVITY_XML}\nactivity_attributes=${APP_ACTIVITY_ATTRIBUTES}\napplication_attributes=${APP_APPLICATION_ATTRIBUTES}\nlib=$<TARGET_FILE:${name}>\nlib_debug=$<TARGET_FILE:${name}_debug>\n")
+             CONTENT "res=${APP_RES}\npackage=${APP_PACKAGE}\nlabel=${APP_LABEL}\nassets=${APP_ASSETS}\nicon=${APP_ICON}\nicon_foreground=${APP_ICON_FOREGROUND}\nicon_background=${APP_ICON_BACKGROUND}\nicon_monochrome=${APP_ICON_MONOCHROME}\nsplash_background=${APP_SPLASH_BACKGROUND}\nsplash_icon=${APP_SPLASH_ICON}\nsplash_icon_background=${APP_SPLASH_ICON_BACKGROUND}\nversion_code=${APP_VERSION_CODE}\nversion_name=${APP_VERSION_NAME}\npermissions=${permissions}\nwidgets=${widgets}\nmanifest_xml=${APP_MANIFEST_XML}\napplication_xml=${APP_APPLICATION_XML}\nactivity_xml=${APP_ACTIVITY_XML}\nactivity_attributes=${APP_ACTIVITY_ATTRIBUTES}\napplication_attributes=${APP_APPLICATION_ATTRIBUTES}\ndefault_locale=${APP_DEFAULT_LOCALE}\nlib=$<TARGET_FILE:${name}>\nlib_debug=$<TARGET_FILE:${name}_debug>\n")
     endfunction()
     kiln_add_android_app(hello SOURCES samples/hello/main.cpp PACKAGE dev.kiln.hello LABEL "kiln hello")
     kiln_add_android_app(list SOURCES samples/list/main.cpp PACKAGE dev.kiln.list LABEL "kiln list")
@@ -223,6 +223,7 @@ else()
     target_link_libraries(list PRIVATE kiln_hostdev)
     add_executable(gallery samples/gallery/main.cpp)
     target_link_libraries(gallery PRIVATE kiln_hostdev kiln_material3)
+    kiln_app_resources(gallery ${CMAKE_SOURCE_DIR}/samples/gallery/res TABLE)
     add_custom_command(TARGET gallery POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_directory
                        ${CMAKE_SOURCE_DIR}/samples/gallery/assets $<TARGET_FILE_DIR:gallery>/assets)
     foreach(sample notes-c notes-cpp)
@@ -256,7 +257,7 @@ endforeach()
 #              [MANIFEST_XML file] [APPLICATION_XML file] [ACTIVITY_XML file]
 #              [ACTIVITY_ATTRIBUTES "android:launchMode=\"singleTop\" ..."]
 #              [APPLICATION_ATTRIBUTES "android:networkSecurityConfig=\"@xml/network\" ..."] [RES dir]
-#              [JVM_BRIDGE kotlin-dir] [WIDGETS name...])
+#              [JVM_BRIDGE kotlin-dir] [WIDGETS name...] [DEFAULT_LOCALE tag])
 # An app on Android (kiln_add_android_app, packed by tools/kiln) or in a desktop window. Paths
 # are relative to the calling CMakeLists.txt. The XML files hold elements for the manifest's
 # <manifest>, <application> or the app's <activity> (intent filters for deep links and shares);
@@ -267,13 +268,15 @@ endforeach()
 # values from Android's Resources on a device and from generated tables on the desktop.
 # JVM_BRIDGE (Android, Gradle-built apps) generates the C++ half of the JVM bridge (tools/gen-jvm)
 # from the annotated Kotlin under that folder. WIDGETS declares kiln::glance home-screen widgets,
-# each with res/xml/<name>_widget.xml (its appwidget-provider info) in RES.
+# each with res/xml/<name>_widget.xml (its appwidget-provider info) in RES. DEFAULT_LOCALE is the
+# language of RES's unqualified values (en by default); with translations the app lists its
+# languages in the system's per-app language settings.
 function(kiln_add_app name)
     if(ANDROID)
         kiln_add_android_app(${name} ${ARGN})
         return()
     endif()
-    cmake_parse_arguments(APP "" "PACKAGE;LABEL;ASSETS;ICON;ICON_FOREGROUND;ICON_BACKGROUND;ICON_MONOCHROME;SPLASH_BACKGROUND;SPLASH_ICON;SPLASH_ICON_BACKGROUND;VERSION_CODE;VERSION_NAME;MANIFEST_XML;APPLICATION_XML;ACTIVITY_XML;ACTIVITY_ATTRIBUTES;APPLICATION_ATTRIBUTES;RES;JVM_BRIDGE"
+    cmake_parse_arguments(APP "" "PACKAGE;LABEL;ASSETS;ICON;ICON_FOREGROUND;ICON_BACKGROUND;ICON_MONOCHROME;SPLASH_BACKGROUND;SPLASH_ICON;SPLASH_ICON_BACKGROUND;VERSION_CODE;VERSION_NAME;MANIFEST_XML;APPLICATION_XML;ACTIVITY_XML;ACTIVITY_ATTRIBUTES;APPLICATION_ATTRIBUTES;RES;JVM_BRIDGE;DEFAULT_LOCALE"
                           "SOURCES;LIBS;WHOLE;PERMISSIONS;WIDGETS" ${ARGN})
     add_executable(${name} ${APP_SOURCES})
     if(APP_RES)

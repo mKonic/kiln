@@ -22,8 +22,7 @@ namespace {
         }
     }
     std::string TempDir() {
-        char tmpl[] = "/tmp/kiln-prefs-XXXXXX";
-        return mkdtemp(tmpl) ? std::string(tmpl) : std::string("/tmp");
+        return test::MakeTempDir("kiln-prefs-");
     }
     const auto kName = StringKey("name");
     const auto kCount = IntKey("count");

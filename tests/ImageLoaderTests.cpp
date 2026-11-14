@@ -68,12 +68,9 @@ namespace {
         while (out.size() % 4) out += '=';
         return out;
     }
-    std::string TempDir() {
-        char tmpl[] = "/tmp/kiln-images-XXXXXX";
-        return mkdtemp(tmpl) ? std::string(tmpl) : std::string("/tmp");
-    }
+    std::string TempDir() { return test::MakeTempDir("kiln-images-"); }
     void RemoveTree(const std::string& dir) {
-        if (dir.rfind("/tmp/kiln-images-", 0) != 0) return;
+        if (dir.find("/kiln-images-") == std::string::npos) return;
         std::system(("rm -rf '" + dir + "'").c_str());
     }
 
