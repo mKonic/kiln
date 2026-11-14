@@ -190,6 +190,8 @@ namespace kiln::android {
             void SetAudioAttributes(media::AudioAttributes a) override {
                 m_Usage = int(a.usage);
                 m_ContentType = int(a.contentType);
+                m_CapturePolicy = a.allowedCapturePolicy;
+                m_Spatialization = a.spatializationBehavior;
             }
             void SetSurface(ui::PlatformSurface surface) override {
                 auto* w = static_cast<ANativeWindow*>(surface.nativeWindow);
@@ -650,6 +652,10 @@ namespace kiln::android {
                 AAudioStreamBuilder_setChannelCount(b, m_Channels);
                 AAudioStreamBuilder_setSampleRate(b, m_SampleRate);
                 AAudioStreamBuilder_setUsage(b, aaudio_usage_t(m_Usage.load()));
+                AAudioStreamBuilder_setAllowedCapturePolicy(b, aaudio_allowed_capture_policy_t(m_CapturePolicy.load()));
+                if (__builtin_available(android 32, *))
+                    AAudioStreamBuilder_setSpatializationBehavior(b, m_Spatialization.load() == 1 ? AAUDIO_SPATIALIZATION_BEHAVIOR_NEVER
+                                                                                                    : AAUDIO_SPATIALIZATION_BEHAVIOR_AUTO);
                 const int content = m_ContentType.load();
                 AAudioStreamBuilder_setContentType(b, content ? aaudio_content_type_t(content) : m_Video ? AAUDIO_CONTENT_TYPE_MOVIE : AAUDIO_CONTENT_TYPE_MUSIC);
                 if (AAudioStreamBuilder_openStream(b, &m_Stream) != AAUDIO_OK) {
@@ -926,7 +932,7 @@ namespace kiln::android {
             std::optional<std::int64_t> m_SeekUs;
             bool m_RepeatWanted = false;
             float m_VolumeWanted = 1;
-            std::atomic<int> m_Usage{ AAUDIO_USAGE_MEDIA }, m_ContentType{ 0 };
+            std::atomic<int> m_Usage{ AAUDIO_USAGE_MEDIA }, m_ContentType{ 0 }, m_CapturePolicy{ AAUDIO_ALLOW_CAPTURE_BY_ALL }, m_Spatialization{ 0 };
             ANativeWindow* m_Window = nullptr;
             std::uint64_t m_SurfaceGeneration = 0, m_AppliedSurface = 0;
 

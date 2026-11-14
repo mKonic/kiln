@@ -364,3 +364,15 @@ TEST(PlayerTracksJoinTheMediasAndTheSubtitles) {
     d.RunPending();
     SetPlayerEngineFactory({});
 }
+
+TEST(PlayerAvailableCommandsAsUtil) {
+    SetPlayerEngineFactory({});
+    Player p;
+    using C = PlayerCommand;
+    CHECK(p.IsCommandAvailable(C::PlayPause) && p.IsCommandAvailable(C::SeekToMediaItem) && !p.IsCommandAvailable(C::SeekToPrevious)
+          && !p.IsCommandAvailable(C::SeekBack));
+    p.SetMediaItems({ MediaItem::FromUri("a.mp4"), MediaItem::FromUri("b.mp4") });
+    CHECK(p.IsCommandAvailable(C::SeekToPrevious) && p.IsCommandAvailable(C::SeekToNext) && p.IsCommandAvailable(C::SeekToNextMediaItem)
+          && !p.IsCommandAvailable(C::SeekToPreviousMediaItem));
+    CHECK(!p.IsCommandAvailable(C::SeekInCurrentMediaItem) && p.BufferedPercentage() == 0 && !p.IsCurrentMediaItemLive());
+}

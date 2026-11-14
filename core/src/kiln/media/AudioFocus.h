@@ -39,6 +39,10 @@ namespace kiln::media {
     struct AudioAttributes {
         AudioUsage usage = AudioUsage::Media;
         AudioContentType contentType = AudioContentType::Unknown;
+        // C.ALLOW_CAPTURE_BY_*: who may record the sound (1 all, 2 the system, 3 no one).
+        int allowedCapturePolicy = 1;
+        // C.SPATIALIZATION_BEHAVIOR_*: 0 auto (spatialized when the device can), 1 never.
+        int spatializationBehavior = 0;
         bool operator==(const AudioAttributes&) const = default;
     };
 

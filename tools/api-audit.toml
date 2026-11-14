@@ -59,6 +59,28 @@ modules = [
 ]
 
 [renamed]
+# media3 Player: getters with the unit in the name, and state read from PlayerState (ExoPlayer's
+# content position is the position: no ads; one period per item).
+PlaybackSuppressionReason = "PlaybackSuppression"
+"Player.getSeekBackIncrement" = "SeekBackIncrementMs"
+"Player.getSeekForwardIncrement" = "SeekForwardIncrementMs"
+"Player.getMaxSeekToPreviousPosition" = "MaxSeekToPreviousPositionMs"
+"Player.getPlaybackSuppressionReason" = "suppression"
+"Player.getCurrentPosition" = "positionMs"
+"Player.getContentPosition" = "positionMs"
+"Player.getDuration" = "durationMs"
+"Player.getContentDuration" = "durationMs"
+"Player.getBufferedPosition" = "bufferedPositionMs"
+"Player.getContentBufferedPosition" = "bufferedPositionMs"
+"Player.getTotalBufferedDuration" = "TotalBufferedDurationMs"
+"Player.getCurrentPeriodIndex" = "currentMediaItemIndex"
+"Player.getAvailableCommands" = "availableCommands"
+"Player.clearVideoSurface" = "SetSurface"
+"Commands.contains" = "Contains"
+"Group.getTrackFormat" = "formats"
+"Group.getMediaTrackGroup" = "formats"
+"Tracks.isEmpty" = "groups"
+"PlaybackException.errorInfoEquals" = "operator"
 # lifecycle: the Kotlin file facade of enableSavedStateHandles / createSavedStateHandle; the
 # opt-in annotation guards SavedStateHandle.saveable.
 SavedStateHandleSupport = "EnableSavedStateHandles CreateSavedStateHandle"
@@ -359,6 +381,29 @@ ResourceFont = "Font"
 toFontFamily = "FontFamily Of"
 
 [skipped]
+# media3 not played by kiln's engine: ads (IMA), DRM (MediaDrm), live streams (they need HLS /
+# DASH: capability gap G2); extras and tags are Java object payloads (key app data by mediaId).
+AdsConfiguration = "ads are not played (no IMA extension)"
+DrmConfiguration = "DRM-protected media is not played (no MediaDrm sessions)"
+LiveConfiguration = "live streams need HLS / DASH, not ported yet (capability gap G2)"
+TimelineChangeReason = "kiln reports the playlist as state; there is no onTimelineChanged"
+"Player.isPlayingAd" = "no ads"
+"Player.getCurrentAdGroupIndex" = "no ads"
+"Player.getCurrentAdIndexInAdGroup" = "no ads"
+"Player.getCurrentLiveOffset" = "no live streams (gap G2)"
+"Player.getCurrentTimeline" = "the playlist is the timeline (MediaItemCount / MediaItemAt); no window or period objects"
+"Player.getApplicationLooper" = "Java threading; kiln's player lives on the main thread"
+"Player.canAdvertiseSession" = "the session's internals"
+"Commands.containsAny" = "Contains per command"
+"Commands.get" = "a bit set: Contains per command"
+"Group.isAdaptiveSupported" = "adaptive streams are not ported (gap G2)"
+"ExoPlayer.addAnalyticsListener" = "playback analytics are not ported; PlayerListener and PlayerState carry the events"
+"ExoPlayer.removeAnalyticsListener" = "playback analytics are not ported"
+"Builder.setAudioOutputProvider" = "the engine writes to AAudio itself"
+"Builder.setMediaSourceFactory" = "media sources are the engine's (NDK extractor); not pluggable"
+"AudioAttributes.fromPlatformAudioAttributes" = "Java platform object"
+"AudioAttributes.getPlatformAudioAttributes" = "Java platform object"
+"AudioAttributes.getVolumeControlStream" = "the platform derives it; kiln's volume keys follow the session"
 ViewTreeLifecycleOwner = "Android View tree; a kiln window's owners are set on its ui::Owner (SetHostLifecycleOwner)"
 ViewTreeViewModelStoreOwner = "Android View tree; a kiln window's owners are set on its ui::Owner (SetHostViewModelStoreOwner)"
 AndroidViewModel = "needs an Android Application object, which kiln apps do not have"
@@ -620,6 +665,13 @@ StaticLayoutFactory = "Android StaticLayout internals"
 toSpan = "Android spans (TtsSpan)"
 
 [skipped_patterns]
+'^Listener\.on(?!Device)\w+Changed$' = "media3 Player.Listener: PlayerState fields, observed through the player's StateFlow"
+'^(Events\.\w+|Listener\.onEvents)$' = "media3 event batches: kiln publishes the state once per change"
+'^Player\.(set|clear)Video(SurfaceHolder|SurfaceView|TextureView)$' = "Android View types; SetSurface takes the platform surface (VideoSurface makes it)"
+'^\w+\.buildUpon$' = "media3 builders over immutable Java objects; kiln's are C++ values, copied and changed"
+'^Builder\.(setAdTagUri|setAdsConfiguration|setAdsId|setDrmConfiguration|setForceDefaultLicenseUri|setForceSessionsForAudioAndVideoTracks|setForcedSessionTrackTypes|setKeySetId|setLicenseRequestHeaders|setLicenseUri|setMultiSession|setPlayClearContentWithoutKey|setLiveConfiguration|setMaxOffsetMs|setMinOffsetMs|setTargetOffsetMs|setMaxPlaybackSpeed|setMinPlaybackSpeed)$' = "MediaItem's ads, DRM and live settings: not played (see AdsConfiguration ...)"
+'^(DrmConfiguration\.getKeySetId|Group\.toBundle)$' = "DRM / Java Bundle"
+'^Builder\.(setExtras|setTag)$' = "Java object payloads; key app data by mediaId"
 '^ViewCompositionStrategy::' = "Android View hosting"
 '^RootForTest::' = "Compose UI test harness"
 'Marker$' = "Kotlin DSL / scope markers"

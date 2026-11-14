@@ -441,6 +441,22 @@ namespace kiln::media {
             UpdateCues();
             s.currentCues = cues;
             s.tracks = CurrentTracks();
+            s.isCurrentMediaItemSeekable = m && s.durationMs >= 0;
+            // ExoPlayerImpl's permanent commands, then Util.getAvailableCommands (no ads, no live).
+            using C = PlayerCommand;
+            for (C c : { C::PlayPause, C::Prepare, C::Stop, C::SetSpeedAndPitch, C::SetShuffleMode, C::SetRepeatMode, C::GetCurrentMediaItem,
+                         C::GetTimeline, C::GetMetadata, C::SetPlaylistMetadata, C::SetMediaItem, C::ChangeMediaItems, C::GetTracks,
+                         C::GetAudioAttributes, C::SetAudioAttributes, C::GetVolume, C::SetVolume, C::SetVideoSurface, C::GetText, C::Release,
+                         C::SetTrackSelectionParameters, C::SeekToDefaultPosition, C::SeekToMediaItem })
+                s.availableCommands.Add(c);
+            const bool seekable = s.isCurrentMediaItemSeekable, empty = items.empty();
+            s.availableCommands.Add(C::SeekInCurrentMediaItem, seekable);
+            s.availableCommands.Add(C::SeekToPreviousMediaItem, s.hasPreviousMediaItem);
+            s.availableCommands.Add(C::SeekToPrevious, !empty);   // (hasPrevious || !live || seekable): not live
+            s.availableCommands.Add(C::SeekToNextMediaItem, s.hasNextMediaItem);
+            s.availableCommands.Add(C::SeekToNext, !empty && s.hasNextMediaItem);
+            s.availableCommands.Add(C::SeekBack, seekable);
+            s.availableCommands.Add(C::SeekForward, seekable);
             state.SetValue(s);
         }
 
@@ -584,6 +600,7 @@ namespace kiln::media {
 
     Player::Player() : m_Shared(std::make_shared<Shared>()) {
         m_Shared->self = m_Shared;
+        m_Shared->Publish();   // the commands it has from the start
         if (Factory()) m_Shared->engine = Factory()();
         if (!m_Shared->engine) return;
         // Reports from the decoding thread reach the state on this (the main) thread.
@@ -863,6 +880,16 @@ namespace kiln::media {
         if (s.engine) s.engine->SetPlaybackParameters(p);
         s.Publish();
     }
+    bool Player::IsCommandAvailable(PlayerCommand c) const { return State().availableCommands.Contains(c); }
+    int Player::BufferedPercentage() const {
+        const PlayerState& s = State();
+        if (s.durationMs < 0) return 0;
+        if (s.durationMs == 0) return 100;
+        return int(std::clamp<std::int64_t>(s.bufferedPositionMs * 100 / s.durationMs, 0, 100));
+    }
+    std::int64_t Player::TotalBufferedDurationMs() const { return std::max<std::int64_t>(State().bufferedPositionMs - State().positionMs, 0); }
+    bool Player::IsCurrentMediaItemSeekable() const { return State().isCurrentMediaItemSeekable; }
+
     void Player::SetTrackSelectionParameters(TrackSelectionParameters p) {
         Shared& s = *m_Shared;
         if (s.trackSelection == p) return;

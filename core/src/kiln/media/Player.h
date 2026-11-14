@@ -63,6 +63,22 @@ namespace kiln::media {
         bool operator==(const PositionInfo&) const = default;
     };
 
+    // Player.Command (media3's numbers): what the player can do now.
+    enum class PlayerCommand {
+        PlayPause = 1, Prepare = 2, Stop = 3, SeekToDefaultPosition = 4, SeekInCurrentMediaItem = 5, SeekToPreviousMediaItem = 6,
+        SeekToPrevious = 7, SeekToNextMediaItem = 8, SeekToNext = 9, SeekToMediaItem = 10, SeekBack = 11, SeekForward = 12,
+        SetSpeedAndPitch = 13, SetShuffleMode = 14, SetRepeatMode = 15, GetCurrentMediaItem = 16, GetTimeline = 17, GetMetadata = 18,
+        SetPlaylistMetadata = 19, ChangeMediaItems = 20, GetAudioAttributes = 21, GetVolume = 22, SetVolume = 24, SetVideoSurface = 27,
+        GetText = 28, SetTrackSelectionParameters = 29, GetTracks = 30, SetMediaItem = 31, Release = 32, SetAudioAttributes = 35,
+    };
+    // Player.Commands.
+    struct Commands {
+        std::uint64_t bits = 0;
+        bool Contains(PlayerCommand c) const { return (bits >> int(c)) & 1; }
+        void Add(PlayerCommand c, bool add = true) { if (add) bits |= std::uint64_t(1) << int(c); }
+        bool operator==(const Commands&) const = default;
+    };
+
     struct PlayerState {
         PlaybackState state = PlaybackState::Idle;
         bool playWhenReady = false;   // Play() was called (and not Pause(), nor lost to another app)
@@ -96,6 +112,9 @@ namespace kiln::media {
         // getCurrentTracks: the current item's tracks and which play (the media's, then its
         // subtitles').
         Tracks tracks;
+        // getAvailableCommands (Util.getAvailableCommands over ExoPlayer's permanent ones).
+        Commands availableCommands;
+        bool isCurrentMediaItemSeekable = false;   // its duration is known (no live streams here)
         bool operator==(const PlayerState&) const = default;
     };
 
@@ -227,6 +246,15 @@ namespace kiln::media {
         void SetPlaybackParameters(PlaybackParameters parameters);
         void SetPlaybackSpeed(float speed);
         const PlaybackParameters& GetPlaybackParameters() const;
+
+        bool IsCommandAvailable(PlayerCommand command) const;
+        // BasePlayer.getBufferedPercentage (0 to 100) and getTotalBufferedDuration.
+        int BufferedPercentage() const;
+        std::int64_t TotalBufferedDurationMs() const;
+        bool IsCurrentMediaItemSeekable() const;
+        // Live and dynamic windows come from live streams, which kiln does not play: false.
+        bool IsCurrentMediaItemLive() const { return false; }
+        bool IsCurrentMediaItemDynamic() const { return false; }
 
         // Which tracks play, chosen as DefaultTrackSelector does: the media's audio track (by
         // language, role, label, format, then the system's languages and quality) and video, and a
