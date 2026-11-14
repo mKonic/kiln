@@ -58,7 +58,7 @@ if [ "$CMD" = new ]; then
     [[ "$APP" =~ ^[a-z][a-z0-9_-]*$ ]] || { echo "kiln: an app name is lower case letters, digits, - and _" >&2; exit 2; }
     dir="$KILN_ROOT/apps/$APP"
     [ ! -e "$dir" ] || { echo "kiln: $dir already exists" >&2; exit 1; }
-    for taken in hello list gallery notes-c notes-cpp catalog bridge; do
+    for taken in hello list gallery notes-c notes-cpp catalog bridge billing; do
         [ "$APP" != "$taken" ] || { echo "kiln: '$APP' is one of kiln's samples" >&2; exit 1; }
     done
     package="${NEW_PACKAGE:-com.example.${APP//[-_]/}}"

@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.TTS_SERVICE" />
+        </intent>
+        <intent>
+            <action android:name="android.speech.RecognitionService" />
+        </intent>
+    </queries>
+    <application android:name=".App" android:label="kiln billing" android:icon="@mipmap/ic_launcher"
+                 android:supportsRtl="true" android:enableOnBackInvokedCallback="true">
+        <activity android:name="dev.kiln.KilnActivity" android:exported="true"
+                  android:theme="@android:style/Theme.DeviceDefault.NoActionBar"
+                  android:windowSoftInputMode="adjustResize"
+                  android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|uiMode|density|fontScale|fontWeightAdjustment|keyboard|keyboardHidden|navigation|locale|layoutDirection|colorMode|touchscreen|grammaticalGender">
+            <meta-data android:name="dev.kiln.lib_name" android:value="billing" />
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+        <!-- kiln::work's jobs (JobScheduler). -->
+        <service android:name="dev.kiln.KilnJobService" android:exported="false"
+                 android:permission="android.permission.BIND_JOB_SERVICE" />
+        <!-- kiln::media's sessions: playback in a media foreground service (the app declares
+             FOREGROUND_SERVICE and FOREGROUND_SERVICE_MEDIA_PLAYBACK to use it). -->
+        <service android:name="dev.kiln.KilnMediaService" android:exported="false"
+                 android:foregroundServiceType="mediaPlayback" />
+        <!-- ui::GetUriForFile: the app's files, shared by content:// URI (FileProvider). -->
+        <provider android:name="dev.kiln.KilnFileProvider" android:authorities="${applicationId}.kiln.fileprovider"
+                  android:exported="false" android:grantUriPermissions="true" />
+        <!-- kiln::alarm: alarms going off, and set again after a reboot (with the app's
+             RECEIVE_BOOT_COMPLETED) or when exact alarms are allowed again. -->
+        <receiver android:name="dev.kiln.KilnAlarmReceiver" android:exported="false" />
+        <receiver android:name="dev.kiln.KilnAlarmRescheduler" android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.app.action.SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED" />
+            </intent-filter>
+        </receiver>
+    </application>
+</manifest>

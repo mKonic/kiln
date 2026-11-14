@@ -44,3 +44,5 @@ The [samples](https://github.com/mKonic/kiln/tree/master/samples) folder holds c
 | `notes-c` | A notes app over the C API |
 | `notes-cpp` | The same app in C++ with kiln++ |
 | `gradle-notes` | The C notes app built by Gradle against the kiln AAR |
+| `bridge` | C++ and Kotlin calling each other through the JVM bridge |
+| `billing` | Google Play Billing from C++, through the JVM bridge |

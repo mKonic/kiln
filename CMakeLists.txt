@@ -300,9 +300,10 @@ function(kiln_add_app name)
     endif()
 endfunction()
 
-# The JVM bridge's sample (Android only: Gradle builds it, with its Kotlin).
+# The JVM bridge's samples (Android only: Gradle builds them, with their Kotlin).
 if(ANDROID)
     add_subdirectory(samples/bridge ${CMAKE_BINARY_DIR}/sample-bridge)
+    add_subdirectory(samples/billing ${CMAKE_BINARY_DIR}/sample-billing)
 endif()
 
 # Apps made with `tools/kiln new` (apps/<name>/CMakeLists.txt; the folder is the app's own).

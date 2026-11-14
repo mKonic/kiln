@@ -179,6 +179,18 @@ kiln = "core/src/kiln/image (ImageLoader, caches, DecodeUtils), foundation/src/k
 paths = ["coil-core/src/commonMain", "coil-core/src/androidMain", "coil-network-core/src/commonMain",
          "coil-compose-core/src/commonMain"]
 
+[play-billing-samples]
+kind = "git"
+repo = "https://github.com/googlesamples/play-billing-samples.git"
+branch = "main"
+checkout = "~/dev/os/inspiration/play-billing-samples"
+rev = "e15a5db"          # 2026-11-14
+
+[[play-billing-samples.group]]
+name = "purchases"
+kiln = "samples/billing (PlayBilling.kt: BillingServiceClient's flow, Billing Library 9.1.0)"
+paths = ["purchases/app/src/main/java/com/google/play/billing/samples/onetimepurchases/billing"]
+
 [media3]
 kind = "git"
 repo = "https://github.com/androidx/media.git"

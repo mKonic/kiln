@@ -121,6 +121,54 @@ kiln::rt::Task<> Greet(kiln::rt::State<std::string>& text) {
 * With R8 (`isMinifyEnabled`), keep `dev.kiln.**` and the generated `*Cpp` classes. Their
   methods are only called from native code.
 
+## Google Play libraries
+
+Google Play's libraries (billing, in-app review, in-app updates, Play Integrity) are Kotlin and
+Java APIs. In an app made with `--jvm`, use them the way the JVM bridge uses any Kotlin:
+1. Add the library to `dependencies { }` in `build.gradle.kts`.
+2. Declare a small `@CalledFromCpp` interface with the calls the app needs.
+3. Implement it in Kotlin over the library.
+
+C++ then calls it, and suspend functions are tasks it can `co_await`. For example, asking for a
+review:
+
+```kotlin
+// build.gradle.kts: implementation("com.google.android.play:review-ktx:2.0.2")
+@CalledFromCpp
+interface Reviews {
+    /** Google Play decides whether the review card shows; this returns when it is done. */
+    suspend fun ask()
+}
+
+class PlayReviews(private val context: Context, private val activity: () -> Activity?) : Reviews {
+    override suspend fun ask() {
+        val manager = ReviewManagerFactory.create(context)
+        val info = manager.requestReview()
+        activity()?.let { manager.launchReview(it, info) }
+    }
+}
+// In Application.onCreate: ReviewsCpp.register(PlayReviews(this) { resumedActivity })
+```
+
+<!-- check: skip -->
+```cpp
+kiln::rt::Task<> AfterTenthNote() {
+    if (auto reviews = app::Reviews::Get()) co_await reviews->Ask();
+}
+```
+
+* Calls that open Google Play's UI, such as the review card, the purchase screen or the update
+  prompt, need the activity in front. The Kotlin side can track it with
+  `registerActivityLifecycleCallbacks` in the app's `Application`.
+* Events the library delivers on its own, such as new purchases, go back to C++ through an
+  `@ImplementedInCpp` interface that Kotlin calls.
+* [samples/billing](../samples/billing) uses Google Play Billing 9 this way. It connects, lists
+  products, opens the purchase screen, and acknowledges or consumes purchases. Purchases need
+  the app on a testing track in the Play Console and a Play account on the device. Elsewhere,
+  the sample shows billing's error code.
+* Verify purchases and integrity verdicts on the app's server. On the device, the result is
+  only a hint.
+
 ## Build with Gradle
 
 For an existing Gradle project, use kiln as an Android library (AAR).
