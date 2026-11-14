@@ -8,7 +8,6 @@ kiln::material3::FromToken: parameter token: kiln::material3::tokens::ColorToken
 kiln::material3::FromToken: parameter token: kiln::material3::tokens::MotionSchemeToken is internal
 kiln::material3::FromToken: parameter token: kiln::material3::tokens::ShapeToken is internal
 kiln::material3::FromToken: parameter token: kiln::material3::tokens::TypographyToken is internal
-kiln::material3::MakeCarouselParallaxScrollEffectState: parameter state: type kiln::foundation::LazyGridState
 kiln::material3::MenuDefaults::rememberDropdownMenuPopupPositionProvider: parameter dropdownMenuAnchorPosition: kiln::material3::internal::MenuAnchorPosition is internal
 kiln::material3::ProgressIndicatorDefaults::DrawStopIndicator: parameter scope: type kiln::ui::DrawScope
 kiln::material3::SliderDefaults::DrawStopIndicator: parameter arg0: type kiln::ui::DrawScope

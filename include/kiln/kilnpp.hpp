@@ -515,6 +515,7 @@ namespace kpp {
         float alignment = KILN_ALIGN_START;
         bool reverseLayout = false;
         bool userScrollEnabled = true;
+        const kiln_fling_behavior* flingBehavior = nullptr;
     };
     namespace detail {
         inline kiln_lazy_list_options LazyOptions(const LazyListOptions& o) {
@@ -526,6 +527,7 @@ namespace kpp {
             c.alignment = o.alignment;
             c.reverse_layout = o.reverseLayout;
             c.user_scroll_enabled = o.userScrollEnabled;
+            c.fling_behavior = o.flingBehavior;
             return c;
         }
         template<typename F> kiln_fn_lazy LazyContent(F&& f) {
@@ -542,6 +544,93 @@ namespace kpp {
     void lazy_row(Modifier m, F&& content, LazyListState state = LazyListState(), LazyListOptions o = {}, Key key = {}) {
         const auto c = detail::LazyOptions(o);
         kiln_lazy_row(key, m, state, &c, detail::LazyContent(std::forward<F>(content)));
+    }
+
+    class LazyGridState {
+    public:
+        explicit LazyGridState(kiln_lazy_grid_state* s = nullptr) : m_S(s) {}
+        int32_t first_visible_item_index() const { return kiln_lazy_grid_state_first_visible_item_index(m_S); }
+        int32_t first_visible_item_scroll_offset() const { return kiln_lazy_grid_state_first_visible_item_scroll_offset(m_S); }
+        bool can_scroll_forward() const { return kiln_lazy_grid_state_can_scroll_forward(m_S); }
+        bool can_scroll_backward() const { return kiln_lazy_grid_state_can_scroll_backward(m_S); }
+        void scroll_to_item(int32_t i, int32_t offset = 0) const { kiln_lazy_grid_state_scroll_to_item(m_S, i, offset, kiln_fn{}); }
+        void animate_scroll_to_item(int32_t i, int32_t offset = 0, Callback<kiln_fn> done = {}) const {
+            kiln_lazy_grid_state_animate_scroll_to_item(m_S, i, offset, done.release());
+        }
+        operator kiln_lazy_grid_state*() const { return m_S; }
+    private:
+        kiln_lazy_grid_state* m_S;
+    };
+    inline LazyGridState remember_lazy_grid_state(int32_t index = 0, int32_t offset = 0, Key key = {}) {
+        return LazyGridState(kiln_remember_lazy_grid_state(key, index, offset));
+    }
+    namespace grid_cells {
+        inline kiln_grid_cells fixed(int32_t count) { return { KILN_GRID_CELLS_FIXED, count, 0 }; }
+        inline kiln_grid_cells adaptive(float minSize) { return { KILN_GRID_CELLS_ADAPTIVE, 1, minSize }; }
+        inline kiln_grid_cells fixed_size(float size) { return { KILN_GRID_CELLS_FIXED_SIZE, 1, size }; }
+    }
+    // The items of a lazy grid. span(index, maxCurrentLineSpan, maxLineSpan) gives an item's slots.
+    class LazyGridScope {
+    public:
+        explicit LazyGridScope(kiln_lazy_grid_scope* s) : m_S(s) {}
+        void item(Callback<kiln_fn> content) const { kiln_lazy_grid_item(m_S, nullptr, kiln_fn_grid_span{}, content.release()); }
+        void item(Key key, Callback<kiln_fn> content) const { kiln_lazy_grid_item(m_S, &key.k, kiln_fn_grid_span{}, content.release()); }
+        template<typename S>
+        void item(Key key, S&& span, Callback<kiln_fn> content) const {
+            kiln_lazy_grid_item(m_S, &key.k, fn<kiln_fn_grid_span>(std::forward<S>(span)), content.release());
+        }
+        void items(int32_t count, Callback<kiln_fn_int> content) const {
+            kiln_lazy_grid_items(m_S, count, content.release(), kiln_fn_item_key{}, kiln_fn_grid_span{});
+        }
+        template<typename K>
+        void items(int32_t count, Callback<kiln_fn_int> content, K&& key) const {
+            auto k = [f = std::forward<K>(key)](int32_t i) mutable -> kiln_key { return Key(f(i)); };
+            kiln_lazy_grid_items(m_S, count, content.release(), fn<kiln_fn_item_key>(std::move(k)), kiln_fn_grid_span{});
+        }
+        template<typename K, typename S>
+        void items(int32_t count, Callback<kiln_fn_int> content, K&& key, S&& span) const {
+            auto k = [f = std::forward<K>(key)](int32_t i) mutable -> kiln_key { return Key(f(i)); };
+            kiln_lazy_grid_items(m_S, count, content.release(), fn<kiln_fn_item_key>(std::move(k)), fn<kiln_fn_grid_span>(std::forward<S>(span)));
+        }
+        void sticky_header(Callback<kiln_fn_int> content) const { kiln_lazy_grid_sticky_header(m_S, nullptr, content.release()); }
+    private:
+        kiln_lazy_grid_scope* m_S;
+    };
+    struct LazyGridOptions {
+        kiln_padding contentPadding{};
+        kiln_arrangement mainAxisArrangement{ KILN_ARRANGE_START, 0, NAN };
+        kiln_arrangement crossAxisArrangement{ KILN_ARRANGE_START, 0, NAN };
+        bool reverseLayout = false;
+        bool userScrollEnabled = true;
+        const kiln_fling_behavior* flingBehavior = nullptr;
+    };
+    namespace detail {
+        inline kiln_lazy_grid_options GridOptions(const LazyGridOptions& o) {
+            kiln_lazy_grid_options c;
+            kiln_lazy_grid_options_init(&c);
+            c.content_padding = o.contentPadding;
+            c.main_axis_arrangement = o.mainAxisArrangement;
+            c.cross_axis_arrangement = o.crossAxisArrangement;
+            c.reverse_layout = o.reverseLayout;
+            c.user_scroll_enabled = o.userScrollEnabled;
+            c.fling_behavior = o.flingBehavior;
+            return c;
+        }
+        template<typename F> kiln_fn_lazy_grid GridContent(F&& f) {
+            return fn<kiln_fn_lazy_grid>([c = std::forward<F>(f)](kiln_lazy_grid_scope* s) mutable { c(LazyGridScope(s)); });
+        }
+    }
+    template<typename F>
+    void lazy_vertical_grid(Modifier m, kiln_grid_cells columns, F&& content, LazyGridState state = LazyGridState(), LazyGridOptions o = {},
+                            Key key = {}) {
+        const auto c = detail::GridOptions(o);
+        kiln_lazy_vertical_grid(key, m, columns, state, &c, detail::GridContent(std::forward<F>(content)));
+    }
+    template<typename F>
+    void lazy_horizontal_grid(Modifier m, kiln_grid_cells rows, F&& content, LazyGridState state = LazyGridState(), LazyGridOptions o = {},
+                              Key key = {}) {
+        const auto c = detail::GridOptions(o);
+        kiln_lazy_horizontal_grid(key, m, rows, state, &c, detail::GridContent(std::forward<F>(content)));
     }
 
     class PagerState {

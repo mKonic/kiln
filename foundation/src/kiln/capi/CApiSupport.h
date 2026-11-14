@@ -51,6 +51,7 @@ struct kiln_interaction_source { std::shared_ptr<kiln::foundation::MutableIntera
 // leaves the composition (before the state is freed).
 struct kiln_scroll_state { kiln::foundation::ScrollState* state; std::shared_ptr<kiln::rt::CoroutineScope> scope; };
 struct kiln_lazy_list_state { kiln::foundation::LazyListState* state; std::shared_ptr<kiln::rt::CoroutineScope> scope; };
+struct kiln_lazy_grid_state { kiln::foundation::LazyGridState* state; std::shared_ptr<kiln::rt::CoroutineScope> scope; };
 struct kiln_fling_behavior { kiln::foundation::FlingBehavior fling; };
 struct kiln_pager_state {
     kiln::foundation::PagerState* state;

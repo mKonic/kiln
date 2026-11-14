@@ -512,6 +512,8 @@ class Generator:
             return Mapping('kiln_text_field_state*', lambda e: f'*{e}->state', None)
         if k == 'kiln::foundation::ScrollState':
             return Mapping('kiln_scroll_state*', lambda e: f'*{e}->state', None)
+        if k == 'kiln::foundation::LazyGridState':
+            return Mapping('kiln_lazy_grid_state*', lambda e: f'*{e}->state', None)
         if k == 'kiln::foundation::LazyListState':
             return Mapping('kiln_lazy_list_state*', lambda e: f'*{e}->state', None)
         if k == 'kiln::foundation::BorderStroke':

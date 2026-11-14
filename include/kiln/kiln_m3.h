@@ -2889,6 +2889,7 @@ KILN_API void kiln_m3_horizontal_multi_browse_carousel(kiln_key key, kiln_m3_car
 KILN_API void kiln_m3_horizontal_uncontained_carousel(kiln_key key, kiln_m3_carousel_state* state, float item_width, const kiln_modifier* modifier, kiln_m3_fn_carousel_item_scope_int content, const kiln_m3_carousel_options* options);
 KILN_API void kiln_m3_horizontal_centered_hero_carousel(kiln_key key, kiln_m3_carousel_state* state, const kiln_modifier* modifier, kiln_m3_fn_carousel_item_scope_int content, const kiln_m3_carousel_options* options, kiln_opt_float preferred_item_width, float min_small_item_width, float max_small_item_width);
 KILN_API kiln_m3_carousel_parallax_scroll_effect_state* kiln_m3_make_carousel_parallax_scroll_effect_state(kiln_key key, kiln_lazy_list_state* state);
+KILN_API kiln_m3_carousel_parallax_scroll_effect_state* kiln_m3_make_carousel_parallax_scroll_effect_state_lazy_grid_state(kiln_key key, kiln_lazy_grid_state* state);
 KILN_API const kiln_modifier* kiln_m3_carousel_parallax_scroll_effect(kiln_key key, const kiln_modifier* m, int32_t index, kiln_m3_carousel_parallax_scroll_effect_state* state, const kiln_shape* shape, const kiln_border_stroke* border);
 /* Checkbox.h */
 KILN_API void kiln_m3_checkbox(kiln_key key, bool checked, kiln_fn_bool on_checked_change, const kiln_modifier* modifier, const kiln_m3_checkbox_options* options);

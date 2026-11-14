@@ -1139,6 +1139,10 @@ pub fn make_carousel_parallax_scroll_effect_state(state: *mut sys::kiln_lazy_lis
     unsafe { sys::kiln_m3_make_carousel_parallax_scroll_effect_state(here(), state) }
 }
 #[track_caller]
+pub fn make_carousel_parallax_scroll_effect_state_lazy_grid_state(state: *mut sys::kiln_lazy_grid_state) -> *mut sys::kiln_m3_carousel_parallax_scroll_effect_state {
+    unsafe { sys::kiln_m3_make_carousel_parallax_scroll_effect_state_lazy_grid_state(here(), state) }
+}
+#[track_caller]
 pub fn carousel_parallax_scroll_effect(m: Modifier, index: i32, state: *mut sys::kiln_m3_carousel_parallax_scroll_effect_state, shape: *const sys::kiln_shape, border: *const sys::kiln_border_stroke) -> *const sys::kiln_modifier {
     unsafe { sys::kiln_m3_carousel_parallax_scroll_effect(here(), m.raw(), index, state, shape, border) }
 }

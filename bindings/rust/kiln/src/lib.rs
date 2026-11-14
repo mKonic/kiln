@@ -76,6 +76,8 @@ __kiln_callback!(sys::kiln_fn_int, (v: i32) -> ());
 __kiln_callback!(sys::kiln_fn_float, (v: f32) -> ());
 __kiln_callback!(sys::kiln_fn_lazy, (s: *mut sys::kiln_lazy_scope) -> ());
 __kiln_callback!(sys::kiln_fn_item_key, (i: i32) -> sys::kiln_key);
+__kiln_callback!(sys::kiln_fn_lazy_grid, (s: *mut sys::kiln_lazy_grid_scope) -> ());
+__kiln_callback!(sys::kiln_fn_grid_span, (i: i32, max_current_line_span: i32, max_line_span: i32) -> i32);
 __kiln_callback!(sys::kiln_fn_count, () -> i32);
 __kiln_callback!(sys::kiln_fn_effect, () -> sys::kiln_fn);
 __kiln_callback!(sys::kiln_fn_volition_state, (f: *mut sys::kiln_volition_fields) -> ());
@@ -444,6 +446,48 @@ impl LazyScope {
         unsafe { sys::kiln_lazy_items(self.0, count as i32, content.into_callback(), k.into_callback()) }
     }
 }
+/// How a lazy grid's cross axis splits into slots.
+pub mod grid_cells {
+    use super::sys;
+    pub fn fixed(count: i32) -> sys::kiln_grid_cells { sys::kiln_grid_cells { kind: sys::kiln_grid_cells_kind::KILN_GRID_CELLS_FIXED, count, size: 0.0 } }
+    pub fn adaptive(min_size: f32) -> sys::kiln_grid_cells { sys::kiln_grid_cells { kind: sys::kiln_grid_cells_kind::KILN_GRID_CELLS_ADAPTIVE, count: 1, size: min_size } }
+    pub fn fixed_size(size: f32) -> sys::kiln_grid_cells { sys::kiln_grid_cells { kind: sys::kiln_grid_cells_kind::KILN_GRID_CELLS_FIXED_SIZE, count: 1, size } }
+}
+
+/// The items of a lazy grid.
+pub struct LazyGridScope(*mut sys::kiln_lazy_grid_scope);
+impl LazyGridScope {
+    pub fn item(&self, content: impl FnMut() + 'static) {
+        unsafe { sys::kiln_lazy_grid_item(self.0, std::ptr::null(), Default::default(), content.into_callback()) }
+    }
+    /// An item across the whole line (a header).
+    pub fn full_line_item(&self, content: impl FnMut() + 'static) {
+        let span = |_: i32, _: i32, max_line_span: i32| max_line_span;
+        unsafe { sys::kiln_lazy_grid_item(self.0, std::ptr::null(), span.into_callback(), content.into_callback()) }
+    }
+    /// `count` items; `key(index)` gives each one's identity.
+    pub fn items(&self, count: usize, content: impl FnMut(i32) + 'static, mut key: impl FnMut(i32) -> i64 + 'static) {
+        let k = move |i: i32| key_int(key(i));
+        unsafe { sys::kiln_lazy_grid_items(self.0, count as i32, content.into_callback(), k.into_callback(), Default::default()) }
+    }
+    /// Items with `span(index, max_current_line_span, max_line_span)` slots each.
+    pub fn items_spanned(&self, count: usize, content: impl FnMut(i32) + 'static, mut key: impl FnMut(i32) -> i64 + 'static,
+                         span: impl FnMut(i32, i32, i32) -> i32 + 'static) {
+        let k = move |i: i32| key_int(key(i));
+        unsafe { sys::kiln_lazy_grid_items(self.0, count as i32, content.into_callback(), k.into_callback(), span.into_callback()) }
+    }
+}
+#[track_caller]
+pub fn lazy_vertical_grid(modifier: Modifier, columns: sys::kiln_grid_cells, mut content: impl FnMut(&LazyGridScope) + 'static) {
+    let c = move |s: *mut sys::kiln_lazy_grid_scope| content(&LazyGridScope(s));
+    unsafe { sys::kiln_lazy_vertical_grid(here(), modifier.0, columns, std::ptr::null_mut(), std::ptr::null(), c.into_callback()) }
+}
+#[track_caller]
+pub fn lazy_horizontal_grid(modifier: Modifier, rows: sys::kiln_grid_cells, mut content: impl FnMut(&LazyGridScope) + 'static) {
+    let c = move |s: *mut sys::kiln_lazy_grid_scope| content(&LazyGridScope(s));
+    unsafe { sys::kiln_lazy_horizontal_grid(here(), modifier.0, rows, std::ptr::null_mut(), std::ptr::null(), c.into_callback()) }
+}
+
 #[track_caller]
 pub fn lazy_column(modifier: Modifier, mut content: impl FnMut(&LazyScope) + 'static) {
     let c = move |s: *mut sys::kiln_lazy_scope| content(&LazyScope(s));

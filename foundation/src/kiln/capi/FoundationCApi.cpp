@@ -38,6 +38,7 @@ using namespace kiln::capi;
 namespace fd = kiln::foundation;
 
 struct kiln_lazy_scope { fd::LazyListScope* scope; };
+struct kiln_lazy_grid_scope { fd::LazyGridScope* scope; };
 
 // A LaunchedEffect's next step.
 struct kiln_task {
@@ -1123,6 +1124,7 @@ namespace {
         lo.horizontalAlignment = ui::AlignmentH{ o.alignment };
         lo.verticalAlignment = ui::AlignmentV{ o.alignment };
         lo.userScrollEnabled = o.user_scroll_enabled;
+        if (o.fling_behavior) lo.flingBehavior = o.fling_behavior->fling;
         auto own = Own(content);
         auto items = [own](fd::LazyListScope& s) {
             if (!own) return;
@@ -1145,6 +1147,128 @@ KILN_API void kiln_lazy_column(kiln_key key, const kiln_modifier* m, kiln_lazy_l
 KILN_API void kiln_lazy_row(kiln_key key, const kiln_modifier* m, kiln_lazy_list_state* state, const kiln_lazy_list_options* o,
                             kiln_fn_lazy content) {
     TRY { LazyList(false, key, m, state, o, content); } CATCH_VOID
+}
+
+KILN_API kiln_lazy_grid_state* kiln_remember_lazy_grid_state(kiln_key key, int32_t index, int32_t offset) {
+    TRY {
+        kiln_lazy_grid_state* out = nullptr;
+        InGroup(key, [&] {
+            auto& state = fd::RememberLazyGridState(index, offset);
+            auto scope = rt::RememberCoroutineScope();
+            out = &rt::Composition::Current()->Remember<kiln_lazy_grid_state>([&] { return kiln_lazy_grid_state{ &state, scope }; });
+        });
+        return out;
+    } CATCH(nullptr)
+}
+KILN_API int32_t kiln_lazy_grid_state_first_visible_item_index(const kiln_lazy_grid_state* s) { return s ? s->state->FirstVisibleItemIndex() : 0; }
+KILN_API int32_t kiln_lazy_grid_state_first_visible_item_scroll_offset(const kiln_lazy_grid_state* s) {
+    return s ? s->state->FirstVisibleItemScrollOffset() : 0;
+}
+KILN_API bool kiln_lazy_grid_state_can_scroll_forward(const kiln_lazy_grid_state* s) { return s && s->state->CanScrollForward(); }
+KILN_API bool kiln_lazy_grid_state_can_scroll_backward(const kiln_lazy_grid_state* s) { return s && s->state->CanScrollBackward(); }
+KILN_API kiln_scrollable_state* kiln_lazy_grid_state_scrollable(kiln_lazy_grid_state* s) {
+    return s ? reinterpret_cast<kiln_scrollable_state*>(static_cast<fd::ScrollableState*>(s->state)) : nullptr;
+}
+KILN_API void kiln_lazy_grid_state_scroll_to_item(kiln_lazy_grid_state* s, int32_t index, int32_t offset, kiln_fn done) {
+    TRY {
+        auto fn = Fn(done);
+        if (s) s->state->ScrollToItem(index, offset);
+        if (fn) fn();
+    } CATCH_VOID
+}
+KILN_API void kiln_lazy_grid_state_animate_scroll_to_item(kiln_lazy_grid_state* s, int32_t index, int32_t offset, kiln_fn done) {
+    TRY {
+        if (!s) { Fn(done); return; }
+        fd::LazyGridState* st = s->state;
+        LaunchIn(s->scope, [st, index, offset] { return st->AnimateScrollToItem(index, offset); }, done);
+    } CATCH_VOID
+}
+
+namespace {
+    fd::GridSpan ToGridSpan(kiln_fn_grid_span span) {
+        auto own = Own(span);
+        if (!own) return {};
+        return [own](const fd::GridItemSpanScope& sc, int i) {
+            CallbackScope cs;
+            return int(own->f.call(own->f.user, i, sc.maxCurrentLineSpan, sc.maxLineSpan));
+        };
+    }
+    fd::GridCells ToGridCells(const kiln_grid_cells& c) {
+        switch (c.kind) {
+        case KILN_GRID_CELLS_ADAPTIVE: return fd::GridCells::Adaptive(ui::Dp(c.size));
+        case KILN_GRID_CELLS_FIXED_SIZE: return fd::GridCells::FixedSize(ui::Dp(c.size));
+        default: return fd::GridCells::Fixed(c.count);
+        }
+    }
+}
+KILN_API void kiln_lazy_grid_item(kiln_lazy_grid_scope* scope, const kiln_key* key, kiln_fn_grid_span span, kiln_fn content) {
+    TRY {
+        if (!scope) return;
+        auto fn = Fn(content);
+        kiln::Function<int(const fd::GridItemSpanScope&)> one;
+        if (auto sp = ToGridSpan(span)) one = [sp](const fd::GridItemSpanScope& sc) { return sp(sc, 0); };
+        scope->scope->Item(fn ? fn : [] {}, key ? ToKey(*key) : rt::Key::Positional(), std::move(one));
+    } CATCH_VOID
+}
+KILN_API void kiln_lazy_grid_items(kiln_lazy_grid_scope* scope, int32_t count, kiln_fn_int content, kiln_fn_item_key itemKey,
+                                   kiln_fn_grid_span span) {
+    TRY {
+        if (!scope) return;
+        auto fn = Fn(content);
+        kiln::Function<rt::Key(int)> keyFn;
+        if (auto k = Own(itemKey)) keyFn = [k](int i) { CallbackScope s; return ToKey(k->f.call(k->f.user, i)); };
+        scope->scope->Items(count, fn ? fn : [](int) {}, std::move(keyFn), ToGridSpan(span));
+    } CATCH_VOID
+}
+KILN_API void kiln_lazy_grid_sticky_header(kiln_lazy_grid_scope* scope, const kiln_key* key, kiln_fn_int content) {
+    TRY {
+        if (!scope) return;
+        auto fn = Fn(content);
+        scope->scope->StickyHeader(fn ? fn : [](int) {}, key ? ToKey(*key) : rt::Key::Positional());
+    } CATCH_VOID
+}
+KILN_API void kiln_lazy_grid_options_init(kiln_lazy_grid_options* o) {
+    if (!o) return;
+    *o = {};
+    o->size = sizeof(*o);
+    o->main_axis_arrangement = { KILN_ARRANGE_START, 0, NAN };
+    o->cross_axis_arrangement = { KILN_ARRANGE_START, 0, NAN };
+    o->user_scroll_enabled = true;
+}
+namespace {
+    void LazyGrid(bool vertical, kiln_key key, const kiln_modifier* m, kiln_grid_cells cells, kiln_lazy_grid_state* state,
+                  const kiln_lazy_grid_options* in, kiln_fn_lazy_grid content) {
+        const auto o = ReadOptions(in, kiln_lazy_grid_options_init);
+        fd::LazyGridOptions go;
+        go.contentPadding = ToPadding(o.content_padding);
+        go.mainAxisArrangement = ToArrangement(o.main_axis_arrangement, vertical);
+        go.crossAxisArrangement = ToArrangement(o.cross_axis_arrangement, !vertical);
+        go.reverseLayout = o.reverse_layout;
+        go.userScrollEnabled = o.user_scroll_enabled;
+        if (o.fling_behavior) go.flingBehavior = o.fling_behavior->fling;
+        auto own = Own(content);
+        auto items = [own](fd::LazyGridScope& s) {
+            if (!own) return;
+            kiln_lazy_grid_scope scope{ &s };
+            CallbackScope cs;
+            own->f.call(own->f.user, &scope);
+        };
+        const ui::Modifier mod = ToModifier(m);
+        const fd::GridCells gc = ToGridCells(cells);
+        InGroup(key, [&] {
+            fd::LazyGridState& st = state ? *state->state : fd::RememberLazyGridState();
+            if (vertical) fd::LazyVerticalGrid(mod, gc, st, items, go);
+            else fd::LazyHorizontalGrid(mod, gc, st, items, go);
+        });
+    }
+}
+KILN_API void kiln_lazy_vertical_grid(kiln_key key, const kiln_modifier* m, kiln_grid_cells columns, kiln_lazy_grid_state* state,
+                                      const kiln_lazy_grid_options* o, kiln_fn_lazy_grid content) {
+    TRY { LazyGrid(true, key, m, columns, state, o, content); } CATCH_VOID
+}
+KILN_API void kiln_lazy_horizontal_grid(kiln_key key, const kiln_modifier* m, kiln_grid_cells rows, kiln_lazy_grid_state* state,
+                                        const kiln_lazy_grid_options* o, kiln_fn_lazy_grid content) {
+    TRY { LazyGrid(false, key, m, rows, state, o, content); } CATCH_VOID
 }
 
 KILN_API kiln_pager_state* kiln_remember_pager_state(kiln_key key, int32_t initialPage, kiln_fn_count pageCount) {

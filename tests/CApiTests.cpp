@@ -12,6 +12,7 @@
 #include "kiln/ui/Volition.h"
 
 #include <chrono>
+#include <string>
 
 using namespace kiln;
 
@@ -305,6 +306,36 @@ TEST(CApiCarouselFlingBehavioursComeFromTheDefaults) {
         if (kiln_m3_carousel_defaults_single_advance_fling_behavior(KILN_HERE, state)) ++made;
     });
     CHECK(made == 2);
+}
+
+TEST(CApiLazyVerticalGridPlacesItemsInColumnsWithFullLineSpans) {
+    static kiln_lazy_grid_state* state;
+    state = nullptr;
+    Harness h;
+    h.Run([](void*) {
+        state = kiln_remember_lazy_grid_state(KILN_HERE, 0, 0);
+        kpp::lazy_vertical_grid(kpp::Modifier(), kpp::grid_cells::fixed(4), [](kpp::LazyGridScope s) {
+            s.item(kpp::Key(int64_t(-1)), [](int32_t, int32_t, int32_t maxLineSpan) { return maxLineSpan; },
+                   [] { kiln_box(KILN_HERE, kiln_mod_test_tag(kiln_mod_height(NULL, 20), "header"), NULL, KILN_FN(NULL, NULL)); });
+            s.items(100, [](int32_t i) {
+                kiln_box(KILN_HERE, kiln_mod_test_tag(kiln_mod_height(NULL, 50), ("cell" + std::to_string(i)).c_str()), NULL, KILN_FN(NULL, NULL));
+            });
+        }, kpp::LazyGridState(state));
+    });
+    const ui::LayoutNode* header = h.Find(h.owner.Root(), "header");
+    const ui::LayoutNode* c0 = h.Find(h.owner.Root(), "cell0");
+    const ui::LayoutNode* c4 = h.Find(h.owner.Root(), "cell4");
+    CHECK(header && c0 && c4);
+    if (!header || !c0 || !c4) return;
+    CHECK(header->Size().width == 200);   // the whole line
+    CHECK(c0->Size().width == 50);        // a quarter of it
+    CHECK(c4->PositionInRoot().y == 70);  // second row of cells, under the 20 tall header
+    CHECK(!h.Has("cell60"));              // lazily composed
+    CHECK(kiln_lazy_grid_state_can_scroll_forward(state));
+    kiln_lazy_grid_state_scroll_to_item(state, 41, 0, kiln_fn{});
+    h.Pump();
+    CHECK(kiln_lazy_grid_state_first_visible_item_index(state) == 41);
+    CHECK(h.Has("cell40"));
 }
 
 TEST(CApiAndroidViewMakesUpdatesAndReleasesItsView) {

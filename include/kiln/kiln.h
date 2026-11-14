@@ -590,6 +590,11 @@ KILN_API int32_t kiln_scroll_state_max_value(const kiln_scroll_state* state);   
 KILN_API void kiln_scroll_state_animate_to(kiln_scroll_state* state, int32_t value, kiln_fn done);
 KILN_API void kiln_scroll_state_scroll_to(kiln_scroll_state* state, int32_t value, kiln_fn done);
 
+/* A fling behaviour (a carousel's snapping, from kiln_m3_carousel_defaults_*): made by kiln,
+ * valid until the content callback returns, so ask for it again each composition as Compose's
+ * @Composable defaults do. */
+typedef struct kiln_fling_behavior kiln_fling_behavior;
+
 typedef struct kiln_lazy_list_state kiln_lazy_list_state;
 KILN_API kiln_lazy_list_state* kiln_remember_lazy_list_state(kiln_key key, int32_t first_visible_item_index,
                                                              int32_t first_visible_item_scroll_offset);
@@ -618,6 +623,7 @@ typedef struct kiln_lazy_list_options {
     float alignment;                /* cross axis bias: KILN_ALIGN_START */
     bool reverse_layout;            /* false */
     bool user_scroll_enabled;       /* true */
+    const kiln_fling_behavior* fling_behavior;   /* NULL: the platform's decay */
 } kiln_lazy_list_options;
 KILN_API void kiln_lazy_list_options_init(kiln_lazy_list_options* options);
 /* state NULL: a remembered state at this call. */
@@ -626,10 +632,54 @@ KILN_API void kiln_lazy_column(kiln_key key, const kiln_modifier* modifier, kiln
 KILN_API void kiln_lazy_row(kiln_key key, const kiln_modifier* modifier, kiln_lazy_list_state* state,
                             const kiln_lazy_list_options* options, kiln_fn_lazy content);
 
-/* A fling behaviour (a carousel's snapping, from kiln_m3_carousel_defaults_*): made by kiln,
- * valid until the content callback returns, so ask for it again each composition as Compose's
- * @Composable defaults do. */
-typedef struct kiln_fling_behavior kiln_fling_behavior;
+/* Lazy grids (LazyVerticalGrid / LazyHorizontalGrid). */
+typedef struct kiln_lazy_grid_state kiln_lazy_grid_state;
+KILN_API kiln_lazy_grid_state* kiln_remember_lazy_grid_state(kiln_key key, int32_t first_visible_item_index,
+                                                             int32_t first_visible_item_scroll_offset);
+KILN_API int32_t kiln_lazy_grid_state_first_visible_item_index(const kiln_lazy_grid_state* state);    /* observes */
+KILN_API int32_t kiln_lazy_grid_state_first_visible_item_scroll_offset(const kiln_lazy_grid_state* state);
+KILN_API bool kiln_lazy_grid_state_can_scroll_forward(const kiln_lazy_grid_state* state);
+KILN_API bool kiln_lazy_grid_state_can_scroll_backward(const kiln_lazy_grid_state* state);
+KILN_API kiln_scrollable_state* kiln_lazy_grid_state_scrollable(kiln_lazy_grid_state* state);
+KILN_API void kiln_lazy_grid_state_scroll_to_item(kiln_lazy_grid_state* state, int32_t index, int32_t offset, kiln_fn done);
+KILN_API void kiln_lazy_grid_state_animate_scroll_to_item(kiln_lazy_grid_state* state, int32_t index, int32_t offset, kiln_fn done);
+
+/* GridCells: how the cross axis splits into slots. FIXED: `count` slots; ADAPTIVE: as many as fit
+ * with at least `size` dp each; FIXED_SIZE: slots of exactly `size` dp. */
+typedef enum kiln_grid_cells_kind { KILN_GRID_CELLS_FIXED, KILN_GRID_CELLS_ADAPTIVE, KILN_GRID_CELLS_FIXED_SIZE } kiln_grid_cells_kind;
+typedef struct kiln_grid_cells { kiln_grid_cells_kind kind; int32_t count; float size; } kiln_grid_cells;
+
+typedef struct kiln_lazy_grid_scope kiln_lazy_grid_scope;
+typedef struct kiln_fn_lazy_grid { void (*call)(void* user, kiln_lazy_grid_scope* scope); void* user; void (*drop)(void* user); } kiln_fn_lazy_grid;
+/* An item's span in slots, from what is left on the current line and the slots per line
+ * (return max_line_span for a full line). index: the item's index (0 for a single item). */
+typedef struct kiln_fn_grid_span {
+    int32_t (*call)(void* user, int32_t index, int32_t max_current_line_span, int32_t max_line_span);
+    void* user; void (*drop)(void* user);
+} kiln_fn_grid_span;
+/* key NULL: by position. span.call NULL: one slot. */
+KILN_API void kiln_lazy_grid_item(kiln_lazy_grid_scope* scope, const kiln_key* key, kiln_fn_grid_span span, kiln_fn content);
+KILN_API void kiln_lazy_grid_items(kiln_lazy_grid_scope* scope, int32_t count, kiln_fn_int content, kiln_fn_item_key item_key,
+                                   kiln_fn_grid_span span);
+/* A full-line header that sticks while its items scroll. */
+KILN_API void kiln_lazy_grid_sticky_header(kiln_lazy_grid_scope* scope, const kiln_key* key, kiln_fn_int content);
+
+typedef struct kiln_lazy_grid_options {
+    size_t size;
+    kiln_padding content_padding;           /* 0 */
+    kiln_arrangement main_axis_arrangement; /* between lines: top (vertical grid) / start */
+    kiln_arrangement cross_axis_arrangement;/* the slots: start (vertical grid) / top */
+    bool reverse_layout;                    /* false */
+    bool user_scroll_enabled;               /* true */
+    const kiln_fling_behavior* fling_behavior;   /* NULL: the platform's decay */
+} kiln_lazy_grid_options;
+KILN_API void kiln_lazy_grid_options_init(kiln_lazy_grid_options* options);
+/* state NULL: a remembered state at this call. */
+KILN_API void kiln_lazy_vertical_grid(kiln_key key, const kiln_modifier* modifier, kiln_grid_cells columns, kiln_lazy_grid_state* state,
+                                      const kiln_lazy_grid_options* options, kiln_fn_lazy_grid content);
+KILN_API void kiln_lazy_horizontal_grid(kiln_key key, const kiln_modifier* modifier, kiln_grid_cells rows, kiln_lazy_grid_state* state,
+                                        const kiln_lazy_grid_options* options, kiln_fn_lazy_grid content);
+
 typedef struct kiln_pager_state kiln_pager_state;
 typedef struct kiln_fn_count { int32_t (*call)(void* user); void* user; void (*drop)(void* user); } kiln_fn_count;
 KILN_API kiln_pager_state* kiln_remember_pager_state(kiln_key key, int32_t initial_page, kiln_fn_count page_count);
