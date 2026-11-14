@@ -15,5 +15,4 @@ kiln::material3::Value: parameter token: kiln::material3::tokens::ShapeToken is 
 kiln::material3::Value: parameter token: kiln::material3::tokens::TypographyToken is internal
 kiln::material3::WideNavigationRailItemDefaults::indicatorPadding: result: kiln::material3::internal::DynamicPaddingValues is not default-constructible
 kiln::material3::FloatingActionButtonMenuScope::state: field left at its default: type std::shared_ptr<kiln::material3::internal::FabMenuState>
-kiln::material3::LinearProgressIndicatorOptions::drawStopIndicator: field left at its default: optional std::optional<kiln::Function<void (kiln::ui::DrawScope &)>>
 kiln::material3::WideNavigationRailItemOptions::indicatorPadding: field left at its default: kiln::material3::internal::DynamicPaddingValues is not default-constructible

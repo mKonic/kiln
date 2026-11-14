@@ -657,7 +657,7 @@ class Generator:
                 return Mapping(f'const {st.c}*', lambda e, st=st, cpp=cpp_inner: f'({e} ? std::optional<{cpp}>(ToCpp({e})) : std::nullopt)',
                                lambda e, o, st=st: f'(({e}) ? FromCppTransient(*({e})) : nullptr)')
             # Value types: a pointer, NULL is nullopt.
-            if im.c.startswith('kiln_') and not im.c.startswith('kiln_fn'):
+            if im.c.startswith('kiln_') and (not im.c.startswith('kiln_fn') or im.c in ('kiln_fn_draw', 'kiln_fn_text_layout')):
                 def from_opt(e, o, im=im):
                     lines = []
                     expr = im.from_cpp(f'(*({e}))', lines)

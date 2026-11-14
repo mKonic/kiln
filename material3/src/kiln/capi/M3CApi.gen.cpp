@@ -5708,6 +5708,7 @@ kiln::material3::LinearProgressIndicatorOptions ToCpp(const kiln_m3_linear_progr
     v.trackColor = kiln::capi::ToColor(c.track_color);
     v.strokeCap = kiln::gfx::StrokeCap(c.stroke_cap);
     v.gapSize = kiln::capi::ToDp(c.gap_size);
+    if (c.draw_stop_indicator) v.drawStopIndicator = (c.draw_stop_indicator ? std::optional<kiln::Function<void (kiln::ui::DrawScope &)>>(kiln::capi::Fn((*c.draw_stop_indicator))) : std::nullopt);
     return v;
 }
 void FromCpp(const kiln::material3::LinearProgressIndicatorOptions& v, kiln_m3_linear_progress_indicator_options* out) {

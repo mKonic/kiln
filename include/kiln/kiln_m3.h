@@ -1897,6 +1897,7 @@ struct kiln_m3_linear_progress_indicator_options {
     kiln_color track_color;
     kiln_stroke_cap stroke_cap;
     float gap_size;
+    const kiln_fn_draw* draw_stop_indicator;
 };
 KILN_API void kiln_m3_linear_progress_indicator_options_init(kiln_m3_linear_progress_indicator_options* s);
 struct kiln_m3_circular_progress_indicator_options {
