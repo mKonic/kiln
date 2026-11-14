@@ -5,6 +5,7 @@
 // so touches, focus, the keyboard and accessibility work as they do for any View; it is drawn
 // into the element through an embedded surface, so kiln's clips, alpha and content drawn over it
 // apply. A View that scrolls takes part in nested scrolling with kiln's scrollables around it.
+// A SurfaceView inside the View shows under the rest of it and under kiln's content.
 //
 //   AndroidView(AndroidViewClass("android.webkit.WebView"), FillMax(Modifier{}, Axis::Both), {
 //       .update = [](void* env, void* view) { /* JNI: view.loadUrl(...) */ },

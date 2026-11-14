@@ -12,11 +12,17 @@ import android.os.SystemClock;
 import android.util.SparseArray;
 import android.view.MotionEvent;
 import android.view.Surface;
+import android.view.SurfaceControl;
+import android.view.SurfaceHolder;
+import android.view.SurfaceView;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.ViewParent;
 import android.view.accessibility.AccessibilityNodeInfo;
 import android.widget.FrameLayout;
+
+import java.util.ArrayList;
+import java.util.Arrays;
 
 /**
  * Native Views inside kiln content (AndroidView; AndroidViewHolder and AndroidViewsHandler in
@@ -25,6 +31,11 @@ import android.widget.FrameLayout;
  * records its View into a RenderNode and renders it into its element's embedded surface, which
  * kiln draws with the rest of its frame. Touches come from kiln, which hands the element's to the
  * View (pointerInteropFilter).
+ *
+ * A SurfaceView inside has a surface of its own, which the platform puts under the window and
+ * places from the window's drawing; here the window does not draw it. So its holder puts that
+ * surface under kiln's own, where the SurfaceView is, and kiln clears its frame over it: the
+ * rest of the View and kiln's content are drawn above it, as a window's content is.
  */
 final class KilnInteropViews {
     private final KilnView owner;
@@ -92,6 +103,7 @@ final class KilnInteropViews {
         }
         @Override protected void onLayout(boolean changed, int l, int t, int r, int b) {
             view.layout(0, 0, r - l, b - t);
+            findSurfaceViews();
             scheduleDraw();
         }
         // The View wants another size: kiln measures the element again.
@@ -147,6 +159,102 @@ final class KilnInteropViews {
             if (a11yNode != View.NO_ID) owner.accessibility.initializeHolderInfo(info, a11yNode, a11yParent);
         }
 
+        // --- SurfaceViews inside ---------------------------------------------------------------
+
+        private final ArrayList<SurfaceView> surfaceViews = new ArrayList<>();
+        private final ArrayList<SurfaceView> found = new ArrayList<>();
+        private int[] holes = new int[0];
+        // Under kiln's surface, at this holder's place: the SurfaceViews' surfaces are its children.
+        private SurfaceControl surfaces;
+        private final int[] here = new int[2], there = new int[2];
+        private final SurfaceHolder.Callback surfaceCallback = new SurfaceHolder.Callback() {
+            @Override public void surfaceCreated(SurfaceHolder h) { placeSurfaces(); }
+            @Override public void surfaceChanged(SurfaceHolder h, int format, int width, int height) { placeSurfaces(); }
+            @Override public void surfaceDestroyed(SurfaceHolder h) {}
+        };
+
+        private void collect(View v) {
+            if (v instanceof SurfaceView) { found.add((SurfaceView) v); return; }
+            if (!(v instanceof ViewGroup)) return;
+            ViewGroup g = (ViewGroup) v;
+            for (int i = 0; i < g.getChildCount(); i++) collect(g.getChildAt(i));
+        }
+
+        /** After a layout: which SurfaceViews the View has now, and where. */
+        void findSurfaceViews() {
+            found.clear();
+            collect(view);
+            if (found.isEmpty() && surfaceViews.isEmpty()) return;
+            final boolean had = !surfaceViews.isEmpty();
+            for (SurfaceView v : surfaceViews) if (!found.contains(v)) v.getHolder().removeCallback(surfaceCallback);
+            for (SurfaceView v : found) if (!surfaceViews.contains(v)) v.getHolder().addCallback(surfaceCallback);
+            surfaceViews.clear();
+            surfaceViews.addAll(found);
+            found.clear();
+            if (had != !surfaceViews.isEmpty()) owner.updateSurfaceMode();
+            placeSurfaces();
+        }
+
+        boolean hasSurfaceViews() { return !surfaceViews.isEmpty(); }
+
+        /**
+         * Puts each SurfaceView's surface under kiln's, where the SurfaceView is in this holder
+         * (SurfaceView's own placing waits for a frame of the window that draws it, and here
+         * none does), and tells kiln where to clear its frame.
+         */
+        void placeSurfaces() {
+            if (surfaceViews.isEmpty()) {
+                if (holes.length != 0) { holes = new int[0]; KilnNative.interopSurfaceHoles(owner.windowId, id, holes); }
+                dropSurfaces();
+                return;
+            }
+            getLocationInWindow(here);
+            final int[] now = new int[surfaceViews.size() * 4];
+            int n = 0;
+            final SurfaceControl parent = owner.kilnSurfaceControl();
+            SurfaceControl.Transaction t = parent != null ? new SurfaceControl.Transaction() : null;
+            if (t != null) {
+                if (surfaces == null) {
+                    surfaces = new SurfaceControl.Builder().setName("kiln-interop-" + id).setParent(parent).build();
+                    t.setLayer(surfaces, -2);
+                }
+                t.setPosition(surfaces, x, y);
+                t.setVisibility(surfaces, getVisibility() == VISIBLE);
+            }
+            for (SurfaceView v : surfaceViews) {
+                final boolean shown = v.isShown() && v.getWidth() > 0 && v.getHeight() > 0;
+                v.getLocationInWindow(there);
+                final int l = there[0] - here[0], top = there[1] - here[1];
+                if (shown) {
+                    now[n++] = l; now[n++] = top; now[n++] = l + v.getWidth(); now[n++] = top + v.getHeight();
+                }
+                final SurfaceControl c = v.getSurfaceControl();
+                if (t == null || c == null || !c.isValid()) continue;
+                t.reparent(c, surfaces);
+                t.setLayer(c, 0);
+                t.setPosition(c, l, top);
+                // A surface of a fixed size is scaled to its view.
+                final Rect frame = v.getHolder().getSurfaceFrame();
+                if (frame.width() > 0 && frame.height() > 0)
+                    t.setScale(c, v.getWidth() / (float) frame.width(), v.getHeight() / (float) frame.height());
+                t.setVisibility(c, shown);
+            }
+            if (t != null) t.apply();
+            final int[] rects = n == now.length ? now : Arrays.copyOf(now, n);
+            if (!Arrays.equals(rects, holes)) {
+                holes = rects;
+                KilnNative.interopSurfaceHoles(owner.windowId, id, holes);
+            }
+        }
+
+        /** kiln's surface went (its children with it) or the SurfaceViews did. */
+        void dropSurfaces() {
+            if (surfaces == null) return;
+            new SurfaceControl.Transaction().reparent(surfaces, null).apply();
+            surfaces.release();
+            surfaces = null;
+        }
+
         void scheduleDraw() {
             if (drawPosted) return;
             drawPosted = true;
@@ -173,6 +281,7 @@ final class KilnInteropViews {
                 renderer.setLightSourceAlpha(0.039f, 0.19f);
                 renderer.setLightSourceGeometry(w / 2f, 0, 600 * density, 800 * density);
             }
+            if (!surfaceViews.isEmpty()) placeSurfaces();   // one may have moved inside the View
             node.setPosition(0, 0, w, h);
             RecordingCanvas c = node.beginRecording(w, h);
             try {
@@ -186,6 +295,9 @@ final class KilnInteropViews {
 
         void destroy() {
             removeCallbacks(drawFrame);
+            for (SurfaceView v : surfaceViews) v.getHolder().removeCallback(surfaceCallback);
+            surfaceViews.clear();
+            dropSurfaces();
             if (renderer != null) renderer.destroy();
             renderer = null;
             if (surface != null) surface.release();
@@ -260,10 +372,27 @@ final class KilnInteropViews {
     void release(int id) {
         Holder h = holders.get(id);
         if (h == null) return;
+        final boolean surfaces = h.hasSurfaceViews();
         holders.remove(id);
         h.destroy();
         h.removeAllViews();
         container.removeView(h);
+        if (surfaces) owner.updateSurfaceMode();
+    }
+
+    /** kiln's surface is translucent while a View has a SurfaceView under it. */
+    boolean hasSurfaceViews() {
+        for (int i = 0; i < holders.size(); i++) if (holders.valueAt(i).hasSurfaceViews()) return true;
+        return false;
+    }
+
+    /** kiln's own surface came (again) or went: the SurfaceViews' surfaces are its children. */
+    void kilnSurfaceChanged(boolean valid) {
+        for (int i = 0; i < holders.size(); i++) {
+            Holder h = holders.valueAt(i);
+            h.dropSurfaces();
+            if (valid) h.placeSurfaces();
+        }
     }
 
     /** Compose's obtainMeasureSpec, against the View's layout params. */
@@ -304,7 +433,7 @@ final class KilnInteropViews {
         Holder h = holders.get(id);
         if (h == null) return;
         int want = visible ? View.VISIBLE : View.INVISIBLE;
-        if (h.getVisibility() != want) h.setVisibility(want);
+        if (h.getVisibility() != want) { h.setVisibility(want); if (h.hasSurfaceViews()) h.placeSurfaces(); }
         if (!visible) return;
         final int w = r - l, hh = b - t;
         h.x = l;
@@ -312,6 +441,7 @@ final class KilnInteropViews {
         if (h.getMeasuredWidth() != w || h.getMeasuredHeight() != hh)
             h.measure(View.MeasureSpec.makeMeasureSpec(w, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(hh, View.MeasureSpec.EXACTLY));
         if (h.getLeft() != l || h.getTop() != t || h.getWidth() != w || h.getHeight() != hh || h.isLayoutRequested()) h.layout(l, t, r, b);
+        else if (h.hasSurfaceViews()) h.placeSurfaces();
     }
 
     void target(int id, Surface surface) {

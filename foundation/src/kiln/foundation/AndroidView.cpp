@@ -36,7 +36,7 @@ namespace kiln::foundation {
         // The View's holder on kiln's side (AndroidViewHolder + pointerInteropFilter): makes and
         // keeps the View while attached, places it, hands it touches, and runs the callbacks.
         class InteropNode final : public ui::ModifierNode, public ui::PointerInputModifier, public ui::GlobalPositionAwareModifier,
-                                  public ui::LayoutAwareModifier, public ui::InteropViewClient, public rt::Subscriber {
+                                  public ui::LayoutAwareModifier, public ui::DrawModifier, public ui::InteropViewClient, public rt::Subscriber {
         public:
             CallbacksPtr params;
             explicit InteropNode(CallbacksPtr p) : params(std::move(p)) { params->node = this; }
@@ -48,8 +48,27 @@ namespace kiln::foundation {
             ui::PointerInputModifier* AsPointerInput() override { return this; }
             ui::GlobalPositionAwareModifier* AsGlobalPositionAware() override { return this; }
             ui::LayoutAwareModifier* AsLayoutAware() override { return this; }
+            ui::DrawModifier* AsDraw() override { return this; }
 
             void OnParamsChanged() { params->node = this; }
+
+            // A SurfaceView's surface is below kiln's: it shows through a hole cleared where it
+            // is, under the rest of the View (drawn next) and whatever kiln draws over it.
+            void Draw(ui::ContentDrawScope& s) override {
+                if (!m_Holes.empty()) {
+                    s.Save();
+                    s.SetBlendMode(gfx::BlendMode::Clear);
+                    for (const ui::IntRect& h : m_Holes)
+                        s.DrawRect(ui::Color(0xFF000000u), { float(h.left), float(h.top) }, { float(h.right - h.left), float(h.bottom - h.top) });
+                    s.Restore();
+                }
+                s.DrawContent();
+            }
+            void OnSurfaceHoles(std::vector<ui::IntRect> holes) override {
+                if (holes == m_Holes) return;
+                m_Holes = std::move(holes);
+                InvalidateDraw();
+            }
 
             void OnAttach() override {
                 ui::Owner* owner = Owner() ? Owner()->GetOwner() : nullptr;
@@ -223,6 +242,7 @@ namespace kiln::foundation {
             bool m_Kept = false;
             State m_State = State::Unknown;
             bool m_Disallow = false;
+            std::vector<ui::IntRect> m_Holes;
             const void* m_LastInitial = nullptr;
             rt::Job m_Fling;
             std::shared_ptr<const char> m_Alive = std::make_shared<const char>(0);

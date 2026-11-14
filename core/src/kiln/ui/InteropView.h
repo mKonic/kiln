@@ -12,6 +12,7 @@
 #include <kiln/Function.h>
 
 #include <cstdint>
+#include <vector>
 
 namespace kiln::ui {
 
@@ -40,6 +41,9 @@ namespace kiln::ui {
         virtual void OnNestedFling(float velocityX, float velocityY, bool consumed) = 0;
         // requestChildRectangleOnScreen: bring this part of the element into view.
         virtual void OnRequestRectangleOnScreen(Rect rect) = 0;
+        // Where the View has SurfaceViews, in the element's pixels. Their surfaces are below
+        // kiln's, so the element clears its frame there for them to show through.
+        virtual void OnSurfaceHoles(std::vector<IntRect> holes) = 0;
         // The element's layout node (where its semantics are, for accessibility).
         virtual const LayoutNode* Node() const = 0;
     };

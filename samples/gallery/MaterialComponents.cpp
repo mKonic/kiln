@@ -19,6 +19,7 @@
 #include <kiln/foundation/AndroidView.h>
 #if defined(__ANDROID__)
 #include <jni.h>
+#include <android/native_window_jni.h>
 #endif
 #include <kiln/material3/Checkbox.h>
 #include <kiln/material3/Card.h>
@@ -1393,6 +1394,13 @@ namespace kiln::gallery {
             });
         }
 
+        rt::Task<> MoveStripes(rt::State<int>* shift) {
+            for (;;) {
+                co_await rt::Delay(50);
+                shift->Set(shift->Peek() + 1);
+            }
+        }
+
         // Android Views inside kiln: a WebView with a local page, a SeekBar to drag, and a
         // platform ScrollView whose scrolling chains into the page's (nested scrolling).
         void NativeViews() {
@@ -1455,6 +1463,49 @@ namespace kiln::gallery {
                 (void)e; (void)v;
 #endif
             }), Height(FillMax(Modifier{}, Axis::Horizontal), 120_dp));
+
+            // A SurfaceView (what video players, camera previews and maps draw into), painted
+            // from here with moving stripes; the label is kiln's, drawn over it.
+            m3::Text("SurfaceView");
+            auto& phase = RememberState(0);
+            auto* tick = &phase;
+            rt::Composition::Current()->LaunchedEffect({}, [tick] { return MoveStripes(tick); });
+            Box(Height(FillMax(Modifier{}, Axis::Horizontal), 120_dp), Alignment::Center(), false, [tick] {
+                AndroidViewOptions paint;
+                paint.update = [tick](void* e, void* v) {
+                    const int shift = tick->Get();   // read here: each change paints again
+#if defined(__ANDROID__)
+                    auto* env = static_cast<JNIEnv*>(e);
+                    auto view = static_cast<jobject>(v);
+                    jclass viewClass = env->GetObjectClass(view);
+                    jobject holder = env->CallObjectMethod(view, env->GetMethodID(viewClass, "getHolder", "()Landroid/view/SurfaceHolder;"));
+                    jclass holderClass = env->GetObjectClass(holder);
+                    jobject surface = env->CallObjectMethod(holder, env->GetMethodID(holderClass, "getSurface", "()Landroid/view/Surface;"));
+                    jclass surfaceClass = env->GetObjectClass(surface);
+                    if (env->CallBooleanMethod(surface, env->GetMethodID(surfaceClass, "isValid", "()Z"))) {
+                        if (ANativeWindow* window = ANativeWindow_fromSurface(env, surface)) {
+                            ANativeWindow_setBuffersGeometry(window, 0, 0, WINDOW_FORMAT_RGBA_8888);
+                            ANativeWindow_Buffer buffer;
+                            if (ANativeWindow_lock(window, &buffer, nullptr) == 0) {
+                                for (int y = 0; y < buffer.height; ++y) {
+                                    auto* row = static_cast<std::uint32_t*>(buffer.bits) + y * buffer.stride;
+                                    for (int x = 0; x < buffer.width; ++x)
+                                        row[x] = ((x + y + shift * 6) / 48) % 2 ? 0xFFA45067u : 0xFFFFDDEAu;   // ABGR: the theme's primary and its container
+                                }
+                                ANativeWindow_unlockAndPost(window);
+                            }
+                            ANativeWindow_release(window);
+                        }
+                    }
+                    for (jobject r : { static_cast<jobject>(viewClass), holder, static_cast<jobject>(holderClass), surface, static_cast<jobject>(surfaceClass) })
+                        env->DeleteLocalRef(r);
+#else
+                    (void)e; (void)v; (void)shift;
+#endif
+                };
+                AndroidView(AndroidViewClass("android.view.SurfaceView"), FillMax(Modifier{}, Axis::Both), std::move(paint));
+                m3::Text("kiln text over the surface", {}, { .color = Color(0xFFFFFFFFu) });
+            });
         }
 
         void IconButtons() {

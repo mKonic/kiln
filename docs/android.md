@@ -190,8 +190,8 @@ AndroidView(AndroidViewClass("android.webkit.WebView"), Height(FillMax(Modifier{
   `NestedScrollView`, scrolls kiln's scrollables around it once it reaches its end.
 * From C it is `kiln_android_view` and `kiln_android_view_class`, from kiln++
   `kpp::android_view`, and from Rust `kiln::android_view`.
-* A `SurfaceView` inside an `AndroidView` is not drawn. Use `AndroidExternalSurface` for
-  video and camera content.
+* A `SurfaceView` inside the View (a video player's, a camera preview's, a map's) shows under
+  the rest of the View and under kiln content drawn over it, as it does in a window.
 
 ## kiln inside your own layout
 

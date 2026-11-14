@@ -733,14 +733,22 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback2 {
     }
 
     /** This view's surface lets surfaces below it show through while there are any. */
-    private void updateSurfaceMode() {
+    void updateSurfaceMode() {
         if (windowId != 0) return;   // a dialog's surface is translucent already
         boolean below = false;
         for (int i = 0; i < externals.size(); ++i) if (externals.valueAt(i).zOrder != 2) below = true;
+        if (interop != null && interop.hasSurfaceViews()) below = true;
         if (below == translucentForExternals) return;
         translucentForExternals = below;
         // RGB_565 is SurfaceView's own default (opaque); the change recreates the surface.
         surfaceView.getHolder().setFormat(below ? android.graphics.PixelFormat.TRANSLUCENT : android.graphics.PixelFormat.RGB_565);
+    }
+
+    /** The SurfaceControl kiln draws into, for surfaces layered under it (null while it has none). */
+    android.view.SurfaceControl kilnSurfaceControl() {
+        if (!kilnSurfaceValid) return null;
+        android.view.SurfaceControl c = surfaceView.getSurfaceControl();
+        return c != null && c.isValid() ? c : null;
     }
 
     private static int layerOf(int zOrder) { return zOrder == 2 ? 1 : zOrder == 1 ? -1 : -2; }
@@ -1971,6 +1979,7 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback2 {
         KilnNative.surfaceCreated(windowId, holder.getSurface());
         kilnSurfaceValid = true;
         for (int i = 0; i < externals.size(); ++i) syncExternal(externals.keyAt(i), externals.valueAt(i));
+        if (interop != null) interop.kilnSurfaceChanged(true);
     }
 
     @Override
@@ -2009,6 +2018,7 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback2 {
         // External surfaces are children of this one: they go with it and come back after.
         kilnSurfaceValid = false;
         for (int i = 0; i < externals.size(); ++i) destroyExternal(externals.keyAt(i), externals.valueAt(i));
+        if (interop != null) interop.kilnSurfaceChanged(false);
         KilnNative.surfaceDestroyed(windowId);
     }
 }

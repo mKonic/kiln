@@ -3245,6 +3245,20 @@ namespace {
         WinScope ws(win);
         if (auto* c = InteropClient(id, ws)) { c->OnRequestRemeasure(); g_Host->app->RequestFrame(); }
     }
+    void InteropSurfaceHoles(JNIEnv* env, jclass, jint win, jint id, jintArray rects) {
+        WinScope ws(win);
+        auto* c = InteropClient(id, ws);
+        if (!c) return;
+        std::vector<kiln::ui::IntRect> holes;
+        if (rects) {
+            const jsize n = env->GetArrayLength(rects);
+            std::vector<jint> v(static_cast<std::size_t>(n));
+            env->GetIntArrayRegion(rects, 0, n, v.data());
+            for (std::size_t i = 0; i + 3 < v.size(); i += 4) holes.push_back({ v[i], v[i + 1], v[i + 2], v[i + 3] });
+        }
+        c->OnSurfaceHoles(std::move(holes));
+        g_Host->app->RequestFrame();
+    }
     void InteropDisallowIntercept(JNIEnv*, jclass, jint win, jint id, jboolean disallow) {
         WinScope ws(win);
         if (auto* c = InteropClient(id, ws)) c->OnRequestDisallowInterceptTouchEvent(disallow);
@@ -3443,6 +3457,7 @@ extern "C" JNIEXPORT jint kiln_jni_onload(JavaVM* vm) {
         { "externalSurfaceCreated", "(IILandroid/view/Surface;II)V", reinterpret_cast<void*>(&ExternalSurfaceCreated) },
         { "interopRequestLayout", "(II)V", reinterpret_cast<void*>(&InteropRequestLayout) },
         { "interopDisallowIntercept", "(IIZ)V", reinterpret_cast<void*>(&InteropDisallowIntercept) },
+        { "interopSurfaceHoles", "(II[I)V", reinterpret_cast<void*>(&InteropSurfaceHoles) },
         { "interopRequestRectangle", "(IIIIII)V", reinterpret_cast<void*>(&InteropRequestRectangle) },
         { "interopNestedPreScroll", "(IIIIZ)[I", reinterpret_cast<void*>(&InteropNestedPreScroll) },
         { "interopNestedScroll", "(IIIIIIZ)[I", reinterpret_cast<void*>(&InteropNestedScroll) },
