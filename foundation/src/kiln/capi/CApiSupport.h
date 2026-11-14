@@ -52,6 +52,7 @@ struct kiln_interaction_source { std::shared_ptr<kiln::foundation::MutableIntera
 struct kiln_scroll_state { kiln::foundation::ScrollState* state; std::shared_ptr<kiln::rt::CoroutineScope> scope; };
 struct kiln_lazy_list_state { kiln::foundation::LazyListState* state; std::shared_ptr<kiln::rt::CoroutineScope> scope; };
 struct kiln_lazy_grid_state { kiln::foundation::LazyGridState* state; std::shared_ptr<kiln::rt::CoroutineScope> scope; };
+struct kiln_layout_coordinates { kiln::ui::LayoutCoordinates c; };
 struct kiln_fling_behavior { kiln::foundation::FlingBehavior fling; };
 struct kiln_pager_state {
     kiln::foundation::PagerState* state;
@@ -204,7 +205,8 @@ namespace kiln::capi {
     // A C++ callback for C to call (not to keep or drop): valid until the outermost callback returns.
     kiln_fn TransientFn(kiln::Function<void()> fn);
     const foundation::ScrollIndicatorState& ToScrollIndicator(const kiln_scroll_indicator_state* s);   // null: sizes unknown
-    kiln_fling_behavior* TransientFling(foundation::FlingBehavior fling);   // null for an empty one
+    kiln_fling_behavior* TransientFling(foundation::FlingBehavior fling);
+    const kiln_layout_coordinates* TransientCoordinates(const ui::LayoutCoordinates& c);   // null for an empty one
     template<typename T>
     T* NewTransient() {
         auto p = std::make_shared<T>();

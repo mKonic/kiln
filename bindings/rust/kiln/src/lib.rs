@@ -76,6 +76,8 @@ __kiln_callback!(sys::kiln_fn_int, (v: i32) -> ());
 __kiln_callback!(sys::kiln_fn_float, (v: f32) -> ());
 __kiln_callback!(sys::kiln_fn_lazy, (s: *mut sys::kiln_lazy_scope) -> ());
 __kiln_callback!(sys::kiln_fn_item_key, (i: i32) -> sys::kiln_key);
+__kiln_callback!(sys::kiln_fn_layout_coordinates, (c: *const sys::kiln_layout_coordinates) -> ());
+__kiln_callback!(sys::kiln_fn_size, (s: sys::kiln_int_size) -> ());
 __kiln_callback!(sys::kiln_fn_lazy_grid, (s: *mut sys::kiln_lazy_grid_scope) -> ());
 __kiln_callback!(sys::kiln_fn_grid_span, (i: i32, max_current_line_span: i32, max_line_span: i32) -> i32);
 __kiln_callback!(sys::kiln_fn_count, () -> i32);
@@ -186,6 +188,20 @@ impl Modifier {
     /// paddingFrom: `before` / `after` are dp, `f32::NAN` to leave a side alone.
     pub fn padding_from(self, line: AlignmentLine, before: f32, after: f32) -> Self {
         Modifier(unsafe { sys::kiln_mod_padding_from(self.0, line.0, before, after) })
+    }
+    /// `f(coordinates)` after any move in the window.
+    pub fn on_globally_positioned(self, mut f: impl FnMut(&LayoutCoordinates) + 'static) -> Self {
+        let c = move |p: *const sys::kiln_layout_coordinates| f(&LayoutCoordinates(p));
+        Modifier(unsafe { sys::kiln_mod_on_globally_positioned(self.0, c.into_callback()) })
+    }
+    pub fn on_placed(self, mut f: impl FnMut(&LayoutCoordinates) + 'static) -> Self {
+        let c = move |p: *const sys::kiln_layout_coordinates| f(&LayoutCoordinates(p));
+        Modifier(unsafe { sys::kiln_mod_on_placed(self.0, c.into_callback()) })
+    }
+    /// `f(width, height)` in px.
+    pub fn on_size_changed(self, mut f: impl FnMut(i32, i32) + 'static) -> Self {
+        let c = move |s: sys::kiln_int_size| f(s.width, s.height);
+        Modifier(unsafe { sys::kiln_mod_on_size_changed(self.0, c.into_callback()) })
     }
     pub fn focus_requester(self, r: FocusRequester) -> Self { Modifier(unsafe { sys::kiln_mod_focus_requester(self.0, r.0) }) }
     pub fn focusable(self, enabled: bool) -> Self { Modifier(unsafe { sys::kiln_mod_focusable(self.0, enabled) }) }
@@ -514,6 +530,25 @@ pub fn animate_color(target: sys::kiln_color) -> sys::kiln_color { unsafe { sys:
 #[track_caller]
 pub fn animated_visibility(visible: bool, modifier: Modifier, content: impl FnMut() + 'static) {
     unsafe { sys::kiln_animated_visibility(here(), visible, modifier.0, content.into_callback()) }
+}
+
+/// Where an element sits, in px; only valid inside the callback that gave it.
+pub struct LayoutCoordinates(pub *const sys::kiln_layout_coordinates);
+impl LayoutCoordinates {
+    pub fn is_attached(&self) -> bool { unsafe { sys::kiln_layout_coordinates_is_attached(self.0) } }
+    pub fn size(&self) -> sys::kiln_int_size { unsafe { sys::kiln_layout_coordinates_size(self.0) } }
+    pub fn position_in_root(&self) -> sys::kiln_offset { unsafe { sys::kiln_layout_coordinates_position_in_root(self.0) } }
+    pub fn bounds_in_root(&self) -> sys::kiln_rect { unsafe { sys::kiln_layout_coordinates_bounds_in_root(self.0) } }
+    pub fn position_in_window(&self) -> sys::kiln_offset { unsafe { sys::kiln_layout_coordinates_position_in_window(self.0) } }
+    pub fn bounds_in_window(&self) -> sys::kiln_rect { unsafe { sys::kiln_layout_coordinates_bounds_in_window(self.0) } }
+    pub fn position_in_parent(&self) -> sys::kiln_offset { unsafe { sys::kiln_layout_coordinates_position_in_parent(self.0) } }
+    pub fn bounds_in_parent(&self) -> sys::kiln_rect { unsafe { sys::kiln_layout_coordinates_bounds_in_parent(self.0) } }
+    pub fn local_position_of(&self, source: &LayoutCoordinates, relative: sys::kiln_offset) -> sys::kiln_offset {
+        unsafe { sys::kiln_layout_coordinates_local_position_of(self.0, source.0, relative) }
+    }
+    pub fn local_bounding_box_of(&self, source: &LayoutCoordinates) -> sys::kiln_rect {
+        unsafe { sys::kiln_layout_coordinates_local_bounding_box_of(self.0, source.0) }
+    }
 }
 
 /// FocusRequester: `request_focus` moves focus to the focusable after `.focus_requester(r)`.

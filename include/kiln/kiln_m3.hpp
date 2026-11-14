@@ -477,7 +477,7 @@ namespace kpp::m3 {
         void dispatch_raw_delta(float delta, kpp::Callback<kiln_fn_float> on_change = {}) const;
         void configure(kiln_orientation orientation, bool rtl, bool reverse_vertical) const;
         void update_dimensions(int32_t width, int32_t height, int32_t thumb_width, int32_t thumb_height) const;
-        void on_press(const kiln_offset* position = {}) const;
+        void on_press(const kiln_ui_offset* position = {}) const;
         void set_dragging(bool value) const;
         void set_focused(bool value) const;
         bool is_focused() const;
@@ -571,6 +571,7 @@ namespace kpp::m3 {
         operator kiln_m3_tooltip_scope*() const { return m_H; }
         kiln_m3_tooltip_scope* get() const { return m_H; }
         explicit operator bool() const { return m_H != nullptr; }
+        const kiln_layout_coordinates* obtain_anchor_bounds() const;
         kiln_popup_position_provider* obtain_position_provider() const;
     private:
         kiln_m3_tooltip_scope* m_H;
@@ -829,7 +830,7 @@ namespace kpp::m3 {
     inline void SliderState::dispatch_raw_delta(float delta, kpp::Callback<kiln_fn_float> on_change) const { kiln_m3_slider_state_dispatch_raw_delta(m_H, delta, on_change.release()); }
     inline void SliderState::configure(kiln_orientation orientation, bool rtl, bool reverse_vertical) const { kiln_m3_slider_state_configure(m_H, orientation, rtl, reverse_vertical); }
     inline void SliderState::update_dimensions(int32_t width, int32_t height, int32_t thumb_width, int32_t thumb_height) const { kiln_m3_slider_state_update_dimensions(m_H, width, height, thumb_width, thumb_height); }
-    inline void SliderState::on_press(const kiln_offset* position) const { kiln_m3_slider_state_on_press(m_H, position); }
+    inline void SliderState::on_press(const kiln_ui_offset* position) const { kiln_m3_slider_state_on_press(m_H, position); }
     inline void SliderState::set_dragging(bool value) const { kiln_m3_slider_state_set_dragging(m_H, value); }
     inline void SliderState::set_focused(bool value) const { kiln_m3_slider_state_set_focused(m_H, value); }
     inline bool SliderState::is_focused() const { return kiln_m3_slider_state_is_focused(m_H); }
@@ -869,6 +870,7 @@ namespace kpp::m3 {
     inline void TimePickerState::set_is24_hour(bool is24_hour) const { kiln_m3_time_picker_state_set_is24_hour(m_H, is24_hour); }
     inline kiln_m3_time_picker_selection_mode TimePickerState::selection() const { return kiln_m3_time_picker_state_selection(m_H); }
     inline void TimePickerState::set_selection(kiln_m3_time_picker_selection_mode selection) const { kiln_m3_time_picker_state_set_selection(m_H, selection); }
+    inline const kiln_layout_coordinates* TooltipScope::obtain_anchor_bounds() const { return kiln_m3_tooltip_scope_obtain_anchor_bounds(m_H); }
     inline kiln_popup_position_provider* TooltipScope::obtain_position_provider() const { return kiln_m3_tooltip_scope_obtain_position_provider(m_H); }
     inline kiln_transition_state* TooltipState::transition() const { return kiln_m3_tooltip_state_transition(m_H); }
     inline bool TooltipState::is_visible() const { return kiln_m3_tooltip_state_is_visible(m_H); }

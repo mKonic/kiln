@@ -221,6 +221,12 @@ namespace kpp {
         Modifier align_in_column(float horizontalBias) const { return kiln_mod_align_in_column(m_M, horizontalBias); }
         Modifier match_parent_size() const { return kiln_mod_match_parent_size(m_M); }
         Modifier focus_requester(kiln_focus_requester* r) const { return kiln_mod_focus_requester(m_M, r); }
+        // f(const kiln_layout_coordinates*): valid during the call.
+        template<typename F> Modifier on_globally_positioned(F&& f) const {
+            return kiln_mod_on_globally_positioned(m_M, fn<kiln_fn_layout_coordinates>(std::forward<F>(f)));
+        }
+        template<typename F> Modifier on_placed(F&& f) const { return kiln_mod_on_placed(m_M, fn<kiln_fn_layout_coordinates>(std::forward<F>(f))); }
+        template<typename F> Modifier on_size_changed(F&& f) const { return kiln_mod_on_size_changed(m_M, fn<kiln_fn_size>(std::forward<F>(f))); }
         Modifier focusable(bool enabled = true) const { return kiln_mod_focusable(m_M, enabled); }
         template<typename F> Modifier on_focus_changed(F&& f) const { return kiln_mod_on_focus_changed(m_M, fn<kiln_fn_bool>(std::forward<F>(f))); }
         Modifier align_by(const kiln_alignment_line* line) const { return kiln_mod_align_by(m_M, line); }

@@ -565,9 +565,9 @@ namespace {
 [[maybe_unused]] kiln::material3::SliderTrackOptions ToCpp(const kiln_m3_slider_track_options* c);
 [[maybe_unused]] void FromCpp(const kiln::material3::SliderTrackOptions& v, kiln_m3_slider_track_options* out);
 [[maybe_unused]] const kiln_m3_slider_track_options* FromCppTransient(const kiln::material3::SliderTrackOptions& v);
-[[maybe_unused]] kiln::ui::Offset ToCpp(const kiln_offset* c);
-[[maybe_unused]] void FromCpp(const kiln::ui::Offset& v, kiln_offset* out);
-[[maybe_unused]] const kiln_offset* FromCppTransient(const kiln::ui::Offset& v);
+[[maybe_unused]] kiln::ui::Offset ToCpp(const kiln_ui_offset* c);
+[[maybe_unused]] void FromCpp(const kiln::ui::Offset& v, kiln_ui_offset* out);
+[[maybe_unused]] const kiln_ui_offset* FromCppTransient(const kiln::ui::Offset& v);
 [[maybe_unused]] kiln::material3::SplitButtonShapes ToCpp(const kiln_m3_split_button_shapes* c);
 [[maybe_unused]] void FromCpp(const kiln::material3::SplitButtonShapes& v, kiln_m3_split_button_shapes* out);
 [[maybe_unused]] const kiln_m3_split_button_shapes* FromCppTransient(const kiln::material3::SplitButtonShapes& v);
@@ -6775,20 +6775,20 @@ const kiln_m3_slider_track_options* FromCppTransient(const kiln::material3::Slid
     FromCpp(v, c);
     return c;
 }
-kiln::ui::Offset ToCpp(const kiln_offset* in) {
+kiln::ui::Offset ToCpp(const kiln_ui_offset* in) {
     kiln::ui::Offset v{};
     if (!in) return v;
-    kiln_offset c;
-    kiln_offset_init(&c);
+    kiln_ui_offset c;
+    kiln_ui_offset_init(&c);
     if (in->size > sizeof(size_t)) std::memcpy(reinterpret_cast<char*>(&c) + sizeof(size_t), reinterpret_cast<const char*>(in) + sizeof(size_t), std::min(in->size, sizeof(c)) - sizeof(size_t));
     v.x = c.x;
     v.y = c.y;
     return v;
 }
-void FromCpp(const kiln::ui::Offset& v, kiln_offset* out) {
+void FromCpp(const kiln::ui::Offset& v, kiln_ui_offset* out) {
     (void)v;
     if (!out) return;
-    kiln_offset c{};
+    kiln_ui_offset c{};
     c.size = sizeof(c);
     c.x = float(v.x);
     c.y = float(v.y);
@@ -6796,8 +6796,8 @@ void FromCpp(const kiln::ui::Offset& v, kiln_offset* out) {
     std::memcpy(reinterpret_cast<char*>(out) + sizeof(size_t), reinterpret_cast<const char*>(&c) + sizeof(size_t), n - sizeof(size_t));
     out->size = n;
 }
-const kiln_offset* FromCppTransient(const kiln::ui::Offset& v) {
-    auto* c = kiln::capi::NewTransient<kiln_offset>();
+const kiln_ui_offset* FromCppTransient(const kiln::ui::Offset& v) {
+    auto* c = kiln::capi::NewTransient<kiln_ui_offset>();
     c->size = sizeof(*c);
     FromCpp(v, c);
     return c;
@@ -8894,7 +8894,7 @@ KILN_API void kiln_m3_slider_track_options_init(kiln_m3_slider_track_options* s)
     if (!s) return;
     KILN_CAPI_TRY { s->size = sizeof(*s); FromCpp(kiln::material3::SliderTrackOptions{}, s); } KILN_CAPI_CATCH()
 }
-KILN_API void kiln_offset_init(kiln_offset* s) {
+KILN_API void kiln_ui_offset_init(kiln_ui_offset* s) {
     if (!s) return;
     KILN_CAPI_TRY { s->size = sizeof(*s); FromCpp(kiln::ui::Offset{}, s); } KILN_CAPI_CATCH()
 }
@@ -18341,6 +18341,14 @@ KILN_API const kiln_modifier* kiln_m3_floating_toolbar_scroll_behavior_floating_
         return kiln::capi::NewModifier((*r));
     } KILN_CAPI_CATCH({})
 }
+KILN_API const kiln_layout_coordinates* kiln_m3_tooltip_scope_obtain_anchor_bounds(const kiln_m3_tooltip_scope* self) {
+    KILN_CAPI_TRY {
+        if (!self) return {};
+        std::optional<std::remove_cvref_t<decltype(self->ptr->ObtainAnchorBounds())>> r;
+        r.emplace(self->ptr->ObtainAnchorBounds());
+        return ([&]() -> const kiln_layout_coordinates* { if (!((*r))) return nullptr;  return kiln::capi::TransientCoordinates((*((*r)))); }());
+    } KILN_CAPI_CATCH({})
+}
 KILN_API kiln_popup_position_provider* kiln_m3_tooltip_scope_obtain_position_provider(const kiln_m3_tooltip_scope* self) {
     KILN_CAPI_TRY {
         if (!self) return {};
@@ -18868,7 +18876,7 @@ KILN_API void kiln_m3_slider_state_update_dimensions(kiln_m3_slider_state* self,
         self->ptr->UpdateDimensions(a0, a1, a2, a3);
     } KILN_CAPI_CATCH()
 }
-KILN_API void kiln_m3_slider_state_on_press(kiln_m3_slider_state* self, const kiln_offset* position) {
+KILN_API void kiln_m3_slider_state_on_press(kiln_m3_slider_state* self, const kiln_ui_offset* position) {
     KILN_CAPI_TRY {
         if (!self) return;
         auto&& a0 = ToCpp(position);

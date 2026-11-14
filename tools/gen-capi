@@ -513,6 +513,9 @@ class Generator:
         if k == 'kiln::ui::FocusRequester':
             return Mapping('kiln_focus_requester*', lambda e: f'*reinterpret_cast<kiln::ui::FocusRequester*>({e})',
                            lambda e, o: f'reinterpret_cast<kiln_focus_requester*>(&({e}))')
+        if k == 'kiln::ui::LayoutCoordinates':
+            return Mapping('const kiln_layout_coordinates*', lambda e: f'({e} ? {e}->c : kiln::ui::LayoutCoordinates{{}})',
+                           lambda e, o: f'kiln::capi::TransientCoordinates({e})')
         if k == 'kiln::ui::AlignmentLine':
             # Lines are compared by address: a C handle is the line's own address.
             return Mapping('const kiln_alignment_line*', lambda e: f'*reinterpret_cast<const kiln::ui::AlignmentLine*>({e})',

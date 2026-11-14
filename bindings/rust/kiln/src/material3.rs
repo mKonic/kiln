@@ -4843,6 +4843,9 @@ pub fn floating_toolbar_scroll_behavior_nested_scroll_connection(this: *const sy
 pub fn floating_toolbar_scroll_behavior_floating_scroll_behavior(this: *const sys::kiln_m3_floating_toolbar_scroll_behavior, m: Modifier) -> *const sys::kiln_modifier {
     unsafe { sys::kiln_m3_floating_toolbar_scroll_behavior_floating_scroll_behavior(this, m.raw()) }
 }
+pub fn tooltip_scope_obtain_anchor_bounds(this: *const sys::kiln_m3_tooltip_scope) -> *const sys::kiln_layout_coordinates {
+    unsafe { sys::kiln_m3_tooltip_scope_obtain_anchor_bounds(this) }
+}
 pub fn tooltip_scope_obtain_position_provider(this: *const sys::kiln_m3_tooltip_scope) -> *mut sys::kiln_popup_position_provider {
     unsafe { sys::kiln_m3_tooltip_scope_obtain_position_provider(this) }
 }
@@ -5046,7 +5049,7 @@ pub fn slider_state_configure(this: *mut sys::kiln_m3_slider_state, orientation:
 pub fn slider_state_update_dimensions(this: *mut sys::kiln_m3_slider_state, width: i32, height: i32, thumb_width: i32, thumb_height: i32) {
     unsafe { sys::kiln_m3_slider_state_update_dimensions(this, width, height, thumb_width, thumb_height) }
 }
-pub fn slider_state_on_press(this: *mut sys::kiln_m3_slider_state, position: *const sys::kiln_offset) {
+pub fn slider_state_on_press(this: *mut sys::kiln_m3_slider_state, position: *const sys::kiln_ui_offset) {
     unsafe { sys::kiln_m3_slider_state_on_press(this, position) }
 }
 pub fn slider_state_set_dragging(this: *mut sys::kiln_m3_slider_state, value: bool) {

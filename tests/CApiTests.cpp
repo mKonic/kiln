@@ -387,6 +387,36 @@ TEST(CApiFocusRequesterFocusesItsFocusable) {
     CHECK(secondFocused && !firstFocused);
 }
 
+TEST(CApiLayoutCoordinatesReportWhereAnElementSits) {
+    static kiln_offset inRoot, inParent;
+    static kiln_int_size size, changed;
+    static bool attached;
+    inRoot = inParent = {};
+    size = changed = {};
+    attached = false;
+    Harness h;
+    h.Run([](void*) {
+        kpp::column(kpp::Modifier(), [] {
+            kiln_box(KILN_HERE, kiln_mod_size(NULL, 10, 30), NULL, KILN_FN(NULL, NULL));
+            kiln_box(KILN_HERE,
+                     kpp::Modifier().padding(5).size(40, 20)
+                         .on_globally_positioned([](const kiln_layout_coordinates* c) {
+                             attached = kiln_layout_coordinates_is_attached(c);
+                             size = kiln_layout_coordinates_size(c);
+                             inRoot = kiln_layout_coordinates_position_in_root(c);
+                             inParent = kiln_layout_coordinates_position_in_parent(c);
+                         })
+                         .on_size_changed([](kiln_int_size s) { changed = s; }),
+                     NULL, KILN_FN(NULL, NULL));
+        });
+    });
+    CHECK(attached);
+    CHECK(size.width == 40 && size.height == 20);
+    CHECK(changed.width == 40 && changed.height == 20);
+    CHECK(inRoot.x == 5 && inRoot.y == 35);   // under the 30 tall box, inside the padding
+    CHECK(inParent.y == 35);
+}
+
 TEST(CApiAndroidViewMakesUpdatesAndReleasesItsView) {
     static int made, updates, released, dropped;
     made = updates = released = dropped = 0;

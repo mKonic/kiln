@@ -141,6 +141,7 @@ typedef struct kiln_dp_size { float width, height; } kiln_dp_size;
 typedef struct kiln_dp_offset { float x, y; } kiln_dp_offset;
 typedef struct kiln_int_size { int32_t width, height; } kiln_int_size;
 typedef struct kiln_rect { float left, top, right, bottom; } kiln_rect;
+typedef struct kiln_offset { float x, y; } kiln_offset;   /* px */
 /* A corner's size: dp + px + percent of the shape's smaller side. */
 typedef struct kiln_corner_size { float dp, px, percent; } kiln_corner_size;
 typedef enum kiln_text_unit_type { KILN_TEXT_UNIT_UNSPECIFIED, KILN_TEXT_UNIT_SP, KILN_TEXT_UNIT_EM } kiln_text_unit_type;
@@ -154,6 +155,7 @@ typedef struct kiln_fn { void (*call)(void* user); void* user; void (*drop)(void
 typedef struct kiln_fn_bool { void (*call)(void* user, bool value); void* user; void (*drop)(void* user); } kiln_fn_bool;
 typedef struct kiln_fn_int { void (*call)(void* user, int32_t value); void* user; void (*drop)(void* user); } kiln_fn_int;
 typedef struct kiln_fn_float { void (*call)(void* user, float value); void* user; void (*drop)(void* user); } kiln_fn_float;
+typedef struct kiln_fn_size { void (*call)(void* user, kiln_int_size size); void* user; void (*drop)(void* user); } kiln_fn_size;
 typedef struct kiln_fn_str { void (*call)(void* user, const char* utf8); void* user; void (*drop)(void* user); } kiln_fn_str;
 
 /* A callback made of a function and a pointer only (no drop). */
@@ -412,6 +414,27 @@ KILN_API kiln_modifier* kiln_mod_align_by(kiln_modifier* m, const kiln_alignment
 /* paddingFrom: space so the line sits `before` from the top (start) and `after` from the bottom
  * (end); KILN_DP_UNSPECIFIED for either leaves that side alone. */
 KILN_API kiln_modifier* kiln_mod_padding_from(kiln_modifier* m, const kiln_alignment_line* line, float before, float after);
+/* Layout coordinates: where an element sits, in px. Valid until the callback that gave them
+ * returns (as Compose's, a view read when asked). */
+typedef struct kiln_layout_coordinates kiln_layout_coordinates;
+typedef struct kiln_fn_layout_coordinates { void (*call)(void* user, const kiln_layout_coordinates* coordinates); void* user; void (*drop)(void* user); } kiln_fn_layout_coordinates;
+KILN_API bool kiln_layout_coordinates_is_attached(const kiln_layout_coordinates* c);
+KILN_API kiln_int_size kiln_layout_coordinates_size(const kiln_layout_coordinates* c);
+KILN_API kiln_offset kiln_layout_coordinates_position_in_root(const kiln_layout_coordinates* c);
+KILN_API kiln_rect kiln_layout_coordinates_bounds_in_root(const kiln_layout_coordinates* c);
+KILN_API kiln_offset kiln_layout_coordinates_position_in_window(const kiln_layout_coordinates* c);
+KILN_API kiln_rect kiln_layout_coordinates_bounds_in_window(const kiln_layout_coordinates* c);
+KILN_API kiln_offset kiln_layout_coordinates_position_in_parent(const kiln_layout_coordinates* c);
+KILN_API kiln_rect kiln_layout_coordinates_bounds_in_parent(const kiln_layout_coordinates* c);
+/* localPositionOf / localBoundingBoxOf: `source`'s point / bounds in c's space. */
+KILN_API kiln_offset kiln_layout_coordinates_local_position_of(const kiln_layout_coordinates* c, const kiln_layout_coordinates* source,
+                                                               kiln_offset relative_to_source);
+KILN_API kiln_rect kiln_layout_coordinates_local_bounding_box_of(const kiln_layout_coordinates* c, const kiln_layout_coordinates* source);
+/* onGloballyPositioned (after any move in the window) / onPlaced (when placed in its parent). */
+KILN_API kiln_modifier* kiln_mod_on_globally_positioned(kiln_modifier* m, kiln_fn_layout_coordinates on_positioned);
+KILN_API kiln_modifier* kiln_mod_on_placed(kiln_modifier* m, kiln_fn_layout_coordinates on_placed);
+/* onSizeChanged: px. */
+KILN_API kiln_modifier* kiln_mod_on_size_changed(kiln_modifier* m, kiln_fn_size on_size_changed);
 /* Window insets */
 KILN_API kiln_modifier* kiln_mod_safe_drawing_padding(kiln_modifier* m);
 KILN_API kiln_modifier* kiln_mod_system_bars_padding(kiln_modifier* m);

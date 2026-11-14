@@ -155,6 +155,11 @@ namespace kiln::capi {
         static const Unknown unknown;
         return s ? *reinterpret_cast<const foundation::ScrollIndicatorState*>(s) : unknown;
     }
+    const kiln_layout_coordinates* TransientCoordinates(const ui::LayoutCoordinates& c) {
+        auto* h = NewTransient<kiln_layout_coordinates>();
+        h->c = c;
+        return h;
+    }
     kiln_fling_behavior* TransientFling(foundation::FlingBehavior fling) {
         if (!fling) return nullptr;
         auto* f = NewTransient<kiln_fling_behavior>();
@@ -699,6 +704,49 @@ KILN_API kiln_modifier* kiln_mod_align_by(kiln_modifier* m, const kiln_alignment
 KILN_API kiln_modifier* kiln_mod_padding_from(kiln_modifier* m, const kiln_alignment_line* line, float before, float after) {
     if (!line) return kiln_mod_then(m, nullptr);
     MOD(fd::PaddingFrom(base, *reinterpret_cast<const ui::AlignmentLine*>(line), ui::Dp(before), ui::Dp(after)))
+}
+namespace {
+    kiln_offset ToCOffset(ui::Offset o) { return { o.x, o.y }; }
+    kiln_rect ToCRect(const ui::Rect& r) { return { r.left, r.top, r.right, r.bottom }; }
+    bool Attached(const kiln_layout_coordinates* c) { return c && c->c.IsAttached(); }
+    kiln::Function<void(const ui::LayoutCoordinates&)> CoordinatesFn(kiln_fn_layout_coordinates f) {
+        auto own = Own(f);
+        if (!own) return {};
+        return [own](const ui::LayoutCoordinates& lc) {
+            CallbackScope cs;
+            own->f.call(own->f.user, TransientCoordinates(lc));
+        };
+    }
+}
+KILN_API bool kiln_layout_coordinates_is_attached(const kiln_layout_coordinates* c) { return Attached(c); }
+KILN_API kiln_int_size kiln_layout_coordinates_size(const kiln_layout_coordinates* c) {
+    if (!Attached(c)) return { 0, 0 };
+    const ui::IntSize s = c->c.Size();
+    return { s.width, s.height };
+}
+KILN_API kiln_offset kiln_layout_coordinates_position_in_root(const kiln_layout_coordinates* c) { return Attached(c) ? ToCOffset(c->c.PositionInRoot()) : kiln_offset{}; }
+KILN_API kiln_rect kiln_layout_coordinates_bounds_in_root(const kiln_layout_coordinates* c) { return Attached(c) ? ToCRect(c->c.BoundsInRoot()) : kiln_rect{}; }
+KILN_API kiln_offset kiln_layout_coordinates_position_in_window(const kiln_layout_coordinates* c) { return Attached(c) ? ToCOffset(c->c.PositionInWindow()) : kiln_offset{}; }
+KILN_API kiln_rect kiln_layout_coordinates_bounds_in_window(const kiln_layout_coordinates* c) { return Attached(c) ? ToCRect(c->c.BoundsInWindow()) : kiln_rect{}; }
+KILN_API kiln_offset kiln_layout_coordinates_position_in_parent(const kiln_layout_coordinates* c) { return Attached(c) ? ToCOffset(c->c.PositionInParent()) : kiln_offset{}; }
+KILN_API kiln_rect kiln_layout_coordinates_bounds_in_parent(const kiln_layout_coordinates* c) { return Attached(c) ? ToCRect(c->c.BoundsInParent()) : kiln_rect{}; }
+KILN_API kiln_offset kiln_layout_coordinates_local_position_of(const kiln_layout_coordinates* c, const kiln_layout_coordinates* source, kiln_offset rel) {
+    if (!Attached(c) || !Attached(source)) return {};
+    return ToCOffset(c->c.LocalPositionOf(source->c, ui::Offset{ rel.x, rel.y }));
+}
+KILN_API kiln_rect kiln_layout_coordinates_local_bounding_box_of(const kiln_layout_coordinates* c, const kiln_layout_coordinates* source) {
+    if (!Attached(c) || !Attached(source)) return {};
+    return ToCRect(c->c.LocalBoundingBoxOf(source->c));
+}
+KILN_API kiln_modifier* kiln_mod_on_globally_positioned(kiln_modifier* m, kiln_fn_layout_coordinates f) { MOD(fd::OnGloballyPositioned(base, CoordinatesFn(f))) }
+KILN_API kiln_modifier* kiln_mod_on_placed(kiln_modifier* m, kiln_fn_layout_coordinates f) { MOD(fd::OnPlaced(base, CoordinatesFn(f))) }
+KILN_API kiln_modifier* kiln_mod_on_size_changed(kiln_modifier* m, kiln_fn_size f) {
+    auto own = Own(f);
+    MOD(fd::OnSizeChanged(base, [own](ui::IntSize s) {
+        if (!own) return;
+        CallbackScope cs;
+        own->f.call(own->f.user, kiln_int_size{ s.width, s.height });
+    }))
 }
 KILN_API kiln_modifier* kiln_mod_safe_drawing_padding(kiln_modifier* m) { MOD(fd::SafeDrawingPadding(base)) }
 KILN_API kiln_modifier* kiln_mod_system_bars_padding(kiln_modifier* m) { MOD(fd::SystemBarsPadding(base)) }
