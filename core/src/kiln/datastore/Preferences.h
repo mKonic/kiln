@@ -25,7 +25,7 @@
 
 namespace kiln::datastore {
 
-    using PreferenceValue = std::variant<bool, std::int32_t, std::int64_t, float, double, std::string, std::set<std::string>>;
+    using PreferenceValue = std::variant<bool, std::int32_t, std::int64_t, float, double, std::string, std::set<std::string>, std::vector<std::uint8_t>>;
 
     template<typename T>
     struct PreferenceKey {
@@ -40,6 +40,7 @@ namespace kiln::datastore {
     inline PreferenceKey<double> DoubleKey(std::string name) { return { std::move(name) }; }
     inline PreferenceKey<std::string> StringKey(std::string name) { return { std::move(name) }; }
     inline PreferenceKey<std::set<std::string>> StringSetKey(std::string name) { return { std::move(name) }; }
+    inline PreferenceKey<std::vector<std::uint8_t>> ByteArrayKey(std::string name) { return { std::move(name) }; }
 
     class Preferences {
     public:

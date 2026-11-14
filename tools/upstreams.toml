@@ -74,6 +74,16 @@ kiln = "none yet (navigation3's lifecycle caps; design/api-gaps.md)"
 paths = ["lifecycle/lifecycle-common/src", "lifecycle/lifecycle-runtime-compose/src"]
 
 [[androidx.group]]
+name = "datastore"
+kiln = "core/src/kiln/datastore (Preferences over a file; DataStore's single-process behaviour)"
+paths = ["datastore/datastore-preferences-core/src", "datastore/datastore-core/src"]
+
+[[androidx.group]]
+name = "sqlite"
+kiln = "sqlite (androidx.sqlite's connection and statement over vendor/sqlite; Room's runtime: open by version, pool, InvalidationTracker)"
+paths = ["sqlite/sqlite/src", "sqlite/sqlite-bundled/src", "room3/room3-runtime/src"]
+
+[[androidx.group]]
 name = "catalog"
 kiln = "samples/catalog"
 paths = ["compose/material3/material3/integration-tests/material3-catalog", "compose/material3/material3/samples",

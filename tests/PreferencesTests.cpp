@@ -41,9 +41,11 @@ TEST(PreferencesSerializeEveryType) {
     p.Set(kRatio, 0.5);
     p.Set(LongKey("big"), std::int64_t(1) << 40);
     p.Set(FloatKey("f"), 1.5f);
+    p.Set(ByteArrayKey("bytes"), std::vector<std::uint8_t>{ 0, 255, 7 });
     const auto back = ParsePreferences(SerializePreferences(p));
     CHECK(back && *back == p);
     CHECK(back && back->Get(kName) == std::optional<std::string>("Ada") && back->Get(kTags)->size() == 2);
+    CHECK(back && back->Get(ByteArrayKey("bytes")) == std::optional<std::vector<std::uint8_t>>(std::vector<std::uint8_t>{ 0, 255, 7 }));
     CHECK(!p.Get(IntKey("name")).has_value());   // another type under the name
     CHECK(!ParsePreferences("garbage").has_value());
 }

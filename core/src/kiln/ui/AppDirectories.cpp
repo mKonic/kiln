@@ -50,6 +50,14 @@ namespace kiln::ui {
     std::string CacheDir() { return Resolve(D().cache, "XDG_CACHE_HOME", "/.cache", ""); }
     std::string NoBackupFilesDir() { return Resolve(D().noBackup, "XDG_DATA_HOME", "/.local/share", "/no_backup"); }
 
+    std::string DatabasePath(const std::string& name) {
+        std::string files = FilesDir();
+        const std::size_t slash = files.rfind('/');
+        const std::string dir = (slash == std::string::npos ? files : files.substr(0, slash)) + "/databases";
+        MakeDirs(dir);
+        return dir + "/" + name;
+    }
+
     void SetAppDirectories(std::string files, std::string cache, std::string noBackup) {
         std::lock_guard lock(D().mutex);
         D().files = std::move(files);

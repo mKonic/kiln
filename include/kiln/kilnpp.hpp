@@ -727,6 +727,7 @@ namespace kpp {
     inline std::string files_dir() { return detail::Str(kiln_files_dir()); }
     inline std::string cache_dir() { return detail::Str(kiln_cache_dir()); }
     inline std::string no_backup_files_dir() { return detail::Str(kiln_no_backup_files_dir()); }
+    inline std::string database_path(const char* name) { return detail::Str(kiln_database_path(name)); }
 
     // Preferences (DataStore); see kiln_preferences_open. The getters are for content.
     class Preferences {

@@ -11,6 +11,9 @@ namespace kiln::ui {
     std::string FilesDir();
     std::string CacheDir();
     std::string NoBackupFilesDir();
+    // Context.getDatabasePath(name): <data dir>/databases/<name>, next to the files directory.
+    // The directory exists.
+    std::string DatabasePath(const std::string& name);
     // The host's directories (Android), or the app's name for the desktop ones.
     void SetAppDirectories(std::string files, std::string cache, std::string noBackup);
     void SetAppName(std::string name);

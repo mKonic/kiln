@@ -53,6 +53,25 @@ target_include_directories(kiln_navigation PUBLIC navigation/src)
 target_link_libraries(kiln_navigation PUBLIC kiln_foundation)
 target_compile_options(kiln_navigation PRIVATE -Wall -Wextra -Wno-missing-field-initializers)
 
+# sqlite: the SQLite amalgamation (vendor/sqlite; the NDK does not export the platform's) built
+# with androidx sqlite-bundled's options, and kiln's wrapper (connections, statements, a
+# database with migrations and observed queries). Apps name it in LIBS; sqlite3.h is public.
+add_library(kiln_sqlite3 STATIC vendor/sqlite/sqlite3.c)
+target_include_directories(kiln_sqlite3 SYSTEM PUBLIC vendor/sqlite)
+target_compile_definitions(kiln_sqlite3 PRIVATE
+    HAVE_USLEEP=1 SQLITE_DEFAULT_AUTOVACUUM=1 SQLITE_DEFAULT_MEMSTATUS=0 SQLITE_DEFAULT_WAL_SYNCHRONOUS=1
+    SQLITE_ENABLE_COLUMN_METADATA SQLITE_ENABLE_FTS3 SQLITE_ENABLE_FTS3_PARENTHESIS SQLITE_ENABLE_FTS4
+    SQLITE_ENABLE_FTS5 SQLITE_ENABLE_JSON1 SQLITE_ENABLE_MATH_FUNCTIONS SQLITE_ENABLE_NORMALIZE
+    SQLITE_ENABLE_RTREE SQLITE_ENABLE_STAT4 SQLITE_HAVE_ISNAN SQLITE_OMIT_BUILTIN_TEST SQLITE_OMIT_DEPRECATED
+    SQLITE_OMIT_PROGRESS_CALLBACK SQLITE_OMIT_SHARED_CACHE SQLITE_SECURE_DELETE SQLITE_TEMP_STORE=3
+    SQLITE_THREADSAFE=2)
+target_compile_options(kiln_sqlite3 PRIVATE -w)
+file(GLOB_RECURSE KILN_SQLITE_SOURCES CONFIGURE_DEPENDS sqlite/src/*.cpp)
+add_library(kiln_sqlite STATIC ${KILN_SQLITE_SOURCES})
+target_include_directories(kiln_sqlite PUBLIC sqlite/src)
+target_link_libraries(kiln_sqlite PUBLIC kiln_core kiln_sqlite3)
+target_compile_options(kiln_sqlite PRIVATE -Wall -Wextra -Wno-missing-field-initializers)
+
 file(GLOB_RECURSE MCU_SOURCES CONFIGURE_DEPENDS vendor/material-color-utilities/cpp/*.cc)
 add_library(mcu STATIC ${MCU_SOURCES})
 target_include_directories(mcu PUBLIC vendor/material-color-utilities PRIVATE vendor/material-color-utilities/compat)
@@ -245,7 +264,7 @@ add_executable(kiln_tests ${KILN_TEST_SOURCES} ${KILN_CAPI_TEST_SOURCES})
 # App resources as an app has them: R:: names and, everywhere (no Android Resources in the test
 # process), the generated tables.
 kiln_app_resources(kiln_tests ${CMAKE_SOURCE_DIR}/tests/res TABLE)
-target_link_libraries(kiln_tests PRIVATE kiln_material3 kiln_navigation "$<LINK_LIBRARY:WHOLE_ARCHIVE,kiln_volition>")
+target_link_libraries(kiln_tests PRIVATE kiln_material3 kiln_navigation kiln_sqlite "$<LINK_LIBRARY:WHOLE_ARCHIVE,kiln_volition>")
 if(ANDROID)
     # Run on a device with tools/device-test (pushed to /data/local/tmp), which builds it.
     set_target_properties(kiln_tests PROPERTIES EXCLUDE_FROM_ALL ON)

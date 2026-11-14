@@ -16,7 +16,7 @@
 namespace kiln::datastore {
 
     namespace {
-        enum : std::uint8_t { kBool = 1, kInt = 2, kLong = 3, kFloat = 4, kDouble = 5, kString = 6, kStringSet = 7 };
+        enum : std::uint8_t { kBool = 1, kInt = 2, kLong = 3, kFloat = 4, kDouble = 5, kString = 6, kStringSet = 7, kBytes = 8 };
         constexpr std::string_view kMagic = "KPREF1";
 
         void PutU32(std::string& out, std::uint32_t v) { for (int i = 0; i < 4; ++i) out += char((v >> (8 * i)) & 0xff); }
@@ -134,7 +134,11 @@ namespace kiln::datastore {
                 else if constexpr (std::is_same_v<T, float>) { out += char(kFloat); PutBytes(out, name); PutRaw(out, x); }
                 else if constexpr (std::is_same_v<T, double>) { out += char(kDouble); PutBytes(out, name); PutRaw(out, x); }
                 else if constexpr (std::is_same_v<T, std::string>) { out += char(kString); PutBytes(out, name); PutBytes(out, x); }
-                else {
+                else if constexpr (std::is_same_v<T, std::vector<std::uint8_t>>) {
+                    out += char(kBytes);
+                    PutBytes(out, name);
+                    PutBytes(out, std::string_view(reinterpret_cast<const char*>(x.data()), x.size()));
+                } else {
                     out += char(kStringSet);
                     PutBytes(out, name);
                     PutU32(out, std::uint32_t(x.size()));
@@ -165,6 +169,11 @@ namespace kiln::datastore {
                     const std::uint32_t n = r.U32();
                     for (std::uint32_t k = 0; k < n && r.ok; ++k) set.insert(r.Bytes());
                     p.m_Values[name] = std::move(set);
+                    break;
+                }
+                case kBytes: {
+                    const std::string b = r.Bytes();
+                    p.m_Values[name] = std::vector<std::uint8_t>(b.begin(), b.end());
                     break;
                 }
                 default: return std::nullopt;

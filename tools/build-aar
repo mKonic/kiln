@@ -48,7 +48,18 @@ JSON
     cmake --build "$dir" --target kiln_volition >/dev/null
     "$NDK_TOOLCHAIN/bin/llvm-strip" --strip-debug "$dir/libkiln_volition.a" -o "$vdir/libkiln_volition.a"
     cp "$libdir/abi.json" "$vdir/abi.json"
+    # SQLite (vendor/sqlite), for apps that keep a database.
+    sdir="$STAGING/prefab/modules/kiln_sqlite3/libs/android.$abi"
+    mkdir -p "$sdir"
+    cmake --build "$dir" --target kiln_sqlite3 >/dev/null
+    "$NDK_TOOLCHAIN/bin/llvm-strip" --strip-debug "$dir/libkiln_sqlite3.a" -o "$sdir/libkiln_sqlite3.a"
+    cp "$libdir/abi.json" "$sdir/abi.json"
 done
+mkdir -p "$STAGING/prefab/modules/kiln_sqlite3/include"
+cp "$KILN_ROOT/vendor/sqlite/sqlite3.h" "$STAGING/prefab/modules/kiln_sqlite3/include/"
+cat > "$STAGING/prefab/modules/kiln_sqlite3/module.json" <<JSON
+{ "export_libraries": [], "library_name": "libkiln_sqlite3" }
+JSON
 mkdir -p "$STAGING/prefab/modules/kiln_volition/include/kiln"
 cat > "$STAGING/prefab/modules/kiln_volition/include/kiln/volition.h" <<'H'
 /* kiln_volition: link this library whole into a debug build's app library, and declare

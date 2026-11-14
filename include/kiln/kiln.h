@@ -414,6 +414,9 @@ KILN_API bool kiln_content_release_persistable(const char* uri, bool read, bool 
 KILN_API const char* kiln_files_dir(void);
 KILN_API const char* kiln_cache_dir(void);
 KILN_API const char* kiln_no_backup_files_dir(void);
+/* Context.getDatabasePath(name): where a database file goes (its directory exists). SQLite is
+ * built with kiln: link kiln_sqlite (the AAR's kiln_sqlite3 module) and include sqlite3.h. */
+KILN_API const char* kiln_database_path(const char* name);
 
 /* Preferences (DataStore): typed key-value data in <files dir>/datastore/<name>.preferences. The
  * store lives for the process; opening a name again returns the same one. The getters are for

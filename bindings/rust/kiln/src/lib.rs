@@ -629,6 +629,8 @@ pub fn files_dir() -> String { crate::from_c(unsafe { sys::kiln_files_dir() }) }
 pub fn cache_dir() -> String { crate::from_c(unsafe { sys::kiln_cache_dir() }) }
 /// Files left out of backups (Context.getNoBackupFilesDir).
 pub fn no_backup_files_dir() -> String { crate::from_c(unsafe { sys::kiln_no_backup_files_dir() }) }
+/// Where a database file goes (Context.getDatabasePath).
+pub fn database_path(name: &str) -> String { let n = CStrBuf::new(name); crate::from_c(unsafe { sys::kiln_database_path(n.ptr()) }) }
 
 /// Preferences (DataStore): typed key-value data kept in the app's files directory. The getters
 /// are for content and recompose it when the value changes; the setters write in the background.

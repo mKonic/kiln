@@ -690,6 +690,7 @@ KILN_API void kiln_window_insets_release(kiln_window_insets* i) { Release(i); }
 KILN_API const char* kiln_files_dir(void) { TRY { return ReturnString(ui::FilesDir()); } CATCH("") }
 KILN_API const char* kiln_cache_dir(void) { TRY { return ReturnString(ui::CacheDir()); } CATCH("") }
 KILN_API const char* kiln_no_backup_files_dir(void) { TRY { return ReturnString(ui::NoBackupFilesDir()); } CATCH("") }
+KILN_API const char* kiln_database_path(const char* name) { TRY { return ReturnString(ui::DatabasePath(name ? name : "")); } CATCH("") }
 
 struct kiln_preferences { std::shared_ptr<kiln::datastore::PreferencesDataStore> store; };
 namespace {
