@@ -65,10 +65,10 @@ namespace {
 
 TEST(LazyLayoutComposesWhatItMeasures) {
     std::set<int> composed;   // before the harness: its teardown disposes items into it
+    rt::State<int> first(0);
     Harness h;
     auto provider = std::make_shared<Provider>();
     provider->composed = &composed;
-    rt::State<int> first(0);
     h.Run([&] {
         LazyLayout([provider] { return provider; }, Modifier{}, nullptr, Column(first.Get()));
     });
@@ -79,14 +79,15 @@ TEST(LazyLayoutComposesWhatItMeasures) {
 }
 
 TEST(LazyLayoutPrefetchesAndKeepsPinnedItems) {
-    std::set<int> composed;   // before the harness: its teardown disposes items into it
-    Harness h;
-    auto provider = std::make_shared<Provider>();
-    provider->composed = &composed;
+    // Before the harness: its teardown disposes items, which use these.
+    std::set<int> composed;
     LazyLayoutPrefetchState prefetch;
     LazyLayoutPinnedItemList pinned;
     rt::State<int> first(0);
     std::shared_ptr<PinnableContainer> container2;
+    Harness h;
+    auto provider = std::make_shared<Provider>();
+    provider->composed = &composed;
     // Item 2's content grabs its pinnable container.
     struct PinProvider final : LazyLayoutItemProvider {
         std::shared_ptr<Provider> inner;
