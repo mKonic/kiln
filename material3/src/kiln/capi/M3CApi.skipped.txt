@@ -9,8 +9,6 @@ kiln::material3::FromToken: parameter token: kiln::material3::tokens::MotionSche
 kiln::material3::FromToken: parameter token: kiln::material3::tokens::ShapeToken is internal
 kiln::material3::FromToken: parameter token: kiln::material3::tokens::TypographyToken is internal
 kiln::material3::MenuDefaults::rememberDropdownMenuPopupPositionProvider: parameter dropdownMenuAnchorPosition: kiln::material3::internal::MenuAnchorPosition is internal
-kiln::material3::ProgressIndicatorDefaults::DrawStopIndicator: parameter scope: type kiln::ui::DrawScope
-kiln::material3::SliderDefaults::DrawStopIndicator: parameter arg0: type kiln::ui::DrawScope
 kiln::material3::TabIndicatorScope::TabIndicatorLayout: parameter measure: type kiln::ui::MeasureScope
 kiln::material3::Value: parameter token: kiln::material3::tokens::ColorToken is internal
 kiln::material3::Value: parameter token: kiln::material3::tokens::MotionSchemeToken is internal
@@ -20,9 +18,6 @@ kiln::material3::WideNavigationRailItemDefaults::indicatorPadding: result: kiln:
 kiln::material3::TextFieldOptions::onTextLayout: field left at its default: type kiln::text::TextLayoutResult
 kiln::material3::SecureTextFieldOptions::onTextLayout: field left at its default: type kiln::text::TextLayoutResult
 kiln::material3::FloatingActionButtonMenuScope::state: field left at its default: type std::shared_ptr<kiln::material3::internal::FabMenuState>
-kiln::material3::LinearProgressIndicatorOptions::drawStopIndicator: field left at its default: type kiln::ui::DrawScope
-kiln::material3::SliderTrackOptions::drawStopIndicator: field left at its default: type kiln::ui::DrawScope
-kiln::material3::SliderTrackOptions::drawTick: field left at its default: type kiln::ui::DrawScope
 kiln::material3::TextOptions::inlineContent: field left at its default: type std::map<std::basic_string<char>, kiln::foundation::InlineTextContent>
 kiln::material3::TextOptions::onTextLayout: field left at its default: type kiln::text::TextLayoutResult
 kiln::material3::WideNavigationRailItemOptions::indicatorPadding: field left at its default: kiln::material3::internal::DynamicPaddingValues is not default-constructible

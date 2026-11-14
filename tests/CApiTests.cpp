@@ -438,6 +438,50 @@ TEST(CApiFontFamilyOfFontsReachesTheText) {
     CHECK(h.text.lastFont.name == "/data/fonts/Brand.ttf");
 }
 
+TEST(CApiDrawScopeDrawsCanvasesAndWrapsContent) {
+    static kiln_size canvasSize;
+    static int innerDraws, outerDraws;
+    static bool drawInner;
+    canvasSize = {};
+    innerDraws = outerDraws = 0;
+    drawInner = true;
+    Harness h;
+    h.Run([](void*) {
+        kpp::column(kpp::Modifier(), [] {
+            kiln_canvas(KILN_HERE, kiln_mod_size(NULL, 30, 20), kiln_fn_draw{ [](void*, kiln_draw_scope* d) { canvasSize = kiln_draw_scope_size(d); }, nullptr, nullptr });
+            // drawWithContent first: the drawBehind after it is part of its content.
+            kiln_modifier* m = kiln_mod_draw_with_content(kiln_mod_size(NULL, 10, 10),
+                kiln_fn_draw{ [](void*, kiln_draw_scope* d) {
+                    ++outerDraws;
+                    kiln_draw_save(d);
+                    kiln_draw_translate(d, 2, 2);
+                    if (drawInner) kiln_draw_content(d);
+                    kiln_draw_restore(d);
+                    kiln_draw_style stroke = KILN_STROKE(1);
+                    kiln_draw_circle(d, KILN_ARGB(0xffff0000), kiln_offset{ 5, 5 }, -1, &stroke);
+                    kiln_path* p = kiln_path_new();
+                    kiln_path_move_to(p, 0, 0);
+                    kiln_path_line_to(p, 10, 10);
+                    kiln_draw_path(d, p, KILN_ARGB(0xff0000ff), &stroke);
+                    kiln_path_free(p);
+                }, nullptr, nullptr });
+            m = kiln_mod_draw_behind(m, kiln_fn_draw{ [](void*, kiln_draw_scope* d) {
+                    ++innerDraws;
+                    kiln_draw_rect(d, KILN_ARGB(0xff00ff00), kiln_offset{ 0, 0 }, kiln_draw_scope_size(d), NULL);
+                }, nullptr, nullptr });
+            kiln_box(KILN_HERE, m, NULL, KILN_FN(NULL, NULL));
+        });
+    });
+    h.owner.Draw(ui::DrawTarget{});
+    CHECK(canvasSize.width == 30 && canvasSize.height == 20);
+    CHECK(outerDraws == 1 && innerDraws == 1);
+    drawInner = false;
+    ui::Owner::SetDrawRetention(false);
+    h.owner.Draw(ui::DrawTarget{});
+    ui::Owner::SetDrawRetention(true);
+    CHECK(outerDraws == 2 && innerDraws == 1);   // the content is drawn only when asked for
+}
+
 TEST(CApiAndroidViewMakesUpdatesAndReleasesItsView) {
     static int made, updates, released, dropped;
     made = updates = released = dropped = 0;

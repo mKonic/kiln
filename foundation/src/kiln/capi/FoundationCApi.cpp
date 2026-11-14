@@ -5,6 +5,7 @@
 
 #include "kiln/App.h"
 #include "kiln/Assets.h"
+#include "kiln/foundation/Draw.h"
 #include "kiln/foundation/Focus.h"
 #include "kiln/ui/PlatformServices.h"
 #include "kiln/foundation/Animate.h"
@@ -840,6 +841,120 @@ KILN_API kiln_modifier* kiln_mod_test_tag(kiln_modifier* m, const char* tag) {
 KILN_API kiln_modifier* kiln_mod_content_description(kiln_modifier* m, const char* d) {
     std::string t = ToString(d);
     MOD(fd::Semantics(base, [t](ui::SemanticsConfiguration& c) { c.contentDescription.push_back(t); }))
+}
+
+// --- Drawing ------------------------------------------------------------------------------------
+
+struct kiln_path { kiln::gfx::Path path; };
+
+namespace {
+    ui::DrawScope* ToDraw(kiln_draw_scope* s) { return reinterpret_cast<ui::DrawScope*>(s); }
+    const ui::DrawScope* ToDraw(const kiln_draw_scope* s) { return reinterpret_cast<const ui::DrawScope*>(s); }
+    ui::Offset ToOffset(kiln_offset o) { return { o.x, o.y }; }
+    ui::Size ToSize(kiln_size s) { return { s.width, s.height }; }
+    ui::Rect ToRect(kiln_rect r) { return { r.left, r.top, r.right, r.bottom }; }
+    ui::DrawStyle ToStyle(const kiln_draw_style* st) {
+        if (!st) return ui::DrawStyle::Fill();
+        gfx::Stroke k;
+        k.width = st->width;
+        k.miter = st->miter;
+        k.cap = gfx::StrokeCap(st->cap);
+        k.join = gfx::StrokeJoin(st->join);
+        return ui::DrawStyle::Stroke(std::move(k));
+    }
+    gfx::Brush Solid(kiln_color c) { return gfx::Brush::SolidColor(ToColor(c)); }
+    kiln::Function<void(ui::DrawScope&)> DrawFn(kiln_fn_draw f) {
+        auto own = Own(f);
+        if (!own) return {};
+        return [own](ui::DrawScope& d) {
+            CallbackScope cs;
+            own->f.call(own->f.user, reinterpret_cast<kiln_draw_scope*>(&d));
+        };
+    }
+}
+KILN_API kiln_path* kiln_path_new(void) { return new kiln_path{}; }
+KILN_API void kiln_path_free(kiln_path* p) { delete p; }
+KILN_API void kiln_path_move_to(kiln_path* p, float x, float y) { if (p) p->path.MoveTo(x, y); }
+KILN_API void kiln_path_line_to(kiln_path* p, float x, float y) { if (p) p->path.LineTo(x, y); }
+KILN_API void kiln_path_quadratic_to(kiln_path* p, float x1, float y1, float x2, float y2) { if (p) p->path.QuadraticTo(x1, y1, x2, y2); }
+KILN_API void kiln_path_cubic_to(kiln_path* p, float x1, float y1, float x2, float y2, float x3, float y3) {
+    if (p) p->path.CubicTo(x1, y1, x2, y2, x3, y3);
+}
+KILN_API void kiln_path_arc_to(kiln_path* p, kiln_rect oval, float start, float sweep, bool forceMoveTo) {
+    if (p) p->path.ArcTo(ToRect(oval), start, sweep, forceMoveTo);
+}
+KILN_API void kiln_path_add_rect(kiln_path* p, kiln_rect r) { if (p) p->path.AddRect(ToRect(r)); }
+KILN_API void kiln_path_add_oval(kiln_path* p, kiln_rect r) { if (p) p->path.AddOval(ToRect(r)); }
+KILN_API void kiln_path_add_round_rect(kiln_path* p, kiln_rect r, float radius) { if (p) p->path.AddRoundRect(gfx::RoundRect::Uniform(ToRect(r), radius)); }
+KILN_API void kiln_path_close(kiln_path* p) { if (p) p->path.Close(); }
+KILN_API void kiln_path_reset(kiln_path* p) { if (p) p->path.Reset(); }
+
+KILN_API kiln_size kiln_draw_scope_size(const kiln_draw_scope* s) {
+    if (!s) return {};
+    const ui::Size z = ToDraw(s)->GetSize();
+    return { z.width, z.height };
+}
+KILN_API float kiln_draw_scope_density(const kiln_draw_scope* s) { return s ? ToDraw(s)->density : 1; }
+KILN_API bool kiln_draw_scope_is_rtl(const kiln_draw_scope* s) { return s && ToDraw(s)->Direction() == ui::LayoutDirection::Rtl; }
+KILN_API void kiln_draw_rect(kiln_draw_scope* s, kiln_color c, kiln_offset tl, kiln_size size, const kiln_draw_style* st) {
+    TRY { if (s) ToDraw(s)->DrawRect(Solid(c), ToOffset(tl), ToSize(size), 1, ToStyle(st)); } CATCH_VOID
+}
+KILN_API void kiln_draw_round_rect(kiln_draw_scope* s, kiln_color c, kiln_offset tl, kiln_size size, float r, const kiln_draw_style* st) {
+    TRY { if (s) ToDraw(s)->DrawRoundRect(Solid(c), ToOffset(tl), ToSize(size), ui::Offset{ r, r }, 1, ToStyle(st)); } CATCH_VOID
+}
+KILN_API void kiln_draw_circle(kiln_draw_scope* s, kiln_color c, kiln_offset center, float radius, const kiln_draw_style* st) {
+    TRY { if (s) ToDraw(s)->DrawCircle(Solid(c), radius, ToOffset(center), 1, ToStyle(st)); } CATCH_VOID
+}
+KILN_API void kiln_draw_oval(kiln_draw_scope* s, kiln_color c, kiln_offset tl, kiln_size size, const kiln_draw_style* st) {
+    TRY { if (s) ToDraw(s)->DrawOval(Solid(c), ToOffset(tl), ToSize(size), 1, ToStyle(st)); } CATCH_VOID
+}
+KILN_API void kiln_draw_arc(kiln_draw_scope* s, kiln_color c, float start, float sweep, bool useCenter, kiln_offset tl, kiln_size size,
+                            const kiln_draw_style* st) {
+    TRY { if (s) ToDraw(s)->DrawArc(Solid(c), start, sweep, useCenter, ToOffset(tl), ToSize(size), 1, ToStyle(st)); } CATCH_VOID
+}
+KILN_API void kiln_draw_line(kiln_draw_scope* s, kiln_color c, kiln_offset a, kiln_offset b, float width, kiln_stroke_cap cap) {
+    TRY { if (s) ToDraw(s)->DrawLine(ToColor(c), ToOffset(a), ToOffset(b), width, gfx::StrokeCap(cap)); } CATCH_VOID
+}
+KILN_API void kiln_draw_path(kiln_draw_scope* s, const kiln_path* p, kiln_color c, const kiln_draw_style* st) {
+    TRY { if (s && p) ToDraw(s)->DrawPath(p->path, Solid(c), 1, ToStyle(st)); } CATCH_VOID
+}
+KILN_API void kiln_draw_image(kiln_draw_scope* s, const kiln_image_bitmap* image, kiln_offset tl, float alpha) {
+    TRY { if (s && image) ToDraw(s)->DrawImage(image->bitmap, ToOffset(tl), alpha); } CATCH_VOID
+}
+KILN_API void kiln_draw_save(kiln_draw_scope* s) { TRY { if (s) ToDraw(s)->Save(); } CATCH_VOID }
+KILN_API void kiln_draw_restore(kiln_draw_scope* s) { TRY { if (s) ToDraw(s)->Restore(); } CATCH_VOID }
+KILN_API void kiln_draw_translate(kiln_draw_scope* s, float dx, float dy) { TRY { if (s) ToDraw(s)->Translate({ dx, dy }); } CATCH_VOID }
+KILN_API void kiln_draw_rotate(kiln_draw_scope* s, float degrees, kiln_offset pivot) { TRY { if (s) ToDraw(s)->Rotate(degrees, ToOffset(pivot)); } CATCH_VOID }
+KILN_API void kiln_draw_scale(kiln_draw_scope* s, float sx, float sy, kiln_offset pivot) { TRY { if (s) ToDraw(s)->Scale(sx, sy, ToOffset(pivot)); } CATCH_VOID }
+KILN_API void kiln_draw_clip_rect(kiln_draw_scope* s, kiln_rect r, float radius) { TRY { if (s) ToDraw(s)->ClipRect(ToRect(r), radius); } CATCH_VOID }
+KILN_API void kiln_draw_clip_path(kiln_draw_scope* s, const kiln_path* p) { TRY { if (s && p) ToDraw(s)->ClipPath(p->path); } CATCH_VOID }
+KILN_API void kiln_draw_multiply_alpha(kiln_draw_scope* s, float a) { TRY { if (s) ToDraw(s)->MultiplyAlpha(a); } CATCH_VOID }
+namespace {
+    // The drawWithContent scopes being drawn (innermost last): kiln_draw_content draws only theirs.
+    thread_local std::vector<ui::ContentDrawScope*> t_ContentScopes;
+}
+KILN_API void kiln_draw_content(kiln_draw_scope* s) {
+    TRY {
+        for (auto* c : t_ContentScopes)
+            if (static_cast<ui::DrawScope*>(c) == ToDraw(s)) { c->DrawContent(); return; }
+    } CATCH_VOID
+}
+KILN_API kiln_modifier* kiln_mod_draw_behind(kiln_modifier* m, kiln_fn_draw f) { MOD(fd::DrawBehind(base, DrawFn(f))) }
+KILN_API kiln_modifier* kiln_mod_draw_with_content(kiln_modifier* m, kiln_fn_draw f) {
+    auto fn = DrawFn(f);
+    MOD(fd::DrawWithContent(base, [fn](ui::ContentDrawScope& d) {
+        if (!fn) { d.DrawContent(); return; }
+        t_ContentScopes.push_back(&d);
+        struct Pop { ~Pop() { t_ContentScopes.pop_back(); } } pop;
+        fn(d);
+    }))
+}
+KILN_API void kiln_canvas(kiln_key key, const kiln_modifier* m, kiln_fn_draw f) {
+    TRY {
+        auto fn = DrawFn(f);
+        const ui::Modifier mod = ToModifier(m);
+        InGroup(key, [&] { fd::Canvas(mod, fn ? fn : [](ui::DrawScope&) {}); });
+    } CATCH_VOID
 }
 
 // --- Layouts ------------------------------------------------------------------------------------

@@ -221,6 +221,9 @@ namespace kpp {
         Modifier align_in_column(float horizontalBias) const { return kiln_mod_align_in_column(m_M, horizontalBias); }
         Modifier match_parent_size() const { return kiln_mod_match_parent_size(m_M); }
         Modifier focus_requester(kiln_focus_requester* r) const { return kiln_mod_focus_requester(m_M, r); }
+        // f(kiln_draw_scope*): drawBehind / drawWithContent (f calls kiln_draw_content).
+        template<typename F> Modifier draw_behind(F&& f) const { return kiln_mod_draw_behind(m_M, fn<kiln_fn_draw>(std::forward<F>(f))); }
+        template<typename F> Modifier draw_with_content(F&& f) const { return kiln_mod_draw_with_content(m_M, fn<kiln_fn_draw>(std::forward<F>(f))); }
         // f(const kiln_layout_coordinates*): valid during the call.
         template<typename F> Modifier on_globally_positioned(F&& f) const {
             return kiln_mod_on_globally_positioned(m_M, fn<kiln_fn_layout_coordinates>(std::forward<F>(f)));
@@ -675,6 +678,28 @@ namespace kpp {
     }
 
     // MutableTransitionState<Boolean>.
+    // Canvas: a box that only draws, with on_draw(kiln_draw_scope*).
+    template<typename F> void canvas(Modifier m, F&& onDraw, Key key = {}) { kiln_canvas(key, m, fn<kiln_fn_draw>(std::forward<F>(onDraw))); }
+    // A path owned by this object.
+    class Path {
+    public:
+        Path() : m_P(kiln_path_new()) {}
+        ~Path() { kiln_path_free(m_P); }
+        Path(const Path&) = delete;
+        Path& operator=(const Path&) = delete;
+        Path& move_to(float x, float y) { kiln_path_move_to(m_P, x, y); return *this; }
+        Path& line_to(float x, float y) { kiln_path_line_to(m_P, x, y); return *this; }
+        Path& quadratic_to(float x1, float y1, float x2, float y2) { kiln_path_quadratic_to(m_P, x1, y1, x2, y2); return *this; }
+        Path& cubic_to(float x1, float y1, float x2, float y2, float x3, float y3) { kiln_path_cubic_to(m_P, x1, y1, x2, y2, x3, y3); return *this; }
+        Path& add_rect(kiln_rect r) { kiln_path_add_rect(m_P, r); return *this; }
+        Path& add_oval(kiln_rect r) { kiln_path_add_oval(m_P, r); return *this; }
+        Path& add_round_rect(kiln_rect r, float radius) { kiln_path_add_round_rect(m_P, r, radius); return *this; }
+        Path& close() { kiln_path_close(m_P); return *this; }
+        operator const kiln_path*() const { return m_P; }
+    private:
+        kiln_path* m_P;
+    };
+
     // FocusRequester: request_focus moves focus to the focusable after .focus_requester(r).
     class FocusRequester {
     public:

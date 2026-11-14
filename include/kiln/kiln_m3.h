@@ -209,7 +209,6 @@ typedef struct kiln_m3_slider_options kiln_m3_slider_options;
 typedef struct kiln_m3_range_slider_options kiln_m3_range_slider_options;
 typedef struct kiln_m3_slider_thumb_options kiln_m3_slider_thumb_options;
 typedef struct kiln_m3_slider_track_options kiln_m3_slider_track_options;
-typedef struct kiln_ui_offset kiln_ui_offset;
 typedef struct kiln_m3_split_button_shapes kiln_m3_split_button_shapes;
 typedef struct kiln_m3_split_button_options kiln_m3_split_button_options;
 typedef struct kiln_m3_surface_options kiln_m3_surface_options;
@@ -450,16 +449,6 @@ typedef enum kiln_secure_flag_policy {
     KILN_SECURE_FLAG_POLICY_SECURE_ON = 1,
     KILN_SECURE_FLAG_POLICY_SECURE_OFF = 2,
 } kiln_secure_flag_policy;
-typedef enum kiln_stroke_cap {
-    KILN_STROKE_CAP_BUTT = 0,
-    KILN_STROKE_CAP_ROUND = 1,
-    KILN_STROKE_CAP_SQUARE = 2,
-} kiln_stroke_cap;
-typedef enum kiln_stroke_join {
-    KILN_STROKE_JOIN_MITER = 0,
-    KILN_STROKE_JOIN_ROUND = 1,
-    KILN_STROKE_JOIN_BEVEL = 2,
-} kiln_stroke_join;
 typedef enum kiln_swipe_edge {
     KILN_SWIPE_EDGE_LEFT = 0,
     KILN_SWIPE_EDGE_RIGHT = 1,
@@ -490,6 +479,9 @@ typedef struct kiln_m3_fn_button_group_menu_state { void (*call)(void* user, kil
 typedef struct kiln_m3_fn_button_group_scope { void (*call)(void* user, kiln_m3_button_group_scope* a0); void* user; void (*drop)(void* user); } kiln_m3_fn_button_group_scope;
 typedef struct kiln_m3_fn_carousel_item_scope_int { void (*call)(void* user, kiln_m3_carousel_item_scope* a0, int32_t a1); void* user; void (*drop)(void* user); } kiln_m3_fn_carousel_item_scope_int;
 typedef struct kiln_m3_fn_color_scheme { void (*call)(void* user, kiln_m3_color_scheme* a0); void* user; void (*drop)(void* user); } kiln_m3_fn_color_scheme;
+typedef struct kiln_m3_fn_draw_scope { void (*call)(void* user, kiln_draw_scope* a0); void* user; void (*drop)(void* user); } kiln_m3_fn_draw_scope;
+typedef struct kiln_m3_fn_draw_scope_offset { void (*call)(void* user, kiln_draw_scope* a0, kiln_offset a1); void* user; void (*drop)(void* user); } kiln_m3_fn_draw_scope_offset;
+typedef struct kiln_m3_fn_draw_scope_offset_color { void (*call)(void* user, kiln_draw_scope* a0, kiln_offset a1, kiln_color a2); void* user; void (*drop)(void* user); } kiln_m3_fn_draw_scope_offset_color;
 typedef struct kiln_m3_fn_drawer_value_to_bool { bool (*call)(void* user, kiln_m3_drawer_value a0); void* user; void (*drop)(void* user); } kiln_m3_fn_drawer_value_to_bool;
 typedef struct kiln_m3_fn_exposed_dropdown_menu_box_scope { void (*call)(void* user, kiln_m3_exposed_dropdown_menu_box_scope* a0); void* user; void (*drop)(void* user); } kiln_m3_fn_exposed_dropdown_menu_box_scope;
 typedef struct kiln_m3_fn_float_to_color { kiln_color (*call)(void* user, float a0); void* user; void (*drop)(void* user); } kiln_m3_fn_float_to_color;
@@ -1899,6 +1891,7 @@ struct kiln_m3_linear_progress_indicator_options {
     kiln_color track_color;
     kiln_stroke_cap stroke_cap;
     float gap_size;
+    const kiln_m3_fn_draw_scope* draw_stop_indicator;
 };
 KILN_API void kiln_m3_linear_progress_indicator_options_init(kiln_m3_linear_progress_indicator_options* s);
 struct kiln_m3_circular_progress_indicator_options {
@@ -2213,18 +2206,14 @@ struct kiln_m3_slider_track_options {
     size_t size;
     bool enabled;
     const kiln_m3_slider_colors* colors;
+    const kiln_m3_fn_draw_scope_offset* draw_stop_indicator;
+    kiln_m3_fn_draw_scope_offset_color draw_tick;
     float thumb_track_gap_size;
     float track_inside_corner_size;
     kiln_opt_float track_corner_size;
     bool enable_corner_shrinking;
 };
 KILN_API void kiln_m3_slider_track_options_init(kiln_m3_slider_track_options* s);
-struct kiln_ui_offset {
-    size_t size;
-    float x;
-    float y;
-};
-KILN_API void kiln_ui_offset_init(kiln_ui_offset* s);
 struct kiln_m3_split_button_shapes {
     size_t size;
     const kiln_shape* shape;
@@ -3311,6 +3300,7 @@ KILN_API kiln_color kiln_m3_progress_indicator_defaults_linear_track_color(kiln_
 KILN_API kiln_color kiln_m3_progress_indicator_defaults_circular_determinate_track_color(kiln_key key);
 KILN_API kiln_color kiln_m3_progress_indicator_defaults_circular_indeterminate_track_color(kiln_key key);
 KILN_API const kiln_anim_spec* kiln_m3_progress_indicator_defaults_progress_animation_spec(kiln_key key);
+KILN_API void kiln_m3_progress_indicator_defaults_draw_stop_indicator(kiln_key key, kiln_draw_scope* scope_, float stop_size, kiln_color color, kiln_stroke_cap stroke_cap);
 /* PullToRefresh.h */
 KILN_API kiln_m3_pull_to_refresh_state* kiln_m3_make_pull_to_refresh_state(kiln_key key);
 KILN_API kiln_m3_pull_to_refresh_state* kiln_m3_remember_pull_to_refresh_state(kiln_key key);
@@ -3413,6 +3403,7 @@ KILN_API void kiln_m3_slider_defaults_thumb(kiln_key key, kiln_interaction_sourc
 KILN_API void kiln_m3_slider_defaults_track(kiln_key key, kiln_m3_slider_state* arg0, const kiln_modifier* arg1, const kiln_m3_slider_track_options* arg2);
 KILN_API void kiln_m3_slider_defaults_centered_track(kiln_key key, kiln_m3_slider_state* arg0, const kiln_modifier* arg1, const kiln_m3_slider_track_options* arg2);
 KILN_API void kiln_m3_slider_defaults_track_range_slider_state(kiln_key key, kiln_m3_range_slider_state* arg0, const kiln_modifier* arg1, const kiln_m3_slider_track_options* arg2);
+KILN_API void kiln_m3_slider_defaults_draw_stop_indicator(kiln_key key, kiln_draw_scope* arg0, kiln_offset arg1, float size, kiln_color arg3);
 /* SplitButton.h */
 KILN_API kiln_corner_size kiln_m3_split_button_defaults_outer_corner_size(kiln_key key);
 KILN_API void kiln_m3_split_button_defaults_leading_button_shapes_for(kiln_key key, float button_height, kiln_m3_split_button_shapes* out);
@@ -4023,7 +4014,7 @@ KILN_API bool kiln_m3_slider_state_is_dragging(const kiln_m3_slider_state* self)
 KILN_API void kiln_m3_slider_state_dispatch_raw_delta(kiln_m3_slider_state* self, float delta, kiln_fn_float on_change);
 KILN_API void kiln_m3_slider_state_configure(kiln_m3_slider_state* self, kiln_orientation orientation, bool rtl, bool reverse_vertical);
 KILN_API void kiln_m3_slider_state_update_dimensions(kiln_m3_slider_state* self, int32_t width, int32_t height, int32_t thumb_width, int32_t thumb_height);
-KILN_API void kiln_m3_slider_state_on_press(kiln_m3_slider_state* self, const kiln_ui_offset* position);
+KILN_API void kiln_m3_slider_state_on_press(kiln_m3_slider_state* self, kiln_offset position);
 KILN_API void kiln_m3_slider_state_set_dragging(kiln_m3_slider_state* self, bool value);
 KILN_API void kiln_m3_slider_state_set_focused(kiln_m3_slider_state* self, bool value);
 KILN_API bool kiln_m3_slider_state_is_focused(const kiln_m3_slider_state* self);

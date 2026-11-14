@@ -565,9 +565,6 @@ namespace {
 [[maybe_unused]] kiln::material3::SliderTrackOptions ToCpp(const kiln_m3_slider_track_options* c);
 [[maybe_unused]] void FromCpp(const kiln::material3::SliderTrackOptions& v, kiln_m3_slider_track_options* out);
 [[maybe_unused]] const kiln_m3_slider_track_options* FromCppTransient(const kiln::material3::SliderTrackOptions& v);
-[[maybe_unused]] kiln::ui::Offset ToCpp(const kiln_ui_offset* c);
-[[maybe_unused]] void FromCpp(const kiln::ui::Offset& v, kiln_ui_offset* out);
-[[maybe_unused]] const kiln_ui_offset* FromCppTransient(const kiln::ui::Offset& v);
 [[maybe_unused]] kiln::material3::SplitButtonShapes ToCpp(const kiln_m3_split_button_shapes* c);
 [[maybe_unused]] void FromCpp(const kiln::material3::SplitButtonShapes& v, kiln_m3_split_button_shapes* out);
 [[maybe_unused]] const kiln_m3_split_button_shapes* FromCppTransient(const kiln::material3::SplitButtonShapes& v);
@@ -736,12 +733,15 @@ namespace {
 [[maybe_unused]] kiln::Function<int (int, int)> ToCpp_kiln_m3_fn_int_int_to_int(kiln_m3_fn_int_int_to_int f);
 [[maybe_unused]] kiln::Function<bool (kiln::material3::DrawerValue)> ToCpp_kiln_m3_fn_drawer_value_to_bool(kiln_m3_fn_drawer_value_to_bool f);
 [[maybe_unused]] kiln::Function<kiln::ui::BackEvent ()> ToCpp_kiln_m3_fn_to_back_event(kiln_m3_fn_to_back_event f);
+[[maybe_unused]] kiln::Function<void (kiln::ui::DrawScope &)> ToCpp_kiln_m3_fn_draw_scope(kiln_m3_fn_draw_scope f);
 [[maybe_unused]] kiln::Function<kiln::ui::Color ()> ToCpp_kiln_m3_fn_to_color(kiln_m3_fn_to_color f);
 [[maybe_unused]] kiln::Function<std::basic_string<char> (int)> ToCpp_kiln_m3_fn_int_to_string(kiln_m3_fn_int_to_string f);
 [[maybe_unused]] kiln::Function<void (int, bool, bool)> ToCpp_kiln_m3_fn_int_bool_bool(kiln_m3_fn_int_bool_bool f);
 [[maybe_unused]] kiln::Function<void (kiln::material3::SliderState &)> ToCpp_kiln_m3_fn_slider_state(kiln_m3_fn_slider_state f);
 [[maybe_unused]] kiln::Function<void (kiln::material3::SliderRange)> ToCpp_kiln_m3_fn_slider_range(kiln_m3_fn_slider_range f);
 [[maybe_unused]] kiln::Function<void (kiln::material3::RangeSliderState &)> ToCpp_kiln_m3_fn_range_slider_state(kiln_m3_fn_range_slider_state f);
+[[maybe_unused]] kiln::Function<void (kiln::ui::DrawScope &, kiln::ui::Offset)> ToCpp_kiln_m3_fn_draw_scope_offset(kiln_m3_fn_draw_scope_offset f);
+[[maybe_unused]] kiln::Function<void (kiln::ui::DrawScope &, kiln::ui::Offset, kiln::ui::Color)> ToCpp_kiln_m3_fn_draw_scope_offset_color(kiln_m3_fn_draw_scope_offset_color f);
 [[maybe_unused]] kiln::Function<float (float)> ToCpp_kiln_m3_fn_float_to_float(kiln_m3_fn_float_to_float f);
 [[maybe_unused]] kiln::Function<bool (kiln::material3::SwipeToDismissBoxValue)> ToCpp_kiln_m3_fn_swipe_to_dismiss_box_value_to_bool(kiln_m3_fn_swipe_to_dismiss_box_value_to_bool f);
 [[maybe_unused]] kiln::Function<void (kiln::material3::SwipeToDismissBoxValue)> ToCpp_kiln_m3_fn_swipe_to_dismiss_box_value(kiln_m3_fn_swipe_to_dismiss_box_value f);
@@ -1001,6 +1001,14 @@ kiln::Function<kiln::ui::BackEvent ()> ToCpp_kiln_m3_fn_to_back_event(kiln_m3_fn
         return ToCpp(&r);
     };
 }
+kiln::Function<void (kiln::ui::DrawScope &)> ToCpp_kiln_m3_fn_draw_scope(kiln_m3_fn_draw_scope f) {
+    auto o = kiln::capi::Own(f);
+    if (!o) return {};
+    return [o](kiln::ui::DrawScope & x0) -> void {
+        kiln::capi::CallbackScope scope;
+        o->f.call(o->f.user, reinterpret_cast<kiln_draw_scope*>(static_cast<kiln::ui::DrawScope*>(&(x0))));
+    };
+}
 kiln::Function<kiln::ui::Color ()> ToCpp_kiln_m3_fn_to_color(kiln_m3_fn_to_color f) {
     auto o = kiln::capi::Own(f);
     if (!o) return {};
@@ -1053,6 +1061,22 @@ kiln::Function<void (kiln::material3::RangeSliderState &)> ToCpp_kiln_m3_fn_rang
         auto* h38 = kiln::capi::NewTransient<kiln_m3_range_slider_state>();
         h38->ptr = const_cast<kiln::material3::RangeSliderState*>(&(x0));
         o->f.call(o->f.user, h38);
+    };
+}
+kiln::Function<void (kiln::ui::DrawScope &, kiln::ui::Offset)> ToCpp_kiln_m3_fn_draw_scope_offset(kiln_m3_fn_draw_scope_offset f) {
+    auto o = kiln::capi::Own(f);
+    if (!o) return {};
+    return [o](kiln::ui::DrawScope & x0, kiln::ui::Offset x1) -> void {
+        kiln::capi::CallbackScope scope;
+        o->f.call(o->f.user, reinterpret_cast<kiln_draw_scope*>(static_cast<kiln::ui::DrawScope*>(&(x0))), kiln_offset{ (x1).x, (x1).y });
+    };
+}
+kiln::Function<void (kiln::ui::DrawScope &, kiln::ui::Offset, kiln::ui::Color)> ToCpp_kiln_m3_fn_draw_scope_offset_color(kiln_m3_fn_draw_scope_offset_color f) {
+    auto o = kiln::capi::Own(f);
+    if (!o) return {};
+    return [o](kiln::ui::DrawScope & x0, kiln::ui::Offset x1, kiln::ui::Color x2) -> void {
+        kiln::capi::CallbackScope scope;
+        o->f.call(o->f.user, reinterpret_cast<kiln_draw_scope*>(static_cast<kiln::ui::DrawScope*>(&(x0))), kiln_offset{ (x1).x, (x1).y }, kiln::capi::FromColor(x2));
     };
 }
 kiln::Function<float (float)> ToCpp_kiln_m3_fn_float_to_float(kiln_m3_fn_float_to_float f) {
@@ -5676,6 +5700,7 @@ kiln::material3::LinearProgressIndicatorOptions ToCpp(const kiln_m3_linear_progr
     v.trackColor = kiln::capi::ToColor(c.track_color);
     v.strokeCap = kiln::gfx::StrokeCap(c.stroke_cap);
     v.gapSize = kiln::capi::ToDp(c.gap_size);
+    if (c.draw_stop_indicator) v.drawStopIndicator = (c.draw_stop_indicator ? std::optional<kiln::Function<void (kiln::ui::DrawScope &)>>(ToCpp_kiln_m3_fn_draw_scope((*c.draw_stop_indicator))) : std::nullopt);
     return v;
 }
 void FromCpp(const kiln::material3::LinearProgressIndicatorOptions& v, kiln_m3_linear_progress_indicator_options* out) {
@@ -6748,6 +6773,8 @@ kiln::material3::SliderTrackOptions ToCpp(const kiln_m3_slider_track_options* in
     if (in->size > sizeof(size_t)) std::memcpy(reinterpret_cast<char*>(&c) + sizeof(size_t), reinterpret_cast<const char*>(in) + sizeof(size_t), std::min(in->size, sizeof(c)) - sizeof(size_t));
     v.enabled = c.enabled;
     if (c.colors) v.colors = (c.colors ? std::optional<kiln::material3::SliderColors>(ToCpp(c.colors)) : std::nullopt);
+    if (c.draw_stop_indicator) v.drawStopIndicator = (c.draw_stop_indicator ? std::optional<kiln::Function<void (kiln::ui::DrawScope &, kiln::ui::Offset)>>(ToCpp_kiln_m3_fn_draw_scope_offset((*c.draw_stop_indicator))) : std::nullopt);
+    if (c.draw_tick.call) v.drawTick = ToCpp_kiln_m3_fn_draw_scope_offset_color(c.draw_tick);
     v.thumbTrackGapSize = kiln::capi::ToDp(c.thumb_track_gap_size);
     v.trackInsideCornerSize = kiln::capi::ToDp(c.track_inside_corner_size);
     v.trackCornerSize = (c.track_corner_size.set ? std::optional<kiln::ui::Dp>(kiln::ui::Dp(c.track_corner_size.value)) : std::nullopt);
@@ -6771,33 +6798,6 @@ void FromCpp(const kiln::material3::SliderTrackOptions& v, kiln_m3_slider_track_
 }
 const kiln_m3_slider_track_options* FromCppTransient(const kiln::material3::SliderTrackOptions& v) {
     auto* c = kiln::capi::NewTransient<kiln_m3_slider_track_options>();
-    c->size = sizeof(*c);
-    FromCpp(v, c);
-    return c;
-}
-kiln::ui::Offset ToCpp(const kiln_ui_offset* in) {
-    kiln::ui::Offset v{};
-    if (!in) return v;
-    kiln_ui_offset c;
-    kiln_ui_offset_init(&c);
-    if (in->size > sizeof(size_t)) std::memcpy(reinterpret_cast<char*>(&c) + sizeof(size_t), reinterpret_cast<const char*>(in) + sizeof(size_t), std::min(in->size, sizeof(c)) - sizeof(size_t));
-    v.x = c.x;
-    v.y = c.y;
-    return v;
-}
-void FromCpp(const kiln::ui::Offset& v, kiln_ui_offset* out) {
-    (void)v;
-    if (!out) return;
-    kiln_ui_offset c{};
-    c.size = sizeof(c);
-    c.x = float(v.x);
-    c.y = float(v.y);
-    const size_t n = out->size < sizeof(size_t) ? sizeof(c) : std::min(out->size, sizeof(c));
-    std::memcpy(reinterpret_cast<char*>(out) + sizeof(size_t), reinterpret_cast<const char*>(&c) + sizeof(size_t), n - sizeof(size_t));
-    out->size = n;
-}
-const kiln_ui_offset* FromCppTransient(const kiln::ui::Offset& v) {
-    auto* c = kiln::capi::NewTransient<kiln_ui_offset>();
     c->size = sizeof(*c);
     FromCpp(v, c);
     return c;
@@ -8894,10 +8894,6 @@ KILN_API void kiln_m3_slider_thumb_options_init(kiln_m3_slider_thumb_options* s)
 KILN_API void kiln_m3_slider_track_options_init(kiln_m3_slider_track_options* s) {
     if (!s) return;
     KILN_CAPI_TRY { s->size = sizeof(*s); FromCpp(kiln::material3::SliderTrackOptions{}, s); } KILN_CAPI_CATCH()
-}
-KILN_API void kiln_ui_offset_init(kiln_ui_offset* s) {
-    if (!s) return;
-    KILN_CAPI_TRY { s->size = sizeof(*s); FromCpp(kiln::ui::Offset{}, s); } KILN_CAPI_CATCH()
 }
 KILN_API void kiln_m3_split_button_shapes_init(kiln_m3_split_button_shapes* s) {
     if (!s) return;
@@ -14401,6 +14397,15 @@ KILN_API const kiln_anim_spec* kiln_m3_progress_indicator_defaults_progress_anim
         return kiln::capi::TransientSpec((*r));
     } KILN_CAPI_CATCH({})
 }
+KILN_API void kiln_m3_progress_indicator_defaults_draw_stop_indicator(kiln_key key, kiln_draw_scope* scope_, float stop_size, kiln_color color, kiln_stroke_cap stroke_cap) {
+    KILN_CAPI_TRY {
+        auto&& a0 = *reinterpret_cast<kiln::ui::DrawScope*>(scope_);
+        auto&& a1 = kiln::capi::ToDp(stop_size);
+        auto&& a2 = kiln::capi::ToColor(color);
+        auto&& a3 = kiln::gfx::StrokeCap(stroke_cap);
+        kiln::capi::InGroup(key, [&] { kiln::material3::ProgressIndicatorDefaults::DrawStopIndicator(a0, a1, a2, a3); });
+    } KILN_CAPI_CATCH()
+}
 KILN_API kiln_m3_pull_to_refresh_state* kiln_m3_make_pull_to_refresh_state(kiln_key key) {
     KILN_CAPI_TRY {
         std::optional<std::remove_cvref_t<decltype(kiln::material3::MakePullToRefreshState())>> r;
@@ -15263,6 +15268,15 @@ KILN_API void kiln_m3_slider_defaults_track_range_slider_state(kiln_key key, kil
         auto&& a1 = kiln::capi::ToModifier(arg1);
         auto&& a2 = ToCpp(arg2);
         kiln::capi::InGroup(key, [&] { kiln::material3::SliderDefaults::Track(a0, a1, a2); });
+    } KILN_CAPI_CATCH()
+}
+KILN_API void kiln_m3_slider_defaults_draw_stop_indicator(kiln_key key, kiln_draw_scope* arg0, kiln_offset arg1, float size, kiln_color arg3) {
+    KILN_CAPI_TRY {
+        auto&& a0 = *reinterpret_cast<kiln::ui::DrawScope*>(arg0);
+        auto&& a1 = kiln::ui::Offset{ arg1.x, arg1.y };
+        auto&& a2 = kiln::capi::ToDp(size);
+        auto&& a3 = kiln::capi::ToColor(arg3);
+        kiln::capi::InGroup(key, [&] { kiln::material3::SliderDefaults::DrawStopIndicator(a0, a1, a2, a3); });
     } KILN_CAPI_CATCH()
 }
 KILN_API kiln_corner_size kiln_m3_split_button_defaults_outer_corner_size(kiln_key key) {
@@ -18877,10 +18891,10 @@ KILN_API void kiln_m3_slider_state_update_dimensions(kiln_m3_slider_state* self,
         self->ptr->UpdateDimensions(a0, a1, a2, a3);
     } KILN_CAPI_CATCH()
 }
-KILN_API void kiln_m3_slider_state_on_press(kiln_m3_slider_state* self, const kiln_ui_offset* position) {
+KILN_API void kiln_m3_slider_state_on_press(kiln_m3_slider_state* self, kiln_offset position) {
     KILN_CAPI_TRY {
         if (!self) return;
-        auto&& a0 = ToCpp(position);
+        auto&& a0 = kiln::ui::Offset{ position.x, position.y };
         self->ptr->OnPress(a0);
     } KILN_CAPI_CATCH()
 }

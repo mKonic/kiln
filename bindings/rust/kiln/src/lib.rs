@@ -78,6 +78,7 @@ __kiln_callback!(sys::kiln_fn_lazy, (s: *mut sys::kiln_lazy_scope) -> ());
 __kiln_callback!(sys::kiln_fn_item_key, (i: i32) -> sys::kiln_key);
 __kiln_callback!(sys::kiln_fn_layout_coordinates, (c: *const sys::kiln_layout_coordinates) -> ());
 __kiln_callback!(sys::kiln_fn_size, (s: sys::kiln_int_size) -> ());
+__kiln_callback!(sys::kiln_fn_draw, (d: *mut sys::kiln_draw_scope) -> ());
 __kiln_callback!(sys::kiln_fn_lazy_grid, (s: *mut sys::kiln_lazy_grid_scope) -> ());
 __kiln_callback!(sys::kiln_fn_grid_span, (i: i32, max_current_line_span: i32, max_line_span: i32) -> i32);
 __kiln_callback!(sys::kiln_fn_count, () -> i32);
@@ -202,6 +203,15 @@ impl Modifier {
     pub fn on_size_changed(self, mut f: impl FnMut(i32, i32) + 'static) -> Self {
         let c = move |s: sys::kiln_int_size| f(s.width, s.height);
         Modifier(unsafe { sys::kiln_mod_on_size_changed(self.0, c.into_callback()) })
+    }
+    pub fn draw_behind(self, mut on_draw: impl FnMut(&mut DrawScope) + 'static) -> Self {
+        let c = move |d: *mut sys::kiln_draw_scope| on_draw(&mut DrawScope(d));
+        Modifier(unsafe { sys::kiln_mod_draw_behind(self.0, c.into_callback()) })
+    }
+    /// `on_draw` draws the content itself with `DrawScope::draw_content`.
+    pub fn draw_with_content(self, mut on_draw: impl FnMut(&mut DrawScope) + 'static) -> Self {
+        let c = move |d: *mut sys::kiln_draw_scope| on_draw(&mut DrawScope(d));
+        Modifier(unsafe { sys::kiln_mod_draw_with_content(self.0, c.into_callback()) })
     }
     pub fn focus_requester(self, r: FocusRequester) -> Self { Modifier(unsafe { sys::kiln_mod_focus_requester(self.0, r.0) }) }
     pub fn focusable(self, enabled: bool) -> Self { Modifier(unsafe { sys::kiln_mod_focusable(self.0, enabled) }) }
@@ -530,6 +540,83 @@ pub fn animate_color(target: sys::kiln_color) -> sys::kiln_color { unsafe { sys:
 #[track_caller]
 pub fn animated_visibility(visible: bool, modifier: Modifier, content: impl FnMut() + 'static) {
     unsafe { sys::kiln_animated_visibility(here(), visible, modifier.0, content.into_callback()) }
+}
+
+/// A draw scope (px, +y down); only valid inside the draw callback.
+pub struct DrawScope(*mut sys::kiln_draw_scope);
+fn style_ptr(style: Option<&sys::kiln_draw_style>) -> *const sys::kiln_draw_style { style.map_or(std::ptr::null(), |s| s as *const _) }
+/// A stroke of `width` px (butt caps, miter joins); `None` as a style fills.
+pub fn stroke(width: f32) -> sys::kiln_draw_style {
+    sys::kiln_draw_style { width, miter: 4.0, cap: sys::kiln_stroke_cap::KILN_STROKE_CAP_BUTT, join: sys::kiln_stroke_join::KILN_STROKE_JOIN_MITER }
+}
+fn off(x: f32, y: f32) -> sys::kiln_offset { sys::kiln_offset { x, y } }
+fn sz(w: f32, h: f32) -> sys::kiln_size { sys::kiln_size { width: w, height: h } }
+impl DrawScope {
+    pub fn size(&self) -> (f32, f32) { let s = unsafe { sys::kiln_draw_scope_size(self.0) }; (s.width, s.height) }
+    pub fn density(&self) -> f32 { unsafe { sys::kiln_draw_scope_density(self.0) } }
+    pub fn is_rtl(&self) -> bool { unsafe { sys::kiln_draw_scope_is_rtl(self.0) } }
+    pub fn draw_rect(&mut self, color: sys::kiln_color, x: f32, y: f32, w: f32, h: f32, style: Option<&sys::kiln_draw_style>) {
+        unsafe { sys::kiln_draw_rect(self.0, color, off(x, y), sz(w, h), style_ptr(style)) }
+    }
+    pub fn draw_round_rect(&mut self, color: sys::kiln_color, x: f32, y: f32, w: f32, h: f32, radius: f32, style: Option<&sys::kiln_draw_style>) {
+        unsafe { sys::kiln_draw_round_rect(self.0, color, off(x, y), sz(w, h), radius, style_ptr(style)) }
+    }
+    pub fn draw_circle(&mut self, color: sys::kiln_color, cx: f32, cy: f32, radius: f32, style: Option<&sys::kiln_draw_style>) {
+        unsafe { sys::kiln_draw_circle(self.0, color, off(cx, cy), radius, style_ptr(style)) }
+    }
+    pub fn draw_oval(&mut self, color: sys::kiln_color, x: f32, y: f32, w: f32, h: f32, style: Option<&sys::kiln_draw_style>) {
+        unsafe { sys::kiln_draw_oval(self.0, color, off(x, y), sz(w, h), style_ptr(style)) }
+    }
+    pub fn draw_arc(&mut self, color: sys::kiln_color, start: f32, sweep: f32, use_center: bool, x: f32, y: f32, w: f32, h: f32,
+                    style: Option<&sys::kiln_draw_style>) {
+        unsafe { sys::kiln_draw_arc(self.0, color, start, sweep, use_center, off(x, y), sz(w, h), style_ptr(style)) }
+    }
+    pub fn draw_line(&mut self, color: sys::kiln_color, x0: f32, y0: f32, x1: f32, y1: f32, width: f32) {
+        unsafe { sys::kiln_draw_line(self.0, color, off(x0, y0), off(x1, y1), width, sys::kiln_stroke_cap::KILN_STROKE_CAP_BUTT) }
+    }
+    pub fn draw_path(&mut self, path: &Path, color: sys::kiln_color, style: Option<&sys::kiln_draw_style>) {
+        unsafe { sys::kiln_draw_path(self.0, path.0, color, style_ptr(style)) }
+    }
+    pub fn save(&mut self) { unsafe { sys::kiln_draw_save(self.0) } }
+    pub fn restore(&mut self) { unsafe { sys::kiln_draw_restore(self.0) } }
+    pub fn translate(&mut self, dx: f32, dy: f32) { unsafe { sys::kiln_draw_translate(self.0, dx, dy) } }
+    pub fn rotate(&mut self, degrees: f32, px: f32, py: f32) { unsafe { sys::kiln_draw_rotate(self.0, degrees, off(px, py)) } }
+    pub fn scale(&mut self, sx: f32, sy: f32, px: f32, py: f32) { unsafe { sys::kiln_draw_scale(self.0, sx, sy, off(px, py)) } }
+    pub fn clip_rect(&mut self, left: f32, top: f32, right: f32, bottom: f32, radius: f32) {
+        unsafe { sys::kiln_draw_clip_rect(self.0, sys::kiln_rect { left, top, right, bottom }, radius) }
+    }
+    pub fn clip_path(&mut self, path: &Path) { unsafe { sys::kiln_draw_clip_path(self.0, path.0) } }
+    pub fn multiply_alpha(&mut self, alpha: f32) { unsafe { sys::kiln_draw_multiply_alpha(self.0, alpha) } }
+    /// In `draw_with_content`: draws what the modifier wraps.
+    pub fn draw_content(&mut self) { unsafe { sys::kiln_draw_content(self.0) } }
+}
+
+/// A path (freed on drop).
+pub struct Path(*mut sys::kiln_path);
+impl Path {
+    pub fn new() -> Self { Path(unsafe { sys::kiln_path_new() }) }
+    pub fn move_to(&mut self, x: f32, y: f32) -> &mut Self { unsafe { sys::kiln_path_move_to(self.0, x, y) }; self }
+    pub fn line_to(&mut self, x: f32, y: f32) -> &mut Self { unsafe { sys::kiln_path_line_to(self.0, x, y) }; self }
+    pub fn quadratic_to(&mut self, x1: f32, y1: f32, x2: f32, y2: f32) -> &mut Self { unsafe { sys::kiln_path_quadratic_to(self.0, x1, y1, x2, y2) }; self }
+    pub fn cubic_to(&mut self, x1: f32, y1: f32, x2: f32, y2: f32, x3: f32, y3: f32) -> &mut Self {
+        unsafe { sys::kiln_path_cubic_to(self.0, x1, y1, x2, y2, x3, y3) }; self
+    }
+    pub fn add_rect(&mut self, left: f32, top: f32, right: f32, bottom: f32) -> &mut Self {
+        unsafe { sys::kiln_path_add_rect(self.0, sys::kiln_rect { left, top, right, bottom }) }; self
+    }
+    pub fn add_oval(&mut self, left: f32, top: f32, right: f32, bottom: f32) -> &mut Self {
+        unsafe { sys::kiln_path_add_oval(self.0, sys::kiln_rect { left, top, right, bottom }) }; self
+    }
+    pub fn close(&mut self) -> &mut Self { unsafe { sys::kiln_path_close(self.0) }; self }
+}
+impl Default for Path { fn default() -> Self { Path::new() } }
+impl Drop for Path { fn drop(&mut self) { unsafe { sys::kiln_path_free(self.0) } } }
+
+/// Canvas: a box that only draws.
+#[track_caller]
+pub fn canvas(modifier: Modifier, mut on_draw: impl FnMut(&mut DrawScope) + 'static) {
+    let c = move |d: *mut sys::kiln_draw_scope| on_draw(&mut DrawScope(d));
+    unsafe { sys::kiln_canvas(here(), modifier.0, c.into_callback()) }
 }
 
 /// Where an element sits, in px; only valid inside the callback that gave it.

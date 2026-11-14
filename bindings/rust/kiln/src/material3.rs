@@ -10,6 +10,9 @@ crate::__kiln_callback!(sys::kiln_m3_fn_button_group_menu_state, (a0: *mut sys::
 crate::__kiln_callback!(sys::kiln_m3_fn_button_group_scope, (a0: *mut sys::kiln_m3_button_group_scope) -> ());
 crate::__kiln_callback!(sys::kiln_m3_fn_carousel_item_scope_int, (a0: *mut sys::kiln_m3_carousel_item_scope, a1: i32) -> ());
 crate::__kiln_callback!(sys::kiln_m3_fn_color_scheme, (a0: *mut sys::kiln_m3_color_scheme) -> ());
+crate::__kiln_callback!(sys::kiln_m3_fn_draw_scope, (a0: *mut sys::kiln_draw_scope) -> ());
+crate::__kiln_callback!(sys::kiln_m3_fn_draw_scope_offset, (a0: *mut sys::kiln_draw_scope, a1: sys::kiln_offset) -> ());
+crate::__kiln_callback!(sys::kiln_m3_fn_draw_scope_offset_color, (a0: *mut sys::kiln_draw_scope, a1: sys::kiln_offset, a2: sys::kiln_color) -> ());
 crate::__kiln_callback!(sys::kiln_m3_fn_drawer_value_to_bool, (a0: sys::kiln_m3_drawer_value) -> bool);
 crate::__kiln_callback!(sys::kiln_m3_fn_exposed_dropdown_menu_box_scope, (a0: *mut sys::kiln_m3_exposed_dropdown_menu_box_scope) -> ());
 crate::__kiln_callback!(sys::kiln_m3_fn_float_to_color, (a0: f32) -> sys::kiln_color);
@@ -2884,6 +2887,10 @@ pub fn progress_indicator_defaults_progress_animation_spec() -> *const sys::kiln
     unsafe { sys::kiln_m3_progress_indicator_defaults_progress_animation_spec(here()) }
 }
 #[track_caller]
+pub fn progress_indicator_defaults_draw_stop_indicator(scope_: *mut sys::kiln_draw_scope, stop_size: f32, color: sys::kiln_color, stroke_cap: sys::kiln_stroke_cap) {
+    unsafe { sys::kiln_m3_progress_indicator_defaults_draw_stop_indicator(here(), scope_, stop_size, color, stroke_cap) }
+}
+#[track_caller]
 pub fn make_pull_to_refresh_state() -> *mut sys::kiln_m3_pull_to_refresh_state {
     unsafe { sys::kiln_m3_make_pull_to_refresh_state(here()) }
 }
@@ -3280,6 +3287,10 @@ pub fn slider_defaults_centered_track(arg0: *mut sys::kiln_m3_slider_state, arg1
 #[track_caller]
 pub fn slider_defaults_track_range_slider_state(arg0: *mut sys::kiln_m3_range_slider_state, arg1: Modifier, arg2: *const sys::kiln_m3_slider_track_options) {
     unsafe { sys::kiln_m3_slider_defaults_track_range_slider_state(here(), arg0, arg1.raw(), arg2) }
+}
+#[track_caller]
+pub fn slider_defaults_draw_stop_indicator(arg0: *mut sys::kiln_draw_scope, arg1: sys::kiln_offset, size: f32, arg3: sys::kiln_color) {
+    unsafe { sys::kiln_m3_slider_defaults_draw_stop_indicator(here(), arg0, arg1, size, arg3) }
 }
 #[track_caller]
 pub fn split_button_defaults_outer_corner_size() -> sys::kiln_corner_size {
@@ -5049,7 +5060,7 @@ pub fn slider_state_configure(this: *mut sys::kiln_m3_slider_state, orientation:
 pub fn slider_state_update_dimensions(this: *mut sys::kiln_m3_slider_state, width: i32, height: i32, thumb_width: i32, thumb_height: i32) {
     unsafe { sys::kiln_m3_slider_state_update_dimensions(this, width, height, thumb_width, thumb_height) }
 }
-pub fn slider_state_on_press(this: *mut sys::kiln_m3_slider_state, position: *const sys::kiln_ui_offset) {
+pub fn slider_state_on_press(this: *mut sys::kiln_m3_slider_state, position: sys::kiln_offset) {
     unsafe { sys::kiln_m3_slider_state_on_press(this, position) }
 }
 pub fn slider_state_set_dragging(this: *mut sys::kiln_m3_slider_state, value: bool) {

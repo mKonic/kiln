@@ -142,6 +142,7 @@ typedef struct kiln_dp_offset { float x, y; } kiln_dp_offset;
 typedef struct kiln_int_size { int32_t width, height; } kiln_int_size;
 typedef struct kiln_rect { float left, top, right, bottom; } kiln_rect;
 typedef struct kiln_offset { float x, y; } kiln_offset;   /* px */
+typedef struct kiln_size { float width, height; } kiln_size;   /* px */
 /* A corner's size: dp + px + percent of the shape's smaller side. */
 typedef struct kiln_corner_size { float dp, px, percent; } kiln_corner_size;
 typedef enum kiln_text_unit_type { KILN_TEXT_UNIT_UNSPECIFIED, KILN_TEXT_UNIT_SP, KILN_TEXT_UNIT_EM } kiln_text_unit_type;
@@ -477,6 +478,69 @@ KILN_API kiln_modifier* kiln_mod_horizontal_scroll(kiln_modifier* m, kiln_scroll
 /* Semantics */
 KILN_API kiln_modifier* kiln_mod_test_tag(kiln_modifier* m, const char* tag);
 KILN_API kiln_modifier* kiln_mod_content_description(kiln_modifier* m, const char* description);
+
+/* ---------------------------------------------------------------------------------------------
+ * Drawing (DrawScope). Coordinates are px in the element's own space, +y down. A draw scope is
+ * valid during the callback that gets it.
+ * ------------------------------------------------------------------------------------------- */
+
+typedef struct kiln_draw_scope kiln_draw_scope;
+typedef struct kiln_fn_draw { void (*call)(void* user, kiln_draw_scope* scope); void* user; void (*drop)(void* user); } kiln_fn_draw;
+
+typedef enum kiln_stroke_cap { KILN_STROKE_CAP_BUTT, KILN_STROKE_CAP_ROUND, KILN_STROKE_CAP_SQUARE } kiln_stroke_cap;
+typedef enum kiln_stroke_join { KILN_STROKE_JOIN_MITER, KILN_STROKE_JOIN_ROUND, KILN_STROKE_JOIN_BEVEL } kiln_stroke_join;
+/* Stroke(width, miter, cap, join); a NULL style fills. */
+typedef struct kiln_draw_style { float width; float miter; kiln_stroke_cap cap; kiln_stroke_join join; } kiln_draw_style;
+#define KILN_STROKE(w) (KILN_LITERAL_(kiln_draw_style){ (w), 4.0f, KILN_STROKE_CAP_BUTT, KILN_STROKE_JOIN_MITER })
+
+/* A path, built by the caller (kiln_path_free). */
+typedef struct kiln_path kiln_path;
+KILN_API kiln_path* kiln_path_new(void);
+KILN_API void kiln_path_free(kiln_path* path);
+KILN_API void kiln_path_move_to(kiln_path* path, float x, float y);
+KILN_API void kiln_path_line_to(kiln_path* path, float x, float y);
+KILN_API void kiln_path_quadratic_to(kiln_path* path, float x1, float y1, float x2, float y2);
+KILN_API void kiln_path_cubic_to(kiln_path* path, float x1, float y1, float x2, float y2, float x3, float y3);
+/* Degrees clockwise from 3 o'clock. */
+KILN_API void kiln_path_arc_to(kiln_path* path, kiln_rect oval, float start_angle, float sweep_angle, bool force_move_to);
+KILN_API void kiln_path_add_rect(kiln_path* path, kiln_rect rect);
+KILN_API void kiln_path_add_oval(kiln_path* path, kiln_rect oval);
+KILN_API void kiln_path_add_round_rect(kiln_path* path, kiln_rect rect, float radius);
+KILN_API void kiln_path_close(kiln_path* path);
+KILN_API void kiln_path_reset(kiln_path* path);
+
+KILN_API kiln_size kiln_draw_scope_size(const kiln_draw_scope* scope);
+KILN_API float kiln_draw_scope_density(const kiln_draw_scope* scope);   /* px per dp */
+KILN_API bool kiln_draw_scope_is_rtl(const kiln_draw_scope* scope);
+KILN_API void kiln_draw_rect(kiln_draw_scope* scope, kiln_color color, kiln_offset top_left, kiln_size size, const kiln_draw_style* style);
+KILN_API void kiln_draw_round_rect(kiln_draw_scope* scope, kiln_color color, kiln_offset top_left, kiln_size size, float corner_radius,
+                                   const kiln_draw_style* style);
+/* radius < 0: half the smaller side. */
+KILN_API void kiln_draw_circle(kiln_draw_scope* scope, kiln_color color, kiln_offset center, float radius, const kiln_draw_style* style);
+KILN_API void kiln_draw_oval(kiln_draw_scope* scope, kiln_color color, kiln_offset top_left, kiln_size size, const kiln_draw_style* style);
+KILN_API void kiln_draw_arc(kiln_draw_scope* scope, kiln_color color, float start_angle, float sweep_angle, bool use_center,
+                            kiln_offset top_left, kiln_size size, const kiln_draw_style* style);
+KILN_API void kiln_draw_line(kiln_draw_scope* scope, kiln_color color, kiln_offset start, kiln_offset end, float stroke_width,
+                             kiln_stroke_cap cap);
+KILN_API void kiln_draw_path(kiln_draw_scope* scope, const kiln_path* path, kiln_color color, const kiln_draw_style* style);
+KILN_API void kiln_draw_image(kiln_draw_scope* scope, const kiln_image_bitmap* image, kiln_offset top_left, float alpha);
+/* Transform and clip until the matching restore. */
+KILN_API void kiln_draw_save(kiln_draw_scope* scope);
+KILN_API void kiln_draw_restore(kiln_draw_scope* scope);
+KILN_API void kiln_draw_translate(kiln_draw_scope* scope, float dx, float dy);
+KILN_API void kiln_draw_rotate(kiln_draw_scope* scope, float degrees, kiln_offset pivot);
+KILN_API void kiln_draw_scale(kiln_draw_scope* scope, float sx, float sy, kiln_offset pivot);
+KILN_API void kiln_draw_clip_rect(kiln_draw_scope* scope, kiln_rect rect, float corner_radius);
+KILN_API void kiln_draw_clip_path(kiln_draw_scope* scope, const kiln_path* path);
+KILN_API void kiln_draw_multiply_alpha(kiln_draw_scope* scope, float alpha);
+/* drawWithContent's scope: draws what the modifier wraps (nothing in other scopes). */
+KILN_API void kiln_draw_content(kiln_draw_scope* scope);
+
+/* drawBehind: under the content. drawWithContent: on_draw draws the content itself
+ * (kiln_draw_content), anything before or after it. Canvas: a box that only draws. */
+KILN_API kiln_modifier* kiln_mod_draw_behind(kiln_modifier* m, kiln_fn_draw on_draw);
+KILN_API kiln_modifier* kiln_mod_draw_with_content(kiln_modifier* m, kiln_fn_draw on_draw);
+KILN_API void kiln_canvas(kiln_key key, const kiln_modifier* modifier, kiln_fn_draw on_draw);
 
 /* ---------------------------------------------------------------------------------------------
  * Layouts

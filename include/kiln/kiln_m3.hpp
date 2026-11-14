@@ -477,7 +477,7 @@ namespace kpp::m3 {
         void dispatch_raw_delta(float delta, kpp::Callback<kiln_fn_float> on_change = {}) const;
         void configure(kiln_orientation orientation, bool rtl, bool reverse_vertical) const;
         void update_dimensions(int32_t width, int32_t height, int32_t thumb_width, int32_t thumb_height) const;
-        void on_press(const kiln_ui_offset* position = {}) const;
+        void on_press(kiln_offset position) const;
         void set_dragging(bool value) const;
         void set_focused(bool value) const;
         bool is_focused() const;
@@ -830,7 +830,7 @@ namespace kpp::m3 {
     inline void SliderState::dispatch_raw_delta(float delta, kpp::Callback<kiln_fn_float> on_change) const { kiln_m3_slider_state_dispatch_raw_delta(m_H, delta, on_change.release()); }
     inline void SliderState::configure(kiln_orientation orientation, bool rtl, bool reverse_vertical) const { kiln_m3_slider_state_configure(m_H, orientation, rtl, reverse_vertical); }
     inline void SliderState::update_dimensions(int32_t width, int32_t height, int32_t thumb_width, int32_t thumb_height) const { kiln_m3_slider_state_update_dimensions(m_H, width, height, thumb_width, thumb_height); }
-    inline void SliderState::on_press(const kiln_ui_offset* position) const { kiln_m3_slider_state_on_press(m_H, position); }
+    inline void SliderState::on_press(kiln_offset position) const { kiln_m3_slider_state_on_press(m_H, position); }
     inline void SliderState::set_dragging(bool value) const { kiln_m3_slider_state_set_dragging(m_H, value); }
     inline void SliderState::set_focused(bool value) const { kiln_m3_slider_state_set_focused(m_H, value); }
     inline bool SliderState::is_focused() const { return kiln_m3_slider_state_is_focused(m_H); }
@@ -1528,6 +1528,7 @@ namespace kpp::m3 {
     inline kiln_color progress_indicator_defaults_circular_determinate_track_color(kpp::Key key = {}) { return kiln_m3_progress_indicator_defaults_circular_determinate_track_color(key); }
     inline kiln_color progress_indicator_defaults_circular_indeterminate_track_color(kpp::Key key = {}) { return kiln_m3_progress_indicator_defaults_circular_indeterminate_track_color(key); }
     inline const kiln_anim_spec* progress_indicator_defaults_progress_animation_spec(kpp::Key key = {}) { return kiln_m3_progress_indicator_defaults_progress_animation_spec(key); }
+    inline void progress_indicator_defaults_draw_stop_indicator(kiln_draw_scope* scope_, float stop_size, kiln_color color, kiln_stroke_cap stroke_cap, kpp::Key key = {}) { kiln_m3_progress_indicator_defaults_draw_stop_indicator(key, scope_, stop_size, color, stroke_cap); }
     inline PullToRefreshState make_pull_to_refresh_state(kpp::Key key = {}) { return PullToRefreshState(kiln_m3_make_pull_to_refresh_state(key)); }
     inline PullToRefreshState remember_pull_to_refresh_state(kpp::Key key = {}) { return PullToRefreshState(kiln_m3_remember_pull_to_refresh_state(key)); }
     inline const kiln_shape* pull_to_refresh_defaults_indicator_shape(kpp::Key key = {}) { return kiln_m3_pull_to_refresh_defaults_indicator_shape(key); }
@@ -1618,6 +1619,7 @@ namespace kpp::m3 {
     inline void slider_defaults_track(SliderState arg0, kpp::Modifier arg1 = {}, const kiln_m3_slider_track_options* arg2 = {}, kpp::Key key = {}) { kiln_m3_slider_defaults_track(key, arg0, arg1, arg2); }
     inline void slider_defaults_centered_track(SliderState arg0, kpp::Modifier arg1 = {}, const kiln_m3_slider_track_options* arg2 = {}, kpp::Key key = {}) { kiln_m3_slider_defaults_centered_track(key, arg0, arg1, arg2); }
     inline void slider_defaults_track_range_slider_state(RangeSliderState arg0, kpp::Modifier arg1 = {}, const kiln_m3_slider_track_options* arg2 = {}, kpp::Key key = {}) { kiln_m3_slider_defaults_track_range_slider_state(key, arg0, arg1, arg2); }
+    inline void slider_defaults_draw_stop_indicator(kiln_draw_scope* arg0, kiln_offset arg1, float size, kiln_color arg3 = {}, kpp::Key key = {}) { kiln_m3_slider_defaults_draw_stop_indicator(key, arg0, arg1, size, arg3); }
     inline kiln_corner_size split_button_defaults_outer_corner_size(kpp::Key key = {}) { return kiln_m3_split_button_defaults_outer_corner_size(key); }
     inline kiln_m3_split_button_shapes split_button_defaults_leading_button_shapes_for(float button_height, kpp::Key key = {}) { kiln_m3_split_button_shapes o; kiln_m3_split_button_shapes_init(&o); kiln_m3_split_button_defaults_leading_button_shapes_for(key, button_height, &o); return o; }
     inline kiln_m3_split_button_shapes split_button_defaults_trailing_button_shapes_for(float button_height, kpp::Key key = {}) { kiln_m3_split_button_shapes o; kiln_m3_split_button_shapes_init(&o); kiln_m3_split_button_defaults_trailing_button_shapes_for(key, button_height, &o); return o; }
