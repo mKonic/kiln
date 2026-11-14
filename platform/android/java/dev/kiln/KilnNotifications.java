@@ -51,6 +51,8 @@ final class KilnNotifications {
             if (id == 0) id = sContext.getResources().getIdentifier(name, "mipmap", sContext.getPackageName());
         }
         if (id == 0) id = sContext.getApplicationInfo().icon;
+        // No launcher icon either: a notification without one cannot be posted.
+        if (id == 0) id = sContext.getResources().getIdentifier("kiln_ic_notification", "drawable", sContext.getPackageName());
         return Icon.createWithResource(sContext, id);
     }
 

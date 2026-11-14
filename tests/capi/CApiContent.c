@@ -146,3 +146,18 @@ void capi_annotated(void* user) {
     kiln_basic_text_annotated(KILN_HERE, text, kiln_mod_test_tag(NULL, "rich"), NULL, NULL);
     kiln_annotated_string_release(text);
 }
+
+/* A player with audio focus and a media session whose next button counts. */
+int capi_media_next;
+static void media_next(void* user) { (void)user; ++capi_media_next; }
+void capi_media(void* user) {
+    (void)user;
+    kiln_player* player = kiln_remember_player(KILN_HERE);
+    kiln_player_set_audio_attributes(player, 1, 2, true);
+    kiln_player_set_handle_audio_becoming_noisy(player, true);
+    kiln_media_session_options options;
+    kiln_media_session_options_init(&options);
+    options.on_skip_to_next = counted(media_next, NULL);
+    kiln_media_session* session = kiln_remember_media_session(KILN_HERE, player, &options);
+    kiln_media_session_set_metadata(session, "Song", "Band", "", "");
+}

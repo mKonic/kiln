@@ -175,6 +175,16 @@ name = "exoplayer"
 kiln = "core/src/kiln/media (DecideFrameRelease), platform/android/jni/AndroidMedia (the playback loop and clocks)"
 paths = ["libraries/exoplayer/src/main/java/androidx/media3/exoplayer/video", "libraries/exoplayer/src/main/java/androidx/media3/exoplayer/audio"]
 
+[[media3.group]]
+name = "audio-focus"
+kiln = "core/src/kiln/media/AudioFocus (AudioFocusManager, AudioBecomingNoisyManager), Player's playWhenReady with focus (ExoPlayerImplInternal)"
+paths = ["libraries/common/src/main/java/androidx/media3/common/audio/AudioFocusManager.java", "libraries/common/src/main/java/androidx/media3/common/audio/AudioBecomingNoisyManager.java"]
+
+[[media3.group]]
+name = "session"
+kiln = "core/src/kiln/media/MediaSession (MediaNotificationManager's rules), KilnMedia.java / KilnMediaService.java (DefaultMediaNotificationProvider, MediaSessionService)"
+paths = ["libraries/session/src/main/java/androidx/media3/session/MediaNotificationManager.java", "libraries/session/src/main/java/androidx/media3/session/DefaultMediaNotificationProvider.java", "libraries/session/src/main/java/androidx/media3/session/MediaSessionService.java"]
+
 [aosp-frameworks-base]
 kind = "gitiles"
 repo = "https://android.googlesource.com/platform/frameworks/base"

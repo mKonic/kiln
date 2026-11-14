@@ -1,11 +1,29 @@
 #include "kiln/Uri.h"
 
+#include <cstring>
+
 #include <algorithm>
 #include <cctype>
 
 namespace kiln {
 
     Uri::Uri(std::string uri) : m_Uri(std::move(uri)) {}
+
+    std::string Uri::Encode(const std::string& s, const std::string& allow) {
+        static constexpr char kHex[] = "0123456789ABCDEF";
+        std::string out;
+        for (unsigned char c : s) {
+            const bool keep = std::isalnum(c) || (c != 0 && std::strchr("_-!.~'()*", c) != nullptr) || allow.find(char(c)) != std::string::npos;
+            if (keep) {
+                out += char(c);
+            } else {
+                out += '%';
+                out += kHex[c >> 4];
+                out += kHex[c & 15];
+            }
+        }
+        return out;
+    }
 
     std::string Uri::Decode(const std::string& s) {
         std::string out;

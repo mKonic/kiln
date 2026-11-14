@@ -501,6 +501,24 @@ void SharePhoto(const std::string& contentUri) {
   `ui::CreateChooser(intent, title)` wraps an intent in the system's chooser. An intent's
   extras can hold other intents and lists of URIs.
 
+To share a file of your own, turn its path into a URI with `ui::GetUriForFile`
+(`kiln/ui/FileProvider.h`, androidx's FileProvider):
+
+```cpp
+#include <kiln/ui/AppDirectories.h>
+#include <kiln/ui/FileProvider.h>
+#include <kiln/ui/Share.h>
+
+void ShareExport() {
+    const std::string path = kiln::ui::CacheDir() + "/exports/notes.pdf";
+    kiln::ui::Share({ .streams = { kiln::ui::GetUriForFile(path, "Notes.pdf") }, .mimeType = "application/pdf" });
+}
+```
+
+Files in `FilesDir`, `CacheDir`, `NoBackupFilesDir` and the app's folders on external storage
+can be shared this way; anything else throws `std::invalid_argument`. Only the app you share
+with can read the file, and only for that share.
+
 ### Reading what was picked
 
 Pickers, shares and other apps hand over `content://` URIs. `kiln/ui/ContentResolver.h`
@@ -556,6 +574,52 @@ void Clip() {
   more than 30 ms late is dropped. Without sound, or without an audio output, the video keeps
   its own time.
 * Remember the player above its `VideoSurface`, so it outlives the surface.
+
+### Audio focus and media controls
+
+A music or podcast app should behave like other media apps: pause when another app starts
+playing, wait out a call, duck under a navigation prompt, and pause when the headphones are
+unplugged. It should also show its controls in the notification shade and on the lock screen,
+and keep playing with the app in the background. The player and `media::MediaSession`
+(`kiln/media/MediaSession.h`) do this as media3's ExoPlayer and MediaSessionService do:
+
+<!-- prelude: void NextTrack(); -->
+```cpp
+// At process scope, so playback outlives the activity; made on first use (on the main thread,
+// after kiln has installed the platform's engine).
+kiln::media::Player& Music() {
+    static kiln::media::Player player;
+    return player;
+}
+kiln::media::MediaSession& Session() {
+    static kiln::media::MediaSession session(Music(), { .onSkipToNext = [] { NextTrack(); } });
+    return session;
+}
+
+void StartPlaying() {
+    auto& player = Music();
+    auto& session = Session();
+    player.SetAudioAttributes({ .usage = kiln::media::AudioUsage::Media, .contentType = kiln::media::AudioContentType::Music }, true);
+    player.SetHandleAudioBecomingNoisy(true);
+    session.SetMetadata({ .title = "Song", .artist = "Band", .artworkUri = "asset:///cover.jpg" });
+    player.SetMediaUri("asset:///song.mp3");
+    player.Play();
+}
+```
+
+* **Audio focus.** With focus handling on, the player asks for focus before it plays.
+  - Another app taking focus pauses it, and `playWhenReady` turns false.
+  - A call suppresses it until focus comes back (`suppression` is `TransientAudioFocusLoss`).
+  - A notification ducks it to a fifth of its volume. Speech content pauses instead.
+* **Headphones.** `SetHandleAudioBecomingNoisy(true)` pauses when the sound would move to the
+  speaker.
+* **The session.** It shows the title, artist and artwork in the system's media controls, with
+  play/pause and the skip buttons you give callbacks for. Headset, Bluetooth and lock-screen
+  buttons reach the player.
+* **Background playback.** While the user listens, and for ten minutes after a pause, a media
+  foreground service keeps the app running. Declare `android.permission.FOREGROUND_SERVICE`
+  and `android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK` in `PERMISSIONS`. A player
+  remembered in content stops when its screen goes, so keep it at process scope to play on.
 
 ### Camera preview
 

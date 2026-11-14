@@ -12,7 +12,14 @@
 #include <kiln/foundation/draganddrop/DragAndDrop.h>
 #include <kiln/foundation/activity/ActivityResult.h>
 #include <kiln/foundation/Popup.h>
+#include <kiln/foundation/Flow.h>
 #include <kiln/foundation/VideoSurface.h>
+#include <kiln/media/MediaSession.h>
+#include <fstream>
+#include <filesystem>
+#include <kiln/ui/AppDirectories.h>
+#include <kiln/ui/Share.h>
+#include <kiln/ui/FileProvider.h>
 #include <kiln/glance/Glance.h>
 #include <atomic>
 #include <kiln/foundation/Dialog.h>
@@ -351,7 +358,13 @@ namespace {
         using namespace kiln::foundation;
         auto& c = *kiln::rt::Composition::Current();
         auto& player = c.RememberNew<kiln::media::Player>({}, {});
-        c.LaunchedEffect(kiln::rt::Keys{}, [&player]() -> kiln::rt::Task<> {
+        // The system's media controls (notification, lock screen, headset buttons), playback going
+        // on in the background, pausing for calls and when headphones are unplugged.
+        auto& session = c.RememberNew<kiln::media::MediaSession>({}, {}, player, kiln::media::MediaSessionOptions{});
+        c.LaunchedEffect(kiln::rt::Keys{}, [&player, &session]() -> kiln::rt::Task<> {
+            player.SetAudioAttributes({ .usage = kiln::media::AudioUsage::Media, .contentType = kiln::media::AudioContentType::Movie }, true);
+            player.SetHandleAudioBecomingNoisy(true);
+            session.SetMetadata({ .title = "Sample clip", .artist = "kiln gallery", .artworkUri = "asset:///orb.png" });
             player.SetMediaUri("asset:///clip.mp4");
             player.SetRepeat(true);
             player.Play();
@@ -372,13 +385,20 @@ namespace {
             const std::string time = std::to_string(s.positionMs / 1000) + "." + std::to_string(s.positionMs / 100 % 10) + " / " +
                                      std::to_string(std::max<std::int64_t>(s.durationMs, 0) / 1000) + " s";
             BasicText(s.error.empty() ? time : s.error, Padding(Modifier{}, 16_dp, 0_dp), { 14, kOnSurface });
-            Row(Padding(Modifier{}, 16_dp, 0_dp), Arrangement::SpacedBy(8_dp), AlignmentV::CenterVertically(), [&] {
+            FlowRow(Padding(Modifier{}, 16_dp, 0_dp), Arrangement::SpacedBy(8_dp), Arrangement::SpacedBy(8_dp), AlignmentV::CenterVertically(), [&] {
                 auto button = [](const char* label, kiln::Function<void()> onClick) {
                     Box(Clickable(Background(Modifier{}, kPrimaryContainer, CornerShape::Pill()), std::move(onClick)), Alignment::Center(), false,
                         [label] { BasicText(label, Padding(Modifier{}, 20_dp, 10_dp), { 14, kOnSurface }); });
                 };
                 button(s.playWhenReady ? "Pause" : "Play", [&player, play = !s.playWhenReady] { play ? player.Play() : player.Pause(); });
                 button("Back to start", [&player] { player.SeekTo(0); });
+                // A file of the app's own, shared by content:// URI (FileProvider).
+                button("Share a file", [] {
+                    const std::string dir = kiln::ui::CacheDir() + "/shared";
+                    std::filesystem::create_directories(dir);
+                    std::ofstream(dir + "/hello.txt") << "Hello from the kiln gallery\n";
+                    kiln::ui::Share({ .streams = { kiln::ui::GetUriForFile(dir + "/hello.txt", "Gallery note.txt") }, .mimeType = "text/plain" });
+                });
                 button(cameraOn.Get() ? "Hide camera" : "Camera", [&cameraOn, askCamera] {
                     if (cameraOn.Peek()) cameraOn.Set(false);
                     else askCamera.Launch("android.permission.CAMERA");

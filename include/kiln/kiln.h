@@ -482,6 +482,9 @@ KILN_API bool kiln_network_connected(kiln_key key);
 KILN_API bool kiln_share(const char* text, const char* subject, const char* const* streams, size_t stream_count,
                          const char* mime_type, const char* chooser_title);
 KILN_API bool kiln_open_uri(const char* uri);
+/* A content:// URI for a file in the app's folders, to share (FileProvider.getUriForFile);
+ * display_name may be NULL. NULL for a file outside them. Valid until the next call. */
+KILN_API const char* kiln_get_uri_for_file(const char* path, const char* display_name);
 KILN_API bool kiln_should_show_permission_rationale(const char* permission);
 
 /* A Custom Tab: the URL in the user's browser inside the app, with the toolbar colour
@@ -1049,6 +1052,24 @@ KILN_API void kiln_player_seek_to(kiln_player* player, int64_t position_ms);
 KILN_API void kiln_player_set_repeat(kiln_player* player, bool repeat);
 KILN_API void kiln_player_set_volume(kiln_player* player, float volume);
 KILN_API void kiln_player_get_state(kiln_player* player, kiln_player_state* out);
+/* Audio focus (usage and content type: AudioAttributes.USAGE_* / CONTENT_TYPE_*; only media 1
+ * and game 14 can be handled) and pausing when headphones are unplugged. */
+KILN_API void kiln_player_set_audio_attributes(kiln_player* player, int32_t usage, int32_t content_type, bool handle_audio_focus);
+KILN_API void kiln_player_set_handle_audio_becoming_noisy(kiln_player* player, bool handle);
+/* A media session for the player: the system's media controls (notification, lock screen,
+ * headset buttons) and playback in a media foreground service (the app declares
+ * FOREGROUND_SERVICE and FOREGROUND_SERVICE_MEDIA_PLAYBACK). Remembered at the call. */
+typedef struct kiln_media_session kiln_media_session;
+typedef struct kiln_media_session_options {
+    size_t size;
+    kiln_fn on_skip_to_previous, on_skip_to_next;   /* buttons shown when set */
+    const char* session_activity_uri;              /* the notification's deep link; NULL: launch */
+    bool notification;                             /* true */
+} kiln_media_session_options;
+KILN_API void kiln_media_session_options_init(kiln_media_session_options* options);
+KILN_API kiln_media_session* kiln_remember_media_session(kiln_key key, kiln_player* player, const kiln_media_session_options* options);
+KILN_API void kiln_media_session_set_metadata(kiln_media_session* session, const char* title, const char* artist,
+                                              const char* album_title, const char* artwork_uri);
 KILN_API void kiln_video_surface(kiln_key key, const kiln_modifier* modifier, kiln_player* player, bool keep_aspect_ratio);
 /* facing: 0 front, 1 back, 2 external. The id is valid until the next call; NULL: none. */
 KILN_API const char* kiln_find_camera(int32_t facing);

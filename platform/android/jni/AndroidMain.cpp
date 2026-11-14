@@ -12,6 +12,7 @@
 #include "AndroidWork.h"
 #include "kiln/ui/ActivityIntent.h"
 #include "kiln/ui/AppDirectories.h"
+#include "kiln/ui/FileProvider.h"
 
 namespace kiln::android { void InstallImageDecoder(); void InstallAssetReader(JNIEnv* env, jobject assets); }
 
@@ -1340,6 +1341,7 @@ namespace {
         kiln::android::InstallHttp(env);
         kiln::android::InstallMedia();
         kiln::android::InstallCamera();
+        kiln::android::InstallMediaSession(env);
     }
 
     void Create(JNIEnv* env, jclass, jobject view, jobject text, jobject assets, jfloat density, jfloat fontScale, jbyteArray saved) {
@@ -2957,6 +2959,20 @@ namespace {
         };
         kiln::ui::SetAppDirectories(str(files), str(cache), str(noBackup));
     }
+    void SetFileProviderFromJava(JNIEnv* env, jclass, jobjectArray config) {
+        std::vector<std::string> c;
+        for (jsize i = 0, n = env->GetArrayLength(config); i < n; ++i) {
+            auto s = static_cast<jstring>(env->GetObjectArrayElement(config, i));
+            const char* u = env->GetStringUTFChars(s, nullptr);
+            c.emplace_back(u ? u : "");
+            if (u) env->ReleaseStringUTFChars(s, u);
+            env->DeleteLocalRef(s);
+        }
+        if (c.empty()) return;
+        std::vector<std::pair<std::string, std::string>> roots;
+        for (std::size_t i = 1; i + 1 < c.size(); i += 2) roots.emplace_back(c[i], c[i + 1]);
+        kiln::ui::SetFileProvider(c[0], std::move(roots));
+    }
     void SetActivityIntentFromJava(JNIEnv* env, jclass, jobjectArray intent) {
         kiln::ui::SetActivityIntent(IntentFromJava(env, intent));
     }
@@ -3669,6 +3685,7 @@ extern "C" JNIEXPORT jint kiln_jni_onload(JavaVM* vm) {
         { "activityResult", "(Ljava/lang/String;I[Ljava/lang/Object;)V", reinterpret_cast<void*>(&ActivityResultFromJava) },
         { "setActivityIntent", "([Ljava/lang/Object;)V", reinterpret_cast<void*>(&SetActivityIntentFromJava) },
         { "setDirectories", "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V", reinterpret_cast<void*>(&SetDirectoriesFromJava) },
+        { "setFileProvider", "([Ljava/lang/String;)V", reinterpret_cast<void*>(&SetFileProviderFromJava) },
         { "newIntent", "([Ljava/lang/Object;)V", reinterpret_cast<void*>(&NewIntentFromJava) },
         { "dialogDismissRequest", "(I)V", reinterpret_cast<void*>(&DialogDismissRequest) },
         { "windowMovedOnScreen", "(I)V", reinterpret_cast<void*>(&WindowMovedOnScreen) },

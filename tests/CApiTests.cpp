@@ -16,13 +16,18 @@
 #include "kiln/ui/ActivityIntent.h"
 #include "kiln/ui/Semantics.h"
 #include "kiln/ui/Volition.h"
+#include "kiln/media/MediaSession.h"
+#include "kiln/ui/FileProvider.h"
 
 #include <chrono>
+#include <map>
 #include <string>
 
 using namespace kiln;
 
 extern "C" {
+    extern int capi_media_next;
+    void capi_media(void* user);
     extern int capi_live_callbacks, capi_effect_starts, capi_effect_disposals, capi_task_frames, capi_items_composed;
     extern kiln_state_i64* capi_count;
     void capi_counter(void* user);
@@ -850,4 +855,35 @@ TEST(CApiAsyncImageReportsItsStates) {
     }
     CHECK(states == (std::vector<int>{ 0, 1 }));
     kiln::gfx::SetImageDecoder({});
+}
+
+TEST(CApiMediaSessionAndAudioFocus) {
+    capi_live_callbacks = capi_media_next = 0;
+    std::map<int, media::MediaSessionSnapshot> shown;
+    int noisy = 0;
+    media::SetMediaSessionHost({ .update = [&](int id, const media::MediaSessionSnapshot& s) { shown[id] = s; } });
+    media::SetAudioHost({ .setNoisyReceiver = [&](int, bool on) { noisy += on ? 1 : -1; } });
+    {
+        Harness h;
+        h.Run(capi_media);
+        h.Pump();
+        CHECK(shown.size() == 1 && shown.begin()->second.metadata.title == "Song" && shown.begin()->second.canSkipToNext);
+        CHECK(!shown.begin()->second.canSkipToPrevious && noisy == 1);
+        media::OnMediaSessionCommand(shown.begin()->first, media::MediaSessionCommand::SkipToNext);
+        CHECK(capi_media_next == 1);
+    }
+    CHECK(noisy == 0 && capi_live_callbacks == 0);
+    media::SetMediaSessionHost({});
+    media::SetAudioHost({});
+}
+
+TEST(CApiGetUriForFile) {
+    const char* u = kiln_get_uri_for_file("/tmp/a.txt", nullptr);
+    CHECK(u && std::string(u) == "file:///tmp/a.txt");
+    ui::SetFileProvider("app.kiln.fileprovider", { { "cache", "/tmp" } });
+    u = kiln_get_uri_for_file("/tmp/x/a.txt", "A");
+    CHECK(u && std::string(u) == "content://app.kiln.fileprovider/cache/x/a.txt?displayName=A");
+    CHECK(kiln_get_uri_for_file("/etc/passwd", nullptr) == nullptr);
+    CHECK(kpp::get_uri_for_file("/etc/passwd").empty());
+    ui::SetFileProvider({}, {});
 }

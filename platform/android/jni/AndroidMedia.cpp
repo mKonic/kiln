@@ -22,6 +22,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <atomic>
 #include <condition_variable>
 #include <cstring>
 #include <memory>
@@ -174,6 +175,12 @@ namespace kiln::android {
             void SeekTo(std::int64_t ms) override { Command([&] { m_SeekUs = ms * 1000; }); }
             void SetRepeat(bool repeat) override { Command([&] { m_RepeatWanted = repeat; }); }
             void SetVolume(float v) override { Command([&] { m_VolumeWanted = v; }); }
+            // AAudio's usage and content type have AudioAttributes' values; used when the stream
+            // next opens.
+            void SetAudioAttributes(media::AudioAttributes a) override {
+                m_Usage = int(a.usage);
+                m_ContentType = int(a.contentType);
+            }
             void SetSurface(ui::PlatformSurface surface) override {
                 auto* w = static_cast<ANativeWindow*>(surface.nativeWindow);
                 if (w) ANativeWindow_acquire(w);
@@ -465,8 +472,9 @@ namespace kiln::android {
                 AAudioStreamBuilder_setFormat(b, AAUDIO_FORMAT_PCM_I16);
                 AAudioStreamBuilder_setChannelCount(b, m_Channels);
                 AAudioStreamBuilder_setSampleRate(b, m_SampleRate);
-                AAudioStreamBuilder_setUsage(b, AAUDIO_USAGE_MEDIA);
-                AAudioStreamBuilder_setContentType(b, m_Video ? AAUDIO_CONTENT_TYPE_MOVIE : AAUDIO_CONTENT_TYPE_MUSIC);
+                AAudioStreamBuilder_setUsage(b, aaudio_usage_t(m_Usage.load()));
+                const int content = m_ContentType.load();
+                AAudioStreamBuilder_setContentType(b, content ? aaudio_content_type_t(content) : m_Video ? AAUDIO_CONTENT_TYPE_MOVIE : AAUDIO_CONTENT_TYPE_MUSIC);
                 if (AAudioStreamBuilder_openStream(b, &m_Stream) != AAUDIO_OK) {
                     m_Stream = nullptr;
                     __android_log_print(ANDROID_LOG_WARN, "kiln", "media: no audio output; playing without sound");
@@ -648,6 +656,7 @@ namespace kiln::android {
             std::optional<std::int64_t> m_SeekUs;
             bool m_RepeatWanted = false;
             float m_VolumeWanted = 1;
+            std::atomic<int> m_Usage{ AAUDIO_USAGE_MEDIA }, m_ContentType{ 0 };
             ANativeWindow* m_Window = nullptr;
             std::uint64_t m_SurfaceGeneration = 0, m_AppliedSurface = 0;
 

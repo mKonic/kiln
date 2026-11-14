@@ -16,6 +16,7 @@
 // (android.permission.INTERNET). Where there is no engine (the desktop), the state reports an
 // error.
 
+#include "kiln/media/AudioFocus.h"
 #include "kiln/runtime/Flow.h"
 #include "kiln/ui/ExternalSurface.h"
 #include <kiln/Function.h>
@@ -34,10 +35,18 @@ namespace kiln::media {
         Ended,       // played to the end
     };
 
+    // Player.PLAYBACK_SUPPRESSION_REASON_*: why a player that would play does not.
+    enum class PlaybackSuppression { None, TransientAudioFocusLoss };
+
+    // Player.PLAY_WHEN_READY_CHANGE_REASON_*: what last changed playWhenReady.
+    enum class PlayWhenReadyChangeReason { UserRequest, AudioFocusLoss, AudioBecomingNoisy };
+
     struct PlayerState {
         PlaybackState state = PlaybackState::Idle;
-        bool playWhenReady = false;   // Play() was called (and not Pause())
-        bool isPlaying = false;       // ready and playing
+        bool playWhenReady = false;   // Play() was called (and not Pause(), nor lost to another app)
+        PlayWhenReadyChangeReason playWhenReadyChangeReason = PlayWhenReadyChangeReason::UserRequest;
+        PlaybackSuppression suppression = PlaybackSuppression::None;
+        bool isPlaying = false;       // ready, playing and not suppressed
         std::int64_t positionMs = 0;
         std::int64_t durationMs = -1; // unknown
         bool hasVideo = false, hasAudio = false;
@@ -57,6 +66,8 @@ namespace kiln::media {
         virtual void SeekTo(std::int64_t positionMs) = 0;
         virtual void SetRepeat(bool repeat) = 0;
         virtual void SetVolume(float volume) = 0;
+        // The stream's usage and content type (AAudio's), before it opens.
+        virtual void SetAudioAttributes(AudioAttributes) {}
         // The video's output; nativeWindow null: none (frames are decoded and dropped).
         virtual void SetSurface(ui::PlatformSurface surface) = 0;
         kiln::Function<void(const PlayerState&)> onState;
@@ -81,18 +92,23 @@ namespace kiln::media {
         // 0 to 1.
         void SetVolume(float volume);
         void SetSurface(ui::PlatformSurface surface);
+        // What the sound is; with handleAudioFocus the player asks for audio focus before it
+        // plays and follows its changes (ExoPlayer.setAudioAttributes). Only media and game
+        // usages can be handled.
+        void SetAudioAttributes(AudioAttributes attributes, bool handleAudioFocus);
+        // Pauses when audio would come out of the speaker (headphones unplugged).
+        void SetHandleAudioBecomingNoisy(bool handle);
 
         // The engine's state, updated on the main thread (the position about four times a second
         // while it plays).
-        const PlayerState& State() const { return m_Shared->state.Value(); }
-        rt::MutableStateFlow<PlayerState>& StateFlow() { return m_Shared->state; }
+        const PlayerState& State() const;
+        rt::MutableStateFlow<PlayerState>& StateFlow();
+        // Play() / Pause() from elsewhere (a media session's buttons): the reason they report.
+        void SetPlayWhenReady(bool playWhenReady, PlayWhenReadyChangeReason reason);
 
     private:
-        struct Shared {
-            rt::MutableStateFlow<PlayerState> state{ PlayerState{} };
-        };
-        std::shared_ptr<Shared> m_Shared = std::make_shared<Shared>();
-        std::unique_ptr<PlayerEngine> m_Engine;
+        struct Shared;
+        std::shared_ptr<Shared> m_Shared;
     };
 
     // VideoFrameReleaseControl.getFrameReleaseAction with MediaCodecVideoRenderer's thresholds:

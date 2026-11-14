@@ -22,6 +22,9 @@ namespace kiln {
         std::optional<std::string> Fragment() const;
         // Percent-decoding.
         static std::string Decode(const std::string& s);
+        // Uri.encode: UTF-8 bytes other than letters, digits, _-!.~'()* and those in `allow`,
+        // percent-encoded (uppercase hex).
+        static std::string Encode(const std::string& s, const std::string& allow = {});
         bool operator==(const Uri&) const = default;
 
     private:

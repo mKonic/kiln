@@ -32,6 +32,7 @@ public class KilnJobService extends JobService {
             loaded = true;
         }
         KilnHttp.attach(this);   // net::Connectivity in a process with no activity
+        KilnMedia.attach(this);
     }
 
     @Override

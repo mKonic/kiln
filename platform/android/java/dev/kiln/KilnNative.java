@@ -122,6 +122,8 @@ final class KilnNative {
     static native void newIntent(Object[] intent);
     /** Context.getFilesDir, getCacheDir, getNoBackupFilesDir. */
     static native void setDirectories(String files, String cache, String noBackup);
+    /** KilnFileProvider.config: the authority, then root name and folder pairs. */
+    static native void setFileProvider(String[] config);
     static native void trimMemory(int level);
     static native boolean keepSplashScreen(long elapsedMillis);
     static native void setHighContrastText(boolean enabled, boolean background);

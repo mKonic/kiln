@@ -27,6 +27,8 @@
 #include "kiln/ui/PictureInPicture.h"
 #include "kiln/foundation/AsyncImage.h"
 #include "kiln/foundation/VideoSurface.h"
+#include "kiln/media/MediaSession.h"
+#include "kiln/ui/FileProvider.h"
 #include "kiln/ui/AppDirectories.h"
 #include "kiln/ui/AppResources.h"
 #include "kiln/ui/ContentResolver.h"
@@ -1655,6 +1657,48 @@ KILN_API void kiln_player_get_state(kiln_player* p, kiln_player_state* out) {
         out->error = error.c_str();
     } CATCH_VOID
 }
+KILN_API void kiln_player_set_audio_attributes(kiln_player* p, int32_t usage, int32_t content, bool handle) {
+    TRY {
+        if (p) p->player->SetAudioAttributes({ kiln::media::AudioUsage(usage), kiln::media::AudioContentType(content) }, handle);
+    } CATCH_VOID
+}
+KILN_API void kiln_player_set_handle_audio_becoming_noisy(kiln_player* p, bool handle) {
+    TRY { if (p) p->player->SetHandleAudioBecomingNoisy(handle); } CATCH_VOID
+}
+
+struct kiln_media_session {
+    kiln::media::MediaSession* session;
+};
+KILN_API void kiln_media_session_options_init(kiln_media_session_options* o) {
+    if (!o) return;
+    *o = {};
+    o->size = sizeof(*o);
+    o->notification = true;
+}
+KILN_API kiln_media_session* kiln_remember_media_session(kiln_key key, kiln_player* p, const kiln_media_session_options* in) {
+    TRY {
+        if (!p) return nullptr;
+        const auto o = ReadOptions(in, kiln_media_session_options_init);
+        kiln_media_session* out = nullptr;
+        InGroup(key, [&] {
+            auto& c = *rt::Composition::Current();
+            kiln::media::MediaSessionOptions options;
+            if (o.on_skip_to_previous.call) options.onSkipToPrevious = Fn(o.on_skip_to_previous);
+            if (o.on_skip_to_next.call) options.onSkipToNext = Fn(o.on_skip_to_next);
+            options.sessionActivityUri = ToString(o.session_activity_uri);
+            options.notification = o.notification;
+            auto& session = c.RememberNew<kiln::media::MediaSession>({}, {}, *p->player, std::move(options));
+            out = &c.Remember<kiln_media_session>([&] { return kiln_media_session{ &session }; });
+        });
+        return out;
+    } CATCH(nullptr)
+}
+KILN_API void kiln_media_session_set_metadata(kiln_media_session* s, const char* title, const char* artist, const char* album, const char* artwork) {
+    TRY {
+        if (s) s->session->SetMetadata({ ToString(title), ToString(artist), ToString(album), ToString(artwork) });
+    } CATCH_VOID
+}
+
 KILN_API void kiln_video_surface(kiln_key key, const kiln_modifier* m, kiln_player* p, bool keep) {
     TRY {
         if (!p) return;
@@ -2282,6 +2326,12 @@ KILN_API bool kiln_share(const char* text, const char* subject, const char* cons
     } CATCH(false)
 }
 KILN_API bool kiln_open_uri(const char* uri) { TRY { return uri && kiln::ui::OpenUri(uri); } CATCH(false) }
+KILN_API const char* kiln_get_uri_for_file(const char* path, const char* name) {
+    TRY {
+        if (!path) return nullptr;
+        return ReturnString(kiln::ui::GetUriForFile(path, name ? name : ""));
+    } CATCH(nullptr)
+}
 KILN_API bool kiln_should_show_permission_rationale(const char* p) {
     TRY { return p && kiln::ui::ShouldShowRequestPermissionRationale(p); } CATCH(false)
 }

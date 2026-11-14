@@ -198,7 +198,8 @@ if(ANDROID)
     kiln_add_android_app(list SOURCES samples/list/main.cpp PACKAGE dev.kiln.list LABEL "kiln list")
     kiln_add_android_app(gallery SOURCES samples/gallery/main.cpp LIBS kiln_material3
                          PACKAGE dev.kiln.gallery LABEL "kiln gallery" ASSETS ${CMAKE_SOURCE_DIR}/samples/gallery/assets
-                         RES ${CMAKE_SOURCE_DIR}/samples/gallery/res PERMISSIONS android.permission.CAMERA WIDGETS gallery)
+                         RES ${CMAKE_SOURCE_DIR}/samples/gallery/res PERMISSIONS android.permission.CAMERA android.permission.FOREGROUND_SERVICE
+                             android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK WIDGETS gallery)
     # Samples over the C ABI only (C, and C++ with kiln++).
     foreach(sample notes-c notes-cpp)
         file(GLOB src samples/${sample}/main.c*)

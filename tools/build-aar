@@ -120,6 +120,13 @@ cat > "$STAGING/AndroidManifest.xml" <<XML
         <!-- kiln::work's jobs (JobScheduler). -->
         <service android:name="dev.kiln.KilnJobService" android:exported="false"
                  android:permission="android.permission.BIND_JOB_SERVICE" />
+        <!-- kiln::media's sessions: playback in a media foreground service (the app declares
+             FOREGROUND_SERVICE and FOREGROUND_SERVICE_MEDIA_PLAYBACK to use it). -->
+        <service android:name="dev.kiln.KilnMediaService" android:exported="false"
+                 android:foregroundServiceType="mediaPlayback" />
+        <!-- ui::GetUriForFile: the app's files, shared by content:// URI (FileProvider). -->
+        <provider android:name="dev.kiln.KilnFileProvider" android:authorities="${applicationId}.kiln.fileprovider"
+                  android:exported="false" android:grantUriPermissions="true" />
     </application>
 </manifest>
 XML

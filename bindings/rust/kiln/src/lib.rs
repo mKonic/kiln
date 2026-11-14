@@ -665,6 +665,12 @@ impl Player {
     pub fn seek_to(&self, ms: i64) { unsafe { sys::kiln_player_seek_to(self.0, ms) } }
     pub fn set_repeat(&self, repeat: bool) { unsafe { sys::kiln_player_set_repeat(self.0, repeat) } }
     pub fn set_volume(&self, volume: f32) { unsafe { sys::kiln_player_set_volume(self.0, volume) } }
+    /// Audio focus for `usage` / `content_type` (AudioAttributes.USAGE_* / CONTENT_TYPE_*).
+    pub fn set_audio_attributes(&self, usage: i32, content_type: i32, handle_audio_focus: bool) {
+        unsafe { sys::kiln_player_set_audio_attributes(self.0, usage, content_type, handle_audio_focus) }
+    }
+    /// Pauses when headphones are unplugged.
+    pub fn set_handle_audio_becoming_noisy(&self, handle: bool) { unsafe { sys::kiln_player_set_handle_audio_becoming_noisy(self.0, handle) } }
     /// The state; reading it in content recomposes when it changes.
     pub fn state(&self) -> sys::kiln_player_state {
         let mut s = unsafe { std::mem::zeroed() };
@@ -674,6 +680,27 @@ impl Player {
 }
 #[track_caller]
 pub fn remember_player() -> Player { Player(unsafe { sys::kiln_remember_player(here()) }) }
+/// A media session for a player (see `kiln_remember_media_session`).
+#[derive(Clone, Copy)]
+pub struct MediaSession(*mut sys::kiln_media_session);
+impl MediaSession {
+    pub fn set_metadata(&self, title: &str, artist: &str, album_title: &str, artwork_uri: &str) {
+        let (t, a, b, w) = (CStrBuf::new(title), CStrBuf::new(artist), CStrBuf::new(album_title), CStrBuf::new(artwork_uri));
+        unsafe { sys::kiln_media_session_set_metadata(self.0, t.ptr(), a.ptr(), b.ptr(), w.ptr()) }
+    }
+}
+/// A media session remembered at the call; the skip callbacks show their buttons (taken the
+/// first time).
+#[track_caller]
+pub fn remember_media_session(player: Player, on_skip_to_previous: Option<impl FnMut() + 'static>,
+                              on_skip_to_next: Option<impl FnMut() + 'static>, notification: bool) -> MediaSession {
+    let mut o: sys::kiln_media_session_options = unsafe { std::mem::zeroed() };
+    unsafe { sys::kiln_media_session_options_init(&mut o) };
+    if let Some(f) = on_skip_to_previous { o.on_skip_to_previous = f.into_callback(); }
+    if let Some(f) = on_skip_to_next { o.on_skip_to_next = f.into_callback(); }
+    o.notification = notification;
+    MediaSession(unsafe { sys::kiln_remember_media_session(here(), player.0, &o) })
+}
 /// The player's video, sized to its aspect ratio unless `keep_aspect_ratio` is false.
 #[track_caller]
 pub fn video_surface(player: Player, modifier: Modifier, keep_aspect_ratio: bool) {
@@ -775,6 +802,13 @@ pub fn share(text: &str, subject: &str, streams: &[&str], mime_type: &str, choos
     let ptrs: Vec<*const std::ffi::c_char> = bufs.iter().map(|b| b.ptr()).collect();
     let title = chooser_title.map(CStrBuf::new);
     unsafe { sys::kiln_share(t.ptr(), s.ptr(), ptrs.as_ptr(), ptrs.len(), m.ptr(), title.as_ref().map_or(std::ptr::null(), |b| b.ptr())) }
+}
+/// A content:// URI for a file in the app's folders, to share; None outside them.
+pub fn get_uri_for_file(path: &str, display_name: Option<&str>) -> Option<String> {
+    let p = CStrBuf::new(path);
+    let n = display_name.map(CStrBuf::new);
+    let u = unsafe { sys::kiln_get_uri_for_file(p.ptr(), n.as_ref().map_or(std::ptr::null(), |b| b.ptr())) };
+    if u.is_null() { None } else { Some(from_c(u)) }
 }
 /// Opens a link in the browser or the app that handles it.
 pub fn open_uri(uri: &str) -> bool { let u = CStrBuf::new(uri); unsafe { sys::kiln_open_uri(u.ptr()) } }

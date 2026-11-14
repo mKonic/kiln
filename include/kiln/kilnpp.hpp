@@ -477,6 +477,11 @@ namespace kpp {
         void seekTo(int64_t ms) { kiln_player_seek_to(m_P, ms); }
         void setRepeat(bool repeat) { kiln_player_set_repeat(m_P, repeat); }
         void setVolume(float volume) { kiln_player_set_volume(m_P, volume); }
+        // usage / contentType: AudioAttributes.USAGE_* / CONTENT_TYPE_* (1 media, 2 music).
+        void setAudioAttributes(int32_t usage, int32_t contentType, bool handleAudioFocus) {
+            kiln_player_set_audio_attributes(m_P, usage, contentType, handleAudioFocus);
+        }
+        void setHandleAudioBecomingNoisy(bool handle) { kiln_player_set_handle_audio_becoming_noisy(m_P, handle); }
         kiln_player_state state() const {
             kiln_player_state s;
             kiln_player_get_state(m_P, &s);
@@ -486,6 +491,33 @@ namespace kpp {
 
     private:
         kiln_player* m_P;
+    };
+    // A media session for a player, remembered at the call (its options are taken the first
+    // time); see kiln_remember_media_session.
+    class MediaSession {
+    public:
+        struct Options {
+            Callback<kiln_fn> onSkipToPrevious, onSkipToNext;
+            const char* sessionActivityUri = nullptr;
+            bool notification = true;
+        };
+        explicit MediaSession(const Player& player) : MediaSession(player, Options{}) {}
+        MediaSession(const Player& player, Options o, Key key = {}) {
+            kiln_media_session_options c;
+            kiln_media_session_options_init(&c);
+            c.on_skip_to_previous = o.onSkipToPrevious.release();
+            c.on_skip_to_next = o.onSkipToNext.release();
+            c.session_activity_uri = o.sessionActivityUri;
+            c.notification = o.notification;
+            m_S = kiln_remember_media_session(key, player.get(), &c);
+        }
+        void setMetadata(const std::string& title, const std::string& artist = {}, const std::string& albumTitle = {},
+                         const std::string& artworkUri = {}) {
+            kiln_media_session_set_metadata(m_S, title.c_str(), artist.c_str(), albumTitle.c_str(), artworkUri.c_str());
+        }
+
+    private:
+        kiln_media_session* m_S;
     };
     inline void video_surface(const Player& player, Modifier m = {}, bool keepAspectRatio = true, Key key = {}) {
         kiln_video_surface(key, m, player.get(), keepAspectRatio);
@@ -854,6 +886,11 @@ namespace kpp {
         return kiln_share(text.c_str(), subject.c_str(), s.data(), s.size(), mimeType.c_str(), chooserTitle);
     }
     inline bool open_uri(const std::string& uri) { return kiln_open_uri(uri.c_str()); }
+    // See kiln_get_uri_for_file; empty for a file outside the app's folders.
+    inline std::string get_uri_for_file(const std::string& path, const std::string& displayName = {}) {
+        const char* u = kiln_get_uri_for_file(path.c_str(), displayName.c_str());
+        return u ? u : "";
+    }
     inline bool should_show_permission_rationale(const char* permission) { return kiln_should_show_permission_rationale(permission); }
 
     // See kiln_launch_custom_tab and kiln_set_dynamic_shortcuts.
