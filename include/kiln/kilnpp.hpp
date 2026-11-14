@@ -839,6 +839,17 @@ namespace kpp {
     inline void remove_all_dynamic_shortcuts() { kiln_remove_all_dynamic_shortcuts(); }
     inline void report_shortcut_used(const char* id) { kiln_report_shortcut_used(id); }
 
+    // Device; see kiln_vibrate_waveform and the calls after it.
+    inline bool vibrate(const std::vector<int64_t>& timingsMs, const std::vector<int32_t>& amplitudes = {}, int32_t repeat = -1) {
+        return kiln_vibrate_waveform(timingsMs.data(), amplitudes.empty() ? nullptr : amplitudes.data(), timingsMs.size(), repeat);
+    }
+    template<typename F> uint64_t sensor_listen(int32_t type, int32_t periodUs, F&& f) { return kiln_sensor_listen(type, periodUs, fn<kiln_fn_sensor>(std::forward<F>(f))); }
+    inline void sensor_stop(uint64_t id) { kiln_sensor_stop(id); }
+    template<typename F> void current_location(F&& f) { kiln_current_location(fn<kiln_fn_location>(std::forward<F>(f))); }
+    template<typename F> void authenticate(const char* title, F&& f, int32_t authenticators = 0) {
+        kiln_authenticate(title, nullptr, nullptr, authenticators, fn<kiln_fn_biometric>(std::forward<F>(f)));
+    }
+
     // See kiln_keep_splash_screen.
     inline void keep_splash_screen(bool keep) { kiln_keep_splash_screen(keep); }
 

@@ -4,6 +4,7 @@
 #include "AndroidDates.h"
 #include "AndroidContent.h"
 #include "AndroidHttp.h"
+#include "AndroidDevice.h"
 #include "AndroidResources.h"
 #include "kiln/ui/ActivityIntent.h"
 #include "kiln/ui/AppDirectories.h"
@@ -1335,6 +1336,7 @@ namespace {
         kiln::android::InstallAppResources(env);
         kiln::android::InstallContentResolver(env);
         kiln::android::InstallHttp(env);
+        kiln::android::InstallDevice(env, [] { if (g_Host && g_Host->app) g_Host->app->RequestFrame(); });
         {
             // ui::StartActivity / ShouldShowRequestPermissionRationale on the main window's view.
             jclass vc = env->GetObjectClass(view);

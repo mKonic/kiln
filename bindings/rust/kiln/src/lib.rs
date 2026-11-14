@@ -73,6 +73,9 @@ pub fn __guard<R>(f: impl FnOnce() -> R) -> R { guard(f) }
 __kiln_callback!(sys::kiln_fn, () -> ());
 __kiln_callback!(sys::kiln_fn_bool, (v: bool) -> ());
 __kiln_callback!(sys::kiln_fn_http, (r: *const sys::kiln_http_response) -> ());
+__kiln_callback!(sys::kiln_fn_sensor, (v: *const f32, n: i32, t: i64) -> ());
+__kiln_callback!(sys::kiln_fn_location, (has: bool, lat: f64, lon: f64, acc: f32) -> ());
+__kiln_callback!(sys::kiln_fn_biometric, (ok: bool, code: i32, msg: *const std::ffi::c_char) -> ());
 __kiln_callback!(sys::kiln_fn_int, (v: i32) -> ());
 __kiln_callback!(sys::kiln_fn_float, (v: f32) -> ());
 __kiln_callback!(sys::kiln_fn_lazy, (s: *mut sys::kiln_lazy_scope) -> ());
@@ -758,6 +761,28 @@ pub fn set_dynamic_shortcuts(shortcuts: &[Shortcut]) -> bool {
         id: b[0].ptr(), short_label: b[1].ptr(), long_label: b[2].ptr(), data: b[3].ptr(), icon: b[4].ptr(), rank: s.rank,
     }).collect();
     unsafe { sys::kiln_set_dynamic_shortcuts(raw.as_ptr(), raw.len()) }
+}
+
+/// Plays a vibration waveform (off/on durations in ms, amplitudes 0-255 or empty for the default).
+pub fn vibrate(timings_ms: &[i64], amplitudes: &[i32], repeat: i32) -> bool {
+    unsafe { sys::kiln_vibrate_waveform(timings_ms.as_ptr(), if amplitudes.is_empty() { std::ptr::null() } else { amplitudes.as_ptr() }, timings_ms.len(), repeat) }
+}
+/// Listens to a sensor (Sensor.TYPE_*) until [`sensor_stop`]; 0 when there is no such sensor.
+pub fn sensor_listen(sensor_type: i32, period_us: i32, mut f: impl FnMut(&[f32], i64) + 'static) -> u64 {
+    let cb = move |v: *const f32, n: i32, t: i64| f(unsafe { std::slice::from_raw_parts(v, n.max(0) as usize) }, t);
+    unsafe { sys::kiln_sensor_listen(sensor_type, period_us, IntoCallback::<sys::kiln_fn_sensor>::into_callback(cb)) }
+}
+pub fn sensor_stop(id: u64) { unsafe { sys::kiln_sensor_stop(id) } }
+/// A fresh location fix, once: `None` without a fix or permission.
+pub fn current_location(mut f: impl FnMut(Option<(f64, f64, f32)>) + 'static) {
+    let cb = move |has: bool, lat: f64, lon: f64, acc: f32| f(if has { Some((lat, lon, acc)) } else { None });
+    unsafe { sys::kiln_current_location(IntoCallback::<sys::kiln_fn_location>::into_callback(cb)) }
+}
+/// Shows the biometric prompt; `f` gets success, or the error code and message.
+pub fn authenticate(title: &str, mut f: impl FnMut(Result<(), (i32, String)>) + 'static) {
+    let t = CStrBuf::new(title);
+    let cb = move |ok: bool, code: i32, msg: *const std::ffi::c_char| f(if ok { Ok(()) } else { Err((code, from_c(msg))) });
+    unsafe { sys::kiln_authenticate(t.ptr(), std::ptr::null(), std::ptr::null(), 0, IntoCallback::<sys::kiln_fn_biometric>::into_callback(cb)) }
 }
 
 /// Keeps the launch splash screen up while true (after the first frame it would go).

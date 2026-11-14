@@ -152,6 +152,50 @@ screen) follow `ShortcutManager`. Shortcuts that never change can be declared in
 `res/xml/shortcuts.xml` and named in `ACTIVITY_XML` with
 `<meta-data android:name="android.app.shortcuts" android:resource="@xml/shortcuts" />`.
 
+## Device features
+
+Vibration patterns, sensors, location and the biometric prompt, each in `kiln/ui`:
+
+```cpp
+#include <kiln/runtime/Flow.h>
+#include <kiln/ui/Biometric.h>
+#include <kiln/ui/Location.h>
+#include <kiln/ui/Sensors.h>
+#include <kiln/ui/Vibration.h>
+
+using namespace kiln;
+
+rt::Task<> Unlock(rt::State<bool>& unlocked) {
+    ui::Vibrate(ui::VibrationEffect::CreatePredefined(ui::VibrationEffect::EffectClick));
+    ui::BiometricResult r = co_await ui::Authenticate({ .title = "Unlock your notes" });
+    unlocked.Set(r.succeeded);
+}
+
+rt::Task<> TagWithPlace(rt::State<std::string>& place) {
+    if (auto here = co_await ui::CurrentLocation())
+        place.Set(std::to_string(here->latitude) + ", " + std::to_string(here->longitude));
+}
+
+void Tilt() {
+    // In content: the accelerometer's latest event, collected while composed.
+    auto& tilt = rt::CollectAsState(ui::SensorEvents(ui::SensorType::Accelerometer), ui::SensorEvent{});
+    (void)tilt.Get().values[0];
+}
+```
+
+* **Vibration** (`android.permission.VIBRATE`): `OneShot`, `Waveform` (off and on durations
+  with amplitudes, repeating from an index), `CreatePredefined` (click, tick, heavy click) and
+  `Compose` (primitives, API 30). `HasAmplitudeControl` tells whether amplitudes are kept.
+* **Sensors**: `SensorEvents(type, period)` is a flow of events while collected, and
+  `ListenToSensor` a subscription that stops when it goes. Values are `SensorEvent.values`.
+* **Location** (`ACCESS_FINE_LOCATION` or `ACCESS_COARSE_LOCATION`, requested at run time with
+  `contracts::RequestPermission`): `CurrentLocation()` is a fresh fix, `LastKnownLocation()` an
+  immediate but possibly old one, and `LocationUpdates(provider, interval)` a flow of fixes.
+  Without the permission they answer nothing.
+* **Biometric prompt** (`android.permission.USE_BIOMETRIC`): `Authenticate` shows the system's
+  prompt and returns when it closes; `CanAuthenticate()` is 0 when it can be used, 11 when
+  nothing is enrolled. Allow `kDeviceCredential` to accept the device's PIN as well.
+
 ## Picture-in-picture and orientation
 
 An activity that declares picture-in-picture can enter it and show less while it is small:

@@ -17,6 +17,10 @@
 #include "kiln/ui/Share.h"
 #include "kiln/ui/CustomTabs.h"
 #include "kiln/ui/Shortcuts.h"
+#include "kiln/ui/Biometric.h"
+#include "kiln/ui/Location.h"
+#include "kiln/ui/Sensors.h"
+#include "kiln/ui/Vibration.h"
 #include "kiln/ui/PictureInPicture.h"
 #include "kiln/foundation/AsyncImage.h"
 #include "kiln/ui/AppDirectories.h"
@@ -2229,3 +2233,92 @@ KILN_API bool kiln_set_dynamic_shortcuts(const kiln_shortcut* s, size_t count) {
 }
 KILN_API void kiln_remove_all_dynamic_shortcuts(void) { TRY { kiln::ui::RemoveAllDynamicShortcuts(); } CATCH_VOID }
 KILN_API void kiln_report_shortcut_used(const char* id) { TRY { if (id) kiln::ui::ReportShortcutUsed(id); } CATCH_VOID }
+
+// --- Device ---------------------------------------------------------------------------------
+
+KILN_API bool kiln_vibrate_waveform(const int64_t* t, const int32_t* a, size_t n, int32_t repeat) {
+    TRY {
+        if (!t || n == 0) return false;
+        std::vector<std::int64_t> timings(t, t + n);
+        std::vector<int> amps;
+        if (a) amps.assign(a, a + n);
+        return kiln::ui::Vibrate(n == 1 && !repeat ? kiln::ui::VibrationEffect::OneShot(timings[0], amps.empty() ? -1 : amps[0])
+                                                   : kiln::ui::VibrationEffect::Waveform(std::move(timings), std::move(amps), repeat));
+    } CATCH(false)
+}
+KILN_API bool kiln_vibrate_predefined(int32_t effect) { TRY { return kiln::ui::Vibrate(kiln::ui::VibrationEffect::CreatePredefined(effect)); } CATCH(false) }
+KILN_API void kiln_cancel_vibration(void) { TRY { kiln::ui::CancelVibration(); } CATCH_VOID }
+
+namespace {
+    std::map<std::uint64_t, kiln::ui::SensorSubscription>& SensorSubs() {
+        static auto* m = new std::map<std::uint64_t, kiln::ui::SensorSubscription>;
+        return *m;
+    }
+    std::map<std::uint64_t, kiln::rt::Job>& DeviceJobs() {
+        static auto* m = new std::map<std::uint64_t, kiln::rt::Job>;
+        return *m;
+    }
+    std::uint64_t g_NextDeviceId = 0;
+    // Runs the task until it finishes; its job is dropped afterwards (not from inside it).
+    void LaunchDeviceTask(kiln::rt::Task<> task) {
+        const std::uint64_t id = ++g_NextDeviceId;
+        auto job = kiln::rt::Launch(kiln::rt::Dispatcher::Main(), std::move(task));
+        if (!job.Done()) DeviceJobs().emplace(id, std::move(job));
+    }
+    void ForgetDoneDeviceJobs() { std::erase_if(DeviceJobs(), [](const auto& e) { return e.second.Done(); }); }
+}
+KILN_API bool kiln_has_sensor(int32_t type) { TRY { return kiln::ui::HasSensor(kiln::ui::SensorType(type)); } CATCH(false) }
+KILN_API uint64_t kiln_sensor_listen(int32_t type, int32_t period, kiln_fn_sensor listener) {
+    auto owned = kiln::capi::Own(listener);
+    TRY {
+        if (!owned) return 0;
+        auto sub = kiln::ui::ListenToSensor(kiln::ui::SensorType(type), period, [owned](const kiln::ui::SensorEvent& e) {
+            kiln::capi::CallbackScope scope;
+            owned->f.call(owned->f.user, e.values.data(), e.valueCount, e.timestampNanos);
+        });
+        if (!sub) return 0;
+        const std::uint64_t id = ++g_NextDeviceId;
+        SensorSubs().emplace(id, std::move(sub));
+        return id;
+    } CATCH(0)
+}
+KILN_API void kiln_sensor_stop(uint64_t id) { TRY { SensorSubs().erase(id); } CATCH_VOID }
+KILN_API void kiln_current_location(kiln_fn_location done) {
+    auto owned = kiln::capi::Own(done);
+    TRY {
+        ForgetDoneDeviceJobs();
+        LaunchDeviceTask([](std::shared_ptr<kiln::capi::Owned<kiln_fn_location>> d) -> kiln::rt::Task<> {
+            const auto l = co_await kiln::ui::CurrentLocation();
+            if (!d) co_return;
+            kiln::capi::CallbackScope scope;
+            d->f.call(d->f.user, l.has_value(), l ? l->latitude : 0, l ? l->longitude : 0, l && l->accuracy ? *l->accuracy : 0.0f);
+        }(owned));
+    } CATCH_VOID
+}
+KILN_API bool kiln_last_known_location(double* lat, double* lon) {
+    TRY {
+        const auto l = kiln::ui::LastKnownLocation();
+        if (!l) return false;
+        if (lat) *lat = l->latitude;
+        if (lon) *lon = l->longitude;
+        return true;
+    } CATCH(false)
+}
+KILN_API int32_t kiln_can_authenticate(int32_t a) { TRY { return kiln::ui::CanAuthenticate(a); } CATCH(-2) }
+KILN_API void kiln_authenticate(const char* title, const char* subtitle, const char* negative, int32_t a, kiln_fn_biometric done) {
+    auto owned = kiln::capi::Own(done);
+    TRY {
+        kiln::ui::BiometricPromptInfo info;
+        info.title = title ? title : "";
+        info.subtitle = subtitle ? subtitle : "";
+        if (negative) info.negativeButtonText = negative;
+        info.allowedAuthenticators = a ? a : kiln::ui::kBiometricWeak;
+        ForgetDoneDeviceJobs();
+        LaunchDeviceTask([](kiln::ui::BiometricPromptInfo info, std::shared_ptr<kiln::capi::Owned<kiln_fn_biometric>> d) -> kiln::rt::Task<> {
+            const auto r = co_await kiln::ui::Authenticate(std::move(info));
+            if (!d) co_return;
+            kiln::capi::CallbackScope scope;
+            d->f.call(d->f.user, r.succeeded, r.errorCode, r.errorMessage.c_str());
+        }(std::move(info), owned));
+    } CATCH_VOID
+}

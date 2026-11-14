@@ -501,6 +501,24 @@ KILN_API bool kiln_set_dynamic_shortcuts(const kiln_shortcut* shortcuts, size_t 
 KILN_API void kiln_remove_all_dynamic_shortcuts(void);
 KILN_API void kiln_report_shortcut_used(const char* id);
 
+/* Device: vibration patterns (VibrationEffect; needs android.permission.VIBRATE), sensors
+ * (Sensor.TYPE_*; events on the main thread until stopped), location (needs a location
+ * permission; the callback runs once, has_fix false when there is none) and the biometric
+ * prompt (needs android.permission.USE_BIOMETRIC; authenticators: BiometricManager's). */
+KILN_API bool kiln_vibrate_waveform(const int64_t* timings_ms, const int32_t* amplitudes, size_t count, int32_t repeat);
+KILN_API bool kiln_vibrate_predefined(int32_t effect);
+KILN_API void kiln_cancel_vibration(void);
+typedef struct kiln_fn_sensor { void (*call)(void* user, const float* values, int32_t count, int64_t timestamp_nanos); void* user; void (*drop)(void* user); } kiln_fn_sensor;
+KILN_API bool kiln_has_sensor(int32_t type);
+KILN_API uint64_t kiln_sensor_listen(int32_t type, int32_t sampling_period_us, kiln_fn_sensor listener);   /* 0: no such sensor */
+KILN_API void kiln_sensor_stop(uint64_t listener);
+typedef struct kiln_fn_location { void (*call)(void* user, bool has_fix, double latitude, double longitude, float accuracy_m); void* user; void (*drop)(void* user); } kiln_fn_location;
+KILN_API void kiln_current_location(kiln_fn_location done);
+KILN_API bool kiln_last_known_location(double* latitude, double* longitude);
+typedef struct kiln_fn_biometric { void (*call)(void* user, bool succeeded, int32_t error_code, const char* message); void* user; void (*drop)(void* user); } kiln_fn_biometric;
+KILN_API int32_t kiln_can_authenticate(int32_t authenticators);
+KILN_API void kiln_authenticate(const char* title, const char* subtitle, const char* negative_button, int32_t authenticators, kiln_fn_biometric done);
+
 /* The launch splash screen (kiln_add_app's SPLASH_* options) stays until the first frame is on
  * screen, and while this is set (core-splashscreen's setKeepOnScreenCondition). */
 KILN_API void kiln_keep_splash_screen(bool keep);
