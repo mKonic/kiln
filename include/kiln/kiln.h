@@ -1096,6 +1096,47 @@ KILN_API void kiln_player_get_state(kiln_player* player, kiln_player_state* out)
  * and game 14 can be handled) and pausing when headphones are unplugged. */
 KILN_API void kiln_player_set_audio_attributes(kiln_player* player, int32_t usage, int32_t content_type, bool handle_audio_focus);
 KILN_API void kiln_player_set_handle_audio_becoming_noisy(kiln_player* player, bool handle);
+
+/* Speech (speech::TextToSpeech, speech::SpeechRecognizer), remembered at the call and released
+ * when it leaves the composition. Text to speech binds to the user's engine (or the package
+ * named); speech asked for meanwhile waits for it. A listener set while it binds hears
+ * KILN_TTS_ENGINE_READY or KILN_TTS_ENGINE_FAILED (utterance_id NULL); then each utterance's progress (a: the error
+ * for KILN_TTS_ERROR, interrupted for KILN_TTS_STOP, the start for KILN_TTS_RANGE_START with b
+ * its end). Recognition needs android.permission.RECORD_AUDIO; its listener gets the best
+ * candidate as text for KILN_RECOGNITION_PARTIAL and _RESULTS, and value: the level in dB for
+ * _RMS, the error (SpeechRecognizer.ERROR_*; 100: no service) for _ERROR. */
+typedef struct kiln_tts kiln_tts;
+typedef enum kiln_tts_event {
+    KILN_TTS_START, KILN_TTS_DONE, KILN_TTS_ERROR, KILN_TTS_STOP, KILN_TTS_RANGE_START,
+    KILN_TTS_ENGINE_READY, KILN_TTS_ENGINE_FAILED,
+} kiln_tts_event;
+typedef struct kiln_fn_tts_event { void (*call)(void* user, kiln_tts_event event, const char* utterance_id, int32_t a, int32_t b); void* user; void (*drop)(void* user); } kiln_fn_tts_event;
+KILN_API kiln_tts* kiln_remember_tts(kiln_key key, const char* engine);
+KILN_API void kiln_tts_set_listener(kiln_tts* tts, kiln_fn_tts_event listener);
+/* 0 binding to the engine, 1 ready, 2 no engine. */
+KILN_API int32_t kiln_tts_status(kiln_tts* tts);
+/* utterance_id may be NULL; flush: drop what is queued and stop the current speech. */
+KILN_API bool kiln_tts_speak(kiln_tts* tts, const char* text, bool flush, const char* utterance_id);
+KILN_API void kiln_tts_stop(kiln_tts* tts);
+KILN_API bool kiln_tts_is_speaking(kiln_tts* tts);
+KILN_API void kiln_tts_set_speech_rate(kiln_tts* tts, float rate);
+KILN_API void kiln_tts_set_pitch(kiln_tts* tts, float pitch);
+/* A BCP 47 tag; TextToSpeech.LANG_* (negative: missing data or not supported). */
+KILN_API int32_t kiln_tts_set_language(kiln_tts* tts, const char* language_tag);
+
+typedef struct kiln_speech_recognizer kiln_speech_recognizer;
+typedef enum kiln_recognition_event {
+    KILN_RECOGNITION_READY, KILN_RECOGNITION_BEGINNING, KILN_RECOGNITION_RMS, KILN_RECOGNITION_END,
+    KILN_RECOGNITION_PARTIAL, KILN_RECOGNITION_RESULTS, KILN_RECOGNITION_ERROR,
+} kiln_recognition_event;
+typedef struct kiln_fn_recognition { void (*call)(void* user, kiln_recognition_event event, const char* text, float value); void* user; void (*drop)(void* user); } kiln_fn_recognition;
+KILN_API kiln_speech_recognizer* kiln_remember_speech_recognizer(kiln_key key, bool on_device);
+KILN_API void kiln_speech_recognizer_set_listener(kiln_speech_recognizer* recognizer, kiln_fn_recognition listener);
+/* language: BCP 47, or NULL for the device's. */
+KILN_API void kiln_speech_recognizer_start(kiln_speech_recognizer* recognizer, const char* language, bool partial_results);
+KILN_API void kiln_speech_recognizer_stop(kiln_speech_recognizer* recognizer);
+KILN_API void kiln_speech_recognizer_cancel(kiln_speech_recognizer* recognizer);
+KILN_API bool kiln_speech_recognition_available(bool on_device);
 /* A media session for the player: the system's media controls (notification, lock screen,
  * headset buttons) and playback in a media foreground service (the app declares
  * FOREGROUND_SERVICE and FOREGROUND_SERVICE_MEDIA_PLAYBACK). Remembered at the call. */

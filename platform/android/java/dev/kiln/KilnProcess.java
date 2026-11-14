@@ -23,6 +23,7 @@ final class KilnProcess {
         KilnNotifications.attach(app);
         KilnWidgetReceiver.attach(app);
         KilnAlarms.attach(app);
+        KilnSpeech.attach(app);
         KilnDevice.attach(app);
         KilnContent.attach(app);
         if (!KilnResources.attached()) KilnResources.attach(app);

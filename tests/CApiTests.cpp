@@ -18,6 +18,8 @@
 #include "kiln/ui/Volition.h"
 #include "kiln/media/MediaSession.h"
 #include "kiln/ui/FileProvider.h"
+#include "kiln/speech/SpeechRecognizer.h"
+#include "kiln/speech/TextToSpeech.h"
 
 #include <chrono>
 #include <map>
@@ -28,6 +30,10 @@ using namespace kiln;
 extern "C" {
     extern int capi_media_next;
     void capi_media(void* user);
+    void capi_speech(void* user);
+    extern char capi_speech_log[256];
+    extern kiln_tts* capi_tts;
+    extern kiln_speech_recognizer* capi_recognizer;
     extern int capi_live_callbacks, capi_effect_starts, capi_effect_disposals, capi_task_frames, capi_items_composed;
     extern kiln_state_i64* capi_count;
     void capi_counter(void* user);
@@ -875,6 +881,52 @@ TEST(CApiMediaSessionAndAudioFocus) {
     CHECK(noisy == 0 && capi_live_callbacks == 0);
     media::SetMediaSessionHost({});
     media::SetAudioHost({});
+}
+
+namespace {
+    std::vector<std::string> kppSpeech;
+    void KppSpeech(void*) {
+        kpp::TextToSpeech tts;
+        if (tts.status() == 2 && kppSpeech.empty()) kppSpeech.push_back("no engine");
+        tts.setListener([](kiln_tts_event e, const char*, int32_t, int32_t) { kppSpeech.push_back("tts " + std::to_string(int(e))); });
+        tts.setSpeechRate(1.5f);
+        kpp::SpeechRecognizer recognizer;
+        recognizer.setListener([](kiln_recognition_event e, const char* text, float) { kppSpeech.push_back("rec " + std::to_string(int(e)) + " " + text); });
+        if (kppSpeech.size() == 1) recognizer.start();
+    }
+}
+
+TEST(CApiSpeech) {
+    capi_live_callbacks = 0;
+    capi_speech_log[0] = 0;
+    int ttsId = 0, recId = 0;
+    std::vector<std::string> said;
+    speech::SetTtsHost({ .create = [&](int id, const std::string&) { ttsId = id; },
+                         .speak = [&](int, const std::string& text, const std::string& uid, int, float, float) { said.push_back(text + "/" + uid); return 0; } });
+    speech::SetRecognizerHost({ .create = [&](int id, bool) { recId = id; return true; }, .start = [](int, const speech::RecognitionOptions&) {} });
+    {
+        Harness h;
+        h.Run(capi_speech);
+        h.Pump();
+        CHECK(kiln_tts_speak(capi_tts, "hi", true, "u1") && said.empty());
+        speech::OnTtsStatus(ttsId, true);
+        speech::OnTtsUtterance(ttsId, int(speech::TtsEvent::Done), "u1", 0, 0);
+        CHECK(said == std::vector<std::string>{ "hi/u1" });
+        kiln_speech_recognizer_start(capi_recognizer, "en-US", true);
+        speech::OnRecognitionEvent(recId, speech::RecognitionEvent::Results, 0, { .candidates = { "hello" } });
+        CHECK(std::string(capi_speech_log) == "tts 5 -;tts 1 u1;rec 5 hello 0;");
+        CHECK(!kiln_speech_recognition_available(false));
+    }
+    CHECK(capi_live_callbacks == 0);
+    {
+        // kiln++: no engine, no service (the hosts have neither).
+        speech::SetTtsHost({});
+        speech::SetRecognizerHost({});
+        Harness h;
+        h.Run(KppSpeech);
+        h.Pump();
+        CHECK((kppSpeech == std::vector<std::string>{ "no engine", "rec 6 " }) && !kpp::SpeechRecognizer::available());
+    }
 }
 
 TEST(CApiGetUriForFile) {

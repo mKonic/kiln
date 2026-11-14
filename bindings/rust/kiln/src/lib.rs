@@ -77,6 +77,8 @@ __kiln_callback!(sys::kiln_fn_sensor, (v: *const f32, n: i32, t: i64) -> ());
 __kiln_callback!(sys::kiln_fn_location, (has: bool, lat: f64, lon: f64, acc: f32) -> ());
 __kiln_callback!(sys::kiln_fn_glance_content, (w: *const std::ffi::c_char, id: i32, width: f32, height: f32) -> ());
 __kiln_callback!(sys::kiln_fn_glance_action, (w: *const std::ffi::c_char, id: i32, params: *const std::ffi::c_char, checked: i32) -> ());
+__kiln_callback!(sys::kiln_fn_tts_event, (event: sys::kiln_tts_event, utterance_id: *const std::ffi::c_char, a: i32, b: i32) -> ());
+__kiln_callback!(sys::kiln_fn_recognition, (event: sys::kiln_recognition_event, text: *const std::ffi::c_char, value: f32) -> ());
 __kiln_callback!(sys::kiln_fn_alarm, (name: *const std::ffi::c_char, payload: *const std::ffi::c_char, trigger_at_ms: i64) -> ());
 __kiln_callback!(sys::kiln_fn_worker, (name: *const std::ffi::c_char, input: *const std::ffi::c_char, attempt: i32, done: *mut sys::kiln_work_done) -> ());
 __kiln_callback!(sys::kiln_fn_biometric, (ok: bool, code: i32, msg: *const std::ffi::c_char) -> ());
@@ -681,6 +683,54 @@ impl Player {
 }
 #[track_caller]
 pub fn remember_player() -> Player { Player(unsafe { sys::kiln_remember_player(here()) }) }
+/// Text to speech remembered at the call (see `kiln_remember_tts`).
+#[derive(Clone, Copy)]
+pub struct TextToSpeech(*mut sys::kiln_tts);
+impl TextToSpeech {
+    /// `f(event, utterance_id, a, b)`; `utterance_id` is empty for the engine's events.
+    pub fn set_listener(&self, mut f: impl FnMut(sys::kiln_tts_event, &str, i32, i32) + 'static) {
+        let cb = move |e: sys::kiln_tts_event, id: *const std::ffi::c_char, a: i32, b: i32| {
+            let id = if id.is_null() { String::new() } else { from_c(id) };
+            f(e, &id, a, b)
+        };
+        unsafe { sys::kiln_tts_set_listener(self.0, IntoCallback::<sys::kiln_fn_tts_event>::into_callback(cb)) }
+    }
+    pub fn speak(&self, text: &str, flush: bool, utterance_id: &str) -> bool {
+        let (t, u) = (CStrBuf::new(text), CStrBuf::new(utterance_id));
+        unsafe { sys::kiln_tts_speak(self.0, t.ptr(), flush, u.ptr()) }
+    }
+    /// 0 binding to the engine, 1 ready, 2 no engine.
+    pub fn status(&self) -> i32 { unsafe { sys::kiln_tts_status(self.0) } }
+    pub fn stop(&self) { unsafe { sys::kiln_tts_stop(self.0) } }
+    pub fn is_speaking(&self) -> bool { unsafe { sys::kiln_tts_is_speaking(self.0) } }
+    pub fn set_speech_rate(&self, rate: f32) { unsafe { sys::kiln_tts_set_speech_rate(self.0, rate) } }
+    pub fn set_pitch(&self, pitch: f32) { unsafe { sys::kiln_tts_set_pitch(self.0, pitch) } }
+    pub fn set_language(&self, tag: &str) -> i32 { let t = CStrBuf::new(tag); unsafe { sys::kiln_tts_set_language(self.0, t.ptr()) } }
+}
+#[track_caller]
+pub fn remember_text_to_speech() -> TextToSpeech { TextToSpeech(unsafe { sys::kiln_remember_tts(here(), std::ptr::null()) }) }
+/// Speech to text remembered at the call (see `kiln_remember_speech_recognizer`).
+#[derive(Clone, Copy)]
+pub struct SpeechRecognizer(*mut sys::kiln_speech_recognizer);
+impl SpeechRecognizer {
+    /// `f(event, text, value)`: the best candidate for partial and final results; the level or the error as `value`.
+    pub fn set_listener(&self, mut f: impl FnMut(sys::kiln_recognition_event, &str, f32) + 'static) {
+        let cb = move |e: sys::kiln_recognition_event, text: *const std::ffi::c_char, v: f32| f(e, &from_c(text), v);
+        unsafe { sys::kiln_speech_recognizer_set_listener(self.0, IntoCallback::<sys::kiln_fn_recognition>::into_callback(cb)) }
+    }
+    /// `language`: BCP 47, or empty for the device's.
+    pub fn start(&self, language: &str, partial_results: bool) {
+        let l = CStrBuf::new(language);
+        unsafe { sys::kiln_speech_recognizer_start(self.0, if language.is_empty() { std::ptr::null() } else { l.ptr() }, partial_results) }
+    }
+    pub fn stop(&self) { unsafe { sys::kiln_speech_recognizer_stop(self.0) } }
+    pub fn cancel(&self) { unsafe { sys::kiln_speech_recognizer_cancel(self.0) } }
+    pub fn available(on_device: bool) -> bool { unsafe { sys::kiln_speech_recognition_available(on_device) } }
+}
+#[track_caller]
+pub fn remember_speech_recognizer(on_device: bool) -> SpeechRecognizer {
+    SpeechRecognizer(unsafe { sys::kiln_remember_speech_recognizer(here(), on_device) })
+}
 /// A media session for a player (see `kiln_remember_media_session`).
 #[derive(Clone, Copy)]
 pub struct MediaSession(*mut sys::kiln_media_session);

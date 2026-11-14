@@ -214,6 +214,14 @@ GRADLE_MANIFEST = '''<?xml version="1.0" encoding="utf-8"?>
 <!-- The manifest of the Gradle form: permissions and activities go here (kiln_add_app's
      PERMISSIONS and *_XML options are tools/kiln's). -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.TTS_SERVICE" />
+        </intent>
+        <intent>
+            <action android:name="android.speech.RecognitionService" />
+        </intent>
+    </queries>
     <application android:name=".App" android:label="{label}" android:icon="@mipmap/ic_launcher"
                  android:supportsRtl="true" android:enableOnBackInvokedCallback="true">
         <activity android:name="dev.kiln.KilnActivity" android:exported="true"

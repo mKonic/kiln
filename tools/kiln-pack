@@ -210,7 +210,7 @@ cat > "$STAGING/AndroidManifest.xml" <<XML
 $PERMISSION_XML$EXTRA_MANIFEST
     <uses-feature android:name="android.hardware.vulkan.version" android:version="0x00401000"
                   android:required="true" />
-    <!-- The text toolbar's PROCESS_TEXT activities and Look Up. -->
+    <!-- The text toolbar's PROCESS_TEXT activities and Look Up; speech engines. -->
     <queries>
         <intent>
             <action android:name="android.intent.action.PROCESS_TEXT" />
@@ -219,6 +219,13 @@ $PERMISSION_XML$EXTRA_MANIFEST
         <intent>
             <action android:name="android.intent.action.LOOK_UP_TEXT" />
             <data android:mimeType="text/plain" />
+        </intent>
+        <!-- kiln::speech: the text-to-speech engines and speech recognition services. -->
+        <intent>
+            <action android:name="android.intent.action.TTS_SERVICE" />
+        </intent>
+        <intent>
+            <action android:name="android.speech.RecognitionService" />
         </intent>
     </queries>
     <application android:label="$LABEL" $ICON_ATTR android:supportsRtl="true" android:hasCode="true" android:extractNativeLibs="false"

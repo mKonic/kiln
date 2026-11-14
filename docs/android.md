@@ -459,6 +459,66 @@ void Tilt() {
   prompt and returns when it closes; `CanAuthenticate()` is 0 when it can be used, 11 when
   nothing is enrolled. Allow `kDeviceCredential` to accept the device's PIN as well.
 
+## Speech
+
+`kiln/speech` reads text aloud with the device's speech engine (`TextToSpeech`) and turns what
+the user says into text (`SpeechRecognizer`):
+
+```cpp
+#include <kiln/foundation/activity/ActivityResult.h>
+#include <kiln/speech/SpeechRecognizer.h>
+#include <kiln/speech/TextToSpeech.h>
+
+using namespace kiln;
+
+speech::TextToSpeech& Voice() {
+    static speech::TextToSpeech tts;   // binds to the engine once, on first use
+    return tts;
+}
+
+void ReadAloud(const std::string& text) {
+    Voice().Speak(text, { .queue = speech::QueueMode::Flush });
+}
+
+void SearchByVoice(rt::State<std::string>& query) {
+    static speech::SpeechRecognizer recognizer;
+    recognizer.SetListener({
+        .onPartialResults = [&query](const speech::RecognitionResult& r) { query.Set(r.Best()); },
+        .onResults = [&query](const speech::RecognitionResult& r) { query.Set(r.Best()); },
+        .onError = [&query](speech::RecognitionError e) { query.Set(speech::ToString(e)); },
+    });
+    auto ask = foundation::RememberLauncherForActivityResult<std::string, bool>(
+        std::make_shared<foundation::contracts::RequestPermission>(), [](bool granted) {
+            if (granted) recognizer.Start({ .language = "en-US" });
+        });
+    (void)ask;   // ask.Launch("android.permission.RECORD_AUDIO") from a button
+}
+```
+
+* **Text to speech.** The engine takes a moment to bind. Speech asked for during that time waits
+  and is then spoken in order. `Status()` reports the binding, and `SetOnStatusChanged` reports
+  when it is done.
+  * `Speak` queues text, or with `QueueMode::Flush` interrupts what is playing. `SetListener`
+    reports when each utterance starts, finishes, fails, or is stopped, and which words are being
+    spoken.
+  * `SetSpeechRate`, `SetPitch`, `SetLanguage` (a BCP 47 tag) and `SetVoice` (one of `Voices()`)
+    change how later text sounds.
+* **Speech to text.** It needs `android.permission.RECORD_AUDIO`, requested at run time.
+  * `Start` listens until the user stops speaking. The listener receives partial results while
+    they talk, then the final candidates, most likely first.
+  * `Stop` ends listening early and still delivers the results; `Cancel` delivers none.
+  * `IsAvailable()` tells whether the device has a recognition service at all. With
+    `SpeechRecognizer(true)`, recognition happens on the device and works offline where
+    supported.
+* kiln's manifests already make the speech engines and recognition services visible to the app.
+  Android 11 and later hide them otherwise.
+* On the desktop there is no engine or service. `Status()` is `Failed`, and `Start` reports
+  `NotAvailable`.
+
+From C, `kiln_remember_tts` and `kiln_remember_speech_recognizer` do the same. kiln++ has
+`kpp::TextToSpeech` and `kpp::SpeechRecognizer`; Rust has `kiln::remember_text_to_speech` and
+`kiln::remember_speech_recognizer`.
+
 ## Picture-in-picture and orientation
 
 An activity that declares picture-in-picture can enter it and show less while it is small:

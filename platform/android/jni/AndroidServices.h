@@ -10,5 +10,6 @@ namespace kiln::android {
     void InstallSecurity(JNIEnv* env);
     // kiln::alarm (dev.kiln.KilnAlarms, AlarmManager).
     void InstallAlarms(JNIEnv* env);
+    void InstallSpeech(JNIEnv* env);
 
 }

@@ -492,6 +492,39 @@ namespace kpp {
     private:
         kiln_player* m_P;
     };
+    // Text to speech, remembered at the call; see kiln_remember_tts. f(event, utteranceId, a, b).
+    class TextToSpeech {
+    public:
+        explicit TextToSpeech(const char* engine = nullptr, Key key = {}) : m_T(kiln_remember_tts(key, engine)) {}
+        template<typename F> void setListener(F&& f) { kiln_tts_set_listener(m_T, fn<kiln_fn_tts_event>(std::forward<F>(f))); }
+        bool speak(const std::string& text, bool flush = false, const char* utteranceId = nullptr) {
+            return kiln_tts_speak(m_T, text.c_str(), flush, utteranceId);
+        }
+        int32_t status() const { return kiln_tts_status(m_T); }   // 0 binding, 1 ready, 2 no engine
+        void stop() { kiln_tts_stop(m_T); }
+        bool isSpeaking() const { return kiln_tts_is_speaking(m_T); }
+        void setSpeechRate(float rate) { kiln_tts_set_speech_rate(m_T, rate); }
+        void setPitch(float pitch) { kiln_tts_set_pitch(m_T, pitch); }
+        int32_t setLanguage(const char* languageTag) { return kiln_tts_set_language(m_T, languageTag); }
+        kiln_tts* get() const { return m_T; }
+
+    private:
+        kiln_tts* m_T;
+    };
+    // Speech to text, remembered at the call; see kiln_remember_speech_recognizer. f(event, text, value).
+    class SpeechRecognizer {
+    public:
+        explicit SpeechRecognizer(bool onDevice = false, Key key = {}) : m_R(kiln_remember_speech_recognizer(key, onDevice)) {}
+        template<typename F> void setListener(F&& f) { kiln_speech_recognizer_set_listener(m_R, fn<kiln_fn_recognition>(std::forward<F>(f))); }
+        void start(const char* language = nullptr, bool partialResults = true) { kiln_speech_recognizer_start(m_R, language, partialResults); }
+        void stop() { kiln_speech_recognizer_stop(m_R); }
+        void cancel() { kiln_speech_recognizer_cancel(m_R); }
+        static bool available(bool onDevice = false) { return kiln_speech_recognition_available(onDevice); }
+        kiln_speech_recognizer* get() const { return m_R; }
+
+    private:
+        kiln_speech_recognizer* m_R;
+    };
     // A media session for a player, remembered at the call (its options are taken the first
     // time); see kiln_remember_media_session.
     class MediaSession {

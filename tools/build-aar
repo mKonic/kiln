@@ -97,7 +97,7 @@ cat > "$STAGING/AndroidManifest.xml" <<XML
 <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="dev.kiln">
     <uses-sdk android:minSdkVersion="$ANDROID_MIN_SDK" />
     <uses-feature android:name="android.hardware.vulkan.version" android:version="0x00401000" android:required="true" />
-    <!-- The text toolbar's PROCESS_TEXT activities and Look Up. -->
+    <!-- The text toolbar's PROCESS_TEXT activities and Look Up; speech engines. -->
     <queries>
         <intent>
             <action android:name="android.intent.action.PROCESS_TEXT" />
@@ -106,6 +106,13 @@ cat > "$STAGING/AndroidManifest.xml" <<XML
         <intent>
             <action android:name="android.intent.action.LOOK_UP_TEXT" />
             <data android:mimeType="text/plain" />
+        </intent>
+        <!-- kiln::speech: the text-to-speech engines and speech recognition services. -->
+        <intent>
+            <action android:name="android.intent.action.TTS_SERVICE" />
+        </intent>
+        <intent>
+            <action android:name="android.speech.RecognitionService" />
         </intent>
     </queries>
     <application android:enableOnBackInvokedCallback="true">

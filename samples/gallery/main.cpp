@@ -17,6 +17,8 @@
 #include <kiln/media/MediaSession.h>
 #include <kiln/ui/AppLocales.h>
 #include <kiln/ui/Notifications.h>
+#include <kiln/speech/SpeechRecognizer.h>
+#include <kiln/speech/TextToSpeech.h>
 #include <kiln/work/Alarm.h>
 #include <chrono>
 #include <kiln/ui/AppResources.h>
@@ -385,13 +387,13 @@ namespace {
                 cameraError.Set(granted ? "" : "The camera permission was not granted");
             });
         Column(VerticalScroll(SafeDrawingPadding(Background(FillMax(Modifier{}, Axis::Both), kSurface)), RememberScrollState()),
-               Arrangement::SpacedBy(12_dp), AlignmentH::Start(), [&] {
+               Arrangement::SpacedBy(12_dp), AlignmentH::Start(), [&player, &s, &cameraOn, &cameraError, askCamera] {
             BasicText("Video", Padding(Modifier{}, 16_dp, 0_dp), { 16, kOnSurface });
             VideoSurface(Padding(FillMax(Modifier{}, Axis::Horizontal), 16_dp, 0_dp), player);
             const std::string time = std::to_string(s.positionMs / 1000) + "." + std::to_string(s.positionMs / 100 % 10) + " / " +
                                      std::to_string(std::max<std::int64_t>(s.durationMs, 0) / 1000) + " s";
             BasicText(s.error.empty() ? time : s.error, Padding(Modifier{}, 16_dp, 0_dp), { 14, kOnSurface });
-            FlowRow(Padding(Modifier{}, 16_dp, 0_dp), Arrangement::SpacedBy(8_dp), Arrangement::SpacedBy(8_dp), AlignmentV::CenterVertically(), [&] {
+            FlowRow(Padding(Modifier{}, 16_dp, 0_dp), Arrangement::SpacedBy(8_dp), Arrangement::SpacedBy(8_dp), AlignmentV::CenterVertically(), [&player, &s, &cameraOn, askCamera] {
                 auto button = [](const char* label, kiln::Function<void()> onClick) {
                     Box(Clickable(Background(Modifier{}, kPrimaryContainer, CornerShape::Pill()), std::move(onClick)), Alignment::Center(), false,
                         [label] { BasicText(label, Padding(Modifier{}, 20_dp, 10_dp), { 14, kOnSurface }); });
@@ -424,6 +426,92 @@ namespace {
         kiln::ui::CreateNotificationChannel({ .id = "reminders", .name = "Reminders" });
         kiln::ui::Notify({ .id = 7, .channelId = "reminders", .title = "Reminder", .text = a.payload });
     });
+    // Speech (kiln::speech): reads a sentence aloud, and turns what the user says into text.
+    void SpeechDemo() {
+        using namespace kiln::foundation;
+        static kiln::speech::TextToSpeech tts;
+        static kiln::speech::SpeechRecognizer recognizer;
+        auto& c = *kiln::rt::Composition::Current();
+        auto& listening = RememberState(false);
+        auto& ttsStatus = RememberState(std::string());
+        auto& spoken = RememberState(std::string());
+        auto& heard = RememberState(std::string());
+        auto& level = RememberState(0.0f);
+        auto& rate = RememberState(1.0f);
+        auto describe = [](kiln::speech::TtsStatus s) {
+            return s == kiln::speech::TtsStatus::Ready ? "Engine ready" : s == kiln::speech::TtsStatus::Failed ? "No speech engine" : "Starting the engine";
+        };
+        c.DisposableEffect(kiln::rt::Keys{}, [&ttsStatus, &spoken, &heard, &level, &listening, describe] {
+            ttsStatus.Set(describe(tts.Status()));
+            tts.SetOnStatusChanged([&ttsStatus, describe](kiln::speech::TtsStatus s) { ttsStatus.Set(describe(s)); });
+            tts.SetListener({ .onStart = [&spoken](const std::string&) { spoken.Set("Speaking"); },
+                              .onDone = [&spoken](const std::string&) { spoken.Set("Done"); },
+                              .onError = [&spoken](const std::string&, kiln::speech::TtsError e) { spoken.Set("Error " + std::to_string(int(e))); },
+                              .onStop = [&spoken](const std::string&, bool) { spoken.Set("Stopped"); } });
+            recognizer.SetListener({
+                .onReadyForSpeech = [&heard] { heard.Set("Listening..."); },
+                .onRmsChanged = [&level](float db) { level.Set(std::clamp((db + 2.0f) / 12.0f, 0.0f, 1.0f)); },
+                .onPartialResults = [&heard](const kiln::speech::RecognitionResult& r) { heard.Set(r.Best() + "..."); },
+                .onResults = [&heard, &level, &listening](const kiln::speech::RecognitionResult& r) {
+                    heard.Set(r.Best());
+                    level.Set(0.0f);
+                    listening.Set(false);
+                },
+                .onError = [&heard, &level, &listening](kiln::speech::RecognitionError e) {
+                    heard.Set(kiln::speech::ToString(e));
+                    level.Set(0.0f);
+                    listening.Set(false);
+                },
+            });
+            return [] {
+                tts.SetOnStatusChanged({});
+                tts.SetListener({});
+                tts.Stop();
+                recognizer.SetListener({});
+                recognizer.Cancel();
+            };
+        });
+        auto askMicrophone = RememberLauncherForActivityResult<std::string, bool>(
+            std::make_shared<contracts::RequestPermission>(), [&heard, &listening](bool granted) {
+                if (!granted) {
+                    heard.Set("The microphone permission was not granted");
+                    return;
+                }
+                listening.Set(true);
+                recognizer.Start();
+            });
+        // Content lambdas recompose on their own: they capture state references and copies, not this frame's locals.
+        static constexpr auto button = [](const char* label, kiln::Function<void()> onClick) {
+            Box(Clickable(Background(Modifier{}, kPrimaryContainer, CornerShape::Pill()), std::move(onClick)), Alignment::Center(), false,
+                [label] { BasicText(label, Padding(Modifier{}, 20_dp, 10_dp), { 14, kOnSurface }); });
+        };
+        Column(SafeDrawingPadding(Background(FillMax(Modifier{}, Axis::Both), kSurface)), Arrangement::SpacedBy(12_dp), AlignmentH::Start(),
+               [&ttsStatus, &spoken, &heard, &level, &rate, &listening, askMicrophone] {
+            BasicText("Text to speech", Padding(Modifier{}, 16_dp, 0_dp), { 22, kOnSurface });
+            BasicText(ttsStatus.Get() + (spoken.Get().empty() ? "" : " · " + spoken.Get()), Padding(Modifier{}, 16_dp, 0_dp), { 16, kOnSurface });
+            FlowRow(Padding(Modifier{}, 16_dp, 0_dp), Arrangement::SpacedBy(8_dp), Arrangement::SpacedBy(8_dp), AlignmentV::CenterVertically(), [&rate] {
+                button("Speak", [] { tts.Speak("The quick brown fox jumps over the lazy dog.", { .queue = kiln::speech::QueueMode::Flush }); });
+                button(rate.Get() > 1.0f ? "Normal speed" : "Faster", [&rate] {
+                    rate.Set(rate.Get() > 1.0f ? 1.0f : 1.8f);
+                    tts.SetSpeechRate(rate.Get());
+                });
+                button("Stop", [] { tts.Stop(); });
+            });
+            BasicText("Speech to text", Padding(Modifier{}, { 16_dp, 8_dp, 16_dp, 0_dp }), { 22, kOnSurface });
+            BasicText(heard.Get(), Padding(Modifier{}, 16_dp, 0_dp), { 16, kOnSurface });
+            Box(Padding(Modifier{}, 16_dp, 0_dp), Alignment::CenterStart(), false, [&level] {
+                Box(Background(Height(Width(Modifier{}, 200_dp), 6_dp), kPrimaryContainer, CornerShape::Pill()));
+                Box(Background(Height(Width(Modifier{}, Dp(200.0f * level.Get())), 6_dp), kOnSurface, CornerShape::Pill()));
+            });
+            FlowRow(Padding(Modifier{}, 16_dp, 0_dp), Arrangement::SpacedBy(8_dp), Arrangement::SpacedBy(8_dp), AlignmentV::CenterVertically(), [&listening, askMicrophone] {
+                if (!listening.Get())
+                    button("Listen", [askMicrophone] { askMicrophone.Launch("android.permission.RECORD_AUDIO"); });
+                else
+                    button("Done", [] { recognizer.Stop(); });
+            });
+        });
+    }
+
     void AlarmDemo() {
         using namespace kiln::foundation;
         auto& status = RememberState(std::string());
@@ -535,6 +623,10 @@ namespace {
         }
         if (section == "media") {
             MediaDemo();
+            return;
+        }
+        if (section == "speech") {
+            SpeechDemo();
             return;
         }
         if (section == "alarm") {

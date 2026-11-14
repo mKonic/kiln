@@ -161,3 +161,37 @@ void capi_media(void* user) {
     kiln_media_session* session = kiln_remember_media_session(KILN_HERE, player, &options);
     kiln_media_session_set_metadata(session, "Song", "Band", "", "");
 }
+
+/* Speech: a remembered engine and recognizer; the listeners' events are logged. */
+char capi_speech_log[256];
+static void speech_log(const char* s) {
+    size_t n = 0;
+    while (capi_speech_log[n]) ++n;
+    snprintf(capi_speech_log + n, sizeof capi_speech_log - n, "%s;", s);
+}
+static void on_tts(void* user, kiln_tts_event e, const char* id, int32_t a, int32_t b) {
+    (void)user; (void)a; (void)b;
+    char line[64];
+    snprintf(line, sizeof line, "tts %d %s", (int)e, id ? id : "-");
+    speech_log(line);
+}
+static void on_recognition(void* user, kiln_recognition_event e, const char* text, float value) {
+    (void)user;
+    char line[64];
+    snprintf(line, sizeof line, "rec %d %s %d", (int)e, text, (int)value);
+    speech_log(line);
+}
+static void drop_counted_user(void* user) { (void)user; --capi_live_callbacks; }
+kiln_tts* capi_tts;
+kiln_speech_recognizer* capi_recognizer;
+void capi_speech(void* user) {
+    (void)user;
+    capi_tts = kiln_remember_tts(KILN_HERE, NULL);
+    ++capi_live_callbacks;
+    kiln_fn_tts_event t = { on_tts, NULL, drop_counted_user };
+    kiln_tts_set_listener(capi_tts, t);
+    capi_recognizer = kiln_remember_speech_recognizer(KILN_HERE, false);
+    ++capi_live_callbacks;
+    kiln_fn_recognition r = { on_recognition, NULL, drop_counted_user };
+    kiln_speech_recognizer_set_listener(capi_recognizer, r);
+}

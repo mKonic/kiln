@@ -219,3 +219,10 @@ name = "overscroll"
 kiln = "foundation/src/kiln/foundation/EdgeEffect.h, render/shaders/quad_body.glsl"
 paths = ["core/java/android/widget/EdgeEffect.java", "libs/hwui/effects/StretchEffect.cpp",
          "libs/hwui/effects/StretchEffect.h"]
+
+[[aosp-frameworks-base.group]]
+name = "speech"
+kiln = "core/src/kiln/speech, KilnSpeech.java"
+paths = ["core/java/android/speech/tts/TextToSpeech.java", "core/java/android/speech/tts/UtteranceProgressListener.java",
+         "core/java/android/speech/SpeechRecognizer.java", "core/java/android/speech/RecognitionListener.java",
+         "core/java/android/speech/RecognizerIntent.java"]

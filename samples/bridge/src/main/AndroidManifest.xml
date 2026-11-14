@@ -1,5 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.TTS_SERVICE" />
+        </intent>
+        <intent>
+            <action android:name="android.speech.RecognitionService" />
+        </intent>
+    </queries>
     <application android:name=".App" android:label="kiln bridge" android:icon="@mipmap/ic_launcher"
                  android:supportsRtl="true" android:enableOnBackInvokedCallback="true">
         <activity android:name="dev.kiln.KilnActivity" android:exported="true"

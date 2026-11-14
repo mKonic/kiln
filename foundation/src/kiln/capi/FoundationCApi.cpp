@@ -32,6 +32,8 @@
 #include "kiln/ui/AppLocales.h"
 #include "kiln/security/SecureStore.h"
 #include "kiln/work/Alarm.h"
+#include "kiln/speech/SpeechRecognizer.h"
+#include "kiln/speech/TextToSpeech.h"
 #include "kiln/ui/AppDirectories.h"
 #include "kiln/ui/AppResources.h"
 #include "kiln/ui/ContentResolver.h"
@@ -1697,6 +1699,109 @@ KILN_API void kiln_player_set_handle_audio_becoming_noisy(kiln_player* p, bool h
     TRY { if (p) p->player->SetHandleAudioBecomingNoisy(handle); } CATCH_VOID
 }
 
+struct kiln_tts {
+    kiln::speech::TextToSpeech* tts;
+};
+struct kiln_speech_recognizer {
+    kiln::speech::SpeechRecognizer* recognizer;
+};
+KILN_API kiln_tts* kiln_remember_tts(kiln_key key, const char* engine) {
+    TRY {
+        kiln_tts* out = nullptr;
+        InGroup(key, [&] {
+            auto& c = *rt::Composition::Current();
+            auto& t = c.RememberNew<kiln::speech::TextToSpeech>({}, {}, ToString(engine));
+            out = &c.Remember<kiln_tts>([&] { return kiln_tts{ &t }; });
+        });
+        return out;
+    } CATCH(nullptr)
+}
+KILN_API void kiln_tts_set_listener(kiln_tts* t, kiln_fn_tts_event listener) {
+    auto owned = kiln::capi::Own(listener);
+    TRY {
+        if (!t) return;
+        auto event = [owned](kiln_tts_event e, const std::string* id, int32_t a, int32_t b) {
+            kiln::capi::CallbackScope scope;
+            owned->f.call(owned->f.user, e, id ? id->c_str() : nullptr, a, b);
+        };
+        t->tts->SetOnStatusChanged([event](kiln::speech::TtsStatus s) {
+            event(s == kiln::speech::TtsStatus::Ready ? KILN_TTS_ENGINE_READY : KILN_TTS_ENGINE_FAILED, nullptr, 0, 0);
+        });
+        t->tts->SetListener({
+            .onStart = [event](const std::string& id) { event(KILN_TTS_START, &id, 0, 0); },
+            .onDone = [event](const std::string& id) { event(KILN_TTS_DONE, &id, 0, 0); },
+            .onError = [event](const std::string& id, kiln::speech::TtsError e) { event(KILN_TTS_ERROR, &id, int32_t(e), 0); },
+            .onStop = [event](const std::string& id, bool interrupted) { event(KILN_TTS_STOP, &id, interrupted, 0); },
+            .onRangeStart = [event](const std::string& id, int start, int end) { event(KILN_TTS_RANGE_START, &id, start, end); },
+        });
+    } CATCH_VOID
+}
+KILN_API int32_t kiln_tts_status(kiln_tts* t) {
+    TRY { return t ? int32_t(t->tts->Status()) : 2; } CATCH(2)
+}
+KILN_API bool kiln_tts_speak(kiln_tts* t, const char* text, bool flush, const char* id) {
+    TRY {
+        if (!t || !text) return false;
+        return t->tts->Speak(text, { .queue = flush ? kiln::speech::QueueMode::Flush : kiln::speech::QueueMode::Add, .id = ToString(id) });
+    } CATCH(false)
+}
+KILN_API void kiln_tts_stop(kiln_tts* t) {
+    TRY { if (t) t->tts->Stop(); } CATCH_VOID
+}
+KILN_API bool kiln_tts_is_speaking(kiln_tts* t) {
+    TRY { return t && t->tts->IsSpeaking(); } CATCH(false)
+}
+KILN_API void kiln_tts_set_speech_rate(kiln_tts* t, float rate) {
+    TRY { if (t) t->tts->SetSpeechRate(rate); } CATCH_VOID
+}
+KILN_API void kiln_tts_set_pitch(kiln_tts* t, float pitch) {
+    TRY { if (t) t->tts->SetPitch(pitch); } CATCH_VOID
+}
+KILN_API int32_t kiln_tts_set_language(kiln_tts* t, const char* tag) {
+    TRY { return t && tag ? int32_t(t->tts->SetLanguage(tag)) : -2; } CATCH(-2)
+}
+KILN_API kiln_speech_recognizer* kiln_remember_speech_recognizer(kiln_key key, bool onDevice) {
+    TRY {
+        kiln_speech_recognizer* out = nullptr;
+        InGroup(key, [&] {
+            auto& c = *rt::Composition::Current();
+            auto& r = c.RememberNew<kiln::speech::SpeechRecognizer>({}, {}, onDevice);
+            out = &c.Remember<kiln_speech_recognizer>([&] { return kiln_speech_recognizer{ &r }; });
+        });
+        return out;
+    } CATCH(nullptr)
+}
+KILN_API void kiln_speech_recognizer_set_listener(kiln_speech_recognizer* r, kiln_fn_recognition listener) {
+    auto owned = kiln::capi::Own(listener);
+    TRY {
+        if (!r) return;
+        auto event = [owned](kiln_recognition_event e, const std::string& text, float value) {
+            kiln::capi::CallbackScope scope;
+            owned->f.call(owned->f.user, e, text.c_str(), value);
+        };
+        r->recognizer->SetListener({
+            .onReadyForSpeech = [event] { event(KILN_RECOGNITION_READY, {}, 0); },
+            .onBeginningOfSpeech = [event] { event(KILN_RECOGNITION_BEGINNING, {}, 0); },
+            .onRmsChanged = [event](float db) { event(KILN_RECOGNITION_RMS, {}, db); },
+            .onEndOfSpeech = [event] { event(KILN_RECOGNITION_END, {}, 0); },
+            .onPartialResults = [event](const kiln::speech::RecognitionResult& p) { event(KILN_RECOGNITION_PARTIAL, p.Best(), 0); },
+            .onResults = [event](const kiln::speech::RecognitionResult& p) { event(KILN_RECOGNITION_RESULTS, p.Best(), 0); },
+            .onError = [event](kiln::speech::RecognitionError e) { event(KILN_RECOGNITION_ERROR, {}, float(int(e))); },
+        });
+    } CATCH_VOID
+}
+KILN_API void kiln_speech_recognizer_start(kiln_speech_recognizer* r, const char* language, bool partial) {
+    TRY { if (r) r->recognizer->Start({ .language = ToString(language), .partialResults = partial }); } CATCH_VOID
+}
+KILN_API void kiln_speech_recognizer_stop(kiln_speech_recognizer* r) {
+    TRY { if (r) r->recognizer->Stop(); } CATCH_VOID
+}
+KILN_API void kiln_speech_recognizer_cancel(kiln_speech_recognizer* r) {
+    TRY { if (r) r->recognizer->Cancel(); } CATCH_VOID
+}
+KILN_API bool kiln_speech_recognition_available(bool onDevice) {
+    TRY { return onDevice ? kiln::speech::SpeechRecognizer::IsOnDeviceAvailable() : kiln::speech::SpeechRecognizer::IsAvailable(); } CATCH(false)
+}
 struct kiln_media_session {
     kiln::media::MediaSession* session;
 };

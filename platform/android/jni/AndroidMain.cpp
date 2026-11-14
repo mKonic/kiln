@@ -1346,6 +1346,7 @@ namespace {
         kiln::android::InstallLocales(env);
         kiln::android::InstallSecurity(env);
         kiln::android::InstallAlarms(env);
+        kiln::android::InstallSpeech(env);
         // Not tied to a window: a process started for a job, a widget or an alarm has them too.
         kiln::android::InstallDateFormat(env);
         kiln::android::InstallAppResources(env);
