@@ -108,6 +108,10 @@ namespace kiln::media {
         bool ReadLine(std::string& line);
         // The next line without taking it (peek), false at the end.
         bool PeekLine(std::string& line) const;
+        // Where it reads in Text() (UTF-8), to come back to or cut a block out.
+        std::size_t Position() const { return m_Pos; }
+        void SetPosition(std::size_t position) { m_Pos = position; }
+        const std::string& Text() const { return m_Text; }
 
     private:
         std::string m_Text;   // UTF-8
@@ -116,5 +120,10 @@ namespace kiln::media {
 
     // Java's String.trim: without the characters up to the space at both ends.
     std::string_view JavaTrim(std::string_view s);
+
+    namespace detail {
+        std::u16string Utf8To16(std::string_view s);
+        std::string Utf16To8(std::u16string_view s);
+    }
 
 }

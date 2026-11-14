@@ -67,6 +67,49 @@ namespace kiln::media {
         return true;
     }
 
+    namespace detail {
+        std::u16string Utf8To16(std::string_view s) {
+            std::u16string out;
+            out.reserve(s.size());
+            for (std::size_t i = 0; i < s.size();) {
+                const unsigned char c = static_cast<unsigned char>(s[i]);
+                char32_t cp = 0xFFFD;
+                std::size_t n = 1;
+                if (c < 0x80) cp = c;
+                else if ((c >> 5) == 0x6 && i + 1 < s.size()) { cp = ((c & 0x1F) << 6) | (s[i + 1] & 0x3F); n = 2; }
+                else if ((c >> 4) == 0xE && i + 2 < s.size()) { cp = ((c & 0x0F) << 12) | ((s[i + 1] & 0x3F) << 6) | (s[i + 2] & 0x3F); n = 3; }
+                else if ((c >> 3) == 0x1E && i + 3 < s.size()) {
+                    cp = ((c & 0x07) << 18) | ((s[i + 1] & 0x3F) << 12) | ((s[i + 2] & 0x3F) << 6) | (s[i + 3] & 0x3F);
+                    n = 4;
+                }
+                i += n;
+                if (cp >= 0x10000) {
+                    cp -= 0x10000;
+                    out += char16_t(0xD800 + (cp >> 10));
+                    out += char16_t(0xDC00 + (cp & 0x3FF));
+                } else {
+                    out += char16_t(cp);
+                }
+            }
+            return out;
+        }
+        std::string Utf16To8(std::u16string_view s) {
+            std::string out;
+            out.reserve(s.size());
+            for (std::size_t i = 0; i < s.size(); ++i) {
+                char32_t c = s[i];
+                if (c >= 0xD800 && c <= 0xDBFF && i + 1 < s.size() && s[i + 1] >= 0xDC00 && s[i + 1] <= 0xDFFF) {
+                    c = 0x10000 + ((c - 0xD800) << 10) + (s[i + 1] - 0xDC00);
+                    ++i;
+                } else if (c >= 0xD800 && c <= 0xDFFF) {
+                    c = 0xFFFD;
+                }
+                AppendUtf8(out, c);
+            }
+            return out;
+        }
+    }
+
     std::string_view JavaTrim(std::string_view s) {
         std::size_t b = 0, e = s.size();
         while (b < e && static_cast<unsigned char>(s[b]) <= ' ') ++b;
