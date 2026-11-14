@@ -132,4 +132,11 @@ namespace kiln {
         }
     }
 
+    std::vector<const AtlasPage*> PathCache::Pages() const {
+        std::vector<const AtlasPage*> out;
+        for (const Page& p : m_Pages) if (p.gpu) out.push_back(p.gpu.get());
+        for (const Retired& r : m_Retired) if (r.page) out.push_back(r.page.get());
+        return out;
+    }
+
 }

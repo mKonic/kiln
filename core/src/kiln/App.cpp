@@ -2,6 +2,7 @@
 #include "kiln/App.h"
 #include <kiln/Function.h>
 #include "kiln/ui/Locals.h"
+#include "kiln/image/ImageLoader.h"
 #include "kiln/ui/PrefetchScheduler.h"
 #include "kiln/runtime/State.h"
 #include "kiln/animation/Animatable.h"
@@ -339,6 +340,36 @@ namespace kiln {
     void App::ForgetPage(const AtlasPage* page) {
         if (m_Quads) m_Quads->ForgetPage(page);
         for (auto& w : m_Windows) if (w->quads) w->quads->ForgetPage(page);
+    }
+
+    std::size_t App::TrimMemory(int level) {
+        image::ImageLoader::Default().TrimMemory(level);
+        if (!m_Device || level < 20) return 0;
+        // Frames in flight may still read what goes.
+        m_Device->WaitIdle();
+        std::size_t freed = 0;
+        auto bytes = [](const AtlasPage* p) { return p ? std::size_t(p->Width()) * p->Height() * 4 : 0; };
+        auto quads = [this](auto&& fn) {
+            if (m_Quads) fn(*m_Quads);
+            for (auto& w : m_Windows) if (w->quads) fn(*w->quads);
+        };
+        if (m_Images) m_Images->PurgeUnused();
+        quads([](QuadRenderer& q) { q.ReleaseLayerPool(); });
+        if (level < 40) return freed;
+        if (m_Images) m_Images->Clear();
+        if (m_Paths) {
+            for (const AtlasPage* p : m_Paths->Pages()) { freed += bytes(p); ForgetPage(p); }
+            m_Paths.reset();
+        }
+        m_Gradients.reset();   // the renderer keeps its ramp texture until the next frame sets a new one
+        for (auto& page : m_Pages) {
+            if (!page) continue;
+            freed += bytes(page.get());
+            ForgetPage(page.get());
+            page.reset();
+        }
+        if (m_Services.text) m_Services.text->ResendAtlas();
+        return freed;
     }
 
     void App::WaitGpuIdle() {

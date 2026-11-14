@@ -366,6 +366,9 @@ namespace kiln::hostdev {
             bool IsRtlCharAt(std::int64_t, int) override { return false; }
             void Release(std::int64_t handle) override { m_Paras.erase(handle); }
 
+            void ResendAtlas() override {
+                for (Page& p : m_Pages) { p.created = false; p.dirtyY0 = 0; p.dirtyY1 = kPageSize; }
+            }
             void SyncAtlas(AtlasSink& sink) override {
                 for (std::uint32_t i = 0; i < m_Pages.size(); ++i) {
                     Page& p = m_Pages[i];

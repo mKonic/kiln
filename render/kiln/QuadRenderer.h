@@ -87,6 +87,8 @@ namespace kiln {
         // The gradient ramp texture (bound next to every atlas page).
         // Drops the cached bind group of a page about to be destroyed.
         void ForgetPage(const AtlasPage* page) { std::erase_if(m_Groups, [page](const auto& g) { return g.page == page || g.dst == page; }); }
+        // Frees the pooled offscreen layers (memory pressure). The GPU must be idle.
+        void ReleaseLayerPool();
         void SetRampTexture(hearth::Ref<hearth::Texture> ramp) { m_Ramp = std::move(ramp); m_Groups.clear(); }
         // Affine transform (x' = a*x + c*y + e, y' = b*x + d*y + f) applied to quads submitted
         // after this call: their rects are in its local space.
@@ -230,6 +232,7 @@ namespace kiln {
             std::unique_ptr<AtlasPage> page;
             std::uint32_t width = 0, height = 0;
             bool used = false;
+            int idleFrames = 0;   // frames of this slot it went unused
         };
         Target& Current() { return m_Targets[m_Stack.back()]; }
         void Upload();
@@ -268,6 +271,7 @@ namespace kiln {
         std::vector<std::size_t> m_Stack;         // open targets
         std::vector<std::size_t> m_LayerOrder;    // finished layers, inner ones first
         std::vector<std::vector<PooledLayer>> m_Pool;   // per frame in flight
+        static constexpr int kLayerIdleFrames = 120;    // per slot: about 6 s at 60 Hz with 3 slots
         bool m_Uploaded = false;
         std::vector<const AtlasPage*> m_LayerPages;   // per offscreen target (index - 1)
         std::vector<Instance> m_Staging;

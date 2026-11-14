@@ -122,6 +122,7 @@ final class KilnNative {
     static native void newIntent(Object[] intent);
     /** Context.getFilesDir, getCacheDir, getNoBackupFilesDir. */
     static native void setDirectories(String files, String cache, String noBackup);
+    static native void trimMemory(int level);
     static native boolean dragEvent(int win, int action, float x, float y, String[] mimeTypes, String label, String[] items, boolean local, boolean result);
     static native boolean a11yFlushBounds(int win);
     static native boolean a11yCanScroll(int win, boolean vertical, int direction, float x, float y);

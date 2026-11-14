@@ -1,5 +1,7 @@
 #include "AndroidText.h"
 
+#include <utility>
+
 #include <android/bitmap.h>
 #include <android/log.h>
 
@@ -344,16 +346,18 @@ namespace kiln::android {
     void AndroidText::SyncAtlas(AtlasSink& sink) {
         if (!m_Pending) return;
         m_Pending = false;
+        const bool all = std::exchange(m_ResendAll, false);
         JNIEnv* env = Env(m_Vm);
         if (!env) return;
         const jint pages = env->CallIntMethod(m_Text, m_PageCount);
         for (jint i = 0; i < pages; ++i) {
-            const bool fresh = env->CallBooleanMethod(m_Text, m_PageIsNew, i);
-            const jlong rows = env->CallLongMethod(m_Text, m_TakeDirtyRows, i);
+            const bool fresh = env->CallBooleanMethod(m_Text, m_PageIsNew, i) || all;
+            jlong rows = env->CallLongMethod(m_Text, m_TakeDirtyRows, i);
             if (!fresh && rows == 0) continue;
             jobject bitmap = env->CallObjectMethod(m_Text, m_PageBitmap, i);
             AndroidBitmapInfo info{};
             AndroidBitmap_getInfo(env, bitmap, &info);
+            if (all) rows = jlong(info.height);   // [0, height)
             if (fresh) sink.EnsurePage(std::uint32_t(i), info.width, info.height);
             void* pixels = nullptr;
             if (rows != 0 && AndroidBitmap_lockPixels(env, bitmap, &pixels) == ANDROID_BITMAP_RESULT_SUCCESS) {

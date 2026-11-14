@@ -165,6 +165,9 @@ namespace kiln {
         ParagraphData LayoutPlain(std::string_view utf8, float sizePx, float widthPx);
         // Pushes every atlas region rasterised since the last call.
         virtual void SyncAtlas(AtlasSink& sink) = 0;
+        // The next SyncAtlas pushes every page whole (the GPU copies were freed under memory
+        // pressure); laid-out text keeps its places in the atlas.
+        virtual void ResendAtlas() {}
         // Queries on a laid-out paragraph; offsets are UTF-16 code units (what IMEs use).
         // getHorizontalPosition: usePrimary picks the primary (paragraph direction) caret.
         virtual float GetHorizontalPosition(std::int64_t handle, int offset, bool usePrimaryDirection) = 0;

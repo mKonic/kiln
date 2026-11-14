@@ -18,6 +18,10 @@ namespace kiln {
         void AddRenderer(QuadRenderer& quads) { m_Quads.push_back(&quads); }
         void RemoveRenderer(QuadRenderer& quads) { std::erase(m_Quads, &quads); }
         void BeginFrame();
+        // Memory pressure, with the GPU idle: textures of bitmaps nobody holds go now; Clear
+        // drops every texture (made again on the next draw).
+        void PurgeUnused();
+        void Clear();
         const AtlasPage* PageFor(const gfx::ImageBitmap& image);
 
     private:

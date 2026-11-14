@@ -15,6 +15,7 @@ namespace kiln::android {
         ParagraphData Layout(const ParagraphRequest& request) override;
         ParagraphIntrinsicWidths Intrinsics(const ParagraphRequest& request) override;
         void SyncAtlas(AtlasSink& sink) override;
+        void ResendAtlas() override { m_Pending = true; m_ResendAll = true; }
         float GetHorizontalPosition(std::int64_t handle, int offset, bool usePrimaryDirection) override;
         CursorRect GetCursorRect(std::int64_t handle, int offset) override;
         int GetOffsetForPosition(std::int64_t handle, float x, float y) override;
@@ -42,6 +43,7 @@ namespace kiln::android {
         jmethodID m_Layout, m_Intrinsics, m_Horizontal, m_CursorRect, m_OffsetFor, m_BoundingBox, m_SelectionRects,
             m_WordBoundary, m_IsRtl, m_Release, m_CharacterBreak, m_WordBreak, m_CharType, m_UpperCase, m_PageCount, m_PageBitmap, m_PageIsNew, m_TakeDirtyRows;
         bool m_Pending = false;   // a layout ran since the last sync
+        bool m_ResendAll = false; // every page again, whole
     };
 
 }

@@ -149,7 +149,16 @@ namespace kiln {
         m_LayerOrder.clear();
         m_LayerPages.clear();
         m_Uploaded = false;
-        for (auto& l : m_Pool[m_Device.FrameIndex() % m_Pool.size()]) l.used = false;
+        // Layers this slot has not used for a while go (an animated size leaves one per 64 px
+        // step); the slot's previous frame has finished with them.
+        auto& pool = m_Pool[m_Device.FrameIndex() % m_Pool.size()];
+        std::erase_if(pool, [this](PooledLayer& l) {
+            l.idleFrames = l.used ? 0 : l.idleFrames + 1;
+            l.used = false;
+            if (l.idleFrames <= kLayerIdleFrames) return false;
+            ForgetPage(l.page.get());
+            return true;
+        });
         m_Clip = {};
         m_BlendMode = 3;
         m_TriVerts.clear();
@@ -439,6 +448,13 @@ namespace kiln {
         run.triangles = true;
         run.clip = m_Clip;
         cur.runs.push_back(run);
+    }
+
+    void QuadRenderer::ReleaseLayerPool() {
+        for (auto& pool : m_Pool) {
+            for (auto& l : pool) ForgetPage(l.page.get());
+            pool.clear();
+        }
     }
 
     QuadRenderer::PooledLayer& QuadRenderer::AcquireLayer(int w, int h) {

@@ -32,6 +32,8 @@ namespace kiln {
         const Entry* Insert(std::uint64_t key, const gfx::Mask& mask, int originX, int originY);
         // Uploads what changed this frame.
         void Sync();
+        // Every page it holds (to forget before the cache goes).
+        std::vector<const AtlasPage*> Pages() const;
 
     private:
         static constexpr std::size_t kMaxDedicatedPages = 4;

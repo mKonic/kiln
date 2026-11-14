@@ -13,6 +13,22 @@ namespace kiln {
         }
     }
 
+    void ImageCache::PurgeUnused() {
+        for (auto it = m_Entries.begin(); it != m_Entries.end();) {
+            if (it->second.token.expired()) {
+                for (QuadRenderer* q : m_Quads) q->ForgetPage(it->second.page.get());
+                it = m_Entries.erase(it);
+            } else {
+                ++it;
+            }
+        }
+    }
+
+    void ImageCache::Clear() {
+        for (auto& [id, e] : m_Entries) for (QuadRenderer* q : m_Quads) q->ForgetPage(e.page.get());
+        m_Entries.clear();
+    }
+
     const AtlasPage* ImageCache::PageFor(const gfx::ImageBitmap& image) {
         if (!image) return nullptr;
         auto it = m_Entries.find(image.Id());

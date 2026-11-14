@@ -1402,6 +1402,13 @@ namespace {
         env->ReleaseStringUTFChars(dir, chars);
     }
 
+    // ComponentCallbacks2.onTrimMemory.
+    void TrimMemory(JNIEnv*, jclass, jint level) {
+        if (!g_Host) return;
+        const std::size_t freed = g_Host->app->TrimMemory(level);
+        __android_log_print(ANDROID_LOG_DEBUG, "kiln", "trim memory %d: %zu KB of GPU caches freed", int(level), freed / 1024);
+    }
+
     void FontsChanged(JNIEnv*, jclass) {
         if (!g_Host) return;
         g_Host->app->GetOwner().OnFontsChanged();
@@ -3389,6 +3396,7 @@ extern "C" JNIEXPORT jint kiln_jni_onload(JavaVM* vm) {
         { "set24HourFormat", "(Z)V", reinterpret_cast<void*>(&Set24HourFormat) },
         { "flagSecureChanged", "(Z)V", reinterpret_cast<void*>(&FlagSecureChanged) },
         { "fontsChanged", "()V", reinterpret_cast<void*>(&FontsChanged) },
+        { "trimMemory", "(I)V", reinterpret_cast<void*>(&TrimMemory) },
         { "textToolbarItem", "(II)V", reinterpret_cast<void*>(&TextToolbarItem) },
         { "textToolbarDestroyed", "(I)V", reinterpret_cast<void*>(&TextToolbarDestroyed) },
         { "classifierResult", "(IZIII[Ljava/lang/String;Z)V", reinterpret_cast<void*>(&ClassifierResult) },

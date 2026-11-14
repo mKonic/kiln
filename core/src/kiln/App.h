@@ -59,6 +59,12 @@ namespace kiln {
         // directory). Set before the first surface; SavePipelineCache writes it now.
         void SetPipelineCachePath(std::string path) { m_PipelineCachePath = std::move(path); }
         void SavePipelineCache() { if (m_Device) m_Device->SavePipelineCache(); }
+        // ComponentCallbacks2.onTrimMemory, as HWUI's CacheManager::trimMemory: at UI_HIDDEN (20)
+        // what nothing uses goes (textures of released images, idle offscreen layers); at
+        // BACKGROUND (40) and above every cache the next frame can rebuild (path masks,
+        // gradient ramps, image textures, the GPU copies of glyph pages, offscreen layers).
+        // The image loader trims its memory cache by the same level. Returns the GPU bytes freed.
+        std::size_t TrimMemory(int level);
         void SurfaceResized(std::uint32_t width, std::uint32_t height);
         // The host view's size from its own layout, which comes before the surface's (so focus
         // the platform gives on a window's first layout finds laid-out content).
