@@ -14,6 +14,7 @@ namespace kiln::android { void InstallImageDecoder(); void InstallAssetReader(JN
 #include "kiln/text/AnnotatedString.h"
 #include "kiln/text/CaseMapping.h"
 #include "kiln/ui/MediaQuery.h"
+#include "kiln/ui/PictureInPicture.h"
 #include "kiln/ui/Back.h"
 #include "kiln/ui/Accessibility.h"
 #include <array>
@@ -134,6 +135,7 @@ namespace {
         return out;
     }
     JNIEnv* MainEnv();
+    void InstallPictureInPicture(JNIEnv* env);
     void SurfaceDestroyed(JNIEnv*, jclass, jint);
 
     jstring JavaString(JNIEnv* env, const std::u16string& s) {
@@ -1308,6 +1310,7 @@ namespace {
         kiln::android::InstallAppResources(env);
         kiln::android::InstallContentResolver(env);
         kiln::android::InstallHttp(env);
+        InstallPictureInPicture(env);
         g_Host = new Host();
         g_Host->text = std::make_unique<kiln::android::AndroidText>(env, text);
         kiln::text::SetCaseMapper([](std::u16string_view t, const std::string& tag, kiln::text::CaseOp op) {
@@ -1420,6 +1423,55 @@ namespace {
             folds.push_back({ { float(v[i]), float(v[i + 1]), float(v[i + 2]), float(v[i + 3]) }, v[i + 4] != 0, v[i + 5] != 0 });
         kiln::ui::MediaScopeOf(CurOwner()).SetDisplayFolds(std::move(folds));
         g_Host->app->RequestFrame();
+    }
+
+    void PictureInPictureModeChanged(JNIEnv*, jclass, jboolean inPip) {
+        kiln::ui::SetInPictureInPictureMode(inPip);
+        if (g_Host && g_Host->app) g_Host->app->RequestFrame();
+    }
+
+    // ui::PictureInPicture through KilnPip, on the main window's view.
+    void InstallPictureInPicture(JNIEnv* env) {
+        jclass c = env->FindClass("dev/kiln/KilnPip");
+        if (!c) { env->ExceptionClear(); return; }
+        static jclass pip = static_cast<jclass>(env->NewGlobalRef(c));
+        env->DeleteLocalRef(c);
+        static jmethodID apply = env->GetStaticMethodID(pip, "apply", "(Landroid/view/View;ZII[IZZLjava/lang/String;Ljava/lang/String;)Z");
+        static jmethodID setOrientation = env->GetStaticMethodID(pip, "setRequestedOrientation", "(Landroid/view/View;I)V");
+        static jmethodID orientation = env->GetStaticMethodID(pip, "requestedOrientation", "(Landroid/view/View;)I");
+        kiln::ui::PictureInPictureHost host;
+        host.apply = [](const kiln::ui::PictureInPictureParams& p, bool enter) -> bool {
+            if (!g_Host || !g_Host->view) return false;
+            JNIEnv* e = MainEnv();
+            jintArray hint = nullptr;
+            if (p.sourceRectHint) {
+                const jint r[4] = { jint(p.sourceRectHint->left), jint(p.sourceRectHint->top), jint(p.sourceRectHint->right), jint(p.sourceRectHint->bottom) };
+                hint = e->NewIntArray(4);
+                e->SetIntArrayRegion(hint, 0, 4, r);
+            }
+            jstring title = e->NewStringUTF(p.title.c_str()), subtitle = e->NewStringUTF(p.subtitle.c_str());
+            const bool ok = e->CallStaticBooleanMethod(pip, apply, g_Host->view, jboolean(enter), jint(p.aspectWidth), jint(p.aspectHeight), hint,
+                                                       jboolean(p.autoEnter), jboolean(p.seamlessResize), title, subtitle);
+            if (e->ExceptionCheck()) e->ExceptionClear();
+            if (hint) e->DeleteLocalRef(hint);
+            e->DeleteLocalRef(title);
+            e->DeleteLocalRef(subtitle);
+            return ok;
+        };
+        host.setOrientation = [](int o) {
+            if (!g_Host || !g_Host->view) return;
+            JNIEnv* e = MainEnv();
+            e->CallStaticVoidMethod(pip, setOrientation, g_Host->view, jint(o));
+            if (e->ExceptionCheck()) e->ExceptionClear();
+        };
+        host.orientation = []() -> int {
+            if (!g_Host || !g_Host->view) return -1;
+            JNIEnv* e = MainEnv();
+            const int o = e->CallStaticIntMethod(pip, orientation, g_Host->view);
+            if (e->ExceptionCheck()) { e->ExceptionClear(); return -1; }
+            return o;
+        };
+        kiln::ui::SetPictureInPictureHost(std::move(host));
     }
 
     void FontsChanged(JNIEnv*, jclass) {
@@ -3410,6 +3462,7 @@ extern "C" JNIEXPORT jint kiln_jni_onload(JavaVM* vm) {
         { "flagSecureChanged", "(Z)V", reinterpret_cast<void*>(&FlagSecureChanged) },
         { "fontsChanged", "()V", reinterpret_cast<void*>(&FontsChanged) },
         { "trimMemory", "(I)V", reinterpret_cast<void*>(&TrimMemory) },
+        { "pictureInPictureModeChanged", "(Z)V", reinterpret_cast<void*>(&PictureInPictureModeChanged) },
         { "setDisplayFolds", "(I[I)V", reinterpret_cast<void*>(&SetDisplayFolds) },
         { "textToolbarItem", "(II)V", reinterpret_cast<void*>(&TextToolbarItem) },
         { "textToolbarDestroyed", "(I)V", reinterpret_cast<void*>(&TextToolbarDestroyed) },

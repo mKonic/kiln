@@ -11,6 +11,7 @@
 #include "kiln/foundation/activity/NewIntent.h"
 #include "kiln/datastore/Preferences.h"
 #include "kiln/net/Http.h"
+#include "kiln/ui/PictureInPicture.h"
 #include "kiln/foundation/AsyncImage.h"
 #include "kiln/ui/AppDirectories.h"
 #include "kiln/ui/AppResources.h"
@@ -2146,3 +2147,14 @@ KILN_API bool kiln_network_connected(kiln_key key) {
         return kiln::rt::CollectAsState(kiln::net::Connectivity(), ToKey(key)).Get().connected;
     } CATCH(true)
 }
+
+// --- Picture-in-picture -----------------------------------------------------------------------
+
+KILN_API bool kiln_enter_picture_in_picture(int32_t w, int32_t h) {
+    TRY { return kiln::ui::EnterPictureInPictureMode({ .aspectWidth = w, .aspectHeight = h }); } CATCH(false)
+}
+KILN_API bool kiln_set_picture_in_picture_params(int32_t w, int32_t h, bool autoEnter) {
+    TRY { return kiln::ui::SetPictureInPictureParams({ .aspectWidth = w, .aspectHeight = h, .autoEnter = autoEnter }); } CATCH(false)
+}
+KILN_API bool kiln_is_in_picture_in_picture(void) { TRY { return kiln::ui::IsInPictureInPictureMode(); } CATCH(false) }
+KILN_API void kiln_set_requested_orientation(int32_t o) { TRY { kiln::ui::SetRequestedOrientation(kiln::ui::ScreenOrientation(o)); } CATCH_VOID }

@@ -122,6 +122,12 @@ public class KilnActivity extends Activity {
         view.onHostConfigurationChanged(newConfig);
     }
 
+    @Override
+    public void onPictureInPictureModeChanged(boolean inPictureInPictureMode, Configuration newConfig) {
+        super.onPictureInPictureModeChanged(inPictureInPictureMode, newConfig);
+        KilnNative.pictureInPictureModeChanged(inPictureInPictureMode);
+    }
+
     /** enableEdgeToEdge(statusBarStyle, navigationBarStyle) from native code. */
     void enableEdgeToEdge(KilnEdgeToEdge.Style status, KilnEdgeToEdge.Style navigation) {
         statusBarStyle = status;

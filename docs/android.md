@@ -125,6 +125,48 @@ kiln connects to these Android services without extra code:
 | Back | The predictive back gesture, with `BackHandler` and navigation |
 | Text | The platform's fonts, line breaking, hyphenation and emoji |
 | Drag and drop | Dragging content in from and out to other apps |
+| Memory pressure | GPU caches and decoded images freed when the system asks for memory |
+| Foldables | Folds and hinges for the adaptive scaffolds and posture |
+
+## Picture-in-picture and orientation
+
+An activity that declares picture-in-picture can enter it and show less while it is small:
+
+```cmake
+kiln_add_app(player
+    SOURCES src/main.cpp
+    LIBS kiln_material3
+    PACKAGE com.example.player
+    ACTIVITY_ATTRIBUTES "android:supportsPictureInPicture=\"true\""
+)
+```
+
+```cpp
+#include <kiln/material3/Button.h>
+#include <kiln/material3/Text.h>
+#include <kiln/ui/PictureInPicture.h>
+
+using namespace kiln;
+using namespace kiln::material3;
+
+void Player() {
+    if (ui::IsInPictureInPictureMode()) {
+        Text("Playing");   // the video alone, without controls
+        return;
+    }
+    Button([] { ui::EnterPictureInPictureMode({ .aspectWidth = 16, .aspectHeight = 9 }); }, {}, {}, [] { Text("Picture-in-picture"); });
+}
+```
+
+* `IsInPictureInPictureMode()` is state: content that reads it recomposes when the window
+  enters or leaves picture-in-picture.
+* `SetPictureInPictureParams` sets the params ahead of time. With `autoEnter` the window
+  enters by itself when the user goes home, and `sourceRectHint` (window pixels) is the part
+  of the screen the system animates from.
+* Android allows aspect ratios from 2.39:1 to 1:2.39; entering with another fails and
+  returns false, as it does when the activity does not declare picture-in-picture.
+* `ui::SetRequestedOrientation(ui::ScreenOrientation::SensorLandscape)` asks for an
+  orientation, as `Activity.setRequestedOrientation` does.
 
 ## Activity results and permissions
 

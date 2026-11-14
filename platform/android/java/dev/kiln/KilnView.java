@@ -1769,6 +1769,7 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback2 {
                 Settings.System.getUriFor(Settings.System.TIME_12_24), false, timeFormatObserver);
         push24HourFormat();
         pushFlagSecure();
+        pushPictureInPicture();
     }
 
     @Override
@@ -1978,6 +1979,11 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback2 {
         if (appFlagSecure || externalFlagSecure) w.addFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE);
         else w.clearFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE);
     }
+    /** Picture-in-picture comes with a configuration change (and onPictureInPictureModeChanged). */
+    void pushPictureInPicture() {
+        if (windowId == 0) KilnNative.pictureInPictureModeChanged(KilnPip.isInPictureInPictureMode(this));
+    }
+
     private void pushFlagSecure() {
         android.view.ViewGroup.LayoutParams lp = getRootView().getLayoutParams();
         if (lp instanceof android.view.WindowManager.LayoutParams)
@@ -1987,6 +1993,7 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback2 {
 
     void onHostConfigurationChanged(Configuration config) {
         pushConfiguration(config);
+        pushPictureInPicture();
         KilnNative.setDensity(getResources().getDisplayMetrics().density, config.fontScale);
         KilnNative.setFontWeightAdjustment(fontWeightAdjustment(config));
     }

@@ -476,6 +476,15 @@ KILN_API const char* kiln_http_response_header(const kiln_http_response* respons
  * without android.permission.ACCESS_NETWORK_STATE). For content: recomposes on a change. */
 KILN_API bool kiln_network_connected(kiln_key key);
 
+/* Picture-in-picture (the activity declares android:supportsPictureInPicture="true") and the
+ * requested orientation (ActivityInfo.SCREEN_ORIENTATION_*). aspect 0: the platform's;
+ * Android allows 2.39:1 to 1:2.39. kiln_is_in_picture_in_picture observes: content that reads
+ * it recomposes when the mode changes. */
+KILN_API bool kiln_enter_picture_in_picture(int32_t aspect_width, int32_t aspect_height);
+KILN_API bool kiln_set_picture_in_picture_params(int32_t aspect_width, int32_t aspect_height, bool auto_enter);
+KILN_API bool kiln_is_in_picture_in_picture(void);
+KILN_API void kiln_set_requested_orientation(int32_t orientation);
+
 /* App resources (kiln_add_app RES: the app's Android res/ folder) by name: on Android the app's
  * Resources, on the desktop the tables built from the same folder. Read inside content they
  * follow the configuration (locale, night mode). Strings are valid until the next call on this

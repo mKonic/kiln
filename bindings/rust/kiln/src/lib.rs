@@ -725,6 +725,18 @@ pub fn http_fetch(request: &HttpRequest, wanted_headers: &[&str], mut done: impl
     };
     unsafe { sys::kiln_http_fetch(&r, IntoCallback::<sys::kiln_fn_http>::into_callback(callback)) }
 }
+/// Enters picture-in-picture (the activity declares `android:supportsPictureInPicture`);
+/// an aspect of 0 is the platform's.
+pub fn enter_picture_in_picture(aspect_width: i32, aspect_height: i32) -> bool { unsafe { sys::kiln_enter_picture_in_picture(aspect_width, aspect_height) } }
+/// The params for later entries and auto-enter.
+pub fn set_picture_in_picture_params(aspect_width: i32, aspect_height: i32, auto_enter: bool) -> bool {
+    unsafe { sys::kiln_set_picture_in_picture_params(aspect_width, aspect_height, auto_enter) }
+}
+/// Whether the activity is in picture-in-picture; content recomposes when it changes.
+pub fn is_in_picture_in_picture() -> bool { unsafe { sys::kiln_is_in_picture_in_picture() } }
+/// Activity.setRequestedOrientation (ActivityInfo.SCREEN_ORIENTATION_*).
+pub fn set_requested_orientation(orientation: i32) { unsafe { sys::kiln_set_requested_orientation(orientation) } }
+
 /// Aborts a request still in progress; its callback is not called.
 pub fn http_cancel(request: u64) { unsafe { sys::kiln_http_cancel(request) } }
 /// Whether the default network is connected. For content: recomposes on a change.

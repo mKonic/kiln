@@ -821,6 +821,13 @@ namespace kpp {
         }));
     }
     inline void http_cancel(uint64_t request) { kiln_http_cancel(request); }
+    // See kiln_enter_picture_in_picture.
+    inline bool enter_picture_in_picture(int32_t aspectWidth = 0, int32_t aspectHeight = 0) { return kiln_enter_picture_in_picture(aspectWidth, aspectHeight); }
+    inline bool set_picture_in_picture_params(int32_t aspectWidth, int32_t aspectHeight, bool autoEnter) {
+        return kiln_set_picture_in_picture_params(aspectWidth, aspectHeight, autoEnter);
+    }
+    inline bool is_in_picture_in_picture() { return kiln_is_in_picture_in_picture(); }
+    inline void set_requested_orientation(int32_t orientation) { kiln_set_requested_orientation(orientation); }
     inline bool network_connected(Key key = {}) { return kiln_network_connected(key); }
 
     inline std::vector<std::string> string_array_resource(const char* name) {
