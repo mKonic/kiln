@@ -680,6 +680,105 @@ impl Player {
         unsafe { sys::kiln_player_get_state(self.0, &mut s) };
         s
     }
+    /// Replaces the playlist (see `kiln_player_set_media_items`).
+    pub fn set_media_items(&self, items: &[MediaItem], reset_position: bool) {
+        let c = CMediaItems::new(items);
+        unsafe { sys::kiln_player_set_media_items(self.0, c.items.as_ptr(), c.items.len(), reset_position) }
+    }
+    /// Adds items at `index` (`None`: the end).
+    pub fn add_media_items(&self, index: Option<i32>, items: &[MediaItem]) {
+        let c = CMediaItems::new(items);
+        unsafe { sys::kiln_player_add_media_items(self.0, index.unwrap_or(-1), c.items.as_ptr(), c.items.len()) }
+    }
+    pub fn move_media_items(&self, from: i32, to: i32, new_index: i32) { unsafe { sys::kiln_player_move_media_items(self.0, from, to, new_index) } }
+    pub fn remove_media_items(&self, from: i32, to: i32) { unsafe { sys::kiln_player_remove_media_items(self.0, from, to) } }
+    pub fn prepare(&self) { unsafe { sys::kiln_player_prepare(self.0) } }
+    pub fn stop(&self) { unsafe { sys::kiln_player_stop(self.0) } }
+    pub fn seek_to_media_item(&self, index: i32, ms: i64) { unsafe { sys::kiln_player_seek_to_media_item(self.0, index, ms) } }
+    pub fn seek_to_next(&self) { unsafe { sys::kiln_player_seek_to_next(self.0) } }
+    pub fn seek_to_previous(&self) { unsafe { sys::kiln_player_seek_to_previous(self.0) } }
+    pub fn seek_back(&self) { unsafe { sys::kiln_player_seek_back(self.0) } }
+    pub fn seek_forward(&self) { unsafe { sys::kiln_player_seek_forward(self.0) } }
+    pub fn set_repeat_mode(&self, mode: sys::kiln_repeat_mode) { unsafe { sys::kiln_player_set_repeat_mode(self.0, mode) } }
+    pub fn set_shuffle_mode_enabled(&self, enabled: bool) { unsafe { sys::kiln_player_set_shuffle_mode_enabled(self.0, enabled) } }
+    /// Faster or slower (more than 0), keeping the pitch unless `pitch` differs from 1.
+    pub fn set_playback_parameters(&self, speed: f32, pitch: f32) { unsafe { sys::kiln_player_set_playback_parameters(self.0, speed, pitch) } }
+    /// The current item's tracks and which play.
+    pub fn tracks(&self) -> Vec<Track> {
+        let n = unsafe { sys::kiln_player_track_count(self.0) };
+        (0..n).filter_map(|i| {
+            let mut t: sys::kiln_track = unsafe { std::mem::zeroed() };
+            if !unsafe { sys::kiln_player_get_track(self.0, i, &mut t) } { return None; }
+            Some(Track { group_id: from_c(t.group_id), track_type: t.type_, index: t.index, language: from_c(t.language), label: from_c(t.label),
+                         mime_type: from_c(t.mime_type), supported: t.supported, selected: t.selected })
+        }).collect()
+    }
+    pub fn set_preferred_audio_languages(&self, languages: &[&str]) {
+        let b: Vec<CStrBuf> = languages.iter().map(|l| CStrBuf::new(l)).collect();
+        let p: Vec<*const std::ffi::c_char> = b.iter().map(|x| x.ptr()).collect();
+        unsafe { sys::kiln_player_set_preferred_audio_languages(self.0, p.as_ptr(), p.len()) }
+    }
+    pub fn set_preferred_text_languages(&self, languages: &[&str]) {
+        let b: Vec<CStrBuf> = languages.iter().map(|l| CStrBuf::new(l)).collect();
+        let p: Vec<*const std::ffi::c_char> = b.iter().map(|x| x.ptr()).collect();
+        unsafe { sys::kiln_player_set_preferred_text_languages(self.0, p.as_ptr(), p.len()) }
+    }
+    /// Turns a track type off (1 audio, 2 video, 3 text).
+    pub fn set_track_type_disabled(&self, track_type: i32, disabled: bool) { unsafe { sys::kiln_player_set_track_type_disabled(self.0, track_type, disabled) } }
+    /// Picks a group's track for its type (`track` -1: none of the type; `group_id` None: back to the preferences).
+    pub fn select_track(&self, track_type: i32, group_id: Option<&str>, track: i32) {
+        let g = group_id.map(CStrBuf::new);
+        unsafe { sys::kiln_player_select_track(self.0, track_type, g.as_ref().map_or(std::ptr::null(), |g| g.ptr()), track) }
+    }
+}
+/// A side-loaded subtitle of a `MediaItem` (WebVTT, SubRip).
+#[derive(Clone, Default)]
+pub struct Subtitle { pub uri: String, pub mime_type: Option<String>, pub language: String, pub label: String, pub selection_flags: i32, pub role_flags: i32 }
+/// A playlist item; `clip_end_ms` -1 plays to the end.
+#[derive(Clone)]
+pub struct MediaItem {
+    pub uri: String, pub media_id: String, pub mime_type: String, pub title: String, pub artist: String, pub artwork_uri: String,
+    pub clip_start_ms: i64, pub clip_end_ms: i64, pub subtitles: Vec<Subtitle>,
+}
+impl MediaItem {
+    pub fn from_uri(uri: &str) -> Self {
+        MediaItem { uri: uri.into(), media_id: String::new(), mime_type: String::new(), title: String::new(), artist: String::new(),
+                    artwork_uri: String::new(), clip_start_ms: 0, clip_end_ms: -1, subtitles: Vec::new() }
+    }
+}
+/// A track of the current item (see `kiln_track`).
+#[derive(Clone, Debug)]
+pub struct Track { pub group_id: String, pub track_type: i32, pub index: i32, pub language: String, pub label: String, pub mime_type: String, pub supported: bool, pub selected: bool }
+// The C structs for a call, with the strings they point at kept alive.
+struct CMediaItems { _strings: Vec<CStrBuf>, _subs: Vec<Vec<sys::kiln_subtitle>>, items: Vec<sys::kiln_media_item> }
+impl CMediaItems {
+    fn new(items: &[MediaItem]) -> Self {
+        let mut strings = Vec::new();
+        let mut keep = |s: &str| -> *const std::ffi::c_char { let b = CStrBuf::new(s); let p = b.ptr(); strings.push(b); p };
+        let mut subs = Vec::new();
+        let mut out = Vec::new();
+        for it in items {
+            let list: Vec<sys::kiln_subtitle> = it.subtitles.iter().map(|s| sys::kiln_subtitle {
+                uri: keep(&s.uri), mime_type: s.mime_type.as_deref().map_or(std::ptr::null(), |m| keep(m)), language: keep(&s.language),
+                label: keep(&s.label), selection_flags: s.selection_flags, role_flags: s.role_flags,
+            }).collect();
+            let mut c: sys::kiln_media_item = unsafe { std::mem::zeroed() };
+            unsafe { sys::kiln_media_item_init(&mut c) };
+            c.uri = keep(&it.uri);
+            c.media_id = keep(&it.media_id);
+            c.mime_type = keep(&it.mime_type);
+            c.title = keep(&it.title);
+            c.artist = keep(&it.artist);
+            c.artwork_uri = keep(&it.artwork_uri);
+            c.clip_start_ms = it.clip_start_ms;
+            c.clip_end_ms = it.clip_end_ms;
+            c.subtitles = list.as_ptr();
+            c.subtitle_count = list.len();
+            subs.push(list);
+            out.push(c);
+        }
+        CMediaItems { _strings: strings, _subs: subs, items: out }
+    }
 }
 #[track_caller]
 pub fn remember_player() -> Player { Player(unsafe { sys::kiln_remember_player(here()) }) }

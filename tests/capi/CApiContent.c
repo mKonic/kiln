@@ -195,3 +195,38 @@ void capi_speech(void* user) {
     kiln_fn_recognition r = { on_recognition, NULL, drop_counted_user };
     kiln_speech_recognizer_set_listener(capi_recognizer, r);
 }
+
+/* A playlist with a subtitle: navigation, repeat, speed and the tracks, read back. */
+kiln_player_state capi_playlist_state;
+kiln_track capi_playlist_track;
+size_t capi_playlist_tracks;
+void capi_playlist(void* user) {
+    (void)user;
+    kiln_player* player = kiln_remember_player(KILN_HERE);
+    static int set = 0;
+    if (!set) {
+        set = 1;
+        kiln_subtitle sub = { "data:text/vtt,WEBVTT", "text/vtt", "de", "Deutsch", 1, 0 };
+        kiln_media_item items[2];
+        kiln_media_item_init(&items[0]);
+        kiln_media_item_init(&items[1]);
+        items[0].uri = "asset:///a.mp4";
+        items[0].media_id = "a";
+        items[0].title = "First";
+        items[0].subtitles = &sub;
+        items[0].subtitle_count = 1;
+        items[1].uri = "asset:///b.mp4";
+        items[1].media_id = "b";
+        items[1].clip_start_ms = 1000;
+        kiln_player_set_media_items(player, items, 2, true);
+        kiln_player_set_repeat_mode(player, KILN_REPEAT_ALL);
+        kiln_player_set_playback_parameters(player, 1.5f, 1.0f);
+        const char* langs[] = { "de" };
+        kiln_player_set_preferred_text_languages(player, langs, 1);
+        kiln_player_seek_to_next(player);
+        kiln_player_seek_to_next(player);   /* wraps to the first */
+    }
+    kiln_player_get_state(player, &capi_playlist_state);
+    capi_playlist_tracks = kiln_player_track_count(player);
+    kiln_player_get_track(player, 0, &capi_playlist_track);
+}

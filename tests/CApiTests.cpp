@@ -30,6 +30,10 @@ using namespace kiln;
 extern "C" {
     extern int capi_media_next;
     void capi_media(void* user);
+    extern kiln_player_state capi_playlist_state;
+    extern kiln_track capi_playlist_track;
+    extern size_t capi_playlist_tracks;
+    void capi_playlist(void* user);
     void capi_speech(void* user);
     extern char capi_speech_log[256];
     extern kiln_tts* capi_tts;
@@ -881,6 +885,46 @@ TEST(CApiMediaSessionAndAudioFocus) {
     CHECK(noisy == 0 && capi_live_callbacks == 0);
     media::SetMediaSessionHost({});
     media::SetAudioHost({});
+}
+
+TEST(CApiPlayerPlaylistAndTracks) {
+    {
+        Harness h;
+        h.Run(capi_playlist);
+        h.Pump();
+        const kiln_player_state& s = capi_playlist_state;
+        CHECK(s.media_item_count == 2 && s.current_media_item_index == 0 && std::string(s.current_media_id) == "a" && std::string(s.title) == "First");
+        CHECK(s.repeat_mode == KILN_REPEAT_ALL && s.playback_speed == 1.5f && s.has_next_media_item && std::string(s.cues).empty());
+        CHECK(capi_playlist_tracks == 1 && std::string(capi_playlist_track.group_id) == "s0" && capi_playlist_track.type == 3
+              && std::string(capi_playlist_track.language) == "de" && capi_playlist_track.supported);
+    }
+}
+
+namespace {
+    std::vector<kpp::Player::Track> kppTracks;
+    void KppPlaylist(void*) {
+        kpp::Player player;
+        static bool set = false;
+        if (!set) {
+            set = true;
+            kiln_subtitle sub{ "a.srt", nullptr, "fr", "Français", 0, 0 };
+            kiln_media_item item;
+            kiln_media_item_init(&item);
+            item.uri = "asset:///a.mp4";
+            item.subtitles = &sub;
+            item.subtitle_count = 1;
+            player.setMediaItems({ item });
+            player.setPlaybackSpeed(2);
+            player.setTrackTypeDisabled(3, true);
+        }
+        kppTracks = player.tracks();
+    }
+}
+TEST(KppPlayerTracks) {
+    Harness h;
+    h.Run(KppPlaylist);
+    h.Pump();
+    CHECK(kppTracks.size() == 1 && kppTracks[0].label == "Français" && kppTracks[0].supported && !kppTracks[0].selected);
 }
 
 namespace {

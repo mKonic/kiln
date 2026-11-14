@@ -725,6 +725,69 @@ void Clip() {
   its own time.
 * Remember the player above its `VideoSurface`, so it outlives the surface.
 
+### Playlists, speed and tracks
+
+The player holds a playlist of `media::MediaItem`s, as media3's ExoPlayer does:
+
+```cpp
+void Episodes(kiln::media::Player& player) {
+    kiln::media::MediaItem intro = kiln::media::MediaItem::FromUri("asset:///intro.mp4");
+    intro.mediaMetadata.title = "Intro";
+    kiln::media::MediaItem part = kiln::media::MediaItem::FromUri("https://example.com/episode.mp4");
+    part.clippingConfiguration.startPositionMs = 30'000;   // skip the recap
+    player.SetMediaItems({ intro, part });
+    player.SetRepeatMode(kiln::media::RepeatMode::All);
+    player.Prepare();
+    player.Play();
+}
+```
+
+* **The playlist.** `AddMediaItems`, `MoveMediaItems`, `RemoveMediaItems` and
+  `ReplaceMediaItems` change it while it plays. `SeekToNext`, `SeekToPrevious` (to the start
+  of the item after its first 3 s), `SeekBack` and `SeekForward` move through it.
+  `SetShuffleModeEnabled` shuffles the order. The state has the current index, the item count,
+  and whether there is a next or previous item. `PlayerListener::onMediaItemTransition` says
+  why the item changed.
+* **Speed.** `SetPlaybackSpeed(1.5f)` plays faster, keeping the pitch. The sound is
+  time-stretched with media3's Sonic, as ExoPlayer does.
+* **Tracks.** `PlayerState::tracks` lists the item's audio, video and text tracks, and which
+  ones play. `SetTrackSelectionParameters` sets preferred audio and text languages, roles and
+  labels, or turns a type off. Without preferences, a video with several audio languages plays
+  its default track, then the device's language. An override picks one track:
+  `params.SetOverrideForType({ .type = TrackType::Audio, .groupId = group.id, .trackIndices = { 0 } })`.
+* **Errors.** `playerError` carries ExoPlayer's error codes (`PlaybackException`), for example
+  `IoNetworkConnectionFailed` or `DecoderInitFailed`.
+
+### Subtitles
+
+Give an item its subtitle files, WebVTT or SubRip, from the same kinds of URI as the media.
+`VideoSurface` draws them over the video:
+
+```cpp
+kiln::media::MediaItem WithSubtitles() {
+    kiln::media::MediaItem item = kiln::media::MediaItem::FromUri("asset:///film.mp4");
+    item.subtitleConfigurations = {
+        { .uri = "asset:///film.en.vtt", .mimeType = "text/vtt", .language = "en", .selectionFlags = kiln::media::kSelectionFlagDefault },
+        { .uri = "asset:///film.de.srt", .mimeType = "application/x-subrip", .language = "de" },
+    };
+    return item;
+}
+```
+
+* **Which one shows.** The player picks as ExoPlayer does: an app's preferred text language,
+  else a track flagged default. A forced track shows in the language of the playing audio.
+  When the user has turned captions on in the system settings, their language wins.
+  `SetTrackTypeDisabled(TrackType::Text, true)` turns subtitles off.
+* **How they look.** Cues are placed, styled and sized as the file says: WebVTT positions,
+  alignment, `<b>`, `<i>`, `<u>`, colour classes and `STYLE` blocks, and SubRip's HTML and
+  `{\an}` tags. They are drawn in the user's caption style and text size from the system
+  settings. `Subtitles` (`kiln/foundation/Subtitles.h`) draws them over anything else, with
+  your own style if you like.
+* **Your own drawing.** `PlayerState::currentCues` and `PlayerListener::onCues` give the cues
+  as `AnnotatedString`s.
+* Subtitles inside the media file (MP4 tx3g, MKV text tracks) are listed in `tracks` but not
+  shown. TTML and SSA files are not read.
+
 ### Audio focus and media controls
 
 A music or podcast app should behave like other media apps: pause when another app starts

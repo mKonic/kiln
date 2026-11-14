@@ -1083,7 +1083,43 @@ typedef struct kiln_player_state {
     int64_t position_ms, duration_ms;   /* duration -1: unknown */
     int32_t video_width, video_height, rotation_degrees;
     const char* error;                  /* "" unless it failed; valid until the next call */
+    /* The playlist, and what plays (strings valid until the next call). */
+    int32_t current_media_item_index, media_item_count;
+    bool has_next_media_item, has_previous_media_item;
+    int32_t repeat_mode;                /* kiln_repeat_mode */
+    bool shuffle_mode_enabled;
+    float playback_speed;
+    int64_t buffered_position_ms;
+    const char* current_media_id;
+    const char* title;                  /* the current item's (its metadata over the stream's) */
+    float pixel_width_height_ratio;     /* of the video as shown (video_width x video_height) */
+    const char* cues;                   /* the subtitles showing now, one line per cue; "" none */
 } kiln_player_state;
+typedef enum kiln_repeat_mode { KILN_REPEAT_OFF, KILN_REPEAT_ONE, KILN_REPEAT_ALL } kiln_repeat_mode;
+
+/* A playlist item (media::MediaItem): uri required, the rest NULL / -1 when unset. Subtitles
+ * (WebVTT, SubRip) show in kiln_video_surface; selection_flags: 1 default, 2 forced. */
+typedef struct kiln_subtitle {
+    const char* uri;
+    const char* mime_type;              /* "text/vtt", "application/x-subrip"; NULL: by extension */
+    const char* language;
+    const char* label;
+    int32_t selection_flags, role_flags;
+} kiln_subtitle;
+typedef struct kiln_media_item {
+    size_t size;
+    const char* uri;
+    const char* media_id;
+    const char* mime_type;
+    const char* title;
+    const char* artist;
+    const char* artwork_uri;
+    int64_t clip_start_ms;              /* 0 */
+    int64_t clip_end_ms;                /* -1: to the end */
+    const kiln_subtitle* subtitles;
+    size_t subtitle_count;
+} kiln_media_item;
+KILN_API void kiln_media_item_init(kiln_media_item* item);
 KILN_API kiln_player* kiln_remember_player(kiln_key key);
 KILN_API void kiln_player_set_media_uri(kiln_player* player, const char* uri);
 KILN_API void kiln_player_play(kiln_player* player);
@@ -1092,6 +1128,46 @@ KILN_API void kiln_player_seek_to(kiln_player* player, int64_t position_ms);
 KILN_API void kiln_player_set_repeat(kiln_player* player, bool repeat);
 KILN_API void kiln_player_set_volume(kiln_player* player, float volume);
 KILN_API void kiln_player_get_state(kiln_player* player, kiln_player_state* out);
+/* The playlist (Player): items replace the playlist (reset_position: from the first item's
+ * start, else keeping the current index and position), are added at an index (-1: the end),
+ * moved or removed by [from, to). Prepare loads it; stop goes back to idle. */
+KILN_API void kiln_player_set_media_items(kiln_player* player, const kiln_media_item* items, size_t count, bool reset_position);
+KILN_API void kiln_player_add_media_items(kiln_player* player, int32_t index, const kiln_media_item* items, size_t count);
+KILN_API void kiln_player_move_media_items(kiln_player* player, int32_t from, int32_t to, int32_t new_index);
+KILN_API void kiln_player_remove_media_items(kiln_player* player, int32_t from, int32_t to);
+KILN_API void kiln_player_prepare(kiln_player* player);
+KILN_API void kiln_player_stop(kiln_player* player);
+KILN_API void kiln_player_seek_to_media_item(kiln_player* player, int32_t index, int64_t position_ms);
+/* seekToNext / seekToPrevious (the previous item within 3 s of the start, else its start),
+ * seekBack 5 s and seekForward 15 s. */
+KILN_API void kiln_player_seek_to_next(kiln_player* player);
+KILN_API void kiln_player_seek_to_previous(kiln_player* player);
+KILN_API void kiln_player_seek_back(kiln_player* player);
+KILN_API void kiln_player_seek_forward(kiln_player* player);
+KILN_API void kiln_player_set_repeat_mode(kiln_player* player, kiln_repeat_mode mode);
+KILN_API void kiln_player_set_shuffle_mode_enabled(kiln_player* player, bool enabled);
+/* Faster or slower (more than 0), the pitch kept unless pitch says otherwise (1). */
+KILN_API void kiln_player_set_playback_parameters(kiln_player* player, float speed, float pitch);
+
+/* Tracks (getCurrentTracks): each track of the current item with its group (Tracks::Group::id),
+ * type (1 audio, 2 video, 3 text), language and whether it plays. Track selection: preferred
+ * languages (most preferred first), a type turned off, or one track picked (an override; track
+ * -1: none of its type; group NULL: the override for the type removed). */
+typedef struct kiln_track {
+    const char* group_id;
+    int32_t type;
+    int32_t index;                      /* in its group */
+    const char* language;
+    const char* label;
+    const char* mime_type;
+    bool supported, selected;
+} kiln_track;
+KILN_API size_t kiln_player_track_count(kiln_player* player);
+KILN_API bool kiln_player_get_track(kiln_player* player, size_t i, kiln_track* out);   /* strings valid until the next call */
+KILN_API void kiln_player_set_preferred_audio_languages(kiln_player* player, const char* const* languages, size_t count);
+KILN_API void kiln_player_set_preferred_text_languages(kiln_player* player, const char* const* languages, size_t count);
+KILN_API void kiln_player_set_track_type_disabled(kiln_player* player, int32_t type, bool disabled);
+KILN_API void kiln_player_select_track(kiln_player* player, int32_t type, const char* group_id, int32_t track);
 /* Audio focus (usage and content type: AudioAttributes.USAGE_* / CONTENT_TYPE_*; only media 1
  * and game 14 can be handled) and pausing when headphones are unplugged. */
 KILN_API void kiln_player_set_audio_attributes(kiln_player* player, int32_t usage, int32_t content_type, bool handle_audio_focus);

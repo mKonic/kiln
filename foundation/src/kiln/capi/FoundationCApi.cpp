@@ -1688,6 +1688,158 @@ KILN_API void kiln_player_get_state(kiln_player* p, kiln_player_state* out) {
         out->video_height = s.videoHeight;
         out->rotation_degrees = s.rotationDegrees;
         out->error = error.c_str();
+        static thread_local std::string mediaId, title, cues;
+        mediaId = s.currentMediaId;
+        title = s.mediaMetadata.title;
+        cues.clear();
+        for (const auto& cue : s.currentCues.cues) cues += (cues.empty() ? "" : "\n") + cue.text.Text();
+        out->current_media_item_index = s.currentMediaItemIndex;
+        out->media_item_count = s.mediaItemCount;
+        out->has_next_media_item = s.hasNextMediaItem;
+        out->has_previous_media_item = s.hasPreviousMediaItem;
+        out->repeat_mode = int32_t(s.repeatMode);
+        out->shuffle_mode_enabled = s.shuffleModeEnabled;
+        out->playback_speed = s.playbackParameters.speed;
+        out->buffered_position_ms = s.bufferedPositionMs;
+        out->current_media_id = mediaId.c_str();
+        out->title = title.c_str();
+        out->pixel_width_height_ratio = s.videoSize.pixelWidthHeightRatio;
+        out->cues = cues.c_str();
+    } CATCH_VOID
+}
+
+namespace {
+    std::vector<kiln::media::MediaItem> ToMediaItems(const kiln_media_item* items, size_t count) {
+        std::vector<kiln::media::MediaItem> out;
+        for (size_t i = 0; items && i < count; ++i) {
+            const kiln_media_item& c = items[i];
+            kiln::media::MediaItem m = kiln::media::MediaItem::FromUri(ToString(c.uri));
+            m.mediaId = ToString(c.media_id);
+            m.mimeType = ToString(c.mime_type);
+            m.mediaMetadata.title = ToString(c.title);
+            m.mediaMetadata.artist = ToString(c.artist);
+            m.mediaMetadata.artworkUri = ToString(c.artwork_uri);
+            m.clippingConfiguration.startPositionMs = std::max<int64_t>(c.clip_start_ms, 0);
+            m.clippingConfiguration.endPositionMs = c.clip_end_ms < 0 ? kiln::media::kTimeEndOfSource : c.clip_end_ms;
+            for (size_t k = 0; c.subtitles && k < c.subtitle_count; ++k) {
+                const kiln_subtitle& t = c.subtitles[k];
+                m.subtitleConfigurations.push_back({ .uri = ToString(t.uri), .mimeType = ToString(t.mime_type), .language = ToString(t.language),
+                                                     .label = ToString(t.label), .selectionFlags = t.selection_flags, .roleFlags = t.role_flags });
+            }
+            out.push_back(std::move(m));
+        }
+        return out;
+    }
+    std::vector<std::string> ToStrings(const char* const* v, size_t n) {
+        std::vector<std::string> out;
+        for (size_t i = 0; v && i < n; ++i) out.push_back(ToString(v[i]));
+        return out;
+    }
+    template<typename F> void EditSelection(kiln_player* p, F&& f) {
+        auto params = p->player->GetTrackSelectionParameters();
+        f(params);
+        p->player->SetTrackSelectionParameters(std::move(params));
+    }
+}
+KILN_API void kiln_media_item_init(kiln_media_item* item) {
+    if (!item) return;
+    *item = {};
+    item->size = sizeof *item;
+    item->clip_end_ms = -1;
+}
+KILN_API void kiln_player_set_media_items(kiln_player* p, const kiln_media_item* items, size_t count, bool reset) {
+    TRY { if (p) p->player->SetMediaItems(ToMediaItems(items, count), reset); } CATCH_VOID
+}
+KILN_API void kiln_player_add_media_items(kiln_player* p, int32_t index, const kiln_media_item* items, size_t count) {
+    TRY {
+        if (!p) return;
+        if (index < 0) p->player->AddMediaItems(ToMediaItems(items, count));
+        else p->player->AddMediaItems(index, ToMediaItems(items, count));
+    } CATCH_VOID
+}
+KILN_API void kiln_player_move_media_items(kiln_player* p, int32_t from, int32_t to, int32_t newIndex) {
+    TRY { if (p) p->player->MoveMediaItems(from, to, newIndex); } CATCH_VOID
+}
+KILN_API void kiln_player_remove_media_items(kiln_player* p, int32_t from, int32_t to) {
+    TRY { if (p) p->player->RemoveMediaItems(from, to); } CATCH_VOID
+}
+KILN_API void kiln_player_prepare(kiln_player* p) {
+    TRY { if (p) p->player->Prepare(); } CATCH_VOID
+}
+KILN_API void kiln_player_stop(kiln_player* p) {
+    TRY { if (p) p->player->Stop(); } CATCH_VOID
+}
+KILN_API void kiln_player_seek_to_media_item(kiln_player* p, int32_t index, int64_t ms) {
+    TRY { if (p) p->player->SeekTo(index, ms); } CATCH_VOID
+}
+KILN_API void kiln_player_seek_to_next(kiln_player* p) {
+    TRY { if (p) p->player->SeekToNext(); } CATCH_VOID
+}
+KILN_API void kiln_player_seek_to_previous(kiln_player* p) {
+    TRY { if (p) p->player->SeekToPrevious(); } CATCH_VOID
+}
+KILN_API void kiln_player_seek_back(kiln_player* p) {
+    TRY { if (p) p->player->SeekBack(); } CATCH_VOID
+}
+KILN_API void kiln_player_seek_forward(kiln_player* p) {
+    TRY { if (p) p->player->SeekForward(); } CATCH_VOID
+}
+KILN_API void kiln_player_set_repeat_mode(kiln_player* p, kiln_repeat_mode mode) {
+    TRY { if (p && mode >= KILN_REPEAT_OFF && mode <= KILN_REPEAT_ALL) p->player->SetRepeatMode(kiln::media::RepeatMode(int(mode))); } CATCH_VOID
+}
+KILN_API void kiln_player_set_shuffle_mode_enabled(kiln_player* p, bool enabled) {
+    TRY { if (p) p->player->SetShuffleModeEnabled(enabled); } CATCH_VOID
+}
+KILN_API void kiln_player_set_playback_parameters(kiln_player* p, float speed, float pitch) {
+    TRY { if (p) p->player->SetPlaybackParameters({ speed, pitch }); } CATCH_VOID
+}
+KILN_API size_t kiln_player_track_count(kiln_player* p) {
+    TRY {
+        if (!p) return 0;
+        const auto& s = rt::Composition::Current() ? rt::CollectAsState(p->player->StateFlow()).Get() : p->player->State();
+        size_t n = 0;
+        for (const auto& g : s.tracks.groups) n += g.formats.size();
+        return n;
+    } CATCH(0)
+}
+KILN_API bool kiln_player_get_track(kiln_player* p, size_t i, kiln_track* out) {
+    TRY {
+        if (!p || !out) return false;
+        const auto& s = rt::Composition::Current() ? rt::CollectAsState(p->player->StateFlow()).Get() : p->player->State();
+        static thread_local std::string group, language, label, mime;
+        for (const auto& g : s.tracks.groups) {
+            if (i >= g.formats.size()) {
+                i -= g.formats.size();
+                continue;
+            }
+            const auto& f = g.formats[i];
+            group = g.id;
+            language = f.language;
+            label = f.label;
+            mime = f.sampleMimeType;
+            *out = { group.c_str(), int32_t(g.type), int32_t(i), language.c_str(), label.c_str(), mime.c_str(), g.trackSupported[i], g.trackSelected[i] };
+            return true;
+        }
+        return false;
+    } CATCH(false)
+}
+KILN_API void kiln_player_set_preferred_audio_languages(kiln_player* p, const char* const* v, size_t n) {
+    TRY { if (p) EditSelection(p, [&](auto& t) { t.preferredAudioLanguages = ToStrings(v, n); }); } CATCH_VOID
+}
+KILN_API void kiln_player_set_preferred_text_languages(kiln_player* p, const char* const* v, size_t n) {
+    TRY { if (p) EditSelection(p, [&](auto& t) { t.preferredTextLanguages = ToStrings(v, n); }); } CATCH_VOID
+}
+KILN_API void kiln_player_set_track_type_disabled(kiln_player* p, int32_t type, bool disabled) {
+    TRY { if (p) EditSelection(p, [&](auto& t) { t.SetTrackTypeDisabled(kiln::media::TrackType(type), disabled); }); } CATCH_VOID
+}
+KILN_API void kiln_player_select_track(kiln_player* p, int32_t type, const char* group, int32_t track) {
+    TRY {
+        if (!p) return;
+        EditSelection(p, [&](auto& t) {
+            const auto ty = kiln::media::TrackType(type);
+            if (!group) t.ClearOverridesOfType(ty);
+            else t.SetOverrideForType({ .type = ty, .groupId = group, .trackIndices = track < 0 ? std::vector<int>{} : std::vector<int>{ track } });
+        });
     } CATCH_VOID
 }
 KILN_API void kiln_player_set_audio_attributes(kiln_player* p, int32_t usage, int32_t content, bool handle) {

@@ -487,6 +487,46 @@ namespace kpp {
             kiln_player_get_state(m_P, &s);
             return s;
         }
+        // The playlist; see kiln_player_set_media_items.
+        void setMediaItems(const std::vector<kiln_media_item>& items, bool resetPosition = true) {
+            kiln_player_set_media_items(m_P, items.data(), items.size(), resetPosition);
+        }
+        void addMediaItems(const std::vector<kiln_media_item>& items, int32_t index = -1) { kiln_player_add_media_items(m_P, index, items.data(), items.size()); }
+        void moveMediaItems(int32_t from, int32_t to, int32_t newIndex) { kiln_player_move_media_items(m_P, from, to, newIndex); }
+        void removeMediaItems(int32_t from, int32_t to) { kiln_player_remove_media_items(m_P, from, to); }
+        void prepare() { kiln_player_prepare(m_P); }
+        void stop() { kiln_player_stop(m_P); }
+        void seekTo(int32_t mediaItemIndex, int64_t ms) { kiln_player_seek_to_media_item(m_P, mediaItemIndex, ms); }
+        void seekToNext() { kiln_player_seek_to_next(m_P); }
+        void seekToPrevious() { kiln_player_seek_to_previous(m_P); }
+        void seekBack() { kiln_player_seek_back(m_P); }
+        void seekForward() { kiln_player_seek_forward(m_P); }
+        void setRepeatMode(kiln_repeat_mode mode) { kiln_player_set_repeat_mode(m_P, mode); }
+        void setShuffleModeEnabled(bool enabled) { kiln_player_set_shuffle_mode_enabled(m_P, enabled); }
+        void setPlaybackSpeed(float speed) { kiln_player_set_playback_parameters(m_P, speed, 1.0f); }
+        void setPlaybackParameters(float speed, float pitch) { kiln_player_set_playback_parameters(m_P, speed, pitch); }
+        // Tracks; see kiln_player_get_track.
+        struct Track {
+            std::string groupId, language, label, mimeType;
+            int32_t type = 0, index = 0;
+            bool supported = false, selected = false;
+        };
+        std::vector<Track> tracks() const {
+            std::vector<Track> out;
+            for (size_t i = 0, n = kiln_player_track_count(m_P); i < n; ++i) {
+                kiln_track t;
+                if (kiln_player_get_track(m_P, i, &t)) out.push_back({ t.group_id, t.language, t.label, t.mime_type, t.type, t.index, t.supported, t.selected });
+            }
+            return out;
+        }
+        void setPreferredAudioLanguages(const std::vector<const char*>& languages) {
+            kiln_player_set_preferred_audio_languages(m_P, languages.data(), languages.size());
+        }
+        void setPreferredTextLanguages(const std::vector<const char*>& languages) {
+            kiln_player_set_preferred_text_languages(m_P, languages.data(), languages.size());
+        }
+        void setTrackTypeDisabled(int32_t type, bool disabled) { kiln_player_set_track_type_disabled(m_P, type, disabled); }
+        void selectTrack(int32_t type, const char* groupId, int32_t track) { kiln_player_select_track(m_P, type, groupId, track); }
         kiln_player* get() const { return m_P; }
 
     private:
