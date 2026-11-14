@@ -6,6 +6,7 @@
 #include "AndroidHttp.h"
 #include "AndroidDevice.h"
 #include "AndroidResources.h"
+#include "kiln/jvm/Jvm.h"
 #include "kiln/ui/ActivityIntent.h"
 #include "kiln/ui/AppDirectories.h"
 
@@ -3224,6 +3225,7 @@ namespace {
         d.wake = nullptr;
         d.SetRemoteWake(nullptr);
         d.requestFrame = nullptr;
+        kiln::jvm::HostDetached();   // a bridged Service keeps the dispatcher running
         g_Host->text.reset();
         close(g_Host->eventFd);
         close(g_Host->timerFd);
@@ -3695,6 +3697,7 @@ extern "C" JNIEXPORT jint kiln_jni_onload(JavaVM* vm) {
         { "saveState", "()[B", reinterpret_cast<void*>(&SaveState) },
     };
     if (env->RegisterNatives(cls, methods, sizeof(methods) / sizeof(methods[0])) != JNI_OK) return JNI_ERR;
+    kiln::jvm::Install(vm, env);
     return JNI_VERSION_1_6;
 }
 

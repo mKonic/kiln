@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+# bridge-test: the JVM bridge's checks (samples/bridge, SelfTest.kt) on the device or emulator
+# adb reaches: in a process with no activity, with the activity running, and after it finished
+# (kiln's main dispatcher handed back to the bridge). Builds and installs the sample first.
+set -euo pipefail
+source "$(dirname "${BASH_SOURCE[0]}")/android-env.sh"
+pkg=dev.kiln.bridgesample
+"$KILN_ROOT/tools/kiln" apk bridge --abi "$("$ADB" shell getprop ro.product.cpu.abi | tr -d '\r')" >/dev/null
+"$ADB" install -r "$KILN_ROOT/build/apk/bridge.apk" >/dev/null
+"$ADB" shell am force-stop "$pkg"
+failures=0
+run() {
+    "$ADB" logcat -c
+    "$ADB" shell am broadcast -n "$pkg/.SelfTest" >/dev/null
+    local line=""
+    for _ in $(seq 1 60); do
+        line="$("$ADB" logcat -d -s kiln-bridge:I | grep -m1 'bridge self-test:' || true)"
+        [ -n "$line" ] && break
+        sleep 0.5
+    done
+    "$ADB" logcat -d -s kiln-bridge:E | grep 'failed:' || true
+    echo "$1: ${line##*self-test: }"
+    [[ "$line" == *" 0 failed"* ]] || failures=$((failures + 1))
+}
+run "no activity"
+"$ADB" shell am start -W -n "$pkg/dev.kiln.KilnActivity" >/dev/null
+run "with the activity"
+"$ADB" shell input keyevent KEYCODE_BACK
+sleep 2
+run "after the activity"
+"$ADB" shell am force-stop "$pkg"
+exit $((failures > 0))

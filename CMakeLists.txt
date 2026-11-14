@@ -130,8 +130,9 @@ if(ANDROID)
     # identical functions whose address is never taken.
     # Set here, read when the function runs: from another project it still finds kiln's map.
     set(KILN_APP_MAP ${CMAKE_CURRENT_SOURCE_DIR}/platform/android/app.map CACHE INTERNAL "")
+    set(KILN_GEN_JVM ${CMAKE_CURRENT_SOURCE_DIR}/tools/gen-jvm CACHE INTERNAL "")
     function(kiln_add_android_app name)
-        cmake_parse_arguments(APP "" "PACKAGE;LABEL;ASSETS;ICON;ICON_FOREGROUND;ICON_BACKGROUND;ICON_MONOCHROME;SPLASH_BACKGROUND;SPLASH_ICON;SPLASH_ICON_BACKGROUND;VERSION_CODE;VERSION_NAME;MANIFEST_XML;APPLICATION_XML;ACTIVITY_XML;ACTIVITY_ATTRIBUTES;APPLICATION_ATTRIBUTES;RES"
+        cmake_parse_arguments(APP "" "PACKAGE;LABEL;ASSETS;ICON;ICON_FOREGROUND;ICON_BACKGROUND;ICON_MONOCHROME;SPLASH_BACKGROUND;SPLASH_ICON;SPLASH_ICON_BACKGROUND;VERSION_CODE;VERSION_NAME;MANIFEST_XML;APPLICATION_XML;ACTIVITY_XML;ACTIVITY_ATTRIBUTES;APPLICATION_ATTRIBUTES;RES;JVM_BRIDGE"
                               "SOURCES;LIBS;WHOLE;PERMISSIONS" ${ARGN})
         if(NOT APP_PACKAGE)
             message(FATAL_ERROR "kiln_add_android_app(${name}): PACKAGE is required")
@@ -154,6 +155,23 @@ if(ANDROID)
                                 -Wl,--version-script=${KILN_APP_MAP})
             set_property(TARGET ${target} APPEND PROPERTY LINK_DEPENDS ${KILN_APP_MAP})
         endforeach()
+        if(APP_JVM_BRIDGE)
+            # The JVM bridge's C++ half (tools/gen-jvm) from the app's annotated Kotlin; Gradle
+            # writes the Kotlin half from the same files.
+            if(NOT IS_ABSOLUTE "${APP_JVM_BRIDGE}")
+                set(APP_JVM_BRIDGE "${CMAKE_CURRENT_SOURCE_DIR}/${APP_JVM_BRIDGE}")
+            endif()
+            file(GLOB_RECURSE kotlin CONFIGURE_DEPENDS ${APP_JVM_BRIDGE}/*.kt)
+            set(out ${CMAKE_CURRENT_BINARY_DIR}/kiln_bridge_${name})
+            add_custom_command(OUTPUT ${out}/kiln_bridge.h ${out}/kiln_bridge.cpp
+                               COMMAND ${Python3_EXECUTABLE} ${KILN_GEN_JVM} --lib ${name} --cpp ${out} ${kotlin}
+                               DEPENDS ${kotlin} ${KILN_GEN_JVM}
+                               COMMENT "JVM bridge for ${name}" VERBATIM)
+            foreach(target ${name} ${name}_debug)
+                target_sources(${target} PRIVATE ${out}/kiln_bridge.cpp)
+                target_include_directories(${target} PRIVATE ${out})
+            endforeach()
+        endif()
         string(REPLACE ";" "," permissions "${APP_PERMISSIONS}")
         foreach(f ASSETS ICON ICON_FOREGROUND ICON_BACKGROUND ICON_MONOCHROME SPLASH_ICON MANIFEST_XML APPLICATION_XML ACTIVITY_XML RES)   # paths relative to the app's CMakeLists.txt
             if(APP_${f} AND NOT IS_ABSOLUTE "${APP_${f}}" AND NOT "${APP_${f}}" MATCHES "^#")
@@ -226,7 +244,8 @@ endforeach()
 #              [VERSION_CODE n] [VERSION_NAME text] [PERMISSIONS perm...]
 #              [MANIFEST_XML file] [APPLICATION_XML file] [ACTIVITY_XML file]
 #              [ACTIVITY_ATTRIBUTES "android:launchMode=\"singleTop\" ..."]
-#              [APPLICATION_ATTRIBUTES "android:networkSecurityConfig=\"@xml/network\" ..."] [RES dir])
+#              [APPLICATION_ATTRIBUTES "android:networkSecurityConfig=\"@xml/network\" ..."] [RES dir]
+#              [JVM_BRIDGE kotlin-dir])
 # An app on Android (kiln_add_android_app, packed by tools/kiln) or in a desktop window. Paths
 # are relative to the calling CMakeLists.txt. The XML files hold elements for the manifest's
 # <manifest>, <application> or the app's <activity> (intent filters for deep links and shares);
@@ -235,12 +254,14 @@ endforeach()
 # adaptive icon, with ICON_MONOCHROME for themed icons. SPLASH_* style the launch splash screen
 # (its icon defaults to the launcher icon). RES is an Android res/ folder: its names in kiln_res.h (R::), its
 # values from Android's Resources on a device and from generated tables on the desktop.
+# JVM_BRIDGE (Android, Gradle-built apps) generates the C++ half of the JVM bridge (tools/gen-jvm)
+# from the annotated Kotlin under that folder.
 function(kiln_add_app name)
     if(ANDROID)
         kiln_add_android_app(${name} ${ARGN})
         return()
     endif()
-    cmake_parse_arguments(APP "" "PACKAGE;LABEL;ASSETS;ICON;ICON_FOREGROUND;ICON_BACKGROUND;ICON_MONOCHROME;SPLASH_BACKGROUND;SPLASH_ICON;SPLASH_ICON_BACKGROUND;VERSION_CODE;VERSION_NAME;MANIFEST_XML;APPLICATION_XML;ACTIVITY_XML;ACTIVITY_ATTRIBUTES;APPLICATION_ATTRIBUTES;RES"
+    cmake_parse_arguments(APP "" "PACKAGE;LABEL;ASSETS;ICON;ICON_FOREGROUND;ICON_BACKGROUND;ICON_MONOCHROME;SPLASH_BACKGROUND;SPLASH_ICON;SPLASH_ICON_BACKGROUND;VERSION_CODE;VERSION_NAME;MANIFEST_XML;APPLICATION_XML;ACTIVITY_XML;ACTIVITY_ATTRIBUTES;APPLICATION_ATTRIBUTES;RES;JVM_BRIDGE"
                           "SOURCES;LIBS;WHOLE;PERMISSIONS" ${ARGN})
     add_executable(${name} ${APP_SOURCES})
     if(APP_RES)
@@ -262,6 +283,11 @@ function(kiln_add_app name)
                            ${APP_ASSETS} $<TARGET_FILE_DIR:${name}>/assets)
     endif()
 endfunction()
+
+# The JVM bridge's sample (Android only: Gradle builds it, with its Kotlin).
+if(ANDROID)
+    add_subdirectory(samples/bridge ${CMAKE_BINARY_DIR}/sample-bridge)
+endif()
 
 # Apps made with `tools/kiln new` (apps/<name>/CMakeLists.txt; the folder is the app's own).
 file(GLOB KILN_APP_DIRS LIST_DIRECTORIES true CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/apps/*)

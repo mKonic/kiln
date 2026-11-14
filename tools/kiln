@@ -58,7 +58,7 @@ if [ "$CMD" = new ]; then
     [[ "$APP" =~ ^[a-z][a-z0-9_-]*$ ]] || { echo "kiln: an app name is lower case letters, digits, - and _" >&2; exit 2; }
     dir="$KILN_ROOT/apps/$APP"
     [ ! -e "$dir" ] || { echo "kiln: $dir already exists" >&2; exit 1; }
-    for taken in hello list gallery notes-c notes-cpp catalog; do
+    for taken in hello list gallery notes-c notes-cpp catalog bridge; do
         [ "$APP" != "$taken" ] || { echo "kiln: '$APP' is one of kiln's samples" >&2; exit 1; }
     done
     package="${NEW_PACKAGE:-com.example.${APP//[-_]/}}"
@@ -102,7 +102,8 @@ case "$CMD" in build|apk|bundle|run) ;; *) usage ;; esac
 
 # An app with a Gradle build (kiln new --jvm): Gradle builds it, kiln's CMake inside.
 GRADLE_DIR="$KILN_ROOT/apps/$APP"
-if [ -f "$GRADLE_DIR/build.gradle.kts" ]; then
+[ -f "$GRADLE_DIR/build.gradle.kts" ] || GRADLE_DIR="$KILN_ROOT/samples/$APP"
+if [ -f "$GRADLE_DIR/build.gradle.kts" ] && [ -f "$GRADLE_DIR/CMakeLists.txt" ]; then
     KEYSTORE="$KILN_ROOT/build/kiln-debug.keystore"
     mkdir -p "$KILN_ROOT/build"
     [ -f "$KEYSTORE" ] || keytool -genkeypair -keystore "$KEYSTORE" -alias kiln -keyalg RSA -keysize 2048 \

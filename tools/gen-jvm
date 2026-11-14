@@ -1,0 +1,840 @@
+#!/usr/bin/env python3
+"""gen-jvm: the JVM bridge's typed calls, from annotated Kotlin (docs/android.md).
+
+    gen-jvm --lib NAME [--kotlin DIR] [--cpp DIR] FILE_OR_DIR...
+
+Reads the .kt files and, for the declarations annotated from dev.kiln.bridge:
+
+  @ImplementedInCpp interface X   Kotlin `object XCpp : X` calling C++, and a C++ class X with a
+                                  pure virtual method per function; the app defines
+                                  `std::unique_ptr<X> MakeX()`.
+  @CalledFromCpp interface X      Kotlin `object XCpp { fun register(impl: X?) }`, and a C++ class
+                                  X (X::Get()) with a method per function.
+  @CppStruct data class / enum    a C++ struct or enum class, copied across by value.
+
+A `suspend fun` is an rt::Task on the C++ side, cancelled both ways. Types: Int, Long, Float,
+Double, Boolean, String, ByteArray, List<T>, T?, @CppStruct types, and Unit as a result.
+
+--kotlin writes <package>/<X>Cpp.kt, <package>/KilnBridgeCodecs.kt and
+dev/kiln/bridge/KilnBridgeSupport.kt (it needs kotlinx-coroutines-android); --cpp writes
+kiln_bridge.h and kiln_bridge.cpp. --lib is the app's native library, loaded by the Kotlin objects.
+"""
+
+import argparse
+import os
+import re
+import sys
+
+PRIMS = {
+    # Kotlin: (C++, JNI signature, JNI C type, JNI Call<X>Method, C++ default, Codec writer/reader)
+    "Int": ("std::int32_t", "I", "jint", "Int", " = 0", "Int"),
+    "Long": ("std::int64_t", "J", "jlong", "Long", " = 0", "Long"),
+    "Float": ("float", "F", "jfloat", "Float", " = 0", "Float"),
+    "Double": ("double", "D", "jdouble", "Double", " = 0", "Double"),
+    "Boolean": ("bool", "Z", "jboolean", "Boolean", " = false", "Boolean"),
+}
+CPP_KEYWORDS = {
+    "alignas", "alignof", "and", "asm", "auto", "bool", "break", "case", "catch", "char", "class", "const",
+    "constexpr", "continue", "default", "delete", "do", "double", "else", "enum", "explicit", "export",
+    "extern", "false", "float", "for", "friend", "goto", "if", "inline", "int", "long", "mutable",
+    "namespace", "new", "noexcept", "not", "nullptr", "operator", "or", "private", "protected", "public",
+    "register", "return", "short", "signed", "sizeof", "static", "struct", "switch", "template", "this",
+    "throw", "true", "try", "typedef", "typename", "union", "unsigned", "using", "virtual", "void",
+    "volatile", "while", "xor", "env", "self",
+}
+
+
+class Error(Exception):
+    pass
+
+
+class Type:
+    def __init__(self, name, args=(), nullable=False):
+        self.name, self.args, self.nullable = name, list(args), nullable
+
+    def nonnull(self):
+        return Type(self.name, self.args, False)
+
+    def __str__(self):
+        s = self.name + (f"<{', '.join(map(str, self.args))}>" if self.args else "")
+        return s + ("?" if self.nullable else "")
+
+
+def split_top(text, sep=","):
+    """Splits on `sep` outside <>, () and []."""
+    parts, depth, cur = [], 0, ""
+    for ch in text:
+        if ch in "<([":
+            depth += 1
+        elif ch in ">)]":
+            depth -= 1
+        if ch == sep and depth == 0:
+            parts.append(cur)
+            cur = ""
+        else:
+            cur += ch
+    if cur.strip():
+        parts.append(cur)
+    return [p.strip() for p in parts]
+
+
+def parse_type(text):
+    text = text.strip()
+    nullable = text.endswith("?")
+    if nullable:
+        text = text[:-1].strip()
+    m = re.fullmatch(r"([\w.]+)\s*(?:<(.*)>)?", text, re.S)
+    if not m:
+        raise Error(f"cannot read the type `{text}`")
+    name = m.group(1).split(".")[-1]
+    args = [parse_type(a) for a in split_top(m.group(2))] if m.group(2) else []
+    return Type(name, args, nullable)
+
+
+def strip_comments(src):
+    out, i, n = [], 0, len(src)
+    while i < n:
+        if src.startswith("//", i):
+            j = src.find("\n", i)
+            i = n if j < 0 else j
+        elif src.startswith("/*", i):
+            j = src.find("*/", i + 2)
+            i = n if j < 0 else j + 2
+            out.append(" ")
+        elif src[i] == '"':
+            j = i + 1
+            while j < n and src[j] != '"':
+                j += 2 if src[j] == "\\" else 1
+            out.append(src[i:j + 1])
+            i = j + 1
+        else:
+            out.append(src[i])
+            i += 1
+    return "".join(out)
+
+
+def balanced(src, start, open_ch, close_ch):
+    """The text between src[start] (open_ch) and its matching close_ch, and the index after it."""
+    depth = 0
+    for i in range(start, len(src)):
+        if src[i] == open_ch:
+            depth += 1
+        elif src[i] == close_ch:
+            depth -= 1
+            if depth == 0:
+                return src[start + 1:i], i + 1
+    raise Error(f"no matching `{close_ch}`")
+
+
+class Decl:
+    def __init__(self, kind, name, package, file):
+        self.kind, self.name, self.package, self.file = kind, name, package, file
+        self.fields = []      # structs: [(name, Type)]
+        self.entries = []     # enums
+        self.functions = []   # interfaces: [Function]
+
+
+class Function:
+    def __init__(self, name, params, result, suspend):
+        self.name, self.params, self.result, self.suspend = name, params, result, suspend
+
+
+ANNOTATION = re.compile(r"@(?:dev\.kiln\.bridge\.)?(ImplementedInCpp|CalledFromCpp|CppStruct)\b")
+
+
+def parse_file(path):
+    src = strip_comments(open(path, encoding="utf-8").read())
+    pm = re.search(r"^\s*package\s+([\w.]+)", src, re.M)
+    package = pm.group(1) if pm else ""
+    decls = []
+    for m in ANNOTATION.finditer(src):
+        kind = m.group(1)
+        rest = src[m.end():]
+        if kind == "CppStruct":
+            dm = re.match(r"(?:\s|@[\w.]+(?:\([^)]*\))?|public|internal)*(data\s+class|enum\s+class)\s+(\w+)\s*", rest)
+            if not dm:
+                raise Error(f"{path}: @CppStruct goes on a data class or an enum class")
+            d = Decl("enum" if dm.group(1).startswith("enum") else "struct", dm.group(2), package, path)
+            at = m.end() + dm.end()
+            if d.kind == "struct":
+                if src[at] != "(":
+                    raise Error(f"{path}: {d.name}: expected its constructor's parameters")
+                params, _ = balanced(src, at, "(", ")")
+                for p in split_top(params):
+                    pm2 = re.fullmatch(r"(?:@[\w.]+\s+)*(?:val|var)\s+(\w+)\s*:\s*(.+?)(?:\s*=.*)?", p, re.S)
+                    if not pm2:
+                        raise Error(f"{path}: {d.name}: cannot read the parameter `{p}` (each is `val name: Type`)")
+                    d.fields.append((pm2.group(1), parse_type(pm2.group(2))))
+                if not d.fields:
+                    raise Error(f"{path}: {d.name} has no fields")
+            else:
+                if src[at] != "{":
+                    raise Error(f"{path}: {d.name}: an enum crossing the bridge takes no constructor parameters")
+                body, _ = balanced(src, at, "{", "}")
+                body = body.split(";")[0]
+                d.entries = [e.strip() for e in body.split(",") if e.strip()]
+                for e in d.entries:
+                    if not re.fullmatch(r"\w+", e):
+                        raise Error(f"{path}: {d.name}: the entry `{e}` has arguments or a body")
+            decls.append(d)
+        else:
+            dm = re.match(r"(?:\s|@[\w.]+(?:\([^)]*\))?|public|internal|fun)*interface\s+(\w+)\s*", rest)
+            if not dm:
+                raise Error(f"{path}: @{kind} goes on an interface")
+            d = Decl("cpp" if kind == "ImplementedInCpp" else "kotlin", dm.group(1), package, path)
+            at = m.end() + dm.end()
+            if src[at] != "{":
+                raise Error(f"{path}: {d.name}: expected its body")
+            body, _ = balanced(src, at, "{", "}")
+            pos = 0
+            for fm in re.finditer(r"(suspend\s+)?fun\s+(\w+)\s*\(", body):
+                if fm.start() < pos:
+                    continue
+                params, after = balanced(body, fm.end() - 1, "(", ")")
+                rm = re.match(r"\s*:\s*([\w.<>?,\s]+?)\s*(?=\n|;|$|\bfun\b|\bsuspend\b|=|\{)", body[after:])
+                result = parse_type(rm.group(1)) if rm else Type("Unit")
+                if re.match(r"\s*(=|\{)", body[after + (rm.end() if rm else 0):]):
+                    raise Error(f"{path}: {d.name}.{fm.group(2)} has a body: bridged interfaces declare functions only")
+                ps = []
+                for p in split_top(params):
+                    pm2 = re.fullmatch(r"(\w+)\s*:\s*(.+)", p, re.S)
+                    if not pm2:
+                        raise Error(f"{path}: {d.name}.{fm.group(2)}: cannot read the parameter `{p}`")
+                    ps.append((pm2.group(1), parse_type(pm2.group(2))))
+                d.functions.append(Function(fm.group(2), ps, result, bool(fm.group(1))))
+                pos = after
+            if re.search(r"\b(val|var)\s+\w+", body):
+                raise Error(f"{path}: {d.name} has a property: bridged interfaces declare functions only")
+            decls.append(d)
+    return decls
+
+
+class Gen:
+    def __init__(self, decls, lib):
+        self.decls, self.lib = decls, lib
+        self.types = {}
+        for d in decls:
+            if d.kind in ("struct", "enum"):
+                if d.name in self.types:
+                    raise Error(f"{d.name} is declared twice")
+                self.types[d.name] = d
+        for d in decls:
+            for f in d.functions:
+                for _, t in f.params:
+                    self.check(t, f"{d.name}.{f.name}")
+                self.check(f.result, f"{d.name}.{f.name}", result=True)
+            for _, t in d.fields:
+                self.check(t, d.name)
+
+    def check(self, t, where, result=False):
+        if t.name == "Unit":
+            if not result or t.nullable:
+                raise Error(f"{where}: Unit is only a result")
+            return
+        if t.name == "List":
+            if len(t.args) != 1:
+                raise Error(f"{where}: List takes one type")
+            if t.args[0].name == "Byte":
+                raise Error(f"{where}: use ByteArray for bytes")
+            self.check(t.args[0], where)
+            return
+        if t.args:
+            raise Error(f"{where}: {t} is not a type the bridge copies")
+        if t.name not in PRIMS and t.name not in ("String", "ByteArray") and t.name not in self.types:
+            raise Error(f"{where}: {t.name} is not a type the bridge copies (annotate it @CppStruct?)")
+
+    # --- C++ ------------------------------------------------------------------------------
+    @staticmethod
+    def ns(package):
+        return "::" + package.replace(".", "::") if package else ""
+
+    def cpp(self, t):
+        if t.name == "Unit":
+            base = "void"
+        elif t.name in PRIMS:
+            base = PRIMS[t.name][0]
+        elif t.name == "String":
+            base = "std::string"
+        elif t.name == "ByteArray":
+            base = "std::vector<std::uint8_t>"
+        elif t.name == "List":
+            base = f"std::vector<{self.cpp(t.args[0])}>"
+        else:
+            d = self.types[t.name]
+            base = f"{self.ns(d.package)}::{d.name}"
+        return f"std::optional<{base}>" if t.nullable else base
+
+    @staticmethod
+    def direct(t):
+        return not t.nullable and (t.name in PRIMS or t.name in ("String", "ByteArray"))
+
+    def sig(self, t):
+        if t.name == "Unit":
+            return "V"
+        if not self.direct(t):
+            return "[B"
+        if t.name in PRIMS:
+            return PRIMS[t.name][1]
+        return "Ljava/lang/String;" if t.name == "String" else "[B"
+
+    def jtype(self, t):
+        if t.name == "Unit":
+            return "void"
+        if not self.direct(t):
+            return "jbyteArray"
+        if t.name in PRIMS:
+            return PRIMS[t.name][2]
+        return "jstring" if t.name == "String" else "jbyteArray"
+
+    def from_jni(self, t, expr):
+        """C++ value from a JNI argument or result."""
+        if not self.direct(t):
+            return f"kiln::jvm::Decode<{self.cpp(t)}>(kiln::jvm::ToBytes(kiln_env, {expr}))"
+        if t.name == "Boolean":
+            return f"({expr} != JNI_FALSE)"
+        if t.name in PRIMS:
+            return f"{self.cpp(t)}({expr})"
+        if t.name == "String":
+            return f"kiln::jvm::ToString(kiln_env, {expr})"
+        return f"kiln::jvm::ToBytes(kiln_env, {expr})"
+
+    def to_jni_local(self, t, expr):
+        """A JNI value for a C++ one: (setup statement or None, the argument expression)."""
+        if t.name in PRIMS and not t.nullable:
+            return None, f"{PRIMS[t.name][2]}({expr})"
+        if not self.direct(t):
+            return f"kiln::jvm::Local<jbyteArray>(kiln::jvm::ToJava(kiln_env, std::span<const std::uint8_t>(kiln::jvm::Encode<{self.cpp(t)}>({expr}))))", None
+        if t.name == "String":
+            return f"kiln::jvm::ToJava(kiln_env, {expr})", None
+        return f"kiln::jvm::ToJava(kiln_env, std::span<const std::uint8_t>({expr}))", None
+
+    @staticmethod
+    def pascal(name):
+        return name[:1].upper() + name[1:]
+
+    @staticmethod
+    def cname(name):
+        return name + "_" if name in CPP_KEYWORDS else name
+
+    def jni_class(self, d, suffix="Cpp"):
+        return (d.package.replace(".", "/") + "/" if d.package else "") + d.name + suffix
+
+    def struct_order(self):
+        structs = [d for d in self.decls if d.kind == "struct"]
+        done, order = set(), []
+
+        def deps(t, out):
+            if t.name == "List":
+                return   # std::vector takes an incomplete type
+            for a in t.args:
+                deps(a, out)
+            if t.name in self.types and self.types[t.name].kind == "struct":
+                out.add(t.name)
+
+        def visit(d, stack):
+            if d.name in done:
+                return
+            if d.name in stack:
+                raise Error(f"{d.name} contains itself (only through a List)")
+            stack.add(d.name)
+            out = set()
+            for _, t in d.fields:
+                deps(t, out)
+            for n in sorted(out):
+                visit(self.types[n], stack)
+            stack.discard(d.name)
+            done.add(d.name)
+            order.append(d)
+
+        for d in structs:
+            visit(d, set())
+        return order
+
+    def gen_cpp(self):
+        h = ["// Generated by tools/gen-jvm from the app's Kotlin. Do not edit.", "#pragma once", "",
+             "#include <kiln/jvm/Jvm.h>", "#include <kiln/runtime/Task.h>", "",
+             "#include <cstdint>", "#include <memory>", "#include <optional>", "#include <string>", "#include <vector>", ""]
+        c = ['// Generated by tools/gen-jvm from the app\'s Kotlin. Do not edit.', '#include "kiln_bridge.h"', "",
+             "#include <mutex>", "#include <span>", "#include <utility>", ""]
+
+        def open_ns(lines, package):
+            if package:
+                lines.append(f"namespace {package.replace('.', '::')} {{")
+
+        def close_ns(lines, package):
+            if package:
+                lines.append("}")
+            lines.append("")
+
+        # Enums and structs, then their codecs.
+        for d in [d for d in self.decls if d.kind == "enum"]:
+            open_ns(h, d.package)
+            h.append(f"    enum class {d.name} : std::int32_t {{ {', '.join(d.entries)} }};")
+            close_ns(h, d.package)
+        for d in [d for d in self.decls if d.kind == "struct"]:
+            open_ns(h, d.package)
+            h.append(f"    struct {d.name};")
+            close_ns(h, d.package)
+        structs = self.struct_order()
+        for d in structs:
+            open_ns(h, d.package)
+            h.append(f"    // {d.name} ({os.path.basename(d.file)})")
+            h.append(f"    struct {d.name} {{")
+            for n, t in d.fields:
+                init = PRIMS[t.name][4] if t.name in PRIMS and not t.nullable else ("{}" if t.name in self.types and self.types[t.name].kind == "enum" and not t.nullable else "")
+                h.append(f"        {self.cpp(t)} {self.cname(n)}{init};")
+            h.append(f"        bool operator==(const {d.name}&) const = default;")
+            h.append("    };")
+            close_ns(h, d.package)
+        if structs:
+            h.append("namespace kiln::jvm {")
+            for d in structs:
+                q = f"{self.ns(d.package)}::{d.name}"
+                h.append(f"    template<> struct Codec<{q}> {{")
+                h.append(f"        static void Write(Writer& w, const {q}& v);")
+                h.append(f"        static {q} Read(Reader& r);")
+                h.append("    };")
+                c.append(f"void kiln::jvm::Codec<{q}>::Write(Writer& w, const {q}& v) {{")
+                for n, t in d.fields:
+                    c.append(f"    Codec<{self.cpp(t)}>::Write(w, v.{self.cname(n)});")
+                c.append("}")
+                c.append(f"auto kiln::jvm::Codec<{q}>::Read(Reader& r) -> {q} {{")
+                c.append(f"    {q} v;")
+                for n, t in d.fields:
+                    c.append(f"    v.{self.cname(n)} = Codec<{self.cpp(t)}>::Read(r);")
+                c.append("    return v;")
+                c.append("}")
+                c.append("")
+            h.append("}")
+            h.append("")
+
+        registers = []
+        for d in [d for d in self.decls if d.kind in ("cpp", "kotlin")]:
+            q = f"{self.ns(d.package)}::{d.name}"
+            pre = f"{d.package.replace('.', '_')}_{d.name}"
+            open_ns(h, d.package)
+            if d.kind == "cpp":
+                h.append(f"    // {d.name} ({os.path.basename(d.file)}), implemented in C++: Kotlin calls {d.name}Cpp.")
+                h.append(f"    // Plain functions run on the calling thread; suspend functions are tasks on kiln's main")
+                h.append(f"    // dispatcher, cancelled when the Kotlin caller is.")
+                h.append(f"    class {d.name} {{")
+                h.append("    public:")
+                h.append(f"        virtual ~{d.name}() = default;")
+                for f in d.functions:
+                    params = ", ".join(f"{self.cpp(t)} {self.cname(n)}" for n, t in f.params)
+                    res = f"kiln::rt::Task<{self.cpp(f.result)}>" if f.suspend else self.cpp(f.result)
+                    h.append(f"        virtual {res} {self.pascal(f.name)}({params}) = 0;")
+                h.append("    };")
+                h.append(f"    // The app defines this: the implementation, made on the first call from Kotlin.")
+                h.append(f"    std::unique_ptr<{d.name}> Make{d.name}();")
+                close_ns(h, d.package)
+
+                c.append("namespace {")
+                c.append(f"    {q}& {pre}_Impl() {{")
+                c.append(f"        static std::unique_ptr<{q}> impl = {self.ns(d.package)}::Make{d.name}();")
+                c.append("        return *impl;")
+                c.append("    }")
+                natives = []
+                for f in d.functions:
+                    jparams = "".join(f", {self.jtype(t)} a{i}" for i, (_, t) in enumerate(f.params))
+                    args = ", ".join(self.from_jni(t, f"a{i}") for i, (_, t) in enumerate(f.params))
+                    fn = f"{pre}_{f.name}"
+                    if f.suspend:
+                        c.append(f"    jlong {fn}(JNIEnv* kiln_env, jobject{jparams}, jobject kiln_completion) {{")
+                        c.append("        try {")
+                        c.append(f"            return kiln::jvm::detail::StartTask(kiln_env, kiln_completion, kiln::jvm::detail::Encoded({pre}_Impl().{self.pascal(f.name)}({args})));")
+                        c.append("        } catch (...) {")
+                        c.append("            kiln::jvm::ThrowCurrent(kiln_env);")
+                        c.append("            return 0;")
+                        c.append("        }")
+                        c.append("    }")
+                        sig = "(" + "".join(self.sig(t) for _, t in f.params) + "Ldev/kiln/bridge/Completion;)J"
+                    else:
+                        rt = self.jtype(f.result)
+                        call = f"{pre}_Impl().{self.pascal(f.name)}({args})"
+                        c.append(f"    {rt} {fn}(JNIEnv* kiln_env, jobject{jparams}) {{")
+                        c.append("        try {")
+                        if f.result.name == "Unit":
+                            c.append(f"            {call};")
+                        else:
+                            setup, expr = self.to_jni_local(f.result, call)
+                            if setup:
+                                c.append(f"            return {setup}.release();")
+                            else:
+                                c.append(f"            return {expr};")
+                        c.append("        } catch (...) {")
+                        c.append("            kiln::jvm::ThrowCurrent(kiln_env);")
+                        if f.result.name != "Unit":
+                            c.append("            return {};")
+                        c.append("        }")
+                        c.append("    }")
+                        sig = "(" + "".join(self.sig(t) for _, t in f.params) + ")" + self.sig(f.result)
+                    natives.append(f'{{ "n{self.pascal(f.name)}", "{sig}", reinterpret_cast<void*>(&{fn}) }}')
+                c.append(f"    void {pre}_Register(JNIEnv* kiln_env) {{")
+                c.append(f'        kiln::jvm::Global<jclass> cls = kiln::jvm::FindClass("{self.jni_class(d)}");')
+                if natives:
+                    c.append("        static const JNINativeMethod natives[] = {")
+                    for n in natives:
+                        c.append(f"            {n},")
+                    c.append("        };")
+                    c.append(f"        kiln::jvm::detail::RegisterNatives(kiln_env, cls.get(), natives, {len(natives)});")
+                c.append("    }")
+                c.append("}")
+                c.append("")
+                registers.append(f"{pre}_Register")
+            else:
+                h.append(f"    // {d.name} ({os.path.basename(d.file)}), implemented in Kotlin and registered with")
+                h.append(f"    // {d.name}Cpp.register(impl). Plain functions run on the calling thread; a suspend")
+                h.append(f"    // function is a task, run on Kotlin's main dispatcher, cancelled with the task.")
+                h.append(f"    class {d.name} {{")
+                h.append("    public:")
+                h.append("        // The implementation Kotlin registered, if any.")
+                h.append(f"        static std::optional<{d.name}> Get();")
+                for f in d.functions:
+                    params = ", ".join(f"{self.cpp(t)} {self.cname(n)}" for n, t in f.params)
+                    res = f"kiln::rt::Task<{self.cpp(f.result)}>" if f.suspend else self.cpp(f.result)
+                    h.append(f"        {res} {self.pascal(f.name)}({params}) const;")
+                h.append("        jobject Object() const { return m_Object.get(); }")
+                h.append("")
+                h.append("    private:")
+                h.append(f"        explicit {d.name}(kiln::jvm::Global<jobject> object) : m_Object(std::move(object)) {{}}")
+                h.append("        kiln::jvm::Global<jobject> m_Object;")
+                h.append("    };")
+                close_ns(h, d.package)
+
+                iface = "L" + self.jni_class(d, "") + ";"
+                c.append("namespace {")
+                c.append(f"    std::mutex {pre}_Mutex;")
+                c.append(f"    kiln::jvm::Global<jobject> {pre}_Registered;")
+                c.append(f"    kiln::jvm::Global<jclass> {pre}_Class;")
+                for f in d.functions:
+                    c.append(f"    jmethodID {pre}_{f.name} = nullptr;")
+                c.append(f"    void {pre}_register(JNIEnv* kiln_env, jclass, jobject impl) {{")
+                c.append(f"        kiln::jvm::Global<jobject> g(impl, kiln_env);")
+                c.append(f"        std::lock_guard lock({pre}_Mutex);")
+                c.append(f"        {pre}_Registered = std::move(g);")
+                c.append("    }")
+                c.append(f"    void {pre}_Register(JNIEnv* kiln_env) {{")
+                c.append(f'        {pre}_Class = kiln::jvm::FindClass("{self.jni_class(d)}");')
+                c.append(f'        static const JNINativeMethod natives[] = {{ {{ "nRegister", "({iface})V", reinterpret_cast<void*>(&{pre}_register) }} }};')
+                c.append(f"        kiln::jvm::detail::RegisterNatives(kiln_env, {pre}_Class.get(), natives, 1);")
+                for f in d.functions:
+                    if f.suspend:
+                        sig = f"({iface}" + "".join(self.sig(t) for _, t in f.params) + "J)Lkotlinx/coroutines/Job;"
+                    else:
+                        sig = f"({iface}" + "".join(self.sig(t) for _, t in f.params) + ")" + self.sig(f.result)
+                    c.append(f'        {pre}_{f.name} = kiln::jvm::detail::StaticMethod(kiln_env, {pre}_Class.get(), "{f.name}", "{sig}");')
+                c.append("    }")
+                # Suspend calls are coroutines over copies (the object may be a temporary).
+                for f in d.functions:
+                    if not f.suspend:
+                        continue
+                    params = "".join(f", {self.cpp(t)} {self.cname(n)}" for n, t in f.params)
+                    c.append(f"    kiln::rt::Task<{self.cpp(f.result)}> {pre}_{f.name}_Task(kiln::jvm::Global<jobject> kiln_self{params}) {{")
+                    caps = "".join(f", {self.cname(n)} = std::move({self.cname(n)})" for n, _ in f.params)
+                    c.append(f"        std::vector<std::uint8_t> kiln_bytes = co_await kiln::jvm::detail::KotlinCall{{ [kiln_self{caps}](JNIEnv* kiln_env, jlong kiln_handle) -> jobject {{")
+                    args = []
+                    for i, (n, t) in enumerate(f.params):
+                        setup, expr = self.to_jni_local(t, self.cname(n))
+                        if setup:
+                            c.append(f"            auto kiln_a{i} = {setup};")
+                            args.append(f"kiln_a{i}.get()")
+                        else:
+                            args.append(expr)
+                    c.append(f"            return kiln_env->CallStaticObjectMethod({pre}_Class.get(), {pre}_{f.name}, kiln_self.get(){''.join(', ' + a for a in args)}, kiln_handle);")
+                    c.append("        } };")
+                    if f.result.name == "Unit":
+                        c.append("        (void)kiln_bytes;")
+                    else:
+                        c.append(f"        co_return kiln::jvm::Decode<{self.cpp(f.result)}>(kiln_bytes);")
+                    c.append("    }")
+                c.append("}")
+                c.append(f"auto {q}::Get() -> std::optional<{q}> {{")
+                c.append(f"    std::lock_guard lock({pre}_Mutex);")
+                c.append(f"    if (!{pre}_Registered) return std::nullopt;")
+                c.append(f"    return {d.name}({pre}_Registered);")
+                c.append("}")
+                for f in d.functions:
+                    params = ", ".join(f"{self.cpp(t)} {self.cname(n)}" for n, t in f.params)
+                    res = f"kiln::rt::Task<{self.cpp(f.result)}>" if f.suspend else self.cpp(f.result)
+                    c.append(f"auto {q}::{self.pascal(f.name)}({params}) const -> {res} {{")
+                    if f.suspend:
+                        moved = "".join(f", std::move({self.cname(n)})" for n, _ in f.params)
+                        c.append(f"    return {pre}_{f.name}_Task(m_Object{moved});")
+                        c.append("}")
+                        continue
+                    c.append("    JNIEnv* kiln_env = kiln::jvm::Env();")
+                    args = []
+                    for i, (n, t) in enumerate(f.params):
+                        setup, expr = self.to_jni_local(t, self.cname(n))
+                        if setup:
+                            c.append(f"    auto kiln_a{i} = {setup};")
+                            args.append(f"kiln_a{i}.get()")
+                        else:
+                            args.append(expr)
+                    argl = "".join(", " + a for a in args)
+                    r = f.result
+                    if r.name == "Unit":
+                        c.append(f"    kiln_env->CallStaticVoidMethod({pre}_Class.get(), {pre}_{f.name}, m_Object.get(){argl});")
+                        c.append("    kiln::jvm::Check(kiln_env);")
+                    elif r.name in PRIMS and not r.nullable:
+                        c.append(f"    auto kiln_r = kiln_env->CallStatic{PRIMS[r.name][3]}Method({pre}_Class.get(), {pre}_{f.name}, m_Object.get(){argl});")
+                        c.append("    kiln::jvm::Check(kiln_env);")
+                        c.append(f"    return {self.from_jni(r, 'kiln_r')};")
+                    else:
+                        c.append(f"    kiln::jvm::Local<{self.jtype(r)}> kiln_r(static_cast<{self.jtype(r)}>(kiln_env->CallStaticObjectMethod({pre}_Class.get(), {pre}_{f.name}, m_Object.get(){argl})), kiln_env);")
+                        c.append("    kiln::jvm::Check(kiln_env);")
+                        c.append(f"    return {self.from_jni(r, 'kiln_r.get()')};")
+                    c.append("}")
+                c.append("")
+                registers.append(f"{pre}_Register")
+
+        c.append("namespace {")
+        c.append("    void Register(JNIEnv* env) {")
+        for r in registers:
+            c.append(f"        {r}(env);")
+        if not registers:
+            c.append("        (void)env;")
+        c.append("    }")
+        c.append("    kiln::jvm::detail::Registration registration(&Register);")
+        c.append("}")
+        # Fully qualified: an app package such as dev.kiln.x makes `kiln::` mean dev::kiln.
+        qualify = lambda text: re.sub(r"(?<![\w:])(?<!namespace )kiln::", "::kiln::", text)
+        return qualify("\n".join(h) + "\n"), qualify("\n".join(c) + "\n")
+
+    # --- Kotlin ---------------------------------------------------------------------------
+    def kt_put(self, t, w, v, d=0):
+        if t.nullable:
+            x = f"x{d}"
+            return f"{v}.let {{ {x} -> if ({x} == null) {w}.writeBoolean(false) else {{ {w}.writeBoolean(true); {self.kt_put(t.nonnull(), w, x, d + 1)} }} }}"
+        if t.name in PRIMS:
+            return f"{w}.write{PRIMS[t.name][5]}({v})"
+        if t.name == "String":
+            return f"{w}.writeString({v})"
+        if t.name == "ByteArray":
+            return f"{w}.writeBytes({v})"
+        if t.name == "List":
+            e, l = f"e{d}", f"l{d}"
+            return f"{v}.let {{ {l} -> {w}.writeInt({l}.size); for ({e} in {l}) {{ {self.kt_put(t.args[0], w, e, d + 1)} }} }}"
+        decl = self.types[t.name]
+        if decl.kind == "enum":
+            return f"{w}.writeInt({v}.ordinal)"
+        return f"kilnWrite{decl.name}({w}, {v})"
+
+    def kt_get(self, t, r):
+        if t.nullable:
+            return f"(if ({r}.readBoolean()) {self.kt_get(t.nonnull(), r)} else null)"
+        if t.name in PRIMS:
+            return f"{r}.read{PRIMS[t.name][5]}()"
+        if t.name == "String":
+            return f"{r}.readString()"
+        if t.name == "ByteArray":
+            return f"{r}.readBytes()"
+        if t.name == "List":
+            return f"List({r}.readCount()) {{ _ -> {self.kt_get(t.args[0], r)} }}"
+        decl = self.types[t.name]
+        if decl.kind == "enum":
+            return f"{decl.name}.entries[{r}.readInt()]"
+        return f"kilnRead{decl.name}({r})"
+
+    def kt_encode(self, t, v):
+        return f"Codec.Writer().also {{ w -> {self.kt_put(t, 'w', v)} }}.toByteArray()"
+
+    def kt_decode(self, t, b):
+        return f"Codec.Reader({b}).let {{ r -> {self.kt_get(t, 'r')}.also {{ r.end() }} }}"
+
+    def kt_jni_type(self, t):
+        if t.name == "Unit":
+            return "Unit"
+        if not self.direct(t):
+            return "ByteArray"
+        return t.name
+
+    def kt_arg(self, t, v):
+        return v if self.direct(t) else self.kt_encode(t, v)
+
+    def kt_imports(self, package):
+        out = set()
+        for d in self.types.values():
+            if d.package != package:
+                out.add(f"import {d.package + '.' if d.package else ''}{d.name}")
+                if d.kind == "struct":
+                    out.add(f"import {d.package + '.' if d.package else ''}kilnRead{d.name}")
+                    out.add(f"import {d.package + '.' if d.package else ''}kilnWrite{d.name}")
+        return sorted(out)
+
+    def gen_kotlin(self):
+        files = {}
+        head = "// Generated by tools/gen-jvm. Do not edit.\n"
+        # Struct codecs, a file per package.
+        by_pkg = {}
+        for d in self.decls:
+            if d.kind == "struct":
+                by_pkg.setdefault(d.package, []).append(d)
+        for pkg, ds in by_pkg.items():
+            lines = [head + "@file:Suppress(\"unused\", \"RedundantSuppression\")", ""]
+            if pkg:
+                lines += [f"package {pkg}", ""]
+            lines += ["import dev.kiln.bridge.Codec"] + self.kt_imports(pkg) + [""]
+            for d in ds:
+                lines.append(f"internal fun kilnWrite{d.name}(w: Codec.Writer, v: {d.name}) {{")
+                for n, t in d.fields:
+                    lines.append(f"    {self.kt_put(t, 'w', 'v.' + n)}")
+                lines.append("}")
+                lines.append("")
+                args = ", ".join(self.kt_get(t, "r") for _, t in d.fields)
+                lines.append(f"internal fun kilnRead{d.name}(r: Codec.Reader): {d.name} = {d.name}({args})")
+                lines.append("")
+            files[os.path.join(pkg.replace(".", "/"), "KilnBridgeCodecs.kt")] = "\n".join(lines)
+
+        for d in self.decls:
+            if d.kind not in ("cpp", "kotlin"):
+                continue
+            lines = [head + "@file:Suppress(\"unused\", \"RedundantSuppression\", \"UNUSED_ANONYMOUS_PARAMETER\")", ""]
+            if d.package:
+                lines += [f"package {d.package}", ""]
+            lines += ["import dev.kiln.bridge.Codec", "import dev.kiln.bridge.Completion", "import dev.kiln.bridge.KilnBridgeSupport"]
+            lines += self.kt_imports(d.package) + [""]
+            if d.kind == "cpp":
+                lines.append(f"/** {d.name}, implemented in C++ (tools/gen-jvm). */")
+                lines.append(f"object {d.name}Cpp : {d.name} {{")
+                lines.append(f'    init {{ System.loadLibrary("{self.lib}") }}')
+                lines.append("")
+                for f in d.functions:
+                    params = ", ".join(f"{n}: {t}" for n, t in f.params)
+                    jparams = ", ".join(f"{n}: {self.kt_jni_type(t)}" for n, t in f.params)
+                    args = ", ".join(self.kt_arg(t, n) for n, t in f.params)
+                    nm = f"n{self.pascal(f.name)}"
+                    if f.suspend:
+                        lines.append(f"    private external fun {nm}({jparams}{', ' if jparams else ''}kilnCompletion: Completion): Long")
+                        if f.result.name == "Unit":
+                            dec = "{ _ -> }"
+                        else:
+                            dec = f"{{ b -> {self.kt_decode(f.result, 'b!!')} }}"
+                        lines.append(f"    override suspend fun {f.name}({params}): {f.result} =")
+                        lines.append(f"        KilnBridgeSupport.callCpp({{ c -> {nm}({args}{', ' if args else ''}c) }}, {dec})")
+                    else:
+                        lines.append(f"    private external fun {nm}({jparams}): {self.kt_jni_type(f.result)}")
+                        call = f"{nm}({args})"
+                        if f.result.name != "Unit" and not self.direct(f.result):
+                            call = self.kt_decode(f.result, call)
+                        lines.append(f"    override fun {f.name}({params}): {f.result} = {call}")
+                    lines.append("")
+                lines.append("}")
+            else:
+                lines.append(f"/** {d.name}'s C++ side (tools/gen-jvm): register the implementation C++ calls. */")
+                lines.append(f"object {d.name}Cpp {{")
+                lines.append(f'    init {{ System.loadLibrary("{self.lib}") }}')
+                lines.append("")
+                lines.append("    /** The implementation C++ calls from now on; null removes it. */")
+                lines.append(f"    @JvmStatic fun register(impl: {d.name}?) = nRegister(impl)")
+                lines.append(f"    @JvmStatic private external fun nRegister(impl: {d.name}?)")
+                lines.append("")
+                lines.append("    // Called from C++.")
+                for f in d.functions:
+                    jparams = "".join(f", {n}: {self.kt_jni_type(t)}" for n, t in f.params)
+                    args = ", ".join(n if self.direct(t) else self.kt_decode(t, n) for n, t in f.params)
+                    call = f"impl.{f.name}({args})"
+                    if f.suspend:
+                        body = "run { " + call + "; null }" if f.result.name == "Unit" else self.kt_encode(f.result, call)
+                        lines.append(f"    @JvmStatic private fun {f.name}(impl: {d.name}{jparams}, kilnHandle: Long): kotlinx.coroutines.Job =")
+                        lines.append(f"        KilnBridgeSupport.launchForCpp(kilnHandle) {{ {body} }}")
+                    else:
+                        res = self.kt_jni_type(f.result)
+                        if f.result.name != "Unit" and not self.direct(f.result):
+                            call = self.kt_encode(f.result, call)
+                        lines.append(f"    @JvmStatic private fun {f.name}(impl: {d.name}{jparams}): {res} = {call}")
+                lines.append("}")
+            files[os.path.join(d.package.replace(".", "/"), f"{d.name}Cpp.kt")] = "\n".join(lines) + "\n"
+
+        files[os.path.join("dev", "kiln", "bridge", "KilnBridgeSupport.kt")] = SUPPORT
+        return files
+
+
+SUPPORT = """// Generated by tools/gen-jvm. Do not edit.
+package dev.kiln.bridge
+
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withContext
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
+
+/** What the generated bridge code shares: awaiting C++ tasks, and running Kotlin for C++. */
+object KilnBridgeSupport {
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+
+    /** Starts a C++ task on kiln's main thread and waits for its encoded result. */
+    suspend fun <T> callCpp(start: (Completion) -> Long, decode: (ByteArray?) -> T): T {
+        val bytes = withContext(Dispatchers.Main.immediate) {
+            suspendCancellableCoroutine<ByteArray?> { cont ->
+                val handle = start(object : Completion {
+                    override fun resume(value: ByteArray?) { cont.resume(value) }
+                    override fun fail(type: String, message: String?) { cont.resumeWithException(CppException(type, message)) }
+                })
+                cont.invokeOnCancellation { KilnBridge.cancel(handle) }
+            }
+        }
+        return decode(bytes)
+    }
+
+    /** Runs a suspend call for C++ (handle), reporting its result or failure to it. */
+    fun launchForCpp(handle: Long, block: suspend () -> ByteArray?): Job = scope.launch {
+        try {
+            KilnBridge.complete(handle, block())
+        } catch (t: Throwable) {
+            KilnBridge.fail(handle, t)
+        }
+    }
+}
+"""
+
+
+def main():
+    ap = argparse.ArgumentParser(description="The JVM bridge's typed calls from annotated Kotlin.")
+    ap.add_argument("--lib", required=True, help="the app's native library (System.loadLibrary)")
+    ap.add_argument("--kotlin", help="where to write the Kotlin half")
+    ap.add_argument("--cpp", help="where to write kiln_bridge.h and kiln_bridge.cpp")
+    ap.add_argument("inputs", nargs="*")
+    a = ap.parse_args()
+    files = []
+    for p in a.inputs:
+        if os.path.isdir(p):
+            for root, _, names in os.walk(p):
+                files += [os.path.join(root, n) for n in sorted(names) if n.endswith(".kt")]
+        elif p.endswith(".kt"):
+            files.append(p)
+    try:
+        decls = []
+        for f in sorted(files):
+            decls += parse_file(f)
+        gen = Gen(decls, a.lib)
+        if a.cpp:
+            h, c = gen.gen_cpp()
+            os.makedirs(a.cpp, exist_ok=True)
+            write(os.path.join(a.cpp, "kiln_bridge.h"), h)
+            write(os.path.join(a.cpp, "kiln_bridge.cpp"), c)
+        if a.kotlin:
+            for rel, text in gen.gen_kotlin().items():
+                path = os.path.join(a.kotlin, rel)
+                os.makedirs(os.path.dirname(path), exist_ok=True)
+                write(path, text)
+    except Error as e:
+        print(f"gen-jvm: {e}", file=sys.stderr)
+        sys.exit(1)
+
+
+def write(path, text):
+    """Leaves an unchanged file alone, so builds that depend on it don't rerun."""
+    if os.path.exists(path) and open(path, encoding="utf-8").read() == text:
+        return
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(text)
+
+
+if __name__ == "__main__":
+    main()

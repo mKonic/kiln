@@ -57,7 +57,7 @@ def prelude_headers():
         base = ROOT / module
         for h in sorted(base.rglob('*.h')):
             rel = h.relative_to(base).as_posix()
-            if '/internal/' in rel or rel.endswith('.gen.h') or '/capi/' in rel or rel.startswith('kiln/platform'):
+            if '/internal/' in rel or rel.endswith('.gen.h') or '/capi/' in rel or rel.startswith('kiln/platform') or rel == 'kiln/jvm/Jvm.h':   # Jvm.h: Android's jni.h
                 continue
             out.append(rel)
     return out

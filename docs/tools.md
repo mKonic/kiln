@@ -44,6 +44,8 @@ bundletool, downloaded once to `~/.cache/kiln` and checked against its checksum,
 | `tools/build-aar` | Builds `build/kiln.aar` for [Gradle projects](android.md#build-with-gradle) |
 | `tools/kiln-pack` | Packs a native library into an APK without Gradle |
 | `tools/device-test [filter...]` | Runs the test suite on a device |
+| `tools/gen-jvm` | Writes the [JVM bridge](android.md#calling-kotlin-and-java)'s Kotlin and C++ from annotated Kotlin (Gradle and CMake run it) |
+| `tools/bridge-test` | Runs the JVM bridge's checks on a device: no activity, with one, and after it |
 | `tools/vtouchpad/run [script]` | Plays trackpad gestures on a rooted device that has no trackpad |
 | `tools/docs-check [file.md...]` | Compiles the C++ and C code blocks in `docs/` against the host build |
 

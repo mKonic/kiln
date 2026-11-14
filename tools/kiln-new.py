@@ -119,7 +119,9 @@ dependencyResolutionManagement {{ repositories {{ google(); mavenCentral() }} }}
 rootProject.name = "{name}"
 '''
 
-GRADLE_BUILD = '''plugins {{ id("com.android.application") version "9.4.1" }}
+GRADLE_BUILD = '''import javax.inject.Inject
+
+plugins {{ id("com.android.application") version "9.4.1" }}
 
 // The kiln checkout this app builds against (apps/{name} sits inside it).
 val kilnRoot = file(System.getenv("KILN_ROOT") ?: "../..")
@@ -171,9 +173,33 @@ android {{
     packaging {{ jniLibs {{ useLegacyPackaging = false }} }}
 }}
 
+// The JVM bridge's Kotlin half (tools/gen-jvm), from the @ImplementedInCpp, @CalledFromCpp and
+// @CppStruct declarations in src/main/kotlin; JVM_BRIDGE in CMakeLists.txt writes the C++ half.
+abstract class KilnBridge : DefaultTask() {{
+    @get:InputFiles abstract val sources: ConfigurableFileCollection
+    @get:InputFile abstract val generator: RegularFileProperty
+    @get:Input abstract val library: Property<String>
+    @get:OutputDirectory abstract val output: DirectoryProperty
+    @get:Inject abstract val exec: ExecOperations
+
+    @TaskAction fun generate() {{
+        val out = output.get().asFile
+        out.deleteRecursively()
+        exec.exec {{ commandLine(listOf("python3", generator.get().asFile.path, "--lib", library.get(), "--kotlin", out.path) + sources.files.map {{ it.path }}) }}
+    }}
+}}
+val kilnBridge = tasks.register<KilnBridge>("kilnBridge") {{
+    sources.from(fileTree("src/main/kotlin") {{ include("**/*.kt") }})
+    generator.set(kilnRoot.resolve("tools/gen-jvm"))
+    library.set("{name}")
+}}
+androidComponents {{ onVariants {{ v -> v.sources.kotlin?.addGeneratedSourceDirectory(kilnBridge, KilnBridge::output) }} }}
+
 dependencies {{
     // The androidx interfaces kiln's embedded-View holder implements.
     implementation("androidx.core:core:1.9.0")
+    // The JVM bridge's suspend calls.
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
     // Maven dependencies of the app's own JVM code, for example:
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
 }}
@@ -247,8 +273,12 @@ def main():
     jvm_root = sys.argv[6] if len(sys.argv) > 6 and sys.argv[5] == "--jvm" else None
     for sub in ("src", "assets", os.path.join("res", "values")):
         os.makedirs(os.path.join(out, sub), exist_ok=True)
+    cmake = CMAKE.format(name=name, package=package, label=label)
+    if jvm_root:
+        # The JVM bridge's C++ half, from the same Kotlin as Gradle's half.
+        cmake = cmake.replace("    VERSION_NAME 1.0\n", "    VERSION_NAME 1.0\n    JVM_BRIDGE src/main/kotlin\n")
     with open(os.path.join(out, "CMakeLists.txt"), "w") as f:
-        f.write(CMAKE.format(name=name, package=package, label=label))
+        f.write(cmake)
     with open(os.path.join(out, "src", "main.cpp"), "w") as f:
         f.write(MAIN.format(label=label.replace('"', '\\"')))
     with open(os.path.join(out, "assets", ".keep"), "w"):
@@ -258,7 +288,7 @@ def main():
     with open(os.path.join(out, "res", "values", "strings.xml"), "w") as f:
         f.write(STRINGS.format(label=label.replace("&", "&amp;").replace("<", "&lt;").replace("'", "\\'")))
     with open(os.path.join(out, ".gitignore"), "w") as f:
-        f.write("build/\n.gradle/\n.cxx/\nlocal.properties\n")
+        f.write("build/\n.gradle/\n.cxx/\n.kotlin/\nlocal.properties\n")
     if jvm_root:
         write_gradle(out, name, package, label, jvm_root)
 

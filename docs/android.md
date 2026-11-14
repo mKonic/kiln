@@ -45,6 +45,82 @@ can Android Studio or `./gradlew assembleRelease` in `apps/notes`.
   `cmake` on `PATH`, unless `KILN_CMAKE_VERSION` names an installed version. `KILN_NDK`
   sets the NDK if it isn't in `/opt/android-ndk`.
 
+## Calling Kotlin and Java
+
+In an app made with `--jvm`, C++ and Kotlin call each other through interfaces declared in
+Kotlin. `tools/gen-jvm` writes both sides when the app builds: the Kotlin half through
+Gradle, the C++ half through `JVM_BRIDGE src/main/kotlin` in `CMakeLists.txt`.
+[samples/bridge](../samples/bridge) has the whole example; `tools/bridge-test` runs its checks
+on a device.
+
+```kotlin
+@CppStruct
+data class Note(val id: Long, val title: String, val tags: List<String>, val body: String?)
+
+// Implemented in C++, called from Kotlin as NoteStoreCpp.
+@ImplementedInCpp
+interface NoteStore {
+    fun add(title: String, tags: List<String>, body: String?): Long
+    fun find(id: Long): Note?
+    suspend fun summarize(delayMs: Long): Summary
+}
+
+// Implemented in Kotlin, registered with PlatformCpp.register(impl), called from C++.
+@CalledFromCpp
+interface Platform {
+    fun deviceName(): String
+    suspend fun fetch(text: String, delayMs: Long): ByteArray
+}
+```
+
+The annotations are in `dev.kiln.bridge`. In C++, `kiln_bridge.h` declares a struct for each
+`@CppStruct` and a class for each interface, in a namespace named after the Kotlin package.
+C++ implements `NoteStore` and supplies it with `MakeNoteStore`:
+
+<!-- check: skip -->
+```cpp
+#include "kiln_bridge.h"
+namespace app = com::example::notes;
+
+class Store : public app::NoteStore {
+public:
+    std::int64_t Add(std::string title, std::vector<std::string> tags, std::optional<std::string> body) override;
+    std::optional<app::Note> Find(std::int64_t id) override;
+    kiln::rt::Task<app::Summary> Summarize(std::int64_t delayMs) override {
+        co_await kiln::rt::Delay(delayMs);
+        co_return app::Summary{};
+    }
+};
+std::unique_ptr<app::NoteStore> app::MakeNoteStore() { return std::make_unique<Store>(); }
+
+kiln::rt::Task<> Greet(kiln::rt::State<std::string>& text) {
+    if (auto platform = app::Platform::Get()) {
+        std::vector<std::uint8_t> bytes = co_await platform->Fetch("hi", 100);
+        text.Set(platform->DeviceName() + ": " + std::string(bytes.begin(), bytes.end()));
+    }
+}
+```
+
+* Types that cross: `Int`, `Long`, `Float`, `Double`, `Boolean`, `String`, `ByteArray`,
+  `List<T>`, nullable types (`std::optional`), `@CppStruct` data classes and enums, and `Unit`
+  as a result. Values are copied.
+* A plain function runs on the thread that calls it, so a C++ implementation called from
+  several Kotlin threads must lock its own data. C++ can call Kotlin from any thread, including
+  threads it started.
+* A `suspend fun` is an `rt::Task` in C++. One that C++ implements runs on kiln's main
+  dispatcher, with or without an activity (a service, a receiver). One that Kotlin implements
+  runs on `Dispatchers.Main`. Cancelling the caller cancels the callee, in both directions.
+* A C++ exception reaches Kotlin as `dev.kiln.bridge.CppException`, with the C++ type in its
+  `type`. A Kotlin exception reaches C++ as `kiln::jvm::JavaException`, with the class name.
+  An exception passing through and back keeps its identity: Kotlin catches the exception it
+  threw.
+* For JNI by hand, `kiln/jvm/Jvm.h` has the same helpers: `Env()` attaches the calling thread,
+  `Local` and `Global` manage references, `FindClass` uses the app's class loader, `Check`
+  turns a pending Java exception into `JavaException`, and `ToString`/`ToJava` convert strings
+  and byte arrays.
+* With R8 (`isMinifyEnabled`), keep `dev.kiln.**` and the generated `*Cpp` classes. Their
+  methods are only called from native code.
+
 ## Build with Gradle
 
 For an existing Gradle project, use kiln as an Android library (AAR).
