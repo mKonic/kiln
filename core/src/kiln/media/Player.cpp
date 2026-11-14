@@ -164,7 +164,8 @@ namespace kiln::media {
             engine->Load({ .uri = m.uri, .mimeType = m.mimeType,
                            .startPositionMs = m.clippingConfiguration.startPositionMs + positionMs,
                            .clipStartMs = m.clippingConfiguration.startPositionMs,
-                           .endPositionMs = m.clippingConfiguration.endPositionMs, .loadId = loadId });
+                           .endPositionMs = m.clippingConfiguration.endPositionMs, .loadId = loadId,
+                           .trackSelection = trackSelection });
             LoadText();
         }
         void Unload() {
@@ -190,7 +191,16 @@ namespace kiln::media {
             std::vector<bool> supported;
             for (const auto& s : subtitles) supported.push_back(SubtitleParserFor(s) != nullptr);
             const auto captioning = trackSelection.usePreferredTextLanguagesAndRoleFlagsFromCaptioningManager ? CaptioningPreferredLanguage() : std::nullopt;
-            selectedText = SelectTextTrack(subtitles, supported, trackSelection, captioning, std::nullopt);
+            if (trackSelection.disabledTrackTypes.contains(TrackType::Text)) {
+                selectedText = -1;
+            } else if (auto o = OverrideForType(trackSelection, TrackType::Text)) {
+                // An override: that subtitle (when it can be read), or none.
+                selectedText = -1;
+                for (std::size_t i = 0; i < subtitles.size(); ++i)
+                    if (o->groupId == "s" + std::to_string(i) && o->track == 0 && supported[i]) selectedText = int(i);
+            } else {
+                selectedText = SelectTextTrack(subtitles, supported, trackSelection, captioning, SelectedAudioLanguage());
+            }
             if (selectedText < 0) return;
             const auto subtitle = subtitles[std::size_t(selectedText)];
             const std::uint64_t generation = textGeneration;
@@ -209,6 +219,32 @@ namespace kiln::media {
                 for (auto& c : parsed) shared->cueResolver.AddCues(std::move(c), 0);
                 shared->Publish();
             }(self, subtitle, generation));
+        }
+        // The playing audio track's language (forced subtitles follow it).
+        std::optional<std::string> SelectedAudioLanguage() const {
+            for (const auto& g : engineState.tracks.groups)
+                if (g.type == TrackType::Audio)
+                    for (std::size_t i = 0; i < g.formats.size(); ++i)
+                        if (g.trackSelected[i] && !g.formats[i].language.empty()) return NormalizeLanguageCode(g.formats[i].language);
+            return std::nullopt;
+        }
+        // The current item's tracks: the engine's, then a group per subtitle.
+        Tracks CurrentTracks() const {
+            Tracks t = engineState.tracks;
+            if (current >= Count()) return {};
+            const auto& subtitles = items[std::size_t(current)].subtitleConfigurations;
+            for (std::size_t i = 0; i < subtitles.size(); ++i) {
+                const auto& s = subtitles[i];
+                Tracks::Group g;
+                g.id = "s" + std::to_string(i);
+                g.type = TrackType::Text;
+                g.formats.push_back({ .id = s.id, .label = s.label, .language = s.language.empty() ? std::string() : NormalizeLanguageCode(s.language),
+                                      .sampleMimeType = s.mimeType, .selectionFlags = s.selectionFlags, .roleFlags = s.roleFlags });
+                g.trackSupported.push_back(SubtitleParserFor(s) != nullptr);
+                g.trackSelected.push_back(int(i) == selectedText);
+                t.groups.push_back(std::move(g));
+            }
+            return t;
         }
         // Where playback is in the item's media (ms): the last report, moved on by the time since
         // while it plays.
@@ -313,7 +349,10 @@ namespace kiln::media {
         void OnEngineState(const PlayerState& s, std::uint64_t id) {
             if (id != loadId || loadId == 0) return;   // an earlier item's
             const PlaybackState before = CurrentPlaybackState();
+            const auto audioLanguage = SelectedAudioLanguage();
             engineState = s;
+            // The text track follows the audio's language (DefaultTrackSelector picks them together).
+            if (SelectedAudioLanguage() != audioLanguage) LoadText();
             const MediaItem& m = items[std::size_t(current)];
             const auto& clip = m.clippingConfiguration;
             positionMs = std::max<std::int64_t>(s.positionMs - clip.startPositionMs, 0);
@@ -401,6 +440,7 @@ namespace kiln::media {
             s.isPlaying = s.state == PlaybackState::Ready && playWhenReady && suppression == PlaybackSuppression::None && engineState.isPlaying;
             UpdateCues();
             s.currentCues = cues;
+            s.tracks = CurrentTracks();
             state.SetValue(s);
         }
 
@@ -827,6 +867,7 @@ namespace kiln::media {
         Shared& s = *m_Shared;
         if (s.trackSelection == p) return;
         s.trackSelection = std::move(p);
+        if (s.engine && s.loadId) s.engine->SetTrackSelectionParameters(s.trackSelection);
         s.LoadText();
         s.Publish();
     }

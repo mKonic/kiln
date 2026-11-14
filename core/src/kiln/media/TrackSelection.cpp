@@ -1,6 +1,7 @@
 #include "kiln/media/TrackSelection.h"
 
 #include <bit>
+#include <algorithm>
 #include <climits>
 #include <unordered_map>
 
@@ -74,6 +75,146 @@ namespace kiln::media {
                 return r;
             }
         };
+    }
+
+    // --- Tracks, overrides ---------------------------------------------------------------------
+
+    bool Tracks::Group::IsSelected() const {
+        for (bool b : trackSelected) if (b) return true;
+        return false;
+    }
+    bool Tracks::Group::IsSupported(bool) const {
+        for (bool b : trackSupported) if (b) return true;
+        return false;
+    }
+    bool Tracks::ContainsType(TrackType type) const {
+        for (const auto& g : groups) if (g.type == type) return true;
+        return false;
+    }
+    bool Tracks::IsTypeSelected(TrackType type) const {
+        for (const auto& g : groups) if (g.type == type && g.IsSelected()) return true;
+        return false;
+    }
+    bool Tracks::IsTypeSupported(TrackType type, bool allow) const {
+        for (const auto& g : groups) if (g.type == type && g.IsSupported(allow)) return true;
+        return false;
+    }
+
+    TrackSelectionParameters& TrackSelectionParameters::AddOverride(TrackSelectionOverride o) {
+        std::erase_if(overrides, [&](const TrackSelectionOverride& x) { return x.groupId == o.groupId; });
+        overrides.push_back(std::move(o));
+        return *this;
+    }
+    TrackSelectionParameters& TrackSelectionParameters::SetOverrideForType(TrackSelectionOverride o) {
+        ClearOverridesOfType(o.type);
+        overrides.push_back(std::move(o));
+        return *this;
+    }
+    TrackSelectionParameters& TrackSelectionParameters::ClearOverridesOfType(TrackType type) {
+        std::erase_if(overrides, [&](const TrackSelectionOverride& x) { return x.type == type; });
+        return *this;
+    }
+    TrackSelectionParameters& TrackSelectionParameters::SetTrackTypeDisabled(TrackType type, bool disabled) {
+        if (disabled) disabledTrackTypes.insert(type);
+        else disabledTrackTypes.erase(type);
+        return *this;
+    }
+
+    std::optional<OverrideChoice> OverrideForType(const TrackSelectionParameters& p, TrackType type) {
+        for (const auto& o : p.overrides)
+            if (o.type == type) return OverrideChoice{ o.groupId, o.trackIndices.empty() ? -1 : o.trackIndices.front() };
+        return std::nullopt;
+    }
+
+    namespace {
+        // FORMAT_VALUE_ORDERING: an unknown value (-1) below any known one.
+        int CompareFormatValue(int a, int b) { return a == -1 ? (b == -1 ? 0 : -1) : (b == -1 ? 1 : (a > b) - (a < b)); }
+        bool IsObjectBasedAudio(const std::string& mime) { return mime == "audio/eac3-joc" || mime == "audio/ac4" || mime == "audio/iamf"; }
+
+        // AudioTrackInfo.
+        struct AudioTrackInfo {
+            bool withinCapabilities = false, withinConstraints = false, isDefault = false, hasMainOrNoRoleFlag = false, objectBased = false;
+            std::optional<std::string> language;
+            int preferredLanguageIndex = INT_MAX, preferredLanguageScore = 0, preferredRoleFlagsScore = 0, preferredLabelMatchIndex = INT_MAX;
+            int localeLanguageMatchIndex = INT_MAX, localeLanguageScore = 0, preferredMimeTypeMatchIndex = INT_MAX;
+            int channelCount = -1, sampleRate = -1, bitrate = -1;
+            bool forceLowestBitrate = false;
+
+            int CompareTo(const AudioTrackInfo& o) const {
+                auto cmp = [](auto a, auto b) { return a < b ? -1 : a > b ? 1 : 0; };
+                const bool qualityNatural = withinConstraints && withinCapabilities;
+                auto quality = [&](int a, int b) { return qualityNatural ? CompareFormatValue(a, b) : -CompareFormatValue(a, b); };
+                int r = cmp(withinCapabilities, o.withinCapabilities);
+                if (r == 0) r = cmp(o.preferredLanguageIndex, preferredLanguageIndex);
+                if (r == 0) r = cmp(preferredLanguageScore, o.preferredLanguageScore);
+                if (r == 0) r = cmp(preferredRoleFlagsScore, o.preferredRoleFlagsScore);
+                if (r == 0) r = cmp(o.preferredLabelMatchIndex, preferredLabelMatchIndex);
+                if (r == 0) r = cmp(isDefault, o.isDefault);
+                if (r == 0) r = cmp(hasMainOrNoRoleFlag, o.hasMainOrNoRoleFlag);
+                if (r == 0) r = cmp(o.localeLanguageMatchIndex, localeLanguageMatchIndex);
+                if (r == 0) r = cmp(localeLanguageScore, o.localeLanguageScore);
+                if (r == 0) r = cmp(withinConstraints, o.withinConstraints);
+                if (r == 0) r = cmp(o.preferredMimeTypeMatchIndex, preferredMimeTypeMatchIndex);
+                if (r == 0 && forceLowestBitrate) r = -CompareFormatValue(bitrate, o.bitrate);
+                // usesPrimaryDecoder / usesHardwareAcceleration: the same platform decoders here.
+                if (r == 0) r = cmp(objectBased, o.objectBased);
+                if (r == 0) r = quality(channelCount, o.channelCount);
+                if (r == 0) r = quality(sampleRate, o.sampleRate);
+                if (r == 0 && language == o.language) r = quality(bitrate, o.bitrate);
+                return r;
+            }
+        };
+    }
+
+    int SelectAudioTrack(const std::vector<Format>& tracks, const std::vector<bool>& supported, const TrackSelectionParameters& p,
+                         const std::vector<std::string>& systemLanguagesRaw) {
+        if (p.disabledTrackTypes.contains(TrackType::Audio)) return -1;
+        std::vector<std::string> preferred, system;
+        for (const auto& l : p.preferredAudioLanguages) preferred.push_back(NormalizeLanguageCode(l));
+        for (const auto& l : systemLanguagesRaw) system.push_back(NormalizeLanguageCode(l));
+        int best = -1;
+        AudioTrackInfo bestInfo;
+        for (std::size_t i = 0; i < tracks.size(); ++i) {
+            const Format& f = tracks[i];
+            const std::string language = f.language.empty() ? std::string() : NormalizeLanguageCode(f.language);
+            AudioTrackInfo info;
+            info.forceLowestBitrate = p.forceLowestBitrate;
+            info.language = NormalizeUndetermined(language.empty() ? std::nullopt : std::optional(language));
+            info.withinCapabilities = i < supported.size() && supported[i];
+            for (std::size_t l = 0; l < preferred.size(); ++l)
+                if (const int score = FormatLanguageScore(language, preferred[l], false); score > 0) {
+                    info.preferredLanguageIndex = int(l);
+                    info.preferredLanguageScore = score;
+                    break;
+                }
+            info.preferredRoleFlagsScore = RoleFlagMatchScore(f.roleFlags, p.preferredAudioRoleFlags);
+            info.preferredLabelMatchIndex = BestLabelMatchIndex(f.label, p.preferredAudioLabels);
+            info.hasMainOrNoRoleFlag = f.roleFlags == 0 || (f.roleFlags & kRoleFlagMain) != 0;
+            info.isDefault = (f.selectionFlags & kSelectionFlagDefault) != 0;
+            info.objectBased = IsObjectBasedAudio(f.sampleMimeType);
+            info.channelCount = f.channelCount;
+            info.sampleRate = f.sampleRate;
+            info.bitrate = f.bitrate;
+            info.withinConstraints = (f.bitrate == -1 || f.bitrate <= p.maxAudioBitrate) && (f.channelCount == -1 || f.channelCount <= p.maxAudioChannelCount);
+            for (std::size_t l = 0; l < system.size(); ++l)
+                if (const int score = FormatLanguageScore(language, system[l], false); score > 0) {
+                    info.localeLanguageMatchIndex = int(l);
+                    info.localeLanguageScore = score;
+                    break;
+                }
+            for (std::size_t m = 0; m < p.preferredAudioMimeTypes.size(); ++m)
+                if (!f.sampleMimeType.empty() && f.sampleMimeType == p.preferredAudioMimeTypes[m]) {
+                    info.preferredMimeTypeMatchIndex = int(m);
+                    break;
+                }
+            const bool eligible = info.withinCapabilities && (info.withinConstraints || p.exceedAudioConstraintsIfNecessary);
+            if (!eligible) continue;
+            if (best < 0 || info.CompareTo(bestInfo) > 0) {
+                best = int(i);
+                bestInfo = info;
+            }
+        }
+        return best;
     }
 
     std::string NormalizeLanguageCode(std::string_view language) {

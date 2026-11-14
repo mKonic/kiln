@@ -93,6 +93,9 @@ namespace kiln::media {
         PlaybackParameters playbackParameters;
         // getCurrentCues: the subtitles showing now (the selected text track's, at the position).
         CueGroup currentCues;
+        // getCurrentTracks: the current item's tracks and which play (the media's, then its
+        // subtitles').
+        Tracks tracks;
         bool operator==(const PlayerState&) const = default;
     };
 
@@ -115,6 +118,7 @@ namespace kiln::media {
         std::int64_t clipStartMs = 0;                     // where a repeat starts again
         std::int64_t endPositionMs = kTimeEndOfSource;   // the clipped end
         std::uint64_t loadId = 0;                         // reported back with its states
+        TrackSelectionParameters trackSelection;          // which of its tracks to play
     };
 
     // What decodes: the platform's engine. Its methods are called on the main thread; it reports
@@ -133,6 +137,8 @@ namespace kiln::media {
         virtual void SetSurface(ui::PlatformSurface surface) = 0;
         // Speed (the audio time-stretched, its pitch kept unless pitch says otherwise).
         virtual void SetPlaybackParameters(PlaybackParameters) {}
+        // New track preferences for the current load (it reports its Tracks with what plays).
+        virtual void SetTrackSelectionParameters(TrackSelectionParameters) {}
         // The state of the load it belongs to; looped: repeat started the item again.
         kiln::Function<void(const PlayerState&, std::uint64_t loadId)> onState;
         kiln::Function<void(std::uint64_t loadId)> onLooped;
@@ -222,8 +228,10 @@ namespace kiln::media {
         void SetPlaybackSpeed(float speed);
         const PlaybackParameters& GetPlaybackParameters() const;
 
-        // Which tracks play: the text track among each item's subtitleConfigurations (WebVTT and
-        // SubRip, by mimeType or a .vtt / .srt uri), chosen as DefaultTrackSelector does.
+        // Which tracks play, chosen as DefaultTrackSelector does: the media's audio track (by
+        // language, role, label, format, then the system's languages and quality) and video, and a
+        // text track among each item's subtitleConfigurations (WebVTT and SubRip, by mimeType or a
+        // .vtt / .srt uri). Overrides name groups by Tracks::Group::id.
         void SetTrackSelectionParameters(TrackSelectionParameters parameters);
         const TrackSelectionParameters& GetTrackSelectionParameters() const;
 

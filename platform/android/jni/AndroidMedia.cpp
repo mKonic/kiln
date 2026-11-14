@@ -9,6 +9,8 @@
 
 #include <aaudio/AAudio.h>
 #include "kiln/media/Sonic.h"
+#include "kiln/media/TrackSelection.h"
+#include "kiln/ui/Configuration.h"
 #include <android/log.h>
 #include <android/native_window.h>
 #include <media/NdkMediaCodec.h>
@@ -177,6 +179,12 @@ namespace kiln::android {
             void SetRepeat(bool repeat) override { Command([&] { m_RepeatWanted = repeat; }); }
             void SetVolume(float v) override { Command([&] { m_VolumeWanted = v; }); }
             void SetPlaybackParameters(media::PlaybackParameters p) override { Command([&] { m_ParamsWanted = p; }); }
+            void SetTrackSelectionParameters(media::TrackSelectionParameters p) override {
+                Command([&] {
+                    m_TrackSelectionWanted = std::move(p);
+                    m_TrackSelectionChanged = true;
+                });
+            }
             // AAudio's usage and content type have AudioAttributes' values; used when the stream
             // next opens.
             void SetAudioAttributes(media::AudioAttributes a) override {
@@ -211,7 +219,7 @@ namespace kiln::android {
                     std::unique_lock lock(m_Mutex);
                     bool busy = m_Prepared && (m_Playing || !m_FirstFrameRendered || NeedsDecoding());
                     if (busy) m_Cv.wait_for(lock, std::chrono::milliseconds(10));
-                    else m_Cv.wait(lock, [this] { return m_Quit || m_UriChanged || m_SeekUs || m_PlayWhenReady != m_PlayingWanted || m_AppliedSurface != m_SurfaceGeneration || m_RepeatWanted != m_Repeat || m_VolumeWanted != m_Volume || m_ParamsWanted != m_Params; });
+                    else m_Cv.wait(lock, [this] { return m_Quit || m_UriChanged || m_SeekUs || m_PlayWhenReady != m_PlayingWanted || m_AppliedSurface != m_SurfaceGeneration || m_RepeatWanted != m_Repeat || m_VolumeWanted != m_Volume || m_ParamsWanted != m_Params || m_TrackSelectionChanged; });
                     if (m_Quit) break;
                     // Take the commands.
                     std::optional<media::EngineLoad> load;
@@ -222,6 +230,9 @@ namespace kiln::android {
                     m_Volume = m_VolumeWanted;
                     const bool parametersChanged = m_ParamsWanted != m_Params;
                     const media::PlaybackParameters parameters = m_ParamsWanted;
+                    std::optional<media::TrackSelectionParameters> trackSelection;
+                    if (m_TrackSelectionChanged) trackSelection = m_TrackSelectionWanted;
+                    m_TrackSelectionChanged = false;
                     ANativeWindow* window = nullptr;
                     bool surfaceChanged = m_AppliedSurface != m_SurfaceGeneration;
                     std::uint64_t generation = m_SurfaceGeneration;
@@ -237,6 +248,8 @@ namespace kiln::android {
                         m_EndUs = load->endPositionMs == media::kTimeEndOfSource ? -1 : load->endPositionMs * 1000;
                         m_StartClipUs = std::max<std::int64_t>(load->clipStartMs, 0) * 1000;
                         // From the item's start (a clipped start, or where playback resumes).
+                        m_Uri = load->uri;
+                        m_TrackSelection = load->trackSelection;
                         Open(load->uri, m_StartUs);
                     }
                     if (surfaceChanged) {
@@ -250,6 +263,7 @@ namespace kiln::android {
                     }
                     if (seek && m_Prepared) Seek(std::min(*seek, m_DurationUs > 0 ? m_DurationUs : *seek));
                     if (parametersChanged) ApplyParameters(parameters);
+                    if (trackSelection) ApplyTrackSelection(std::move(*trackSelection));
                     m_PlayingWanted = play;
                     if (m_Prepared) {
                         SetPlaying(play && m_State.state != media::PlaybackState::Ended);
@@ -306,20 +320,28 @@ namespace kiln::android {
                     return Fail("cannot read " + uri, media::PlaybackException::ParsingContainerUnsupported);
                 }
                 m_DurationUs = -1;
-                int videoIndex = -1, audioIndex = -1;
+                m_Formats.clear();
+                m_Types.clear();
+                bool anyAudioOrVideo = false;
                 for (size_t i = 0, n = AMediaExtractor_getTrackCount(probe); i < n; ++i) {
                     AMediaFormat* f = AMediaExtractor_getTrackFormat(probe, i);
-                    const char* mime = nullptr;
-                    AMediaFormat_getString(f, AMEDIAFORMAT_KEY_MIME, &mime);
                     std::int64_t d = 0;
                     if (AMediaFormat_getInt64(f, AMEDIAFORMAT_KEY_DURATION, &d)) m_DurationUs = std::max(m_DurationUs, d);
-                    if (mime && std::strncmp(mime, "video/", 6) == 0 && videoIndex < 0) videoIndex = int(i);
-                    if (mime && std::strncmp(mime, "audio/", 6) == 0 && audioIndex < 0) audioIndex = int(i);
+                    const media::Format format = FormatOf(f, int(i));
+                    const std::string& mime = format.sampleMimeType;
+                    m_Types.push_back(mime.starts_with("video/") ? media::TrackType::Video
+                                      : mime.starts_with("audio/") ? media::TrackType::Audio
+                                      : mime.starts_with("text/") || mime.starts_with("application/") ? media::TrackType::Text
+                                                                                                   : media::TrackType::Unknown);
+                    anyAudioOrVideo = anyAudioOrVideo || m_Types.back() == media::TrackType::Video || m_Types.back() == media::TrackType::Audio;
+                    m_Formats.push_back(format);
                     AMediaFormat_delete(f);
                 }
                 AMediaExtractor_delete(probe);
                 if (probeSource) AMediaDataSource_delete(probeSource);
-                if (videoIndex < 0 && audioIndex < 0) return Fail("no audio or video in " + uri, media::PlaybackException::ParsingContainerUnsupported);
+                if (!anyAudioOrVideo) return Fail("no audio or video in " + uri, media::PlaybackException::ParsingContainerUnsupported);
+                const auto [videoIndex, audioIndex] = SelectTracks();
+                ReportTracks(videoIndex, audioIndex);
                 if (videoIndex >= 0 && !(m_Video = OpenTrack(videoIndex)))
                     return Fail("cannot read the video of " + uri, media::PlaybackException::ParsingContainerMalformed);
                 if (audioIndex >= 0 && !(m_Audio = OpenTrack(audioIndex)))
@@ -409,6 +431,81 @@ namespace kiln::android {
                     m_Video->seekTargetUs = now;
                     m_FirstFrameRendered = false;
                 }
+            }
+
+            // --- tracks ---------------------------------------------------------------------------
+            // A track's Format from the extractor (its id the container's track id, else n + 1).
+            static media::Format FormatOf(AMediaFormat* f, int index) {
+                media::Format out;
+                const char* s = nullptr;
+                if (AMediaFormat_getString(f, AMEDIAFORMAT_KEY_MIME, &s) && s) out.sampleMimeType = s;
+                if (AMediaFormat_getString(f, AMEDIAFORMAT_KEY_LANGUAGE, &s) && s && std::strcmp(s, "und") != 0) out.language = media::NormalizeLanguageCode(s);
+                std::int32_t v = 0;
+                out.id = std::to_string(AMediaFormat_getInt32(f, AMEDIAFORMAT_KEY_TRACK_ID, &v) ? v : index + 1);
+                if (AMediaFormat_getInt32(f, AMEDIAFORMAT_KEY_BIT_RATE, &v) && v > 0) out.bitrate = v;
+                if (AMediaFormat_getInt32(f, AMEDIAFORMAT_KEY_CHANNEL_COUNT, &v) && v > 0) out.channelCount = v;
+                if (AMediaFormat_getInt32(f, AMEDIAFORMAT_KEY_SAMPLE_RATE, &v) && v > 0) out.sampleRate = v;
+                if (AMediaFormat_getInt32(f, AMEDIAFORMAT_KEY_WIDTH, &v) && v > 0) out.width = v;
+                if (AMediaFormat_getInt32(f, AMEDIAFORMAT_KEY_HEIGHT, &v) && v > 0) out.height = v;
+                float rate = 0;
+                if (AMediaFormat_getFloat(f, AMEDIAFORMAT_KEY_FRAME_RATE, &rate) && rate > 0) out.frameRate = rate;
+                else if (AMediaFormat_getInt32(f, AMEDIAFORMAT_KEY_FRAME_RATE, &v) && v > 0) out.frameRate = float(v);
+                if (AMediaFormat_getInt32(f, AMEDIAFORMAT_KEY_IS_DEFAULT, &v) && v) out.selectionFlags |= media::kSelectionFlagDefault;
+                if (AMediaFormat_getInt32(f, AMEDIAFORMAT_KEY_IS_FORCED_SUBTITLE, &v) && v) out.selectionFlags |= media::kSelectionFlagForced;
+                if (AMediaFormat_getInt32(f, AMEDIAFORMAT_KEY_IS_AUTOSELECT, &v) && v) out.selectionFlags |= media::kSelectionFlagAutoselect;
+                return out;
+            }
+            // Which of the media's tracks play, by the track selection parameters: an override, else
+            // the first video track and the audio track AudioTrackInfo ranks first. Embedded text
+            // tracks are listed but not played.
+            std::pair<int, int> SelectTracks() const {
+                auto pick = [&](media::TrackType type, auto&& otherwise) -> int {
+                    if (m_TrackSelection.disabledTrackTypes.contains(type)) return -1;
+                    if (auto o = media::OverrideForType(m_TrackSelection, type)) {
+                        for (std::size_t i = 0; i < m_Formats.size(); ++i)
+                            if (m_Types[i] == type && o->groupId == "m" + std::to_string(i)) return o->track == 0 ? int(i) : -1;
+                    }
+                    return otherwise();
+                };
+                const int video = pick(media::TrackType::Video, [&] {
+                    for (std::size_t i = 0; i < m_Formats.size(); ++i) if (m_Types[i] == media::TrackType::Video) return int(i);
+                    return -1;
+                });
+                const int audio = pick(media::TrackType::Audio, [&] {
+                    std::vector<media::Format> formats;
+                    std::vector<int> indices;
+                    for (std::size_t i = 0; i < m_Formats.size(); ++i)
+                        if (m_Types[i] == media::TrackType::Audio) {
+                            formats.push_back(m_Formats[i]);
+                            indices.push_back(int(i));
+                        }
+                    const int best = media::SelectAudioTrack(formats, std::vector<bool>(formats.size(), true), m_TrackSelection, ui::PlatformLocaleList());
+                    return best < 0 ? -1 : indices[std::size_t(best)];
+                });
+                return { video, audio };
+            }
+            void ReportTracks(int video, int audio) {
+                m_SelectedVideo = video;
+                m_SelectedAudio = audio;
+                m_State.tracks = {};
+                for (std::size_t i = 0; i < m_Formats.size(); ++i) {
+                    media::Tracks::Group g;
+                    g.id = "m" + std::to_string(i);
+                    g.type = m_Types[i];
+                    g.formats = { m_Formats[i] };
+                    g.trackSupported = { m_Types[i] == media::TrackType::Video || m_Types[i] == media::TrackType::Audio };
+                    g.trackSelected = { int(i) == video || int(i) == audio };
+                    m_State.tracks.groups.push_back(std::move(g));
+                }
+            }
+            // New preferences: when the chosen tracks change, the media opens again where it is.
+            void ApplyTrackSelection(media::TrackSelectionParameters p) {
+                m_TrackSelection = std::move(p);
+                if (!m_Prepared) return;
+                const auto [video, audio] = SelectTracks();
+                if (video == m_SelectedVideo && audio == m_SelectedAudio) return;
+                const std::int64_t now = std::max<std::int64_t>(ClockUs(), 0);
+                Open(m_Uri, now);
             }
 
             // --- position and seeking -----------------------------------------------------------
@@ -859,6 +956,12 @@ namespace kiln::android {
             std::int64_t m_StartClipUs = 0;              // where a repeat starts again
             bool m_Network = false;
             media::PlaybackParameters m_ParamsWanted, m_Params;   // wanted: shared (m_Mutex)
+            media::TrackSelectionParameters m_TrackSelectionWanted, m_TrackSelection;   // wanted: shared
+            bool m_TrackSelectionChanged = false;                                         // shared
+            std::string m_Uri;
+            std::vector<media::Format> m_Formats;   // the media's tracks
+            std::vector<media::TrackType> m_Types;
+            int m_SelectedVideo = -1, m_SelectedAudio = -1;
             media::SonicProcessor m_Sonic;
             bool m_SonicEnded = false, m_SonicFirst = true;
             bool m_AllowDiscontinuity = true, m_Rebase = false;

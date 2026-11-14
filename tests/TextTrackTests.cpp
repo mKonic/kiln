@@ -260,3 +260,107 @@ TEST(PlayerShowsSideLoadedSubtitlesAtThePosition) {
     SetPlayerEngineFactory({});
     d.SetVirtualTime(wasVirtual);
 }
+
+TEST(AudioTrackSelectionAsDefaultTrackSelector) {
+    // DefaultTrackSelectorTest's AUDIO_FORMAT: AAC, stereo, 44.1 kHz, 128 kb/s; the system in en-US.
+    const Format audio{ .sampleMimeType = "audio/mp4a-latm", .bitrate = 128000, .channelCount = 2, .sampleRate = 44100 };
+    auto with = [&](auto f) { Format x = audio; f(x); return x; };
+    const std::vector<std::string> en{ "en-US" };
+    auto select = [&](const std::vector<Format>& tracks, const TrackSelectionParameters& p = {}) {
+        return SelectAudioTrack(tracks, std::vector<bool>(tracks.size(), true), p, en);
+    };
+    const Format fr = with([](Format& f) { f.language = "fra"; }), enA = with([](Format& f) { f.language = "eng"; });
+    CHECK(select({ fr, enA }, { .preferredAudioLanguages = { "eng" } }) == 1);
+    const Format noRoles = audio, less = with([](Format& f) { f.roleFlags = kRoleFlagCaption; }),
+                 more = with([](Format& f) { f.roleFlags = kRoleFlagCaption | kRoleFlagCommentary | kRoleFlagDub; });
+    CHECK(select({ noRoles, more, less }, { .preferredAudioRoleFlags = kRoleFlagCaption | kRoleFlagCommentary }) == 1);
+    CHECK(select({ noRoles, more, less }, { .preferredAudioRoleFlags = kRoleFlagCaption }) == 2);
+    const Format def = with([](Format& f) { f.selectionFlags = kSelectionFlagDefault; });
+    CHECK(select({ audio, def, less }) == 1);    // withoutPreferredAudioRoleFlags_selectsDefaultTrack
+    CHECK(select({ audio, less }) == 0);         // ... OrDefaultTrack_selectsFirstTrack
+    const Format frDefault = with([](Format& f) { f.language = "fra"; f.selectionFlags = kSelectionFlagDefault; });
+    CHECK(select({ frDefault, enA }, { .preferredAudioLanguages = { "eng" } }) == 1);
+    const Format low = with([](Format& f) { f.language = "en"; f.bitrate = 15000; }), high = with([](Format& f) { f.language = "en"; f.bitrate = 30000; });
+    CHECK(select({ low, high }) == 1);           // same language: the higher bitrate
+    const Format hi = with([](Format& f) { f.language = "hi"; f.bitrate = 15000; }), te = with([](Format& f) { f.language = "te"; f.bitrate = 30000; });
+    CHECK(select({ hi, te }) == 0);              // different languages: the first
+    // Preferred mime types.
+    const Format aac{ .sampleMimeType = "audio/mp4a-latm" }, opus{ .sampleMimeType = "audio/opus" }, flac{ .sampleMimeType = "audio/flac" };
+    CHECK(select({ aac, opus, flac }, { .preferredAudioMimeTypes = { "audio/opus" } }) == 1);
+    CHECK(select({ aac, opus, flac }, { .preferredAudioMimeTypes = { "audio/opus", "audio/mp4a-latm" } }) == 1);
+    CHECK(select({ aac, opus, flac }, { .preferredAudioMimeTypes = { "audio/3gpp", "audio/flac" } }) == 2);
+    CHECK(select({ aac, opus, flac }) == 0);
+    // Labels; role flags over labels.
+    const Format labeled = with([](Format& f) { f.label = "commentary"; });
+    CHECK(select({ audio, labeled }, { .preferredAudioLabels = { "commentary" } }) == 1);
+    CHECK(select({ with([](Format& f) { f.label = "low_priority"; }), with([](Format& f) { f.label = "high_priority"; }) },
+                 { .preferredAudioLabels = { "high_priority", "low_priority" } }) == 1);
+    CHECK(select({ with([](Format& f) { f.roleFlags = kRoleFlagDescribesVideo; f.label = "commentary"; }), less },
+                 { .preferredAudioRoleFlags = kRoleFlagCaption, .preferredAudioLabels = { "commentary" } }) == 1);
+    // The system's language without a preference; disabled audio; overrides.
+    CHECK(SelectAudioTrack({ fr, enA }, { true, true }, {}, en) == 1);
+    CHECK(SelectAudioTrack({ fr, enA }, { true, true }, {}, { "fr-FR", "en-US" }) == 0);
+    CHECK(select({ audio }, TrackSelectionParameters{}.SetTrackTypeDisabled(TrackType::Audio, true)) == -1);
+    TrackSelectionParameters p;
+    p.SetOverrideForType({ .type = TrackType::Audio, .groupId = "m1", .trackIndices = { 0 } });
+    p.AddOverride({ .type = TrackType::Text, .groupId = "s0", .trackIndices = {} });
+    p.SetOverrideForType({ .type = TrackType::Audio, .groupId = "m2", .trackIndices = { 0 } });
+    CHECK(p.overrides.size() == 2 && OverrideForType(p, TrackType::Audio)->groupId == "m2" && OverrideForType(p, TrackType::Text)->track == -1
+          && !OverrideForType(p, TrackType::Video));
+}
+
+TEST(PlayerTracksJoinTheMediasAndTheSubtitles) {
+    auto& d = rt::Dispatcher::Main();
+    struct Engine : PlayerEngine {
+        EngineLoad load;
+        TrackSelectionParameters parameters;
+        void Load(EngineLoad l) override { load = l; parameters = l.trackSelection; }
+        void SetPlayWhenReady(bool) override {}
+        void SeekTo(std::int64_t) override {}
+        void SetRepeat(bool) override {}
+        void SetVolume(float) override {}
+        void SetSurface(ui::PlatformSurface) override {}
+        void SetTrackSelectionParameters(TrackSelectionParameters p) override { parameters = std::move(p); }
+    };
+    Engine* engine = nullptr;
+    SetPlayerEngineFactory([&] {
+        auto e = std::make_unique<Engine>();
+        engine = e.get();
+        return std::unique_ptr<PlayerEngine>(std::move(e));
+    });
+    {
+        Player p;
+        MediaItem item = MediaItem::FromUri("asset:///clip.mp4");
+        item.subtitleConfigurations = { { .uri = "a.vtt", .language = "de" }, { .uri = "b.vtt", .language = "fr", .selectionFlags = kSelectionFlagForced } };
+        p.SetMediaItem(item);
+        p.Prepare();
+        // The engine's tracks: video and two audio languages, French playing.
+        PlayerState s;
+        s.state = PlaybackState::Ready;
+        auto group = [](std::string id, TrackType type, Format f, bool selected) {
+            return Tracks::Group{ .id = std::move(id), .type = type, .formats = { std::move(f) }, .trackSupported = { true }, .trackSelected = { selected } };
+        };
+        s.tracks.groups = { group("m0", TrackType::Video, {}, true), group("m1", TrackType::Audio, { .language = "en" }, false),
+                            group("m2", TrackType::Audio, { .language = "fr" }, true) };
+        engine->onState(s, engine->load.loadId);
+        d.RunPending();
+        const Tracks& t = p.State().tracks;
+        CHECK(t.groups.size() == 5 && t.groups[3].id == "s0" && t.groups[3].type == TrackType::Text);
+        // The forced French subtitle follows the French audio.
+        CHECK(t.groups.size() == 5 && !t.groups[3].trackSelected[0] && t.groups[3].formats[0].language == "de");
+        CHECK(p.State().tracks.IsTypeSelected(TrackType::Text) && p.State().tracks.groups.back().trackSelected[0]);
+        // An override for the German one; the parameters reach the engine.
+        TrackSelectionParameters params;
+        params.SetOverrideForType({ .type = TrackType::Text, .groupId = "s0", .trackIndices = { 0 } });
+        params.preferredAudioLanguages = { "en" };
+        p.SetTrackSelectionParameters(params);
+        CHECK(engine->parameters == params);
+        CHECK(p.State().tracks.groups[3].trackSelected[0] && !p.State().tracks.groups[4].trackSelected[0]);
+        // An empty override: no subtitle.
+        params.SetOverrideForType({ .type = TrackType::Text, .groupId = "s0", .trackIndices = {} });
+        p.SetTrackSelectionParameters(params);
+        CHECK(!p.State().tracks.IsTypeSelected(TrackType::Text));
+    }
+    d.RunPending();
+    SetPlayerEngineFactory({});
+}

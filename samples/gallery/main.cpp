@@ -408,8 +408,16 @@ namespace {
             BasicText(s.error.empty() ? time : s.error, Padding(Modifier{}, 16_dp, 0_dp), { 14, kOnSurface });
             char speed[16];
             std::snprintf(speed, sizeof speed, "%gx", double(s.playbackParameters.speed));
+            // What plays (Tracks): the audio's language, and whether subtitles show.
+            std::string audio = "no audio", subtitles = "subtitles off";
+            for (const auto& g : s.tracks.groups)
+                for (std::size_t i = 0; i < g.formats.size(); ++i) {
+                    if (!g.trackSelected[i]) continue;
+                    if (g.type == kiln::media::TrackType::Audio) audio = "audio " + (g.formats[i].language.empty() ? std::string("und") : g.formats[i].language);
+                    if (g.type == kiln::media::TrackType::Text) subtitles = "subtitles on";
+                }
             BasicText(s.mediaMetadata.title + " (" + std::to_string(s.currentMediaItemIndex + 1) + " of " + std::to_string(s.mediaItemCount) +
-                          ", " + speed + ")",
+                          ", " + speed + ", " + audio + ", " + subtitles + ")",
                       Padding(Modifier{}, 16_dp, 0_dp), { 14, kOnSurface });
             FlowRow(Padding(Modifier{}, 16_dp, 0_dp), Arrangement::SpacedBy(8_dp), Arrangement::SpacedBy(8_dp), AlignmentV::CenterVertically(), [&player, &s, &cameraOn, askCamera] {
                 auto button = [](const char* label, kiln::Function<void()> onClick) {
@@ -419,6 +427,17 @@ namespace {
                 button(s.playWhenReady ? "Pause" : "Play", [&player, play = !s.playWhenReady] { play ? player.Play() : player.Pause(); });
                 button("Previous", [&player] { player.SeekToPrevious(); });
                 button("Next", [&player] { player.SeekToNext(); });
+                // Track selection: the other audio language; subtitles on and off.
+                button("Audio", [&player] {
+                    auto p = player.GetTrackSelectionParameters();
+                    p.preferredAudioLanguages = { p.preferredAudioLanguages == std::vector<std::string>{ "fr" } ? "en" : "fr" };
+                    player.SetTrackSelectionParameters(p);
+                });
+                button("Subtitles", [&player] {
+                    auto p = player.GetTrackSelectionParameters();
+                    p.SetTrackTypeDisabled(kiln::media::TrackType::Text, !p.disabledTrackTypes.contains(kiln::media::TrackType::Text));
+                    player.SetTrackSelectionParameters(p);
+                });
                 button("Speed", [&player] {
                     const float speed = player.GetPlaybackParameters().speed;
                     player.SetPlaybackSpeed(speed == 1.0f ? 1.5f : speed == 1.5f ? 2.0f : speed == 2.0f ? 0.75f : 1.0f);
