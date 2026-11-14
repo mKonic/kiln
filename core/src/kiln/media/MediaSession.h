@@ -21,16 +21,13 @@
 
 namespace kiln::media {
 
-    // MediaMetadata: what the controls show.
-    struct MediaMetadata {
-        std::string title, artist, albumTitle;
-        // asset:///, file:///, an absolute path or content://; empty: none.
-        std::string artworkUri;
-        bool operator==(const MediaMetadata&) const = default;
-    };
+    // What the controls show is the current item's MediaMetadata (kiln/media/MediaItem.h), with
+    // SetMetadata's fields over it.
 
     struct MediaSessionOptions {
-        // Shown as buttons when set (COMMAND_SEEK_TO_PREVIOUS / NEXT).
+        // The previous / next buttons' actions, instead of the player's SeekToPrevious /
+        // SeekToNext (which show the buttons as media3 does: previous with any item, next with a
+        // next item). Set, they always show.
         kiln::Function<void()> onSkipToPrevious, onSkipToNext;
         // Tapping the notification opens the app at this deep link (empty: its launch screen).
         std::string sessionActivityUri;

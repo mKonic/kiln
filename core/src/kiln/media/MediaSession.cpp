@@ -48,15 +48,19 @@ namespace kiln::media {
     void MediaSession::Publish() {
         const PlayerState& p = m_Player.State();
         MediaSessionSnapshot s;
-        s.metadata = m_Metadata;
+        // The current item's metadata (Player.getMediaMetadata), with SetMetadata's over it.
+        s.metadata = p.mediaMetadata;
+        s.metadata.Populate(m_Metadata);
         s.state = p.state;
         s.playWhenReady = p.playWhenReady;
         s.isPlaying = p.isPlaying;
         s.positionMs = p.positionMs;
         s.durationMs = p.durationMs;
         s.error = p.error;
-        s.canSkipToPrevious = bool(m_Options.onSkipToPrevious);
-        s.canSkipToNext = bool(m_Options.onSkipToNext);
+        // Util.getAvailableCommands for on-demand media: previous whenever there is an item (it
+        // restarts the item), next when there is a next item; the app's handlers add the buttons.
+        s.canSkipToPrevious = bool(m_Options.onSkipToPrevious) || p.mediaItemCount > 0;
+        s.canSkipToNext = bool(m_Options.onSkipToNext) || p.hasNextMediaItem;
         s.sessionActivityUri = m_Options.sessionActivityUri;
 
         // shouldShowNotification, SHOW_NOTIFICATION_FOR_IDLE_PLAYER_AFTER_STOP_OR_ERROR (the
@@ -109,18 +113,21 @@ namespace kiln::media {
     void MediaSession::OnCommand(MediaSessionCommand c, std::int64_t positionMs) {
         switch (c) {
             case MediaSessionCommand::Play:
-                // Util.handlePlayButtonAction: from the end, start over.
-                if (m_Player.State().state == PlaybackState::Ended) m_Player.SeekTo(0);
+                // Util.handlePlayButtonAction: prepared when idle, from the start when ended.
+                if (m_Player.State().state == PlaybackState::Idle) m_Player.Prepare();
+                else if (m_Player.State().state == PlaybackState::Ended) m_Player.SeekToDefaultPosition();
                 m_Player.Play();
                 break;
-            case MediaSessionCommand::Pause:
-            case MediaSessionCommand::Stop: m_Player.Pause(); break;
+            case MediaSessionCommand::Pause: m_Player.Pause(); break;
+            case MediaSessionCommand::Stop: m_Player.Stop(); break;
             case MediaSessionCommand::SeekTo: m_Player.SeekTo(positionMs); break;
             case MediaSessionCommand::SkipToPrevious:
                 if (m_Options.onSkipToPrevious) m_Options.onSkipToPrevious();
+                else m_Player.SeekToPrevious();
                 break;
             case MediaSessionCommand::SkipToNext:
                 if (m_Options.onSkipToNext) m_Options.onSkipToNext();
+                else m_Player.SeekToNext();
                 break;
             case MediaSessionCommand::NotificationDismissed: m_WasDismissed = true; break;
         }

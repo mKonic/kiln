@@ -1831,7 +1831,8 @@ KILN_API kiln_media_session* kiln_remember_media_session(kiln_key key, kiln_play
 }
 KILN_API void kiln_media_session_set_metadata(kiln_media_session* s, const char* title, const char* artist, const char* album, const char* artwork) {
     TRY {
-        if (s) s->session->SetMetadata({ ToString(title), ToString(artist), ToString(album), ToString(artwork) });
+        if (s) s->session->SetMetadata({ .title = ToString(title), .artist = ToString(artist), .albumTitle = ToString(album),
+                                         .artworkUri = ToString(artwork) });
     } CATCH_VOID
 }
 

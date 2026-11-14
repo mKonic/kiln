@@ -170,7 +170,7 @@ namespace kiln::android {
                 if (m_Window) ANativeWindow_release(m_Window);
             }
 
-            void SetMediaUri(std::string uri) override { Command([&] { m_Uri = std::move(uri); m_UriChanged = true; }); }
+            void Load(media::EngineLoad load) override { Command([&] { m_Load = std::move(load); m_UriChanged = true; }); }
             void SetPlayWhenReady(bool play) override { Command([&] { m_PlayWhenReady = play; }); }
             void SeekTo(std::int64_t ms) override { Command([&] { m_SeekUs = ms * 1000; }); }
             void SetRepeat(bool repeat) override { Command([&] { m_RepeatWanted = repeat; }); }
@@ -212,8 +212,8 @@ namespace kiln::android {
                     else m_Cv.wait(lock, [this] { return m_Quit || m_UriChanged || m_SeekUs || m_PlayWhenReady != m_PlayingWanted || m_AppliedSurface != m_SurfaceGeneration || m_RepeatWanted != m_Repeat || m_VolumeWanted != m_Volume; });
                     if (m_Quit) break;
                     // Take the commands.
-                    std::optional<std::string> uri;
-                    if (m_UriChanged) { uri = m_Uri; m_UriChanged = false; }
+                    std::optional<media::EngineLoad> load;
+                    if (m_UriChanged) { load = m_Load; m_UriChanged = false; }
                     std::optional<std::int64_t> seek = std::exchange(m_SeekUs, std::nullopt);
                     bool play = m_PlayWhenReady;
                     m_Repeat = m_RepeatWanted;
@@ -227,7 +227,15 @@ namespace kiln::android {
                     }
                     lock.unlock();
 
-                    if (uri) Open(*uri);
+                    if (load) {
+                        m_LoadId = load->loadId;
+                        m_StartUs = std::max<std::int64_t>(load->startPositionMs, 0) * 1000;
+                        m_EndUs = load->endPositionMs == media::kTimeEndOfSource ? -1 : load->endPositionMs * 1000;
+                        m_StartClipUs = std::max<std::int64_t>(load->clipStartMs, 0) * 1000;
+                        Open(load->uri);
+                        // The item's start (a clipped start, or where playback resumes).
+                        if (m_Prepared && m_StartUs > 0) Seek(m_StartUs);
+                    }
                     if (surfaceChanged) {
                         ApplySurface(window);
                         if (window) ANativeWindow_release(window);
@@ -255,11 +263,13 @@ namespace kiln::android {
                     || (m_Audio && !m_AudioReady);
             }
 
-            void Fail(const std::string& message) {
+            void Fail(const std::string& message, int code = media::PlaybackException::Unspecified) {
                 __android_log_print(ANDROID_LOG_ERROR, "kiln", "media: %s", message.c_str());
                 Close();
                 m_State = {};
                 m_State.error = message;
+                m_State.playerError = media::PlaybackException{ .errorCode = code, .message = message,
+                                                                .timestampMs = NowUs() / 1000 };
                 m_State.playWhenReady = m_PlayingWanted;
             }
 
@@ -280,12 +290,14 @@ namespace kiln::android {
                 if (uri.empty()) return;
                 std::string error;
                 m_Source = OpenSource(uri, error);
-                if (!m_Source) return Fail(error);
+                if (!m_Source)
+                    return Fail(error, uri.starts_with("http") ? media::PlaybackException::IoNetworkConnectionFailed
+                                                              : media::PlaybackException::IoFileNotFound);
                 AMediaDataSource* probeSource = nullptr;
                 AMediaExtractor* probe = NewExtractor(*m_Source, &probeSource);
                 if (!probe) {
                     if (probeSource) AMediaDataSource_delete(probeSource);
-                    return Fail("cannot read " + uri);
+                    return Fail("cannot read " + uri, media::PlaybackException::ParsingContainerUnsupported);
                 }
                 m_DurationUs = -1;
                 int videoIndex = -1, audioIndex = -1;
@@ -301,9 +313,11 @@ namespace kiln::android {
                 }
                 AMediaExtractor_delete(probe);
                 if (probeSource) AMediaDataSource_delete(probeSource);
-                if (videoIndex < 0 && audioIndex < 0) return Fail("no audio or video in " + uri);
-                if (videoIndex >= 0 && !(m_Video = OpenTrack(videoIndex))) return Fail("cannot read the video of " + uri);
-                if (audioIndex >= 0 && !(m_Audio = OpenTrack(audioIndex))) return Fail("cannot read the audio of " + uri);
+                if (videoIndex < 0 && audioIndex < 0) return Fail("no audio or video in " + uri, media::PlaybackException::ParsingContainerUnsupported);
+                if (videoIndex >= 0 && !(m_Video = OpenTrack(videoIndex)))
+                    return Fail("cannot read the video of " + uri, media::PlaybackException::ParsingContainerMalformed);
+                if (audioIndex >= 0 && !(m_Audio = OpenTrack(audioIndex)))
+                    return Fail("cannot read the audio of " + uri, media::PlaybackException::ParsingContainerMalformed);
                 if (m_Video) {
                     std::int32_t w = 0, h = 0, rotation = 0;
                     AMediaFormat_getInt32(m_Video->format, AMEDIAFORMAT_KEY_WIDTH, &w);
@@ -317,7 +331,7 @@ namespace kiln::android {
                     m_Audio->codec = AMediaCodec_createDecoderByType(m_Audio->mime.c_str());
                     if (!m_Audio->codec || AMediaCodec_configure(m_Audio->codec, m_Audio->format, nullptr, nullptr, 0) != AMEDIA_OK
                         || AMediaCodec_start(m_Audio->codec) != AMEDIA_OK)
-                        return Fail("no decoder for " + m_Audio->mime);
+                        return Fail("no decoder for " + m_Audio->mime, media::PlaybackException::DecoderInitFailed);
                     AMediaFormat_getInt32(m_Audio->format, AMEDIAFORMAT_KEY_SAMPLE_RATE, &m_SampleRate);
                     AMediaFormat_getInt32(m_Audio->format, AMEDIAFORMAT_KEY_CHANNEL_COUNT, &m_Channels);
                 }
@@ -325,6 +339,7 @@ namespace kiln::android {
                 m_State.hasVideo = bool(m_Video);
                 m_State.hasAudio = bool(m_Audio);
                 m_State.durationMs = m_DurationUs >= 0 ? m_DurationUs / 1000 : -1;
+                m_Network = uri.starts_with("http://") || uri.starts_with("https://");
                 if (m_Video && m_LastWindow) CreateVideoCodec(m_LastWindow);
                 StartFrom(0);
             }
@@ -347,7 +362,7 @@ namespace kiln::android {
                 if (!m_Video->codec || AMediaCodec_configure(m_Video->codec, m_Video->format, window, nullptr, 0) != AMEDIA_OK
                     || AMediaCodec_start(m_Video->codec) != AMEDIA_OK) {
                     m_Video->ReleaseCodec();
-                    Fail("no decoder for " + m_Video->mime);
+                    Fail("no decoder for " + m_Video->mime, media::PlaybackException::DecoderInitFailed);
                     return false;
                 }
                 return true;
@@ -616,11 +631,15 @@ namespace kiln::android {
                 }
                 bool videoDone = !m_Video || !m_Video->codec || m_Video->outputDone;
                 bool audioDone = !m_Audio || (m_Audio->outputDone && m_PendingPcmOffset >= m_PendingPcm.size());
-                if (m_State.state == media::PlaybackState::Ready && videoDone && audioDone && ClockUs() >= m_DurationUs - 1000) {
+                // The media's end, or the item's clipped end (ClippingMediaSource).
+                const std::int64_t endUs = m_EndUs >= 0 && (m_DurationUs < 0 || m_EndUs < m_DurationUs) ? m_EndUs : m_DurationUs;
+                const bool clippedEnd = m_EndUs >= 0 && ClockUs() >= m_EndUs;
+                if (m_State.state == media::PlaybackState::Ready && ((videoDone && audioDone && ClockUs() >= m_DurationUs - 1000) || clippedEnd)) {
                     if (m_Repeat) {
-                        Seek(0);
+                        Seek(m_StartClipUs);
+                        if (onLooped) onLooped(m_LoadId);
                     } else {
-                        m_ClockBaseUs = std::max<std::int64_t>(m_DurationUs, 0);
+                        m_ClockBaseUs = std::max<std::int64_t>(endUs, 0);
                         SetPlaying(false);
                         m_State.state = media::PlaybackState::Ended;
                     }
@@ -635,14 +654,28 @@ namespace kiln::android {
                     std::int64_t us = ClockUs();
                     if (m_DurationUs > 0) us = std::min(us, m_DurationUs);
                     s.positionMs = std::max<std::int64_t>(us, 0) / 1000;
+                    // How far the source is read ahead: all of a local file; what the extractor
+                    // has cached of a stream.
+                    std::int64_t cached = -1;
+                    if (m_Network) {
+                        Track* t = m_Audio ? m_Audio.get() : m_Video.get();
+                        if (t) cached = AMediaExtractor_getCachedDuration(t->extractor);
+                    }
+                    if (!m_Network) s.bufferedPositionMs = m_DurationUs >= 0 ? m_DurationUs / 1000 : s.positionMs;
+                    else s.bufferedPositionMs = cached >= 0 ? s.positionMs + cached / 1000 : s.positionMs;
+                    if (m_DurationUs >= 0) s.bufferedPositionMs = std::min<std::int64_t>(s.bufferedPositionMs, m_DurationUs / 1000);
+                    s.isLoading = m_Network && cached >= 0 && (m_DurationUs < 0 || s.bufferedPositionMs < m_DurationUs / 1000);
                 }
                 std::int64_t now = NowUs();
                 media::PlayerState withoutPosition = s, lastWithoutPosition = m_Reported;
                 withoutPosition.positionMs = lastWithoutPosition.positionMs = 0;
-                if (withoutPosition != lastWithoutPosition || (s.positionMs != m_Reported.positionMs && now - m_ReportedUs >= 250'000)) {
+                withoutPosition.bufferedPositionMs = lastWithoutPosition.bufferedPositionMs = 0;
+                const bool moved = s.positionMs != m_Reported.positionMs || s.bufferedPositionMs != m_Reported.bufferedPositionMs;
+                if (withoutPosition != lastWithoutPosition || m_LoadId != m_ReportedLoad || (moved && now - m_ReportedUs >= 250'000)) {
                     m_Reported = s;
                     m_ReportedUs = now;
-                    if (onState) onState(s);
+                    m_ReportedLoad = m_LoadId;
+                    if (onState) onState(s, m_LoadId);
                 }
             }
 
@@ -650,7 +683,7 @@ namespace kiln::android {
             std::mutex m_Mutex;
             std::condition_variable m_Cv;
             bool m_Quit = false;
-            std::string m_Uri;
+            media::EngineLoad m_Load;
             bool m_UriChanged = false;
             bool m_PlayWhenReady = false;
             std::optional<std::int64_t> m_SeekUs;
@@ -681,6 +714,10 @@ namespace kiln::android {
             std::int64_t m_PendingPts = 0, m_AudioBaseFrame = -1, m_AudioBasePtsUs = 0;
             media::PlayerState m_State, m_Reported;
             std::int64_t m_ReportedUs = 0;
+            std::uint64_t m_LoadId = 0, m_ReportedLoad = 0;
+            std::int64_t m_StartUs = 0, m_EndUs = -1;   // this load's start and clipped end (-1: none)
+            std::int64_t m_StartClipUs = 0;              // where a repeat starts again
+            bool m_Network = false;
             std::thread m_Thread;   // last: starts once the members exist
         };
     }

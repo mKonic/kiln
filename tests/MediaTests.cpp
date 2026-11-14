@@ -49,10 +49,22 @@ namespace {
         std::int64_t seek = -1;
         float volume = 1;
         void* window = nullptr;
-        void SetMediaUri(std::string u) override { uri = std::move(u); }
+        EngineLoad load;
+        bool repeat = false;
+        PlaybackParameters parameters;
+        int loads = 0;
+        void Load(EngineLoad l) override {
+            load = l;
+            uri = l.uri;
+            seek = -1;
+            ++loads;
+        }
+        void SetPlaybackParameters(PlaybackParameters p) override { parameters = p; }
+        // A report for the current load, as the decoding thread sends it.
+        void Report(const PlayerState& s) { if (onState) onState(s, load.loadId); }
         void SetPlayWhenReady(bool p) override { play = p; }
         void SeekTo(std::int64_t ms) override { seek = ms; }
-        void SetRepeat(bool) override {}
+        void SetRepeat(bool r) override { repeat = r; }
         void SetVolume(float v) override { volume = v; }
         void SetSurface(ui::PlatformSurface s) override { window = s.nativeWindow; }
     };
@@ -82,6 +94,7 @@ TEST(MediaPlayerReachesItsEngineAndReportsOnTheMainThread) {
         int window = 0;
         p.SetSurface({ &window });
         CHECK(engine->uri == "asset:///a.mp4" && engine->play && engine->seek == 0 && engine->volume == 1 && engine->window == &window);
+        CHECK(engine->load.startPositionMs == 0 && engine->load.loadId != 0);
         p.Pause();
         CHECK(!engine->play);
         // A report from the decoding thread arrives with the dispatcher's next run.
@@ -89,12 +102,13 @@ TEST(MediaPlayerReachesItsEngineAndReportsOnTheMainThread) {
         s.state = PlaybackState::Ready;
         s.durationMs = 1500;
         s.videoWidth = 640;
-        engine->onState(s);
-        CHECK(p.State().state == PlaybackState::Idle);
+        engine->Report(s);
+        CHECK(p.State().state == PlaybackState::Buffering);   // prepared, loading
         rt::Dispatcher::Main().RunPending();
-        CHECK(p.State() == s);
+        CHECK(p.State().state == PlaybackState::Ready && p.State().durationMs == 1500 && p.State().videoWidth == 640);
+        CHECK(p.State().mediaItemCount == 1 && p.State().currentMediaItemIndex == 0);
         // After the player goes, a late report is dropped.
-        engine->onState(s);
+        engine->Report(s);
     }
     rt::Dispatcher::Main().RunPending();
     SetPlayerEngineFactory({});
@@ -241,12 +255,12 @@ TEST(MediaPlayerFollowsAudioFocusAndBecomingNoisy) {
         p.SetHandleAudioBecomingNoisy(true);
         p.SetMediaUri("asset:///a.mp3");
         p.Play();
-        // Idle: nothing asked yet; preparing asks for focus.
-        CHECK(audio.requests == 0 && engine->play);
+        // Prepared and asked to play: focus is asked for (ExoPlayer.prepare with playWhenReady).
+        CHECK(audio.requests == 1 && engine->play);
         PlayerState s;
         s.state = PlaybackState::Ready;
         s.isPlaying = true;
-        engine->onState(s);
+        engine->Report(s);
         rt::Dispatcher::Main().RunPending();
         CHECK(audio.requests == 1 && p.State().isPlaying);
         const int id = audio.lastId;
@@ -303,13 +317,20 @@ TEST(MediaSessionShowsTheNotificationAndKeepsTheServiceAsMedia3Does) {
         CHECK(!now().showNotification && !now().foreground && now().canSkipToNext && !now().canSkipToPrevious);
         session.SetMetadata({ .title = "Song", .artist = "Band" });
         CHECK(now().metadata.title == "Song");
-        auto report = [&](PlaybackState st, std::int64_t pos = 0) {
+        // An item, not prepared: the play button prepares it (handlePlayButtonAction).
+        MediaItem song = MediaItem::FromUri("asset:///song.mp3");
+        song.mediaMetadata.albumTitle = "Album";
+        song.mediaMetadata.title = "From the item";
+        p.SetMediaItem(song);
+        CHECK(now().metadata.title == "Song" && now().metadata.albumTitle == "Album" && now().canSkipToPrevious);
+        auto report = [&](PlaybackState st, std::int64_t pos = 0, std::string error = {}) {
             PlayerState s;
+            s.error = std::move(error);
             s.state = st;
             s.positionMs = pos;
             s.durationMs = 60'000;
             s.isPlaying = st == PlaybackState::Ready && engine->play;
-            engine->onState(s);
+            engine->Report(s);
             d.RunPending();
         };
         // Played from the controls: prepared and listened to, in the foreground.
@@ -336,15 +357,18 @@ TEST(MediaSessionShowsTheNotificationAndKeepsTheServiceAsMedia3Does) {
         // Playing again cancels it; idle after an error keeps the notification until dismissed.
         OnMediaSessionCommand(session.Id(), MediaSessionCommand::Play);
         CHECK(now().foreground);
-        report(PlaybackState::Idle);
-        CHECK(now().showNotification && now().foreground);   // the timeout, as after a pause
+        report(PlaybackState::Idle, 0, "boom");
+        CHECK(now().showNotification && now().foreground && now().error == "boom");   // the timeout, as after a pause
         OnMediaSessionCommand(session.Id(), MediaSessionCommand::NotificationDismissed);
         CHECK(!now().showNotification);
-        // Ended, then play: from the start.
-        report(PlaybackState::Ended, 60'000);
-        engine->seek = -1;
+        // After the error, play prepares again; ended, then play: from the start.
         OnMediaSessionCommand(session.Id(), MediaSessionCommand::Play);
-        CHECK(engine->seek == 0 && engine->play);
+        report(PlaybackState::Ended, 60'000);
+        CHECK(p.State().state == PlaybackState::Ended);
+        const int loads = engine->loads;
+        OnMediaSessionCommand(session.Id(), MediaSessionCommand::Play);
+        CHECK(engine->loads == loads + 1 && engine->load.startPositionMs == 0 && engine->play);
+        report(PlaybackState::Ready);
         OnMediaSessionCommand(session.Id(), MediaSessionCommand::SeekTo, 1234);
         CHECK(engine->seek == 1234);
     }
