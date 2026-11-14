@@ -498,6 +498,12 @@ class Generator:
             return Mapping('const kiln_image_bitmap*', lambda e: f'({e} ? {e}->bitmap : kiln::gfx::ImageBitmap{{}})', None)
         if k == 'std::shared_ptr<const kiln::gfx::vector::ImageVector>':
             return Mapping('const kiln_image_vector*', lambda e: f'({e} ? {e}->vector : nullptr)', None)
+        if k.startswith('kiln::Function<kiln::rt::Task<float> (kiln::Function<float (float)>, float)>'):
+            # foundation::FlingBehavior: an opaque handle from kiln (the carousel defaults).
+            return Mapping('const kiln_fling_behavior*', lambda e: f'({e} ? {e}->fling : kiln::foundation::FlingBehavior{{}})',
+                           lambda e, o: f'kiln::capi::TransientFling({e})')
+        if k == 'kiln::foundation::ScrollIndicatorState':
+            return Mapping('const kiln_scroll_indicator_state*', lambda e: f'kiln::capi::ToScrollIndicator({e})', None)
         if k == 'kiln::ui::AlignmentLine':
             # Lines are compared by address: a C handle is the line's own address.
             return Mapping('const kiln_alignment_line*', lambda e: f'*reinterpret_cast<const kiln::ui::AlignmentLine*>({e})',

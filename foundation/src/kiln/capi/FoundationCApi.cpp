@@ -142,6 +142,22 @@ namespace kiln::capi {
         p->keep = std::move(keep);
         return p;
     }
+    const foundation::ScrollIndicatorState& ToScrollIndicator(const kiln_scroll_indicator_state* s) {
+        // Nothing to scroll: every size unknown, so an indicator draws nothing.
+        struct Unknown final : foundation::ScrollIndicatorState {
+            int ScrollOffset() const override { return INT_MAX; }
+            int ContentSize() const override { return INT_MAX; }
+            int ViewportSize() const override { return INT_MAX; }
+        };
+        static const Unknown unknown;
+        return s ? *reinterpret_cast<const foundation::ScrollIndicatorState*>(s) : unknown;
+    }
+    kiln_fling_behavior* TransientFling(foundation::FlingBehavior fling) {
+        if (!fling) return nullptr;
+        auto* f = NewTransient<kiln_fling_behavior>();
+        f->fling = std::move(fling);
+        return f;
+    }
     kiln_fn TransientFn(kiln::Function<void()> fn) {
         using F = kiln::Function<void()>;
         kiln_fn c{};
@@ -1003,6 +1019,15 @@ KILN_API int32_t kiln_scroll_state_value(const kiln_scroll_state* s) { return s 
 KILN_API kiln_scrollable_state* kiln_scroll_state_scrollable(kiln_scroll_state* s) {
     return s ? reinterpret_cast<kiln_scrollable_state*>(static_cast<fd::ScrollableState*>(s->state)) : nullptr;
 }
+namespace {
+    const fd::ScrollIndicatorState* ToIndicator(const kiln_scroll_indicator_state* s) { return reinterpret_cast<const fd::ScrollIndicatorState*>(s); }
+}
+KILN_API const kiln_scroll_indicator_state* kiln_scrollable_state_scroll_indicator(const kiln_scrollable_state* s) {
+    return s ? reinterpret_cast<const kiln_scroll_indicator_state*>(reinterpret_cast<const fd::ScrollableState*>(s)->ScrollIndicator()) : nullptr;
+}
+KILN_API int32_t kiln_scroll_indicator_state_scroll_offset(const kiln_scroll_indicator_state* s) { return s ? ToIndicator(s)->ScrollOffset() : INT32_MAX; }
+KILN_API int32_t kiln_scroll_indicator_state_content_size(const kiln_scroll_indicator_state* s) { return s ? ToIndicator(s)->ContentSize() : INT32_MAX; }
+KILN_API int32_t kiln_scroll_indicator_state_viewport_size(const kiln_scroll_indicator_state* s) { return s ? ToIndicator(s)->ViewportSize() : INT32_MAX; }
 KILN_API kiln_scrollable_state* kiln_lazy_list_state_scrollable(kiln_lazy_list_state* s) {
     return s ? reinterpret_cast<kiln_scrollable_state*>(static_cast<fd::ScrollableState*>(s->state)) : nullptr;
 }

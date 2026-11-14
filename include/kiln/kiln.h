@@ -577,6 +577,14 @@ KILN_API int32_t kiln_scroll_state_value(const kiln_scroll_state* state);       
 /* Any scrollable's state, for components that follow one (a top app bar's scroll behaviour). */
 typedef struct kiln_scrollable_state kiln_scrollable_state;
 KILN_API kiln_scrollable_state* kiln_scroll_state_scrollable(kiln_scroll_state* state);
+/* What a scrollbar draws of a scrollable (scrollIndicatorState): NULL when the scrollable has
+ * none. Valid while the state is. */
+typedef struct kiln_scroll_indicator_state kiln_scroll_indicator_state;
+KILN_API const kiln_scroll_indicator_state* kiln_scrollable_state_scroll_indicator(const kiln_scrollable_state* state);
+/* px along the scroll axis, INT32_MAX while unknown; observe. */
+KILN_API int32_t kiln_scroll_indicator_state_scroll_offset(const kiln_scroll_indicator_state* state);
+KILN_API int32_t kiln_scroll_indicator_state_content_size(const kiln_scroll_indicator_state* state);
+KILN_API int32_t kiln_scroll_indicator_state_viewport_size(const kiln_scroll_indicator_state* state);
 KILN_API int32_t kiln_scroll_state_max_value(const kiln_scroll_state* state);   /* px; observes */
 /* Suspending calls: `done` (optional) runs when the scroll finishes or is cancelled. */
 KILN_API void kiln_scroll_state_animate_to(kiln_scroll_state* state, int32_t value, kiln_fn done);
@@ -618,6 +626,10 @@ KILN_API void kiln_lazy_column(kiln_key key, const kiln_modifier* modifier, kiln
 KILN_API void kiln_lazy_row(kiln_key key, const kiln_modifier* modifier, kiln_lazy_list_state* state,
                             const kiln_lazy_list_options* options, kiln_fn_lazy content);
 
+/* A fling behaviour (a carousel's snapping, from kiln_m3_carousel_defaults_*): made by kiln,
+ * valid until the content callback returns, so ask for it again each composition as Compose's
+ * @Composable defaults do. */
+typedef struct kiln_fling_behavior kiln_fling_behavior;
 typedef struct kiln_pager_state kiln_pager_state;
 typedef struct kiln_fn_count { int32_t (*call)(void* user); void* user; void (*drop)(void* user); } kiln_fn_count;
 KILN_API kiln_pager_state* kiln_remember_pager_state(kiln_key key, int32_t initial_page, kiln_fn_count page_count);

@@ -877,6 +877,7 @@ KILN_API void kiln_m3_card_options_init(kiln_m3_card_options* s);
 struct kiln_m3_carousel_options {
     size_t size;
     float item_spacing;
+    const kiln_fling_behavior* fling_behavior;
     bool user_scroll_enabled;
     kiln_padding content_padding;
 };
@@ -2881,6 +2882,9 @@ KILN_API kiln_border_stroke kiln_m3_card_defaults_outlined_card_border(kiln_key 
 /* Carousel.h */
 KILN_API kiln_m3_carousel_state* kiln_m3_remember_carousel_state(kiln_key key, int32_t initial_item, kiln_m3_fn_to_int item_count);
 KILN_API kiln_m3_carousel_state* kiln_m3_remember_carousel_state_item_count(kiln_key key, kiln_m3_fn_to_int item_count);
+KILN_API const kiln_fling_behavior* kiln_m3_carousel_defaults_single_advance_fling_behavior(kiln_key key, kiln_m3_carousel_state* state);
+KILN_API const kiln_fling_behavior* kiln_m3_carousel_defaults_multi_browse_fling_behavior(kiln_key key, kiln_m3_carousel_state* state);
+KILN_API const kiln_fling_behavior* kiln_m3_carousel_defaults_no_snap_fling_behavior(kiln_key key);
 KILN_API void kiln_m3_horizontal_multi_browse_carousel(kiln_key key, kiln_m3_carousel_state* state, float preferred_item_width, const kiln_modifier* modifier, kiln_m3_fn_carousel_item_scope_int content, const kiln_m3_carousel_options* options, float min_small_item_width, float max_small_item_width);
 KILN_API void kiln_m3_horizontal_uncontained_carousel(kiln_key key, kiln_m3_carousel_state* state, float item_width, const kiln_modifier* modifier, kiln_m3_fn_carousel_item_scope_int content, const kiln_m3_carousel_options* options);
 KILN_API void kiln_m3_horizontal_centered_hero_carousel(kiln_key key, kiln_m3_carousel_state* state, const kiln_modifier* modifier, kiln_m3_fn_carousel_item_scope_int content, const kiln_m3_carousel_options* options, kiln_opt_float preferred_item_width, float min_small_item_width, float max_small_item_width);
@@ -3339,6 +3343,7 @@ KILN_API void kiln_m3_scroll_field_defaults_item(kiln_key key, int32_t index, bo
 KILN_API void kiln_m3_scroll_field(kiln_key key, kiln_m3_scroll_field_state* state, const char* content_description, const kiln_modifier* modifier, const kiln_m3_scroll_field_options* options);
 /* Scrollbar.h */
 KILN_API kiln_color kiln_m3_non_interactive_scrollbar_defaults_thumb_color(kiln_key key);
+KILN_API const kiln_modifier* kiln_m3_non_interactive_scrollbar(kiln_key key, const kiln_modifier* m, const kiln_scroll_indicator_state* state, kiln_orientation orientation, const kiln_m3_non_interactive_scrollbar_options* options);
 /* SearchBar.h */
 KILN_API kiln_m3_search_bar_state* kiln_m3_remember_search_bar_state(kiln_key key, kiln_m3_search_bar_value initial_value, const kiln_anim_spec* animation_spec_for_expand, const kiln_anim_spec* animation_spec_for_collapse);
 KILN_API kiln_m3_search_bar_state* kiln_m3_remember_contained_search_bar_state(kiln_key key, kiln_m3_search_bar_value initial_value, const kiln_anim_spec* animation_spec_for_expand, const kiln_anim_spec* animation_spec_for_collapse, const kiln_anim_spec* animation_spec_for_content_fade_in, const kiln_anim_spec* animation_spec_for_content_fade_out);

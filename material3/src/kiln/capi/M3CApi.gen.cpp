@@ -721,7 +721,6 @@ namespace {
 [[maybe_unused]] kiln::Function<void (kiln::material3::ButtonGroupScope &)> ToCpp_kiln_m3_fn_button_group_scope(kiln_m3_fn_button_group_scope f);
 [[maybe_unused]] kiln::Function<int ()> ToCpp_kiln_m3_fn_to_int(kiln_m3_fn_to_int f);
 [[maybe_unused]] kiln::Function<void (const kiln::material3::CarouselItemScope &, int)> ToCpp_kiln_m3_fn_carousel_item_scope_int(kiln_m3_fn_carousel_item_scope_int f);
-[[maybe_unused]] kiln::Function<float (float)> ToCpp_kiln_m3_fn_float_to_float(kiln_m3_fn_float_to_float f);
 [[maybe_unused]] kiln::Function<void (kiln::material3::ColorScheme &)> ToCpp_kiln_m3_fn_color_scheme(kiln_m3_fn_color_scheme f);
 [[maybe_unused]] kiln::Function<float ()> ToCpp_kiln_m3_fn_to_float(kiln_m3_fn_to_float f);
 [[maybe_unused]] kiln::Function<void (const kiln::material3::TextFieldLabelScope &)> ToCpp_kiln_m3_fn_text_field_label_scope(kiln_m3_fn_text_field_label_scope f);
@@ -743,6 +742,7 @@ namespace {
 [[maybe_unused]] kiln::Function<void (kiln::material3::SliderState &)> ToCpp_kiln_m3_fn_slider_state(kiln_m3_fn_slider_state f);
 [[maybe_unused]] kiln::Function<void (kiln::material3::SliderRange)> ToCpp_kiln_m3_fn_slider_range(kiln_m3_fn_slider_range f);
 [[maybe_unused]] kiln::Function<void (kiln::material3::RangeSliderState &)> ToCpp_kiln_m3_fn_range_slider_state(kiln_m3_fn_range_slider_state f);
+[[maybe_unused]] kiln::Function<float (float)> ToCpp_kiln_m3_fn_float_to_float(kiln_m3_fn_float_to_float f);
 [[maybe_unused]] kiln::Function<bool (kiln::material3::SwipeToDismissBoxValue)> ToCpp_kiln_m3_fn_swipe_to_dismiss_box_value_to_bool(kiln_m3_fn_swipe_to_dismiss_box_value_to_bool f);
 [[maybe_unused]] kiln::Function<void (kiln::material3::SwipeToDismissBoxValue)> ToCpp_kiln_m3_fn_swipe_to_dismiss_box_value(kiln_m3_fn_swipe_to_dismiss_box_value f);
 [[maybe_unused]] kiln::Function<void (kiln::material3::TabIndicatorScope &)> ToCpp_kiln_m3_fn_tab_indicator_scope(kiln_m3_fn_tab_indicator_scope f);
@@ -863,15 +863,6 @@ kiln::Function<void (const kiln::material3::CarouselItemScope &, int)> ToCpp_kil
         auto* h32 = kiln::capi::NewTransient<kiln_m3_carousel_item_scope>();
         h32->ptr = const_cast<kiln::material3::CarouselItemScope*>(&(x0));
         o->f.call(o->f.user, h32, int32_t(x1));
-    };
-}
-kiln::Function<float (float)> ToCpp_kiln_m3_fn_float_to_float(kiln_m3_fn_float_to_float f) {
-    auto o = kiln::capi::Own(f);
-    if (!o) return {};
-    return [o](float x0) -> float {
-        kiln::capi::CallbackScope scope;
-        auto r = o->f.call(o->f.user, float(x0));
-        return r;
     };
 }
 kiln::Function<void (kiln::material3::ColorScheme &)> ToCpp_kiln_m3_fn_color_scheme(kiln_m3_fn_color_scheme f) {
@@ -1064,6 +1055,15 @@ kiln::Function<void (kiln::material3::RangeSliderState &)> ToCpp_kiln_m3_fn_rang
         o->f.call(o->f.user, h37);
     };
 }
+kiln::Function<float (float)> ToCpp_kiln_m3_fn_float_to_float(kiln_m3_fn_float_to_float f) {
+    auto o = kiln::capi::Own(f);
+    if (!o) return {};
+    return [o](float x0) -> float {
+        kiln::capi::CallbackScope scope;
+        auto r = o->f.call(o->f.user, float(x0));
+        return r;
+    };
+}
 kiln::Function<bool (kiln::material3::SwipeToDismissBoxValue)> ToCpp_kiln_m3_fn_swipe_to_dismiss_box_value_to_bool(kiln_m3_fn_swipe_to_dismiss_box_value_to_bool f) {
     auto o = kiln::capi::Own(f);
     if (!o) return {};
@@ -1173,15 +1173,6 @@ kiln::Function<void (kiln::material3::SnackbarResult)> ToCpp_kiln_m3_fn_snackbar
     c.drop = [](void* u) { delete static_cast<F*>(u); };
     return c;
 }
-[[maybe_unused]] kiln_m3_fn_float_to_float FromCpp_kiln_m3_fn_float_to_float(kiln::Function<float (float)> fn) {
-    using F = kiln::Function<float (float)>;
-    kiln_m3_fn_float_to_float c{};
-    if (!fn) return c;
-    c.user = new F(std::move(fn));
-    c.call = [](void* u, float a0) -> float {  return float((*static_cast<F*>(u))(a0)); };
-    c.drop = [](void* u) { delete static_cast<F*>(u); };
-    return c;
-}
 [[maybe_unused]] kiln_m3_fn_to_float FromCpp_kiln_m3_fn_to_float(kiln::Function<float ()> fn) {
     using F = kiln::Function<float ()>;
     kiln_m3_fn_to_float c{};
@@ -1278,6 +1269,15 @@ kiln::Function<void (kiln::material3::SnackbarResult)> ToCpp_kiln_m3_fn_snackbar
     if (!fn) return c;
     c.user = new F(std::move(fn));
     c.call = [](void* u, int32_t a0, bool a1, bool a2) { (*static_cast<F*>(u))(a0, a1, a2); };
+    c.drop = [](void* u) { delete static_cast<F*>(u); };
+    return c;
+}
+[[maybe_unused]] kiln_m3_fn_float_to_float FromCpp_kiln_m3_fn_float_to_float(kiln::Function<float (float)> fn) {
+    using F = kiln::Function<float (float)>;
+    kiln_m3_fn_float_to_float c{};
+    if (!fn) return c;
+    c.user = new F(std::move(fn));
+    c.call = [](void* u, float a0) -> float {  return float((*static_cast<F*>(u))(a0)); };
     c.drop = [](void* u) { delete static_cast<F*>(u); };
     return c;
 }
@@ -2519,6 +2519,7 @@ kiln::material3::CarouselOptions ToCpp(const kiln_m3_carousel_options* in) {
     kiln_m3_carousel_options_init(&c);
     if (in->size > sizeof(size_t)) std::memcpy(reinterpret_cast<char*>(&c) + sizeof(size_t), reinterpret_cast<const char*>(in) + sizeof(size_t), std::min(in->size, sizeof(c)) - sizeof(size_t));
     v.itemSpacing = kiln::capi::ToDp(c.item_spacing);
+    if (c.fling_behavior) v.flingBehavior = (c.fling_behavior ? c.fling_behavior->fling : kiln::foundation::FlingBehavior{});
     v.userScrollEnabled = c.user_scroll_enabled;
     v.contentPadding = kiln::capi::ToPadding(c.content_padding);
     return v;
@@ -2529,6 +2530,7 @@ void FromCpp(const kiln::material3::CarouselOptions& v, kiln_m3_carousel_options
     kiln_m3_carousel_options c{};
     c.size = sizeof(c);
     c.item_spacing = (v.itemSpacing).value;
+    c.fling_behavior = kiln::capi::TransientFling(v.flingBehavior);
     c.user_scroll_enabled = bool(v.userScrollEnabled);
     c.content_padding = kiln::capi::FromPadding(v.contentPadding);
     const size_t n = out->size < sizeof(size_t) ? sizeof(c) : std::min(out->size, sizeof(c));
@@ -11085,6 +11087,29 @@ KILN_API kiln_m3_carousel_state* kiln_m3_remember_carousel_state_item_count(kiln
         return out_handle;
     } KILN_CAPI_CATCH({})
 }
+KILN_API const kiln_fling_behavior* kiln_m3_carousel_defaults_single_advance_fling_behavior(kiln_key key, kiln_m3_carousel_state* state) {
+    KILN_CAPI_TRY {
+        auto&& a0 = *state->ptr;
+        std::optional<std::remove_cvref_t<decltype(kiln::material3::CarouselDefaults::singleAdvanceFlingBehavior(a0))>> r;
+        kiln::capi::InGroup(key, [&] { r.emplace(kiln::material3::CarouselDefaults::singleAdvanceFlingBehavior(a0)); });
+        return kiln::capi::TransientFling((*r));
+    } KILN_CAPI_CATCH({})
+}
+KILN_API const kiln_fling_behavior* kiln_m3_carousel_defaults_multi_browse_fling_behavior(kiln_key key, kiln_m3_carousel_state* state) {
+    KILN_CAPI_TRY {
+        auto&& a0 = *state->ptr;
+        std::optional<std::remove_cvref_t<decltype(kiln::material3::CarouselDefaults::multiBrowseFlingBehavior(a0))>> r;
+        kiln::capi::InGroup(key, [&] { r.emplace(kiln::material3::CarouselDefaults::multiBrowseFlingBehavior(a0)); });
+        return kiln::capi::TransientFling((*r));
+    } KILN_CAPI_CATCH({})
+}
+KILN_API const kiln_fling_behavior* kiln_m3_carousel_defaults_no_snap_fling_behavior(kiln_key key) {
+    KILN_CAPI_TRY {
+        std::optional<std::remove_cvref_t<decltype(kiln::material3::CarouselDefaults::noSnapFlingBehavior())>> r;
+        kiln::capi::InGroup(key, [&] { r.emplace(kiln::material3::CarouselDefaults::noSnapFlingBehavior()); });
+        return kiln::capi::TransientFling((*r));
+    } KILN_CAPI_CATCH({})
+}
 KILN_API void kiln_m3_horizontal_multi_browse_carousel(kiln_key key, kiln_m3_carousel_state* state, float preferred_item_width, const kiln_modifier* modifier, kiln_m3_fn_carousel_item_scope_int content, const kiln_m3_carousel_options* options, float min_small_item_width, float max_small_item_width) {
     KILN_CAPI_TRY {
         auto&& a0 = *state->ptr;
@@ -14615,6 +14640,17 @@ KILN_API kiln_color kiln_m3_non_interactive_scrollbar_defaults_thumb_color(kiln_
         std::optional<std::remove_cvref_t<decltype(kiln::material3::NonInteractiveScrollbarDefaults::thumbColor())>> r;
         kiln::capi::InGroup(key, [&] { r.emplace(kiln::material3::NonInteractiveScrollbarDefaults::thumbColor()); });
         return kiln::capi::FromColor((*r));
+    } KILN_CAPI_CATCH({})
+}
+KILN_API const kiln_modifier* kiln_m3_non_interactive_scrollbar(kiln_key key, const kiln_modifier* m, const kiln_scroll_indicator_state* state, kiln_orientation orientation, const kiln_m3_non_interactive_scrollbar_options* options) {
+    KILN_CAPI_TRY {
+        auto&& a0 = kiln::capi::ToModifier(m);
+        auto&& a1 = kiln::capi::ToScrollIndicator(state);
+        auto&& a2 = kiln::foundation::Orientation(orientation);
+        auto&& a3 = ToCpp(options);
+        std::optional<std::remove_cvref_t<decltype(kiln::material3::NonInteractiveScrollbar(a0, a1, a2, a3))>> r;
+        kiln::capi::InGroup(key, [&] { r.emplace(kiln::material3::NonInteractiveScrollbar(a0, a1, a2, a3)); });
+        return kiln::capi::NewModifier((*r));
     } KILN_CAPI_CATCH({})
 }
 KILN_API kiln_m3_search_bar_state* kiln_m3_remember_search_bar_state(kiln_key key, kiln_m3_search_bar_value initial_value, const kiln_anim_spec* animation_spec_for_expand, const kiln_anim_spec* animation_spec_for_collapse) {

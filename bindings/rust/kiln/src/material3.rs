@@ -1111,6 +1111,18 @@ pub fn remember_carousel_state_item_count(item_count: impl IntoCallback<sys::kil
     unsafe { sys::kiln_m3_remember_carousel_state_item_count(here(), item_count.into_callback()) }
 }
 #[track_caller]
+pub fn carousel_defaults_single_advance_fling_behavior(state: *mut sys::kiln_m3_carousel_state) -> *const sys::kiln_fling_behavior {
+    unsafe { sys::kiln_m3_carousel_defaults_single_advance_fling_behavior(here(), state) }
+}
+#[track_caller]
+pub fn carousel_defaults_multi_browse_fling_behavior(state: *mut sys::kiln_m3_carousel_state) -> *const sys::kiln_fling_behavior {
+    unsafe { sys::kiln_m3_carousel_defaults_multi_browse_fling_behavior(here(), state) }
+}
+#[track_caller]
+pub fn carousel_defaults_no_snap_fling_behavior() -> *const sys::kiln_fling_behavior {
+    unsafe { sys::kiln_m3_carousel_defaults_no_snap_fling_behavior(here()) }
+}
+#[track_caller]
 pub fn horizontal_multi_browse_carousel(state: *mut sys::kiln_m3_carousel_state, preferred_item_width: f32, modifier: Modifier, content: impl IntoCallback<sys::kiln_m3_fn_carousel_item_scope_int>, options: *const sys::kiln_m3_carousel_options, min_small_item_width: f32, max_small_item_width: f32) {
     unsafe { sys::kiln_m3_horizontal_multi_browse_carousel(here(), state, preferred_item_width, modifier.raw(), content.into_callback(), options, min_small_item_width, max_small_item_width) }
 }
@@ -2996,6 +3008,10 @@ pub fn scroll_field(state: *mut sys::kiln_m3_scroll_field_state, content_descrip
 #[track_caller]
 pub fn non_interactive_scrollbar_defaults_thumb_color() -> sys::kiln_color {
     unsafe { sys::kiln_m3_non_interactive_scrollbar_defaults_thumb_color(here()) }
+}
+#[track_caller]
+pub fn non_interactive_scrollbar(m: Modifier, state: *const sys::kiln_scroll_indicator_state, orientation: sys::kiln_orientation, options: *const sys::kiln_m3_non_interactive_scrollbar_options) -> *const sys::kiln_modifier {
+    unsafe { sys::kiln_m3_non_interactive_scrollbar(here(), m.raw(), state, orientation, options) }
 }
 #[track_caller]
 pub fn remember_search_bar_state(initial_value: sys::kiln_m3_search_bar_value, animation_spec_for_expand: *const sys::kiln_anim_spec, animation_spec_for_collapse: *const sys::kiln_anim_spec) -> *mut sys::kiln_m3_search_bar_state {

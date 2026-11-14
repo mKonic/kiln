@@ -277,6 +277,36 @@ TEST(CApiAlignmentLinesPadFromABaselineAndAreTheComponentsOwn) {
     CHECK(std::abs(float(padded->Size().height) - (30 + lineH * 0.2f)) <= 1);
 }
 
+TEST(CApiScrollIndicatorStateFollowsAScrollAndFeedsTheScrollbar) {
+    static const kiln_scroll_indicator_state* indicator;
+    indicator = nullptr;
+    Harness h;
+    h.Run([](void*) {
+        kiln_scroll_state* scroll = kiln_remember_scroll_state(KILN_HERE, 0);
+        indicator = kiln_scrollable_state_scroll_indicator(kiln_scroll_state_scrollable(scroll));
+        const kiln_modifier* m = kiln_mod_vertical_scroll(NULL, scroll, true);   // the harness root: 200 x 400
+        m = kiln_m3_non_interactive_scrollbar(KILN_HERE, m, indicator, KILN_ORIENTATION_VERTICAL, NULL);
+        kpp::column(kpp::Modifier(const_cast<kiln_modifier*>(m)), [] { kiln_box(KILN_HERE, kiln_mod_size(NULL, 100, 1000), NULL, KILN_FN(NULL, NULL)); });
+    });
+    CHECK(indicator != nullptr);
+    CHECK(kiln_scroll_indicator_state_viewport_size(indicator) == 400);
+    CHECK(kiln_scroll_indicator_state_content_size(indicator) == 1000);
+    CHECK(kiln_scroll_indicator_state_scroll_offset(indicator) == 0);
+    CHECK(kiln_scroll_indicator_state_content_size(nullptr) == INT32_MAX);
+}
+
+TEST(CApiCarouselFlingBehavioursComeFromTheDefaults) {
+    static int made;
+    made = 0;
+    Harness h;
+    h.Run([](void*) {
+        if (kiln_m3_carousel_defaults_no_snap_fling_behavior(KILN_HERE)) ++made;
+        kiln_m3_carousel_state* state = kiln_m3_remember_carousel_state(KILN_HERE, 0, kiln_m3_fn_to_int{ [](void*) -> int32_t { return 5; }, nullptr, nullptr });
+        if (kiln_m3_carousel_defaults_single_advance_fling_behavior(KILN_HERE, state)) ++made;
+    });
+    CHECK(made == 2);
+}
+
 TEST(CApiAndroidViewMakesUpdatesAndReleasesItsView) {
     static int made, updates, released, dropped;
     made = updates = released = dropped = 0;

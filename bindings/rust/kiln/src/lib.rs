@@ -426,6 +426,10 @@ impl ScrollState {
     pub fn value(&self) -> i32 { unsafe { sys::kiln_scroll_state_value(self.0) } }
     pub fn max_value(&self) -> i32 { unsafe { sys::kiln_scroll_state_max_value(self.0) } }
     pub fn animate_to(&self, v: i32) { unsafe { sys::kiln_scroll_state_animate_to(self.0, v, none()) } }
+    /// What a scrollbar draws of it (material3::non_interactive_scrollbar).
+    pub fn scroll_indicator(&self) -> *const sys::kiln_scroll_indicator_state {
+        unsafe { sys::kiln_scrollable_state_scroll_indicator(sys::kiln_scroll_state_scrollable(self.0)) }
+    }
 }
 #[track_caller]
 pub fn remember_scroll_state() -> ScrollState { ScrollState(unsafe { sys::kiln_remember_scroll_state(here(), 0) }) }

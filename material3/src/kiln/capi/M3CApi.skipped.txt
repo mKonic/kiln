@@ -1,9 +1,6 @@
 # Declarations tools/gen-capi could not map (generated).
 kiln::material3::AppBarScope::Items: result: list of kiln::material3::internal::AppBarItem is internal
 kiln::material3::ButtonGroupScope::Items: result: list of type std::shared_ptr<kiln::material3::internal::ButtonGroupItem>
-kiln::material3::CarouselDefaults::multiBrowseFlingBehavior: result: type kiln::rt::Task<float>
-kiln::material3::CarouselDefaults::noSnapFlingBehavior: result: type kiln::rt::Task<float>
-kiln::material3::CarouselDefaults::singleAdvanceFlingBehavior: result: type kiln::rt::Task<float>
 kiln::material3::DatePickerState::Calendar: result: kiln::material3::internal::CalendarModel is internal
 kiln::material3::DateRangePickerState::Calendar: result: kiln::material3::internal::CalendarModel is internal
 kiln::material3::DropdownMenuPopup: parameter popupPositionProvider: kiln::material3::internal::DropdownMenuPositionProvider is internal
@@ -13,7 +10,6 @@ kiln::material3::FromToken: parameter token: kiln::material3::tokens::ShapeToken
 kiln::material3::FromToken: parameter token: kiln::material3::tokens::TypographyToken is internal
 kiln::material3::MakeCarouselParallaxScrollEffectState: parameter state: type kiln::foundation::LazyGridState
 kiln::material3::MenuDefaults::rememberDropdownMenuPopupPositionProvider: parameter dropdownMenuAnchorPosition: kiln::material3::internal::MenuAnchorPosition is internal
-kiln::material3::NonInteractiveScrollbar: parameter state: type kiln::foundation::ScrollIndicatorState
 kiln::material3::ProgressIndicatorDefaults::DrawStopIndicator: parameter scope: type kiln::ui::DrawScope
 kiln::material3::SliderDefaults::DrawStopIndicator: parameter arg0: type kiln::ui::DrawScope
 kiln::material3::TabIndicatorScope::TabIndicatorLayout: parameter measure: type kiln::ui::MeasureScope
@@ -26,7 +22,6 @@ kiln::material3::Value: parameter token: kiln::material3::tokens::TypographyToke
 kiln::material3::WideNavigationRailItemDefaults::indicatorPadding: result: kiln::material3::internal::DynamicPaddingValues is not default-constructible
 kiln::material3::kSystemPaletteFields: constant: type kiln::ui::Color kiln::material3::TonalPalette::*const[65]
 kiln::material3::kSystemRoleFields: constant: type kiln::ui::Color kiln::material3::ColorScheme::*const[43]
-kiln::material3::CarouselOptions::flingBehavior: field left at its default: type kiln::rt::Task<float>
 kiln::material3::TextFieldOptions::onTextLayout: field left at its default: type kiln::text::TextLayoutResult
 kiln::material3::SecureTextFieldOptions::onTextLayout: field left at its default: type kiln::text::TextLayoutResult
 kiln::material3::DatePickerOptions::focusRequester: field left at its default: pointer kiln::ui::FocusRequester *
