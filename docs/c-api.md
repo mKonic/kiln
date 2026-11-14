@@ -9,7 +9,8 @@ kiln has three ways in:
 | kiln++ | `kiln/kilnpp.hpp`, `kiln/kiln_m3.hpp` | C++ apps built against the AAR |
 
 The C API and kiln++ are what the [AAR](android.md#build-with-gradle) ships. They cover
-the runtime, layouts, text, images, lazy lists, pagers and Material 3.
+the runtime, layouts and custom layouts, drawing, text (with layout results and inline
+content), images, focus, lazy lists and grids, pagers, Android Views and Material 3.
 
 ## The C API
 
@@ -71,8 +72,39 @@ void kiln_main(kiln_app* a) {
   the call that creates one returns a reference, and `_release` drops it.
 * **Strings** are UTF-8 and copied. A string that kiln returns stays valid until the next
   call on that thread that returns a string.
+* **Callback objects.** What a callback receives (a draw scope, measurables and
+  placeables, layout coordinates, a text layout result) is valid until it returns. A text
+  layout result can be kept with `kiln_text_layout_result_retain`.
 * **Threads.** Composable calls work only inside content, on the main thread.
 * **Errors.** No C++ exception crosses the API. A call that fails logs and does nothing.
+
+### Drawing and custom layouts
+
+`kiln_canvas`, `kiln_mod_draw_behind` and `kiln_mod_draw_with_content` take a draw
+callback. Coordinates are pixels in the element's own space:
+
+```c
+#include <kiln/kiln.h>
+
+static void ring(void* user, kiln_draw_scope* d) {
+    (void)user;
+    kiln_size size = kiln_draw_scope_size(d);
+    kiln_draw_style stroke = KILN_STROKE(4 * kiln_draw_scope_density(d));
+    kiln_offset center = { size.width / 2, size.height / 2 };
+    kiln_draw_circle(d, KILN_ARGB(0xff6750a4), center, -1, &stroke);
+}
+
+static void content(void* user) {
+    (void)user;
+    kiln_fn_draw on_draw = { ring, NULL, NULL };
+    kiln_canvas(KILN_HERE, kiln_mod_size(NULL, 48, 48), on_draw);
+}
+```
+
+`kiln_layout` measures and places its children itself, as Compose's `Layout`, and
+`kiln_mod_layout` does the same for what a modifier wraps. Measure each measurable once,
+then return `kiln_measure_scope_layout(scope, width, height, place)`, whose `place`
+callback calls `kiln_place` for each placeable.
 
 ### Volition
 
