@@ -204,6 +204,9 @@ namespace {
 [[maybe_unused]] kiln::material3::ButtonOptions ToCpp(const kiln_m3_button_options* c);
 [[maybe_unused]] void FromCpp(const kiln::material3::ButtonOptions& v, kiln_m3_button_options* out);
 [[maybe_unused]] const kiln_m3_button_options* FromCppTransient(const kiln::material3::ButtonOptions& v);
+[[maybe_unused]] kiln::material3::ToggleButtonSize ToCpp(const kiln_m3_toggle_button_size* c);
+[[maybe_unused]] void FromCpp(const kiln::material3::ToggleButtonSize& v, kiln_m3_toggle_button_size* out);
+[[maybe_unused]] const kiln_m3_toggle_button_size* FromCppTransient(const kiln::material3::ToggleButtonSize& v);
 [[maybe_unused]] kiln::material3::ToggleButtonShapes ToCpp(const kiln_m3_toggle_button_shapes* c);
 [[maybe_unused]] void FromCpp(const kiln::material3::ToggleButtonShapes& v, kiln_m3_toggle_button_shapes* out);
 [[maybe_unused]] const kiln_m3_toggle_button_shapes* FromCppTransient(const kiln::material3::ToggleButtonShapes& v);
@@ -721,6 +724,7 @@ namespace {
 [[maybe_unused]] kiln::Function<void (kiln::material3::ColorScheme &)> ToCpp_kiln_m3_fn_color_scheme(kiln_m3_fn_color_scheme f);
 [[maybe_unused]] kiln::Function<float ()> ToCpp_kiln_m3_fn_to_float(kiln_m3_fn_to_float f);
 [[maybe_unused]] kiln::Function<void (const kiln::material3::TextFieldLabelScope &)> ToCpp_kiln_m3_fn_text_field_label_scope(kiln_m3_fn_text_field_label_scope f);
+[[maybe_unused]] kiln::Function<void (kiln::Function<void ()>)> ToCpp_kiln_m3_fn_fn(kiln_m3_fn_fn f);
 [[maybe_unused]] kiln::Function<bool (long)> ToCpp_kiln_m3_fn_long_to_bool(kiln_m3_fn_long_to_bool f);
 [[maybe_unused]] kiln::Function<bool (int)> ToCpp_kiln_m3_fn_int_to_bool(kiln_m3_fn_int_to_bool f);
 [[maybe_unused]] kiln::Function<void (const kiln::material3::ExposedDropdownMenuBoxScope &)> ToCpp_kiln_m3_fn_exposed_dropdown_menu_box_scope(kiln_m3_fn_exposed_dropdown_menu_box_scope f);
@@ -892,6 +896,14 @@ kiln::Function<void (const kiln::material3::TextFieldLabelScope &)> ToCpp_kiln_m
     return [o](const kiln::material3::TextFieldLabelScope & x0) -> void {
         kiln::capi::CallbackScope scope;
         o->f.call(o->f.user, FromCppTransient(x0));
+    };
+}
+kiln::Function<void (kiln::Function<void ()>)> ToCpp_kiln_m3_fn_fn(kiln_m3_fn_fn f) {
+    auto o = kiln::capi::Own(f);
+    if (!o) return {};
+    return [o](kiln::Function<void ()> x0) -> void {
+        kiln::capi::CallbackScope scope;
+        o->f.call(o->f.user, kiln::capi::TransientFn(x0));
     };
 }
 kiln::Function<bool (long)> ToCpp_kiln_m3_fn_long_to_bool(kiln_m3_fn_long_to_bool f) {
@@ -1154,6 +1166,15 @@ kiln::Function<void (kiln::material3::SnackbarResult)> ToCpp_kiln_m3_fn_snackbar
     c.drop = [](void* u) { delete static_cast<F*>(u); };
     return c;
 }
+[[maybe_unused]] kiln_m3_fn_fn FromCpp_kiln_m3_fn_fn(kiln::Function<void (kiln::Function<void ()>)> fn) {
+    using F = kiln::Function<void (kiln::Function<void ()>)>;
+    kiln_m3_fn_fn c{};
+    if (!fn) return c;
+    c.user = new F(std::move(fn));
+    c.call = [](void* u, kiln_fn a0) { (*static_cast<F*>(u))(kiln::capi::Fn(a0)); };
+    c.drop = [](void* u) { delete static_cast<F*>(u); };
+    return c;
+}
 [[maybe_unused]] kiln_m3_fn_long_to_bool FromCpp_kiln_m3_fn_long_to_bool(kiln::Function<bool (long)> fn) {
     using F = kiln::Function<bool (long)>;
     kiln_m3_fn_long_to_bool c{};
@@ -1286,6 +1307,7 @@ kiln::foundation::DialogProperties ToCpp(const kiln_dialog_properties* in) {
     v.blurBehindRadius = kiln::capi::ToDp(c.blur_behind_radius);
     v.backgroundBlurRadius = kiln::capi::ToDp(c.background_blur_radius);
     v.scrimAlpha = c.scrim_alpha;
+    v.windowAnimations = c.window_animations;
     return v;
 }
 void FromCpp(const kiln::foundation::DialogProperties& v, kiln_dialog_properties* out) {
@@ -1302,6 +1324,7 @@ void FromCpp(const kiln::foundation::DialogProperties& v, kiln_dialog_properties
     c.blur_behind_radius = (v.blurBehindRadius).value;
     c.background_blur_radius = (v.backgroundBlurRadius).value;
     c.scrim_alpha = float(v.scrimAlpha);
+    c.window_animations = bool(v.windowAnimations);
     const size_t n = out->size < sizeof(size_t) ? sizeof(c) : std::min(out->size, sizeof(c));
     std::memcpy(reinterpret_cast<char*>(out) + sizeof(size_t), reinterpret_cast<const char*>(&c) + sizeof(size_t), n - sizeof(size_t));
     out->size = n;
@@ -2177,6 +2200,31 @@ const kiln_m3_button_options* FromCppTransient(const kiln::material3::ButtonOpti
     FromCpp(v, c);
     return c;
 }
+kiln::material3::ToggleButtonSize ToCpp(const kiln_m3_toggle_button_size* in) {
+    kiln::material3::ToggleButtonSize v{};
+    if (!in) return v;
+    kiln_m3_toggle_button_size c;
+    kiln_m3_toggle_button_size_init(&c);
+    if (in->size > sizeof(size_t)) std::memcpy(reinterpret_cast<char*>(&c) + sizeof(size_t), reinterpret_cast<const char*>(in) + sizeof(size_t), std::min(in->size, sizeof(c)) - sizeof(size_t));
+    v.height = kiln::capi::ToDp(c.height);
+    return v;
+}
+void FromCpp(const kiln::material3::ToggleButtonSize& v, kiln_m3_toggle_button_size* out) {
+    (void)v;
+    if (!out) return;
+    kiln_m3_toggle_button_size c{};
+    c.size = sizeof(c);
+    c.height = (v.height).value;
+    const size_t n = out->size < sizeof(size_t) ? sizeof(c) : std::min(out->size, sizeof(c));
+    std::memcpy(reinterpret_cast<char*>(out) + sizeof(size_t), reinterpret_cast<const char*>(&c) + sizeof(size_t), n - sizeof(size_t));
+    out->size = n;
+}
+const kiln_m3_toggle_button_size* FromCppTransient(const kiln::material3::ToggleButtonSize& v) {
+    auto* c = kiln::capi::NewTransient<kiln_m3_toggle_button_size>();
+    c->size = sizeof(*c);
+    FromCpp(v, c);
+    return c;
+}
 kiln::material3::ToggleButtonShapes ToCpp(const kiln_m3_toggle_button_shapes* in) {
     kiln::material3::ToggleButtonShapes v{};
     if (!in) return v;
@@ -2247,6 +2295,7 @@ kiln::material3::ToggleButtonOptions ToCpp(const kiln_m3_toggle_button_options* 
     kiln_m3_toggle_button_options c;
     kiln_m3_toggle_button_options_init(&c);
     if (in->size > sizeof(size_t)) std::memcpy(reinterpret_cast<char*>(&c) + sizeof(size_t), reinterpret_cast<const char*>(in) + sizeof(size_t), std::min(in->size, sizeof(c)) - sizeof(size_t));
+    if (c.button_size) v.buttonSize = ToCpp(c.button_size);
     v.enabled = c.enabled;
     if (c.icon.call) v.icon = kiln::capi::Fn(c.icon);
     if (c.shapes) v.shapes = (c.shapes ? std::optional<kiln::material3::ToggleButtonShapes>(ToCpp(c.shapes)) : std::nullopt);
@@ -2262,6 +2311,7 @@ void FromCpp(const kiln::material3::ToggleButtonOptions& v, kiln_m3_toggle_butto
     if (!out) return;
     kiln_m3_toggle_button_options c{};
     c.size = sizeof(c);
+    c.button_size = FromCppTransient(v.buttonSize);
     c.enabled = bool(v.enabled);
     c.shapes = ([&]() -> const kiln_m3_toggle_button_shapes* { if (!(v.shapes)) return nullptr;  return FromCppTransient((*(v.shapes))); }());
     c.colors = ([&]() -> const kiln_m3_toggle_button_colors* { if (!(v.colors)) return nullptr;  return FromCppTransient((*(v.colors))); }());
@@ -3235,6 +3285,7 @@ kiln::material3::TextFieldOptions ToCpp(const kiln_m3_text_field_options* in) {
     if (c.input_transformation) v.inputTransformation = (c.input_transformation ? std::const_pointer_cast<const kiln::foundation::InputTransformation>(std::static_pointer_cast<const kiln::foundation::InputTransformation>(c.input_transformation->p)) : std::shared_ptr<const kiln::foundation::InputTransformation>{});
     if (c.output_transformation) v.outputTransformation = (c.output_transformation ? std::const_pointer_cast<const kiln::foundation::OutputTransformation>(std::static_pointer_cast<const kiln::foundation::OutputTransformation>(c.output_transformation->p)) : std::shared_ptr<const kiln::foundation::OutputTransformation>{});
     if (c.keyboard_options) v.keyboardOptions = ToCpp(c.keyboard_options);
+    if (c.on_keyboard_action.call) v.onKeyboardAction = ToCpp_kiln_m3_fn_fn(c.on_keyboard_action);
     if (c.line_limits) v.lineLimits = ToCpp(c.line_limits);
     if (c.scroll_state) v.scrollState = (c.scroll_state ? c.scroll_state->state : nullptr);
     v.spellCheck = c.spell_check;
@@ -3292,7 +3343,9 @@ kiln::material3::SecureTextFieldOptions ToCpp(const kiln_m3_secure_text_field_op
     v.isError = c.is_error;
     if (c.input_transformation) v.inputTransformation = (c.input_transformation ? std::const_pointer_cast<const kiln::foundation::InputTransformation>(std::static_pointer_cast<const kiln::foundation::InputTransformation>(c.input_transformation->p)) : std::shared_ptr<const kiln::foundation::InputTransformation>{});
     v.textObfuscationMode = kiln::foundation::TextObfuscationMode(c.text_obfuscation_mode);
+    v.textObfuscationCharacter = c.text_obfuscation_character;
     if (c.keyboard_options) v.keyboardOptions = (c.keyboard_options ? std::optional<kiln::foundation::KeyboardOptions>(ToCpp(c.keyboard_options)) : std::nullopt);
+    if (c.on_keyboard_action.call) v.onKeyboardAction = ToCpp_kiln_m3_fn_fn(c.on_keyboard_action);
     if (c.shape) v.shape = kiln::capi::ToShape(c.shape);
     if (c.colors) v.colors = (c.colors ? std::optional<kiln::material3::TextFieldColors>(ToCpp(c.colors)) : std::nullopt);
     if (c.content_padding) v.contentPadding = (c.content_padding ? std::optional<kiln::foundation::PaddingValues>(kiln::capi::ToPadding((*c.content_padding))) : std::nullopt);
@@ -3310,6 +3363,7 @@ void FromCpp(const kiln::material3::SecureTextFieldOptions& v, kiln_m3_secure_te
     c.is_error = bool(v.isError);
     c.input_transformation = kiln::capi::TransientOpaque<kiln_input_transformation>(v.inputTransformation);
     c.text_obfuscation_mode = kiln_text_obfuscation_mode(v.textObfuscationMode);
+    c.text_obfuscation_character = uint32_t(v.textObfuscationCharacter);
     c.keyboard_options = ([&]() -> const kiln_keyboard_options* { if (!(v.keyboardOptions)) return nullptr;  return FromCppTransient((*(v.keyboardOptions))); }());
     c.shape = kiln::capi::TransientShape(v.shape);
     c.colors = ([&]() -> const kiln_m3_text_field_colors* { if (!(v.colors)) return nullptr;  return FromCppTransient((*(v.colors))); }());
@@ -8328,6 +8382,10 @@ KILN_API void kiln_m3_button_options_init(kiln_m3_button_options* s) {
     if (!s) return;
     KILN_CAPI_TRY { s->size = sizeof(*s); FromCpp(kiln::material3::ButtonOptions{}, s); } KILN_CAPI_CATCH()
 }
+KILN_API void kiln_m3_toggle_button_size_init(kiln_m3_toggle_button_size* s) {
+    if (!s) return;
+    KILN_CAPI_TRY { s->size = sizeof(*s); FromCpp(kiln::material3::ToggleButtonSize{}, s); } KILN_CAPI_CATCH()
+}
 KILN_API void kiln_m3_toggle_button_shapes_init(kiln_m3_toggle_button_shapes* s) {
     if (!s) return;
     KILN_CAPI_TRY { s->size = sizeof(*s); FromCpp(kiln::material3::ToggleButtonShapes{}, s); } KILN_CAPI_CATCH()
@@ -10613,11 +10671,29 @@ KILN_API void kiln_m3_toggle_button_defaults_shapes_for(kiln_key key, float heig
         FromCpp((*r), out);
     } KILN_CAPI_CATCH()
 }
+KILN_API void kiln_m3_toggle_button_defaults_shapes_for_size(kiln_key key, const kiln_m3_toggle_button_size* size, kiln_m3_toggle_button_shapes* out) {
+    KILN_CAPI_TRY {
+        auto&& a0 = ToCpp(size);
+        std::optional<std::remove_cvref_t<decltype(kiln::material3::ToggleButtonDefaults::shapesFor(a0))>> r;
+        kiln::capi::InGroup(key, [&] { r.emplace(kiln::material3::ToggleButtonDefaults::shapesFor(a0)); });
+        FromCpp((*r), out);
+    } KILN_CAPI_CATCH()
+}
 KILN_API kiln_padding kiln_m3_toggle_button_defaults_content_padding_for(kiln_key key, float height, bool has_start_icon, bool has_end_icon) {
     KILN_CAPI_TRY {
         auto&& a0 = kiln::capi::ToDp(height);
         auto&& a1 = has_start_icon;
         auto&& a2 = has_end_icon;
+        std::optional<std::remove_cvref_t<decltype(kiln::material3::ToggleButtonDefaults::contentPaddingFor(a0, a1, a2))>> r;
+        kiln::capi::InGroup(key, [&] { r.emplace(kiln::material3::ToggleButtonDefaults::contentPaddingFor(a0, a1, a2)); });
+        return kiln::capi::FromPadding((*r));
+    } KILN_CAPI_CATCH({})
+}
+KILN_API kiln_padding kiln_m3_toggle_button_defaults_content_padding_for_size(kiln_key key, const kiln_m3_toggle_button_size* size, bool start, bool end) {
+    KILN_CAPI_TRY {
+        auto&& a0 = ToCpp(size);
+        auto&& a1 = start;
+        auto&& a2 = end;
         std::optional<std::remove_cvref_t<decltype(kiln::material3::ToggleButtonDefaults::contentPaddingFor(a0, a1, a2))>> r;
         kiln::capi::InGroup(key, [&] { r.emplace(kiln::material3::ToggleButtonDefaults::contentPaddingFor(a0, a1, a2)); });
         return kiln::capi::FromPadding((*r));
@@ -15477,6 +15553,14 @@ KILN_API void kiln_m3_text_annotated_string(kiln_key key, const kiln_annotated_s
         kiln::capi::InGroup(key, [&] { kiln::material3::Text(a0, a1, a2); });
     } KILN_CAPI_CATCH()
 }
+KILN_API void kiln_m3_text_text(kiln_key key, const char* text, const kiln_modifier* modifier, const kiln_m3_text_options* options) {
+    KILN_CAPI_TRY {
+        auto&& a0 = (text ? text : "");
+        auto&& a1 = kiln::capi::ToModifier(modifier);
+        auto&& a2 = ToCpp(options);
+        kiln::capi::InGroup(key, [&] { kiln::material3::Text(a0, a1, a2); });
+    } KILN_CAPI_CATCH()
+}
 KILN_API void kiln_m3_icon(kiln_key key, const kiln_image_vector* image_vector, const char* content_description, const kiln_modifier* modifier, kiln_color tint) {
     KILN_CAPI_TRY {
         auto&& a0 = (image_vector ? image_vector->vector : nullptr);
@@ -16274,6 +16358,11 @@ KILN_API float kiln_m3_button_defaults_extra_large_icon_spacing() {
         return (kiln::material3::ButtonDefaults::ExtraLargeIconSpacing).value;
     } KILN_CAPI_CATCH({})
 }
+KILN_API void kiln_m3_toggle_button_defaults_size(kiln_m3_toggle_button_size* out) {
+    KILN_CAPI_TRY {
+        FromCpp(kiln::material3::ToggleButtonDefaults::size, out);
+    } KILN_CAPI_CATCH()
+}
 KILN_API float kiln_m3_toggle_button_defaults_min_height() {
     KILN_CAPI_TRY {
         return (kiln::material3::ToggleButtonDefaults::MinHeight).value;
@@ -16462,6 +16551,21 @@ KILN_API void kiln_m3_date_picker_defaults_year_range(kiln_m3_int_range* out) {
 KILN_API float kiln_m3_date_picker_defaults_tonal_elevation() {
     KILN_CAPI_TRY {
         return (kiln::material3::DatePickerDefaults::TonalElevation).value;
+    } KILN_CAPI_CATCH({})
+}
+KILN_API const char* kiln_m3_date_picker_defaults_year_month_skeleton() {
+    KILN_CAPI_TRY {
+        return kiln::capi::TransientString(kiln::material3::DatePickerDefaults::YearMonthSkeleton);
+    } KILN_CAPI_CATCH({})
+}
+KILN_API const char* kiln_m3_date_picker_defaults_year_abbr_month_day_skeleton() {
+    KILN_CAPI_TRY {
+        return kiln::capi::TransientString(kiln::material3::DatePickerDefaults::YearAbbrMonthDaySkeleton);
+    } KILN_CAPI_CATCH({})
+}
+KILN_API const char* kiln_m3_date_picker_defaults_year_month_weekday_day_skeleton() {
+    KILN_CAPI_TRY {
+        return kiln::capi::TransientString(kiln::material3::DatePickerDefaults::YearMonthWeekdayDaySkeleton);
     } KILN_CAPI_CATCH({})
 }
 KILN_API float kiln_m3_divider_defaults_thickness() {

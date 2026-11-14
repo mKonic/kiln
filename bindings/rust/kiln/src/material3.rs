@@ -16,6 +16,7 @@ crate::__kiln_callback!(sys::kiln_m3_fn_float_to_color, (a0: f32) -> sys::kiln_c
 crate::__kiln_callback!(sys::kiln_m3_fn_float_to_dp, (a0: f32) -> f32);
 crate::__kiln_callback!(sys::kiln_m3_fn_float_to_float, (a0: f32) -> f32);
 crate::__kiln_callback!(sys::kiln_m3_fn_floating_action_button_menu_scope, (a0: *const sys::kiln_m3_floating_action_button_menu_scope) -> ());
+crate::__kiln_callback!(sys::kiln_m3_fn_fn, (a0: sys::kiln_fn) -> ());
 crate::__kiln_callback!(sys::kiln_m3_fn_int_bool_bool, (a0: i32, a1: bool, a2: bool) -> ());
 crate::__kiln_callback!(sys::kiln_m3_fn_int_int_to_int, (a0: i32, a1: i32) -> i32);
 crate::__kiln_callback!(sys::kiln_m3_fn_int_size_int_size_to_animation_spec, (a0: sys::kiln_int_size, a1: sys::kiln_int_size) -> *const sys::kiln_anim_spec);
@@ -888,8 +889,18 @@ pub fn toggle_button_defaults_shapes_for(height: f32) -> sys::kiln_m3_toggle_but
     out
 }
 #[track_caller]
+pub fn toggle_button_defaults_shapes_for_size(size: *const sys::kiln_m3_toggle_button_size) -> sys::kiln_m3_toggle_button_shapes {
+    let mut out: sys::kiln_m3_toggle_button_shapes = Default::default();
+    unsafe { sys::kiln_m3_toggle_button_shapes_init(&mut out); sys::kiln_m3_toggle_button_defaults_shapes_for_size(here(), size, &mut out); }
+    out
+}
+#[track_caller]
 pub fn toggle_button_defaults_content_padding_for(height: f32, has_start_icon: bool, has_end_icon: bool) -> sys::kiln_padding {
     unsafe { sys::kiln_m3_toggle_button_defaults_content_padding_for(here(), height, has_start_icon, has_end_icon) }
+}
+#[track_caller]
+pub fn toggle_button_defaults_content_padding_for_size(size: *const sys::kiln_m3_toggle_button_size, start: bool, end: bool) -> sys::kiln_padding {
+    unsafe { sys::kiln_m3_toggle_button_defaults_content_padding_for_size(here(), size, start, end) }
 }
 #[track_caller]
 pub fn toggle_button_defaults_colors() -> sys::kiln_m3_toggle_button_colors {
@@ -3418,6 +3429,11 @@ pub fn text_annotated_string(text: *const sys::kiln_annotated_string, modifier: 
     unsafe { sys::kiln_m3_text_annotated_string(here(), text, modifier.raw(), options) }
 }
 #[track_caller]
+pub fn text_text(text: &str, modifier: Modifier, options: *const sys::kiln_m3_text_options) {
+    let text_c = CStrBuf::new(text);
+    unsafe { sys::kiln_m3_text_text(here(), text_c.ptr(), modifier.raw(), options) }
+}
+#[track_caller]
 pub fn icon(image_vector: *const sys::kiln_image_vector, content_description: Option<&str>, modifier: Modifier, tint: sys::kiln_color) {
     let content_description_c = content_description.map(CStrBuf::new);
     unsafe { sys::kiln_m3_icon(here(), image_vector, content_description_c.as_ref().map_or(std::ptr::null(), |c| c.ptr()), modifier.raw(), tint) }
@@ -3878,6 +3894,11 @@ pub fn button_defaults_large_icon_spacing() -> f32 {
 pub fn button_defaults_extra_large_icon_spacing() -> f32 {
     unsafe { sys::kiln_m3_button_defaults_extra_large_icon_spacing() }
 }
+pub fn toggle_button_defaults_size() -> sys::kiln_m3_toggle_button_size {
+    let mut out: sys::kiln_m3_toggle_button_size = Default::default();
+    unsafe { sys::kiln_m3_toggle_button_size_init(&mut out); sys::kiln_m3_toggle_button_defaults_size(&mut out); }
+    out
+}
 pub fn toggle_button_defaults_min_height() -> f32 {
     unsafe { sys::kiln_m3_toggle_button_defaults_min_height() }
 }
@@ -3993,6 +4014,15 @@ pub fn date_picker_defaults_year_range() -> sys::kiln_m3_int_range {
 }
 pub fn date_picker_defaults_tonal_elevation() -> f32 {
     unsafe { sys::kiln_m3_date_picker_defaults_tonal_elevation() }
+}
+pub fn date_picker_defaults_year_month_skeleton() -> String {
+    crate::from_c(unsafe { sys::kiln_m3_date_picker_defaults_year_month_skeleton() })
+}
+pub fn date_picker_defaults_year_abbr_month_day_skeleton() -> String {
+    crate::from_c(unsafe { sys::kiln_m3_date_picker_defaults_year_abbr_month_day_skeleton() })
+}
+pub fn date_picker_defaults_year_month_weekday_day_skeleton() -> String {
+    crate::from_c(unsafe { sys::kiln_m3_date_picker_defaults_year_month_weekday_day_skeleton() })
 }
 pub fn divider_defaults_thickness() -> f32 {
     unsafe { sys::kiln_m3_divider_defaults_thickness() }

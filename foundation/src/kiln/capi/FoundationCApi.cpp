@@ -135,6 +135,16 @@ namespace kiln::capi {
         return t_Arena.strings.back().c_str();
     }
     void KeepTransient(std::shared_ptr<void> value) { t_Arena.values.push_back(std::move(value)); }
+    kiln_fn TransientFn(kiln::Function<void()> fn) {
+        using F = kiln::Function<void()>;
+        kiln_fn c{};
+        if (!fn) return c;
+        auto kept = std::make_shared<F>(std::move(fn));
+        c.user = kept.get();
+        c.call = [](void* u) { (*static_cast<F*>(u))(); };
+        KeepTransient(std::move(kept));
+        return c;
+    }
 
     kiln_rounded_polygon* TransientPolygon(gfx::shapes::RoundedPolygon polygon) {
         auto* h = new kiln_rounded_polygon{ {}, std::move(polygon) };

@@ -4,12 +4,14 @@
 // padding, typography and optional leading icon; press and selection morph the shape.
 
 #include "kiln/material3/Button.h"
+#include "kiln/material3/tokens/ButtonSmallTokens.h"
 #include <kiln/Function.h>
 
 namespace kiln::material3 {
 
     struct ToggleButtonSize {
-        ui::Dp height;
+        ui::Dp height = tokens::ButtonSmallTokens::ContainerHeight;   // Small
+        constexpr ToggleButtonSize() = default;
         constexpr explicit ToggleButtonSize(ui::Dp height) : height(height) {}
         static const ToggleButtonSize ExtraSmall, Small, Medium, Large, ExtraLarge;
         bool operator==(const ToggleButtonSize&) const = default;

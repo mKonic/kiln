@@ -1078,7 +1078,9 @@ namespace kpp::m3 {
     inline const kiln_shape* toggle_button_defaults_pressed_shape(kpp::Key key = {}) { return kiln_m3_toggle_button_defaults_pressed_shape(key); }
     inline const kiln_shape* toggle_button_defaults_checked_shape(kpp::Key key = {}) { return kiln_m3_toggle_button_defaults_checked_shape(key); }
     inline kiln_m3_toggle_button_shapes toggle_button_defaults_shapes_for(float height, kpp::Key key = {}) { kiln_m3_toggle_button_shapes o; kiln_m3_toggle_button_shapes_init(&o); kiln_m3_toggle_button_defaults_shapes_for(key, height, &o); return o; }
+    inline kiln_m3_toggle_button_shapes toggle_button_defaults_shapes_for_size(const kiln_m3_toggle_button_size* size = {}, kpp::Key key = {}) { kiln_m3_toggle_button_shapes o; kiln_m3_toggle_button_shapes_init(&o); kiln_m3_toggle_button_defaults_shapes_for_size(key, size, &o); return o; }
     inline kiln_padding toggle_button_defaults_content_padding_for(float height, bool has_start_icon, bool has_end_icon, kpp::Key key = {}) { return kiln_m3_toggle_button_defaults_content_padding_for(key, height, has_start_icon, has_end_icon); }
+    inline kiln_padding toggle_button_defaults_content_padding_for_size(const kiln_m3_toggle_button_size* size, bool start, bool end, kpp::Key key = {}) { return kiln_m3_toggle_button_defaults_content_padding_for_size(key, size, start, end); }
     inline kiln_m3_toggle_button_colors toggle_button_defaults_colors(kpp::Key key = {}) { kiln_m3_toggle_button_colors o; kiln_m3_toggle_button_colors_init(&o); kiln_m3_toggle_button_defaults_colors(key, &o); return o; }
     inline kiln_m3_button_elevation toggle_button_defaults_elevation(kpp::Key key = {}) { kiln_m3_button_elevation o; kiln_m3_button_elevation_init(&o); kiln_m3_toggle_button_defaults_elevation(key, &o); return o; }
     inline kiln_m3_toggle_button_colors elevated_toggle_button_defaults_colors(kpp::Key key = {}) { kiln_m3_toggle_button_colors o; kiln_m3_toggle_button_colors_init(&o); kiln_m3_elevated_toggle_button_defaults_colors(key, &o); return o; }
@@ -1641,6 +1643,7 @@ namespace kpp::m3 {
     inline void secondary_scrollable_tab_row(int32_t selected_tab_index, kpp::Modifier modifier = {}, const kiln_m3_scrollable_tab_row_options* options = {}, kpp::Callback<kiln_fn> tabs = {}, kpp::Key key = {}) { kiln_m3_secondary_scrollable_tab_row(key, selected_tab_index, modifier, options, tabs.release()); }
     inline void text(kpp::Str text, kpp::Modifier modifier = {}, const kiln_m3_text_options* options = {}, kpp::Key key = {}) { kiln_m3_text(key, text.c_str(), modifier, options); }
     inline void text_annotated_string(const kiln_annotated_string* text = {}, kpp::Modifier modifier = {}, const kiln_m3_text_options* options = {}, kpp::Key key = {}) { kiln_m3_text_annotated_string(key, text, modifier, options); }
+    inline void text_text(kpp::Str text, kpp::Modifier modifier = {}, const kiln_m3_text_options* options = {}, kpp::Key key = {}) { kiln_m3_text_text(key, text.c_str(), modifier, options); }
     inline void icon(const kiln_image_vector* image_vector, kpp::Str content_description, kpp::Modifier modifier = {}, kiln_color tint = {}, kpp::Key key = {}) { kiln_m3_icon(key, image_vector, content_description.c_str(), modifier, tint); }
     inline void icon_bitmap(const kiln_image_bitmap* bitmap, kpp::Str content_description, kpp::Modifier modifier = {}, kiln_color tint = {}, kpp::Key key = {}) { kiln_m3_icon_bitmap(key, bitmap, content_description.c_str(), modifier, tint); }
     inline void icon_painter(kiln_painter* painter, kpp::Str content_description, kpp::Modifier modifier = {}, kiln_color tint = {}, kpp::Key key = {}) { kiln_m3_icon_painter(key, painter, content_description.c_str(), modifier, tint); }
@@ -1759,6 +1762,7 @@ namespace kpp::m3 {
     inline float button_defaults_medium_icon_spacing() { return kiln_m3_button_defaults_medium_icon_spacing(); }
     inline float button_defaults_large_icon_spacing() { return kiln_m3_button_defaults_large_icon_spacing(); }
     inline float button_defaults_extra_large_icon_spacing() { return kiln_m3_button_defaults_extra_large_icon_spacing(); }
+    inline kiln_m3_toggle_button_size toggle_button_defaults_size() { kiln_m3_toggle_button_size o; kiln_m3_toggle_button_size_init(&o); kiln_m3_toggle_button_defaults_size(&o); return o; }
     inline float toggle_button_defaults_min_height() { return kiln_m3_toggle_button_defaults_min_height(); }
     inline float toggle_button_defaults_icon_size() { return kiln_m3_toggle_button_defaults_icon_size(); }
     inline float toggle_button_defaults_icon_spacing() { return kiln_m3_toggle_button_defaults_icon_spacing(); }
@@ -1797,6 +1801,9 @@ namespace kpp::m3 {
     inline float outlined_text_field_defaults_focused_border_thickness() { return kiln_m3_outlined_text_field_defaults_focused_border_thickness(); }
     inline kiln_m3_int_range date_picker_defaults_year_range() { kiln_m3_int_range o; kiln_m3_int_range_init(&o); kiln_m3_date_picker_defaults_year_range(&o); return o; }
     inline float date_picker_defaults_tonal_elevation() { return kiln_m3_date_picker_defaults_tonal_elevation(); }
+    inline std::string date_picker_defaults_year_month_skeleton() { return std::string(kpp::detail::Nz(kiln_m3_date_picker_defaults_year_month_skeleton())); }
+    inline std::string date_picker_defaults_year_abbr_month_day_skeleton() { return std::string(kpp::detail::Nz(kiln_m3_date_picker_defaults_year_abbr_month_day_skeleton())); }
+    inline std::string date_picker_defaults_year_month_weekday_day_skeleton() { return std::string(kpp::detail::Nz(kiln_m3_date_picker_defaults_year_month_weekday_day_skeleton())); }
     inline float divider_defaults_thickness() { return kiln_m3_divider_defaults_thickness(); }
     inline int32_t k_system_palette_count() { return kiln_m3_k_system_palette_count(); }
     inline int32_t k_system_role_count() { return kiln_m3_k_system_role_count(); }

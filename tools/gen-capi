@@ -349,7 +349,7 @@ class Generator:
                         return var
                     m = Mapping(f'{st.c}*', m.to_cpp, from_mut, by_out=False, struct=st)
                 args.append((m, a.spelling))
-                names.append(self.type_word(base))
+                names.append('fn' if m.c == 'kiln_fn' else self.type_word(base))
             retm = None
             if ret.kind != ci.TypeKind.VOID:
                 retm = self.map(ret, '')
@@ -440,10 +440,13 @@ class Generator:
             return Mapping(ptr, None, None, list_item=item)
         if base.kind == ci.TypeKind.POINTER and canon(base.get_pointee()) == 'kiln::foundation::ScrollState':
             return Mapping('kiln_scroll_state*', lambda e: f'({e} ? {e}->state : nullptr)', None)
-        if base.kind == ci.TypeKind.POINTER and k != 'const char *':
+        if base.get_canonical().kind == ci.TypeKind.POINTER and base.get_canonical().get_pointee().spelling == 'const char':
+            k = 'const char *'   # canon() drops the const; also a constant pointer (const char* const)
+        if base.get_canonical().kind == ci.TypeKind.POINTER and k != 'const char *':
             raise Unmappable(f'pointer {t.spelling}')
         scalars = {'bool': 'bool', 'int': 'int32_t', 'float': 'float', 'double': 'double', 'long': 'int64_t',
-                   'long long': 'int64_t', 'unsigned int': 'uint32_t', 'unsigned long': 'uint64_t', 'unsigned char': 'uint8_t'}
+                   'long long': 'int64_t', 'unsigned int': 'uint32_t', 'unsigned long': 'uint64_t', 'unsigned char': 'uint8_t',
+                   'char32_t': 'uint32_t'}   # a code point
         if k in scalars:
             c = scalars[k]
             return Mapping(c, lambda e: f'{e}', lambda e, o: f'{c}({e})')
@@ -521,6 +524,10 @@ class Generator:
             return Mapping('kiln_scrollable_state*', lambda e: f'*reinterpret_cast<kiln::foundation::ScrollableState*>({e})', None)
         if k == 'kiln::foundation::PagerState':
             return Mapping('kiln_pager_state*', lambda e: f'*{e}->state', None)
+        if arg_of_callback and k == 'kiln::Function<void ()>':
+            # A callback handed to a callback (a text field's default keyboard action): to call
+            # before the callback returns.
+            return Mapping('kiln_fn', lambda e: f'kiln::capi::Fn({e})', lambda e, o: f'kiln::capi::TransientFn({e})')
         if k.startswith('kiln::Function<'):
             return self.callback(base, name)
         m = re.match(r'std::optional<(.*)>$', k)

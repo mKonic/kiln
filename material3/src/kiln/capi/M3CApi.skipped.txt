@@ -7,9 +7,6 @@ kiln::material3::CarouselDefaults::noSnapFlingBehavior: result: type kiln::rt::T
 kiln::material3::CarouselDefaults::singleAdvanceFlingBehavior: result: type kiln::rt::Task<float>
 kiln::material3::CarouselState::PagerState: result const foundation::PagerState & cannot be returned
 kiln::material3::CarouselState::PagerState: result foundation::PagerState & cannot be returned
-kiln::material3::DatePickerDefaults::YearAbbrMonthDaySkeleton: constant: pointer const char *const
-kiln::material3::DatePickerDefaults::YearMonthSkeleton: constant: pointer const char *const
-kiln::material3::DatePickerDefaults::YearMonthWeekdayDaySkeleton: constant: pointer const char *const
 kiln::material3::DatePickerState::Calendar: result: kiln::material3::internal::CalendarModel is internal
 kiln::material3::DateRangePickerState::Calendar: result: kiln::material3::internal::CalendarModel is internal
 kiln::material3::DrawerState::Anchored: result: type kiln::foundation::AnchoredDraggableState<kiln::material3::DrawerValue>
@@ -33,10 +30,6 @@ kiln::material3::SliderDefaults::DrawStopIndicator: parameter arg0: type kiln::u
 kiln::material3::SliderState::AliveToken: result: type std::weak_ptr<const char>
 kiln::material3::SwipeToDismissBoxState::Anchored: result: type kiln::foundation::AnchoredDraggableState<kiln::material3::SwipeToDismissBoxValue>
 kiln::material3::TabIndicatorScope::TabIndicatorLayout: parameter measure: type kiln::ui::MeasureScope
-kiln::material3::Text: parameter text: pointer const char *
-kiln::material3::ToggleButtonDefaults::contentPaddingFor: parameter size: kiln::material3::ToggleButtonSize is not default-constructible
-kiln::material3::ToggleButtonDefaults::shapesFor: parameter size: kiln::material3::ToggleButtonSize is not default-constructible
-kiln::material3::ToggleButtonDefaults::size: constant: kiln::material3::ToggleButtonSize is not default-constructible
 kiln::material3::TooltipScope::ObtainAnchorBounds: result: type kiln::ui::LayoutCoordinates
 kiln::material3::TooltipState::Transition: result: type kiln::foundation::MutableTransitionState<bool>
 kiln::material3::Value: parameter token: kiln::material3::tokens::ColorToken is internal
@@ -46,12 +39,8 @@ kiln::material3::Value: parameter token: kiln::material3::tokens::TypographyToke
 kiln::material3::WideNavigationRailItemDefaults::indicatorPadding: result: kiln::material3::internal::DynamicPaddingValues is not default-constructible
 kiln::material3::kSystemPaletteFields: constant: type kiln::ui::Color kiln::material3::TonalPalette::*const[65]
 kiln::material3::kSystemRoleFields: constant: type kiln::ui::Color kiln::material3::ColorScheme::*const[43]
-kiln::material3::ToggleButtonOptions::buttonSize: field left at its default: kiln::material3::ToggleButtonSize is not default-constructible
 kiln::material3::CarouselOptions::flingBehavior: field left at its default: type kiln::rt::Task<float>
-kiln::material3::TextFieldOptions::onKeyboardAction: field left at its default: callback argument kiln::Function<void ()>
 kiln::material3::TextFieldOptions::onTextLayout: field left at its default: type kiln::text::TextLayoutResult
-kiln::material3::SecureTextFieldOptions::textObfuscationCharacter: field left at its default: type char32_t
-kiln::material3::SecureTextFieldOptions::onKeyboardAction: field left at its default: callback argument kiln::Function<void ()>
 kiln::material3::SecureTextFieldOptions::onTextLayout: field left at its default: type kiln::text::TextLayoutResult
 kiln::material3::DatePickerOptions::focusRequester: field left at its default: pointer kiln::ui::FocusRequester *
 kiln::material3::FloatingActionButtonMenuScope::state: field left at its default: type std::shared_ptr<kiln::material3::internal::FabMenuState>

@@ -288,3 +288,27 @@ TEST(CApiAndroidViewMakesUpdatesAndReleasesItsView) {
     }
     CHECK(dropped == 1);
 }
+
+TEST(CApiTextFieldKeyboardActionGetsTheDefaultToCall) {
+    static int handled, defaults;
+    handled = defaults = 0;
+    Harness h;
+    h.Run([](void*) {
+        kiln_text_field_state* state = kiln_remember_text_field_state(kpp::Key{}, "a");
+        kiln_m3_text_field_options o;
+        kiln_m3_text_field_options_init(&o);
+        o.on_keyboard_action = kpp::fn<kiln_m3_fn_fn>([](kiln_fn performDefault) {
+            ++handled;
+            if (performDefault.call) { performDefault.call(performDefault.user); ++defaults; }
+        });
+        kiln_m3_text_field(kpp::Key{}, state, nullptr, &o);
+    });
+    h.owner.MoveFocus(ui::FocusDirection::Next);
+    h.Pump();
+    CHECK(h.owner.ActiveTextInput() != nullptr);
+    if (!h.owner.ActiveTextInput()) return;
+    h.owner.ActiveTextInput()->PerformImeAction(ui::ImeAction::Done);
+    h.Pump();
+    CHECK_EQ(handled, 1);
+    CHECK_EQ(defaults, 1);
+}

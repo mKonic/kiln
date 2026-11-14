@@ -192,6 +192,8 @@ namespace kiln::capi {
     // Strings and values inside results: valid until the outermost callback returns.
     const char* TransientString(std::string s);
     void KeepTransient(std::shared_ptr<void> value);
+    // A C++ callback for C to call (not to keep or drop): valid until the outermost callback returns.
+    kiln_fn TransientFn(kiln::Function<void()> fn);
     template<typename T>
     T* NewTransient() {
         auto p = std::make_shared<T>();
