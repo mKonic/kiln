@@ -733,7 +733,6 @@ namespace {
 [[maybe_unused]] kiln::Function<int (int, int)> ToCpp_kiln_m3_fn_int_int_to_int(kiln_m3_fn_int_int_to_int f);
 [[maybe_unused]] kiln::Function<bool (kiln::material3::DrawerValue)> ToCpp_kiln_m3_fn_drawer_value_to_bool(kiln_m3_fn_drawer_value_to_bool f);
 [[maybe_unused]] kiln::Function<kiln::ui::BackEvent ()> ToCpp_kiln_m3_fn_to_back_event(kiln_m3_fn_to_back_event f);
-[[maybe_unused]] kiln::Function<void (kiln::ui::DrawScope &)> ToCpp_kiln_m3_fn_draw_scope(kiln_m3_fn_draw_scope f);
 [[maybe_unused]] kiln::Function<kiln::ui::Color ()> ToCpp_kiln_m3_fn_to_color(kiln_m3_fn_to_color f);
 [[maybe_unused]] kiln::Function<std::basic_string<char> (int)> ToCpp_kiln_m3_fn_int_to_string(kiln_m3_fn_int_to_string f);
 [[maybe_unused]] kiln::Function<void (int, bool, bool)> ToCpp_kiln_m3_fn_int_bool_bool(kiln_m3_fn_int_bool_bool f);
@@ -999,14 +998,6 @@ kiln::Function<kiln::ui::BackEvent ()> ToCpp_kiln_m3_fn_to_back_event(kiln_m3_fn
         kiln_back_event_init(&r);
         o->f.call(o->f.user, &r);
         return ToCpp(&r);
-    };
-}
-kiln::Function<void (kiln::ui::DrawScope &)> ToCpp_kiln_m3_fn_draw_scope(kiln_m3_fn_draw_scope f) {
-    auto o = kiln::capi::Own(f);
-    if (!o) return {};
-    return [o](kiln::ui::DrawScope & x0) -> void {
-        kiln::capi::CallbackScope scope;
-        o->f.call(o->f.user, reinterpret_cast<kiln_draw_scope*>(static_cast<kiln::ui::DrawScope*>(&(x0))));
     };
 }
 kiln::Function<kiln::ui::Color ()> ToCpp_kiln_m3_fn_to_color(kiln_m3_fn_to_color f) {
@@ -3338,6 +3329,7 @@ kiln::material3::TextFieldOptions ToCpp(const kiln_m3_text_field_options* in) {
     if (c.keyboard_options) v.keyboardOptions = ToCpp(c.keyboard_options);
     if (c.on_keyboard_action.call) v.onKeyboardAction = ToCpp_kiln_m3_fn_fn(c.on_keyboard_action);
     if (c.line_limits) v.lineLimits = ToCpp(c.line_limits);
+    if (c.on_text_layout.call) v.onTextLayout = kiln::capi::Fn(c.on_text_layout);
     if (c.scroll_state) v.scrollState = (c.scroll_state ? c.scroll_state->state : nullptr);
     v.spellCheck = c.spell_check;
     if (c.shape) v.shape = kiln::capi::ToShape(c.shape);
@@ -3397,6 +3389,7 @@ kiln::material3::SecureTextFieldOptions ToCpp(const kiln_m3_secure_text_field_op
     v.textObfuscationCharacter = c.text_obfuscation_character;
     if (c.keyboard_options) v.keyboardOptions = (c.keyboard_options ? std::optional<kiln::foundation::KeyboardOptions>(ToCpp(c.keyboard_options)) : std::nullopt);
     if (c.on_keyboard_action.call) v.onKeyboardAction = ToCpp_kiln_m3_fn_fn(c.on_keyboard_action);
+    if (c.on_text_layout.call) v.onTextLayout = kiln::capi::Fn(c.on_text_layout);
     if (c.shape) v.shape = kiln::capi::ToShape(c.shape);
     if (c.colors) v.colors = (c.colors ? std::optional<kiln::material3::TextFieldColors>(ToCpp(c.colors)) : std::nullopt);
     if (c.content_padding) v.contentPadding = (c.content_padding ? std::optional<kiln::foundation::PaddingValues>(kiln::capi::ToPadding((*c.content_padding))) : std::nullopt);
@@ -5700,7 +5693,6 @@ kiln::material3::LinearProgressIndicatorOptions ToCpp(const kiln_m3_linear_progr
     v.trackColor = kiln::capi::ToColor(c.track_color);
     v.strokeCap = kiln::gfx::StrokeCap(c.stroke_cap);
     v.gapSize = kiln::capi::ToDp(c.gap_size);
-    if (c.draw_stop_indicator) v.drawStopIndicator = (c.draw_stop_indicator ? std::optional<kiln::Function<void (kiln::ui::DrawScope &)>>(ToCpp_kiln_m3_fn_draw_scope((*c.draw_stop_indicator))) : std::nullopt);
     return v;
 }
 void FromCpp(const kiln::material3::LinearProgressIndicatorOptions& v, kiln_m3_linear_progress_indicator_options* out) {
@@ -7243,6 +7235,7 @@ kiln::material3::TextOptions ToCpp(const kiln_m3_text_options* in) {
     v.softWrap = c.soft_wrap;
     v.maxLines = c.max_lines;
     v.minLines = c.min_lines;
+    if (c.on_text_layout.call) v.onTextLayout = kiln::capi::Fn(c.on_text_layout);
     if (c.style) v.style = (c.style ? std::optional<kiln::text::TextStyle>((c.style ? c.style->style : kiln::text::TextStyle{})) : std::nullopt);
     return v;
 }

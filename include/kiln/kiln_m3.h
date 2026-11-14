@@ -479,7 +479,6 @@ typedef struct kiln_m3_fn_button_group_menu_state { void (*call)(void* user, kil
 typedef struct kiln_m3_fn_button_group_scope { void (*call)(void* user, kiln_m3_button_group_scope* a0); void* user; void (*drop)(void* user); } kiln_m3_fn_button_group_scope;
 typedef struct kiln_m3_fn_carousel_item_scope_int { void (*call)(void* user, kiln_m3_carousel_item_scope* a0, int32_t a1); void* user; void (*drop)(void* user); } kiln_m3_fn_carousel_item_scope_int;
 typedef struct kiln_m3_fn_color_scheme { void (*call)(void* user, kiln_m3_color_scheme* a0); void* user; void (*drop)(void* user); } kiln_m3_fn_color_scheme;
-typedef struct kiln_m3_fn_draw_scope { void (*call)(void* user, kiln_draw_scope* a0); void* user; void (*drop)(void* user); } kiln_m3_fn_draw_scope;
 typedef struct kiln_m3_fn_draw_scope_offset { void (*call)(void* user, kiln_draw_scope* a0, kiln_offset a1); void* user; void (*drop)(void* user); } kiln_m3_fn_draw_scope_offset;
 typedef struct kiln_m3_fn_draw_scope_offset_color { void (*call)(void* user, kiln_draw_scope* a0, kiln_offset a1, kiln_color a2); void* user; void (*drop)(void* user); } kiln_m3_fn_draw_scope_offset_color;
 typedef struct kiln_m3_fn_drawer_value_to_bool { bool (*call)(void* user, kiln_m3_drawer_value a0); void* user; void (*drop)(void* user); } kiln_m3_fn_drawer_value_to_bool;
@@ -1146,6 +1145,7 @@ struct kiln_m3_text_field_options {
     const kiln_keyboard_options* keyboard_options;
     kiln_m3_fn_fn on_keyboard_action;
     const kiln_text_field_line_limits* line_limits;
+    kiln_fn_text_layout on_text_layout;
     kiln_scroll_state* scroll_state;
     bool spell_check;
     const kiln_shape* shape;
@@ -1172,6 +1172,7 @@ struct kiln_m3_secure_text_field_options {
     uint32_t text_obfuscation_character;
     const kiln_keyboard_options* keyboard_options;
     kiln_m3_fn_fn on_keyboard_action;
+    kiln_fn_text_layout on_text_layout;
     const kiln_shape* shape;
     const kiln_m3_text_field_colors* colors;
     const kiln_padding* content_padding;
@@ -1891,7 +1892,6 @@ struct kiln_m3_linear_progress_indicator_options {
     kiln_color track_color;
     kiln_stroke_cap stroke_cap;
     float gap_size;
-    const kiln_m3_fn_draw_scope* draw_stop_indicator;
 };
 KILN_API void kiln_m3_linear_progress_indicator_options_init(kiln_m3_linear_progress_indicator_options* s);
 struct kiln_m3_circular_progress_indicator_options {
@@ -2350,6 +2350,7 @@ struct kiln_m3_text_options {
     bool soft_wrap;
     int32_t max_lines;
     int32_t min_lines;
+    kiln_fn_text_layout on_text_layout;
     const kiln_text_style* style;
 };
 KILN_API void kiln_m3_text_options_init(kiln_m3_text_options* s);

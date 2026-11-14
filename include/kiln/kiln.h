@@ -601,12 +601,43 @@ KILN_API void kiln_box_with_constraints(kiln_key key, const kiln_modifier* modif
  * Text and images
  * ------------------------------------------------------------------------------------------- */
 
+/* A text layout (onTextLayout). Offsets are UTF-16 code units (as Compose's), positions px in
+ * the text's space. Valid during the callback that gives it; retain it to keep it longer. */
+typedef struct kiln_text_layout_result kiln_text_layout_result;
+typedef struct kiln_fn_text_layout { void (*call)(void* user, const kiln_text_layout_result* layout); void* user; void (*drop)(void* user); } kiln_fn_text_layout;
+KILN_API const kiln_text_layout_result* kiln_text_layout_result_retain(const kiln_text_layout_result* layout);
+KILN_API void kiln_text_layout_result_release(const kiln_text_layout_result* layout);
+KILN_API kiln_int_size kiln_text_layout_result_size(const kiln_text_layout_result* layout);
+KILN_API float kiln_text_layout_result_first_baseline(const kiln_text_layout_result* layout);
+KILN_API float kiln_text_layout_result_last_baseline(const kiln_text_layout_result* layout);
+KILN_API bool kiln_text_layout_result_did_overflow_width(const kiln_text_layout_result* layout);
+KILN_API bool kiln_text_layout_result_did_overflow_height(const kiln_text_layout_result* layout);
+KILN_API bool kiln_text_layout_result_has_visual_overflow(const kiln_text_layout_result* layout);
+KILN_API int32_t kiln_text_layout_result_line_count(const kiln_text_layout_result* layout);
+KILN_API int32_t kiln_text_layout_result_line_start(const kiln_text_layout_result* layout, int32_t line);
+/* visible_end: without trailing whitespace. */
+KILN_API int32_t kiln_text_layout_result_line_end(const kiln_text_layout_result* layout, int32_t line, bool visible_end);
+KILN_API bool kiln_text_layout_result_is_line_ellipsized(const kiln_text_layout_result* layout, int32_t line);
+KILN_API float kiln_text_layout_result_line_top(const kiln_text_layout_result* layout, int32_t line);
+KILN_API float kiln_text_layout_result_line_bottom(const kiln_text_layout_result* layout, int32_t line);
+KILN_API float kiln_text_layout_result_line_baseline(const kiln_text_layout_result* layout, int32_t line);
+KILN_API float kiln_text_layout_result_line_left(const kiln_text_layout_result* layout, int32_t line);
+KILN_API float kiln_text_layout_result_line_right(const kiln_text_layout_result* layout, int32_t line);
+KILN_API int32_t kiln_text_layout_result_line_for_offset(const kiln_text_layout_result* layout, int32_t offset);
+KILN_API int32_t kiln_text_layout_result_line_for_vertical_position(const kiln_text_layout_result* layout, float y);
+KILN_API float kiln_text_layout_result_horizontal_position(const kiln_text_layout_result* layout, int32_t offset, bool use_primary_direction);
+KILN_API int32_t kiln_text_layout_result_offset_for_position(const kiln_text_layout_result* layout, kiln_offset position);
+/* The character's box / the cursor before it (a zero-width rect). */
+KILN_API kiln_rect kiln_text_layout_result_bounding_box(const kiln_text_layout_result* layout, int32_t offset);
+KILN_API kiln_rect kiln_text_layout_result_cursor_rect(const kiln_text_layout_result* layout, int32_t offset);
+
 typedef struct kiln_text_options {
     size_t size;
     kiln_text_overflow overflow;   /* clip */
     bool soft_wrap;                /* true */
     int32_t max_lines;             /* INT32_MAX */
     int32_t min_lines;             /* 1 */
+    kiln_fn_text_layout on_text_layout;   /* after each layout */
 } kiln_text_options;
 KILN_API void kiln_text_options_init(kiln_text_options* options);
 /* BasicText. style NULL: the default style (no theme; Material's Text is kiln_m3_text). */

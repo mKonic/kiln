@@ -53,6 +53,7 @@ struct kiln_scroll_state { kiln::foundation::ScrollState* state; std::shared_ptr
 struct kiln_lazy_list_state { kiln::foundation::LazyListState* state; std::shared_ptr<kiln::rt::CoroutineScope> scope; };
 struct kiln_lazy_grid_state { kiln::foundation::LazyGridState* state; std::shared_ptr<kiln::rt::CoroutineScope> scope; };
 struct kiln_layout_coordinates { kiln::ui::LayoutCoordinates c; };
+struct kiln_text_layout_result { std::atomic<int> refs{ 1 }; kiln::text::TextLayoutResult r; };
 struct kiln_fling_behavior { kiln::foundation::FlingBehavior fling; };
 struct kiln_pager_state {
     kiln::foundation::PagerState* state;
@@ -103,6 +104,8 @@ namespace kiln::capi {
     kiln::Function<void()> Fn(kiln_fn f);
     kiln::Function<void(bool)> Fn(kiln_fn_bool f);
     kiln::Function<void(int)> Fn(kiln_fn_int f);
+    kiln::Function<void(const text::TextLayoutResult&)> Fn(kiln_fn_text_layout f);
+    kiln::Function<void(ui::DrawScope&)> Fn(kiln_fn_draw f);
     kiln::Function<void(float)> Fn(kiln_fn_float f);
     kiln::Function<void(const std::string&)> Fn(kiln_fn_str f);
 
@@ -206,7 +209,8 @@ namespace kiln::capi {
     kiln_fn TransientFn(kiln::Function<void()> fn);
     const foundation::ScrollIndicatorState& ToScrollIndicator(const kiln_scroll_indicator_state* s);   // null: sizes unknown
     kiln_fling_behavior* TransientFling(foundation::FlingBehavior fling);
-    const kiln_layout_coordinates* TransientCoordinates(const ui::LayoutCoordinates& c);   // null for an empty one
+    const kiln_layout_coordinates* TransientCoordinates(const ui::LayoutCoordinates& c);
+    const kiln_text_layout_result* TransientTextLayout(const text::TextLayoutResult& r);   // null for an empty one
     template<typename T>
     T* NewTransient() {
         auto p = std::make_shared<T>();

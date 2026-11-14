@@ -337,6 +337,8 @@ class Generator:
             'kiln::Function<void (float)>': 'kiln_fn_float',
             'kiln::Function<void (std::basic_string<char>)>': 'kiln_fn_str',
             'kiln::Function<void (const std::basic_string<char> &)>': 'kiln_fn_str',
+            'kiln::Function<void (const kiln::text::TextLayoutResult &)>': 'kiln_fn_text_layout',
+            'kiln::Function<void (kiln::ui::DrawScope &)>': 'kiln_fn_draw',
         }
         if sig in core:
             return Mapping(core[sig], lambda e: f'kiln::capi::Fn({e})', None)
@@ -533,6 +535,8 @@ class Generator:
         if k == 'kiln::ui::Size':
             return Mapping('kiln_size', lambda e: f'kiln::ui::Size{{ {e}.width, {e}.height }}',
                            lambda e, o: f'kiln_size{{ ({e}).width, ({e}).height }}')
+        if k == 'kiln::text::TextLayoutResult':
+            return Mapping('const kiln_text_layout_result*', lambda e: f'{e}->r', lambda e, o: f'kiln::capi::TransientTextLayout({e})')
         if k == 'kiln::ui::AlignmentLine':
             # Lines are compared by address: a C handle is the line's own address.
             return Mapping('const kiln_alignment_line*', lambda e: f'*reinterpret_cast<const kiln::ui::AlignmentLine*>({e})',
@@ -1095,7 +1099,7 @@ class Generator:
         """bindings/rust/kiln/src/material3.rs: every kiln_m3 function with closures, &str,
         Modifier and the call site's key; structs come back by value."""
         cbs = {cb.c: cb for cb in self.callbacks.values()}
-        core_cbs = {'kiln_fn', 'kiln_fn_bool', 'kiln_fn_int', 'kiln_fn_float', 'kiln_fn_str'}
+        core_cbs = {'kiln_fn', 'kiln_fn_bool', 'kiln_fn_int', 'kiln_fn_float', 'kiln_fn_str', 'kiln_fn_text_layout', 'kiln_fn_draw'}
         structs = {self.structs[q].c for q in self.struct_order}
         scalars = {'bool': 'bool', 'int32_t': 'i32', 'uint32_t': 'u32', 'float': 'f32', 'double': 'f64', 'int64_t': 'i64',
                    'uint64_t': 'u64', 'uint8_t': 'u8', 'size_t': 'usize', 'kiln_color': 'sys::kiln_color'}
@@ -1211,7 +1215,7 @@ class Generator:
 
     def cpp_header(self):
         """kiln_m3.hpp: kiln++ wrappers (callables for callbacks, Key last, structs returned)."""
-        cbs = {cb.c for cb in self.callbacks.values()} | {'kiln_fn', 'kiln_fn_bool', 'kiln_fn_int', 'kiln_fn_float', 'kiln_fn_str'}
+        cbs = {cb.c for cb in self.callbacks.values()} | {'kiln_fn', 'kiln_fn_bool', 'kiln_fn_int', 'kiln_fn_float', 'kiln_fn_str', 'kiln_fn_text_layout', 'kiln_fn_draw'}
         structs = {self.structs[q].c for q in self.struct_order}
         handles = {h.c: h for h in self.handles.values()}
 

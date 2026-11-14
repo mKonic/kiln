@@ -10,7 +10,6 @@ crate::__kiln_callback!(sys::kiln_m3_fn_button_group_menu_state, (a0: *mut sys::
 crate::__kiln_callback!(sys::kiln_m3_fn_button_group_scope, (a0: *mut sys::kiln_m3_button_group_scope) -> ());
 crate::__kiln_callback!(sys::kiln_m3_fn_carousel_item_scope_int, (a0: *mut sys::kiln_m3_carousel_item_scope, a1: i32) -> ());
 crate::__kiln_callback!(sys::kiln_m3_fn_color_scheme, (a0: *mut sys::kiln_m3_color_scheme) -> ());
-crate::__kiln_callback!(sys::kiln_m3_fn_draw_scope, (a0: *mut sys::kiln_draw_scope) -> ());
 crate::__kiln_callback!(sys::kiln_m3_fn_draw_scope_offset, (a0: *mut sys::kiln_draw_scope, a1: sys::kiln_offset) -> ());
 crate::__kiln_callback!(sys::kiln_m3_fn_draw_scope_offset_color, (a0: *mut sys::kiln_draw_scope, a1: sys::kiln_offset, a2: sys::kiln_color) -> ());
 crate::__kiln_callback!(sys::kiln_m3_fn_drawer_value_to_bool, (a0: sys::kiln_m3_drawer_value) -> bool);

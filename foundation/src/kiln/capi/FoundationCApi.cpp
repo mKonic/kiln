@@ -156,6 +156,11 @@ namespace kiln::capi {
         static const Unknown unknown;
         return s ? *reinterpret_cast<const foundation::ScrollIndicatorState*>(s) : unknown;
     }
+    const kiln_text_layout_result* TransientTextLayout(const text::TextLayoutResult& r) {
+        auto* h = new kiln_text_layout_result{ { 1 }, r };   // the arena's reference
+        KeepTransient(std::shared_ptr<void>(h, [](void* p) { kiln_text_layout_result_release(static_cast<kiln_text_layout_result*>(p)); }));
+        return h;
+    }
     const kiln_layout_coordinates* TransientCoordinates(const ui::LayoutCoordinates& c) {
         auto* h = NewTransient<kiln_layout_coordinates>();
         h->c = c;
@@ -262,6 +267,16 @@ namespace kiln::capi {
         auto o = Own(f);
         if (!o) return {};
         return [o](int v) { CallbackScope s; o->f.call(o->f.user, v); };
+    }
+    kiln::Function<void(const text::TextLayoutResult&)> Fn(kiln_fn_text_layout f) {
+        auto o = Own(f);
+        if (!o) return {};
+        return [o](const text::TextLayoutResult& r) { CallbackScope s; o->f.call(o->f.user, TransientTextLayout(r)); };
+    }
+    kiln::Function<void(ui::DrawScope&)> Fn(kiln_fn_draw f) {
+        auto o = Own(f);
+        if (!o) return {};
+        return [o](ui::DrawScope& d) { CallbackScope s; o->f.call(o->f.user, reinterpret_cast<kiln_draw_scope*>(&d)); };
     }
     kiln::Function<void(float)> Fn(kiln_fn_float f) {
         auto o = Own(f);
@@ -863,14 +878,6 @@ namespace {
         return ui::DrawStyle::Stroke(std::move(k));
     }
     gfx::Brush Solid(kiln_color c) { return gfx::Brush::SolidColor(ToColor(c)); }
-    kiln::Function<void(ui::DrawScope&)> DrawFn(kiln_fn_draw f) {
-        auto own = Own(f);
-        if (!own) return {};
-        return [own](ui::DrawScope& d) {
-            CallbackScope cs;
-            own->f.call(own->f.user, reinterpret_cast<kiln_draw_scope*>(&d));
-        };
-    }
 }
 KILN_API kiln_path* kiln_path_new(void) { return new kiln_path{}; }
 KILN_API void kiln_path_free(kiln_path* p) { delete p; }
@@ -939,9 +946,9 @@ KILN_API void kiln_draw_content(kiln_draw_scope* s) {
             if (static_cast<ui::DrawScope*>(c) == ToDraw(s)) { c->DrawContent(); return; }
     } CATCH_VOID
 }
-KILN_API kiln_modifier* kiln_mod_draw_behind(kiln_modifier* m, kiln_fn_draw f) { MOD(fd::DrawBehind(base, DrawFn(f))) }
+KILN_API kiln_modifier* kiln_mod_draw_behind(kiln_modifier* m, kiln_fn_draw f) { MOD(fd::DrawBehind(base, Fn(f))) }
 KILN_API kiln_modifier* kiln_mod_draw_with_content(kiln_modifier* m, kiln_fn_draw f) {
-    auto fn = DrawFn(f);
+    auto fn = Fn(f);
     MOD(fd::DrawWithContent(base, [fn](ui::ContentDrawScope& d) {
         if (!fn) { d.DrawContent(); return; }
         t_ContentScopes.push_back(&d);
@@ -951,7 +958,7 @@ KILN_API kiln_modifier* kiln_mod_draw_with_content(kiln_modifier* m, kiln_fn_dra
 }
 KILN_API void kiln_canvas(kiln_key key, const kiln_modifier* m, kiln_fn_draw f) {
     TRY {
-        auto fn = DrawFn(f);
+        auto fn = Fn(f);
         const ui::Modifier mod = ToModifier(m);
         InGroup(key, [&] { fd::Canvas(mod, fn ? fn : [](ui::DrawScope&) {}); });
     } CATCH_VOID
@@ -1066,6 +1073,61 @@ KILN_API void kiln_text_options_init(kiln_text_options* o) {
     o->max_lines = INT32_MAX;
     o->min_lines = 1;
 }
+KILN_API const kiln_text_layout_result* kiln_text_layout_result_retain(const kiln_text_layout_result* l) {
+    if (l) const_cast<kiln_text_layout_result*>(l)->refs.fetch_add(1, std::memory_order_relaxed);
+    return l;
+}
+KILN_API void kiln_text_layout_result_release(const kiln_text_layout_result* l) {
+    if (l && const_cast<kiln_text_layout_result*>(l)->refs.fetch_sub(1, std::memory_order_acq_rel) == 1) delete l;
+}
+KILN_API kiln_int_size kiln_text_layout_result_size(const kiln_text_layout_result* l) {
+    if (!l) return {};
+    const ui::IntSize s = l->r.Size();
+    return { s.width, s.height };
+}
+KILN_API float kiln_text_layout_result_first_baseline(const kiln_text_layout_result* l) { return l ? l->r.FirstBaseline() : 0; }
+KILN_API float kiln_text_layout_result_last_baseline(const kiln_text_layout_result* l) { return l ? l->r.LastBaseline() : 0; }
+KILN_API bool kiln_text_layout_result_did_overflow_width(const kiln_text_layout_result* l) { return l && l->r.DidOverflowWidth(); }
+KILN_API bool kiln_text_layout_result_did_overflow_height(const kiln_text_layout_result* l) { return l && l->r.DidOverflowHeight(); }
+KILN_API bool kiln_text_layout_result_has_visual_overflow(const kiln_text_layout_result* l) { return l && l->r.HasVisualOverflow(); }
+KILN_API int32_t kiln_text_layout_result_line_count(const kiln_text_layout_result* l) { return l ? l->r.LineCount() : 0; }
+#define KILN_TL_LINE(expr, fallback) \
+    if (!l || line < 0 || line >= l->r.LineCount()) return fallback; \
+    TRY { return expr; } CATCH(fallback)
+KILN_API int32_t kiln_text_layout_result_line_start(const kiln_text_layout_result* l, int32_t line) { KILN_TL_LINE(l->r.LineStart(line), 0) }
+KILN_API int32_t kiln_text_layout_result_line_end(const kiln_text_layout_result* l, int32_t line, bool visibleEnd) { KILN_TL_LINE(l->r.LineEnd(line, visibleEnd), 0) }
+KILN_API bool kiln_text_layout_result_is_line_ellipsized(const kiln_text_layout_result* l, int32_t line) { KILN_TL_LINE(l->r.IsLineEllipsized(line), false) }
+KILN_API float kiln_text_layout_result_line_top(const kiln_text_layout_result* l, int32_t line) { KILN_TL_LINE(l->r.LineTop(line), 0.0f) }
+KILN_API float kiln_text_layout_result_line_bottom(const kiln_text_layout_result* l, int32_t line) { KILN_TL_LINE(l->r.LineBottom(line), 0.0f) }
+KILN_API float kiln_text_layout_result_line_baseline(const kiln_text_layout_result* l, int32_t line) { KILN_TL_LINE(l->r.LineBaseline(line), 0.0f) }
+KILN_API float kiln_text_layout_result_line_left(const kiln_text_layout_result* l, int32_t line) { KILN_TL_LINE(l->r.LineLeft(line), 0.0f) }
+KILN_API float kiln_text_layout_result_line_right(const kiln_text_layout_result* l, int32_t line) { KILN_TL_LINE(l->r.LineRight(line), 0.0f) }
+#undef KILN_TL_LINE
+KILN_API int32_t kiln_text_layout_result_line_for_offset(const kiln_text_layout_result* l, int32_t offset) {
+    if (!l) return 0;
+    TRY { return l->r.LineForOffset(offset); } CATCH(0)
+}
+KILN_API int32_t kiln_text_layout_result_line_for_vertical_position(const kiln_text_layout_result* l, float y) {
+    if (!l) return 0;
+    TRY { return l->r.LineForVerticalPosition(y); } CATCH(0)
+}
+KILN_API float kiln_text_layout_result_horizontal_position(const kiln_text_layout_result* l, int32_t offset, bool primary) {
+    if (!l) return 0;
+    TRY { return l->r.HorizontalPosition(offset, primary); } CATCH(0.0f)
+}
+KILN_API int32_t kiln_text_layout_result_offset_for_position(const kiln_text_layout_result* l, kiln_offset p) {
+    if (!l) return 0;
+    TRY { return l->r.OffsetForPosition(ui::Offset{ p.x, p.y }); } CATCH(0)
+}
+KILN_API kiln_rect kiln_text_layout_result_bounding_box(const kiln_text_layout_result* l, int32_t offset) {
+    if (!l) return {};
+    TRY { const RectF b = l->r.BoundingBox(offset); return kiln_rect{ b.x, b.y, b.x + b.w, b.y + b.h }; } CATCH(kiln_rect{})
+}
+KILN_API kiln_rect kiln_text_layout_result_cursor_rect(const kiln_text_layout_result* l, int32_t offset) {
+    if (!l) return {};
+    TRY { const CursorRect c = l->r.Cursor(offset); return kiln_rect{ c.x, c.top, c.x, c.bottom }; } CATCH(kiln_rect{})
+}
+
 KILN_API void kiln_basic_text(kiln_key key, const char* utf8, const kiln_modifier* m, const kiln_text_style* style,
                               const kiln_text_options* in) {
     TRY {
@@ -1075,6 +1137,7 @@ KILN_API void kiln_basic_text(kiln_key key, const char* utf8, const kiln_modifie
         bo.softWrap = o.soft_wrap;
         bo.maxLines = o.max_lines;
         bo.minLines = o.min_lines;
+        bo.onTextLayout = Fn(o.on_text_layout);
         fd::BasicText(ToString(utf8), ToModifier(m), style ? style->style : text::TextStyle{}, std::move(bo), ToKey(key));
     } CATCH_VOID
 }

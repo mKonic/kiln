@@ -482,6 +482,46 @@ TEST(CApiDrawScopeDrawsCanvasesAndWrapsContent) {
     CHECK(outerDraws == 2 && innerDraws == 1);   // the content is drawn only when asked for
 }
 
+TEST(CApiTextLayoutResultDescribesTheLinesAndCanBeKept) {
+    static const kiln_text_layout_result* kept;
+    static int layouts, m3Layouts;
+    kept = nullptr;
+    layouts = m3Layouts = 0;
+    {
+        Harness h;
+        h.Run([](void*) {
+            kpp::column(kpp::Modifier(), [] {
+                kiln_text_options o;
+                kiln_text_options_init(&o);
+                o.on_text_layout = kiln_fn_text_layout{ [](void*, const kiln_text_layout_result* l) {
+                    ++layouts;
+                    if (kept) kiln_text_layout_result_release(kept);
+                    kept = kiln_text_layout_result_retain(l);
+                }, nullptr, nullptr };
+                kiln_basic_text(KILN_HERE, "ab\ncd", NULL, NULL, &o);
+                kiln_m3_text_options mo;
+                kiln_m3_text_options_init(&mo);
+                mo.on_text_layout = kiln_fn_text_layout{ [](void*, const kiln_text_layout_result*) { ++m3Layouts; }, nullptr, nullptr };
+                kiln_m3_text(KILN_HERE, "M3", NULL, &mo);
+            });
+        });
+        h.composition.SetContent([] {});
+        h.Pump();
+    // Kept past the callback and the composition (the text backend stays: the harness's here).
+    CHECK(layouts >= 1 && m3Layouts >= 1);
+    CHECK(kept != nullptr);
+    CHECK(kiln_text_layout_result_line_count(kept) == 2);
+    CHECK(kiln_text_layout_result_line_start(kept, 1) == 3);
+    CHECK(kiln_text_layout_result_line_for_offset(kept, 4) == 1);
+    CHECK(kiln_text_layout_result_line_top(kept, 1) > kiln_text_layout_result_line_top(kept, 0));
+    CHECK(kiln_text_layout_result_line_top(kept, 7) == 0);   // out of range
+    const kiln_rect box = kiln_text_layout_result_bounding_box(kept, 1);
+    CHECK(box.right > box.left);
+    CHECK(!kiln_text_layout_result_has_visual_overflow(kept));
+    kiln_text_layout_result_release(kept);
+    }
+}
+
 TEST(CApiAndroidViewMakesUpdatesAndReleasesItsView) {
     static int made, updates, released, dropped;
     made = updates = released = dropped = 0;
