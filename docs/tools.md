@@ -72,6 +72,41 @@ A test is a `TEST(Name) { ... }` block with `CHECK` and `CHECK_EQ`, in a file in
 or state. The existing tests show how to compose content, send input, advance frames and
 read the semantics tree.
 
+### Testing your UI
+
+`kiln_ui_test` is a port of Compose's ui-test, for an app's own tests. A test composes content
+into a window of its own. It finds nodes the way accessibility sees them, acts on them, then
+checks the result. It runs on the desktop and on devices. Link it into a test executable with
+`target_link_libraries(my_tests PRIVATE kiln_ui_test kiln_material3)`.
+
+<!-- prelude: void CounterScreen(); -->
+```cpp
+kiln::test::ComposeUiTest t;
+t.SetContent([] { CounterScreen(); });
+t.OnNodeWithText("Add").AssertHasClickAction().PerformClick();
+t.OnNodeWithTag("count").AssertTextEquals({ "1" });
+t.OnNodeWithTag("name").PerformTextInput("Ada");
+t.OnNodeWithText("Row 40").PerformScrollTo().AssertIsDisplayed();
+```
+
+- **Finding nodes.** `OnNodeWithText`, `OnNodeWithTag`, `OnNodeWithContentDescription` and
+  `OnNode(matcher)` work as in Compose. Matchers combine with `&&`, `||` and `!`:
+  `HasText`, `HasClickAction`, `IsOn`, `HasAnyAncestor` and the rest.
+- **Test tags.** Give a node a tag with `TestTag(modifier, "count")`.
+- **The unmerged tree.** A button merges its label. Pass `useUnmergedTree` to find the label
+  as its own node.
+- **Actions.** `PerformClick`, `PerformTouchInput` (clicks, long and double clicks, swipes),
+  `PerformTextInput` and `PerformTextReplacement`, `PerformImeAction`, `PerformScrollTo` and
+  `PerformScrollToIndex`.
+- **Waiting.** Each action waits until recomposition, layout and animations are done.
+- **The clock.** Turn `MainClock().autoAdvance` off to step animations frame by frame with
+  `AdvanceTimeBy`.
+- **Failures.** A failed assertion throws `kiln::test::AssertionError`. Its message says what
+  was expected and prints the nodes involved. `PrintTree()` prints the whole tree.
+
+The default text layout is monospace, so measurements are the same on every machine. Pass
+`ComposeUiTestOptions::text` to use another text layout.
+
 ### Driving an app
 
 A debug build answers Volition, so a script or an agent can test the running app by name:

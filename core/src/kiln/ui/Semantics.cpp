@@ -260,8 +260,11 @@ namespace kiln::ui {
 
     namespace {
         // A node's own configuration from its modifiers (leftmost wins for single values).
+        // Every node with a semantics modifier (BuildSemanticsTree's allNodes: Compose's tree, a
+        // test tag alone making a node), else only those with content.
+        thread_local bool t_AllNodes = false;
         bool OwnConfig(LayoutNode& n, SemanticsConfiguration& out) {
-            return CalculateSemanticsConfiguration(n, out) && (out.HasContent() || out.mergeDescendants || out.isTraversalGroup);
+            return CalculateSemanticsConfiguration(n, out) && (t_AllNodes || out.HasContent() || out.mergeDescendants || out.isTraversalGroup);
         }
         // findCoordinatorToGetBounds: the space of the outermost semantics modifier that is
         // important for bounds (a merging one first when the node merges), else the node's inner
@@ -304,6 +307,8 @@ namespace kiln::ui {
                 if (m->ClipsChildren() && n.IsModifierPlaced(m)) clip = Intersect(clip, n.RectInRoot(std::nullopt, m));
             return clip;
         }
+        // The tree being built is the unmerged one (BuildSemanticsTree's merged = false).
+        thread_local bool t_Unmerged = false;
         void Build(LayoutNode& n, const Rect& clip, std::vector<SemanticsNode>& out);
         // findOneLayerOfMergingSemanticsNodes: a merging node's children are the merging nodes
         // below it (a clickable row's button), not stopping at nodes that only add content.
@@ -328,10 +333,11 @@ namespace kiln::ui {
                 node.id = n.SemanticsId();
                 node.layout = &n;
                 node.boundsInRoot = Intersect(bounds, clip);
-                if (cfg.mergeDescendants && !cfg.clearAndSet) MergeDescendants(n, cfg);
+                node.unclippedBoundsInRoot = bounds;
+                if (cfg.mergeDescendants && !cfg.clearAndSet && !t_Unmerged) MergeDescendants(n, cfg);
                 node.config = cfg;
                 if (!cfg.clearAndSet) {
-                    if (cfg.mergeDescendants) BuildMergingChildren(n, inner, node.children);
+                    if (cfg.mergeDescendants && !t_Unmerged) BuildMergingChildren(n, inner, node.children);
                     else for (LayoutNode* c : n.ZSortedChildren()) Build(*c, inner, node.children);
                 }
                 out.push_back(std::move(node));
@@ -397,12 +403,16 @@ namespace kiln::ui {
         }
     }
 
-    SemanticsNode Owner::BuildSemanticsTree(bool uncoveredOnly) {
+    SemanticsNode Owner::BuildSemanticsTree(bool uncoveredOnly, bool merged, bool allNodes) {
         SemanticsNode root;
         root.id = -1;
         root.layout = m_Root.get();
         root.boundsInRoot = { 0, 0, float(m_Window.width), float(m_Window.height) };
+        root.unclippedBoundsInRoot = root.boundsInRoot;
+        t_Unmerged = !merged;
+        t_AllNodes = allNodes;
         for (LayoutNode* c : m_Root->Children()) Build(*c, root.boundsInRoot, root.children);
+        t_Unmerged = t_AllNodes = false;
         if (!uncoveredOnly) return root;
         Region unaccounted{ { Round(root.boundsInRoot) } };
         KeepUncovered(root, unaccounted);
@@ -416,6 +426,7 @@ namespace kiln::ui {
             copy.id = n.id;
             copy.layout = n.layout;
             copy.boundsInRoot = n.boundsInRoot;
+            copy.unclippedBoundsInRoot = n.unclippedBoundsInRoot;
             copy.config = n.config;
             out.push_back(std::move(copy));
             for (const auto& c : n.children) Flatten(c, out);

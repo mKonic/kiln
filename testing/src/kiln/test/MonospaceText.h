@@ -1,6 +1,7 @@
 #pragma once
 
-// A monospace text backend for tests.
+// A monospace text backend for tests (ComposeUiTest's default): the same layout on every
+// machine, without fonts. Each UTF-16 unit is half the font size wide.
 
 #include "kiln/TextBackend.h"
 
@@ -14,7 +15,7 @@
 namespace kiln::test {
     // Monospace stand-in: each UTF-16 unit is half the run's size wide, a line is 1.25 sizes
     // tall (or the line height), wraps anywhere at the width and at '\n'.
-    class FakeText final : public TextBackend {
+    class MonospaceText final : public TextBackend {
     public:
         int layouts = 0;
         TextFontRequest lastFont;   // the last paragraph's base font

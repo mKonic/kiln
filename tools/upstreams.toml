@@ -99,6 +99,11 @@ kiln = "kiln::work (WorkSpec.calculateNextRunTime, SystemJobInfoConverter, Syste
 paths = ["work/work-runtime/src/main/java/androidx/work"]
 
 [[androidx.group]]
+name = "ui-test"
+kiln = "kiln_ui_test (testing/src/kiln/test: finders, filters, actions, asserts, touch injection, MainTestClock)"
+paths = ["compose/ui/ui-test/src/commonMain"]
+
+[[androidx.group]]
 name = "catalog"
 kiln = "samples/catalog"
 paths = ["compose/material3/material3/integration-tests/material3-catalog", "compose/material3/material3/samples",

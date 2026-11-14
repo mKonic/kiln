@@ -263,6 +263,7 @@ namespace kiln::ui {
         int id = 0;                    // stable per layout node; -1 = the root (host view)
         LayoutNode* layout = nullptr;
         Rect boundsInRoot;
+        Rect unclippedBoundsInRoot;    // before the ancestors' clips (SemanticsNode.unclippedBoundsInRoot)
         SemanticsConfiguration config; // merged when mergeDescendants
         std::vector<SemanticsNode> children;
     };

@@ -839,7 +839,11 @@ namespace kiln::ui {
         // uncoveredOnly: the accessibility view (getAllUncoveredSemanticsNodes), each node clipped to
         // what is not covered, covered and scrolled-away ones dropped. False: every placed node
         // (SemanticsOwner.rootSemanticsNode, what Compose's test finders search).
-        SemanticsNode BuildSemanticsTree(bool uncoveredOnly = true);
+        // merged false: the unmerged tree (every node with its own configuration, as Compose's
+        // tests see it with useUnmergedTree).
+        // allNodes: every node with a semantics modifier, a test tag alone making one (the tree
+        // Compose builds); false: only nodes with accessibility content.
+        SemanticsNode BuildSemanticsTree(bool uncoveredOnly = true, bool merged = true, bool allNodes = false);
         // boundsOnly: nodes moved (a scroll) and nothing else about them changed, so what follows
         // configurations alone (autofill) has nothing to do.
         void InvalidateSemantics(bool boundsOnly = false);
