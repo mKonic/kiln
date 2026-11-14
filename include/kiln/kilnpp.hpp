@@ -821,6 +821,9 @@ namespace kpp {
         }));
     }
     inline void http_cancel(uint64_t request) { kiln_http_cancel(request); }
+    // See kiln_keep_splash_screen.
+    inline void keep_splash_screen(bool keep) { kiln_keep_splash_screen(keep); }
+
     // Logging; see kiln_log. Messages below info are kept only for enabled tags.
     inline void log(kiln_log_level level, const char* tag, const std::string& message) {
         if (kiln_log_is_loggable(level, tag)) kiln_log(level, tag, message.c_str());

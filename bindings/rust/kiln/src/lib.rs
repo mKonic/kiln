@@ -725,6 +725,9 @@ pub fn http_fetch(request: &HttpRequest, wanted_headers: &[&str], mut done: impl
     };
     unsafe { sys::kiln_http_fetch(&r, IntoCallback::<sys::kiln_fn_http>::into_callback(callback)) }
 }
+/// Keeps the launch splash screen up while true (after the first frame it would go).
+pub fn keep_splash_screen(keep: bool) { unsafe { sys::kiln_keep_splash_screen(keep) } }
+
 /// Log levels (android.util.Log priorities).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum LogLevel { Verbose = 2, Debug = 3, Info = 4, Warn = 5, Error = 6 }

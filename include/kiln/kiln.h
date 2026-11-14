@@ -476,6 +476,10 @@ KILN_API const char* kiln_http_response_header(const kiln_http_response* respons
  * without android.permission.ACCESS_NETWORK_STATE). For content: recomposes on a change. */
 KILN_API bool kiln_network_connected(kiln_key key);
 
+/* The launch splash screen (kiln_add_app's SPLASH_* options) stays until the first frame is on
+ * screen, and while this is set (core-splashscreen's setKeepOnScreenCondition). */
+KILN_API void kiln_keep_splash_screen(bool keep);
+
 /* Logging: logcat on Android (android.util.Log priorities: 2 verbose, 3 debug, 4 info, 5 warn,
  * 6 error; below info only for tags enabled with setprop log.tag.<tag>), stderr elsewhere. */
 typedef enum kiln_log_level { KILN_LOG_VERBOSE = 2, KILN_LOG_DEBUG, KILN_LOG_INFO, KILN_LOG_WARN, KILN_LOG_ERROR } kiln_log_level;

@@ -119,6 +119,13 @@ kiln_add_app(counter
 * `ACTIVITY_XML file` adds elements to the app's `<activity>`, such as the intent filters
   of [deep links](navigation.md#deep-links), and `ACTIVITY_ATTRIBUTES` sets its attributes
   (`android:launchMode="singleTop"`).
+* `ICON` is a 192 px launcher image. For an adaptive icon, give `ICON_FOREGROUND` (a 432 px
+  layer whose middle 288 px is always visible), `ICON_BACKGROUND` (an image or a colour such
+  as `"#1E88E5"`) and, for themed icons, `ICON_MONOCHROME`.
+* `SPLASH_BACKGROUND`, `SPLASH_ICON` and `SPLASH_ICON_BACKGROUND` style the splash screen
+  Android shows while the app starts; its icon is the launcher icon unless `SPLASH_ICON` is
+  set. kiln keeps it up until the first frame is drawn, and while the app calls
+  `ui::KeepSplashScreenOnScreen(true)` (`kiln/ui/SplashScreen.h`) until its first data is in.
 * `APPLICATION_ATTRIBUTES` sets attributes of `<application>`
   (`android:networkSecurityConfig="@xml/network"`).
 * Add source files to `SOURCES` as the app grows.

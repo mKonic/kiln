@@ -13,6 +13,7 @@
 #include "kiln/net/Http.h"
 #include "kiln/Trace.h"
 #include "kiln/Log.h"
+#include "kiln/ui/SplashScreen.h"
 #include "kiln/ui/PictureInPicture.h"
 #include "kiln/foundation/AsyncImage.h"
 #include "kiln/ui/AppDirectories.h"
@@ -2175,3 +2176,5 @@ KILN_API void kiln_log(kiln_log_level level, const char* tag, const char* messag
 KILN_API bool kiln_log_is_loggable(kiln_log_level level, const char* tag) {
     TRY { return kiln::log::IsLoggable(kiln::log::Level(level), tag ? tag : "kiln"); } CATCH(false)
 }
+
+KILN_API void kiln_keep_splash_screen(bool keep) { kiln::ui::KeepSplashScreenOnScreen(keep); }

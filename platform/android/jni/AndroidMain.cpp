@@ -15,6 +15,7 @@ namespace kiln::android { void InstallImageDecoder(); void InstallAssetReader(JN
 #include "kiln/text/CaseMapping.h"
 #include "kiln/ui/MediaQuery.h"
 #include "kiln/ui/PictureInPicture.h"
+#include "kiln/ui/SplashScreen.h"
 #include "kiln/Trace.h"
 #include "kiln/Log.h"
 
@@ -1445,6 +1446,15 @@ namespace {
             folds.push_back({ { float(v[i]), float(v[i + 1]), float(v[i + 2]), float(v[i + 3]) }, v[i + 4] != 0, v[i + 5] != 0 });
         kiln::ui::MediaScopeOf(CurOwner()).SetDisplayFolds(std::move(folds));
         g_Host->app->RequestFrame();
+    }
+
+    // KilnActivity's splash screen: kept until the first frame is on screen, and while the app
+    // asks (ui::KeepSplashScreenOnScreen).
+    jboolean KeepSplashScreen(JNIEnv*, jclass, jlong elapsedMillis) {
+        if (!g_Host || !g_Host->app) return JNI_FALSE;
+        if (kiln::ui::SplashScreenKeptOnScreen()) return JNI_TRUE;
+        // The first frame: waited for at most 2 s (a device that cannot draw still shows the app).
+        return !g_Host->app->Presented(nullptr) && elapsedMillis < 2000 ? JNI_TRUE : JNI_FALSE;
     }
 
     void SetHighContrastText(JNIEnv*, jclass, jboolean enabled, jboolean background) {
@@ -3488,6 +3498,7 @@ extern "C" JNIEXPORT jint kiln_jni_onload(JavaVM* vm) {
         { "flagSecureChanged", "(Z)V", reinterpret_cast<void*>(&FlagSecureChanged) },
         { "fontsChanged", "()V", reinterpret_cast<void*>(&FontsChanged) },
         { "trimMemory", "(I)V", reinterpret_cast<void*>(&TrimMemory) },
+        { "keepSplashScreen", "(J)Z", reinterpret_cast<void*>(&KeepSplashScreen) },
         { "setHighContrastText", "(ZZ)V", reinterpret_cast<void*>(&SetHighContrastText) },
         { "pictureInPictureModeChanged", "(Z)V", reinterpret_cast<void*>(&PictureInPictureModeChanged) },
         { "setDisplayFolds", "(I[I)V", reinterpret_cast<void*>(&SetDisplayFolds) },

@@ -123,6 +123,7 @@ final class KilnNative {
     /** Context.getFilesDir, getCacheDir, getNoBackupFilesDir. */
     static native void setDirectories(String files, String cache, String noBackup);
     static native void trimMemory(int level);
+    static native boolean keepSplashScreen(long elapsedMillis);
     static native void setHighContrastText(boolean enabled, boolean background);
     static native void pictureInPictureModeChanged(boolean inPictureInPictureMode);
     /** Folds of the window: left, top, right, bottom, hinge, halfOpened per fold. */

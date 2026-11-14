@@ -10,6 +10,8 @@
 # (the app's Android res/ folder), --activity-xml file (elements inside the app's <activity>, such
 # as intent filters), --activity-attributes 'android:launchMode="singleTop"',
 # --application-attributes 'android:networkSecurityConfig="@xml/network"',
+# --icon-foreground png --icon-background png|#rrggbb [--icon-monochrome png] (an adaptive icon),
+# --splash-background #rrggbb, --splash-icon png, --splash-icon-background #rrggbb (the splash),
 # --version-code n, --version-name text, --manifest-xml file / --application-xml file (elements
 # added to <manifest> / <application>), --keystore file --key-alias name (sign with your key:
 # passwords from KILN_KEYSTORE_PASSWORD and KILN_KEY_PASSWORD; default: kiln's debug key).
@@ -24,6 +26,7 @@ set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/android-env.sh"
 PACKAGE=""; LABEL="kiln app"; LIBNAME=""; OUT=""; LIBS=(); ASSETS=""; DEBUG=0
 PERMISSIONS=(); ICON=""; VERSION_CODE=1; VERSION_NAME="1.0"; MANIFEST_XML=""; APPLICATION_XML=""; RES=""; ACTIVITY_XML=""; ACTIVITY_ATTRIBUTES=""; APPLICATION_ATTRIBUTES=""; KEYSTORE_ARG=""; KEY_ALIAS=""; BUNDLE=0
+ICON_FOREGROUND=""; ICON_BACKGROUND=""; ICON_MONOCHROME=""; SPLASH_BACKGROUND=""; SPLASH_ICON=""; SPLASH_ICON_BACKGROUND=""
 while [ $# -gt 0 ]; do
     case "$1" in
         --package) PACKAGE="$2"; shift 2 ;;
@@ -35,6 +38,12 @@ while [ $# -gt 0 ]; do
         --debug) DEBUG=1; shift ;;
         --permission) PERMISSIONS+=("$2"); shift 2 ;;
         --icon) ICON="$2"; shift 2 ;;
+        --icon-foreground) ICON_FOREGROUND="$2"; shift 2 ;;
+        --icon-background) ICON_BACKGROUND="$2"; shift 2 ;;
+        --icon-monochrome) ICON_MONOCHROME="$2"; shift 2 ;;
+        --splash-background) SPLASH_BACKGROUND="$2"; shift 2 ;;
+        --splash-icon) SPLASH_ICON="$2"; shift 2 ;;
+        --splash-icon-background) SPLASH_ICON_BACKGROUND="$2"; shift 2 ;;
         --version-code) VERSION_CODE="$2"; shift 2 ;;
         --version-name) VERSION_NAME="$2"; shift 2 ;;
         --manifest-xml) MANIFEST_XML="$2"; shift 2 ;;
@@ -89,10 +98,56 @@ if [ -n "$ICON" ]; then
     cp "$ICON" "$STAGING/res/mipmap-xxxhdpi/ic_launcher.png"
     ICON_ATTR='android:icon="@mipmap/ic_launcher"'
 fi
-if [ -d "$STAGING/res" ]; then
-    "$AAPT2" compile --dir "$STAGING/res" -o "$STAGING/res.zip"
-    RES_ARGS=("$STAGING/res.zip")
+mkdir -p "$STAGING/res/values"
+# An adaptive icon (API 26+, every device kiln runs on): foreground and background layers of
+# 108 dp (432 px at xxxhdpi, the inner 72 dp visible), and a monochrome layer for themed icons.
+if [ -n "$ICON_FOREGROUND" ]; then
+    mkdir -p "$STAGING/res/mipmap-xxxhdpi" "$STAGING/res/mipmap-anydpi"
+    cp "$ICON_FOREGROUND" "$STAGING/res/mipmap-xxxhdpi/ic_launcher_foreground.png"
+    BACKGROUND_REF="@color/kiln_launcher_background"
+    if [[ "${ICON_BACKGROUND:-#FFFFFF}" == \#* ]]; then
+        printf '<resources><color name="kiln_launcher_background">%s</color></resources>\n' "${ICON_BACKGROUND:-#FFFFFF}" > "$STAGING/res/values/kiln_launcher.xml"
+    else
+        cp "$ICON_BACKGROUND" "$STAGING/res/mipmap-xxxhdpi/ic_launcher_background.png"
+        BACKGROUND_REF="@mipmap/ic_launcher_background"
+    fi
+    MONOCHROME=""
+    if [ -n "$ICON_MONOCHROME" ]; then
+        cp "$ICON_MONOCHROME" "$STAGING/res/mipmap-xxxhdpi/ic_launcher_monochrome.png"
+        MONOCHROME='<monochrome android:drawable="@mipmap/ic_launcher_monochrome" />'
+    fi
+    cat > "$STAGING/res/mipmap-anydpi/ic_launcher.xml" <<ADAPTIVE
+<?xml version="1.0" encoding="utf-8"?>
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="$BACKGROUND_REF" />
+    <foreground android:drawable="@mipmap/ic_launcher_foreground" />
+    $MONOCHROME
+</adaptive-icon>
+ADAPTIVE
+    ICON_ATTR='android:icon="@mipmap/ic_launcher"'
 fi
+# An icon the app's own res/ defines.
+if [ -z "$ICON_ATTR" ] && find "$STAGING/res" -path '*mipmap*' -name 'ic_launcher.*' | grep -q .; then
+    ICON_ATTR='android:icon="@mipmap/ic_launcher"'
+fi
+# The activity's theme, with the splash screen's attributes (API 31) when the app sets them.
+SPLASH_ITEMS=""
+[ -n "$SPLASH_BACKGROUND" ] && SPLASH_ITEMS+="        <item name=\"android:windowSplashScreenBackground\">$SPLASH_BACKGROUND</item>"$'\n'
+if [ -n "$SPLASH_ICON" ]; then
+    mkdir -p "$STAGING/res/drawable-xxxhdpi"
+    cp "$SPLASH_ICON" "$STAGING/res/drawable-xxxhdpi/kiln_splash_icon.png"
+    SPLASH_ITEMS+="        <item name=\"android:windowSplashScreenAnimatedIcon\">@drawable/kiln_splash_icon</item>"$'\n'
+fi
+[ -n "$SPLASH_ICON_BACKGROUND" ] && SPLASH_ITEMS+="        <item name=\"android:windowSplashScreenIconBackgroundColor\">$SPLASH_ICON_BACKGROUND</item>"$'\n'
+cat > "$STAGING/res/values/kiln_theme.xml" <<THEME
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="KilnTheme" parent="@android:style/Theme.DeviceDefault.NoActionBar">
+$SPLASH_ITEMS    </style>
+</resources>
+THEME
+"$AAPT2" compile --dir "$STAGING/res" -o "$STAGING/res.zip"
+RES_ARGS=("$STAGING/res.zip")
 
 cat > "$STAGING/AndroidManifest.xml" <<XML
 <?xml version="1.0" encoding="utf-8"?>
@@ -114,7 +169,7 @@ $PERMISSION_XML$EXTRA_MANIFEST
     </queries>
     <application android:label="$LABEL" $ICON_ATTR android:supportsRtl="true" android:hasCode="true" android:extractNativeLibs="false"
                  android:enableOnBackInvokedCallback="true" $DEBUG_ATTR $APPLICATION_ATTRIBUTES
-                 android:theme="@android:style/Theme.DeviceDefault.NoActionBar">
+                 android:theme="@style/KilnTheme">
         <!-- The OEM window extensions (folds and hinges), where the device has them. -->
         <uses-library android:name="androidx.window.extensions" android:required="false" />
         <uses-library android:name="androidx.window.sidecar" android:required="false" />

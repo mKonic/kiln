@@ -22,6 +22,8 @@ kiln_add_app({name}
     # ACTIVITY_XML android/activity.xml         (inside the app's <activity>: deep-link and share intent filters)
     # ACTIVITY_ATTRIBUTES "android:launchMode=\\"singleTop\\""
     # APPLICATION_ATTRIBUTES "android:networkSecurityConfig=\\"@xml/network\\""
+    # ICON_FOREGROUND res/icon_foreground.png ICON_BACKGROUND "#FFFFFF"   (an adaptive icon)
+    # SPLASH_BACKGROUND "#FFFFFF"                (the splash screen; its icon is the app's)
 )
 '''
 

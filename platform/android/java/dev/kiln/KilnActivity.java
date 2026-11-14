@@ -43,6 +43,25 @@ public class KilnActivity extends Activity {
         byte[] saved = savedInstanceState != null ? savedInstanceState.getByteArray(SAVED_STATE_KEY) : null;
         view = new KilnView(this, saved);
         setContentView(view);
+        keepSplashScreen();
+    }
+
+    /**
+     * setKeepOnScreenCondition (core-splashscreen's SplashScreenViewProvider): the window does not
+     * draw, so the system keeps its splash screen, until kiln presented its first frame and the
+     * app no longer asks to keep it.
+     */
+    private void keepSplashScreen() {
+        final android.view.View content = findViewById(android.R.id.content);
+        final long start = android.os.SystemClock.uptimeMillis();
+        content.getViewTreeObserver().addOnPreDrawListener(new android.view.ViewTreeObserver.OnPreDrawListener() {
+            @Override public boolean onPreDraw() {
+                // Drawing is put off to the next frame while kept.
+                if (KilnNative.keepSplashScreen(android.os.SystemClock.uptimeMillis() - start)) return false;
+                content.getViewTreeObserver().removeOnPreDrawListener(this);
+                return true;
+            }
+        });
     }
 
     // ComponentActivity.addOnNewIntentListener: the content's OnNewIntent listeners.

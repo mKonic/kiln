@@ -126,6 +126,9 @@ BUNDLE=()
 if [ "$CMD" = bundle ]; then APK="${OUT:-$KILN_ROOT/build/apk/$APP.aab}"; BUNDLE=(--bundle); fi
 PACK=(); [ -n "$ASSETS" ] && PACK+=(--assets "$ASSETS")
 v="$(meta "$first" icon)"; [ -n "$v" ] && PACK+=(--icon "$v")
+for k in icon_foreground icon_background icon_monochrome splash_background splash_icon splash_icon_background; do
+    v="$(meta "$first" $k)"; [ -n "$v" ] && PACK+=("--${k//_/-}" "$v")
+done
 v="$(meta "$first" version_code)"; [ -n "$v" ] && PACK+=(--version-code "$v")
 v="$(meta "$first" version_name)"; [ -n "$v" ] && PACK+=(--version-name "$v")
 v="$(meta "$first" manifest_xml)"; [ -n "$v" ] && PACK+=(--manifest-xml "$v")
