@@ -19,6 +19,7 @@
 #include "kiln/ui/Shortcuts.h"
 #include "kiln/ui/Biometric.h"
 #include "kiln/ui/Location.h"
+#include "kiln/ui/Notifications.h"
 #include "kiln/ui/Sensors.h"
 #include "kiln/ui/Vibration.h"
 #include "kiln/ui/PictureInPicture.h"
@@ -2322,3 +2323,22 @@ KILN_API void kiln_authenticate(const char* title, const char* subtitle, const c
         }(std::move(info), owned));
     } CATCH_VOID
 }
+
+// --- Notifications --------------------------------------------------------------------------
+
+KILN_API bool kiln_create_notification_channel(const char* id, const char* name, int32_t importance) {
+    TRY { return id && name && kiln::ui::CreateNotificationChannel({ id, name, "", importance ? importance : kiln::ui::kImportanceDefault }); } CATCH(false)
+}
+KILN_API bool kiln_notify(int32_t id, const char* channel, const char* title, const char* text, const char* data) {
+    TRY {
+        kiln::ui::Notification n;
+        n.id = id;
+        n.channelId = channel ? channel : "";
+        n.title = title ? title : "";
+        n.text = text ? text : "";
+        n.data = data ? data : "";
+        return kiln::ui::Notify(n);
+    } CATCH(false)
+}
+KILN_API void kiln_cancel_notification(int32_t id) { TRY { kiln::ui::CancelNotification(id); } CATCH_VOID }
+KILN_API bool kiln_notifications_enabled(void) { TRY { return kiln::ui::AreNotificationsEnabled(); } CATCH(false) }

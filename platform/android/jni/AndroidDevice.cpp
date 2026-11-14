@@ -2,6 +2,7 @@
 
 #include "kiln/ui/Biometric.h"
 #include "kiln/ui/Location.h"
+#include "kiln/ui/Notifications.h"
 #include "kiln/ui/Sensors.h"
 #include "kiln/ui/Vibration.h"
 
@@ -260,6 +261,77 @@ namespace kiln::android {
                 Clear(env);
             },
         });
+
+        // Notifications.
+        if (jclass nc = env->FindClass("dev/kiln/KilnNotifications")) {
+            static jclass notes = static_cast<jclass>(env->NewGlobalRef(nc));
+            env->DeleteLocalRef(nc);
+            auto get = [env](const char* name, const char* sig) {
+                jmethodID m = env->GetStaticMethodID(notes, name, sig);
+                if (!m) env->ExceptionClear();
+                return m;
+            };
+            static jmethodID createChannel = get("createChannel", "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;I)Z");
+            static jmethodID deleteChannel = get("deleteChannel", "(Ljava/lang/String;)V");
+            static jmethodID notify = get("notify", "([Ljava/lang/String;[IJ[Ljava/lang/String;)Z");
+            static jmethodID cancelOne = get("cancel", "(ILjava/lang/String;)V");
+            static jmethodID cancelAll = get("cancelAll", "()V");
+            static jmethodID enabledFn = get("enabled", "()Z");
+            auto strings = [](JNIEnv* e, const std::vector<std::string>& v) {
+                jclass sc = e->FindClass("java/lang/String");
+                jobjectArray a = e->NewObjectArray(jsize(v.size()), sc, nullptr);
+                for (std::size_t i = 0; i < v.size(); ++i) {
+                    jstring js = e->NewStringUTF(v[i].c_str());
+                    e->SetObjectArrayElement(a, jsize(i), js);
+                    e->DeleteLocalRef(js);
+                }
+                e->DeleteLocalRef(sc);
+                return a;
+            };
+            ui::SetNotificationHost({
+                .createChannel = [](const ui::NotificationChannel& c) {
+                    JNIEnv* e = Env();
+                    jstring id = e->NewStringUTF(c.id.c_str()), name = e->NewStringUTF(c.name.c_str()), d = e->NewStringUTF(c.description.c_str());
+                    const bool ok = e->CallStaticBooleanMethod(notes, createChannel, id, name, d, jint(c.importance));
+                    Clear(e);
+                    for (jobject o : { (jobject)id, (jobject)name, (jobject)d }) e->DeleteLocalRef(o);
+                    return ok;
+                },
+                .deleteChannel = [](const std::string& id) {
+                    JNIEnv* e = Env();
+                    jstring js = e->NewStringUTF(id.c_str());
+                    e->CallStaticVoidMethod(notes, deleteChannel, js);
+                    Clear(e);
+                    e->DeleteLocalRef(js);
+                },
+                .notify = [strings](const ui::Notification& n) {
+                    JNIEnv* e = Env();
+                    jobjectArray s = strings(e, { n.channelId, n.title, n.text, n.bigText, n.smallIcon, n.data, n.tag, n.group });
+                    std::vector<std::string> actions;
+                    for (const auto& a : n.actions) { actions.push_back(a.title); actions.push_back(a.data); actions.push_back(a.icon); }
+                    jobjectArray acts = strings(e, actions);
+                    const jint ints[4] = { n.id, n.progress, n.progressMax,
+                                           (n.autoCancel ? 1 : 0) | (n.ongoing ? 2 : 0) | (n.onlyAlertOnce ? 4 : 0) | (n.indeterminate ? 8 : 0) };
+                    jintArray ji = e->NewIntArray(4);
+                    e->SetIntArrayRegion(ji, 0, 4, ints);
+                    const bool ok = e->CallStaticBooleanMethod(notes, notify, s, ji, jlong(n.whenMillis), acts);
+                    Clear(e);
+                    for (jobject o : { (jobject)s, (jobject)acts, (jobject)ji }) e->DeleteLocalRef(o);
+                    return ok;
+                },
+                .cancel = [](int id, const std::string& tag) {
+                    JNIEnv* e = Env();
+                    jstring js = e->NewStringUTF(tag.c_str());
+                    e->CallStaticVoidMethod(notes, cancelOne, jint(id), js);
+                    Clear(e);
+                    e->DeleteLocalRef(js);
+                },
+                .cancelAll = [] { JNIEnv* e = Env(); e->CallStaticVoidMethod(notes, cancelAll); Clear(e); },
+                .enabled = [] { JNIEnv* e = Env(); const bool r = e->CallStaticBooleanMethod(notes, enabledFn); Clear(e); return r; },
+            });
+        } else {
+            env->ExceptionClear();
+        }
 
         // Sensors, on this (the main) thread's looper.
         g_Looper = ALooper_forThread();

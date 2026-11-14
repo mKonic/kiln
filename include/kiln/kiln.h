@@ -501,6 +501,14 @@ KILN_API bool kiln_set_dynamic_shortcuts(const kiln_shortcut* shortcuts, size_t 
 KILN_API void kiln_remove_all_dynamic_shortcuts(void);
 KILN_API void kiln_report_shortcut_used(const char* id);
 
+/* Notifications: a channel first (importance: NotificationManager.IMPORTANCE_*), then
+ * notifications that open the app at `data` when tapped. Needs android.permission.POST_NOTIFICATIONS
+ * granted on Android 13+. */
+KILN_API bool kiln_create_notification_channel(const char* id, const char* name, int32_t importance);
+KILN_API bool kiln_notify(int32_t id, const char* channel_id, const char* title, const char* text, const char* data);
+KILN_API void kiln_cancel_notification(int32_t id);
+KILN_API bool kiln_notifications_enabled(void);
+
 /* Device: vibration patterns (VibrationEffect; needs android.permission.VIBRATE), sensors
  * (Sensor.TYPE_*; events on the main thread until stopped), location (needs a location
  * permission; the callback runs once, has_fix false when there is none) and the biometric

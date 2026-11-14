@@ -763,6 +763,18 @@ pub fn set_dynamic_shortcuts(shortcuts: &[Shortcut]) -> bool {
     unsafe { sys::kiln_set_dynamic_shortcuts(raw.as_ptr(), raw.len()) }
 }
 
+/// Creates a notification channel (importance: NotificationManager.IMPORTANCE_*).
+pub fn create_notification_channel(id: &str, name: &str, importance: i32) -> bool {
+    let (i, n) = (CStrBuf::new(id), CStrBuf::new(name));
+    unsafe { sys::kiln_create_notification_channel(i.ptr(), n.ptr(), importance) }
+}
+/// Posts a notification that opens the app at `data` when tapped.
+pub fn notify(id: i32, channel: &str, title: &str, text: &str, data: &str) -> bool {
+    let (c, t, x, d) = (CStrBuf::new(channel), CStrBuf::new(title), CStrBuf::new(text), CStrBuf::new(data));
+    unsafe { sys::kiln_notify(id, c.ptr(), t.ptr(), x.ptr(), d.ptr()) }
+}
+pub fn cancel_notification(id: i32) { unsafe { sys::kiln_cancel_notification(id) } }
+
 /// Plays a vibration waveform (off/on durations in ms, amplitudes 0-255 or empty for the default).
 pub fn vibrate(timings_ms: &[i64], amplitudes: &[i32], repeat: i32) -> bool {
     unsafe { sys::kiln_vibrate_waveform(timings_ms.as_ptr(), if amplitudes.is_empty() { std::ptr::null() } else { amplitudes.as_ptr() }, timings_ms.len(), repeat) }

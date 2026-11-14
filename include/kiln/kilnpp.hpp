@@ -839,6 +839,13 @@ namespace kpp {
     inline void remove_all_dynamic_shortcuts() { kiln_remove_all_dynamic_shortcuts(); }
     inline void report_shortcut_used(const char* id) { kiln_report_shortcut_used(id); }
 
+    // Notifications; see kiln_notify.
+    inline bool create_notification_channel(const char* id, const char* name, int32_t importance = 3) { return kiln_create_notification_channel(id, name, importance); }
+    inline bool notify(int32_t id, const char* channel, const std::string& title, const std::string& text, const std::string& data = {}) {
+        return kiln_notify(id, channel, title.c_str(), text.c_str(), data.c_str());
+    }
+    inline void cancel_notification(int32_t id) { kiln_cancel_notification(id); }
+
     // Device; see kiln_vibrate_waveform and the calls after it.
     inline bool vibrate(const std::vector<int64_t>& timingsMs, const std::vector<int32_t>& amplitudes = {}, int32_t repeat = -1) {
         return kiln_vibrate_waveform(timingsMs.data(), amplitudes.empty() ? nullptr : amplitudes.data(), timingsMs.size(), repeat);

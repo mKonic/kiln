@@ -152,6 +152,37 @@ screen) follow `ShortcutManager`. Shortcuts that never change can be declared in
 `res/xml/shortcuts.xml` and named in `ACTIVITY_XML` with
 `<meta-data android:name="android.app.shortcuts" android:resource="@xml/shortcuts" />`.
 
+## Notifications
+
+`kiln/ui/Notifications.h` posts notifications in a channel. Tapping one opens the app at its
+`data`, a deep link that arrives as the activity's intent (`OnNewIntent` while the app runs);
+action buttons do the same with their own links:
+
+```cpp
+#include <kiln/ui/Notifications.h>
+
+void NotifySynced(int count) {
+    kiln::ui::CreateNotificationChannel({ .id = "sync", .name = "Sync", .importance = kiln::ui::kImportanceLow });
+    kiln::ui::Notify({
+        .id = 1, .channelId = "sync",
+        .title = "Notes synced", .text = std::to_string(count) + " notes are up to date",
+        .data = "notes://list",
+        .actions = { { .title = "Show", .data = "notes://list?recent" } },
+    });
+}
+```
+
+* Declare `android.permission.POST_NOTIFICATIONS` and request it with
+  `contracts::RequestPermission`; on Android 13 and later nothing is shown until it is
+  granted. `AreNotificationsEnabled()` tells whether notifications reach the user.
+* A notification with the same `id` (and `tag`) replaces the previous one: update a progress
+  bar (`progress`, `progressMax`, `indeterminate`) with `onlyAlertOnce` so it does not sound
+  each time. `ongoing` keeps it from being swiped away.
+* `smallIcon` names a white-on-transparent drawable in the app's `res/` for the status bar;
+  without one the launcher icon is used.
+* With `ACTIVITY_ATTRIBUTES "android:launchMode=\"singleTop\""` a tap reaches the running
+  activity rather than starting another.
+
 ## Device features
 
 Vibration patterns, sensors, location and the biometric prompt, each in `kiln/ui`:
