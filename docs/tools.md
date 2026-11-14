@@ -73,6 +73,24 @@ volition click "Add"         # click by label
 volition wait route=detail   # wait until a condition holds
 ```
 
+## Performance
+
+kiln marks its frame with system trace sections, under the names Compose uses where there is
+one: `Recomposer:animation`, `Recomposer:recompose` and `Compose:recompose`,
+`AndroidOwner:measureAndLayout`, `AndroidOwner:onDraw`, then `kiln:submit` with
+`kiln:acquire` (waiting for the next image to draw into) and `kiln:prefetch`. Record them with
+Perfetto or `atrace`, for a debuggable or profileable app:
+
+```sh
+adb shell atrace --async_start -a com.example.notes view gfx
+# ... use the app ...
+adb shell atrace --async_dump -a com.example.notes > trace.txt
+```
+
+Add sections of your own with `kiln::trace::Section` (`kiln/Trace.h`): it lasts for its
+scope, and costs one check when nothing is being recorded. `kiln::trace::Counter` plots a
+value. From C, `kiln_trace_begin` and `kiln_trace_end`.
+
 ## App size
 
 An app links kiln statically and exports only the entry points Android calls, so the

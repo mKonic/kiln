@@ -1,4 +1,5 @@
 #include "kiln/ui/LayoutNode.h"
+#include "kiln/Trace.h"
 #include <kiln/Function.h>
 #include "kiln/ui/Accessibility.h"
 #include "kiln/ui/InsetsRulers.h"
@@ -2191,6 +2192,7 @@ namespace kiln::ui {
     }
 
     void Owner::DispatchGloballyPositioned() {
+        trace::Section section("Compose:onPositionedCallbacks");
         m_LaidOutThisPass = true;
         // Parents first (OnPositionedDispatcher sorts by depth); callbacks may change the tree.
         std::vector<LayoutNode*> nodes(m_PositionAware.begin(), m_PositionAware.end());

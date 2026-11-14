@@ -11,6 +11,7 @@
 #include "kiln/foundation/activity/NewIntent.h"
 #include "kiln/datastore/Preferences.h"
 #include "kiln/net/Http.h"
+#include "kiln/Trace.h"
 #include "kiln/ui/PictureInPicture.h"
 #include "kiln/foundation/AsyncImage.h"
 #include "kiln/ui/AppDirectories.h"
@@ -2158,3 +2159,9 @@ KILN_API bool kiln_set_picture_in_picture_params(int32_t w, int32_t h, bool auto
 }
 KILN_API bool kiln_is_in_picture_in_picture(void) { TRY { return kiln::ui::IsInPictureInPictureMode(); } CATCH(false) }
 KILN_API void kiln_set_requested_orientation(int32_t o) { TRY { kiln::ui::SetRequestedOrientation(kiln::ui::ScreenOrientation(o)); } CATCH_VOID }
+
+// --- Tracing --------------------------------------------------------------------------------
+
+KILN_API void kiln_trace_begin(const char* name) { if (name) kiln::trace::Begin(name); }
+KILN_API void kiln_trace_end(void) { kiln::trace::End(); }
+KILN_API void kiln_trace_counter(const char* name, int64_t value) { if (name) kiln::trace::Counter(name, value); }

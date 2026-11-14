@@ -3,6 +3,9 @@
 #include <kiln/Function.h>
 #include "kiln/ui/Locals.h"
 #include "kiln/image/ImageLoader.h"
+#include "kiln/Trace.h"
+
+#include <optional>
 #include "kiln/ui/PrefetchScheduler.h"
 #include "kiln/runtime/State.h"
 #include "kiln/animation/Animatable.h"
@@ -596,6 +599,7 @@ namespace kiln {
     }
 
     void App::Frame(double timeSeconds) {
+        trace::Section frameSection("kiln:frame");
         m_MainPresented = false;
         for (auto& w : m_Windows) w->presented = false;
         m_FramePending = false;
@@ -608,6 +612,7 @@ namespace kiln {
             App& app; std::chrono::steady_clock::time_point start;
             ~AfterFrame() {
                 const auto t = std::chrono::steady_clock::now();
+                trace::Section s("kiln:prefetch");
                 app.RunPrefetch(start);
                 app.m_Phases.prefetch = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t).count();
             }
@@ -621,16 +626,27 @@ namespace kiln {
         };
         // Frame order (architecture 3.3): posted work, animation frame waiters with the shared
         // vsync time, then stages (state apply + recomposition, measure, layout), then drawing.
-        m_Dispatcher.RunPending();
-        m_Dispatcher.RunFrame(std::int64_t(timeSeconds * 1e9));
+        {
+            trace::Section s("Recomposer:animation");
+            m_Dispatcher.RunPending();
+            m_Dispatcher.RunFrame(std::int64_t(timeSeconds * 1e9));
+        }
         phase(m_Phases.animate);
-        for (auto& stage : m_Stages) stage(timeSeconds);
-        rt::Composition::RecomposeAll();
+        {
+            trace::Section s("Recomposer:recompose");
+            for (auto& stage : m_Stages) stage(timeSeconds);
+            rt::Composition::RecomposeAll();
+        }
         phase(m_Phases.compose);
         if (!m_Device || m_SurfaceLost || m_Width == 0 || m_Height == 0) return;
-        m_Owner.MeasureAndLayout({ int(m_Width), int(m_Height) });
-        MeasureWindows();
+        {
+            trace::Section s("AndroidOwner:measureAndLayout");
+            m_Owner.MeasureAndLayout({ int(m_Width), int(m_Height) });
+            MeasureWindows();
+        }
         phase(m_Phases.layout);
+        std::optional<trace::Section> drawSection;
+        drawSection.emplace("AndroidOwner:onDraw");
 
         m_Quads->Begin(m_Width, m_Height);
         m_Quads->SetClearColor(m_Clear.r, m_Clear.g, m_Clear.b, m_Clear.a);
@@ -661,6 +677,8 @@ namespace kiln {
         kiln_frame frame{ this };
         if (m_Callbacks.on_frame) m_Callbacks.on_frame(m_Callbacks.user, &frame, timeSeconds);
         phase(m_Phases.draw);
+        drawSection.reset();
+        trace::Section submitSection("kiln:submit");
         struct SubmitTimer {
             double& out; std::chrono::steady_clock::time_point t0 = std::chrono::steady_clock::now();
             ~SubmitTimer() { out = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count(); }
@@ -670,7 +688,11 @@ namespace kiln {
         m_Gradients->Sync();
         m_Filters->Sync();
 
-        CommandList* cmd = m_Device->BeginFrame();
+        CommandList* cmd = nullptr;
+        {
+            trace::Section s("kiln:acquire");
+            cmd = m_Device->BeginFrame();
+        }
         if (!cmd) {
             // The swapchain was out of date (hearth rebuilds it): draw again next vsync. Nothing
             // else may ask for that frame, and until one is presented a Wayland window is not

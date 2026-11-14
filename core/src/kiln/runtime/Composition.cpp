@@ -1,4 +1,7 @@
 #include "kiln/runtime/Composition.h"
+#include "kiln/Trace.h"
+
+#include <optional>
 #include <kiln/Function.h>
 
 #include <bit>
@@ -556,6 +559,8 @@ namespace kiln::rt {
     }
 
     void Composition::RunEffects() {
+        if (m_Disposers.empty() && m_Effects.empty() && m_DeadSlots.empty()) return;
+        trace::Section section("Compose:sideeffects");
         FrameGateScope gate(CurrentFrameGate());
         // Disposers first (removed or restarted effects), then new effects, in call order.
         // Effects run untracked: their reads do not subscribe anything.
@@ -573,6 +578,9 @@ namespace kiln::rt {
     }
 
     bool Composition::Recompose() {
+        // Traced only when there is something to recompose, as Compose's composer does.
+        std::optional<trace::Section> section;
+        if (!m_Pending.empty()) section.emplace("Compose:recompose");
         FrameGateScope gate(CurrentFrameGate());
         bool recomposed = false;
         m_PassId = ++t_PassCounter;

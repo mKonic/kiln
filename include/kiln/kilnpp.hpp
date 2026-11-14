@@ -821,6 +821,15 @@ namespace kpp {
         }));
     }
     inline void http_cancel(uint64_t request) { kiln_http_cancel(request); }
+    // A trace section for the scope (kiln_trace_begin / kiln_trace_end).
+    class TraceSection {
+    public:
+        explicit TraceSection(const char* name) { kiln_trace_begin(name); }
+        ~TraceSection() { kiln_trace_end(); }
+        TraceSection(const TraceSection&) = delete;
+        TraceSection& operator=(const TraceSection&) = delete;
+    };
+
     // See kiln_enter_picture_in_picture.
     inline bool enter_picture_in_picture(int32_t aspectWidth = 0, int32_t aspectHeight = 0) { return kiln_enter_picture_in_picture(aspectWidth, aspectHeight); }
     inline bool set_picture_in_picture_params(int32_t aspectWidth, int32_t aspectHeight, bool autoEnter) {

@@ -476,6 +476,12 @@ KILN_API const char* kiln_http_response_header(const kiln_http_response* respons
  * without android.permission.ACCESS_NETWORK_STATE). For content: recomposes on a change. */
 KILN_API bool kiln_network_connected(kiln_key key);
 
+/* System trace sections (Perfetto, systrace; ATrace on Android): begin and end nest on one
+ * thread; a counter plots a value. Cheap when no trace is being recorded. */
+KILN_API void kiln_trace_begin(const char* name);
+KILN_API void kiln_trace_end(void);
+KILN_API void kiln_trace_counter(const char* name, int64_t value);
+
 /* Picture-in-picture (the activity declares android:supportsPictureInPicture="true") and the
  * requested orientation (ActivityInfo.SCREEN_ORIENTATION_*). aspect 0: the platform's;
  * Android allows 2.39:1 to 1:2.39. kiln_is_in_picture_in_picture observes: content that reads

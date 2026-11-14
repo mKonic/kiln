@@ -725,6 +725,17 @@ pub fn http_fetch(request: &HttpRequest, wanted_headers: &[&str], mut done: impl
     };
     unsafe { sys::kiln_http_fetch(&r, IntoCallback::<sys::kiln_fn_http>::into_callback(callback)) }
 }
+/// A system trace section (Perfetto, systrace) that ends when dropped.
+pub struct TraceSection(());
+impl TraceSection {
+    pub fn new(name: &str) -> Self { let n = CStrBuf::new(name); unsafe { sys::kiln_trace_begin(n.ptr()) }; TraceSection(()) }
+}
+impl Drop for TraceSection {
+    fn drop(&mut self) { unsafe { sys::kiln_trace_end() } }
+}
+/// A value plotted over time in a system trace.
+pub fn trace_counter(name: &str, value: i64) { let n = CStrBuf::new(name); unsafe { sys::kiln_trace_counter(n.ptr(), value) } }
+
 /// Enters picture-in-picture (the activity declares `android:supportsPictureInPicture`);
 /// an aspect of 0 is the platform's.
 pub fn enter_picture_in_picture(aspect_width: i32, aspect_height: i32) -> bool { unsafe { sys::kiln_enter_picture_in_picture(aspect_width, aspect_height) } }

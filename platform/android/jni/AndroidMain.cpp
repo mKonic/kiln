@@ -15,6 +15,9 @@ namespace kiln::android { void InstallImageDecoder(); void InstallAssetReader(JN
 #include "kiln/text/CaseMapping.h"
 #include "kiln/ui/MediaQuery.h"
 #include "kiln/ui/PictureInPicture.h"
+#include "kiln/Trace.h"
+
+#include <android/trace.h>
 #include "kiln/ui/Back.h"
 #include "kiln/ui/Accessibility.h"
 #include <array>
@@ -1304,6 +1307,15 @@ namespace {
 
     void Create(JNIEnv* env, jclass, jobject view, jobject text, jobject assets, jfloat density, jfloat fontScale, jbyteArray saved) {
         hearth::SetLogSink(&LogToLogcat);
+        // System tracing (Perfetto / systrace): kiln's and the app's sections go to ATrace.
+        kiln::trace::SetTracer({
+            .enabled = [] { return ATrace_isEnabled(); },
+            .begin = [](const char* name) { ATrace_beginSection(name); },
+            .end = [] { ATrace_endSection(); },
+            .counter = [](const char* name, std::int64_t v) { ATrace_setCounter(name, v); },
+            .asyncBegin = [](const char* name, std::int32_t cookie) { ATrace_beginAsyncSection(name, cookie); },
+            .asyncEnd = [](const char* name, std::int32_t cookie) { ATrace_endAsyncSection(name, cookie); },
+        });
         kiln::android::InstallImageDecoder();
         kiln::android::InstallAssetReader(env, assets);
         kiln::android::InstallDateFormat(env);
