@@ -308,7 +308,7 @@ namespace kiln::foundation {
                     }
                 }
             }
-            co_await AwaitAllUp(s);
+            co_await AwaitAllPointersUp(s);   // the tap's own up may already be the current event
         }
     }
 
