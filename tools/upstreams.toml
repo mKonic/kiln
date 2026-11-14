@@ -84,6 +84,11 @@ kiln = "sqlite (androidx.sqlite's connection and statement over vendor/sqlite; R
 paths = ["sqlite/sqlite/src", "sqlite/sqlite-bundled/src", "room3/room3-runtime/src"]
 
 [[androidx.group]]
+name = "paging"
+kiln = "paging (PagingSource, Pager's page fetcher, PagingData, the presenter, cachedIn, LazyPagingItems)"
+paths = ["paging/paging-common/src", "paging/paging-compose/src"]
+
+[[androidx.group]]
 name = "catalog"
 kiln = "samples/catalog"
 paths = ["compose/material3/material3/integration-tests/material3-catalog", "compose/material3/material3/samples",

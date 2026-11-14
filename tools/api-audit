@@ -15,7 +15,7 @@ import argparse, os, re, sys, tomllib
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DEFAULT_ANDROIDX = os.path.expanduser("~/dev/os/inspiration/androidx-compose")
 # Where kiln's API lives.
-HEADER_DIRS = ["include", "core/src", "foundation/src", "material3/src", "navigation/src", "navigation3/src", "sqlite/src", "render", "platform"]
+HEADER_DIRS = ["include", "core/src", "foundation/src", "material3/src", "navigation/src", "navigation3/src", "sqlite/src", "paging/src", "render", "platform"]
 
 CLASS = re.compile(r"^  (?P<ann>(?:@[\w.]+(?:\([^)]*\))? )*)public (?:[a-z]+ )*?"
                    r"(?P<kind>class|interface|object|enum|@interface) (?P<name>[\w.]+)")

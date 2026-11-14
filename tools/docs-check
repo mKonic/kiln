@@ -53,7 +53,7 @@ def include_flags():
 def prelude_headers():
     """Every public header of the C++ modules (not internal/ or private details)."""
     out = []
-    for module in ('foundation/src', 'material3/src', 'navigation/src', 'navigation3/src', 'sqlite/src', 'core/src'):
+    for module in ('foundation/src', 'material3/src', 'navigation/src', 'navigation3/src', 'sqlite/src', 'paging/src', 'core/src'):
         base = ROOT / module
         for h in sorted(base.rglob('*.h')):
             rel = h.relative_to(base).as_posix()

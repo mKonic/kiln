@@ -72,6 +72,12 @@ target_include_directories(kiln_sqlite PUBLIC sqlite/src)
 target_link_libraries(kiln_sqlite PUBLIC kiln_core kiln_sqlite3)
 target_compile_options(kiln_sqlite PRIVATE -Wall -Wextra -Wno-missing-field-initializers)
 
+# paging: paging-common and paging-compose (PagingSource, Pager, CachedIn, LazyPagingItems);
+# header-only templates over the item type.
+add_library(kiln_paging INTERFACE)
+target_include_directories(kiln_paging INTERFACE paging/src)
+target_link_libraries(kiln_paging INTERFACE kiln_core)
+
 file(GLOB_RECURSE MCU_SOURCES CONFIGURE_DEPENDS vendor/material-color-utilities/cpp/*.cc)
 add_library(mcu STATIC ${MCU_SOURCES})
 target_include_directories(mcu PUBLIC vendor/material-color-utilities PRIVATE vendor/material-color-utilities/compat)
@@ -264,7 +270,7 @@ add_executable(kiln_tests ${KILN_TEST_SOURCES} ${KILN_CAPI_TEST_SOURCES})
 # App resources as an app has them: R:: names and, everywhere (no Android Resources in the test
 # process), the generated tables.
 kiln_app_resources(kiln_tests ${CMAKE_SOURCE_DIR}/tests/res TABLE)
-target_link_libraries(kiln_tests PRIVATE kiln_material3 kiln_navigation kiln_sqlite "$<LINK_LIBRARY:WHOLE_ARCHIVE,kiln_volition>")
+target_link_libraries(kiln_tests PRIVATE kiln_material3 kiln_navigation kiln_sqlite kiln_paging "$<LINK_LIBRARY:WHOLE_ARCHIVE,kiln_volition>")
 if(ANDROID)
     # Run on a device with tools/device-test (pushed to /data/local/tmp), which builds it.
     set_target_properties(kiln_tests PROPERTIES EXCLUDE_FROM_ALL ON)

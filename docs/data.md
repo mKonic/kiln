@@ -117,3 +117,76 @@ rt::Flow<std::vector<std::string>> NoteTitles(std::shared_ptr<sqlite::Database> 
   SQLite's result code.
 * `sqlite3.h` is on the include path for anything else. C apps use it directly, with
   `kiln_database_path` for the file.
+
+## Paging
+
+Paging loads a long list a page at a time, as the list is scrolled. It is the Paging
+library's design: a source that loads one page, a pager that decides which page is needed,
+and items for a lazy list. Add `kiln_paging` to the app's `LIBS`.
+
+```cpp
+#include <kiln/foundation/Lazy.h>
+#include <kiln/material3/ProgressIndicator.h>
+#include <kiln/material3/Text.h>
+#include <kiln/paging/LazyPagingItems.h>
+#include <kiln/paging/Pager.h>
+
+using namespace kiln;
+using namespace kiln::foundation;
+
+struct Note { int id; std::string title; };
+
+// Pages are keyed by the offset of their first item.
+class NoteSource : public paging::PagingSource<int, Note> {
+public:
+    rt::Task<paging::LoadResult<int, Note>> Load(paging::LoadParams<int> params) override {
+        const int from = params.key.value_or(0);
+        std::vector<Note> notes;   // read them here: a Database's Read, an HTTP call
+        for (int i = from; i < std::min(from + params.loadSize, 500); ++i) notes.push_back({ i, "Note " + std::to_string(i) });
+        paging::Page<int, Note> page;
+        if (from > 0) page.prevKey = std::max(0, from - params.loadSize);
+        if (from + int(notes.size()) < 500) page.nextKey = from + int(notes.size());
+        page.data = std::move(notes);
+        co_return page;
+    }
+    std::optional<int> GetRefreshKey(const paging::PagingState<int, Note>& state) override {
+        return state.anchorPosition;
+    }
+};
+
+void Notes() {
+    auto scope = rt::RememberCoroutineScope();
+    auto& notes = rt::Composition::Current()->Remember<paging::PagingDataFlow<Note>>([&] {
+        paging::Pager<int, Note> pager({ .pageSize = 30 }, []() -> std::shared_ptr<paging::PagingSource<int, Note>> { return std::make_shared<NoteSource>(); });
+        return paging::CachedIn(pager.Flow(), scope);
+    });
+    auto& items = paging::CollectAsLazyPagingItems(notes);
+    auto& list = RememberLazyListState();
+    LazyColumn(Modifier{}, list, [&items](LazyListScope& s) {
+        s.Items(items.ItemCount(), [&items](int i) {
+            if (const Note* note = items.Get(i)) material3::Text(note->title);
+            else material3::Text("...");
+        }, paging::ItemKey(items, [](const Note& n) { return n.id; }));
+        if (items.LoadState().append.IsLoading()) s.Item([] { material3::CircularProgressIndicator(); });
+    });
+}
+```
+
+* `Load` returns a `Page` with its items and the keys of the pages before and after it
+  (absent at an end), a `LoadError`, or `LoadInvalid`. It is a task: do blocking work
+  through `rt::WithContext`, a database `Read` or an HTTP call.
+* `PagingConfig` sets `pageSize`, `prefetchDistance` (how near the edge of what is loaded
+  a read starts the next load), `initialLoadSize`, `maxSize` (pages beyond it are dropped
+  and loaded again when scrolled back to) and `enablePlaceholders`. With placeholders the
+  page reports `itemsBefore` and `itemsAfter`, the list has its full length at once, and
+  `Get` returns null for an item not loaded yet.
+* `CachedIn(flow, scope)` keeps what is loaded for as long as the scope lives. Keep the
+  result in a view model or `Remember` it; without it every collection loads from the start.
+* `items.LoadState()` has `refresh`, `append` and `prepend`, each not loading, loading or
+  an error (`IsError`, `ErrorMessage`). `items.Retry()` loads again what failed and
+  `items.Refresh()` starts a new source around the place being shown.
+* Call `Invalidate()` on the source when its data changed; the pager makes a new one with
+  `GetRefreshKey` and the list keeps its place. With a database, invalidate from
+  `Invalidations(tables)`.
+* `PagingData<T>::Map` and `Filter` change the items of a flow's data, and
+  `PagingData<T>::From(vector)` presents a list that is already in memory.
