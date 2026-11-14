@@ -371,6 +371,18 @@ TEST(MediaSessionShowsTheNotificationAndKeepsTheServiceAsMedia3Does) {
         report(PlaybackState::Ready);
         OnMediaSessionCommand(session.Id(), MediaSessionCommand::SeekTo, 1234);
         CHECK(engine->seek == 1234);
+        // MediaSessionLegacyStub's other transport controls; the state carries the speed.
+        report(PlaybackState::Ready, 20'000);
+        OnMediaSessionCommand(session.Id(), MediaSessionCommand::Rewind);
+        CHECK(engine->seek == 15'000);
+        report(PlaybackState::Ready, 20'000);
+        OnMediaSessionCommand(session.Id(), MediaSessionCommand::FastForward);
+        CHECK(engine->seek == 35'000);
+        OnMediaSessionCommand(session.Id(), MediaSessionCommand::SetPlaybackSpeed, 0, 1.5f);
+        CHECK(engine->parameters.speed == 1.5f && now().playbackSpeed == 1.5f && now().canSeek && now().activeQueueItemId == 0);
+        OnMediaSessionCommand(session.Id(), MediaSessionCommand::SetPlaybackSpeed, 0, -1);   // ignored
+        OnMediaSessionCommand(session.Id(), MediaSessionCommand::SkipToQueueItem, 5);       // no such item
+        CHECK(engine->parameters.speed == 1.5f);
     }
     CHECK(released == 1);
     SetMediaSessionHost({});

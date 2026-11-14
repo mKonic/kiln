@@ -41,8 +41,12 @@ namespace kiln::media {
         MediaMetadata metadata;
         PlaybackState state = PlaybackState::Idle;
         bool playWhenReady = false, isPlaying = false;
-        std::int64_t positionMs = 0, durationMs = -1;
+        std::int64_t positionMs = 0, durationMs = -1, bufferedPositionMs = 0;
+        float playbackSpeed = 1;          // the player's; the platform's state moves at it while playing
+        int activeQueueItemId = -1;       // the current item's index (QueueItem id), -1 unknown
+        std::string mediaId;              // the current item's (PLAYBACK_STATE_EXTRAS_KEY_MEDIA_ID)
         bool canSkipToPrevious = false, canSkipToNext = false;
+        bool canSeek = false;             // there is an item: seek, rewind, fast forward, skip to an item
         std::string error, sessionActivityUri;
         bool showNotification = false;   // MediaNotificationManager.shouldShowNotification
         bool foreground = false;         // shouldRunInForeground
@@ -57,8 +61,12 @@ namespace kiln::media {
     void SetMediaSessionHost(MediaSessionHost host);
 
     // From the platform's controls (MediaSession.Callback, the notification's actions).
-    enum class MediaSessionCommand { Play, Pause, Stop, SkipToPrevious, SkipToNext, SeekTo, NotificationDismissed };
-    void OnMediaSessionCommand(int id, MediaSessionCommand command, std::int64_t positionMs = 0);
+    // positionMs: SeekTo's position, SkipToQueueItem's id; speed: SetPlaybackSpeed's.
+    enum class MediaSessionCommand {
+        Play, Pause, Stop, SkipToPrevious, SkipToNext, SeekTo, NotificationDismissed,
+        Prepare, Rewind, FastForward, SkipToQueueItem, SetPlaybackSpeed,
+    };
+    void OnMediaSessionCommand(int id, MediaSessionCommand command, std::int64_t positionMs = 0, float speed = 0);
 
     // MediaSessionService.DEFAULT_FOREGROUND_SERVICE_TIMEOUT_MS: how long the service stays in
     // the foreground after the user stops listening (paused).
@@ -78,9 +86,9 @@ namespace kiln::media {
         int Id() const { return m_Id; }
 
     private:
-        friend void OnMediaSessionCommand(int, MediaSessionCommand, std::int64_t);
+        friend void OnMediaSessionCommand(int, MediaSessionCommand, std::int64_t, float);
         void Publish();
-        void OnCommand(MediaSessionCommand c, std::int64_t positionMs);
+        void OnCommand(MediaSessionCommand c, std::int64_t positionMs, float speed);
 
         Player& m_Player;
         MediaSessionOptions m_Options;

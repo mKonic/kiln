@@ -16,6 +16,7 @@ import android.media.AudioFocusRequest;
 import android.media.AudioManager;
 import android.media.MediaMetadata;
 import android.media.session.MediaSession;
+import android.os.Bundle;
 import android.media.session.PlaybackState;
 import android.net.Uri;
 import android.os.Handler;
@@ -37,14 +38,15 @@ final class KilnMedia {
     static final int NOTIFICATION_ID = 1001;   // DefaultMediaNotificationProvider.DEFAULT_NOTIFICATION_ID
     static final String ACTION_COMMAND = "dev.kiln.media.COMMAND";
     // media::MediaSessionCommand
-    static final int PLAY = 0, PAUSE = 1, STOP = 2, PREVIOUS = 3, NEXT = 4, SEEK = 5, DISMISSED = 6;
+    static final int PLAY = 0, PAUSE = 1, STOP = 2, PREVIOUS = 3, NEXT = 4, SEEK = 5, DISMISSED = 6,
+            PREPARE = 7, REWIND = 8, FAST_FORWARD = 9, SKIP_TO_QUEUE_ITEM = 10, SET_SPEED = 11;
 
     private static Context sContext;
     private static final Handler sMain = new Handler(Looper.getMainLooper());
 
     static native void focusChanged(int id, int change);
     static native void becomingNoisy(int id);
-    static native void sessionCommand(int id, int command, long positionMs);
+    static native void sessionCommand(int id, int command, long positionMs, float speed);
 
     private KilnMedia() {}
 
@@ -120,12 +122,17 @@ final class KilnMedia {
             this.id = id;
             session = new MediaSession(sContext, "kiln-" + id);
             session.setCallback(new MediaSession.Callback() {
-                @Override public void onPlay() { sessionCommand(id, PLAY, 0); }
-                @Override public void onPause() { sessionCommand(id, PAUSE, 0); }
-                @Override public void onStop() { sessionCommand(id, STOP, 0); }
-                @Override public void onSkipToPrevious() { sessionCommand(id, PREVIOUS, 0); }
-                @Override public void onSkipToNext() { sessionCommand(id, NEXT, 0); }
-                @Override public void onSeekTo(long pos) { sessionCommand(id, SEEK, pos); }
+                @Override public void onPlay() { sessionCommand(id, PLAY, 0, 0); }
+                @Override public void onPause() { sessionCommand(id, PAUSE, 0, 0); }
+                @Override public void onStop() { sessionCommand(id, STOP, 0, 0); }
+                @Override public void onSkipToPrevious() { sessionCommand(id, PREVIOUS, 0, 0); }
+                @Override public void onSkipToNext() { sessionCommand(id, NEXT, 0, 0); }
+                @Override public void onSeekTo(long pos) { sessionCommand(id, SEEK, pos, 0); }
+                @Override public void onPrepare() { sessionCommand(id, PREPARE, 0, 0); }
+                @Override public void onRewind() { sessionCommand(id, REWIND, 0, 0); }
+                @Override public void onFastForward() { sessionCommand(id, FAST_FORWARD, 0, 0); }
+                @Override public void onSkipToQueueItem(long queueId) { sessionCommand(id, SKIP_TO_QUEUE_ITEM, queueId, 0); }
+                @Override public void onSetPlaybackSpeed(float speed) { sessionCommand(id, SET_SPEED, 0, speed); }
             }, sMain);
             session.setActive(true);
         }
@@ -134,11 +141,12 @@ final class KilnMedia {
     private static final SparseArray<Session> sSessions = new SparseArray<>();
 
     /**
-     * strings: title, artist, album, artworkUri, error, sessionActivityUri; state: media::PlaybackState
-     * (0 idle, 1 buffering, 2 ready, 3 ended).
+     * strings: title, artist, album, artworkUri, error, sessionActivityUri, mediaId; state:
+     * media::PlaybackState (0 idle, 1 buffering, 2 ready, 3 ended).
      */
     static void update(int id, String[] s, int state, boolean playWhenReady, boolean isPlaying, long positionMs,
-                       long durationMs, boolean canPrevious, boolean canNext, boolean show, boolean foreground) {
+                       long durationMs, long bufferedMs, float speed, int queueItemId, boolean canPrevious,
+                       boolean canNext, boolean canSeek, boolean show, boolean foreground) {
         if (sContext == null) return;
         Session x = sSessions.get(id);
         if (x == null) {
@@ -164,13 +172,24 @@ final class KilnMedia {
         else if (state == 1) platformState = playWhenReady ? PlaybackState.STATE_BUFFERING : PlaybackState.STATE_PAUSED;
         else if (state == 3) platformState = PlaybackState.STATE_STOPPED;
         else platformState = playWhenReady ? PlaybackState.STATE_PLAYING : PlaybackState.STATE_PAUSED;
-        long actions = PlaybackState.ACTION_PLAY | PlaybackState.ACTION_PAUSE | PlaybackState.ACTION_PLAY_PAUSE
-                | PlaybackState.ACTION_STOP | PlaybackState.ACTION_SEEK_TO;
+        // convertCommandToPlaybackStateActions: play or pause by Util.shouldShowPlayButton.
+        boolean showPlay = !playWhenReady || state == 0 || state == 3;
+        long actions = (showPlay ? PlaybackState.ACTION_PLAY : PlaybackState.ACTION_PAUSE) | PlaybackState.ACTION_PLAY_PAUSE
+                | PlaybackState.ACTION_STOP | PlaybackState.ACTION_PREPARE | PlaybackState.ACTION_SET_PLAYBACK_SPEED;
+        if (canSeek) actions |= PlaybackState.ACTION_SEEK_TO | PlaybackState.ACTION_REWIND | PlaybackState.ACTION_FAST_FORWARD
+                | PlaybackState.ACTION_SKIP_TO_QUEUE_ITEM;
         if (canPrevious) actions |= PlaybackState.ACTION_SKIP_TO_PREVIOUS;
         if (canNext) actions |= PlaybackState.ACTION_SKIP_TO_NEXT;
+        // The position moves at the playback speed while playing; the speed itself in "EXO_SPEED".
+        Bundle extras = new Bundle();
+        extras.putFloat("EXO_SPEED", speed);
+        if (!s[6].isEmpty()) extras.putString("androidx.media.PlaybackStateCompat.Extras.KEY_MEDIA_ID", s[6]);
         PlaybackState.Builder p = new PlaybackState.Builder()
-                .setState(platformState, positionMs, isPlaying ? 1f : 0f, SystemClock.elapsedRealtime())
-                .setActions(actions);
+                .setState(platformState, positionMs, isPlaying ? speed : 0f, SystemClock.elapsedRealtime())
+                .setActions(actions)
+                .setBufferedPosition(bufferedMs)
+                .setActiveQueueItemId(queueItemId < 0 ? MediaSession.QueueItem.UNKNOWN_ID : queueItemId)
+                .setExtras(extras);
         if (!s[4].isEmpty()) p.setErrorMessage(s[4]);
         x.session.setPlaybackState(p.build());
         x.session.setSessionActivity(open(s[5]));

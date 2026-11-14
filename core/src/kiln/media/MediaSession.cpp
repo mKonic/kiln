@@ -20,9 +20,9 @@ namespace kiln::media {
 
     void SetMediaSessionHost(MediaSessionHost host) { R().host = std::move(host); }
 
-    void OnMediaSessionCommand(int id, MediaSessionCommand command, std::int64_t positionMs) {
+    void OnMediaSessionCommand(int id, MediaSessionCommand command, std::int64_t positionMs, float speed) {
         auto it = R().sessions.find(id);
-        if (it != R().sessions.end()) it->second->OnCommand(command, positionMs);
+        if (it != R().sessions.end()) it->second->OnCommand(command, positionMs, speed);
     }
 
     MediaSession::MediaSession(Player& player, MediaSessionOptions options)
@@ -56,11 +56,16 @@ namespace kiln::media {
         s.isPlaying = p.isPlaying;
         s.positionMs = p.positionMs;
         s.durationMs = p.durationMs;
+        s.bufferedPositionMs = p.bufferedPositionMs;
+        s.playbackSpeed = p.playbackParameters.speed;
+        s.activeQueueItemId = p.mediaItemCount > 0 ? p.currentMediaItemIndex : -1;
+        s.mediaId = p.currentMediaId;
         s.error = p.error;
         // Util.getAvailableCommands for on-demand media: previous whenever there is an item (it
         // restarts the item), next when there is a next item; the app's handlers add the buttons.
         s.canSkipToPrevious = bool(m_Options.onSkipToPrevious) || p.mediaItemCount > 0;
         s.canSkipToNext = bool(m_Options.onSkipToNext) || p.hasNextMediaItem;
+        s.canSeek = p.mediaItemCount > 0;
         s.sessionActivityUri = m_Options.sessionActivityUri;
 
         // shouldShowNotification, SHOW_NOTIFICATION_FOR_IDLE_PLAYER_AFTER_STOP_OR_ERROR (the
@@ -98,9 +103,10 @@ namespace kiln::media {
         if (m_Published) {
             MediaSessionSnapshot a = s, b = m_Last;
             a.positionMs = b.positionMs = 0;
+            a.bufferedPositionMs = b.bufferedPositionMs = 0;
             if (a == b) {
                 const std::int64_t elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - m_LastAt).count();
-                const std::int64_t expected = m_Last.positionMs + (m_Last.isPlaying ? elapsed : 0);
+                const std::int64_t expected = m_Last.positionMs + (m_Last.isPlaying ? std::int64_t(double(elapsed) * m_Last.playbackSpeed) : 0);
                 if (std::llabs(s.positionMs - expected) <= (s.isPlaying ? 1000 : 0)) return;
             }
         }
@@ -110,7 +116,7 @@ namespace kiln::media {
         if (R().host.update) R().host.update(m_Id, s);
     }
 
-    void MediaSession::OnCommand(MediaSessionCommand c, std::int64_t positionMs) {
+    void MediaSession::OnCommand(MediaSessionCommand c, std::int64_t positionMs, float speed) {
         switch (c) {
             case MediaSessionCommand::Play:
                 // Util.handlePlayButtonAction: prepared when idle, from the start when ended.
@@ -130,6 +136,17 @@ namespace kiln::media {
                 else m_Player.SeekToNext();
                 break;
             case MediaSessionCommand::NotificationDismissed: m_WasDismissed = true; break;
+            // MediaSessionLegacyStub's onPrepare, onRewind, onFastForward, onSkipToQueueItem and
+            // onSetPlaybackSpeed.
+            case MediaSessionCommand::Prepare: m_Player.Prepare(); break;
+            case MediaSessionCommand::Rewind: m_Player.SeekBack(); break;
+            case MediaSessionCommand::FastForward: m_Player.SeekForward(); break;
+            case MediaSessionCommand::SkipToQueueItem:
+                if (positionMs >= 0 && positionMs < m_Player.MediaItemCount()) m_Player.SeekToDefaultPosition(int(positionMs));
+                break;
+            case MediaSessionCommand::SetPlaybackSpeed:
+                if (speed > 0) m_Player.SetPlaybackSpeed(speed);
+                break;
         }
         Publish();
     }

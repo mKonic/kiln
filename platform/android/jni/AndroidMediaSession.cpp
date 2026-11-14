@@ -24,9 +24,9 @@ namespace kiln::android {
 
         void FocusChanged(JNIEnv*, jclass, jint id, jint change) { media::OnAudioFocusChange(id, change); }
         void BecomingNoisy(JNIEnv*, jclass, jint id) { media::OnAudioBecomingNoisy(id); }
-        void SessionCommand(JNIEnv*, jclass, jint id, jint command, jlong positionMs) {
-            if (command < 0 || command > int(media::MediaSessionCommand::NotificationDismissed)) return;
-            media::OnMediaSessionCommand(id, media::MediaSessionCommand(command), positionMs);
+        void SessionCommand(JNIEnv*, jclass, jint id, jint command, jlong positionMs, jfloat speed) {
+            if (command < 0 || command > int(media::MediaSessionCommand::SetPlaybackSpeed)) return;
+            media::OnMediaSessionCommand(id, media::MediaSessionCommand(command), positionMs, speed);
         }
     }
 
@@ -37,12 +37,12 @@ namespace kiln::android {
             g_Request = jvm::detail::StaticMethod(env, c, "requestFocus", "(IIIIZ)I");
             g_Abandon = jvm::detail::StaticMethod(env, c, "abandonFocus", "(I)V");
             g_Noisy = jvm::detail::StaticMethod(env, c, "setNoisyReceiver", "(IZ)V");
-            g_Update = jvm::detail::StaticMethod(env, c, "update", "(I[Ljava/lang/String;IZZJJZZZZ)V");
+            g_Update = jvm::detail::StaticMethod(env, c, "update", "(I[Ljava/lang/String;IZZJJJFIZZZZZ)V");
             g_Release = jvm::detail::StaticMethod(env, c, "release", "(I)V");
             static const JNINativeMethod natives[] = {
                 { "focusChanged", "(II)V", reinterpret_cast<void*>(&FocusChanged) },
                 { "becomingNoisy", "(I)V", reinterpret_cast<void*>(&BecomingNoisy) },
-                { "sessionCommand", "(IIJ)V", reinterpret_cast<void*>(&SessionCommand) },
+                { "sessionCommand", "(IIJF)V", reinterpret_cast<void*>(&SessionCommand) },
             };
             jvm::detail::RegisterNatives(env, c, natives, 3);
         } catch (const std::exception& e) {
@@ -73,15 +73,16 @@ namespace kiln::android {
         media::SetMediaSessionHost({
             .update = [](int id, const media::MediaSessionSnapshot& s) {
                 JNIEnv* env = jvm::Env();
-                const std::string strings[] = { s.metadata.title, s.metadata.artist, s.metadata.albumTitle, s.metadata.artworkUri, s.error, s.sessionActivityUri };
+                const std::string strings[] = { s.metadata.title, s.metadata.artist, s.metadata.albumTitle, s.metadata.artworkUri, s.error, s.sessionActivityUri, s.mediaId };
                 jvm::Local<jclass> stringClass(env->FindClass("java/lang/String"), env);
-                jvm::Local<jobjectArray> a(env->NewObjectArray(6, stringClass.get(), nullptr), env);
-                for (int i = 0; i < 6; ++i) {
+                jvm::Local<jobjectArray> a(env->NewObjectArray(7, stringClass.get(), nullptr), env);
+                for (int i = 0; i < 7; ++i) {
                     jvm::Local<jstring> v = jvm::ToJava(env, strings[i]);
                     env->SetObjectArrayElement(a.get(), i, v.get());
                 }
                 env->CallStaticVoidMethod(g_Media.get(), g_Update, jint(id), a.get(), jint(s.state), jboolean(s.playWhenReady), jboolean(s.isPlaying),
-                                          jlong(s.positionMs), jlong(s.durationMs), jboolean(s.canSkipToPrevious), jboolean(s.canSkipToNext),
+                                          jlong(s.positionMs), jlong(s.durationMs), jlong(s.bufferedPositionMs), jfloat(s.playbackSpeed),
+                                          jint(s.activeQueueItemId), jboolean(s.canSkipToPrevious), jboolean(s.canSkipToNext), jboolean(s.canSeek),
                                           jboolean(s.showNotification), jboolean(s.foreground));
                 Clear(env);
             },

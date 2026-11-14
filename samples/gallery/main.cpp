@@ -5,6 +5,7 @@
 #include "MaterialComponents.h"
 
 #include <cmath>
+#include <cstdio>
 #include <kiln/foundation/Compose.h>
 #include <kiln/lifecycle/ViewModelCompose.h>
 #include <kiln/foundation/text/BasicSecureTextField.h>
@@ -372,9 +373,19 @@ namespace {
         c.LaunchedEffect(kiln::rt::Keys{}, [&player, &session]() -> kiln::rt::Task<> {
             player.SetAudioAttributes({ .usage = kiln::media::AudioUsage::Media, .contentType = kiln::media::AudioContentType::Movie }, true);
             player.SetHandleAudioBecomingNoisy(true);
-            session.SetMetadata({ .title = "Sample clip", .artist = "kiln gallery", .artworkUri = "asset:///orb.png" });
-            player.SetMediaUri("asset:///clip.mp4");
-            player.SetRepeat(true);
+            session.SetMetadata({ .artist = "kiln gallery", .artworkUri = "asset:///orb.png" });
+            // A playlist: the clip, then a second of it (clipped); the controls skip between them.
+            kiln::media::MediaItem whole = kiln::media::MediaItem::FromUri("asset:///clip.mp4");
+            whole.mediaId = "whole";
+            whole.mediaMetadata.title = "Sample clip";
+            kiln::media::MediaItem part = whole;
+            part.mediaId = "part";
+            part.mediaMetadata.title = "Sample clip, from 1 s to 3 s";
+            part.clippingConfiguration.startPositionMs = 1000;
+            part.clippingConfiguration.endPositionMs = 3000;
+            player.SetMediaItems({ whole, part });
+            player.SetRepeatMode(kiln::media::RepeatMode::All);
+            player.Prepare();
             player.Play();
             co_return;
         });
@@ -393,13 +404,23 @@ namespace {
             const std::string time = std::to_string(s.positionMs / 1000) + "." + std::to_string(s.positionMs / 100 % 10) + " / " +
                                      std::to_string(std::max<std::int64_t>(s.durationMs, 0) / 1000) + " s";
             BasicText(s.error.empty() ? time : s.error, Padding(Modifier{}, 16_dp, 0_dp), { 14, kOnSurface });
+            char speed[16];
+            std::snprintf(speed, sizeof speed, "%gx", double(s.playbackParameters.speed));
+            BasicText(s.mediaMetadata.title + " (" + std::to_string(s.currentMediaItemIndex + 1) + " of " + std::to_string(s.mediaItemCount) +
+                          ", " + speed + ")",
+                      Padding(Modifier{}, 16_dp, 0_dp), { 14, kOnSurface });
             FlowRow(Padding(Modifier{}, 16_dp, 0_dp), Arrangement::SpacedBy(8_dp), Arrangement::SpacedBy(8_dp), AlignmentV::CenterVertically(), [&player, &s, &cameraOn, askCamera] {
                 auto button = [](const char* label, kiln::Function<void()> onClick) {
                     Box(Clickable(Background(Modifier{}, kPrimaryContainer, CornerShape::Pill()), std::move(onClick)), Alignment::Center(), false,
                         [label] { BasicText(label, Padding(Modifier{}, 20_dp, 10_dp), { 14, kOnSurface }); });
                 };
                 button(s.playWhenReady ? "Pause" : "Play", [&player, play = !s.playWhenReady] { play ? player.Play() : player.Pause(); });
-                button("Back to start", [&player] { player.SeekTo(0); });
+                button("Previous", [&player] { player.SeekToPrevious(); });
+                button("Next", [&player] { player.SeekToNext(); });
+                button("Speed", [&player] {
+                    const float speed = player.GetPlaybackParameters().speed;
+                    player.SetPlaybackSpeed(speed == 1.0f ? 1.5f : speed == 1.5f ? 2.0f : speed == 2.0f ? 0.75f : 1.0f);
+                });
                 // A file of the app's own, shared by content:// URI (FileProvider).
                 button("Share a file", [] {
                     const std::string dir = kiln::ui::CacheDir() + "/shared";
