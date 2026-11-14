@@ -430,6 +430,17 @@ KILN_API kiln_modifier* kiln_mod_z_index(kiln_modifier* m, float z_index);
 KILN_API kiln_modifier* kiln_mod_clickable(kiln_modifier* m, bool enabled, kiln_fn on_click);
 KILN_API kiln_modifier* kiln_mod_toggleable(kiln_modifier* m, bool value, bool enabled, kiln_fn_bool on_value_change);
 KILN_API kiln_modifier* kiln_mod_selectable(kiln_modifier* m, bool selected, bool enabled, kiln_fn on_click);
+/* Focus. A focus requester moves focus to the focusable after kiln_mod_focus_requester in its
+ * chain (or inside it); remembered at the call. */
+typedef struct kiln_focus_requester kiln_focus_requester;
+KILN_API kiln_focus_requester* kiln_remember_focus_requester(kiln_key key);
+KILN_API bool kiln_focus_requester_request_focus(kiln_focus_requester* requester);   /* false: nothing focusable */
+KILN_API kiln_modifier* kiln_mod_focus_requester(kiln_modifier* m, kiln_focus_requester* requester);
+KILN_API kiln_modifier* kiln_mod_focusable(kiln_modifier* m, bool enabled);
+/* on_change gets whether the first focus target after it is focused. */
+KILN_API kiln_modifier* kiln_mod_on_focus_changed(kiln_modifier* m, kiln_fn_bool on_change);
+/* LocalFocusManager.clearFocus: valid inside content. */
+KILN_API void kiln_clear_focus(bool force);
 /* Nested scrolling: a connection (a top app bar's scroll behaviour gives one) sees the scrolls of
  * the content below the modified element. */
 typedef struct kiln_nested_scroll_connection kiln_nested_scroll_connection;

@@ -3517,6 +3517,7 @@ kiln::material3::DatePickerOptions ToCpp(const kiln_m3_date_picker_options* in) 
     if (c.title.set) v.title = (c.title.set ? std::optional<kiln::Function<void()>>(kiln::capi::Fn(c.title.value)) : std::nullopt);
     if (c.headline.set) v.headline = (c.headline.set ? std::optional<kiln::Function<void()>>(kiln::capi::Fn(c.headline.value)) : std::nullopt);
     v.showModeToggle = c.show_mode_toggle;
+    if (c.focus_requester) v.focusRequester = (c.focus_requester ? std::optional<kiln::ui::FocusRequester *>(reinterpret_cast<kiln::ui::FocusRequester*>(c.focus_requester)) : std::nullopt);
     return v;
 }
 void FromCpp(const kiln::material3::DatePickerOptions& v, kiln_m3_date_picker_options* out) {
@@ -3529,6 +3530,7 @@ void FromCpp(const kiln::material3::DatePickerOptions& v, kiln_m3_date_picker_op
     c.date_formatter = h47;
     c.colors = ([&]() -> const kiln_m3_date_picker_colors* { if (!(v.colors)) return nullptr;  return FromCppTransient((*(v.colors))); }());
     c.show_mode_toggle = bool(v.showModeToggle);
+    c.focus_requester = ([&]() -> kiln_focus_requester* { if (!(v.focusRequester)) return nullptr;  return reinterpret_cast<kiln_focus_requester*>((*(v.focusRequester))); }());
     const size_t n = out->size < sizeof(size_t) ? sizeof(c) : std::min(out->size, sizeof(c));
     std::memcpy(reinterpret_cast<char*>(out) + sizeof(size_t), reinterpret_cast<const char*>(&c) + sizeof(size_t), n - sizeof(size_t));
     out->size = n;

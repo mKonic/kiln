@@ -220,6 +220,9 @@ namespace kpp {
         Modifier align_in_row(float verticalBias) const { return kiln_mod_align_in_row(m_M, verticalBias); }
         Modifier align_in_column(float horizontalBias) const { return kiln_mod_align_in_column(m_M, horizontalBias); }
         Modifier match_parent_size() const { return kiln_mod_match_parent_size(m_M); }
+        Modifier focus_requester(kiln_focus_requester* r) const { return kiln_mod_focus_requester(m_M, r); }
+        Modifier focusable(bool enabled = true) const { return kiln_mod_focusable(m_M, enabled); }
+        template<typename F> Modifier on_focus_changed(F&& f) const { return kiln_mod_on_focus_changed(m_M, fn<kiln_fn_bool>(std::forward<F>(f))); }
         Modifier align_by(const kiln_alignment_line* line) const { return kiln_mod_align_by(m_M, line); }
         Modifier padding_from(const kiln_alignment_line* line, float before = KILN_DP_UNSPECIFIED, float after = KILN_DP_UNSPECIFIED) const {
             return kiln_mod_padding_from(m_M, line, before, after);
@@ -666,6 +669,18 @@ namespace kpp {
     }
 
     // MutableTransitionState<Boolean>.
+    // FocusRequester: request_focus moves focus to the focusable after .focus_requester(r).
+    class FocusRequester {
+    public:
+        explicit FocusRequester(kiln_focus_requester* r = nullptr) : m_R(r) {}
+        bool request_focus() const { return kiln_focus_requester_request_focus(m_R); }
+        operator kiln_focus_requester*() const { return m_R; }
+    private:
+        kiln_focus_requester* m_R;
+    };
+    inline FocusRequester remember_focus_requester(Key key = {}) { return FocusRequester(kiln_remember_focus_requester(key)); }
+    inline void clear_focus(bool force = false) { kiln_clear_focus(force); }
+
     class TransitionState {
     public:
         explicit TransitionState(kiln_transition_state* s = nullptr) : m_S(s) {}

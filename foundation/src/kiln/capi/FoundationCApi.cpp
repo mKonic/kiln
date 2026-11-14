@@ -5,6 +5,8 @@
 
 #include "kiln/App.h"
 #include "kiln/Assets.h"
+#include "kiln/foundation/Focus.h"
+#include "kiln/ui/PlatformServices.h"
 #include "kiln/foundation/Animate.h"
 #include "kiln/foundation/AndroidView.h"
 #include "kiln/foundation/AnimatedVisibility.h"
@@ -729,6 +731,29 @@ KILN_API kiln_modifier* kiln_mod_clickable(kiln_modifier* m, bool enabled, kiln_
     fd::ClickableOptions o;
     o.enabled = enabled;
     MOD(fd::Clickable(base, Fn(onClick), o))
+}
+KILN_API kiln_focus_requester* kiln_remember_focus_requester(kiln_key key) {
+    TRY {
+        auto& r = Current().Remember<std::shared_ptr<ui::FocusRequester>>([] { return std::make_shared<ui::FocusRequester>(); }, {}, ToKey(key));
+        return reinterpret_cast<kiln_focus_requester*>(r.get());
+    } CATCH(nullptr)
+}
+KILN_API bool kiln_focus_requester_request_focus(kiln_focus_requester* r) {
+    TRY { return r && reinterpret_cast<ui::FocusRequester*>(r)->RequestFocus(); } CATCH(false)
+}
+KILN_API kiln_modifier* kiln_mod_focus_requester(kiln_modifier* m, kiln_focus_requester* r) {
+    if (!r) return kiln_mod_then(m, nullptr);
+    MOD(fd::FocusRequesterModifier(base, *reinterpret_cast<ui::FocusRequester*>(r)))
+}
+KILN_API kiln_modifier* kiln_mod_focusable(kiln_modifier* m, bool enabled) {
+    MOD(fd::Focusable(base, enabled ? ui::Focusability::Always : ui::Focusability::Never))
+}
+KILN_API kiln_modifier* kiln_mod_on_focus_changed(kiln_modifier* m, kiln_fn_bool onChange) {
+    auto fn = Fn(onChange);
+    MOD(fd::OnFocusChanged(base, [fn](ui::FocusState s) { if (fn) fn(ui::IsFocused(s)); }))
+}
+KILN_API void kiln_clear_focus(bool force) {
+    TRY { if (auto fm = ui::CurrentFocusManager()) fm->ClearFocus(force); } CATCH_VOID
 }
 KILN_API kiln_modifier* kiln_mod_toggleable(kiln_modifier* m, bool value, bool enabled, kiln_fn_bool onChange) {
     fd::ClickableOptions o;

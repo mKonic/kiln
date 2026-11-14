@@ -187,6 +187,12 @@ impl Modifier {
     pub fn padding_from(self, line: AlignmentLine, before: f32, after: f32) -> Self {
         Modifier(unsafe { sys::kiln_mod_padding_from(self.0, line.0, before, after) })
     }
+    pub fn focus_requester(self, r: FocusRequester) -> Self { Modifier(unsafe { sys::kiln_mod_focus_requester(self.0, r.0) }) }
+    pub fn focusable(self, enabled: bool) -> Self { Modifier(unsafe { sys::kiln_mod_focusable(self.0, enabled) }) }
+    /// `on_change(focused)` for the first focus target after it.
+    pub fn on_focus_changed(self, on_change: impl FnMut(bool) + 'static) -> Self {
+        Modifier(unsafe { sys::kiln_mod_on_focus_changed(self.0, on_change.into_callback()) })
+    }
     pub fn safe_drawing_padding(self) -> Self { Modifier(unsafe { sys::kiln_mod_safe_drawing_padding(self.0) }) }
     pub fn system_bars_padding(self) -> Self { Modifier(unsafe { sys::kiln_mod_system_bars_padding(self.0) }) }
     pub fn ime_padding(self) -> Self { Modifier(unsafe { sys::kiln_mod_ime_padding(self.0) }) }
@@ -509,6 +515,16 @@ pub fn animate_color(target: sys::kiln_color) -> sys::kiln_color { unsafe { sys:
 pub fn animated_visibility(visible: bool, modifier: Modifier, content: impl FnMut() + 'static) {
     unsafe { sys::kiln_animated_visibility(here(), visible, modifier.0, content.into_callback()) }
 }
+
+/// FocusRequester: `request_focus` moves focus to the focusable after `.focus_requester(r)`.
+#[derive(Clone, Copy)]
+pub struct FocusRequester(pub *mut sys::kiln_focus_requester);
+impl FocusRequester {
+    pub fn request_focus(&self) -> bool { unsafe { sys::kiln_focus_requester_request_focus(self.0) } }
+}
+#[track_caller]
+pub fn remember_focus_requester() -> FocusRequester { FocusRequester(unsafe { sys::kiln_remember_focus_requester(here()) }) }
+pub fn clear_focus(force: bool) { unsafe { sys::kiln_clear_focus(force) } }
 
 /// MutableTransitionState<Boolean>: a target set by hand, a current state that follows.
 #[derive(Clone, Copy)]

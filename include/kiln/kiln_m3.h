@@ -1228,6 +1228,7 @@ struct kiln_m3_date_picker_options {
     kiln_m3_opt_fn title;
     kiln_m3_opt_fn headline;
     bool show_mode_toggle;
+    kiln_focus_requester* focus_requester;
 };
 KILN_API void kiln_m3_date_picker_options_init(kiln_m3_date_picker_options* s);
 struct kiln_m3_date_picker_dialog_options {

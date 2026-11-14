@@ -366,6 +366,27 @@ TEST(CApiTransitionStateAnimatesVisibilityAndIsTheTooltipsOwn) {
     CHECK(kiln_transition_state_target(tooltipTransition) == tooltipVisible);
 }
 
+TEST(CApiFocusRequesterFocusesItsFocusable) {
+    static kiln_focus_requester* second;
+    static bool firstFocused, secondFocused;
+    second = nullptr;
+    firstFocused = secondFocused = false;
+    Harness h;
+    h.Run([](void*) {
+        second = kiln_remember_focus_requester(KILN_HERE);
+        kpp::column(kpp::Modifier(), [] {
+            kiln_box(KILN_HERE, kpp::Modifier().size(10, 10).on_focus_changed([](bool f) { firstFocused = f; }).focusable(), NULL, KILN_FN(NULL, NULL));
+            kiln_box(KILN_HERE, kpp::Modifier().size(10, 10).on_focus_changed([](bool f) { secondFocused = f; }).focus_requester(second).focusable(),
+                     NULL, KILN_FN(NULL, NULL));
+        });
+    });
+    CHECK(second != nullptr);
+    CHECK(!secondFocused);
+    CHECK(kiln_focus_requester_request_focus(second));
+    h.Pump();
+    CHECK(secondFocused && !firstFocused);
+}
+
 TEST(CApiAndroidViewMakesUpdatesAndReleasesItsView) {
     static int made, updates, released, dropped;
     made = updates = released = dropped = 0;
