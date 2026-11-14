@@ -1363,6 +1363,37 @@ KILN_API void kiln_animated_visibility(kiln_key key, bool visible, const kiln_mo
     } CATCH_VOID
 }
 
+namespace {
+    fd::MutableTransitionState<bool>* ToTransition(const kiln_transition_state* s) {
+        return reinterpret_cast<fd::MutableTransitionState<bool>*>(const_cast<kiln_transition_state*>(s));
+    }
+}
+KILN_API kiln_transition_state* kiln_remember_transition_state(kiln_key key, bool initial) {
+    TRY {
+        kiln_transition_state* out = nullptr;
+        InGroup(key, [&] {
+            auto& st = rt::Composition::Current()->Remember<std::shared_ptr<fd::MutableTransitionState<bool>>>(
+                [&] { return std::make_shared<fd::MutableTransitionState<bool>>(initial); });
+            out = reinterpret_cast<kiln_transition_state*>(st.get());
+        });
+        return out;
+    } CATCH(nullptr)
+}
+KILN_API bool kiln_transition_state_current(const kiln_transition_state* s) { return s && ToTransition(s)->CurrentState(); }
+KILN_API bool kiln_transition_state_target(const kiln_transition_state* s) { return s && ToTransition(s)->TargetState(); }
+KILN_API void kiln_transition_state_set_target(kiln_transition_state* s, bool target) {
+    TRY { if (s) ToTransition(s)->SetTargetState(target); } CATCH_VOID
+}
+KILN_API bool kiln_transition_state_is_idle(const kiln_transition_state* s) { return !s || ToTransition(s)->IsIdle(); }
+KILN_API void kiln_animated_visibility_state(kiln_key key, kiln_transition_state* s, const kiln_modifier* m, kiln_fn content) {
+    TRY {
+        auto fn = Fn(content);
+        if (!s) return;
+        fd::AnimatedVisibility(*ToTransition(s), ToModifier(m), fn ? fn : [] {}, fd::FadeIn() + fd::ExpandIn(), fd::FadeOut() + fd::ShrinkOut(),
+                               ToKey(key));
+    } CATCH_VOID
+}
+
 
 // --- Volition ------------------------------------------------------------------------------------
 

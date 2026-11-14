@@ -504,6 +504,9 @@ class Generator:
                            lambda e, o: f'kiln::capi::TransientFling({e})')
         if k == 'kiln::foundation::ScrollIndicatorState':
             return Mapping('const kiln_scroll_indicator_state*', lambda e: f'kiln::capi::ToScrollIndicator({e})', None)
+        if k == 'kiln::foundation::MutableTransitionState<bool>':
+            return Mapping('kiln_transition_state*', lambda e: f'*reinterpret_cast<kiln::foundation::MutableTransitionState<bool>*>({e})',
+                           lambda e, o: f'reinterpret_cast<kiln_transition_state*>(&({e}))')
         if k == 'kiln::ui::AlignmentLine':
             # Lines are compared by address: a C handle is the line's own address.
             return Mapping('const kiln_alignment_line*', lambda e: f'*reinterpret_cast<const kiln::ui::AlignmentLine*>({e})',

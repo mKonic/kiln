@@ -665,6 +665,23 @@ namespace kpp {
         kiln_animated_visibility(key, visible, m, content.release());
     }
 
+    // MutableTransitionState<Boolean>.
+    class TransitionState {
+    public:
+        explicit TransitionState(kiln_transition_state* s = nullptr) : m_S(s) {}
+        bool current() const { return kiln_transition_state_current(m_S); }
+        bool target() const { return kiln_transition_state_target(m_S); }
+        void set_target(bool t) const { kiln_transition_state_set_target(m_S, t); }
+        bool is_idle() const { return kiln_transition_state_is_idle(m_S); }
+        operator kiln_transition_state*() const { return m_S; }
+    private:
+        kiln_transition_state* m_S;
+    };
+    inline TransitionState remember_transition_state(bool initial, Key key = {}) { return TransitionState(kiln_remember_transition_state(key, initial)); }
+    inline void animated_visibility(TransitionState state, Modifier m, Callback<kiln_fn> content, Key key = {}) {
+        kiln_animated_visibility_state(key, state, m, content.release());
+    }
+
     // --- Interaction sources --------------------------------------------------------------------
 
     class InteractionSource {

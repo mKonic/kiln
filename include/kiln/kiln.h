@@ -714,6 +714,19 @@ KILN_API kiln_color kiln_animate_color(kiln_key key, kiln_color target, const ki
 /* AnimatedVisibility with Compose's default transitions (fade and expand / shrink). */
 KILN_API void kiln_animated_visibility(kiln_key key, bool visible, const kiln_modifier* modifier, kiln_fn content);
 
+/* MutableTransitionState<Boolean>: a visibility (or any two-state transition) whose target is set
+ * by hand and whose current state follows once the transition gets there. Remembered at the
+ * call; a component's (a tooltip's) lives as long as that component's state. */
+typedef struct kiln_transition_state kiln_transition_state;
+KILN_API kiln_transition_state* kiln_remember_transition_state(kiln_key key, bool initial);
+KILN_API bool kiln_transition_state_current(const kiln_transition_state* state);   /* observes */
+KILN_API bool kiln_transition_state_target(const kiln_transition_state* state);    /* observes */
+KILN_API void kiln_transition_state_set_target(kiln_transition_state* state, bool target);
+KILN_API bool kiln_transition_state_is_idle(const kiln_transition_state* state);  /* current == target, not running */
+/* AnimatedVisibility(visibleState): enters when the target turns true (an initial current of false
+ * with a target of true animates in on first composition). */
+KILN_API void kiln_animated_visibility_state(kiln_key key, kiln_transition_state* state, const kiln_modifier* modifier, kiln_fn content);
+
 /* ---------------------------------------------------------------------------------------------
  * Volition (github.com/mKonic/volition): debug builds answer its commands by name. An app tells
  * `where` about itself (state fields) and lists where `go` can send it, as a NavHost does in

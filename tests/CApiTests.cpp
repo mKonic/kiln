@@ -338,6 +338,34 @@ TEST(CApiLazyVerticalGridPlacesItemsInColumnsWithFullLineSpans) {
     CHECK(h.Has("cell40"));
 }
 
+TEST(CApiTransitionStateAnimatesVisibilityAndIsTheTooltipsOwn) {
+    static kiln_transition_state* state;
+    static kiln_transition_state* tooltipTransition;
+    static bool tooltipVisible;
+    state = tooltipTransition = nullptr;
+    Harness h;
+    h.Run([](void*) {
+        state = kiln_remember_transition_state(KILN_HERE, false);
+        kiln_animated_visibility_state(KILN_HERE, state, NULL,
+                                       KILN_FN([](void*) { kiln_box(KILN_HERE, kiln_mod_test_tag(kiln_mod_size(NULL, 10, 10), "shown"), NULL, KILN_FN(NULL, NULL)); }, NULL));
+        kiln_m3_tooltip_state* tip = kiln_m3_remember_tooltip_state(KILN_HERE, true, false, NULL);
+        tooltipTransition = kiln_m3_tooltip_state_transition(tip);
+        tooltipVisible = kiln_m3_tooltip_state_is_visible(tip);
+    });
+    CHECK(state && !kiln_transition_state_current(state) && kiln_transition_state_is_idle(state));
+    CHECK(!h.Has("shown"));
+    kiln_transition_state_set_target(state, true);
+    h.Pump();
+    CHECK(kiln_transition_state_target(state));
+    CHECK(h.Has("shown"));
+    CHECK(!kiln_transition_state_is_idle(state));
+    h.Frames(60);
+    CHECK(kiln_transition_state_current(state) && kiln_transition_state_is_idle(state));
+    // A tooltip state's transition is its visibility (TooltipState.transition).
+    CHECK(tooltipTransition != nullptr);
+    CHECK(kiln_transition_state_target(tooltipTransition) == tooltipVisible);
+}
+
 TEST(CApiAndroidViewMakesUpdatesAndReleasesItsView) {
     static int made, updates, released, dropped;
     made = updates = released = dropped = 0;

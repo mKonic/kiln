@@ -18347,6 +18347,14 @@ KILN_API kiln_popup_position_provider* kiln_m3_tooltip_scope_obtain_position_pro
         return kiln::capi::TransientOpaque<kiln_popup_position_provider>((*r));
     } KILN_CAPI_CATCH({})
 }
+KILN_API kiln_transition_state* kiln_m3_tooltip_state_transition(const kiln_m3_tooltip_state* self) {
+    KILN_CAPI_TRY {
+        if (!self) return {};
+        std::remove_reference_t<decltype(self->ptr->Transition())>* r = nullptr;
+        r = &self->ptr->Transition();
+        return reinterpret_cast<kiln_transition_state*>(&((*r)));
+    } KILN_CAPI_CATCH({})
+}
 KILN_API bool kiln_m3_tooltip_state_is_visible(const kiln_m3_tooltip_state* self) {
     KILN_CAPI_TRY {
         if (!self) return {};

@@ -4846,6 +4846,9 @@ pub fn floating_toolbar_scroll_behavior_floating_scroll_behavior(this: *const sy
 pub fn tooltip_scope_obtain_position_provider(this: *const sys::kiln_m3_tooltip_scope) -> *mut sys::kiln_popup_position_provider {
     unsafe { sys::kiln_m3_tooltip_scope_obtain_position_provider(this) }
 }
+pub fn tooltip_state_transition(this: *const sys::kiln_m3_tooltip_state) -> *mut sys::kiln_transition_state {
+    unsafe { sys::kiln_m3_tooltip_state_transition(this) }
+}
 pub fn tooltip_state_is_visible(this: *const sys::kiln_m3_tooltip_state) -> bool {
     unsafe { sys::kiln_m3_tooltip_state_is_visible(this) }
 }

@@ -510,6 +510,22 @@ pub fn animated_visibility(visible: bool, modifier: Modifier, content: impl FnMu
     unsafe { sys::kiln_animated_visibility(here(), visible, modifier.0, content.into_callback()) }
 }
 
+/// MutableTransitionState<Boolean>: a target set by hand, a current state that follows.
+#[derive(Clone, Copy)]
+pub struct TransitionState(pub *mut sys::kiln_transition_state);
+impl TransitionState {
+    pub fn current(&self) -> bool { unsafe { sys::kiln_transition_state_current(self.0) } }
+    pub fn target(&self) -> bool { unsafe { sys::kiln_transition_state_target(self.0) } }
+    pub fn set_target(&self, target: bool) { unsafe { sys::kiln_transition_state_set_target(self.0, target) } }
+    pub fn is_idle(&self) -> bool { unsafe { sys::kiln_transition_state_is_idle(self.0) } }
+}
+#[track_caller]
+pub fn remember_transition_state(initial: bool) -> TransitionState { TransitionState(unsafe { sys::kiln_remember_transition_state(here(), initial) }) }
+#[track_caller]
+pub fn animated_visibility_state(state: TransitionState, modifier: Modifier, content: impl FnMut() + 'static) {
+    unsafe { sys::kiln_animated_visibility_state(here(), state.0, modifier.0, content.into_callback()) }
+}
+
 // --- Android --------------------------------------------------------------------------------
 
 /// The library's JNI entry: kiln registers its natives. A Rust cdylib exports only Rust symbols,

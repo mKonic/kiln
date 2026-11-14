@@ -3945,6 +3945,7 @@ KILN_API const kiln_modifier* kiln_m3_floating_toolbar_scroll_behavior_floating_
 /* kiln_m3_tooltip_scope */
 KILN_API kiln_popup_position_provider* kiln_m3_tooltip_scope_obtain_position_provider(const kiln_m3_tooltip_scope* self);
 /* kiln_m3_tooltip_state */
+KILN_API kiln_transition_state* kiln_m3_tooltip_state_transition(const kiln_m3_tooltip_state* self);
 KILN_API bool kiln_m3_tooltip_state_is_visible(const kiln_m3_tooltip_state* self);
 KILN_API bool kiln_m3_tooltip_state_is_persistent(const kiln_m3_tooltip_state* self);
 KILN_API void kiln_m3_tooltip_state_show(const kiln_m3_tooltip_state* self, kiln_mutate_priority priority, kiln_fn done);

@@ -581,6 +581,7 @@ namespace kpp::m3 {
         operator kiln_m3_tooltip_state*() const { return m_H; }
         kiln_m3_tooltip_state* get() const { return m_H; }
         explicit operator bool() const { return m_H != nullptr; }
+        kiln_transition_state* transition() const;
         bool is_visible() const;
         bool is_persistent() const;
         void show(kiln_mutate_priority priority, kpp::Callback<kiln_fn> done = {}) const;
@@ -869,6 +870,7 @@ namespace kpp::m3 {
     inline kiln_m3_time_picker_selection_mode TimePickerState::selection() const { return kiln_m3_time_picker_state_selection(m_H); }
     inline void TimePickerState::set_selection(kiln_m3_time_picker_selection_mode selection) const { kiln_m3_time_picker_state_set_selection(m_H, selection); }
     inline kiln_popup_position_provider* TooltipScope::obtain_position_provider() const { return kiln_m3_tooltip_scope_obtain_position_provider(m_H); }
+    inline kiln_transition_state* TooltipState::transition() const { return kiln_m3_tooltip_state_transition(m_H); }
     inline bool TooltipState::is_visible() const { return kiln_m3_tooltip_state_is_visible(m_H); }
     inline bool TooltipState::is_persistent() const { return kiln_m3_tooltip_state_is_persistent(m_H); }
     inline void TooltipState::show(kiln_mutate_priority priority, kpp::Callback<kiln_fn> done) const { kiln_m3_tooltip_state_show(m_H, priority, done.release()); }

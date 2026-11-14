@@ -13,7 +13,6 @@ kiln::material3::ProgressIndicatorDefaults::DrawStopIndicator: parameter scope: 
 kiln::material3::SliderDefaults::DrawStopIndicator: parameter arg0: type kiln::ui::DrawScope
 kiln::material3::TabIndicatorScope::TabIndicatorLayout: parameter measure: type kiln::ui::MeasureScope
 kiln::material3::TooltipScope::ObtainAnchorBounds: result: type kiln::ui::LayoutCoordinates
-kiln::material3::TooltipState::Transition: result: type kiln::foundation::MutableTransitionState<bool>
 kiln::material3::Value: parameter token: kiln::material3::tokens::ColorToken is internal
 kiln::material3::Value: parameter token: kiln::material3::tokens::MotionSchemeToken is internal
 kiln::material3::Value: parameter token: kiln::material3::tokens::ShapeToken is internal
