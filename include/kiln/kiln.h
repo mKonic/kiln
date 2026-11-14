@@ -476,6 +476,14 @@ KILN_API const char* kiln_http_response_header(const kiln_http_response* respons
  * without android.permission.ACCESS_NETWORK_STATE). For content: recomposes on a change. */
 KILN_API bool kiln_network_connected(kiln_key key);
 
+/* Sharing (the system's share sheet; streams: content:// URIs, may be NULL) and opening links.
+ * False when nothing could be shown. kiln_should_show_permission_rationale: the user turned the
+ * permission down before (Activity.shouldShowRequestPermissionRationale). */
+KILN_API bool kiln_share(const char* text, const char* subject, const char* const* streams, size_t stream_count,
+                         const char* mime_type, const char* chooser_title);
+KILN_API bool kiln_open_uri(const char* uri);
+KILN_API bool kiln_should_show_permission_rationale(const char* permission);
+
 /* The launch splash screen (kiln_add_app's SPLASH_* options) stays until the first frame is on
  * screen, and while this is set (core-splashscreen's setKeepOnScreenCondition). */
 KILN_API void kiln_keep_splash_screen(bool keep);

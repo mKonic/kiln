@@ -6,7 +6,8 @@ import android.os.Bundle;
 /**
  * Bundles as native passes them: {String[] keys, int[] kinds, Object[] values} with kind 0
  * String, 1 boolean and 2 int (as text), 3 String[] (a string list or array), 4 byte[] (may be
- * null), 5 Uri (as text), 6 int[], 7 long (as text).
+ * null), 5 Uri (as text), 6 int[], 7 long (as text), 8 ArrayList<Uri> (String[]), 9 Intent (as
+ * KilnActivityResults passes intents).
  */
 final class KilnBundles {
     private KilnBundles() {}
@@ -28,6 +29,8 @@ final class KilnBundles {
                 case 5: b.putParcelable(keys[i], Uri.parse((String) v)); break;
                 case 6: b.putIntArray(keys[i], (int[]) v); break;
                 case 7: b.putLong(keys[i], Long.parseLong((String) v)); break;
+                case 8: b.putParcelableArrayList(keys[i], uris((String[]) v)); break;
+                case 9: b.putParcelable(keys[i], KilnActivityResults.toIntent((Object[]) v)); break;
                 default: break;
             }
         }
@@ -51,9 +54,17 @@ final class KilnBundles {
                 case 5: intent.putExtra(keys[i], Uri.parse((String) v)); break;
                 case 6: intent.putExtra(keys[i], (int[]) v); break;
                 case 7: intent.putExtra(keys[i], Long.parseLong((String) v)); break;
+                case 8: intent.putParcelableArrayListExtra(keys[i], uris((String[]) v)); break;
+                case 9: intent.putExtra(keys[i], KilnActivityResults.toIntent((Object[]) v)); break;
                 default: break;
             }
         }
+    }
+
+    private static java.util.ArrayList<Uri> uris(String[] strs) {
+        java.util.ArrayList<Uri> list = new java.util.ArrayList<>();
+        for (String s : strs) list.add(Uri.parse(s));
+        return list;
     }
 
     @SuppressWarnings("deprecation")
@@ -69,7 +80,16 @@ final class KilnBundles {
                 if (v instanceof String) { kind = 0; out = v; }
                 else if (v instanceof Boolean) { kind = 1; out = v.toString(); }
                 else if (v instanceof Integer) { kind = 2; out = v.toString(); }
-                else if (v instanceof java.util.ArrayList) {
+                else if (v instanceof java.util.ArrayList && !((java.util.ArrayList<?>) v).isEmpty() && ((java.util.ArrayList<?>) v).get(0) instanceof Uri) {
+                    java.util.ArrayList<?> list = (java.util.ArrayList<?>) v;
+                    String[] strs = new String[list.size()];
+                    for (int i = 0; i < strs.length; ++i) strs[i] = String.valueOf(list.get(i));
+                    kind = 8;
+                    out = strs;
+                } else if (v instanceof android.content.Intent) {
+                    kind = 9;
+                    out = KilnActivityResults.fromIntent((android.content.Intent) v);
+                } else if (v instanceof java.util.ArrayList) {
                     java.util.ArrayList<?> list = (java.util.ArrayList<?>) v;
                     String[] strs = new String[list.size()];
                     for (int i = 0; i < strs.length; ++i) strs[i] = String.valueOf(list.get(i));

@@ -24,4 +24,18 @@ namespace kiln::ui {
     // The host: an intent delivered to the running activity.
     void DispatchNewIntent(const Intent& intent);
 
+    // Context.startActivity: starts an activity without waiting for a result (a share sheet, a
+    // browser, another app). False when no activity handles the intent, or off Android.
+    bool StartActivity(const Intent& intent);
+    // Activity.shouldShowRequestPermissionRationale: the user turned the permission down
+    // before without asking not to be asked again, so the app should explain why it needs it.
+    bool ShouldShowRequestPermissionRationale(const std::string& permission);
+
+    // The main activity, for the calls above.
+    struct ActivityHost {
+        kiln::Function<bool(const Intent&)> startActivity;
+        kiln::Function<bool(const std::string&)> shouldShowRequestPermissionRationale;
+    };
+    void SetActivityHost(ActivityHost host);
+
 }

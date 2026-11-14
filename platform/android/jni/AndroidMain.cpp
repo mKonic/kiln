@@ -125,6 +125,7 @@ namespace {
     void ReleaseExternalSurfaces();
     void InstallOwnerHosts(JNIEnv* env, Win* w);
     jobjectArray JavaIntent(JNIEnv* env, const kiln::ui::Intent& i);
+    std::optional<kiln::ui::Intent> IntentFromJava(JNIEnv* env, jobjectArray a);
     // A String[] (null entries kept) as UTF-8.
     std::vector<std::optional<std::string>> StringsFromJava(JNIEnv* env, jobjectArray a) {
         std::vector<std::optional<std::string>> out;
@@ -1333,6 +1334,33 @@ namespace {
         kiln::android::InstallAppResources(env);
         kiln::android::InstallContentResolver(env);
         kiln::android::InstallHttp(env);
+        {
+            // ui::StartActivity / ShouldShowRequestPermissionRationale on the main window's view.
+            jclass vc = env->GetObjectClass(view);
+            static jmethodID start = env->GetMethodID(vc, "startActivityFromNative", "([Ljava/lang/Object;)Z");
+            static jmethodID rationale = env->GetMethodID(vc, "shouldShowRequestPermissionRationaleFromNative", "(Ljava/lang/String;)Z");
+            env->DeleteLocalRef(vc);
+            kiln::ui::SetActivityHost({
+                .startActivity = [](const kiln::ui::Intent& intent) -> bool {
+                    if (!g_Host || !g_Host->view) return false;
+                    JNIEnv* e = MainEnv();
+                    jobjectArray ji = JavaIntent(e, intent);
+                    const bool ok = e->CallBooleanMethod(g_Host->view, start, ji);
+                    if (e->ExceptionCheck()) e->ExceptionClear();
+                    e->DeleteLocalRef(ji);
+                    return ok;
+                },
+                .shouldShowRequestPermissionRationale = [](const std::string& p) -> bool {
+                    if (!g_Host || !g_Host->view) return false;
+                    JNIEnv* e = MainEnv();
+                    jstring js = e->NewStringUTF(p.c_str());
+                    const bool r = e->CallBooleanMethod(g_Host->view, rationale, js);
+                    if (e->ExceptionCheck()) e->ExceptionClear();
+                    e->DeleteLocalRef(js);
+                    return r;
+                },
+            });
+        }
         InstallPictureInPicture(env);
         g_Host = new Host();
         g_Host->text = std::make_unique<kiln::android::AndroidText>(env, text);
@@ -2569,6 +2597,11 @@ namespace {
                 jv = a;
             }
             else if (const auto* l = std::get_if<std::int64_t>(&v)) { kinds.push_back(7); jv = env->NewStringUTF(std::to_string(*l).c_str()); }
+            else if (const auto* ul = std::get_if<kiln::ui::BundleUriList>(&v)) { kinds.push_back(8); jv = JavaStrings(env, ul->uris); }
+            else if (const auto* bi = std::get_if<kiln::ui::BundleIntent>(&v)) {
+                if (bi->intent) { kinds.push_back(9); jv = JavaIntent(env, *bi->intent); }
+                else kinds.push_back(0);
+            }
             if (jv) {
                 env->SetObjectArrayElement(values, i, jv);
                 env->DeleteLocalRef(jv);
@@ -2632,6 +2665,16 @@ namespace {
                     break;
                 }
                 case 7: if (v) out.Put(*ks[i], std::int64_t(std::stoll(text(v)))); break;
+                case 8: {
+                    kiln::ui::BundleUriList list;
+                    if (v) for (auto& e : StringsFromJava(env, static_cast<jobjectArray>(v))) list.uris.push_back(e.value_or(""));
+                    out.Put(*ks[i], std::move(list));
+                    break;
+                }
+                case 9:
+                    if (auto nested = IntentFromJava(env, static_cast<jobjectArray>(v)))
+                        out.Put(*ks[i], kiln::ui::BundleIntent{ std::make_shared<const kiln::ui::Intent>(std::move(*nested)) });
+                    break;
                 default: break;
             }
             if (v) env->DeleteLocalRef(v);

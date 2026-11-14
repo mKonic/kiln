@@ -260,6 +260,13 @@ final class KilnActivityResults {
         if (s[4] != null && s[5] != null && !((String) s[4]).isEmpty()) i.setClassName((String) s[4], (String) s[5]);
         i.addFlags(Integer.parseInt((String) s[6]));
         KilnBundles.putExtras(i, (Object[]) s[7]);
+        // Clip data: the URIs a grant flag gives the target access to.
+        String[] clip = s.length > 8 ? (String[]) s[8] : null;
+        if (clip != null && clip.length > 0) {
+            android.content.ClipData clipData = android.content.ClipData.newRawUri(null, Uri.parse(clip[0]));
+            for (int k = 1; k < clip.length; ++k) clipData.addItem(new android.content.ClipData.Item(Uri.parse(clip[k])));
+            i.setClipData(clipData);
+        }
         return i;
     }
 

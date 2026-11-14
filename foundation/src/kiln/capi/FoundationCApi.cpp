@@ -14,6 +14,7 @@
 #include "kiln/Trace.h"
 #include "kiln/Log.h"
 #include "kiln/ui/SplashScreen.h"
+#include "kiln/ui/Share.h"
 #include "kiln/ui/PictureInPicture.h"
 #include "kiln/foundation/AsyncImage.h"
 #include "kiln/ui/AppDirectories.h"
@@ -2178,3 +2179,20 @@ KILN_API bool kiln_log_is_loggable(kiln_log_level level, const char* tag) {
 }
 
 KILN_API void kiln_keep_splash_screen(bool keep) { kiln::ui::KeepSplashScreenOnScreen(keep); }
+
+// --- Sharing --------------------------------------------------------------------------------
+
+KILN_API bool kiln_share(const char* text, const char* subject, const char* const* streams, size_t count, const char* mime, const char* title) {
+    TRY {
+        kiln::ui::ShareContent c;
+        c.text = text ? text : "";
+        c.subject = subject ? subject : "";
+        for (size_t i = 0; streams && i < count; ++i) if (streams[i]) c.streams.push_back(streams[i]);
+        c.mimeType = mime ? mime : "";
+        return kiln::ui::Share(c, title ? std::optional<std::string>(title) : std::nullopt);
+    } CATCH(false)
+}
+KILN_API bool kiln_open_uri(const char* uri) { TRY { return uri && kiln::ui::OpenUri(uri); } CATCH(false) }
+KILN_API bool kiln_should_show_permission_rationale(const char* p) {
+    TRY { return p && kiln::ui::ShouldShowRequestPermissionRationale(p); } CATCH(false)
+}

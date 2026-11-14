@@ -1982,6 +1982,24 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback2 {
         if (appFlagSecure || externalFlagSecure) w.addFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE);
         else w.clearFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE);
     }
+    /** ui::StartActivity: Context.startActivity, a new task when not started from an activity. */
+    boolean startActivityFromNative(Object[] spec) {
+        android.content.Intent intent = KilnActivityResults.toIntent(spec);
+        android.app.Activity activity = KilnPip.activityOf(this);
+        try {
+            if (activity != null) activity.startActivity(intent);
+            else getContext().startActivity(intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK));
+            return true;
+        } catch (android.content.ActivityNotFoundException | SecurityException e) {
+            return false;
+        }
+    }
+
+    boolean shouldShowRequestPermissionRationaleFromNative(String permission) {
+        android.app.Activity activity = KilnPip.activityOf(this);
+        return activity != null && activity.shouldShowRequestPermissionRationale(permission);
+    }
+
     /** Picture-in-picture comes with a configuration change (and onPictureInPictureModeChanged). */
     void pushPictureInPicture() {
         if (windowId == 0) KilnNative.pictureInPictureModeChanged(KilnPip.isInPictureInPictureMode(this));

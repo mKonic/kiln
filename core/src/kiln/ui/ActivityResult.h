@@ -28,6 +28,7 @@ namespace kiln::ui {
         int flags = 0;
         Bundle extras;
         std::vector<std::string> clipUris;
+        bool operator==(const Intent&) const = default;
     };
 
     inline constexpr int kResultOk = -1, kResultCanceled = 0;

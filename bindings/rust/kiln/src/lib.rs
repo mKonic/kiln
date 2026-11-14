@@ -725,6 +725,24 @@ pub fn http_fetch(request: &HttpRequest, wanted_headers: &[&str], mut done: impl
     };
     unsafe { sys::kiln_http_fetch(&r, IntoCallback::<sys::kiln_fn_http>::into_callback(callback)) }
 }
+/// Shows the system's share sheet for text and/or content:// streams.
+pub fn share(text: &str, subject: &str, streams: &[&str], mime_type: &str, chooser_title: Option<&str>) -> bool {
+    let t = CStrBuf::new(text);
+    let s = CStrBuf::new(subject);
+    let m = CStrBuf::new(mime_type);
+    let bufs: Vec<CStrBuf> = streams.iter().map(|u| CStrBuf::new(u)).collect();
+    let ptrs: Vec<*const std::ffi::c_char> = bufs.iter().map(|b| b.ptr()).collect();
+    let title = chooser_title.map(CStrBuf::new);
+    unsafe { sys::kiln_share(t.ptr(), s.ptr(), ptrs.as_ptr(), ptrs.len(), m.ptr(), title.as_ref().map_or(std::ptr::null(), |b| b.ptr())) }
+}
+/// Opens a link in the browser or the app that handles it.
+pub fn open_uri(uri: &str) -> bool { let u = CStrBuf::new(uri); unsafe { sys::kiln_open_uri(u.ptr()) } }
+/// Whether to explain a permission before asking again (Activity.shouldShowRequestPermissionRationale).
+pub fn should_show_permission_rationale(permission: &str) -> bool {
+    let p = CStrBuf::new(permission);
+    unsafe { sys::kiln_should_show_permission_rationale(p.ptr()) }
+}
+
 /// Keeps the launch splash screen up while true (after the first frame it would go).
 pub fn keep_splash_screen(keep: bool) { unsafe { sys::kiln_keep_splash_screen(keep) } }
 

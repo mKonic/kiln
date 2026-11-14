@@ -15,7 +15,22 @@ namespace kiln::ui {
             static Intents* i = new Intents;
             return *i;
         }
+        ActivityHost& Host() {
+            static auto* h = new ActivityHost;
+            return *h;
+        }
     }
+
+    bool BundleIntent::operator==(const BundleIntent& o) const {
+        if (!intent || !o.intent) return intent == o.intent;
+        return *intent == *o.intent;
+    }
+
+    bool StartActivity(const Intent& intent) { return Host().startActivity && Host().startActivity(intent); }
+    bool ShouldShowRequestPermissionRationale(const std::string& permission) {
+        return Host().shouldShowRequestPermissionRationale && Host().shouldShowRequestPermissionRationale(permission);
+    }
+    void SetActivityHost(ActivityHost host) { Host() = std::move(host); }
 
     std::optional<Intent> ActivityIntent() { return I().launch; }
     void SetActivityIntent(std::optional<Intent> intent) { I().launch = std::move(intent); }

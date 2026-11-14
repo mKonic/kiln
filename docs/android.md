@@ -185,7 +185,31 @@ Button([openDocument] { openDocument.Launch({ "*/*" }); }, {}, {}, [] { Text("Op
 ```
 
 A permission must also be declared in the manifest: `PERMISSIONS` in the app's
-`CMakeLists.txt`, or the Gradle project's manifest.
+`CMakeLists.txt`, or the Gradle project's manifest. When the user has turned a permission
+down before, `ui::ShouldShowRequestPermissionRationale(permission)` (`kiln/ui/ActivityIntent.h`)
+is true: explain why the app needs it before asking again.
+
+### Sharing and opening links
+
+`kiln/ui/Share.h` opens the system's share sheet and other apps:
+
+```cpp
+#include <kiln/ui/Share.h>
+
+void ShareNote(const std::string& title, const std::string& link) {
+    kiln::ui::Share({ .text = link, .subject = title }, "Share the note");
+}
+
+void SharePhoto(const std::string& contentUri) {
+    kiln::ui::Share({ .streams = { contentUri }, .mimeType = "image/jpeg" });
+}
+```
+
+* `streams` are `content://` URIs; the app that receives them may read them.
+* `ui::OpenUri(url)` opens a link in the browser or the app that handles it.
+* `ui::StartActivity(intent)` starts any activity without waiting for a result, and
+  `ui::CreateChooser(intent, title)` wraps an intent in the system's chooser. An intent's
+  extras can hold other intents and lists of URIs.
 
 ### Reading what was picked
 

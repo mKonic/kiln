@@ -12,6 +12,7 @@
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <memory>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -23,11 +24,22 @@ namespace kiln::ui {
         std::string uri;
         bool operator==(const BundleUri&) const = default;
     };
+    // An ArrayList<Uri> (EXTRA_STREAM of ACTION_SEND_MULTIPLE).
+    struct BundleUriList {
+        std::vector<std::string> uris;
+        bool operator==(const BundleUriList&) const = default;
+    };
+    // An Intent inside a Bundle (EXTRA_INTENT of a chooser, EXTRA_INITIAL_INTENTS' entries).
+    struct Intent;
+    struct BundleIntent {
+        std::shared_ptr<const Intent> intent;
+        bool operator==(const BundleIntent& o) const;
+    };
     // The Bundle values kiln passes to and from the platform (a null byte array is an empty
     // optional): strings, booleans, ints, string lists / arrays, byte arrays, URIs, int arrays
-    // and longs.
+    // longs, URI lists and intents.
     using BundleValue = std::variant<std::string, bool, std::int32_t, std::vector<std::string>, std::optional<std::vector<std::uint8_t>>, BundleUri,
-                                     std::vector<std::int32_t>, std::int64_t>;
+                                     std::vector<std::int32_t>, std::int64_t, BundleUriList, BundleIntent>;
 
     struct Bundle {
         std::vector<std::pair<std::string, BundleValue>> entries;

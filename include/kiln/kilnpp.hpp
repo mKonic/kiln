@@ -821,6 +821,16 @@ namespace kpp {
         }));
     }
     inline void http_cancel(uint64_t request) { kiln_http_cancel(request); }
+    // See kiln_share.
+    inline bool share(const std::string& text, const std::string& subject = {}, const std::vector<std::string>& streams = {},
+                      const std::string& mimeType = {}, const char* chooserTitle = nullptr) {
+        std::vector<const char*> s;
+        for (const auto& u : streams) s.push_back(u.c_str());
+        return kiln_share(text.c_str(), subject.c_str(), s.data(), s.size(), mimeType.c_str(), chooserTitle);
+    }
+    inline bool open_uri(const std::string& uri) { return kiln_open_uri(uri.c_str()); }
+    inline bool should_show_permission_rationale(const char* permission) { return kiln_should_show_permission_rationale(permission); }
+
     // See kiln_keep_splash_screen.
     inline void keep_splash_screen(bool keep) { kiln_keep_splash_screen(keep); }
 
