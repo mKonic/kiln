@@ -104,11 +104,19 @@ namespace kiln::ui {
         // Scrolling moves nodes without changing what autofill reads from them.
         if (m_SyncedVersion == m_Owner.SemanticsConfigVersion()) return;
         m_SyncedVersion = m_Owner.SemanticsConfigVersion();
-        const auto& nodes = m_Owner.Accessibility().Nodes();
+        // Each semantics node's own configuration, as Compose's onSemanticsChange sees it: the
+        // accessibility tree's nodes without its merging, clipping and bounds.
+        std::vector<std::pair<int, SemanticsConfiguration>> nodes;
+        std::vector<LayoutNode*> stack(m_Owner.WindowRoot().Children().rbegin(), m_Owner.WindowRoot().Children().rend());
+        while (!stack.empty()) {
+            LayoutNode* n = stack.back();
+            stack.pop_back();
+            SemanticsConfiguration c;
+            if (CalculateSemanticsConfiguration(*n, c)) nodes.emplace_back(n->SemanticsId(), std::move(c));
+            stack.insert(stack.end(), n->Children().rbegin(), n->Children().rend());
+        }
         std::unordered_map<int, Snapshot> next;
-        for (const auto& [id, node] : nodes) {
-            if (node.fake) continue;
-            const SemanticsConfiguration& c = node.config;
+        for (const auto& [id, c] : nodes) {
             Snapshot s{ c.contentDataType, c.inputText, c.toggleableState, c.fillableData, IsRelatedToAutoCommit(c) };
             const auto it = m_Snapshots.find(id);
             const Snapshot* prev = it == m_Snapshots.end() ? nullptr : &it->second;

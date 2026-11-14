@@ -231,6 +231,30 @@ TEST(ScrollingInvalidatesSemanticsBoundsOnly) {
     CHECK_EQ(h.owner.SemanticsConfigVersion(), config);
 }
 
+// NodeChain's autoInvalidateUpdatedNode: an updated modifier changes the configuration only when
+// it is a semantics node; any other update (a size here, an offset or colour in an app) moves
+// things at most.
+TEST(OnlySemanticsModifierUpdatesChangeTheConfiguration) {
+    Harness h;
+    rt::State<float> size(10);
+    rt::State<std::string> label("one");
+    h.Run([&] {
+        Column(Modifier{}, [&] { Box(Label(SizeMod({}, Dp(size.Get()), Dp(10)), label.Get())); });
+    });
+    auto config = h.owner.SemanticsConfigVersion();
+    const auto all = h.owner.SemanticsVersion();
+    size.Set(20);
+    h.composition.Recompose();
+    h.owner.MeasureAndLayout({ 300, 300 });
+    CHECK(h.owner.SemanticsVersion() != all);
+    CHECK_EQ(h.owner.SemanticsConfigVersion(), config);
+    label.Set("two");
+    h.composition.Recompose();
+    h.owner.MeasureAndLayout({ 300, 300 });
+    CHECK(h.owner.SemanticsConfigVersion() != config);
+    CHECK_EQ(h.owner.BuildSemanticsTree().children[0].config.text[0], std::string("two"));
+}
+
 TEST(VerticalScrollExposesItsRangeAndScrollsByForAccessibility) {
     Harness h;
     ScrollState state;

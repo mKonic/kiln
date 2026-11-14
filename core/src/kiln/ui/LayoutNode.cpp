@@ -786,6 +786,7 @@ namespace kiln::ui {
         const auto& next = modifier.Elements();
         bool structural = next.size() != m_Elements.size();
         bool updated = false;
+        bool semanticsUpdated = false;   // autoInvalidateUpdatedNode: only a semantics node's update changes the configuration
         std::vector<std::unique_ptr<ModifierNode>> nodes;
         nodes.reserve(next.size());
         auto focusKind = [](ModifierNode& m) { return m.AsFocusTarget() || m.AsFocusEvent() || m.AsFocusProperties(); };
@@ -830,6 +831,7 @@ namespace kiln::ui {
             if (!m_Elements[o]->Equals(*next[n])) {
                 next[n]->Update(*m_Nodes[o]);
                 updated = true;
+                if (m_Nodes[o]->AsSemantics()) semanticsUpdated = true;
                 if (focusKind(*m_Nodes[o])) focusChanged = true;
             }
         }
@@ -856,7 +858,8 @@ namespace kiln::ui {
         if (m_Owner) for (auto* node : attach) node->OnAttach();
         if (m_Owner && focusChanged) m_Owner->ScheduleFocusInvalidation(*this);
         if (m_Owner && (structural || updated)) m_Owner->TrackPositionAware(*this);
-        if (m_Owner && (structural || updated)) m_Owner->InvalidateSemantics();
+        // Other updates can still move or clip what accessibility shows: its bounds are refreshed.
+        if (m_Owner && (structural || updated)) m_Owner->InvalidateSemantics(!structural && !semanticsUpdated);
         // Parent data may have changed: the parent measures with it.
         UpdateParentData();
         RequestRemeasure();
