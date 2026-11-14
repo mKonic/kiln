@@ -3253,19 +3253,19 @@ namespace {
         WinScope ws(win);
         if (auto* c = InteropClient(id, ws)) { c->OnRequestRectangleOnScreen({ float(l), float(t), float(r), float(b) }); g_Host->app->RequestFrame(); }
     }
-    jintArray InteropNestedPreScroll(JNIEnv* env, jclass, jint win, jint id, jint dx, jint dy) {
+    jintArray InteropNestedPreScroll(JNIEnv* env, jclass, jint win, jint id, jint dx, jint dy, jboolean touch) {
         WinScope ws(win);
         auto* c = InteropClient(id, ws);
-        const kiln::ui::IntOffset r = c ? c->OnNestedPreScroll(dx, dy, true) : kiln::ui::IntOffset{};
+        const kiln::ui::IntOffset r = c ? c->OnNestedPreScroll(dx, dy, touch) : kiln::ui::IntOffset{};
         if (c && (r.x || r.y)) g_Host->app->RequestFrame();
         return IntArray(env, { r.x, r.y });
     }
-    void InteropNestedScroll(JNIEnv*, jclass, jint win, jint id, jint dxc, jint dyc, jint dxu, jint dyu) {
+    jintArray InteropNestedScroll(JNIEnv* env, jclass, jint win, jint id, jint dxc, jint dyc, jint dxu, jint dyu, jboolean touch) {
         WinScope ws(win);
-        if (auto* c = InteropClient(id, ws)) {
-            const kiln::ui::IntOffset r = c->OnNestedScroll(dxc, dyc, dxu, dyu, true);
-            if (r.x || r.y) g_Host->app->RequestFrame();
-        }
+        auto* c = InteropClient(id, ws);
+        const kiln::ui::IntOffset r = c ? c->OnNestedScroll(dxc, dyc, dxu, dyu, touch) : kiln::ui::IntOffset{};
+        if (c && (r.x || r.y)) g_Host->app->RequestFrame();
+        return IntArray(env, { r.x, r.y });
     }
     void InteropNestedFling(JNIEnv*, jclass, jint win, jint id, jfloat vx, jfloat vy, jboolean consumed, jboolean pre) {
         WinScope ws(win);
@@ -3444,8 +3444,8 @@ extern "C" JNIEXPORT jint kiln_jni_onload(JavaVM* vm) {
         { "interopRequestLayout", "(II)V", reinterpret_cast<void*>(&InteropRequestLayout) },
         { "interopDisallowIntercept", "(IIZ)V", reinterpret_cast<void*>(&InteropDisallowIntercept) },
         { "interopRequestRectangle", "(IIIIII)V", reinterpret_cast<void*>(&InteropRequestRectangle) },
-        { "interopNestedPreScroll", "(IIII)[I", reinterpret_cast<void*>(&InteropNestedPreScroll) },
-        { "interopNestedScroll", "(IIIIII)V", reinterpret_cast<void*>(&InteropNestedScroll) },
+        { "interopNestedPreScroll", "(IIIIZ)[I", reinterpret_cast<void*>(&InteropNestedPreScroll) },
+        { "interopNestedScroll", "(IIIIIIZ)[I", reinterpret_cast<void*>(&InteropNestedScroll) },
         { "interopNestedFling", "(IIFFZZ)V", reinterpret_cast<void*>(&InteropNestedFling) },
         { "a11yInteropView", "(II)I", reinterpret_cast<void*>(&A11yInteropView) },
         { "externalSurfaceChanged", "(IIII)V", reinterpret_cast<void*>(&ExternalSurfaceChanged) },

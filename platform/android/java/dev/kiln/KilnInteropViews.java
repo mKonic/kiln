@@ -61,7 +61,7 @@ final class KilnInteropViews {
         }
     }
 
-    final class Holder extends FrameLayout {
+    class Holder extends FrameLayout {
         final int id;
         final View view;
         int x, y;
@@ -121,16 +121,17 @@ final class KilnInteropViews {
         }
         @Override public boolean shouldDelayChildPressedState() { return true; }
 
-        // Nested scrolling (the platform's ViewParent half: touch scrolls; flings by velocity).
+        // Nested scrolling, the platform's ViewParent half: touch scrolls, and flings by velocity.
+        // androidx scrollers also send the scrolls of their flings, to a TypedHolder.
         @Override public boolean onStartNestedScroll(View child, View target, int axes) {
             return (axes & (View.SCROLL_AXIS_VERTICAL | View.SCROLL_AXIS_HORIZONTAL)) != 0;
         }
         @Override public void onNestedPreScroll(View target, int dx, int dy, int[] consumed) {
-            int[] c = KilnNative.interopNestedPreScroll(owner.windowId, id, dx, dy);
+            int[] c = KilnNative.interopNestedPreScroll(owner.windowId, id, dx, dy, true);
             if (c != null) { consumed[0] = c[0]; consumed[1] = c[1]; }
         }
         @Override public void onNestedScroll(View target, int dxConsumed, int dyConsumed, int dxUnconsumed, int dyUnconsumed) {
-            KilnNative.interopNestedScroll(owner.windowId, id, dxConsumed, dyConsumed, dxUnconsumed, dyUnconsumed);
+            KilnNative.interopNestedScroll(owner.windowId, id, dxConsumed, dyConsumed, dxUnconsumed, dyUnconsumed, true);
         }
         @Override public boolean onNestedPreFling(View target, float velocityX, float velocityY) {
             KilnNative.interopNestedFling(owner.windowId, id, velocityX, velocityY, false, true);
@@ -193,11 +194,59 @@ final class KilnInteropViews {
         }
     }
 
+    /**
+     * The holder in an app that has androidx.core: AndroidViewHolder's NestedScrollingParent3, which
+     * androidx scrollers (RecyclerView, NestedScrollView) look for in their parents. They send it
+     * the scrolls of their flings too (TYPE_NON_TOUCH). Only loaded when the interfaces exist.
+     */
+    final class TypedHolder extends Holder implements androidx.core.view.NestedScrollingParent3 {
+        private static final int TYPE_TOUCH = 0;
+
+        TypedHolder(Context c, int id, View view) { super(c, id, view); }
+
+        @Override public boolean onStartNestedScroll(View child, View target, int axes, int type) {
+            return (axes & (View.SCROLL_AXIS_VERTICAL | View.SCROLL_AXIS_HORIZONTAL)) != 0;
+        }
+        @Override public void onNestedScrollAccepted(View child, View target, int axes, int type) {}
+        @Override public void onStopNestedScroll(View target, int type) {}
+        @Override public void onNestedScroll(View target, int dxConsumed, int dyConsumed, int dxUnconsumed, int dyUnconsumed, int type, int[] consumed) {
+            int[] c = KilnNative.interopNestedScroll(owner.windowId, id, dxConsumed, dyConsumed, dxUnconsumed, dyUnconsumed, type == TYPE_TOUCH);
+            if (c != null) { consumed[0] = c[0]; consumed[1] = c[1]; }
+        }
+        @Override public void onNestedScroll(View target, int dxConsumed, int dyConsumed, int dxUnconsumed, int dyUnconsumed, int type) {
+            KilnNative.interopNestedScroll(owner.windowId, id, dxConsumed, dyConsumed, dxUnconsumed, dyUnconsumed, type == TYPE_TOUCH);
+        }
+        @Override public void onNestedPreScroll(View target, int dx, int dy, int[] consumed, int type) {
+            int[] c = KilnNative.interopNestedPreScroll(owner.windowId, id, dx, dy, type == TYPE_TOUCH);
+            if (c != null) { consumed[0] = c[0]; consumed[1] = c[1]; }
+        }
+    }
+
+    private static final java.lang.reflect.Constructor<?> typedHolder = findTypedHolder();
+
+    private static java.lang.reflect.Constructor<?> findTypedHolder() {
+        try {
+            Class.forName("androidx.core.view.NestedScrollingParent3");
+            return Class.forName("dev.kiln.KilnInteropViews$TypedHolder")
+                    .getDeclaredConstructor(KilnInteropViews.class, Context.class, int.class, View.class);
+        } catch (ReflectiveOperationException | LinkageError e) {
+            return null;   // no androidx.core in this app
+        }
+    }
+
+    private Holder newHolder(int id, View view) {
+        if (typedHolder != null) {
+            try { return (Holder) typedHolder.newInstance(this, owner.getContext(), id, view); }
+            catch (ReflectiveOperationException | LinkageError ignored) {}
+        }
+        return new Holder(owner.getContext(), id, view);
+    }
+
     // --- called from native ----------------------------------------------------------------------
 
     boolean create(int id, View view) {
         if (view == null) return false;
-        Holder h = new Holder(owner.getContext(), id, view);
+        Holder h = newHolder(id, view);
         holders.put(id, h);
         container.addView(h, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         return true;

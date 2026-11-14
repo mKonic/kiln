@@ -74,7 +74,11 @@ JSON
 
 # Java host.
 mapfile -t SOURCES < <(find "$KILN_ROOT/platform/android/java" -name '*.java')
-javac --release 17 -nowarn -classpath "$ANDROID_JAR" -d "$STAGING/classes" "${SOURCES[@]}"
+# androidx interfaces kiln implements when the app has them: compiled against, not packaged.
+mapfile -t STUBS < <(find "$KILN_ROOT/platform/android/java-stubs" -name '*.java')
+mkdir -p "$STAGING/stubs"
+javac --release 17 -nowarn -classpath "$ANDROID_JAR" -d "$STAGING/stubs" "${STUBS[@]}"
+javac --release 17 -nowarn -classpath "$ANDROID_JAR:$STAGING/stubs" -d "$STAGING/classes" "${SOURCES[@]}"
 (cd "$STAGING/classes" && jar --create --file "$STAGING/classes.jar" .)
 
 cat > "$STAGING/AndroidManifest.xml" <<XML
@@ -103,8 +107,16 @@ cat > "$STAGING/AndroidManifest.xml" <<XML
 </manifest>
 XML
 : > "$STAGING/R.txt"
+# Rules for an app that shrinks its code: native code finds kiln's Java by name, and the androidx
+# interfaces kiln's embedded-View holder implements are the app's to bring.
+cat > "$STAGING/proguard.txt" <<RULES
+-keep class dev.kiln.** { *; }
+-dontwarn androidx.core.view.NestedScrollingParent
+-dontwarn androidx.core.view.NestedScrollingParent2
+-dontwarn androidx.core.view.NestedScrollingParent3
+RULES
 
 mkdir -p "$(dirname "$OUT")"
 rm -f "$OUT"
-(cd "$STAGING" && zip -qr "$OUT" AndroidManifest.xml classes.jar R.txt prefab)
+(cd "$STAGING" && zip -qr "$OUT" AndroidManifest.xml classes.jar R.txt proguard.txt prefab)
 echo "AAR: $OUT ($(du -h "$OUT" | cut -f1))"

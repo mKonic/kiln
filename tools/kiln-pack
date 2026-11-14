@@ -51,7 +51,11 @@ rm -rf "$STAGING"; mkdir -p "$STAGING/classes" "$STAGING/dex"
 
 # Java host -> dex. --release keeps the class files at a level d8 understands.
 mapfile -t SOURCES < <(find "$KILN_ROOT/platform/android/java" -name '*.java')
-javac --release 17 -nowarn -classpath "$ANDROID_JAR" -d "$STAGING/classes" "${SOURCES[@]}"
+# androidx interfaces kiln implements when the app has them: compiled against, not packaged.
+mapfile -t STUBS < <(find "$KILN_ROOT/platform/android/java-stubs" -name '*.java')
+mkdir -p "$STAGING/stubs"
+javac --release 17 -nowarn -classpath "$ANDROID_JAR" -d "$STAGING/stubs" "${STUBS[@]}"
+javac --release 17 -nowarn -classpath "$ANDROID_JAR:$STAGING/stubs" -d "$STAGING/classes" "${SOURCES[@]}"
 mapfile -t CLASSES < <(find "$STAGING/classes" -name '*.class')
 "$D8" --min-api "$ANDROID_MIN_SDK" --lib "$ANDROID_JAR" --output "$STAGING/dex" "${CLASSES[@]}"
 cp "$STAGING/dex/classes.dex" "$STAGING/classes.dex"
