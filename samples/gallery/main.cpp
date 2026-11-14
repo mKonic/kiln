@@ -545,6 +545,7 @@ namespace {
                         Alignment::Center(), false, [label] { BasicText(label, Padding(Modifier{}, 20_dp, 10_dp), { 14, kOnSurface }); });
                 };
                 button("Deutsch", { "de-DE" });
+                button("العربية", { "ar" });
                 button("System language", {});
             });
         });

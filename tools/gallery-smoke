@@ -120,12 +120,19 @@ def main():
         sys.exit('unknown components: ' + ', '.join(unknown) + ' (have ' + ', '.join(COMPONENTS) + ')')
     OUT.mkdir(parents=True, exist_ok=True)
     env = dict(os.environ, PROBE_SHOTS=str(OUT))
+    # Per-app locales (cmd locale set-app-locales) are Android 13's; before it an app keeps its
+    # language to itself, so only the launches in the device's own language run there.
+    app_locales = int(adb('shell', 'getprop', 'ro.build.version.sdk') or 0) >= 33
+    launches = [l for l in LAUNCHES if app_locales or not l[2]]
+    if len(launches) < len(LAUNCHES):
+        print('Android 12: skipping the right-to-left launches (no per-app locales before Android 13)', flush=True)
     old_scale = adb('shell', 'settings', 'get', 'system', 'font_scale')
     failures = []
     try:
-        for scale, direction, locale in LAUNCHES:
+        for scale, direction, locale in launches:
             adb('shell', 'settings', 'put', 'system', 'font_scale', scale)
-            adb('shell', 'cmd', 'locale', 'set-app-locales', PACKAGE, '--locales', locale)
+            if app_locales:
+                adb('shell', 'cmd', 'locale', 'set-app-locales', PACKAGE, '--locales', locale)
             for theme in THEMES:
                 for name in names:
                     # The section alone (debug.kiln.gallery.section), so the tree stays small.
@@ -149,11 +156,18 @@ def main():
                         failures.append(f'{prefix}: {failed or "probe failed"}')
                     print(f'{prefix}: {"FAILED " + (failed or "") if not ok or failed else "ok"} ({time.monotonic() - started:.0f} s)', flush=True)
     finally:
-        adb('shell', 'settings', 'put', 'system', 'font_scale', old_scale if old_scale not in ('', 'null') else '1.0')
-        adb('shell', 'cmd', 'locale', 'set-app-locales', PACKAGE, '--locales', '')
-        adb('shell', 'setprop', 'debug.kiln.gallery.section', "''")
-        adb('shell', 'am', 'force-stop', PACKAGE)
-    total = len(LAUNCHES) * len(THEMES) * len(names)
+        # Each step on its own: one failing must not leave the others undone.
+        restore = [('shell', 'settings', 'put', 'system', 'font_scale', old_scale if old_scale not in ('', 'null') else '1.0'),
+                   ('shell', 'setprop', 'debug.kiln.gallery.section', "''"),
+                   ('shell', 'am', 'force-stop', PACKAGE)]
+        if app_locales:
+            restore.insert(1, ('shell', 'cmd', 'locale', 'set-app-locales', PACKAGE, '--locales', ''))
+        for step in restore:
+            try:
+                adb(*step)
+            except subprocess.SubprocessError as e:
+                print(f'could not restore ({" ".join(step[1:])}): {e}', file=sys.stderr)
+    total = len(launches) * len(THEMES) * len(names)
     print(f'{total - len(failures)} of {total} runs passed; logs and screenshots in {OUT}')
     sys.exit(1 if failures else 0)
 
