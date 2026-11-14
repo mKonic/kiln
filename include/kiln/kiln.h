@@ -374,6 +374,30 @@ KILN_API kiln_image_vector* kiln_image_vector_from_paths(float default_width_dp,
 KILN_API kiln_image_vector* kiln_image_vector_retain(kiln_image_vector* vector);
 KILN_API void kiln_image_vector_release(kiln_image_vector* vector);
 
+/* App resources (kiln_add_app RES: the app's Android res/ folder) by name: on Android the app's
+ * Resources, on the desktop the tables built from the same folder. Read inside content they
+ * follow the configuration (locale, night mode). Strings are valid until the next call on this
+ * thread that returns a string; NULL / false when the app has no such resource. */
+typedef enum kiln_format_arg_kind { KILN_FORMAT_STRING, KILN_FORMAT_INT, KILN_FORMAT_DOUBLE } kiln_format_arg_kind;
+typedef struct kiln_format_arg { kiln_format_arg_kind kind; const char* s; int64_t i; double d; } kiln_format_arg;
+#define KILN_FORMAT_S(x) (KILN_LITERAL_(kiln_format_arg){ KILN_FORMAT_STRING, (x), 0, 0 })
+#define KILN_FORMAT_I(x) (KILN_LITERAL_(kiln_format_arg){ KILN_FORMAT_INT, NULL, (int64_t)(x), 0 })
+#define KILN_FORMAT_D(x) (KILN_LITERAL_(kiln_format_arg){ KILN_FORMAT_DOUBLE, NULL, 0, (double)(x) })
+/* stringResource(id, args): String.format(locale, ...) with the args (count 0: as written). */
+KILN_API const char* kiln_string_resource(const char* name, const kiln_format_arg* args, size_t count);
+/* pluralStringResource(id, quantity, args). */
+KILN_API const char* kiln_plural_string_resource(const char* name, int32_t quantity, const kiln_format_arg* args, size_t count);
+/* An item of a string array (NULL past its end). */
+KILN_API const char* kiln_string_array_resource(const char* name, size_t index);
+KILN_API size_t kiln_string_array_resource_size(const char* name);
+KILN_API bool kiln_color_resource(const char* name, kiln_color* out);
+KILN_API bool kiln_dimension_resource(const char* name, float* out_dp);
+KILN_API bool kiln_integer_resource(const char* name, int32_t* out);
+KILN_API bool kiln_bool_resource(const char* name, bool* out);
+/* A drawable: vector drawables as images (references the caller releases), bitmaps decoded. */
+KILN_API kiln_image_vector* kiln_vector_resource(const char* name);
+KILN_API kiln_image_bitmap* kiln_image_resource(const char* name);
+
 /* ---------------------------------------------------------------------------------------------
  * Modifiers. Each call returns `m` followed by one element; m == NULL starts an empty chain.
  * ------------------------------------------------------------------------------------------- */

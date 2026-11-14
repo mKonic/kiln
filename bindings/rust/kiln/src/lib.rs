@@ -600,6 +600,44 @@ pub fn layout(modifier: Modifier, content: impl FnMut() + 'static,
     unsafe { sys::kiln_layout(here(), modifier.0, content.into_callback(), c.into_callback()) }
 }
 
+/// A format argument for resource strings.
+pub enum FormatArg<'a> { Str(&'a str), Int(i64), Double(f64) }
+fn with_format_args<R>(args: &[FormatArg], f: impl FnOnce(*const sys::kiln_format_arg, usize) -> R) -> R {
+    let strings: Vec<CStrBuf> = args.iter().map(|a| match a { FormatArg::Str(s) => CStrBuf::new(s), _ => CStrBuf::new("") }).collect();
+    let c: Vec<sys::kiln_format_arg> = args.iter().zip(&strings).map(|(a, s)| match a {
+        FormatArg::Str(_) => sys::kiln_format_arg { kind: sys::kiln_format_arg_kind::KILN_FORMAT_STRING, s: s.ptr(), i: 0, d: 0.0 },
+        FormatArg::Int(i) => sys::kiln_format_arg { kind: sys::kiln_format_arg_kind::KILN_FORMAT_INT, s: std::ptr::null(), i: *i, d: 0.0 },
+        FormatArg::Double(d) => sys::kiln_format_arg { kind: sys::kiln_format_arg_kind::KILN_FORMAT_DOUBLE, s: std::ptr::null(), i: 0, d: *d },
+    }).collect();
+    f(c.as_ptr(), c.len())
+}
+/// stringResource(name, args): the app's res/ string, formatted (kiln_res_c.h names them).
+pub fn string_resource(name: &str, args: &[FormatArg]) -> Option<String> {
+    let n = CStrBuf::new(name);
+    with_format_args(args, |a, len| {
+        let p = unsafe { sys::kiln_string_resource(n.ptr(), a, len) };
+        if p.is_null() { None } else { Some(crate::from_c(p)) }
+    })
+}
+/// pluralStringResource(name, quantity, args).
+pub fn plural_string_resource(name: &str, quantity: i32, args: &[FormatArg]) -> Option<String> {
+    let n = CStrBuf::new(name);
+    with_format_args(args, |a, len| {
+        let p = unsafe { sys::kiln_plural_string_resource(n.ptr(), quantity, a, len) };
+        if p.is_null() { None } else { Some(crate::from_c(p)) }
+    })
+}
+pub fn color_resource(name: &str) -> Option<sys::kiln_color> {
+    let n = CStrBuf::new(name);
+    let mut c: sys::kiln_color = 0;
+    if unsafe { sys::kiln_color_resource(n.ptr(), &mut c) } { Some(c) } else { None }
+}
+pub fn dimension_resource(name: &str) -> Option<f32> {
+    let n = CStrBuf::new(name);
+    let mut d = 0.0f32;
+    if unsafe { sys::kiln_dimension_resource(n.ptr(), &mut d) } { Some(d) } else { None }
+}
+
 /// A draw scope (px, +y down); only valid inside the draw callback.
 pub struct DrawScope(*mut sys::kiln_draw_scope);
 fn style_ptr(style: Option<&sys::kiln_draw_style>) -> *const sys::kiln_draw_style { style.map_or(std::ptr::null(), |s| s as *const _) }

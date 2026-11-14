@@ -7,6 +7,8 @@
 #include "kiln/Assets.h"
 #include "kiln/foundation/Draw.h"
 #include "kiln/foundation/Focus.h"
+#include "kiln/foundation/PainterResource.h"
+#include "kiln/ui/AppResources.h"
 #include "kiln/ui/PlatformServices.h"
 #include "kiln/foundation/Animate.h"
 #include "kiln/foundation/AndroidView.h"
@@ -681,6 +683,95 @@ KILN_API kiln_window_insets* kiln_window_insets_only(const kiln_window_insets* i
 KILN_API kiln_window_insets* kiln_window_insets_retain(kiln_window_insets* i) { return Retain(i); }
 KILN_API void kiln_window_insets_release(kiln_window_insets* i) { Release(i); }
 
+namespace {
+    std::vector<text::FormatArg> ToFormatArgs(const kiln_format_arg* args, size_t count) {
+        std::vector<text::FormatArg> out;
+        for (size_t i = 0; args && i < count; ++i) {
+            switch (args[i].kind) {
+                case KILN_FORMAT_INT: out.emplace_back(args[i].i); break;
+                case KILN_FORMAT_DOUBLE: out.emplace_back(args[i].d); break;
+                default: out.emplace_back(args[i].s ? args[i].s : "null"); break;
+            }
+        }
+        return out;
+    }
+}
+KILN_API const char* kiln_string_resource(const char* name, const kiln_format_arg* args, size_t count) {
+    TRY {
+        if (!name) return nullptr;
+        const auto a = ToFormatArgs(args, count);
+        return ReturnString(count ? ui::StringResource(ui::StringRes{ name }, std::span<const text::FormatArg>(a)) : ui::StringResource(ui::StringRes{ name }));
+    } CATCH(nullptr)
+}
+KILN_API const char* kiln_plural_string_resource(const char* name, int32_t quantity, const kiln_format_arg* args, size_t count) {
+    TRY {
+        if (!name) return nullptr;
+        const auto a = ToFormatArgs(args, count);
+        return ReturnString(count ? ui::PluralStringResource(ui::PluralsRes{ name }, quantity, std::span<const text::FormatArg>(a))
+                                  : ui::PluralStringResource(ui::PluralsRes{ name }, quantity));
+    } CATCH(nullptr)
+}
+KILN_API const char* kiln_string_array_resource(const char* name, size_t index) {
+    TRY {
+        if (!name) return nullptr;
+        const auto items = ui::StringArrayResource(ui::StringArrayRes{ name });
+        return index < items.size() ? ReturnString(items[index]) : nullptr;
+    } CATCH(nullptr)
+}
+KILN_API size_t kiln_string_array_resource_size(const char* name) {
+    TRY { return name ? ui::StringArrayResource(ui::StringArrayRes{ name }).size() : 0; } CATCH(0)
+}
+KILN_API bool kiln_color_resource(const char* name, kiln_color* out) {
+    TRY {
+        if (!name) return false;
+        const ui::Color c = ui::ColorResource(ui::ColorRes{ name });
+        if (out) *out = FromColor(c);
+        return true;
+    } CATCH(false)
+}
+KILN_API bool kiln_dimension_resource(const char* name, float* out) {
+    TRY {
+        if (!name) return false;
+        const ui::Dp d = ui::DimensionResource(ui::DimenRes{ name });
+        if (out) *out = d.value;
+        return true;
+    } CATCH(false)
+}
+KILN_API bool kiln_integer_resource(const char* name, int32_t* out) {
+    TRY {
+        if (!name) return false;
+        const int v = ui::IntegerResource(ui::IntegerRes{ name });
+        if (out) *out = v;
+        return true;
+    } CATCH(false)
+}
+KILN_API bool kiln_bool_resource(const char* name, bool* out) {
+    TRY {
+        if (!name) return false;
+        const bool v = ui::BooleanResource(ui::BoolRes{ name });
+        if (out) *out = v;
+        return true;
+    } CATCH(false)
+}
+KILN_API kiln_image_vector* kiln_vector_resource(const char* name) {
+    TRY {
+        if (!name) return nullptr;
+        auto* c = rt::Composition::Current();
+        const float density = (c ? c->Read(ui::LocalDensity) : ui::LocalDensity.Default()).density;
+        auto* v = new kiln_image_vector;
+        v->vector = fd::BuildVectorResource(ui::ReadDrawableResource(ui::DrawableRes{ name }).vector, density);
+        return v;
+    } CATCH(nullptr)
+}
+KILN_API kiln_image_bitmap* kiln_image_resource(const char* name) {
+    TRY {
+        if (!name) return nullptr;
+        const ui::DrawableResource d = ui::ReadDrawableResource(ui::DrawableRes{ name });
+        if (d.IsVector()) return nullptr;
+        gfx::ImageBitmap b = gfx::ImageBitmap::Decode(d.bitmap);
+        return b ? NewBitmap(std::move(b)) : nullptr;
+    } CATCH(nullptr)
+}
 KILN_API kiln_image_vector* kiln_image_vector_from_paths(float w, float h, float vw, float vh, const char* const* paths, size_t count,
                                                          bool autoMirror) {
     TRY {

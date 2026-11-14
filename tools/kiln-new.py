@@ -12,7 +12,8 @@ kiln_add_app({name}
     PACKAGE {package}
     LABEL "{label}"
     ASSETS assets
-    ICON res/icon.png
+    RES res
+    ICON icon.png
     VERSION_CODE 1
     VERSION_NAME 1.0
     # PERMISSIONS android.permission.CAMERA
@@ -34,6 +35,8 @@ MAIN = '''#include <kiln/kiln.hpp>
 
 #include <string>
 
+#include "kiln_res.h"   // R::string, R::plurals...: the names in res/, checked when compiling
+
 using namespace kiln::foundation;
 using namespace kiln::material3;
 using namespace kiln::ui;
@@ -43,20 +46,20 @@ namespace {{
         auto& count = RememberState(0);
         auto& fast = RememberState(false);
         ScaffoldOptions options;
-        options.topBar = [] {{ TopAppBar([] {{ Text("{label}"); }}, {{}}); }};
+        options.topBar = [] {{ TopAppBar([] {{ Text(kiln::ui::StringResource(R::string::app_name)); }}, {{}}); }};
         Scaffold({{}}, options, [&](const PaddingValues& padding) {{
             Column(Padding(Padding(FillMax(Modifier{{}}, Axis::Both), padding), 16_dp),
                    Arrangement::SpacedBy(16_dp), AlignmentH::Start(), [&] {{
-                Text("Pressed " + std::to_string(count.Get()) + " times",
+                Text(kiln::ui::PluralStringResource(R::plurals::pressed, count.Get(), count.Get()),
                      {{}}, {{ .style = MaterialTheme::typography().headlineMedium }});
                 Row(Modifier{{}}, Arrangement::SpacedBy(8_dp), AlignmentV::CenterVertically(), [&] {{
                     Switch(fast.Get(), [&](bool on) {{ fast.Set(on); }});
-                    Text("Count by ten");
+                    Text(kiln::ui::StringResource(R::string::count_by_ten));
                 }});
-                Button([&] {{ count.Set(count.Get() + (fast.Get() ? 10 : 1)); }}, {{}}, {{}}, [] {{ Text("Add"); }});
+                Button([&] {{ count.Set(count.Get() + (fast.Get() ? 10 : 1)); }}, {{}}, {{}}, [] {{ Text(kiln::ui::StringResource(R::string::add)); }});
                 auto& list = RememberLazyListState();
                 LazyColumn(Weight(Modifier{{}}, 1), list, [&](LazyListScope& s) {{
-                    s.Items(count.Get(), [](int i) {{ Text("Row " + std::to_string(i)); }});
+                    s.Items(count.Get(), [](int i) {{ Text(kiln::ui::StringResource(R::string::row, i)); }});
                 }});
             }});
         }});
@@ -66,6 +69,20 @@ namespace {{
 extern "C" void kiln_main(kiln_app* app) {{
     kiln::SetContent(app, [] {{ MaterialTheme([] {{ Counter(); }}); }});
 }}
+'''
+
+
+STRINGS = '''<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">{label}</string>
+    <plurals name="pressed">
+        <item quantity="one">Pressed %d time</item>
+        <item quantity="other">Pressed %d times</item>
+    </plurals>
+    <string name="count_by_ten">Count by ten</string>
+    <string name="add">Add</string>
+    <string name="row">Row %d</string>
+</resources>
 '''
 
 
@@ -91,7 +108,7 @@ def icon_png(size=192):
 
 def main():
     out, name, package, label = sys.argv[1:5]
-    for sub in ("src", "assets", "res"):
+    for sub in ("src", "assets", os.path.join("res", "values")):
         os.makedirs(os.path.join(out, sub), exist_ok=True)
     with open(os.path.join(out, "CMakeLists.txt"), "w") as f:
         f.write(CMAKE.format(name=name, package=package, label=label))
@@ -99,8 +116,10 @@ def main():
         f.write(MAIN.format(label=label.replace('"', '\\"')))
     with open(os.path.join(out, "assets", ".keep"), "w"):
         pass
-    with open(os.path.join(out, "res", "icon.png"), "wb") as f:
+    with open(os.path.join(out, "icon.png"), "wb") as f:
         f.write(icon_png())
+    with open(os.path.join(out, "res", "values", "strings.xml"), "w") as f:
+        f.write(STRINGS.format(label=label.replace("&", "&amp;").replace("<", "&lt;").replace("'", "\\'")))
     with open(os.path.join(out, ".gitignore"), "w") as f:
         f.write("build/\n")
 

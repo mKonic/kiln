@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Resources for kiln_tests' app-resource cases (desktop tables from tools/gen-app-res). -->
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
+    <string name="app_name">Shelf</string>
+    <string name="greeting">Hello, <xliff:g id="name">%1$s</xliff:g>! %2$d new</string>
+    <string name="quoted">"It\'s here"</string>
+    <string name="size">%.1f MB</string>
+    <string name="alias">@string/app_name</string>
+    <plurals name="chapters">
+        <item quantity="one">%d chapter</item>
+        <item quantity="other">%d chapters</item>
+    </plurals>
+    <string-array name="sorts">
+        <item>Title</item>
+        <item>@string/app_name</item>
+    </string-array>
+    <integer-array name="steps">
+        <item>1</item>
+        <item>5</item>
+    </integer-array>
+    <color name="accent">#6750A4</color>
+    <color name="accent_alias">@color/accent</color>
+    <dimen name="gutter">16dp</dimen>
+    <integer name="columns">3</integer>
+    <bool name="tablet">true</bool>
+    <!-- The new-app template's strings (docs/first-app.md compiles against these names). -->
+    <plurals name="pressed">
+        <item quantity="one">Pressed %d time</item>
+        <item quantity="other">Pressed %d times</item>
+    </plurals>
+    <string name="count_by_ten">Count by ten</string>
+    <string name="add">Add</string>
+    <string name="row">Row %d</string>
+</resources>

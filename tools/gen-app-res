@@ -1,0 +1,266 @@
+#!/usr/bin/env python3
+"""gen-app-res RES_DIR OUT_DIR: an app's resources for kiln (kiln_add_app RES runs it).
+
+Writes OUT_DIR/kiln_res.h (and kiln_res_c.h, the same names as C macros: R_string_app_name), the names of the app's resources by type (R::string::app_name is a
+kiln::ui::StringRes, R::plurals::..., R::array::..., R::color::..., R::dimen::...,
+R::integer::..., R::bool_::..., R::drawable::...), and OUT_DIR/kiln_res_table.cpp, the values
+for desktop builds (on Android the platform's Resources serve them): strings, plurals, arrays,
+colours, dimensions, integers and booleans per locale (values-<locale>, and -night variants),
+bitmaps by path (the densest folder), and vector drawables as resolved elements
+(kiln::ui::VectorElement: colours and references looked up, inline aapt:attr gradients
+serialized).
+
+Desktop builds take values-<locale>[-night] and values-night; other qualifiers (v31, sw600dp,
+land) apply on Android only. Theme attributes (?attr/...) cannot be resolved off Android and are
+left out.
+"""
+import os
+import re
+import sys
+import xml.etree.ElementTree as ET
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from android_res import tag_of, text_of, cstr
+
+ANDROID = "{http://schemas.android.com/apk/res/android}"
+AAPT = "{http://schemas.android.com/aapt}"
+CPP_KEYWORDS = {"bool", "int", "float", "double", "char", "class", "default", "delete", "new", "this", "true", "false",
+                "auto", "case", "const", "do", "else", "enum", "for", "goto", "if", "long", "return", "short", "signed",
+                "sizeof", "static", "struct", "switch", "union", "unsigned", "void", "volatile", "while", "and", "or",
+                "not", "xor", "operator", "private", "public", "protected", "template", "typename", "namespace"}
+DENSITY = ["ldpi", "mdpi", "tvdpi", "hdpi", "xhdpi", "xxhdpi", "xxxhdpi"]
+
+
+def ident(name):
+    n = re.sub(r"\W", "_", name)
+    return n + "_" if n in CPP_KEYWORDS else n
+
+
+def qualifier(folder, prefix):
+    """(tag, night) for a values/drawable folder the desktop tables take, else None."""
+    rest = folder[len(prefix):].lstrip("-")
+    parts = rest.split("-") if rest else []
+    night = False
+    if parts and parts[-1] == "night":
+        night = True
+        parts = parts[:-1]
+    if prefix == "drawable" or prefix == "mipmap":
+        dens = [p for p in parts if p in DENSITY or p == "nodpi" or p == "anydpi"]
+        parts = [p for p in parts if p not in dens and not re.fullmatch(r"v\d+", p)]
+        if parts:
+            return None
+        return ("night" if night else ""), (dens[0] if dens else "")
+    folder_locale = "values" + ("-" + "-".join(parts) if parts else "")
+    tag = tag_of(folder_locale)
+    if tag is None:
+        return None
+    if night:
+        tag = (tag + "-night") if tag else "night"
+    return tag, None
+
+
+def plain(el):
+    return "".join(el.itertext()).strip()
+
+
+def main():
+    res, out = sys.argv[1], sys.argv[2]
+    os.makedirs(out, exist_ok=True)
+    names = {t: set() for t in ("string", "plurals", "array", "color", "dimen", "integer", "bool", "drawable")}
+    values = []        # (type, name, tag, quantity, value)
+    arrays = []        # (type, name, tag, [values])
+    raw = {}           # (type, name) -> default raw value, for references
+    folders = sorted(os.listdir(res)) if os.path.isdir(res) else []
+
+    for folder in folders:
+        if not folder.startswith("values"):
+            continue
+        q = qualifier(folder, "values")
+        for f in sorted(os.listdir(os.path.join(res, folder))):
+            if not f.endswith(".xml"):
+                continue
+            root = ET.parse(os.path.join(res, folder, f)).getroot()
+            for el in root:
+                kind = el.tag
+                name = el.get("name")
+                if not name:
+                    continue
+                if kind == "item" and el.get("type"):
+                    kind = el.get("type")
+                if kind in ("string", "color", "dimen", "integer", "bool"):
+                    names[kind].add(name)
+                    v = text_of(el) if kind == "string" else plain(el)
+                    if q:
+                        values.append((kind, name, q[0], None, v))
+                        if q[0] == "":
+                            raw[(kind, name)] = v
+                elif kind == "plurals":
+                    names["plurals"].add(name)
+                    if q:
+                        for item in el.iter("item"):
+                            values.append(("plurals", name, q[0], item.get("quantity"), text_of(item)))
+                elif kind in ("string-array", "integer-array", "array"):
+                    names["array"].add(name)
+                    if q:
+                        t = "integer-array" if kind == "integer-array" else "string-array"
+                        arrays.append((t, name, q[0], [text_of(i) for i in el.iter("item")]))
+
+    def resolve(v, depth=0):
+        """@string/x, @color/x ... to their default values (desktop tables)."""
+        m = re.fullmatch(r"@(?:\+)?(?:android:)?(\w+)/(\w+)", v or "")
+        if m and depth < 8 and (m.group(1), m.group(2)) in raw:
+            return resolve(raw[(m.group(1), m.group(2))], depth + 1)
+        return v
+
+    values = [(t, n, tag, qty, resolve(v)) for t, n, tag, qty, v in values]
+    arrays = [(t, n, tag, [resolve(v) for v in vs]) for t, n, tag, vs in arrays]
+
+    # Drawables: per (name, night) the densest bitmap or the XML.
+    drawables = {}
+    for folder in folders:
+        prefix = "drawable" if folder.startswith("drawable") else "mipmap" if folder.startswith("mipmap") else None
+        if not prefix:
+            continue
+        q = qualifier(folder, prefix)
+        if q is None:
+            continue
+        tag, dens = q
+        rank = DENSITY.index(dens) if dens in DENSITY else (len(DENSITY) if dens in ("nodpi", "anydpi", "") else -1)
+        for f in sorted(os.listdir(os.path.join(res, folder))):
+            name, ext = os.path.splitext(f)
+            if name.endswith(".9"):
+                continue   # nine-patches: Android only
+            if ext not in (".png", ".jpg", ".jpeg", ".webp", ".xml"):
+                continue
+            names["drawable"].add(name)
+            key = (name, tag)
+            path = os.path.abspath(os.path.join(res, folder, f))
+            if key not in drawables or rank > drawables[key][0]:
+                drawables[key] = (rank, path)
+
+    def color_value(v):
+        v = resolve(v)
+        if v and v.startswith("#"):
+            h = v[1:]
+            if len(h) == 3:
+                h = "ff" + "".join(c * 2 for c in h)
+            elif len(h) == 4:
+                h = "".join(c * 2 for c in h)
+            elif len(h) == 6:
+                h = "ff" + h
+            return "#" + h.lower()
+        return v
+
+    def gradient(g):
+        a = lambda k, d="": g.get(ANDROID + k, d)
+        stops = []
+        items = list(g.iter("item"))
+        if items:
+            for it in items:
+                stops.append((color_value(it.get(ANDROID + "color")), it.get(ANDROID + "offset", "0")))
+        else:
+            sc, cc, ec = a("startColor"), a("centerColor"), a("endColor")
+            stops.append((color_value(sc) if sc else "#00000000", "0"))
+            if cc:
+                stops.append((color_value(cc), "0.5"))
+            stops.append((color_value(ec) if ec else "#00000000", "1"))
+        kind = {"0": "linear", "1": "radial", "2": "sweep"}.get(a("type", "linear"), a("type", "linear"))
+        tile = {"0": "clamp", "1": "repeat", "2": "mirror"}.get(a("tileMode", "clamp"), a("tileMode", "clamp"))
+        fields = [kind, a("startX", "0"), a("startY", "0"), a("endX", "0"), a("endY", "0"), a("centerX", "0"), a("centerY", "0"),
+                  a("gradientRadius", "0"), tile, ",".join(f"{c}@{o}" for c, o in stops)]
+        return "gradient:" + ";".join(fields)
+
+    def vector_elements(path):
+        root = ET.parse(path).getroot()
+        if root.tag != "vector":
+            return None
+        els = []
+
+        def walk(node):
+            if node.tag.startswith(AAPT):
+                return
+            attrs = []
+            for k, v in node.attrib.items():
+                key = k.split("}")[-1]
+                if v.startswith("?"):
+                    continue   # theme attributes: Android only
+                if key in ("fillColor", "strokeColor", "tint"):
+                    v = color_value(v)
+                elif v.startswith("@"):
+                    v = resolve(v)
+                attrs.append((key, v))
+            for child in node:
+                if child.tag == AAPT + "attr":
+                    target = child.get("name", "").split(":")[-1]
+                    g = child.find("gradient")
+                    if g is not None:
+                        attrs = [(k, v) for k, v in attrs if k != target] + [(target, gradient(g))]
+            els.append((node.tag, False, attrs))
+            for child in node:
+                if not child.tag.startswith(AAPT):
+                    walk(child)
+            if node.tag == "group":
+                els.append(("group", True, []))
+
+        walk(root)
+        return els
+
+    # kiln_res.h
+    h = ["#pragma once", "", "// Generated by tools/gen-app-res from the app's res/. Do not edit.", "",
+         '#include "kiln/ui/AppResources.h"', "", "namespace R {"]
+    for t, ns, cls in (("string", "string", "StringRes"), ("plurals", "plurals", "PluralsRes"), ("color", "color", "ColorRes"),
+                       ("dimen", "dimen", "DimenRes"), ("integer", "integer", "IntegerRes"), ("bool", "bool_", "BoolRes"),
+                       ("drawable", "drawable", "DrawableRes")):
+        h.append(f"    namespace {ns} {{")
+        for n in sorted(names[t]):
+            h.append(f'        inline constexpr kiln::ui::{cls} {ident(n)}{{ "{n}" }};')
+        h.append("    }")
+    h.append("    namespace array {")
+    int_arrays = {n for t, n, _, _ in arrays if t == "integer-array"}
+    for n in sorted(names["array"]):
+        cls = "IntArrayRes" if n in int_arrays else "StringArrayRes"
+        h.append(f'        inline constexpr kiln::ui::{cls} {ident(n)}{{ "{n}" }};')
+    h += ["    }", "}", ""]
+    open(os.path.join(out, "kiln_res.h"), "w").write("\n".join(h))
+    # kiln_res_c.h: the same names as C string macros, for the C API, kiln++ and Rust.
+    hc = ["#pragma once", "", "/* Generated by tools/gen-app-res from the app's res/. Do not edit. */",
+          "/* R_<type>_<name>: the names kiln_string_resource and the other kiln_*_resource calls take. */", ""]
+    for t, prefix in (("string", "string"), ("plurals", "plurals"), ("array", "array"), ("color", "color"), ("dimen", "dimen"),
+                      ("integer", "integer"), ("bool", "bool"), ("drawable", "drawable")):
+        for n in sorted(names[t]):
+            hc.append(f'#define R_{prefix}_{re.sub(r"\\W", "_", n)} "{n}"')
+    open(os.path.join(out, "kiln_res_c.h"), "w").write("\n".join(hc) + "\n")
+
+    # kiln_res_table.cpp
+    c = ["// Generated by tools/gen-app-res from the app's res/ (desktop builds). Do not edit.", "",
+         '#include "kiln/ui/AppResources.h"', "", "#include <memory>", "", "namespace {", "",
+         "    using T = kiln::ui::TableAppResources;", "    const T::Entry kValues[] = {"]
+    for t, n, tag, qty, v in values:
+        c.append(f'        {{ "{t}", "{n}", "{tag}", {cstr(qty) if qty else "nullptr"}, {cstr(v or "")} }},')
+    if not values:
+        c.append('        { "", "", "", nullptr, "" },')
+    c += ["    };", "", "    const bool kRegistered = [] {", "        std::vector<T::ArrayEntry> arrays;"]
+    for t, n, tag, vs in arrays:
+        c.append(f'        arrays.push_back({{ "{t}", "{n}", "{tag}", {{ {", ".join(cstr(v or "") for v in vs)} }} }});')
+    c.append("        std::vector<T::DrawableEntry> drawables;")
+    for (name, tag), (_, path) in sorted(drawables.items()):
+        els = vector_elements(path) if path.endswith(".xml") else None
+        if path.endswith(".xml") and els is None:
+            continue   # other drawable XML (shapes, selectors, layer lists): Android only
+        if els is None:
+            c.append(f'        drawables.push_back({{ "{name}", "{tag}", {cstr(path)}, {{}} }});')
+        else:
+            parts = []
+            for tg, end, attrs in els:
+                a = ", ".join("{ " + cstr(k) + ", " + cstr(v) + " }" for k, v in attrs)
+                parts.append(f'{{ {cstr(tg)}, {"true" if end else "false"}, {{ {a} }} }}')
+            c.append(f'        drawables.push_back({{ "{name}", "{tag}", "", {{ {", ".join(parts)} }} }});')
+    count = len(values) if values else 0
+    c += [f"        kiln::ui::SetDefaultAppResources(std::make_shared<T>(std::span<const T::Entry>(kValues, {count}), std::move(arrays), std::move(drawables)));",
+          "        return true;", "    }();", "", "}", ""]
+    open(os.path.join(out, "kiln_res_table.cpp"), "w").write("\n".join(c))
+    print(f"gen-app-res: {sum(len(v) for v in names.values())} names, {len(values)} values, {len(arrays)} arrays, "
+          f"{len(drawables)} drawables", file=sys.stderr)
+
+
+main()

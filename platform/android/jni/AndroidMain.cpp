@@ -2,6 +2,7 @@
 #include "AndroidText.h"
 #include <kiln/Function.h>
 #include "AndroidDates.h"
+#include "AndroidResources.h"
 
 namespace kiln::android { void InstallImageDecoder(); void InstallAssetReader(JNIEnv* env, jobject assets); }
 
@@ -1300,6 +1301,7 @@ namespace {
         kiln::android::InstallImageDecoder();
         kiln::android::InstallAssetReader(env, assets);
         kiln::android::InstallDateFormat(env);
+        kiln::android::InstallAppResources(env);
         g_Host = new Host();
         g_Host->text = std::make_unique<kiln::android::AndroidText>(env, text);
         kiln::text::SetCaseMapper([](std::u16string_view t, const std::string& tag, kiln::text::CaseOp op) {

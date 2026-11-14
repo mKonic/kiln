@@ -63,6 +63,26 @@ target_include_directories(kiln_material3 PUBLIC material3/src)
 target_link_libraries(kiln_material3 PUBLIC kiln_foundation kiln_navigation3 PRIVATE mcu)
 target_compile_options(kiln_material3 PRIVATE -Wall -Wextra -Wno-missing-field-initializers)
 
+# kiln_app_resources(target dir [TABLE]): the app's res/ folder as R:: names (kiln_res.h, from
+# tools/gen-app-res) and, with TABLE (desktop builds), the values the generated tables serve.
+set(KILN_GEN_APP_RES ${CMAKE_CURRENT_SOURCE_DIR}/tools/gen-app-res CACHE INTERNAL "")
+find_package(Python3 REQUIRED COMPONENTS Interpreter)
+function(kiln_app_resources target dir)
+    cmake_parse_arguments(RES "TABLE" "" "" ${ARGN})
+    set(out ${CMAKE_CURRENT_BINARY_DIR}/kiln_res/${target})
+    file(GLOB_RECURSE files CONFIGURE_DEPENDS ${dir}/*)
+    add_custom_command(OUTPUT ${out}/kiln_res.h ${out}/kiln_res_c.h ${out}/kiln_res_table.cpp
+                       COMMAND ${Python3_EXECUTABLE} ${KILN_GEN_APP_RES} ${dir} ${out}
+                       DEPENDS ${files} ${KILN_GEN_APP_RES} ${CMAKE_SOURCE_DIR}/tools/android_res.py
+                       COMMENT "App resources for ${target}" VERBATIM)
+    target_include_directories(${target} PRIVATE ${out})
+    if(RES_TABLE)
+        target_sources(${target} PRIVATE ${out}/kiln_res_table.cpp)
+    else()
+        target_sources(${target} PRIVATE ${out}/kiln_res.h)
+    endif()
+endfunction()
+
 if(ANDROID)
     file(GLOB KILN_ANDROID_SOURCES CONFIGURE_DEPENDS platform/android/jni/*.cpp)
     add_library(kiln_android STATIC ${KILN_ANDROID_SOURCES})
@@ -81,7 +101,7 @@ if(ANDROID)
     # Set here, read when the function runs: from another project it still finds kiln's map.
     set(KILN_APP_MAP ${CMAKE_CURRENT_SOURCE_DIR}/platform/android/app.map CACHE INTERNAL "")
     function(kiln_add_android_app name)
-        cmake_parse_arguments(APP "" "PACKAGE;LABEL;ASSETS;ICON;VERSION_CODE;VERSION_NAME;MANIFEST_XML;APPLICATION_XML"
+        cmake_parse_arguments(APP "" "PACKAGE;LABEL;ASSETS;ICON;VERSION_CODE;VERSION_NAME;MANIFEST_XML;APPLICATION_XML;RES"
                               "SOURCES;LIBS;WHOLE;PERMISSIONS" ${ARGN})
         if(NOT APP_PACKAGE)
             message(FATAL_ERROR "kiln_add_android_app(${name}): PACKAGE is required")
@@ -105,13 +125,17 @@ if(ANDROID)
             set_property(TARGET ${target} APPEND PROPERTY LINK_DEPENDS ${KILN_APP_MAP})
         endforeach()
         string(REPLACE ";" "," permissions "${APP_PERMISSIONS}")
-        foreach(f ASSETS ICON MANIFEST_XML APPLICATION_XML)   # paths relative to the app's CMakeLists.txt
+        foreach(f ASSETS ICON MANIFEST_XML APPLICATION_XML RES)   # paths relative to the app's CMakeLists.txt
             if(APP_${f} AND NOT IS_ABSOLUTE "${APP_${f}}")
                 set(APP_${f} "${CMAKE_CURRENT_SOURCE_DIR}/${APP_${f}}")
             endif()
         endforeach()
+        if(APP_RES)
+            kiln_app_resources(${name} ${APP_RES})
+            kiln_app_resources(${name}_debug ${APP_RES})
+        endif()
         file(GENERATE OUTPUT ${CMAKE_BINARY_DIR}/apps/${name}
-             CONTENT "package=${APP_PACKAGE}\nlabel=${APP_LABEL}\nassets=${APP_ASSETS}\nicon=${APP_ICON}\nversion_code=${APP_VERSION_CODE}\nversion_name=${APP_VERSION_NAME}\npermissions=${permissions}\nmanifest_xml=${APP_MANIFEST_XML}\napplication_xml=${APP_APPLICATION_XML}\nlib=$<TARGET_FILE:${name}>\nlib_debug=$<TARGET_FILE:${name}_debug>\n")
+             CONTENT "res=${APP_RES}\npackage=${APP_PACKAGE}\nlabel=${APP_LABEL}\nassets=${APP_ASSETS}\nicon=${APP_ICON}\nversion_code=${APP_VERSION_CODE}\nversion_name=${APP_VERSION_NAME}\npermissions=${permissions}\nmanifest_xml=${APP_MANIFEST_XML}\napplication_xml=${APP_APPLICATION_XML}\nlib=$<TARGET_FILE:${name}>\nlib_debug=$<TARGET_FILE:${name}_debug>\n")
     endfunction()
     kiln_add_android_app(hello SOURCES samples/hello/main.cpp PACKAGE dev.kiln.hello LABEL "kiln hello")
     kiln_add_android_app(list SOURCES samples/list/main.cpp PACKAGE dev.kiln.list LABEL "kiln list")
@@ -168,18 +192,25 @@ endforeach()
 
 # kiln_add_app(name SOURCES src... [LIBS lib...] [WHOLE lib...] PACKAGE id [LABEL text] [ASSETS dir]
 #              [ICON png] [VERSION_CODE n] [VERSION_NAME text] [PERMISSIONS perm...]
-#              [MANIFEST_XML file] [APPLICATION_XML file])
+#              [MANIFEST_XML file] [APPLICATION_XML file] [RES dir])
 # An app on Android (kiln_add_android_app, packed by tools/kiln) or in a desktop window. Paths
 # are relative to the calling CMakeLists.txt. The XML files hold elements for the manifest's
-# <manifest> or <application>.
+# <manifest> or <application>. RES is an Android res/ folder: its names in kiln_res.h (R::), its
+# values from Android's Resources on a device and from generated tables on the desktop.
 function(kiln_add_app name)
     if(ANDROID)
         kiln_add_android_app(${name} ${ARGN})
         return()
     endif()
-    cmake_parse_arguments(APP "" "PACKAGE;LABEL;ASSETS;ICON;VERSION_CODE;VERSION_NAME;MANIFEST_XML;APPLICATION_XML"
+    cmake_parse_arguments(APP "" "PACKAGE;LABEL;ASSETS;ICON;VERSION_CODE;VERSION_NAME;MANIFEST_XML;APPLICATION_XML;RES"
                           "SOURCES;LIBS;WHOLE;PERMISSIONS" ${ARGN})
     add_executable(${name} ${APP_SOURCES})
+    if(APP_RES)
+        if(NOT IS_ABSOLUTE "${APP_RES}")
+            set(APP_RES "${CMAKE_CURRENT_SOURCE_DIR}/${APP_RES}")
+        endif()
+        kiln_app_resources(${name} ${APP_RES} TABLE)
+    endif()
     target_link_libraries(${name} PRIVATE kiln_hostdev ${APP_LIBS})
     if(APP_WHOLE)
         string(REPLACE ";" "," whole "${APP_WHOLE}")
@@ -209,6 +240,9 @@ file(GLOB KILN_TEST_SOURCES CONFIGURE_DEPENDS tests/*.cpp)
 file(GLOB KILN_CAPI_TEST_SOURCES CONFIGURE_DEPENDS tests/capi/*.c tests/capi/*.cpp)
 set_source_files_properties(${KILN_CAPI_TEST_SOURCES} PROPERTIES COMPILE_OPTIONS "-Wall;-Wextra;-Wpedantic;-Werror")
 add_executable(kiln_tests ${KILN_TEST_SOURCES} ${KILN_CAPI_TEST_SOURCES})
+# App resources as an app has them: R:: names and, everywhere (no Android Resources in the test
+# process), the generated tables.
+kiln_app_resources(kiln_tests ${CMAKE_SOURCE_DIR}/tests/res TABLE)
 target_link_libraries(kiln_tests PRIVATE kiln_material3 kiln_navigation "$<LINK_LIBRARY:WHOLE_ARCHIVE,kiln_volition>")
 if(ANDROID)
     # Run on a device with tools/device-test (pushed to /data/local/tmp), which builds it.

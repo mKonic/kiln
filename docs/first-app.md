@@ -18,7 +18,8 @@ This makes `apps/counter`, the app's own folder:
 | `CMakeLists.txt` | The app's name, package, label, icon, version and permissions |
 | `src/main.cpp` | The code |
 | `assets/` | Images, fonts and other files the app reads |
-| `res/icon.png` | The launcher icon |
+| `res/` | Strings and other [app resources](resources.md), in Android's `res/` layout |
+| `icon.png` | The launcher icon |
 
 kiln builds every app in `apps/` with itself. The `apps` folder is not part of kiln's
 repository, so an app can be a repository of its own.
@@ -41,6 +42,8 @@ counter app:
 
 #include <string>
 
+#include "kiln_res.h"   // R::string, R::plurals...: the names in res/, checked when compiling
+
 using namespace kiln::foundation;
 using namespace kiln::material3;
 using namespace kiln::ui;
@@ -50,20 +53,20 @@ namespace {
         auto& count = RememberState(0);
         auto& fast = RememberState(false);
         ScaffoldOptions options;
-        options.topBar = [] { TopAppBar([] { Text("Counter"); }, {}); };
+        options.topBar = [] { TopAppBar([] { Text(kiln::ui::StringResource(R::string::app_name)); }, {}); };
         Scaffold({}, options, [&](const PaddingValues& padding) {
             Column(Padding(Padding(FillMax(Modifier{}, Axis::Both), padding), 16_dp),
                    Arrangement::SpacedBy(16_dp), AlignmentH::Start(), [&] {
-                Text("Pressed " + std::to_string(count.Get()) + " times",
+                Text(kiln::ui::PluralStringResource(R::plurals::pressed, count.Get(), count.Get()),
                      {}, { .style = MaterialTheme::typography().headlineMedium });
                 Row(Modifier{}, Arrangement::SpacedBy(8_dp), AlignmentV::CenterVertically(), [&] {
                     Switch(fast.Get(), [&](bool on) { fast.Set(on); });
-                    Text("Count by ten");
+                    Text(kiln::ui::StringResource(R::string::count_by_ten));
                 });
-                Button([&] { count.Set(count.Get() + (fast.Get() ? 10 : 1)); }, {}, {}, [] { Text("Add"); });
+                Button([&] { count.Set(count.Get() + (fast.Get() ? 10 : 1)); }, {}, {}, [] { Text(kiln::ui::StringResource(R::string::add)); });
                 auto& list = RememberLazyListState();
                 LazyColumn(Weight(Modifier{}, 1), list, [&](LazyListScope& s) {
-                    s.Items(count.Get(), [](int i) { Text("Row " + std::to_string(i)); });
+                    s.Items(count.Get(), [](int i) { Text(kiln::ui::StringResource(R::string::row, i)); });
                 });
             });
         });
@@ -86,6 +89,9 @@ What the code does:
 * Modifiers wrap one another: `Padding(FillMax(Modifier{}, Axis::Both), padding)` fills
   the screen, then pads.
 * `LazyColumn` composes only the rows that are on screen.
+* The text comes from `res/values/strings.xml`: `StringResource` and
+  `PluralStringResource` read it in the device's language (see
+  [App resources](resources.md)).
 
 ## Configure the app
 
@@ -98,13 +104,15 @@ kiln_add_app(counter
     PACKAGE com.example.counter
     LABEL "Counter"
     ASSETS assets
-    ICON res/icon.png
+    RES res
+    ICON icon.png
     VERSION_CODE 1
     VERSION_NAME 1.0
 )
 ```
 
 * `PACKAGE` is the Android application ID, `LABEL` the name under the launcher icon.
+* `RES` is the app's Android `res/` folder.
 * `PERMISSIONS android.permission.CAMERA ...` declares permissions.
 * `APPLICATION_XML file` and `MANIFEST_XML file` add elements to the manifest's
   `<application>` and `<manifest>`, for services, receivers or queries.

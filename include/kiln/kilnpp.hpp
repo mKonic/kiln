@@ -689,6 +689,32 @@ namespace kpp {
     template<typename P> kiln_measure_result* measure_layout(kiln_measure_scope* s, int32_t w, int32_t h, P&& place) {
         return kiln_measure_scope_layout(s, w, h, fn<kiln_fn_place>(std::forward<P>(place)));
     }
+    // App resources by name (kiln_res_c.h's R_string_app_name...); see kiln_string_resource.
+    namespace detail {
+        inline kiln_format_arg FormatArgOf(const char* s) { return { KILN_FORMAT_STRING, s, 0, 0 }; }
+        inline kiln_format_arg FormatArgOf(const std::string& s) { return { KILN_FORMAT_STRING, s.c_str(), 0, 0 }; }
+        template<typename T> requires std::is_integral_v<T> kiln_format_arg FormatArgOf(T v) { return { KILN_FORMAT_INT, nullptr, int64_t(v), 0 }; }
+        template<typename T> requires std::is_floating_point_v<T> kiln_format_arg FormatArgOf(T v) { return { KILN_FORMAT_DOUBLE, nullptr, 0, double(v) }; }
+        inline std::string Str(const char* s) { return s ? std::string(s) : std::string(); }
+    }
+    template<typename... A> std::string string_resource(const char* name, const A&... args) {
+        const kiln_format_arg a[] = { detail::FormatArgOf(args)..., kiln_format_arg{} };
+        return detail::Str(kiln_string_resource(name, a, sizeof...(A)));
+    }
+    template<typename... A> std::string plural_string_resource(const char* name, int32_t quantity, const A&... args) {
+        const kiln_format_arg a[] = { detail::FormatArgOf(args)..., kiln_format_arg{} };
+        return detail::Str(kiln_plural_string_resource(name, quantity, a, sizeof...(A)));
+    }
+    inline std::vector<std::string> string_array_resource(const char* name) {
+        std::vector<std::string> out;
+        for (size_t i = 0, n = kiln_string_array_resource_size(name); i < n; ++i) out.push_back(detail::Str(kiln_string_array_resource(name, i)));
+        return out;
+    }
+    inline kiln_color color_resource(const char* name) { kiln_color c = KILN_COLOR_UNSPECIFIED; kiln_color_resource(name, &c); return c; }
+    inline float dimension_resource(const char* name) { float d = 0; kiln_dimension_resource(name, &d); return d; }
+    inline int32_t integer_resource(const char* name) { int32_t v = 0; kiln_integer_resource(name, &v); return v; }
+    inline bool bool_resource(const char* name) { bool v = false; kiln_bool_resource(name, &v); return v; }
+
     // Canvas: a box that only draws, with on_draw(kiln_draw_scope*).
     template<typename F> void canvas(Modifier m, F&& onDraw, Key key = {}) { kiln_canvas(key, m, fn<kiln_fn_draw>(std::forward<F>(onDraw))); }
     // A path owned by this object.

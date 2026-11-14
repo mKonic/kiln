@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Regal</string>
+    <plurals name="chapters">
+        <item quantity="one">%d Kapitel</item>
+        <item quantity="other">%d Kapitel insgesamt</item>
+    </plurals>
+</resources>

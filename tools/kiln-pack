@@ -6,7 +6,8 @@
 #
 # --debug: a debuggable APK that answers Volition (content://<package>.volition), so the
 # volition CLI and MCP tools drive it by name.
-# Also: --permission name (repeatable), --icon file.png (the launcher icon, 192 px),
+# Also: --permission name (repeatable), --icon file.png (the launcher icon, 192 px), --res dir
+# (the app's Android res/ folder),
 # --version-code n, --version-name text, --manifest-xml file / --application-xml file (elements
 # added to <manifest> / <application>), --keystore file --key-alias name (sign with your key:
 # passwords from KILN_KEYSTORE_PASSWORD and KILN_KEY_PASSWORD; default: kiln's debug key).
@@ -16,7 +17,7 @@
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/android-env.sh"
 PACKAGE=""; LABEL="kiln app"; LIBNAME=""; OUT=""; LIBS=(); ASSETS=""; DEBUG=0
-PERMISSIONS=(); ICON=""; VERSION_CODE=1; VERSION_NAME="1.0"; MANIFEST_XML=""; APPLICATION_XML=""; KEYSTORE_ARG=""; KEY_ALIAS=""
+PERMISSIONS=(); ICON=""; VERSION_CODE=1; VERSION_NAME="1.0"; MANIFEST_XML=""; APPLICATION_XML=""; RES=""; KEYSTORE_ARG=""; KEY_ALIAS=""
 while [ $# -gt 0 ]; do
     case "$1" in
         --package) PACKAGE="$2"; shift 2 ;;
@@ -32,6 +33,7 @@ while [ $# -gt 0 ]; do
         --version-name) VERSION_NAME="$2"; shift 2 ;;
         --manifest-xml) MANIFEST_XML="$2"; shift 2 ;;
         --application-xml) APPLICATION_XML="$2"; shift 2 ;;
+        --res) RES="$2"; shift 2 ;;
         --keystore) KEYSTORE_ARG="$2"; shift 2 ;;
         --key-alias) KEY_ALIAS="$2"; shift 2 ;;
         *) echo "kiln-pack: unknown argument $1" >&2; exit 2 ;;
@@ -66,12 +68,19 @@ EXTRA_MANIFEST=""; [ -n "$MANIFEST_XML" ] && EXTRA_MANIFEST="$(cat "$MANIFEST_XM
 EXTRA_APPLICATION=""; [ -n "$APPLICATION_XML" ] && EXTRA_APPLICATION="$(cat "$APPLICATION_XML")"
 ICON_ATTR=""
 RES_ARGS=()
+# The app's res/ (strings, plurals, drawables...) and the icon, compiled together.
+if [ -n "$RES" ]; then
+    mkdir -p "$STAGING/res"
+    cp -r "$RES"/. "$STAGING/res/"
+fi
 if [ -n "$ICON" ]; then
     mkdir -p "$STAGING/res/mipmap-xxxhdpi"
     cp "$ICON" "$STAGING/res/mipmap-xxxhdpi/ic_launcher.png"
+    ICON_ATTR='android:icon="@mipmap/ic_launcher"'
+fi
+if [ -d "$STAGING/res" ]; then
     "$AAPT2" compile --dir "$STAGING/res" -o "$STAGING/res.zip"
     RES_ARGS=("$STAGING/res.zip")
-    ICON_ATTR='android:icon="@mipmap/ic_launcher"'
 fi
 
 cat > "$STAGING/AndroidManifest.xml" <<XML
