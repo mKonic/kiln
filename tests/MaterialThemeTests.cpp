@@ -14663,3 +14663,69 @@ TEST(SwitchTogglesWhenItsThumbIsDraggedAcross) {
         CHECK(!checked.Get());
     }
 }
+
+namespace {
+    // The sheet's offset is left out of positions read without the motion frame of reference.
+    bool SheetOffsetIsMotion(const ui::LayoutCoordinates& root, const ui::LayoutCoordinates& sheet, const SheetState& state) {
+        const ui::Offset with = root.LocalPositionOf(sheet, {}, true), without = root.LocalPositionOf(sheet, {}, false);
+        return Within(without.x, with.x, 1) && Within(without.y, with.y - float(ui::RoundJava(state.RequireOffset())), 1);
+    }
+    rt::Task<> MoveSheet(std::shared_ptr<SheetState> state, SheetValue to) {
+        if (to == SheetValue::Hidden) co_await state->Hide();
+        else if (to == SheetValue::PartiallyExpanded) co_await state->PartialExpand();
+        else co_await state->Expand();
+    }
+}
+
+TEST(BottomSheetScaffoldSheetOffsetIsTaggedAsMotionFrameOfReference) {
+    PhoneHarness h;
+    rt::State<ui::IntOffset> offset{ ui::IntOffset{} };
+    ui::LayoutCoordinates root, sheet;
+    std::shared_ptr<SheetState> state;
+    Themed(h, [&] {
+        state = RememberBottomSheetState(SheetValue::Hidden);
+        Box(OffsetMod(OnGloballyPositioned({}, [&](const ui::LayoutCoordinates& c) { root = c; }), [&](const ui::Density&) { return offset.Get(); }),
+            Alignment::TopStart(), false, [&] {
+                BottomSheetScaffoldOptions o;
+                o.scaffoldState = RememberBottomSheetScaffoldState(state);
+                BottomSheetScaffold([&] { Box(OnGloballyPositioned(FillMax({}, Axis::Both), [&](const ui::LayoutCoordinates& c) { sheet = c; })); }, {}, o,
+                                    [](const PaddingValues&) { Box(FillMax({}, Axis::Both)); });
+            });
+    });
+    h.AdvanceTimeBy(1000);
+    std::vector<rt::Job> jobs;
+    for (SheetValue value : { SheetValue::Hidden, SheetValue::Expanded, SheetValue::PartiallyExpanded }) {
+        jobs.push_back(rt::Launch(rt::Dispatcher::Main(), MoveSheet(state, value)));
+        h.AdvanceTimeBy(1000);
+        CHECK(state->CurrentValue() == value);
+        for (ui::IntOffset o : { ui::IntOffset{ 0, 0 }, ui::IntOffset{ 5, 20 }, ui::IntOffset{ 25, 0 }, ui::IntOffset{ 100, 10 } }) {
+            offset.Set(o);
+            h.AdvanceTimeBy(100);
+            CHECK(SheetOffsetIsMotion(root, sheet, *state));
+        }
+    }
+}
+
+TEST(ModalBottomSheetSheetOffsetIsTaggedAsMotionFrameOfReference) {
+    ModalHarness h;
+    rt::State<bool> show{ true };
+    std::shared_ptr<SheetState> state;
+    ui::LayoutCoordinates sheet;
+    Themed(h, [&] {
+        if (!state) state = RememberBottomSheetState(SheetValue::Hidden);
+        ModalBottomSheetOptions o;
+        o.sheetState = state;
+        ModalBottomSheet([] {}, {}, o, [&] { Box(OnGloballyPositioned(FillMax({}, Axis::Both), [&](const ui::LayoutCoordinates& c) { sheet = c; })); });
+    });
+    h.AdvanceTimeBy(1000);
+    CHECK(!h.dialogs.empty());
+    if (h.dialogs.empty()) return;
+    std::vector<rt::Job> jobs;
+    for (SheetValue value : { SheetValue::Expanded, SheetValue::PartiallyExpanded }) {
+        jobs.push_back(rt::Launch(rt::Dispatcher::Main(), MoveSheet(state, value)));
+        h.AdvanceTimeBy(1000);
+        CHECK(state->CurrentValue() == value);
+        const ui::LayoutCoordinates root(&h.dialogs.back()->Root(), 0);
+        CHECK(SheetOffsetIsMotion(root, sheet, *state));
+    }
+}

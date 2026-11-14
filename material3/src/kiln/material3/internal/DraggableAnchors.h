@@ -53,7 +53,9 @@ namespace kiln::material3::internal {
                 if (std::isnan(offset)) return;   // not placed until the anchors are set
                 const float x = orientation == foundation::Orientation::Horizontal ? offset * (reverse ? -1.0f : 1.0f) : 0.0f;
                 const float y = orientation == foundation::Orientation::Vertical ? offset : 0.0f;
-                p.Place(placeable, ui::RoundJava(x), ui::RoundJava(y));
+                // The offset is motion (a drag), not structure: what reads positions can leave it
+                // out, so it follows the drag instead of animating after it.
+                p.WithMotionFrameOfReferencePlacement([&] { p.Place(placeable, ui::RoundJava(x), ui::RoundJava(y)); });
             });
         }
     };
