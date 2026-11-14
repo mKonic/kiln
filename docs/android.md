@@ -127,6 +127,7 @@ kiln connects to these Android services without extra code:
 | Drag and drop | Dragging content in from and out to other apps |
 | Memory pressure | GPU caches and decoded images freed when the system asks for memory |
 | Foldables | Folds and hinges for the adaptive scaffolds and posture |
+| High-contrast text | Text outlined and given a contrasting colour, with a background behind it from Android 16, as the platform draws it |
 
 ## Picture-in-picture and orientation
 

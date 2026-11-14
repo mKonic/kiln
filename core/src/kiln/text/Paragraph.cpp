@@ -1,4 +1,5 @@
 #include "kiln/text/Paragraph.h"
+#include "kiln/text/HighContrastText.h"
 
 #include <algorithm>
 #include <cmath>
@@ -24,7 +25,7 @@ namespace kiln {
                lineHeightTrim == o.lineHeightTrim && lineHeightMode == o.lineHeightMode && hasLineHeightStyle == o.hasLineHeightStyle &&
                indentFirstPx == o.indentFirstPx && indentRestPx == o.indentRestPx && breakStrategy == o.breakStrategy &&
                breakStrictness == o.breakStrictness && wordBreak == o.wordBreak && hyphens == o.hyphens &&
-               includeFontPadding == o.includeFontPadding;
+               includeFontPadding == o.includeFontPadding && highContrastOutline == o.highContrastOutline;
     }
 
     ParagraphData TextBackend::LayoutPlain(std::string_view utf8, float sizePx, float widthPx) {
@@ -326,6 +327,7 @@ namespace kiln::text {
                                            std::span<const Range<Placeholder>> placeholders) {
         ParagraphRequest r;
         r.text = text.Text();
+        r.highContrastOutline = HighContrastOutlines();
         const float basePx = BasePx(style.span.fontSize, density);
         r.base = ResolveRun(style.span, style.span, basePx, density);
         r.base.start = 0;
@@ -398,6 +400,8 @@ namespace kiln::text {
         : m_Backend(backend), m_Request(std::move(request)), m_RunStyles(std::move(runStyles)),
           m_Length(Utf16Length(m_Request.text)) {
         if (m_Backend) m_Data = m_Backend->Layout(m_Request);
+        m_Data.runSizes.clear();
+        for (const auto& r : m_Request.runs) m_Data.runSizes.push_back(r.sizePx);
         m_Width = std::isinf(width) || width <= 0 ? m_Data.width : width;
     }
 

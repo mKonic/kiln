@@ -65,6 +65,9 @@ namespace kiln {
         // gradient ramps, image textures, the GPU copies of glyph pages, offscreen layers).
         // The image loader trims its memory cache by the same level. Returns the GPU bytes freed.
         std::size_t TrimMemory(int level);
+        // The high-contrast text setting, for every window (background: the platform also draws
+        // Layout's rectangles behind text, API 36+).
+        void SetHighContrastText(bool enabled, bool background);
         void SurfaceResized(std::uint32_t width, std::uint32_t height);
         // The host view's size from its own layout, which comes before the surface's (so focus
         // the platform gives on a window's first layout finds laid-out content).
@@ -211,6 +214,7 @@ namespace kiln {
         std::vector<std::unique_ptr<AtlasPage>> m_Pages;
         std::unique_ptr<PathCache> m_Paths;
         std::unique_ptr<GradientRamps> m_Gradients;
+        bool m_HighContrastText = false, m_HighContrastTextBackground = false;
         std::unique_ptr<ImageCache> m_Images;
         std::unique_ptr<FilterTable> m_Filters;
         std::uint32_t m_Width = 0, m_Height = 0;

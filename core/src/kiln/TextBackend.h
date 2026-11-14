@@ -23,6 +23,7 @@ namespace kiln {
         RectF uv;            // normalised within the page
         std::uint32_t page = 0;
         bool color = false;  // colour glyph (emoji): draw with its own colours, not the text tint
+        bool outline = false;   // the high-contrast outline of the glyph before it (drawn first)
         int run = 0;         // index into the request's runs
     };
 
@@ -98,6 +99,9 @@ namespace kiln {
         std::uint8_t breakStrategy = 1, breakStrictness = 3, wordBreak = 1;
         std::uint8_t hyphens = 1;
         bool includeFontPadding = false;
+        // High-contrast text: the backend also rasterizes each glyph stroked and filled (HWUI's
+        // outline paint: width max(4, 0.2 x size), round joins), as GlyphQuads marked outline.
+        bool highContrastOutline = false;
         bool operator==(const ParagraphRequest& o) const;
     };
 
@@ -134,6 +138,7 @@ namespace kiln {
         std::vector<LineData> lines;
         std::vector<RunSegment> segments;
         std::vector<RunMetrics> runMetrics;          // one per request run
+        std::vector<float> runSizes;                 // each request run's text size, px
         // One per request placeholder: where it is, or none when ellipsized or cut off.
         std::vector<std::optional<RectF>> placeholderRects;
         // Backend handle for position queries (0 = none). Released with TextBackend::Release.

@@ -2343,6 +2343,8 @@ namespace kiln::ui {
     void Owner::DrawWith(const DrawTarget& target, const kiln::Function<void(DrawScope&)>& draw) {
         DrawTarget t = target;
         t.shadowLight = ShadowLight();
+        t.highContrastText = m_HighContrastText;
+        t.highContrastTextBackground = m_HighContrastTextBackground;
         ContentDrawScope scope(m_Density, m_Direction, t);
         draw(scope);
         scope.Finish();
@@ -2351,6 +2353,8 @@ namespace kiln::ui {
     void Owner::Draw(const DrawTarget& target) {
         DrawTarget t = target;
         t.shadowLight = ShadowLight();
+        t.highContrastText = m_HighContrastText;
+        t.highContrastTextBackground = m_HighContrastTextBackground;
         ContentDrawScope scope(m_Density, m_Direction, t);
         m_FrameRate = {};
         m_Root->Draw(scope);

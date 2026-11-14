@@ -1,4 +1,5 @@
 #include "kiln/ui/Draw.h"
+#include "kiln/text/HighContrastText.h"
 #include <kiln/Function.h>
 
 #include <cstring>
@@ -322,20 +323,54 @@ namespace kiln::ui {
         // rotated text is drawn where it falls.
         const gfx::Matrix& m = m_State.m;
         const bool snap = m.a == 1 && m.d == 1 && m.b == 0 && m.c == 0;
-        for (const GlyphQuad& g : para.glyphs) {
-            float x = p.x + g.rect.x, y = p.y + g.rect.y;
-            if (snap) {
-                x = std::floor(x + m.e + 0.5f) - m.e;
-                y = std::floor(y + m.f + 0.5f) - m.f;
+        // High-contrast text (DrawTextFunctor): every glyph's outline first, then the fills.
+        const bool contrast = m_Target.highContrastText;
+        // Outlines the backend rasterized (stroked glyphs); without them, dilate the fills.
+        const bool hasOutlines = contrast && std::any_of(para.glyphs.begin(), para.glyphs.end(), [](const GlyphQuad& g) { return g.outline; });
+        for (int pass = contrast ? 0 : 1; pass < 2; ++pass) {
+            for (const GlyphQuad& g : para.glyphs) {
+                if (g.outline && (pass == 1 || !contrast)) continue;
+                if (pass == 0 && hasOutlines && !g.outline) continue;
+                float x = p.x + g.rect.x, y = p.y + g.rect.y;
+                if (snap) {
+                    x = std::floor(x + m.e + 0.5f) - m.e;
+                    y = std::floor(y + m.f + 0.5f) - m.f;
+                }
+                Color c = color;
+                if (g.run >= 0 && std::size_t(g.run) < runColors.size() && runColors[std::size_t(g.run)].Specified()) c = runColors[std::size_t(g.run)];
+                if (!c.Specified() || c.Alpha() * m_State.alpha <= 0) continue;
+                const AtlasPage* page = m_Target.page ? m_Target.page(g.page) : nullptr;
+                if (!page) continue;
+                if (g.color) {
+                    // Colour glyphs (emoji) draw as they are, once.
+                    if (pass == 0) continue;
+                    const Rgba tint = Scaled(ToRgba(c), m_State.alpha);
+                    m_Target.quads->DrawAtlas({ x, y, g.rect.w, g.rect.h }, g.uv, *page, Rgba{ tint.a, tint.a, tint.a, tint.a }, QuadRenderer::Mode::Color);
+                    continue;
+                }
+                if (g.outline) {
+                    m_Target.quads->DrawGlyph({ x, y, g.rect.w, g.rect.h }, g.uv, *page, Scaled(ToRgba(text::HighContrastOutlineColor(c)), m_State.alpha), para.maskGamma);
+                    continue;
+                }
+                if (pass == 1) {
+                    const Color fill = contrast ? text::HighContrastInnerColor(c) : c;
+                    m_Target.quads->DrawGlyph({ x, y, g.rect.w, g.rect.h }, g.uv, *page, Scaled(ToRgba(fill), m_State.alpha), para.maskGamma);
+                    continue;
+                }
+                // A backend without outline glyphs (the desktop host): a stroke-and-fill of width
+                // w with round joins adds a disc of radius w / 2 around the glyph, so the
+                // coverage mask is drawn at offsets on two rings and the centre.
+                const float size = g.run >= 0 && std::size_t(g.run) < para.runSizes.size() ? para.runSizes[std::size_t(g.run)] : 14.0f;
+                const float r = text::HighContrastBorderWidth(size) / 2;
+                const Rgba outline = Scaled(ToRgba(text::HighContrastOutlineColor(c)), m_State.alpha);
+                constexpr int kOuter = 16, kInner = 8;
+                for (int i = 0; i <= kOuter + kInner; ++i) {
+                    float dx = 0, dy = 0;
+                    if (i < kOuter) { const float t = 6.2831853f * float(i) / kOuter; dx = r * std::cos(t); dy = r * std::sin(t); }
+                    else if (i < kOuter + kInner) { const float t = 6.2831853f * (float(i - kOuter) + 0.5f) / kInner; dx = r / 2 * std::cos(t); dy = r / 2 * std::sin(t); }
+                    m_Target.quads->DrawGlyph({ x + dx, y + dy, g.rect.w, g.rect.h }, g.uv, *page, outline, para.maskGamma);
+                }
             }
-            Color c = color;
-            if (g.run >= 0 && std::size_t(g.run) < runColors.size() && runColors[std::size_t(g.run)].Specified()) c = runColors[std::size_t(g.run)];
-            if (!c.Specified() || c.Alpha() * m_State.alpha <= 0) continue;
-            const AtlasPage* page = m_Target.page ? m_Target.page(g.page) : nullptr;
-            if (!page) continue;
-            const Rgba tint = Scaled(ToRgba(c), m_State.alpha);
-            if (g.color) m_Target.quads->DrawAtlas({ x, y, g.rect.w, g.rect.h }, g.uv, *page, Rgba{ tint.a, tint.a, tint.a, tint.a }, QuadRenderer::Mode::Color);
-            else m_Target.quads->DrawGlyph({ x, y, g.rect.w, g.rect.h }, g.uv, *page, tint, para.maskGamma);
         }
     }
 

@@ -47,7 +47,7 @@ final class KilnText {
     static final int PAGE_SIZE = 1024;
 
     // Request layout (mirrors AndroidText.cpp).
-    private static final int P_INTS = 13, R_INTS = 8, P_FLOATS = 6, R_FLOATS = 6, R_STRS = 5;
+    private static final int P_INTS = 14, R_INTS = 8, P_FLOATS = 6, R_FLOATS = 6, R_STRS = 5;
     // Result layout.
     private static final int HEADER = 12, GLYPH = 11, LINE = 14, SEGMENT = 5, METRICS = 4, PLACEHOLDER = 4;
     // After the runs: placeholder count, then [start, end, widthUnit, heightUnit, align] and
@@ -74,9 +74,10 @@ final class KilnText {
     }
 
     private static final class GlyphKey {
-        final Font font; final int glyph, sizeQ, skewQ, scaleQ; final boolean bold;
+        final Font font; final int glyph, sizeQ, skewQ, scaleQ, strokeQ; final boolean bold;
         GlyphKey(Font font, int glyph, Paint p, boolean bold) {
             this.font = font; this.glyph = glyph; this.bold = bold;
+            this.strokeQ = p.getStyle() == Paint.Style.FILL ? 0 : Math.round(p.getStrokeWidth() * 64);
             sizeQ = Math.round(p.getTextSize() * 4);
             skewQ = Math.round(p.getTextSkewX() * 100);
             scaleQ = Math.round(p.getTextScaleX() * 100);
@@ -84,9 +85,9 @@ final class KilnText {
         @Override public boolean equals(Object o) {
             if (!(o instanceof GlyphKey)) return false;
             GlyphKey k = (GlyphKey) o;
-            return glyph == k.glyph && sizeQ == k.sizeQ && skewQ == k.skewQ && scaleQ == k.scaleQ && bold == k.bold && font.equals(k.font);
+            return glyph == k.glyph && sizeQ == k.sizeQ && skewQ == k.skewQ && scaleQ == k.scaleQ && strokeQ == k.strokeQ && bold == k.bold && font.equals(k.font);
         }
-        @Override public int hashCode() { return Objects.hash(font, glyph, sizeQ, skewQ, scaleQ, bold); }
+        @Override public int hashCode() { return Objects.hash(font, glyph, sizeQ, skewQ, scaleQ, strokeQ, bold); }
     }
 
     /** One resolved run: a paint and what drawing needs beyond it. */
@@ -422,6 +423,7 @@ final class KilnText {
      * metrics (see AndroidText.cpp).
      */
     float[] layout(String text, int[] ints, float[] floats, String[] strs) {
+        outline = ints[13] != 0;
         Built b = build(text, ints, floats, strs);
         final float widthPx = floats[0];
         final int width = widthPx > 0 ? (int) Math.ceil(widthPx) : Integer.MAX_VALUE / 4;
@@ -715,23 +717,40 @@ final class KilnText {
     }
 
     private void addGlyph(ArrayList<float[]> out, Font font, int glyph, float gx, float gy, TextPaint paint, Run run, int runIndex) {
-        float[] slot = rasterize(font, glyph, paint, run != null && run.fakeBold, run != null && run.fakeItalic);
+        final boolean fakeBold = run != null && run.fakeBold, fakeItalic = run != null && run.fakeItalic;
+        if (outline) {
+            // High-contrast text: the stroked glyph first (kind 2), drawn under the fill.
+            float[] o = rasterize(font, glyph, paint, fakeBold, fakeItalic, true);
+            if (o != null && o[9] == 0)
+                out.add(new float[] { o[0], gx + o[1], gy + o[2], o[3], o[4], o[5], o[6], o[7], o[8], 2, runIndex });
+        }
+        float[] slot = rasterize(font, glyph, paint, fakeBold, fakeItalic, false);
         if (slot == null) return;
         // slot: page, left, top, w, h, u, v, uw, vh, color (left/top relative to the pen)
         out.add(new float[] { slot[0], gx + slot[1], gy + slot[2], slot[3], slot[4],
                               slot[5], slot[6], slot[7], slot[8], slot[9], runIndex });
     }
 
-    private float[] rasterize(Font font, int glyph, TextPaint paint, boolean fakeBold, boolean fakeItalic) {
+    /** The layout in progress asks for high-contrast outlines. */
+    private boolean outline;
+
+    private float[] rasterize(Font font, int glyph, TextPaint paint, boolean fakeBold, boolean fakeItalic, boolean stroked) {
         glyphPaint.setTextSize(paint.getTextSize());
         glyphPaint.setTextScaleX(paint.getTextScaleX());
         glyphPaint.setTextSkewX(paint.getTextSkewX() + (fakeItalic ? -0.25f : 0));
         glyphPaint.setFakeBoldText(fakeBold);
+        // DrawTextFunctor's simplifyPaint for the outline: stroke and fill, width
+        // max(kHighContrastTextBorderWidth, kHighContrastTextBorderWidthFactor x size), round joins.
+        final float strokeWidth = stroked ? Math.max(4.0f, 0.2f * paint.getTextSize()) : 0;
+        glyphPaint.setStyle(stroked ? Paint.Style.FILL_AND_STROKE : Paint.Style.FILL);
+        glyphPaint.setStrokeWidth(strokeWidth);
+        glyphPaint.setStrokeJoin(stroked ? Paint.Join.ROUND : Paint.Join.MITER);
         GlyphKey key = new GlyphKey(font, glyph, glyphPaint, fakeBold);
         if (slots.containsKey(key)) return slots.get(key);
         font.getGlyphBounds(glyph, glyphPaint, bounds);
-        // Fake bold strokes outside the outline; skew is not in the bounds on every release.
-        final int pad = 1 + (fakeBold ? (int) Math.ceil(paint.getTextSize() / 24) : 0);
+        // Fake bold strokes outside the outline; skew is not in the bounds on every release; a
+        // stroked glyph reaches half its stroke beyond them.
+        final int pad = 1 + (fakeBold ? (int) Math.ceil(paint.getTextSize() / 24) : 0) + (int) Math.ceil(strokeWidth / 2);
         final float skewPad = Math.abs(glyphPaint.getTextSkewX()) * Math.max(Math.abs(bounds.top), Math.abs(bounds.bottom));
         final int left = (int) Math.floor(bounds.left - skewPad) - pad, top = (int) Math.floor(bounds.top) - pad;
         final int w = (int) Math.ceil(bounds.right + skewPad) + pad - left, h = (int) Math.ceil(bounds.bottom) + pad - top;

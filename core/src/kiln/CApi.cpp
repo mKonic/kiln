@@ -34,6 +34,7 @@ KILN_API void kiln_frame_draw_paragraph(kiln_frame* frame, const kiln_paragraph*
     if (app.Text()) app.Text()->SyncAtlas(app);
     const Rgba tint = Rgba::FromArgb(argb);
     for (const GlyphQuad& g : p->data.glyphs) {
+        if (g.outline) continue;   // high-contrast outlines: DrawScope's text only
         const AtlasPage* page = app.Page(g.page);
         if (!page) continue;
         // Whole pixels, as DrawScope::DrawParagraph places glyphs.

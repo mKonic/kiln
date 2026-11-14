@@ -1437,6 +1437,10 @@ namespace {
         g_Host->app->RequestFrame();
     }
 
+    void SetHighContrastText(JNIEnv*, jclass, jboolean enabled, jboolean background) {
+        if (g_Host && g_Host->app) g_Host->app->SetHighContrastText(enabled, background);
+    }
+
     void PictureInPictureModeChanged(JNIEnv*, jclass, jboolean inPip) {
         kiln::ui::SetInPictureInPictureMode(inPip);
         if (g_Host && g_Host->app) g_Host->app->RequestFrame();
@@ -3474,6 +3478,7 @@ extern "C" JNIEXPORT jint kiln_jni_onload(JavaVM* vm) {
         { "flagSecureChanged", "(Z)V", reinterpret_cast<void*>(&FlagSecureChanged) },
         { "fontsChanged", "()V", reinterpret_cast<void*>(&FontsChanged) },
         { "trimMemory", "(I)V", reinterpret_cast<void*>(&TrimMemory) },
+        { "setHighContrastText", "(ZZ)V", reinterpret_cast<void*>(&SetHighContrastText) },
         { "pictureInPictureModeChanged", "(Z)V", reinterpret_cast<void*>(&PictureInPictureModeChanged) },
         { "setDisplayFolds", "(I[I)V", reinterpret_cast<void*>(&SetDisplayFolds) },
         { "textToolbarItem", "(II)V", reinterpret_cast<void*>(&TextToolbarItem) },

@@ -1735,6 +1735,7 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback2 {
     }
 
     private KilnWindowLayout windowLayout;
+    private KilnHighContrast highContrast;
 
     /** Memory pressure: kiln drops caches by level, as HWUI does for its render thread. */
     private final android.content.ComponentCallbacks2 memoryCallbacks = new android.content.ComponentCallbacks2() {
@@ -1763,6 +1764,7 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback2 {
         if (windowId != 0) return;
         getContext().getApplicationContext().registerComponentCallbacks(memoryCallbacks);
         windowLayout = KilnWindowLayout.start(getContext(), windowId);
+        highContrast = KilnHighContrast.start(getContext());
         getContext().registerReceiver(timeFormatReceiver,
                 new android.content.IntentFilter(android.content.Intent.ACTION_TIME_CHANGED), Context.RECEIVER_NOT_EXPORTED);
         getContext().getContentResolver().registerContentObserver(
@@ -1783,6 +1785,7 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback2 {
         if (windowId == 0) {
             getContext().getApplicationContext().unregisterComponentCallbacks(memoryCallbacks);
             if (windowLayout != null) { windowLayout.stop(); windowLayout = null; }
+            if (highContrast != null) { highContrast.stop(); highContrast = null; }
             getContext().unregisterReceiver(timeFormatReceiver);
             getContext().getContentResolver().unregisterContentObserver(timeFormatObserver);
         }

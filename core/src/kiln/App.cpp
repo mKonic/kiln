@@ -4,6 +4,7 @@
 #include "kiln/ui/Locals.h"
 #include "kiln/image/ImageLoader.h"
 #include "kiln/Trace.h"
+#include "kiln/text/HighContrastText.h"
 
 #include <optional>
 #include "kiln/ui/PrefetchScheduler.h"
@@ -496,9 +497,25 @@ namespace kiln {
     // --- extra windows -------------------------------------------------------------------------
 
 
+    void App::SetHighContrastText(bool enabled, bool background) {
+        // Outline glyphs come from layout: text lays out again when the setting changes.
+        const bool relayout = enabled != text::HighContrastOutlines();
+        text::SetHighContrastOutlines(enabled);
+        if (relayout) {
+            m_Owner.OnFontsChanged();
+            for (auto& w : m_Windows) w->owner->OnFontsChanged();
+        }
+        m_HighContrastText = enabled;
+        m_HighContrastTextBackground = background;
+        m_Owner.SetHighContrastText(enabled, background);
+        for (auto& w : m_Windows) w->owner->SetHighContrastText(enabled, background);
+        RequestFrame();
+    }
+
     App::Window* App::AddWindow(ui::Owner& owner) {
         auto w = std::make_unique<Window>();
         w->owner = &owner;
+        owner.SetHighContrastText(m_HighContrastText, m_HighContrastTextBackground);
         owner.SetText(m_Services.text);
         owner.SetRequestFrame([this] { RequestFrame(); });
         m_Windows.push_back(std::move(w));

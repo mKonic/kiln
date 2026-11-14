@@ -1,4 +1,5 @@
 #include "kiln/foundation/text/BasicText.h"
+#include "kiln/text/HighContrastText.h"
 #include <kiln/Function.h>
 
 #include "kiln/TextBackend.h"
@@ -437,6 +438,54 @@ namespace kiln::foundation {
             const Offset origin{ 0, info.top };
             auto runAt = [&](int i) -> const SpanStyle& { static const SpanStyle none; return i >= 0 && std::size_t(i) < runs.size() ? runs[std::size_t(i)] : none; };
 
+            const bool contrast = s.HighContrastText();
+            std::vector<Color> colors(runs.size());
+            for (std::size_t i = 0; i < runs.size(); ++i) {
+                colors[i] = RunColor(runs[i], base);
+                // High contrast draws without shaders (simplifyPaint): a brush's first colour.
+                if (contrast && !colors[i].Specified()) {
+                    const SpanStyle& src = runs[i].brush || runs[i].color.Specified() ? runs[i] : base;
+                    colors[i] = src.brush && !src.brush->colors.empty() ? src.brush->colors.front() : Color(0xFF000000u);
+                }
+            }
+
+            // Layout.drawHighContrastBackground: behind each line's text, split where the
+            // text's contrast colour changes; rounded, no padding.
+            if (s.HighContrastTextBackground()) {
+                const float density = layout.LayoutInput().density.density;
+                for (std::size_t li = 0; li < d.lines.size(); ++li) {
+                    const LineData& l = d.lines[li];
+                    float left = 0, right = 0, size = 14;
+                    std::optional<Color> bg;
+                    auto flush = [&] {
+                        if (bg && right > left)
+                            s.DrawRoundRect(*bg, { origin.x + left, origin.y + l.top }, { right - left, l.bottom - l.top },
+                                            text::HighContrastBackgroundRadius(size, density));
+                        bg.reset();
+                    };
+                    for (const RunSegment& seg : d.segments) {
+                        if (std::size_t(seg.line) != li) continue;
+                        // Within the line's visible extent: no rectangle for its trailing spaces.
+                        const float sl = std::max(seg.left, l.left), sr = std::min(seg.right, l.right);
+                        if (sr <= sl) continue;
+                        const Color tc = std::size_t(seg.run) < colors.size() ? colors[std::size_t(seg.run)] : Color(0xFF000000u);
+                        if (!tc.Specified() || tc.Alpha() <= 0) continue;
+                        const Color c = text::HighContrastBackgroundColor(tc);
+                        if (bg && *bg == c) {
+                            left = std::min(left, sl);
+                            right = std::max(right, sr);
+                            continue;
+                        }
+                        flush();
+                        bg = c;
+                        left = sl;
+                        right = sr;
+                        size = std::size_t(seg.run) < d.runSizes.size() ? d.runSizes[std::size_t(seg.run)] : 14.0f;
+                    }
+                    flush();
+                }
+            }
+
             // Backgrounds: the run's extent, line top to bottom.
             for (const RunSegment& seg : d.segments) {
                 const Color bg = Resolve(runAt(seg.run).background, base.background);
@@ -444,9 +493,6 @@ namespace kiln::foundation {
                 const LineData& l = d.lines[std::size_t(seg.line)];
                 s.DrawRect(bg, { origin.x + seg.left, origin.y + l.top }, { seg.right - seg.left, l.bottom - l.top });
             }
-
-            std::vector<Color> colors(runs.size());
-            for (std::size_t i = 0; i < runs.size(); ++i) colors[i] = RunColor(runs[i], base);
 
             // Bullets before the first line of their list item (CustomBulletSpan.drawLeadingMargin),
             // in the text's colour unless they have a brush.
@@ -473,8 +519,8 @@ namespace kiln::foundation {
                 s.Restore();
             }
 
-            // Shadows (blurred through a layer).
-            for (std::size_t i = 0; i < runs.size(); ++i) {
+            // Shadows (blurred through a layer); none under high contrast (the looper goes).
+            for (std::size_t i = 0; i < runs.size() && !contrast; ++i) {
                 const auto& sh = runs[i].shadow ? runs[i].shadow : base.shadow;
                 if (!sh || sh->color.Alpha() <= 0) continue;
                 std::vector<Color> only(runs.size(), Color::Transparent());
@@ -498,7 +544,7 @@ namespace kiln::foundation {
             s.DrawParagraph(d, origin, Color::Transparent(), colors);
 
             // Gradient brushes: the runs' glyphs as a mask for the brush over the paragraph.
-            for (std::size_t i = 0; i < runs.size(); ++i) {
+            for (std::size_t i = 0; i < runs.size() && !contrast; ++i) {
                 const SpanStyle& src = runs[i].brush || runs[i].color.Specified() ? runs[i] : base;
                 if (!src.brush || src.brush->kind == gfx::Brush::Kind::Solid) continue;
                 std::vector<Color> mask(runs.size(), Color::Transparent());

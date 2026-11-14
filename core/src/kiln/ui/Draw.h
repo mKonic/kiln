@@ -35,6 +35,9 @@ namespace kiln::ui {
         FilterTable* filters = nullptr;
         float viewportWidth = 0, viewportHeight = 0;
         gfx::ShadowLight shadowLight;   // the window's light for elevation shadows
+        // The accessibility setting (Canvas.isHighContrastTextEnabled): text draws outlined,
+        // and with a background behind its lines where the platform draws one (API 36+).
+        bool highContrastText = false, highContrastTextBackground = false;
     };
 
     // Corner radii of a clip: top-left, top-right, bottom-right, bottom-left.
@@ -270,6 +273,8 @@ namespace kiln::ui {
         // Recording (GraphicsLayer.record): until EndRecording, draws and state changes append to
         // `list` instead of rasterizing, relative to a fresh state (identity transform, no clip,
         // full alpha). Recordings nest.
+        bool HighContrastText() const { return m_Target.highContrastText; }
+        bool HighContrastTextBackground() const { return m_Target.highContrastText && m_Target.highContrastTextBackground; }
         void BeginRecording(DisplayList& list);
         void EndRecording();
         bool IsRecording() const { return m_Recording != nullptr; }

@@ -22,7 +22,7 @@ namespace kiln::android {
 
     // Request and result layouts (mirror KilnText.java).
     namespace {
-        constexpr int kParagraphInts = 13, kRunInts = 8, kParagraphFloats = 6, kRunFloats = 6, kRunStrings = 5;
+        constexpr int kParagraphInts = 14, kRunInts = 8, kParagraphFloats = 6, kRunFloats = 6, kRunStrings = 5;
         constexpr int kHeader = 12, kGlyph = 11, kLine = 14, kSegment = 5, kMetrics = 4, kPlaceholder = 4;
         constexpr int kPlaceholderInts = 5, kPlaceholderFloats = 2;
     }
@@ -113,6 +113,7 @@ namespace kiln::android {
         ints[10] = r.wordBreak;
         ints[11] = r.hyphens;
         ints[12] = r.includeFontPadding;
+        ints[13] = r.highContrastOutline;
         floats[0] = r.widthPx;
         floats[1] = r.maxHeightPx;
         floats[2] = r.lineHeightPx;
@@ -207,7 +208,8 @@ namespace kiln::android {
                 q.page = std::uint32_t(p[0]);
                 q.rect = { p[1], p[2], p[3], p[4] };
                 q.uv = { p[5], p[6], p[7], p[8] };
-                q.color = p[9] != 0;
+                q.color = p[9] == 1;
+                q.outline = p[9] == 2;
                 q.run = int(p[10]);
                 out.glyphs.push_back(q);
             }

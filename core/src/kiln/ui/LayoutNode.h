@@ -393,6 +393,14 @@ namespace kiln::ui {
         bool IsContentWindowFocused() const { return IsWindowFocused() && !TopFocusablePopup(); }
         // Every node records its drawing again (density, direction, fonts changed).
         void InvalidateAllDraws() { ++m_DrawGeneration; OnDrawRequested(); }
+        // High-contrast text (the host reads the accessibility setting): every text redraws.
+        void SetHighContrastText(bool enabled, bool background) {
+            if (enabled == m_HighContrastText && background == m_HighContrastTextBackground) return;
+            m_HighContrastText = enabled;
+            m_HighContrastTextBackground = background;
+            InvalidateAllDraws();
+        }
+        bool HighContrastText() const { return m_HighContrastText; }
         std::uint64_t DrawGeneration() const { return m_DrawGeneration; }
         // Retained drawing on (the default) or off (every frame re-runs every draw; A/B checks).
         static void SetDrawRetention(bool on);
@@ -999,6 +1007,7 @@ namespace kiln::ui {
         TextBackend* m_Text = nullptr;
         kiln::Function<void()> m_RequestFrame;
         std::uint64_t m_DrawGeneration = 1;
+        bool m_HighContrastText = false, m_HighContrastTextBackground = false;
         std::set<LayoutNode*, ByDepth> m_MeasureDirty, m_LayoutDirty;
         std::set<LayoutNode*> m_CoordinateReaders;   // nodes whose placement read their coordinates
         IntSize m_Window;
