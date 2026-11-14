@@ -10,7 +10,7 @@ Creates apps, and builds, packs, installs and starts them.
 
 | Command | Does |
 |---|---|
-| `tools/kiln new <name>` | Creates an app in `apps/<name>` (`--package id`, `--label text`) |
+| `tools/kiln new <name>` | Creates an app in `apps/<name>` (`--package id`, `--label text`, `--jvm` for [JVM code of its own](android.md#kotlin-java-and-maven-dependencies)) |
 | `tools/kiln list` | Lists the apps |
 | `tools/kiln build <app>` | Builds the app's library for each ABI |
 | `tools/kiln apk <app>` | Builds and packs `build/apk/<app>.apk` |
@@ -27,6 +27,10 @@ Creates apps, and builds, packs, installs and starts them.
 | `--keystore file --key-alias name` | Signs with your key; passwords from `KILN_KEYSTORE_PASSWORD` and `KILN_KEY_PASSWORD` |
 | `--lto` | Link-time optimization: a 4-5% smaller library and a slower build, at the same speed |
 | `--out file` | Where `apk` or `bundle` writes its file |
+
+An app made with `--jvm` is built by its own Gradle build, which `build`, `apk`, `bundle`
+and `run` call. `--debug`, `--keystore`, `--key-alias` and `--out` apply to it as well;
+its ABIs are set in its `build.gradle.kts`.
 
 `KILN_CONFIG` chooses the CMake build type, `RelWithDebInfo` by default. `bundle` uses
 bundletool, downloaded once to `~/.cache/kiln` and checked against its checksum, or the jar

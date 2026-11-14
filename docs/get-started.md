@@ -16,7 +16,7 @@ The Android Emulator works too, with an x86_64 system image.
 **Build machine**
 
 * Linux
-* CMake 3.22 or newer, and Ninja
+* CMake 3.24 or newer, and Ninja
 * The Android NDK r30 and the Android SDK (platform 36, build tools, platform tools)
 * JDK 17 or newer
 * `glslc`, from the Vulkan SDK or the `shaderc` package

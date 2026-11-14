@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 # kiln: from source to a running app in one command.
 #
-#   kiln new <name> [--package id] [--label text]
+#   kiln new <name> [--package id] [--label text] [--jvm]
 #                                   a new app in apps/<name> (its own folder: CMakeLists.txt,
-#                                   src/main.cpp, assets/, res/icon.png)
+#                                   src/main.cpp, assets/, res/icon.png); --jvm adds a Gradle
+#                                   build for JVM code of its own (Kotlin, Maven dependencies),
+#                                   which build/apk/bundle/run then use
 #   kiln list                       the apps this tree builds (samples and apps/)
 #   kiln build <app> [opts]         configure and build the app's library for each ABI
 #   kiln apk <app> [opts]           ... and pack it: build/apk/<app>.apk (or --out)
@@ -29,7 +31,7 @@ source "$(dirname "${BASH_SOURCE[0]}")/android-env.sh"
 usage() { sed -n '2,24p' "$0" >&2; exit 2; }
 [ $# -ge 1 ] || usage
 CMD="$1"; shift
-APP=""; ABIS=""; DEBUG=(); OUT=""; NEW_PACKAGE=""; NEW_LABEL=""; SIGN=()
+APP=""; ABIS=""; DEBUG=(); OUT=""; NEW_PACKAGE=""; NEW_LABEL=""; SIGN=(); NEW_JVM=()
 while [ $# -gt 0 ]; do
     case "$1" in
         --abi) ABIS="$2"; shift 2 ;;
@@ -40,6 +42,7 @@ while [ $# -gt 0 ]; do
         --key-alias) SIGN+=(--key-alias "$2"); shift 2 ;;
         --package) NEW_PACKAGE="$2"; shift 2 ;;
         --label) NEW_LABEL="$2"; shift 2 ;;
+        --jvm) NEW_JVM=(--jvm "$KILN_ROOT"); shift ;;
         --out) OUT="$2"; shift 2 ;;
         -h|--help) usage ;;
         -*) echo "kiln: unknown option $1" >&2; exit 2 ;;
@@ -60,7 +63,7 @@ if [ "$CMD" = new ]; then
     done
     package="${NEW_PACKAGE:-com.example.${APP//[-_]/}}"
     label="${NEW_LABEL:-$APP}"
-    python3 "$KILN_ROOT/tools/kiln-new.py" "$dir" "$APP" "$package" "$label"
+    python3 "$KILN_ROOT/tools/kiln-new.py" "$dir" "$APP" "$package" "$label" "${NEW_JVM[@]}"
     echo "kiln: created apps/$APP ($package). Run it: tools/kiln run $APP"
     exit 0
 fi
@@ -96,6 +99,41 @@ if [ "$CMD" = list ]; then
 fi
 case "$CMD" in build|apk|bundle|run) ;; *) usage ;; esac
 [ -n "$APP" ] || usage
+
+# An app with a Gradle build (kiln new --jvm): Gradle builds it, kiln's CMake inside.
+GRADLE_DIR="$KILN_ROOT/apps/$APP"
+if [ -f "$GRADLE_DIR/build.gradle.kts" ]; then
+    KEYSTORE="$KILN_ROOT/build/kiln-debug.keystore"
+    mkdir -p "$KILN_ROOT/build"
+    [ -f "$KEYSTORE" ] || keytool -genkeypair -keystore "$KEYSTORE" -alias kiln -keyalg RSA -keysize 2048 \
+        -validity 10000 -storepass android -keypass android -dname "CN=kiln debug" >/dev/null 2>&1
+    variant=Release; [ ${#DEBUG[@]} -gt 0 ] && variant=Debug
+    lower="$(echo "$variant" | tr 'A-Z' 'a-z')"
+    export KILN_ROOT
+    for ((i = 0; i < ${#SIGN[@]}; i += 2)); do
+        case "${SIGN[i]}" in
+            --keystore) export KILN_KEYSTORE="$(realpath "${SIGN[i+1]}")" ;;
+            --key-alias) export KILN_KEY_ALIAS="${SIGN[i+1]}" ;;
+        esac
+    done
+    gradle() { (cd "$GRADLE_DIR" && ANDROID_HOME="${ANDROID_HOME:-$HOME/Android/Sdk}" ./gradlew -q "$@"); }
+    case "$CMD" in
+        build) gradle "assemble$variant"; exit 0 ;;
+        bundle)
+            gradle "bundle$variant"
+            out="${OUT:-$KILN_ROOT/build/apk/$APP.aab}"; mkdir -p "$(dirname "$out")"
+            cp "$GRADLE_DIR/build/outputs/bundle/$lower/"*.aab "$out"; echo "Bundle: $out"; exit 0 ;;
+        apk|run)
+            gradle "assemble$variant"
+            out="${OUT:-$KILN_ROOT/build/apk/$APP.apk}"; mkdir -p "$(dirname "$out")"
+            cp "$GRADLE_DIR/build/outputs/apk/$lower/"*.apk "$out"; echo "APK: $out"
+            [ "$CMD" = apk ] && exit 0
+            "$ADB" install -r "$out" >/dev/null
+            pkg="$(sed -n 's/.*applicationId = "\(.*\)".*/\1/p' "$GRADLE_DIR/build.gradle.kts" | head -1)"
+            "$ADB" shell am start -W -n "$pkg/dev.kiln.KilnActivity" | grep -E 'Status|TotalTime'
+            exit 0 ;;
+    esac
+fi
 
 if [ -z "$ABIS" ]; then
     if [ "$CMD" = run ]; then

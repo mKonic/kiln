@@ -18,6 +18,33 @@ the same process, and keeps saved state across process death.
 [Write your first app](first-app.md)). It writes the manifest from the app's
 `CMakeLists.txt`: permissions, icon, version, and any extra manifest elements.
 
+## Kotlin, Java and Maven dependencies
+
+An app that needs JVM code of its own, such as a Kotlin class or a library from Maven, is
+created with `--jvm`:
+
+```sh
+tools/kiln new notes --jvm
+```
+
+Besides `CMakeLists.txt` and `src/main.cpp`, it gets a Gradle build: `settings.gradle.kts`,
+`build.gradle.kts`, the Gradle wrapper, `src/main/AndroidManifest.xml` and
+`src/main/kotlin/.../App.kt`. `tools/kiln build|apk|bundle|run notes` then runs Gradle, and so
+can Android Studio or `./gradlew assembleRelease` in `apps/notes`.
+
+* The C++ is still built by kiln's CMake, with the app's `CMakeLists.txt`. Gradle builds
+  only the app's library.
+* kiln's Java host (`KilnActivity` and the platform code) is compiled with the app's own
+  sources.
+* Maven dependencies go in `dependencies { }` in `build.gradle.kts`.
+* The manifest is `src/main/AndroidManifest.xml`. Permissions, services and other elements
+  go there instead of `kiln_add_app`'s `PERMISSIONS` and `*_XML` options.
+* Release builds are signed with the key that `KILN_KEYSTORE`, `KILN_KEY_ALIAS`,
+  `KILN_KEYSTORE_PASSWORD` and `KILN_KEY_PASSWORD` name, else with kiln's debug key.
+* kiln needs CMake 3.24 or newer, which is newer than the SDK's 3.22. The build uses the
+  `cmake` on `PATH`, unless `KILN_CMAKE_VERSION` names an installed version. `KILN_NDK`
+  sets the NDK if it isn't in `/opt/android-ndk`.
+
 ## Build with Gradle
 
 For an existing Gradle project, use kiln as an Android library (AAR).
