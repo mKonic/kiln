@@ -689,6 +689,10 @@ namespace kpp {
     template<typename P> kiln_measure_result* measure_layout(kiln_measure_scope* s, int32_t w, int32_t h, P&& place) {
         return kiln_measure_scope_layout(s, w, h, fn<kiln_fn_place>(std::forward<P>(place)));
     }
+    // The activity's launch intent (NULL off Android) and OnNewIntent; see kiln_activity_intent.
+    inline const kiln_intent* activity_intent() { return kiln_activity_intent(); }
+    template<typename F> void on_new_intent(F&& f, Key key = {}) { kiln_on_new_intent(key, fn<kiln_fn_intent>(std::forward<F>(f))); }
+
     // App resources by name (kiln_res_c.h's R_string_app_name...); see kiln_string_resource.
     namespace detail {
         inline kiln_format_arg FormatArgOf(const char* s) { return { KILN_FORMAT_STRING, s, 0, 0 }; }

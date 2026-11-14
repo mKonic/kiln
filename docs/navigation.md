@@ -44,6 +44,45 @@ A destination can declare deep links, by URI pattern, action or MIME type.
 `nav.Navigate(uri)` and `nav.Navigate(request)` open the destination that matches, with
 the arguments taken from the URI.
 
+Links from outside the app arrive as intents. Declare which ones the app opens in its
+activity, then hand new intents to the controller:
+
+```cmake
+kiln_add_app(shop ...
+    ACTIVITY_XML android/activity.xml
+    ACTIVITY_ATTRIBUTES "android:launchMode=\"singleTop\""
+)
+```
+
+```xml
+<!-- android/activity.xml: elements inside the app's <activity> -->
+<intent-filter>
+    <action android:name="android.intent.action.VIEW" />
+    <category android:name="android.intent.category.DEFAULT" />
+    <category android:name="android.intent.category.BROWSABLE" />
+    <data android:scheme="https" android:host="example.com" android:pathPrefix="/items" />
+</intent-filter>
+```
+
+```cpp
+void App() {
+    auto& nav = RememberNavController();
+    OnNewIntent([&nav](const Intent& intent) { nav.HandleDeepLink(intent); });
+    NavHost(nav, "home", [](NavGraphBuilder& b) {
+        b.Composable("home", [](const NavBackStackEntry&) { Text("Home"); });
+        b.Composable("item/{id}", [](const NavBackStackEntry& e) { Text("Item " + std::to_string(e.GetInt("id").value_or(0))); },
+                     { { NavArgumentOf("id", NavType::Int) }, { NavDeepLink("https://example.com/items/{id}") } });
+    });
+}
+```
+
+* The intent that started the app is handled when the graph is first set, so a link opens
+  its screen with the start destination below it. Saved state remembers that it was
+  handled.
+* `OnNewIntent` (in `kiln/foundation/activity/NewIntent.h`) receives links that arrive
+  while the app runs (`singleTop` keeps one activity). `ActivityIntent()` returns the
+  launch intent, for shares and other intents without a navigation graph.
+
 ## Navigation 3
 
 With Navigation 3 the back stack is plain state: a list of keys you push and pop

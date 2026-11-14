@@ -8,6 +8,7 @@
 #include "kiln/foundation/Draw.h"
 #include "kiln/foundation/Focus.h"
 #include "kiln/foundation/PainterResource.h"
+#include "kiln/foundation/activity/NewIntent.h"
 #include "kiln/ui/AppResources.h"
 #include "kiln/ui/PlatformServices.h"
 #include "kiln/foundation/Animate.h"
@@ -682,6 +683,49 @@ KILN_API kiln_window_insets* kiln_window_insets_only(const kiln_window_insets* i
 }
 KILN_API kiln_window_insets* kiln_window_insets_retain(kiln_window_insets* i) { return Retain(i); }
 KILN_API void kiln_window_insets_release(kiln_window_insets* i) { Release(i); }
+
+namespace {
+    const kiln_intent* TransientIntent(ui::Intent i) {
+        auto* h = NewTransient<kiln_intent>();
+        h->i = std::move(i);
+        return h;
+    }
+    const char* OptStr(const std::optional<std::string>& s) { return s ? ReturnString(*s) : nullptr; }
+}
+KILN_API const kiln_intent* kiln_activity_intent(void) {
+    TRY {
+        auto i = ui::ActivityIntent();
+        return i ? TransientIntent(std::move(*i)) : nullptr;
+    } CATCH(nullptr)
+}
+KILN_API const char* kiln_intent_action(const kiln_intent* i) { return i && !i->i.action.empty() ? ReturnString(i->i.action) : nullptr; }
+KILN_API const char* kiln_intent_data(const kiln_intent* i) { return i ? OptStr(i->i.data) : nullptr; }
+KILN_API const char* kiln_intent_type(const kiln_intent* i) { return i ? OptStr(i->i.type) : nullptr; }
+KILN_API int32_t kiln_intent_flags(const kiln_intent* i) { return i ? i->i.flags : 0; }
+KILN_API const char* kiln_intent_extra_string(const kiln_intent* i, const char* name) {
+    if (!i || !name) return nullptr;
+    const ui::BundleValue* v = i->i.extras.Get(name);
+    if (!v) return nullptr;
+    if (const auto* s = std::get_if<std::string>(v)) return ReturnString(*s);
+    if (const auto* u = std::get_if<ui::BundleUri>(v)) return ReturnString(u->uri);
+    return nullptr;
+}
+KILN_API size_t kiln_intent_clip_uri_count(const kiln_intent* i) { return i ? i->i.clipUris.size() : 0; }
+KILN_API const char* kiln_intent_clip_uri(const kiln_intent* i, size_t index) {
+    return i && index < i->i.clipUris.size() ? ReturnString(i->i.clipUris[index]) : nullptr;
+}
+KILN_API void kiln_on_new_intent(kiln_key key, kiln_fn_intent f) {
+    TRY {
+        auto own = Own(f);
+        InGroup(key, [&] {
+            fd::OnNewIntent([own](const ui::Intent& intent) {
+                if (!own) return;
+                CallbackScope cs;
+                own->f.call(own->f.user, TransientIntent(intent));
+            });
+        });
+    } CATCH_VOID
+}
 
 namespace {
     std::vector<text::FormatArg> ToFormatArgs(const kiln_format_arg* args, size_t count) {

@@ -116,6 +116,9 @@ kiln_add_app(counter
 * `PERMISSIONS android.permission.CAMERA ...` declares permissions.
 * `APPLICATION_XML file` and `MANIFEST_XML file` add elements to the manifest's
   `<application>` and `<manifest>`, for services, receivers or queries.
+* `ACTIVITY_XML file` adds elements to the app's `<activity>`, such as the intent filters
+  of [deep links](navigation.md#deep-links), and `ACTIVITY_ATTRIBUTES` sets its attributes
+  (`android:launchMode="singleTop"`).
 * Add source files to `SOURCES` as the app grows.
 * `LIBS` takes any CMake target. The file is ordinary CMake, so a library the app needs can
   be added above `kiln_add_app` with `add_subdirectory` or `FetchContent`, and is then built

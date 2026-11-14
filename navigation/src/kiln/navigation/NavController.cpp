@@ -642,8 +642,13 @@ namespace kiln::navigation {
         }
         for (const auto& [name, navigator] : m_Provider.Navigators())
             if (!navigator->IsAttached()) navigator->OnAttach(*StateFor(navigator.get()));
-        if (m_Graph && m_BackQueue.empty()) NavigateTo(m_Graph.get(), startDestinationArgs, std::nullopt);
-        else DispatchOnDestinationChanged();
+        // checkDeepLinkHandled: the activity's launch intent, once.
+        const auto launch = ui::ActivityIntent();
+        const bool deepLinked = !m_DeepLinkHandled && launch && m_Graph && HandleDeepLink(*launch);
+        if (!deepLinked) {
+            if (m_Graph && m_BackQueue.empty()) NavigateTo(m_Graph.get(), startDestinationArgs, std::nullopt);
+            else DispatchOnDestinationChanged();
+        }
     }
 
     NavDestination* NavController::FindDestination(int destinationId, NavDestination* matchingDest) const {
@@ -698,6 +703,96 @@ namespace kiln::navigation {
         std::optional<NavArgs> args = node->AddInDefaultArgs(match->matchingArgs);
         if (!args) args = NavArgs{};
         NavigateTo(node, args, navOptions);
+    }
+
+    namespace {
+        // NavDestination.buildDeepLinkIds: the ids from the root graph down to `d`, leaving out
+        // destinations that are their graph's start destination.
+        std::vector<int> BuildDeepLinkIds(NavDestination* d) {
+            std::deque<int> ids;
+            for (NavDestination* cur = d; cur; cur = cur->Parent()) {
+                NavGraph* parent = cur->Parent();
+                if (!parent || parent->StartDestinationId() != cur->Id()) ids.push_front(cur->Id());
+            }
+            return { ids.begin(), ids.end() };
+        }
+        constexpr int kFlagActivityNewTask = 0x10000000;
+    }
+
+    bool NavController::HandleDeepLink(const NavDeepLinkRequest& request) {
+        if (!m_Graph) return false;
+        NavGraph& top = TopGraph();
+        const auto match = top.MatchDeepLinkComprehensive(request, true, true, &top);
+        if (!match) return false;
+        NavDestination* destination = match->destination;
+        const NavArgs args = destination->AddInDefaultArgs(match->matchingArgs).value_or(NavArgs{});
+        return HandleDeepLinkIds(BuildDeepLinkIds(destination), args, true);
+    }
+
+    bool NavController::HandleDeepLink(const ui::Intent& intent) {
+        if (!m_Graph) return false;
+        NavDeepLinkRequest request;
+        if (intent.data && !intent.data->empty()) request.uri = NavUri(*intent.data);
+        if (!intent.action.empty()) request.action = intent.action;
+        if (intent.type && !intent.type->empty()) request.mimeType = *intent.type;
+        if (!request.uri && !request.action && !request.mimeType) return false;
+        NavGraph& top = TopGraph();
+        const auto match = top.MatchDeepLinkComprehensive(request, true, true, &top);
+        if (!match) return false;
+        NavDestination* destination = match->destination;
+        const NavArgs args = destination->AddInDefaultArgs(match->matchingArgs).value_or(NavArgs{});
+        // Android restarts the task for NEW_TASK without CLEAR_TASK (TaskStackBuilder); in one
+        // activity the same stack is built in place.
+        return HandleDeepLinkIds(BuildDeepLinkIds(destination), args, (intent.flags & kFlagActivityNewTask) != 0);
+    }
+
+    bool NavController::HandleDeepLinkIds(const std::vector<int>& deepLink, const NavArgs& args, bool newTask) {
+        for (int id : deepLink)
+            if (!FindDestination(id)) return false;   // findInvalidDestinationDisplayNameInDeepLink
+        if (newTask) {
+            // A cleared task from the root.
+            if (!m_BackQueue.empty()) PopBackStackInternal(m_Graph->Id(), true, false);
+            for (int id : deepLink) {
+                NavDestination* node = FindDestination(id);
+                if (!node) throw std::logic_error("Deep Linking failed: destination " + std::to_string(id) + " cannot be found from the current destination");
+                NavOptions options;
+                // A sibling graph keeps its own saved state (deepLinkSaveState).
+                NavDestination* current = CurrentDestination();
+                const auto* graph = dynamic_cast<NavGraph*>(node);
+                bool changingGraphs = graph != nullptr;
+                if (graph && current)
+                    for (NavDestination* h : node->Hierarchy())
+                        if (h == current->Parent()) { changingGraphs = false; break; }
+                if (changingGraphs) {
+                    if (NavDestination* start = m_Graph->FindStartDestination()) {
+                        options.popUpToId = start->Id();
+                        options.popUpToSaveState = true;
+                    }
+                }
+                NavigateTo(node, args, options);
+            }
+            m_DeepLinkHandled = true;
+            return true;
+        }
+        // Another app's task: only the final destination, above the root graph.
+        NavGraph* graph = m_Graph.get();
+        for (std::size_t i = 0; i < deepLink.size(); ++i) {
+            NavDestination* node = i == 0 ? m_Graph.get() : graph->FindNode(deepLink[i]);
+            if (!node) throw std::logic_error("Deep Linking failed: destination " + std::to_string(deepLink[i]) + " cannot be found in the graph");
+            if (i != deepLink.size() - 1) {
+                if (auto* g = dynamic_cast<NavGraph*>(node)) {
+                    graph = g;
+                    while (auto* next = dynamic_cast<NavGraph*>(graph->FindNode(graph->StartDestinationId()))) graph = next;
+                }
+            } else {
+                NavOptions options;
+                options.popUpToId = m_Graph->Id();
+                options.popUpToInclusive = true;
+                NavigateTo(node, args, options);
+            }
+        }
+        m_DeepLinkHandled = true;
+        return true;
     }
 
     void NavController::NavigateTo(NavDestination* node, const std::optional<NavArgs>& args, const std::optional<NavOptions>& navOptions) {
@@ -987,12 +1082,13 @@ namespace kiln::navigation {
             for (const auto& s : stack) list.push_back(SaveEntryState(s));
             states.push_back(list);
         }
-        return rt::SavedValue::List{ backStack, mapIds, mapValues, stateIds, states };
+        return rt::SavedValue::List{ backStack, mapIds, mapValues, stateIds, states, m_DeepLinkHandled };
     }
 
     void NavController::RestoreState(const rt::SavedValue& state) {
         const auto* l = std::get_if<rt::SavedValue::List>(&state.v);
-        if (!l || l->size() != 5) return;
+        if (!l || l->size() < 5) return;
+        if (l->size() > 5) if (const auto* b = std::get_if<bool>(&(*l)[5].v)) m_DeepLinkHandled = *b;
         auto list = [&](std::size_t i) -> const rt::SavedValue::List& { static const rt::SavedValue::List empty; auto* p = std::get_if<rt::SavedValue::List>(&(*l)[i].v); return p ? *p : empty; };
         if (!list(0).empty()) {
             std::vector<NavBackStackEntryState> stack;

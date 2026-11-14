@@ -82,6 +82,7 @@ __kiln_callback!(sys::kiln_fn_draw, (d: *mut sys::kiln_draw_scope) -> ());
 __kiln_callback!(sys::kiln_fn_place, (s: *mut sys::kiln_placement_scope) -> ());
 __kiln_callback!(sys::kiln_fn_measure, (s: *mut sys::kiln_measure_scope, m: *const *mut sys::kiln_measurable, n: usize, c: sys::kiln_int_constraints) -> *mut sys::kiln_measure_result);
 __kiln_callback!(sys::kiln_fn_layout_modifier, (s: *mut sys::kiln_measure_scope, m: *mut sys::kiln_measurable, c: sys::kiln_int_constraints) -> *mut sys::kiln_measure_result);
+__kiln_callback!(sys::kiln_fn_intent, (i: *const sys::kiln_intent) -> ());
 __kiln_callback!(sys::kiln_fn_lazy_grid, (s: *mut sys::kiln_lazy_grid_scope) -> ());
 __kiln_callback!(sys::kiln_fn_grid_span, (i: i32, max_current_line_span: i32, max_line_span: i32) -> i32);
 __kiln_callback!(sys::kiln_fn_count, () -> i32);
@@ -598,6 +599,34 @@ pub fn layout(modifier: Modifier, content: impl FnMut() + 'static,
         measure(&MeasureScope(s), &children, k).0
     };
     unsafe { sys::kiln_layout(here(), modifier.0, content.into_callback(), c.into_callback()) }
+}
+
+/// An intent (a deep link, a share): only valid inside the call or callback that gave it.
+pub struct Intent(*const sys::kiln_intent);
+fn opt_c(p: *const std::ffi::c_char) -> Option<String> { if p.is_null() { None } else { Some(crate::from_c(p)) } }
+impl Intent {
+    pub fn action(&self) -> Option<String> { opt_c(unsafe { sys::kiln_intent_action(self.0) }) }
+    pub fn data(&self) -> Option<String> { opt_c(unsafe { sys::kiln_intent_data(self.0) }) }
+    pub fn mime_type(&self) -> Option<String> { opt_c(unsafe { sys::kiln_intent_type(self.0) }) }
+    pub fn flags(&self) -> i32 { unsafe { sys::kiln_intent_flags(self.0) } }
+    pub fn extra_string(&self, name: &str) -> Option<String> {
+        let n = CStrBuf::new(name);
+        opt_c(unsafe { sys::kiln_intent_extra_string(self.0, n.ptr()) })
+    }
+    pub fn clip_uris(&self) -> Vec<String> {
+        (0..unsafe { sys::kiln_intent_clip_uri_count(self.0) }).filter_map(|i| opt_c(unsafe { sys::kiln_intent_clip_uri(self.0, i) })).collect()
+    }
+}
+/// The activity's launch intent, read now (None off Android).
+pub fn with_activity_intent<R>(f: impl FnOnce(&Intent) -> R) -> Option<R> {
+    let p = unsafe { sys::kiln_activity_intent() };
+    if p.is_null() { None } else { Some(f(&Intent(p))) }
+}
+/// OnNewIntent: `f` gets each intent the activity receives while this is composed.
+#[track_caller]
+pub fn on_new_intent(mut f: impl FnMut(&Intent) + 'static) {
+    let c = move |i: *const sys::kiln_intent| f(&Intent(i));
+    unsafe { sys::kiln_on_new_intent(here(), c.into_callback()) }
 }
 
 /// A format argument for resource strings.

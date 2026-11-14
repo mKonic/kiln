@@ -1,4 +1,5 @@
 #include "Check.h"
+#include "kiln/foundation/activity/NewIntent.h"
 #include <kiln/Function.h>
 
 #include "kiln/foundation/Compose.h"
@@ -32,6 +33,78 @@ namespace {
         b.Composable("detail/{id}", [](const NavBackStackEntry&) {}, { { NavArgumentOf("id", NavType::Int) } });
         b.Composable("profile?name={name}", [](const NavBackStackEntry&) {}, { { NavArgumentOf("name", NavType::String, false, NavValue(std::string("me"))) } });
     }
+}
+
+namespace {
+    void DeepLinkScreens(NavGraphBuilder& b) {
+        b.Composable("home", [](const NavBackStackEntry&) {});
+        b.Composable("item/{id}", [](const NavBackStackEntry&) {},
+                     { { NavArgumentOf("id", NavType::Int) }, { NavDeepLink("https://example.com/items/{id}") } });
+    }
+}
+
+// NavController.handleDeepLink (NavControllerTest's deep link cases): a matching request or
+// intent enters the destination as a new task; the launch intent is handled once, when the
+// graph is set.
+TEST(NavControllerHandlesDeepLinksAndLaunchIntents) {
+    auto c = Controller(DeepLinkScreens, "home");
+    CHECK(c->HandleDeepLink(NavDeepLinkRequest::FromUri(NavUri("https://example.com/items/7"))));
+    CHECK((Routes(*c) == std::vector<std::string>{ "home", "item/{id}" }));
+    CHECK(c->CurrentBackStackEntry()->GetInt("id") == std::optional<std::int32_t>(7));
+    CHECK(!c->HandleDeepLink(NavDeepLinkRequest::FromUri(NavUri("https://example.com/other"))));
+
+    // An intent from another app's task (no NEW_TASK): the destination alone.
+    ui::Intent view;
+    view.action = "android.intent.action.VIEW";
+    view.data = "https://example.com/items/9";
+    CHECK(c->HandleDeepLink(view));
+    CHECK((Routes(*c) == std::vector<std::string>{ "item/{id}" }));
+    // NEW_TASK: the whole stack from the start destination.
+    view.flags = 0x10000000;
+    view.data = "https://example.com/items/3";
+    CHECK(c->HandleDeepLink(view));
+    CHECK((Routes(*c) == std::vector<std::string>{ "home", "item/{id}" }));
+    CHECK(c->CurrentBackStackEntry()->GetInt("id") == std::optional<std::int32_t>(3));
+
+    // The activity's launch intent: handled when the graph is set, once.
+    view.data = "https://example.com/items/5";
+    ui::SetActivityIntent(view);
+    auto launched = Controller(DeepLinkScreens, "home");
+    CHECK((Routes(*launched) == std::vector<std::string>{ "home", "item/{id}" }));
+    CHECK(launched->CurrentBackStackEntry()->GetInt("id") == std::optional<std::int32_t>(5));
+    // Restored with its saved state, the controller does not handle it again.
+    const rt::SavedValue saved = launched->SaveState();
+    auto restored = std::make_unique<NavHostController>();
+    restored->SetHostLifecycleState(LifecycleState::Resumed);
+    restored->RestoreState(saved);
+    view.data = "https://example.com/items/8";   // were it handled again, the item would be 8
+    ui::SetActivityIntent(view);
+    restored->SetGraph(restored->CreateGraph("home", std::nullopt, DeepLinkScreens));
+    CHECK((Routes(*restored) == std::vector<std::string>{ "home", "item/{id}" }));
+    CHECK(restored->CurrentBackStackEntry()->GetInt("id") == std::optional<std::int32_t>(5));
+    ui::SetActivityIntent(std::nullopt);
+}
+
+TEST(OnNewIntentListenersGetIntentsWhileComposed) {
+    std::vector<std::string> got;
+    rt::State<bool> show(true);
+    {
+        ui::Owner owner;
+        rt::Composition composition{ owner.Root(), rt::Dispatcher::Main() };
+        composition.SetContent([&] {
+            if (show.Get()) foundation::OnNewIntent([&](const ui::Intent& i) { got.push_back(i.data.value_or("")); });
+        });
+        rt::Composition::RecomposeAll();
+        ui::Intent i;
+        i.data = "kiln://one";
+        ui::DispatchNewIntent(i);
+        show.Set(false);
+        rt::Composition::RecomposeAll();
+        i.data = "kiln://two";
+        ui::DispatchNewIntent(i);
+        composition.SetContent([] {});
+    }
+    CHECK((got == std::vector<std::string>{ "kiln://one" }));
 }
 
 TEST(RoutesMatchWithTypedArguments) {

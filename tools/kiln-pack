@@ -7,7 +7,8 @@
 # --debug: a debuggable APK that answers Volition (content://<package>.volition), so the
 # volition CLI and MCP tools drive it by name.
 # Also: --permission name (repeatable), --icon file.png (the launcher icon, 192 px), --res dir
-# (the app's Android res/ folder),
+# (the app's Android res/ folder), --activity-xml file (elements inside the app's <activity>, such
+# as intent filters), --activity-attributes 'android:launchMode="singleTop"',
 # --version-code n, --version-name text, --manifest-xml file / --application-xml file (elements
 # added to <manifest> / <application>), --keystore file --key-alias name (sign with your key:
 # passwords from KILN_KEYSTORE_PASSWORD and KILN_KEY_PASSWORD; default: kiln's debug key).
@@ -17,7 +18,7 @@
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/android-env.sh"
 PACKAGE=""; LABEL="kiln app"; LIBNAME=""; OUT=""; LIBS=(); ASSETS=""; DEBUG=0
-PERMISSIONS=(); ICON=""; VERSION_CODE=1; VERSION_NAME="1.0"; MANIFEST_XML=""; APPLICATION_XML=""; RES=""; KEYSTORE_ARG=""; KEY_ALIAS=""
+PERMISSIONS=(); ICON=""; VERSION_CODE=1; VERSION_NAME="1.0"; MANIFEST_XML=""; APPLICATION_XML=""; RES=""; ACTIVITY_XML=""; ACTIVITY_ATTRIBUTES=""; KEYSTORE_ARG=""; KEY_ALIAS=""
 while [ $# -gt 0 ]; do
     case "$1" in
         --package) PACKAGE="$2"; shift 2 ;;
@@ -34,6 +35,8 @@ while [ $# -gt 0 ]; do
         --manifest-xml) MANIFEST_XML="$2"; shift 2 ;;
         --application-xml) APPLICATION_XML="$2"; shift 2 ;;
         --res) RES="$2"; shift 2 ;;
+        --activity-xml) ACTIVITY_XML="$2"; shift 2 ;;
+        --activity-attributes) ACTIVITY_ATTRIBUTES="$2"; shift 2 ;;
         --keystore) KEYSTORE_ARG="$2"; shift 2 ;;
         --key-alias) KEY_ALIAS="$2"; shift 2 ;;
         *) echo "kiln-pack: unknown argument $1" >&2; exit 2 ;;
@@ -66,6 +69,7 @@ PERMISSION_XML=""
 for p in "${PERMISSIONS[@]}"; do PERMISSION_XML+="    <uses-permission android:name=\"$p\" />"$'\n'; done
 EXTRA_MANIFEST=""; [ -n "$MANIFEST_XML" ] && EXTRA_MANIFEST="$(cat "$MANIFEST_XML")"
 EXTRA_APPLICATION=""; [ -n "$APPLICATION_XML" ] && EXTRA_APPLICATION="$(cat "$APPLICATION_XML")"
+EXTRA_ACTIVITY=""; [ -n "$ACTIVITY_XML" ] && EXTRA_ACTIVITY="$(cat "$ACTIVITY_XML")"
 ICON_ATTR=""
 RES_ARGS=()
 # The app's res/ (strings, plurals, drawables...) and the icon, compiled together.
@@ -105,13 +109,14 @@ $PERMISSION_XML$EXTRA_MANIFEST
                  android:enableOnBackInvokedCallback="true" $DEBUG_ATTR
                  android:theme="@android:style/Theme.DeviceDefault.NoActionBar">
         <activity android:name="dev.kiln.KilnActivity" android:exported="true"
-                  android:windowSoftInputMode="adjustResize"
+                  android:windowSoftInputMode="adjustResize" $ACTIVITY_ATTRIBUTES
                   android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|uiMode|density|fontScale|fontWeightAdjustment|keyboard|keyboardHidden|navigation|locale|layoutDirection|colorMode|touchscreen|grammaticalGender">
             <meta-data android:name="dev.kiln.lib_name" android:value="$LIBNAME" />
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+$EXTRA_ACTIVITY
         </activity>
         $DEBUG_PROVIDER
 $EXTRA_APPLICATION

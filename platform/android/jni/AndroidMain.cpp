@@ -3,6 +3,7 @@
 #include <kiln/Function.h>
 #include "AndroidDates.h"
 #include "AndroidResources.h"
+#include "kiln/ui/ActivityIntent.h"
 
 namespace kiln::android { void InstallImageDecoder(); void InstallAssetReader(JNIEnv* env, jobject assets); }
 
@@ -2738,6 +2739,14 @@ namespace {
         return i;
     }
 
+    void SetActivityIntentFromJava(JNIEnv* env, jclass, jobjectArray intent) {
+        kiln::ui::SetActivityIntent(IntentFromJava(env, intent));
+    }
+    void NewIntentFromJava(JNIEnv* env, jclass, jobjectArray intent) {
+        if (auto i = IntentFromJava(env, intent)) kiln::ui::DispatchNewIntent(*i);
+        if (g_Host && g_Host->app) g_Host->app->RequestFrame();
+    }
+
     void ActivityResultFromJava(JNIEnv* env, jclass, jstring key, jint resultCode, jobjectArray data) {
         if (!g_Host) return;
         const char* c = env->GetStringUTFChars(key, nullptr);
@@ -3434,6 +3443,8 @@ extern "C" JNIEXPORT jint kiln_jni_onload(JavaVM* vm) {
         { "scrollCaptureCancel", "(I)V", reinterpret_cast<void*>(&ScrollCaptureCancel) },
         { "scrollCaptureEnd", "(I)V", reinterpret_cast<void*>(&ScrollCaptureEnd) },
         { "activityResult", "(Ljava/lang/String;I[Ljava/lang/Object;)V", reinterpret_cast<void*>(&ActivityResultFromJava) },
+        { "setActivityIntent", "([Ljava/lang/Object;)V", reinterpret_cast<void*>(&SetActivityIntentFromJava) },
+        { "newIntent", "([Ljava/lang/Object;)V", reinterpret_cast<void*>(&NewIntentFromJava) },
         { "dialogDismissRequest", "(I)V", reinterpret_cast<void*>(&DialogDismissRequest) },
         { "windowMovedOnScreen", "(I)V", reinterpret_cast<void*>(&WindowMovedOnScreen) },
         { "setPopupWindows", "(IZ)V", reinterpret_cast<void*>(&SetPopupWindows) },

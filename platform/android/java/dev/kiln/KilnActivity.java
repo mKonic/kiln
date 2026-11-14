@@ -38,9 +38,18 @@ public class KilnActivity extends Activity {
         KilnEdgeToEdge.enable(this, statusBarStyle, navigationBarStyle);
 
         activityResults.onRestoreInstanceState(savedInstanceState);
+        // The launch intent (deep links, shares): read when the content sets a navigation graph.
+        KilnNative.setActivityIntent(KilnActivityResults.fromIntent(getIntent()));
         byte[] saved = savedInstanceState != null ? savedInstanceState.getByteArray(SAVED_STATE_KEY) : null;
         view = new KilnView(this, saved);
         setContentView(view);
+    }
+
+    // ComponentActivity.addOnNewIntentListener: the content's OnNewIntent listeners.
+    @Override
+    protected void onNewIntent(android.content.Intent intent) {
+        super.onNewIntent(intent);
+        KilnNative.newIntent(KilnActivityResults.fromIntent(intent));
     }
 
     private String libraryName() {

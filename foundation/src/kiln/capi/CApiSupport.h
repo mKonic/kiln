@@ -36,6 +36,8 @@
 
 namespace kiln::foundation { struct InlineTextContent; }
 
+#include "kiln/ui/ActivityResult.h"
+
 struct kiln_modifier { kiln::ui::Modifier m; };
 
 // Refcounted handles.
@@ -55,6 +57,7 @@ struct kiln_scroll_state { kiln::foundation::ScrollState* state; std::shared_ptr
 struct kiln_lazy_list_state { kiln::foundation::LazyListState* state; std::shared_ptr<kiln::rt::CoroutineScope> scope; };
 struct kiln_lazy_grid_state { kiln::foundation::LazyGridState* state; std::shared_ptr<kiln::rt::CoroutineScope> scope; };
 struct kiln_layout_coordinates { kiln::ui::LayoutCoordinates c; };
+struct kiln_intent { kiln::ui::Intent i; };
 struct kiln_measure_result { kiln::ui::MeasureResult r; };
 struct kiln_text_layout_result { std::atomic<int> refs{ 1 }; kiln::text::TextLayoutResult r; };
 struct kiln_fling_behavior { kiln::foundation::FlingBehavior fling; };

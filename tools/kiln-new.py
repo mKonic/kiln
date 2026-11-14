@@ -19,6 +19,8 @@ kiln_add_app({name}
     # PERMISSIONS android.permission.CAMERA
     # APPLICATION_XML android/application.xml   (extra elements inside <application>)
     # MANIFEST_XML android/manifest.xml         (extra elements inside <manifest>)
+    # ACTIVITY_XML android/activity.xml         (inside the app's <activity>: deep-link and share intent filters)
+    # ACTIVITY_ATTRIBUTES "android:launchMode=\\"singleTop\\""
 )
 '''
 

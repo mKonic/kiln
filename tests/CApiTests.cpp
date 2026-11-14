@@ -8,6 +8,7 @@
 #include "kiln/foundation/Compose.h"
 #include "kiln/ui/InteropView.h"
 #include "kiln/material3/MaterialTheme.h"
+#include "kiln/ui/ActivityIntent.h"
 #include "kiln/ui/Semantics.h"
 #include "kiln/ui/Volition.h"
 
@@ -622,6 +623,39 @@ TEST(CApiLayoutModifierWrapsWhatItModifies) {
     const ui::LayoutNode* n = h.Find(h.owner.Root(), "padded");
     CHECK(n != nullptr);
     if (n) CHECK(n->Size().width == 36 && n->Size().height == 26);
+}
+
+TEST(CApiIntentsLaunchAndNew) {
+    ui::Intent share;
+    share.action = "android.intent.action.SEND";
+    share.type = "image/png";
+    share.extras.Put("android.intent.extra.STREAM", ui::BundleUri{ "content://media/1" });
+    share.extras.Put("android.intent.extra.TEXT", std::string("hello"));
+    share.clipUris = { "content://media/1" };
+    ui::SetActivityIntent(share);
+    static std::string action, type, stream, text, clip, gotData;
+    action = type = stream = text = clip = gotData = "";
+    {
+        Harness h;
+        h.Run([](void*) {
+            const kiln_intent* i = kiln_activity_intent();
+            if (i) {
+                action = kiln_intent_action(i);
+                type = kiln_intent_type(i);
+                stream = kiln_intent_extra_string(i, "android.intent.extra.STREAM");
+                text = kiln_intent_extra_string(i, "android.intent.extra.TEXT");
+                clip = kiln_intent_clip_uri_count(i) == 1 ? kiln_intent_clip_uri(i, 0) : "";
+            }
+            kiln_on_new_intent(KILN_HERE, kiln_fn_intent{ [](void*, const kiln_intent* n) { gotData = kiln_intent_data(n) ? kiln_intent_data(n) : ""; }, nullptr, nullptr });
+        });
+        ui::Intent view;
+        view.data = "https://example.com/items/1";
+        ui::DispatchNewIntent(view);
+    }
+    ui::SetActivityIntent(std::nullopt);
+    CHECK(action == "android.intent.action.SEND" && type == "image/png");
+    CHECK(stream == "content://media/1" && text == "hello" && clip == "content://media/1");
+    CHECK(gotData == "https://example.com/items/1");
 }
 
 TEST(CApiAndroidViewMakesUpdatesAndReleasesItsView) {

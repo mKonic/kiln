@@ -8,6 +8,7 @@
 #include "kiln/lifecycle/SavedStateHandle.h"
 #include <kiln/Function.h>
 #include "kiln/navigation/NavDestination.h"
+#include "kiln/ui/ActivityIntent.h"
 #include "kiln/runtime/Saveable.h"
 #include "kiln/runtime/State.h"
 
@@ -226,6 +227,14 @@ namespace kiln::navigation {
         // navigate(request / deepLink): the destination whose deep link best matches (in the whole
         // graph, from the current one out); none throws std::invalid_argument.
         void Navigate(const NavDeepLinkRequest& request, const std::optional<NavOptions>& navOptions = std::nullopt);
+        // handleDeepLink(request): the graph's matching deep link, entered as a new task (each
+        // graph on the way from the root, then the destination). False when nothing matches.
+        bool HandleDeepLink(const NavDeepLinkRequest& request);
+        // handleDeepLink(intent): the intent's data, action and type as a request. A
+        // FLAG_ACTIVITY_NEW_TASK intent builds the whole stack; another app's task gets the
+        // final destination alone. setGraph runs it for the launch intent (ui::ActivityIntent)
+        // once; call it for intents from OnNewIntent.
+        bool HandleDeepLink(const ui::Intent& intent);
         void Navigate(const NavUri& deepLink, const std::optional<NavOptions>& navOptions = std::nullopt) { Navigate(NavDeepLinkRequest::FromUri(deepLink), navOptions); }
         void Navigate(const std::string& route, const kiln::Function<void(NavOptionsBuilder&)>& builder) { Navigate(route, MakeNavOptions(builder)); }
         bool PopBackStack();
@@ -299,6 +308,8 @@ namespace kiln::navigation {
         NavDestination* FindDestination(const std::string& route) const;
         NavGraph& TopGraph() const;
         void NavigateTo(NavDestination* node, const std::optional<NavArgs>& args, const std::optional<NavOptions>& navOptions);
+        bool HandleDeepLinkIds(const std::vector<int>& deepLink, const NavArgs& args, bool newTask);
+        bool m_DeepLinkHandled = false;
         bool LaunchSingleTopInternal(NavDestination* node, const std::optional<NavArgs>& args);
         bool RestoreStateInternal(int id, const std::optional<NavArgs>& args, const std::optional<NavOptions>& navOptions);
         bool RestoreStateInternal(const std::string& route);

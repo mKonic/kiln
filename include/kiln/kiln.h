@@ -374,6 +374,23 @@ KILN_API kiln_image_vector* kiln_image_vector_from_paths(float default_width_dp,
 KILN_API kiln_image_vector* kiln_image_vector_retain(kiln_image_vector* vector);
 KILN_API void kiln_image_vector_release(kiln_image_vector* vector);
 
+/* Intents: the activity's launch intent (a deep link, a share) and the ones it receives while
+ * running. An intent is valid during the call or callback that gives it. Strings are NULL when
+ * absent. */
+typedef struct kiln_intent kiln_intent;
+typedef struct kiln_fn_intent { void (*call)(void* user, const kiln_intent* intent); void* user; void (*drop)(void* user); } kiln_fn_intent;
+KILN_API const kiln_intent* kiln_activity_intent(void);   /* NULL off Android */
+KILN_API const char* kiln_intent_action(const kiln_intent* intent);
+KILN_API const char* kiln_intent_data(const kiln_intent* intent);
+KILN_API const char* kiln_intent_type(const kiln_intent* intent);
+KILN_API int32_t kiln_intent_flags(const kiln_intent* intent);
+/* A string (or URI, such as EXTRA_STREAM) extra. */
+KILN_API const char* kiln_intent_extra_string(const kiln_intent* intent, const char* name);
+KILN_API size_t kiln_intent_clip_uri_count(const kiln_intent* intent);
+KILN_API const char* kiln_intent_clip_uri(const kiln_intent* intent, size_t index);
+/* OnNewIntent: on_new_intent gets each intent the activity receives while this is composed. */
+KILN_API void kiln_on_new_intent(kiln_key key, kiln_fn_intent on_new_intent);
+
 /* App resources (kiln_add_app RES: the app's Android res/ folder) by name: on Android the app's
  * Resources, on the desktop the tables built from the same folder. Read inside content they
  * follow the configuration (locale, night mode). Strings are valid until the next call on this

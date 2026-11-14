@@ -1,0 +1,27 @@
+#pragma once
+
+// The activity's intent (Activity.getIntent) and the intents it receives while running
+// (Activity.onNewIntent, ComponentActivity.addOnNewIntentListener): how a deep link, a share
+// or a notification tap reaches the app. NavController reads the launch intent when its graph
+// is set (as androidx's checkDeepLinkHandled); an app hands it new intents with OnNewIntent.
+
+#include "kiln/ui/ActivityResult.h"
+
+#include <kiln/Function.h>
+
+#include <optional>
+
+namespace kiln::ui {
+
+    // The intent that started the activity; nullopt off Android or before the host sets it.
+    // A new intent does not replace it (as Activity.getIntent, unless the app sets one).
+    std::optional<Intent> ActivityIntent();
+    void SetActivityIntent(std::optional<Intent> intent);
+
+    // onNewIntent listeners, called on the main thread in the order added.
+    int AddOnNewIntentListener(kiln::Function<void(const Intent&)> listener);
+    void RemoveOnNewIntentListener(int id);
+    // The host: an intent delivered to the running activity.
+    void DispatchNewIntent(const Intent& intent);
+
+}

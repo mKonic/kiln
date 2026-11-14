@@ -25,8 +25,14 @@ public final class KilnHost {
     private KilnHost() {}
 
     /** Call from onCreate; libraryName is the app's native library ("notes" for libnotes.so). */
+    /** For an activity hosting kiln itself: forward Activity.onNewIntent here. */
+    public static void onNewIntent(android.content.Intent intent) {
+        KilnNative.newIntent(KilnActivityResults.fromIntent(intent));
+    }
+
     public static KilnView create(Activity activity, String libraryName, Bundle savedInstanceState) {
         System.loadLibrary(libraryName);
+        KilnNative.setActivityIntent(KilnActivityResults.fromIntent(activity.getIntent()));
         byte[] saved = savedInstanceState != null ? savedInstanceState.getByteArray(SAVED_STATE_KEY) : null;
         final KilnView view = new KilnView(activity, saved);
         // The view may cover only part of the window: popups get windows of their own, so a menu

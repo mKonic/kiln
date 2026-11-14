@@ -128,6 +128,8 @@ v="$(meta "$first" version_name)"; [ -n "$v" ] && PACK+=(--version-name "$v")
 v="$(meta "$first" manifest_xml)"; [ -n "$v" ] && PACK+=(--manifest-xml "$v")
 v="$(meta "$first" application_xml)"; [ -n "$v" ] && PACK+=(--application-xml "$v")
 v="$(meta "$first" res)"; [ -n "$v" ] && PACK+=(--res "$v")
+v="$(meta "$first" activity_xml)"; [ -n "$v" ] && PACK+=(--activity-xml "$v")
+v="$(meta "$first" activity_attributes)"; [ -n "$v" ] && PACK+=(--activity-attributes "$v")
 IFS=, read -r -a perms <<< "$(meta "$first" permissions)"
 for p in "${perms[@]}"; do [ -n "$p" ] && PACK+=(--permission "$p"); done
 "$KILN_ROOT/tools/kiln-pack" --package "$PACKAGE" --label "$LABEL" --lib-name "$APP" "${LIB_ARGS[@]}" \
