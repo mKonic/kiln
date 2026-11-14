@@ -1,5 +1,7 @@
 #include "Check.h"
 
+#include "kiln/net/Http.h"
+
 #include "kiln/ui/AppDirectories.h"
 #include <unistd.h>
 #include <kiln/Function.h>
@@ -756,4 +758,65 @@ TEST(CApiDirectoriesAndPreferences) {
     }
     CHECK(::access((dir + "/f/datastore/capi.preferences").c_str(), F_OK) == 0);
     ui::SetAppDirectories({}, {}, {});
+}
+
+TEST(CApiHttpFetchCallsBackOnTheMainThread) {
+    struct Fake final : kiln::net::HttpEngine {
+        kiln::net::HttpResponse Execute(const kiln::net::HttpRequest& request, kiln::net::HttpCall&) override {
+            if (request.url == "fail") throw kiln::net::HttpError(kiln::net::HttpError::Kind::Connect, "refused");
+            kiln::net::HttpResponse r;
+            r.status = 201;
+            r.statusText = "Created";
+            r.url = request.url;
+            r.headers.Add("X-Seen", request.headers.Get("x-token").value_or("none"));
+            r.body = request.method + ":" + request.body;
+            return r;
+        }
+    };
+    auto real = kiln::net::GetHttpEngine();
+    kiln::net::SetHttpEngine(std::make_shared<Fake>());
+    static int status, calls, dropped;
+    static std::string body, header, error;
+    status = -1; calls = dropped = 0;
+    kiln_fn_http done{};
+    done.call = [](void*, const kiln_http_response* r) {
+        ++calls;
+        status = r->status;
+        body.assign(r->body, r->body_size);
+        const char* h = kiln_http_response_header(r, "x-seen");
+        header = h ? h : "";
+        error = r->error ? r->error : "";
+    };
+    done.drop = [](void*) { ++dropped; };
+    auto pump = [](int want) {
+        for (int i = 0; i < 2000 && (calls < want || dropped < want); ++i) {
+            kiln::rt::Dispatcher::Main().RunPending();
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+    };
+    const char* headers[] = { "X-Token", "abc" };
+    kiln_http_request request{};
+    request.size = sizeof request;
+    request.url = "x";
+    request.method = "POST";
+    request.headers = headers;
+    request.header_count = 1;
+    request.body = "data";
+    request.body_size = 4;
+    CHECK(kiln_http_fetch(&request, done) != 0);
+    pump(1);
+    CHECK(calls == 1 && dropped == 1 && status == 201 && body == "POST:data" && header == "abc" && error.empty());
+    request.url = "fail";
+    kiln_http_fetch(&request, done);
+    pump(2);
+    CHECK(calls == 2 && dropped == 2 && status == 0 && error == "refused");
+    // Cancelled before it ran: no callback, and the callback is dropped.
+    request.url = "x";
+    kiln_http_cancel(kiln_http_fetch(&request, done));
+    for (int i = 0; i < 50; ++i) {
+        kiln::rt::Dispatcher::Main().RunPending();
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    CHECK(calls == 2 && dropped == 3);
+    kiln::net::SetHttpEngine(real);
 }

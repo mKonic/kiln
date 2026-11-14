@@ -750,6 +750,55 @@ namespace kpp {
         kiln_preferences* m_P;
     };
 
+    // HTTP; see kiln_http_fetch. `done` runs on the main thread with the response (status 0 and
+    // an error when there was none).
+    struct HttpRequest {
+        std::string url;
+        std::string method = "GET";
+        std::vector<std::pair<std::string, std::string>> headers;
+        std::string body;
+        std::string body_file, response_file;
+        int connect_timeout_ms = 0, read_timeout_ms = 0;   // 0: 10 s; negative: no limit
+        bool follow_redirects = true;
+    };
+    struct HttpResponse {
+        int status = 0;
+        std::string status_text, url, body, error;
+        const kiln_http_response* raw = nullptr;   // during the callback
+        bool ok() const { return status >= 200 && status < 300; }
+        std::string header(const char* name) const { return raw ? detail::Str(kiln_http_response_header(raw, name)) : std::string(); }
+    };
+    template<typename F>
+    uint64_t http_fetch(const HttpRequest& request, F&& done) {
+        std::vector<const char*> headers;
+        for (const auto& [name, value] : request.headers) { headers.push_back(name.c_str()); headers.push_back(value.c_str()); }
+        kiln_http_request r{};
+        r.size = sizeof r;
+        r.url = request.url.c_str();
+        r.method = request.method.c_str();
+        r.headers = headers.data();
+        r.header_count = request.headers.size();
+        r.body = request.body.data();
+        r.body_size = request.body.size();
+        r.body_file = request.body_file.empty() ? nullptr : request.body_file.c_str();
+        r.response_file = request.response_file.empty() ? nullptr : request.response_file.c_str();
+        r.connect_timeout_ms = request.connect_timeout_ms;
+        r.read_timeout_ms = request.read_timeout_ms;
+        r.no_redirects = !request.follow_redirects;
+        return kiln_http_fetch(&r, fn<kiln_fn_http>([done = std::forward<F>(done)](const kiln_http_response* c) mutable {
+            HttpResponse out;
+            out.status = c->status;
+            out.status_text = detail::Nz(c->status_text);
+            out.url = detail::Nz(c->url);
+            out.body.assign(c->body ? c->body : "", c->body_size);
+            out.error = detail::Nz(c->error);
+            out.raw = c;
+            done(out);
+        }));
+    }
+    inline void http_cancel(uint64_t request) { kiln_http_cancel(request); }
+    inline bool network_connected(Key key = {}) { return kiln_network_connected(key); }
+
     inline std::vector<std::string> string_array_resource(const char* name) {
         std::vector<std::string> out;
         for (size_t i = 0, n = kiln_string_array_resource_size(name); i < n; ++i) out.push_back(detail::Str(kiln_string_array_resource(name, i)));

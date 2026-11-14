@@ -190,3 +190,76 @@ void Notes() {
   `Invalidations(tables)`.
 * `PagingData<T>::Map` and `Filter` change the items of a flow's data, and
   `PagingData<T>::From(vector)` presents a list that is already in memory.
+
+## HTTP
+
+`net::Fetch` runs a request in the background and gives the task its response. On Android it
+goes through `HttpURLConnection`, so it uses the system's TLS and certificates, proxies and
+the app's network security config; on the desktop it uses libcurl. The app declares the
+permission:
+
+```cmake
+kiln_add_app(shelf
+    SOURCES src/main.cpp
+    LIBS kiln_material3
+    PACKAGE com.example.shelf
+    LABEL "Shelf"
+    PERMISSIONS android.permission.INTERNET android.permission.ACCESS_NETWORK_STATE
+)
+```
+
+```cpp
+#include <kiln/net/Http.h>
+
+using namespace kiln;
+
+rt::Task<> LoadNotes(rt::State<std::string>& text) {
+    try {
+        net::HttpResponse r = co_await net::Fetch({ .url = "https://example.com/notes.json" });
+        text.Set(r.Ok() ? r.body : "The server answered " + std::to_string(r.status));
+    } catch (const net::HttpError& e) {
+        text.Set(e.what());   // no connection, a timeout, a certificate that is not trusted
+    }
+}
+
+rt::Task<bool> SaveNote(std::string json, std::string token) {
+    net::HttpResponse r = co_await net::Fetch({
+        .url = "https://example.com/notes",
+        .method = "POST",
+        .headers = { { "Content-Type", "application/json" }, { "Authorization", "Bearer " + token } },
+        .body = std::move(json),
+    });
+    co_return r.Ok();
+}
+
+rt::Task<> FetchCover(std::string file, rt::State<float>& progress) {
+    co_await net::Download("https://example.com/cover.jpg", file, [&progress](std::int64_t received, std::int64_t total) {
+        if (total > 0) progress.Set(float(received) / float(total));
+    });
+}
+```
+
+* Launch the task from a `LaunchedEffect` or a [scope](composables.md#effects). When it
+  is cancelled (its content leaves the screen), the connection is closed.
+* Any status is a response: check `Ok()` (200 to 299) or `status`. `HttpError` means there
+  was no response; its `kind` says why (`UnknownHost`, `Connect`, `Timeout`, `Tls`,
+  `Cleartext`, `Permission`, `TooManyRedirects`, `Io`).
+* `headers` are name and value pairs; `response.headers.Get("content-type")` compares names
+  without case. A body without a `Content-Type` is sent as a form;
+  `net::FormBody({ { "q", "tea" } })` encodes one.
+* `bodyFile` sends a file as the body, and `responseFile` (or `net::Download`) writes the
+  response to a file as it arrives, for anything large. `onProgress` reports the bytes
+  received on the task's thread.
+* `connectTimeoutMs` and `readTimeoutMs` default to 10 seconds; 0 waits without limit.
+  Up to 20 redirects are followed unless `followRedirects` is false.
+* Android refuses `http://` URLs unless the app allows them. Put a
+  [network security config](https://developer.android.com/privacy-and-security/security-config)
+  in `res/xml/` and name it with
+  `APPLICATION_ATTRIBUTES "android:networkSecurityConfig=\"@xml/network\""`.
+* `net::Connectivity()` is a state flow of the default network: `connected`, `validated`
+  (the system reached the internet through it), `metered` and `transport`. In content,
+  `rt::CollectAsState(net::Connectivity())`. It needs `ACCESS_NETWORK_STATE`; without the
+  permission it always reports a connected network.
+* `net::SetHttpEngine` replaces what performs requests, for tests.
+* From C, `kiln_http_fetch` takes a request and a callback that runs on the main thread;
+  kiln++ has `kpp::http_fetch` and Rust `kiln::http_fetch`.

@@ -23,7 +23,7 @@ The Android Emulator works too, with an x86_64 system image.
 * Python 3
 
 For the desktop window, also install the development packages for GLFW, HarfBuzz,
-FreeType, libpng, libjpeg and the Vulkan loader.
+FreeType, libpng, libjpeg, libcurl and the Vulkan loader.
 
 ## Get the source
 

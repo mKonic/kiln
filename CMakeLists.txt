@@ -28,6 +28,11 @@ target_include_directories(kiln_core PUBLIC include core/src render)
 target_link_libraries(kiln_core PUBLIC hearth PRIVATE clipper2 skia_shadow)
 target_compile_options(kiln_core PRIVATE -Wall -Wextra -Wno-missing-field-initializers)
 kiln_embed_shaders(kiln_core render/shaders)
+if(NOT ANDROID)
+    # net::Fetch on the desktop (Android goes through HttpURLConnection).
+    find_package(CURL REQUIRED)
+    target_link_libraries(kiln_core PRIVATE CURL::libcurl)
+endif()
 
 # Volition's commands (the debug endpoint): linked whole into debug apps and the tests only.
 file(GLOB_RECURSE KILN_VOLITION_SOURCES CONFIGURE_DEPENDS volition/src/*.cpp)
@@ -126,7 +131,7 @@ if(ANDROID)
     # Set here, read when the function runs: from another project it still finds kiln's map.
     set(KILN_APP_MAP ${CMAKE_CURRENT_SOURCE_DIR}/platform/android/app.map CACHE INTERNAL "")
     function(kiln_add_android_app name)
-        cmake_parse_arguments(APP "" "PACKAGE;LABEL;ASSETS;ICON;VERSION_CODE;VERSION_NAME;MANIFEST_XML;APPLICATION_XML;ACTIVITY_XML;ACTIVITY_ATTRIBUTES;RES"
+        cmake_parse_arguments(APP "" "PACKAGE;LABEL;ASSETS;ICON;VERSION_CODE;VERSION_NAME;MANIFEST_XML;APPLICATION_XML;ACTIVITY_XML;ACTIVITY_ATTRIBUTES;APPLICATION_ATTRIBUTES;RES"
                               "SOURCES;LIBS;WHOLE;PERMISSIONS" ${ARGN})
         if(NOT APP_PACKAGE)
             message(FATAL_ERROR "kiln_add_android_app(${name}): PACKAGE is required")
@@ -160,7 +165,7 @@ if(ANDROID)
             kiln_app_resources(${name}_debug ${APP_RES})
         endif()
         file(GENERATE OUTPUT ${CMAKE_BINARY_DIR}/apps/${name}
-             CONTENT "res=${APP_RES}\npackage=${APP_PACKAGE}\nlabel=${APP_LABEL}\nassets=${APP_ASSETS}\nicon=${APP_ICON}\nversion_code=${APP_VERSION_CODE}\nversion_name=${APP_VERSION_NAME}\npermissions=${permissions}\nmanifest_xml=${APP_MANIFEST_XML}\napplication_xml=${APP_APPLICATION_XML}\nactivity_xml=${APP_ACTIVITY_XML}\nactivity_attributes=${APP_ACTIVITY_ATTRIBUTES}\nlib=$<TARGET_FILE:${name}>\nlib_debug=$<TARGET_FILE:${name}_debug>\n")
+             CONTENT "res=${APP_RES}\npackage=${APP_PACKAGE}\nlabel=${APP_LABEL}\nassets=${APP_ASSETS}\nicon=${APP_ICON}\nversion_code=${APP_VERSION_CODE}\nversion_name=${APP_VERSION_NAME}\npermissions=${permissions}\nmanifest_xml=${APP_MANIFEST_XML}\napplication_xml=${APP_APPLICATION_XML}\nactivity_xml=${APP_ACTIVITY_XML}\nactivity_attributes=${APP_ACTIVITY_ATTRIBUTES}\napplication_attributes=${APP_APPLICATION_ATTRIBUTES}\nlib=$<TARGET_FILE:${name}>\nlib_debug=$<TARGET_FILE:${name}_debug>\n")
     endfunction()
     kiln_add_android_app(hello SOURCES samples/hello/main.cpp PACKAGE dev.kiln.hello LABEL "kiln hello")
     kiln_add_android_app(list SOURCES samples/list/main.cpp PACKAGE dev.kiln.list LABEL "kiln list")
@@ -218,18 +223,19 @@ endforeach()
 # kiln_add_app(name SOURCES src... [LIBS lib...] [WHOLE lib...] PACKAGE id [LABEL text] [ASSETS dir]
 #              [ICON png] [VERSION_CODE n] [VERSION_NAME text] [PERMISSIONS perm...]
 #              [MANIFEST_XML file] [APPLICATION_XML file] [ACTIVITY_XML file]
-#              [ACTIVITY_ATTRIBUTES "android:launchMode=\"singleTop\" ..."] [RES dir])
+#              [ACTIVITY_ATTRIBUTES "android:launchMode=\"singleTop\" ..."]
+#              [APPLICATION_ATTRIBUTES "android:networkSecurityConfig=\"@xml/network\" ..."] [RES dir])
 # An app on Android (kiln_add_android_app, packed by tools/kiln) or in a desktop window. Paths
 # are relative to the calling CMakeLists.txt. The XML files hold elements for the manifest's
 # <manifest>, <application> or the app's <activity> (intent filters for deep links and shares);
-# ACTIVITY_ATTRIBUTES go on that <activity>. RES is an Android res/ folder: its names in kiln_res.h (R::), its
+# ACTIVITY_ATTRIBUTES go on that <activity>, APPLICATION_ATTRIBUTES on <application>. RES is an Android res/ folder: its names in kiln_res.h (R::), its
 # values from Android's Resources on a device and from generated tables on the desktop.
 function(kiln_add_app name)
     if(ANDROID)
         kiln_add_android_app(${name} ${ARGN})
         return()
     endif()
-    cmake_parse_arguments(APP "" "PACKAGE;LABEL;ASSETS;ICON;VERSION_CODE;VERSION_NAME;MANIFEST_XML;APPLICATION_XML;ACTIVITY_XML;ACTIVITY_ATTRIBUTES;RES"
+    cmake_parse_arguments(APP "" "PACKAGE;LABEL;ASSETS;ICON;VERSION_CODE;VERSION_NAME;MANIFEST_XML;APPLICATION_XML;ACTIVITY_XML;ACTIVITY_ATTRIBUTES;APPLICATION_ATTRIBUTES;RES"
                           "SOURCES;LIBS;WHOLE;PERMISSIONS" ${ARGN})
     add_executable(${name} ${APP_SOURCES})
     if(APP_RES)

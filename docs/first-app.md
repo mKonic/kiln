@@ -119,6 +119,8 @@ kiln_add_app(counter
 * `ACTIVITY_XML file` adds elements to the app's `<activity>`, such as the intent filters
   of [deep links](navigation.md#deep-links), and `ACTIVITY_ATTRIBUTES` sets its attributes
   (`android:launchMode="singleTop"`).
+* `APPLICATION_ATTRIBUTES` sets attributes of `<application>`
+  (`android:networkSecurityConfig="@xml/network"`).
 * Add source files to `SOURCES` as the app grows.
 * `LIBS` takes any CMake target. The file is ordinary CMake, so a library the app needs can
   be added above `kiln_add_app` with `add_subdirectory` or `FetchContent`, and is then built

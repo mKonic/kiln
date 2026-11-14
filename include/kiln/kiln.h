@@ -437,6 +437,45 @@ KILN_API void kiln_preferences_set_str(kiln_preferences* p, const char* name, co
 KILN_API void kiln_preferences_remove(kiln_preferences* p, const char* name);
 KILN_API void kiln_preferences_clear(kiln_preferences* p);
 
+/* HTTP: a request on a background thread through the platform (HttpURLConnection on Android, so
+ * the system's TLS, proxies and network security config; libcurl on the desktop). `done` runs
+ * once on the main thread, unless the request was cancelled. An Android app declares
+ * android.permission.INTERNET. */
+typedef struct kiln_http_request {
+    size_t size;                    /* sizeof(kiln_http_request) */
+    const char* url;
+    const char* method;             /* NULL: GET */
+    const char* const* headers;     /* name, value, name, value, ... */
+    size_t header_count;            /* the number of pairs */
+    const void* body;               /* request body bytes, or */
+    size_t body_size;
+    const char* body_file;          /* a file to send instead */
+    const char* response_file;      /* write the response body to this file, not to `body` */
+    int32_t connect_timeout_ms;     /* 0: 10 s; negative: no limit */
+    int32_t read_timeout_ms;        /* 0: 10 s; negative: no limit */
+    bool no_redirects;
+} kiln_http_request;
+/* Valid during the callback. status 0: there was no response and `error` says why. */
+typedef struct kiln_http_response {
+    int32_t status;
+    const char* status_text;
+    const char* url;                /* the URL that answered, after redirects */
+    const char* body;               /* body_size bytes, followed by a 0 */
+    size_t body_size;
+    const char* error;              /* NULL when there is a response */
+    const void* headers_;
+} kiln_http_response;
+typedef struct kiln_fn_http { void (*call)(void* user, const kiln_http_response* response); void* user; void (*drop)(void* user); } kiln_fn_http;
+/* Starts the request; the result identifies it for kiln_http_cancel. */
+KILN_API uint64_t kiln_http_fetch(const kiln_http_request* request, kiln_fn_http done);
+/* Aborts a request still in progress: its callback is not called. */
+KILN_API void kiln_http_cancel(uint64_t request);
+/* A response header by name (case-insensitive), or NULL. Valid during the callback. */
+KILN_API const char* kiln_http_response_header(const kiln_http_response* response, const char* name);
+/* Whether the default network is connected (ConnectivityManager; true on the desktop and
+ * without android.permission.ACCESS_NETWORK_STATE). For content: recomposes on a change. */
+KILN_API bool kiln_network_connected(kiln_key key);
+
 /* App resources (kiln_add_app RES: the app's Android res/ folder) by name: on Android the app's
  * Resources, on the desktop the tables built from the same folder. Read inside content they
  * follow the configuration (locale, night mode). Strings are valid until the next call on this

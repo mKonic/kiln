@@ -72,6 +72,7 @@ pub fn __guard<R>(f: impl FnOnce() -> R) -> R { guard(f) }
 
 __kiln_callback!(sys::kiln_fn, () -> ());
 __kiln_callback!(sys::kiln_fn_bool, (v: bool) -> ());
+__kiln_callback!(sys::kiln_fn_http, (r: *const sys::kiln_http_response) -> ());
 __kiln_callback!(sys::kiln_fn_int, (v: i32) -> ());
 __kiln_callback!(sys::kiln_fn_float, (v: f32) -> ());
 __kiln_callback!(sys::kiln_fn_lazy, (s: *mut sys::kiln_lazy_scope) -> ());
@@ -632,6 +633,81 @@ pub fn no_backup_files_dir() -> String { crate::from_c(unsafe { sys::kiln_no_bac
 /// Where a database file goes (Context.getDatabasePath).
 pub fn database_path(name: &str) -> String { let n = CStrBuf::new(name); crate::from_c(unsafe { sys::kiln_database_path(n.ptr()) }) }
 
+/// An HTTP request for [`http_fetch`]. Timeouts of 0 mean 10 s; negative, no limit.
+#[derive(Clone, Default)]
+pub struct HttpRequest {
+    pub url: String,
+    /// Empty: GET.
+    pub method: String,
+    pub headers: Vec<(String, String)>,
+    pub body: Vec<u8>,
+    pub connect_timeout_ms: i32,
+    pub read_timeout_ms: i32,
+    pub no_redirects: bool,
+}
+/// What a request ended with: a response (any status), or `status` 0 and an `error`.
+#[derive(Clone, Default, Debug)]
+pub struct HttpResponse {
+    pub status: i32,
+    pub status_text: String,
+    pub url: String,
+    pub body: Vec<u8>,
+    pub headers: Vec<(String, String)>,
+    pub error: Option<String>,
+}
+impl HttpResponse {
+    pub fn ok(&self) -> bool { (200..300).contains(&self.status) }
+    pub fn text(&self) -> String { String::from_utf8_lossy(&self.body).into_owned() }
+    /// The first value of the header, names compared without case.
+    pub fn header(&self, name: &str) -> Option<&str> {
+        self.headers.iter().find(|(n, _)| n.eq_ignore_ascii_case(name)).map(|(_, v)| v.as_str())
+    }
+}
+/// Runs the request in the background through the platform (HttpURLConnection on Android,
+/// libcurl on the desktop); `done` runs once on the main thread. `wanted_headers` names the
+/// response headers to copy into the result. Returns an id for [`http_cancel`].
+pub fn http_fetch(request: &HttpRequest, wanted_headers: &[&str], mut done: impl FnMut(HttpResponse) + 'static) -> u64 {
+    let url = CStrBuf::new(&request.url);
+    let method = CStrBuf::new(if request.method.is_empty() { "GET" } else { &request.method });
+    let fields: Vec<CStrBuf> = request.headers.iter().flat_map(|(n, v)| [CStrBuf::new(n), CStrBuf::new(v)]).collect();
+    let pointers: Vec<*const std::ffi::c_char> = fields.iter().map(|f| f.ptr()).collect();
+    let wanted: Vec<String> = wanted_headers.iter().map(|s| s.to_string()).collect();
+    let mut r: sys::kiln_http_request = unsafe { std::mem::zeroed() };
+    r.size = std::mem::size_of::<sys::kiln_http_request>();
+    r.url = url.ptr();
+    r.method = method.ptr();
+    r.headers = pointers.as_ptr();
+    r.header_count = request.headers.len();
+    r.body = request.body.as_ptr() as *const std::ffi::c_void;
+    r.body_size = request.body.len();
+    r.connect_timeout_ms = request.connect_timeout_ms;
+    r.read_timeout_ms = request.read_timeout_ms;
+    r.no_redirects = request.no_redirects;
+    let callback = move |c: *const sys::kiln_http_response| {
+        let c = unsafe { &*c };
+        let mut out = HttpResponse {
+            status: c.status,
+            status_text: crate::from_c(c.status_text),
+            url: crate::from_c(c.url),
+            body: if c.body.is_null() { Vec::new() } else { unsafe { std::slice::from_raw_parts(c.body as *const u8, c.body_size) }.to_vec() },
+            headers: Vec::new(),
+            error: if c.error.is_null() { None } else { Some(crate::from_c(c.error)) },
+        };
+        for name in &wanted {
+            let n = CStrBuf::new(name);
+            let v = unsafe { sys::kiln_http_response_header(c, n.ptr()) };
+            if !v.is_null() { out.headers.push((name.clone(), crate::from_c(v))); }
+        }
+        done(out);
+    };
+    unsafe { sys::kiln_http_fetch(&r, IntoCallback::<sys::kiln_fn_http>::into_callback(callback)) }
+}
+/// Aborts a request still in progress; its callback is not called.
+pub fn http_cancel(request: u64) { unsafe { sys::kiln_http_cancel(request) } }
+/// Whether the default network is connected. For content: recomposes on a change.
+#[track_caller]
+pub fn network_connected() -> bool { unsafe { sys::kiln_network_connected(here()) } }
+
 /// Preferences (DataStore): typed key-value data kept in the app's files directory. The getters
 /// are for content and recompose it when the value changes; the setters write in the background.
 #[derive(Clone, Copy)]
@@ -921,6 +997,8 @@ pub mod volition {
                 }
             }).into_callback();
         }
+        // `answer` is assigned to keep the returned pointer's string alive, not to be read.
+        #[allow(unused_assignments)]
         if let Some(mut go) = adapter.go {
             let mut answer = CString::default();   // kiln copies it before the next call
             a.go = (move |n: *const c_char, arg: *const c_char| -> *const c_char {

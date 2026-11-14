@@ -21,6 +21,7 @@ kiln_add_app({name}
     # MANIFEST_XML android/manifest.xml         (extra elements inside <manifest>)
     # ACTIVITY_XML android/activity.xml         (inside the app's <activity>: deep-link and share intent filters)
     # ACTIVITY_ATTRIBUTES "android:launchMode=\\"singleTop\\""
+    # APPLICATION_ATTRIBUTES "android:networkSecurityConfig=\\"@xml/network\\""
 )
 '''
 

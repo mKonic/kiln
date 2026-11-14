@@ -10,6 +10,7 @@
 #include "kiln/foundation/PainterResource.h"
 #include "kiln/foundation/activity/NewIntent.h"
 #include "kiln/datastore/Preferences.h"
+#include "kiln/net/Http.h"
 #include "kiln/ui/AppDirectories.h"
 #include "kiln/ui/AppResources.h"
 #include "kiln/ui/ContentResolver.h"
@@ -2029,4 +2030,77 @@ KILN_API void kiln_volition_field_strings(kiln_volition_fields* f, const char* k
 }
 KILN_API void kiln_volition_line(kiln_volition_lines* l, const char* line) {
     if (l && l->lines && line) l->lines->push_back(line);
+}
+
+// --- HTTP -----------------------------------------------------------------------------------
+
+namespace {
+    std::map<std::uint64_t, kiln::rt::Job>& HttpJobs() {
+        static auto* jobs = new std::map<std::uint64_t, kiln::rt::Job>;
+        return *jobs;
+    }
+    kiln::rt::Task<> RunHttp(kiln::net::HttpRequest request, std::shared_ptr<kiln::capi::Owned<kiln_fn_http>> done, std::uint64_t id) {
+        kiln_http_response out{};
+        kiln::net::HttpResponse response;
+        std::string error;
+        try {
+            response = co_await kiln::net::Fetch(std::move(request));
+            out.status = response.status;
+            out.status_text = response.statusText.c_str();
+            out.url = response.url.c_str();
+            out.body = response.body.c_str();
+            out.body_size = response.body.size();
+            out.headers_ = &response.headers;
+        } catch (const std::exception& e) {
+            error = e.what();
+            if (error.empty()) error = "request failed";
+            out.status_text = out.url = out.body = "";
+            out.error = error.c_str();
+        }
+        if (done) {
+            kiln::capi::CallbackScope scope;
+            done->f.call(done->f.user, &out);
+        }
+        // Not from inside the job: its frame goes when the map entry does.
+        kiln::rt::Dispatcher::Main().Post([id] { HttpJobs().erase(id); });
+    }
+}
+KILN_API uint64_t kiln_http_fetch(const kiln_http_request* request, kiln_fn_http done) {
+    auto owned = kiln::capi::Own(done);
+    TRY {
+        if (!request || !request->url) return 0;
+        kiln::net::HttpRequest r;
+        r.url = request->url;
+        if (request->method) r.method = request->method;
+        for (size_t i = 0; request->headers && i < request->header_count; ++i) {
+            const char* name = request->headers[i * 2];
+            const char* value = request->headers[i * 2 + 1];
+            if (name && value) r.headers.Add(name, value);
+        }
+        if (request->body && request->body_size) r.body.assign(static_cast<const char*>(request->body), request->body_size);
+        if (request->body_file) r.bodyFile = request->body_file;
+        if (request->response_file) r.responseFile = request->response_file;
+        if (request->connect_timeout_ms) r.connectTimeoutMs = std::max(0, request->connect_timeout_ms);
+        if (request->read_timeout_ms) r.readTimeoutMs = std::max(0, request->read_timeout_ms);
+        r.followRedirects = !request->no_redirects;
+        static std::uint64_t next = 0;
+        const std::uint64_t id = ++next;
+        HttpJobs().emplace(id, kiln::rt::Launch(kiln::rt::Dispatcher::Main(), RunHttp(std::move(r), std::move(owned), id)));
+        return id;
+    } CATCH(0)
+}
+KILN_API void kiln_http_cancel(uint64_t request) {
+    TRY { HttpJobs().erase(request); } CATCH_VOID
+}
+KILN_API const char* kiln_http_response_header(const kiln_http_response* response, const char* name) {
+    TRY {
+        if (!response || !response->headers_ || !name) return nullptr;
+        auto v = static_cast<const kiln::net::Headers*>(response->headers_)->Get(name);
+        return v ? ReturnString(std::move(*v)) : nullptr;
+    } CATCH(nullptr)
+}
+KILN_API bool kiln_network_connected(kiln_key key) {
+    TRY {
+        return kiln::rt::CollectAsState(kiln::net::Connectivity(), ToKey(key)).Get().connected;
+    } CATCH(true)
 }
