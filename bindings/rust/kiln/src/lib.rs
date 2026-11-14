@@ -601,6 +601,28 @@ pub fn layout(modifier: Modifier, content: impl FnMut() + 'static,
     unsafe { sys::kiln_layout(here(), modifier.0, content.into_callback(), c.into_callback()) }
 }
 
+/// Content from pickers and shares (content:// URIs; files on the desktop): the bytes.
+pub fn read_content(uri: &str) -> Option<Vec<u8>> {
+    let u = CStrBuf::new(uri);
+    let mut n: usize = 0;
+    let p = unsafe { sys::kiln_content_read(u.ptr(), &mut n) };
+    if p.is_null() { return None; }
+    let v = unsafe { std::slice::from_raw_parts(p, n) }.to_vec();
+    unsafe { sys::kiln_content_free(p) };
+    Some(v)
+}
+/// Writes the bytes ("wt" replaces, "wa" appends).
+pub fn write_content(uri: &str, bytes: &[u8], mode: &str) -> bool {
+    let u = CStrBuf::new(uri);
+    let m = CStrBuf::new(mode);
+    unsafe { sys::kiln_content_write(u.ptr(), bytes.as_ptr(), bytes.len(), m.ptr()) }
+}
+/// OpenableColumns' display name.
+pub fn content_display_name(uri: &str) -> Option<String> {
+    let u = CStrBuf::new(uri);
+    opt_c(unsafe { sys::kiln_content_display_name(u.ptr()) })
+}
+
 /// An intent (a deep link, a share): only valid inside the call or callback that gave it.
 pub struct Intent(*const sys::kiln_intent);
 fn opt_c(p: *const std::ffi::c_char) -> Option<String> { if p.is_null() { None } else { Some(crate::from_c(p)) } }

@@ -391,6 +391,24 @@ KILN_API const char* kiln_intent_clip_uri(const kiln_intent* intent, size_t inde
 /* OnNewIntent: on_new_intent gets each intent the activity receives while this is composed. */
 KILN_API void kiln_on_new_intent(kiln_key key, kiln_fn_intent on_new_intent);
 
+/* Content from pickers, shares and other apps: content:// URIs (file paths and file:// URIs
+ * too, and on the desktop). Safe from any thread, so large reads can run off the main thread. */
+/* openFileDescriptor: a descriptor the caller closes (close(2)); mode "r", "w", "wt", "wa",
+ * "rw". -1 when the URI cannot be opened. */
+KILN_API int kiln_content_open_fd(const char* uri, const char* mode);
+/* OpenableColumns' display name and size (-1 unknown) and getType; NULL when unknown. */
+KILN_API const char* kiln_content_display_name(const char* uri);
+KILN_API int64_t kiln_content_size(const char* uri);
+KILN_API const char* kiln_content_type(const char* uri);
+/* The whole content (kiln_content_free), or NULL. */
+KILN_API uint8_t* kiln_content_read(const char* uri, size_t* length);
+KILN_API void kiln_content_free(uint8_t* bytes);
+/* Writes all of bytes (mode "wt" replaces, "wa" appends). */
+KILN_API bool kiln_content_write(const char* uri, const uint8_t* bytes, size_t length, const char* mode);
+/* takePersistableUriPermission / releasePersistableUriPermission. */
+KILN_API bool kiln_content_take_persistable(const char* uri, bool read, bool write);
+KILN_API bool kiln_content_release_persistable(const char* uri, bool read, bool write);
+
 /* App resources (kiln_add_app RES: the app's Android res/ folder) by name: on Android the app's
  * Resources, on the desktop the tables built from the same folder. Read inside content they
  * follow the configuration (locale, night mode). Strings are valid until the next call on this

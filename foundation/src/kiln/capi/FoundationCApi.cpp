@@ -10,6 +10,7 @@
 #include "kiln/foundation/PainterResource.h"
 #include "kiln/foundation/activity/NewIntent.h"
 #include "kiln/ui/AppResources.h"
+#include "kiln/ui/ContentResolver.h"
 #include "kiln/ui/PlatformServices.h"
 #include "kiln/foundation/Animate.h"
 #include "kiln/foundation/AndroidView.h"
@@ -683,6 +684,50 @@ KILN_API kiln_window_insets* kiln_window_insets_only(const kiln_window_insets* i
 }
 KILN_API kiln_window_insets* kiln_window_insets_retain(kiln_window_insets* i) { return Retain(i); }
 KILN_API void kiln_window_insets_release(kiln_window_insets* i) { Release(i); }
+
+KILN_API int kiln_content_open_fd(const char* uri, const char* mode) {
+    TRY { return uri ? ui::GetContentResolver().OpenFileDescriptor(uri, mode ? mode : "r") : -1; } CATCH(-1)
+}
+KILN_API const char* kiln_content_display_name(const char* uri) {
+    TRY {
+        auto info = uri ? ui::GetContentResolver().Query(uri) : std::nullopt;
+        return info && info->displayName ? ReturnString(*info->displayName) : nullptr;
+    } CATCH(nullptr)
+}
+KILN_API int64_t kiln_content_size(const char* uri) {
+    TRY {
+        auto info = uri ? ui::GetContentResolver().Query(uri) : std::nullopt;
+        return info && info->size ? *info->size : -1;
+    } CATCH(-1)
+}
+KILN_API const char* kiln_content_type(const char* uri) {
+    TRY {
+        auto info = uri ? ui::GetContentResolver().Query(uri) : std::nullopt;
+        return info && info->mimeType ? ReturnString(*info->mimeType) : nullptr;
+    } CATCH(nullptr)
+}
+KILN_API uint8_t* kiln_content_read(const char* uri, size_t* length) {
+    TRY {
+        if (length) *length = 0;
+        auto bytes = uri ? ui::ReadContent(uri) : std::nullopt;
+        if (!bytes) return nullptr;
+        auto* out = static_cast<uint8_t*>(std::malloc(bytes->empty() ? 1 : bytes->size()));
+        if (!out) return nullptr;
+        if (!bytes->empty()) std::memcpy(out, bytes->data(), bytes->size());
+        if (length) *length = bytes->size();
+        return out;
+    } CATCH(nullptr)
+}
+KILN_API void kiln_content_free(uint8_t* bytes) { std::free(bytes); }
+KILN_API bool kiln_content_write(const char* uri, const uint8_t* bytes, size_t length, const char* mode) {
+    TRY { return uri && ui::WriteContent(uri, std::span<const std::uint8_t>(bytes, bytes ? length : 0), mode ? mode : "wt"); } CATCH(false)
+}
+KILN_API bool kiln_content_take_persistable(const char* uri, bool read, bool write) {
+    TRY { return uri && ui::GetContentResolver().TakePersistableUriPermission(uri, read, write); } CATCH(false)
+}
+KILN_API bool kiln_content_release_persistable(const char* uri, bool read, bool write) {
+    TRY { return uri && ui::GetContentResolver().ReleasePersistableUriPermission(uri, read, write); } CATCH(false)
+}
 
 namespace {
     const kiln_intent* TransientIntent(ui::Intent i) {

@@ -2,6 +2,7 @@
 #include "AndroidText.h"
 #include <kiln/Function.h>
 #include "AndroidDates.h"
+#include "AndroidContent.h"
 #include "AndroidResources.h"
 #include "kiln/ui/ActivityIntent.h"
 
@@ -1303,6 +1304,7 @@ namespace {
         kiln::android::InstallAssetReader(env, assets);
         kiln::android::InstallDateFormat(env);
         kiln::android::InstallAppResources(env);
+        kiln::android::InstallContentResolver(env);
         g_Host = new Host();
         g_Host->text = std::make_unique<kiln::android::AndroidText>(env, text);
         kiln::text::SetCaseMapper([](std::u16string_view t, const std::string& tag, kiln::text::CaseOp op) {

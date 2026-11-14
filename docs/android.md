@@ -144,6 +144,30 @@ Button([openDocument] { openDocument.Launch({ "*/*" }); }, {}, {}, [] { Text("Op
 A permission must also be declared in the manifest: `PERMISSIONS` in the app's
 `CMakeLists.txt`, or the Gradle project's manifest.
 
+### Reading what was picked
+
+Pickers, shares and other apps hand over `content://` URIs. `kiln/ui/ContentResolver.h`
+opens them:
+
+```cpp
+#include <kiln/ui/ContentResolver.h>
+
+std::string Describe(const std::string& uri) {
+    const auto& resolver = kiln::ui::GetContentResolver();
+    const auto info = resolver.Query(uri);   // display name, size, MIME type
+    const auto bytes = kiln::ui::ReadContent(uri);
+    return info ? info->displayName.value_or("?") + ": " + std::to_string(bytes ? bytes->size() : 0) + " bytes" : "unreadable";
+}
+```
+
+* `OpenFileDescriptor(uri, mode)` gives a file descriptor to read with `read` or hand to
+  a library (an archive or image decoder); the caller closes it. `WriteContent` writes a
+  `CreateDocument` result.
+* Each call is safe from any thread, so read large files on a background dispatcher.
+* `TakePersistableUriPermission` keeps access to an `OpenDocument` result after the app
+  restarts.
+* On the desktop the same calls take file paths and `file://` URIs.
+
 ## Video, camera and other surfaces
 
 `AndroidExternalSurface` gives a native window to code that renders on its own, such as a

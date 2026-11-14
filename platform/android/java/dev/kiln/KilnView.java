@@ -83,6 +83,7 @@ public class KilnView extends FrameLayout implements SurfaceHolder.Callback2 {
         push24HourFormat();
         DisplayMetrics metrics = getResources().getDisplayMetrics();
         KilnResources.attach(context);
+        KilnContent.attach(context);
         KilnNative.create(this, text, context.getAssets(), metrics.density, getResources().getConfiguration().fontScale, savedState);
         KilnNative.setCacheDir(context.getCacheDir().getPath());
         KilnNative.setFontWeightAdjustment(fontWeightAdjustment(getResources().getConfiguration()));

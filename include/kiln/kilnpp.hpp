@@ -689,6 +689,20 @@ namespace kpp {
     template<typename P> kiln_measure_result* measure_layout(kiln_measure_scope* s, int32_t w, int32_t h, P&& place) {
         return kiln_measure_scope_layout(s, w, h, fn<kiln_fn_place>(std::forward<P>(place)));
     }
+    // Content from pickers and shares (see kiln_content_open_fd): the bytes, or nullopt.
+    inline std::optional<std::vector<uint8_t>> read_content(const char* uri) {
+        size_t n = 0;
+        uint8_t* p = kiln_content_read(uri, &n);
+        if (!p) return std::nullopt;
+        std::vector<uint8_t> out(p, p + n);
+        kiln_content_free(p);
+        return out;
+    }
+    inline bool write_content(const char* uri, const std::vector<uint8_t>& bytes, const char* mode = "wt") {
+        return kiln_content_write(uri, bytes.data(), bytes.size(), mode);
+    }
+    inline std::string content_display_name(const char* uri) { const char* s = kiln_content_display_name(uri); return s ? s : ""; }
+
     // The activity's launch intent (NULL off Android) and OnNewIntent; see kiln_activity_intent.
     inline const kiln_intent* activity_intent() { return kiln_activity_intent(); }
     template<typename F> void on_new_intent(F&& f, Key key = {}) { kiln_on_new_intent(key, fn<kiln_fn_intent>(std::forward<F>(f))); }
