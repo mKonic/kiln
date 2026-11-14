@@ -29,6 +29,10 @@ namespace kiln::ui {
         std::vector<std::string> uris;
         bool operator==(const BundleUriList&) const = default;
     };
+    // Bundle.putBinder(key, null): a key present with no binder (Custom Tabs' EXTRA_SESSION).
+    struct BundleNullBinder {
+        bool operator==(const BundleNullBinder&) const = default;
+    };
     // An Intent inside a Bundle (EXTRA_INTENT of a chooser, EXTRA_INITIAL_INTENTS' entries).
     struct Intent;
     struct BundleIntent {
@@ -39,7 +43,7 @@ namespace kiln::ui {
     // optional): strings, booleans, ints, string lists / arrays, byte arrays, URIs, int arrays
     // longs, URI lists and intents.
     using BundleValue = std::variant<std::string, bool, std::int32_t, std::vector<std::string>, std::optional<std::vector<std::uint8_t>>, BundleUri,
-                                     std::vector<std::int32_t>, std::int64_t, BundleUriList, BundleIntent>;
+                                     std::vector<std::int32_t>, std::int64_t, BundleUriList, BundleIntent, BundleNullBinder>;
 
     struct Bundle {
         std::vector<std::pair<std::string, BundleValue>> entries;

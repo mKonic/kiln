@@ -129,6 +129,29 @@ kiln connects to these Android services without extra code:
 | Foldables | Folds and hinges for the adaptive scaffolds and posture |
 | High-contrast text | Text outlined and given a contrasting colour, with a background behind it from Android 16, as the platform draws it |
 
+### App shortcuts
+
+`kiln/ui/Shortcuts.h` sets the actions the launcher shows on a long press of the app's icon.
+Each opens the app with a deep link, which arrives as the activity's intent
+(`ui::ActivityIntent`, `OnNewIntent`, or [navigation's deep links](navigation.md#deep-links)):
+
+```cpp
+#include <kiln/ui/Shortcuts.h>
+
+void SetShortcuts() {
+    kiln::ui::SetDynamicShortcuts({
+        { .id = "new", .shortLabel = "New note", .data = "notes://new", .icon = "ic_add" },
+        { .id = "search", .shortLabel = "Search", .data = "notes://search", .rank = 1 },
+    });
+}
+```
+
+`icon` names a drawable or mipmap in the app's `res/`. `PushDynamicShortcut`,
+`RemoveDynamicShortcuts`, `ReportShortcutUsed` and `RequestPinShortcut` (pin to the home
+screen) follow `ShortcutManager`. Shortcuts that never change can be declared in
+`res/xml/shortcuts.xml` and named in `ACTIVITY_XML` with
+`<meta-data android:name="android.app.shortcuts" android:resource="@xml/shortcuts" />`.
+
 ## Picture-in-picture and orientation
 
 An activity that declares picture-in-picture can enter it and show less while it is small:
@@ -207,6 +230,8 @@ void SharePhoto(const std::string& contentUri) {
 
 * `streams` are `content://` URIs; the app that receives them may read them.
 * `ui::OpenUri(url)` opens a link in the browser or the app that handles it.
+* `ui::LaunchCustomTab(url, { .toolbarColor = ... })` (`kiln/ui/CustomTabs.h`) opens a page
+  in a Custom Tab: the user's browser, inside the app, in the app's colours.
 * `ui::StartActivity(intent)` starts any activity without waiting for a result, and
   `ui::CreateChooser(intent, title)` wraps an intent in the system's chooser. An intent's
   extras can hold other intents and lists of URIs.

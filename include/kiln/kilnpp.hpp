@@ -831,6 +831,14 @@ namespace kpp {
     inline bool open_uri(const std::string& uri) { return kiln_open_uri(uri.c_str()); }
     inline bool should_show_permission_rationale(const char* permission) { return kiln_should_show_permission_rationale(permission); }
 
+    // See kiln_launch_custom_tab and kiln_set_dynamic_shortcuts.
+    inline bool launch_custom_tab(const std::string& url, kiln_color toolbarColor = KILN_COLOR_UNSPECIFIED, bool showTitle = false) {
+        return kiln_launch_custom_tab(url.c_str(), toolbarColor, showTitle);
+    }
+    inline bool set_dynamic_shortcuts(const std::vector<kiln_shortcut>& shortcuts) { return kiln_set_dynamic_shortcuts(shortcuts.data(), shortcuts.size()); }
+    inline void remove_all_dynamic_shortcuts() { kiln_remove_all_dynamic_shortcuts(); }
+    inline void report_shortcut_used(const char* id) { kiln_report_shortcut_used(id); }
+
     // See kiln_keep_splash_screen.
     inline void keep_splash_screen(bool keep) { kiln_keep_splash_screen(keep); }
 

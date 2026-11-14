@@ -15,6 +15,8 @@
 #include "kiln/Log.h"
 #include "kiln/ui/SplashScreen.h"
 #include "kiln/ui/Share.h"
+#include "kiln/ui/CustomTabs.h"
+#include "kiln/ui/Shortcuts.h"
 #include "kiln/ui/PictureInPicture.h"
 #include "kiln/foundation/AsyncImage.h"
 #include "kiln/ui/AppDirectories.h"
@@ -2196,3 +2198,34 @@ KILN_API bool kiln_open_uri(const char* uri) { TRY { return uri && kiln::ui::Ope
 KILN_API bool kiln_should_show_permission_rationale(const char* p) {
     TRY { return p && kiln::ui::ShouldShowRequestPermissionRationale(p); } CATCH(false)
 }
+
+// --- Custom Tabs and shortcuts -------------------------------------------------------------
+
+KILN_API bool kiln_launch_custom_tab(const char* url, kiln_color toolbar, bool showTitle) {
+    TRY {
+        if (!url) return false;
+        kiln::ui::CustomTabsOptions o;
+        if (toolbar != KILN_COLOR_UNSPECIFIED) o.toolbarColor = ToColor(toolbar);
+        o.showTitle = showTitle;
+        return kiln::ui::LaunchCustomTab(url, o);
+    } CATCH(false)
+}
+KILN_API bool kiln_set_dynamic_shortcuts(const kiln_shortcut* s, size_t count) {
+    TRY {
+        std::vector<kiln::ui::Shortcut> list;
+        for (size_t i = 0; s && i < count; ++i) {
+            if (!s[i].id) continue;
+            kiln::ui::Shortcut sc;
+            sc.id = s[i].id;
+            sc.shortLabel = s[i].short_label ? s[i].short_label : "";
+            sc.longLabel = s[i].long_label ? s[i].long_label : "";
+            sc.data = s[i].data ? s[i].data : "";
+            sc.icon = s[i].icon ? s[i].icon : "";
+            sc.rank = s[i].rank;
+            list.push_back(std::move(sc));
+        }
+        return kiln::ui::SetDynamicShortcuts(list);
+    } CATCH(false)
+}
+KILN_API void kiln_remove_all_dynamic_shortcuts(void) { TRY { kiln::ui::RemoveAllDynamicShortcuts(); } CATCH_VOID }
+KILN_API void kiln_report_shortcut_used(const char* id) { TRY { if (id) kiln::ui::ReportShortcutUsed(id); } CATCH_VOID }

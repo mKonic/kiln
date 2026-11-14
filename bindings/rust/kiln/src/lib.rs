@@ -743,6 +743,23 @@ pub fn should_show_permission_rationale(permission: &str) -> bool {
     unsafe { sys::kiln_should_show_permission_rationale(p.ptr()) }
 }
 
+/// Opens the URL in a Custom Tab (the browser inside the app); `toolbar_argb` 0 keeps the browser's colour.
+pub fn launch_custom_tab(url: &str, toolbar_argb: u32, show_title: bool) -> bool {
+    let u = CStrBuf::new(url);
+    let color = if toolbar_argb == 0 { 0 } else { 0x1_0000_0000u64 | toolbar_argb as u64 };
+    unsafe { sys::kiln_launch_custom_tab(u.ptr(), color, show_title) }
+}
+/// An app shortcut: opens the app at `data`.
+pub struct Shortcut<'a> { pub id: &'a str, pub short_label: &'a str, pub long_label: &'a str, pub data: &'a str, pub icon: &'a str, pub rank: i32 }
+/// Replaces the app's dynamic shortcuts.
+pub fn set_dynamic_shortcuts(shortcuts: &[Shortcut]) -> bool {
+    let bufs: Vec<[CStrBuf; 5]> = shortcuts.iter().map(|s| [CStrBuf::new(s.id), CStrBuf::new(s.short_label), CStrBuf::new(s.long_label), CStrBuf::new(s.data), CStrBuf::new(s.icon)]).collect();
+    let raw: Vec<sys::kiln_shortcut> = bufs.iter().zip(shortcuts).map(|(b, s)| sys::kiln_shortcut {
+        id: b[0].ptr(), short_label: b[1].ptr(), long_label: b[2].ptr(), data: b[3].ptr(), icon: b[4].ptr(), rank: s.rank,
+    }).collect();
+    unsafe { sys::kiln_set_dynamic_shortcuts(raw.as_ptr(), raw.len()) }
+}
+
 /// Keeps the launch splash screen up while true (after the first frame it would go).
 pub fn keep_splash_screen(keep: bool) { unsafe { sys::kiln_keep_splash_screen(keep) } }
 

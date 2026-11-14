@@ -16,6 +16,7 @@ namespace kiln::android { void InstallImageDecoder(); void InstallAssetReader(JN
 #include "kiln/ui/MediaQuery.h"
 #include "kiln/ui/PictureInPicture.h"
 #include "kiln/ui/SplashScreen.h"
+#include "kiln/ui/Shortcuts.h"
 #include "kiln/Trace.h"
 #include "kiln/Log.h"
 
@@ -1340,6 +1341,43 @@ namespace {
             static jmethodID start = env->GetMethodID(vc, "startActivityFromNative", "([Ljava/lang/Object;)Z");
             static jmethodID rationale = env->GetMethodID(vc, "shouldShowRequestPermissionRationaleFromNative", "(Ljava/lang/String;)Z");
             env->DeleteLocalRef(vc);
+            jclass shc = env->FindClass("dev/kiln/KilnShortcuts");
+            static jclass shortcutsClass = static_cast<jclass>(env->NewGlobalRef(shc));
+            env->DeleteLocalRef(shc);
+            static jmethodID shortcutsRun = env->GetStaticMethodID(shortcutsClass, "run",
+                "(Landroid/content/Context;I[Ljava/lang/Object;[Ljava/lang/String;)[Ljava/lang/String;");
+            static jmethodID getContext = env->GetMethodID(env->FindClass("android/view/View"), "getContext", "()Landroid/content/Context;");
+            kiln::ui::SetShortcutHost([](kiln::ui::ShortcutOp op, const std::vector<kiln::ui::Shortcut>& shortcuts, const std::vector<std::string>& ids) {
+                std::vector<std::string> out;
+                if (!g_Host || !g_Host->view) return out;
+                JNIEnv* e = MainEnv();
+                jclass oc = e->FindClass("java/lang/Object");
+                jobjectArray list = e->NewObjectArray(jsize(shortcuts.size()), oc, nullptr);
+                for (std::size_t i = 0; i < shortcuts.size(); ++i) {
+                    const auto& s = shortcuts[i];
+                    jobjectArray one = e->NewObjectArray(7, oc, nullptr);
+                    auto set = [&](int k, jobject o) { e->SetObjectArrayElement(one, k, o); if (o) e->DeleteLocalRef(o); };
+                    set(0, e->NewStringUTF(s.id.c_str()));
+                    set(1, JavaString(e, kiln::foundation::ToUtf16(s.shortLabel)));
+                    set(2, JavaString(e, kiln::foundation::ToUtf16(s.longLabel)));
+                    set(3, e->NewStringUTF(s.icon.c_str()));
+                    set(4, e->NewStringUTF(std::to_string(s.rank).c_str()));
+                    set(5, e->NewStringUTF(s.data.c_str()));
+                    set(6, s.intent ? JavaIntent(e, *s.intent) : nullptr);
+                    e->SetObjectArrayElement(list, jsize(i), one);
+                    e->DeleteLocalRef(one);
+                }
+                jobjectArray jids = JavaStrings(e, ids);
+                jobject context = e->CallObjectMethod(g_Host->view, getContext);
+                auto r = static_cast<jobjectArray>(e->CallStaticObjectMethod(shortcutsClass, shortcutsRun, context, jint(op), list, jids));
+                if (e->ExceptionCheck()) e->ExceptionClear();
+                if (r) {
+                    for (auto& s : StringsFromJava(e, r)) if (s) out.push_back(*s);
+                    e->DeleteLocalRef(r);
+                }
+                for (jobject o : { (jobject)oc, (jobject)list, (jobject)jids, context }) if (o) e->DeleteLocalRef(o);
+                return out;
+            });
             kiln::ui::SetActivityHost({
                 .startActivity = [](const kiln::ui::Intent& intent) -> bool {
                     if (!g_Host || !g_Host->view) return false;
@@ -2598,6 +2636,7 @@ namespace {
             }
             else if (const auto* l = std::get_if<std::int64_t>(&v)) { kinds.push_back(7); jv = env->NewStringUTF(std::to_string(*l).c_str()); }
             else if (const auto* ul = std::get_if<kiln::ui::BundleUriList>(&v)) { kinds.push_back(8); jv = JavaStrings(env, ul->uris); }
+            else if (std::holds_alternative<kiln::ui::BundleNullBinder>(v)) kinds.push_back(10);
             else if (const auto* bi = std::get_if<kiln::ui::BundleIntent>(&v)) {
                 if (bi->intent) { kinds.push_back(9); jv = JavaIntent(env, *bi->intent); }
                 else kinds.push_back(0);

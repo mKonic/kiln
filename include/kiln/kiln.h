@@ -484,6 +484,23 @@ KILN_API bool kiln_share(const char* text, const char* subject, const char* cons
 KILN_API bool kiln_open_uri(const char* uri);
 KILN_API bool kiln_should_show_permission_rationale(const char* permission);
 
+/* A Custom Tab: the URL in the user's browser inside the app, with the toolbar colour
+ * (KILN_COLOR_UNSPECIFIED: the browser's). App shortcuts (ShortcutManager): each opens the app
+ * with ACTION_VIEW on its data URI; icon: a drawable or mipmap in the app's res/ by name, or
+ * NULL for the app's icon. */
+KILN_API bool kiln_launch_custom_tab(const char* url, kiln_color toolbar_color, bool show_title);
+typedef struct kiln_shortcut {
+    const char* id;
+    const char* short_label;
+    const char* long_label;   /* may be NULL */
+    const char* data;         /* the deep link it opens */
+    const char* icon;         /* may be NULL */
+    int32_t rank;
+} kiln_shortcut;
+KILN_API bool kiln_set_dynamic_shortcuts(const kiln_shortcut* shortcuts, size_t count);
+KILN_API void kiln_remove_all_dynamic_shortcuts(void);
+KILN_API void kiln_report_shortcut_used(const char* id);
+
 /* The launch splash screen (kiln_add_app's SPLASH_* options) stays until the first frame is on
  * screen, and while this is set (core-splashscreen's setKeepOnScreenCondition). */
 KILN_API void kiln_keep_splash_screen(bool keep);
