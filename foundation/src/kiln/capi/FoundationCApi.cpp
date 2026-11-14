@@ -135,6 +135,13 @@ namespace kiln::capi {
         return t_Arena.strings.back().c_str();
     }
     void KeepTransient(std::shared_ptr<void> value) { t_Arena.values.push_back(std::move(value)); }
+    kiln_pager_state* TransientPager(const foundation::PagerState& state, std::shared_ptr<rt::CoroutineScope> scope, std::shared_ptr<const void> keep) {
+        auto* p = NewTransient<kiln_pager_state>();
+        p->state = const_cast<foundation::PagerState*>(&state);
+        p->scope = scope ? std::move(scope) : std::make_shared<rt::CoroutineScope>();
+        p->keep = std::move(keep);
+        return p;
+    }
     kiln_fn TransientFn(kiln::Function<void()> fn) {
         using F = kiln::Function<void()>;
         kiln_fn c{};
@@ -1129,7 +1136,7 @@ KILN_API void kiln_pager_state_animate_scroll_to_page(kiln_pager_state* s, int32
     TRY {
         if (!s) { Fn(done); return; }
         fd::PagerState* st = s->state;
-        LaunchIn(s->scope, [st, page] { return st->AnimateScrollToPage(page); }, done);
+        LaunchIn(s->scope, [st, page, keep = s->keep] { return st->AnimateScrollToPage(page); }, done);
     } CATCH_VOID
 }
 KILN_API void kiln_pager_state_scroll_to_page(kiln_pager_state* s, int32_t page, kiln_fn done) {

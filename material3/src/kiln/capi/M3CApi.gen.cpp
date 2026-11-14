@@ -117,6 +117,7 @@ struct kiln_m3_wide_navigation_rail_state : kiln::capi::Handle<kiln::material3::
 struct kiln_decay_spec { std::shared_ptr<const void> p; };
 struct kiln_indication { std::shared_ptr<const void> p; };
 struct kiln_input_transformation { std::shared_ptr<const void> p; };
+struct kiln_mutable_content_transform { std::shared_ptr<const void> p; };
 struct kiln_mutator_mutex { std::shared_ptr<const void> p; };
 struct kiln_output_transformation { std::shared_ptr<const void> p; };
 struct kiln_painter { std::shared_ptr<const void> p; };
@@ -735,6 +736,7 @@ namespace {
 [[maybe_unused]] kiln::Function<void (const kiln::material3::TooltipScope &)> ToCpp_kiln_m3_fn_tooltip_scope(kiln_m3_fn_tooltip_scope f);
 [[maybe_unused]] kiln::Function<int (int, int)> ToCpp_kiln_m3_fn_int_int_to_int(kiln_m3_fn_int_int_to_int f);
 [[maybe_unused]] kiln::Function<bool (kiln::material3::DrawerValue)> ToCpp_kiln_m3_fn_drawer_value_to_bool(kiln_m3_fn_drawer_value_to_bool f);
+[[maybe_unused]] kiln::Function<kiln::ui::BackEvent ()> ToCpp_kiln_m3_fn_to_back_event(kiln_m3_fn_to_back_event f);
 [[maybe_unused]] kiln::Function<kiln::ui::Color ()> ToCpp_kiln_m3_fn_to_color(kiln_m3_fn_to_color f);
 [[maybe_unused]] kiln::Function<std::basic_string<char> (int)> ToCpp_kiln_m3_fn_int_to_string(kiln_m3_fn_int_to_string f);
 [[maybe_unused]] kiln::Function<void (int, bool, bool)> ToCpp_kiln_m3_fn_int_bool_bool(kiln_m3_fn_int_bool_bool f);
@@ -744,6 +746,7 @@ namespace {
 [[maybe_unused]] kiln::Function<bool (kiln::material3::SwipeToDismissBoxValue)> ToCpp_kiln_m3_fn_swipe_to_dismiss_box_value_to_bool(kiln_m3_fn_swipe_to_dismiss_box_value_to_bool f);
 [[maybe_unused]] kiln::Function<void (kiln::material3::SwipeToDismissBoxValue)> ToCpp_kiln_m3_fn_swipe_to_dismiss_box_value(kiln_m3_fn_swipe_to_dismiss_box_value f);
 [[maybe_unused]] kiln::Function<void (kiln::material3::TabIndicatorScope &)> ToCpp_kiln_m3_fn_tab_indicator_scope(kiln_m3_fn_tab_indicator_scope f);
+[[maybe_unused]] kiln::Function<kiln::ui::IntOffset (kiln::ui::IntSize)> ToCpp_kiln_m3_fn_int_size_to_int_offset(kiln_m3_fn_int_size_to_int_offset f);
 [[maybe_unused]] kiln::Function<kiln::ui::IntSize (kiln::ui::IntSize)> ToCpp_kiln_m3_fn_int_size_to_int_size(kiln_m3_fn_int_size_to_int_size f);
 [[maybe_unused]] kiln::Function<std::shared_ptr<const kiln::anim::AnimationSpec> (kiln::ui::IntSize, kiln::ui::IntSize)> ToCpp_kiln_m3_fn_int_size_int_size_to_animation_spec(kiln_m3_fn_int_size_int_size_to_animation_spec f);
 [[maybe_unused]] kiln::Function<void (kiln::material3::SnackbarResult)> ToCpp_kiln_m3_fn_snackbar_result(kiln_m3_fn_snackbar_result f);
@@ -996,6 +999,17 @@ kiln::Function<bool (kiln::material3::DrawerValue)> ToCpp_kiln_m3_fn_drawer_valu
         return r;
     };
 }
+kiln::Function<kiln::ui::BackEvent ()> ToCpp_kiln_m3_fn_to_back_event(kiln_m3_fn_to_back_event f) {
+    auto o = kiln::capi::Own(f);
+    if (!o) return {};
+    return [o]() -> kiln::ui::BackEvent {
+        kiln::capi::CallbackScope scope;
+        kiln_back_event r;
+        kiln_back_event_init(&r);
+        o->f.call(o->f.user, &r);
+        return ToCpp(&r);
+    };
+}
 kiln::Function<kiln::ui::Color ()> ToCpp_kiln_m3_fn_to_color(kiln_m3_fn_to_color f) {
     auto o = kiln::capi::Own(f);
     if (!o) return {};
@@ -1075,6 +1089,17 @@ kiln::Function<void (kiln::material3::TabIndicatorScope &)> ToCpp_kiln_m3_fn_tab
         auto* h38 = kiln::capi::NewTransient<kiln_m3_tab_indicator_scope>();
         h38->ptr = const_cast<kiln::material3::TabIndicatorScope*>(&(x0));
         o->f.call(o->f.user, h38);
+    };
+}
+kiln::Function<kiln::ui::IntOffset (kiln::ui::IntSize)> ToCpp_kiln_m3_fn_int_size_to_int_offset(kiln_m3_fn_int_size_to_int_offset f) {
+    auto o = kiln::capi::Own(f);
+    if (!o) return {};
+    return [o](kiln::ui::IntSize x0) -> kiln::ui::IntOffset {
+        kiln::capi::CallbackScope scope;
+        kiln_int_offset r;
+        kiln_int_offset_init(&r);
+        o->f.call(o->f.user, kiln_int_size{ (x0).width, (x0).height }, &r);
+        return ToCpp(&r);
     };
 }
 kiln::Function<kiln::ui::IntSize (kiln::ui::IntSize)> ToCpp_kiln_m3_fn_int_size_to_int_size(kiln_m3_fn_int_size_to_int_size f) {
@@ -4613,6 +4638,7 @@ kiln::material3::LoadingIndicatorOptions ToCpp(const kiln_m3_loading_indicator_o
     kiln_m3_loading_indicator_options_init(&c);
     if (in->size > sizeof(size_t)) std::memcpy(reinterpret_cast<char*>(&c) + sizeof(size_t), reinterpret_cast<const char*>(in) + sizeof(size_t), std::min(in->size, sizeof(c)) - sizeof(size_t));
     v.color = kiln::capi::ToColor(c.color);
+    if (c.polygons) { v.polygons.emplace(); for (size_t i = 0; i < c.polygons_count; ++i) v.polygons->push_back((c.polygons[i] ? c.polygons[i]->polygon : kiln::gfx::shapes::RoundedPolygon::Regular(3))); }
     return v;
 }
 void FromCpp(const kiln::material3::LoadingIndicatorOptions& v, kiln_m3_loading_indicator_options* out) {
@@ -4640,6 +4666,7 @@ kiln::material3::ContainedLoadingIndicatorOptions ToCpp(const kiln_m3_contained_
     v.containerColor = kiln::capi::ToColor(c.container_color);
     v.indicatorColor = kiln::capi::ToColor(c.indicator_color);
     if (c.container_shape) v.containerShape = kiln::capi::ToShape(c.container_shape);
+    if (c.polygons) { v.polygons.emplace(); for (size_t i = 0; i < c.polygons_count; ++i) v.polygons->push_back((c.polygons[i] ? c.polygons[i]->polygon : kiln::gfx::shapes::RoundedPolygon::Regular(3))); }
     return v;
 }
 void FromCpp(const kiln::material3::ContainedLoadingIndicatorOptions& v, kiln_m3_contained_loading_indicator_options* out) {
@@ -7817,6 +7844,7 @@ kiln::foundation::SlideConfig ToCpp(const kiln_slide_config* in) {
     kiln_slide_config c;
     kiln_slide_config_init(&c);
     if (in->size > sizeof(size_t)) std::memcpy(reinterpret_cast<char*>(&c) + sizeof(size_t), reinterpret_cast<const char*>(in) + sizeof(size_t), std::min(in->size, sizeof(c)) - sizeof(size_t));
+    if (c.offset.call) v.offset = ToCpp_kiln_m3_fn_int_size_to_int_offset(c.offset);
     if (c.spec) v.spec = (c.spec ? c.spec->spec : nullptr);
     return v;
 }
@@ -14237,12 +14265,31 @@ KILN_API void kiln_m3_horizontal_shared_axis_navigation_transitions_backward_tra
         FromCpp((*r), out);
     } KILN_CAPI_CATCH()
 }
+KILN_API kiln_mutable_content_transform* kiln_m3_horizontal_shared_axis_navigation_transitions_predictive_back_transform(kiln_key key, kiln_m3_fn_to_back_event back_event, const kiln_density* density, kiln_color scrim_color) {
+    KILN_CAPI_TRY {
+        auto&& a0 = ToCpp_kiln_m3_fn_to_back_event(back_event);
+        auto&& a1 = ToCpp(density);
+        auto&& a2 = kiln::capi::ToColor(scrim_color);
+        std::optional<std::remove_cvref_t<decltype(kiln::material3::HorizontalSharedAxisNavigationTransitions::predictiveBackTransform(a0, a1, a2))>> r;
+        kiln::capi::InGroup(key, [&] { r.emplace(kiln::material3::HorizontalSharedAxisNavigationTransitions::predictiveBackTransform(a0, a1, a2)); });
+        return kiln::capi::TransientOpaque<kiln_mutable_content_transform>((*r));
+    } KILN_CAPI_CATCH({})
+}
 KILN_API void kiln_m3_fade_through_navigation_transitions_transform(kiln_key key, kiln_content_transform* out) {
     KILN_CAPI_TRY {
         std::optional<std::remove_cvref_t<decltype(kiln::material3::FadeThroughNavigationTransitions::transform())>> r;
         kiln::capi::InGroup(key, [&] { r.emplace(kiln::material3::FadeThroughNavigationTransitions::transform()); });
         FromCpp((*r), out);
     } KILN_CAPI_CATCH()
+}
+KILN_API kiln_mutable_content_transform* kiln_m3_fade_through_navigation_transitions_predictive_back_transform(kiln_key key, kiln_m3_fn_to_back_event back_event, const kiln_density* density) {
+    KILN_CAPI_TRY {
+        auto&& a0 = ToCpp_kiln_m3_fn_to_back_event(back_event);
+        auto&& a1 = ToCpp(density);
+        std::optional<std::remove_cvref_t<decltype(kiln::material3::FadeThroughNavigationTransitions::predictiveBackTransform(a0, a1))>> r;
+        kiln::capi::InGroup(key, [&] { r.emplace(kiln::material3::FadeThroughNavigationTransitions::predictiveBackTransform(a0, a1)); });
+        return kiln::capi::TransientOpaque<kiln_mutable_content_transform>((*r));
+    } KILN_CAPI_CATCH({})
 }
 KILN_API void kiln_m3_linear_progress_indicator(kiln_key key, kiln_m3_fn_to_float progress, const kiln_modifier* modifier, const kiln_m3_linear_progress_indicator_options* options) {
     KILN_CAPI_TRY {
@@ -17836,6 +17883,22 @@ KILN_API void kiln_m3_carousel_state_animate_scroll_to_item(kiln_m3_carousel_sta
         kiln::capi::LaunchIn(self->scope, [obj, a0, a1]() mutable { return obj->AnimateScrollToItem(a0, a1); }, done);
     } KILN_CAPI_CATCH()
 }
+KILN_API kiln_pager_state* kiln_m3_carousel_state_pager_state(kiln_m3_carousel_state* self) {
+    KILN_CAPI_TRY {
+        if (!self) return {};
+        std::remove_reference_t<decltype(self->ptr->PagerState())>* r = nullptr;
+        r = &self->ptr->PagerState();
+        return kiln::capi::TransientPager((*r), self->scope, self->owner);
+    } KILN_CAPI_CATCH({})
+}
+KILN_API kiln_pager_state* kiln_m3_carousel_state_pager_state_2(const kiln_m3_carousel_state* self) {
+    KILN_CAPI_TRY {
+        if (!self) return {};
+        std::remove_reference_t<decltype(self->ptr->PagerState())>* r = nullptr;
+        r = &self->ptr->PagerState();
+        return kiln::capi::TransientPager((*r), self->scope, self->owner);
+    } KILN_CAPI_CATCH({})
+}
 KILN_API kiln_m3_carousel_item_draw_info* kiln_m3_carousel_item_scope_draw_info(const kiln_m3_carousel_item_scope* self) {
     KILN_CAPI_TRY {
         if (!self) return {};
@@ -18501,6 +18564,14 @@ KILN_API bool kiln_m3_scroll_field_state_is_scroll_in_progress(const kiln_m3_scr
         std::optional<std::remove_cvref_t<decltype(self->ptr->IsScrollInProgress())>> r;
         r.emplace(self->ptr->IsScrollInProgress());
         return bool((*r));
+    } KILN_CAPI_CATCH({})
+}
+KILN_API kiln_pager_state* kiln_m3_scroll_field_state_pager(const kiln_m3_scroll_field_state* self) {
+    KILN_CAPI_TRY {
+        if (!self) return {};
+        std::remove_reference_t<decltype(self->ptr->Pager())>* r = nullptr;
+        r = &self->ptr->Pager();
+        return kiln::capi::TransientPager((*r), self->scope, self->owner);
     } KILN_CAPI_CATCH({})
 }
 KILN_API float kiln_m3_search_bar_scroll_state_scroll_offset(const kiln_m3_search_bar_scroll_state* self) {

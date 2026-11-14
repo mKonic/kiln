@@ -51,7 +51,11 @@ struct kiln_interaction_source { std::shared_ptr<kiln::foundation::MutableIntera
 // leaves the composition (before the state is freed).
 struct kiln_scroll_state { kiln::foundation::ScrollState* state; std::shared_ptr<kiln::rt::CoroutineScope> scope; };
 struct kiln_lazy_list_state { kiln::foundation::LazyListState* state; std::shared_ptr<kiln::rt::CoroutineScope> scope; };
-struct kiln_pager_state { kiln::foundation::PagerState* state; std::shared_ptr<kiln::rt::CoroutineScope> scope; };
+struct kiln_pager_state {
+    kiln::foundation::PagerState* state;
+    std::shared_ptr<kiln::rt::CoroutineScope> scope;
+    std::shared_ptr<const void> keep;   // what the pager state is a part of (a carousel's state), kept while a scroll runs
+};
 struct kiln_text_field_state { kiln::foundation::TextFieldState* state; };
 struct kiln_nested_scroll_connection { std::shared_ptr<const void> p; };   // a ui::NestedScrollConnection
 
@@ -192,6 +196,9 @@ namespace kiln::capi {
     // Strings and values inside results: valid until the outermost callback returns.
     const char* TransientString(std::string s);
     void KeepTransient(std::shared_ptr<void> value);
+    // The pager state inside another state (a carousel's, a scroll field's): its scrolls run in
+    // the owner's scope and keep the owner while they do.
+    kiln_pager_state* TransientPager(const foundation::PagerState& state, std::shared_ptr<rt::CoroutineScope> scope, std::shared_ptr<const void> keep);
     // A C++ callback for C to call (not to keep or drop): valid until the outermost callback returns.
     kiln_fn TransientFn(kiln::Function<void()> fn);
     template<typename T>

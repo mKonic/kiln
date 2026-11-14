@@ -20,6 +20,7 @@ crate::__kiln_callback!(sys::kiln_m3_fn_fn, (a0: sys::kiln_fn) -> ());
 crate::__kiln_callback!(sys::kiln_m3_fn_int_bool_bool, (a0: i32, a1: bool, a2: bool) -> ());
 crate::__kiln_callback!(sys::kiln_m3_fn_int_int_to_int, (a0: i32, a1: i32) -> i32);
 crate::__kiln_callback!(sys::kiln_m3_fn_int_size_int_size_to_animation_spec, (a0: sys::kiln_int_size, a1: sys::kiln_int_size) -> *const sys::kiln_anim_spec);
+crate::__kiln_callback!(sys::kiln_m3_fn_int_size_to_int_offset, (a0: sys::kiln_int_size, out: *mut sys::kiln_int_offset) -> ());
 crate::__kiln_callback!(sys::kiln_m3_fn_int_size_to_int_size, (a0: sys::kiln_int_size) -> sys::kiln_int_size);
 crate::__kiln_callback!(sys::kiln_m3_fn_int_to_bool, (a0: i32) -> bool);
 crate::__kiln_callback!(sys::kiln_m3_fn_int_to_string, (a0: i32) -> *const std::ffi::c_char);
@@ -36,6 +37,7 @@ crate::__kiln_callback!(sys::kiln_m3_fn_swipe_to_dismiss_box_value, (a0: sys::ki
 crate::__kiln_callback!(sys::kiln_m3_fn_swipe_to_dismiss_box_value_to_bool, (a0: sys::kiln_m3_swipe_to_dismiss_box_value) -> bool);
 crate::__kiln_callback!(sys::kiln_m3_fn_tab_indicator_scope, (a0: *mut sys::kiln_m3_tab_indicator_scope) -> ());
 crate::__kiln_callback!(sys::kiln_m3_fn_text_field_label_scope, (a0: *const sys::kiln_m3_text_field_label_scope) -> ());
+crate::__kiln_callback!(sys::kiln_m3_fn_to_back_event, (out: *mut sys::kiln_back_event) -> ());
 crate::__kiln_callback!(sys::kiln_m3_fn_to_bool, () -> bool);
 crate::__kiln_callback!(sys::kiln_m3_fn_to_color, () -> sys::kiln_color);
 crate::__kiln_callback!(sys::kiln_m3_fn_to_float, () -> f32);
@@ -2812,10 +2814,18 @@ pub fn horizontal_shared_axis_navigation_transitions_backward_transform() -> sys
     out
 }
 #[track_caller]
+pub fn horizontal_shared_axis_navigation_transitions_predictive_back_transform(back_event: impl IntoCallback<sys::kiln_m3_fn_to_back_event>, density: *const sys::kiln_density, scrim_color: sys::kiln_color) -> *mut sys::kiln_mutable_content_transform {
+    unsafe { sys::kiln_m3_horizontal_shared_axis_navigation_transitions_predictive_back_transform(here(), back_event.into_callback(), density, scrim_color) }
+}
+#[track_caller]
 pub fn fade_through_navigation_transitions_transform() -> sys::kiln_content_transform {
     let mut out: sys::kiln_content_transform = Default::default();
     unsafe { sys::kiln_content_transform_init(&mut out); sys::kiln_m3_fade_through_navigation_transitions_transform(here(), &mut out); }
     out
+}
+#[track_caller]
+pub fn fade_through_navigation_transitions_predictive_back_transform(back_event: impl IntoCallback<sys::kiln_m3_fn_to_back_event>, density: *const sys::kiln_density) -> *mut sys::kiln_mutable_content_transform {
+    unsafe { sys::kiln_m3_fade_through_navigation_transitions_predictive_back_transform(here(), back_event.into_callback(), density) }
 }
 #[track_caller]
 pub fn linear_progress_indicator(progress: impl IntoCallback<sys::kiln_m3_fn_to_float>, modifier: Modifier, options: *const sys::kiln_m3_linear_progress_indicator_options) {
@@ -4658,6 +4668,12 @@ pub fn carousel_state_scroll_to_item(this: *mut sys::kiln_m3_carousel_state, ite
 pub fn carousel_state_animate_scroll_to_item(this: *mut sys::kiln_m3_carousel_state, item: i32, animation_spec: *const sys::kiln_anim_spec, done: impl IntoCallback<sys::kiln_fn>) {
     unsafe { sys::kiln_m3_carousel_state_animate_scroll_to_item(this, item, animation_spec, done.into_callback()) }
 }
+pub fn carousel_state_pager_state(this: *mut sys::kiln_m3_carousel_state) -> *mut sys::kiln_pager_state {
+    unsafe { sys::kiln_m3_carousel_state_pager_state(this) }
+}
+pub fn carousel_state_pager_state_2(this: *const sys::kiln_m3_carousel_state) -> *mut sys::kiln_pager_state {
+    unsafe { sys::kiln_m3_carousel_state_pager_state_2(this) }
+}
 pub fn carousel_item_scope_draw_info(this: *const sys::kiln_m3_carousel_item_scope) -> *mut sys::kiln_m3_carousel_item_draw_info {
     unsafe { sys::kiln_m3_carousel_item_scope_draw_info(this) }
 }
@@ -4911,6 +4927,9 @@ pub fn scroll_field_state_target_option(this: *const sys::kiln_m3_scroll_field_s
 }
 pub fn scroll_field_state_is_scroll_in_progress(this: *const sys::kiln_m3_scroll_field_state) -> bool {
     unsafe { sys::kiln_m3_scroll_field_state_is_scroll_in_progress(this) }
+}
+pub fn scroll_field_state_pager(this: *const sys::kiln_m3_scroll_field_state) -> *mut sys::kiln_pager_state {
+    unsafe { sys::kiln_m3_scroll_field_state_pager(this) }
 }
 pub fn search_bar_scroll_state_scroll_offset(this: *const sys::kiln_m3_search_bar_scroll_state) -> f32 {
     unsafe { sys::kiln_m3_search_bar_scroll_state_scroll_offset(this) }

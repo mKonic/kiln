@@ -115,6 +115,7 @@ class Mapping:
     by_out: bool = False        # a struct: returned through an out pointer
     struct: object = None       # the Struct for by_out
     list_item: object = None    # a struct field holding a list: items pointer + count
+    list_optional: bool = False # the list is a std::optional: NULL items leave it unset
 
 
 @dataclass
@@ -351,16 +352,19 @@ class Generator:
                 args.append((m, a.spelling))
                 names.append('fn' if m.c == 'kiln_fn' else self.type_word(base))
             retm = None
+            ret_struct = None
             if ret.kind != ci.TypeKind.VOID:
                 retm = self.map(ret, '')
-                if retm.by_out:
-                    raise Unmappable(f'callback returning a struct ({ret.spelling})')
                 names.append('to_' + self.type_word(ret))
+                if retm.by_out:
+                    # A struct result: the callback writes it through a last `out` argument.
+                    ret_struct, retm = retm.struct, None
             c = 'kiln_m3_fn_' + ('_'.join(names) if names else 'void')
             self.callbacks[sig] = Callback(c, args, retm, ret.spelling, sig)
+            self.callbacks[sig].ret_struct = ret_struct
         cb = self.callbacks[sig]
         # Returned (a C++ default to call or pass back): a callback struct kiln made.
-        convertible = all(m.to_cpp for m, _ in cb.args) and (cb.ret is None or cb.ret.from_cpp is not None) \
+        convertible = getattr(cb, 'ret_struct', None) is None and all(m.to_cpp for m, _ in cb.args) and (cb.ret is None or cb.ret.from_cpp is not None) \
             and not any(m.by_out or m.c.endswith('*') for m, _ in cb.args)
         if convertible:
             self.returned_callbacks.add(cb.c)
@@ -501,7 +505,7 @@ class Generator:
         if k == 'std::shared_ptr<kiln::foundation::MutableInteractionSource>':
             return Mapping('kiln_interaction_source*', lambda e: f'({e} ? {e}->source : nullptr)', lambda e, o: f'kiln::capi::TransientSource({e})')
         if k == 'kiln::gfx::shapes::RoundedPolygon':
-            return Mapping('const kiln_rounded_polygon*', lambda e: f'({e} ? {e}->polygon : kiln::gfx::shapes::RoundedPolygon{{}})',
+            return Mapping('const kiln_rounded_polygon*', lambda e: f'({e} ? {e}->polygon : kiln::gfx::shapes::RoundedPolygon::Regular(3))',
                            lambda e, o: f'kiln::capi::TransientPolygon({e})')
         if k == 'kiln::foundation::WindowInsets':
             return Mapping('const kiln_window_insets*', lambda e: f'({e} ? {e}->insets : kiln::foundation::WindowInsets{{}})',
@@ -523,7 +527,9 @@ class Generator:
         if k == 'kiln::foundation::ScrollableState':
             return Mapping('kiln_scrollable_state*', lambda e: f'*reinterpret_cast<kiln::foundation::ScrollableState*>({e})', None)
         if k == 'kiln::foundation::PagerState':
-            return Mapping('kiln_pager_state*', lambda e: f'*{e}->state', None)
+            # Returned from a state's method: `self` is that state's handle.
+            return Mapping('kiln_pager_state*', lambda e: f'*{e}->state',
+                           lambda e, o: f'kiln::capi::TransientPager({e}, self->scope, self->owner)')
         if arg_of_callback and k == 'kiln::Function<void ()>':
             # A callback handed to a callback (a text field's default keyboard action): to call
             # before the callback returns.
@@ -558,7 +564,7 @@ class Generator:
                 return Mapping('kiln_m3_opt_fn', lambda e: f'({e}.set ? std::optional<kiln::Function<void()>>(kiln::capi::Fn({e}.value)) : std::nullopt)', None)
             im = self.map(inner, name, field_=field_)
             if im.list_item is not None:
-                raise Unmappable(f'optional list {k}')
+                return Mapping(im.c, None, None, list_item=im.list_item, list_optional=True)
             cpp_inner = inner.get_canonical().spelling
             # Pointer-shaped inner types: NULL is nullopt.
             if im.c.endswith('*'):
@@ -1003,6 +1009,8 @@ class Generator:
         out.append('/* Callbacks */')
         for cb in sorted(self.callbacks.values(), key=lambda c: c.c):
             args = ''.join(f', {m.c} a{i}' for i, (m, _) in enumerate(cb.args))
+            if getattr(cb, 'ret_struct', None):
+                args += f', {cb.ret_struct.c}* out'
             r = cb.ret.c if cb.ret else 'void'
             out.append(f'typedef struct {cb.c} {{ {r} (*call)(void* user{args}); void* user; void (*drop)(void* user); }} {cb.c};')
         out.append('')
@@ -1087,7 +1095,8 @@ class Generator:
                '#![allow(clippy::too_many_arguments, unused_imports, non_snake_case)]',
                'use crate::{here, sys, CStrBuf, IntoCallback, Modifier};', '']
         for cb in sorted(self.callbacks.values(), key=lambda c: c.c):
-            args = ', '.join(f'a{i}: {rty(m.c)}' for i, (m, _) in enumerate(cb.args))
+            args = ', '.join([f'a{i}: {rty(m.c)}' for i, (m, _) in enumerate(cb.args)]
+                             + ([f'out: *mut sys::{cb.ret_struct.c}'] if getattr(cb, 'ret_struct', None) else []))
             r = rty(cb.ret.c) if cb.ret else '()'
             out.append(f'crate::__kiln_callback!(sys::{cb.c}, ({args}) -> {r});')
         out.append('')
@@ -1314,7 +1323,15 @@ class Generator:
             for l in lines:
                 if not l.startswith('@post '):
                     out.append('        ' + l)
-            if cb.ret:
+            if getattr(cb, 'ret_struct', None):
+                st = cb.ret_struct
+                out.append(f'        {st.c} r;')
+                out.append(f'        {st.c}_init(&r);')
+                out.append(f'        o->f.call(o->f.user{cargs}, &r);')
+                for l in post:
+                    out.append('        ' + l)
+                out.append('        return ToCpp(&r);')
+            elif cb.ret:
                 out.append(f'        auto r = o->f.call(o->f.user{cargs});')
                 for l in post:
                     out.append('        ' + l)
@@ -1358,7 +1375,10 @@ class Generator:
             for n, m, _ in s.fields:
                 f = field_name(n)
                 if m.list_item is not None:
-                    out.append(f'    if (c.{f}) {{ v.{n}.clear(); for (size_t i = 0; i < c.{f}_count; ++i) v.{n}.push_back({m.list_item.to_cpp(f"c.{f}[i]")}); }}')
+                    if m.list_optional:
+                        out.append(f'    if (c.{f}) {{ v.{n}.emplace(); for (size_t i = 0; i < c.{f}_count; ++i) v.{n}->push_back({m.list_item.to_cpp(f"c.{f}[i]")}); }}')
+                    else:
+                        out.append(f'    if (c.{f}) {{ v.{n}.clear(); for (size_t i = 0; i < c.{f}_count; ++i) v.{n}.push_back({m.list_item.to_cpp(f"c.{f}[i]")}); }}')
                     continue
                 if m.c.startswith('kiln_m3_opt_'):
                     out.append(f'    if (c.{f}.set) v.{n} = {m.to_cpp("c." + f)};')

@@ -54,6 +54,7 @@ typedef struct kiln_m3_wide_navigation_rail_state kiln_m3_wide_navigation_rail_s
 typedef struct kiln_decay_spec kiln_decay_spec;
 typedef struct kiln_indication kiln_indication;
 typedef struct kiln_input_transformation kiln_input_transformation;
+typedef struct kiln_mutable_content_transform kiln_mutable_content_transform;
 typedef struct kiln_mutator_mutex kiln_mutator_mutex;
 typedef struct kiln_output_transformation kiln_output_transformation;
 typedef struct kiln_painter kiln_painter;
@@ -499,6 +500,7 @@ typedef struct kiln_m3_fn_fn { void (*call)(void* user, kiln_fn a0); void* user;
 typedef struct kiln_m3_fn_int_bool_bool { void (*call)(void* user, int32_t a0, bool a1, bool a2); void* user; void (*drop)(void* user); } kiln_m3_fn_int_bool_bool;
 typedef struct kiln_m3_fn_int_int_to_int { int32_t (*call)(void* user, int32_t a0, int32_t a1); void* user; void (*drop)(void* user); } kiln_m3_fn_int_int_to_int;
 typedef struct kiln_m3_fn_int_size_int_size_to_animation_spec { const kiln_anim_spec* (*call)(void* user, kiln_int_size a0, kiln_int_size a1); void* user; void (*drop)(void* user); } kiln_m3_fn_int_size_int_size_to_animation_spec;
+typedef struct kiln_m3_fn_int_size_to_int_offset { void (*call)(void* user, kiln_int_size a0, kiln_int_offset* out); void* user; void (*drop)(void* user); } kiln_m3_fn_int_size_to_int_offset;
 typedef struct kiln_m3_fn_int_size_to_int_size { kiln_int_size (*call)(void* user, kiln_int_size a0); void* user; void (*drop)(void* user); } kiln_m3_fn_int_size_to_int_size;
 typedef struct kiln_m3_fn_int_to_bool { bool (*call)(void* user, int32_t a0); void* user; void (*drop)(void* user); } kiln_m3_fn_int_to_bool;
 typedef struct kiln_m3_fn_int_to_string { const char* (*call)(void* user, int32_t a0); void* user; void (*drop)(void* user); } kiln_m3_fn_int_to_string;
@@ -515,6 +517,7 @@ typedef struct kiln_m3_fn_swipe_to_dismiss_box_value { void (*call)(void* user, 
 typedef struct kiln_m3_fn_swipe_to_dismiss_box_value_to_bool { bool (*call)(void* user, kiln_m3_swipe_to_dismiss_box_value a0); void* user; void (*drop)(void* user); } kiln_m3_fn_swipe_to_dismiss_box_value_to_bool;
 typedef struct kiln_m3_fn_tab_indicator_scope { void (*call)(void* user, kiln_m3_tab_indicator_scope* a0); void* user; void (*drop)(void* user); } kiln_m3_fn_tab_indicator_scope;
 typedef struct kiln_m3_fn_text_field_label_scope { void (*call)(void* user, const kiln_m3_text_field_label_scope* a0); void* user; void (*drop)(void* user); } kiln_m3_fn_text_field_label_scope;
+typedef struct kiln_m3_fn_to_back_event { void (*call)(void* user, kiln_back_event* out); void* user; void (*drop)(void* user); } kiln_m3_fn_to_back_event;
 typedef struct kiln_m3_fn_to_bool { bool (*call)(void* user); void* user; void (*drop)(void* user); } kiln_m3_fn_to_bool;
 typedef struct kiln_m3_fn_to_color { kiln_color (*call)(void* user); void* user; void (*drop)(void* user); } kiln_m3_fn_to_color;
 typedef struct kiln_m3_fn_to_float { float (*call)(void* user); void* user; void (*drop)(void* user); } kiln_m3_fn_to_float;
@@ -1586,6 +1589,8 @@ KILN_API void kiln_m3_list_item_options_init(kiln_m3_list_item_options* s);
 struct kiln_m3_loading_indicator_options {
     size_t size;
     kiln_color color;
+    const kiln_rounded_polygon* const* polygons;   /* NULL: the default */
+    size_t polygons_count;
 };
 KILN_API void kiln_m3_loading_indicator_options_init(kiln_m3_loading_indicator_options* s);
 struct kiln_m3_contained_loading_indicator_options {
@@ -1593,6 +1598,8 @@ struct kiln_m3_contained_loading_indicator_options {
     kiln_color container_color;
     kiln_color indicator_color;
     const kiln_shape* container_shape;
+    const kiln_rounded_polygon* const* polygons;   /* NULL: the default */
+    size_t polygons_count;
 };
 KILN_API void kiln_m3_contained_loading_indicator_options_init(kiln_m3_contained_loading_indicator_options* s);
 struct kiln_m3_shapes {
@@ -2513,6 +2520,7 @@ struct kiln_int_offset {
 KILN_API void kiln_int_offset_init(kiln_int_offset* s);
 struct kiln_slide_config {
     size_t size;
+    kiln_m3_fn_int_size_to_int_offset offset;
     const kiln_anim_spec* spec;
 };
 KILN_API void kiln_slide_config_init(kiln_slide_config* s);
@@ -3281,7 +3289,9 @@ KILN_API void kiln_m3_navigation_rail_item(kiln_key key, bool selected, kiln_fn 
 KILN_API kiln_color kiln_m3_horizontal_shared_axis_navigation_transitions_scrim_color(kiln_key key);
 KILN_API void kiln_m3_horizontal_shared_axis_navigation_transitions_forward_transform(kiln_key key, kiln_content_transform* out);
 KILN_API void kiln_m3_horizontal_shared_axis_navigation_transitions_backward_transform(kiln_key key, kiln_content_transform* out);
+KILN_API kiln_mutable_content_transform* kiln_m3_horizontal_shared_axis_navigation_transitions_predictive_back_transform(kiln_key key, kiln_m3_fn_to_back_event back_event, const kiln_density* density, kiln_color scrim_color);
 KILN_API void kiln_m3_fade_through_navigation_transitions_transform(kiln_key key, kiln_content_transform* out);
+KILN_API kiln_mutable_content_transform* kiln_m3_fade_through_navigation_transitions_predictive_back_transform(kiln_key key, kiln_m3_fn_to_back_event back_event, const kiln_density* density);
 /* ProgressIndicator.h */
 KILN_API void kiln_m3_linear_progress_indicator(kiln_key key, kiln_m3_fn_to_float progress, const kiln_modifier* modifier, const kiln_m3_linear_progress_indicator_options* options);
 KILN_API void kiln_m3_linear_progress_indicator_modifier(kiln_key key, const kiln_modifier* modifier, const kiln_m3_linear_progress_indicator_options* options);
@@ -3869,6 +3879,8 @@ KILN_API int32_t kiln_m3_carousel_state_current_item(const kiln_m3_carousel_stat
 KILN_API bool kiln_m3_carousel_state_is_scroll_in_progress(const kiln_m3_carousel_state* self);
 KILN_API void kiln_m3_carousel_state_scroll_to_item(kiln_m3_carousel_state* self, int32_t item);
 KILN_API void kiln_m3_carousel_state_animate_scroll_to_item(kiln_m3_carousel_state* self, int32_t item, const kiln_anim_spec* animation_spec, kiln_fn done);
+KILN_API kiln_pager_state* kiln_m3_carousel_state_pager_state(kiln_m3_carousel_state* self);
+KILN_API kiln_pager_state* kiln_m3_carousel_state_pager_state_2(const kiln_m3_carousel_state* self);
 /* kiln_m3_carousel_item_scope */
 KILN_API kiln_m3_carousel_item_draw_info* kiln_m3_carousel_item_scope_draw_info(const kiln_m3_carousel_item_scope* self);
 KILN_API const kiln_modifier* kiln_m3_carousel_item_scope_mask_clip(const kiln_m3_carousel_item_scope* self, const kiln_modifier* m, const kiln_shape* shape);
@@ -3966,6 +3978,7 @@ KILN_API void kiln_m3_scroll_field_state_scroll_to_option(kiln_m3_scroll_field_s
 KILN_API void kiln_m3_scroll_field_state_animate_scroll_to_option(kiln_m3_scroll_field_state* self, int32_t option, kiln_fn done);
 KILN_API int32_t kiln_m3_scroll_field_state_target_option(const kiln_m3_scroll_field_state* self);
 KILN_API bool kiln_m3_scroll_field_state_is_scroll_in_progress(const kiln_m3_scroll_field_state* self);
+KILN_API kiln_pager_state* kiln_m3_scroll_field_state_pager(const kiln_m3_scroll_field_state* self);
 /* kiln_m3_search_bar_scroll_state */
 KILN_API float kiln_m3_search_bar_scroll_state_scroll_offset(const kiln_m3_search_bar_scroll_state* self);
 KILN_API void kiln_m3_search_bar_scroll_state_set_scroll_offset(kiln_m3_search_bar_scroll_state* self, float offset);

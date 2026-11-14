@@ -175,6 +175,8 @@ namespace kpp::m3 {
         bool is_scroll_in_progress() const;
         void scroll_to_item(int32_t item) const;
         void animate_scroll_to_item(int32_t item, const kiln_anim_spec* animation_spec = {}, kpp::Callback<kiln_fn> done = {}) const;
+        kiln_pager_state* pager_state() const;
+        kiln_pager_state* pager_state_2() const;
     private:
         kiln_m3_carousel_state* m_H;
     };
@@ -367,6 +369,7 @@ namespace kpp::m3 {
         void animate_scroll_to_option(int32_t option, kpp::Callback<kiln_fn> done = {}) const;
         int32_t target_option() const;
         bool is_scroll_in_progress() const;
+        kiln_pager_state* pager() const;
     private:
         kiln_m3_scroll_field_state* m_H;
     };
@@ -676,6 +679,8 @@ namespace kpp::m3 {
     inline bool CarouselState::is_scroll_in_progress() const { return kiln_m3_carousel_state_is_scroll_in_progress(m_H); }
     inline void CarouselState::scroll_to_item(int32_t item) const { kiln_m3_carousel_state_scroll_to_item(m_H, item); }
     inline void CarouselState::animate_scroll_to_item(int32_t item, const kiln_anim_spec* animation_spec, kpp::Callback<kiln_fn> done) const { kiln_m3_carousel_state_animate_scroll_to_item(m_H, item, animation_spec, done.release()); }
+    inline kiln_pager_state* CarouselState::pager_state() const { return kiln_m3_carousel_state_pager_state(m_H); }
+    inline kiln_pager_state* CarouselState::pager_state_2() const { return kiln_m3_carousel_state_pager_state_2(m_H); }
     inline std::string DatePickerFormatter::format_month_year(kiln_opt_i64 month_millis, kpp::Str locale) const { return std::string(kpp::detail::Nz(kiln_m3_date_picker_formatter_format_month_year(m_H, month_millis, locale.c_str()))); }
     inline std::string DatePickerFormatter::format_date(kiln_opt_i64 date_millis, kpp::Str locale, bool for_content_description) const { return std::string(kpp::detail::Nz(kiln_m3_date_picker_formatter_format_date(m_H, date_millis, locale.c_str(), for_content_description))); }
     inline kiln_opt_i64 DatePickerState::selected_date_millis() const { return kiln_m3_date_picker_state_selected_date_millis(m_H); }
@@ -769,6 +774,7 @@ namespace kpp::m3 {
     inline void ScrollFieldState::animate_scroll_to_option(int32_t option, kpp::Callback<kiln_fn> done) const { kiln_m3_scroll_field_state_animate_scroll_to_option(m_H, option, done.release()); }
     inline int32_t ScrollFieldState::target_option() const { return kiln_m3_scroll_field_state_target_option(m_H); }
     inline bool ScrollFieldState::is_scroll_in_progress() const { return kiln_m3_scroll_field_state_is_scroll_in_progress(m_H); }
+    inline kiln_pager_state* ScrollFieldState::pager() const { return kiln_m3_scroll_field_state_pager(m_H); }
     inline SearchBarScrollState SearchBarScrollBehavior::scroll_state() const { return SearchBarScrollState(kiln_m3_search_bar_scroll_behavior_scroll_state(m_H)); }
     inline kiln_nested_scroll_connection* SearchBarScrollBehavior::nested_scroll_connection() const { return kiln_m3_search_bar_scroll_behavior_nested_scroll_connection(m_H); }
     inline kpp::Modifier SearchBarScrollBehavior::search_bar_scroll_behavior_modifier() const { return kpp::Modifier(const_cast<kiln_modifier*>(kiln_m3_search_bar_scroll_behavior_search_bar_scroll_behavior_modifier(m_H))); }
@@ -1501,7 +1507,9 @@ namespace kpp::m3 {
     inline kiln_color horizontal_shared_axis_navigation_transitions_scrim_color(kpp::Key key = {}) { return kiln_m3_horizontal_shared_axis_navigation_transitions_scrim_color(key); }
     inline kiln_content_transform horizontal_shared_axis_navigation_transitions_forward_transform(kpp::Key key = {}) { kiln_content_transform o; kiln_content_transform_init(&o); kiln_m3_horizontal_shared_axis_navigation_transitions_forward_transform(key, &o); return o; }
     inline kiln_content_transform horizontal_shared_axis_navigation_transitions_backward_transform(kpp::Key key = {}) { kiln_content_transform o; kiln_content_transform_init(&o); kiln_m3_horizontal_shared_axis_navigation_transitions_backward_transform(key, &o); return o; }
+    inline kiln_mutable_content_transform* horizontal_shared_axis_navigation_transitions_predictive_back_transform(kpp::Callback<kiln_m3_fn_to_back_event> back_event = {}, const kiln_density* density = {}, kiln_color scrim_color = {}, kpp::Key key = {}) { return kiln_m3_horizontal_shared_axis_navigation_transitions_predictive_back_transform(key, back_event.release(), density, scrim_color); }
     inline kiln_content_transform fade_through_navigation_transitions_transform(kpp::Key key = {}) { kiln_content_transform o; kiln_content_transform_init(&o); kiln_m3_fade_through_navigation_transitions_transform(key, &o); return o; }
+    inline kiln_mutable_content_transform* fade_through_navigation_transitions_predictive_back_transform(kpp::Callback<kiln_m3_fn_to_back_event> back_event = {}, const kiln_density* density = {}, kpp::Key key = {}) { return kiln_m3_fade_through_navigation_transitions_predictive_back_transform(key, back_event.release(), density); }
     inline void linear_progress_indicator(kpp::Callback<kiln_m3_fn_to_float> progress = {}, kpp::Modifier modifier = {}, const kiln_m3_linear_progress_indicator_options* options = {}, kpp::Key key = {}) { kiln_m3_linear_progress_indicator(key, progress.release(), modifier, options); }
     inline void linear_progress_indicator_modifier(kpp::Modifier modifier = {}, const kiln_m3_linear_progress_indicator_options* options = {}, kpp::Key key = {}) { kiln_m3_linear_progress_indicator_modifier(key, modifier, options); }
     inline void circular_progress_indicator(kpp::Callback<kiln_m3_fn_to_float> progress = {}, kpp::Modifier modifier = {}, const kiln_m3_circular_progress_indicator_options* options = {}, kpp::Key key = {}) { kiln_m3_circular_progress_indicator(key, progress.release(), modifier, options); }
